@@ -25,14 +25,25 @@ app = FastAPI(
 )
 
 # ===== CORS =====
+# allow_credentials must be False when using "*" so that local HTML files
+# (file:// origin = "null") and any browser can connect without CORS errors.
 frontend_url = os.getenv("FRONTEND_URL", "*")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[frontend_url] if frontend_url != "*" else ["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if frontend_url == "*":
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[frontend_url],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # ===== ROUTERS =====
 app.include_router(auth_routes.router)
