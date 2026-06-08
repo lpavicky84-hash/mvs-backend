@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 from database import engine, Base
+from sqlalchemy import text
 import models  # triggers model registration
 import auth_routes
 import teacher_routes
@@ -14,6 +15,20 @@ load_dotenv()
 
 # ===== CREATE TABLES =====
 Base.metadata.create_all(bind=engine)
+
+# ===== LIGHTWEIGHT MIGRATIONS (add new columns to existing tables) =====
+def ensure_columns():
+    stmts = [
+        "ALTER TABLE student_profiles ADD COLUMN plain_password VARCHAR(255)",
+    ]
+    for s in stmts:
+        try:
+            with engine.connect() as conn:
+                conn.execute(text(s))
+                conn.commit()
+        except Exception:
+            pass  # column already exists — safe to ignore
+ensure_columns()
 
 # ===== APP =====
 app = FastAPI(

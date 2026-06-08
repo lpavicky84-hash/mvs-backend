@@ -102,6 +102,7 @@ class StudentProfile(Base):
     subjects     = Column(JSON)   # ["Physics","Chemistry","Maths"]
     class_name   = Column(String(20))   # e.g. "12A"
     is_verified  = Column(Boolean, default=False)
+    plain_password = Column(String(255), nullable=True)  # for phone-lookup onboarding
     active_session_token = Column(String(255), nullable=True)  # Single session
 
     user              = relationship("User", back_populates="student_profile")

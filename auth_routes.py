@@ -112,3 +112,18 @@ def get_me(current_user=Depends(get_current_user)):
 def gen_uid(name: str, db: Session = Depends(get_db)):
     """Admin use — auto-generate user ID from name"""
     return {"user_id": generate_user_id(name, db)}
+
+@router.get("/lookup-by-phone")
+def lookup_by_phone(phone: str, db: Session = Depends(get_db)):
+    """Student onboarding — phone se apni credentials fetch karein"""
+    from models import StudentProfile
+    phone = phone.strip()
+    sp = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
+    if not sp or not sp.user:
+        return {"found": False}
+    return {
+        "found": True,
+        "name": sp.user.name,
+        "user_id": sp.user.user_id,
+        "password": sp.plain_password or ""
+    }

@@ -82,10 +82,9 @@ def review_reschedule(
                    f"{class_entry.subject} ({class_entry.class_name}) reschedule approved ho gaya. Nayi date: {rs.new_date}, {rs.new_time}",
                    "reschedule_approved")
 
-        # Notify all students of affected class
-        students = db.query(StudentProfile).filter(
-            StudentProfile.subjects.contains(class_entry.subject)
-        ).all()
+        # Notify all students of affected class (filter in Python — works on all DBs)
+        all_students = db.query(StudentProfile).all()
+        students = [sp for sp in all_students if sp.subjects and class_entry.subject in sp.subjects]
         for sp in students:
             if sp.user:
                 notify(db, sp.user.id,
@@ -221,7 +220,8 @@ def add_student(req: RegisterRequest, db: Session = Depends(get_db), _=Depends(g
     sp = StudentProfile(
         user_id=user.id, phone=req.phone,
         batch=req.batch, subjects=req.subjects or [],
-        class_name=req.class_name or "", is_verified=True
+        class_name=req.class_name or "", is_verified=True,
+        plain_password=req.password
     )
     db.add(sp)
     db.commit()
