@@ -1,0 +1,318 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from datetime import datetime, date, timedelta
+from typing import List, Optional
+
+from database import get_db
+from security import get_student
+from models import (
+    User, StudentProfile, TeacherProfile, ClassEntry, ClassStatus,
+    DPP, DPPSubmission, Test, TestSubmission, TestStatus,
+    SubmissionStatus, Doubt, DoubtStatus, Notification, Timetable
+)
+from schemas import (
+    DPPSubmissionCreate, DPPSubmissionOut,
+    TestSubmissionCreate, TestSubmissionOut,
+    DoubtCreate, DoubtOut,
+    StudentDashboard
+)
+
+router = APIRouter(prefix="/api/student", tags=["Student"])
+
+def get_student_profile(user, db) -> StudentProfile:
+    sp = db.query(StudentProfile).filter(StudentProfile.user_id == user.id).first()
+    if not sp:
+        raise HTTPException(status_code=404, detail="Student profile nahi mila")
+    return sp
+
+def notify(db, user_id, title, message, notif_type):
+    n = Notification(user_id=user_id, title=title, message=message, notif_type=notif_type)
+    db.add(n)
+
+# ===== DASHBOARD =====
+@router.get("/dashboard", response_model=StudentDashboard)
+def student_dashboard(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    sp = get_student_profile(current_user, db)
+
+    dpps_total    = db.query(DPP).filter(DPP.subject.in_(sp.subjects or [])).count()
+    dpps_submitted = db.query(DPPSubmission).filter(DPPSubmission.student_id == sp.id).count()
+    tests_attempted = db.query(TestSubmission).filter(
+        TestSubmission.student_id == sp.id,
+        TestSubmission.status.in_([SubmissionStatus.submitted, SubmissionStatus.late_submitted])
+    ).count()
+    tests_missed = db.query(TestSubmission).filter(
+        TestSubmission.student_id == sp.id,
+        TestSubmission.status == SubmissionStatus.missed
+    ).count()
+    doubts_asked    = db.query(Doubt).filter(Doubt.student_id == sp.id).count()
+    doubts_resolved = db.query(Doubt).filter(Doubt.student_id == sp.id, Doubt.status == DoubtStatus.resolved).count()
+
+    # Classes attended = test submissions + a rough count based on activity
+    classes_attended = dpps_submitted  # proxy count
+
+    return StudentDashboard(
+        classes_attended=classes_attended,
+        dpps_submitted=dpps_submitted,
+        dpps_total=dpps_total,
+        tests_attempted=tests_attempted,
+        tests_missed=tests_missed,
+        doubts_asked=doubts_asked,
+        doubts_resolved=doubts_resolved
+    )
+
+# ===== TIMETABLE (subject-filtered) =====
+@router.get("/timetable")
+def get_student_timetable(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    sp = get_student_profile(current_user, db)
+    entries = db.query(Timetable).filter(
+        Timetable.subject.in_(sp.subjects or []),
+        Timetable.is_active == True
+    ).order_by(Timetable.day_of_week, Timetable.start_time).all()
+    return entries
+
+# ===== TODAY'S CLASSES =====
+@router.get("/classes/today")
+def today_classes(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    sp = get_student_profile(current_user, db)
+    classes = db.query(ClassEntry).filter(
+        ClassEntry.subject.in_(sp.subjects or []),
+        ClassEntry.scheduled_date == date.today()
+    ).order_by(ClassEntry.scheduled_time).all()
+    result = []
+    for c in classes:
+        teacher_name = ""
+        if c.teacher and c.teacher.user:
+            teacher_name = c.teacher.user.name
+        result.append({
+            "id": c.id,
+            "subject": c.subject,
+            "class_name": c.class_name,
+            "topic": c.topic,
+            "scheduled_time": str(c.scheduled_time),
+            "status": c.status,
+            "drive_link": c.drive_link,
+            "teacher_name": teacher_name
+        })
+    return result
+
+# ===== MATERIALS (class notes + DPPs) =====
+@router.get("/materials/notes")
+def get_notes(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Get all uploaded class notes (PDFs) for student's subjects"""
+    sp = get_student_profile(current_user, db)
+    classes = db.query(ClassEntry).filter(
+        ClassEntry.subject.in_(sp.subjects or []),
+        ClassEntry.status == ClassStatus.done,
+        ClassEntry.drive_link != None
+    ).order_by(ClassEntry.scheduled_date.desc()).all()
+    return [
+        {
+            "id": c.id,
+            "subject": c.subject,
+            "topic": c.topic,
+            "date": str(c.scheduled_date),
+            "drive_link": c.drive_link
+        }
+        for c in classes
+    ]
+
+@router.get("/materials/dpps")
+def get_available_dpps(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    sp = get_student_profile(current_user, db)
+    dpps = db.query(DPP).filter(
+        DPP.subject.in_(sp.subjects or []),
+        DPP.is_active == True
+    ).all()
+    # Mark which ones student has submitted
+    submitted_ids = {s.dpp_id for s in db.query(DPPSubmission).filter(DPPSubmission.student_id == sp.id).all()}
+    return [
+        {
+            "id": d.id,
+            "subject": d.subject,
+            "dpp_type": d.dpp_type,
+            "reference": d.reference,
+            "drive_link": d.drive_link,
+            "submitted": d.id in submitted_ids
+        }
+        for d in dpps
+    ]
+
+# ===== DPP SUBMISSION =====
+@router.post("/dpp/submit", response_model=DPPSubmissionOut)
+def submit_dpp(req: DPPSubmissionCreate, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    sp = get_student_profile(current_user, db)
+
+    # Check not already submitted
+    existing = db.query(DPPSubmission).filter(
+        DPPSubmission.dpp_id == req.dpp_id,
+        DPPSubmission.student_id == sp.id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Yeh DPP aap pehle se submit kar chuke hain")
+
+    sub = DPPSubmission(dpp_id=req.dpp_id, student_id=sp.id, drive_link=req.drive_link)
+    db.add(sub)
+    db.commit()
+    db.refresh(sub)
+    return sub
+
+@router.get("/dpp/submissions")
+def my_dpp_submissions(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    sp = get_student_profile(current_user, db)
+    subs = db.query(DPPSubmission).filter(DPPSubmission.student_id == sp.id).all()
+    return subs
+
+# ===== TESTS =====
+@router.get("/tests")
+def get_student_tests(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    sp = get_student_profile(current_user, db)
+    tests = db.query(Test).filter(
+        Test.subject.in_(sp.subjects or []),
+        Test.question_paper_link != None   # Only show if paper uploaded
+    ).order_by(Test.test_date.desc()).all()
+
+    submitted_test_ids = {s.test_id for s in db.query(TestSubmission).filter(TestSubmission.student_id == sp.id).all()}
+    now = datetime.now()
+    result = []
+    for t in tests:
+        test_deadline = datetime.combine(t.test_date, t.test_time)
+        submission_deadline = test_deadline + timedelta(hours=6)
+        time_left_secs = max(0, int((test_deadline + timedelta(minutes=t.duration_mins) - now).total_seconds()))
+        can_submit = now < submission_deadline
+        result.append({
+            "id": t.id,
+            "subject": t.subject,
+            "class_name": t.class_name,
+            "test_date": str(t.test_date),
+            "test_time": str(t.test_time),
+            "duration_mins": t.duration_mins,
+            "question_paper_link": t.question_paper_link,
+            "status": t.status,
+            "submitted": t.id in submitted_test_ids,
+            "can_submit": can_submit,
+            "time_left_secs": time_left_secs
+        })
+    return result
+
+@router.post("/tests/submit", response_model=TestSubmissionOut)
+def submit_test(req: TestSubmissionCreate, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    sp = get_student_profile(current_user, db)
+
+    test = db.query(Test).filter(Test.id == req.test_id).first()
+    if not test:
+        raise HTTPException(status_code=404, detail="Test nahi mila")
+
+    now = datetime.now()
+    test_end = datetime.combine(test.test_date, test.test_time) + timedelta(minutes=test.duration_mins)
+    submission_deadline = datetime.combine(test.test_date, test.test_time) + timedelta(hours=6)
+
+    if now > submission_deadline:
+        raise HTTPException(status_code=400, detail="Submission window band ho gayi (6 ghante baad)")
+
+    # Determine status
+    if now <= test_end:
+        sub_status = SubmissionStatus.submitted
+    else:
+        sub_status = SubmissionStatus.late_submitted
+
+    existing = db.query(TestSubmission).filter(
+        TestSubmission.test_id == req.test_id,
+        TestSubmission.student_id == sp.id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Test pehle se submit hai")
+
+    sub = TestSubmission(test_id=req.test_id, student_id=sp.id, drive_link=req.drive_link, status=sub_status)
+    db.add(sub)
+    db.commit()
+    db.refresh(sub)
+
+    # Notify teacher
+    if test.teacher and test.teacher.user:
+        notify(db, test.teacher.user.id,
+               f"Test Submitted — {current_user.name}",
+               f"{current_user.name} ne {test.subject} test submit ki ({sub_status})",
+               "test_submitted")
+    db.commit()
+    return sub
+
+# ===== DOUBTS =====
+@router.post("/doubts", response_model=DoubtOut)
+def ask_doubt(req: DoubtCreate, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    sp = get_student_profile(current_user, db)
+    doubt = Doubt(student_id=sp.id, **req.model_dump())
+    db.add(doubt)
+
+    # Notify teacher
+    teacher = db.query(TeacherProfile).filter(TeacherProfile.id == req.teacher_id).first()
+    if teacher and teacher.user:
+        notify(db, teacher.user.id,
+               f"❓ Naya Doubt — {current_user.name}",
+               f"Subject: {req.subject} | Topic: {req.topic} | {req.question[:100]}...",
+               "new_doubt")
+    db.commit()
+    db.refresh(doubt)
+    return doubt
+
+@router.get("/doubts", response_model=List[DoubtOut])
+def my_doubts(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    sp = get_student_profile(current_user, db)
+    return db.query(Doubt).filter(Doubt.student_id == sp.id).order_by(Doubt.created_at.desc()).all()
+
+# ===== PROGRESS =====
+@router.get("/progress")
+def get_progress(
+    period: str = "weekly",
+    db: Session = Depends(get_db),
+    current_user=Depends(get_student)
+):
+    sp = get_student_profile(current_user, db)
+    now = date.today()
+
+    if period == "weekly":
+        start = now - timedelta(days=now.weekday())
+    elif period == "monthly":
+        start = date(now.year, now.month, 1)
+    else:  # quarterly
+        quarter_month = ((now.month - 1) // 3) * 3 + 1
+        start = date(now.year, quarter_month, 1)
+
+    dpps_submitted = db.query(DPPSubmission).filter(
+        DPPSubmission.student_id == sp.id,
+        DPPSubmission.submitted_at >= datetime.combine(start, datetime.min.time())
+    ).count()
+
+    tests_attempted = db.query(TestSubmission).filter(
+        TestSubmission.student_id == sp.id,
+        TestSubmission.submitted_at >= datetime.combine(start, datetime.min.time()),
+        TestSubmission.status.in_([SubmissionStatus.submitted, SubmissionStatus.late_submitted])
+    ).count()
+
+    doubts_asked = db.query(Doubt).filter(
+        Doubt.student_id == sp.id,
+        Doubt.created_at >= datetime.combine(start, datetime.min.time())
+    ).count()
+
+    return {
+        "period": period,
+        "from": str(start),
+        "to": str(now),
+        "dpps_submitted": dpps_submitted,
+        "tests_attempted": tests_attempted,
+        "doubts_asked": doubts_asked
+    }
+
+# ===== NOTIFICATIONS =====
+@router.get("/notifications")
+def get_notifications(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    return db.query(Notification).filter(
+        Notification.user_id == current_user.id
+    ).order_by(Notification.created_at.desc()).limit(20).all()
+
+@router.patch("/notifications/{notif_id}/read")
+def mark_read(notif_id: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    n = db.query(Notification).filter(Notification.id == notif_id, Notification.user_id == current_user.id).first()
+    if n:
+        n.is_read = True
+        db.commit()
+    return {"ok": True}
