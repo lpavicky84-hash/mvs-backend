@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract
 from datetime import datetime, date, timedelta
@@ -311,7 +311,8 @@ def _serialize_tt(e):
     return {
         "id": e.id, "subject": e.subject, "class_name": e.class_name,
         "chapter": e.chapter, "part": e.part,
-        "date": str(e.entry_date) if e.entry_date else None, "day": e.day
+        "date": str(e.entry_date) if e.entry_date else None, "day": e.day,
+        "time": getattr(e, "time_text", None), "type": getattr(e, "entry_type", None) or "chapter"
     }
 
 @router.post("/timetable-entry")
@@ -332,7 +333,9 @@ def add_tt_entry(payload: dict, db: Session = Depends(get_db), current_user=Depe
         chapter=(payload.get("chapter") or "").strip(),
         part=(payload.get("part") or "").strip() or None,
         entry_date=edate,
-        day=(payload.get("day") or "").strip() or None
+        day=(payload.get("day") or "").strip() or None,
+        time_text=(payload.get("time") or "").strip() or None,
+        entry_type=(payload.get("type") or "chapter").strip()
     )
     db.add(e); db.commit(); db.refresh(e)
     return _serialize_tt(e)
@@ -363,3 +366,47 @@ def clear_tt_entries(db: Session = Depends(get_db), current_user=Depends(get_tea
     db.query(TimetableEntry).filter(TimetableEntry.teacher_id == tp.id).delete()
     db.commit()
     return {"message": "Saari entries clear ho gayi"}
+
+# ===== PDF TIMETABLE UPLOAD (auto-parse) =====
+@router.post("/timetable-pdf")
+async def upload_timetable_pdf(
+    file: UploadFile = File(...),
+    class_name: str = Form("Class 12"),
+    subject: str = Form(""),
+    replace: str = Form("false"),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_teacher)
+):
+    tp = get_teacher_profile(current_user, db)
+    from models import TimetableEntry
+    import tt_parser
+    raw = await file.read()
+    try:
+        rows = tt_parser.parse_pdf(raw, force_subject=(subject.strip() or None))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"PDF parse error: {e}")
+    if not rows:
+        raise HTTPException(status_code=400, detail="PDF se koi valid row nahi mili. Text-based PDF honi chahiye.")
+
+    subjects_found = sorted(set(r["subject"] for r in rows))
+    if replace.lower() == "true":
+        db.query(TimetableEntry).filter(
+            TimetableEntry.teacher_id == tp.id,
+            TimetableEntry.subject.in_(subjects_found)
+        ).delete(synchronize_session=False)
+
+    added = 0
+    for r in rows:
+        edate = None
+        try:
+            edate = datetime.strptime(r["date"], "%Y-%m-%d").date()
+        except Exception:
+            pass
+        db.add(TimetableEntry(
+            teacher_id=tp.id, subject=r["subject"], class_name=class_name,
+            chapter=r["chapter"], part=r["part"], entry_date=edate,
+            day=r["day"] or None, time_text=r["time"] or None, entry_type=r["type"]
+        ))
+        added += 1
+    db.commit()
+    return {"added": added, "subjects": subjects_found}

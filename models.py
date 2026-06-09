@@ -306,4 +306,6 @@ class TimetableEntry(Base):
     part        = Column(String(200), nullable=True)
     entry_date  = Column(Date, nullable=True)
     day         = Column(String(20), nullable=True)
+    time_text   = Column(String(40), nullable=True)
+    entry_type  = Column(String(20), default="chapter")  # chapter | event
     created_at  = Column(DateTime, default=func.now())

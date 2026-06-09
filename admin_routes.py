@@ -344,6 +344,7 @@ def timetable_all(db: Session = Depends(get_db), _=Depends(get_admin)):
             "id": e.id, "subject": e.subject, "class_name": e.class_name,
             "chapter": e.chapter, "part": e.part,
             "date": str(e.entry_date) if e.entry_date else None,
-            "day": e.day, "teacher_name": tname
+            "day": e.day, "time": getattr(e,"time_text",None),
+            "type": getattr(e,"entry_type",None) or "chapter", "teacher_name": tname
         })
     return result
