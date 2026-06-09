@@ -316,3 +316,40 @@ def mark_read(notif_id: int, db: Session = Depends(get_db), current_user=Depends
         n.is_read = True
         db.commit()
     return {"ok": True}
+
+# ===== PROFILE & SUBJECT SELECTION =====
+@router.get("/profile")
+def get_profile(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    sp = get_student_profile(current_user, db)
+    return {
+        "name": current_user.name,
+        "class_level": sp.class_level,
+        "subjects": sp.subjects or [],
+        "batch": sp.batch,
+        "class_name": sp.class_name
+    }
+
+@router.get("/available-subjects")
+def available_subjects(class_level: str, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    from models import AvailableSubject
+    subs = db.query(AvailableSubject).filter(
+        AvailableSubject.class_level == class_level,
+        AvailableSubject.is_active == True
+    ).all()
+    return [{"name": s.name, "code": s.code} for s in subs]
+
+@router.post("/set-subjects")
+def set_subjects(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    sp = get_student_profile(current_user, db)
+    class_level = payload.get("class_level")
+    subjects = payload.get("subjects", [])
+    if class_level not in ("10", "12"):
+        raise HTTPException(status_code=400, detail="Class 10 ya 12 select karein")
+    if not subjects:
+        raise HTTPException(status_code=400, detail="Kam se kam 1 subject select karein")
+    if len(subjects) > 7:
+        raise HTTPException(status_code=400, detail="7 se jyada subjects allowed nahi hain")
+    sp.class_level = class_level
+    sp.subjects = subjects
+    db.commit()
+    return {"message": "Subjects save ho gaye!", "subjects": subjects, "class_level": class_level}

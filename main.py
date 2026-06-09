@@ -20,6 +20,7 @@ Base.metadata.create_all(bind=engine)
 def ensure_columns():
     stmts = [
         "ALTER TABLE student_profiles ADD COLUMN plain_password VARCHAR(255)",
+        "ALTER TABLE student_profiles ADD COLUMN class_level VARCHAR(5)",
     ]
     for s in stmts:
         try:
@@ -29,6 +30,43 @@ def ensure_columns():
         except Exception:
             pass  # column already exists — safe to ignore
 ensure_columns()
+
+# ===== SEED AVAILABLE SUBJECTS (NIOS lists) — only if table empty =====
+def seed_subjects():
+    from database import SessionLocal
+    from models import AvailableSubject
+    db = SessionLocal()
+    try:
+        if db.query(AvailableSubject).count() > 0:
+            return  # already seeded — don't re-add (preserves admin deletions)
+        class10 = [
+            ("Hindi","201"),("English","202"),("Mathematics","211"),
+            ("Science and Technology","212"),("Social Science","213"),
+            ("Economics","214"),("Business Studies","215"),("Home Science","216"),
+            ("Psychology","222"),("Indian Culture and Heritage","223"),
+            ("Accountancy","224"),("Painting","225"),("Data Entry Operations","229"),
+        ]
+        class12 = [
+            ("Hindi","301"),("English","302"),("Sanskrit","309"),
+            ("Mathematics","311"),("Physics","312"),("Chemistry","313"),
+            ("Biology","314"),("History","315"),("Geography","316"),
+            ("Political Science","317"),("Economics","318"),("Business Studies","319"),
+            ("Accountancy","320"),("Home Science","321"),("Psychology","328"),
+            ("Computer Science","330"),("Sociology","331"),("Painting","332"),
+            ("Environmental Science","333"),("Mass Communication","335"),
+            ("Data Entry Operations","336"),("Introduction to Law","338"),
+            ("Library and Information Science","339"),
+        ]
+        for name, code in class10:
+            db.add(AvailableSubject(class_level="10", name=name, code=code, is_active=True))
+        for name, code in class12:
+            db.add(AvailableSubject(class_level="12", name=name, code=code, is_active=True))
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+seed_subjects()
 
 # ===== APP =====
 app = FastAPI(

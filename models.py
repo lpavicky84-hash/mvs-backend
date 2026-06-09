@@ -103,6 +103,7 @@ class StudentProfile(Base):
     class_name   = Column(String(20))   # e.g. "12A"
     is_verified  = Column(Boolean, default=False)
     plain_password = Column(String(255), nullable=True)  # for phone-lookup onboarding
+    class_level  = Column(String(5), nullable=True)      # "10" or "12"
     active_session_token = Column(String(255), nullable=True)  # Single session
 
     user              = relationship("User", back_populates="student_profile")
@@ -278,3 +279,15 @@ class Notification(Base):
     created_at = Column(DateTime, default=func.now())
 
     user = relationship("User", back_populates="notifications")
+
+# =============================================
+# AVAILABLE SUBJECTS (admin-managed master list per class)
+# =============================================
+class AvailableSubject(Base):
+    __tablename__ = "available_subjects"
+
+    id          = Column(Integer, primary_key=True)
+    class_level = Column(String(5))    # "10" or "12"
+    name        = Column(String(120))
+    code        = Column(String(20))
+    is_active   = Column(Boolean, default=True)

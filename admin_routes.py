@@ -296,3 +296,33 @@ def broadcast_notification(
         notify(db, u.id, title, message, "broadcast")
     db.commit()
     return {"message": f"{len(users)} users ko notification bhej di gayi."}
+
+# ===== SUBJECT MANAGEMENT =====
+@router.get("/subjects")
+def get_subjects(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import AvailableSubject
+    subs = db.query(AvailableSubject).filter(AvailableSubject.is_active == True).all()
+    result = {"10": [], "12": []}
+    for s in subs:
+        result.get(s.class_level, []).append({"id": s.id, "name": s.name, "code": s.code})
+    return result
+
+@router.delete("/subjects/{subject_id}")
+def delete_subject(subject_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import AvailableSubject
+    s = db.query(AvailableSubject).filter(AvailableSubject.id == subject_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Subject nahi mila")
+    s.is_active = False   # soft delete
+    db.commit()
+    return {"message": f"{s.name} delete ho gaya"}
+
+@router.post("/subjects")
+def add_subject(class_level: str, name: str, code: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import AvailableSubject
+    if class_level not in ("10", "12"):
+        raise HTTPException(status_code=400, detail="class_level 10 ya 12 hona chahiye")
+    s = AvailableSubject(class_level=class_level, name=name, code=code, is_active=True)
+    db.add(s)
+    db.commit()
+    return {"message": f"{name} add ho gaya"}
