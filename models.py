@@ -291,3 +291,19 @@ class AvailableSubject(Base):
     name        = Column(String(120))
     code        = Column(String(20))
     is_active   = Column(Boolean, default=True)
+
+# =============================================
+# TIMETABLE ENTRY (chapter + part + date + day; from Excel upload)
+# =============================================
+class TimetableEntry(Base):
+    __tablename__ = "timetable_entries"
+
+    id          = Column(Integer, primary_key=True)
+    teacher_id  = Column(Integer, ForeignKey("teacher_profiles.id"))
+    subject     = Column(String(60))
+    class_name  = Column(String(40))
+    chapter     = Column(String(200))
+    part        = Column(String(200), nullable=True)
+    entry_date  = Column(Date, nullable=True)
+    day         = Column(String(20), nullable=True)
+    created_at  = Column(DateTime, default=func.now())

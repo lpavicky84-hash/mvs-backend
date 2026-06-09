@@ -305,3 +305,61 @@ def mark_read(notif_id: int, db: Session = Depends(get_db), current_user=Depends
         n.is_read = True
         db.commit()
     return {"message": "Read mark ho gaya"}
+
+# ===== TIMETABLE ENTRIES (chapter + parts + date + day) =====
+def _serialize_tt(e):
+    return {
+        "id": e.id, "subject": e.subject, "class_name": e.class_name,
+        "chapter": e.chapter, "part": e.part,
+        "date": str(e.entry_date) if e.entry_date else None, "day": e.day
+    }
+
+@router.post("/timetable-entry")
+def add_tt_entry(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    from models import TimetableEntry
+    edate = None
+    d = (payload.get("entry_date") or "").strip()
+    if d:
+        try:
+            edate = datetime.strptime(d, "%Y-%m-%d").date()
+        except Exception:
+            edate = None
+    e = TimetableEntry(
+        teacher_id=tp.id,
+        subject=(payload.get("subject") or "").strip(),
+        class_name=(payload.get("class_name") or "").strip(),
+        chapter=(payload.get("chapter") or "").strip(),
+        part=(payload.get("part") or "").strip() or None,
+        entry_date=edate,
+        day=(payload.get("day") or "").strip() or None
+    )
+    db.add(e); db.commit(); db.refresh(e)
+    return _serialize_tt(e)
+
+@router.get("/timetable-entries")
+def list_tt_entries(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    from models import TimetableEntry
+    es = db.query(TimetableEntry).filter(TimetableEntry.teacher_id == tp.id).order_by(
+        TimetableEntry.subject, TimetableEntry.chapter, TimetableEntry.entry_date
+    ).all()
+    return [_serialize_tt(e) for e in es]
+
+@router.delete("/timetable-entry/{entry_id}")
+def delete_tt_entry(entry_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    from models import TimetableEntry
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == entry_id, TimetableEntry.teacher_id == tp.id).first()
+    if not e:
+        raise HTTPException(status_code=404, detail="Entry nahi mili")
+    db.delete(e); db.commit()
+    return {"message": "Delete ho gaya"}
+
+@router.delete("/timetable-entries/all")
+def clear_tt_entries(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    from models import TimetableEntry
+    db.query(TimetableEntry).filter(TimetableEntry.teacher_id == tp.id).delete()
+    db.commit()
+    return {"message": "Saari entries clear ho gayi"}

@@ -326,3 +326,24 @@ def add_subject(class_level: str, name: str, code: str = "", db: Session = Depen
     db.add(s)
     db.commit()
     return {"message": f"{name} add ho gaya"}
+
+# ===== TIMETABLE (all teachers) =====
+@router.get("/timetable-all")
+def timetable_all(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TimetableEntry, TeacherProfile
+    es = db.query(TimetableEntry).order_by(
+        TimetableEntry.subject, TimetableEntry.chapter, TimetableEntry.entry_date
+    ).all()
+    result = []
+    for e in es:
+        tname = ""
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == e.teacher_id).first()
+        if tp and tp.user:
+            tname = tp.user.name
+        result.append({
+            "id": e.id, "subject": e.subject, "class_name": e.class_name,
+            "chapter": e.chapter, "part": e.part,
+            "date": str(e.entry_date) if e.entry_date else None,
+            "day": e.day, "teacher_name": tname
+        })
+    return result

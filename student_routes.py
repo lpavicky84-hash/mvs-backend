@@ -353,3 +353,27 @@ def set_subjects(payload: dict, db: Session = Depends(get_db), current_user=Depe
     sp.subjects = subjects
     db.commit()
     return {"message": "Subjects save ho gaye!", "subjects": subjects, "class_level": class_level}
+
+# ===== TIMETABLE PLAN (chapter-wise, subject filtered) =====
+@router.get("/timetable-plan")
+def timetable_plan(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    sp = get_student_profile(current_user, db)
+    from models import TimetableEntry
+    es = db.query(TimetableEntry).filter(
+        TimetableEntry.subject.in_(sp.subjects or [])
+    ).order_by(TimetableEntry.subject, TimetableEntry.chapter, TimetableEntry.entry_date).all()
+    result = []
+    for e in es:
+        tname = ""
+        if e.teacher_id:
+            from models import TeacherProfile
+            tp = db.query(TeacherProfile).filter(TeacherProfile.id == e.teacher_id).first()
+            if tp and tp.user:
+                tname = tp.user.name
+        result.append({
+            "id": e.id, "subject": e.subject, "class_name": e.class_name,
+            "chapter": e.chapter, "part": e.part,
+            "date": str(e.entry_date) if e.entry_date else None,
+            "day": e.day, "teacher_name": tname
+        })
+    return result
