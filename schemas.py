@@ -18,6 +18,7 @@ class RegisterRequest(BaseModel):
     subjects: Optional[List[str]] = None # for teachers
     batch: Optional[str] = None
     class_name: Optional[str] = None
+    gender: Optional[str] = None         # for teachers: male | female
 
 class LoginRequest(BaseModel):
     user_id: str

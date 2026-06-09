@@ -79,7 +79,9 @@ class TeacherProfile(Base):
 
     id             = Column(Integer, primary_key=True)
     user_id        = Column(Integer, ForeignKey("users.id"), unique=True)
-    subjects       = Column(JSON)        # ["Physics","Chemistry"]
+    subjects       = Column(JSON)        # flat ["Physics","Chemistry"]
+    subject_classes = Column(JSON)       # [{"subject":"Physics","class":"12"}, ...]
+    gender         = Column(String(10), nullable=True)   # male | female
     batch          = Column(String(50))
     reschedule_count_this_month = Column(Integer, default=0)
     reschedule_reset_month = Column(Integer, default=0)  # month number

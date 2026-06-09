@@ -140,14 +140,19 @@ def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
 
 @router.post("/teachers/add")
 def add_teacher(req: RegisterRequest, db: Session = Depends(get_db), _=Depends(get_admin)):
-    """Admin adds a teacher with custom user_id and password"""
-    existing = db.query(User).filter(User.user_id == req.user_id).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Yeh User ID already hai")
-
+    """Admin adds a teacher — auto-generates a professional MVS user ID"""
+    # Generate professional teacher ID: MVS + initials + number  (e.g. MVSVV01)
+    parts = req.name.strip().split()
+    initials = "".join(p[0] for p in parts[:2]).upper() if parts else "TR"
+    i = 1
+    while True:
+        candidate = f"MVS{initials}{i:02d}"
+        if not db.query(User).filter(User.user_id == candidate).first():
+            break
+        i += 1
     user = User(
         name=req.name,
-        user_id=req.user_id,
+        user_id=candidate,
         password=hash_password(req.password),
         role=UserRole.teacher,
         is_active=True
@@ -158,11 +163,13 @@ def add_teacher(req: RegisterRequest, db: Session = Depends(get_db), _=Depends(g
     profile = TeacherProfile(
         user_id=user.id,
         subjects=req.subjects or [],
+        subject_classes=[],
+        gender=(req.gender or "").strip().lower() or None,
         batch=req.batch or "",
     )
     db.add(profile)
     db.commit()
-    return {"message": f"Teacher {req.name} add ho gaya! User ID: {req.user_id}"}
+    return {"message": f"Teacher {req.name} add ho gaya!", "user_id": candidate}
 
 @router.patch("/teachers/{user_id}/toggle")
 def toggle_teacher(user_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):

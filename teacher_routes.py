@@ -416,8 +416,8 @@ async def upload_timetable_pdf(
 def edit_tt_entry(entry_id: int, payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
     from models import TimetableEntry
-    e = db.query(TimetableEntry).filter(TimetableEntry.id == entry_id, TimetableEntry.teacher_id == tp.id).first()
-    if not e:
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == entry_id).first()
+    if not e or (e.subject not in (tp.subjects or []) and e.teacher_id != tp.id):
         raise HTTPException(status_code=404, detail="Entry nahi mili")
     if "part" in payload:
         e.part = (payload.get("part") or "").strip() or None
@@ -485,11 +485,10 @@ def teacher_materials(db: Session = Depends(get_db), current_user=Depends(get_te
 def chapter_status(subject: str, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     """For a subject, list chapters from timetable + whether notes/dpp uploaded."""
     from models import TimetableEntry, Material
-    tp = get_teacher_profile(current_user, db)
     chapters = [r[0] for r in db.query(TimetableEntry.chapter).filter(
-        TimetableEntry.teacher_id == tp.id, TimetableEntry.subject == subject,
+        TimetableEntry.subject == subject,
         TimetableEntry.entry_type == "chapter").distinct().all() if r[0]]
-    mats = db.query(Material).filter(Material.teacher_id == tp.id, Material.subject == subject).all()
+    mats = db.query(Material).filter(Material.subject == subject).all()
     out = []
     for ch in chapters:
         notes = any(m.chapter == ch and m.material_type == "notes" for m in mats)
@@ -516,3 +515,68 @@ def delete_material(mid: int, db: Session = Depends(get_db), current_user=Depend
     if not m: raise HTTPException(status_code=404, detail="Nahi mila")
     db.delete(m); db.commit()
     return {"message": "Delete ho gaya"}
+
+# ===== TEACHER PROFILE & SUBJECT SELECTION (class-wise) =====
+@router.get("/profile")
+def teacher_profile(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    sc = tp.subject_classes or []
+    return {
+        "name": current_user.name,
+        "user_id": current_user.user_id,
+        "gender": tp.gender,
+        "subjects": tp.subjects or [],
+        "subject_classes": sc,
+        "needs_subjects": len(sc) == 0
+    }
+
+@router.get("/available-subjects")
+def teacher_available_subjects(class_level: str, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import AvailableSubject
+    subs = db.query(AvailableSubject).filter(
+        AvailableSubject.class_level == class_level, AvailableSubject.is_active == True).all()
+    return [{"name": s.name, "code": s.code} for s in subs]
+
+@router.post("/set-subjects")
+def teacher_set_subjects(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    selections = payload.get("selections", [])   # [{"subject":..,"class":"10"/"12"}]
+    if not selections:
+        raise HTTPException(status_code=400, detail="Kam se kam 1 subject select karein")
+    tp.subject_classes = selections
+    tp.subjects = sorted({s.get("subject") for s in selections if s.get("subject")})
+    db.commit()
+    return {"message": "Subjects save ho gaye!", "subjects": tp.subjects}
+
+# ===== TEACHER: VIEW TIMETABLE (by their subjects, admin-uploaded) =====
+@router.get("/my-timetable")
+def my_timetable(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import TimetableEntry
+    tp = get_teacher_profile(current_user, db)
+    subs = tp.subjects or []
+    if not subs:
+        return []
+    es = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(subs)).order_by(
+        TimetableEntry.subject, TimetableEntry.entry_date).all()
+    return [_serialize_tt(e) for e in es]
+
+# ===== TEACHER: TODAY'S CLASSES with material status =====
+@router.get("/today-classes")
+def today_classes(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import TimetableEntry, Material
+    tp = get_teacher_profile(current_user, db)
+    subs = tp.subjects or []
+    if not subs:
+        return []
+    today = date.today()
+    es = db.query(TimetableEntry).filter(
+        TimetableEntry.subject.in_(subs), TimetableEntry.entry_date == today).all()
+    mats = db.query(Material).filter(Material.subject.in_(subs)).all()
+    out = []
+    for e in es:
+        notes = any(m.chapter == e.chapter and m.subject == e.subject and m.material_type == "notes" for m in mats)
+        dpp = any(m.chapter == e.chapter and m.subject == e.subject and m.material_type == "dpp" for m in mats)
+        d = _serialize_tt(e); d["notes"] = notes; d["dpp"] = dpp
+        out.append(d)
+    out.sort(key=lambda x: x.get("time") or "")
+    return out
