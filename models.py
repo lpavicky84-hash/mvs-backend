@@ -309,3 +309,32 @@ class TimetableEntry(Base):
     time_text   = Column(String(40), nullable=True)
     entry_type  = Column(String(20), default="chapter")  # chapter | event
     created_at  = Column(DateTime, default=func.now())
+
+# =============================================
+# STUDY MATERIAL (PDF stored as base64 in DB) — notes / dpp / test / answer
+# =============================================
+from sqlalchemy import Text as _Text
+try:
+    from sqlalchemy.dialects.mysql import LONGTEXT as _LONGTEXT
+    _BIGTEXT = _Text().with_variant(_LONGTEXT, "mysql")
+except Exception:
+    _BIGTEXT = _Text()
+
+class Material(Base):
+    __tablename__ = "materials"
+
+    id            = Column(Integer, primary_key=True)
+    teacher_id    = Column(Integer, ForeignKey("teacher_profiles.id"), nullable=True)
+    teacher_name  = Column(String(120), nullable=True)
+    subject       = Column(String(60))
+    class_name    = Column(String(40), nullable=True)
+    chapter       = Column(String(200), nullable=True)
+    material_type = Column(String(20))    # notes | dpp | test | answer
+    title         = Column(String(200), nullable=True)
+    filename      = Column(String(200), nullable=True)
+    content_b64   = Column(_BIGTEXT)       # base64 PDF
+    duration_min  = Column(Integer, nullable=True)   # for tests
+    parent_id     = Column(Integer, nullable=True)   # answer -> test id
+    student_id    = Column(Integer, nullable=True)    # answer -> who submitted
+    student_name  = Column(String(120), nullable=True)
+    created_at    = Column(DateTime, default=func.now())

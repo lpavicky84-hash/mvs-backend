@@ -440,3 +440,79 @@ def teacher_notify(payload: dict, db: Session = Depends(get_db), current_user=De
         notify(db, s.id, sender + ": " + title, message, "teacher_message")
     db.commit()
     return {"message": f"{len(students)} students ko bhej di!", "count": len(students)}
+
+# ===== STUDY MATERIAL (PDF upload to DB) =====
+@router.post("/material")
+async def upload_material(
+    file: UploadFile = File(...),
+    subject: str = Form(...),
+    class_name: str = Form("Class 12"),
+    chapter: str = Form(""),
+    material_type: str = Form("notes"),   # notes | dpp | test
+    title: str = Form(""),
+    duration_min: int = Form(0),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_teacher)
+):
+    import base64
+    from models import Material
+    tp = get_teacher_profile(current_user, db)
+    raw = await file.read()
+    if len(raw) > 7 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File 7MB se badi hai. Chhoti PDF use karein.")
+    b64 = base64.b64encode(raw).decode("ascii")
+    m = Material(
+        teacher_id=tp.id, teacher_name=current_user.name, subject=subject.strip(),
+        class_name=class_name.strip(), chapter=chapter.strip(),
+        material_type=material_type.strip(), title=(title.strip() or file.filename),
+        filename=file.filename, content_b64=b64,
+        duration_min=(duration_min or None)
+    )
+    db.add(m); db.commit(); db.refresh(m)
+    return {"id": m.id, "message": "Upload ho gaya!"}
+
+@router.get("/materials")
+def teacher_materials(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import Material
+    tp = get_teacher_profile(current_user, db)
+    ms = db.query(Material).filter(Material.teacher_id == tp.id,
+                                   Material.material_type != "answer").order_by(Material.created_at.desc()).all()
+    return [{"id": m.id, "subject": m.subject, "chapter": m.chapter, "type": m.material_type,
+             "title": m.title, "filename": m.filename, "duration_min": m.duration_min,
+             "date": str(m.created_at)[:10]} for m in ms]
+
+@router.get("/chapter-status")
+def chapter_status(subject: str, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """For a subject, list chapters from timetable + whether notes/dpp uploaded."""
+    from models import TimetableEntry, Material
+    tp = get_teacher_profile(current_user, db)
+    chapters = [r[0] for r in db.query(TimetableEntry.chapter).filter(
+        TimetableEntry.teacher_id == tp.id, TimetableEntry.subject == subject,
+        TimetableEntry.entry_type == "chapter").distinct().all() if r[0]]
+    mats = db.query(Material).filter(Material.teacher_id == tp.id, Material.subject == subject).all()
+    out = []
+    for ch in chapters:
+        notes = any(m.chapter == ch and m.material_type == "notes" for m in mats)
+        dpp = any(m.chapter == ch and m.material_type == "dpp" for m in mats)
+        out.append({"chapter": ch, "notes": notes, "dpp": dpp})
+    return out
+
+@router.get("/material/{mid}/download")
+def teacher_download(mid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    import base64
+    from fastapi import Response
+    from models import Material
+    m = db.query(Material).filter(Material.id == mid).first()
+    if not m: raise HTTPException(status_code=404, detail="Nahi mila")
+    data = base64.b64decode(m.content_b64)
+    return Response(content=data, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{m.filename or "file.pdf"}"'})
+
+@router.delete("/material/{mid}")
+def delete_material(mid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import Material
+    tp = get_teacher_profile(current_user, db)
+    m = db.query(Material).filter(Material.id == mid, Material.teacher_id == tp.id).first()
+    if not m: raise HTTPException(status_code=404, detail="Nahi mila")
+    db.delete(m); db.commit()
+    return {"message": "Delete ho gaya"}

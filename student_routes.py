@@ -378,3 +378,27 @@ def timetable_plan(db: Session = Depends(get_db), current_user=Depends(get_stude
             "type": getattr(e,"entry_type",None) or "chapter", "teacher_name": tname
         })
     return result
+
+# ===== STUDY MATERIAL (download from DB) =====
+@router.get("/materials-v2")
+def student_materials_v2(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    from models import Material
+    sp = get_student_profile(current_user, db)
+    subs = sp.subjects or []
+    ms = db.query(Material).filter(
+        Material.subject.in_(subs),
+        Material.material_type.in_(["notes", "dpp"])
+    ).order_by(Material.subject, Material.chapter, Material.created_at.desc()).all()
+    return [{"id": m.id, "subject": m.subject, "chapter": m.chapter, "type": m.material_type,
+             "title": m.title, "teacher_name": m.teacher_name, "date": str(m.created_at)[:10]} for m in ms]
+
+@router.get("/material/{mid}/download")
+def student_download(mid: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    import base64
+    from fastapi import Response
+    from models import Material
+    m = db.query(Material).filter(Material.id == mid).first()
+    if not m: raise HTTPException(status_code=404, detail="Nahi mila")
+    data = base64.b64decode(m.content_b64)
+    return Response(content=data, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{m.filename or "file.pdf"}"'})
