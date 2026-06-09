@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, date, timedelta
@@ -348,3 +348,58 @@ def timetable_all(db: Session = Depends(get_db), _=Depends(get_admin)):
             "type": getattr(e,"entry_type",None) or "chapter", "teacher_name": tname
         })
     return result
+
+# ===== ADMIN: PDF TIMETABLE UPLOAD (all subjects) =====
+@router.post("/timetable-pdf")
+async def admin_upload_timetable_pdf(
+    file: UploadFile = File(...),
+    class_name: str = Form("Class 12"),
+    subject: str = Form(""),
+    replace: str = Form("false"),
+    db: Session = Depends(get_db),
+    _=Depends(get_admin)
+):
+    from models import TimetableEntry
+    import tt_parser
+    raw = await file.read()
+    try:
+        rows = tt_parser.parse_pdf(raw, force_subject=(subject.strip() or None))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"PDF parse error: {e}")
+    if not rows:
+        raise HTTPException(status_code=400, detail="PDF se koi valid row nahi mili.")
+    subjects_found = sorted(set(r["subject"] for r in rows))
+    if replace.lower() == "true":
+        db.query(TimetableEntry).filter(TimetableEntry.subject.in_(subjects_found)).delete(synchronize_session=False)
+    added = 0
+    for r in rows:
+        edate = None
+        try: edate = datetime.strptime(r["date"], "%Y-%m-%d").date()
+        except Exception: pass
+        db.add(TimetableEntry(
+            teacher_id=None, subject=r["subject"], class_name=class_name,
+            chapter=r["chapter"], part=r["part"], entry_date=edate,
+            day=r["day"] or None, time_text=r["time"] or None, entry_type=r["type"]
+        ))
+        added += 1
+    db.commit()
+    return {"added": added, "subjects": subjects_found}
+
+# ===== ADMIN: SEND NOTIFICATION (target teachers/students/all) =====
+@router.post("/notify")
+def admin_notify(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    title = (payload.get("title") or "").strip()
+    message = (payload.get("message") or "").strip()
+    target = (payload.get("target") or "all").strip()   # teachers | students | all
+    if not title or not message:
+        raise HTTPException(status_code=400, detail="Title aur message zaroori hain")
+    q = db.query(User).filter(User.is_active == True, User.role != "admin")
+    if target == "teachers":
+        q = q.filter(User.role == "teacher")
+    elif target == "students":
+        q = q.filter(User.role == "student")
+    users = q.all()
+    for u in users:
+        notify(db, u.id, "📢 " + title, message, "admin_broadcast")
+    db.commit()
+    return {"message": f"{len(users)} logo ko notification bhej di!", "count": len(users)}

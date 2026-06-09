@@ -410,3 +410,33 @@ async def upload_timetable_pdf(
         added += 1
     db.commit()
     return {"added": added, "subjects": subjects_found}
+
+# ===== TEACHER: EDIT TIMETABLE ENTRY TOPIC/PART =====
+@router.patch("/timetable-entry/{entry_id}")
+def edit_tt_entry(entry_id: int, payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    from models import TimetableEntry
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == entry_id, TimetableEntry.teacher_id == tp.id).first()
+    if not e:
+        raise HTTPException(status_code=404, detail="Entry nahi mili")
+    if "part" in payload:
+        e.part = (payload.get("part") or "").strip() or None
+    if "time" in payload:
+        e.time_text = (payload.get("time") or "").strip() or None
+    db.commit()
+    return _serialize_tt(e)
+
+# ===== TEACHER: SEND NOTIFICATION TO STUDENTS =====
+@router.post("/notify")
+def teacher_notify(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import User
+    title = (payload.get("title") or "").strip()
+    message = (payload.get("message") or "").strip()
+    if not title or not message:
+        raise HTTPException(status_code=400, detail="Title aur message zaroori hain")
+    students = db.query(User).filter(User.is_active == True, User.role == "student").all()
+    sender = "👨‍🏫 " + current_user.name
+    for s in students:
+        notify(db, s.id, sender + ": " + title, message, "teacher_message")
+    db.commit()
+    return {"message": f"{len(students)} students ko bhej di!", "count": len(students)}
