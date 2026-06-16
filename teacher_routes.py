@@ -469,6 +469,19 @@ async def upload_material(
         duration_min=(duration_min or None)
     )
     db.add(m); db.commit(); db.refresh(m)
+    # Notify students who have this subject
+    try:
+        from models import StudentProfile
+        label = {"notes": "Class Notes", "dpp": "DPP", "test": "Test"}.get(m.material_type, "Material")
+        sps = db.query(StudentProfile).all()
+        for sp in sps:
+            if sp.subjects and subject.strip() in sp.subjects and sp.user:
+                notify(db, sp.user.id, f"📚 New {label}: {subject.strip()}",
+                       f"{current_user.name} ne {subject.strip()} ({chapter.strip() or 'General'}) ke liye {label} upload ki hai. Materials section mein dekho!",
+                       "new_material")
+        db.commit()
+    except Exception:
+        db.rollback()
     return {"id": m.id, "message": "Upload ho gaya!"}
 
 @router.get("/materials")
