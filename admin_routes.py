@@ -410,3 +410,75 @@ def admin_notify(payload: dict, db: Session = Depends(get_db), _=Depends(get_adm
         notify(db, u.id, "📢 " + title, message, "admin_broadcast")
     db.commit()
     return {"message": f"{len(users)} logo ko notification bhej di!", "count": len(users)}
+
+# ===== ADMIN: MATERIAL UPLOAD (direct PDF) + pending view =====
+@router.post("/material")
+async def admin_upload_material(
+    file: UploadFile = File(...),
+    subject: str = Form(...),
+    class_name: str = Form("Class 12"),
+    chapter: str = Form(""),
+    material_type: str = Form("notes"),
+    title: str = Form(""),
+    category: str = Form(""),
+    duration_min: int = Form(0),
+    db: Session = Depends(get_db),
+    _=Depends(get_admin)
+):
+    import base64
+    from models import Material, StudentProfile
+    raw = await file.read()
+    if len(raw) > 7 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File 7MB se badi hai")
+    m = Material(
+        teacher_id=None, teacher_name="Admin", subject=subject.strip(),
+        class_name=class_name.strip(), chapter=chapter.strip(),
+        material_type=material_type.strip(), title=(title.strip() or file.filename),
+        category=(category.strip() or None), filename=file.filename,
+        content_b64=base64.b64encode(raw).decode("ascii"),
+        duration_min=(duration_min or None)
+    )
+    db.add(m); db.commit(); db.refresh(m)
+    # notify students of subject
+    try:
+        label = {"notes": "Class Notes", "dpp": "DPP", "test": "Test"}.get(material_type.strip(), (category.strip() or "Material"))
+        for sp in db.query(StudentProfile).all():
+            if sp.subjects and subject.strip() in sp.subjects and sp.user:
+                n = Notification(user_id=sp.user.id, title=f"📚 New {label}: {subject.strip()}",
+                                 message=f"Admin ne {subject.strip()} ke liye {label} upload ki hai.", notif_type="new_material")
+                db.add(n)
+        db.commit()
+    except Exception:
+        db.rollback()
+    return {"id": m.id, "message": "Upload ho gaya!"}
+
+@router.get("/material/{mid}/download")
+def admin_download(mid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    import base64
+    from fastapi import Response
+    from models import Material
+    m = db.query(Material).filter(Material.id == mid).first()
+    if not m: raise HTTPException(status_code=404, detail="Nahi mila")
+    return Response(content=base64.b64decode(m.content_b64), media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{m.filename or "file.pdf"}"'})
+
+@router.get("/pending-materials")
+def admin_pending_materials(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Chapters (from timetable) jinki notes ya dpp abhi upload nahi hui."""
+    from models import TimetableEntry, Material
+    chapters = db.query(TimetableEntry.subject, TimetableEntry.chapter, TimetableEntry.teacher_id).filter(
+        TimetableEntry.entry_type == "chapter").distinct().all()
+    mats = db.query(Material).all()
+    out = []
+    for subj, ch, tid in chapters:
+        if not ch: continue
+        notes = any(m.subject == subj and m.chapter == ch and m.material_type == "notes" for m in mats)
+        dpp = any(m.subject == subj and m.chapter == ch and m.material_type == "dpp" for m in mats)
+        if not notes or not dpp:
+            tname = None
+            if tid:
+                tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+                tname = tp.user.name if tp and tp.user else None
+            out.append({"subject": subj, "chapter": ch, "teacher": tname,
+                        "notes": notes, "dpp": dpp})
+    return out

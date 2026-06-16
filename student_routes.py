@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from datetime import datetime, date, timedelta
 from typing import List, Optional
@@ -387,10 +387,11 @@ def student_materials_v2(db: Session = Depends(get_db), current_user=Depends(get
     subs = sp.subjects or []
     ms = db.query(Material).filter(
         Material.subject.in_(subs),
-        Material.material_type.in_(["notes", "dpp"])
+        Material.material_type.in_(["notes", "dpp", "other"])
     ).order_by(Material.subject, Material.chapter, Material.created_at.desc()).all()
     return [{"id": m.id, "subject": m.subject, "chapter": m.chapter, "type": m.material_type,
-             "title": m.title, "teacher_name": m.teacher_name, "date": str(m.created_at)[:10]} for m in ms]
+             "category": m.category, "title": m.title, "teacher_name": m.teacher_name,
+             "date": str(m.created_at)[:10]} for m in ms]
 
 @router.get("/material/{mid}/download")
 def student_download(mid: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
@@ -402,3 +403,82 @@ def student_download(mid: int, db: Session = Depends(get_db), current_user=Depen
     data = base64.b64decode(m.content_b64)
     return Response(content=data, media_type="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="{m.filename or "file.pdf"}"'})
+
+# ===== STUDENT: DPP / TEST LIST (download + submit) =====
+def _my_submission(db, sp, parent_id):
+    from models import Material
+    return db.query(Material).filter(
+        Material.material_type == "answer", Material.parent_id == parent_id,
+        Material.student_id == sp.id).first()
+
+@router.get("/dpp-list")
+def student_dpp_list(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    from models import Material
+    sp = get_student_profile(current_user, db)
+    subs = sp.subjects or []
+    ms = db.query(Material).filter(Material.subject.in_(subs),
+                                   Material.material_type == "dpp").order_by(Material.created_at.desc()).all()
+    out = []
+    for m in ms:
+        sub = _my_submission(db, sp, m.id)
+        out.append({"id": m.id, "subject": m.subject, "chapter": m.chapter, "title": m.title,
+                    "teacher_name": m.teacher_name, "date": str(m.created_at)[:10],
+                    "submitted": bool(sub), "submission_id": sub.id if sub else None})
+    return out
+
+@router.get("/tests-list")
+def student_tests_list(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    from models import Material
+    sp = get_student_profile(current_user, db)
+    subs = sp.subjects or []
+    ms = db.query(Material).filter(Material.subject.in_(subs),
+                                   Material.material_type == "test").order_by(Material.created_at.desc()).all()
+    out = []
+    for m in ms:
+        sub = _my_submission(db, sp, m.id)
+        out.append({"id": m.id, "subject": m.subject, "chapter": m.chapter, "title": m.title,
+                    "teacher_name": m.teacher_name, "duration_min": m.duration_min,
+                    "date": str(m.created_at)[:10],
+                    "submitted": bool(sub), "submission_id": sub.id if sub else None})
+    return out
+
+@router.post("/submit-answer")
+async def submit_answer(
+    file: UploadFile = File(...),
+    parent_id: int = Form(...),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_student)
+):
+    import base64
+    from models import Material
+    sp = get_student_profile(current_user, db)
+    parent = db.query(Material).filter(Material.id == parent_id).first()
+    if not parent:
+        raise HTTPException(status_code=404, detail="Item nahi mila")
+    raw = await file.read()
+    if len(raw) > 7 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File 7MB se badi hai")
+    # remove previous submission (resubmit)
+    old = _my_submission(db, sp, parent_id)
+    if old:
+        db.delete(old); db.flush()
+    m = Material(
+        teacher_id=parent.teacher_id, teacher_name=parent.teacher_name,
+        subject=parent.subject, chapter=parent.chapter,
+        material_type="answer", title=f"{current_user.name} - {parent.title}",
+        filename=file.filename, content_b64=base64.b64encode(raw).decode("ascii"),
+        parent_id=parent_id, student_id=sp.id, student_name=current_user.name
+    )
+    db.add(m); db.commit(); db.refresh(m)
+    # notify the teacher who uploaded
+    try:
+        from models import TeacherProfile
+        if parent.teacher_id:
+            tp2 = db.query(TeacherProfile).filter(TeacherProfile.id == parent.teacher_id).first()
+            if tp2 and tp2.user:
+                notify(db, tp2.user.id, f"📥 Submission: {parent.subject}",
+                       f"{current_user.name} ne {parent.title} ka answer submit kiya hai.", "submission")
+                db.commit()
+    except Exception:
+        db.rollback()
+    return {"id": m.id, "message": "Submit ho gaya! Thank you 🎉"}

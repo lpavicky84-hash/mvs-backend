@@ -448,8 +448,9 @@ async def upload_material(
     subject: str = Form(...),
     class_name: str = Form("Class 12"),
     chapter: str = Form(""),
-    material_type: str = Form("notes"),   # notes | dpp | test
+    material_type: str = Form("notes"),   # notes | dpp | test | other
     title: str = Form(""),
+    category: str = Form(""),
     duration_min: int = Form(0),
     db: Session = Depends(get_db),
     current_user=Depends(get_teacher)
@@ -465,6 +466,7 @@ async def upload_material(
         teacher_id=tp.id, teacher_name=current_user.name, subject=subject.strip(),
         class_name=class_name.strip(), chapter=chapter.strip(),
         material_type=material_type.strip(), title=(title.strip() or file.filename),
+        category=(category.strip() or None),
         filename=file.filename, content_b64=b64,
         duration_min=(duration_min or None)
     )
@@ -472,7 +474,7 @@ async def upload_material(
     # Notify students who have this subject
     try:
         from models import StudentProfile
-        label = {"notes": "Class Notes", "dpp": "DPP", "test": "Test"}.get(m.material_type, "Material")
+        label = {"notes": "Class Notes", "dpp": "DPP", "test": "Test"}.get(m.material_type, (m.category or "Material"))
         sps = db.query(StudentProfile).all()
         for sp in sps:
             if sp.subjects and subject.strip() in sp.subjects and sp.user:
