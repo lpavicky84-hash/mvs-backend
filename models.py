@@ -247,6 +247,13 @@ class TestSubmission(Base):
 # =============================================
 # DOUBT
 # =============================================
+from sqlalchemy import Text as _T2
+try:
+    from sqlalchemy.dialects.mysql import LONGTEXT as _LT2
+    _IMGTEXT = _T2().with_variant(_LT2, "mysql")
+except Exception:
+    _IMGTEXT = _T2()
+
 class Doubt(Base):
     __tablename__ = "doubts"
 
@@ -257,6 +264,7 @@ class Doubt(Base):
     topic       = Column(String(200))
     question    = Column(Text)
     image_link  = Column(String(500), nullable=True)
+    image_b64   = Column(_IMGTEXT, nullable=True)   # direct-uploaded doubt image
     answer      = Column(Text, nullable=True)
     answer_image_link = Column(String(500), nullable=True)
     status      = Column(Enum(DoubtStatus), default=DoubtStatus.pending)

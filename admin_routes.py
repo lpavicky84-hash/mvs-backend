@@ -428,8 +428,8 @@ async def admin_upload_material(
     import base64
     from models import Material, StudentProfile
     raw = await file.read()
-    if len(raw) > 7 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File 7MB se badi hai")
+    if len(raw) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File 20MB se badi hai")
     m = Material(
         teacher_id=None, teacher_name="Admin", subject=subject.strip(),
         class_name=class_name.strip(), chapter=chapter.strip(),
@@ -552,3 +552,13 @@ def admin_student_counts(db: Session = Depends(get_db), _=Depends(get_admin)):
     out = [{"subject": k, "class": subj_class.get(k), "count": v} for k, v in counts.items()]
     out.sort(key=lambda x: -x["count"])
     return {"total_students": len(students), "subjects": out}
+
+# ===== ADMIN: DELETE A TIMETABLE CLASS (admin-only) =====
+@router.delete("/timetable-entry/{eid}")
+def admin_delete_tt(eid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TimetableEntry
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == eid).first()
+    if not e:
+        raise HTTPException(status_code=404, detail="Entry nahi mili")
+    db.delete(e); db.commit()
+    return {"message": "Class delete ho gayi"}

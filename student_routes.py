@@ -237,21 +237,63 @@ def submit_test(req: TestSubmissionCreate, db: Session = Depends(get_db), curren
     return sub
 
 # ===== DOUBTS =====
-@router.post("/doubts", response_model=DoubtOut)
-def ask_doubt(req: DoubtCreate, db: Session = Depends(get_db), current_user=Depends(get_student)):
-    sp = get_student_profile(current_user, db)
-    doubt = Doubt(student_id=sp.id, **req.model_dump())
-    db.add(doubt)
+def _teacher_for_subject(db, subject):
+    for tp in db.query(TeacherProfile).all():
+        if tp.subjects and subject in tp.subjects:
+            return tp
+    return None
 
-    # Notify teacher
-    teacher = db.query(TeacherProfile).filter(TeacherProfile.id == req.teacher_id).first()
-    if teacher and teacher.user:
-        notify(db, teacher.user.id,
-               f"❓ Naya Doubt — {current_user.name}",
-               f"Subject: {req.subject} | Topic: {req.topic} | {req.question[:100]}...",
-               "new_doubt")
+@router.get("/teacher-for-subject")
+def teacher_for_subject(subject: str, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    tp = _teacher_for_subject(db, subject)
+    if not tp or not tp.user:
+        return {"found": False, "teacher_name": None, "teacher_id": None}
+    return {"found": True, "teacher_name": tp.user.name, "teacher_user_id": tp.user.user_id, "teacher_id": tp.id}
+
+@router.post("/doubts")
+async def ask_doubt(
+    subject: str = Form(...),
+    topic: str = Form(""),
+    question: str = Form(...),
+    teacher_id: int = Form(0),
+    file: UploadFile = File(None),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_student)
+):
+    import base64
+    sp = get_student_profile(current_user, db)
+    # auto-resolve teacher by subject if not provided
+    tp = None
+    if teacher_id:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == teacher_id).first()
+    if not tp:
+        tp = _teacher_for_subject(db, subject)
+    img_b64 = None
+    if file is not None:
+        raw = await file.read()
+        if raw:
+            if len(raw) > 20 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail="Image 20MB se badi hai")
+            img_b64 = base64.b64encode(raw).decode("ascii")
+    doubt = Doubt(student_id=sp.id, teacher_id=(tp.id if tp else None),
+                  subject=subject.strip(), topic=topic.strip(), question=question.strip(),
+                  image_b64=img_b64)
+    db.add(doubt)
+    if tp and tp.user:
+        notify(db, tp.user.id, f"Naya Doubt — {current_user.name}",
+               f"Subject: {subject} | Topic: {topic} | {question[:100]}", "new_doubt")
     db.commit()
     db.refresh(doubt)
+    return {"id": doubt.id, "message": "Doubt bhej diya!" + (f" Teacher: {tp.user.name}" if tp and tp.user else "")}
+
+@router.get("/doubt/{did}/image")
+def student_doubt_image(did: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    import base64
+    from fastapi import Response
+    d = db.query(Doubt).filter(Doubt.id == did).first()
+    if not d or not d.image_b64:
+        raise HTTPException(status_code=404, detail="Image nahi")
+    return Response(content=base64.b64decode(d.image_b64), media_type="image/jpeg")
     return doubt
 
 @router.get("/doubts", response_model=List[DoubtOut])
@@ -458,8 +500,8 @@ async def submit_answer(
     if not parent:
         raise HTTPException(status_code=404, detail="Item nahi mila")
     raw = await file.read()
-    if len(raw) > 7 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File 7MB se badi hai")
+    if len(raw) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File 20MB se badi hai")
     # remove previous submission (resubmit)
     old = _my_submission(db, sp, parent_id)
     if old:

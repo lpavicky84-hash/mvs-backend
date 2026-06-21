@@ -252,7 +252,7 @@ def get_tests(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     return db.query(Test).filter(Test.teacher_id == tp.id).all()
 
 # ===== DOUBTS =====
-@router.get("/doubts", response_model=List[DoubtOut])
+@router.get("/doubts")
 def get_doubts(
     status: Optional[str] = None,
     db: Session = Depends(get_db),
@@ -262,7 +262,23 @@ def get_doubts(
     q = db.query(Doubt).filter(Doubt.teacher_id == tp.id)
     if status:
         q = q.filter(Doubt.status == status)
-    return q.order_by(Doubt.created_at.desc()).all()
+    out = []
+    for d in q.order_by(Doubt.created_at.desc()).all():
+        sname = d.student.user.name if d.student and d.student.user else "Student"
+        out.append({"id": d.id, "student_name": sname, "subject": d.subject, "topic": d.topic,
+                    "question": d.question, "has_image": bool(d.image_b64),
+                    "answer": d.answer, "status": d.status.value if hasattr(d.status, "value") else d.status,
+                    "created_at": str(d.created_at)[:16]})
+    return out
+
+@router.get("/doubt/{did}/image")
+def teacher_doubt_image(did: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    import base64
+    from fastapi import Response
+    d = db.query(Doubt).filter(Doubt.id == did).first()
+    if not d or not d.image_b64:
+        raise HTTPException(status_code=404, detail="Image nahi")
+    return Response(content=base64.b64decode(d.image_b64), media_type="image/jpeg")
 
 @router.patch("/doubts/{doubt_id}/resolve")
 def resolve_doubt(
@@ -459,8 +475,8 @@ async def upload_material(
     from models import Material
     tp = get_teacher_profile(current_user, db)
     raw = await file.read()
-    if len(raw) > 7 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File 7MB se badi hai. Chhoti PDF use karein.")
+    if len(raw) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File 20MB se badi hai. Chhoti PDF use karein.")
     b64 = base64.b64encode(raw).decode("ascii")
     m = Material(
         teacher_id=tp.id, teacher_name=current_user.name, subject=subject.strip(),

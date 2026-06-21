@@ -28,6 +28,7 @@ def ensure_columns():
         "ALTER TABLE materials ADD COLUMN category VARCHAR(60)",
         "ALTER TABLE materials ADD COLUMN marks VARCHAR(20)",
         "ALTER TABLE timetable_entries ADD COLUMN status VARCHAR(20)",
+        "ALTER TABLE doubts ADD COLUMN image_b64 LONGTEXT",
     ]
     for s in stmts:
         try:
