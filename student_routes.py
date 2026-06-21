@@ -435,7 +435,7 @@ def student_materials_v2(db: Session = Depends(get_db), current_user=Depends(get
     ).order_by(Material.subject, Material.chapter, Material.created_at.desc()).all()
     return [{"id": m.id, "subject": m.subject, "chapter": m.chapter, "type": m.material_type,
              "category": m.category, "title": m.title, "teacher_name": m.teacher_name,
-             "date": str(m.created_at)[:10]} for m in ms]
+             "filename": m.filename, "date": str(m.created_at)[:10]} for m in ms]
 
 @router.get("/material/{mid}/download")
 def student_download(mid: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
