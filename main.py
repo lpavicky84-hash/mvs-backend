@@ -26,6 +26,8 @@ def ensure_columns():
         "ALTER TABLE teacher_profiles ADD COLUMN gender VARCHAR(10)",
         "ALTER TABLE teacher_profiles ADD COLUMN subject_classes JSON",
         "ALTER TABLE materials ADD COLUMN category VARCHAR(60)",
+        "ALTER TABLE materials ADD COLUMN marks VARCHAR(20)",
+        "ALTER TABLE timetable_entries ADD COLUMN status VARCHAR(20)",
     ]
     for s in stmts:
         try:

@@ -312,7 +312,7 @@ def _serialize_tt(e):
         "id": e.id, "subject": e.subject, "class_name": e.class_name,
         "chapter": e.chapter, "part": e.part,
         "date": str(e.entry_date) if e.entry_date else None, "day": e.day,
-        "time": getattr(e, "time_text", None), "type": getattr(e, "entry_type", None) or "chapter"
+        "time": getattr(e, "time_text", None), "type": getattr(e, "entry_type", None) or "chapter", "status": getattr(e, "status", None) or "approved"
     }
 
 @router.post("/timetable-entry")
@@ -571,7 +571,9 @@ def my_timetable(db: Session = Depends(get_db), current_user=Depends(get_teacher
     subs = tp.subjects or []
     if not subs:
         return []
-    es = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(subs)).order_by(
+    from sqlalchemy import or_
+    es = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(subs),
+        or_(TimetableEntry.status==None, TimetableEntry.status!='pending')).order_by(
         TimetableEntry.subject, TimetableEntry.entry_date).all()
     return [_serialize_tt(e) for e in es]
 
@@ -584,8 +586,10 @@ def today_classes(db: Session = Depends(get_db), current_user=Depends(get_teache
     if not subs:
         return []
     today = date.today()
+    from sqlalchemy import or_
     es = db.query(TimetableEntry).filter(
-        TimetableEntry.subject.in_(subs), TimetableEntry.entry_date == today).all()
+        TimetableEntry.subject.in_(subs), TimetableEntry.entry_date == today,
+        or_(TimetableEntry.status==None, TimetableEntry.status!='pending')).all()
     mats = db.query(Material).filter(Material.subject.in_(subs)).all()
     out = []
     for e in es:
@@ -595,3 +599,76 @@ def today_classes(db: Session = Depends(get_db), current_user=Depends(get_teache
         out.append(d)
     out.sort(key=lambda x: x.get("time") or "")
     return out
+
+# ===== TEACHER: REQUEST EXTRA CLASS (needs admin approval) =====
+@router.post("/request-class")
+def request_class(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import TimetableEntry, User, UserRole, Notification
+    tp = get_teacher_profile(current_user, db)
+    subject = (payload.get("subject") or "").strip()
+    if subject not in (tp.subjects or []):
+        raise HTTPException(status_code=400, detail="Yeh aapka subject nahi hai")
+    edate = None
+    if payload.get("date"):
+        try:
+            from datetime import datetime as _dt
+            edate = _dt.strptime(payload["date"], "%Y-%m-%d").date()
+        except Exception:
+            pass
+    day = edate.strftime("%a") if edate else None
+    e = TimetableEntry(
+        teacher_id=tp.id, subject=subject, class_name=payload.get("class_name", "Class 12"),
+        chapter=(payload.get("topic") or "Extra Class").strip(), part=None,
+        entry_date=edate, day=day, time_text=(payload.get("time") or "").strip() or None,
+        entry_type="chapter", status="pending"
+    )
+    db.add(e); db.flush()
+    # notify admins
+    for adm in db.query(User).filter(User.role == UserRole.admin).all():
+        db.add(Notification(user_id=adm.id, title="New Extra Class Request",
+                            message=f"{current_user.name} ne {subject} ki extra class request ki hai ({payload.get('date','')} {payload.get('time','')}). Approve karein.",
+                            notif_type="class_request"))
+    db.commit(); db.refresh(e)
+    return {"id": e.id, "message": "Request admin ko bhej di! Approve hote hi timetable mein aa jayegi."}
+
+# ===== TEACHER: SUBJECT-WISE STUDENT COUNTS =====
+@router.get("/student-counts")
+def teacher_student_counts(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import StudentProfile
+    tp = get_teacher_profile(current_user, db)
+    subs = tp.subjects or []
+    sc = tp.subject_classes or []
+    students = db.query(StudentProfile).all()
+    out = []
+    for s in subs:
+        cnt = sum(1 for sp in students if sp.subjects and s in sp.subjects)
+        cls = next((x.get("class") for x in sc if x.get("subject") == s), None)
+        out.append({"subject": s, "class": cls, "count": cnt})
+    out.sort(key=lambda x: -x["count"])
+    return {"total": sum(o["count"] for o in out), "subjects": out}
+
+# ===== TEACHER: VIEW SUBMISSIONS + GIVE MARKS =====
+@router.get("/submissions")
+def teacher_submissions(parent_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import Material
+    subs = db.query(Material).filter(Material.material_type == "answer",
+                                     Material.parent_id == parent_id).order_by(Material.created_at.desc()).all()
+    return [{"id": m.id, "student_name": m.student_name, "marks": m.marks,
+             "date": str(m.created_at)[:16]} for m in subs]
+
+@router.post("/submission/{sid}/marks")
+def set_marks(sid: int, payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import Material, StudentProfile, Notification
+    m = db.query(Material).filter(Material.id == sid, Material.material_type == "answer").first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Submission nahi mili")
+    m.marks = str(payload.get("marks", "")).strip()
+    # notify student
+    if m.student_id:
+        sp = db.query(StudentProfile).filter(StudentProfile.id == m.student_id).first()
+        if sp and sp.user:
+            db.add(Notification(user_id=sp.user.id, title="DPP Checked!",
+                                message=f"{current_user.name} ne aapki {m.subject} DPP check ki. Marks: {m.marks}",
+                                notif_type="marks"))
+    db.commit()
+    return {"message": "Marks save ho gaye!"}

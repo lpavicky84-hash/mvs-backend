@@ -482,3 +482,73 @@ def admin_pending_materials(db: Session = Depends(get_db), _=Depends(get_admin))
             out.append({"subject": subj, "chapter": ch, "teacher": tname,
                         "notes": notes, "dpp": dpp})
     return out
+
+# ===== ADMIN: EXTRA-CLASS APPROVAL =====
+@router.get("/pending-classes")
+def admin_pending_classes(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TimetableEntry, TeacherProfile
+    es = db.query(TimetableEntry).filter(TimetableEntry.status == "pending").order_by(TimetableEntry.entry_date).all()
+    out = []
+    for e in es:
+        tname = None
+        if e.teacher_id:
+            tp = db.query(TeacherProfile).filter(TeacherProfile.id == e.teacher_id).first()
+            tname = tp.user.name if tp and tp.user else None
+        out.append({"id": e.id, "teacher": tname, "subject": e.subject, "class_name": e.class_name,
+                    "topic": e.chapter, "date": str(e.entry_date) if e.entry_date else None,
+                    "day": e.day, "time": e.time_text})
+    return out
+
+@router.post("/class/{eid}/approve")
+def approve_class(eid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TimetableEntry, TeacherProfile, StudentProfile, Notification
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == eid).first()
+    if not e:
+        raise HTTPException(status_code=404, detail="Nahi mila")
+    e.status = "approved"
+    # notify teacher
+    if e.teacher_id:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == e.teacher_id).first()
+        if tp and tp.user:
+            db.add(Notification(user_id=tp.user.id, title="Extra Class Approved",
+                                message=f"Aapki {e.subject} extra class ({e.date if hasattr(e,'date') else e.entry_date}) approve ho gayi.",
+                                notif_type="class_approved"))
+    # notify students of that subject
+    for sp in db.query(StudentProfile).all():
+        if sp.subjects and e.subject in sp.subjects and sp.user:
+            db.add(Notification(user_id=sp.user.id, title=f"New Class: {e.subject}",
+                                message=f"{e.subject} ki extra class add hui hai ({e.entry_date} {e.time_text or ''}). Time table dekho.",
+                                notif_type="new_class"))
+    db.commit()
+    return {"message": "Class approve ho gayi!"}
+
+@router.post("/class/{eid}/reject")
+def reject_class(eid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TimetableEntry, TeacherProfile, Notification
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == eid).first()
+    if not e:
+        raise HTTPException(status_code=404, detail="Nahi mila")
+    tid = e.teacher_id; subj = e.subject
+    db.delete(e)
+    if tid:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+        if tp and tp.user:
+            db.add(Notification(user_id=tp.user.id, title="Extra Class Rejected",
+                                message=f"Aapki {subj} extra class request reject ho gayi.", notif_type="class_rejected"))
+    db.commit()
+    return {"message": "Reject ho gaya"}
+
+# ===== ADMIN: SUBJECT-WISE STUDENT COUNTS =====
+@router.get("/student-counts")
+def admin_student_counts(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import StudentProfile, AvailableSubject
+    students = db.query(StudentProfile).all()
+    counts = {}
+    for sp in students:
+        for s in (sp.subjects or []):
+            counts[s] = counts.get(s, 0) + 1
+    # attach class level from AvailableSubject if available
+    subj_class = {a.name: a.class_level for a in db.query(AvailableSubject).all()}
+    out = [{"subject": k, "class": subj_class.get(k), "count": v} for k, v in counts.items()]
+    out.sort(key=lambda x: -x["count"])
+    return {"total_students": len(students), "subjects": out}

@@ -359,8 +359,10 @@ def set_subjects(payload: dict, db: Session = Depends(get_db), current_user=Depe
 def timetable_plan(db: Session = Depends(get_db), current_user=Depends(get_student)):
     sp = get_student_profile(current_user, db)
     from models import TimetableEntry
+    from sqlalchemy import or_
     es = db.query(TimetableEntry).filter(
-        TimetableEntry.subject.in_(sp.subjects or [])
+        TimetableEntry.subject.in_(sp.subjects or []),
+        or_(TimetableEntry.status==None, TimetableEntry.status!='pending')
     ).order_by(TimetableEntry.subject, TimetableEntry.chapter, TimetableEntry.entry_date).all()
     result = []
     for e in es:
@@ -423,7 +425,7 @@ def student_dpp_list(db: Session = Depends(get_db), current_user=Depends(get_stu
         sub = _my_submission(db, sp, m.id)
         out.append({"id": m.id, "subject": m.subject, "chapter": m.chapter, "title": m.title,
                     "teacher_name": m.teacher_name, "date": str(m.created_at)[:10],
-                    "submitted": bool(sub), "submission_id": sub.id if sub else None})
+                    "submitted": bool(sub), "submission_id": sub.id if sub else None, "marks": sub.marks if sub else None})
     return out
 
 @router.get("/tests-list")
@@ -439,7 +441,7 @@ def student_tests_list(db: Session = Depends(get_db), current_user=Depends(get_s
         out.append({"id": m.id, "subject": m.subject, "chapter": m.chapter, "title": m.title,
                     "teacher_name": m.teacher_name, "duration_min": m.duration_min,
                     "date": str(m.created_at)[:10],
-                    "submitted": bool(sub), "submission_id": sub.id if sub else None})
+                    "submitted": bool(sub), "submission_id": sub.id if sub else None, "marks": sub.marks if sub else None})
     return out
 
 @router.post("/submit-answer")

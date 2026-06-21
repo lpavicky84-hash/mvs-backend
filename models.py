@@ -310,6 +310,7 @@ class TimetableEntry(Base):
     day         = Column(String(20), nullable=True)
     time_text   = Column(String(40), nullable=True)
     entry_type  = Column(String(20), default="chapter")  # chapter | event
+    status      = Column(String(20), default="approved") # approved | pending  (teacher extra-class needs approval)
     created_at  = Column(DateTime, default=func.now())
 
 # =============================================
@@ -338,6 +339,7 @@ class Material(Base):
     content_b64   = Column(_BIGTEXT)       # base64 PDF
     duration_min  = Column(Integer, nullable=True)   # for tests
     parent_id     = Column(Integer, nullable=True)   # answer -> test id
+    marks         = Column(String(20), nullable=True)  # teacher's marks on a submission
     student_id    = Column(Integer, nullable=True)    # answer -> who submitted
     student_name  = Column(String(120), nullable=True)
     created_at    = Column(DateTime, default=func.now())
