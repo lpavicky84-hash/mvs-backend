@@ -197,10 +197,14 @@ def get_all_students(db: Session = Depends(get_db), _=Depends(get_admin)):
             test_attempted = db.query(TestSubmission).filter(TestSubmission.student_id == sp.id).count()
             result.append({
                 "id": s.id,
+                "profile_id": sp.id,
                 "name": s.name,
                 "user_id": s.user_id,
                 "phone": sp.phone,
-                "batch": sp.batch,
+                "email": sp.email,
+                "batch": sp.batch_name or (sp.batch.value if hasattr(sp.batch,"value") else sp.batch),
+                "batch_name": sp.batch_name,
+                "class_level": sp.class_level,
                 "subjects": sp.subjects,
                 "class_name": sp.class_name,
                 "is_verified": sp.is_verified,
@@ -694,3 +698,92 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
     db.commit()
     return {"created": created, "updated": updated, "skipped": skipped,
             "message": f"{created} naye students, {updated} update hue, {skipped} skip (galat phone)."}
+
+# ===== ADMIN: EDIT + DELETE TEACHER / STUDENT =====
+from sqlalchemy import text as _sqltext
+
+@router.patch("/teacher/{tid}")
+def edit_teacher(tid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TeacherProfile
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher nahi mila")
+    if "name" in payload and tp.user:
+        tp.user.name = (payload["name"] or "").strip() or tp.user.name
+    if "phone" in payload:
+        tp.phone = (payload.get("phone") or "").strip() or None
+    if "subjects" in payload and isinstance(payload["subjects"], list):
+        tp.subjects = [s.strip() for s in payload["subjects"] if s.strip()]
+    if "is_active" in payload and tp.user:
+        tp.user.is_active = bool(payload["is_active"])
+    db.commit()
+    return {"message": "Teacher update ho gaya"}
+
+@router.delete("/teacher/{tid}")
+def delete_teacher(tid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TeacherProfile
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher nahi mila")
+    uid = tp.user_id
+    stmts = [
+        ("UPDATE doubts SET teacher_id=NULL WHERE teacher_id=:t", {"t": tid}),
+        ("UPDATE timetable_entries SET teacher_id=NULL WHERE teacher_id=:t", {"t": tid}),
+        ("UPDATE materials SET teacher_id=NULL WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM reschedule_requests WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM class_entries WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM dpps WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM tests WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM notifications WHERE user_id=:u", {"u": uid}),
+        ("DELETE FROM teacher_profiles WHERE id=:t", {"t": tid}),
+        ("DELETE FROM users WHERE id=:u", {"u": uid}),
+    ]
+    for sql, p in stmts:
+        db.execute(_sqltext(sql), p)
+    db.commit()
+    return {"message": "Teacher delete ho gaya"}
+
+@router.patch("/student/{sid}")
+def edit_student(sid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import StudentProfile
+    sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
+    if not sp:
+        raise HTTPException(status_code=404, detail="Student nahi mili")
+    if "name" in payload and sp.user:
+        sp.user.name = (payload["name"] or "").strip() or sp.user.name
+    if "phone" in payload:
+        digits = "".join(ch for ch in str(payload.get("phone", "")) if ch.isdigit())
+        if digits:
+            sp.phone = digits[-10:]
+            sp.plain_password = sp.plain_password or sp.phone
+    if "email" in payload:
+        sp.email = (payload.get("email") or "").strip() or None
+    if "batch_name" in payload:
+        sp.batch_name = (payload.get("batch_name") or "").strip() or None
+    if "class_level" in payload:
+        sp.class_level = (payload.get("class_level") or "").strip() or None
+    if "subjects" in payload and isinstance(payload["subjects"], list):
+        sp.subjects = [s.strip() for s in payload["subjects"] if s.strip()]
+    db.commit()
+    return {"message": "Student update ho gaya"}
+
+@router.delete("/student/{sid}")
+def delete_student(sid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import StudentProfile
+    sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
+    if not sp:
+        raise HTTPException(status_code=404, detail="Student nahi mili")
+    uid = sp.user_id
+    stmts = [
+        ("DELETE FROM doubts WHERE student_id=:s", {"s": sid}),
+        ("DELETE FROM dpp_submissions WHERE student_id=:s", {"s": sid}),
+        ("DELETE FROM test_submissions WHERE student_id=:s", {"s": sid}),
+        ("DELETE FROM materials WHERE student_id=:s", {"s": sid}),
+        ("DELETE FROM notifications WHERE user_id=:u", {"u": uid}),
+        ("DELETE FROM student_profiles WHERE id=:s", {"s": sid}),
+        ("DELETE FROM users WHERE id=:u", {"u": uid}),
+    ]
+    for sql, p in stmts:
+        db.execute(_sqltext(sql), p)
+    db.commit()
+    return {"message": "Student delete ho gayi"}
