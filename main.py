@@ -29,6 +29,9 @@ def ensure_columns():
         "ALTER TABLE materials ADD COLUMN marks VARCHAR(20)",
         "ALTER TABLE timetable_entries ADD COLUMN status VARCHAR(20)",
         "ALTER TABLE doubts ADD COLUMN image_b64 LONGTEXT",
+        "ALTER TABLE teacher_profiles ADD COLUMN phone VARCHAR(15)",
+        "ALTER TABLE teacher_profiles ADD COLUMN photo_b64 LONGTEXT",
+        "ALTER TABLE student_profiles ADD COLUMN photo_b64 LONGTEXT",
     ]
     for s in stmts:
         try:

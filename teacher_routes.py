@@ -688,3 +688,45 @@ def set_marks(sid: int, payload: dict, db: Session = Depends(get_db), current_us
                                 notif_type="marks"))
     db.commit()
     return {"message": "Marks save ho gaye!"}
+
+# ===== TEACHER: OWN PHOTO + MY STUDENTS LIST =====
+@router.get("/my-photo")
+def teacher_my_photo(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    import base64
+    from fastapi import Response
+    tp = get_teacher_profile(current_user, db)
+    if not tp.photo_b64:
+        raise HTTPException(status_code=404, detail="Photo nahi")
+    return Response(content=base64.b64decode(tp.photo_b64), media_type="image/jpeg")
+
+@router.get("/student/{sid}/photo")
+def teacher_student_photo(sid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    import base64
+    from fastapi import Response
+    from models import StudentProfile
+    sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
+    if not sp or not sp.photo_b64:
+        raise HTTPException(status_code=404, detail="Photo nahi")
+    return Response(content=base64.b64decode(sp.photo_b64), media_type="image/jpeg")
+
+@router.get("/my-students-list")
+def teacher_my_students_list(q: str = "", subject: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import StudentProfile
+    tp = get_teacher_profile(current_user, db)
+    subs = tp.subjects or []
+    ql = q.strip().lower()
+    rows = db.query(StudentProfile).all()
+    out = []
+    for sp in rows:
+        ssubs = sp.subjects or []
+        if not any(s in subs for s in ssubs):
+            continue
+        if subject and subject not in ssubs:
+            continue
+        nm = sp.user.name if sp.user else ""
+        if ql and ql not in nm.lower() and ql not in (sp.phone or ""):
+            continue
+        out.append({"id": sp.id, "name": nm, "phone": sp.phone, "class": sp.class_level,
+                    "subjects": [s for s in ssubs if s in subs], "has_photo": bool(sp.photo_b64)})
+    out.sort(key=lambda x: x["name"].lower())
+    return {"total": len(out), "students": out}

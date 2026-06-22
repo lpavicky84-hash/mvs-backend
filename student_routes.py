@@ -530,3 +530,59 @@ async def submit_answer(
     except Exception:
         db.rollback()
     return {"id": m.id, "message": "Submit ho gaya! Thank you 🎉"}
+
+# ===== STUDENT: OWN PHOTO + KNOW YOUR TEACHER =====
+@router.post("/photo")
+async def student_set_photo(file: UploadFile = File(...), db: Session = Depends(get_db), current_user=Depends(get_student)):
+    import base64
+    sp = get_student_profile(current_user, db)
+    raw = await file.read()
+    if len(raw) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Photo 5MB se badi hai")
+    sp.photo_b64 = base64.b64encode(raw).decode("ascii")
+    db.commit()
+    return {"message": "Profile photo set ho gayi!"}
+
+@router.get("/my-photo")
+def student_my_photo(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    import base64
+    from fastapi import Response
+    sp = get_student_profile(current_user, db)
+    if not sp.photo_b64:
+        raise HTTPException(status_code=404, detail="Photo nahi")
+    return Response(content=base64.b64decode(sp.photo_b64), media_type="image/jpeg")
+
+@router.get("/has-photo")
+def student_has_photo(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    sp = get_student_profile(current_user, db)
+    return {"has_photo": bool(sp.photo_b64)}
+
+@router.get("/my-teachers")
+def student_my_teachers(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Know Your Teacher — student ke subjects ke teachers (photo + name + subject)."""
+    from models import TeacherProfile
+    sp = get_student_profile(current_user, db)
+    subs = sp.subjects or []
+    out = []
+    seen = set()
+    for s in subs:
+        tp = _teacher_for_subject(db, s)
+        if tp and tp.user:
+            key = (tp.id, s)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({"teacher_id": tp.id, "name": tp.user.name, "subject": s,
+                        "has_photo": bool(tp.photo_b64),
+                        "suffix": "Ma'am" if (tp.gender or "").lower() == "female" else "Sir"})
+    return out
+
+@router.get("/teacher/{tid}/photo")
+def student_teacher_photo(tid: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    import base64
+    from fastapi import Response
+    from models import TeacherProfile
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp or not tp.photo_b64:
+        raise HTTPException(status_code=404, detail="Photo nahi")
+    return Response(content=base64.b64decode(tp.photo_b64), media_type="image/jpeg")

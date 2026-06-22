@@ -74,6 +74,13 @@ class User(Base):
 # =============================================
 # TEACHER PROFILE
 # =============================================
+from sqlalchemy import Text as _T3
+try:
+    from sqlalchemy.dialects.mysql import LONGTEXT as _LT3
+    _PHOTO = _T3().with_variant(_LT3, "mysql")
+except Exception:
+    _PHOTO = _T3()
+
 class TeacherProfile(Base):
     __tablename__ = "teacher_profiles"
 
@@ -82,6 +89,8 @@ class TeacherProfile(Base):
     subjects       = Column(JSON)        # flat ["Physics","Chemistry"]
     subject_classes = Column(JSON)       # [{"subject":"Physics","class":"12"}, ...]
     gender         = Column(String(10), nullable=True)   # male | female
+    phone          = Column(String(15), nullable=True)
+    photo_b64      = Column(_PHOTO, nullable=True)
     batch          = Column(String(50))
     reschedule_count_this_month = Column(Integer, default=0)
     reschedule_reset_month = Column(Integer, default=0)  # month number
@@ -106,6 +115,7 @@ class StudentProfile(Base):
     is_verified  = Column(Boolean, default=False)
     plain_password = Column(String(255), nullable=True)  # for phone-lookup onboarding
     class_level  = Column(String(5), nullable=True)      # "10" or "12"
+    photo_b64    = Column(_PHOTO, nullable=True)
     active_session_token = Column(String(255), nullable=True)  # Single session
 
     user              = relationship("User", back_populates="student_profile")

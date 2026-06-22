@@ -126,8 +126,11 @@ def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
             ).count()
             result.append({
                 "id": t.id,
+                "profile_id": profile.id,
                 "name": t.name,
                 "user_id": t.user_id,
+                "phone": profile.phone,
+                "has_photo": bool(profile.photo_b64),
                 "is_active": t.is_active,
                 "subjects": profile.subjects,
                 "batch": profile.batch,
@@ -165,6 +168,7 @@ def add_teacher(req: RegisterRequest, db: Session = Depends(get_db), _=Depends(g
         subjects=req.subjects or [],
         subject_classes=[],
         gender=(req.gender or "").strip().lower() or None,
+        phone=(req.phone or None),
         batch=req.batch or "",
     )
     db.add(profile)
@@ -562,3 +566,90 @@ def admin_delete_tt(eid: int, db: Session = Depends(get_db), _=Depends(get_admin
         raise HTTPException(status_code=404, detail="Entry nahi mili")
     db.delete(e); db.commit()
     return {"message": "Class delete ho gayi"}
+
+# ===== PHOTOS + STUDENT LIST + BULK-BY-PHONE =====
+def _img_response(b64):
+    import base64
+    from fastapi import Response
+    if not b64:
+        raise HTTPException(status_code=404, detail="Photo nahi")
+    return Response(content=base64.b64decode(b64), media_type="image/jpeg")
+
+@router.post("/teacher/{tid}/photo")
+async def admin_upload_teacher_photo(tid: int, file: UploadFile = File(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    import base64
+    from models import TeacherProfile
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher nahi mila")
+    raw = await file.read()
+    if len(raw) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Photo 5MB se badi hai")
+    tp.photo_b64 = base64.b64encode(raw).decode("ascii")
+    db.commit()
+    return {"message": "Photo upload ho gayi!"}
+
+@router.get("/teacher/{tid}/photo")
+def admin_teacher_photo(tid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TeacherProfile
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    return _img_response(tp.photo_b64 if tp else None)
+
+@router.get("/student/{sid}/photo")
+def admin_student_photo(sid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import StudentProfile
+    sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
+    return _img_response(sp.photo_b64 if sp else None)
+
+@router.get("/students-list")
+def admin_students_list(q: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import StudentProfile
+    rows = db.query(StudentProfile).all()
+    ql = q.strip().lower()
+    out = []
+    for sp in rows:
+        nm = sp.user.name if sp.user else ""
+        if ql and ql not in nm.lower() and ql not in (sp.phone or ""):
+            continue
+        out.append({"id": sp.id, "name": nm, "phone": sp.phone, "class": sp.class_level,
+                    "subjects": sp.subjects or [], "has_photo": bool(sp.photo_b64),
+                    "user_id": sp.user.user_id if sp.user else None})
+    out.sort(key=lambda x: x["name"].lower())
+    return {"total": len(out), "students": out}
+
+@router.post("/students/bulk-phone")
+def admin_bulk_phone(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Paste phone numbers (no Excel). Each line: 'phone' or 'phone,Name'."""
+    text = payload.get("text", "") or ""
+    created, skipped = 0, 0
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.replace("\t", ",").split(",")]
+        phone = parts[0]
+        name = parts[1] if len(parts) > 1 and parts[1] else None
+        digits = "".join(ch for ch in phone if ch.isdigit())
+        if len(digits) < 10:
+            skipped += 1; continue
+        phone = digits[-10:]
+        if db.query(StudentProfile).filter(StudentProfile.phone == phone).first():
+            skipped += 1; continue
+        if not name:
+            name = "Student " + phone[-4:]
+        # MVS-prefixed student user id
+        i = 1
+        while True:
+            cand = f"MVSS{i:04d}"
+            if not db.query(User).filter(User.user_id == cand).first():
+                break
+            i += 1
+        u = User(name=name, user_id=cand, password=hash_password(phone),
+                 role=UserRole.student, is_active=True)
+        db.add(u); db.flush()
+        db.add(StudentProfile(user_id=u.id, phone=phone, subjects=[], class_name="",
+                              is_verified=True, plain_password=phone))
+        created += 1
+    db.commit()
+    return {"created": created, "skipped": skipped,
+            "message": f"{created} students add hue, {skipped} skip (duplicate/galat)."}
