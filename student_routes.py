@@ -34,16 +34,17 @@ def notify(db, user_id, title, message, notif_type):
 def student_dashboard(db: Session = Depends(get_db), current_user=Depends(get_student)):
     sp = get_student_profile(current_user, db)
 
-    dpps_total    = db.query(DPP).filter(DPP.subject.in_(sp.subjects or [])).count()
-    dpps_submitted = db.query(DPPSubmission).filter(DPPSubmission.student_id == sp.id).count()
-    tests_attempted = db.query(TestSubmission).filter(
-        TestSubmission.student_id == sp.id,
-        TestSubmission.status.in_([SubmissionStatus.submitted, SubmissionStatus.late_submitted])
-    ).count()
-    tests_missed = db.query(TestSubmission).filter(
-        TestSubmission.student_id == sp.id,
-        TestSubmission.status == SubmissionStatus.missed
-    ).count()
+    from models import Material
+    dpps_total    = db.query(Material).filter(Material.subject.in_(sp.subjects or []), Material.material_type == "dpp").count()
+    _answers = db.query(Material).filter(Material.student_id == sp.id, Material.material_type == "answer").all()
+    _pids = [a.parent_id for a in _answers if a.parent_id]
+    _pt = {}
+    if _pids:
+        for pm in db.query(Material).filter(Material.id.in_(_pids)).all():
+            _pt[pm.id] = pm.material_type
+    dpps_submitted = sum(1 for a in _answers if _pt.get(a.parent_id) == "dpp")
+    tests_attempted = sum(1 for a in _answers if _pt.get(a.parent_id) == "test")
+    tests_missed = 0
     doubts_asked    = db.query(Doubt).filter(Doubt.student_id == sp.id).count()
     doubts_resolved = db.query(Doubt).filter(Doubt.student_id == sp.id, Doubt.status == DoubtStatus.resolved).count()
 
@@ -319,16 +320,19 @@ def get_progress(
         quarter_month = ((now.month - 1) // 3) * 3 + 1
         start = date(now.year, quarter_month, 1)
 
-    dpps_submitted = db.query(DPPSubmission).filter(
-        DPPSubmission.student_id == sp.id,
-        DPPSubmission.submitted_at >= datetime.combine(start, datetime.min.time())
-    ).count()
-
-    tests_attempted = db.query(TestSubmission).filter(
-        TestSubmission.student_id == sp.id,
-        TestSubmission.submitted_at >= datetime.combine(start, datetime.min.time()),
-        TestSubmission.status.in_([SubmissionStatus.submitted, SubmissionStatus.late_submitted])
-    ).count()
+    from models import Material
+    _start_dt = datetime.combine(start, datetime.min.time())
+    _answers = db.query(Material).filter(
+        Material.student_id == sp.id, Material.material_type == "answer",
+        Material.created_at >= _start_dt
+    ).all()
+    _pids = [a.parent_id for a in _answers if a.parent_id]
+    _pt = {}
+    if _pids:
+        for pm in db.query(Material).filter(Material.id.in_(_pids)).all():
+            _pt[pm.id] = pm.material_type
+    dpps_submitted = sum(1 for a in _answers if _pt.get(a.parent_id) == "dpp")
+    tests_attempted = sum(1 for a in _answers if _pt.get(a.parent_id) == "test")
 
     doubts_asked = db.query(Doubt).filter(
         Doubt.student_id == sp.id,
