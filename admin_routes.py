@@ -653,3 +653,44 @@ def admin_bulk_phone(payload: dict, db: Session = Depends(get_db), _=Depends(get
     db.commit()
     return {"created": created, "skipped": skipped,
             "message": f"{created} students add hue, {skipped} skip (duplicate/galat)."}
+
+# ===== ADMIN: BULK IMPORT FROM APP SALES SHEET (name + phone + batch) =====
+@router.post("/students/bulk-import")
+def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Frontend Appx sales sheet parse karke {students:[{name,phone,batch}]} bhejega."""
+    rows = payload.get("students", []) or []
+    created, updated, skipped = 0, 0, 0
+    for r in rows:
+        phone = "".join(ch for ch in str(r.get("phone", "")) if ch.isdigit())
+        if len(phone) < 10:
+            skipped += 1; continue
+        phone = phone[-10:]
+        name = (r.get("name") or "").strip() or ("Student " + phone[-4:])
+        batch = (r.get("batch") or "").strip() or None
+        email = (r.get("email") or "").strip() or None
+        existing = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
+        if existing:
+            # update batch + name if changed (refresh from latest sale)
+            if batch:
+                existing.batch_name = batch
+            if email:
+                existing.email = email
+            if existing.user and name and existing.user.name == ("Student " + phone[-4:]):
+                existing.user.name = name
+            updated += 1
+            continue
+        i = 1
+        while True:
+            cand = f"MVSS{i:04d}"
+            if not db.query(User).filter(User.user_id == cand).first():
+                break
+            i += 1
+        u = User(name=name, user_id=cand, password=hash_password(phone),
+                 role=UserRole.student, is_active=True)
+        db.add(u); db.flush()
+        db.add(StudentProfile(user_id=u.id, phone=phone, subjects=[], class_name="",
+                              batch_name=batch, email=email, is_verified=True, plain_password=phone))
+        created += 1
+    db.commit()
+    return {"created": created, "updated": updated, "skipped": skipped,
+            "message": f"{created} naye students, {updated} update hue, {skipped} skip (galat phone)."}

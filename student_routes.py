@@ -369,10 +369,15 @@ def get_profile(db: Session = Depends(get_db), current_user=Depends(get_student)
     sp = get_student_profile(current_user, db)
     return {
         "name": current_user.name,
+        "user_id": current_user.user_id,
+        "phone": sp.phone,
+        "email": sp.email,
         "class_level": sp.class_level,
         "subjects": sp.subjects or [],
         "batch": sp.batch,
-        "class_name": sp.class_name
+        "batch_name": sp.batch_name,
+        "class_name": sp.class_name,
+        "has_photo": bool(sp.photo_b64)
     }
 
 @router.get("/available-subjects")

@@ -32,6 +32,8 @@ def ensure_columns():
         "ALTER TABLE teacher_profiles ADD COLUMN phone VARCHAR(15)",
         "ALTER TABLE teacher_profiles ADD COLUMN photo_b64 LONGTEXT",
         "ALTER TABLE student_profiles ADD COLUMN photo_b64 LONGTEXT",
+        "ALTER TABLE student_profiles ADD COLUMN batch_name VARCHAR(160)",
+        "ALTER TABLE student_profiles ADD COLUMN email VARCHAR(160)",
     ]
     for s in stmts:
         try:

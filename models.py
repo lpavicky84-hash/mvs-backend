@@ -110,6 +110,8 @@ class StudentProfile(Base):
     user_id      = Column(Integer, ForeignKey("users.id"), unique=True)
     phone        = Column(String(15), unique=True)
     batch        = Column(Enum(BatchName))
+    batch_name   = Column(String(160), nullable=True)  # free-text batch from app sales sheet
+    email        = Column(String(160), nullable=True)
     subjects     = Column(JSON)   # ["Physics","Chemistry","Maths"]
     class_name   = Column(String(20))   # e.g. "12A"
     is_verified  = Column(Boolean, default=False)
