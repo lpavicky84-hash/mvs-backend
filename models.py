@@ -375,4 +375,13 @@ class Material(Base):
     medium        = Column(String(20), nullable=True)    # Hindi | English (for question bank)
     is_global     = Column(Boolean, default=False)        # visible to ALL students
     external_link = Column(String(500), nullable=True)    # original PDF link (no-compress option)
+    approval_status = Column(String(20), default="approved")  # approved | pending | rejected
     created_at    = Column(DateTime, default=func.now())
+
+class MaterialView(Base):
+    __tablename__ = "material_views"
+    id          = Column(Integer, primary_key=True)
+    material_id = Column(Integer, index=True)
+    student_id  = Column(Integer, index=True)
+    action      = Column(String(12))   # view | download
+    created_at  = Column(DateTime, default=func.now())

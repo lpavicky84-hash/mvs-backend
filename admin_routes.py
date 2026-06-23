@@ -954,6 +954,19 @@ def admin_list_questionbank(db: Session = Depends(get_db), _=Depends(get_admin))
              "subject": m.subject, "has_file": bool(m.content_b64), "external_link": m.external_link,
              "filename": m.filename, "date": str(m.created_at)[:10]} for m in ms]
 
+@router.patch("/material/{mid}/approval")
+def admin_material_approval(mid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Material
+    m = db.query(Material).filter(Material.id == mid).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Material not found")
+    st = (payload.get("status") or "").strip()
+    if st not in ("approved", "pending", "rejected"):
+        raise HTTPException(status_code=400, detail="Invalid status")
+    m.approval_status = st
+    db.commit()
+    return {"message": f"Material marked {st}."}
+
 @router.delete("/material/{mid}")
 def admin_delete_material(mid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import Material

@@ -45,6 +45,7 @@ def ensure_columns():
         "ALTER TABLE timetable_entries ADD COLUMN homework TEXT",
         "ALTER TABLE timetable_entries ADD COLUMN dpp_given BOOLEAN DEFAULT 0",
         "ALTER TABLE timetable_entries ADD COLUMN remarks TEXT",
+        "ALTER TABLE materials ADD COLUMN approval_status VARCHAR(20) DEFAULT 'approved'",
         "ALTER TABLE student_profiles ADD COLUMN last_seen DATETIME",
         "ALTER TABLE student_profiles ADD COLUMN session_start DATETIME",
     ]

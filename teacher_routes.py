@@ -908,3 +908,65 @@ def teacher_performance(db: Session = Depends(get_db), current_user=Depends(get_
         "dpp_uploaded": dpp_count, "materials_uploaded": notes_count, "tests_created": test_count,
         "monthly": monthly, "recent": recent
     }
+
+# ===== TEACHER: MATERIAL ANALYTICS (views/downloads per material) =====
+@router.get("/material-analytics")
+def teacher_material_analytics(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import Material, MaterialView
+    from sqlalchemy import func as _f
+    tp = get_teacher_profile(current_user, db)
+    subs = tp.subjects or []
+    mats = db.query(Material).filter(Material.subject.in_(subs),
+        Material.material_type.in_(["notes", "dpp", "test", "other"])).order_by(Material.created_at.desc()).all() if subs else []
+    out = []
+    for m in mats:
+        viewed = db.query(_f.count(_f.distinct(MaterialView.student_id))).filter(MaterialView.material_id == m.id).scalar() or 0
+        downloads = db.query(_f.count(MaterialView.id)).filter(MaterialView.material_id == m.id, MaterialView.action == "download").scalar() or 0
+        out.append({
+            "id": m.id, "type": m.material_type, "category": m.category,
+            "title": m.title or m.chapter or m.subject, "subject": m.subject,
+            "upload_date": str(m.created_at)[:10] if m.created_at else None,
+            "students_viewed": viewed, "downloads": downloads,
+            "approval_status": getattr(m, "approval_status", "approved") or "approved",
+        })
+    return out
+
+# ===== TEACHER: STUDENT ENGAGEMENT =====
+@router.get("/student-engagement")
+def teacher_student_engagement(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import Material, MaterialView, StudentProfile
+    from sqlalchemy import func as _f, or_
+    tp = get_teacher_profile(current_user, db)
+    subs = tp.subjects or []
+    if not subs:
+        return []
+    # students who have any of the teacher's subjects
+    students = []
+    for sp in db.query(StudentProfile).all():
+        if set(sp.subjects or []) & set(subs):
+            students.append(sp)
+    # teacher material ids
+    mat_ids = [m.id for m in db.query(Material).filter(Material.subject.in_(subs)).all()]
+    out = []
+    for sp in students:
+        answers = db.query(Material).filter(Material.material_type == "answer", Material.student_id == sp.id).all()
+        pids = [a.parent_id for a in answers if a.parent_id]
+        ptypes = {}
+        if pids:
+            for pm in db.query(Material).filter(Material.id.in_(pids)).all():
+                ptypes[pm.id] = pm.material_type
+        dpp_done = sum(1 for a in answers if ptypes.get(a.parent_id) == "dpp")
+        test_done = sum(1 for a in answers if ptypes.get(a.parent_id) == "test")
+        downloads = db.query(_f.count(MaterialView.id)).filter(
+            MaterialView.student_id == sp.id, MaterialView.action == "download",
+            MaterialView.material_id.in_(mat_ids) if mat_ids else False).scalar() or 0
+        last_act = db.query(MaterialView).filter(MaterialView.student_id == sp.id).order_by(MaterialView.created_at.desc()).first()
+        out.append({
+            "name": (sp.user.name if sp.user else "Student"),
+            "phone": sp.phone, "subjects": sp.subjects or [],
+            "dpp_completed": dpp_done, "tests_completed": test_done,
+            "material_downloads": downloads,
+            "last_active": str(last_act.created_at)[:16] if last_act else None,
+        })
+    out.sort(key=lambda x: (x["material_downloads"] + x["dpp_completed"] + x["tests_completed"]), reverse=True)
+    return out

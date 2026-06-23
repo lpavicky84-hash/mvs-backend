@@ -441,6 +441,20 @@ def student_question_bank(db: Session = Depends(get_db), current_user=Depends(ge
              "subject": m.subject, "has_file": bool(m.content_b64), "external_link": m.external_link,
              "filename": m.filename, "date": str(m.created_at)[:10]} for m in ms]
 
+def _log_material(db, mid, student_id, action):
+    """Track student view/download. Views deduped per student; downloads counted each time."""
+    try:
+        from models import MaterialView
+        if action == "view":
+            ex = db.query(MaterialView).filter(MaterialView.material_id == mid,
+                MaterialView.student_id == student_id, MaterialView.action == "view").first()
+            if ex:
+                return
+        db.add(MaterialView(material_id=mid, student_id=student_id, action=action))
+        db.commit()
+    except Exception:
+        db.rollback()
+
 @router.get("/material/{mid}/view")
 def student_material_view(mid: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
     import base64
@@ -449,6 +463,8 @@ def student_material_view(mid: int, db: Session = Depends(get_db), current_user=
     m = db.query(Material).filter(Material.id == mid).first()
     if not m or not m.content_b64:
         raise HTTPException(status_code=404, detail="Not found")
+    sp = get_student_profile(current_user, db)
+    _log_material(db, mid, sp.id, "view")
     return Response(content=base64.b64decode(m.content_b64), media_type="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="{m.filename or "file.pdf"}"'})
 
@@ -471,7 +487,9 @@ def student_download(mid: int, db: Session = Depends(get_db), current_user=Depen
     from fastapi import Response
     from models import Material
     m = db.query(Material).filter(Material.id == mid).first()
-    if not m: raise HTTPException(status_code=404, detail="Nahi mila")
+    if not m: raise HTTPException(status_code=404, detail="Not found")
+    sp = get_student_profile(current_user, db)
+    _log_material(db, mid, sp.id, "download")
     data = base64.b64decode(m.content_b64)
     return Response(content=data, media_type="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="{m.filename or "file.pdf"}"'})
