@@ -433,6 +433,25 @@ def timetable_plan(db: Session = Depends(get_db), current_user=Depends(get_stude
     return result
 
 # ===== STUDY MATERIAL (download from DB) =====
+@router.get("/question-bank")
+def student_question_bank(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    from models import Material
+    ms = db.query(Material).filter(Material.is_global == True).order_by(Material.created_at.desc()).all()
+    return [{"id": m.id, "title": m.title, "category": m.category, "medium": m.medium or "English",
+             "subject": m.subject, "has_file": bool(m.content_b64), "external_link": m.external_link,
+             "filename": m.filename, "date": str(m.created_at)[:10]} for m in ms]
+
+@router.get("/material/{mid}/view")
+def student_material_view(mid: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    import base64
+    from fastapi import Response
+    from models import Material
+    m = db.query(Material).filter(Material.id == mid).first()
+    if not m or not m.content_b64:
+        raise HTTPException(status_code=404, detail="Not found")
+    return Response(content=base64.b64decode(m.content_b64), media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{m.filename or "file.pdf"}"'})
+
 @router.get("/materials-v2")
 def student_materials_v2(db: Session = Depends(get_db), current_user=Depends(get_student)):
     from models import Material
@@ -591,3 +610,14 @@ def student_teacher_photo(tid: int, db: Session = Depends(get_db), current_user=
     if not tp or not tp.photo_b64:
         raise HTTPException(status_code=404, detail="Photo nahi")
     return Response(content=base64.b64decode(tp.photo_b64), media_type="image/jpeg")
+
+# ===== LIVE PRESENCE: student heartbeat =====
+@router.post("/ping")
+def student_ping(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    sp = get_student_profile(current_user, db)
+    now = datetime.now()
+    if not sp.last_seen or (now - sp.last_seen) > timedelta(minutes=5):
+        sp.session_start = now
+    sp.last_seen = now
+    db.commit()
+    return {"ok": True}

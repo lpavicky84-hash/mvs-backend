@@ -119,6 +119,8 @@ class StudentProfile(Base):
     class_level  = Column(String(5), nullable=True)      # "10" or "12"
     photo_b64    = Column(_PHOTO, nullable=True)
     active_session_token = Column(String(255), nullable=True)  # Single session
+    last_seen    = Column(DateTime, nullable=True)
+    session_start= Column(DateTime, nullable=True)
 
     user              = relationship("User", back_populates="student_profile")
     test_submissions  = relationship("TestSubmission", back_populates="student")
@@ -362,4 +364,7 @@ class Material(Base):
     marks         = Column(String(20), nullable=True)  # teacher's marks on a submission
     student_id    = Column(Integer, nullable=True)    # answer -> who submitted
     student_name  = Column(String(120), nullable=True)
+    medium        = Column(String(20), nullable=True)    # Hindi | English (for question bank)
+    is_global     = Column(Boolean, default=False)        # visible to ALL students
+    external_link = Column(String(500), nullable=True)    # original PDF link (no-compress option)
     created_at    = Column(DateTime, default=func.now())

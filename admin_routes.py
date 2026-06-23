@@ -205,6 +205,7 @@ def get_all_students(db: Session = Depends(get_db), _=Depends(get_admin)):
                 "batch": sp.batch_name or (sp.batch.value if hasattr(sp.batch,"value") else sp.batch),
                 "batch_name": sp.batch_name,
                 "class_level": sp.class_level,
+                "has_photo": bool(sp.photo_b64),
                 "subjects": sp.subjects,
                 "class_name": sp.class_name,
                 "is_verified": sp.is_verified,
@@ -351,16 +352,17 @@ def timetable_all(db: Session = Depends(get_db), _=Depends(get_admin)):
     ).all()
     result = []
     for e in es:
-        tname = ""
+        tname = ""; tphoto = False; tpid = None
         tp = db.query(TeacherProfile).filter(TeacherProfile.id == e.teacher_id).first()
         if tp and tp.user:
-            tname = tp.user.name
+            tname = tp.user.name; tphoto = bool(tp.photo_b64); tpid = tp.id
         result.append({
             "id": e.id, "subject": e.subject, "class_name": e.class_name,
             "chapter": e.chapter, "part": e.part,
             "date": str(e.entry_date) if e.entry_date else None,
             "day": e.day, "time": getattr(e,"time_text",None),
-            "type": getattr(e,"entry_type",None) or "chapter", "teacher_name": tname
+            "type": getattr(e,"entry_type",None) or "chapter",
+            "teacher_name": tname, "teacher_id": tpid, "teacher_has_photo": tphoto
         })
     return result
 
@@ -658,6 +660,22 @@ def admin_bulk_phone(payload: dict, db: Session = Depends(get_db), _=Depends(get
     return {"created": created, "skipped": skipped,
             "message": f"{created} students add hue, {skipped} skip (duplicate/galat)."}
 
+def _normalize_batch(text):
+    """Bullet-proof: lamba batch naam ko canonical short naam mein badlo."""
+    if not text:
+        return None
+    t = str(text).lower()
+    if "science" in t:
+        return "Lakshya (Science)"
+    if "commerce" in t:
+        return "Lakshya (Commerce)"
+    if "arts" in t:
+        return "Lakshya (Arts)"
+    if "udaan" in t or "class 10" in t or "10th" in t:
+        return "Udaan Class 10th"
+    s = str(text).strip()
+    return s[:60] if s else None
+
 # ===== ADMIN: BULK IMPORT FROM APP SALES SHEET (name + phone + batch) =====
 @router.post("/students/bulk-import")
 def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -670,7 +688,7 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
             skipped += 1; continue
         phone = phone[-10:]
         name = (r.get("name") or "").strip() or ("Student " + phone[-4:])
-        batch = (r.get("batch") or "").strip() or None
+        batch = _normalize_batch(r.get("batch"))
         email = (r.get("email") or "").strip() or None
         existing = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
         if existing:
@@ -787,3 +805,160 @@ def delete_student(sid: int, db: Session = Depends(get_db), _=Depends(get_admin)
         db.execute(_sqltext(sql), p)
     db.commit()
     return {"message": "Student delete ho gayi"}
+
+# ===== ADMIN: SEND NOTIFICATION TO A SINGLE TEACHER =====
+@router.post("/teacher/{tid}/notify")
+def notify_single_teacher(tid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TeacherProfile
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp or not tp.user:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    title = (payload.get("title") or "").strip()
+    message = (payload.get("message") or "").strip()
+    if not title or not message:
+        raise HTTPException(status_code=400, detail="Title and message are required")
+    notify(db, tp.user.id, "📢 " + title, message, "admin_message")
+    db.commit()
+    return {"message": f"Notification sent to {tp.user.name}"}
+
+# ===== ADMIN: LIVE STUDENT PRESENCE =====
+@router.get("/live-students")
+def admin_live_students(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import StudentProfile
+    now = datetime.now()
+    cutoff = now - timedelta(minutes=2)
+    sps = db.query(StudentProfile).filter(
+        StudentProfile.last_seen != None,
+        StudentProfile.last_seen >= cutoff
+    ).all()
+    out = []
+    for sp in sps:
+        start = sp.session_start or sp.last_seen
+        out.append({
+            "name": sp.user.name if sp.user else "Student",
+            "phone": sp.phone,
+            "user_id": sp.user.user_id if sp.user else "",
+            "batch": sp.batch_name or "",
+            "duration_seconds": max(0, int((now - start).total_seconds())),
+            "last_seen_seconds": int((now - sp.last_seen).total_seconds()),
+        })
+    out.sort(key=lambda x: -x["duration_seconds"])
+    return {"count": len(out), "students": out}
+
+# ===== ADMIN: NOTIFICATIONS (bell) =====
+@router.get("/notifications")
+def admin_notifications(db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    notifs = db.query(Notification).filter(
+        Notification.user_id == current_user.id
+    ).order_by(Notification.created_at.desc()).limit(50).all()
+    return [{"id": n.id, "title": n.title, "message": n.message,
+             "is_read": n.is_read,
+             "created_at": n.created_at.isoformat() if n.created_at else None} for n in notifs]
+
+@router.patch("/notifications/{notif_id}/read")
+def admin_notif_read(notif_id: int, db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    n = db.query(Notification).filter(
+        Notification.id == notif_id, Notification.user_id == current_user.id
+    ).first()
+    if n:
+        n.is_read = True
+        db.commit()
+    return {"ok": True}
+
+# ===== ADMIN: DOUBTS OVERSIGHT (full thread of every doubt) =====
+@router.get("/doubts")
+def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Doubt, StudentProfile, TeacherProfile
+    q = db.query(Doubt).order_by(Doubt.created_at.desc())
+    if status in ("pending", "resolved"):
+        q = q.filter(Doubt.status == status)
+    out = []
+    for d in q.all():
+        sp = db.query(StudentProfile).filter(StudentProfile.id == d.student_id).first()
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == d.teacher_id).first() if d.teacher_id else None
+        out.append({
+            "id": d.id,
+            "student_name": (sp.user.name if sp and sp.user else "Unknown student"),
+            "student_phone": (sp.phone if sp else None),
+            "teacher_name": (tp.user.name if tp and tp.user else "Unassigned"),
+            "subject": d.subject,
+            "topic": d.topic,
+            "question": d.question,
+            "has_image": bool(d.image_b64),
+            "answer": d.answer,
+            "answer_image_link": d.answer_image_link,
+            "status": d.status.value if hasattr(d.status, "value") else d.status,
+            "created_at": d.created_at.isoformat() if d.created_at else None,
+            "resolved_at": d.resolved_at.isoformat() if d.resolved_at else None,
+        })
+    return out
+
+@router.get("/doubt/{did}/image")
+def admin_doubt_image(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Doubt
+    d = db.query(Doubt).filter(Doubt.id == did).first()
+    return _img_response(d.image_b64 if d else None)
+
+# ===== ADMIN: QUESTION BANK (global materials, Hindi/English, no-compress or link) =====
+@router.post("/questionbank")
+async def admin_upload_questionbank(
+    title: str = Form(...),
+    medium: str = Form("English"),
+    category: str = Form("Question Bank"),
+    subject: str = Form("General"),
+    external_link: str = Form(""),
+    file: UploadFile = File(None),
+    db: Session = Depends(get_db),
+    _=Depends(get_admin)
+):
+    import base64
+    from models import Material, StudentProfile
+    link = (external_link or "").strip()
+    content_b64 = None
+    fname = None
+    if file is not None and file.filename:
+        raw = await file.read()
+        # NO compression — stored as-is. Cap to keep MySQL packet safe.
+        if len(raw) > 30 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File is larger than 30MB. Please use the link option for very large files.")
+        content_b64 = base64.b64encode(raw).decode("ascii")
+        fname = file.filename
+    elif not link:
+        raise HTTPException(status_code=400, detail="Provide a PDF file or a link.")
+    m = Material(
+        teacher_id=None, teacher_name="Admin", subject=(subject.strip() or "General"),
+        material_type="other", category=(category.strip() or "Question Bank"),
+        title=(title.strip() or fname or "Question Bank"), filename=fname,
+        content_b64=content_b64, medium=(medium.strip() or "English"),
+        is_global=True, external_link=(link or None)
+    )
+    db.add(m); db.commit(); db.refresh(m)
+    # notify ALL students
+    try:
+        for sp in db.query(StudentProfile).all():
+            if sp.user:
+                db.add(Notification(user_id=sp.user.id,
+                    title=f"📘 New {category.strip() or 'Question Bank'} ({medium.strip()})",
+                    message=f"{title.strip()} is now available in the Question Bank.",
+                    notif_type="questionbank"))
+        db.commit()
+    except Exception:
+        db.rollback()
+    return {"id": m.id, "message": "Question Bank uploaded."}
+
+@router.get("/questionbank")
+def admin_list_questionbank(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Material
+    ms = db.query(Material).filter(Material.is_global == True).order_by(Material.created_at.desc()).all()
+    return [{"id": m.id, "title": m.title, "category": m.category, "medium": m.medium,
+             "subject": m.subject, "has_file": bool(m.content_b64), "external_link": m.external_link,
+             "filename": m.filename, "date": str(m.created_at)[:10]} for m in ms]
+
+@router.delete("/material/{mid}")
+def admin_delete_material(mid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Material
+    m = db.query(Material).filter(Material.id == mid).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Material not found")
+    db.delete(m); db.commit()
+    return {"message": "Material deleted."}

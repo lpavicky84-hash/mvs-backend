@@ -34,6 +34,11 @@ def ensure_columns():
         "ALTER TABLE student_profiles ADD COLUMN photo_b64 LONGTEXT",
         "ALTER TABLE student_profiles ADD COLUMN batch_name VARCHAR(160)",
         "ALTER TABLE student_profiles ADD COLUMN email VARCHAR(160)",
+        "ALTER TABLE materials ADD COLUMN medium VARCHAR(20)",
+        "ALTER TABLE materials ADD COLUMN is_global BOOLEAN DEFAULT 0",
+        "ALTER TABLE materials ADD COLUMN external_link VARCHAR(500)",
+        "ALTER TABLE student_profiles ADD COLUMN last_seen DATETIME",
+        "ALTER TABLE student_profiles ADD COLUMN session_start DATETIME",
     ]
     for s in stmts:
         try:
