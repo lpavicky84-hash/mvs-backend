@@ -328,7 +328,15 @@ def _serialize_tt(e):
         "id": e.id, "subject": e.subject, "class_name": e.class_name,
         "chapter": e.chapter, "part": e.part,
         "date": str(e.entry_date) if e.entry_date else None, "day": e.day,
-        "time": getattr(e, "time_text", None), "type": getattr(e, "entry_type", None) or "chapter", "status": getattr(e, "status", None) or "approved"
+        "time": getattr(e, "time_text", None), "type": getattr(e, "entry_type", None) or "chapter", "status": getattr(e, "status", None) or "approved",
+        "completed": bool(getattr(e, "completed", False)),
+        "topic_covered": getattr(e, "topic_covered", None),
+        "homework": getattr(e, "homework", None),
+        "dpp_given": bool(getattr(e, "dpp_given", False)),
+        "remarks": getattr(e, "remarks", None),
+        "start_time": getattr(e, "start_time", None),
+        "end_time": getattr(e, "end_time", None),
+        "completed_at": str(getattr(e, "completed_at", "")) if getattr(e, "completed_at", None) else None
     }
 
 @router.post("/timetable-entry")
@@ -730,3 +738,173 @@ def teacher_my_students_list(q: str = "", subject: str = "", db: Session = Depen
                     "subjects": [s for s in ssubs if s in subs], "has_photo": bool(sp.photo_b64)})
     out.sort(key=lambda x: x["name"].lower())
     return {"total": len(out), "students": out}
+
+# ===== TEACHER -> ADMIN MESSAGE =====
+@router.post("/message-admin")
+def teacher_message_admin(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    title = (payload.get("title") or "").strip()
+    message = (payload.get("message") or "").strip()
+    if not title or not message:
+        raise HTTPException(status_code=400, detail="Title and message are required")
+    admins = db.query(User).filter(User.role == "admin").all()
+    sender = current_user.name
+    for a in admins:
+        notify(db, a.id, f"\u2709\ufe0f {sender}: {title}", message, "teacher_to_admin")
+    db.commit()
+    return {"message": "Message sent to the admin"}
+
+# ===== TEACHER ACCOUNTABILITY: classes with status, mark-complete, compliance =====
+def _class_status(e):
+    """Upcoming | Live | Completed | Missed based on date/time + completed flag."""
+    if getattr(e, "completed", False):
+        return "Completed"
+    today = date.today()
+    if e.entry_date is None:
+        return "Upcoming"
+    if e.entry_date < today:
+        return "Missed"
+    if e.entry_date > today:
+        return "Upcoming"
+    return "Pending"  # today, not yet completed
+
+@router.get("/my-classes")
+def teacher_my_classes(scope: str = "all", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import TimetableEntry
+    from sqlalchemy import or_
+    tp = get_teacher_profile(current_user, db)
+    subs = tp.subjects or []
+    if not subs:
+        return []
+    q = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(subs),
+        or_(TimetableEntry.status == None, TimetableEntry.status != "pending"))
+    if scope == "today":
+        q = q.filter(TimetableEntry.entry_date == date.today())
+    es = q.order_by(TimetableEntry.entry_date, TimetableEntry.time_text).all()
+    out = []
+    for e in es:
+        d = _serialize_tt(e); d["live_status"] = _class_status(e)
+        out.append(d)
+    return out
+
+@router.post("/class/{entry_id}/complete")
+def teacher_complete_class(entry_id: int, payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import TimetableEntry
+    tp = get_teacher_profile(current_user, db)
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == entry_id).first()
+    if not e or e.subject not in (tp.subjects or []):
+        raise HTTPException(status_code=404, detail="Class not found")
+    e.completed = True
+    e.completed_at = datetime.now()
+    e.topic_covered = (payload.get("topic_covered") or e.chapter or "").strip() or None
+    e.start_time = (payload.get("start_time") or "").strip() or None
+    e.end_time = (payload.get("end_time") or "").strip() or None
+    e.homework = (payload.get("homework") or "").strip() or None
+    e.dpp_given = bool(payload.get("dpp_given"))
+    e.remarks = (payload.get("remarks") or "").strip() or None
+    db.commit()
+    return {"message": "Class marked as completed."}
+
+@router.get("/compliance")
+def teacher_compliance(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import TimetableEntry, Material
+    from sqlalchemy import or_
+    tp = get_teacher_profile(current_user, db)
+    subs = tp.subjects or []
+    subj_count = max(1, len(subs))
+    today = date.today()
+    month_start = date(today.year, today.month, 1)
+    classes = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(subs),
+        or_(TimetableEntry.status == None, TimetableEntry.status != "pending"),
+        TimetableEntry.entry_type == "chapter").all() if subs else []
+    due = [c for c in classes if c.entry_date and c.entry_date <= today]
+    completed = [c for c in due if getattr(c, "completed", False)]
+    mats = db.query(Material).filter(Material.subject.in_(subs)).all() if subs else []
+    dpp_count = sum(1 for m in mats if m.material_type == "dpp")
+    notes_count = sum(1 for m in mats if m.material_type == "notes")
+    test_count = sum(1 for m in mats if m.material_type == "test")
+    # component scores (0..1)
+    cc = (len(completed) / len(due)) if due else 1.0
+    dpp_s = min(1.0, dpp_count / subj_count)
+    mat_s = min(1.0, notes_count / subj_count)
+    test_s = min(1.0, test_count / subj_count)
+    score = round(cc * 40 + dpp_s * 25 + mat_s * 20 + test_s * 15)
+    band = "green" if score >= 81 else ("yellow" if score >= 61 else "red")
+    return {
+        "score": score, "band": band,
+        "breakdown": {
+            "class_completion": {"weight": 40, "pct": round(cc * 100), "got": round(cc * 40)},
+            "dpp_upload": {"weight": 25, "pct": round(dpp_s * 100), "got": round(dpp_s * 25)},
+            "study_material": {"weight": 20, "pct": round(mat_s * 100), "got": round(mat_s * 20)},
+            "test_creation": {"weight": 15, "pct": round(test_s * 100), "got": round(test_s * 15)},
+        },
+        "stats": {
+            "classes_due": len(due), "classes_completed": len(completed),
+            "dpp_count": dpp_count, "notes_count": notes_count, "test_count": test_count,
+            "classes_today": sum(1 for c in classes if c.entry_date == today),
+            "completed_today": sum(1 for c in completed if c.entry_date == today),
+            "pending_today": sum(1 for c in classes if c.entry_date == today and not getattr(c, "completed", False)),
+            "missed": sum(1 for c in due if not getattr(c, "completed", False)),
+            "subject_count": len(subs),
+        }
+    }
+
+# ===== TEACHER: DOUBT STATS (pending, resolved, avg response time) =====
+@router.get("/doubt-stats")
+def teacher_doubt_stats(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import Doubt, DoubtStatus
+    tp = get_teacher_profile(current_user, db)
+    ds = db.query(Doubt).filter(Doubt.teacher_id == tp.id).all()
+    pending = sum(1 for d in ds if (d.status.value if hasattr(d.status, "value") else d.status) == "pending")
+    resolved_list = [d for d in ds if (d.status.value if hasattr(d.status, "value") else d.status) == "resolved" and d.resolved_at and d.created_at]
+    resolved = sum(1 for d in ds if (d.status.value if hasattr(d.status, "value") else d.status) == "resolved")
+    avg_min = None
+    if resolved_list:
+        total = sum((d.resolved_at - d.created_at).total_seconds() for d in resolved_list)
+        avg_min = round(total / len(resolved_list) / 60)
+    return {"pending": pending, "resolved": resolved, "total": len(ds), "avg_response_minutes": avg_min}
+
+# ===== TEACHER: PERFORMANCE (aggregates + recent activity + monthly) =====
+@router.get("/performance")
+def teacher_performance(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import TimetableEntry, Material
+    from sqlalchemy import or_
+    tp = get_teacher_profile(current_user, db)
+    subs = tp.subjects or []
+    classes = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(subs),
+        or_(TimetableEntry.status == None, TimetableEntry.status != "pending"),
+        TimetableEntry.entry_type == "chapter").all() if subs else []
+    completed = [c for c in classes if getattr(c, "completed", False)]
+    mats = db.query(Material).filter(Material.subject.in_(subs)).all() if subs else []
+    dpp_count = sum(1 for m in mats if m.material_type == "dpp")
+    notes_count = sum(1 for m in mats if m.material_type in ("notes", "other"))
+    test_count = sum(1 for m in mats if m.material_type == "test")
+    # monthly completed (last 6 months)
+    from collections import OrderedDict
+    today = date.today()
+    months = OrderedDict()
+    for i in range(5, -1, -1):
+        y = today.year; mo = today.month - i
+        while mo <= 0:
+            mo += 12; y -= 1
+        months[f"{y}-{mo:02d}"] = 0
+    for c in completed:
+        if c.completed_at:
+            key = f"{c.completed_at.year}-{c.completed_at.month:02d}"
+            if key in months:
+                months[key] += 1
+    monthly = [{"month": k, "count": v} for k, v in months.items()]
+    # recent activity (completions + uploads)
+    acts = []
+    for c in completed:
+        if c.completed_at:
+            acts.append({"type": "class", "text": f"Completed {c.subject} — {c.topic_covered or c.chapter or ''}", "at": c.completed_at})
+    for m in mats:
+        if m.created_at:
+            acts.append({"type": m.material_type, "text": f"Uploaded {m.material_type.upper()}: {m.title or m.chapter or m.subject}", "at": m.created_at})
+    acts.sort(key=lambda x: x["at"], reverse=True)
+    recent = [{"type": a["type"], "text": a["text"], "at": str(a["at"])[:16]} for a in acts[:12]]
+    return {
+        "classes_assigned": len(classes), "classes_completed": len(completed),
+        "dpp_uploaded": dpp_count, "materials_uploaded": notes_count, "tests_created": test_count,
+        "monthly": monthly, "recent": recent
+    }

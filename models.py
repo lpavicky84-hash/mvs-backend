@@ -333,6 +333,14 @@ class TimetableEntry(Base):
     time_text   = Column(String(40), nullable=True)
     entry_type  = Column(String(20), default="chapter")  # chapter | event
     status      = Column(String(20), default="approved") # approved | pending  (teacher extra-class needs approval)
+    completed       = Column(Boolean, default=False)
+    completed_at    = Column(DateTime, nullable=True)
+    topic_covered   = Column(String(300), nullable=True)
+    start_time      = Column(String(20), nullable=True)
+    end_time        = Column(String(20), nullable=True)
+    homework        = Column(Text, nullable=True)
+    dpp_given       = Column(Boolean, default=False)
+    remarks         = Column(Text, nullable=True)
     created_at  = Column(DateTime, default=func.now())
 
 # =============================================
