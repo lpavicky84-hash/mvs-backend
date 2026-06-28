@@ -69,6 +69,19 @@ def _strip_json(text):
     return text
 
 
+def _split_image(image_b64, fallback_mime="image/jpeg"):
+    """Return (clean_base64, mime). Auto-detects mime from a data URL prefix so we
+    never send PNG/PDF bytes labelled as JPEG (which Gemini rejects)."""
+    if image_b64 and image_b64.startswith("data:") and "," in image_b64:
+        header, b = image_b64.split(",", 1)
+        try:
+            mime = header.split(":", 1)[1].split(";", 1)[0]
+        except Exception:
+            mime = fallback_mime
+        return b.strip(), (mime or fallback_mime)
+    return (image_b64 or "").strip(), fallback_mime
+
+
 def grade_mcq(questions, mcq_answers):
     ans = mcq_answers or {}
     results, total = [], 0.0
@@ -109,9 +122,9 @@ def grade_subjective(questions, image_b64, mime_type="image/jpeg"):
         'Return ONLY valid JSON, no markdown fences, in exactly this shape: '
         '{"results":[{"q_no":1,"marks":3.5,"remark":"..."}],"feedback":"...","verdict":"Good"}'
     )
-    img = image_b64.split(",")[-1] if "," in image_b64 else image_b64
+    img, mime = _split_image(image_b64, mime_type or "image/jpeg")
     out = _gemini_generate([{"text": prompt},
-                            {"inline_data": {"mime_type": mime_type or "image/jpeg", "data": img}}])
+                            {"inline_data": {"mime_type": mime, "data": img}}])
     if not out:
         return None, 0.0, (LAST_ERROR or "api_error"), ""
     try:
@@ -156,9 +169,9 @@ def ocr_extract_question(image_b64, test_type="subjective", mime_type="image/jpe
         extra = "Extract the question text and its answer/solution if present. "
     prompt = ("You are reading a screenshot of an exam question. " + extra + _LANG_NOTE + _FMT_NOTE +
               "Return ONLY valid JSON, no markdown fences: " + schema)
-    img = image_b64.split(",")[-1] if "," in image_b64 else image_b64
+    img, mime = _split_image(image_b64, mime_type or "image/jpeg")
     out = _gemini_generate([{"text": prompt},
-                            {"inline_data": {"mime_type": mime_type or "image/jpeg", "data": img}}])
+                            {"inline_data": {"mime_type": mime, "data": img}}])
     if not out:
         return None
     try:
