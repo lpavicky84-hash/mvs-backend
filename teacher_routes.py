@@ -986,6 +986,7 @@ def create_exam(payload: dict = Body(...), db: Session = Depends(get_db), curren
     ex = Exam(teacher_id=tp.id, teacher_name=current_user.name,
               subject=payload.get("subject", ""), title=payload["title"],
               chapter=payload.get("chapter"), test_type=ttype,
+              medium=payload.get("medium", "English"),
               total_marks=total, duration_min=int(payload.get("duration_min", 60) or 60))
     db.add(ex); db.flush()
     for i, q in enumerate(qs, start=1):
@@ -1066,3 +1067,50 @@ def grade_attempt_now(attempt_id: int, db: Session = Depends(get_db), current_us
     att.overall_feedback = feedback or ("Graded by teacher. \u2014 %s" % teacher)
     db.commit()
     return {"status": "graded", "total_awarded": total, "verdict": verdict}
+
+
+# ===================== AI AUTO-MAGIC ENDPOINTS (Phase 2) =====================
+@router.post("/ocr-question")
+def ocr_question(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    img = payload.get("image_b64") or ""
+    if not img:
+        raise HTTPException(400, "No image provided")
+    res = grading.ocr_extract_question(img, payload.get("test_type", "subjective"),
+                                       payload.get("mime_type", "image/jpeg"))
+    if res is None:
+        raise HTTPException(503, "AI could not read the image. Check GEMINI_API_KEY or try a clearer screenshot.")
+    return res
+
+@router.post("/format-text")
+def format_text(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    out = grading.format_text_latex(payload.get("text", ""))
+    if out is None:
+        raise HTTPException(503, "AI formatting is unavailable. Check GEMINI_API_KEY.")
+    return {"text": out}
+
+@router.post("/parse-exam-docx")
+async def parse_exam_docx(file: UploadFile = File(...), test_type: str = Form("subjective"),
+                          db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    import io
+    try:
+        from docx import Document
+    except Exception:
+        raise HTTPException(503, "Word parsing is not enabled on the server (add python-docx to requirements.txt).")
+    data = await file.read()
+    try:
+        doc = Document(io.BytesIO(data))
+    except Exception:
+        raise HTTPException(400, "Could not open the Word file. Please upload a valid .docx file.")
+    full = "\n".join(p.text for p in doc.paragraphs if p.text and p.text.strip())
+    # also pull text from tables
+    for tb in doc.tables:
+        for row in tb.rows:
+            cells = [c.text.strip() for c in row.cells if c.text and c.text.strip()]
+            if cells:
+                full += "\n" + " | ".join(cells)
+    if not full.strip():
+        raise HTTPException(400, "The Word file appears to be empty.")
+    qs = grading.structure_docx_questions(full, test_type)
+    if qs is None:
+        raise HTTPException(503, "AI could not structure the document. Check GEMINI_API_KEY.")
+    return {"questions": qs, "count": len(qs)}

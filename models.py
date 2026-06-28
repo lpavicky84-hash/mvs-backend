@@ -395,6 +395,7 @@ class Exam(Base):
     title       = Column(String(200))
     chapter     = Column(String(200), nullable=True)
     test_type   = Column(String(20), default="subjective")  # mcq | subjective
+    medium      = Column(String(20), default="English")     # English | Hindi | Bilingual
     total_marks = Column(Integer, default=0)
     duration_min= Column(Integer, default=60)
     is_active   = Column(Boolean, default=True)

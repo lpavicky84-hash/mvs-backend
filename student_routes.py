@@ -696,7 +696,7 @@ def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=D
                   "options": q.options if ex.test_type == "mcq" else None,
                   "image_b64": q.image_b64} for q in qs]
     return {"id": ex.id, "title": ex.title, "subject": ex.subject, "chapter": ex.chapter,
-            "test_type": ex.test_type, "duration_min": ex.duration_min, "total_marks": ex.total_marks,
+            "test_type": ex.test_type, "medium": ex.medium, "duration_min": ex.duration_min, "total_marks": ex.total_marks,
             "teacher_name": ex.teacher_name, "questions": questions,
             "already_submitted": bool(att and att.status == "graded")}
 
