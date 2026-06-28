@@ -8,7 +8,7 @@ No external pip deps (uses urllib). Needs env var GEMINI_API_KEY on the server.
 NOTE: Gemini 2.0 Flash was shut down on 2026-06-01 (returns 404). Default model is
 now gemini-3.5-flash (GA) with a fallback chain so grading keeps working.
 """
-import os, json, urllib.request, urllib.error
+import os, json, time, urllib.request, urllib.error
 
 GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
 
@@ -25,8 +25,14 @@ def _gemini_url(model):
     return "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent" % model
 
 
+# HTTP codes worth retrying (transient: overload / rate-limit / server hiccup).
+_RETRY_CODES = (429, 500, 502, 503)
+_MAX_TRIES = 3
+
+
 def _gemini_generate(parts):
-    """Try each model in GEMINI_MODELS until one responds. Returns text or None.
+    """Try each model in GEMINI_MODELS until one responds, retrying transient
+    errors (high demand / rate limit) with backoff. Returns text or None.
     Records the failure reason in grading.LAST_ERROR."""
     global LAST_ERROR
     if not GEMINI_KEY:
@@ -37,24 +43,31 @@ def _gemini_generate(parts):
     data = json.dumps(body).encode("utf-8")
     last = ""
     for model in GEMINI_MODELS:
-        try:
-            req = urllib.request.Request(
-                _gemini_url(model) + "?key=" + GEMINI_KEY,
-                data=data, headers={"Content-Type": "application/json"}, method="POST")
-            with urllib.request.urlopen(req, timeout=90) as r:
-                resp = json.loads(r.read().decode("utf-8"))
-            LAST_ERROR = ""
-            return resp["candidates"][0]["content"]["parts"][0]["text"].strip()
-        except urllib.error.HTTPError as e:
+        for attempt in range(_MAX_TRIES):
             try:
-                detail = e.read().decode("utf-8")[:200]
-            except Exception:
-                detail = "HTTP %s" % e.code
-            last = "%s -> %s" % (model, detail)
-            continue
-        except Exception as e:
-            last = "%s -> %s" % (model, e)
-            continue
+                req = urllib.request.Request(
+                    _gemini_url(model) + "?key=" + GEMINI_KEY,
+                    data=data, headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(req, timeout=90) as r:
+                    resp = json.loads(r.read().decode("utf-8"))
+                LAST_ERROR = ""
+                return resp["candidates"][0]["content"]["parts"][0]["text"].strip()
+            except urllib.error.HTTPError as e:
+                try:
+                    detail = e.read().decode("utf-8")[:200]
+                except Exception:
+                    detail = "HTTP %s" % e.code
+                last = "%s -> %s" % (model, detail)
+                if e.code in _RETRY_CODES and attempt < _MAX_TRIES - 1:
+                    time.sleep(1.5 * (attempt + 1))   # 1.5s, 3s backoff
+                    continue
+                break  # non-retryable or out of tries -> next model
+            except Exception as e:
+                last = "%s -> %s" % (model, e)
+                if attempt < _MAX_TRIES - 1:
+                    time.sleep(1.0)
+                    continue
+                break
     LAST_ERROR = last or "All Gemini models failed"
     return None
 
