@@ -1038,6 +1038,25 @@ def _exam_verdict_t(aw, tot):
     p = aw / tot * 100
     return "Excellent" if p >= 80 else ("Good" if p >= 50 else "Needs Improvement")
 
+def _notify_exam_result_t(db, att, ex):
+    """Notify the student that their test result is ready."""
+    try:
+        from models import StudentProfile
+        sp = db.query(StudentProfile).filter(StudentProfile.id == att.student_id).first()
+        if sp and sp.user_id:
+            try:
+                sc = "%g" % float(att.total_awarded)
+            except Exception:
+                sc = str(att.total_awarded)
+            db.add(Notification(
+                user_id=sp.user_id,
+                title="Result ready: %s" % (ex.title or "Test"),
+                message="Your test has been checked. You scored %s/%s. Tap to view your result and download your answer sheet." % (sc, ex.total_marks),
+                notif_type="exam_result"))
+    except Exception:
+        pass
+
+
 @router.post("/attempt/{attempt_id}/grade")
 def grade_attempt_now(attempt_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
@@ -1068,6 +1087,7 @@ def grade_attempt_now(attempt_id: int, db: Session = Depends(get_db), current_us
     att.graded_at = datetime.utcnow()
     att.verdict = verdict
     att.overall_feedback = feedback or ("Graded by teacher. \u2014 %s" % teacher)
+    _notify_exam_result_t(db, att, ex)
     db.commit()
     return {"status": "graded", "total_awarded": total, "verdict": verdict}
 
@@ -1166,6 +1186,7 @@ def grade_attempt_manual(attempt_id: int, payload: dict = Body(...), db: Session
     att.verdict = payload.get("verdict") or _exam_verdict_t(total, ex.total_marks)
     fb = payload.get("feedback") or ""
     att.overall_feedback = fb if fb else ("Checked by %s." % (ex.teacher_name or "your teacher"))
+    _notify_exam_result_t(db, att, ex)
     db.commit()
     return {"status": "graded", "total_awarded": total, "verdict": att.verdict}
 

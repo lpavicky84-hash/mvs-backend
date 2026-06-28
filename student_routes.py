@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, BackgroundTasks, Response
+import base64
 from sqlalchemy.orm import Session
 from datetime import datetime, date, timedelta
 from typing import List, Optional
@@ -665,6 +666,63 @@ def _exam_verdict_line(verdict, teacher):
 def _exam_thankyou(teacher):
     return "Thank you for submitting your test. Your answers have been received. \u2014 %s" % teacher
 
+
+def _fmt_marks(v):
+    try:
+        return ("%g" % float(v))
+    except Exception:
+        return str(v)
+
+
+def _notify_exam_result(db, att, ex):
+    """Create a student notification when a test result becomes available."""
+    try:
+        sp = db.query(StudentProfile).filter(StudentProfile.id == att.student_id).first()
+        if sp and sp.user_id:
+            db.add(Notification(
+                user_id=sp.user_id,
+                title="Result ready: %s" % (ex.title or "Test"),
+                message="Your test has been checked. You scored %s/%s. Tap to view your result and download your answer sheet."
+                        % (_fmt_marks(att.total_awarded), ex.total_marks),
+                notif_type="exam_result"))
+    except Exception:
+        pass
+
+
+def _bg_grade_attempt(attempt_id, mime_type="image/jpeg"):
+    """Runs AFTER the response is sent (FastAPI BackgroundTasks) so the upload stays
+    fast. Grades the handwritten sheet, saves marks, and notifies the student."""
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        att = db.query(ExamAttempt).filter(ExamAttempt.id == attempt_id).first()
+        if not att or att.status == "graded":
+            return
+        ex = db.query(Exam).filter(Exam.id == att.exam_id).first()
+        if not ex:
+            return
+        qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == ex.id).order_by(ExamQuestion.q_no).all()
+        results, total, feedback, verdict = grading.grade_subjective(qs, att.answer_image_b64 or "", mime_type)
+        if results is None:
+            # Could not grade (e.g. AI busy) - leave as 'grading'; teacher can grade/retry.
+            return
+        teacher = ex.teacher_name or "your teacher"
+        db.query(ExamResult).filter(ExamResult.attempt_id == att.id).delete()
+        for r in results:
+            db.add(ExamResult(attempt_id=att.id, q_no=r["q_no"], marks_awarded=r["marks"],
+                              max_marks=r["max"], remark=r.get("remark", "")))
+        att.total_awarded = total
+        att.status = "graded"
+        att.graded_at = datetime.utcnow()
+        att.verdict = verdict or _exam_verdict(total, ex.total_marks)
+        att.overall_feedback = feedback or _exam_verdict_line(att.verdict, teacher)
+        _notify_exam_result(db, att, ex)
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
 @router.get("/exams")
 def student_exams(db: Session = Depends(get_db), current_user=Depends(get_student)):
     sp = get_student_profile(current_user, db)
@@ -701,7 +759,7 @@ def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=D
             "already_submitted": bool(att and att.status == "graded")}
 
 @router.post("/exam/{exam_id}/submit")
-def student_submit_exam(exam_id: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_student)):
+def student_submit_exam(exam_id: int, payload: dict = Body(...), background_tasks: BackgroundTasks = None, db: Session = Depends(get_db), current_user=Depends(get_student)):
     sp = get_student_profile(current_user, db)
     ex = db.query(Exam).filter(Exam.id == exam_id, Exam.is_active == True).first()
     if not ex:
@@ -721,25 +779,20 @@ def student_submit_exam(exam_id: int, payload: dict = Body(...), db: Session = D
         att.total_awarded = total; att.status = "graded"; att.graded_at = datetime.utcnow()
         att.verdict = _exam_verdict(total, ex.total_marks)
         att.overall_feedback = _exam_verdict_line(att.verdict, teacher)
+        _notify_exam_result(db, att, ex)
         db.commit()
         return {"status": "graded", "message": _exam_thankyou(teacher), "teacher_name": teacher}
-    # subjective: handwritten image -> AI vision grading
+    # subjective: store the sheet fast, then grade in the background (snappy upload)
     img = payload.get("answer_image_b64") or ""
     if not img:
         raise HTTPException(400, "Please upload your handwritten answer sheet")
     att.answer_image_b64 = img
-    results, total, feedback, verdict = grading.grade_subjective(qs, img, payload.get("mime_type", "image/jpeg"))
-    if results is None:
-        att.status = "grading"
-        db.commit()
-        return {"status": "grading", "message": _exam_thankyou(teacher), "teacher_name": teacher,
-                "note": "Your answers are being checked. Marks will appear on the portal within 1 hour."}
-    _exam_save_results(db, att, results)
-    att.total_awarded = total; att.status = "graded"; att.graded_at = datetime.utcnow()
-    att.verdict = verdict or _exam_verdict(total, ex.total_marks)
-    att.overall_feedback = feedback or _exam_verdict_line(att.verdict, teacher)
+    att.status = "grading"
     db.commit()
-    return {"status": "graded", "message": _exam_thankyou(teacher), "teacher_name": teacher}
+    if background_tasks is not None:
+        background_tasks.add_task(_bg_grade_attempt, att.id, payload.get("mime_type", "image/jpeg"))
+    return {"status": "grading", "message": _exam_thankyou(teacher), "teacher_name": teacher,
+            "note": "Your answer sheet has been received and is being checked. Your marks will appear here, and you will get a notification, within 1 hour."}
 
 @router.get("/exam/{exam_id}/result")
 def student_exam_result(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
@@ -757,4 +810,29 @@ def student_exam_result(exam_id: int, db: Session = Depends(get_db), current_use
     return {"status": att.status, "title": ex.title, "teacher_name": ex.teacher_name,
             "total_awarded": att.total_awarded, "total_marks": ex.total_marks,
             "verdict": att.verdict, "feedback": att.overall_feedback,
-            "test_type": ex.test_type, "results": items}
+            "test_type": ex.test_type, "results": items,
+            "has_answer": bool(att.answer_image_b64)}
+
+
+@router.get("/exam/{exam_id}/answer")
+def student_answer_sheet(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Download the student's own uploaded handwritten answer sheet."""
+    sp = get_student_profile(current_user, db)
+    att = db.query(ExamAttempt).filter(
+        ExamAttempt.exam_id == exam_id, ExamAttempt.student_id == sp.id
+    ).order_by(ExamAttempt.submitted_at.desc()).first()
+    if not att or not att.answer_image_b64:
+        raise HTTPException(404, "No answer sheet found")
+    raw = att.answer_image_b64
+    mime = "image/jpeg"
+    if "," in raw and raw.startswith("data:"):
+        header, raw = raw.split(",", 1)
+        try:
+            mime = header.split(":", 1)[1].split(";", 1)[0] or "image/jpeg"
+        except Exception:
+            mime = "image/jpeg"
+    try:
+        data = base64.b64decode(raw)
+    except Exception:
+        raise HTTPException(400, "Could not read the answer sheet")
+    return Response(content=data, media_type=mime)
