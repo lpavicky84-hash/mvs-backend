@@ -48,6 +48,8 @@ def ensure_columns():
         "ALTER TABLE materials ADD COLUMN approval_status VARCHAR(20) DEFAULT 'approved'",
         "ALTER TABLE student_profiles ADD COLUMN last_seen DATETIME",
         "ALTER TABLE student_profiles ADD COLUMN session_start DATETIME",
+        "ALTER TABLE exam_questions ADD COLUMN image_b64 LONGTEXT",
+        "ALTER TABLE exam_questions MODIFY COLUMN correct_option VARCHAR(255)",
     ]
     for s in stmts:
         try:

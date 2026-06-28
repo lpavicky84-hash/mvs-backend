@@ -409,7 +409,8 @@ class ExamQuestion(Base):
     max_marks   = Column(Integer, default=1)
     model_answer= Column(Text, nullable=True)      # for subjective AI grading
     options     = Column(JSON, nullable=True)      # for mcq: ["A","B","C","D"]
-    correct_option = Column(String(10), nullable=True)  # for mcq: index/text
+    correct_option = Column(String(255), nullable=True)  # for mcq: correct option text
+    image_b64   = Column(_BIGTEXT, nullable=True)  # optional figure attached to the question
 
 class ExamAttempt(Base):
     __tablename__ = "exam_attempts"

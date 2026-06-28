@@ -6,6 +6,7 @@ from typing import List, Optional
 
 from database import get_db
 from security import get_teacher, get_current_user
+import grading
 from models import (
     User, TeacherProfile, ClassEntry, ClassStatus,
     RescheduleRequest, RescheduleStatus, DPP, Test, Doubt,
@@ -994,7 +995,8 @@ def create_exam(payload: dict = Body(...), db: Session = Depends(get_db), curren
                max_marks=int(q.get("max_marks", 1) or 1),
                model_answer=q.get("model_answer"),
                options=q.get("options") if ttype == "mcq" else None,
-               correct_option=(str(co) if co not in (None, "") else None)))
+               correct_option=(str(co) if co not in (None, "") else None),
+               image_b64=q.get("image_b64")))
     db.commit()
     return {"id": ex.id, "total_marks": total, "questions": len(qs), "test_type": ttype}
 
@@ -1024,3 +1026,43 @@ def exam_attempts(exam_id: int, db: Session = Depends(get_db), current_user=Depe
             "status": a.status, "total_awarded": a.total_awarded, "verdict": a.verdict,
             "submitted_at": a.submitted_at.isoformat() if a.submitted_at else None} for a in atts]
     return {"exam": {"id": ex.id, "title": ex.title, "total_marks": ex.total_marks}, "attempts": out}
+
+
+def _exam_verdict_t(aw, tot):
+    if not tot:
+        return "Good"
+    p = aw / tot * 100
+    return "Excellent" if p >= 80 else ("Good" if p >= 50 else "Needs Improvement")
+
+@router.post("/attempt/{attempt_id}/grade")
+def grade_attempt_now(attempt_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    att = db.query(ExamAttempt).filter(ExamAttempt.id == attempt_id).first()
+    if not att:
+        raise HTTPException(404, "Attempt not found")
+    ex = db.query(Exam).filter(Exam.id == att.exam_id, Exam.teacher_id == tp.id).first()
+    if not ex:
+        raise HTTPException(403, "Not your test")
+    if att.status == "graded":
+        return {"status": "graded", "message": "Already graded"}
+    qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == ex.id).order_by(ExamQuestion.q_no).all()
+    teacher = ex.teacher_name or "your teacher"
+    if ex.test_type == "mcq":
+        results, total = grading.grade_mcq(qs, att.mcq_answers or {})
+        feedback, verdict = "", _exam_verdict_t(total, ex.total_marks)
+    else:
+        results, total, feedback, verdict = grading.grade_subjective(qs, att.answer_image_b64 or "", "image/jpeg")
+        if results is None:
+            raise HTTPException(400, "AI grading is unavailable right now. Please set GEMINI_API_KEY and try again.")
+        verdict = verdict or _exam_verdict_t(total, ex.total_marks)
+    db.query(ExamResult).filter(ExamResult.attempt_id == att.id).delete()
+    for r in results:
+        db.add(ExamResult(attempt_id=att.id, q_no=r["q_no"], marks_awarded=r["marks"],
+               max_marks=r["max"], remark=r.get("remark", "")))
+    att.total_awarded = total
+    att.status = "graded"
+    att.graded_at = datetime.utcnow()
+    att.verdict = verdict
+    att.overall_feedback = feedback or ("Graded by teacher. \u2014 %s" % teacher)
+    db.commit()
+    return {"status": "graded", "total_awarded": total, "verdict": verdict}

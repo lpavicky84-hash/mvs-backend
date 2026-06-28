@@ -693,7 +693,8 @@ def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=D
     att = db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id, ExamAttempt.student_id == sp.id).first()
     qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).order_by(ExamQuestion.q_no).all()
     questions = [{"q_no": q.q_no, "question_text": q.question_text, "max_marks": q.max_marks,
-                  "options": q.options if ex.test_type == "mcq" else None} for q in qs]
+                  "options": q.options if ex.test_type == "mcq" else None,
+                  "image_b64": q.image_b64} for q in qs]
     return {"id": ex.id, "title": ex.title, "subject": ex.subject, "chapter": ex.chapter,
             "test_type": ex.test_type, "duration_min": ex.duration_min, "total_marks": ex.total_marks,
             "teacher_name": ex.teacher_name, "questions": questions,
