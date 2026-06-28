@@ -1,21 +1,75 @@
 """
-Auto-grading engine for the Exam/Test feature.
+Auto-grading + AI helpers for the Exam/Test feature.
  - MCQ:        instant, compares selected option to correct_option.
- - Subjective: reads the student's HANDWRITTEN uploaded image with Gemini Vision,
-               grades each question against the model answer, returns per-question
-               marks + remark and an overall feedback + verdict.
+ - Subjective: reads the student's HANDWRITTEN uploaded image with Gemini Vision.
+ - Also: screenshot OCR, paste auto-format, Word-doc structuring.
 No external pip deps (uses urllib). Needs env var GEMINI_API_KEY on the server.
-"""
-import os, json, urllib.request
 
-GEMINI_KEY   = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
-GEMINI_URL   = "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent" % GEMINI_MODEL
+NOTE: Gemini 2.0 Flash was shut down on 2026-06-01 (returns 404). Default model is
+now gemini-3.5-flash (GA) with a fallback chain so grading keeps working.
+"""
+import os, json, urllib.request, urllib.error
+
+GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
+
+_DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+GEMINI_MODELS = []
+for _m in [_DEFAULT_MODEL, "gemini-3.5-flash", "gemini-2.5-flash", "gemini-flash-latest"]:
+    if _m and _m not in GEMINI_MODELS:
+        GEMINI_MODELS.append(_m)
+
+LAST_ERROR = ""
+
+
+def _gemini_url(model):
+    return "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent" % model
+
+
+def _gemini_generate(parts):
+    """Try each model in GEMINI_MODELS until one responds. Returns text or None.
+    Records the failure reason in grading.LAST_ERROR."""
+    global LAST_ERROR
+    if not GEMINI_KEY:
+        LAST_ERROR = "GEMINI_API_KEY is not set on the server"
+        return None
+    body = {"contents": [{"parts": parts}],
+            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 4096}}
+    data = json.dumps(body).encode("utf-8")
+    last = ""
+    for model in GEMINI_MODELS:
+        try:
+            req = urllib.request.Request(
+                _gemini_url(model) + "?key=" + GEMINI_KEY,
+                data=data, headers={"Content-Type": "application/json"}, method="POST")
+            with urllib.request.urlopen(req, timeout=90) as r:
+                resp = json.loads(r.read().decode("utf-8"))
+            LAST_ERROR = ""
+            return resp["candidates"][0]["content"]["parts"][0]["text"].strip()
+        except urllib.error.HTTPError as e:
+            try:
+                detail = e.read().decode("utf-8")[:200]
+            except Exception:
+                detail = "HTTP %s" % e.code
+            last = "%s -> %s" % (model, detail)
+            continue
+        except Exception as e:
+            last = "%s -> %s" % (model, e)
+            continue
+    LAST_ERROR = last or "All Gemini models failed"
+    return None
+
+
+def _strip_json(text):
+    text = (text or "").strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        if text[:4].lower() == "json":
+            text = text[4:]
+        text = text.strip()
+    return text
 
 
 def grade_mcq(questions, mcq_answers):
-    """questions: [ExamQuestion]; mcq_answers: {str(q_no): selected_option}.
-    Returns (results:list, total:float)."""
     ans = mcq_answers or {}
     results, total = [], 0.0
     for q in questions:
@@ -32,14 +86,10 @@ def grade_mcq(questions, mcq_answers):
 
 
 def grade_subjective(questions, image_b64, mime_type="image/jpeg"):
-    """Read the handwritten answer image with Gemini Vision and grade question-wise.
-    Returns (results:list, total:float, feedback:str, verdict:str) on success,
-    or (None, 0.0, reason:str, "") if grading could not run (no key / API error)."""
     if not GEMINI_KEY:
-        return None, 0.0, "no_api_key", ""
+        return None, 0.0, "GEMINI_API_KEY is not set", ""
     if not image_b64:
         return None, 0.0, "no_image", ""
-
     qlist = "\n".join(
         "Q%d (max %d marks): %s\nModel answer: %s"
         % (q.q_no, q.max_marks, q.question_text or "", (q.model_answer or "N/A"))
@@ -51,6 +101,8 @@ def grade_subjective(questions, image_b64, mime_type="image/jpeg"):
         "the correct question number, and grade it against the model answer.\n"
         "For EACH question: award marks from 0 to its max (half marks allowed) and write a "
         "short remark (what was correct, what was missing or wrong). Be encouraging.\n"
+        "The answers may be in Hindi (Devanagari), English, or a mix - grade in whichever "
+        "language the student used; do not penalise the language choice.\n"
         "After all questions, write overall 'feedback' (2 short sentences addressed to the "
         "student) and a 'verdict' that is exactly one of: Excellent, Good, Needs Improvement.\n\n"
         "QUESTIONS:\n" + qlist + "\n\n"
@@ -58,31 +110,14 @@ def grade_subjective(questions, image_b64, mime_type="image/jpeg"):
         '{"results":[{"q_no":1,"marks":3.5,"remark":"..."}],"feedback":"...","verdict":"Good"}'
     )
     img = image_b64.split(",")[-1] if "," in image_b64 else image_b64
-    body = {
-        "contents": [{"parts": [
-            {"text": prompt},
-            {"inline_data": {"mime_type": mime_type or "image/jpeg", "data": img}},
-        ]}],
-        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2048},
-    }
+    out = _gemini_generate([{"text": prompt},
+                            {"inline_data": {"mime_type": mime_type or "image/jpeg", "data": img}}])
+    if not out:
+        return None, 0.0, (LAST_ERROR or "api_error"), ""
     try:
-        req = urllib.request.Request(
-            GEMINI_URL + "?key=" + GEMINI_KEY,
-            data=json.dumps(body).encode("utf-8"),
-            headers={"Content-Type": "application/json"}, method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=90) as r:
-            resp = json.loads(r.read().decode("utf-8"))
-        text = resp["candidates"][0]["content"]["parts"][0]["text"].strip()
-        if text.startswith("```"):
-            text = text.strip("`")
-            if text[:4].lower() == "json":
-                text = text[4:]
-            text = text.strip()
-        data = json.loads(text)
-    except Exception as e:
-        return None, 0.0, "api_error:%s" % e, ""
-
+        data = json.loads(_strip_json(out))
+    except Exception:
+        return None, 0.0, "Could not parse AI response", ""
     rmap = {}
     for x in data.get("results", []):
         try:
@@ -103,35 +138,6 @@ def grade_subjective(questions, image_b64, mime_type="image/jpeg"):
     return results, total, data.get("feedback", ""), (data.get("verdict", "") or "")
 
 
-# ===================== AI AUTO-MAGIC (Phase 2) =====================
-def _gemini_generate(parts):
-    """Low-level Gemini call. parts: list of {"text":..} / {"inline_data":..}. Returns text or None."""
-    if not GEMINI_KEY:
-        return None
-    body = {"contents": [{"parts": parts}],
-            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 4096}}
-    try:
-        req = urllib.request.Request(
-            GEMINI_URL + "?key=" + GEMINI_KEY,
-            data=json.dumps(body).encode("utf-8"),
-            headers={"Content-Type": "application/json"}, method="POST")
-        with urllib.request.urlopen(req, timeout=90) as r:
-            resp = json.loads(r.read().decode("utf-8"))
-        return resp["candidates"][0]["content"]["parts"][0]["text"].strip()
-    except Exception:
-        return None
-
-
-def _strip_json(text):
-    text = (text or "").strip()
-    if text.startswith("```"):
-        text = text.strip("`")
-        if text[:4].lower() == "json":
-            text = text[4:]
-        text = text.strip()
-    return text
-
-
 _LANG_NOTE = ("Preserve the original language EXACTLY (it may be Hindi in Devanagari, English, "
               "or a mix of both) - do NOT translate or change the medium. ")
 _FMT_NOTE = ("Convert any mathematics to LaTeX wrapped in $...$ and any chemistry formula or reaction "
@@ -139,7 +145,6 @@ _FMT_NOTE = ("Convert any mathematics to LaTeX wrapped in $...$ and any chemistr
 
 
 def ocr_extract_question(image_b64, test_type="subjective", mime_type="image/jpeg"):
-    """Read a screenshot of a question and return a dict (question, options/answer)."""
     if not GEMINI_KEY or not image_b64:
         return None
     if test_type == "mcq":
@@ -163,7 +168,6 @@ def ocr_extract_question(image_b64, test_type="subjective", mime_type="image/jpe
 
 
 def format_text_latex(text):
-    """Add LaTeX/chemistry formatting to pasted text. Preserves language/wording."""
     if not GEMINI_KEY or not (text or "").strip():
         return None
     prompt = ("Reformat the following exam text for clean display. " + _FMT_NOTE + _LANG_NOTE +
@@ -173,7 +177,6 @@ def format_text_latex(text):
 
 
 def structure_docx_questions(full_text, test_type="subjective"):
-    """Turn raw Word-document text into a list of structured questions."""
     if not GEMINI_KEY or not (full_text or "").strip():
         return None
     if test_type == "mcq":

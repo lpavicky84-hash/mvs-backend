@@ -1057,7 +1057,7 @@ def grade_attempt_now(attempt_id: int, db: Session = Depends(get_db), current_us
     else:
         results, total, feedback, verdict = grading.grade_subjective(qs, att.answer_image_b64 or "", "image/jpeg")
         if results is None:
-            raise HTTPException(400, "AI grading is unavailable right now. Please set GEMINI_API_KEY and try again.")
+            raise HTTPException(400, "AI grading failed: " + (feedback or "unknown error") + " -- you can use Grade Manually instead.")
         verdict = verdict or _exam_verdict_t(total, ex.total_marks)
     db.query(ExamResult).filter(ExamResult.attempt_id == att.id).delete()
     for r in results:
@@ -1168,3 +1168,8 @@ def grade_attempt_manual(attempt_id: int, payload: dict = Body(...), db: Session
     att.overall_feedback = fb if fb else ("Checked by %s." % (ex.teacher_name or "your teacher"))
     db.commit()
     return {"status": "graded", "total_awarded": total, "verdict": att.verdict}
+
+
+@router.get("/ai-status")
+def ai_status(current_user=Depends(get_teacher)):
+    return grading.ai_status()
