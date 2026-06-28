@@ -1026,7 +1026,10 @@ def exam_attempts(exam_id: int, db: Session = Depends(get_db), current_user=Depe
     out = [{"attempt_id": a.id, "student_id": a.student_id, "student_name": a.student_name,
             "status": a.status, "total_awarded": a.total_awarded, "verdict": a.verdict,
             "submitted_at": a.submitted_at.isoformat() if a.submitted_at else None} for a in atts]
-    return {"exam": {"id": ex.id, "title": ex.title, "total_marks": ex.total_marks}, "attempts": out}
+    qrows = db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).order_by(ExamQuestion.q_no).all()
+    questions = [{"q_no": q.q_no, "question_text": q.question_text, "max_marks": q.max_marks} for q in qrows]
+    return {"exam": {"id": ex.id, "title": ex.title, "total_marks": ex.total_marks, "test_type": ex.test_type},
+            "questions": questions, "attempts": out}
 
 
 def _exam_verdict_t(aw, tot):
@@ -1114,3 +1117,54 @@ async def parse_exam_docx(file: UploadFile = File(...), test_type: str = Form("s
     if qs is None:
         raise HTTPException(503, "AI could not structure the document. Check GEMINI_API_KEY.")
     return {"questions": qs, "count": len(qs)}
+
+
+@router.get("/attempt/{attempt_id}/answer")
+def attempt_answer_image(attempt_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from fastapi import Response
+    tp = get_teacher_profile(current_user, db)
+    att = db.query(ExamAttempt).filter(ExamAttempt.id == attempt_id).first()
+    if not att:
+        raise HTTPException(404, "Attempt not found")
+    ex = db.query(Exam).filter(Exam.id == att.exam_id, Exam.teacher_id == tp.id).first()
+    if not ex:
+        raise HTTPException(403, "Not your test")
+    if not att.answer_image_b64:
+        raise HTTPException(404, "No answer sheet uploaded")
+    raw = att.answer_image_b64.split(",")[-1]
+    return Response(content=base64.b64decode(raw), media_type="image/jpeg")
+
+@router.post("/attempt/{attempt_id}/grade-manual")
+def grade_attempt_manual(attempt_id: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    att = db.query(ExamAttempt).filter(ExamAttempt.id == attempt_id).first()
+    if not att:
+        raise HTTPException(404, "Attempt not found")
+    ex = db.query(Exam).filter(Exam.id == att.exam_id, Exam.teacher_id == tp.id).first()
+    if not ex:
+        raise HTTPException(403, "Not your test")
+    qmap = {q.q_no: q for q in db.query(ExamQuestion).filter(ExamQuestion.exam_id == ex.id).all()}
+    results = payload.get("results") or []
+    db.query(ExamResult).filter(ExamResult.attempt_id == att.id).delete()
+    total = 0.0
+    for r in results:
+        try:
+            qn = int(r.get("q_no"))
+        except Exception:
+            continue
+        mx = qmap[qn].max_marks if qn in qmap else int(r.get("max", 1) or 1)
+        try:
+            mk = float(r.get("marks", 0) or 0)
+        except Exception:
+            mk = 0.0
+        mk = max(0.0, min(mk, float(mx)))
+        total += mk
+        db.add(ExamResult(attempt_id=att.id, q_no=qn, marks_awarded=mk, max_marks=mx, remark=r.get("remark", "")))
+    att.total_awarded = total
+    att.status = "graded"
+    att.graded_at = datetime.utcnow()
+    att.verdict = payload.get("verdict") or _exam_verdict_t(total, ex.total_marks)
+    fb = payload.get("feedback") or ""
+    att.overall_feedback = fb if fb else ("Checked by %s." % (ex.teacher_name or "your teacher"))
+    db.commit()
+    return {"status": "graded", "total_awarded": total, "verdict": att.verdict}
