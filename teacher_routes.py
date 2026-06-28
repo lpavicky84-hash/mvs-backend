@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract
 from datetime import datetime, date, timedelta
@@ -9,7 +9,8 @@ from security import get_teacher, get_current_user
 from models import (
     User, TeacherProfile, ClassEntry, ClassStatus,
     RescheduleRequest, RescheduleStatus, DPP, Test, Doubt,
-    DoubtStatus, Timetable, Notification, TestStatus
+    DoubtStatus, Timetable, Notification, TestStatus,
+    Exam, ExamQuestion, ExamAttempt, ExamResult
 )
 from schemas import (
     ClassEntryCreate, ClassEntryUpdate, ClassEntryOut,
@@ -970,3 +971,56 @@ def teacher_student_engagement(db: Session = Depends(get_db), current_user=Depen
         })
     out.sort(key=lambda x: (x["material_downloads"] + x["dpp_completed"] + x["tests_completed"]), reverse=True)
     return out
+
+
+# ===================== EXAM / TEST ENGINE (teacher) =====================
+@router.post("/exam")
+def create_exam(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    qs = payload.get("questions") or []
+    if not payload.get("title") or not qs:
+        raise HTTPException(400, "Title and at least one question are required")
+    ttype = payload.get("test_type", "subjective")
+    total = sum(int(q.get("max_marks", 1) or 1) for q in qs)
+    ex = Exam(teacher_id=tp.id, teacher_name=current_user.name,
+              subject=payload.get("subject", ""), title=payload["title"],
+              chapter=payload.get("chapter"), test_type=ttype,
+              total_marks=total, duration_min=int(payload.get("duration_min", 60) or 60))
+    db.add(ex); db.flush()
+    for i, q in enumerate(qs, start=1):
+        co = q.get("correct_option")
+        db.add(ExamQuestion(exam_id=ex.id, q_no=i,
+               question_text=q.get("question_text", ""),
+               max_marks=int(q.get("max_marks", 1) or 1),
+               model_answer=q.get("model_answer"),
+               options=q.get("options") if ttype == "mcq" else None,
+               correct_option=(str(co) if co not in (None, "") else None)))
+    db.commit()
+    return {"id": ex.id, "total_marks": total, "questions": len(qs), "test_type": ttype}
+
+@router.get("/exams")
+def list_exams(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    rows = db.query(Exam).filter(Exam.teacher_id == tp.id, Exam.is_active == True).order_by(Exam.created_at.desc()).all()
+    out = []
+    for e in rows:
+        nq = db.query(ExamQuestion).filter(ExamQuestion.exam_id == e.id).count()
+        na = db.query(ExamAttempt).filter(ExamAttempt.exam_id == e.id).count()
+        ng = db.query(ExamAttempt).filter(ExamAttempt.exam_id == e.id, ExamAttempt.status == "graded").count()
+        out.append({"id": e.id, "title": e.title, "subject": e.subject, "chapter": e.chapter,
+                    "test_type": e.test_type, "total_marks": e.total_marks, "duration_min": e.duration_min,
+                    "questions": nq, "attempts": na, "graded": ng,
+                    "created_at": e.created_at.isoformat() if e.created_at else None})
+    return out
+
+@router.get("/exam/{exam_id}/attempts")
+def exam_attempts(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    ex = db.query(Exam).filter(Exam.id == exam_id, Exam.teacher_id == tp.id).first()
+    if not ex:
+        raise HTTPException(404, "Exam not found")
+    atts = db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id).order_by(ExamAttempt.submitted_at.desc()).all()
+    out = [{"attempt_id": a.id, "student_id": a.student_id, "student_name": a.student_name,
+            "status": a.status, "total_awarded": a.total_awarded, "verdict": a.verdict,
+            "submitted_at": a.submitted_at.isoformat() if a.submitted_at else None} for a in atts]
+    return {"exam": {"id": ex.id, "title": ex.title, "total_marks": ex.total_marks}, "attempts": out}

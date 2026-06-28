@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Text, Boolean, DateTime,
-    ForeignKey, Enum, Date, Time, JSON
+    ForeignKey, Enum, Date, Time, JSON, Float
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -385,3 +385,52 @@ class MaterialView(Base):
     student_id  = Column(Integer, index=True)
     action      = Column(String(12))   # view | download
     created_at  = Column(DateTime, default=func.now())
+
+class Exam(Base):
+    __tablename__ = "exams"
+    id          = Column(Integer, primary_key=True)
+    teacher_id  = Column(Integer, index=True)
+    teacher_name= Column(String(120))
+    subject     = Column(String(120))
+    title       = Column(String(200))
+    chapter     = Column(String(200), nullable=True)
+    test_type   = Column(String(20), default="subjective")  # mcq | subjective
+    total_marks = Column(Integer, default=0)
+    duration_min= Column(Integer, default=60)
+    is_active   = Column(Boolean, default=True)
+    created_at  = Column(DateTime, default=func.now())
+
+class ExamQuestion(Base):
+    __tablename__ = "exam_questions"
+    id          = Column(Integer, primary_key=True)
+    exam_id     = Column(Integer, index=True)
+    q_no        = Column(Integer)
+    question_text = Column(Text)
+    max_marks   = Column(Integer, default=1)
+    model_answer= Column(Text, nullable=True)      # for subjective AI grading
+    options     = Column(JSON, nullable=True)      # for mcq: ["A","B","C","D"]
+    correct_option = Column(String(10), nullable=True)  # for mcq: index/text
+
+class ExamAttempt(Base):
+    __tablename__ = "exam_attempts"
+    id          = Column(Integer, primary_key=True)
+    exam_id     = Column(Integer, index=True)
+    student_id  = Column(Integer, index=True)
+    student_name= Column(String(120), nullable=True)
+    status      = Column(String(20), default="pending")  # pending | grading | graded
+    answer_image_b64 = Column(_BIGTEXT, nullable=True)   # handwritten upload
+    mcq_answers = Column(JSON, nullable=True)            # {q_no: selected}
+    total_awarded = Column(Float, default=0)
+    overall_feedback = Column(Text, nullable=True)
+    verdict     = Column(String(40), nullable=True)
+    submitted_at= Column(DateTime, default=func.now())
+    graded_at   = Column(DateTime, nullable=True)
+
+class ExamResult(Base):
+    __tablename__ = "exam_results"
+    id          = Column(Integer, primary_key=True)
+    attempt_id  = Column(Integer, index=True)
+    q_no        = Column(Integer)
+    marks_awarded = Column(Float, default=0)
+    max_marks   = Column(Integer, default=1)
+    remark      = Column(Text, nullable=True)

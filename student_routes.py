@@ -1,14 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body
 from sqlalchemy.orm import Session
 from datetime import datetime, date, timedelta
 from typing import List, Optional
 
 from database import get_db
 from security import get_student
+import grading
 from models import (
     User, StudentProfile, TeacherProfile, ClassEntry, ClassStatus,
     DPP, DPPSubmission, Test, TestSubmission, TestStatus,
     SubmissionStatus, Doubt, DoubtStatus, Notification, Timetable
+    , Exam, ExamQuestion, ExamAttempt, ExamResult
 )
 from schemas import (
     DPPSubmissionCreate, DPPSubmissionOut,
@@ -639,3 +641,119 @@ def student_ping(db: Session = Depends(get_db), current_user=Depends(get_student
     sp.last_seen = now
     db.commit()
     return {"ok": True}
+
+
+# ===================== EXAM / TEST ENGINE (student) =====================
+def _exam_save_results(db, att, results):
+    for r in results:
+        db.add(ExamResult(attempt_id=att.id, q_no=r["q_no"],
+               marks_awarded=r["marks"], max_marks=r["max"], remark=r.get("remark", "")))
+
+def _exam_verdict(awarded, total):
+    if not total:
+        return "Good"
+    p = awarded / total * 100
+    return "Excellent" if p >= 80 else ("Good" if p >= 50 else "Needs Improvement")
+
+def _exam_verdict_line(verdict, teacher):
+    if verdict == "Excellent":
+        return "Excellent work! Keep it up. \u2014 %s" % teacher
+    if verdict == "Good":
+        return "Good effort. A little more practice will help. \u2014 %s" % teacher
+    return "This needs improvement. Please revise and try again. \u2014 %s" % teacher
+
+def _exam_thankyou(teacher):
+    return "Thank you for submitting your test. Your answers have been received. \u2014 %s" % teacher
+
+@router.get("/exams")
+def student_exams(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    sp = get_student_profile(current_user, db)
+    subs = sp.subjects or []
+    q = db.query(Exam).filter(Exam.is_active == True)
+    if subs:
+        q = q.filter(Exam.subject.in_(subs))
+    rows = q.order_by(Exam.created_at.desc()).all()
+    out = []
+    for e in rows:
+        att = db.query(ExamAttempt).filter(ExamAttempt.exam_id == e.id, ExamAttempt.student_id == sp.id).order_by(ExamAttempt.submitted_at.desc()).first()
+        nq = db.query(ExamQuestion).filter(ExamQuestion.exam_id == e.id).count()
+        out.append({"id": e.id, "title": e.title, "subject": e.subject, "chapter": e.chapter,
+                    "test_type": e.test_type, "total_marks": e.total_marks, "duration_min": e.duration_min,
+                    "questions": nq, "teacher_name": e.teacher_name,
+                    "status": att.status if att else "not_attempted",
+                    "awarded": att.total_awarded if att else None})
+    return out
+
+@router.get("/exam/{exam_id}")
+def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    sp = get_student_profile(current_user, db)
+    ex = db.query(Exam).filter(Exam.id == exam_id, Exam.is_active == True).first()
+    if not ex:
+        raise HTTPException(404, "Test not found")
+    att = db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id, ExamAttempt.student_id == sp.id).first()
+    qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).order_by(ExamQuestion.q_no).all()
+    questions = [{"q_no": q.q_no, "question_text": q.question_text, "max_marks": q.max_marks,
+                  "options": q.options if ex.test_type == "mcq" else None} for q in qs]
+    return {"id": ex.id, "title": ex.title, "subject": ex.subject, "chapter": ex.chapter,
+            "test_type": ex.test_type, "duration_min": ex.duration_min, "total_marks": ex.total_marks,
+            "teacher_name": ex.teacher_name, "questions": questions,
+            "already_submitted": bool(att and att.status == "graded")}
+
+@router.post("/exam/{exam_id}/submit")
+def student_submit_exam(exam_id: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_student)):
+    sp = get_student_profile(current_user, db)
+    ex = db.query(Exam).filter(Exam.id == exam_id, Exam.is_active == True).first()
+    if not ex:
+        raise HTTPException(404, "Test not found")
+    graded = db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id, ExamAttempt.student_id == sp.id, ExamAttempt.status == "graded").first()
+    if graded:
+        raise HTTPException(400, "You have already submitted this test")
+    qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).order_by(ExamQuestion.q_no).all()
+    db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id, ExamAttempt.student_id == sp.id).delete()
+    att = ExamAttempt(exam_id=exam_id, student_id=sp.id, student_name=current_user.name, status="grading")
+    db.add(att); db.flush()
+    teacher = ex.teacher_name or "your teacher"
+    if ex.test_type == "mcq":
+        att.mcq_answers = payload.get("mcq_answers") or {}
+        results, total = grading.grade_mcq(qs, att.mcq_answers)
+        _exam_save_results(db, att, results)
+        att.total_awarded = total; att.status = "graded"; att.graded_at = datetime.utcnow()
+        att.verdict = _exam_verdict(total, ex.total_marks)
+        att.overall_feedback = _exam_verdict_line(att.verdict, teacher)
+        db.commit()
+        return {"status": "graded", "message": _exam_thankyou(teacher), "teacher_name": teacher}
+    # subjective: handwritten image -> AI vision grading
+    img = payload.get("answer_image_b64") or ""
+    if not img:
+        raise HTTPException(400, "Please upload your handwritten answer sheet")
+    att.answer_image_b64 = img
+    results, total, feedback, verdict = grading.grade_subjective(qs, img, payload.get("mime_type", "image/jpeg"))
+    if results is None:
+        att.status = "grading"
+        db.commit()
+        return {"status": "grading", "message": _exam_thankyou(teacher), "teacher_name": teacher,
+                "note": "Your answers are being checked. Marks will appear on the portal within 1 hour."}
+    _exam_save_results(db, att, results)
+    att.total_awarded = total; att.status = "graded"; att.graded_at = datetime.utcnow()
+    att.verdict = verdict or _exam_verdict(total, ex.total_marks)
+    att.overall_feedback = feedback or _exam_verdict_line(att.verdict, teacher)
+    db.commit()
+    return {"status": "graded", "message": _exam_thankyou(teacher), "teacher_name": teacher}
+
+@router.get("/exam/{exam_id}/result")
+def student_exam_result(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    sp = get_student_profile(current_user, db)
+    ex = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not ex:
+        raise HTTPException(404, "Test not found")
+    att = db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id, ExamAttempt.student_id == sp.id).order_by(ExamAttempt.submitted_at.desc()).first()
+    if not att:
+        raise HTTPException(404, "No attempt found")
+    qmap = {q.q_no: q for q in db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).all()}
+    res = db.query(ExamResult).filter(ExamResult.attempt_id == att.id).order_by(ExamResult.q_no).all()
+    items = [{"q_no": r.q_no, "question": (qmap[r.q_no].question_text if r.q_no in qmap else ""),
+              "marks": r.marks_awarded, "max": r.max_marks, "remark": r.remark} for r in res]
+    return {"status": att.status, "title": ex.title, "teacher_name": ex.teacher_name,
+            "total_awarded": att.total_awarded, "total_marks": ex.total_marks,
+            "verdict": att.verdict, "feedback": att.overall_feedback,
+            "test_type": ex.test_type, "results": items}
