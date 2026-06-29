@@ -6,7 +6,22 @@ and the font file at fonts/NotoSansDevanagari-Regular.ttf
 """
 import os, re, io, base64
 
-_FONT = os.path.join(os.path.dirname(__file__), "fonts", "NotoSansDevanagari-Regular.ttf")
+def _font_path():
+    """Find the bundled Devanagari font whether it sits in a fonts/ folder or in
+    the repo root (so it works no matter where it was uploaded)."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(here, "fonts", "NotoSansDevanagari-Regular.ttf"),
+        os.path.join(here, "NotoSansDevanagari-Regular.ttf"),
+        os.path.join(os.getcwd(), "fonts", "NotoSansDevanagari-Regular.ttf"),
+        os.path.join(os.getcwd(), "NotoSansDevanagari-Regular.ttf"),
+        "fonts/NotoSansDevanagari-Regular.ttf",
+        "NotoSansDevanagari-Regular.ttf",
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return candidates[0]
 
 _TEX_MAP = [
     (r"\\times", "\u00d7"), (r"\\cdot", "\u00b7"), (r"\\div", "\u00f7"),
@@ -67,7 +82,7 @@ def build_exam_pdf(ex, questions, medium="english"):
     pdf = FPDF()
     pdf.set_auto_page_break(True, margin=15)
     pdf.add_page()
-    pdf.add_font("Noto", "", _FONT)
+    pdf.add_font("Noto", "", _font_path())
     pdf.set_text_shaping(True)
 
     def MC(h, txt):
