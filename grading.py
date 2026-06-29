@@ -224,3 +224,45 @@ def structure_docx_questions(full_text, test_type="subjective"):
         return data if isinstance(data, list) else None
     except Exception:
         return None
+
+
+def translate_question_to_hindi(question_text, model_answer="", options=None, subject=""):
+    """Translate an exam question (and its model answer / mcq options) to Hindi for
+    bilingual tests. Keeps LaTeX ($...$, \\frac, \\sqrt, \\ce{}), numbers, units and
+    chemical/mathematical notation intact, translating only the prose into natural
+    exam-appropriate Hindi. Returns {"question","answer","options":[...]} or None."""
+    options = options or []
+    payload = {
+        "question": question_text or "",
+        "answer": model_answer or "",
+        "options": [str(o) for o in options],
+    }
+    prompt = (
+        "You are translating an exam paper for the subject '%s' from English to Hindi "
+        "for Indian school students (NIOS). Translate the question text, the model answer, "
+        "and each option into natural, exam-appropriate Hindi (Devanagari script).\n"
+        "STRICT RULES:\n"
+        "1. Keep ALL mathematical and chemical notation EXACTLY unchanged: LaTeX such as "
+        "$...$, \\frac{}{}, \\sqrt{}, ^, _, \\ce{...}, equations, numbers, units (m/s, kg, "
+        "mol, etc.) and chemical formulae must NOT be translated or altered.\n"
+        "2. Translate the surrounding sentences to Hindi; keep conventional technical/"
+        "scientific terms and proper nouns sensible and standard.\n"
+        "3. Do NOT add, remove, explain, or solve anything. Translate only.\n"
+        "4. Return ONLY valid JSON with the SAME keys (no markdown, no commentary):\n"
+        '{"question": "...", "answer": "...", "options": ["..."]}\n\n'
+        "Translate this JSON:\n%s"
+    ) % (subject or "this subject", json.dumps(payload, ensure_ascii=False))
+    out = _gemini_generate([{"text": prompt}])
+    if not out:
+        return None
+    try:
+        data = json.loads(_strip_json(out))
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+    return {
+        "question": (data.get("question") or "").strip(),
+        "answer": (data.get("answer") or "").strip(),
+        "options": [str(o).strip() for o in (data.get("options") or [])],
+    }

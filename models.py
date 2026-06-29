@@ -412,6 +412,10 @@ class ExamQuestion(Base):
     options     = Column(JSON, nullable=True)      # for mcq: ["A","B","C","D"]
     correct_option = Column(String(255), nullable=True)  # for mcq: correct option text
     image_b64   = Column(_BIGTEXT, nullable=True)  # optional figure attached to the question
+    question_text_hi   = Column(Text, nullable=True)       # Hindi version (bilingual)
+    model_answer_hi    = Column(Text, nullable=True)       # Hindi model answer (bilingual)
+    options_hi         = Column(JSON, nullable=True)       # Hindi mcq options (bilingual)
+    model_answer_image = Column(_BIGTEXT, nullable=True)   # optional diagram for the model answer
 
 class ExamAttempt(Base):
     __tablename__ = "exam_attempts"

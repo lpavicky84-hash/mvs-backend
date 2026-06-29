@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract
 from datetime import datetime, date, timedelta
@@ -976,7 +976,7 @@ def teacher_student_engagement(db: Session = Depends(get_db), current_user=Depen
 
 # ===================== EXAM / TEST ENGINE (teacher) =====================
 @router.post("/exam")
-def create_exam(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+def create_exam(payload: dict = Body(...), background_tasks: BackgroundTasks = None, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
     qs = payload.get("questions") or []
     if not payload.get("title") or not qs:
@@ -991,15 +991,80 @@ def create_exam(payload: dict = Body(...), db: Session = Depends(get_db), curren
     db.add(ex); db.flush()
     for i, q in enumerate(qs, start=1):
         co = q.get("correct_option")
+        opts_hi = q.get("options_hi") if ttype == "mcq" else None
         db.add(ExamQuestion(exam_id=ex.id, q_no=i,
                question_text=q.get("question_text", ""),
                max_marks=int(q.get("max_marks", 1) or 1),
                model_answer=q.get("model_answer"),
                options=q.get("options") if ttype == "mcq" else None,
                correct_option=(str(co) if co not in (None, "") else None),
-               image_b64=q.get("image_b64")))
+               image_b64=q.get("image_b64"),
+               question_text_hi=(q.get("question_text_hi") or None),
+               model_answer_hi=(q.get("model_answer_hi") or None),
+               options_hi=(opts_hi if opts_hi else None),
+               model_answer_image=q.get("model_answer_image")))
     db.commit()
-    return {"id": ex.id, "total_marks": total, "questions": len(qs), "test_type": ttype}
+    # Bilingual test: auto-translate any blank Hindi fields in the background.
+    if (ex.medium or "").lower().startswith("bi") and background_tasks is not None:
+        background_tasks.add_task(_bg_translate_exam, ex.id)
+    return {"id": ex.id, "total_marks": total, "questions": len(qs),
+            "test_type": ttype, "medium": ex.medium}
+
+
+def _bg_translate_exam(exam_id):
+    """Fill in any missing Hindi fields for a bilingual test using Gemini.
+    Runs after the response so test creation stays fast. Only fills blanks."""
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        ex = db.query(Exam).filter(Exam.id == exam_id).first()
+        if not ex:
+            return
+        qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == ex.id).order_by(ExamQuestion.q_no).all()
+        for q in qs:
+            need_q = not (q.question_text_hi or "").strip()
+            need_a = (ex.test_type != "mcq") and not (q.model_answer_hi or "").strip()
+            need_o = (ex.test_type == "mcq") and not q.options_hi
+            if not (need_q or need_a or need_o):
+                continue
+            tr = grading.translate_question_to_hindi(
+                q.question_text or "", q.model_answer or "",
+                (q.options or []) if ex.test_type == "mcq" else None, ex.subject or "")
+            if not tr:
+                continue
+            if need_q and tr.get("question"):
+                q.question_text_hi = tr["question"]
+            if need_a and tr.get("answer"):
+                q.model_answer_hi = tr["answer"]
+            if need_o and tr.get("options") and len(tr["options"]) == len(q.options or []):
+                q.options_hi = tr["options"]
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+
+@router.get("/exam/{exam_id}/pdf")
+def teacher_exam_pdf(exam_id: int, medium: str = "english",
+                     db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Download the full question+answer paper as a PDF in English or Hindi medium."""
+    import exam_pdf
+    from fastapi import Response
+    tp = get_teacher_profile(current_user, db)
+    ex = db.query(Exam).filter(Exam.id == exam_id, Exam.teacher_id == tp.id).first()
+    if not ex:
+        raise HTTPException(404, "Test not found")
+    qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == ex.id).order_by(ExamQuestion.q_no).all()
+    med = "hindi" if str(medium).lower().startswith("hi") else "english"
+    try:
+        data = exam_pdf.build_exam_pdf(ex, qs, med)
+    except Exception as e:
+        raise HTTPException(500, "Could not generate the PDF. The server needs fpdf2, "
+                                 "uharfbuzz and the Devanagari font. (%s)" % e)
+    safe = (ex.title or "test").replace('"', "").replace("/", "-").strip()[:60] or "test"
+    return Response(content=data, media_type="application/pdf",
+                    headers={"Content-Disposition": 'attachment; filename="%s-%s.pdf"' % (safe, med)})
 
 @router.get("/exams")
 def list_exams(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
@@ -1012,7 +1077,7 @@ def list_exams(db: Session = Depends(get_db), current_user=Depends(get_teacher))
         ng = db.query(ExamAttempt).filter(ExamAttempt.exam_id == e.id, ExamAttempt.status == "graded").count()
         out.append({"id": e.id, "title": e.title, "subject": e.subject, "chapter": e.chapter,
                     "test_type": e.test_type, "total_marks": e.total_marks, "duration_min": e.duration_min,
-                    "questions": nq, "attempts": na, "graded": ng,
+                    "medium": e.medium, "questions": nq, "attempts": na, "graded": ng,
                     "created_at": e.created_at.isoformat() if e.created_at else None})
     return out
 

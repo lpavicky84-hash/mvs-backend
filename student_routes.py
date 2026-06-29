@@ -751,7 +751,9 @@ def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=D
     att = db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id, ExamAttempt.student_id == sp.id).first()
     qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).order_by(ExamQuestion.q_no).all()
     questions = [{"q_no": q.q_no, "question_text": q.question_text, "max_marks": q.max_marks,
+                  "question_text_hi": q.question_text_hi,
                   "options": q.options if ex.test_type == "mcq" else None,
+                  "options_hi": q.options_hi if ex.test_type == "mcq" else None,
                   "image_b64": q.image_b64} for q in qs]
     return {"id": ex.id, "title": ex.title, "subject": ex.subject, "chapter": ex.chapter,
             "test_type": ex.test_type, "medium": ex.medium, "duration_min": ex.duration_min, "total_marks": ex.total_marks,
@@ -806,11 +808,12 @@ def student_exam_result(exam_id: int, db: Session = Depends(get_db), current_use
     qmap = {q.q_no: q for q in db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).all()}
     res = db.query(ExamResult).filter(ExamResult.attempt_id == att.id).order_by(ExamResult.q_no).all()
     items = [{"q_no": r.q_no, "question": (qmap[r.q_no].question_text if r.q_no in qmap else ""),
+              "question_hi": (qmap[r.q_no].question_text_hi if r.q_no in qmap else None),
               "marks": r.marks_awarded, "max": r.max_marks, "remark": r.remark} for r in res]
     return {"status": att.status, "title": ex.title, "teacher_name": ex.teacher_name,
             "total_awarded": att.total_awarded, "total_marks": ex.total_marks,
             "verdict": att.verdict, "feedback": att.overall_feedback,
-            "test_type": ex.test_type, "results": items,
+            "test_type": ex.test_type, "medium": ex.medium, "results": items,
             "has_answer": bool(att.answer_image_b64)}
 
 
