@@ -226,11 +226,38 @@ def structure_docx_questions(full_text, test_type="subjective"):
         return None
 
 
+def _subject_hint(subject):
+    """Return NIOS Hindi-medium terminology guidance for the given subject so the
+    translation uses the words students actually see in their Hindi textbooks."""
+    s = (subject or "").lower()
+    hints = {
+        ("physics", "भौतिक"): "Physics (भौतिक विज्ञान): use standard NIOS Hindi terms e.g. force=बल, velocity=वेग, acceleration=त्वरण, momentum=संवेग, energy=ऊर्जा, work=कार्य, power=शक्ति, mass=द्रव्यमान, displacement=विस्थापन, dipole moment=द्विध्रुव आघूर्ण, charge=आवेश, field=क्षेत्र.",
+        ("chemistry", "रसायन"): "Chemistry (रसायन विज्ञान): reaction=अभिक्रिया, compound=यौगिक, element=तत्व, bond=आबंध, mole=मोल, oxidation=ऑक्सीकरण, reduction=अपचयन, acid=अम्ल, base=क्षार, salt=लवण. Keep chemical formulae and element symbols in English.",
+        ("bio", "जीव"): "Biology (जीव विज्ञान): cell=कोशिका, tissue=ऊतक, gene=जीन, respiration=श्वसन, photosynthesis=प्रकाश संश्लेषण, enzyme=एंजाइम, organism=जीव. Keep scientific (Latin) names in English.",
+        ("math", "गणित"): "Mathematics (गणित): equation=समीकरण, function=फलन, derivative=अवकलज, integral=समाकल, probability=प्रायिकता, matrix=आव्यूह, triangle=त्रिभुज, ratio=अनुपात. Keep all symbols/numbers in English.",
+        ("history", "इतिहास"): "History (इतिहास): use standard Hindi historical terms; keep proper nouns (people, dynasties, places, treaties) as commonly written in Hindi. revolution=क्रांति, empire=साम्राज्य, civilization=सभ्यता, movement=आंदोलन.",
+        ("geograph", "भूगोल"): "Geography (भूगोल): climate=जलवायु, river=नदी, plateau=पठार, latitude=अक्षांश, longitude=देशांतर, monsoon=मानसून, plain=मैदान.",
+        ("politic", "राजन"): "Political Science (राजनीति विज्ञान): democracy=लोकतंत्र, constitution=संविधान, fundamental rights=मौलिक अधिकार, parliament=संसद, federalism=संघवाद.",
+        ("econom", "अर्थ"): "Economics (अर्थशास्त्र): demand=मांग, supply=पूर्ति, market=बाजार, inflation=मुद्रास्फीति, poverty=गरीबी. Keep GDP, GNP as English abbreviations.",
+        ("account", "लेखा"): "Accountancy (लेखाशास्त्र): debit=नामे, credit=जमा, ledger=खाताबही, balance sheet=तुलन पत्र, journal=रोजनामचा, capital=पूंजी.",
+        ("business",): "Business Studies (व्यवसाय अध्ययन): management=प्रबंधन, marketing=विपणन, partnership=साझेदारी, organisation=संगठन.",
+        ("home science", "गृह विज्ञान"): "Home Science (गृह विज्ञान): nutrition=पोषण, vitamin=विटामिन, hygiene=स्वच्छता, balanced diet=संतुलित आहार.",
+        ("psycholog", "मनोविज्ञान"): "Psychology (मनोविज्ञान): behaviour=व्यवहार, memory=स्मृति, perception=प्रत्यक्ष, motivation=अभिप्रेरणा, learning=अधिगम.",
+        ("computer", "data entry", "कंप्यू"): "Computer/Data Entry: keep technical computing terms (software, hardware, keyboard, file, database, spreadsheet, operating system) in English; translate only the surrounding explanation into simple Hindi.",
+        ("english", "hindi", "language"): "Language subject: translate naturally; keep grammar terms standard.",
+    }
+    for keys, hint in hints.items():
+        if any(k in s for k in keys):
+            return hint
+    return ("Use standard NIOS Hindi-medium textbook terminology for this subject; keep "
+            "technical terms exactly as they are commonly written in Hindi textbooks.")
+
+
 def translate_question_to_hindi(question_text, model_answer="", options=None, subject=""):
-    """Translate an exam question (and its model answer / mcq options) to Hindi for
-    bilingual tests. Keeps LaTeX ($...$, \\frac, \\sqrt, \\ce{}), numbers, units and
-    chemical/mathematical notation intact, translating only the prose into natural
-    exam-appropriate Hindi. Returns {"question","answer","options":[...]} or None."""
+    """Translate an exam question (question + model answer + mcq options) into accurate,
+    subject-aware Hindi for NIOS bilingual tests. Keeps LaTeX/chemistry/numbers/units
+    intact and uses the correct Hindi technical terminology for the subject.
+    Returns {"question","answer","options":[...]} or None."""
     options = options or []
     payload = {
         "question": question_text or "",
@@ -238,20 +265,33 @@ def translate_question_to_hindi(question_text, model_answer="", options=None, su
         "options": [str(o) for o in options],
     }
     prompt = (
-        "You are translating an exam paper for the subject '%s' from English to Hindi "
-        "for Indian school students (NIOS). Translate the question text, the model answer, "
-        "and each option into natural, exam-appropriate Hindi (Devanagari script).\n"
+        "You are an expert NIOS (National Institute of Open Schooling) Hindi-medium "
+        "teacher and translator for the subject '" + (subject or "this subject") + "'. "
+        "Translate the exam content from English into accurate, natural, exam-appropriate "
+        "Hindi (Devanagari), exactly as it would appear in an official NIOS Hindi-medium "
+        "textbook or question paper.\n\n"
+        "SUBJECT TERMINOLOGY GUIDE:\n" + _subject_hint(subject) + "\n\n"
         "STRICT RULES:\n"
-        "1. Keep ALL mathematical and chemical notation EXACTLY unchanged: LaTeX such as "
-        "$...$, \\frac{}{}, \\sqrt{}, ^, _, \\ce{...}, equations, numbers, units (m/s, kg, "
-        "mol, etc.) and chemical formulae must NOT be translated or altered.\n"
-        "2. Translate the surrounding sentences to Hindi; keep conventional technical/"
-        "scientific terms and proper nouns sensible and standard.\n"
-        "3. Do NOT add, remove, explain, or solve anything. Translate only.\n"
-        "4. Return ONLY valid JSON with the SAME keys (no markdown, no commentary):\n"
+        "1. Use the correct, standard Hindi technical term for every concept in THIS "
+        "subject. Do NOT translate literally word-by-word - translate the MEANING using "
+        "the terminology a NIOS Hindi-medium student expects. Avoid wrong or awkward "
+        "coined words.\n"
+        "2. Keep the following EXACTLY unchanged (never translate or alter): LaTeX "
+        "($...$, \\frac{}{}, \\sqrt{}, ^, _), \\ce{...} chemistry, chemical formulae and "
+        "element symbols, equations, numbers, units (m/s, kg, mol, N, J, ...), single "
+        "variable letters, and proper nouns / names.\n"
+        "3. Where a technical English term is universally used by Hindi-medium students "
+        "(e.g. GDP, DNA, software), keep it in English inside the Hindi sentence instead "
+        "of forcing a rare Hindi word.\n"
+        "4. Translate structural headings to their standard Hindi equivalents: "
+        "'Given Data:' -> 'दिया गया:', 'Step 1:' -> 'चरण 1:', 'Final Answer:' -> "
+        "'अंतिम उत्तर:', 'Solution:' -> 'हल:', 'Formula:' -> 'सूत्र:'.\n"
+        "5. Do NOT add, remove, explain, or solve anything. Translate only.\n"
+        "6. Keep the SAME number of options in the SAME order.\n"
+        "7. Return ONLY valid JSON with the SAME keys (no markdown, no commentary):\n"
         '{"question": "...", "answer": "...", "options": ["..."]}\n\n'
-        "Translate this JSON:\n%s"
-    ) % (subject or "this subject", json.dumps(payload, ensure_ascii=False))
+        "Translate this JSON:\n" + json.dumps(payload, ensure_ascii=False)
+    )
     out = _gemini_generate([{"text": prompt}])
     if not out:
         return None

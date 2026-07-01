@@ -1090,6 +1090,7 @@ def exam_attempts(exam_id: int, db: Session = Depends(get_db), current_user=Depe
     atts = db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id).order_by(ExamAttempt.submitted_at.desc()).all()
     out = [{"attempt_id": a.id, "student_id": a.student_id, "student_name": a.student_name,
             "status": a.status, "total_awarded": a.total_awarded, "verdict": a.verdict,
+            "has_answer": bool(a.answer_image_b64),
             "submitted_at": a.submitted_at.isoformat() if a.submitted_at else None} for a in atts]
     qrows = db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).order_by(ExamQuestion.q_no).all()
     questions = [{"q_no": q.q_no, "question_text": q.question_text, "max_marks": q.max_marks} for q in qrows]
@@ -1201,6 +1202,34 @@ async def parse_exam_docx(file: UploadFile = File(...), test_type: str = Form("s
     qs = grading.structure_docx_questions(full, test_type)
     if qs is None:
         raise HTTPException(503, "AI could not structure the document. Check GEMINI_API_KEY.")
+    return {"questions": qs, "count": len(qs)}
+
+
+@router.post("/parse-exam-pdf")
+async def parse_exam_pdf(file: UploadFile = File(...), test_type: str = Form("subjective"),
+                         db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Extract questions + answers from an uploaded PDF question paper."""
+    import io
+    data = await file.read()
+    full = ""
+    # try PyMuPDF first, then pdfplumber as a fallback
+    try:
+        import fitz
+        doc = fitz.open(stream=data, filetype="pdf")
+        full = "\n".join(page.get_text() for page in doc)
+        doc.close()
+    except Exception:
+        try:
+            import pdfplumber
+            with pdfplumber.open(io.BytesIO(data)) as pdf:
+                full = "\n".join((pg.extract_text() or "") for pg in pdf.pages)
+        except Exception:
+            raise HTTPException(503, "PDF parsing is not enabled on the server (add pymupdf to requirements.txt).")
+    if not full.strip():
+        raise HTTPException(400, "Could not read any text from this PDF. If it is a scanned image, please use a text PDF or the screenshot auto-fill.")
+    qs = grading.structure_docx_questions(full, test_type)
+    if qs is None:
+        raise HTTPException(503, "AI could not structure the PDF. Check GEMINI_API_KEY.")
     return {"questions": qs, "count": len(qs)}
 
 
