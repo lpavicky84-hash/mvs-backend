@@ -8,16 +8,38 @@ import os, re, io, base64
 
 
 def _font_path():
+    """NotoSansDevanagari-Regular.ttf (the original file) is a VARIABLE font
+    (wght/wdth axes). fpdf2's glyph-subset embedding can corrupt complex Devanagari
+    conjuncts from a variable font (e.g. 'ज्ञ' rendering as a stray dot) even though
+    HarfBuzz shapes it correctly. NotoSansDevanagari-Static.ttf is the same font
+    frozen to its default instance (fontTools varLib.instancer) - a plain static
+    TrueType font that embeds reliably. Prefer it; fall back to the variable file
+    (and finally the bare filename) so deploys stay backward compatible."""
     here = os.path.dirname(os.path.abspath(__file__))
-    for c in [os.path.join(here, "fonts", "NotoSansDevanagari-Regular.ttf"),
-              os.path.join(here, "NotoSansDevanagari-Regular.ttf"),
-              os.path.join(os.getcwd(), "fonts", "NotoSansDevanagari-Regular.ttf"),
-              os.path.join(os.getcwd(), "NotoSansDevanagari-Regular.ttf"),
-              "fonts/NotoSansDevanagari-Regular.ttf",
-              "NotoSansDevanagari-Regular.ttf"]:
+    candidates = []
+    for name in ["NotoSansDevanagari-Static.ttf", "NotoSansDevanagari-Regular.ttf"]:
+        candidates += [
+            os.path.join(here, "fonts", name), os.path.join(here, name),
+            os.path.join(os.getcwd(), "fonts", name), os.path.join(os.getcwd(), name),
+            "fonts/%s" % name, name,
+        ]
+    for c in candidates:
         if os.path.exists(c):
             return c
-    return "NotoSansDevanagari-Regular.ttf"
+    return "NotoSansDevanagari-Static.ttf"
+
+
+def _logo_path():
+    """Optional premium header logo. Drop a file named logo.png (or logo.jpg) in the
+    repo root or fonts/ folder and it will appear in the PDF header automatically -
+    no code change needed. If absent, the header stays text-only (current look)."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    for name in ["logo.png", "logo.jpg", "logo.jpeg"]:
+        for c in [os.path.join(here, name), os.path.join(here, "fonts", name),
+                  os.path.join(os.getcwd(), name), name]:
+            if os.path.exists(c):
+                return c
+    return None
 
 
 # ---------------------------------------------------------------- LaTeX cleanup
@@ -85,9 +107,41 @@ _HEAD_HI = ["\u0915\u0925\u0928:", "\u0926\u093f\u092f\u093e \u0917\u092f\u093e:
             "\u0928\u094b\u091f:", "\u0905\u0924:"]
 
 
-def _presplit(text):
-    t = text or ""
-    parts = re.split(r"(\$[^$]*\$)", t)
+_RUNON_RE = re.compile(
+    r"[a-z0-9\)\]\.:\u00b2\u00b3][A-Z]"                    # wordEndCapital merge, no space
+    r"|\b(?:N|J|V|A|W|Hz|Pa|C)[A-Z][a-z]"                  # unit+CapitalWord merge
+    r"|:[a-zA-Z]\s*="                                       # ":x =" (heading glued to formula)
+)
+_HEAD_MIDLINE_RE = re.compile(
+    "|".join(re.escape(h) for h in (_HEADINGS + _HEAD_HI))
+)
+
+
+def _strip_math(line):
+    return re.sub(r"\$[^$]*\$", "", line)
+
+
+def _looks_runon(line):
+    """True if a line still looks like several sentences/headings glued together
+    without proper separation - i.e. it needs the heuristic splitter below. A line
+    that already came in on its own (from well-structured AI/teacher input) will
+    not match this and is left exactly as written."""
+    probe = _strip_math(line)
+    if _RUNON_RE.search(probe):
+        return True
+    # a heading marker appearing anywhere OTHER than the very start of the line
+    # means it's still stuck to the previous sentence
+    m = _HEAD_MIDLINE_RE.search(probe)
+    if m and m.start() > 0:
+        return True
+    return False
+
+
+def _heuristic_split(line):
+    """Best-effort splitter for a still-run-on line (legacy data, or AI output that
+    didn't fully follow the line-break instructions). Not applied to lines that
+    already look clean, so it can no longer mangle properly formatted text."""
+    parts = re.split(r"(\$[^$]*\$)", line)
     out = []
     for i, seg in enumerate(parts):
         if i % 2 == 1:
@@ -111,9 +165,27 @@ def _presplit(text):
         for tok, h in ph.items():
             seg = seg.replace(tok, h)
         out.append(seg)
-    t = "".join(out)
-    t = re.sub(r"\n{2,}", "\n", t)
-    return [ln.strip() for ln in t.split("\n") if ln.strip()]
+    merged = re.sub(r"\n{2,}", "\n", "".join(out))
+    return [ln.strip() for ln in merged.split("\n") if ln.strip()]
+
+
+def _presplit(text):
+    """Split source text into display lines. Real newlines from the source (typed,
+    pasted, or AI-generated with the structured-line-break instruction) are trusted
+    as-is - the exact line breaks the teacher copied from ChatGPT/Word etc. are
+    preserved 1:1. Only a line that still looks glued-together falls back to the
+    regex heuristic splitter."""
+    raw_lines = re.split(r"\r?\n", text or "")
+    out = []
+    for line in raw_lines:
+        line = line.strip()
+        if not line:
+            continue
+        if _looks_runon(line):
+            out.extend(_heuristic_split(line))
+        else:
+            out.append(line)
+    return out
 
 
 def _blocks(text):
@@ -125,47 +197,47 @@ def _blocks(text):
             continue
         if low.startswith("final answer") or low.startswith(
                 "\u0905\u0902\u0924\u093f\u092e \u0909\u0924\u094d\u0924\u0930"):
-            blocks.append(("final", c))
+            blocks.append(("final", c, ln))
         elif re.match(r"^step\s+\d+\s*:", low) or ln.rstrip().endswith(":") \
                 or any(low.startswith(h.lower()) for h in _HEADINGS + _HEAD_HI):
-            blocks.append(("head", c))
+            blocks.append(("head", c, ln))
         elif re.match(r"^[\-\u2022\u25e6]\s+", ln):
-            blocks.append(("bullet", re.sub(r"^[\-\u2022\u25e6]\s+", "", c)))
+            blocks.append(("bullet", re.sub(r"^[\-\u2022\u25e6]\s+", "", c), ln))
         elif "=" in c and len(c) < 46 and not c.rstrip().endswith(":") \
                 and not re.search(r"[A-Za-z\u0900-\u097F]{4,}", c.split("=")[0]):
-            blocks.append(("eq", c))
+            blocks.append(("eq", c, ln))
         else:
-            blocks.append(("para", c))
+            blocks.append(("para", c, ln))
     # absorb the value lines that follow "Final Answer:" into the highlighted box
     merged = []
     i = 0
     while i < len(blocks):
-        k, c = blocks[i]
+        k, c, raw = blocks[i]
         if k == "final":
             parts = [c]
             j = i + 1
             while j < len(blocks) and blocks[j][0] in ("para", "eq", "bullet"):
                 parts.append(blocks[j][1])
                 j += 1
-            merged.append(("final", "   \u00b7   ".join(parts)))
+            merged.append(("final", "   \u00b7   ".join(parts), raw))
             i = j
         else:
-            merged.append((k, c))
+            merged.append((k, c, raw))
             i += 1
     # items listed under a "Given Data / Required / To Find" heading become bullets
     out = []
     in_data = False
-    for k, c in merged:
+    for k, c, raw in merged:
         if k == "head":
             lc = c.lower()
             in_data = lc.startswith(("given", "data", "to find", "required", "list"))
-            out.append((k, c))
+            out.append((k, c, raw))
         elif in_data and k == "para":
-            out.append(("bullet", c))
+            out.append(("bullet", c, raw))
         else:
             if k in ("eq", "final"):
                 in_data = False
-            out.append((k, c))
+            out.append((k, c, raw))
     return out
 
 
@@ -205,7 +277,7 @@ def build_exam_pdf(ex, questions, medium="english"):
     L = {
         "q":       ("\u092a\u094d\u0930. " if is_hi else "Q"),
         "marks":   ("\u0905\u0902\u0915" if is_hi else "marks"),
-        "answer":  ("\u0906\u0926\u0930\u094d\u0936 \u0909\u0924\u094d\u0924\u0930" if is_hi else "MODEL ANSWER"),
+        "answer":  ("\u0909\u0924\u094d\u0924\u0930" if is_hi else "ANSWER"),
         "correct": ("\u2713 \u0938\u0939\u0940" if is_hi else "Correct"),
         "medium":  ("\u0939\u093f\u0902\u0926\u0940 \u092e\u093e\u0927\u094d\u092f\u092e" if is_hi else "English Medium"),
         "total":   ("\u0915\u0941\u0932 \u0905\u0902\u0915" if is_hi else "Total Marks"),
@@ -230,25 +302,41 @@ def build_exam_pdf(ex, questions, medium="english"):
     EPW = pdf.epw
     LM = pdf.l_margin
 
-    # ---- header band
+    # ---- header band (premium: navy band + amber accent strip, optional logo)
     pdf.set_fill_color(*NAVY)
     pdf.rect(0, 0, pdf.w, 33, style="F")
     pdf.set_fill_color(*AMBER)
     pdf.rect(0, 33, pdf.w, 1.5, style="F")
-    pdf.set_xy(LM, 7)
+    text_x = LM
+    logo = _logo_path()
+    if logo:
+        try:
+            logo_h = 19
+            pdf.image(logo, x=LM, y=7, h=logo_h)
+            # measure width so the title text starts cleanly after the logo
+            try:
+                from PIL import Image as _PILImage
+                with _PILImage.open(logo) as _im:
+                    lw, lh = _im.size
+                text_x = LM + (logo_h * lw / lh) + 6
+            except Exception:
+                text_x = LM + 24
+        except Exception:
+            text_x = LM
+    pdf.set_xy(text_x, 7)
     pdf.set_font("Noto", size=17)
     pdf.set_text_color(255, 255, 255)
-    pdf.cell(0, 9, _clean(ex.title or "Test"), new_x="LMARGIN", new_y="NEXT")
-    pdf.set_x(LM)
+    pdf.cell(pdf.w - pdf.r_margin - text_x, 9, _clean(ex.title or "Test"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_x(text_x)
     pdf.set_font("Noto", size=9)
     pdf.set_text_color(200, 210, 228)
-    pdf.cell(0, 5.5, "%s    \u00b7    %s    \u00b7    %s: %s" % (
+    pdf.cell(pdf.w - pdf.r_margin - text_x, 5.5, "%s    \u00b7    %s    \u00b7    %s: %s" % (
         ex.subject or "", L["medium"], L["total"], ex.total_marks),
         new_x="LMARGIN", new_y="NEXT")
-    pdf.set_x(LM)
+    pdf.set_x(text_x)
     pdf.set_font("Noto", size=7.5)
     pdf.set_text_color(*AMBER)
-    pdf.cell(0, 5, L["qpaper"], new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(pdf.w - pdf.r_margin - text_x, 5, L["qpaper"], new_x="LMARGIN", new_y="NEXT")
     pdf.set_xy(LM, 40)
 
     for q in questions:
@@ -279,8 +367,8 @@ def build_exam_pdf(ex, questions, medium="english"):
         pdf.set_xy(LM, y0 + 11)
 
         # question body
-        for kind, c in _blocks(qtext):
-            _render_block(pdf, kind, c, LM, EPW, is_q=True)
+        for kind, c, raw in _blocks(qtext):
+            _render_block(pdf, kind, c, LM, EPW, is_q=True, raw=raw)
         _img(pdf, q.image_b64)
 
         if (ex.test_type or "") == "mcq":
@@ -317,8 +405,8 @@ def build_exam_pdf(ex, questions, medium="english"):
                 pdf.set_xy(LM, yy + 0.4)
                 pdf.cell(lw, 5.7, L["answer"], align="C")
                 pdf.set_xy(LM, yy + 9)
-                for kind, c in _blocks(ans):
-                    _render_block(pdf, kind, c, LM, EPW, is_q=False)
+                for kind, c, raw in _blocks(ans):
+                    _render_block(pdf, kind, c, LM, EPW, is_q=False, raw=raw)
             _img(pdf, q.model_answer_image)
 
         pdf.ln(3)
@@ -330,13 +418,73 @@ def build_exam_pdf(ex, questions, medium="english"):
     return bytes(pdf.output())
 
 
-def _render_block(pdf, kind, c, LM, EPW, is_q):
+_FRAC_RE = re.compile(r"\\frac\{([^{}]*)\}\{([^{}]*)\}")
+
+
+def _split_frac(raw):
+    """If raw (pre-clean) text contains a \\frac{num}{den}, return the cleaned
+    (prefix, numerator, denominator, suffix) so it can be drawn as a real stacked
+    fraction. Returns None if there's no \\frac to render."""
+    if not raw:
+        return None
+    m = _FRAC_RE.search(raw)
+    if not m:
+        return None
+    pre, post = raw[:m.start()], raw[m.end():]
+    return _clean(pre), _clean(m.group(1)), _clean(m.group(2)), _clean(post)
+
+
+def _render_fraction(pdf, frac, LM, EPW, color):
+    """Draw prefix, a numerator/line/denominator stack, then suffix - a real
+    vertical fraction like a textbook, instead of flattened '(a)/(b)' text."""
+    pre, num, den, post = frac
+    pdf.set_font("Noto", size=10)
+    num_w, den_w = pdf.get_string_width(num), pdf.get_string_width(den)
+    frac_w = max(num_w, den_w) + 5
+    pdf.set_font("Noto", size=11.5)
+    pre_w = pdf.get_string_width(pre) if pre.strip() else 0
+    post_w = pdf.get_string_width(post) if post.strip() else 0
+    total_w = pre_w + frac_w + post_w
+    x0 = LM + max(0, (EPW - total_w) / 2)
+    y0 = pdf.get_y() + 1.5
+    pdf.set_text_color(*color)
+    if pre.strip():
+        pdf.set_xy(x0, y0 + 3.3)
+        pdf.set_font("Noto", size=11.5)
+        pdf.cell(pre_w, 6, pre, align="L")
+    fx = x0 + pre_w
+    pdf.set_font("Noto", size=10)
+    pdf.set_xy(fx, y0)
+    pdf.cell(frac_w, 5, num, align="C")
+    pdf.set_draw_color(*color)
+    pdf.set_line_width(0.35)
+    pdf.line(fx + 1.5, y0 + 5.7, fx + frac_w - 1.5, y0 + 5.7)
+    pdf.set_xy(fx, y0 + 6.1)
+    pdf.cell(frac_w, 5, den, align="C")
+    if post.strip():
+        pdf.set_xy(fx + frac_w, y0 + 3.3)
+        pdf.set_font("Noto", size=11.5)
+        pdf.cell(post_w, 6, post, align="L")
+    pdf.set_xy(LM, y0 + 12.3)
+    pdf.set_text_color(20, 22, 28)
+
+
+def _render_block(pdf, kind, c, LM, EPW, is_q, raw=None):
     if kind == "head":
-        pdf.ln(1.4)
+        # premium heading: bigger type + a solid colour accent bar (poor-man's bold,
+        # since only the Regular weight of the Devanagari font is bundled)
+        pdf.ln(2)
+        yy = pdf.get_y()
+        acc = NAVY if is_q else NAVY2
+        pdf.set_font("Noto", size=11.5)
+        lines = pdf.multi_cell(EPW - 6, 6.6, c, dry_run=True, output="LINES")
+        bh = 6.6 * max(1, len(lines))
+        pdf.set_fill_color(*acc)
+        pdf.rect(LM, yy + 0.6, 1.4, bh - 1.2, style="F")
+        pdf.set_xy(LM + 5, yy)
+        pdf.set_text_color(*acc)
+        pdf.multi_cell(EPW - 6, 6.6, c, new_x="LMARGIN", new_y="NEXT")
         pdf.set_x(LM)
-        pdf.set_font("Noto", size=10.5)
-        pdf.set_text_color(*(NAVY if is_q else NAVY2))
-        pdf.multi_cell(EPW, 6.4, c, new_x="LMARGIN", new_y="NEXT")
         pdf.set_text_color(20, 22, 28)
     elif kind == "final":
         pdf.ln(1.6)
@@ -354,16 +502,21 @@ def _render_block(pdf, kind, c, LM, EPW, is_q):
         pdf.set_xy(LM, yy + bh + 1.5)
         pdf.set_text_color(20, 22, 28)
     elif kind == "eq":
-        pdf.ln(0.8)
-        yy = pdf.get_y()
-        pdf.set_font("Noto", size=11.5)
-        pdf.set_fill_color(*EQBG)
-        pdf.rect(LM, yy, EPW, 9, style="F", round_corners=True, corner_radius=1.5)
-        pdf.set_xy(LM, yy + 1.2)
-        pdf.set_text_color(*NAVY)
-        pdf.cell(EPW, 6.6, c, align="C")
-        pdf.set_xy(LM, yy + 10.5)
-        pdf.set_text_color(20, 22, 28)
+        # clean, no background fill - a real stacked fraction when \frac is present,
+        # otherwise plain centered equation text
+        frac = _split_frac(raw)
+        color = NAVY if is_q else NAVY2
+        if frac:
+            pdf.ln(0.5)
+            _render_fraction(pdf, frac, LM, EPW, color)
+        else:
+            pdf.ln(1.2)
+            pdf.set_font("Noto", size=12)
+            pdf.set_text_color(*color)
+            pdf.set_x(LM)
+            pdf.cell(EPW, 7.5, c, align="C")
+            pdf.ln(8.5)
+            pdf.set_text_color(20, 22, 28)
     elif kind == "bullet":
         pdf.set_x(LM + 3)
         pdf.set_font("Noto", size=10.5)

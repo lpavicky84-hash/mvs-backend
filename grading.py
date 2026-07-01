@@ -169,6 +169,32 @@ _LANG_NOTE = ("Preserve the original language EXACTLY (it may be Hindi in Devana
 _FMT_NOTE = ("Convert any mathematics to LaTeX wrapped in $...$ and any chemistry formula or reaction "
              "to \\ce{...} wrapped in $...$ (e.g. $\\ce{2H2 + O2 -> 2H2O}$). ")
 
+# Shared instruction: force the model to emit REAL line breaks between structural
+# parts instead of one run-on paragraph. This is what makes the textarea preview
+# and the exported PDF display cleanly, one logical line at a time - matching how
+# a student would see it on a properly formatted worksheet.
+_STRUCT_RULES = (
+    "Statement: <the question statement> ; then a blank heading 'Given Data:' on its "
+    "OWN line ; then EACH given value on its OWN line as '- item' ; then 'Step 1:' "
+    "(short title) on its OWN line, its explanation sentence on its OWN line, then the "
+    "equation ALONE on its OWN line, then 'Substitute the values:' on its OWN line "
+    "with the substituted equation ALONE on its OWN line ; repeat Step 2, Step 3 etc. "
+    "the same way ; then 'Final Answer:' on its OWN line with each result as '- item' "
+    "on its OWN line. Never write two sentences, a heading plus its content, or two "
+    "bullet items on the same line. Never merge two words together without a space."
+)
+_STRUCT_NOTE = (
+    "FORMAT WITH REAL LINE BREAKS (very important): insert an actual newline character "
+    "between every distinct part so it reads cleanly line-by-line, in this structure - " +
+    _STRUCT_RULES + " "
+)
+_STRUCT_NOTE_JSON = (
+    "FORMAT WITH LINE BREAKS INSIDE THE JSON STRING (very important): within each JSON "
+    "string value, separate distinct parts using an escaped newline \\n (backslash-n, "
+    "valid inside a JSON string) so the text displays cleanly line-by-line, in this "
+    "structure - " + _STRUCT_RULES + " "
+)
+
 
 def ocr_extract_question(image_b64, test_type="subjective", mime_type="image/jpeg"):
     if not GEMINI_KEY or not image_b64:
@@ -181,6 +207,7 @@ def ocr_extract_question(image_b64, test_type="subjective", mime_type="image/jpe
         schema = '{"question":"...","model_answer":"the full answer or solution if present, else empty"}'
         extra = "Extract the question text and its answer/solution if present. "
     prompt = ("You are reading a screenshot of an exam question. " + extra + _LANG_NOTE + _FMT_NOTE +
+              _STRUCT_NOTE_JSON +
               "Return ONLY valid JSON, no markdown fences: " + schema)
     img, mime = _split_image(image_b64, mime_type or "image/jpeg")
     out = _gemini_generate([{"text": prompt},
@@ -196,9 +223,9 @@ def ocr_extract_question(image_b64, test_type="subjective", mime_type="image/jpe
 def format_text_latex(text):
     if not GEMINI_KEY or not (text or "").strip():
         return None
-    prompt = ("Reformat the following exam text for clean display. " + _FMT_NOTE + _LANG_NOTE +
-              "Keep the wording identical - only add formatting where needed. "
-              "Return ONLY the reformatted text, nothing else.\n\nTEXT:\n" + text)
+    prompt = ("Reformat the following exam text for clean display. " + _FMT_NOTE + _LANG_NOTE + _STRUCT_NOTE +
+              "Keep the wording identical - only add formatting (including line breaks) where needed. "
+              "Return ONLY the reformatted text, nothing else - no markdown fences.\n\nTEXT:\n" + text)
     return _gemini_generate([{"text": prompt}])
 
 
@@ -213,7 +240,7 @@ def structure_docx_questions(full_text, test_type="subjective"):
         schema = '[{"question":"...","model_answer":"...","max_marks":5}]'
         extra = "Each item is a subjective question with its model answer. "
     prompt = ("Below is text from a Word document containing exam questions. Split it into a list of "
-              "questions. " + extra + _LANG_NOTE + _FMT_NOTE +
+              "questions. " + extra + _LANG_NOTE + _FMT_NOTE + _STRUCT_NOTE_JSON +
               "Infer max_marks if written, else use a sensible default. "
               "Return ONLY a JSON array: " + schema + "\n\nDOCUMENT TEXT:\n" + full_text)
     out = _gemini_generate([{"text": prompt}])
@@ -288,7 +315,10 @@ def translate_question_to_hindi(question_text, model_answer="", options=None, su
         "'अंतिम उत्तर:', 'Solution:' -> 'हल:', 'Formula:' -> 'सूत्र:'.\n"
         "5. Do NOT add, remove, explain, or solve anything. Translate only.\n"
         "6. Keep the SAME number of options in the SAME order.\n"
-        "7. Return ONLY valid JSON with the SAME keys (no markdown, no commentary):\n"
+        "7. " + _STRUCT_NOTE_JSON + "If the source 'answer' text already has line breaks "
+        "between its parts, KEEP the exact same line breaks in the same places in the "
+        "Hindi translation - do not merge lines together.\n"
+        "8. Return ONLY valid JSON with the SAME keys (no markdown, no commentary):\n"
         '{"question": "...", "answer": "...", "options": ["..."]}\n\n'
         "Translate this JSON:\n" + json.dumps(payload, ensure_ascii=False)
     )
