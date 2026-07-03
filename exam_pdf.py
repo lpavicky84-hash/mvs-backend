@@ -324,12 +324,16 @@ def _draw_best_of_luck(pdf, LM, EPW, is_hi, teacher_name):
     vector primitives (crisp at any zoom). Fills the empty space at the end of
     the paper. All coordinates relative so it survives layout changes."""
     CARD_H = 56
-    # place on current page if it fits, else on a fresh page
-    if pdf.get_y() > pdf.h - 18 - (CARD_H + 8):
+    bottom = pdf.h - 18                       # auto-page-break limit
+    if pdf.get_y() > bottom - (CARD_H + 6):
+        # not enough room - fresh page, centred vertically in the content area
         pdf.add_page()
+        y0 = pdf.t_margin + max(0, ((bottom - pdf.t_margin) - CARD_H) / 2)
     else:
-        pdf.ln(5)
-    x0, y0 = LM, pdf.get_y()
+        # centre the card in the leftover space of the last page
+        y0 = pdf.get_y() + max(3, ((bottom - pdf.get_y()) - CARD_H) / 2)
+    x0 = LM
+    pdf.set_y(y0)
     W = EPW
     SKIN = (255, 214, 178)
     HAIR = (56, 40, 30)
@@ -459,7 +463,7 @@ def build_exam_pdf(ex, questions, medium="english"):
     LM = pdf.l_margin
 
     # ---- header band: navy + circular logo + bold title + highlighted info chips
-    BAND_H = 40
+    BAND_H = 42
     CHIPBG = (48, 78, 126)               # lighter navy chip fill
     pdf.set_fill_color(*NAVY)
     pdf.rect(0, 0, pdf.w, BAND_H, style="F")
@@ -469,7 +473,7 @@ def build_exam_pdf(ex, questions, medium="english"):
     logo = _logo_path()
     if logo:
         try:
-            D = 28                       # logo diameter (mm)
+            D = 30                       # logo diameter (mm)
             ly = (BAND_H - D) / 2
             # white ring behind the circular logo so it pops on the navy band
             pdf.set_fill_color(255, 255, 255)
@@ -478,34 +482,34 @@ def build_exam_pdf(ex, questions, medium="english"):
             text_x = LM + D + 8
         except Exception:
             text_x = LM
-    # title (bold)
-    pdf.set_xy(text_x, 7.5)
-    pdf.set_font("Noto", "B", 19)
+    # title (bold, large)
+    pdf.set_xy(text_x, 6.5)
+    pdf.set_font("Noto", "B", 21)
     pdf.set_text_color(255, 255, 255)
-    pdf.cell(pdf.w - pdf.r_margin - text_x, 9.5, _clean(ex.title or "Test"), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(pdf.w - pdf.r_margin - text_x, 10.5, _clean(ex.title or "Test"), new_x="LMARGIN", new_y="NEXT")
     # info chips row: subject / medium / total marks as highlighted rounded pills
     chips = [c for c in [ex.subject or "", L["medium"], "%s: %s" % (L["total"], ex.total_marks)] if c.strip()]
-    cy = 19.5
+    cy = 20.5
     cx = text_x
-    pdf.set_font("Noto", "B", 8.5)
+    pdf.set_font("Noto", "B", 10)
     for chip in chips:
-        cw = pdf.get_string_width(chip) + 8
+        cw = pdf.get_string_width(chip) + 9
         pdf.set_fill_color(*CHIPBG)
-        pdf.rect(cx, cy, cw, 7, style="F", round_corners=True, corner_radius=3.4)
-        pdf.set_xy(cx, cy + 0.4)
-        pdf.set_text_color(235, 240, 250)
-        pdf.cell(cw, 6.2, chip, align="C")
-        cx += cw + 3
+        pdf.rect(cx, cy, cw, 8.5, style="F", round_corners=True, corner_radius=4.1)
+        pdf.set_xy(cx, cy + 0.5)
+        pdf.set_text_color(255, 255, 255)
+        pdf.cell(cw, 7.5, chip, align="C")
+        cx += cw + 3.5
     # answer-key tag: amber badge
     tag = L["qpaper"]
-    pdf.set_font("Noto", "B", 7.5)
-    tw = pdf.get_string_width(tag) + 8
-    ty = 29.5
+    pdf.set_font("Noto", "B", 8.5)
+    tw = pdf.get_string_width(tag) + 9
+    ty = 31.5
     pdf.set_fill_color(*AMBER)
-    pdf.rect(text_x, ty, tw, 6.5, style="F", round_corners=True, corner_radius=1.8)
-    pdf.set_xy(text_x, ty + 0.4)
+    pdf.rect(text_x, ty, tw, 7.5, style="F", round_corners=True, corner_radius=2.2)
+    pdf.set_xy(text_x, ty + 0.5)
     pdf.set_text_color(255, 255, 255)
-    pdf.cell(tw, 5.7, tag, align="C")
+    pdf.cell(tw, 6.5, tag, align="C")
     pdf.set_xy(LM, BAND_H + 8)
 
     for q in questions:
@@ -721,3 +725,107 @@ def _render_block(pdf, kind, c, LM, EPW, is_q, raw=None):
         pdf.set_text_color(22, 26, 34)
         pdf.multi_cell(EPW, 6.8, c, new_x="LMARGIN", new_y="NEXT")
         pdf.ln(0.4)
+
+
+# ====================================================================== marks stamp
+def _fmt_num(v):
+    try:
+        f = float(v)
+        return str(int(f)) if f == int(f) else ("%.1f" % f)
+    except Exception:
+        return str(v)
+
+
+def _stamp_image(data, mime, label_big, label_small):
+    """Draw a green marks badge on the top-right corner of a photo answer sheet."""
+    import io as _io
+    from PIL import Image as _Img, ImageDraw as _Draw, ImageFont as _Font
+    im = _Img.open(_io.BytesIO(data)).convert("RGB")
+    W, H = im.size
+    d = _Draw.Draw(im)
+    try:
+        f_big = _Font.truetype(_font_path_bold() or _font_path(), max(22, W // 16))
+        f_sm = _Font.truetype(_font_path(), max(13, W // 38))
+    except Exception:
+        f_big = _Font.load_default()
+        f_sm = f_big
+    bb = d.textbbox((0, 0), label_big, font=f_big)
+    sb = d.textbbox((0, 0), label_small, font=f_sm)
+    tw = max(bb[2] - bb[0], sb[2] - sb[0])
+    th = (bb[3] - bb[1]) + (sb[3] - sb[1])
+    pad = max(10, W // 60)
+    gap = max(4, W // 200)
+    bw, bh = tw + pad * 2, th + gap + pad * 2
+    m = max(10, W // 50)
+    x1, y1 = W - m - bw, m
+    d.rounded_rectangle([x1, y1, x1 + bw, y1 + bh], radius=max(8, W // 90),
+                        fill=(22, 122, 74), outline=(255, 255, 255),
+                        width=max(2, W // 400))
+    cx = x1 + bw / 2
+    d.text((cx - (bb[2] - bb[0]) / 2, y1 + pad - bb[1]), label_big,
+           font=f_big, fill=(255, 255, 255))
+    d.text((cx - (sb[2] - sb[0]) / 2, y1 + pad + (bb[3] - bb[1]) + gap - sb[1]),
+           label_small, font=f_sm, fill=(214, 240, 226))
+    out = _io.BytesIO()
+    if "png" in (mime or ""):
+        im.save(out, format="PNG")
+        return out.getvalue(), "image/png"
+    im.save(out, format="JPEG", quality=92)
+    return out.getvalue(), "image/jpeg"
+
+
+def _stamp_pdf(data, label_big, label_small):
+    """Merge a green marks badge onto the first page of a PDF answer sheet."""
+    import io as _io
+    from pypdf import PdfReader, PdfWriter
+    from fpdf import FPDF
+    reader = PdfReader(_io.BytesIO(data))
+    p0 = reader.pages[0]
+    w_mm = float(p0.mediabox.width) * 25.4 / 72.0
+    h_mm = float(p0.mediabox.height) * 25.4 / 72.0
+    ov = FPDF(unit="mm", format=(w_mm, h_mm))
+    ov.set_auto_page_break(False)
+    ov.add_page()
+    ov.add_font("Noto", "", _font_path())
+    ov.add_font("Noto", "B", _font_path_bold() or _font_path())
+    ov.set_font("Noto", "B", 15)
+    bw = max(ov.get_string_width(label_big), 0) + 12
+    ov.set_font("Noto", size=7.5)
+    bw = max(bw, ov.get_string_width(label_small) + 12)
+    bh = 10.2 + 5.2
+    x1, y1 = w_mm - 8 - bw, 8
+    ov.set_fill_color(22, 122, 74)
+    ov.set_draw_color(255, 255, 255)
+    ov.set_line_width(0.7)
+    ov.rect(x1, y1, bw, bh, style="DF", round_corners=True, corner_radius=2.5)
+    ov.set_xy(x1, y1 + 1.6)
+    ov.set_font("Noto", "B", 15)
+    ov.set_text_color(255, 255, 255)
+    ov.cell(bw, 8, label_big, align="C")
+    ov.set_xy(x1, y1 + 9.6)
+    ov.set_font("Noto", size=7.5)
+    ov.set_text_color(214, 240, 226)
+    ov.cell(bw, 4.6, label_small, align="C")
+    ov_reader = PdfReader(_io.BytesIO(bytes(ov.output())))
+    p0.merge_page(ov_reader.pages[0])
+    writer = PdfWriter()
+    for p in reader.pages:
+        writer.add_page(p)
+    out = _io.BytesIO()
+    writer.write(out)
+    return out.getvalue(), "application/pdf"
+
+
+def stamp_marks_on_answer(data, mime, obtained, total, verdict=None):
+    """Stamp 'MARKS X/Y' on a graded answer sheet (photo or PDF). Never raises -
+    on any failure the original file is returned untouched so downloads keep
+    working exactly as before."""
+    try:
+        label_big = "%s / %s" % (_fmt_num(obtained), _fmt_num(total))
+        label_small = ("MARKS  \u00b7  " + str(verdict).upper()) if verdict else "MARKS  \u00b7  CHECKED"
+        m = (mime or "").lower()
+        if "pdf" in m:
+            return _stamp_pdf(data, label_big, label_small)
+        return _stamp_image(data, m, label_big, label_small)
+    except Exception:
+        return data, (mime or "application/octet-stream")

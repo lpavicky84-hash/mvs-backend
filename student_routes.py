@@ -838,4 +838,11 @@ def student_answer_sheet(exam_id: int, db: Session = Depends(get_db), current_us
         data = base64.b64decode(raw)
     except Exception:
         raise HTTPException(400, "Could not read the answer sheet")
+    # once checked, stamp the awarded marks on the sheet itself (photo or PDF)
+    if (att.status or "") == "graded":
+        ex = db.query(Exam).filter(Exam.id == exam_id).first()
+        if ex:
+            from exam_pdf import stamp_marks_on_answer
+            data, mime = stamp_marks_on_answer(
+                data, mime, att.total_awarded or 0, ex.total_marks, att.verdict)
     return Response(content=data, media_type=mime)
