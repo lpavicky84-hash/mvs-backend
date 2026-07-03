@@ -310,6 +310,122 @@ BORDER = (223, 227, 235)
 EQBG = (244, 246, 251)
 
 
+def _star(pdf, cx, cy, r, color):
+    """Small 4-point sparkle star."""
+    pdf.set_fill_color(*color)
+    k = r * 0.28
+    pdf.polygon([(cx, cy - r), (cx + k, cy - k), (cx + r, cy), (cx + k, cy + k),
+                 (cx, cy + r), (cx - k, cy + k), (cx - r, cy), (cx - k, cy - k)],
+                style="F")
+
+
+def _draw_best_of_luck(pdf, LM, EPW, is_hi, teacher_name):
+    """A friendly flat-design teacher wishing 'Best of Luck', drawn entirely with
+    vector primitives (crisp at any zoom). Fills the empty space at the end of
+    the paper. All coordinates relative so it survives layout changes."""
+    CARD_H = 56
+    # place on current page if it fits, else on a fresh page
+    if pdf.get_y() > pdf.h - 18 - (CARD_H + 8):
+        pdf.add_page()
+    else:
+        pdf.ln(5)
+    x0, y0 = LM, pdf.get_y()
+    W = EPW
+    SKIN = (255, 214, 178)
+    HAIR = (56, 40, 30)
+    # card
+    pdf.set_fill_color(248, 250, 253)
+    pdf.set_draw_color(*BORDER)
+    pdf.set_line_width(0.4)
+    pdf.rect(x0, y0, W, CARD_H, style="DF", round_corners=True, corner_radius=4)
+    # thin amber top accent inside the card
+    pdf.set_fill_color(*AMBER)
+    pdf.rect(x0 + 10, y0, W - 20, 1.1, style="F", round_corners=True, corner_radius=0.5)
+
+    # ---- teacher figure (left)
+    tx = x0 + 24            # horizontal centre of the figure
+    ty = y0 + 12            # top of head
+    # raised arm (waving) behind the body
+    pdf.set_fill_color(*NAVY2)
+    pdf.polygon([(tx + 6.5, ty + 21), (tx + 15, ty + 8.5), (tx + 17.6, ty + 11),
+                 (tx + 10, ty + 24)], style="F")
+    pdf.set_fill_color(*SKIN)
+    pdf.ellipse(tx + 13.6, ty + 6.2, 4.6, 4.6, style="F")        # waving hand
+    # hair cap + head
+    pdf.set_fill_color(*HAIR)
+    pdf.ellipse(tx - 5.6, ty - 0.8, 11.2, 10.6, style="F")
+    pdf.set_fill_color(*SKIN)
+    pdf.ellipse(tx - 5, ty + 1.2, 10, 10, style="F")             # face
+    pdf.set_fill_color(*HAIR)
+    pdf.rect(tx - 5.6, ty + 0.6, 11.2, 3.4, style="F", round_corners=True, corner_radius=1.5)
+    # glasses
+    pdf.set_draw_color(*NAVY)
+    pdf.set_line_width(0.55)
+    pdf.ellipse(tx - 4.2, ty + 4.4, 3.4, 3.2, style="D")
+    pdf.ellipse(tx + 0.8, ty + 4.4, 3.4, 3.2, style="D")
+    pdf.line(tx - 0.8, ty + 6, tx + 0.8, ty + 6)
+    # smile
+    pdf.set_line_width(0.5)
+    pdf.arc(tx - 1.6, ty + 7.2, 3.2, 20, 160, b=2.4, style="D")
+    # body: blazer
+    pdf.set_fill_color(*NAVY)
+    pdf.polygon([(tx - 8.5, ty + 26), (tx - 5.5, ty + 12.4), (tx + 5.5, ty + 12.4),
+                 (tx + 8.5, ty + 26)], style="F")
+    # shirt + tie
+    pdf.set_fill_color(255, 255, 255)
+    pdf.polygon([(tx - 2.6, ty + 12.4), (tx + 2.6, ty + 12.4), (tx, ty + 18.5)], style="F")
+    pdf.set_fill_color(*AMBER)
+    pdf.polygon([(tx - 1, ty + 13.2), (tx + 1, ty + 13.2), (tx + 0.6, ty + 19.5),
+                 (tx, ty + 21), (tx - 0.6, ty + 19.5)], style="F")
+    # book in the other hand
+    pdf.set_fill_color(*GREEN)
+    pdf.rect(tx - 13.5, ty + 18, 7.6, 5.4, style="F", round_corners=True, corner_radius=0.8)
+    pdf.set_fill_color(255, 255, 255)
+    pdf.rect(tx - 12.7, ty + 19, 6, 0.9, style="F")
+    pdf.rect(tx - 12.7, ty + 20.6, 6, 0.9, style="F")
+
+    # ---- speech bubble (right)
+    msg = "\u0936\u0941\u092d\u0915\u093e\u092e\u0928\u093e\u090f\u0901!" if is_hi else "Best of Luck!"
+    sub = ("\u0916\u0942\u092c \u0905\u091a\u094d\u091b\u0947 \u0938\u0947 \u0932\u093f\u0916\u0928\u093e!"
+           if is_hi else "Do your best, champions!")
+    bx = x0 + 48
+    bw = W - 48 - 10
+    by = y0 + 10
+    bh = 26
+    pdf.set_fill_color(255, 255, 255)
+    pdf.set_draw_color(*GREEN)
+    pdf.set_line_width(0.5)
+    pdf.rect(bx, by, bw, bh, style="DF", round_corners=True, corner_radius=3.5)
+    # bubble tail pointing at the teacher
+    pdf.set_fill_color(255, 255, 255)
+    pdf.polygon([(bx + 0.4, by + 13), (bx - 5.5, by + 17.5), (bx + 0.4, by + 19)], style="F")
+    pdf.set_draw_color(*GREEN)
+    pdf.line(bx + 0.4, by + 13, bx - 5.5, by + 17.5)
+    pdf.line(bx - 5.5, by + 17.5, bx + 0.4, by + 19)
+    # bubble text
+    pdf.set_xy(bx + 4, by + 4)
+    pdf.set_font("Noto", "B", 17)
+    pdf.set_text_color(*GREEN)
+    pdf.cell(bw - 8, 9.5, msg, align="C")
+    pdf.set_xy(bx + 4, by + 15)
+    pdf.set_font("Noto", size=10.5)
+    pdf.set_text_color(*NAVY2)
+    pdf.cell(bw - 8, 6.5, sub, align="C")
+    # teacher signature line under the bubble
+    if (teacher_name or "").strip():
+        pdf.set_xy(bx, by + bh + 3.5)
+        pdf.set_font("Noto", "B", 9)
+        pdf.set_text_color(*GREY)
+        pdf.cell(bw, 5, "\u2014 %s" % teacher_name, align="R")
+    # sparkles
+    _star(pdf, bx + bw - 5, by - 3.2, 2.4, AMBER)
+    _star(pdf, bx + 7, by - 2.4, 1.7, AMBER)
+    _star(pdf, bx + bw + 2.5, by + bh - 3, 1.9, AMBER)
+    pdf.set_xy(LM, y0 + CARD_H + 4)
+    pdf.set_text_color(20, 22, 28)
+    pdf.set_line_width(0.3)
+
+
 def build_exam_pdf(ex, questions, medium="english"):
     from fpdf import FPDF
     is_hi = (medium == "hindi")
@@ -467,6 +583,12 @@ def build_exam_pdf(ex, questions, medium="english"):
         pdf.set_line_width(0.3)
         pdf.line(LM, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
         pdf.ln(4)
+
+    # friendly send-off illustration at the end of the paper
+    try:
+        _draw_best_of_luck(pdf, LM, EPW, is_hi, ex.teacher_name or "")
+    except Exception:
+        pass
 
     return bytes(pdf.output())
 
