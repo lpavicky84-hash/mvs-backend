@@ -139,8 +139,19 @@ app.include_router(admin_routes.router)
 app.include_router(student_routes.router)
 
 # ===== ROOT =====
+# ===== ROOT: serve the portal =====
+# If mvs_portal_connected.html sits next to this file in the repo, the portal
+# opens directly at the Railway URL. If the file is missing, the old JSON
+# status reply is returned so nothing ever breaks.
+from fastapi.responses import FileResponse
+
+_PORTAL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "mvs_portal_connected.html")
+
 @app.get("/")
 def root():
+    if os.path.exists(_PORTAL_FILE):
+        return FileResponse(_PORTAL_FILE, media_type="text/html")
     return {
         "app": "MVS Foundation CRM",
         "version": "1.0.0",
@@ -148,6 +159,12 @@ def root():
         "docs": "/docs",
         "portals": ["teacher", "admin", "student"]
     }
+
+@app.get("/portal")
+def portal():
+    if os.path.exists(_PORTAL_FILE):
+        return FileResponse(_PORTAL_FILE, media_type="text/html")
+    return {"error": "portal file not deployed"}
 
 @app.get("/health")
 def health():
