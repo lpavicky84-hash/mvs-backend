@@ -842,7 +842,12 @@ def student_answer_sheet(exam_id: int, db: Session = Depends(get_db), current_us
     if (att.status or "") == "graded":
         ex = db.query(Exam).filter(Exam.id == exam_id).first()
         if ex:
+            res = db.query(ExamResult).filter(
+                ExamResult.attempt_id == att.id).order_by(ExamResult.q_no).all()
+            per_q = [{"q_no": r.q_no, "marks": r.marks_awarded, "max": r.max_marks}
+                     for r in res]
             from exam_pdf import stamp_marks_on_answer
             data, mime = stamp_marks_on_answer(
-                data, mime, att.total_awarded or 0, ex.total_marks, att.verdict)
+                data, mime, att.total_awarded or 0, ex.total_marks, att.verdict,
+                per_q=per_q)
     return Response(content=data, media_type=mime)

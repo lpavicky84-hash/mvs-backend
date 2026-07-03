@@ -437,7 +437,7 @@ def build_exam_pdf(ex, questions, medium="english"):
         "q":       ("\u092a\u094d\u0930. " if is_hi else "Q"),
         "marks":   ("\u0905\u0902\u0915" if is_hi else "marks"),
         "answer":  ("\u0909\u0924\u094d\u0924\u0930" if is_hi else "ANSWER"),
-        "correct": ("\u2713 \u0938\u0939\u0940" if is_hi else "Correct"),
+        "correct": ("\u0938\u0939\u0940 \u0909\u0924\u094d\u0924\u0930" if is_hi else "Correct"),
         "medium":  ("\u0939\u093f\u0902\u0926\u0940 \u092e\u093e\u0927\u094d\u092f\u092e" if is_hi else "English Medium"),
         "total":   ("\u0915\u0941\u0932 \u0905\u0902\u0915" if is_hi else "Total Marks"),
         "qpaper":  ("\u092a\u094d\u0930\u0936\u094d\u0928 \u092a\u0924\u094d\u0930 (\u0909\u0924\u094d\u0924\u0930 \u0938\u0939\u093f\u0924)" if is_hi else "QUESTION PAPER WITH ANSWER KEY"),
@@ -747,8 +747,10 @@ def _fmt_num(v):
         return str(v)
 
 
-def _stamp_image(data, mime, label_big, label_small):
-    """Draw a green marks badge on the top-right corner of a photo answer sheet."""
+def _stamp_image(data, mime, label_big, label_small, per_q=None):
+    """Draw a green marks badge on the top-right corner of a photo answer sheet,
+    plus a per-question marks panel below it (photo sheets have no searchable
+    text positions, so the breakdown is listed under the total)."""
     import io as _io
     from PIL import Image as _Img, ImageDraw as _Draw, ImageFont as _Font
     im = _Img.open(_io.BytesIO(data)).convert("RGB")
@@ -757,9 +759,10 @@ def _stamp_image(data, mime, label_big, label_small):
     try:
         f_big = _Font.truetype(_font_path_bold() or _font_path(), max(22, W // 16))
         f_sm = _Font.truetype(_font_path(), max(13, W // 38))
+        f_q = _Font.truetype(_font_path_bold() or _font_path(), max(14, W // 34))
     except Exception:
         f_big = _Font.load_default()
-        f_sm = f_big
+        f_sm = f_q = f_big
     bb = d.textbbox((0, 0), label_big, font=f_big)
     sb = d.textbbox((0, 0), label_small, font=f_sm)
     tw = max(bb[2] - bb[0], sb[2] - sb[0])
@@ -777,6 +780,31 @@ def _stamp_image(data, mime, label_big, label_small):
            font=f_big, fill=(255, 255, 255))
     d.text((cx - (sb[2] - sb[0]) / 2, y1 + pad + (bb[3] - bb[1]) + gap - sb[1]),
            label_small, font=f_sm, fill=(214, 240, 226))
+    # ---- per-question breakdown panel (looks like the checker's margin notes)
+    rows = []
+    for r in (per_q or [])[:14]:
+        rows.append("Q%s:  %s / %s" % (r.get("q_no"), _fmt_num(r.get("marks", 0)),
+                                       _fmt_num(r.get("max", 0))))
+    if len(per_q or []) > 14:
+        rows.append("...")
+    if rows:
+        qpad = max(8, W // 80)
+        line_h = 0
+        qw = 0
+        for t in rows:
+            qb = d.textbbox((0, 0), t, font=f_q)
+            qw = max(qw, qb[2] - qb[0])
+            line_h = max(line_h, qb[3] - qb[1])
+        line_h = int(line_h * 1.45)
+        pw, ph = qw + qpad * 2, line_h * len(rows) + qpad * 2
+        px, py = W - m - pw, y1 + bh + max(6, W // 120)
+        d.rounded_rectangle([px, py, px + pw, py + ph], radius=max(6, W // 110),
+                            fill=(255, 255, 255), outline=(200, 32, 40),
+                            width=max(2, W // 500))
+        yy = py + qpad
+        for t in rows:
+            d.text((px + qpad, yy), t, font=f_q, fill=(200, 32, 40))
+            yy += line_h
     out = _io.BytesIO()
     if "png" in (mime or ""):
         im.save(out, format="PNG")
@@ -785,58 +813,127 @@ def _stamp_image(data, mime, label_big, label_small):
     return out.getvalue(), "image/jpeg"
 
 
-def _stamp_pdf(data, label_big, label_small):
-    """Merge a green marks badge onto the first page of a PDF answer sheet."""
+_QLINE_RE = re.compile(
+    r"^\s*(?:question|que|q|\u092a\u094d\u0930\u0936\u094d\u0928|\u092a\u094d\u0930)\s*\.?\s*(\d{1,2})\b",
+    re.IGNORECASE)
+
+
+def _find_question_positions(data):
+    """Locate 'Q1.', 'Question 2', 'प्र. 3' line starts in a PDF answer sheet
+    using pdfplumber -> {q_no: (page_index, top_in_points)}. Best-effort."""
+    import io as _io
+    positions = {}
+    try:
+        import pdfplumber
+        with pdfplumber.open(_io.BytesIO(data)) as pp:
+            for pi, page in enumerate(pp.pages):
+                try:
+                    words = page.extract_words() or []
+                except Exception:
+                    continue
+                lines = {}
+                for w in words:
+                    lines.setdefault(round(w["top"] / 3.0), []).append(w)
+                for key in sorted(lines):
+                    ws = sorted(lines[key], key=lambda w: w["x0"])
+                    text = " ".join(w["text"] for w in ws)
+                    mm_ = _QLINE_RE.match(text)
+                    if mm_:
+                        qn = int(mm_.group(1))
+                        if qn not in positions:
+                            positions[qn] = (pi, float(ws[0]["top"]))
+    except Exception:
+        return {}
+    return positions
+
+
+def _stamp_pdf(data, label_big, label_small, per_q=None):
+    """Overlay marks onto a PDF answer sheet: a green total badge on page 1 plus
+    a red per-question chip in the right margin beside each detected question -
+    the way a checker writes marks next to every answer."""
     import io as _io
     from pypdf import PdfReader, PdfWriter
     from fpdf import FPDF
     reader = PdfReader(_io.BytesIO(data))
-    p0 = reader.pages[0]
-    w_mm = float(p0.mediabox.width) * 25.4 / 72.0
-    h_mm = float(p0.mediabox.height) * 25.4 / 72.0
-    ov = FPDF(unit="mm", format=(w_mm, h_mm))
+    qpos = _find_question_positions(data) if per_q else {}
+
+    ov = FPDF(unit="mm")
     ov.set_auto_page_break(False)
-    ov.add_page()
     ov.add_font("Noto", "", _font_path())
     ov.add_font("Noto", "B", _font_path_bold() or _font_path())
-    ov.set_font("Noto", "B", 15)
-    bw = max(ov.get_string_width(label_big), 0) + 12
-    ov.set_font("Noto", size=7.5)
-    bw = max(bw, ov.get_string_width(label_small) + 12)
-    bh = 10.2 + 5.2
-    x1, y1 = w_mm - 8 - bw, 8
-    ov.set_fill_color(22, 122, 74)
-    ov.set_draw_color(255, 255, 255)
-    ov.set_line_width(0.7)
-    ov.rect(x1, y1, bw, bh, style="DF", round_corners=True, corner_radius=2.5)
-    ov.set_xy(x1, y1 + 1.6)
-    ov.set_font("Noto", "B", 15)
-    ov.set_text_color(255, 255, 255)
-    ov.cell(bw, 8, label_big, align="C")
-    ov.set_xy(x1, y1 + 9.6)
-    ov.set_font("Noto", size=7.5)
-    ov.set_text_color(214, 240, 226)
-    ov.cell(bw, 4.6, label_small, align="C")
+    RED = (200, 32, 40)
+    for pi, p in enumerate(reader.pages):
+        w_mm = float(p.mediabox.width) * 25.4 / 72.0
+        h_mm = float(p.mediabox.height) * 25.4 / 72.0
+        ov.add_page(format=(w_mm, h_mm))
+        if pi == 0:
+            # total badge (top-right)
+            ov.set_font("Noto", "B", 15)
+            bw = ov.get_string_width(label_big) + 12
+            ov.set_font("Noto", size=7.5)
+            bw = max(bw, ov.get_string_width(label_small) + 12)
+            bh = 15.4
+            x1, y1 = w_mm - 8 - bw, 8
+            ov.set_fill_color(22, 122, 74)
+            ov.set_draw_color(255, 255, 255)
+            ov.set_line_width(0.7)
+            ov.rect(x1, y1, bw, bh, style="DF", round_corners=True, corner_radius=2.5)
+            ov.set_xy(x1, y1 + 1.6)
+            ov.set_font("Noto", "B", 15)
+            ov.set_text_color(255, 255, 255)
+            ov.cell(bw, 8, label_big, align="C")
+            ov.set_xy(x1, y1 + 9.6)
+            ov.set_font("Noto", size=7.5)
+            ov.set_text_color(214, 240, 226)
+            ov.cell(bw, 4.6, label_small, align="C")
+        # per-question chips beside each detected question line
+        for r in (per_q or []):
+            hit = qpos.get(int(r.get("q_no", -1)))
+            if not hit or hit[0] != pi:
+                continue
+            txt = "%s / %s" % (_fmt_num(r.get("marks", 0)), _fmt_num(r.get("max", 0)))
+            ov.set_font("Noto", "B", 10.5)
+            tick_w = 4.2
+            cw = ov.get_string_width(txt) + 7 + tick_w
+            ch = 7.6
+            cy = hit[1] * 25.4 / 72.0 - 1.4
+            cy = max(2, min(cy, h_mm - ch - 2))
+            cx = w_mm - cw - 4
+            ov.set_fill_color(255, 255, 255)
+            ov.set_draw_color(*RED)
+            ov.set_line_width(0.5)
+            ov.rect(cx, cy, cw, ch, style="DF", round_corners=True, corner_radius=1.8)
+            # vector tick (font has no check-mark glyph)
+            ov.set_line_width(0.75)
+            tx0, ty0 = cx + 2.2, cy + ch / 2 + 0.4
+            ov.line(tx0, ty0, tx0 + 1.1, ty0 + 1.4)
+            ov.line(tx0 + 1.1, ty0 + 1.4, tx0 + 3.0, ty0 - 1.9)
+            ov.set_xy(cx + tick_w, cy + 0.5)
+            ov.set_text_color(*RED)
+            ov.cell(cw - tick_w - 1, 6.6, txt, align="C")
     ov_reader = PdfReader(_io.BytesIO(bytes(ov.output())))
-    p0.merge_page(ov_reader.pages[0])
     writer = PdfWriter()
-    for p in reader.pages:
+    for pi, p in enumerate(reader.pages):
+        try:
+            p.merge_page(ov_reader.pages[pi])
+        except Exception:
+            pass
         writer.add_page(p)
     out = _io.BytesIO()
     writer.write(out)
     return out.getvalue(), "application/pdf"
 
 
-def stamp_marks_on_answer(data, mime, obtained, total, verdict=None):
-    """Stamp 'MARKS X/Y' on a graded answer sheet (photo or PDF). Never raises -
-    on any failure the original file is returned untouched so downloads keep
-    working exactly as before."""
+def stamp_marks_on_answer(data, mime, obtained, total, verdict=None, per_q=None):
+    """Stamp total + per-question marks on a graded answer sheet (photo or PDF).
+    Never raises - on any failure the original file is returned untouched so
+    downloads keep working exactly as before."""
     try:
         label_big = "%s / %s" % (_fmt_num(obtained), _fmt_num(total))
         label_small = ("MARKS  \u00b7  " + str(verdict).upper()) if verdict else "MARKS  \u00b7  CHECKED"
         m = (mime or "").lower()
         if "pdf" in m:
-            return _stamp_pdf(data, label_big, label_small)
-        return _stamp_image(data, m, label_big, label_small)
+            return _stamp_pdf(data, label_big, label_small, per_q=per_q)
+        return _stamp_image(data, m, label_big, label_small, per_q=per_q)
     except Exception:
         return data, (mime or "application/octet-stream")
