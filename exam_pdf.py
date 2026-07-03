@@ -29,6 +29,20 @@ def _font_path():
     return "NotoSansDevanagari-Static.ttf"
 
 
+def _font_path_bold():
+    """Bold static instance (wght=700) of the same Devanagari font. Optional -
+    if not deployed, the caller falls back to registering the regular file as
+    'bold' so nothing breaks."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    name = "NotoSansDevanagari-Bold-Static.ttf"
+    for c in [os.path.join(here, "fonts", name), os.path.join(here, name),
+              os.path.join(os.getcwd(), "fonts", name), os.path.join(os.getcwd(), name),
+              "fonts/%s" % name, name]:
+        if os.path.exists(c):
+            return c
+    return None
+
+
 def _logo_path():
     """Optional premium header logo. Drop a file named logo.png (or logo.jpg) in the
     repo root or fonts/ folder and it will appear in the PDF header automatically -
@@ -313,7 +327,7 @@ def build_exam_pdf(ex, questions, medium="english"):
     class PDF(FPDF):
         def footer(self):
             self.set_y(-12)
-            self.set_font("Noto", size=8)
+            self.set_font("Noto", "B", 8)
             self.set_text_color(*GREY)
             self.cell(0, 6, "MVS Foundation  \u00b7  %s" % (ex.teacher_name or ""), align="L")
             self.set_y(-12)
@@ -322,13 +336,15 @@ def build_exam_pdf(ex, questions, medium="english"):
     pdf = PDF()
     pdf.set_auto_page_break(True, margin=18)
     pdf.add_font("Noto", "", FONT)
+    pdf.add_font("Noto", "B", _font_path_bold() or FONT)
     pdf.add_page()
     pdf.set_text_shaping(True)
     EPW = pdf.epw
     LM = pdf.l_margin
 
-    # ---- header band (premium: navy band + circular logo + amber accent strip)
-    BAND_H = 38
+    # ---- header band: navy + circular logo + bold title + highlighted info chips
+    BAND_H = 40
+    CHIPBG = (48, 78, 126)               # lighter navy chip fill
     pdf.set_fill_color(*NAVY)
     pdf.rect(0, 0, pdf.w, BAND_H, style="F")
     pdf.set_fill_color(*AMBER)
@@ -337,7 +353,7 @@ def build_exam_pdf(ex, questions, medium="english"):
     logo = _logo_path()
     if logo:
         try:
-            D = 26                       # logo diameter (mm)
+            D = 28                       # logo diameter (mm)
             ly = (BAND_H - D) / 2
             # white ring behind the circular logo so it pops on the navy band
             pdf.set_fill_color(255, 255, 255)
@@ -346,21 +362,34 @@ def build_exam_pdf(ex, questions, medium="english"):
             text_x = LM + D + 8
         except Exception:
             text_x = LM
-    ty = 8 if logo else 7
-    pdf.set_xy(text_x, ty)
-    pdf.set_font("Noto", size=18)
+    # title (bold)
+    pdf.set_xy(text_x, 7.5)
+    pdf.set_font("Noto", "B", 19)
     pdf.set_text_color(255, 255, 255)
     pdf.cell(pdf.w - pdf.r_margin - text_x, 9.5, _clean(ex.title or "Test"), new_x="LMARGIN", new_y="NEXT")
-    pdf.set_x(text_x)
-    pdf.set_font("Noto", size=9.5)
-    pdf.set_text_color(200, 210, 228)
-    pdf.cell(pdf.w - pdf.r_margin - text_x, 6, "%s    \u00b7    %s    \u00b7    %s: %s" % (
-        ex.subject or "", L["medium"], L["total"], ex.total_marks),
-        new_x="LMARGIN", new_y="NEXT")
-    pdf.set_x(text_x)
-    pdf.set_font("Noto", size=8)
-    pdf.set_text_color(*AMBER)
-    pdf.cell(pdf.w - pdf.r_margin - text_x, 5.5, L["qpaper"], new_x="LMARGIN", new_y="NEXT")
+    # info chips row: subject / medium / total marks as highlighted rounded pills
+    chips = [c for c in [ex.subject or "", L["medium"], "%s: %s" % (L["total"], ex.total_marks)] if c.strip()]
+    cy = 19.5
+    cx = text_x
+    pdf.set_font("Noto", "B", 8.5)
+    for chip in chips:
+        cw = pdf.get_string_width(chip) + 8
+        pdf.set_fill_color(*CHIPBG)
+        pdf.rect(cx, cy, cw, 7, style="F", round_corners=True, corner_radius=3.4)
+        pdf.set_xy(cx, cy + 0.4)
+        pdf.set_text_color(235, 240, 250)
+        pdf.cell(cw, 6.2, chip, align="C")
+        cx += cw + 3
+    # answer-key tag: amber badge
+    tag = L["qpaper"]
+    pdf.set_font("Noto", "B", 7.5)
+    tw = pdf.get_string_width(tag) + 8
+    ty = 29.5
+    pdf.set_fill_color(*AMBER)
+    pdf.rect(text_x, ty, tw, 6.5, style="F", round_corners=True, corner_radius=1.8)
+    pdf.set_xy(text_x, ty + 0.4)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(tw, 5.7, tag, align="C")
     pdf.set_xy(LM, BAND_H + 8)
 
     for q in questions:
@@ -372,7 +401,7 @@ def build_exam_pdf(ex, questions, medium="english"):
         # question badge
         pdf.set_fill_color(*NAVY)
         pdf.set_text_color(255, 255, 255)
-        pdf.set_font("Noto", size=12.5)
+        pdf.set_font("Noto", "B", 12.5)
         badge = "%s%d" % (L["q"], q.q_no)
         bw = pdf.get_string_width(badge) + 10
         pdf.rect(LM, y0, bw, 9.5, style="F", round_corners=True, corner_radius=2.5)
@@ -380,7 +409,7 @@ def build_exam_pdf(ex, questions, medium="english"):
         pdf.cell(bw, 8.1, badge, align="C")
         # marks pill
         pill = "%d %s" % (q.max_marks, L["marks"])
-        pdf.set_font("Noto", size=9.5)
+        pdf.set_font("Noto", "B", 9)
         pw = pdf.get_string_width(pill) + 9
         pdf.set_fill_color(*LIGHT)
         pdf.set_draw_color(*BORDER)
@@ -410,7 +439,7 @@ def build_exam_pdf(ex, questions, medium="english"):
                     pdf.multi_cell(EPW, 7, "   %s)   %s      %s" % (chr(65 + idx), _clean(str(op)), L["correct"]),
                                    new_x="LMARGIN", new_y="NEXT", fill=True, border=1)
                 else:
-                    pdf.set_text_color(38, 42, 50)
+                    pdf.set_text_color(28, 32, 40)
                     pdf.set_x(LM)
                     pdf.multi_cell(EPW, 7, "   %s)   %s" % (chr(65 + idx), _clean(str(op))),
                                    new_x="LMARGIN", new_y="NEXT")
@@ -423,7 +452,7 @@ def build_exam_pdf(ex, questions, medium="english"):
                 yy = pdf.get_y()
                 pdf.set_fill_color(*GREEN)
                 pdf.set_text_color(255, 255, 255)
-                pdf.set_font("Noto", size=9.5)
+                pdf.set_font("Noto", "B", 9.5)
                 lw = pdf.get_string_width(L["answer"]) + 10
                 pdf.rect(LM, yy, lw, 7.5, style="F", round_corners=True, corner_radius=2)
                 pdf.set_xy(LM, yy + 0.5)
@@ -512,7 +541,7 @@ def _render_block(pdf, kind, c, LM, EPW, is_q, raw=None):
             # major section heading: larger navy type - clean, no side bar
             pdf.ln(2.6)
             pdf.set_x(LM)
-            pdf.set_font("Noto", size=13)
+            pdf.set_font("Noto", "B", 13)
             pdf.set_text_color(*acc)
             pdf.multi_cell(EPW, 7.4, c, new_x="LMARGIN", new_y="NEXT")
             pdf.ln(0.6)
@@ -528,7 +557,7 @@ def _render_block(pdf, kind, c, LM, EPW, is_q, raw=None):
     elif kind == "final":
         pdf.ln(2.2)
         yy = pdf.get_y()
-        pdf.set_font("Noto", size=11.5)
+        pdf.set_font("Noto", "B", 11.5)
         lines = pdf.multi_cell(EPW - 10, 7, c, dry_run=True, output="LINES")
         bh = 7 * max(1, len(lines)) + 5
         pdf.set_fill_color(*GREENBG)
@@ -561,12 +590,12 @@ def _render_block(pdf, kind, c, LM, EPW, is_q, raw=None):
         pdf.set_font("Noto", size=11.5)
         pdf.set_text_color(*(NAVY if is_q else GREEN))
         pdf.cell(5, 6.8, "\u2022")
-        pdf.set_text_color(38, 42, 50)
+        pdf.set_text_color(28, 32, 40)
         pdf.multi_cell(EPW - 9, 6.8, c, new_x="LMARGIN", new_y="NEXT")
         pdf.ln(0.4)
     else:
         pdf.set_x(LM)
         pdf.set_font("Noto", size=11.5)
-        pdf.set_text_color(30, 34, 42)
+        pdf.set_text_color(22, 26, 34)
         pdf.multi_cell(EPW, 6.8, c, new_x="LMARGIN", new_y="NEXT")
         pdf.ln(0.4)
