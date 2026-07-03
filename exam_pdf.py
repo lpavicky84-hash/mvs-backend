@@ -570,6 +570,9 @@ def build_exam_pdf(ex, questions, medium="english"):
             if ans.strip():
                 pdf.ln(2.5)
                 yy = pdf.get_y()
+                if yy + 16 > pdf.h - 18:
+                    pdf.add_page()
+                    yy = pdf.get_y()
                 pdf.set_fill_color(*GREEN)
                 pdf.set_text_color(255, 255, 255)
                 pdf.set_font("Noto", "B", 9.5)
@@ -616,6 +619,10 @@ def _split_frac(raw):
 def _render_fraction(pdf, frac, LM, EPW, color):
     """Draw prefix, a numerator/line/denominator stack, then suffix - a real
     vertical fraction like a textbook, instead of flattened '(a)/(b)' text."""
+    # the stack is drawn with absolute coordinates in several pieces, so it must
+    # never straddle a page break - move to a fresh page up-front if it won't fit
+    if pdf.get_y() + 17 > pdf.h - 18:
+        pdf.add_page()
     pre, num, den, post = frac
     pdf.set_font("Noto", size=11)
     num_w, den_w = pdf.get_string_width(num), pdf.get_string_width(den)
@@ -686,6 +693,10 @@ def _render_block(pdf, kind, c, LM, EPW, is_q, raw=None):
         pdf.set_font("Noto", "B", 11.5)
         lines = pdf.multi_cell(EPW - 10, 7, c, dry_run=True, output="LINES")
         bh = 7 * max(1, len(lines)) + 5
+        # box + text use absolute coords - jump to a fresh page if it won't fit
+        if yy + bh + 3 > pdf.h - 18:
+            pdf.add_page()
+            yy = pdf.get_y()
         pdf.set_fill_color(*GREENBG)
         pdf.set_draw_color(*GREEN)
         pdf.set_line_width(0.45)
