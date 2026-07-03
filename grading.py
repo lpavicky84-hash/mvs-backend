@@ -229,11 +229,16 @@ def format_text_latex(text):
     return _gemini_generate([{"text": prompt}])
 
 
+LAST_TRUNCATED = False
+
+
 def _parse_json_array(text):
     """Parse a JSON array from AI output. Salvages the common failure modes:
     markdown fences, prose around the array, trailing commas, and a TRUNCATED
     array (output hit the token limit) - in that case the complete leading
-    items are recovered instead of losing everything."""
+    items are recovered instead of losing everything. Sets LAST_TRUNCATED."""
+    global LAST_TRUNCATED
+    LAST_TRUNCATED = False
     t = _strip_json(text)
     i = t.find("[")
     if i < 0:
@@ -255,6 +260,7 @@ def _parse_json_array(text):
         try:
             data = json.loads(cand)
             if isinstance(data, list) and data:
+                LAST_TRUNCATED = True
                 return data
         except Exception:
             pass
@@ -264,17 +270,32 @@ def _parse_json_array(text):
 
 _QSTART_RE = re.compile(
     r"(?m)^\s*(?:Q\.?\s*(?:No\.?\s*)?)?(\d{1,3})\s*[\.\)]\s+\S|^\s*Q\s*(\d{1,3})\b")
+# strict variant: only explicit question markers (Q1. / Q.No. 5 / प्र. 3 / प्रश्न 3) -
+# preferred for chunk boundaries so numbered SOLUTION STEPS ('1. Molar mass...')
+# inside an answer never split a question away from its own solution
+_QSTART_STRICT_RE = re.compile(
+    r"(?m)^\s*(?:Q|\u092a\u094d\u0930\u0936\u094d\u0928|\u092a\u094d\u0930)"
+    r"\.?\s*(?:No\.?\s*)?\d{1,3}(?:_ALT)?\s*[\.\):]?\s")
 
 
-def _chunk_exam_text(full_text, budget=9000):
+def _boundary_starts(text):
+    strict = [m.start() for m in _QSTART_STRICT_RE.finditer(text)]
+    if len(strict) >= 3:
+        return strict
+    return [m.start() for m in _QSTART_RE.finditer(text)]
+
+
+def _chunk_exam_text(full_text, budget=4200):
     """Split a long question paper into chunks small enough that each chunk's
-    JSON output fits comfortably in the model's output-token limit. Splits at
-    question boundaries so no question straddles two chunks; falls back to
-    overlapping fixed-size windows if no question markers are found."""
+    JSON output (question + full model answer, BOTH languages) fits comfortably
+    in the model's output-token limit. The old 9000-char budget produced replies
+    that hit the limit and got truncated - that is why big papers imported only
+    the first few questions. Splits at question boundaries so no question
+    straddles two chunks; falls back to overlapping windows without markers."""
     text = full_text or ""
     if len(text) <= budget:
         return [text]
-    starts = [m.start() for m in _QSTART_RE.finditer(text)]
+    starts = _boundary_starts(text)
     if len(starts) >= 3:
         pieces, chunk_start = [], 0
         prev = starts[0]
@@ -330,8 +351,9 @@ def _fill_answers_from_key(questions, key_text):
                 "question number answered in it, produce its model answer. " + _LANG_NOTE +
                 _FMT_NOTE + _STRUCT_NOTE_JSON +
                 "For MCQ answers, write the correct option letter and text plus the brief "
-                "explanation if given. Return ONLY a JSON array: "
-                '[{"q_no": 1, "model_answer": "..."}]\n\nMARKING SCHEME TEXT:\n' + chunk)
+                "explanation if given. If the scheme is bilingual, put English in model_answer and "
+                "Hindi in model_answer_hi (null when absent). Return ONLY a JSON array: "
+                '[{"q_no": 1, "model_answer": "...", "model_answer_hi": null}]\n\nMARKING SCHEME TEXT:\n' + chunk)
             out = _gemini_generate([{"text": prompt}], max_tokens=8192, timeout=150)
             for item in (_parse_json_array(out) or []):
                 try:
@@ -339,10 +361,14 @@ def _fill_answers_from_key(questions, key_text):
                 except Exception:
                     continue
                 ans = (item.get("model_answer") or "").strip()
-                if 1 <= qn <= len(questions) and ans:
-                    cur = (questions[qn - 1].get("model_answer") or "").strip()
-                    if not cur or len(ans) > len(cur):
-                        questions[qn - 1]["model_answer"] = ans
+                ans_hi = (item.get("model_answer_hi") or "").strip()
+                if 1 <= qn <= len(questions):
+                    if ans:
+                        cur = (questions[qn - 1].get("model_answer") or "").strip()
+                        if not cur or len(ans) > len(cur):
+                            questions[qn - 1]["model_answer"] = ans
+                    if ans_hi and not (questions[qn - 1].get("model_answer_hi") or "").strip():
+                        questions[qn - 1]["model_answer_hi"] = ans_hi
     except Exception:
         pass
     return questions
@@ -352,30 +378,51 @@ _MIXED_NOTE = (
     "The document may be a MIXED question paper containing several sections: multiple-choice "
     "questions, objective questions (fill in the blanks, match the following, true/false, "
     "passage-based sub-questions), short-answer and long-answer questions, and it may also "
-    "contain a marking scheme / answer key at the end. Handle it as follows: "
-    "(1) Extract EVERY question in order, whatever its type. "
-    "(2) For an MCQ or objective question, include its options / blanks / match-columns as "
-    "separate lines INSIDE the question text (e.g. '(A) ...' on its own line), and put the "
-    "correct answer (with a brief one-line working or reason if numerical/conceptual) in "
-    "model_answer. "
-    "(3) If the document includes an answer key or marking scheme, USE it to fill model_answer "
-    "for the matching questions - and do NOT output the marking-scheme entries as separate questions. "
-    "(4) A question with an internal choice ('OR' / 'अथवा') is ONE question - keep both "
-    "alternatives inside the same question text separated by a line 'OR'. "
-    "(5) Skip page headers/footers, section headings, and general instructions - they are not questions. "
+    "contain answers/solutions inline after each question. Handle it as follows: "
+    "(1) Extract EVERY question in order, whatever its type - do not skip any. "
+    "(2) FORMAT EACH TYPE properly, each element on its OWN line: "
+    "MCQ -> question stem, then each option as '(A) ...' '(B) ...' '(C) ...' '(D) ...' on its own "
+    "line; its model_answer starts 'Correct Answer: (B) ...' on its own line, then 'Explanation:' "
+    "on its own line followed by the explanation. "
+    "FILL IN THE BLANKS -> keep the word-bank bracket [ ... ] on its own line, then each sub-part "
+    "'(a) ...' with '__________' for the blank on its own line; model_answer lists '(a) <word>' "
+    "'(b) <word>' each on its own line, then 'Explanation:' lines. "
+    "MATCH THE FOLLOWING -> 'Column-I:' heading then each item '(a) ...' on its own line, then "
+    "'Column-II:' heading with each item '(i) ...' on its own line; model_answer lists each pairing "
+    "'(a) \\u2192 (ii)' on its own line with a one-line reason. "
+    "TRUE/FALSE -> each statement '(a) ...' on its own line; model_answer '(a) True/False - reason' "
+    "per line. "
+    "NUMERICAL/SUBJECTIVE -> model_answer as a clean step-by-step solution (Given Data / Steps / "
+    "Final Answer structure). "
+    "(3) If the question or its solution is printed in the document, copy it fully - keep every "
+    "step of the printed solution in model_answer. "
+    "(4) A question with an internal choice ('OR' / '\\u0905\\u0925\\u0935\\u093e') is ONE question - keep both "
+    "alternatives inside the same question text separated by a line 'OR', and both solutions in "
+    "model_answer separated by a line 'OR'. "
+    "(5) Skip page headers/footers, section headings, watermarks and general instructions - they are "
+    "not questions. "
     "(6) Take max_marks from markers like [1], (2), '1 X 2', 'carrying 3 marks each'. "
-    "(7) If some text is garbled/mojibake (broken font encoding, e.g. random symbols where Hindi "
-    "should be), IGNORE the unreadable parts and reconstruct the question from the readable text - "
-    "never copy garbage characters into the output. ")
+    "(7) BILINGUAL: if the paper carries both English and Hindi versions, put the ENGLISH version in "
+    "'question'/'model_answer' and the HINDI (Devanagari) version in 'question_hi'/'model_answer_hi' - "
+    "never mix the two languages in one field. If the Hindi text in the PDF is garbled/mojibake "
+    "(broken font encoding - random symbols where Hindi should be), DISCARD the garbage and instead "
+    "TRANSLATE the English question and answer into clean Hindi yourself for the *_hi fields, using "
+    "standard NIOS textbook terminology. If the paper is English-only, set the *_hi fields to null. "
+    "(8) Never copy garbage/mojibake characters into any output field. ")
 
 
 def _structure_chunk(chunk_text, test_type, part_note):
     if test_type == "mcq":
-        schema = ('[{"question":"...","options":["a","b","c","d"],'
+        schema = ('[{"question":"...","question_hi":"Hindi version or null",'
+                  '"options":["a","b","c","d"],"options_hi":["...x4 or null"],'
                   '"correct_option":"exact correct option text","max_marks":1}]')
-        extra = "Each item is a multiple-choice question with its options and correct option. "
+        extra = ("Each item is a multiple-choice question with its options and correct option. "
+                 "BILINGUAL: if the paper has both languages, English goes in question/options and "
+                 "Hindi (Devanagari) in question_hi/options_hi; if the PDF's Hindi is garbled, "
+                 "translate the English into clean Hindi yourself; if English-only, set *_hi null. ")
     else:
-        schema = '[{"question":"...","model_answer":"...","max_marks":5}]'
+        schema = ('[{"question":"...","question_hi":"Hindi version or null",'
+                  '"model_answer":"...","model_answer_hi":"Hindi version or null","max_marks":5}]')
         extra = ("Each item has the full question text and a model answer. " + _MIXED_NOTE)
     prompt = ("Below is text extracted from an exam question paper (PDF/Word). Split it into a "
               "list of questions. " + part_note + extra + _LANG_NOTE + _FMT_NOTE + _STRUCT_NOTE_JSON +
@@ -401,7 +448,7 @@ def structure_docx_questions(full_text, test_type="subjective"):
         return None
     qtext, key_text = _split_answer_key(full_text) if test_type != "mcq" else (full_text, "")
     chunks = _chunk_exam_text(qtext)
-    merged, ok_chunks = [], 0
+    merged, ok_chunks, trimmed = [], 0, 0
     for ci, chunk in enumerate(chunks):
         note = ("This is PART %d of %d of the same paper - extract only the questions "
                 "visible in this part. " % (ci + 1, len(chunks))) if len(chunks) > 1 else ""
@@ -409,14 +456,17 @@ def structure_docx_questions(full_text, test_type="subjective"):
         if qs:
             merged.extend(q for q in qs if isinstance(q, dict) and (q.get("question") or "").strip())
             ok_chunks += 1
+            if LAST_TRUNCATED:
+                trimmed += 1
     if not merged:
         if not LAST_ERROR:
             LAST_ERROR = "AI reply could not be parsed as a question list"
         return None
     if key_text.strip():
         merged = _fill_answers_from_key(merged, key_text)
-    if ok_chunks < len(chunks):
-        LAST_ERROR = "partial: %d of %d parts imported" % (ok_chunks, len(chunks))
+    if ok_chunks < len(chunks) or trimmed:
+        LAST_ERROR = ("Imported %d questions, but some parts were trimmed - "
+                      "please review that none are missing" % len(merged))
     else:
         LAST_ERROR = ""
     return merged
