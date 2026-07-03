@@ -8,7 +8,7 @@ No external pip deps (uses urllib). Needs env var GEMINI_API_KEY on the server.
 NOTE: Gemini 2.0 Flash was shut down on 2026-06-01 (returns 404). Default model is
 now gemini-3.5-flash (GA) with a fallback chain so grading keeps working.
 """
-import os, json, time, urllib.request, urllib.error
+import os, json, re, time, urllib.request, urllib.error
 
 GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
 
@@ -30,7 +30,7 @@ _RETRY_CODES = (429, 500, 502, 503)
 _MAX_TRIES = 3
 
 
-def _gemini_generate(parts):
+def _gemini_generate(parts, max_tokens=4096, timeout=90):
     """Try each model in GEMINI_MODELS until one responds, retrying transient
     errors (high demand / rate limit) with backoff. Returns text or None.
     Records the failure reason in grading.LAST_ERROR."""
@@ -39,7 +39,7 @@ def _gemini_generate(parts):
         LAST_ERROR = "GEMINI_API_KEY is not set on the server"
         return None
     body = {"contents": [{"parts": parts}],
-            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 4096}}
+            "generationConfig": {"temperature": 0.2, "maxOutputTokens": max_tokens}}
     data = json.dumps(body).encode("utf-8")
     last = ""
     for model in GEMINI_MODELS:
@@ -48,7 +48,7 @@ def _gemini_generate(parts):
                 req = urllib.request.Request(
                     _gemini_url(model) + "?key=" + GEMINI_KEY,
                     data=data, headers={"Content-Type": "application/json"}, method="POST")
-                with urllib.request.urlopen(req, timeout=90) as r:
+                with urllib.request.urlopen(req, timeout=timeout) as r:
                     resp = json.loads(r.read().decode("utf-8"))
                 LAST_ERROR = ""
                 return resp["candidates"][0]["content"]["parts"][0]["text"].strip()
@@ -229,28 +229,197 @@ def format_text_latex(text):
     return _gemini_generate([{"text": prompt}])
 
 
-def structure_docx_questions(full_text, test_type="subjective"):
-    if not GEMINI_KEY or not (full_text or "").strip():
+def _parse_json_array(text):
+    """Parse a JSON array from AI output. Salvages the common failure modes:
+    markdown fences, prose around the array, trailing commas, and a TRUNCATED
+    array (output hit the token limit) - in that case the complete leading
+    items are recovered instead of losing everything."""
+    t = _strip_json(text)
+    i = t.find("[")
+    if i < 0:
         return None
+    t = t[i:]
+    j = t.rfind("]")
+    if j >= 0:
+        cand = re.sub(r",\s*([\]}])", r"\1", t[:j + 1])
+        try:
+            data = json.loads(cand)
+            if isinstance(data, list):
+                return data
+        except Exception:
+            pass
+    # truncated: cut back to the last complete object and close the array
+    k = t.rfind("}")
+    while k > 0:
+        cand = re.sub(r",\s*([\]}])", r"\1", t[:k + 1].rstrip().rstrip(",") + "]")
+        try:
+            data = json.loads(cand)
+            if isinstance(data, list) and data:
+                return data
+        except Exception:
+            pass
+        k = t.rfind("}", 0, k)
+    return None
+
+
+_QSTART_RE = re.compile(
+    r"(?m)^\s*(?:Q\.?\s*(?:No\.?\s*)?)?(\d{1,3})\s*[\.\)]\s+\S|^\s*Q\s*(\d{1,3})\b")
+
+
+def _chunk_exam_text(full_text, budget=9000):
+    """Split a long question paper into chunks small enough that each chunk's
+    JSON output fits comfortably in the model's output-token limit. Splits at
+    question boundaries so no question straddles two chunks; falls back to
+    overlapping fixed-size windows if no question markers are found."""
+    text = full_text or ""
+    if len(text) <= budget:
+        return [text]
+    starts = [m.start() for m in _QSTART_RE.finditer(text)]
+    if len(starts) >= 3:
+        pieces, chunk_start = [], 0
+        prev = starts[0]
+        for pos in starts[1:] + [len(text)]:
+            if pos - chunk_start > budget and prev > chunk_start:
+                pieces.append(text[chunk_start:prev])
+                chunk_start = prev
+            prev = pos
+        pieces.append(text[chunk_start:])
+    else:
+        pieces, i = [], 0
+        while i < len(text):
+            pieces.append(text[i:i + budget])
+            i += budget - 600
+    # a piece can still be oversize (e.g. dense marking-scheme tables) - window it
+    out = []
+    for p in pieces:
+        if len(p) <= budget * 1.4:
+            if p.strip():
+                out.append(p)
+        else:
+            i = 0
+            while i < len(p):
+                out.append(p[i:i + budget])
+                i += budget - 600
+    return out
+
+
+_KEY_SPLIT_RE = re.compile(
+    r"(?i)marking\s+scheme|answer\s+key|\u0909\u0924\u094d\u0924\u0930\s*"
+    r"\u0915\u0941\u0902\u091c\u0940|\u0905\u0902\u0915\u0928\s*\u092f\u094b\u091c\u0928\u093e")
+
+
+def _split_answer_key(full_text):
+    """If the paper carries its marking scheme / answer key after the questions,
+    split it off so questions and answers can be handled in two passes (chunked
+    single-pass processing would otherwise separate a question from its answer)."""
+    text = full_text or ""
+    m = _KEY_SPLIT_RE.search(text, int(len(text) * 0.30))
+    if m:
+        return text[:m.start()], text[m.start():]
+    return text, ""
+
+
+def _fill_answers_from_key(questions, key_text):
+    """Second pass: read the marking-scheme text and fill model_answer for the
+    already-extracted questions by question number. Best-effort - on any failure
+    the questions are returned as-is."""
+    try:
+        for chunk in _chunk_exam_text(key_text):
+            prompt = (
+                "Below is the MARKING SCHEME / ANSWER KEY portion of an exam paper. For every "
+                "question number answered in it, produce its model answer. " + _LANG_NOTE +
+                _FMT_NOTE + _STRUCT_NOTE_JSON +
+                "For MCQ answers, write the correct option letter and text plus the brief "
+                "explanation if given. Return ONLY a JSON array: "
+                '[{"q_no": 1, "model_answer": "..."}]\n\nMARKING SCHEME TEXT:\n' + chunk)
+            out = _gemini_generate([{"text": prompt}], max_tokens=8192, timeout=150)
+            for item in (_parse_json_array(out) or []):
+                try:
+                    qn = int(item.get("q_no"))
+                except Exception:
+                    continue
+                ans = (item.get("model_answer") or "").strip()
+                if 1 <= qn <= len(questions) and ans:
+                    cur = (questions[qn - 1].get("model_answer") or "").strip()
+                    if not cur or len(ans) > len(cur):
+                        questions[qn - 1]["model_answer"] = ans
+    except Exception:
+        pass
+    return questions
+
+
+_MIXED_NOTE = (
+    "The document may be a MIXED question paper containing several sections: multiple-choice "
+    "questions, objective questions (fill in the blanks, match the following, true/false, "
+    "passage-based sub-questions), short-answer and long-answer questions, and it may also "
+    "contain a marking scheme / answer key at the end. Handle it as follows: "
+    "(1) Extract EVERY question in order, whatever its type. "
+    "(2) For an MCQ or objective question, include its options / blanks / match-columns as "
+    "separate lines INSIDE the question text (e.g. '(A) ...' on its own line), and put the "
+    "correct answer (with a brief one-line working or reason if numerical/conceptual) in "
+    "model_answer. "
+    "(3) If the document includes an answer key or marking scheme, USE it to fill model_answer "
+    "for the matching questions - and do NOT output the marking-scheme entries as separate questions. "
+    "(4) A question with an internal choice ('OR' / 'अथवा') is ONE question - keep both "
+    "alternatives inside the same question text separated by a line 'OR'. "
+    "(5) Skip page headers/footers, section headings, and general instructions - they are not questions. "
+    "(6) Take max_marks from markers like [1], (2), '1 X 2', 'carrying 3 marks each'. "
+    "(7) If some text is garbled/mojibake (broken font encoding, e.g. random symbols where Hindi "
+    "should be), IGNORE the unreadable parts and reconstruct the question from the readable text - "
+    "never copy garbage characters into the output. ")
+
+
+def _structure_chunk(chunk_text, test_type, part_note):
     if test_type == "mcq":
         schema = ('[{"question":"...","options":["a","b","c","d"],'
                   '"correct_option":"exact correct option text","max_marks":1}]')
         extra = "Each item is a multiple-choice question with its options and correct option. "
     else:
         schema = '[{"question":"...","model_answer":"...","max_marks":5}]'
-        extra = "Each item is a subjective question with its model answer. "
-    prompt = ("Below is text from a Word document containing exam questions. Split it into a list of "
-              "questions. " + extra + _LANG_NOTE + _FMT_NOTE + _STRUCT_NOTE_JSON +
+        extra = ("Each item has the full question text and a model answer. " + _MIXED_NOTE)
+    prompt = ("Below is text extracted from an exam question paper (PDF/Word). Split it into a "
+              "list of questions. " + part_note + extra + _LANG_NOTE + _FMT_NOTE + _STRUCT_NOTE_JSON +
               "Infer max_marks if written, else use a sensible default. "
-              "Return ONLY a JSON array: " + schema + "\n\nDOCUMENT TEXT:\n" + full_text)
-    out = _gemini_generate([{"text": prompt}])
+              "Return ONLY a JSON array: " + schema + "\n\nDOCUMENT TEXT:\n" + chunk_text)
+    out = _gemini_generate([{"text": prompt}], max_tokens=8192, timeout=150)
     if not out:
         return None
-    try:
-        data = json.loads(_strip_json(out))
-        return data if isinstance(data, list) else None
-    except Exception:
+    return _parse_json_array(out)
+
+
+def structure_docx_questions(full_text, test_type="subjective"):
+    """Structure a question paper (possibly long, possibly mixed-type) into a
+    question list. Long papers are processed in question-aligned chunks so the
+    JSON reply of each call stays within the model's output limit - this is what
+    used to silently fail on big papers (truncated JSON -> parse error)."""
+    global LAST_ERROR
+    if not GEMINI_KEY:
+        LAST_ERROR = "GEMINI_API_KEY is not set on the server"
         return None
+    if not (full_text or "").strip():
+        LAST_ERROR = "No text to structure"
+        return None
+    qtext, key_text = _split_answer_key(full_text) if test_type != "mcq" else (full_text, "")
+    chunks = _chunk_exam_text(qtext)
+    merged, ok_chunks = [], 0
+    for ci, chunk in enumerate(chunks):
+        note = ("This is PART %d of %d of the same paper - extract only the questions "
+                "visible in this part. " % (ci + 1, len(chunks))) if len(chunks) > 1 else ""
+        qs = _structure_chunk(chunk, test_type, note)
+        if qs:
+            merged.extend(q for q in qs if isinstance(q, dict) and (q.get("question") or "").strip())
+            ok_chunks += 1
+    if not merged:
+        if not LAST_ERROR:
+            LAST_ERROR = "AI reply could not be parsed as a question list"
+        return None
+    if key_text.strip():
+        merged = _fill_answers_from_key(merged, key_text)
+    if ok_chunks < len(chunks):
+        LAST_ERROR = "partial: %d of %d parts imported" % (ok_chunks, len(chunks))
+    else:
+        LAST_ERROR = ""
+    return merged
 
 
 def _subject_hint(subject):

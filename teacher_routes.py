@@ -1201,7 +1201,12 @@ async def parse_exam_docx(file: UploadFile = File(...), test_type: str = Form("s
         raise HTTPException(400, "The Word file appears to be empty.")
     qs = grading.structure_docx_questions(full, test_type)
     if qs is None:
-        raise HTTPException(503, "AI could not structure the document. Check GEMINI_API_KEY.")
+        err = grading.LAST_ERROR or ""
+        if "GEMINI_API_KEY" in err:
+            raise HTTPException(503, "GEMINI_API_KEY is not set on the server.")
+        raise HTTPException(503, "AI could not structure the document%s. Please try again - "
+                                 "if it keeps failing, import it in smaller parts."
+                                 % ((" (" + err + ")") if err else ""))
     return {"questions": qs, "count": len(qs)}
 
 
@@ -1229,8 +1234,13 @@ async def parse_exam_pdf(file: UploadFile = File(...), test_type: str = Form("su
         raise HTTPException(400, "Could not read any text from this PDF. If it is a scanned image, please use a text PDF or the screenshot auto-fill.")
     qs = grading.structure_docx_questions(full, test_type)
     if qs is None:
-        raise HTTPException(503, "AI could not structure the PDF. Check GEMINI_API_KEY.")
-    return {"questions": qs, "count": len(qs)}
+        err = grading.LAST_ERROR or ""
+        if "GEMINI_API_KEY" in err:
+            raise HTTPException(503, "GEMINI_API_KEY is not set on the server.")
+        raise HTTPException(503, "AI could not structure this PDF%s. Please try again - "
+                                 "if it keeps failing, import it in smaller parts."
+                                 % ((" (" + err + ")") if err else ""))
+    return {"questions": qs, "count": len(qs), "note": grading.LAST_ERROR or None}
 
 
 @router.get("/attempt/{attempt_id}/answer")
