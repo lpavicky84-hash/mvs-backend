@@ -285,6 +285,128 @@ def _boundary_starts(text):
     return [m.start() for m in _QSTART_RE.finditer(text)]
 
 
+# ---------- per-question import (used when the paper has clear Q-markers) ----------
+_PAGEFOOT_RE = re.compile(
+    r"(?im)^\s*(?:.{0,40}page\s+\d+\s+of\s+\d+.*|page\s+\d+|\[\d+\]|\(\d\))\s*$")
+_SECTION_LINE_RE = re.compile(r"(?im)^.*\bsection\b.*\bmarks?\b.*$")
+
+
+def _clean_segment(seg):
+    lines = [l for l in seg.splitlines() if not _PAGEFOOT_RE.match(l)]
+    return "\n".join(lines).strip()
+
+
+def _split_questions(text):
+    """Split the paper into one text segment per question using the explicit
+    question markers (Q1., Q.No. 5, प्र. 3 ...). Returns (segments, paper_context)
+    or (None, None) when the paper has no reliable markers. '_ALT' internal-choice
+    blocks are merged into the question they belong to."""
+    starts = [m.start() for m in _QSTART_STRICT_RE.finditer(text)]
+    if len(starts) < 4:
+        return None, None
+    segs = []
+    for i, s in enumerate(starts):
+        e = starts[i + 1] if i + 1 < len(starts) else len(text)
+        seg = _clean_segment(text[s:e])
+        if seg:
+            segs.append(seg)
+    merged = []
+    for s in segs:
+        if re.match(r"\s*(?:Q\.?\s*)?\d+_ALT", s) and merged:
+            merged[-1] += "\n[OR / \u0905\u0925\u0935\u093e]\n" + s
+        else:
+            merged.append(s)
+    header = _clean_segment(text[:starts[0]])
+    sections = "\n".join(_SECTION_LINE_RE.findall(text))
+    ctx = (header + "\n" + sections).strip()[:1200]
+    return merged, ctx
+
+
+def _guess_marks(seg, test_type):
+    m = re.search(r"\((\d+)\s*Marks?\)", seg, re.I) or re.search(r"\[(\d+)\]", seg)
+    if m:
+        try:
+            return int(m.group(1))
+        except Exception:
+            pass
+    return 1 if test_type == "mcq" else 3
+
+
+def _fallback_item(seg, test_type):
+    """If the AI cannot format one question even alone, keep its raw text so the
+    teacher still gets the question instead of it silently disappearing."""
+    item = {"question": seg[:4000], "question_hi": None,
+            "model_answer": "", "model_answer_hi": None,
+            "max_marks": _guess_marks(seg, test_type)}
+    if test_type == "mcq":
+        item.update({"options": [], "options_hi": [], "correct_option": ""})
+    return item
+
+
+def _type_schema(test_type):
+    if test_type == "mcq":
+        schema = ('[{"question":"...","question_hi":"Hindi version or null",'
+                  '"options":["a","b","c","d"],"options_hi":["...x4 or null"],'
+                  '"correct_option":"exact correct option text","max_marks":1}]')
+        extra = ("Each item is a multiple-choice question with its options and correct option. "
+                 "BILINGUAL: if the paper has both languages, English goes in question/options and "
+                 "Hindi (Devanagari) in question_hi/options_hi; if the PDF's Hindi is garbled, "
+                 "translate the English into clean Hindi yourself; if English-only, set *_hi null. ")
+    else:
+        schema = ('[{"question":"...","question_hi":"Hindi version or null",'
+                  '"model_answer":"...","model_answer_hi":"Hindi version or null","max_marks":5}]')
+        extra = ("Each item has the full question text and a model answer. " + _MIXED_NOTE)
+    return schema, extra
+
+
+def _structure_batch(segs, test_type, ctx):
+    """Format a small batch of pre-split questions. The output array must have
+    exactly one item per question - anything else counts as a failure so the
+    caller can retry with a smaller batch."""
+    schema, extra = _type_schema(test_type)
+    numbered = "\n\n".join("<<QUESTION %d OF %d>>\n%s" % (i + 1, len(segs), s)
+                           for i, s in enumerate(segs))
+    prompt = ("Below are %d question(s) from one exam paper, already separated. Convert EACH into "
+              "exactly ONE JSON object - the output array MUST contain exactly %d item(s), in the "
+              "same order, one per <<QUESTION>> block. Never merge or split them. "
+              % (len(segs), len(segs))
+              + extra + _LANG_NOTE + _FMT_NOTE + _STRUCT_NOTE_JSON
+              + ("PAPER CONTEXT (title / sections - use it to set max_marks correctly):\n" + ctx + "\n\n"
+                 if ctx else "")
+              + "Return ONLY a JSON array: " + schema + "\n\nQUESTIONS:\n" + numbered)
+    out = _gemini_generate([{"text": prompt}], max_tokens=8192, timeout=150)
+    if not out:
+        return None
+    arr = _parse_json_array(out)
+    if arr is None or LAST_TRUNCATED or len(arr) != len(segs):
+        return None
+    return arr
+
+
+def _structure_by_questions(segs, test_type, ctx):
+    """Batch-of-3 processing with automatic fallback: failed batch -> each
+    question retried alone -> still failing -> raw-text fallback item. Every
+    question in the paper is therefore ALWAYS present in the result."""
+    out, fallbacks = [], 0
+    B = 3
+    i = 0
+    while i < len(segs):
+        batch = segs[i:i + B]
+        arr = _structure_batch(batch, test_type, ctx)
+        if arr is None:
+            arr = []
+            for s in batch:
+                one = _structure_batch([s], test_type, ctx)
+                if one:
+                    arr.extend(one)
+                else:
+                    arr.append(_fallback_item(s, test_type))
+                    fallbacks += 1
+        out.extend(arr)
+        i += B
+    return out, fallbacks
+
+
 def _chunk_exam_text(full_text, budget=4200):
     """Split a long question paper into chunks small enough that each chunk's
     JSON output (question + full model answer, BOTH languages) fits comfortably
@@ -412,18 +534,7 @@ _MIXED_NOTE = (
 
 
 def _structure_chunk(chunk_text, test_type, part_note):
-    if test_type == "mcq":
-        schema = ('[{"question":"...","question_hi":"Hindi version or null",'
-                  '"options":["a","b","c","d"],"options_hi":["...x4 or null"],'
-                  '"correct_option":"exact correct option text","max_marks":1}]')
-        extra = ("Each item is a multiple-choice question with its options and correct option. "
-                 "BILINGUAL: if the paper has both languages, English goes in question/options and "
-                 "Hindi (Devanagari) in question_hi/options_hi; if the PDF's Hindi is garbled, "
-                 "translate the English into clean Hindi yourself; if English-only, set *_hi null. ")
-    else:
-        schema = ('[{"question":"...","question_hi":"Hindi version or null",'
-                  '"model_answer":"...","model_answer_hi":"Hindi version or null","max_marks":5}]')
-        extra = ("Each item has the full question text and a model answer. " + _MIXED_NOTE)
+    schema, extra = _type_schema(test_type)
     prompt = ("Below is text extracted from an exam question paper (PDF/Word). Split it into a "
               "list of questions. " + part_note + extra + _LANG_NOTE + _FMT_NOTE + _STRUCT_NOTE_JSON +
               "Infer max_marks if written, else use a sensible default. "
@@ -435,10 +546,11 @@ def _structure_chunk(chunk_text, test_type, part_note):
 
 
 def structure_docx_questions(full_text, test_type="subjective"):
-    """Structure a question paper (possibly long, possibly mixed-type) into a
-    question list. Long papers are processed in question-aligned chunks so the
-    JSON reply of each call stays within the model's output limit - this is what
-    used to silently fail on big papers (truncated JSON -> parse error)."""
+    """Structure a question paper (possibly long, mixed-type, bilingual) into a
+    question list. When the paper has explicit question markers (Q1., Q.No. 5,
+    प्र. 3 ...) it is split locally and formatted in small batches with retry +
+    raw-text fallback, so EVERY question is always imported. Papers without
+    markers fall back to chunked processing."""
     global LAST_ERROR
     if not GEMINI_KEY:
         LAST_ERROR = "GEMINI_API_KEY is not set on the server"
@@ -447,6 +559,22 @@ def structure_docx_questions(full_text, test_type="subjective"):
         LAST_ERROR = "No text to structure"
         return None
     qtext, key_text = _split_answer_key(full_text) if test_type != "mcq" else (full_text, "")
+
+    segs, ctx = _split_questions(qtext)
+    if segs:
+        merged, fallbacks = _structure_by_questions(segs, test_type, ctx)
+        merged = [q for q in merged if isinstance(q, dict) and (q.get("question") or "").strip()]
+        if not merged:
+            if not LAST_ERROR:
+                LAST_ERROR = "AI reply could not be parsed as a question list"
+            return None
+        if key_text.strip():
+            merged = _fill_answers_from_key(merged, key_text)
+        LAST_ERROR = ("All %d questions imported; %d imported as raw text - "
+                      "please add their answers manually" % (len(merged), fallbacks)) if fallbacks else ""
+        return merged
+
+    # ---- no reliable markers: chunked processing (previous behaviour)
     chunks = _chunk_exam_text(qtext)
     merged, ok_chunks, trimmed = [], 0, 0
     for ci, chunk in enumerate(chunks):

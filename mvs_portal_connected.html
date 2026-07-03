@@ -2082,7 +2082,7 @@ async function _importExamFile(f,endpoint,srcName){
       _exProgDone();
       _applyImportedQs(d.questions);
       toast('Imported '+d.questions.length+' questions from '+srcName+'. Review and edit.');
-      if(d.note) toast(d.note,true);
+      if(d.note) setTimeout(()=>toast(d.note),1800);
     } else { _exProgHide(); toast('No questions found in the '+srcName+'.',true); }
   }catch(e){ _exProgHide(); toast(e.message,true); }
 }
