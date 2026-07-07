@@ -1002,7 +1002,9 @@ def create_exam(payload: dict = Body(...), background_tasks: BackgroundTasks = N
                question_text_hi=(q.get("question_text_hi") or None),
                model_answer_hi=(q.get("model_answer_hi") or None),
                options_hi=(opts_hi if opts_hi else None),
-               model_answer_image=q.get("model_answer_image")))
+               model_answer_image=q.get("model_answer_image"),
+               explanation=(q.get("explanation") or None),
+               explanation_hi=(q.get("explanation_hi") or None)))
     db.commit()
     # Bilingual test: auto-translate any blank Hindi fields in the background.
     if (ex.medium or "").lower().startswith("bi") and background_tasks is not None:
@@ -1199,14 +1201,9 @@ async def parse_exam_docx(file: UploadFile = File(...), test_type: str = Form("s
                 full += "\n" + " | ".join(cells)
     if not full.strip():
         raise HTTPException(400, "The Word file appears to be empty.")
-    qs = grading.structure_docx_questions(full, test_type)
+    qs = grading.local_structure_questions(full, test_type)
     if qs is None:
-        err = grading.LAST_ERROR or ""
-        if "GEMINI_API_KEY" in err:
-            raise HTTPException(503, "GEMINI_API_KEY is not set on the server.")
-        raise HTTPException(503, "AI could not structure the document%s. Please try again - "
-                                 "if it keeps failing, import it in smaller parts."
-                                 % ((" (" + err + ")") if err else ""))
+        raise HTTPException(400, grading.LAST_ERROR or "Could not read questions from the document.")
     return {"questions": qs, "count": len(qs)}
 
 
@@ -1232,14 +1229,9 @@ async def parse_exam_pdf(file: UploadFile = File(...), test_type: str = Form("su
             raise HTTPException(503, "PDF parsing is not enabled on the server (add pymupdf to requirements.txt).")
     if not full.strip():
         raise HTTPException(400, "Could not read any text from this PDF. If it is a scanned image, please use a text PDF or the screenshot auto-fill.")
-    qs = grading.structure_docx_questions(full, test_type)
+    qs = grading.local_structure_questions(full, test_type)
     if qs is None:
-        err = grading.LAST_ERROR or ""
-        if "GEMINI_API_KEY" in err:
-            raise HTTPException(503, "GEMINI_API_KEY is not set on the server.")
-        raise HTTPException(503, "AI could not structure this PDF%s. Please try again - "
-                                 "if it keeps failing, import it in smaller parts."
-                                 % ((" (" + err + ")") if err else ""))
+        raise HTTPException(400, grading.LAST_ERROR or "Could not read questions from the PDF.")
     return {"questions": qs, "count": len(qs), "note": grading.LAST_ERROR or None}
 
 

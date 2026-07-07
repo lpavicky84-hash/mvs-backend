@@ -55,6 +55,8 @@ def ensure_columns():
         "ALTER TABLE exam_questions ADD COLUMN model_answer_hi TEXT",
         "ALTER TABLE exam_questions ADD COLUMN options_hi JSON",
         "ALTER TABLE exam_questions ADD COLUMN model_answer_image LONGTEXT",
+        "ALTER TABLE exam_questions ADD COLUMN explanation TEXT",
+        "ALTER TABLE exam_questions ADD COLUMN explanation_hi TEXT",
     ]
     for s in stmts:
         try:

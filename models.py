@@ -416,6 +416,8 @@ class ExamQuestion(Base):
     model_answer_hi    = Column(Text, nullable=True)       # Hindi model answer (bilingual)
     options_hi         = Column(JSON, nullable=True)       # Hindi mcq options (bilingual)
     model_answer_image = Column(_BIGTEXT, nullable=True)   # optional diagram for the model answer
+    explanation        = Column(Text, nullable=True)       # mcq: shown to students after submit
+    explanation_hi     = Column(Text, nullable=True)       # Hindi explanation (bilingual)
 
 class ExamAttempt(Base):
     __tablename__ = "exam_attempts"

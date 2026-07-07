@@ -683,3 +683,186 @@ def translate_question_to_hindi(question_text, model_answer="", options=None, su
         "answer": (data.get("answer") or "").strip(),
         "options": [str(o).strip() for o in (data.get("options") or [])],
     }
+
+
+# ================================================================ FREE local parser
+# Structures a question paper WITHOUT any AI call - pure regex. Used by the
+# Word/PDF import so creating a question paper costs nothing. It understands
+# Q1./Q.No./प्र. markers, Answer:/Solution: blocks, MCQ options (A)-(D),
+# Explanation: blocks, bilingual (English/Devanagari) lines and per-section marks.
+
+_ANS_SPLIT_RE = re.compile(
+    r"(?im)^\s*(?:answer(?:s)?(?:\s+matching)?|ans|solution"
+    r"|\u0909\u0924\u094d\u0924\u0930|\u0939\u0932)\s*[:.\-\u0903]")
+_EXPL_RE = re.compile(
+    r"(?im)^\s*(?:explanation|\u0935\u094d\u092f\u093e\u0916\u094d\u092f\u093e)\s*[:.\-\u0903]\s*")
+_OPT_INLINE_RE = re.compile(r"\(([A-Da-d])\)\s*")
+_CORRECT_LETTER_RE = re.compile(r"\(([A-Da-d])\)")
+_SECTION_MARKS_RE = re.compile(
+    r"(?im)^.*\bsection\b.*?(\d+)\s*mark(?:s)?\s*each.*$")
+_QNUM_LINE_RE = re.compile(r"^\s*(?:Q|\u092a\u094d\u0930\u0936\u094d\u0928|\u092a\u094d\u0930)\.?\s*(?:No\.?\s*)?\d{1,3}(?:_ALT)?\s*[\.\):]?\s*", re.I)
+
+
+def _is_garbage_line(line):
+    """Detects mojibake lines (broken embedded-font Hindi extracts as random
+    Latin-extended symbols). A line with several such stray symbols is dropped
+    entirely - partially-corrupted Hindi reads worse than no Hindi. Genuine
+    English and genuine Devanagari lines are kept."""
+    s = line.strip()
+    if not s:
+        return False
+    # IPA / Latin-Extended-B / combining-block symbols never appear in genuine
+    # exam text - even ONE of them means the embedded font mangled this line
+    if re.search(r"[\u0180-\u036f\u1d00-\u1dbf]", s):
+        return True
+    ok_extra = "\u2192\u2190\u00d7\u00f7\u03bb\u03bc\u0394\u03b8\u03c0\u2265\u2264\u00b7\u2022\u20b9\u2018\u2019\u201c\u201d\u2013\u2014\u0964\u2032\u2260\u221a\u00b0\u00b1\u00bd"
+    bad = sum(1 for ch in s if not (ch.isascii() or "\u0900" <= ch <= "\u097F" or ch in ok_extra))
+    # an ASCII letter/digit/punct sandwiched INSIDE a Devanagari word (क्9ांटम)
+    # is another mojibake signature - genuine mixed text has spaces around ASCII
+    bad += len(re.findall(r"[\u0900-\u097F][A-Za-z0-9:;#@&][\u0900-\u097F]", s))
+    if bad >= 2 or (len(s) > 0 and bad / len(s) > 0.12):
+        return True
+    return False
+
+
+def _split_en_hi(block):
+    """Separate a text block into English lines and Devanagari-majority lines."""
+    en, hi = [], []
+    for line in block.splitlines():
+        s = line.strip()
+        if not s or _is_garbage_line(s):
+            continue
+        dev = sum(1 for ch in s if "\u0900" <= ch <= "\u097F")
+        (hi if dev > len(s) * 0.3 else en).append(s)
+    return "\n".join(en).strip(), "\n".join(hi).strip()
+
+
+def _section_marks_map(text):
+    """[(position, marks_each)] from section headings, in document order."""
+    out = []
+    for m in re.finditer(r"(?im)^.*\bsection\b.*$", text):
+        line = m.group(0)
+        mm = re.search(r"(\d+)\s*marks?\s*each", line, re.I)
+        if mm:
+            out.append((m.start(), int(mm.group(1))))
+    return out
+
+
+def _marks_for(seg, seg_pos, sec_map, test_type):
+    # inline sub-part marks like "(3 Marks) ... (2 Marks)" add up to the question total
+    inline = [int(x) for x in re.findall(r"\((\d+)\s*Marks?\)", seg, re.I)]
+    if inline:
+        return sum(inline)
+    best = None
+    for pos, mk in sec_map:
+        if pos <= seg_pos:
+            best = mk
+    if best:
+        return best
+    return 1 if test_type == "mcq" else 3
+
+
+def _parse_mcq_options(qtext):
+    """Split '(A) x (B) y ...' (inline or multi-line) into stem + options list."""
+    parts = _OPT_INLINE_RE.split(qtext)
+    if len(parts) < 5:
+        return qtext.strip(), []
+    stem = parts[0].strip()
+    opts = []
+    for i in range(1, len(parts) - 1, 2):
+        val = parts[i + 1].strip().rstrip("|").strip()
+        opts.append(val)
+    return stem, opts[:4]
+
+
+def local_structure_questions(full_text, test_type="subjective"):
+    """FREE import: structure the paper with pure regex - no AI, no cost,
+    instant. Returns the same shape the AI importer produced, so the frontend
+    needs no changes. Sets LAST_ERROR to '' or a friendly note."""
+    global LAST_ERROR
+    LAST_ERROR = ""
+    text = full_text or ""
+    if not text.strip():
+        LAST_ERROR = "No text found in the file"
+        return None
+    starts = [m.start() for m in _QSTART_STRICT_RE.finditer(text)]
+    if len(starts) < 1:
+        starts = [m.start() for m in _QSTART_RE.finditer(text)]
+    if len(starts) < 1:
+        LAST_ERROR = ("No question markers found - please number the questions as "
+                      "Q1., Q2., ... (or 1., 2., ...) in the file")
+        return None
+    sec_map = _section_marks_map(text)
+    raw = []
+    for i, s in enumerate(starts):
+        e = starts[i + 1] if i + 1 < len(starts) else len(text)
+        raw.append((s, _clean_segment(text[s:e])))
+    out = []
+    for pos, seg in raw:
+        is_alt = bool(re.match(r"\s*(?:Q\.?\s*)?\d+_ALT", seg))
+        seg_body = _QNUM_LINE_RE.sub("", seg, count=1)
+        # split question vs answer at the first Answer:/Solution:/उत्तर: marker
+        am = _ANS_SPLIT_RE.search(seg_body)
+        if am:
+            qpart, apart = seg_body[:am.start()], seg_body[am.end():]
+        else:
+            qpart, apart = seg_body, ""
+        # pull the Explanation: block out of the answer
+        expl = ""
+        em = _EXPL_RE.search(apart)
+        if em:
+            expl = apart[em.end():].strip()
+            apart_core = apart[:em.start()].strip()
+        else:
+            apart_core = apart.strip()
+        q_en, q_hi = _split_en_hi(qpart)
+        a_en, a_hi = _split_en_hi(apart_core)
+        e_en, e_hi = _split_en_hi(expl)
+        marks = _marks_for(seg, pos, sec_map, test_type)
+        if test_type == "mcq":
+            stem, opts = _parse_mcq_options(q_en)
+            correct = ""
+            cm = _CORRECT_LETTER_RE.search(a_en or "")
+            if cm and opts:
+                idx = "ABCD".index(cm.group(1).upper())
+                if idx < len(opts):
+                    correct = opts[idx]
+            if not correct and a_en:
+                correct = a_en.splitlines()[0].strip()[:255]
+            stem_hi, opts_hi = _parse_mcq_options(q_hi) if q_hi else ("", [])
+            out.append({"question": stem, "question_hi": stem_hi or None,
+                        "options": (opts + ["", "", "", ""])[:4],
+                        "options_hi": ((opts_hi + ["", "", "", ""])[:4] if opts_hi else None),
+                        "correct_option": correct,
+                        "explanation": e_en or None, "explanation_hi": e_hi or None,
+                        "max_marks": marks})
+        else:
+            model = a_en
+            if e_en:
+                model = (model + "\nExplanation:\n" + e_en).strip()
+            model_hi = a_hi
+            if e_hi:
+                model_hi = (model_hi + "\n\u0935\u094d\u092f\u093e\u0916\u094d\u092f\u093e:\n" + e_hi).strip()
+            item = {"question": q_en, "question_hi": q_hi or None,
+                    "model_answer": model, "model_answer_hi": model_hi or None,
+                    "max_marks": marks}
+            if is_alt and out:
+                # internal-choice alternative: question with question, answer with
+                # answer of the parent - separated by an OR line (both languages)
+                prev = out[-1]
+                prev["question"] = (prev["question"] + "\n\nOR\n\n" + item["question"]).strip()
+                if item.get("question_hi"):
+                    prev["question_hi"] = ((prev.get("question_hi") or "") +
+                                           "\n\n\u0905\u0925\u0935\u093e\n\n" + item["question_hi"]).strip()
+                prev["model_answer"] = (prev.get("model_answer", "") +
+                                        "\n\nOR\n\n" + item["model_answer"]).strip()
+                if item.get("model_answer_hi"):
+                    prev["model_answer_hi"] = ((prev.get("model_answer_hi") or "") +
+                                               "\n\n\u0905\u0925\u0935\u093e\n\n" + item["model_answer_hi"]).strip()
+                continue
+            out.append(item)
+    out = [q for q in out if (q.get("question") or "").strip()]
+    if not out:
+        LAST_ERROR = "Could not read any questions from the file"
+        return None
+    return out

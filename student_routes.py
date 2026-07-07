@@ -784,17 +784,16 @@ def student_submit_exam(exam_id: int, payload: dict = Body(...), background_task
         _notify_exam_result(db, att, ex)
         db.commit()
         return {"status": "graded", "message": _exam_thankyou(teacher), "teacher_name": teacher}
-    # subjective: store the sheet fast, then grade in the background (snappy upload)
+    # subjective: store the sheet - the TEACHER checks it manually from their portal
+    # (AI auto-checking is disabled to keep the system free of API costs)
     img = payload.get("answer_image_b64") or ""
     if not img:
         raise HTTPException(400, "Please upload your handwritten answer sheet")
     att.answer_image_b64 = img
-    att.status = "grading"
+    att.status = "grading"   # shown to the student as "with teacher for checking"
     db.commit()
-    if background_tasks is not None:
-        background_tasks.add_task(_bg_grade_attempt, att.id, payload.get("mime_type", "image/jpeg"))
     return {"status": "grading", "message": _exam_thankyou(teacher), "teacher_name": teacher,
-            "note": "Your answer sheet has been received and is being checked. Your marks will appear here, and you will get a notification, within 1 hour."}
+            "note": "Your answer sheet has been received. %s will check it and your marks will appear here with a notification." % teacher}
 
 @router.get("/exam/{exam_id}/result")
 def student_exam_result(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
@@ -807,9 +806,22 @@ def student_exam_result(exam_id: int, db: Session = Depends(get_db), current_use
         raise HTTPException(404, "No attempt found")
     qmap = {q.q_no: q for q in db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).all()}
     res = db.query(ExamResult).filter(ExamResult.attempt_id == att.id).order_by(ExamResult.q_no).all()
-    items = [{"q_no": r.q_no, "question": (qmap[r.q_no].question_text if r.q_no in qmap else ""),
-              "question_hi": (qmap[r.q_no].question_text_hi if r.q_no in qmap else None),
-              "marks": r.marks_awarded, "max": r.max_marks, "remark": r.remark} for r in res]
+    sel_map = att.mcq_answers or {}
+    items = []
+    for r in res:
+        qq = qmap.get(r.q_no)
+        it = {"q_no": r.q_no, "question": (qq.question_text if qq else ""),
+              "question_hi": (qq.question_text_hi if qq else None),
+              "marks": r.marks_awarded, "max": r.max_marks, "remark": r.remark}
+        if ex.test_type == "mcq" and qq:
+            your = sel_map.get(str(r.q_no), sel_map.get(r.q_no))
+            it.update({
+                "options": qq.options or [], "options_hi": qq.options_hi,
+                "your_answer": your, "correct_answer": qq.correct_option,
+                "is_correct": bool(r.max_marks) and (r.marks_awarded or 0) >= r.max_marks,
+                "explanation": qq.explanation, "explanation_hi": qq.explanation_hi,
+            })
+        items.append(it)
     return {"status": att.status, "title": ex.title, "teacher_name": ex.teacher_name,
             "total_awarded": att.total_awarded, "total_marks": ex.total_marks,
             "verdict": att.verdict, "feedback": att.overall_feedback,
