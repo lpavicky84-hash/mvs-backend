@@ -206,6 +206,9 @@
   .tst-score{font-size:.72rem;font-weight:700;padding:2px 9px;border-radius:7px;background:#fff0e6;color:#c2410c}
   .tst-right{display:flex;gap:8px;flex-shrink:0}.tst-done{opacity:.7}
   .dark .tst-ic{background:rgba(37,99,235,.2);color:#93c5fd}.dark .tst-score{background:rgba(194,65,12,.22);color:#fdba74}
+  .ex-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px}
+  @media(max-width:560px){.ex-grid2{grid-template-columns:1fr}}
+  .ex-lbl{display:block;font-size:.78rem;font-weight:700;color:var(--text-muted);margin:8px 0 4px}
   .ex-qcard{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px}
   .ex-qhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
   .ex-qcard textarea{margin-bottom:8px}
@@ -675,6 +678,126 @@
   .ws-empty .big{font-size:1.5rem;margin-bottom:4px}
   .ws-empty p{font-size:.88rem;font-weight:600;color:var(--text)}
   .ws-empty small{font-size:.8rem;color:var(--text-muted)}
+  /* ===== ACADEMIC PERFORMANCE DASHBOARD ===== */
+  .perf-hero{display:grid;grid-template-columns:auto 1fr auto;gap:22px;align-items:center;padding:22px;border-radius:18px;background:linear-gradient(120deg,var(--primary),#7c3aed);color:#fff;box-shadow:0 12px 32px -14px rgba(37,99,235,.55);margin-bottom:16px}
+  @media(max-width:720px){.perf-hero{grid-template-columns:1fr;text-align:center;gap:14px}}
+  .health-ring{position:relative;width:120px;height:120px;flex:0 0 120px;margin:auto}
+  .health-ring svg{transform:rotate(-90deg)}
+  .health-ring .hr-num{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .health-ring .hr-num b{font-size:1.9rem;font-weight:800;line-height:1}
+  .health-ring .hr-num span{font-size:.66rem;opacity:.85;text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
+  .hero-mid h3{font-size:.76rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;opacity:.85}
+  .hero-mid h2{font-size:1.5rem;font-weight:800;margin:2px 0 8px}
+  .hero-chips{display:flex;gap:8px;flex-wrap:wrap}
+  .hero-chip{background:rgba(255,255,255,.18);border-radius:9px;padding:7px 12px;font-size:.82rem;font-weight:700;display:flex;align-items:center;gap:6px}
+  @media(max-width:720px){.hero-chips{justify-content:center}}
+  .hero-xp{text-align:center;flex:0 0 auto}
+  .hero-xp .xp-big{font-size:2rem;font-weight:800;line-height:1}
+  .hero-xp .xp-lbl{font-size:.72rem;opacity:.85;text-transform:uppercase;letter-spacing:.05em}
+  .perf-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+  .perf-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px}
+  @media(max-width:820px){.perf-grid,.perf-grid-3{grid-template-columns:1fr}}
+  .ring-wrap{display:flex;align-items:center;gap:18px}
+  .ring-sm{position:relative;width:92px;height:92px;flex:0 0 92px}
+  .ring-sm svg{transform:rotate(-90deg)}
+  .ring-sm .rs-num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1.15rem;font-weight:800;color:var(--text)}
+  .ring-leg{flex:1}
+  .ring-leg .rl-row{display:flex;justify-content:space-between;font-size:.84rem;padding:4px 0;border-bottom:1px solid var(--border)}
+  .ring-leg .rl-row:last-child{border:none}
+  .ring-leg .rl-row b{color:var(--text)}
+  /* bar chart */
+  .bar-chart{display:flex;align-items:flex-end;gap:5px;height:130px;padding-top:8px}
+  .bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;min-width:0}
+  .bar-fill{width:100%;max-width:26px;border-radius:5px 5px 0 0;background:linear-gradient(180deg,var(--primary),#7c3aed);transition:height .5s ease;min-height:2px}
+  .bar-lbl{font-size:.6rem;color:var(--text-muted);white-space:nowrap;transform:rotate(-45deg);transform-origin:center;margin-top:4px}
+  .perf-tabs{display:flex;gap:6px;margin-bottom:10px}
+  .perf-tab{padding:6px 14px;border-radius:8px;font-size:.8rem;font-weight:700;cursor:pointer;border:1px solid var(--border);color:var(--text-muted);background:var(--bg-card,#fff)}
+  .perf-tab.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+  /* chapter cards */
+  .chap-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+  .chap-card{padding:13px;border-radius:12px;border:1px solid var(--border);background:var(--bg-card,#fff)}
+  .chap-card .cc-sub{font-size:.68rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.04em}
+  .chap-card .cc-ch{font-size:.86rem;font-weight:700;color:var(--text);margin:3px 0 8px;line-height:1.3;min-height:2.2em}
+  .chap-card .cc-track{height:7px;border-radius:99px;background:var(--border);overflow:hidden}
+  .chap-card .cc-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--primary),#7c3aed)}
+  .chap-card .cc-meta{font-size:.72rem;color:var(--text-muted);margin-top:6px;display:flex;justify-content:space-between}
+  /* leaderboard */
+  .lb-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  @media(max-width:560px){.lb-grid{grid-template-columns:1fr}}
+  .lb-cell{text-align:center;padding:16px;border-radius:14px;border:1px solid var(--border);background:var(--bg-card,#fff)}
+  .lb-rank{font-size:1.9rem;font-weight:800;color:var(--primary);line-height:1}
+  .lb-rank small{font-size:.9rem;color:var(--text-muted);font-weight:600}
+  .lb-lbl{font-size:.74rem;color:var(--text-muted);margin-top:5px;font-weight:600}
+  .move-badge{display:inline-flex;align-items:center;gap:4px;font-size:.78rem;font-weight:700;padding:3px 9px;border-radius:99px;margin-top:7px}
+  .move-up{background:#dcfce7;color:#15803d}.move-down{background:#fee2e2;color:#b91c1c}.move-flat{background:var(--border);color:var(--text-muted)}
+  .dark .move-up{background:rgba(22,163,74,.2)}.dark .move-down{background:rgba(220,38,38,.2)}
+  /* streak */
+  .streak-box{display:flex;align-items:center;gap:14px}
+  .streak-flame{font-size:2.6rem}
+  .streak-box .sb-num{font-size:2rem;font-weight:800;color:var(--text);line-height:1}
+  .streak-box .sb-lbl{font-size:.8rem;color:var(--text-muted)}
+  /* calendar */
+  .cal-wrap{display:flex;flex-wrap:wrap;gap:3px;max-width:100%}
+  .cal-cell{width:12px;height:12px;border-radius:3px;background:var(--border)}
+  .cal-cell.l1{background:#9be9a8}.cal-cell.l2{background:#40c463}.cal-cell.l3{background:#30a14e}.cal-cell.l4{background:#216e39}
+  .dark .cal-cell{background:rgba(255,255,255,.08)}
+  .cal-legend{display:flex;align-items:center;gap:5px;font-size:.72rem;color:var(--text-muted);margin-top:10px}
+  /* badges */
+  .badge-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:12px}
+  .badge-item{text-align:center;padding:14px 8px;border-radius:12px;border:1px solid var(--border);background:var(--bg-card,#fff);opacity:.45;filter:grayscale(1);transition:.2s}
+  .badge-item.earned{opacity:1;filter:none;border-color:var(--primary)}
+  .badge-ic{font-size:1.9rem}
+  .badge-nm{font-size:.78rem;font-weight:700;color:var(--text);margin-top:5px}
+  .badge-ds{font-size:.66rem;color:var(--text-muted);margin-top:2px;line-height:1.3}
+  /* radar */
+  .radar-wrap{display:flex;justify-content:center;padding:6px}
+  /* timeline */
+  .tl-row{display:flex;gap:11px;padding:9px 0;border-bottom:1px solid var(--border)}
+  .tl-row:last-child{border:none}
+  .tl-ic{width:30px;height:30px;flex:0 0 30px;border-radius:8px;background:rgba(37,99,235,.1);display:flex;align-items:center;justify-content:center;font-size:.9rem}
+  .tl-main{flex:1;min-width:0}
+  .tl-txt{font-size:.85rem;color:var(--text)}
+  .tl-when{font-size:.72rem;color:var(--text-muted)}
+  .tl-xp{font-size:.76rem;font-weight:700;color:#16a34a}
+  /* targets & insights */
+  .tgt-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+  .tgt-row:last-child{border:none}
+  .tgt-dot{width:8px;height:8px;border-radius:50%;background:var(--primary);flex:0 0 8px}
+  .tgt-txt{font-size:.86rem;color:var(--text)}
+  .ai-insight{display:flex;gap:11px;padding:12px;border-radius:11px;background:rgba(124,58,237,.06);border:1px solid rgba(124,58,237,.18);margin-bottom:9px}
+  .dark .ai-insight{background:rgba(124,58,237,.12)}
+  .ai-ic{font-size:1.1rem;flex:0 0 auto}
+  .ai-txt{font-size:.85rem;color:var(--text);line-height:1.5}
+  /* ===== VERIFICATION POPUP ===== */
+  .vq-type{display:inline-block;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--primary);background:rgba(37,99,235,.1);padding:4px 10px;border-radius:99px;margin-bottom:10px}
+  .vq-question{font-size:1.02rem;font-weight:700;color:var(--text);line-height:1.5;margin-bottom:6px}
+  .vq-hi{font-size:.92rem;color:var(--text-muted);line-height:1.5;margin-bottom:12px}
+  .vq-img{max-width:100%;border-radius:10px;margin:10px 0;border:1px solid var(--border)}
+  .vq-opts{display:flex;flex-direction:column;gap:9px;margin:12px 0}
+  .vq-opt{display:flex;align-items:center;gap:11px;padding:12px 14px;border:1.5px solid var(--border);border-radius:11px;cursor:pointer;transition:.15s;font-size:.92rem;color:var(--text)}
+  .vq-opt:hover{border-color:var(--primary);background:rgba(37,99,235,.04)}
+  .vq-opt.sel{border-color:var(--primary);background:rgba(37,99,235,.08);font-weight:600}
+  .vq-opt-letter{width:26px;height:26px;flex:0 0 26px;border-radius:7px;background:var(--border);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.82rem;color:var(--text)}
+  .vq-opt.sel .vq-opt-letter{background:var(--primary);color:#fff}
+  .vq-opt-img{max-width:120px;border-radius:8px}
+  .vq-attempts{font-size:.8rem;color:var(--text-muted);text-align:center;margin-top:6px}
+  .vq-result{padding:13px;border-radius:11px;margin-top:12px;font-size:.9rem;font-weight:600;text-align:center}
+  .vq-result.ok{background:#dcfce7;color:#15803d}
+  .vq-result.bad{background:#fee2e2;color:#b91c1c}
+  .dark .vq-result.ok{background:rgba(22,163,74,.2)}.dark .vq-result.bad{background:rgba(220,38,38,.2)}
+  /* lecture card (student list) */
+  .lec-card{border:1px solid var(--border);border-radius:13px;padding:15px;margin-bottom:12px;background:var(--bg-card,#fff);transition:.15s}
+  .lec-card:hover{box-shadow:var(--shadow)}
+  .lec-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px}
+  .lec-title{font-size:1rem;font-weight:700;color:var(--text)}
+  .lec-meta{font-size:.78rem;color:var(--text-muted);margin-top:2px}
+  .lec-status{font-size:.72rem;font-weight:700;padding:5px 11px;border-radius:99px;white-space:nowrap}
+  .lec-status.verified{background:#dcfce7;color:#15803d}
+  .lec-status.pending{background:#fef3c7;color:#b45309}
+  .lec-status.cooling{background:#fee2e2;color:#b91c1c}
+  .dark .lec-status.verified{background:rgba(22,163,74,.2)}.dark .lec-status.pending{background:rgba(180,83,9,.2)}.dark .lec-status.cooling{background:rgba(220,38,38,.2)}
+  .lec-body{font-size:.85rem;color:var(--text-muted);line-height:1.5;margin:8px 0}
+  .lec-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
   .greeting-plain p{font-size:.9rem;color:var(--text-muted)}
   .greeting-card h2{font-size:1.5rem;font-weight:800;margin-bottom:4px}
   .greeting-card p{opacity:.9;font-size:.9rem}
@@ -736,11 +859,11 @@
 <!-- TEACHER SUBJECT SELECTION (first login) -->
 <div id="t-subject-screen" style="display:none;min-height:100vh;background:linear-gradient(150deg,#001022,#001a3a 55%,#0a3260);align-items:center;justify-content:center;padding:20px"><div class="login-box" style="max-width:620px"><h2>Select Your Subjects</h2><p>Select the subjects you teach, class by class.</p><div style="display:flex;justify-content:space-between;margin:14px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 10</label></div><div id="t-sub-10" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><div style="display:flex;justify-content:space-between;margin:16px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 12</label></div><div id="t-sub-12" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><button class="login-btn" id="t-save-subj" style="margin-top:18px" onclick="saveTeacherSubjects()">Save & Continue →</button><p style="text-align:center;margin-top:14px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Logout</p></div>
 </div>
-<div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('today',this)"><span>Today's Classes</span></div><div class="nav-item" onclick="tPage('schedule',this)"><span>Upload PDF</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule Rule:</b> Maximum 2 per month. Frequent reschedules affect MVS Foundation's reputation.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-today"><div id="t-today-content"><div class="spinner"></div></div></div><div class="page" id="t-page-schedule"><div id="t-schedule-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
+<div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('today',this)"><span>Today's Classes</span></div><div class="nav-item" onclick="tPage('schedule',this)"><span>Upload PDF</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule Rule:</b> Maximum 2 per month. Frequent reschedules affect MVS Foundation's reputation.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-today"><div id="t-today-content"><div class="spinner"></div></div></div><div class="page" id="t-page-schedule"><div id="t-schedule-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== ADMIN APP ===== -->
 <div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#ef4444">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Students</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Question Bank</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#ef4444" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== STUDENT APP ===== -->
-<div id="student-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#06b6d4">S</div><div><span>MVS Foundation</span><small>Student</small></div></div><nav class="sidebar-nav"><div class="nav-section">Home</div><div class="nav-item active" onclick="sPage('dashboard',this)"><span>Home</span></div><div class="nav-item" onclick="sPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="sPage('materials',this)"><span>Materials</span></div><div class="nav-item" onclick="sPage('qbank',this)"><span>Question Bank</span></div><div class="nav-item" onclick="sPage('teachers',this)"><span>Know Your Teacher</span></div><div class="nav-section">Work</div><div class="nav-item" onclick="sPage('dpp',this)"><span>DPP Submit</span></div><div class="nav-item" onclick="sPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="sPage('doubts',this)"><span>Doubts</span></div><div class="nav-section">Progress</div><div class="nav-item" onclick="sPage('progress',this)"><span>Progress</span></div><div class="nav-item" onclick="sPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="sPage('profile',this)"><span>My Profile</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#06b6d4" id="s-avatar">S</div><div><span id="s-name">Student</span><small id="s-batch">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="s-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="s-topavatar" title="Set or change profile photo" onclick="openSetStudentPhoto()">S</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('student')"><span class="notif-badge" id="s-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="s-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="s-page-dashboard"><div id="s-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-timetable"><div id="s-timetable-content"><div class="spinner"></div></div></div><div class="page" id="s-page-materials"><div id="s-materials-content"><div class="spinner"></div></div></div><div class="page" id="s-page-qbank"><div id="s-qbank-content"><div class="spinner"></div></div></div><div class="page" id="s-page-teachers"><div id="s-teachers-content"><div class="spinner"></div></div></div><div class="page" id="s-page-dpp"><div id="s-dpp-content"><div class="spinner"></div></div></div><div class="page" id="s-page-tests"><div id="s-tests-content"><div class="spinner"></div></div></div><div class="page" id="s-page-doubts"><div id="s-doubts-content"><div class="spinner"></div></div></div><div class="page" id="s-page-progress"><div id="s-progress-content"><div class="spinner"></div></div></div><div class="page" id="s-page-notifications"><div id="s-notif-content"><div class="spinner"></div></div></div><div class="page" id="s-page-profile"><div id="s-profile-content"><div class="spinner"></div></div></div></div>
+<div id="student-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#06b6d4">S</div><div><span>MVS Foundation</span><small>Student</small></div></div><nav class="sidebar-nav"><div class="nav-section">Home</div><div class="nav-item active" onclick="sPage('dashboard',this)"><span>Home</span></div><div class="nav-item" onclick="sPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="sPage('materials',this)"><span>Materials</span></div><div class="nav-item" onclick="sPage('qbank',this)"><span>Question Bank</span></div><div class="nav-item" onclick="sPage('teachers',this)"><span>Know Your Teacher</span></div><div class="nav-section">Work</div><div class="nav-item" onclick="sPage('lectures',this)"><span>Lectures</span></div><div class="nav-item" onclick="sPage('dpp',this)"><span>DPP Submit</span></div><div class="nav-item" onclick="sPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="sPage('doubts',this)"><span>Doubts</span></div><div class="nav-section">Progress</div><div class="nav-item" onclick="sPage('progress',this)"><span>Progress</span></div><div class="nav-item" onclick="sPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="sPage('profile',this)"><span>My Profile</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#06b6d4" id="s-avatar">S</div><div><span id="s-name">Student</span><small id="s-batch">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="s-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="s-topavatar" title="Set or change profile photo" onclick="openSetStudentPhoto()">S</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('student')"><span class="notif-badge" id="s-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="s-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="s-page-dashboard"><div id="s-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-timetable"><div id="s-timetable-content"><div class="spinner"></div></div></div><div class="page" id="s-page-materials"><div id="s-materials-content"><div class="spinner"></div></div></div><div class="page" id="s-page-qbank"><div id="s-qbank-content"><div class="spinner"></div></div></div><div class="page" id="s-page-teachers"><div id="s-teachers-content"><div class="spinner"></div></div></div><div class="page" id="s-page-lectures"><div id="s-lectures-content"><div class="spinner"></div></div></div><div class="page" id="s-page-dpp"><div id="s-dpp-content"><div class="spinner"></div></div></div><div class="page" id="s-page-tests"><div id="s-tests-content"><div class="spinner"></div></div></div><div class="page" id="s-page-doubts"><div id="s-doubts-content"><div class="spinner"></div></div></div><div class="page" id="s-page-progress"><div id="s-progress-content"><div class="spinner"></div></div></div><div class="page" id="s-page-notifications"><div id="s-notif-content"><div class="spinner"></div></div></div><div class="page" id="s-page-profile"><div id="s-profile-content"><div class="spinner"></div></div></div></div>
 </div><!-- Generic Modal -->
 <div class="modal-overlay" id="modal"><div class="modal"><div class="modal-header"><h3 id="modal-title">Modal</h3><button class="modal-close" onclick="closeModal()">×</button></div><div class="modal-body" id="modal-body"></div><div class="modal-footer" id="modal-footer"></div></div></div>
 <!-- Limit Popup -->
@@ -1268,6 +1391,7 @@ function tPage(page,el){
   else if(page==='schedule') loadTUpload();
   else if(page==='timetable') loadTTimetable();
   else if(page==='dpp') loadTDpp();
+  else if(page==='lectures') loadTLectures();
   else if(page==='tests') loadTTests();
   else if(page==='doubts') loadTDoubts();
   else if(page==='notifications') loadTNotif();
@@ -1961,6 +2085,152 @@ async function downloadExamPdf(id, medium){
     setTimeout(()=>URL.revokeObjectURL(u),4000);
   }catch(e){ toast('Could not download the PDF',true); }
 }
+// ========================================================
+//  TEACHER: LECTURE REPORTS + VERIFICATION QUESTIONS
+// ========================================================
+let _lecQs=[];          // [{qtype,question,question_hi,options[],options_hi[],correct,tolerance,image_b64,option_images[],_tab}]
+let _lecTT=[];          // timetable entries for optional linking
+let _lecFiles={pdf:null,dpp:null};
+
+async function loadTLectures(){
+  const el=document.getElementById('t-lectures-content');
+  el.innerHTML='<div class="spinner"></div>';
+  try{
+    const lecs=await api('/api/teacher/lectures');
+    let html=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2>Lecture Reports</h2><p>Publish a report after teaching in the MVC App. Students must answer a verification question to mark it done.</p></div><button class="btn btn-primary btn-sm" onclick="openLectureForm()">${ic('upload')} New Lecture Report</button></div>`;
+    if(!lecs.length){ html+=`<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>No lecture reports yet. Create one so students can verify their learning.</p></div></div></div>`; }
+    else{
+      html+=lecs.map(l=>{
+        const rate=l.attempted?Math.round(l.verified/l.attempted*100):0;
+        const files=[]; if(l.has_pdf) files.push('Notes'); if(l.has_dpp) files.push('DPP');
+        return `<div class="lec-card"><div class="lec-head"><div><div class="lec-title">${esc(l.title)}</div><div class="lec-meta">${esc(l.subject)}${l.chapter?' \u00b7 '+esc(l.chapter):''} \u00b7 ${esc(l.date)} \u00b7 ${l.questions} question${l.questions===1?'':'s'}${files.length?' \u00b7 '+files.join(' + '):''}</div></div><button class="btn btn-danger btn-sm" onclick="deleteLecture(${l.id})">${ic('trash')}</button></div><div class="lec-body"><b>${l.verified}</b> verified \u00b7 <b>${l.attempted}</b> attempted${l.attempted?` \u00b7 ${rate}% success`:''}</div></div>`;
+      }).join('');
+    }
+    el.innerHTML=html;
+  }catch(e){ el.innerHTML=errHtml(e); }
+}
+
+async function deleteLecture(id){
+  if(!confirm('Remove this lecture report? Students will no longer see it.')) return;
+  try{ await api('/api/teacher/lecture/'+id,'DELETE'); toast('Lecture removed'); loadTLectures(); }
+  catch(e){ toast(e.message,true); }
+}
+
+async function openLectureForm(){
+  _lecQs=[{qtype:'mcq',question:'',question_hi:'',options:['','','',''],options_hi:['','','',''],correct:0,tolerance:'',image_b64:null,option_images:[null,null,null,null],_tab:'en'}];
+  _lecFiles={pdf:null,dpp:null};
+  _lecTT=[];
+  try{ _lecTT=await api('/api/teacher/timetable-entries-lite'); }catch(e){}
+  let subs=[]; try{ const p=await api('/api/teacher/profile'); subs=p.subjects||[]; }catch(e){}
+  const subOpts=subs.length?subs.map(s=>`<option>${esc(s)}</option>`).join(''):'<option>Physics</option><option>Chemistry</option><option>Mathematics</option><option>Biology</option>';
+  const ttOpts='<option value="">Not linked (standalone)</option>'+_lecTT.map(e=>`<option value="${e.id}">${esc(e.subject)} \u00b7 ${esc(e.chapter||'')}${e.part?' \u00b7 '+esc(e.part):''}${e.date?' \u00b7 '+esc(e.date):''}</option>`).join('');
+  const today=new Date().toISOString().slice(0,10);
+  const body=`
+    <div class="ex-grid2">
+      <div><label class="ex-lbl">Subject</label><select class="form-control" id="lec-sub">${subOpts}</select></div>
+      <div><label class="ex-lbl">Class</label><select class="form-control" id="lec-cls"><option value="">\u2014</option><option>10</option><option>12</option></select></div>
+    </div>
+    <div class="ex-grid2">
+      <div><label class="ex-lbl">Chapter (optional)</label><input class="form-control" id="lec-ch" placeholder="e.g. Electric Charges"></div>
+      <div><label class="ex-lbl">Part (optional)</label><input class="form-control" id="lec-part" placeholder="e.g. Part 3"></div>
+    </div>
+    <div class="ex-grid2">
+      <div><label class="ex-lbl">Lecture Title</label><input class="form-control" id="lec-title" placeholder="e.g. Coulomb's Law"></div>
+      <div><label class="ex-lbl">Lecture Date</label><input class="form-control" type="date" id="lec-date" value="${today}"></div>
+    </div>
+    <div><label class="ex-lbl">Link to Timetable Class (optional)</label><select class="form-control" id="lec-tt">${ttOpts}</select></div>
+    <label class="ex-lbl" style="margin-top:10px">Lecture Summary</label>
+    <textarea class="form-control" id="lec-summary" rows="2" placeholder="What was taught in this lecture?"></textarea>
+    <label class="ex-lbl">Homework</label>
+    <textarea class="form-control" id="lec-hw" rows="2" placeholder="Homework / practice for students"></textarea>
+    <div class="ex-grid2">
+      <div><label class="ex-lbl">Notes PDF (optional)</label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-pdf').click()">${ic('upload')} <span id="lec-pdf-name">Upload Notes PDF</span></button><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
+      <div><label class="ex-lbl">DPP PDF (optional)</label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-dpp').click()">${ic('upload')} <span id="lec-dpp-name">Upload DPP PDF</span></button><input type="file" id="lec-dpp" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'dpp')"></div>
+    </div>
+    <div class="lecq-head"><h3 style="font-size:.95rem;font-weight:800;margin:14px 0 4px">Verification Questions <span style="font-weight:500;color:var(--text-muted);font-size:.8rem">\u2014 mandatory, students answer one at random</span></h3></div>
+    <div id="lec-qs"></div>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="addLecQ()" style="margin-top:6px">+ Add another question</button>
+  `;
+  showModal('New Lecture Report',body,`<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="lec-save" onclick="submitLecture()">Publish Report</button>`);
+  renderLecQs();
+}
+
+function _lecPickFile(inp,kind){
+  const f=inp.files[0]; if(!f) return;
+  if(f.size>20*1024*1024){ toast('PDF too large (max 20MB)',true); inp.value=''; return; }
+  _lecFiles[kind]=f;
+  const n=document.getElementById('lec-'+kind+'-name'); if(n) n.textContent=f.name;
+}
+
+function addLecQ(){ _lecQs.push({qtype:'mcq',question:'',question_hi:'',options:['','','',''],options_hi:['','','',''],correct:0,tolerance:'',image_b64:null,option_images:[null,null,null,null],_tab:'en'}); renderLecQs(); }
+function removeLecQ(i){ if(_lecQs.length<=1){ toast('At least one question is required',true); return; } _lecQs.splice(i,1); renderLecQs(); }
+function setLecType(i,t){ _lecQs[i].qtype=t; if((t==='mcq'||t==='image_mcq')&&(!_lecQs[i].options||!_lecQs[i].options.length)){ _lecQs[i].options=['','','','']; _lecQs[i].options_hi=['','','','']; _lecQs[i].option_images=[null,null,null,null]; } renderLecQs(); }
+function setLecTab(i,tab){ _lecQs[i]._tab=tab; renderLecQs(); }
+
+function renderLecQs(){
+  const el=document.getElementById('lec-qs'); if(!el) return;
+  el.innerHTML=_lecQs.map((q,i)=>{
+    const isHi=q._tab==='hi';
+    const typeSel=`<select class="form-control" style="max-width:200px" onchange="setLecType(${i},this.value)">${['mcq','image_mcq','numerical','fill_blank','true_false'].map(t=>`<option value="${t}" ${q.qtype===t?'selected':''}>${_VQ_LABEL[t]}</option>`).join('')}</select>`;
+    const tabs=`<div class="ex-lang-tabs"><button type="button" class="ex-lang-tab ${!isHi?'active':''}" onclick="setLecTab(${i},'en')">English</button><button type="button" class="ex-lang-tab ${isHi?'active':''}" onclick="setLecTab(${i},'hi')">\u0939\u093f\u0902\u0926\u0940</button></div>`;
+    const qval=isHi?(q.question_hi||''):(q.question||'');
+    const qbind=isHi?`_lecQs[${i}].question_hi=this.value`:`_lecQs[${i}].question=this.value`;
+    let mid='';
+    if(q.qtype==='mcq'){
+      const arr=isHi?(q.options_hi||['','','','']):(q.options||['','','','']);
+      mid=`<div class="ex-opts">${arr.map((o,j)=>`<div style="display:flex;align-items:center;gap:8px"><input type="radio" name="lecq-${i}" ${q.correct===j?'checked':''} onclick="_lecQs[${i}].correct=${j}" ${isHi?'disabled title=\"Set correct on English tab\"':'title=\"Correct answer\"'}><input class="form-control" placeholder="${isHi?'\u0935\u093f\u0915\u0932\u094d\u092a':'Option'} ${j+1}" value="${esc(o)}" oninput="${isHi?`_lecQs[${i}].options_hi[${j}]`:`_lecQs[${i}].options[${j}]`}=this.value"></div>`).join('')}</div>${isHi?'':'<div class="ex-hint" style="font-size:.76rem;color:var(--text-muted)">Select the radio next to the correct option.</div>'}`;
+    } else if(q.qtype==='image_mcq'){
+      mid=`<div class="ex-opts">${[0,1,2,3].map(j=>`<div style="display:flex;align-items:center;gap:8px"><input type="radio" name="lecq-${i}" ${q.correct===j?'checked':''} onclick="_lecQs[${i}].correct=${j}" ${isHi?'disabled':''} title="Correct answer"><button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('lecoimg-${i}-${j}').click()">${q.option_images&&q.option_images[j]?'\u2714 Image '+(j+1):'Upload image '+(j+1)}</button><input type="file" id="lecoimg-${i}-${j}" accept="image/*" style="display:none" onchange="_lecOptImg(this,${i},${j})"></div>`).join('')}</div>${isHi?'':'<div class="ex-hint" style="font-size:.76rem;color:var(--text-muted)">Upload 4 option images and mark the correct one.</div>'}`;
+    } else if(q.qtype==='numerical'){
+      mid=isHi?'':`<div class="ex-grid2"><div><label class="ex-lbl">Correct value</label><input class="form-control" type="text" inputmode="decimal" placeholder="e.g. 9.8" value="${esc(q.correct||'')}" oninput="_lecQs[${i}].correct=this.value"></div><div><label class="ex-lbl">Tolerance (\u00b1)</label><input class="form-control" type="text" inputmode="decimal" placeholder="e.g. 0.1" value="${esc(q.tolerance||'')}" oninput="_lecQs[${i}].tolerance=this.value"></div></div>`;
+    } else if(q.qtype==='fill_blank'){
+      mid=isHi?'':`<label class="ex-lbl">Correct answer(s)</label><input class="form-control" placeholder="Accepted answers, separate with comma" value="${esc(q.correct||'')}" oninput="_lecQs[${i}].correct=this.value">`;
+    } else if(q.qtype==='true_false'){
+      mid=isHi?'':`<label class="ex-lbl">Correct answer</label><select class="form-control" style="max-width:160px" onchange="_lecQs[${i}].correct=this.value"><option value="true" ${String(q.correct)==='true'?'selected':''}>True</option><option value="false" ${String(q.correct)==='false'?'selected':''}>False</option></select>`;
+    }
+    const imgBtn=isHi?'':`<button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('lecqimg-${i}').click()" style="margin-top:6px">${q.image_b64?'\u2714 Question image attached':'Attach question image (optional)'}</button><input type="file" id="lecqimg-${i}" accept="image/*" style="display:none" onchange="_lecQImg(this,${i})">`;
+    return `<div class="ex-qcard"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px"><span style="font-weight:700;font-size:.9rem">Question ${i+1}</span><div style="display:flex;gap:8px;align-items:center">${typeSel}${_lecQs.length>1?`<button class="btn btn-danger btn-sm" onclick="removeLecQ(${i})">${ic('trash')}</button>`:''}</div></div>${tabs}<textarea class="form-control" rows="2" placeholder="${isHi?'\u092a\u094d\u0930\u0936\u094d\u0928 \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902':'Verification question'}" oninput="${qbind}">${esc(qval)}</textarea>${imgBtn}${mid}</div>`;
+  }).join('');
+}
+
+function _lecQImg(inp,i){ const f=inp.files[0]; if(!f) return; if(f.size>8*1024*1024){ toast('Image too large (max 8MB)',true); return; } const r=new FileReader(); r.onload=()=>{ _lecQs[i].image_b64=r.result; renderLecQs(); }; r.readAsDataURL(f); }
+function _lecOptImg(inp,i,j){ const f=inp.files[0]; if(!f) return; if(f.size>8*1024*1024){ toast('Image too large (max 8MB)',true); return; } const r=new FileReader(); r.onload=()=>{ _lecQs[i].option_images[j]=r.result; renderLecQs(); }; r.readAsDataURL(f); }
+
+async function submitLecture(){
+  const subject=val('lec-sub'); if(!subject){ toast('Select a subject',true); return; }
+  // validate questions
+  for(let i=0;i<_lecQs.length;i++){ const q=_lecQs[i];
+    if(!(q.question||'').trim()){ toast('Question '+(i+1)+': enter the question text',true); return; }
+    if(q.qtype==='mcq'){ if(q.options.some(o=>!(o||'').trim())){ toast('Question '+(i+1)+': fill all 4 options',true); return; } if(!(q.options[q.correct]||'').trim()){ toast('Question '+(i+1)+': mark the correct option',true); return; } }
+    if(q.qtype==='image_mcq'){ const imgs=q.option_images||[]; if(imgs.filter(x=>x).length<2){ toast('Question '+(i+1)+': upload at least 2 option images',true); return; } if(!imgs[q.correct]){ toast('Question '+(i+1)+': the correct option needs an image',true); return; } }
+    if(q.qtype==='numerical'&&(q.correct===''||q.correct===null||q.correct===undefined)){ toast('Question '+(i+1)+': enter the correct value',true); return; }
+    if(q.qtype==='fill_blank'&&!(q.correct||'').trim()){ toast('Question '+(i+1)+': enter the correct answer',true); return; }
+  }
+  const btn=document.getElementById('lec-save'); if(btn){ btn.disabled=true; btn.textContent='Publishing...'; }
+  try{
+    let pdf_b64=null,dpp_b64=null;
+    if(_lecFiles.pdf) pdf_b64=await _fileB64(_lecFiles.pdf);
+    if(_lecFiles.dpp) dpp_b64=await _fileB64(_lecFiles.dpp);
+    const questions=_lecQs.map(q=>{
+      const base={qtype:q.qtype, question:q.question, question_hi:(q.question_hi||'').trim()||null, image_b64:q.image_b64||null};
+      if(q.qtype==='mcq'){ const oh=(q.options_hi||[]).map(o=>(o||'').trim()); return {...base, options:q.options, options_hi:oh.some(x=>x)?oh:null, correct:q.options[q.correct]}; }
+      if(q.qtype==='image_mcq'){ return {...base, option_images:q.option_images, correct:String(q.correct)}; }
+      if(q.qtype==='numerical'){ return {...base, correct:String(q.correct), tolerance:(q.tolerance!==''&&q.tolerance!=null)?q.tolerance:null}; }
+      if(q.qtype==='true_false'){ return {...base, correct:String(q.correct||'true')}; }
+      return {...base, correct:q.correct}; // fill_blank
+    });
+    const payload={subject, class_level:val('lec-cls')||null, chapter:val('lec-ch')||null, part:val('lec-part')||null,
+      title:val('lec-title')||null, lecture_date:val('lec-date')||null,
+      timetable_entry_id:(document.getElementById('lec-tt').value||null),
+      summary:val('lec-summary')||null, homework:val('lec-hw')||null,
+      pdf_b64, pdf_filename:_lecFiles.pdf?_lecFiles.pdf.name:null,
+      dpp_b64, dpp_filename:_lecFiles.dpp?_lecFiles.dpp.name:null,
+      questions};
+    await api('/api/teacher/lecture','POST',payload);
+    closeModal(); toast('Lecture report published! Students are notified.'); loadTLectures();
+  }catch(e){ toast(e.message,true); if(btn){ btn.disabled=false; btn.textContent='Publish Report'; } }
+}
+
 async function loadTTests(){
   const el=document.getElementById('t-tests-content');
   try{
@@ -3024,6 +3294,7 @@ function sPage(page,el){
   else if(page==='dpp') loadSDpp();
   else if(page==='tests') loadSTests();
   else if(page==='doubts') loadSDoubts();
+  else if(page==='lectures') loadSLectures();
   else if(page==='progress') loadSProgress();
   else if(page==='notifications') loadSNotif();
   else if(page==='profile') loadSProfile();
@@ -3403,20 +3674,207 @@ async function submitDoubt(){
 }
 
 
-async function loadSProgress(){
-  const el=document.getElementById('s-progress-content');
+// ============ ACADEMIC PERFORMANCE DASHBOARD ============
+function _ring(pct,size,stroke,color){
+  const r=(size-stroke)/2, c=2*Math.PI*r, off=c*(1-Math.max(0,Math.min(100,pct))/100);
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="rgba(150,150,160,.2)" stroke-width="${stroke}"/><circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${off}"/></svg>`;
+}
+function _barChart(series){
+  const max=Math.max(1,...series.map(s=>s.value));
+  return `<div class="bar-chart">${series.map(s=>`<div class="bar-col"><div class="bar-fill" style="height:${Math.round(s.value/max*100)}%" title="${s.value} XP"></div><div class="bar-lbl">${s.label}</div></div>`).join('')}</div>`;
+}
+function _radar(items){
+  if(!items||items.length<3) return `<div class="ws-empty"><p>Need 3+ subjects for radar</p></div>`;
+  const N=items.length,cx=130,cy=125,R=95;
+  const pt=(i,v)=>{const a=(Math.PI*2*i/N)-Math.PI/2;return [cx+Math.cos(a)*R*v/100, cy+Math.sin(a)*R*v/100];};
+  const grid=[25,50,75,100].map(g=>{const p=items.map((_,i)=>pt(i,g).join(',')).join(' ');return `<polygon points="${p}" fill="none" stroke="rgba(150,150,160,.2)" stroke-width="1"/>`;}).join('');
+  const axes=items.map((_,i)=>{const[x,y]=pt(i,100);return `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="rgba(150,150,160,.2)"/>`;}).join('');
+  const poly=items.map((it,i)=>pt(i,it.value).join(',')).join(' ');
+  const labels=items.map((it,i)=>{const[x,y]=pt(i,122);return `<text x="${x}" y="${y}" font-size="9" fill="var(--text-muted)" text-anchor="middle" dominant-baseline="middle">${esc(it.subject.slice(0,10))}</text>`;}).join('');
+  return `<div class="radar-wrap"><svg width="260" height="250" viewBox="0 0 260 250">${grid}${axes}<polygon points="${poly}" fill="rgba(37,99,235,.25)" stroke="var(--primary)" stroke-width="2"/>${labels}</svg></div>`;
+}
+const _TL_IC={lecture:'\ud83c\udf93',dpp:'\ud83d\udcdd',test:'\u270f\ufe0f',doubt:'\u2753',material:'\ud83d\udcd6',xp:'\u2b50'};
+const _BADGE_IC={first_verify:'\ud83c\udf1f',five_verify:'\ud83d\ude80',week_streak:'\ud83d\udd25',dpp_10:'\ud83d\udcaa',test_5:'\ud83c\udfaf',xp_500:'\u2b50'};
+
+// ========================================================
+//  STUDENT: LECTURES + SMART VERIFICATION
+// ========================================================
+const _VQ_LABEL={mcq:'Multiple Choice',image_mcq:'Image MCQ',numerical:'Numerical',fill_blank:'Fill in the Blank',true_false:'True / False'};
+let _vqState=null;   // {lectureId, questionId, qtype, selected}
+
+async function loadSLectures(){
+  const el=document.getElementById('s-lectures-content');
+  el.innerHTML='<div class="spinner"></div>';
   try{
- const w=await api('/api/student/progress?period=weekly');
- el.innerHTML=`<div class="tabs"><div class="tab active" onclick="switchProg(this,'weekly')">Weekly</div><div class="tab" onclick="switchProg(this,'monthly')">Monthly</div><div class="tab" onclick="switchProg(this,'quarterly')">Quarterly</div></div><div id="prog-data"></div>`;
- renderProg(w);
+    const lecs=await api('/api/student/lectures');
+    if(!lecs.length){ el.innerHTML=`<div class="sm-head"><h2>Lectures</h2><p>Verify each lecture after watching it in the Manish Verma Classes App.</p></div><div class="card"><div class="card-body"><div class="ws-empty"><div class="big">\ud83c\udf93</div><p>No lectures yet</p><small>When your teacher posts a lecture report, it appears here to verify.</small></div></div></div>`; return; }
+    const cards=lecs.map(l=>{
+      const st=l.status==='verified'?'verified':(l.cooling?'cooling':'pending');
+      const stLabel=st==='verified'?'\u2714 Verified':(st==='cooling'?'On cooldown':'Not verified');
+      let action='';
+      if(l.status==='verified'){ action=`<span class="lec-status verified">\u2714 Verified</span>`; }
+      else if(l.cooling){ action=`<button class="btn btn-ghost btn-sm" disabled>Try later</button>`; }
+      else { action=`<button class="btn btn-primary btn-sm" onclick="markLectureDone(${l.id})">Mark as Done</button>`; }
+      const files=[];
+      if(l.has_pdf) files.push(`<button class="btn btn-ghost btn-sm" onclick="dlLectureFile(${l.id},'pdf')">${ic('download')} Notes</button>`);
+      if(l.has_dpp) files.push(`<button class="btn btn-ghost btn-sm" onclick="dlLectureFile(${l.id},'dpp')">${ic('download')} DPP</button>`);
+      return `<div class="lec-card"><div class="lec-head"><div><div class="lec-title">${esc(l.title)}</div><div class="lec-meta">${esc(l.subject)}${l.chapter?' \u00b7 '+esc(l.chapter):''}${l.part?' \u00b7 '+esc(l.part):''} \u00b7 ${esc(l.date)}</div></div><span class="lec-status ${st}">${stLabel}</span></div>${l.summary?`<div class="lec-body">${esc(l.summary)}</div>`:''}${l.homework?`<div class="lec-body"><b>Homework:</b> ${esc(l.homework)}</div>`:''}<div class="lec-actions">${files.join('')}${action}</div></div>`;
+    }).join('');
+    el.innerHTML=`<div class="sm-head"><h2>Lectures</h2><p>Watch in the MVC App, then verify here by answering a quick question. Verified lectures build your progress & rank.</p></div>${cards}`;
   }catch(e){ el.innerHTML=errHtml(e); }
 }
-async function switchProg(tab,period){
-  document.querySelectorAll('#s-progress-content .tab').forEach(t=>t.classList.remove('active')); tab.classList.add('active');
-  try{ const d=await api('/api/student/progress?period='+period); renderProg(d); }catch(e){ toast(e.message,true); }
+
+async function dlLectureFile(lectureId,kind){
+  try{
+    const r=await fetch(API+`/api/student/lecture/${lectureId}/file?kind=${kind}`,{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok){ toast('File not available',true); return; }
+    const blob=await r.blob(); const u=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=u; a.download=(kind==='dpp'?'DPP.pdf':'Notes.pdf'); a.click(); URL.revokeObjectURL(u);
+  }catch(e){ toast(e.message,true); }
 }
-function renderProg(d){
-  document.getElementById('prog-data').innerHTML=`<div class="stats-grid">${statCard('DPPs Submitted',d.dpps_submitted,'clipboard','indigo')}${statCard('Tests Attempted',d.tests_attempted,'edit','teal')}${statCard('Doubts Asked',d.doubts_asked,'help','amber')}</div><div class="card"><div class="card-body"><p style="font-size:.85rem;color:var(--text-muted)">Period: ${d.from} se ${d.to} (${d.period})</p></div></div>`;
+
+async function markLectureDone(lectureId){
+  showModal('Verify Lecture','<div id="vq-body"><div class="spinner"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>');
+  try{
+    const d=await api('/api/student/lecture/'+lectureId+'/question');
+    _vqState={lectureId, questionId:d.question.id, qtype:d.question.qtype, selected:null};
+    renderVQ(d.question, d.attempts_left);
+  }catch(e){
+    const b=document.getElementById('vq-body');
+    if(b) b.innerHTML=`<div class="vq-result bad">${esc(e.message||'Could not load the question')}</div>`;
+  }
+}
+
+function renderVQ(q, attemptsLeft){
+  const b=document.getElementById('vq-body'); if(!b) return;
+  const type=_VQ_LABEL[q.qtype]||'Question';
+  const biling=(q.question_hi&&q.question_hi.trim());
+  let img=q.has_image?`<img class="vq-img" src="" id="vq-qimg" alt="question">`:'';
+  let input='';
+  if(q.qtype==='mcq'){
+    input=`<div class="vq-opts">${(q.options||[]).map((o,i)=>`<div class="vq-opt" data-i="${i}" onclick="vqSelect(this,${i})"><span class="vq-opt-letter">${String.fromCharCode(65+i)}</span><span>${esc(o)}</span></div>`).join('')}</div>`;
+  } else if(q.qtype==='image_mcq'){
+    input=`<div class="vq-opts">${Array.from({length:q.option_images_count||0}).map((_,i)=>`<div class="vq-opt" data-i="${i}" onclick="vqSelect(this,${i})"><span class="vq-opt-letter">${String.fromCharCode(65+i)}</span><img class="vq-opt-img" src="" id="vq-oimg-${i}" alt="option ${i+1}"></div>`).join('')}</div>`;
+  } else if(q.qtype==='true_false'){
+    input=`<div class="vq-opts"><div class="vq-opt" data-v="true" onclick="vqSelectVal(this,'true')"><span class="vq-opt-letter">T</span><span>True</span></div><div class="vq-opt" data-v="false" onclick="vqSelectVal(this,'false')"><span class="vq-opt-letter">F</span><span>False</span></div></div>`;
+  } else if(q.qtype==='numerical'){
+    input=`<input class="form-control" id="vq-num" type="text" inputmode="decimal" placeholder="Enter your numerical answer" oninput="_vqState.selected=this.value">`;
+  } else { // fill_blank
+    input=`<input class="form-control" id="vq-fill" type="text" placeholder="Type your answer" oninput="_vqState.selected=this.value">`;
+  }
+  b.innerHTML=`<div class="vq-type">${type}</div><div class="vq-question">${esc(q.question)}</div>${biling?`<div class="vq-hi">${esc(q.question_hi)}</div>`:''}${img}${input}<div class="vq-attempts">${attemptsLeft} attempt${attemptsLeft===1?'':'s'} left \u00b7 answer correctly to verify this lecture</div><div id="vq-result"></div>`;
+  document.getElementById('modal-footer').innerHTML=`<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="vq-submit" onclick="submitVerify()">Submit Answer</button>`;
+  // load images
+  if(q.has_image){ _loadVQImg('vq-qimg',`/api/student/lecture-question/${q.id}/image`); }
+  if(q.qtype==='image_mcq'){ for(let i=0;i<(q.option_images_count||0);i++){ _loadVQImg('vq-oimg-'+i,`/api/student/lecture-question/${q.id}/image?which=${i}`); } }
+}
+async function _loadVQImg(elId,path){
+  try{ const r=await fetch(API+path,{headers:{Authorization:'Bearer '+TOKEN}}); if(!r.ok) return; const u=URL.createObjectURL(await r.blob()); const im=document.getElementById(elId); if(im) im.src=u; }catch(e){}
+}
+function vqSelect(elm,i){ document.querySelectorAll('#vq-body .vq-opt').forEach(o=>o.classList.remove('sel')); elm.classList.add('sel'); _vqState.selected=i; }
+function vqSelectVal(elm,v){ document.querySelectorAll('#vq-body .vq-opt').forEach(o=>o.classList.remove('sel')); elm.classList.add('sel'); _vqState.selected=v; }
+
+async function submitVerify(){
+  if(!_vqState){ return; }
+  const ans=_vqState.selected;
+  if(ans===null||ans===undefined||ans===''){ toast('Please choose or enter an answer.',true); return; }
+  const btn=document.getElementById('vq-submit'); if(btn){ btn.disabled=true; btn.textContent='Checking...'; }
+  const rd=document.getElementById('vq-result');
+  try{
+    const r=await api('/api/student/lecture/'+_vqState.lectureId+'/verify','POST',{question_id:_vqState.questionId, answer:ans});
+    if(r.correct){
+      if(rd) rd.innerHTML=`<div class="vq-result ok">\u2714 ${esc(r.message||'Correct! Lecture verified.')}</div>`;
+      toast('Lecture verified! +XP earned \ud83c\udf89');
+      document.getElementById('modal-footer').innerHTML=`<button class="btn btn-success" onclick="closeModal();loadSLectures()">Done</button>`;
+    } else {
+      if(rd) rd.innerHTML=`<div class="vq-result bad">${esc(r.message||'Incorrect. Try again.')}</div>`;
+      if(btn){ btn.disabled=false; btn.textContent='Try Again'; }
+      // clear selection for retry
+      document.querySelectorAll('#vq-body .vq-opt').forEach(o=>o.classList.remove('sel'));
+      const ni=document.getElementById('vq-num'); if(ni) ni.value=''; const fi=document.getElementById('vq-fill'); if(fi) fi.value='';
+      _vqState.selected=null;
+    }
+  }catch(e){
+    // 429 cooldown or other -> show message, close verify path
+    if(rd) rd.innerHTML=`<div class="vq-result bad">${esc(e.message||'Could not verify')}</div>`;
+    document.getElementById('modal-footer').innerHTML=`<button class="btn btn-ghost" onclick="closeModal();loadSLectures()">Close</button>`;
+  }
+}
+
+async function loadSProgress(){
+  const el=document.getElementById('s-progress-content');
+  el.innerHTML='<div class="spinner"></div>';
+  try{
+    const d=await api('/api/student/performance');
+    window._perfData=d;
+    const h=d.health||{score:0,label:''};
+    const lb=d.leaderboard||{};
+    // hero: health ring + level/xp + streak
+    const hero=`<div class="perf-hero"><div class="health-ring">${_ring(h.score,120,11,'#fff')}<div class="hr-num"><b>${h.score}</b><span>Health</span></div></div><div class="hero-mid"><h3>Academic Health</h3><h2>${esc(h.label)}</h2><div class="hero-chips"><span class="hero-chip">\u2b50 Level ${d.level}</span><span class="hero-chip">\ud83d\udd25 ${d.streak} day streak</span><span class="hero-chip">\ud83c\udfc6 Rank #${lb.overall_rank||'-'}</span></div></div><div class="hero-xp"><div class="xp-big">${d.xp}</div><div class="xp-lbl">Total XP</div></div></div>`;
+
+    // overall ring + lecture/dpp/test rings
+    const rings=`<div class="card"><div class="card-header"><h3>Overall Progress</h3></div><div class="card-body"><div class="ring-wrap"><div class="ring-sm">${_ring(d.overall_pct,92,9,'var(--primary)')}<div class="rs-num">${d.overall_pct}%</div></div><div class="ring-leg"><div class="rl-row"><span>Lectures Verified</span><b>${d.lectures.verified}/${d.lectures.total}</b></div><div class="rl-row"><span>DPP Completed</span><b>${d.dpp.done}/${d.dpp.total}</b></div><div class="rl-row"><span>Tests Attempted</span><b>${d.tests.done}/${d.tests.total}</b></div><div class="rl-row"><span>Avg Test Score</span><b>${d.tests.avg_score}%</b></div></div></div></div></div>`;
+
+    // subject progress bars
+    const sp=(d.subject_progress||[]);
+    const subjBars=`<div class="card"><div class="card-header"><h3>Subject-wise Progress</h3></div><div class="card-body">${sp.length?sp.map(s=>`<div class="mprog-row"><div class="mprog-top"><span class="mprog-sub">${esc(s.subject)}</span><span class="mprog-val">Lec ${s.lectures} \u00b7 DPP ${s.dpp} \u00b7 ${s.pct}%</span></div><div class="mprog-track"><div class="mprog-fill" style="width:${s.pct}%"></div></div></div>`).join(''):'<div class="ws-empty"><p>No subject data yet</p></div>'}</div></div>`;
+
+    // performance graph (tabbed)
+    const graph=`<div class="card"><div class="card-header"><h3>Performance Graph</h3></div><div class="card-body"><div class="perf-tabs"><div class="perf-tab active" onclick="switchPerfGraph(this,'weekly')">Weekly</div><div class="perf-tab" onclick="switchPerfGraph(this,'monthly')">Monthly</div><div class="perf-tab" onclick="switchPerfGraph(this,'quarterly')">Quarterly</div></div><div id="perf-graph">${_barChart(d.graphs.weekly)}</div></div></div>`;
+
+    // leaderboard + rank movement
+    const mv=d.rank_movement;
+    const mvHtml=mv===null||mv===undefined?'<span class="move-badge move-flat">New</span>':mv>0?`<span class="move-badge move-up">\u25b2 +${mv}</span>`:mv<0?`<span class="move-badge move-down">\u25bc ${mv}</span>`:'<span class="move-badge move-flat">\u2013 No change</span>';
+    const leader=`<div class="card"><div class="card-header"><h3>Leaderboard</h3></div><div class="card-body"><div class="lb-grid"><div class="lb-cell"><div class="lb-rank">#${lb.batch_rank||'-'}<small>/${lb.batch_total||'-'}</small></div><div class="lb-lbl">Batch Rank</div></div><div class="lb-cell"><div class="lb-rank">#${lb.overall_rank||'-'}<small>/${lb.overall_total||'-'}</small></div><div class="lb-lbl">Overall Rank</div>${mvHtml}</div><div class="lb-cell"><div class="lb-rank">Top ${lb.top_percent||100}%</div><div class="lb-lbl">Percentile</div></div></div></div></div>`;
+
+    // chapter cards
+    const cc=(d.chapter_cards||[]);
+    const chaps=`<div class="card"><div class="card-header"><h3>Chapter Completion</h3></div><div class="card-body">${cc.length?`<div class="chap-grid">${cc.map(c=>`<div class="chap-card"><div class="cc-sub">${esc(c.subject)}</div><div class="cc-ch">${esc(c.chapter)}</div><div class="cc-track"><div class="cc-fill" style="width:${c.pct}%"></div></div><div class="cc-meta"><span>${c.done}/${c.total}</span><span>${c.pct}%</span></div></div>`).join('')}</div>`:'<div class="ws-empty"><p>No chapters yet</p><small>Verify lectures to build chapter progress.</small></div>'}</div></div>`;
+
+    // lecture / dpp / test analytics trio
+    const analytics=`<div class="perf-grid-3">
+      <div class="card"><div class="card-header"><h3>Lecture Verification</h3></div><div class="card-body" style="text-align:center"><div class="ring-sm" style="margin:auto">${_ring(d.lectures.pct,92,9,'#7c3aed')}<div class="rs-num">${d.lectures.pct}%</div></div><p style="font-size:.82rem;color:var(--text-muted);margin-top:10px">${d.lectures.verified} of ${d.lectures.total} verified</p></div></div>
+      <div class="card"><div class="card-header"><h3>DPP Completion</h3></div><div class="card-body" style="text-align:center"><div class="ring-sm" style="margin:auto">${_ring(d.dpp.pct,92,9,'#16a34a')}<div class="rs-num">${d.dpp.pct}%</div></div><p style="font-size:.82rem;color:var(--text-muted);margin-top:10px">${d.dpp.done} of ${d.dpp.total} done</p></div></div>
+      <div class="card"><div class="card-header"><h3>Test Performance</h3></div><div class="card-body" style="text-align:center"><div class="ring-sm" style="margin:auto">${_ring(d.tests.avg_score,92,9,'#f59e0b')}<div class="rs-num">${d.tests.avg_score}%</div></div><p style="font-size:.82rem;color:var(--text-muted);margin-top:10px">Avg over ${d.tests.graded} graded</p></div></div>
+    </div>`;
+
+    // streak + consistency calendar
+    const cal=(d.calendar||[]);
+    const streakCal=`<div class="card"><div class="card-header"><h3>Study Streak</h3></div><div class="card-body"><div class="streak-box"><div class="streak-flame">\ud83d\udd25</div><div><div class="sb-num">${d.streak} days</div><div class="sb-lbl">Current streak \u00b7 Best: ${d.best_streak} days</div></div></div><div style="margin-top:16px"><div class="cal-wrap">${cal.map(c=>`<div class="cal-cell ${c.level?'l'+c.level:''}" title="${c.date}"></div>`).join('')}</div><div class="cal-legend"><span>Less</span><span class="cal-cell"></span><span class="cal-cell l1"></span><span class="cal-cell l2"></span><span class="cal-cell l3"></span><span class="cal-cell l4"></span><span>More</span></div></div></div></div>`;
+
+    // radar
+    const radar=`<div class="card"><div class="card-header"><h3>Performance Radar</h3></div><div class="card-body">${_radar(d.radar||[])}</div></div>`;
+
+    // badges
+    const bg=(d.badges||[]);
+    const badges=`<div class="card"><div class="card-header"><h3>Achievement Badges</h3></div><div class="card-body"><div class="badge-grid">${bg.map(b=>`<div class="badge-item ${b.earned?'earned':''}"><div class="badge-ic">${_BADGE_IC[b.key]||'\ud83c\udfc5'}</div><div class="badge-nm">${esc(b.name)}</div><div class="badge-ds">${esc(b.desc)}</div></div>`).join('')}</div></div></div>`;
+
+    // timeline
+    const tl=(d.timeline||[]);
+    const timeline=`<div class="card"><div class="card-header"><h3>Activity Timeline</h3></div><div class="card-body">${tl.length?tl.map(a=>`<div class="tl-row"><div class="tl-ic">${_TL_IC[a.kind]||'\u2b50'}</div><div class="tl-main"><div class="tl-txt">${esc(a.text)}</div><div class="tl-when">${esc((a.when||'').replace('T',' '))}</div></div>${a.xp?`<div class="tl-xp">+${a.xp}</div>`:''}</div>`).join(''):'<div class="ws-empty"><p>No activity yet</p></div>'}</div></div>`;
+
+    // targets + insights
+    const tg=(d.targets||[]);
+    const targets=`<div class="card"><div class="card-header"><h3>Upcoming Targets</h3></div><div class="card-body">${tg.map(t=>`<div class="tgt-row"><span class="tgt-dot"></span><span class="tgt-txt">${esc(t.text)}</span></div>`).join('')}</div></div>`;
+    const ins=(d.insights||[]);
+    const insights=`<div class="card"><div class="card-header"><h3>AI Performance Insights</h3></div><div class="card-body">${ins.map(x=>`<div class="ai-insight"><span class="ai-ic">\ud83d\udca1</span><span class="ai-txt">${esc(x)}</span></div>`).join('')}</div></div>`;
+
+    el.innerHTML=`${greetingCard(NAME,"'s Performance")}
+      ${hero}
+      <div class="perf-grid">${rings}${leader}</div>
+      <div class="perf-grid">${subjBars}${graph}</div>
+      ${analytics}
+      ${chaps}
+      <div class="perf-grid">${streakCal}${radar}</div>
+      ${badges}
+      <div class="perf-grid">${targets}${insights}</div>
+      ${timeline}`;
+  }catch(e){ el.innerHTML=errHtml(e); }
+}
+function switchPerfGraph(tab,period){
+  document.querySelectorAll('#s-progress-content .perf-tab').forEach(t=>t.classList.remove('active')); tab.classList.add('active');
+  const d=window._perfData; if(!d) return;
+  document.getElementById('perf-graph').innerHTML=_barChart(d.graphs[period]||[]);
 }
 
 async function loadSNotif(){ await loadNotif('/api/student/notifications','s-notif-content'); }

@@ -1290,3 +1290,120 @@ def grade_attempt_manual(attempt_id: int, payload: dict = Body(...), db: Session
 @router.get("/ai-status")
 def ai_status(current_user=Depends(get_teacher)):
     return grading.ai_status()
+
+
+# ============================================================
+#  SMART LECTURE VERIFICATION — TEACHER SIDE
+# ============================================================
+from models import Lecture, LectureQuestion, StudentProfile
+
+_LQ_TYPES = {"mcq", "image_mcq", "numerical", "fill_blank", "true_false"}
+
+
+@router.get("/timetable-entries-lite")
+def teacher_tt_entries_lite(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Recent/own timetable entries a lecture report can optionally be linked to."""
+    tp = get_teacher_profile(current_user, db)
+    from models import TimetableEntry
+    es = db.query(TimetableEntry).filter(
+        TimetableEntry.teacher_id == tp.id).order_by(TimetableEntry.entry_date.desc()).limit(60).all()
+    return [{"id": e.id, "subject": e.subject, "chapter": e.chapter, "part": e.part,
+             "date": str(e.entry_date) if e.entry_date else None,
+             "class_name": e.class_name} for e in es]
+
+
+@router.post("/lecture")
+async def create_lecture(payload: dict = Body(...), background_tasks: BackgroundTasks = None,
+                         db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Publish a lecture report with a mandatory verification question set."""
+    tp = get_teacher_profile(current_user, db)
+    subject = (payload.get("subject") or "").strip()
+    if not subject:
+        raise HTTPException(400, "Subject is required")
+    qs = payload.get("questions") or []
+    valid_qs = [q for q in qs if (q.get("question") or "").strip() and (q.get("qtype") in _LQ_TYPES)]
+    if not valid_qs:
+        raise HTTPException(400, "At least one valid verification question is required")
+
+    lec = Lecture(
+        teacher_id=tp.id, teacher_name=(current_user.name or ""),
+        subject=subject, class_level=(payload.get("class_level") or None),
+        chapter=(payload.get("chapter") or None), part=(payload.get("part") or None),
+        title=(payload.get("title") or (subject + " Lecture")),
+        timetable_entry_id=(payload.get("timetable_entry_id") or None),
+        summary=(payload.get("summary") or None), homework=(payload.get("homework") or None),
+        pdf_b64=(payload.get("pdf_b64") or None), pdf_filename=(payload.get("pdf_filename") or None),
+        dpp_b64=(payload.get("dpp_b64") or None), dpp_filename=(payload.get("dpp_filename") or None),
+        is_active=True,
+    )
+    from datetime import date as _date
+    ld = payload.get("lecture_date")
+    if ld:
+        try:
+            lec.lecture_date = _date.fromisoformat(ld)
+        except Exception:
+            pass
+    db.add(lec); db.flush()
+
+    for q in valid_qs:
+        db.add(LectureQuestion(
+            lecture_id=lec.id, qtype=q.get("qtype"),
+            question=(q.get("question") or ""), question_hi=(q.get("question_hi") or None),
+            image_b64=(q.get("image_b64") or None),
+            options=(q.get("options") or None), options_hi=(q.get("options_hi") or None),
+            option_images=(q.get("option_images") or None),
+            correct=str(q.get("correct") if q.get("correct") is not None else ""),
+            tolerance=(float(q["tolerance"]) if q.get("tolerance") not in (None, "") else None),
+        ))
+    db.commit(); db.refresh(lec)
+
+    # notify students of this subject in the background (fast response)
+    if background_tasks is not None:
+        background_tasks.add_task(_notify_lecture_students, subject, lec.title, current_user.name)
+    return {"id": lec.id, "message": "Lecture report published"}
+
+
+def _notify_lecture_students(subject, title, teacher_name):
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        studs = db.query(StudentProfile).all()
+        for sp in studs:
+            if subject in (sp.subjects or []) and sp.user:
+                notify(db, sp.user.id, "\U0001F4DA New Lecture: %s" % subject,
+                       "%s ne '%s' ka lecture report daala hai. Mark it done to verify." % (teacher_name, title),
+                       "lecture")
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+
+@router.get("/lectures")
+def teacher_lectures(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    from models import LectureVerification
+    lecs = db.query(Lecture).filter(Lecture.teacher_id == tp.id).order_by(Lecture.created_at.desc()).all()
+    out = []
+    for l in lecs:
+        nq = db.query(LectureQuestion).filter(LectureQuestion.lecture_id == l.id).count()
+        verified = db.query(LectureVerification).filter(
+            LectureVerification.lecture_id == l.id, LectureVerification.status == "verified").count()
+        attempted = db.query(LectureVerification).filter(LectureVerification.lecture_id == l.id).count()
+        out.append({"id": l.id, "title": l.title, "subject": l.subject, "chapter": l.chapter,
+                    "date": str(l.lecture_date) if l.lecture_date else str(l.created_at)[:10],
+                    "questions": nq, "verified": verified, "attempted": attempted,
+                    "has_pdf": bool(l.pdf_b64), "has_dpp": bool(l.dpp_b64), "is_active": l.is_active})
+    return out
+
+
+@router.delete("/lecture/{lecture_id}")
+def delete_lecture(lecture_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    lec = db.query(Lecture).filter(Lecture.id == lecture_id, Lecture.teacher_id == tp.id).first()
+    if not lec:
+        raise HTTPException(404, "Lecture not found")
+    lec.is_active = False
+    db.commit()
+    return {"message": "Lecture removed"}

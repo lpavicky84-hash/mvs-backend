@@ -442,3 +442,89 @@ class ExamResult(Base):
     marks_awarded = Column(Float, default=0)
     max_marks   = Column(Integer, default=1)
     remark      = Column(Text, nullable=True)
+
+
+# ============================================================
+#  SMART LECTURE VERIFICATION SYSTEM
+# ============================================================
+class Lecture(Base):
+    """A lecture report a teacher publishes after teaching (in the MVC App).
+    Optionally linked to a timetable entry, but can be standalone too."""
+    __tablename__ = "lectures"
+    id            = Column(Integer, primary_key=True)
+    teacher_id    = Column(Integer, index=True)
+    teacher_name  = Column(String(120), nullable=True)
+    subject       = Column(String(80), index=True)
+    class_level   = Column(String(5), nullable=True)     # "10" | "12"
+    chapter       = Column(String(200), nullable=True)
+    part          = Column(String(200), nullable=True)
+    title         = Column(String(240))
+    timetable_entry_id = Column(Integer, nullable=True, index=True)  # optional link
+    lecture_date  = Column(Date, nullable=True)
+    # report body
+    summary       = Column(Text, nullable=True)
+    homework      = Column(Text, nullable=True)
+    pdf_b64       = Column(_BIGTEXT, nullable=True)
+    pdf_filename  = Column(String(200), nullable=True)
+    dpp_b64       = Column(_BIGTEXT, nullable=True)
+    dpp_filename  = Column(String(200), nullable=True)
+    is_active     = Column(Boolean, default=True)
+    created_at    = Column(DateTime, default=func.now())
+
+
+class LectureQuestion(Base):
+    """Mandatory verification question(s) attached to a lecture. A random one is
+    shown to the student when they try to mark the lecture done."""
+    __tablename__ = "lecture_questions"
+    id            = Column(Integer, primary_key=True)
+    lecture_id    = Column(Integer, index=True)
+    qtype         = Column(String(20))   # mcq | image_mcq | numerical | fill_blank | true_false
+    question      = Column(Text)
+    question_hi   = Column(Text, nullable=True)
+    image_b64     = Column(_BIGTEXT, nullable=True)          # optional question image
+    options       = Column(JSON, nullable=True)             # ["a","b","c","d"] for mcq
+    options_hi    = Column(JSON, nullable=True)
+    option_images = Column(JSON, nullable=True)             # [b64,...] for image_mcq
+    correct       = Column(Text)         # correct option text / numeric / blank / "true"/"false"
+    tolerance     = Column(Float, nullable=True)            # numerical answer tolerance
+    created_at    = Column(DateTime, default=func.now())
+
+
+class LectureVerification(Base):
+    """One row per (student, lecture): tracks verification state, attempts and cooldown."""
+    __tablename__ = "lecture_verifications"
+    id            = Column(Integer, primary_key=True)
+    lecture_id    = Column(Integer, index=True)
+    student_id    = Column(Integer, index=True)
+    status        = Column(String(16), default="pending")   # pending | verified
+    attempts      = Column(Integer, default=0)
+    last_attempt  = Column(DateTime, nullable=True)
+    cooldown_until= Column(DateTime, nullable=True)
+    verified_at   = Column(DateTime, nullable=True)
+    xp_awarded    = Column(Integer, default=0)
+
+
+class StudentStats(Base):
+    """Gamification + streak state per student (single row each)."""
+    __tablename__ = "student_stats"
+    id            = Column(Integer, primary_key=True)
+    student_id    = Column(Integer, unique=True, index=True)
+    xp            = Column(Integer, default=0)
+    streak        = Column(Integer, default=0)          # current consecutive-day streak
+    best_streak   = Column(Integer, default=0)
+    last_active_day = Column(Date, nullable=True)
+    badges        = Column(JSON, nullable=True)          # ["first_verify","week_streak",...]
+    prev_rank     = Column(Integer, nullable=True)       # for rank-movement tracker
+    updated_at    = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class ActivityLog(Base):
+    """Lightweight per-student activity feed + consistency-calendar source."""
+    __tablename__ = "activity_logs"
+    id            = Column(Integer, primary_key=True)
+    student_id    = Column(Integer, index=True)
+    kind          = Column(String(24))    # lecture | dpp | test | doubt | material | xp
+    text          = Column(String(240))
+    xp            = Column(Integer, default=0)
+    day           = Column(Date, index=True)
+    created_at    = Column(DateTime, default=func.now())
