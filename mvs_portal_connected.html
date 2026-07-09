@@ -605,6 +605,76 @@
   .greeting-card{background:var(--primary);color:#fff;border-radius:18px;padding:24px 28px;margin-bottom:22px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;box-shadow:0 10px 30px rgba(19,53,95,.25);animation:ttFade .5s ease both}
   .greeting-plain{margin-bottom:20px;animation:ttFade .5s ease both}
   .greeting-plain h2{font-size:1.5rem;font-weight:700;color:var(--text);margin-bottom:3px;letter-spacing:-.02em}
+  /* ---- academic workspace dashboard (reuses existing tokens) ---- */
+  .ws-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+  .ws-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px}
+  @media(max-width:820px){.ws-grid,.ws-grid-3{grid-template-columns:1fr}}
+  .ws-sec-title{font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin:22px 0 10px}
+  .ws-sec-title:first-child{margin-top:0}
+  .prio-card{display:flex;align-items:center;gap:16px;padding:20px;border-radius:16px;background:linear-gradient(120deg,var(--primary),#7c3aed);color:#fff;box-shadow:0 10px 30px -12px rgba(37,99,235,.5);margin-bottom:16px;animation:ttFade .5s ease both}
+  .prio-ic{width:52px;height:52px;flex:0 0 52px;border-radius:14px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center}
+  .prio-ic svg{width:26px;height:26px;stroke:#fff}
+  .prio-body{flex:1;min-width:0}
+  .prio-tag{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;opacity:.85}
+  .prio-body h3{font-size:1.18rem;font-weight:800;margin:2px 0 2px;line-height:1.25}
+  .prio-body p{font-size:.85rem;opacity:.9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .prio-btn{flex:0 0 auto;background:#fff;color:var(--primary);border:none;border-radius:10px;padding:11px 18px;font-weight:800;font-size:.86rem;cursor:pointer;white-space:nowrap;transition:.15s;box-shadow:0 4px 12px -4px rgba(0,0,0,.3)}
+  .prio-btn:hover{transform:translateY(-1px)}
+  @media(max-width:560px){.prio-card{flex-wrap:wrap}.prio-btn{width:100%}}
+  .task-row{display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--border)}
+  .task-row:last-child{border-bottom:none}
+  .task-box{width:22px;height:22px;flex:0 0 22px;border-radius:7px;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;transition:.15s}
+  .task-box.on{background:#16a34a;border-color:#16a34a}
+  .task-box.on svg{width:13px;height:13px;stroke:#fff;stroke-width:3}
+  .task-txt{flex:1;font-size:.92rem;color:var(--text)}
+  .task-row.done .task-txt{color:var(--text-muted);text-decoration:line-through}
+  .task-go{font-size:.78rem;font-weight:700;color:var(--primary);cursor:pointer;background:none;border:none}
+  .pend-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  @media(max-width:680px){.pend-grid{grid-template-columns:1fr 1fr}}
+  .pend-cell{padding:16px;border-radius:14px;border:1px solid var(--border);background:var(--bg-card,#fff);text-align:center;cursor:pointer;transition:.15s}
+  .pend-cell:hover{border-color:var(--primary);transform:translateY(-2px)}
+  .pend-num{font-size:1.7rem;font-weight:800;color:var(--text);line-height:1}
+  .pend-num.zero{color:#16a34a}
+  .pend-lbl{font-size:.76rem;color:var(--text-muted);margin-top:5px;font-weight:600}
+  .mprog-row{margin:0 0 15px}
+  .mprog-row:last-child{margin-bottom:2px}
+  .mprog-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .mprog-sub{font-size:.9rem;font-weight:700;color:var(--text)}
+  .mprog-val{font-size:.8rem;color:var(--text-muted);font-variant-numeric:tabular-nums}
+  .mprog-track{height:9px;border-radius:99px;background:var(--border);overflow:hidden}
+  .mprog-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--primary),#7c3aed);transition:width .5s ease}
+  .ovv-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  @media(max-width:680px){.ovv-grid{grid-template-columns:1fr 1fr}}
+  .ovv-cell{text-align:center;padding:8px 4px}
+  .ovv-num{font-size:1.5rem;font-weight:800;color:var(--primary)}
+  .ovv-lbl{font-size:.74rem;color:var(--text-muted);margin-top:3px;font-weight:600}
+  .dl-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)}
+  .dl-row:last-child{border-bottom:none}
+  .dl-dot{width:10px;height:10px;border-radius:50%;flex:0 0 10px}
+  .dl-dot.high{background:#dc2626}.dl-dot.med{background:#f59e0b}.dl-dot.low{background:#16a34a}
+  .dl-main{flex:1;min-width:0}
+  .dl-title{font-size:.9rem;font-weight:600;color:var(--text)}
+  .dl-sub{font-size:.76rem;color:var(--text-muted)}
+  .dl-when{font-size:.78rem;font-weight:700}
+  .dl-when.high{color:#dc2626}.dl-when.med{color:#b45309}.dl-when.low{color:#15803d}
+  .act-row{display:flex;align-items:flex-start;gap:11px;padding:10px 0;border-bottom:1px solid var(--border)}
+  .act-row:last-child{border-bottom:none}
+  .act-dot{width:8px;height:8px;border-radius:50%;background:var(--primary);margin-top:6px;flex:0 0 8px;opacity:.6}
+  .act-main{flex:1;min-width:0}
+  .act-txt{font-size:.86rem;color:var(--text)}
+  .act-when{font-size:.72rem;color:var(--text-muted);margin-top:1px}
+  .qa-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  @media(max-width:680px){.qa-grid{grid-template-columns:1fr 1fr}}
+  .qa-btn{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border-radius:14px;border:1px solid var(--border);background:var(--bg-card,#fff);cursor:pointer;transition:.15s;text-align:center}
+  .qa-btn:hover{border-color:var(--primary);background:rgba(37,99,235,.05);transform:translateY(-2px)}
+  .qa-ic{width:40px;height:40px;border-radius:11px;background:rgba(37,99,235,.1);display:flex;align-items:center;justify-content:center}
+  .qa-ic svg{width:20px;height:20px;stroke:var(--primary)}
+  .qa-btn.mvc .qa-ic{background:rgba(124,58,237,.12)}.qa-btn.mvc .qa-ic svg{stroke:#7c3aed}
+  .qa-lbl{font-size:.8rem;font-weight:600;color:var(--text)}
+  .ws-empty{text-align:center;padding:22px 12px;color:var(--text-muted)}
+  .ws-empty .big{font-size:1.5rem;margin-bottom:4px}
+  .ws-empty p{font-size:.88rem;font-weight:600;color:var(--text)}
+  .ws-empty small{font-size:.8rem;color:var(--text-muted)}
   .greeting-plain p{font-size:.9rem;color:var(--text-muted)}
   .greeting-card h2{font-size:1.5rem;font-weight:800;margin-bottom:4px}
   .greeting-card p{opacity:.9;font-size:.9rem}
@@ -697,7 +767,8 @@ const ICONS={
   trash:_S+'<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
   download:_S+'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
   moon:_S+'<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
-  sun:_S+'<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
+  sun:_S+'<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>',
+  play:_S+'<polygon points="5 3 19 12 5 21 5 3"/></svg>'
 };
 function ic(k){ return ICONS[k]||''; }
 function statCard(label,num,iconKey,accent,nav){
@@ -2990,25 +3061,70 @@ async function loadSProfile(){
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 
+// Manish Verma Classes App — lectures live here, not in this portal.
+const MVC_APP_URL='https://play.google.com/store/search?q=manish%20verma%20classes&c=apps';
+function openMVC(){ window.open(MVC_APP_URL,'_blank'); }
+const _WS_PRIO_IC={lecture:'play',test:'edit',dpp:'clipboard',material:'book'};
+const _WS_TASK_ACT={lecture:'mvc',dpp:'dpp',test:'tests',material:'materials'};
+function wsGo(page){ if(page==='mvc'){ openMVC(); return; } navTo('student-app',page); }
+
 async function loadSDashboard(){
   const el=document.getElementById('s-dashboard-content');
   try{
- const d=await api('/api/student/dashboard');
- let _prof={}; try{ _prof=await api('/api/student/profile'); }catch(e){}
- const _batch=_prof.batch_name||'';
- document.getElementById('s-batch').textContent=_batch||'Student';
- const batchBanner=_batch?`<div class="live-banner upcoming" style="margin-bottom:18px"><div class="lb-left"><div class="lb-icon">${ic('book')}</div><div><span class="lb-tag">Your Batch</span><h3>${esc(_batch)}</h3></div></div></div>`:'';
- let todayHtml='';
- try{
- const plan=await api('/api/student/timetable-plan');
- const todayStr=new Date().toISOString().slice(0,10);
- const today=plan.filter(e=>e.date===todayStr).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
- todayHtml=`<div class="card"><div class="card-header"><h3> Today's Classes</h3></div><div class="card-body">${
- today.length?today.map(e=>`<div class="today-row"><div><div class="tr-sub">${_isTest(e.chapter)?'':''} ${esc(e.subject)}</div><div class="tr-topic">${esc(e.part||e.chapter||'')}</div></div><div class="tmeta">${classStatusTag(e)}${e.date?`<span class="tchip date"> ${fmtNice(e.date)}</span>`:''}${e.day?`<span class="tchip">${esc(e.day)}</span>`:''}<span class="tchip"> ${esc(e.time||'TBA')}</span></div></div>`).join(''):'<div class="empty-state"><div class="empty-icon"></div><p>No classes today!</p></div>'}</div></div>`;
- }catch(e){}
- el.innerHTML=`${greetingCard(NAME)}
- ${batchBanner}<div id="s-live-banner" style="display:none"></div><div class="stats-grid">${statCard('Activity',d.classes_attended,'chart','green')}${statCard('DPPs',d.dpps_submitted+'/'+d.dpps_total,'clipboard','indigo',"navTo('student-app','dpp')")}${statCard('Tests Done',d.tests_attempted,'edit','teal',"navTo('student-app','tests')")}${statCard('Doubts Asked',d.doubts_asked,'help','amber',"navTo('student-app','doubts')")}</div>${todayHtml}`;
- loadStudentLiveBanner();
+    let w={},prof={};
+    try{ w=await api('/api/student/workspace'); }catch(e){ w={}; }
+    try{ prof=await api('/api/student/profile'); }catch(e){}
+    const batch=prof.batch_name||'';
+    document.getElementById('s-batch').textContent=batch||'Student';
+
+    // ---- Today's Priority
+    const p=w.priority||{kind:'lecture',label:"Watch today's lecture",title:'Open the Manish Verma Classes App',action:'mvc'};
+    const isLec=p.action==='mvc'||p.kind==='lecture';
+    const prio=`<div class="prio-card"><div class="prio-ic">${ic(_WS_PRIO_IC[p.kind]||'play')}</div><div class="prio-body"><div class="prio-tag">Today's Priority</div><h3>${esc(p.label||'')}</h3>${p.title?`<p>${esc(p.title)}</p>`:''}</div><button class="prio-btn" onclick="wsGo('${isLec?'mvc':(p.action||'materials')}')">${isLec?'Open MVC App':'Start now'}</button></div>`;
+
+    // ---- Today's Tasks
+    const tasks=(w.tasks||[]);
+    const tasksHtml=`<div class="card"><div class="card-header"><h3>Today's Tasks</h3></div><div class="card-body">${
+      tasks.length?tasks.map(t=>`<div class="task-row ${t.done?'done':''}"><div class="task-box ${t.done?'on':''}">${t.done?ic('check'):''}</div><div class="task-txt">${esc(t.text)}</div>${t.done?'':`<button class="task-go" onclick="wsGo('${_WS_TASK_ACT[t.kind]||'materials'}')">Go \u2192</button>`}</div>`).join(''):'<div class="ws-empty"><div class="big">\u2705</div><p>You\u2019re all caught up!</p></div>'}</div></div>`;
+
+    // ---- Pending Work
+    const pn=w.pending||{dpps:0,tests:0,unread:0,deadlines_today:0};
+    const cell=(n,l,pg)=>`<div class="pend-cell" onclick="wsGo('${pg}')"><div class="pend-num ${n===0?'zero':''}">${n}</div><div class="pend-lbl">${l}</div></div>`;
+    const allZero=(pn.dpps+pn.tests+pn.unread+pn.deadlines_today)===0;
+    const pendHtml=`<div class="card"><div class="card-header"><h3>Pending Work</h3></div><div class="card-body">${
+      allZero?'<div class="ws-empty"><div class="big">\ud83c\udf89</div><p>Nothing pending. Great work!</p><small>Keep the momentum going.</small></div>'
+      :`<div class="pend-grid">${cell(pn.dpps,'Pending DPPs','dpp')}${cell(pn.tests,'Pending Tests','tests')}${cell(pn.unread,'Unread Materials','materials')}${cell(pn.deadlines_today,'Due Today','timetable')}</div>`}</div></div>`;
+
+    // ---- Study Progress overview
+    const ov=w.overview||{materials_read:0,materials_total:0,dpp_pct:0,test_pct:0,subjects:0};
+    const ovHtml=`<div class="card"><div class="card-header"><h3>Study Progress</h3></div><div class="card-body"><div class="ovv-grid"><div class="ovv-cell"><div class="ovv-num">${ov.subjects}</div><div class="ovv-lbl">Subjects</div></div><div class="ovv-cell"><div class="ovv-num">${ov.materials_read}/${ov.materials_total}</div><div class="ovv-lbl">Materials Read</div></div><div class="ovv-cell"><div class="ovv-num">${ov.dpp_pct}%</div><div class="ovv-lbl">DPP Done</div></div><div class="ovv-cell"><div class="ovv-num">${ov.test_pct}%</div><div class="ovv-lbl">Tests Done</div></div></div></div></div>`;
+
+    // ---- Material Progress per subject
+    const mp=(w.material_progress||[]).filter(x=>x.total>0);
+    const mpHtml=`<div class="card"><div class="card-header"><h3>Material Progress</h3></div><div class="card-body">${
+      mp.length?mp.map(s=>`<div class="mprog-row"><div class="mprog-top"><span class="mprog-sub">${esc(s.subject)}</span><span class="mprog-val">${s.done}/${s.total} chapters \u00b7 ${s.pct}%</span></div><div class="mprog-track"><div class="mprog-fill" style="width:${s.pct}%"></div></div></div>`).join(''):'<div class="ws-empty"><p>No materials yet</p><small>Chapter progress will appear as teachers add notes.</small></div>'}</div></div>`;
+
+    // ---- Upcoming Deadlines
+    const dls=(w.deadlines||[]);
+    const dlHtml=`<div class="card"><div class="card-header"><h3>Upcoming Deadlines</h3></div><div class="card-body">${
+      dls.length?dls.map(d=>{const wl=d.days_left===0?'Today':(d.days_left===1?'Tomorrow':('in '+d.days_left+' days'));return `<div class="dl-row"><span class="dl-dot ${d.urgency}"></span><div class="dl-main"><div class="dl-title">${esc(d.title)}</div><div class="dl-sub">${esc(d.subject||'')} \u00b7 ${esc((d.type||'').toUpperCase())}</div></div><span class="dl-when ${d.urgency}">${wl}</span></div>`;}).join(''):'<div class="ws-empty"><div class="big">\ud83d\uddd3\ufe0f</div><p>No upcoming deadlines</p><small>You\u2019re ahead of schedule!</small></div>'}</div></div>`;
+
+    // ---- Recent Activity
+    const ac=(w.activity||[]);
+    const acHtml=`<div class="card"><div class="card-header"><h3>Recent Activity</h3></div><div class="card-body">${
+      ac.length?ac.map(a=>`<div class="act-row"><span class="act-dot"></span><div class="act-main"><div class="act-txt">${esc(a.text)}</div><div class="act-when">${esc(a.subject||'')}${a.when?' \u00b7 '+esc(a.when.replace('T',' ')):''}</div></div></div>`).join(''):'<div class="ws-empty"><p>No recent activity</p><small>Your opened & submitted work will show here.</small></div>'}</div></div>`;
+
+    // ---- Quick Actions
+    const qa=[['Open MVC App','play','mvc','mvc'],['Materials','book','materials',''],['Question Bank','folder','qbank',''],['Submit DPP','clipboard','dpp',''],['Attempt Test','edit','tests',''],['Ask Doubt','help','doubts',''],['Progress','chart','progress',''],['Notifications','bell','notifications','']];
+    const qaHtml=`<div class="card"><div class="card-header"><h3>Quick Actions</h3></div><div class="card-body"><div class="qa-grid">${qa.map(([l,i,pg,cls])=>`<button class="qa-btn ${cls}" onclick="wsGo('${pg}')"><div class="qa-ic">${ic(i)}</div><div class="qa-lbl">${l}</div></button>`).join('')}</div></div></div>`;
+
+    el.innerHTML=`${greetingCard(NAME)}<div id="s-live-banner" style="display:none"></div>
+      ${prio}
+      <div class="ws-grid">${tasksHtml}${pendHtml}</div>
+      <div class="ws-grid">${ovHtml}${mpHtml}</div>
+      <div class="ws-grid">${dlHtml}${acHtml}</div>
+      ${qaHtml}`;
+    loadStudentLiveBanner();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 

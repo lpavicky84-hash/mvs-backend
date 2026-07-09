@@ -64,6 +64,160 @@ def student_dashboard(db: Session = Depends(get_db), current_user=Depends(get_st
         doubts_resolved=doubts_resolved
     )
 
+# ===== ACADEMIC WORKSPACE (dashboard aggregation) =====
+@router.get("/workspace")
+def student_workspace(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Everything the redesigned dashboard needs, computed from real data:
+    today's priority, pending work, per-subject material progress, study
+    overview, upcoming deadlines, recent activity. No fabricated numbers."""
+    from models import Material, MaterialView, TimetableEntry
+    sp = get_student_profile(current_user, db)
+    subs = sp.subjects or []
+    today = date.today()
+
+    # ---- my answer submissions -> which parents are done
+    answers = db.query(Material).filter(
+        Material.student_id == sp.id, Material.material_type == "answer").all()
+    done_parents = set(a.parent_id for a in answers if a.parent_id)
+
+    # ---- DPPs & tests (Material-based) for my subjects
+    dpps = db.query(Material).filter(
+        Material.subject.in_(subs), Material.material_type == "dpp").all() if subs else []
+    tests = db.query(Material).filter(
+        Material.subject.in_(subs), Material.material_type == "test").all() if subs else []
+    pending_dpps = [m for m in dpps if m.id not in done_parents]
+    pending_tests = [m for m in tests if m.id not in done_parents]
+
+    # ---- online exams (ExamAttempt-based)
+    pending_exams = []
+    try:
+        exams = db.query(Exam).filter(Exam.is_active == True).all() if subs else []
+        for ex in exams:
+            if ex.subject and subs and ex.subject not in subs:
+                continue
+            att = db.query(ExamAttempt).filter(
+                ExamAttempt.exam_id == ex.id, ExamAttempt.student_id == sp.id).first()
+            if not att:
+                pending_exams.append(ex)
+    except Exception:
+        pass
+
+    # ---- notes / materials read tracking
+    notes = db.query(Material).filter(
+        Material.subject.in_(subs), Material.material_type == "notes").all() if subs else []
+    viewed_ids = set()
+    try:
+        for v in db.query(MaterialView).filter(MaterialView.student_id == sp.id).all():
+            viewed_ids.add(v.material_id)
+    except Exception:
+        pass
+    all_learn = [m for m in (notes + dpps + tests) ]
+    unread = [m for m in all_learn if m.id not in viewed_ids]
+
+    # ---- per-subject material (chapter) progress
+    prog = []
+    for sub in subs:
+        chaps = set()
+        done = set()
+        for m in all_learn:
+            if m.subject != sub:
+                continue
+            key = (m.chapter or m.title or ("m%d" % m.id))
+            chaps.add(key)
+            if m.id in viewed_ids or m.id in done_parents:
+                done.add(key)
+        total = len(chaps)
+        prog.append({"subject": sub, "done": len(done), "total": total,
+                     "pct": (round(len(done) * 100 / total) if total else 0)})
+
+    # ---- upcoming deadlines from timetable entries flagged as test/exam/assignment
+    deadlines = []
+    try:
+        tt = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(subs)).all() if subs else []
+        for e in tt:
+            et = (getattr(e, "entry_type", "") or "").lower()
+            if e.entry_date and e.entry_date >= today and et in ("test", "exam", "assignment", "dpp"):
+                days = (e.entry_date - today).days
+                deadlines.append({
+                    "subject": e.subject, "title": e.chapter or e.part or et.title(),
+                    "type": et, "date": str(e.entry_date), "days_left": days,
+                    "urgency": "high" if days <= 1 else ("med" if days <= 3 else "low")})
+        deadlines.sort(key=lambda x: x["date"])
+    except Exception:
+        pass
+
+    # ---- recent activity (my views/downloads/submissions)
+    activity = []
+    try:
+        recent_views = db.query(MaterialView).filter(
+            MaterialView.student_id == sp.id).order_by(MaterialView.created_at.desc()).limit(8).all()
+        mids = [v.material_id for v in recent_views]
+        mmap = {m.id: m for m in db.query(Material).filter(Material.id.in_(mids)).all()} if mids else {}
+        for v in recent_views:
+            m = mmap.get(v.material_id)
+            if not m:
+                continue
+            verb = "Downloaded" if v.action == "download" else "Opened"
+            activity.append({"text": "%s %s \u2014 %s" % (verb, (m.material_type or "material").title(),
+                                                          m.title or m.subject or ""),
+                             "subject": m.subject, "when": str(v.created_at)[:16]})
+    except Exception:
+        pass
+    for a in sorted(answers, key=lambda x: x.created_at or datetime.min, reverse=True)[:4]:
+        activity.append({"text": "Submitted an answer sheet", "subject": a.subject,
+                         "when": str(a.created_at)[:16]})
+    activity = activity[:8]
+
+    # ---- today's priority: first pending high-value task
+    priority = None
+    if pending_exams:
+        e = pending_exams[0]
+        priority = {"kind": "test", "label": "Attempt %s Test" % (e.subject or ""),
+                    "title": e.title, "action": "tests"}
+    elif pending_tests:
+        m = pending_tests[0]
+        priority = {"kind": "test", "label": "Attempt %s Test" % (m.subject or ""),
+                    "title": m.title, "action": "tests"}
+    elif pending_dpps:
+        m = pending_dpps[0]
+        priority = {"kind": "dpp", "label": "Complete %s DPP" % (m.subject or ""),
+                    "title": m.title, "action": "dpp"}
+    elif unread:
+        m = unread[0]
+        priority = {"kind": "material", "label": "Read %s Material" % (m.subject or ""),
+                    "title": m.title, "action": "materials"}
+    else:
+        priority = {"kind": "lecture", "label": "Watch today's lecture",
+                    "title": "Open the Manish Verma Classes App", "action": "mvc"}
+
+    # ---- today's tasks checklist
+    tasks = [
+        {"text": "Watch today's lecture", "done": False, "kind": "lecture"},
+        {"text": "Complete a DPP", "done": len(pending_dpps) == 0 and len(dpps) > 0, "kind": "dpp"},
+        {"text": "Attempt a Test", "done": (len(pending_tests) + len(pending_exams)) == 0 and (len(tests) > 0 or True is False), "kind": "test"},
+        {"text": "Read study notes", "done": len(unread) == 0 and len(all_learn) > 0, "kind": "material"},
+    ]
+
+    return {
+        "priority": priority,
+        "tasks": tasks,
+        "pending": {
+            "dpps": len(pending_dpps), "tests": len(pending_tests) + len(pending_exams),
+            "unread": len(unread), "deadlines_today": sum(1 for d in deadlines if d["days_left"] == 0),
+        },
+        "overview": {
+            "materials_read": len(viewed_ids),
+            "materials_total": len(all_learn),
+            "dpp_pct": (round((len(dpps) - len(pending_dpps)) * 100 / len(dpps)) if dpps else 0),
+            "test_pct": (round((len(tests) - len(pending_tests)) * 100 / len(tests)) if tests else 0),
+            "subjects": len(subs),
+        },
+        "material_progress": prog,
+        "deadlines": deadlines[:6],
+        "activity": activity,
+    }
+
+
 # ===== TIMETABLE (subject-filtered) =====
 @router.get("/timetable")
 def get_student_timetable(db: Session = Depends(get_db), current_user=Depends(get_student)):
