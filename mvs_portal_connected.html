@@ -3226,16 +3226,25 @@ async function submitAnswerFile(parentId){
   toast('Preparing the file...'); const _r=await smartCompress(fi.files[0],m=>toast(m)); let f=_r.file;
   if(!_r.ok){ toast('The file is still too large after compression. Please try a smaller file.',true); return; } if(_r.compressed) toast('Compressed. Uploading...');
   const btn=document.getElementById('sub-btn'); btn.disabled=true; btn.textContent='Submitting...';
+  const st=document.getElementById('sub-status');
   const fd=new FormData(); fd.append('file',f); fd.append('parent_id',parentId);
   try{
- const r=await fetch(API+'/api/student/submit-answer',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
- const d=await r.json(); if(!r.ok) throw new Error(d.detail||'Error');
- document.getElementById('sub-status').innerHTML=`<div class="alert alert-success"><strong>Your DPP has been submitted.</strong><br>Your subject teacher will review it and update your marks soon.</div>`;
- toast('DPP submitted.');
- btn.textContent=' Done'; btn.setAttribute('onclick','closeModal()'); btn.disabled=false;
- if(document.getElementById('s-page-dpp').classList.contains('active')) loadSDpp();
- if(document.getElementById('s-page-tests').classList.contains('active')) loadSTests();
-  }catch(e){ document.getElementById('sub-status').innerHTML=`<div class="alert alert-danger"> ${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Submit'; }
+    const d=await new Promise((resolve,reject)=>{
+      const x=new XMLHttpRequest();
+      x.open('POST',API+'/api/student/submit-answer');
+      x.setRequestHeader('Authorization','Bearer '+TOKEN);
+      x.upload.onprogress=e=>{ if(e.lengthComputable){ const pct=Math.round(e.loaded/e.total*100); btn.textContent='Uploading '+pct+'%'; if(st) st.innerHTML=`<div class="ex-prog on"><div class="ex-prog-track"><div class="ex-prog-fill" style="width:${pct}%"></div></div></div>`; } };
+      x.upload.onload=()=>{ btn.textContent='Saving...'; if(st) st.innerHTML=`<div class="ex-prog on"><div class="ex-prog-track"><div class="ex-prog-fill" style="width:100%"></div></div></div>`; };
+      x.onload=()=>{ let j=null; try{ j=JSON.parse(x.responseText); }catch{} if(x.status>=200&&x.status<300) resolve(j||{}); else reject(new Error((j&&j.detail)||('Error '+x.status))); };
+      x.onerror=()=>reject(new Error('Network error during upload')); x.timeout=180000; x.ontimeout=()=>reject(new Error('Upload timed out - please try again'));
+      x.send(fd);
+    });
+    st.innerHTML=`<div class="alert alert-success"><strong>Your DPP has been submitted.</strong><br>Your subject teacher will review it and update your marks soon.</div>`;
+    toast('DPP submitted.');
+    btn.textContent=' Done'; btn.setAttribute('onclick','closeModal()'); btn.disabled=false;
+    if(document.getElementById('s-page-dpp').classList.contains('active')) loadSDpp();
+    if(document.getElementById('s-page-tests').classList.contains('active')) loadSTests();
+  }catch(e){ st.innerHTML=`<div class="alert alert-danger"> ${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Submit'; }
 }
 
 async function loadSTests(){

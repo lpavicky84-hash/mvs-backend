@@ -693,6 +693,7 @@ def student_tests_list(db: Session = Depends(get_db), current_user=Depends(get_s
 async def submit_answer(
     file: UploadFile = File(...),
     parent_id: int = Form(...),
+    background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
     current_user=Depends(get_student)
 ):
@@ -717,18 +718,30 @@ async def submit_answer(
         parent_id=parent_id, student_id=sp.id, student_name=current_user.name
     )
     db.add(m); db.commit(); db.refresh(m)
-    # notify the teacher who uploaded
+    # notify the teacher AFTER responding (background) so the student's upload
+    # returns instantly instead of waiting on the notification write
+    if background_tasks is not None and parent.teacher_id:
+        background_tasks.add_task(
+            _notify_submission, parent.teacher_id, parent.subject or "",
+            parent.title or "", current_user.name)
+    return {"id": m.id, "message": "Submit ho gaya! Thank you 🎉"}
+
+
+def _notify_submission(teacher_id, subject, title, student_name):
+    """Runs after the response is sent - notifies the teacher of a new submission."""
+    from database import SessionLocal
+    from models import TeacherProfile
+    db = SessionLocal()
     try:
-        from models import TeacherProfile
-        if parent.teacher_id:
-            tp2 = db.query(TeacherProfile).filter(TeacherProfile.id == parent.teacher_id).first()
-            if tp2 and tp2.user:
-                notify(db, tp2.user.id, f"📥 Submission: {parent.subject}",
-                       f"{current_user.name} ne {parent.title} ka answer submit kiya hai.", "submission")
-                db.commit()
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == teacher_id).first()
+        if tp and tp.user:
+            notify(db, tp.user.id, "📥 Submission: %s" % subject,
+                   "%s ne %s ka answer submit kiya hai." % (student_name, title), "submission")
+            db.commit()
     except Exception:
         db.rollback()
-    return {"id": m.id, "message": "Submit ho gaya! Thank you 🎉"}
+    finally:
+        db.close()
 
 # ===== STUDENT: OWN PHOTO + KNOW YOUR TEACHER =====
 @router.post("/photo")
