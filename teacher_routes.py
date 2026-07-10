@@ -1302,14 +1302,28 @@ _LQ_TYPES = {"mcq", "image_mcq", "numerical", "fill_blank", "true_false"}
 
 @router.get("/timetable-entries-lite")
 def teacher_tt_entries_lite(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
-    """Recent/own timetable entries a lecture report can optionally be linked to."""
+    """Timetable entries a lecture report can optionally be linked to. Matches by
+    the teacher's own entries AND by their subjects, so linking works even when
+    an entry was created without a teacher_id."""
     tp = get_teacher_profile(current_user, db)
     from models import TimetableEntry
-    es = db.query(TimetableEntry).filter(
-        TimetableEntry.teacher_id == tp.id).order_by(TimetableEntry.entry_date.desc()).limit(60).all()
-    return [{"id": e.id, "subject": e.subject, "chapter": e.chapter, "part": e.part,
-             "date": str(e.entry_date) if e.entry_date else None,
-             "class_name": e.class_name} for e in es]
+    from sqlalchemy import or_
+    subs = tp.subjects or []
+    q = db.query(TimetableEntry)
+    conds = [TimetableEntry.teacher_id == tp.id]
+    if subs:
+        conds.append(TimetableEntry.subject.in_(subs))
+    es = q.filter(or_(*conds)).order_by(TimetableEntry.entry_date.desc()).limit(120).all()
+    # skip test/event rows - only teachable chapter parts make sense to verify
+    out = []
+    for e in es:
+        et = (getattr(e, "entry_type", "") or "").lower()
+        if et in ("test", "exam", "event"):
+            continue
+        out.append({"id": e.id, "subject": e.subject, "chapter": e.chapter, "part": e.part,
+                    "date": str(e.entry_date) if e.entry_date else None,
+                    "class_name": e.class_name})
+    return out
 
 
 @router.post("/lecture")
