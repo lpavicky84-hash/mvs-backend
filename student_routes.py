@@ -573,6 +573,20 @@ def timetable_plan(db: Session = Depends(get_db), current_user=Depends(get_stude
         TimetableEntry.subject.in_(sp.subjects or []),
         or_(TimetableEntry.status==None, TimetableEntry.status!='pending')
     ).order_by(TimetableEntry.subject, TimetableEntry.chapter, TimetableEntry.entry_date).all()
+    # lectures linked to timetable entries (for the "Mark Done" verification)
+    lecs = db.query(Lecture).filter(
+        Lecture.is_active == True, Lecture.subject.in_(sp.subjects or []),
+        Lecture.timetable_entry_id != None).all() if (sp.subjects or []) else []
+    lec_by_tt = {}
+    for l in lecs:
+        lec_by_tt.setdefault(l.timetable_entry_id, l)   # first active lecture per entry
+    my_verif = {}
+    if lecs:
+        lec_ids = [l.id for l in lecs]
+        for v in db.query(LectureVerification).filter(
+                LectureVerification.student_id == sp.id,
+                LectureVerification.lecture_id.in_(lec_ids)).all():
+            my_verif[v.lecture_id] = v
     result = []
     for e in es:
         tname = ""
@@ -581,12 +595,21 @@ def timetable_plan(db: Session = Depends(get_db), current_user=Depends(get_stude
             tp = db.query(TeacherProfile).filter(TeacherProfile.id == e.teacher_id).first()
             if tp and tp.user:
                 tname = tp.user.name
+        lec = lec_by_tt.get(e.id)
+        verif_status = None
+        cooling = False
+        if lec:
+            v = my_verif.get(lec.id)
+            verif_status = (v.status if v else "pending")
+            cooling = bool(v and v.cooldown_until and v.cooldown_until > datetime.utcnow())
         result.append({
             "id": e.id, "subject": e.subject, "class_name": e.class_name,
             "chapter": e.chapter, "part": e.part,
             "date": str(e.entry_date) if e.entry_date else None,
             "day": e.day, "time": getattr(e,"time_text",None),
-            "type": getattr(e,"entry_type",None) or "chapter", "teacher_name": tname
+            "type": getattr(e,"entry_type",None) or "chapter", "teacher_name": tname,
+            "lecture_id": (lec.id if lec else None),
+            "verif_status": verif_status, "cooling": cooling,
         })
     return result
 
