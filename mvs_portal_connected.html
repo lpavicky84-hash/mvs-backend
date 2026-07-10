@@ -1798,10 +1798,10 @@ async function loadTTimetable(){
  _ttEntries=await api('/api/teacher/my-timetable');
  el.innerHTML=`<div class="card"><div class="card-header"><h3>My Time Table</h3><button class="btn btn-primary btn-sm" onclick="openRequestClass()">${ic('calendar')} Add Extra Class</button></div><div class="card-body"><div class="alert alert-info">This timetable was uploaded by the admin. You can edit the topic on each part. <strong>Extra class</strong> once added, it appears in the timetable after the admin approves.</div><div id="t-tline-wrap"></div></div></div>`;
  _ttActiveSub=_ttActiveSub||(_ttEntries[0]||{}).subject||'';
- renderStudentTimetable(_ttEntries,'t-tline-wrap',{onEdit:true,onComplete:'openClassReport',emptyMsg:'No timetable for your subjects yet.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'});
+ renderStudentTimetable(_ttEntries,'t-tline-wrap',{onEdit:true,onLecture:true,onComplete:'openClassReport',emptyMsg:'No timetable for your subjects yet.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'});
   }catch(e){ el.innerHTML=errHtml(e); }
 }
-function tSetSubj(s){ _ttActiveSub=decodeURIComponent(s); renderStudentTimetable(_ttEntries,'t-tline-wrap',{onEdit:true,onComplete:'openClassReport',emptyMsg:'No entries.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'}); }
+function tSetSubj(s){ _ttActiveSub=decodeURIComponent(s); renderStudentTimetable(_ttEntries,'t-tline-wrap',{onEdit:true,onLecture:true,onComplete:'openClassReport',emptyMsg:'No entries.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'}); }
 function openTTPdf(){
   showModal('PDF Upload — Auto-Parse',
  `<div class="alert alert-info"><strong>Upload your timetable PDF directly</strong> — format and columns are auto-detected. Chapter, Parts, Date, Day and Time are all extracted.</div><div class="form-group"><label>Class</label>${classSelect('pdf-class')}</div><div class="form-group"><label>Subject (optional — blank = PDF se auto-detect)</label><input class="form-control" id="pdf-subject" placeholder="Blank = auto-detect"></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('pdf-file').click()"><div class="fd-icon"></div><div id="pdf-label" style="font-size:.85rem">Click to choose a PDF</div><input type="file" id="pdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('pdf-label').textContent=this.files[0]?.name||''"></div></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="pdf-replace"> Replace existing entries for the same subject</label></div><div id="pdf-status"></div>`,
@@ -2116,26 +2116,27 @@ async function deleteLecture(id){
   catch(e){ toast(e.message,true); }
 }
 
-async function openLectureForm(){
+async function openLectureForm(prefill){
+  prefill=prefill||null;
   _lecQs=[{qtype:'mcq',question:'',question_hi:'',options:['','','',''],options_hi:['','','',''],correct:0,tolerance:'',image_b64:null,option_images:[null,null,null,null],_tab:'en'}];
   _lecFiles={pdf:null,dpp:null};
   _lecTT=[];
   try{ _lecTT=await api('/api/teacher/timetable-entries-lite'); }catch(e){}
   let subs=[]; try{ const p=await api('/api/teacher/profile'); subs=p.subjects||[]; }catch(e){}
-  const subOpts=subs.length?subs.map(s=>`<option>${esc(s)}</option>`).join(''):'<option>Physics</option><option>Chemistry</option><option>Mathematics</option><option>Biology</option>';
-  const ttOpts='<option value="">Not linked (standalone)</option>'+_lecTT.map(e=>`<option value="${e.id}">${esc(e.subject)} \u00b7 ${esc(e.chapter||'')}${e.part?' \u00b7 '+esc(e.part):''}${e.date?' \u00b7 '+esc(e.date):''}</option>`).join('');
-  const today=new Date().toISOString().slice(0,10);
+  const subOpts=subs.length?subs.map(s=>`<option ${prefill&&prefill.subject===s?'selected':''}>${esc(s)}</option>`).join(''):'<option>Physics</option><option>Chemistry</option><option>Mathematics</option><option>Biology</option>';
+  const ttOpts='<option value="">Not linked (standalone)</option>'+_lecTT.map(e=>`<option value="${e.id}" ${prefill&&prefill.id===e.id?'selected':''}>${esc(e.subject)} \u00b7 ${esc(e.chapter||'')}${e.part?' \u00b7 '+esc(e.part):''}${e.date?' \u00b7 '+esc(e.date):''}</option>`).join('');
+  const today=(prefill&&prefill.date)||new Date().toISOString().slice(0,10);
   const body=`
     <div class="ex-grid2">
       <div><label class="ex-lbl">Subject</label><select class="form-control" id="lec-sub">${subOpts}</select></div>
-      <div><label class="ex-lbl">Class</label><select class="form-control" id="lec-cls"><option value="">\u2014</option><option>10</option><option>12</option></select></div>
+      <div><label class="ex-lbl">Class</label><select class="form-control" id="lec-cls"><option value="">\u2014</option><option ${prefill&&String(prefill.class_name||'').includes('10')?'selected':''}>10</option><option ${prefill&&String(prefill.class_name||'').includes('12')?'selected':''}>12</option></select></div>
     </div>
     <div class="ex-grid2">
-      <div><label class="ex-lbl">Chapter (optional)</label><input class="form-control" id="lec-ch" placeholder="e.g. Electric Charges"></div>
-      <div><label class="ex-lbl">Part (optional)</label><input class="form-control" id="lec-part" placeholder="e.g. Part 3"></div>
+      <div><label class="ex-lbl">Chapter (optional)</label><input class="form-control" id="lec-ch" placeholder="e.g. Electric Charges" value="${prefill?esc(prefill.chapter||''):''}"></div>
+      <div><label class="ex-lbl">Part (optional)</label><input class="form-control" id="lec-part" placeholder="e.g. Part 3" value="${prefill?esc(prefill.part||''):''}"></div>
     </div>
     <div class="ex-grid2">
-      <div><label class="ex-lbl">Lecture Title</label><input class="form-control" id="lec-title" placeholder="e.g. Coulomb's Law"></div>
+      <div><label class="ex-lbl">Lecture Title</label><input class="form-control" id="lec-title" placeholder="e.g. Coulomb's Law" value="${prefill?esc((prefill.chapter||'')+(prefill.part?(' \u2013 '+prefill.part):'')):''}"></div>
       <div><label class="ex-lbl">Lecture Date</label><input class="form-control" type="date" id="lec-date" value="${today}"></div>
     </div>
     <div><label class="ex-lbl">Link to Timetable Class (optional)</label><select class="form-control" id="lec-tt">${ttOpts}</select></div>
@@ -2227,7 +2228,10 @@ async function submitLecture(){
       dpp_b64, dpp_filename:_lecFiles.dpp?_lecFiles.dpp.name:null,
       questions};
     await api('/api/teacher/lecture','POST',payload);
-    closeModal(); toast('Lecture report published! Students are notified.'); loadTLectures();
+    closeModal(); toast('Lecture report published! Students are notified.');
+    const active=document.querySelector('#teacher-app .page.active');
+    if(active&&active.id==='t-page-timetable') loadTTimetable();
+    else loadTLectures();
   }catch(e){ toast(e.message,true); if(btn){ btn.disabled=false; btn.textContent='Publish Report'; } }
 }
 
@@ -3946,6 +3950,7 @@ function _isTest(t){ return /test|mission|mock|pyq|subjective/i.test(t); }
 function fmtNice(d){ if(!d) return ''; const dt=new Date(d); if(isNaN(dt)) return d; return dt.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}); }
 
 // entries -> grouped subjects. Returns {subjects:[...], bySubject:{subj:[items]}}
+function _attrJson(o){ return JSON.stringify(o).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function buildTimeline(entries){
   const bySubject={};
   entries.forEach(e=>{ (bySubject[e.subject]=bySubject[e.subject]||[]).push(e); });
@@ -4071,7 +4076,7 @@ function renderStudentNode(item, st, tmap, opts){
     return `<div class="stl-node ${st}">${dot}<div class="stl-card event ${isT?'test':''}"><div class="stl-chead"><div class="stl-cname">${esc(e.chapter)}</div><div class="stl-cmeta">${e.date?`<span class="stl-date">${fmtNice(e.date)}${e.day?' · '+esc(e.day):''}</span>`:''}<span class="stl-badge ${st}">${lbl}</span>${edel}</div></div></div></div>`;
   }
   const parts=item.parts, open=st==='current', id='stl-'+Math.random().toString(36).slice(2,8);
-  const _hasAct=opts.onEdit||opts.onDelete||opts.onComplete;
+  const _hasAct=opts.onEdit||opts.onDelete||opts.onComplete||opts.onLecture;
   const partsHtml=parts.map(p=>{ const pst=_partDone(p)?'done':_statusOf([p.date]); const plbl=pst==='done'?'Done':pst==='current'?'Live':'Soon';
     // student verification button: only when a teacher has linked a lecture (with a
     // verification question) to this timetable entry. Replaces the old plain Mark Done.
@@ -4081,7 +4086,7 @@ function renderStudentNode(item, st, tmap, opts){
       else if(p.cooling){ verifyBtn=`<button class="btn btn-ghost btn-sm stl-act" disabled title="Too many wrong tries \u2014 try again shortly">Try later</button>`; }
       else{ verifyBtn=`<button class="btn btn-success btn-sm stl-act" onclick="markLectureDone(${p.lecture_id})">Mark Done</button>`; }
     }
-    const acts=_hasAct?`${opts.onEdit?`<button class="btn btn-ghost btn-sm stl-act" onclick="openEditTopic(${p.id},'${encodeURIComponent(p.part||'')}')">${ic('edit')}</button>`:''}${opts.onComplete&&!p.completed?`<button class="btn btn-success btn-sm stl-act" onclick="${opts.onComplete}(${p.id})">Mark Done</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${p.id})">${ic('trash')}</button>`:''}`:verifyBtn;
+    const acts=_hasAct?`${opts.onEdit?`<button class="btn btn-ghost btn-sm stl-act" onclick="openEditTopic(${p.id},'${encodeURIComponent(p.part||'')}')">${ic('edit')}</button>`:''}${opts.onLecture?`<button class="btn btn-ghost btn-sm stl-act" title="Add a lecture report + verification question for this class" onclick="openLectureForm(${_attrJson({id:p.id,subject:p.subject,chapter:p.chapter,part:p.part,date:p.date,class_name:p.class_name})})">${ic('upload')} Lecture</button>`:''}${opts.onComplete&&!p.completed?`<button class="btn btn-success btn-sm stl-act" onclick="${opts.onComplete}(${p.id})">Mark Done</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${p.id})">${ic('trash')}</button>`:''}`:verifyBtn;
     return `<div class="stl-part"><span class="stl-pdot ${pst}">${pst==='done'?'✓':''}</span><div class="stl-pname">${esc(p.part||'Full chapter')}</div><div class="stl-pright"><div class="stl-ptime">${p.date?fmtNice(p.date)+(p.day?' · '+esc(p.day):''):''}${p.time?'<br>'+esc(p.time):''}</div><span class="stl-pbadge ${pst}">${plbl}</span>${acts}</div></div>`; }).join('');
   const stlbl=st==='done'?'DONE':st==='current'?'CURRENT':'UPCOMING';
   return `<div class="stl-node ${st}">${dot}<div class="stl-card chapter ${open?'open':''}" id="${id}"><div class="stl-chead" onclick="document.getElementById('${id}').classList.toggle('open')"><div class="stl-cname"><span class="stl-arrow">${open?'▾':'›'}</span>${esc(item.chapter)}</div><div class="stl-cmeta"><span class="stl-badge ${st}">${stlbl}</span><span class="cnt-badge dark">${parts.length} part${parts.length>1?'s':''}</span></div></div><div class="stl-parts">${partsHtml}</div></div></div>`;
