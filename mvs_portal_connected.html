@@ -798,6 +798,15 @@
   .dark .lec-status.verified{background:rgba(22,163,74,.2)}.dark .lec-status.pending{background:rgba(180,83,9,.2)}.dark .lec-status.cooling{background:rgba(220,38,38,.2)}
   .lec-body{font-size:.85rem;color:var(--text-muted);line-height:1.5;margin:8px 0}
   .lec-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .pv-card{border:1px solid var(--border);border-left:4px solid #7c3aed;border-radius:14px;padding:16px;margin-bottom:16px;background:var(--bg-card,#fff)}
+  .pv-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+  .pv-badge{width:32px;height:32px;flex:0 0 32px;border-radius:9px;background:#7c3aed;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.95rem}
+  .pv-htitle{font-size:1rem;font-weight:800;color:var(--text)}
+  .pv-hsub{font-size:.8rem;color:var(--text-muted)}
+  .pv-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--border)}
+  .pv-main{flex:1;min-width:0}
+  .pv-title{font-size:.92rem;font-weight:700;color:var(--text)}
+  .pv-meta{font-size:.78rem;color:var(--text-muted);margin-top:2px}
   .greeting-plain p{font-size:.9rem;color:var(--text-muted)}
   .greeting-card h2{font-size:1.5rem;font-weight:800;margin-bottom:4px}
   .greeting-card p{opacity:.9;font-size:.9rem}
@@ -3407,7 +3416,8 @@ async function loadSTimetable(){
   const el=document.getElementById('s-timetable-content');
   try{
  _sttEntries=await api('/api/student/timetable-plan');
- el.innerHTML=`<div id="s-tline-wrap"></div>`;
+ el.innerHTML=`<div id="s-verify-wrap"></div><div id="s-tline-wrap"></div>`;
+ _loadPendingVerifications();
  try{ const p=await api('/api/student/profile'); window._sBatch=p.batch_name||p.batch||'Lakshya'; window._sClass=p.class_level||'12'; }catch(e){ window._sBatch='Lakshya'; window._sClass='12'; }
  // build subject -> teacher photo map (progress marker)
  window._sttTeacherMap={};
@@ -3737,6 +3747,22 @@ async function dlLectureFile(lectureId,kind){
 }
 
 function _refreshAfterVerify(){ if(document.getElementById('s-page-timetable').classList.contains('active')) loadSTimetable(); else if(document.getElementById('s-page-progress').classList.contains('active')) loadSProgress(); else if(document.getElementById('s-page-dashboard').classList.contains('active')) loadSDashboard(); }
+
+async function _loadPendingVerifications(){
+  const wrap=document.getElementById('s-verify-wrap'); if(!wrap) return;
+  try{
+    const lecs=await api('/api/student/lectures');
+    const pending=lecs.filter(l=>l.status!=='verified');
+    if(!pending.length){ wrap.innerHTML=''; return; }
+    const rows=pending.map(l=>{
+      const cool=l.cooling;
+      const btn=cool?`<button class="btn btn-ghost btn-sm" disabled>Try later</button>`:`<button class="btn btn-success btn-sm" onclick="markLectureDone(${l.id})">Verify Now</button>`;
+      return `<div class="pv-row"><div class="pv-main"><div class="pv-title">${esc(l.title)}</div><div class="pv-meta">${esc(l.subject)}${l.chapter?' \u00b7 '+esc(l.chapter):''}${l.part?' \u00b7 '+esc(l.part):''} \u00b7 ${esc(l.teacher_name||'')}</div></div>${btn}</div>`;
+    }).join('');
+    wrap.innerHTML=`<div class="pv-card"><div class="pv-head"><span class="pv-badge">${pending.length}</span><div><div class="pv-htitle">Lectures to Verify</div><div class="pv-hsub">Answer a quick question to verify each lecture and earn XP.</div></div></div>${rows}</div>`;
+  }catch(e){ wrap.innerHTML=''; }
+}
+
 async function markLectureDone(lectureId){
   showModal('Verify Lecture','<div id="vq-body"><div class="spinner"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>');
   try{
