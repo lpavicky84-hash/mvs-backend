@@ -1288,18 +1288,17 @@ async function refreshNotifBadge(role){
 // ===== LIVE PRESENCE + HEARTBEAT + ADMIN BELL =====
 let _adminLiveInt=null, _hbInt=null;
 function fmtDur(s){ s=Math.max(0,s|0); const m=Math.floor(s/60), h=Math.floor(m/60); if(h>0) return h+'h '+(m%60)+'m'; if(m>0) return m+'m '+(s%60)+'s'; return s+'s'; }
-function renderLive(d){
-  const el=document.getElementById('a-live-content'); if(!el) return;
-  const rows=(d.students||[]).length? d.students.map(s=>`<div class="live-row"><span class="lr-dot"></span><div class="stu-info"><div class="stu-name">${esc(s.name)}</div><div class="stu-meta">${esc(s.phone||'')}${s.batch?' · '+esc(s.batch):''}</div></div><div class="live-dur">${fmtDur(s.duration_seconds)}</div></div>`).join(''):'<div class="empty-state"><p>No students are online right now.</p></div>';
-  el.innerHTML=`<div class="card-header" style="padding:0 4px 18px;border:none"><h3 style="font-size:1.3rem">Live Students <span class="live-ind" style="margin-left:8px"><span class="live-dot"></span>${d.count} online</span></h3><span class="pager-info">Auto-refreshes every 15s</span></div>${rows}`;
-}
 async function pollAdminLive(){
+  // Only keeps the header badge in sync. The Live Users page repaints itself, so
+  // this must never re-render it (that was overwriting the page every 15s).
   try{
-    const d=await api('/api/admin/live-students'); window._lastLive=d;
+    const d=await api('/api/admin/live-users'); window._lastLive=d;
+    const n=(d.counts&&d.counts.live)||0;
     const ind=document.getElementById('a-live-ind'), cnt=document.getElementById('a-live-count'), bdg=document.getElementById('a-live-badge');
-    if(ind&&cnt){ if(d.count>0){ ind.style.display='inline-flex'; cnt.textContent=d.count; } else ind.style.display='none'; }
-    if(bdg){ if(d.count>0){ bdg.style.display='flex'; bdg.textContent=d.count; } else bdg.style.display='none'; }
-    const pg=document.getElementById('a-page-live'); if(pg&&pg.classList.contains('active')) renderLive(d);
+    if(ind&&cnt){ if(n>0){ ind.style.display='inline-flex'; cnt.textContent=n; } else ind.style.display='none'; }
+    if(bdg){ if(n>0){ bdg.style.display='flex'; bdg.textContent=n; } else bdg.style.display='none'; }
+    const pg=document.getElementById('a-page-live');
+    if(pg&&pg.classList.contains('active')) _paintLive(d);
   }catch(e){}
 }
 function startAdminLivePoll(){ if(_adminLiveInt) return; pollAdminLive(); _adminLiveInt=setInterval(pollAdminLive,15000); }
@@ -2945,8 +2944,6 @@ function openAdmin(){
   notifPopupOnOpen('admin');
   startAdminLivePoll();
 }
-let _luTab='live';
-function luTab(t){ _luTab=t; loadALive(); }
 async function loadACompliance(){
   const el=document.getElementById('a-compliance-content');
   el.innerHTML='<div class="spinner"></div>';
@@ -2972,27 +2969,42 @@ async function warnTeacher(id,name){
   try{ const r=await api('/api/admin/warn-teacher/'+id,'POST'); toast(r.message); }
   catch(e){ toast(e.message,true); }
 }
+let _luTab='live';
+function luTab(t){ _luTab=t; if(window._lastLive) _paintLive(window._lastLive); else loadALive(); }
 async function loadALive(){
   const el=document.getElementById('a-live-content');
-  try{
-    const d=await api('/api/admin/live-users');
-    const c=d.counts||{};
-    const cards=`<div class="stats-grid">${statCard('Online Now',c.live||0,'user','green')}${statCard('Students Live',c.students_live||0,'users','indigo')}${statCard('Teachers Live',c.teachers_live||0,'user','teal')}${statCard('Never Logged In',c.never||0,'shield','amber',"luTab('never')")}</div>`;
-    const tabs=`<div class="tt-tabs"><button class="tt-tab ${_luTab==='live'?'active':''}" onclick="luTab('live')">Online (${(d.live||[]).length})</button><button class="tt-tab ${_luTab==='offline'?'active':''}" onclick="luTab('offline')">Recent (${(d.offline||[]).length})</button><button class="tt-tab ${_luTab==='never'?'active':''}" onclick="luTab('never')">Never Logged In (${(d.never||[]).length})</button></div>`;
-    const list=(d[_luTab]||[]);
-    const row=u=>{
-      const badge=u.role==='teacher'?'<span class="lu-role t">Teacher</span>':'<span class="lu-role s">Student</span>';
-      let right='';
-      if(_luTab==='live') right=`<div class="lu-right"><span class="lu-page">${esc(u.page||'')}</span><span class="lu-dur">${u.duration_min}m</span></div>`;
-      else if(_luTab==='offline') right=`<div class="lu-right"><span class="lu-dim">${u.last_seen_min<60?u.last_seen_min+'m ago':Math.floor(u.last_seen_min/60)+'h ago'}</span></div>`;
-      else right=`<div class="lu-right"><a class="btn btn-ghost btn-sm" href="tel:${esc(u.phone||'')}">${ic('bell')} Call</a></div>`;
-      return `<div class="lu-row" onclick="openUserSessions(${u.user_id})"><span class="lu-dot ${_luTab==='live'?'on':''}"></span><div class="lu-main"><div class="lu-name">${esc(u.name)} ${badge}</div><div class="lu-meta">${esc(u.code||'')}${u.phone?' \u00b7 '+esc(u.phone):''} \u00b7 ${u.logins} login${u.logins===1?'':'s'}</div></div>${right}</div>`;
-    };
-    const empty={live:'Nobody is online right now.',offline:'No recent sessions yet.',never:'\ud83c\udf89 Everyone has logged in at least once.'}[_luTab];
-    const rows=list.length?list.map(row).join(''):`<div class="ws-empty"><p>${empty}</p></div>`;
-    el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2>Live Users</h2><p>Students and teachers currently online, what they are doing, and who never logs in.</p></div><span class="pager-info">Auto-refreshes every 15s</span></div>${cards}${tabs}<div class="card"><div class="card-body"><div class="lu-scroll">${rows}</div></div></div>`;
-  }catch(e){ el.innerHTML=errHtml(e); }
+  if(!el.dataset.painted) el.innerHTML='<div class="spinner"></div>';
+  try{ const d=await api('/api/admin/live-users'); window._lastLive=d; _paintLive(d); }
+  catch(e){ el.innerHTML=errHtml(e); }
 }
+function _luRow(u,tab){
+  const badge=u.role==='teacher'?'<span class="lu-role t">Teacher</span>':'<span class="lu-role s">Student</span>';
+  let right='';
+  if(tab==='live') right=`<div class="lu-right"><span class="lu-page">${esc(u.page||'')}</span><span class="lu-dur">${u.duration_min}m</span></div>`;
+  else if(tab==='offline') right=`<div class="lu-right"><span class="lu-dim">${u.last_seen_min<60?u.last_seen_min+'m ago':Math.floor(u.last_seen_min/60)+'h ago'}</span></div>`;
+  else right=`<div class="lu-right">${u.phone?`<a class="btn btn-ghost btn-sm" href="tel:${esc(u.phone)}" onclick="event.stopPropagation()">${ic('bell')} Call</a>`:''}</div>`;
+  return `<div class="lu-row" onclick="openUserSessions(${u.user_id})"><span class="lu-dot ${tab==='live'?'on':''}"></span><div class="lu-main"><div class="lu-name">${esc(u.name)} ${badge}</div><div class="lu-meta">${esc(u.code||'')}${u.phone?' \u00b7 '+esc(u.phone):''} \u00b7 ${u.logins} login${u.logins===1?'':'s'}</div></div>${right}</div>`;
+}
+function _luSection(title,list,tab,emptyMsg){
+  const rows=list.length?list.map(u=>_luRow(u,tab)).join(''):`<div class="ws-empty"><p>${emptyMsg}</p></div>`;
+  return `<div class="card"><div class="card-header"><h3>${title}</h3><span class="tc-count">${list.length}</span></div><div class="card-body"><div class="lu-scroll">${rows}</div></div></div>`;
+}
+function _paintLive(d){
+  const el=document.getElementById('a-live-content'); if(!el) return;
+  const c=d.counts||{};
+  const list=(d[_luTab]||[]);
+  const students=list.filter(u=>u.role==='student');
+  const teachers=list.filter(u=>u.role==='teacher');
+  const cards=`<div class="stats-grid">${statCard('Online Now',c.live||0,'user','green')}${statCard('Students Live',c.students_live||0,'users','indigo')}${statCard('Teachers Live',c.teachers_live||0,'user','teal')}${statCard('Never Logged In',c.never||0,'shield','amber',"luTab('never')")}</div>`;
+  const tabs=`<div class="tt-tabs"><button class="tt-tab ${_luTab==='live'?'active':''}" onclick="luTab('live')">Online (${(d.live||[]).length})</button><button class="tt-tab ${_luTab==='offline'?'active':''}" onclick="luTab('offline')">Recent (${(d.offline||[]).length})</button><button class="tt-tab ${_luTab==='never'?'active':''}" onclick="luTab('never')">Never Logged In (${(d.never||[]).length})</button></div>`;
+  const em={live:['No teachers online right now.','No students online right now.'],
+            offline:['No recent teacher sessions.','No recent student sessions.'],
+            never:['\u2705 All teachers have logged in.','\u2705 All students have logged in.']}[_luTab];
+  const body=`<div class="ws-grid">${_luSection('Teachers',teachers,_luTab,em[0])}${_luSection('Students',students,_luTab,em[1])}</div>`;
+  el.dataset.painted='1';
+  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2>Live Users</h2><p>Teachers and students shown separately \u2014 who is online, what they are doing, and who never logs in.</p></div><span class="pager-info">Auto-refreshes every 15s</span></div>${cards}${tabs}${body}`;
+}
+
 async function openUserSessions(uid){
   showModal('Login History','<div id="us-body"><div class="spinner"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
   try{
@@ -3005,6 +3017,7 @@ async function openUserSessions(uid){
 function aPage(page,el){
   document.querySelectorAll('#admin-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('a-page-'+page).classList.add('active');
+  if(!el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) el=n; }); }
   if(el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
   const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',students:'Students',admins:'Admin Users',subjects:'Subjects',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance'};
   _setPage(titles[page]||page);
