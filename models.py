@@ -362,6 +362,7 @@ class Material(Base):
     subject       = Column(String(60))
     class_name    = Column(String(40), nullable=True)
     chapter       = Column(String(200), nullable=True)
+    part          = Column(String(200), nullable=True)   # which class/part of the chapter
     material_type = Column(String(20))    # notes | dpp | test | answer | other
     category      = Column(String(60), nullable=True)   # for 'other' materials
     title         = Column(String(200), nullable=True)

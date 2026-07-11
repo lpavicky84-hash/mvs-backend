@@ -208,6 +208,8 @@
   .dark .tst-ic{background:rgba(37,99,235,.2);color:#93c5fd}.dark .tst-score{background:rgba(194,65,12,.22);color:#fdba74}
   .ex-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px}
   .tt-tabs{display:inline-flex;gap:4px;padding:4px;background:var(--bg);border:1px solid var(--border);border-radius:12px;margin-bottom:16px}
+  .req{color:#dc2626;font-weight:800}
+  .opt{color:var(--text-muted);font-weight:500;font-size:.72rem}
   .cr-sec{font-size:.82rem;font-weight:800;color:var(--text);margin:18px 0 8px;padding-bottom:6px;border-bottom:2px solid var(--border)}
   .cr-sec-sub{font-weight:500;color:var(--text-muted);font-size:.75rem;margin-left:6px}
   .cr-delay{display:none}
@@ -219,6 +221,36 @@
   .dark .cr-delay.ontime{background:rgba(22,163,74,.18);color:#86efac}
   .dark .cr-delay.minor{background:rgba(245,158,11,.18);color:#fcd34d}
   .dark .cr-delay.late{background:rgba(220,38,38,.18);color:#fca5a5}
+  .ms-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-bottom:18px}
+  .ms-card{padding:16px;border:1px solid var(--border);border-radius:14px;background:var(--bg-card,#fff);cursor:pointer;transition:.15s}
+  .ms-card:hover{border-color:var(--primary);transform:translateY(-2px)}
+  .ms-card.active{border-color:var(--primary);background:rgba(37,99,235,.06);box-shadow:0 6px 18px -8px rgba(37,99,235,.5)}
+  .ms-name{font-size:.95rem;font-weight:800;color:var(--text)}
+  .ms-meta{font-size:.76rem;color:var(--text-muted);margin-top:4px}
+  .mt-table{width:100%;border-collapse:collapse;font-size:.86rem}
+  .mt-table th{text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);font-weight:700;padding:8px 10px;border-bottom:1px solid var(--border)}
+  .mt-table td{padding:10px;border-bottom:1px solid var(--border);color:var(--text)}
+  .mt-table tr:last-child td{border-bottom:none}
+  .mt-dim{color:var(--text-muted)}
+  .mt-type{font-size:.72rem;font-weight:800;padding:4px 9px;border-radius:99px;white-space:nowrap}
+  .mt-type.notes{background:#dbeafe;color:#1e40af}
+  .mt-type.dpp{background:#fef3c7;color:#b45309}
+  .mt-type.test{background:#fee2e2;color:#b91c1c}
+  .mt-type.other{background:#ede9fe;color:#6d28d9}
+  .dark .mt-type.notes{background:rgba(37,99,235,.22);color:#93c5fd}
+  .dark .mt-type.dpp{background:rgba(245,158,11,.22);color:#fcd34d}
+  .dark .mt-type.test{background:rgba(220,38,38,.22);color:#fca5a5}
+  .dark .mt-type.other{background:rgba(124,58,237,.22);color:#c4b5fd}
+  .mt-eng{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border);background:var(--bg);color:var(--text);border-radius:8px;padding:5px 10px;font-size:.82rem;font-weight:700;cursor:pointer;transition:.15s}
+  .mt-eng:hover{border-color:var(--primary);color:var(--primary)}
+  .mt-eng svg{width:14px;height:14px}
+  .ma-head{font-size:.85rem;color:var(--text-muted);margin:12px 0 8px}
+  .ma-row{display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px solid var(--border)}
+  .ma-row:last-child{border-bottom:none}
+  .ma-av{width:32px;height:32px;flex:0 0 32px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.8rem}
+  .ma-main{flex:1;min-width:0}
+  .ma-name{font-size:.88rem;font-weight:700;color:var(--text)}
+  .ma-at{font-size:.74rem;color:var(--text-muted)}
   .rp-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
   @media(max-width:680px){.rp-stats{grid-template-columns:1fr 1fr}}
   .rp-stat{padding:16px;border:1px solid var(--border);border-radius:14px;background:var(--bg-card,#fff);text-align:center}
@@ -924,7 +956,7 @@
 </div>
 <div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule Rule:</b> Maximum 2 per month. Frequent reschedules affect MVS Foundation's reputation.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== ADMIN APP ===== -->
-<div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#ef4444">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Students</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Question Bank</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#ef4444" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div></div>
+<div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#ef4444">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Study Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Students</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Question Bank</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#ef4444" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== STUDENT APP ===== -->
 <div id="student-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#06b6d4">S</div><div><span>MVS Foundation</span><small>Student</small></div></div><nav class="sidebar-nav"><div class="nav-section">Home</div><div class="nav-item active" onclick="sPage('dashboard',this)"><span>Home</span></div><div class="nav-item" onclick="sPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="sPage('materials',this)"><span>Materials</span></div><div class="nav-item" onclick="sPage('qbank',this)"><span>Question Bank</span></div><div class="nav-item" onclick="sPage('teachers',this)"><span>Know Your Teacher</span></div><div class="nav-section">Work</div><div class="nav-item" onclick="sPage('dpp',this)"><span>DPP Submit</span></div><div class="nav-item" onclick="sPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="sPage('doubts',this)"><span>Doubts</span></div><div class="nav-section">Progress</div><div class="nav-item" onclick="sPage('progress',this)"><span>Progress</span></div><div class="nav-item" onclick="sPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="sPage('profile',this)"><span>My Profile</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#06b6d4" id="s-avatar">S</div><div><span id="s-name">Student</span><small id="s-batch">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="s-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="s-topavatar" title="Set or change profile photo" onclick="openSetStudentPhoto()">S</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('student')"><span class="notif-badge" id="s-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="s-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="s-page-dashboard"><div id="s-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-timetable"><div id="s-timetable-content"><div class="spinner"></div></div></div><div class="page" id="s-page-materials"><div id="s-materials-content"><div class="spinner"></div></div></div><div class="page" id="s-page-qbank"><div id="s-qbank-content"><div class="spinner"></div></div></div><div class="page" id="s-page-teachers"><div id="s-teachers-content"><div class="spinner"></div></div></div><div class="page" id="s-page-dpp"><div id="s-dpp-content"><div class="spinner"></div></div></div><div class="page" id="s-page-tests"><div id="s-tests-content"><div class="spinner"></div></div></div><div class="page" id="s-page-doubts"><div id="s-doubts-content"><div class="spinner"></div></div></div><div class="page" id="s-page-progress"><div id="s-progress-content"><div class="spinner"></div></div></div><div class="page" id="s-page-notifications"><div id="s-notif-content"><div class="spinner"></div></div></div><div class="page" id="s-page-profile"><div id="s-profile-content"><div class="spinner"></div></div></div></div>
 </div><!-- Generic Modal -->
@@ -1472,27 +1504,6 @@ async function downloadMaterial(role,id,name){
  setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){ toast('Download error',true); }
 }
-async function loadTMaterial(){
-  const el=document.getElementById('t-material-content');
-  try{
- _matEntries=await api('/api/teacher/my-timetable');
- await _loadMatAnalytics(true);
- const subs=[...new Set(_matEntries.map(e=>e.subject))];
- if(subs.length===0){ el.innerHTML=`<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>Upload a timetable first, then chapters will appear here.</p></div></div></div>`; return; }
- _matActiveSub=_matActiveSub&&subs.includes(_matActiveSub)?_matActiveSub:subs[0];
- el.innerHTML=`<div class="card"><div class="card-header"><h3> Study Material Upload</h3><button class="btn btn-ghost btn-sm" onclick="openUploadHub({typeLabel:'Other (custom)'})"> Other Material</button></div><div class="card-body"><div class="alert alert-info">Upload a <strong>Notes</strong> or <strong>DPP</strong> PDF next to each chapter. Use <strong>Other Material</strong> to create a category (e.g. Formula Sheet, PYQ) and upload anything. Students will see it under Materials.</div><div class="subj-tabs">${subs.map(s=>`<div class="subj-tab ${s===_matActiveSub?'active':''}" onclick="tMatSub('${encodeURIComponent(s)}')">${esc(s)}</div>`).join('')}</div><div id="t-chapter-list"><div class="spinner"></div></div></div></div><div class="card"><div class="card-header"><h3>Material Analytics</h3><span class="pager-info">Upload date · students viewed · downloads</span></div><div class="card-body">${matAnalyticsCardHTML()}</div></div>`;
- renderChapterStatus();
-  }catch(e){ el.innerHTML=errHtml(e); }
-}
-function tMatSub(s){ _matActiveSub=decodeURIComponent(s); loadTMaterial(); }
-async function renderChapterStatus(){
-  const wrap=document.getElementById('t-chapter-list');
-  try{
- const list=await api('/api/teacher/chapter-status?subject='+encodeURIComponent(_matActiveSub));
- if(list.length===0){ wrap.innerHTML='<p style="color:var(--text-muted)">No chapters in this subject yet.</p>'; return; }
- wrap.innerHTML=list.map(c=>`<div class="chapter-acc" style="margin-bottom:10px"><div class="chapter-head" style="cursor:default"><h4> ${esc(c.chapter)}</h4><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="tstatus ${c.notes?'done':'upcoming'}">${c.notes?' Notes':'Notes Pending'}</span><button class="btn btn-ghost btn-sm" onclick="openUploadHub({type:'notes',chapter:'${esc(c.chapter)}',subject:_matActiveSub})"> Notes</button><span class="tstatus ${c.dpp?'done':'upcoming'}">${c.dpp?' DPP':'DPP Pending'}</span><button class="btn btn-ghost btn-sm" onclick="openUploadHub({type:'dpp',chapter:'${esc(c.chapter)}',subject:_matActiveSub})"> DPP</button></div></div></div>`).join('');
-  }catch(e){ wrap.innerHTML=errHtml(e); }
-}
 function complianceCard(comp){
   const s=comp.score, col=comp.band==='green'?'#059669':comp.band==='yellow'?'#d97706':'#dc2626';
   const r=52, c=2*Math.PI*r, off=c*(1-s/100), b=comp.breakdown;
@@ -1562,11 +1573,11 @@ function openClassReport(id){
      <textarea class="form-control" id="cr-remarks" rows="2" placeholder="Anything the admin should know">${esc(c.remarks||'')}</textarea>
 
      <div class="cr-sec">2. Lecture Report <span class="cr-sec-sub">students see this &amp; must answer a question to verify</span></div>
-     <label class="ex-lbl">Lecture Summary</label>
+     <label class="ex-lbl">Lecture Summary <span class="req">*</span></label>
      <textarea class="form-control" id="lec-summary" rows="2" placeholder="What was taught in this lecture?"></textarea>
      <div class="ex-grid2">
-       <div><label class="ex-lbl">Notes PDF (optional)</label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-pdf').click()">${ic('upload')} <span id="lec-pdf-name">Upload Notes PDF</span></button><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
-       <div><label class="ex-lbl">DPP PDF (optional)</label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-dpp').click()">${ic('upload')} <span id="lec-dpp-name">Upload DPP PDF</span></button><input type="file" id="lec-dpp" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'dpp')"></div>
+       <div><label class="ex-lbl">Class Notes <span class="req">*</span></label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-pdf').click()">${ic('upload')} <span id="lec-pdf-name">Upload Class Notes</span></button><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
+       <div><label class="ex-lbl">DPP PDF <span class="opt">(optional)</span></label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-dpp').click()">${ic('upload')} <span id="lec-dpp-name">Upload DPP PDF</span></button><input type="file" id="lec-dpp" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'dpp')"></div>
      </div>
      <div class="cr-sec">3. Verification Question <span class="cr-sec-sub">mandatory \u2014 students answer one at random</span></div>
      <div id="lec-qs"></div>
@@ -1591,6 +1602,9 @@ function _calcDelay(sched,actual){
   return b-a;
 }
 async function submitClassReport(id){
+  // required uploads + summary
+  if(!val('lec-summary').trim()){ toast('Please write the lecture summary.',true); return; }
+  if(!_lecFiles.pdf){ toast('Notes PDF is required.',true); return; }
   // validate the verification question(s) exactly like the lecture form does
   for(let i=0;i<_lecQs.length;i++){ const q=_lecQs[i];
     if(!(q.question||'').trim()){ toast('Verification question '+(i+1)+': enter the question text',true); return; }
@@ -2102,6 +2116,66 @@ async function loadTEngagement(){
     wrap.innerHTML=`<div class="card"><div class="card-header"><h3>Student Engagement</h3><span class="pager-info">DPP &amp; test completion · material downloads · last active</span></div><div class="card-body"><div class="table-wrap"><table><thead><tr><th>Student</th><th>DPP Done</th><th>Tests Done</th><th>Downloads</th><th>Last Active</th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
   }catch(e){ wrap.innerHTML=''; }
 }
+async function loadTMaterial(){
+  const el=document.getElementById('t-material-content');
+  el.innerHTML='<div class="spinner"></div>';
+  try{
+    el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2>Study Material</h2><p>Class notes &amp; DPP uploaded from each class report appear here automatically. Add anything extra as a custom category.</p></div><button class="btn btn-primary btn-sm" onclick="openUploadHub({typeLabel:'Other (custom)'})">${ic('upload')} Upload Other Material</button></div><div id="t-mat-tree"></div>`;
+    _renderMaterialTree('t-mat-tree','/api/teacher/materials-tree','/api/teacher');
+  }catch(e){ el.innerHTML=errHtml(e); }
+}
+
+// Subject cards -> chapter/part table of every upload, with engagement.
+// Used by BOTH the teacher and the admin portal (same renderer, same numbers).
+let _mtData=null, _mtSub=null, _mtBase='/api/teacher';
+async function _renderMaterialTree(wrapId, endpoint, apiBase){
+  const wrap=document.getElementById(wrapId); if(!wrap) return;
+  wrap.innerHTML='<div class="spinner"></div>';
+  _mtBase=apiBase;
+  try{
+    const d=await api(endpoint);
+    _mtData=d.subjects||[];
+    if(!_mtData.length){ wrap.innerHTML='<div class="card"><div class="card-body"><div class="ws-empty"><div class="big">\ud83d\udcda</div><p>No material uploaded yet</p><small>Class notes appear here as soon as a class report is submitted.</small></div></div></div>'; return; }
+    if(!_mtSub||!_mtData.find(s=>s.subject===_mtSub)) _mtSub=_mtData[0].subject;
+    _mtPaint(wrapId);
+  }catch(e){ wrap.innerHTML=errHtml(e); }
+}
+function _mtPick(wrapId,sub){ _mtSub=decodeURIComponent(sub); _mtPaint(wrapId); }
+function _mtPaint(wrapId){
+  const wrap=document.getElementById(wrapId); if(!wrap||!_mtData) return;
+  const cards=_mtData.map(s=>{
+    const n=s.chapters.reduce((a,c)=>a+c.items.length,0);
+    const v=s.chapters.reduce((a,c)=>a+c.items.reduce((x,i)=>x+i.views,0),0);
+    return `<div class="ms-card ${s.subject===_mtSub?'active':''}" onclick="_mtPick('${wrapId}','${encodeURIComponent(s.subject)}')"><div class="ms-name">${esc(s.subject)}</div><div class="ms-meta">${n} file${n===1?'':'s'} \u00b7 ${v} views</div></div>`;
+  }).join('');
+  const sub=_mtData.find(s=>s.subject===_mtSub);
+  const TYPE={notes:'Class Notes',dpp:'DPP',test:'Test',other:'Other'};
+  const chapters=sub.chapters.map(c=>{
+    const rows=c.items.map(i=>`<tr>
+      <td><span class="mt-type ${esc(i.type)}">${TYPE[i.type]||esc(i.type)}${i.category?' \u00b7 '+esc(i.category):''}</span></td>
+      <td>${i.part?esc(i.part):'<span class="mt-dim">Whole chapter</span>'}</td>
+      <td>${esc(i.title||i.filename||'')}</td>
+      <td class="mt-dim">${esc(i.date)}</td>
+      <td><button class="mt-eng" title="Students who viewed" onclick="openMatAudience(${i.id},'view')">${ic('users')} ${i.views}</button></td>
+      <td><button class="mt-eng" title="Students who downloaded" onclick="openMatAudience(${i.id},'download')">${ic('download')} ${i.downloads}</button></td>
+    </tr>`).join('');
+    return `<div class="card" style="margin-bottom:14px"><div class="card-header"><h3>${esc(c.chapter)}</h3><span class="tc-count">${c.items.length} file${c.items.length===1?'':'s'}</span></div><div class="card-body" style="padding-top:4px"><div class="table-wrap"><table class="mt-table"><thead><tr><th>Type</th><th>Class / Part</th><th>Title</th><th>Uploaded</th><th>Views</th><th>Downloads</th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
+  }).join('');
+  wrap.innerHTML=`<div class="ms-grid">${cards}</div>${chapters}`;
+}
+async function openMatAudience(mid,which){
+  showModal('Student Engagement','<div id="ma-body"><div class="spinner"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{
+    const d=await api(_mtBase+'/material/'+mid+'/audience');
+    const list=(which==='download'?d.downloaders:d.viewers)||[];
+    const m=d.material||{};
+    const title=`${esc(m.title||'')}${m.part?' \u00b7 '+esc(m.part):''}`;
+    const rows=list.length?list.map(s=>`<div class="ma-row"><div class="ma-av">${esc((s.name||'S').charAt(0))}</div><div class="ma-main"><div class="ma-name">${esc(s.name)}</div><div class="ma-at">${esc(s.at)}</div></div></div>`).join('')
+      :`<div class="ws-empty"><p>No students yet</p><small>${which==='download'?'Nobody has downloaded this file.':'Nobody has opened this file.'}</small></div>`;
+    document.getElementById('ma-body').innerHTML=`<div class="alert alert-info">${title}</div><div class="ma-head">${which==='download'?'Downloaded by':'Viewed by'} <b>${list.length}</b> student${list.length===1?'':'s'}</div>${rows}`;
+  }catch(e){ document.getElementById('ma-body').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
+}
+
 async function loadTDpp(){
   const el=document.getElementById('t-dpp-content');
   try{
@@ -2181,13 +2255,13 @@ async function openLectureForm(prefill){
       <div><label class="ex-lbl">Lecture Date</label><input class="form-control" type="date" id="lec-date" value="${today}"></div>
     </div>
     <div><label class="ex-lbl">Link to Timetable Class (optional)</label><select class="form-control" id="lec-tt">${ttOpts}</select></div>
-    <label class="ex-lbl" style="margin-top:10px">Lecture Summary</label>
+    <label class="ex-lbl" style="margin-top:10px">Lecture Summary <span class="req">*</span></label>
     <textarea class="form-control" id="lec-summary" rows="2" placeholder="What was taught in this lecture?"></textarea>
     <label class="ex-lbl">Homework</label>
     <textarea class="form-control" id="lec-hw" rows="2" placeholder="Homework / practice for students"></textarea>
     <div class="ex-grid2">
-      <div><label class="ex-lbl">Notes PDF (optional)</label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-pdf').click()">${ic('upload')} <span id="lec-pdf-name">Upload Notes PDF</span></button><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
-      <div><label class="ex-lbl">DPP PDF (optional)</label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-dpp').click()">${ic('upload')} <span id="lec-dpp-name">Upload DPP PDF</span></button><input type="file" id="lec-dpp" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'dpp')"></div>
+      <div><label class="ex-lbl">Class Notes <span class="req">*</span></label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-pdf').click()">${ic('upload')} <span id="lec-pdf-name">Upload Class Notes</span></button><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
+      <div><label class="ex-lbl">DPP PDF <span class="opt">(optional)</span></label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-dpp').click()">${ic('upload')} <span id="lec-dpp-name">Upload DPP PDF</span></button><input type="file" id="lec-dpp" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'dpp')"></div>
     </div>
     <div class="lecq-head"><h3 style="font-size:.95rem;font-weight:800;margin:14px 0 4px">Verification Questions <span style="font-weight:500;color:var(--text-muted);font-size:.8rem">\u2014 mandatory, students answer one at random</span></h3></div>
     <div id="lec-qs"></div>
@@ -2240,6 +2314,8 @@ function _lecOptImg(inp,i,j){ const f=inp.files[0]; if(!f) return; if(f.size>8*1
 
 async function submitLecture(){
   const subject=val('lec-sub'); if(!subject){ toast('Select a subject',true); return; }
+  if(!val('lec-summary').trim()){ toast('Please write the lecture summary.',true); return; }
+  if(!_lecFiles.pdf){ toast('Notes PDF is required.',true); return; }
   // validate questions
   for(let i=0;i<_lecQs.length;i++){ const q=_lecQs[i];
     if(!(q.question||'').trim()){ toast('Question '+(i+1)+': enter the question text',true); return; }
@@ -2702,6 +2778,7 @@ function aPage(page,el){
   document.getElementById('a-title').textContent=titles[page];
   if(page==='dashboard') loadADashboard();
   else if(page==='approvals') loadAApprovals();
+  else if(page==='material') loadAMaterial();
   else if(page==='reports') loadAReports();
   else if(page==='teachers') loadATeachers();
   else if(page==='doubts') loadADoubts();
@@ -2801,6 +2878,12 @@ function _teacherSubjByClass(subjects){
   return {c10,c12,other};
 }
 function _codeChips(list){ return list.map(s=>`<span class="code-chip">${esc(s.name)} <b>${esc(s.code)}</b></span>`).join(''); }
+async function loadAMaterial(){
+  const el=document.getElementById('a-material-content');
+  el.innerHTML=`<div class="sm-head"><h2>Study Material</h2><p>Everything teachers have uploaded \u2014 chapter and class-wise, with student engagement.</p></div><div id="a-mat-tree"></div>`;
+  _renderMaterialTree('a-mat-tree','/api/admin/materials-tree','/api/admin');
+}
+
 async function loadAReports(){
   const el=document.getElementById('a-reports-content');
   el.innerHTML='<div class="spinner"></div>';

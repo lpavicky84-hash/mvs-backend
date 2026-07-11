@@ -57,6 +57,7 @@ def ensure_columns():
         "ALTER TABLE exam_questions ADD COLUMN model_answer_image LONGTEXT",
         "ALTER TABLE exam_questions ADD COLUMN explanation TEXT",
         "ALTER TABLE exam_questions ADD COLUMN explanation_hi TEXT",
+        "ALTER TABLE materials ADD COLUMN part VARCHAR(200)",
     ]
     for s in stmts:
         try:

@@ -1360,6 +1360,23 @@ async def create_lecture(payload: dict = Body(...), background_tasks: Background
             pass
     db.add(lec); db.flush()
 
+    # Mirror the uploads into Materials so students find them under Study Material
+    # and view/download analytics work exactly like any other material.
+    from models import Material
+    def _mk(kind, b64, fname):
+        if not b64:
+            return
+        raw = b64.split(",")[-1]
+        db.add(Material(
+            teacher_id=tp.id, teacher_name=(current_user.name or ""),
+            subject=subject, class_name=(payload.get("class_level") or None),
+            chapter=(payload.get("chapter") or None), part=(payload.get("part") or None),
+            material_type=kind, title=(lec.title or subject),
+            filename=(fname or ("%s.pdf" % kind)), content_b64=raw))
+    _mk("notes", payload.get("pdf_b64"), payload.get("pdf_filename"))
+    _mk("dpp", payload.get("dpp_b64"), payload.get("dpp_filename"))
+    db.flush()
+
     for q in valid_qs:
         db.add(LectureQuestion(
             lecture_id=lec.id, qtype=q.get("qtype"),
@@ -1555,3 +1572,82 @@ def teacher_class_reports(db: Session = Depends(get_db), current_user=Depends(ge
     tp = get_teacher_profile(current_user, db)
     rows = _report_rows(db, tp.subjects or [])
     return {"summary": _report_summary(rows), "rows": rows[:60]}
+
+
+# ============================================================ MATERIAL ANALYTICS
+# Subject -> chapter -> part view of everything uploaded, with view/download
+# counts and the actual student lists behind those counts. Shared shape so the
+# teacher portal and the admin portal render from the same renderer.
+
+def _material_tree(db, subjects=None):
+    from models import Material, MaterialView, StudentProfile
+    q = db.query(Material).filter(Material.material_type != "answer")
+    if subjects is not None:
+        if not subjects:
+            return []
+        q = q.filter(Material.subject.in_(subjects))
+    mats = q.order_by(Material.created_at.desc()).all()
+    ids = [m.id for m in mats]
+    views, downloads = {}, {}
+    if ids:
+        for v in db.query(MaterialView).filter(MaterialView.material_id.in_(ids)).all():
+            d = downloads if v.action == "download" else views
+            d.setdefault(v.material_id, set()).add(v.student_id)
+    tree = {}
+    for m in mats:
+        sub = tree.setdefault(m.subject or "General", {"subject": m.subject or "General", "chapters": {}})
+        ch = sub["chapters"].setdefault(m.chapter or "General", {"chapter": m.chapter or "General", "items": []})
+        ch["items"].append({
+            "id": m.id, "part": m.part or "", "type": m.material_type,
+            "category": m.category or "", "title": m.title or "",
+            "filename": m.filename or "", "teacher_name": m.teacher_name or "",
+            "date": str(m.created_at)[:10] if m.created_at else "",
+            "views": len(views.get(m.id, ())), "downloads": len(downloads.get(m.id, ())),
+        })
+    out = []
+    for s in tree.values():
+        chapters = []
+        for c in s["chapters"].values():
+            c["items"].sort(key=lambda x: (x["part"], x["type"]))
+            chapters.append(c)
+        chapters.sort(key=lambda c: c["chapter"])
+        out.append({"subject": s["subject"], "chapters": chapters})
+    out.sort(key=lambda s: s["subject"])
+    return out
+
+
+def _material_audience(db, material_id):
+    """Who viewed / downloaded this material."""
+    from models import Material, MaterialView, StudentProfile, User
+    m = db.query(Material).filter(Material.id == material_id).first()
+    if not m:
+        raise HTTPException(404, "Material not found")
+    rows = db.query(MaterialView).filter(MaterialView.material_id == material_id).all()
+    sids = list({r.student_id for r in rows})
+    smap = {}
+    if sids:
+        for sp in db.query(StudentProfile).filter(StudentProfile.id.in_(sids)).all():
+            smap[sp.id] = (sp.user.name if sp.user else ("Student #%d" % sp.id))
+    seen, viewers, downloaders = {}, [], []
+    for r in rows:
+        nm = smap.get(r.student_id, "Student")
+        key = (r.student_id, r.action)
+        if key in seen:
+            continue
+        seen[key] = True
+        entry = {"student_id": r.student_id, "name": nm, "at": str(r.created_at)[:16]}
+        (downloaders if r.action == "download" else viewers).append(entry)
+    return {"material": {"id": m.id, "title": m.title, "type": m.material_type,
+                         "subject": m.subject, "chapter": m.chapter, "part": m.part},
+            "viewers": viewers, "downloaders": downloaders}
+
+
+@router.get("/materials-tree")
+def teacher_materials_tree(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    return {"subjects": _material_tree(db, tp.subjects or [])}
+
+
+@router.get("/material/{mid}/audience")
+def teacher_material_audience(mid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    return _material_audience(db, mid)

@@ -1008,3 +1008,17 @@ def admin_class_reports(teacher_id: int = 0, db: Session = Depends(get_db),
                                     -x["month_hours"]))
     return {"summary": _report_summary(rows), "rows": rows[:80],
             "teachers": teachers, "per_teacher": per_teacher}
+
+
+# ============================================================ MATERIAL ANALYTICS
+@router.get("/materials-tree")
+def admin_materials_tree(db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Every subject's uploaded material, chapter/part-wise, with engagement."""
+    from teacher_routes import _material_tree
+    return {"subjects": _material_tree(db, None)}
+
+
+@router.get("/material/{mid}/audience")
+def admin_material_audience(mid: int, db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    from teacher_routes import _material_audience
+    return _material_audience(db, mid)
