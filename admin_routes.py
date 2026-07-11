@@ -1043,3 +1043,215 @@ def admin_materials_tree(db: Session = Depends(get_db), current_user=Depends(get
 def admin_material_audience(mid: int, db: Session = Depends(get_db), current_user=Depends(get_admin)):
     from teacher_routes import _material_audience
     return _material_audience(db, mid)
+
+
+# ==================================================== LIVE USERS (students + teachers)
+LIVE_WINDOW_MIN = 3
+
+
+@router.get("/live-users")
+def admin_live_users(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Who is online right now (students AND teachers), which section they are on,
+    how many times each person has logged in, plus who has never logged in - so
+    the admin can call the inactive ones."""
+    from models import UserSession, User, UserRole, StudentProfile, TeacherProfile
+    now = datetime.now()
+    cutoff = now - timedelta(minutes=LIVE_WINDOW_MIN)
+    sessions = db.query(UserSession).all()
+
+    by_user = {}
+    for s in sessions:
+        d = by_user.setdefault(s.user_id, {"count": 0, "last": None, "live": None})
+        d["count"] += 1
+        if not d["last"] or (s.last_seen and s.last_seen > d["last"]):
+            d["last"] = s.last_seen
+        if s.last_seen and s.last_seen >= cutoff:
+            d["live"] = s
+
+    users = db.query(User).filter(User.role.in_([UserRole.student, UserRole.teacher])).all()
+    phones = {}
+    for sp in db.query(StudentProfile).all():
+        phones[sp.user_id] = sp.phone
+    for tp in db.query(TeacherProfile).all():
+        phones.setdefault(tp.user_id, getattr(tp, "phone", None))
+
+    live, offline, never = [], [], []
+    for u in users:
+        role = getattr(u.role, "value", str(u.role))
+        d = by_user.get(u.id)
+        base = {"user_id": u.id, "name": u.name, "code": u.user_id, "role": role,
+                "phone": phones.get(u.id) or "", "logins": (d["count"] if d else 0)}
+        if not d or not d["last"]:
+            never.append(base)
+            continue
+        base["last_seen"] = str(d["last"])[:16]
+        base["last_seen_min"] = int((now - d["last"]).total_seconds() // 60)
+        if d["live"]:
+            s = d["live"]
+            base["page"] = s.current_page or "\u2014"
+            base["duration_min"] = max(0, int((now - (s.started_at or s.last_seen)).total_seconds() // 60))
+            live.append(base)
+        else:
+            offline.append(base)
+
+    live.sort(key=lambda x: -x["duration_min"])
+    offline.sort(key=lambda x: x["last_seen_min"])
+    never.sort(key=lambda x: x["name"])
+    return {"live": live, "offline": offline, "never": never,
+            "counts": {"live": len(live), "students_live": sum(1 for x in live if x["role"] == "student"),
+                       "teachers_live": sum(1 for x in live if x["role"] == "teacher"),
+                       "never": len(never)}}
+
+
+@router.get("/user/{user_id}/sessions")
+def admin_user_sessions(user_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Every time this person came online - the 'recent' list the admin scrolls."""
+    from models import UserSession, User
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    rows = db.query(UserSession).filter(UserSession.user_id == user_id).order_by(
+        UserSession.started_at.desc()).limit(60).all()
+    out = []
+    for s in rows:
+        mins = 0
+        if s.started_at and s.last_seen:
+            mins = max(0, int((s.last_seen - s.started_at).total_seconds() // 60))
+        out.append({"started": str(s.started_at)[:16], "last_seen": str(s.last_seen)[:16],
+                    "minutes": mins, "page": s.current_page or "\u2014"})
+    return {"name": u.name, "code": u.user_id,
+            "role": getattr(u.role, "value", str(u.role)),
+            "logins": len(out), "sessions": out}
+
+
+# ==================================================== CLASS COMPLIANCE (missed / delayed)
+DELAY_WARN_THRESHOLD = 2      # more than this many late classes in the month -> warn
+
+
+@router.get("/class-compliance")
+def admin_class_compliance(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Per-teacher punctuality: classes that were MISSED (scheduled date passed and
+    never marked done) and classes that started LATE, with a month-wise count so
+    repeat offenders are obvious."""
+    from teacher_routes import _delay_of, _delay_band, _duration_of
+    from models import TimetableEntry, TeacherProfile
+    today = date.today()
+    month_start = date(today.year, today.month, 1)
+
+    tmap = {}
+    for tp in db.query(TeacherProfile).all():
+        tmap[tp.id] = {"id": tp.id, "name": (tp.user.name if tp.user else "Teacher #%d" % tp.id),
+                       "user_id": tp.user_id, "subjects": tp.subjects or []}
+
+    entries = db.query(TimetableEntry).filter(
+        TimetableEntry.entry_type == "chapter",
+        (TimetableEntry.status == None) | (TimetableEntry.status != "pending")).all()
+
+    missed, late_rows = [], []
+    per = {}
+    for e in entries:
+        t = tmap.get(e.teacher_id)
+        tname = t["name"] if t else ""
+        p = per.setdefault(e.teacher_id, {"missed": 0, "late": 0, "late_month": 0,
+                                          "ontime": 0, "done": 0, "delays": []})
+        # MISSED: the class date has passed but it was never marked done
+        if e.entry_date and e.entry_date < today and not getattr(e, "completed", False):
+            p["missed"] += 1
+            missed.append({"id": e.id, "teacher_id": e.teacher_id, "teacher_name": tname,
+                           "subject": e.subject, "chapter": e.chapter, "part": e.part,
+                           "date": str(e.entry_date), "slot": e.time_text,
+                           "days_ago": (today - e.entry_date).days})
+            continue
+        if not getattr(e, "completed", False):
+            continue
+        p["done"] += 1
+        d = _delay_of(e)
+        band = _delay_band(d)
+        if band == "ontime":
+            p["ontime"] += 1
+        elif band in ("minor", "late"):
+            p["late"] += 1
+            p["delays"].append(d)
+            if e.entry_date and e.entry_date >= month_start:
+                p["late_month"] += 1
+            late_rows.append({"id": e.id, "teacher_id": e.teacher_id, "teacher_name": tname,
+                              "subject": e.subject, "chapter": e.chapter, "part": e.part,
+                              "date": str(e.entry_date) if e.entry_date else "",
+                              "slot": e.time_text, "started": e.start_time,
+                              "delay_min": d, "band": band})
+
+    teachers = []
+    for tid, p in per.items():
+        t = tmap.get(tid)
+        if not t:
+            continue
+        avg = round(sum(p["delays"]) / len(p["delays"])) if p["delays"] else None
+        total = p["done"]
+        teachers.append({
+            "teacher_id": tid, "name": t["name"], "subjects": t["subjects"],
+            "classes_done": total, "missed": p["missed"],
+            "late": p["late"], "late_this_month": p["late_month"], "ontime": p["ontime"],
+            "avg_delay": avg,
+            "on_time_pct": (round(p["ontime"] * 100 / total) if total else None),
+            "at_risk": p["late_month"] > DELAY_WARN_THRESHOLD or p["missed"] > 0,
+        })
+    teachers.sort(key=lambda x: (-(x["missed"]), -(x["late_this_month"])))
+    missed.sort(key=lambda x: x["date"], reverse=True)
+    late_rows.sort(key=lambda x: x["date"], reverse=True)
+    return {"teachers": teachers, "missed": missed[:60], "late": late_rows[:60],
+            "totals": {"missed": len(missed), "late": len(late_rows),
+                       "at_risk": sum(1 for t in teachers if t["at_risk"])},
+            "threshold": DELAY_WARN_THRESHOLD}
+
+
+@router.post("/warn-teacher/{teacher_id}")
+def admin_warn_teacher(teacher_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Send the punctuality reminder to a teacher who keeps starting late."""
+    from models import TeacherProfile
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == teacher_id).first()
+    if not tp or not tp.user:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    msg = ("Aapki classes baar-baar late shuru ho rahi hain.\n\n"
+           "Isse MVS Foundation ki reputation par asar padta hai aur bachche panic hote hain. "
+           "Ye aapki monthly report par bhi impact karega.\n\n"
+           "Please classes time par shuru karein.")
+    db.add(Notification(user_id=tp.user.id, title="\u26a0\ufe0f Class Punctuality Reminder",
+                        message=msg, notif_type="warning"))
+    db.commit()
+    return {"message": "Reminder sent to %s" % tp.user.name}
+
+
+# ==================================================== DOUBTS OVERVIEW (subject cards)
+@router.get("/doubts-overview")
+def admin_doubts_overview(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Subject cards for the doubts page: who teaches it, how many doubts came in,
+    how many are resolved, how many are still pending - and how long the oldest
+    pending one has been waiting."""
+    from models import Doubt, DoubtStatus, TeacherProfile
+    now = datetime.now()
+    ds = db.query(Doubt).all()
+    tmap = {}
+    for tp in db.query(TeacherProfile).all():
+        for s in (tp.subjects or []):
+            tmap.setdefault(s, tp.user.name if tp.user else "")
+    by = {}
+    for d in ds:
+        sub = d.subject or "General"
+        c = by.setdefault(sub, {"subject": sub, "teacher": tmap.get(sub, ""),
+                                "total": 0, "resolved": 0, "pending": 0,
+                                "oldest_pending_min": None})
+        c["total"] += 1
+        resolved = (getattr(d.status, "value", str(d.status)) == "resolved")
+        if resolved:
+            c["resolved"] += 1
+        else:
+            c["pending"] += 1
+            if d.created_at:
+                mins = int((now - d.created_at).total_seconds() // 60)
+                if c["oldest_pending_min"] is None or mins > c["oldest_pending_min"]:
+                    c["oldest_pending_min"] = mins
+    out = sorted(by.values(), key=lambda x: (-x["pending"], x["subject"]))
+    return {"subjects": out,
+            "totals": {"total": len(ds),
+                       "pending": sum(c["pending"] for c in out),
+                       "resolved": sum(c["resolved"] for c in out)}}

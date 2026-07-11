@@ -167,8 +167,14 @@
   .tcard2-cls-h{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--primary);font-weight:700;margin-bottom:5px}
   .code-chip{display:inline-flex;align-items:center;gap:5px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:3px 9px;font-size:.78rem;margin:0 5px 5px 0}
   .code-chip b{color:var(--text-muted);font-weight:600;font-size:.66rem}
-  .tcard2-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)}
-  .mini-stat{background:var(--bg);border-radius:10px;padding:8px 12px;text-align:center;flex:1;min-width:64px}
+  .tcard2-actions{display:flex;gap:6px;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)}
+  .tcard2-actions .btn{flex:1;justify-content:center;font-size:.78rem;padding:8px 10px}
+  .tcard2-actions .btn-primary{background:transparent;color:var(--primary);border:1px solid var(--primary);box-shadow:none}
+  .tcard2-actions .btn-primary:hover{background:var(--primary);color:#fff}
+  .tcard2-actions .btn-danger{flex:0 0 auto;background:transparent;color:#dc2626;border:1px solid var(--border);box-shadow:none;padding:8px 10px}
+  .tcard2-actions .btn-danger:hover{background:#dc2626;color:#fff;border-color:#dc2626}
+  .tcard2-actions .btn svg{width:14px;height:14px}
+  .mini-stat{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:9px 12px;text-align:center;flex:1;min-width:64px}
   .mini-stat .n{font-size:1.15rem;font-weight:800;line-height:1}.mini-stat .l{font-size:.66rem;color:var(--text-muted);text-transform:uppercase;margin-top:3px}
   .tcard2-stats{display:flex;gap:8px;margin-top:14px}
   .tag-missed{background:#fee2e2;color:#991b1b}.dark .tag-missed{background:rgba(220,38,38,.2);color:#fca5a5}
@@ -233,6 +239,51 @@
   .rec-main{flex:1;min-width:0}
   .rec-sub{font-size:.92rem;font-weight:700;color:var(--text)}
   .rec-note{font-size:.77rem;color:var(--text-muted)}
+  .ov-badge-plain.ov-all{background:rgba(255,255,255,.14);border-radius:99px;padding:4px 11px}
+  .ov-badge-plain.ov-all b{color:#fff}
+  .ad-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-bottom:16px}
+  .ad-card{padding:15px;border:1px solid var(--border);border-radius:14px;background:var(--bg-card,#fff);cursor:pointer;transition:.15s}
+  .ad-card:hover{border-color:var(--primary);transform:translateY(-2px)}
+  .ad-card.active{border-color:var(--primary);background:rgba(37,99,235,.05);box-shadow:0 6px 18px -8px rgba(37,99,235,.5)}
+  .ad-top{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+  .ad-sub{font-size:.95rem;font-weight:800;color:var(--text)}
+  .ad-pend{font-size:.66rem;font-weight:800;background:#fef3c7;color:#b45309;border-radius:99px;padding:3px 8px;white-space:nowrap}
+  .ad-clear{font-size:.66rem;font-weight:800;background:#dcfce7;color:#15803d;border-radius:99px;padding:3px 8px;white-space:nowrap}
+  .dark .ad-pend{background:rgba(245,158,11,.2);color:#fcd34d}
+  .dark .ad-clear{background:rgba(22,163,74,.2);color:#86efac}
+  .ad-teacher{display:flex;align-items:center;gap:5px;font-size:.79rem;color:var(--text-muted);margin-bottom:9px}
+  .ad-teacher svg{width:13px;height:13px}
+  .ad-stats{display:flex;gap:12px;font-size:.76rem;color:var(--text-muted);flex-wrap:wrap}
+  .ad-stats b{color:var(--text)}
+  .ad-ok b{color:#16a34a}.ad-wait b{color:#b45309}
+  .ad-oldest{margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:.74rem;color:#b45309}
+  .lu-scroll{max-height:520px;overflow-y:auto;scrollbar-width:none;-ms-overflow-style:none}
+  .lu-scroll::-webkit-scrollbar{display:none}
+  .lu-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);cursor:pointer;transition:.15s}
+  .lu-row:last-child{border-bottom:none}
+  .lu-row:hover{background:var(--bg)}
+  .lu-dot{width:9px;height:9px;border-radius:50%;background:var(--border);flex:0 0 9px}
+  .lu-dot.on{background:#16a34a;box-shadow:0 0 0 3px rgba(22,163,74,.18)}
+  .lu-main{flex:1;min-width:0}
+  .lu-name{font-size:.92rem;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px}
+  .lu-role{font-size:.62rem;font-weight:800;padding:2px 7px;border-radius:99px;letter-spacing:.04em}
+  .lu-role.t{background:#ede9fe;color:#6d28d9}
+  .lu-role.s{background:#dbeafe;color:#1e40af}
+  .dark .lu-role.t{background:rgba(124,58,237,.22);color:#c4b5fd}
+  .dark .lu-role.s{background:rgba(37,99,235,.22);color:#93c5fd}
+  .lu-meta{font-size:.77rem;color:var(--text-muted);margin-top:2px}
+  .lu-right{display:flex;align-items:center;gap:10px;flex:0 0 auto}
+  .lu-page{font-size:.76rem;font-weight:700;color:var(--primary);background:rgba(37,99,235,.1);border-radius:7px;padding:4px 10px;white-space:nowrap}
+  .lu-dur{font-size:.82rem;font-weight:800;color:#16a34a;white-space:nowrap}
+  .lu-dim{font-size:.8rem;color:var(--text-muted);white-space:nowrap}
+  .us-scroll{max-height:380px;overflow-y:auto;scrollbar-width:none;-ms-overflow-style:none}
+  .us-scroll::-webkit-scrollbar{display:none}
+  .us-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}
+  .us-row:last-child{border-bottom:none}
+  .us-main{flex:1;min-width:0}
+  .us-when{font-size:.85rem;font-weight:600;color:var(--text)}
+  .us-page{font-size:.75rem;color:var(--text-muted)}
+  .us-dur{font-size:.82rem;font-weight:700;color:var(--text-muted)}
   .subj-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;background:var(--bg);border:1px solid var(--border);border-radius:10px;margin-bottom:8px}
   .subj-info{flex:1;min-width:0}
   .subj-nm{font-weight:700;font-size:.9rem;color:var(--text);margin-bottom:7px}
@@ -996,7 +1047,7 @@
 </div>
 <div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP Result</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule Rule:</b> Maximum 2 per month. Frequent reschedules affect MVS Foundation's reputation.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== ADMIN APP ===== -->
-<div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#ef4444">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Study Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Students</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Question Bank</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#ef4444" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div></div>
+<div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#ef4444">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('compliance',this)"><span>Class Compliance</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Study Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Users</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Question Bank</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#ef4444" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-compliance"><div id="a-compliance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== STUDENT APP ===== -->
 <div id="student-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#06b6d4">S</div><div><span>MVS Foundation</span><small>Student</small></div></div><nav class="sidebar-nav"><div class="nav-section">Home</div><div class="nav-item active" onclick="sPage('dashboard',this)"><span>Home</span></div><div class="nav-item" onclick="sPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="sPage('materials',this)"><span>Materials</span></div><div class="nav-item" onclick="sPage('qbank',this)"><span>Question Bank</span></div><div class="nav-item" onclick="sPage('teachers',this)"><span>Know Your Teacher</span></div><div class="nav-section">Work</div><div class="nav-item" onclick="sPage('dpp',this)"><span>DPP Submit</span></div><div class="nav-item" onclick="sPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="sPage('doubts',this)"><span>Doubts</span></div><div class="nav-section">Progress</div><div class="nav-item" onclick="sPage('progress',this)"><span>Progress</span></div><div class="nav-item" onclick="sPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="sPage('profile',this)"><span>My Profile</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#06b6d4" id="s-avatar">S</div><div><span id="s-name">Student</span><small id="s-batch">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="s-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="s-topavatar" title="Set or change profile photo" onclick="openSetStudentPhoto()">S</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('student')"><span class="notif-badge" id="s-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="s-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="s-page-dashboard"><div id="s-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-timetable"><div id="s-timetable-content"><div class="spinner"></div></div></div><div class="page" id="s-page-materials"><div id="s-materials-content"><div class="spinner"></div></div></div><div class="page" id="s-page-qbank"><div id="s-qbank-content"><div class="spinner"></div></div></div><div class="page" id="s-page-teachers"><div id="s-teachers-content"><div class="spinner"></div></div></div><div class="page" id="s-page-dpp"><div id="s-dpp-content"><div class="spinner"></div></div></div><div class="page" id="s-page-tests"><div id="s-tests-content"><div class="spinner"></div></div></div><div class="page" id="s-page-doubts"><div id="s-doubts-content"><div class="spinner"></div></div></div><div class="page" id="s-page-progress"><div id="s-progress-content"><div class="spinner"></div></div></div><div class="page" id="s-page-notifications"><div id="s-notif-content"><div class="spinner"></div></div></div><div class="page" id="s-page-profile"><div id="s-profile-content"><div class="spinner"></div></div></div></div>
 </div><!-- Generic Modal -->
@@ -1032,6 +1083,7 @@ function ic(k){ return ICONS[k]||''; }
 function statCard(label,num,iconKey,accent,nav){
   return `<div class="stat-card stat-${accent}${nav?' clickable':''}"${nav?` onclick="${nav}"`:''}><div class="sc-badge sc-${accent}">${ic(iconKey)}</div><div class="sc-label">${label}</div><div class="sc-num">${num}</div></div>`;
 }
+function _setPage(p){ _curPage=p; if(TOKEN) _pingNow(); }
 function navTo(appId,page){
   let target=null;
   document.querySelectorAll('#'+appId+' .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) target=n; });
@@ -1108,7 +1160,7 @@ async function smartCompress(file,statusCb){
   }
   return {file, ok:file.size<=MAXB};
 }
-const NAV_ICON={'dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','message admin':'bell','question bank':'book'};
+const NAV_ICON={'dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book'};
 function injectNavIcons(){
   document.querySelectorAll('.nav-item').forEach(el=>{
     if(el.querySelector('svg')) return;
@@ -1252,8 +1304,10 @@ async function pollAdminLive(){
 }
 function startAdminLivePoll(){ if(_adminLiveInt) return; pollAdminLive(); _adminLiveInt=setInterval(pollAdminLive,15000); }
 function stopAdminLivePoll(){ if(_adminLiveInt){ clearInterval(_adminLiveInt); _adminLiveInt=null; } }
-async function loadALive(){ if(window._lastLive) renderLive(window._lastLive); startAdminLivePoll(); await pollAdminLive(); }
-function startStudentHeartbeat(){ if(_hbInt) return; api('/api/student/ping','POST').catch(()=>{}); _hbInt=setInterval(()=>api('/api/student/ping','POST').catch(()=>{}),30000); }
+let _curPage='';
+function _pingNow(){ api('/api/auth/ping','POST',{page:_curPage||''}).catch(()=>{}); }
+function startStudentHeartbeat(){ if(_hbInt) return; _pingNow(); _hbInt=setInterval(_pingNow,30000); }
+function startHeartbeat(){ if(_hbInt) return; _pingNow(); _hbInt=setInterval(_pingNow,30000); }
 function stopStudentHeartbeat(){ if(_hbInt){ clearInterval(_hbInt); _hbInt=null; } }
 function openMessageAdmin(){
   showModal('Message the Admin',
@@ -1485,6 +1539,7 @@ function enterTeacherApp(){
   document.querySelectorAll('#teacher-app .nav-item').forEach(n=>n.classList.remove('active'));
   document.querySelector('#teacher-app .nav-item').classList.add('active');
   tPage('dashboard',null);
+  startHeartbeat();
   notifPopupOnOpen('teacher');
   startTopicReminders();
 }
@@ -1518,6 +1573,7 @@ function tPage(page,el){
   document.getElementById('t-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#teacher-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
   const titles={dashboard:'Dashboard',performance:'Performance',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP Result',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',qbank:'Question Bank'};
+  _setPage(titles[page]||page);
   document.getElementById('t-title').textContent=titles[page];
   stopCountdown();
   if(page==='dashboard') loadTDashboard();
@@ -2885,18 +2941,78 @@ function openAdmin(){
   document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active'));
   document.querySelector('#admin-app .nav-item').classList.add('active');
   aPage('dashboard',null);
+  startHeartbeat();
   notifPopupOnOpen('admin');
   startAdminLivePoll();
 }
+let _luTab='live';
+function luTab(t){ _luTab=t; loadALive(); }
+async function loadACompliance(){
+  const el=document.getElementById('a-compliance-content');
+  el.innerHTML='<div class="spinner"></div>';
+  try{
+    const d=await api('/api/admin/class-compliance');
+    const t=d.totals||{};
+    const cards=`<div class="stats-grid">${statCard('Missed Classes',t.missed||0,'shield',(t.missed?'red':'green'))}${statCard('Late Starts',t.late||0,'refresh',(t.late?'amber':'green'))}${statCard('Teachers At Risk',t.at_risk||0,'users',(t.at_risk?'red':'green'))}</div>`;
+    const teachers=(d.teachers||[]).map(x=>{
+      const band=x.on_time_pct==null?'unknown':(x.on_time_pct>=80?'ontime':(x.on_time_pct>=60?'minor':'late'));
+      const warn=x.at_risk?`<button class="btn btn-danger btn-sm" onclick="warnTeacher(${x.teacher_id},'${esc(x.name).replace(/'/g,'')}')">${ic('bell')} Send Reminder</button>`:'';
+      return `<div class="rp-row"><span class="rp-badge ${band}">${x.on_time_pct==null?'\u2014':x.on_time_pct+'% on time'}</span><div class="rp-main"><div class="rp-title">${esc(x.name)}${x.at_risk?' <span class="dp-tag pending">At risk</span>':''}</div><div class="rp-meta">${esc((x.subjects||[]).join(', '))} \u00b7 ${x.classes_done} done \u00b7 <b>${x.missed}</b> missed \u00b7 <b>${x.late_this_month}</b> late this month${x.avg_delay!=null?' \u00b7 avg +'+x.avg_delay+'m':''}</div></div>${warn}</div>`;
+    }).join('');
+    const missed=(d.missed||[]).map(m=>`<div class="rp-row"><span class="rp-badge late">Missed</span><div class="rp-main"><div class="rp-title">${esc(m.subject)}${m.chapter?' \u00b7 '+esc(m.chapter):''}${m.part?' \u00b7 '+esc(m.part):''}</div><div class="rp-meta">${esc(m.teacher_name)} \u00b7 ${esc(m.date)} (${m.days_ago}d ago) \u00b7 slot ${esc(m.slot||'\u2014')}</div></div></div>`).join('');
+    const late=(d.late||[]).map(m=>`<div class="rp-row"><span class="rp-badge ${m.band}">+${m.delay_min} min</span><div class="rp-main"><div class="rp-title">${esc(m.subject)}${m.chapter?' \u00b7 '+esc(m.chapter):''}</div><div class="rp-meta">${esc(m.teacher_name)} \u00b7 ${esc(m.date)} \u00b7 slot ${esc(m.slot||'\u2014')} \u00b7 started ${esc(m.started||'\u2014')}</div></div></div>`).join('');
+    el.innerHTML=`<div class="sm-head"><h2>Class Compliance</h2><p>Missed classes and late starts, teacher-wise. Teachers with more than ${d.threshold} late starts a month are reminded automatically.</p></div>${cards}
+      <div class="card"><div class="card-header"><h3>Teachers</h3></div><div class="card-body">${teachers||'<div class="ws-empty"><p>No data yet</p></div>'}</div></div>
+      <div class="card"><div class="card-header"><h3>Missed Classes</h3><span class="tc-count">${(d.missed||[]).length}</span></div><div class="card-body"><div class="lu-scroll">${missed||'<div class="ws-empty"><div class="big">\u2705</div><p>No missed classes</p></div>'}</div></div></div>
+      <div class="card"><div class="card-header"><h3>Late Starts</h3><span class="tc-count">${(d.late||[]).length}</span></div><div class="card-body"><div class="lu-scroll">${late||'<div class="ws-empty"><div class="big">\u23f0</div><p>All classes started on time</p></div>'}</div></div></div>`;
+  }catch(e){ el.innerHTML=errHtml(e); }
+}
+async function warnTeacher(id,name){
+  if(!confirm('Send the punctuality reminder to '+name+'?')) return;
+  try{ const r=await api('/api/admin/warn-teacher/'+id,'POST'); toast(r.message); }
+  catch(e){ toast(e.message,true); }
+}
+async function loadALive(){
+  const el=document.getElementById('a-live-content');
+  try{
+    const d=await api('/api/admin/live-users');
+    const c=d.counts||{};
+    const cards=`<div class="stats-grid">${statCard('Online Now',c.live||0,'user','green')}${statCard('Students Live',c.students_live||0,'users','indigo')}${statCard('Teachers Live',c.teachers_live||0,'user','teal')}${statCard('Never Logged In',c.never||0,'shield','amber',"luTab('never')")}</div>`;
+    const tabs=`<div class="tt-tabs"><button class="tt-tab ${_luTab==='live'?'active':''}" onclick="luTab('live')">Online (${(d.live||[]).length})</button><button class="tt-tab ${_luTab==='offline'?'active':''}" onclick="luTab('offline')">Recent (${(d.offline||[]).length})</button><button class="tt-tab ${_luTab==='never'?'active':''}" onclick="luTab('never')">Never Logged In (${(d.never||[]).length})</button></div>`;
+    const list=(d[_luTab]||[]);
+    const row=u=>{
+      const badge=u.role==='teacher'?'<span class="lu-role t">Teacher</span>':'<span class="lu-role s">Student</span>';
+      let right='';
+      if(_luTab==='live') right=`<div class="lu-right"><span class="lu-page">${esc(u.page||'')}</span><span class="lu-dur">${u.duration_min}m</span></div>`;
+      else if(_luTab==='offline') right=`<div class="lu-right"><span class="lu-dim">${u.last_seen_min<60?u.last_seen_min+'m ago':Math.floor(u.last_seen_min/60)+'h ago'}</span></div>`;
+      else right=`<div class="lu-right"><a class="btn btn-ghost btn-sm" href="tel:${esc(u.phone||'')}">${ic('bell')} Call</a></div>`;
+      return `<div class="lu-row" onclick="openUserSessions(${u.user_id})"><span class="lu-dot ${_luTab==='live'?'on':''}"></span><div class="lu-main"><div class="lu-name">${esc(u.name)} ${badge}</div><div class="lu-meta">${esc(u.code||'')}${u.phone?' \u00b7 '+esc(u.phone):''} \u00b7 ${u.logins} login${u.logins===1?'':'s'}</div></div>${right}</div>`;
+    };
+    const empty={live:'Nobody is online right now.',offline:'No recent sessions yet.',never:'\ud83c\udf89 Everyone has logged in at least once.'}[_luTab];
+    const rows=list.length?list.map(row).join(''):`<div class="ws-empty"><p>${empty}</p></div>`;
+    el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2>Live Users</h2><p>Students and teachers currently online, what they are doing, and who never logs in.</p></div><span class="pager-info">Auto-refreshes every 15s</span></div>${cards}${tabs}<div class="card"><div class="card-body"><div class="lu-scroll">${rows}</div></div></div>`;
+  }catch(e){ el.innerHTML=errHtml(e); }
+}
+async function openUserSessions(uid){
+  showModal('Login History','<div id="us-body"><div class="spinner"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{
+    const d=await api('/api/admin/user/'+uid+'/sessions');
+    const rows=(d.sessions||[]).length?d.sessions.map(s=>`<div class="us-row"><div class="us-main"><div class="us-when">${esc(s.started)}</div><div class="us-page">${esc(s.page)}</div></div><span class="us-dur">${s.minutes}m</span></div>`).join(''):'<div class="ws-empty"><p>No sessions recorded yet</p></div>';
+    document.getElementById('us-body').innerHTML=`<div class="alert alert-info"><strong>${esc(d.name)}</strong> \u00b7 ${esc(d.code||'')} \u00b7 ${esc(d.role)}<br>Logged in <strong>${d.logins}</strong> time${d.logins===1?'':'s'}</div><div class="us-scroll">${rows}</div>`;
+  }catch(e){ document.getElementById('us-body').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
+}
+
 function aPage(page,el){
   document.querySelectorAll('#admin-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('a-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',students:'Students',admins:'Admin Users',subjects:'Subjects',timetable:'Time Table',counts:'Student Count',live:'Live Students'};
+  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',students:'Students',admins:'Admin Users',subjects:'Subjects',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance'};
+  _setPage(titles[page]||page);
   document.getElementById('a-title').textContent=titles[page];
   if(page==='dashboard') loadADashboard();
   else if(page==='approvals') loadAApprovals();
   else if(page==='material') loadAMaterial();
+  else if(page==='compliance') loadACompliance();
   else if(page==='reports') loadAReports();
   else if(page==='teachers') loadATeachers();
   else if(page==='doubts') loadADoubts();
@@ -3291,22 +3407,37 @@ async function loadAActivity(){
 
 let _attEntries=[]; let _attActiveSub=''; let _attClass='all'; let _attTeacherMap={};
 let _aDoubtFilter='all';
+let _adSub=null;
+function adPickSub(s){ _adSub=s?decodeURIComponent(s):null; aRenderDoubts(); }
 async function loadADoubts(){
   const el=document.getElementById('a-doubts-content');
   try{
-    const all=await api('/api/admin/doubts');
-    window._aDoubts=all;
+    const [all,ov]=await Promise.all([api('/api/admin/doubts'),api('/api/admin/doubts-overview')]);
+    window._aDoubts=all; window._aDoubtOv=ov;
     aRenderDoubts();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function aDoubtFilter(f){ _aDoubtFilter=f; aRenderDoubts(); }
+function _adCards(){
+  const ov=window._aDoubtOv||{}; const subs=ov.subjects||[];
+  if(!subs.length) return '';
+  const fmt=m=>m==null?'\u2014':(m<60?m+'m':(m<1440?Math.floor(m/60)+'h':Math.floor(m/1440)+'d'));
+  const cards=subs.map(s=>`<div class="ad-card ${_adSub===s.subject?'active':''}" onclick="adPickSub('${encodeURIComponent(s.subject)}')">
+      <div class="ad-top"><div class="ad-sub">${esc(s.subject)}</div>${s.pending?`<span class="ad-pend">${s.pending} pending</span>`:'<span class="ad-clear">All clear</span>'}</div>
+      <div class="ad-teacher">${ic('user')} ${esc(s.teacher||'\u2014')}</div>
+      <div class="ad-stats"><span><b>${s.total}</b> total</span><span class="ad-ok"><b>${s.resolved}</b> resolved</span><span class="ad-wait"><b>${s.pending}</b> pending</span></div>
+      ${s.pending?`<div class="ad-oldest">Oldest pending: <b>${fmt(s.oldest_pending_min)}</b></div>`:''}
+    </div>`).join('');
+  const back=_adSub?`<button class="btn btn-ghost btn-sm" onclick="adPickSub('')" style="margin-bottom:12px">\u2190 All subjects</button>`:'';
+  return `<div class="ad-grid">${cards}</div>${back}`;
+}
 function aRenderDoubts(){
   const el=document.getElementById('a-doubts-content');
   const all=window._aDoubts||[];
   const pending=all.filter(d=>d.status==='pending').length, resolved=all.filter(d=>d.status==='resolved').length;
-  let list=all;
-  if(_aDoubtFilter==='pending') list=all.filter(d=>d.status==='pending');
-  else if(_aDoubtFilter==='resolved') list=all.filter(d=>d.status==='resolved');
+  let list=_adSub?all.filter(d=>d.subject===_adSub):all;
+  if(_aDoubtFilter==='pending') list=list.filter(d=>d.status==='pending');
+  else if(_aDoubtFilter==='resolved') list=list.filter(d=>d.status==='resolved');
   const fbtn=(f,label)=>`<button class="btn btn-sm ${_aDoubtFilter===f?'btn-primary':'btn-ghost'}" onclick="aDoubtFilter('${f}')">${label}</button>`;
   const cards=list.length?list.map(d=>{
     const when=d.created_at?new Date(d.created_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
@@ -3317,7 +3448,7 @@ function aRenderDoubts(){
     return `<div class="dcard"><div class="dcard-head"><div class="dcard-who"><b>${esc(d.student_name)}</b>${d.student_phone?' · '+esc(d.student_phone):''} asked <b>${esc(d.teacher_name)}</b><div style="margin-top:3px">${esc(d.subject||'')}${d.topic?' · '+esc(d.topic):''} · ${esc(when)}</div></div><span class="tag ${d.status==='resolved'?'tag-done':'tag-pending'}">${d.status==='resolved'?'Resolved':'Pending'}</span></div>
       <div class="chat-thread"><div class="bubble bubble-q"><div class="who">${esc(d.student_name)} (Student)</div>${esc(d.question||'')}${qimg}</div>${ans}</div></div>`;
   }).join(''):`<div class="empty-state"><p>No doubts in this view.</p></div>`;
-  el.innerHTML=`<div class="card-header" style="padding:0 4px 18px;border:none"><h3 style="font-size:1.3rem">Doubts Oversight</h3></div>
+  el.innerHTML=_adCards()+`<div class="card-header" style="padding:0 4px 18px;border:none"><h3 style="font-size:1.3rem">Doubts Oversight</h3></div>
     <div class="dfilter">${fbtn('all','All ('+all.length+')')}${fbtn('pending','Pending ('+pending+')')}${fbtn('resolved','Resolved ('+resolved+')')}</div>
     ${cards}`;
   list.forEach(d=>{ if(d.has_image) loadImgInto2('adimg-'+d.id,'/api/admin/doubt/'+d.id+'/image'); });
@@ -3590,6 +3721,7 @@ function sPage(page,el){
   document.getElementById('s-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#student-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
   const titles={dashboard:'Home',timetable:'Time Table',materials:'Materials',teachers:'Know Your Teacher',dpp:'DPP Submit',tests:'Tests',doubts:'Doubts',progress:'Progress',notifications:'Notifications',profile:'My Profile',qbank:'Question Bank'};
+  _setPage(titles[page]||page);
   document.getElementById('s-title').textContent=titles[page];
   stopCountdown();
   if(page==='dashboard') loadSDashboard();
@@ -4420,12 +4552,16 @@ function renderStudentTimetable(entries, containerId, opts={}){
   const tl=buildTimeline(entries);
   const subjects=Object.keys(tl);
   const active=opts.activeSubject&&tl[opts.activeSubject]?opts.activeSubject:subjects[0];
+  const _count=list=>{ let t=0,d=0; list.forEach(it=>{ if(it.kind==='chapter') it.parts.forEach(p=>{t++; if(_partDone(p))d++;}); else {t++; if(_partDone(it.data))d++;} }); return [t,d]; };
   let totalParts=0, doneParts=0;
-  subjects.forEach(s=>tl[s].forEach(it=>{ if(it.kind==='chapter') it.parts.forEach(p=>{totalParts++; if(_partDone(p))doneParts++;}); else {totalParts++; if(_partDone(it.data))doneParts++;} }));
+  subjects.forEach(s=>{ const [t,d]=_count(tl[s]); totalParts+=t; doneParts+=d; });
   const pct=totalParts?Math.round(doneParts/totalParts*100):0;
+  // the hero follows the selected subject, with the overall figure kept alongside
+  const [subT,subD]=active?_count(tl[active]):[0,0];
+  const subPct=subT?Math.round(subD/subT*100):0;
   _ttLast={entries,containerId,opts,student:true};
   const toggle=`<div class="tt-toggle"><button class="${_ttView==='timeline'?'active':''}" onclick="setTtView('timeline')">Chapter Timeline</button><button class="${_ttView==='weekly'?'active':''}" onclick="setTtView('weekly')">Weekly View</button></div>`;
-  const overall=`<div class="ov-card"><div class="ov-top"><div><div class="ov-lbl">Overall Progress</div><div class="ov-big">${doneParts} / ${totalParts} Classes</div></div><div class="ov-pct"><div class="ov-pct-num">${pct}%</div><div class="ov-pct-lbl">Completed</div></div></div><div class="ov-bar"><div class="ov-fill" style="width:${pct}%"></div></div><div class="ov-badges">${opts.batch?`<span class="ov-badge">${esc(opts.batch)}</span><span class="ov-badge">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span>`:(opts.scopeLabel?`<span class="ov-badge">${esc(opts.scopeLabel)}</span>`:'')}<span class="ov-badge-plain">${subjects.length} subject${subjects.length>1?'s':''}</span></div></div>`;
+  const overall=`<div class="ov-card"><div class="ov-top"><div><div class="ov-lbl">${esc(active||'Overall')} Progress</div><div class="ov-big">${subD} / ${subT} Classes</div></div><div class="ov-pct"><div class="ov-pct-num">${subPct}%</div><div class="ov-pct-lbl">Completed</div></div></div><div class="ov-bar"><div class="ov-fill" style="width:${subPct}%"></div></div><div class="ov-badges">${opts.batch?`<span class="ov-badge">${esc(opts.batch)}</span><span class="ov-badge">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span>`:(opts.scopeLabel?`<span class="ov-badge">${esc(opts.scopeLabel)}</span>`:'')}<span class="ov-badge-plain">${subjects.length} subject${subjects.length>1?'s':''}</span><span class="ov-badge-plain ov-all">All subjects: <b>${doneParts}/${totalParts}</b> \u00b7 ${pct}%</span></div></div>`;
   const _tab=opts.onTab||'sSetSubj';
   const tabs=subjects.map(s=>{ const n=tl[s].filter(it=>it.kind==='chapter').length||tl[s].length; return `<div class="subj-tab ${s===active?'active':''}" onclick="${_tab}('${encodeURIComponent(s)}')">${esc(s)}<span class="cnt-badge">${n}</span></div>`; }).join('');
   const body=_ttView==='weekly'?renderStudentWeekly(tl,subjects,opts):renderStudentChapters(tl[active],active,opts);

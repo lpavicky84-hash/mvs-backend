@@ -852,11 +852,50 @@ def teacher_complete_class(entry_id: int, payload: dict, background_tasks: Backg
     e.dpp_given = bool(payload.get("dpp_given"))
     e.remarks = (payload.get("remarks") or "").strip() or None
     db.commit()
+    _maybe_warn_late(db, tp, e)
     if background_tasks is not None:
         background_tasks.add_task(_notify_class_done, e.subject, e.chapter or "",
                                   e.part or "", current_user.name or "Your teacher",
                                   bool(e.dpp_given))
     return {"message": "Class marked as completed."}
+
+
+_LATE_WARN_THRESHOLD = 2      # more than this many late starts in a month -> remind
+
+
+def _maybe_warn_late(db, tp, entry):
+    """If this teacher has now started more than _LATE_WARN_THRESHOLD classes late
+    this month, remind them once. Repeat delays hurt the institute's reputation and
+    unsettle students, so the reminder is sent automatically."""
+    try:
+        from models import TimetableEntry
+        d = _delay_of(entry)
+        if _delay_band(d) not in ("minor", "late"):
+            return
+        today = date.today()
+        month_start = date(today.year, today.month, 1)
+        rows = db.query(TimetableEntry).filter(
+            TimetableEntry.teacher_id == tp.id,
+            TimetableEntry.completed == True,
+            TimetableEntry.entry_date >= month_start).all()
+        late = sum(1 for r in rows if _delay_band(_delay_of(r)) in ("minor", "late"))
+        if late <= _LATE_WARN_THRESHOLD or not tp.user:
+            return
+        title = "\u26a0\ufe0f Class Punctuality Reminder"
+        # only remind once a month
+        seen = db.query(Notification).filter(
+            Notification.user_id == tp.user.id, Notification.title == title,
+            Notification.created_at >= datetime(today.year, today.month, 1)).first()
+        if seen:
+            return
+        msg = ("Is mahine aapki %d classes late shuru hui hain.\n\n"
+               "Isse MVS Foundation ki reputation par asar padta hai aur bachche panic hote hain. "
+               "Ye aapki monthly report par bhi impact karega.\n\n"
+               "Please classes time par shuru karein." % late)
+        notify(db, tp.user.id, title, msg, "warning")
+        db.commit()
+    except Exception:
+        db.rollback()
 
 
 def _notify_class_done(subject, chapter, part, teacher_name, dpp_given):

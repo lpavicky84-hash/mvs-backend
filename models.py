@@ -530,6 +530,20 @@ class StudentStats(Base):
     updated_at    = Column(DateTime, default=func.now(), onupdate=func.now())
 
 
+class UserSession(Base):
+    """One row per login. Powers: live users (students AND teachers), what page
+    they are on right now, how many times they have logged in, and who has never
+    logged in at all."""
+    __tablename__ = "user_sessions"
+    id           = Column(Integer, primary_key=True)
+    user_id      = Column(Integer, index=True)
+    role         = Column(String(12), index=True)     # student | teacher | admin
+    started_at   = Column(DateTime, default=func.now(), index=True)
+    last_seen    = Column(DateTime, default=func.now(), index=True)
+    current_page = Column(String(40), nullable=True)  # which section they are on
+    ip           = Column(String(45), nullable=True)
+
+
 class ActivityLog(Base):
     """Lightweight per-student activity feed + consistency-calendar source."""
     __tablename__ = "activity_logs"

@@ -127,3 +127,41 @@ def lookup_by_phone(phone: str, db: Session = Depends(get_db)):
         "user_id": sp.user.user_id,
         "password": sp.plain_password or ""
     }
+
+
+# ==================================================== PRESENCE (all roles)
+SESSION_IDLE_MIN = 3      # no ping for this long => the session is considered over
+
+
+@router.post("/ping")
+def presence_ping(payload: dict = None, request: Request = None,
+                  db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """Heartbeat from any logged-in user. Keeps the live view fresh, records which
+    section they are on, and starts a new session row after an idle gap (which is
+    what makes the login count meaningful)."""
+    from models import UserSession
+    from datetime import timedelta
+    payload = payload or {}
+    page = (payload.get("page") or "").strip()[:40] or None
+    now = datetime.now()
+    role = getattr(current_user.role, "value", str(current_user.role))
+    s = db.query(UserSession).filter(
+        UserSession.user_id == current_user.id).order_by(UserSession.last_seen.desc()).first()
+    if s and s.last_seen and (now - s.last_seen) <= timedelta(minutes=SESSION_IDLE_MIN):
+        s.last_seen = now
+        if page:
+            s.current_page = page
+    else:
+        s = UserSession(user_id=current_user.id, role=role, started_at=now,
+                        last_seen=now, current_page=page,
+                        ip=(request.client.host if request and request.client else None))
+        db.add(s)
+    # keep the student's own columns in sync (used elsewhere)
+    if role == "student":
+        sp = db.query(StudentProfile).filter(StudentProfile.user_id == current_user.id).first()
+        if sp:
+            if not sp.session_start or not sp.last_seen or (now - sp.last_seen) > timedelta(minutes=SESSION_IDLE_MIN):
+                sp.session_start = now
+            sp.last_seen = now
+    db.commit()
+    return {"ok": True}
