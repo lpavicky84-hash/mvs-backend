@@ -679,6 +679,21 @@
   .qa-btn.mvc .qa-ic{background:rgba(124,58,237,.12)}.qa-btn.mvc .qa-ic svg{stroke:#7c3aed}
   .qa-lbl{font-size:.8rem;font-weight:600;color:var(--text)}
   .ws-empty{text-align:center;padding:22px 12px;color:var(--text-muted)}
+  .tc-count{font-size:.76rem;font-weight:700;color:var(--text-muted);background:var(--bg);border:1px solid var(--border);border-radius:99px;padding:4px 11px}
+  .tc-row{display:flex;align-items:center;gap:14px;padding:13px 0;border-bottom:1px solid var(--border)}
+  .tc-row:last-child{border-bottom:none}
+  .tc-time{flex:0 0 92px;display:flex;align-items:center}
+  .tc-t{font-size:.82rem;font-weight:800;color:var(--primary);background:rgba(37,99,235,.09);border-radius:8px;padding:6px 10px;white-space:nowrap}
+  .tc-body{flex:1;min-width:0}
+  .tc-sub{font-size:.95rem;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px}
+  .tc-tag{font-size:.62rem;font-weight:800;letter-spacing:.05em;background:#fee2e2;color:#b91c1c;border-radius:5px;padding:2px 6px}
+  .dark .tc-tag{background:rgba(220,38,38,.2);color:#fca5a5}
+  .tc-topic{font-size:.8rem;color:var(--text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tc-teach{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+  .tc-photo{width:30px;height:30px;border-radius:50%;object-fit:cover;border:2px solid var(--border);flex:0 0 30px}
+  .tc-ph{display:flex;align-items:center;justify-content:center;background:var(--primary);color:#fff;font-weight:800;font-size:.75rem;border:none}
+  .tc-tname{font-size:.82rem;font-weight:600;color:var(--text-muted);white-space:nowrap}
+  @media(max-width:620px){.tc-tname{display:none}.tc-time{flex:0 0 78px}}
   .ws-empty .big{font-size:1.5rem;margin-bottom:4px}
   .ws-empty p{font-size:.88rem;font-weight:600;color:var(--text)}
   .ws-empty small{font-size:.8rem;color:var(--text-muted)}
@@ -986,7 +1001,7 @@ async function smartCompress(file,statusCb){
   }
   return {file, ok:file.size<=MAXB};
 }
-const NAV_ICON={'dashboard':'grid','home':'grid','upload pdf':'upload','time table':'calendar','dpp':'clipboard','dpp submit':'upload','tests':'edit','study material':'book','materials':'folder','doubts':'help','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','message admin':'bell','doubts':'help','question bank':'book'};
+const NAV_ICON={'dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','message admin':'bell','question bank':'book'};
 function injectNavIcons(){
   document.querySelectorAll('.nav-item').forEach(el=>{
     if(el.querySelector('svg')) return;
@@ -1702,7 +1717,7 @@ async function loadTTimetable(){
       return;
     }
     _ttEntries=await api('/api/teacher/my-timetable');
-    el.innerHTML=`${tabs}<div class="card"><div class="card-header"><h3>My Time Table</h3><button class="btn btn-primary btn-sm" onclick="openRequestClass()">${ic('calendar')} Add Extra Class</button></div><div class="card-body"><div class="alert alert-info">This timetable was uploaded by the admin. You can edit the topic on each part, add a <strong>Lecture report</strong> (with a verification question), and mark a class Done. <strong>Extra class</strong> appears here once the admin approves.</div><div id="t-tline-wrap"></div></div></div>`;
+    el.innerHTML=`${tabs}<div class="card"><div class="card-header"><h3>My Time Table</h3><button class="btn btn-primary btn-sm" onclick="openRequestClass()">${ic('calendar')} Add Extra Class</button></div><div class="card-body"><div id="t-tline-wrap"></div></div></div>`;
     _ttActiveSub=_ttActiveSub||(_ttEntries[0]||{}).subject||'';
     renderStudentTimetable(_ttEntries,'t-tline-wrap',{onEdit:true,onLecture:true,onComplete:'openClassReport',emptyMsg:'No timetable for your subjects yet.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'});
   }catch(e){ el.innerHTML=errHtml(e); }
@@ -3317,12 +3332,52 @@ async function loadSDashboard(){
 
     el.innerHTML=`${greetingCard(NAME)}<div id="s-live-banner" style="display:none"></div>
       ${prio}
+      <div id="s-today-wrap"></div>
       <div class="ws-grid">${tasksHtml}${pendHtml}</div>
       <div class="ws-grid">${ovHtml}${mpHtml}</div>
       <div class="ws-grid">${dlHtml}${acHtml}</div>
       ${qaHtml}`;
     loadStudentLiveBanner();
+    _renderTodayClassesStudent();
   }catch(e){ el.innerHTML=errHtml(e); }
+}
+
+// Today's Classes on the student dashboard — subject, teacher (photo + name) and time slot.
+async function _renderTodayClassesStudent(){
+  const wrap=document.getElementById('s-today-wrap'); if(!wrap) return;
+  try{
+    const plan=await api('/api/student/timetable-plan');
+    const todayStr=new Date().toLocaleDateString('en-CA');
+    const today=plan.filter(e=>e.date===todayStr)
+                     .sort((a,b)=>_timeKey(a.time)-_timeKey(b.time));
+    if(!today.length){
+      wrap.innerHTML=`<div class="card"><div class="card-header"><h3>Today's Classes</h3></div><div class="card-body"><div class="ws-empty"><div class="big">\u2615</div><p>No classes scheduled today</p><small>Use the free time to revise or clear pending work.</small></div></div></div>`;
+      return;
+    }
+    const rows=today.map(c=>{
+      const isTest=(c.type||'')==='test'||/test|exam/i.test(c.chapter||'');
+      const photo=c.teacher_id?`<img class="tc-photo" src="" data-tid="${c.teacher_id}" alt="">`:`<div class="tc-photo tc-ph">${esc((c.teacher_name||'T').charAt(0))}</div>`;
+      const topic=esc(c.part||c.chapter||'');
+      return `<div class="tc-row"><div class="tc-time"><span class="tc-t">${esc(c.time||'TBA')}</span></div><div class="tc-body"><div class="tc-sub">${esc(c.subject)}${isTest?'<span class="tc-tag">TEST</span>':''}</div>${topic?`<div class="tc-topic">${topic}</div>`:''}</div><div class="tc-teach">${photo}<span class="tc-tname">${esc(c.teacher_name||'\u2014')}</span></div></div>`;
+    }).join('');
+    wrap.innerHTML=`<div class="card"><div class="card-header"><h3>Today's Classes</h3><span class="tc-count">${today.length} class${today.length===1?'':'es'}</span></div><div class="card-body">${rows}</div></div>`;
+    // load teacher photos
+    wrap.querySelectorAll('img.tc-photo[data-tid]').forEach(async im=>{
+      try{
+        const r=await fetch(API+`/api/student/teacher/${im.dataset.tid}/photo`,{headers:{Authorization:'Bearer '+TOKEN}});
+        if(!r.ok){ im.replaceWith(Object.assign(document.createElement('div'),{className:'tc-photo tc-ph',textContent:'T'})); return; }
+        im.src=URL.createObjectURL(await r.blob());
+      }catch(e){}
+    });
+  }catch(e){ wrap.innerHTML=''; }
+}
+function _timeKey(t){
+  if(!t) return 9999;
+  const m=String(t).match(/(\d{1,2})[:.](\d{2})\s*(am|pm)?/i);
+  if(!m) return 9999;
+  let h=parseInt(m[1]), mi=parseInt(m[2]); const ap=(m[3]||'').toLowerCase();
+  if(ap==='pm'&&h<12) h+=12; if(ap==='am'&&h===12) h=0;
+  return h*60+mi;
 }
 
 let _sttEntries=[]; let _sttActiveSub='';

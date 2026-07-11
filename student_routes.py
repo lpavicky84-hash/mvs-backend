@@ -607,7 +607,8 @@ def timetable_plan(db: Session = Depends(get_db), current_user=Depends(get_stude
             "chapter": e.chapter, "part": e.part,
             "date": str(e.entry_date) if e.entry_date else None,
             "day": e.day, "time": getattr(e,"time_text",None),
-            "type": getattr(e,"entry_type",None) or "chapter", "teacher_name": tname,
+            "type": getattr(e,"entry_type",None) or "chapter",
+            "teacher_id": e.teacher_id, "teacher_name": tname,
             "lecture_id": (lec.id if lec else None),
             "verif_status": verif_status, "cooling": cooling,
         })
