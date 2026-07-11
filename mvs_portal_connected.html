@@ -221,6 +221,7 @@
   .dark .cr-delay.ontime{background:rgba(22,163,74,.18);color:#86efac}
   .dark .cr-delay.minor{background:rgba(245,158,11,.18);color:#fcd34d}
   .dark .cr-delay.late{background:rgba(220,38,38,.18);color:#fca5a5}
+  .tst-eng{display:flex;gap:6px;margin-right:6px}
   .dp-row{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--border);flex-wrap:wrap}
   .dp-row:last-child{border-bottom:none}
   .dp-main{flex:1;min-width:220px}
@@ -2190,32 +2191,48 @@ function _mtPaint(wrapId){
   items.forEach(i=>{ const k=_MT_CAT[i.type]?_MT_CAT[i.type].label:(i.category||'Other Material'); (byCat[k]=byCat[k]||[]).push(i); });
   const order=['Class Notes','DPP','Tests'];
   const keys=Object.keys(byCat).sort((a,b)=>{ const ia=order.indexOf(a),ib=order.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib)||a.localeCompare(b); });
-  let html=`<div class="sm-head" style="display:flex;align-items:center;gap:14px"><button class="btn btn-ghost btn-sm" onclick="_mtBack('${wrapId}')">\u2190 Back</button><div><h2 style="margin:0;font-size:1.4rem">${esc(sub.subject)}</h2><p style="margin:0">Class Notes, DPP &amp; other material</p></div></div>`;
+  const who=_mtBase.indexOf('admin')>=0?'admin':'teacher';
+  let html=`<div class="sm-head" style="display:flex;align-items:center;gap:14px"><button class="btn btn-ghost btn-sm" onclick="_mtBack('${wrapId}')">\u2190 Back</button><div><h2 style="margin:0;font-size:1.4rem">${esc(sub.subject)}</h2><p style="margin:0">Class Notes, DPP &amp; other material</p></div></div><div class="card"><div class="card-body">`;
   keys.forEach(cat=>{
     const meta=Object.values(_MT_CAT).find(m=>m.label===cat)||{icon:'folder',badge:'sc-amber'};
-    const rows=byCat[cat].map(i=>`<tr>
+    const rows=byCat[cat].map(i=>{
+      const fname=(i.filename||((i.title||cat)+'.pdf')).replace(/'/g,'');
+      return `<tr>
       <td class="mat-ch">${esc(i.chapter||'\u2014')}</td>
       <td>${i.part?esc(i.part):'<span class="mt-dim">Whole chapter</span>'}</td>
       <td><div class="mat-file">${ic('book')}${esc(i.filename||i.title||'')}</div></td>
       <td class="mt-dim">${esc(i.date)}</td>
       <td><button class="mt-eng" title="Students who viewed" onclick="openMatAudience(${i.id},'view')">${ic('users')} ${i.views}</button></td>
       <td><button class="mt-eng" title="Students who downloaded" onclick="openMatAudience(${i.id},'download')">${ic('download')} ${i.downloads}</button></td>
-    </tr>`).join('');
-    html+=`<div class="mat-cat"><div class="mat-cat-head" onclick="_mtToggle(this)"><div class="mc-badge ${meta.badge}">${ic(meta.icon)}</div>${esc(cat)}<span class="mc-count">${byCat[cat].length} file${byCat[cat].length>1?'s':''}</span><span class="mc-chev">\u203a</span></div><div class="mat-twrap"><table class="mat-table"><thead><tr><th>Chapter</th><th>Class / Part</th><th>File</th><th>Uploaded</th><th>Views</th><th>Downloads</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+      <td class="mat-dl-cell"><button class="btn btn-primary btn-sm" onclick="downloadMaterial('${who}',${i.id},'${esc(fname)}')">${ic('download')} Download</button></td>
+    </tr>`;}).join('');
+    html+=`<div class="mat-cat"><div class="mat-cat-head" onclick="_mtToggle(this)"><div class="mc-badge ${meta.badge}">${ic(meta.icon)}</div>${esc(cat)}<span class="mc-count">${byCat[cat].length} file${byCat[cat].length>1?'s':''}</span><span class="mc-chev">\u203a</span></div><div class="mat-twrap"><table class="mat-table"><thead><tr><th>Chapter</th><th>Class / Part</th><th>File</th><th>Uploaded</th><th>Views</th><th>Downloads</th><th style="text-align:right">Download</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   });
+  html+=`</div></div>`;
   wrap.innerHTML=html;
+}
+
+async function openExamAudience(eid,which){
+  showModal('Student Engagement','<div id="ma-body"><div class="spinner"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{
+    const d=await api('/api/teacher/exam/'+eid+'/audience');
+    _paintAudience(d,which);
+  }catch(e){ document.getElementById('ma-body').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
+}
+function _paintAudience(d,which){
+  const list=(which==='download'?d.downloaders:d.viewers)||[];
+  const m=d.material||{};
+  const title=`${esc(m.title||'')}${m.part?' \u00b7 '+esc(m.part):''}`;
+  const rows=list.length?list.map(s=>`<div class="ma-row"><div class="ma-av">${esc((s.name||'S').charAt(0))}</div><div class="ma-main"><div class="ma-name">${esc(s.name)}</div><div class="ma-at">${esc(s.at)}</div></div></div>`).join('')
+    :`<div class="ws-empty"><p>No students yet</p><small>${which==='download'?'Nobody has downloaded this yet.':'Nobody has opened this yet.'}</small></div>`;
+  document.getElementById('ma-body').innerHTML=`<div class="alert alert-info">${title}</div><div class="ma-head">${which==='download'?'Downloaded by':'Viewed by'} <b>${list.length}</b> student${list.length===1?'':'s'}</div>${rows}`;
 }
 
 async function openMatAudience(mid,which){
   showModal('Student Engagement','<div id="ma-body"><div class="spinner"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
   try{
     const d=await api(_mtBase+'/material/'+mid+'/audience');
-    const list=(which==='download'?d.downloaders:d.viewers)||[];
-    const m=d.material||{};
-    const title=`${esc(m.title||'')}${m.part?' \u00b7 '+esc(m.part):''}`;
-    const rows=list.length?list.map(s=>`<div class="ma-row"><div class="ma-av">${esc((s.name||'S').charAt(0))}</div><div class="ma-main"><div class="ma-name">${esc(s.name)}</div><div class="ma-at">${esc(s.at)}</div></div></div>`).join('')
-      :`<div class="ws-empty"><p>No students yet</p><small>${which==='download'?'Nobody has downloaded this file.':'Nobody has opened this file.'}</small></div>`;
-    document.getElementById('ma-body').innerHTML=`<div class="alert alert-info">${title}</div><div class="ma-head">${which==='download'?'Downloaded by':'Viewed by'} <b>${list.length}</b> student${list.length===1?'':'s'}</div>${rows}`;
+    _paintAudience(d,which);
   }catch(e){ document.getElementById('ma-body').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
 }
 
@@ -2423,7 +2440,7 @@ async function loadTTests(){
     if(!exams.length){ html+=`<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>No tests created yet. Create an MCQ or Subjective test \u2014 students take it and it is auto-graded.</p></div></div></div>`; }
     else { html+=`<div class="tst-list">`+exams.map(e=>{
       const tb=e.test_type==='mcq'?'<span class="ex-tbadge mcq">MCQ</span>':'<span class="ex-tbadge subj">Subjective</span>';
-      return `<div class="tst-item"><div class="tst-ic">${ic('clipboard')}</div><div class="tst-body"><div class="tst-title">${esc(e.title)} ${tb}</div><div class="tst-meta"><span>${esc(e.subject||'')}</span>${e.chapter?'<span class="d">\u00b7</span><span>'+esc(e.chapter)+'</span>':''}<span class="d">\u00b7</span><span>${e.questions} Qs</span><span class="d">\u00b7</span><span>${e.total_marks} marks</span><span class="d">\u00b7</span><span>${e.duration_min} min</span></div><div class="tst-scores"><span class="tst-score" style="background:#e0edff;color:#1d4ed8">${e.attempts} submitted</span><span class="tst-score" style="background:#dcfce7;color:#15803d">${e.graded} graded</span></div></div><div class="tst-right"><button class="btn btn-ghost btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results</button><div class="tst-pdf"><button class="btn btn-ghost btn-sm tst-pdfbtn" onclick="downloadExamPdf(${e.id},'english')">${ic('download')} PDF · EN</button>${(e.medium==='Bilingual'||e.medium==='Hindi')?`<button class="btn btn-ghost btn-sm tst-pdfbtn" onclick="downloadExamPdf(${e.id},'hindi')">${ic('download')} PDF · हिंदी</button>`:''}</div></div></div>`;
+      return `<div class="tst-item"><div class="tst-ic">${ic('clipboard')}</div><div class="tst-body"><div class="tst-title">${esc(e.title)} ${tb}</div><div class="tst-meta"><span>${esc(e.subject||'')}</span>${e.chapter?'<span class="d">\u00b7</span><span>'+esc(e.chapter)+'</span>':''}<span class="d">\u00b7</span><span>${e.questions} Qs</span><span class="d">\u00b7</span><span>${e.total_marks} marks</span><span class="d">\u00b7</span><span>${e.duration_min} min</span></div><div class="tst-scores"><span class="tst-score" style="background:#e0edff;color:#1d4ed8">${e.attempts} submitted</span><span class="tst-score" style="background:#dcfce7;color:#15803d">${e.graded} graded</span></div></div><div class="tst-right"><div class="tst-eng"><button class="mt-eng" title="Students who opened this test" onclick="openExamAudience(${e.id},'view')">${ic('users')} ${e.views||0}</button><button class="mt-eng" title="Students who downloaded the paper" onclick="openExamAudience(${e.id},'download')">${ic('download')} ${e.downloads||0}</button></div><button class="btn btn-ghost btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results</button><div class="tst-pdf"><button class="btn btn-ghost btn-sm tst-pdfbtn" onclick="downloadExamPdf(${e.id},'english')">${ic('download')} PDF · EN</button>${(e.medium==='Bilingual'||e.medium==='Hindi')?`<button class="btn btn-ghost btn-sm tst-pdfbtn" onclick="downloadExamPdf(${e.id},'hindi')">${ic('download')} PDF · हिंदी</button>`:''}</div></div></div>`;
     }).join('')+`</div>`; }
     html+=`<div style="margin-top:18px"><button class="btn btn-ghost btn-sm" onclick="openUploadHub({typeLabel:'Test Paper'})">${ic('upload')} Upload PDF Test (old method)</button></div>`;
     el.innerHTML=html;
@@ -3821,13 +3838,23 @@ async function loadSTests(){
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function sTestFilter(f){ window._sTestFilter=f; loadSTests(); }
+async function downloadPaper(id,medium){
+  try{
+    toast('Preparing the question paper\u2026');
+    const r=await fetch(API+'/api/student/exam/'+id+'/paper?medium='+(medium||'english'),{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok){ toast('Could not download the paper',true); return; }
+    const b=await r.blob(); const u=URL.createObjectURL(b);
+    const a=document.createElement('a'); a.href=u; a.download='question-paper.pdf'; a.click(); URL.revokeObjectURL(u);
+  }catch(e){ toast('Download error',true); }
+}
 function examCardHTML(e){
   const meta=`<span>${esc(e.subject||'')}</span>${e.chapter?`<span class="d">\u00b7</span><span>${esc(e.chapter)}</span>`:''}<span class="d">\u00b7</span><span>${e.questions} Qs</span><span class="d">\u00b7</span><span>${e.total_marks} marks</span><span class="d">\u00b7</span><span class="tst-dur">${e.duration_min} min</span>`;
   let right, scores='';
   if(e.status==='graded'){ const pct=e.total_marks?Math.round((e.awarded||0)/e.total_marks*100):0; scores=`<div class="tst-scores"><span class="tst-score">Score: ${e.awarded}/${e.total_marks}</span><span class="tst-score" style="background:#e0edff;color:#1d4ed8">${pct}%</span></div>`; right=`<button class="btn btn-ghost btn-sm" onclick="openExamResult(${e.id})">View Result</button>`; }
   else if(e.status==='grading'){ right=`<button class="btn btn-ghost btn-sm" disabled>Checking\u2026</button>`; }
   else { right=`<button class="btn btn-primary btn-sm" onclick="openExamPlayer(${e.id})">Start</button>`; }
-  return `<div class="tst-item"><div class="tst-ic">${ic('clipboard')}</div><div class="tst-body"><div class="tst-title">${esc(e.title)}</div><div class="tst-meta">${meta}</div>${scores}</div><div class="tst-right">${right}</div></div>`;
+  const paper=`<button class="btn btn-ghost btn-sm" title="Download the question paper" onclick="downloadPaper(${e.id},'english')">${ic('download')} Paper</button>`;
+  return `<div class="tst-item"><div class="tst-ic">${ic('clipboard')}</div><div class="tst-body"><div class="tst-title">${esc(e.title)}</div><div class="tst-meta">${meta}</div>${scores}</div><div class="tst-right">${paper}${right}</div></div>`;
 }
 async function openExamPlayer(id){
   const el=document.getElementById('s-tests-content'); el.innerHTML='<div class="spinner"></div>';

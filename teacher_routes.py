@@ -1116,8 +1116,14 @@ def teacher_exam_pdf(exam_id: int, medium: str = "english",
 
 @router.get("/exams")
 def list_exams(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import ExamView
     tp = get_teacher_profile(current_user, db)
     rows = db.query(Exam).filter(Exam.teacher_id == tp.id, Exam.is_active == True).order_by(Exam.created_at.desc()).all()
+    ids = [e.id for e in rows]
+    views, downloads = {}, {}
+    if ids:
+        for v in db.query(ExamView).filter(ExamView.exam_id.in_(ids)).all():
+            (downloads if v.action == "download" else views).setdefault(v.exam_id, set()).add(v.student_id)
     out = []
     for e in rows:
         nq = db.query(ExamQuestion).filter(ExamQuestion.exam_id == e.id).count()
@@ -1126,8 +1132,33 @@ def list_exams(db: Session = Depends(get_db), current_user=Depends(get_teacher))
         out.append({"id": e.id, "title": e.title, "subject": e.subject, "chapter": e.chapter,
                     "test_type": e.test_type, "total_marks": e.total_marks, "duration_min": e.duration_min,
                     "medium": e.medium, "questions": nq, "attempts": na, "graded": ng,
+                    "views": len(views.get(e.id, ())), "downloads": len(downloads.get(e.id, ())),
                     "created_at": e.created_at.isoformat() if e.created_at else None})
     return out
+
+
+@router.get("/exam/{exam_id}/audience")
+def exam_audience(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Which students opened / downloaded this test."""
+    from models import ExamView, StudentProfile
+    tp = get_teacher_profile(current_user, db)
+    ex = db.query(Exam).filter(Exam.id == exam_id, Exam.teacher_id == tp.id).first()
+    if not ex:
+        raise HTTPException(404, "Test not found")
+    rows = db.query(ExamView).filter(ExamView.exam_id == exam_id).all()
+    sids = list({r.student_id for r in rows})
+    smap = {}
+    if sids:
+        for sp in db.query(StudentProfile).filter(StudentProfile.id.in_(sids)).all():
+            smap[sp.id] = (sp.user.name if sp.user else ("Student #%d" % sp.id))
+    viewers, downloaders = [], []
+    for r in rows:
+        entry = {"student_id": r.student_id, "name": smap.get(r.student_id, "Student"),
+                 "at": str(r.created_at)[:16]}
+        (downloaders if r.action == "download" else viewers).append(entry)
+    return {"material": {"id": ex.id, "title": ex.title, "type": "test",
+                         "subject": ex.subject, "chapter": ex.chapter, "part": None},
+            "viewers": viewers, "downloaders": downloaders}
 
 @router.get("/exam/{exam_id}/attempts")
 def exam_attempts(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):

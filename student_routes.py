@@ -940,6 +940,38 @@ def student_exams(db: Session = Depends(get_db), current_user=Depends(get_studen
                     "awarded": att.total_awarded if att else None})
     return out
 
+def _log_exam_action(db, exam_id, student_id, action):
+    """Record a student's engagement with a test (once per student per action)."""
+    from models import ExamView
+    try:
+        seen = db.query(ExamView).filter(ExamView.exam_id == exam_id,
+                                         ExamView.student_id == student_id,
+                                         ExamView.action == action).first()
+        if not seen:
+            db.add(ExamView(exam_id=exam_id, student_id=student_id, action=action))
+            db.commit()
+    except Exception:
+        db.rollback()
+
+
+@router.get("/exam/{exam_id}/paper")
+def student_exam_paper(exam_id: int, medium: str = "english", db: Session = Depends(get_db),
+                       current_user=Depends(get_student)):
+    """Download the question paper PDF (counts as a download)."""
+    sp = get_student_profile(current_user, db)
+    ex = db.query(Exam).filter(Exam.id == exam_id, Exam.is_active == True).first()
+    if not ex:
+        raise HTTPException(404, "Test not found")
+    if ex.subject and ex.subject not in (sp.subjects or []):
+        raise HTTPException(403, "Not your subject")
+    qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).order_by(ExamQuestion.q_no).all()
+    from exam_pdf import build_exam_pdf
+    data = build_exam_pdf(ex, qs, medium)
+    _log_exam_action(db, exam_id, sp.id, "download")
+    return Response(content=data, media_type="application/pdf",
+                    headers={"Content-Disposition": 'attachment; filename="%s.pdf"' % (ex.title or "paper")})
+
+
 @router.get("/exam/{exam_id}")
 def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
     sp = get_student_profile(current_user, db)
@@ -947,6 +979,7 @@ def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=D
     if not ex:
         raise HTTPException(404, "Test not found")
     att = db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id, ExamAttempt.student_id == sp.id).first()
+    _log_exam_action(db, exam_id, sp.id, "view")
     qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).order_by(ExamQuestion.q_no).all()
     questions = [{"q_no": q.q_no, "question_text": q.question_text, "max_marks": q.max_marks,
                   "question_text_hi": q.question_text_hi,

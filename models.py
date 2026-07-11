@@ -387,6 +387,16 @@ class MaterialView(Base):
     action      = Column(String(12))   # view | download
     created_at  = Column(DateTime, default=func.now())
 
+class ExamView(Base):
+    """Student engagement with a test: opened it, or downloaded the paper."""
+    __tablename__ = "exam_views"
+    id          = Column(Integer, primary_key=True)
+    exam_id     = Column(Integer, index=True)
+    student_id  = Column(Integer, index=True)
+    action      = Column(String(12))   # view | download
+    created_at  = Column(DateTime, default=func.now())
+
+
 class Exam(Base):
     __tablename__ = "exams"
     id          = Column(Integer, primary_key=True)
