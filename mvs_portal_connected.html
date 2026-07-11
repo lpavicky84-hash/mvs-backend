@@ -208,6 +208,41 @@
   .dark .tst-ic{background:rgba(37,99,235,.2);color:#93c5fd}.dark .tst-score{background:rgba(194,65,12,.22);color:#fdba74}
   .ex-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px}
   .tt-tabs{display:inline-flex;gap:4px;padding:4px;background:var(--bg);border:1px solid var(--border);border-radius:12px;margin-bottom:16px}
+  .cr-sec{font-size:.82rem;font-weight:800;color:var(--text);margin:18px 0 8px;padding-bottom:6px;border-bottom:2px solid var(--border)}
+  .cr-sec-sub{font-weight:500;color:var(--text-muted);font-size:.75rem;margin-left:6px}
+  .cr-delay{display:none}
+  .cr-delay.on{display:flex;align-items:center;gap:8px;margin:8px 0 2px;padding:8px 12px;border-radius:9px;font-size:.82rem;font-weight:700}
+  .cr-delay .cr-dot{width:9px;height:9px;border-radius:50%;flex:0 0 9px}
+  .cr-delay.ontime{background:#dcfce7;color:#14532d}.cr-delay.ontime .cr-dot{background:#16a34a}
+  .cr-delay.minor{background:#fef3c7;color:#78350f}.cr-delay.minor .cr-dot{background:#f59e0b}
+  .cr-delay.late{background:#fee2e2;color:#7f1d1d}.cr-delay.late .cr-dot{background:#dc2626}
+  .dark .cr-delay.ontime{background:rgba(22,163,74,.18);color:#86efac}
+  .dark .cr-delay.minor{background:rgba(245,158,11,.18);color:#fcd34d}
+  .dark .cr-delay.late{background:rgba(220,38,38,.18);color:#fca5a5}
+  .rp-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+  @media(max-width:680px){.rp-stats{grid-template-columns:1fr 1fr}}
+  .rp-stat{padding:16px;border:1px solid var(--border);border-radius:14px;background:var(--bg-card,#fff);text-align:center}
+  .rp-num{font-size:1.6rem;font-weight:800;color:var(--text);line-height:1}
+  .rp-num.good{color:#16a34a}.rp-num.warn{color:#b45309}.rp-num.bad{color:#dc2626}
+  .rp-lbl{font-size:.74rem;color:var(--text-muted);margin-top:5px;font-weight:600}
+  .rp-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
+  .rp-row:last-child{border-bottom:none}
+  .rp-badge{font-size:.7rem;font-weight:800;padding:4px 9px;border-radius:99px;white-space:nowrap}
+  .rp-badge.ontime{background:#dcfce7;color:#15803d}
+  .rp-badge.minor{background:#fef3c7;color:#b45309}
+  .rp-badge.late{background:#fee2e2;color:#b91c1c}
+  .rp-badge.unknown{background:var(--bg);color:var(--text-muted)}
+  .dark .rp-badge.ontime{background:rgba(22,163,74,.2);color:#86efac}
+  .dark .rp-badge.minor{background:rgba(245,158,11,.2);color:#fcd34d}
+  .dark .rp-badge.late{background:rgba(220,38,38,.2);color:#fca5a5}
+  .rp-main{flex:1;min-width:0}
+  .rp-title{font-size:.9rem;font-weight:700;color:var(--text)}
+  .rp-meta{font-size:.76rem;color:var(--text-muted);margin-top:2px}
+  .rp-dur{font-size:.8rem;font-weight:700;color:var(--text-muted);white-space:nowrap}
+  .rp-sub-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font-size:.86rem}
+  .rp-sub-row:last-child{border-bottom:none}
+  .rp-sub-name{font-weight:700;color:var(--text)}
+  .rp-hrs{color:var(--text-muted);font-variant-numeric:tabular-nums}
   .tt-tab{border:none;background:transparent;color:var(--text-muted);font-weight:700;font-size:.85rem;padding:9px 18px;border-radius:9px;cursor:pointer;transition:.15s}
   .tt-tab:hover{color:var(--text)}
   .tt-tab.active{background:var(--primary);color:#fff;box-shadow:0 4px 12px -4px rgba(37,99,235,.5)}
@@ -889,7 +924,7 @@
 </div>
 <div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule Rule:</b> Maximum 2 per month. Frequent reschedules affect MVS Foundation's reputation.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== ADMIN APP ===== -->
-<div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#ef4444">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Students</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Question Bank</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#ef4444" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div></div>
+<div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#ef4444">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Students</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Question Bank</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#ef4444" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== STUDENT APP ===== -->
 <div id="student-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#06b6d4">S</div><div><span>MVS Foundation</span><small>Student</small></div></div><nav class="sidebar-nav"><div class="nav-section">Home</div><div class="nav-item active" onclick="sPage('dashboard',this)"><span>Home</span></div><div class="nav-item" onclick="sPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="sPage('materials',this)"><span>Materials</span></div><div class="nav-item" onclick="sPage('qbank',this)"><span>Question Bank</span></div><div class="nav-item" onclick="sPage('teachers',this)"><span>Know Your Teacher</span></div><div class="nav-section">Work</div><div class="nav-item" onclick="sPage('dpp',this)"><span>DPP Submit</span></div><div class="nav-item" onclick="sPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="sPage('doubts',this)"><span>Doubts</span></div><div class="nav-section">Progress</div><div class="nav-item" onclick="sPage('progress',this)"><span>Progress</span></div><div class="nav-item" onclick="sPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="sPage('profile',this)"><span>My Profile</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#06b6d4" id="s-avatar">S</div><div><span id="s-name">Student</span><small id="s-batch">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="s-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="s-topavatar" title="Set or change profile photo" onclick="openSetStudentPhoto()">S</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('student')"><span class="notif-badge" id="s-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="s-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="s-page-dashboard"><div id="s-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-timetable"><div id="s-timetable-content"><div class="spinner"></div></div></div><div class="page" id="s-page-materials"><div id="s-materials-content"><div class="spinner"></div></div></div><div class="page" id="s-page-qbank"><div id="s-qbank-content"><div class="spinner"></div></div></div><div class="page" id="s-page-teachers"><div id="s-teachers-content"><div class="spinner"></div></div></div><div class="page" id="s-page-dpp"><div id="s-dpp-content"><div class="spinner"></div></div></div><div class="page" id="s-page-tests"><div id="s-tests-content"><div class="spinner"></div></div></div><div class="page" id="s-page-doubts"><div id="s-doubts-content"><div class="spinner"></div></div></div><div class="page" id="s-page-progress"><div id="s-progress-content"><div class="spinner"></div></div></div><div class="page" id="s-page-notifications"><div id="s-notif-content"><div class="spinner"></div></div></div><div class="page" id="s-page-profile"><div id="s-profile-content"><div class="spinner"></div></div></div></div>
 </div><!-- Generic Modal -->
@@ -1001,7 +1036,7 @@ async function smartCompress(file,statusCb){
   }
   return {file, ok:file.size<=MAXB};
 }
-const NAV_ICON={'dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','message admin':'bell','question bank':'book'};
+const NAV_ICON={'dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','message admin':'bell','question bank':'book'};
 function injectNavIcons(){
   document.querySelectorAll('.nav-item').forEach(el=>{
     if(el.querySelector('svg')) return;
@@ -1506,27 +1541,95 @@ async function loadTCompletion(){
 }
 function openClassReport(id){
   const c=((window._tClasses||[]).concat(typeof _ttEntries!=='undefined'?_ttEntries:[])).find(x=>x.id===id)||{};
-  showModal('Submit Class Report',
-    `<div class="form-group"><label>Batch</label><input class="form-control" id="cr-batch" value="${esc(c.class_name||'')}"></div>
-     <div class="form-group"><label>Subject</label><input class="form-control" id="cr-subject" value="${esc(c.subject||'')}" readonly></div>
-     <div class="form-group"><label>Topic Covered</label><input class="form-control" id="cr-topic" value="${esc(c.topic_covered||c.chapter||'')}"></div>
-     <div class="form-group"><label>Class Date</label><input class="form-control" id="cr-date" value="${esc(c.date||'')}" readonly></div>
-     <div style="display:flex;gap:10px"><div class="form-group" style="flex:1"><label>Start Time</label><input class="form-control" id="cr-start" placeholder="12:00" value="${esc(c.start_time||c.time||'')}"></div><div class="form-group" style="flex:1"><label>End Time</label><input class="form-control" id="cr-end" placeholder="13:00" value="${esc(c.end_time||'')}"></div></div>
-     <div class="form-group"><label>Homework Given</label><input class="form-control" id="cr-hw" placeholder="e.g. Exercise 5.1" value="${esc(c.homework||'')}"></div>
-     <div class="form-group"><label class="subj-check" style="cursor:pointer"><input type="checkbox" id="cr-dpp" ${c.dpp_given?'checked':''}> DPP Uploaded</label></div>
-     <div class="form-group"><label>Remarks</label><textarea class="form-control" id="cr-remarks" rows="2">${esc(c.remarks||'')}</textarea></div>
+  // One form = class report + lecture report (with the verification question).
+  _lecQs=[{qtype:'mcq',question:'',question_hi:'',options:['','','',''],options_hi:['','','',''],correct:0,tolerance:'',image_b64:null,option_images:[null,null,null,null],_tab:'en'}];
+  _lecFiles={pdf:null,dpp:null};
+  const sched=esc(c.time||c.time_text||'');
+  showModal('Class Report',
+    `<div class="alert alert-info"><strong>${esc(c.subject||'')}</strong>${c.chapter?' \u00b7 '+esc(c.chapter):''}${c.part?' \u00b7 '+esc(c.part):''}${sched?` \u00b7 Scheduled <strong>${sched}</strong>`:''}</div>
+     <div class="cr-sec">1. Class Details</div>
+     <div class="ex-grid2">
+       <div><label class="ex-lbl">Topic Covered</label><input class="form-control" id="cr-topic" value="${esc(c.topic_covered||c.chapter||'')}"></div>
+       <div><label class="ex-lbl">Homework Given</label><input class="form-control" id="cr-hw" placeholder="e.g. Exercise 5.1" value="${esc(c.homework||'')}"></div>
+     </div>
+     <div class="ex-grid2">
+       <div><label class="ex-lbl">Actual Start Time</label><input class="form-control" id="cr-start" placeholder="e.g. 6:35 pm" value="${esc(c.start_time||c.time||'')}" oninput="crDelayHint()"></div>
+       <div><label class="ex-lbl">End Time</label><input class="form-control" id="cr-end" placeholder="e.g. 7:30 pm" value="${esc(c.end_time||'')}"></div>
+     </div>
+     <input type="hidden" id="cr-sched" value="${sched}">
+     <div id="cr-delay" class="cr-delay"></div>
+     <label class="ex-lbl">Remarks (optional)</label>
+     <textarea class="form-control" id="cr-remarks" rows="2" placeholder="Anything the admin should know">${esc(c.remarks||'')}</textarea>
+
+     <div class="cr-sec">2. Lecture Report <span class="cr-sec-sub">students see this &amp; must answer a question to verify</span></div>
+     <label class="ex-lbl">Lecture Summary</label>
+     <textarea class="form-control" id="lec-summary" rows="2" placeholder="What was taught in this lecture?"></textarea>
+     <div class="ex-grid2">
+       <div><label class="ex-lbl">Notes PDF (optional)</label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-pdf').click()">${ic('upload')} <span id="lec-pdf-name">Upload Notes PDF</span></button><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
+       <div><label class="ex-lbl">DPP PDF (optional)</label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-dpp').click()">${ic('upload')} <span id="lec-dpp-name">Upload DPP PDF</span></button><input type="file" id="lec-dpp" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'dpp')"></div>
+     </div>
+     <div class="cr-sec">3. Verification Question <span class="cr-sec-sub">mandatory \u2014 students answer one at random</span></div>
+     <div id="lec-qs"></div>
+     <button type="button" class="btn btn-ghost btn-sm" onclick="addLecQ()" style="margin-top:6px">+ Add another question</button>
      <div id="cr-status"></div>`,
-    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-success" id="cr-btn" onclick="submitClassReport(${id})">Submit Class Report</button>`);
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-success" id="cr-btn" onclick="submitClassReport(${id})">Submit &amp; Mark Done</button>`);
+  renderLecQs();
+  crDelayHint();
+}
+function crDelayHint(){
+  const box=document.getElementById('cr-delay'); if(!box) return;
+  const d=_calcDelay(val('cr-sched'), val('cr-start'));
+  if(d===null){ box.className='cr-delay'; box.innerHTML=''; return; }
+  const band=d<=5?'ontime':(d<=15?'minor':'late');
+  const txt=d<=0?`Started on time${d<0?` (${-d} min early)`:''}`:(d<=5?`Started ${d} min after the slot \u2014 on time`:`Started ${d} min late`);
+  box.className='cr-delay on '+band;
+  box.innerHTML=`<span class="cr-dot"></span>${esc(txt)}`;
+}
+function _calcDelay(sched,actual){
+  const a=_timeKey(String(sched||'').split(/[-\u2013\u2014]/)[0]), b=_timeKey(actual);
+  if(a===9999||b===9999) return null;
+  return b-a;
 }
 async function submitClassReport(id){
+  // validate the verification question(s) exactly like the lecture form does
+  for(let i=0;i<_lecQs.length;i++){ const q=_lecQs[i];
+    if(!(q.question||'').trim()){ toast('Verification question '+(i+1)+': enter the question text',true); return; }
+    if(q.qtype==='mcq'){ if(q.options.some(o=>!(o||'').trim())){ toast('Question '+(i+1)+': fill all 4 options',true); return; } }
+    if(q.qtype==='image_mcq'){ const im=(q.option_images||[]).filter(x=>x); if(im.length<2){ toast('Question '+(i+1)+': upload at least 2 option images',true); return; } }
+    if(q.qtype==='numerical'&&(q.correct===''||q.correct==null)){ toast('Question '+(i+1)+': enter the correct value',true); return; }
+    if(q.qtype==='fill_blank'&&!(q.correct||'').trim()){ toast('Question '+(i+1)+': enter the correct answer',true); return; }
+  }
+  const c=((window._tClasses||[]).concat(typeof _ttEntries!=='undefined'?_ttEntries:[])).find(x=>x.id===id)||{};
   const btn=document.getElementById('cr-btn'); btn.disabled=true; btn.textContent='Submitting...';
   try{
-    await api('/api/teacher/class/'+id+'/complete','POST',{topic_covered:val('cr-topic'),start_time:val('cr-start'),end_time:val('cr-end'),homework:val('cr-hw'),dpp_given:document.getElementById('cr-dpp').checked,remarks:val('cr-remarks')});
-    toast('Class report submitted.'); closeModal();
+    // 1) class report -> marks the class Done (delay is derived from these times)
+    await api('/api/teacher/class/'+id+'/complete','POST',{topic_covered:val('cr-topic'),start_time:val('cr-start'),end_time:val('cr-end'),homework:val('cr-hw'),dpp_given:!!_lecFiles.dpp,remarks:val('cr-remarks')});
+    // 2) lecture report -> gives students the verification question, auto-linked to this class
+    let pdf_b64=null,dpp_b64=null;
+    if(_lecFiles.pdf) pdf_b64=await _fileB64(_lecFiles.pdf);
+    if(_lecFiles.dpp) dpp_b64=await _fileB64(_lecFiles.dpp);
+    const questions=_lecQs.map(q=>{
+      const base={qtype:q.qtype, question:q.question, question_hi:(q.question_hi||'').trim()||null, image_b64:q.image_b64||null};
+      if(q.qtype==='mcq'){ const oh=(q.options_hi||[]).map(o=>(o||'').trim()); return {...base, options:q.options, options_hi:oh.some(x=>x)?oh:null, correct:q.options[q.correct]}; }
+      if(q.qtype==='image_mcq') return {...base, option_images:q.option_images, correct:String(q.correct)};
+      if(q.qtype==='numerical') return {...base, correct:String(q.correct), tolerance:(q.tolerance!==''&&q.tolerance!=null)?q.tolerance:null};
+      if(q.qtype==='true_false') return {...base, correct:String(q.correct||'true')};
+      return {...base, correct:q.correct};
+    });
+    await api('/api/teacher/lecture','POST',{
+      subject:c.subject, chapter:c.chapter||null, part:c.part||null,
+      title:(c.chapter||'Lecture')+(c.part?(' \u2013 '+c.part):''),
+      lecture_date:c.date||null, timetable_entry_id:id,
+      summary:val('lec-summary')||null, homework:val('cr-hw')||null,
+      pdf_b64, pdf_filename:_lecFiles.pdf?_lecFiles.pdf.name:null,
+      dpp_b64, dpp_filename:_lecFiles.dpp?_lecFiles.dpp.name:null,
+      questions});
+    toast('Class marked Done. Students can now verify this lecture.');
+    closeModal();
     const active=document.querySelector('#teacher-app .page.active');
     if(active&&active.id==='t-page-timetable') loadTTimetable();
     else loadTDashboard();
-  }catch(e){ document.getElementById('cr-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Submit Class Report'; }
+  }catch(e){ document.getElementById('cr-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Submit & Mark Done'; }
 }
 async function loadTDashboard(){
   const el=document.getElementById('t-dashboard-content');
@@ -2497,8 +2600,39 @@ async function loadTPerformance(){
     const chart=`<div class="card"><div class="card-header"><h3>Monthly Classes Completed</h3></div><div class="card-body"><div class="bar-chart">${bars}</div></div></div>`;
     const tl=pf.recent.length?pf.recent.map(a=>`<div class="act-item"><div class="act-dot ${esc(a.type)}"></div><div><div class="act-text">${esc(a.text)}</div><div class="act-time">${esc(a.at)}</div></div></div>`).join(''):'<div class="empty-state"><p>No recent activity.</p></div>';
     const timeline=`<div class="card"><div class="card-header"><h3>Recent Activity</h3></div><div class="card-body"><div class="act-list">${tl}</div></div></div>`;
-    el.innerHTML=cards+`<div class="grid-2">${chart}${timeline}</div>`;
+    el.innerHTML=cards+`<div class="grid-2">${chart}${timeline}</div><div id="t-reports-wrap"></div>`;
+    _renderClassReports('t-reports-wrap','/api/teacher/class-reports');
   }catch(e){ el.innerHTML=errHtml(e); }
+}
+
+// Class reports + punctuality/hours analytics. Shared by the teacher Performance
+// page and the admin Teacher Reports page (same renderer, same numbers).
+async function _renderClassReports(wrapId, endpoint, showTeacher){
+  const wrap=document.getElementById(wrapId); if(!wrap) return;
+  wrap.innerHTML='<div class="spinner"></div>';
+  try{
+    const d=await api(endpoint);
+    const s=d.summary||{};
+    const otCls=s.on_time_pct==null?'':(s.on_time_pct>=80?'good':(s.on_time_pct>=60?'warn':'bad'));
+    const avCls=s.avg_delay==null?'':(s.avg_delay<=5?'good':(s.avg_delay<=15?'warn':'bad'));
+    const stats=`<div class="rp-stats">
+      <div class="rp-stat"><div class="rp-num">${s.week_hours??0}h</div><div class="rp-lbl">This Week</div></div>
+      <div class="rp-stat"><div class="rp-num">${s.month_hours??0}h</div><div class="rp-lbl">This Month</div></div>
+      <div class="rp-stat"><div class="rp-num ${otCls}">${s.on_time_pct==null?'\u2014':s.on_time_pct+'%'}</div><div class="rp-lbl">On Time</div></div>
+      <div class="rp-stat"><div class="rp-num ${avCls}">${s.avg_delay==null?'\u2014':s.avg_delay+'m'}</div><div class="rp-lbl">Avg Delay</div></div>
+    </div>`;
+    const subs=(s.by_subject||[]).map(x=>`<div class="rp-sub-row"><span class="rp-sub-name">${esc(x.subject)}</span><span class="rp-hrs">${x.classes} classes \u00b7 <b>${(x.week_min/60).toFixed(1)}h</b> week \u00b7 <b>${(x.month_min/60).toFixed(1)}h</b> month</span></div>`).join('');
+    const subCard=subs?`<div class="card"><div class="card-header"><h3>Teaching Hours by Subject</h3></div><div class="card-body">${subs}</div></div>`:'';
+    const LBL={ontime:'On time',minor:'Slightly late',late:'Late',unknown:'\u2014'};
+    const rows=(d.rows||[]).map(r=>{
+      const dm=r.delay_min;
+      const badge=`<span class="rp-badge ${r.delay_band}">${dm==null?LBL.unknown:(dm<=5?LBL.ontime:('+'+dm+' min'))}</span>`;
+      const who=showTeacher&&r.teacher_name?` \u00b7 ${esc(r.teacher_name)}`:'';
+      return `<div class="rp-row">${badge}<div class="rp-main"><div class="rp-title">${esc(r.subject)}${r.chapter?' \u00b7 '+esc(r.chapter):''}${r.part?' \u00b7 '+esc(r.part):''}</div><div class="rp-meta">${esc(r.date||'')}${who} \u00b7 slot ${esc(r.scheduled||'\u2014')} \u00b7 started ${esc(r.start_time||'\u2014')}</div></div><span class="rp-dur">${r.duration_min?Math.round(r.duration_min)+' min':'\u2014'}</span></div>`;
+    }).join('');
+    const list=`<div class="card"><div class="card-header"><h3>Class Reports</h3><span class="tc-count">${(d.rows||[]).length}</span></div><div class="card-body">${rows||'<div class="ws-empty"><p>No class reports yet</p><small>Reports appear here when a class is marked Done.</small></div>'}</div></div>`;
+    wrap.innerHTML=stats+subCard+list;
+  }catch(e){ wrap.innerHTML=errHtml(e); }
 }
 async function loadTDoubts(){
   const el=document.getElementById('t-doubts-content');
@@ -2568,6 +2702,7 @@ function aPage(page,el){
   document.getElementById('a-title').textContent=titles[page];
   if(page==='dashboard') loadADashboard();
   else if(page==='approvals') loadAApprovals();
+  else if(page==='reports') loadAReports();
   else if(page==='teachers') loadATeachers();
   else if(page==='doubts') loadADoubts();
   else if(page==='qbank') loadAQBank();
@@ -2666,6 +2801,28 @@ function _teacherSubjByClass(subjects){
   return {c10,c12,other};
 }
 function _codeChips(list){ return list.map(s=>`<span class="code-chip">${esc(s.name)} <b>${esc(s.code)}</b></span>`).join(''); }
+async function loadAReports(){
+  const el=document.getElementById('a-reports-content');
+  el.innerHTML='<div class="spinner"></div>';
+  try{
+    const d=await api('/api/admin/class-reports');
+    const pt=(d.per_teacher||[]).filter(t=>t.classes_done>0);
+    const LBL=t=>t.on_time_pct==null?'\u2014':t.on_time_pct+'%';
+    const cls=v=>v==null?'':(v>=80?'good':(v>=60?'warn':'bad'));
+    const cards=pt.length?pt.map(t=>`<div class="rp-row">
+        <span class="rp-badge ${t.on_time_pct==null?'unknown':(t.on_time_pct>=80?'ontime':(t.on_time_pct>=60?'minor':'late'))}">${LBL(t)} on time</span>
+        <div class="rp-main"><div class="rp-title">${esc(t.name)}</div><div class="rp-meta">${esc((t.subjects||[]).join(', ')||'\u2014')} \u00b7 ${t.classes_done} classes \u00b7 avg delay ${t.avg_delay==null?'\u2014':t.avg_delay+' min'}</div></div>
+        <span class="rp-dur">${t.week_hours}h wk \u00b7 ${t.month_hours}h mo</span>
+      </div>`).join(''):'<div class="ws-empty"><p>No class reports yet</p><small>Reports appear once teachers mark classes Done.</small></div>';
+    const opts='<option value="">All teachers</option>'+(d.teachers||[]).map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
+    el.innerHTML=`<div class="sm-head"><h2>Teacher Reports</h2><p>Punctuality and teaching hours from every submitted class report.</p></div>
+      <div class="card"><div class="card-header"><h3>Teachers</h3></div><div class="card-body">${cards}</div></div>
+      <div style="display:flex;justify-content:flex-end;margin:18px 0 10px"><select class="form-control" style="max-width:220px" id="a-rp-filter" onchange="_renderClassReports('a-rp-detail','/api/admin/class-reports'+(this.value?('?teacher_id='+this.value):''),true)">${opts}</select></div>
+      <div id="a-rp-detail"></div>`;
+    _renderClassReports('a-rp-detail','/api/admin/class-reports',true);
+  }catch(e){ el.innerHTML=errHtml(e); }
+}
+
 async function loadATeachers(){
   const el=document.getElementById('a-teachers-content');
   try{
@@ -3987,7 +4144,7 @@ function renderTimelineItem(item, opts, tipT){
  ${p.time?`<span class="tchip"> ${esc(p.time)}</span>`:''}
  ${opts.onEdit?`<button class="btn btn-ghost btn-sm" onclick="openEditTopic(${p.id},'${encodeURIComponent(p.part||'')}')">${ic('edit')}</button>`:''}
  ${opts.onDelete?`<button class="btn btn-danger btn-sm" onclick="${opts.onDelete}(${p.id})">${ic('trash')}</button>`:''}
- ${opts.onComplete?(p.completed?`<span class="tag tag-done" style="font-size:.6rem">Completed</span>`:`<button class="btn btn-success btn-sm" onclick="${opts.onComplete}(${p.id})">Mark Done</button>`):''}
+ ${opts.onComplete?(p.completed?`<span class="tag tag-done" style="font-size:.6rem">Completed</span>`:`<button class="btn btn-success btn-sm" onclick="${opts.onComplete}(${p.id})">Class Report</button>`):''}
  </div></div>`).join('');
   return `<div class="tnode ${st}">${dotHtml}<div class="tcard" id="card-${accId}"><div class="tchapter-head" onclick="document.getElementById('card-${accId}').classList.toggle('open')"><div class="left"><span class="arrow">▶</span><h4> ${esc(item.chapter)}</h4></div><div style="display:flex;align-items:center;gap:8px;flex-shrink:0"><span class="tstatus ${st}">${st}</span><span class="cnt-badge">${parts.length} ${parts.length>1?'parts':'part'}</span></div></div><div class="tparts">${partsHtml}</div></div></div>`;
 }
@@ -4081,7 +4238,7 @@ function renderStudentNode(item, st, tmap, opts){
       else if(p.cooling){ verifyBtn=`<button class="btn btn-ghost btn-sm stl-act" disabled title="Too many wrong tries \u2014 try again shortly">Try later</button>`; }
       else{ verifyBtn=`<button class="btn btn-success btn-sm stl-act" onclick="markLectureDone(${p.lecture_id})">Mark Done</button>`; }
     }
-    const acts=_hasAct?`${opts.onEdit?`<button class="btn btn-ghost btn-sm stl-act" onclick="openEditTopic(${p.id},'${encodeURIComponent(p.part||'')}')">${ic('edit')}</button>`:''}${opts.onLecture?`<button class="btn btn-ghost btn-sm stl-act" title="Add a lecture report + verification question for this class" onclick="openLectureForm(${_attrJson({id:p.id,subject:p.subject,chapter:p.chapter,part:p.part,date:p.date,class_name:p.class_name})})">${ic('upload')} Lecture</button>`:''}${opts.onComplete&&!p.completed?`<button class="btn btn-success btn-sm stl-act" onclick="${opts.onComplete}(${p.id})">Mark Done</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${p.id})">${ic('trash')}</button>`:''}`:verifyBtn;
+    const acts=_hasAct?`${opts.onEdit?`<button class="btn btn-ghost btn-sm stl-act" onclick="openEditTopic(${p.id},'${encodeURIComponent(p.part||'')}')">${ic('edit')}</button>`:''}${opts.onComplete&&!p.completed?`<button class="btn btn-success btn-sm stl-act" onclick="${opts.onComplete}(${p.id})">Class Report</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${p.id})">${ic('trash')}</button>`:''}`:verifyBtn;
     return `<div class="stl-part"><span class="stl-pdot ${pst}">${pst==='done'?'✓':''}</span><div class="stl-pname">${esc(p.part||'Full chapter')}</div><div class="stl-pright"><div class="stl-ptime">${p.date?fmtNice(p.date)+(p.day?' · '+esc(p.day):''):''}${p.time?'<br>'+esc(p.time):''}</div><span class="stl-pbadge ${pst}">${plbl}</span>${acts}</div></div>`; }).join('');
   const stlbl=st==='done'?'DONE':st==='current'?'CURRENT':'UPCOMING';
   return `<div class="stl-node ${st}">${dot}<div class="stl-card chapter ${open?'open':''}" id="${id}"><div class="stl-chead" onclick="document.getElementById('${id}').classList.toggle('open')"><div class="stl-cname"><span class="stl-arrow">${open?'▾':'›'}</span>${esc(item.chapter)}</div><div class="stl-cmeta"><span class="stl-badge ${st}">${stlbl}</span><span class="cnt-badge dark">${parts.length} part${parts.length>1?'s':''}</span></div></div><div class="stl-parts">${partsHtml}</div></div></div>`;

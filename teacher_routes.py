@@ -1,3 +1,4 @@
+import re
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract
@@ -1421,3 +1422,136 @@ def delete_lecture(lecture_id: int, db: Session = Depends(get_db), current_user=
     lec.is_active = False
     db.commit()
     return {"message": "Lecture removed"}
+
+
+# ===================================================================== CLASS REPORTS
+# Delay tracking + teaching-hours analytics, computed from the timetable's
+# scheduled slot (time_text) vs what the teacher actually reported (start_time).
+
+def _parse_hhmm(s):
+    """'6:30 pm' / '18:30' / '6.30pm' -> minutes since midnight, or None."""
+    if not s:
+        return None
+    m = re.search(r"(\d{1,2})\s*[:.]\s*(\d{2})\s*(am|pm)?", str(s), re.I)
+    if not m:
+        m2 = re.search(r"(\d{1,2})\s*(am|pm)", str(s), re.I)
+        if not m2:
+            return None
+        h = int(m2.group(1)) % 12
+        if m2.group(2).lower() == "pm":
+            h += 12
+        return h * 60
+    h, mi = int(m.group(1)), int(m.group(2))
+    ap = (m.group(3) or "").lower()
+    if ap == "pm" and h < 12:
+        h += 12
+    if ap == "am" and h == 12:
+        h = 0
+    return h * 60 + mi
+
+
+def _slot_start(time_text):
+    """The scheduled slot may be a range ('6:30 pm - 7:30 pm'); take its start."""
+    if not time_text:
+        return None
+    first = re.split(r"[-\u2013\u2014to]+", str(time_text))[0]
+    return _parse_hhmm(first)
+
+
+def _delay_of(e):
+    """Minutes the class started late (negative = early). None when unknown."""
+    sched = _slot_start(getattr(e, "time_text", None))
+    actual = _parse_hhmm(getattr(e, "start_time", None))
+    if sched is None or actual is None:
+        return None
+    return actual - sched
+
+
+def _duration_of(e):
+    a = _parse_hhmm(getattr(e, "start_time", None))
+    b = _parse_hhmm(getattr(e, "end_time", None))
+    if a is None or b is None:
+        return 0
+    d = b - a
+    if d < 0:
+        d += 24 * 60          # crossed midnight
+    return d if 0 < d <= 6 * 60 else 0
+
+
+def _delay_band(d):
+    if d is None:
+        return "unknown"
+    if d <= 5:
+        return "ontime"       # up to 5 min = on time
+    if d <= 15:
+        return "minor"
+    return "late"
+
+
+def _report_rows(db, subjects, teacher_map=None):
+    from models import TimetableEntry
+    q = db.query(TimetableEntry).filter(TimetableEntry.completed == True,
+                                        TimetableEntry.entry_type == "chapter")
+    if subjects is not None:
+        if not subjects:
+            return []
+        q = q.filter(TimetableEntry.subject.in_(subjects))
+    es = q.order_by(TimetableEntry.entry_date.desc()).limit(300).all()
+    rows = []
+    for e in es:
+        d = _delay_of(e)
+        rows.append({
+            "id": e.id, "subject": e.subject, "chapter": e.chapter, "part": e.part,
+            "date": str(e.entry_date) if e.entry_date else None,
+            "scheduled": e.time_text, "start_time": e.start_time, "end_time": e.end_time,
+            "delay_min": d, "delay_band": _delay_band(d),
+            "duration_min": _duration_of(e),
+            "topic_covered": e.topic_covered, "homework": e.homework,
+            "dpp_given": bool(e.dpp_given), "remarks": e.remarks,
+            "teacher_id": e.teacher_id,
+            "teacher_name": (teacher_map or {}).get(e.teacher_id, ""),
+        })
+    return rows
+
+
+def _report_summary(rows):
+    today = date.today()
+    week_start = today - timedelta(days=today.weekday())
+    month_start = date(today.year, today.month, 1)
+    by_subject = {}
+    wk_min = mo_min = 0
+    delays = [r["delay_min"] for r in rows if r["delay_min"] is not None]
+    bands = {"ontime": 0, "minor": 0, "late": 0}
+    for r in rows:
+        bands[r["delay_band"]] = bands.get(r["delay_band"], 0) + (1 if r["delay_band"] in bands else 0)
+        if not r["date"]:
+            continue
+        try:
+            d = date.fromisoformat(r["date"])
+        except Exception:
+            continue
+        s = by_subject.setdefault(r["subject"], {"subject": r["subject"], "classes": 0,
+                                                 "week_min": 0, "month_min": 0, "total_min": 0})
+        s["classes"] += 1
+        s["total_min"] += r["duration_min"]
+        if d >= week_start:
+            s["week_min"] += r["duration_min"]; wk_min += r["duration_min"]
+        if d >= month_start:
+            s["month_min"] += r["duration_min"]; mo_min += r["duration_min"]
+    return {
+        "week_hours": round(wk_min / 60.0, 1),
+        "month_hours": round(mo_min / 60.0, 1),
+        "classes_done": len(rows),
+        "avg_delay": (round(sum(delays) / len(delays)) if delays else None),
+        "on_time_pct": (round(bands["ontime"] * 100 / len(delays)) if delays else None),
+        "bands": bands,
+        "by_subject": sorted(by_subject.values(), key=lambda x: -x["total_min"]),
+    }
+
+
+@router.get("/class-reports")
+def teacher_class_reports(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """The teacher's own submitted class reports + delay/hours analytics."""
+    tp = get_teacher_profile(current_user, db)
+    rows = _report_rows(db, tp.subjects or [])
+    return {"summary": _report_summary(rows), "rows": rows[:60]}

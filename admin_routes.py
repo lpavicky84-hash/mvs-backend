@@ -975,3 +975,36 @@ def admin_delete_material(mid: int, db: Session = Depends(get_db), _=Depends(get
         raise HTTPException(status_code=404, detail="Material not found")
     db.delete(m); db.commit()
     return {"message": "Material deleted."}
+
+
+# ===================================================================== CLASS REPORTS
+@router.get("/class-reports")
+def admin_class_reports(teacher_id: int = 0, db: Session = Depends(get_db),
+                        current_user=Depends(get_admin)):
+    """Every teacher's submitted class reports, with delay + teaching-hours
+    analytics. Reuses the same computation the teacher portal uses, so both
+    sides always agree."""
+    from teacher_routes import _report_rows, _report_summary
+    from models import TeacherProfile
+    tmap = {}
+    teachers = []
+    for tp in db.query(TeacherProfile).all():
+        nm = tp.user.name if tp.user else ("Teacher #%d" % tp.id)
+        tmap[tp.id] = nm
+        teachers.append({"id": tp.id, "name": nm, "subjects": tp.subjects or []})
+    rows = _report_rows(db, None, teacher_map=tmap)
+    if teacher_id:
+        rows = [r for r in rows if r["teacher_id"] == teacher_id]
+    # per-teacher leaderboard of punctuality / hours
+    per_teacher = []
+    for t in teachers:
+        tr = [r for r in rows if r["teacher_id"] == t["id"]] if not teacher_id else rows
+        if teacher_id and t["id"] != teacher_id:
+            continue
+        s = _report_summary(tr)
+        per_teacher.append({"teacher_id": t["id"], "name": t["name"],
+                            "subjects": t["subjects"], **s})
+    per_teacher.sort(key=lambda x: (-(x["on_time_pct"] if x["on_time_pct"] is not None else -1),
+                                    -x["month_hours"]))
+    return {"summary": _report_summary(rows), "rows": rows[:80],
+            "teachers": teachers, "per_teacher": per_teacher}
