@@ -675,6 +675,51 @@ def teacher_student_counts(db: Session = Depends(get_db), current_user=Depends(g
     return {"total": sum(o["count"] for o in out), "subjects": out}
 
 # ===== TEACHER: VIEW SUBMISSIONS + GIVE MARKS =====
+@router.get("/dpp-results")
+def teacher_dpp_results(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Every DPP the teacher uploaded, with submission counts (submitted /
+    checked / pending) so the DPP Result page can show progress at a glance."""
+    from models import Material, MaterialView, StudentProfile
+    tp = get_teacher_profile(current_user, db)
+    subs = tp.subjects or []
+    dpps = db.query(Material).filter(
+        Material.material_type == "dpp",
+        Material.subject.in_(subs)).order_by(Material.created_at.desc()).all() if subs else []
+    ids = [m.id for m in dpps]
+    answers = db.query(Material).filter(
+        Material.material_type == "answer",
+        Material.parent_id.in_(ids)).all() if ids else []
+    # how many students should be doing each DPP (same subject)
+    roster = {}
+    for sp in db.query(StudentProfile).all():
+        for s in (sp.subjects or []):
+            roster[s] = roster.get(s, 0) + 1
+    views, downloads = {}, {}
+    if ids:
+        for v in db.query(MaterialView).filter(MaterialView.material_id.in_(ids)).all():
+            (downloads if v.action == "download" else views).setdefault(v.material_id, set()).add(v.student_id)
+    out = []
+    for m in dpps:
+        mine = [a for a in answers if a.parent_id == m.id]
+        checked = sum(1 for a in mine if (a.marks or "").strip())
+        total_students = roster.get(m.subject, 0)
+        out.append({
+            "id": m.id, "subject": m.subject, "chapter": m.chapter, "part": m.part,
+            "title": m.title, "filename": m.filename,
+            "date": str(m.created_at)[:10] if m.created_at else "",
+            "views": len(views.get(m.id, ())), "downloads": len(downloads.get(m.id, ())),
+            "submitted": len(mine), "checked": checked, "pending": len(mine) - checked,
+            "total_students": total_students,
+        })
+    totals = {
+        "dpps": len(out),
+        "submitted": sum(o["submitted"] for o in out),
+        "checked": sum(o["checked"] for o in out),
+        "pending": sum(o["pending"] for o in out),
+    }
+    return {"totals": totals, "rows": out}
+
+
 @router.get("/submissions")
 def teacher_submissions(parent_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import Material

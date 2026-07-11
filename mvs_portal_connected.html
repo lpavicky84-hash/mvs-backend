@@ -221,6 +221,26 @@
   .dark .cr-delay.ontime{background:rgba(22,163,74,.18);color:#86efac}
   .dark .cr-delay.minor{background:rgba(245,158,11,.18);color:#fcd34d}
   .dark .cr-delay.late{background:rgba(220,38,38,.18);color:#fca5a5}
+  .dp-row{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .dp-row:last-child{border-bottom:none}
+  .dp-main{flex:1;min-width:220px}
+  .dp-title{font-size:.94rem;font-weight:700;color:var(--text)}
+  .dp-meta{font-size:.78rem;color:var(--text-muted);margin-top:2px}
+  .dp-bar{height:6px;border-radius:99px;background:var(--border);overflow:hidden;margin:8px 0 5px;max-width:340px}
+  .dp-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--primary),#7c3aed)}
+  .dp-sub{font-size:.78rem;color:var(--text-muted);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .dp-tag{font-size:.68rem;font-weight:800;padding:3px 8px;border-radius:99px}
+  .dp-tag.pending{background:#fef3c7;color:#b45309}
+  .dp-tag.done{background:#dcfce7;color:#15803d}
+  .dark .dp-tag.pending{background:rgba(245,158,11,.2);color:#fcd34d}
+  .dark .dp-tag.done{background:rgba(22,163,74,.2);color:#86efac}
+  .dp-acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .mat-cat-head{cursor:pointer;user-select:none}
+  .mc-chev{margin-left:auto;font-size:1.2rem;color:var(--text-muted);transition:transform .2s;transform:rotate(90deg)}
+  .mat-cat.closed .mc-chev{transform:rotate(0deg)}
+  .mat-cat.closed .mat-twrap{display:none}
+  .mat-twrap{overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none}
+  .mat-twrap::-webkit-scrollbar{display:none}
   .ms-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-bottom:18px}
   .ms-card{padding:16px;border:1px solid var(--border);border-radius:14px;background:var(--bg-card,#fff);cursor:pointer;transition:.15s}
   .ms-card:hover{border-color:var(--primary);transform:translateY(-2px)}
@@ -954,7 +974,7 @@
 <!-- TEACHER SUBJECT SELECTION (first login) -->
 <div id="t-subject-screen" style="display:none;min-height:100vh;background:linear-gradient(150deg,#001022,#001a3a 55%,#0a3260);align-items:center;justify-content:center;padding:20px"><div class="login-box" style="max-width:620px"><h2>Select Your Subjects</h2><p>Select the subjects you teach, class by class.</p><div style="display:flex;justify-content:space-between;margin:14px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 10</label></div><div id="t-sub-10" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><div style="display:flex;justify-content:space-between;margin:16px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 12</label></div><div id="t-sub-12" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><button class="login-btn" id="t-save-subj" style="margin-top:18px" onclick="saveTeacherSubjects()">Save & Continue →</button><p style="text-align:center;margin-top:14px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Logout</p></div>
 </div>
-<div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule Rule:</b> Maximum 2 per month. Frequent reschedules affect MVS Foundation's reputation.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
+<div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP Result</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule Rule:</b> Maximum 2 per month. Frequent reschedules affect MVS Foundation's reputation.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== ADMIN APP ===== -->
 <div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#ef4444">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Study Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Students</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Question Bank</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#ef4444" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== STUDENT APP ===== -->
@@ -1068,7 +1088,7 @@ async function smartCompress(file,statusCb){
   }
   return {file, ok:file.size<=MAXB};
 }
-const NAV_ICON={'dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','message admin':'bell','question bank':'book'};
+const NAV_ICON={'dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','message admin':'bell','question bank':'book'};
 function injectNavIcons(){
   document.querySelectorAll('.nav-item').forEach(el=>{
     if(el.querySelector('svg')) return;
@@ -1477,7 +1497,7 @@ function tPage(page,el){
   document.querySelectorAll('#teacher-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('t-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#teacher-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',performance:'Performance',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',qbank:'Question Bank'};
+  const titles={dashboard:'Dashboard',performance:'Performance',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP Result',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',qbank:'Question Bank'};
   document.getElementById('t-title').textContent=titles[page];
   stopCountdown();
   if(page==='dashboard') loadTDashboard();
@@ -2141,28 +2161,51 @@ async function _renderMaterialTree(wrapId, endpoint, apiBase){
   }catch(e){ wrap.innerHTML=errHtml(e); }
 }
 function _mtPick(wrapId,sub){ _mtSub=decodeURIComponent(sub); _mtPaint(wrapId); }
+function _mtBack(wrapId){ _mtSub=null; _mtPaint(wrapId); }
+function _mtToggle(el){ const c=el.closest('.mat-cat'); c.classList.toggle('closed'); }
+const _MT_CAT={notes:{label:'Class Notes',icon:'book',badge:'sc-indigo'},dpp:{label:'DPP',icon:'clipboard',badge:'sc-green'},test:{label:'Tests',icon:'edit',badge:'sc-purple'}};
 function _mtPaint(wrapId){
   const wrap=document.getElementById(wrapId); if(!wrap||!_mtData) return;
-  const cards=_mtData.map(s=>{
-    const n=s.chapters.reduce((a,c)=>a+c.items.length,0);
-    const v=s.chapters.reduce((a,c)=>a+c.items.reduce((x,i)=>x+i.views,0),0);
-    return `<div class="ms-card ${s.subject===_mtSub?'active':''}" onclick="_mtPick('${wrapId}','${encodeURIComponent(s.subject)}')"><div class="ms-name">${esc(s.subject)}</div><div class="ms-meta">${n} file${n===1?'':'s'} \u00b7 ${v} views</div></div>`;
-  }).join('');
-  const sub=_mtData.find(s=>s.subject===_mtSub);
-  const TYPE={notes:'Class Notes',dpp:'DPP',test:'Test',other:'Other'};
-  const chapters=sub.chapters.map(c=>{
-    const rows=c.items.map(i=>`<tr>
-      <td><span class="mt-type ${esc(i.type)}">${TYPE[i.type]||esc(i.type)}${i.category?' \u00b7 '+esc(i.category):''}</span></td>
+  // ---- subject cards (same look as the student portal)
+  if(!_mtSub){
+    const cards=_mtData.map(s=>{
+      const items=s.chapters.flatMap(c=>c.items);
+      const n=t=>items.filter(i=>i.type===t).length;
+      const nOther=items.filter(i=>!['notes','dpp','test'].includes(i.type)).length;
+      let b='';
+      if(n('notes')) b+=`<span class="sm-badge sm-notes">${n('notes')} Class Notes</span>`;
+      if(n('dpp')) b+=`<span class="sm-badge sm-dpp">${n('dpp')} DPP</span>`;
+      if(n('test')) b+=`<span class="sm-badge sm-test">${n('test')} Tests</span>`;
+      if(nOther) b+=`<span class="sm-badge sm-other">${nOther} Other</span>`;
+      const v=items.reduce((a,i)=>a+i.views,0), d=items.reduce((a,i)=>a+i.downloads,0);
+      return `<div class="sm-card" onclick="_mtPick('${wrapId}','${encodeURIComponent(s.subject)}')"><div class="sm-icon">${ic('book')}</div><div class="sm-body"><div class="sm-title">${esc(s.subject)}</div><div class="sm-badges">${b||'<span class="sm-badge">No files</span>'}</div><div class="ms-meta">${v} views \u00b7 ${d} downloads</div></div><span class="sm-arrow">\u203a</span></div>`;
+    }).join('');
+    wrap.innerHTML=`<div class="sm-grid">${cards}</div>`;
+    return;
+  }
+  // ---- one subject: a separate collapsible table per category
+  const sub=_mtData.find(s=>s.subject===_mtSub); if(!sub){ _mtSub=null; _mtPaint(wrapId); return; }
+  const items=sub.chapters.flatMap(c=>c.items.map(i=>({...i, chapter:c.chapter})));
+  const byCat={};
+  items.forEach(i=>{ const k=_MT_CAT[i.type]?_MT_CAT[i.type].label:(i.category||'Other Material'); (byCat[k]=byCat[k]||[]).push(i); });
+  const order=['Class Notes','DPP','Tests'];
+  const keys=Object.keys(byCat).sort((a,b)=>{ const ia=order.indexOf(a),ib=order.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib)||a.localeCompare(b); });
+  let html=`<div class="sm-head" style="display:flex;align-items:center;gap:14px"><button class="btn btn-ghost btn-sm" onclick="_mtBack('${wrapId}')">\u2190 Back</button><div><h2 style="margin:0;font-size:1.4rem">${esc(sub.subject)}</h2><p style="margin:0">Class Notes, DPP &amp; other material</p></div></div>`;
+  keys.forEach(cat=>{
+    const meta=Object.values(_MT_CAT).find(m=>m.label===cat)||{icon:'folder',badge:'sc-amber'};
+    const rows=byCat[cat].map(i=>`<tr>
+      <td class="mat-ch">${esc(i.chapter||'\u2014')}</td>
       <td>${i.part?esc(i.part):'<span class="mt-dim">Whole chapter</span>'}</td>
-      <td>${esc(i.title||i.filename||'')}</td>
+      <td><div class="mat-file">${ic('book')}${esc(i.filename||i.title||'')}</div></td>
       <td class="mt-dim">${esc(i.date)}</td>
       <td><button class="mt-eng" title="Students who viewed" onclick="openMatAudience(${i.id},'view')">${ic('users')} ${i.views}</button></td>
       <td><button class="mt-eng" title="Students who downloaded" onclick="openMatAudience(${i.id},'download')">${ic('download')} ${i.downloads}</button></td>
     </tr>`).join('');
-    return `<div class="card" style="margin-bottom:14px"><div class="card-header"><h3>${esc(c.chapter)}</h3><span class="tc-count">${c.items.length} file${c.items.length===1?'':'s'}</span></div><div class="card-body" style="padding-top:4px"><div class="table-wrap"><table class="mt-table"><thead><tr><th>Type</th><th>Class / Part</th><th>Title</th><th>Uploaded</th><th>Views</th><th>Downloads</th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
-  }).join('');
-  wrap.innerHTML=`<div class="ms-grid">${cards}</div>${chapters}`;
+    html+=`<div class="mat-cat"><div class="mat-cat-head" onclick="_mtToggle(this)"><div class="mc-badge ${meta.badge}">${ic(meta.icon)}</div>${esc(cat)}<span class="mc-count">${byCat[cat].length} file${byCat[cat].length>1?'s':''}</span><span class="mc-chev">\u203a</span></div><div class="mat-twrap"><table class="mat-table"><thead><tr><th>Chapter</th><th>Class / Part</th><th>File</th><th>Uploaded</th><th>Views</th><th>Downloads</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  });
+  wrap.innerHTML=html;
 }
+
 async function openMatAudience(mid,which){
   showModal('Student Engagement','<div id="ma-body"><div class="spinner"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
   try{
@@ -2178,16 +2221,36 @@ async function openMatAudience(mid,which){
 
 async function loadTDpp(){
   const el=document.getElementById('t-dpp-content');
+  el.innerHTML='<div class="spinner"></div>';
   try{
- await _loadMatAnalytics(true);
- const mats=(await api('/api/teacher/materials')).filter(m=>m.type==='dpp');
- const tV=mats.reduce((s,m)=>s+_mStat(m.id).students_viewed,0), tD=mats.reduce((s,m)=>s+_mStat(m.id).downloads,0);
- let html=`<div class="stats-grid">${statCard('DPPs Uploaded',mats.length,'clipboard','indigo')}${statCard('Students Viewed',tV,'users','green')}${statCard('Total Downloads',tD,'download','amber')}</div><div class="card"><div class="card-header"><h3> DPP Upload</h3><button class="btn btn-primary btn-sm" onclick="openUploadHub({type:'dpp'})"> Upload DPP</button></div><div class="card-body"><div class="alert alert-info">Direct PDF upload (no drive link). Students get a bell notification on upload.</div>`;
- if(mats.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No DPP uploaded yet.</p></div>`;
- else html+=mats.map(m=>`<div class="today-row"><div><div class="tr-sub">${esc(m.subject)}</div><div class="tr-topic">${esc(m.chapter||'')} — ${esc(m.title||'DPP')}</div></div><div class="tmeta"><span class="tchip" title="Viewed / Downloads">${ic('users')} ${_mStat(m.id).students_viewed} · ${ic('download')} ${_mStat(m.id).downloads}</span><span class="tchip">${esc(m.date)}</span><button class="btn btn-primary btn-sm" onclick="openSubmissions(${m.id},'${esc((m.title||'DPP')).replace(/'/g,'')}')">${ic('users')} Submissions</button><button class="btn btn-ghost btn-sm" onclick="downloadMaterial('teacher',${m.id},'DPP.pdf')">${ic('download')}</button><button class="btn btn-danger btn-sm" onclick="delMaterial(${m.id},'dpp')">${ic('trash')}</button></div></div>`).join('');
- html+=`</div></div>`;
- el.innerHTML=html;
+    const d=await api('/api/teacher/dpp-results');
+    const t=d.totals||{};
+    const cards=`<div class="stats-grid">${statCard('DPPs Uploaded',t.dpps||0,'clipboard','indigo')}${statCard('Submissions',t.submitted||0,'users','green',"_dppFilter('all')")}${statCard('Checked',t.checked||0,'check','teal',"_dppFilter('checked')")}${statCard('Pending Checking',t.pending||0,'edit','amber',"_dppFilter('pending')")}</div>`;
+    const rows=(d.rows||[]).map(m=>{
+      const pct=m.total_students?Math.round(m.submitted/m.total_students*100):0;
+      const pendTag=m.pending?`<span class="dp-tag pending">${m.pending} to check</span>`:(m.submitted?`<span class="dp-tag done">All checked</span>`:'');
+      return `<div class="dp-row" data-pending="${m.pending}" data-checked="${m.checked}">
+        <div class="dp-main"><div class="dp-title">${esc(m.subject)}${m.chapter?' \u00b7 '+esc(m.chapter):''}</div><div class="dp-meta">${esc(m.title||m.filename||'DPP')} \u00b7 ${esc(m.date)}</div>
+          <div class="dp-bar"><div class="dp-fill" style="width:${pct}%"></div></div>
+          <div class="dp-sub">${m.submitted} of ${m.total_students||'\u2014'} students submitted ${pendTag}</div>
+        </div>
+        <div class="dp-acts">
+          <button class="mt-eng" title="Students who viewed" onclick="openMatAudience(${m.id},'view')">${ic('users')} ${m.views}</button>
+          <button class="mt-eng" title="Students who downloaded" onclick="openMatAudience(${m.id},'download')">${ic('download')} ${m.downloads}</button>
+          <button class="btn btn-primary btn-sm" onclick="openSubmissions(${m.id},'${esc((m.title||'DPP')).replace(/'/g,'')}')">${ic('users')} Submissions (${m.submitted})</button>
+          <button class="btn btn-ghost btn-sm" onclick="downloadMaterial('teacher',${m.id},'DPP.pdf')">${ic('download')}</button>
+          <button class="btn btn-danger btn-sm" onclick="delMaterial(${m.id},'dpp')">${ic('trash')}</button>
+        </div></div>`;
+    }).join('');
+    el.innerHTML=cards+`<div class="card"><div class="card-header"><h3>DPP Result</h3><button class="btn btn-primary btn-sm" onclick="openUploadHub({type:'dpp'})">${ic('upload')} Upload DPP</button></div><div class="card-body" id="t-dpp-list">${rows||'<div class="ws-empty"><div class="big">\ud83d\udcdd</div><p>No DPP uploaded yet</p><small>Upload a DPP from a class report or here.</small></div>'}</div></div>`;
   }catch(e){ el.innerHTML=errHtml(e); }
+}
+function _dppFilter(mode){
+  document.querySelectorAll('#t-dpp-list .dp-row').forEach(r=>{
+    const p=+r.dataset.pending, c=+r.dataset.checked;
+    r.style.display=(mode==='pending'&&!p)||(mode==='checked'&&!c)?'none':'flex';
+  });
+  toast(mode==='all'?'Showing all DPPs':(mode==='pending'?'Showing DPPs pending checking':'Showing checked DPPs'));
 }
 
 async function downloadExamPdf(id, medium){
@@ -3668,23 +3731,23 @@ async function loadSMaterials(){
       const items=bySub[sub];
       const nNotes=items.filter(m=>m.type==='notes').length, nDpp=items.filter(m=>m.type==='dpp').length, nTest=items.filter(m=>m.type==='test').length, nOther=items.filter(m=>!['notes','dpp','test'].includes(m.type)).length;
       let badges='';
-      if(nNotes) badges+=`<span class="sm-badge sm-notes">${nNotes} Notes</span>`;
+      if(nNotes) badges+=`<span class="sm-badge sm-notes">${nNotes} Class Notes</span>`;
       if(nDpp) badges+=`<span class="sm-badge sm-dpp">${nDpp} DPP</span>`;
       if(nTest) badges+=`<span class="sm-badge sm-test">${nTest} Tests</span>`;
       if(nOther) badges+=`<span class="sm-badge sm-other">${nOther} Other</span>`;
       return `<div class="sm-card" onclick="openSubjectMaterials('${encodeURIComponent(sub)}')"><div class="sm-icon">${ic('book')}</div><div class="sm-body"><div class="sm-title">${esc(sub)}</div><div class="sm-badges">${badges||'<span class="sm-badge">No files</span>'}</div></div><span class="sm-arrow">›</span></div>`;
     }).join('');
-    el.innerHTML=`<div class="sm-head"><h2>Study Materials</h2><p>Select a subject to view organized materials (Notes, DPP, Tests).</p></div><div class="sm-grid">${cards}</div>`;
+    el.innerHTML=`<div class="sm-head"><h2>Study Materials</h2><p>Select a subject to view organized materials (Class Notes, DPP, Tests).</p></div><div class="sm-grid">${cards}</div>`;
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function openSubjectMaterials(encSub){
   const sub=decodeURIComponent(encSub);
   const el=document.getElementById('s-materials-content');
   const mats=(window._sMats||[]).filter(m=>m.subject===sub);
-  const catMeta={'Notes':{icon:'book',badge:'sc-indigo'},'DPP':{icon:'clipboard',badge:'sc-green'},'Tests':{icon:'edit',badge:'sc-purple'}};
+  const catMeta={'Class Notes':{icon:'book',badge:'sc-indigo'},'DPP':{icon:'clipboard',badge:'sc-green'},'Tests':{icon:'edit',badge:'sc-purple'}};
   const byCat={};
-  mats.forEach(m=>{ const cat=m.type==='notes'?'Notes':m.type==='dpp'?'DPP':m.type==='test'?'Tests':(m.category||'Other Material'); (byCat[cat]=byCat[cat]||[]).push(m); });
-  let html=`<div class="sm-head" style="display:flex;align-items:center;gap:14px"><button class="btn btn-ghost btn-sm" onclick="loadSMaterials()">← Back</button><div><h2 style="margin:0;font-size:1.4rem">${esc(sub)}</h2><p style="margin:0">Notes, DPP &amp; Tests</p></div></div><div class="card"><div class="card-body">`;
+  mats.forEach(m=>{ const cat=m.type==='notes'?'Class Notes':m.type==='dpp'?'DPP':m.type==='test'?'Tests':(m.category||'Other Material'); (byCat[cat]=byCat[cat]||[]).push(m); });
+  let html=`<div class="sm-head" style="display:flex;align-items:center;gap:14px"><button class="btn btn-ghost btn-sm" onclick="loadSMaterials()">← Back</button><div><h2 style="margin:0;font-size:1.4rem">${esc(sub)}</h2><p style="margin:0">Class Notes, DPP &amp; Tests</p></div></div><div class="card"><div class="card-body">`;
   Object.keys(byCat).forEach(cat=>{
     const meta=catMeta[cat]||{icon:'folder',badge:'sc-amber'};
     const items=byCat[cat];
@@ -3702,7 +3765,7 @@ async function loadSDpp(){
  const dpps=await api('/api/student/dpp-list');
  let html=`<div class="card"><div class="card-header"><h3> DPP — Download & Submit</h3></div><div class="card-body"><div class="alert alert-info">Download the DPP, solve it, then <strong>Submit</strong> — upload your solved PDF (no drive link).</div>`;
  if(dpps.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No DPP available yet. Please wait for the teacher to upload.</p></div>`;
- else html+=dpps.map(d=>`<div class="today-row"><div><div class="tr-sub"> ${esc(d.subject)}</div><div class="tr-topic">${esc(d.chapter||'')} — ${esc(d.title||'DPP')}</div></div><div class="tmeta"><button class="btn btn-primary btn-sm" onclick="downloadMaterial('student',${d.id},'DPP.pdf')">${ic('download')} Download</button>${d.marks?`<span class="tstatus done">Checked · Marks: ${esc(d.marks)}</span>`:d.submitted?`<span class="tstatus" style="background:rgba(5,150,105,.12);color:var(--success)">Submitted</span><button class="btn btn-ghost btn-sm" onclick="openSubmitAnswer(${d.id},'${esc((d.title||'DPP')).replace(/'/g,'')}')">Re-submit</button>`:`<button class="btn btn-success btn-sm" onclick="openSubmitAnswer(${d.id},'${esc((d.title||'DPP')).replace(/'/g,'')}')">${ic('upload')} Submit</button>`}
+ else html+=dpps.map(d=>`<div class="today-row"><div><div class="tr-sub"> ${esc(d.subject)}</div><div class="tr-topic">${esc(d.chapter||'')} — ${esc(d.title||'DPP')}</div></div><div class="tmeta"><button class="btn btn-primary btn-sm" onclick="downloadMaterial('student',${d.id},'DPP.pdf')">${ic('download')} Download</button>${d.marks?`<span class="dp-tag done">\u2714 Checked \u00b7 Marks: ${esc(d.marks)}</span>`:d.submitted?`<span class="dp-tag pending">\u23f3 Submitted \u00b7 Checking</span><button class="btn btn-ghost btn-sm" onclick="openSubmitAnswer(${d.id},'${esc((d.title||'DPP')).replace(/'/g,'')}')">Re-submit</button>`:`<button class="btn btn-success btn-sm" onclick="openSubmitAnswer(${d.id},'${esc((d.title||'DPP')).replace(/'/g,'')}')">${ic('upload')} Submit</button>`}
  </div></div>`).join('');
  html+=`</div></div>`;
  el.innerHTML=html;
