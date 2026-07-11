@@ -314,6 +314,7 @@ class AvailableSubject(Base):
     class_level = Column(String(5))    # "10" or "12"
     name        = Column(String(120))
     code        = Column(String(20))
+    mode        = Column(String(12), default="live")   # live | recorded
     is_active   = Column(Boolean, default=True)
 
 # =============================================

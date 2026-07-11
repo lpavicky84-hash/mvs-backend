@@ -564,6 +564,25 @@ def set_subjects(payload: dict, db: Session = Depends(get_db), current_user=Depe
     return {"message": "Subjects save ho gaye!", "subjects": subjects, "class_level": class_level}
 
 # ===== TIMETABLE PLAN (chapter-wise, subject filtered) =====
+@router.get("/my-subjects-mode")
+def student_subject_modes(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Which of the student's subjects are LIVE (have a timetable) and which are
+    RECORDED (watched in the Manish Verma Classes App). Recorded subjects have no
+    timetable, so the portal shows a 'watch in the app' card instead of nothing."""
+    from models import AvailableSubject
+    sp = get_student_profile(current_user, db)
+    subs = sp.subjects or []
+    if not subs:
+        return {"live": [], "recorded": []}
+    rows = db.query(AvailableSubject).filter(
+        AvailableSubject.name.in_(subs), AvailableSubject.is_active == True).all()
+    mode_by_name = {r.name: (r.mode or "live") for r in rows}
+    live, rec = [], []
+    for s in subs:
+        (rec if mode_by_name.get(s, "live") == "recorded" else live).append(s)
+    return {"live": live, "recorded": rec}
+
+
 @router.get("/timetable-plan")
 def timetable_plan(db: Session = Depends(get_db), current_user=Depends(get_student)):
     sp = get_student_profile(current_user, db)

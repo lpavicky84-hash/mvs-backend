@@ -221,6 +221,25 @@
   .dark .cr-delay.ontime{background:rgba(22,163,74,.18);color:#86efac}
   .dark .cr-delay.minor{background:rgba(245,158,11,.18);color:#fcd34d}
   .dark .cr-delay.late{background:rgba(220,38,38,.18);color:#fca5a5}
+  .lb-join{margin-left:auto;white-space:nowrap}
+  .rec-card{border:1px solid var(--border);border-left:4px solid #7c3aed;border-radius:14px;padding:16px;margin-bottom:16px;background:var(--bg-card,#fff)}
+  .rec-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px}
+  .rec-badge{width:32px;height:32px;flex:0 0 32px;border-radius:9px;background:#7c3aed;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800}
+  .rec-title{font-size:1rem;font-weight:800;color:var(--text)}
+  .rec-sub2{font-size:.79rem;color:var(--text-muted)}
+  .rec-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--border)}
+  .rec-ic{width:34px;height:34px;flex:0 0 34px;border-radius:9px;background:rgba(124,58,237,.12);display:flex;align-items:center;justify-content:center}
+  .rec-ic svg{width:17px;height:17px;stroke:#7c3aed}
+  .rec-main{flex:1;min-width:0}
+  .rec-sub{font-size:.92rem;font-weight:700;color:var(--text)}
+  .rec-note{font-size:.77rem;color:var(--text-muted)}
+  .subj-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;background:var(--bg);border:1px solid var(--border);border-radius:10px;margin-bottom:8px}
+  .subj-info{flex:1;min-width:0}
+  .subj-nm{font-weight:700;font-size:.9rem;color:var(--text);margin-bottom:7px}
+  .mode-toggle{display:inline-flex;gap:3px;padding:3px;background:var(--card);border:1px solid var(--border);border-radius:9px}
+  .mode-btn{border:none;background:transparent;color:var(--text-muted);font-weight:700;font-size:.74rem;padding:5px 12px;border-radius:7px;cursor:pointer;transition:.15s}
+  .mode-btn.on.live{background:#16a34a;color:#fff}
+  .mode-btn.on.rec{background:#7c3aed;color:#fff}
   .tst-eng{display:flex;gap:6px;margin-right:6px}
   .dp-row{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--border);flex-wrap:wrap}
   .dp-row:last-child{border-bottom:none}
@@ -1414,7 +1433,7 @@ function startLiveCountdown(entries){
  const now=new Date(); const {live,next}=pick();
  if(live){
  banner.style.display='flex'; banner.className='live-banner now'; banner.style.background='';
- banner.innerHTML=`<div class="lb-left"><div class="lb-icon">${ic('calendar')}</div><div><span class="lb-tag"><span class="live-dot"></span>Live Now</span><h3>${esc(live.subject)}</h3><small>${esc(live.part||live.chapter||'')} ${live.time?'• '+esc(live.time):''}</small></div></div>`;
+ banner.innerHTML=`<div class="lb-left"><div class="lb-icon">${ic('calendar')}</div><div><span class="lb-tag"><span class="live-dot"></span>Live Now</span><h3>${esc(live.subject)}</h3><small>${esc(live.part||live.chapter||'')} ${live.time?'• '+esc(live.time):''}</small></div></div><button class="btn btn-primary btn-sm lb-join" onclick="openMVC()">${ic('play')} Join Class</button>`;
  return;
  }
  if(next){
@@ -1711,25 +1730,44 @@ async function loadTeacherToday(wrapId){
 function statusTag(s){ if(s==='done')return '<span class="tag tag-done">Done</span>'; if(s==='rescheduled')return '<span class="tag tag-reschedule">Rescheduled</span>'; return '<span class="tag tag-pending">Pending</span>'; }
 
 let _ttEntries=[]; let _ttActiveSub='';
+let _rcChapters={};   // subject -> [chapters] from the existing timetable
 async function openRequestClass(){
-  let subs=[];
-  try{ const es=await api('/api/teacher/my-timetable'); subs=[...new Set(es.map(e=>e.subject))]; }catch(e){}
+  let subs=[]; _rcChapters={};
+  try{
+    const es=await api('/api/teacher/my-timetable');
+    subs=[...new Set(es.map(e=>e.subject))];
+    es.forEach(e=>{ if(e.type!=='event'&&e.chapter){ (_rcChapters[e.subject]=_rcChapters[e.subject]||[]); if(!_rcChapters[e.subject].includes(e.chapter)) _rcChapters[e.subject].push(e.chapter); } });
+  }catch(e){}
   if(subs.length===0){ try{ const p=await api('/api/teacher/profile'); subs=p.subjects||[]; }catch(e){} }
   showModal('Add Extra Class',
-    `<div class="alert alert-info">The extra-class request goes to the admin for approval. Once approved, it appears in your and your students timetables.</div>
-     <div class="form-group"><label>Subject</label><select class="form-control" id="rc-sub">${subs.map(s=>`<option>${esc(s)}</option>`).join('')}</select></div>
-     <div class="form-group"><label>Topic / Reason</label><input class="form-control" id="rc-topic" placeholder="e.g. Extra Doubt Class - Rotational Motion"></div>
-     <div class="form-group"><label>Date</label><input type="date" class="form-control" id="rc-date"></div>
-     <div class="form-group"><label>Time</label><input class="form-control" id="rc-time" placeholder="e.g. 5:00 pm"></div>
+    `<div class="alert alert-info">The extra-class request goes to the admin for approval. Once approved, it appears in your and your students timetables \u2014 and counts in your progress.</div>
+     <div class="ex-grid2">
+       <div><label class="ex-lbl">Subject</label><select class="form-control" id="rc-sub" onchange="rcFillCh()">${subs.map(s=>`<option>${esc(s)}</option>`).join('')}</select></div>
+       <div><label class="ex-lbl">Chapter</label><select class="form-control" id="rc-ch"></select></div>
+     </div>
+     <label class="ex-lbl">Topic / Reason</label>
+     <input class="form-control" id="rc-topic" placeholder="e.g. Extra Doubt Class \u2014 Rotational Motion">
+     <div class="ex-grid2" style="margin-top:10px">
+       <div><label class="ex-lbl">Date</label><input type="date" class="form-control" id="rc-date"></div>
+       <div><label class="ex-lbl">Time</label><input class="form-control" id="rc-time" placeholder="e.g. 5:00 pm"></div>
+     </div>
      <div id="rc-status"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="rc-btn" onclick="submitRequestClass()">Send for Approval</button>`);
+  rcFillCh();
+}
+function rcFillCh(){
+  const sel=document.getElementById('rc-ch'); if(!sel) return;
+  const list=_rcChapters[val('rc-sub')]||[];
+  sel.innerHTML=list.map(c=>`<option>${esc(c)}</option>`).join('')+'<option value="__new">\u2014 Other / new topic \u2014</option>';
 }
 async function submitRequestClass(){
   const subject=val('rc-sub'), topic=val('rc-topic'), date=val('rc-date'), time=val('rc-time');
+  const chSel=val('rc-ch');
+  const chapter=(chSel&&chSel!=='__new')?chSel:(topic||'Extra Class');
   if(!subject||!date||!time){ toast('Subject, date and time are required.',true); return; }
   const btn=document.getElementById('rc-btn'); btn.disabled=true; btn.textContent='Sending...';
   try{
-    const r=await api('/api/teacher/request-class','POST',{subject,topic,date,time});
+    const r=await api('/api/teacher/request-class','POST',{subject,topic,date,time,chapter});
     document.getElementById('rc-status').innerHTML=`<div class="alert alert-success">${esc(r.message)}</div>`;
     toast('Request sent to the admin.'); btn.textContent='Sent'; btn.setAttribute('onclick','closeModal()'); btn.disabled=false;
   }catch(e){ document.getElementById('rc-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Send for Approval'; }
@@ -3433,17 +3471,22 @@ async function submitAdminMaterial(){
   }catch(e){ document.getElementById('am-status').innerHTML=`<div class="alert alert-danger"> ${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Upload'; }
 }
 function aSetSubj(s){ _attActiveSub=decodeURIComponent(s); renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',emptyMsg:'No entries',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers'}); }
+async function setSubjMode(id,mode){
+  try{ const r=await api('/api/admin/subjects/'+id+'/mode','POST',{mode}); toast(r.message); loadASubjects(); }
+  catch(e){ toast(e.message,true); }
+}
 async function loadASubjects(){
   const el=document.getElementById('a-subjects-content');
   try{
  const data=await api('/api/admin/subjects');
  function block(cls,title){
  const list=data[cls]||[];
- let rows=list.map(s=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:10px;margin-bottom:8px"><span>${esc(s.name)} ${s.code?'<span style="color:var(--text-muted)">('+esc(s.code)+')</span>':''}</span><button class="btn btn-danger btn-sm" onclick="deleteSubject(${s.id})"> Delete</button></div>`).join('');
+ let rows=list.map(s=>{const rec=(s.mode||'live')==='recorded';
+   return `<div class="subj-row"><div class="subj-info"><div class="subj-nm">${esc(s.name)} ${s.code?'<span class="mt-dim">('+esc(s.code)+')</span>':''}</div><div class="mode-toggle"><button class="mode-btn ${!rec?'on live':''}" onclick="setSubjMode(${s.id},'live')">Live</button><button class="mode-btn ${rec?'on rec':''}" onclick="setSubjMode(${s.id},'recorded')">Recorded</button></div></div><button class="btn btn-danger btn-sm" onclick="deleteSubject(${s.id})">${ic('trash')}</button></div>`;}).join('');
  if(list.length===0) rows='<p style="color:var(--text-muted);font-size:.85rem">No subjects</p>';
- return `<div class="card"><div class="card-header"><h3>${title}</h3><button class="btn btn-primary btn-sm" onclick="openAddSubject('${cls}')"> Add</button></div><div class="card-body">${rows}</div></div>`;
+ return `<div class="card"><div class="card-header"><h3>${title}</h3><button class="btn btn-primary btn-sm" onclick="openAddSubject('${cls}')">+ Add</button></div><div class="card-body">${rows}</div></div>`;
  }
- el.innerHTML=`<div class="alert alert-info">Subjects you don't teach can be <strong>Delete</strong>; students will only see the remaining subjects.</div><div class="grid-2">${block('10',' Class 10 Subjects')}${block('12',' Class 12 Subjects')}</div>`;
+ el.innerHTML=`<div class="alert alert-info"><strong>Live</strong> subjects run on a timetable you upload. <strong>Recorded</strong> subjects have no timetable \u2014 students who pick them see a "Watch in the Manish Verma Classes App" card instead of an empty timetable.</div><div class="grid-2">${block('10','Class 10 Subjects')}${block('12','Class 12 Subjects')}</div>`;
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 async function deleteSubject(id){
@@ -3701,11 +3744,22 @@ function _timeKey(t){
 }
 
 let _sttEntries=[]; let _sttActiveSub='';
+async function _loadRecordedSubjects(){
+  const wrap=document.getElementById('s-rec-wrap'); if(!wrap) return;
+  try{
+    const m=await api('/api/student/my-subjects-mode');
+    const rec=m.recorded||[];
+    if(!rec.length){ wrap.innerHTML=''; return; }
+    const rows=rec.map(s=>`<div class="rec-row"><div class="rec-ic">${ic('play')}</div><div class="rec-main"><div class="rec-sub">${esc(s)}</div><div class="rec-note">Recorded classes \u2014 watch anytime in the app</div></div><button class="btn btn-primary btn-sm" onclick="openMVC()">${ic('play')} Watch</button></div>`).join('');
+    wrap.innerHTML=`<div class="rec-card"><div class="rec-head"><div class="rec-badge">${rec.length}</div><div><div class="rec-title">Recorded Subjects</div><div class="rec-sub2">These subjects have no live timetable \u2014 their lectures are pre-recorded in the Manish Verma Classes App.</div></div></div>${rows}</div>`;
+  }catch(e){ wrap.innerHTML=''; }
+}
 async function loadSTimetable(){
   const el=document.getElementById('s-timetable-content');
   try{
  _sttEntries=await api('/api/student/timetable-plan');
- el.innerHTML=`<div id="s-verify-wrap"></div><div id="s-tline-wrap"></div>`;
+ el.innerHTML=`<div id="s-rec-wrap"></div><div id="s-verify-wrap"></div><div id="s-tline-wrap"></div>`;
+ _loadRecordedSubjects();
  _loadPendingVerifications();
  try{ const p=await api('/api/student/profile'); window._sBatch=p.batch_name||p.batch||'Lakshya'; window._sClass=p.class_level||'12'; }catch(e){ window._sBatch='Lakshya'; window._sClass='12'; }
  // build subject -> teacher photo map (progress marker)

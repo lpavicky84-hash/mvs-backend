@@ -320,8 +320,28 @@ def get_subjects(db: Session = Depends(get_db), _=Depends(get_admin)):
     subs = db.query(AvailableSubject).filter(AvailableSubject.is_active == True).all()
     result = {"10": [], "12": []}
     for s in subs:
-        result.get(s.class_level, []).append({"id": s.id, "name": s.name, "code": s.code})
+        result.get(s.class_level, []).append({
+            "id": s.id, "name": s.name, "code": s.code,
+            "mode": (s.mode or "live")})
     return result
+
+
+@router.post("/subjects/{subject_id}/mode")
+def set_subject_mode(subject_id: int, payload: dict, db: Session = Depends(get_db),
+                     _=Depends(get_admin)):
+    """Mark a subject as LIVE (timetable-driven) or RECORDED (watched in the
+    Manish Verma Classes App). Recorded subjects have no timetable, so students
+    who pick them see a 'Recorded classes' card instead of an empty timetable."""
+    from models import AvailableSubject
+    mode = (payload.get("mode") or "").strip().lower()
+    if mode not in ("live", "recorded"):
+        raise HTTPException(status_code=400, detail="mode must be 'live' or 'recorded'")
+    s = db.query(AvailableSubject).filter(AvailableSubject.id == subject_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Subject not found")
+    s.mode = mode
+    db.commit()
+    return {"message": "%s is now %s" % (s.name, mode), "mode": mode}
 
 @router.delete("/subjects/{subject_id}")
 def delete_subject(subject_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -334,11 +354,12 @@ def delete_subject(subject_id: int, db: Session = Depends(get_db), _=Depends(get
     return {"message": f"{s.name} delete ho gaya"}
 
 @router.post("/subjects")
-def add_subject(class_level: str, name: str, code: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+def add_subject(class_level: str, name: str, code: str = "", mode: str = "live", db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import AvailableSubject
     if class_level not in ("10", "12"):
         raise HTTPException(status_code=400, detail="class_level 10 ya 12 hona chahiye")
-    s = AvailableSubject(class_level=class_level, name=name, code=code, is_active=True)
+    s = AvailableSubject(class_level=class_level, name=name, code=code,
+                         mode=(mode if mode in ("live", "recorded") else "live"), is_active=True)
     db.add(s)
     db.commit()
     return {"message": f"{name} add ho gaya"}

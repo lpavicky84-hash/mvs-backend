@@ -645,7 +645,8 @@ def request_class(payload: dict, db: Session = Depends(get_db), current_user=Dep
     day = edate.strftime("%a") if edate else None
     e = TimetableEntry(
         teacher_id=tp.id, subject=subject, class_name=payload.get("class_name", "Class 12"),
-        chapter=(payload.get("topic") or "Extra Class").strip(), part=None,
+        chapter=(payload.get("chapter") or payload.get("topic") or "Extra Class").strip(),
+        part=((payload.get("topic") or "").strip() or None),
         entry_date=edate, day=day, time_text=(payload.get("time") or "").strip() or None,
         entry_type="chapter", status="pending"
     )
@@ -835,7 +836,8 @@ def teacher_my_classes(scope: str = "all", db: Session = Depends(get_db), curren
     return out
 
 @router.post("/class/{entry_id}/complete")
-def teacher_complete_class(entry_id: int, payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+def teacher_complete_class(entry_id: int, payload: dict, background_tasks: BackgroundTasks = None,
+                           db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import TimetableEntry
     tp = get_teacher_profile(current_user, db)
     e = db.query(TimetableEntry).filter(TimetableEntry.id == entry_id).first()
@@ -850,7 +852,36 @@ def teacher_complete_class(entry_id: int, payload: dict, db: Session = Depends(g
     e.dpp_given = bool(payload.get("dpp_given"))
     e.remarks = (payload.get("remarks") or "").strip() or None
     db.commit()
+    if background_tasks is not None:
+        background_tasks.add_task(_notify_class_done, e.subject, e.chapter or "",
+                                  e.part or "", current_user.name or "Your teacher",
+                                  bool(e.dpp_given))
     return {"message": "Class marked as completed."}
+
+
+def _notify_class_done(subject, chapter, part, teacher_name, dpp_given):
+    """Tell the subject's students the class report is up, and guide them to the
+    class notes / DPP / verification so they know exactly what to do next."""
+    from database import SessionLocal
+    from models import StudentProfile
+    db = SessionLocal()
+    try:
+        topic = " \u00b7 ".join([x for x in (chapter, part) if x])
+        msg = ("%s ne %s ki class complete kar di%s.\n"
+               "\u2022 Class Notes: Materials \u2192 %s\n"
+               "%s"
+               "\u2022 Time Table par 'Mark Done' dabakar lecture verify karein (XP milega)."
+               % (teacher_name, subject, (" (" + topic + ")") if topic else "", subject,
+                  ("\u2022 DPP: DPP Submit page se download karke solve karein aur upload karein\n"
+                   if dpp_given else "")))
+        for sp in db.query(StudentProfile).all():
+            if subject in (sp.subjects or []) and sp.user:
+                notify(db, sp.user.id, "\U0001F4DA %s class complete" % subject, msg, "class")
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
 
 @router.get("/compliance")
 def teacher_compliance(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
@@ -1124,6 +1155,10 @@ def list_exams(db: Session = Depends(get_db), current_user=Depends(get_teacher))
     if ids:
         for v in db.query(ExamView).filter(ExamView.exam_id.in_(ids)).all():
             (downloads if v.action == "download" else views).setdefault(v.exam_id, set()).add(v.student_id)
+        # a student who attempted the test has obviously seen it - count them as a
+        # viewer too, so tests taken before view-tracking existed still show up
+        for a in db.query(ExamAttempt).filter(ExamAttempt.exam_id.in_(ids)).all():
+            views.setdefault(a.exam_id, set()).add(a.student_id)
     out = []
     for e in rows:
         nq = db.query(ExamQuestion).filter(ExamQuestion.exam_id == e.id).count()
@@ -1146,16 +1181,28 @@ def exam_audience(exam_id: int, db: Session = Depends(get_db), current_user=Depe
     if not ex:
         raise HTTPException(404, "Test not found")
     rows = db.query(ExamView).filter(ExamView.exam_id == exam_id).all()
-    sids = list({r.student_id for r in rows})
+    attempts = db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id).all()
+    sids = list({r.student_id for r in rows} | {a.student_id for a in attempts})
     smap = {}
     if sids:
         for sp in db.query(StudentProfile).filter(StudentProfile.id.in_(sids)).all():
             smap[sp.id] = (sp.user.name if sp.user else ("Student #%d" % sp.id))
-    viewers, downloaders = [], []
+    viewers, downloaders, seen = [], [], set()
     for r in rows:
         entry = {"student_id": r.student_id, "name": smap.get(r.student_id, "Student"),
                  "at": str(r.created_at)[:16]}
-        (downloaders if r.action == "download" else viewers).append(entry)
+        if r.action == "download":
+            downloaders.append(entry)
+        else:
+            seen.add(r.student_id)
+            viewers.append(entry)
+    # attempted => viewed (covers tests taken before view-tracking existed)
+    for a in attempts:
+        if a.student_id in seen:
+            continue
+        seen.add(a.student_id)
+        viewers.append({"student_id": a.student_id, "name": smap.get(a.student_id, "Student"),
+                        "at": str(a.submitted_at)[:16] if getattr(a, "submitted_at", None) else ""})
     return {"material": {"id": ex.id, "title": ex.title, "type": "test",
                          "subject": ex.subject, "chapter": ex.chapter, "part": None},
             "viewers": viewers, "downloaders": downloaders}
