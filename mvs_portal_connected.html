@@ -207,6 +207,10 @@
   .tst-right{display:flex;gap:8px;flex-shrink:0}.tst-done{opacity:.7}
   .dark .tst-ic{background:rgba(37,99,235,.2);color:#93c5fd}.dark .tst-score{background:rgba(194,65,12,.22);color:#fdba74}
   .ex-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px}
+  .tt-tabs{display:inline-flex;gap:4px;padding:4px;background:var(--bg);border:1px solid var(--border);border-radius:12px;margin-bottom:16px}
+  .tt-tab{border:none;background:transparent;color:var(--text-muted);font-weight:700;font-size:.85rem;padding:9px 18px;border-radius:9px;cursor:pointer;transition:.15s}
+  .tt-tab:hover{color:var(--text)}
+  .tt-tab.active{background:var(--primary);color:#fff;box-shadow:0 4px 12px -4px rgba(37,99,235,.5)}
   @media(max-width:560px){.ex-grid2{grid-template-columns:1fr}}
   .ex-lbl{display:block;font-size:.78rem;font-weight:700;color:var(--text-muted);margin:8px 0 4px}
   .ex-qcard{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px}
@@ -868,7 +872,7 @@
 <!-- TEACHER SUBJECT SELECTION (first login) -->
 <div id="t-subject-screen" style="display:none;min-height:100vh;background:linear-gradient(150deg,#001022,#001a3a 55%,#0a3260);align-items:center;justify-content:center;padding:20px"><div class="login-box" style="max-width:620px"><h2>Select Your Subjects</h2><p>Select the subjects you teach, class by class.</p><div style="display:flex;justify-content:space-between;margin:14px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 10</label></div><div id="t-sub-10" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><div style="display:flex;justify-content:space-between;margin:16px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 12</label></div><div id="t-sub-12" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><button class="login-btn" id="t-save-subj" style="margin-top:18px" onclick="saveTeacherSubjects()">Save & Continue →</button><p style="text-align:center;margin-top:14px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Logout</p></div>
 </div>
-<div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('today',this)"><span>Today's Classes</span></div><div class="nav-item" onclick="tPage('schedule',this)"><span>Upload PDF</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule Rule:</b> Maximum 2 per month. Frequent reschedules affect MVS Foundation's reputation.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-today"><div id="t-today-content"><div class="spinner"></div></div></div><div class="page" id="t-page-schedule"><div id="t-schedule-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
+<div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule Rule:</b> Maximum 2 per month. Frequent reschedules affect MVS Foundation's reputation.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== ADMIN APP ===== -->
 <div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#ef4444">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Students</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Question Bank</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#ef4444" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== STUDENT APP ===== -->
@@ -1391,13 +1395,12 @@ function tPage(page,el){
   document.querySelectorAll('#teacher-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('t-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#teacher-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',today:"Today's Classes",performance:'Performance',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',qbank:'Question Bank'};
+  const titles={dashboard:'Dashboard',performance:'Performance',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',qbank:'Question Bank'};
   document.getElementById('t-title').textContent=titles[page];
   stopCountdown();
   if(page==='dashboard') loadTDashboard();
-  else if(page==='today') loadTToday();
+  else if(page==='today'){ _ttTab='today'; tPage('timetable'); return; }
   else if(page==='performance') loadTPerformance();
-  else if(page==='schedule') loadTUpload();
   else if(page==='timetable') loadTTimetable();
   else if(page==='dpp') loadTDpp();
   else if(page==='lectures') loadTLectures();
@@ -1427,76 +1430,19 @@ async function loadTMaterial(){
  const subs=[...new Set(_matEntries.map(e=>e.subject))];
  if(subs.length===0){ el.innerHTML=`<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>Upload a timetable first, then chapters will appear here.</p></div></div></div>`; return; }
  _matActiveSub=_matActiveSub&&subs.includes(_matActiveSub)?_matActiveSub:subs[0];
- el.innerHTML=`<div class="card"><div class="card-header"><h3> Study Material Upload</h3><button class="btn btn-ghost btn-sm" onclick="openOtherUpload()"> Other Material</button></div><div class="card-body"><div class="alert alert-info">Upload a <strong>Notes</strong> or <strong>DPP</strong> PDF next to each chapter. Use <strong>Other Material</strong> to create a category (e.g. Formula Sheet, PYQ) and upload anything. Students will see it under Materials.</div><div class="subj-tabs">${subs.map(s=>`<div class="subj-tab ${s===_matActiveSub?'active':''}" onclick="tMatSub('${encodeURIComponent(s)}')">${esc(s)}</div>`).join('')}</div><div id="t-chapter-list"><div class="spinner"></div></div></div></div><div class="card"><div class="card-header"><h3>Material Analytics</h3><span class="pager-info">Upload date · students viewed · downloads</span></div><div class="card-body">${matAnalyticsCardHTML()}</div></div>`;
+ el.innerHTML=`<div class="card"><div class="card-header"><h3> Study Material Upload</h3><button class="btn btn-ghost btn-sm" onclick="openUploadHub({typeLabel:'Other (custom)'})"> Other Material</button></div><div class="card-body"><div class="alert alert-info">Upload a <strong>Notes</strong> or <strong>DPP</strong> PDF next to each chapter. Use <strong>Other Material</strong> to create a category (e.g. Formula Sheet, PYQ) and upload anything. Students will see it under Materials.</div><div class="subj-tabs">${subs.map(s=>`<div class="subj-tab ${s===_matActiveSub?'active':''}" onclick="tMatSub('${encodeURIComponent(s)}')">${esc(s)}</div>`).join('')}</div><div id="t-chapter-list"><div class="spinner"></div></div></div></div><div class="card"><div class="card-header"><h3>Material Analytics</h3><span class="pager-info">Upload date · students viewed · downloads</span></div><div class="card-body">${matAnalyticsCardHTML()}</div></div>`;
  renderChapterStatus();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function tMatSub(s){ _matActiveSub=decodeURIComponent(s); loadTMaterial(); }
-async function openOtherUpload(){
-  let subs=[];
-  try{ const es=await api('/api/teacher/my-timetable'); subs=[...new Set(es.map(e=>e.subject))]; }catch(e){}
-  if(subs.length===0) subs=[_matActiveSub].filter(Boolean);
-  showModal(' Other Material Upload',
- `<div class="alert alert-info">Create your own category and upload any material (Formula Sheet, PYQ, Reference, etc.). Students get a bell notification and see it under Materials.</div><div class="form-group"><label>Subject</label><select class="form-control" id="om-sub">${subs.map(s=>`<option>${esc(s)}</option>`).join('')}</select></div><div class="form-group"><label>Category</label><input class="form-control" id="om-cat" placeholder="e.g. Formula Sheet / PYQ / Reference Notes"></div><div class="form-group"><label>Title</label><input class="form-control" id="om-title" placeholder="e.g. Physics Important Formulas"></div><div class="form-group"><label>Chapter (optional)</label><input class="form-control" id="om-ch" placeholder="General"></div><div class="form-group"><label>PDF File</label>${fileDropHTML('om-file','om-label')}</div><div id="om-status"></div>`,
- `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="om-btn" onclick="submitOtherUpload()">Upload</button>`);
-}
-async function submitOtherUpload(){
-  const fi=document.getElementById('om-file');
-  const cat=val('om-cat');
-  if(!cat){ toast('Please enter a category.',true); return; }
-  if(!fi.files.length){ toast('Please select a PDF.',true); return; }
-  let _upf=fi.files[0];
-  if(_upf.size>MAXB||(_upf.type&&_upf.type.startsWith('image/'))){ toast('Compressing the file, please wait...'); const r=await smartCompress(_upf,m=>toast(m)); _upf=r.file; if(!r.ok){ toast('The file is still too large after compression. Please try a smaller file.',true); return; } }
-  const btn=document.getElementById('om-btn'); btn.disabled=true; btn.textContent='Uploading...';
-  const fd=new FormData();
-  fd.append('file',_upf); fd.append('subject',val('om-sub'));
-  fd.append('chapter',val('om-ch')||'General'); fd.append('material_type','other');
-  fd.append('category',cat); fd.append('title',val('om-title')||cat); fd.append('class_name','Class 12');
-  try{
- const r=await fetch(API+'/api/teacher/material',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
- const d=await r.json(); if(!r.ok) throw new Error(d.detail||'Error');
- document.getElementById('om-status').innerHTML=`<div class="alert alert-success"> Uploaded. Students have been notified.</div>`;
- toast('Uploaded successfully. ');
- btn.textContent=' Done'; btn.setAttribute('onclick','closeModal()'); btn.disabled=false;
-  }catch(e){ document.getElementById('om-status').innerHTML=`<div class="alert alert-danger"> ${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Upload'; }
-}
 async function renderChapterStatus(){
   const wrap=document.getElementById('t-chapter-list');
   try{
  const list=await api('/api/teacher/chapter-status?subject='+encodeURIComponent(_matActiveSub));
  if(list.length===0){ wrap.innerHTML='<p style="color:var(--text-muted)">No chapters in this subject yet.</p>'; return; }
- wrap.innerHTML=list.map(c=>`<div class="chapter-acc" style="margin-bottom:10px"><div class="chapter-head" style="cursor:default"><h4> ${esc(c.chapter)}</h4><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="tstatus ${c.notes?'done':'upcoming'}">${c.notes?' Notes':'Notes Pending'}</span><button class="btn btn-ghost btn-sm" onclick="openMatUpload('notes','${encodeURIComponent(c.chapter)}')"> Notes</button><span class="tstatus ${c.dpp?'done':'upcoming'}">${c.dpp?' DPP':'DPP Pending'}</span><button class="btn btn-ghost btn-sm" onclick="openMatUpload('dpp','${encodeURIComponent(c.chapter)}')"> DPP</button></div></div></div>`).join('');
+ wrap.innerHTML=list.map(c=>`<div class="chapter-acc" style="margin-bottom:10px"><div class="chapter-head" style="cursor:default"><h4> ${esc(c.chapter)}</h4><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="tstatus ${c.notes?'done':'upcoming'}">${c.notes?' Notes':'Notes Pending'}</span><button class="btn btn-ghost btn-sm" onclick="openUploadHub({type:'notes',chapter:'${esc(c.chapter)}',subject:_matActiveSub})"> Notes</button><span class="tstatus ${c.dpp?'done':'upcoming'}">${c.dpp?' DPP':'DPP Pending'}</span><button class="btn btn-ghost btn-sm" onclick="openUploadHub({type:'dpp',chapter:'${esc(c.chapter)}',subject:_matActiveSub})"> DPP</button></div></div></div>`).join('');
   }catch(e){ wrap.innerHTML=errHtml(e); }
 }
-function openMatUpload(type,chapterEnc,subjectEnc){
-  const chapter=decodeURIComponent(chapterEnc);
-  const subject=subjectEnc?decodeURIComponent(subjectEnc):_matActiveSub;
-  showModal(` ${type==='notes'?'Class Notes':'DPP'} Upload`,
- `<div class="alert alert-info"><strong>${esc(subject)}</strong> — ${esc(chapter)}<br>Select a PDF (max 20MB).</div><div class="form-group"><label>Title (optional)</label><input class="form-control" id="mat-title" placeholder="${type==='notes'?'Chapter Notes':'DPP Sheet'}"></div><div class="form-group"><label>PDF File</label>${fileDropHTML('mat-file','mat-label')}</div><div id="mat-status"></div>`,
- `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="mat-btn" onclick="submitMatUpload('${type}','${chapterEnc}','${encodeURIComponent(subject)}')">Upload</button>`);
-}
-async function submitMatUpload(type,chapterEnc,subjectEnc){
-  const fi=document.getElementById('mat-file');
-  if(!fi.files.length){ toast('Please select a PDF.',true); return; }
-  let _upf=fi.files[0];
-  if(_upf.size>MAXB||(_upf.type&&_upf.type.startsWith('image/'))){ toast('Compressing the file, please wait...'); const r=await smartCompress(_upf,m=>toast(m)); _upf=r.file; if(!r.ok){ toast('The file is still too large after compression. Please try a smaller file.',true); return; } }
-  const subject=subjectEnc?decodeURIComponent(subjectEnc):_matActiveSub;
-  const btn=document.getElementById('mat-btn'); btn.disabled=true; btn.textContent='Uploading...';
-  const fd=new FormData();
-  fd.append('file',_upf); fd.append('subject',subject);
-  fd.append('chapter',decodeURIComponent(chapterEnc)); fd.append('material_type',type);
-  fd.append('title',val('mat-title')); fd.append('class_name','Class 12');
-  try{
- const r=await fetch(API+'/api/teacher/material',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
- const d=await r.json(); if(!r.ok) throw new Error(d.detail||'Error');
- document.getElementById('mat-status').innerHTML=`<div class="alert alert-success"> Uploaded successfully.</div>`;
- toast('Uploaded successfully. ');
- if(document.getElementById('t-page-material').classList.contains('active')) renderChapterStatus();
- if(document.getElementById('t-page-dashboard').classList.contains('active')) loadTDashboard();
- fi.disabled=true; btn.disabled=false; btn.textContent=' Done'; btn.setAttribute('onclick','closeModal()');
-  }catch(e){ document.getElementById('mat-status').innerHTML=`<div class="alert alert-danger"> ${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Upload'; }
-}
-
 function complianceCard(comp){
   const s=comp.score, col=comp.band==='green'?'#059669':comp.band==='yellow'?'#d97706':'#dc2626';
   const r=52, c=2*Math.PI*r, off=c*(1-s/100), b=comp.breakdown;
@@ -1519,8 +1465,8 @@ function tClassRow(c){
   const btn=c.completed?'<span style="color:var(--success);font-size:.8rem;font-weight:600">Done ✓</span>':`<button class="btn btn-success btn-sm" onclick="openClassReport(${c.id})">Mark Completed</button>`;
   return `<tr><td><strong>${esc(c.subject)}</strong></td><td>${esc(c.class_name||'—')}</td><td>${esc(c.time||'—')}</td><td>${esc(topic)}</td><td>${statusTag(c.live_status)}</td><td style="text-align:right">${btn}</td></tr>`;
 }
-async function loadTToday(){
-  const el=document.getElementById('t-today-content');
+async function _renderTodayClasses(targetId){
+  const el=document.getElementById(targetId||'t-today-inner');
   try{
     const [all,comp]=await Promise.all([api('/api/teacher/my-classes'),api('/api/teacher/compliance')]);
     window._tClasses=all; const st=comp.stats;
@@ -1563,8 +1509,7 @@ async function submitClassReport(id){
     await api('/api/teacher/class/'+id+'/complete','POST',{topic_covered:val('cr-topic'),start_time:val('cr-start'),end_time:val('cr-end'),homework:val('cr-hw'),dpp_given:document.getElementById('cr-dpp').checked,remarks:val('cr-remarks')});
     toast('Class report submitted.'); closeModal();
     const active=document.querySelector('#teacher-app .page.active');
-    if(active&&active.id==='t-page-today') loadTToday();
-    else if(active&&active.id==='t-page-timetable') loadTTimetable();
+    if(active&&active.id==='t-page-timetable') loadTTimetable();
     else loadTDashboard();
   }catch(e){ document.getElementById('cr-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Submit Class Report'; }
 }
@@ -1600,7 +1545,7 @@ async function loadTeacherToday(wrapId){
  } else if(e.notes){
  right=`<span class="tstatus done"> Lecture Done · Material Done</span>`;
  } else if(over){
- right=`<button class="btn btn-primary btn-sm" onclick="openMatUpload('notes','${ch}','${sub}')"> Upload Notes</button><button class="btn btn-ghost btn-sm" onclick="openMatUpload('dpp','${ch}','${sub}')"> DPP</button><span class="tstatus" style="background:rgba(245,158,11,.15);color:var(--warning)">Material Pending</span>`;
+ right=`<button class="btn btn-primary btn-sm" onclick="openUploadHub({type:'notes',chapter:decodeURIComponent('${ch}'),subject:decodeURIComponent('${sub}')})"> Upload Notes</button><button class="btn btn-ghost btn-sm" onclick="openUploadHub({type:'dpp',chapter:decodeURIComponent('${ch}'),subject:decodeURIComponent('${sub}')})"> DPP</button><span class="tstatus" style="background:rgba(245,158,11,.15);color:var(--warning)">Material Pending</span>`;
  } else {
  right=`<span class="tstatus upcoming">Upcoming</span>`;
  }
@@ -1610,63 +1555,7 @@ async function loadTeacherToday(wrapId){
   }catch(e){ wrap.innerHTML=errHtml(e); }
 }
 
-async function loadTSchedule(){ return loadTUpload(); }
-async function loadTUpload(){
-  const el=document.getElementById('t-schedule-content');
-  await _loadMatAnalytics(true);
-  el.innerHTML=`<div class="card"><div class="card-header"><h3>Academic Upload Center</h3><button class="btn btn-primary btn-sm" onclick="openAcademicUpload()">${ic('upload')} Upload Material</button></div><div class="card-body"><div class="alert alert-info">Upload <strong>DPP, Notes, Assignment, Question Bank, Practical File</strong> or <strong>Revision Notes</strong>. Each upload notifies students and is tracked (views &amp; downloads).</div>${matAnalyticsCardHTML()}</div></div><div class="card"><div class="card-header"><h3>Today's Classes — Notes / DPP Upload</h3></div><div class="card-body"><div class="alert alert-info">After the class is over <strong>Notes (PDF)</strong> and <strong>DPP (PDF)</strong> upload directly (no drive link). As soon as it's uploaded, the class is marked <strong>Done</strong>.</div><div id="t-upload-today"><div class="spinner"></div></div></div></div>`;
-  await loadTeacherToday('t-upload-today');
-}
-async function loadTScheduleOLD(){
-  const el=document.getElementById('t-schedule-content');
-  try{
- const today=await api('/api/teacher/classes/today');
- const all=await api('/api/teacher/classes');
- let html=`<div class="card"><div class="card-header"><h3> Today's Classes</h3><button class="btn btn-primary btn-sm" onclick="openAddClass()"> Extra Class</button></div><div class="card-body">`;
- if(today.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No classes today</p></div>`;
- else today.forEach(c=>{ html+=scheduleItem(c); });
- html+=`</div></div>`;
- html+=`<div class="card"><div class="card-header"><h3> Saari Classes</h3></div><div class="card-body"><div class="table-wrap"><table><thead><tr><th>Date</th><th>Time</th><th>Subject</th><th>Class</th><th>Topic</th><th>Status</th><th>Action</th></tr></thead><tbody>`;
- if(all.length===0) html+=`<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">No classes yet. Use "Extra Class" to add one.</td></tr>`;
- all.forEach(c=>{ html+=`<tr><td>${c.scheduled_date}</td><td>${c.scheduled_time}</td><td>${esc(c.subject)}</td><td>${esc(c.class_name)}</td><td>${esc(c.topic)}</td><td>${statusTag(c.status)}</td><td>${classActions(c)}</td></tr>`; });
- html+=`</tbody></table></div></div></div>`;
- el.innerHTML=html;
-  }catch(e){ el.innerHTML=errHtml(e); }
-}
-function scheduleItem(c){
-  const cls=c.status==='done'?'done':(c.status==='rescheduled'?'red':'');
-  return `<div class="schedule-item ${cls}"><div class="schedule-time">${c.scheduled_time}</div><div class="schedule-info"><h4>${esc(c.subject)} — ${esc(c.class_name)}</h4><p>${esc(c.topic)} · ${c.scheduled_date}</p></div><div>${classActions(c)}</div></div>`;
-}
-function classActions(c){
-  if(c.status==='done') return statusTag('done');
-  let h='';
-  h+=`<button class="btn btn-primary btn-sm" onclick="openUpload(${c.id})"> Upload & Done</button> `;
-  if(c.status==='pending') h+=`<button class="btn btn-warning btn-sm" onclick="openReschedule(${c.id},'${c.scheduled_date}','${c.scheduled_time}')">${ic('refresh')}</button>`;
-  return h;
-}
 function statusTag(s){ if(s==='done')return '<span class="tag tag-done">Done</span>'; if(s==='rescheduled')return '<span class="tag tag-reschedule">Rescheduled</span>'; return '<span class="tag tag-pending">Pending</span>'; }
-
-function openAddClass(){
-  showModal(' Extra Class Add',
- `<div class="form-group"><label>Date</label><input type="date" class="form-control" id="ac-date"></div><div class="form-group"><label>Time</label><input type="time" class="form-control" id="ac-time"></div><div class="form-group"><label>Class</label>${classSelect('ac-class')}</div><div class="form-group"><label>Subject</label><input class="form-control" id="ac-subject" placeholder="e.g. Physics"></div><div class="form-group"><label>Topic</label><input class="form-control" id="ac-topic" placeholder="Topic"></div>`,
- `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitAddClass()">Add</button>`);
-}
-async function submitAddClass(){
-  const body={subject:val('ac-subject'),class_name:val('ac-class'),topic:val('ac-topic'),scheduled_date:val('ac-date'),scheduled_time:val('ac-time')+':00',is_extra:true};
-  if(!body.subject||!body.class_name||!body.topic||!body.scheduled_date||val('ac-time')===''){ toast('Please fill in all fields.',true); return; }
-  try{ await api('/api/teacher/classes','POST',body); closeModal(); toast('Class added. '); loadTSchedule(); }catch(e){ toast(e.message,true); }
-}
-function openReschedule(id,date,time){
-  showModal(' Reschedule Request',
- `<div class="alert alert-warning">This request goes to the admin for approval. Limit: 2 per month.</div><div class="form-group"><label>Nayi Date</label><input type="date" class="form-control" id="rs-date"></div><div class="form-group"><label>Nayi Time</label><input type="time" class="form-control" id="rs-time"></div><div class="form-group"><label>Reason</label><textarea class="form-control" id="rs-reason" rows="3" placeholder="Enter a reason"></textarea></div>`,
- `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-warning" onclick="submitReschedule(${id})">Send Request</button>`);
-}
-async function submitReschedule(id){
-  const body={class_entry_id:id,new_date:val('rs-date'),new_time:val('rs-time')+':00',reason:val('rs-reason')};
-  if(!body.new_date||val('rs-time')===''||!body.reason){ toast('Please fill in all fields.',true); return; }
-  try{ await api('/api/teacher/reschedule','POST',body); closeModal(); toast('Request sent to the admin. '); loadTSchedule(); }
-  catch(e){ if(e.message.includes('LIMIT_REACHED')){ closeModal(); document.getElementById('limit-popup').classList.add('open'); } else toast(e.message,true); }
-}
 
 let _ttEntries=[]; let _ttActiveSub='';
 async function openRequestClass(){
@@ -1801,13 +1690,21 @@ async function loadTStudents(){
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 
+let _ttTab='today';
+function ttSwitchTab(t){ _ttTab=t; loadTTimetable(); }
 async function loadTTimetable(){
   const el=document.getElementById('t-timetable-content');
   try{
- _ttEntries=await api('/api/teacher/my-timetable');
- el.innerHTML=`<div class="card"><div class="card-header"><h3>My Time Table</h3><button class="btn btn-primary btn-sm" onclick="openRequestClass()">${ic('calendar')} Add Extra Class</button></div><div class="card-body"><div class="alert alert-info">This timetable was uploaded by the admin. You can edit the topic on each part. <strong>Extra class</strong> once added, it appears in the timetable after the admin approves.</div><div id="t-tline-wrap"></div></div></div>`;
- _ttActiveSub=_ttActiveSub||(_ttEntries[0]||{}).subject||'';
- renderStudentTimetable(_ttEntries,'t-tline-wrap',{onEdit:true,onLecture:true,onComplete:'openClassReport',emptyMsg:'No timetable for your subjects yet.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'});
+    const tabs=`<div class="tt-tabs"><button class="tt-tab ${_ttTab==='today'?'active':''}" onclick="ttSwitchTab('today')">Today's Classes</button><button class="tt-tab ${_ttTab==='plan'?'active':''}" onclick="ttSwitchTab('plan')">Full Timetable</button></div>`;
+    if(_ttTab==='today'){
+      el.innerHTML=`${tabs}<div id="t-today-inner"><div class="spinner"></div></div>`;
+      await _renderTodayClasses('t-today-inner');
+      return;
+    }
+    _ttEntries=await api('/api/teacher/my-timetable');
+    el.innerHTML=`${tabs}<div class="card"><div class="card-header"><h3>My Time Table</h3><button class="btn btn-primary btn-sm" onclick="openRequestClass()">${ic('calendar')} Add Extra Class</button></div><div class="card-body"><div class="alert alert-info">This timetable was uploaded by the admin. You can edit the topic on each part, add a <strong>Lecture report</strong> (with a verification question), and mark a class Done. <strong>Extra class</strong> appears here once the admin approves.</div><div id="t-tline-wrap"></div></div></div>`;
+    _ttActiveSub=_ttActiveSub||(_ttEntries[0]||{}).subject||'';
+    renderStudentTimetable(_ttEntries,'t-tline-wrap',{onEdit:true,onLecture:true,onComplete:'openClassReport',emptyMsg:'No timetable for your subjects yet.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'});
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function tSetSubj(s){ _ttActiveSub=decodeURIComponent(s); renderStudentTimetable(_ttEntries,'t-tline-wrap',{onEdit:true,onLecture:true,onComplete:'openClassReport',emptyMsg:'No entries.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'}); }
@@ -1946,45 +1843,6 @@ function fileDropHTML(inputId,labelId,accept){
 }
 
 // ===== GENERIC DIRECT UPLOAD (DPP / Test / Notes) — no drive link =====
-let _duMap={};
-async function openDirectUpload(type){
-  try{
- const es=await api('/api/teacher/my-timetable');
- _duMap={}; es.forEach(e=>{ if(e.type!=='event'&&e.chapter){ (_duMap[e.subject]=_duMap[e.subject]||[]); if(!_duMap[e.subject].includes(e.chapter))_duMap[e.subject].push(e.chapter); } });
-  }catch(e){ _duMap={}; }
-  const subs=Object.keys(_duMap);
-  if(subs.length===0){ toast('The admin has not uploaded a timetable for your subjects yet.',true); return; }
-  const label=type==='test'?'Test':type==='dpp'?'DPP':'Class Notes';
-  showModal(` Upload ${label}`,
- `<div class="alert alert-info">Direct PDF upload (max 20MB). Upload hote hi students ke <strong>bell </strong> a notification is sent.</div><div class="form-group"><label>Subject</label><select class="form-control" id="du-sub" onchange="duFillCh()">${subs.map(s=>`<option>${esc(s)}</option>`).join('')}</select></div><div class="form-group"><label>Chapter</label><select class="form-control" id="du-ch"></select></div><div class="form-group"><label>Title (optional)</label><input class="form-control" id="du-title" placeholder="${label}"></div>${type==='test'?`<div class="form-group"><label>Test Duration (minutes)</label><input type="number" class="form-control" id="du-dur" value="60"></div>`:''}
- <div class="form-group"><label>PDF File</label>${fileDropHTML('du-file','du-label')}</div><div id="du-status"></div>`,
- `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="du-btn" onclick="submitDirectUpload('${type}')">Upload</button>`);
-  duFillCh();
-}
-function duFillCh(){
-  const chs=_duMap[val('du-sub')]||[];
-  document.getElementById('du-ch').innerHTML=chs.length?chs.map(c=>`<option>${esc(c)}</option>`).join(''):'<option value="">(no chapter)</option>';
-}
-async function submitDirectUpload(type){
-  const fi=document.getElementById('du-file');
-  if(!fi.files.length){ toast('Please select a PDF.',true); return; }
-  let _upf=fi.files[0];
-  if(_upf.size>MAXB||(_upf.type&&_upf.type.startsWith('image/'))){ toast('Compressing the file, please wait...'); const r=await smartCompress(_upf,m=>toast(m)); _upf=r.file; if(!r.ok){ toast('The file is still too large after compression. Please try a smaller file.',true); return; } }
-  const btn=document.getElementById('du-btn'); btn.disabled=true; btn.textContent='Uploading...';
-  const fd=new FormData();
-  fd.append('file',_upf); fd.append('subject',val('du-sub'));
-  fd.append('chapter',val('du-ch')); fd.append('material_type',type);
-  fd.append('title',val('du-title')); fd.append('class_name','Class 12');
-  if(type==='test') fd.append('duration_min',val('du-dur')||'60');
-  try{
- const r=await fetch(API+'/api/teacher/material',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
- const d=await r.json(); if(!r.ok) throw new Error(d.detail||'Error');
- document.getElementById('du-status').innerHTML=`<div class="alert alert-success">Uploaded. Students have been notified.</div>`;
- toast('Uploaded. Students have been notified. ');
- fi.disabled=true; btn.disabled=false; btn.textContent=' Done'; btn.setAttribute('onclick','closeModal()');
- if(type==='dpp') loadTDpp(); else if(type==='test') loadTTests();
-  }catch(e){ document.getElementById('du-status').innerHTML=`<div class="alert alert-danger"> ${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Upload'; }
-}
 async function delMaterial(id,kind){
   try{ await api('/api/teacher/material/'+id,'DELETE'); toast('Deleted.'); if(kind==='dpp')loadTDpp(); else if(kind==='test')loadTTests(); }catch(e){ toast(e.message,true); }
 }
@@ -2020,40 +1878,96 @@ async function _loadMatAnalytics(force){
 }
 function _mStat(id){ return (_matAnalytics||[]).find(x=>x.id===id)||{students_viewed:0,downloads:0,approval_status:'approved'}; }
 function approvalTag(s){ const cls={approved:'tag-done',pending:'tag-pending',rejected:'tag-missed'}, lbl={approved:'Approved',pending:'Pending Approval',rejected:'Rejected'}; return `<span class="tag ${cls[s]||'tag-low'}" style="font-size:.6rem">${lbl[s]||s}</span>`; }
-const ACADEMIC_TYPES={'DPP':{mt:'dpp'},'Notes':{mt:'notes'},'Assignment':{mt:'other',cat:'Assignment'},'Question Bank':{mt:'other',cat:'Question Bank'},'Practical File':{mt:'other',cat:'Practical File'},'Revision Notes':{mt:'other',cat:'Revision Notes'}};
-async function openAcademicUpload(){
-  let subs=[];
-  try{ const es=await api('/api/teacher/my-timetable'); subs=[...new Set(es.map(e=>e.subject))]; }catch(e){}
-  const typeOpts=Object.keys(ACADEMIC_TYPES).map(t=>`<option>${t}</option>`).join('');
-  showModal('Academic Upload Center',
-    `<div class="alert alert-info">Upload academic material by type. Students get a bell notification, and each upload is tracked.</div>
-     <div class="form-group"><label>Upload Type</label><select class="form-control" id="ac-type">${typeOpts}</select></div>
-     <div class="form-group"><label>Subject</label><select class="form-control" id="ac-sub">${subs.map(s=>`<option>${esc(s)}</option>`).join('')||'<option>General</option>'}</select></div>
-     <div class="form-group"><label>Title</label><input class="form-control" id="ac-title" placeholder="e.g. Chapter 5 Assignment"></div>
-     <div class="form-group"><label>Chapter (optional)</label><input class="form-control" id="ac-ch" placeholder="General"></div>
-     <div class="form-group"><label>PDF File</label>${fileDropHTML('ac-file','ac-label')}</div>
-     <div id="ac-status"></div>`,
-    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="ac-btn" onclick="submitAcademicUpload()">Upload</button>`);
-}
-async function submitAcademicUpload(){
-  const fi=document.getElementById('ac-file');
-  if(!fi.files.length){ toast('Please select a PDF.',true); return; }
-  const t=val('ac-type'), map=ACADEMIC_TYPES[t]||{mt:'other',cat:t};
-  let _upf=fi.files[0];
-  if(_upf.size>MAXB||(_upf.type&&_upf.type.startsWith('image/'))){ toast('Compressing the file, please wait...'); const r=await smartCompress(_upf,m=>toast(m)); _upf=r.file; if(!r.ok){ toast('The file is still too large after compression.',true); return; } }
-  const btn=document.getElementById('ac-btn'); btn.disabled=true; btn.textContent='Uploading...';
-  const fd=new FormData();
-  fd.append('file',_upf); fd.append('subject',val('ac-sub'));
-  fd.append('chapter',val('ac-ch')||'General'); fd.append('material_type',map.mt);
-  if(map.cat) fd.append('category',map.cat);
-  fd.append('title',val('ac-title')||t); fd.append('class_name','Class 12');
+
+// ============================================================
+//  UNIFIED UPLOAD HUB — the single upload entry point.
+//  Replaces the four old duplicate modals (Academic Upload Center,
+//  Study-Material upload, Other-Material upload, Direct upload).
+//  All of them posted to the same /api/teacher/material endpoint.
+// ============================================================
+const UPLOAD_TYPES={
+  'Class Notes':      {mt:'notes'},
+  'DPP':              {mt:'dpp'},
+  'Test Paper':       {mt:'test'},
+  'Assignment':       {mt:'other', cat:'Assignment'},
+  'Question Bank':    {mt:'other', cat:'Question Bank'},
+  'Practical File':   {mt:'other', cat:'Practical File'},
+  'Revision Notes':   {mt:'other', cat:'Revision Notes'},
+  'Other (custom)':   {mt:'other', cat:''}
+};
+let _uhMap={};   // subject -> [chapters]
+
+async function openUploadHub(prefill){
+  prefill=prefill||{};
   try{
-    const r=await fetch(API+'/api/teacher/material',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
-    const d=await r.json(); if(!r.ok) throw new Error(d.detail||'Error');
-    document.getElementById('ac-status').innerHTML=`<div class="alert alert-success">Uploaded as <strong>${esc(t)}</strong>. Students have been notified.</div>`;
-    toast('Uploaded successfully.'); _matAnalytics=null;
+    const es=await api('/api/teacher/my-timetable');
+    _uhMap={};
+    es.forEach(e=>{ if(e.type!=='event'&&e.chapter){ (_uhMap[e.subject]=_uhMap[e.subject]||[]); if(!_uhMap[e.subject].includes(e.chapter)) _uhMap[e.subject].push(e.chapter); } });
+  }catch(e){ _uhMap={}; }
+  let subs=Object.keys(_uhMap);
+  if(!subs.length&&prefill.subject) subs=[prefill.subject];
+  if(!subs.length) subs=['General'];
+  const preLabel=prefill.typeLabel||Object.keys(UPLOAD_TYPES).find(k=>UPLOAD_TYPES[k].mt===prefill.type&&!UPLOAD_TYPES[k].cat)||'Class Notes';
+  const typeOpts=Object.keys(UPLOAD_TYPES).map(t=>`<option ${t===preLabel?'selected':''}>${t}</option>`).join('');
+  const subOpts=subs.map(s=>`<option ${prefill.subject===s?'selected':''}>${esc(s)}</option>`).join('');
+  showModal('Upload Material',
+    `<div class="alert alert-info">One place for every upload. Students get a bell notification as soon as you publish.</div>
+     <div class="ex-grid2">
+       <div><label class="ex-lbl">Type</label><select class="form-control" id="uh-type" onchange="uhTypeChange()">${typeOpts}</select></div>
+       <div><label class="ex-lbl">Subject</label><select class="form-control" id="uh-sub" onchange="uhFillCh()">${subOpts}</select></div>
+     </div>
+     <div id="uh-cat-wrap" style="display:none"><label class="ex-lbl">Category</label><input class="form-control" id="uh-cat" placeholder="e.g. Formula Sheet / PYQ / Reference"></div>
+     <div class="ex-grid2">
+       <div><label class="ex-lbl">Chapter</label><input class="form-control" id="uh-ch" list="uh-ch-list" placeholder="Chapter (optional)" value="${esc(prefill.chapter||'')}"><datalist id="uh-ch-list"></datalist></div>
+       <div><label class="ex-lbl">Title (optional)</label><input class="form-control" id="uh-title" placeholder="e.g. Chapter 5 Notes"></div>
+     </div>
+     <div id="uh-dur-wrap" style="display:none"><label class="ex-lbl">Test Duration (minutes)</label><input type="number" class="form-control" id="uh-dur" value="60"></div>
+     <label class="ex-lbl">PDF File</label>${fileDropHTML('uh-file','uh-label')}
+     <div id="uh-status"></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="uh-btn" onclick="submitUploadHub()">Upload</button>`);
+  uhFillCh(); uhTypeChange();
+}
+function uhFillCh(){
+  const sub=val('uh-sub'); const dl=document.getElementById('uh-ch-list'); if(!dl) return;
+  dl.innerHTML=(_uhMap[sub]||[]).map(c=>`<option value="${esc(c)}">`).join('');
+}
+function uhTypeChange(){
+  const t=UPLOAD_TYPES[val('uh-type')]||{mt:'notes'};
+  const cw=document.getElementById('uh-cat-wrap'), dw=document.getElementById('uh-dur-wrap');
+  if(cw){ cw.style.display=(t.mt==='other')?'block':'none'; const ci=document.getElementById('uh-cat'); if(ci&&t.cat) ci.value=t.cat; }
+  if(dw) dw.style.display=(t.mt==='test')?'block':'none';
+}
+async function submitUploadHub(){
+  const fi=document.getElementById('uh-file');
+  if(!fi.files.length){ toast('Please select a PDF.',true); return; }
+  const t=UPLOAD_TYPES[val('uh-type')]||{mt:'notes'};
+  if(t.mt==='other'&&!val('uh-cat').trim()){ toast('Please enter a category.',true); return; }
+  let f=fi.files[0];
+  if(f.size>MAXB||(f.type&&f.type.startsWith('image/'))){ toast('Compressing the file, please wait...'); const r=await smartCompress(f,m=>toast(m)); f=r.file; if(!r.ok){ toast('The file is still too large after compression. Please try a smaller file.',true); return; } }
+  const btn=document.getElementById('uh-btn'); btn.disabled=true; btn.textContent='Uploading...';
+  const st=document.getElementById('uh-status');
+  const fd=new FormData();
+  fd.append('file',f); fd.append('subject',val('uh-sub')); fd.append('chapter',val('uh-ch'));
+  fd.append('material_type',t.mt); fd.append('title',val('uh-title'));
+  fd.append('category',t.mt==='other'?val('uh-cat'):'');
+  fd.append('class_name','Class 12');
+  if(t.mt==='test') fd.append('duration_min',val('uh-dur')||60);
+  try{
+    await new Promise((resolve,reject)=>{
+      const x=new XMLHttpRequest();
+      x.open('POST',API+'/api/teacher/material');
+      x.setRequestHeader('Authorization','Bearer '+TOKEN);
+      x.upload.onprogress=e=>{ if(e.lengthComputable){ const p=Math.round(e.loaded/e.total*100); btn.textContent='Uploading '+p+'%'; if(st) st.innerHTML=`<div class="ex-prog on"><div class="ex-prog-track"><div class="ex-prog-fill" style="width:${p}%"></div></div></div>`; } };
+      x.onload=()=>{ let j=null; try{ j=JSON.parse(x.responseText); }catch{} if(x.status>=200&&x.status<300) resolve(j); else reject(new Error((j&&j.detail)||('Error '+x.status))); };
+      x.onerror=()=>reject(new Error('Network error')); x.timeout=180000; x.ontimeout=()=>reject(new Error('Upload timed out'));
+      x.send(fd);
+    });
+    st.innerHTML=`<div class="alert alert-success">Uploaded successfully. Students have been notified.</div>`;
+    toast('Uploaded successfully.');
     btn.textContent='Done'; btn.setAttribute('onclick','closeModal()'); btn.disabled=false;
-  }catch(e){ document.getElementById('ac-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Upload'; }
+    const act=document.querySelector('#teacher-app .page.active');
+    if(act){ if(act.id==='t-page-material') loadTMaterial(); else if(act.id==='t-page-dpp') loadTDpp(); else if(act.id==='t-page-dashboard') loadTDashboard(); }
+  }catch(e){ st.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Upload'; }
 }
 function matAnalyticsCardHTML(types){
   let a=_matAnalytics||[];
@@ -2076,7 +1990,7 @@ async function loadTDpp(){
  await _loadMatAnalytics(true);
  const mats=(await api('/api/teacher/materials')).filter(m=>m.type==='dpp');
  const tV=mats.reduce((s,m)=>s+_mStat(m.id).students_viewed,0), tD=mats.reduce((s,m)=>s+_mStat(m.id).downloads,0);
- let html=`<div class="stats-grid">${statCard('DPPs Uploaded',mats.length,'clipboard','indigo')}${statCard('Students Viewed',tV,'users','green')}${statCard('Total Downloads',tD,'download','amber')}</div><div class="card"><div class="card-header"><h3> DPP Upload</h3><button class="btn btn-primary btn-sm" onclick="openDirectUpload('dpp')"> Upload DPP</button></div><div class="card-body"><div class="alert alert-info">Direct PDF upload (no drive link). Students get a bell notification on upload.</div>`;
+ let html=`<div class="stats-grid">${statCard('DPPs Uploaded',mats.length,'clipboard','indigo')}${statCard('Students Viewed',tV,'users','green')}${statCard('Total Downloads',tD,'download','amber')}</div><div class="card"><div class="card-header"><h3> DPP Upload</h3><button class="btn btn-primary btn-sm" onclick="openUploadHub({type:'dpp'})"> Upload DPP</button></div><div class="card-body"><div class="alert alert-info">Direct PDF upload (no drive link). Students get a bell notification on upload.</div>`;
  if(mats.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No DPP uploaded yet.</p></div>`;
  else html+=mats.map(m=>`<div class="today-row"><div><div class="tr-sub">${esc(m.subject)}</div><div class="tr-topic">${esc(m.chapter||'')} — ${esc(m.title||'DPP')}</div></div><div class="tmeta"><span class="tchip" title="Viewed / Downloads">${ic('users')} ${_mStat(m.id).students_viewed} · ${ic('download')} ${_mStat(m.id).downloads}</span><span class="tchip">${esc(m.date)}</span><button class="btn btn-primary btn-sm" onclick="openSubmissions(${m.id},'${esc((m.title||'DPP')).replace(/'/g,'')}')">${ic('users')} Submissions</button><button class="btn btn-ghost btn-sm" onclick="downloadMaterial('teacher',${m.id},'DPP.pdf')">${ic('download')}</button><button class="btn btn-danger btn-sm" onclick="delMaterial(${m.id},'dpp')">${ic('trash')}</button></div></div>`).join('');
  html+=`</div></div>`;
@@ -2254,7 +2168,7 @@ async function loadTTests(){
       const tb=e.test_type==='mcq'?'<span class="ex-tbadge mcq">MCQ</span>':'<span class="ex-tbadge subj">Subjective</span>';
       return `<div class="tst-item"><div class="tst-ic">${ic('clipboard')}</div><div class="tst-body"><div class="tst-title">${esc(e.title)} ${tb}</div><div class="tst-meta"><span>${esc(e.subject||'')}</span>${e.chapter?'<span class="d">\u00b7</span><span>'+esc(e.chapter)+'</span>':''}<span class="d">\u00b7</span><span>${e.questions} Qs</span><span class="d">\u00b7</span><span>${e.total_marks} marks</span><span class="d">\u00b7</span><span>${e.duration_min} min</span></div><div class="tst-scores"><span class="tst-score" style="background:#e0edff;color:#1d4ed8">${e.attempts} submitted</span><span class="tst-score" style="background:#dcfce7;color:#15803d">${e.graded} graded</span></div></div><div class="tst-right"><button class="btn btn-ghost btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results</button><div class="tst-pdf"><button class="btn btn-ghost btn-sm tst-pdfbtn" onclick="downloadExamPdf(${e.id},'english')">${ic('download')} PDF · EN</button>${(e.medium==='Bilingual'||e.medium==='Hindi')?`<button class="btn btn-ghost btn-sm tst-pdfbtn" onclick="downloadExamPdf(${e.id},'hindi')">${ic('download')} PDF · हिंदी</button>`:''}</div></div></div>`;
     }).join('')+`</div>`; }
-    html+=`<div style="margin-top:18px"><button class="btn btn-ghost btn-sm" onclick="openDirectUpload('test')">${ic('upload')} Upload PDF Test (old method)</button></div>`;
+    html+=`<div style="margin-top:18px"><button class="btn btn-ghost btn-sm" onclick="openUploadHub({typeLabel:'Test Paper'})">${ic('upload')} Upload PDF Test (old method)</button></div>`;
     el.innerHTML=html;
   }catch(e){ el.innerHTML=errHtml(e); }
 }
