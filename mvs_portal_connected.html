@@ -9,8 +9,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<style>:root{--primary:#0F2A54;--primary-dark:#0a1f40;--primary-50:#e4ebf5;--secondary:#FF6B2B;--accent:#FF6B2B;--success:#059669;--warning:#d97706;--danger:#dc2626;--bg:#EEF2F8;--card:#fff;--text:#0F1C33;--text-muted:#5A6B85;--border:#dbe3ef;--sidebar:#0F2A54;--sidebar-text:#9fb2cf;--shadow:0 1px 2px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.05);--shadow-lg:0 12px 32px -10px rgba(15,23,42,.2);--glass-bg:rgba(255,255,255,.7);--glass-brd:rgba(255,255,255,.55)}
-  .dark{--bg:#0b1524;--card:#111f36;--text:#eaf0fb;--text-muted:#93a6c4;--border:#22334f;--sidebar:#081120;--primary:#e2b458;--primary-dark:#c99e45;--primary-50:rgba(226,180,88,.13);--secondary:#e2b458;--accent:#e2b458;--glass-bg:rgba(13,23,40,.78);--glass-brd:rgba(255,255,255,.07);--shadow:0 1px 2px rgba(0,0,0,.45),0 1px 3px rgba(0,0,0,.35);--shadow-lg:0 18px 44px -14px rgba(0,0,0,.65)}
+<style>:root{--primary:#0F2A54;--primary-dark:#0a1f40;--primary-50:#e4ebf5;--secondary:#FF6B2B;--accent:#FF6B2B;--success:#059669;--warning:#d97706;--danger:#dc2626;--bg:#e5eaf3;--card:#fbfcfe;--bg-card:#fbfcfe;--text:#0F1C33;--text-muted:#5A6B85;--border:#dbe3ef;--sidebar:#0F2A54;--sidebar-text:#9fb2cf;--shadow:0 1px 2px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.05);--shadow-lg:0 12px 32px -10px rgba(15,23,42,.2);--glass-bg:rgba(255,255,255,.7);--glass-brd:rgba(255,255,255,.55)}
+  .dark{--bg:#0b1524;--card:#111f36;--bg-card:#111f36;--text:#eaf0fb;--text-muted:#93a6c4;--border:#22334f;--sidebar:#081120;--primary:#e2b458;--primary-dark:#c99e45;--primary-50:rgba(226,180,88,.13);--secondary:#e2b458;--accent:#e2b458;--glass-bg:rgba(13,23,40,.78);--glass-brd:rgba(255,255,255,.07);--shadow:0 1px 2px rgba(0,0,0,.45),0 1px 3px rgba(0,0,0,.35);--shadow-lg:0 18px 44px -14px rgba(0,0,0,.65)}
   h1,h2,h3,h4{letter-spacing:-.011em}
   *{margin:0;padding:0;box-sizing:border-box}
   body{font-family:'Plus Jakarta Sans','Segoe UI',sans-serif;background:var(--bg);color:var(--text);transition:.3s;-webkit-font-smoothing:antialiased}
@@ -45,7 +45,7 @@
   .btn .ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,.5);transform:scale(0);animation:ripple .6s linear;pointer-events:none}
   .btn-ghost .ripple{background:rgba(19,53,95,.18)}
   @keyframes ripple{to{transform:scale(2.5);opacity:0}}
-  .btn-primary{background:linear-gradient(135deg,#1a4178,#0F2A54);color:#fff;box-shadow:0 2px 8px rgba(15,42,84,.3)}.btn-primary:hover{background:linear-gradient(135deg,#13355f,#0c2747)}
+  .btn-primary{background:linear-gradient(135deg,var(--primary) 0%,var(--primary-dark) 100%);color:#fff;box-shadow:0 2px 8px rgba(15,42,84,.3)}.btn-primary:hover{background:linear-gradient(135deg,#13355f,#0c2747)}
   .btn-success{background:linear-gradient(135deg,#10b981,#059669);color:#fff;box-shadow:0 2px 6px rgba(5,150,105,.28)}.btn-danger{background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;box-shadow:0 2px 6px rgba(220,38,38,.25)}.btn-warning{background:var(--warning);color:#fff}
   .btn-ghost{background:var(--card);color:var(--text);border:1px solid var(--border)}.btn-ghost:hover{background:var(--bg);border-color:var(--primary)}
   .btn-sm{padding:6px 13px;font-size:.78rem}.btn:disabled{opacity:.5;cursor:not-allowed;transform:none!important}
@@ -1163,7 +1163,7 @@ canvas{max-width:100%}
 
 /* ============ PREMIUM THEME LAYER ============ */
 /* Light mode: soft slate-blue instead of flat white */
-body{background:linear-gradient(180deg,#eef2f9 0%,#e7ecf5 60%,#e4eaf4 100%);background-attachment:fixed}
+body{background:linear-gradient(180deg,#e9eef7 0%,#e3e9f3 55%,#dfe6f1 100%);background-attachment:fixed}
 .topbar{background:rgba(255,255,255,.85);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 
 /* Dark mode: deep navy + gold (MVS Portal admin style) */
@@ -1185,6 +1185,21 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 .dark .btn-ghost{border-color:var(--border);color:var(--text)}
 .dark .live-banner.upcoming{--lb-bg:rgba(226,180,88,.12);box-shadow:0 8px 26px -10px rgba(226,180,88,.35)}
 .dark .empty-state,.dark .ws-empty{color:var(--text-muted)}
+
+
+/* dark fixes: hardcoded-light components */
+.dark .prio-btn{background:#0d1a2e;color:var(--text);border-color:var(--border)}
+.dark .tst-score{background:rgba(226,180,88,.14);color:#e8c476}
+.dark .sm-other{background:rgba(255,255,255,.06);color:var(--text-muted)}
+.dark .reminder-item button{background:#0d1a2e;color:var(--text);border-color:var(--border)}
+.dark .alert-warning{background:rgba(217,119,6,.14);color:#f3c583;border-color:rgba(217,119,6,.3)}
+.dark .alert-info{background:rgba(96,165,250,.12);color:#9ec5f5;border-color:rgba(96,165,250,.25)}
+.dark .alert-danger{background:rgba(239,68,68,.13);color:#f3a0a0;border-color:rgba(239,68,68,.3)}
+.dark .rec-title{color:var(--text)}
+.dark .rec-sub2,.dark .rec-row small{color:var(--text-muted)}
+.dark .mc-count,.dark .xm-count{background:rgba(255,255,255,.05)}
+.dark .btn-primary{box-shadow:0 4px 14px -4px rgba(226,180,88,.45)}
+.dark .topbar-avatar{border-color:var(--border)}
 
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
@@ -4139,7 +4154,8 @@ async function loadSTimetable(){
   const el=document.getElementById('s-timetable-content');
   try{
  _sttEntries=await api('/api/student/timetable-plan');
- el.innerHTML=`<div id="s-rec-wrap"></div><div id="s-verify-wrap"></div><div id="s-tline-wrap"></div>`;
+ // scaffolding sirf pehli baar — revisit par sections apni jagah silently update hote hain (no blank flash)
+ if(!document.getElementById('s-tline-wrap')) el.innerHTML=`<div id="s-rec-wrap"></div><div id="s-verify-wrap"></div><div id="s-tline-wrap"></div>`;
  _loadRecordedSubjects();
  _loadPendingVerifications();
  try{ const p=await api('/api/student/profile'); window._sBatch=p.batch_name||p.batch||'Lakshya'; window._sClass=p.class_level||'12'; }catch(e){ window._sBatch='Lakshya'; window._sClass='12'; }
