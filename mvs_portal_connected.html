@@ -1201,6 +1201,26 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 .dark .btn-primary{box-shadow:0 4px 14px -4px rgba(226,180,88,.45)}
 .dark .topbar-avatar{border-color:var(--border)}
 
+
+/* Phone: student 2-col material table -> stacked cards, Download hamesha visible */
+@media(max-width:700px){
+  .mat-2col thead{display:none}
+  .mat-2col,.mat-2col tbody{display:block;width:100%}
+  .mat-2col tr{display:block;padding:12px 2px;border-bottom:1px solid var(--border)}
+  .mat-2col tr:last-child{border-bottom:none}
+  .mat-2col td{display:block;border:none;padding:3px 0;width:100%}
+  .mat-2col .mat-ch{font-weight:700;font-size:.95rem;white-space:normal}
+  .mat-2col .mat-dl-cell{text-align:left;padding-top:9px}
+  .mat-2col .mat-dl-cell .btn{width:100%;justify-content:center;min-height:44px}
+}
+/* Wide tables (teacher/admin): scrollable hint — fade + "scroll" chip */
+.tbl-scroll{position:relative}
+.tbl-scroll.can-scroll::after{content:'';position:absolute;top:0;right:0;bottom:6px;width:44px;pointer-events:none;background:linear-gradient(to left,var(--card) 8%,transparent);border-radius:0 10px 10px 0}
+.tbl-scroll.can-scroll::before{content:'scroll \2192';position:absolute;top:50%;right:8px;transform:translateY(-50%);z-index:2;font-size:.62rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;background:var(--accent);color:#fff;padding:4px 9px;border-radius:99px;box-shadow:0 4px 12px -3px rgba(0,0,0,.35);pointer-events:none;animation:scrollNudge 1.6s ease-in-out infinite}
+.dark .tbl-scroll.can-scroll::before{color:#181203}
+.tbl-scroll.can-scroll.scrolled::before,.tbl-scroll.can-scroll.scrolled::after{display:none}
+@keyframes scrollNudge{0%,100%{transform:translateY(-50%) translateX(0)}50%{transform:translateY(-50%) translateX(-5px)}}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -4219,7 +4239,7 @@ function openSubjectMaterials(encSub){
   Object.keys(byCat).forEach(cat=>{
     const meta=catMeta[cat]||{icon:'folder',badge:'sc-amber'};
     const items=byCat[cat];
-    html+=`<div class="mat-cat"><div class="mat-cat-head"><div class="mc-badge ${meta.badge}">${ic(meta.icon)}</div>${esc(cat)}<span class="mc-count">${items.length} file${items.length>1?'s':''}</span></div><div class="mat-twrap"><table class="mat-table"><thead><tr><th>Chapter / Title</th><th style="text-align:right">Download</th></tr></thead><tbody>`;
+    html+=`<div class="mat-cat"><div class="mat-cat-head"><div class="mc-badge ${meta.badge}">${ic(meta.icon)}</div>${esc(cat)}<span class="mc-count">${items.length} file${items.length>1?'s':''}</span></div><div class="mat-twrap"><table class="mat-table mat-2col"><thead><tr><th>Chapter / Title</th><th style="text-align:right">Download</th></tr></thead><tbody>`;
     items.forEach(m=>{ const fname=m.filename||((m.title||cat)+'.pdf'); html+=`<tr><td class="mat-ch">${esc(m.chapter||m.title||'\u2014')}</td><td class="mat-dl-cell"><button class="btn btn-primary btn-sm" onclick="downloadMaterial('student',${m.id},'${esc(fname).replace(/'/g,'')}')">${ic('download')} Download</button></td></tr>`; });
     html+=`</tbody></table></div></div>`;
   });
@@ -5019,7 +5039,19 @@ function errHtml(e){ return `<div class="alert alert-danger"> ${esc(e.message)}<
       var w=document.createElement('div'); w.className='tbl-scroll';
       t.parentNode.insertBefore(w,t); w.appendChild(t);
     });
+    markScrollables();
   }
+  function markScrollables(){
+    document.querySelectorAll('.tbl-scroll').forEach(function(w){
+      var can=w.scrollWidth>w.clientWidth+6;
+      w.classList.toggle('can-scroll',can);
+      if(can&&!w.dataset.hintBound){
+        w.dataset.hintBound='1';
+        w.addEventListener('scroll',function(){ w.classList.add('scrolled'); },{passive:true,once:true});
+      }
+    });
+  }
+  window.addEventListener('resize',function(){ requestAnimationFrame(markScrollables); });
   wrapTables();
   var pending=false;
   new MutationObserver(function(muts){
