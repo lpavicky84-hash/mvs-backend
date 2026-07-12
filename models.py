@@ -111,6 +111,7 @@ class StudentProfile(Base):
     phone        = Column(String(15), unique=True)
     batch        = Column(Enum(BatchName))
     batch_name   = Column(String(160), nullable=True)  # free-text batch from app sales sheet
+    medium       = Column(String(12), nullable=True)   # Hindi | English
     email        = Column(String(160), nullable=True)
     subjects     = Column(JSON)   # ["Physics","Chemistry","Maths"]
     class_name   = Column(String(20))   # e.g. "12A"

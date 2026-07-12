@@ -26,12 +26,15 @@ and the frontend shows a friendly "connection pending" card — nothing
 breaks.
 """
 import os
+import re
 import time
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
+from sqlalchemy.orm import Session
 
+from database import get_db
 from security import get_current_user
 
 router = APIRouter(prefix="/api/ext", tags=["External Study Material"])
@@ -77,17 +80,100 @@ def _normalize(raw):
     return out
 
 
-@router.get("/materials")
-def ext_materials(refresh: int = 0, current_user=Depends(get_current_user)):
-    """List every study material from the Student Portal (any logged-in role)."""
-    url, key = _cfg()
-    if not url or not key:
-        return {"configured": False, "materials": []}
+# ------------------------------------------------------------------
+#  STUDENT-AWARE FILTERING
+#  Batch decides session + class; medium & chosen subjects narrow it
+#  further, exactly like the MVS Portal shows each student their own
+#  materials. Teachers/admins see everything (they filter in the UI).
+# ------------------------------------------------------------------
+def _norm(t):
+    return re.sub(r"[^a-z0-9]", "", (t or "").lower())
 
+
+def _sess_bucket(session_text):
+    """Classify a material's session into 'stream2' / 'syc' (None = show to all)."""
+    t = _norm(session_text)
+    if not t:
+        return None
+    if "ondemand" in t or "syc" in t:
+        return "syc"
+    return "stream2"
+
+
+def _batch_bucket(batch_name):
+    """Student's batch -> (session_bucket, class_level)."""
+    b = (batch_name or "").lower()
+    if "safalta" in b:
+        return "syc", "12"
+    if "jeet" in b:
+        return "syc", "10"
+    if "udaan" in b or "aarambh" in b:
+        return "stream2", "10"
+    if "lakshya" in b or "manzil" in b:
+        return "stream2", "12"
+    return None, None
+
+
+def _subject_match(mat_subject, student_subjects_norm):
+    """Material subject vs student's chosen subjects (fuzzy, code-tolerant).
+    Materials with no subject (syllabus, sample papers, etc.) show to all."""
+    m = _norm(mat_subject)
+    if not m:
+        return True
+    m_nodigits = re.sub(r"\d+", "", m)  # "dataentry336" -> "dataentry" (code stripped)
+    for stu in student_subjects_norm:
+        if not stu:
+            continue
+        stu_nd = re.sub(r"\d+", "", stu)
+        for a in {m, m_nodigits}:
+            for b in {stu, stu_nd}:
+                if not a or not b:
+                    continue
+                if a == b:
+                    return True
+                shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+                if len(shorter) >= 4 and shorter in longer:
+                    return True
+    return False
+
+
+def _filter_for_student(mats, sp):
+    sess, cls = _batch_bucket(getattr(sp, "batch_name", None) or
+                              (getattr(sp, "batch", None).value if getattr(sp, "batch", None) else ""))
+    if not cls:
+        cls = getattr(sp, "class_level", None)
+    medium = (getattr(sp, "medium", None) or "").lower()
+    subs_norm = [_norm(x) for x in (getattr(sp, "subjects", None) or [])]
+
+    out = []
+    for m in mats:
+        # session
+        mb = _sess_bucket(m.get("session"))
+        if sess and mb and mb != sess:
+            continue
+        # class
+        mc = _norm(m.get("class_level"))
+        if cls and mc and mc != _norm(cls):
+            continue
+        # medium ('Both' / blank always passes)
+        mm = (m.get("medium") or "").lower()
+        if medium and mm and mm not in ("both", "bilingual") and mm != medium:
+            continue
+        # subject
+        if subs_norm and not _subject_match(m.get("subject"), subs_norm):
+            continue
+        out.append(m)
+    ctx = {"batch": getattr(sp, "batch_name", None) or "",
+           "class_level": cls or "", "medium": getattr(sp, "medium", None) or "",
+           "session_bucket": sess or ""}
+    return out, ctx
+
+
+def _fetch_list(refresh=False):
+    url, key = _cfg()
     now = time.time()
     if not refresh and _list_cache["data"] is not None and (now - _list_cache["ts"]) < CACHE_SECONDS:
-        return {"configured": True, "cached": True, "materials": _list_cache["data"]}
-
+        return _list_cache["data"], True, False
     try:
         r = httpx.get(url + "/api/integration/materials",
                       headers={"X-MVS-KEY": key}, timeout=30)
@@ -97,14 +183,38 @@ def ext_materials(refresh: int = 0, current_user=Depends(get_current_user)):
         mats = _normalize(raw)
         _list_cache["data"] = mats
         _list_cache["ts"] = now
-        return {"configured": True, "cached": False, "materials": mats}
+        return mats, False, False
     except Exception as e:
-        # serve stale cache if the portal is briefly down
         if _list_cache["data"] is not None:
-            return {"configured": True, "cached": True, "stale": True,
-                    "materials": _list_cache["data"]}
+            return _list_cache["data"], True, True
         raise HTTPException(status_code=502,
                             detail=f"Student Portal se connect nahi ho paya: {e}")
+
+
+@router.get("/materials")
+def ext_materials(refresh: int = 0, db: Session = Depends(get_db),
+                  current_user=Depends(get_current_user)):
+    """Study materials from the Student Portal.
+    Students get a personalised list (batch/session + class + medium + subjects);
+    teachers and admins get everything."""
+    url, key = _cfg()
+    if not url or not key:
+        return {"configured": False, "materials": []}
+
+    mats, cached, stale = _fetch_list(refresh=bool(refresh))
+
+    role = getattr(current_user.role, "value", str(current_user.role))
+    if role == "student":
+        from models import StudentProfile
+        sp = db.query(StudentProfile).filter(
+            StudentProfile.user_id == current_user.id).first()
+        if sp:
+            mats, ctx = _filter_for_student(mats, sp)
+            return {"configured": True, "cached": cached, "stale": stale,
+                    "role": "student", "ctx": ctx, "materials": mats}
+
+    return {"configured": True, "cached": cached, "stale": stale,
+            "role": role, "materials": mats}
 
 
 @router.get("/material/{mid}/file")

@@ -531,6 +531,7 @@ def get_profile(db: Session = Depends(get_db), current_user=Depends(get_student)
         "phone": sp.phone,
         "email": sp.email,
         "class_level": sp.class_level,
+        "medium": sp.medium,
         "subjects": sp.subjects or [],
         "batch": sp.batch,
         "batch_name": sp.batch_name,
@@ -547,21 +548,51 @@ def available_subjects(class_level: str, db: Session = Depends(get_db), current_
     ).all()
     return [{"name": s.name, "code": s.code} for s in subs]
 
+# Batch master list: name -> (class_level, session_bucket)
+STUDENT_BATCHES = {
+    "Lakshya Science":  ("12", "stream2"),
+    "Lakshya Commerce": ("12", "stream2"),
+    "Lakshya Arts":     ("12", "stream2"),
+    "Manzil Batch":     ("12", "stream2"),
+    "Udaan Class 10":   ("10", "stream2"),
+    "Aarambh Batch":    ("10", "stream2"),
+    "Safalta Batch":    ("12", "syc"),
+    "Jeet Batch":       ("10", "syc"),
+}
+
+@router.get("/batches")
+def student_batches(current_user=Depends(get_student)):
+    """Batch list for the onboarding screen."""
+    return [{"name": n, "class_level": c[0]} for n, c in STUDENT_BATCHES.items()]
+
 @router.post("/set-subjects")
 def set_subjects(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_student)):
     sp = get_student_profile(current_user, db)
     class_level = payload.get("class_level")
     subjects = payload.get("subjects", [])
+    medium = (payload.get("medium") or "").strip()
+    batch_name = (payload.get("batch_name") or "").strip()
+    if batch_name:
+        if batch_name not in STUDENT_BATCHES:
+            raise HTTPException(status_code=400, detail="Sahi batch select karein")
+        class_level = STUDENT_BATCHES[batch_name][0]  # batch decides the class
     if class_level not in ("10", "12"):
         raise HTTPException(status_code=400, detail="Class 10 ya 12 select karein")
+    if medium and medium not in ("Hindi", "English"):
+        raise HTTPException(status_code=400, detail="Medium Hindi ya English select karein")
     if not subjects:
         raise HTTPException(status_code=400, detail="Kam se kam 1 subject select karein")
     if len(subjects) > 7:
         raise HTTPException(status_code=400, detail="7 se jyada subjects allowed nahi hain")
     sp.class_level = class_level
     sp.subjects = subjects
+    if medium:
+        sp.medium = medium
+    if batch_name:
+        sp.batch_name = batch_name
     db.commit()
-    return {"message": "Subjects save ho gaye!", "subjects": subjects, "class_level": class_level}
+    return {"message": "Profile save ho gaya!", "subjects": subjects,
+            "class_level": class_level, "medium": sp.medium, "batch_name": sp.batch_name}
 
 # ===== TIMETABLE PLAN (chapter-wise, subject filtered) =====
 @router.get("/my-subjects-mode")

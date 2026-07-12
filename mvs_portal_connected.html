@@ -1129,6 +1129,24 @@ canvas{max-width:100%}
   .main{margin-left:300px;width:calc(100% - 300px)}
 }
 
+
+/* Study Material subject cards */
+.xm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.xm-card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:18px;display:flex;align-items:center;gap:14px;cursor:pointer;transition:transform .18s ease,box-shadow .2s ease,border-color .2s ease;box-shadow:var(--shadow)}
+.xm-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg);border-color:var(--accent)}
+.xm-ic{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.35rem;background:linear-gradient(135deg,var(--primary),#2857a8);flex-shrink:0;box-shadow:0 6px 14px -6px rgba(15,42,84,.5)}
+.xm-info{flex:1;min-width:0}
+.xm-title{font-weight:800;font-size:1.02rem;margin-bottom:7px;overflow-wrap:anywhere}
+.xm-chips{display:flex;gap:6px;flex-wrap:wrap}
+.xm-chip{font-size:.68rem;font-weight:700;padding:3px 9px;border-radius:99px;background:var(--primary-50);color:var(--primary);white-space:nowrap}
+.xm-chip-hl{background:var(--accent);color:#fff}
+.dark .xm-chip{background:rgba(255,255,255,.09);color:#cbd5e1}
+.dark .xm-chip-hl{background:var(--accent);color:#04211f}
+.xm-arw{font-size:1.5rem;color:var(--text-muted);flex-shrink:0}
+.xm-cat-h{margin:20px 0 10px;font-weight:800;font-size:1.02rem;display:flex;align-items:center;gap:8px}
+.xm-cat-h span{color:var(--text-muted);font-weight:600;font-size:.85rem}
+@media(max-width:640px){.xm-grid{grid-template-columns:1fr;gap:10px}.xm-card{padding:14px}}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -1140,7 +1158,7 @@ canvas{max-width:100%}
 </div><!-- LOGIN -->
 <div id="login-screen"><div class="login-box"><!-- Standard login (teacher/admin, and student fallback) --><div id="login-standard"><h2 id="login-title">Login</h2><p id="login-subtitle">MVS Foundation Portal</p><div class="form-group"><label>User ID</label><input class="form-control" id="login-uid" placeholder="User ID"></div><div class="form-group"><label>Password</label><input class="form-control" type="password" id="login-pass" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()"></div><button class="login-btn" id="login-btn" onclick="doLogin()">Login</button><p style="text-align:center;margin-top:16px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Back</p></div><!-- Student phone onboarding --><div id="login-student-phone" style="display:none"><h2> Welcome!</h2><p>Enter your registered phone number</p><div class="form-group"><label>Phone Number</label><input class="form-control" id="sp-phone" placeholder="98765xxxxx" onkeydown="if(event.key==='Enter')fetchStudent()"></div><button class="login-btn" id="sp-fetch-btn" onclick="fetchStudent()">View My Details</button><p style="text-align:center;margin-top:16px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Back</p></div><!-- Student credentials display --><div id="login-student-creds" style="display:none"><h2 id="sc-congrats"> Congratulations!</h2><p>These are your login details — please copy them.</p><div class="form-group"><label>User ID</label><input class="form-control" id="sc-uid" readonly onclick="this.select()"></div><div class="form-group"><label>Password</label><input class="form-control" id="sc-pass" readonly onclick="this.select()"></div><button class="login-btn" onclick="studentDirectLogin()">Login →</button><p style="text-align:center;margin-top:16px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Back</p></div></div>
 </div><!-- SUBJECT SELECTION (student onboarding) -->
-<div id="subject-screen" style="display:none;min-height:100vh;background:linear-gradient(150deg,#001022,#001a3a 55%,#0a3260);align-items:center;justify-content:center;padding:20px"><div class="login-box" style="max-width:560px"><h2>Select Your Subjects</h2><p>First select your class, then choose your subjects (max 7).</p><div class="form-group"><label>Your Class</label><div style="display:flex;gap:10px"><button class="btn btn-ghost" id="cls-10" style="flex:1" onclick="selectClass('10')">Class 10th</button><button class="btn btn-ghost" id="cls-12" style="flex:1" onclick="selectClass('12')">Class 12th</button></div></div><div id="subject-list-wrap" style="display:none"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><label style="color:rgba(255,255,255,.8)">Choose subjects</label><span id="subj-count" style="font-size:.8rem;color:#fff">0/7</span></div><div id="subject-checkboxes" style="max-height:300px;overflow-y:auto;background:rgba(255,255,255,.1);border-radius:12px;padding:12px;margin-bottom:16px"></div><button class="login-btn" id="save-subj-btn" onclick="saveSubjects()">Save & Continue →</button></div><p style="text-align:center;margin-top:16px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Logout</p></div>
+<div id="subject-screen" style="display:none;min-height:100vh;background:linear-gradient(150deg,#001022,#001a3a 55%,#0a3260);align-items:center;justify-content:center;padding:20px"><div class="login-box" style="max-width:600px"><h2>Setup Your Profile</h2><p>Apna batch, medium aur subjects select karein — material aur time table isi se milenge.</p><div class="form-group"><label style="color:rgba(255,255,255,.85);font-weight:700">1 · Your Batch</label><div id="batch-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:6px"><div class="spinner"></div></div></div><div class="form-group" id="medium-wrap" style="display:none"><label style="color:rgba(255,255,255,.85);font-weight:700">2 · Your Medium</label><div style="display:flex;gap:10px;margin-top:6px"><button class="btn btn-ghost" id="med-Hindi" style="flex:1" onclick="selectMedium('Hindi')">हिंदी Hindi</button><button class="btn btn-ghost" id="med-English" style="flex:1" onclick="selectMedium('English')">English</button></div></div><div id="subject-list-wrap" style="display:none"><div style="display:flex;justify-content:space-between;margin:10px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700">3 · Choose Subjects <span id="subj-cls-tag" style="font-weight:600;opacity:.75"></span></label><span id="subj-count" style="font-size:.8rem;color:#fff">0/7</span></div><div id="subject-checkboxes" style="max-height:260px;overflow-y:auto;background:rgba(255,255,255,.1);border-radius:12px;padding:12px;margin-bottom:16px"></div><button class="login-btn" id="save-subj-btn" onclick="saveSubjects()">Save & Continue →</button></div><p style="text-align:center;margin-top:16px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Logout</p></div>
 </div>
 <!-- TEACHER SUBJECT SELECTION (first login) -->
 <div id="t-subject-screen" style="display:none;min-height:100vh;background:linear-gradient(150deg,#001022,#001a3a 55%,#0a3260);align-items:center;justify-content:center;padding:20px"><div class="login-box" style="max-width:620px"><h2>Select Your Subjects</h2><p>Select the subjects you teach, class by class.</p><div style="display:flex;justify-content:space-between;margin:14px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 10</label></div><div id="t-sub-10" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><div style="display:flex;justify-content:space-between;margin:16px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 12</label></div><div id="t-sub-12" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><button class="login-btn" id="t-save-subj" style="margin-top:18px" onclick="saveTeacherSubjects()">Save & Continue →</button><p style="text-align:center;margin-top:14px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Logout</p></div>
@@ -3585,51 +3603,95 @@ function xhrUpload(url,formData,onProgress){
 //  Uploads/updates wahi hote hain; yahan students, teachers, admin ko
 //  read-only dikhta hai. (Notes, QBank, Syllabus, PYQ, TMA, Practical...)
 // ============================================================
-let _extMats=[], _extSession='', _extClass='', _extMedium='', _extCat='', _extCid='';
+//  STUDY MATERIAL — live connected to MVS Student Portal
+//  Students: server-side personalised (batch/session + class +
+//  medium + chosen subjects). Teachers/Admin: full library.
+//  UI: subject cards -> category-wise organised materials.
+// ============================================================
+let _extMats=[], _extCtx=null, _extRole='', _extCid='', _extSubject=null;
+let _extSession='', _extClass='', _extMedium='';
+const _XM_ICONS={physics:'\u269b\ufe0f',chemistry:'\ud83e\uddea',biology:'\ud83e\uddec',math:'\ud83d\udcd0',english:'\ud83d\udcd6',hindi:'\ud83d\udcda',account:'\ud83d\udcca',business:'\ud83d\udcbc',economic:'\ud83d\udcc8',history:'\ud83c\udfdb\ufe0f',geograph:'\ud83c\udf0d',computer:'\ud83d\udcbb',data:'\u2328\ufe0f',science:'\ud83d\udd2c',psycholog:'\ud83e\udde0',home:'\ud83c\udfe0',polit:'\u2696\ufe0f',sociolog:'\ud83d\udc65',paint:'\ud83c\udfa8',sanskrit:'\ud83d\udcdc',physical:'\ud83c\udfc3',environment:'\ud83c\udf31',law:'\u2696\ufe0f',library:'\ud83d\udcda',mass:'\ud83d\udce1'};
+function _xmIcon(sub){ const t=(sub||'').toLowerCase(); for(const k in _XM_ICONS){ if(t.includes(k)) return _XM_ICONS[k]; } return '\ud83d\udcd8'; }
 async function loadExtMaterials(cid){
-  _extCid=cid;
+  _extCid=cid; _extSubject=null;
   const el=document.getElementById(cid);
   el.innerHTML='<div class="spinner"></div>';
   try{
     const r=await api('/api/ext/materials');
     if(!r.configured){
-      el.innerHTML=`<div class="sm-head"><h2>Study Material</h2><p>Notes, Question Bank, Syllabus, PYQs, TMA &amp; Practical Solutions — MVS Student Portal se.</p></div><div class="card"><div class="card-body" style="text-align:center;padding:44px 20px"><div style="font-size:2.4rem;margin-bottom:10px">\ud83d\udd0c</div><h3 style="margin-bottom:8px">Student Portal connection pending</h3><p style="color:var(--text-muted);max-width:540px;margin:0 auto">Railway par <b>STUDENT_PORTAL_URL</b> aur <b>STUDENT_PORTAL_KEY</b> environment variables set hone ke baad Student Portal ke saare study materials yahan automatically dikhne lagenge. Dubara kuch upload karne ki zaroorat nahi.</p></div></div>`;
+      el.innerHTML=`<div class="sm-head"><h2>Study Material</h2></div><div class="card"><div class="card-body" style="text-align:center;padding:44px 20px"><div style="font-size:2.4rem;margin-bottom:10px">\ud83d\udd0c</div><h3 style="margin-bottom:8px">Student Portal connection pending</h3><p style="color:var(--text-muted);max-width:540px;margin:0 auto">Railway par <b>STUDENT_PORTAL_URL</b> aur <b>STUDENT_PORTAL_KEY</b> set hone ke baad materials yahan automatically dikhne lagenge.</p></div></div>`;
       return;
     }
-    _extMats=r.materials||[];
-    const sess=[...new Set(_extMats.map(m=>m.session).filter(Boolean))];
-    if(!_extSession||!sess.includes(_extSession)) _extSession=sess[0]||'';
+    _extMats=r.materials||[]; _extCtx=r.ctx||null; _extRole=r.role||ROLE||'';
+    if(_extRole!=='student'){
+      const sess=[...new Set(_extMats.map(m=>m.session).filter(Boolean))];
+      if(!_extSession||!sess.includes(_extSession)) _extSession=sess[0]||'';
+    }
     _extRender();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
-function _extSet(k,v){ if(k==='session'){_extSession=v;_extCat='';} if(k==='class')_extClass=v; if(k==='medium')_extMedium=v; if(k==='cat')_extCat=v; _extRender(); }
-function _extFiltered(){
+function _extSet(k,v){ if(k==='session')_extSession=v; if(k==='class')_extClass=v; if(k==='medium')_extMedium=v; _extSubject=null; _extRender(); }
+function _extPool(){
+  if(_extRole==='student') return _extMats; // already personalised by the server
   return _extMats.filter(m=>{
     if(_extSession && (m.session||'')!==_extSession) return false;
     if(_extClass && m.class_level && String(m.class_level)!==_extClass) return false;
-    if(_extMedium){ const md=(m.medium||'').toLowerCase(); if(md && md!==_extMedium.toLowerCase() && md!=='both') return false; }
-    if(_extCat && (m.category||'Other')!==_extCat) return false;
+    if(_extMedium){ const md=(m.medium||'').toLowerCase(); if(md && md!==_extMedium.toLowerCase() && md!=='both' && md!=='bilingual') return false; }
     return true;
   });
 }
+function _extHeader(){
+  let chips='';
+  if(_extRole==='student' && _extCtx){
+    chips=`<div class="xm-chips" style="margin-top:8px">${_extCtx.batch?`<span class="xm-chip xm-chip-hl">${esc(_extCtx.batch)}</span>`:''}${_extCtx.class_level?`<span class="xm-chip">Class ${esc(_extCtx.class_level)}</span>`:''}${_extCtx.medium?`<span class="xm-chip">${esc(_extCtx.medium)} Medium</span>`:''}</div>`;
+  }
+  return `<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div><h2>Study Material</h2>${chips}</div><button class="btn btn-ghost btn-sm" onclick="_extRefresh()">\u21bb Refresh</button></div>`;
+}
+function _extFilters(){
+  if(_extRole==='student') return '';
+  const sessions=[...new Set(_extMats.map(m=>m.session).filter(Boolean))];
+  const tabs=sessions.length>1?`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">${sessions.map(x=>`<button class="btn ${x===_extSession?'btn-primary':'btn-ghost'} btn-sm" onclick="_extSet('session','${esc(x)}')">${esc(x)}</button>`).join('')}</div>`:'';
+  return tabs+`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center"><select class="form-control" style="max-width:150px" onchange="_extSet('class',this.value)"><option value="">All Classes</option><option value="10" ${_extClass==='10'?'selected':''}>Class 10</option><option value="12" ${_extClass==='12'?'selected':''}>Class 12</option></select><select class="form-control" style="max-width:160px" onchange="_extSet('medium',this.value)"><option value="">All Medium</option><option ${_extMedium==='Hindi'?'selected':''}>Hindi</option><option ${_extMedium==='English'?'selected':''}>English</option></select><span style="color:var(--text-muted);font-size:.8rem">${_extPool().length} items</span></div>`;
+}
 function _extRender(){
   const el=document.getElementById(_extCid); if(!el) return;
-  const sessions=[...new Set(_extMats.map(m=>m.session).filter(Boolean))];
-  const cats=[...new Set(_extMats.filter(m=>!_extSession||(m.session||'')===_extSession).map(m=>m.category||'Other'))];
-  const list=_extFiltered();
-  const sessTabs=sessions.length>1?`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">${sessions.map(x=>`<button class="btn ${x===_extSession?'btn-primary':'btn-ghost'} btn-sm" onclick="_extSet('session','${esc(x)}')">${esc(x)}</button>`).join('')}</div>`:'';
-  const filters=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center"><select class="form-control" style="max-width:150px" onchange="_extSet('class',this.value)"><option value="">All Classes</option><option value="10" ${_extClass==='10'?'selected':''}>Class 10</option><option value="12" ${_extClass==='12'?'selected':''}>Class 12</option></select><select class="form-control" style="max-width:150px" onchange="_extSet('medium',this.value)"><option value="">All Medium</option><option ${_extMedium==='Hindi'?'selected':''}>Hindi</option><option ${_extMedium==='English'?'selected':''}>English</option></select><select class="form-control" style="max-width:240px" onchange="_extSet('cat',this.value)"><option value="">All Categories</option>${cats.map(c=>`<option ${c===_extCat?'selected':''}>${esc(c)}</option>`).join('')}</select><button class="btn btn-ghost btn-sm" onclick="_extRefresh()">\u21bb Refresh</button><span style="color:var(--text-muted);font-size:.8rem">${list.length} items</span></div>`;
-  const groups={}; list.forEach(m=>{ const c=m.category||'Other'; (groups[c]=groups[c]||[]).push(m); });
+  if(_extSubject!==null){ _extRenderSubject(); return; }
+  const pool=_extPool();
+  // group by subject (blank subject -> General)
+  const bySub={};
+  pool.forEach(m=>{ const k=(m.subject||'').trim()||'General & Others'; (bySub[k]=bySub[k]||[]).push(m); });
+  const subs=Object.keys(bySub).sort((a,b)=>a==='General & Others'?1:b==='General & Others'?-1:a.localeCompare(b));
   let body='';
-  const catKeys=Object.keys(groups);
-  if(!catKeys.length) body=`<div class="empty-state"><p>No study material found for this filter.</p></div>`;
-  catKeys.forEach(c=>{
-    body+=`<div style="margin:18px 0 10px;font-weight:800;font-size:1.02rem;display:flex;align-items:center;gap:8px">\ud83d\udcda ${esc(c)} <span style="color:var(--text-muted);font-weight:600;font-size:.85rem">(${groups[c].length})</span></div>`;
-    body+=groups[c].map(m=>`<div class="qb-card"><div class="qb-icon">${ic('book')}</div><div class="qb-info"><div class="qb-title">${esc(m.title||'Untitled')}</div><div class="qb-meta">${m.medium?`<span class="qb-medium ${(m.medium||'').toLowerCase()==='hindi'?'hindi':''}">${esc(m.medium)}</span>`:''}${m.class_level?`<span>Class ${esc(String(m.class_level))}</span>`:''}${m.subject?`<span>\u00b7 ${esc(m.subject)}</span>`:''}<span>\u00b7 ${m.kind==='link'?'Link':'PDF'}</span></div></div><div class="qb-act"><button class="btn btn-primary btn-sm" onclick="openExtMaterial('${esc(String(m.id))}',${(m.kind==='link'&&m.link)?`'${esc(m.link)}'`:'null'})">Open</button></div></div>`).join('');
-  });
-  el.innerHTML=`<div class="sm-head"><h2>Study Material</h2><p>Notes, Question Bank, Syllabus, PYQs, TMA &amp; Practical Solutions \u2014 MVS Student Portal se live connected. Naya material wahi (Admin Console) se upload hota hai.</p></div>${sessTabs}${filters}${body}`;
+  if(!subs.length){
+    body=`<div class="card"><div class="card-body" style="text-align:center;padding:40px 20px"><div style="font-size:2rem;margin-bottom:8px">\ud83d\udced</div><p style="color:var(--text-muted)">Aapke batch/subjects ke liye abhi koi material nahi mila.<br>Refresh try karein ya admin se contact karein.</p></div></div>`;
+  }else{
+    body=`<div class="xm-grid">`+subs.map(sub=>{
+      const list=bySub[sub];
+      const cats={}; list.forEach(m=>{ const c=m.category||'Other'; cats[c]=(cats[c]||0)+1; });
+      const catChips=Object.keys(cats).slice(0,3).map(c=>`<span class="xm-chip">${esc(c)} \u00b7 ${cats[c]}</span>`).join('')+(Object.keys(cats).length>3?`<span class="xm-chip">+${Object.keys(cats).length-3} more</span>`:'');
+      return `<div class="xm-card" onclick="_extOpenSubject('${esc(sub).replace(/'/g,"\\'")}')"><div class="xm-ic">${_xmIcon(sub)}</div><div class="xm-info"><div class="xm-title">${esc(sub)}</div><div class="xm-chips">${catChips}</div></div><div class="xm-arw">\u203a</div></div>`;
+    }).join('')+`</div>`;
+  }
+  el.innerHTML=_extHeader()+_extFilters()+body;
 }
-async function _extRefresh(){ const el=document.getElementById(_extCid); if(el) el.innerHTML='<div class="spinner"></div>'; try{ const r=await api('/api/ext/materials?refresh=1'); _extMats=r.materials||[]; }catch(e){} _extRender(); }
+function _extOpenSubject(sub){ _extSubject=sub; _extRenderSubject(); }
+function _extRenderSubject(){
+  const el=document.getElementById(_extCid); if(!el) return;
+  const pool=_extPool().filter(m=>(((m.subject||'').trim())||'General & Others')===_extSubject);
+  const groups={}; pool.forEach(m=>{ const c=m.category||'Other'; (groups[c]=groups[c]||[]).push(m); });
+  let body='';
+  Object.keys(groups).forEach(c=>{
+    body+=`<div class="xm-cat-h">\ud83d\udcda ${esc(c)} <span>(${groups[c].length})</span></div>`;
+    body+=groups[c].map(m=>`<div class="qb-card"><div class="qb-icon">${ic('book')}</div><div class="qb-info"><div class="qb-title">${esc(m.title||'Untitled')}</div><div class="qb-meta">${m.medium?`<span class="qb-medium ${(m.medium||'').toLowerCase()==='hindi'?'hindi':''}">${esc(m.medium)}</span>`:''}${m.class_level?`<span>Class ${esc(String(m.class_level))}</span>`:''}<span>\u00b7 ${m.kind==='link'?'Link':'PDF'}</span></div></div><div class="qb-act"><button class="btn btn-primary btn-sm" onclick="openExtMaterial('${esc(String(m.id))}',${(m.kind==='link'&&m.link)?`'${esc(m.link)}'`:'null'})">Open</button></div></div>`).join('');
+  });
+  if(!pool.length) body=`<div class="empty-state"><p>No material in this subject yet.</p></div>`;
+  el.innerHTML=`<div class="sm-head" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="_extSubject=null;_extRender()">\u2190 Back</button><div style="display:flex;align-items:center;gap:10px"><div class="xm-ic" style="width:40px;height:40px;font-size:1.1rem">${_xmIcon(_extSubject)}</div><h2 style="margin:0;font-size:1.3rem">${esc(_extSubject)}</h2></div></div>${body}`;
+}
+async function _extRefresh(){
+  const el=document.getElementById(_extCid); if(el) el.innerHTML='<div class="spinner"></div>';
+  try{ const r=await api('/api/ext/materials?refresh=1'); _extMats=r.materials||[]; _extCtx=r.ctx||_extCtx; _extRole=r.role||_extRole; }catch(e){}
+  _extRender();
+}
 async function openExtMaterial(id,link){
   if(link){ window.open(link,'_blank'); return; }
   toast('Opening file...');
@@ -3745,17 +3807,39 @@ async function submitAddAdmin(){
 // ========================================================
 //  STUDENT PORTAL
 // ========================================================
-let selectedClass=null, selectedSubjects=[];
+let selectedClass=null, selectedSubjects=[], selectedBatch=null, selectedMedium=null, _prefillSubjects=[];
+const STUDENT_BATCHES=[
+  {name:'Lakshya Science',cls:'12'},{name:'Lakshya Commerce',cls:'12'},
+  {name:'Lakshya Arts',cls:'12'},{name:'Manzil Batch',cls:'12'},
+  {name:'Udaan Class 10',cls:'10'},{name:'Aarambh Batch',cls:'10'},
+  {name:'Safalta Batch',cls:'12'},{name:'Jeet Batch',cls:'10'}
+];
 async function openStudent(){
-  // Check if subjects already selected
+  // Profile complete? (subjects + batch + medium sab chahiye)
   try{
  const p=await api('/api/student/profile');
- if(!p.class_level || !p.subjects || p.subjects.length===0){
- showSubjectScreen();
+ if(!p.class_level || !p.subjects || p.subjects.length===0 || !p.batch_name || !p.medium || !STUDENT_BATCHES.some(b=>b.name===p.batch_name)){
+ _prefillSubjects=p.subjects||[];
+ showSubjectScreen(p);
  return;
  }
   }catch(e){ /* if profile fails, continue to app */ }
   enterStudentApp();
+}
+function selectBatch(name){
+  selectedBatch=name;
+  const b=STUDENT_BATCHES.find(x=>x.name===name);
+  document.querySelectorAll('#batch-grid .batch-opt').forEach(el=>{
+    el.className='btn batch-opt '+(el.dataset.b===name?'btn-primary':'btn-ghost');
+  });
+  document.getElementById('medium-wrap').style.display='block';
+  document.getElementById('subj-cls-tag').textContent='(Class '+b.cls+')';
+  selectClass(b.cls); // batch decides the class -> loads that class's subjects
+}
+function selectMedium(m){
+  selectedMedium=m;
+  document.getElementById('med-Hindi').className=m==='Hindi'?'btn btn-primary':'btn btn-ghost';
+  document.getElementById('med-English').className=m==='English'?'btn btn-primary':'btn btn-ghost';
 }
 function enterStudentApp(){
   document.getElementById('subject-screen').style.display='none';
@@ -3773,17 +3857,18 @@ function enterStudentApp(){
 async function loadStudentLiveBanner(){
   try{ const ents=await api('/api/student/timetable-plan'); startLiveCountdown(ents); }catch(e){}
 }
-function showSubjectScreen(){
-  selectedClass=null; selectedSubjects=[];
+function showSubjectScreen(p){
+  selectedClass=null; selectedSubjects=[]; selectedBatch=null; selectedMedium=null;
   document.getElementById('subject-screen').style.display='flex';
   document.getElementById('subject-list-wrap').style.display='none';
-  document.getElementById('cls-10').className='btn btn-ghost';
-  document.getElementById('cls-12').className='btn btn-ghost';
+  document.getElementById('medium-wrap').style.display='none';
+  document.getElementById('batch-grid').innerHTML=STUDENT_BATCHES.map(b=>
+    `<button class="btn btn-ghost batch-opt" data-b="${esc(b.name)}" style="justify-content:space-between;font-size:.82rem;padding:10px 12px" onclick="selectBatch('${esc(b.name)}')">${esc(b.name)}<span style="font-size:.66rem;opacity:.75;background:rgba(255,255,255,.14);padding:2px 7px;border-radius:99px">Class ${b.cls}</span></button>`).join('');
+  // prefill (existing students): medium pre-select if already saved
+  if(p&&p.medium) selectMedium(p.medium);
 }
 async function selectClass(cls){
   selectedClass=cls; selectedSubjects=[];
-  document.getElementById('cls-10').className=cls==='10'?'btn btn-primary':'btn btn-ghost';
-  document.getElementById('cls-12').className=cls==='12'?'btn btn-primary':'btn btn-ghost';
   const wrap=document.getElementById('subject-checkboxes');
   wrap.innerHTML='<div class="spinner" style="margin:20px auto"></div>';
   document.getElementById('subject-list-wrap').style.display='block';
@@ -3791,6 +3876,10 @@ async function selectClass(cls){
  const subs=await api('/api/student/available-subjects?class_level='+cls);
  if(subs.length===0){ wrap.innerHTML='<p style="color:#fff;text-align:center">No subjects available (please contact the admin).</p>'; return; }
  wrap.innerHTML=subs.map(s=>`<label style="display:flex;align-items:center;gap:8px;padding:8px;color:#fff;cursor:pointer"><input type="checkbox" value="${esc(s.name)}" onchange="toggleSubject(this)"> ${esc(s.name)} ${s.code?'('+esc(s.code)+')':''}</label>`).join('');
+ // pre-tick subjects the student had already chosen earlier
+ wrap.querySelectorAll('input[type=checkbox]').forEach(cb=>{
+   if(_prefillSubjects.includes(cb.value) && selectedSubjects.length<7){ cb.checked=true; selectedSubjects.push(cb.value); }
+ });
  updateSubjCount();
   }catch(e){ wrap.innerHTML='<p style="color:#fff">Error: '+esc(e.message)+'</p>'; }
 }
@@ -3805,12 +3894,14 @@ function toggleSubject(cb){
 }
 function updateSubjCount(){ document.getElementById('subj-count').textContent=selectedSubjects.length+'/7'; }
 async function saveSubjects(){
+  if(!selectedBatch){ toast('Pehle apna batch select karein.',true); return; }
+  if(!selectedMedium){ toast('Apna medium (Hindi/English) select karein.',true); return; }
   if(!selectedClass){ toast('Please select a class.',true); return; }
-  if(selectedSubjects.length===0){ toast('Please select at least one subject.',true); return; }
+  if(selectedSubjects.length===0){ toast('Kam se kam 1 subject select karein.',true); return; }
   const btn=document.getElementById('save-subj-btn'); btn.disabled=true; btn.textContent='Saving...';
   try{
- await api('/api/student/set-subjects','POST',{class_level:selectedClass,subjects:selectedSubjects});
- toast('Subjects saved. ');
+ await api('/api/student/set-subjects','POST',{class_level:selectedClass,subjects:selectedSubjects,batch_name:selectedBatch,medium:selectedMedium});
+ toast('Profile saved!');
  enterStudentApp();
   }catch(e){ toast(e.message,true); }
   btn.disabled=false; btn.textContent='Save & Continue →';
@@ -3846,6 +3937,7 @@ async function loadSProfile(){
       ['Phone', p.phone||'—'],
       ['Email', p.email||'—'],
       ['Batch', p.batch_name||'—'],
+      ['Medium', p.medium||'—'],
       ['Class', p.class_level?('Class '+p.class_level):'—'],
     ];
     el.innerHTML=`<div class="card glass-soft"><div class="card-body">
