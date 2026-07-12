@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>:root{--primary:#0F2A54;--primary-dark:#0a1f40;--primary-50:#e4ebf5;--secondary:#FF6B2B;--accent:#FF6B2B;--success:#059669;--warning:#d97706;--danger:#dc2626;--bg:#EEF2F8;--card:#fff;--text:#0F1C33;--text-muted:#5A6B85;--border:#dbe3ef;--sidebar:#0F2A54;--sidebar-text:#9fb2cf;--shadow:0 1px 2px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.05);--shadow-lg:0 12px 32px -10px rgba(15,23,42,.2);--glass-bg:rgba(255,255,255,.7);--glass-brd:rgba(255,255,255,.55)}
-  .dark{--bg:#0a1322;--card:#0f1a2e;--text:#eaf1ff;--text-muted:#9fb0c8;--border:#1e2c44;--sidebar:#001022;--accent:#2aa39a;--glass-bg:rgba(17,24,39,.72);--glass-brd:rgba(255,255,255,.08)}
+  .dark{--bg:#0b1524;--card:#111f36;--text:#eaf0fb;--text-muted:#93a6c4;--border:#22334f;--sidebar:#081120;--primary:#e2b458;--primary-dark:#c99e45;--primary-50:rgba(226,180,88,.13);--secondary:#e2b458;--accent:#e2b458;--glass-bg:rgba(13,23,40,.78);--glass-brd:rgba(255,255,255,.07);--shadow:0 1px 2px rgba(0,0,0,.45),0 1px 3px rgba(0,0,0,.35);--shadow-lg:0 18px 44px -14px rgba(0,0,0,.65)}
   h1,h2,h3,h4{letter-spacing:-.011em}
   *{margin:0;padding:0;box-sizing:border-box}
   body{font-family:'Plus Jakarta Sans','Segoe UI',sans-serif;background:var(--bg);color:var(--text);transition:.3s;-webkit-font-smoothing:antialiased}
@@ -1005,14 +1005,15 @@
   .live-dot{width:8px;height:8px;border-radius:50%;background:var(--lb-acc,#13355f);box-shadow:0 0 0 4px var(--lb-bg,#e7eeff);animation:ttPulse 1.5s infinite}
   .live-banner h3{font-size:1.05rem;font-weight:700;color:var(--text);line-height:1.2}
   .live-banner small{color:var(--text-muted);font-size:.82rem}
-  .live-banner.upcoming{--lb-acc:#13355f;--lb-bg:#e7eeff}
-  .live-banner.soon{--lb-acc:#d97706;--lb-bg:#fffbeb}
-  .live-banner.now{--lb-acc:#059669;--lb-bg:#ecfdf5}
+  .live-banner.upcoming{--lb-acc:var(--accent);--lb-bg:var(--primary-50);border-left-width:4px;box-shadow:0 8px 24px -10px rgba(255,107,43,.35)}
+  .live-banner.soon{--lb-acc:#d97706;--lb-bg:#fffbeb;box-shadow:0 8px 24px -10px rgba(217,119,6,.4)}
+  .live-banner.now{--lb-acc:#dc2626;--lb-bg:#fef2f2}
   .countdown{display:flex;gap:7px}
   .cd-box{background:var(--lb-bg,#fffbeb);border:1px solid var(--lb-acc,#d97706);border-radius:9px;padding:6px 11px;text-align:center;min-width:50px}
   .cd-box .num{font-size:1.3rem;font-weight:800;line-height:1;color:var(--lb-acc,#d97706)}
   .cd-box .lbl{font-size:.56rem;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em;margin-top:3px}
-  .live-banner.now{background:linear-gradient(120deg,#064e3b 0%,#059669 52%,#0d9488 100%);border:none;box-shadow:0 14px 34px -12px rgba(6,78,59,.6);position:relative;overflow:hidden}
+  .live-banner.now{background:linear-gradient(120deg,#7f1d1d 0%,#dc2626 55%,#ef4444 100%);border:none;box-shadow:0 14px 38px -12px rgba(220,38,38,.65);position:relative;overflow:hidden;animation:lbGlow 2.4s ease-in-out infinite}
+  @keyframes lbGlow{0%,100%{box-shadow:0 14px 38px -12px rgba(220,38,38,.65)}50%{box-shadow:0 14px 46px -8px rgba(220,38,38,.9)}}
   .live-banner.now::after{content:'';position:absolute;inset:0;background:radial-gradient(120% 140% at 100% 0%,rgba(255,255,255,.16),transparent 55%);pointer-events:none}
   .live-banner.now .lb-left,.live-banner.now .countdown{position:relative;z-index:1}
   .live-banner.now h3,.live-banner.now small,.live-banner.now .lb-tag{color:#fff}
@@ -1159,6 +1160,32 @@ canvas{max-width:100%}
 @media(max-width:640px){.xm-row{flex-wrap:wrap}.xm-row>.btn{width:100%;justify-content:center}}
 @media(max-width:640px){.xm-grid{grid-template-columns:1fr;gap:10px}.xm-card{padding:14px}}
 
+
+/* ============ PREMIUM THEME LAYER ============ */
+/* Light mode: soft slate-blue instead of flat white */
+body{background:linear-gradient(180deg,#eef2f9 0%,#e7ecf5 60%,#e4eaf4 100%);background-attachment:fixed}
+.topbar{background:rgba(255,255,255,.85);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+
+/* Dark mode: deep navy + gold (MVS Portal admin style) */
+body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transparent 60%),linear-gradient(180deg,#0d1828 0%,#0b1524 100%);background-attachment:fixed}
+.dark .topbar{background:rgba(13,23,40,.82);border-bottom:1px solid var(--border)}
+.dark .card,.dark .xm-sec,.dark .xm-card,.dark .live-banner,.dark .today-row,.dark .qb-card{background:linear-gradient(180deg,#13223b 0%,#101d33 100%)}
+.dark .btn-primary{color:#161003}
+.dark .btn-primary svg{color:#161003}
+.dark .nav-item.active{color:#181203;box-shadow:0 6px 18px -5px rgba(226,180,88,.55)}
+.dark .nav-item.active svg{color:#181203}
+.dark .xm-chip{background:rgba(226,180,88,.13);color:#e8c476}
+.dark .xm-chip-hl{background:var(--accent);color:#181203}
+.dark .xm-ic,.dark .xm-sec-ic{color:#e2b458;border-color:rgba(226,180,88,.25);background:rgba(226,180,88,.08)}
+.dark .stat-card,.dark .cd-box{background:linear-gradient(180deg,#13223b,#101d33)}
+.dark .mat-table th{background:rgba(255,255,255,.03)}
+.dark .mat-table td,.dark .mat-table th{border-color:var(--border)}
+.dark select.form-control,.dark input.form-control,.dark textarea.form-control{background:#0d1a2e;color:var(--text);border-color:var(--border)}
+.dark .modal{background:#111f36}
+.dark .btn-ghost{border-color:var(--border);color:var(--text)}
+.dark .live-banner.upcoming{--lb-bg:rgba(226,180,88,.12);box-shadow:0 8px 26px -10px rgba(226,180,88,.35)}
+.dark .empty-state,.dark .ws-empty{color:var(--text-muted)}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -1179,7 +1206,7 @@ canvas{max-width:100%}
 </div><!-- ===== ADMIN APP ===== -->
 <div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#ef4444">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('compliance',this)"><span>Class Compliance</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Users</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Study Material</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#ef4444" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-compliance"><div id="a-compliance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== STUDENT APP ===== -->
-<div id="student-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#06b6d4">S</div><div><span>MVS Foundation</span><small>Student</small></div></div><nav class="sidebar-nav"><div class="nav-section">Home</div><div class="nav-item active" onclick="sPage('dashboard',this)"><span>Home</span></div><div class="nav-item" onclick="sPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="sPage('materials',this)"><span>Classes Material</span></div><div class="nav-item" onclick="sPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="sPage('teachers',this)"><span>Know Your Teacher</span></div><div class="nav-section">Work</div><div class="nav-item" onclick="sPage('dpp',this)"><span>DPP Submit</span></div><div class="nav-item" onclick="sPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="sPage('doubts',this)"><span>Doubts</span></div><div class="nav-section">Progress</div><div class="nav-item" onclick="sPage('progress',this)"><span>Progress</span></div><div class="nav-item" onclick="sPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="sPage('profile',this)"><span>My Profile</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#06b6d4" id="s-avatar">S</div><div><span id="s-name">Student</span><small id="s-batch">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="s-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="s-topavatar" title="Set or change profile photo" onclick="openSetStudentPhoto()">S</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('student')"><span class="notif-badge" id="s-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="s-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="s-page-dashboard"><div id="s-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-timetable"><div id="s-timetable-content"><div class="spinner"></div></div></div><div class="page" id="s-page-materials"><div id="s-materials-content"><div class="spinner"></div></div></div><div class="page" id="s-page-qbank"><div id="s-qbank-content"><div class="spinner"></div></div></div><div class="page" id="s-page-teachers"><div id="s-teachers-content"><div class="spinner"></div></div></div><div class="page" id="s-page-dpp"><div id="s-dpp-content"><div class="spinner"></div></div></div><div class="page" id="s-page-tests"><div id="s-tests-content"><div class="spinner"></div></div></div><div class="page" id="s-page-doubts"><div id="s-doubts-content"><div class="spinner"></div></div></div><div class="page" id="s-page-progress"><div id="s-progress-content"><div class="spinner"></div></div></div><div class="page" id="s-page-notifications"><div id="s-notif-content"><div class="spinner"></div></div></div><div class="page" id="s-page-profile"><div id="s-profile-content"><div class="spinner"></div></div></div></div>
+<div id="student-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#06b6d4">S</div><div><span>MVS Foundation</span><small>Student</small></div></div><nav class="sidebar-nav"><div class="nav-section">Home</div><div class="nav-item active" onclick="sPage('dashboard',this)"><span>Home</span></div><div class="nav-item" onclick="sPage('teachers',this)"><span>Know Your Teacher</span></div><div class="nav-item" onclick="sPage('timetable',this)"><span>Time Table</span></div><div class="nav-section">Materials</div><div class="nav-item" onclick="sPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="sPage('materials',this)"><span>Classes Material</span></div><div class="nav-section">Work</div><div class="nav-item" onclick="sPage('dpp',this)"><span>DPP Submit</span></div><div class="nav-item" onclick="sPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="sPage('doubts',this)"><span>Doubts</span></div><div class="nav-section">Progress</div><div class="nav-item" onclick="sPage('progress',this)"><span>Progress</span></div><div class="nav-item" onclick="sPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="sPage('profile',this)"><span>My Profile</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#06b6d4" id="s-avatar">S</div><div><span id="s-name">Student</span><small id="s-batch">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="s-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="s-topavatar" title="Set or change profile photo" onclick="openSetStudentPhoto()">S</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('student')"><span class="notif-badge" id="s-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="s-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="s-page-dashboard"><div id="s-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-timetable"><div id="s-timetable-content"><div class="spinner"></div></div></div><div class="page" id="s-page-materials"><div id="s-materials-content"><div class="spinner"></div></div></div><div class="page" id="s-page-qbank"><div id="s-qbank-content"><div class="spinner"></div></div></div><div class="page" id="s-page-teachers"><div id="s-teachers-content"><div class="spinner"></div></div></div><div class="page" id="s-page-dpp"><div id="s-dpp-content"><div class="spinner"></div></div></div><div class="page" id="s-page-tests"><div id="s-tests-content"><div class="spinner"></div></div></div><div class="page" id="s-page-doubts"><div id="s-doubts-content"><div class="spinner"></div></div></div><div class="page" id="s-page-progress"><div id="s-progress-content"><div class="spinner"></div></div></div><div class="page" id="s-page-notifications"><div id="s-notif-content"><div class="spinner"></div></div></div><div class="page" id="s-page-profile"><div id="s-profile-content"><div class="spinner"></div></div></div></div>
 </div><!-- Generic Modal -->
 <div class="modal-overlay" id="modal"><div class="modal"><div class="modal-header"><h3 id="modal-title">Modal</h3><button class="modal-close" onclick="closeModal()">×</button></div><div class="modal-body" id="modal-body"></div><div class="modal-footer" id="modal-footer"></div></div></div>
 <!-- Limit Popup -->
@@ -1290,7 +1317,7 @@ async function smartCompress(file,statusCb){
   }
   return {file, ok:file.size<=MAXB};
 }
-const NAV_ICON={'dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book'};
+const NAV_ICON={'dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book','classes material':'folder'};
 function injectNavIcons(){
   document.querySelectorAll('.nav-item').forEach(el=>{
     if(el.querySelector('svg')) return;
@@ -1637,6 +1664,7 @@ function startLiveCountdown(entries){
   }
   render(); _cdTimer=setInterval(render,1000);
 }
+function softSpin(el){ if(!el) return; const inPage=el.closest&&el.closest('.page'); if(inPage&&el.dataset.kept) return; el.innerHTML='<div class="spinner"></div>'; if(inPage) el.dataset.kept='1'; }
 function toast(msg,err=false){ const t=document.getElementById('toast'); t.className=err?'error':''; document.getElementById('toast-msg').textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3500); }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function initials(name){ const p=(name||'U').trim().split(' '); return ((p[0]||'')[0]||'')+((p[1]||'')[0]||''); }
@@ -2363,9 +2391,9 @@ async function loadTEngagement(){
 }
 async function loadTMaterial(){
   const el=document.getElementById('t-material-content');
-  el.innerHTML='<div class="spinner"></div>';
+  softSpin(el);
   try{
-    el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2>Classes Material</h2><p>Class notes &amp; DPP uploaded from each class report appear here automatically. Add anything extra as a custom category.</p></div><button class="btn btn-primary btn-sm" onclick="openUploadHub({typeLabel:'Other (custom)'})">${ic('upload')} Upload Other Material</button></div><div id="t-mat-tree"></div>`;
+    el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2>Classes Material</h2><p style="display:none"> Add anything extra as a custom category.</p></div><button class="btn btn-primary btn-sm" onclick="openUploadHub({typeLabel:'Other (custom)'})">${ic('upload')} Upload Other Material</button></div><div id="t-mat-tree"></div>`;
     _renderMaterialTree('t-mat-tree','/api/teacher/materials-tree','/api/teacher');
   }catch(e){ el.innerHTML=errHtml(e); }
 }
@@ -2375,7 +2403,7 @@ async function loadTMaterial(){
 let _mtData=null, _mtSub=null, _mtBase='/api/teacher';
 async function _renderMaterialTree(wrapId, endpoint, apiBase){
   const wrap=document.getElementById(wrapId); if(!wrap) return;
-  wrap.innerHTML='<div class="spinner"></div>';
+  softSpin(wrap);
   _mtBase=apiBase;
   try{
     const d=await api(endpoint);
@@ -2462,7 +2490,7 @@ async function openMatAudience(mid,which){
 
 async function loadTDpp(){
   const el=document.getElementById('t-dpp-content');
-  el.innerHTML='<div class="spinner"></div>';
+  softSpin(el);
   try{
     const d=await api('/api/teacher/dpp-results');
     const t=d.totals||{};
@@ -2513,7 +2541,7 @@ let _lecFiles={pdf:null,dpp:null};
 
 async function loadTLectures(){
   const el=document.getElementById('t-lectures-content');
-  el.innerHTML='<div class="spinner"></div>';
+  softSpin(el);
   try{
     const lecs=await api('/api/teacher/lectures');
     let html=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2>Lecture Reports</h2><p>Publish a report after teaching in the MVC App. Students must answer a verification question to mark it done.</p></div><button class="btn btn-primary btn-sm" onclick="openLectureForm()">${ic('upload')} New Lecture Report</button></div>`;
@@ -2989,7 +3017,7 @@ async function loadTPerformance(){
 // page and the admin Teacher Reports page (same renderer, same numbers).
 async function _renderClassReports(wrapId, endpoint, showTeacher){
   const wrap=document.getElementById(wrapId); if(!wrap) return;
-  wrap.innerHTML='<div class="spinner"></div>';
+  softSpin(wrap);
   try{
     const d=await api(endpoint);
     const s=d.summary||{};
@@ -3077,7 +3105,7 @@ function openAdmin(){
 }
 async function loadACompliance(){
   const el=document.getElementById('a-compliance-content');
-  el.innerHTML='<div class="spinner"></div>';
+  softSpin(el);
   try{
     const d=await api('/api/admin/class-compliance');
     const t=d.totals||{};
@@ -3104,7 +3132,7 @@ let _luTab='live';
 function luTab(t){ _luTab=t; if(window._lastLive) _paintLive(window._lastLive); else loadALive(); }
 async function loadALive(){
   const el=document.getElementById('a-live-content');
-  if(!el.dataset.painted) el.innerHTML='<div class="spinner"></div>';
+  if(!el.dataset.painted) softSpin(el);
   try{ const d=await api('/api/admin/live-users'); window._lastLive=d; _paintLive(d); }
   catch(e){ el.innerHTML=errHtml(e); }
 }
@@ -3258,13 +3286,13 @@ function _teacherSubjByClass(subjects){
 function _codeChips(list){ return list.map(s=>`<span class="code-chip">${esc(s.name)} <b>${esc(s.code)}</b></span>`).join(''); }
 async function loadAMaterial(){
   const el=document.getElementById('a-material-content');
-  el.innerHTML=`<div class="sm-head"><h2>Classes Material</h2><p>Everything teachers have uploaded \u2014 chapter and class-wise, with student engagement.</p></div><div id="a-mat-tree"></div>`;
+  el.innerHTML=`<div class="sm-head"><h2>Classes Material</h2></div><div id="a-mat-tree"></div>`;
   _renderMaterialTree('a-mat-tree','/api/admin/materials-tree','/api/admin');
 }
 
 async function loadAReports(){
   const el=document.getElementById('a-reports-content');
-  el.innerHTML='<div class="spinner"></div>';
+  softSpin(el);
   try{
     const d=await api('/api/admin/class-reports');
     const pt=(d.per_teacher||[]).filter(t=>t.classes_done>0);
@@ -3631,7 +3659,7 @@ function _xmSortCats(keys){ return keys.sort((a,b)=>{ const oa=_xmCatOrder(a),ob
 async function loadExtMaterials(cid){
   _extCid=cid; _extSubject=null;
   const el=document.getElementById(cid);
-  el.innerHTML='<div class="spinner"></div>';
+  softSpin(el);
   try{
     const r=await api('/api/ext/materials');
     if(!r.configured){
@@ -3647,10 +3675,12 @@ async function loadExtMaterials(cid){
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function _extSet(k,v){ if(k==='session')_extSession=v; if(k==='class')_extClass=v; if(k==='medium')_extMedium=v; _extSubject=null; _extRender(); }
+// session bucket: blank = April/October/Stream 2 (default) — har material ek hi session ka hota hai
+function _extBucket(t){ t=(t||'').toLowerCase().replace(/[^a-z0-9]/g,''); return (t.includes('ondemand')||t.includes('syc'))?'syc':'stream2'; }
 function _extPool(){
   if(_extRole==='student') return _extMats; // already personalised by the server
   return _extMats.filter(m=>{
-    if(_extSession && (m.session||'')!==_extSession) return false;
+    if(_extSession && _extBucket(m.session)!==_extBucket(_extSession)) return false;
     if(_extClass && m.class_level && String(m.class_level)!==_extClass) return false;
     if(_extMedium){ const md=(m.medium||'').toLowerCase(); if(md && md!==_extMedium.toLowerCase() && md!=='both' && md!=='bilingual') return false; }
     return true;
@@ -3665,8 +3695,11 @@ function _extHeader(){
 }
 function _extFilters(){
   if(_extRole==='student') return '';
-  const sessions=[...new Set(_extMats.map(m=>m.session).filter(Boolean))];
-  const tabs=sessions.length>1?`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">${sessions.map(x=>`<button class="btn ${x===_extSession?'btn-primary':'btn-ghost'} btn-sm" onclick="_extSet('session','${esc(x)}')">${esc(x)}</button>`).join('')}</div>`:'';
+  // ek bucket ke saare string-variants ko ek hi tab mein collapse karo
+  const seen={}, sessions=[];
+  _extMats.forEach(m=>{ if(!m.session) return; const b=_extBucket(m.session); if(!seen[b]){ seen[b]=true; sessions.push(m.session); } });
+  sessions.sort((a,b)=>_extBucket(a)==='stream2'?-1:1);
+  const tabs=sessions.length>1?`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">${sessions.map(x=>`<button class="btn ${_extBucket(x)===_extBucket(_extSession)?'btn-primary':'btn-ghost'} btn-sm" onclick="_extSet('session','${esc(x)}')">${esc(x)}</button>`).join('')}</div>`:'';
   return tabs+`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center"><select class="form-control" style="max-width:150px" onchange="_extSet('class',this.value)"><option value="">All Classes</option><option value="10" ${_extClass==='10'?'selected':''}>Class 10</option><option value="12" ${_extClass==='12'?'selected':''}>Class 12</option></select><select class="form-control" style="max-width:160px" onchange="_extSet('medium',this.value)"><option value="">All Medium</option><option ${_extMedium==='Hindi'?'selected':''}>Hindi</option><option ${_extMedium==='English'?'selected':''}>English</option></select><span style="color:var(--text-muted);font-size:.8rem">${_extPool().length} items</span></div>`;
 }
 function _extRender(){
@@ -3707,10 +3740,10 @@ function _extRenderSubject(){
     body+=`<div class="xm-sec"><div class="xm-sec-h"><div class="xm-sec-ic">${_xmCatIc(c)}</div><h3>${esc(_xmCatName(c))}</h3><span class="xm-count">${groups[c].length} ${groups[c].length===1?'file':'files'}</span></div>${rows}</div>`;
   });
   if(!pool.length) body=`<div class="empty-state"><p>No material in this subject yet.</p></div>`;
-  el.innerHTML=`<div class="sm-head" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px"><button class="btn btn-ghost btn-sm" onclick="_extSubject=null;_extRender()">\u2190 Back</button><div style="display:flex;align-items:center;gap:12px"><div class="xm-ic" style="width:42px;height:42px">${ic('book')}</div><div><h2 style="margin:0;font-size:1.35rem">${esc(_extSubject)}</h2><p style="margin:0;font-size:.85rem;color:var(--text-muted)">Organized study material</p></div></div></div><div class="xm-wrap">${body}</div>`;
+  el.innerHTML=`<div class="sm-head" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px"><button class="btn btn-ghost btn-sm" onclick="_extSubject=null;_extRender()">\u2190 Back</button><div style="display:flex;align-items:center;gap:12px"><div class="xm-ic" style="width:42px;height:42px">${ic('book')}</div><div><h2 style="margin:0;font-size:1.35rem">${esc(_extSubject)}</h2></div></div></div><div class="xm-wrap">${body}</div>`;
 }
 async function _extRefresh(){
-  const el=document.getElementById(_extCid); if(el) el.innerHTML='<div class="spinner"></div>';
+  const el=document.getElementById(_extCid); if(el) softSpin(el);
   try{ const r=await api('/api/ext/materials?refresh=1'); _extMats=r.materials||[]; _extCtx=r.ctx||_extCtx; _extRole=r.role||_extRole; }catch(e){}
   _extRender();
 }
@@ -4156,7 +4189,7 @@ async function loadSMaterials(){
       if(nOther) badges+=`<span class="sm-badge sm-other">${nOther} Other</span>`;
       return `<div class="sm-card" onclick="openSubjectMaterials('${encodeURIComponent(sub)}')"><div class="sm-icon">${ic('book')}</div><div class="sm-body"><div class="sm-title">${esc(sub)}</div><div class="sm-badges">${badges||'<span class="sm-badge">No files</span>'}</div></div><span class="sm-arrow">›</span></div>`;
     }).join('');
-    el.innerHTML=`<div class="sm-head"><h2>Classes Material</h2><p>Select a subject to view organized materials (Class Notes, DPP, Tests).</p></div><div class="sm-grid">${cards}</div>`;
+    el.innerHTML=`<div class="sm-head"><h2>Classes Material</h2></div><div class="sm-grid">${cards}</div>`;
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function openSubjectMaterials(encSub){
@@ -4170,8 +4203,8 @@ function openSubjectMaterials(encSub){
   Object.keys(byCat).forEach(cat=>{
     const meta=catMeta[cat]||{icon:'folder',badge:'sc-amber'};
     const items=byCat[cat];
-    html+=`<div class="mat-cat"><div class="mat-cat-head"><div class="mc-badge ${meta.badge}">${ic(meta.icon)}</div>${esc(cat)}<span class="mc-count">${items.length} file${items.length>1?'s':''}</span></div><div class="mat-twrap"><table class="mat-table"><thead><tr><th>Chapter / Title</th><th>File</th><th style="text-align:right">Download</th></tr></thead><tbody>`;
-    items.forEach(m=>{ const fname=m.filename||((m.title||cat)+'.pdf'); html+=`<tr><td class="mat-ch">${esc(m.chapter||m.title||'—')}</td><td><div class="mat-file">${ic('book')}${esc(fname)}</div></td><td class="mat-dl-cell"><button class="btn btn-primary btn-sm" onclick="downloadMaterial('student',${m.id},'${esc(fname).replace(/'/g,'')}')">${ic('download')} Download</button></td></tr>`; });
+    html+=`<div class="mat-cat"><div class="mat-cat-head"><div class="mc-badge ${meta.badge}">${ic(meta.icon)}</div>${esc(cat)}<span class="mc-count">${items.length} file${items.length>1?'s':''}</span></div><div class="mat-twrap"><table class="mat-table"><thead><tr><th>Chapter / Title</th><th style="text-align:right">Download</th></tr></thead><tbody>`;
+    items.forEach(m=>{ const fname=m.filename||((m.title||cat)+'.pdf'); html+=`<tr><td class="mat-ch">${esc(m.chapter||m.title||'\u2014')}</td><td class="mat-dl-cell"><button class="btn btn-primary btn-sm" onclick="downloadMaterial('student',${m.id},'${esc(fname).replace(/'/g,'')}')">${ic('download')} Download</button></td></tr>`; });
     html+=`</tbody></table></div></div>`;
   });
   html+=`</div></div>`;
@@ -4182,7 +4215,7 @@ async function loadSDpp(){
   const el=document.getElementById('s-dpp-content');
   try{
  const dpps=await api('/api/student/dpp-list');
- let html=`<div class="card"><div class="card-header"><h3> DPP — Download & Submit</h3></div><div class="card-body"><div class="alert alert-info">Download the DPP, solve it, then <strong>Submit</strong> — upload your solved PDF (no drive link).</div>`;
+ let html=`<div class="card"><div class="card-header"><h3> DPP — Download & Submit</h3></div><div class="card-body">`;
  if(dpps.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No DPP available yet. Please wait for the teacher to upload.</p></div>`;
  else html+=dpps.map(d=>`<div class="today-row"><div><div class="tr-sub"> ${esc(d.subject)}</div><div class="tr-topic">${esc(d.chapter||'')} — ${esc(d.title||'DPP')}</div></div><div class="tmeta"><button class="btn btn-primary btn-sm" onclick="downloadMaterial('student',${d.id},'DPP.pdf')">${ic('download')} Download</button>${d.marks?`<span class="dp-tag done">\u2714 Checked \u00b7 Marks: ${esc(d.marks)}</span>`:d.submitted?`<span class="dp-tag pending">\u23f3 Submitted \u00b7 Checking</span><button class="btn btn-ghost btn-sm" onclick="openSubmitAnswer(${d.id},'${esc((d.title||'DPP')).replace(/'/g,'')}')">Re-submit</button>`:`<button class="btn btn-success btn-sm" onclick="openSubmitAnswer(${d.id},'${esc((d.title||'DPP')).replace(/'/g,'')}')">${ic('upload')} Submit</button>`}
  </div></div>`).join('');
@@ -4259,7 +4292,7 @@ function examCardHTML(e){
   return `<div class="tst-item"><div class="tst-ic">${ic('clipboard')}</div><div class="tst-body"><div class="tst-title">${esc(e.title)}</div><div class="tst-meta">${meta}</div>${scores}</div><div class="tst-right">${paper}${right}</div></div>`;
 }
 async function openExamPlayer(id){
-  const el=document.getElementById('s-tests-content'); el.innerHTML='<div class="spinner"></div>';
+  const el=document.getElementById('s-tests-content'); softSpin(el);
   try{
     const ex=await api('/api/student/exam/'+id);
     window._curExam=ex; window._examFile=null;
@@ -4295,7 +4328,7 @@ async function submitExamAnswer(id){
     const b64=await _fileB64(window._examFile);
     body={answer_image_b64:b64, mime_type:window._examFile.type||'image/jpeg'};
   }
-  const el=document.getElementById('s-tests-content'); el.innerHTML='<div class="spinner"></div>';
+  const el=document.getElementById('s-tests-content'); softSpin(el);
   try{
     const r=await api('/api/student/exam/'+id+'/submit','POST',body);
     el.innerHTML=`<div class="pl-thanks"><div class="pl-thanks-ic">${ic('check')}</div><div class="pl-thanks-msg">${esc(r.message||'Thank you for submitting!')}</div>${r.note?`<div class="pl-thanks-note">${esc(r.note)}</div>`:''}<button class="btn btn-primary" onclick="${r.status==='graded'?('openExamResult('+id+')'):'loadSTests()'}" style="margin-top:16px">${r.status==='graded'?'View Result':'Back to Tests'}</button></div>`;
@@ -4314,7 +4347,7 @@ async function downloadMyAnswer(id){
   }catch(e){ toast('Could not download answer sheet',true); }
 }
 async function openExamResult(id){
-  const el=document.getElementById('s-tests-content'); el.innerHTML='<div class="spinner"></div>';
+  const el=document.getElementById('s-tests-content'); softSpin(el);
   try{
     const r=await api('/api/student/exam/'+id+'/result');
     if(r.status!=='graded'){ el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" onclick="loadSTests()">${ic('home')} Back</button><div class="pl-title">${esc(r.title)}</div></div><div class="card"><div class="card-body"><div class="empty-state"><p>Your answer sheet is with your teacher for checking. Marks will appear here once it is checked.</p></div></div></div>`; return; }
@@ -4418,7 +4451,7 @@ let _vqState=null;   // {lectureId, questionId, qtype, selected}
 
 async function loadSLectures(){
   const el=document.getElementById('s-lectures-content');
-  el.innerHTML='<div class="spinner"></div>';
+  softSpin(el);
   try{
     const lecs=await api('/api/student/lectures');
     if(!lecs.length){ el.innerHTML=`<div class="sm-head"><h2>Lectures</h2><p>Verify each lecture after watching it in the Manish Verma Classes App.</p></div><div class="card"><div class="card-body"><div class="ws-empty"><div class="big">\ud83c\udf93</div><p>No lectures yet</p><small>When your teacher posts a lecture report, it appears here to verify.</small></div></div></div>`; return; }
@@ -4534,7 +4567,7 @@ async function submitVerify(){
 
 async function loadSProgress(){
   const el=document.getElementById('s-progress-content');
-  el.innerHTML='<div class="spinner"></div>';
+  softSpin(el);
   try{
     const d=await api('/api/student/performance');
     window._perfData=d;

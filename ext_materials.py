@@ -91,10 +91,11 @@ def _norm(t):
 
 
 def _sess_bucket(session_text):
-    """Classify a material's session into 'stream2' / 'syc' (None = show to all)."""
+    """Classify a material's session into 'stream2' / 'syc'.
+    MVS Portal par har material kisi ek session ka hota hai — blank session
+    ko default (April/October/Stream 2) maana jata hai, warna woh dono
+    tabs mein duplicate dikhta hai."""
     t = _norm(session_text)
-    if not t:
-        return None
     if "ondemand" in t or "syc" in t:
         return "syc"
     return "stream2"
@@ -147,9 +148,8 @@ def _filter_for_student(mats, sp):
 
     out = []
     for m in mats:
-        # session
-        mb = _sess_bucket(m.get("session"))
-        if sess and mb and mb != sess:
+        # session (bucket-based; blank = stream2 default)
+        if sess and _sess_bucket(m.get("session")) != sess:
             continue
         # class
         mc = _norm(m.get("class_level"))
