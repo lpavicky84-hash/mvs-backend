@@ -1134,7 +1134,8 @@ canvas{max-width:100%}
 .xm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
 .xm-card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:18px;display:flex;align-items:center;gap:14px;cursor:pointer;transition:transform .18s ease,box-shadow .2s ease,border-color .2s ease;box-shadow:var(--shadow)}
 .xm-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg);border-color:var(--accent)}
-.xm-ic{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.35rem;background:linear-gradient(135deg,var(--primary),#2857a8);flex-shrink:0;box-shadow:0 6px 14px -6px rgba(15,42,84,.5)}
+.xm-ic{width:48px;height:48px;border-radius:13px;display:flex;align-items:center;justify-content:center;background:var(--primary-50);color:var(--primary);flex-shrink:0;border:1px solid var(--border)}
+.dark .xm-ic{background:rgba(255,255,255,.07);color:#9fc0ff;border-color:rgba(255,255,255,.1)}
 .xm-info{flex:1;min-width:0}
 .xm-title{font-weight:800;font-size:1.02rem;margin-bottom:7px;overflow-wrap:anywhere}
 .xm-chips{display:flex;gap:6px;flex-wrap:wrap}
@@ -1143,8 +1144,19 @@ canvas{max-width:100%}
 .dark .xm-chip{background:rgba(255,255,255,.09);color:#cbd5e1}
 .dark .xm-chip-hl{background:var(--accent);color:#04211f}
 .xm-arw{font-size:1.5rem;color:var(--text-muted);flex-shrink:0}
-.xm-cat-h{margin:20px 0 10px;font-weight:800;font-size:1.02rem;display:flex;align-items:center;gap:8px}
-.xm-cat-h span{color:var(--text-muted);font-weight:600;font-size:.85rem}
+.xm-sec{background:var(--card);border:1px solid var(--border);border-radius:16px;margin-bottom:16px;overflow:hidden;box-shadow:var(--shadow)}
+.xm-sec-h{display:flex;align-items:center;gap:12px;padding:14px 18px;background:linear-gradient(to right,var(--primary-50),transparent 70%);border-bottom:1px solid var(--border)}
+.dark .xm-sec-h{background:rgba(255,255,255,.045)}
+.xm-sec-ic{width:36px;height:36px;border-radius:10px;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--primary);flex-shrink:0}
+.dark .xm-sec-ic{color:#9fc0ff}
+.xm-sec-h h3{font-size:1rem;font-weight:800;flex:1;margin:0}
+.xm-count{font-size:.72rem;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--card);border:1px solid var(--border);color:var(--text-muted);white-space:nowrap}
+.xm-row{display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid var(--border)}
+.xm-row:last-child{border-bottom:none}
+.xm-row-t{font-weight:700;font-size:.95rem;margin-bottom:5px;overflow-wrap:anywhere}
+.xm-row-m{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:.78rem;color:var(--text-muted)}
+.xm-wrap{max-width:1100px}
+@media(max-width:640px){.xm-row{flex-wrap:wrap}.xm-row>.btn{width:100%;justify-content:center}}
 @media(max-width:640px){.xm-grid{grid-template-columns:1fr;gap:10px}.xm-card{padding:14px}}
 
 </style>
@@ -3610,8 +3622,12 @@ function xhrUpload(url,formData,onProgress){
 // ============================================================
 let _extMats=[], _extCtx=null, _extRole='', _extCid='', _extSubject=null;
 let _extSession='', _extClass='', _extMedium='';
-const _XM_ICONS={physics:'\u269b\ufe0f',chemistry:'\ud83e\uddea',biology:'\ud83e\uddec',math:'\ud83d\udcd0',english:'\ud83d\udcd6',hindi:'\ud83d\udcda',account:'\ud83d\udcca',business:'\ud83d\udcbc',economic:'\ud83d\udcc8',history:'\ud83c\udfdb\ufe0f',geograph:'\ud83c\udf0d',computer:'\ud83d\udcbb',data:'\u2328\ufe0f',science:'\ud83d\udd2c',psycholog:'\ud83e\udde0',home:'\ud83c\udfe0',polit:'\u2696\ufe0f',sociolog:'\ud83d\udc65',paint:'\ud83c\udfa8',sanskrit:'\ud83d\udcdc',physical:'\ud83c\udfc3',environment:'\ud83c\udf31',law:'\u2696\ufe0f',library:'\ud83d\udcda',mass:'\ud83d\udce1'};
-function _xmIcon(sub){ const t=(sub||'').toLowerCase(); for(const k in _XM_ICONS){ if(t.includes(k)) return _XM_ICONS[k]; } return '\ud83d\udcd8'; }
+// display order + rename for categories coming from the MVS Portal
+const _XM_CAT_ORDER=[['syllabus',1],['book',2],['studymaterial',3],['chapterwisenote',3],['questionbank',4],['tma',5],['practical',6],['exampattern',7],['samplepaper',8]];
+function _xmCatKey(c){ return (c||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
+function _xmCatOrder(c){ const k=_xmCatKey(c); for(const [kw,o] of _XM_CAT_ORDER){ if(k.includes(kw)) return o; } return 50; }
+function _xmCatName(c){ const k=_xmCatKey(c); if(k.includes('studymaterial')) return 'Chapterwise Notes'; return c||'Other'; }
+function _xmSortCats(keys){ return keys.sort((a,b)=>{ const oa=_xmCatOrder(a),ob=_xmCatOrder(b); return oa!==ob?oa-ob:_xmCatName(a).localeCompare(_xmCatName(b)); }); }
 async function loadExtMaterials(cid){
   _extCid=cid; _extSubject=null;
   const el=document.getElementById(cid);
@@ -3619,7 +3635,7 @@ async function loadExtMaterials(cid){
   try{
     const r=await api('/api/ext/materials');
     if(!r.configured){
-      el.innerHTML=`<div class="sm-head"><h2>Study Material</h2></div><div class="card"><div class="card-body" style="text-align:center;padding:44px 20px"><div style="font-size:2.4rem;margin-bottom:10px">\ud83d\udd0c</div><h3 style="margin-bottom:8px">Student Portal connection pending</h3><p style="color:var(--text-muted);max-width:540px;margin:0 auto">Railway par <b>STUDENT_PORTAL_URL</b> aur <b>STUDENT_PORTAL_KEY</b> set hone ke baad materials yahan automatically dikhne lagenge.</p></div></div>`;
+      el.innerHTML=`<div class="sm-head"><h2>Study Material</h2></div><div class="card"><div class="card-body" style="text-align:center;padding:44px 20px"><h3 style="margin-bottom:8px">Student Portal connection pending</h3><p style="color:var(--text-muted);max-width:540px;margin:0 auto">Railway par <b>STUDENT_PORTAL_URL</b> aur <b>STUDENT_PORTAL_KEY</b> set hone ke baad materials yahan automatically dikhne lagenge.</p></div></div>`;
       return;
     }
     _extMats=r.materials||[]; _extCtx=r.ctx||null; _extRole=r.role||ROLE||'';
@@ -3663,43 +3679,52 @@ function _extRender(){
   const subs=Object.keys(bySub).sort((a,b)=>a==='General & Others'?1:b==='General & Others'?-1:a.localeCompare(b));
   let body='';
   if(!subs.length){
-    body=`<div class="card"><div class="card-body" style="text-align:center;padding:40px 20px"><div style="font-size:2rem;margin-bottom:8px">\ud83d\udced</div><p style="color:var(--text-muted)">Aapke batch/subjects ke liye abhi koi material nahi mila.<br>Refresh try karein ya admin se contact karein.</p></div></div>`;
+    body=`<div class="card"><div class="card-body" style="text-align:center;padding:40px 20px"><p style="color:var(--text-muted)">Aapke batch/subjects ke liye abhi koi material nahi mila.<br>Refresh try karein ya admin se contact karein.</p></div></div>`;
   }else{
     body=`<div class="xm-grid">`+subs.map(sub=>{
       const list=bySub[sub];
       const cats={}; list.forEach(m=>{ const c=m.category||'Other'; cats[c]=(cats[c]||0)+1; });
-      const catChips=Object.keys(cats).slice(0,3).map(c=>`<span class="xm-chip">${esc(c)} \u00b7 ${cats[c]}</span>`).join('')+(Object.keys(cats).length>3?`<span class="xm-chip">+${Object.keys(cats).length-3} more</span>`:'');
-      return `<div class="xm-card" onclick="_extOpenSubject('${esc(sub).replace(/'/g,"\\'")}')"><div class="xm-ic">${_xmIcon(sub)}</div><div class="xm-info"><div class="xm-title">${esc(sub)}</div><div class="xm-chips">${catChips}</div></div><div class="xm-arw">\u203a</div></div>`;
+      const ordered=_xmSortCats(Object.keys(cats));
+      const catChips=ordered.slice(0,3).map(c=>`<span class="xm-chip">${esc(_xmCatName(c))} \u00b7 ${cats[c]}</span>`).join('')+(ordered.length>3?`<span class="xm-chip">+${ordered.length-3} more</span>`:'');
+      return `<div class="xm-card" onclick="_extOpenSubject('${esc(sub).replace(/'/g,"\\'")}')"><div class="xm-ic">${ic('book')}</div><div class="xm-info"><div class="xm-title">${esc(sub)}</div><div class="xm-chips">${catChips}</div></div><div class="xm-arw">\u203a</div></div>`;
     }).join('')+`</div>`;
   }
   el.innerHTML=_extHeader()+_extFilters()+body;
 }
 function _extOpenSubject(sub){ _extSubject=sub; _extRenderSubject(); }
+const _XM_CAT_IC={syllabus:'clipboard',book:'book',studymaterial:'book',chapterwisenote:'book',questionbank:'folder',tma:'edit',practical:'clipboard',exampattern:'chart',samplepaper:'folder'};
+function _xmCatIc(c){ const k=_xmCatKey(c); for(const kw in _XM_CAT_IC){ if(k.includes(kw)) return ic(_XM_CAT_IC[kw]); } return ic('book'); }
 function _extRenderSubject(){
   const el=document.getElementById(_extCid); if(!el) return;
   const pool=_extPool().filter(m=>(((m.subject||'').trim())||'General & Others')===_extSubject);
   const groups={}; pool.forEach(m=>{ const c=m.category||'Other'; (groups[c]=groups[c]||[]).push(m); });
   let body='';
-  Object.keys(groups).forEach(c=>{
-    body+=`<div class="xm-cat-h">\ud83d\udcda ${esc(c)} <span>(${groups[c].length})</span></div>`;
-    body+=groups[c].map(m=>`<div class="qb-card"><div class="qb-icon">${ic('book')}</div><div class="qb-info"><div class="qb-title">${esc(m.title||'Untitled')}</div><div class="qb-meta">${m.medium?`<span class="qb-medium ${(m.medium||'').toLowerCase()==='hindi'?'hindi':''}">${esc(m.medium)}</span>`:''}${m.class_level?`<span>Class ${esc(String(m.class_level))}</span>`:''}<span>\u00b7 ${m.kind==='link'?'Link':'PDF'}</span></div></div><div class="qb-act"><button class="btn btn-primary btn-sm" onclick="openExtMaterial('${esc(String(m.id))}',${(m.kind==='link'&&m.link)?`'${esc(m.link)}'`:'null'})">Open</button></div></div>`).join('');
+  _xmSortCats(Object.keys(groups)).forEach(c=>{
+    const rows=groups[c].map(m=>{
+      const isLink=(m.kind==='link'&&m.link);
+      return `<div class="xm-row"><div style="flex:1;min-width:0"><div class="xm-row-t">${esc(m.title||'Untitled')}</div><div class="xm-row-m">${m.medium?`<span class="qb-medium ${(m.medium||'').toLowerCase()==='hindi'?'hindi':''}">${esc(m.medium)}</span>`:''}${m.class_level?`<span>Class ${esc(String(m.class_level))}</span>`:''}<span>${isLink?'Link':'PDF'}</span></div></div><button class="btn btn-primary btn-sm" onclick="openExtMaterial('${esc(String(m.id))}',${isLink?`'${esc(m.link)}'`:'null'},'${esc((m.filename||m.title||'material').replace(/'/g,''))}')">${ic(isLink?'play':'download')} ${isLink?'Open':'Download'}</button></div>`;
+    }).join('');
+    body+=`<div class="xm-sec"><div class="xm-sec-h"><div class="xm-sec-ic">${_xmCatIc(c)}</div><h3>${esc(_xmCatName(c))}</h3><span class="xm-count">${groups[c].length} ${groups[c].length===1?'file':'files'}</span></div>${rows}</div>`;
   });
   if(!pool.length) body=`<div class="empty-state"><p>No material in this subject yet.</p></div>`;
-  el.innerHTML=`<div class="sm-head" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="_extSubject=null;_extRender()">\u2190 Back</button><div style="display:flex;align-items:center;gap:10px"><div class="xm-ic" style="width:40px;height:40px;font-size:1.1rem">${_xmIcon(_extSubject)}</div><h2 style="margin:0;font-size:1.3rem">${esc(_extSubject)}</h2></div></div>${body}`;
+  el.innerHTML=`<div class="sm-head" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px"><button class="btn btn-ghost btn-sm" onclick="_extSubject=null;_extRender()">\u2190 Back</button><div style="display:flex;align-items:center;gap:12px"><div class="xm-ic" style="width:42px;height:42px">${ic('book')}</div><div><h2 style="margin:0;font-size:1.35rem">${esc(_extSubject)}</h2><p style="margin:0;font-size:.85rem;color:var(--text-muted)">Organized study material</p></div></div></div><div class="xm-wrap">${body}</div>`;
 }
 async function _extRefresh(){
   const el=document.getElementById(_extCid); if(el) el.innerHTML='<div class="spinner"></div>';
   try{ const r=await api('/api/ext/materials?refresh=1'); _extMats=r.materials||[]; _extCtx=r.ctx||_extCtx; _extRole=r.role||_extRole; }catch(e){}
   _extRender();
 }
-async function openExtMaterial(id,link){
+async function openExtMaterial(id,link,fname){
   if(link){ window.open(link,'_blank'); return; }
-  toast('Opening file...');
+  toast('Downloading...');
   try{
     const r=await fetch(API+'/api/ext/material/'+encodeURIComponent(id)+'/file',{headers:{Authorization:'Bearer '+TOKEN}});
     if(!r.ok) throw new Error('fail');
-    window.open(URL.createObjectURL(await r.blob()),'_blank');
-  }catch(e){ toast('Could not open file. Try Refresh.',true); }
+    const blob=await r.blob(); const url=URL.createObjectURL(blob);
+    let name=fname||'material'; if(!/\.[a-z0-9]{2,5}$/i.test(name)) name+='.pdf';
+    const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1500);
+  }catch(e){ toast('Download failed. Try Refresh.',true); }
 }
 async function loadAQBank(){ loadExtMaterials('a-qbank-content'); }
 async function loadSQBank(){ loadExtMaterials('s-qbank-content'); }
