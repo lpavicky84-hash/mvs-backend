@@ -1202,17 +1202,6 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 .dark .topbar-avatar{border-color:var(--border)}
 
 
-/* Phone: student 2-col material table -> stacked cards, Download hamesha visible */
-@media(max-width:700px){
-  .mat-2col thead{display:none}
-  .mat-2col,.mat-2col tbody{display:block;width:100%}
-  .mat-2col tr{display:block;padding:12px 2px;border-bottom:1px solid var(--border)}
-  .mat-2col tr:last-child{border-bottom:none}
-  .mat-2col td{display:block;border:none;padding:3px 0;width:100%}
-  .mat-2col .mat-ch{font-weight:700;font-size:.95rem;white-space:normal}
-  .mat-2col .mat-dl-cell{text-align:left;padding-top:9px}
-  .mat-2col .mat-dl-cell .btn{width:100%;justify-content:center;min-height:44px}
-}
 /* Wide tables (teacher/admin): scrollable hint — fade + "scroll" chip */
 .tbl-scroll{position:relative}
 .tbl-scroll.can-scroll::after{content:'';position:absolute;top:0;right:0;bottom:6px;width:44px;pointer-events:none;background:linear-gradient(to left,var(--card) 8%,transparent);border-radius:0 10px 10px 0}
