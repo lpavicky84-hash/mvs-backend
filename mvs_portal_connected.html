@@ -4824,8 +4824,10 @@ function errHtml(e){ return `<div class="alert alert-danger"> ${esc(e.message)}<
 (function(){
   // overlay behind the drawer
   var ov=document.createElement('div'); ov.className='side-overlay';
-  ov.addEventListener('click',closeSidebar); document.body.appendChild(ov);
-  window.closeSidebar=function(){ document.querySelectorAll('.sidebar.open').forEach(function(sb){sb.classList.remove('open');}); ov.classList.remove('show'); };
+  document.body.appendChild(ov);
+  function closeSidebar(){ document.querySelectorAll('.sidebar.open').forEach(function(sb){sb.classList.remove('open');}); ov.classList.remove('show'); }
+  window.closeSidebar=closeSidebar;
+  ov.addEventListener('click',closeSidebar);
   function openSidebar(appEl){ var sb=appEl.querySelector('.sidebar'); if(sb){ sb.classList.add('open'); ov.classList.add('show'); } }
   // hamburger button into every topbar (teacher, admin, student)
   document.querySelectorAll('.app').forEach(function(appEl){
