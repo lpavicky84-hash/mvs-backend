@@ -1045,11 +1045,11 @@
 <!-- TEACHER SUBJECT SELECTION (first login) -->
 <div id="t-subject-screen" style="display:none;min-height:100vh;background:linear-gradient(150deg,#001022,#001a3a 55%,#0a3260);align-items:center;justify-content:center;padding:20px"><div class="login-box" style="max-width:620px"><h2>Select Your Subjects</h2><p>Select the subjects you teach, class by class.</p><div style="display:flex;justify-content:space-between;margin:14px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 10</label></div><div id="t-sub-10" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><div style="display:flex;justify-content:space-between;margin:16px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 12</label></div><div id="t-sub-12" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><button class="login-btn" id="t-save-subj" style="margin-top:18px" onclick="saveTeacherSubjects()">Save & Continue →</button><p style="text-align:center;margin-top:14px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Logout</p></div>
 </div>
-<div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP Result</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule Rule:</b> Maximum 2 per month. Frequent reschedules affect MVS Foundation's reputation.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
+<div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP Result</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="tPage('extmat',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule Rule:</b> Maximum 2 per month. Frequent reschedules affect MVS Foundation's reputation.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-extmat"><div id="t-extmat-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== ADMIN APP ===== -->
-<div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#ef4444">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('compliance',this)"><span>Class Compliance</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Study Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Users</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Question Bank</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#ef4444" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-compliance"><div id="a-compliance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div></div>
+<div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#ef4444">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('compliance',this)"><span>Class Compliance</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Users</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Study Material</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#ef4444" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-compliance"><div id="a-compliance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== STUDENT APP ===== -->
-<div id="student-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#06b6d4">S</div><div><span>MVS Foundation</span><small>Student</small></div></div><nav class="sidebar-nav"><div class="nav-section">Home</div><div class="nav-item active" onclick="sPage('dashboard',this)"><span>Home</span></div><div class="nav-item" onclick="sPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="sPage('materials',this)"><span>Materials</span></div><div class="nav-item" onclick="sPage('qbank',this)"><span>Question Bank</span></div><div class="nav-item" onclick="sPage('teachers',this)"><span>Know Your Teacher</span></div><div class="nav-section">Work</div><div class="nav-item" onclick="sPage('dpp',this)"><span>DPP Submit</span></div><div class="nav-item" onclick="sPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="sPage('doubts',this)"><span>Doubts</span></div><div class="nav-section">Progress</div><div class="nav-item" onclick="sPage('progress',this)"><span>Progress</span></div><div class="nav-item" onclick="sPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="sPage('profile',this)"><span>My Profile</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#06b6d4" id="s-avatar">S</div><div><span id="s-name">Student</span><small id="s-batch">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="s-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="s-topavatar" title="Set or change profile photo" onclick="openSetStudentPhoto()">S</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('student')"><span class="notif-badge" id="s-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="s-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="s-page-dashboard"><div id="s-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-timetable"><div id="s-timetable-content"><div class="spinner"></div></div></div><div class="page" id="s-page-materials"><div id="s-materials-content"><div class="spinner"></div></div></div><div class="page" id="s-page-qbank"><div id="s-qbank-content"><div class="spinner"></div></div></div><div class="page" id="s-page-teachers"><div id="s-teachers-content"><div class="spinner"></div></div></div><div class="page" id="s-page-dpp"><div id="s-dpp-content"><div class="spinner"></div></div></div><div class="page" id="s-page-tests"><div id="s-tests-content"><div class="spinner"></div></div></div><div class="page" id="s-page-doubts"><div id="s-doubts-content"><div class="spinner"></div></div></div><div class="page" id="s-page-progress"><div id="s-progress-content"><div class="spinner"></div></div></div><div class="page" id="s-page-notifications"><div id="s-notif-content"><div class="spinner"></div></div></div><div class="page" id="s-page-profile"><div id="s-profile-content"><div class="spinner"></div></div></div></div>
+<div id="student-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#06b6d4">S</div><div><span>MVS Foundation</span><small>Student</small></div></div><nav class="sidebar-nav"><div class="nav-section">Home</div><div class="nav-item active" onclick="sPage('dashboard',this)"><span>Home</span></div><div class="nav-item" onclick="sPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="sPage('materials',this)"><span>Classes Material</span></div><div class="nav-item" onclick="sPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="sPage('teachers',this)"><span>Know Your Teacher</span></div><div class="nav-section">Work</div><div class="nav-item" onclick="sPage('dpp',this)"><span>DPP Submit</span></div><div class="nav-item" onclick="sPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="sPage('doubts',this)"><span>Doubts</span></div><div class="nav-section">Progress</div><div class="nav-item" onclick="sPage('progress',this)"><span>Progress</span></div><div class="nav-item" onclick="sPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="sPage('profile',this)"><span>My Profile</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#06b6d4" id="s-avatar">S</div><div><span id="s-name">Student</span><small id="s-batch">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="s-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="s-topavatar" title="Set or change profile photo" onclick="openSetStudentPhoto()">S</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('student')"><span class="notif-badge" id="s-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="s-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="s-page-dashboard"><div id="s-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-timetable"><div id="s-timetable-content"><div class="spinner"></div></div></div><div class="page" id="s-page-materials"><div id="s-materials-content"><div class="spinner"></div></div></div><div class="page" id="s-page-qbank"><div id="s-qbank-content"><div class="spinner"></div></div></div><div class="page" id="s-page-teachers"><div id="s-teachers-content"><div class="spinner"></div></div></div><div class="page" id="s-page-dpp"><div id="s-dpp-content"><div class="spinner"></div></div></div><div class="page" id="s-page-tests"><div id="s-tests-content"><div class="spinner"></div></div></div><div class="page" id="s-page-doubts"><div id="s-doubts-content"><div class="spinner"></div></div></div><div class="page" id="s-page-progress"><div id="s-progress-content"><div class="spinner"></div></div></div><div class="page" id="s-page-notifications"><div id="s-notif-content"><div class="spinner"></div></div></div><div class="page" id="s-page-profile"><div id="s-profile-content"><div class="spinner"></div></div></div></div>
 </div><!-- Generic Modal -->
 <div class="modal-overlay" id="modal"><div class="modal"><div class="modal-header"><h3 id="modal-title">Modal</h3><button class="modal-close" onclick="closeModal()">×</button></div><div class="modal-body" id="modal-body"></div><div class="modal-footer" id="modal-footer"></div></div></div>
 <!-- Limit Popup -->
@@ -1571,7 +1571,7 @@ function tPage(page,el){
   document.querySelectorAll('#teacher-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('t-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#teacher-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',performance:'Performance',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP Result',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',qbank:'Question Bank'};
+  const titles={dashboard:'Dashboard',performance:'Performance',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP Result',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',material:'Classes Material',extmat:'Study Material'};
   _setPage(titles[page]||page);
   document.getElementById('t-title').textContent=titles[page];
   stopCountdown();
@@ -1585,6 +1585,7 @@ function tPage(page,el){
   else if(page==='doubts') loadTDoubts();
   else if(page==='notifications') loadTNotif();
   else if(page==='material') loadTMaterial();
+  else if(page==='extmat') loadExtMaterials('t-extmat-content');
   else if(page==='students') loadTStudents();
 }
 
@@ -2234,7 +2235,7 @@ async function loadTMaterial(){
   const el=document.getElementById('t-material-content');
   el.innerHTML='<div class="spinner"></div>';
   try{
-    el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2>Study Material</h2><p>Class notes &amp; DPP uploaded from each class report appear here automatically. Add anything extra as a custom category.</p></div><button class="btn btn-primary btn-sm" onclick="openUploadHub({typeLabel:'Other (custom)'})">${ic('upload')} Upload Other Material</button></div><div id="t-mat-tree"></div>`;
+    el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2>Classes Material</h2><p>Class notes &amp; DPP uploaded from each class report appear here automatically. Add anything extra as a custom category.</p></div><button class="btn btn-primary btn-sm" onclick="openUploadHub({typeLabel:'Other (custom)'})">${ic('upload')} Upload Other Material</button></div><div id="t-mat-tree"></div>`;
     _renderMaterialTree('t-mat-tree','/api/teacher/materials-tree','/api/teacher');
   }catch(e){ el.innerHTML=errHtml(e); }
 }
@@ -3019,7 +3020,7 @@ function aPage(page,el){
   document.getElementById('a-page-'+page).classList.add('active');
   if(!el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) el=n; }); }
   if(el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',students:'Students',admins:'Admin Users',subjects:'Subjects',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance'};
+  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',students:'Students',admins:'Admin Users',subjects:'Subjects',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material'};
   _setPage(titles[page]||page);
   document.getElementById('a-title').textContent=titles[page];
   if(page==='dashboard') loadADashboard();
@@ -3127,7 +3128,7 @@ function _teacherSubjByClass(subjects){
 function _codeChips(list){ return list.map(s=>`<span class="code-chip">${esc(s.name)} <b>${esc(s.code)}</b></span>`).join(''); }
 async function loadAMaterial(){
   const el=document.getElementById('a-material-content');
-  el.innerHTML=`<div class="sm-head"><h2>Study Material</h2><p>Everything teachers have uploaded \u2014 chapter and class-wise, with student engagement.</p></div><div id="a-mat-tree"></div>`;
+  el.innerHTML=`<div class="sm-head"><h2>Classes Material</h2><p>Everything teachers have uploaded \u2014 chapter and class-wise, with student engagement.</p></div><div id="a-mat-tree"></div>`;
   _renderMaterialTree('a-mat-tree','/api/admin/materials-tree','/api/admin');
 }
 
@@ -3479,82 +3480,67 @@ function xhrUpload(url,formData,onProgress){
     xhr.send(formData);
   });
 }
-async function loadAQBank(){
-  const el=document.getElementById('a-qbank-content');
+// ============================================================
+//  STUDY MATERIAL — live connected to MVS Student Portal (Admin Console)
+//  Uploads/updates wahi hote hain; yahan students, teachers, admin ko
+//  read-only dikhta hai. (Notes, QBank, Syllabus, PYQ, TMA, Practical...)
+// ============================================================
+let _extMats=[], _extSession='', _extClass='', _extMedium='', _extCat='', _extCid='';
+async function loadExtMaterials(cid){
+  _extCid=cid;
+  const el=document.getElementById(cid);
+  el.innerHTML='<div class="spinner"></div>';
   try{
-    const list=await api('/api/admin/questionbank');
-    let html=`<div class="card-header" style="padding:0 4px 18px;border:none"><h3 style="font-size:1.3rem">Question Bank <span style="color:var(--text-muted);font-weight:600;font-size:.9rem">(${list.length})</span></h3><button class="btn btn-primary btn-sm" onclick="openQBankUpload()">${ic('upload')} Upload Material</button></div>`;
-    if(!list.length){ el.innerHTML=html+`<div class="empty-state"><p>No question bank material yet. Click "Upload Material" to add one.</p></div>`; return; }
-    html+=list.map(m=>`<div class="qb-card"><div class="qb-icon">${ic('book')}</div><div class="qb-info"><div class="qb-title">${esc(m.title)}</div><div class="qb-meta"><span class="qb-medium ${(m.medium||'').toLowerCase()==='hindi'?'hindi':''}">${esc(m.medium||'English')}</span><span>${esc(m.category||'Question Bank')}</span>${m.subject&&m.subject!=='General'?'<span>· '+esc(m.subject)+'</span>':''}<span>· ${m.external_link?'Link':'PDF'}</span></div></div><div class="qb-act"><button class="btn btn-ghost btn-sm" onclick="openQBItem(${m.id},${m.external_link?`'${esc(m.external_link)}'`:'null'},true)">Open</button><button class="btn btn-danger btn-sm" onclick="deleteQBank(${m.id})">${ic('trash')}</button></div></div>`).join('');
-    el.innerHTML=html;
+    const r=await api('/api/ext/materials');
+    if(!r.configured){
+      el.innerHTML=`<div class="sm-head"><h2>Study Material</h2><p>Notes, Question Bank, Syllabus, PYQs, TMA &amp; Practical Solutions — MVS Student Portal se.</p></div><div class="card"><div class="card-body" style="text-align:center;padding:44px 20px"><div style="font-size:2.4rem;margin-bottom:10px">\ud83d\udd0c</div><h3 style="margin-bottom:8px">Student Portal connection pending</h3><p style="color:var(--text-muted);max-width:540px;margin:0 auto">Railway par <b>STUDENT_PORTAL_URL</b> aur <b>STUDENT_PORTAL_KEY</b> environment variables set hone ke baad Student Portal ke saare study materials yahan automatically dikhne lagenge. Dubara kuch upload karne ki zaroorat nahi.</p></div></div>`;
+      return;
+    }
+    _extMats=r.materials||[];
+    const sess=[...new Set(_extMats.map(m=>m.session).filter(Boolean))];
+    if(!_extSession||!sess.includes(_extSession)) _extSession=sess[0]||'';
+    _extRender();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
-let _qbMode='file';
-function openQBankUpload(){
-  showModal('Upload Question Bank Material',
-    `<div class="alert alert-info">This material is visible to <strong>all students</strong>. Choose the medium and either upload the original PDF (no compression) or paste a link.</div>
-     <div class="form-group"><label>Title</label><input class="form-control" id="qb-title" placeholder="e.g. Physics Previous Year Questions"></div>
-     <div class="form-group"><label>Category</label><input class="form-control" id="qb-cat" value="Question Bank"></div>
-     <div class="form-group"><label>Medium</label><select class="form-control" id="qb-medium"><option>English</option><option>Hindi</option></select></div>
-     <div class="form-group"><label>Subject (optional)</label><input class="form-control" id="qb-subject" placeholder="General"></div>
-     <div class="form-group"><label>Upload method</label><div class="radio-row"><div class="radio-opt active" id="qb-opt-file" onclick="qbSetMode('file')">📄 Upload PDF (original, no compression)</div><div class="radio-opt" id="qb-opt-link" onclick="qbSetMode('link')">🔗 Paste PDF link</div></div></div>
-     <div id="qb-file-wrap"><input type="file" class="form-control" id="qb-file" accept=".pdf"></div>
-     <div id="qb-link-wrap" style="display:none"><input class="form-control" id="qb-link" placeholder="https://.../questionbank.pdf"></div>
-     <div id="qb-status" style="margin-top:10px"></div>`,
-    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="qb-btn" onclick="uploadQBank()">Upload</button>`);
+function _extSet(k,v){ if(k==='session'){_extSession=v;_extCat='';} if(k==='class')_extClass=v; if(k==='medium')_extMedium=v; if(k==='cat')_extCat=v; _extRender(); }
+function _extFiltered(){
+  return _extMats.filter(m=>{
+    if(_extSession && (m.session||'')!==_extSession) return false;
+    if(_extClass && m.class_level && String(m.class_level)!==_extClass) return false;
+    if(_extMedium){ const md=(m.medium||'').toLowerCase(); if(md && md!==_extMedium.toLowerCase() && md!=='both') return false; }
+    if(_extCat && (m.category||'Other')!==_extCat) return false;
+    return true;
+  });
 }
-function qbSetMode(m){
-  _qbMode=m;
-  document.getElementById('qb-opt-file').classList.toggle('active',m==='file');
-  document.getElementById('qb-opt-link').classList.toggle('active',m==='link');
-  document.getElementById('qb-file-wrap').style.display=m==='file'?'block':'none';
-  document.getElementById('qb-link-wrap').style.display=m==='link'?'block':'none';
+function _extRender(){
+  const el=document.getElementById(_extCid); if(!el) return;
+  const sessions=[...new Set(_extMats.map(m=>m.session).filter(Boolean))];
+  const cats=[...new Set(_extMats.filter(m=>!_extSession||(m.session||'')===_extSession).map(m=>m.category||'Other'))];
+  const list=_extFiltered();
+  const sessTabs=sessions.length>1?`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">${sessions.map(x=>`<button class="btn ${x===_extSession?'btn-primary':'btn-ghost'} btn-sm" onclick="_extSet('session','${esc(x)}')">${esc(x)}</button>`).join('')}</div>`:'';
+  const filters=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center"><select class="form-control" style="max-width:150px" onchange="_extSet('class',this.value)"><option value="">All Classes</option><option value="10" ${_extClass==='10'?'selected':''}>Class 10</option><option value="12" ${_extClass==='12'?'selected':''}>Class 12</option></select><select class="form-control" style="max-width:150px" onchange="_extSet('medium',this.value)"><option value="">All Medium</option><option ${_extMedium==='Hindi'?'selected':''}>Hindi</option><option ${_extMedium==='English'?'selected':''}>English</option></select><select class="form-control" style="max-width:240px" onchange="_extSet('cat',this.value)"><option value="">All Categories</option>${cats.map(c=>`<option ${c===_extCat?'selected':''}>${esc(c)}</option>`).join('')}</select><button class="btn btn-ghost btn-sm" onclick="_extRefresh()">\u21bb Refresh</button><span style="color:var(--text-muted);font-size:.8rem">${list.length} items</span></div>`;
+  const groups={}; list.forEach(m=>{ const c=m.category||'Other'; (groups[c]=groups[c]||[]).push(m); });
+  let body='';
+  const catKeys=Object.keys(groups);
+  if(!catKeys.length) body=`<div class="empty-state"><p>No study material found for this filter.</p></div>`;
+  catKeys.forEach(c=>{
+    body+=`<div style="margin:18px 0 10px;font-weight:800;font-size:1.02rem;display:flex;align-items:center;gap:8px">\ud83d\udcda ${esc(c)} <span style="color:var(--text-muted);font-weight:600;font-size:.85rem">(${groups[c].length})</span></div>`;
+    body+=groups[c].map(m=>`<div class="qb-card"><div class="qb-icon">${ic('book')}</div><div class="qb-info"><div class="qb-title">${esc(m.title||'Untitled')}</div><div class="qb-meta">${m.medium?`<span class="qb-medium ${(m.medium||'').toLowerCase()==='hindi'?'hindi':''}">${esc(m.medium)}</span>`:''}${m.class_level?`<span>Class ${esc(String(m.class_level))}</span>`:''}${m.subject?`<span>\u00b7 ${esc(m.subject)}</span>`:''}<span>\u00b7 ${m.kind==='link'?'Link':'PDF'}</span></div></div><div class="qb-act"><button class="btn btn-primary btn-sm" onclick="openExtMaterial('${esc(String(m.id))}',${(m.kind==='link'&&m.link)?`'${esc(m.link)}'`:'null'})">Open</button></div></div>`).join('');
+  });
+  el.innerHTML=`<div class="sm-head"><h2>Study Material</h2><p>Notes, Question Bank, Syllabus, PYQs, TMA &amp; Practical Solutions \u2014 MVS Student Portal se live connected. Naya material wahi (Admin Console) se upload hota hai.</p></div>${sessTabs}${filters}${body}`;
 }
-async function uploadQBank(){
-  const title=val('qb-title'); if(!title){ toast('Please enter a title.',true); return; }
-  const btn=document.getElementById('qb-btn'); const status=document.getElementById('qb-status');
-  const fd=new FormData();
-  fd.append('title',title); fd.append('category',val('qb-cat')||'Question Bank');
-  fd.append('medium',val('qb-medium')); fd.append('subject',val('qb-subject')||'General');
-  if(_qbMode==='file'){
-    const f=document.getElementById('qb-file').files[0];
-    if(!f){ toast('Please select a PDF.',true); return; }
-    if(f.size>30*1024*1024){ toast('File is larger than 30MB. Use the link option.',true); return; }
-    fd.append('file',f);
-  }else{
-    const link=val('qb-link'); if(!link){ toast('Please paste a link.',true); return; }
-    fd.append('external_link',link);
-  }
-  btn.disabled=true; btn.textContent='Uploading...';
-  status.innerHTML=`<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill" id="qb-fill"></div></div><div class="prog-text" id="qb-ptext">0%</div></div>`;
-  try{
-    const r=await xhrUpload('/api/admin/questionbank',fd,p=>{ const f=document.getElementById('qb-fill'),t=document.getElementById('qb-ptext'); if(f)f.style.width=p+'%'; if(t)t.textContent=p+'%'; });
-    toast(r.message||'Uploaded.'); closeModal(); loadAQBank();
-  }catch(e){ status.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Upload'; }
-}
-async function openQBItem(id,link,isAdmin){
+async function _extRefresh(){ const el=document.getElementById(_extCid); if(el) el.innerHTML='<div class="spinner"></div>'; try{ const r=await api('/api/ext/materials?refresh=1'); _extMats=r.materials||[]; }catch(e){} _extRender(); }
+async function openExtMaterial(id,link){
   if(link){ window.open(link,'_blank'); return; }
-  try{ const r=await fetch(API+(isAdmin?'/api/admin/material/'+id+'/download':'/api/student/material/'+id+'/view'),{headers:{Authorization:'Bearer '+TOKEN}}); if(r.ok){ window.open(URL.createObjectURL(await r.blob()),'_blank'); } else toast('Could not open file.',true); }catch(e){ toast('Could not open file.',true); }
-}
-async function deleteQBank(id){
-  if(!confirm('Delete this material? This is permanent.')) return;
-  try{ await api('/api/admin/material/'+id,'DELETE'); toast('Deleted.'); loadAQBank(); }catch(e){ toast(e.message,true); }
-}
-async function loadSQBank(){
-  const el=document.getElementById('s-qbank-content');
+  toast('Opening file...');
   try{
-    const list=await api('/api/student/question-bank');
-    if(!list.length){ el.innerHTML=`<div class="card-header" style="padding:0 4px 18px;border:none"><h3 style="font-size:1.3rem">Question Bank</h3></div><div class="empty-state"><p>No question bank material yet. Check back soon.</p></div>`; return; }
-    const groups={English:[],Hindi:[]};
-    list.forEach(m=>{ const md=(m.medium||'English'); (groups[md]||(groups[md]=[])).push(m); });
-    let html=`<div class="card-header" style="padding:0 4px 18px;border:none"><h3 style="font-size:1.3rem">Question Bank</h3></div>`;
-    Object.keys(groups).forEach(md=>{ if(!groups[md].length) return;
-      html+=`<div style="margin-bottom:8px;font-weight:700;font-size:.95rem;display:flex;align-items:center;gap:8px"><span class="qb-medium ${md.toLowerCase()==='hindi'?'hindi':''}">${esc(md)}</span> Medium</div>`;
-      html+=groups[md].map(m=>`<div class="qb-card"><div class="qb-icon">${ic('book')}</div><div class="qb-info"><div class="qb-title">${esc(m.title)}</div><div class="qb-meta"><span>${esc(m.category||'Question Bank')}</span>${m.subject&&m.subject!=='General'?'<span>· '+esc(m.subject)+'</span>':''}</div></div><div class="qb-act"><button class="btn btn-primary btn-sm" onclick="openQBItem(${m.id},${m.external_link?`'${esc(m.external_link)}'`:'null'},false)">Open PDF</button></div></div>`).join('');
-    });
-    el.innerHTML=html;
-  }catch(e){ el.innerHTML=errHtml(e); }
+    const r=await fetch(API+'/api/ext/material/'+encodeURIComponent(id)+'/file',{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('fail');
+    window.open(URL.createObjectURL(await r.blob()),'_blank');
+  }catch(e){ toast('Could not open file. Try Refresh.',true); }
 }
+async function loadAQBank(){ loadExtMaterials('a-qbank-content'); }
+async function loadSQBank(){ loadExtMaterials('s-qbank-content'); }
 async function loadATimetable(){
   try{
     _attEntries=await api('/api/admin/timetable-all'); _attActiveSub=''; _attTeacherMap={};
@@ -3733,7 +3719,7 @@ function sPage(page,el){
   document.querySelectorAll('#student-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('s-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#student-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Home',timetable:'Time Table',materials:'Materials',teachers:'Know Your Teacher',dpp:'DPP Submit',tests:'Tests',doubts:'Doubts',progress:'Progress',notifications:'Notifications',profile:'My Profile',qbank:'Question Bank'};
+  const titles={dashboard:'Home',timetable:'Time Table',materials:'Classes Material',teachers:'Know Your Teacher',dpp:'DPP Submit',tests:'Tests',doubts:'Doubts',progress:'Progress',notifications:'Notifications',profile:'My Profile',qbank:'Study Material'};
   _setPage(titles[page]||page);
   document.getElementById('s-title').textContent=titles[page];
   stopCountdown();
@@ -3835,7 +3821,7 @@ async function loadSDashboard(){
       ac.length?ac.map(a=>`<div class="act-row"><span class="act-dot"></span><div class="act-main"><div class="act-txt">${esc(a.text)}</div><div class="act-when">${esc(a.subject||'')}${a.when?' \u00b7 '+esc(a.when.replace('T',' ')):''}</div></div></div>`).join(''):'<div class="ws-empty"><p>No recent activity</p><small>Your opened & submitted work will show here.</small></div>'}</div></div>`;
 
     // ---- Quick Actions
-    const qa=[['Open MVC App','play','mvc','mvc'],['Materials','book','materials',''],['Question Bank','folder','qbank',''],['Submit DPP','clipboard','dpp',''],['Attempt Test','edit','tests',''],['Ask Doubt','help','doubts',''],['Progress','chart','progress',''],['Notifications','bell','notifications','']];
+    const qa=[['Open MVC App','play','mvc','mvc'],['Classes Material','book','materials',''],['Study Material','folder','qbank',''],['Submit DPP','clipboard','dpp',''],['Attempt Test','edit','tests',''],['Ask Doubt','help','doubts',''],['Progress','chart','progress',''],['Notifications','bell','notifications','']];
     const qaHtml=`<div class="card"><div class="card-header"><h3>Quick Actions</h3></div><div class="card-body"><div class="qa-grid">${qa.map(([l,i,pg,cls])=>`<button class="qa-btn ${cls}" onclick="wsGo('${pg}')"><div class="qa-ic">${ic(i)}</div><div class="qa-lbl">${l}</div></button>`).join('')}</div></div></div>`;
 
     el.innerHTML=`${greetingCard(NAME)}<div id="s-live-banner" style="display:none"></div>
@@ -3953,7 +3939,7 @@ async function loadSMaterials(){
       if(nOther) badges+=`<span class="sm-badge sm-other">${nOther} Other</span>`;
       return `<div class="sm-card" onclick="openSubjectMaterials('${encodeURIComponent(sub)}')"><div class="sm-icon">${ic('book')}</div><div class="sm-body"><div class="sm-title">${esc(sub)}</div><div class="sm-badges">${badges||'<span class="sm-badge">No files</span>'}</div></div><span class="sm-arrow">›</span></div>`;
     }).join('');
-    el.innerHTML=`<div class="sm-head"><h2>Study Materials</h2><p>Select a subject to view organized materials (Class Notes, DPP, Tests).</p></div><div class="sm-grid">${cards}</div>`;
+    el.innerHTML=`<div class="sm-head"><h2>Classes Material</h2><p>Select a subject to view organized materials (Class Notes, DPP, Tests).</p></div><div class="sm-grid">${cards}</div>`;
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function openSubjectMaterials(encSub){

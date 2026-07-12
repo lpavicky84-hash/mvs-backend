@@ -10,6 +10,7 @@ import auth_routes
 import teacher_routes
 import admin_routes
 import student_routes
+import ext_materials
 
 load_dotenv()
 
@@ -141,6 +142,7 @@ app.include_router(auth_routes.router)
 app.include_router(teacher_routes.router)
 app.include_router(admin_routes.router)
 app.include_router(student_routes.router)
+app.include_router(ext_materials.router)
 
 # ===== ROOT =====
 # ===== ROOT: serve the portal =====
