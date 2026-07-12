@@ -1667,7 +1667,7 @@ function startLiveCountdown(entries){
  const now=new Date(); const {live,next}=pick();
  if(live){
  banner.style.display='flex'; banner.className='live-banner now'; banner.style.background='';
- banner.innerHTML=`<div class="lb-left"><div class="lb-icon">${ic('calendar')}</div><div><span class="lb-tag"><span class="live-dot"></span>Live Now</span><h3>${esc(live.subject)}</h3><small>${esc(live.part||live.chapter||'')} ${live.time?'• '+esc(live.time):''}</small></div></div><button class="btn btn-primary btn-sm lb-join" onclick="openMVC()">${ic('play')} Join Class</button>`;
+ setIf(banner,`<div class="lb-left"><div class="lb-icon">${ic('calendar')}</div><div><span class="lb-tag"><span class="live-dot"></span>Live Now</span><h3>${esc(live.subject)}</h3><small>${esc(live.part||live.chapter||'')} ${live.time?'• '+esc(live.time):''}</small></div></div><button class="btn btn-primary btn-sm lb-join" onclick="openMVC()">${ic('play')} Join Class</button>`);
  return;
  }
  if(next){
@@ -1677,10 +1677,10 @@ function startLiveCountdown(entries){
  if(mins<=60){
  banner.className='live-banner soon';
  const tot=Math.floor(diff/1000), hh=Math.floor(tot/3600), mi=Math.floor((tot%3600)/60), ss=tot%60;
- banner.innerHTML=`<div class="lb-left"><div class="lb-icon">${ic('calendar')}</div><div><span class="lb-tag"><span class="live-dot"></span>Starting Soon</span><h3>${esc(next.subject)}</h3><small>${esc(next.part||next.chapter||'')} • ${dstr} ${next.time?'• '+esc(next.time):''}</small></div></div><div class="countdown">${hh>0?`<div class="cd-box"><div class="num">${hh}</div><div class="lbl">hrs</div></div>`:''}<div class="cd-box"><div class="num">${String(mi).padStart(2,'0')}</div><div class="lbl">min</div></div><div class="cd-box"><div class="num">${String(ss).padStart(2,'0')}</div><div class="lbl">sec</div></div></div>`;
+ setIf(banner,`<div class="lb-left"><div class="lb-icon">${ic('calendar')}</div><div><span class="lb-tag"><span class="live-dot"></span>Starting Soon</span><h3>${esc(next.subject)}</h3><small>${esc(next.part||next.chapter||'')} • ${dstr} ${next.time?'• '+esc(next.time):''}</small></div></div><div class="countdown">${hh>0?`<div class="cd-box"><div class="num">${hh}</div><div class="lbl">hrs</div></div>`:''}<div class="cd-box"><div class="num">${String(mi).padStart(2,'0')}</div><div class="lbl">min</div></div><div class="cd-box"><div class="num">${String(ss).padStart(2,'0')}</div><div class="lbl">sec</div></div></div>`);
  }else{
  banner.className='live-banner upcoming';
- banner.innerHTML=`<div class="lb-left"><div class="lb-icon">${ic('calendar')}</div><div><span class="lb-tag"><span class="live-dot"></span>Next Class</span><h3>${esc(next.subject)}</h3><small>${esc(next.part||next.chapter||'')} • ${dstr} ${next.time?'• '+esc(next.time):''}</small></div></div>`;
+ setIf(banner,`<div class="lb-left"><div class="lb-icon">${ic('calendar')}</div><div><span class="lb-tag"><span class="live-dot"></span>Next Class</span><h3>${esc(next.subject)}</h3><small>${esc(next.part||next.chapter||'')} • ${dstr} ${next.time?'• '+esc(next.time):''}</small></div></div>`);
  }
  return;
  }
@@ -1688,6 +1688,7 @@ function startLiveCountdown(entries){
   }
   render(); _cdTimer=setInterval(render,1000);
 }
+function setIf(el,html){ if(!el) return; if(el.__h===html) return; el.__h=html; el.innerHTML=html; }
 function softSpin(el){ if(!el) return; const inPage=el.closest&&el.closest('.page'); if(inPage&&el.dataset.kept) return; el.innerHTML='<div class="spinner"></div>'; if(inPage) el.dataset.kept='1'; }
 function toast(msg,err=false){ const t=document.getElementById('toast'); t.className=err?'error':''; document.getElementById('toast-msg').textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3500); }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -3935,6 +3936,15 @@ function enterStudentApp(){
   notifPopupOnOpen('student');
   loadStudentLiveBanner();
   startStudentHeartbeat();
+  startStudentPreload();
+}
+// Sab main pages ko background mein pehle se load kar do — pehli click par bhi
+// spinner nahi dikhega, sab kuch instant khulega (silent refresh hota rahega).
+let _preloaded=false;
+function startStudentPreload(){
+  if(_preloaded) return; _preloaded=true;
+  const jobs=[loadSTimetable,loadSMaterials,loadSQBank,loadSTeachers,loadSDpp,loadSTests,loadSDoubts,loadSProgress,loadSProfile];
+  jobs.forEach((fn,i)=>{ setTimeout(()=>{ try{ fn(); }catch(e){} }, 1200+i*450); });
 }
 async function loadStudentLiveBanner(){
   try{ const ents=await api('/api/student/timetable-plan'); startLiveCountdown(ents); }catch(e){}
@@ -4098,13 +4108,13 @@ async function loadSDashboard(){
     const qa=[['Open MVC App','play','mvc','mvc'],['Classes Material','book','materials',''],['Study Material','folder','qbank',''],['Submit DPP','clipboard','dpp',''],['Attempt Test','edit','tests',''],['Ask Doubt','help','doubts',''],['Progress','chart','progress',''],['Notifications','bell','notifications','']];
     const qaHtml=`<div class="card"><div class="card-header"><h3>Quick Actions</h3></div><div class="card-body"><div class="qa-grid">${qa.map(([l,i,pg,cls])=>`<button class="qa-btn ${cls}" onclick="wsGo('${pg}')"><div class="qa-ic">${ic(i)}</div><div class="qa-lbl">${l}</div></button>`).join('')}</div></div></div>`;
 
-    el.innerHTML=`${greetingCard(NAME)}<div id="s-live-banner" style="display:none"></div>
+    setIf(el,`${greetingCard(NAME)}<div id="s-live-banner" style="display:none"></div>
       ${prio}
       <div id="s-today-wrap"></div>
       <div class="ws-grid">${tasksHtml}${pendHtml}</div>
       <div class="ws-grid">${ovHtml}${mpHtml}</div>
       <div class="ws-grid">${dlHtml}${acHtml}</div>
-      ${qaHtml}`;
+      ${qaHtml}`);
     loadStudentLiveBanner();
     _renderTodayClassesStudent();
   }catch(e){ el.innerHTML=errHtml(e); }
@@ -4119,7 +4129,7 @@ async function _renderTodayClassesStudent(){
     const today=plan.filter(e=>e.date===todayStr)
                      .sort((a,b)=>_timeKey(a.time)-_timeKey(b.time));
     if(!today.length){
-      wrap.innerHTML=`<div class="card"><div class="card-header"><h3>Today's Classes</h3></div><div class="card-body"><div class="ws-empty"><div class="big">\u2615</div><p>No classes scheduled today</p><small>Use the free time to revise or clear pending work.</small></div></div></div>`;
+      setIf(wrap,`<div class="card"><div class="card-header"><h3>Today's Classes</h3></div><div class="card-body"><div class="ws-empty"><div class="big">\u2615</div><p>No classes scheduled today</p><small>Use the free time to revise or clear pending work.</small></div></div></div>`);
       return;
     }
     const rows=today.map(c=>{
@@ -4128,7 +4138,7 @@ async function _renderTodayClassesStudent(){
       const topic=esc(c.part||c.chapter||'');
       return `<div class="tc-row"><div class="tc-time"><span class="tc-t">${esc(c.time||'TBA')}</span></div><div class="tc-body"><div class="tc-sub">${esc(c.subject)}${isTest?'<span class="tc-tag">TEST</span>':''}</div>${topic?`<div class="tc-topic">${topic}</div>`:''}</div><div class="tc-teach">${photo}<span class="tc-tname">${esc(c.teacher_name||'\u2014')}</span></div></div>`;
     }).join('');
-    wrap.innerHTML=`<div class="card"><div class="card-header"><h3>Today's Classes</h3><span class="tc-count">${today.length} class${today.length===1?'':'es'}</span></div><div class="card-body">${rows}</div></div>`;
+    setIf(wrap,`<div class="card"><div class="card-header"><h3>Today's Classes</h3><span class="tc-count">${today.length} class${today.length===1?'':'es'}</span></div><div class="card-body">${rows}</div></div>`);
     // load teacher photos
     wrap.querySelectorAll('img.tc-photo[data-tid]').forEach(async im=>{
       try{
@@ -4156,7 +4166,7 @@ async function _loadRecordedSubjects(){
     const rec=m.recorded||[];
     if(!rec.length){ wrap.innerHTML=''; return; }
     const rows=rec.map(s=>`<div class="rec-row"><div class="rec-ic">${ic('play')}</div><div class="rec-main"><div class="rec-sub">${esc(s)}</div><div class="rec-note">Recorded classes \u2014 watch anytime in the app</div></div><button class="btn btn-primary btn-sm" onclick="openMVC()">${ic('play')} Watch</button></div>`).join('');
-    wrap.innerHTML=`<div class="rec-card"><div class="rec-head"><div class="rec-badge">${rec.length}</div><div><div class="rec-title">Recorded Subjects</div><div class="rec-sub2">These subjects have no live timetable \u2014 their lectures are pre-recorded in the Manish Verma Classes App.</div></div></div>${rows}</div>`;
+    setIf(wrap,`<div class="rec-card"><div class="rec-head"><div class="rec-badge">${rec.length}</div><div><div class="rec-title">Recorded Subjects</div><div class="rec-sub2">These subjects have no live timetable \u2014 their lectures are pre-recorded in the Manish Verma Classes App.</div></div></div>${rows}</div>`);
   }catch(e){ wrap.innerHTML=''; }
 }
 async function loadSTimetable(){
