@@ -1210,6 +1210,15 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 .tbl-scroll.can-scroll.scrolled::before,.tbl-scroll.can-scroll.scrolled::after{display:none}
 @keyframes scrollNudge{0%,100%{transform:translateY(-50%) translateX(0)}50%{transform:translateY(-50%) translateX(-5px)}}
 
+
+/* Landing portal card icons */
+.portal-card .icon{width:66px;height:66px;margin:0 auto 20px;border-radius:19px;display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.18);box-shadow:0 10px 26px -8px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.15);transition:transform .35s cubic-bezier(.4,0,.2,1)}
+.portal-card .icon svg{width:30px;height:30px;color:#fff}
+.portal-card:hover .icon{transform:translateY(-4px) scale(1.06)}
+.portal-card:nth-child(1) .icon{background:linear-gradient(135deg,#ff8a4c,#e2560f)}
+.portal-card:nth-child(2) .icon{background:linear-gradient(135deg,#38cfe0,#0891b2)}
+.portal-card:nth-child(3) .icon{background:linear-gradient(135deg,#eecb7a,#c9962e)}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -1354,6 +1363,14 @@ function setThemeIcon(){
   const isDark=document.body.classList.contains('dark');
   document.querySelectorAll('#t-theme,#a-theme,#s-theme').forEach(b=>b.innerHTML=isDark?ic('sun'):ic('moon'));
 }
+function injectLandingIcons(){
+  const map=[['teacher','users'],['student','book'],['admin','shield']];
+  document.querySelectorAll('#landing .portal-card').forEach((c,i)=>{
+    const ico=c.querySelector('.icon');
+    if(ico && !ico.querySelector('svg') && map[i]) ico.innerHTML=ic(map[i][1]);
+  });
+}
+document.addEventListener('DOMContentLoaded',injectLandingIcons);
 function injectTopbarIcons(){
   document.querySelectorAll('.bell-wrap').forEach(b=>{ if(!b.querySelector('svg')) b.insertAdjacentHTML('afterbegin', ic('bell')); });
   setThemeIcon();
