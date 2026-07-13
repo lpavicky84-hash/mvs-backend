@@ -3354,6 +3354,31 @@ async function loadAReports(){
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 
+// ============ ADMIN PASSWORD RESET ============
+function openResetPassword(role,profileId,name){
+  const html=`<div class="modal-overlay" id="rp-modal" onclick="if(event.target===this)this.remove()"><div class="modal" style="max-width:460px"><div class="modal-header"><h3>Reset Password \u2014 ${esc(name)}</h3><button class="icon-btn" onclick="document.getElementById('rp-modal').remove()">\u2715</button></div><div class="modal-body">
+    <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:14px">Purana password security ke liye dekha nahi ja sakta. Naya password set karein \u2014 khaali chhodne par system khud strong password bana dega.</p>
+    <div class="form-group"><label>Naya Password (optional)</label><input class="form-control" id="rp-pass" placeholder="Khaali chhodo = auto-generate" autocomplete="new-password"></div>
+    <div id="rp-result" style="display:none;margin-top:14px;padding:14px;border-radius:12px;background:var(--primary-50);border:1px solid var(--border)">
+      <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:6px">Naya login \u2014 teacher ko yeh bhej dein:</div>
+      <div style="font-weight:800;font-size:1.02rem;user-select:all" id="rp-creds"></div>
+      <button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick="copyResetCreds()">Copy</button>
+    </div>
+  </div><div class="modal-footer"><button class="btn btn-ghost" onclick="document.getElementById('rp-modal').remove()">Close</button><button class="btn btn-primary" id="rp-save" onclick="doResetPassword('${role}',${profileId})">Reset Password</button></div></div></div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+}
+async function doResetPassword(role,profileId){
+  const btn=document.getElementById('rp-save'); btn.disabled=true; btn.textContent='Resetting...';
+  try{
+    const r=await api('/api/admin/reset-password','POST',{role,profile_id:profileId,password:document.getElementById('rp-pass').value.trim()});
+    document.getElementById('rp-creds').textContent=`ID: ${r.user_id||r.username}   \u2022   Password: ${r.password}`;
+    window._rpCreds=`Login ID: ${r.user_id||r.username}\nPassword: ${r.password}`;
+    document.getElementById('rp-result').style.display='block';
+    btn.textContent='Done \u2713';
+    toast('Password reset ho gaya!');
+  }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Reset Password'; }
+}
+function copyResetCreds(){ navigator.clipboard.writeText(window._rpCreds||'').then(()=>toast('Copied!')); }
 async function loadATeachers(){
   const el=document.getElementById('a-teachers-content');
   try{
@@ -3372,7 +3397,7 @@ async function loadATeachers(){
    html+=`<div class="tcard2"><div class="tcard2-head"><div class="tcard2-photo" id="${ph}">${esc(initials(t.name||'T'))}</div><div style="flex:1"><div class="tcard2-name">${esc(t.name)}</div><div class="tcard2-sub"><code>${esc(t.user_id)}</code> · ${esc(t.phone||'no phone')}</div><span class="tag ${t.is_active?'tag-done':'tag-low'}" style="margin-top:6px">${t.is_active?'Active':'Inactive'}</span></div></div>
      ${cls10}${cls12}${other}${none}
      <div class="tcard2-stats"><div class="mini-stat"><div class="n">${t.total_classes_done||0}</div><div class="l">Classes</div></div><div class="mini-stat"><div class="n">${t.monthly_classes_done||0}</div><div class="l">This Month</div></div><div class="mini-stat"><div class="n">${t.reschedule_this_month||0}/2</div><div class="l">Reschedule</div></div></div>
-     <div class="tcard2-actions"><button class="btn btn-primary btn-sm" onclick="openNotifyTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('bell')} Notify</button><button class="btn btn-ghost btn-sm" onclick='openEditTeacher(${t.profile_id},${JSON.stringify({name:t.name,phone:t.phone,subjects:t.subjects||[],is_active:t.is_active}).replace(/'/g,"&#39;")})'>${ic('edit')} Edit</button><button class="btn btn-ghost btn-sm" onclick="openTeacherPhoto(${t.profile_id})">${ic('upload')} Photo</button><button class="btn btn-danger btn-sm" onclick="deleteTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
+     <div class="tcard2-actions"><button class="btn btn-primary btn-sm" onclick="openNotifyTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('bell')} Notify</button><button class="btn btn-ghost btn-sm" onclick='openEditTeacher(${t.profile_id},${JSON.stringify({name:t.name,phone:t.phone,subjects:t.subjects||[],is_active:t.is_active}).replace(/'/g,"&#39;")})'>${ic('edit')} Edit</button><button class="btn btn-ghost btn-sm" onclick="openTeacherPhoto(${t.profile_id})">${ic('upload')} Photo</button><button class="btn btn-ghost btn-sm" onclick="openResetPassword('teacher',${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('shield')} Password</button><button class="btn btn-danger btn-sm" onclick="deleteTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
  });
  html+=`</div>`;
  el.innerHTML=html;

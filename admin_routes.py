@@ -5,7 +5,7 @@ from datetime import datetime, date, timedelta
 from typing import List, Optional
 
 from database import get_db
-from security import get_admin
+from security import get_admin, hash_password
 from models import (
     User, TeacherProfile, StudentProfile, ClassEntry, ClassStatus,
     RescheduleRequest, RescheduleStatus, Doubt, DoubtStatus,
@@ -1255,3 +1255,40 @@ def admin_doubts_overview(db: Session = Depends(get_db), _=Depends(get_admin)):
             "totals": {"total": len(ds),
                        "pending": sum(c["pending"] for c in out),
                        "resolved": sum(c["resolved"] for c in out)}}
+
+# ------------------------------------------------------------------
+#  ADMIN PASSWORD RESET (teacher/student) — purana password hashed
+#  hota hai isliye dekha nahi ja sakta; admin naya set/generate karta hai.
+# ------------------------------------------------------------------
+import secrets as _secrets, string as _string
+
+@router.post("/reset-password")
+def admin_reset_password(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    role = (payload.get("role") or "").strip()          # 'teacher' | 'student'
+    profile_id = payload.get("profile_id")
+    new_pass = (payload.get("password") or "").strip()
+
+    if role == "teacher":
+        prof = db.query(TeacherProfile).filter(TeacherProfile.id == profile_id).first()
+    elif role == "student":
+        prof = db.query(StudentProfile).filter(StudentProfile.id == profile_id).first()
+    else:
+        raise HTTPException(status_code=400, detail="role teacher ya student hona chahiye")
+    if not prof:
+        raise HTTPException(status_code=404, detail="Profile nahi mila")
+
+    user = db.query(User).filter(User.id == prof.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User nahi mila")
+
+    if not new_pass:  # auto-generate friendly password
+        new_pass = "MVS@" + "".join(_secrets.choice(_string.digits) for _ in range(4))
+    if len(new_pass) < 6:
+        raise HTTPException(status_code=400, detail="Password kam se kam 6 characters ka ho")
+
+    user.password = hash_password(new_pass)
+    if role == "student":
+        prof.plain_password = new_pass  # phone-lookup onboarding sync
+    db.commit()
+    return {"message": "Password reset ho gaya", "username": user.username,
+            "user_id": user.user_id, "password": new_pass}
