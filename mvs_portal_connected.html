@@ -167,7 +167,7 @@
   .tcard2-cls-h{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--primary);font-weight:700;margin-bottom:5px}
   .code-chip{display:inline-flex;align-items:center;gap:5px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:3px 9px;font-size:.78rem;margin:0 5px 5px 0}
   .code-chip b{color:var(--text-muted);font-weight:600;font-size:.66rem}
-  .tcard2-actions{display:flex;gap:6px;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)}
+  .tcard2-actions{display:flex;gap:6px;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--border);flex-wrap:wrap}.tcard2-actions .btn{white-space:nowrap}
   .tcard2-actions .btn{flex:1;justify-content:center;font-size:.78rem;padding:8px 10px}
   .tcard2-actions .btn-primary{background:transparent;color:var(--primary);border:1px solid var(--primary);box-shadow:none}
   .tcard2-actions .btn-primary:hover{background:var(--primary);color:#fff}
@@ -3356,16 +3356,11 @@ async function loadAReports(){
 
 // ============ ADMIN PASSWORD RESET ============
 function openResetPassword(role,profileId,name){
-  const html=`<div class="modal-overlay" id="rp-modal" onclick="if(event.target===this)this.remove()"><div class="modal" style="max-width:460px"><div class="modal-header"><h3>Reset Password \u2014 ${esc(name)}</h3><button class="icon-btn" onclick="document.getElementById('rp-modal').remove()">\u2715</button></div><div class="modal-body">
-    <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:14px">Purana password security ke liye dekha nahi ja sakta. Naya password set karein \u2014 khaali chhodne par system khud strong password bana dega.</p>
-    <div class="form-group"><label>Naya Password (optional)</label><input class="form-control" id="rp-pass" placeholder="Khaali chhodo = auto-generate" autocomplete="new-password"></div>
-    <div id="rp-result" style="display:none;margin-top:14px;padding:14px;border-radius:12px;background:var(--primary-50);border:1px solid var(--border)">
-      <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:6px">Naya login \u2014 teacher ko yeh bhej dein:</div>
-      <div style="font-weight:800;font-size:1.02rem;user-select:all" id="rp-creds"></div>
-      <button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick="copyResetCreds()">Copy</button>
-    </div>
-  </div><div class="modal-footer"><button class="btn btn-ghost" onclick="document.getElementById('rp-modal').remove()">Close</button><button class="btn btn-primary" id="rp-save" onclick="doResetPassword('${role}',${profileId})">Reset Password</button></div></div></div>`;
-  document.body.insertAdjacentHTML('beforeend',html);
+  showModal('Reset Password \u2014 '+name,
+    `<p style="font-size:.85rem;color:var(--text-muted);margin-bottom:14px">Purana password security ke liye dekha nahi ja sakta. Naya password set karein \u2014 khaali chhodne par system khud strong password bana dega.</p>
+     <div class="form-group"><label>Naya Password (optional)</label><input class="form-control" id="rp-pass" placeholder="Khaali chhodo = auto-generate" autocomplete="new-password"></div>
+     <div id="rp-result" style="display:none;margin-top:14px;padding:14px;border-radius:12px;background:var(--primary-50);border:1px solid var(--border)"><div style="font-size:.78rem;color:var(--text-muted);margin-bottom:6px">Naya login \u2014 teacher ko yeh bhej dein:</div><div style="font-weight:800;font-size:1.02rem;user-select:all" id="rp-creds"></div><button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick="copyResetCreds()">Copy</button></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" id="rp-save" onclick="doResetPassword('${role}',${profileId})">Reset Password</button>`);
 }
 async function doResetPassword(role,profileId){
   const btn=document.getElementById('rp-save'); btn.disabled=true; btn.textContent='Resetting...';
