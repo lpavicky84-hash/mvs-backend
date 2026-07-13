@@ -1273,22 +1273,22 @@ def admin_reset_password(payload: dict, db: Session = Depends(get_db), current_u
     elif role == "student":
         prof = db.query(StudentProfile).filter(StudentProfile.id == profile_id).first()
     else:
-        raise HTTPException(status_code=400, detail="role teacher ya student hona chahiye")
+        raise HTTPException(status_code=400, detail="Role must be teacher or student")
     if not prof:
-        raise HTTPException(status_code=404, detail="Profile nahi mila")
+        raise HTTPException(status_code=404, detail="Profile not found")
 
     user = db.query(User).filter(User.id == prof.user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User nahi mila")
+        raise HTTPException(status_code=404, detail="User account not found")
 
     if not new_pass:  # auto-generate friendly password
         new_pass = "MVS@" + "".join(_secrets.choice(_string.digits) for _ in range(4))
     if len(new_pass) < 6:
-        raise HTTPException(status_code=400, detail="Password kam se kam 6 characters ka ho")
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
 
     user.password = hash_password(new_pass)
     if role == "student":
-        prof.plain_password = new_pass  # phone-lookup onboarding sync
+        prof.plain_password = new_pass  # keep phone-lookup onboarding in sync
     db.commit()
-    return {"message": "Password reset ho gaya", "username": user.username,
+    return {"message": "Password reset successfully", "name": user.name,
             "user_id": user.user_id, "password": new_pass}

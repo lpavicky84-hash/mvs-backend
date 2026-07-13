@@ -1219,6 +1219,10 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 .portal-card:nth-child(2) .icon{background:linear-gradient(135deg,#38cfe0,#0891b2)}
 .portal-card:nth-child(3) .icon{background:linear-gradient(135deg,#eecb7a,#c9962e)}
 
+
+/* teacher card actions: buttons kabhi clip na hon */
+.tcard2-actions .btn{flex:1 1 auto;min-width:fit-content}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -3357,20 +3361,20 @@ async function loadAReports(){
 // ============ ADMIN PASSWORD RESET ============
 function openResetPassword(role,profileId,name){
   showModal('Reset Password \u2014 '+name,
-    `<p style="font-size:.85rem;color:var(--text-muted);margin-bottom:14px">Purana password security ke liye dekha nahi ja sakta. Naya password set karein \u2014 khaali chhodne par system khud strong password bana dega.</p>
-     <div class="form-group"><label>Naya Password (optional)</label><input class="form-control" id="rp-pass" placeholder="Khaali chhodo = auto-generate" autocomplete="new-password"></div>
-     <div id="rp-result" style="display:none;margin-top:14px;padding:14px;border-radius:12px;background:var(--primary-50);border:1px solid var(--border)"><div style="font-size:.78rem;color:var(--text-muted);margin-bottom:6px">Naya login \u2014 teacher ko yeh bhej dein:</div><div style="font-weight:800;font-size:1.02rem;user-select:all" id="rp-creds"></div><button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick="copyResetCreds()">Copy</button></div>`,
+    `<p style="font-size:.85rem;color:var(--text-muted);margin-bottom:14px">For security reasons, the current password cannot be viewed. Set a new password below \u2014 leave the field empty to auto-generate a strong password.</p>
+     <div class="form-group"><label>New Password (optional)</label><input class="form-control" id="rp-pass" placeholder="Leave empty to auto-generate" autocomplete="new-password"></div>
+     <div id="rp-result" style="display:none;margin-top:14px;padding:14px;border-radius:12px;background:var(--primary-50);border:1px solid var(--border)"><div style="font-size:.78rem;color:var(--text-muted);margin-bottom:6px">New login credentials \u2014 share these with the teacher:</div><div style="font-weight:800;font-size:1.02rem;user-select:all" id="rp-creds"></div><button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick="copyResetCreds()">Copy</button></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" id="rp-save" onclick="doResetPassword('${role}',${profileId})">Reset Password</button>`);
 }
 async function doResetPassword(role,profileId){
   const btn=document.getElementById('rp-save'); btn.disabled=true; btn.textContent='Resetting...';
   try{
     const r=await api('/api/admin/reset-password','POST',{role,profile_id:profileId,password:document.getElementById('rp-pass').value.trim()});
-    document.getElementById('rp-creds').textContent=`ID: ${r.user_id||r.username}   \u2022   Password: ${r.password}`;
-    window._rpCreds=`Login ID: ${r.user_id||r.username}\nPassword: ${r.password}`;
+    document.getElementById('rp-creds').textContent=`ID: ${r.user_id}   \u2022   Password: ${r.password}`;
+    window._rpCreds=`Login ID: ${r.user_id}\nPassword: ${r.password}`;
     document.getElementById('rp-result').style.display='block';
     btn.textContent='Done \u2713';
-    toast('Password reset ho gaya!');
+    toast('Password reset successfully.');
   }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Reset Password'; }
 }
 function copyResetCreds(){ navigator.clipboard.writeText(window._rpCreds||'').then(()=>toast('Copied!')); }
@@ -3725,7 +3729,7 @@ async function loadExtMaterials(cid){
   try{
     const r=await api('/api/ext/materials');
     if(!r.configured){
-      el.innerHTML=`<div class="sm-head"><h2>Study Material</h2></div><div class="card"><div class="card-body" style="text-align:center;padding:44px 20px"><h3 style="margin-bottom:8px">Student Portal connection pending</h3><p style="color:var(--text-muted);max-width:540px;margin:0 auto">Railway par <b>STUDENT_PORTAL_URL</b> aur <b>STUDENT_PORTAL_KEY</b> set hone ke baad materials yahan automatically dikhne lagenge.</p></div></div>`;
+      el.innerHTML=`<div class="sm-head"><h2>Study Material</h2></div><div class="card"><div class="card-body" style="text-align:center;padding:44px 20px"><h3 style="margin-bottom:8px">MVS Portal connection pending</h3><p style="color:var(--text-muted);max-width:540px;margin:0 auto">Once <b>STUDENT_PORTAL_URL</b> and <b>STUDENT_PORTAL_KEY</b> are configured on Railway, all study materials will appear here automatically.</p></div></div>`;
       return;
     }
     _extMats=r.materials||[]; _extCtx=r.ctx||null; _extRole=r.role||ROLE||'';
@@ -3774,7 +3778,7 @@ function _extRender(){
   const subs=Object.keys(bySub).sort((a,b)=>a==='General & Others'?1:b==='General & Others'?-1:a.localeCompare(b));
   let body='';
   if(!subs.length){
-    body=`<div class="card"><div class="card-body" style="text-align:center;padding:40px 20px"><p style="color:var(--text-muted)">Aapke batch/subjects ke liye abhi koi material nahi mila.<br>Refresh try karein ya admin se contact karein.</p></div></div>`;
+    body=`<div class="card"><div class="card-body" style="text-align:center;padding:40px 20px"><p style="color:var(--text-muted)">No study material found for your batch and subjects yet.<br>Try refreshing, or contact your admin.</p></div></div>`;
   }else{
     body=`<div class="xm-grid">`+subs.map(sub=>{
       const list=bySub[sub];
@@ -4023,14 +4027,14 @@ function toggleSubject(cb){
 }
 function updateSubjCount(){ document.getElementById('subj-count').textContent=selectedSubjects.length+'/7'; }
 async function saveSubjects(){
-  if(!selectedBatch){ toast('Pehle apna batch select karein.',true); return; }
-  if(!selectedMedium){ toast('Apna medium (Hindi/English) select karein.',true); return; }
+  if(!selectedBatch){ toast('Please select your batch first.',true); return; }
+  if(!selectedMedium){ toast('Please select your medium (Hindi/English).',true); return; }
   if(!selectedClass){ toast('Please select a class.',true); return; }
-  if(selectedSubjects.length===0){ toast('Kam se kam 1 subject select karein.',true); return; }
+  if(selectedSubjects.length===0){ toast('Please select at least one subject.',true); return; }
   const btn=document.getElementById('save-subj-btn'); btn.disabled=true; btn.textContent='Saving...';
   try{
  await api('/api/student/set-subjects','POST',{class_level:selectedClass,subjects:selectedSubjects,batch_name:selectedBatch,medium:selectedMedium});
- toast('Profile saved!');
+ toast('Profile saved successfully!');
  enterStudentApp();
   }catch(e){ toast(e.message,true); }
   btn.disabled=false; btn.textContent='Save & Continue →';

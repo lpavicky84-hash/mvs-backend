@@ -188,7 +188,7 @@ def _fetch_list(refresh=False):
         if _list_cache["data"] is not None:
             return _list_cache["data"], True, True
         raise HTTPException(status_code=502,
-                            detail=f"Student Portal se connect nahi ho paya: {e}")
+                            detail=f"Could not connect to MVS Portal: {e}")
 
 
 @router.get("/materials")
@@ -222,7 +222,7 @@ def ext_material_file(mid: str, current_user=Depends(get_current_user)):
     """Stream one material file from the Student Portal to the browser."""
     url, key = _cfg()
     if not url or not key:
-        raise HTTPException(status_code=503, detail="Student Portal connection configured nahi hai")
+        raise HTTPException(status_code=503, detail="MVS Portal connection is not configured")
 
     now = time.time()
     c = _file_cache.get(mid)

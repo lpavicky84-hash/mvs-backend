@@ -574,16 +574,16 @@ def set_subjects(payload: dict, db: Session = Depends(get_db), current_user=Depe
     batch_name = (payload.get("batch_name") or "").strip()
     if batch_name:
         if batch_name not in STUDENT_BATCHES:
-            raise HTTPException(status_code=400, detail="Sahi batch select karein")
+            raise HTTPException(status_code=400, detail="Please select a valid batch")
         class_level = STUDENT_BATCHES[batch_name][0]  # batch decides the class
     if class_level not in ("10", "12"):
-        raise HTTPException(status_code=400, detail="Class 10 ya 12 select karein")
+        raise HTTPException(status_code=400, detail="Please select Class 10 or 12")
     if medium and medium not in ("Hindi", "English"):
-        raise HTTPException(status_code=400, detail="Medium Hindi ya English select karein")
+        raise HTTPException(status_code=400, detail="Please select Hindi or English medium")
     if not subjects:
-        raise HTTPException(status_code=400, detail="Kam se kam 1 subject select karein")
+        raise HTTPException(status_code=400, detail="Please select at least one subject")
     if len(subjects) > 7:
-        raise HTTPException(status_code=400, detail="7 se jyada subjects allowed nahi hain")
+        raise HTTPException(status_code=400, detail="Maximum 7 subjects are allowed")
     sp.class_level = class_level
     sp.subjects = subjects
     if medium:
@@ -591,7 +591,7 @@ def set_subjects(payload: dict, db: Session = Depends(get_db), current_user=Depe
     if batch_name:
         sp.batch_name = batch_name
     db.commit()
-    return {"message": "Profile save ho gaya!", "subjects": subjects,
+    return {"message": "Profile saved successfully!", "subjects": subjects,
             "class_level": class_level, "medium": sp.medium, "batch_name": sp.batch_name}
 
 # ===== TIMETABLE PLAN (chapter-wise, subject filtered) =====
