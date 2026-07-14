@@ -61,6 +61,10 @@ def ensure_columns():
         "ALTER TABLE materials ADD COLUMN part VARCHAR(200)",
         "ALTER TABLE available_subjects ADD COLUMN mode VARCHAR(12) DEFAULT 'live'",
         "ALTER TABLE student_profiles ADD COLUMN medium VARCHAR(12)",
+        "ALTER TABLE doubts ADD COLUMN attach_mime VARCHAR(100)",
+        "ALTER TABLE doubts ADD COLUMN attach_name VARCHAR(255)",
+        "ALTER TABLE doubts ADD COLUMN audio_b64 LONGTEXT",
+        "ALTER TABLE doubts ADD COLUMN answer_audio_b64 LONGTEXT",
     ]
     for s in stmts:
         try:

@@ -207,6 +207,7 @@ class DoubtCreate(BaseModel):
 class DoubtResolve(BaseModel):
     answer: str
     answer_image_link: Optional[str] = None
+    answer_audio_b64: Optional[str] = None   # teacher voice answer (base64 webm)
 
 class DoubtOut(BaseModel):
     id: int

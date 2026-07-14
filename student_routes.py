@@ -416,10 +416,13 @@ async def ask_doubt(
     question: str = Form(...),
     teacher_id: int = Form(0),
     file: UploadFile = File(None),
+    voice: UploadFile = File(None),
     db: Session = Depends(get_db),
     current_user=Depends(get_student)
 ):
     import base64
+    if not (subject or "").strip():
+        raise HTTPException(status_code=400, detail="Please select a subject first")
     sp = get_student_profile(current_user, db)
     # auto-resolve teacher by subject if not provided
     tp = None
@@ -427,16 +430,26 @@ async def ask_doubt(
         tp = db.query(TeacherProfile).filter(TeacherProfile.id == teacher_id).first()
     if not tp:
         tp = _teacher_for_subject(db, subject)
-    img_b64 = None
+    img_b64 = attach_mime = attach_name = None
     if file is not None:
         raw = await file.read()
         if raw:
             if len(raw) > 20 * 1024 * 1024:
-                raise HTTPException(status_code=400, detail="Image 20MB se badi hai")
+                raise HTTPException(status_code=400, detail="Attachment is larger than 20MB")
             img_b64 = base64.b64encode(raw).decode("ascii")
+            attach_mime = file.content_type or "application/octet-stream"
+            attach_name = (file.filename or "attachment")[:250]
+    audio_b64 = None
+    if voice is not None:
+        vraw = await voice.read()
+        if vraw:
+            if len(vraw) > 10 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail="Voice note is larger than 10MB")
+            audio_b64 = base64.b64encode(vraw).decode("ascii")
     doubt = Doubt(student_id=sp.id, teacher_id=(tp.id if tp else None),
                   subject=subject.strip(), topic=topic.strip(), question=question.strip(),
-                  image_b64=img_b64)
+                  image_b64=img_b64, attach_mime=attach_mime, attach_name=attach_name,
+                  audio_b64=audio_b64)
     db.add(doubt)
     if tp and tp.user:
         notify(db, tp.user.id, f"Naya Doubt — {current_user.name}",
@@ -445,20 +458,51 @@ async def ask_doubt(
     db.refresh(doubt)
     return {"id": doubt.id, "message": "Doubt bhej diya!" + (f" Teacher: {tp.user.name}" if tp and tp.user else "")}
 
-@router.get("/doubt/{did}/image")
-def student_doubt_image(did: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+def _doubt_media(b64, mime, name):
     import base64
     from fastapi import Response
-    d = db.query(Doubt).filter(Doubt.id == did).first()
-    if not d or not d.image_b64:
-        raise HTTPException(status_code=404, detail="Image nahi")
-    return Response(content=base64.b64decode(d.image_b64), media_type="image/jpeg")
+    if not b64:
+        raise HTTPException(status_code=404, detail="Not found")
+    safe = (name or "file").replace('"', "")
+    return Response(content=base64.b64decode(b64),
+                    media_type=mime or "application/octet-stream",
+                    headers={"Content-Disposition": f'inline; filename="{safe}"'})
+
+def _own_doubt(did, db, current_user):
+    sp = get_student_profile(current_user, db)
+    d = db.query(Doubt).filter(Doubt.id == did, Doubt.student_id == sp.id).first()
+    if not d:
+        raise HTTPException(status_code=404, detail="Doubt not found")
+    return d
+
+@router.get("/doubt/{did}/image")
+def student_doubt_image(did: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    d = _own_doubt(did, db, current_user)
+    return _doubt_media(d.image_b64, d.attach_mime or "image/jpeg", d.attach_name)
+
+@router.get("/doubt/{did}/voice")
+def student_doubt_voice(did: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    d = _own_doubt(did, db, current_user)
+    return _doubt_media(d.audio_b64, "audio/webm", "voice.webm")
+
+@router.get("/doubt/{did}/answer-voice")
+def student_doubt_answer_voice(did: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    d = _own_doubt(did, db, current_user)
+    return _doubt_media(d.answer_audio_b64, "audio/webm", "answer.webm")
     return doubt
 
-@router.get("/doubts", response_model=List[DoubtOut])
+@router.get("/doubts")
 def my_doubts(db: Session = Depends(get_db), current_user=Depends(get_student)):
     sp = get_student_profile(current_user, db)
-    return db.query(Doubt).filter(Doubt.student_id == sp.id).order_by(Doubt.created_at.desc()).all()
+    out = []
+    for d in db.query(Doubt).filter(Doubt.student_id == sp.id).order_by(Doubt.created_at.desc()).all():
+        out.append({"id": d.id, "subject": d.subject, "topic": d.topic, "question": d.question,
+                    "answer": d.answer, "answer_image_link": d.answer_image_link,
+                    "status": d.status.value if hasattr(d.status, "value") else d.status,
+                    "created_at": str(d.created_at)[:16],
+                    "has_file": bool(d.image_b64), "attach_mime": d.attach_mime, "attach_name": d.attach_name,
+                    "has_voice": bool(d.audio_b64), "has_answer_voice": bool(d.answer_audio_b64)})
+    return out
 
 # ===== PROGRESS =====
 @router.get("/progress")

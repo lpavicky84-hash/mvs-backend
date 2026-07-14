@@ -270,18 +270,43 @@ def get_doubts(
         sname = d.student.user.name if d.student and d.student.user else "Student"
         out.append({"id": d.id, "student_name": sname, "subject": d.subject, "topic": d.topic,
                     "question": d.question, "has_image": bool(d.image_b64),
+                    "attach_mime": d.attach_mime, "attach_name": d.attach_name,
+                    "has_voice": bool(d.audio_b64), "has_answer_voice": bool(d.answer_audio_b64),
                     "answer": d.answer, "status": d.status.value if hasattr(d.status, "value") else d.status,
                     "created_at": str(d.created_at)[:16]})
     return out
 
-@router.get("/doubt/{did}/image")
-def teacher_doubt_image(did: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+def _t_doubt_media(b64, mime, name):
     import base64
     from fastapi import Response
-    d = db.query(Doubt).filter(Doubt.id == did).first()
-    if not d or not d.image_b64:
-        raise HTTPException(status_code=404, detail="Image nahi")
-    return Response(content=base64.b64decode(d.image_b64), media_type="image/jpeg")
+    if not b64:
+        raise HTTPException(status_code=404, detail="Not found")
+    safe = (name or "file").replace('"', "")
+    return Response(content=base64.b64decode(b64),
+                    media_type=mime or "application/octet-stream",
+                    headers={"Content-Disposition": f'inline; filename="{safe}"'})
+
+def _t_own_doubt(did, db, current_user):
+    tp = get_teacher_profile(current_user, db)
+    d = db.query(Doubt).filter(Doubt.id == did, Doubt.teacher_id == tp.id).first()
+    if not d:
+        raise HTTPException(status_code=404, detail="Doubt not found")
+    return d
+
+@router.get("/doubt/{did}/image")
+def teacher_doubt_image(did: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    d = _t_own_doubt(did, db, current_user)
+    return _t_doubt_media(d.image_b64, d.attach_mime or "image/jpeg", d.attach_name)
+
+@router.get("/doubt/{did}/voice")
+def teacher_doubt_voice(did: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    d = _t_own_doubt(did, db, current_user)
+    return _t_doubt_media(d.audio_b64, "audio/webm", "voice.webm")
+
+@router.get("/doubt/{did}/answer-voice")
+def teacher_doubt_answer_voice(did: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    d = _t_own_doubt(did, db, current_user)
+    return _t_doubt_media(d.answer_audio_b64, "audio/webm", "answer.webm")
 
 @router.patch("/doubts/{doubt_id}/resolve")
 def resolve_doubt(
@@ -296,6 +321,8 @@ def resolve_doubt(
         raise HTTPException(status_code=404, detail="Doubt nahi mila")
     doubt.answer = req.answer
     doubt.answer_image_link = req.answer_image_link
+    if req.answer_audio_b64:
+        doubt.answer_audio_b64 = req.answer_audio_b64
     doubt.status = DoubtStatus.resolved
     doubt.resolved_at = datetime.now()
 

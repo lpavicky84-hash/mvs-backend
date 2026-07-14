@@ -1223,6 +1223,21 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 /* teacher card actions: buttons kabhi clip na hon */
 .tcard2-actions .btn{flex:1 1 auto;min-width:fit-content}
 
+
+/* Doubts v2 */
+.hide-scroll{overflow-y:auto;scrollbar-width:none;-ms-overflow-style:none}
+.hide-scroll::-webkit-scrollbar{display:none}
+@keyframes teacherPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,107,43,0)}50%{box-shadow:0 0 0 7px rgba(255,107,43,.28)}}
+.teacher-flash{animation:teacherPulse .9s ease 3;border:1.6px solid var(--accent)!important;background:var(--primary-50)!important}
+.sdo-tavatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,var(--primary),#2857a8);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.9rem;flex-shrink:0}
+.dark .sdo-tavatar{color:#181203}
+.vc-wrap{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
+.vc-btn{display:inline-flex;align-items:center;gap:7px;border:1.5px dashed var(--border);background:var(--bg);color:var(--text);padding:9px 14px;border-radius:12px;cursor:pointer;font-weight:700;font-size:.82rem}
+.vc-btn.rec{border-style:solid;border-color:#dc2626;color:#dc2626;animation:teacherPulse 1.2s ease infinite}
+.vc-wrap audio{height:38px;max-width:230px}
+.xm-pend{font-size:.68rem;font-weight:800;padding:3px 9px;border-radius:99px;background:var(--danger);color:#fff;white-space:nowrap}
+.doubt-drill{max-height:68vh;padding-right:2px}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -1711,6 +1726,64 @@ function startLiveCountdown(entries){
 }
 function setIf(el,html){ if(!el) return; if(el.__h===html) return; el.__h=html; el.innerHTML=html; }
 function softSpin(el){ if(!el) return; const inPage=el.closest&&el.closest('.page'); if(inPage&&el.dataset.kept) return; el.innerHTML='<div class="spinner"></div>'; if(inPage) el.dataset.kept='1'; }
+// ============ VOICE RECORDER (doubts) ============
+const _vBlobs={}; let _vRec=null,_vKey=null;
+function voiceUI(key){
+  return `<div class="vc-wrap" id="vcw-${key}"><button type="button" class="vc-btn" id="vcb-${key}" onclick="voiceToggle('${key}')">${ic('play')} Record Voice</button><span id="vcs-${key}" style="font-size:.75rem;color:var(--text-muted)"></span></div>`;
+}
+async function voiceToggle(key){
+  if(_vRec && _vKey===key){ _vRec.stop(); return; }
+  if(_vRec){ toast('Another recording is in progress.',true); return; }
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    const chunks=[]; const mr=new MediaRecorder(stream);
+    _vRec=mr; _vKey=key;
+    const btn=document.getElementById('vcb-'+key); btn.classList.add('rec'); btn.innerHTML='&#9632; Stop Recording';
+    const st=document.getElementById('vcs-'+key); let sec=0; const tmr=setInterval(()=>{ sec++; if(st) st.textContent=sec+'s'; },1000);
+    mr.ondataavailable=e=>{ if(e.data.size) chunks.push(e.data); };
+    mr.onstop=()=>{
+      clearInterval(tmr); stream.getTracks().forEach(t=>t.stop()); _vRec=null; _vKey=null;
+      _vBlobs[key]=new Blob(chunks,{type:'audio/webm'});
+      const url=URL.createObjectURL(_vBlobs[key]);
+      document.getElementById('vcw-'+key).innerHTML=`<audio controls src="${url}"></audio><button type="button" class="vc-btn" onclick="voiceRemove('${key}')">${ic('trash')} Remove</button>`;
+    };
+    mr.start();
+  }catch(e){ toast('Microphone access denied. Please allow the mic permission.',true); }
+}
+function voiceRemove(key){ delete _vBlobs[key]; const w=document.getElementById('vcw-'+key); if(w) w.outerHTML=voiceUI(key); }
+function blobToB64(blob){ return new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(r.result.split(',')[1]); r.readAsDataURL(blob); }); }
+async function playDoubtVoice(btn,url){
+  try{
+    btn.disabled=true;
+    const r=await fetch(API+url,{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('Voice note not found');
+    const src=URL.createObjectURL(await r.blob());
+    btn.outerHTML=`<audio controls autoplay src="${src}" style="height:38px;max-width:240px;vertical-align:middle"></audio>`;
+  }catch(e){ btn.disabled=false; toast(e.message,true); }
+}
+async function viewDoubtFile(role,id,mime,name){
+  try{
+    const r=await fetch(API+'/api/'+role+'/doubt/'+id+'/image',{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('Attachment not found');
+    const blob=await r.blob(); const url=URL.createObjectURL(blob);
+    if((mime||'').startsWith('image/')) showModal('Attachment',`<img src="${url}" style="width:100%;border-radius:10px">`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+    else window.open(url,'_blank');
+  }catch(e){ toast(e.message,true); }
+}
+// ============ DOUBT NAV BADGES ============
+let _dbadgeInt=null;
+function startDoubtBadge(role){
+  const run=async()=>{
+    try{
+      let n=0;
+      if(role==='teacher'){ const st=await api('/api/teacher/doubt-stats'); n=st.pending||0; }
+      else{ const all=await api('/api/admin/doubts?status=pending'); n=all.length||0; }
+      const b=document.getElementById(role==='teacher'?'t-doubt-badge':'a-doubt-badge');
+      if(b){ b.textContent=n; b.style.display=n>0?'':'none'; }
+    }catch(e){}
+  };
+  run(); if(_dbadgeInt) clearInterval(_dbadgeInt); _dbadgeInt=setInterval(run,90000);
+}
 function toast(msg,err=false){ const t=document.getElementById('toast'); t.className=err?'error':''; document.getElementById('toast-msg').textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3500); }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function initials(name){ const p=(name||'U').trim().split(' '); return ((p[0]||'')[0]||'')+((p[1]||'')[0]||''); }
@@ -1744,6 +1817,7 @@ function enterTeacherApp(){
   tPage('dashboard',null);
   startHeartbeat();
   notifPopupOnOpen('teacher');
+  startDoubtBadge('teacher');
   startTopicReminders();
 }
 let _tSel10=[], _tSel12=[];
@@ -3088,37 +3162,61 @@ async function _renderClassReports(wrapId, endpoint, showTeacher){
     wrap.innerHTML=stats+subCard+list;
   }catch(e){ wrap.innerHTML=errHtml(e); }
 }
+let _tdSub=null;
 async function loadTDoubts(){
   const el=document.getElementById('t-doubts-content');
   try{
  const doubts=await api('/api/teacher/doubts');
  let ds={pending:0,resolved:0,avg_response_minutes:null}; try{ ds=await api('/api/teacher/doubt-stats'); }catch(e){}
- const avgTxt=ds.avg_response_minutes==null?'—':(ds.avg_response_minutes>=60?(Math.floor(ds.avg_response_minutes/60)+'h '+(ds.avg_response_minutes%60)+'m'):ds.avg_response_minutes+' min');
- let html=`<div class="stats-grid">${statCard('Pending Doubts',ds.pending,'help','amber')}${statCard('Resolved Doubts',ds.resolved,'check','green')}${statCard('Avg Response Time',avgTxt,'clipboard','indigo')}</div><div class="card"><div class="card-header"><h3>Student Doubts</h3></div><div class="card-body">`;
- if(doubts.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No doubts pending.</p></div>`;
- doubts.forEach(d=>{
- if(d.status==='resolved'){
- html+=`<div class="doubt-card resolved"><div style="display:flex;justify-content:space-between"><div><h4 style="font-size:.9rem">${esc(d.subject)} — ${esc(d.topic)}</h4><p style="font-size:.74rem;color:var(--text-muted)">by ${esc(d.student_name||'Student')}</p><p style="font-size:.78rem;color:var(--text-muted);margin-top:4px">${esc(d.question)}</p><p style="font-size:.8rem;margin-top:8px;color:var(--success)">Your answer: ${esc(d.answer)}</p></div><span class="tag tag-done">Resolved</span></div></div>`;
- } else {
- html+=`<div class="doubt-card"><div style="display:flex;justify-content:space-between;margin-bottom:12px"><div><h4 style="font-size:.9rem">${esc(d.subject)} — ${esc(d.topic)}</h4><p style="font-size:.74rem;color:var(--text-muted)">by ${esc(d.student_name||'Student')}</p></div><span class="tag tag-reschedule">Pending</span></div><div style="background:var(--bg);border-radius:8px;padding:12px;margin-bottom:12px;font-size:.875rem">${esc(d.question)}</div>${d.has_image?`<button class="btn btn-ghost btn-sm" onclick="viewDoubtImage(${d.id})">${ic('folder')} View Image</button>`:''}
- <div class="form-group" style="margin-top:10px"><textarea class="form-control" id="ans-${d.id}" rows="2" placeholder="Write your answer..."></textarea></div><button class="btn btn-success btn-sm" onclick="resolveDoubt(${d.id})">${ic('check')} Resolve</button></div>`;
- }
- });
- html+=`</div></div>`;
- el.innerHTML=html;
+ window._tDoubts=doubts; window._tDoubtStats=ds;
+ const b=document.getElementById('t-doubt-badge'); if(b){ b.textContent=ds.pending||0; b.style.display=(ds.pending||0)>0?'':'none'; }
+ tRenderDoubts();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
-async function viewDoubtImage(id){
-  try{
-    const r=await fetch(API+'/api/teacher/doubt/'+id+'/image',{headers:{Authorization:'Bearer '+TOKEN}});
-    if(!r.ok) throw new Error('Image not found');
-    const url=URL.createObjectURL(await r.blob());
-    showModal('Doubt Image',`<img src="${url}" style="width:100%;border-radius:10px">`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
-  }catch(e){ toast(e.message,true); }
+function tRenderDoubts(){
+  const el=document.getElementById('t-doubts-content');
+  const doubts=window._tDoubts||[]; const ds=window._tDoubtStats||{pending:0,resolved:0,avg_response_minutes:null};
+  const avgTxt=ds.avg_response_minutes==null?'\u2014':(ds.avg_response_minutes>=60?(Math.floor(ds.avg_response_minutes/60)+'h '+(ds.avg_response_minutes%60)+'m'):ds.avg_response_minutes+' min');
+  let html=`<div class="stats-grid">${statCard('Pending Doubts',ds.pending,'help','amber')}${statCard('Resolved Doubts',ds.resolved,'check','green')}${statCard('Avg Response Time',avgTxt,'clipboard','indigo')}</div>`;
+  if(_tdSub===null){
+    // ---- SUBJECT CARDS VIEW ----
+    const bySub={}; doubts.forEach(d=>{ const k=d.subject||'Other'; (bySub[k]=bySub[k]||{total:0,pending:0}); bySub[k].total++; if(d.status!=='resolved') bySub[k].pending++; });
+    const subs=Object.keys(bySub).sort();
+    if(!subs.length) html+=`<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>No doubts yet.</p></div></div></div>`;
+    else html+=`<div class="xm-grid">`+subs.map(sub=>{
+      const g=bySub[sub];
+      return `<div class="xm-card" onclick="tPickDoubtSub('${esc(sub).replace(/'/g,"\\'")}')"><div class="xm-ic">${ic('help')}</div><div class="xm-info"><div class="xm-title">${esc(sub)}</div><div class="xm-chips"><span class="xm-chip">${g.total} total</span>${g.pending?`<span class="xm-pend">${g.pending} pending</span>`:`<span class="xm-chip" style="background:rgba(5,150,105,.14);color:var(--success)">All clear</span>`}</div></div><div class="xm-arw">\u203a</div></div>`;
+    }).join('')+`</div>`;
+    el.innerHTML=html; return;
+  }
+  // ---- SUBJECT DRILL VIEW ----
+  const list=doubts.filter(d=>(d.subject||'Other')===_tdSub);
+  const pend=list.filter(d=>d.status!=='resolved'), done=list.filter(d=>d.status==='resolved');
+  html+=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="_tdSub=null;tRenderDoubts()">\u2190 All Subjects</button><h3 style="margin:0">${esc(_tdSub)} <span style="color:var(--text-muted);font-weight:600;font-size:.85rem">(${list.length})</span></h3></div><div class="hide-scroll doubt-drill">`;
+  const rows=[...pend,...done].map(d=>{
+    const media=`${d.has_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/voice')">${ic('play')} Voice Note</button>`:''}${d.has_image?`<button class="btn btn-ghost btn-sm" onclick="viewDoubtFile('teacher',${d.id},'${esc(d.attach_mime||'')}')">${ic('folder')} Attachment</button>`:''}`;
+    if(d.status==='resolved'){
+      return `<div class="doubt-card resolved"><div style="display:flex;justify-content:space-between;gap:10px"><div style="min-width:0"><h4 style="font-size:.9rem">${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}</h4><p style="font-size:.74rem;color:var(--text-muted)">by ${esc(d.student_name||'Student')}</p><p style="font-size:.78rem;color:var(--text-muted);margin-top:4px">${esc(d.question)}</p><p style="font-size:.8rem;margin-top:8px;color:var(--success)">Your answer: ${esc(d.answer||'')}</p>${d.has_answer_voice?`<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/answer-voice')">${ic('play')} Your Voice Answer</button>`:''}</div><span class="tag tag-done">Resolved</span></div></div>`;
+    }
+    return `<div class="doubt-card"><div style="display:flex;justify-content:space-between;margin-bottom:12px;gap:10px"><div style="min-width:0"><h4 style="font-size:.9rem">${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}</h4><p style="font-size:.74rem;color:var(--text-muted)">by ${esc(d.student_name||'Student')} \u00b7 ${esc(d.created_at||'')}</p></div><span class="tag tag-reschedule">Pending</span></div><div style="background:var(--bg);border-radius:8px;padding:12px;margin-bottom:10px;font-size:.875rem">${esc(d.question)}</div>${media?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${media}</div>`:''}
+      <div class="form-group" style="margin-top:6px"><textarea class="form-control" id="ans-${d.id}" rows="2" placeholder="Write your answer..."></textarea></div>
+      <div class="form-group"><label style="font-size:.75rem">Voice Answer (optional)</label>${voiceUI('ta'+d.id)}</div>
+      <button class="btn btn-success btn-sm" onclick="resolveDoubt(${d.id})">${ic('check')} Resolve</button></div>`;
+  }).join('');
+  html+=(rows||`<div class="empty-state"><p>No doubts in this subject.</p></div>`)+`</div>`;
+  el.innerHTML=html;
 }
+function tPickDoubtSub(sub){ _tdSub=sub; tRenderDoubts(); }
+async function viewDoubtImage(id){ viewDoubtFile('teacher',id,'image/jpeg'); }
 async function resolveDoubt(id){
-  const answer=val('ans-'+id); if(!answer){ toast('Please enter an answer.',true); return; }
-  try{ await api(`/api/teacher/doubts/${id}/resolve`,'PATCH',{answer,answer_image_link:null}); toast('Doubt resolved.'); loadTDoubts(); }catch(e){ toast(e.message,true); }
+  const answer=val('ans-'+id); const vb=_vBlobs['ta'+id];
+  if(!answer&&!vb){ toast('Please write an answer or record a voice answer.',true); return; }
+  try{
+    let ab=null; if(vb) ab=await blobToB64(vb);
+    await api(`/api/teacher/doubts/${id}/resolve`,'PATCH',{answer:answer||'(voice answer)',answer_image_link:null,answer_audio_b64:ab});
+    delete _vBlobs['ta'+id];
+    toast('Doubt resolved.'); loadTDoubts();
+  }catch(e){ toast(e.message,true); }
 }
 
 async function loadTReschedule(){
@@ -3147,6 +3245,7 @@ function openAdmin(){
   aPage('dashboard',null);
   startHeartbeat();
   notifPopupOnOpen('admin');
+  startDoubtBadge('admin');
   startAdminLivePoll();
 }
 async function loadACompliance(){
@@ -3646,7 +3745,7 @@ async function loadAActivity(){
 let _attEntries=[]; let _attActiveSub=''; let _attClass='all'; let _attTeacherMap={};
 let _aDoubtFilter='all';
 let _adSub=null;
-function adPickSub(s){ _adSub=s?decodeURIComponent(s):null; aRenderDoubts(); }
+function adPickSub(sub){ _adSub=sub?decodeURIComponent(sub):''; _aDoubtFilter='all'; aRenderDoubts(); }
 async function loadADoubts(){
   const el=document.getElementById('a-doubts-content');
   try{
@@ -3658,38 +3757,48 @@ async function loadADoubts(){
 function aDoubtFilter(f){ _aDoubtFilter=f; aRenderDoubts(); }
 function _adCards(){
   const ov=window._aDoubtOv||{}; const subs=ov.subjects||[];
-  if(!subs.length) return '';
+  if(!subs.length) return `<div class="card"><div class="card-body"><div class="empty-state"><p>No doubts yet.</p></div></div></div>`;
   const fmt=m=>m==null?'\u2014':(m<60?m+'m':(m<1440?Math.floor(m/60)+'h':Math.floor(m/1440)+'d'));
-  const cards=subs.map(s=>`<div class="ad-card ${_adSub===s.subject?'active':''}" onclick="adPickSub('${encodeURIComponent(s.subject)}')">
-      <div class="ad-top"><div class="ad-sub">${esc(s.subject)}</div>${s.pending?`<span class="ad-pend">${s.pending} pending</span>`:'<span class="ad-clear">All clear</span>'}</div>
-      <div class="ad-teacher">${ic('user')} ${esc(s.teacher||'\u2014')}</div>
-      <div class="ad-stats"><span><b>${s.total}</b> total</span><span class="ad-ok"><b>${s.resolved}</b> resolved</span><span class="ad-wait"><b>${s.pending}</b> pending</span></div>
-      ${s.pending?`<div class="ad-oldest">Oldest pending: <b>${fmt(s.oldest_pending_min)}</b></div>`:''}
-    </div>`).join('');
-  const back=_adSub?`<button class="btn btn-ghost btn-sm" onclick="adPickSub('')" style="margin-bottom:12px">\u2190 All subjects</button>`:'';
-  return `<div class="ad-grid">${cards}</div>${back}`;
+  return `<div class="ad-grid">`+subs.map(sub=>`<div class="ad-card" onclick="adPickSub('${encodeURIComponent(sub.subject)}')">
+      <div class="ad-top"><div class="ad-sub">${esc(sub.subject)}</div>${sub.pending?`<span class="xm-pend">${sub.pending} pending</span>`:'<span class="ad-clear">All clear</span>'}</div>
+      <div class="ad-teacher">${ic('user')} ${esc(sub.teacher||'\u2014')}</div>
+      <div class="ad-stats"><span><b>${sub.total}</b> total</span><span class="ad-ok"><b>${sub.resolved}</b> resolved</span><span class="ad-wait"><b>${sub.pending}</b> pending</span></div>
+      ${sub.pending?`<div class="ad-oldest">Oldest pending: <b>${fmt(sub.oldest_pending_min)}</b></div>`:''}
+    </div>`).join('')+`</div>`;
 }
 function aRenderDoubts(){
   const el=document.getElementById('a-doubts-content');
   const all=window._aDoubts||[];
-  const pending=all.filter(d=>d.status==='pending').length, resolved=all.filter(d=>d.status==='resolved').length;
-  let list=_adSub?all.filter(d=>d.subject===_adSub):all;
+  // nav badge
+  const pendAll=all.filter(d=>d.status==='pending').length;
+  const bd=document.getElementById('a-doubt-badge'); if(bd){ bd.textContent=pendAll; bd.style.display=pendAll>0?'':'none'; }
+  if(!_adSub){
+    // ---- DEFAULT: sirf subject cards ----
+    el.innerHTML=`<div class="card-header" style="padding:0 4px 18px;border:none"><h3 style="font-size:1.3rem">Doubts \u2014 Subject Wise</h3></div>`+_adCards();
+    return;
+  }
+  // ---- DRILL: ek subject ke doubts ----
+  let list=all.filter(d=>d.subject===_adSub);
+  const pending=list.filter(d=>d.status==='pending').length, resolved=list.filter(d=>d.status==='resolved').length, total=list.length;
   if(_aDoubtFilter==='pending') list=list.filter(d=>d.status==='pending');
   else if(_aDoubtFilter==='resolved') list=list.filter(d=>d.status==='resolved');
   const fbtn=(f,label)=>`<button class="btn btn-sm ${_aDoubtFilter===f?'btn-primary':'btn-ghost'}" onclick="aDoubtFilter('${f}')">${label}</button>`;
   const cards=list.length?list.map(d=>{
     const when=d.created_at?new Date(d.created_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
-    const qimg=d.has_image?`<img id="adimg-${d.id}" alt="doubt image">`:'';
-    const ans=d.answer||d.answer_image_link
-      ? `<div class="bubble bubble-a"><div class="who">${esc(d.teacher_name)} (Teacher)</div>${esc(d.answer||'')}${d.answer_image_link?`<a href="${esc(d.answer_image_link)}" target="_blank" style="color:var(--primary);display:block;margin-top:6px">View attached solution ↗</a>`:''}</div>`
+    const qimg=d.has_image&&(d.attach_mime||'image/jpeg').startsWith('image/')?`<img id="adimg-${d.id}" alt="doubt attachment">`:'';
+    const qfile=d.has_image&&!(d.attach_mime||'image/jpeg').startsWith('image/')?`<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="viewDoubtFile('admin',${d.id},'${esc(d.attach_mime||'')}')">${ic('folder')} ${esc(d.attach_name||'Attachment')}</button>`:'';
+    const qvoice=d.has_voice?`<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="playDoubtVoice(this,'/api/admin/doubt/${d.id}/voice')">${ic('play')} Voice Note</button>`:'';
+    const avoice=d.has_answer_voice?`<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="playDoubtVoice(this,'/api/admin/doubt/${d.id}/answer-voice')">${ic('play')} Voice Answer</button>`:'';
+    const ans=d.answer||d.answer_image_link||d.has_answer_voice
+      ? `<div class="bubble bubble-a"><div class="who">${esc(d.teacher_name)} (Teacher)</div>${esc(d.answer||'')}${avoice}${d.answer_image_link?`<a href="${esc(d.answer_image_link)}" target="_blank" style="color:var(--primary);display:block;margin-top:6px">View attached solution \u2197</a>`:''}</div>`
       : `<div class="bubble-pending">Awaiting teacher's reply...</div>`;
-    return `<div class="dcard"><div class="dcard-head"><div class="dcard-who"><b>${esc(d.student_name)}</b>${d.student_phone?' · '+esc(d.student_phone):''} asked <b>${esc(d.teacher_name)}</b><div style="margin-top:3px">${esc(d.subject||'')}${d.topic?' · '+esc(d.topic):''} · ${esc(when)}</div></div><span class="tag ${d.status==='resolved'?'tag-done':'tag-pending'}">${d.status==='resolved'?'Resolved':'Pending'}</span></div>
-      <div class="chat-thread"><div class="bubble bubble-q"><div class="who">${esc(d.student_name)} (Student)</div>${esc(d.question||'')}${qimg}</div>${ans}</div></div>`;
+    return `<div class="dcard"><div class="dcard-head"><div class="dcard-who"><b>${esc(d.student_name)}</b>${d.student_phone?' \u00b7 '+esc(d.student_phone):''} asked <b>${esc(d.teacher_name)}</b><div style="margin-top:3px">${esc(d.subject||'')}${d.topic?' \u00b7 '+esc(d.topic):''} \u00b7 ${esc(when)}</div></div><span class="tag ${d.status==='resolved'?'tag-done':'tag-pending'}">${d.status==='resolved'?'Resolved':'Pending'}</span></div>
+      <div class="chat-thread"><div class="bubble bubble-q"><div class="who">${esc(d.student_name)} (Student)</div>${esc(d.question||'')}${qvoice}${qfile}${qimg}</div>${ans}</div></div>`;
   }).join(''):`<div class="empty-state"><p>No doubts in this view.</p></div>`;
-  el.innerHTML=_adCards()+`<div class="card-header" style="padding:0 4px 18px;border:none"><h3 style="font-size:1.3rem">Doubts Oversight</h3></div>
-    <div class="dfilter">${fbtn('all','All ('+all.length+')')}${fbtn('pending','Pending ('+pending+')')}${fbtn('resolved','Resolved ('+resolved+')')}</div>
-    ${cards}`;
-  list.forEach(d=>{ if(d.has_image) loadImgInto2('adimg-'+d.id,'/api/admin/doubt/'+d.id+'/image'); });
+  el.innerHTML=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="adPickSub('')">\u2190 All Subjects</button><h3 style="margin:0;font-size:1.2rem">${esc(_adSub)}</h3></div>
+    <div class="dfilter">${fbtn('all','All ('+total+')')}${fbtn('pending','Pending ('+pending+')')}${fbtn('resolved','Resolved ('+resolved+')')}</div>
+    <div class="hide-scroll doubt-drill">${cards}</div>`;
+  list.forEach(d=>{ if(d.has_image&&(d.attach_mime||'image/jpeg').startsWith('image/')) loadImgInto2('adimg-'+d.id,'/api/admin/doubt/'+d.id+'/image'); });
 }
 function loadImgInto2(elId,url){
   fetch(API+url,{headers:{Authorization:'Bearer '+TOKEN}}).then(r=>r.ok?r.blob():null).then(b=>{ if(b){ const el=document.getElementById(elId); if(el) el.src=URL.createObjectURL(b); } }).catch(()=>{});
@@ -4451,51 +4560,91 @@ async function loadSDoubts(){
     let mine=[]; try{ mine=await api('/api/student/doubts'); }catch(e){}
     let subs=[]; try{ const p=await api('/api/student/profile'); subs=p.subjects||[]; }catch(e){}
     let html=`<div class="grid-2"><div class="card"><div class="card-header"><h3>Ask a Doubt</h3></div><div class="card-body">
-      <div class="form-group"><label>Subject</label><select class="form-control" id="sdo-subject" onchange="sdoFetchTeacher()">${subs.length?subs.map(s=>`<option>${esc(s)}</option>`).join(''):'<option value="">Please select your subjects first</option>'}</select></div>
-      <div class="form-group"><label>Teacher (auto)</label><input class="form-control" id="sdo-teacher" readonly placeholder="Select a subject to see the teacher" style="background:var(--bg)"></div>
+      <div class="form-group"><label>Subject <span style="color:var(--danger)">*</span></label><select class="form-control" id="sdo-subject" onchange="sdoFetchTeacher()"><option value="" selected disabled>\u2014 Select Subject \u2014</option>${subs.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div>
+      <div class="form-group" id="sdo-teacher-wrap" style="display:none"><label>Your doubt will go to</label><div class="form-control" id="sdo-teacher-box" style="display:flex;align-items:center;gap:11px;min-height:52px"><div class="sdo-tavatar" id="sdo-tavatar">?</div><div style="min-width:0"><div id="sdo-tname" style="font-weight:800;font-size:.92rem"></div><div id="sdo-tsub" style="font-size:.72rem;color:var(--text-muted)"></div></div></div></div>
       <input type="hidden" id="sdo-tid">
       <div class="form-group"><label>Topic</label><input class="form-control" id="sdo-topic" placeholder="e.g. EM Waves"></div>
       <div class="form-group"><label>Doubt</label><textarea class="form-control" id="sdo-q" rows="3" placeholder="Write your question"></textarea></div>
-      <div class="form-group"><label>Image (optional) — direct upload</label>${fileDropHTML('sdo-file','sdo-flabel','image/*')}</div>
+      <div class="form-group"><label>Voice Note (optional)</label>${voiceUI('sdo')}</div>
+      <div class="form-group"><label>Attachment (optional) \u2014 image, PDF or any file</label>${fileDropHTML('sdo-file','sdo-flabel','image/*,application/pdf,.doc,.docx,.txt,.csv,.xls,.xlsx,.ppt,.pptx')}<div style="font-size:.7rem;color:var(--text-muted);margin-top:5px">Tip: You can also paste a screenshot here directly (Ctrl+V).</div></div>
       <button class="btn btn-primary" style="width:100%" id="sdo-btn" onclick="submitDoubt()">${ic('help')} Submit Doubt</button>
       <div id="sdo-status" style="margin-top:10px"></div>
-    </div></div><div class="card"><div class="card-header"><h3>Mere Doubts</h3></div><div class="card-body">`;
+    </div></div><div class="card"><div class="card-header"><h3>My Doubts</h3></div><div class="card-body hide-scroll doubt-drill">`;
     if(mine.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No doubts yet.</p></div>`;
-    else html+=mine.map(d=>`<div class="doubt-card" style="border-left-color:${d.status==='resolved'?'var(--success)':'var(--warning)'}"><div style="display:flex;justify-content:space-between"><div><h4>${esc(d.subject)} — ${esc(d.topic||'')}</h4><p style="font-size:.82rem;margin-top:4px">${esc(d.question)}</p></div><span class="tag ${d.status==='resolved'?'tag-done':'tag-pending'}">${d.status}</span></div>${d.answer?`<div class="alert alert-success" style="margin-top:10px"><strong>Answer:</strong> ${esc(d.answer)}</div>`:''}</div>`).join('');
+    else html+=mine.map(d=>{
+      const media=`${d.has_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/student/doubt/${d.id}/voice')">${ic('play')} My Voice Note</button>`:''}${d.has_file?`<button class="btn btn-ghost btn-sm" onclick="viewDoubtFile('student',${d.id},'${esc(d.attach_mime||'')}')">${ic('folder')} Attachment</button>`:''}`;
+      const ansv=d.has_answer_voice?`<button class="btn btn-success btn-sm" style="margin-top:8px" onclick="playDoubtVoice(this,'/api/student/doubt/${d.id}/answer-voice')">${ic('play')} Voice Answer</button>`:'';
+      return `<div class="doubt-card" style="border-left-color:${d.status==='resolved'?'var(--success)':'var(--warning)'}"><div style="display:flex;justify-content:space-between;gap:10px"><div style="min-width:0"><h4>${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}</h4><p style="font-size:.82rem;margin-top:4px">${esc(d.question)}</p></div><span class="tag ${d.status==='resolved'?'tag-done':'tag-pending'}">${d.status}</span></div>${media?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">${media}</div>`:''}${d.answer?`<div class="alert alert-success" style="margin-top:10px"><strong>Answer:</strong> ${esc(d.answer)}</div>`:''}${ansv}</div>`;
+    }).join('');
     html+=`</div></div></div>`;
     el.innerHTML=html;
-    sdoFetchTeacher();
+    sdoBindPaste();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
+function sdoBindPaste(){
+  if(window._sdoPasteBound) return; window._sdoPasteBound=true;
+  document.addEventListener('paste',e=>{
+    const page=document.getElementById('s-page-doubts');
+    if(!page||!page.classList.contains('active')) return;
+    const items=e.clipboardData&&e.clipboardData.items; if(!items) return;
+    for(const it of items){
+      if(it.kind==='file'){
+        const f=it.getAsFile(); if(!f) continue;
+        const dt=new DataTransfer(); dt.items.add(new File([f], f.name&&f.name!=='image.png'?f.name:('pasted_'+Date.now()+'.png'),{type:f.type}));
+        const inp=document.getElementById('sdo-file');
+        if(inp){ inp.files=dt.files; const lb=document.getElementById('sdo-flabel'); if(lb) lb.textContent=dt.files[0].name; toast('File pasted from clipboard.'); }
+        e.preventDefault(); break;
+      }
+    }
+  });
+}
 async function sdoFetchTeacher(){
-  const sub=val('sdo-subject'); if(!sub){ return; }
+  const sub=val('sdo-subject'); if(!sub) return;
+  const wrap=document.getElementById('sdo-teacher-wrap'); wrap.style.display='block';
   try{
     const t=await api('/api/student/teacher-for-subject?subject='+encodeURIComponent(sub));
-    if(t.found){ document.getElementById('sdo-teacher').value=t.teacher_name+'  ('+t.teacher_user_id+')'; document.getElementById('sdo-tid').value=t.teacher_id; }
-    else{ document.getElementById('sdo-teacher').value='Is subject ka teacher abhi assign nahi'; document.getElementById('sdo-tid').value=''; }
+    const box=document.getElementById('sdo-teacher-box');
+    if(t.found){
+      document.getElementById('sdo-tname').textContent=t.teacher_name;
+      document.getElementById('sdo-tsub').textContent=t.teacher_user_id+' \u00b7 '+sub;
+      document.getElementById('sdo-tavatar').textContent=(t.teacher_name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+      document.getElementById('sdo-tid').value=t.teacher_id;
+    }else{
+      document.getElementById('sdo-tname').textContent='No teacher assigned yet';
+      document.getElementById('sdo-tsub').textContent='Admin will assign your doubt';
+      document.getElementById('sdo-tavatar').textContent='?';
+      document.getElementById('sdo-tid').value='';
+    }
+    box.classList.remove('teacher-flash'); void box.offsetWidth; box.classList.add('teacher-flash');
   }catch(e){}
 }
 async function submitDoubt(){
   const subject=val('sdo-subject'), topic=val('sdo-topic'), question=val('sdo-q');
-  if(!subject||!question){ toast('Subject and doubt are required.',true); return; }
+  if(!subject){ toast('Please select a subject first \u2014 your doubt goes to that subject\'s teacher.',true); const sel=document.getElementById('sdo-subject'); sel.classList.add('teacher-flash'); setTimeout(()=>sel.classList.remove('teacher-flash'),2800); return; }
+  if(!question&&!_vBlobs['sdo']){ toast('Please write your doubt or record a voice note.',true); return; }
   const btn=document.getElementById('sdo-btn'); btn.disabled=true; btn.textContent='Submitting...';
   const fd=new FormData();
-  fd.append('subject',subject); fd.append('topic',topic); fd.append('question',question);
+  fd.append('subject',subject); fd.append('topic',topic); fd.append('question',question||'(voice note)');
   fd.append('teacher_id', val('sdo-tid')||'0');
   const fi=document.getElementById('sdo-file');
   if(fi && fi.files.length){
-    toast('Compressing the image...'); const _r=await smartCompress(fi.files[0],m=>toast(m)); let f=_r.file;
-    if(!_r.ok){ toast('The image is still too large after compression. Please try a smaller file.',true); btn.disabled=false; btn.textContent='Submit Doubt'; return; }
+    let f=fi.files[0];
+    if((f.type||'').startsWith('image/')){
+      toast('Compressing the image...'); const _r=await smartCompress(f,m=>toast(m));
+      if(!_r.ok){ toast('The image is still too large after compression. Please try a smaller file.',true); btn.disabled=false; btn.innerHTML=ic('help')+' Submit Doubt'; return; }
+      f=_r.file;
+    }else if(f.size>20*1024*1024){ toast('Attachment is larger than 20MB.',true); btn.disabled=false; btn.innerHTML=ic('help')+' Submit Doubt'; return; }
     fd.append('file',f);
   }
+  if(_vBlobs['sdo']) fd.append('voice',_vBlobs['sdo'],'voice.webm');
   try{
     const r=await fetch(API+'/api/student/doubts',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
     const d=await r.json(); if(!r.ok) throw new Error(d.detail||'Error');
+    delete _vBlobs['sdo'];
     document.getElementById('sdo-status').innerHTML=`<div class="alert alert-success">${esc(d.message)}</div>`;
     toast('Doubt submitted.'); loadSDoubts();
-  }catch(e){ document.getElementById('sdo-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Submit Doubt'; }
+  }catch(e){ document.getElementById('sdo-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.innerHTML=ic('help')+' Submit Doubt'; }
 }
-
 
 // ============ ACADEMIC PERFORMANCE DASHBOARD ============
 function _ring(pct,size,stroke,color){

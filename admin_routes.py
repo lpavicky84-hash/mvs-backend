@@ -906,6 +906,8 @@ def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depend
             "topic": d.topic,
             "question": d.question,
             "has_image": bool(d.image_b64),
+            "attach_mime": d.attach_mime, "attach_name": d.attach_name,
+            "has_voice": bool(d.audio_b64), "has_answer_voice": bool(d.answer_audio_b64),
             "answer": d.answer,
             "answer_image_link": d.answer_image_link,
             "status": d.status.value if hasattr(d.status, "value") else d.status,
@@ -917,8 +919,34 @@ def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depend
 @router.get("/doubt/{did}/image")
 def admin_doubt_image(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import Doubt
+    import base64
+    from fastapi import Response
     d = db.query(Doubt).filter(Doubt.id == did).first()
-    return _img_response(d.image_b64 if d else None)
+    if not d or not d.image_b64:
+        return _img_response(None)
+    return Response(content=base64.b64decode(d.image_b64),
+                    media_type=(d.attach_mime or "image/jpeg"),
+                    headers={"Content-Disposition": f'inline; filename="{(d.attach_name or "file").replace(chr(34), "")}"'})
+
+@router.get("/doubt/{did}/voice")
+def admin_doubt_voice(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Doubt
+    import base64
+    from fastapi import Response
+    d = db.query(Doubt).filter(Doubt.id == did).first()
+    if not d or not d.audio_b64:
+        raise HTTPException(status_code=404, detail="Not found")
+    return Response(content=base64.b64decode(d.audio_b64), media_type="audio/webm")
+
+@router.get("/doubt/{did}/answer-voice")
+def admin_doubt_answer_voice(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Doubt
+    import base64
+    from fastapi import Response
+    d = db.query(Doubt).filter(Doubt.id == did).first()
+    if not d or not d.answer_audio_b64:
+        raise HTTPException(status_code=404, detail="Not found")
+    return Response(content=base64.b64decode(d.answer_audio_b64), media_type="audio/webm")
 
 # ===== ADMIN: QUESTION BANK (global materials, Hindi/English, no-compress or link) =====
 @router.post("/questionbank")
