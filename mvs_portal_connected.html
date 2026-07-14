@@ -5092,8 +5092,33 @@ async function loadSProfile(){
 }
 
 // Manish Verma Classes App — lectures live here, not in this portal.
-const MVC_APP_URL='https://play.google.com/store/search?q=manish%20verma%20classes&c=apps';
-function openMVC(){ window.open(MVC_APP_URL,'_blank'); }
+// ============ MANISH VERMA CLASSES APP — SMART OPEN ============
+// Android: app installed -> app khulta hai; nahi -> seedha Play Store listing
+// iOS: Manish Verma Classes ki apni App Store listing (id6768236345)
+// Desktop: web platform
+const MVC_ANDROID_PKG='com.manish.verma.classes';
+const MVC_PLAY_URL='https://play.google.com/store/apps/details?id='+MVC_ANDROID_PKG;
+const MVC_WEB_URL='https://manishvermaclasses.classx.co.in/';
+const MVC_IOS_URL='https://apps.apple.com/app/manish-verma-classes/id6768236345';
+function openMVC(){
+  const ua=navigator.userAgent||'';
+  if(/android/i.test(ua)){
+    // intent:// -> app installed hai to app open, warna Play Store listing (search page NAHI)
+    location.href='intent://open/#Intent;scheme=mvc;package='+MVC_ANDROID_PKG
+      +';S.browser_fallback_url='+encodeURIComponent(MVC_PLAY_URL)+';end';
+    // kuch browsers intent ignore karte hain — 1.5s me kuch nahi khula to Play Store
+    setTimeout(()=>{ if(!document.hidden) location.href=MVC_PLAY_URL; },1500);
+    return;
+  }
+  if(/iphone|ipad|ipod/i.test(ua)){
+    // Manish Verma Classes ki apni iOS app — installed hai to khul jati hai,
+    // warna App Store listing (itms-apps App Store app me seedha kholta hai)
+    location.href='itms-apps://apps.apple.com/app/manish-verma-classes/id6768236345';
+    setTimeout(()=>{ if(!document.hidden) location.href=MVC_IOS_URL; },1200);
+    return;
+  }
+  window.open(MVC_WEB_URL,'_blank');   // desktop -> web platform
+}
 const _WS_PRIO_IC={lecture:'play',test:'edit',dpp:'clipboard',material:'book'};
 const _WS_TASK_ACT={lecture:'mvc',dpp:'dpp',test:'tests',material:'materials'};
 function wsGo(page){ if(page==='mvc'){ openMVC(); return; } navTo('student-app',page); }
