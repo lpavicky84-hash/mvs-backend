@@ -164,6 +164,32 @@ def _sso_phone(payload):
     return None, "Phone number missing."
 
 
+def _portal_batches(class_level, session):
+    """MVS Portal student ko sirf uske session + class ke batches dikhte hain.
+       April/October  -> LIVE  : Lakshya (12) / Udaan (10)
+       On Demand/SYC  -> REC.  : Safalta (12) / Jeet (10)
+       Manzil aur Aarambh sirf MVS App ke liye hain — portal students ko kabhi nahi."""
+    t = "".join(ch for ch in (session or "").lower() if ch.isalnum())
+    syc = ("ondemand" in t) or ("syc" in t)
+    cls = str(class_level or "")
+    if syc:
+        names = ["Safalta Batch"] if cls != "10" else ["Jeet Batch"]
+        if cls not in ("10", "12"):
+            names = ["Safalta Batch", "Jeet Batch"]
+        mode = "rec"
+    else:
+        if cls == "10":
+            names = ["Udaan Class 10"]
+        elif cls == "12":
+            names = ["Lakshya Science", "Lakshya Commerce", "Lakshya Arts"]
+        else:
+            names = ["Lakshya Science", "Lakshya Commerce", "Lakshya Arts", "Udaan Class 10"]
+        mode = "live"
+    from student_routes import STUDENT_BATCHES
+    return [{"name": n, "class_level": STUDENT_BATCHES[n][0], "mode": mode}
+            for n in names if n in STUDENT_BATCHES]
+
+
 @router.post("/sso-lookup")
 def sso_lookup(payload: dict, db: Session = Depends(get_db)):
     phone, err = _sso_phone(payload or {})
@@ -171,17 +197,27 @@ def sso_lookup(payload: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=err)
     sp = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
     if sp and sp.user:
+        # PRIORITY RULE: student MVS Portal se aa raha hai -> uska source hamesha
+        # mvs_portal ho jata hai (chahe pehle sheet/MVS App se add hua ho), aur
+        # uska data portal se refresh ho jata hai.
+        if (getattr(sp, "source", None) or "mvs_app") != "mvs_portal":
+            try:
+                from admin_routes import _sync_one_from_portal
+                if _sync_one_from_portal(sp, db):
+                    db.commit()
+            except Exception:
+                db.rollback()
         return {"found": True, "name": sp.user.name,
                 "user_id": sp.user.user_id, "password": sp.plain_password or ""}
     # CRM me nahi — MVS Portal se details
-    from ext_materials import portal_fetch_student
+    from ext_materials import portal_fetch_student, portal_probe_student
     st = portal_fetch_student(phone)
     if not st:
-        return {"found": False, "portal": False}
+        code, msg = portal_probe_student(phone)
+        return {"found": False, "portal": False, "reason": code, "detail": msg}
     if not st["unlocked"]:
         return {"found": False, "portal": True, "locked": True, "name": st["name"]}
-    from student_routes import STUDENT_BATCHES
-    batches = [n for n, v in STUDENT_BATCHES.items() if not st["class_level"] or v[0] == st["class_level"]]
+    batches = _portal_batches(st["class_level"], st["session"])
     return {"found": False, "portal": True, "locked": False,
             "profile": {"name": st["name"], "phone": phone, "class_level": st["class_level"],
                         "medium": st["medium"], "subjects": st["subjects"], "session": st["session"]},
@@ -197,6 +233,9 @@ def sso_register(payload: dict, db: Session = Depends(get_db)):
     from student_routes import STUDENT_BATCHES
     if batch_name not in STUDENT_BATCHES:
         raise HTTPException(status_code=400, detail="Please select a valid batch")
+    if batch_name in ("Manzil Batch", "Aarambh Batch"):
+        raise HTTPException(status_code=400,
+                            detail="This batch is not available for MVS Portal students.")
     # already exists? (double-tap safety)
     sp = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
     if sp and sp.user:
@@ -209,8 +248,10 @@ def sso_register(payload: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No MVS Portal student found for this phone. Please contact the admin.")
     if not st["unlocked"]:
         raise HTTPException(status_code=403, detail="Your class access is not unlocked yet. Please contact the admin.")
-    if st["class_level"] and STUDENT_BATCHES[batch_name][0] != st["class_level"]:
-        raise HTTPException(status_code=400, detail=f"This batch is for Class {STUDENT_BATCHES[batch_name][0]}, but your class is {st['class_level']}.")
+    allowed = {b["name"] for b in _portal_batches(st["class_level"], st["session"])}
+    if batch_name not in allowed:
+        raise HTTPException(status_code=400,
+                            detail="This batch is not available for your class/session. Please pick one of the shown batches.")
     name = st["name"] or ("Student " + phone[-4:])
     i = 1
     while True:

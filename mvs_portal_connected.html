@@ -1303,6 +1303,30 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 .dark .health-scroll .health-table thead th{background:#13223b}
 @media(max-width:640px){.health-scroll{max-height:300px}}
 
+
+/* MVS Portal onboarding popup */
+.pill-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.pill{padding:8px 15px;border-radius:11px;font-size:.79rem;font-weight:700;background:var(--card);border:1.5px solid var(--border);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.pill-hl{background:linear-gradient(135deg,var(--accent),#e2560f);border-color:transparent;color:#fff;box-shadow:0 5px 14px -5px rgba(255,107,43,.5)}
+.dark .pill-hl{color:#181203}
+.sso-lbl{font-size:.68rem;font-weight:900;letter-spacing:.09em;text-transform:uppercase;color:var(--text-muted);margin:18px 0 9px}
+.batch-grid{display:flex;flex-direction:column;gap:10px}
+.batch-card{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:15px 17px;border-radius:15px;border:1.5px solid var(--border);background:var(--card);cursor:pointer;transition:.18s;box-shadow:var(--shadow);text-align:left}
+.batch-card:hover:not(:disabled){border-color:var(--accent);transform:translateY(-2px);box-shadow:0 10px 22px -8px rgba(255,107,43,.3)}
+.batch-card:disabled{opacity:.45;cursor:default}
+.batch-card.picked{border-color:var(--accent);background:var(--primary-50);opacity:1}
+.bt-name{font-weight:800;font-size:.97rem;color:var(--text);animation:btGlow 1.7s ease-in-out infinite}
+@keyframes btGlow{0%,100%{opacity:1}50%{opacity:.62}}
+.bt-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:99px;font-size:.66rem;font-weight:900;letter-spacing:.06em;flex-shrink:0}
+.bt-badge svg{width:12px;height:12px}
+.bt-live{background:rgba(220,38,38,.12);color:#dc2626}
+.bt-live i{width:7px;height:7px;border-radius:50%;background:#dc2626;display:inline-block;animation:liveBlink 1.1s infinite}
+@keyframes liveBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(220,38,38,.5)}50%{opacity:.35;box-shadow:0 0 0 5px rgba(220,38,38,0)}}
+.bt-rec{background:rgba(124,58,237,.13);color:#7c3aed;animation:recPulse 1.6s ease-in-out infinite}
+@keyframes recPulse{0%,100%{opacity:1}50%{opacity:.55}}
+.dark .bt-live{background:rgba(248,113,113,.16);color:#f87171}
+.dark .bt-rec{background:rgba(167,139,250,.16);color:#a78bfa}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -5706,19 +5730,25 @@ async function mvsSsoFromHash(){
 // MVS Portal se aaya naya student — sirf batch chunta hai, baaki sab auto
 function ssoBatchPopup(p,batches){
   document.getElementById('landing').style.display='none';
-  const subChips=(p.subjects||[]).slice(0,7).map(x=>`<span class="xm-chip">${esc(x)}</span>`).join('');
-  const bBtns=batches.map(b=>`<button class="btn btn-ghost" style="width:100%;justify-content:space-between;margin-bottom:9px" onclick="ssoRegister('${esc(b)}',this)">${esc(b)}<span style="font-size:.68rem;opacity:.7">Class ${p.class_level||''}</span></button>`).join('');
+  const subChips=(p.subjects||[]).map(x=>`<span class="pill">${esc(x)}</span>`).join('');
+  const bBtns=(batches||[]).map(b=>{
+    const nm=(typeof b==='string')?b:b.name, mode=(typeof b==='string')?'live':(b.mode||'live');
+    const badge=mode==='rec'
+      ? `<span class="bt-badge bt-rec">${ic('play')} REC.</span>`
+      : `<span class="bt-badge bt-live"><i></i> LIVE</span>`;
+    return `<button class="batch-card" onclick="ssoRegister('${esc(nm).replace(/'/g,"\\'")}',this)"><span class="bt-name">${esc(nm)}</span>${badge}</button>`;
+  }).join('');
   showModal('Welcome, '+esc(p.name||'Student')+'!',
-    `<p style="font-size:.85rem;color:var(--text-muted);margin-bottom:12px">Your details have been fetched from the MVS Portal. Just select your batch to continue \u2014 subjects and medium are set automatically.</p>
-     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"><span class="xm-chip xm-chip-hl">Class ${esc(p.class_level||'\u2014')}</span>${p.medium?`<span class="xm-chip">${esc(p.medium)} Medium</span>`:''}${p.session?`<span class="xm-chip">${esc(p.session)}</span>`:''}</div>
-     ${subChips?`<div style="font-size:.72rem;font-weight:700;color:var(--text-muted);margin-bottom:6px">YOUR SUBJECTS</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">${subChips}</div>`:''}
-     <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);margin-bottom:8px">SELECT YOUR BATCH</div>${bBtns||'<p style="color:var(--text-muted)">No batches available for your class. Please contact the admin.</p>'}
+    `<div class="pill-row">${p.class_level?`<span class="pill pill-hl">Class ${esc(p.class_level)}</span>`:''}${p.medium?`<span class="pill">${esc(p.medium)} Medium</span>`:''}${p.session?`<span class="pill">${esc(p.session)}</span>`:''}</div>
+     ${subChips?`<div class="sso-lbl">Your Subjects</div><div class="pill-row">${subChips}</div>`:''}
+     <div class="sso-lbl">Select Your Batch</div>
+     <div class="batch-grid">${bBtns||'<p style="color:var(--text-muted);font-size:.85rem">No batch available for your class/session. Please contact the admin.</p>'}</div>
      <div id="sso-reg-status"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal();goLogin('student')">Cancel</button>`);
 }
 async function ssoRegister(batch,btn){
-  document.querySelectorAll('#modal-body .btn-ghost').forEach(b=>b.disabled=true);
-  if(btn){ btn.classList.remove('btn-ghost'); btn.classList.add('btn-primary'); btn.innerHTML='Setting up your account\u2026'; }
+  document.querySelectorAll('#modal-body .batch-card').forEach(b=>b.disabled=true);
+  if(btn){ btn.classList.add('picked'); btn.innerHTML='<span class="bt-name">Setting up your account\u2026</span>'; }
   try{
     const r=await api('/api/auth/sso-register','POST',{token:window._ssoToken||'',phone:(window._ssoProfile||{}).phone||'',batch_name:batch});
     TOKEN=r.access_token; ROLE='student'; NAME=r.name;
@@ -5730,7 +5760,7 @@ async function ssoRegister(batch,btn){
     const st=document.getElementById('sso-reg-status');
     if(st) st.innerHTML=`<div class="alert alert-danger" style="margin-top:10px">${esc(e.message)}</div>`;
     document.querySelectorAll('#modal-body button').forEach(b=>b.disabled=false);
-    if(btn){ btn.classList.add('btn-ghost'); btn.classList.remove('btn-primary'); btn.innerHTML=esc(batch); }
+    if(btn){ btn.classList.remove('picked'); btn.innerHTML=`<span class="bt-name">${esc(batch)}</span>`; }
   }
 }
 window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
