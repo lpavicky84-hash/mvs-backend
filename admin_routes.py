@@ -119,13 +119,22 @@ def _derive_subject_classes(profile, db):
     by_name = {}
     for r in rows:
         by_name.setdefault((r.name or "").strip().lower(), []).append(str(r.class_level or ""))
+    # AHEM: guess mat karo. Agar subject ka naam sirf EK class me hai to hi class
+    # assign hoti hai. Economics/Hindi/Painting jaise naam dono classes me hote
+    # hain — unke liye class blank rehti hai (admin Edit se sahi set karega).
     out, used = [], {}
     for nm in flat:
         key = (nm or "").strip().lower()
-        classes = sorted(set(by_name.get(key, [])))          # e.g. ["10","12"]
-        i = used.get(key, 0)
-        cls = classes[i] if i < len(classes) else (classes[-1] if classes else "")
-        used[key] = i + 1
+        classes = sorted(set(by_name.get(key, [])))
+        if len(classes) == 1:
+            cls = classes[0]
+        elif len(classes) > 1 and flat.count(nm) >= len(classes):
+            # teacher ke paas subject utni hi baar hai jitni classes -> dono padhata hai
+            i = used.get(key, 0)
+            cls = classes[i] if i < len(classes) else ""
+            used[key] = i + 1
+        else:
+            cls = ""      # ambiguous -> koi guess nahi
         out.append({"subject": nm, "class": cls})
     return out
 

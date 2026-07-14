@@ -3976,14 +3976,27 @@ async function removeTeacherPhoto(pid){
   try{ await api('/api/admin/teacher/'+pid+'/photo','DELETE'); toast('Photo removed.'); closeModal(); loadATeachers(); }
   catch(e){ toast('Could not remove the photo.',true); }
 }
-function _teacherSubjByClass(subjects){
+// Teacher ke subjects ko class ke hisaab se baanto.
+// PEHLE subject_classes (asli subject+class pairing) dekhte hain — naam se
+// guess NAHI karte, warna "Economics" (jo 10 aur 12 dono me hai) dono classes
+// me dikhne lagta tha. Jinki class saved nahi, wo "Class not set" me jaate hain.
+function _teacherSubjByClass(subjects, subjectClasses){
   const cat=window._allSubjects||{'10':[],'12':[]};
-  const set=new Set((subjects||[]).map(s=>(s||'').toLowerCase()));
-  const c10=(cat['10']||[]).filter(s=>set.has(s.name.toLowerCase()));
-  const c12=(cat['12']||[]).filter(s=>set.has(s.name.toLowerCase()));
-  const known=new Set([...c10,...c12].map(s=>s.name.toLowerCase()));
-  const other=(subjects||[]).filter(s=>!known.has((s||'').toLowerCase()));
-  return {c10,c12,other};
+  const find=(nm,cl)=>(cat[cl]||[]).find(x=>(x.name||'').toLowerCase()===(nm||'').toLowerCase());
+  const sc=(subjectClasses||[]).filter(x=>x&&x.subject);
+  if(sc.length){
+    const c10=[],c12=[],other=[];
+    sc.forEach(x=>{
+      const cl=String(x.class||x.class_level||'');
+      const hit=cl?find(x.subject,cl):null;
+      if(cl==='10') c10.push(hit||{name:x.subject,code:''});
+      else if(cl==='12') c12.push(hit||{name:x.subject,code:''});
+      else other.push(x.subject);
+    });
+    return {c10,c12,other};
+  }
+  // koi pairing nahi -> class guess mat karo, sab "Class not set" me
+  return {c10:[],c12:[],other:(subjects||[]).slice()};
 }
 function _codeChips(list){ return list.map(s=>`<span class="code-chip">${esc(s.name)} <b>${esc(s.code)}</b></span>`).join(''); }
 async function loadAMaterial(){
@@ -4043,10 +4056,10 @@ async function loadATeachers(){
  if(ts.length===0){ el.innerHTML=html+`<div class="empty-state"><p>No teachers yet. Use "Add Teacher" to create one.</p></div>`; return; }
  html+=`<div class="tcard-grid">`;
  ts.forEach(t=>{
-   const sc=_teacherSubjByClass(t.subjects);
+   const sc=_teacherSubjByClass(t.subjects,t.subject_classes);
    const cls10=sc.c10.length?`<div class="tcard2-cls"><div class="tcard2-cls-h">Class 10</div>${_codeChips(sc.c10)}</div>`:'';
    const cls12=sc.c12.length?`<div class="tcard2-cls"><div class="tcard2-cls-h">Class 12</div>${_codeChips(sc.c12)}</div>`:'';
-   const other=sc.other.length?`<div class="tcard2-cls"><div class="tcard2-cls-h">Other</div>${sc.other.map(s=>`<span class="code-chip">${esc(s)}</span>`).join('')}</div>`:'';
+   const other=sc.other.length?`<div class="tcard2-cls"><div class="tcard2-cls-h" style="color:var(--warning)">Class not set \u2014 fix via Edit</div>${sc.other.map(s=>`<span class="code-chip">${esc(s)}</span>`).join('')}</div>`:'';
    const none=(!sc.c10.length&&!sc.c12.length&&!sc.other.length)?`<div class="tcard2-sub" style="margin-top:10px">No subjects assigned yet.</div>`:'';
    const ph=`tphoto-${t.profile_id}`;
    html+=`<div class="tcard2"><div class="tcard2-head"><div class="tcard2-photo${t.has_photo?' clickable':''}" id="${ph}" onclick="viewPhoto('${ph}','${esc((t.name||'').replace(/'/g,''))}',${t.profile_id})" title="${t.has_photo?'View photo':'Upload photo'}">${esc(initials(t.name||'T'))}</div><div style="flex:1"><div class="tcard2-name">${esc(t.name)}</div><div class="tcard2-sub"><code>${esc(t.user_id)}</code> · ${esc(t.phone||'no phone')}</div><span class="tag ${t.is_active?'tag-done':'tag-low'}" style="margin-top:6px">${t.is_active?'Active':'Inactive'}</span></div></div>
@@ -4114,14 +4127,21 @@ async function submitAddTeacher(){
 
 function openEditTeacher(pid,data){
   const sc=(data.subject_classes||[]).filter(x=>x&&x.subject);
-  const sel10=sc.filter(x=>String(x.class||x.class_level)==='10').map(x=>x.subject);
-  const sel12=sc.filter(x=>String(x.class||x.class_level)==='12').map(x=>x.subject);
-  const legacy=(!sc.length)?(data.subjects||[]):[];
+  // IMPORTANT: sirf wahi subject tick hota hai jiski class SAAF likhi ho.
+  // Blank class wale (Economics/Hindi jaise naam dono classes me hote hain)
+  // kisi bhi list me tick NAHI hote — admin khud sahi class chunta hai.
+  const sel10=sc.filter(x=>String(x.class||x.class_level||'')==='10').map(x=>x.subject);
+  const sel12=sc.filter(x=>String(x.class||x.class_level||'')==='12').map(x=>x.subject);
+  const unknown=sc.filter(x=>!String(x.class||x.class_level||'')).map(x=>x.subject);
+  const warn=unknown.length
+    ? `<div class="alert alert-warning" style="font-size:.8rem">In subjects ki class saved nahi hai (same naam dono classes me hota hai): <b>${unknown.map(esc).join(', ')}</b>. Neeche sahi class chunkar Save karein.</div>`
+    : '';
   showModal('Edit Teacher',
     `<div class="form-group"><label>Name</label><input class="form-control" id="et-name" value="${esc(data.name||'')}"></div>
      <div class="form-group"><label>Phone</label><input class="form-control" id="et-phone" value="${esc(data.phone||'')}"></div>
-     <div class="form-group"><label>Class 10 Subjects <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(tap to select)</span></label><div id="et-s10">${subjectCheckboxes('et-s10','10',sel10.length?sel10:legacy)}</div></div>
-     <div class="form-group"><label>Class 12 Subjects <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(tap to select)</span></label><div id="et-s12">${subjectCheckboxes('et-s12','12',sel12.length?sel12:legacy)}</div></div>
+     ${warn}
+     <div class="form-group"><label>Class 10 Subjects <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(tap to select)</span></label><div id="et-s10">${subjectCheckboxes('et-s10','10',sel10)}</div></div>
+     <div class="form-group"><label>Class 12 Subjects <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(tap to select)</span></label><div id="et-s12">${subjectCheckboxes('et-s12','12',sel12)}</div></div>
      <div class="form-group"><label>Status</label><select class="form-control" id="et-active"><option value="1"${data.is_active?' selected':''}>Active</option><option value="0"${!data.is_active?' selected':''}>Inactive</option></select></div>
      <div id="et-status"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="et-btn" onclick="saveEditTeacher(${pid})">Save</button>`);
@@ -4572,10 +4592,10 @@ async function loadAActivity(){
  if(ts.length===0){ el.innerHTML=html+`<div class="empty-state"><p>No teachers yet.</p></div>`; return; }
  html+=`<div class="tcard-grid">`;
  ts.forEach(t=>{
-   const sc=_teacherSubjByClass(t.subjects);
+   const sc=_teacherSubjByClass(t.subjects,t.subject_classes);
    const cls10=sc.c10.length?`<div class="tcard2-cls"><div class="tcard2-cls-h">Class 10 Subjects</div>${_codeChips(sc.c10)}</div>`:'';
    const cls12=sc.c12.length?`<div class="tcard2-cls"><div class="tcard2-cls-h">Class 12 Subjects</div>${_codeChips(sc.c12)}</div>`:'';
-   const other=sc.other.length?`<div class="tcard2-cls"><div class="tcard2-cls-h">Other</div>${sc.other.map(s=>`<span class="code-chip">${esc(s)}</span>`).join('')}</div>`:'';
+   const other=sc.other.length?`<div class="tcard2-cls"><div class="tcard2-cls-h" style="color:var(--warning)">Class not set \u2014 fix via Edit</div>${sc.other.map(s=>`<span class="code-chip">${esc(s)}</span>`).join('')}</div>`:'';
    const none=(!sc.c10.length&&!sc.c12.length&&!sc.other.length)?`<div class="tcard2-sub" style="margin-top:10px">No subjects assigned.</div>`:'';
    const m=t.monthly_classes_done||0;
    const lvl=!t.is_active?{c:'tag-low',l:'Inactive'}:m>=8?{c:'tag-done',l:'High activity'}:m>=3?{c:'tag-pending',l:'Medium'}:{c:'tag-low',l:'Low'};
