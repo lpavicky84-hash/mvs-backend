@@ -853,12 +853,17 @@ def edit_teacher(tid: int, payload: dict, db: Session = Depends(get_db), _=Depen
         tp.user.name = (payload["name"] or "").strip() or tp.user.name
     if "phone" in payload:
         tp.phone = (payload.get("phone") or "").strip() or None
-    if "subjects" in payload and isinstance(payload["subjects"], list):
+    if "subject_classes" in payload and isinstance(payload["subject_classes"], list):
+        sc = [x for x in payload["subject_classes"]
+              if isinstance(x, dict) and (x.get("subject") or "").strip()]
+        tp.subject_classes = sc
+        tp.subjects = [x["subject"].strip() for x in sc]
+    elif "subjects" in payload and isinstance(payload["subjects"], list):
         tp.subjects = [s.strip() for s in payload["subjects"] if s.strip()]
     if "is_active" in payload and tp.user:
         tp.user.is_active = bool(payload["is_active"])
     db.commit()
-    return {"message": "Teacher update ho gaya"}
+    return {"message": "Teacher updated"}
 
 @router.delete("/teacher/{tid}")
 def delete_teacher(tid: int, db: Session = Depends(get_db), _=Depends(get_admin)):

@@ -1436,6 +1436,73 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 .dl-date{font-weight:800;font-size:.82rem;white-space:nowrap}
 .dl-form{border-top:1.5px dashed var(--border);padding-top:14px}
 
+
+/* ============ DARK MODE POLISH (portal-wide) ============ */
+/* subject picker (master dropdown) */
+.subj-picker{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.subj-picker select{max-width:320px;font-weight:700}
+.subj-count{font-size:.74rem;color:var(--text-muted);font-weight:700}
+.subj-picker .ex-lbl{margin:0}
+
+/* timeline (dark) */
+.dark .stl-card{background:linear-gradient(180deg,#13223b,#101d33);border-color:var(--border)}
+.dark .stl-cname{color:#e9f0fb}
+.dark .stl-part{color:#cfdaeb;border-bottom-color:rgba(255,255,255,.07)}
+.dark .stl-badge.done{background:rgba(16,185,129,.16);color:#6ee7b7}
+.dark .stl-badge.upcoming{background:rgba(255,255,255,.08);color:#a8b6cc}
+.dark .stl-pbadge.done{background:rgba(16,185,129,.16);color:#6ee7b7}
+.dark .stl-dot{background:#1b2c49;border-color:#2b3d5e}
+.dark .stl-dot.done{background:var(--success);border-color:var(--success)}
+.dark .stl-line,.dark .stl-wrap::before{background:rgba(255,255,255,.08)}
+.dark .cnt-badge{background:rgba(255,255,255,.09);color:#cbd5e1}
+.dark .cnt-badge.dark{background:rgba(255,255,255,.14);color:#fff}
+
+/* subject tabs / pills (dark) */
+.dark .subj-tab{background:#13223b;border-color:var(--border);color:#c6d2e3}
+.dark .subj-tab:hover{border-color:var(--accent);color:var(--text)}
+.dark .subj-tab.active{background:var(--primary);border-color:var(--primary);color:#181203}
+.dark .subj-tab.active .cnt-badge{background:rgba(0,0,0,.2);color:inherit}
+
+/* overview hero + toggle (dark) */
+.dark .ov-card{background:linear-gradient(135deg,#15294a,#101d33);border:1px solid var(--border)}
+.dark .tt-toggle{background:rgba(255,255,255,.06);border:1px solid var(--border)}
+.dark .tt-toggle button{color:#a8b6cc}
+.dark .tt-toggle button.active{background:var(--primary);color:#181203}
+
+/* teacher/student cards (dark) */
+.dark .tcard2,.dark .stu-row,.dark .kyt-card,.dark .qb-card,.dark .doubt-card,.dark .dcard,.dark .ad-card,.dark .rec-card{background:linear-gradient(180deg,#13223b,#101d33);border-color:var(--border)}
+.dark .tcard2-sub,.dark .stu-meta{color:#93a6c4}
+.dark .mini-stat,.dark .tc2-stat{background:rgba(255,255,255,.05)}
+.dark .chip,.dark .subj-chip{background:rgba(255,255,255,.07);color:#cbd5e1}
+.dark .tag-done{background:rgba(16,185,129,.16);color:#6ee7b7}
+.dark .tag-pending,.dark .tag-reschedule{background:rgba(217,119,6,.18);color:#fbbf24}
+
+/* forms + tables (dark) */
+.dark .form-control{background:#0f1c31;border-color:#24365a}
+.dark .form-control:focus{border-color:var(--accent)}
+.dark table th{background:rgba(255,255,255,.04);color:#a8b6cc}
+.dark table td{border-color:var(--border)}
+.dark .card-header{border-bottom-color:var(--border)}
+.dark .empty-state{color:#93a6c4}
+.dark code{background:rgba(255,255,255,.08);color:#e2b458}
+.dark .file-drop{background:rgba(255,255,255,.03);border-color:var(--border)}
+.dark .file-drop:hover,.dark .file-drop.drag{border-color:var(--accent);background:rgba(226,180,88,.06)}
+.dark .btn-success{background:#0f7a5a;color:#eafff6}
+.dark .btn-danger{background:#b23434;color:#ffecec}
+.dark .stat-card .sc-num{color:#eaf0fb}
+.dark .seg{background:#13223b}
+.dark .seg-b{color:#a8b6cc}
+.dark .seg-b:hover{background:rgba(255,255,255,.06);color:#fff}
+
+
+/* students master filter */
+.stu-master{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;background:var(--card);border:1.5px solid var(--border);border-radius:16px;padding:14px 16px;margin-bottom:16px;box-shadow:var(--shadow)}
+.stu-master select{min-width:200px}
+.stu-master-n{margin-left:auto;text-align:right}
+.stu-master-n .cn{font-size:1.6rem;font-weight:900;line-height:1}
+.stu-master-n .cl{font-size:.72rem;color:var(--text-muted);font-weight:700}
+@media(max-width:640px){.stu-master{gap:10px}.stu-master select{min-width:100%}.stu-master>div{width:100%}.stu-master-n{margin-left:0;text-align:left}}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -2666,10 +2733,18 @@ async function loadTTimetable(){
     _ttEntries=await api('/api/teacher/my-timetable');
     el.innerHTML=`${tabs}<div class="card"><div class="card-header"><h3>My Time Table</h3><button class="btn btn-primary btn-sm" onclick="openRequestClass()">${ic('calendar')} Add Extra Class</button></div><div class="card-body"><div id="t-tline-wrap"></div></div></div>`;
     _ttActiveSub=_ttActiveSub||(_ttEntries[0]||{}).subject||'';
-    renderStudentTimetable(_ttEntries,'t-tline-wrap',{onEdit:true,onLecture:true,onComplete:'openClassReport',emptyMsg:'No timetable for your subjects yet.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'});
+    // apni photo har subject par timeline me dikhe
+    try{
+      const me=await api('/api/teacher/profile');
+      window._ttTeacherMap={};
+      let url=null;
+      try{ const r=await fetch(API+'/api/teacher/my-photo',{headers:{Authorization:'Bearer '+TOKEN}}); if(r.ok) url=URL.createObjectURL(await r.blob()); }catch(e){}
+      [...new Set(_ttEntries.map(e=>e.subject))].forEach(sub=>{ window._ttTeacherMap[sub]={name:me.name||NAME,url}; });
+    }catch(e){ window._ttTeacherMap=window._ttTeacherMap||{}; }
+    renderStudentTimetable(_ttEntries,'t-tline-wrap',{onEdit:true,tipTeacherMap:window._ttTeacherMap||{},onLecture:true,onComplete:'openClassReport',emptyMsg:'No timetable for your subjects yet.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'});
   }catch(e){ el.innerHTML=errHtml(e); }
 }
-function tSetSubj(s){ _ttActiveSub=decodeURIComponent(s); renderStudentTimetable(_ttEntries,'t-tline-wrap',{onEdit:true,onLecture:true,onComplete:'openClassReport',emptyMsg:'No entries.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'}); }
+function tSetSubj(s){ _ttActiveSub=decodeURIComponent(s); renderStudentTimetable(_ttEntries,'t-tline-wrap',{tipTeacherMap:window._ttTeacherMap||{},onEdit:true,onLecture:true,onComplete:'openClassReport',emptyMsg:'No entries.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'}); }
 function openTTPdf(){
   showModal('PDF Upload — Auto-Parse',
  `<div class="alert alert-info"><strong>Upload your timetable PDF directly</strong> — format and columns are auto-detected. Chapter, Parts, Date, Day and Time are all extracted.</div><div class="form-group"><label>Class</label>${classSelect('pdf-class')}</div><div class="form-group"><label>Subject (optional — blank = PDF se auto-detect)</label><input class="form-control" id="pdf-subject" placeholder="Blank = auto-detect"></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('pdf-file').click()"><div class="fd-icon"></div><div id="pdf-label" style="font-size:.85rem">Click to choose a PDF</div><input type="file" id="pdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('pdf-label').textContent=this.files[0]?.name||''"></div></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="pdf-replace"> Replace existing entries for the same subject</label></div><div id="pdf-status"></div>`,
@@ -4038,19 +4113,26 @@ async function submitAddTeacher(){
 }
 
 function openEditTeacher(pid,data){
+  const sc=(data.subject_classes||[]).filter(x=>x&&x.subject);
+  const sel10=sc.filter(x=>String(x.class||x.class_level)==='10').map(x=>x.subject);
+  const sel12=sc.filter(x=>String(x.class||x.class_level)==='12').map(x=>x.subject);
+  const legacy=(!sc.length)?(data.subjects||[]):[];
   showModal('Edit Teacher',
     `<div class="form-group"><label>Name</label><input class="form-control" id="et-name" value="${esc(data.name||'')}"></div>
      <div class="form-group"><label>Phone</label><input class="form-control" id="et-phone" value="${esc(data.phone||'')}"></div>
-     <div class="form-group"><label>Subjects (comma-separated)</label><input class="form-control" id="et-subjects" value="${esc((data.subjects||[]).join(', '))}"></div>
+     <div class="form-group"><label>Class 10 Subjects <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(tap to select)</span></label><div id="et-s10">${subjectCheckboxes('et-s10','10',sel10.length?sel10:legacy)}</div></div>
+     <div class="form-group"><label>Class 12 Subjects <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(tap to select)</span></label><div id="et-s12">${subjectCheckboxes('et-s12','12',sel12.length?sel12:legacy)}</div></div>
      <div class="form-group"><label>Status</label><select class="form-control" id="et-active"><option value="1"${data.is_active?' selected':''}>Active</option><option value="0"${!data.is_active?' selected':''}>Inactive</option></select></div>
      <div id="et-status"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="et-btn" onclick="saveEditTeacher(${pid})">Save</button>`);
 }
 async function saveEditTeacher(pid){
-  const subjects=val('et-subjects').split(',').map(s=>s.trim()).filter(Boolean);
+  const sc=[...pickedSubjects('et-s10').map(s=>({subject:s,class:'10'})),
+            ...pickedSubjects('et-s12').map(s=>({subject:s,class:'12'}))];
+  if(!sc.length){ toast('Please select at least one subject.',true); return; }
   const btn=document.getElementById('et-btn'); btn.disabled=true; btn.textContent='Saving...';
   try{
-    await api('/api/admin/teacher/'+pid,'PATCH',{name:val('et-name'),phone:val('et-phone'),subjects,is_active:val('et-active')==='1'});
+    await api('/api/admin/teacher/'+pid,'PATCH',{name:val('et-name'),phone:val('et-phone'),subject_classes:sc,is_active:val('et-active')==='1'});
     toast('Teacher updated.'); closeModal(); loadATeachers();
   }catch(e){ document.getElementById('et-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Save'; }
 }
@@ -4123,7 +4205,7 @@ async function submitBulkPhone(){
     toast(r.message); btn.textContent='Done'; setTimeout(()=>{closeModal(); if(document.getElementById('a-page-students').classList.contains('active'))loadAStudents();},1200);
   }catch(e){ document.getElementById('bp-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Add Students'; }
 }
-let _aStu=[]; let _aCounts={total:0,subjects:[]}; let _stuFilter=''; let _stuSearch=''; let _stuPage=1; let _stuSize=10;
+let _aStu=[]; let _aCounts={total:0,subjects:[]}; let _stuFilter=''; let _stuClass=''; let _stuSearch=''; let _stuPage=1; let _stuSize=10;
 async function loadAStudents(){
   const el=document.getElementById('a-students-content');
   try{
@@ -4386,17 +4468,28 @@ function pickedSubjects(wrapId){
 }
 let _stuSrcFilter='';
 function aStuSrcFilter(src){ _stuSrcFilter=src; _stuPage=1; aRenderStudents(); }
+function aStuClass(c){ _stuClass=c; _stuFilter=''; _stuPage=1; aRenderStudents(); }
 function _stuFiltered(){
   let list=_aStu;
   if(_stuSrcFilter) list=list.filter(s=>(s.source||'mvs_app')===_stuSrcFilter);
+  if(_stuClass) list=list.filter(s=>String(s.class_level||'')===_stuClass);
   if(_stuFilter) list=list.filter(s=>(s.subjects||[]).some(x=>x.toLowerCase()===_stuFilter.toLowerCase()));
   if(_stuSearch){ const q=_stuSearch.toLowerCase(); list=list.filter(s=>(s.name||'').toLowerCase().includes(q)||(s.phone||'').includes(q)||(s.user_id||'').toLowerCase().includes(q)||(s.email||'').toLowerCase().includes(q)); }
   return list;
 }
 function aRenderStudents(){
   const el=document.getElementById('a-students-content');
-  const cards=[`<div class="ccard ${_stuFilter===''?'active':''}" onclick="aStuSetFilter('')"><div class="cn">${_aCounts.total}</div><div class="cl">All Students</div></div>`]
-    .concat((_aCounts.subjects||[]).map(c=>`<div class="ccard ${_stuFilter===c.subject?'active':''}" onclick="aStuSetFilter('${esc((c.subject||'').replace(/'/g,''))}')"><div class="cn">${c.count}</div><div class="cl">${esc(c.subject)}</div><div class="cc">${c['class']?'Class '+c['class']:''}</div></div>`)).join('');
+  // ---- MASTER FILTER: class + subject dropdown (tabs ki jagah) ----
+  const subsAll=(_aCounts.subjects||[]);
+  const classes=[...new Set(subsAll.map(c=>String(c['class']||c.class_level||'')).filter(Boolean))].sort();
+  const subsForClass=subsAll.filter(c=>!_stuClass||String(c['class']||c.class_level||'')===_stuClass);
+  const selCount=_stuFilter?(subsAll.find(c=>c.subject===_stuFilter)||{}).count:_aCounts.total;
+  const cards=[`<div class="stu-master">
+      <div><label class="ex-lbl">Class</label><select class="form-control" onchange="aStuClass(this.value)"><option value="">All Classes</option>${classes.map(c=>`<option value="${esc(c)}"${_stuClass===c?' selected':''}>Class ${esc(c)}</option>`).join('')}</select></div>
+      <div><label class="ex-lbl">Subject</label><select class="form-control" onchange="aStuSetFilter(this.value)"><option value="">All Subjects (${_aCounts.total} students)</option>${subsForClass.map(c=>`<option value="${esc(c.subject)}"${_stuFilter===c.subject?' selected':''}>${esc(c.subject)}${(c['class']||c.class_level)?` \u00b7 Class ${esc(String(c['class']||c.class_level))}`:''} \u00b7 ${c.count} students</option>`).join('')}</select></div>
+      <div class="stu-master-n"><div class="cn">${selCount||0}</div><div class="cl">${_stuFilter?esc(_stuFilter):'All Students'}</div></div>
+      ${(_stuFilter||_stuClass)?`<button class="btn btn-ghost btn-sm" onclick="aStuClass('');aStuSetFilter('')">Clear</button>`:''}
+    </div>`]
   const filtered=_stuFiltered();
   const totalPages=Math.max(1,Math.ceil(filtered.length/_stuSize));
   if(_stuPage>totalPages) _stuPage=totalPages;
@@ -5798,7 +5891,10 @@ function renderStudentTimetable(entries, containerId, opts={}){
   const toggle=`<div class="tt-toggle"><button class="${_ttView==='timeline'?'active':''}" onclick="setTtView('timeline')">Chapter Timeline</button><button class="${_ttView==='weekly'?'active':''}" onclick="setTtView('weekly')">Weekly View</button></div>`;
   const overall=`<div class="ov-card"><div class="ov-top"><div><div class="ov-lbl">${esc(active||'Overall')} Progress</div><div class="ov-big">${subD} / ${subT} Classes</div></div><div class="ov-pct"><div class="ov-pct-num">${subPct}%</div><div class="ov-pct-lbl">Completed</div></div></div><div class="ov-bar"><div class="ov-fill" style="width:${subPct}%"></div></div><div class="ov-badges">${opts.batch?`<span class="ov-badge">${esc(opts.batch)}</span><span class="ov-badge">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span>`:(opts.scopeLabel?`<span class="ov-badge">${esc(opts.scopeLabel)}</span>`:'')}<span class="ov-badge-plain">${subjects.length} subject${subjects.length>1?'s':''}</span><span class="ov-badge-plain ov-all">All subjects: <b>${doneParts}/${totalParts}</b> \u00b7 ${pct}%</span></div></div>`;
   const _tab=opts.onTab||'sSetSubj';
-  const tabs=subjects.map(s=>{ const n=tl[s].filter(it=>it.kind==='chapter').length||tl[s].length; return `<div class="subj-tab ${s===active?'active':''}" onclick="${_tab}('${encodeURIComponent(s)}')">${esc(s)}<span class="cnt-badge">${n}</span></div>`; }).join('');
+  // 5+ subjects -> master dropdown; kam ho to pills (student ke liye pills theek hain)
+  const tabs = subjects.length>5
+    ? `<div class="subj-picker"><label class="ex-lbl">Subject</label><select class="form-control" onchange="${_tab}(encodeURIComponent(this.value))">${subjects.map(s=>{const n=tl[s].filter(it=>it.kind==='chapter').length||tl[s].length; return `<option value="${esc(s)}"${s===active?' selected':''}>${esc(s)} \u00b7 ${n} chapters</option>`;}).join('')}</select><span class="subj-count">${subjects.length} subjects</span></div>`
+    : subjects.map(s=>{ const n=tl[s].filter(it=>it.kind==='chapter').length||tl[s].length; return `<div class="subj-tab ${s===active?'active':''}" onclick="${_tab}('${encodeURIComponent(s)}')">${esc(s)}<span class="cnt-badge">${n}</span></div>`; }).join('');
   const body=_ttView==='weekly'?renderStudentWeekly(tl,subjects,opts):renderStudentChapters(tl[active],active,opts);
   const _hd=opts.heading===undefined?'My Timetable':opts.heading;
   el.innerHTML=`<div class="stt-head">${_hd?`<h2>${esc(_hd)}</h2>`:'<span></span>'}${toggle}</div>${overall}<div class="subj-tabs">${tabs}</div>${body}`;
