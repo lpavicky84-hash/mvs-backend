@@ -1276,6 +1276,9 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 .s-dlist{max-height:540px}
 @media(max-width:1000px){.s-dlist{max-height:430px}}
 
+
+.cmp.dragging{border-color:var(--accent);background:var(--primary-50);border-style:dashed}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -1796,7 +1799,7 @@ const _CLIPSVG='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stro
 const _cmpState={}; let _cmpFocus=null;
 function composerHTML(key,placeholder,onsend,sendLabel){
   _cmpState[key]={file:null,voice:null};
-  return `<div class="cmp" id="cmp-${key}">
+  return `<div class="cmp" id="cmp-${key}" ondragover="event.preventDefault();this.classList.add('dragging')" ondragleave="this.classList.remove('dragging')" ondrop="cmpDrop('${key}',event)">
     <div class="cmp-chips" id="cmpc-${key}"></div>
     <textarea class="cmp-ta" id="cmpt-${key}" rows="2" placeholder="${placeholder}" onfocus="_cmpFocus='${key}'" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,170)+'px'"></textarea>
     <div class="cmp-bar">
@@ -1815,6 +1818,11 @@ function composerHTML(key,placeholder,onsend,sendLabel){
     <input type="file" id="cmpf-${key}" style="display:none" accept="image/*,application/pdf,.doc,.docx,.txt,.csv,.xls,.xlsx,.ppt,.pptx" onchange="cmpFileSel('${key}')">
     <input type="file" id="cmpcam-${key}" style="display:none" accept="image/*" capture="environment" onchange="cmpFileSel('${key}',1)">
   </div>`;
+}
+function cmpDrop(key,e){
+  e.preventDefault(); e.currentTarget.classList.remove('dragging');
+  const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
+  if(f){ cmpSetFile(key,f); toast('File added: '+f.name); }
 }
 function cmpMenu(key,e){ e.stopPropagation(); document.querySelectorAll('.cmp-menu.open').forEach(m=>{ if(m.id!=='cmpm-'+key) m.classList.remove('open'); }); document.getElementById('cmpm-'+key).classList.toggle('open'); }
 document.addEventListener('click',()=>document.querySelectorAll('.cmp-menu.open').forEach(m=>m.classList.remove('open')));
@@ -4703,24 +4711,26 @@ async function loadSDoubts(){
     sdoBindPaste();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
+function _activeComposerKey(){
+  if(_cmpFocus&&document.getElementById('cmp-'+_cmpFocus)) return _cmpFocus;
+  const c=document.querySelector('.page.active .cmp');   // active page ka pehla composer
+  return c?c.id.replace('cmp-',''):null;
+}
 function sdoBindPaste(){
   if(window._sdoPasteBound) return; window._sdoPasteBound=true;
-  document.addEventListener('paste',e=>{
-    // jo composer visible/focused hai usi mein paste jaata hai
-    let key=_cmpFocus&&document.getElementById('cmp-'+_cmpFocus)?_cmpFocus:null;
-    if(!key&&document.getElementById('cmp-sdo')&&document.getElementById('s-page-doubts')?.classList.contains('active')) key='sdo';
-    if(!key) return;
-    const items=e.clipboardData&&e.clipboardData.items; if(!items) return;
-    for(const it of items){
-      if(it.kind==='file'){
-        const f=it.getAsFile(); if(!f) continue;
-        cmpSetFile(key,new File([f], f.name&&f.name!=='image.png'?f.name:('pasted_'+Date.now()+'.png'),{type:f.type}));
-        toast('File pasted from clipboard.');
-        e.preventDefault(); break;
-      }
-    }
-  });
+  window.addEventListener('paste',e=>{
+    const key=_activeComposerKey(); if(!key) return;
+    let f=null;
+    const items=e.clipboardData&&e.clipboardData.items;
+    if(items){ for(const it of items){ if(it.kind==='file'){ f=it.getAsFile(); if(f) break; } } }
+    if(!f&&e.clipboardData&&e.clipboardData.files&&e.clipboardData.files.length) f=e.clipboardData.files[0];
+    if(!f) return;
+    cmpSetFile(key,new File([f], (f.name&&f.name!=='image.png')?f.name:('pasted_'+Date.now()+'.png'),{type:f.type}));
+    toast('File pasted from clipboard.');
+    e.preventDefault();
+  },true);
 }
+sdoBindPaste(); // load par hi bind — teacher composers ke liye bhi
 async function sdoFetchTeacher(){
   const sub=val('sdo-subject'); if(!sub) return;
   const wrap=document.getElementById('sdo-teacher-wrap'); wrap.style.display='block';
