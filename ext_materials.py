@@ -169,6 +169,47 @@ def _filter_for_student(mats, sp):
     return out, ctx
 
 
+def _filter_for_teacher(mats, tp):
+    """Teachers see only the subjects (and classes) they teach.
+    subject_classes: [{"subject":"Physics","class":"12"}, ...]"""
+    sc = tp.subject_classes or []
+    subs = [x.get("subject") for x in sc if isinstance(x, dict) and x.get("subject")]
+    if not subs:
+        subs = tp.subjects or []
+    subs_norm = [_norm(x) for x in subs]
+    if not subs_norm:          # profile incomplete -> show nothing extra, not everything
+        return [], {"subjects": []}
+    # NOTE: teachers multiple batches me padhate hain — isliye session/batch par
+    # filter NAHI hota. Frontend ke session tabs se woh batch-wise dekh lete hain.
+    # per-subject allowed classes (agar available hon)
+    cls_map = {}
+    for x in sc:
+        if isinstance(x, dict) and x.get("subject"):
+            cls_map.setdefault(_norm(x["subject"]), set()).add(str(x.get("class") or ""))
+
+    out = []
+    for m in mats:
+        msub = m.get("subject") or ""
+        if msub and not _subject_match(msub, subs_norm):
+            continue
+        if not msub:
+            # general items (syllabus/sample papers without subject) sabko dikhao
+            out.append(m)
+            continue
+        # class check: material ki class teacher ki us subject ki classes me honi chahiye
+        mc = _norm(m.get("class_level"))
+        if mc:
+            allowed = set()
+            for sn, classes in cls_map.items():
+                a, b = (sn, _norm(msub)) if len(sn) <= len(_norm(msub)) else (_norm(msub), sn)
+                if sn == _norm(msub) or (len(a) >= 4 and a in b):
+                    allowed |= {c for c in classes if c}
+            if allowed and mc not in {_norm(c) for c in allowed}:
+                continue
+        out.append(m)
+    return out, {"subjects": subs}
+
+
 def _fetch_list(refresh=False):
     url, key = _cfg()
     now = time.time()
@@ -213,6 +254,16 @@ def ext_materials(refresh: int = 0, db: Session = Depends(get_db),
             return {"configured": True, "cached": cached, "stale": stale,
                     "role": "student", "ctx": ctx, "materials": mats}
 
+    if role == "teacher":
+        from models import TeacherProfile
+        tp = db.query(TeacherProfile).filter(
+            TeacherProfile.user_id == current_user.id).first()
+        if tp:
+            mats, ctx = _filter_for_teacher(mats, tp)
+            return {"configured": True, "cached": cached, "stale": stale,
+                    "role": "teacher", "ctx": ctx, "materials": mats}
+
+    # admin: full library
     return {"configured": True, "cached": cached, "stale": stale,
             "role": role, "materials": mats}
 
