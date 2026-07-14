@@ -1386,35 +1386,52 @@ def portal_overview(db: Session = Depends(get_db), _=Depends(get_admin)):
 def delete_all_students(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
     if (payload or {}).get("confirm") != "DELETE ALL STUDENTS":
         raise HTTPException(status_code=400, detail='Type "DELETE ALL STUDENTS" to confirm.')
-    from models import StudentProfile as _SP
-    profs = db.query(_SP).all()
-    sids = [x.id for x in profs]
-    uids = [x.user_id for x in profs]
-    if not sids:
+    import models as M
+    from models import StudentProfile as _SP, User as _U, UserRole as _UR
+
+    stu_users = db.query(_U).filter(_U.role == _UR.student).all()
+    stu_uids = [u.id for u in stu_users]
+    total = db.query(_SP).count()
+    if not stu_uids and not total:
         return {"message": "No students to delete.", "deleted": 0}
-    def run(sql, params):
+
+    errors = []
+
+    def wipe(fn, label):
         try:
-            db.execute(_sqltext(sql), params)
-        except Exception:
-            db.rollback()
-    for sid, uid in zip(sids, uids):
-        for sql in ("DELETE FROM doubts WHERE student_id=:s",
-                    "DELETE FROM dpp_submissions WHERE student_id=:s",
-                    "DELETE FROM test_submissions WHERE student_id=:s",
-                    "DELETE FROM materials WHERE student_id=:s",
-                    "DELETE FROM material_views WHERE student_id=:s",
-                    "DELETE FROM exam_attempts WHERE student_id=:s",
-                    "DELETE FROM exam_results WHERE student_id=:s",
-                    "DELETE FROM exam_views WHERE student_id=:s",
-                    "DELETE FROM lecture_verifications WHERE student_id=:s",
-                    "DELETE FROM student_stats WHERE student_id=:s"):
-            run(sql, {"s": sid})
-        for sql in ("DELETE FROM notifications WHERE user_id=:u",
-                    "DELETE FROM user_sessions WHERE user_id=:u",
-                    "DELETE FROM activity_logs WHERE user_id=:u"):
-            run(sql, {"u": uid})
-        run("DELETE FROM student_profiles WHERE id=:s", {"s": sid})
-        run("DELETE FROM users WHERE id=:u", {"u": uid})
+            with db.begin_nested():   # savepoint: ek fail hua to sirf wahi rollback hota hai
+                fn()
+        except Exception as e:
+            errors.append(f"{label}: {type(e).__name__}")
+
+    # Model-driven cleanup: har mapped table jisme student_id/user_id column hai
+    for mp in list(M.Base.registry.mappers):
+        cls = mp.class_
+        name = cls.__name__
+        if name in ("StudentProfile", "User"):
+            continue
+        cols = {c.key for c in mp.columns}
+        if "student_id" in cols:
+            if name == "Material":
+                # teacher-uploaded materials (student_id NULL) safe rehte hain
+                wipe(lambda c=cls: db.query(c).filter(c.student_id.isnot(None))
+                     .delete(synchronize_session=False), name)
+            else:
+                wipe(lambda c=cls: db.query(c).delete(synchronize_session=False), name)
+        elif "user_id" in cols and stu_uids:
+            for i in range(0, len(stu_uids), 500):
+                chunk = stu_uids[i:i + 500]
+                wipe(lambda c=cls, ch=chunk: db.query(c).filter(c.user_id.in_(ch))
+                     .delete(synchronize_session=False), name)
+
+    wipe(lambda: db.query(_SP).delete(synchronize_session=False), "StudentProfile")
+    wipe(lambda: db.query(_U).filter(_U.role == _UR.student)
+         .delete(synchronize_session=False), "User")
     db.commit()
-    return {"message": f"All {len(sids)} students deleted. You can now upload fresh data.",
-            "deleted": len(sids)}
+
+    remaining = db.query(_SP).count()
+    if remaining:
+        raise HTTPException(status_code=500,
+                            detail=f"Deletion incomplete — {remaining} students still remain. Issues: {', '.join(sorted(set(errors))[:6]) or 'unknown'}")
+    return {"message": f"All {total} students deleted. You can now upload fresh data.",
+            "deleted": total}

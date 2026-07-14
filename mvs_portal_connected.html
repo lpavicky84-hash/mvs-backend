@@ -3834,8 +3834,11 @@ async function doDeleteAllStudents(){
     closeModal(); toast(r.message); loadAStudents();
   }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Delete Everything'; }
 }
+let _stuSrcFilter='';
+function aStuSrcFilter(src){ _stuSrcFilter=(_stuSrcFilter===src?'':src); _stuPage=1; aRenderStudents(); }
 function _stuFiltered(){
   let list=_aStu;
+  if(_stuSrcFilter) list=list.filter(s=>(s.source||'mvs_app')===_stuSrcFilter);
   if(_stuFilter) list=list.filter(s=>(s.subjects||[]).some(x=>x.toLowerCase()===_stuFilter.toLowerCase()));
   if(_stuSearch){ const q=_stuSearch.toLowerCase(); list=list.filter(s=>(s.name||'').toLowerCase().includes(q)||(s.phone||'').includes(q)||(s.user_id||'').toLowerCase().includes(q)||(s.email||'').toLowerCase().includes(q)); }
   return list;
@@ -3854,11 +3857,14 @@ function aRenderStudents(){
     return `<div class="stu-row" onclick="openStudentProfile(${s.profile_id})"><div class="stu-photo" id="sphoto-${s.profile_id}">${esc(initials(s.name||'S'))}</div><div class="stu-info"><div class="stu-name">${esc(s.name)}</div><div class="stu-meta">${esc(s.user_id)} · ${esc(s.phone||'no phone')} · ${esc(s.batch||'no batch')} · <span class="xm-chip" style="font-size:.6rem;padding:2px 7px;${s.source==='mvs_portal'?'background:rgba(201,150,46,.16);color:#b07f1e':''}">${s.source==='mvs_portal'?'MVS PORTAL':'MVS APP'}</span></div><div class="slist-chips" style="margin-top:4px">${subs}</div></div><div class="stu-act" onclick="event.stopPropagation()"><button class="btn btn-ghost btn-sm" onclick='openEditStudent(${s.profile_id},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,subjects:s.subjects||[]}).replace(/'/g,"&#39;")})'>${ic('edit')}</button><button class="btn btn-danger btn-sm" onclick="deleteStudent(${s.profile_id},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
   }).join(''):`<div class="empty-state"><p>No students match this view.</p></div>`;
   const ov=window._aPortalOv;
-  const srcChips=ov?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 4px 14px">
-      <span class="xm-chip">Total \u00b7 ${ov.total}</span>
-      <span class="xm-chip" style="background:rgba(201,150,46,.16);color:#b07f1e">MVS Portal \u00b7 ${ov.mvs_portal}</span>
-      <span class="xm-chip">MVS App \u00b7 ${ov.mvs_app}</span>
-      ${ov.portal_reachable?`<span class="${ov.pending_count?'xm-pend':'xm-chip'}" style="cursor:pointer" onclick="openPortalPending()">Portal Pending \u00b7 ${ov.pending_count} \u2014 view</span>`:`<span class="xm-chip" title="MVS Portal unlocked-students endpoint available nahi hai">Portal Pending \u00b7 \u2014</span>`}
+  const chipS='cursor:pointer;user-select:none;padding:6px 13px;font-size:.74rem;';
+  const actS='outline:2px solid var(--accent);outline-offset:1px;';
+  const srcChips=ov?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 4px 14px;align-items:center">
+      <span class="xm-chip" style="${chipS}${_stuSrcFilter===''?actS:''}" onclick="aStuSrcFilter('')">Total \u00b7 ${ov.total}</span>
+      <span class="xm-chip" style="${chipS}background:rgba(201,150,46,.16);color:#b07f1e;${_stuSrcFilter==='mvs_portal'?actS:''}" onclick="aStuSrcFilter('mvs_portal')">MVS Portal \u00b7 ${ov.mvs_portal}</span>
+      <span class="xm-chip" style="${chipS}${_stuSrcFilter==='mvs_app'?actS:''}" onclick="aStuSrcFilter('mvs_app')">MVS App \u00b7 ${ov.mvs_app}</span>
+      ${ov.portal_reachable?`<span class="${ov.pending_count?'xm-pend':'xm-chip'}" style="${chipS}" onclick="openPortalPending()">Portal Pending \u00b7 ${ov.pending_count} \u2014 view</span>`:`<span class="xm-chip" title="MVS Portal unlocked-students endpoint available nahi hai" style="padding:6px 13px;font-size:.74rem">Portal Pending \u00b7 \u2014</span>`}
+      ${_stuSrcFilter?`<span style="font-size:.72rem;color:var(--text-muted)">Showing: <b>${_stuSrcFilter==='mvs_portal'?'MVS Portal':'MVS App'}</b> \u2014 tap again to clear</span>`:''}
     </div>`:'';
   el.innerHTML=`<div class="card-header" style="padding:0 4px 12px;border:none"><h3 style="font-size:1.3rem">Students</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-success btn-sm" onclick="openBulkPhone()">${ic('users')} Add by Phone</button><button class="btn btn-ghost btn-sm" onclick="openExcelUpload()">${ic('upload')} Excel Upload</button><button class="btn btn-primary btn-sm" onclick="openAddStudent()">${ic('user')} Add Student</button><button class="btn btn-danger btn-sm" onclick="openDeleteAllStudents()">${ic('trash')} Delete All</button></div></div>${srcChips}
     <div class="count-card-row">${cards}</div>
