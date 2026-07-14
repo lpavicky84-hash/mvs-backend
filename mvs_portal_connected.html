@@ -5102,19 +5102,22 @@ const MVC_WEB_URL='https://manishvermaclasses.classx.co.in/';
 const MVC_IOS_URL='https://apps.apple.com/app/manish-verma-classes/id6768236345';
 function openMVC(){
   const ua=navigator.userAgent||'';
-  if(/android/i.test(ua)){
-    // intent:// -> app installed hai to app open, warna Play Store listing (search page NAHI)
-    location.href='intent://open/#Intent;scheme=mvc;package='+MVC_ANDROID_PKG
-      +';S.browser_fallback_url='+encodeURIComponent(MVC_PLAY_URL)+';end';
-    // kuch browsers intent ignore karte hain — 1.5s me kuch nahi khula to Play Store
-    setTimeout(()=>{ if(!document.hidden) location.href=MVC_PLAY_URL; },1500);
+  // iPad newer iOS me khud ko "Macintosh" batata hai — touch se pakdo
+  const isIOS=/iphone|ipad|ipod/i.test(ua)||(/macintosh/i.test(ua)&&navigator.maxTouchPoints>1);
+  const isAndroid=!isIOS&&/android/i.test(ua);
+
+  if(isIOS){
+    // UNIVERSAL LINK: app installed hai to iOS seedha APP kholta hai (App Store nahi).
+    // App nahi hai to wahi web platform khulta hai jahan classes bhi chalti hain
+    // aur App Store ka install link bhi milta hai.
+    location.href=MVC_WEB_URL;
     return;
   }
-  if(/iphone|ipad|ipod/i.test(ua)){
-    // Manish Verma Classes ki apni iOS app — installed hai to khul jati hai,
-    // warna App Store listing (itms-apps App Store app me seedha kholta hai)
-    location.href='itms-apps://apps.apple.com/app/manish-verma-classes/id6768236345';
-    setTimeout(()=>{ if(!document.hidden) location.href=MVC_IOS_URL; },1200);
+  if(isAndroid){
+    // intent: app installed -> app khulti hai; nahi -> seedha Play Store listing
+    location.href='intent://open/#Intent;scheme=mvc;package='+MVC_ANDROID_PKG
+      +';S.browser_fallback_url='+encodeURIComponent(MVC_PLAY_URL)+';end';
+    setTimeout(()=>{ if(!document.hidden) location.href=MVC_PLAY_URL; },1500);
     return;
   }
   window.open(MVC_WEB_URL,'_blank');   // desktop -> web platform
