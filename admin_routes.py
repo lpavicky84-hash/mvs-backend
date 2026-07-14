@@ -104,6 +104,32 @@ def review_reschedule(
     return {"message": f"Reschedule {req.status} kar diya. Teacher ko notification chali gayi."}
 
 # ===== TEACHER MANAGEMENT =====
+def _derive_subject_classes(profile, db):
+    """Purane teachers jinka subject_classes save nahi hua — flat subjects list se
+    subject+class pairs reconstruct karo (AvailableSubject table ki madad se).
+    Jaise ["Painting","History","Painting"] -> Painting/10, History/12, Painting/12"""
+    sc = profile.subject_classes or []
+    if sc:
+        return sc
+    flat = [x for x in (profile.subjects or []) if x]
+    if not flat:
+        return []
+    from models import AvailableSubject as _AS
+    rows = db.query(_AS).all()
+    by_name = {}
+    for r in rows:
+        by_name.setdefault((r.name or "").strip().lower(), []).append(str(r.class_level or ""))
+    out, used = [], {}
+    for nm in flat:
+        key = (nm or "").strip().lower()
+        classes = sorted(set(by_name.get(key, [])))          # e.g. ["10","12"]
+        i = used.get(key, 0)
+        cls = classes[i] if i < len(classes) else (classes[-1] if classes else "")
+        used[key] = i + 1
+        out.append({"subject": nm, "class": cls})
+    return out
+
+
 @router.get("/teachers")
 def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
     teachers = db.query(User).filter(User.role == UserRole.teacher).all()
@@ -133,7 +159,7 @@ def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
                 "has_photo": bool(profile.photo_b64),
                 "is_active": t.is_active,
                 "subjects": profile.subjects,
-                "subject_classes": profile.subject_classes or [],
+                "subject_classes": _derive_subject_classes(profile, db),
                 "batch": profile.batch,
                 "total_classes_done": classes_done,
                 "monthly_classes_done": monthly_done,
@@ -211,6 +237,7 @@ def get_all_students(db: Session = Depends(get_db), _=Depends(get_admin)):
                 "class_name": sp.class_name,
                 "is_verified": sp.is_verified,
                 "source": getattr(sp, "source", None) or "mvs_app",
+                "medium": getattr(sp, "medium", None),
                 "is_active": s.is_active,
                 "dpp_submitted": dpp_submitted,
                 "tests_attempted": test_attempted,
@@ -842,6 +869,9 @@ def edit_student(sid: int, payload: dict, db: Session = Depends(get_db), _=Depen
         sp.email = (payload.get("email") or "").strip() or None
     if "batch_name" in payload:
         sp.batch_name = (payload.get("batch_name") or "").strip() or None
+    if "medium" in payload:
+        m = (payload.get("medium") or "").strip()
+        sp.medium = m if m in ("Hindi", "English") else None
     if "class_level" in payload:
         sp.class_level = (payload.get("class_level") or "").strip() or None
     if "subjects" in payload and isinstance(payload["subjects"], list):

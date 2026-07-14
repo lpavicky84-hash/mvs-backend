@@ -1327,6 +1327,17 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 .dark .bt-live{background:rgba(248,113,113,.16);color:#f87171}
 .dark .bt-rec{background:rgba(167,139,250,.16);color:#a78bfa}
 
+
+/* Subject picker (dropdown-style multi select) */
+.subj-pick{display:flex;flex-wrap:wrap;gap:8px;max-height:190px;overflow-y:auto;padding:10px;border:1.5px solid var(--border);border-radius:12px;background:var(--bg);scrollbar-width:none}
+.subj-pick::-webkit-scrollbar{display:none}
+.subj-opt{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:99px;border:1.5px solid var(--border);background:var(--card);font-size:.79rem;font-weight:700;cursor:pointer;transition:.15s;color:var(--text)}
+.subj-opt:hover{border-color:var(--accent)}
+.subj-opt.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.dark .subj-opt.on{color:#181203}
+.subj-opt b{font-weight:700;opacity:.6;font-size:.7rem}
+.subj-opt input{margin:0}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -3794,21 +3805,29 @@ async function deleteTeacher(pid,name){
   try{ await api('/api/admin/teacher/'+pid,'DELETE'); toast('Teacher deleted.'); loadATeachers(); }catch(e){ toast(e.message,true); }
 }
 function openEditStudent(sid,data){
+  window._esData=data;
+  const cls=data.class_level||'';
   showModal('Edit Student',
     `<div class="form-group"><label>Name</label><input class="form-control" id="es-name" value="${esc(data.name||'')}"></div>
      <div class="form-group"><label>Phone</label><input class="form-control" id="es-phone" value="${esc(data.phone||'')}"></div>
      <div class="form-group"><label>Email</label><input class="form-control" id="es-email" value="${esc(data.email||'')}"></div>
-     <div class="form-group"><label>Batch</label><input class="form-control" id="es-batch" value="${esc(data.batch_name||'')}"></div>
-     <div class="form-group"><label>Class</label><select class="form-control" id="es-class"><option value="">\u2014</option><option value="10"${data.class_level==='10'?' selected':''}>Class 10</option><option value="12"${data.class_level==='12'?' selected':''}>Class 12</option></select></div>
-     <div class="form-group"><label>Subjects (comma-separated)</label><input class="form-control" id="es-subjects" value="${esc((data.subjects||[]).join(', '))}"></div>
+     <div class="form-group"><label>Class</label><select class="form-control" id="es-class" onchange="esClassChange()"><option value="">\u2014 Select class \u2014</option><option value="10"${cls==='10'?' selected':''}>Class 10</option><option value="12"${cls==='12'?' selected':''}>Class 12</option></select></div>
+     <div class="form-group"><label>Batch</label><select class="form-control" id="es-batch">${batchOptions(data.batch_name||'',cls)}</select></div>
+     <div class="form-group"><label>Medium</label><select class="form-control" id="es-medium"><option value="">\u2014 Select medium \u2014</option><option ${data.medium==='Hindi'?'selected':''}>Hindi</option><option ${data.medium==='English'?'selected':''}>English</option></select></div>
+     <div class="form-group"><label>Subjects <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(tap to select)</span></label><div id="es-subj-wrap">${cls?subjectCheckboxes('es-subj-wrap',cls,data.subjects):'<span style="color:var(--text-muted);font-size:.82rem">Select a class first.</span>'}</div></div>
      <div id="es-status"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="es-btn" onclick="saveEditStudent(${sid})">Save</button>`);
 }
+function esClassChange(){
+  const cls=val('es-class');
+  document.getElementById('es-batch').innerHTML=batchOptions(val('es-batch'),cls);
+  document.getElementById('es-subj-wrap').innerHTML=cls?subjectCheckboxes('es-subj-wrap',cls,(window._esData||{}).subjects||[]):'<span style="color:var(--text-muted);font-size:.82rem">Select a class first.</span>';
+}
 async function saveEditStudent(sid){
-  const subjects=val('es-subjects').split(',').map(s=>s.trim()).filter(Boolean);
+  const subjects=pickedSubjects('es-subj-wrap');
   const btn=document.getElementById('es-btn'); btn.disabled=true; btn.textContent='Saving...';
   try{
-    await api('/api/admin/student/'+sid,'PATCH',{name:val('es-name'),phone:val('es-phone'),email:val('es-email'),batch_name:val('es-batch'),class_level:val('es-class'),subjects});
+    await api('/api/admin/student/'+sid,'PATCH',{name:val('es-name'),phone:val('es-phone'),email:val('es-email'),batch_name:val('es-batch'),class_level:val('es-class'),medium:val('es-medium'),subjects});
     toast('Student updated.'); closeModal(); loadAStudents();
   }catch(e){ document.getElementById('es-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Save'; }
 }
@@ -4024,6 +4043,35 @@ async function doDeleteAllStudents(){
     closeModal(); toast(r.message); loadAStudents();
   }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Delete Everything'; }
 }
+// ============ MASTER LISTS (dropdowns ke liye — ek hi source of truth) ============
+const BATCH_MASTER=[
+  {name:'Lakshya Science',cls:'12',mode:'live'},
+  {name:'Lakshya Commerce',cls:'12',mode:'live'},
+  {name:'Lakshya Arts',cls:'12',mode:'live'},
+  {name:'Manzil Batch',cls:'12',mode:'rec'},
+  {name:'Safalta Batch',cls:'12',mode:'rec'},
+  {name:'Udaan Class 10',cls:'10',mode:'live'},
+  {name:'Aarambh Batch',cls:'10',mode:'rec'},
+  {name:'Jeet Batch',cls:'10',mode:'rec'}
+];
+function batchOptions(sel,cls){
+  const list=BATCH_MASTER.filter(b=>!cls||b.cls===cls);
+  const extra=(sel&&!BATCH_MASTER.some(b=>b.name===sel))?`<option value="${esc(sel)}" selected>${esc(sel)} (legacy)</option>`:'';
+  return `<option value="">\u2014 Select batch \u2014</option>${extra}`+list.map(b=>`<option value="${esc(b.name)}"${b.name===sel?' selected':''}>${esc(b.name)} \u00b7 Class ${b.cls} \u00b7 ${b.mode==='live'?'LIVE':'REC.'}</option>`).join('');
+}
+function subjectCheckboxes(wrapId,cls,selected){
+  const subs=((window._allSubjects||{})[cls]||[]);
+  if(!subs.length) return '<span style="color:var(--text-muted);font-size:.82rem">No subjects found for this class. Add them in Settings \u2192 Subjects.</span>';
+  const sel=(selected||[]).map(x=>(x||'').trim().toLowerCase());
+  return `<div class="subj-pick">${subs.map(s=>{
+    const nm=s.name||s;
+    const on=sel.includes((nm||'').toLowerCase());
+    return `<label class="subj-opt${on?' on':''}"><input type="checkbox" value="${esc(nm)}" ${on?'checked':''} onchange="this.closest('.subj-opt').classList.toggle('on',this.checked)"> ${esc(nm)}${s.code?`<b>${esc(s.code)}</b>`:''}</label>`;
+  }).join('')}</div>`;
+}
+function pickedSubjects(wrapId){
+  return [...document.querySelectorAll('#'+wrapId+' input[type=checkbox]:checked')].map(x=>x.value);
+}
 let _stuSrcFilter='';
 function aStuSrcFilter(src){ _stuSrcFilter=src; _stuPage=1; aRenderStudents(); }
 function _stuFiltered(){
@@ -4044,7 +4092,7 @@ function aRenderStudents(){
   const page=filtered.slice(start,start+_stuSize);
   const rows=page.length?page.map(s=>{
     const subs=(s.subjects||[]).slice(0,4).map(x=>`<span class="chip">${esc(x)}</span>`).join('');
-    return `<div class="stu-row" onclick="openStudentProfile(${s.profile_id})"><div class="stu-photo" id="sphoto-${s.profile_id}">${esc(initials(s.name||'S'))}</div><div class="stu-info"><div class="stu-name">${esc(s.name)}</div><div class="stu-meta">${esc(s.user_id)} · ${esc(s.phone||'no phone')} · ${esc(s.batch||'no batch')} · <span class="xm-chip" style="font-size:.6rem;padding:2px 7px;${s.source==='mvs_portal'?'background:rgba(201,150,46,.16);color:#b07f1e':''}">${s.source==='mvs_portal'?'MVS PORTAL':'MVS APP'}</span></div><div class="slist-chips" style="margin-top:4px">${subs}</div></div><div class="stu-act" onclick="event.stopPropagation()"><button class="btn btn-ghost btn-sm" onclick='openEditStudent(${s.profile_id},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,subjects:s.subjects||[]}).replace(/'/g,"&#39;")})'>${ic('edit')}</button><button class="btn btn-danger btn-sm" onclick="deleteStudent(${s.profile_id},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
+    return `<div class="stu-row" onclick="openStudentProfile(${s.profile_id})"><div class="stu-photo" id="sphoto-${s.profile_id}">${esc(initials(s.name||'S'))}</div><div class="stu-info"><div class="stu-name">${esc(s.name)}</div><div class="stu-meta">${esc(s.user_id)} · ${esc(s.phone||'no phone')} · ${esc(s.batch||'no batch')} · <span class="xm-chip" style="font-size:.6rem;padding:2px 7px;${s.source==='mvs_portal'?'background:rgba(201,150,46,.16);color:#b07f1e':''}">${s.source==='mvs_portal'?'MVS PORTAL':'MVS APP'}</span></div><div class="slist-chips" style="margin-top:4px">${subs}</div></div><div class="stu-act" onclick="event.stopPropagation()"><button class="btn btn-ghost btn-sm" onclick='openEditStudent(${s.profile_id},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,medium:s.medium||'',subjects:s.subjects||[]}).replace(/'/g,"&#39;")})'>${ic('edit')}</button><button class="btn btn-danger btn-sm" onclick="deleteStudent(${s.profile_id},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
   }).join(''):`<div class="empty-state"><p>No students match this view.</p></div>`;
   const ov=window._aPortalOv;
   const segB=(id,label,n)=>`<button class="seg-b ${_stuSrcFilter===id?'active':''}" onclick="aStuSrcFilter('${id}')">${label}<span class="seg-n">${n}</span></button>`;
@@ -4074,14 +4122,19 @@ function openStudentProfile(sid){
     `<div class="prof-head" style="padding-bottom:16px;margin-bottom:16px"><div class="prof-photo" id="spp-${sid}">${esc(initials(s.name||'S'))}</div><div class="prof-id"><h2 style="font-size:1.2rem">${esc(s.name)}</h2><span class="chip" style="margin-top:6px">${esc(s.batch||'Student')}</span></div></div>
      <div class="prof-grid">${rows.map(([k,v])=>`<div class="prof-cell"><div class="prof-k">${k}</div><div class="prof-v">${esc(v)}</div></div>`).join('')}</div>
      <div class="prof-cell" style="margin-top:14px"><div class="prof-k">Subjects</div><div class="slist-chips" style="margin-top:6px">${subs}</div></div>`,
-    `<button class="btn btn-danger" onclick="closeModal();deleteStudent(${sid},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')} Delete</button><button class="btn btn-primary" onclick='closeModal();openEditStudent(${sid},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,subjects:s.subjects||[]}).replace(/"/g,"&quot;").replace(/'/g,"&#39;")})'>${ic('edit')} Edit</button>`);
+    `<button class="btn btn-danger" onclick="closeModal();deleteStudent(${sid},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')} Delete</button><button class="btn btn-primary" onclick='closeModal();openEditStudent(${sid},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,medium:s.medium||'',subjects:s.subjects||[]}).replace(/"/g,"&quot;").replace(/'/g,"&#39;")})'>${ic('edit')} Edit</button>`);
   if(s.has_photo) loadImgInto('spp-'+sid,'/api/admin/student/'+sid+'/photo');
 }
 async function openAddStudent(){
   await ensureSubjects();
   showModal('Add Student',
- `<div class="alert alert-info">Enter the name and phone. <strong>User ID and password are generated automatically.</strong></div><div class="form-group"><label>Student Name</label><input class="form-control" id="as-name" placeholder="Arjun Verma"></div><div class="form-group"><label>Phone</label><input class="form-control" id="as-phone" placeholder="9876543210"></div><div class="form-group"><label>Batch</label><select class="form-control" id="as-batch"><option>Lakshya (Science)</option><option>Lakshya (Commerce)</option><option>Lakshya (Arts)</option><option>Udaan Class 10th</option></select></div><div class="form-group"><label>Class</label><select class="form-control" id="as-class" onchange="renderStudentSubjects()"><option value="">Select class</option><option value="10">Class 10</option><option value="12">Class 12</option></select></div><div class="form-group"><label>Subjects</label><div id="as-subj-wrap"><span style="color:var(--text-muted);font-size:.82rem">Select a class to see its subjects.</span></div></div>`,
+ `<div class="alert alert-info">Enter the name and phone. <strong>User ID and password are generated automatically.</strong></div><div class="form-group"><label>Student Name</label><input class="form-control" id="as-name" placeholder="Arjun Verma"></div><div class="form-group"><label>Phone</label><input class="form-control" id="as-phone" placeholder="9876543210"></div><div class="form-group"><label>Class</label><select class="form-control" id="as-class" onchange="asClassChange()"><option value="">\u2014 Select class \u2014</option><option value="10">Class 10</option><option value="12">Class 12</option></select></div><div class="form-group"><label>Batch</label><select class="form-control" id="as-batch">${batchOptions('','')}</select></div><div class="form-group"><label>Medium</label><select class="form-control" id="as-medium"><option value="">\u2014 Select medium \u2014</option><option>Hindi</option><option>English</option></select></div><div class="form-group"><label>Subjects</label><div id="as-subj-wrap"><span style="color:var(--text-muted);font-size:.82rem">Select a class to see its subjects.</span></div></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitAddStudent()">Add Student</button>`);
+}
+function asClassChange(){
+  const cls=val('as-class');
+  const b=document.getElementById('as-batch'); if(b) b.innerHTML=batchOptions(val('as-batch'),cls);
+  renderStudentSubjects();
 }
 function renderStudentSubjects(){
   const cls=val('as-class'); const wrap=document.getElementById('as-subj-wrap'); if(!wrap) return;
@@ -4098,7 +4151,8 @@ async function submitAddStudent(){
  const uidRes=await api('/api/auth/generate-uid?name='+encodeURIComponent(name));
  const user_id=uidRes.user_id;
  const password=genPassword();
- await api('/api/admin/students/add','POST',{name,user_id,password,role:'student',phone,batch:val('as-batch'),class_name:val('as-class'),class_level:val('as-class'),subjects});
+ if(!val('as-batch')){ toast('Please select a batch.',true); return; }
+ await api('/api/admin/students/add','POST',{name,user_id,password,role:'student',phone,batch:val('as-batch'),class_name:val('as-class'),class_level:val('as-class'),medium:val('as-medium'),subjects});
  showCredentials('Student',name,user_id,password);
  if(document.getElementById('a-page-students').classList.contains('active'))loadAStudents();
   }catch(e){ toast(e.message,true); }
