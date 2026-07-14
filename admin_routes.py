@@ -209,6 +209,7 @@ def get_all_students(db: Session = Depends(get_db), _=Depends(get_admin)):
                 "subjects": sp.subjects,
                 "class_name": sp.class_name,
                 "is_verified": sp.is_verified,
+                "source": getattr(sp, "source", None) or "mvs_app",
                 "is_active": s.is_active,
                 "dpp_submitted": dpp_submitted,
                 "tests_attempted": test_attempted,
@@ -703,6 +704,7 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
     """Frontend Appx sales sheet parse karke {students:[{name,phone,batch}]} bhejega."""
     rows = payload.get("students", []) or []
     created, updated, skipped = 0, 0, 0
+    duplicates = []   # MVS Portal se aaye students jinka phone sheet me bhi hai — verify karne ke liye
     for r in rows:
         phone = "".join(ch for ch in str(r.get("phone", "")) if ch.isdigit())
         if len(phone) < 10:
@@ -713,7 +715,17 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
         email = (r.get("email") or "").strip() or None
         existing = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
         if existing:
-            # update batch + name if changed (refresh from latest sale)
+            src = getattr(existing, "source", None) or "mvs_app"
+            if src == "mvs_portal":
+                # DUPLICATE: MVS Portal wala student hi rahega — dubara add NAHI hoga
+                duplicates.append({"phone": phone,
+                                   "sheet_name": name,
+                                   "existing_name": existing.user.name if existing.user else "",
+                                   "existing_user_id": existing.user.user_id if existing.user else "",
+                                   "existing_batch": existing.batch_name or "",
+                                   "source": "mvs_portal"})
+                continue
+            # MVS APP wala pehle se hai -> refresh (same as before)
             if batch:
                 existing.batch_name = batch
             if email:
@@ -732,11 +744,13 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
                  role=UserRole.student, is_active=True)
         db.add(u); db.flush()
         db.add(StudentProfile(user_id=u.id, phone=phone, subjects=[], class_name="",
-                              batch_name=batch, email=email, is_verified=True, plain_password=phone))
+                              batch_name=batch, email=email, is_verified=True,
+                              plain_password=phone, source="mvs_app"))
         created += 1
     db.commit()
     return {"created": created, "updated": updated, "skipped": skipped,
-            "message": f"{created} naye students, {updated} update hue, {skipped} skip (galat phone)."}
+            "duplicates": duplicates,
+            "message": f"{created} new students, {updated} updated, {skipped} skipped (invalid phone), {len(duplicates)} duplicate(s) already on MVS Portal."}
 
 # ===== ADMIN: EDIT + DELETE TEACHER / STUDENT =====
 from sqlalchemy import text as _sqltext
@@ -1332,3 +1346,75 @@ def admin_reset_password(payload: dict, db: Session = Depends(get_db), current_u
     db.commit()
     return {"message": "Password reset successfully", "name": user.name,
             "user_id": user.user_id, "password": new_pass}
+
+# ------------------------------------------------------------------
+#  MVS PORTAL <-> CRM STUDENT OVERVIEW
+#  Kitne students portal se aaye, kitne app (sheet) se, aur portal par
+#  kitne unlocked students ne abhi tak batch select hi nahi kiya.
+# ------------------------------------------------------------------
+@router.get("/portal-overview")
+def portal_overview(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import StudentProfile as _SP
+    profs = db.query(_SP).all()
+    total = len(profs)
+    portal = sum(1 for x in profs if (getattr(x, "source", None) or "mvs_app") == "mvs_portal")
+    app = total - portal
+    existing_phones = {x.phone for x in profs if x.phone}
+    pending, portal_reachable = [], False
+    try:
+        from ext_materials import portal_unlocked_students
+        lst = portal_unlocked_students()
+        if lst is not None:
+            portal_reachable = True
+            for st in lst:
+                ph = "".join(ch for ch in str(st.get("phone", "")) if ch.isdigit())[-10:]
+                if len(ph) == 10 and ph not in existing_phones:
+                    pending.append({"name": st.get("name") or "", "phone": ph,
+                                    "class_level": str(st.get("class_level") or st.get("class") or ""),
+                                    "session": st.get("session") or ""})
+    except Exception:
+        pass
+    return {"total": total, "mvs_portal": portal, "mvs_app": app,
+            "portal_reachable": portal_reachable,
+            "pending_count": len(pending), "pending": pending[:300]}
+
+
+# ------------------------------------------------------------------
+#  DANGER: DELETE ALL STUDENTS (fresh re-upload ke liye)
+# ------------------------------------------------------------------
+@router.delete("/students/all")
+def delete_all_students(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    if (payload or {}).get("confirm") != "DELETE ALL STUDENTS":
+        raise HTTPException(status_code=400, detail='Type "DELETE ALL STUDENTS" to confirm.')
+    from models import StudentProfile as _SP
+    profs = db.query(_SP).all()
+    sids = [x.id for x in profs]
+    uids = [x.user_id for x in profs]
+    if not sids:
+        return {"message": "No students to delete.", "deleted": 0}
+    def run(sql, params):
+        try:
+            db.execute(_sqltext(sql), params)
+        except Exception:
+            db.rollback()
+    for sid, uid in zip(sids, uids):
+        for sql in ("DELETE FROM doubts WHERE student_id=:s",
+                    "DELETE FROM dpp_submissions WHERE student_id=:s",
+                    "DELETE FROM test_submissions WHERE student_id=:s",
+                    "DELETE FROM materials WHERE student_id=:s",
+                    "DELETE FROM material_views WHERE student_id=:s",
+                    "DELETE FROM exam_attempts WHERE student_id=:s",
+                    "DELETE FROM exam_results WHERE student_id=:s",
+                    "DELETE FROM exam_views WHERE student_id=:s",
+                    "DELETE FROM lecture_verifications WHERE student_id=:s",
+                    "DELETE FROM student_stats WHERE student_id=:s"):
+            run(sql, {"s": sid})
+        for sql in ("DELETE FROM notifications WHERE user_id=:u",
+                    "DELETE FROM user_sessions WHERE user_id=:u",
+                    "DELETE FROM activity_logs WHERE user_id=:u"):
+            run(sql, {"u": uid})
+        run("DELETE FROM student_profiles WHERE id=:s", {"s": sid})
+        run("DELETE FROM users WHERE id=:u", {"u": uid})
+    db.commit()
+    return {"message": f"All {len(sids)} students deleted. You can now upload fresh data.",
+            "deleted": len(sids)}

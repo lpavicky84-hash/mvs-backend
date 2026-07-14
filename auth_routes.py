@@ -129,6 +129,109 @@ def lookup_by_phone(phone: str, db: Session = Depends(get_db)):
     }
 
 
+# ==================================================== MVS PORTAL SSO ONBOARDING
+# Class Manager (MVS Portal) se aane wale students: agar CRM me already hain to
+# seedha login; nahi hain (aur portal par class-access UNLOCKED hai) to unki
+# details portal se auto-fetch hoti hain — student sirf apna BATCH chunta hai.
+import os as _os, hmac as _hmac, hashlib as _hashlib, base64 as _b64, json as _sjson
+
+
+def _sso_phone(payload):
+    """Token (signed) ya seedha phone se mobile nikaalo. (phone, error) return."""
+    token = (payload.get("token") or "").strip()
+    if token and "." in token:
+        secret = (_os.getenv("CRM_SSO_SECRET") or _os.getenv("CRON_SECRET") or "").encode()
+        try:
+            p64, sig = token.split(".", 1)
+            pad = p64 + "=" * (-len(p64) % 4)
+            pj = _sjson.loads(_b64.urlsafe_b64decode(pad))
+            if secret:
+                want = _b64.urlsafe_b64encode(
+                    _hmac.new(secret, p64.encode(), _hashlib.sha256).digest()
+                ).rstrip(b"=").decode()
+                if not _hmac.compare_digest(want, sig):
+                    return None, "Invalid login link. Please open Class Manager from the MVS Portal again."
+            if pj.get("x") and float(pj["x"]) < datetime.now().timestamp() * 1000:
+                return None, "This login link has expired. Please open Class Manager from the MVS Portal again."
+            ph = "".join(ch for ch in str(pj.get("m") or "") if ch.isdigit())[-10:]
+            if len(ph) == 10:
+                return ph, None
+        except Exception:
+            return None, "Invalid login link."
+    ph = "".join(ch for ch in str(payload.get("phone") or "") if ch.isdigit())[-10:]
+    if len(ph) == 10:
+        return ph, None
+    return None, "Phone number missing."
+
+
+@router.post("/sso-lookup")
+def sso_lookup(payload: dict, db: Session = Depends(get_db)):
+    phone, err = _sso_phone(payload or {})
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    sp = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
+    if sp and sp.user:
+        return {"found": True, "name": sp.user.name,
+                "user_id": sp.user.user_id, "password": sp.plain_password or ""}
+    # CRM me nahi — MVS Portal se details
+    from ext_materials import portal_fetch_student
+    st = portal_fetch_student(phone)
+    if not st:
+        return {"found": False, "portal": False}
+    if not st["unlocked"]:
+        return {"found": False, "portal": True, "locked": True, "name": st["name"]}
+    from student_routes import STUDENT_BATCHES
+    batches = [n for n, v in STUDENT_BATCHES.items() if not st["class_level"] or v[0] == st["class_level"]]
+    return {"found": False, "portal": True, "locked": False,
+            "profile": {"name": st["name"], "phone": phone, "class_level": st["class_level"],
+                        "medium": st["medium"], "subjects": st["subjects"], "session": st["session"]},
+            "batches": batches}
+
+
+@router.post("/sso-register")
+def sso_register(payload: dict, db: Session = Depends(get_db)):
+    phone, err = _sso_phone(payload or {})
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    batch_name = (payload.get("batch_name") or "").strip()
+    from student_routes import STUDENT_BATCHES
+    if batch_name not in STUDENT_BATCHES:
+        raise HTTPException(status_code=400, detail="Please select a valid batch")
+    # already exists? (double-tap safety)
+    sp = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
+    if sp and sp.user:
+        token = create_access_token({"sub": str(sp.user.id), "role": sp.user.role})
+        return {"access_token": token, "role": "student", "name": sp.user.name, "existing": True}
+    # portal par verify (server-to-server — spoof-proof)
+    from ext_materials import portal_fetch_student
+    st = portal_fetch_student(phone)
+    if not st:
+        raise HTTPException(status_code=404, detail="No MVS Portal student found for this phone. Please contact the admin.")
+    if not st["unlocked"]:
+        raise HTTPException(status_code=403, detail="Your class access is not unlocked yet. Please contact the admin.")
+    if st["class_level"] and STUDENT_BATCHES[batch_name][0] != st["class_level"]:
+        raise HTTPException(status_code=400, detail=f"This batch is for Class {STUDENT_BATCHES[batch_name][0]}, but your class is {st['class_level']}.")
+    name = st["name"] or ("Student " + phone[-4:])
+    i = 1
+    while True:
+        cand = f"MVSS{i:04d}"
+        if not db.query(User).filter(User.user_id == cand).first():
+            break
+        i += 1
+    u = User(name=name, user_id=cand, password=hash_password(phone),
+             role=UserRole.student, is_active=True)
+    db.add(u); db.flush()
+    db.add(StudentProfile(user_id=u.id, phone=phone,
+                          subjects=st["subjects"] or [],
+                          class_level=st["class_level"] or STUDENT_BATCHES[batch_name][0],
+                          medium=st["medium"], batch_name=batch_name,
+                          class_name="", is_verified=True, plain_password=phone,
+                          source="mvs_portal"))
+    db.commit()
+    token = create_access_token({"sub": str(u.id), "role": u.role})
+    return {"access_token": token, "role": "student", "name": name, "user_id": cand}
+
+
 # ==================================================== PRESENCE (all roles)
 SESSION_IDLE_MIN = 3      # no ping for this long => the session is considered over
 

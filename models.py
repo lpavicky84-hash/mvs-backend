@@ -112,6 +112,7 @@ class StudentProfile(Base):
     batch        = Column(Enum(BatchName))
     batch_name   = Column(String(160), nullable=True)  # free-text batch from app sales sheet
     medium       = Column(String(12), nullable=True)   # Hindi | English
+    source       = Column(String(20), default="mvs_app")  # mvs_portal | mvs_app
     email        = Column(String(160), nullable=True)
     subjects     = Column(JSON)   # ["Physics","Chemistry","Maths"]
     class_name   = Column(String(20))   # e.g. "12A"

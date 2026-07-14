@@ -232,6 +232,50 @@ def _fetch_list(refresh=False):
                             detail=f"Could not connect to MVS Portal: {e}")
 
 
+def portal_get(path, timeout=20):
+    """Server-to-server GET to the MVS Portal integration API. None on any failure."""
+    url, key = _cfg()
+    if not url or not key:
+        return None
+    try:
+        r = httpx.get(url + path, headers={"X-MVS-KEY": key}, timeout=timeout)
+        if r.status_code != 200:
+            return None
+        return r.json()
+    except Exception:
+        return None
+
+
+def portal_fetch_student(phone):
+    """MVS Portal se ek student ki details (SSO onboarding ke liye)."""
+    d = portal_get(f"/api/integration/student?phone={phone}")
+    if not d or not d.get("found"):
+        return None
+    subs = []
+    for x in (d.get("subjects") or []):
+        nm = x.get("name") if isinstance(x, dict) else str(x)
+        nm = (nm or "").split("(")[0].strip()
+        if nm:
+            subs.append(nm)
+    return {
+        "name": (d.get("name") or "").strip() or None,
+        "phone": str(d.get("phone") or phone),
+        "class_level": str(d.get("class_level") or d.get("class") or "") or None,
+        "medium": (d.get("medium") or "").strip() or None,
+        "session": (d.get("session") or "").strip(),
+        "subjects": subs,
+        "unlocked": bool(d.get("class_access_unlocked", True)),
+    }
+
+
+def portal_unlocked_students():
+    """Sabhi unlocked (class-access) portal students — pending list ke liye."""
+    d = portal_get("/api/integration/unlocked-students", timeout=30)
+    if not d:
+        return None
+    return d.get("students", d if isinstance(d, list) else [])
+
+
 @router.get("/materials")
 def ext_materials(refresh: int = 0, db: Session = Depends(get_db),
                   current_user=Depends(get_current_user)):

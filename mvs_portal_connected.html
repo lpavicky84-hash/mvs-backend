@@ -1819,10 +1819,28 @@ function composerHTML(key,placeholder,onsend,sendLabel){
     <input type="file" id="cmpcam-${key}" style="display:none" accept="image/*" capture="environment" onchange="cmpFileSel('${key}',1)">
   </div>`;
 }
-function cmpDrop(key,e){
+async function cmpDrop(key,e){
   e.preventDefault(); e.currentTarget.classList.remove('dragging');
-  const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
-  if(f){ cmpSetFile(key,f); toast('File added: '+f.name); }
+  const dt=e.dataTransfer;
+  const f=dt&&dt.files&&dt.files[0];
+  if(f&&f.size>0){ if(cmpSetFile(key,f)) toast('File added: '+f.name); return; }
+  // webpage se drag: sirf URL milta hai — image ko khud fetch karne ki koshish
+  let uri=''; try{ uri=dt.getData('text/uri-list')||dt.getData('text/plain')||''; }catch(err){}
+  uri=(uri.split('\n')[0]||'').trim();
+  if(/^https?:\/\//i.test(uri)){
+    toast('Fetching the dragged image...');
+    try{
+      const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(),8000);
+      const r=await fetch(uri,{signal:ctl.signal}); clearTimeout(t);
+      if(!r.ok) throw 0;
+      const b=await r.blob();
+      if(!b.size||!(b.type||'').startsWith('image/')) throw 0;
+      const name=(uri.split('/').pop()||'image').split('?')[0].slice(0,80)||'image.jpg';
+      if(cmpSetFile(key,new File([b],name,{type:b.type}))) toast('Image added: '+name);
+      return;
+    }catch(err){}
+  }
+  toast('Images cannot be dragged directly from a website. Please right-click the image \u2192 "Save image", then upload or drag it from your device.',true);
 }
 function cmpMenu(key,e){ e.stopPropagation(); document.querySelectorAll('.cmp-menu.open').forEach(m=>{ if(m.id!=='cmpm-'+key) m.classList.remove('open'); }); document.getElementById('cmpm-'+key).classList.toggle('open'); }
 document.addEventListener('click',()=>document.querySelectorAll('.cmp-menu.open').forEach(m=>m.classList.remove('open')));
@@ -1832,9 +1850,10 @@ function cmpFileSel(key,cam){
   if(inp.files&&inp.files.length){ cmpSetFile(key,inp.files[0]); inp.value=''; }
 }
 function cmpSetFile(key,f){
-  if(!f||f.size===0){ toast('This file is empty or could not be read. If you dragged it from a website, first save it to your device, then upload.',true); return; }
-  if(f.size>20*1024*1024&&!(f.type||'').startsWith('image/')){ toast('File is larger than 20MB.',true); return; }
-  _cmpState[key].file=f; cmpChips(key);
+  if(!f||f.size===0){ toast('This file is empty or could not be read. Please save it to your device first, then upload.',true); return false; }
+  if(f.size>20*1024*1024&&!(f.type||'').startsWith('image/')){ toast('File is larger than 20MB.',true); return false; }
+  if(!_cmpState[key]) _cmpState[key]={file:null,voice:null};
+  _cmpState[key].file=f; cmpChips(key); return true;
 }
 function cmpChips(key){
   const st=_cmpState[key]; const c=document.getElementById('cmpc-'+key); if(!c) return;
@@ -3781,11 +3800,39 @@ let _aStu=[]; let _aCounts={total:0,subjects:[]}; let _stuFilter=''; let _stuSea
 async function loadAStudents(){
   const el=document.getElementById('a-students-content');
   try{
- const [ss,counts]=await Promise.all([api('/api/admin/students'),api('/api/admin/student-counts').catch(()=>({total_students:0,subjects:[]}))]);
+ const [ss,counts,ov]=await Promise.all([
+   api('/api/admin/students'),
+   api('/api/admin/student-counts').catch(()=>({total_students:0,subjects:[]})),
+   api('/api/admin/portal-overview').catch(()=>null)
+ ]);
  _aStu=ss; _aCounts={total:counts.total_students||ss.length,subjects:counts.subjects||[]};
+ window._aPortalOv=ov;
  _stuFilter=''; _stuSearch=''; _stuPage=1;
  aRenderStudents();
   }catch(e){ el.innerHTML=errHtml(e); }
+}
+function openPortalPending(){
+  const ov=window._aPortalOv; if(!ov) return;
+  const rows=(ov.pending||[]).map((p,i)=>`<div class="topper-row"><div class="rank-b">${i+1}</div><div class="topper-name">${esc(p.name||'Student')}<div class="topper-sub">${esc(p.phone)}${p.class_level?' \u00b7 Class '+esc(p.class_level):''}${p.session?' \u00b7 '+esc(p.session):''}</div></div></div>`).join('');
+  showModal('Portal Pending \u2014 batch select nahi kiya ('+(ov.pending_count||0)+')',
+    `<p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">These students have <b>unlocked class access on the MVS Portal</b> but have not opened Class Manager and selected their batch yet. Remind them to tap the Class Manager card.</p>
+     <div class="hide-scroll" style="max-height:52vh">${rows||'<div class="empty-state"><p>Everyone with unlocked access has onboarded. \ud83c\udf89</p></div>'}</div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+}
+function openDeleteAllStudents(){
+  showModal('\u26a0\ufe0f Delete ALL Students',
+    `<div class="alert alert-danger">This permanently deletes <b>every student</b> \u2014 profiles, doubts, submissions, results. Use only before a fresh re-upload.</div>
+     <div class="form-group" style="margin-top:12px"><label>Type <b>DELETE ALL STUDENTS</b> to confirm</label><input class="form-control" id="das-confirm" placeholder="DELETE ALL STUDENTS"></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-danger" id="das-btn" onclick="doDeleteAllStudents()">Delete Everything</button>`);
+}
+async function doDeleteAllStudents(){
+  const v=val('das-confirm');
+  if(v!=='DELETE ALL STUDENTS'){ toast('Please type DELETE ALL STUDENTS exactly to confirm.',true); return; }
+  const btn=document.getElementById('das-btn'); btn.disabled=true; btn.textContent='Deleting\u2026';
+  try{
+    const r=await api('/api/admin/students/all','DELETE',{confirm:v});
+    closeModal(); toast(r.message); loadAStudents();
+  }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Delete Everything'; }
 }
 function _stuFiltered(){
   let list=_aStu;
@@ -3804,9 +3851,16 @@ function aRenderStudents(){
   const page=filtered.slice(start,start+_stuSize);
   const rows=page.length?page.map(s=>{
     const subs=(s.subjects||[]).slice(0,4).map(x=>`<span class="chip">${esc(x)}</span>`).join('');
-    return `<div class="stu-row" onclick="openStudentProfile(${s.profile_id})"><div class="stu-photo" id="sphoto-${s.profile_id}">${esc(initials(s.name||'S'))}</div><div class="stu-info"><div class="stu-name">${esc(s.name)}</div><div class="stu-meta">${esc(s.user_id)} · ${esc(s.phone||'no phone')} · ${esc(s.batch||'no batch')}</div><div class="slist-chips" style="margin-top:4px">${subs}</div></div><div class="stu-act" onclick="event.stopPropagation()"><button class="btn btn-ghost btn-sm" onclick='openEditStudent(${s.profile_id},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,subjects:s.subjects||[]}).replace(/'/g,"&#39;")})'>${ic('edit')}</button><button class="btn btn-danger btn-sm" onclick="deleteStudent(${s.profile_id},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
+    return `<div class="stu-row" onclick="openStudentProfile(${s.profile_id})"><div class="stu-photo" id="sphoto-${s.profile_id}">${esc(initials(s.name||'S'))}</div><div class="stu-info"><div class="stu-name">${esc(s.name)}</div><div class="stu-meta">${esc(s.user_id)} · ${esc(s.phone||'no phone')} · ${esc(s.batch||'no batch')} · <span class="xm-chip" style="font-size:.6rem;padding:2px 7px;${s.source==='mvs_portal'?'background:rgba(201,150,46,.16);color:#b07f1e':''}">${s.source==='mvs_portal'?'MVS PORTAL':'MVS APP'}</span></div><div class="slist-chips" style="margin-top:4px">${subs}</div></div><div class="stu-act" onclick="event.stopPropagation()"><button class="btn btn-ghost btn-sm" onclick='openEditStudent(${s.profile_id},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,subjects:s.subjects||[]}).replace(/'/g,"&#39;")})'>${ic('edit')}</button><button class="btn btn-danger btn-sm" onclick="deleteStudent(${s.profile_id},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
   }).join(''):`<div class="empty-state"><p>No students match this view.</p></div>`;
-  el.innerHTML=`<div class="card-header" style="padding:0 4px 18px;border:none"><h3 style="font-size:1.3rem">Students</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-success btn-sm" onclick="openBulkPhone()">${ic('users')} Add by Phone</button><button class="btn btn-ghost btn-sm" onclick="openExcelUpload()">${ic('upload')} Excel Upload</button><button class="btn btn-primary btn-sm" onclick="openAddStudent()">${ic('user')} Add Student</button></div></div>
+  const ov=window._aPortalOv;
+  const srcChips=ov?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 4px 14px">
+      <span class="xm-chip">Total \u00b7 ${ov.total}</span>
+      <span class="xm-chip" style="background:rgba(201,150,46,.16);color:#b07f1e">MVS Portal \u00b7 ${ov.mvs_portal}</span>
+      <span class="xm-chip">MVS App \u00b7 ${ov.mvs_app}</span>
+      ${ov.portal_reachable?`<span class="${ov.pending_count?'xm-pend':'xm-chip'}" style="cursor:pointer" onclick="openPortalPending()">Portal Pending \u00b7 ${ov.pending_count} \u2014 view</span>`:`<span class="xm-chip" title="MVS Portal unlocked-students endpoint available nahi hai">Portal Pending \u00b7 \u2014</span>`}
+    </div>`:'';
+  el.innerHTML=`<div class="card-header" style="padding:0 4px 12px;border:none"><h3 style="font-size:1.3rem">Students</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-success btn-sm" onclick="openBulkPhone()">${ic('users')} Add by Phone</button><button class="btn btn-ghost btn-sm" onclick="openExcelUpload()">${ic('upload')} Excel Upload</button><button class="btn btn-primary btn-sm" onclick="openAddStudent()">${ic('user')} Add Student</button><button class="btn btn-danger btn-sm" onclick="openDeleteAllStudents()">${ic('trash')} Delete All</button></div></div>${srcChips}
     <div class="count-card-row">${cards}</div>
     <div class="card"><div class="card-body">
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"><input class="form-control" style="flex:1;min-width:180px" placeholder="Search name, phone, ID, email..." value="${esc(_stuSearch)}" oninput="aStuSearch(this.value)"><select class="form-control" style="width:auto" onchange="aStuSize(this.value)">${[10,25,50,100].map(n=>`<option value="${n}"${_stuSize===n?' selected':''}>${n} / page</option>`).join('')}</select></div>
@@ -5320,21 +5374,24 @@ async function processExcel(){
     // progress UI (batch-wise)
     document.getElementById('excel-preview').innerHTML='';
     status.innerHTML=`<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill" id="imp-fill"></div></div><div class="prog-text" id="imp-text">0% — taiyaari...</div></div>`;
-    const batchSize=40; let created=0, updated=0, skipped=0, done=0;
+    const batchSize=40; let created=0, updated=0, skipped=0, done=0, dups=[];
     for(let i=0;i<deduped.length;i+=batchSize){
       const batch=deduped.slice(i,i+batchSize);
       const r=await api('/api/admin/students/bulk-import','POST',{students:batch});
-      created+=r.created||0; updated+=r.updated||0; skipped+=r.skipped||0; done+=batch.length;
+      created+=r.created||0; updated+=r.updated||0; skipped+=r.skipped||0; dups=dups.concat(r.duplicates||[]); done+=batch.length;
       const pct=Math.round(done/deduped.length*100);
       const f=document.getElementById('imp-fill'), t=document.getElementById('imp-text');
       if(f) f.style.width=pct+'%'; if(t) t.textContent=`${pct}% — ${done}/${deduped.length} students`;
     }
+    const dupRows=dups.map(d=>`<div class="topper-row"><div style="flex:1;min-width:0"><b>${esc(d.existing_name||d.sheet_name)}</b> <span class="topper-sub">${esc(d.phone)} \u00b7 ${esc(d.existing_user_id||'')} \u00b7 batch: ${esc(d.existing_batch||'\u2014')}</span>${d.sheet_name&&d.sheet_name!==d.existing_name?`<div class="topper-sub">Sheet name: ${esc(d.sheet_name)}</div>`:''}</div><span class="xm-chip" style="background:rgba(201,150,46,.16);color:#b07f1e">MVS PORTAL</span></div>`).join('');
     status.innerHTML=`<div class="alert alert-success"><strong>Import complete!</strong><br>
-      <strong>${created}</strong> new students added<br>
-      <strong>${updated}</strong> already existed (same phone — <strong>not added again</strong> , batch updated)<br>
-      ${inSheetDup>0?`<strong>${inSheetDup}</strong> duplicate sheet ke andar the (auto-hata diye)<br>`:''}
-      ${skipped>0?`<strong>${skipped}</strong> galat phone skip`:''}</div>`;
-    toast(`${created} naye, ${updated} duplicate skip`);
+      <strong>${created}</strong> new students added (MVS App)<br>
+      <strong>${updated}</strong> already existed as MVS App (batch refreshed)<br>
+      ${dups.length?`<strong style="color:#b07f1e">${dups.length}</strong> duplicate(s) already exist from <strong>MVS Portal</strong> — <strong>not added again</strong>, verify below<br>`:''}
+      ${inSheetDup>0?`<strong>${inSheetDup}</strong> duplicates inside the sheet (auto-removed)<br>`:''}
+      ${skipped>0?`<strong>${skipped}</strong> invalid phone skipped`:''}</div>
+      ${dups.length?`<div style="font-size:.75rem;font-weight:800;color:var(--text-muted);margin:12px 0 6px">MVS PORTAL DUPLICATES \u2014 VERIFY THESE (${dups.length})</div><div class="hide-scroll" style="max-height:250px">${dupRows}</div>`:''}`;
+    toast(`${created} new, ${updated} refreshed, ${dups.length} portal duplicates skipped`);
     btn.textContent='Done'; btn.disabled=false; btn.setAttribute('onclick','closeModal()');
     loadAStudents();
   }catch(e){ status.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; toast('Error: '+e.message,true); btn.disabled=false; btn.textContent='Import Students'; }
@@ -5399,6 +5456,109 @@ function errHtml(e){ return `<div class="alert alert-danger"> ${esc(e.message)}<
   }).observe(document.body,{childList:true,subtree:true});
 })();
 
+
+/* ==================== MVS PORTAL ONE-TAP SSO ====================
+   Student portal ka Class Manager card #sso=<token> (ya fallback #student=<phone>) ke saath kholta hai.
+   Yahan hum wahi exact flow programmatically chalate hain: lookup-by-phone -> login -> openStudent().
+   Token = base64url(JSON{m:mobile, x:expiry}) + "." + HMAC-SHA256 signature (CRM_SSO_SECRET / CRON_SECRET).
+   Backend verification chaho to Railway par isi secret se signature check endpoint bana sakte ho.  */
+function _ssoOverlay(show){
+  var o=document.getElementById('sso-ovl');
+  if(show){
+    if(!o){ o=document.createElement('div'); o.id='sso-ovl';
+      o.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(7,16,34,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;color:#fff;font-family:inherit';
+      o.innerHTML='<div style="width:52px;height:52px;border-radius:50%;border:4px solid rgba(255,255,255,.15);border-top-color:#FF6B2B;animation:ssoSpin .8s linear infinite"></div>'+
+        '<div style="font-size:1.05rem;font-weight:700">Logging you in\u2026</div>'+
+        '<div style="font-size:.8rem;opacity:.65">MVS Portal \u2192 Class Manager</div>'+
+        '<style>@keyframes ssoSpin{to{transform:rotate(360deg)}}</style>';
+      document.body.appendChild(o);
+    }
+    o.style.display='flex';
+  } else if(o){ o.style.display='none'; }
+}
+async function mvsSsoFromHash(){
+  var h=location.hash||'';
+  var phone='';
+  var mT=h.match(/^#sso=([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/);
+  if(mT){
+    try{
+      var pj=JSON.parse(atob(mT[1].replace(/-/g,'+').replace(/_/g,'/')));
+      if(pj && pj.m && (!pj.x || Date.now() < Number(pj.x))) phone=String(pj.m);
+      else { toast('Login link expired — Class Manager ko MVS portal se dobara kholein.',true); }
+    }catch(e){}
+  } else {
+    var mP=h.match(/^#student(?:=(\d{10}))?$/i);
+    if(!mP) return;
+    if(mP[1]) phone=mP[1];
+  }
+  try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){}
+  if(!phone){ goLogin('student'); return; }          // sirf #student -> seedha phone-login screen (landing skip)
+  CURRENT_PORTAL='student';
+  _ssoOverlay(true);
+  window._ssoToken=(mT?mT[0].slice(5):'');   // "#sso=" ke baad ka pura token
+  try{
+    var d=await api('/api/auth/sso-lookup','POST',{token:window._ssoToken,phone:phone});
+    if(d.found){
+      var data=await api('/api/auth/login','POST',{user_id:d.user_id,password:d.password});
+      TOKEN=data.access_token; ROLE=data.role; NAME=data.name;
+      document.getElementById('landing').style.display='none';
+      document.getElementById('login-screen').classList.remove('active');
+      _ssoOverlay(false);
+      openStudent();
+      try{ toast('Welcome, '+(data.name||d.name||'Student')+'!'); }catch(e){}
+      return;
+    }
+    _ssoOverlay(false);
+    if(d.portal && d.locked){
+      goLogin('student');
+      toast('Your class access is not unlocked yet on the MVS Portal. Please contact the admin.',true);
+      return;
+    }
+    if(d.portal && d.profile){
+      window._ssoProfile=d.profile;
+      ssoBatchPopup(d.profile,d.batches||[]);
+      return;
+    }
+    goLogin('student');
+    var sp=document.getElementById('sp-phone'); if(sp) sp.value=phone;
+    toast('No student found for this phone. Please contact the admin.',true);
+  }catch(e){
+    _ssoOverlay(false); goLogin('student');
+    var sp2=document.getElementById('sp-phone'); if(sp2) sp2.value=phone;
+    toast(e.message,true);
+  }
+}
+// MVS Portal se aaya naya student — sirf batch chunta hai, baaki sab auto
+function ssoBatchPopup(p,batches){
+  document.getElementById('landing').style.display='none';
+  const subChips=(p.subjects||[]).slice(0,7).map(x=>`<span class="xm-chip">${esc(x)}</span>`).join('');
+  const bBtns=batches.map(b=>`<button class="btn btn-ghost" style="width:100%;justify-content:space-between;margin-bottom:9px" onclick="ssoRegister('${esc(b)}',this)">${esc(b)}<span style="font-size:.68rem;opacity:.7">Class ${p.class_level||''}</span></button>`).join('');
+  showModal('Welcome, '+esc(p.name||'Student')+'!',
+    `<p style="font-size:.85rem;color:var(--text-muted);margin-bottom:12px">Your details have been fetched from the MVS Portal. Just select your batch to continue \u2014 subjects and medium are set automatically.</p>
+     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"><span class="xm-chip xm-chip-hl">Class ${esc(p.class_level||'\u2014')}</span>${p.medium?`<span class="xm-chip">${esc(p.medium)} Medium</span>`:''}${p.session?`<span class="xm-chip">${esc(p.session)}</span>`:''}</div>
+     ${subChips?`<div style="font-size:.72rem;font-weight:700;color:var(--text-muted);margin-bottom:6px">YOUR SUBJECTS</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">${subChips}</div>`:''}
+     <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);margin-bottom:8px">SELECT YOUR BATCH</div>${bBtns||'<p style="color:var(--text-muted)">No batches available for your class. Please contact the admin.</p>'}
+     <div id="sso-reg-status"></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal();goLogin('student')">Cancel</button>`);
+}
+async function ssoRegister(batch,btn){
+  document.querySelectorAll('#modal-body .btn-ghost').forEach(b=>b.disabled=true);
+  if(btn){ btn.classList.remove('btn-ghost'); btn.classList.add('btn-primary'); btn.innerHTML='Setting up your account\u2026'; }
+  try{
+    const r=await api('/api/auth/sso-register','POST',{token:window._ssoToken||'',phone:(window._ssoProfile||{}).phone||'',batch_name:batch});
+    TOKEN=r.access_token; ROLE='student'; NAME=r.name;
+    closeModal();
+    document.getElementById('login-screen').classList.remove('active');
+    openStudent();
+    toast('Welcome, '+(r.name||'Student')+'! Your profile is ready.');
+  }catch(e){
+    const st=document.getElementById('sso-reg-status');
+    if(st) st.innerHTML=`<div class="alert alert-danger" style="margin-top:10px">${esc(e.message)}</div>`;
+    document.querySelectorAll('#modal-body button').forEach(b=>b.disabled=false);
+    if(btn){ btn.classList.add('btn-ghost'); btn.classList.remove('btn-primary'); btn.innerHTML=esc(batch); }
+  }
+}
+window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 </script>
 </body>
 </html>
