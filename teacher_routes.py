@@ -153,12 +153,9 @@ def request_reschedule(req: RescheduleCreate, db: Session = Depends(get_db), cur
         tp.reschedule_count_this_month = 0
         tp.reschedule_reset_month = now.month
 
-    # Check monthly limit
-    if tp.reschedule_count_this_month >= 2:
-        raise HTTPException(
-            status_code=429,
-            detail="LIMIT_REACHED: Aapne is mahine ki 2 reschedule limit poori kar li hai. Next month active hoga."
-        )
+    # NOTE: Monthly reschedule limit hata di gayi hai. Teacher jitni baar chahe
+    # reschedule request bhej sakta hai — har request admin approval par hi
+    # apply hoti hai. Count sirf tracking/reporting ke liye rakha gaya hai.
 
     class_entry = db.query(ClassEntry).filter(
         ClassEntry.id == req.class_entry_id,

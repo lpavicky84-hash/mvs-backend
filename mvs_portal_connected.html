@@ -21,16 +21,17 @@
   .portal-card:hover{background:rgba(255,255,255,.09);transform:translateY(-10px);border-color:#FF6B2B;box-shadow:0 20px 40px rgba(255,107,43,.22)}
   .portal-card .icon{font-size:3rem;margin-bottom:16px}.portal-card h3{font-size:1.3rem;font-weight:700;margin-bottom:8px}.portal-card p{font-size:.85rem;opacity:.7;line-height:1.5}
   .app{display:none;min-height:100vh}.app.active{display:flex}
-  .sidebar{width:260px;background:var(--sidebar);min-height:100vh;display:flex;flex-direction:column;position:fixed;left:0;top:0;z-index:100}
+  .sidebar{width:260px;background:var(--sidebar);height:100vh;height:100dvh;display:flex;flex-direction:column;position:fixed;left:0;top:0;z-index:100;overflow:hidden}
   .sidebar-logo{padding:24px 20px;border-bottom:1px solid rgba(255,255,255,.1);display:flex;align-items:center;gap:12px}
   .sidebar-logo .logo-icon{width:38px;height:38px;background:var(--primary);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:1.05rem;color:#fff;font-weight:800;letter-spacing:-.02em}
   .sidebar-logo span{color:#fff;font-weight:700;font-size:1rem}.sidebar-logo small{display:block;color:var(--sidebar-text);font-size:.75rem;opacity:.7}
-  .sidebar-nav{flex:1;padding:16px 0;overflow-y:auto}
+  .sidebar-nav{flex:1 1 auto;padding:16px 0;overflow-y:auto;min-height:0;scrollbar-width:none;-ms-overflow-style:none}
+.sidebar-nav::-webkit-scrollbar{display:none}
   .nav-section{padding:8px 20px 4px;font-size:.7rem;font-weight:600;color:var(--sidebar-text);opacity:.5;text-transform:uppercase;letter-spacing:1px}
   .nav-item{display:flex;align-items:center;gap:12px;padding:11px 15px;margin:2px 12px;border-radius:11px;color:var(--sidebar-text);cursor:pointer;transition:.2s;font-size:.9rem;position:relative}
   .nav-item:hover{background:rgba(255,255,255,.06);color:#fff}.nav-item.active{background:var(--accent);color:#fff;font-weight:700;box-shadow:0 6px 16px -4px rgba(255,107,43,.5)}
   .nav-item .badge{position:absolute;right:16px;background:var(--danger);color:#fff;font-size:.65rem;padding:2px 6px;border-radius:99px;font-weight:700}
-  .sidebar-bottom{padding:16px 20px;border-top:1px solid rgba(255,255,255,.1)}
+  .sidebar-bottom{padding:14px 20px;border-top:1px solid rgba(255,255,255,.1);flex-shrink:0;background:var(--sidebar)}
   .user-info{display:flex;align-items:center;gap:12px}
   .avatar{width:36px;height:36px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:.85rem}
   .user-info span{color:#fff;font-size:.85rem;font-weight:600}.user-info small{display:block;color:var(--sidebar-text);font-size:.75rem;opacity:.6}
@@ -1338,6 +1339,18 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 .subj-opt b{font-weight:700;opacity:.6;font-size:.7rem}
 .subj-opt input{margin:0}
 
+
+/* Photo cropper */
+.pc-stage{position:relative;width:320px;max-width:100%;aspect-ratio:1;margin:0 auto;border-radius:16px;overflow:hidden;background:#0b1524;touch-action:none}
+.pc-stage canvas{display:block;width:100%;height:100%;cursor:grab}
+.pc-stage canvas:active{cursor:grabbing}
+.pc-mask{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 2000px rgba(6,12,24,.55);-webkit-mask:radial-gradient(circle at 50% 50%, transparent 49.5%, #000 50%);mask:radial-gradient(circle at 50% 50%, transparent 49.5%, #000 50%)}
+.pc-mask::after{content:'';position:absolute;inset:0;border-radius:50%;border:2px solid rgba(255,255,255,.9);box-shadow:0 0 0 1px rgba(0,0,0,.2)}
+.pc-ctrl{display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap}
+.pc-lbl{font-size:.72rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em}
+.pc-ctrl input[type=range]{flex:1;min-width:120px;accent-color:var(--accent)}
+.pc-hint{font-size:.72rem;color:var(--text-muted);text-align:center;margin-top:9px}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -1354,7 +1367,7 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 <!-- TEACHER SUBJECT SELECTION (first login) -->
 <div id="t-subject-screen" style="display:none;min-height:100vh;background:linear-gradient(150deg,#001022,#001a3a 55%,#0a3260);align-items:center;justify-content:center;padding:20px"><div class="login-box" style="max-width:620px"><h2>Select Your Subjects</h2><p>Select the subjects you teach, class by class.</p><div style="display:flex;justify-content:space-between;margin:14px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 10</label></div><div id="t-sub-10" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><div style="display:flex;justify-content:space-between;margin:16px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 12</label></div><div id="t-sub-12" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><button class="login-btn" id="t-save-subj" style="margin-top:18px" onclick="saveTeacherSubjects()">Save & Continue →</button><p style="text-align:center;margin-top:14px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Logout</p></div>
 </div>
-<div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP Result</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="tPage('extmat',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule Rule:</b> Maximum 2 per month. Frequent reschedules affect MVS Foundation's reputation.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-extmat"><div id="t-extmat-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
+<div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP Result</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="tPage('extmat',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule:</b> Har reschedule admin approval ke baad hi apply hota hai.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-extmat"><div id="t-extmat-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== ADMIN APP ===== -->
 <div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#ef4444">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('compliance',this)"><span>Class Compliance</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Users</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Study Material</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#ef4444" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-compliance"><div id="a-compliance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== STUDENT APP ===== -->
@@ -1362,7 +1375,7 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 </div><!-- Generic Modal -->
 <div class="modal-overlay" id="modal"><div class="modal"><div class="modal-header"><h3 id="modal-title">Modal</h3><button class="modal-close" onclick="closeModal()">×</button></div><div class="modal-body" id="modal-body"></div><div class="modal-footer" id="modal-footer"></div></div></div>
 <!-- Limit Popup -->
-<div class="popup-overlay" id="limit-popup"><div class="popup"><div class="popup-icon"></div><h3>Reschedule Limit Reached!</h3><p>This affects MVS Foundation's reputation with students. You have used your 2 reschedules for this month. It will reset next month.</p><button class="btn btn-primary" style="margin-top:20px;width:100%" onclick="document.getElementById('limit-popup').classList.remove('open')">Got it</button></div></div><div id="toast"> <span id="toast-msg"></span></div><script>
+<div id="toast"> <span id="toast-msg"></span></div><script>
 // ===== PROFESSIONAL SVG ICONS =====
 const _S='<svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
 const ICONS={
@@ -2322,18 +2335,92 @@ async function loadTopAvatar(role){
     }
   }catch(e){}
 }
+// ============ PHOTO CROPPER (preview + zoom + drag, circular) ============
+const _pc={img:null,scale:1,min:1,x:0,y:0,drag:false,sx:0,sy:0,size:320,onDone:null};
+function photoCropperHTML(inputId){
+  return `<div id="pc-pick">${fileDropHTML(inputId,inputId+'-lbl','image/*')}</div>
+    <div id="pc-editor" style="display:none">
+      <div class="pc-stage"><canvas id="pc-canvas" width="320" height="320"></canvas><div class="pc-mask"></div></div>
+      <div class="pc-ctrl">
+        <span class="pc-lbl">Zoom</span>
+        <input type="range" id="pc-zoom" min="1" max="3" step="0.01" value="1" oninput="pcZoom(this.value)">
+        <button class="btn btn-ghost btn-sm" onclick="pcReset()">Reset</button>
+        <button class="btn btn-ghost btn-sm" onclick="pcChange('${inputId}')">Change photo</button>
+      </div>
+      <p class="pc-hint">Drag the photo to reposition \u00b7 use the slider to zoom \u00b7 only the circle will be saved</p>
+    </div>`;
+}
+function pcInit(inputId){
+  const inp=document.getElementById(inputId);
+  inp.addEventListener('change',()=>{ if(inp.files&&inp.files[0]) pcLoad(inp.files[0]); });
+}
+function pcLoad(file){
+  if(!file||!(file.type||'').startsWith('image/')){ toast('Please choose an image file.',true); return; }
+  const img=new Image();
+  img.onload=()=>{
+    _pc.img=img;
+    const S=_pc.size;
+    _pc.min=Math.max(S/img.width,S/img.height);
+    _pc.scale=_pc.min; _pc.x=0; _pc.y=0;
+    const z=document.getElementById('pc-zoom'); z.min=_pc.min; z.max=_pc.min*3; z.step=(_pc.min*2)/100; z.value=_pc.min;
+    document.getElementById('pc-pick').style.display='none';
+    document.getElementById('pc-editor').style.display='block';
+    pcBind(); pcDraw();
+  };
+  img.onerror=()=>toast('This image could not be read. Try another file.',true);
+  img.src=URL.createObjectURL(file);
+}
+function pcClamp(){
+  const S=_pc.size, w=_pc.img.width*_pc.scale, h=_pc.img.height*_pc.scale;
+  const mx=Math.max(0,(w-S)/2), my=Math.max(0,(h-S)/2);
+  _pc.x=Math.max(-mx,Math.min(mx,_pc.x)); _pc.y=Math.max(-my,Math.min(my,_pc.y));
+}
+function pcDraw(){
+  const c=document.getElementById('pc-canvas'); if(!c||!_pc.img) return;
+  const ctx=c.getContext('2d'), S=_pc.size;
+  ctx.clearRect(0,0,S,S);
+  ctx.fillStyle='#0b1524'; ctx.fillRect(0,0,S,S);
+  pcClamp();
+  const w=_pc.img.width*_pc.scale, h=_pc.img.height*_pc.scale;
+  ctx.drawImage(_pc.img,(S-w)/2+_pc.x,(S-h)/2+_pc.y,w,h);
+}
+function pcZoom(v){ _pc.scale=parseFloat(v); pcDraw(); }
+function pcReset(){ _pc.scale=_pc.min; _pc.x=0; _pc.y=0; document.getElementById('pc-zoom').value=_pc.min; pcDraw(); }
+function pcChange(inputId){
+  document.getElementById('pc-editor').style.display='none';
+  document.getElementById('pc-pick').style.display='block';
+  const inp=document.getElementById(inputId); if(inp) inp.value='';
+  _pc.img=null;
+}
+function pcBind(){
+  const c=document.getElementById('pc-canvas'); if(!c||c.dataset.bound) return; c.dataset.bound='1';
+  const down=e=>{ _pc.drag=true; const p=e.touches?e.touches[0]:e; _pc.sx=p.clientX-_pc.x; _pc.sy=p.clientY-_pc.y; };
+  const move=e=>{ if(!_pc.drag) return; const p=e.touches?e.touches[0]:e; _pc.x=p.clientX-_pc.sx; _pc.y=p.clientY-_pc.sy; pcDraw(); if(e.cancelable) e.preventDefault(); };
+  const up=()=>{ _pc.drag=false; };
+  c.addEventListener('mousedown',down); window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
+  c.addEventListener('touchstart',down,{passive:true}); c.addEventListener('touchmove',move,{passive:false}); c.addEventListener('touchend',up);
+}
+function pcBlob(){
+  return new Promise((res,rej)=>{
+    if(!_pc.img) return rej(new Error('Please choose a photo first.'));
+    const S=512, out=document.createElement('canvas'); out.width=S; out.height=S;
+    const ctx=out.getContext('2d');
+    const k=S/_pc.size, w=_pc.img.width*_pc.scale*k, h=_pc.img.height*_pc.scale*k;
+    ctx.fillStyle='#fff'; ctx.fillRect(0,0,S,S);
+    ctx.drawImage(_pc.img,(S-w)/2+_pc.x*k,(S-h)/2+_pc.y*k,w,h);
+    out.toBlob(b=>b?res(new File([b],'photo.jpg',{type:'image/jpeg'})):rej(new Error('Crop failed')),'image/jpeg',0.85);
+  });
+}
 function openSetStudentPhoto(){
   showModal('Profile Photo',
-    `<div class="alert alert-info">Upload your photo — it will appear with your name in the portal. (It is compressed automatically.)</div>
-     <div class="form-group">${fileDropHTML('sp-file','sp-flabel','image/*')}</div>
-     <div id="sp-status"></div>`,
+    `<div class="form-group">${photoCropperHTML('sp-file')}</div><div id="sp-status"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="sp-btn" onclick="submitStudentPhoto()">Save Photo</button>`);
+  pcInit('sp-file');
 }
 async function submitStudentPhoto(){
-  const fi=document.getElementById('sp-file');
-  if(!fi.files.length){ toast('Please select a photo.',true); return; }
   const btn=document.getElementById('sp-btn'); btn.disabled=true; btn.textContent='Uploading...';
-  let f=await compressIfImage(fi.files[0],600,0.8);
+  let f;
+  try{ f=await pcBlob(); }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Save Photo'; return; }
   const fd=new FormData(); fd.append('file',f);
   try{
     const r=await fetch(API+'/api/student/photo',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
@@ -3582,7 +3669,7 @@ async function renderAdminHealth(){
         : [...new Set((t.subjects||[]).map(x=>(x||'').trim()).filter(Boolean))].map(s=>({s,c:''}));
       const seen=new Set(); pairs=pairs.filter(p=>{ const k=p.s+'|'+p.c; if(seen.has(k)) return false; seen.add(k); return true; });
       const subs=pairs.slice(0,4).map(p=>`<span class="chip">${esc(p.s)}${p.c?`<b style="opacity:.65;font-weight:700;margin-left:5px">${esc(p.c)}</b>`:''}</span>`).join('')+(pairs.length>4?`<span class="chip">+${pairs.length-4}</span>`:'')||'<span style="color:var(--text-muted)">—</span>';
-      return `<tr><td><strong>${esc(t.name)}</strong><div style="font-size:.72rem;color:var(--text-muted)">${esc(t.user_id)}</div></td><td>${subs}</td><td><strong>${done}</strong> <span style="color:var(--text-muted);font-size:.78rem">total</span><div class="eff-bar"><div class="eff-fill" style="width:${pct}%;background:${fillCol}"></div></div><div style="font-size:.72rem;color:var(--text-muted);margin-top:3px">${m} this month</div></td><td><span class="tag ${rs>=2?'tag-reschedule':'tag-done'}">${rs}/2</span></td><td><span class="tag ${lvl.c}">${lvl.l}</span></td></tr>`;
+      return `<tr><td><strong>${esc(t.name)}</strong><div style="font-size:.72rem;color:var(--text-muted)">${esc(t.user_id)}</div></td><td>${subs}</td><td><strong>${done}</strong> <span style="color:var(--text-muted);font-size:.78rem">total</span><div class="eff-bar"><div class="eff-fill" style="width:${pct}%;background:${fillCol}"></div></div><div style="font-size:.72rem;color:var(--text-muted);margin-top:3px">${m} this month</div></td><td><span class="tag ${rs>=3?'tag-reschedule':'tag-done'}">${rs}</span> <span style="color:var(--text-muted);font-size:.72rem">this month</span></td><td><span class="tag ${lvl.c}">${lvl.l}</span></td></tr>`;
     }).join('');
     wrap.innerHTML=`<div class="hide-scroll health-scroll"><table class="health-table"><thead><tr><th>Teacher</th><th>Subjects</th><th>Classes (Activity)</th><th>Reschedule</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>${ts.length>5?`<div style="text-align:center;font-size:.72rem;color:var(--text-muted);padding-top:8px">Showing 5 of ${ts.length} teachers \u00b7 scroll for more</div>`:''}`;
   }catch(e){ wrap.innerHTML=errHtml(e); }
@@ -3722,7 +3809,7 @@ async function loadATeachers(){
    const ph=`tphoto-${t.profile_id}`;
    html+=`<div class="tcard2"><div class="tcard2-head"><div class="tcard2-photo" id="${ph}">${esc(initials(t.name||'T'))}</div><div style="flex:1"><div class="tcard2-name">${esc(t.name)}</div><div class="tcard2-sub"><code>${esc(t.user_id)}</code> · ${esc(t.phone||'no phone')}</div><span class="tag ${t.is_active?'tag-done':'tag-low'}" style="margin-top:6px">${t.is_active?'Active':'Inactive'}</span></div></div>
      ${cls10}${cls12}${other}${none}
-     <div class="tcard2-stats"><div class="mini-stat"><div class="n">${t.total_classes_done||0}</div><div class="l">Classes</div></div><div class="mini-stat"><div class="n">${t.monthly_classes_done||0}</div><div class="l">This Month</div></div><div class="mini-stat"><div class="n">${t.reschedule_this_month||0}/2</div><div class="l">Reschedule</div></div></div>
+     <div class="tcard2-stats"><div class="mini-stat"><div class="n">${t.total_classes_done||0}</div><div class="l">Classes</div></div><div class="mini-stat"><div class="n">${t.monthly_classes_done||0}</div><div class="l">This Month</div></div><div class="mini-stat"><div class="n">${t.reschedule_this_month||0}</div><div class="l">Reschedule</div></div></div>
      <div class="tcard2-actions"><button class="btn btn-primary btn-sm" onclick="openNotifyTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('bell')} Notify</button><button class="btn btn-ghost btn-sm" onclick='openEditTeacher(${t.profile_id},${JSON.stringify({name:t.name,phone:t.phone,subjects:t.subjects||[],is_active:t.is_active}).replace(/'/g,"&#39;")})'>${ic('edit')} Edit</button><button class="btn btn-ghost btn-sm" onclick="openTeacherPhoto(${t.profile_id})">${ic('upload')} Photo</button><button class="btn btn-ghost btn-sm" onclick="openResetPassword('teacher',${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('shield')} Password</button><button class="btn btn-danger btn-sm" onclick="deleteTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
  });
  html+=`</div>`;
@@ -3837,14 +3924,14 @@ async function deleteStudent(sid,name){
 }
 async function openTeacherPhoto(pid){
   showModal('Teacher Photo',
-    `<div class="alert alert-info">Upload the teacher's photo — students will see it under "Know Your Teacher".</div><div class="form-group">${fileDropHTML('tp-file','tp-flabel','image/*')}</div><div id="tp-status"></div>`,
+    `<div class="form-group">${photoCropperHTML('tp-file')}</div><div id="tp-status"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="tp-btn" onclick="submitTeacherPhoto(${pid})">Save Photo</button>`);
+  pcInit('tp-file');
 }
 async function submitTeacherPhoto(pid){
-  const fi=document.getElementById('tp-file');
-  if(!fi.files.length){ toast('Please select a photo.',true); return; }
   const btn=document.getElementById('tp-btn'); btn.disabled=true; btn.textContent='Uploading...';
-  let f=await compressIfImage(fi.files[0],600,0.8);
+  let f;
+  try{ f=await pcBlob(); }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Save Photo'; return; }
   const fd=new FormData(); fd.append('file',f);
   try{
     const r=await fetch(API+'/api/admin/teacher/'+pid+'/photo',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
@@ -4177,7 +4264,7 @@ async function loadAActivity(){
    const ph=`aphoto-${t.profile_id}`;
    html+=`<div class="tcard2"><div class="tcard2-head"><div class="tcard2-photo" id="${ph}">${esc(initials(t.name||'T'))}</div><div style="flex:1"><div class="tcard2-name">${esc(t.name)}</div><div class="tcard2-sub"><code>${esc(t.user_id)}</code></div><span class="tag ${lvl.c}" style="margin-top:6px">${lvl.l}</span></div></div>
      ${cls10}${cls12}${other}${none}
-     <div class="tcard2-stats"><div class="mini-stat"><div class="n">${t.total_classes_done||0}</div><div class="l">Classes</div></div><div class="mini-stat"><div class="n">${m}</div><div class="l">This Month</div></div><div class="mini-stat"><div class="n">${t.reschedule_this_month||0}/2</div><div class="l">Reschedule</div></div></div>
+     <div class="tcard2-stats"><div class="mini-stat"><div class="n">${t.total_classes_done||0}</div><div class="l">Classes</div></div><div class="mini-stat"><div class="n">${m}</div><div class="l">This Month</div></div><div class="mini-stat"><div class="n">${t.reschedule_this_month||0}</div><div class="l">Reschedule</div></div></div>
      <div class="tcard2-actions"><button class="btn btn-primary btn-sm" onclick='openEditSubjects(${t.profile_id},${JSON.stringify(t.subjects||[]).replace(/'/g,"&#39;")})'>${ic('edit')} Edit Subjects</button><button class="btn btn-ghost btn-sm" onclick="openNotifyTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('bell')} Notify</button></div></div>`;
  });
  html+=`</div>`;
