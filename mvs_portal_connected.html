@@ -1495,13 +1495,32 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 .dark .seg-b:hover{background:rgba(255,255,255,.06);color:#fff}
 
 
-/* students master filter */
-.stu-master{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;background:var(--card);border:1.5px solid var(--border);border-radius:16px;padding:14px 16px;margin-bottom:16px;box-shadow:var(--shadow)}
-.stu-master select{min-width:200px}
-.stu-master-n{margin-left:auto;text-align:right}
-.stu-master-n .cn{font-size:1.6rem;font-weight:900;line-height:1}
-.stu-master-n .cl{font-size:.72rem;color:var(--text-muted);font-weight:700}
-@media(max-width:640px){.stu-master{gap:10px}.stu-master select{min-width:100%}.stu-master>div{width:100%}.stu-master-n{margin-left:0;text-align:left}}
+
+
+/* ===== Premium filter bar (timetable + students) ===== */
+.fbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--card);border:1.5px solid var(--border);border-radius:16px;padding:12px 16px;margin-bottom:18px;box-shadow:var(--shadow)}
+.fbar-wide{margin-bottom:16px}
+.fbar-l{display:flex;align-items:center;gap:7px;font-size:.72rem;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);white-space:nowrap}
+.fbar-l svg{width:15px;height:15px}
+.fbar-sel{appearance:none;-webkit-appearance:none;background:var(--bg) url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round'%3e%3cpath d='M6 9l6 6 6-6'/%3e%3c/svg%3e") no-repeat right 12px center/15px;border:1.5px solid var(--border);border-radius:11px;padding:10px 38px 10px 14px;font-weight:700;font-size:.85rem;color:var(--text);cursor:pointer;min-width:210px;transition:.15s;font-family:inherit}
+.fbar-sel:hover{border-color:var(--accent)}
+.fbar-sel:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,107,43,.12)}
+.dark .fbar-sel{background-color:#0f1c31}
+.fbar-chips{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.fchip{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:11px;border:1.5px solid var(--border);background:var(--bg);color:var(--text-muted);font-weight:800;font-size:.79rem;cursor:pointer;transition:.15s;white-space:nowrap;font-family:inherit}
+.fchip:hover{border-color:var(--accent);color:var(--text);transform:translateY(-1px)}
+.fchip.on{background:linear-gradient(135deg,var(--primary),var(--primary-dark));border-color:transparent;color:#fff;box-shadow:0 5px 14px -5px rgba(15,42,84,.45)}
+.dark .fchip{background:#13223b}
+.dark .fchip.on{color:#181203}
+.fchip-n{background:rgba(255,255,255,.18);padding:1px 7px;border-radius:99px;font-size:.68rem}
+.fchip:not(.on) .fchip-n{background:var(--primary-50);color:var(--primary)}
+.dark .fchip:not(.on) .fchip-n{background:rgba(255,255,255,.09);color:#cbd5e1}
+.fchip-clear{border-color:rgba(220,38,38,.35);color:var(--danger)}
+.fchip-clear:hover{background:rgba(220,38,38,.08);border-color:var(--danger)}
+.fbar-more{font-size:.72rem;color:var(--text-muted);font-weight:800}
+.fbar-res{margin-left:auto;font-size:.85rem;color:var(--text-muted);font-weight:700;white-space:nowrap}
+.fbar-res b{font-size:1.25rem;color:var(--text);font-weight:900;margin-right:5px}
+@media(max-width:700px){.fbar{padding:12px}.fbar-sel{min-width:100%;flex:1}.fbar-res{margin-left:0;width:100%}}
 
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
@@ -4504,11 +4523,13 @@ function aRenderStudents(){
   const classes=[...new Set(subsAll.map(c=>String(c['class']||c.class_level||'')).filter(Boolean))].sort();
   const subsForClass=subsAll.filter(c=>!_stuClass||String(c['class']||c.class_level||'')===_stuClass);
   const selCount=_stuFilter?(subsAll.find(c=>c.subject===_stuFilter)||{}).count:_aCounts.total;
-  const cards=[`<div class="stu-master">
-      <div><label class="ex-lbl">Class</label><select class="form-control" onchange="aStuClass(this.value)"><option value="">All Classes</option>${classes.map(c=>`<option value="${esc(c)}"${_stuClass===c?' selected':''}>Class ${esc(c)}</option>`).join('')}</select></div>
-      <div><label class="ex-lbl">Subject</label><select class="form-control" onchange="aStuSetFilter(this.value)"><option value="">All Subjects (${_aCounts.total} students)</option>${subsForClass.map(c=>`<option value="${esc(c.subject)}"${_stuFilter===c.subject?' selected':''}>${esc(c.subject)}${(c['class']||c.class_level)?` \u00b7 Class ${esc(String(c['class']||c.class_level))}`:''} \u00b7 ${c.count} students</option>`).join('')}</select></div>
-      <div class="stu-master-n"><div class="cn">${selCount||0}</div><div class="cl">${_stuFilter?esc(_stuFilter):'All Students'}</div></div>
-      ${(_stuFilter||_stuClass)?`<button class="btn btn-ghost btn-sm" onclick="aStuClass('');aStuSetFilter('')">Clear</button>`:''}
+  const cards=[`<div class="fbar fbar-wide">
+      <div class="fbar-l">${ic('user')}<span>Class</span></div>
+      <select class="fbar-sel" onchange="aStuClass(this.value)"><option value="">All Classes</option>${classes.map(c=>`<option value="${esc(c)}"${_stuClass===c?' selected':''}>Class ${esc(c)}</option>`).join('')}</select>
+      <div class="fbar-l">${ic('book')}<span>Subject</span></div>
+      <select class="fbar-sel" style="min-width:250px" onchange="aStuSetFilter(this.value)"><option value="">All Subjects</option>${subsForClass.map(c=>`<option value="${esc(c.subject)}"${_stuFilter===c.subject?' selected':''}>${esc(c.subject)}${(c['class']||c.class_level)?` \u00b7 Class ${esc(String(c['class']||c.class_level))}`:''} \u00b7 ${c.count}</option>`).join('')}</select>
+      <div class="fbar-res"><b>${selCount||0}</b> ${_stuFilter?esc(_stuFilter):'students'}</div>
+      ${(_stuFilter||_stuClass)?`<button class="fchip fchip-clear" onclick="aStuClass('');aStuSetFilter('')">${ic('trash')} Clear</button>`:''}
     </div>`]
   const filtered=_stuFiltered();
   const totalPages=Math.max(1,Math.ceil(filtered.length/_stuSize));
@@ -5861,7 +5882,7 @@ function renderTimetableFlow(entries, containerId, opts={}){
   if(!entries||entries.length===0){ el.innerHTML=`<div class="empty-state"><div class="empty-icon"></div><p>${opts.emptyMsg||'No timetable available'}</p></div>`; return; }
   const tl=buildTimeline(entries);
   const subjects=Object.keys(tl);
-  const active=opts.activeSubject&&tl[opts.activeSubject]?opts.activeSubject:subjects[0];
+  const active=(opts.activeSubject&&tl[opts.activeSubject])?opts.activeSubject:subjects[0];
   const tabs=subjects.map(s=>`<div class="subj-tab ${s===active?'active':''}" onclick="${opts.onTab}('${encodeURIComponent(s)}')">${esc(s)}<span class="cnt-badge">${tl[s].length}</span></div>`).join('');
   const list=tl[active];
   const sts=list.map(it=> it.kind==='event'?_statusOf([it.data.date]):_statusOf(it.parts.map(p=>p.date)));
@@ -5873,10 +5894,21 @@ function renderTimetableFlow(entries, containerId, opts={}){
   _ttLast={entries,containerId,opts};
   const toggle=`<div class="tt-toggle"><button class="${_ttView==='timeline'?'active':''}" onclick="setTtView('timeline')">Chapter Timeline</button><button class="${_ttView==='weekly'?'active':''}" onclick="setTtView('weekly')">Weekly Schedule</button></div>`;
   const body=_ttView==='weekly'?renderWeeklyView(list):`<div class="tline">${items}</div>`;
-  el.innerHTML=`${subjects.length>1?`<div class="subj-tabs">${tabs}</div>`:''}${toggle}${body}`;
+  el.innerHTML=`${subjects.length>1?`${tabs}`:''}${toggle}${body}`;
 }
 let _ttView='timeline', _ttLast=null;
-function setTtView(v){ _ttView=v; if(_ttLast) renderStudentTimetable(_ttLast.entries,_ttLast.containerId,_ttLast.opts); }
+function setTtView(v){
+  if(v==='weekly'){
+    if(_ttLast&&_ttLast.opts) _ttLast.opts.activeSubject='__all';
+    if(typeof _attActiveSub!=='undefined') _attActiveSub='__all';
+    if(typeof _sttActiveSub!=='undefined') _sttActiveSub='__all';
+    if(typeof _ttActiveSub!=='undefined') _ttActiveSub='__all';
+  }else{
+    if(_ttLast&&_ttLast.opts&&_ttLast.opts.activeSubject==='__all') _ttLast.opts.activeSubject='';
+    if(typeof _attActiveSub!=='undefined'&&_attActiveSub==='__all') _attActiveSub='';
+    if(typeof _sttActiveSub!=='undefined'&&_sttActiveSub==='__all') _sttActiveSub='';
+    if(typeof _ttActiveSub!=='undefined'&&_ttActiveSub==='__all') _ttActiveSub='';
+  } _ttView=v; if(_ttLast) renderStudentTimetable(_ttLast.entries,_ttLast.containerId,_ttLast.opts); }
 function renderWeeklyView(list){
   const days=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
   const byDay={};
@@ -5912,10 +5944,20 @@ function renderStudentTimetable(entries, containerId, opts={}){
   const overall=`<div class="ov-card"><div class="ov-top"><div><div class="ov-lbl">${esc(active||'Overall')} Progress</div><div class="ov-big">${subD} / ${subT} Classes</div></div><div class="ov-pct"><div class="ov-pct-num">${subPct}%</div><div class="ov-pct-lbl">Completed</div></div></div><div class="ov-bar"><div class="ov-fill" style="width:${subPct}%"></div></div><div class="ov-badges">${opts.batch?`<span class="ov-badge">${esc(opts.batch)}</span><span class="ov-badge">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span>`:(opts.scopeLabel?`<span class="ov-badge">${esc(opts.scopeLabel)}</span>`:'')}<span class="ov-badge-plain">${subjects.length} subject${subjects.length>1?'s':''}</span><span class="ov-badge-plain ov-all">All subjects: <b>${doneParts}/${totalParts}</b> \u00b7 ${pct}%</span></div></div>`;
   const _tab=opts.onTab||'sSetSubj';
   // 5+ subjects -> master dropdown; kam ho to pills (student ke liye pills theek hain)
+  const isWeek=_ttView==='weekly';
+  const allSel=isWeek && opts.activeSubject==='__all';
   const tabs = subjects.length>5
-    ? `<div class="subj-picker"><label class="ex-lbl">Subject</label><select class="form-control" onchange="${_tab}(encodeURIComponent(this.value))">${subjects.map(s=>{const n=tl[s].filter(it=>it.kind==='chapter').length||tl[s].length; return `<option value="${esc(s)}"${s===active?' selected':''}>${esc(s)} \u00b7 ${n} chapters</option>`;}).join('')}</select><span class="subj-count">${subjects.length} subjects</span></div>`
-    : subjects.map(s=>{ const n=tl[s].filter(it=>it.kind==='chapter').length||tl[s].length; return `<div class="subj-tab ${s===active?'active':''}" onclick="${_tab}('${encodeURIComponent(s)}')">${esc(s)}<span class="cnt-badge">${n}</span></div>`; }).join('');
-  const body=_ttView==='weekly'?renderStudentWeekly(tl,subjects,opts):renderStudentChapters(tl[active],active,opts);
+    ? `<div class="fbar">
+         <div class="fbar-l">${ic('book')}<span>Subject</span></div>
+         <select class="fbar-sel" onchange="${_tab}(encodeURIComponent(this.value))">
+           ${isWeek?`<option value="__all"${allSel?' selected':''}>All Subjects \u00b7 ${subjects.length}</option>`:''}
+           ${subjects.map(s=>{const n=tl[s].filter(it=>it.kind==='chapter').length||tl[s].length; return `<option value="${esc(s)}"${(!allSel&&s===active)?' selected':''}>${esc(s)} \u00b7 ${n} chapters</option>`;}).join('')}
+         </select>
+         <div class="fbar-chips">${subjects.slice(0,4).map(s=>`<button class="fchip ${(!allSel&&s===active)?'on':''}" onclick="${_tab}('${encodeURIComponent(s)}')">${esc(s)}</button>`).join('')}${subjects.length>4?`<span class="fbar-more">+${subjects.length-4}</span>`:''}</div>
+       </div>`
+    : `<div class="fbar"><div class="fbar-chips">${isWeek?`<button class="fchip ${allSel?'on':''}" onclick="${_tab}('__all')">All Subjects</button>`:''}${subjects.map(s=>{ const n=tl[s].filter(it=>it.kind==='chapter').length||tl[s].length; return `<button class="fchip ${(!allSel&&s===active)?'on':''}" onclick="${_tab}('${encodeURIComponent(s)}')">${esc(s)}<span class="fchip-n">${n}</span></button>`; }).join('')}</div></div>`;
+  const wkSubs=(_ttView==='weekly'&&opts.activeSubject==='__all')?subjects:(_ttView==='weekly'?[active]:subjects);
+  const body=_ttView==='weekly'?renderStudentWeekly(tl,wkSubs,opts):renderStudentChapters(tl[active],active,opts);
   const _hd=opts.heading===undefined?'My Timetable':opts.heading;
   el.innerHTML=`<div class="stt-head">${_hd?`<h2>${esc(_hd)}</h2>`:'<span></span>'}${toggle}</div>${overall}<div class="subj-tabs">${tabs}</div>${body}`;
 }
