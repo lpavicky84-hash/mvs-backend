@@ -5124,9 +5124,11 @@ function openMVC(){
   const isAndroid=!isIOS&&/android/i.test(ua);
 
   if(isIOS){
-    // iOS: JS se universal link fire NAHI hota — Apple sirf asli link par user
-    // ke tap se app kholta hai. Isliye 2 asli buttons wali sheet dikhate hain.
-    mvcIosSheet();
+    // iOS: app ki apni App Store listing seedha App Store app me khulti hai.
+    // App installed hai to wahan "Open" button hota hai (Apple 1-tap direct open
+    // sirf tab deta hai jab app me universal links configure hon — abhi nahi hain).
+    location.href='itms-apps://apps.apple.com/app/manish-verma-classes/id6768236345';
+    setTimeout(()=>{ if(!document.hidden) location.href=MVC_IOS_URL; },1400);
     return;
   }
   if(isAndroid){
