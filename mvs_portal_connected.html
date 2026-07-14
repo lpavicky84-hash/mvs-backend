@@ -1522,6 +1522,23 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 .fbar-res b{font-size:1.25rem;color:var(--text);font-weight:900;margin-right:5px}
 @media(max-width:700px){.fbar{padding:12px}.fbar-sel{min-width:100%;flex:1}.fbar-res{margin-left:0;width:100%}}
 
+
+/* MVC iOS opener sheet */
+.mvc-ov{position:fixed;inset:0;z-index:3200;background:rgba(6,12,24,.6);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center;opacity:0;transition:opacity .2s}
+.mvc-ov.show{opacity:1}
+.mvc-sh{background:var(--card);width:100%;max-width:480px;border-radius:22px 22px 0 0;padding:14px 20px calc(20px + env(safe-area-inset-bottom));transform:translateY(30px);transition:transform .25s cubic-bezier(.3,1.3,.5,1)}
+.mvc-ov.show .mvc-sh{transform:translateY(0)}
+.mvc-grab{width:44px;height:5px;border-radius:99px;background:var(--border);margin:0 auto 14px}
+.mvc-ttl{font-weight:900;font-size:1.02rem;text-align:center;margin-bottom:16px}
+.mvc-btn{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;padding:15px;border-radius:14px;font-weight:800;font-size:.95rem;text-decoration:none;margin-bottom:10px;transition:.15s}
+.mvc-btn svg{width:18px;height:18px}
+.mvc-app{background:linear-gradient(135deg,var(--accent),#e2560f);color:#fff;box-shadow:0 8px 20px -8px rgba(255,107,43,.55)}
+.mvc-store{background:var(--primary);color:#fff}
+.dark .mvc-store{color:#181203}
+.mvc-btn:active{transform:scale(.98)}
+.mvc-note{font-size:.74rem;color:var(--text-muted);text-align:center;margin:4px 0 12px;line-height:1.5}
+.mvc-cancel{width:100%;padding:13px;border-radius:14px;border:1.5px solid var(--border);background:transparent;color:var(--text-muted);font-weight:800;cursor:pointer;font-family:inherit;font-size:.9rem}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -5107,10 +5124,9 @@ function openMVC(){
   const isAndroid=!isIOS&&/android/i.test(ua);
 
   if(isIOS){
-    // UNIVERSAL LINK: app installed hai to iOS seedha APP kholta hai (App Store nahi).
-    // App nahi hai to wahi web platform khulta hai jahan classes bhi chalti hain
-    // aur App Store ka install link bhi milta hai.
-    location.href=MVC_WEB_URL;
+    // iOS: JS se universal link fire NAHI hota — Apple sirf asli link par user
+    // ke tap se app kholta hai. Isliye 2 asli buttons wali sheet dikhate hain.
+    mvcIosSheet();
     return;
   }
   if(isAndroid){
@@ -5121,6 +5137,21 @@ function openMVC(){
     return;
   }
   window.open(MVC_WEB_URL,'_blank');   // desktop -> web platform
+}
+function mvcIosSheet(){
+  const old=document.getElementById('mvc-sheet'); if(old) old.remove();
+  const ov=document.createElement('div'); ov.id='mvc-sheet'; ov.className='mvc-ov';
+  ov.innerHTML=`<div class="mvc-sh">
+      <div class="mvc-grab"></div>
+      <div class="mvc-ttl">Watch on Manish Verma Classes</div>
+      <a class="mvc-btn mvc-app" href="${MVC_WEB_URL}">${ic('play')} Open the App</a>
+      <a class="mvc-btn mvc-store" href="itms-apps://apps.apple.com/app/manish-verma-classes/id6768236345">${ic('upload')} Get it on the App Store</a>
+      <p class="mvc-note">App installed hai to <b>Open the App</b> se seedha app khulegi. Nahi hai to App Store se install karein.</p>
+      <button class="mvc-cancel" onclick="document.getElementById('mvc-sheet').remove()">Cancel</button>
+    </div>`;
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  document.body.appendChild(ov);
+  requestAnimationFrame(()=>ov.classList.add('show'));
 }
 const _WS_PRIO_IC={lecture:'play',test:'edit',dpp:'clipboard',material:'book'};
 const _WS_TASK_ACT={lecture:'mvc',dpp:'dpp',test:'tests',material:'materials'};
