@@ -113,6 +113,7 @@ class StudentProfile(Base):
     batch_name   = Column(String(160), nullable=True)  # free-text batch from app sales sheet
     medium       = Column(String(12), nullable=True)   # Hindi | English
     source       = Column(String(20), default="mvs_app")  # mvs_portal | mvs_app
+    welcome_sent_at = Column(DateTime, nullable=True)     # WhatsApp welcome bheja gaya?
     email        = Column(String(160), nullable=True)
     subjects     = Column(JSON)   # ["Physics","Chemistry","Maths"]
     class_name   = Column(String(20))   # e.g. "12A"
@@ -343,6 +344,7 @@ class TimetableEntry(Base):
     time_text   = Column(String(40), nullable=True)
     entry_type  = Column(String(20), default="chapter")  # chapter | event
     status      = Column(String(20), default="approved") # approved | pending  (teacher extra-class needs approval)
+    shift_plan   = Column(Text, nullable=True)   # extra-class ke saath auto-shift ka plan (JSON)
     completed       = Column(Boolean, default=False)
     completed_at    = Column(DateTime, nullable=True)
     topic_covered   = Column(String(300), nullable=True)
@@ -563,3 +565,21 @@ class ActivityLog(Base):
     xp            = Column(Integer, default=0)
     day           = Column(Date, index=True)
     created_at    = Column(DateTime, default=func.now())
+
+class SessionDeadline(Base):
+    """Batch/subject-wise session end date. Timetable is auto-shifted only up to
+    this date; beyond it the teacher is asked to use an extra weekday instead.
+    scope: 'global' | 'batch' | 'subject'
+      global  -> key = ''            (fallback for everything)
+      batch   -> key = 'Lakshya Science'
+      subject -> key = 'Physics'     (optionally 'Physics|12')
+    """
+    __tablename__ = "session_deadlines"
+
+    id       = Column(Integer, primary_key=True)
+    scope    = Column(String(20), default="global")
+    key      = Column(String(120), default="")
+    end_date = Column(Date, nullable=False)
+    note     = Column(String(200), nullable=True)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+

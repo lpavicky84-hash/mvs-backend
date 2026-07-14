@@ -1369,6 +1369,55 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 .pv-close{position:fixed;top:18px;right:20px;width:44px;height:44px;border-radius:50%;border:none;background:rgba(255,255,255,.14);color:#fff;font-size:1.15rem;cursor:pointer;backdrop-filter:blur(6px)}
 .pv-close:hover{background:rgba(255,255,255,.26)}
 
+
+/* Timetable v2: hover, ongoing chapter, teacher avatar pulse */
+.stl-card{transition:transform .16s ease,box-shadow .2s ease,border-color .2s ease}
+.stl-card:hover{transform:translateY(-2px) translateX(2px);box-shadow:0 10px 26px -10px rgba(15,42,84,.32);border-color:var(--accent)}
+.dark .stl-card:hover{box-shadow:0 10px 26px -10px rgba(0,0,0,.6)}
+.stl-card.chapter:hover .stl-cname{color:var(--accent)}
+.stl-node.ongoing .stl-card{border:2px solid var(--accent);box-shadow:0 0 0 4px rgba(255,107,43,.12),0 12px 30px -12px rgba(255,107,43,.35);animation:ongoingGlow 2.2s ease-in-out infinite}
+@keyframes ongoingGlow{0%,100%{box-shadow:0 0 0 4px rgba(255,107,43,.12),0 12px 30px -12px rgba(255,107,43,.35)}50%{box-shadow:0 0 0 8px rgba(255,107,43,.05),0 14px 36px -12px rgba(255,107,43,.5)}}
+.stl-badge.ongoing{background:linear-gradient(135deg,#ff8a4c,#e2560f);color:#fff;font-weight:900;letter-spacing:.05em;animation:badgeBlink 1.5s ease-in-out infinite;box-shadow:0 4px 12px -3px rgba(255,107,43,.55)}
+@keyframes badgeBlink{0%,100%{opacity:1}50%{opacity:.55}}
+.stl-badge.progress{background:rgba(148,163,184,.2);color:var(--text-muted);font-weight:800}
+.stl-dot.tav.pulse{box-shadow:0 0 0 0 rgba(255,107,43,.7);animation:tavPulse 1.8s infinite}
+@keyframes tavPulse{0%{box-shadow:0 0 0 0 rgba(255,107,43,.6)}70%{box-shadow:0 0 0 12px rgba(255,107,43,0)}100%{box-shadow:0 0 0 0 rgba(255,107,43,0)}}
+.stl-part{transition:background .15s}
+.stl-part:hover{background:var(--primary-50)}
+.dark .stl-part:hover{background:rgba(255,255,255,.05)}
+
+
+/* Extra class modal */
+.rc-shift{display:flex;gap:10px;align-items:flex-start;margin-top:14px;padding:12px 14px;border-radius:12px;background:var(--primary-50);border:1.5px solid var(--border);cursor:pointer;font-size:.85rem}
+.rc-shift input{margin-top:3px}
+.rc-prev{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:.82rem;font-weight:700;color:var(--text)}
+.rc-prev.muted{color:var(--text-muted);font-weight:600}
+.rc-prev.ok{color:var(--success)}
+.rc-list{margin-top:8px;max-height:170px;overflow-y:auto;border:1.5px solid var(--border);border-radius:12px;scrollbar-width:none}
+.rc-list::-webkit-scrollbar{display:none}
+.rc-row{display:flex;justify-content:space-between;gap:10px;padding:9px 12px;font-size:.78rem;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.rc-row:last-child{border-bottom:none}
+.rc-row.more{justify-content:center;color:var(--text-muted);font-weight:700}
+.rc-ch{font-weight:700;flex:1;min-width:0}
+.rc-move{color:var(--text-muted);white-space:nowrap}
+.rc-day{background:var(--primary-50);padding:1px 7px;border-radius:99px;font-weight:800;font-size:.68rem;margin-left:4px}
+.rc-warn{display:flex;gap:10px;margin-top:12px;padding:12px 14px;border-radius:12px;background:rgba(217,119,6,.12);border:1.5px solid rgba(217,119,6,.35);color:#92610a;font-size:.78rem;line-height:1.5}
+.dark .rc-warn{color:#f3c583}
+
+
+/* Session deadlines */
+.dl-list{border:1.5px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px}
+.dl-row{display:flex;align-items:center;gap:10px;padding:11px 13px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.dl-row:last-child{border-bottom:none}
+.dl-name{font-weight:800;font-size:.88rem}
+.dl-note{font-size:.72rem;color:var(--text-muted)}
+.dl-tag{font-size:.62rem;font-weight:900;padding:3px 8px;border-radius:99px;letter-spacing:.05em}
+.dl-tag.global{background:var(--primary-50);color:var(--primary)}
+.dl-tag.batch{background:rgba(255,107,43,.14);color:var(--accent)}
+.dl-tag.subject{background:rgba(124,58,237,.14);color:#7c3aed}
+.dl-date{font-weight:800;font-size:.82rem;white-space:nowrap}
+.dl-form{border-top:1.5px dashed var(--border);padding-top:14px}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -2294,43 +2343,77 @@ function statusTag(s){ if(s==='done')return '<span class="tag tag-done">Done</sp
 let _ttEntries=[]; let _ttActiveSub='';
 let _rcChapters={};   // subject -> [chapters] from the existing timetable
 async function openRequestClass(){
-  let subs=[]; _rcChapters={};
+  let subs=[]; _rcChapters={}; window._rcEntries=[];
   try{
     const es=await api('/api/teacher/my-timetable');
+    window._rcEntries=es;
     subs=[...new Set(es.map(e=>e.subject))];
     es.forEach(e=>{ if(e.type!=='event'&&e.chapter){ (_rcChapters[e.subject]=_rcChapters[e.subject]||[]); if(!_rcChapters[e.subject].includes(e.chapter)) _rcChapters[e.subject].push(e.chapter); } });
   }catch(e){}
   if(subs.length===0){ try{ const p=await api('/api/teacher/profile'); subs=p.subjects||[]; }catch(e){} }
+  const today=new Date().toISOString().slice(0,10);
   showModal('Add Extra Class',
-    `<div class="alert alert-info">The extra-class request goes to the admin for approval. Once approved, it appears in your and your students timetables \u2014 and counts in your progress.</div>
-     <div class="ex-grid2">
-       <div><label class="ex-lbl">Subject</label><select class="form-control" id="rc-sub" onchange="rcFillCh()">${subs.map(s=>`<option>${esc(s)}</option>`).join('')}</select></div>
-       <div><label class="ex-lbl">Chapter</label><select class="form-control" id="rc-ch"></select></div>
+    `<div class="ex-grid2">
+       <div><label class="ex-lbl">Subject</label><select class="form-control" id="rc-sub" onchange="rcFillCh();rcPreview()">${subs.map(s=>`<option>${esc(s)}</option>`).join('')}</select></div>
+       <div><label class="ex-lbl">Chapter</label><select class="form-control" id="rc-ch" onchange="rcChSel()"></select></div>
      </div>
-     <label class="ex-lbl">Topic / Reason</label>
-     <input class="form-control" id="rc-topic" placeholder="e.g. Extra Doubt Class \u2014 Rotational Motion">
+     <div id="rc-newch" style="display:none;margin-top:10px"><label class="ex-lbl">New chapter / topic name</label><input class="form-control" id="rc-newch-in" placeholder="e.g. Chapter 12 \u2014 Thermodynamics"></div>
+     <label class="ex-lbl" style="margin-top:10px">Part / Note <span style="font-weight:600;color:var(--text-muted)">(optional)</span></label>
+     <input class="form-control" id="rc-topic" placeholder="e.g. Part 3 / Extra doubt class">
      <div class="ex-grid2" style="margin-top:10px">
-       <div><label class="ex-lbl">Date</label><input type="date" class="form-control" id="rc-date"></div>
-       <div><label class="ex-lbl">Time</label><input class="form-control" id="rc-time" placeholder="e.g. 5:00 pm"></div>
+       <div><label class="ex-lbl">Date</label><input type="date" class="form-control" id="rc-date" min="${today}" value="${today}" onchange="rcPreview()"></div>
+       <div><label class="ex-lbl">Time</label><input type="time" class="form-control" id="rc-time" value="17:00"></div>
      </div>
+     <label class="rc-shift"><input type="checkbox" id="rc-shift" checked onchange="rcPreview()"> <span><b>Auto-shift the following classes</b><br><span style="font-size:.72rem;color:var(--text-muted)">Baaki classes apne aap aage khisak jayengi \u2014 sirf aapke regular class days par.</span></span></label>
+     <div id="rc-preview"></div>
      <div id="rc-status"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="rc-btn" onclick="submitRequestClass()">Send for Approval</button>`);
-  rcFillCh();
+  rcFillCh(); rcPreview();
 }
 function rcFillCh(){
   const sel=document.getElementById('rc-ch'); if(!sel) return;
   const list=_rcChapters[val('rc-sub')]||[];
-  sel.innerHTML=list.map(c=>`<option>${esc(c)}</option>`).join('')+'<option value="__new">\u2014 Other / new topic \u2014</option>';
+  sel.innerHTML=list.map(c=>`<option>${esc(c)}</option>`).join('')+'<option value="__new">\u2795 New chapter / topic\u2026</option>';
+  rcChSel();
+}
+function rcChSel(){
+  const nw=document.getElementById('rc-newch');
+  if(nw) nw.style.display=(val('rc-ch')==='__new')?'block':'none';
+}
+let _rcTimer=null;
+function rcPreview(){
+  clearTimeout(_rcTimer);
+  _rcTimer=setTimeout(async()=>{
+    const box=document.getElementById('rc-preview'); if(!box) return;
+    if(!document.getElementById('rc-shift').checked){ box.innerHTML=''; return; }
+    const subject=val('rc-sub'), date=val('rc-date');
+    if(!subject||!date){ box.innerHTML=''; return; }
+    box.innerHTML='<div class="rc-prev muted">Checking the schedule\u2026</div>';
+    try{
+      const p=await api('/api/teacher/extra-class/preview','POST',{subject,date,shift:true});
+      const n=(p.shifted||[]).length;
+      if(!n){ box.innerHTML=`<div class="rc-prev ok">${ic('check')} No classes after this date \u2014 nothing to shift.</div>`; return; }
+      const rows=p.shifted.slice(0,6).map(x=>`<div class="rc-row"><span class="rc-ch">${esc(x.chapter)}${x.part?' \u00b7 '+esc(x.part):''}</span><span class="rc-move">${fmtNice(x.from)} \u2192 <b>${fmtNice(x.to)}</b> <span class="rc-day">${esc(x.day)}</span></span></div>`).join('');
+      const warn=p.overflow
+        ? `<div class="rc-warn">${ic('bell')} <div><b>Session limit crossed!</b> Shifting pushes the last class to <b>${fmtNice(p.last_date)}</b>, which is <b>${p.over_by} day(s)</b> past the session end (${fmtNice(p.session_end)}${p.deadline_for&&p.deadline_for!=='default'?` \u2014 ${esc(p.deadline_for)}`:''}).<br>Schedule this extra class on an <b>additional weekday</b> instead \u2014 your regular days are <b>${(p.weekdays||[]).join(', ')}</b>, so try <b>${(p.suggest_days||[]).join(' / ')}</b> (do not put two classes on the same day).</div></div>`
+        : '';
+      box.innerHTML=`<div class="rc-prev">${ic('refresh')} <b>${n} class${n>1?'es':''}</b> will auto-shift (regular days: ${(p.weekdays||[]).join(', ')})</div><div class="rc-list">${rows}${n>6?`<div class="rc-row more">+${n-6} more\u2026</div>`:''}</div>${warn}`;
+    }catch(e){ box.innerHTML=`<div class="rc-prev muted">${esc(e.message)}</div>`; }
+  },350);
 }
 async function submitRequestClass(){
-  const subject=val('rc-sub'), topic=val('rc-topic'), date=val('rc-date'), time=val('rc-time');
+  const subject=val('rc-sub'), date=val('rc-date');
+  const t=val('rc-time');
+  const time=t?new Date('2000-01-01T'+t).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}).toLowerCase():'';
   const chSel=val('rc-ch');
-  const chapter=(chSel&&chSel!=='__new')?chSel:(topic||'Extra Class');
+  const chapter=(chSel&&chSel!=='__new')?chSel:(val('rc-newch-in')||val('rc-topic')||'Extra Class');
+  const topic=val('rc-topic');
   if(!subject||!date||!time){ toast('Subject, date and time are required.',true); return; }
+  if(chSel==='__new'&&!val('rc-newch-in')){ toast('Please enter the new chapter/topic name.',true); return; }
   const btn=document.getElementById('rc-btn'); btn.disabled=true; btn.textContent='Sending...';
   try{
-    const r=await api('/api/teacher/request-class','POST',{subject,topic,date,time,chapter});
-    document.getElementById('rc-status').innerHTML=`<div class="alert alert-success">${esc(r.message)}</div>`;
+    const r=await api('/api/teacher/extra-class','POST',{subject,topic,date,time,chapter,shift:document.getElementById('rc-shift').checked});
+    document.getElementById('rc-status').innerHTML=`<div class="alert alert-success">${esc(r.message)}${r.shift_count?`<br><b>${r.shift_count}</b> upcoming classes will auto-shift once approved.`:''}</div>`;
     toast('Request sent to the admin.'); btn.textContent='Sent'; btn.setAttribute('onclick','closeModal()'); btn.disabled=false;
   }catch(e){ document.getElementById('rc-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Send for Approval'; }
 }
@@ -4153,6 +4236,64 @@ async function sendWhatsAppWelcome(){
   }catch(e){ out.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
   btn.disabled=false; btn.textContent='Send again';
 }
+// ============ SESSION DEADLINES (admin) ============
+async function openDeadlines(){
+  showModal('Session Deadlines','<div class="spinner"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  await dlRender();
+}
+async function dlRender(){
+  const body=document.getElementById('modal-body');
+  try{
+    const r=await api('/api/admin/session-deadlines');
+    window._dl=r;
+    const subs=[...new Set([...(window._allSubjects?.['10']||[]),...(window._allSubjects?.['12']||[])].map(x=>x.name))].sort();
+    const rows=(r.deadlines||[]).map(d=>{
+      const label=d.scope==='global'?'All batches (global)':(d.scope==='batch'?d.key:`${d.key} (subject)`);
+      const tag=d.scope==='global'?'GLOBAL':(d.scope==='batch'?'BATCH':'SUBJECT');
+      return `<div class="dl-row"><div style="flex:1;min-width:0"><div class="dl-name">${esc(label)}</div>${d.note?`<div class="dl-note">${esc(d.note)}</div>`:''}</div><span class="dl-tag ${d.scope}">${tag}</span><span class="dl-date">${fmtNice(d.end_date)}</span><button class="btn btn-danger btn-sm" onclick="dlDel(${d.id})">${ic('trash')}</button></div>`;
+    }).join('');
+    body.innerHTML=`<p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Timetable auto-shift in dates se aage nahi jaayega. Priority: <b>Subject &gt; Batch &gt; Global</b>. Kuch set na ho to default <b>${fmtNice(r.default)}</b> chalta hai.</p>
+      <div class="dl-list">${rows||'<div class="empty-state" style="padding:18px"><p>No deadlines set yet — the default is being used.</p></div>'}</div>
+      <div class="dl-form">
+        <div class="ex-grid2">
+          <div><label class="ex-lbl">Applies to</label><select class="form-control" id="dl-scope" onchange="dlScope()">
+            <option value="global">All batches (global)</option>
+            <option value="batch">A specific batch</option>
+            <option value="subject">A specific subject</option>
+          </select></div>
+          <div id="dl-key-wrap" style="display:none"><label class="ex-lbl" id="dl-key-lbl">Batch</label>
+            <select class="form-control" id="dl-key"></select></div>
+        </div>
+        <div class="ex-grid2" style="margin-top:10px">
+          <div><label class="ex-lbl">Session end date</label><input type="date" class="form-control" id="dl-date"></div>
+          <div><label class="ex-lbl">Note (optional)</label><input class="form-control" id="dl-note" placeholder="e.g. April 2027 session"></div>
+        </div>
+        <button class="btn btn-primary" style="width:100%;margin-top:12px" id="dl-btn" onclick="dlSave()">${ic('check')} Save Deadline</button>
+      </div>
+      <div id="dl-status"></div>`;
+    window._dlSubs=subs;
+    dlScope();
+  }catch(e){ body.innerHTML=errHtml(e); }
+}
+function dlScope(){
+  const sc=val('dl-scope'), wrap=document.getElementById('dl-key-wrap'), sel=document.getElementById('dl-key');
+  if(sc==='global'){ wrap.style.display='none'; return; }
+  wrap.style.display='block';
+  document.getElementById('dl-key-lbl').textContent=(sc==='batch')?'Batch':'Subject';
+  const list=(sc==='batch')?BATCH_MASTER.map(b=>b.name):(window._dlSubs||[]);
+  sel.innerHTML=list.map(x=>`<option>${esc(x)}</option>`).join('');
+}
+async function dlSave(){
+  const scope=val('dl-scope'), key=(scope==='global')?'':val('dl-key'), end_date=val('dl-date'), note=val('dl-note');
+  if(!end_date){ toast('Please choose an end date.',true); return; }
+  const btn=document.getElementById('dl-btn'); btn.disabled=true; btn.textContent='Saving…';
+  try{ await api('/api/admin/session-deadlines','POST',{scope,key,end_date,note}); toast('Deadline saved.'); await dlRender(); }
+  catch(e){ document.getElementById('dl-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Save Deadline'; }
+}
+async function dlDel(id){
+  if(!confirm('Remove this deadline?')) return;
+  try{ await api('/api/admin/session-deadlines/'+id,'DELETE'); toast('Removed.'); await dlRender(); }catch(e){ toast(e.message,true); }
+}
 function openSsoCheck(){
   showModal('MVS Portal Connection Check',
     `<p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Enter a student\u2019s phone number to see exactly what the MVS Portal returns. Auto-login (Class Manager \u2192 batch select) works only when the status is <b>ok</b>.</p>
@@ -4553,7 +4694,7 @@ function aFilteredTT(){
 }
 function aRenderTT(){
   const el=document.getElementById('a-timetable-content');
-  el.innerHTML=`<div class="card"><div class="card-header"><h3>All Teachers' Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><select class="form-control" style="width:auto;padding:7px 12px" onchange="aClassFilter(this.value)" id="att-class"><option value="all">All Classes</option><option value="10">Class 10</option><option value="12">Class 12</option></select><button class="btn btn-ghost btn-sm" onclick="openAdminMaterial()">Upload Material</button><button class="btn btn-primary btn-sm" onclick="openAdminPdf()">PDF Upload</button></div></div><div class="card-body"><div id="a-tline-wrap"></div></div></div>`;
+  el.innerHTML=`<div class="card"><div class="card-header"><h3>All Teachers' Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><select class="form-control" style="width:auto;padding:7px 12px" onchange="aClassFilter(this.value)" id="att-class"><option value="all">All Classes</option><option value="10">Class 10</option><option value="12">Class 12</option></select><button class="btn btn-ghost btn-sm" onclick="openDeadlines()">${ic('calendar')} Session Deadlines</button><button class="btn btn-ghost btn-sm" onclick="openAdminMaterial()">Upload Material</button><button class="btn btn-primary btn-sm" onclick="openAdminPdf()">PDF Upload</button></div></div><div class="card-body"><div id="a-tline-wrap"></div></div></div>`;
   document.getElementById('att-class').value=_attClass;
   renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',emptyMsg:'No timetable uploaded yet',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers'});
 }
@@ -5653,20 +5794,30 @@ function renderStudentChapters(list, subject, opts){
   const tav=tmap.name?(tmap.url?`<span class="stt-tav" style="background-image:url(${tmap.url})"></span>`:`<span class="stt-tav">${esc(initials(tmap.name))}</span>`):'';
   const summary=`<div class="card stt-summary"><div class="stt-sum-row"><div><div class="stt-sum-title">${esc(subject)}</div>${tmap.name?`<div class="stt-sum-teacher">${tav}${esc(tmap.name)}</div>`:''}</div><div class="stt-sum-right"><div class="stt-sum-big">${chDone}/${chapters.length}</div><div class="stt-sum-lbl">Chapters done</div></div></div><div class="stt-sbar"><div class="stt-sfill" style="width:${syl}%"></div></div><div class="stt-syl">${syl}% syllabus completed</div></div>`;
   const sts=list.map(it=> it.kind==='event'?_statusOf([it.data.date]):_statusOf(it.parts.map(p=>p.date)));
-  let cur=-1; for(let i=0;i<sts.length;i++){ if(sts[i]==='current'){cur=i;break;} } if(cur<0){for(let i=0;i<sts.length;i++){if(sts[i]==='upcoming'){cur=i;break;}}}
-  const items=list.map((it,i)=>renderStudentNode(it,sts[i],(i===cur)?tmap:null,opts)).join('');
+  // ONGOING = sirf EK chapter (jahan teacher abhi hai). Baaki overlapping chapters
+  // "In Progress" dikhte hain — do jagah CURRENT wala confusion khatam.
+  let cur=-1;
+  // 1) sabse pehla chapter jiska koi part aaj/aane wala hai aur kuch parts done hain
+  for(let i=0;i<sts.length;i++){ if(sts[i]==='current' && list[i].kind==='chapter'){ cur=i; break; } }
+  if(cur<0) for(let i=0;i<sts.length;i++){ if(sts[i]==='current'){ cur=i; break; } }
+  if(cur<0) for(let i=0;i<sts.length;i++){ if(sts[i]==='upcoming'){ cur=i; break; } }
+  const items=list.map((it,i)=>{
+    let st=sts[i];
+    if(st==='current' && i!==cur) st='progress';   // overlapping but not the ongoing one
+    return renderStudentNode(it,st,(i===cur)?tmap:null,opts,i===cur);
+  }).join('');
   return summary+`<div class="stl">${items}</div>`;
 }
-function renderStudentNode(item, st, tmap, opts){
+function renderStudentNode(item, st, tmap, opts, ongoing){
   opts=opts||{};
-  const dot = st==='done'?`<div class="stl-dot done">${ic('check')}</div>` : (tmap&&tmap.name?`<div class="stl-dot tav" ${tmap.url?`style="background-image:url(${tmap.url})"`:''}>${tmap.url?'':esc(initials(tmap.name))}</div>`:`<div class="stl-dot ${st}"></div>`);
+  const dot = st==='done'?`<div class="stl-dot done">${ic('check')}</div>` : (tmap&&tmap.name?`<div class="stl-dot tav${ongoing?' pulse':''}" ${tmap.url?`style="background-image:url(${tmap.url})"`:''} title="Teacher is here right now">${tmap.url?'':esc(initials(tmap.name))}</div>`:`<div class="stl-dot ${st}"></div>`);
   if(item.kind==='event'){
     const e=item.data; const isT=_isTest(e.chapter);
-    const lbl=st==='current'?'Live':st==='done'?'Done':'Upcoming';
+    const lbl=st==='current'?'Live':st==='done'?'Done':st==='progress'?'In Progress':'Upcoming';
     const edel=opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${e.id})">${ic('trash')}</button>`:'';
     return `<div class="stl-node ${st}">${dot}<div class="stl-card event ${isT?'test':''}"><div class="stl-chead"><div class="stl-cname">${esc(e.chapter)}</div><div class="stl-cmeta">${e.date?`<span class="stl-date">${fmtNice(e.date)}${e.day?' · '+esc(e.day):''}</span>`:''}<span class="stl-badge ${st}">${lbl}</span>${edel}</div></div></div></div>`;
   }
-  const parts=item.parts, open=st==='current', id='stl-'+Math.random().toString(36).slice(2,8);
+  const parts=item.parts, open=(st==='current'||ongoing), id='stl-'+Math.random().toString(36).slice(2,8);
   const _hasAct=opts.onEdit||opts.onDelete||opts.onComplete||opts.onLecture;
   const partsHtml=parts.map(p=>{ const pst=_partDone(p)?'done':_statusOf([p.date]); const plbl=pst==='done'?'Done':pst==='current'?'Live':'Soon';
     // student verification button: only when a teacher has linked a lecture (with a
@@ -5679,8 +5830,8 @@ function renderStudentNode(item, st, tmap, opts){
     }
     const acts=_hasAct?`${opts.onEdit?`<button class="btn btn-ghost btn-sm stl-act" onclick="openEditTopic(${p.id},'${encodeURIComponent(p.part||'')}')">${ic('edit')}</button>`:''}${opts.onComplete&&!p.completed?`<button class="btn btn-success btn-sm stl-act" onclick="${opts.onComplete}(${p.id})">Class Report</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${p.id})">${ic('trash')}</button>`:''}`:verifyBtn;
     return `<div class="stl-part"><span class="stl-pdot ${pst}">${pst==='done'?'✓':''}</span><div class="stl-pname">${esc(p.part||'Full chapter')}</div><div class="stl-pright"><div class="stl-ptime">${p.date?fmtNice(p.date)+(p.day?' · '+esc(p.day):''):''}${p.time?'<br>'+esc(p.time):''}</div><span class="stl-pbadge ${pst}">${plbl}</span>${acts}</div></div>`; }).join('');
-  const stlbl=st==='done'?'DONE':st==='current'?'CURRENT':'UPCOMING';
-  return `<div class="stl-node ${st}">${dot}<div class="stl-card chapter ${open?'open':''}" id="${id}"><div class="stl-chead" onclick="document.getElementById('${id}').classList.toggle('open')"><div class="stl-cname"><span class="stl-arrow">${open?'▾':'›'}</span>${esc(item.chapter)}</div><div class="stl-cmeta"><span class="stl-badge ${st}">${stlbl}</span><span class="cnt-badge dark">${parts.length} part${parts.length>1?'s':''}</span></div></div><div class="stl-parts">${partsHtml}</div></div></div>`;
+  const stlbl=st==='done'?'DONE':(ongoing?'ONGOING CHAPTER':(st==='progress'?'IN PROGRESS':(st==='current'?'ONGOING CHAPTER':'UPCOMING')));
+  return `<div class="stl-node ${st}${ongoing?' ongoing':''}">${dot}<div class="stl-card chapter ${open?'open':''}${ongoing?' ongoing':''}" id="${id}"><div class="stl-chead" onclick="document.getElementById('${id}').classList.toggle('open')"><div class="stl-cname"><span class="stl-arrow">${open?'▾':'›'}</span>${esc(item.chapter)}</div><div class="stl-cmeta"><span class="stl-badge ${ongoing?'ongoing':st}">${stlbl}</span><span class="cnt-badge dark">${parts.length} part${parts.length>1?'s':''}</span></div></div><div class="stl-parts">${partsHtml}</div></div></div>`;
 }
 function renderStudentWeekly(tl, subjects, opts){
   const days=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];

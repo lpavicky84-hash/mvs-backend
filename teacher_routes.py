@@ -1,3 +1,4 @@
+import json
 import re
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, BackgroundTasks
 from sqlalchemy.orm import Session
@@ -1847,3 +1848,180 @@ def teacher_materials_tree(db: Session = Depends(get_db), current_user=Depends(g
 @router.get("/material/{mid}/audience")
 def teacher_material_audience(mid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     return _material_audience(db, mid)
+
+# ==================================================================
+#  SMART EXTRA CLASS — auto-shift ke saath
+#  Teacher extra class daalta hai -> uske baad ki us subject ki saari
+#  classes apne aap aage khisak jaati hain (sirf un weekdays par jinpe
+#  us subject ki class hoti hai). Session end (default 10 Sept) ke baad
+#  jaane par warning + extra weekdays ka suggestion.
+# ==================================================================
+import os as _os
+from datetime import date as _date, timedelta as _td, datetime as _dt2
+
+WEEK = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+def _default_end():
+    raw = (_os.getenv("SESSION_END_DATE") or "").strip()
+    if raw:
+        try:
+            return _dt2.strptime(raw, "%Y-%m-%d").date()
+        except Exception:
+            pass
+    today = _date.today()
+    end = _date(today.year, 9, 10)          # fallback: 10 September
+    if end < today:
+        end = _date(today.year + 1, 9, 10)
+    return end
+
+
+def session_end_for(db, subject=None, class_level=None, batch=None):
+    """Deadline priority: subject+class > subject > batch > global > default.
+    Admin ise Settings -> Session Deadlines me set karta hai."""
+    from models import SessionDeadline as _SD
+    rows = db.query(_SD).all()
+    if not rows:
+        return _default_end(), "default"
+
+    def find(scope, key):
+        k = (key or "").strip().lower()
+        for r in rows:
+            if r.scope == scope and (r.key or "").strip().lower() == k:
+                return r
+        return None
+
+    if subject and class_level:
+        r = find("subject", f"{subject}|{class_level}")
+        if r:
+            return r.end_date, f"{subject} (Class {class_level})"
+    if subject:
+        r = find("subject", subject)
+        if r:
+            return r.end_date, subject
+    if batch:
+        r = find("batch", batch)
+        if r:
+            return r.end_date, batch
+    r = find("global", "")
+    if r:
+        return r.end_date, "All batches"
+    return _default_end(), "default"
+
+
+def _subject_weekdays(entries):
+    """Us subject ki classes kin weekdays par hoti hain (0=Mon)."""
+    days = sorted({e.entry_date.weekday() for e in entries if e.entry_date})
+    return days or [0, 2, 4]               # fallback: Mon/Wed/Fri
+
+
+def _next_slots(start_after, weekdays, count, busy_dates):
+    """Agli `count` free dates jo `weekdays` par aati hain (busy dates skip)."""
+    out, d = [], start_after + _td(days=1)
+    guard = 0
+    while len(out) < count and guard < 800:
+        guard += 1
+        if d.weekday() in weekdays and d not in busy_dates:
+            out.append(d)
+        d += _td(days=1)
+    return out
+
+
+def _plan_shift(db, tp, subject, new_date):
+    """Preview: extra class ke baad kya-kya shift hoga."""
+    from models import TimetableEntry
+    rows = db.query(TimetableEntry).filter(
+        TimetableEntry.teacher_id == tp.id,
+        TimetableEntry.subject == subject,
+        TimetableEntry.status == "approved",
+    ).all()
+    dated = [e for e in rows if e.entry_date]
+    weekdays = _subject_weekdays(dated)
+
+    # jo classes new_date ke din ya uske baad hain, wo ek slot aage khiskengi
+    affected = sorted([e for e in dated if e.entry_date >= new_date],
+                      key=lambda e: (e.entry_date, e.id))
+    end, end_src = session_end_for(db, subject=subject,
+                                   class_level=(dated[0].class_name if dated else None),
+                                   batch=(tp.batch.value if getattr(tp, "batch", None) else None))
+    if not affected:
+        return {"shifted": [], "weekdays": [WEEK[i] for i in weekdays], "overflow": False,
+                "last_date": None, "session_end": str(end), "deadline_for": end_src}
+
+    busy = {new_date}
+    slots = _next_slots(new_date, weekdays, len(affected), busy)
+    shifted, last = [], None
+    for e, nd in zip(affected, slots):
+        shifted.append({"id": e.id, "chapter": e.chapter, "part": e.part or "",
+                        "from": str(e.entry_date), "to": str(nd),
+                        "day": WEEK[nd.weekday()]})
+        last = nd
+    overflow = bool(last and last > end)
+    # overflow -> baaki weekdays suggest karo (jinpe abhi class nahi hoti)
+    free_days = [WEEK[i] for i in range(7) if i not in weekdays and i != 6]
+    return {"shifted": shifted, "weekdays": [WEEK[i] for i in weekdays],
+            "overflow": overflow, "last_date": str(last) if last else None,
+            "session_end": str(end), "deadline_for": end_src, "suggest_days": free_days,
+            "over_by": (last - end).days if overflow and last else 0}
+
+
+@router.post("/extra-class/preview")
+def extra_class_preview(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Extra class daalne se pehle dikhao ki kitni classes shift hongi."""
+    tp = get_teacher_profile(current_user, db)
+    subject = (payload.get("subject") or "").strip()
+    if subject not in (tp.subjects or []):
+        raise HTTPException(status_code=400, detail="This is not your subject")
+    try:
+        nd = _dt2.strptime(payload["date"], "%Y-%m-%d").date()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Please choose a valid date")
+    if not bool(payload.get("shift", True)):
+        end, src = session_end_for(db, subject=subject)
+        return {"shifted": [], "overflow": False, "session_end": str(end), "deadline_for": src}
+    return _plan_shift(db, tp, subject, nd)
+
+
+@router.post("/extra-class")
+def create_extra_class(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Extra class request + (optional) baaki classes ka auto-shift.
+       Sab kuch admin approval par hi live hota hai."""
+    from models import TimetableEntry, User, UserRole, Notification
+    tp = get_teacher_profile(current_user, db)
+    subject = (payload.get("subject") or "").strip()
+    if subject not in (tp.subjects or []):
+        raise HTTPException(status_code=400, detail="This is not your subject")
+    try:
+        nd = _dt2.strptime(payload["date"], "%Y-%m-%d").date()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Please choose a valid date")
+    time_text = (payload.get("time") or "").strip()
+    chapter = (payload.get("chapter") or payload.get("topic") or "Extra Class").strip()
+    part = (payload.get("topic") or "").strip() or None
+    do_shift = bool(payload.get("shift", True))
+
+    plan = _plan_shift(db, tp, subject, nd) if do_shift else {"shifted": []}
+
+    e = TimetableEntry(
+        teacher_id=tp.id, subject=subject,
+        class_name=payload.get("class_name", "Class 12"),
+        chapter=chapter, part=part, entry_date=nd, day=WEEK[nd.weekday()],
+        time_text=time_text or None, entry_type="chapter", status="pending",
+    )
+    db.add(e); db.flush()
+
+    # shift ko abhi apply nahi karte — admin approve karega tab hoga
+    if plan.get("shifted"):
+        e.shift_plan = json.dumps(plan["shifted"])[:60000]
+
+    for adm in db.query(User).filter(User.role == UserRole.admin).all():
+        msg = (f"{current_user.name} ne {subject} ki extra class request ki hai "
+               f"({nd} {time_text}).")
+        if plan.get("shifted"):
+            msg += f" Approve karne par {len(plan['shifted'])} aage ki classes auto-shift ho jayengi."
+        db.add(Notification(user_id=adm.id, title="New Extra Class Request",
+                            message=msg, notif_type="class_request"))
+    db.commit(); db.refresh(e)
+    return {"id": e.id, "shift_count": len(plan.get("shifted", [])),
+            "overflow": plan.get("overflow", False),
+            "message": "Request sent to the admin. Once approved, the class and the auto-shift will apply."}

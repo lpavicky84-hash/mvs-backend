@@ -566,13 +566,34 @@ def approve_class(eid: int, db: Session = Depends(get_db), _=Depends(get_admin))
     if not e:
         raise HTTPException(status_code=404, detail="Nahi mila")
     e.status = "approved"
+    # ---- AUTO-SHIFT: extra class ke saath jo plan bana tha, ab apply karo ----
+    shifted = 0
+    if getattr(e, "shift_plan", None):
+        try:
+            import json as _json
+            from datetime import datetime as _dtx
+            plan = _json.loads(e.shift_plan)
+            for row in plan:
+                tgt = db.query(TimetableEntry).filter(TimetableEntry.id == row.get("id")).first()
+                if not tgt or not row.get("to"):
+                    continue
+                nd = _dtx.strptime(row["to"], "%Y-%m-%d").date()
+                tgt.entry_date = nd
+                tgt.day = nd.strftime("%a")
+                shifted += 1
+            e.shift_plan = None
+        except Exception:
+            db.rollback()
+            e.status = "approved"
     # notify teacher
     if e.teacher_id:
         tp = db.query(TeacherProfile).filter(TeacherProfile.id == e.teacher_id).first()
         if tp and tp.user:
+            msg = f"Aapki {e.subject} extra class ({e.entry_date}) approve ho gayi."
+            if shifted:
+                msg += f" Aage ki {shifted} classes automatically shift kar di gayi hain."
             db.add(Notification(user_id=tp.user.id, title="Extra Class Approved",
-                                message=f"Aapki {e.subject} extra class ({e.date if hasattr(e,'date') else e.entry_date}) approve ho gayi.",
-                                notif_type="class_approved"))
+                                message=msg, notif_type="class_approved"))
     # notify students of that subject
     for sp in db.query(StudentProfile).all():
         if sp.subjects and e.subject in sp.subjects and sp.user:
@@ -580,7 +601,8 @@ def approve_class(eid: int, db: Session = Depends(get_db), _=Depends(get_admin))
                                 message=f"{e.subject} ki extra class add hui hai ({e.entry_date} {e.time_text or ''}). Time table dekho.",
                                 notif_type="new_class"))
     db.commit()
-    return {"message": "Class approve ho gayi!"}
+    return {"message": "Class approved!" + (f" {shifted} upcoming classes auto-shifted." if shifted else ""),
+            "shifted": shifted}
 
 @router.post("/class/{eid}/reject")
 def reject_class(eid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -1645,3 +1667,57 @@ def whatsapp_test(payload: dict, db: Session = Depends(get_db), _=Depends(get_ad
     ok, detail = W.send(phone, text=W.build_message(name, batch, phone), name=name, batch=batch)
     return {"ok": ok, "detail": detail[:300],
             "params_sent": W.build_params(name, batch, phone)}
+
+# ==================================================================
+#  SESSION DEADLINES (batch / subject wise)
+#  Timetable auto-shift in dates se aage nahi jaata. Priority:
+#  subject+class > subject > batch > global > default (10 Sept)
+# ==================================================================
+@router.get("/session-deadlines")
+def list_session_deadlines(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import SessionDeadline as _SD
+    from teacher_routes import _default_end
+    rows = db.query(_SD).order_by(_SD.scope, _SD.key).all()
+    return {
+        "default": str(_default_end()),
+        "deadlines": [{"id": r.id, "scope": r.scope, "key": r.key or "",
+                       "end_date": str(r.end_date), "note": r.note or ""} for r in rows],
+    }
+
+
+@router.post("/session-deadlines")
+def set_session_deadline(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import SessionDeadline as _SD
+    from datetime import datetime as _dtx
+    scope = (payload.get("scope") or "global").strip()
+    if scope not in ("global", "batch", "subject"):
+        raise HTTPException(status_code=400, detail="scope must be global, batch or subject")
+    key = (payload.get("key") or "").strip()
+    if scope != "global" and not key:
+        raise HTTPException(status_code=400, detail="Please select a batch or subject")
+    if scope == "global":
+        key = ""
+    try:
+        end = _dtx.strptime(payload["end_date"], "%Y-%m-%d").date()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Please choose a valid end date")
+
+    row = db.query(_SD).filter(_SD.scope == scope, _SD.key == key).first()
+    if row:
+        row.end_date = end
+        row.note = (payload.get("note") or "").strip() or None
+    else:
+        db.add(_SD(scope=scope, key=key, end_date=end,
+                   note=(payload.get("note") or "").strip() or None))
+    db.commit()
+    return {"message": "Deadline saved."}
+
+
+@router.delete("/session-deadlines/{did}")
+def delete_session_deadline(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import SessionDeadline as _SD
+    row = db.query(_SD).filter(_SD.id == did).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    db.delete(row); db.commit()
+    return {"message": "Deadline removed."}

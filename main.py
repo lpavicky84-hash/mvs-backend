@@ -69,6 +69,8 @@ def ensure_columns():
         "ALTER TABLE doubts ADD COLUMN answer_attach_mime VARCHAR(100)",
         "ALTER TABLE doubts ADD COLUMN answer_attach_name VARCHAR(255)",
         "ALTER TABLE student_profiles ADD COLUMN source VARCHAR(20) DEFAULT 'mvs_app'",
+        "ALTER TABLE student_profiles ADD COLUMN welcome_sent_at DATETIME",
+        "ALTER TABLE timetable_entries ADD COLUMN shift_plan TEXT",
     ]
     for s in stmts:
         try:
