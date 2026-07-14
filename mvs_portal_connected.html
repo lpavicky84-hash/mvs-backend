@@ -1341,15 +1341,20 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 
 
 /* Photo cropper */
-.pc-stage{position:relative;width:320px;max-width:100%;aspect-ratio:1;margin:0 auto;border-radius:16px;overflow:hidden;background:#0b1524;touch-action:none}
-.pc-stage canvas{display:block;width:100%;height:100%;cursor:grab}
+.pc-stage{position:relative;width:300px;max-width:100%;aspect-ratio:1;margin:0 auto;touch-action:none}
+.pc-stage canvas{display:block;width:100%;height:100%;cursor:grab;border-radius:50%;box-shadow:0 8px 28px -10px rgba(0,0,0,.35)}
 .pc-stage canvas:active{cursor:grabbing}
-.pc-mask{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 2000px rgba(6,12,24,.55);-webkit-mask:radial-gradient(circle at 50% 50%, transparent 49.5%, #000 50%);mask:radial-gradient(circle at 50% 50%, transparent 49.5%, #000 50%)}
-.pc-mask::after{content:'';position:absolute;inset:0;border-radius:50%;border:2px solid rgba(255,255,255,.9);box-shadow:0 0 0 1px rgba(0,0,0,.2)}
+.pc-mask{position:absolute;inset:0;pointer-events:none;border-radius:50%;border:3px solid var(--accent);box-shadow:0 0 0 5px rgba(255,107,43,.14)}
 .pc-ctrl{display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap}
 .pc-lbl{font-size:.72rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em}
 .pc-ctrl input[type=range]{flex:1;min-width:120px;accent-color:var(--accent)}
 .pc-hint{font-size:.72rem;color:var(--text-muted);text-align:center;margin-top:9px}
+
+
+/* clickable photos */
+.tcard2-photo.clickable,.stu-photo{cursor:pointer;transition:transform .18s,box-shadow .18s}
+.tcard2-photo.clickable:hover,.stu-photo.has-photo:hover{transform:scale(1.06);box-shadow:0 6px 18px -6px rgba(0,0,0,.35)}
+.tcard2-photo{cursor:pointer}
 
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
@@ -2336,11 +2341,20 @@ async function loadTopAvatar(role){
   }catch(e){}
 }
 // ============ PHOTO CROPPER (preview + zoom + drag, circular) ============
-const _pc={img:null,scale:1,min:1,x:0,y:0,drag:false,sx:0,sy:0,size:320,onDone:null};
+const _pc={img:null,scale:1,min:1,x:0,y:0,drag:false,sx:0,sy:0,size:300,onDone:null};
 function photoCropperHTML(inputId){
-  return `<div id="pc-pick">${fileDropHTML(inputId,inputId+'-lbl','image/*')}</div>
+  return `<div id="pc-pick">
+      <div class="file-drop" onclick="document.getElementById('${inputId}').click()"
+           ondragover="event.preventDefault();this.classList.add('drag')"
+           ondragleave="this.classList.remove('drag')"
+           ondrop="pcDrop(event,this)">
+        <div class="fd-icon">${ic('upload')}</div>
+        <div style="font-size:.85rem">Photo here \u2014 <strong>drag &amp; drop</strong> or <strong>click</strong> to upload</div>
+      </div>
+      <input type="file" id="${inputId}" accept="image/*" style="display:none">
+    </div>
     <div id="pc-editor" style="display:none">
-      <div class="pc-stage"><canvas id="pc-canvas" width="320" height="320"></canvas><div class="pc-mask"></div></div>
+      <div class="pc-stage"><canvas id="pc-canvas" width="300" height="300"></canvas><div class="pc-mask"></div></div>
       <div class="pc-ctrl">
         <span class="pc-lbl">Zoom</span>
         <input type="range" id="pc-zoom" min="1" max="3" step="0.01" value="1" oninput="pcZoom(this.value)">
@@ -2353,6 +2367,12 @@ function photoCropperHTML(inputId){
 function pcInit(inputId){
   const inp=document.getElementById(inputId);
   inp.addEventListener('change',()=>{ if(inp.files&&inp.files[0]) pcLoad(inp.files[0]); });
+}
+function pcDrop(e,el){
+  e.preventDefault(); el.classList.remove('drag');
+  const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
+  if(f&&f.size>0) pcLoad(f);
+  else toast('Could not read that image. If you dragged it from a website, save it to your device first.',true);
 }
 function pcLoad(file){
   if(!file||!(file.type||'').startsWith('image/')){ toast('Please choose an image file.',true); return; }
@@ -2379,10 +2399,14 @@ function pcDraw(){
   const c=document.getElementById('pc-canvas'); if(!c||!_pc.img) return;
   const ctx=c.getContext('2d'), S=_pc.size;
   ctx.clearRect(0,0,S,S);
-  ctx.fillStyle='#0b1524'; ctx.fillRect(0,0,S,S);
   pcClamp();
   const w=_pc.img.width*_pc.scale, h=_pc.img.height*_pc.scale;
+  // sirf circle ke andar hi photo — ek hi circle dikhta hai
+  ctx.save();
+  ctx.beginPath(); ctx.arc(S/2,S/2,S/2,0,Math.PI*2); ctx.closePath(); ctx.clip();
+  ctx.fillStyle='#e9eef7'; ctx.fillRect(0,0,S,S);
   ctx.drawImage(_pc.img,(S-w)/2+_pc.x,(S-h)/2+_pc.y,w,h);
+  ctx.restore();
 }
 function pcZoom(v){ _pc.scale=parseFloat(v); pcDraw(); }
 function pcReset(){ _pc.scale=_pc.min; _pc.x=0; _pc.y=0; document.getElementById('pc-zoom').value=_pc.min; pcDraw(); }
@@ -3731,8 +3755,22 @@ async function loadACounts(){
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 
+window._photoUrls={};
 async function loadImgInto(elId,url){
-  try{ const r=await fetch(API+url,{headers:{Authorization:'Bearer '+TOKEN}}); if(r.ok){ const u=URL.createObjectURL(await r.blob()); const d=document.getElementById(elId); if(d){ d.style.backgroundImage=`url(${u})`; d.textContent=''; } } }catch(e){}
+  try{ const r=await fetch(API+url,{headers:{Authorization:'Bearer '+TOKEN}}); if(r.ok){ const u=URL.createObjectURL(await r.blob()); window._photoUrls[elId]=u; const d=document.getElementById(elId); if(d){ d.style.backgroundImage=`url(${u})`; d.textContent=''; d.classList.add('has-photo'); } } }catch(e){}
+}
+// ---- photo preview lightbox ----
+function viewPhoto(elId,name,pid){
+  const u=window._photoUrls[elId];
+  if(!u){ if(pid) openTeacherPhoto(pid); else toast('No photo uploaded yet.'); return; }
+  showModal(esc(name||'Photo'),
+    `<div style="text-align:center"><img src="${u}" style="width:100%;max-width:340px;border-radius:50%;aspect-ratio:1;object-fit:cover;box-shadow:0 10px 34px -12px rgba(0,0,0,.4)"><p style="font-size:.75rem;color:var(--text-muted);margin-top:12px">Yeh photo students ko "Know Your Teacher" me dikhti hai.</p></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button>${pid?`<button class="btn btn-danger" onclick="removeTeacherPhoto(${pid})">${ic('trash')} Remove</button><button class="btn btn-primary" onclick="closeModal();openTeacherPhoto(${pid})">${ic('upload')} Change Photo</button>`:''}`);
+}
+async function removeTeacherPhoto(pid){
+  if(!confirm('Remove this photo?')) return;
+  try{ await api('/api/admin/teacher/'+pid+'/photo','DELETE'); toast('Photo removed.'); closeModal(); loadATeachers(); }
+  catch(e){ toast('Could not remove the photo.',true); }
 }
 function _teacherSubjByClass(subjects){
   const cat=window._allSubjects||{'10':[],'12':[]};
@@ -3807,7 +3845,7 @@ async function loadATeachers(){
    const other=sc.other.length?`<div class="tcard2-cls"><div class="tcard2-cls-h">Other</div>${sc.other.map(s=>`<span class="code-chip">${esc(s)}</span>`).join('')}</div>`:'';
    const none=(!sc.c10.length&&!sc.c12.length&&!sc.other.length)?`<div class="tcard2-sub" style="margin-top:10px">No subjects assigned yet.</div>`:'';
    const ph=`tphoto-${t.profile_id}`;
-   html+=`<div class="tcard2"><div class="tcard2-head"><div class="tcard2-photo" id="${ph}">${esc(initials(t.name||'T'))}</div><div style="flex:1"><div class="tcard2-name">${esc(t.name)}</div><div class="tcard2-sub"><code>${esc(t.user_id)}</code> · ${esc(t.phone||'no phone')}</div><span class="tag ${t.is_active?'tag-done':'tag-low'}" style="margin-top:6px">${t.is_active?'Active':'Inactive'}</span></div></div>
+   html+=`<div class="tcard2"><div class="tcard2-head"><div class="tcard2-photo${t.has_photo?' clickable':''}" id="${ph}" onclick="viewPhoto('${ph}','${esc((t.name||'').replace(/'/g,''))}',${t.profile_id})" title="${t.has_photo?'View photo':'Upload photo'}">${esc(initials(t.name||'T'))}</div><div style="flex:1"><div class="tcard2-name">${esc(t.name)}</div><div class="tcard2-sub"><code>${esc(t.user_id)}</code> · ${esc(t.phone||'no phone')}</div><span class="tag ${t.is_active?'tag-done':'tag-low'}" style="margin-top:6px">${t.is_active?'Active':'Inactive'}</span></div></div>
      ${cls10}${cls12}${other}${none}
      <div class="tcard2-stats"><div class="mini-stat"><div class="n">${t.total_classes_done||0}</div><div class="l">Classes</div></div><div class="mini-stat"><div class="n">${t.monthly_classes_done||0}</div><div class="l">This Month</div></div><div class="mini-stat"><div class="n">${t.reschedule_this_month||0}</div><div class="l">Reschedule</div></div></div>
      <div class="tcard2-actions"><button class="btn btn-primary btn-sm" onclick="openNotifyTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('bell')} Notify</button><button class="btn btn-ghost btn-sm" onclick='openEditTeacher(${t.profile_id},${JSON.stringify({name:t.name,phone:t.phone,subjects:t.subjects||[],is_active:t.is_active}).replace(/'/g,"&#39;")})'>${ic('edit')} Edit</button><button class="btn btn-ghost btn-sm" onclick="openTeacherPhoto(${t.profile_id})">${ic('upload')} Photo</button><button class="btn btn-ghost btn-sm" onclick="openResetPassword('teacher',${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('shield')} Password</button><button class="btn btn-danger btn-sm" onclick="deleteTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
@@ -4179,7 +4217,7 @@ function aRenderStudents(){
   const page=filtered.slice(start,start+_stuSize);
   const rows=page.length?page.map(s=>{
     const subs=(s.subjects||[]).slice(0,4).map(x=>`<span class="chip">${esc(x)}</span>`).join('');
-    return `<div class="stu-row" onclick="openStudentProfile(${s.profile_id})"><div class="stu-photo" id="sphoto-${s.profile_id}">${esc(initials(s.name||'S'))}</div><div class="stu-info"><div class="stu-name">${esc(s.name)}</div><div class="stu-meta">${esc(s.user_id)} · ${esc(s.phone||'no phone')} · ${esc(s.batch||'no batch')} · <span class="xm-chip" style="font-size:.6rem;padding:2px 7px;${s.source==='mvs_portal'?'background:rgba(201,150,46,.16);color:#b07f1e':''}">${s.source==='mvs_portal'?'MVS PORTAL':'MVS APP'}</span></div><div class="slist-chips" style="margin-top:4px">${subs}</div></div><div class="stu-act" onclick="event.stopPropagation()"><button class="btn btn-ghost btn-sm" onclick='openEditStudent(${s.profile_id},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,medium:s.medium||'',subjects:s.subjects||[]}).replace(/'/g,"&#39;")})'>${ic('edit')}</button><button class="btn btn-danger btn-sm" onclick="deleteStudent(${s.profile_id},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
+    return `<div class="stu-row" onclick="openStudentProfile(${s.profile_id})"><div class="stu-photo" id="sphoto-${s.profile_id}" onclick="event.stopPropagation();viewPhoto('sphoto-${s.profile_id}','${esc((s.name||'').replace(/'/g,''))}',0)">${esc(initials(s.name||'S'))}</div><div class="stu-info"><div class="stu-name">${esc(s.name)}</div><div class="stu-meta">${esc(s.user_id)} · ${esc(s.phone||'no phone')} · ${esc(s.batch||'no batch')} · <span class="xm-chip" style="font-size:.6rem;padding:2px 7px;${s.source==='mvs_portal'?'background:rgba(201,150,46,.16);color:#b07f1e':''}">${s.source==='mvs_portal'?'MVS PORTAL':'MVS APP'}</span></div><div class="slist-chips" style="margin-top:4px">${subs}</div></div><div class="stu-act" onclick="event.stopPropagation()"><button class="btn btn-ghost btn-sm" onclick='openEditStudent(${s.profile_id},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,medium:s.medium||'',subjects:s.subjects||[]}).replace(/'/g,"&#39;")})'>${ic('edit')}</button><button class="btn btn-danger btn-sm" onclick="deleteStudent(${s.profile_id},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
   }).join(''):`<div class="empty-state"><p>No students match this view.</p></div>`;
   const ov=window._aPortalOv;
   const segB=(id,label,n)=>`<button class="seg-b ${_stuSrcFilter===id?'active':''}" onclick="aStuSrcFilter('${id}')">${label}<span class="seg-n">${n}</span></button>`;
@@ -4262,7 +4300,7 @@ async function loadAActivity(){
    const m=t.monthly_classes_done||0;
    const lvl=!t.is_active?{c:'tag-low',l:'Inactive'}:m>=8?{c:'tag-done',l:'High activity'}:m>=3?{c:'tag-pending',l:'Medium'}:{c:'tag-low',l:'Low'};
    const ph=`aphoto-${t.profile_id}`;
-   html+=`<div class="tcard2"><div class="tcard2-head"><div class="tcard2-photo" id="${ph}">${esc(initials(t.name||'T'))}</div><div style="flex:1"><div class="tcard2-name">${esc(t.name)}</div><div class="tcard2-sub"><code>${esc(t.user_id)}</code></div><span class="tag ${lvl.c}" style="margin-top:6px">${lvl.l}</span></div></div>
+   html+=`<div class="tcard2"><div class="tcard2-head"><div class="tcard2-photo${t.has_photo?' clickable':''}" id="${ph}" onclick="viewPhoto('${ph}','${esc((t.name||'').replace(/'/g,''))}',${t.profile_id})" title="View photo">${esc(initials(t.name||'T'))}</div><div style="flex:1"><div class="tcard2-name">${esc(t.name)}</div><div class="tcard2-sub"><code>${esc(t.user_id)}</code></div><span class="tag ${lvl.c}" style="margin-top:6px">${lvl.l}</span></div></div>
      ${cls10}${cls12}${other}${none}
      <div class="tcard2-stats"><div class="mini-stat"><div class="n">${t.total_classes_done||0}</div><div class="l">Classes</div></div><div class="mini-stat"><div class="n">${m}</div><div class="l">This Month</div></div><div class="mini-stat"><div class="n">${t.reschedule_this_month||0}</div><div class="l">Reschedule</div></div></div>
      <div class="tcard2-actions"><button class="btn btn-primary btn-sm" onclick='openEditSubjects(${t.profile_id},${JSON.stringify(t.subjects||[]).replace(/'/g,"&#39;")})'>${ic('edit')} Edit Subjects</button><button class="btn btn-ghost btn-sm" onclick="openNotifyTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('bell')} Notify</button></div></div>`;

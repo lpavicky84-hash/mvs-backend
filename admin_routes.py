@@ -645,6 +645,16 @@ async def admin_upload_teacher_photo(tid: int, file: UploadFile = File(...), db:
     db.commit()
     return {"message": "Photo upload ho gayi!"}
 
+@router.delete("/teacher/{tid}/photo")
+def remove_teacher_photo(tid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    tp.photo_b64 = None
+    db.commit()
+    return {"message": "Photo removed"}
+
+
 @router.get("/teacher/{tid}/photo")
 def admin_teacher_photo(tid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import TeacherProfile
