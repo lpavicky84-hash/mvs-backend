@@ -246,6 +246,52 @@ def portal_get(path, timeout=20):
         return None
 
 
+def portal_probe_student(phone):
+    """Diagnostic: (status, detail) — kyun student nahi mila."""
+    url, key = _cfg()
+    if not url or not key:
+        return "not_configured", "STUDENT_PORTAL_URL / STUDENT_PORTAL_KEY Railway par set nahi hain."
+    try:
+        r = httpx.get(url + f"/api/integration/student?phone={phone}",
+                      headers={"X-MVS-KEY": key}, timeout=20)
+    except Exception as e:
+        return "unreachable", f"MVS Portal se connect nahi ho paya: {e}"
+    if r.status_code == 404:
+        return "endpoint_missing", "MVS Portal par /api/integration/student endpoint abhi bana hi nahi hai (404)."
+    if r.status_code == 401:
+        return "bad_key", "MVS Portal ne key reject kar di (401). STUDENT_PORTAL_KEY match nahi kar rahi."
+    if r.status_code != 200:
+        return "http_error", f"MVS Portal ne {r.status_code} return kiya."
+    try:
+        d = r.json()
+    except Exception:
+        return "bad_json", "MVS Portal ne valid JSON nahi bheja."
+    if not d.get("found"):
+        return "not_on_portal", "Is phone se koi student MVS Portal par nahi mila."
+    if not _is_included(d):
+        return "locked", "Is student ka Class Access 'Not Included' hai (MVS Portal par 'Included' hona chahiye)."
+    return "ok", d
+
+
+def _is_included(d):
+    """MVS Portal ka 'Classes (Class Joining)' field: Included / Not Included.
+    Boolean flag bhi accept karte hain (jo bhi format portal bheje)."""
+    for k in ("class_joining", "class_access", "classes", "class_access_status"):
+        v = d.get(k)
+        if isinstance(v, str) and v.strip():
+            t = _norm(v)                      # "not included" -> "notincluded"
+            return t.startswith("included") or t == "yes" or t == "true"
+        if isinstance(v, bool):
+            return v
+    v = d.get("class_access_unlocked")
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, str):
+        t = _norm(v)
+        return t.startswith("included") or t in ("yes", "true")
+    return True   # field hi nahi bheja -> block mat karo
+
+
 def portal_fetch_student(phone):
     """MVS Portal se ek student ki details (SSO onboarding ke liye)."""
     d = portal_get(f"/api/integration/student?phone={phone}")
@@ -264,7 +310,7 @@ def portal_fetch_student(phone):
         "medium": (d.get("medium") or "").strip() or None,
         "session": (d.get("session") or "").strip(),
         "subjects": subs,
-        "unlocked": bool(d.get("class_access_unlocked", True)),
+        "unlocked": _is_included(d),
     }
 
 
@@ -344,6 +390,16 @@ def ext_material_file(mid: str, current_user=Depends(get_current_user)):
 
     return Response(content=r.content, media_type=ctype,
                     headers={"Content-Disposition": disp})
+
+
+@router.get("/student-check")
+def ext_student_check(phone: str, current_user=Depends(get_current_user)):
+    """Admin debug: is phone ke liye MVS Portal se kya response aa raha hai."""
+    ph = "".join(ch for ch in str(phone) if ch.isdigit())[-10:]
+    status, detail = portal_probe_student(ph)
+    return {"phone": ph, "status": status,
+            "detail": detail if isinstance(detail, str) else "Student mil gaya",
+            "data": detail if not isinstance(detail, str) else None}
 
 
 @router.get("/status")
