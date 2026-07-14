@@ -489,6 +489,11 @@ def student_doubt_voice(did: int, db: Session = Depends(get_db), current_user=De
 def student_doubt_answer_voice(did: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
     d = _own_doubt(did, db, current_user)
     return _doubt_media(d.answer_audio_b64, "audio/webm", "answer.webm")
+
+@router.get("/doubt/{did}/answer-file")
+def student_doubt_answer_file(did: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    d = _own_doubt(did, db, current_user)
+    return _doubt_media(d.answer_attach_b64, d.answer_attach_mime, d.answer_attach_name)
     return doubt
 
 @router.get("/doubts")
@@ -501,7 +506,8 @@ def my_doubts(db: Session = Depends(get_db), current_user=Depends(get_student)):
                     "status": d.status.value if hasattr(d.status, "value") else d.status,
                     "created_at": str(d.created_at)[:16],
                     "has_file": bool(d.image_b64), "attach_mime": d.attach_mime, "attach_name": d.attach_name,
-                    "has_voice": bool(d.audio_b64), "has_answer_voice": bool(d.answer_audio_b64)})
+                    "has_voice": bool(d.audio_b64), "has_answer_voice": bool(d.answer_audio_b64),
+                    "has_answer_file": bool(d.answer_attach_b64), "answer_attach_mime": d.answer_attach_mime})
     return out
 
 # ===== PROGRESS =====

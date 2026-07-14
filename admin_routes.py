@@ -908,6 +908,7 @@ def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depend
             "has_image": bool(d.image_b64),
             "attach_mime": d.attach_mime, "attach_name": d.attach_name,
             "has_voice": bool(d.audio_b64), "has_answer_voice": bool(d.answer_audio_b64),
+            "has_answer_file": bool(d.answer_attach_b64), "answer_attach_mime": d.answer_attach_mime,
             "answer": d.answer,
             "answer_image_link": d.answer_image_link,
             "status": d.status.value if hasattr(d.status, "value") else d.status,
@@ -937,6 +938,17 @@ def admin_doubt_voice(did: int, db: Session = Depends(get_db), _=Depends(get_adm
     if not d or not d.audio_b64:
         raise HTTPException(status_code=404, detail="Not found")
     return Response(content=base64.b64decode(d.audio_b64), media_type="audio/webm")
+
+@router.get("/doubt/{did}/answer-file")
+def admin_doubt_answer_file(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Doubt
+    import base64
+    from fastapi import Response
+    d = db.query(Doubt).filter(Doubt.id == did).first()
+    if not d or not d.answer_attach_b64:
+        raise HTTPException(status_code=404, detail="Not found")
+    return Response(content=base64.b64decode(d.answer_attach_b64),
+                    media_type=d.answer_attach_mime or "application/octet-stream")
 
 @router.get("/doubt/{did}/answer-voice")
 def admin_doubt_answer_voice(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):

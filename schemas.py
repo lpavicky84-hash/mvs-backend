@@ -208,6 +208,9 @@ class DoubtResolve(BaseModel):
     answer: str
     answer_image_link: Optional[str] = None
     answer_audio_b64: Optional[str] = None   # teacher voice answer (base64 webm)
+    answer_attach_b64: Optional[str] = None  # teacher answer attachment (base64)
+    answer_attach_mime: Optional[str] = None
+    answer_attach_name: Optional[str] = None
 
 class DoubtOut(BaseModel):
     id: int

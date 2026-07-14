@@ -286,6 +286,9 @@ class Doubt(Base):
     attach_name = Column(String(255), nullable=True)   # original filename
     audio_b64   = Column(_IMGTEXT, nullable=True)      # student's voice note (webm)
     answer_audio_b64 = Column(_IMGTEXT, nullable=True) # teacher's voice answer (webm)
+    answer_attach_b64  = Column(_IMGTEXT, nullable=True)  # teacher's answer attachment
+    answer_attach_mime = Column(String(100), nullable=True)
+    answer_attach_name = Column(String(255), nullable=True)
     status      = Column(Enum(DoubtStatus), default=DoubtStatus.pending)
     created_at  = Column(DateTime, default=func.now())
     resolved_at = Column(DateTime, nullable=True)

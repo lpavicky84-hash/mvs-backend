@@ -272,6 +272,7 @@ def get_doubts(
                     "question": d.question, "has_image": bool(d.image_b64),
                     "attach_mime": d.attach_mime, "attach_name": d.attach_name,
                     "has_voice": bool(d.audio_b64), "has_answer_voice": bool(d.answer_audio_b64),
+                    "has_answer_file": bool(d.answer_attach_b64), "answer_attach_mime": d.answer_attach_mime,
                     "answer": d.answer, "status": d.status.value if hasattr(d.status, "value") else d.status,
                     "created_at": str(d.created_at)[:16]})
     return out
@@ -308,6 +309,11 @@ def teacher_doubt_answer_voice(did: int, db: Session = Depends(get_db), current_
     d = _t_own_doubt(did, db, current_user)
     return _t_doubt_media(d.answer_audio_b64, "audio/webm", "answer.webm")
 
+@router.get("/doubt/{did}/answer-file")
+def teacher_doubt_answer_file(did: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    d = _t_own_doubt(did, db, current_user)
+    return _t_doubt_media(d.answer_attach_b64, d.answer_attach_mime, d.answer_attach_name)
+
 @router.patch("/doubts/{doubt_id}/resolve")
 def resolve_doubt(
     doubt_id: int,
@@ -323,6 +329,10 @@ def resolve_doubt(
     doubt.answer_image_link = req.answer_image_link
     if req.answer_audio_b64:
         doubt.answer_audio_b64 = req.answer_audio_b64
+    if req.answer_attach_b64:
+        doubt.answer_attach_b64 = req.answer_attach_b64
+        doubt.answer_attach_mime = req.answer_attach_mime or "application/octet-stream"
+        doubt.answer_attach_name = (req.answer_attach_name or "attachment")[:250]
     doubt.status = DoubtStatus.resolved
     doubt.resolved_at = datetime.now()
 
