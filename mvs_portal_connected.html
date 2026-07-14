@@ -1356,6 +1356,19 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 .tcard2-photo.clickable:hover,.stu-photo.has-photo:hover{transform:scale(1.06);box-shadow:0 6px 18px -6px rgba(0,0,0,.35)}
 .tcard2-photo{cursor:pointer}
 
+
+/* Teacher photo lightbox */
+.kyt-photo.zoomable{cursor:zoom-in;transition:transform .2s,box-shadow .2s}
+.kyt-photo.zoomable:hover{transform:scale(1.05);box-shadow:0 10px 26px -8px rgba(0,0,0,.45)}
+.pv-overlay{position:fixed;inset:0;z-index:3000;background:rgba(4,10,20,.92);display:flex;align-items:center;justify-content:center;padding:24px;opacity:0;transition:opacity .2s;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.pv-overlay.show{opacity:1}
+.pv-box{text-align:center;max-width:min(560px,92vw);transform:scale(.94);transition:transform .25s cubic-bezier(.34,1.4,.5,1)}
+.pv-overlay.show .pv-box{transform:scale(1)}
+.pv-box img{width:100%;max-height:74vh;object-fit:contain;border-radius:20px;box-shadow:0 24px 70px -18px rgba(0,0,0,.75)}
+.pv-cap{color:#fff;font-weight:800;margin-top:16px;font-size:1rem;letter-spacing:.01em}
+.pv-close{position:fixed;top:18px;right:20px;width:44px;height:44px;border-radius:50%;border:none;background:rgba(255,255,255,.14);color:#fff;font-size:1.15rem;cursor:pointer;backdrop-filter:blur(6px)}
+.pv-close:hover{background:rgba(255,255,255,.26)}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -2453,6 +2466,15 @@ async function submitStudentPhoto(){
     if(document.getElementById('s-page-profile')&&document.getElementById('s-page-profile').classList.contains('active')) loadSProfile();
   }catch(e){ document.getElementById('sp-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Save Photo'; }
 }
+function viewKytPhoto(key,title){
+  const u=(window._photoUrls||{})[key];
+  if(!u) return;
+  const ov=document.createElement('div'); ov.className='pv-overlay';
+  ov.innerHTML=`<button class="pv-close" aria-label="Close">\u2715</button><div class="pv-box"><img src="${u}" alt=""><div class="pv-cap">${esc(title||'')}</div></div>`;
+  ov.addEventListener('click',()=>ov.remove());
+  document.body.appendChild(ov);
+  requestAnimationFrame(()=>ov.classList.add('show'));
+}
 // ===== KNOW YOUR TEACHER (student) =====
 async function loadSTeachers(){
   const el=document.getElementById('s-teachers-content');
@@ -2461,7 +2483,11 @@ async function loadSTeachers(){
     if(ts.length===0){ el.innerHTML=`<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>No teacher assigned yet. Please select your subjects.</p></div></div></div>`; return; }
     let html=`<div class="alert alert-info">Teachers for your subjects. If you have a doubt, ask in the Doubts section.</div><div class="kyt-grid">`;
     ts.forEach(t=>{
-      const ph=t.has_photo?`<div class="kyt-photo" id="kyt-${t.teacher_id}-${esc(t.subject).replace(/[^a-z0-9]/gi,'')}"></div>`:`<div class="kyt-photo">${esc(initials(t.name))}</div>`;
+      const pid=`kyt-${t.teacher_id}-${esc(t.subject).replace(/[^a-z0-9]/gi,'')}`;
+      const full=`${esc(t.name)} ${esc(t.suffix||'')} \u00b7 ${esc(t.subject)}`;
+      const ph=t.has_photo
+        ? `<div class="kyt-photo zoomable" id="${pid}" onclick="viewKytPhoto('${pid}','${full.replace(/'/g,"")}')" title="Tap to view"></div>`
+        : `<div class="kyt-photo">${esc(initials(t.name))}</div>`;
       html+=`<div class="kyt-card">${ph}<div class="kyt-name">${esc(t.name)} ${esc(t.suffix)}</div><div class="kyt-sub">${esc(t.subject)}</div></div>`;
     });
     html+=`</div>`;
@@ -2469,7 +2495,9 @@ async function loadSTeachers(){
     // load photos
     ts.filter(t=>t.has_photo).forEach(async t=>{
       try{ const r=await fetch(API+`/api/student/teacher/${t.teacher_id}/photo`,{headers:{Authorization:'Bearer '+TOKEN}});
-        if(r.ok){ const u=URL.createObjectURL(await r.blob()); const d=document.getElementById(`kyt-${t.teacher_id}-${t.subject.replace(/[^a-z0-9]/gi,'')}`); if(d){ d.style.backgroundImage=`url(${u})`; d.textContent=''; } } }catch(e){}
+        if(r.ok){ const u=URL.createObjectURL(await r.blob()); const key=`kyt-${t.teacher_id}-${t.subject.replace(/[^a-z0-9]/gi,'')}`;
+          window._photoUrls=window._photoUrls||{}; window._photoUrls[key]=u;
+          const d=document.getElementById(key); if(d){ d.style.backgroundImage=`url(${u})`; d.textContent=''; } } }catch(e){}
     });
   }catch(e){ el.innerHTML=errHtml(e); }
 }
