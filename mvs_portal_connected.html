@@ -1279,6 +1279,23 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 
 .cmp.dragging{border-color:var(--accent);background:var(--primary-50);border-style:dashed}
 
+
+/* Students source segmented control */
+.seg{display:inline-flex;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:4px;gap:4px;box-shadow:var(--shadow)}
+.seg-b{border:none;background:transparent;padding:9px 16px;border-radius:10px;font-weight:800;font-size:.8rem;cursor:pointer;color:var(--text-muted);display:inline-flex;align-items:center;gap:8px;transition:.15s;white-space:nowrap}
+.seg-b:hover{color:var(--text);background:var(--primary-50)}
+.seg-b.active{background:linear-gradient(135deg,var(--primary),var(--primary-dark));color:#fff;box-shadow:0 5px 14px -5px rgba(15,42,84,.45)}
+.dark .seg-b.active{color:#181203}
+.seg-n{padding:2px 9px;border-radius:99px;font-size:.68rem;font-weight:800;background:var(--primary-50);color:var(--primary)}
+.seg-b.active .seg-n{background:rgba(255,255,255,.22);color:inherit}
+.pp-btn{display:inline-flex;align-items:center;gap:9px;border:none;cursor:pointer;padding:11px 18px;border-radius:13px;font-weight:800;font-size:.8rem;background:linear-gradient(135deg,#f0c05e,#c9962e);color:#3b2a05;box-shadow:0 6px 16px -6px rgba(201,150,46,.55);transition:.15s}
+.pp-btn:hover{transform:translateY(-1px);box-shadow:0 9px 20px -6px rgba(201,150,46,.65)}
+.pp-n{background:rgba(0,0,0,.18);padding:2px 9px;border-radius:99px;font-size:.7rem}
+.pp-filter{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 14px;align-items:center}
+.pp-chip{padding:6px 13px;border-radius:99px;border:1.5px solid var(--border);background:var(--card);font-size:.74rem;font-weight:700;cursor:pointer;color:var(--text-muted)}
+.pp-chip.active{background:var(--primary);border-color:var(--primary);color:#fff}
+.dark .pp-chip.active{color:#181203}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -3811,13 +3828,40 @@ async function loadAStudents(){
  aRenderStudents();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
+let _pp={q:'',cls:'',sess:''};
 function openPortalPending(){
-  const ov=window._aPortalOv; if(!ov) return;
-  const rows=(ov.pending||[]).map((p,i)=>`<div class="topper-row"><div class="rank-b">${i+1}</div><div class="topper-name">${esc(p.name||'Student')}<div class="topper-sub">${esc(p.phone)}${p.class_level?' \u00b7 Class '+esc(p.class_level):''}${p.session?' \u00b7 '+esc(p.session):''}</div></div></div>`).join('');
-  showModal('Portal Pending \u2014 batch select nahi kiya ('+(ov.pending_count||0)+')',
-    `<p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">These students have <b>unlocked class access on the MVS Portal</b> but have not opened Class Manager and selected their batch yet. Remind them to tap the Class Manager card.</p>
-     <div class="hide-scroll" style="max-height:52vh">${rows||'<div class="empty-state"><p>Everyone with unlocked access has onboarded. \ud83c\udf89</p></div>'}</div>`,
+  const ov=window._aPortalOv;
+  _pp={q:'',cls:'',sess:''};
+  if(!ov||!ov.portal_reachable){
+    showModal('Portal Pending',
+      `<div class="alert alert-warning">MVS Portal ka <b>unlocked-students</b> endpoint abhi live nahi hai. <b>MVS_PORTAL_STUDENT_SYNC.md</b> ka Endpoint 2 implement hote hi yahan un sabhi students ki list aa jayegi jinhone abhi tak Class Manager se batch select nahi kiya.</div>`,
+      `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+    return;
+  }
+  showModal('Portal Pending \u2014 Class Manager par click nahi kiya',
+    `<p style="font-size:.82rem;color:var(--text-muted);margin-bottom:10px">These students have <b>unlocked class access on the MVS Portal</b> but haven\u2019t opened Class Manager and selected a batch even once. Remind them to tap the Class Manager card.</p>
+     <input class="form-control" placeholder="Search name or phone..." oninput="_pp.q=this.value;ppRender()">
+     <div id="pp-filters"></div>
+     <div id="pp-count" style="font-size:.74rem;font-weight:800;color:var(--text-muted);margin-bottom:8px"></div>
+     <div class="hide-scroll" id="pp-list" style="max-height:46vh"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+  ppRender();
+}
+function ppSet(k,v){ _pp[k]=(_pp[k]===v?'':v); ppRender(); }
+function ppRender(){
+  const ov=window._aPortalOv||{}; const all=ov.pending||[];
+  const fEl=document.getElementById('pp-filters'), lEl=document.getElementById('pp-list'), cEl=document.getElementById('pp-count');
+  if(!fEl||!lEl) return;
+  const sessions=[...new Set(all.map(p=>p.session).filter(Boolean))];
+  const chip=(k,v,label)=>`<span class="pp-chip ${_pp[k]===v?'active':''}" onclick="ppSet('${k}','${esc(v)}')">${label}</span>`;
+  fEl.innerHTML=`<div class="pp-filter"><span style="font-size:.7rem;font-weight:800;color:var(--text-muted)">CLASS</span>${chip('cls','10','Class 10')}${chip('cls','12','Class 12')}${sessions.length?`<span style="font-size:.7rem;font-weight:800;color:var(--text-muted);margin-left:8px">SESSION</span>${sessions.map(x=>chip('sess',x,esc(x))).join('')}`:''}</div>`;
+  let list=all;
+  if(_pp.cls) list=list.filter(p=>String(p.class_level||'')===_pp.cls);
+  if(_pp.sess) list=list.filter(p=>(p.session||'')===_pp.sess);
+  if(_pp.q){ const q=_pp.q.toLowerCase(); list=list.filter(p=>(p.name||'').toLowerCase().includes(q)||(p.phone||'').includes(q)); }
+  cEl.textContent=`${list.length} of ${all.length} students`;
+  lEl.innerHTML=list.length?list.map((p,i)=>`<div class="topper-row"><div class="rank-b">${i+1}</div><div class="topper-name">${esc(p.name||'Student')}<div class="topper-sub">${esc(p.phone)}${p.class_level?' \u00b7 Class '+esc(String(p.class_level)):''}${p.session?' \u00b7 '+esc(p.session):''}</div></div><a class="btn btn-ghost btn-sm" href="tel:${esc(p.phone)}">${ic('user')} Call</a></div>`).join('')
+    :`<div class="empty-state"><p>${all.length?'No students match these filters.':'Everyone with unlocked access has onboarded. \ud83c\udf89'}</p></div>`;
 }
 function openDeleteAllStudents(){
   showModal('\u26a0\ufe0f Delete ALL Students',
@@ -3835,7 +3879,7 @@ async function doDeleteAllStudents(){
   }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Delete Everything'; }
 }
 let _stuSrcFilter='';
-function aStuSrcFilter(src){ _stuSrcFilter=(_stuSrcFilter===src?'':src); _stuPage=1; aRenderStudents(); }
+function aStuSrcFilter(src){ _stuSrcFilter=src; _stuPage=1; aRenderStudents(); }
 function _stuFiltered(){
   let list=_aStu;
   if(_stuSrcFilter) list=list.filter(s=>(s.source||'mvs_app')===_stuSrcFilter);
@@ -3857,14 +3901,10 @@ function aRenderStudents(){
     return `<div class="stu-row" onclick="openStudentProfile(${s.profile_id})"><div class="stu-photo" id="sphoto-${s.profile_id}">${esc(initials(s.name||'S'))}</div><div class="stu-info"><div class="stu-name">${esc(s.name)}</div><div class="stu-meta">${esc(s.user_id)} · ${esc(s.phone||'no phone')} · ${esc(s.batch||'no batch')} · <span class="xm-chip" style="font-size:.6rem;padding:2px 7px;${s.source==='mvs_portal'?'background:rgba(201,150,46,.16);color:#b07f1e':''}">${s.source==='mvs_portal'?'MVS PORTAL':'MVS APP'}</span></div><div class="slist-chips" style="margin-top:4px">${subs}</div></div><div class="stu-act" onclick="event.stopPropagation()"><button class="btn btn-ghost btn-sm" onclick='openEditStudent(${s.profile_id},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,subjects:s.subjects||[]}).replace(/'/g,"&#39;")})'>${ic('edit')}</button><button class="btn btn-danger btn-sm" onclick="deleteStudent(${s.profile_id},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
   }).join(''):`<div class="empty-state"><p>No students match this view.</p></div>`;
   const ov=window._aPortalOv;
-  const chipS='cursor:pointer;user-select:none;padding:6px 13px;font-size:.74rem;';
-  const actS='outline:2px solid var(--accent);outline-offset:1px;';
-  const srcChips=ov?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 4px 14px;align-items:center">
-      <span class="xm-chip" style="${chipS}${_stuSrcFilter===''?actS:''}" onclick="aStuSrcFilter('')">Total \u00b7 ${ov.total}</span>
-      <span class="xm-chip" style="${chipS}background:rgba(201,150,46,.16);color:#b07f1e;${_stuSrcFilter==='mvs_portal'?actS:''}" onclick="aStuSrcFilter('mvs_portal')">MVS Portal \u00b7 ${ov.mvs_portal}</span>
-      <span class="xm-chip" style="${chipS}${_stuSrcFilter==='mvs_app'?actS:''}" onclick="aStuSrcFilter('mvs_app')">MVS App \u00b7 ${ov.mvs_app}</span>
-      ${ov.portal_reachable?`<span class="${ov.pending_count?'xm-pend':'xm-chip'}" style="${chipS}" onclick="openPortalPending()">Portal Pending \u00b7 ${ov.pending_count} \u2014 view</span>`:`<span class="xm-chip" title="MVS Portal unlocked-students endpoint available nahi hai" style="padding:6px 13px;font-size:.74rem">Portal Pending \u00b7 \u2014</span>`}
-      ${_stuSrcFilter?`<span style="font-size:.72rem;color:var(--text-muted)">Showing: <b>${_stuSrcFilter==='mvs_portal'?'MVS Portal':'MVS App'}</b> \u2014 tap again to clear</span>`:''}
+  const segB=(id,label,n)=>`<button class="seg-b ${_stuSrcFilter===id?'active':''}" onclick="aStuSrcFilter('${id}')">${label}<span class="seg-n">${n}</span></button>`;
+  const srcChips=ov?`<div style="display:flex;gap:12px;flex-wrap:wrap;margin:0 4px 16px;align-items:center">
+      <div class="seg">${segB('','All Students',ov.total)}${segB('mvs_portal','MVS Portal',ov.mvs_portal)}${segB('mvs_app','MVS App',ov.mvs_app)}</div>
+      <button class="pp-btn" onclick="openPortalPending()">${ic('bell')} Portal Pending<span class="pp-n">${ov.portal_reachable?ov.pending_count:'?'}</span></button>
     </div>`:'';
   el.innerHTML=`<div class="card-header" style="padding:0 4px 12px;border:none"><h3 style="font-size:1.3rem">Students</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-success btn-sm" onclick="openBulkPhone()">${ic('users')} Add by Phone</button><button class="btn btn-ghost btn-sm" onclick="openExcelUpload()">${ic('upload')} Excel Upload</button><button class="btn btn-primary btn-sm" onclick="openAddStudent()">${ic('user')} Add Student</button><button class="btn btn-danger btn-sm" onclick="openDeleteAllStudents()">${ic('trash')} Delete All</button></div></div>${srcChips}
     <div class="count-card-row">${cards}</div>
