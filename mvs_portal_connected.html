@@ -1832,6 +1832,7 @@ function cmpFileSel(key,cam){
   if(inp.files&&inp.files.length){ cmpSetFile(key,inp.files[0]); inp.value=''; }
 }
 function cmpSetFile(key,f){
+  if(!f||f.size===0){ toast('This file is empty or could not be read. If you dragged it from a website, first save it to your device, then upload.',true); return; }
   if(f.size>20*1024*1024&&!(f.type||'').startsWith('image/')){ toast('File is larger than 20MB.',true); return; }
   _cmpState[key].file=f; cmpChips(key);
 }
@@ -1861,7 +1862,15 @@ async function cmpVoice(key){
     mr.start();
   }catch(e){ toast('Microphone access denied. Please allow the mic permission.',true); }
 }
-function blobToB64(blob){ return new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(r.result.split(',')[1]); r.readAsDataURL(blob); }); }
+function blobToB64(blob){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    const t=setTimeout(()=>rej(new Error('File read timed out.')),15000);
+    r.onload=()=>{ clearTimeout(t); res((r.result||'').toString().split(',')[1]||''); };
+    r.onerror=()=>{ clearTimeout(t); rej(new Error('This file could not be read. If you dragged it from a website, save it to your device first and then upload.')); };
+    try{ r.readAsDataURL(blob); }catch(e){ clearTimeout(t); rej(new Error('This file could not be read.')); }
+  });
+}
 async function playDoubtVoice(btn,url){
   try{
     btn.disabled=true;
@@ -3327,7 +3336,9 @@ async function resolveDoubt(id){
     if(st.voice) ab=await blobToB64(st.voice);
     if(st.file){
       let f=st.file;
-      if((f.type||'').startsWith('image/')){ const _r=await smartCompress(f,()=>{}); if(_r.ok) f=_r.file; }
+      if((f.type||'').startsWith('image/')){
+        try{ const _r=await Promise.race([smartCompress(f,()=>{}),new Promise(r=>setTimeout(()=>r(null),12000))]); if(_r&&_r.ok&&_r.file) f=_r.file; }catch(e){}
+      }
       if(f.size>15*1024*1024){ toast('Answer attachment is larger than 15MB.',true); if(btn){btn.disabled=false;btn.textContent='Resolve';} return; }
       fb=await blobToB64(f); fmime=f.type||'application/octet-stream'; fname=f.name||'attachment';
     }
@@ -4764,10 +4775,14 @@ async function submitDoubt(){
   if(st.file){
     let f=st.file;
     if((f.type||'').startsWith('image/')){
-      toast('Compressing the image...'); const _r=await smartCompress(f,m=>toast(m));
-      if(!_r.ok){ toast('The image is still too large after compression.',true); btn.disabled=false; btn.textContent='Submit Doubt'; return; }
-      f=_r.file;
+      toast('Compressing the image...');
+      try{
+        const _r=await Promise.race([smartCompress(f,m=>toast(m)),new Promise(r=>setTimeout(()=>r(null),12000))]);
+        if(_r&&_r.ok&&_r.file) f=_r.file;
+        else if(_r&&!_r.ok){ toast('The image is still too large after compression.',true); btn.disabled=false; btn.textContent='Submit Doubt'; return; }
+      }catch(e){}
     }
+    if(f.size>20*1024*1024){ toast('Attachment is larger than 20MB.',true); btn.disabled=false; btn.textContent='Submit Doubt'; return; }
     fd.append('file',f);
   }
   if(st.voice) fd.append('voice',st.voice,'voice.webm');
