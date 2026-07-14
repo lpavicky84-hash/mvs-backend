@@ -1271,6 +1271,11 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 .chev{transition:transform .25s;display:inline-block}
 .chev.open{transform:rotate(180deg)}
 
+
+/* student My Doubts: Ask card ke barabar height, andar hidden scroll */
+.s-dlist{max-height:540px}
+@media(max-width:1000px){.s-dlist{max-height:430px}}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -3336,7 +3341,7 @@ function toppersHTML(doubts,idPrefix,withPhone){
   const rows=Object.values(by).sort((a,b)=>b.total-a.total).slice(0,15);
   if(!rows.length) return '';
   const inner=rows.map((r,i)=>`<div class="topper-row"><div class="rank-b ${i<3?'rank-'+(i+1):''}">${i+1}</div><div class="topper-name">${esc(r.name)}${withPhone&&r.phone?`<div class="topper-sub">${esc(r.phone)}</div>`:''}</div><span class="xm-chip">${r.total} doubts</span>${r.pending?`<span class="xm-pend">${r.pending} pending</span>`:''}</div>`).join('');
-  return `<div class="card" style="margin-bottom:16px"><div class="card-header" style="cursor:pointer" onclick="const b=document.getElementById('${idPrefix}-tops');const c=document.getElementById('${idPrefix}-chev');const o=b.style.display!=='none';b.style.display=o?'none':'block';c.classList.toggle('open',!o)"><h3 style="display:flex;align-items:center;gap:10px">${ic('users')} Most Active Students <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(by doubts asked \u2014 tap to view)</span></h3><span class="chev" id="${idPrefix}-chev">\u25bc</span></div><div class="card-body hide-scroll" id="${idPrefix}-tops" style="display:none;max-height:340px">${inner}</div></div>`;
+  return `<div class="card" style="margin-bottom:16px"><div class="card-header" style="cursor:pointer" onclick="const b=document.getElementById('${idPrefix}-tops');const c=document.getElementById('${idPrefix}-chev');const o=b.style.display!=='none';b.style.display=o?'none':'block';c.classList.toggle('open',!o)"><h3 style="display:flex;align-items:center;gap:10px">${ic('users')} Most Active Students <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(by doubts asked \u2014 tap to view)</span></h3><span class="chev" id="${idPrefix}-chev">\u25bc</span></div><div class="card-body hide-scroll" id="${idPrefix}-tops" style="display:none;max-height:295px">${inner}</div></div>`;
 }
 
 async function loadTReschedule(){
@@ -4686,7 +4691,7 @@ async function loadSDoubts(){
       <div class="form-group"><label>Topic</label><input class="form-control" id="sdo-topic" placeholder="e.g. EM Waves"></div>
       <div class="form-group"><label>Your Doubt</label>${composerHTML('sdo','Write your doubt here... ya voice note record karein','submitDoubt()','Submit Doubt')}</div>
       <div id="sdo-status" style="margin-top:10px"></div>
-    </div></div><div class="card"><div class="card-header"><h3>My Doubts</h3></div><div class="card-body hide-scroll doubt-drill">`;
+    </div></div><div class="card"><div class="card-header"><h3>My Doubts</h3></div><div class="card-body hide-scroll s-dlist">`;
     if(mine.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No doubts yet.</p></div>`;
     else html+=mine.map(d=>{
       const media=`${d.has_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/student/doubt/${d.id}/voice')">${ic('play')} My Voice Note</button>`:''}${d.has_file?`<button class="btn btn-ghost btn-sm" onclick="viewDoubtFile('student',${d.id},'${esc(d.attach_mime||'')}')">${ic('folder')} Attachment</button>`:''}`;
