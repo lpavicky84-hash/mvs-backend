@@ -1296,6 +1296,13 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 .pp-chip.active{background:var(--primary);border-color:var(--primary);color:#fff}
 .dark .pp-chip.active{color:#181203}
 
+
+/* System Health: 5 rows visible, hidden scrollbar */
+.health-scroll{max-height:340px;overflow-y:auto}
+.health-scroll .health-table thead th{position:sticky;top:0;z-index:2;background:var(--card)}
+.dark .health-scroll .health-table thead th{background:#13223b}
+@media(max-width:640px){.health-scroll{max-height:300px}}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -3533,10 +3540,16 @@ async function renderAdminHealth(){
       const lvl = !t.is_active?{c:'tag-low',l:'Inactive'} : m>=8?{c:'tag-high',l:'High'} : m>=3?{c:'tag-med',l:'Medium'} : {c:'tag-low',l:'Low'};
       const fillCol = lvl.c==='tag-high'?'#059669':lvl.c==='tag-med'?'#d97706':'#9ca3af';
       const pct=Math.round((m/maxMonthly)*100);
-      const subs=(t.subjects||[]).slice(0,3).map(s=>`<span class="chip">${esc(s)}</span>`).join('')||'<span style="color:var(--text-muted)">—</span>';
+      // subject + class ka pair (Hindi Class 10 aur Hindi Class 12 alag hain)
+      const sc=(t.subject_classes||[]).filter(x=>x&&x.subject);
+      let pairs=sc.length
+        ? sc.map(x=>({s:(x.subject||'').trim(), c:String(x.class||x.class_level||'').trim()}))
+        : [...new Set((t.subjects||[]).map(x=>(x||'').trim()).filter(Boolean))].map(s=>({s,c:''}));
+      const seen=new Set(); pairs=pairs.filter(p=>{ const k=p.s+'|'+p.c; if(seen.has(k)) return false; seen.add(k); return true; });
+      const subs=pairs.slice(0,4).map(p=>`<span class="chip">${esc(p.s)}${p.c?`<b style="opacity:.65;font-weight:700;margin-left:5px">${esc(p.c)}</b>`:''}</span>`).join('')+(pairs.length>4?`<span class="chip">+${pairs.length-4}</span>`:'')||'<span style="color:var(--text-muted)">—</span>';
       return `<tr><td><strong>${esc(t.name)}</strong><div style="font-size:.72rem;color:var(--text-muted)">${esc(t.user_id)}</div></td><td>${subs}</td><td><strong>${done}</strong> <span style="color:var(--text-muted);font-size:.78rem">total</span><div class="eff-bar"><div class="eff-fill" style="width:${pct}%;background:${fillCol}"></div></div><div style="font-size:.72rem;color:var(--text-muted);margin-top:3px">${m} this month</div></td><td><span class="tag ${rs>=2?'tag-reschedule':'tag-done'}">${rs}/2</span></td><td><span class="tag ${lvl.c}">${lvl.l}</span></td></tr>`;
     }).join('');
-    wrap.innerHTML=`<table class="health-table"><thead><tr><th>Teacher</th><th>Subjects</th><th>Classes (Activity)</th><th>Reschedule</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`;
+    wrap.innerHTML=`<div class="hide-scroll health-scroll"><table class="health-table"><thead><tr><th>Teacher</th><th>Subjects</th><th>Classes (Activity)</th><th>Reschedule</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>${ts.length>5?`<div style="text-align:center;font-size:.72rem;color:var(--text-muted);padding-top:8px">Showing 5 of ${ts.length} teachers \u00b7 scroll for more</div>`:''}`;
   }catch(e){ wrap.innerHTML=errHtml(e); }
 }
 async function loadADashboard(){
@@ -3863,6 +3876,115 @@ function ppRender(){
   lEl.innerHTML=list.length?list.map((p,i)=>`<div class="topper-row"><div class="rank-b">${i+1}</div><div class="topper-name">${esc(p.name||'Student')}<div class="topper-sub">${esc(p.phone)}${p.class_level?' \u00b7 Class '+esc(String(p.class_level)):''}${p.session?' \u00b7 '+esc(p.session):''}</div></div><a class="btn btn-ghost btn-sm" href="tel:${esc(p.phone)}">${ic('user')} Call</a></div>`).join('')
     :`<div class="empty-state"><p>${all.length?'No students match these filters.':'Everyone with unlocked access has onboarded. \ud83c\udf89'}</p></div>`;
 }
+// ============ MVS PORTAL PRIORITY SYNC ============
+function openPortalSync(){
+  showModal('Sync with MVS Portal',
+    `<p style="font-size:.83rem;color:var(--text-muted);margin-bottom:12px">Har <b>MVS App</b> student ko MVS Portal par check kiya jayega. Jo student portal par mila (Class Joining = <b>Included</b>), use <b>MVS Portal</b> category me transfer kar diya jayega aur uska class, medium aur subjects portal se refresh ho jayenge.</p>
+     <div class="alert alert-info" style="font-size:.8rem">Rule: <b>MVS Portal ki priority sabse upar hai</b> — jo student portal par hai, wo hamesha MVS Portal category me hi rahega.</div>
+     <div id="psy-out" style="margin-top:12px"></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" id="psy-btn" onclick="runPortalSync()">Start Sync</button>`);
+}
+async function runPortalSync(){
+  const btn=document.getElementById('psy-btn'); btn.disabled=true; btn.textContent='Syncing\u2026';
+  const out=document.getElementById('psy-out');
+  out.innerHTML='<div class="spinner"></div>';
+  try{
+    const r=await api('/api/admin/students/sync-portal','POST',{limit:400});
+    const rows=(r.students||[]).map((x,i)=>`<div class="topper-row"><div class="rank-b">${i+1}</div><div class="topper-name">${esc(x.name||'Student')}<div class="topper-sub">${esc(x.phone||'')} \u00b7 ${esc(x.user_id||'')}</div></div><span class="xm-chip" style="background:rgba(201,150,46,.16);color:#b07f1e">\u2192 MVS PORTAL</span></div>`).join('');
+    out.innerHTML=`<div class="alert alert-success"><b>${r.moved}</b> student(s) moved to MVS Portal (out of ${r.checked} checked).</div>${rows?`<div class="hide-scroll" style="max-height:40vh;margin-top:10px">${rows}</div>`:''}`;
+    toast(r.message); loadAStudents();
+  }catch(e){ out.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
+  btn.disabled=false; btn.textContent='Start Sync';
+}
+// ============ WHATSAPP WELCOME ============
+async function openWhatsApp(){
+  showModal('WhatsApp \u2014 Welcome Message','<div class="spinner"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{
+    const st=await api('/api/admin/whatsapp/status');
+    window._waSt=st;
+    const body=document.getElementById('modal-body');
+    if(!st.configured){
+      body.innerHTML=`<div class="alert alert-warning"><b>WhatsApp (AiSensy) is not configured.</b><br>Railway par CRM service ke Variables me set karein:<br><br>
+        <code>WHATSAPP_PROVIDER</code> = <code>aisensy</code><br>
+        <code>AISENSY_API_KEY</code> = AiSensy dashboard \u2192 Manage \u2192 API Key<br>
+        <code>AISENSY_CAMPAIGN</code> = live API campaign ka exact naam<br>
+        <code>WHATSAPP_PARAMS</code> = <code>name,batch,phone</code><br>
+        <code>CRM_PUBLIC_URL</code> = student portal ka link<br><br>
+        <b>Missing:</b> ${esc((st.missing||[]).join(', ')||'\u2014')}</div>`;
+      return;
+    }
+    const isAi=st.provider==='aisensy';
+    body.innerHTML=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <span class="xm-chip xm-chip-hl">Pending \u00b7 ${st.pending}</span>
+        <span class="xm-chip">Already sent \u00b7 ${st.sent}</span>
+        <span class="xm-chip">MVS App students only</span>
+        ${isAi?`<span class="xm-chip">AiSensy \u00b7 ${esc(st.campaign||'')}</span>`:''}</div>
+      <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:10px">MVS Portal wale students ko welcome nahi jata (unka apna Class Manager flow hai).</p>
+      ${isAi?`<div class="alert alert-info" style="font-size:.78rem">Message ka text <b>AiSensy ke approved template</b> me hota hai. Yahan se sirf uske variables bhejte hain \u2014 order: <b>${esc((st.params||[]).join(' \u2192 '))}</b><br>Example: <b>${esc((st.sample_params||[]).join('  |  '))}</b></div>
+        <div class="form-group" style="margin-top:12px"><label>Test send (apna number)</label><div style="display:flex;gap:8px"><input class="form-control" id="wa-test" placeholder="10-digit number"><button class="btn btn-ghost btn-sm" onclick="waTest()">Send Test</button></div></div>`
+      :`<div class="form-group"><label>Message</label><textarea class="form-control" id="wa-tpl" rows="10" style="font-size:.8rem;font-family:inherit">${esc(st.template)}</textarea></div>
+        <div class="form-group"><label style="font-size:.75rem">Preview</label><div class="card" style="padding:12px;white-space:pre-wrap;font-size:.8rem;background:var(--bg)" id="wa-prev">${esc(st.sample)}</div></div>`}
+      <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;margin:10px 0"><input type="checkbox" id="wa-resend"> Resend to students who already got it</label>
+      <div id="wa-out"></div>`;
+    document.getElementById('modal-footer').innerHTML=`<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-success" id="wa-btn" onclick="sendWhatsAppWelcome()">${ic('megaphone')} Send to ${st.pending} pending</button>`;
+    const tplEl=document.getElementById('wa-tpl');
+    if(tplEl) tplEl.addEventListener('input',e=>{
+      const t=e.target.value.replace(/{name}/g,'Rahul Sharma').replace(/{batch}/g,'Lakshya Science').replace(/{phone}/g,'9876543210').replace(/{link}/g,window._waSt.link);
+      document.getElementById('wa-prev').textContent=t;
+    });
+  }catch(e){ document.getElementById('modal-body').innerHTML=errHtml(e); }
+}
+async function waTest(){
+  const ph=val('wa-test').replace(/\D/g,'');
+  if(ph.length<10){ toast('Enter a valid 10-digit number.',true); return; }
+  const out=document.getElementById('wa-out'); out.innerHTML='<div class="spinner"></div>';
+  try{
+    const r=await api('/api/admin/whatsapp/test','POST',{phone:ph});
+    out.innerHTML=`<div class="alert ${r.ok?'alert-success':'alert-danger'}"><b>${r.ok?'Test message sent!':'Failed'}</b><br><span style="font-size:.76rem">Params: ${esc((r.params_sent||[]).join(' | '))}<br>${esc(r.detail||'')}</span></div>`;
+  }catch(e){ out.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
+}
+async function sendWhatsAppWelcome(){
+  const btn=document.getElementById('wa-btn'); btn.disabled=true; btn.textContent='Sending\u2026';
+  const out=document.getElementById('wa-out'); out.innerHTML='<div class="spinner"></div>';
+  try{
+    const tplEl=document.getElementById('wa-tpl');
+    const r=await api('/api/admin/whatsapp/send-welcome','POST',{
+      all_pending:true, resend:document.getElementById('wa-resend').checked,
+      template:(tplEl?tplEl.value:''), limit:500});
+    const errs=(r.errors||[]).map(x=>`<div class="topper-row"><div class="topper-name">${esc(x.name)}<div class="topper-sub">${esc(x.phone)} \u2014 ${esc(x.error)}</div></div></div>`).join('');
+    out.innerHTML=`<div class="alert ${r.failed?'alert-warning':'alert-success'}"><b>${r.sent}</b> sent \u00b7 <b>${r.failed}</b> failed</div>${errs?`<div class="hide-scroll" style="max-height:30vh">${errs}</div>`:''}`;
+    toast(r.message);
+  }catch(e){ out.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
+  btn.disabled=false; btn.textContent='Send again';
+}
+function openSsoCheck(){
+  showModal('MVS Portal Connection Check',
+    `<p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Enter a student\u2019s phone number to see exactly what the MVS Portal returns. Auto-login (Class Manager \u2192 batch select) works only when the status is <b>ok</b>.</p>
+     <div class="form-group"><label>Student Phone</label><input class="form-control" id="ssoc-phone" placeholder="10-digit mobile"></div>
+     <div id="ssoc-out"></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" id="ssoc-btn" onclick="runSsoCheck()">Check</button>`);
+}
+async function runSsoCheck(){
+  const ph=val('ssoc-phone').replace(/\D/g,'');
+  if(ph.length<10){ toast('Enter a valid 10-digit phone.',true); return; }
+  const btn=document.getElementById('ssoc-btn'); btn.disabled=true; btn.textContent='Checking\u2026';
+  const out=document.getElementById('ssoc-out');
+  try{
+    const r=await api('/api/ext/student-check?phone='+encodeURIComponent(ph));
+    const ok=r.status==='ok';
+    const fixes={
+      not_configured:'Railway par CRM service ke Variables me STUDENT_PORTAL_URL aur STUDENT_PORTAL_KEY set karein.',
+      endpoint_missing:'MVS Portal wale ko MVS_PORTAL_STUDENT_SYNC.md ka Endpoint 1 (/api/integration/student) banana hai.',
+      bad_key:'STUDENT_PORTAL_KEY, MVS Portal ke MVS_CRM_KEY se match nahi kar rahi.',
+      unreachable:'MVS Portal backend reachable nahi hai — URL check karein.',
+      not_on_portal:'Is phone se koi student MVS Portal par nahi hai.',
+      locked:'Is student ka Class Access MVS Portal par unlock karein.'
+    };
+    out.innerHTML=`<div class="alert ${ok?'alert-success':'alert-warning'}"><b>Status: ${esc(r.status)}</b><br>${esc(r.detail||'')}${!ok&&fixes[r.status]?`<br><br><b>Fix:</b> ${esc(fixes[r.status])}`:''}</div>
+      ${ok&&r.data?`<div style="font-size:.78rem;margin-top:8px"><b>${esc(r.data.name||'')}</b> \u00b7 Class ${esc(String(r.data.class_level||'\u2014'))} \u00b7 ${esc(r.data.medium||'\u2014')} \u00b7 ${(r.data.subjects||[]).length} subjects<br><span style="color:var(--text-muted)">Auto-login ready \u2014 student ko sirf batch select karna hoga.</span></div>`:''}`;
+  }catch(e){ out.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
+  btn.disabled=false; btn.textContent='Check';
+}
 function openDeleteAllStudents(){
   showModal('\u26a0\ufe0f Delete ALL Students',
     `<div class="alert alert-danger">This permanently deletes <b>every student</b> \u2014 profiles, doubts, submissions, results. Use only before a fresh re-upload.</div>
@@ -3906,7 +4028,7 @@ function aRenderStudents(){
       <div class="seg">${segB('','All Students',ov.total)}${segB('mvs_portal','MVS Portal',ov.mvs_portal)}${segB('mvs_app','MVS App',ov.mvs_app)}</div>
       <button class="pp-btn" onclick="openPortalPending()">${ic('bell')} Portal Pending<span class="pp-n">${ov.portal_reachable?ov.pending_count:'?'}</span></button>
     </div>`:'';
-  el.innerHTML=`<div class="card-header" style="padding:0 4px 12px;border:none"><h3 style="font-size:1.3rem">Students</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-success btn-sm" onclick="openBulkPhone()">${ic('users')} Add by Phone</button><button class="btn btn-ghost btn-sm" onclick="openExcelUpload()">${ic('upload')} Excel Upload</button><button class="btn btn-primary btn-sm" onclick="openAddStudent()">${ic('user')} Add Student</button><button class="btn btn-danger btn-sm" onclick="openDeleteAllStudents()">${ic('trash')} Delete All</button></div></div>${srcChips}
+  el.innerHTML=`<div class="card-header" style="padding:0 4px 12px;border:none"><h3 style="font-size:1.3rem">Students</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-success btn-sm" onclick="openBulkPhone()">${ic('users')} Add by Phone</button><button class="btn btn-ghost btn-sm" onclick="openExcelUpload()">${ic('upload')} Excel Upload</button><button class="btn btn-primary btn-sm" onclick="openAddStudent()">${ic('user')} Add Student</button><button class="btn btn-success btn-sm" onclick="openWhatsApp()">${ic('megaphone')} WhatsApp</button><button class="btn btn-ghost btn-sm" onclick="openPortalSync()">${ic('refresh')} Sync Portal</button><button class="btn btn-ghost btn-sm" onclick="openSsoCheck()">${ic('shield')} Portal Check</button><button class="btn btn-danger btn-sm" onclick="openDeleteAllStudents()">${ic('trash')} Delete All</button></div></div>${srcChips}
     <div class="count-card-row">${cards}</div>
     <div class="card"><div class="card-body">
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"><input class="form-control" style="flex:1;min-width:180px" placeholder="Search name, phone, ID, email..." value="${esc(_stuSearch)}" oninput="aStuSearch(this.value)"><select class="form-control" style="width:auto" onchange="aStuSize(this.value)">${[10,25,50,100].map(n=>`<option value="${n}"${_stuSize===n?' selected':''}>${n} / page</option>`).join('')}</select></div>
@@ -5567,7 +5689,14 @@ async function mvsSsoFromHash(){
     }
     goLogin('student');
     var sp=document.getElementById('sp-phone'); if(sp) sp.value=phone;
-    toast('No student found for this phone. Please contact the admin.',true);
+    var msg='No student found for this phone. Please contact the admin.';
+    if(d.reason==='not_configured'||d.reason==='endpoint_missing'||d.reason==='unreachable'||d.reason==='bad_key'||d.reason==='http_error'){
+      msg='MVS Portal connection pending — auto-login abhi active nahi hai. Admin ko batayein.';
+      console.warn('[SSO] '+d.reason+': '+(d.detail||''));
+    } else if(d.reason==='not_on_portal'){
+      msg='This phone is not registered on the MVS Portal. Please contact the admin.';
+    }
+    toast(msg,true);
   }catch(e){
     _ssoOverlay(false); goLogin('student');
     var sp2=document.getElementById('sp-phone'); if(sp2) sp2.value=phone;

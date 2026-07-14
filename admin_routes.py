@@ -133,6 +133,7 @@ def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
                 "has_photo": bool(profile.photo_b64),
                 "is_active": t.is_active,
                 "subjects": profile.subjects,
+                "subject_classes": profile.subject_classes or [],
                 "batch": profile.batch,
                 "total_classes_done": classes_done,
                 "monthly_classes_done": monthly_done,
@@ -716,6 +717,13 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
         existing = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
         if existing:
             src = getattr(existing, "source", None) or "mvs_app"
+            if src != "mvs_portal":
+                # PRIORITY: kahin yeh student MVS Portal par to nahi? -> transfer
+                try:
+                    if _sync_one_from_portal(existing, db):
+                        src = "mvs_portal"
+                except Exception:
+                    pass
             if src == "mvs_portal":
                 # DUPLICATE: MVS Portal wala student hi rahega — dubara add NAHI hoga
                 duplicates.append({"phone": phone,
@@ -734,6 +742,20 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
                 existing.user.name = name
             updated += 1
             continue
+        # naya student — pehle dekho MVS Portal ka to nahi (priority rule)
+        psrc, psubs, pmed, pcls = "mvs_app", [], None, None
+        try:
+            from ext_materials import portal_fetch_student
+            st = portal_fetch_student(phone)
+            if st and st.get("unlocked"):
+                psrc = "mvs_portal"
+                psubs = st.get("subjects") or []
+                pmed = st.get("medium")
+                pcls = st.get("class_level")
+                if st.get("name"):
+                    name = st["name"]
+        except Exception:
+            pass
         i = 1
         while True:
             cand = f"MVSS{i:04d}"
@@ -743,10 +765,17 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
         u = User(name=name, user_id=cand, password=hash_password(phone),
                  role=UserRole.student, is_active=True)
         db.add(u); db.flush()
-        db.add(StudentProfile(user_id=u.id, phone=phone, subjects=[], class_name="",
+        db.add(StudentProfile(user_id=u.id, phone=phone, subjects=psubs, class_name="",
                               batch_name=batch, email=email, is_verified=True,
-                              plain_password=phone, source="mvs_app"))
-        created += 1
+                              plain_password=phone, source=psrc,
+                              medium=pmed, class_level=pcls))
+        if psrc == "mvs_portal":
+            duplicates.append({"phone": phone, "sheet_name": name,
+                               "existing_name": name, "existing_user_id": cand,
+                               "existing_batch": batch or "", "source": "mvs_portal",
+                               "note": "Sheet me tha, par MVS Portal par mila -> MVS Portal me add kiya"})
+        else:
+            created += 1
     db.commit()
     return {"created": created, "updated": updated, "skipped": skipped,
             "duplicates": duplicates,
@@ -1435,3 +1464,144 @@ def delete_all_students(payload: dict, db: Session = Depends(get_db), _=Depends(
                             detail=f"Deletion incomplete — {remaining} students still remain. Issues: {', '.join(sorted(set(errors))[:6]) or 'unknown'}")
     return {"message": f"All {total} students deleted. You can now upload fresh data.",
             "deleted": total}
+
+# ==================================================================
+#  MVS PORTAL PRIORITY SYNC
+#  Rule: agar koi student MVS Portal par exist karta hai to woh HAMESHA
+#  "mvs_portal" category ka hai — chahe pehle sheet (MVS App) se add hua ho.
+#  Yeh sync MVS App students ko portal par check karke unhe transfer kar
+#  deta hai aur unka data (class, medium, subjects) portal se refresh karta hai.
+# ==================================================================
+def _sync_one_from_portal(sp, db):
+    """Ek student ko portal par check karo. True agar mvs_portal me transfer hua."""
+    from ext_materials import portal_fetch_student
+    if not sp.phone:
+        return False
+    st = portal_fetch_student(sp.phone)
+    if not st or not st.get("unlocked"):
+        return False
+    sp.source = "mvs_portal"                       # priority: portal jeet-ta hai
+    if st.get("subjects"):
+        sp.subjects = st["subjects"]
+    if st.get("medium"):
+        sp.medium = st["medium"]
+    if st.get("class_level"):
+        sp.class_level = st["class_level"]
+    if st.get("name") and sp.user and (not sp.user.name or sp.user.name.startswith("Student ")):
+        sp.user.name = st["name"]
+    return True
+
+
+@router.post("/students/sync-portal")
+def sync_students_with_portal(payload: dict = None, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Sabhi MVS App students ko MVS Portal par check karke transfer karo."""
+    from models import StudentProfile as _SP
+    from ext_materials import _cfg
+    url, key = _cfg()
+    if not url or not key:
+        raise HTTPException(status_code=503, detail="MVS Portal connection is not configured")
+    limit = int((payload or {}).get("limit") or 400)
+    app_students = db.query(_SP).filter(
+        (_SP.source == "mvs_app") | (_SP.source.is_(None))).limit(limit).all()
+    moved = []
+    for sp in app_students:
+        try:
+            if _sync_one_from_portal(sp, db):
+                moved.append({"name": sp.user.name if sp.user else "", "phone": sp.phone,
+                              "user_id": sp.user.user_id if sp.user else ""})
+        except Exception:
+            continue
+    db.commit()
+    return {"checked": len(app_students), "moved": len(moved), "students": moved[:200],
+            "message": f"{len(moved)} student(s) moved from MVS App to MVS Portal."}
+
+
+# ==================================================================
+#  WHATSAPP — WELCOME MESSAGE (sirf MVS App students ko)
+# ==================================================================
+@router.get("/whatsapp/status")
+def whatsapp_status(db: Session = Depends(get_db), _=Depends(get_admin)):
+    import whatsapp as W
+    from models import StudentProfile as _SP
+    pend = db.query(_SP).filter(
+        ((_SP.source == "mvs_app") | (_SP.source.is_(None))),
+        _SP.welcome_sent_at.is_(None), _SP.phone.isnot(None)).count()
+    sent = db.query(_SP).filter(_SP.welcome_sent_at.isnot(None)).count()
+    c = W.cfg()
+    return {"configured": W.is_configured(), "provider": c["provider"],
+            "missing": W.missing(), "campaign": c["campaign"], "params": c["params"],
+            "pending": pend, "sent": sent, "link": c["link"], "template": c["template"],
+            "sample": W.build_message("Rahul Sharma", "Lakshya Science", "9876543210"),
+            "sample_params": W.build_params("Rahul Sharma", "Lakshya Science", "9876543210")}
+
+
+@router.get("/whatsapp/pending")
+def whatsapp_pending(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """MVS App students jinhe abhi welcome message nahi gaya."""
+    from models import StudentProfile as _SP
+    rows = db.query(_SP).filter(
+        ((_SP.source == "mvs_app") | (_SP.source.is_(None))),
+        _SP.welcome_sent_at.is_(None), _SP.phone.isnot(None)).all()
+    return [{"profile_id": x.id, "name": x.user.name if x.user else "Student",
+             "phone": x.phone, "batch": x.batch_name or ""} for x in rows]
+
+
+@router.post("/whatsapp/send-welcome")
+def whatsapp_send_welcome(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Welcome message bhejo. payload:
+       {"profile_ids": [1,2,3]}  ya  {"all_pending": true}
+       {"template": "...", "resend": false}"""
+    import whatsapp as W
+    from datetime import datetime as _dt
+    from models import StudentProfile as _SP
+    if not W.is_configured():
+        raise HTTPException(status_code=503,
+                            detail="WhatsApp is not configured. Missing on Railway: " + ", ".join(W.missing()))
+    payload = payload or {}
+    template = (payload.get("template") or "").strip() or None
+    resend = bool(payload.get("resend"))
+
+    q = db.query(_SP).filter(_SP.phone.isnot(None))
+    if payload.get("all_pending"):
+        q = q.filter(((_SP.source == "mvs_app") | (_SP.source.is_(None))))
+        if not resend:
+            q = q.filter(_SP.welcome_sent_at.is_(None))
+    else:
+        ids = payload.get("profile_ids") or []
+        if not ids:
+            raise HTTPException(status_code=400, detail="No students selected")
+        q = q.filter(_SP.id.in_(ids))
+    students = q.limit(int(payload.get("limit") or 200)).all()
+
+    sent, failed = 0, []
+    for sp in students:
+        # MVS Portal students ko welcome nahi bhejte (unka apna flow hai)
+        if (getattr(sp, "source", None) or "mvs_app") == "mvs_portal":
+            continue
+        name = sp.user.name if sp.user else "Student"
+        msg = W.build_message(name, sp.batch_name or "", sp.phone, template)
+        ok, detail = W.send(sp.phone, text=msg, name=name, batch=sp.batch_name or "")
+        if ok:
+            sp.welcome_sent_at = _dt.now()
+            sent += 1
+        else:
+            failed.append({"name": name, "phone": sp.phone, "error": detail[:120]})
+    db.commit()
+    return {"sent": sent, "failed": len(failed), "errors": failed[:25],
+            "message": f"{sent} message(s) sent, {len(failed)} failed."}
+
+@router.post("/whatsapp/test")
+def whatsapp_test(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Apne number par ek test message bhejo."""
+    import whatsapp as W
+    phone = "".join(ch for ch in str((payload or {}).get("phone") or "") if ch.isdigit())[-10:]
+    if len(phone) != 10:
+        raise HTTPException(status_code=400, detail="Enter a valid 10-digit phone")
+    if not W.is_configured():
+        raise HTTPException(status_code=503,
+                            detail="WhatsApp is not configured. Missing on Railway: " + ", ".join(W.missing()))
+    name = (payload or {}).get("name") or "Test Student"
+    batch = (payload or {}).get("batch") or "Lakshya Science"
+    ok, detail = W.send(phone, text=W.build_message(name, batch, phone), name=name, batch=batch)
+    return {"ok": ok, "detail": detail[:300],
+            "params_sent": W.build_params(name, batch, phone)}
