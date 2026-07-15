@@ -1650,20 +1650,32 @@ img,canvas,video{max-width:100%}
   .modal-footer .btn{flex:1 1 auto}
 
   /* ===== TIMELINE (Time Table) ===== */
-  .stl{padding-left:32px}
-  .stl::before{left:10px}
-  .stl-dot{left:-30px;width:22px;height:22px;font-size:.5rem;top:14px}
-  .stl-dot.tav{width:34px;height:34px;left:-36px;top:8px}
+  .stl{padding-left:30px}
+  .stl::before{left:9px}
+  .stl-dot{left:-28px;width:20px;height:20px;font-size:.48rem;top:15px}
+  .stl-dot.tav{width:32px;height:32px;left:-34px;top:9px}
   .stl-card{border-radius:14px}
-  .stl-chead{flex-wrap:wrap;gap:8px;padding:13px 13px}
-  .stl-cname{font-size:.92rem;flex:1 1 100%;min-width:0;overflow-wrap:anywhere}
-  .stl-cmeta{margin-left:0;flex-wrap:wrap;gap:6px}
-  .stl-part{flex-wrap:wrap;gap:8px;padding:11px 13px}
-  .stl-pname{flex:1 1 60%;min-width:0;overflow-wrap:anywhere;font-size:.86rem}
-  .stl-pright{margin-left:auto;text-align:right}
-  .stl-ptime{font-size:.68rem}
-  .stl-act{flex-basis:100%;display:flex;gap:8px;flex-wrap:wrap}
-  .stl-badge,.stl-pbadge{font-size:.6rem;padding:3px 9px;white-space:nowrap}
+
+  /* chapter/event head: naam flex me, badges right; jagah kam ho to
+     badges NEECHE apni line par aa jate hain — naam kabhi vertical nahi tootata */
+  .stl-chead{flex-wrap:wrap;gap:7px 10px;padding:12px 13px}
+  .stl-cname{font-size:.92rem;flex:1 1 180px;min-width:0;overflow-wrap:anywhere;line-height:1.4}
+  .stl-cmeta{margin-left:auto;flex-wrap:wrap;gap:6px;justify-content:flex-end;align-items:center;min-width:0}
+  .stl-date{white-space:nowrap;font-size:.7rem}
+  .cnt-badge{flex-shrink:0}
+
+  /* parts: naam left, date/time+badge right column; buttons chhote hi rehte hain */
+  .stl-part{flex-wrap:wrap;gap:7px 10px;padding:11px 13px}
+  .stl-pname{flex:1 1 150px;min-width:0;overflow-wrap:anywhere;font-size:.86rem}
+  .stl-pright{margin-left:auto;max-width:none;flex-wrap:wrap;justify-content:flex-end;gap:7px}
+  .stl-ptime{font-size:.66rem;white-space:nowrap}
+
+  /* ACTION BUTTONS (delete/edit/mark-done): hamesha compact, kabhi full-width nahi */
+  .stl .stl-act{flex:0 0 auto!important;width:auto!important;min-height:32px;padding:6px 10px!important}
+  .stl .btn-danger.stl-act svg{width:14px;height:14px}
+
+  .stl-badge,.stl-pbadge{font-size:.58rem;padding:3px 8px;white-space:nowrap;flex-shrink:0}
+  .stl-badge.ongoing{font-size:.56rem;letter-spacing:.03em}
 
   /* ===== STUDY / CLASSES MATERIAL rows — buttons kabhi na katen ===== */
   .xm-row{flex-wrap:wrap;gap:10px;padding:13px 13px}
@@ -1719,10 +1731,11 @@ img,canvas,video{max-width:100%}
 
 /* --- chhote phones (SE / mini) --- */
 @media(max-width:380px){
-  .stl{padding-left:26px}
-  .stl::before{left:7px}
-  .stl-dot{left:-25px;width:18px;height:18px}
-  .stl-dot.tav{width:30px;height:30px;left:-31px}
+  .stl{padding-left:24px}
+  .stl::before{left:6px}
+  .stl-dot{left:-23px;width:16px;height:16px}
+  .stl-dot.tav{width:28px;height:28px;left:-29px}
+  .stl-cname{font-size:.86rem}
   .xm-row .btn{min-width:100%}
   .btn{font-size:.8rem;padding:9px 12px}
 
