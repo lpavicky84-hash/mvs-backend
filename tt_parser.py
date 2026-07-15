@@ -49,11 +49,20 @@ ORD_RE = re.compile(r'(\d)(st|nd|rd|th)\b', re.I)
 
 # ------------------------------------------------------------------ helpers
 def detect_subject(text):
+    """Jo subject-name text me SABSE PEHLE aata hai wahi jeeta hai.
+    (Title hamesha upar hota hai — 'Social Science' ke topics me 'Economics'
+    aa jaye to bhi title wala hi chunega.) Header 400 chars ko priority."""
     up = (text or '').upper()
-    for name, pat in SUBJECT_PATTERNS:
-        if pat in up:
-            return name
-    return None
+
+    def earliest(chunk):
+        best, best_i = None, 10**9
+        for name, pat in SUBJECT_PATTERNS:
+            i = chunk.find(pat)
+            if i != -1 and i < best_i:
+                best, best_i = name, i
+        return best
+
+    return earliest(up[:400]) or earliest(up)
 
 
 def _mk_date(y, mo, d):

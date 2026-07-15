@@ -2104,10 +2104,21 @@ async function submitTeacherNotify(){
   try{ const r=await api('/api/teacher/notify','POST',{title,message}); closeModal(); toast(r.message); }catch(e){ toast(e.message,true); }
 }
 // ===== ADMIN PDF UPLOAD =====
+function pdfSubjOptions(selId,cls){
+  const sel=document.getElementById(selId); if(!sel) return;
+  const cur=sel.value;
+  const list=((window._allSubjects||{})[cls]||[]);
+  sel.innerHTML='<option value="">\u2728 Auto-detect (PDF ke title se)</option>'+
+    list.map(x=>`<option value="${esc(x.name)}"${x.name===cur?' selected':''}>${esc(x.name)}${x.code?' \u00b7 '+esc(x.code):''}</option>`).join('');
+}
 function openAdminPdf(){
   showModal(' PDF Upload — All Subjects',
- `<div class="alert alert-info"><strong>Saare subjects ki ek hi PDF</strong> you can upload — the subject of each page is detected automatically.</div><div class="form-group"><label>Class</label>${classSelect('apdf-class')}</div><div class="form-group"><label>Subject (optional — blank = auto-detect)</label><input class="form-control" id="apdf-subject" placeholder="Blank = auto-detect"></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('apdf-file').click()"><div class="fd-icon"></div><div id="apdf-label" style="font-size:.85rem">Click to choose a PDF</div><input type="file" id="apdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('apdf-label').textContent=this.files[0]?.name||''"></div></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="apdf-replace"> Replace existing entries for the same subject</label></div><div id="apdf-status"></div>`,
+ `<div class="alert alert-info"><strong>Saare subjects ki ek hi PDF</strong> you can upload — the subject of each page is detected automatically.</div><div class="form-group"><label>Class</label>${classSelect('apdf-class')}</div><div class="form-group"><label>Subject</label><select class="form-control" id="apdf-subject"><option value="">\u2728 Auto-detect (PDF ke title se)</option></select></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('apdf-file').click()"><div class="fd-icon"></div><div id="apdf-label" style="font-size:.85rem">Click to choose a PDF</div><input type="file" id="apdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('apdf-label').textContent=this.files[0]?.name||''"></div></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="apdf-replace"> Replace existing entries for the same subject</label></div><div id="apdf-status"></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="apdf-btn" onclick="uploadAdminPdf()">Upload & Parse</button>`);
+  const clsSel=document.getElementById('apdf-class');
+  const cls=()=>String((clsSel&&clsSel.value)||'').replace(/\D/g,'')||'12';
+  pdfSubjOptions('apdf-subject',cls());
+  if(clsSel) clsSel.addEventListener('change',()=>pdfSubjOptions('apdf-subject',cls()));
 }
 async function uploadAdminPdf(){
   const fi=document.getElementById('apdf-file');
