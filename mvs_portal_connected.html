@@ -1626,6 +1626,9 @@ img,canvas,video{max-width:100%}
 
 /* --- tablet + phone --- */
 @media(max-width:820px){
+  .fbar{width:100%;max-width:100%}
+  .fbar>*{min-width:0}
+  .fbar-chips{min-width:0;flex:1 1 auto;flex-wrap:wrap}
   .page{padding:16px 14px}
   .card-body{padding:16px 14px}
   .topbar{padding:10px 14px;gap:8px}
@@ -1690,13 +1693,15 @@ img,canvas,video{max-width:100%}
   .rb-hero h2{font-size:1.2rem}
   .rb-cta{width:100%;justify-content:center}
 
-  /* filter bar */
-  .fbar{padding:11px 12px;gap:9px}
-  .fbar-sel{min-width:100%;flex:1 1 100%}
-  .fbar-chips{width:100%;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none;padding-bottom:2px}
+  /* filter bar — card kabhi screen se bahar na jaye */
+  .fbar{padding:11px 12px;gap:9px;width:100%;max-width:100%;box-sizing:border-box}
+  .fbar>*{min-width:0}
+  .fbar-sel{min-width:0;flex:1 1 100%;width:100%}
+  .fbar-chips{flex:1 1 100%;min-width:0;width:100%;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none;padding-bottom:2px}
   .fbar-chips::-webkit-scrollbar{display:none}
   .fbar-res{margin-left:0;width:100%}
   .fchip{flex-shrink:0}
+  .fbar-more{flex-shrink:0}
 
   /* segmented + pending buttons full width scroll */
   .seg{width:100%;overflow-x:auto;scrollbar-width:none}
