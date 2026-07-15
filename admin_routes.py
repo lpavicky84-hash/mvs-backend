@@ -1779,3 +1779,44 @@ def action_app_review(rid: int, payload: dict, db: Session = Depends(get_db), _=
                             message=msg, notif_type="app_review"))
     db.commit()
     return {"message": "Review " + ("approved." if action == "approve" else "marked as resolved.")}
+
+# ==================================================================
+#  DANGER: RESET PORTAL DATA (category-wise)
+#  Users (students/teachers/admins), profiles, subjects aur deadlines
+#  SAFE rehte hain — sirf chuna hua content data delete hota hai.
+# ==================================================================
+RESET_CATEGORIES = {
+    "timetable":     ["TimetableEntry"],
+    "materials":     ["Material", "MaterialView"],
+    "doubts":        ["Doubt"],
+    "submissions":   ["DPPSubmission", "TestSubmission", "ExamAttempt", "ExamResult", "ExamView"],
+    "progress":      ["LectureVerification", "StudentStats"],
+    "notifications": ["Notification"],
+    "reviews":       ["AppReview"],
+}
+
+
+@router.post("/reset-data")
+def reset_portal_data(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    if (payload or {}).get("confirm") != "RESET PORTAL DATA":
+        raise HTTPException(status_code=400, detail='Type "RESET PORTAL DATA" to confirm.')
+    cats = [c for c in (payload.get("categories") or []) if c in RESET_CATEGORIES]
+    if not cats:
+        raise HTTPException(status_code=400, detail="Select at least one category.")
+    import models as M
+    results, errors = {}, []
+    for cat in cats:
+        total = 0
+        for cls_name in RESET_CATEGORIES[cat]:
+            cls = getattr(M, cls_name, None)
+            if cls is None:
+                continue
+            try:
+                with db.begin_nested():
+                    total += db.query(cls).delete(synchronize_session=False)
+            except Exception as e:
+                errors.append(f"{cls_name}: {type(e).__name__}")
+        results[cat] = total
+    db.commit()
+    return {"message": "Portal data reset complete.", "deleted": results,
+            "errors": errors[:6]}
