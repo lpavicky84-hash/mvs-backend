@@ -1709,7 +1709,7 @@ _APP_FALLBACK = {"name": "Manish Verma Classes", "dev": "MVS FOUNDATION",
 
 
 @router.get("/app-info")
-def mvc_app_info(current_user=Depends(get_current_user)):
+def mvc_app_info(current_user=Depends(get_student)):
     now = _time.time()
     if _APP_INFO_CACHE["data"] and now - _APP_INFO_CACHE["at"] < 43200:
         return _APP_INFO_CACHE["data"]
