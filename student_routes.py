@@ -1692,3 +1692,52 @@ def student_performance(db: Session = Depends(get_db), current_user=Depends(get_
         "targets": targets,
         "insights": insights,
     }
+
+# ==================================================================
+#  MANISH VERMA CLASSES — LIVE PLAY STORE INFO
+#  Play Store listing se rating/reviews/downloads/icon nikaal ke 12h
+#  cache karte hain. Scrape fail ho to known values fallback.
+# ==================================================================
+import re as _re
+import time as _time
+
+_APP_INFO_CACHE = {"at": 0, "data": None}
+_APP_PKG = "com.manish.verma.classes"
+_APP_FALLBACK = {"name": "Manish Verma Classes", "dev": "MVS FOUNDATION",
+                 "rating": "4.6", "reviews": "1.53K", "downloads": "50K+",
+                 "icon": None, "live": False}
+
+
+@router.get("/app-info")
+def mvc_app_info(current_user=Depends(get_current_user)):
+    now = _time.time()
+    if _APP_INFO_CACHE["data"] and now - _APP_INFO_CACHE["at"] < 43200:
+        return _APP_INFO_CACHE["data"]
+    data = dict(_APP_FALLBACK)
+    try:
+        import httpx
+        r = httpx.get(f"https://play.google.com/store/apps/details?id={_APP_PKG}&hl=en",
+                      timeout=12, follow_redirects=True,
+                      headers={"User-Agent": "Mozilla/5.0"})
+        if r.status_code == 200:
+            h = r.text
+            m = _re.search(r'Rated ([0-9.]+) stars', h)
+            if m:
+                data["rating"] = m.group(1)
+                data["live"] = True
+            m = _re.search(r'([\d.,]+[KMB]?)\s*reviews', h)
+            if m:
+                data["reviews"] = m.group(1)
+            m = _re.search(r'>([\d.,]+[KMB]\+)<[^>]*>(?:</div>)?\s*<div[^>]*>Downloads', h)
+            if not m:
+                m = _re.search(r'([\d.,]+[KMB]\+)(?=(?:(?!Downloads).){0,80}Downloads)', h, _re.S)
+            if m:
+                data["downloads"] = m.group(1)
+            m = _re.search(r'property="og:image" content="([^"]+)"', h)
+            if m:
+                data["icon"] = m.group(1)
+    except Exception:
+        pass
+    _APP_INFO_CACHE["at"] = now
+    _APP_INFO_CACHE["data"] = data
+    return data

@@ -1539,6 +1539,49 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 .mvc-note{font-size:.74rem;color:var(--text-muted);text-align:center;margin:4px 0 12px;line-height:1.5}
 .mvc-cancel{width:100%;padding:13px;border-radius:14px;border:1.5px solid var(--border);background:transparent;color:var(--text-muted);font-weight:800;cursor:pointer;font-family:inherit;font-size:.9rem}
 
+
+/* ===== Recorded batch page ===== */
+.rb-grid{display:grid;grid-template-columns:1fr 290px;gap:18px;align-items:stretch}
+@media(max-width:860px){.rb-grid{grid-template-columns:1fr}}
+.rb-hero{background:linear-gradient(135deg,#5b21b6,#7c3aed 55%,#8b5cf6);border-radius:20px;padding:28px;color:#fff;box-shadow:0 16px 40px -16px rgba(124,58,237,.55);display:flex;flex-direction:column;align-items:flex-start;gap:12px}
+.rb-badge{display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.16);padding:6px 13px;border-radius:99px;font-size:.68rem;font-weight:900;letter-spacing:.09em}
+.rb-badge svg{width:13px;height:13px}
+.rb-hero h2{font-size:1.5rem;font-weight:900;margin:0}
+.rb-hero p{font-size:.88rem;line-height:1.65;opacity:.94;margin:0;max-width:560px}
+.rb-cta{background:#fff;color:#5b21b6;font-weight:900;padding:13px 22px;border-radius:13px;border:none;display:inline-flex;align-items:center;gap:9px;box-shadow:0 8px 22px -8px rgba(0,0,0,.4);margin-top:6px;font-size:.9rem;cursor:pointer;transition:.15s}
+.rb-cta:hover{transform:translateY(-2px)}
+.rb-cta svg{width:16px;height:16px}
+.rb-list{display:flex;flex-direction:column;gap:10px}
+.rb-row{display:flex;align-items:center;gap:14px;background:var(--card);border:1.5px solid var(--border);border-radius:15px;padding:14px 16px;box-shadow:var(--shadow);transition:.16s}
+.rb-row:hover{transform:translateY(-2px);border-color:#8b5cf6;box-shadow:0 10px 24px -12px rgba(124,58,237,.35)}
+.rb-ic{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#7c3aed,#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0}
+.rb-ic svg{width:18px;height:18px}
+.rb-main{flex:1;min-width:0}
+.rb-sub{font-weight:800;font-size:.96rem}
+.rb-note{font-size:.74rem;color:var(--text-muted)}
+.rb-watch{flex-shrink:0}
+.dark .rb-row{background:linear-gradient(180deg,#13223b,#101d33)}
+/* ===== Play Store card ===== */
+.ps-card{background:var(--card);border:1.5px solid var(--border);border-radius:20px;padding:22px;display:flex;flex-direction:column;align-items:center;text-align:center;box-shadow:var(--shadow)}
+.dark .ps-card{background:linear-gradient(180deg,#13223b,#101d33)}
+.ps-icon{width:76px;height:76px;border-radius:20px;object-fit:cover;box-shadow:0 8px 22px -8px rgba(0,0,0,.35);margin-bottom:12px}
+.ps-icon-f{display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f2a54,#1e4a8f);color:#fff;font-weight:900;font-size:1.1rem}
+.ps-name{font-weight:900;font-size:1rem}
+.ps-dev{font-size:.72rem;font-weight:800;color:#0f7a5a;letter-spacing:.04em;margin:2px 0 14px}
+.dark .ps-dev{color:#6ee7b7}
+.ps-stats{display:flex;align-items:center;gap:16px;margin-bottom:16px}
+.ps-stat{display:flex;flex-direction:column;gap:2px}
+.ps-stat b{font-size:.95rem;font-weight:900}
+.ps-stat span{font-size:.68rem;color:var(--text-muted);font-weight:700}
+.ps-div{width:1px;height:30px;background:var(--border)}
+.ps-btn{width:100%;padding:13px;border-radius:12px;border:none;background:#0f7a5a;color:#fff;font-weight:900;font-size:.88rem;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;transition:.15s;font-family:inherit}
+.ps-btn:hover{transform:translateY(-1px);box-shadow:0 8px 20px -8px rgba(15,122,90,.6)}
+.ps-btn svg{width:15px;height:15px}
+.ps-links{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:.72rem;font-weight:800}
+.ps-links a{color:var(--text-muted);text-decoration:none}
+.ps-links a:hover{color:var(--accent)}
+.ps-links i{width:3px;height:3px;border-radius:50%;background:var(--text-muted)}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -5007,7 +5050,7 @@ function enterStudentApp(){
 let _preloaded=false;
 function startStudentPreload(){
   if(_preloaded) return; _preloaded=true;
-  const jobs=[loadSTimetable,()=>{ if(sMode()!=='syc') loadSMaterials(); },loadSQBank,loadSTeachers,loadSDpp,loadSTests,loadSDoubts,loadSProgress,loadSProfile];
+  const jobs=[loadSTimetable,()=>{ if(sMode()!=='syc') loadSMaterials(); },loadSQBank,loadSTeachers,()=>{ if(sMode()==='live') loadSDpp(); },loadSTests,loadSDoubts,loadSProgress,loadSProfile];
   jobs.forEach((fn,i)=>{ setTimeout(()=>{ try{ fn(); }catch(e){} }, 1200+i*450); });
 }
 async function loadStudentLiveBanner(){
@@ -5074,13 +5117,17 @@ function sMode(){
 }
 function applyBatchMode(){
   const m=sMode();
-  // On Demand/SYC: Classes Material sidebar se hatao (sirf Study Material)
   document.querySelectorAll("#student-app .nav-item").forEach(n=>{
-    if((n.getAttribute('onclick')||'').includes("sPage('materials'")) n.style.display=(m==='syc')?'none':'';
+    const oc=n.getAttribute('onclick')||'';
+    // On Demand/SYC: Classes Material hatao (sirf Study Material)
+    if(oc.includes("sPage('materials'")) n.style.display=(m==='syc')?'none':'';
+    // Recorded batches (sab): DPP Submit ki zaroorat nahi
+    if(oc.includes("sPage('dpp'")) n.style.display=(m!=='live')?'none':'';
   });
 }
 function sPage(page,el){
   if(page==='materials'&&sMode()==='syc'){ toast('Your batch uses Study Material only.'); page='qbank'; el=null; }
+  if(page==='dpp'&&sMode()!=='live'){ toast('DPPs are not part of recorded batches.'); page='dashboard'; el=null; }
   document.querySelectorAll('#student-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('s-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#student-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
@@ -5187,7 +5234,6 @@ function wsGo(page){ if(page==='mvc'){ openMVC(); return; } navTo('student-app',
 // Recorded batches (Safalta/Jeet/Manzil/Aarambh): timetable nahi hota —
 // sirf recorded subjects + Watch (app) + pending lecture verifications
 function renderRecordedTimetable(el){
-  const m=sMode();
   const subs=window._sSubjects||[];
   const rows=subs.length?subs.map(s=>`<div class="rb-row">
       <div class="rb-ic">${ic('play')}</div>
@@ -5195,15 +5241,36 @@ function renderRecordedTimetable(el){
       <button class="btn btn-primary btn-sm rb-watch" onclick="openMVC()">${ic('play')} Watch</button>
     </div>`).join(''):`<div class="empty-state"><p>No subjects on your profile yet. Please contact the admin.</p></div>`;
   el.innerHTML=`<div id="s-verify-wrap"></div>
-    <div class="rb-hero">
-      <div class="rb-badge">${ic('play')} RECORDED BATCH</div>
-      <h2>${esc(window._sBatch||'Your Batch')}</h2>
-      <p>Aapke batch ki saari classes <b>recorded</b> hain \u2014 koi live timetable nahi. Har subject ki lectures <b>Manish Verma Classes app</b> me kabhi bhi dekh sakte hain${m==='syc'?', apni speed se':''}.</p>
-      <button class="btn rb-cta" onclick="openMVC()">${ic('play')} Open the App &amp; Start Watching</button>
+    <div class="rb-grid">
+      <div class="rb-hero">
+        <div class="rb-badge">${ic('play')} RECORDED BATCH</div>
+        <h2>${esc(window._sBatch||'Your Batch')}</h2>
+        <p>All classes in your batch are <b>pre-recorded</b> \u2014 there is no live timetable. Watch every lecture for your subjects <b>anytime, at your own pace</b>, in the Manish Verma Classes app.</p>
+        <button class="btn rb-cta" onclick="openMVC()">${ic('play')} Open the App &amp; Start Watching</button>
+      </div>
+      <div class="ps-card" id="rb-ps-card"></div>
     </div>
-    <div class="sm-head" style="margin-top:22px"><h2>Your Recorded Subjects</h2></div>
+    <div class="sm-head" style="margin-top:24px"><h2>Your Recorded Subjects</h2></div>
     <div class="rb-list">${rows}</div>`;
+  _renderPlayCard();
   _loadPendingVerifications();
+}
+// Play Store card — live rating/downloads (backend 12h cache se)
+async function _renderPlayCard(){
+  const box=document.getElementById('rb-ps-card'); if(!box) return;
+  let a={name:'Manish Verma Classes',dev:'MVS FOUNDATION',rating:'4.6',reviews:'1.53K',downloads:'50K+',icon:null};
+  try{ a=await api('/api/student/app-info'); }catch(e){}
+  const icon=a.icon?`<img class="ps-icon" src="${esc(a.icon)}" alt="">`:`<div class="ps-icon ps-icon-f">MVS</div>`;
+  box.innerHTML=`${icon}
+    <div class="ps-name">${esc(a.name)}</div>
+    <div class="ps-dev">${esc(a.dev)}</div>
+    <div class="ps-stats">
+      <div class="ps-stat"><b>${esc(a.rating)} \u2605</b><span>${esc(a.reviews)} reviews</span></div>
+      <div class="ps-div"></div>
+      <div class="ps-stat"><b>${esc(a.downloads)}</b><span>Downloads</span></div>
+    </div>
+    <button class="ps-btn" onclick="openMVC()">${ic('play')} Open the App</button>
+    <div class="ps-links"><a href="${MVC_PLAY_URL}" target="_blank" rel="noopener">Google Play</a><i></i><a href="${MVC_IOS_URL}" target="_blank" rel="noopener">App Store</a></div>`;
 }
 async function loadSDashboard(){
   const el=document.getElementById('s-dashboard-content');
@@ -5232,7 +5299,7 @@ async function loadSDashboard(){
     const allZero=(pn.dpps+pn.tests+pn.unread+pn.deadlines_today)===0;
     const pendHtml=`<div class="card"><div class="card-header"><h3>Pending Work</h3></div><div class="card-body">${
       allZero?'<div class="ws-empty"><div class="big">\ud83c\udf89</div><p>Nothing pending. Great work!</p><small>Keep the momentum going.</small></div>'
-      :`<div class="pend-grid">${cell(pn.dpps,'Pending DPPs','dpp')}${cell(pn.tests,'Pending Tests','tests')}${sMode()==='syc'?'':cell(pn.unread,'Unread Materials','materials')}${_rec?'':cell(pn.deadlines_today,'Due Today','timetable')}</div>`}</div></div>`;
+      :`<div class="pend-grid">${_rec?'':cell(pn.dpps,'Pending DPPs','dpp')}${cell(pn.tests,'Pending Tests','tests')}${sMode()==='syc'?'':cell(pn.unread,'Unread Materials','materials')}${_rec?'':cell(pn.deadlines_today,'Due Today','timetable')}</div>`}</div></div>`;
 
     // ---- Study Progress overview
     const ov=w.overview||{materials_read:0,materials_total:0,dpp_pct:0,test_pct:0,subjects:0};
@@ -5817,7 +5884,7 @@ async function loadSProgress(){
     const hero=`<div class="perf-hero"><div class="health-ring">${_ring(h.score,120,11,'#fff')}<div class="hr-num"><b>${h.score}</b><span>Health</span></div></div><div class="hero-mid"><h3>Academic Health</h3><h2>${esc(h.label)}</h2><div class="hero-chips"><span class="hero-chip">\u2b50 Level ${d.level}</span><span class="hero-chip">\ud83d\udd25 ${d.streak} day streak</span><span class="hero-chip">\ud83c\udfc6 Rank #${lb.overall_rank||'-'}</span></div></div><div class="hero-xp"><div class="xp-big">${d.xp}</div><div class="xp-lbl">Total XP</div></div></div>`;
 
     // overall ring + lecture/dpp/test rings
-    const rings=`<div class="card"><div class="card-header"><h3>Overall Progress</h3></div><div class="card-body"><div class="ring-wrap"><div class="ring-sm">${_ring(d.overall_pct,92,9,'var(--primary)')}<div class="rs-num">${d.overall_pct}%</div></div><div class="ring-leg"><div class="rl-row"><span>Lectures Verified</span><b>${d.lectures.verified}/${d.lectures.total}</b></div><div class="rl-row"><span>DPP Completed</span><b>${d.dpp.done}/${d.dpp.total}</b></div><div class="rl-row"><span>Tests Attempted</span><b>${d.tests.done}/${d.tests.total}</b></div><div class="rl-row"><span>Avg Test Score</span><b>${d.tests.avg_score}%</b></div></div></div></div></div>`;
+    const rings=`<div class="card"><div class="card-header"><h3>Overall Progress</h3></div><div class="card-body"><div class="ring-wrap"><div class="ring-sm">${_ring(d.overall_pct,92,9,'var(--primary)')}<div class="rs-num">${d.overall_pct}%</div></div><div class="ring-leg"><div class="rl-row"><span>Lectures Verified</span><b>${d.lectures.verified}/${d.lectures.total}</b></div>${sMode()==='live'?`<div class="rl-row"><span>DPP Completed</span><b>${d.dpp.done}/${d.dpp.total}</b></div>`:''}<div class="rl-row"><span>Tests Attempted</span><b>${d.tests.done}/${d.tests.total}</b></div><div class="rl-row"><span>Avg Test Score</span><b>${d.tests.avg_score}%</b></div></div></div></div></div>`;
 
     // subject progress bars
     const sp=sMode()==='live'?(d.subject_progress||[]):[];
