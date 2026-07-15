@@ -583,3 +583,19 @@ class SessionDeadline(Base):
     note     = Column(String(200), nullable=True)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
+class AppReview(Base):
+    """Student app reviews — pehle admin approval, phir Play Store prompt.
+    status: pending -> approved | resolved (issue fix karke dobara likhne ko bola)"""
+    __tablename__ = "app_reviews"
+
+    id          = Column(Integer, primary_key=True)
+    student_id  = Column(Integer, ForeignKey("student_profiles.id"))
+    rating      = Column(Integer, default=5)          # 1-5 stars
+    review      = Column(Text)
+    status      = Column(String(20), default="pending")   # pending|approved|resolved
+    admin_note  = Column(Text, nullable=True)
+    created_at  = Column(DateTime, server_default=func.now())
+    reviewed_at = Column(DateTime, nullable=True)
+
+    student = relationship("StudentProfile")
+

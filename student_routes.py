@@ -1741,3 +1741,39 @@ def mvc_app_info(current_user=Depends(get_student)):
     _APP_INFO_CACHE["at"] = now
     _APP_INFO_CACHE["data"] = data
     return data
+
+# ==================================================================
+#  APP REVIEW (moderated) — pehle admin approval, phir Play Store
+# ==================================================================
+@router.get("/app-review")
+def my_app_review(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    from models import AppReview
+    sp = get_student_profile(current_user, db)
+    r = (db.query(AppReview).filter(AppReview.student_id == sp.id)
+         .order_by(AppReview.id.desc()).first())
+    if not r:
+        return {"exists": False}
+    return {"exists": True, "id": r.id, "rating": r.rating, "review": r.review or "",
+            "status": r.status, "admin_note": r.admin_note or ""}
+
+
+@router.post("/app-review")
+def submit_app_review(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    from models import AppReview, User, UserRole, Notification
+    sp = get_student_profile(current_user, db)
+    try:
+        rating = max(1, min(5, int(payload.get("rating") or 5)))
+    except Exception:
+        rating = 5
+    review = (payload.get("review") or "").strip()
+    if len(review) < 10:
+        raise HTTPException(status_code=400, detail="Please write at least a short review (10+ characters).")
+    if len(review) > 2000:
+        review = review[:2000]
+    db.add(AppReview(student_id=sp.id, rating=rating, review=review, status="posted"))
+    for adm in db.query(User).filter(User.role == UserRole.admin).all():
+        db.add(Notification(user_id=adm.id, title="New App Review",
+                            message=f"{current_user.name} ne {rating}\u2605 review Play Store par post kiya hai.",
+                            notif_type="app_review"))
+    db.commit()
+    return {"message": "Saved! Taking you to the Play Store now."}

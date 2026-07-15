@@ -1582,6 +1582,24 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 .ps-links a:hover{color:var(--accent)}
 .ps-links i{width:3px;height:3px;border-radius:50%;background:var(--text-muted)}
 
+
+/* review widget */
+.str-row{display:flex;gap:6px}
+.str{font-size:1.9rem;cursor:pointer;color:var(--border);transition:.12s;user-select:none}
+.str.on{color:#f5a623;text-shadow:0 2px 8px rgba(245,166,35,.4)}
+.str:hover{transform:scale(1.12)}
+.rv-quote{background:var(--bg);border:1.5px solid var(--border);border-radius:13px;padding:14px;color:#f5a623;font-size:1rem}
+.rv-quote p{color:var(--text);font-size:.85rem;margin:8px 0 0;white-space:pre-wrap}
+.ps-rev{width:100%;margin-top:9px;padding:11px;border-radius:12px;border:1.5px solid var(--border);background:transparent;color:var(--text);font-weight:800;font-size:.82rem;cursor:pointer;font-family:inherit;transition:.15s}
+.ps-rev:hover{border-color:#f5a623;color:#b07f1e}
+.arv-card{border:1.5px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px;background:var(--card)}
+.arv-top{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.arv-stars{color:#f5a623;font-size:.95rem;letter-spacing:1px}
+.arv-name{font-weight:800}
+.arv-meta{font-size:.72rem;color:var(--text-muted)}
+.arv-txt{font-size:.85rem;line-height:1.55;white-space:pre-wrap;margin-bottom:10px}
+.arv-actions{display:flex;gap:8px;flex-wrap:wrap}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -1600,7 +1618,7 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 </div>
 <div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP Result</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="tPage('extmat',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule:</b> Har reschedule admin approval ke baad hi apply hota hai.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-extmat"><div id="t-extmat-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== ADMIN APP ===== -->
-<div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#ef4444">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Users</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-section">Academics</div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('compliance',this)"><span>Class Compliance</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#ef4444" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-compliance"><div id="a-compliance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div></div>
+<div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#ef4444">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Users</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-section">Academics</div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('compliance',this)"><span>Class Compliance</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#ef4444" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-reviews-wrap"></div><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-compliance"><div id="a-compliance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== STUDENT APP ===== -->
 <div id="student-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#06b6d4">S</div><div><span>MVS Foundation</span><small>Student</small></div></div><nav class="sidebar-nav"><div class="nav-section">Home</div><div class="nav-item active" onclick="sPage('dashboard',this)"><span>Home</span></div><div class="nav-item" onclick="sPage('teachers',this)"><span>Know Your Teacher</span></div><div class="nav-item" onclick="sPage('timetable',this)"><span>Time Table</span></div><div class="nav-section">Materials</div><div class="nav-item" onclick="sPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="sPage('materials',this)"><span>Classes Material</span></div><div class="nav-section">Work</div><div class="nav-item" onclick="sPage('dpp',this)"><span>DPP Submit</span></div><div class="nav-item" onclick="sPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="sPage('doubts',this)"><span>Doubts</span></div><div class="nav-section">Progress</div><div class="nav-item" onclick="sPage('progress',this)"><span>Progress</span></div><div class="nav-item" onclick="sPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="sPage('profile',this)"><span>My Profile</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#06b6d4" id="s-avatar">S</div><div><span id="s-name">Student</span><small id="s-batch">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="s-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="s-topavatar" title="Set or change profile photo" onclick="openSetStudentPhoto()">S</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('student')"><span class="notif-badge" id="s-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="s-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="s-page-dashboard"><div id="s-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-timetable"><div id="s-timetable-content"><div class="spinner"></div></div></div><div class="page" id="s-page-materials"><div id="s-materials-content"><div class="spinner"></div></div></div><div class="page" id="s-page-qbank"><div id="s-qbank-content"><div class="spinner"></div></div></div><div class="page" id="s-page-teachers"><div id="s-teachers-content"><div class="spinner"></div></div></div><div class="page" id="s-page-dpp"><div id="s-dpp-content"><div class="spinner"></div></div></div><div class="page" id="s-page-tests"><div id="s-tests-content"><div class="spinner"></div></div></div><div class="page" id="s-page-doubts"><div id="s-doubts-content"><div class="spinner"></div></div></div><div class="page" id="s-page-progress"><div id="s-progress-content"><div class="spinner"></div></div></div><div class="page" id="s-page-notifications"><div id="s-notif-content"><div class="spinner"></div></div></div><div class="page" id="s-page-profile"><div id="s-profile-content"><div class="spinner"></div></div></div></div>
 </div><!-- Generic Modal -->
@@ -3995,8 +4013,25 @@ async function loadADashboard(){
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 
+async function loadAppReviews(){
+  const el=document.getElementById('a-reviews-wrap'); if(!el) return;
+  try{
+    const all=await api('/api/admin/app-reviews');
+    if(!all.length){ el.innerHTML=''; return; }
+    const row=r=>`<div class="arv-card">
+        <div class="arv-top"><span class="arv-stars">${'\u2605'.repeat(r.rating)}${'\u2606'.repeat(5-r.rating)}</span>
+          <span class="arv-name">${esc(r.student)}</span>
+          <span class="arv-meta">${esc(r.phone)}${r.batch?' \u00b7 '+esc(r.batch):''}</span>
+          <span class="arv-meta" style="margin-left:auto">${esc((r.created_at||'').slice(0,16))}</span></div>
+        <div class="arv-txt" style="margin-bottom:0">${esc(r.review)}</div></div>`;
+    el.innerHTML=`<div class="card" style="margin-bottom:18px"><div class="card-header"><h3>\u2b50 App Reviews \u2014 Log</h3><span class="xm-chip">${all.length}</span></div>
+      <div class="card-body"><p style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">Jin students ne portal se Play Store review kiya \u2014 naam, phone aur unka likha review. Isse aap store ke reviews ko students se match kar sakte hain.</p>
+      <div class="hide-scroll" style="max-height:420px">${all.slice(0,100).map(row).join('')}</div></div></div>`;
+  }catch(e){ el.innerHTML=''; }
+}
 async function loadAApprovals(){
   const el=document.getElementById('a-approvals-content');
+  loadAppReviews();
   try{
  let html='';
  // Extra-class requests
@@ -5233,6 +5268,44 @@ function wsGo(page){ if(page==='mvc'){ openMVC(); return; } navTo('student-app',
 
 // Recorded batches (Safalta/Jeet/Manzil/Aarambh): timetable nahi hota —
 // sirf recorded subjects + Watch (app) + pending lecture verifications
+// ============ APP REVIEW (moderated) ============
+function starRow(sel,name){
+  return `<div class="str-row" id="${name}">${[1,2,3,4,5].map(i=>`<span class="str ${i<=sel?'on':''}" onclick="setStars('${name}',${i})">\u2605</span>`).join('')}</div>`;
+}
+function setStars(name,n){
+  window['_'+name]=n;
+  document.querySelectorAll('#'+name+' .str').forEach((el,i)=>el.classList.toggle('on',i<n));
+}
+async function openWriteReview(){
+  let mine={exists:false};
+  try{ mine=await api('/api/student/app-review'); }catch(e){}
+  window._rvStars=mine.rating||5;
+  showModal('\u2b50 Rate & Review',
+    `<p style="font-size:.83rem;color:var(--text-muted);margin-bottom:10px">Apna review yahan likhein \u2014 Save karte hi aap seedha <b>Play Store</b> par pahunch jayenge jahan yahi review paste karke post kar sakte hain (text copy ho jayega).</p>
+     <label class="ex-lbl">Your Rating</label>${starRow(window._rvStars,'rvStars')}
+     <label class="ex-lbl" style="margin-top:12px">Your Review</label>
+     <textarea class="form-control" id="rv-text" rows="5" placeholder="App aur classes ke baare me apna experience likhein...">${esc(mine.review||'')}</textarea>
+     <div id="rv-status"></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="rv-btn" onclick="submitReview()">${ic('upload')} Save &amp; Review on Play Store</button>`);
+}
+async function submitReview(){
+  const text=val('rv-text');
+  const btn=document.getElementById('rv-btn'); btn.disabled=true; btn.textContent='Saving\u2026';
+  try{
+    await api('/api/student/app-review','POST',{rating:window._rvStars||5,review:text});
+    closeModal();
+    postToStore(text);
+  }catch(e){ document.getElementById('rv-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.innerHTML='Save &amp; Review on Play Store'; }
+}
+function postToStore(text){
+  try{ navigator.clipboard.writeText(text||''); toast('Review copied \u2014 store par paste kar dein!'); }catch(e){}
+  const ua=navigator.userAgent||'';
+  const isIOS=/iphone|ipad|ipod/i.test(ua)||(/macintosh/i.test(ua)&&navigator.maxTouchPoints>1);
+  if(isIOS){ location.href='https://apps.apple.com/app/manish-verma-classes/id6768236345?action=write-review'; return; }
+  if(/android/i.test(ua)){ location.href='market://details?id='+MVC_ANDROID_PKG+'&showAllReviews=true';
+    setTimeout(()=>{ if(!document.hidden) location.href=MVC_PLAY_URL+'&showAllReviews=true'; },1200); return; }
+  window.open(MVC_PLAY_URL+'&showAllReviews=true','_blank');
+}
 function renderRecordedTimetable(el){
   const subs=window._sSubjects||[];
   const rows=subs.length?subs.map(s=>`<div class="rb-row">
@@ -5270,6 +5343,7 @@ async function _renderPlayCard(){
       <div class="ps-stat"><b>${esc(a.downloads)}</b><span>Downloads</span></div>
     </div>
     <button class="ps-btn" onclick="openMVC()">${ic('play')} Open the App</button>
+    <button class="ps-rev" onclick="openWriteReview()">\u2b50 Rate &amp; Review</button>
     <div class="ps-links"><a href="${MVC_PLAY_URL}" target="_blank" rel="noopener">Google Play</a><i></i><a href="${MVC_IOS_URL}" target="_blank" rel="noopener">App Store</a></div>`;
 }
 async function loadSDashboard(){

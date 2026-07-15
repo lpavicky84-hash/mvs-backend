@@ -1735,3 +1735,47 @@ def delete_session_deadline(did: int, db: Session = Depends(get_db), _=Depends(g
         raise HTTPException(status_code=404, detail="Not found")
     db.delete(row); db.commit()
     return {"message": "Deadline removed."}
+
+# ==================================================================
+#  APP REVIEWS (moderation)
+# ==================================================================
+@router.get("/app-reviews")
+def list_app_reviews(status: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import AppReview
+    q = db.query(AppReview).order_by(AppReview.id.desc())
+    if status:
+        q = q.filter(AppReview.status == status)
+    out = []
+    for r in q.limit(300).all():
+        out.append({"id": r.id, "rating": r.rating, "review": r.review or "",
+                    "status": r.status, "admin_note": r.admin_note or "",
+                    "student": r.student.user.name if r.student and r.student.user else "Student",
+                    "phone": r.student.phone if r.student else "",
+                    "batch": r.student.batch_name if r.student else "",
+                    "created_at": str(r.created_at or "")})
+    return out
+
+
+@router.patch("/app-reviews/{rid}")
+def action_app_review(rid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import AppReview, Notification
+    from datetime import datetime as _dtx
+    r = db.query(AppReview).filter(AppReview.id == rid).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Review not found")
+    action = (payload.get("action") or "").strip()
+    note = (payload.get("note") or "").strip() or None
+    if action not in ("approve", "resolve"):
+        raise HTTPException(status_code=400, detail="action must be approve or resolve")
+    r.status = "approved" if action == "approve" else "resolved"
+    r.admin_note = note
+    r.reviewed_at = _dtx.now()
+    if r.student and r.student.user:
+        if action == "approve":
+            msg = "Aapka review approve ho gaya! Ab portal se ise Play Store par bhi post kar dein."
+        else:
+            msg = "Aapke review par kaam ho gaya hai." + (f" Note: {note}" if note else "") + " Aap apna review update kar sakte hain."
+        db.add(Notification(user_id=r.student.user.id, title="Your App Review",
+                            message=msg, notif_type="app_review"))
+    db.commit()
+    return {"message": "Review " + ("approved." if action == "approve" else "marked as resolved.")}
