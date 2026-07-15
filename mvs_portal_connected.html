@@ -4955,6 +4955,13 @@ const STUDENT_BATCHES=[
   {name:'Safalta Batch',cls:'12'},{name:'Jeet Batch',cls:'10'}
 ];
 async function openStudent(){
+  // batch mode sabse pehle — taaki sidebar/pages sahi dikhein
+  api('/api/student/profile').then(p=>{
+    window._sBatch=p.batch_name||p.batch||'';
+    window._sClass=p.class_level||'12';
+    window._sSubjects=p.subjects||[];
+    applyBatchMode();
+  }).catch(()=>{});
   // Profile complete? (subjects + batch + medium sab chahiye)
   try{
  const p=await api('/api/student/profile');
@@ -5000,11 +5007,11 @@ function enterStudentApp(){
 let _preloaded=false;
 function startStudentPreload(){
   if(_preloaded) return; _preloaded=true;
-  const jobs=[loadSTimetable,loadSMaterials,loadSQBank,loadSTeachers,loadSDpp,loadSTests,loadSDoubts,loadSProgress,loadSProfile];
+  const jobs=[loadSTimetable,()=>{ if(sMode()!=='syc') loadSMaterials(); },loadSQBank,loadSTeachers,loadSDpp,loadSTests,loadSDoubts,loadSProgress,loadSProfile];
   jobs.forEach((fn,i)=>{ setTimeout(()=>{ try{ fn(); }catch(e){} }, 1200+i*450); });
 }
 async function loadStudentLiveBanner(){
-  try{ const ents=await api('/api/student/timetable-plan'); startLiveCountdown(ents); }catch(e){}
+  try{ if(sMode()==='live'){ const ents=await api('/api/student/timetable-plan'); startLiveCountdown(ents); } }catch(e){}
 }
 function showSubjectScreen(p){
   selectedClass=null; selectedSubjects=[]; selectedBatch=null; selectedMedium=null;
@@ -5055,7 +5062,25 @@ async function saveSubjects(){
   }catch(e){ toast(e.message,true); }
   btn.disabled=false; btn.textContent='Save & Continue →';
 }
+// ============ BATCH MODE ============
+// live = Lakshya/Udaan (timetable + sab kuch)
+// rec  = Manzil/Aarambh (recorded; Classes Material milta hai)
+// syc  = Safalta/Jeet — On Demand/SYC (recorded; sirf Study Material)
+function sMode(){
+  const b=(window._sBatch||'').toLowerCase();
+  if(b.includes('safalta')||b.includes('jeet')) return 'syc';
+  if(b.includes('manzil')||b.includes('aarambh')) return 'rec';
+  return 'live';
+}
+function applyBatchMode(){
+  const m=sMode();
+  // On Demand/SYC: Classes Material sidebar se hatao (sirf Study Material)
+  document.querySelectorAll("#student-app .nav-item").forEach(n=>{
+    if((n.getAttribute('onclick')||'').includes("sPage('materials'")) n.style.display=(m==='syc')?'none':'';
+  });
+}
 function sPage(page,el){
+  if(page==='materials'&&sMode()==='syc'){ toast('Your batch uses Study Material only.'); page='qbank'; el=null; }
   document.querySelectorAll('#student-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('s-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#student-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
@@ -5115,7 +5140,7 @@ async function loadSProfile(){
 // Desktop: web platform
 const MVC_ANDROID_PKG='com.manish.verma.classes';
 const MVC_PLAY_URL='https://play.google.com/store/apps/details?id='+MVC_ANDROID_PKG;
-const MVC_WEB_URL='https://manishvermaclasses.classx.co.in/';
+const MVC_WEB_URL='https://classes.mvsfoundation.in/';
 const MVC_IOS_URL='https://apps.apple.com/app/manish-verma-classes/id6768236345';
 function openMVC(){
   const ua=navigator.userAgent||'';
@@ -5159,6 +5184,27 @@ const _WS_PRIO_IC={lecture:'play',test:'edit',dpp:'clipboard',material:'book'};
 const _WS_TASK_ACT={lecture:'mvc',dpp:'dpp',test:'tests',material:'materials'};
 function wsGo(page){ if(page==='mvc'){ openMVC(); return; } navTo('student-app',page); }
 
+// Recorded batches (Safalta/Jeet/Manzil/Aarambh): timetable nahi hota —
+// sirf recorded subjects + Watch (app) + pending lecture verifications
+function renderRecordedTimetable(el){
+  const m=sMode();
+  const subs=window._sSubjects||[];
+  const rows=subs.length?subs.map(s=>`<div class="rb-row">
+      <div class="rb-ic">${ic('play')}</div>
+      <div class="rb-main"><div class="rb-sub">${esc(s)}</div><div class="rb-note">Recorded lectures \u00b7 watch anytime in the app</div></div>
+      <button class="btn btn-primary btn-sm rb-watch" onclick="openMVC()">${ic('play')} Watch</button>
+    </div>`).join(''):`<div class="empty-state"><p>No subjects on your profile yet. Please contact the admin.</p></div>`;
+  el.innerHTML=`<div id="s-verify-wrap"></div>
+    <div class="rb-hero">
+      <div class="rb-badge">${ic('play')} RECORDED BATCH</div>
+      <h2>${esc(window._sBatch||'Your Batch')}</h2>
+      <p>Aapke batch ki saari classes <b>recorded</b> hain \u2014 koi live timetable nahi. Har subject ki lectures <b>Manish Verma Classes app</b> me kabhi bhi dekh sakte hain${m==='syc'?', apni speed se':''}.</p>
+      <button class="btn rb-cta" onclick="openMVC()">${ic('play')} Open the App &amp; Start Watching</button>
+    </div>
+    <div class="sm-head" style="margin-top:22px"><h2>Your Recorded Subjects</h2></div>
+    <div class="rb-list">${rows}</div>`;
+  _loadPendingVerifications();
+}
 async function loadSDashboard(){
   const el=document.getElementById('s-dashboard-content');
   try{
@@ -5181,10 +5227,12 @@ async function loadSDashboard(){
     // ---- Pending Work
     const pn=w.pending||{dpps:0,tests:0,unread:0,deadlines_today:0};
     const cell=(n,l,pg)=>`<div class="pend-cell" onclick="wsGo('${pg}')"><div class="pend-num ${n===0?'zero':''}">${n}</div><div class="pend-lbl">${l}</div></div>`;
+    const _rec=sMode()!=='live';
+    if(_rec) pn.deadlines_today=0;
     const allZero=(pn.dpps+pn.tests+pn.unread+pn.deadlines_today)===0;
     const pendHtml=`<div class="card"><div class="card-header"><h3>Pending Work</h3></div><div class="card-body">${
       allZero?'<div class="ws-empty"><div class="big">\ud83c\udf89</div><p>Nothing pending. Great work!</p><small>Keep the momentum going.</small></div>'
-      :`<div class="pend-grid">${cell(pn.dpps,'Pending DPPs','dpp')}${cell(pn.tests,'Pending Tests','tests')}${cell(pn.unread,'Unread Materials','materials')}${cell(pn.deadlines_today,'Due Today','timetable')}</div>`}</div></div>`;
+      :`<div class="pend-grid">${cell(pn.dpps,'Pending DPPs','dpp')}${cell(pn.tests,'Pending Tests','tests')}${sMode()==='syc'?'':cell(pn.unread,'Unread Materials','materials')}${_rec?'':cell(pn.deadlines_today,'Due Today','timetable')}</div>`}</div></div>`;
 
     // ---- Study Progress overview
     const ov=w.overview||{materials_read:0,materials_total:0,dpp_pct:0,test_pct:0,subjects:0};
@@ -5196,7 +5244,7 @@ async function loadSDashboard(){
       mp.length?mp.map(s=>`<div class="mprog-row"><div class="mprog-top"><span class="mprog-sub">${esc(s.subject)}</span><span class="mprog-val">${s.done}/${s.total} chapters \u00b7 ${s.pct}%</span></div><div class="mprog-track"><div class="mprog-fill" style="width:${s.pct}%"></div></div></div>`).join(''):'<div class="ws-empty"><p>No materials yet</p><small>Chapter progress will appear as teachers add notes.</small></div>'}</div></div>`;
 
     // ---- Upcoming Deadlines
-    const dls=(w.deadlines||[]);
+    const dls=_rec?[]:(w.deadlines||[]);
     const dlHtml=`<div class="card"><div class="card-header"><h3>Upcoming Deadlines</h3></div><div class="card-body">${
       dls.length?dls.map(d=>{const wl=d.days_left===0?'Today':(d.days_left===1?'Tomorrow':('in '+d.days_left+' days'));return `<div class="dl-row"><span class="dl-dot ${d.urgency}"></span><div class="dl-main"><div class="dl-title">${esc(d.title)}</div><div class="dl-sub">${esc(d.subject||'')} \u00b7 ${esc((d.type||'').toUpperCase())}</div></div><span class="dl-when ${d.urgency}">${wl}</span></div>`;}).join(''):'<div class="ws-empty"><div class="big">\ud83d\uddd3\ufe0f</div><p>No upcoming deadlines</p><small>You\u2019re ahead of schedule!</small></div>'}</div></div>`;
 
@@ -5224,6 +5272,14 @@ async function loadSDashboard(){
 // Today's Classes on the student dashboard — subject, teacher (photo + name) and time slot.
 async function _renderTodayClassesStudent(){
   const wrap=document.getElementById('s-today-wrap'); if(!wrap) return;
+  if(sMode()!=='live'){
+    setIf(wrap,`<div class="card"><div class="card-body" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        <div class="rb-ic" style="flex-shrink:0">${ic('play')}</div>
+        <div style="flex:1;min-width:200px"><b>Recorded batch \u2014 no live classes.</b><div style="font-size:.8rem;color:var(--text-muted)">Apne subjects ki recorded lectures Manish Verma Classes app me kabhi bhi dekhein.</div></div>
+        <button class="btn btn-primary btn-sm" onclick="openMVC()">${ic('play')} Watch Now</button>
+      </div></div>`);
+    return;
+  }
   try{
     const plan=await api('/api/student/timetable-plan');
     const todayStr=new Date().toLocaleDateString('en-CA');
@@ -5273,6 +5329,9 @@ async function _loadRecordedSubjects(){
 async function loadSTimetable(){
   const el=document.getElementById('s-timetable-content');
   try{
+ // profile pehle — recorded batch ka timetable hota hi nahi
+ try{ const p0=await api('/api/student/profile'); window._sBatch=p0.batch_name||p0.batch||window._sBatch||''; window._sClass=p0.class_level||window._sClass||'12'; window._sSubjects=p0.subjects||window._sSubjects||[]; applyBatchMode(); }catch(e){}
+ if(sMode()!=='live'){ renderRecordedTimetable(el); return; }
  _sttEntries=await api('/api/student/timetable-plan');
  // scaffolding sirf pehli baar — revisit par sections apni jagah silently update hote hain (no blank flash)
  if(!document.getElementById('s-tline-wrap')) el.innerHTML=`<div id="s-rec-wrap"></div><div id="s-verify-wrap"></div><div id="s-tline-wrap"></div>`;
@@ -5761,8 +5820,10 @@ async function loadSProgress(){
     const rings=`<div class="card"><div class="card-header"><h3>Overall Progress</h3></div><div class="card-body"><div class="ring-wrap"><div class="ring-sm">${_ring(d.overall_pct,92,9,'var(--primary)')}<div class="rs-num">${d.overall_pct}%</div></div><div class="ring-leg"><div class="rl-row"><span>Lectures Verified</span><b>${d.lectures.verified}/${d.lectures.total}</b></div><div class="rl-row"><span>DPP Completed</span><b>${d.dpp.done}/${d.dpp.total}</b></div><div class="rl-row"><span>Tests Attempted</span><b>${d.tests.done}/${d.tests.total}</b></div><div class="rl-row"><span>Avg Test Score</span><b>${d.tests.avg_score}%</b></div></div></div></div></div>`;
 
     // subject progress bars
-    const sp=(d.subject_progress||[]);
-    const subjBars=`<div class="card"><div class="card-header"><h3>Subject-wise Progress</h3></div><div class="card-body">${sp.length?sp.map(s=>`<div class="mprog-row"><div class="mprog-top"><span class="mprog-sub">${esc(s.subject)}</span><span class="mprog-val">Lec ${s.lectures} \u00b7 DPP ${s.dpp} \u00b7 ${s.pct}%</span></div><div class="mprog-track"><div class="mprog-fill" style="width:${s.pct}%"></div></div></div>`).join(''):'<div class="ws-empty"><p>No subject data yet</p></div>'}</div></div>`;
+    const sp=sMode()==='live'?(d.subject_progress||[]):[];
+    const subjBars=sMode()!=='live'
+      ? `<div class="card"><div class="card-header"><h3>Subject-wise Progress</h3></div><div class="card-body"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div class="rb-ic">${ic('play')}</div><div style="flex:1;min-width:200px"><b>Recorded batch</b><div style="font-size:.8rem;color:var(--text-muted)">Progress lecture verification se banta hai \u2014 app me lecture dekho, phir Time Table page par verify karo. XP, streak aur rank sab wahi se badhta hai.</div></div><button class="btn btn-primary btn-sm" onclick="openMVC()">${ic('play')} Watch</button></div></div></div>`
+      : `<div class="card"><div class="card-header"><h3>Subject-wise Progress</h3></div><div class="card-body">${sp.length?sp.map(s=>`<div class="mprog-row"><div class="mprog-top"><span class="mprog-sub">${esc(s.subject)}</span><span class="mprog-val">Lec ${s.lectures} \u00b7 DPP ${s.dpp} \u00b7 ${s.pct}%</span></div><div class="mprog-track"><div class="mprog-fill" style="width:${s.pct}%"></div></div></div>`).join(''):'<div class="ws-empty"><p>No subject data yet</p></div>'}</div></div>`;
 
     // performance graph (tabbed)
     const graph=`<div class="card"><div class="card-header"><h3>Performance Graph</h3></div><div class="card-body"><div class="perf-tabs"><div class="perf-tab active" onclick="switchPerfGraph(this,'weekly')">Weekly</div><div class="perf-tab" onclick="switchPerfGraph(this,'monthly')">Monthly</div><div class="perf-tab" onclick="switchPerfGraph(this,'quarterly')">Quarterly</div></div><div id="perf-graph">${_barChart(d.graphs.weekly)}</div></div></div>`;
