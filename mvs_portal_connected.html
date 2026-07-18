@@ -3127,7 +3127,7 @@ async function loadTTimetable(){
     }
     _ttEntries=await api('/api/teacher/my-timetable');
     el.innerHTML=`${tabs}<div class="card"><div class="card-header"><h3>My Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-ghost btn-sm" onclick="openSlotChange()">${ic('clock')} Change Slot</button><button class="btn btn-danger btn-sm" onclick="openTTTDelete()">${ic('trash')} Delete Subject</button><button class="btn btn-primary btn-sm" onclick="openRequestClass()">${ic('calendar')} Add Extra Class</button></div></div><div class="card-body"><div id="t-tline-wrap"></div></div></div>`;
-    _ttActiveSub=_ttActiveSub||(_ttEntries[0]||{}).subject||'';
+    _ttActiveSub=_ttActiveSub||'';
     // apni photo har subject par timeline me dikhe
     try{
       const me=await api('/api/teacher/profile');
@@ -3140,7 +3140,7 @@ async function loadTTimetable(){
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function tSetSubj(s){ _ttActiveSub=decodeURIComponent(s); renderStudentTimetable(tFilteredTT(),'t-tline-wrap',{tipTeacherMap:window._ttTeacherMap||{},onEdit:true,onDelete:'deleteTTEntry',onClassFilter:'tClassFilter',activeClass:_ttClass,onLecture:true,onComplete:'openClassReport',emptyMsg:'No entries.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'}); }
-let _ttClass='all';
+let _ttClass='';
 function tFilteredTT(){
   return (_ttEntries||[]).filter(e=>{
     if(_ttClass==='10') return /(^|[^0-9])10([^0-9]|$)/.test(e.class_name||'');
@@ -5103,7 +5103,7 @@ async function loadAActivity(){
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 
-let _attEntries=[]; let _attActiveSub=''; let _attClass='all'; let _attTeacherMap={};
+let _attEntries=[]; let _attActiveSub=''; let _attClass=''; let _attTeacherMap={};
 let _aDoubtFilter='all';
 let _adSub=null;
 function adPickSub(sub){ _adSub=sub?decodeURIComponent(sub):''; _aDoubtFilter='all'; aRenderDoubts(); }
@@ -5303,7 +5303,26 @@ async function loadATimetable(){
     aRenderTT();
     const seen={};
     _attEntries.forEach(e=>{ if(e.subject && !seen[e.subject] && e.teacher_name){ seen[e.subject]=true; _attTeacherMap[e.subject]={name:e.teacher_name,url:null,tid:(e.teacher_has_photo?e.teacher_id:null)}; } });
-    await Promise.all(Object.keys(_attTeacherMap).map(async sub=>{ const m=_attTeacherMap[sub]; if(m.tid){ try{ const r=await fetch(API+'/api/admin/teacher/'+m.tid+'/photo',{headers:{Authorization:'Bearer '+TOKEN}}); if(r.ok) m.url=URL.createObjectURL(await r.blob()); }catch(e){} } }));
+    // Admin-uploaded entries me teacher_id NULL hota hai, isliye teacher assignments
+    // se map bharte hain — tabhi ongoing chapter pe teacher ka photo/initials wala
+    // pulsing dot admin portal pe bhi waise hi dikhta hai jaise teacher/student pe.
+    // Class-wise pairing (Economics 10 vs 12 alag teachers) bhi handle hoti hai.
+    try{
+      const ts=await api('/api/admin/teachers');
+      ts.forEach(t=>{
+        const info={name:t.name,url:null,tid:(t.has_photo?t.profile_id:null)};
+        (t.subject_classes||[]).forEach(sc=>{
+          if(!sc||!sc.subject) return;
+          const k=sc.subject+' (Class '+(sc['class']||'')+')';
+          if(!_attTeacherMap[k]) _attTeacherMap[k]=info;
+          if(!_attTeacherMap[sc.subject]) _attTeacherMap[sc.subject]=info;
+        });
+        (t.subjects||[]).forEach(sub=>{ if(sub&&!_attTeacherMap[sub]) _attTeacherMap[sub]=info; });
+      });
+    }catch(e){}
+    const _tids={};
+    Object.values(_attTeacherMap).forEach(m=>{ if(m.tid){ (_tids[m.tid]=_tids[m.tid]||[]).push(m); } });
+    await Promise.all(Object.keys(_tids).map(async tid=>{ try{ const r=await fetch(API+'/api/admin/teacher/'+tid+'/photo',{headers:{Authorization:'Bearer '+TOKEN}}); if(r.ok){ const u=URL.createObjectURL(await r.blob()); _tids[tid].forEach(m=>m.url=u); } }catch(e){} }));
     aRenderTT();
   }
   catch(e){ document.getElementById('a-timetable-content').innerHTML=errHtml(e); }
@@ -6633,7 +6652,7 @@ function renderTimetableFlow(entries, containerId, opts={}){
   const tl=buildTimeline(entries);
   const subjects=Object.keys(tl);
   const active=(opts.activeSubject&&tl[opts.activeSubject])?opts.activeSubject:subjects[0];
-  const tabs=subjects.map(s=>`<div class="subj-tab ${s===active?'active':''}" onclick="${opts.onTab}('${encodeURIComponent(s)}')">${esc(s)}<span class="cnt-badge">${tl[s].length}</span></div>`).join('');
+  const tabs=`<div class="fbar"><div class="fbar-l">${ic('book')}<span>Subject</span></div><select class="fbar-sel" onchange="${opts.onTab}(encodeURIComponent(this.value))">${subjects.map(s=>`<option value="${esc(s)}"${s===active?' selected':''}>${esc(s)} \u00b7 ${tl[s].length}</option>`).join('')}</select></div>`;
   const list=tl[active];
   const sts=list.map(it=> it.kind==='event'?_statusOf([it.data.date]):_statusOf(it.parts.map(p=>p.date)));
   let tip=-1;
@@ -6699,13 +6718,22 @@ function renderStudentTimetable(entries, containerId, opts={}){
   if(!entries||entries.length===0){ el.innerHTML=`<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>${opts.emptyMsg||'No timetable for your subjects yet.'}</p></div></div></div>`; return; }
   const tl=buildTimeline(entries);
   const subjects=Object.keys(tl);
-  const active=opts.activeSubject&&tl[opts.activeSubject]?opts.activeSubject:subjects[0];
+  const _casc=!!opts.onClassFilter;   // admin/teacher: class -> subject cascade dropdowns
+  // Weekly view cascade me by default ALL SUBJECTS dikhata hai
+  if(_casc && _ttView==='weekly' && !opts.activeSubject) opts=Object.assign({},opts,{activeSubject:'__all'});
+  let active;
+  if(_casc && _ttView!=='weekly'){
+    // Timeline cascade: jab tak subject select nahi hota, kuch nahi dikhta
+    active=(opts.activeSubject&&tl[opts.activeSubject])?opts.activeSubject:null;
+  } else {
+    active=opts.activeSubject&&tl[opts.activeSubject]?opts.activeSubject:subjects[0];
+  }
   const _count=list=>{ let t=0,d=0; list.forEach(it=>{ if(it.kind==='chapter') it.parts.forEach(p=>{t++; if(_partDone(p))d++;}); else {t++; if(_partDone(it.data))d++;} }); return [t,d]; };
   let totalParts=0, doneParts=0;
   subjects.forEach(s=>{ const [t,d]=_count(tl[s]); totalParts+=t; doneParts+=d; });
   const pct=totalParts?Math.round(doneParts/totalParts*100):0;
   // the hero follows the selected subject, with the overall figure kept alongside
-  const [subT,subD]=active?_count(tl[active]):[0,0];
+  const [subT,subD]=active?_count(tl[active]):[totalParts,doneParts];
   const subPct=subT?Math.round(subD/subT*100):0;
   _ttLast={entries,containerId,opts,student:true};
   const toggle=`<div class="tt-toggle"><button class="${_ttView==='timeline'?'active':''}" onclick="setTtView('timeline')">Chapter Timeline</button><button class="${_ttView==='weekly'?'active':''}" onclick="setTtView('weekly')">Weekly View</button></div>`;
@@ -6714,19 +6742,37 @@ function renderStudentTimetable(entries, containerId, opts={}){
   // 5+ subjects -> master dropdown; kam ho to pills (student ke liye pills theek hain)
   const isWeek=_ttView==='weekly';
   const allSel=isWeek && opts.activeSubject==='__all';
-  const clsBar = opts.onClassFilter?`<div class="fbar-chips" style="margin-left:auto;flex-shrink:0"><button class="fchip ${((opts.activeClass||'all')==='all')?'on':''}" onclick="${opts.onClassFilter}('all')">All Classes</button><button class="fchip ${opts.activeClass==='10'?'on':''}" onclick="${opts.onClassFilter}('10')">Class 10</button><button class="fchip ${opts.activeClass==='12'?'on':''}" onclick="${opts.onClassFilter}('12')">Class 12</button></div>`:'';
-  const tabs = subjects.length>5
+  const _clsVal=opts.activeClass||'';
+  const _noCls=_casc && !_clsVal;
+  const tabs = _casc
     ? `<div class="fbar">
+         <div class="fbar-l">${ic('grid')}<span>Class</span></div>
+         <select class="fbar-sel" style="flex:0 1 170px" onchange="${opts.onClassFilter}(this.value)">
+           <option value=""${!_clsVal?' selected':''}>Select Class</option>
+           <option value="10"${_clsVal==='10'?' selected':''}>Class 10</option>
+           <option value="12"${_clsVal==='12'?' selected':''}>Class 12</option>
+           <option value="all"${_clsVal==='all'?' selected':''}>All Classes</option>
+         </select>
+         <div class="fbar-l">${ic('book')}<span>Subject</span></div>
+         <select class="fbar-sel" onchange="${_tab}(encodeURIComponent(this.value))"${(_noCls&&!isWeek)?' disabled':''}>
+           ${isWeek?`<option value="__all"${allSel?' selected':''}>All Subjects \u00b7 ${subjects.length}</option>`
+                   :`<option value=""${!active?' selected':''}>${_noCls?'Select Class first':'Select Subject'}</option>`}
+           ${(_noCls&&!isWeek)?'':subjects.map(s=>{const n=tl[s].filter(it=>it.kind==='chapter').length||tl[s].length; return `<option value="${esc(s)}"${(!allSel&&s===active)?' selected':''}>${esc(s)} \u00b7 ${n} chapters</option>`;}).join('')}
+         </select>
+       </div>`
+    : `<div class="fbar">
          <div class="fbar-l">${ic('book')}<span>Subject</span></div>
          <select class="fbar-sel" onchange="${_tab}(encodeURIComponent(this.value))">
            ${isWeek?`<option value="__all"${allSel?' selected':''}>All Subjects \u00b7 ${subjects.length}</option>`:''}
            ${subjects.map(s=>{const n=tl[s].filter(it=>it.kind==='chapter').length||tl[s].length; return `<option value="${esc(s)}"${(!allSel&&s===active)?' selected':''}>${esc(s)} \u00b7 ${n} chapters</option>`;}).join('')}
          </select>
-         ${clsBar}
-       </div>`
-    : `<div class="fbar"><div class="fbar-chips">${isWeek?`<button class="fchip ${allSel?'on':''}" onclick="${_tab}('__all')">All Subjects</button>`:''}${subjects.map(s=>{ const n=tl[s].filter(it=>it.kind==='chapter').length||tl[s].length; return `<button class="fchip ${(!allSel&&s===active)?'on':''}" onclick="${_tab}('${encodeURIComponent(s)}')">${esc(s)}<span class="fchip-n">${n}</span></button>`; }).join('')}${clsBar}</div>`;
+       </div>`;
   const wkSubs=(_ttView==='weekly'&&opts.activeSubject==='__all')?subjects:(_ttView==='weekly'?[active]:subjects);
-  const body=_ttView==='weekly'?renderStudentWeekly(tl,wkSubs,opts):renderStudentChapters(tl[active],active,opts);
+  const body=_ttView==='weekly'
+    ? renderStudentWeekly(tl,wkSubs,opts)
+    : (active
+        ? renderStudentChapters(tl[active],active,opts)
+        : `<div class="card"><div class="card-body"><div class="empty-state"><p>${_noCls?'Select a class to begin, then choose a subject to view its progress and timetable.':'Now select a subject from the dropdown above to view its progress and timetable.'}</p></div></div></div>`);
   const _hd=opts.heading===undefined?'My Timetable':opts.heading;
   el.innerHTML=`<div class="stt-head">${_hd?`<h2>${esc(_hd)}</h2>`:'<span></span>'}${toggle}</div>${overall}<div class="subj-tabs">${tabs}</div>${body}`;
 }
