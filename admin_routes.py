@@ -654,6 +654,73 @@ def admin_delete_tt(eid: int, db: Session = Depends(get_db), _=Depends(get_admin
     db.delete(e); db.commit()
     return {"message": "Class delete ho gayi"}
 
+# ===== ADMIN: FULL EDIT OF ANY TIMETABLE ENTRY =====
+@router.patch("/timetable-entry/{eid}")
+def admin_edit_tt(eid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin kisi bhi teacher/subject ki entry ke saare fields edit kar sakta hai.
+    Day HAMESHA date se auto-calculate hota hai (galat day kabhi save nahi hoga)."""
+    from models import TimetableEntry
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == eid).first()
+    if not e:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    def _s(k):
+        return (payload.get(k) or "").strip()
+    if "subject" in payload and _s("subject"):
+        e.subject = _s("subject")
+    if "class_name" in payload and _s("class_name"):
+        e.class_name = _s("class_name")
+    if "chapter" in payload and _s("chapter"):
+        e.chapter = _s("chapter")
+    if "part" in payload:
+        e.part = _s("part") or None
+    if "time" in payload:
+        e.time_text = _s("time") or None
+    if "type" in payload and _s("type") in ("chapter", "event"):
+        e.entry_type = _s("type")
+    if "entry_date" in payload:
+        d = _s("entry_date")
+        if d:
+            try:
+                e.entry_date = datetime.strptime(d, "%Y-%m-%d").date()
+                e.day = e.entry_date.strftime("%A")
+            except Exception:
+                raise HTTPException(status_code=400, detail="Date must be in YYYY-MM-DD format")
+        else:
+            e.entry_date = None
+            e.day = _s("day") or None
+    db.commit()
+    return {"message": "Entry updated", "id": e.id}
+
+# ===== ADMIN: DELETE ENTIRE SUBJECT TIMETABLE (one click, bulletproof on frontend) =====
+@router.delete("/timetable-subject")
+def admin_delete_tt_subject(subject: str, class_level: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Ek subject ka poora timetable delete. class_level ('10'/'12') optional filter hai
+    taaki same naam wale subjects (e.g. Economics 10 vs 12) alag-alag delete ho saken."""
+    from models import TimetableEntry
+    subject = (subject or "").strip()
+    if not subject:
+        raise HTTPException(status_code=400, detail="Subject is required")
+    q = db.query(TimetableEntry).filter(TimetableEntry.subject == subject)
+    cl = (class_level or "").strip()
+    if cl in ("10", "12"):
+        q = q.filter(TimetableEntry.class_name.like(f"%{cl}%"))
+    n = q.delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": n, "message": f"{n} entries deleted for {subject}"}
+
+# ===== ADMIN: CLEAR TIMETABLE (whole class or everything) =====
+@router.delete("/timetable-clear")
+def admin_clear_tt(class_level: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Poora timetable ya ek class ka timetable delete. Frontend pe type-to-confirm hai."""
+    from models import TimetableEntry
+    q = db.query(TimetableEntry)
+    cl = (class_level or "").strip()
+    if cl in ("10", "12"):
+        q = q.filter(TimetableEntry.class_name.like(f"%{cl}%"))
+    n = q.delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": n, "message": f"{n} timetable entries deleted"}
+
 # ===== PHOTOS + STUDENT LIST + BULK-BY-PHONE =====
 def _img_response(b64):
     import base64

@@ -2984,7 +2984,7 @@ async function loadTTimetable(){
       return;
     }
     _ttEntries=await api('/api/teacher/my-timetable');
-    el.innerHTML=`${tabs}<div class="card"><div class="card-header"><h3>My Time Table</h3><button class="btn btn-primary btn-sm" onclick="openRequestClass()">${ic('calendar')} Add Extra Class</button></div><div class="card-body"><div id="t-tline-wrap"></div></div></div>`;
+    el.innerHTML=`${tabs}<div class="card"><div class="card-header"><h3>My Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-danger btn-sm" onclick="openTTTDelete()">${ic('trash')} Delete Subject</button><button class="btn btn-primary btn-sm" onclick="openRequestClass()">${ic('calendar')} Add Extra Class</button></div></div><div class="card-body"><div id="t-tline-wrap"></div></div></div>`;
     _ttActiveSub=_ttActiveSub||(_ttEntries[0]||{}).subject||'';
     // apni photo har subject par timeline me dikhe
     try{
@@ -2994,10 +2994,10 @@ async function loadTTimetable(){
       try{ const r=await fetch(API+'/api/teacher/my-photo',{headers:{Authorization:'Bearer '+TOKEN}}); if(r.ok) url=URL.createObjectURL(await r.blob()); }catch(e){}
       [...new Set(_ttEntries.map(e=>e.subject))].forEach(sub=>{ window._ttTeacherMap[sub]={name:me.name||NAME,url}; });
     }catch(e){ window._ttTeacherMap=window._ttTeacherMap||{}; }
-    renderStudentTimetable(_ttEntries,'t-tline-wrap',{onEdit:true,tipTeacherMap:window._ttTeacherMap||{},onLecture:true,onComplete:'openClassReport',emptyMsg:'No timetable for your subjects yet.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'});
+    renderStudentTimetable(_ttEntries,'t-tline-wrap',{onEdit:true,onDelete:'deleteTTEntry',tipTeacherMap:window._ttTeacherMap||{},onLecture:true,onComplete:'openClassReport',emptyMsg:'No timetable for your subjects yet.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'});
   }catch(e){ el.innerHTML=errHtml(e); }
 }
-function tSetSubj(s){ _ttActiveSub=decodeURIComponent(s); renderStudentTimetable(_ttEntries,'t-tline-wrap',{tipTeacherMap:window._ttTeacherMap||{},onEdit:true,onLecture:true,onComplete:'openClassReport',emptyMsg:'No entries.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'}); }
+function tSetSubj(s){ _ttActiveSub=decodeURIComponent(s); renderStudentTimetable(_ttEntries,'t-tline-wrap',{tipTeacherMap:window._ttTeacherMap||{},onEdit:true,onDelete:'deleteTTEntry',onLecture:true,onComplete:'openClassReport',emptyMsg:'No entries.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'}); }
 function openTTPdf(){
   showModal('PDF Upload — Auto-Parse',
  `<div class="alert alert-info"><strong>Upload your timetable PDF directly</strong> — format and columns are auto-detected. Chapter, Parts, Date, Day and Time are all extracted.</div><div class="form-group"><label>Class</label>${classSelect('pdf-class')}</div><div class="form-group"><label>Subject (optional — blank = PDF se auto-detect)</label><input class="form-control" id="pdf-subject" placeholder="Blank = auto-detect"></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('pdf-file').click()"><div class="fd-icon"></div><div id="pdf-label" style="font-size:.85rem">Click to choose a PDF</div><input type="file" id="pdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('pdf-label').textContent=this.files[0]?.name||''"></div></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="pdf-replace"> Replace existing entries for the same subject</label></div><div id="pdf-status"></div>`,
@@ -3122,7 +3122,36 @@ function fmtDate(d){
   if(m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
   return d;
 }
-async function deleteTTEntry(id){ try{ await api('/api/teacher/timetable-entry/'+id,'DELETE'); toast('Delete '); loadTTimetable(); }catch(e){ toast(e.message,true); } }
+async function deleteTTEntry(id){ if(!confirm('Delete this class from your timetable?')) return; try{ await api('/api/teacher/timetable-entry/'+id,'DELETE'); toast('Class deleted.'); loadTTimetable(); }catch(e){ toast(e.message,true); } }
+// ===== TEACHER: DELETE OWN SUBJECT TIMETABLE (one click, type-to-confirm) =====
+function openTTTDelete(){
+  const list=_ttEntries||[];
+  if(!list.length){ toast('There are no timetable entries to delete.',true); return; }
+  const subs=[...new Set(list.map(x=>x.subject).filter(Boolean))].sort();
+  const subOpts=subs.map(s=>{ const n=list.filter(e=>e.subject===s).length; return `<option value="${esc(s)}">${esc(s)} - ${n} entries</option>`; }).join('');
+  showModal('Delete Subject Timetable',
+ `<div class="alert alert-danger">This action is permanent and cannot be undone. The full timetable of the selected subject will be deleted.</div>
+  <div class="form-group"><label>Subject</label><select class="form-control" id="ttt-sub" onchange="tttRefresh()">${subOpts}</select></div>
+  <div class="alert alert-warning" id="ttt-impact"></div>
+  <div class="form-group"><label>Type DELETE to confirm</label><input class="form-control" id="ttt-confirm" autocomplete="off" placeholder="DELETE" oninput="tttRefresh()"></div>`,
+ `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-danger" id="ttt-btn" onclick="submitTTTDelete()" disabled>Delete Permanently</button>`);
+  tttRefresh();
+}
+function tttRefresh(){
+  const sub=val('ttt-sub');
+  const n=(_ttEntries||[]).filter(e=>e.subject===sub).length;
+  document.getElementById('ttt-impact').textContent='This will permanently delete '+n+' timetable entr'+(n===1?'y':'ies')+' for '+sub+'.';
+  document.getElementById('ttt-btn').disabled=!(val('ttt-confirm')==='DELETE'&&n>0);
+}
+async function submitTTTDelete(){
+  const sub=val('ttt-sub');
+  const btn=document.getElementById('ttt-btn'); btn.disabled=true; btn.textContent='Deleting...';
+  try{
+    const r=await api('/api/teacher/timetable-subject?subject='+encodeURIComponent(sub),'DELETE');
+    closeModal(); toast((r.deleted||0)+' entries deleted.');
+    _ttActiveSub=''; loadTTimetable();
+  }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Delete Permanently'; }
+}
 async function clearTT(){ if(!confirm('Delete all timetable entries?'))return; try{ await api('/api/teacher/timetable-entries/all','DELETE'); toast('Clear '); loadTTimetable(); }catch(e){ toast(e.message,true); } }
 
 // ===== DRAG & DROP FILE HELPER =====
@@ -5107,14 +5136,97 @@ function aFilteredTT(){
 }
 function aRenderTT(){
   const el=document.getElementById('a-timetable-content');
-  el.innerHTML=`<div class="card"><div class="card-header"><h3>All Teachers' Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><select class="form-control" style="width:auto;padding:7px 12px" onchange="aClassFilter(this.value)" id="att-class"><option value="all">All Classes</option><option value="10">Class 10</option><option value="12">Class 12</option></select><button class="btn btn-ghost btn-sm" onclick="openDeadlines()">${ic('calendar')} Session Deadlines</button><button class="btn btn-ghost btn-sm" onclick="openAdminMaterial()">Upload Material</button><button class="btn btn-primary btn-sm" onclick="openAdminPdf()">PDF Upload</button></div></div><div class="card-body"><div id="a-tline-wrap"></div></div></div>`;
+  el.innerHTML=`<div class="card"><div class="card-header"><h3>All Teachers' Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><select class="form-control" style="width:auto;padding:7px 12px" onchange="aClassFilter(this.value)" id="att-class"><option value="all">All Classes</option><option value="10">Class 10</option><option value="12">Class 12</option></select><button class="btn btn-ghost btn-sm" onclick="openDeadlines()">${ic('calendar')} Session Deadlines</button><button class="btn btn-ghost btn-sm" onclick="openAdminMaterial()">Upload Material</button><button class="btn btn-primary btn-sm" onclick="openAdminPdf()">PDF Upload</button><button class="btn btn-danger btn-sm" onclick="openTTDelete()">${ic('trash')} Delete Timetable</button></div></div><div class="card-body"><div id="a-tline-wrap"></div></div></div>`;
   document.getElementById('att-class').value=_attClass;
-  renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',emptyMsg:'No timetable uploaded yet',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers'});
+  renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',onEditAny:'adminEditTT',emptyMsg:'No timetable uploaded yet',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers'});
 }
 function aClassFilter(v){ _attClass=v; _attActiveSub=''; aRenderTT(); }
 async function adminDeleteTT(id){
   if(!confirm('Delete this class from the timetable?')) return;
   try{ await api('/api/admin/timetable-entry/'+id,'DELETE'); toast('Class deleted.'); _attEntries=await api('/api/admin/timetable-all'); aRenderTT(); }catch(e){ toast(e.message,true); }
+}
+// ===== ADMIN: FULL EDIT OF ANY TIMETABLE ENTRY =====
+function adminEditTT(id){
+  const e=_attEntries.find(x=>x.id===id);
+  if(!e){ toast('Entry not found. Please refresh the page.',true); return; }
+  const subs=[...new Set(_attEntries.map(x=>x.subject).filter(Boolean))].sort();
+  const dl=subs.map(s=>`<option value="${esc(s)}"></option>`).join('');
+  const cls=e.class_name||'Class 12';
+  const clsOpts=['Class 10','Class 12'].includes(cls)?['Class 10','Class 12']:[cls,'Class 10','Class 12'];
+  showModal('Edit Timetable Entry',
+ `<div class="alert alert-info">You can change any detail of this entry. The day is calculated automatically from the date.</div>
+  <div class="form-group"><label>Subject</label><input class="form-control" id="ae-sub" list="ae-sublist" value="${esc(e.subject||'')}"><datalist id="ae-sublist">${dl}</datalist></div>
+  <div class="form-group"><label>Class</label><select class="form-control" id="ae-cls">${clsOpts.map(c=>`<option value="${esc(c)}"${c===cls?' selected':''}>${esc(c)}</option>`).join('')}</select></div>
+  <div class="form-group"><label>Type</label><select class="form-control" id="ae-type"><option value="chapter"${(e.type||'chapter')==='chapter'?' selected':''}>Chapter</option><option value="event"${e.type==='event'?' selected':''}>Event (Doubt Class / Test / Special)</option></select></div>
+  <div class="form-group"><label>Chapter / Event Name</label><input class="form-control" id="ae-ch" value="${esc(e.chapter||'')}"></div>
+  <div class="form-group"><label>Topic / Part</label><input class="form-control" id="ae-part" value="${esc(e.part||'')}" placeholder="e.g. Part 1 - Introduction"></div>
+  <div class="form-group"><label>Date</label><input type="date" class="form-control" id="ae-date" value="${esc(e.date||'')}"></div>
+  <div class="form-group"><label>Time</label><input class="form-control" id="ae-time" value="${esc(e.time||'')}" placeholder="e.g. 8:00 PM"></div>`,
+ `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitAdminEditTT(${id})">Save Changes</button>`);
+}
+async function submitAdminEditTT(id){
+  const sub=val('ae-sub'), ch=val('ae-ch');
+  if(!sub){ toast('Subject is required.',true); return; }
+  if(!ch){ toast('Chapter name is required.',true); return; }
+  const body={subject:sub,class_name:val('ae-cls'),chapter:ch,part:val('ae-part'),entry_date:val('ae-date'),time:val('ae-time'),type:val('ae-type')};
+  try{
+    await api('/api/admin/timetable-entry/'+id,'PATCH',body);
+    closeModal(); toast('Entry updated.');
+    _attEntries=await api('/api/admin/timetable-all'); aRenderTT();
+  }catch(e){ toast(e.message,true); }
+}
+// ===== ADMIN: BULLETPROOF TIMETABLE DELETION (subject / class / everything) =====
+function _ttdCount(scope,sub,cl){
+  return _attEntries.filter(e=>{
+    if(scope==='subject'&&e.subject!==sub) return false;
+    if(cl==='10'||cl==='12'){ if(!((e.class_name||'').includes(cl))) return false; }
+    return true;
+  }).length;
+}
+function openTTDelete(){
+  if(!_attEntries.length){ toast('There are no timetable entries to delete.',true); return; }
+  const subs=[...new Set(_attEntries.map(x=>x.subject).filter(Boolean))].sort();
+  const subOpts=subs.map(s=>{
+    const n=_attEntries.filter(e=>e.subject===s).length;
+    const cls=[...new Set(_attEntries.filter(e=>e.subject===s).map(e=>e.class_name).filter(Boolean))].join(', ');
+    return `<option value="${esc(s)}">${esc(s)}${cls?' ('+esc(cls)+')':''} - ${n} entries</option>`;
+  }).join('');
+  showModal('Delete Timetable',
+ `<div class="alert alert-danger">This action is permanent and cannot be undone. Deleted entries cannot be recovered.</div>
+  <div class="form-group"><label>What do you want to delete</label><select class="form-control" id="ttd-scope" onchange="ttdRefresh()"><option value="subject">One subject's full timetable</option><option value="class">One class's full timetable</option><option value="all">Entire timetable (all subjects, all classes)</option></select></div>
+  <div class="form-group" id="ttd-sub-wrap"><label>Subject</label><select class="form-control" id="ttd-sub" onchange="ttdRefresh()">${subOpts}</select></div>
+  <div class="form-group" id="ttd-cls-wrap"><label>Class</label><select class="form-control" id="ttd-cls" onchange="ttdRefresh()"><option value="">All Classes</option><option value="10">Class 10</option><option value="12">Class 12</option></select></div>
+  <div class="alert alert-warning" id="ttd-impact"></div>
+  <div class="form-group"><label>Type DELETE to confirm</label><input class="form-control" id="ttd-confirm" autocomplete="off" placeholder="DELETE" oninput="ttdRefresh()"></div>`,
+ `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-danger" id="ttd-btn" onclick="submitTTDelete()" disabled>Delete Permanently</button>`);
+  ttdRefresh();
+}
+function ttdRefresh(){
+  const scope=val('ttd-scope'), sub=val('ttd-sub');
+  let cl=val('ttd-cls');
+  document.getElementById('ttd-sub-wrap').style.display=scope==='subject'?'block':'none';
+  document.getElementById('ttd-cls-wrap').style.display=scope==='all'?'none':'block';
+  if(scope==='all') cl='';
+  const n=_ttdCount(scope,sub,cl);
+  let what='';
+  if(scope==='subject') what=sub+(cl?' (Class '+cl+')':'');
+  else if(scope==='class') what=cl?('Class '+cl):'all classes';
+  else what='the entire timetable';
+  document.getElementById('ttd-impact').textContent='This will permanently delete '+n+' timetable entr'+(n===1?'y':'ies')+' for '+what+'.';
+  const typed=val('ttd-confirm')==='DELETE';
+  document.getElementById('ttd-btn').disabled=!(typed&&n>0);
+}
+async function submitTTDelete(){
+  const scope=val('ttd-scope'), sub=val('ttd-sub');
+  let cl=val('ttd-cls'); if(scope==='all') cl='';
+  const btn=document.getElementById('ttd-btn'); btn.disabled=true; btn.textContent='Deleting...';
+  try{
+    let r;
+    if(scope==='subject') r=await api('/api/admin/timetable-subject?subject='+encodeURIComponent(sub)+(cl?'&class_level='+cl:''),'DELETE');
+    else r=await api('/api/admin/timetable-clear'+(cl?'?class_level='+cl:''),'DELETE');
+    closeModal(); toast((r.deleted||0)+' entries deleted.');
+    _attEntries=await api('/api/admin/timetable-all'); _attActiveSub=''; aRenderTT();
+  }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Delete Permanently'; }
 }
 function openAdminMaterial(){
   showModal('Upload Material (Admin)',
@@ -5146,7 +5258,7 @@ async function submitAdminMaterial(){
  btn.textContent=' Done'; btn.setAttribute('onclick','closeModal()'); btn.disabled=false;
   }catch(e){ document.getElementById('am-status').innerHTML=`<div class="alert alert-danger"> ${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Upload'; }
 }
-function aSetSubj(s){ _attActiveSub=decodeURIComponent(s); renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',emptyMsg:'No entries',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers'}); }
+function aSetSubj(s){ _attActiveSub=decodeURIComponent(s); renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',onEditAny:'adminEditTT',emptyMsg:'No entries',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers'}); }
 async function setSubjMode(id,mode){
   try{ const r=await api('/api/admin/subjects/'+id+'/mode','POST',{mode}); toast(r.message); loadASubjects(); }
   catch(e){ toast(e.message,true); }
@@ -6448,11 +6560,11 @@ function renderStudentNode(item, st, tmap, opts, ongoing){
   if(item.kind==='event'){
     const e=item.data; const isT=_isTest(e.chapter);
     const lbl=st==='current'?'Live':st==='done'?'Done':st==='progress'?'In Progress':'Upcoming';
-    const edel=opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${e.id})">${ic('trash')}</button>`:'';
+    const edel=`${opts.onEditAny?`<button class="btn btn-ghost btn-sm stl-act" onclick="${opts.onEditAny}(${e.id})">${ic('edit')}</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${e.id})">${ic('trash')}</button>`:''}`;
     return `<div class="stl-node ${st}">${dot}<div class="stl-card event ${isT?'test':''}"><div class="stl-chead"><div class="stl-cname">${esc(e.chapter)}</div><div class="stl-cmeta">${e.date?`<span class="stl-date">${fmtNice(e.date)}${e.day?' · '+esc(e.day):''}</span>`:''}<span class="stl-badge ${st}">${lbl}</span>${edel}</div></div></div></div>`;
   }
   const parts=item.parts, open=(st==='current'||ongoing), id='stl-'+Math.random().toString(36).slice(2,8);
-  const _hasAct=opts.onEdit||opts.onDelete||opts.onComplete||opts.onLecture;
+  const _hasAct=opts.onEdit||opts.onEditAny||opts.onDelete||opts.onComplete||opts.onLecture;
   const partsHtml=parts.map(p=>{ const pst=_partDone(p)?'done':_statusOf([p.date]); const plbl=pst==='done'?'Done':pst==='current'?'Live':'Soon';
     // student verification button: only when a teacher has linked a lecture (with a
     // verification question) to this timetable entry. Replaces the old plain Mark Done.
@@ -6462,7 +6574,7 @@ function renderStudentNode(item, st, tmap, opts, ongoing){
       else if(p.cooling){ verifyBtn=`<button class="btn btn-ghost btn-sm stl-act" disabled title="Too many wrong tries \u2014 try again shortly">Try later</button>`; }
       else{ verifyBtn=`<button class="btn btn-success btn-sm stl-act" onclick="markLectureDone(${p.lecture_id})">Mark Done</button>`; }
     }
-    const acts=_hasAct?`${opts.onEdit?`<button class="btn btn-ghost btn-sm stl-act" onclick="openEditTopic(${p.id},'${encodeURIComponent(p.part||'')}')">${ic('edit')}</button>`:''}${opts.onComplete&&!p.completed?`<button class="btn btn-success btn-sm stl-act" onclick="${opts.onComplete}(${p.id})">Class Report</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${p.id})">${ic('trash')}</button>`:''}`:verifyBtn;
+    const acts=_hasAct?`${opts.onEditAny?`<button class="btn btn-ghost btn-sm stl-act" onclick="${opts.onEditAny}(${p.id})">${ic('edit')}</button>`:''}${opts.onEdit?`<button class="btn btn-ghost btn-sm stl-act" onclick="openEditTopic(${p.id},'${encodeURIComponent(p.part||'')}')">${ic('edit')}</button>`:''}${opts.onComplete&&!p.completed?`<button class="btn btn-success btn-sm stl-act" onclick="${opts.onComplete}(${p.id})">Class Report</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${p.id})">${ic('trash')}</button>`:''}`:verifyBtn;
     return `<div class="stl-part"><span class="stl-pdot ${pst}">${pst==='done'?'✓':''}</span><div class="stl-pname">${esc(p.part||'Full chapter')}</div><div class="stl-pright"><div class="stl-ptime">${p.date?fmtNice(p.date)+(p.day?' · '+esc(p.day):''):''}${p.time?'<br>'+esc(p.time):''}</div><span class="stl-pbadge ${pst}">${plbl}</span>${acts}</div></div>`; }).join('');
   const stlbl=st==='done'?'DONE':(ongoing?'ONGOING CHAPTER':(st==='progress'?'IN PROGRESS':(st==='current'?'ONGOING CHAPTER':'UPCOMING')));
   return `<div class="stl-node ${st}${ongoing?' ongoing':''}">${dot}<div class="stl-card chapter ${open?'open':''}${ongoing?' ongoing':''}" id="${id}"><div class="stl-chead" onclick="document.getElementById('${id}').classList.toggle('open')"><div class="stl-cname"><span class="stl-arrow">${open?'▾':'›'}</span>${esc(item.chapter)}</div><div class="stl-cmeta"><span class="stl-badge ${ongoing?'ongoing':st}">${stlbl}</span><span class="cnt-badge dark">${parts.length} part${parts.length>1?'s':''}</span></div></div><div class="stl-parts">${partsHtml}</div></div></div>`;

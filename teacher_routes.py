@@ -413,13 +413,15 @@ def list_tt_entries(db: Session = Depends(get_db), current_user=Depends(get_teac
 
 @router.delete("/timetable-entry/{entry_id}")
 def delete_tt_entry(entry_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Teacher apni timeline me dikhne wali koi bhi class delete kar sakta hai —
+    apni uploaded ya admin-uploaded (subject match), same scope jaise my-timetable."""
     tp = get_teacher_profile(current_user, db)
     from models import TimetableEntry
-    e = db.query(TimetableEntry).filter(TimetableEntry.id == entry_id, TimetableEntry.teacher_id == tp.id).first()
-    if not e:
-        raise HTTPException(status_code=404, detail="Entry nahi mili")
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == entry_id).first()
+    if not e or (e.subject not in (tp.subjects or []) and e.teacher_id != tp.id):
+        raise HTTPException(status_code=404, detail="Entry not found")
     db.delete(e); db.commit()
-    return {"message": "Delete ho gaya"}
+    return {"message": "Class deleted"}
 
 @router.delete("/timetable-entries/all")
 def clear_tt_entries(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
@@ -485,8 +487,43 @@ def edit_tt_entry(entry_id: int, payload: dict, db: Session = Depends(get_db), c
         e.part = (payload.get("part") or "").strip() or None
     if "time" in payload:
         e.time_text = (payload.get("time") or "").strip() or None
+    if "chapter" in payload and (payload.get("chapter") or "").strip():
+        e.chapter = (payload.get("chapter") or "").strip()
+    if "type" in payload and (payload.get("type") or "").strip() in ("chapter", "event"):
+        e.entry_type = (payload.get("type") or "").strip()
+    if "entry_date" in payload:
+        d = (payload.get("entry_date") or "").strip()
+        if d:
+            try:
+                e.entry_date = datetime.strptime(d, "%Y-%m-%d").date()
+                e.day = e.entry_date.strftime("%A")
+            except Exception:
+                raise HTTPException(status_code=400, detail="Date must be in YYYY-MM-DD format")
+        else:
+            e.entry_date = None
     db.commit()
     return _serialize_tt(e)
+
+# ===== TEACHER: DELETE OWN SUBJECT TIMETABLE (one click, type-to-confirm on frontend) =====
+@router.delete("/timetable-subject")
+def teacher_delete_tt_subject(subject: str, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Teacher apne kisi subject ka poora timetable ek click me delete kar sakta hai.
+    Scope wahi hai jo my-timetable me dikhta hai: subject unke assigned subjects me
+    hona chahiye (ya unki khud ki uploaded entries). Doosre subjects delete nahi hote."""
+    tp = get_teacher_profile(current_user, db)
+    from models import TimetableEntry
+    from sqlalchemy import or_
+    subject = (subject or "").strip()
+    if not subject:
+        raise HTTPException(status_code=400, detail="Subject is required")
+    if subject not in (tp.subjects or []):
+        owned = db.query(TimetableEntry).filter(
+            TimetableEntry.subject == subject, TimetableEntry.teacher_id == tp.id).first()
+        if not owned:
+            raise HTTPException(status_code=403, detail="This subject is not assigned to you")
+    n = db.query(TimetableEntry).filter(TimetableEntry.subject == subject).delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": n, "message": f"{n} entries deleted for {subject}"}
 
 # ===== TEACHER: SEND NOTIFICATION TO STUDENTS =====
 @router.post("/notify")
