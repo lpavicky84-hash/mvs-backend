@@ -79,6 +79,9 @@ def parse_date(s):
     if not s:
         return None
     s = ORD_RE.sub(r'\1', str(s))                       # 2nd -> 2
+    # "26May" / "May26" jaise bina-space formats -> "26 May" (real PDFs me common)
+    s = re.sub(r'(?<=\d)(?=[A-Za-z])', ' ', str(s))
+    s = re.sub(r'(?<=[A-Za-z])(?=\d)', ' ', s)
     s = re.sub(r'[,]', ' ', s)
     s = re.sub(r'(\d)\s*([-/.])\s*', r'\1\2', s)
     s = re.sub(r'([-/.])\s*(\d)', r'\1\2', s)
@@ -147,6 +150,9 @@ def parse_time(s):
             h += 12
         if ap == 'am' and h == 12:
             h = 0
+    elif 1 <= h <= 6:
+        # Bina am/pm ke 1-6 baje wali class afternoon/evening hoti hai -> pm
+        h += 12
     out_ap = 'am' if h < 12 else 'pm'
     h12 = h % 12 or 12
     return f"{h12}:{mi} {out_ap}"
@@ -251,8 +257,14 @@ HEADER_WORDS = ('date', 'day', 'topic', 'topics', 'time', 'subject', 's.no', 'sn
 
 
 def _is_header(cells):
+    """Header row detection — word-boundary match, warna 'subjective' me 'subject'
+    aur 'Wednesday' me 'day' milke asli data rows ko header samajh ke kha jata tha.
+    Aur jis row me real date hai wo kabhi header nahi hoti."""
     joined = ' '.join(str(c or '').lower() for c in cells)
-    return sum(1 for w in HEADER_WORDS if w in joined) >= 2
+    hits = sum(1 for w in HEADER_WORDS if re.search(r'\b' + re.escape(w) + r'\b', joined))
+    if hits < 2:
+        return False
+    return not any(parse_date(str(c)) for c in cells if c)
 
 
 # ------------------------------------------------------------------ main

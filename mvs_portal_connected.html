@@ -1820,6 +1820,7 @@ body.dark .al-sig{color:hsl(45 90% 60%)}
 .chlist-row:last-child{border-bottom:none}
 .chlist-name{font-weight:700;font-size:.9rem}
 .chlist-sub{font-size:.72rem;color:var(--text-muted);font-weight:600;margin-top:2px}
+.file-drop.dragging{border-color:hsl(25 95% 53%);background:rgba(249,115,22,.08);transform:scale(1.01)}
 
 
 /* ---- Kimi-style premium upgrades ---- */
@@ -2270,7 +2271,7 @@ async function pdfSubjOptions(selId,cls){
 }
 function openAdminPdf(){
   showModal(' PDF Upload — All Subjects',
- `<div class="alert alert-info"><strong>Saare subjects ki ek hi PDF</strong> you can upload — the subject of each page is detected automatically.</div><div class="form-group"><label>Class</label>${classSelect('apdf-class')}</div><div class="form-group"><label>Subject</label><select class="form-control" id="apdf-subject"><option value="">\u2728 Auto-detect (PDF ke title se)</option></select></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('apdf-file').click()"><div class="fd-icon"></div><div id="apdf-label" style="font-size:.85rem">Click to choose a PDF</div><input type="file" id="apdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('apdf-label').textContent=this.files[0]?.name||''"></div></div><div id="apdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="apdf-replace"> Replace existing entries for the same subject</label></div><div id="apdf-status"></div>`,
+ `<div class="alert alert-info"><strong>Saare subjects ki ek hi PDF</strong> you can upload — the subject of each page is detected automatically.</div><div class="form-group"><label>Class</label>${classSelect('apdf-class')}</div><div class="form-group"><label>Subject</label><select class="form-control" id="apdf-subject"><option value="">\u2728 Auto-detect (PDF ke title se)</option></select></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('apdf-file').click()" ondragover="fdOver(event,this)" ondragleave="fdLeave(event,this)" ondrop="fdDrop(event,this,'apdf-file','apdf-label')"><div class="fd-icon"></div><div id="apdf-label" style="font-size:.85rem">Click to choose a PDF, or drag and drop it here</div><input type="file" id="apdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('apdf-label').textContent=this.files[0]?.name||''"></div></div><div id="apdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="apdf-replace"> Replace existing entries for the same subject</label></div><div id="apdf-status"></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="apdf-btn" onclick="uploadAdminPdf()">Upload & Parse</button>`);
   const clsSel=document.getElementById('apdf-class');
   const cls=()=>String((clsSel&&clsSel.value)||'').replace(/\D/g,'')||'12';
@@ -3203,7 +3204,7 @@ async function submitSlotChange(){
 }
 function openTTPdf(){
   showModal('PDF Upload — Auto-Parse',
- `<div class="alert alert-info"><strong>Upload your timetable PDF directly</strong> — format and columns are auto-detected. Chapter, Parts, Date, Day and Time are all extracted.</div><div class="form-group"><label>Class</label>${classSelect('pdf-class')}</div><div class="form-group"><label>Subject (optional — blank = PDF se auto-detect)</label><input class="form-control" id="pdf-subject" placeholder="Blank = auto-detect" oninput="pdfReplaceWarn(this.value,(typeof _ttEntries!=='undefined'?_ttEntries:[]),'pdf-warn','pdf-replace')"></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('pdf-file').click()"><div class="fd-icon"></div><div id="pdf-label" style="font-size:.85rem">Click to choose a PDF</div><input type="file" id="pdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('pdf-label').textContent=this.files[0]?.name||''"></div></div><div id="pdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="pdf-replace"> Replace existing entries for the same subject</label></div><div id="pdf-status"></div>`,
+ `<div class="alert alert-info"><strong>Upload your timetable PDF directly</strong> — format and columns are auto-detected. Chapter, Parts, Date, Day and Time are all extracted.</div><div class="form-group"><label>Class</label>${classSelect('pdf-class')}</div><div class="form-group"><label>Subject (optional — blank = PDF se auto-detect)</label><input class="form-control" id="pdf-subject" placeholder="Blank = auto-detect" oninput="pdfReplaceWarn(this.value,(typeof _ttEntries!=='undefined'?_ttEntries:[]),'pdf-warn','pdf-replace')"></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('pdf-file').click()" ondragover="fdOver(event,this)" ondragleave="fdLeave(event,this)" ondrop="fdDrop(event,this,'pdf-file','pdf-label')"><div class="fd-icon"></div><div id="pdf-label" style="font-size:.85rem">Click to choose a PDF, or drag and drop it here</div><input type="file" id="pdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('pdf-label').textContent=this.files[0]?.name||''"></div></div><div id="pdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="pdf-replace"> Replace existing entries for the same subject</label></div><div id="pdf-status"></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="pdf-btn" onclick="uploadTTPdf()">Upload & Parse</button>`);
 }
 async function uploadTTPdf(){
@@ -7210,6 +7211,26 @@ async function ssoRegister(batch,btn){
 function fmtINR(n){ return 'Rs ' + Number(n||0).toLocaleString('en-IN'); }
 function curMonth(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
 function fmtMonthLabel(m){ try{ const [y,mo]=m.split('-'); return new Date(y,mo-1,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'}); }catch(e){ return m; } }
+
+// ---- Drag and drop for PDF upload zones ----
+function fdOver(e,el){ e.preventDefault(); e.stopPropagation(); el.classList.add('dragging'); }
+function fdLeave(e,el){ e.preventDefault(); el.classList.remove('dragging'); }
+function fdDrop(e,el,inputId,labelId){
+  e.preventDefault(); e.stopPropagation(); el.classList.remove('dragging');
+  const files=e.dataTransfer&&e.dataTransfer.files;
+  if(!files||!files.length) return;
+  const f=files[0];
+  if(!/\.pdf$/i.test(f.name||'')){ toast('Please drop a PDF file.',true); return; }
+  const inp=document.getElementById(inputId);
+  if(!inp) return;
+  try{ const dt=new DataTransfer(); dt.items.add(f); inp.files=dt.files; }
+  catch(err){ toast('Drag and drop is not supported in this browser. Please click to choose the file.',true); return; }
+  const lb=document.getElementById(labelId); if(lb) lb.textContent=f.name;
+  toast('PDF selected: '+f.name);
+}
+// Galti se page pe drop hone par browser PDF na khole
+window.addEventListener('dragover',e=>{ e.preventDefault(); });
+window.addEventListener('drop',e=>{ e.preventDefault(); });
 
 // ---- PDF re-upload replace warning (admin + teacher) ----
 function pdfReplaceWarn(subj, entries, warnId, cbId){
