@@ -2062,3 +2062,184 @@ def create_extra_class(payload: dict, db: Session = Depends(get_db), current_use
     return {"id": e.id, "shift_count": len(plan.get("shifted", [])),
             "overflow": plan.get("overflow", False),
             "message": "Request sent to the admin. Once approved, the class and the auto-shift will apply."}
+
+# =====================================================================
+# TEACHER ATTENDANCE (PUNCH IN / PUNCH OUT) + CONTRACT + PAYOUT
+# =====================================================================
+def _ist_now():
+    """Railway server UTC pe chalta hai — IST me convert karke store/show karte hain."""
+    return datetime.utcnow() + timedelta(hours=5, minutes=30)
+
+def _fmt_t(dt):
+    return dt.strftime("%I:%M %p") if dt else None
+
+def _att_hours(a):
+    if a and a.punch_in and a.punch_out:
+        return round((a.punch_out - a.punch_in).total_seconds() / 3600, 1)
+    return None
+
+def _month_range(month: str):
+    """'2026-07' -> (date(2026,7,1), date(2026,8,1)). Galat format pe current month."""
+    try:
+        y, m = month.split("-"); y = int(y); m = int(m)
+        assert 1 <= m <= 12
+    except Exception:
+        n = _ist_now(); y, m = n.year, n.month
+    start = date(y, m, 1)
+    end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
+    return start, end
+
+def compute_payout(db, teacher_id: int, month: str):
+    """Transparent payout breakdown — teacher aur admin dono yahi dekhte hain.
+    Net = Base + Allowances + Extras + Bonus - Manual Deductions - Attendance Deduction.
+    Attendance Deduction = (working_days - present_days) x per-day rate."""
+    from models import TeacherContract, TeacherAttendance, PayoutAdjustment
+    c = db.query(TeacherContract).filter(TeacherContract.teacher_id == teacher_id).first()
+    if not c:
+        return None
+    start, end = _month_range(month)
+    month_key = start.strftime("%Y-%m")
+    present = db.query(TeacherAttendance).filter(
+        TeacherAttendance.teacher_id == teacher_id,
+        TeacherAttendance.att_date >= start, TeacherAttendance.att_date < end,
+        TeacherAttendance.punch_in.isnot(None)).count()
+    wd = c.working_days or 26
+    base = c.base_salary or 0
+    per_day = round(base / wd) if wd else 0
+    absent = max(0, wd - present)
+    att_deduction = per_day * absent
+    adjs = db.query(PayoutAdjustment).filter(
+        PayoutAdjustment.teacher_id == teacher_id,
+        PayoutAdjustment.month == month_key).order_by(PayoutAdjustment.created_at).all()
+    extras = sum(a.amount or 0 for a in adjs if a.kind == "extra")
+    bonus = sum(a.amount or 0 for a in adjs if a.kind == "bonus")
+    manual_ded = sum(a.amount or 0 for a in adjs if a.kind == "deduction")
+    net = base + (c.allowances or 0) + extras + bonus - manual_ded - att_deduction
+    now = _ist_now()
+    return {
+        "month": month_key,
+        "is_current_month": (start.year == now.year and start.month == now.month),
+        "base_salary": base, "allowances": c.allowances or 0,
+        "working_days": wd, "present_days": present, "absent_days": absent,
+        "per_day_rate": per_day, "attendance_deduction": att_deduction,
+        "extras": extras, "bonus": bonus, "manual_deductions": manual_ded,
+        "net_payout": net,
+        "rules": [r.strip() for r in (c.rules_text or "").splitlines() if r.strip()],
+        "adjustments": [{"id": a.id, "kind": a.kind, "amount": a.amount, "note": a.note or ""} for a in adjs],
+        "designation": c.designation, "accepted": bool(c.accepted)
+    }
+
+def _contract_out(c, teacher_name=""):
+    return {
+        "exists": True, "teacher_name": teacher_name,
+        "designation": c.designation or "Subject Teacher",
+        "joining_date": str(c.joining_date) if c.joining_date else None,
+        "base_salary": c.base_salary or 0, "allowances": c.allowances or 0,
+        "working_days": c.working_days or 26,
+        "per_day_rate": round((c.base_salary or 0) / (c.working_days or 26)),
+        "rules": [r.strip() for r in (c.rules_text or "").splitlines() if r.strip()],
+        "accepted": bool(c.accepted),
+        "accepted_at": c.accepted_at.strftime("%d %b %Y, %I:%M %p") if c.accepted_at else None,
+        "signature_name": c.signature_name
+    }
+
+# ===== ATTENDANCE =====
+@router.get("/attendance/today")
+def attendance_today(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    from models import TeacherAttendance
+    now = _ist_now(); today = now.date()
+    a = db.query(TeacherAttendance).filter(
+        TeacherAttendance.teacher_id == tp.id, TeacherAttendance.att_date == today).first()
+    return {
+        "date": str(today), "day": today.strftime("%A"),
+        "server_time": now.strftime("%I:%M:%S %p"),
+        "punch_in": _fmt_t(a.punch_in if a else None),
+        "punch_out": _fmt_t(a.punch_out if a else None),
+        "hours": _att_hours(a)
+    }
+
+@router.post("/attendance/punch-in")
+def punch_in(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    from models import TeacherAttendance
+    now = _ist_now(); today = now.date()
+    a = db.query(TeacherAttendance).filter(
+        TeacherAttendance.teacher_id == tp.id, TeacherAttendance.att_date == today).first()
+    if a and a.punch_in:
+        raise HTTPException(status_code=400, detail=f"You already punched in today at {_fmt_t(a.punch_in)}")
+    if not a:
+        a = TeacherAttendance(teacher_id=tp.id, att_date=today)
+        db.add(a)
+    a.punch_in = now
+    db.commit()
+    return {"message": f"Punched in at {_fmt_t(now)}", "punch_in": _fmt_t(now)}
+
+@router.post("/attendance/punch-out")
+def punch_out(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    from models import TeacherAttendance
+    now = _ist_now(); today = now.date()
+    a = db.query(TeacherAttendance).filter(
+        TeacherAttendance.teacher_id == tp.id, TeacherAttendance.att_date == today).first()
+    if not a or not a.punch_in:
+        raise HTTPException(status_code=400, detail="Please punch in first")
+    if a.punch_out:
+        raise HTTPException(status_code=400, detail=f"You already punched out today at {_fmt_t(a.punch_out)}")
+    a.punch_out = now
+    db.commit()
+    return {"message": f"Punched out at {_fmt_t(now)}", "punch_out": _fmt_t(now), "hours": _att_hours(a)}
+
+@router.get("/attendance/history")
+def attendance_history(month: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    from models import TeacherAttendance
+    start, end = _month_range(month)
+    rows = db.query(TeacherAttendance).filter(
+        TeacherAttendance.teacher_id == tp.id,
+        TeacherAttendance.att_date >= start, TeacherAttendance.att_date < end
+    ).order_by(TeacherAttendance.att_date.desc()).all()
+    out = [{"date": str(r.att_date), "day": r.att_date.strftime("%A"),
+            "punch_in": _fmt_t(r.punch_in), "punch_out": _fmt_t(r.punch_out),
+            "hours": _att_hours(r)} for r in rows]
+    total_hours = round(sum(x["hours"] or 0 for x in out), 1)
+    return {"month": start.strftime("%Y-%m"), "rows": out,
+            "present_days": sum(1 for x in out if x["punch_in"]), "total_hours": total_hours}
+
+# ===== CONTRACT (APPOINTMENT LETTER) =====
+@router.get("/contract")
+def my_contract(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    from models import TeacherContract
+    c = db.query(TeacherContract).filter(TeacherContract.teacher_id == tp.id).first()
+    if not c:
+        return {"exists": False}
+    return _contract_out(c, current_user.name)
+
+@router.post("/contract/accept")
+def accept_contract(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    from models import TeacherContract
+    c = db.query(TeacherContract).filter(TeacherContract.teacher_id == tp.id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="No appointment letter found for you")
+    sig = (payload.get("signature_name") or "").strip()
+    if len(sig) < 3:
+        raise HTTPException(status_code=400, detail="Please type your full name as your digital signature")
+    if not c.accepted:
+        c.accepted = True
+        c.accepted_at = _ist_now()
+        c.signature_name = sig
+        db.commit()
+    return {"message": "Appointment letter accepted", "accepted_at": c.accepted_at.strftime("%d %b %Y, %I:%M %p")}
+
+# ===== PAYOUT =====
+@router.get("/payout")
+def my_payout(month: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    p = compute_payout(db, tp.id, month)
+    if not p:
+        return {"exists": False}
+    p["exists"] = True
+    p["teacher_name"] = current_user.name
+    return p

@@ -599,3 +599,60 @@ class AppReview(Base):
 
     student = relationship("StudentProfile")
 
+
+# =============================================
+# TEACHER ATTENDANCE (punch in / punch out)
+# =============================================
+class TeacherAttendance(Base):
+    """Ek row = ek teacher ka ek din. Pehla Punch In aur aakhri Punch Out
+    store hota hai. Times IST me save hoti hain (server UTC ho to bhi)."""
+    __tablename__ = "teacher_attendance"
+
+    id         = Column(Integer, primary_key=True)
+    teacher_id = Column(Integer, ForeignKey("teacher_profiles.id"), index=True)
+    att_date   = Column(Date, index=True)
+    punch_in   = Column(DateTime, nullable=True)
+    punch_out  = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    teacher = relationship("TeacherProfile")
+
+# =============================================
+# TEACHER CONTRACT (appointment letter + payout rules)
+# =============================================
+class TeacherContract(Base):
+    """Appointment letter ka data + payout ke base rules. Teacher pehli baar
+    portal kholte hi letter accept karta hai (typed digital signature)."""
+    __tablename__ = "teacher_contracts"
+
+    id             = Column(Integer, primary_key=True)
+    teacher_id     = Column(Integer, ForeignKey("teacher_profiles.id"), unique=True, index=True)
+    designation    = Column(String(120), default="Subject Teacher")
+    joining_date   = Column(Date, nullable=True)
+    base_salary    = Column(Integer, default=0)    # monthly INR
+    allowances     = Column(Integer, default=0)    # fixed monthly allowances INR
+    working_days   = Column(Integer, default=26)   # payable working days per month
+    rules_text     = Column(Text, nullable=True)   # one rule per line; letter + payout page dono me dikhta hai
+    accepted       = Column(Boolean, default=False)
+    accepted_at    = Column(DateTime, nullable=True)
+    signature_name = Column(String(120), nullable=True)
+    created_at     = Column(DateTime, server_default=func.now())
+    updated_at     = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    teacher = relationship("TeacherProfile")
+
+# =============================================
+# PAYOUT ADJUSTMENT (manual extra / bonus / deduction per month)
+# =============================================
+class PayoutAdjustment(Base):
+    __tablename__ = "payout_adjustments"
+
+    id         = Column(Integer, primary_key=True)
+    teacher_id = Column(Integer, ForeignKey("teacher_profiles.id"), index=True)
+    month      = Column(String(7), index=True)        # "2026-07"
+    kind       = Column(String(20), default="bonus")  # extra | bonus | deduction
+    amount     = Column(Integer, default=0)           # INR
+    note       = Column(String(200), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    teacher = relationship("TeacherProfile")

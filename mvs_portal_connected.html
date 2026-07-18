@@ -1744,6 +1744,59 @@ img,canvas,video{max-width:100%}
   .xm-row .btn{min-width:100%}
   .btn{font-size:.8rem;padding:9px 12px}
 
+
+/* ===== ATTENDANCE + PAYOUT + APPOINTMENT LETTER (premium components) ===== */
+@keyframes pwGlow{0%,100%{box-shadow:0 0 0 0 rgba(249,115,22,.4)}50%{box-shadow:0 0 22px 4px rgba(249,115,22,.28)}}
+@keyframes pwDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.85)}}
+.pw-card{position:relative;overflow:hidden;border-radius:16px;padding:22px;color:#fff;background:linear-gradient(120deg,hsl(219 62% 18%) 0%,hsl(224 58% 10%) 55%,hsl(230 50% 14%) 100%);border:1px solid rgba(255,255,255,.08);margin-bottom:18px}
+.pw-card .pw-blob{position:absolute;right:-40px;top:-40px;width:180px;height:180px;border-radius:9999px;background:rgba(249,115,22,.22);filter:blur(48px);pointer-events:none}
+.pw-row{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;position:relative}
+.pw-clock{font-size:2rem;font-weight:800;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.pw-lbl{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;opacity:.75;font-weight:700}
+.pw-times{display:flex;gap:18px;flex-wrap:wrap}
+.pw-t{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:10px 16px;min-width:110px}
+.pw-t .v{font-size:1.05rem;font-weight:800;margin-top:2px}
+.pw-live{display:inline-flex;align-items:center;gap:6px;font-size:.68rem;font-weight:800;letter-spacing:.06em;background:rgba(16,185,129,.18);color:#34d399;border-radius:9999px;padding:4px 10px}
+.pw-live .d{width:7px;height:7px;border-radius:50%;background:#34d399;animation:pwDot 1.4s ease-in-out infinite}
+.btn-punch-in{background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-weight:800;padding:12px 26px;border-radius:12px;cursor:pointer;font-size:.95rem;animation:pwGlow 2.2s ease-in-out infinite}
+.btn-punch-out{background:linear-gradient(135deg,hsl(25 95% 53%),hsl(35 95% 50%));color:#fff;border:none;font-weight:800;padding:12px 26px;border-radius:12px;cursor:pointer;font-size:.95rem}
+.btn-punch-in:disabled,.btn-punch-out:disabled{opacity:.55;cursor:not-allowed;animation:none}
+.po-hero{position:relative;overflow:hidden;border-radius:16px;padding:24px;color:#fff;background:linear-gradient(120deg,hsl(219 62% 18%) 0%,hsl(224 58% 10%) 55%,hsl(230 50% 14%) 100%);border:1px solid rgba(255,255,255,.08);margin-bottom:18px}
+.po-net{font-size:2.3rem;font-weight:800;color:hsl(45 95% 62%)}
+.po-sub{font-size:.78rem;opacity:.75;font-weight:600}
+.po-brk .r{display:flex;justify-content:space-between;padding:9px 2px;border-bottom:1px dashed var(--border);font-size:.9rem}
+.po-brk .r:last-child{border-bottom:none}
+.po-brk .neg{color:var(--danger);font-weight:700}
+.po-brk .pos{color:#059669;font-weight:700}
+.po-brk .net{font-size:1.05rem;font-weight:800}
+.po-pill{display:inline-flex;align-items:center;gap:5px;font-size:.68rem;font-weight:800;letter-spacing:.05em;padding:4px 10px;border-radius:9999px}
+.po-pill.green{background:rgba(16,185,129,.14);color:#059669}
+.po-pill.amber{background:rgba(245,158,11,.16);color:#b45309}
+.po-pill.slate{background:rgba(100,116,139,.14);color:#475569}
+.po-pill.gold{background:rgba(234,179,8,.16);color:#a16207}
+body.dark .po-pill.green{color:#34d399}body.dark .po-pill.amber{color:#fbbf24}body.dark .po-pill.slate{color:#94a3b8}body.dark .po-pill.gold{color:#facc15}
+.att-table{width:100%;border-collapse:collapse;font-size:.86rem}
+.att-table th{text-align:left;font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);padding:9px 10px;border-bottom:2px solid var(--border);position:sticky;top:0;background:var(--card)}
+.att-table td{padding:10px;border-bottom:1px solid var(--border)}
+.att-table tr:last-child td{border-bottom:none}
+.al-gate{position:fixed;inset:0;z-index:9000;background:rgba(10,16,32,.92);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:16px;overflow-y:auto}
+.al-shell{background:var(--card);color:var(--text);border-radius:16px;max-width:760px;width:100%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--border)}
+.al-head{padding:16px 22px;background:linear-gradient(120deg,hsl(219 62% 18%),hsl(224 58% 10%));color:#fff;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.al-body{padding:0 22px;overflow-y:auto;flex:1}
+.al-foot{padding:14px 22px;border-top:1px solid var(--border);background:var(--card)}
+.al-letter{font-size:.9rem;line-height:1.65;padding:22px 4px}
+.al-letter h2{font-size:1.15rem;letter-spacing:.12em;text-align:center;margin:18px 0 4px}
+.al-lh{text-align:center;border-bottom:3px solid hsl(25 95% 53%);padding-bottom:14px;margin-bottom:6px}
+.al-lh .b{font-size:1.35rem;font-weight:800;letter-spacing:.04em;color:hsl(219 57% 27%)}
+body.dark .al-lh .b{color:hsl(45 90% 60%)}
+.al-lh .s{font-size:.78rem;color:var(--text-muted);font-weight:600}
+.al-letter table.terms{width:100%;border-collapse:collapse;margin:10px 0;font-size:.86rem}
+.al-letter table.terms td{border:1px solid var(--border);padding:8px 10px}
+.al-letter table.terms td:first-child{font-weight:700;width:46%}
+.al-sig{font-family:'Segoe Script','Brush Script MT',cursive;font-size:1.35rem;color:hsl(219 57% 27%)}
+body.dark .al-sig{color:hsl(45 90% 60%)}
+.al-rules li{margin-bottom:5px}
+@media(max-width:640px){.pw-clock{font-size:1.5rem}.po-net{font-size:1.8rem}}
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -1760,9 +1813,9 @@ img,canvas,video{max-width:100%}
 <!-- TEACHER SUBJECT SELECTION (first login) -->
 <div id="t-subject-screen" style="display:none;min-height:100vh;background:linear-gradient(150deg,#001022,#001a3a 55%,#0a3260);align-items:center;justify-content:center;padding:20px"><div class="login-box" style="max-width:620px"><h2>Select Your Subjects</h2><p>Select the subjects you teach, class by class.</p><div style="display:flex;justify-content:space-between;margin:14px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 10</label></div><div id="t-sub-10" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><div style="display:flex;justify-content:space-between;margin:16px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 12</label></div><div id="t-sub-12" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><button class="login-btn" id="t-save-subj" style="margin-top:18px" onclick="saveTeacherSubjects()">Save & Continue →</button><p style="text-align:center;margin-top:14px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Logout</p></div>
 </div>
-<div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP Result</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="tPage('extmat',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule:</b> Har reschedule admin approval ke baad hi apply hota hai.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-extmat"><div id="t-extmat-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
+<div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP Result</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="tPage('extmat',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-item" onclick="tPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="tPage('payout',this)"><span>Payout</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule:</b> Har reschedule admin approval ke baad hi apply hota hai.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-extmat"><div id="t-extmat-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-attendance"><div id="t-attendance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-payout"><div id="t-payout-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== ADMIN APP ===== -->
-<div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#ef4444">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Users</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-section">Academics</div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('compliance',this)"><span>Class Compliance</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#ef4444" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-reviews-wrap"></div><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-compliance"><div id="a-compliance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"></div><div class="card" style="margin-top:18px;border:1.5px solid rgba(220,38,38,.3)"><div class="card-header"><h3 style="color:var(--danger)">Danger Zone</h3></div><div class="card-body"><p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Testing ka saara content data (timetable, materials, doubts, submissions...) ek saath saaf karein \u2014 students, teachers aur admins safe rehte hain.</p><button class="btn btn-danger" onclick="openResetData()">\ud83e\uddf9 Reset Portal Data</button></div></div><div style="display:none"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div></div>
+<div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#ef4444">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Users</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-section">Academics</div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('compliance',this)"><span>Class Compliance</span></div><div class="nav-item" onclick="aPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="aPage('payouts',this)"><span>Payouts</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#ef4444" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-reviews-wrap"></div><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-compliance"><div id="a-compliance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"></div><div class="card" style="margin-top:18px;border:1.5px solid rgba(220,38,38,.3)"><div class="card-header"><h3 style="color:var(--danger)">Danger Zone</h3></div><div class="card-body"><p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Testing ka saara content data (timetable, materials, doubts, submissions...) ek saath saaf karein \u2014 students, teachers aur admins safe rehte hain.</p><button class="btn btn-danger" onclick="openResetData()">\ud83e\uddf9 Reset Portal Data</button></div></div><div style="display:none"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div><div class="page" id="a-page-attendance"><div id="a-attendance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-payouts"><div id="a-payouts-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== STUDENT APP ===== -->
 <div id="student-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#06b6d4">S</div><div><span>MVS Foundation</span><small>Student</small></div></div><nav class="sidebar-nav"><div class="nav-section">Home</div><div class="nav-item active" onclick="sPage('dashboard',this)"><span>Home</span></div><div class="nav-item" onclick="sPage('teachers',this)"><span>Know Your Teacher</span></div><div class="nav-item" onclick="sPage('timetable',this)"><span>Time Table</span></div><div class="nav-section">Materials</div><div class="nav-item" onclick="sPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="sPage('materials',this)"><span>Classes Material</span></div><div class="nav-section">Work</div><div class="nav-item" onclick="sPage('dpp',this)"><span>DPP Submit</span></div><div class="nav-item" onclick="sPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="sPage('doubts',this)"><span>Doubts</span></div><div class="nav-section">Progress</div><div class="nav-item" onclick="sPage('progress',this)"><span>Progress</span></div><div class="nav-item" onclick="sPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="sPage('profile',this)"><span>My Profile</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#06b6d4" id="s-avatar">S</div><div><span id="s-name">Student</span><small id="s-batch">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="s-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="s-topavatar" title="Set or change profile photo" onclick="openSetStudentPhoto()">S</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('student')"><span class="notif-badge" id="s-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="s-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="s-page-dashboard"><div id="s-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-timetable"><div id="s-timetable-content"><div class="spinner"></div></div></div><div class="page" id="s-page-materials"><div id="s-materials-content"><div class="spinner"></div></div></div><div class="page" id="s-page-qbank"><div id="s-qbank-content"><div class="spinner"></div></div></div><div class="page" id="s-page-teachers"><div id="s-teachers-content"><div class="spinner"></div></div></div><div class="page" id="s-page-dpp"><div id="s-dpp-content"><div class="spinner"></div></div></div><div class="page" id="s-page-tests"><div id="s-tests-content"><div class="spinner"></div></div></div><div class="page" id="s-page-doubts"><div id="s-doubts-content"><div class="spinner"></div></div></div><div class="page" id="s-page-progress"><div id="s-progress-content"><div class="spinner"></div></div></div><div class="page" id="s-page-notifications"><div id="s-notif-content"><div class="spinner"></div></div></div><div class="page" id="s-page-profile"><div id="s-profile-content"><div class="spinner"></div></div></div></div>
 </div><!-- Generic Modal -->
@@ -2114,12 +2167,14 @@ async function pdfSubjOptions(selId,cls){
 }
 function openAdminPdf(){
   showModal(' PDF Upload — All Subjects',
- `<div class="alert alert-info"><strong>Saare subjects ki ek hi PDF</strong> you can upload — the subject of each page is detected automatically.</div><div class="form-group"><label>Class</label>${classSelect('apdf-class')}</div><div class="form-group"><label>Subject</label><select class="form-control" id="apdf-subject"><option value="">\u2728 Auto-detect (PDF ke title se)</option></select></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('apdf-file').click()"><div class="fd-icon"></div><div id="apdf-label" style="font-size:.85rem">Click to choose a PDF</div><input type="file" id="apdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('apdf-label').textContent=this.files[0]?.name||''"></div></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="apdf-replace"> Replace existing entries for the same subject</label></div><div id="apdf-status"></div>`,
+ `<div class="alert alert-info"><strong>Saare subjects ki ek hi PDF</strong> you can upload — the subject of each page is detected automatically.</div><div class="form-group"><label>Class</label>${classSelect('apdf-class')}</div><div class="form-group"><label>Subject</label><select class="form-control" id="apdf-subject"><option value="">\u2728 Auto-detect (PDF ke title se)</option></select></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('apdf-file').click()"><div class="fd-icon"></div><div id="apdf-label" style="font-size:.85rem">Click to choose a PDF</div><input type="file" id="apdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('apdf-label').textContent=this.files[0]?.name||''"></div></div><div id="apdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="apdf-replace"> Replace existing entries for the same subject</label></div><div id="apdf-status"></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="apdf-btn" onclick="uploadAdminPdf()">Upload & Parse</button>`);
   const clsSel=document.getElementById('apdf-class');
   const cls=()=>String((clsSel&&clsSel.value)||'').replace(/\D/g,'')||'12';
   pdfSubjOptions('apdf-subject',cls());
   if(clsSel) clsSel.addEventListener('change',()=>pdfSubjOptions('apdf-subject',cls()));
+  const subSel=document.getElementById('apdf-subject');
+  if(subSel) subSel.addEventListener('change',()=>pdfReplaceWarn(subSel.value,(typeof _attEntries!=='undefined'?_attEntries:[]),'apdf-warn','apdf-replace'));
 }
 async function uploadAdminPdf(){
   const fi=document.getElementById('apdf-file');
@@ -2419,6 +2474,11 @@ async function openTeacher(){
  _tGender=p.gender||''; _tSuffix=_tGender==='male'?' Sir':_tGender==='female'?' Ma\'am':'';
  if(p.needs_subjects){ showTeacherSubjectScreen(); return; }
   }catch(e){}
+  // First open: appointment letter accept karna zaroori hai (agar contract set hai)
+  try{
+ const c=await api('/api/teacher/contract');
+ if(c&&c.exists&&!c.accepted){ showContractGate(c); return; }
+  }catch(e){}
   enterTeacherApp();
 }
 function enterTeacherApp(){
@@ -2464,7 +2524,7 @@ function tPage(page,el){
   document.querySelectorAll('#teacher-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('t-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#teacher-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',performance:'Performance',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP Result',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',material:'Classes Material',extmat:'Study Material'};
+  const titles={dashboard:'Dashboard',performance:'Performance',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP Result',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',material:'Classes Material',extmat:'Study Material',attendance:'Attendance',payout:'Payout'};
   _setPage(titles[page]||page);
   document.getElementById('t-title').textContent=titles[page];
   stopCountdown();
@@ -2480,6 +2540,8 @@ function tPage(page,el){
   else if(page==='material') loadTMaterial();
   else if(page==='extmat') loadExtMaterials('t-extmat-content');
   else if(page==='students') loadTStudents();
+  else if(page==='attendance') loadTAttendance();
+  else if(page==='payout') loadTPayout();
 }
 
 // ===== TEACHER STUDY MATERIAL =====
@@ -2639,9 +2701,10 @@ async function loadTDashboard(){
   try{
  const d=await api('/api/teacher/dashboard');
  document.getElementById('t-subjects').textContent='Teacher';
- el.innerHTML=`${greetingCard(NAME,_tSuffix)}<div class="stats-grid">${statCard('Classes Done',d.total_done,'check','green')}${statCard('Pending',d.total_pending,'clipboard','amber')}${statCard('DPPs',d.total_dpps,'clipboard','indigo',"navTo('teacher-app','dpp')")}${statCard('Tests',d.total_tests,'edit','teal',"navTo('teacher-app','tests')")}${statCard('Unresolved Doubts',d.unresolved_doubts,'help','red',"navTo('teacher-app','doubts')")}</div><div class="card"><div class="card-header"><h3> Today's Classes</h3></div><div class="card-body"><div id="t-today-wrap"><div class="spinner"></div></div></div></div>`;
+ el.innerHTML=`${greetingCard(NAME,_tSuffix)}<div id="t-punch-wrap"></div><div class="stats-grid">${statCard('Classes Done',d.total_done,'check','green')}${statCard('Pending',d.total_pending,'clipboard','amber')}${statCard('DPPs',d.total_dpps,'clipboard','indigo',"navTo('teacher-app','dpp')")}${statCard('Tests',d.total_tests,'edit','teal',"navTo('teacher-app','tests')")}${statCard('Unresolved Doubts',d.unresolved_doubts,'help','red',"navTo('teacher-app','doubts')")}</div><div class="card"><div class="card-header"><h3> Today's Classes</h3></div><div class="card-body"><div id="t-today-wrap"><div class="spinner"></div></div></div></div>`;
  const badge=document.getElementById('t-doubt-badge');
  if(d.unresolved_doubts>0){ badge.style.display='inline-block'; badge.textContent=d.unresolved_doubts; } else badge.style.display='none';
+ renderPunchCard('t-punch-wrap');
  loadTeacherToday();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
@@ -3000,7 +3063,7 @@ async function loadTTimetable(){
 function tSetSubj(s){ _ttActiveSub=decodeURIComponent(s); renderStudentTimetable(_ttEntries,'t-tline-wrap',{tipTeacherMap:window._ttTeacherMap||{},onEdit:true,onDelete:'deleteTTEntry',onLecture:true,onComplete:'openClassReport',emptyMsg:'No entries.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'}); }
 function openTTPdf(){
   showModal('PDF Upload — Auto-Parse',
- `<div class="alert alert-info"><strong>Upload your timetable PDF directly</strong> — format and columns are auto-detected. Chapter, Parts, Date, Day and Time are all extracted.</div><div class="form-group"><label>Class</label>${classSelect('pdf-class')}</div><div class="form-group"><label>Subject (optional — blank = PDF se auto-detect)</label><input class="form-control" id="pdf-subject" placeholder="Blank = auto-detect"></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('pdf-file').click()"><div class="fd-icon"></div><div id="pdf-label" style="font-size:.85rem">Click to choose a PDF</div><input type="file" id="pdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('pdf-label').textContent=this.files[0]?.name||''"></div></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="pdf-replace"> Replace existing entries for the same subject</label></div><div id="pdf-status"></div>`,
+ `<div class="alert alert-info"><strong>Upload your timetable PDF directly</strong> — format and columns are auto-detected. Chapter, Parts, Date, Day and Time are all extracted.</div><div class="form-group"><label>Class</label>${classSelect('pdf-class')}</div><div class="form-group"><label>Subject (optional — blank = PDF se auto-detect)</label><input class="form-control" id="pdf-subject" placeholder="Blank = auto-detect" oninput="pdfReplaceWarn(this.value,(typeof _ttEntries!=='undefined'?_ttEntries:[]),'pdf-warn','pdf-replace')"></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('pdf-file').click()"><div class="fd-icon"></div><div id="pdf-label" style="font-size:.85rem">Click to choose a PDF</div><input type="file" id="pdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('pdf-label').textContent=this.files[0]?.name||''"></div></div><div id="pdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="pdf-replace"> Replace existing entries for the same subject</label></div><div id="pdf-status"></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="pdf-btn" onclick="uploadTTPdf()">Upload & Parse</button>`);
 }
 async function uploadTTPdf(){
@@ -4142,7 +4205,7 @@ function aPage(page,el){
   document.getElementById('a-page-'+page).classList.add('active');
   if(!el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) el=n; }); }
   if(el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',students:'Students',admins:'Admin Users',subjects:'Subjects',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material'};
+  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',students:'Students',admins:'Admin Users',subjects:'Subjects',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',attendance:'Teacher Attendance',payouts:'Payouts'};
   _setPage(titles[page]||page);
   document.getElementById('a-title').textContent=titles[page];
   if(page==='dashboard') loadADashboard();
@@ -4159,6 +4222,8 @@ function aPage(page,el){
   else if(page==='subjects') loadASubjects();
   else if(page==='counts') loadACounts();
   else if(page==='timetable') loadATimetable();
+  else if(page==='attendance') loadAAttendance();
+  else if(page==='payouts') loadAPayouts();
 }
 
 async function renderAdminHealth(){
@@ -6866,6 +6931,385 @@ async function ssoRegister(batch,btn){
     document.querySelectorAll('#modal-body button').forEach(b=>b.disabled=false);
     if(btn){ btn.classList.remove('picked'); btn.innerHTML=`<span class="bt-name">${esc(batch)}</span>`; }
   }
+}
+
+// =====================================================================
+// TEACHER ATTENDANCE (PUNCH IN / OUT) + PAYOUT + APPOINTMENT LETTER
+// =====================================================================
+function fmtINR(n){ return 'Rs ' + Number(n||0).toLocaleString('en-IN'); }
+function curMonth(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function fmtMonthLabel(m){ try{ const [y,mo]=m.split('-'); return new Date(y,mo-1,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'}); }catch(e){ return m; } }
+
+// ---- PDF re-upload replace warning (admin + teacher) ----
+function pdfReplaceWarn(subj, entries, warnId, cbId){
+  const w=document.getElementById(warnId); if(!w) return;
+  subj=(subj||'').trim();
+  if(!subj){ w.innerHTML=''; return; }
+  const n=(entries||[]).filter(e=>(e.subject||'').trim().toLowerCase()===subj.toLowerCase()).length;
+  if(n>0){
+    w.innerHTML=`<div class="alert alert-warning"><strong>${esc(subj)}</strong> already has <strong>${n}</strong> timetable entr${n===1?'y':'ies'} uploaded. Tick "Replace existing entries" below to replace the old timetable, otherwise the new entries will be added on top of it.</div>`;
+    const cb=document.getElementById(cbId); if(cb&&!cb.checked) cb.checked=true;
+  } else w.innerHTML='';
+}
+
+// ---- Punch card (teacher dashboard + attendance page) ----
+let _pwInt=null;
+function _pwTick(){
+  const el=document.getElementById('pw-clock');
+  if(!el){ clearInterval(_pwInt); _pwInt=null; return; }
+  el.textContent=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}).toUpperCase();
+}
+async function renderPunchCard(wrapId){
+  const wrap=document.getElementById(wrapId); if(!wrap) return;
+  let d;
+  try{ d=await api('/api/teacher/attendance/today'); }
+  catch(e){ wrap.innerHTML=''; return; }
+  const dateLbl=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
+  let stateHtml='', btnHtml='';
+  if(!d.punch_in){
+    stateHtml=`<span class="pw-live" style="background:rgba(245,158,11,.18);color:#fbbf24"><span class="d" style="background:#fbbf24"></span>NOT PUNCHED IN</span>`;
+    btnHtml=`<button class="btn-punch-in" id="pw-btn" onclick="doPunch('in')">Punch In</button>`;
+  } else if(!d.punch_out){
+    stateHtml=`<span class="pw-live"><span class="d"></span>ON DUTY SINCE ${esc(d.punch_in)}</span>`;
+    btnHtml=`<button class="btn-punch-out" id="pw-btn" onclick="doPunch('out')">Punch Out</button>`;
+  } else {
+    stateHtml=`<span class="pw-live" style="background:rgba(148,163,184,.18);color:#cbd5e1"><span class="d" style="background:#cbd5e1;animation:none"></span>DAY COMPLETE</span>`;
+    btnHtml=`<button class="btn-punch-out" id="pw-btn" disabled>Punched Out</button>`;
+  }
+  wrap.innerHTML=`<div class="pw-card"><div class="pw-blob"></div>
+    <div class="pw-row">
+      <div>
+        <div class="pw-lbl">Attendance - ${esc(dateLbl)}</div>
+        <div class="pw-clock" id="pw-clock"></div>
+        <div style="margin-top:8px">${stateHtml}</div>
+      </div>
+      <div class="pw-times">
+        <div class="pw-t"><div class="pw-lbl">Punch In</div><div class="v">${esc(d.punch_in||'--:--')}</div></div>
+        <div class="pw-t"><div class="pw-lbl">Punch Out</div><div class="v">${esc(d.punch_out||'--:--')}</div></div>
+        <div class="pw-t"><div class="pw-lbl">Hours</div><div class="v">${d.hours!=null?d.hours+' h':'--'}</div></div>
+      </div>
+      <div>${btnHtml}</div>
+    </div></div>`;
+  _pwTick();
+  if(!_pwInt) _pwInt=setInterval(_pwTick,1000);
+}
+async function doPunch(kind){
+  const btn=document.getElementById('pw-btn'); if(btn){ btn.disabled=true; btn.textContent=kind==='in'?'Punching In...':'Punching Out...'; }
+  try{
+    const r=await api('/api/teacher/attendance/punch-'+kind,'POST',{});
+    toast(r.message);
+    if(document.getElementById('t-punch-wrap')) renderPunchCard('t-punch-wrap');
+    if(document.getElementById('ta-punch-wrap')) renderPunchCard('ta-punch-wrap');
+    if(document.getElementById('t-page-attendance').classList.contains('active')) tAttHistory();
+  }catch(e){ toast(e.message,true); if(document.getElementById('t-punch-wrap')) renderPunchCard('t-punch-wrap'); if(document.getElementById('ta-punch-wrap')) renderPunchCard('ta-punch-wrap'); }
+}
+
+// ---- Teacher Attendance page ----
+let _tAttMonth='';
+async function loadTAttendance(){
+  const el=document.getElementById('t-attendance-content');
+  _tAttMonth=_tAttMonth||curMonth();
+  el.innerHTML=`<div id="ta-punch-wrap"></div>
+    <div class="card"><div class="card-header"><h3>My Attendance</h3><input type="month" class="form-control" style="width:auto;padding:7px 12px" id="ta-month" value="${_tAttMonth}" onchange="_tAttMonth=this.value;tAttHistory()"></div>
+    <div class="card-body"><div id="ta-summary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div><div id="ta-history"><div class="spinner"></div></div></div></div>`;
+  renderPunchCard('ta-punch-wrap');
+  tAttHistory();
+}
+async function tAttHistory(){
+  const box=document.getElementById('ta-history'); if(!box) return;
+  try{
+    const d=await api('/api/teacher/attendance/history?month='+encodeURIComponent(_tAttMonth||curMonth()));
+    document.getElementById('ta-summary').innerHTML=
+      `<span class="po-pill green">PRESENT ${d.present_days} DAY${d.present_days===1?'':'S'}</span><span class="po-pill gold">${d.total_hours} TOTAL HOURS</span><span class="po-pill slate">${esc(fmtMonthLabel(d.month)).toUpperCase()}</span>`;
+    if(!d.rows.length){ box.innerHTML=`<div class="empty-state"><p>No attendance recorded in ${esc(fmtMonthLabel(d.month))} yet. Use Punch In on any working day.</p></div>`; return; }
+    box.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Date</th><th>Day</th><th>Punch In</th><th>Punch Out</th><th>Hours</th></tr></thead><tbody>${
+      d.rows.map(r=>`<tr><td>${esc(fmtNice(r.date))}</td><td>${esc(r.day)}</td><td>${esc(r.punch_in||'-')}</td><td>${esc(r.punch_out||'-')}</td><td>${r.hours!=null?r.hours+' h':'-'}</td></tr>`).join('')
+    }</tbody></table></div>`;
+  }catch(e){ box.innerHTML=errHtml(e); }
+}
+
+// ---- Appointment letter (shared builder) ----
+function buildLetterHTML(c){
+  const today=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
+  const jd=c.joining_date?new Date(c.joining_date).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'}):'as mutually agreed';
+  const rules=(c.rules||[]).length?`<div style="margin-top:14px"><strong>Rules and Conditions</strong><ol class="al-rules" style="margin:8px 0 0 18px">${c.rules.map(r=>`<li>${esc(r)}</li>`).join('')}</ol></div>`:'';
+  const sig=c.accepted?`<div style="margin-top:6px"><span class="al-sig">${esc(c.signature_name||c.teacher_name||'')}</span><div style="font-size:.78rem;color:var(--text-muted)">Digitally signed by ${esc(c.signature_name||'')} on ${esc(c.accepted_at||'')}</div></div>`:`<div style="margin-top:22px;border-bottom:1.5px solid var(--border);width:220px"></div><div style="font-size:.78rem;color:var(--text-muted);margin-top:4px">Signature of Teacher</div>`;
+  return `<div class="al-letter">
+    <div class="al-lh"><div class="b">MVS FOUNDATION</div><div class="s">Manish Verma Classes - NIOS Coaching Institute, Delhi</div></div>
+    <div style="display:flex;justify-content:space-between;font-size:.82rem;color:var(--text-muted)"><span>Ref: MVS/APT/${esc((c.teacher_name||'T').split(' ')[0].toUpperCase())}</span><span>Date: ${esc(today)}</span></div>
+    <h2>APPOINTMENT LETTER</h2>
+    <p>Dear <strong>${esc(c.teacher_name||'Teacher')}</strong>,</p>
+    <p>We are pleased to appoint you as <strong>${esc(c.designation||'Subject Teacher')}</strong> at MVS Foundation (Manish Verma Classes), effective <strong>${esc(jd)}</strong>. Your terms of engagement are as follows:</p>
+    <table class="terms">
+      <tr><td>Designation</td><td>${esc(c.designation||'Subject Teacher')}</td></tr>
+      <tr><td>Date of Joining</td><td>${esc(jd)}</td></tr>
+      <tr><td>Monthly Base Salary</td><td>${fmtINR(c.base_salary)}</td></tr>
+      <tr><td>Fixed Monthly Allowances</td><td>${fmtINR(c.allowances)}</td></tr>
+      <tr><td>Payable Working Days</td><td>${c.working_days} days per month</td></tr>
+      <tr><td>Per Day Rate</td><td>${fmtINR(c.per_day_rate)}</td></tr>
+    </table>
+    <p><strong>Attendance and Payment Policy.</strong> Daily attendance is recorded through the portal Punch In and Punch Out system. For every payable working day not attended, a deduction equal to the per day rate (${fmtINR(c.per_day_rate)}) is applied. Payments for extra classes, bonuses and any deductions are always itemised with reasons in the Payout section of your portal, so you can see exactly where full payment is made and where a deduction applies.</p>
+    ${rules}
+    <p style="margin-top:16px">We look forward to working with you towards the success of our students.</p>
+    <div style="display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-top:26px">
+      <div><div style="font-weight:700">Accepted by</div>${sig}</div>
+      <div style="text-align:right"><div style="font-weight:700">For MVS Foundation</div><div class="al-sig" style="margin-top:6px">Manish Verma</div><div style="font-size:.78rem;color:var(--text-muted)">Director, MVS Foundation</div></div>
+    </div>
+  </div>`;
+}
+function printLetter(c){
+  const w=window.open('','_blank');
+  if(!w){ toast('Please allow popups to download the letter.',true); return; }
+  w.document.write(`<!DOCTYPE html><html><head><title>Appointment Letter - ${esc(c.teacher_name||'')}</title><style>
+    :root{--border:#d7dce5;--text-muted:#5b6472}
+    body{font-family:Georgia,'Times New Roman',serif;color:#111827;margin:34px;font-size:14px;line-height:1.65}
+    .al-lh{text-align:center;border-bottom:3px solid #f97316;padding-bottom:14px;margin-bottom:6px}
+    .al-lh .b{font-size:1.5rem;font-weight:800;letter-spacing:.04em;color:#1e3a6e}
+    .al-lh .s{font-size:.8rem;color:#5b6472;font-weight:600}
+    h2{letter-spacing:.14em;text-align:center;margin:20px 0 6px;font-size:1.15rem}
+    table.terms{width:100%;border-collapse:collapse;margin:12px 0}
+    table.terms td{border:1px solid #cfd6e0;padding:8px 10px}
+    table.terms td:first-child{font-weight:700;width:46%}
+    .al-sig{font-family:'Segoe Script','Brush Script MT',cursive;font-size:1.4rem;color:#1e3a6e}
+    .al-rules li{margin-bottom:5px}
+    @media print{body{margin:14mm}}
+  </style></head><body>${buildLetterHTML(c)}<script>window.onload=function(){window.print();}<\/script></body></html>`);
+  w.document.close();
+}
+async function downloadMyLetter(){
+  try{ const c=await api('/api/teacher/contract'); if(!c.exists){ toast('No appointment letter found.',true); return; } printLetter(c); }
+  catch(e){ toast(e.message,true); }
+}
+
+// ---- First-open appointment letter gate ----
+function showContractGate(c){
+  const old=document.getElementById('al-gate'); if(old) old.remove();
+  const div=document.createElement('div');
+  div.className='al-gate'; div.id='al-gate';
+  div.innerHTML=`<div class="al-shell">
+    <div class="al-head"><div><div style="font-weight:800;font-size:1.05rem">Your Appointment Letter</div><div style="font-size:.78rem;opacity:.8">Please read and accept to continue to your portal</div></div><button class="btn btn-ghost btn-sm" style="color:#fff;border-color:rgba(255,255,255,.3)" onclick="printLetterFromGate()">Download PDF</button></div>
+    <div class="al-body" id="al-gate-letter">${buildLetterHTML(c)}</div>
+    <div class="al-foot">
+      <div class="form-group"><label>Digital Signature - type your full name</label><input class="form-control" id="al-sign" placeholder="${esc(c.teacher_name||'Your full name')}" oninput="alGateCheck()"><div class="al-sig" id="al-sign-preview" style="margin-top:6px;min-height:26px"></div></div>
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:.85rem;margin-bottom:12px"><input type="checkbox" id="al-agree" onchange="alGateCheck()" style="margin-top:3px"> I have read and understood the appointment letter above, and I accept all its terms and conditions.</label>
+      <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap"><button class="btn btn-ghost" onclick="logout()">Logout</button><button class="btn btn-primary" id="al-accept-btn" onclick="acceptContractGate()" disabled>Accept and Continue</button></div>
+    </div></div>`;
+  document.body.appendChild(div);
+  window._alGateContract=c;
+}
+function alGateCheck(){
+  const sig=(val('al-sign')||'').trim();
+  document.getElementById('al-sign-preview').textContent=sig;
+  document.getElementById('al-accept-btn').disabled=!(sig.length>=3&&document.getElementById('al-agree').checked);
+}
+function printLetterFromGate(){ if(window._alGateContract) printLetter(window._alGateContract); }
+async function acceptContractGate(){
+  const btn=document.getElementById('al-accept-btn'); btn.disabled=true; btn.textContent='Saving...';
+  try{
+    await api('/api/teacher/contract/accept','POST',{signature_name:(val('al-sign')||'').trim()});
+    const g=document.getElementById('al-gate'); if(g) g.remove();
+    toast('Welcome aboard. Your appointment letter has been accepted.');
+    enterTeacherApp();
+  }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Accept and Continue'; }
+}
+
+// ---- Teacher Payout page ----
+let _tPayMonth='';
+async function loadTPayout(){
+  const el=document.getElementById('t-payout-content');
+  _tPayMonth=_tPayMonth||curMonth();
+  try{
+    const c=await api('/api/teacher/contract');
+    if(!c.exists){ el.innerHTML=`<div class="empty-state"><p>Your payout has not been configured yet. Please contact the admin to set up your appointment letter and salary details.</p></div>`; return; }
+    if(!c.accepted){ el.innerHTML=''; showContractGate(c); return; }
+    el.innerHTML=`<div id="tp-hero"></div>
+      <div class="card"><div class="card-header"><h3>Payout Breakdown</h3><input type="month" class="form-control" style="width:auto;padding:7px 12px" id="tp-month" value="${_tPayMonth}" onchange="_tPayMonth=this.value;tPayRender()"></div><div class="card-body" id="tp-brk"><div class="spinner"></div></div></div>
+      <div class="card"><div class="card-header"><h3>Payment Rules</h3><button class="btn btn-primary btn-sm" onclick="downloadMyLetter()">${ic('download')} Appointment Letter</button></div><div class="card-body" id="tp-rules"></div></div>`;
+    const rules=(c.rules||[]);
+    document.getElementById('tp-rules').innerHTML=
+      `<div class="alert alert-info">Full payment is made for every payable working day you attend (Punch In). For each day not attended, a per day deduction of ${fmtINR(c.per_day_rate)} applies. Extra class payments, bonuses and deductions are always listed below with their reasons.</div>`+
+      (rules.length?`<ol class="al-rules" style="margin-left:18px">${rules.map(r=>`<li>${esc(r)}</li>`).join('')}</ol>`:`<p style="color:var(--text-muted);font-size:.85rem">No additional rules have been set.</p>`);
+    tPayRender();
+  }catch(e){ el.innerHTML=errHtml(e); }
+}
+function payoutBreakHTML(p){
+  const adj=(p.adjustments||[]).map(a=>{
+    const sign=a.kind==='deduction'?'-':'+';
+    const cls=a.kind==='deduction'?'neg':'pos';
+    const kindLbl=a.kind==='extra'?'Extra Class Payment':a.kind==='bonus'?'Bonus':'Deduction';
+    return `<div class="r"><span>${esc(kindLbl)}${a.note?` - ${esc(a.note)}`:''}</span><span class="${cls}">${sign} ${fmtINR(a.amount)}</span></div>`;
+  }).join('');
+  return `<div class="po-brk">
+    <div class="r"><span>Base Salary</span><span>${fmtINR(p.base_salary)}</span></div>
+    ${p.allowances?`<div class="r"><span>Fixed Allowances</span><span class="pos">+ ${fmtINR(p.allowances)}</span></div>`:''}
+    ${adj}
+    <div class="r"><span>Attendance Deduction (${p.absent_days} day${p.absent_days===1?'':'s'} x ${fmtINR(p.per_day_rate)})</span><span class="${p.attendance_deduction?'neg':''}">${p.attendance_deduction?'- '+fmtINR(p.attendance_deduction):fmtINR(0)}</span></div>
+    <div class="r net"><span>Net Payout</span><span>${fmtINR(p.net_payout)}</span></div>
+  </div>`;
+}
+async function tPayRender(){
+  const hero=document.getElementById('tp-hero'), brk=document.getElementById('tp-brk');
+  if(!hero||!brk) return;
+  try{
+    const p=await api('/api/teacher/payout?month='+encodeURIComponent(_tPayMonth||curMonth()));
+    if(!p.exists){ brk.innerHTML='<div class="empty-state"><p>Payout not configured.</p></div>'; return; }
+    hero.innerHTML=`<div class="po-hero"><div class="pw-blob" style="position:absolute;right:-40px;top:-40px;width:180px;height:180px;border-radius:9999px;background:rgba(234,179,8,.22);filter:blur(48px)"></div>
+      <div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center;position:relative">
+        <div><div class="pw-lbl">${p.is_current_month?'Estimated Net Payout (month in progress)':'Net Payout'} - ${esc(fmtMonthLabel(p.month))}</div>
+        <div class="po-net">${fmtINR(p.net_payout)}</div>
+        <div class="po-sub">${esc(p.designation||'')}</div></div>
+        <div class="pw-times">
+          <div class="pw-t"><div class="pw-lbl">Present</div><div class="v">${p.present_days} / ${p.working_days}</div></div>
+          <div class="pw-t"><div class="pw-lbl">Per Day</div><div class="v">${fmtINR(p.per_day_rate)}</div></div>
+        </div>
+      </div></div>`;
+    brk.innerHTML=(p.is_current_month?`<div class="alert alert-info">This month is still in progress. The attendance deduction assumes remaining working days are not yet marked, so the figure improves as you punch in on more days.</div>`:'')+payoutBreakHTML(p);
+  }catch(e){ brk.innerHTML=errHtml(e); }
+}
+
+// =====================================================================
+// ADMIN: ATTENDANCE + PAYOUTS + CONTRACTS
+// =====================================================================
+let _aAttDate='', _aAttView='day', _aAttMonth='';
+async function loadAAttendance(){
+  const el=document.getElementById('a-attendance-content');
+  _aAttDate=_aAttDate||new Date().toISOString().slice(0,10);
+  _aAttMonth=_aAttMonth||curMonth();
+  el.innerHTML=`<div class="card"><div class="card-header"><h3>Teacher Attendance</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <div class="tt-toggle"><button class="${_aAttView==='day'?'active':''}" onclick="_aAttView='day';loadAAttendance()">Day View</button><button class="${_aAttView==='month'?'active':''}" onclick="_aAttView='month';loadAAttendance()">Month Summary</button></div>
+        ${_aAttView==='day'
+          ?`<input type="date" class="form-control" style="width:auto;padding:7px 12px" value="${_aAttDate}" onchange="_aAttDate=this.value;aAttFetch()">`
+          :`<input type="month" class="form-control" style="width:auto;padding:7px 12px" value="${_aAttMonth}" onchange="_aAttMonth=this.value;aAttFetch()">`}
+      </div></div>
+    <div class="card-body"><div id="a-att-summary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div><div id="a-att-body"><div class="spinner"></div></div></div></div>`;
+  aAttFetch();
+}
+async function aAttFetch(){
+  const body=document.getElementById('a-att-body'), sum=document.getElementById('a-att-summary');
+  if(!body) return;
+  try{
+    if(_aAttView==='day'){
+      const d=await api('/api/admin/attendance?day='+encodeURIComponent(_aAttDate));
+      sum.innerHTML=`<span class="po-pill green">PRESENT ${d.present} / ${d.total}</span><span class="po-pill slate">${esc(d.day).toUpperCase()}, ${esc(fmtNice(d.date)).toUpperCase()}</span>`;
+      if(!d.teachers.length){ body.innerHTML='<div class="empty-state"><p>No active teachers found.</p></div>'; return; }
+      const pill=t=>t.status==='working'?'<span class="po-pill green">ON DUTY</span>':t.status==='done'?'<span class="po-pill gold">DAY COMPLETE</span>':'<span class="po-pill amber">NOT PUNCHED</span>';
+      body.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Teacher</th><th>Punch In</th><th>Punch Out</th><th>Hours</th><th>Status</th><th></th></tr></thead><tbody>${
+        d.teachers.map(t=>`<tr><td style="font-weight:600">${esc(t.name)}</td><td>${esc(t.punch_in||'-')}</td><td>${esc(t.punch_out||'-')}</td><td>${t.hours!=null?t.hours+' h':'-'}</td><td>${pill(t)}</td><td><button class="btn btn-ghost btn-sm" onclick="openTeacherAttDetail(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">History</button></td></tr>`).join('')
+      }</tbody></table></div>`;
+    } else {
+      const d=await api('/api/admin/attendance/month?month='+encodeURIComponent(_aAttMonth));
+      sum.innerHTML=`<span class="po-pill slate">${esc(fmtMonthLabel(d.month)).toUpperCase()}</span>`;
+      if(!d.teachers.length){ body.innerHTML='<div class="empty-state"><p>No active teachers found.</p></div>'; return; }
+      body.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Teacher</th><th>Days Present</th><th>Total Hours</th><th></th></tr></thead><tbody>${
+        d.teachers.map(t=>`<tr><td style="font-weight:600">${esc(t.name)}</td><td>${t.present_days}</td><td>${t.total_hours} h</td><td><button class="btn btn-ghost btn-sm" onclick="openTeacherAttDetail(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">History</button></td></tr>`).join('')
+      }</tbody></table></div>`;
+    }
+  }catch(e){ body.innerHTML=errHtml(e); }
+}
+async function openTeacherAttDetail(tid,name){
+  showModal('Attendance - '+name,
+    `<div class="form-group"><label>Month</label><input type="month" class="form-control" id="tad-month" value="${_aAttMonth||curMonth()}" onchange="tadFetch(${tid})"></div><div id="tad-body"><div class="spinner"></div></div>`,
+    `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
+  tadFetch(tid);
+}
+async function tadFetch(tid){
+  const b=document.getElementById('tad-body'); if(!b) return;
+  try{
+    const d=await api('/api/admin/attendance/teacher/'+tid+'?month='+encodeURIComponent(val('tad-month')));
+    if(!d.rows.length){ b.innerHTML='<div class="empty-state"><p>No attendance in this month.</p></div>'; return; }
+    b.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Date</th><th>Day</th><th>In</th><th>Out</th><th>Hours</th></tr></thead><tbody>${
+      d.rows.map(r=>`<tr><td>${esc(fmtNice(r.date))}</td><td>${esc(r.day)}</td><td>${esc(r.punch_in||'-')}</td><td>${esc(r.punch_out||'-')}</td><td>${r.hours!=null?r.hours+' h':'-'}</td></tr>`).join('')
+    }</tbody></table></div>`;
+  }catch(e){ b.innerHTML=errHtml(e); }
+}
+
+// ---- Admin Payouts ----
+let _aPayMonth='';
+async function loadAPayouts(){
+  const el=document.getElementById('a-payouts-content');
+  _aPayMonth=_aPayMonth||curMonth();
+  el.innerHTML=`<div class="card"><div class="card-header"><h3>Teacher Payouts</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="po-pill gold" id="ap-total"></span><input type="month" class="form-control" style="width:auto;padding:7px 12px" value="${_aPayMonth}" onchange="_aPayMonth=this.value;aPayFetch()"></div></div><div class="card-body"><div id="ap-body"><div class="spinner"></div></div></div></div>`;
+  aPayFetch();
+}
+async function aPayFetch(){
+  const body=document.getElementById('ap-body'); if(!body) return;
+  try{
+    const d=await api('/api/admin/payouts?month='+encodeURIComponent(_aPayMonth));
+    document.getElementById('ap-total').textContent='TOTAL NET '+fmtINR(d.total_net).toUpperCase();
+    if(!d.teachers.length){ body.innerHTML='<div class="empty-state"><p>No active teachers found.</p></div>'; return; }
+    body.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Teacher</th><th>Base</th><th>Present</th><th>Deductions</th><th>Net Payout</th><th>Letter</th><th>Actions</th></tr></thead><tbody>${
+      d.teachers.map(t=>{
+        if(!t.configured) return `<tr><td style="font-weight:600">${esc(t.name)}</td><td colspan="3" style="color:var(--text-muted)">Payout not configured</td><td>-</td><td><span class="po-pill slate">NOT SET</span></td><td><button class="btn btn-primary btn-sm" onclick="openContractModal(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">Set Contract</button></td></tr>`;
+        const ded=(t.attendance_deduction||0)+(t.manual_deductions||0);
+        const letter=t.accepted?'<span class="po-pill green">ACCEPTED</span>':'<span class="po-pill amber">PENDING</span>';
+        return `<tr><td style="font-weight:600">${esc(t.name)}<div style="font-size:.72rem;color:var(--text-muted)">${esc(t.designation||'')}</div></td><td>${fmtINR(t.base_salary)}</td><td>${t.present_days}/${t.working_days}</td><td style="color:${ded?'var(--danger)':'inherit'}">${ded?'- '+fmtINR(ded):fmtINR(0)}</td><td style="font-weight:800">${fmtINR(t.net_payout)}</td><td>${letter}</td>
+          <td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="openPayoutDetail(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">Details</button><button class="btn btn-ghost btn-sm" onclick="openAdjustModal(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">Adjust</button><button class="btn btn-ghost btn-sm" onclick="openContractModal(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">Contract</button></td></tr>`;
+      }).join('')
+    }</tbody></table></div>`;
+  }catch(e){ body.innerHTML=errHtml(e); }
+}
+async function openContractModal(tid,name){
+  let c={exists:false};
+  try{ c=await api('/api/admin/teacher/'+tid+'/contract'); }catch(e){}
+  showModal((c.exists?'Edit Contract - ':'Set Contract - ')+name,
+    `<div class="alert alert-info">These details build the appointment letter and the payout calculation. The teacher must accept the letter on their next portal open${c.exists?' if you tick the re-accept option below':''}.</div>
+     <div class="form-group"><label>Designation</label><input class="form-control" id="ct-des" value="${esc(c.designation||'Subject Teacher')}"></div>
+     <div class="form-group"><label>Date of Joining</label><input type="date" class="form-control" id="ct-join" value="${esc(c.joining_date||'')}"></div>
+     <div class="form-group"><label>Monthly Base Salary (Rs)</label><input type="number" min="0" class="form-control" id="ct-base" value="${c.base_salary||0}"></div>
+     <div class="form-group"><label>Fixed Monthly Allowances (Rs)</label><input type="number" min="0" class="form-control" id="ct-allow" value="${c.allowances||0}"></div>
+     <div class="form-group"><label>Payable Working Days per Month</label><input type="number" min="1" max="31" class="form-control" id="ct-wd" value="${c.working_days||26}"></div>
+     <div class="form-group"><label>Rules and Conditions (one per line - shown in the letter and Payout page)</label><textarea class="form-control" id="ct-rules" rows="5" placeholder="Classes must start on scheduled time.\nDPP and notes must be uploaded on the day of the class.">${esc((c.rules||[]).join('\n'))}</textarea></div>
+     ${c.exists?`<label style="display:flex;align-items:center;gap:8px;font-size:.85rem"><input type="checkbox" id="ct-reaccept"> Terms changed - ask the teacher to accept the letter again</label>`:''}
+     ${c.exists?`<div style="margin-top:10px"><button class="btn btn-ghost btn-sm" onclick="adminViewLetter(${tid})">${ic('download')} Preview Letter</button></div>`:''}`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="ct-btn" onclick="submitContract(${tid})">Save Contract</button>`);
+}
+async function submitContract(tid){
+  const btn=document.getElementById('ct-btn'); btn.disabled=true; btn.textContent='Saving...';
+  try{
+    const re=document.getElementById('ct-reaccept');
+    const r=await api('/api/admin/teacher/'+tid+'/contract','POST',{
+      designation:val('ct-des'),joining_date:val('ct-join'),base_salary:val('ct-base'),
+      allowances:val('ct-allow'),working_days:val('ct-wd'),rules_text:val('ct-rules'),
+      require_reaccept:!!(re&&re.checked)});
+    closeModal(); toast(r.message); aPayFetch();
+  }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Save Contract'; }
+}
+async function adminViewLetter(tid){
+  try{ const c=await api('/api/admin/teacher/'+tid+'/contract'); if(!c.exists){ toast('No contract set.',true); return; } printLetter(c); }
+  catch(e){ toast(e.message,true); }
+}
+function openAdjustModal(tid,name){
+  showModal('Payout Adjustment - '+name,
+    `<div class="alert alert-info">Extra class payments, bonuses and deductions always appear on the teacher's Payout page with the note you write here, so every rupee is accounted for.</div>
+     <div class="form-group"><label>Month</label><input type="month" class="form-control" id="aj-month" value="${_aPayMonth||curMonth()}"></div>
+     <div class="form-group"><label>Type</label><select class="form-control" id="aj-kind"><option value="extra">Extra Class Payment</option><option value="bonus">Bonus</option><option value="deduction">Deduction</option></select></div>
+     <div class="form-group"><label>Amount (Rs)</label><input type="number" min="1" class="form-control" id="aj-amount" placeholder="e.g. 500"></div>
+     <div class="form-group"><label>Reason / Note</label><input class="form-control" id="aj-note" placeholder="e.g. 2 extra classes on 12 and 14 July"></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="aj-btn" onclick="submitAdjust(${tid})">Add</button>`);
+}
+async function submitAdjust(tid){
+  const btn=document.getElementById('aj-btn'); btn.disabled=true; btn.textContent='Adding...';
+  try{
+    const r=await api('/api/admin/teacher/'+tid+'/payout-adjust','POST',{month:val('aj-month'),kind:val('aj-kind'),amount:val('aj-amount'),note:val('aj-note')});
+    closeModal(); toast(r.message); aPayFetch();
+  }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Add'; }
+}
+async function openPayoutDetail(tid,name){
+  showModal('Payout Detail - '+name,`<div id="pd-body"><div class="spinner"></div></div>`,
+    `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
+  try{
+    const p=await api('/api/admin/teacher/'+tid+'/payout?month='+encodeURIComponent(_aPayMonth||curMonth()));
+    const b=document.getElementById('pd-body'); if(!b) return;
+    if(!p.exists){ b.innerHTML='<div class="empty-state"><p>Payout not configured.</p></div>'; return; }
+    const adjRows=(p.adjustments||[]).length?`<div style="margin-top:14px"><strong style="font-size:.85rem">Adjustments</strong>${p.adjustments.map(a=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:.85rem"><span>${esc(a.kind==='extra'?'Extra Class Payment':a.kind==='bonus'?'Bonus':'Deduction')}${a.note?` - ${esc(a.note)}`:''}</span><span style="display:flex;align-items:center;gap:8px"><b>${a.kind==='deduction'?'-':'+'} ${fmtINR(a.amount)}</b><button class="btn btn-danger btn-sm" onclick="delAdjust(${a.id},${tid},'${esc((name||'').replace(/'/g,''))}')">${ic('trash')}</button></span></div>`).join('')}</div>`:'';
+    b.innerHTML=`<div style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px">${esc(fmtMonthLabel(p.month))} - Present ${p.present_days}/${p.working_days} days</div>`+payoutBreakHTML(p)+adjRows;
+  }catch(e){ const b=document.getElementById('pd-body'); if(b) b.innerHTML=errHtml(e); }
+}
+async function delAdjust(aid,tid,name){
+  if(!confirm('Remove this adjustment?')) return;
+  try{ await api('/api/admin/payout-adjust/'+aid,'DELETE'); toast('Adjustment removed.'); openPayoutDetail(tid,name); aPayFetch(); }
+  catch(e){ toast(e.message,true); }
 }
 window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 </script>

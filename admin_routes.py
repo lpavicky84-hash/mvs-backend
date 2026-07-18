@@ -1887,3 +1887,199 @@ def reset_portal_data(payload: dict, db: Session = Depends(get_db), _=Depends(ge
     db.commit()
     return {"message": "Portal data reset complete.", "deleted": results,
             "errors": errors[:6]}
+
+# =====================================================================
+# ADMIN: TEACHER ATTENDANCE + CONTRACTS (APPOINTMENT LETTERS) + PAYOUTS
+# =====================================================================
+def _teacher_name_map(db):
+    from models import TeacherProfile
+    out = {}
+    for tp in db.query(TeacherProfile).all():
+        out[tp.id] = tp.user.name if tp.user else f"Teacher {tp.id}"
+    return out
+
+@router.get("/attendance")
+def admin_attendance_day(day: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Ek din ki attendance — saare active teachers, punch in/out ke saath."""
+    from models import TeacherAttendance, TeacherProfile, User
+    from teacher_routes import _ist_now, _fmt_t, _att_hours
+    try:
+        d = datetime.strptime(day, "%Y-%m-%d").date() if day else _ist_now().date()
+    except Exception:
+        d = _ist_now().date()
+    rows = {a.teacher_id: a for a in db.query(TeacherAttendance).filter(TeacherAttendance.att_date == d).all()}
+    out = []
+    for tp in db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all():
+        a = rows.get(tp.id)
+        status = "absent"
+        if a and a.punch_in and a.punch_out:
+            status = "done"
+        elif a and a.punch_in:
+            status = "working"
+        out.append({"teacher_id": tp.id, "name": tp.user.name if tp.user else "",
+                    "punch_in": _fmt_t(a.punch_in) if a else None,
+                    "punch_out": _fmt_t(a.punch_out) if a else None,
+                    "hours": _att_hours(a), "status": status})
+    out.sort(key=lambda x: (x["status"] == "absent", x["name"]))
+    return {"date": str(d), "day": d.strftime("%A"), "teachers": out,
+            "present": sum(1 for x in out if x["status"] != "absent"),
+            "total": len(out)}
+
+@router.get("/attendance/month")
+def admin_attendance_month(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Month summary — teacher-wise present days + total hours."""
+    from models import TeacherAttendance, TeacherProfile, User
+    from teacher_routes import _month_range
+    start, end = _month_range(month)
+    rows = db.query(TeacherAttendance).filter(
+        TeacherAttendance.att_date >= start, TeacherAttendance.att_date < end).all()
+    agg = {}
+    for a in rows:
+        g = agg.setdefault(a.teacher_id, {"present": 0, "hours": 0.0})
+        if a.punch_in:
+            g["present"] += 1
+        if a.punch_in and a.punch_out:
+            g["hours"] += (a.punch_out - a.punch_in).total_seconds() / 3600
+    out = []
+    for tp in db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all():
+        g = agg.get(tp.id, {"present": 0, "hours": 0.0})
+        out.append({"teacher_id": tp.id, "name": tp.user.name if tp.user else "",
+                    "present_days": g["present"], "total_hours": round(g["hours"], 1)})
+    out.sort(key=lambda x: -x["present_days"])
+    return {"month": start.strftime("%Y-%m"), "teachers": out}
+
+@router.get("/attendance/teacher/{tid}")
+def admin_attendance_teacher(tid: int, month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Ek teacher ki date-wise attendance (admin detail view)."""
+    from models import TeacherAttendance
+    from teacher_routes import _month_range, _fmt_t, _att_hours
+    start, end = _month_range(month)
+    rows = db.query(TeacherAttendance).filter(
+        TeacherAttendance.teacher_id == tid,
+        TeacherAttendance.att_date >= start, TeacherAttendance.att_date < end
+    ).order_by(TeacherAttendance.att_date.desc()).all()
+    return {"month": start.strftime("%Y-%m"),
+            "rows": [{"date": str(r.att_date), "day": r.att_date.strftime("%A"),
+                      "punch_in": _fmt_t(r.punch_in), "punch_out": _fmt_t(r.punch_out),
+                      "hours": _att_hours(r)} for r in rows]}
+
+# ===== CONTRACTS =====
+@router.get("/teacher/{tid}/contract")
+def admin_get_contract(tid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TeacherContract, TeacherProfile
+    from teacher_routes import _contract_out
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    c = db.query(TeacherContract).filter(TeacherContract.teacher_id == tid).first()
+    if not c:
+        return {"exists": False, "teacher_name": tp.user.name if tp.user else ""}
+    return _contract_out(c, tp.user.name if tp.user else "")
+
+@router.post("/teacher/{tid}/contract")
+def admin_set_contract(tid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Contract create/update. require_reaccept=True bhejo to teacher ko letter
+    dobara accept karna padega (terms badalne pe)."""
+    from models import TeacherContract, TeacherProfile
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    c = db.query(TeacherContract).filter(TeacherContract.teacher_id == tid).first()
+    creating = c is None
+    if creating:
+        c = TeacherContract(teacher_id=tid)
+        db.add(c)
+    if "designation" in payload:
+        c.designation = (payload.get("designation") or "Subject Teacher").strip() or "Subject Teacher"
+    if "joining_date" in payload:
+        d = (payload.get("joining_date") or "").strip()
+        if d:
+            try:
+                c.joining_date = datetime.strptime(d, "%Y-%m-%d").date()
+            except Exception:
+                raise HTTPException(status_code=400, detail="Joining date must be in YYYY-MM-DD format")
+        else:
+            c.joining_date = None
+    def _num(k, cur):
+        try:
+            return max(0, int(payload.get(k)))
+        except Exception:
+            return cur
+    if "base_salary" in payload:
+        c.base_salary = _num("base_salary", c.base_salary or 0)
+    if "allowances" in payload:
+        c.allowances = _num("allowances", c.allowances or 0)
+    if "working_days" in payload:
+        wd = _num("working_days", c.working_days or 26)
+        c.working_days = min(31, max(1, wd))
+    if "rules_text" in payload:
+        c.rules_text = (payload.get("rules_text") or "").strip() or None
+    if creating or payload.get("require_reaccept"):
+        c.accepted = False
+        c.accepted_at = None
+        c.signature_name = None
+    db.commit()
+    return {"message": "Contract saved. The teacher will see the appointment letter on next portal open."
+            if (creating or payload.get("require_reaccept")) else "Contract saved."}
+
+# ===== PAYOUTS =====
+@router.get("/payouts")
+def admin_payouts(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Month ke liye saare teachers ka payout overview (contract ho ya na ho)."""
+    from models import TeacherProfile, User, TeacherContract
+    from teacher_routes import compute_payout, _month_range
+    start, _e = _month_range(month)
+    mk = start.strftime("%Y-%m")
+    out = []
+    for tp in db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all():
+        name = tp.user.name if tp.user else ""
+        p = compute_payout(db, tp.id, mk)
+        if p:
+            p.update({"teacher_id": tp.id, "name": name, "configured": True})
+            out.append(p)
+        else:
+            out.append({"teacher_id": tp.id, "name": name, "configured": False, "month": mk})
+    out.sort(key=lambda x: (not x["configured"], x["name"]))
+    total = sum(x.get("net_payout", 0) for x in out if x.get("configured"))
+    return {"month": mk, "teachers": out, "total_net": total}
+
+@router.get("/teacher/{tid}/payout")
+def admin_teacher_payout(tid: int, month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    from teacher_routes import compute_payout
+    p = compute_payout(db, tid, month)
+    if not p:
+        return {"exists": False}
+    p["exists"] = True
+    return p
+
+@router.post("/teacher/{tid}/payout-adjust")
+def admin_add_adjustment(tid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import PayoutAdjustment, TeacherProfile
+    from teacher_routes import _month_range
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    kind = (payload.get("kind") or "").strip()
+    if kind not in ("extra", "bonus", "deduction"):
+        raise HTTPException(status_code=400, detail="Type must be extra, bonus or deduction")
+    try:
+        amount = int(payload.get("amount"))
+        assert amount > 0
+    except Exception:
+        raise HTTPException(status_code=400, detail="Amount must be a positive number")
+    start, _e = _month_range((payload.get("month") or "").strip())
+    a = PayoutAdjustment(teacher_id=tid, month=start.strftime("%Y-%m"), kind=kind,
+                         amount=amount, note=(payload.get("note") or "").strip()[:200] or None)
+    db.add(a)
+    db.commit()
+    return {"message": "Adjustment added", "id": a.id}
+
+@router.delete("/payout-adjust/{aid}")
+def admin_delete_adjustment(aid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import PayoutAdjustment
+    a = db.query(PayoutAdjustment).filter(PayoutAdjustment.id == aid).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Adjustment not found")
+    db.delete(a)
+    db.commit()
+    return {"message": "Adjustment removed"}
