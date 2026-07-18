@@ -1798,6 +1798,15 @@ body.dark .al-lh .b{color:hsl(45 90% 60%)}
 body.dark .al-sig{color:hsl(45 90% 60%)}
 .al-rules li{margin-bottom:5px}
 @media(max-width:640px){.pw-clock{font-size:1.5rem}.po-net{font-size:1.8rem}}
+/* ---- ongoing shortcut chip + event ongoing glow + jump flash ---- */
+.ov-live{display:inline-flex;align-items:center;gap:8px;margin-top:12px;margin-right:8px;background:rgba(249,115,22,.16);border:1px solid rgba(249,115,22,.5);color:#fff;padding:7px 13px;border-radius:9999px;font-size:.78rem;font-weight:800;cursor:pointer;animation:pwGlow 2.2s ease-in-out infinite;max-width:100%;transition:background .15s}
+.ov-live:hover{background:rgba(249,115,22,.3)}
+.ov-live .d{width:8px;height:8px;border-radius:50%;background:hsl(25 95% 60%);animation:pwDot 1.2s ease-in-out infinite;flex-shrink:0}
+.ov-live .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stl-node.ongoing .stl-card.event{border:2px solid var(--accent);box-shadow:0 0 0 4px rgba(255,107,43,.14),0 14px 32px -14px rgba(15,42,84,.5)}
+.dark .stl-node.ongoing .stl-card.event{border-color:var(--accent);box-shadow:0 0 0 4px rgba(226,180,88,.16),0 14px 32px -14px rgba(0,0,0,.75)}
+.stl-node.flash .stl-card{box-shadow:0 0 0 4px rgba(249,115,22,.7)!important;transition:box-shadow .25s}
+
 /* ---- Kimi-style premium upgrades ---- */
 .pw-shell{background:linear-gradient(150deg,rgba(249,115,22,.10),var(--card) 45%);border:1px solid var(--border);border-radius:18px;overflow:hidden;box-shadow:0 8px 26px rgba(15,23,42,.07)}
 .pw-banner{background:linear-gradient(120deg,hsl(222 55% 12%),hsl(219 62% 18%) 60%,hsl(230 50% 14%));color:#fff;text-align:center;padding:24px 18px;position:relative;overflow:hidden}
@@ -6588,7 +6597,7 @@ function toggleAcc(id){ const body=document.getElementById(id); if(body) body.pa
 // ===== Professional Timeline (chapter flow + inline events + step status) =====
 const _TODAY=new Date(); _TODAY.setHours(0,0,0,0);
 function _statusOf(dates){
-  const valid=dates.filter(Boolean).map(d=>new Date(d));
+  const valid=dates.filter(Boolean).map(d=>new Date(String(d).length===10?String(d)+'T00:00:00':d));
   if(!valid.length) return 'upcoming';
   const max=new Date(Math.max(...valid)), min=new Date(Math.min(...valid));
   if(max<_TODAY) return 'done';
@@ -6695,6 +6704,16 @@ function renderWeeklyView(list){
 function item_label(ch,part){ return part?ch+' — '+part:ch; }
 // ===== DEDICATED STUDENT TIMETABLE (design match) =====
 function _partDone(p){ return p.completed||_statusOf([p.date])==='done'; }
+function ttJump(cid, subjEnc, tabFn, cls, clsFn){
+  // Ongoing chip pe click: (zaroorat ho to) class + subject select karke seedha
+  // ongoing node tak smooth-scroll — user ko khud scroll nahi karna padta.
+  const scroll=()=>{
+    const n=document.querySelector('#'+cid+' .stl-node.ongoing')||document.querySelector('#'+cid+' .stl-node.current');
+    if(n){ n.scrollIntoView({behavior:'smooth',block:'center'}); n.classList.add('flash'); setTimeout(()=>n.classList.remove('flash'),1800); }
+  };
+  const pick=()=>{ if(subjEnc&&tabFn&&window[tabFn]){ window[tabFn](subjEnc); setTimeout(scroll,320); } else scroll(); };
+  if(cls&&clsFn&&window[clsFn]){ window[clsFn](cls); setTimeout(pick,320); } else pick();
+}
 function _clsOfEntry(e){ const c=String(e.class_name||''); if(/(^|[^0-9])10([^0-9]|$)/.test(c)) return '10'; if(/12/.test(c)) return '12'; return ''; }
 function _classSplit(entries, opts){
   // Same naam ke subjects (e.g. Data Entry Operations) Class 10 aur 12 dono me hon
@@ -6737,12 +6756,31 @@ function renderStudentTimetable(entries, containerId, opts={}){
   const subPct=subT?Math.round(subD/subT*100):0;
   _ttLast={entries,containerId,opts,student:true};
   const toggle=`<div class="tt-toggle"><button class="${_ttView==='timeline'?'active':''}" onclick="setTtView('timeline')">Chapter Timeline</button><button class="${_ttView==='weekly'?'active':''}" onclick="setTtView('weekly')">Weekly View</button></div>`;
-  const overall=`<div class="ov-card"><div class="ov-top"><div><div class="ov-lbl">${esc(active||'Overall')} Progress</div><div class="ov-big">${subD} / ${subT} Classes</div></div><div class="ov-pct"><div class="ov-pct-num">${subPct}%</div><div class="ov-pct-lbl">Completed</div></div></div><div class="ov-bar"><div class="ov-fill" style="width:${subPct}%"></div></div><div class="ov-badges">${opts.batch?`<span class="ov-badge">${esc(opts.batch)}</span><span class="ov-badge">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span>`:(opts.scopeLabel?`<span class="ov-badge">${esc(opts.scopeLabel)}</span>`:'')}<span class="ov-badge-plain">${subjects.length} subject${subjects.length>1?'s':''}</span><span class="ov-badge-plain ov-all">All subjects: <b>${doneParts}/${totalParts}</b> \u00b7 ${pct}%</span></div></div>`;
   const _tab=opts.onTab||'sSetSubj';
+  const _clsVal=opts.activeClass||'';
+  // ---- ONGOING shortcut chip: kya chal raha hai + click to jump ----
+  const _tdN=new Date(); const _tdK=_tdN.getFullYear()+'-'+String(_tdN.getMonth()+1).padStart(2,'0')+'-'+String(_tdN.getDate()).padStart(2,'0');
+  const _liveOf=list=>{
+    const _isToday=it=> it.kind==='event'?(it.data.date===_tdK):it.parts.some(p=>p.date===_tdK);
+    for(const it of list){ const ds=it.kind==='event'?[it.data.date]:it.parts.map(p=>p.date); if(_statusOf(ds)==='current'&&_isToday(it)) return {name:(it.kind==='event'?it.data.chapter:it.chapter),today:true}; }
+    for(const it of list){ const ds=it.kind==='event'?[it.data.date]:it.parts.map(p=>p.date); if(_statusOf(ds)==='current') return {name:(it.kind==='event'?it.data.chapter:it.chapter),today:false}; }
+    return null;
+  };
+  let liveChip='';
+  if(_ttView!=='weekly'){
+    if(active){
+      const o=_liveOf(tl[active]);
+      if(o) liveChip=`<div class="ov-live" onclick="ttJump('${containerId}')" title="Click to jump to this position"><span class="d"></span><span class="t">${o.today?'LIVE TODAY':'ONGOING'}: ${esc(o.name)}</span></div>`;
+    } else if(_casc){
+      const chips=[];
+      subjects.forEach(s=>{ const o=_liveOf(tl[s]); if(o){ const ent=entries.find(e=>e.subject===s)||{}; const cl=_clsOfEntry(ent); chips.push(`<div class="ov-live" onclick="ttJump('${containerId}','${encodeURIComponent(s)}','${_tab}','${cl}','${opts.onClassFilter}')" title="Click to open this subject at the ongoing position"><span class="d"></span><span class="t">${esc(s)}: ${esc(o.name)}</span></div>`); } });
+      liveChip=chips.slice(0,4).join(' ');
+    }
+  }
+  const overall=`<div class="ov-card"><div class="ov-top"><div><div class="ov-lbl">${esc(active||'Overall')} Progress</div><div class="ov-big">${subD} / ${subT} Classes</div></div><div class="ov-pct"><div class="ov-pct-num">${subPct}%</div><div class="ov-pct-lbl">Completed</div></div></div><div class="ov-bar"><div class="ov-fill" style="width:${subPct}%"></div></div><div class="ov-badges">${opts.batch?`<span class="ov-badge">${esc(opts.batch)}</span><span class="ov-badge">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span>`:(opts.scopeLabel?`<span class="ov-badge">${esc(opts.scopeLabel)}</span>`:'')}${(_casc&&active)?`${(_clsVal==='10'||_clsVal==='12')?`<span class="ov-badge-plain">Class ${_clsVal}</span>`:''}`:`<span class="ov-badge-plain">${subjects.length} subject${subjects.length>1?'s':''}</span><span class="ov-badge-plain ov-all">All subjects: <b>${doneParts}/${totalParts}</b> \u00b7 ${pct}%</span>`}</div>${liveChip}</div>`;
   // 5+ subjects -> master dropdown; kam ho to pills (student ke liye pills theek hain)
   const isWeek=_ttView==='weekly';
   const allSel=isWeek && opts.activeSubject==='__all';
-  const _clsVal=opts.activeClass||'';
   const _noCls=_casc && !_clsVal;
   const tabs = _casc
     ? `<div class="fbar">
@@ -6788,8 +6826,12 @@ function renderStudentChapters(list, subject, opts){
   // ONGOING = sirf EK chapter (jahan teacher abhi hai). Baaki overlapping chapters
   // "In Progress" dikhte hain — do jagah CURRENT wala confusion khatam.
   let cur=-1;
-  // 1) sabse pehla chapter jiska koi part aaj/aane wala hai aur kuch parts done hain
-  for(let i=0;i<sts.length;i++){ if(sts[i]==='current' && list[i].kind==='chapter'){ cur=i; break; } }
+  const _cd=new Date(); const _cdK=_cd.getFullYear()+'-'+String(_cd.getMonth()+1).padStart(2,'0')+'-'+String(_cd.getDate()).padStart(2,'0');
+  const _hasToday=it=> it.kind==='event' ? (it.data.date===_cdK) : it.parts.some(p=>p.date===_cdK);
+  // 1) AAJ jiska din hai — chahe test/DPP/doubt event ho ya chapter part — wahi ONGOING
+  for(let i=0;i<sts.length;i++){ if(sts[i]==='current' && _hasToday(list[i])){ cur=i; break; } }
+  // 2) warna current chapter, 3) koi bhi current, 4) pehla upcoming
+  if(cur<0) for(let i=0;i<sts.length;i++){ if(sts[i]==='current' && list[i].kind==='chapter'){ cur=i; break; } }
   if(cur<0) for(let i=0;i<sts.length;i++){ if(sts[i]==='current'){ cur=i; break; } }
   if(cur<0) for(let i=0;i<sts.length;i++){ if(sts[i]==='upcoming'){ cur=i; break; } }
   const items=list.map((it,i)=>{
@@ -6806,7 +6848,7 @@ function renderStudentNode(item, st, tmap, opts, ongoing){
     const e=item.data; const isT=_isTest(e.chapter);
     const lbl=st==='current'?'Live':st==='done'?'Done':st==='progress'?'In Progress':'Upcoming';
     const edel=`${opts.onEditAny?`<button class="btn btn-ghost btn-sm stl-act" onclick="${opts.onEditAny}(${e.id})">${ic('edit')}</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${e.id})">${ic('trash')}</button>`:''}`;
-    return `<div class="stl-node ${st}">${dot}<div class="stl-card event ${isT?'test':''}"><div class="stl-chead"><div class="stl-cname">${esc(e.chapter)}</div><div class="stl-cmeta">${e.date?`<span class="stl-date">${fmtNice(e.date)}${e.day?' · '+esc(e.day):''}</span>`:''}<span class="stl-badge ${st}">${lbl}</span>${edel}</div></div></div></div>`;
+    return `<div class="stl-node ${st}${ongoing?' ongoing':''}">${dot}<div class="stl-card event ${isT?'test':''}${ongoing?' ongoing':''}"><div class="stl-chead"><div class="stl-cname">${esc(e.chapter)}</div><div class="stl-cmeta">${e.date?`<span class="stl-date">${fmtNice(e.date)}${e.day?' · '+esc(e.day):''}</span>`:''}<span class="stl-badge ${st}">${lbl}</span>${edel}</div></div></div></div>`;
   }
   const parts=item.parts, open=(st==='current'||ongoing), id='stl-'+Math.random().toString(36).slice(2,8);
   const _hasAct=opts.onEdit||opts.onEditAny||opts.onDelete||opts.onComplete||opts.onLecture;
