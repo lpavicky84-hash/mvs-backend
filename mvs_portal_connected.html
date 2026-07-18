@@ -1821,6 +1821,54 @@ body.dark .al-sig{color:hsl(45 90% 60%)}
 .chlist-name{font-weight:700;font-size:.9rem}
 .chlist-sub{font-size:.72rem;color:var(--text-muted);font-weight:600;margin-top:2px}
 .file-drop.dragging{border-color:hsl(25 95% 53%);background:rgba(249,115,22,.08);transform:scale(1.01)}
+/* ---- premium subject hero (ov2) ---- */
+.ov2 .ov2-top{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;flex-wrap:wrap}
+.ov2-id{display:flex;gap:14px;align-items:flex-start;min-width:0}
+.ov2-av{width:58px;height:58px;border-radius:16px;background:linear-gradient(135deg,hsl(25 95% 53%),hsl(35 95% 50%));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.05rem;color:#fff;flex-shrink:0;box-shadow:0 8px 20px rgba(249,115,22,.35)}
+.ov2-name{font-size:1.45rem;font-weight:800;line-height:1.2}
+.ov2-sub{font-size:.82rem;opacity:.75;font-weight:600;margin-top:3px}
+.ov2 .ov-live{margin-top:10px}
+.ov2-ring{position:relative;width:96px;height:96px;flex-shrink:0}
+.ov2-ring svg{width:96px;height:96px}
+.ov2-ringtxt{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ov2-ringtxt .n{font-size:1.25rem;font-weight:800}
+.ov2-ringtxt .l{font-size:.55rem;letter-spacing:.12em;opacity:.7;font-weight:800}
+.ov2-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:18px}
+@media(max-width:640px){.ov2-tiles{grid-template-columns:repeat(2,1fr)}}
+.ov2-tile{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:13px;padding:12px 14px;cursor:pointer;transition:background .15s,transform .15s}
+.ov2-tile:hover{background:rgba(255,255,255,.14);transform:translateY(-1px)}
+.ov2-tile.static{cursor:default}
+.ov2-tile.static:hover{background:rgba(255,255,255,.07);transform:none}
+.ov2-tile .n{font-size:1.25rem;font-weight:800}
+.ov2-tile .n span{font-size:.85rem;opacity:.6;font-weight:700}
+.ov2-tile .l{font-size:.68rem;opacity:.7;font-weight:700;margin-top:2px}
+.ov2-bar{margin-top:16px}
+.ov2 .ov-fill{background:linear-gradient(90deg,hsl(25 95% 53%),hsl(45 95% 55%))}
+.ov2-foot{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:12px;font-size:.82rem}
+.ov2-foot .nw{opacity:.9}
+.ov2-foot .nt{opacity:.75;font-weight:700}
+/* ---- chapter progress modal (chl2) ---- */
+.chl2-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.chl2-tab{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:9999px;padding:7px 14px;font-size:.78rem;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:all .15s}
+.chl2-tab span{background:var(--bg);border-radius:9999px;padding:1px 8px;font-size:.7rem}
+.chl2-tab.on{background:linear-gradient(135deg,hsl(25 95% 53%),hsl(35 95% 50%));border-color:transparent;color:#fff;box-shadow:0 6px 16px rgba(249,115,22,.35)}
+.chl2-tab.on span{background:rgba(255,255,255,.22);color:#fff}
+.chl2{max-height:52vh;overflow-y:auto;position:relative;padding-left:6px}
+.chl2-row{display:flex;align-items:center;gap:14px;padding:13px 10px;border-radius:13px;position:relative}
+.chl2-row+.chl2-row{margin-top:2px}
+.chl2-row.live{border:1.5px solid hsl(25 95% 60%);background:linear-gradient(90deg,rgba(249,115,22,.08),transparent 65%);animation:pwGlow 2.2s ease-in-out infinite}
+.chl2-ic{width:38px;height:38px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:800}
+.chl2-ic.done{background:rgba(16,185,129,.14);border:2px solid rgba(16,185,129,.55);color:#059669}
+.chl2-ic.done svg{width:17px;height:17px}
+.chl2-ic.live{background:linear-gradient(135deg,hsl(25 95% 53%),hsl(35 95% 50%));color:#fff;box-shadow:0 6px 14px rgba(249,115,22,.4)}
+.chl2-ic.live .dd{width:9px;height:9px;border-radius:50%;background:#fff;animation:pwDot 1.2s ease-in-out infinite}
+.chl2-ic.up{border:2px dashed var(--border);background:var(--bg)}
+.chl2-main{flex:1;min-width:0}
+.chl2-name{font-weight:800;font-size:.92rem}
+.chl2-meta{font-size:.76rem;color:var(--text-muted);font-weight:600;margin-top:3px}
+.chl2-mini{height:5px;border-radius:9999px;background:var(--bg);border:1px solid var(--border);overflow:hidden;margin-top:7px;max-width:190px}
+.chl2-mini div{height:100%;background:linear-gradient(90deg,hsl(25 95% 53%),hsl(45 95% 55%));border-radius:9999px}
+
 
 
 /* ---- Kimi-style premium upgrades ---- */
@@ -6720,23 +6768,63 @@ function renderWeeklyView(list){
 function item_label(ch,part){ return part?ch+' — '+part:ch; }
 // ===== DEDICATED STUDENT TIMETABLE (design match) =====
 function _partDone(p){ return p.completed||_statusOf([p.date])==='done'; }
+function _chStatus(c, cur){
+  if(c.done) return 'completed';
+  if(c.started || c.name===cur) return 'ongoing';
+  return 'upcoming';
+}
 function ttChapters(cid, mode){
-  // Progress card ke Total/Completed pe click: chapters ke naam ek window me.
+  // Chapter Progress window — premium timeline with filter tabs (all portals).
   const d=(window._ttChap||{})[cid];
   if(!d||!d.list.length){ toast('No chapters found.',true); return; }
-  const rows=mode==='done'?d.list.filter(c=>c.done):d.list;
-  const title=(mode==='done'?`Completed Chapters (${rows.length})`:`All Chapters (${rows.length})`)+' - '+d.label;
+  window._ttChapMode={cid:cid, mode:mode||'all'};
+  showModal('Chapter Progress - '+d.label,
+    `<div class="chl2-tabs" id="chl-tabs"></div><div class="chl2" id="chl-list"></div>`,
+    `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
+  ttChapTab(cid, mode||'all');
+}
+function ttChapTab(cid, mode){
+  const d=(window._ttChap||{})[cid]; if(!d) return;
+  window._ttChapMode={cid:cid, mode:mode};
+  const withSt=d.list.map(c=>Object.assign({st:_chStatus(c,d.cur)},c));
+  const counts={all:withSt.length,
+    completed:withSt.filter(c=>c.st==='completed').length,
+    ongoing:withSt.filter(c=>c.st==='ongoing').length,
+    upcoming:withSt.filter(c=>c.st==='upcoming').length};
+  const tabsEl=document.getElementById('chl-tabs'); if(!tabsEl) return;
+  const mk=(m,lbl)=>`<button class="chl2-tab ${mode===m?'on':''}" onclick="ttChapTab('${cid}','${m}')">${lbl}<span>${counts[m==='done'?'completed':m]||0}</span></button>`;
+  tabsEl.innerHTML=mk('all','All Chapters')+mk('done','Completed')+mk('ongoing','Ongoing')+mk('upcoming','Upcoming');
+  const rows=withSt.filter(c=> mode==='all'?true : mode==='done'?c.st==='completed' : c.st===mode);
+  const list=document.getElementById('chl-list'); if(!list) return;
   if(!rows.length){
-    showModal(title, `<div class="empty-state"><p>No chapters have been completed yet. As classes finish, they will appear here.</p></div>`,
-      `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
+    const msg=mode==='done'?'No chapters have been completed yet. As classes finish, they will appear here.'
+      :mode==='ongoing'?'No chapter is running at the moment.'
+      :'No upcoming chapters remain in this timetable.';
+    list.innerHTML=`<div class="empty-state" style="padding:34px 10px"><p>${msg}</p></div>`;
     return;
   }
-  const body=rows.map((c,i)=>{
-    const st=c.done?'<span class="po-pill green">COMPLETED</span>':(c.started?'<span class="po-pill amber">IN PROGRESS</span>':'<span class="po-pill slate">UPCOMING</span>');
-    return `<div class="chlist-row"><div style="min-width:0"><div class="chlist-name">${i+1}. ${esc(c.name)}</div>${d.multi?`<div class="chlist-sub">${esc(c.subject)}</div>`:''}</div>${st}</div>`;
+  list.innerHTML=rows.map(c=>{
+    let icon, meta, pill, cls='';
+    const lec=c.total+' lecture'+(c.total===1?'':'s');
+    if(c.st==='completed'){
+      icon=`<div class="chl2-ic done">${ic('check')}</div>`;
+      meta=lec+(c.compDate?' \u00b7 Completed: '+esc(fmtNice(c.compDate)):'');
+      pill='<span class="po-pill green">COMPLETED</span>';
+    } else if(c.st==='ongoing'){
+      cls=' live';
+      icon=`<div class="chl2-ic live">${c.num?esc(c.num):'<span class="dd"></span>'}</div>`;
+      const nx=c.next?(' \u00b7 next '+esc(fmtNice(c.next.date))+(c.next.time?', '+esc(c.next.time):'')):'';
+      meta=(c.total>1&&c.next?('Part '+c.next.pos+' of '+c.total):lec)+nx;
+      const pw=c.total?Math.round(c.dnc/c.total*100):0;
+      pill='<span class="po-pill" style="background:rgba(249,115,22,.16);color:hsl(25 95% 48%)">ONGOING</span>';
+      meta+=`<div class="chl2-mini"><div style="width:${pw}%"></div></div>`;
+    } else {
+      icon=`<div class="chl2-ic up"></div>`;
+      meta=lec+(c.firstDate?' \u00b7 starts '+esc(fmtNice(c.firstDate)):'');
+      pill='<span class="po-pill slate">UPCOMING</span>';
+    }
+    return `<div class="chl2-row${cls}">${icon}<div class="chl2-main"><div class="chl2-name">${esc(c.name)}</div><div class="chl2-meta">${meta}${d.multi?' \u00b7 '+esc(c.subject):''}</div></div>${pill}</div>`;
   }).join('');
-  showModal(title, `<div class="chlist">${body}</div>`,
-    `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
 }
 function ttJump(cid, subjEnc, tabFn, cls, clsFn){
   // Ongoing chip pe click: (zaroorat ho to) class + subject select karke seedha
@@ -6800,20 +6888,79 @@ function renderStudentTimetable(entries, containerId, opts={}){
     for(const it of list){ const ds=it.kind==='event'?[it.data.date]:it.parts.map(p=>p.date); if(_statusOf(ds)==='current') return {name:(it.kind==='event'?it.data.chapter:it.chapter),today:false}; }
     return null;
   };
-  let liveChip='';
-  if(_ttView!=='weekly' && active){
-    const o=_liveOf(tl[active]);
-    if(o) liveChip=`<div class="ov-live" onclick="ttJump('${containerId}')" title="Click to jump to this position"><span class="d"></span><span class="t">${o.today?'LIVE TODAY':'ONGOING'}: ${esc(o.name)}</span></div>`;
+  // ---- Live/next detection: aaj -> LIVE TODAY, chal raha -> ONGOING,
+  //      kuch current na ho to agla upcoming bhi ONGOING dikhta hai
+  //      (warna student ko pata hi nahi chalta ki agla kya hai) ----
+  const _liveFull=list=>{
+    const _isToday=it=> it.kind==='event'?(it.data.date===_tdK):it.parts.some(p=>p.date===_tdK);
+    const nm=it=> it.kind==='event'?it.data.chapter:it.chapter;
+    for(const it of list){ const ds=it.kind==='event'?[it.data.date]:it.parts.map(p=>p.date); if(_statusOf(ds)==='current'&&_isToday(it)) return {name:nm(it),mode:'today',it}; }
+    for(const it of list){ const ds=it.kind==='event'?[it.data.date]:it.parts.map(p=>p.date); if(_statusOf(ds)==='current') return {name:nm(it),mode:'live',it}; }
+    for(const it of list){ const ds=it.kind==='event'?[it.data.date]:it.parts.map(p=>p.date); if(_statusOf(ds)==='upcoming') return {name:nm(it),mode:'next',it}; }
+    return null;
+  };
+  let liveChip='', _curLive=null;
+  if(active){ _curLive=_liveFull(tl[active]); }
+  if(_ttView!=='weekly' && _curLive){
+    liveChip=`<div class="ov-live" onclick="ttJump('${containerId}')" title="Click to jump to this position"><span class="d"></span><span class="t">${_curLive.mode==='today'?'LIVE TODAY':'ONGOING'}: ${esc(_curLive.name)}</span></div>`;
   }
-  // ---- Chapter stats: Total / Completed — clickable, naam ki list modal me ----
+  // ---- Chapter data (premium hero + chapter progress modal, teeno portals) ----
   const _chapAll=[];
-  subjects.forEach(s=>{ tl[s].forEach(it=>{ if(it.kind!=='chapter') return; const dn=it.parts.length>0&&it.parts.every(_partDone); const st2=it.parts.some(_partDone); _chapAll.push({subject:s,name:it.chapter,done:!!dn,started:!!st2}); }); });
+  subjects.forEach(s=>{ tl[s].forEach(it=>{ if(it.kind!=='chapter') return;
+    const total=it.parts.length, dnc=it.parts.filter(_partDone).length;
+    const dn=total>0&&dnc===total;
+    const dts=it.parts.map(p=>p.date).filter(Boolean).sort();
+    const nxt=it.parts.find(p=>p.date&&p.date>=_tdK&&!_partDone(p))||it.parts.find(p=>!_partDone(p));
+    const num=(String(it.chapter).match(/(?:chapter|lesson|ch|l)\s*[-.:\s]*(\d+)/i)||[])[1]||'';
+    _chapAll.push({subject:s,name:it.chapter,done:!!dn,started:dnc>0,total:total,dnc:dnc,
+      compDate:(dn&&dts.length)?dts[dts.length-1]:null,firstDate:dts[0]||null,
+      next:nxt?{date:nxt.date||null,time:nxt.time||null,pos:it.parts.indexOf(nxt)+1}:null,num:num});
+  }); });
   const _chapScope=active?_chapAll.filter(c=>c.subject===active):_chapAll;
   window._ttChap=window._ttChap||{};
-  window._ttChap[containerId]={list:_chapScope,label:active||'All Subjects',multi:!active};
+  window._ttChap[containerId]={list:_chapScope,label:active||'All Subjects',multi:!active,cur:(_curLive?_curLive.name:null)};
   const _chT=_chapScope.length, _chD=_chapScope.filter(c=>c.done).length;
-  const chapChips=_chT?`<div class="ov-chapstats"><span class="ov-chip" onclick="ttChapters('${containerId}','all')" title="View all chapter names">Total Chapters: <b>${_chT}</b></span><span class="ov-chip done" onclick="ttChapters('${containerId}','done')" title="View completed chapter names">Completed: <b>${_chD}</b></span></div>`:'';
-  const overall=`<div class="ov-card"><div class="ov-top"><div><div class="ov-lbl">${esc(active||'Overall')} Progress</div><div class="ov-big">${subD} / ${subT} Classes</div></div><div class="ov-pct"><div class="ov-pct-num">${subPct}%</div><div class="ov-pct-lbl">Completed</div></div></div><div class="ov-bar"><div class="ov-fill" style="width:${subPct}%"></div></div><div class="ov-badges">${opts.batch?`<span class="ov-badge">${esc(opts.batch)}</span><span class="ov-badge">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span>`:(opts.scopeLabel?`<span class="ov-badge">${esc(opts.scopeLabel)}</span>`:'')}${(_casc&&active)?`${(_clsVal==='10'||_clsVal==='12')?`<span class="ov-badge-plain">Class ${_clsVal}</span>`:''}`:`<span class="ov-badge-plain">${subjects.length} subject${subjects.length>1?'s':''}</span><span class="ov-badge-plain ov-all">All subjects: <b>${doneParts}/${totalParts}</b> \u00b7 ${pct}%</span>`}</div>${chapChips}${liveChip}</div>`;
+  const _chOn=_chapScope.filter(c=>!c.done&&(c.started||c.name===(_curLive?_curLive.name:null))).length;
+  const _chUp=Math.max(0,_chT-_chD-_chOn);
+  const chapChips=_chT?`<div class="ov-chapstats"><span class="ov-chip" onclick="ttChapters('${containerId}','all')" title="View all chapters">Total Chapters: <b>${_chT}</b></span><span class="ov-chip done" onclick="ttChapters('${containerId}','done')" title="View completed chapters">Completed: <b>${_chD}</b></span></div>`:'';
+  let overall='';
+  if(active){
+    // ---- Premium subject hero: avatar, ring, stat tiles, now-running footer ----
+    const _tinfo=(opts.tipTeacherMap||{})[active]||opts.tipTeacher||{};
+    const _clsTxt=(_clsVal==='10'||_clsVal==='12')?('Class '+_clsVal):((entries.find(e=>e.subject===active)||{}).class_name||'');
+    const _init=active.replace(/\(.*?\)/g,'').trim().split(/\s+/).map(w=>w[0]).join('').slice(0,3).toUpperCase();
+    const _R=26,_C=2*Math.PI*_R,_dash=(subPct/100*_C).toFixed(1);
+    let _nowTxt='All classes are up to date';
+    if(_curLive){
+      const cc=_chapScope.find(c=>c.name===_curLive.name);
+      _nowTxt=`Now running: <b>${esc(_curLive.name)}</b>`+((cc&&cc.next&&cc.total>1)?` (Part ${cc.next.pos} of ${cc.total})`:'');
+    }
+    let _nextTest='';
+    (tl[active]||[]).forEach(it=>{ if(it.kind==='event'&&_isTest(it.data.chapter||'')&&it.data.date&&it.data.date>=_tdK){ if(!_nextTest||it.data.date<_nextTest) _nextTest=it.data.date; } });
+    overall=`<div class="ov-card ov2">
+      <div class="ov2-top">
+        <div class="ov2-id">
+          <div class="ov2-av">${esc(_init||'S')}</div>
+          <div style="min-width:0">
+            <div class="ov2-name">${esc(active)}</div>
+            <div class="ov2-sub">${[_clsTxt,_tinfo.name,opts.batch].filter(Boolean).map(esc).join(' \u00b7 ')||esc(opts.scopeLabel||'')}</div>
+            ${liveChip}
+          </div>
+        </div>
+        <div class="ov2-ring"><svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="${_R}" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="6"/><circle cx="32" cy="32" r="${_R}" fill="none" stroke="url(#ovg-${containerId})" stroke-width="6" stroke-linecap="round" stroke-dasharray="${_dash} ${_C.toFixed(1)}" transform="rotate(-90 32 32)"/><defs><linearGradient id="ovg-${containerId}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(25 95% 55%)"/><stop offset="1" stop-color="hsl(45 95% 58%)"/></linearGradient></defs></svg><div class="ov2-ringtxt"><div class="n">${subPct}%</div><div class="l">COMPLETE</div></div></div>
+      </div>
+      <div class="ov2-tiles">
+        <div class="ov2-tile" onclick="ttChapters('${containerId}','all')" title="View all chapters"><div class="n">${_chD}<span>/${_chT}</span></div><div class="l">Chapters done</div></div>
+        <div class="ov2-tile static"><div class="n">${subD}<span>/${subT}</span></div><div class="l">Lectures</div></div>
+        <div class="ov2-tile" onclick="ttChapters('${containerId}','ongoing')" title="View ongoing chapter"><div class="n">${_chOn}</div><div class="l">Ongoing</div></div>
+        <div class="ov2-tile" onclick="ttChapters('${containerId}','upcoming')" title="View remaining chapters"><div class="n">${_chUp}</div><div class="l">Remaining</div></div>
+      </div>
+      <div class="ov-bar ov2-bar"><div class="ov-fill" style="width:${subPct}%"></div></div>
+      <div class="ov2-foot"><span class="nw">${_nowTxt}</span>${_nextTest?`<span class="nt">Next test: ${esc(fmtNice(_nextTest))}</span>`:''}</div>
+    </div>`;
+  } else {
+    overall=`<div class="ov-card"><div class="ov-top"><div><div class="ov-lbl">Overall Progress</div><div class="ov-big">${subD} / ${subT} Classes</div></div><div class="ov-pct"><div class="ov-pct-num">${subPct}%</div><div class="ov-pct-lbl">Completed</div></div></div><div class="ov-bar"><div class="ov-fill" style="width:${subPct}%"></div></div><div class="ov-badges">${opts.batch?`<span class="ov-badge">${esc(opts.batch)}</span><span class="ov-badge">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span>`:(opts.scopeLabel?`<span class="ov-badge">${esc(opts.scopeLabel)}</span>`:'')}<span class="ov-badge-plain">${subjects.length} subject${subjects.length>1?'s':''}</span><span class="ov-badge-plain ov-all">All subjects: <b>${doneParts}/${totalParts}</b> \u00b7 ${pct}%</span></div>${chapChips}</div>`;
+  }
   // 5+ subjects -> master dropdown; kam ho to pills (student ke liye pills theek hain)
   const isWeek=_ttView==='weekly';
   const allSel=isWeek && opts.activeSubject==='__all';
