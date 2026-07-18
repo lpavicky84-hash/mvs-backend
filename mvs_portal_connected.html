@@ -1825,6 +1825,7 @@ body.dark .al-sig{color:hsl(45 90% 60%)}
 .ov2 .ov2-top{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;flex-wrap:wrap}
 .ov2-id{display:flex;gap:14px;align-items:flex-start;min-width:0}
 .ov2-av{width:58px;height:58px;border-radius:16px;background:linear-gradient(135deg,hsl(25 95% 53%),hsl(35 95% 50%));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.05rem;color:#fff;flex-shrink:0;box-shadow:0 8px 20px rgba(249,115,22,.35)}
+.ov2-av.photo{background:var(--bg);background-size:cover;background-position:center;border:2px solid rgba(255,255,255,.35)}
 .ov2-name{font-size:1.45rem;font-weight:800;line-height:1.2}
 .ov2-sub{font-size:.82rem;opacity:.75;font-weight:600;margin-top:3px}
 .ov2 .ov-live{margin-top:10px}
@@ -3209,10 +3210,10 @@ async function loadTTimetable(){
       try{ const r=await fetch(API+'/api/teacher/my-photo',{headers:{Authorization:'Bearer '+TOKEN}}); if(r.ok) url=URL.createObjectURL(await r.blob()); }catch(e){}
       [...new Set(_ttEntries.map(e=>e.subject))].forEach(sub=>{ window._ttTeacherMap[sub]={name:me.name||NAME,url}; });
     }catch(e){ window._ttTeacherMap=window._ttTeacherMap||{}; }
-    renderStudentTimetable(tFilteredTT(),'t-tline-wrap',{onEdit:true,onDelete:'deleteTTEntry',onClassFilter:'tClassFilter',activeClass:_ttClass,tipTeacherMap:window._ttTeacherMap||{},onLecture:true,onComplete:'openClassReport',emptyMsg:'No timetable for your subjects yet.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'});
+    renderStudentTimetable(_ttEntries,'t-tline-wrap',{onEdit:true,onDelete:'deleteTTEntry',tipTeacherMap:window._ttTeacherMap||{},onLecture:true,onComplete:'openClassReport',emptyMsg:'No timetable for your subjects yet.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'});
   }catch(e){ el.innerHTML=errHtml(e); }
 }
-function tSetSubj(s){ _ttActiveSub=decodeURIComponent(s); renderStudentTimetable(tFilteredTT(),'t-tline-wrap',{tipTeacherMap:window._ttTeacherMap||{},onEdit:true,onDelete:'deleteTTEntry',onClassFilter:'tClassFilter',activeClass:_ttClass,onLecture:true,onComplete:'openClassReport',emptyMsg:'No entries.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'}); }
+function tSetSubj(s){ _ttActiveSub=decodeURIComponent(s); renderStudentTimetable(_ttEntries,'t-tline-wrap',{tipTeacherMap:window._ttTeacherMap||{},onEdit:true,onDelete:'deleteTTEntry',onLecture:true,onComplete:'openClassReport',emptyMsg:'No entries.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'}); }
 let _ttClass='';
 function tFilteredTT(){
   return (_ttEntries||[]).filter(e=>{
@@ -6929,6 +6930,7 @@ function renderStudentTimetable(entries, containerId, opts={}){
     const _tinfo=(opts.tipTeacherMap||{})[active]||opts.tipTeacher||{};
     const _clsTxt=(_clsVal==='10'||_clsVal==='12')?('Class '+_clsVal):((entries.find(e=>e.subject===active)||{}).class_name||'');
     const _init=active.replace(/\(.*?\)/g,'').trim().split(/\s+/).map(w=>w[0]).join('').slice(0,3).toUpperCase();
+    const _av=_tinfo.url?`<div class="ov2-av photo" style="background-image:url('${_tinfo.url}')"></div>`:`<div class="ov2-av">${esc(_init||'S')}</div>`;
     const _R=26,_C=2*Math.PI*_R,_dash=(subPct/100*_C).toFixed(1);
     let _nowTxt='All classes are up to date';
     if(_curLive){
@@ -6940,7 +6942,7 @@ function renderStudentTimetable(entries, containerId, opts={}){
     overall=`<div class="ov-card ov2">
       <div class="ov2-top">
         <div class="ov2-id">
-          <div class="ov2-av">${esc(_init||'S')}</div>
+          ${_av}
           <div style="min-width:0">
             <div class="ov2-name">${esc(active)}</div>
             <div class="ov2-sub">${[_clsTxt,_tinfo.name,opts.batch].filter(Boolean).map(esc).join(' \u00b7 ')||esc(opts.scopeLabel||'')}</div>
@@ -6981,13 +6983,7 @@ function renderStudentTimetable(entries, containerId, opts={}){
            ${(_noCls&&!isWeek)?'':subjects.map(s=>{const n=tl[s].filter(it=>it.kind==='chapter').length||tl[s].length; return `<option value="${esc(s)}"${(!allSel&&s===active)?' selected':''}>${esc(s)} \u00b7 ${n} chapters</option>`;}).join('')}
          </select>
        </div>`
-    : `<div class="fbar">
-         <div class="fbar-l">${ic('book')}<span>Subject</span></div>
-         <select class="fbar-sel" onchange="${_tab}(encodeURIComponent(this.value))">
-           ${isWeek?`<option value="__all"${allSel?' selected':''}>All Subjects \u00b7 ${subjects.length}</option>`:''}
-           ${subjects.map(s=>{const n=tl[s].filter(it=>it.kind==='chapter').length||tl[s].length; return `<option value="${esc(s)}"${(!allSel&&s===active)?' selected':''}>${esc(s)} \u00b7 ${n} chapters</option>`;}).join('')}
-         </select>
-       </div>`;
+    : `<div class="fbar"><div class="fbar-chips">${isWeek?`<button class="fchip ${allSel?'on':''}" onclick="${_tab}('__all')">All Subjects</button>`:''}${subjects.map(s=>{ const n=tl[s].filter(it=>it.kind==='chapter').length||tl[s].length; return `<button class="fchip ${(!allSel&&s===active)?'on':''}" onclick="${_tab}('${encodeURIComponent(s)}')">${esc(s)}<span class="fchip-n">${n}</span></button>`; }).join('')}</div></div>`;
   const wkSubs=(_ttView==='weekly'&&opts.activeSubject==='__all')?subjects:(_ttView==='weekly'?[active]:subjects);
   const body=_ttView==='weekly'
     ? renderStudentWeekly(tl,wkSubs,opts)
