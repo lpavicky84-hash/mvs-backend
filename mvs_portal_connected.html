@@ -2104,7 +2104,8 @@ async function submitTeacherNotify(){
   try{ const r=await api('/api/teacher/notify','POST',{title,message}); closeModal(); toast(r.message); }catch(e){ toast(e.message,true); }
 }
 // ===== ADMIN PDF UPLOAD =====
-function pdfSubjOptions(selId,cls){
+async function pdfSubjOptions(selId,cls){
+  await ensureSubjects();
   const sel=document.getElementById(selId); if(!sel) return;
   const cur=sel.value;
   const list=((window._allSubjects||{})[cls]||[]);
@@ -4394,7 +4395,8 @@ async function submitAddTeacher(){
   }catch(e){ toast(e.message,true); }
 }
 
-function openEditTeacher(pid,data){
+async function openEditTeacher(pid,data){
+  await ensureSubjects();
   const sc=(data.subject_classes||[]).filter(x=>x&&x.subject);
   // IMPORTANT: sirf wahi subject tick hota hai jiski class SAAF likhi ho.
   // Blank class wale (Economics/Hindi jaise naam dono classes me hote hain)
@@ -4429,7 +4431,8 @@ async function deleteTeacher(pid,name){
   if(!confirm(`"${name}" will be permanently deleted. Continue?`)) return;
   try{ await api('/api/admin/teacher/'+pid,'DELETE'); toast('Teacher deleted.'); loadATeachers(); }catch(e){ toast(e.message,true); }
 }
-function openEditStudent(sid,data){
+async function openEditStudent(sid,data){
+  await ensureSubjects();
   window._esData=data;
   const cls=data.class_level||'';
   showModal('Edit Student',
@@ -4633,6 +4636,7 @@ async function openDeadlines(){
 async function dlRender(){
   const body=document.getElementById('modal-body');
   try{
+    await ensureSubjects();
     const r=await api('/api/admin/session-deadlines');
     window._dl=r;
     const subs=[...new Set([...(window._allSubjects?.['10']||[]),...(window._allSubjects?.['12']||[])].map(x=>x.name))].sort();
@@ -4742,6 +4746,12 @@ function batchOptions(sel,cls){
   const extra=(sel&&!BATCH_MASTER.some(b=>b.name===sel))?`<option value="${esc(sel)}" selected>${esc(sel)} (legacy)</option>`:'';
   return `<option value="">\u2014 Select batch \u2014</option>${extra}`+list.map(b=>`<option value="${esc(b.name)}"${b.name===sel?' selected':''}>${esc(b.name)} \u00b7 Class ${b.cls} \u00b7 ${b.mode==='live'?'LIVE':'REC.'}</option>`).join('');
 }
+async function ensureSubjects(){
+  const a=window._allSubjects;
+  if(a && ((a['10']||[]).length||(a['12']||[]).length)) return;
+  try{ window._allSubjects=await api('/api/admin/subjects'); }
+  catch(e){ window._allSubjects=window._allSubjects||{'10':[],'12':[]}; }
+}
 function subjectCheckboxes(wrapId,cls,selected){
   const subs=((window._allSubjects||{})[cls]||[]);
   if(!subs.length) return '<span style="color:var(--text-muted);font-size:.82rem">No subjects found for this class. Add them in Settings \u2192 Subjects.</span>';
@@ -4827,7 +4837,8 @@ async function openAddStudent(){
  `<div class="alert alert-info">Enter the name and phone. <strong>User ID and password are generated automatically.</strong></div><div class="form-group"><label>Student Name</label><input class="form-control" id="as-name" placeholder="Arjun Verma"></div><div class="form-group"><label>Phone</label><input class="form-control" id="as-phone" placeholder="9876543210"></div><div class="form-group"><label>Class</label><select class="form-control" id="as-class" onchange="asClassChange()"><option value="">\u2014 Select class \u2014</option><option value="10">Class 10</option><option value="12">Class 12</option></select></div><div class="form-group"><label>Batch</label><select class="form-control" id="as-batch">${batchOptions('','')}</select></div><div class="form-group"><label>Medium</label><select class="form-control" id="as-medium"><option value="">\u2014 Select medium \u2014</option><option>Hindi</option><option>English</option></select></div><div class="form-group"><label>Subjects</label><div id="as-subj-wrap"><span style="color:var(--text-muted);font-size:.82rem">Select a class to see its subjects.</span></div></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitAddStudent()">Add Student</button>`);
 }
-function asClassChange(){
+async function asClassChange(){
+  await ensureSubjects();
   const cls=val('as-class');
   const b=document.getElementById('as-batch'); if(b) b.innerHTML=batchOptions(val('as-batch'),cls);
   renderStudentSubjects();
