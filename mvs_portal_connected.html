@@ -1808,6 +1808,19 @@ body.dark .al-sig{color:hsl(45 90% 60%)}
 .stl-node.ongoing .stl-card.event .stl-date{color:rgba(255,255,255,.85)}
 .stl-node.ongoing .stl-card.event .btn-ghost{color:#fff;border-color:rgba(255,255,255,.32);background:rgba(255,255,255,.06)}
 .stl-node.flash .stl-card{box-shadow:0 0 0 4px rgba(249,115,22,.7)!important;transition:box-shadow .25s}
+/* ---- chapter stats chips + chapter list modal ---- */
+.ov-chapstats{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.ov-chip{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.22);color:#fff;padding:6px 13px;border-radius:9999px;font-size:.76rem;font-weight:700;cursor:pointer;transition:background .15s,transform .15s}
+.ov-chip:hover{background:rgba(255,255,255,.2);transform:translateY(-1px)}
+.ov-chip b{font-weight:800}
+.ov-chip.done{background:rgba(16,185,129,.18);border-color:rgba(16,185,129,.45)}
+.ov-chip.done:hover{background:rgba(16,185,129,.3)}
+.chlist{max-height:56vh;overflow-y:auto;margin:0 -4px;padding:0 4px}
+.chlist-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 2px;border-bottom:1px solid var(--border)}
+.chlist-row:last-child{border-bottom:none}
+.chlist-name{font-weight:700;font-size:.9rem}
+.chlist-sub{font-size:.72rem;color:var(--text-muted);font-weight:600;margin-top:2px}
+
 
 /* ---- Kimi-style premium upgrades ---- */
 .pw-shell{background:linear-gradient(150deg,rgba(249,115,22,.10),var(--card) 45%);border:1px solid var(--border);border-radius:18px;overflow:hidden;box-shadow:0 8px 26px rgba(15,23,42,.07)}
@@ -6706,6 +6719,24 @@ function renderWeeklyView(list){
 function item_label(ch,part){ return part?ch+' — '+part:ch; }
 // ===== DEDICATED STUDENT TIMETABLE (design match) =====
 function _partDone(p){ return p.completed||_statusOf([p.date])==='done'; }
+function ttChapters(cid, mode){
+  // Progress card ke Total/Completed pe click: chapters ke naam ek window me.
+  const d=(window._ttChap||{})[cid];
+  if(!d||!d.list.length){ toast('No chapters found.',true); return; }
+  const rows=mode==='done'?d.list.filter(c=>c.done):d.list;
+  const title=(mode==='done'?`Completed Chapters (${rows.length})`:`All Chapters (${rows.length})`)+' - '+d.label;
+  if(!rows.length){
+    showModal(title, `<div class="empty-state"><p>No chapters have been completed yet. As classes finish, they will appear here.</p></div>`,
+      `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
+    return;
+  }
+  const body=rows.map((c,i)=>{
+    const st=c.done?'<span class="po-pill green">COMPLETED</span>':(c.started?'<span class="po-pill amber">IN PROGRESS</span>':'<span class="po-pill slate">UPCOMING</span>');
+    return `<div class="chlist-row"><div style="min-width:0"><div class="chlist-name">${i+1}. ${esc(c.name)}</div>${d.multi?`<div class="chlist-sub">${esc(c.subject)}</div>`:''}</div>${st}</div>`;
+  }).join('');
+  showModal(title, `<div class="chlist">${body}</div>`,
+    `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
+}
 function ttJump(cid, subjEnc, tabFn, cls, clsFn){
   // Ongoing chip pe click: (zaroorat ho to) class + subject select karke seedha
   // ongoing node tak smooth-scroll — user ko khud scroll nahi karna padta.
@@ -6773,7 +6804,15 @@ function renderStudentTimetable(entries, containerId, opts={}){
     const o=_liveOf(tl[active]);
     if(o) liveChip=`<div class="ov-live" onclick="ttJump('${containerId}')" title="Click to jump to this position"><span class="d"></span><span class="t">${o.today?'LIVE TODAY':'ONGOING'}: ${esc(o.name)}</span></div>`;
   }
-  const overall=`<div class="ov-card"><div class="ov-top"><div><div class="ov-lbl">${esc(active||'Overall')} Progress</div><div class="ov-big">${subD} / ${subT} Classes</div></div><div class="ov-pct"><div class="ov-pct-num">${subPct}%</div><div class="ov-pct-lbl">Completed</div></div></div><div class="ov-bar"><div class="ov-fill" style="width:${subPct}%"></div></div><div class="ov-badges">${opts.batch?`<span class="ov-badge">${esc(opts.batch)}</span><span class="ov-badge">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span>`:(opts.scopeLabel?`<span class="ov-badge">${esc(opts.scopeLabel)}</span>`:'')}${(_casc&&active)?`${(_clsVal==='10'||_clsVal==='12')?`<span class="ov-badge-plain">Class ${_clsVal}</span>`:''}`:`<span class="ov-badge-plain">${subjects.length} subject${subjects.length>1?'s':''}</span><span class="ov-badge-plain ov-all">All subjects: <b>${doneParts}/${totalParts}</b> \u00b7 ${pct}%</span>`}</div>${liveChip}</div>`;
+  // ---- Chapter stats: Total / Completed — clickable, naam ki list modal me ----
+  const _chapAll=[];
+  subjects.forEach(s=>{ tl[s].forEach(it=>{ if(it.kind!=='chapter') return; const dn=it.parts.length>0&&it.parts.every(_partDone); const st2=it.parts.some(_partDone); _chapAll.push({subject:s,name:it.chapter,done:!!dn,started:!!st2}); }); });
+  const _chapScope=active?_chapAll.filter(c=>c.subject===active):_chapAll;
+  window._ttChap=window._ttChap||{};
+  window._ttChap[containerId]={list:_chapScope,label:active||'All Subjects',multi:!active};
+  const _chT=_chapScope.length, _chD=_chapScope.filter(c=>c.done).length;
+  const chapChips=_chT?`<div class="ov-chapstats"><span class="ov-chip" onclick="ttChapters('${containerId}','all')" title="View all chapter names">Total Chapters: <b>${_chT}</b></span><span class="ov-chip done" onclick="ttChapters('${containerId}','done')" title="View completed chapter names">Completed: <b>${_chD}</b></span></div>`:'';
+  const overall=`<div class="ov-card"><div class="ov-top"><div><div class="ov-lbl">${esc(active||'Overall')} Progress</div><div class="ov-big">${subD} / ${subT} Classes</div></div><div class="ov-pct"><div class="ov-pct-num">${subPct}%</div><div class="ov-pct-lbl">Completed</div></div></div><div class="ov-bar"><div class="ov-fill" style="width:${subPct}%"></div></div><div class="ov-badges">${opts.batch?`<span class="ov-badge">${esc(opts.batch)}</span><span class="ov-badge">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span>`:(opts.scopeLabel?`<span class="ov-badge">${esc(opts.scopeLabel)}</span>`:'')}${(_casc&&active)?`${(_clsVal==='10'||_clsVal==='12')?`<span class="ov-badge-plain">Class ${_clsVal}</span>`:''}`:`<span class="ov-badge-plain">${subjects.length} subject${subjects.length>1?'s':''}</span><span class="ov-badge-plain ov-all">All subjects: <b>${doneParts}/${totalParts}</b> \u00b7 ${pct}%</span>`}</div>${chapChips}${liveChip}</div>`;
   // 5+ subjects -> master dropdown; kam ho to pills (student ke liye pills theek hain)
   const isWeek=_ttView==='weekly';
   const allSel=isWeek && opts.activeSubject==='__all';
