@@ -1803,8 +1803,10 @@ body.dark .al-sig{color:hsl(45 90% 60%)}
 .ov-live:hover{background:rgba(249,115,22,.3)}
 .ov-live .d{width:8px;height:8px;border-radius:50%;background:hsl(25 95% 60%);animation:pwDot 1.2s ease-in-out infinite;flex-shrink:0}
 .ov-live .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.stl-node.ongoing .stl-card.event{border:2px solid var(--accent);box-shadow:0 0 0 4px rgba(255,107,43,.14),0 14px 32px -14px rgba(15,42,84,.5)}
-.dark .stl-node.ongoing .stl-card.event{border-color:var(--accent);box-shadow:0 0 0 4px rgba(226,180,88,.16),0 14px 32px -14px rgba(0,0,0,.75)}
+.stl-node.ongoing .stl-card.event{background:var(--primary);border:2px solid var(--accent);box-shadow:0 0 0 4px rgba(255,107,43,.14),0 14px 32px -14px rgba(15,42,84,.5)}
+.dark .stl-node.ongoing .stl-card.event{background:linear-gradient(180deg,#16294a,#12213c);border-color:var(--accent);box-shadow:0 0 0 4px rgba(226,180,88,.16),0 14px 32px -14px rgba(0,0,0,.75)}
+.stl-node.ongoing .stl-card.event .stl-date{color:rgba(255,255,255,.85)}
+.stl-node.ongoing .stl-card.event .btn-ghost{color:#fff;border-color:rgba(255,255,255,.32);background:rgba(255,255,255,.06)}
 .stl-node.flash .stl-card{box-shadow:0 0 0 4px rgba(249,115,22,.7)!important;transition:box-shadow .25s}
 
 /* ---- Kimi-style premium upgrades ---- */
@@ -6767,15 +6769,9 @@ function renderStudentTimetable(entries, containerId, opts={}){
     return null;
   };
   let liveChip='';
-  if(_ttView!=='weekly'){
-    if(active){
-      const o=_liveOf(tl[active]);
-      if(o) liveChip=`<div class="ov-live" onclick="ttJump('${containerId}')" title="Click to jump to this position"><span class="d"></span><span class="t">${o.today?'LIVE TODAY':'ONGOING'}: ${esc(o.name)}</span></div>`;
-    } else if(_casc){
-      const chips=[];
-      subjects.forEach(s=>{ const o=_liveOf(tl[s]); if(o){ const ent=entries.find(e=>e.subject===s)||{}; const cl=_clsOfEntry(ent); chips.push(`<div class="ov-live" onclick="ttJump('${containerId}','${encodeURIComponent(s)}','${_tab}','${cl}','${opts.onClassFilter}')" title="Click to open this subject at the ongoing position"><span class="d"></span><span class="t">${esc(s)}: ${esc(o.name)}</span></div>`); } });
-      liveChip=chips.slice(0,4).join(' ');
-    }
+  if(_ttView!=='weekly' && active){
+    const o=_liveOf(tl[active]);
+    if(o) liveChip=`<div class="ov-live" onclick="ttJump('${containerId}')" title="Click to jump to this position"><span class="d"></span><span class="t">${o.today?'LIVE TODAY':'ONGOING'}: ${esc(o.name)}</span></div>`;
   }
   const overall=`<div class="ov-card"><div class="ov-top"><div><div class="ov-lbl">${esc(active||'Overall')} Progress</div><div class="ov-big">${subD} / ${subT} Classes</div></div><div class="ov-pct"><div class="ov-pct-num">${subPct}%</div><div class="ov-pct-lbl">Completed</div></div></div><div class="ov-bar"><div class="ov-fill" style="width:${subPct}%"></div></div><div class="ov-badges">${opts.batch?`<span class="ov-badge">${esc(opts.batch)}</span><span class="ov-badge">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span>`:(opts.scopeLabel?`<span class="ov-badge">${esc(opts.scopeLabel)}</span>`:'')}${(_casc&&active)?`${(_clsVal==='10'||_clsVal==='12')?`<span class="ov-badge-plain">Class ${_clsVal}</span>`:''}`:`<span class="ov-badge-plain">${subjects.length} subject${subjects.length>1?'s':''}</span><span class="ov-badge-plain ov-all">All subjects: <b>${doneParts}/${totalParts}</b> \u00b7 ${pct}%</span>`}</div>${liveChip}</div>`;
   // 5+ subjects -> master dropdown; kam ho to pills (student ke liye pills theek hain)
