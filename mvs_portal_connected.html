@@ -3126,7 +3126,7 @@ async function loadTTimetable(){
       return;
     }
     _ttEntries=await api('/api/teacher/my-timetable');
-    el.innerHTML=`${tabs}<div class="card"><div class="card-header"><h3>My Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-danger btn-sm" onclick="openTTTDelete()">${ic('trash')} Delete Subject</button><button class="btn btn-primary btn-sm" onclick="openRequestClass()">${ic('calendar')} Add Extra Class</button></div></div><div class="card-body"><div id="t-tline-wrap"></div></div></div>`;
+    el.innerHTML=`${tabs}<div class="card"><div class="card-header"><h3>My Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-ghost btn-sm" onclick="openSlotChange()">${ic('clock')} Change Slot</button><button class="btn btn-danger btn-sm" onclick="openTTTDelete()">${ic('trash')} Delete Subject</button><button class="btn btn-primary btn-sm" onclick="openRequestClass()">${ic('calendar')} Add Extra Class</button></div></div><div class="card-body"><div id="t-tline-wrap"></div></div></div>`;
     _ttActiveSub=_ttActiveSub||(_ttEntries[0]||{}).subject||'';
     // apni photo har subject par timeline me dikhe
     try{
@@ -3136,10 +3136,47 @@ async function loadTTimetable(){
       try{ const r=await fetch(API+'/api/teacher/my-photo',{headers:{Authorization:'Bearer '+TOKEN}}); if(r.ok) url=URL.createObjectURL(await r.blob()); }catch(e){}
       [...new Set(_ttEntries.map(e=>e.subject))].forEach(sub=>{ window._ttTeacherMap[sub]={name:me.name||NAME,url}; });
     }catch(e){ window._ttTeacherMap=window._ttTeacherMap||{}; }
-    renderStudentTimetable(_ttEntries,'t-tline-wrap',{onEdit:true,onDelete:'deleteTTEntry',tipTeacherMap:window._ttTeacherMap||{},onLecture:true,onComplete:'openClassReport',emptyMsg:'No timetable for your subjects yet.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'});
+    renderStudentTimetable(tFilteredTT(),'t-tline-wrap',{onEdit:true,onDelete:'deleteTTEntry',onClassFilter:'tClassFilter',activeClass:_ttClass,tipTeacherMap:window._ttTeacherMap||{},onLecture:true,onComplete:'openClassReport',emptyMsg:'No timetable for your subjects yet.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'});
   }catch(e){ el.innerHTML=errHtml(e); }
 }
-function tSetSubj(s){ _ttActiveSub=decodeURIComponent(s); renderStudentTimetable(_ttEntries,'t-tline-wrap',{tipTeacherMap:window._ttTeacherMap||{},onEdit:true,onDelete:'deleteTTEntry',onLecture:true,onComplete:'openClassReport',emptyMsg:'No entries.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'}); }
+function tSetSubj(s){ _ttActiveSub=decodeURIComponent(s); renderStudentTimetable(tFilteredTT(),'t-tline-wrap',{tipTeacherMap:window._ttTeacherMap||{},onEdit:true,onDelete:'deleteTTEntry',onClassFilter:'tClassFilter',activeClass:_ttClass,onLecture:true,onComplete:'openClassReport',emptyMsg:'No entries.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'}); }
+let _ttClass='all';
+function tFilteredTT(){
+  return (_ttEntries||[]).filter(e=>{
+    if(_ttClass==='10') return /(^|[^0-9])10([^0-9]|$)/.test(e.class_name||'');
+    if(_ttClass==='12') return /12/.test(e.class_name||'');
+    return true;
+  });
+}
+function tClassFilter(v){
+  _ttClass=v; _ttActiveSub='';
+  renderStudentTimetable(tFilteredTT(),'t-tline-wrap',{onEdit:true,onDelete:'deleteTTEntry',onClassFilter:'tClassFilter',activeClass:_ttClass,tipTeacherMap:window._ttTeacherMap||{},onLecture:true,onComplete:'openClassReport',emptyMsg:'No entries for this class.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'});
+}
+// ===== TEACHER: CHANGE SLOT (subject time — aage ki saari classes shift) =====
+function openSlotChange(){
+  const list=_ttEntries||[];
+  if(!list.length){ toast('No timetable entries found.',true); return; }
+  const subs=[...new Set(list.map(x=>x.subject).filter(Boolean))].sort();
+  const subOpts=subs.map(s=>{
+    const times=[...new Set(list.filter(e=>e.subject===s&&e.time).map(e=>e.time))].join(', ');
+    return `<option value="${esc(s)}">${esc(s)}${times?' - currently '+esc(times):''}</option>`;
+  }).join('');
+  showModal('Change Class Slot',
+ `<div class="alert alert-info">All upcoming classes of the selected subject (from today onwards) will move to the new time. Completed and past classes are not touched. Students of this subject and the admin get a notification automatically.</div>
+  <div class="form-group"><label>Subject</label><select class="form-control" id="cs-sub">${subOpts}</select></div>
+  <div class="form-group"><label>New Time</label><input class="form-control" id="cs-time" placeholder="e.g. 9:30 AM" autocomplete="off"></div>`,
+ `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="cs-btn" onclick="submitSlotChange()">Change Slot</button>`);
+}
+async function submitSlotChange(){
+  const sub=val('cs-sub'), t=(val('cs-time')||'').trim();
+  if(!/^\d{1,2}([:.]\d{2})?\s*(am|pm)$/i.test(t)){ toast('Please enter time like 9:30 AM',true); return; }
+  const btn=document.getElementById('cs-btn'); btn.disabled=true; btn.textContent='Updating...';
+  try{
+    const r=await api('/api/teacher/change-slot','POST',{subject:sub,new_time:t.replace('.',':').toUpperCase()});
+    closeModal(); toast(r.updated+' upcoming classes moved to '+r.new_time+'. Students have been notified.');
+    loadTTimetable();
+  }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Change Slot'; }
+}
 function openTTPdf(){
   showModal('PDF Upload — Auto-Parse',
  `<div class="alert alert-info"><strong>Upload your timetable PDF directly</strong> — format and columns are auto-detected. Chapter, Parts, Date, Day and Time are all extracted.</div><div class="form-group"><label>Class</label>${classSelect('pdf-class')}</div><div class="form-group"><label>Subject (optional — blank = PDF se auto-detect)</label><input class="form-control" id="pdf-subject" placeholder="Blank = auto-detect" oninput="pdfReplaceWarn(this.value,(typeof _ttEntries!=='undefined'?_ttEntries:[]),'pdf-warn','pdf-replace')"></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('pdf-file').click()"><div class="fd-icon"></div><div id="pdf-label" style="font-size:.85rem">Click to choose a PDF</div><input type="file" id="pdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('pdf-label').textContent=this.files[0]?.name||''"></div></div><div id="pdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="pdf-replace"> Replace existing entries for the same subject</label></div><div id="pdf-status"></div>`,
@@ -5280,9 +5317,8 @@ function aFilteredTT(){
 }
 function aRenderTT(){
   const el=document.getElementById('a-timetable-content');
-  el.innerHTML=`<div class="card"><div class="card-header"><h3>All Teachers' Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><select class="form-control" style="width:auto;padding:7px 12px" onchange="aClassFilter(this.value)" id="att-class"><option value="all">All Classes</option><option value="10">Class 10</option><option value="12">Class 12</option></select><button class="btn btn-ghost btn-sm" onclick="openDeadlines()">${ic('calendar')} Session Deadlines</button><button class="btn btn-ghost btn-sm" onclick="openAdminMaterial()">Upload Material</button><button class="btn btn-primary btn-sm" onclick="openAdminPdf()">PDF Upload</button><button class="btn btn-danger btn-sm" onclick="openTTDelete()">${ic('trash')} Delete Timetable</button></div></div><div class="card-body"><div id="a-tline-wrap"></div></div></div>`;
-  document.getElementById('att-class').value=_attClass;
-  renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',onEditAny:'adminEditTT',emptyMsg:'No timetable uploaded yet',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers'});
+  el.innerHTML=`<div class="card"><div class="card-header"><h3>All Teachers' Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-ghost btn-sm" onclick="openDeadlines()">${ic('calendar')} Session Deadlines</button><button class="btn btn-ghost btn-sm" onclick="openAdminMaterial()">Upload Material</button><button class="btn btn-primary btn-sm" onclick="openAdminPdf()">PDF Upload</button><button class="btn btn-danger btn-sm" onclick="openTTDelete()">${ic('trash')} Delete Timetable</button></div></div><div class="card-body"><div id="a-tline-wrap"></div></div></div>`;
+  renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',onEditAny:'adminEditTT',onClassFilter:'aClassFilter',activeClass:_attClass,emptyMsg:'No timetable uploaded yet',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers'});
 }
 function aClassFilter(v){ _attClass=v; _attActiveSub=''; aRenderTT(); }
 async function adminDeleteTT(id){
@@ -5402,7 +5438,7 @@ async function submitAdminMaterial(){
  btn.textContent=' Done'; btn.setAttribute('onclick','closeModal()'); btn.disabled=false;
   }catch(e){ document.getElementById('am-status').innerHTML=`<div class="alert alert-danger"> ${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Upload'; }
 }
-function aSetSubj(s){ _attActiveSub=decodeURIComponent(s); renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',onEditAny:'adminEditTT',emptyMsg:'No entries',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers'}); }
+function aSetSubj(s){ _attActiveSub=decodeURIComponent(s); renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',onEditAny:'adminEditTT',onClassFilter:'aClassFilter',activeClass:_attClass,emptyMsg:'No entries',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers'}); }
 async function setSubjMode(id,mode){
   try{ const r=await api('/api/admin/subjects/'+id+'/mode','POST',{mode}); toast(r.message); loadASubjects(); }
   catch(e){ toast(e.message,true); }
@@ -6640,8 +6676,26 @@ function renderWeeklyView(list){
 function item_label(ch,part){ return part?ch+' — '+part:ch; }
 // ===== DEDICATED STUDENT TIMETABLE (design match) =====
 function _partDone(p){ return p.completed||_statusOf([p.date])==='done'; }
+function _clsOfEntry(e){ const c=String(e.class_name||''); if(/(^|[^0-9])10([^0-9]|$)/.test(c)) return '10'; if(/12/.test(c)) return '12'; return ''; }
+function _classSplit(entries, opts){
+  // Same naam ke subjects (e.g. Data Entry Operations) Class 10 aur 12 dono me hon
+  // to tabs alag-alag dikhte hain: "Name (Class 10)" / "Name (Class 12)".
+  const buckets={};
+  entries.forEach(e=>{ const k=e.subject||''; const c=_clsOfEntry(e); if(!buckets[k]) buckets[k]=new Set(); if(c) buckets[k].add(c); });
+  const need=new Set(Object.keys(buckets).filter(k=>buckets[k].has('10')&&buckets[k].has('12')));
+  if(!need.size) return entries;
+  const tmap=(opts&&opts.tipTeacherMap)||{};
+  return entries.map(e=>{
+    if(!need.has(e.subject)) return e;
+    const cl=_clsOfEntry(e);
+    const disp=e.subject+(cl?` (Class ${cl})`:'');
+    if(tmap[e.subject]&&!tmap[disp]) tmap[disp]=tmap[e.subject];
+    return Object.assign({},e,{subject:disp});
+  });
+}
 function renderStudentTimetable(entries, containerId, opts={}){
   const el=document.getElementById(containerId);
+  entries=_classSplit(entries||[],opts);
   if(!entries||entries.length===0){ el.innerHTML=`<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>${opts.emptyMsg||'No timetable for your subjects yet.'}</p></div></div></div>`; return; }
   const tl=buildTimeline(entries);
   const subjects=Object.keys(tl);
@@ -6660,6 +6714,7 @@ function renderStudentTimetable(entries, containerId, opts={}){
   // 5+ subjects -> master dropdown; kam ho to pills (student ke liye pills theek hain)
   const isWeek=_ttView==='weekly';
   const allSel=isWeek && opts.activeSubject==='__all';
+  const clsBar = opts.onClassFilter?`<div class="fbar-chips" style="margin-left:auto;flex-shrink:0"><button class="fchip ${((opts.activeClass||'all')==='all')?'on':''}" onclick="${opts.onClassFilter}('all')">All Classes</button><button class="fchip ${opts.activeClass==='10'?'on':''}" onclick="${opts.onClassFilter}('10')">Class 10</button><button class="fchip ${opts.activeClass==='12'?'on':''}" onclick="${opts.onClassFilter}('12')">Class 12</button></div>`:'';
   const tabs = subjects.length>5
     ? `<div class="fbar">
          <div class="fbar-l">${ic('book')}<span>Subject</span></div>
@@ -6667,9 +6722,9 @@ function renderStudentTimetable(entries, containerId, opts={}){
            ${isWeek?`<option value="__all"${allSel?' selected':''}>All Subjects \u00b7 ${subjects.length}</option>`:''}
            ${subjects.map(s=>{const n=tl[s].filter(it=>it.kind==='chapter').length||tl[s].length; return `<option value="${esc(s)}"${(!allSel&&s===active)?' selected':''}>${esc(s)} \u00b7 ${n} chapters</option>`;}).join('')}
          </select>
-         <div class="fbar-chips">${subjects.slice(0,4).map(s=>`<button class="fchip ${(!allSel&&s===active)?'on':''}" onclick="${_tab}('${encodeURIComponent(s)}')">${esc(s)}</button>`).join('')}${subjects.length>4?`<span class="fbar-more">+${subjects.length-4}</span>`:''}</div>
+         ${clsBar}
        </div>`
-    : `<div class="fbar"><div class="fbar-chips">${isWeek?`<button class="fchip ${allSel?'on':''}" onclick="${_tab}('__all')">All Subjects</button>`:''}${subjects.map(s=>{ const n=tl[s].filter(it=>it.kind==='chapter').length||tl[s].length; return `<button class="fchip ${(!allSel&&s===active)?'on':''}" onclick="${_tab}('${encodeURIComponent(s)}')">${esc(s)}<span class="fchip-n">${n}</span></button>`; }).join('')}</div></div>`;
+    : `<div class="fbar"><div class="fbar-chips">${isWeek?`<button class="fchip ${allSel?'on':''}" onclick="${_tab}('__all')">All Subjects</button>`:''}${subjects.map(s=>{ const n=tl[s].filter(it=>it.kind==='chapter').length||tl[s].length; return `<button class="fchip ${(!allSel&&s===active)?'on':''}" onclick="${_tab}('${encodeURIComponent(s)}')">${esc(s)}<span class="fchip-n">${n}</span></button>`; }).join('')}${clsBar}</div>`;
   const wkSubs=(_ttView==='weekly'&&opts.activeSubject==='__all')?subjects:(_ttView==='weekly'?[active]:subjects);
   const body=_ttView==='weekly'?renderStudentWeekly(tl,wkSubs,opts):renderStudentChapters(tl[active],active,opts);
   const _hd=opts.heading===undefined?'My Timetable':opts.heading;
@@ -6728,9 +6783,23 @@ function renderStudentWeekly(tl, subjects, opts){
   const subProg={};
   subjects.forEach(s=>{ let tp=0,dp=0; tl[s].forEach(it=>{ if(it.kind==='chapter') it.parts.forEach(p=>{tp++; if(_partDone(p))dp++;}); else {tp++; if(_partDone(it.data))dp++;} }); subProg[s]={done:dp,total:tp,pct:tp?Math.round(dp/tp*100):0}; });
   const byDay={};
-  subjects.forEach(s=>tl[s].forEach(it=>{ const arr=it.kind==='chapter'?it.parts:[it.data]; arr.forEach(p=>{ if(!p.day)return; (byDay[p.day]=byDay[p.day]||[]).push({subject:s,time:p.time,st:_statusOf([p.date])}); }); }));
+  subjects.forEach(s=>tl[s].forEach(it=>{ const arr=it.kind==='chapter'?it.parts:[it.data]; arr.forEach(p=>{ if(!p.day)return; (byDay[p.day]=byDay[p.day]||[]).push({subject:s,time:p.time,st:_statusOf([p.date]),date:p.date}); }); }));
+  // Har subject/day ka CURRENT slot dikhta hai: sabse pehli aane wali (upcoming)
+  // class ka time; koi upcoming na ho to sabse recent past ka. Isse slot change
+  // (e.g. 10:00 -> 9:30) hote hi weekly view naya time dikhata hai.
+  const _tz=new Date(); _tz.setHours(0,0,0,0);
   const cols=days.filter(d=>byDay[d]&&byDay[d].length).map(d=>{
-    const seen={}; const list=byDay[d].filter(x=>{ if(seen[x.subject])return false; seen[x.subject]=1; return true; });
+    const pick={};
+    byDay[d].forEach(x=>{
+      const cur=pick[x.subject];
+      if(!cur){ pick[x.subject]=x; return; }
+      const dx=x.date?new Date(x.date+'T00:00:00'):null, dc=cur.date?new Date(cur.date+'T00:00:00'):null;
+      if(!dx) return; if(!dc){ pick[x.subject]=x; return; }
+      const fx=dx>=_tz, fc=dc>=_tz;
+      if(fx&&!fc){ pick[x.subject]=x; return; }
+      if(fx===fc){ if(fx ? dx<dc : dx>dc) pick[x.subject]=x; }
+    });
+    const list=Object.values(pick);
     const rows=list.map(x=>{
       const tmap=(opts.tipTeacherMap||{})[x.subject]||opts.tipTeacher||{}, pr=subProg[x.subject]||{done:0,total:0,pct:0};
       const tav=tmap.name?(tmap.url?`<span class="wkc-tav" style="background-image:url(${tmap.url})"></span>`:`<span class="wkc-tav">${esc(initials(tmap.name))}</span>`):'';

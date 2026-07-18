@@ -2243,3 +2243,51 @@ def my_payout(month: str = "", db: Session = Depends(get_db), current_user=Depen
     p["exists"] = True
     p["teacher_name"] = current_user.name
     return p
+
+# ===== TEACHER: CHANGE CLASS SLOT (subject ka time — aage ki saari classes) =====
+@router.post("/change-slot")
+def change_slot(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Teacher apne subject ka slot (time) change karta hai. Aaj se aage ki saari
+    incomplete classes naye time pe shift ho jaati hain. Us subject ke students
+    aur admins ko notification jaati hai. Completed/purani classes untouched."""
+    tp = get_teacher_profile(current_user, db)
+    from models import TimetableEntry, StudentProfile, User, UserRole
+    subject = (payload.get("subject") or "").strip()
+    new_time = (payload.get("new_time") or "").strip()
+    if not subject:
+        raise HTTPException(status_code=400, detail="Subject is required")
+    if not new_time or len(new_time) > 20:
+        raise HTTPException(status_code=400, detail="Please enter a valid time, e.g. 9:30 AM")
+    if subject not in (tp.subjects or []):
+        owned = db.query(TimetableEntry).filter(
+            TimetableEntry.subject == subject, TimetableEntry.teacher_id == tp.id).first()
+        if not owned:
+            raise HTTPException(status_code=403, detail="This subject is not assigned to you")
+    today = _ist_now().date()
+    entries = db.query(TimetableEntry).filter(
+        TimetableEntry.subject == subject,
+        TimetableEntry.entry_date.isnot(None),
+        TimetableEntry.entry_date >= today,
+        TimetableEntry.completed == False
+    ).all()
+    if not entries:
+        raise HTTPException(status_code=400, detail="No upcoming classes found for this subject")
+    old_times = sorted({e.time_text for e in entries if e.time_text})
+    for e in entries:
+        e.time_text = new_time
+    db.commit()
+    # ---- notifications: subject ke students (fallback: sab students) + admins ----
+    eff = today.strftime("%d %b")
+    old_str = f" (earlier {', '.join(old_times)})" if old_times else ""
+    s_title = "Class Timing Changed"
+    s_msg = f"{subject} classes will now start at {new_time} effective {eff}{old_str}. Your timetable has been updated."
+    students = db.query(StudentProfile).join(User, StudentProfile.user_id == User.id).filter(User.is_active == True).all()
+    matched = [sp for sp in students if subject in (sp.subjects or [])]
+    targets = matched if matched else students
+    for sp in targets:
+        notify(db, sp.user_id, s_title, s_msg, "timetable")
+    a_msg = f"{current_user.name} moved {subject} to {new_time}{old_str}. {len(entries)} upcoming classes updated from {eff}."
+    for admin in db.query(User).filter(User.role == UserRole.admin, User.is_active == True).all():
+        notify(db, admin.id, "Slot Changed - " + subject, a_msg, "timetable")
+    db.commit()
+    return {"updated": len(entries), "students_notified": len(targets), "new_time": new_time}

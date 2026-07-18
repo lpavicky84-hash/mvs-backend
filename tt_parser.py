@@ -214,6 +214,14 @@ def classify_row(cells):
 def _emit(out, subject, date_dt, time_s, topic, state):
     day = DAYS[date_dt.weekday()]                     # day HAMESHA date se
     date = date_dt.strftime('%Y-%m-%d')
+    # Merged time-cell fix: PDFs me time cell aksar kai rows me merge hota hai —
+    # sirf pehli row me time hota hai, baaki khaali. Jis row me time nahi mila
+    # wo pichhli row ka time inherit karti hai (subject-scope; naya time aate hi
+    # update — isliye 10:00 wale block ke baad 9:30 wala block sahi rehta hai).
+    if time_s:
+        state['time'] = time_s
+    else:
+        time_s = state.get('time', '')
     if is_event(topic):
         out.append({'subject': subject, 'date': date, 'day': day, 'time': time_s,
                     'type': 'event', 'chapter': _clean(topic) or topic, 'part': None})
