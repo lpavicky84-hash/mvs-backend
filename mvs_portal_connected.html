@@ -1744,6 +1744,7 @@ img,canvas,video{max-width:100%}
   .xm-row .btn{min-width:100%}
   .btn{font-size:.8rem;padding:9px 12px}
 
+}
 
 /* ===== ATTENDANCE + PAYOUT + APPOINTMENT LETTER (premium components) ===== */
 @keyframes pwGlow{0%,100%{box-shadow:0 0 0 0 rgba(249,115,22,.4)}50%{box-shadow:0 0 22px 4px rgba(249,115,22,.28)}}
@@ -1797,6 +1798,81 @@ body.dark .al-lh .b{color:hsl(45 90% 60%)}
 body.dark .al-sig{color:hsl(45 90% 60%)}
 .al-rules li{margin-bottom:5px}
 @media(max-width:640px){.pw-clock{font-size:1.5rem}.po-net{font-size:1.8rem}}
+/* ---- Kimi-style premium upgrades ---- */
+.pw-shell{background:linear-gradient(150deg,rgba(249,115,22,.10),var(--card) 45%);border:1px solid var(--border);border-radius:18px;overflow:hidden;box-shadow:0 8px 26px rgba(15,23,42,.07)}
+.pw-banner{background:linear-gradient(120deg,hsl(222 55% 12%),hsl(219 62% 18%) 60%,hsl(230 50% 14%));color:#fff;text-align:center;padding:24px 18px;position:relative;overflow:hidden}
+.pw-banner .nav-ic{width:34px;height:34px;opacity:.95;color:hsl(25 95% 60%)}
+.pw-bigdate{font-size:1.45rem;font-weight:800;margin-top:8px;letter-spacing:.01em}
+.pw-banner .pw-clock{font-size:1.05rem;font-weight:700;opacity:.85;margin-top:4px}
+.pw-body{padding:22px;text-align:center}
+.pw-status{font-size:.95rem;color:var(--text-muted);font-weight:600;margin-bottom:16px}
+.pw-punchbtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;border:none;cursor:pointer;color:#fff;font-weight:800;font-size:1.05rem;padding:16px;border-radius:14px;transition:transform .15s, box-shadow .15s}
+.pw-punchbtn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 10px 22px rgba(249,115,22,.35)}
+.pw-punchbtn.in{background:linear-gradient(135deg,hsl(25 95% 53%),hsl(35 95% 50%));animation:pwGlow 2.2s ease-in-out infinite}
+.pw-punchbtn.out{background:linear-gradient(135deg,hsl(219 57% 27%),hsl(222 55% 16%))}
+.pw-punchbtn:disabled{opacity:.55;cursor:not-allowed;animation:none}
+.pw-cap{font-size:.75rem;color:var(--text-muted);margin-top:12px}
+.pw-mini{display:flex;gap:10px;justify-content:center;margin-top:16px;flex-wrap:wrap}
+.pw-mini .m{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:8px 14px;min-width:96px}
+.pw-mini .m .l{font-size:.64rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);font-weight:700}
+.pw-mini .m .v{font-weight:800;margin-top:2px;font-size:.95rem}
+.att-grid{display:grid;grid-template-columns:1.05fr 1fr 1fr;gap:18px;align-items:start}
+@media(max-width:1100px){.att-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:760px){.att-grid{grid-template-columns:1fr}}
+.cal-head{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.cal-stat{flex:1;min-width:78px;background:var(--bg);border:1px solid var(--border);border-radius:12px;text-align:center;padding:10px 6px}
+.cal-stat .n{font-size:1.3rem;font-weight:800}
+.cal-stat .l{font-size:.68rem;color:var(--text-muted);font-weight:700}
+.cal-stat.g .n{color:#059669}.cal-stat.r .n{color:var(--danger)}.cal-stat.b .n{color:hsl(219 57% 40%)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:7px}
+.cal-d{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:11px;background:var(--bg);border:1px solid var(--border);font-size:.82rem;font-weight:700;color:var(--text-muted)}
+.cal-d.on{background:rgba(16,185,129,.16);border-color:rgba(16,185,129,.4);color:#059669}
+body.dark .cal-d.on{color:#34d399}
+.cal-d.today{outline:2px solid hsl(25 95% 53%);outline-offset:1px;color:var(--text)}
+.cal-d.future{opacity:.45;font-weight:600}
+.cal-leg{display:flex;gap:14px;margin-top:12px;font-size:.72rem;color:var(--text-muted);font-weight:600;flex-wrap:wrap}
+.cal-leg i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px}
+.log-row{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:12px 0;border-bottom:1px solid var(--border)}
+.log-row:last-child{border-bottom:none}
+.log-row .d{font-weight:800}
+.log-row .t{font-size:.8rem;color:var(--text-muted);margin-top:3px}
+.po-grid{display:grid;grid-template-columns:1.55fr 1fr;gap:18px;align-items:start}
+@media(max-width:1000px){.po-grid{grid-template-columns:1fr}}
+.po-banner{background:linear-gradient(120deg,hsl(222 55% 12%),hsl(219 62% 18%) 55%,hsl(230 50% 14%));border-radius:14px;color:#fff;padding:22px;display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;position:relative;overflow:hidden}
+.po-banner .glow{position:absolute;right:-50px;top:-50px;width:200px;height:200px;border-radius:9999px;background:rgba(249,115,22,.20);filter:blur(52px);pointer-events:none}
+.po-mini{display:grid;grid-template-columns:auto auto;gap:8px 26px;align-content:center}
+.po-mini .l{font-size:.64rem;letter-spacing:.09em;color:rgba(255,255,255,.65);font-weight:800}
+.po-mini .v{font-weight:800;font-size:1rem}
+.po-mini .v.g{color:#34d399}.po-mini .v.r{color:#f87171}
+.po-attbar{margin-top:16px}
+.po-attbar .bar{height:9px;border-radius:9999px;background:var(--bg);border:1px solid var(--border);overflow:hidden}
+.po-attbar .fill{height:100%;background:linear-gradient(90deg,#059669,#34d399);border-radius:9999px}
+.rule-card{border:1px solid var(--border);border-radius:13px;padding:13px 15px;margin-bottom:11px;background:var(--bg)}
+.rule-card.hit{border-color:rgba(239,68,68,.45);background:rgba(239,68,68,.05)}
+.rule-card .rr{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.rule-card .rn{font-weight:800;font-size:.9rem}
+.rule-card .ra{font-weight:800;color:var(--danger);white-space:nowrap}
+.rule-card .rt{display:inline-block;margin-top:7px;font-size:.68rem;font-weight:800;letter-spacing:.05em;background:rgba(239,68,68,.12);color:var(--danger);padding:3px 9px;border-radius:9999px}
+.rule-card .ok{display:inline-block;margin-top:7px;font-size:.68rem;font-weight:800;letter-spacing:.05em;background:rgba(16,185,129,.12);color:#059669;padding:3px 9px;border-radius:9999px}
+.pay-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:18px}
+.pay-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px;box-shadow:0 4px 16px rgba(15,23,42,.05);transition:transform .18s, box-shadow .18s}
+.pay-card:hover{transform:translateY(-2px);box-shadow:0 12px 26px rgba(15,23,42,.10)}
+.pay-head{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.pay-av{width:46px;height:46px;border-radius:9999px;background:linear-gradient(135deg,hsl(219 57% 27%),hsl(222 55% 14%));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0}
+.pay-name{font-weight:800}
+.pay-sub{font-size:.76rem;color:var(--text-muted);font-weight:600}
+.pay-net{background:linear-gradient(120deg,hsl(222 55% 12%),hsl(219 62% 18%) 60%,hsl(230 50% 14%));border-radius:12px;color:#fff;padding:14px 16px;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
+.pay-net .l{font-size:.62rem;letter-spacing:.1em;color:rgba(255,255,255,.65);font-weight:800}
+.pay-net .n{font-size:1.5rem;font-weight:800}
+.pay-net .side{text-align:right;font-size:.78rem;font-weight:700}
+.pay-net .side .g{color:#34d399}.pay-net .side .r{color:#f87171}
+.pay-chips{display:flex;gap:8px;margin:13px 0;flex-wrap:wrap}
+.pay-chip{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:7px 11px;text-align:center;flex:1;min-width:72px}
+.pay-chip .n{font-weight:800;font-size:.9rem}
+.pay-chip .l{font-size:.62rem;color:var(--text-muted);font-weight:700}
+.pay-actions{display:flex;gap:8px;flex-wrap:wrap}
+.pay-empty{color:var(--text-muted);font-size:.86rem;padding:14px 0;text-align:center}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -1825,6 +1901,9 @@ body.dark .al-sig{color:hsl(45 90% 60%)}
 // ===== PROFESSIONAL SVG ICONS =====
 const _S='<svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
 const ICONS={
+  clock:_S+'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+  wallet:_S+'<rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/><circle cx="17" cy="15" r="1.4"/></svg>',
+  finger:_S+'<path d="M12 11v4"/><path d="M8 11a4 4 0 0 1 8 0v3a8 8 0 0 1-1 4"/><path d="M5 12.5V11a7 7 0 0 1 12.3-4.6"/><path d="M8.5 20a9.9 9.9 0 0 1-1.4-3"/></svg>',
   grid:_S+'<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
   calendar:_S+'<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
   upload:_S+'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
@@ -1928,7 +2007,7 @@ async function smartCompress(file,statusCb){
   }
   return {file, ok:file.size<=MAXB};
 }
-const NAV_ICON={'dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book','classes material':'folder','study material':'book','teacher reports':'chart','class compliance':'shield','live users':'user','admin users':'shield','send notice':'megaphone'};
+const NAV_ICON={'dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book','classes material':'folder','attendance':'clock','teacher attendance':'clock','payout':'wallet','payouts':'wallet','my attendance':'clock','my payout':'wallet','study material':'book','teacher reports':'chart','class compliance':'shield','live users':'user','admin users':'shield','send notice':'megaphone'};
 function injectNavIcons(){
   document.querySelectorAll('.nav-item').forEach(el=>{
     if(el.querySelector('svg')) return;
@@ -6954,41 +7033,44 @@ function pdfReplaceWarn(subj, entries, warnId, cbId){
 
 // ---- Punch card (teacher dashboard + attendance page) ----
 let _pwInt=null;
+function _fmtClock(d){
+  let h=d.getHours(); const am=h>=12?'PM':'AM'; h=h%12||12;
+  const p=n=>String(n).padStart(2,'0');
+  return p(h)+':'+p(d.getMinutes())+':'+p(d.getSeconds())+' '+am;
+}
 function _pwTick(){
   const el=document.getElementById('pw-clock');
   if(!el){ clearInterval(_pwInt); _pwInt=null; return; }
-  el.textContent=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}).toUpperCase();
+  try{ el.textContent=_fmtClock(new Date()); }catch(e){}
 }
 async function renderPunchCard(wrapId){
   const wrap=document.getElementById(wrapId); if(!wrap) return;
   let d;
   try{ d=await api('/api/teacher/attendance/today'); }
   catch(e){ wrap.innerHTML=''; return; }
-  const dateLbl=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
-  let stateHtml='', btnHtml='';
+  const dateLbl=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short'});
+  let statusHtml='', btnHtml='';
   if(!d.punch_in){
-    stateHtml=`<span class="pw-live" style="background:rgba(245,158,11,.18);color:#fbbf24"><span class="d" style="background:#fbbf24"></span>NOT PUNCHED IN</span>`;
-    btnHtml=`<button class="btn-punch-in" id="pw-btn" onclick="doPunch('in')">Punch In</button>`;
+    statusHtml=`You have not punched in yet today`;
+    btnHtml=`<button class="pw-punchbtn in" id="pw-btn" onclick="doPunch('in')">${ic('finger')} Punch In</button>`;
   } else if(!d.punch_out){
-    stateHtml=`<span class="pw-live"><span class="d"></span>ON DUTY SINCE ${esc(d.punch_in)}</span>`;
-    btnHtml=`<button class="btn-punch-out" id="pw-btn" onclick="doPunch('out')">Punch Out</button>`;
+    statusHtml=`<span class="pw-live"><span class="d"></span>ON DUTY SINCE ${esc(d.punch_in)}</span>`;
+    btnHtml=`<button class="pw-punchbtn out" id="pw-btn" onclick="doPunch('out')">${ic('finger')} Punch Out</button>`;
   } else {
-    stateHtml=`<span class="pw-live" style="background:rgba(148,163,184,.18);color:#cbd5e1"><span class="d" style="background:#cbd5e1;animation:none"></span>DAY COMPLETE</span>`;
-    btnHtml=`<button class="btn-punch-out" id="pw-btn" disabled>Punched Out</button>`;
+    statusHtml=`<span class="pw-live" style="background:rgba(16,185,129,.12);color:#059669"><span class="d" style="background:#059669;animation:none"></span>DAY COMPLETE - ${d.hours!=null?d.hours+' HOURS':'DONE'}</span>`;
+    btnHtml=`<button class="pw-punchbtn out" id="pw-btn" disabled>${ic('check')} Punched Out at ${esc(d.punch_out)}</button>`;
   }
-  wrap.innerHTML=`<div class="pw-card"><div class="pw-blob"></div>
-    <div class="pw-row">
-      <div>
-        <div class="pw-lbl">Attendance - ${esc(dateLbl)}</div>
-        <div class="pw-clock" id="pw-clock"></div>
-        <div style="margin-top:8px">${stateHtml}</div>
+  wrap.innerHTML=`<div class="pw-shell" style="margin-bottom:18px">
+    <div class="pw-banner">${ic('finger')}<div class="pw-bigdate">${esc(dateLbl)}</div><div class="pw-clock" id="pw-clock"></div></div>
+    <div class="pw-body">
+      <div class="pw-status">${statusHtml}</div>
+      ${btnHtml}
+      <div class="pw-mini">
+        <div class="m"><div class="l">Punch In</div><div class="v">${esc(d.punch_in||'--:--')}</div></div>
+        <div class="m"><div class="l">Punch Out</div><div class="v">${esc(d.punch_out||'--:--')}</div></div>
+        <div class="m"><div class="l">Hours</div><div class="v">${d.hours!=null?d.hours+' h':'--'}</div></div>
       </div>
-      <div class="pw-times">
-        <div class="pw-t"><div class="pw-lbl">Punch In</div><div class="v">${esc(d.punch_in||'--:--')}</div></div>
-        <div class="pw-t"><div class="pw-lbl">Punch Out</div><div class="v">${esc(d.punch_out||'--:--')}</div></div>
-        <div class="pw-t"><div class="pw-lbl">Hours</div><div class="v">${d.hours!=null?d.hours+' h':'--'}</div></div>
-      </div>
-      <div>${btnHtml}</div>
+      <div class="pw-cap">Time is captured automatically in IST. The admin sees your attendance in real time.</div>
     </div></div>`;
   _pwTick();
   if(!_pwInt) _pwInt=setInterval(_pwTick,1000);
@@ -6998,10 +7080,10 @@ async function doPunch(kind){
   try{
     const r=await api('/api/teacher/attendance/punch-'+kind,'POST',{});
     toast(r.message);
-    if(document.getElementById('t-punch-wrap')) renderPunchCard('t-punch-wrap');
-    if(document.getElementById('ta-punch-wrap')) renderPunchCard('ta-punch-wrap');
-    if(document.getElementById('t-page-attendance').classList.contains('active')) tAttHistory();
-  }catch(e){ toast(e.message,true); if(document.getElementById('t-punch-wrap')) renderPunchCard('t-punch-wrap'); if(document.getElementById('ta-punch-wrap')) renderPunchCard('ta-punch-wrap'); }
+  }catch(e){ toast(e.message,true); }
+  if(document.getElementById('t-punch-wrap')) renderPunchCard('t-punch-wrap');
+  if(document.getElementById('ta-punch-wrap')) renderPunchCard('ta-punch-wrap');
+  if(document.getElementById('ta-history')) tAttHistory();
 }
 
 // ---- Teacher Attendance page ----
@@ -7009,23 +7091,60 @@ let _tAttMonth='';
 async function loadTAttendance(){
   const el=document.getElementById('t-attendance-content');
   _tAttMonth=_tAttMonth||curMonth();
-  el.innerHTML=`<div id="ta-punch-wrap"></div>
-    <div class="card"><div class="card-header"><h3>My Attendance</h3><input type="month" class="form-control" style="width:auto;padding:7px 12px" id="ta-month" value="${_tAttMonth}" onchange="_tAttMonth=this.value;tAttHistory()"></div>
-    <div class="card-body"><div id="ta-summary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div><div id="ta-history"><div class="spinner"></div></div></div></div>`;
+  el.innerHTML=`<div class="sm-head"><h2>My Attendance</h2><p>Punch in and punch out daily. The admin sees your attendance in real time.</p></div>
+    <div class="att-grid">
+      <div id="ta-punch-wrap"></div>
+      <div class="card"><div class="card-header"><h3>Month Overview</h3><input type="month" class="form-control" style="width:auto;padding:6px 10px" id="ta-month" value="${_tAttMonth}" onchange="_tAttMonth=this.value;tAttHistory()"></div><div class="card-body" id="ta-cal"><div class="spinner"></div></div></div>
+      <div class="card"><div class="card-header"><h3>Recent Days</h3></div><div class="card-body" id="ta-logs"><div class="spinner"></div></div></div>
+    </div>
+    <div class="card" style="margin-top:18px"><div class="card-header"><h3>Full Month Record</h3><span id="ta-summary" style="display:flex;gap:8px;flex-wrap:wrap"></span></div><div class="card-body"><div id="ta-history"><div class="spinner"></div></div></div></div>`;
   renderPunchCard('ta-punch-wrap');
   tAttHistory();
 }
 async function tAttHistory(){
   const box=document.getElementById('ta-history'); if(!box) return;
+  const cal=document.getElementById('ta-cal'), logs=document.getElementById('ta-logs');
   try{
     const d=await api('/api/teacher/attendance/history?month='+encodeURIComponent(_tAttMonth||curMonth()));
-    document.getElementById('ta-summary').innerHTML=
-      `<span class="po-pill green">PRESENT ${d.present_days} DAY${d.present_days===1?'':'S'}</span><span class="po-pill gold">${d.total_hours} TOTAL HOURS</span><span class="po-pill slate">${esc(fmtMonthLabel(d.month)).toUpperCase()}</span>`;
-    if(!d.rows.length){ box.innerHTML=`<div class="empty-state"><p>No attendance recorded in ${esc(fmtMonthLabel(d.month))} yet. Use Punch In on any working day.</p></div>`; return; }
+    const sm=document.getElementById('ta-summary');
+    if(sm) sm.innerHTML=`<span class="po-pill green">PRESENT ${d.present_days} DAY${d.present_days===1?'':'S'}</span><span class="po-pill gold">${d.total_hours} HOURS</span>`;
+    // ---- calendar ----
+    if(cal){
+      const [yy,mm]=d.month.split('-').map(Number);
+      const daysIn=new Date(yy,mm,0).getDate();
+      const present=new Set(d.rows.filter(r=>r.punch_in).map(r=>Number(r.date.split('-')[2])));
+      const now=new Date(); const isCur=(now.getFullYear()===yy&&now.getMonth()+1===mm);
+      let cells='';
+      for(let day=1;day<=daysIn;day++){
+        const on=present.has(day);
+        const today=isCur&&now.getDate()===day;
+        const future=isCur&&day>now.getDate();
+        cells+=`<div class="cal-d${on?' on':''}${today?' today':''}${(!on&&future)?' future':''}">${day}</div>`;
+      }
+      const pastDays=isCur?now.getDate():daysIn;
+      const missed=Math.max(0,pastDays-d.present_days);
+      cal.innerHTML=`<div class="cal-head">
+          <div class="cal-stat g"><div class="n">${d.present_days}</div><div class="l">Present</div></div>
+          <div class="cal-stat r"><div class="n">${missed}</div><div class="l">Not Punched</div></div>
+          <div class="cal-stat b"><div class="n">${d.total_hours}</div><div class="l">Hours</div></div>
+        </div>
+        <div class="cal-grid">${cells}</div>
+        <div class="cal-leg"><span><i style="background:rgba(16,185,129,.6)"></i>Present</span><span><i style="background:var(--border)"></i>No punch</span><span><i style="outline:2px solid hsl(25 95% 53%);outline-offset:-1px;background:transparent"></i>Today</span></div>`;
+    }
+    // ---- recent logs ----
+    if(logs){
+      const recent=d.rows.slice(0,5);
+      logs.innerHTML=recent.length?recent.map(r=>`<div class="log-row">
+          <div><div class="d">${esc(fmtNice(r.date))}</div><div class="t">${esc(r.punch_in||'-')} ${r.punch_out?'to '+esc(r.punch_out):''}${r.hours!=null?' - '+r.hours+' hrs':''}</div></div>
+          <span class="po-pill ${r.punch_in?'green':'amber'}">${r.punch_in?'PRESENT':'NO PUNCH'}</span>
+        </div>`).join(''):`<div class="pay-empty">No attendance yet this month. Punch in on any working day and it will appear here.</div>`;
+    }
+    // ---- full table ----
+    if(!d.rows.length){ box.innerHTML=`<div class="empty-state"><p>No attendance recorded in ${esc(fmtMonthLabel(d.month))} yet.</p></div>`; return; }
     box.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Date</th><th>Day</th><th>Punch In</th><th>Punch Out</th><th>Hours</th></tr></thead><tbody>${
       d.rows.map(r=>`<tr><td>${esc(fmtNice(r.date))}</td><td>${esc(r.day)}</td><td>${esc(r.punch_in||'-')}</td><td>${esc(r.punch_out||'-')}</td><td>${r.hours!=null?r.hours+' h':'-'}</td></tr>`).join('')
     }</tbody></table></div>`;
-  }catch(e){ box.innerHTML=errHtml(e); }
+  }catch(e){ box.innerHTML=errHtml(e); if(cal)cal.innerHTML=''; if(logs)logs.innerHTML=''; }
 }
 
 // ---- Appointment letter (shared builder) ----
@@ -7120,15 +7239,17 @@ async function loadTPayout(){
   _tPayMonth=_tPayMonth||curMonth();
   try{
     const c=await api('/api/teacher/contract');
-    if(!c.exists){ el.innerHTML=`<div class="empty-state"><p>Your payout has not been configured yet. Please contact the admin to set up your appointment letter and salary details.</p></div>`; return; }
+    if(!c.exists){ el.innerHTML=`<div class="sm-head"><h2>My Payout</h2><p>Transparent earning calculator - base, extras, bonus and deductions.</p></div><div class="card"><div class="card-body"><div class="empty-state"><p>Your payout has not been configured yet. Please contact the admin to set up your appointment letter and salary details.</p></div></div></div>`; return; }
     if(!c.accepted){ el.innerHTML=''; showContractGate(c); return; }
-    el.innerHTML=`<div id="tp-hero"></div>
-      <div class="card"><div class="card-header"><h3>Payout Breakdown</h3><input type="month" class="form-control" style="width:auto;padding:7px 12px" id="tp-month" value="${_tPayMonth}" onchange="_tPayMonth=this.value;tPayRender()"></div><div class="card-body" id="tp-brk"><div class="spinner"></div></div></div>
-      <div class="card"><div class="card-header"><h3>Payment Rules</h3><button class="btn btn-primary btn-sm" onclick="downloadMyLetter()">${ic('download')} Appointment Letter</button></div><div class="card-body" id="tp-rules"></div></div>`;
-    const rules=(c.rules||[]);
-    document.getElementById('tp-rules').innerHTML=
-      `<div class="alert alert-info">Full payment is made for every payable working day you attend (Punch In). For each day not attended, a per day deduction of ${fmtINR(c.per_day_rate)} applies. Extra class payments, bonuses and deductions are always listed below with their reasons.</div>`+
-      (rules.length?`<ol class="al-rules" style="margin-left:18px">${rules.map(r=>`<li>${esc(r)}</li>`).join('')}</ol>`:`<p style="color:var(--text-muted);font-size:.85rem">No additional rules have been set.</p>`);
+    window._tPayContract=c;
+    el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>My Payout</h2><p>Transparent earning calculator - base, extras, bonus and deductions.</p></div><input type="month" class="form-control" style="width:auto;padding:7px 12px" id="tp-month" value="${_tPayMonth}" onchange="_tPayMonth=this.value;tPayRender()"></div>
+      <div class="po-grid">
+        <div>
+          <div id="tp-hero"></div>
+          <div class="card" style="margin-top:18px"><div class="card-header"><h3>Payout Breakdown</h3><button class="btn btn-primary btn-sm" onclick="downloadMyLetter()">${ic('download')} Appointment Letter</button></div><div class="card-body" id="tp-brk"><div class="spinner"></div></div></div>
+        </div>
+        <div class="card"><div class="card-header"><h3>Deduction Rules</h3></div><div class="card-body" id="tp-rules"><div class="spinner"></div></div></div>
+      </div>`;
     tPayRender();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
@@ -7147,23 +7268,41 @@ function payoutBreakHTML(p){
     <div class="r net"><span>Net Payout</span><span>${fmtINR(p.net_payout)}</span></div>
   </div>`;
 }
+function payoutRulesHTML(p,c){
+  const attHit=p.absent_days>0;
+  let html=`<div class="rule-card${attHit?' hit':''}"><div class="rr"><span class="rn">Working day not attended</span><span class="ra">- ${fmtINR(p.per_day_rate)}/day</span></div>${attHit?`<span class="rt">TRIGGERED x${p.absent_days} = - ${fmtINR(p.attendance_deduction)}</span>`:`<span class="ok">NO DEDUCTION SO FAR</span>`}</div>`;
+  (p.adjustments||[]).filter(a=>a.kind==='deduction').forEach(a=>{
+    html+=`<div class="rule-card hit"><div class="rr"><span class="rn">${esc(a.note||'Deduction')}</span><span class="ra">- ${fmtINR(a.amount)}</span></div><span class="rt">APPLIED THIS MONTH</span></div>`;
+  });
+  const rules=(c&&c.rules)||p.rules||[];
+  if(rules.length) html+=`<div style="margin-top:14px"><div style="font-size:.72rem;letter-spacing:.07em;font-weight:800;color:var(--text-muted);margin-bottom:8px">TERMS FROM YOUR APPOINTMENT LETTER</div><ol class="al-rules" style="margin-left:18px;font-size:.85rem">${rules.map(r=>`<li>${esc(r)}</li>`).join('')}</ol></div>`;
+  html+=`<div style="margin-top:14px;font-size:.76rem;color:var(--text-muted)">Rules are set by the admin and are always visible here before they apply. Every extra payment, bonus and deduction is itemised in your breakdown with its reason.</div>`;
+  return html;
+}
 async function tPayRender(){
-  const hero=document.getElementById('tp-hero'), brk=document.getElementById('tp-brk');
+  const hero=document.getElementById('tp-hero'), brk=document.getElementById('tp-brk'), rules=document.getElementById('tp-rules');
   if(!hero||!brk) return;
   try{
     const p=await api('/api/teacher/payout?month='+encodeURIComponent(_tPayMonth||curMonth()));
     if(!p.exists){ brk.innerHTML='<div class="empty-state"><p>Payout not configured.</p></div>'; return; }
-    hero.innerHTML=`<div class="po-hero"><div class="pw-blob" style="position:absolute;right:-40px;top:-40px;width:180px;height:180px;border-radius:9999px;background:rgba(234,179,8,.22);filter:blur(48px)"></div>
-      <div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center;position:relative">
-        <div><div class="pw-lbl">${p.is_current_month?'Estimated Net Payout (month in progress)':'Net Payout'} - ${esc(fmtMonthLabel(p.month))}</div>
+    const pct=p.working_days?Math.min(100,Math.round(p.present_days/p.working_days*100)):0;
+    hero.innerHTML=`<div class="pw-shell"><div class="po-banner"><div class="glow"></div>
+        <div><div class="pw-lbl" style="color:rgba(255,255,255,.7)">${p.is_current_month?'ESTIMATED NET PAYOUT':'NET PAYOUT'} - ${esc(fmtMonthLabel(p.month)).toUpperCase()}</div>
         <div class="po-net">${fmtINR(p.net_payout)}</div>
         <div class="po-sub">${esc(p.designation||'')}</div></div>
-        <div class="pw-times">
-          <div class="pw-t"><div class="pw-lbl">Present</div><div class="v">${p.present_days} / ${p.working_days}</div></div>
-          <div class="pw-t"><div class="pw-lbl">Per Day</div><div class="v">${fmtINR(p.per_day_rate)}</div></div>
-        </div>
+        <div class="po-mini">
+          <div><div class="l">BASE</div><div class="v">${fmtINR(p.base_salary)}</div></div>
+          <div><div class="l">EXTRAS</div><div class="v g">+ ${fmtINR(p.extras+(p.allowances||0))}</div></div>
+          <div><div class="l">BONUS</div><div class="v g">+ ${fmtINR(p.bonus)}</div></div>
+          <div><div class="l">DEDUCTIONS</div><div class="v r">- ${fmtINR(p.manual_deductions+p.attendance_deduction)}</div></div>
+        </div></div>
+      <div class="pw-body" style="text-align:left">
+        <div style="display:flex;justify-content:space-between;font-size:.8rem;font-weight:700"><span>Attendance this month</span><span>${p.present_days} / ${p.working_days} days - ${fmtINR(p.per_day_rate)} per day</span></div>
+        <div class="po-attbar"><div class="bar"><div class="fill" style="width:${pct}%"></div></div></div>
+        ${p.is_current_month?`<div class="pw-cap" style="text-align:left">This month is still in progress - the figure improves as you punch in on more working days.</div>`:''}
       </div></div>`;
-    brk.innerHTML=(p.is_current_month?`<div class="alert alert-info">This month is still in progress. The attendance deduction assumes remaining working days are not yet marked, so the figure improves as you punch in on more days.</div>`:'')+payoutBreakHTML(p);
+    brk.innerHTML=payoutBreakHTML(p);
+    if(rules) rules.innerHTML=payoutRulesHTML(p,window._tPayContract);
   }catch(e){ brk.innerHTML=errHtml(e); }
 }
 
@@ -7175,7 +7314,7 @@ async function loadAAttendance(){
   const el=document.getElementById('a-attendance-content');
   _aAttDate=_aAttDate||new Date().toISOString().slice(0,10);
   _aAttMonth=_aAttMonth||curMonth();
-  el.innerHTML=`<div class="card"><div class="card-header"><h3>Teacher Attendance</h3>
+  el.innerHTML=`<div class="sm-head"><h2>Teacher Attendance</h2><p>Live punch in and punch out status of every teacher, day-wise and month-wise.</p></div><div class="card"><div class="card-header"><h3>Attendance</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <div class="tt-toggle"><button class="${_aAttView==='day'?'active':''}" onclick="_aAttView='day';loadAAttendance()">Day View</button><button class="${_aAttView==='month'?'active':''}" onclick="_aAttView='month';loadAAttendance()">Month Summary</button></div>
         ${_aAttView==='day'
@@ -7229,24 +7368,42 @@ let _aPayMonth='';
 async function loadAPayouts(){
   const el=document.getElementById('a-payouts-content');
   _aPayMonth=_aPayMonth||curMonth();
-  el.innerHTML=`<div class="card"><div class="card-header"><h3>Teacher Payouts</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="po-pill gold" id="ap-total"></span><input type="month" class="form-control" style="width:auto;padding:7px 12px" value="${_aPayMonth}" onchange="_aPayMonth=this.value;aPayFetch()"></div></div><div class="card-body"><div id="ap-body"><div class="spinner"></div></div></div></div>`;
+  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>Payouts</h2><p>Auto-calculated from base salary, attendance and adjustments.</p></div><input type="month" class="form-control" style="width:auto;padding:7px 12px" value="${_aPayMonth}" onchange="_aPayMonth=this.value;aPayFetch()"></div>
+    <div class="stats-grid" id="ap-stats"></div>
+    <div id="ap-body" style="margin-top:6px"><div class="spinner"></div></div>`;
   aPayFetch();
 }
 async function aPayFetch(){
-  const body=document.getElementById('ap-body'); if(!body) return;
+  const body=document.getElementById('ap-body'), stats=document.getElementById('ap-stats');
+  if(!body) return;
   try{
     const d=await api('/api/admin/payouts?month='+encodeURIComponent(_aPayMonth));
-    document.getElementById('ap-total').textContent='TOTAL NET '+fmtINR(d.total_net).toUpperCase();
+    const cfg=d.teachers.filter(t=>t.configured);
+    const totalDed=cfg.reduce((a,t)=>a+(t.attendance_deduction||0)+(t.manual_deductions||0),0);
+    const pending=cfg.filter(t=>!t.accepted).length;
+    if(stats) stats.innerHTML=
+      statCard('Total Payout (est.)',fmtINR(d.total_net),'wallet','indigo')+
+      statCard('Configured',cfg.length+' / '+d.teachers.length,'users','green')+
+      statCard('Letters Pending',pending,'clipboard','amber')+
+      statCard('Deductions Applied',fmtINR(totalDed),'chart','red');
     if(!d.teachers.length){ body.innerHTML='<div class="empty-state"><p>No active teachers found.</p></div>'; return; }
-    body.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Teacher</th><th>Base</th><th>Present</th><th>Deductions</th><th>Net Payout</th><th>Letter</th><th>Actions</th></tr></thead><tbody>${
-      d.teachers.map(t=>{
-        if(!t.configured) return `<tr><td style="font-weight:600">${esc(t.name)}</td><td colspan="3" style="color:var(--text-muted)">Payout not configured</td><td>-</td><td><span class="po-pill slate">NOT SET</span></td><td><button class="btn btn-primary btn-sm" onclick="openContractModal(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">Set Contract</button></td></tr>`;
-        const ded=(t.attendance_deduction||0)+(t.manual_deductions||0);
-        const letter=t.accepted?'<span class="po-pill green">ACCEPTED</span>':'<span class="po-pill amber">PENDING</span>';
-        return `<tr><td style="font-weight:600">${esc(t.name)}<div style="font-size:.72rem;color:var(--text-muted)">${esc(t.designation||'')}</div></td><td>${fmtINR(t.base_salary)}</td><td>${t.present_days}/${t.working_days}</td><td style="color:${ded?'var(--danger)':'inherit'}">${ded?'- '+fmtINR(ded):fmtINR(0)}</td><td style="font-weight:800">${fmtINR(t.net_payout)}</td><td>${letter}</td>
-          <td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="openPayoutDetail(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">Details</button><button class="btn btn-ghost btn-sm" onclick="openAdjustModal(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">Adjust</button><button class="btn btn-ghost btn-sm" onclick="openContractModal(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">Contract</button></td></tr>`;
-      }).join('')
-    }</tbody></table></div>`;
+    body.innerHTML=`<div class="pay-grid">${d.teachers.map(t=>{
+      const nm=esc((t.name||'').replace(/'/g,''));
+      if(!t.configured) return `<div class="pay-card"><div class="pay-head"><div class="pay-av">${esc(initials(t.name||'T'))}</div><div><div class="pay-name">${esc(t.name)}</div><div class="pay-sub">Payout not configured</div></div></div><div class="pay-empty">Set the contract to generate this teacher's appointment letter and payout.</div><div class="pay-actions"><button class="btn btn-primary btn-sm" style="flex:1" onclick="openContractModal(${t.teacher_id},'${nm}')">Set Contract</button></div></div>`;
+      const extras=(t.extras||0)+(t.bonus||0)+(t.allowances||0);
+      const ded=(t.attendance_deduction||0)+(t.manual_deductions||0);
+      const letter=t.accepted?'<span class="po-pill green">ACCEPTED</span>':'<span class="po-pill amber">LETTER PENDING</span>';
+      return `<div class="pay-card">
+        <div class="pay-head"><div class="pay-av">${esc(initials(t.name||'T'))}</div><div style="flex:1"><div class="pay-name">${esc(t.name)}</div><div class="pay-sub">${esc(t.designation||'')} - Base ${fmtINR(t.base_salary)}</div></div>${letter}</div>
+        <div class="pay-net"><div><div class="l">NET PAYOUT</div><div class="n">${fmtINR(t.net_payout)}</div></div><div class="side">${extras?`<div class="g">+ ${fmtINR(extras)} extras</div>`:''}${ded?`<div class="r">- ${fmtINR(ded)} deductions</div>`:''}${(!extras&&!ded)?`<div style="color:rgba(255,255,255,.6)">No adjustments</div>`:''}</div></div>
+        <div class="pay-chips">
+          <div class="pay-chip"><div class="n">${t.present_days}/${t.working_days}</div><div class="l">Days</div></div>
+          <div class="pay-chip"><div class="n">${fmtINR(t.per_day_rate)}</div><div class="l">Per Day</div></div>
+          <div class="pay-chip"><div class="n">${(t.adjustments||[]).length}</div><div class="l">Adjustments</div></div>
+        </div>
+        <div class="pay-actions"><button class="btn btn-ghost btn-sm" style="flex:1" onclick="openPayoutDetail(${t.teacher_id},'${nm}')">Details</button><button class="btn btn-ghost btn-sm" style="flex:1" onclick="openAdjustModal(${t.teacher_id},'${nm}')">Adjust</button><button class="btn btn-primary btn-sm" style="flex:1" onclick="openContractModal(${t.teacher_id},'${nm}')">Contract</button></div>
+      </div>`;
+    }).join('')}</div>`;
   }catch(e){ body.innerHTML=errHtml(e); }
 }
 async function openContractModal(tid,name){
