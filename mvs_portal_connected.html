@@ -1811,7 +1811,7 @@ body.dark .al-sig{color:hsl(45 90% 60%)}
 /* ---- chapter stats chips + chapter list modal ---- */
 .ov-chapstats{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 .ov-chip{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.22);color:#fff;padding:6px 13px;border-radius:9999px;font-size:.76rem;font-weight:700;cursor:pointer;transition:background .15s,transform .15s}
-.ov-chip:hover{background:rgba(255,255,255,.2);transform:translateY(-1px)}
+.ov-chip:hover{background:rgba(255,255,255,.2);transform:translateY(-1px);border-color:hsl(25 95% 60%);box-shadow:0 0 0 3px rgba(249,115,22,.2)}
 .ov-chip b{font-weight:800}
 .ov-chip.done{background:rgba(16,185,129,.18);border-color:rgba(16,185,129,.45)}
 .ov-chip.done:hover{background:rgba(16,185,129,.3)}
@@ -1826,6 +1826,14 @@ body.dark .al-sig{color:hsl(45 90% 60%)}
 .ov2-id{display:flex;gap:14px;align-items:flex-start;min-width:0}
 .ov2-av{width:58px;height:58px;border-radius:16px;background:linear-gradient(135deg,hsl(25 95% 53%),hsl(35 95% 50%));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.05rem;color:#fff;flex-shrink:0;box-shadow:0 8px 20px rgba(249,115,22,.35)}
 .ov2-av.photo{background:var(--bg);background-size:cover;background-position:center;border:2px solid rgba(255,255,255,.35)}
+.ov2-av.photo{cursor:zoom-in}
+.ov2-av.photo:hover{border-color:hsl(25 95% 60%);box-shadow:0 0 0 3px rgba(249,115,22,.35)}
+.ov2-tile:not(.static):hover{border-color:hsl(25 95% 60%);box-shadow:0 0 0 2px rgba(249,115,22,.28)}
+.ov-chip:hover{border-color:hsl(25 95% 65%)}
+.pz-ov{position:fixed;inset:0;z-index:9500;background:rgba(8,14,30,.9);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out}
+.pz-box{text-align:center;cursor:default}
+.pz-box img{width:min(72vw,340px);height:min(72vw,340px);object-fit:cover;border-radius:50%;border:4px solid rgba(255,255,255,.85);box-shadow:0 24px 70px rgba(0,0,0,.55)}
+.pz-name{color:#fff;font-weight:800;font-size:1.05rem;margin-top:14px}
 .ov2-name{font-size:1.45rem;font-weight:800;line-height:1.2}
 .ov2-sub{font-size:.82rem;opacity:.75;font-weight:600;margin-top:3px}
 .ov2 .ov-live{margin-top:10px}
@@ -1837,9 +1845,9 @@ body.dark .al-sig{color:hsl(45 90% 60%)}
 .ov2-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:18px}
 @media(max-width:640px){.ov2-tiles{grid-template-columns:repeat(2,1fr)}}
 .ov2-tile{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:13px;padding:12px 14px;cursor:pointer;transition:background .15s,transform .15s}
-.ov2-tile:hover{background:rgba(255,255,255,.14);transform:translateY(-1px)}
+.ov2-tile:hover{background:rgba(255,255,255,.14);transform:translateY(-1px);border-color:hsl(25 95% 60%);box-shadow:0 0 0 3px rgba(249,115,22,.22)}
 .ov2-tile.static{cursor:default}
-.ov2-tile.static:hover{background:rgba(255,255,255,.07);transform:none}
+.ov2-tile.static:hover{background:rgba(255,255,255,.07);transform:none;border-color:rgba(255,255,255,.12);box-shadow:none}
 .ov2-tile .n{font-size:1.25rem;font-weight:800}
 .ov2-tile .n span{font-size:.85rem;opacity:.6;font-weight:700}
 .ov2-tile .l{font-size:.68rem;opacity:.7;font-weight:700;margin-top:2px}
@@ -1946,6 +1954,68 @@ body.dark .cal-d.on{color:#34d399}
 .pay-chip .l{font-size:.62rem;color:var(--text-muted);font-weight:700}
 .pay-actions{display:flex;gap:8px;flex-wrap:wrap}
 .pay-empty{color:var(--text-muted);font-size:.86rem;padding:14px 0;text-align:center}
+
+  /* ===== Tests Module — Premium UI (tx-) ===== */
+  .tx-hero{position:relative;overflow:hidden;border-radius:18px;color:#fff;background:linear-gradient(120deg,#0F2A54 0%,#0a1f40 55%,#123163 100%);padding:20px 22px;margin-bottom:16px}
+  .tx-hero::before{content:'';position:absolute;right:-50px;top:-50px;width:200px;height:200px;border-radius:50%;background:rgba(255,107,43,.30);filter:blur(52px)}
+  .tx-hero-in{position:relative;z-index:1}
+  .dark .tx-hero{background:linear-gradient(120deg,#12233f 0%,#0b1524 60%,#16294a 100%)}
+  .tx-eyebrow{font-size:.63rem;opacity:.65;letter-spacing:.14em;font-weight:800}
+  .tx-hero h2{font-size:1.25rem;font-weight:800;margin-top:3px}
+  .tx-hero .sub{font-size:.74rem;opacity:.75;margin-top:3px}
+  .tx-hero .big{font-size:1.75rem;font-weight:800;color:#ffc46b}
+  .tx-hero .lbl{font-size:.58rem;opacity:.65;font-weight:800;letter-spacing:.08em}
+  .tx-hbar{height:6px;border-radius:99px;background:rgba(255,255,255,.14);overflow:hidden;margin-top:14px}
+  .tx-hbar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#FF6B2B,#ffb347)}
+  .tx-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:0 0 16px}
+  @media(max-width:640px){.tx-stats{grid-template-columns:repeat(2,1fr)}}
+  .tx-stat{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;box-shadow:var(--shadow)}
+  .tx-stat b{font-size:1.25rem;display:block;font-weight:800}
+  .tx-stat span{font-size:.64rem;color:var(--text-muted);font-weight:600}
+  .tx-tabs{display:flex;gap:6px;overflow-x:auto;padding:2px 0 14px;scrollbar-width:none}
+  .tx-tabs::-webkit-scrollbar{display:none}
+  .tx-tab{white-space:nowrap;font-size:.74rem;font-weight:700;color:var(--text-muted);padding:7px 13px;border-radius:999px;border:1px solid var(--border);background:var(--card);cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:.2s}
+  .tx-tab b{font-size:.62rem;padding:1px 7px;border-radius:99px;background:var(--bg)}
+  .tx-tab.on{background:linear-gradient(135deg,#FF6B2B,#ff8f3d);color:#fff;border-color:transparent;box-shadow:0 4px 12px rgba(255,107,43,.32)}
+  .tx-tab.on b{background:rgba(255,255,255,.25)}
+  .tx-types{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+  @media(max-width:640px){.tx-types{grid-template-columns:1fr}}
+  .tx-type{position:relative;overflow:hidden;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px 18px;cursor:pointer;transition:.22s;box-shadow:var(--shadow)}
+  .tx-type:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+  .tx-type.on{border-color:#FF6B2B;box-shadow:0 6px 18px -6px rgba(255,107,43,.4)}
+  .tx-type .edge{position:absolute;left:0;top:0;bottom:0;width:5px}
+  .tx-type .big{font-size:1.9rem;font-weight:800;margin-top:8px}
+  .tx-tile{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:800;color:#fff;flex-shrink:0;letter-spacing:.02em;text-align:center;line-height:1.15}
+  .tx-tile.o{background:linear-gradient(135deg,#FF6B2B,#ff9a3d)}
+  .tx-tile.n{background:linear-gradient(135deg,#0F2A54,#0a1f40)}
+  .tx-tile.v{background:linear-gradient(135deg,#7c3aed,#5b21b6)}
+  .tx-tile.g{background:linear-gradient(135deg,#059669,#047857)}
+  .tx-pill{display:inline-flex;align-items:center;gap:4px;font-size:.58rem;font-weight:800;letter-spacing:.05em;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .tx-pill.nv{background:rgba(15,42,84,.09);color:#1d4ed8}.dark .tx-pill.nv{background:rgba(147,197,253,.14);color:#93c5fd}
+  .tx-pill.o{background:rgba(255,107,43,.13);color:#c2410c}.dark .tx-pill.o{background:rgba(255,150,80,.15);color:#fdba74}
+  .tx-pill.g{background:rgba(5,150,105,.12);color:#047857}.dark .tx-pill.g{background:rgba(52,211,153,.14);color:#6ee7b7}
+  .tx-pill.a{background:rgba(217,119,6,.14);color:#b45309}.dark .tx-pill.a{background:rgba(251,191,36,.15);color:#fcd34d}
+  .tx-pill.v{background:rgba(124,58,237,.12);color:#6d28d9}.dark .tx-pill.v{background:rgba(196,181,253,.14);color:#c4b5fd}
+  .tx-pill.s{background:var(--bg);color:var(--text-muted)}
+  .tx-card{background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:12px;box-shadow:var(--shadow);transition:.22s}
+  .tx-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+  .tx-card .top{height:4px}
+  .tx-pad{padding:15px 17px}
+  .tx-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+  .tx-bar{height:7px;border-radius:99px;background:var(--bg);overflow:hidden}
+  .tx-bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#FF6B2B,#ff9a3d)}
+  .tx-dot{width:7px;height:7px;border-radius:50%;background:#34d399;animation:txPd 1.4s infinite;display:inline-block}
+  @keyframes txPd{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+  @keyframes txGlow{0%,100%{box-shadow:0 0 0 0 rgba(255,107,43,.28)}50%{box-shadow:0 0 16px 2px rgba(255,107,43,.22)}}
+  .tx-live{border:1.5px solid rgba(255,107,43,.55)!important;animation:txGlow 2s infinite}
+  .tx-dash{border:1.5px dashed var(--border);border-radius:16px;padding:15px 17px;margin-top:14px;background:var(--card)}
+  .tx-ring{position:relative;width:60px;height:60px;flex-shrink:0}
+  .tx-ring svg{transform:rotate(-90deg)}
+  .tx-ring .t{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.8rem}
+  .tx-empty{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:44px 24px;text-align:center}
+  .tx-empty .ic{font-size:34px;margin-bottom:10px}
+  .tx-empty b{font-size:1rem;display:block}
+  .tx-empty p{font-size:.78rem;color:var(--text-muted);margin-top:5px}
 
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
@@ -3855,16 +3925,69 @@ async function loadTTests(){
   const el=document.getElementById('t-tests-content');
   try{
     const exams=await api('/api/teacher/exams');
-    let html=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2>Tests</h2><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="openCreateExam('mcq')">${ic('clipboard')} New MCQ Test</button><button class="btn btn-primary btn-sm" onclick="openCreateExam('subjective')">${ic('edit')} New Subjective Test</button></div></div>`;
-    if(!exams.length){ html+=`<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>No tests created yet. Create an MCQ or Subjective test \u2014 students take it and it is auto-graded.</p></div></div></div>`; }
-    else { html+=`<div class="tst-list">`+exams.map(e=>{
-      const tb=e.test_type==='mcq'?'<span class="ex-tbadge mcq">MCQ</span>':'<span class="ex-tbadge subj">Subjective</span>';
-      return `<div class="tst-item"><div class="tst-ic">${ic('clipboard')}</div><div class="tst-body"><div class="tst-title">${esc(e.title)} ${tb}</div><div class="tst-meta"><span>${esc(e.subject||'')}</span>${e.chapter?'<span class="d">\u00b7</span><span>'+esc(e.chapter)+'</span>':''}<span class="d">\u00b7</span><span>${e.questions} Qs</span><span class="d">\u00b7</span><span>${e.total_marks} marks</span><span class="d">\u00b7</span><span>${e.duration_min} min</span></div><div class="tst-scores"><span class="tst-score" style="background:#e0edff;color:#1d4ed8">${e.attempts} submitted</span><span class="tst-score" style="background:#dcfce7;color:#15803d">${e.graded} graded</span></div></div><div class="tst-right"><div class="tst-eng"><button class="mt-eng" title="Students who opened this test" onclick="openExamAudience(${e.id},'view')">${ic('users')} ${e.views||0}</button><button class="mt-eng" title="Students who downloaded the paper" onclick="openExamAudience(${e.id},'download')">${ic('download')} ${e.downloads||0}</button></div><button class="btn btn-ghost btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results</button><div class="tst-pdf"><button class="btn btn-ghost btn-sm tst-pdfbtn" onclick="downloadExamPdf(${e.id},'english')">${ic('download')} PDF · EN</button>${(e.medium==='Bilingual'||e.medium==='Hindi')?`<button class="btn btn-ghost btn-sm tst-pdfbtn" onclick="downloadExamPdf(${e.id},'hindi')">${ic('download')} PDF · हिंदी</button>`:''}</div></div></div>`;
-    }).join('')+`</div>`; }
-    html+=`<div style="margin-top:18px"><button class="btn btn-ghost btn-sm" onclick="openUploadHub({typeLabel:'Test Paper'})">${ic('upload')} Upload PDF Test (old method)</button></div>`;
-    el.innerHTML=html;
+    const F=window._tTestFilter||'all';
+    const totAtt=exams.reduce((sum,e)=>sum+(e.attempts||0),0);
+    const totGrd=exams.reduce((sum,e)=>sum+(e.graded||0),0);
+    const pend=Math.max(0,totAtt-totGrd);
+    const isPend=e=>(e.attempts||0)>(e.graded||0);
+    const isDone=e=>(e.attempts||0)>0&&(e.attempts||0)===(e.graded||0);
+    const statsHtml=`<div class="tx-stats">`
+      +`<div class="tx-stat"><b style="color:#c2410c">${exams.length}</b><span>Total tests</span></div>`
+      +`<div class="tx-stat"><b>${totAtt}</b><span>Submissions</span></div>`
+      +`<div class="tx-stat"><b style="color:#b45309">${pend}</b><span>Copies to evaluate</span></div>`
+      +`<div class="tx-stat"><b style="color:#047857">${totGrd}</b><span>Evaluated</span></div></div>`;
+    const cnt={all:exams.length,mcq:exams.filter(e=>e.test_type==='mcq').length,subjective:exams.filter(e=>e.test_type!=='mcq').length,pending:exams.filter(isPend).length,done:exams.filter(isDone).length};
+    const tabs=[['all','All'],['mcq','Objective'],['subjective','Subjective'],['pending','Pending Evaluation'],['done','Evaluated']]
+      .map(t=>`<button class="tx-tab ${F===t[0]?'on':''}" onclick="tTestFilter('${t[0]}')">${t[1]} <b>${cnt[t[0]]}</b></button>`).join('');
+    let body='';
+    if(!exams.length){
+      body=`<div class="tx-empty"><div class="ic">📝</div><b>No tests created yet</b><p>Create an Objective or Subjective test — Objective is graded instantly on submit, Subjective you grade manually from Results.</p></div>`;
+    } else {
+      const list=exams.filter(e=> F==='all' ? true : F==='pending' ? isPend(e) : F==='done' ? isDone(e) : (F==='mcq') === (e.test_type==='mcq'));
+      body=list.length? list.map(e=>{
+        const isM=e.test_type==='mcq';
+        const pend2=isPend(e), done2=isDone(e);
+        const stPill=pend2?`<span class="tx-pill a">✍ NEEDS EVALUATION</span>`:done2?`<span class="tx-pill g">EVALUATED ✓</span>`:`<span class="tx-pill s">SCHEDULED</span>`;
+        const tyPill=isM?`<span class="tx-pill o">OBJECTIVE</span>`:`<span class="tx-pill v">SUBJECTIVE</span>`;
+        const topCol=pend2?'linear-gradient(90deg,#d97706,#f59e0b)':done2?'linear-gradient(90deg,#059669,#10b981)':(isM?'linear-gradient(90deg,#FF6B2B,#ffb347)':'linear-gradient(90deg,#7c3aed,#a78bfa)');
+        const pct=(e.attempts||0)?Math.round((e.graded||0)/(e.attempts||1)*100):0;
+        const subBar=(e.attempts||0)>0?`<div style="flex:1;max-width:240px"><div style="display:flex;justify-content:space-between;font-size:.64rem;color:var(--text-muted)"><span>Evaluated</span><b style="color:var(--text)">${e.graded||0}/${e.attempts||0}</b></div><div class="tx-bar" style="margin-top:4px"><i style="width:${pct}%"></i></div></div>`:`<span class="tx-pill s">No submissions yet</span>`;
+        return `<div class="tx-card ${pend2?'tx-live':''}"><div class="top" style="background:${topCol}"></div><div class="tx-pad">
+          <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+            <span class="tx-tile ${isM?'o':'v'}">${esc(txInit(e.subject||'GEN'))}</span>
+            <div style="flex:1;min-width:200px">
+              <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap"><b style="font-size:.95rem">${esc(e.title)}</b>${tyPill}${stPill}</div>
+              <div class="tx-meta">
+                ${e.subject?`<span class="tx-pill nv">${esc(e.subject)}</span>`:''}
+                ${e.chapter?`<span class="tx-pill s">${esc(e.chapter)}</span>`:''}
+                <span class="tx-pill s">❓ ${e.questions} Qs</span><span class="tx-pill s">🎯 ${e.total_marks} marks</span><span class="tx-pill s">⏱ ${e.duration_min} min</span>
+              </div>
+              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">${subBar}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:13px;justify-content:flex-end;flex-wrap:wrap;align-items:center">
+            <button class="mt-eng" title="Students who opened this test" onclick="openExamAudience(${e.id},'view')">${ic('users')} ${e.views||0}</button>
+            <button class="mt-eng" title="Students who downloaded the paper" onclick="openExamAudience(${e.id},'download')">${ic('download')} ${e.downloads||0}</button>
+            <button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>
+            <button class="btn btn-ghost btn-sm tst-pdfbtn" onclick="downloadExamPdf(${e.id},'english')">${ic('download')} PDF · EN</button>
+            ${(e.medium==='Bilingual'||e.medium==='Hindi')?`<button class="btn btn-ghost btn-sm tst-pdfbtn" onclick="downloadExamPdf(${e.id},'hindi')">${ic('download')} PDF · हिंदी</button>`:''}
+          </div>
+        </div></div>`;
+      }).join('') : `<div class="tx-empty"><div class="ic">🔍</div><b>No tests in this filter</b><p>Try another tab above.</p></div>`;
+    }
+    el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Objective auto-graded on submit ⚡ · Subjective graded manually by you ✍️</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="openCreateExam('mcq')">${ic('clipboard')} New Objective Test</button><button class="btn btn-primary btn-sm" onclick="openCreateExam('subjective')">${ic('edit')} New Subjective Test</button></div></div>`
+      +statsHtml+`<div class="tx-tabs">${tabs}</div>`+body
+      +`<div class="tx-dash"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div style="display:flex;gap:10px;align-items:center"><span style="font-size:18px">📄</span><div><b style="font-size:.82rem">Upload PDF Test (legacy method)</b><div style="font-size:.68rem;color:var(--text-muted)">PDF paper + manual checking — kept for backward compatibility</div></div></div><button class="btn btn-ghost btn-sm" onclick="openUploadHub({typeLabel:'Test Paper'})">${ic('upload')} Upload PDF</button></div></div>`;
   }catch(e){ el.innerHTML=errHtml(e); }
 }
+function tTestFilter(f){ window._tTestFilter=f; loadTTests(); }
+function txInit(sub){
+  const w=(sub||'').trim().split(/\s+/).filter(Boolean);
+  if(!w.length) return 'GEN';
+  const t=(w.length===1? w[0].slice(0,3) : w.slice(0,2).map(x=>x[0]).join('')+(w[0].length>2?w[0].slice(1,2):''));
+  return t.toUpperCase();
+}
+
 let _examType='subjective', _examQs=[], _lastField=null, _examMedium='English';
 const TEX={frac:'\frac{a}{b}',pow:'x^{2}',sub:'x_{n}',sqrt:'\sqrt{x}',pi:'\pi',theta:'\theta',delta:'\Delta',times:'\times',deg:'^{\circ}',intg:'\int',sum:'\sum',rxn:'\ce{2H2 + O2 -> 2H2O}',chem:'\ce{ }'};
 function renderMath(el){
@@ -3902,7 +4025,7 @@ async function openCreateExam(type){
   const tl=type==='mcq'?'MCQ':'Subjective';
   const tools=`<div class="ex-tools"><span class="ex-tools-lbl">Maths & Chemistry:</span><button type="button" onclick="insertTexKey('frac')">a&frasl;b</button><button type="button" onclick="insertTexKey('pow')">x&sup2;</button><button type="button" onclick="insertTexKey('sub')">x&#8345;</button><button type="button" onclick="insertTexKey('sqrt')">&radic;</button><button type="button" onclick="insertTexKey('pi')">&pi;</button><button type="button" onclick="insertTexKey('theta')">&theta;</button><button type="button" onclick="insertTexKey('delta')">&Delta;</button><button type="button" onclick="insertTexKey('times')">&times;</button><button type="button" onclick="insertTexKey('deg')">&deg;</button><button type="button" onclick="insertTexKey('intg')">&int;</button><button type="button" onclick="insertTexKey('sum')">&Sigma;</button><button type="button" class="chem" onclick="insertTexKey('rxn')">Reaction</button><button type="button" class="chem" onclick="insertTexKey('chem')">Formula</button><button type="button" class="ai" onclick="autoFormatField()">Auto-format</button></div>`;
   const note=type==='subjective'
-    ?'<div class="alert alert-info">Students upload a photo of their handwritten answers. The AI checks each question against your model answer and gives marks + remarks automatically. Write maths like <code>$x^2$</code> and reactions like <code>$\ce{2H2 + O2 -> 2H2O}$</code> &mdash; they render automatically.</div>'
+    ?'<div class="alert alert-info">Students upload a photo of their handwritten answers. You grade each answer manually from Results — award marks + remarks per question (your model answers stay visible to you while checking). Write maths like <code>$x^2$</code> and reactions like <code>$\ce{2H2 + O2 -> 2H2O}$</code> &mdash; they render automatically.</div>'
     :'<div class="alert alert-info">Students select an option. Auto-graded instantly. Write maths like <code>$x^2$</code> and reactions like <code>$\ce{...}$</code>.</div>';
   showModal('Create '+tl+' Test',
     `<div style="display:flex;gap:12px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:160px"><label>Subject</label><select class="form-control" id="ex-sub">${subOpts}</select></div><div class="form-group" style="width:110px"><label>Duration (min)</label><input type="number" class="form-control" id="ex-dur" value="60"></div><div class="form-group" style="width:140px"><label>Medium</label><select class="form-control" id="ex-medium" onchange="examMediumChange()"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div></div>`
@@ -4113,12 +4236,10 @@ async function viewExamAttempts(id){
     const d=await api('/api/teacher/exam/'+id+'/attempts');
     window._examAttData=d;
     const rows=d.attempts.length?d.attempts.map(a=>{
-      const info=a.status==='graded'?('Score: '+a.total_awarded+'/'+d.exam.total_marks+(a.verdict?' \u00b7 '+esc(a.verdict):'')):a.status==='grading'?'With teacher for checking':'Pending';
-      const btns=a.status!=='graded'
-        ?`<button class="btn btn-success btn-sm" onclick="gradeAttemptNow(${a.attempt_id},${id})">AI Grade</button><button class="btn btn-ghost btn-sm" onclick="gradeManual(${a.attempt_id},${id})">Grade Manually</button>`
-        :`<button class="btn btn-ghost btn-sm" onclick="gradeManual(${a.attempt_id},${id})">Edit Marks</button>`;
+      const info=a.status==='graded'?('Score: '+a.total_awarded+'/'+d.exam.total_marks+(a.verdict?' \u00b7 '+esc(a.verdict):'')):a.status==='grading'?'Pending evaluation':'Awaiting submission';
+      const btns=`<button class="btn btn-primary btn-sm" onclick="gradeManual(${a.attempt_id},${id})">${a.status==='graded'?'Edit Marks':'✍ Grade Manually'}</button>`;
       const dl=a.has_answer?`<button class="btn btn-ghost btn-sm ansdl-btn" onclick="downloadStudentAnswer(${a.attempt_id},'${esc((a.student_name||'student').replace(/[^A-Za-z0-9]/g,'-'))}')">${ic('download')} Sheet</button>`:'';
-      return `<div class="today-row"><div><div class="tr-sub">${esc(a.student_name||('Student #'+a.student_id))}</div><div class="tr-topic">${info}</div></div><div class="tmeta"><span class="tstatus ${a.status==='graded'?'done':''}">${esc(a.status)}</span>${dl}${btns}</div></div>`;
+      return `<div class="today-row"><div><div class="tr-sub">${esc(a.student_name||('Student #'+a.student_id))}</div><div class="tr-topic">${info}</div></div><div class="tmeta"><span class="tstatus ${a.status==='graded'?'done':''}">${a.status==='grading'?'pending evaluation':esc(a.status)}</span>${dl}${btns}</div></div>`;
     }).join(''):'<div class="empty-state"><p>No submissions yet.</p></div>';
     showModal('Results \u2014 '+esc(d.exam.title), rows);
   }catch(e){ toast(e.message,true); }
@@ -6175,38 +6296,87 @@ async function loadSTests(){
   const el=document.getElementById('s-tests-content');
   try{
     const exams=await api('/api/student/exams');
-    window._sExams=exams;
-    if(!exams.length){ el.innerHTML=`<div class="sm-head"><h2>Tests</h2></div><div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>No tests available yet.</p></div></div></div>`; return; }
-    const mcq=exams.filter(e=>e.test_type==='mcq'), subj=exams.filter(e=>e.test_type!=='mcq');
-    if(!window._sTestFilter) window._sTestFilter=mcq.length?'mcq':'subjective';
-    if(window._sTestFilter==='mcq'&&!mcq.length) window._sTestFilter='subjective';
-    if(window._sTestFilter==='subjective'&&!subj.length&&mcq.length) window._sTestFilter='mcq';
-    const sel=window._sTestFilter;
-    const selCards=`<div class="tst-sel"><div class="tst-card ${sel==='mcq'?'active':''}" onclick="sTestFilter('mcq')"><div class="tst-t">MCQ Tests</div><div class="tst-d">Objective, auto-graded instantly</div><div class="tst-n">${mcq.length}</div></div><div class="tst-card ${sel==='subjective'?'active':''}" onclick="sTestFilter('subjective')"><div class="tst-t">Subjective Tests</div><div class="tst-d">Handwritten upload, AI auto-graded</div><div class="tst-n">${subj.length}</div></div></div>`;
-    const list=sel==='mcq'?mcq:subj;
-    const rows=list.length?list.map(examCardHTML).join(''):'<div class="card"><div class="card-body"><div class="empty-state"><p>No tests in this category yet.</p></div></div>';
-    el.innerHTML=`<div class="sm-head"><h2>Tests</h2></div>${selCards}<div class="tst-list">${rows}</div>`;
+    const F=window._sTestFilter||'mcq';
+    const mcqs=exams.filter(e=>e.test_type==='mcq'), subs=exams.filter(e=>e.test_type!=='mcq');
+    const graded=exams.filter(e=>e.status==='graded');
+    const grading=exams.filter(e=>e.status==='grading');
+    const upcoming=exams.filter(e=>e.status!=='graded'&&e.status!=='grading');
+    const avg=graded.length?Math.round(graded.reduce((sm,e)=>sm+(e.score||0)/(e.total_marks||1)*100,0)/graded.length):null;
+    const last=graded.length?graded[graded.length-1]:null;
+    const nxt=upcoming[0]||null;
+    const hero=`<div class="tx-hero"><div class="tx-hero-in">
+      <div style="display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:center">
+        <div style="min-width:200px;flex:1">
+          <div class="tx-eyebrow">TEST CENTER</div>
+          ${nxt?`<h2>Next up: <span style="color:#ffc46b">${esc(nxt.title)}</span></h2><div class="sub">${esc(nxt.subject||'')}${nxt.chapter?' · '+esc(nxt.chapter):''} · ${nxt.total_marks} marks</div>`
+              :`<h2>All caught up 🎉</h2><div class="sub">No pending tests right now — new tests will appear here.</div>`}
+        </div>
+        ${avg!==null?`<div style="text-align:right"><div class="big">${avg}%</div><div class="lbl">AVG SCORE</div></div>`:''}
+      </div>
+      ${avg!==null?`<div class="tx-hbar"><i style="width:${avg}%"></i></div><div style="display:flex;justify-content:space-between;font-size:.62rem;opacity:.7;margin-top:5px"><span>${last?`Last: ${last.score}/${last.total_marks} · ${esc(last.title)}`:''}</span><span>${graded.length} completed</span></div>`:''}
+    </div></div>`;
+    const statsHtml=`<div class="tx-stats">`
+      +`<div class="tx-stat"><b style="color:#c2410c">${upcoming.length}</b><span>Available</span></div>`
+      +`<div class="tx-stat"><b style="color:#047857">${graded.length}</b><span>Completed</span></div>`
+      +`<div class="tx-stat"><b>${avg!==null?avg+'%':'—'}</b><span>Avg score</span></div>`
+      +`<div class="tx-stat"><b style="color:#b45309">${grading.length}</b><span>Pending evaluation</span></div></div>`;
+    el.innerHTML=hero+statsHtml+`<div class="tx-types">
+      <div class="tx-type ${F==='mcq'?'on':''}" onclick="sTestFilter('mcq')">
+        <div class="edge" style="background:linear-gradient(#FF6B2B,#ff9a3d)"></div>
+        <div style="display:flex;gap:12px;align-items:center"><span class="tx-tile o">MCQ</span><div><b style="font-size:.95rem">Objective Tests</b><div style="font-size:.72rem;color:var(--text-muted)">Instant marks on submission ⚡</div></div></div>
+        <div class="big">${mcqs.length} <span style="font-size:.72rem;font-weight:500;color:var(--text-muted)">available</span></div>
+      </div>
+      <div class="tx-type ${F!=='mcq'?'on':''}" onclick="sTestFilter('subjective')">
+        <div class="edge" style="background:linear-gradient(#7c3aed,#a78bfa)"></div>
+        <div style="display:flex;gap:12px;align-items:center"><span class="tx-tile v">SUB</span><div><b style="font-size:.95rem">Subjective Tests</b><div style="font-size:.72rem;color:var(--text-muted)">Handwritten upload · graded by teacher ✍️</div></div></div>
+        <div class="big">${subs.length} <span style="font-size:.72rem;font-weight:500;color:var(--text-muted)">available</span></div>
+      </div></div>`
+      +(exams.length? exams.filter(e=> (F==='mcq') === (e.test_type==='mcq')).map(examCardHTML).join('') || `<div class="tx-empty"><div class="ic">📝</div><b>No ${F==='mcq'?'objective':'subjective'} tests right now</b><p>New tests will appear here as soon as your teacher publishes them.</p></div>`
+        : `<div class="tx-empty"><div class="ic">📝</div><b>No tests yet</b><p>When your teacher creates a test, it will show up here.</p></div>`);
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function sTestFilter(f){ window._sTestFilter=f; loadSTests(); }
-async function downloadPaper(id,medium){
-  try{
-    toast('Preparing the question paper\u2026');
-    const r=await fetch(API+'/api/student/exam/'+id+'/paper?medium='+(medium||'english'),{headers:{Authorization:'Bearer '+TOKEN}});
-    if(!r.ok){ toast('Could not download the paper',true); return; }
-    const b=await r.blob(); const u=URL.createObjectURL(b);
-    const a=document.createElement('a'); a.href=u; a.download='question-paper.pdf'; a.click(); URL.revokeObjectURL(u);
-  }catch(e){ toast('Download error',true); }
-}
+async function downloadPaper(id,lang){ const r=await fetch(`/api/exams/${id}/paper?lang=${lang}`); if(!r.ok){ toastMsg('No paper uploaded'); return; } const b=await r.blob(); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=`paper-${id}.pdf`; a.click(); }
 function examCardHTML(e){
-  const meta=`<span>${esc(e.subject||'')}</span>${e.chapter?`<span class="d">\u00b7</span><span>${esc(e.chapter)}</span>`:''}<span class="d">\u00b7</span><span>${e.questions} Qs</span><span class="d">\u00b7</span><span>${e.total_marks} marks</span><span class="d">\u00b7</span><span class="tst-dur">${e.duration_min} min</span>`;
-  let right, scores='';
-  if(e.status==='graded'){ const pct=e.total_marks?Math.round((e.awarded||0)/e.total_marks*100):0; scores=`<div class="tst-scores"><span class="tst-score">Score: ${e.awarded}/${e.total_marks}</span><span class="tst-score" style="background:#e0edff;color:#1d4ed8">${pct}%</span></div>`; right=`<button class="btn btn-ghost btn-sm" onclick="openExamResult(${e.id})">View Result</button>`; }
-  else if(e.status==='grading'){ right=`<button class="btn btn-ghost btn-sm" disabled>Checking\u2026</button>`; }
-  else { right=`<button class="btn btn-primary btn-sm" onclick="openExamPlayer(${e.id})">Start</button>`; }
-  const paper=`<button class="btn btn-ghost btn-sm" title="Download the question paper" onclick="downloadPaper(${e.id},'english')">${ic('download')} Paper</button>`;
-  return `<div class="tst-item"><div class="tst-ic">${ic('clipboard')}</div><div class="tst-body"><div class="tst-title">${esc(e.title)}</div><div class="tst-meta">${meta}</div>${scores}</div><div class="tst-right">${paper}${right}</div></div>`;
+  const isM=e.test_type==='mcq';
+  const tyPill=isM?`<span class="tx-pill o">OBJECTIVE</span>`:`<span class="tx-pill v">SUBJECTIVE</span>`;
+  const topCol=isM?'linear-gradient(90deg,#FF6B2B,#ffb347)':'linear-gradient(90deg,#7c3aed,#a78bfa)';
+  let stPill='', right='';
+  if(e.status==='graded'){
+    const pct=Math.round((e.score||0)/(e.total_marks||1)*100);
+    const off=(169.6*(1-pct/100)).toFixed(1);
+    stPill=`<span class="tx-pill g">GRADED ✓</span>`;
+    right=`<div class="tx-ring"><svg width="60" height="60" viewBox="0 0 60 60"><circle cx="30" cy="30" r="27" fill="none" stroke="var(--border)" stroke-width="5"/><circle cx="30" cy="30" r="27" fill="none" stroke="${pct>=60?'#059669':'#d97706'}" stroke-width="5" stroke-linecap="round" stroke-dasharray="169.6" stroke-dashoffset="${off}"/></svg><div class="t">${pct}%</div></div>`;
+  } else if(e.status==='grading'){
+    stPill=`<span class="tx-pill a">⏳ PENDING EVALUATION</span>`;
+  } else {
+    stPill=isM?`<span class="tx-pill g">⚡ INSTANT RESULT</span>`:`<span class="tx-pill s">✍ TEACHER GRADES</span>`;
+  }
+  const action = e.status==='graded'
+    ? `<button class="btn btn-primary btn-sm" onclick="openExamResult(${e.id})">View Result · ${e.score}/${e.total_marks}</button>`
+    : e.status==='grading'
+    ? `<button class="btn btn-ghost btn-sm" disabled>Pending evaluation</button>`
+    : `<button class="btn btn-primary btn-sm" onclick="openExamPlayer(${e.id})">▶ Start Test</button>`;
+  return `<div class="tx-card ${e.status!=='graded'&&e.status!=='grading'?'tx-live':''}"><div class="top" style="background:${topCol}"></div><div class="tx-pad">
+    <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+      <span class="tx-tile ${isM?'o':'v'}">${esc(txInit(e.subject||'GEN'))}</span>
+      <div style="flex:1;min-width:190px">
+        <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap"><b style="font-size:.93rem">${esc(e.title)}</b>${tyPill}${stPill}</div>
+        <div class="tx-meta">
+          ${e.subject?`<span class="tx-pill nv">${esc(e.subject)}</span>`:''}
+          ${e.chapter?`<span class="tx-pill s">${esc(e.chapter)}</span>`:''}
+          <span class="tx-pill s">❓ ${e.questions} Qs</span><span class="tx-pill s">🎯 ${e.total_marks} marks</span><span class="tx-pill s">⏱ ${e.duration_min} min</span>
+        </div>
+      </div>
+      ${right}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:13px;justify-content:flex-end;flex-wrap:wrap">
+      <button class="btn btn-ghost btn-sm" onclick="downloadPaper(${e.id},'english')">⬇ Paper</button>
+      ${action}
+    </div>
+  </div></div>`;
 }
+
 async function openExamPlayer(id){
   const el=document.getElementById('s-tests-content'); softSpin(el);
   try{
@@ -6223,7 +6393,7 @@ async function openExamPlayer(id){
       return `<div class="pl-q"><div class="pl-qnum">${q.q_no}</div><div class="pl-qbody">${qtext}${q.image_b64?`<img class="pl-qimg" src="${q.image_b64}">`:''}</div></div>`;
     }).join('');
     const upload = ex.test_type==='subjective'
-      ? `<div class="pl-upload"><div class="pl-up-title">Upload your handwritten answer sheet</div><div class="pl-up-desc">Write all answers on paper, then upload a clear photo (or PDF). The AI checks each question automatically.</div><input type="file" id="pl-file" accept="image/*,application/pdf" onchange="_examPickFile(this)"><div id="pl-file-name" class="pl-file-name"></div></div>`
+      ? `<div class="pl-upload"><div class="pl-up-title">Upload your handwritten answer sheet</div><div class="pl-up-desc">Write all answers on paper (question number likhna), then upload a clear photo (or PDF). Your teacher will check each answer manually and give marks with remarks.</div><input type="file" id="pl-file" accept="image/*,application/pdf" onchange="_examPickFile(this)"><div id="pl-file-name" class="pl-file-name"></div></div>`
       : '';
     el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" onclick="loadSTests()">${ic('home')} Back</button><div class="pl-title">${esc(ex.title)}</div><div class="pl-info">${esc(ex.subject||'')} \u00b7 ${ex.questions.length} questions \u00b7 ${ex.total_marks} marks${ex.teacher_name?' \u00b7 By '+esc(ex.teacher_name):''}</div></div><div class="pl-qs">${qs}</div>${upload}<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="submitExamAnswer(${id})">Submit Test</button>`;
     renderMath(el);
@@ -6769,6 +6939,16 @@ function renderWeeklyView(list){
 function item_label(ch,part){ return part?ch+' — '+part:ch; }
 // ===== DEDICATED STUDENT TIMETABLE (design match) =====
 function _partDone(p){ return p.completed||_statusOf([p.date])==='done'; }
+function photoZoom(url, name){
+  // Kisi bhi portal pe teacher photo pe click -> full zoom lightbox
+  if(!url) return;
+  const old=document.getElementById('pz-ov'); if(old) old.remove();
+  const d=document.createElement('div');
+  d.id='pz-ov'; d.className='pz-ov';
+  d.onclick=()=>d.remove();
+  d.innerHTML=`<div class="pz-box" onclick="event.stopPropagation()"><img src="${url}" alt="Teacher photo"><div class="pz-name">${esc(name||'')}</div><button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="document.getElementById('pz-ov').remove()">Close</button></div>`;
+  document.body.appendChild(d);
+}
 function _chStatus(c, cur){
   if(c.done) return 'completed';
   if(c.started || c.name===cur) return 'ongoing';
@@ -6925,12 +7105,43 @@ function renderStudentTimetable(entries, containerId, opts={}){
   const _chUp=Math.max(0,_chT-_chD-_chOn);
   const chapChips=_chT?`<div class="ov-chapstats"><span class="ov-chip" onclick="ttChapters('${containerId}','all')" title="View all chapters">Total Chapters: <b>${_chT}</b></span><span class="ov-chip done" onclick="ttChapters('${containerId}','done')" title="View completed chapters">Completed: <b>${_chD}</b></span></div>`:'';
   let overall='';
-  if(active){
+  if(_ttView==='weekly'){
+    // ---- Weekly Overview hero: is week ki classes subject-wise + doubts + tests ----
+    const _isoW=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    const _wd0=new Date(); _wd0.setHours(0,0,0,0);
+    const _dow=(_wd0.getDay()+6)%7;
+    const _ws=new Date(_wd0); _ws.setDate(_wd0.getDate()-_dow);
+    const _we=new Date(_ws); _we.setDate(_ws.getDate()+6);
+    const _wsK=_isoW(_ws), _weK=_isoW(_we);
+    const _wkAll=opts.activeSubject==='__all'||!active;
+    const wkEntries=entries.filter(e=>e.date&&e.date>=_wsK&&e.date<=_weK&&(_wkAll||e.subject===active));
+    const perSub={};
+    wkEntries.forEach(e=>{ perSub[e.subject]=(perSub[e.subject]||0)+1; });
+    const wkDoubt=wkEntries.filter(e=>/doubt/i.test(e.chapter||'')).length;
+    const wkTest=wkEntries.filter(e=>_isTest(e.chapter||'')&&!/doubt/i.test(e.chapter||'')).length;
+    const wkCls=Math.max(0,wkEntries.length-wkDoubt-wkTest);
+    const subChips=Object.keys(perSub).sort().map(s2=>`<span class="ov-chip${(!_wkAll&&s2===active)?' done':''}" onclick="${_tab}('${encodeURIComponent(s2)}')" title="View this subject's week">${esc(s2)}: <b>${perSub[s2]}</b></span>`).join('');
+    overall=`<div class="ov-card ov2">
+      <div class="ov2-top">
+        <div style="min-width:0"><div class="ov-lbl">Weekly Overview${_wkAll?'':' - '+esc(active)}</div>
+        <div class="ov2-name" style="font-size:1.3rem">${esc(fmtNice(_wsK))} to ${esc(fmtNice(_weK))}</div>
+        ${opts.scopeLabel?`<div class="ov2-sub">${esc(opts.scopeLabel)}</div>`:''}</div>
+      </div>
+      <div class="ov2-tiles">
+        <div class="ov2-tile static"><div class="n">${wkEntries.length}</div><div class="l">Total Classes</div></div>
+        <div class="ov2-tile static"><div class="n">${wkCls}</div><div class="l">Chapter Classes</div></div>
+        <div class="ov2-tile static"><div class="n">${wkDoubt}</div><div class="l">Doubt Classes</div></div>
+        <div class="ov2-tile static"><div class="n">${wkTest}</div><div class="l">Tests</div></div>
+      </div>
+      ${subChips?`<div class="ov-chapstats" style="margin-top:14px">${subChips}</div>`:`<div class="ov2-sub" style="margin-top:14px">No classes are scheduled in this week.</div>`}
+    </div>`;
+  } else if(active){
     // ---- Premium subject hero: avatar, ring, stat tiles, now-running footer ----
     const _tinfo=(opts.tipTeacherMap||{})[active]||opts.tipTeacher||{};
     const _clsTxt=(_clsVal==='10'||_clsVal==='12')?('Class '+_clsVal):((entries.find(e=>e.subject===active)||{}).class_name||'');
     const _init=active.replace(/\(.*?\)/g,'').trim().split(/\s+/).map(w=>w[0]).join('').slice(0,3).toUpperCase();
-    const _av=_tinfo.url?`<div class="ov2-av photo" style="background-image:url('${_tinfo.url}')"></div>`:`<div class="ov2-av">${esc(_init||'S')}</div>`;
+    const _tnm=esc((_tinfo.name||'').replace(/'/g,''));
+    const _av=_tinfo.url?`<div class="ov2-av photo" style="background-image:url('${_tinfo.url}')" onclick="photoZoom('${_tinfo.url}','${_tnm}')" title="Click to view photo"></div>`:`<div class="ov2-av">${esc(_init||'S')}</div>`;
     const _R=26,_C=2*Math.PI*_R,_dash=(subPct/100*_C).toFixed(1);
     let _nowTxt='All classes are up to date';
     if(_curLive){
@@ -7022,7 +7233,7 @@ function renderStudentChapters(list, subject, opts){
 }
 function renderStudentNode(item, st, tmap, opts, ongoing){
   opts=opts||{};
-  const dot = st==='done'?`<div class="stl-dot done">${ic('check')}</div>` : (tmap&&tmap.name?`<div class="stl-dot tav${ongoing?' pulse':''}" ${tmap.url?`style="background-image:url(${tmap.url})"`:''} title="Teacher is here right now">${tmap.url?'':esc(initials(tmap.name))}</div>`:`<div class="stl-dot ${st}"></div>`);
+  const dot = st==='done'?`<div class="stl-dot done">${ic('check')}</div>` : (tmap&&tmap.name?`<div class="stl-dot tav${ongoing?' pulse':''}" ${tmap.url?`style="background-image:url(${tmap.url});cursor:zoom-in" onclick="photoZoom('${tmap.url}','${esc((tmap.name||'').replace(/'/g,''))}')"`:''} title="${tmap.url?'Click to view photo':'Teacher is here right now'}">${tmap.url?'':esc(initials(tmap.name))}</div>`:`<div class="stl-dot ${st}"></div>`);
   if(item.kind==='event'){
     const e=item.data; const isT=_isTest(e.chapter);
     const lbl=st==='current'?'Live':st==='done'?'Done':st==='progress'?'In Progress':'Upcoming';
@@ -7069,7 +7280,7 @@ function renderStudentWeekly(tl, subjects, opts){
     const list=Object.values(pick);
     const rows=list.map(x=>{
       const tmap=(opts.tipTeacherMap||{})[x.subject]||opts.tipTeacher||{}, pr=subProg[x.subject]||{done:0,total:0,pct:0};
-      const tav=tmap.name?(tmap.url?`<span class="wkc-tav" style="background-image:url(${tmap.url})"></span>`:`<span class="wkc-tav">${esc(initials(tmap.name))}</span>`):'';
+      const tav=tmap.name?(tmap.url?`<span class="wkc-tav" style="background-image:url(${tmap.url});cursor:zoom-in" onclick="photoZoom('${tmap.url}','${esc((tmap.name||'').replace(/'/g,''))}')" title="Click to view photo"></span>`:`<span class="wkc-tav">${esc(initials(tmap.name))}</span>`):'';
       const stb=x.st==='current'?`<span class="wkc-status live">Live</span>`:x.st==='done'?`<span class="wkc-status done">Completed</span>`:`<span class="wkc-status up">Upcoming</span>`;
       return `<div class="wkc-row"><div class="wkc-time">${esc(x.time||'—')}<span>90min</span></div><div class="wkc-main"><div class="wkc-sub">${esc(x.subject)} <span class="wkc-cls">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span></div>${tmap.name?`<div class="wkc-teacher">${tav}${esc(tmap.name)}</div>`:''}<div class="wkc-bar"><div class="wkc-fill" style="width:${pr.pct}%"></div></div><div class="wkc-cnt">${pr.done}/${pr.total} classes</div></div><div class="wkc-right">${stb}<div class="wkc-pct">${pr.pct}%</div></div></div>`;
     }).join('');
@@ -7825,6 +8036,55 @@ async function delAdjust(aid,tid,name){
   catch(e){ toast(e.message,true); }
 }
 window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
+</script>
+
+<script id="tests-backup-v1">
+/* ================================================================
+   BACKUP v1 — original Tests module (pre-premium redesign), NOT CALLED.
+   Rollback: delete the new loadTTests/loadSTests/sTestFilter/examCardHTML
+   and rename these _v1 functions back to their original names.
+   ================================================================ */
+async function loadTTests_v1(){
+  const el=document.getElementById('t-tests-content');
+  try{
+    const exams=await api('/api/teacher/exams');
+    let html=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2>Tests</h2><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="openCreateExam('mcq')">${ic('clipboard')} New MCQ Test</button><button class="btn btn-primary btn-sm" onclick="openCreateExam('subjective')">${ic('edit')} New Subjective Test</button></div></div>`;
+    if(!exams.length){ html+=`<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>No tests created yet. Create an MCQ or Subjective test \u2014 students take it and it is auto-graded.</p></div></div></div>`; }
+    else { html+=`<div class="tst-list">`+exams.map(e=>{
+      const tb=e.test_type==='mcq'?'<span class="ex-tbadge mcq">MCQ</span>':'<span class="ex-tbadge subj">Subjective</span>';
+      return `<div class="tst-item"><div class="tst-ic">${ic('clipboard')}</div><div class="tst-body"><div class="tst-title">${esc(e.title)} ${tb}</div><div class="tst-meta"><span>${esc(e.subject||'')}</span>${e.chapter?'<span class="d">\u00b7</span><span>'+esc(e.chapter)+'</span>':''}<span class="d">\u00b7</span><span>${e.questions} Qs</span><span class="d">\u00b7</span><span>${e.total_marks} marks</span><span class="d">\u00b7</span><span>${e.duration_min} min</span></div><div class="tst-scores"><span class="tst-score" style="background:#e0edff;color:#1d4ed8">${e.attempts} submitted</span><span class="tst-score" style="background:#dcfce7;color:#15803d">${e.graded} graded</span></div></div><div class="tst-right"><div class="tst-eng"><button class="mt-eng" title="Students who opened this test" onclick="openExamAudience(${e.id},'view')">${ic('users')} ${e.views||0}</button><button class="mt-eng" title="Students who downloaded the paper" onclick="openExamAudience(${e.id},'download')">${ic('download')} ${e.downloads||0}</button></div><button class="btn btn-ghost btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results</button><div class="tst-pdf"><button class="btn btn-ghost btn-sm tst-pdfbtn" onclick="downloadExamPdf(${e.id},'english')">${ic('download')} PDF · EN</button>${(e.medium==='Bilingual'||e.medium==='Hindi')?`<button class="btn btn-ghost btn-sm tst-pdfbtn" onclick="downloadExamPdf(${e.id},'hindi')">${ic('download')} PDF · हिंदी</button>`:''}</div></div></div>`;
+    }).join('')+`</div>`; }
+    html+=`<div style="margin-top:18px"><button class="btn btn-ghost btn-sm" onclick="openUploadHub({typeLabel:'Test Paper'})">${ic('upload')} Upload PDF Test (old method)</button></div>`;
+    el.innerHTML=html;
+  }catch(e){ el.innerHTML=errHtml(e); }
+}
+async function loadSTests_v1(){
+  const el=document.getElementById('s-tests-content');
+  try{
+    const exams=await api('/api/student/exams');
+    window._sExams=exams;
+    if(!exams.length){ el.innerHTML=`<div class="sm-head"><h2>Tests</h2></div><div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>No tests available yet.</p></div></div></div>`; return; }
+    const mcq=exams.filter(e=>e.test_type==='mcq'), subj=exams.filter(e=>e.test_type!=='mcq');
+    if(!window._sTestFilter) window._sTestFilter=mcq.length?'mcq':'subjective';
+    if(window._sTestFilter==='mcq'&&!mcq.length) window._sTestFilter='subjective';
+    if(window._sTestFilter==='subjective'&&!subj.length&&mcq.length) window._sTestFilter='mcq';
+    const sel=window._sTestFilter;
+    const selCards=`<div class="tst-sel"><div class="tst-card ${sel==='mcq'?'active':''}" onclick="sTestFilter('mcq')"><div class="tst-t">MCQ Tests</div><div class="tst-d">Objective, auto-graded instantly</div><div class="tst-n">${mcq.length}</div></div><div class="tst-card ${sel==='subjective'?'active':''}" onclick="sTestFilter('subjective')"><div class="tst-t">Subjective Tests</div><div class="tst-d">Handwritten upload, AI auto-graded</div><div class="tst-n">${subj.length}</div></div></div>`;
+    const list=sel==='mcq'?mcq:subj;
+    const rows=list.length?list.map(examCardHTML_v1).join(''):'<div class="card"><div class="card-body"><div class="empty-state"><p>No tests in this category yet.</p></div></div>';
+    el.innerHTML=`<div class="sm-head"><h2>Tests</h2></div>${selCards}<div class="tst-list">${rows}</div>`;
+  }catch(e){ el.innerHTML=errHtml(e); }
+}
+function sTestFilter_v1(f){ window._sTestFilter=f; loadSTests(); }
+function examCardHTML_v1(e){
+  const meta=`<span>${esc(e.subject||'')}</span>${e.chapter?`<span class="d">\u00b7</span><span>${esc(e.chapter)}</span>`:''}<span class="d">\u00b7</span><span>${e.questions} Qs</span><span class="d">\u00b7</span><span>${e.total_marks} marks</span><span class="d">\u00b7</span><span class="tst-dur">${e.duration_min} min</span>`;
+  let right, scores='';
+  if(e.status==='graded'){ const pct=e.total_marks?Math.round((e.awarded||0)/e.total_marks*100):0; scores=`<div class="tst-scores"><span class="tst-score">Score: ${e.awarded}/${e.total_marks}</span><span class="tst-score" style="background:#e0edff;color:#1d4ed8">${pct}%</span></div>`; right=`<button class="btn btn-ghost btn-sm" onclick="openExamResult(${e.id})">View Result</button>`; }
+  else if(e.status==='grading'){ right=`<button class="btn btn-ghost btn-sm" disabled>Checking\u2026</button>`; }
+  else { right=`<button class="btn btn-primary btn-sm" onclick="openExamPlayer(${e.id})">Start</button>`; }
+  const paper=`<button class="btn btn-ghost btn-sm" title="Download the question paper" onclick="downloadPaper(${e.id},'english')">${ic('download')} Paper</button>`;
+  return `<div class="tst-item"><div class="tst-ic">${ic('clipboard')}</div><div class="tst-body"><div class="tst-title">${esc(e.title)}</div><div class="tst-meta">${meta}</div>${scores}</div><div class="tst-right">${paper}${right}</div></div>`;
+}
 </script>
 </body>
 </html>
