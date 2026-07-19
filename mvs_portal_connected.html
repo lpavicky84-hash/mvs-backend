@@ -3989,7 +3989,7 @@ function txInit(sub){
 }
 
 let _examType='subjective', _examQs=[], _lastField=null, _examMedium='English';
-const TEX={frac:'\frac{a}{b}',pow:'x^{2}',sub:'x_{n}',sqrt:'\sqrt{x}',pi:'\pi',theta:'\theta',delta:'\Delta',times:'\times',deg:'^{\circ}',intg:'\int',sum:'\sum',rxn:'\ce{2H2 + O2 -> 2H2O}',chem:'\ce{ }'};
+const TEX={frac:'\\frac{a}{b}',pow:'x^{2}',sub:'x_{n}',sqrt:'\\sqrt{x}',pi:'\\pi',theta:'\\theta',delta:'\\Delta',times:'\\times',deg:'^{\\circ}',intg:'\\int',sum:'\\sum',rxn:'\\ce{2H2 + O2 -> 2H2O}',chem:'\\ce{ }'};
 function renderMath(el){
   if(!el||!window.katex) return;
   try{
@@ -4023,15 +4023,15 @@ async function openCreateExam(type){
   try{ const es=await api('/api/teacher/my-timetable'); subs=[...new Set(es.filter(e=>e.subject).map(e=>e.subject))]; }catch(e){}
   const subOpts=subs.length?subs.map(s=>`<option>${esc(s)}</option>`).join(''):'<option>General</option>';
   const tl=type==='mcq'?'MCQ':'Subjective';
-  const tools=`<div class="ex-tools"><span class="ex-tools-lbl">Maths & Chemistry:</span><button type="button" onclick="insertTexKey('frac')">a&frasl;b</button><button type="button" onclick="insertTexKey('pow')">x&sup2;</button><button type="button" onclick="insertTexKey('sub')">x&#8345;</button><button type="button" onclick="insertTexKey('sqrt')">&radic;</button><button type="button" onclick="insertTexKey('pi')">&pi;</button><button type="button" onclick="insertTexKey('theta')">&theta;</button><button type="button" onclick="insertTexKey('delta')">&Delta;</button><button type="button" onclick="insertTexKey('times')">&times;</button><button type="button" onclick="insertTexKey('deg')">&deg;</button><button type="button" onclick="insertTexKey('intg')">&int;</button><button type="button" onclick="insertTexKey('sum')">&Sigma;</button><button type="button" class="chem" onclick="insertTexKey('rxn')">Reaction</button><button type="button" class="chem" onclick="insertTexKey('chem')">Formula</button><button type="button" class="ai" onclick="autoFormatField()">Auto-format</button></div>`;
+  const tools=`<div class="ex-tools"><span class="ex-tools-lbl">Maths & Chemistry:</span><button type="button" onclick="insertTexKey('frac')">a&frasl;b</button><button type="button" onclick="insertTexKey('pow')">x&sup2;</button><button type="button" onclick="insertTexKey('sub')">x&#8345;</button><button type="button" onclick="insertTexKey('sqrt')">&radic;</button><button type="button" onclick="insertTexKey('pi')">&pi;</button><button type="button" onclick="insertTexKey('theta')">&theta;</button><button type="button" onclick="insertTexKey('delta')">&Delta;</button><button type="button" onclick="insertTexKey('times')">&times;</button><button type="button" onclick="insertTexKey('deg')">&deg;</button><button type="button" onclick="insertTexKey('intg')">&int;</button><button type="button" onclick="insertTexKey('sum')">&Sigma;</button><button type="button" class="chem" onclick="insertTexKey('rxn')">Reaction</button><button type="button" class="chem" onclick="insertTexKey('chem')">Formula</button><button type="button" class="ai" onclick="autoFormatField()" title="Offline &amp; free — no AI cost">&#9889; Auto-format</button></div>`;
   const note=type==='subjective'
-    ?'<div class="alert alert-info">Students upload a photo of their handwritten answers. You grade each answer manually from Results — award marks + remarks per question (your model answers stay visible to you while checking). Write maths like <code>$x^2$</code> and reactions like <code>$\ce{2H2 + O2 -> 2H2O}$</code> &mdash; they render automatically.</div>'
-    :'<div class="alert alert-info">Students select an option. Auto-graded instantly. Write maths like <code>$x^2$</code> and reactions like <code>$\ce{...}$</code>.</div>';
+    ?'<div class="alert alert-info">Students upload a photo of their handwritten answers. You grade each answer manually from Results — award marks + remarks per question (your model answers stay visible to you while checking). Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{2H2 + O2 -> 2H2O}$</code> &mdash; they render automatically.</div>'
+    :'<div class="alert alert-info">Students select an option. Auto-graded instantly. Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{...}$</code>.</div>';
   showModal('Create '+tl+' Test',
     `<div style="display:flex;gap:12px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:160px"><label>Subject</label><select class="form-control" id="ex-sub">${subOpts}</select></div><div class="form-group" style="width:110px"><label>Duration (min)</label><input type="number" class="form-control" id="ex-dur" value="60"></div><div class="form-group" style="width:140px"><label>Medium</label><select class="form-control" id="ex-medium" onchange="examMediumChange()"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div></div>`
     +`<div class="form-group"><label>Test Title</label><input class="form-control" id="ex-title" placeholder="e.g. Physics Chapter Test - Electric Charges"></div>`
     +`<div class="form-group"><label>Chapter (optional)</label><input class="form-control" id="ex-ch" placeholder="e.g. Electric Charges"></div>`
-    +`<div class="ex-import"><button type="button" class="ex-imp-btn" onclick="document.getElementById('ex-docx').click()">Import from Word</button><input type="file" id="ex-docx" accept=".docx" style="display:none" onchange="importExamDocx(this)"><button type="button" class="ex-imp-btn ex-imp-pdf" onclick="document.getElementById('ex-pdf').click()">Import from PDF</button><input type="file" id="ex-pdf" accept=".pdf,application/pdf" style="display:none" onchange="importExamPdf(this)"><span class="ex-import-hint">Bulk import every question &amp; answer from a Word or PDF file (Hindi/English supported)</span></div>`
+    +`<div class="ex-import"><span class="ex-import-hint">&#128203; <b>Smart Paste (free, no AI):</b> copy questions from any website, Word or PDF and paste into the boxes below — maths &amp; chemistry format automatically. For a scanned page or diagram, attach its screenshot to the question.</span></div>`
     +`<div class="ex-prog" id="ex-prog"><div class="ex-prog-top"><span class="ex-prog-label" id="ex-prog-label">Uploading\u2026</span><span class="ex-prog-pct" id="ex-prog-pct">0%</span></div><div class="ex-prog-track"><div class="ex-prog-fill" id="ex-prog-fill"></div></div></div>`
     +tools
     +`<div id="ex-qs"></div><button class="btn btn-ghost btn-sm" onclick="addExamQ()" style="margin:4px 0 14px">+ Add Question</button>`
@@ -4059,7 +4059,7 @@ function renderExamQs(){
   const biling=(_examMedium==='Bilingual');
   el.innerHTML=_examQs.map((q,i)=>{
     const isHi=biling&&q._tab==='hi';
-    const head=`<div class="ex-qhead"><span class="ex-qnum">Question ${i+1}</span><div class="ex-qhead-actions"><button type="button" class="btn btn-sm ex-ocr" onclick="document.getElementById('ex-ocrf-${i}').click()">Auto-fill from screenshot</button><input type="file" id="ex-ocrf-${i}" accept="image/*" style="display:none" onchange="ocrFillQuestion(this,${i})">${_examQs.length>1?`<button class="btn btn-danger btn-sm" onclick="removeExamQ(${i})">${ic('trash')}</button>`:''}</div></div>`;
+    const head=`<div class="ex-qhead"><span class="ex-qnum">Question ${i+1}</span><div class="ex-qhead-actions"><button type="button" class="btn btn-sm ex-ocr" title="Attach a screenshot of the question — looks 100% identical, no AI cost" onclick="document.getElementById('ex-ocrf-${i}').click()">&#128247; Add screenshot</button><input type="file" id="ex-ocrf-${i}" accept="image/*" style="display:none" onchange="ocrFillQuestion(this,${i})">${_examQs.length>1?`<button class="btn btn-danger btn-sm" onclick="removeExamQ(${i})">${ic('trash')}</button>`:''}</div></div>`;
     const tabs=biling?`<div class="ex-lang-tabs"><button type="button" class="ex-lang-tab ${q._tab!=='hi'?'active':''}" onclick="setExamTab(${i},'en')">English</button><button type="button" class="ex-lang-tab ${q._tab==='hi'?'active':''}" onclick="setExamTab(${i},'hi')">\u0939\u093f\u0902\u0926\u0940</button></div>`:'';
     const autoHint=isHi?`<div class="ex-auto-hint">\u2728 Leave blank to auto-translate from English when you create the test.</div>`:'';
     const qval=isHi?(q.q_hi||''):(q.q||'');
@@ -4095,38 +4095,154 @@ function renderExamQs(){
     const pa=document.getElementById('pv-a-'+i); if(pa){pa.textContent=isHi?(q.model_hi||''):(q.model||'');renderMath(pa);}
   });
 }
+
+/* ================= OFFLINE SMART FORMATTER ================= */
+const spUMAP={'∫':'\\int ','π':'\\pi ','θ':'\\theta ','Δ':'\\Delta ','δ':'\\delta ','λ':'\\lambda ','μ':'\\mu ','α':'\\alpha ','β':'\\beta ','γ':'\\gamma ','ω':'\\omega ','Σ':'\\sum ','σ':'\\sigma ','×':'\\times ','÷':'\\div ','±':'\\pm ','∞':'\\infty ','≈':'\\approx ','≠':'\\ne ','≤':'\\le ','≥':'\\ge ','→':'\\to ','←':'\\leftarrow ','−':'-','–':'-','η':'\\eta ','Ω':'\\Omega ','ε':'\\epsilon ','ρ':'\\rho ','ν':'\\nu ','°':'^\\circ '};
+const spSUP={'⁰':'0','¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9','ⁿ':'n','⁻':'-'};
+const spSUB={'₀':'0','₁':'1','₂':'2','₃':'3','₄':'4','₅':'5','₆':'6','₇':'7','₈':'8','₉':'9','ₓ':'x'};
+
+function spIsChem(t){
+  const hasArrow=/(->|→|⟶|⇌|⟹|==>)/.test(t);
+  const chemTokens=(t.match(/(?:^|[\s+(])(?:\d+)?(?:H|He|Li|Be|B|C|N|O|F|Ne|Na|Mg|Al|Si|P|S|Cl|Ar|K|Ca|Fe|Cu|Zn|Ag|Au|Hg|Pb|Sn|Mn|Cr|Ni|Co|Ba|Sr|I|Br)\w*\d*(?:[+\-]\d*)?/g)||[]).length;
+  return hasArrow && chemTokens>=2;
+}
+function spChemTex(t){
+  let s=t.replace(/→|⟶|⟹/g,'->').replace(/⇌/g,'<=>').replace(/==>/g,'->');
+  s=s.replace(/->\s*[\(\[]([^\)\]]+)[\)\]]/g,'->[$1]');
+  return '$\\ce{'+s.trim()+'}$';
+}
+function spSegParse(s){
+  const out=[]; let depth=0, buf='';
+  const push=m=>{ if(buf){ out.push({m:m,t:buf}); buf=''; } };
+  for(const ch of s){
+    if(ch==='\u0000'){ if(depth===0) push(false); depth++; continue; }
+    if(ch==='\u0001'){ depth=Math.max(0,depth-1); if(depth===0) push(true); continue; }
+    buf+=ch;
+  }
+  push(depth>0);
+  return out;
+}
+function spSmartFormat(raw){
+  const MK0='\u0000', MK1='\u0001';
+  const out=[];
+  for(const line0 of raw.split(/\r?\n/)){
+    const t=line0.trim();
+    if(!t){ out.push(''); continue; }
+    if(spIsChem(t)){ out.push(spChemTex(t)); continue; }
+    let s=t, hadMath=false;
+    const M=x=>{ hadMath=true; return MK0+x+MK1; };
+    // fractions FIRST (plain tokens like T2/T1, 273/373 — digit required)
+    s=s.replace(/(?<![\w^_{\\])([A-Za-z0-9]+)\s*\/\s*([A-Za-z0-9]+)(?![\w}])/g,(m,a,b)=>{ if(!/\d/.test(a+b)) return m; return M('\\frac{'+a+'}{'+b+'}'); });
+    // degree: 30° -> 30^{\circ}
+    s=s.replace(/(\d+(?:\.\d+)?)\s*°/g,(m,a)=> M(a+'^{\\circ}'));
+    // unicode superscripts (base included)
+    s=s.replace(/([A-Za-z0-9}\)])?([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ⁻]+)/g,(m,b,sup)=> M((b||'')+'^{'+[...sup].map(c=>spSUP[c]||'').join('')+'}'));
+    // unicode subscripts (base included)
+    s=s.replace(/([A-Za-z0-9}\)])?([₀₁₂₃₄₅₆₇₈₉ₓ]+)/g,(m,b,sub)=> M((b||'')+'_{'+[...sub].map(c=>spSUB[c]||'').join('')+'}'));
+    // square root (parenthesized group or single token)
+    s=s.replace(/√\s*(\([^)]*\)|\S+)/g,(m,a)=> M('\\sqrt{'+a+'}'));
+    s=s.replace(/√/g,()=> M('\\sqrt{}'));
+    // unicode minus/dash stays plain
+    s=s.replace(/[−–]/g,'-');
+    // unicode symbol map (each symbol = its own math piece)
+    for(const k in spUMAP){ if(k==='−'||k==='–'||k==='°') continue; if(s.includes(k)){ s=s.split(k).join(MK0+spUMAP[k]+MK1); hadMath=true; } }
+    // caret superscripts (x^2)
+    s=s.replace(/([A-Za-z0-9])\^(\d+)\b/g,(m,a,b)=> M(a+'^{'+b+'}'));
+    // letter-digit subscripts (H2 -> H_{2})
+    s=s.replace(/([A-Za-z])(\d)(?=[A-Za-z]|\b)/g,(m,a,b)=> M(a+'_{'+b+'}'));
+    // fractions pass 2 (brace-aware: x^{3}/3, T_{2}/T_{1})
+    s=s.replace(/(?<![\w^_{\\])([A-Za-z0-9]+(?:[_^]\{\d+\})?)\s*\/\s*([A-Za-z0-9]+(?:[_^]\{\d+\})?)(?![\w}])/g,(m,a,b)=>{ if(!/[\d_^]/.test(a+b)) return m; return M('\\frac{'+a+'}{'+b+'}'); });
+    if(!hadMath){ out.push(s); continue; }
+    const segs=spSegParse(s);
+    const outside=segs.filter(g=>!g.m).map(g=>g.t).join(' ');
+    const longWords=(outside.match(/[A-Za-z]{3,}/g)||[]).length;
+    if(longWords===0){
+      // pure equation line -> wrap whole line
+      const inner=segs.map(g=>g.t).join('').replace(/%/g,'\\%');
+      out.push('$'+inner+'$');
+    } else {
+      // mixed English+math -> wrap only math pieces; merge single-space gaps
+      const merged=[];
+      for(let i=0;i<segs.length;i++){
+        const g=segs[i];
+        if(!g.m && g.t===' ' && i>0 && i<segs.length-1 && segs[i-1].m && segs[i+1].m){
+          merged[merged.length-1].t+=' '; continue;
+        }
+        if(g.m && merged.length && merged[merged.length-1].m){ merged[merged.length-1].t+=g.t; continue; }
+        merged.push({m:g.m,t:g.t});
+      }
+      out.push(merged.map(g=> g.m ? '$'+g.t.replace(/%/g,'\\%')+'$' : g.t).join(''));
+    }
+  }
+  return out.join('\n');
+}
+
+/* ---- minimal MathML → LaTeX (web-copy path) ---- */
+const spMOMAP={'∫':'\\int ','∑':'\\sum ','∏':'\\prod ','π':'\\pi ','θ':'\\theta ','Δ':'\\Delta ','×':'\\times ','·':'\\cdot ','±':'\\pm ','∞':'\\infty ','≤':'\\le ','≥':'\\ge ','≠':'\\ne ','−':'-','η':'\\eta ','μ':'\\mu ','λ':'\\lambda ','α':'\\alpha ','β':'\\beta ','γ':'\\gamma ','→':'\\to ','√':'\\sqrt{}'};
+function spMl2Tex(node){
+  if(node.nodeType===3) return node.nodeValue||'';
+  const tag=(node.tagName||'').toLowerCase();
+  const kids=[...node.childNodes].map(spMl2Tex).join('').trim();
+  switch(tag){
+    case 'mi': case 'mn': case 'mtext': return kids;
+    case 'mo': return spMOMAP[kids]||kids;
+    case 'mfrac': return '\\frac{'+spMl2Tex(node.children[0]).trim()+'}{'+spMl2Tex(node.children[1]).trim()+'}';
+    case 'msup': return spMl2Tex(node.children[0]).trim()+'^{'+spMl2Tex(node.children[1]).trim()+'}';
+    case 'msub': return spMl2Tex(node.children[0]).trim()+'_{'+spMl2Tex(node.children[1]).trim()+'}';
+    case 'msubsup': return spMl2Tex(node.children[0]).trim()+'_{'+spMl2Tex(node.children[1]).trim()+'}^{'+spMl2Tex(node.children[2]).trim()+'}';
+    case 'msqrt': return '\\sqrt{'+kids+'}';
+    case 'mroot': return '\\sqrt['+spMl2Tex(node.children[1]).trim()+']{'+spMl2Tex(node.children[0]).trim()+'}';
+    default: return kids;
+  }
+}
+function spFromClipboardHTML(html){
+  const doc=new DOMParser().parseFromString(html,'text/html');
+  doc.querySelectorAll('math').forEach(m=>{
+    const sp=doc.createElement('span');
+    sp.textContent=' $'+spMl2Tex(m).replace(/\s+/g,' ')+'$ ';
+    m.replaceWith(sp);
+  });
+  return doc.body.innerText||doc.body.textContent||'';
+}
+
+
+/* ---- smart paste: website copies (MathML) + plain text, exam fields only ---- */
+const spTrig=/[°-³¹×÷Ͱ-Ͽ⁰-ₓ←-⇿∀-⋿]|\^|->|[A-Za-z]\d(?!\d)|\d\s?\/\s?\d/;
+document.addEventListener('paste',function(e){
+  const t=e.target;
+  if(!t||!(t.tagName==='TEXTAREA'||t.tagName==='INPUT')) return;
+  if(!t.closest||!t.closest('#ex-qs')) return;
+  const cd=e.clipboardData; if(!cd) return;
+  let text=null;
+  const html=cd.getData('text/html');
+  if(html&&html.indexOf('<math')>=0){ text=spFromClipboardHTML(html); }
+  else{
+    const plain=cd.getData('text/plain');
+    if(plain&&spTrig.test(plain)) text=spSmartFormat(plain);
+  }
+  if(text==null) return; // ordinary paste, leave untouched
+  e.preventDefault();
+  const s=t.selectionStart||0, en=t.selectionEnd||0;
+  t.value=t.value.slice(0,s)+text+t.value.slice(en);
+  const p=s+text.length; t.selectionStart=t.selectionEnd=p;
+  t.dispatchEvent(new Event('input',{bubbles:true}));
+  toast('Pasted & formatted — offline, no AI cost.');
+},true);
+
 async function autoFormatField(){
   const t=_lastField; if(!t){ toast('Click inside a question or answer box first, then Auto-format.',true); return; }
   if(!(t.value||'').trim()){ toast('Nothing to format in this box.',true); return; }
-  toast('Formatting with AI\u2026');
-  try{ const r=await api('/api/teacher/format-text','POST',{text:t.value}); if(r&&r.text){ t.value=r.text; t.dispatchEvent(new Event('input',{bubbles:true})); toast('Formatted.'); } }
-  catch(e){ toast(e.message,true); }
+  const after=spSmartFormat(t.value);
+  if(after===t.value){ toast('Already looks formatted — nothing to change.'); return; }
+  t.value=after; t.dispatchEvent(new Event('input',{bubbles:true}));
+  toast('Formatted instantly — offline, no AI cost.');
 }
 async function ocrFillQuestion(inp,i){
   const f=inp.files[0]; inp.value=''; if(!f) return;
   if(f.size>15*1024*1024){ toast('Image too large (max 15MB)',true); return; }
-  const isHi=(_examMedium==='Bilingual')&&_examQs[i]._tab==='hi';
-  toast('Reading screenshot with AI\u2026');
-  try{
-    const b64=await _fileB64(f);
-    const r=await api('/api/teacher/ocr-question','POST',{image_b64:b64,mime_type:f.type||'image/jpeg',test_type:_examType});
-    if(r){
-      if(_examType==='mcq'){
-        if(isHi){
-          if(r.question) _examQs[i].q_hi=r.question;
-          if(Array.isArray(r.options)&&r.options.length){ _examQs[i].opts_hi=_examQs[i].opts_hi||['','','','']; for(let j=0;j<4;j++) _examQs[i].opts_hi[j]=r.options[j]||''; }
-        } else {
-          if(r.question) _examQs[i].q=r.question;
-          if(Array.isArray(r.options)&&r.options.length){ for(let j=0;j<4;j++) _examQs[i].opts[j]=r.options[j]||''; }
-          if(r.correct_option){ const ci=_examQs[i].opts.findIndex(o=>o&&o.trim()===String(r.correct_option).trim()); if(ci>=0)_examQs[i].correct=ci; }
-        }
-      } else {
-        if(isHi){ if(r.question)_examQs[i].q_hi=r.question; if(r.model_answer)_examQs[i].model_hi=r.model_answer; }
-        else { if(r.question)_examQs[i].q=r.question; if(r.model_answer)_examQs[i].model=r.model_answer; }
-      }
-      renderExamQs(); toast('Auto-filled. Please review and edit if needed.');
-    }
-  }catch(e){ toast(e.message,true); }
+  const b64=await _fileB64(f);
+  _setExamImg(i,b64);
+  toast('Screenshot attached to Question '+(i+1)+' — 100% identical to the original, no AI cost.');
 }
 // ---- import progress bar helpers ----
 let _exProgTimer=null;
@@ -8084,6 +8200,46 @@ function examCardHTML_v1(e){
   else { right=`<button class="btn btn-primary btn-sm" onclick="openExamPlayer(${e.id})">Start</button>`; }
   const paper=`<button class="btn btn-ghost btn-sm" title="Download the question paper" onclick="downloadPaper(${e.id},'english')">${ic('download')} Paper</button>`;
   return `<div class="tst-item"><div class="tst-ic">${ic('clipboard')}</div><div class="tst-body"><div class="tst-title">${esc(e.title)}</div><div class="tst-meta">${meta}</div>${scores}</div><div class="tst-right">${paper}${right}</div></div>`;
+}
+</script>
+
+<script id="smartpaste-backup-v1">
+/* ROLLBACK — Smart Paste offline update (19 Jul 2026)
+   autoFormatField aur ocrFillQuestion ke AI versions neeche saved hain.
+   Rollback: console me -> autoFormatField=autoFormatField_v1; ocrFillQuestion=ocrFillQuestion_v1;
+   (Word/PDF import bar purane file se wapas laana ho to pre-update backup use karo.) */
+async function autoFormatField_v1(){
+  const t=_lastField; if(!t){ toast('Click inside a question or answer box first, then Auto-format.',true); return; }
+  if(!(t.value||'').trim()){ toast('Nothing to format in this box.',true); return; }
+  toast('Formatting with AI\u2026');
+  try{ const r=await api('/api/teacher/format-text','POST',{text:t.value}); if(r&&r.text){ t.value=r.text; t.dispatchEvent(new Event('input',{bubbles:true})); toast('Formatted.'); } }
+  catch(e){ toast(e.message,true); }
+}
+async function ocrFillQuestion_v1(inp,i){
+  const f=inp.files[0]; inp.value=''; if(!f) return;
+  if(f.size>15*1024*1024){ toast('Image too large (max 15MB)',true); return; }
+  const isHi=(_examMedium==='Bilingual')&&_examQs[i]._tab==='hi';
+  toast('Reading screenshot with AI\u2026');
+  try{
+    const b64=await _fileB64(f);
+    const r=await api('/api/teacher/ocr-question','POST',{image_b64:b64,mime_type:f.type||'image/jpeg',test_type:_examType});
+    if(r){
+      if(_examType==='mcq'){
+        if(isHi){
+          if(r.question) _examQs[i].q_hi=r.question;
+          if(Array.isArray(r.options)&&r.options.length){ _examQs[i].opts_hi=_examQs[i].opts_hi||['','','','']; for(let j=0;j<4;j++) _examQs[i].opts_hi[j]=r.options[j]||''; }
+        } else {
+          if(r.question) _examQs[i].q=r.question;
+          if(Array.isArray(r.options)&&r.options.length){ for(let j=0;j<4;j++) _examQs[i].opts[j]=r.options[j]||''; }
+          if(r.correct_option){ const ci=_examQs[i].opts.findIndex(o=>o&&o.trim()===String(r.correct_option).trim()); if(ci>=0)_examQs[i].correct=ci; }
+        }
+      } else {
+        if(isHi){ if(r.question)_examQs[i].q_hi=r.question; if(r.model_answer)_examQs[i].model_hi=r.model_answer; }
+        else { if(r.question)_examQs[i].q=r.question; if(r.model_answer)_examQs[i].model=r.model_answer; }
+      }
+      renderExamQs(); toast('Auto-filled. Please review and edit if needed.');
+    }
+  }catch(e){ toast(e.message,true); }
 }
 </script>
 </body>
