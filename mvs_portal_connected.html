@@ -2017,6 +2017,85 @@ body.dark .cal-d.on{color:#34d399}
   .tx-empty b{font-size:1rem;display:block}
   .tx-empty p{font-size:.78rem;color:var(--text-muted);margin-top:5px}
 
+
+  /* ================= PREMIUM CREATE-TEST MODAL (cx) ================= */
+  #modal .modal.cx{max-width:580px;border-radius:24px;overflow:hidden;box-shadow:0 30px 80px -20px rgba(15,42,84,.45)}
+  .modal.cx .modal-header{background:linear-gradient(135deg,#0F2A54 0%,#1d4b8f 62%,#c8501d 135%);color:#fff;padding:20px 22px 15px;border-bottom:none;flex-wrap:wrap}
+  .modal.cx .modal-header h3{color:#fff;font-size:1.18rem;font-weight:800;display:flex;align-items:center;gap:10px;letter-spacing:.01em}
+  .modal.cx .modal-header h3::before{content:"";width:34px;height:34px;flex:none;border-radius:11px;background:rgba(255,255,255,.14) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20h9'/%3E%3Cpath d='M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z'/%3E%3C/svg%3E") center/18px no-repeat;box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}
+  .modal.cx .cx-sub{width:100%;font-size:.78rem;color:rgba(255,255,255,.78);font-weight:500;margin-top:8px}
+  .modal.cx .modal-close{color:#fff;background:rgba(255,255,255,.14);border-radius:50%;width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;font-size:1.15rem;line-height:1;transition:.15s}
+  .modal.cx .modal-close:hover{background:rgba(255,255,255,.28);transform:rotate(90deg)}
+  .modal.cx .modal-body{padding:18px 20px 20px;background:#f6f8fc}
+  /* labels + inputs */
+  .modal.cx .form-group>label{font-size:.71rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#5b6b85;margin-bottom:6px}
+  .modal.cx .form-control{border:1.5px solid #dfe7f3;border-radius:11px;background:#fff;padding:11px 13px;font-size:.9rem;transition:border-color .15s,box-shadow .15s}
+  .modal.cx .form-control:focus{border-color:#0F2A54;box-shadow:0 0 0 4px rgba(15,42,84,.10);outline:none}
+  .modal.cx textarea.form-control{line-height:1.5}
+  /* smart paste strip */
+  .modal.cx .ex-import{background:linear-gradient(135deg,#eaf1fd,#fdeee2);border:1px solid #d4e2f8;border-radius:14px;padding:12px 15px}
+  .modal.cx .ex-import-hint{font-size:.79rem;line-height:1.55;color:#33507e}
+  .modal.cx .ex-import-hint b{color:#0F2A54}
+  /* toolbar */
+  .modal.cx .ex-tools{background:#fff;border:1.5px solid #e3eaf5;border-radius:14px;padding:10px 12px;box-shadow:0 3px 12px -8px rgba(15,42,84,.18)}
+  .modal.cx .ex-tools-lbl{color:#0F2A54;font-size:.72rem;letter-spacing:.04em;text-transform:uppercase}
+  .modal.cx .ex-tools button{border-radius:9px;border:1.5px solid #e2e9f4;background:#f8fafd}
+  .modal.cx .ex-tools button:hover{border-color:#0F2A54;color:#0F2A54;transform:translateY(-1px);box-shadow:0 4px 10px -4px rgba(15,42,84,.35)}
+  .modal.cx .ex-tools button.chem{background:rgba(124,58,237,.07)}
+  .modal.cx .ex-tools button.ai{box-shadow:0 3px 10px -3px rgba(124,58,237,.55)}
+  /* question card */
+  .modal.cx .ex-qcard{background:#fff;border:1.5px solid #e6ecf6;border-radius:18px;padding:15px 16px;box-shadow:0 8px 22px -14px rgba(15,42,84,.22)}
+  .modal.cx .ex-qhead{border-bottom:1px solid #edf1f8;padding-bottom:10px;margin-bottom:12px}
+  .modal.cx .ex-qnum{background:linear-gradient(135deg,#0F2A54,#1d4b8f);color:#fff;font-size:.7rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:6px 13px;border-radius:99px;box-shadow:0 3px 8px -3px rgba(15,42,84,.5)}
+  .modal.cx .ex-ocr{color:#0F2A54!important;border:1.5px solid #cfe0ff!important;background:#eef4ff!important;border-radius:99px!important;padding:6px 13px}
+  .modal.cx .ex-ocr:hover{background:#dce9ff!important}
+  /* sections */
+  .modal.cx .ex-sec{border-radius:14px;padding:12px 13px}
+  .modal.cx .ex-sec-q{background:linear-gradient(180deg,rgba(37,99,235,.05),rgba(37,99,235,.02));border-color:#c9dcff}
+  .modal.cx .ex-sec-a{background:linear-gradient(180deg,rgba(5,150,105,.055),rgba(5,150,105,.02));border-color:#b8ead2}
+  .modal.cx .ex-sec-o{background:linear-gradient(180deg,rgba(217,119,6,.055),rgba(217,119,6,.02));border-color:#f2dcae}
+  .modal.cx .ex-sec textarea{background:#fff}
+  .modal.cx .ex-prev{background:#fff;border:1px dashed #dfe7f3;border-radius:10px;padding:9px 12px;margin:-2px 0 9px;font-size:.92rem}
+  .modal.cx .ex-prev:empty{display:none}
+  /* image drop zone */
+  .modal.cx .ex-img{border:2px dashed #c3d4ef;border-radius:14px;padding:17px;background:#f8fbff;font-weight:600;font-size:.8rem;color:#5b7299}
+  .modal.cx .ex-img:hover{border-color:#FF6B2B;color:#e05a17;background:#fff7f2}
+  .modal.cx .ex-img>span::before{content:"🖼️  "}
+  .modal.cx .ex-img.has{border-style:solid;border-color:#cfe0ff;padding:8px}
+  .modal.cx .ex-img.has img{border-radius:9px}
+  .modal.cx .ex-img-ans{border-color:rgba(16,185,129,.5)!important;background:#f6fdf9}
+  .modal.cx .ex-img-ans:hover{border-color:#059669!important;color:#059669;background:#ecfbf3}
+  /* marks row + options */
+  .modal.cx .ex-marks{background:#f6f9fd;border:1px solid #e3eaf5;border-radius:11px;padding:8px 12px}
+  .modal.cx .ex-opt .form-control{border-radius:10px}
+  .modal.cx .ex-opt-letter{background:linear-gradient(135deg,#0F2A54,#1d4b8f);box-shadow:0 2px 6px -2px rgba(15,42,84,.5)}
+  .modal.cx .ex-lang-tab.active{background:linear-gradient(135deg,#0F2A54,#1d4b8f)}
+  /* note + buttons */
+  .modal.cx .alert-info{background:linear-gradient(135deg,#eef4ff,#fef4ec);border:1px solid #d9e6fb;border-radius:13px;color:#33507e;font-size:.8rem;line-height:1.55}
+  .modal.cx .alert-info code{background:#fff;border:1px solid #dbe5f5;border-radius:6px;padding:1px 6px;color:#0F2A54;font-size:.76rem}
+  .modal.cx .btn-ghost{border:2px dashed #c3d4ef!important;border-radius:13px;width:100%;padding:11px;color:#0F2A54;font-weight:800;background:#f8fbff;letter-spacing:.02em}
+  .modal.cx .btn-ghost:hover{border-color:#FF6B2B!important;color:#e05a17;background:#fff7f2}
+  .modal.cx .btn-primary{background:linear-gradient(135deg,#0F2A54,#1d4b8f 55%,#FF6B2B 170%);border:none;border-radius:14px;padding:15px;font-size:.97rem;font-weight:800;letter-spacing:.04em;box-shadow:0 12px 26px -10px rgba(15,42,84,.55);transition:transform .16s,box-shadow .16s}
+  .modal.cx .btn-primary:hover{transform:translateY(-2px);box-shadow:0 16px 32px -10px rgba(255,107,43,.45)}
+  /* dark mode */
+  .dark .modal.cx .modal-body{background:#0c1626}
+  .dark .modal.cx .form-control{background:#111f36;border-color:#2a3c5a;color:#e8eef8}
+  .dark .modal.cx .form-control:focus{border-color:#4d7fd6;box-shadow:0 0 0 4px rgba(77,127,214,.15)}
+  .dark .modal.cx .ex-tools,.dark .modal.cx .ex-qcard{background:#111f36;border-color:#26364f}
+  .dark .modal.cx .ex-tools-lbl,.dark .modal.cx .ex-qnum{color:#fff}
+  .dark .modal.cx .ex-tools button{background:#182742;border-color:#2a3c5a;color:#dbe5f5}
+  .dark .modal.cx .ex-sec textarea,.dark .modal.cx .ex-prev{background:#0c1626;color:#e8eef8}
+  .dark .modal.cx .ex-prev{border-color:#2a3c5a}
+  .dark .modal.cx .ex-img{background:#0c1626;border-color:#2a3c5a;color:#8ba3c7}
+  .dark .modal.cx .ex-img:hover{border-color:#FF6B2B;color:#ffa07a;background:#141f33}
+  .dark .modal.cx .ex-marks{background:#0c1626;border-color:#26364f}
+  .dark .modal.cx .ex-import{background:linear-gradient(135deg,#12233f,#2a1a10);border-color:#26364f}
+  .dark .modal.cx .ex-import-hint{color:#a9bdd9}
+  .dark .modal.cx .ex-import-hint b{color:#fff}
+  .dark .modal.cx .alert-info{background:linear-gradient(135deg,#12233f,#2a1a10);border-color:#26364f;color:#a9bdd9}
+  .dark .modal.cx .alert-info code{background:#0c1626;border-color:#2a3c5a;color:#9ec1ff}
+  .dark .modal.cx .btn-ghost{background:#0c1626;border-color:#2a3c5a!important;color:#9ec1ff}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -2682,7 +2761,7 @@ function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;
 function initials(name){ const p=(name||'U').trim().split(' '); return ((p[0]||'')[0]||'')+((p[1]||'')[0]||''); }
 
 // Modal helpers
-function showModal(title,bodyHtml,footerHtml){ document.getElementById('modal-title').textContent=title; document.getElementById('modal-body').innerHTML=bodyHtml; document.getElementById('modal-footer').innerHTML=footerHtml||''; document.getElementById('modal').classList.add('open'); }
+function showModal(title,bodyHtml,footerHtml){ const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.remove('cx'); const _cs=document.querySelector('.cx-sub'); if(_cs)_cs.remove(); document.getElementById('modal-title').textContent=title; document.getElementById('modal-body').innerHTML=bodyHtml; document.getElementById('modal-footer').innerHTML=footerHtml||''; document.getElementById('modal').classList.add('open'); }
 function closeModal(){ document.getElementById('modal').classList.remove('open'); }
 
 function stopCountdown(){ if(countdownTimer){clearInterval(countdownTimer);countdownTimer=null;} }
@@ -4037,6 +4116,8 @@ async function openCreateExam(type){
     +`<div id="ex-qs"></div><button class="btn btn-ghost btn-sm" onclick="addExamQ()" style="margin:4px 0 14px">+ Add Question</button>`
     +note
     +`<button class="btn btn-primary" onclick="submitExam()" style="width:100%">Create Test</button>`);
+  { const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.add('cx');
+    const _mh=document.querySelector('#modal .modal-header h3'); if(_mh)_mh.insertAdjacentHTML('afterend','<div class="cx-sub">Smart test builder — paste questions, auto-format offline, attach screenshots</div>'); }
   addExamQ();
 }
 function addExamQ(){ _examQs.push(_examType==='mcq'?{q:'',q_hi:'',opts:['','','',''],opts_hi:['','','',''],correct:0,marks:1,expl:'',expl_hi:'',image_b64:null,_tab:'en'}:{q:'',q_hi:'',model:'',model_hi:'',marks:5,image_b64:null,model_answer_image:null,_tab:'en'}); renderExamQs(); }
@@ -8204,7 +8285,9 @@ function examCardHTML_v1(e){
 </script>
 
 <script id="smartpaste-backup-v1">
-/* ROLLBACK — Smart Paste offline update (19 Jul 2026)
+/* ROLLBACK — Smart Paste offline update + Premium create-test modal (19 Jul 2026)
+   Premium modal CSS clearly marked hai: 'PREMIUM CREATE-TEST MODAL (cx)' block ko delete karo,
+   showModal ki first line se cx-reset code hatao, openCreateExam se cx-add lines hatao.
    autoFormatField aur ocrFillQuestion ke AI versions neeche saved hain.
    Rollback: console me -> autoFormatField=autoFormatField_v1; ocrFillQuestion=ocrFillQuestion_v1;
    (Word/PDF import bar purane file se wapas laana ho to pre-update backup use karo.) */
