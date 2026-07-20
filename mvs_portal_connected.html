@@ -337,6 +337,7 @@
   .mt-eng:hover{border-color:var(--primary);color:var(--primary)}
   .mt-eng svg{width:14px;height:14px}
   .ma-head{font-size:.85rem;color:var(--text-muted);margin:12px 0 8px}
+  .ma-list{max-height:48vh;overflow-y:auto;padding-right:4px}
   .ma-row{display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px solid var(--border)}
   .ma-row:last-child{border-bottom:none}
   .ma-av{width:32px;height:32px;flex:0 0 32px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.8rem}
@@ -3803,7 +3804,7 @@ function _paintAudience(d,which){
   const title=`${esc(m.title||'')}${m.part?' \u00b7 '+esc(m.part):''}`;
   const rows=list.length?list.map(s=>`<div class="ma-row"><div class="ma-av">${esc((s.name||'S').charAt(0))}</div><div class="ma-main"><div class="ma-name">${esc(s.name)}</div><div class="ma-at">${esc(s.at)}</div></div></div>`).join('')
     :`<div class="ws-empty"><p>No students yet</p><small>${which==='download'?'Nobody has downloaded this yet.':'Nobody has opened this yet.'}</small></div>`;
-  document.getElementById('ma-body').innerHTML=`<div class="alert alert-info">${title}</div><div class="ma-head">${which==='download'?'Downloaded by':'Viewed by'} <b>${list.length}</b> student${list.length===1?'':'s'}</div>${rows}`;
+  document.getElementById('ma-body').innerHTML=`<div class="alert alert-info">${title}</div><div class="ma-head">${which==='download'?'Downloaded by':'Viewed by'} <b>${list.length}</b> student${list.length===1?'':'s'}</div><div class="ma-list">${rows}</div>`;
 }
 
 async function openMatAudience(mid,which){
@@ -3846,6 +3847,95 @@ function _dppFilter(mode){
     r.style.display=(mode==='pending'&&!p)||(mode==='checked'&&!c)?'none':'flex';
   });
   toast(mode==='all'?'Showing all DPPs':(mode==='pending'?'Showing DPPs pending checking':'Showing checked DPPs'));
+}
+
+/* ================= PREMIUM PDF (question paper + with solutions) ================= */
+function escH(x){ return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function buildPdfDoc(ex,body,withSol,isM){
+  const docTitle='MVS '+(ex.title||'Test')+(withSol?' — With Solutions':' — Question Paper');
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+escH(docTitle)+'</title>'
+  +'<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">'
+  +'<style>'
+  +'@page{size:A4;margin:13mm}*{box-sizing:border-box}'
+  +'body{font-family:"Plus Jakarta Sans","Segoe UI",Arial,sans-serif;color:#0f172a;font-size:12.5px;line-height:1.55;margin:0}'
+  +'.band{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#0F2A54,#1e4a8f);color:#fff;padding:14px 18px;border-radius:12px;margin-bottom:12px}'
+  +'.logo{font-size:20px;font-weight:800;letter-spacing:.07em}'
+  +'.tag{font-size:9.5px;opacity:.85;letter-spacing:.14em;text-transform:uppercase;margin-top:2px}'
+  +'.yr{font-size:10.5px;background:rgba(255,255,255,.16);padding:5px 12px;border-radius:99px;font-weight:700;white-space:nowrap}'
+  +'.meta{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:11px}'
+  +'.meta>div{flex:1;min-width:100px;border:1px solid #dbe3f0;border-radius:9px;padding:8px 11px;background:#f7f9fd}'
+  +'.meta span{display:block;font-size:8.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#64748b;margin-bottom:2px}'
+  +'.meta b{font-size:12.5px;color:#0F2A54}'
+  +'.ins{font-size:11px;background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:8px 12px;margin-bottom:14px}'
+  +'.q{border:1px solid #e2e8f0;border-radius:10px;padding:11px 13px;margin-bottom:10px;page-break-inside:avoid}'
+  +'.q-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;border-bottom:1px dashed #e2e8f0;padding-bottom:4px}'
+  +'.q-h b{color:#0F2A54;font-size:13px}'
+  +'.q-m{font-size:10px;color:#64748b;font-weight:700;white-space:nowrap}'
+  +'.q-t{white-space:pre-wrap;overflow-x:auto}'
+  +'.q-hi{white-space:pre-wrap;margin-top:5px;padding-top:5px;border-top:1px dotted #e2e8f0;color:#334155}'
+  +'.qimg{max-width:100%;max-height:280px;border-radius:8px;margin-top:8px;border:1px solid #e2e8f0}'
+  +'.opts{margin:7px 0 0 16px;display:grid;grid-template-columns:1fr 1fr;gap:3px 14px}'
+  +'.opt{font-size:12px}.opt.correct{color:#047857;font-weight:700}'
+  +'.sol{margin-top:9px;border-left:3px solid #059669;background:#f0fdf4;border-radius:0 8px 8px 0;padding:8px 11px}'
+  +'.sol-l{font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#059669;margin-bottom:3px}'
+  +'.sol-t{white-space:pre-wrap;font-size:12px;overflow-x:auto}'
+  +'.foot{margin-top:16px;text-align:center;font-size:9px;color:#94a3b8;letter-spacing:.07em;border-top:1px solid #e2e8f0;padding-top:8px}'
+  +'</style></head><body>'
+  +'<div class="band"><div><div class="logo">MVS FOUNDATION</div><div class="tag">Test Series · NIOS Coaching</div></div><div class="yr">'+escH(new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}))+'</div></div>'
+  +'<div class="meta">'
+  +'<div><span>Test</span><b>'+escH(ex.title||'')+'</b></div>'
+  +(ex.subject?'<div><span>Subject</span><b>'+escH(ex.subject)+'</b></div>':'')
+  +(ex.chapter?'<div><span>Chapter</span><b>'+escH(ex.chapter)+'</b></div>':'')
+  +(ex.duration_min?'<div><span>Time</span><b>'+escH(ex.duration_min)+' min</b></div>':'')
+  +'<div><span>Max Marks</span><b>'+escH(ex.total_marks||'—')+'</b></div></div>'
+  +'<div class="ins"><b>Instructions:</b> All questions are compulsory. '+(isM?'Choose the one correct option for each question.':'Write answers neatly in the space provided. Marks for each question are shown against it.')+'</div>'
+  +body
+  +'<div class="foot">Generated from MVS Portal · '+(withSol?'Teacher copy — includes solutions':'Student question paper')+'</div>'
+  +'<scr'+'ipt src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></scr'+'ipt>'
+  +'<scr'+'ipt src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/mhchem.min.js"></scr'+'ipt>'
+  +'<scr'+'ipt>window.addEventListener(\'load\',function(){'
+  +'document.querySelectorAll(\'.q-t,.q-hi,.opt,.sol-t,.ins\').forEach(function(el){'
+  +'var t=el.textContent;'
+  +'el.innerHTML=t.split(/(\\$[^$]+\\$)/g).map(function(p){'
+  +'var m=p.match(/^\\$([\\s\\S]+)\\$$/);'
+  +'if(m){var s=document.createElement(\'span\');try{katex.render(m[1],s,{throwOnError:false});return s.outerHTML;}catch(e){return p;}}'
+  +'var d=document.createElement(\'div\');d.textContent=p;return d.innerHTML;'
+  +'}).join(\'\');});'
+  +'setTimeout(function(){window.print();},600);});</scr'+'ipt>'
+  +'</body></html>';
+}
+async function examPdfPremium(id,mode){
+  try{
+    toast('Preparing premium PDF…');
+    const d=await api('/api/teacher/exam/'+id+'/attempts');
+    const ex=d.exam||{}, qs=d.questions||[];
+    if(!qs.length){ toast('No questions found for this test yet.',true); return; }
+    const isM=(ex.test_type==='mcq');
+    const withSol=mode==='solutions';
+    const body=qs.map((q,qi)=>{
+      const qno=q.q_no||qi+1;
+      let h='';
+      if(q.question_hi) h+='<div class="q-hi">'+escH(q.question_hi)+'</div>';
+      if(q.image_b64) h+='<img class="qimg" src="'+q.image_b64+'">';
+      if(isM&&Array.isArray(q.options)&&q.options.length){
+        h+='<div class="opts">'+q.options.map((o,oi)=>{
+          const ci=(q.correct_index===oi)||(q.correct_option!=null&&String(q.correct_option).trim()===String(o).trim());
+          return '<div class="opt'+(withSol&&ci?' correct':'')+'"><b>'+String.fromCharCode(65+oi)+'.</b> '+escH(o)+'</div>';
+        }).join('')+'</div>';
+      }
+      if(withSol&&q.model_answer){
+        h+='<div class="sol"><div class="sol-l">Solution</div><div class="sol-t">'+escH(q.model_answer)+'</div>'
+          +(q.model_answer_hi?'<div class="q-hi">'+escH(q.model_answer_hi)+'</div>':'')
+          +(q.model_answer_image?'<img class="qimg" src="'+q.model_answer_image+'">':'')+'</div>';
+      }
+      return '<div class="q"><div class="q-h"><b>Question '+qno+'</b><span class="q-m">[ '+(q.max_marks||1)+' mark'+((q.max_marks||1)>1?'s':'')+' ]</span></div>'
+        +'<div class="q-t">'+escH(q.question_text||'')+'</div>'+h+'</div>';
+    }).join('');
+    const w=window.open('','_blank');
+    if(!w){ toast('Popup blocked — please allow popups to download the PDF.',true); return; }
+    w.document.write(buildPdfDoc(ex,body,withSol,isM));
+    w.document.close();
+  }catch(e){ toast(e.message,true); }
 }
 
 async function downloadExamPdf(id, medium){
@@ -4058,8 +4148,8 @@ async function loadTTests(){
             <button class="mt-eng" title="Students who opened this test" onclick="openExamAudience(${e.id},'view')">${ic('users')} ${e.views||0}</button>
             <button class="mt-eng" title="Students who downloaded the paper" onclick="openExamAudience(${e.id},'download')">${ic('download')} ${e.downloads||0}</button>
             <button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>
-            <button class="btn btn-ghost btn-sm tst-pdfbtn" onclick="downloadExamPdf(${e.id},'english')">${ic('download')} PDF · EN</button>
-            ${(e.medium==='Bilingual'||e.medium==='Hindi')?`<button class="btn btn-ghost btn-sm tst-pdfbtn" onclick="downloadExamPdf(${e.id},'hindi')">${ic('download')} PDF · हिंदी</button>`:''}
+            <button class="btn btn-ghost btn-sm tst-pdfbtn" title="Question paper — premium formatted" onclick="examPdfPremium(${e.id},'paper')">${ic('download')} Paper PDF</button>
+            <button class="btn btn-ghost btn-sm tst-pdfbtn" title="Question paper with solutions — premium formatted" onclick="examPdfPremium(${e.id},'solutions')">${ic('download')} With Solutions</button>
           </div>
         </div></div>`;
       }).join('') : `<div class="tx-empty"><div class="ic">🔍</div><b>No tests in this filter</b><p>Try another tab above.</p></div>`;
@@ -4175,8 +4265,7 @@ function renderExamQs(){
       const marks=isHi?'':`<div class="ex-marks"><label>Max Marks</label><input type="number" class="form-control" style="width:80px" value="${q.marks}" oninput="_examQs[${i}].marks=this.value"></div>`;
       mid=`<div class="ex-sec ex-sec-a"><div class="ex-sec-lbl">Model Answer${isHi?' \u00b7 Hindi':''}</div><textarea class="form-control" rows="2" placeholder="${isHi?'\u0906\u0926\u0930\u094d\u0936 \u0909\u0924\u094d\u0924\u0930 \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902 (\u0935\u093f\u0915\u0932\u094d\u092a\u093f\u0915)':'Type the ideal/model answer here'}" onfocus="_lastField=this" oninput="${abind};examPrev(this,'pv-a-${i}')">${esc(aval)}</textarea><div class="ex-prev" id="pv-a-${i}"></div>${autoHint}${aImg}${marks}</div>`;
     }
-    const qtypeSel=(_examType!=='mcq'&&!isHi)?`<div class="ex-qtype-row"><span class="ex-qtype-lbl">Question type</span><select class="ex-qtype" onchange="_examQs[${i}].qtype=this.value">${QTYPES.map(o=>`<option value="${o[0]}"${(q.qtype||'general')===o[0]?' selected':''}>${o[1]}</option>`).join('')}</select></div>`:'';
-    return `<div class="ex-qcard">${head}${tabs}${qtypeSel}${qsec}${mid}</div>`;
+    return `<div class="ex-qcard">${head}${tabs}${qsec}${mid}</div>`;
   }).join('');
   _examQs.forEach((q,i)=>{
     const isHi=(_examMedium==='Bilingual')&&q._tab==='hi';
@@ -4410,14 +4499,10 @@ document.addEventListener('paste',function(e){
   let text=null;
   const html=cd.getData('text/html');
   const plain=cd.getData('text/plain')||'';
-  const card=t.closest('.ex-qcard');
-  const qi=card?[...document.querySelectorAll('#ex-qs .ex-qcard')].indexOf(card):-1;
-  const qtype=(qi>=0&&typeof _examQs!=='undefined'&&_examQs[qi]&&_examQs[qi].qtype)||'general';
-  if(qtype==='match'){ const m=spFormatMatch(plain,html); if(m) text=m; }
+  // fully automatic: match-the-following & tables detect themselves
+  text=spFormatMatch(plain,html);
   if(text==null&&html&&html.indexOf('<math')>=0){ text=spFromClipboardHTML(html); }
   if(text==null&&plain&&spTrig.test(plain)){ text=spSmartFormat(plain); }
-  if(text==null&&html&&html.indexOf('<table')>=0){ const r=spMatchFromTable(html); if(r) text=r; }
-  if(text!=null&&qtype==='fill'){ text=text.replace(/\.{4,}|_{4,}/g,'_______________'); }
   if(text==null) return; // ordinary paste, leave untouched
   e.preventDefault();
   const s=t.selectionStart||0, en=t.selectionEnd||0;
@@ -4431,11 +4516,7 @@ async function autoFormatField(){
   const t=_lastField; if(!t){ toast('Click inside a question or answer box first, then Auto-format.',true); return; }
   if(!(t.value||'').trim()){ toast('Nothing to format in this box.',true); return; }
   if(t.value.indexOf('\\begin{array}')>=0){ toast('Already formatted — nothing to change.'); return; }
-  const card=t.closest&&t.closest('.ex-qcard');
-  const qi=card?[...document.querySelectorAll('#ex-qs .ex-qcard')].indexOf(card):-1;
-  const qtype=(qi>=0&&typeof _examQs!=='undefined'&&_examQs[qi]&&_examQs[qi].qtype)||'general';
-  let after=(qtype==='match'&&spFormatMatch(t.value,null))||spSmartFormat(t.value);
-  if(qtype==='fill') after=after.replace(/\.{4,}|_{4,}/g,'_______________');
+  let after=spFormatMatch(t.value,null)||spSmartFormat(t.value);
   if(after===t.value){ toast('Already looks formatted — nothing to change.'); return; }
   t.value=after; t.dispatchEvent(new Event('input',{bubbles:true}));
   toast('Formatted instantly — offline, no AI cost.');
@@ -8420,6 +8501,9 @@ function examCardHTML_v1(e){
    UPDATE 5: type selector back to premium dropdown (chips removed); lookbehind regexes removed —
    now works on ALL browsers incl. old Safari (teacher-wise difference was browser cache/old browser);
    match-table header row highlighted via \colorbox (KaTeX 0.16 has no \rowcolor); build stamp in console.
+   UPDATE 6: type selector REMOVED — formatting is fully auto-detected on paste (match/tables/math/chem);
+   premium client-side PDF (examPdfPremium) — question paper + with-solutions, MVS header, KaTeX rendered;
+   audience modal list scrollable (.ma-list). Server PDF endpoints kept (downloadExamPdf_v1 style).
    Premium modal CSS clearly marked hai: 'PREMIUM CREATE-TEST MODAL (cx)' block ko delete karo,
    showModal ki first line se cx-reset code hatao, openCreateExam se cx-add lines hatao.
    autoFormatField aur ocrFillQuestion ke AI versions neeche saved hain.
