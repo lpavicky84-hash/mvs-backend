@@ -4943,10 +4943,18 @@ function spMatchFromTable(html){
   let hasHeader=false;
   const rows=[...tbl.querySelectorAll('tr')].map((tr,ri)=>{
     const cells=[...tr.querySelectorAll('th,td')].map(spCellTex);
-    if(ri===0&&(tr.querySelectorAll('th').length>0||/column|स्तंभ|स्तम्भ/i.test(cells.join(' ')))) hasHeader=true;
+    if(ri===0&&(tr.querySelectorAll('th').length>0||/column|list|सूची|स्तंभ|स्तम्भ/i.test(cells.join(' ')))) hasHeader=true;
     return cells;
   }).filter(r=>r.some(c=>c.trim()));
   if(rows.length<2) return null;
+  const ncol=Math.max.apply(null,rows.map(r=>r.length));
+  if(ncol===2) rows.forEach((r,i)=>{
+    if(r.length===1){
+      const s=r[0]||'';
+      const rightish=/^\(\s*(\d{1,2}|[a-z]{1,4})\s*\)/.test(s);
+      rows[i]=rightish?['',s]:[s,''];
+    }
+  });
   // intro = text outside the table (e.g. the instruction line)
   const clone=doc.body.cloneNode(true);
   clone.querySelectorAll('table').forEach(x=>x.remove());
@@ -4956,27 +4964,42 @@ function spMatchFromTable(html){
   return spMatchArray(rows,intro,hasHeader);
 }
 function spMatchFromMarkers(t){
-  const re=/\(\s*([A-Za-z]{1,4})\s*\)/g; let m; const marks=[];
-  const stop=/^(sin|cos|tan|sec|csc|cot|log|min|max|mod|the|and|for|are|not|all)$/i;
+  const re=/\(\s*([A-Za-z]{1,4}|\d{1,2})\s*\)/g; let m; const marks=[];
+  const stop=/^(sin|cos|tan|sec|csc|cot|log|ln|min|max|mod|the|and|for|are|not|all)$/i;
   while((m=re.exec(t))){ if(!stop.test(m[1])) marks.push({l:m[1],i:m.index,e:re.lastIndex}); }
   if(marks.length<4) return null;
+  const isU=s=>/^[A-Z]{1,4}$/.test(s), isL=s=>/^[a-z]{1,4}$/.test(s), isD=s=>/^\d{1,2}$/.test(s);
+  const hasU=marks.some(x=>isU(x.l)), hasL=marks.some(x=>isL(x.l)), hasD=marks.some(x=>isD(x.l));
+  let isC1;
+  if(hasU&&(hasL||hasD)) isC1=x=>isU(x.l);          // (A)-(D) vs (1)-(8) or (i)-(iv)
+  else if(hasL&&hasD) isC1=x=>isL(x.l);             // (a)-(d) vs (1)-(8)
+  else return null;
   const col1=[],col2=[];
   marks.forEach((mk,k)=>{
     const end=k+1<marks.length?marks[k+1].i:t.length;
     const txt=t.slice(mk.e,end).trim().replace(/\s+/g,' ');
     if(!txt) return;
     const item='('+mk.l+') '+txt;
-    if(mk.l===mk.l.toUpperCase()) col1.push(item); else col2.push(item);
+    (isC1(mk)?col1:col2).push(item);
   });
   if(!col1.length||!col2.length) return null;
+  // header labels + intro from the text before the first marker
+  let h1='Column-I',h2='Column-II',intro='';
+  const pre=t.slice(0,marks[0].i).trim();
+  if(pre){
+    const lines=pre.split(/\n+/).map(s=>s.trim()).filter(Boolean);
+    const hl=lines.filter(s=>/list|column|सूची|स्तंभ|स्तम्भ/i.test(s));
+    if(hl.length>=2){ h1=hl[hl.length-2]; h2=hl[hl.length-1]; }
+    intro=lines.filter(s=>hl.slice(-2).indexOf(s)<0).join(' ').slice(0,200);
+  }
   const fmt=s=>spSmartFormat(s);
-  const rows=[['Column-I','Column-II']];
+  const rows=[[fmt(h1),fmt(h2)]];
   for(let r=0;r<Math.max(col1.length,col2.length);r++) rows.push([fmt(col1[r]||''),fmt(col2[r]||'')]);
-  return spMatchArray(rows,null,true);
+  return spMatchArray(rows,intro?fmt(intro):null,true);
 }
 function spFormatMatch(text,html){
   if(html&&html.indexOf('<table')>=0){ const r=spMatchFromTable(html); if(r) return r; }
-  if(text&&/\(\s*[A-Za-z]\s*\)/.test(text)){ const r=spMatchFromMarkers(text); if(r) return r; }
+  if(text&&/\(\s*[A-Za-z0-9]\s*\)/.test(text)){ const r=spMatchFromMarkers(text); if(r) return r; }
   return null;
 }
 
