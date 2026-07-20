@@ -4758,6 +4758,32 @@ async function examEditTest(id){
   }catch(e){ toast(e.message,true); }
 }
 /* admin: subject-wise tests tracker with live submission counts */
+/* admin: one-click cleanup of deleted teachers' leftover content */
+async function orphanCleanup(){
+  try{
+    toast('Checking old data\u2026');
+    const s=await api('/api/admin/orphan-data/summary');
+    const c=s.counts||{}, total=s.total||0;
+    if(!total){ toast('Sab clean hai — koi purana data nahi mila.'); return; }
+    const rows=[['tests',c.tests,'Tests (paper + questions + submissions)'],['lectures',c.lectures,'Lecture records'],['timetables',c.timetables,'Timetable entries'],['dpp_submissions',c.dpp_submissions,'Orphan DPP submissions'],['test_submissions',c.test_submissions,'Orphan test submissions']]
+      .filter(r=>r[1]>0)
+      .map(r=>`<div style="display:flex;justify-content:space-between;padding:7px 2px;border-bottom:1px dashed var(--border);font-size:.84rem"><span>${r[2]}</span><b style="color:#dc2626">${r[1]}</b></div>`).join('');
+    showModal('Purana Data Saaf Karein?',
+    `<div class="ws-empty"><div class="big" style="color:#dc2626">${ic('trash')}</div>
+     <p><b>Delete hue teachers ka bacha hua data mila:</b></p></div>
+     <div style="text-align:left;max-width:400px;margin:0 auto">${rows}</div>
+     <small style="display:block;margin-top:12px;color:var(--text-muted)">Ek click mein sab hat jaayega — students ke portal se bhi. Active teachers ka data bilkul safe rahega. Ye action wapas nahi ho sakta.</small>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-danger" onclick="orphanCleanupGo()">${ic('trash')} Haan, sab hatao</button>`);
+  }catch(e){ toast('Check nahi hua: '+e.message,true); }
+}
+async function orphanCleanupGo(){
+  closeModal(); toast('Cleaning\u2026');
+  try{
+    const r=await api('/api/admin/orphan-data/cleanup','POST');
+    toast('Ho gaya — '+(r.total||0)+' purane items delete ho gaye.');
+    loadATests();
+  }catch(e){ toast('Cleanup nahi hua: '+e.message,true); }
+}
 async function loadATests(){
   const el=document.getElementById('a-tests-content'); if(!el)return;
   el.innerHTML='<div class="spinner"></div>';
@@ -4767,7 +4793,7 @@ async function loadATests(){
     rows.forEach(e=>{ const s=e.subject||'General'; (bySub[s]=bySub[s]||[]).push(e); });
     const subs=Object.keys(bySub).sort();
     const totT=rows.length, totS=rows.reduce((a,e)=>a+(e.attempts||0),0), totG=rows.reduce((a,e)=>a+(e.graded||0),0);
-    el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests Tracker</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Subject-wise all tests · live submission tracking</div></div><button class="btn btn-ghost btn-sm" onclick="loadATests()">${ic('refresh')} Refresh</button></div>`
+    el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests Tracker</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Subject-wise all tests · live submission tracking</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-danger btn-sm" onclick="orphanCleanup()">${ic('trash')} Clean Old Data</button><button class="btn btn-ghost btn-sm" onclick="loadATests()">${ic('refresh')} Refresh</button></div></div>`
       +`<div class="tx-stats">`
       +`<div class="tx-stat"><b style="color:#c2410c">${totT}</b><span>Total tests</span></div>`
       +`<div class="tx-stat"><b>${totS}</b><span>Submissions</span></div>`
