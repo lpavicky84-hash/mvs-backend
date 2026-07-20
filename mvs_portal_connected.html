@@ -376,6 +376,8 @@
   .pl-qtop .pl-qtext{flex:1;min-width:0}
   .tx-pill.tx-up{background:linear-gradient(135deg,#7c3aed,#a78bfa)!important;color:#fff!important;animation:txBlink 1.4s ease-in-out infinite;box-shadow:0 4px 12px -4px rgba(124,58,237,.5)}
   .tx-pill.nv.inf b{color:inherit}
+  .tx-tlogo-img{width:52px;height:52px;border-radius:14px;object-fit:cover;box-shadow:0 6px 16px -6px rgba(15,42,84,.35);border:2px solid #fff}
+  .pl-tlogo-img{width:30px;height:30px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,.7);vertical-align:-9px;margin-right:3px;box-shadow:0 3px 10px -3px rgba(0,0,0,.4)}
   .pl-band .pl-head-r{flex-wrap:wrap;justify-content:flex-end;row-gap:8px}
   @media (max-width:720px){ .pl-band{gap:10px;padding:13px 14px} .pl-band .pl-head-r{width:100%;justify-content:space-between;margin-left:0} .pl-timer{font-size:.95rem;padding:8px 13px} .pl-msel{flex:1;min-width:0;padding:9px 34px 9px 12px;font-size:.8rem} }
   .pl-pal{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
@@ -2333,7 +2335,7 @@ async function smartCompress(file,statusCb){
   }
   return {file, ok:file.size<=MAXB};
 }
-const NAV_ICON={'dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book','classes material':'folder','attendance':'clock','teacher attendance':'clock','payout':'wallet','payouts':'wallet','my attendance':'clock','my payout':'wallet','study material':'book','teacher reports':'chart','class compliance':'shield','live users':'user','admin users':'shield','send notice':'megaphone'};
+const NAV_ICON={'tests tracker':'clipboard','dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book','classes material':'folder','attendance':'clock','teacher attendance':'clock','payout':'wallet','payouts':'wallet','my attendance':'clock','my payout':'wallet','study material':'book','teacher reports':'chart','class compliance':'shield','live users':'user','admin users':'shield','send notice':'megaphone'};
 function injectNavIcons(){
   document.querySelectorAll('.nav-item').forEach(el=>{
     if(el.querySelector('svg')) return;
@@ -7329,7 +7331,26 @@ async function loadSTests(){
       +(exams.length? exams.map(examCardHTML).join('')
         : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests yet</b><p>When your teacher creates a test, it will show up here.</p></div>`);
     spCdStart();
+    _txLoadLogos(el);
   }catch(e){ el.innerHTML=errHtml(e); }
+}
+/* swap subject-initial tiles for the teacher's real photo (falls back to initials) */
+async function _txLoadLogos(root){
+  window._tphotoCache=window._tphotoCache||{};
+  const spots=[...root.querySelectorAll('.tx-tlogo[data-tid],.pl-tlogo[data-tid]')];
+  for(const sp of spots){
+    const tid=sp.dataset.tid, c=window._tphotoCache;
+    if(!tid||c[tid]===false) continue;
+    try{
+      if(!(tid in c)){
+        const r=await fetch(API+'/api/student/teacher/'+tid+'/photo',{headers:{'Authorization':'Bearer '+TOKEN}});
+        if(!r.ok) throw new Error('x');
+        const b=await r.blob(); if(!b.size) throw new Error('x');
+        c[tid]=URL.createObjectURL(b);
+      }
+      if(c[tid]) sp.outerHTML='<img class="'+(sp.classList.contains('pl-tlogo')?'pl-tlogo-img':'tx-tlogo-img')+'" src="'+c[tid]+'" alt="teacher">';
+    }catch(e){ c[tid]=false; }
+  }
 }
 function sTestFilter(f){ window._sTestFilter=f; loadSTests(); }
 async function downloadPaper(id,med){
@@ -7369,7 +7390,7 @@ function examCardHTML(e){
     : (_future?`<span class="tx-cdchip">Starts in <b data-cd="${_sch.getTime()}">\u2026</b></span>`:`<button class="btn btn-primary btn-sm" onclick="openExamPlayer(${e.id})">Start Test</button>`);
   return `<div class="tx-card ${e.status!=='graded'&&e.status!=='grading'&&e.status!=='marking'?'tx-live':''}"><div class="top" style="background:${topCol}"></div><div class="tx-pad">
     <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
-      <span class="tx-tile ${isM?'o':'v'}">${esc(txInit(e.subject||'GEN'))}</span>
+      <span class="tx-tile ${isM?'o':'v'} tx-tlogo" data-tid="${e.teacher_id||''}">${esc(txInit(e.subject||'GEN'))}</span>
       <div style="flex:1;min-width:190px">
         <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap"><b style="font-size:.93rem">${esc(e.title)}</b>${tyPill}${stPill}</div>
         <div class="tx-meta">
@@ -7467,8 +7488,8 @@ async function _plRender(id){
   const medToggle=biling?`<select class="pl-msel" title="Language / माध्यम" onchange="_plSetMed(this.value,${id})"><option value="en"${_plMed==='en'?' selected':''}>English</option><option value="hi"${_plMed==='hi'?' selected':''}>हिंदी</option><option value="hg"${_plMed==='hg'?' selected':''}>Hinglish</option></select>`:'';
   const timer=ex.duration_min?`<div class="pl-timer" id="pl-timer">${ic('clock')} <b>--:--:--</b></div>`:'';
   const upload=!isM?`<div class="pl-upload"><div class="pl-up-title">Upload your handwritten answer sheet</div><div class="pl-up-desc">Write all answers on paper with question numbers, then upload a clear photo (or PDF). Your teacher will check each question and give marks with remarks.</div><input type="file" id="pl-file" accept="image/*,application/pdf" onchange="_examPickFile(this)"><div id="pl-file-name" class="pl-file-name"></div></div>`:'';
-  el.innerHTML=`<div class="pl-head pl-sticky"><div class="pl-band"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('home')}</button><div style="flex:1;min-width:180px"><div class="pl-title">${esc(ex.title)}</div><div class="pl-info">${ex.subject?`<span class="pl-sub">${esc(ex.subject)}</span> · `:''}${ex.questions.length} questions · ${ex.total_marks} marks${ex.teacher_name?' · By '+esc(ex.teacher_name):''}</div></div><div class="pl-head-r">${medToggle}${timer}</div></div></div>${palette}<div class="pl-qs">${qs}</div>${upload}<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_plReview(${id})">Review & Submit</button>`;
-  renderMath(el); _plPal(); _plTimerStart(ex);
+  el.innerHTML=`<div class="pl-head pl-sticky"><div class="pl-band"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('home')}</button><div style="flex:1;min-width:180px"><div class="pl-title">${esc(ex.title)}</div><div class="pl-info">${ex.subject?`<span class="pl-sub">${esc(ex.subject)}</span> · `:''}${ex.questions.length} questions · ${ex.total_marks} marks${ex.teacher_name?' · <span class="pl-tlogo" data-tid="'+(ex.teacher_id||'')+'"></span>By '+esc(ex.teacher_name):''}</div></div><div class="pl-head-r">${medToggle}${timer}</div></div></div>${palette}<div class="pl-qs">${qs}</div>${upload}<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_plReview(${id})">Review & Submit</button>`;
+  renderMath(el); _plPal(); _plTimerStart(ex); _txLoadLogos(el);
 }
 function _plPal(){
   const ex=window._curExam; if(!ex||ex.test_type!=='mcq')return;
