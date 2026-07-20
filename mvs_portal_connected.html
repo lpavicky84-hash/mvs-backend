@@ -362,12 +362,24 @@
   .ws-empty .big .nav-ic{width:30px;height:30px}
   .pl-sticky{position:sticky;top:0;z-index:6;background:var(--bg);padding-top:6px}
   .pl-head-r{display:flex;gap:8px;align-items:center;margin-left:auto}
-  .pl-timer{display:inline-flex;align-items:center;gap:5px;background:#eef3fb;border:1px solid #dbe3f0;color:#0F2A54;border-radius:99px;padding:4px 11px;font-size:.75rem;font-weight:800}
-  .pl-timer .nav-ic{width:12px;height:12px}
-  .pl-timer.over{background:#fee2e2;border-color:#fecaca;color:#b91c1c;animation:txBlink 1.2s ease-in-out infinite}
-  .pl-medt{display:inline-flex;background:#eef3fb;border:1px solid #dbe3f0;border-radius:99px;padding:2px}
-  .pl-medt button{border:0;background:transparent;padding:4px 12px;border-radius:99px;font-size:.72rem;font-weight:800;color:var(--text-muted);cursor:pointer}
-  .pl-medt button.on{background:var(--primary);color:#fff}
+  .pl-timer{display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#0F2A54,#1e40af);border:none;color:#fff;border-radius:14px;padding:9px 16px;font-size:1.05rem;font-weight:800;box-shadow:0 8px 20px -6px rgba(15,42,84,.55);white-space:nowrap}
+  .pl-timer .nav-ic{width:16px;height:16px}
+  .pl-timer b{animation:txBlink 1.6s ease-in-out infinite;font-variant-numeric:tabular-nums;letter-spacing:.6px}
+  .pl-timer.over{background:linear-gradient(135deg,#b91c1c,#ef4444);color:#fff}
+  .pl-medt{display:inline-flex;background:#fff;border:2px solid #fbbf24;border-radius:14px;padding:3px;box-shadow:0 6px 16px -6px rgba(217,119,6,.45);gap:3px}
+  .pl-medt button{border:0;background:transparent;padding:7px 13px;border-radius:11px;font-size:.78rem;font-weight:800;color:#64748b;cursor:pointer;transition:.2s}
+  .pl-medt button.on{background:linear-gradient(135deg,#f59e0b,#f97316);color:#fff;box-shadow:0 4px 10px -3px rgba(249,115,22,.5)}
+  .pl-band{display:flex;gap:14px;align-items:center;flex-wrap:wrap;background:linear-gradient(120deg,#0F2A54 0%,#1d4ed8 70%,#3b82f6 100%);border-radius:18px;padding:16px 18px;color:#fff;box-shadow:0 14px 30px -12px rgba(15,42,84,.5);margin-bottom:16px}
+  .pl-band .pl-title{font-size:1.15rem;font-weight:800;color:#fff}
+  .pl-band .pl-info{font-size:.78rem;color:#dbe6f7;margin-top:4px}
+  .pl-band .pl-sub{background:linear-gradient(135deg,#FF6B2B,#f59e0b);color:#fff;font-weight:800;padding:2px 10px;border-radius:99px}
+  .pl-band .btn-ghost{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.25);color:#fff}
+  .pl-qtop{display:flex;gap:12px;align-items:flex-start}
+  .pl-qtop .pl-qtext{flex:1;min-width:0}
+  .tx-pill.tx-up{background:linear-gradient(135deg,#7c3aed,#a78bfa)!important;color:#fff!important;animation:txBlink 1.4s ease-in-out infinite;box-shadow:0 4px 12px -4px rgba(124,58,237,.5)}
+  .tx-pill.nv.inf b{color:inherit}
+  .pl-band .pl-head-r{flex-wrap:wrap;justify-content:flex-end;row-gap:8px}
+  @media (max-width:720px){ .pl-band{gap:10px;padding:13px 14px} .pl-band .pl-head-r{width:100%;justify-content:space-between;margin-left:0} .pl-timer{font-size:.95rem;padding:8px 13px} .pl-medt button{padding:7px 10px;font-size:.74rem} .pl-medt{flex:1;min-width:0} .pl-medt button{flex:1;padding-left:6px;padding-right:6px} }
   .pl-pal{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
   .pl-pn{width:34px;height:34px;border-radius:9px;border:1.5px solid var(--border);background:var(--card);font-weight:800;font-size:.78rem;color:var(--text-muted);cursor:pointer}
   .pl-pn.done{background:#059669;border-color:#059669;color:#fff}
@@ -546,7 +558,7 @@
   .pl-q{display:flex;gap:14px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;box-shadow:var(--shadow)}
   .pl-qnum{width:34px;height:34px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0}
   .pl-qbody{flex:1;min-width:0}.pl-qtext{font-weight:600;font-size:.96rem;line-height:1.45;white-space:pre-wrap;overflow-x:auto}
-  .pl-marks{font-size:.68rem;font-weight:700;color:#7c3aed;background:#f3e8ff;padding:2px 8px;border-radius:7px;margin-left:6px;white-space:nowrap}
+  .pl-marks{font-size:.74rem;font-weight:800;color:#fff;background:linear-gradient(135deg,#7c3aed,#a78bfa);padding:4px 12px;border-radius:99px;white-space:nowrap;flex-shrink:0;box-shadow:0 4px 12px -4px rgba(124,58,237,.5)}
   .pl-opts{display:flex;flex-direction:column;gap:9px;margin-top:12px}
   .pl-opt{display:flex;align-items:center;gap:10px;padding:11px 14px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;transition:.15s}
   .pl-opt:hover{border-color:var(--primary)}.pl-opt input{width:18px;height:18px;accent-color:var(--primary)}
@@ -7245,24 +7257,24 @@ async function loadSTests(){
       +`<div class="tx-stat"><b style="color:#047857">${graded.length}</b><span>Completed</span></div>`
       +`<div class="tx-stat"><b>${avg!==null?avg+'%':'—'}</b><span>Avg score</span></div>`
       +`<div class="tx-stat"><b style="color:#b45309">${grading.length}</b><span>Pending evaluation</span></div></div>`;
-    el.innerHTML=hero+statsHtml+`<div class="tx-types">
-      <div class="tx-type ${F==='mcq'?'on':''}" onclick="sTestFilter('mcq')">
-        <div class="edge" style="background:linear-gradient(#FF6B2B,#ff9a3d)"></div>
-        <div style="display:flex;gap:12px;align-items:center"><span class="tx-tile o">MCQ</span><div><b style="font-size:.95rem">Objective Tests</b><div style="font-size:.72rem;color:var(--text-muted)">Instant marks on submission</div></div></div>
-        <div class="big">${mcqs.length} <span style="font-size:.72rem;font-weight:500;color:var(--text-muted)">available</span></div>
-      </div>
-      <div class="tx-type ${F!=='mcq'?'on':''}" onclick="sTestFilter('subjective')">
-        <div class="edge" style="background:linear-gradient(#7c3aed,#a78bfa)"></div>
-        <div style="display:flex;gap:12px;align-items:center"><span class="tx-tile v">SUB</span><div><b style="font-size:.95rem">Mission 75 Test Series</b><div style="font-size:.72rem;color:var(--text-muted)">All question types · handwritten upload · graded by teacher</div></div></div>
-        <div class="big">${subs.length} <span style="font-size:.72rem;font-weight:500;color:var(--text-muted)">available</span></div>
-      </div></div>`
-      +(exams.length? exams.filter(e=> (F==='mcq') === (e.test_type==='mcq')).map(examCardHTML).join('') || `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No ${F==='mcq'?'objective':'subjective'} tests right now</b><p>New tests will appear here as soon as your teacher publishes them.</p></div>`
+    el.innerHTML=hero+statsHtml
+      +(exams.length? exams.map(examCardHTML).join('')
         : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests yet</b><p>When your teacher creates a test, it will show up here.</p></div>`);
     spCdStart();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function sTestFilter(f){ window._sTestFilter=f; loadSTests(); }
-async function downloadPaper(id,lang){ const r=await fetch(`/api/exams/${id}/paper?lang=${lang}`); if(!r.ok){ toastMsg('No paper uploaded'); return; } const b=await r.blob(); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=`paper-${id}.pdf`; a.click(); }
+async function downloadPaper(id,med){
+  try{
+    toast('Preparing paper PDF\u2026');
+    const r=await fetch(API+'/api/student/exam/'+id+'/paper?medium='+(med||'english'),{headers:{'Authorization':'Bearer '+TOKEN}});
+    if(!r.ok){ let d=null; try{ d=await r.json(); }catch(e){} toast((d&&d.detail)||'Paper download nahi hua',true); return; }
+    const b=await r.blob(); const a=document.createElement('a');
+    a.href=URL.createObjectURL(b); a.download='paper-'+id+'.pdf'; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+    toast('Paper downloaded.');
+  }catch(e){ toast('Paper download nahi hua: '+e.message,true); }
+}
 function examCardHTML(e){
   const isM=e.test_type==='mcq';
   const tyPill=isM?`<span class="tx-pill o">OBJECTIVE</span>`:`<span class="tx-pill v">SUBJECTIVE</span>`;
@@ -7280,20 +7292,20 @@ function examCardHTML(e){
   }
   const _sch=spSchedOf(e),_future=_sch&&_sch.getTime()>Date.now();
   if(!stPill){
-    stPill=_future?`<span class="tx-pill v">UPCOMING</span>`:(isM?`<span class="tx-pill g">INSTANT RESULT</span>`:`<span class="tx-pill s">TEACHER GRADES</span>`);
+    stPill=_future?`<span class="tx-pill tx-up">UPCOMING</span>`:(isM?`<span class="tx-pill g">INSTANT RESULT</span>`:`<span class="tx-pill s">TEACHER GRADES</span>`);
   }
   const action = e.status==='graded'
     ? `<button class="btn btn-primary btn-sm" onclick="openExamResult(${e.id})">View Result · ${e.score}/${e.total_marks}</button>`
     : (e.status==='grading'||e.status==='marking')
     ? `<button class="btn btn-ghost btn-sm" disabled>${e.status==='marking'?'Marking by teacher':'Checking soon'}</button>`
-    : (_future?`<button class="btn btn-ghost btn-sm" disabled>Starts in <b data-cd="${_sch.getTime()}">\u2026</b></button>`:`<button class="btn btn-primary btn-sm" onclick="openExamPlayer(${e.id})">Start Test</button>`);
+    : (_future?`<span class="tx-cdchip">Starts in <b data-cd="${_sch.getTime()}">\u2026</b></span>`:`<button class="btn btn-primary btn-sm" onclick="openExamPlayer(${e.id})">Start Test</button>`);
   return `<div class="tx-card ${e.status!=='graded'&&e.status!=='grading'&&e.status!=='marking'?'tx-live':''}"><div class="top" style="background:${topCol}"></div><div class="tx-pad">
     <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
       <span class="tx-tile ${isM?'o':'v'}">${esc(txInit(e.subject||'GEN'))}</span>
       <div style="flex:1;min-width:190px">
         <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap"><b style="font-size:.93rem">${esc(e.title)}</b>${tyPill}${stPill}</div>
         <div class="tx-meta">
-          ${e.subject?`<span class="tx-pill nv">${esc(e.subject)}</span>`:''}
+          ${e.subject?`<span class="tx-pill nv inf"><b>${esc(e.subject)}</b></span>`:''}
           ${spCleanCh(e.chapter)?`<span class="tx-pill s">${esc(spCleanCh(e.chapter))}</span>`:''}
           <span class="tx-pill s inf">${ic('clipboard')} <b>${e.questions}</b> Qs</span><span class="tx-pill s inf">${ic('chart')} <b>${e.total_marks}</b> marks</span><span class="tx-pill s inf">${ic('clock')} <b>${e.duration_min}</b> min</span>${_sch?`<span class="tx-pill s inf">${ic('calendar')} ${spSchedFmt(_sch)}</span>`:''}
         </div>
@@ -7301,7 +7313,7 @@ function examCardHTML(e){
       ${right}
     </div>
     <div class="tx-acts" style="display:flex;gap:8px;margin-top:13px;justify-content:flex-end;flex-wrap:wrap">
-      <button class="btn btn-ghost btn-sm" onclick="downloadPaper(${e.id},'english')">${ic('download')} Paper</button>
+      ${_future?'':`<button class="btn btn-ghost btn-sm" onclick="downloadPaper(${e.id},'english')">${ic('download')} Paper</button>`}
       ${action}
     </div>
   </div></div>`;
@@ -7341,6 +7353,7 @@ function _plMediumScreen(id){
   <div class="pl-mp-s">Questions will appear in your chosen medium — you can also switch from the top bar during the test.<br>प्रश्न आपके चुने माध्यम में दिखेंगे — टेस्ट के दौरान भी ऊपर की पट्टी से माध्यम बदल सकते हैं।</div>
   <div class="pm-grid" style="margin-top:16px">
     <button class="pm-opt" onclick="_plSetMed('en',${id})"><span class="pm-ic">A</span><span class="pm-tx"><b>English</b><small>Questions in English medium</small></span></button>
+    <button class="pm-opt" onclick="_plSetMed('hg',${id})"><span class="pm-ic" style="font-size:.8rem">Aअ</span><span class="pm-tx"><b>Hinglish</b><small>English + हिंदी dono saath dikhenge</small></span></button>
     <button class="pm-opt" onclick="_plSetMed('hi',${id})"><span class="pm-ic">अ</span><span class="pm-tx"><b>हिंदी</b><small>प्रश्न हिंदी माध्यम में</small></span></button>
   </div></div>`;
 }
@@ -7356,16 +7369,26 @@ async function _plEnsureHi(){
   toast('Hindi translation ho rahi hai… (free)');
   for(let i=0;i<jobs.length;i+=4){ await Promise.all(jobs.slice(i,i+4).map(f=>f())); }
 }
-function _plQText(q){ return _plMed==='hi'?((q.question_text_hi||q.question_hi||q._hiT||q.question_text)||''):(q.question_text||''); }
-function _plOptText(q,j){ return _plMed==='hi'?(((q.options_hi||[])[j])||((q._hiO||[])[j])||q.options[j]):q.options[j]; }
+function _plQText(q){
+  const en=(q.question_text||''), hi=(q.question_text_hi||q.question_hi||q._hiT||'');
+  if(_plMed==='hi') return hi||en;
+  if(_plMed==='hg') return (hi&&hi.trim()!==en.trim())?(en+'\n'+hi):en;
+  return en;
+}
+function _plOptText(q,j){
+  const en=q.options[j], hi=((q.options_hi||[])[j])||((q._hiO||[])[j])||'';
+  if(_plMed==='hi') return hi||en;
+  if(_plMed==='hg') return (hi&&hi.trim()!==String(en).trim())?(en+' · '+hi):en;
+  return en;
+}
 async function _plRender(id){
   const ex=window._curExam, el=document.getElementById('s-tests-content');
   const isM=ex.test_type==='mcq';
   if(isM){ ex.questions.forEach(q=>{ const s=document.querySelector('input[name="pl-'+q.q_no+'"]:checked'); if(s)_plAns[q.q_no]=s.value; }); }
-  if(_plMed==='hi'){ softSpin(el); await _plEnsureHi(); }
+  if(_plMed==='hi'||_plMed==='hg'){ softSpin(el); await _plEnsureHi(); }
   const biling=ex.medium==='Bilingual';
   const qs=ex.questions.map(q=>{
-    const qtext=`<div class="pl-qtext">${esc(_plQText(q))} <span class="pl-marks">${q.max_marks} marks</span></div>`;
+    const qtext=`<div class="pl-qtop"><div class="pl-qtext">${esc(_plQText(q))}</div><span class="pl-marks">${q.max_marks} marks</span></div>`;
     if(isM){
       const opts=(q.options||[]).map((o,idx)=>`<label class="pl-opt"><input type="radio" name="pl-${q.q_no}" value="${esc(o)}" ${_plAns[q.q_no]===o?'checked':''} onchange="_plPal()"><span>${esc(_plOptText(q,idx))}</span></label>`).join('');
       return `<div class="pl-q" id="plq-${q.q_no}"><div class="pl-qnum">${q.q_no}</div><div class="pl-qbody">${qtext}${q.image_b64?`<img class="pl-qimg" src="${q.image_b64}">`:''}<div class="pl-opts">${opts}</div></div></div>`;
@@ -7373,10 +7396,10 @@ async function _plRender(id){
     return `<div class="pl-q" id="plq-${q.q_no}"><div class="pl-qnum">${q.q_no}</div><div class="pl-qbody">${qtext}${q.image_b64?`<img class="pl-qimg" src="${q.image_b64}">`:''}</div></div>`;
   }).join('');
   const palette=isM?`<div class="pl-pal">${ex.questions.map(q=>`<button type="button" class="pl-pn" id="plpn-${q.q_no}" onclick="document.getElementById('plq-${q.q_no}').scrollIntoView({behavior:'smooth',block:'center'})">${q.q_no}</button>`).join('')}</div>`:'';
-  const medToggle=biling?`<div class="pl-medt"><button class="${_plMed==='en'?'on':''}" onclick="_plSetMed('en',${id})">English</button><button class="${_plMed==='hi'?'on':''}" onclick="_plSetMed('hi',${id})">हिंदी</button></div>`:'';
+  const medToggle=biling?`<div class="pl-medt"><button class="${_plMed==='en'?'on':''}" onclick="_plSetMed('en',${id})">English</button><button class="${_plMed==='hg'?'on':''}" onclick="_plSetMed('hg',${id})">Hinglish</button><button class="${_plMed==='hi'?'on':''}" onclick="_plSetMed('hi',${id})">हिंदी</button></div>`:'';
   const timer=ex.duration_min?`<div class="pl-timer" id="pl-timer">${ic('clock')} <b>--:--:--</b></div>`:'';
   const upload=!isM?`<div class="pl-upload"><div class="pl-up-title">Upload your handwritten answer sheet</div><div class="pl-up-desc">Write all answers on paper with question numbers, then upload a clear photo (or PDF). Your teacher will check each question and give marks with remarks.</div><input type="file" id="pl-file" accept="image/*,application/pdf" onchange="_examPickFile(this)"><div id="pl-file-name" class="pl-file-name"></div></div>`:'';
-  el.innerHTML=`<div class="pl-head pl-sticky"><button class="btn btn-ghost btn-sm" onclick="loadSTests()">${ic('home')} Back</button><div class="pl-title">${esc(ex.title)}</div><div class="pl-head-r">${medToggle}${timer}</div><div class="pl-info">${esc(ex.subject||'')} · ${ex.questions.length} questions · ${ex.total_marks} marks${ex.teacher_name?' · By '+esc(ex.teacher_name):''}</div></div>${palette}<div class="pl-qs">${qs}</div>${upload}<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_plReview(${id})">Review & Submit</button>`;
+  el.innerHTML=`<div class="pl-head pl-sticky"><div class="pl-band"><button class="btn btn-ghost btn-sm" onclick="loadSTests()">${ic('home')} Back</button><div style="flex:1;min-width:180px"><div class="pl-title">${esc(ex.title)}</div><div class="pl-info">${ex.subject?`<span class="pl-sub">${esc(ex.subject)}</span> · `:''}${ex.questions.length} questions · ${ex.total_marks} marks${ex.teacher_name?' · By '+esc(ex.teacher_name):''}</div></div><div class="pl-head-r">${medToggle}${timer}</div></div></div>${palette}<div class="pl-qs">${qs}</div>${upload}<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_plReview(${id})">Review & Submit</button>`;
   renderMath(el); _plPal(); _plTimerStart(ex);
 }
 function _plPal(){
