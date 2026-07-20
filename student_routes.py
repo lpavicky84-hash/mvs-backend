@@ -1021,8 +1021,38 @@ def _bg_grade_attempt(attempt_id, mime_type="image/jpeg"):
     finally:
         db.close()
 
+# ---- exam engine: lazy column migration (same as teacher side) ----
+_EXAM_COLS_READY = False
+
+def _ensure_exam_columns(db):
+    """Add scheduled_at / attempted / skipped columns on first use (MySQL/Postgres/SQLite).
+    Runs once per process; every ALTER is best-effort so existing databases upgrade themselves."""
+    global _EXAM_COLS_READY
+    if _EXAM_COLS_READY:
+        return
+    from sqlalchemy import text as _text
+    stmts = [
+        ("ALTER TABLE exams ADD COLUMN scheduled_at DATETIME NULL",
+         "ALTER TABLE exams ADD COLUMN scheduled_at TIMESTAMP NULL"),
+        ("ALTER TABLE exam_attempts ADD COLUMN attempted JSON NULL",
+         "ALTER TABLE exam_attempts ADD COLUMN attempted TEXT NULL"),
+        ("ALTER TABLE exam_attempts ADD COLUMN skipped JSON NULL",
+         "ALTER TABLE exam_attempts ADD COLUMN skipped TEXT NULL"),
+    ]
+    for group in stmts:
+        for st in group:
+            try:
+                db.execute(_text(st))
+                db.commit()
+                break
+            except Exception:
+                db.rollback()
+    _EXAM_COLS_READY = True
+
+
 @router.get("/exams")
 def student_exams(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    _ensure_exam_columns(db)
     sp = get_student_profile(current_user, db)
     subs = sp.subjects or []
     q = db.query(Exam).filter(Exam.is_active == True)
@@ -1035,7 +1065,8 @@ def student_exams(db: Session = Depends(get_db), current_user=Depends(get_studen
         nq = db.query(ExamQuestion).filter(ExamQuestion.exam_id == e.id).count()
         out.append({"id": e.id, "title": e.title, "subject": e.subject, "chapter": e.chapter,
                     "test_type": e.test_type, "total_marks": e.total_marks, "duration_min": e.duration_min,
-                    "questions": nq, "teacher_name": e.teacher_name,
+                    "medium": e.medium, "questions": nq, "teacher_name": e.teacher_name,
+                    "scheduled_at": e.scheduled_at.isoformat() if getattr(e, "scheduled_at", None) else None,
                     "status": att.status if att else "not_attempted",
                     "awarded": att.total_awarded if att else None})
     return out
@@ -1058,6 +1089,7 @@ def _log_exam_action(db, exam_id, student_id, action):
 def student_exam_paper(exam_id: int, medium: str = "english", db: Session = Depends(get_db),
                        current_user=Depends(get_student)):
     """Download the question paper PDF (counts as a download)."""
+    _ensure_exam_columns(db)
     sp = get_student_profile(current_user, db)
     ex = db.query(Exam).filter(Exam.id == exam_id, Exam.is_active == True).first()
     if not ex:
@@ -1074,6 +1106,7 @@ def student_exam_paper(exam_id: int, medium: str = "english", db: Session = Depe
 
 @router.get("/exam/{exam_id}")
 def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    _ensure_exam_columns(db)
     sp = get_student_profile(current_user, db)
     ex = db.query(Exam).filter(Exam.id == exam_id, Exam.is_active == True).first()
     if not ex:
@@ -1089,10 +1122,12 @@ def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=D
     return {"id": ex.id, "title": ex.title, "subject": ex.subject, "chapter": ex.chapter,
             "test_type": ex.test_type, "medium": ex.medium, "duration_min": ex.duration_min, "total_marks": ex.total_marks,
             "teacher_name": ex.teacher_name, "questions": questions,
+            "scheduled_at": ex.scheduled_at.isoformat() if getattr(ex, "scheduled_at", None) else None,
             "already_submitted": bool(att and att.status == "graded")}
 
 @router.post("/exam/{exam_id}/submit")
 def student_submit_exam(exam_id: int, payload: dict = Body(...), background_tasks: BackgroundTasks = None, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    _ensure_exam_columns(db)
     sp = get_student_profile(current_user, db)
     ex = db.query(Exam).filter(Exam.id == exam_id, Exam.is_active == True).first()
     if not ex:
@@ -1102,7 +1137,9 @@ def student_submit_exam(exam_id: int, payload: dict = Body(...), background_task
         raise HTTPException(400, "You have already submitted this test")
     qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).order_by(ExamQuestion.q_no).all()
     db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id, ExamAttempt.student_id == sp.id).delete()
-    att = ExamAttempt(exam_id=exam_id, student_id=sp.id, student_name=current_user.name, status="grading")
+    att = ExamAttempt(exam_id=exam_id, student_id=sp.id, student_name=current_user.name, status="grading",
+                      attempted=(payload.get("attempted") if isinstance(payload.get("attempted"), list) else None),
+                      skipped=(payload.get("skipped") if isinstance(payload.get("skipped"), list) else None))
     db.add(att); db.flush()
     try:
         _award_xp(db, sp.id, _XP_TEST, "test", "Attempted test: %s" % (ex.title or ex.subject or ""))
@@ -1132,6 +1169,7 @@ def student_submit_exam(exam_id: int, payload: dict = Body(...), background_task
 
 @router.get("/exam/{exam_id}/result")
 def student_exam_result(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    _ensure_exam_columns(db)
     sp = get_student_profile(current_user, db)
     ex = db.query(Exam).filter(Exam.id == exam_id).first()
     if not ex:
@@ -1158,6 +1196,7 @@ def student_exam_result(exam_id: int, db: Session = Depends(get_db), current_use
             })
         items.append(it)
     return {"status": att.status, "title": ex.title, "teacher_name": ex.teacher_name,
+            "subject": ex.subject, "duration_min": ex.duration_min,
             "total_awarded": att.total_awarded, "total_marks": ex.total_marks,
             "verdict": att.verdict, "feedback": att.overall_feedback,
             "test_type": ex.test_type, "medium": ex.medium, "results": items,
@@ -1167,6 +1206,7 @@ def student_exam_result(exam_id: int, db: Session = Depends(get_db), current_use
 @router.get("/exam/{exam_id}/answer")
 def student_answer_sheet(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
     """Download the student's own uploaded handwritten answer sheet."""
+    _ensure_exam_columns(db)
     sp = get_student_profile(current_user, db)
     att = db.query(ExamAttempt).filter(
         ExamAttempt.exam_id == exam_id, ExamAttempt.student_id == sp.id

@@ -421,6 +421,7 @@ class Exam(Base):
     medium      = Column(String(20), default="English")     # English | Hindi | Bilingual
     total_marks = Column(Integer, default=0)
     duration_min= Column(Integer, default=60)
+    scheduled_at= Column(DateTime, nullable=True)        # test goes live at this date/time
     is_active   = Column(Boolean, default=True)
     created_at  = Column(DateTime, default=func.now())
 
@@ -451,6 +452,8 @@ class ExamAttempt(Base):
     status      = Column(String(20), default="pending")  # pending | grading | graded
     answer_image_b64 = Column(_BIGTEXT, nullable=True)   # handwritten upload
     mcq_answers = Column(JSON, nullable=True)            # {q_no: selected}
+    attempted   = Column(JSON, nullable=True)            # [q_no] student says they attempted
+    skipped     = Column(JSON, nullable=True)            # [q_no] student says they skipped
     total_awarded = Column(Float, default=0)
     overall_feedback = Column(Text, nullable=True)
     verdict     = Column(String(40), nullable=True)

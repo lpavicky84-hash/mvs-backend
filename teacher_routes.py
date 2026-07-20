@@ -1163,8 +1163,60 @@ def teacher_student_engagement(db: Session = Depends(get_db), current_user=Depen
 
 
 # ===================== EXAM / TEST ENGINE (teacher) =====================
+
+# ---- exam engine: lazy column migration + helpers (safe to call anywhere) ----
+_EXAM_COLS_READY = False
+
+def _ensure_exam_columns(db):
+    """Add scheduled_at / attempted / skipped columns on first use (MySQL/Postgres/SQLite).
+    Runs once per process; every ALTER is best-effort so existing databases upgrade themselves."""
+    global _EXAM_COLS_READY
+    if _EXAM_COLS_READY:
+        return
+    from sqlalchemy import text as _text
+    stmts = [
+        ("ALTER TABLE exams ADD COLUMN scheduled_at DATETIME NULL",
+         "ALTER TABLE exams ADD COLUMN scheduled_at TIMESTAMP NULL"),
+        ("ALTER TABLE exam_attempts ADD COLUMN attempted JSON NULL",
+         "ALTER TABLE exam_attempts ADD COLUMN attempted TEXT NULL"),
+        ("ALTER TABLE exam_attempts ADD COLUMN skipped JSON NULL",
+         "ALTER TABLE exam_attempts ADD COLUMN skipped TEXT NULL"),
+    ]
+    for group in stmts:
+        for s in group:
+            try:
+                db.execute(_text(s))
+                db.commit()
+                break
+            except Exception:
+                db.rollback()
+    _EXAM_COLS_READY = True
+
+
+def _exam_parse_dt(v):
+    """Parse an ISO-ish datetime from the portal; returns None on failure."""
+    if not v:
+        return None
+    if isinstance(v, datetime):
+        return v
+    s = str(v).strip()
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt.tzinfo is not None:
+            dt = dt.astimezone().replace(tzinfo=None)
+        return dt
+    except Exception:
+        pass
+    for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s[:19], fmt)
+        except Exception:
+            continue
+    return None
+
 @router.post("/exam")
 def create_exam(payload: dict = Body(...), background_tasks: BackgroundTasks = None, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    _ensure_exam_columns(db)
     tp = get_teacher_profile(current_user, db)
     qs = payload.get("questions") or []
     if not payload.get("title") or not qs:
@@ -1175,7 +1227,8 @@ def create_exam(payload: dict = Body(...), background_tasks: BackgroundTasks = N
               subject=payload.get("subject", ""), title=payload["title"],
               chapter=payload.get("chapter"), test_type=ttype,
               medium=payload.get("medium", "English"),
-              total_marks=total, duration_min=int(payload.get("duration_min", 60) or 60))
+              total_marks=total, duration_min=int(payload.get("duration_min", 60) or 60),
+              scheduled_at=_exam_parse_dt(payload.get("scheduled_at")))
     db.add(ex); db.flush()
     for i, q in enumerate(qs, start=1):
         co = q.get("correct_option")
@@ -1194,11 +1247,13 @@ def create_exam(payload: dict = Body(...), background_tasks: BackgroundTasks = N
                explanation=(q.get("explanation") or None),
                explanation_hi=(q.get("explanation_hi") or None)))
     db.commit()
-    # Bilingual test: auto-translate any blank Hindi fields in the background.
-    if (ex.medium or "").lower().startswith("bi") and background_tasks is not None:
-        background_tasks.add_task(_bg_translate_exam, ex.id)
+    # Bilingual Hindi is now filled on-demand by the portal (free). Paid Gemini
+    # auto-translation is disabled to avoid API costs. (Function kept for manual use.)
+    # if (ex.medium or "").lower().startswith("bi") and background_tasks is not None:
+    #     background_tasks.add_task(_bg_translate_exam, ex.id)
     return {"id": ex.id, "total_marks": total, "questions": len(qs),
-            "test_type": ttype, "medium": ex.medium}
+            "test_type": ttype, "medium": ex.medium,
+            "scheduled_at": ex.scheduled_at.isoformat() if getattr(ex, "scheduled_at", None) else None}
 
 
 def _bg_translate_exam(exam_id):
@@ -1239,6 +1294,7 @@ def _bg_translate_exam(exam_id):
 def teacher_exam_pdf(exam_id: int, medium: str = "english",
                      db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     """Download the full question+answer paper as a PDF in English or Hindi medium."""
+    _ensure_exam_columns(db)
     import exam_pdf
     from fastapi import Response
     tp = get_teacher_profile(current_user, db)
@@ -1258,6 +1314,7 @@ def teacher_exam_pdf(exam_id: int, medium: str = "english",
 
 @router.get("/exams")
 def list_exams(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    _ensure_exam_columns(db)
     from models import ExamView
     tp = get_teacher_profile(current_user, db)
     rows = db.query(Exam).filter(Exam.teacher_id == tp.id, Exam.is_active == True).order_by(Exam.created_at.desc()).all()
@@ -1279,6 +1336,7 @@ def list_exams(db: Session = Depends(get_db), current_user=Depends(get_teacher))
                     "test_type": e.test_type, "total_marks": e.total_marks, "duration_min": e.duration_min,
                     "medium": e.medium, "questions": nq, "attempts": na, "graded": ng,
                     "views": len(views.get(e.id, ())), "downloads": len(downloads.get(e.id, ())),
+                    "scheduled_at": e.scheduled_at.isoformat() if getattr(e, "scheduled_at", None) else None,
                     "created_at": e.created_at.isoformat() if e.created_at else None})
     return out
 
@@ -1286,6 +1344,7 @@ def list_exams(db: Session = Depends(get_db), current_user=Depends(get_teacher))
 @router.get("/exam/{exam_id}/audience")
 def exam_audience(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     """Which students opened / downloaded this test."""
+    _ensure_exam_columns(db)
     from models import ExamView, StudentProfile
     tp = get_teacher_profile(current_user, db)
     ex = db.query(Exam).filter(Exam.id == exam_id, Exam.teacher_id == tp.id).first()
@@ -1320,18 +1379,33 @@ def exam_audience(exam_id: int, db: Session = Depends(get_db), current_user=Depe
 
 @router.get("/exam/{exam_id}/attempts")
 def exam_attempts(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    _ensure_exam_columns(db)
     tp = get_teacher_profile(current_user, db)
     ex = db.query(Exam).filter(Exam.id == exam_id, Exam.teacher_id == tp.id).first()
     if not ex:
         raise HTTPException(404, "Exam not found")
     atts = db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id).order_by(ExamAttempt.submitted_at.desc()).all()
-    out = [{"attempt_id": a.id, "student_id": a.student_id, "student_name": a.student_name,
+    out = []
+    for a in atts:
+        _atl = getattr(a, "attempted", None)
+        _skl = getattr(a, "skipped", None)
+        out.append({"attempt_id": a.id, "student_id": a.student_id, "student_name": a.student_name,
             "status": a.status, "total_awarded": a.total_awarded, "verdict": a.verdict,
             "has_answer": bool(a.answer_image_b64),
-            "submitted_at": a.submitted_at.isoformat() if a.submitted_at else None} for a in atts]
+            "attempted_count": (len(_atl) if isinstance(_atl, list) else None),
+            "skipped_count": (len(_skl) if isinstance(_skl, list) else None),
+            "submitted_at": a.submitted_at.isoformat() if a.submitted_at else None})
     qrows = db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).order_by(ExamQuestion.q_no).all()
-    questions = [{"q_no": q.q_no, "question_text": q.question_text, "max_marks": q.max_marks} for q in qrows]
-    return {"exam": {"id": ex.id, "title": ex.title, "total_marks": ex.total_marks, "test_type": ex.test_type},
+    questions = [{"q_no": q.q_no, "question_text": q.question_text, "max_marks": q.max_marks,
+                  "model_answer": q.model_answer, "options": q.options,
+                  "correct_option": q.correct_option, "image_b64": q.image_b64,
+                  "question_text_hi": q.question_text_hi, "model_answer_hi": q.model_answer_hi,
+                  "options_hi": q.options_hi, "model_answer_image": q.model_answer_image,
+                  "explanation": q.explanation, "explanation_hi": q.explanation_hi} for q in qrows]
+    return {"exam": {"id": ex.id, "title": ex.title, "total_marks": ex.total_marks,
+                     "test_type": ex.test_type, "subject": ex.subject, "chapter": ex.chapter,
+                     "medium": ex.medium, "duration_min": ex.duration_min,
+                     "scheduled_at": ex.scheduled_at.isoformat() if getattr(ex, "scheduled_at", None) else None},
             "questions": questions, "attempts": out}
 
 
@@ -1362,6 +1436,7 @@ def _notify_exam_result_t(db, att, ex):
 
 @router.post("/attempt/{attempt_id}/grade")
 def grade_attempt_now(attempt_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    _ensure_exam_columns(db)
     tp = get_teacher_profile(current_user, db)
     att = db.query(ExamAttempt).filter(ExamAttempt.id == attempt_id).first()
     if not att:
@@ -1472,6 +1547,7 @@ async def parse_exam_pdf(file: UploadFile = File(...), test_type: str = Form("su
 
 @router.get("/attempt/{attempt_id}/answer")
 def attempt_answer_image(attempt_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    _ensure_exam_columns(db)
     from fastapi import Response
     tp = get_teacher_profile(current_user, db)
     att = db.query(ExamAttempt).filter(ExamAttempt.id == attempt_id).first()
@@ -1480,6 +1556,9 @@ def attempt_answer_image(attempt_id: int, db: Session = Depends(get_db), current
     ex = db.query(Exam).filter(Exam.id == att.exam_id, Exam.teacher_id == tp.id).first()
     if not ex:
         raise HTTPException(403, "Not your test")
+    if (att.status or "") == "grading":
+        att.status = "marking"   # teacher opened the sheet -> "being checked"
+        db.commit()
     if not att.answer_image_b64:
         raise HTTPException(404, "No answer sheet uploaded")
     raw = att.answer_image_b64.split(",")[-1]
@@ -1487,6 +1566,7 @@ def attempt_answer_image(attempt_id: int, db: Session = Depends(get_db), current
 
 @router.post("/attempt/{attempt_id}/grade-manual")
 def grade_attempt_manual(attempt_id: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    _ensure_exam_columns(db)
     tp = get_teacher_profile(current_user, db)
     att = db.query(ExamAttempt).filter(ExamAttempt.id == attempt_id).first()
     if not att:
@@ -2291,3 +2371,85 @@ def change_slot(payload: dict, db: Session = Depends(get_db), current_user=Depen
         notify(db, admin.id, "Slot Changed - " + subject, a_msg, "timetable")
     db.commit()
     return {"updated": len(entries), "students_notified": len(targets), "new_time": new_time}
+
+
+# ---------- test editing / status flow (portal v2) ----------
+@router.patch("/exam/{exam_id}")
+def update_exam(exam_id: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Edit a test. Metadata is always updated; questions are fully replaced
+    only when a non-empty "questions" list is sent."""
+    _ensure_exam_columns(db)
+    tp = get_teacher_profile(current_user, db)
+    ex = db.query(Exam).filter(Exam.id == exam_id, Exam.teacher_id == tp.id).first()
+    if not ex:
+        raise HTTPException(404, "Test not found")
+    for f in ("title", "subject", "chapter", "medium", "test_type"):
+        if payload.get(f) is not None:
+            setattr(ex, f, payload.get(f))
+    if payload.get("duration_min") is not None:
+        try:
+            ex.duration_min = int(payload.get("duration_min") or 60)
+        except Exception:
+            pass
+    if "scheduled_at" in payload:
+        ex.scheduled_at = _exam_parse_dt(payload.get("scheduled_at"))
+    qs = payload.get("questions")
+    if isinstance(qs, list) and qs:
+        ttype = ex.test_type or "subjective"
+        db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).delete()
+        total = 0
+        for i, q in enumerate(qs, start=1):
+            try:
+                mm = int(q.get("max_marks", 1) or 1)
+            except Exception:
+                mm = 1
+            total += mm
+            co = q.get("correct_option")
+            opts_hi = q.get("options_hi") if ttype == "mcq" else None
+            db.add(ExamQuestion(exam_id=ex.id, q_no=i,
+                   question_text=q.get("question_text", ""),
+                   max_marks=mm,
+                   model_answer=q.get("model_answer"),
+                   options=q.get("options") if ttype == "mcq" else None,
+                   correct_option=(str(co) if co not in (None, "") else None),
+                   image_b64=q.get("image_b64"),
+                   question_text_hi=(q.get("question_text_hi") or None),
+                   model_answer_hi=(q.get("model_answer_hi") or None),
+                   options_hi=(opts_hi if opts_hi else None),
+                   model_answer_image=q.get("model_answer_image"),
+                   explanation=(q.get("explanation") or None),
+                   explanation_hi=(q.get("explanation_hi") or None)))
+        ex.total_marks = total
+    db.commit()
+    return {"id": ex.id, "title": ex.title, "total_marks": ex.total_marks,
+            "scheduled_at": ex.scheduled_at.isoformat() if getattr(ex, "scheduled_at", None) else None}
+
+
+@router.delete("/exam/{exam_id}")
+def delete_exam(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Soft-delete a test (keeps attempts/marks, hides it everywhere)."""
+    _ensure_exam_columns(db)
+    tp = get_teacher_profile(current_user, db)
+    ex = db.query(Exam).filter(Exam.id == exam_id, Exam.teacher_id == tp.id).first()
+    if not ex:
+        raise HTTPException(404, "Test not found")
+    ex.is_active = False
+    db.commit()
+    return {"status": "deleted", "id": exam_id}
+
+
+@router.post("/attempt/{attempt_id}/marking")
+def attempt_marking(attempt_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Flip an attempt from 'checking soon' to 'being checked by teacher'."""
+    _ensure_exam_columns(db)
+    tp = get_teacher_profile(current_user, db)
+    att = db.query(ExamAttempt).filter(ExamAttempt.id == attempt_id).first()
+    if not att:
+        raise HTTPException(404, "Attempt not found")
+    ex = db.query(Exam).filter(Exam.id == att.exam_id, Exam.teacher_id == tp.id).first()
+    if not ex:
+        raise HTTPException(403, "Not your test")
+    if (att.status or "") == "grading":
+        att.status = "marking"
+        db.commit()
+    return {"status": att.status}

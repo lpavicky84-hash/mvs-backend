@@ -9,7 +9,8 @@ from security import get_admin, hash_password
 from models import (
     User, TeacherProfile, StudentProfile, ClassEntry, ClassStatus,
     RescheduleRequest, RescheduleStatus, Doubt, DoubtStatus,
-    DPP, Test, TestSubmission, DPPSubmission, Notification, UserRole
+    DPP, Test, TestSubmission, DPPSubmission, Notification, UserRole,
+    Exam, ExamQuestion, ExamAttempt
 )
 from schemas import (
     RescheduleReview, RescheduleOut, UserOut, AdminDashboard,
@@ -2083,3 +2084,52 @@ def admin_delete_adjustment(aid: int, db: Session = Depends(get_db), _=Depends(g
     db.delete(a)
     db.commit()
     return {"message": "Adjustment removed"}
+
+
+# ===== EXAM / TEST TRACKER (subject-wise, all teachers) =====
+_EXAM_COLS_READY_ADMIN = False
+
+def _ensure_exam_columns(db):
+    """Add scheduled_at / attempted / skipped columns on first use (MySQL/Postgres/SQLite).
+    Runs once per process; every ALTER is best-effort so existing databases upgrade themselves."""
+    global _EXAM_COLS_READY_ADMIN
+    if _EXAM_COLS_READY_ADMIN:
+        return
+    from sqlalchemy import text as _text
+    stmts = [
+        ("ALTER TABLE exams ADD COLUMN scheduled_at DATETIME NULL",
+         "ALTER TABLE exams ADD COLUMN scheduled_at TIMESTAMP NULL"),
+        ("ALTER TABLE exam_attempts ADD COLUMN attempted JSON NULL",
+         "ALTER TABLE exam_attempts ADD COLUMN attempted TEXT NULL"),
+        ("ALTER TABLE exam_attempts ADD COLUMN skipped JSON NULL",
+         "ALTER TABLE exam_attempts ADD COLUMN skipped TEXT NULL"),
+    ]
+    for group in stmts:
+        for st in group:
+            try:
+                db.execute(_text(st))
+                db.commit()
+                break
+            except Exception:
+                db.rollback()
+    _EXAM_COLS_READY_ADMIN = True
+
+
+@router.get("/exams")
+def admin_exams(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """All tests across teachers with submission tracking (for the admin Tests Tracker)."""
+    _ensure_exam_columns(db)
+    rows = db.query(Exam).filter(Exam.is_active == True).order_by(Exam.created_at.desc()).all()
+    out = []
+    for e in rows:
+        nq = db.query(ExamQuestion).filter(ExamQuestion.exam_id == e.id).count()
+        na = db.query(ExamAttempt).filter(ExamAttempt.exam_id == e.id).count()
+        ng = db.query(ExamAttempt).filter(ExamAttempt.exam_id == e.id,
+                                          ExamAttempt.status == "graded").count()
+        out.append({"id": e.id, "title": e.title, "subject": e.subject, "chapter": e.chapter,
+                    "teacher_name": e.teacher_name, "test_type": e.test_type, "medium": e.medium,
+                    "total_marks": e.total_marks, "duration_min": e.duration_min,
+                    "questions": nq, "attempts": na, "graded": ng,
+                    "scheduled_at": e.scheduled_at.isoformat() if getattr(e, "scheduled_at", None) else None,
+                    "created_at": e.created_at.isoformat() if e.created_at else None})
+    return out
