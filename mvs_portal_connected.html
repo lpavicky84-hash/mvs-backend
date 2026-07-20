@@ -8,12 +8,12 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>:root{--primary:#0F2A54;--primary-dark:#0a1f40;--primary-50:#e4ebf5;--secondary:#FF6B2B;--accent:#FF6B2B;--success:#059669;--warning:#d97706;--danger:#dc2626;--bg:#e5eaf3;--card:#fbfcfe;--bg-card:#fbfcfe;--text:#0F1C33;--text-muted:#5A6B85;--border:#dbe3ef;--sidebar:#0F2A54;--sidebar-text:#9fb2cf;--shadow:0 1px 2px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.05);--shadow-lg:0 12px 32px -10px rgba(15,23,42,.2);--glass-bg:rgba(255,255,255,.7);--glass-brd:rgba(255,255,255,.55)}
   .dark{--bg:#0b1524;--card:#111f36;--bg-card:#111f36;--text:#eaf0fb;--text-muted:#93a6c4;--border:#22334f;--sidebar:#081120;--primary:#e2b458;--primary-dark:#c99e45;--primary-50:rgba(226,180,88,.13);--secondary:#e2b458;--accent:#e2b458;--glass-bg:rgba(13,23,40,.78);--glass-brd:rgba(255,255,255,.07);--shadow:0 1px 2px rgba(0,0,0,.45),0 1px 3px rgba(0,0,0,.35);--shadow-lg:0 18px 44px -14px rgba(0,0,0,.65)}
   h1,h2,h3,h4{letter-spacing:-.011em}
   *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:'Plus Jakarta Sans','Segoe UI',sans-serif;background:var(--bg);color:var(--text);transition:.3s;-webkit-font-smoothing:antialiased}
+  body{font-family:'Plus Jakarta Sans','Noto Sans Devanagari','Segoe UI',sans-serif;background:var(--bg);color:var(--text);transition:.3s;-webkit-font-smoothing:antialiased}
   #landing{min-height:100vh;background:radial-gradient(circle at top right,#0a3260,#001a3a 45%,#000c1c);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:44px;padding:20px}
   .landing-logo{text-align:center;color:#fff}.landing-logo h1{font-size:3.4rem;font-weight:800;letter-spacing:-.03em;background:linear-gradient(to right,#86a0cd,#c7d2fe);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}.landing-logo p{font-size:1.12rem;opacity:.8;margin-top:12px}
   .portal-cards{display:flex;gap:24px;flex-wrap:wrap;justify-content:center}
@@ -338,6 +338,13 @@
   .mt-eng svg{width:14px;height:14px}
   .ma-head{font-size:.85rem;color:var(--text-muted);margin:12px 0 8px}
   .ma-list{max-height:48vh;overflow-y:auto;padding-right:4px}
+  .ex-lang-tab.ex-tr{color:var(--secondary);font-weight:800}
+  .pm-grid{display:flex;flex-direction:column;gap:10px;padding:4px 0}
+  .pm-opt{display:flex;align-items:center;gap:13px;border:1.5px solid var(--border);background:var(--card);border-radius:12px;padding:13px 15px;cursor:pointer;text-align:left;transition:.15s;color:var(--text)}
+  .pm-opt:hover{border-color:var(--primary);box-shadow:0 6px 18px -8px rgba(15,42,84,.35);transform:translateY(-1px)}
+  .pm-ic{width:42px;height:42px;flex:0 0 42px;border-radius:10px;background:linear-gradient(135deg,var(--primary),#1e4a8f);color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.05rem;font-weight:800}
+  .pm-tx b{display:block;font-size:.95rem;color:var(--text)}
+  .pm-tx small{color:var(--text-muted);font-size:.76rem}
   .ma-row{display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px solid var(--border)}
   .ma-row:last-child{border-bottom:none}
   .ma-av{width:32px;height:32px;flex:0 0 32px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.8rem}
@@ -3851,13 +3858,15 @@ function _dppFilter(mode){
 
 /* ================= PREMIUM PDF (question paper + with solutions) ================= */
 function escH(x){ return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function buildPdfDoc(ex,body,withSol,isM){
+function buildPdfDoc(ex,body,withSol,isM,lang){
+  lang=lang||'en';
   const docTitle='MVS '+(ex.title||'Test')+(withSol?' — With Solutions':' — Question Paper');
   return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+escH(docTitle)+'</title>'
   +'<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">'
+  +'<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap">'
   +'<style>'
   +'@page{size:A4;margin:13mm}*{box-sizing:border-box}'
-  +'body{font-family:"Plus Jakarta Sans","Segoe UI",Arial,sans-serif;color:#0f172a;font-size:12.5px;line-height:1.55;margin:0}'
+  +'body{font-family:"Plus Jakarta Sans","Noto Sans Devanagari","Segoe UI",Arial,sans-serif;color:#0f172a;font-size:12.5px;line-height:1.55;margin:0}'
   +'.band{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#0F2A54,#1e4a8f);color:#fff;padding:14px 18px;border-radius:12px;margin-bottom:12px}'
   +'.logo{font-size:20px;font-weight:800;letter-spacing:.07em}'
   +'.tag{font-size:9.5px;opacity:.85;letter-spacing:.14em;text-transform:uppercase;margin-top:2px}'
@@ -3888,7 +3897,7 @@ function buildPdfDoc(ex,body,withSol,isM){
   +(ex.chapter?'<div><span>Chapter</span><b>'+escH(ex.chapter)+'</b></div>':'')
   +(ex.duration_min?'<div><span>Time</span><b>'+escH(ex.duration_min)+' min</b></div>':'')
   +'<div><span>Max Marks</span><b>'+escH(ex.total_marks||'—')+'</b></div></div>'
-  +'<div class="ins"><b>Instructions:</b> All questions are compulsory. '+(isM?'Choose the one correct option for each question.':'Write answers neatly in the space provided. Marks for each question are shown against it.')+'</div>'
+  +(lang==='hi'?'<div class="ins"><b>\u0928\u093f\u0930\u094d\u0926\u0947\u0936:</b> \u0938\u092d\u0940 \u092a\u094d\u0930\u0936\u094d\u0928 \u0905\u0928\u093f\u0935\u093e\u0930\u094d\u092f \u0939\u0948\u0902\u0964 '+(isM?'\u092a\u094d\u0930\u0924\u094d\u092f\u0947\u0915 \u092a\u094d\u0930\u0936\u094d\u0928 \u0915\u0947 \u0932\u093f\u090f \u090f\u0915 \u0938\u0939\u0940 \u0935\u093f\u0915\u0932\u094d\u092a \u091a\u0941\u0928\u0947\u0902\u0964':'\u0909\u0924\u094d\u0924\u0930 \u0938\u093e\u092b\u093c-\u0938\u093e\u092b\u093c \u0932\u093f\u0916\u0947\u0902\u0964 \u092a\u094d\u0930\u0924\u094d\u092f\u0947\u0915 \u092a\u094d\u0930\u0936\u094d\u0928 \u0915\u0947 \u0905\u0902\u0915 \u0909\u0938\u0915\u0947 \u0938\u093e\u092e\u0928\u0947 \u0926\u093f\u090f \u0917\u090f \u0939\u0948\u0902\u0964')+'</div>':"<div class='ins'><b>Instructions:</b> All questions are compulsory. "+(isM?'Choose the one correct option for each question.':'Write answers neatly in the space provided. Marks for each question are shown against it.')+'</div>')
   +body
   +'<div class="foot">Generated from MVS Portal · '+(withSol?'Teacher copy — includes solutions':'Student question paper')+'</div>'
   +'<scr'+'ipt src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></scr'+'ipt>'
@@ -3904,36 +3913,57 @@ function buildPdfDoc(ex,body,withSol,isM){
   +'setTimeout(function(){window.print();},600);});</scr'+'ipt>'
   +'</body></html>';
 }
-async function examPdfPremium(id,mode){
+async function examPdfPremium(id,mode,medium){
   try{
-    toast('Preparing premium PDF…');
+    medium=medium||'en';
+    toast('Preparing premium PDF\u2026');
     const d=await api('/api/teacher/exam/'+id+'/attempts');
     const ex=d.exam||{}, qs=d.questions||[];
     if(!qs.length){ toast('No questions found for this test yet.',true); return; }
     const isM=(ex.test_type==='mcq');
     const withSol=mode==='solutions';
+    const sub=spDetectSubject((ex.subject||'')+' '+(ex.title||''));
+    if(medium!=='en'){
+      let ti=0;
+      for(const q of qs){
+        ti++;
+        if(!((q.question_hi||'').trim())&&(q.question_text||'').trim()){ toast('Translating question '+ti+'/'+qs.length+'\u2026 (free)'); const t=await spTranslate(q.question_text,sub); if(t)q.question_hi=t; }
+        if(isM&&Array.isArray(q.options)){
+          q.options_hi=Array.isArray(q.options_hi)?q.options_hi:[];
+          for(let j=0;j<q.options.length;j++){ if(!((q.options_hi[j]||'').trim())&&(q.options[j]||'').trim()){ const t=await spTranslate(q.options[j],sub); if(t)q.options_hi[j]=t; } }
+        }
+        if(withSol&&!((q.model_answer_hi||'').trim())&&(q.model_answer||'').trim()){ const t=await spTranslate(q.model_answer,sub); if(t)q.model_answer_hi=t; }
+      }
+    }
+    const qLbl=medium==='hi'?'\u092a\u094d\u0930\u0936\u094d\u0928':'Question';
+    const mkLbl=m=>medium==='hi'?('[ '+(m||1)+' \u0905\u0902\u0915 ]'):('[ '+(m||1)+' mark'+((m||1)>1?'s':'')+' ]');
     const body=qs.map((q,qi)=>{
       const qno=q.q_no||qi+1;
+      const en=q.question_text||'', hi=q.question_hi||'';
       let h='';
-      if(q.question_hi) h+='<div class="q-hi">'+escH(q.question_hi)+'</div>';
+      if(medium==='both'&&hi.trim()) h+='<div class="q-hi">'+escH(hi)+'</div>';
       if(q.image_b64) h+='<img class="qimg" src="'+q.image_b64+'">';
       if(isM&&Array.isArray(q.options)&&q.options.length){
         h+='<div class="opts">'+q.options.map((o,oi)=>{
+          const oh=(medium!=='en'&&Array.isArray(q.options_hi)&&(q.options_hi[oi]||'').trim())?q.options_hi[oi]:null;
+          const txt=medium==='hi'?(oh||o):(medium==='both'&&oh?(o+' / '+oh):o);
           const ci=(q.correct_index===oi)||(q.correct_option!=null&&String(q.correct_option).trim()===String(o).trim());
-          return '<div class="opt'+(withSol&&ci?' correct':'')+'"><b>'+String.fromCharCode(65+oi)+'.</b> '+escH(o)+'</div>';
+          return '<div class="opt'+(withSol&&ci?' correct':'')+'"><b>'+String.fromCharCode(65+oi)+'.</b> '+escH(txt)+'</div>';
         }).join('')+'</div>';
       }
-      if(withSol&&q.model_answer){
-        h+='<div class="sol"><div class="sol-l">Solution</div><div class="sol-t">'+escH(q.model_answer)+'</div>'
-          +(q.model_answer_hi?'<div class="q-hi">'+escH(q.model_answer_hi)+'</div>':'')
+      if(withSol&&((q.model_answer||'').trim()||(q.model_answer_hi||'').trim())){
+        const solMain=medium==='hi'?((q.model_answer_hi||'').trim()?q.model_answer_hi:(q.model_answer||'')):(q.model_answer||'');
+        h+='<div class="sol"><div class="sol-l">'+(medium==='hi'?'\u0939\u0932':'Solution')+'</div><div class="sol-t">'+escH(solMain)+'</div>'
+          +(medium==='both'&&(q.model_answer_hi||'').trim()?'<div class="q-hi">'+escH(q.model_answer_hi)+'</div>':'')
           +(q.model_answer_image?'<img class="qimg" src="'+q.model_answer_image+'">':'')+'</div>';
       }
-      return '<div class="q"><div class="q-h"><b>Question '+qno+'</b><span class="q-m">[ '+(q.max_marks||1)+' mark'+((q.max_marks||1)>1?'s':'')+' ]</span></div>'
-        +'<div class="q-t">'+escH(q.question_text||'')+'</div>'+h+'</div>';
+      const qMain=medium==='hi'?(hi.trim()?hi:en):en;
+      return '<div class="q"><div class="q-h"><b>'+qLbl+' '+qno+'</b><span class="q-m">'+mkLbl(q.max_marks)+'</span></div>'
+        +'<div class="q-t">'+escH(qMain)+'</div>'+h+'</div>';
     }).join('');
     const w=window.open('','_blank');
     if(!w){ toast('Popup blocked — please allow popups to download the PDF.',true); return; }
-    w.document.write(buildPdfDoc(ex,body,withSol,isM));
+    w.document.write(buildPdfDoc(ex,body,withSol,isM,medium==='hi'?'hi':'en'));
     w.document.close();
   }catch(e){ toast(e.message,true); }
 }
@@ -4148,8 +4178,8 @@ async function loadTTests(){
             <button class="mt-eng" title="Students who opened this test" onclick="openExamAudience(${e.id},'view')">${ic('users')} ${e.views||0}</button>
             <button class="mt-eng" title="Students who downloaded the paper" onclick="openExamAudience(${e.id},'download')">${ic('download')} ${e.downloads||0}</button>
             <button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>
-            <button class="btn btn-ghost btn-sm tst-pdfbtn" title="Question paper — premium formatted" onclick="examPdfPremium(${e.id},'paper')">${ic('download')} Paper PDF</button>
-            <button class="btn btn-ghost btn-sm tst-pdfbtn" title="Question paper with solutions — premium formatted" onclick="examPdfPremium(${e.id},'solutions')">${ic('download')} With Solutions</button>
+            <button class="btn btn-ghost btn-sm tst-pdfbtn" title="Question paper — premium formatted" onclick="examPdfChoose(${e.id},'paper')">${ic('download')} Paper PDF</button>
+            <button class="btn btn-ghost btn-sm tst-pdfbtn" title="Question paper with solutions — premium formatted" onclick="examPdfChoose(${e.id},'solutions')">${ic('download')} With Solutions</button>
           </div>
         </div></div>`;
       }).join('') : `<div class="tx-empty"><div class="ic">🔍</div><b>No tests in this filter</b><p>Try another tab above.</p></div>`;
@@ -4202,7 +4232,7 @@ async function openCreateExam(type){
   try{ const es=await api('/api/teacher/my-timetable'); subs=[...new Set(es.filter(e=>e.subject).map(e=>e.subject))]; }catch(e){}
   const subOpts=subs.length?subs.map(s=>`<option>${esc(s)}</option>`).join(''):'<option>General</option>';
   const tl=type==='mcq'?'MCQ':'Mission 75';
-  const tools=`<div class="ex-tools"><span class="ex-tools-lbl">Maths & Chemistry:</span><button type="button" onclick="insertTexKey('frac')">a&frasl;b</button><button type="button" onclick="insertTexKey('pow')">x&sup2;</button><button type="button" onclick="insertTexKey('sub')">x&#8345;</button><button type="button" onclick="insertTexKey('sqrt')">&radic;</button><button type="button" onclick="insertTexKey('pi')">&pi;</button><button type="button" onclick="insertTexKey('theta')">&theta;</button><button type="button" onclick="insertTexKey('delta')">&Delta;</button><button type="button" onclick="insertTexKey('times')">&times;</button><button type="button" onclick="insertTexKey('deg')">&deg;</button><button type="button" onclick="insertTexKey('intg')">&int;</button><button type="button" onclick="insertTexKey('sum')">&Sigma;</button><button type="button" class="chem" onclick="insertTexKey('rxn')">Reaction</button><button type="button" class="chem" onclick="insertTexKey('chem')">Formula</button><button type="button" class="ai" onclick="autoFormatField()" title="Offline &amp; free — no AI cost">Auto-format</button></div>`;
+  const tools=`<div class="ex-tools"><span class="ex-tools-lbl">Maths & Chemistry:</span><button type="button" onclick="insertTexKey('frac')">a&frasl;b</button><button type="button" onclick="insertTexKey('pow')">x&sup2;</button><button type="button" onclick="insertTexKey('sub')">x&#8345;</button><button type="button" onclick="insertTexKey('sqrt')">&radic;</button><button type="button" onclick="insertTexKey('pi')">&pi;</button><button type="button" onclick="insertTexKey('theta')">&theta;</button><button type="button" onclick="insertTexKey('delta')">&Delta;</button><button type="button" onclick="insertTexKey('times')">&times;</button><button type="button" onclick="insertTexKey('deg')">&deg;</button><button type="button" onclick="insertTexKey('intg')">&int;</button><button type="button" onclick="insertTexKey('sum')">&Sigma;</button><button type="button" class="chem" onclick="insertTexKey('rxn')">Reaction</button><button type="button" class="chem" onclick="insertTexKey('chem')">Formula</button><button type="button" class="ai" onclick="autoFormatField()" title="Offline &amp; free — no AI cost">Auto-format</button><button type="button" class="ai" onclick="examTranslateAll(this)" title="Translate all questions to Hindi — free, no AI cost">EN\u2192\u0939\u093f\u0902\u0926\u0940 Translate All</button></div>`;
   const note=type==='subjective'
     ?'<div class="alert alert-info">Students upload a photo of their handwritten answers. You grade each answer manually from Results — award marks + remarks per question (your model answers stay visible to you while checking). Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{2H2 + O2 -> 2H2O}$</code> &mdash; they render automatically.</div>'
     :'<div class="alert alert-info">Students select an option. Auto-graded instantly. Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{...}$</code>.</div>';
@@ -4238,7 +4268,7 @@ function renderExamQs(){
   el.innerHTML=_examQs.map((q,i)=>{
     const isHi=biling&&q._tab==='hi';
     const head=`<div class="ex-qhead"><span class="ex-qnum">Question ${i+1}</span><div class="ex-qhead-actions"><button type="button" class="btn btn-sm ex-ocr" title="Attach a screenshot of the question — looks 100% identical, no AI cost" onclick="document.getElementById('ex-ocrf-${i}').click()">Add Screenshot</button><input type="file" id="ex-ocrf-${i}" accept="image/*" style="display:none" onchange="ocrFillQuestion(this,${i})">${_examQs.length>1?`<button class="btn btn-danger btn-sm" onclick="removeExamQ(${i})">${ic('trash')}</button>`:''}</div></div>`;
-    const tabs=biling?`<div class="ex-lang-tabs"><button type="button" class="ex-lang-tab ${q._tab!=='hi'?'active':''}" onclick="setExamTab(${i},'en')">English</button><button type="button" class="ex-lang-tab ${q._tab==='hi'?'active':''}" onclick="setExamTab(${i},'hi')">\u0939\u093f\u0902\u0926\u0940</button></div>`:'';
+    const tabs=biling?`<div class="ex-lang-tabs"><button type="button" class="ex-lang-tab ${q._tab!=='hi'?'active':''}" onclick="setExamTab(${i},'en')">English</button><button type="button" class="ex-lang-tab ${q._tab==='hi'?'active':''}" onclick="setExamTab(${i},'hi')">\u0939\u093f\u0902\u0926\u0940</button><button type="button" class="ex-lang-tab ex-tr" title="Auto-translate English \u2192 Hindi (free, no AI cost)" onclick="examTranslate(${i},this)">EN\u2192\u0939\u093f\u0902\u0926\u0940</button></div>`:'';
     const autoHint='';
     const qval=isHi?(q.q_hi||''):(q.q||'');
     const qbind=isHi?`_examQs[${i}].q_hi=this.value`:`_examQs[${i}].q=this.value`;
@@ -4275,7 +4305,120 @@ function renderExamQs(){
 }
 
 /* ================= OFFLINE SMART FORMATTER ================= */
-console.log('MVS Smart Paste build 2026-07-19 v3');
+/* ================= FREE EN→HI TRANSLATION (subject-aware, no API key, ₹0) =================
+   Chain: Google gtx (free, browser-side) → MyMemory (fallback). Maths/chem $...$ protected
+   via placeholders; subject glossary pins terminology (e.g. physics "solution"→हल vs
+   chemistry "solution"→विलयन) so translation stays subject-correct. */
+const spGloss={
+general:{'fill in the blanks':'रिक्त स्थान भरिए','match the following':'निम्नलिखित को सुमेलित कीजिए','distinguish between':'अंतर स्पष्ट कीजिए','give reason':'कारण दीजिए','very short answer':'अति लघु उत्तरीय','short answer':'लघु उत्तरीय','long answer':'दीर्घ उत्तरीय','question':'प्रश्न','answer':'उत्तर','solution':'हल','explain':'व्याख्या कीजिए','explanation':'व्याख्या','define':'परिभाषित कीजिए','definition':'परिभाषा','state':'बताइए','describe':'वर्णन कीजिए','calculate':'परिकलन कीजिए','find out':'ज्ञात कीजिए','find':'ज्ञात कीजिए','prove':'सिद्ध कीजिए','draw':'खींचिए','write':'लिखिए','reason':'कारण','difference':'अंतर','example':'उदाहरण','following':'निम्नलिखित','match':'सुमेलित कीजिए','column':'स्तंभ','choose':'चुनिए','correct':'सही','incorrect':'गलत','true':'सत्य','false':'असत्य','marks':'अंक','figure':'आकृति','diagram':'आरेख','graph':'ग्राफ़','law':'नियम','principle':'सिद्धांत','unit':'मात्रक','measurement':'मापन','name':'नाम लिखिए','list':'सूची बनाइए','mention':'उल्लेख कीजिए','formula':'सूत्र','symbol':'प्रतीक','property':'गुण','properties':'गुण','uses':'उपयोग','value':'मान','objective':'वस्तुनिष्ठ'},
+physics:{'potential energy':'स्थितिज ऊर्जा','kinetic energy':'गतिज ऊर्जा','electric current':'विद्युत धारा','potential difference':'विभवांतर','magnetic field':'चुंबकीय क्षेत्र','centre of curvature':'वक्रता केंद्र','principal axis':'मुख्य अक्ष','principal focus':'मुख्य फोकस','focal length':'फोकस दूरी','power of lens':'लेंस की क्षमता','convex lens':'उत्तल लेंस','concave lens':'अवतल लेंस','convex mirror':'उत्तल दर्पण','concave mirror':'अवतल दर्पण','refractive index':'अपवर्तनांक','acceleration due to gravity':'गुरुत्वीय त्वरण','ohm\'s law':'ओम का नियम','archimedes principle':'आर्किमिडीज का सिद्धांत','time period':'आवर्तकाल','velocity':'वेग','speed':'चाल','acceleration':'त्वरण','momentum':'संवेग','force':'बल','work':'कार्य','energy':'ऊर्जा','power':'शक्ति','friction':'घर्षण','gravity':'गुरुत्वाकर्षण','gravitation':'गुरुत्वीय','mass':'द्रव्यमान','weight':'भार','density':'घनत्व','pressure':'दाब','temperature':'तापमान','heat':'ऊष्मा','wave':'तरंग','frequency':'आवृत्ति','wavelength':'तरंगदैर्ध्य','amplitude':'आयाम','echo':'प्रतिध्वनि','reflection':'परावर्तन','refraction':'अपवर्तन','lens':'लेंस','mirror':'दर्पण','current':'धारा','voltage':'वोल्टता','resistance':'प्रतिरोध','resistor':'प्रतिरोधक','circuit':'परिपथ','series':'श्रेणीक्रम','parallel':'समांतर क्रम','magnet':'चुंबक','magnetism':'चुंबकत्व','solenoid':'परिनालिका','fuse':'फ्यूज़','nucleus':'नाभिक','atom':'परमाणु','radioactivity':'रेडियोधर्मिता','displacement':'विस्थापन','distance':'दूरी','motion':'गति','free fall':'मुक्त पतन','buoyancy':'उत्प्लावन','thrust':'प्रणोद','sound':'ध्वनि','light':'प्रकाश','ray':'किरण','image':'प्रतिबिंब','object':'बिंबु','virtual image':'आभासी प्रतिबिंब','real image':'वास्तविक प्रतिबिंब','conductor':'चालक','insulator':'कुचालक','charge':'आवेश','electric charge':'विद्युत आवेश','magnification':'आवर्धन'},
+chemistry:{'chemical reaction':'रासायनिक अभिक्रिया','chemical equation':'रासायनिक समीकरण','balanced equation':'संतुलित समीकरण','redox reaction':'ऑक्सीकरण-अपचयन अभिक्रिया','displacement reaction':'विस्थापन अभिक्रिया','double displacement reaction':'द्वि-विस्थापन अभिक्रिया','combination reaction':'संयोजन अभिक्रिया','decomposition reaction':'अपघटन अभिक्रिया','periodic table':'आवर्त सारणी','atomic number':'परमाणु क्रमांक','atomic mass':'परमाणु द्रव्यमान','mass number':'द्रव्यमान संख्या','carbon dioxide':'कार्बन डाइऑक्साइड','saturated solution':'संतृप्त विलयन','solution':'विलयन','element':'तत्त्व','compound':'यौगिक','mixture':'मिश्रण','molecule':'अणु','ion':'आयन','electron':'इलेक्ट्रॉन','proton':'प्रोटॉन','neutron':'न्यूट्रॉन','acid':'अम्ल','base':'क्षार','salt':'लवण','metal':'धातु','non-metal':'अधातु','oxidation':'ऑक्सीकरण','reduction':'अपचयन','valency':'संयोजकता','period':'आवर्त','group':'वर्ग','catalyst':'उत्प्रेरक','solute':'विलेय','solvent':'विलायक','concentration':'सांद्रता','evaporation':'वाष्पीकरण','distillation':'आसवन','combustion':'दहन','rusting':'जंग लगना','corrosion':'संक्षारण','carbon':'कार्बन','hydrogen':'हाइड्रोजन','oxygen':'ऑक्सीजन','nitrogen':'नाइट्रोजन','water':'जल','alloy':'मिश्र धातु','neutralization':'उदासीनीकरण','indicator':'सूचक','litmus':'लिटमस','soap':'साबुन','detergent':'अपमार्जक','ethanol':'एथेनॉल','ethanoic acid':'एथेनॉइक अम्ल','hydrocarbon':'हाइड्रोकार्बन','alkane':'ऐल्केन','alkene':'ऐल्कीन','alkyne':'ऐल्काइन','functional group':'क्रियात्मक समूह','homologous series':'समजात श्रेणी','covalent bond':'सहसंयोजक बंध','ionic bond':'आयनिक बंध','isotope':'समस्थानिक','atom':'परमाणु'},
+maths:{'quadratic equation':'द्विघात समीकरण','linear equation':'रैखिक समीकरण','arithmetic progression':'समांतर श्रेढ़ी','common difference':'सार्व अंतर','coordinate geometry':'निर्देशांक ज्यामिति','surface area':'पृष्ठीय क्षेत्रफल','curved surface area':'वक्र पृष्ठीय क्षेत्रफल','simple interest':'साधारण ब्याज','compound interest':'चक्रवृद्धि ब्याज','similar triangles':'समरूप त्रिभुज','parallel lines':'समांतर रेखाएँ','prime number':'अभाज्य संख्या','composite number':'भाज्य संख्या','rational number':'परिमेय संख्या','irrational number':'अपरिमेय संख्या','real number':'वास्तविक संख्या','power':'घात','equation':'समीकरण','variable':'चर','constant':'अचर','polynomial':'बहुपद','roots':'मूल','root':'मूल','zeroes':'शून्यक','triangle':'त्रिभुज','circle':'वृत्त','radius':'त्रिज्या','diameter':'व्यास','chord':'जीवा','tangent':'स्पर्श रेखा','secant':'छेदक रेखा','angle':'कोण','perpendicular':'लंब','quadrilateral':'चतुर्भुज','parallelogram':'समांतर चतुर्भुज','rectangle':'आयत','square':'वर्ग','rhombus':'समचतुर्भुज','trapezium':'समलंब चतुर्भुज','area':'क्षेत्रफल','perimeter':'परिमाप','volume':'आयतन','probability':'प्रायिकता','statistics':'सांख्यिकी','mean':'माध्य','median':'माध्यिका','mode':'बहुलक','ratio':'अनुपात','proportion':'समानुपात','percentage':'प्रतिशत','interest':'ब्याज','profit':'लाभ','loss':'हानि','discount':'छूट','theorem':'प्रमेय','hypotenuse':'कर्ण','congruent':'सर्वांगसम','similar':'समरूप','trigonometry':'त्रिकोणमिति','term':'पद','sum':'योग','product':'गुणनफल','quotient':'भागफल','remainder':'शेषफल','divisor':'भाजक','dividend':'भाज्य','factor':'गुणनखंड','multiple':'गुणज','integer':'पूर्णांक','fraction':'भिन्न','decimal':'दशमलव','exponent':'घातांक','base':'आधार','coefficient':'गुणांक','degree':'घात','identity':'सर्वसमिका','solve':'हल कीजिए','simplify':'सरल कीजिए','evaluate':'मान ज्ञात कीजिए','construct':'रचना कीजिए','height':'ऊँचाई','length':'लंबाई','breadth':'चौड़ाई','side':'भुजा','vertex':'शीर्ष','midpoint':'मध्यबिंदु','line segment':'रेखाखंड'},
+biology:{'photosynthesis':'प्रकाश संश्लेषण','respiration':'श्वसन','organ system':'अंग तंत्र','food chain':'खाद्य श्रृंखला','food web':'खाद्य जाल','cell membrane':'कोशिका झिल्ली','blood vessel':'रक्त वाहिका','reflex action':'प्रतिवर्ती क्रिया','spinal cord':'मेरुरज्जु','sense organ':'ज्ञानेंद्रिय','carbon dioxide':'कार्बन डाइऑक्साइड','nervous system':'तंत्रिका तंत्र','digestive system':'पाचन तंत्र','cell':'कोशिका','tissue':'ऊतक','organ':'अंग','organism':'जीव','digestion':'पाचन','nutrition':'पोषण','reproduction':'जनन','evolution':'विकास','heredity':'आनुवंशिकता','variation':'विविधता','chromosome':'गुणसूत्र','gene':'जीन','nucleus':'केंद्रक','cytoplasm':'कोशिकाद्रव्य','mitochondria':'माइटोकॉन्ड्रिया','chloroplast':'हरितलवक','blood':'रक्त','artery':'धमनी','vein':'शिरा','heart':'हृदय','kidney':'वृक्क','liver':'यकृत','neuron':'तंत्रिका कोशिका','nerve':'तंत्रिका','hormone':'हार्मोन','enzyme':'एंजाइम','protein':'प्रोटीन','carbohydrate':'कार्बोहाइड्रेट','vitamin':'विटामिन','bacteria':'जीवाणु','virus':'विषाणु','fungus':'कवक','ecosystem':'पारिस्थितिकी तंत्र','pollination':'परागण','fertilization':'निषेचन','germination':'अंकुरण','transpiration':'वाष्पोत्सर्जन','excretion':'उत्सर्जन','xylem':'जाइलम','phloem':'फ्लोएम','stem':'तना','leaf':'पत्ती','flower':'पुष्प','seed':'बीज','fruit':'फल','stomata':'रंध्र','chlorophyll':'हरितलवक','breathing':'श्वसन क्रिया','lungs':'फेफड़े','alveoli':'वायुकोशिकाएँ','nephron':'वृक्काणु','brain':'मस्तिष्क','muscle':'पेशी','skeleton':'कंकाल','joint':'जोड़'}
+};
+function spDetectSubject(t){
+  t=(t||'').toLowerCase();
+  if(/physic|भौतिक/.test(t))return 'physics';
+  if(/chem|रसायन/.test(t))return 'chemistry';
+  if(/math|गणित/.test(t))return 'maths';
+  if(/bio|जीव विज्ञान/.test(t))return 'biology';
+  return 'general';
+}
+function spGlossPairs(sub){
+  const g=Object.assign({},spGloss.general,spGloss[sub]||{});
+  return Object.keys(g).sort((a,b)=>b.length-a.length).map(k=>[k,g[k]]);
+}
+const spTRMATH=/\$[^$]+\$|\\\([^)]*\\\)|\\\[[^\]]*\\\]/g;
+function spTrEsc(s){ return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
+async function spTrChunk(text){
+  try{
+    const ctl=new AbortController(); const to=setTimeout(()=>ctl.abort(),9000);
+    const r=await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=hi&dt=t&q='+encodeURIComponent(text),{signal:ctl.signal});
+    clearTimeout(to);
+    if(r.ok){ const d=await r.json(); if(d&&d[0]){ const out=d[0].map(sg=>(sg&&sg[0])||'').join(''); if(out&&out.trim())return out; } }
+  }catch(e){}
+  try{
+    const ctl=new AbortController(); const to=setTimeout(()=>ctl.abort(),9000);
+    const r=await fetch('https://api.mymemory.translated.net/get?q='+encodeURIComponent(text.slice(0,450))+'&langpair=en|hi',{signal:ctl.signal});
+    clearTimeout(to);
+    if(r.ok){ const d=await r.json(); const out=d&&d.responseData&&d.responseData.translatedText; if(out&&out.trim()&&!/QUERY LENGTH LIMIT|MYMEMORY WARNING|INVALID/i.test(out))return out; }
+  }catch(e){}
+  return null;
+}
+async function spTrEngine(text){
+  if(text.length<=1100) return spTrChunk(text);
+  const parts=text.split(/(?<=[.!?\n])\s+/).filter(x=>x.trim());
+  const chunks=[]; let cur='';
+  for(const p of parts){ if((cur+' '+p).length>900){ if(cur)chunks.push(cur); cur=p; } else cur=cur?cur+' '+p:p; }
+  if(cur)chunks.push(cur);
+  const outs=[];
+  for(const c of chunks){ const t=await spTrChunk(c); if(t==null)return null; outs.push(t); }
+  return outs.join(' ');
+}
+async function spTranslate(text,subject){
+  text=(text==null?'':String(text)).trim();
+  if(!text)return text;
+  if(!/[A-Za-z]/.test(text))return text;   // already Hindi / numeric only
+  const math=[],gl=[];
+  let s=text.replace(spTRMATH,m=>{ math.push(m); return '\u27E6'+(math.length-1)+'\u27E7'; });
+  const pairs=spGlossPairs(subject||'general');
+  for(const [en,hi] of pairs){
+    const rx=new RegExp('(^|[^\\w\u0900-\u097F])'+spTrEsc(en)+'(?![\\w\u0900-\u097F])','gi');
+    s=s.replace(rx,(m,pre)=>{ gl.push(hi); return pre+'\u27E6G'+(gl.length-1)+'\u27E7'; });
+  }
+  let out;
+  if(!/[A-Za-z]/.test(s.replace(/\u27E6G?\d+\u27E7/g,''))){ out=s; }   // only math/glossary tokens — nothing to send
+  else { out=await spTrEngine(s); if(out==null)return null; }
+  out=out.replace(/\u27E6\s*G\s*(\d+)\s*\u27E7/g,(m,n)=>(gl[+n]!=null?gl[+n]:m));
+  out=out.replace(/\u27E6\s*(\d+)\s*\u27E7/g,(m,n)=>(math[+n]!=null?math[+n]:m));
+  return out;
+}
+/* ---- exam-form integration ---- */
+function spExamSubject(){
+  const a=(typeof val==='function'?val('ex-sub'):'')||'';
+  const b=(typeof val==='function'?val('ex-title'):'')||'';
+  return spDetectSubject(a+' '+b);
+}
+async function examTranslate(i,btn,silent){
+  const q=_examQs[i]; if(!q)return 0;
+  const sub=spExamSubject();
+  let n=0,att=0;
+  const put=async(get,set)=>{ const v=get(); if(!(v&&String(v).trim()))return; att++; const t=await spTranslate(v,sub); if(t){ set(t); n++; } };
+  if(!((q.q_hi||'').trim())) await put(()=>q.q,v=>{q.q_hi=v;});
+  if(Array.isArray(q.opts)){ q.opts_hi=q.opts_hi||[]; for(let j=0;j<q.opts.length;j++){ if(!((q.opts_hi[j]||'').trim())) await put(()=>q.opts[j],v=>{q.opts_hi[j]=v;}); } }
+  if(!((q.expl_hi||'').trim())) await put(()=>q.expl,v=>{q.expl_hi=v;});
+  if(!((q.model_hi||'').trim())) await put(()=>q.model,v=>{q.model_hi=v;});
+  if(!silent){
+    if(n){ q._tab='hi'; renderExamQs(); toast('Hindi translation done (free) — please review once'); }
+    else if(att) toast('Translation service unreachable right now — try again in a moment',true);
+    else toast('Nothing to translate — English empty or Hindi already filled');
+  }
+  return n;
+}
+async function examTranslateAll(btn){
+  if(_examMedium!=='Bilingual'){ toast('Set Medium to Bilingual first — Hindi fields appear then',true); return; }
+  if(btn.disabled)return;
+  btn.disabled=true; const old=btn.textContent; let done=0;
+  for(let i=0;i<_examQs.length;i++){
+    btn.textContent='Translating '+(i+1)+'/'+_examQs.length+'\u2026';
+    done+=await examTranslate(i,null,true);
+    await new Promise(r=>setTimeout(r,120));
+  }
+  btn.disabled=false; btn.textContent=old; renderExamQs();
+  toast(done?('Translated '+done+' field(s) to Hindi — free, no AI cost'):'Nothing translated (Hindi already filled or English empty)');
+}
+/* ---- PDF medium chooser ---- */
+function examPdfChoose(id,mode){
+  const lbl=(mode==='solutions')?'Question Paper + Solutions':'Question Paper';
+  showModal('Download PDF — '+lbl,
+  `<div class="pm-grid">`
+  +`<button class="pm-opt" onclick="closeModal();examPdfPremium(${id},'${mode}','en')"><span class="pm-ic">A</span><span class="pm-tx"><b>English</b><small>Full paper in English medium</small></span></button>`
+  +`<button class="pm-opt" onclick="closeModal();examPdfPremium(${id},'${mode}','hi')"><span class="pm-ic">\u0905</span><span class="pm-tx"><b>\u0939\u093f\u0902\u0926\u0940</b><small>\u092a\u0942\u0930\u093e \u092a\u094d\u0930\u0936\u094d\u0928\u092a\u0924\u094d\u0930 \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902 \u2014 \u0905\u0928\u0941\u0935\u093e\u0926 \u0905\u092a\u0928\u0947 \u0906\u0906\u092a, free</small></span></button>`
+  +`<button class="pm-opt" onclick="closeModal();examPdfPremium(${id},'${mode}','both')"><span class="pm-ic">A\u0905</span><span class="pm-tx"><b>English + \u0939\u093f\u0902\u0926\u0940</b><small>Bilingual \u2014 \u0926\u094b\u0928\u094b\u0902 \u092e\u093e\u0927\u094d\u092f\u092e \u090f\u0915 \u0938\u093e\u0925</small></span></button>`
+  +`</div>`);
+}
+
+console.log('MVS Smart Paste build 2026-07-20 v4 + free subject-wise translation');
 const spUMAP={'∫':'\\int ','π':'\\pi ','θ':'\\theta ','Δ':'\\Delta ','δ':'\\delta ','λ':'\\lambda ','μ':'\\mu ','α':'\\alpha ','β':'\\beta ','γ':'\\gamma ','ω':'\\omega ','Σ':'\\sum ','σ':'\\sigma ','×':'\\times ','·':'\\cdot ','÷':'\\div ','±':'\\pm ','∞':'\\infty ','≈':'\\approx ','≠':'\\ne ','≤':'\\le ','≥':'\\ge ','→':'\\to ','←':'\\leftarrow ','−':'-','–':'-','η':'\\eta ','Ω':'\\Omega ','ε':'\\epsilon ','ρ':'\\rho ','ν':'\\nu ','°':'^\\circ '};
 const spSUP={'⁰':'0','¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9','ⁿ':'n','⁻':'-'};
 const spSUB={'₀':'0','₁':'1','₂':'2','₃':'3','₄':'4','₅':'5','₆':'6','₇':'7','₈':'8','₉':'9','ₓ':'x'};
@@ -8504,6 +8647,13 @@ function examCardHTML_v1(e){
    UPDATE 6: type selector REMOVED — formatting is fully auto-detected on paste (match/tables/math/chem);
    premium client-side PDF (examPdfPremium) — question paper + with-solutions, MVS header, KaTeX rendered;
    audience modal list scrollable (.ma-list). Server PDF endpoints kept (downloadExamPdf_v1 style).
+   UPDATE 7: FREE subject-wise EN->HI translation (spTranslate: Google gtx -> MyMemory fallback,
+   $...$ math protected via placeholders, spGloss subject glossary pins terminology e.g. physics
+   'solution'->हल vs chemistry 'solution'->विलयन). Per-question EN->हिंदी button in lang tabs
+   (examTranslate) + 'Translate All' in tools bar (examTranslateAll, Bilingual medium only).
+   Noto Sans Devanagari added to portal font link + body stack + PDF doc (fixes उत्तर-type conjuncts).
+   PDF buttons now open examPdfChoose -> medium modal (English/हिंदी/Bilingual) -> examPdfPremium(id,mode,medium)
+   with on-the-fly translation of missing Hindi. Rollback: restore from pre-translate backup.
    Premium modal CSS clearly marked hai: 'PREMIUM CREATE-TEST MODAL (cx)' block ko delete karo,
    showModal ki first line se cx-reset code hatao, openCreateExam se cx-add lines hatao.
    autoFormatField aur ocrFillQuestion ke AI versions neeche saved hain.
