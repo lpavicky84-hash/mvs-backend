@@ -381,7 +381,7 @@
   .exp-q{background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:13px 15px;margin-bottom:10px}
   .exp-qt{font-size:.9rem;line-height:1.65;flex:1;min-width:0}
   .exp-a{margin-top:9px;background:#f0fdf4;border:1.5px solid #bbf7d0;color:#15803d;border-radius:11px;padding:9px 12px;font-size:.85rem;line-height:1.6}
-  .tx-tlogo-img{width:52px;height:52px;border-radius:14px;object-fit:cover;box-shadow:0 6px 16px -6px rgba(15,42,84,.35);border:2px solid #fff}
+  .tx-tlogo-img{width:52px;height:52px;border-radius:14px;object-fit:cover;box-shadow:0 6px 16px -6px rgba(15,42,84,.35);border:2px solid #fff}.tx-tlogo-self{width:46px;height:46px;border-radius:13px;object-fit:cover;box-shadow:0 6px 16px -6px rgba(15,42,84,.35);border:2px solid #fff;flex-shrink:0}
   .pl-tlogo-img{width:30px;height:30px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,.7);vertical-align:-9px;margin-right:3px;box-shadow:0 3px 10px -3px rgba(0,0,0,.4)}
   .pl-band .pl-head-r{flex-wrap:wrap;justify-content:flex-end;row-gap:8px}
   @media (max-width:720px){ .pl-band{gap:10px;padding:13px 14px} .pl-band .pl-head-r{width:100%;justify-content:space-between;margin-left:0} .pl-timer{font-size:.95rem;padding:8px 13px} .pl-msel{flex:1;min-width:0;padding:9px 34px 9px 12px;font-size:.8rem} }
@@ -4335,8 +4335,8 @@ async function loadTTests(){
       }).join('') : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests in this filter</b><p>Try another tab above.</p></div>`;
     }
     el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Objective auto-graded on submit · Mission 75 graded manually by you</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="openCreateExam('mcq')">${ic('clipboard')} New Objective Test</button><button class="btn btn-primary btn-sm" onclick="openCreateExam('subjective')">${ic('edit')} New Mission 75 Test</button></div></div>`
-      +statsHtml+`<div class="tx-tabs">${tabs}</div>`+body
-;
+      +statsHtml+`<div class="tx-tabs">${tabs}</div>`+body;
+      _ttCardLogo(el);
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function tTestFilter(f){ window._tTestFilter=f; loadTTests(); }
@@ -7391,6 +7391,19 @@ async function _txLoadLogos(root){
       if(c[tid]) sp.outerHTML='<img class="'+(sp.classList.contains('pl-tlogo')?'pl-tlogo-img':'tx-tlogo-img')+'" src="'+c[tid]+'" alt="teacher">';
     }catch(e){ c[tid]=false; }
   }
+}
+/* teacher tests card: apni photo tile pe (fallback = subject initials) */
+async function _ttCardLogo(el){
+  if(!el||window._ttSelfPhoto===false) return;
+  try{
+    if(!window._ttSelfPhoto){
+      const r=await fetch(API+'/api/teacher/my-photo',{headers:{Authorization:'Bearer '+TOKEN}});
+      if(!r.ok) throw new Error('x');
+      const b=await r.blob(); if(!b.size) throw new Error('x');
+      window._ttSelfPhoto=URL.createObjectURL(b);
+    }
+    el.querySelectorAll('.tx-tile').forEach(t=>{ t.outerHTML='<img class="tx-tlogo-self" src="'+window._ttSelfPhoto+'" alt="teacher">'; });
+  }catch(e){ window._ttSelfPhoto=false; }
 }
 function sTestFilter(f){ window._sTestFilter=f; loadSTests(); }
 function downloadPaper(id){
