@@ -1066,6 +1066,7 @@ def student_exams(db: Session = Depends(get_db), current_user=Depends(get_studen
         out.append({"id": e.id, "title": e.title, "subject": e.subject, "chapter": e.chapter,
                     "test_type": e.test_type, "total_marks": e.total_marks, "duration_min": e.duration_min,
                     "medium": e.medium, "questions": nq, "teacher_name": e.teacher_name,
+                    "teacher_id": e.teacher_id,
                     "scheduled_at": e.scheduled_at.isoformat() if getattr(e, "scheduled_at", None) else None,
                     "status": att.status if att else "not_attempted",
                     "awarded": att.total_awarded if att else None})
@@ -1097,6 +1098,12 @@ def student_exam_paper(exam_id: int, medium: str = "english", db: Session = Depe
     if ex.subject and ex.subject not in (sp.subjects or []):
         raise HTTPException(403, "Not your subject")
     qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).order_by(ExamQuestion.q_no).all()
+    # student paper must NEVER contain answers — strip every answer field defensively
+    from types import SimpleNamespace as _NS
+    qs = [_NS(q_no=q.q_no, question_text=q.question_text, max_marks=q.max_marks,
+              model_answer=None, options=q.options, correct_option=None, image_b64=q.image_b64,
+              question_text_hi=q.question_text_hi, model_answer_hi=None, options_hi=q.options_hi,
+              model_answer_image=None, explanation=None, explanation_hi=None) for q in qs]
     from exam_pdf import build_exam_pdf
     data = build_exam_pdf(ex, qs, medium)
     _log_exam_action(db, exam_id, sp.id, "download")
@@ -1114,15 +1121,28 @@ def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=D
     att = db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id, ExamAttempt.student_id == sp.id).first()
     _log_exam_action(db, exam_id, sp.id, "view")
     qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).order_by(ExamQuestion.q_no).all()
-    questions = [{"q_no": q.q_no, "question_text": q.question_text, "max_marks": q.max_marks,
-                  "question_text_hi": q.question_text_hi,
-                  "options": q.options if ex.test_type == "mcq" else None,
-                  "options_hi": q.options_hi if ex.test_type == "mcq" else None,
-                  "image_b64": q.image_b64} for q in qs]
+    # scheduled window: [scheduled_at, scheduled_at + duration]; stored naive = IST wall time
+    _exp = False
+    if getattr(ex, "scheduled_at", None) is not None:
+        _end_utc = ex.scheduled_at + timedelta(minutes=ex.duration_min or 60) - timedelta(hours=5, minutes=30)
+        _exp = datetime.utcnow() > _end_utc
+    questions = []
+    for q in qs:
+        d = {"q_no": q.q_no, "question_text": q.question_text, "max_marks": q.max_marks,
+             "question_text_hi": q.question_text_hi,
+             "options": q.options if ex.test_type == "mcq" else None,
+             "options_hi": q.options_hi if ex.test_type == "mcq" else None,
+             "image_b64": q.image_b64}
+        if _exp:   # window over -> solutions become visible (attempting stays closed)
+            d.update({"model_answer": q.model_answer, "model_answer_hi": q.model_answer_hi,
+                      "correct_option": q.correct_option, "explanation": q.explanation,
+                      "explanation_hi": q.explanation_hi, "model_answer_image": q.model_answer_image})
+        questions.append(d)
     return {"id": ex.id, "title": ex.title, "subject": ex.subject, "chapter": ex.chapter,
             "test_type": ex.test_type, "medium": ex.medium, "duration_min": ex.duration_min, "total_marks": ex.total_marks,
-            "teacher_name": ex.teacher_name, "questions": questions,
+            "teacher_name": ex.teacher_name, "teacher_id": ex.teacher_id, "questions": questions,
             "scheduled_at": ex.scheduled_at.isoformat() if getattr(ex, "scheduled_at", None) else None,
+            "expired": _exp,
             "already_submitted": bool(att and att.status == "graded")}
 
 @router.post("/exam/{exam_id}/submit")
@@ -1135,6 +1155,10 @@ def student_submit_exam(exam_id: int, payload: dict = Body(...), background_task
     graded = db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id, ExamAttempt.student_id == sp.id, ExamAttempt.status == "graded").first()
     if graded:
         raise HTTPException(400, "You have already submitted this test")
+    if getattr(ex, "scheduled_at", None) is not None:
+        _end_utc = ex.scheduled_at + timedelta(minutes=ex.duration_min or 60) - timedelta(hours=5, minutes=30)
+        if datetime.utcnow() > _end_utc:
+            raise HTTPException(403, "Test window is over — submission closed")
     qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).order_by(ExamQuestion.q_no).all()
     db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id, ExamAttempt.student_id == sp.id).delete()
     att = ExamAttempt(exam_id=exam_id, student_id=sp.id, student_name=current_user.name, status="grading",
