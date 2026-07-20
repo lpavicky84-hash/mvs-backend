@@ -345,6 +345,19 @@
   .pm-ic{width:42px;height:42px;flex:0 0 42px;border-radius:10px;background:linear-gradient(135deg,var(--primary),#1e4a8f);color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.05rem;font-weight:800}
   .pm-tx b{display:block;font-size:.95rem;color:var(--text)}
   .pm-tx small{color:var(--text-muted);font-size:.76rem}
+  .tx-pill.inf{display:inline-flex;align-items:center;gap:5px}
+  .tx-pill.inf .nav-ic{width:12px;height:12px}
+  .tx-pill.inf b{animation:txBlink 1.7s ease-in-out infinite;color:var(--primary)}
+  @keyframes txBlink{0%,100%{opacity:1}50%{opacity:.35}}
+  .tx-cdchip{display:inline-flex;align-items:center;gap:6px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:99px;padding:4px 11px;font-size:.72rem;font-weight:700}
+  .tx-cdchip b{font-variant-numeric:tabular-nums;animation:txBlink 1.7s ease-in-out infinite}
+  .tx-cdchip.lg{font-size:.85rem;padding:7px 14px}
+  .tx-cdbar{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
+  .tx-cdbanner{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:linear-gradient(135deg,#0F2A54,#1e4a8f);color:#fff;border-radius:14px;padding:13px 18px;margin-bottom:14px;box-shadow:0 8px 22px -10px rgba(15,42,84,.5)}
+  .tx-cdb-t{font-size:.66rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;opacity:.75}
+  .tx-cdb-s{font-size:.9rem;font-weight:700;margin-top:2px}
+  .tx-empty .ic .nav-ic{width:32px;height:32px;opacity:.45}
+  .ws-empty .big .nav-ic{width:30px;height:30px}
   .ma-row{display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px solid var(--border)}
   .ma-row:last-child{border-bottom:none}
   .ma-av{width:32px;height:32px;flex:0 0 32px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.8rem}
@@ -2132,7 +2145,7 @@ body.dark .cal-d.on{color:#34d399}
 </div>
 <div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP Result</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="tPage('extmat',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-item" onclick="tPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="tPage('payout',this)"><span>Payout</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule:</b> Har reschedule admin approval ke baad hi apply hota hai.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-extmat"><div id="t-extmat-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-attendance"><div id="t-attendance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-payout"><div id="t-payout-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== ADMIN APP ===== -->
-<div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#ef4444">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Users</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-section">Academics</div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('compliance',this)"><span>Class Compliance</span></div><div class="nav-item" onclick="aPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="aPage('payouts',this)"><span>Payouts</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#ef4444" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-reviews-wrap"></div><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-compliance"><div id="a-compliance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"></div><div class="card" style="margin-top:18px;border:1.5px solid rgba(220,38,38,.3)"><div class="card-header"><h3 style="color:var(--danger)">Danger Zone</h3></div><div class="card-body"><p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Testing ka saara content data (timetable, materials, doubts, submissions...) ek saath saaf karein \u2014 students, teachers aur admins safe rehte hain.</p><button class="btn btn-danger" onclick="openResetData()">\ud83e\uddf9 Reset Portal Data</button></div></div><div style="display:none"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div><div class="page" id="a-page-attendance"><div id="a-attendance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-payouts"><div id="a-payouts-content"><div class="spinner"></div></div></div></div>
+<div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#ef4444">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Users</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-section">Academics</div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('tests',this)"><span>Tests Tracker</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('compliance',this)"><span>Class Compliance</span></div><div class="nav-item" onclick="aPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="aPage('payouts',this)"><span>Payouts</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#ef4444" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-reviews-wrap"></div><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-tests"><div id="a-tests-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-compliance"><div id="a-compliance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"></div><div class="card" style="margin-top:18px;border:1.5px solid rgba(220,38,38,.3)"><div class="card-header"><h3 style="color:var(--danger)">Danger Zone</h3></div><div class="card-body"><p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Testing ka saara content data (timetable, materials, doubts, submissions...) ek saath saaf karein \u2014 students, teachers aur admins safe rehte hain.</p><button class="btn btn-danger" onclick="openResetData()">\ud83e\uddf9 Reset Portal Data</button></div></div><div style="display:none"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div><div class="page" id="a-page-attendance"><div id="a-attendance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-payouts"><div id="a-payouts-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== STUDENT APP ===== -->
 <div id="student-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#06b6d4">S</div><div><span>MVS Foundation</span><small>Student</small></div></div><nav class="sidebar-nav"><div class="nav-section">Home</div><div class="nav-item active" onclick="sPage('dashboard',this)"><span>Home</span></div><div class="nav-item" onclick="sPage('teachers',this)"><span>Know Your Teacher</span></div><div class="nav-item" onclick="sPage('timetable',this)"><span>Time Table</span></div><div class="nav-section">Materials</div><div class="nav-item" onclick="sPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="sPage('materials',this)"><span>Classes Material</span></div><div class="nav-section">Work</div><div class="nav-item" onclick="sPage('dpp',this)"><span>DPP Submit</span></div><div class="nav-item" onclick="sPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="sPage('doubts',this)"><span>Doubts</span></div><div class="nav-section">Progress</div><div class="nav-item" onclick="sPage('progress',this)"><span>Progress</span></div><div class="nav-item" onclick="sPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="sPage('profile',this)"><span>My Profile</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#06b6d4" id="s-avatar">S</div><div><span id="s-name">Student</span><small id="s-batch">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="s-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="s-topavatar" title="Set or change profile photo" onclick="openSetStudentPhoto()">S</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('student')"><span class="notif-badge" id="s-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="s-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="s-page-dashboard"><div id="s-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-timetable"><div id="s-timetable-content"><div class="spinner"></div></div></div><div class="page" id="s-page-materials"><div id="s-materials-content"><div class="spinner"></div></div></div><div class="page" id="s-page-qbank"><div id="s-qbank-content"><div class="spinner"></div></div></div><div class="page" id="s-page-teachers"><div id="s-teachers-content"><div class="spinner"></div></div></div><div class="page" id="s-page-dpp"><div id="s-dpp-content"><div class="spinner"></div></div></div><div class="page" id="s-page-tests"><div id="s-tests-content"><div class="spinner"></div></div></div><div class="page" id="s-page-doubts"><div id="s-doubts-content"><div class="spinner"></div></div></div><div class="page" id="s-page-progress"><div id="s-progress-content"><div class="spinner"></div></div></div><div class="page" id="s-page-notifications"><div id="s-notif-content"><div class="spinner"></div></div></div><div class="page" id="s-page-profile"><div id="s-profile-content"><div class="spinner"></div></div></div></div>
 </div><!-- Generic Modal -->
@@ -3858,52 +3871,70 @@ function _dppFilter(mode){
 
 /* ================= PREMIUM PDF (question paper + with solutions) ================= */
 function escH(x){ return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function buildPdfDoc(ex,body,withSol,isM,lang){
+function buildPdfDoc(ex,body,withSol,isM,lang,logo){
   lang=lang||'en';
   const docTitle='MVS '+(ex.title||'Test')+(withSol?' — With Solutions':' — Question Paper');
+  const logoHtml=logo
+    ?'<img src="'+logo+'" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:2.5px solid rgba(255,255,255,.55);box-shadow:0 2px 10px rgba(0,0,0,.28)">'
+    :'<div style="width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.14);border:2.5px solid rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;letter-spacing:.06em;flex:0 0 52px">MVS</div>';
   return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+escH(docTitle)+'</title>'
   +'<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">'
   +'<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap">'
   +'<style>'
-  +'@page{size:A4;margin:13mm}*{box-sizing:border-box}'
+  +'@page{size:A4;margin:12mm}*{box-sizing:border-box}'
   +'body{font-family:"Plus Jakarta Sans","Noto Sans Devanagari","Segoe UI",Arial,sans-serif;color:#0f172a;font-size:12.5px;line-height:1.55;margin:0}'
-  +'.band{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#0F2A54,#1e4a8f);color:#fff;padding:14px 18px;border-radius:12px;margin-bottom:12px}'
-  +'.logo{font-size:20px;font-weight:800;letter-spacing:.07em}'
-  +'.tag{font-size:9.5px;opacity:.85;letter-spacing:.14em;text-transform:uppercase;margin-top:2px}'
-  +'.yr{font-size:10.5px;background:rgba(255,255,255,.16);padding:5px 12px;border-radius:99px;font-weight:700;white-space:nowrap}'
+  +'.band{display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,#0F2A54 0%,#1e4a8f 70%,#2b5fab 100%);color:#fff;padding:15px 20px;border-radius:14px;margin-bottom:12px;box-shadow:0 4px 14px -6px rgba(15,42,84,.4)}'
+  +'.brand{flex:1;min-width:0}'
+  +'.logo-t{font-size:21px;font-weight:800;letter-spacing:.08em}'
+  +'.tag{font-size:9px;opacity:.85;letter-spacing:.16em;text-transform:uppercase;margin-top:3px}'
+  +'.band-r{display:flex;flex-direction:column;gap:5px;align-items:flex-end}'
+  +'.yr{font-size:10px;background:rgba(255,255,255,.16);padding:5px 12px;border-radius:99px;font-weight:700;white-space:nowrap}'
+  +'.tcopy{font-size:8.5px;background:#FF6B2B;padding:4px 10px;border-radius:99px;font-weight:800;letter-spacing:.1em}'
+  +'.tstrip{border:1px solid #e2e8f0;border-left:5px solid #FF6B2B;background:#f8fafc;border-radius:10px;padding:10px 14px;margin-bottom:11px}'
+  +'.ttitle{font-size:15px;font-weight:800;color:#0F2A54}'
+  +'.tchips{margin-top:5px;display:flex;gap:6px;flex-wrap:wrap}'
+  +'.tchip{font-size:9.5px;font-weight:700;background:#eef3fb;color:#0F2A54;border:1px solid #dbe3f0;border-radius:99px;padding:2px 9px}'
   +'.meta{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:11px}'
-  +'.meta>div{flex:1;min-width:100px;border:1px solid #dbe3f0;border-radius:9px;padding:8px 11px;background:#f7f9fd}'
-  +'.meta span{display:block;font-size:8.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#64748b;margin-bottom:2px}'
+  +'.meta>div{flex:1;min-width:95px;border:1px solid #e2e8f0;border-radius:9px;padding:7px 11px;background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.05)}'
+  +'.meta span{display:block;font-size:8px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#64748b;margin-bottom:2px}'
   +'.meta b{font-size:12.5px;color:#0F2A54}'
   +'.ins{font-size:11px;background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:8px 12px;margin-bottom:14px}'
-  +'.q{border:1px solid #e2e8f0;border-radius:10px;padding:11px 13px;margin-bottom:10px;page-break-inside:avoid}'
-  +'.q-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;border-bottom:1px dashed #e2e8f0;padding-bottom:4px}'
-  +'.q-h b{color:#0F2A54;font-size:13px}'
-  +'.q-m{font-size:10px;color:#64748b;font-weight:700;white-space:nowrap}'
+  +'.q{border:1px solid #e6ebf4;border-left:4px solid #0F2A54;border-radius:10px;padding:11px 13px;margin-bottom:10px;page-break-inside:avoid;background:#fff}'
+  +'.q-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;border-bottom:1px dashed #e2e8f0;padding-bottom:5px}'
+  +'.q-h b{color:#0F2A54;font-size:12.5px}'
+  +'.q-m{font-size:9.5px;color:#0F2A54;font-weight:800;background:#eef3fb;border:1px solid #dbe3f0;border-radius:99px;padding:2px 9px;white-space:nowrap}'
   +'.q-t{white-space:pre-wrap;overflow-x:auto}'
   +'.q-hi{white-space:pre-wrap;margin-top:5px;padding-top:5px;border-top:1px dotted #e2e8f0;color:#334155}'
   +'.qimg{max-width:100%;max-height:280px;border-radius:8px;margin-top:8px;border:1px solid #e2e8f0}'
-  +'.opts{margin:7px 0 0 16px;display:grid;grid-template-columns:1fr 1fr;gap:3px 14px}'
-  +'.opt{font-size:12px}.opt.correct{color:#047857;font-weight:700}'
-  +'.sol{margin-top:9px;border-left:3px solid #059669;background:#f0fdf4;border-radius:0 8px 8px 0;padding:8px 11px}'
-  +'.sol-l{font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#059669;margin-bottom:3px}'
+  +'.opts{margin:8px 0 0 2px;display:grid;grid-template-columns:1fr 1fr;gap:4px 16px}'
+  +'.opt{font-size:12px;display:flex;gap:7px;align-items:baseline}'
+  +'.opt b{background:#f1f5fb;border:1px solid #e2e8f0;border-radius:6px;padding:0 6px;font-size:10.5px;color:#0F2A54;flex:0 0 auto}'
+  +'.opt.correct{color:#047857;font-weight:700}'
+  +'.opt.correct b{background:#dcfce7;border-color:#bbf7d0;color:#047857}'
+  +'.sol{margin-top:9px;border:1px solid #bbf7d0;border-left:4px solid #059669;background:linear-gradient(180deg,#f0fdf4,#ecfdf5);border-radius:8px;padding:9px 12px}'
+  +'.sol-l{display:inline-block;font-size:8.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#fff;background:#059669;border-radius:99px;padding:2px 9px;margin-bottom:4px}'
   +'.sol-t{white-space:pre-wrap;font-size:12px;overflow-x:auto}'
   +'.foot{margin-top:16px;text-align:center;font-size:9px;color:#94a3b8;letter-spacing:.07em;border-top:1px solid #e2e8f0;padding-top:8px}'
   +'</style></head><body>'
-  +'<div class="band"><div><div class="logo">MVS FOUNDATION</div><div class="tag">Test Series · NIOS Coaching</div></div><div class="yr">'+escH(new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}))+'</div></div>'
+  +'<div class="band">'+logoHtml+'<div class="brand"><div class="logo-t">MVS FOUNDATION</div><div class="tag">Test Series \u00b7 NIOS Coaching</div></div><div class="band-r"><div class="yr">'+escH(new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}))+'</div>'+(withSol?'<div class="tcopy">TEACHER COPY</div>':'')+'</div></div>'
+  +'<div class="tstrip"><div class="ttitle">'+escH(ex.title||'Test')+'</div><div class="tchips">'
+  +(ex.subject?'<span class="tchip">'+escH(ex.subject)+'</span>':'')
+  +(spCleanCh(ex.chapter)?'<span class="tchip">'+escH(spCleanCh(ex.chapter))+'</span>':'')
+  +'<span class="tchip">'+(isM?'Objective':'Mission 75')+'</span>'
+  +(lang==='hi'?'<span class="tchip">\u0939\u093f\u0902\u0926\u0940 \u092e\u093e\u0927\u094d\u092f\u092e</span>':'')
+  +'</div></div>'
   +'<div class="meta">'
-  +'<div><span>Test</span><b>'+escH(ex.title||'')+'</b></div>'
-  +(ex.subject?'<div><span>Subject</span><b>'+escH(ex.subject)+'</b></div>':'')
-  +(ex.chapter?'<div><span>Chapter</span><b>'+escH(ex.chapter)+'</b></div>':'')
   +(ex.duration_min?'<div><span>Time</span><b>'+escH(ex.duration_min)+' min</b></div>':'')
-  +'<div><span>Max Marks</span><b>'+escH(ex.total_marks||'—')+'</b></div></div>'
-  +(lang==='hi'?'<div class="ins"><b>\u0928\u093f\u0930\u094d\u0926\u0947\u0936:</b> \u0938\u092d\u0940 \u092a\u094d\u0930\u0936\u094d\u0928 \u0905\u0928\u093f\u0935\u093e\u0930\u094d\u092f \u0939\u0948\u0902\u0964 '+(isM?'\u092a\u094d\u0930\u0924\u094d\u092f\u0947\u0915 \u092a\u094d\u0930\u0936\u094d\u0928 \u0915\u0947 \u0932\u093f\u090f \u090f\u0915 \u0938\u0939\u0940 \u0935\u093f\u0915\u0932\u094d\u092a \u091a\u0941\u0928\u0947\u0902\u0964':'\u0909\u0924\u094d\u0924\u0930 \u0938\u093e\u092b\u093c-\u0938\u093e\u092b\u093c \u0932\u093f\u0916\u0947\u0902\u0964 \u092a\u094d\u0930\u0924\u094d\u092f\u0947\u0915 \u092a\u094d\u0930\u0936\u094d\u0928 \u0915\u0947 \u0905\u0902\u0915 \u0909\u0938\u0915\u0947 \u0938\u093e\u092e\u0928\u0947 \u0926\u093f\u090f \u0917\u090f \u0939\u0948\u0902\u0964')+'</div>':"<div class='ins'><b>Instructions:</b> All questions are compulsory. "+(isM?'Choose the one correct option for each question.':'Write answers neatly in the space provided. Marks for each question are shown against it.')+'</div>')
+  +'<div><span>Max Marks</span><b>'+escH(ex.total_marks||'\u2014')+'</b></div></div>'
+  +(lang==='hi'
+    ?'<div class="ins"><b>\u0928\u093f\u0930\u094d\u0926\u0947\u0936:</b> \u0938\u092d\u0940 \u092a\u094d\u0930\u0936\u094d\u0928 \u0905\u0928\u093f\u0935\u093e\u0930\u094d\u092f \u0939\u0948\u0902\u0964 '+(isM?'\u092a\u094d\u0930\u0924\u094d\u092f\u0947\u0915 \u092a\u094d\u0930\u0936\u094d\u0928 \u0915\u0947 \u0932\u093f\u090f \u090f\u0915 \u0938\u0939\u0940 \u0935\u093f\u0915\u0932\u094d\u092a \u091a\u0941\u0928\u0947\u0902\u0964':'\u0909\u0924\u094d\u0924\u0930 \u0938\u093e\u092b\u093c-\u0938\u093e\u092b\u093c \u0932\u093f\u0916\u0947\u0902\u0964 \u092a\u094d\u0930\u0924\u094d\u092f\u0947\u0915 \u092a\u094d\u0930\u0936\u094d\u0928 \u0915\u0947 \u0905\u0902\u0915 \u0909\u0938\u0915\u0947 \u0938\u093e\u092e\u0928\u0947 \u0926\u093f\u090f \u0917\u090f \u0939\u0948\u0902\u0964')+'</div>'
+    :'<div class="ins"><b>Instructions:</b> All questions are compulsory. '+(isM?'Choose the one correct option for each question.':'Write answers neatly in the space provided. Marks for each question are shown against it.')+'</div>')
   +body
-  +'<div class="foot">Generated from MVS Portal · '+(withSol?'Teacher copy — includes solutions':'Student question paper')+'</div>'
+  +'<div class="foot">Generated from MVS Portal \u00b7 '+(withSol?'Teacher copy — includes solutions':'Student question paper')+'</div>'
   +'<scr'+'ipt src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></scr'+'ipt>'
   +'<scr'+'ipt src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/mhchem.min.js"></scr'+'ipt>'
   +'<scr'+'ipt>window.addEventListener(\'load\',function(){'
-  +'document.querySelectorAll(\'.q-t,.q-hi,.opt,.sol-t,.ins\').forEach(function(el){'
+  +'document.querySelectorAll(\'.q-t,.q-hi,.opt span,.sol-t,.ins\').forEach(function(el){'
   +'var t=el.textContent;'
   +'el.innerHTML=t.split(/(\\$[^$]+\\$)/g).map(function(p){'
   +'var m=p.match(/^\\$([\\s\\S]+)\\$$/);'
@@ -3932,9 +3963,17 @@ async function examPdfPremium(id,mode,medium){
           q.options_hi=Array.isArray(q.options_hi)?q.options_hi:[];
           for(let j=0;j<q.options.length;j++){ if(!((q.options_hi[j]||'').trim())&&(q.options[j]||'').trim()){ const t=await spTranslate(q.options[j],sub); if(t)q.options_hi[j]=t; } }
         }
-        if(withSol&&!((q.model_answer_hi||'').trim())&&(q.model_answer||'').trim()){ const t=await spTranslate(q.model_answer,sub); if(t)q.model_answer_hi=t; }
+        const mdl0=q.model_answer||q.model||q.answer||'', mdlH0=q.model_answer_hi||q.model_hi||q.answer_hi||'';
+        if(withSol&&!(mdlH0||'').trim()&&(mdl0||'').trim()){ const t=await spTranslate(mdl0,sub); if(t)q.model_answer_hi=t; }
+        const ex0=q.explanation||q.expl||'', exH0=q.explanation_hi||q.expl_hi||'';
+        if(withSol&&isM&&!(exH0||'').trim()&&(ex0||'').trim()){ const t=await spTranslate(ex0,sub); if(t)q.explanation_hi=t; }
       }
     }
+    let logo=null;
+    try{
+      const lr=await fetch(API+'/api/teacher/my-photo',{headers:{Authorization:'Bearer '+TOKEN}});
+      if(lr.ok){ const lb=await lr.blob(); logo=await new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=()=>res(null); fr.readAsDataURL(lb); }); }
+    }catch(e){}
     const qLbl=medium==='hi'?'\u092a\u094d\u0930\u0936\u094d\u0928':'Question';
     const mkLbl=m=>medium==='hi'?('[ '+(m||1)+' \u0905\u0902\u0915 ]'):('[ '+(m||1)+' mark'+((m||1)>1?'s':'')+' ]');
     const body=qs.map((q,qi)=>{
@@ -3944,17 +3983,32 @@ async function examPdfPremium(id,mode,medium){
       if(medium==='both'&&hi.trim()) h+='<div class="q-hi">'+escH(hi)+'</div>';
       if(q.image_b64) h+='<img class="qimg" src="'+q.image_b64+'">';
       if(isM&&Array.isArray(q.options)&&q.options.length){
+        let ci=-1;
+        if(q.correct_index!=null)ci=q.correct_index;
+        else if(q.correct!=null)ci=q.correct;
+        else if(q.correct_option!=null)ci=q.options.findIndex(o=>String(o).trim()===String(q.correct_option).trim());
         h+='<div class="opts">'+q.options.map((o,oi)=>{
           const oh=(medium!=='en'&&Array.isArray(q.options_hi)&&(q.options_hi[oi]||'').trim())?q.options_hi[oi]:null;
           const txt=medium==='hi'?(oh||o):(medium==='both'&&oh?(o+' / '+oh):o);
-          const ci=(q.correct_index===oi)||(q.correct_option!=null&&String(q.correct_option).trim()===String(o).trim());
-          return '<div class="opt'+(withSol&&ci?' correct':'')+'"><b>'+String.fromCharCode(65+oi)+'.</b> '+escH(txt)+'</div>';
+          return '<div class="opt'+(withSol&&ci===oi?' correct':'')+'"><b>'+String.fromCharCode(65+oi)+'</b><span>'+escH(txt)+'</span></div>';
         }).join('')+'</div>';
+        if(withSol&&ci>=0&&q.options[ci]!=null){
+          const ansO=medium==='hi'?((Array.isArray(q.options_hi)&&(q.options_hi[ci]||'').trim())?q.options_hi[ci]:q.options[ci]):q.options[ci];
+          const ansBoth=medium==='both'&&Array.isArray(q.options_hi)&&(q.options_hi[ci]||'').trim()?q.options_hi[ci]:null;
+          h+='<div class="sol"><div class="sol-l">'+(medium==='hi'?'\u0909\u0924\u094d\u0924\u0930':'Answer')+'</div><div class="sol-t"><b>('+String.fromCharCode(65+ci)+')</b> '+escH(ansO)+(ansBoth?' / '+escH(ansBoth):'')+'</div>';
+          const ex0=q.explanation||q.expl||'', exH=q.explanation_hi||q.expl_hi||'';
+          if((ex0||'').trim()||(exH||'').trim()){
+            if(medium==='hi'&&(exH||'').trim()) h+='<div class="sol-t" style="margin-top:4px">'+escH(exH)+'</div>';
+            else{ if((ex0||'').trim())h+='<div class="sol-t" style="margin-top:4px">'+escH(ex0)+'</div>'; if(medium==='both'&&(exH||'').trim())h+='<div class="q-hi">'+escH(exH)+'</div>'; }
+          }
+          h+='</div>';
+        }
       }
-      if(withSol&&((q.model_answer||'').trim()||(q.model_answer_hi||'').trim())){
-        const solMain=medium==='hi'?((q.model_answer_hi||'').trim()?q.model_answer_hi:(q.model_answer||'')):(q.model_answer||'');
+      const mdl=q.model_answer||q.model||q.answer||'', mdlHi=q.model_answer_hi||q.model_hi||q.answer_hi||'';
+      if(!isM&&withSol&&((mdl||'').trim()||(mdlHi||'').trim())){
+        const solMain=medium==='hi'?((mdlHi||'').trim()?mdlHi:mdl):mdl;
         h+='<div class="sol"><div class="sol-l">'+(medium==='hi'?'\u0939\u0932':'Solution')+'</div><div class="sol-t">'+escH(solMain)+'</div>'
-          +(medium==='both'&&(q.model_answer_hi||'').trim()?'<div class="q-hi">'+escH(q.model_answer_hi)+'</div>':'')
+          +(medium==='both'&&(mdlHi||'').trim()?'<div class="q-hi">'+escH(mdlHi)+'</div>':'')
           +(q.model_answer_image?'<img class="qimg" src="'+q.model_answer_image+'">':'')+'</div>';
       }
       const qMain=medium==='hi'?(hi.trim()?hi:en):en;
@@ -3963,7 +4017,7 @@ async function examPdfPremium(id,mode,medium){
     }).join('');
     const w=window.open('','_blank');
     if(!w){ toast('Popup blocked — please allow popups to download the PDF.',true); return; }
-    w.document.write(buildPdfDoc(ex,body,withSol,isM,medium==='hi'?'hi':'en'));
+    w.document.write(buildPdfDoc(ex,body,withSol,isM,medium==='hi'?'hi':'en',logo));
     w.document.close();
   }catch(e){ toast(e.message,true); }
 }
@@ -4150,16 +4204,17 @@ async function loadTTests(){
       .map(t=>`<button class="tx-tab ${F===t[0]?'on':''}" onclick="tTestFilter('${t[0]}')">${t[1]} <b>${cnt[t[0]]}</b></button>`).join('');
     let body='';
     if(!exams.length){
-      body=`<div class="tx-empty"><div class="ic">📝</div><b>No tests created yet</b><p>Create an Objective or Mission 75 test — Objective is graded instantly on submit, Mission 75 you grade manually from Results.</p></div>`;
+      body=`<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests created yet</b><p>Create an Objective or Mission 75 test — Objective is graded instantly on submit, Mission 75 you grade manually from Results.</p></div>`;
     } else {
       const list=exams.filter(e=> F==='all' ? true : F==='pending' ? isPend(e) : F==='done' ? isDone(e) : (F==='mcq') === (e.test_type==='mcq'));
       body=list.length? list.map(e=>{
         const isM=e.test_type==='mcq';
         const pend2=isPend(e), done2=isDone(e);
-        const stPill=pend2?`<span class="tx-pill a">✍ NEEDS EVALUATION</span>`:done2?`<span class="tx-pill g">EVALUATED ✓</span>`:`<span class="tx-pill s">SCHEDULED</span>`;
+        const stPill=pend2?`<span class="tx-pill a">NEEDS EVALUATION</span>`:done2?`<span class="tx-pill g">EVALUATED ✓</span>`:`<span class="tx-pill s">SCHEDULED</span>`;
         const tyPill=isM?`<span class="tx-pill o">OBJECTIVE</span>`:`<span class="tx-pill v">SUBJECTIVE</span>`;
         const topCol=pend2?'linear-gradient(90deg,#d97706,#f59e0b)':done2?'linear-gradient(90deg,#059669,#10b981)':(isM?'linear-gradient(90deg,#FF6B2B,#ffb347)':'linear-gradient(90deg,#7c3aed,#a78bfa)');
         const pct=(e.attempts||0)?Math.round((e.graded||0)/(e.attempts||1)*100):0;
+        const _schT=spSchedOf(e),_schTF=_schT?spSchedFmt(_schT):'';
         const subBar=(e.attempts||0)>0?`<div style="flex:1;max-width:240px"><div style="display:flex;justify-content:space-between;font-size:.64rem;color:var(--text-muted)"><span>Evaluated</span><b style="color:var(--text)">${e.graded||0}/${e.attempts||0}</b></div><div class="tx-bar" style="margin-top:4px"><i style="width:${pct}%"></i></div></div>`:`<span class="tx-pill s">No submissions yet</span>`;
         return `<div class="tx-card ${pend2?'tx-live':''}"><div class="top" style="background:${topCol}"></div><div class="tx-pad">
           <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
@@ -4168,8 +4223,8 @@ async function loadTTests(){
               <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap"><b style="font-size:.95rem">${esc(e.title)}</b>${tyPill}${stPill}</div>
               <div class="tx-meta">
                 ${e.subject?`<span class="tx-pill nv">${esc(e.subject)}</span>`:''}
-                ${e.chapter?`<span class="tx-pill s">${esc(e.chapter)}</span>`:''}
-                <span class="tx-pill s">❓ ${e.questions} Qs</span><span class="tx-pill s">🎯 ${e.total_marks} marks</span><span class="tx-pill s">⏱ ${e.duration_min} min</span>
+                ${spCleanCh(e.chapter)?`<span class="tx-pill s">${esc(spCleanCh(e.chapter))}</span>`:''}
+                <span class="tx-pill s inf">${ic('clipboard')} <b>${e.questions}</b> Qs</span><span class="tx-pill s inf">${ic('chart')} <b>${e.total_marks}</b> marks</span><span class="tx-pill s inf">${ic('clock')} <b>${e.duration_min}</b> min</span>${_schT?`<span class="tx-pill s inf">${ic('calendar')} ${_schTF}</span>`:''}
               </div>
               <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">${subBar}</div>
             </div>
@@ -4177,16 +4232,17 @@ async function loadTTests(){
           <div style="display:flex;gap:8px;margin-top:13px;justify-content:flex-end;flex-wrap:wrap;align-items:center">
             <button class="mt-eng" title="Students who opened this test" onclick="openExamAudience(${e.id},'view')">${ic('users')} ${e.views||0}</button>
             <button class="mt-eng" title="Students who downloaded the paper" onclick="openExamAudience(${e.id},'download')">${ic('download')} ${e.downloads||0}</button>
+            <button class="btn btn-ghost btn-sm" title="Edit title / schedule / duration" onclick="examEditTest(${e.id})">${ic('edit')} Edit</button>
             <button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>
             <button class="btn btn-ghost btn-sm tst-pdfbtn" title="Question paper — premium formatted" onclick="examPdfChoose(${e.id},'paper')">${ic('download')} Paper PDF</button>
             <button class="btn btn-ghost btn-sm tst-pdfbtn" title="Question paper with solutions — premium formatted" onclick="examPdfChoose(${e.id},'solutions')">${ic('download')} With Solutions</button>
           </div>
         </div></div>`;
-      }).join('') : `<div class="tx-empty"><div class="ic">🔍</div><b>No tests in this filter</b><p>Try another tab above.</p></div>`;
+      }).join('') : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests in this filter</b><p>Try another tab above.</p></div>`;
     }
     el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Objective auto-graded on submit · Mission 75 graded manually by you</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="openCreateExam('mcq')">${ic('clipboard')} New Objective Test</button><button class="btn btn-primary btn-sm" onclick="openCreateExam('subjective')">${ic('edit')} New Mission 75 Test</button></div></div>`
       +statsHtml+`<div class="tx-tabs">${tabs}</div>`+body
-      +`<div class="tx-dash"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div style="display:flex;gap:10px;align-items:center"><span style="font-size:18px">📄</span><div><b style="font-size:.82rem">Upload PDF Test (legacy method)</b><div style="font-size:.68rem;color:var(--text-muted)">PDF paper + manual checking — kept for backward compatibility</div></div></div><button class="btn btn-ghost btn-sm" onclick="openUploadHub({typeLabel:'Test Paper'})">${ic('upload')} Upload PDF</button></div></div>`;
+      +`<div class="tx-dash"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div style="display:flex;gap:10px;align-items:center"><span style="font-size:18px">${ic('upload')}</span><div><b style="font-size:.82rem">Upload PDF Test (legacy method)</b><div style="font-size:.68rem;color:var(--text-muted)">PDF paper + manual checking — kept for backward compatibility</div></div></div><button class="btn btn-ghost btn-sm" onclick="openUploadHub({typeLabel:'Test Paper'})">${ic('upload')} Upload PDF</button></div></div>`;
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function tTestFilter(f){ window._tTestFilter=f; loadTTests(); }
@@ -4226,8 +4282,9 @@ async function examImgFile(inp,i){ const f=inp.files[0]; if(f&&f.type.indexOf('i
 function examImgDrop(e,i){ e.preventDefault(); const f=(e.dataTransfer.files||[])[0]; if(f&&f.type.indexOf('image')===0) _fileB64(f).then(d=>_setExamImg(i,d)); }
 function examImgPaste(e,i){ const items=(e.clipboardData||{}).items||[]; for(let k=0;k<items.length;k++){ if(items[k].type&&items[k].type.indexOf('image')===0){ const f=items[k].getAsFile(); if(f){ _fileB64(f).then(d=>_setExamImg(i,d)); e.preventDefault(); } break; } } }
 function examImgRemove(i,ev){ if(ev)ev.stopPropagation(); _examQs[i].image_b64=null; renderExamQs(); }
-async function openCreateExam(type){
+async function openCreateExam(type,editData){
   _examType=type; _examQs=[]; _lastField=null; _examMedium='English';
+  window._editExamId=editData?editData.id:null;
   let subs=[];
   try{ const es=await api('/api/teacher/my-timetable'); subs=[...new Set(es.filter(e=>e.subject).map(e=>e.subject))]; }catch(e){}
   const subOpts=subs.length?subs.map(s=>`<option>${esc(s)}</option>`).join(''):'<option>General</option>';
@@ -4236,16 +4293,32 @@ async function openCreateExam(type){
   const note=type==='subjective'
     ?'<div class="alert alert-info">Students upload a photo of their handwritten answers. You grade each answer manually from Results — award marks + remarks per question (your model answers stay visible to you while checking). Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{2H2 + O2 -> 2H2O}$</code> &mdash; they render automatically.</div>'
     :'<div class="alert alert-info">Students select an option. Auto-graded instantly. Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{...}$</code>.</div>';
-  showModal('Create '+tl+' Test',
-    `<div style="display:flex;gap:12px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:160px"><label>Subject</label><select class="form-control" id="ex-sub">${subOpts}</select></div><div class="form-group" style="width:110px"><label>Duration (min)</label><input type="number" class="form-control" id="ex-dur" value="60"></div><div class="form-group" style="width:140px"><label>Medium</label><select class="form-control" id="ex-medium" onchange="examMediumChange()"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div></div>`
+  showModal(editData?('Edit '+tl+' Test'):('Create '+tl+' Test'),
+    (editData&&editData.attempts>0?'<div class="alert alert-info">Ye test live hai — <b>'+editData.attempts+' submission(s)</b> aa chuke hain. Naye questions add kar sakte ho; purani submissions aur unke marks safe rahenge.</div>':'')+`<div style="display:flex;gap:12px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:160px"><label>Subject</label><select class="form-control" id="ex-sub">${subOpts}</select></div><div class="form-group" style="width:110px"><label>Duration (min)</label><input type="number" class="form-control" id="ex-dur" value="60"></div><div class="form-group" style="width:140px"><label>Medium</label><select class="form-control" id="ex-medium" onchange="examMediumChange()"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div><div class="form-group" style="min-width:210px;flex:1"><label>Schedule (optional)</label><input type="datetime-local" class="form-control" id="ex-sched" title="Students can start only after this date & time"></div></div>`
     +`<div class="form-group"><label>Test Title</label><input class="form-control" id="ex-title" placeholder="e.g. Physics Chapter Test - Electric Charges"></div>`
     +`<div class="form-group"><label>Chapter (optional)</label><input class="form-control" id="ex-ch" placeholder="e.g. Electric Charges"></div>`
     +`<div class="ex-prog" id="ex-prog"><div class="ex-prog-top"><span class="ex-prog-label" id="ex-prog-label">Uploading\u2026</span><span class="ex-prog-pct" id="ex-prog-pct">0%</span></div><div class="ex-prog-track"><div class="ex-prog-fill" id="ex-prog-fill"></div></div></div>`
     +tools
     +`<div id="ex-qs"></div><button class="btn btn-ghost btn-sm" onclick="addExamQ()" style="margin:4px 0 14px">+ Add Question</button>`
-    +`<button class="btn btn-primary" onclick="submitExam()" style="width:100%">Create Test</button>`);
+    +`<button class="btn btn-primary" onclick="submitExam()" style="width:100%">${editData?'Save Changes — Update Test':'Create Test'}</button>`);
   { const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.add('cx'); }
   addExamQ();
+  if(editData){
+    const ex=editData.ex||{};
+    const sel=document.getElementById('ex-sub');
+    if(sel&&ex.subject){
+      if(![...sel.options].some(o=>o.text===ex.subject)){ const op=document.createElement('option'); op.text=ex.subject; sel.add(op); }
+      [...sel.options].forEach(o=>{ o.selected=(o.text===ex.subject); });
+    }
+    document.getElementById('ex-title').value=ex.title||'';
+    document.getElementById('ex-ch').value=spCleanCh(ex.chapter||'');
+    document.getElementById('ex-dur').value=ex.duration_min||60;
+    const med=ex.medium||'English';
+    document.getElementById('ex-medium').value=med; _examMedium=med;
+    const sch=spSchedOf(ex); if(sch)document.getElementById('ex-sched').value=spSchedLocal(sch);
+    const mapped=_examFormQs(editData.questions||[],_examType==='mcq');
+    if(mapped.length){ _examQs=mapped; renderExamQs(); }
+  }
 }
 function addExamQ(){ _examQs.push(_examType==='mcq'?{q:'',q_hi:'',opts:['','','',''],opts_hi:['','','',''],correct:0,marks:1,expl:'',expl_hi:'',image_b64:null,_tab:'en'}:{q:'',q_hi:'',model:'',model_hi:'',marks:5,image_b64:null,model_answer_image:null,qtype:'general',_tab:'en'}); renderExamQs(); }
 function setExamTab(i,tab){ _examQs[i]._tab=tab; renderExamQs(); }
@@ -4418,7 +4491,139 @@ function examPdfChoose(id,mode){
   +`</div>`);
 }
 
-console.log('MVS Smart Paste build 2026-07-20 v4 + free subject-wise translation');
+/* ================= EXAM SCHEDULING + TRACKING HELPERS =================
+   Schedule travels inside the chapter field as an invisible marker ⟦S:ISO⟧ so it works
+   even before the backend adds a scheduled_at column; if the column exists it wins. */
+function spSchedOf(e){
+  if(!e)return null;
+  const raw=(e.scheduled_at==null?'':String(e.scheduled_at));
+  const m=String(e.chapter||'').match(/\u27E6S:([^\u27E7]+)\u27E7/);
+  const iso=(raw&&raw!=='null'&&raw!=='None'&&raw!=='undefined')?raw:(m?m[1]:'');
+  if(!iso)return null;
+  const d=new Date(iso);
+  return isNaN(d.getTime())?null:d;
+}
+function spCleanCh(ch){ return String(ch||'').replace(/\s*\u27E6S:[^\u27E7]*\u27E7/g,'').trim(); }
+function spSchedFmt(d){ return d.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true}); }
+function spSchedLocal(d){ const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes()); }
+/* live countdown engine — ticks every element carrying data-cd="<epoch ms>" */
+let _examCdTimer=null;
+function spCdStart(){
+  if(_examCdTimer)return;
+  _examCdTimer=setInterval(()=>{
+    const els=document.querySelectorAll('[data-cd]');
+    const now=Date.now();
+    els.forEach(el=>{
+      const t=+el.getAttribute('data-cd');
+      let s=Math.max(0,Math.floor((t-now)/1000));
+      const d=Math.floor(s/86400); s%=86400;
+      const h=String(Math.floor(s/3600)).padStart(2,'0');
+      const m=String(Math.floor((s%3600)/60)).padStart(2,'0');
+      const ss=String(s%60).padStart(2,'0');
+      el.textContent=(t-now<=0)?'LIVE now — refresh the page':((d>0?(d+'d '):'')+h+':'+m+':'+ss);
+    });
+  },1000);
+}
+/* student dashboard: "upcoming scheduled test" banner with live countdown */
+async function _sSchedBanner(el){
+  try{
+    const exs=await api('/api/student/exams');
+    const fut=exs.map(e=>({e,sch:spSchedOf(e)}))
+      .filter(x=>x.sch&&x.sch.getTime()>Date.now()&&x.e.status!=='graded'&&x.e.status!=='grading')
+      .sort((a,b)=>a.sch.getTime()-b.sch.getTime());
+    if(!fut.length)return;
+    const {e,sch}=fut[0];
+    const ban=document.createElement('div');
+    ban.innerHTML='<div class="tx-cdbanner"><div><div class="tx-cdb-t">Upcoming scheduled test</div><div class="tx-cdb-s">'+esc(e.title||'')+(e.subject?' \u00b7 '+esc(e.subject):'')+' \u00b7 '+spSchedFmt(sch)+'</div></div><div class="tx-cdchip lg">Starts in <b data-cd="'+sch.getTime()+'">\u2026</b></div></div>';
+    el.prepend(ban.firstChild);
+    spCdStart();
+  }catch(e){}
+}
+/* teacher: edit title / chapter / duration / schedule */
+async function examEdit(id){
+  try{
+    toast('Loading test\u2026');
+    const d=await api('/api/teacher/exam/'+id+'/attempts');
+    const ex=d.exam||{};
+    const sch=spSchedOf(ex);
+    showModal('Edit Test',
+      `<div class="form-group"><label>Title</label><input class="form-control" id="ee-title" value="${esc(ex.title||'')}"></div>`
+      +`<div class="form-group"><label>Chapter</label><input class="form-control" id="ee-ch" value="${esc(spCleanCh(ex.chapter||''))}"></div>`
+      +`<div style="display:flex;gap:12px;flex-wrap:wrap"><div class="form-group" style="width:130px"><label>Duration (min)</label><input type="number" class="form-control" id="ee-dur" value="${ex.duration_min||60}"></div>`
+      +`<div class="form-group" style="flex:1;min-width:210px"><label>Schedule (students start only after this)</label><input type="datetime-local" class="form-control" id="ee-sched" value="${sch?spSchedLocal(sch):''}"></div></div>`
+      +`<div class="alert alert-info">Scheduled test students ko countdown ke saath dikhta hai — start sirf scheduled time ke baad hi ho sakta hai. Time khali chhodo to test hamesha open rahega.</div>`,
+      `<button class="btn btn-primary" onclick="examEditSave(${id})">Save Changes</button>`);
+  }catch(e){ toast(e.message,true); }
+}
+async function examEditSave(id){
+  const sch=(val('ee-sched')||'').trim();
+  const chRaw=(val('ee-ch')||'').trim();
+  const body={title:val('ee-title'),chapter:(sch?(chRaw+' \u27E6S:'+sch+'\u27E7'):chRaw),duration_min:parseInt(val('ee-dur'))||60,scheduled_at:sch||null};
+  try{
+    await api('/api/teacher/exam/'+id,'PATCH',body);
+    closeModal(); toast('Test updated successfully.'); loadTTests();
+  }catch(e){
+    toast('Update save nahi hua — backend mein PATCH endpoint pending hai (mvs_backend_exam_update.py deploy karein). '+e.message,true);
+  }
+}
+/* map saved exam questions back into the create-form structure (for editing) */
+function _examFormQs(qs,isM){
+  return (qs||[]).map(q=>{
+    if(isM){
+      let ci=-1;
+      if(q.correct_index!=null)ci=q.correct_index;
+      else if(q.correct!=null)ci=q.correct;
+      else if(q.correct_option!=null&&Array.isArray(q.options))ci=q.options.findIndex(o=>String(o).trim()===String(q.correct_option).trim());
+      return {q:q.question_text||'',q_hi:q.question_text_hi||q.question_hi||'',
+        opts:(Array.isArray(q.options)&&q.options.length?q.options.slice():['','','','']),
+        opts_hi:(Array.isArray(q.options_hi)?q.options_hi.slice():[]),
+        correct:ci>=0?ci:0,marks:q.max_marks||1,
+        expl:q.explanation||q.expl||'',expl_hi:q.explanation_hi||q.expl_hi||'',
+        image_b64:q.image_b64||null,_tab:'en'};
+    }
+    return {q:q.question_text||'',q_hi:q.question_text_hi||q.question_hi||'',
+      model:q.model_answer||q.model||'',model_hi:q.model_answer_hi||q.model_hi||'',
+      marks:q.max_marks||5,image_b64:q.image_b64||null,model_answer_image:q.model_answer_image||null,
+      qtype:'general',_tab:'en'};
+  });
+}
+/* teacher: open full editor with existing questions (add/edit/remove questions) */
+async function examEditTest(id){
+  try{
+    toast('Loading test\u2026');
+    const d=await api('/api/teacher/exam/'+id+'/attempts');
+    const ex=d.exam||{};
+    await openCreateExam(ex.test_type==='mcq'?'mcq':'subjective',{id:id,ex:ex,questions:d.questions||[],attempts:(d.attempts||[]).length});
+  }catch(e){ toast(e.message,true); }
+}
+/* admin: subject-wise tests tracker with live submission counts */
+async function loadATests(){
+  const el=document.getElementById('a-tests-content'); if(!el)return;
+  el.innerHTML='<div class="spinner"></div>';
+  try{
+    const rows=await api('/api/admin/exams');
+    const bySub={};
+    rows.forEach(e=>{ const s=e.subject||'General'; (bySub[s]=bySub[s]||[]).push(e); });
+    const subs=Object.keys(bySub).sort();
+    const totT=rows.length, totS=rows.reduce((a,e)=>a+(e.attempts||0),0), totG=rows.reduce((a,e)=>a+(e.graded||0),0);
+    el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests Tracker</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Subject-wise all tests · live submission tracking</div></div><button class="btn btn-ghost btn-sm" onclick="loadATests()">${ic('refresh')} Refresh</button></div>`
+      +`<div class="tx-stats">`
+      +`<div class="tx-stat"><b style="color:#c2410c">${totT}</b><span>Total tests</span></div>`
+      +`<div class="tx-stat"><b>${totS}</b><span>Submissions</span></div>`
+      +`<div class="tx-stat"><b style="color:#b45309">${Math.max(0,totS-totG)}</b><span>Pending evaluation</span></div>`
+      +`<div class="tx-stat"><b style="color:#047857">${totG}</b><span>Evaluated</span></div></div>`
+      +(rows.length? subs.map(sub=>`<div class="card"><div class="card-header"><h3>${esc(sub)}</h3><span class="tx-pill nv">${bySub[sub].length} test${bySub[sub].length>1?'s':''}</span></div><div class="card-body">`
+        +bySub[sub].map(e=>{
+          const sch=spSchedOf(e);
+          return `<div class="today-row"><div><div class="tr-sub">${esc(e.title||'')}</div><div class="tr-topic">${esc(e.teacher_name||'')}${spCleanCh(e.chapter)?' \u00b7 '+esc(spCleanCh(e.chapter)):''} \u00b7 ${e.questions||0} Qs \u00b7 ${e.total_marks||0} marks \u00b7 ${e.duration_min||0} min${sch?' \u00b7 '+spSchedFmt(sch):''}</div></div><div class="tmeta"><span class="tstatus">${e.attempts||0} submitted</span><span class="tstatus ${(e.graded||0)>0?'done':''}">${e.graded||0} evaluated</span><span class="tstatus" style="color:#b45309">${Math.max(0,(e.attempts||0)-(e.graded||0))} pending</span></div></div>`;
+        }).join('')+`</div></div>`).join('')
+        : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests yet</b><p>Teachers ke tests yahan subject-wise dikhenge.</p></div>`);
+  }catch(e){
+    el.innerHTML=`<div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic('clipboard')}</div><p><b>Tests Tracker ke liye ek chhota backend endpoint chahiye</b></p><small><code>GET /api/admin/exams</code> add karte hi yahan subject-wise saare tests + submission tracking live ho jayegi.<br>Ready-made code: <b>mvs_backend_exam_update.py</b> — admin_routes.py ke end mein paste karke redeploy karna hai.</small></div></div></div>`;
+  }
+}
+
+console.log('MVS Smart Paste build 2026-07-20 v5 + scheduling + premium PDF v2');
 const spUMAP={'∫':'\\int ','π':'\\pi ','θ':'\\theta ','Δ':'\\Delta ','δ':'\\delta ','λ':'\\lambda ','μ':'\\mu ','α':'\\alpha ','β':'\\beta ','γ':'\\gamma ','ω':'\\omega ','Σ':'\\sum ','σ':'\\sigma ','×':'\\times ','·':'\\cdot ','÷':'\\div ','±':'\\pm ','∞':'\\infty ','≈':'\\approx ','≠':'\\ne ','≤':'\\le ','≥':'\\ge ','→':'\\to ','←':'\\leftarrow ','−':'-','–':'-','η':'\\eta ','Ω':'\\Omega ','ε':'\\epsilon ','ρ':'\\rho ','ν':'\\nu ','°':'^\\circ '};
 const spSUP={'⁰':'0','¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9','ⁿ':'n','⁻':'-'};
 const spSUB={'₀':'0','₁':'1','₂':'2','₃':'3','₄':'4','₅':'5','₆':'6','₇':'7','₈':'8','₉':'9','ₓ':'x'};
@@ -4538,14 +4743,45 @@ function spMathToTex(m){
   const t=(ann&&ann.textContent&&ann.textContent.trim())||spMl2Tex(m);
   return spSanitizeMath(t);
 }
+/* ---- clipboard HTML -> text with $..$ LaTeX (MathJax v2/v3 + KaTeX + MathML safe) ---- */
 function spFromClipboardHTML(html){
   const doc=new DOMParser().parseFromString(html,'text/html');
-  doc.querySelectorAll('math').forEach(m=>{
-    const sp=doc.createElement('span');
-    sp.textContent=' $'+spMathToTex(m).replace(/\s+/g,' ')+'$ ';
-    m.replaceWith(sp);
+  const T=(el,t)=>{ const sp=doc.createElement('span'); sp.textContent=t; el.replaceWith(sp); };
+  // KaTeX display + inline (site render + our own copies) — keep annotation LaTeX, drop rendered twin
+  doc.querySelectorAll('.katex-display').forEach(k=>{
+    const m=k.querySelector('math');
+    T(k,'\n $'+(m?spMathToTex(m):k.textContent).replace(/\s+/g,' ').trim()+'$ \n');
   });
-  return doc.body.innerText||doc.body.textContent||'';
+  doc.querySelectorAll('.katex').forEach(k=>{
+    const m=k.querySelector('math');
+    T(k,' $'+(m?spMathToTex(m):k.textContent).replace(/\s+/g,' ').trim()+'$ ');
+  });
+  // MathJax v3 — visible CHTML spans + hidden assistive MathML: keep only the MathML
+  doc.querySelectorAll('mjx-container').forEach(c=>{
+    const am=c.querySelector('mjx-assistive-mml math');
+    const disp=String(c.getAttribute('display')||'').toLowerCase()==='true';
+    T(c,(disp?'\n':'')+' $'+(am?spMathToTex(am):c.textContent).replace(/\s+/g,' ').trim()+'$ '+(disp?'\n':''));
+  });
+  // MathJax v2 display blocks
+  doc.querySelectorAll('.MathJax_Display').forEach(d=>{
+    const sc=d.querySelector('script[type^="math/tex"]');
+    T(d,'\n $'+(sc?(sc.textContent||'').trim():d.textContent.trim())+'$ \n');
+  });
+  // MathJax v2 inline scripts
+  doc.querySelectorAll('script[type^="math/tex"]').forEach(sc=>{
+    T(sc,' $'+(sc.textContent||'').trim()+'$ ');
+  });
+  // drop leftover rendered duplicates / hidden nodes
+  doc.querySelectorAll('.MathJax_Preview,.MathJax,mjx-assistive-mml,[aria-hidden="true"],[style*="display:none"],[style*="display: none"],[style*="visibility:hidden"],[style*="visibility: hidden"]').forEach(n=>n.remove());
+  // plain MathML
+  doc.querySelectorAll('math').forEach(m=>{
+    T(m,' $'+spMathToTex(m).replace(/\s+/g,' ').trim()+'$ ');
+  });
+  // preserve line breaks from block structure
+  doc.querySelectorAll('br').forEach(b=>b.replaceWith(doc.createTextNode('\n')));
+  doc.querySelectorAll('p,div,li,tr,h1,h2,h3,h4,h5,h6,section,article,blockquote,table,ul,ol').forEach(el=>{ el.appendChild(doc.createTextNode('\n')); });
+  let txt=doc.body.innerText||doc.body.textContent||'';
+  return txt.replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').replace(/[ \t]{2,}/g,' ').trim();
 }
 
 
@@ -4765,14 +5001,18 @@ async function submitExam(){
             question_text_hi:biling?((q.q_hi||'').trim()||null):null,
             model_answer_hi:biling?((q.model_hi||'').trim()||null):null};
   });
-  const body={subject:val('ex-sub'),title:title,chapter:val('ex-ch'),test_type:_examType,medium:_examMedium,duration_min:parseInt(val('ex-dur'))||60,questions:questions};
+  const _sched=(val('ex-sched')||'').trim(); const _chRaw=(val('ex-ch')||'').trim();
+  const body={subject:val('ex-sub'),title:title,chapter:(_sched?(_chRaw+' \u27E6S:'+_sched+'\u27E7'):_chRaw),test_type:_examType,medium:_examMedium,duration_min:parseInt(val('ex-dur'))||60,scheduled_at:_sched||null,questions:questions};
   try{
-    await api('/api/teacher/exam','POST',body);
+    const _editId=window._editExamId;
+    if(_editId){ await api('/api/teacher/exam/'+_editId,'PATCH',body); }
+    else{ await api('/api/teacher/exam','POST',body); }
+    window._editExamId=null;
     closeModal();
-    toast(biling?'Test created! Any blank Hindi fields are being auto-filled now.':'Test created successfully!');
+    toast(_editId?'Test updated successfully!':(biling?'Test created! Any blank Hindi fields are being auto-filled now.':'Test created successfully!'));
     loadTTests();
   }
-  catch(e){ toast(e.message,true); }
+  catch(e){ toast((window._editExamId?'Update failed — backend snippet (mvs_backend_exam_update.py) deployed? ':'')+e.message,true); }
 }
 async function viewExamAttempts(id){
   try{
@@ -4780,7 +5020,7 @@ async function viewExamAttempts(id){
     window._examAttData=d;
     const rows=d.attempts.length?d.attempts.map(a=>{
       const info=a.status==='graded'?('Score: '+a.total_awarded+'/'+d.exam.total_marks+(a.verdict?' \u00b7 '+esc(a.verdict):'')):a.status==='grading'?'Pending evaluation':'Awaiting submission';
-      const btns=`<button class="btn btn-primary btn-sm" onclick="gradeManual(${a.attempt_id},${id})">${a.status==='graded'?'Edit Marks':'✍ Grade Manually'}</button>`;
+      const btns=`<button class="btn btn-primary btn-sm" onclick="gradeManual(${a.attempt_id},${id})">${a.status==='graded'?'Edit Marks':'Grade Manually'}</button>`;
       const dl=a.has_answer?`<button class="btn btn-ghost btn-sm ansdl-btn" onclick="downloadStudentAnswer(${a.attempt_id},'${esc((a.student_name||'student').replace(/[^A-Za-z0-9]/g,'-'))}')">${ic('download')} Sheet</button>`:'';
       return `<div class="today-row"><div><div class="tr-sub">${esc(a.student_name||('Student #'+a.student_id))}</div><div class="tr-topic">${info}</div></div><div class="tmeta"><span class="tstatus ${a.status==='graded'?'done':''}">${a.status==='grading'?'pending evaluation':esc(a.status)}</span>${dl}${btns}</div></div>`;
     }).join(''):'<div class="empty-state"><p>No submissions yet.</p></div>';
@@ -5059,7 +5299,7 @@ function aPage(page,el){
   document.getElementById('a-page-'+page).classList.add('active');
   if(!el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) el=n; }); }
   if(el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',students:'Students',admins:'Admin Users',subjects:'Subjects',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',attendance:'Teacher Attendance',payouts:'Payouts'};
+  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',students:'Students',admins:'Admin Users',subjects:'Subjects',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',attendance:'Teacher Attendance',payouts:'Payouts'};
   _setPage(titles[page]||page);
   document.getElementById('a-title').textContent=titles[page];
   if(page==='dashboard') loadADashboard();
@@ -5069,6 +5309,7 @@ function aPage(page,el){
   else if(page==='reports') loadAReports();
   else if(page==='teachers') loadATeachers();
   else if(page==='doubts') loadADoubts();
+  else if(page==='tests') loadATests();
   else if(page==='qbank') loadAQBank();
   else if(page==='live') loadALive();
   else if(page==='students') loadAStudents();
@@ -6651,6 +6892,7 @@ async function loadSDashboard(){
       ${qaHtml}`);
     loadStudentLiveBanner();
     _renderTodayClassesStudent();
+    _sSchedBanner(el);
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 
@@ -6851,8 +7093,8 @@ async function loadSTests(){
       <div style="display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:center">
         <div style="min-width:200px;flex:1">
           <div class="tx-eyebrow">TEST CENTER</div>
-          ${nxt?`<h2>Next up: <span style="color:#ffc46b">${esc(nxt.title)}</span></h2><div class="sub">${esc(nxt.subject||'')}${nxt.chapter?' · '+esc(nxt.chapter):''} · ${nxt.total_marks} marks</div>`
-              :`<h2>All caught up 🎉</h2><div class="sub">No pending tests right now — new tests will appear here.</div>`}
+          ${nxt?`<h2>Next up: <span style="color:#ffc46b">${esc(nxt.title)}</span></h2><div class="sub">${esc(nxt.subject||'')}${spCleanCh(nxt.chapter)?' · '+esc(spCleanCh(nxt.chapter)):''} · ${nxt.total_marks} marks</div>${spSchedOf(nxt)&&spSchedOf(nxt).getTime()>Date.now()?`<div class="tx-cdbar"><span class="tx-pill s inf">${ic('calendar')} ${spSchedFmt(spSchedOf(nxt))}</span><span class="tx-cdchip">Starts in <b data-cd="${spSchedOf(nxt).getTime()}">\u2026</b></span></div>`:''}`
+              :`<h2>All caught up</h2><div class="sub">No pending tests right now — new tests will appear here.</div>`}
         </div>
         ${avg!==null?`<div style="text-align:right"><div class="big">${avg}%</div><div class="lbl">AVG SCORE</div></div>`:''}
       </div>
@@ -6866,7 +7108,7 @@ async function loadSTests(){
     el.innerHTML=hero+statsHtml+`<div class="tx-types">
       <div class="tx-type ${F==='mcq'?'on':''}" onclick="sTestFilter('mcq')">
         <div class="edge" style="background:linear-gradient(#FF6B2B,#ff9a3d)"></div>
-        <div style="display:flex;gap:12px;align-items:center"><span class="tx-tile o">MCQ</span><div><b style="font-size:.95rem">Objective Tests</b><div style="font-size:.72rem;color:var(--text-muted)">Instant marks on submission ⚡</div></div></div>
+        <div style="display:flex;gap:12px;align-items:center"><span class="tx-tile o">MCQ</span><div><b style="font-size:.95rem">Objective Tests</b><div style="font-size:.72rem;color:var(--text-muted)">Instant marks on submission</div></div></div>
         <div class="big">${mcqs.length} <span style="font-size:.72rem;font-weight:500;color:var(--text-muted)">available</span></div>
       </div>
       <div class="tx-type ${F!=='mcq'?'on':''}" onclick="sTestFilter('subjective')">
@@ -6874,8 +7116,9 @@ async function loadSTests(){
         <div style="display:flex;gap:12px;align-items:center"><span class="tx-tile v">SUB</span><div><b style="font-size:.95rem">Mission 75 Test Series</b><div style="font-size:.72rem;color:var(--text-muted)">All question types · handwritten upload · graded by teacher</div></div></div>
         <div class="big">${subs.length} <span style="font-size:.72rem;font-weight:500;color:var(--text-muted)">available</span></div>
       </div></div>`
-      +(exams.length? exams.filter(e=> (F==='mcq') === (e.test_type==='mcq')).map(examCardHTML).join('') || `<div class="tx-empty"><div class="ic">📝</div><b>No ${F==='mcq'?'objective':'subjective'} tests right now</b><p>New tests will appear here as soon as your teacher publishes them.</p></div>`
-        : `<div class="tx-empty"><div class="ic">📝</div><b>No tests yet</b><p>When your teacher creates a test, it will show up here.</p></div>`);
+      +(exams.length? exams.filter(e=> (F==='mcq') === (e.test_type==='mcq')).map(examCardHTML).join('') || `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No ${F==='mcq'?'objective':'subjective'} tests right now</b><p>New tests will appear here as soon as your teacher publishes them.</p></div>`
+        : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests yet</b><p>When your teacher creates a test, it will show up here.</p></div>`);
+    spCdStart();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function sTestFilter(f){ window._sTestFilter=f; loadSTests(); }
@@ -6891,15 +7134,17 @@ function examCardHTML(e){
     stPill=`<span class="tx-pill g">GRADED ✓</span>`;
     right=`<div class="tx-ring"><svg width="60" height="60" viewBox="0 0 60 60"><circle cx="30" cy="30" r="27" fill="none" stroke="var(--border)" stroke-width="5"/><circle cx="30" cy="30" r="27" fill="none" stroke="${pct>=60?'#059669':'#d97706'}" stroke-width="5" stroke-linecap="round" stroke-dasharray="169.6" stroke-dashoffset="${off}"/></svg><div class="t">${pct}%</div></div>`;
   } else if(e.status==='grading'){
-    stPill=`<span class="tx-pill a">⏳ PENDING EVALUATION</span>`;
-  } else {
-    stPill=isM?`<span class="tx-pill g">⚡ INSTANT RESULT</span>`:`<span class="tx-pill s">✍ TEACHER GRADES</span>`;
+    stPill=`<span class="tx-pill a">PENDING EVALUATION</span>`;
+  }
+  const _sch=spSchedOf(e),_future=_sch&&_sch.getTime()>Date.now();
+  if(!stPill){
+    stPill=_future?`<span class="tx-pill v">UPCOMING</span>`:(isM?`<span class="tx-pill g">INSTANT RESULT</span>`:`<span class="tx-pill s">TEACHER GRADES</span>`);
   }
   const action = e.status==='graded'
     ? `<button class="btn btn-primary btn-sm" onclick="openExamResult(${e.id})">View Result · ${e.score}/${e.total_marks}</button>`
     : e.status==='grading'
     ? `<button class="btn btn-ghost btn-sm" disabled>Pending evaluation</button>`
-    : `<button class="btn btn-primary btn-sm" onclick="openExamPlayer(${e.id})">▶ Start Test</button>`;
+    : (_future?`<button class="btn btn-ghost btn-sm" disabled>Starts in <b data-cd="${_sch.getTime()}">\u2026</b></button>`:`<button class="btn btn-primary btn-sm" onclick="openExamPlayer(${e.id})">Start Test</button>`);
   return `<div class="tx-card ${e.status!=='graded'&&e.status!=='grading'?'tx-live':''}"><div class="top" style="background:${topCol}"></div><div class="tx-pad">
     <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
       <span class="tx-tile ${isM?'o':'v'}">${esc(txInit(e.subject||'GEN'))}</span>
@@ -6907,14 +7152,14 @@ function examCardHTML(e){
         <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap"><b style="font-size:.93rem">${esc(e.title)}</b>${tyPill}${stPill}</div>
         <div class="tx-meta">
           ${e.subject?`<span class="tx-pill nv">${esc(e.subject)}</span>`:''}
-          ${e.chapter?`<span class="tx-pill s">${esc(e.chapter)}</span>`:''}
-          <span class="tx-pill s">❓ ${e.questions} Qs</span><span class="tx-pill s">🎯 ${e.total_marks} marks</span><span class="tx-pill s">⏱ ${e.duration_min} min</span>
+          ${spCleanCh(e.chapter)?`<span class="tx-pill s">${esc(spCleanCh(e.chapter))}</span>`:''}
+          <span class="tx-pill s inf">${ic('clipboard')} <b>${e.questions}</b> Qs</span><span class="tx-pill s inf">${ic('chart')} <b>${e.total_marks}</b> marks</span><span class="tx-pill s inf">${ic('clock')} <b>${e.duration_min}</b> min</span>${_sch?`<span class="tx-pill s inf">${ic('calendar')} ${spSchedFmt(_sch)}</span>`:''}
         </div>
       </div>
       ${right}
     </div>
     <div style="display:flex;gap:8px;margin-top:13px;justify-content:flex-end;flex-wrap:wrap">
-      <button class="btn btn-ghost btn-sm" onclick="downloadPaper(${e.id},'english')">⬇ Paper</button>
+      <button class="btn btn-ghost btn-sm" onclick="downloadPaper(${e.id},'english')">${ic('download')} Paper</button>
       ${action}
     </div>
   </div></div>`;
@@ -6926,6 +7171,8 @@ async function openExamPlayer(id){
     const ex=await api('/api/student/exam/'+id);
     window._curExam=ex; window._examFile=null;
     if(ex.already_submitted){ openExamResult(id); return; }
+    const _gsch=spSchedOf(ex);
+    if(_gsch&&_gsch.getTime()>Date.now()){ el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" onclick="loadSTests()">${ic('home')} Back</button><div class="pl-title">${esc(ex.title||'Test')}</div></div><div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic('clock')}</div><p><b>Ye test scheduled hai</b></p><small>Start time: ${spSchedFmt(_gsch)} — Tests page pe live countdown chal raha hai.</small></div></div></div>`; return; }
     const biling=ex.medium==='Bilingual';
     const qs=ex.questions.map(q=>{
       const qtext=`<div class="pl-qtext">${esc(q.question_text)} <span class="pl-marks">${q.max_marks} marks</span></div>${(biling&&q.question_text_hi)?`<div class="pl-qtext-hi">${esc(q.question_text_hi)}</div>`:''}`;
@@ -8654,6 +8901,24 @@ function examCardHTML_v1(e){
    Noto Sans Devanagari added to portal font link + body stack + PDF doc (fixes उत्तर-type conjuncts).
    PDF buttons now open examPdfChoose -> medium modal (English/हिंदी/Bilingual) -> examPdfPremium(id,mode,medium)
    with on-the-fly translation of missing Hindi. Rollback: restore from pre-translate backup.
+   UPDATE 8: paste engine v2 (spFromClipboardHTML) — MathJax v2/v3 + KaTeX rendered-twin removal,
+   block-level line breaks preserved (no more duplicated/flattened equations from site copies).
+   Exam scheduling: date+time at creation (scheduled_at field + invisible ⟦S:ISO⟧ chapter marker so it
+   works even without backend column); student sees UPCOMING pill + live countdown (spCdStart/[data-cd])
+   on Tests hero + cards + dashboard banner (_sSchedBanner); start gated (openExamPlayer).
+   Teacher card: Edit button (examEdit -> PATCH /api/teacher/exam/{id}, needs backend snippet).
+   Premium PDF v2 (buildPdfDoc): teacher photo logo (my-photo, MVS monogram fallback), title strip,
+   option letter chips, correct-option highlight, ANSWER/Solution boxes + explanation for MCQ
+   (defensive keys correct_index/correct/correct_option, model_answer/model/answer).
+   Test cards emoji-free: icon badges with blinking numbers (.tx-pill.inf b, txBlink).
+   Admin Tests Tracker page (loadATests -> GET /api/admin/exams; graceful notice until backend snippet
+   mvs_backend_exam_update.py is deployed). Rollback: restore from pre-examfeat backup.
+   UPDATE 9: FULL test editing — teacher card Edit button opens examEditTest(id): loads exam+questions
+   via /attempts, prefills create modal (subject/title/chapter/duration/medium/schedule + ALL questions
+   via _examFormQs, correct answer mapped from correct_index/correct/correct_option). Add/edit/remove
+   questions, then Save -> submitExam PATCHes /api/teacher/exam/{id} with full question set
+   (window._editExamId branch). Live-test warning banner when submissions exist. Needs backend snippet
+   v2 (PATCH with questions replacement). Rollback: restore from pre-qedit backup.
    Premium modal CSS clearly marked hai: 'PREMIUM CREATE-TEST MODAL (cx)' block ko delete karo,
    showModal ki first line se cx-reset code hatao, openCreateExam se cx-add lines hatao.
    autoFormatField aur ocrFillQuestion ke AI versions neeche saved hain.
