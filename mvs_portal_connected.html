@@ -4607,8 +4607,37 @@ async function examEditSave(id){
     await api('/api/teacher/exam/'+id,'PATCH',body);
     closeModal(); toast('Test updated successfully.'); loadTTests();
   }catch(e){
-    toast('Update save nahi hua — backend mein PATCH endpoint pending hai (mvs_backend_exam_update.py deploy karein). '+e.message,true);
+    if(/not found|404/i.test(e.message||'')){ window._pendingEdit={id:id,body:body}; examPatchFailModal(); }
+    else toast('Update save nahi hua: '+e.message,true);
   }
+}
+/* ---- edit fallback: backend PATCH missing -> friendly chooser + recreate ---- */
+function examPatchFailModal(){
+  showModal('Update save nahi hua',
+  `<div class="ws-empty"><div class="big">${ic('help')}</div>
+   <p><b>Server mein Edit (PATCH) endpoint abhi deploy nahi hua</b></p>
+   <small>Ye sirf <b>one-time setup</b> hai: <b>mvs_backend_exam_update.py</b> ka code backend (<code>admin_routes.py</code> ke end) mein paste karke redeploy karte hi Edit hamesha seedha save hoga.<br><br><b>Abhi ke liye:</b> main aapke changes ek <b>new updated test</b> ke roop mein save kar sakta hoon — purana test list se hatane ki koshish bhi karunga.<br><span style="color:#b45309">Note: agar is test pe students ki submissions aa chuki hain to recreate mat karein — purani submissions nayi copy mein nahi aayengi.</span></small></div>`,
+  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="examRecreate()">Save as New Updated Test</button>`);
+}
+async function examRecreate(){
+  const p=window._pendingEdit; if(!p){ closeModal(); return; }
+  closeModal(); toast('Saving updated copy\u2026');
+  try{
+    let body=p.body;
+    if(!body.questions){
+      const d=await api('/api/teacher/exam/'+p.id+'/attempts');
+      const ex=d.exam||{}; const isM=ex.test_type==='mcq';
+      body.subject=body.subject||ex.subject; body.test_type=body.test_type||ex.test_type; body.medium=body.medium||ex.medium||'English';
+      body.questions=(d.questions||[]).map(q=> isM?{question_text:q.question_text||'',question_text_hi:q.question_text_hi||q.question_hi||'',options:q.options||[],options_hi:q.options_hi||[],correct_option:(q.correct_option!=null?q.correct_option:(q.correct_index!=null?(q.options||[])[q.correct_index]:undefined)),explanation:q.explanation||q.expl||'',explanation_hi:q.explanation_hi||q.expl_hi||'',max_marks:q.max_marks||1,image_b64:q.image_b64||null}:{question_text:q.question_text||'',question_text_hi:q.question_text_hi||q.question_hi||'',model_answer:q.model_answer||q.model||'',model_answer_hi:q.model_answer_hi||q.model_hi||'',max_marks:q.max_marks||5,image_b64:q.image_b64||null,model_answer_image:q.model_answer_image||null});
+    }
+    await api('/api/teacher/exam','POST',body);
+    let removed=false;
+    try{ await api('/api/teacher/exam/'+p.id,'DELETE'); removed=true; }
+    catch(e){ try{ await api('/api/teacher/material/'+p.id,'DELETE'); removed=true; }catch(e2){} }
+    window._editExamId=null; window._pendingEdit=null;
+    toast(removed?'Updated test save ho gaya — purana test hata diya.':'Updated test save ho gaya. Purani card list mein ab bhi dikhegi — backend snippet deploy karte hi ye sab automatic ho jayega.');
+    loadTTests();
+  }catch(e){ toast('Save failed: '+e.message,true); }
 }
 /* teacher: Download PDF hub — mode pick, then medium, then download */
 function examPdfHub(id){
@@ -5065,7 +5094,10 @@ async function submitExam(){
     toast(_editId?'Test updated successfully!':(biling?'Test created! Any blank Hindi fields are being auto-filled now.':'Test created successfully!'));
     loadTTests();
   }
-  catch(e){ toast((window._editExamId?'Update failed — backend snippet (mvs_backend_exam_update.py) deployed? ':'')+e.message,true); }
+  catch(e){
+    if(window._editExamId&&/not found|404/i.test(e.message||'')){ window._pendingEdit={id:window._editExamId,body:body}; examPatchFailModal(); }
+    else toast((window._editExamId?'Update failed: ':'')+e.message,true);
+  }
 }
 async function viewExamAttempts(id){
   try{
@@ -9227,6 +9259,11 @@ function examCardHTML_v1(e){
    Result: per-question marks, feedback suggestion with EN/हिंदी toggle (free spTranslate), Solutions
    button (_solHub: View with medium select / Download PDF client-side from result data), Download My
    Answer Sheet gated until test duration over. Rollback: restore from pre-playerv2 backup.
+   UPDATE 11: edit-save fallback — PATCH 404 (backend snippet not deployed) now shows a friendly
+   chooser modal instead of raw error toast; 'Save as New Updated Test' POSTs the full edited body
+   (metadata-only edits rebuild questions from /attempts first), then best-effort DELETE of the old
+   exam (exam + material endpoints). Permanent fix unchanged: deploy mvs_backend_exam_update.py.
+   Rollback: restore from pre-editfallback backup.
    Premium modal CSS clearly marked hai: 'PREMIUM CREATE-TEST MODAL (cx)' block ko delete karo,
    showModal ki first line se cx-reset code hatao, openCreateExam se cx-add lines hatao.
    autoFormatField aur ocrFillQuestion ke AI versions neeche saved hain.
