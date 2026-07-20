@@ -4627,6 +4627,7 @@ function _sTestReminder(e,sch){
 /* student dashboard: "upcoming scheduled test" banner with live countdown */
 function _sSchedBanner(el,up){
   try{
+    el.querySelectorAll('.tx-cdbanner').forEach(x=>x.remove());   // never duplicate the banner
     if(!up||!up.sch)return;
     const e=up.e,sch=up.sch;
     const ban=document.createElement('div');

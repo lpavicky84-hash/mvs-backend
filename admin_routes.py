@@ -957,6 +957,19 @@ def delete_teacher(tid: int, db: Session = Depends(get_db), _=Depends(get_admin)
         ("DELETE FROM class_entries WHERE teacher_id=:t", {"t": tid}),
         ("DELETE FROM dpps WHERE teacher_id=:t", {"t": tid}),
         ("DELETE FROM tests WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM exam_results WHERE attempt_id IN (SELECT id FROM exam_attempts WHERE exam_id IN (SELECT id FROM exams WHERE teacher_id=:t))", {"t": tid}),
+        ("DELETE FROM exam_attempts WHERE exam_id IN (SELECT id FROM exams WHERE teacher_id=:t)", {"t": tid}),
+        ("DELETE FROM exam_questions WHERE exam_id IN (SELECT id FROM exams WHERE teacher_id=:t)", {"t": tid}),
+        ("DELETE FROM exam_views WHERE exam_id IN (SELECT id FROM exams WHERE teacher_id=:t)", {"t": tid}),
+        ("DELETE FROM exams WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM lecture_questions WHERE lecture_id IN (SELECT id FROM lectures WHERE teacher_id=:t)", {"t": tid}),
+        ("DELETE FROM lectures WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM timetables WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM teacher_attendance WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM teacher_contracts WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM payout_adjustments WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM dpp_submissions WHERE dpp_id NOT IN (SELECT id FROM dpps)", {}),
+        ("DELETE FROM test_submissions WHERE test_id NOT IN (SELECT id FROM tests)", {}),
         ("DELETE FROM notifications WHERE user_id=:u", {"u": uid}),
         ("DELETE FROM teacher_profiles WHERE id=:t", {"t": tid}),
         ("DELETE FROM users WHERE id=:u", {"u": uid}),
@@ -2133,3 +2146,58 @@ def admin_exams(db: Session = Depends(get_db), _=Depends(get_admin)):
                     "scheduled_at": e.scheduled_at.isoformat() if getattr(e, "scheduled_at", None) else None,
                     "created_at": e.created_at.isoformat() if e.created_at else None})
     return out
+
+
+# ===== ORPHAN DATA CLEANUP (content left behind by deleted teachers) =====
+_ORPHAN_SQL = "teacher_id IS NOT NULL AND teacher_id NOT IN (SELECT id FROM teacher_profiles)"
+
+def _orphan_counts(db):
+    def c(sql):
+        try:
+            return int(db.execute(_sqltext(sql)).scalar() or 0)
+        except Exception:
+            db.rollback()
+            return 0
+    return {
+        "tests": c("SELECT COUNT(*) FROM exams WHERE " + _ORPHAN_SQL),
+        "lectures": c("SELECT COUNT(*) FROM lectures WHERE " + _ORPHAN_SQL),
+        "timetables": c("SELECT COUNT(*) FROM timetables WHERE " + _ORPHAN_SQL),
+        "dpp_submissions": c("SELECT COUNT(*) FROM dpp_submissions WHERE dpp_id NOT IN (SELECT id FROM dpps)"),
+        "test_submissions": c("SELECT COUNT(*) FROM test_submissions WHERE test_id NOT IN (SELECT id FROM tests)"),
+    }
+
+_ORPHAN_DELETE_STMTS = [
+    "DELETE FROM exam_results WHERE attempt_id IN (SELECT id FROM exam_attempts WHERE exam_id IN (SELECT id FROM exams WHERE " + _ORPHAN_SQL + "))",
+    "DELETE FROM exam_attempts WHERE exam_id IN (SELECT id FROM exams WHERE " + _ORPHAN_SQL + ")",
+    "DELETE FROM exam_questions WHERE exam_id IN (SELECT id FROM exams WHERE " + _ORPHAN_SQL + ")",
+    "DELETE FROM exam_views WHERE exam_id IN (SELECT id FROM exams WHERE " + _ORPHAN_SQL + ")",
+    "DELETE FROM exams WHERE " + _ORPHAN_SQL,
+    "DELETE FROM lecture_questions WHERE lecture_id IN (SELECT id FROM lectures WHERE " + _ORPHAN_SQL + ")",
+    "DELETE FROM lectures WHERE " + _ORPHAN_SQL,
+    "DELETE FROM timetables WHERE " + _ORPHAN_SQL,
+    "DELETE FROM teacher_attendance WHERE " + _ORPHAN_SQL,
+    "DELETE FROM teacher_contracts WHERE " + _ORPHAN_SQL,
+    "DELETE FROM payout_adjustments WHERE " + _ORPHAN_SQL,
+    "DELETE FROM dpp_submissions WHERE dpp_id NOT IN (SELECT id FROM dpps)",
+    "DELETE FROM test_submissions WHERE test_id NOT IN (SELECT id FROM tests)",
+]
+
+@router.get("/orphan-data/summary")
+def orphan_data_summary(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """How much leftover content exists from teachers that no longer exist."""
+    counts = _orphan_counts(db)
+    return {"counts": counts, "total": sum(counts.values())}
+
+@router.post("/orphan-data/cleanup")
+def orphan_data_cleanup(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """One click: remove every leftover item (tests, lectures, timetables, orphan
+    submissions) uploaded by teachers whose accounts have been deleted."""
+    counts = _orphan_counts(db)
+    if sum(counts.values()):
+        for sql in _ORPHAN_DELETE_STMTS:
+            try:
+                db.execute(_sqltext(sql))
+                db.commit()
+            except Exception:
+                db.rollback()
+    return {"removed": counts, "total": sum(counts.values())}
