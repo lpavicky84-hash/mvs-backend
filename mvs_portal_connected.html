@@ -204,6 +204,8 @@
   .tst-list{display:flex;flex-direction:column;gap:14px}
   .tst-pdf{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
   .tst-pdfbtn{font-size:.76rem!important;padding:4px 9px!important}
+  .tx-del{color:#dc2626!important;border-color:#fecaca!important}
+  .tx-del:hover{background:#fef2f2!important;border-color:#dc2626!important}
   .tst-item{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px 20px;display:flex;align-items:center;gap:16px;box-shadow:var(--shadow)}
   .tst-ic{width:46px;height:46px;border-radius:12px;background:#e0edff;color:#1d4ed8;display:flex;align-items:center;justify-content:center;flex-shrink:0}.tst-ic svg{width:22px;height:22px}
   .tst-body{flex:1;min-width:0}.tst-title{font-weight:700;font-size:1rem}
@@ -4233,6 +4235,7 @@ async function loadTTests(){
   const el=document.getElementById('t-tests-content');
   try{
     const exams=await api('/api/teacher/exams');
+    window._tExams=exams;
     const F=window._tTestFilter||'all';
     const totAtt=exams.reduce((sum,e)=>sum+(e.attempts||0),0);
     const totGrd=exams.reduce((sum,e)=>sum+(e.graded||0),0);
@@ -4278,6 +4281,7 @@ async function loadTTests(){
             <button class="mt-eng" title="Students who opened this test" onclick="openExamAudience(${e.id},'view')">${ic('users')} ${e.views||0}</button>
             <button class="mt-eng" title="Students who downloaded the paper" onclick="openExamAudience(${e.id},'download')">${ic('download')} ${e.downloads||0}</button>
             <button class="btn btn-ghost btn-sm" title="Edit title / schedule / duration" onclick="examEditTest(${e.id})">${ic('edit')} Edit</button>
+            <button class="btn btn-ghost btn-sm tx-del" title="Delete this test" onclick="examDelete(${e.id})">${ic('trash')} Delete</button>
             <button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>
             <button class="btn btn-primary btn-sm tst-pdfbtn" title="Premium formatted PDF download" onclick="examPdfHub(${e.id})">${ic('download')} Download PDF</button>
           </div>
@@ -4609,6 +4613,33 @@ async function examEditSave(id){
   }catch(e){
     if(/not found|404/i.test(e.message||'')){ window._pendingEdit={id:id,body:body}; examPatchFailModal(); }
     else toast('Update save nahi hua: '+e.message,true);
+  }
+}
+/* ---- delete test: confirm modal -> soft-delete on server (marks stay safe) ---- */
+function examDelete(id){
+  const ex=(window._tExams||[]).find(x=>x.id===id)||{};
+  const subs=ex.attempts||0;
+  showModal('Delete Test?',
+  `<div class="ws-empty"><div class="big" style="color:#dc2626">${ic('trash')}</div>
+   <p><b>"${esc(ex.title||'This test')}" delete karna hai?</b></p>
+   <small>Test turant teacher, students aur admin — sabki list se hat jaayega.${subs?`<br><span style="color:#b45309"><b>${subs} submission${subs>1?'s':''}</b> is test pe aa chuki ${subs>1?'hain':'hai'} — records server mein safe rahenge, par test aur uski submissions ab kisi ko nahi dikhengi.</span>`:''}<br><br>Ye action wapas nahi ho sakta.</small></div>`,
+  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" style="background:#dc2626;border-color:#dc2626" onclick="examDeleteGo(${id})">${ic('trash')} Haan, Delete karo</button>`);
+}
+async function examDeleteGo(id){
+  closeModal(); toast('Deleting test\u2026');
+  try{
+    await api('/api/teacher/exam/'+id,'DELETE');
+    toast('Test deleted.');
+    loadTTests();
+  }catch(e){
+    if(/not found|404/i.test(e.message||'')){
+      showModal('Delete nahi hua',
+      `<div class="ws-empty"><div class="big">${ic('help')}</div>
+       <p><b>Server mein Delete endpoint abhi deploy nahi hua</b></p>
+       <small>Backend ki <b>4 updated files</b> (models.py, teacher_routes.py, student_routes.py, admin_routes.py) deploy karte hi Delete chal jaayega.</small></div>`,
+      `<button class="btn btn-primary" onclick="closeModal()">Theek hai</button>`);
+    }
+    else toast('Delete nahi hua: '+e.message,true);
   }
 }
 /* ---- edit fallback: backend PATCH missing -> friendly chooser + recreate ---- */
