@@ -438,6 +438,7 @@ async def upload_timetable_pdf(
     class_name: str = Form("Class 12"),
     subject: str = Form(""),
     replace: str = Form("false"),
+    preview: str = Form("false"),
     db: Session = Depends(get_db),
     current_user=Depends(get_teacher)
 ):
@@ -453,10 +454,15 @@ async def upload_timetable_pdf(
         raise HTTPException(status_code=400, detail="PDF se koi valid row nahi mili. Text-based PDF honi chahiye.")
 
     subjects_found = sorted(set(r["subject"] for r in rows))
+    # preview mode: sirf parsed rows dikhao, DB me kuch save mat karo
+    if preview.lower() == "true":
+        return {"added": 0, "subjects": subjects_found, "preview": rows}
+    # replace sirf SAME CLASS ki entries hatao — dusri class ka same-name subject alag timetable hai
     if replace.lower() == "true":
         db.query(TimetableEntry).filter(
             TimetableEntry.teacher_id == tp.id,
-            TimetableEntry.subject.in_(subjects_found)
+            TimetableEntry.subject.in_(subjects_found),
+            TimetableEntry.class_name == class_name
         ).delete(synchronize_session=False)
 
     added = 0
@@ -466,6 +472,46 @@ async def upload_timetable_pdf(
             edate = datetime.strptime(r["date"], "%Y-%m-%d").date()
         except Exception:
             pass
+        db.add(TimetableEntry(
+            teacher_id=tp.id, subject=r["subject"], class_name=class_name,
+            chapter=r["chapter"], part=r["part"], entry_date=edate,
+            day=r["day"] or None, time_text=r["time"] or None, entry_type=r["type"]
+        ))
+        added += 1
+    db.commit()
+    return {"added": added, "subjects": subjects_found}
+
+# ===== TEACHER: TIMETABLE PDF COMMIT (preview edit ke baad final save) =====
+@router.post("/timetable-pdf-commit")
+def teacher_timetable_pdf_commit(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    from models import TimetableEntry
+    rows = payload.get("rows") or []
+    class_name = (payload.get("class_name") or "Class 12").strip()
+    replace = str(payload.get("replace") or "false")
+    clean = []
+    for r in rows:
+        sub = (r.get("subject") or "").strip()
+        ch = (r.get("chapter") or "").strip()
+        if not sub or not ch:
+            continue
+        clean.append({"subject": sub, "chapter": ch, "part": (r.get("part") or "").strip() or None,
+                      "date": r.get("date") or "", "day": (r.get("day") or "").strip(),
+                      "time": (r.get("time") or "").strip(), "type": r.get("type") or "chapter"})
+    if not clean:
+        raise HTTPException(status_code=400, detail="Koi valid row nahi bachi — kam se kam 1 chapter rakho.")
+    subjects_found = sorted(set(r["subject"] for r in clean))
+    if replace.lower() == "true":
+        db.query(TimetableEntry).filter(
+            TimetableEntry.teacher_id == tp.id,
+            TimetableEntry.subject.in_(subjects_found),
+            TimetableEntry.class_name == class_name
+        ).delete(synchronize_session=False)
+    added = 0
+    for r in clean:
+        edate = None
+        try: edate = datetime.strptime(r["date"], "%Y-%m-%d").date()
+        except Exception: pass
         db.add(TimetableEntry(
             teacher_id=tp.id, subject=r["subject"], class_name=class_name,
             chapter=r["chapter"], part=r["part"], entry_date=edate,

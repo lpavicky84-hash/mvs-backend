@@ -433,6 +433,7 @@ async def admin_upload_timetable_pdf(
     class_name: str = Form("Class 12"),
     subject: str = Form(""),
     replace: str = Form("false"),
+    preview: str = Form("false"),
     db: Session = Depends(get_db),
     _=Depends(get_admin)
 ):
@@ -446,10 +447,55 @@ async def admin_upload_timetable_pdf(
     if not rows:
         raise HTTPException(status_code=400, detail="PDF se koi valid row nahi mili.")
     subjects_found = sorted(set(r["subject"] for r in rows))
+    # preview mode: sirf parsed rows dikhao, DB me kuch save mat karo
+    if preview.lower() == "true":
+        return {"added": 0, "subjects": subjects_found, "preview": rows}
+    # replace sirf SAME CLASS ki entries hatao — dusri class ka same-name subject alag timetable hai
     if replace.lower() == "true":
-        db.query(TimetableEntry).filter(TimetableEntry.subject.in_(subjects_found)).delete(synchronize_session=False)
+        db.query(TimetableEntry).filter(
+            TimetableEntry.subject.in_(subjects_found),
+            TimetableEntry.class_name == class_name
+        ).delete(synchronize_session=False)
     added = 0
     for r in rows:
+        edate = None
+        try: edate = datetime.strptime(r["date"], "%Y-%m-%d").date()
+        except Exception: pass
+        db.add(TimetableEntry(
+            teacher_id=None, subject=r["subject"], class_name=class_name,
+            chapter=r["chapter"], part=r["part"], entry_date=edate,
+            day=r["day"] or None, time_text=r["time"] or None, entry_type=r["type"]
+        ))
+        added += 1
+    db.commit()
+    return {"added": added, "subjects": subjects_found}
+
+# ===== ADMIN: TIMETABLE PDF COMMIT (preview me edit/delete/split ke baad final save) =====
+@router.post("/timetable-pdf-commit")
+def admin_timetable_pdf_commit(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TimetableEntry
+    rows = payload.get("rows") or []
+    class_name = (payload.get("class_name") or "Class 12").strip()
+    replace = str(payload.get("replace") or "false")
+    clean = []
+    for r in rows:
+        sub = (r.get("subject") or "").strip()
+        ch = (r.get("chapter") or "").strip()
+        if not sub or not ch:
+            continue
+        clean.append({"subject": sub, "chapter": ch, "part": (r.get("part") or "").strip() or None,
+                      "date": r.get("date") or "", "day": (r.get("day") or "").strip(),
+                      "time": (r.get("time") or "").strip(), "type": r.get("type") or "chapter"})
+    if not clean:
+        raise HTTPException(status_code=400, detail="Koi valid row nahi bachi — kam se kam 1 chapter rakho.")
+    subjects_found = sorted(set(r["subject"] for r in clean))
+    if replace.lower() == "true":
+        db.query(TimetableEntry).filter(
+            TimetableEntry.subject.in_(subjects_found),
+            TimetableEntry.class_name == class_name
+        ).delete(synchronize_session=False)
+    added = 0
+    for r in clean:
         edate = None
         try: edate = datetime.strptime(r["date"], "%Y-%m-%d").date()
         except Exception: pass
@@ -1346,12 +1392,25 @@ def admin_live_users(db: Session = Depends(get_db), _=Depends(get_admin)):
 @router.get("/user/{user_id}/sessions")
 def admin_user_sessions(user_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     """Every time this person came online - the 'recent' list the admin scrolls."""
-    from models import UserSession, User
+    from models import UserSession, User, StudentProfile, TeacherProfile
     u = db.query(User).filter(User.id == user_id).first()
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
     rows = db.query(UserSession).filter(UserSession.user_id == user_id).order_by(
         UserSession.started_at.desc()).limit(60).all()
+    # full profile detail for the click-view (batch / phone / class / medium / subjects)
+    detail = {}
+    sp = db.query(StudentProfile).filter(StudentProfile.user_id == user_id).first()
+    if sp:
+        detail = {"batch": sp.batch_name or (sp.batch.value if hasattr(sp.batch, "value") else sp.batch) or "",
+                  "phone": sp.phone or "", "class_level": sp.class_level or "",
+                  "class_name": sp.class_name or "", "medium": sp.medium or "",
+                  "subjects": sp.subjects or [], "email": sp.email or ""}
+    else:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.user_id == user_id).first()
+        if tp:
+            detail = {"batch": tp.batch or "", "phone": tp.phone or "",
+                      "subjects": tp.subjects or []}
     out = []
     for s in rows:
         mins = 0
@@ -1361,7 +1420,7 @@ def admin_user_sessions(user_id: int, db: Session = Depends(get_db), _=Depends(g
                     "minutes": mins, "page": s.current_page or "\u2014"})
     return {"name": u.name, "code": u.user_id,
             "role": getattr(u.role, "value", str(u.role)),
-            "logins": len(out), "sessions": out}
+            "logins": len(out), "sessions": out, "detail": detail}
 
 
 # ==================================================== CLASS COMPLIANCE (missed / delayed)

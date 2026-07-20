@@ -381,7 +381,15 @@
   .exp-q{background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:13px 15px;margin-bottom:10px}
   .exp-qt{font-size:.9rem;line-height:1.65;flex:1;min-width:0}
   .exp-a{margin-top:9px;background:#f0fdf4;border:1.5px solid #bbf7d0;color:#15803d;border-radius:11px;padding:9px 12px;font-size:.85rem;line-height:1.6}
-  .tx-tlogo-img{width:52px;height:52px;border-radius:14px;object-fit:cover;box-shadow:0 6px 16px -6px rgba(15,42,84,.35);border:2px solid #fff}.tx-tlogo-self{width:46px;height:46px;border-radius:13px;object-fit:cover;box-shadow:0 6px 16px -6px rgba(15,42,84,.35);border:2px solid #fff;flex-shrink:0}
+  .tx-tlogo-img{width:52px;height:52px;border-radius:14px;object-fit:cover;box-shadow:0 6px 16px -6px rgba(15,42,84,.35);border:2px solid #fff}.tx-tlogo-self{width:46px;height:46px;border-radius:13px;object-fit:cover;box-shadow:0 6px 16px -6px rgba(15,42,84,.35);border:2px solid #fff;flex-shrink:0}.pvw-list{max-height:55vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-top:4px;padding-right:2px}
+.pvw-row{display:flex;align-items:center;gap:8px;padding:7px 10px;border:1.5px solid #e5e9f2;border-radius:12px;background:#fff}
+.pvw-row.ev{background:#fff8f0;border-color:#ffd9ad}
+.pvw-date{min-width:96px;font-size:.7rem;color:var(--text-muted);font-weight:700;line-height:1.3}
+.pvw-main{flex:1;display:flex;gap:6px;min-width:0}
+.pvw-ch{flex:2;min-width:0;padding:7px 10px;font-size:.84rem}
+.pvw-pt{flex:.8;min-width:64px;padding:7px 10px;font-size:.84rem}
+.pvw-subj{font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--primary);margin:8px 2px 0}
+.pvw-merged{font-size:.6rem;background:#fff0d6;color:#b07f1e;padding:3px 8px;border-radius:999px;font-weight:800;white-space:nowrap}
   .pl-tlogo-img{width:30px;height:30px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,.7);vertical-align:-9px;margin-right:3px;box-shadow:0 3px 10px -3px rgba(0,0,0,.4)}
   .pl-band .pl-head-r{flex-wrap:wrap;justify-content:flex-end;row-gap:8px}
   @media (max-width:720px){ .pl-band{gap:10px;padding:13px 14px} .pl-band .pl-head-r{width:100%;justify-content:space-between;margin-left:0} .pl-timer{font-size:.95rem;padding:8px 13px} .pl-msel{flex:1;min-width:0;padding:9px 34px 9px 12px;font-size:.8rem} }
@@ -2594,9 +2602,9 @@ function openAdminPdf(){
   const clsSel=document.getElementById('apdf-class');
   const cls=()=>String((clsSel&&clsSel.value)||'').replace(/\D/g,'')||'12';
   pdfSubjOptions('apdf-subject',cls());
-  if(clsSel) clsSel.addEventListener('change',()=>pdfSubjOptions('apdf-subject',cls()));
+  if(clsSel) clsSel.addEventListener('change',()=>{ pdfSubjOptions('apdf-subject',cls()); const _w=document.getElementById('apdf-warn'); if(_w) _w.innerHTML=''; });
   const subSel=document.getElementById('apdf-subject');
-  if(subSel) subSel.addEventListener('change',()=>pdfReplaceWarn(subSel.value,(typeof _attEntries!=='undefined'?_attEntries:[]),'apdf-warn','apdf-replace'));
+  if(subSel) subSel.addEventListener('change',()=>pdfReplaceWarn(subSel.value,(typeof _attEntries!=='undefined'?_attEntries:[]),'apdf-warn','apdf-replace',cls()));
 }
 async function uploadAdminPdf(){
   const fi=document.getElementById('apdf-file');
@@ -2606,12 +2614,14 @@ async function uploadAdminPdf(){
   const fd=new FormData();
   fd.append('file',fi.files[0]); fd.append('class_name',val('apdf-class'));
   fd.append('subject',val('apdf-subject')||''); fd.append('replace',document.getElementById('apdf-replace').checked?'true':'false');
+  fd.append('preview','true');
   try{
  const r=await fetch(API+'/api/admin/timetable-pdf',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
  const d=await r.json(); if(!r.ok) throw new Error(d.detail||'Error');
- st.innerHTML=`<div class="alert alert-success"> <strong>${d.added} entries add!</strong><br>Subjects: ${d.subjects.join(', ')}</div>`;
- toast(d.added+' entries added! '); loadATimetable();
- fi.disabled=true; btn.disabled=false; btn.textContent=' Done'; btn.setAttribute('onclick','closeModal()');
+ const _cls=val('apdf-class'), _rep=document.getElementById('apdf-replace')&&document.getElementById('apdf-replace').checked;
+ closeModal();
+ openPdfPreview(d.preview||[],{isAdmin:true,class_name:_cls,replace:_rep});
+ return;
   }catch(e){ st.innerHTML=`<div class="alert alert-danger"> ${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Upload & Parse'; }
 }
 // ===== GREETING =====
@@ -3523,8 +3533,10 @@ async function submitSlotChange(){
 }
 function openTTPdf(){
   showModal('PDF Upload — Auto-Parse',
- `<div class="alert alert-info"><strong>Upload your timetable PDF directly</strong> — format and columns are auto-detected. Chapter, Parts, Date, Day and Time are all extracted.</div><div class="form-group"><label>Class</label>${classSelect('pdf-class')}</div><div class="form-group"><label>Subject (optional — blank = PDF se auto-detect)</label><input class="form-control" id="pdf-subject" placeholder="Blank = auto-detect" oninput="pdfReplaceWarn(this.value,(typeof _ttEntries!=='undefined'?_ttEntries:[]),'pdf-warn','pdf-replace')"></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('pdf-file').click()" ondragover="fdOver(event,this)" ondragleave="fdLeave(event,this)" ondrop="fdDrop(event,this,'pdf-file','pdf-label')"><div class="fd-icon"></div><div id="pdf-label" style="font-size:.85rem">Click to choose a PDF, or drag and drop it here</div><input type="file" id="pdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('pdf-label').textContent=this.files[0]?.name||''"></div></div><div id="pdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="pdf-replace"> Replace existing entries for the same subject</label></div><div id="pdf-status"></div>`,
+ `<div class="alert alert-info"><strong>Upload your timetable PDF directly</strong> — format and columns are auto-detected. Chapter, Parts, Date, Day and Time are all extracted.</div><div class="form-group"><label>Class</label>${classSelect('pdf-class')}</div><div class="form-group"><label>Subject (optional — blank = PDF se auto-detect)</label><input class="form-control" id="pdf-subject" placeholder="Blank = auto-detect" oninput="pdfReplaceWarn(this.value,(typeof _ttEntries!=='undefined'?_ttEntries:[]),'pdf-warn','pdf-replace',val('pdf-class'))"></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('pdf-file').click()" ondragover="fdOver(event,this)" ondragleave="fdLeave(event,this)" ondrop="fdDrop(event,this,'pdf-file','pdf-label')"><div class="fd-icon"></div><div id="pdf-label" style="font-size:.85rem">Click to choose a PDF, or drag and drop it here</div><input type="file" id="pdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('pdf-label').textContent=this.files[0]?.name||''"></div></div><div id="pdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="pdf-replace"> Replace existing entries for the same subject</label></div><div id="pdf-status"></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="pdf-btn" onclick="uploadTTPdf()">Upload & Parse</button>`);
+  const _clsC=document.getElementById('pdf-class');
+  if(_clsC) _clsC.addEventListener('change',()=>pdfReplaceWarn(val('pdf-subject'),(typeof _ttEntries!=='undefined'?_ttEntries:[]),'pdf-warn','pdf-replace',val('pdf-class')));
 }
 async function uploadTTPdf(){
   const fi=document.getElementById('pdf-file');
@@ -3535,13 +3547,13 @@ async function uploadTTPdf(){
   const fd=new FormData();
   fd.append('file',fi.files[0]); fd.append('class_name',val('pdf-class'));
   fd.append('subject',val('pdf-subject')||''); fd.append('replace',document.getElementById('pdf-replace').checked?'true':'false');
+  fd.append('preview','true');
   try{
  const r=await fetch(API+'/api/teacher/timetable-pdf',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
  const d=await r.json(); if(!r.ok) throw new Error(d.detail||'Error');
- st.innerHTML=`<div class="alert alert-success"> <strong>${d.added} entries added!</strong><br>Subjects: ${d.subjects.join(', ')}</div>`;
- toast(d.added+' entries added! '); loadTTimetable();
- fi.disabled=true;
- btn.disabled=false; btn.textContent=' Done'; btn.setAttribute('onclick','closeModal()');
+ const _cls=val('pdf-class'), _rep=document.getElementById('pdf-replace')&&document.getElementById('pdf-replace').checked;
+ closeModal();
+ openPdfPreview(d.preview||[],{isAdmin:false,class_name:_cls,replace:_rep});
  return;
   }catch(e){ st.innerHTML=`<div class="alert alert-danger"> ${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Upload & Parse'; }
 }
@@ -8526,14 +8538,17 @@ function renderStudentTimetable(entries, containerId, opts={}){
   // ---- Chapter data (premium hero + chapter progress modal, teeno portals) ----
   const _chapAll=[];
   subjects.forEach(s=>{ tl[s].forEach(it=>{ if(it.kind!=='chapter') return;
+    if(_isNonBookChapter(it.chapter)) return;   // grammar/writing-skills = NIOS book chapter nahi
     const total=it.parts.length, dnc=it.parts.filter(_partDone).length;
     const dn=total>0&&dnc===total;
     const dts=it.parts.map(p=>p.date).filter(Boolean).sort();
     const nxt=it.parts.find(p=>p.date&&p.date>=_tdK&&!_partDone(p))||it.parts.find(p=>!_partDone(p));
-    const num=(String(it.chapter).match(/(?:chapter|lesson|ch|l)\s*[-.:\s]*(\d+)/i)||[])[1]||'';
-    _chapAll.push({subject:s,name:it.chapter,done:!!dn,started:dnc>0,total:total,dnc:dnc,
+    (_expandMergedChapter(it.chapter)||[it.chapter]).forEach(_cnm=>{   // merged -> individual count
+    const num=(String(_cnm).match(/(?:chapter|lesson|ch|l)\s*[-.:\s]*(\d+)/i)||[])[1]||'';
+    _chapAll.push({subject:s,name:_cnm,done:!!dn,started:dnc>0,total:total,dnc:dnc,
       compDate:(dn&&dts.length)?dts[dts.length-1]:null,firstDate:dts[0]||null,
       next:nxt?{date:nxt.date||null,time:nxt.time||null,pos:it.parts.indexOf(nxt)+1}:null,num:num});
+    });
   }); });
   const _chapScope=active?_chapAll.filter(c=>c.subject===active):_chapAll;
   window._ttChap=window._ttChap||{};
@@ -8629,10 +8644,10 @@ function renderStudentTimetable(entries, containerId, opts={}){
          <select class="fbar-sel" onchange="${_tab}(encodeURIComponent(this.value))"${(_noCls&&!isWeek)?' disabled':''}>
            ${isWeek?`<option value="__all"${allSel?' selected':''}>All Subjects \u00b7 ${subjects.length}</option>`
                    :`<option value=""${!active?' selected':''}>${_noCls?'Select Class first':'Select Subject'}</option>`}
-           ${(_noCls&&!isWeek)?'':subjects.map(s=>{const n=tl[s].filter(it=>it.kind==='chapter').length||tl[s].length; return `<option value="${esc(s)}"${(!allSel&&s===active)?' selected':''}>${esc(s)} \u00b7 ${n} chapters</option>`;}).join('')}
+           ${(_noCls&&!isWeek)?'':subjects.map(s=>{const n=_countBookChapters(tl[s])||tl[s].length; return `<option value="${esc(s)}"${(!allSel&&s===active)?' selected':''}>${esc(s)} \u00b7 ${n} chapters</option>`;}).join('')}
          </select>
        </div>`
-    : `<div class="fbar"><div class="fbar-chips">${isWeek?`<button class="fchip ${allSel?'on':''}" onclick="${_tab}('__all')">All Subjects</button>`:''}${subjects.map(s=>{ const n=tl[s].filter(it=>it.kind==='chapter').length||tl[s].length; return `<button class="fchip ${(!allSel&&s===active)?'on':''}" onclick="${_tab}('${encodeURIComponent(s)}')">${esc(s)}<span class="fchip-n">${n}</span></button>`; }).join('')}</div></div>`;
+    : `<div class="fbar"><div class="fbar-chips">${isWeek?`<button class="fchip ${allSel?'on':''}" onclick="${_tab}('__all')">All Subjects</button>`:''}${subjects.map(s=>{ const n=_countBookChapters(tl[s])||tl[s].length; return `<button class="fchip ${(!allSel&&s===active)?'on':''}" onclick="${_tab}('${encodeURIComponent(s)}')">${esc(s)}<span class="fchip-n">${n}</span></button>`; }).join('')}</div></div>`;
   const wkSubs=(_ttView==='weekly'&&opts.activeSubject==='__all')?subjects:(_ttView==='weekly'?[active]:subjects);
   const body=_ttView==='weekly'
     ? renderStudentWeekly(tl,wkSubs,opts)
@@ -8644,7 +8659,7 @@ function renderStudentTimetable(entries, containerId, opts={}){
 }
 function renderStudentChapters(list, subject, opts){
   const tmap=(opts.tipTeacherMap||{})[subject]||opts.tipTeacher||{};
-  const chapters=list.filter(it=>it.kind==='chapter');
+  const chapters=[]; list.filter(it=>it.kind==='chapter'&&!_isNonBookChapter(it.chapter)).forEach(it=>{ const _n=(_expandMergedChapter(it.chapter)||[]).length||1; for(let _i=0;_i<_n;_i++) chapters.push(it); });
   const chDone=chapters.filter(c=>c.parts.every(_partDone)&&c.parts.length).length;
   let tp=0,dp=0; list.forEach(it=>{ if(it.kind==='chapter') it.parts.forEach(p=>{tp++; if(_partDone(p))dp++;}); else {tp++; if(_partDone(it.data))dp++;} });
   const syl=tp?Math.round(dp/tp*100):0;
@@ -9025,13 +9040,102 @@ window.addEventListener('dragover',e=>{ e.preventDefault(); });
 window.addEventListener('drop',e=>{ e.preventDefault(); });
 
 // ---- PDF re-upload replace warning (admin + teacher) ----
-function pdfReplaceWarn(subj, entries, warnId, cbId){
+/* UPDATE 22: NIOS book chapter rules */
+// grammar / writing-skills = NIOS book chapter nahi — progress counting me mat lao
+function _isNonBookChapter(name){
+  return /grammar|tense|reported speech|narration|conjunction|preposition|clause|modal|subject[ -]?verb|writing skill|notice writing|letter writing|article writing|essay|punctuation|active voice|passive voice|comprehension|unseen/i.test(String(name||''));
+}
+// merged chapter "Chapter 15 & 16 - X" / "Chapter 25 to 28 - X" -> individual chapter names
+function _expandMergedChapter(name){
+  const s=String(name||'').trim();
+  const m=s.match(/chapter\s*[-–:]?\s*((?:\d+\s*(?:,|&|and|to|\-)?\s*)+\d+)\s*[-–:]/i)||s.match(/chapter\s*[-–:]?\s*((?:\d+\s*(?:,|&|and|to|\-)?\s*)+\d+)$/i);
+  if(!m) return null;
+  const seg=m[1];
+  let nums=[];
+  const rg=seg.match(/(\d+)\s*(?:to|\-)\s*(\d+)/i);
+  if(rg){ const a=+rg[1],b=+rg[2]; if(b>a&&b-a<=15) for(let i=a;i<=b;i++) nums.push(i); }
+  if(!nums.length) nums=(seg.match(/\d+/g)||[]).map(Number);
+  nums=[...new Set(nums)].filter(n=>n>0&&n<100);
+  if(nums.length<2) return null;
+  return nums.map(n=>'Chapter '+n);
+}
+// subject dropdown chips: sirf book chapters count karo (merged -> individual)
+function _countBookChapters(list){
+  let n=0;
+  (list||[]).forEach(it=>{ if(it.kind!=='chapter'||_isNonBookChapter(it.chapter)) return; n+=(_expandMergedChapter(it.chapter)||['']).length; });
+  return n;
+}
+
+/* UPDATE 22: PDF parse preview — split/delete/edit karke final upload */
+window._pdfPreview=null;
+function openPdfPreview(rows,opts){
+  window._pdfPreview={rows:(rows||[]).map(r=>({subject:r.subject||'',chapter:r.chapter||'',part:r.part||'',date:r.date||'',day:r.day||'',time:r.time||'',type:r.type||'chapter'})),
+    isAdmin:!!(opts&&opts.isAdmin), class_name:(opts&&opts.class_name)||'Class 12',
+    replace:(opts&&opts.replace)?'true':'false'};
+  showModal('Check Chapters \u2014 Preview',
+   '<div id="pvw-head"></div><div class="pvw-list" id="pvw-list"></div>',
+   '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="pvw-btn" onclick="commitPdfPreview()">Final Upload</button>');
+  renderPdfPreview();
+}
+function renderPdfPreview(){
+  const P=window._pdfPreview; if(!P) return;
+  const head=document.getElementById('pvw-head'), list=document.getElementById('pvw-list');
+  if(!head||!list) return;
+  const subs=[...new Set(P.rows.map(r=>r.subject).filter(Boolean))];
+  const chaps=new Set(P.rows.filter(r=>r.type!=='event').map(r=>r.subject+'|'+(r.chapter||'').toLowerCase()));
+  head.innerHTML=`<div class="alert alert-info" style="margin-bottom:8px"><strong>${P.rows.length} entries \u00b7 ${chaps.size} chapters</strong> \u00b7 ${esc(P.class_name)}${subs.length?` \u00b7 ${esc(subs.join(', '))}`:''}<br><span style="font-size:.8rem">Abhi kuch save nahi hua. <b>Split</b> se merged chapter alag karo, delete se extra hatao, naam bhi edit kar sakte ho \u2014 fir <b>Final Upload</b> dabao.</span></div>`;
+  const b=document.getElementById('pvw-btn');
+  if(!P.rows.length){ list.innerHTML='<div class="ws-empty"><p>Saari rows delete ho gayi.</p></div>'; if(b) b.disabled=true; return; }
+  if(b) b.disabled=false;
+  let lastSub=null, html='';
+  P.rows.forEach((r,i)=>{
+    if(r.subject!==lastSub){ lastSub=r.subject; html+=`<div class="pvw-subj">${esc(r.subject||'(No subject)')}</div>`; }
+    const merged=r.type!=='event'&&_expandMergedChapter(r.chapter);
+    html+=`<div class="pvw-row${r.type==='event'?' ev':''}">
+      <div class="pvw-date">${r.date?esc(fmtNice(r.date)):'\u2014'}${r.day?`<br>${esc(r.day)}`:''}${r.time?`<br>${esc(r.time)}`:''}</div>
+      <div class="pvw-main">
+        <input class="form-control pvw-ch" value="${esc(r.chapter||'')}" placeholder="Chapter name" onchange="pvwEdit(${i},'chapter',this.value)">
+        <input class="form-control pvw-pt" value="${esc(r.part||'')}" placeholder="Part" onchange="pvwEdit(${i},'part',this.value)">
+      </div>
+      ${merged?'<span class="pvw-merged">Merged</span>':''}
+      ${r.type!=='event'?`<button class="btn btn-ghost btn-sm" onclick="pvwSplit(${i})" title="Split into separate chapters">Split</button>`:''}
+      <button class="btn btn-danger btn-sm" onclick="pvwDel(${i})" title="Delete this row">${ic('trash')}</button>
+    </div>`;
+  });
+  list.innerHTML=html;
+}
+function pvwEdit(i,f,v){ const P=window._pdfPreview; if(P&&P.rows[i]) P.rows[i][f]=v; }
+function pvwDel(i){ const P=window._pdfPreview; if(!P) return; P.rows.splice(i,1); renderPdfPreview(); }
+function pvwSplit(i){
+  const P=window._pdfPreview; if(!P||!P.rows[i]) return;
+  const r=P.rows[i];
+  const names=_expandMergedChapter(r.chapter)||[(r.chapter||'Chapter')+' 1',(r.chapter||'Chapter')+' 2'];
+  P.rows.splice(i,1,...names.map(nm=>Object.assign({},r,{chapter:nm})));
+  renderPdfPreview();
+  toast(names.length+' chapters mein split ho gaya \u2014 names edit kar sakte ho.');
+}
+async function commitPdfPreview(){
+  const P=window._pdfPreview; if(!P) return;
+  if(!P.rows.length){ toast('Koi row nahi bachi.',true); return; }
+  const btn=document.getElementById('pvw-btn'); btn.disabled=true; btn.textContent='Uploading...';
+  try{
+    const r=await api((P.isAdmin?'/api/admin/':'/api/teacher/')+'timetable-pdf-commit','POST',{rows:P.rows,class_name:P.class_name,replace:P.replace});
+    const isA=P.isAdmin; window._pdfPreview=null; closeModal();
+    toast(r.added+' entries uploaded! ');
+    if(isA) loadATimetable(); else loadTTimetable();
+  }catch(e){ toast('Error: '+e.message,true); btn.disabled=false; btn.textContent='Final Upload'; }
+}
+
+function pdfReplaceWarn(subj, entries, warnId, cbId, cls){
   const w=document.getElementById(warnId); if(!w) return;
   subj=(subj||'').trim();
   if(!subj){ w.innerHTML=''; return; }
-  const n=(entries||[]).filter(e=>(e.subject||'').trim().toLowerCase()===subj.toLowerCase()).length;
+  const cl=String(cls||'').replace(/\D/g,'');
+  // duplicate sirf SAME CLASS me — same-name subject ki dusri class alag timetable hai
+  const n=(entries||[]).filter(e=>(e.subject||'').trim().toLowerCase()===subj.toLowerCase()
+      &&(!cl||String(e.class_name||'').replace(/\D/g,'')===cl)).length;
   if(n>0){
-    w.innerHTML=`<div class="alert alert-warning"><strong>${esc(subj)}</strong> already has <strong>${n}</strong> timetable entr${n===1?'y':'ies'} uploaded. Tick "Replace existing entries" below to replace the old timetable, otherwise the new entries will be added on top of it.</div>`;
+    w.innerHTML=`<div class="alert alert-warning"><strong>${esc(subj)}</strong>${cls?` (${esc(cls)})`:''} already has <strong>${n}</strong> timetable entr${n===1?'y':'ies'} uploaded. Tick "Replace existing entries" below to replace the old timetable, otherwise the new entries will be added on top of it.</div>`;
     const cb=document.getElementById(cbId); if(cb&&!cb.checked) cb.checked=true;
   } else w.innerHTML='';
 }
