@@ -2494,7 +2494,15 @@ async function pollAdminLive(){
 function startAdminLivePoll(){ if(_adminLiveInt) return; pollAdminLive(); _adminLiveInt=setInterval(pollAdminLive,15000); }
 function stopAdminLivePoll(){ if(_adminLiveInt){ clearInterval(_adminLiveInt); _adminLiveInt=null; } }
 let _curPage='';
-function _pingNow(){ api('/api/auth/ping','POST',{page:_curPage||''}).catch(()=>{}); }
+function _pingNow(){
+  // sirf tab ping jab page saamne ho — background tab / back karke chale jaane par
+  // ping ruk jaata hai aur LIVE_WINDOW (3 min) ke baad live list se hat jaate ho
+  if(document.visibilityState!=='visible') return;
+  if(!TOKEN) return;
+  api('/api/auth/ping','POST',{page:_curPage||''}).catch(()=>{});
+}
+// wapas tab pe aate hi turant ping — live list mein turant wapas aa jaao
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') _pingNow(); });
 function startStudentHeartbeat(){ if(_hbInt) return; _pingNow(); _hbInt=setInterval(_pingNow,30000); }
 function startHeartbeat(){ if(_hbInt) return; _pingNow(); _hbInt=setInterval(_pingNow,30000); }
 function stopStudentHeartbeat(){ if(_hbInt){ clearInterval(_hbInt); _hbInt=null; } }
@@ -5544,11 +5552,23 @@ function _paintLive(d){
 }
 
 async function openUserSessions(uid){
-  showModal('Login History','<div id="us-body"><div class="spinner"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  showModal('User Details','<div id="us-body"><div class="spinner"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
   try{
     const d=await api('/api/admin/user/'+uid+'/sessions');
+    const det=d.detail||{};
+    const roleBadge=d.role==='teacher'?'<span class="lu-role t">Teacher</span>':'<span class="lu-role s">Student</span>';
+    // full detail grid — batch, phone, class, medium, subjects (jo bhi available ho)
+    const cells=[];
+    const add=(k,v,lnk)=>{ if(v!=null&&String(v).trim()!=='') cells.push(`<div class="prof-cell"><div class="prof-k">${k}</div><div class="prof-v">${lnk?lnk:esc(String(v))}</div></div>`); };
+    add('Batch',det.batch);
+    add('Phone',det.phone,det.phone?`<a href="tel:${esc(det.phone)}" style="color:var(--primary);font-weight:700">${esc(det.phone)}</a>`:null);
+    add('Class',det.class_name||(det.class_level?('Class '+det.class_level):''));
+    add('Medium',det.medium);
+    add('Subjects',(det.subjects||[]).join(', '));
+    add('Email',det.email);
+    const detHtml=cells.length?`<div class="prof-grid" style="margin-bottom:14px">${cells.join('')}</div>`:'';
     const rows=(d.sessions||[]).length?d.sessions.map(s=>`<div class="us-row"><div class="us-main"><div class="us-when">${esc(s.started)}</div><div class="us-page">${esc(s.page)}</div></div><span class="us-dur">${s.minutes}m</span></div>`).join(''):'<div class="ws-empty"><p>No sessions recorded yet</p></div>';
-    document.getElementById('us-body').innerHTML=`<div class="alert alert-info"><strong>${esc(d.name)}</strong> \u00b7 ${esc(d.code||'')} \u00b7 ${esc(d.role)}<br>Logged in <strong>${d.logins}</strong> time${d.logins===1?'':'s'}</div><div class="us-scroll">${rows}</div>`;
+    document.getElementById('us-body').innerHTML=`<div class="alert alert-info" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><strong>${esc(d.name)}</strong> ${roleBadge} <span style="color:var(--text-muted)">${esc(d.code||'')} \u00b7 Logged in <strong>${d.logins}</strong> time${d.logins===1?'':'s'}</span></div>${detHtml}<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin:2px 0 6px">Login History</div><div class="us-scroll">${rows}</div>`;
   }catch(e){ document.getElementById('us-body').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
 }
 
