@@ -366,9 +366,7 @@
   .pl-timer .nav-ic{width:16px;height:16px}
   .pl-timer b{animation:txBlink 1.6s ease-in-out infinite;font-variant-numeric:tabular-nums;letter-spacing:.6px}
   .pl-timer.over{background:linear-gradient(135deg,#b91c1c,#ef4444);color:#fff}
-  .pl-medt{display:inline-flex;background:#fff;border:2px solid #fbbf24;border-radius:14px;padding:3px;box-shadow:0 6px 16px -6px rgba(217,119,6,.45);gap:3px}
-  .pl-medt button{border:0;background:transparent;padding:7px 13px;border-radius:11px;font-size:.78rem;font-weight:800;color:#64748b;cursor:pointer;transition:.2s}
-  .pl-medt button.on{background:linear-gradient(135deg,#f59e0b,#f97316);color:#fff;box-shadow:0 4px 10px -3px rgba(249,115,22,.5)}
+  .pl-msel{appearance:none;-webkit-appearance:none;background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23d97706' stroke-width='3' stroke-linecap='round'><path d='M6 9l6 6 6-6'/></svg>") no-repeat right 12px center/13px;border:2px solid #fbbf24;border-radius:14px;padding:10px 38px 10px 16px;font-weight:800;font-size:.86rem;color:#0F2A54;cursor:pointer;box-shadow:0 6px 16px -6px rgba(217,119,6,.45);font-family:inherit}
   .pl-band{display:flex;gap:14px;align-items:center;flex-wrap:wrap;background:linear-gradient(120deg,#0F2A54 0%,#1d4ed8 70%,#3b82f6 100%);border-radius:18px;padding:16px 18px;color:#fff;box-shadow:0 14px 30px -12px rgba(15,42,84,.5);margin-bottom:16px}
   .pl-band .pl-title{font-size:1.15rem;font-weight:800;color:#fff}
   .pl-band .pl-info{font-size:.78rem;color:#dbe6f7;margin-top:4px}
@@ -379,7 +377,7 @@
   .tx-pill.tx-up{background:linear-gradient(135deg,#7c3aed,#a78bfa)!important;color:#fff!important;animation:txBlink 1.4s ease-in-out infinite;box-shadow:0 4px 12px -4px rgba(124,58,237,.5)}
   .tx-pill.nv.inf b{color:inherit}
   .pl-band .pl-head-r{flex-wrap:wrap;justify-content:flex-end;row-gap:8px}
-  @media (max-width:720px){ .pl-band{gap:10px;padding:13px 14px} .pl-band .pl-head-r{width:100%;justify-content:space-between;margin-left:0} .pl-timer{font-size:.95rem;padding:8px 13px} .pl-medt button{padding:7px 10px;font-size:.74rem} .pl-medt{flex:1;min-width:0} .pl-medt button{flex:1;padding-left:6px;padding-right:6px} }
+  @media (max-width:720px){ .pl-band{gap:10px;padding:13px 14px} .pl-band .pl-head-r{width:100%;justify-content:space-between;margin-left:0} .pl-timer{font-size:.95rem;padding:8px 13px} .pl-msel{flex:1;min-width:0;padding:9px 34px 9px 12px;font-size:.8rem} }
   .pl-pal{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
   .pl-pn{width:34px;height:34px;border-radius:9px;border:1.5px solid var(--border);background:var(--card);font-weight:800;font-size:.78rem;color:var(--text-muted);cursor:pointer}
   .pl-pn.done{background:#059669;border-color:#059669;color:#fff}
@@ -2244,6 +2242,21 @@ function statCard(label,num,iconKey,accent,nav){
   return `<div class="stat-card stat-${accent}${nav?' clickable':''}"${nav?` onclick="${nav}"`:''}><div class="sc-badge sc-${accent}">${ic(iconKey)}</div><div class="sc-label">${label}</div><div class="sc-num">${num}</div></div>`;
 }
 function _setPage(p){ _curPage=p; if(TOKEN) _pingNow(); }
+/* browser back/forward support: portal pages become history entries */
+let _navGuard=false;
+function navPush(appId,page){
+  if(_navGuard) return;
+  try{
+    if(!history.state||!history.state.mvs) history.replaceState({mvs:1,app:appId,pg:page},'');
+    else history.pushState({mvs:1,app:appId,pg:page},'');
+  }catch(e){}
+}
+function navPushView(v){ if(_navGuard) return; try{ history.pushState({mvs:1,app:'student-app',pg:'tests',view:v},''); }catch(e){} }
+window.addEventListener('popstate',e=>{
+  const st=e.state; if(!st||!st.mvs||!st.app) return;
+  _navGuard=true;
+  try{ navTo(st.app,st.pg); }finally{ _navGuard=false; }
+});
 function navTo(appId,page){
   let target=null;
   document.querySelectorAll('#'+appId+' .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) target=n; });
@@ -2913,6 +2926,7 @@ async function saveTeacherSubjects(){
   btn.disabled=false; btn.textContent='Save & Continue →';
 }
 function tPage(page,el){
+  navPush('teacher-app',page);
   document.querySelectorAll('#teacher-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('t-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#teacher-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
@@ -4580,23 +4594,46 @@ function spCdStart(){
       const h=String(Math.floor(s/3600)).padStart(2,'0');
       const m=String(Math.floor((s%3600)/60)).padStart(2,'0');
       const ss=String(s%60).padStart(2,'0');
-      el.textContent=(t-now<=0)?'LIVE now — refresh the page':((d>0?(d+'d '):'')+h+':'+m+':'+ss);
+      el.textContent=(t-now<=0)?'LIVE now — refresh the page':(d>0?(d+' din '+(+h)+'h '+m+'m'):((+h)+'h '+m+'m '+ss+'s'));
     });
   },1000);
 }
-/* student dashboard: "upcoming scheduled test" banner with live countdown */
-async function _sSchedBanner(el){
+/* student: next upcoming scheduled test (shared by banner + dedupe + reminder) */
+async function _sUpcomingExam(){
   try{
     const exs=await api('/api/student/exams');
     const fut=exs.map(e=>({e,sch:spSchedOf(e)}))
       .filter(x=>x.sch&&x.sch.getTime()>Date.now()&&x.e.status!=='graded'&&x.e.status!=='grading')
       .sort((a,b)=>a.sch.getTime()-b.sch.getTime());
-    if(!fut.length)return;
-    const {e,sch}=fut[0];
+    return fut.length?fut[0]:null;
+  }catch(e){ return null; }
+}
+/* 1-day-left reminder: local notification + bell badge (once per test) */
+function _sTestReminder(e,sch){
+  try{
+    if(sch.getTime()-Date.now()>24*3600*1000) return;
+    const key='mvs_rem_'+e.id+'_'+sch.toDateString();
+    if(localStorage.getItem(key)) return;
+    localStorage.setItem(key,'1');
+    const list=JSON.parse(localStorage.getItem('mvs_local_notifs')||'[]');
+    list.unshift({title:'Test reminder: '+(e.title||'Test'),
+      message:(e.subject?e.subject+' \u00b7 ':'')+'Ye test '+spSchedFmt(sch)+' ko hai \u2014 ab sirf 1 din se kam bacha hai. Tayari kar lo!',
+      created_at:new Date().toISOString(),is_read:false});
+    localStorage.setItem('mvs_local_notifs',JSON.stringify(list.slice(0,20)));
+    const b=document.getElementById('s-notif-badge'); if(b){ b.style.display='flex'; b.textContent='!'; }
+    toast('Reminder: "'+(e.title||'Test')+'" \u2014 bas 1 din se kam bacha hai!');
+  }catch(err){}
+}
+/* student dashboard: "upcoming scheduled test" banner with live countdown */
+function _sSchedBanner(el,up){
+  try{
+    if(!up||!up.sch)return;
+    const e=up.e,sch=up.sch;
     const ban=document.createElement('div');
     ban.innerHTML='<div class="tx-cdbanner"><div><div class="tx-cdb-t">Upcoming scheduled test</div><div class="tx-cdb-s">'+esc(e.title||'')+(e.subject?' \u00b7 '+esc(e.subject):'')+' \u00b7 '+spSchedFmt(sch)+'</div></div><div class="tx-cdchip lg">Starts in <b data-cd="'+sch.getTime()+'">\u2026</b></div></div>';
     el.prepend(ban.firstChild);
     spCdStart();
+    _sTestReminder(e,sch);
   }catch(e){}
 }
 /* teacher: edit title / chapter / duration / schedule */
@@ -5447,6 +5484,7 @@ async function openUserSessions(uid){
 }
 
 function aPage(page,el){
+  navPush('admin-app',page);
   document.querySelectorAll('#admin-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('a-page-'+page).classList.add('active');
   if(!el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) el=n; }); }
@@ -6798,6 +6836,7 @@ function applyBatchMode(){
   });
 }
 function sPage(page,el){
+  navPush('student-app',page);
   if(page==='materials'&&sMode()==='syc'){ toast('Your batch uses Study Material only.'); page='qbank'; el=null; }
   if(page==='dpp'&&sMode()!=='live'){ toast('DPPs are not part of recorded batches.'); page='dashboard'; el=null; }
   document.querySelectorAll('#student-app .page').forEach(p=>p.classList.remove('active'));
@@ -6992,10 +7031,12 @@ async function loadSDashboard(){
     const batch=prof.batch_name||'';
     document.getElementById('s-batch').textContent=batch||'Student';
 
-    // ---- Today's Priority
+    // ---- Today's Priority (hidden when the upcoming-test banner already covers a test)
+    const _up=await _sUpcomingExam();
     const p=w.priority||{kind:'lecture',label:"Watch today's lecture",title:'Open the Manish Verma Classes App',action:'mvc'};
     const isLec=p.action==='mvc'||p.kind==='lecture';
-    const prio=`<div class="prio-card"><div class="prio-ic">${ic(_WS_PRIO_IC[p.kind]||'play')}</div><div class="prio-body"><div class="prio-tag">Today's Priority</div><h3>${esc(p.label||'')}</h3>${p.title?`<p>${esc(p.title)}</p>`:''}</div><button class="prio-btn" onclick="wsGo('${isLec?'mvc':(p.action||'materials')}')">${isLec?'Open MVC App':'Start now'}</button></div>`;
+    const _dupeTest=_up&&(p.kind==='test'||p.action==='tests');
+    const prio=_dupeTest?'':`<div class="prio-card"><div class="prio-ic">${ic(_WS_PRIO_IC[p.kind]||'play')}</div><div class="prio-body"><div class="prio-tag">Today's Priority</div><h3>${esc(p.label||'')}</h3>${p.title?`<p>${esc(p.title)}</p>`:''}</div><button class="prio-btn" onclick="wsGo('${isLec?'mvc':(p.action||'materials')}')">${isLec?'Open MVC App':'Start now'}</button></div>`;
 
     // ---- Today's Tasks
     const tasks=(w.tasks||[]);
@@ -7044,7 +7085,7 @@ async function loadSDashboard(){
       ${qaHtml}`);
     loadStudentLiveBanner();
     _renderTodayClassesStudent();
-    _sSchedBanner(el);
+    _sSchedBanner(el,_up);
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 
@@ -7333,6 +7374,7 @@ function _plDurLeft(ex){
   return _plStart(ex.id)+ex.duration_min*60000-Date.now();
 }
 async function openExamPlayer(id){
+  navPushView('player');
   const el=document.getElementById('s-tests-content'); softSpin(el);
   try{
     const ex=await api('/api/student/exam/'+id);
@@ -7340,7 +7382,7 @@ async function openExamPlayer(id){
     window._curExam=ex; window._examFile=null; _plAns={}; _plRev={};
     if(ex.already_submitted){ openExamResult(id); return; }
     const _gsch=spSchedOf(ex);
-    if(_gsch&&_gsch.getTime()>Date.now()){ el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" onclick="loadSTests()">${ic('home')} Back</button><div class="pl-title">${esc(ex.title||'Test')}</div></div><div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic('clock')}</div><p><b>Ye test scheduled hai</b></p><small>Start time: ${spSchedFmt(_gsch)} — Tests page pe live countdown chal raha hai.</small></div></div></div>`; return; }
+    if(_gsch&&_gsch.getTime()>Date.now()){ el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('home')}</button><div class="pl-title">${esc(ex.title||'Test')}</div></div><div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic('clock')}</div><p><b>Ye test scheduled hai</b></p><small>Start time: ${spSchedFmt(_gsch)} — Tests page pe live countdown chal raha hai.</small></div></div></div>`; return; }
     _plStart(id);
     if(ex.medium==='Bilingual'){ _plMediumScreen(id); }
     else { _plMed=(ex.medium==='Hindi')?'hi':'en'; await _plRender(id); }
@@ -7348,13 +7390,12 @@ async function openExamPlayer(id){
 }
 function _plMediumScreen(id){
   const ex=window._curExam, el=document.getElementById('s-tests-content');
-  el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" onclick="loadSTests()">${ic('home')} Back</button><div class="pl-title">${esc(ex.title||'Test')}</div></div>
+  el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('home')}</button><div class="pl-title">${esc(ex.title||'Test')}</div></div>
   <div class="pl-mp"><div class="pl-mp-t">Select Medium · माध्यम चुनें</div>
-  <div class="pl-mp-s">Questions will appear in your chosen medium — you can also switch from the top bar during the test.<br>प्रश्न आपके चुने माध्यम में दिखेंगे — टेस्ट के दौरान भी ऊपर की पट्टी से माध्यम बदल सकते हैं।</div>
   <div class="pm-grid" style="margin-top:16px">
-    <button class="pm-opt" onclick="_plSetMed('en',${id})"><span class="pm-ic">A</span><span class="pm-tx"><b>English</b><small>Questions in English medium</small></span></button>
-    <button class="pm-opt" onclick="_plSetMed('hg',${id})"><span class="pm-ic" style="font-size:.8rem">Aअ</span><span class="pm-tx"><b>Hinglish</b><small>English + हिंदी dono saath dikhenge</small></span></button>
-    <button class="pm-opt" onclick="_plSetMed('hi',${id})"><span class="pm-ic">अ</span><span class="pm-tx"><b>हिंदी</b><small>प्रश्न हिंदी माध्यम में</small></span></button>
+    <button class="pm-opt" onclick="_plSetMed('en',${id})"><span class="pm-ic">A</span><span class="pm-tx"><b>English</b></span></button>
+    <button class="pm-opt" onclick="_plSetMed('hi',${id})"><span class="pm-ic">अ</span><span class="pm-tx"><b>हिंदी</b></span></button>
+    <button class="pm-opt" onclick="_plSetMed('hg',${id})"><span class="pm-ic" style="font-size:.8rem">Aअ</span><span class="pm-tx"><b>Hinglish</b></span></button>
   </div></div>`;
 }
 async function _plSetMed(m,id){ _plMed=m; await _plRender(id); const el=document.getElementById('s-tests-content'); el.scrollIntoView(); window.scrollTo(0,0); }
@@ -7396,10 +7437,10 @@ async function _plRender(id){
     return `<div class="pl-q" id="plq-${q.q_no}"><div class="pl-qnum">${q.q_no}</div><div class="pl-qbody">${qtext}${q.image_b64?`<img class="pl-qimg" src="${q.image_b64}">`:''}</div></div>`;
   }).join('');
   const palette=isM?`<div class="pl-pal">${ex.questions.map(q=>`<button type="button" class="pl-pn" id="plpn-${q.q_no}" onclick="document.getElementById('plq-${q.q_no}').scrollIntoView({behavior:'smooth',block:'center'})">${q.q_no}</button>`).join('')}</div>`:'';
-  const medToggle=biling?`<div class="pl-medt"><button class="${_plMed==='en'?'on':''}" onclick="_plSetMed('en',${id})">English</button><button class="${_plMed==='hg'?'on':''}" onclick="_plSetMed('hg',${id})">Hinglish</button><button class="${_plMed==='hi'?'on':''}" onclick="_plSetMed('hi',${id})">हिंदी</button></div>`:'';
+  const medToggle=biling?`<select class="pl-msel" title="Language / माध्यम" onchange="_plSetMed(this.value,${id})"><option value="en"${_plMed==='en'?' selected':''}>English</option><option value="hi"${_plMed==='hi'?' selected':''}>हिंदी</option><option value="hg"${_plMed==='hg'?' selected':''}>Hinglish</option></select>`:'';
   const timer=ex.duration_min?`<div class="pl-timer" id="pl-timer">${ic('clock')} <b>--:--:--</b></div>`:'';
   const upload=!isM?`<div class="pl-upload"><div class="pl-up-title">Upload your handwritten answer sheet</div><div class="pl-up-desc">Write all answers on paper with question numbers, then upload a clear photo (or PDF). Your teacher will check each question and give marks with remarks.</div><input type="file" id="pl-file" accept="image/*,application/pdf" onchange="_examPickFile(this)"><div id="pl-file-name" class="pl-file-name"></div></div>`:'';
-  el.innerHTML=`<div class="pl-head pl-sticky"><div class="pl-band"><button class="btn btn-ghost btn-sm" onclick="loadSTests()">${ic('home')} Back</button><div style="flex:1;min-width:180px"><div class="pl-title">${esc(ex.title)}</div><div class="pl-info">${ex.subject?`<span class="pl-sub">${esc(ex.subject)}</span> · `:''}${ex.questions.length} questions · ${ex.total_marks} marks${ex.teacher_name?' · By '+esc(ex.teacher_name):''}</div></div><div class="pl-head-r">${medToggle}${timer}</div></div></div>${palette}<div class="pl-qs">${qs}</div>${upload}<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_plReview(${id})">Review & Submit</button>`;
+  el.innerHTML=`<div class="pl-head pl-sticky"><div class="pl-band"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('home')}</button><div style="flex:1;min-width:180px"><div class="pl-title">${esc(ex.title)}</div><div class="pl-info">${ex.subject?`<span class="pl-sub">${esc(ex.subject)}</span> · `:''}${ex.questions.length} questions · ${ex.total_marks} marks${ex.teacher_name?' · By '+esc(ex.teacher_name):''}</div></div><div class="pl-head-r">${medToggle}${timer}</div></div></div>${palette}<div class="pl-qs">${qs}</div>${upload}<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_plReview(${id})">Review & Submit</button>`;
   renderMath(el); _plPal(); _plTimerStart(ex);
 }
 function _plPal(){
@@ -7509,13 +7550,14 @@ async function downloadMyAnswer(id){
   }catch(e){ toast('Could not download answer sheet',true); }
 }
 async function openExamResult(id){
+  navPushView('result');
   const el=document.getElementById('s-tests-content'); softSpin(el);
   try{
     const r=await api('/api/student/exam/'+id+'/result');
     window._lastResult=r; r.id=id;
     if(r.status!=='graded'){
       const marking=r.status==='marking';
-      el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" onclick="loadSTests()">${ic('home')} Back</button><div class="pl-title">${esc(r.title||'Test')}</div></div><div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic(marking?'edit':'clock')}</div><p><b>${marking?'Marking by teacher':'Checking soon'}</b></p><small>${marking?'Teacher aapki answer sheet check kar rahe hain — marks jaldi yahan dikh jayenge.':'Your answer sheet is with your teacher. Marks will appear here once checking starts.'}</small></div></div></div>`;
+      el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('home')}</button><div class="pl-title">${esc(r.title||'Test')}</div></div><div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic(marking?'edit':'clock')}</div><p><b>${marking?'Marking by teacher':'Checking soon'}</b></p><small>${marking?'Teacher aapki answer sheet check kar rahe hain — marks jaldi yahan dikh jayenge.':'Your answer sheet is with your teacher. Marks will appear here once checking starts.'}</small></div></div></div>`;
       return;
     }
     const pct=r.total_marks?Math.round(r.total_awarded/r.total_marks*100):0;
@@ -7536,7 +7578,7 @@ async function openExamResult(id){
     let dlBlock='';
     if(dur&&st){ const left=parseInt(st)+dur*60000-Date.now(); if(left>0)dlBlock=`<span class="rs-dl-note">Answer sheet download test duration khatam hone ke baad available hogi.</span>`; }
     const hasSol=isMcq||((r.results||[]).some(it=>it.model_answer||it.model));
-    el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" onclick="loadSTests()">${ic('home')} Back</button><div class="pl-title">${esc(r.title)} — Result</div></div><div class="rs-score-card"><div><div class="rs-score-big">${r.total_awarded}/${r.total_marks}</div><div class="rs-score-sub">${pct}% scored</div></div><div class="rs-verdict ${vClass}">${esc(r.verdict||'')}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0"><span class="tx-pill g">CHECKING DONE ✓</span>${hasSol?`<button class="btn btn-primary btn-sm" onclick="_solHub(${id})">Solutions</button>`:''}${r.has_answer?(dlBlock||`<button class="btn btn-ghost btn-sm" onclick="downloadMyAnswer(${id})">${ic('download')} Download My Answer Sheet</button>`):''}</div><div class="rs-list">${items}</div>${(r.feedback||'').trim()?`<div class="rs-feedback"><div class="rs-fb-title">Teacher's Suggestion <span class="rs-fb-lang"><button class="on" id="rsfb-en" onclick="rsFbLang('en')">EN</button><button id="rsfb-hi" onclick="rsFbLang('hi')">हिंदी</button></span></div><div class="rs-fb-text" id="rs-fb-text" data-en="${esc(r.feedback)}">${esc(r.feedback)}</div><div class="rs-fb-teacher">— ${esc(r.teacher_name||'Your Teacher')}</div></div>`:''}`;
+    el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('home')}</button><div class="pl-title">${esc(r.title)} — Result</div></div><div class="rs-score-card"><div><div class="rs-score-big">${r.total_awarded}/${r.total_marks}</div><div class="rs-score-sub">${pct}% scored</div></div><div class="rs-verdict ${vClass}">${esc(r.verdict||'')}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0"><span class="tx-pill g">CHECKING DONE ✓</span>${hasSol?`<button class="btn btn-primary btn-sm" onclick="_solHub(${id})">Solutions</button>`:''}${r.has_answer?(dlBlock||`<button class="btn btn-ghost btn-sm" onclick="downloadMyAnswer(${id})">${ic('download')} Download My Answer Sheet</button>`):''}</div><div class="rs-list">${items}</div>${(r.feedback||'').trim()?`<div class="rs-feedback"><div class="rs-fb-title">Teacher's Suggestion <span class="rs-fb-lang"><button class="on" id="rsfb-en" onclick="rsFbLang('en')">EN</button><button id="rsfb-hi" onclick="rsFbLang('hi')">हिंदी</button></span></div><div class="rs-fb-text" id="rs-fb-text" data-en="${esc(r.feedback)}">${esc(r.feedback)}</div><div class="rs-fb-teacher">— ${esc(r.teacher_name||'Your Teacher')}</div></div>`:''}`;
     renderMath(el);
   }catch(e){ el.innerHTML=errHtml(e); }
 }
@@ -7977,7 +8019,8 @@ async function loadSNotif(){ await loadNotif('/api/student/notifications','s-not
 async function loadNotif(path,elId){
   const el=document.getElementById(elId);
   try{
- const ns=await api(path);
+ let ns=await api(path);
+ try{ const loc=JSON.parse(localStorage.getItem('mvs_local_notifs')||'[]'); if(loc.length&&elId==='s-notif-content') ns=loc.concat(ns); }catch(e){}
  let html=`<div class="card"><div class="card-header"><h3> Notifications</h3></div><div class="card-body">`;
  if(ns.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No notifications yet</p></div>`;
  ns.forEach(n=>{ html+=`<div class="doubt-card" style="border-left-color:${n.is_read?'var(--border)':'var(--primary)'}"><div style="display:flex;justify-content:space-between"><h4 style="font-size:.9rem">${esc(n.title)}</h4><small style="color:var(--text-muted)">${new Date(n.created_at).toLocaleString()}</small></div><p style="font-size:.82rem;color:var(--text-muted);margin-top:6px">${esc(n.message)}</p></div>`; });
