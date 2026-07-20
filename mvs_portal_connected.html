@@ -358,6 +358,51 @@
   .tx-cdb-s{font-size:.9rem;font-weight:700;margin-top:2px}
   .tx-empty .ic .nav-ic{width:32px;height:32px;opacity:.45}
   .ws-empty .big .nav-ic{width:30px;height:30px}
+  .pl-sticky{position:sticky;top:0;z-index:6;background:var(--bg);padding-top:6px}
+  .pl-head-r{display:flex;gap:8px;align-items:center;margin-left:auto}
+  .pl-timer{display:inline-flex;align-items:center;gap:5px;background:#eef3fb;border:1px solid #dbe3f0;color:#0F2A54;border-radius:99px;padding:4px 11px;font-size:.75rem;font-weight:800}
+  .pl-timer .nav-ic{width:12px;height:12px}
+  .pl-timer.over{background:#fee2e2;border-color:#fecaca;color:#b91c1c;animation:txBlink 1.2s ease-in-out infinite}
+  .pl-medt{display:inline-flex;background:#eef3fb;border:1px solid #dbe3f0;border-radius:99px;padding:2px}
+  .pl-medt button{border:0;background:transparent;padding:4px 12px;border-radius:99px;font-size:.72rem;font-weight:800;color:var(--text-muted);cursor:pointer}
+  .pl-medt button.on{background:var(--primary);color:#fff}
+  .pl-pal{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+  .pl-pn{width:34px;height:34px;border-radius:9px;border:1.5px solid var(--border);background:var(--card);font-weight:800;font-size:.78rem;color:var(--text-muted);cursor:pointer}
+  .pl-pn.done{background:#059669;border-color:#059669;color:#fff}
+  .pl-mp{max-width:520px;margin:24px auto;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 10px 30px -18px rgba(15,42,84,.25)}
+  .pl-mp-t{font-size:1.1rem;font-weight:800;color:var(--text);text-align:center}
+  .pl-mp-s{font-size:.78rem;color:var(--text-muted);text-align:center;margin-top:8px;line-height:1.55}
+  .pl-rv-t{font-weight:800;font-size:.95rem}
+  .pl-rv-s{font-size:.75rem;color:var(--text-muted);margin:6px 0 12px}
+  .pl-rv-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+  .pl-rv-q b{font-size:.85rem}
+  .pl-rv-q span{font-size:.68rem;color:var(--text-muted);margin-left:6px}
+  .pl-rv-tg{display:flex;gap:6px}
+  .pl-rv-tg button{border:1.5px solid var(--border);background:var(--card);border-radius:99px;padding:4px 12px;font-size:.7rem;font-weight:800;color:var(--text-muted);cursor:pointer}
+  .pl-rv-tg button.on{background:#059669;border-color:#059669;color:#fff}
+  .pl-rv-tg button.off-on{background:#dc2626;border-color:#dc2626;color:#fff}
+  .pl-rv-sum,.pl-tstats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
+  .pl-rv-sum>div,.pl-tstats>div{background:#f6f8fc;border:1px solid var(--border);border-radius:10px;padding:9px;text-align:center}
+  .pl-rv-sum b,.pl-tstats b{display:block;font-size:1.05rem;color:var(--primary)}
+  .pl-rv-sum span,.pl-tstats span{font-size:.6rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em}
+  .rs-fb-lang{float:right;display:inline-flex;background:#eef3fb;border-radius:99px;padding:2px;border:1px solid #dbe3f0}
+  .rs-fb-lang button{border:0;background:transparent;padding:2px 10px;border-radius:99px;font-size:.66rem;font-weight:800;color:var(--text-muted);cursor:pointer}
+  .rs-fb-lang button.on{background:var(--primary);color:#fff}
+  .rs-dl-note{font-size:.72rem;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:6px 10px}
+  @media (max-width:720px){
+    .modal{width:96vw!important;max-width:96vw!important}
+    .modal.cx{width:100vw!important;max-width:100vw!important;height:100dvh!important;max-height:100dvh!important;border-radius:0!important}
+    .tx-tabs{overflow-x:auto;flex-wrap:nowrap!important;padding-bottom:6px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+    .tx-tabs::-webkit-scrollbar{display:none}
+    .tx-acts{display:grid!important;grid-template-columns:1fr 1fr;align-items:stretch!important}
+    .tx-acts .btn,.tx-acts button{width:100%;justify-content:center;margin:0}
+    .tx-stats{grid-template-columns:1fr 1fr!important}
+    .grid-2{grid-template-columns:1fr!important}
+    .pl-rv-sum,.pl-tstats{grid-template-columns:1fr 1fr}
+    .pl-head{flex-wrap:wrap}
+    .rs-score-card{flex-direction:column;align-items:flex-start;gap:10px}
+    .pm-opt{padding:12px}
+  }
   .ma-row{display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px solid var(--border)}
   .ma-row:last-child{border-bottom:none}
   .ma-av{width:32px;height:32px;flex:0 0 32px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.8rem}
@@ -4229,20 +4274,19 @@ async function loadTTests(){
               <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">${subBar}</div>
             </div>
           </div>
-          <div style="display:flex;gap:8px;margin-top:13px;justify-content:flex-end;flex-wrap:wrap;align-items:center">
+          <div class="tx-acts" style="display:flex;gap:8px;margin-top:13px;justify-content:flex-end;flex-wrap:wrap;align-items:center">
             <button class="mt-eng" title="Students who opened this test" onclick="openExamAudience(${e.id},'view')">${ic('users')} ${e.views||0}</button>
             <button class="mt-eng" title="Students who downloaded the paper" onclick="openExamAudience(${e.id},'download')">${ic('download')} ${e.downloads||0}</button>
             <button class="btn btn-ghost btn-sm" title="Edit title / schedule / duration" onclick="examEditTest(${e.id})">${ic('edit')} Edit</button>
             <button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>
-            <button class="btn btn-ghost btn-sm tst-pdfbtn" title="Question paper — premium formatted" onclick="examPdfChoose(${e.id},'paper')">${ic('download')} Paper PDF</button>
-            <button class="btn btn-ghost btn-sm tst-pdfbtn" title="Question paper with solutions — premium formatted" onclick="examPdfChoose(${e.id},'solutions')">${ic('download')} With Solutions</button>
+            <button class="btn btn-primary btn-sm tst-pdfbtn" title="Premium formatted PDF download" onclick="examPdfHub(${e.id})">${ic('download')} Download PDF</button>
           </div>
         </div></div>`;
       }).join('') : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests in this filter</b><p>Try another tab above.</p></div>`;
     }
     el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Objective auto-graded on submit · Mission 75 graded manually by you</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="openCreateExam('mcq')">${ic('clipboard')} New Objective Test</button><button class="btn btn-primary btn-sm" onclick="openCreateExam('subjective')">${ic('edit')} New Mission 75 Test</button></div></div>`
       +statsHtml+`<div class="tx-tabs">${tabs}</div>`+body
-      +`<div class="tx-dash"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div style="display:flex;gap:10px;align-items:center"><span style="font-size:18px">${ic('upload')}</span><div><b style="font-size:.82rem">Upload PDF Test (legacy method)</b><div style="font-size:.68rem;color:var(--text-muted)">PDF paper + manual checking — kept for backward compatibility</div></div></div><button class="btn btn-ghost btn-sm" onclick="openUploadHub({typeLabel:'Test Paper'})">${ic('upload')} Upload PDF</button></div></div>`;
+;
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function tTestFilter(f){ window._tTestFilter=f; loadTTests(); }
@@ -4565,6 +4609,14 @@ async function examEditSave(id){
   }catch(e){
     toast('Update save nahi hua — backend mein PATCH endpoint pending hai (mvs_backend_exam_update.py deploy karein). '+e.message,true);
   }
+}
+/* teacher: Download PDF hub — mode pick, then medium, then download */
+function examPdfHub(id){
+  showModal('Download PDF',
+  `<div class="pm-grid">`
+  +`<button class="pm-opt" onclick="examPdfChoose(${id},'paper')"><span class="pm-ic">Q</span><span class="pm-tx"><b>Question Paper</b><small>Sirf questions — student copy</small></span></button>`
+  +`<button class="pm-opt" onclick="examPdfChoose(${id},'solutions')"><span class="pm-ic">A</span><span class="pm-tx"><b>Ques. with Answer</b><small>Questions + solutions — teacher copy</small></span></button>`
+  +`</div>`);
 }
 /* map saved exam questions back into the create-form structure (for editing) */
 function _examFormQs(qs,isM){
@@ -4971,6 +5023,7 @@ async function importExamPdf(inp){
   await _importExamFile(f,'/api/teacher/parse-exam-pdf','PDF');
 }
 async function downloadStudentAnswer(attId,name){
+  try{ api('/api/teacher/attempt/'+attId+'/marking','POST',{}).catch(()=>{}); }catch(e){}
   try{
     const r=await fetch(API+'/api/teacher/attempt/'+attId+'/answer',{headers:{Authorization:'Bearer '+TOKEN}});
     if(!r.ok){ toast('No answer sheet available for this student.',true); return; }
@@ -5019,7 +5072,7 @@ async function viewExamAttempts(id){
     const d=await api('/api/teacher/exam/'+id+'/attempts');
     window._examAttData=d;
     const rows=d.attempts.length?d.attempts.map(a=>{
-      const info=a.status==='graded'?('Score: '+a.total_awarded+'/'+d.exam.total_marks+(a.verdict?' \u00b7 '+esc(a.verdict):'')):a.status==='grading'?'Pending evaluation':'Awaiting submission';
+      const info=(a.status==='graded'?('Score: '+a.total_awarded+'/'+d.exam.total_marks+(a.verdict?' \u00b7 '+esc(a.verdict):'')):a.status==='marking'?'Marking in progress':a.status==='grading'?'Pending evaluation':'Awaiting submission')+(a.attempted_count!=null?' \u00b7 Answered '+a.attempted_count+'/'+(d.questions||[]).length:'');
       const btns=`<button class="btn btn-primary btn-sm" onclick="gradeManual(${a.attempt_id},${id})">${a.status==='graded'?'Edit Marks':'Grade Manually'}</button>`;
       const dl=a.has_answer?`<button class="btn btn-ghost btn-sm ansdl-btn" onclick="downloadStudentAnswer(${a.attempt_id},'${esc((a.student_name||'student').replace(/[^A-Za-z0-9]/g,'-'))}')">${ic('download')} Sheet</button>`:'';
       return `<div class="today-row"><div><div class="tr-sub">${esc(a.student_name||('Student #'+a.student_id))}</div><div class="tr-topic">${info}</div></div><div class="tmeta"><span class="tstatus ${a.status==='graded'?'done':''}">${a.status==='grading'?'pending evaluation':esc(a.status)}</span>${dl}${btns}</div></div>`;
@@ -5035,6 +5088,7 @@ async function loadAnsImg(attId,imgId){
 }
 function gradeManual(attId,examId){
   const d=window._examAttData; if(!d){ toast('Please reopen Results and try again.',true); return; }
+  try{ api('/api/teacher/attempt/'+attId+'/marking','POST',{}).catch(()=>{}); }catch(e){}
   const att=(d.attempts||[]).find(a=>a.attempt_id===attId)||{};
   const qs=d.questions||[];
   const isSubj=(d.exam.test_type||'')!=='mcq';
@@ -7131,10 +7185,12 @@ function examCardHTML(e){
   if(e.status==='graded'){
     const pct=Math.round((e.score||0)/(e.total_marks||1)*100);
     const off=(169.6*(1-pct/100)).toFixed(1);
-    stPill=`<span class="tx-pill g">GRADED ✓</span>`;
+    stPill=`<span class="tx-pill g">CHECKING DONE ✓</span>`;
     right=`<div class="tx-ring"><svg width="60" height="60" viewBox="0 0 60 60"><circle cx="30" cy="30" r="27" fill="none" stroke="var(--border)" stroke-width="5"/><circle cx="30" cy="30" r="27" fill="none" stroke="${pct>=60?'#059669':'#d97706'}" stroke-width="5" stroke-linecap="round" stroke-dasharray="169.6" stroke-dashoffset="${off}"/></svg><div class="t">${pct}%</div></div>`;
   } else if(e.status==='grading'){
-    stPill=`<span class="tx-pill a">PENDING EVALUATION</span>`;
+    stPill=`<span class="tx-pill a">CHECKING SOON</span>`;
+  } else if(e.status==='marking'){
+    stPill=`<span class="tx-pill a">MARKING BY TEACHER</span>`;
   }
   const _sch=spSchedOf(e),_future=_sch&&_sch.getTime()>Date.now();
   if(!stPill){
@@ -7142,10 +7198,10 @@ function examCardHTML(e){
   }
   const action = e.status==='graded'
     ? `<button class="btn btn-primary btn-sm" onclick="openExamResult(${e.id})">View Result · ${e.score}/${e.total_marks}</button>`
-    : e.status==='grading'
-    ? `<button class="btn btn-ghost btn-sm" disabled>Pending evaluation</button>`
+    : (e.status==='grading'||e.status==='marking')
+    ? `<button class="btn btn-ghost btn-sm" disabled>${e.status==='marking'?'Marking by teacher':'Checking soon'}</button>`
     : (_future?`<button class="btn btn-ghost btn-sm" disabled>Starts in <b data-cd="${_sch.getTime()}">\u2026</b></button>`:`<button class="btn btn-primary btn-sm" onclick="openExamPlayer(${e.id})">Start Test</button>`);
-  return `<div class="tx-card ${e.status!=='graded'&&e.status!=='grading'?'tx-live':''}"><div class="top" style="background:${topCol}"></div><div class="tx-pad">
+  return `<div class="tx-card ${e.status!=='graded'&&e.status!=='grading'&&e.status!=='marking'?'tx-live':''}"><div class="top" style="background:${topCol}"></div><div class="tx-pad">
     <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
       <span class="tx-tile ${isM?'o':'v'}">${esc(txInit(e.subject||'GEN'))}</span>
       <div style="flex:1;min-width:190px">
@@ -7158,45 +7214,151 @@ function examCardHTML(e){
       </div>
       ${right}
     </div>
-    <div style="display:flex;gap:8px;margin-top:13px;justify-content:flex-end;flex-wrap:wrap">
+    <div class="tx-acts" style="display:flex;gap:8px;margin-top:13px;justify-content:flex-end;flex-wrap:wrap">
       <button class="btn btn-ghost btn-sm" onclick="downloadPaper(${e.id},'english')">${ic('download')} Paper</button>
       ${action}
     </div>
   </div></div>`;
 }
 
+/* ================= STUDENT TEST PLAYER v2 =================
+   medium selection at start + in-test medium toggle + live timer + MCQ palette
+   + review-and-submit (attempted / not-answered) + thank-you stats screen */
+let _plMed='en', _plTimerI=null, _plAns={}, _plRev={};
+function _plStart(id){
+  const sk='mvs_start_'+id;
+  if(!localStorage.getItem(sk)) localStorage.setItem(sk,String(Date.now()));
+  return parseInt(localStorage.getItem(sk))||Date.now();
+}
+function _plDurLeft(ex){
+  if(!ex.duration_min)return null;
+  return _plStart(ex.id)+ex.duration_min*60000-Date.now();
+}
 async function openExamPlayer(id){
   const el=document.getElementById('s-tests-content'); softSpin(el);
   try{
     const ex=await api('/api/student/exam/'+id);
-    window._curExam=ex; window._examFile=null;
+    ex.id=id;
+    window._curExam=ex; window._examFile=null; _plAns={}; _plRev={};
     if(ex.already_submitted){ openExamResult(id); return; }
     const _gsch=spSchedOf(ex);
     if(_gsch&&_gsch.getTime()>Date.now()){ el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" onclick="loadSTests()">${ic('home')} Back</button><div class="pl-title">${esc(ex.title||'Test')}</div></div><div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic('clock')}</div><p><b>Ye test scheduled hai</b></p><small>Start time: ${spSchedFmt(_gsch)} — Tests page pe live countdown chal raha hai.</small></div></div></div>`; return; }
-    const biling=ex.medium==='Bilingual';
-    const qs=ex.questions.map(q=>{
-      const qtext=`<div class="pl-qtext">${esc(q.question_text)} <span class="pl-marks">${q.max_marks} marks</span></div>${(biling&&q.question_text_hi)?`<div class="pl-qtext-hi">${esc(q.question_text_hi)}</div>`:''}`;
-      if(ex.test_type==='mcq'){
-        const opts=(q.options||[]).map((o,idx)=>{ const hi=(biling&&q.options_hi&&q.options_hi[idx])?`<span class="pl-opt-hi">${esc(q.options_hi[idx])}</span>`:''; return `<label class="pl-opt"><input type="radio" name="pl-${q.q_no}" value="${esc(o)}"><span>${esc(o)}${hi}</span></label>`; }).join('');
-        return `<div class="pl-q"><div class="pl-qnum">${q.q_no}</div><div class="pl-qbody">${qtext}${q.image_b64?`<img class="pl-qimg" src="${q.image_b64}">`:''}<div class="pl-opts">${opts}</div></div></div>`;
-      }
-      return `<div class="pl-q"><div class="pl-qnum">${q.q_no}</div><div class="pl-qbody">${qtext}${q.image_b64?`<img class="pl-qimg" src="${q.image_b64}">`:''}</div></div>`;
-    }).join('');
-    const upload = ex.test_type==='subjective'
-      ? `<div class="pl-upload"><div class="pl-up-title">Upload your handwritten answer sheet</div><div class="pl-up-desc">Write all answers on paper (question number likhna), then upload a clear photo (or PDF). Your teacher will check each answer manually and give marks with remarks.</div><input type="file" id="pl-file" accept="image/*,application/pdf" onchange="_examPickFile(this)"><div id="pl-file-name" class="pl-file-name"></div></div>`
-      : '';
-    el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" onclick="loadSTests()">${ic('home')} Back</button><div class="pl-title">${esc(ex.title)}</div><div class="pl-info">${esc(ex.subject||'')} \u00b7 ${ex.questions.length} questions \u00b7 ${ex.total_marks} marks${ex.teacher_name?' \u00b7 By '+esc(ex.teacher_name):''}</div></div><div class="pl-qs">${qs}</div>${upload}<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="submitExamAnswer(${id})">Submit Test</button>`;
-    renderMath(el);
+    _plStart(id);
+    if(ex.medium==='Bilingual'){ _plMediumScreen(id); }
+    else { _plMed=(ex.medium==='Hindi')?'hi':'en'; await _plRender(id); }
   }catch(e){ el.innerHTML=errHtml(e); }
 }
-function _examPickFile(inp){ const f=inp.files[0]; window._examFile=f; const n=document.getElementById('pl-file-name'); if(n) n.textContent=f?('Selected: '+f.name):''; }
-function _fileB64(file){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); }); }
-async function submitExamAnswer(id){
+function _plMediumScreen(id){
+  const ex=window._curExam, el=document.getElementById('s-tests-content');
+  el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" onclick="loadSTests()">${ic('home')} Back</button><div class="pl-title">${esc(ex.title||'Test')}</div></div>
+  <div class="pl-mp"><div class="pl-mp-t">Select Medium · माध्यम चुनें</div>
+  <div class="pl-mp-s">Questions will appear in your chosen medium — you can also switch from the top bar during the test.<br>प्रश्न आपके चुने माध्यम में दिखेंगे — टेस्ट के दौरान भी ऊपर की पट्टी से माध्यम बदल सकते हैं।</div>
+  <div class="pm-grid" style="margin-top:16px">
+    <button class="pm-opt" onclick="_plSetMed('en',${id})"><span class="pm-ic">A</span><span class="pm-tx"><b>English</b><small>Questions in English medium</small></span></button>
+    <button class="pm-opt" onclick="_plSetMed('hi',${id})"><span class="pm-ic">अ</span><span class="pm-tx"><b>हिंदी</b><small>प्रश्न हिंदी माध्यम में</small></span></button>
+  </div></div>`;
+}
+async function _plSetMed(m,id){ _plMed=m; await _plRender(id); const el=document.getElementById('s-tests-content'); el.scrollIntoView(); window.scrollTo(0,0); }
+async function _plEnsureHi(){
+  const ex=window._curExam, sub=spDetectSubject((ex.subject||'')+' '+(ex.title||''));
+  const jobs=[];
+  ex.questions.forEach(q=>{
+    if(!(q.question_text_hi||q.question_hi||q._hiT)&&(q.question_text||'').trim()) jobs.push(async()=>{ const t=await spTranslate(q.question_text,sub); if(t)q._hiT=t; });
+    if(Array.isArray(q.options)){ q._hiO=q._hiO||[]; q.options.forEach((o,j)=>{ if(!((q.options_hi||[])[j])&&!q._hiO[j]&&(o||'').trim()) jobs.push(async()=>{ const t=await spTranslate(o,sub); if(t)q._hiO[j]=t; }); }); }
+  });
+  if(!jobs.length)return;
+  toast('Hindi translation ho rahi hai… (free)');
+  for(let i=0;i<jobs.length;i+=4){ await Promise.all(jobs.slice(i,i+4).map(f=>f())); }
+}
+function _plQText(q){ return _plMed==='hi'?((q.question_text_hi||q.question_hi||q._hiT||q.question_text)||''):(q.question_text||''); }
+function _plOptText(q,j){ return _plMed==='hi'?(((q.options_hi||[])[j])||((q._hiO||[])[j])||q.options[j]):q.options[j]; }
+async function _plRender(id){
+  const ex=window._curExam, el=document.getElementById('s-tests-content');
+  const isM=ex.test_type==='mcq';
+  if(isM){ ex.questions.forEach(q=>{ const s=document.querySelector('input[name="pl-'+q.q_no+'"]:checked'); if(s)_plAns[q.q_no]=s.value; }); }
+  if(_plMed==='hi'){ softSpin(el); await _plEnsureHi(); }
+  const biling=ex.medium==='Bilingual';
+  const qs=ex.questions.map(q=>{
+    const qtext=`<div class="pl-qtext">${esc(_plQText(q))} <span class="pl-marks">${q.max_marks} marks</span></div>`;
+    if(isM){
+      const opts=(q.options||[]).map((o,idx)=>`<label class="pl-opt"><input type="radio" name="pl-${q.q_no}" value="${esc(o)}" ${_plAns[q.q_no]===o?'checked':''} onchange="_plPal()"><span>${esc(_plOptText(q,idx))}</span></label>`).join('');
+      return `<div class="pl-q" id="plq-${q.q_no}"><div class="pl-qnum">${q.q_no}</div><div class="pl-qbody">${qtext}${q.image_b64?`<img class="pl-qimg" src="${q.image_b64}">`:''}<div class="pl-opts">${opts}</div></div></div>`;
+    }
+    return `<div class="pl-q" id="plq-${q.q_no}"><div class="pl-qnum">${q.q_no}</div><div class="pl-qbody">${qtext}${q.image_b64?`<img class="pl-qimg" src="${q.image_b64}">`:''}</div></div>`;
+  }).join('');
+  const palette=isM?`<div class="pl-pal">${ex.questions.map(q=>`<button type="button" class="pl-pn" id="plpn-${q.q_no}" onclick="document.getElementById('plq-${q.q_no}').scrollIntoView({behavior:'smooth',block:'center'})">${q.q_no}</button>`).join('')}</div>`:'';
+  const medToggle=biling?`<div class="pl-medt"><button class="${_plMed==='en'?'on':''}" onclick="_plSetMed('en',${id})">English</button><button class="${_plMed==='hi'?'on':''}" onclick="_plSetMed('hi',${id})">हिंदी</button></div>`:'';
+  const timer=ex.duration_min?`<div class="pl-timer" id="pl-timer">${ic('clock')} <b>--:--:--</b></div>`:'';
+  const upload=!isM?`<div class="pl-upload"><div class="pl-up-title">Upload your handwritten answer sheet</div><div class="pl-up-desc">Write all answers on paper with question numbers, then upload a clear photo (or PDF). Your teacher will check each question and give marks with remarks.</div><input type="file" id="pl-file" accept="image/*,application/pdf" onchange="_examPickFile(this)"><div id="pl-file-name" class="pl-file-name"></div></div>`:'';
+  el.innerHTML=`<div class="pl-head pl-sticky"><button class="btn btn-ghost btn-sm" onclick="loadSTests()">${ic('home')} Back</button><div class="pl-title">${esc(ex.title)}</div><div class="pl-head-r">${medToggle}${timer}</div><div class="pl-info">${esc(ex.subject||'')} · ${ex.questions.length} questions · ${ex.total_marks} marks${ex.teacher_name?' · By '+esc(ex.teacher_name):''}</div></div>${palette}<div class="pl-qs">${qs}</div>${upload}<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_plReview(${id})">Review & Submit</button>`;
+  renderMath(el); _plPal(); _plTimerStart(ex);
+}
+function _plPal(){
+  const ex=window._curExam; if(!ex||ex.test_type!=='mcq')return;
+  ex.questions.forEach(q=>{
+    const pn=document.getElementById('plpn-'+q.q_no); if(!pn)return;
+    const s=document.querySelector('input[name="pl-'+q.q_no+'"]:checked');
+    pn.classList.toggle('done',!!s);
+  });
+}
+function _plTimerStart(ex){
+  if(_plTimerI){ clearInterval(_plTimerI); _plTimerI=null; }
+  if(!ex.duration_min)return;
+  const tick=()=>{
+    const t=document.getElementById('pl-timer'); if(!t){ clearInterval(_plTimerI); _plTimerI=null; return; }
+    let left=_plDurLeft(ex); if(left==null)return;
+    const over=left<=0; if(over)left=0;
+    const s=Math.floor(left/1000);
+    const h=String(Math.floor(s/3600)).padStart(2,'0'), m=String(Math.floor((s%3600)/60)).padStart(2,'0'), ss=String(s%60).padStart(2,'0');
+    t.innerHTML=`${ic('clock')} <b>${h}:${m}:${ss}</b>`;
+    t.classList.toggle('over',over);
+    t.title=over?'Time over — please submit now':'Time remaining';
+  };
+  tick(); _plTimerI=setInterval(tick,1000);
+}
+/* ---- review & submit (attempted / not-answered marking) ---- */
+function _plReview(id){
+  const ex=window._curExam;
+  const isM=ex.test_type==='mcq';
+  _plRev={};
+  ex.questions.forEach(q=>{
+    if(isM){ const s=document.querySelector('input[name="pl-'+q.q_no+'"]:checked'); _plRev[q.q_no]=!!s; }
+    else _plRev[q.q_no]=true;
+  });
+  const el=document.getElementById('s-tests-content');
+  const rows=ex.questions.map(q=>{
+    const att=_plRev[q.q_no];
+    return `<div class="pl-rv-row" id="plrv-${q.q_no}"><div class="pl-rv-q"><b>Q${q.q_no}</b><span>${q.max_marks} marks</span></div><div class="pl-rv-tg"><button class="${att?'on':''}" onclick="_plRvSet(${q.q_no},true)">Attempted</button><button class="${!att?'off-on':''}" onclick="_plRvSet(${q.q_no},false)">Not answered</button></div></div>`;
+  }).join('');
+  el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" onclick="_plRender(${id})">${ic('home')} Back to questions</button><div class="pl-title">Review & Submit</div></div>
+  <div class="card"><div class="card-body">
+    <div class="pl-rv-t">Mark the questions you actually attempted</div>
+    <div class="pl-rv-s">Jin questions ke answer aapne likhe hain unhe <b>Attempted</b> rakhein, jinhe chhoda hai unhe <b>Not answered</b> karein — isse teacher ko sahi report milegi.</div>
+    <div class="pl-rv-list">${rows}</div>
+    <div class="pl-rv-sum" id="pl-rv-sum"></div>
+    <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="_plSubmit(${id})">Confirm & Submit Test</button>
+  </div></div>`;
+  _plRvSum();
+}
+function _plRvSet(qno,att){
+  _plRev[qno]=att;
+  const row=document.getElementById('plrv-'+qno);
+  if(row){ const bs=row.querySelectorAll('button'); bs[0].classList.toggle('on',att); bs[1].classList.toggle('off-on',!att); }
+  _plRvSum();
+}
+function _plRvSum(){
+  const ex=window._curExam; let att=0,attM=0,sk=0,skM=0;
+  ex.questions.forEach(q=>{ if(_plRev[q.q_no]){ att++; attM+=q.max_marks||0; } else { sk++; skM+=q.max_marks||0; } });
+  const el=document.getElementById('pl-rv-sum');
+  if(el)el.innerHTML=`<div><b>${att}</b><span>Attempted</span></div><div><b>${attM}</b><span>Attempt marks</span></div><div><b>${sk}</b><span>Not answered</span></div><div><b>${skM}</b><span>Skipped marks</span></div>`;
+}
+async function _plSubmit(id){
   const ex=window._curExam; let body={};
+  const attempted=[], skipped=[];
+  ex.questions.forEach(q=>{ (_plRev[q.q_no]?attempted:skipped).push(q.q_no); });
   if(ex.test_type==='mcq'){
     const ans={};
-    for(const q of ex.questions){ const sel=document.querySelector('input[name="pl-'+q.q_no+'"]:checked'); if(sel) ans[q.q_no]=sel.value; }
-    if(Object.keys(ans).length<ex.questions.length){ if(!confirm('You have not answered all questions. Submit anyway?')) return; }
+    for(const q of ex.questions){ const sel=document.querySelector('input[name="pl-'+q.q_no+'"]:checked'); if(sel)ans[q.q_no]=sel.value; }
     body={mcq_answers:ans};
   } else {
     if(!window._examFile){ toast('Please upload your handwritten answer sheet',true); return; }
@@ -7204,12 +7366,27 @@ async function submitExamAnswer(id){
     const b64=await _fileB64(window._examFile);
     body={answer_image_b64:b64, mime_type:window._examFile.type||'image/jpeg'};
   }
+  body.attempted=attempted; body.skipped=skipped;
   const el=document.getElementById('s-tests-content'); softSpin(el);
   try{
     const r=await api('/api/student/exam/'+id+'/submit','POST',body);
-    el.innerHTML=`<div class="pl-thanks"><div class="pl-thanks-ic">${ic('check')}</div><div class="pl-thanks-msg">${esc(r.message||'Thank you for submitting!')}</div>${r.note?`<div class="pl-thanks-note">${esc(r.note)}</div>`:''}<button class="btn btn-primary" onclick="${r.status==='graded'?('openExamResult('+id+')'):'loadSTests()'}" style="margin-top:16px">${r.status==='graded'?'View Result':'Back to Tests'}</button></div>`;
+    if(_plTimerI){ clearInterval(_plTimerI); _plTimerI=null; }
+    let attM=0,skM=0;
+    ex.questions.forEach(q=>{ if(_plRev[q.q_no])attM+=q.max_marks||0; else skM+=q.max_marks||0; });
+    const allDone=skipped.length===0;
+    const tName=ex.teacher_name||'your teacher';
+    el.innerHTML=`<div class="pl-thanks">
+      <div class="pl-thanks-ic">${ic('check')}</div>
+      <div class="pl-thanks-msg">Thank you!</div>
+      <div class="pl-thanks-note">Your answer sheet has been sent to <b>${esc(tName)}</b>.${allDone?' <b>Excellent</b> — aapne saare questions attempt kiye hain!':''} Jaldi hi aapka result milega — aap <b>Result Status</b> tab mein check karte reh sakte hain.</div>
+      <div class="pl-tstats"><div><b>${attempted.length}</b><span>Attempted</span></div><div><b>${attM}</b><span>Attempt marks</span></div><div><b>${skipped.length}</b><span>Not answered</span></div><div><b>${skM}</b><span>Skipped marks</span></div></div>
+      <div class="tx-pill a" style="margin-top:14px">CHECKING SOON</div>
+      <button class="btn btn-primary" onclick="${r.status==='graded'?('openExamResult('+id+')'):'loadSTests()'}" style="margin-top:16px">${r.status==='graded'?'View Result':'Back to Tests'}</button></div>`;
   }catch(e){ el.innerHTML=errHtml(e)+`<div style="margin-top:10px"><button class="btn btn-ghost btn-sm" onclick="openExamPlayer(${id})">Try Again</button></div>`; }
 }
+function _examPickFile(inp){ const f=inp.files[0]; window._examFile=f; const n=document.getElementById('pl-file-name'); if(n) n.textContent=f?('Selected: '+f.name):''; }
+function _fileB64(file){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); }); }
+
 async function downloadMyAnswer(id){
   try{
     toast('Preparing your answer sheet\u2026');
@@ -7226,7 +7403,12 @@ async function openExamResult(id){
   const el=document.getElementById('s-tests-content'); softSpin(el);
   try{
     const r=await api('/api/student/exam/'+id+'/result');
-    if(r.status!=='graded'){ el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" onclick="loadSTests()">${ic('home')} Back</button><div class="pl-title">${esc(r.title)}</div></div><div class="card"><div class="card-body"><div class="empty-state"><p>Your answer sheet is with your teacher for checking. Marks will appear here once it is checked.</p></div></div></div>`; return; }
+    window._lastResult=r; r.id=id;
+    if(r.status!=='graded'){
+      const marking=r.status==='marking';
+      el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" onclick="loadSTests()">${ic('home')} Back</button><div class="pl-title">${esc(r.title||'Test')}</div></div><div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic(marking?'edit':'clock')}</div><p><b>${marking?'Marking by teacher':'Checking soon'}</b></p><small>${marking?'Teacher aapki answer sheet check kar rahe hain — marks jaldi yahan dikh jayenge.':'Your answer sheet is with your teacher. Marks will appear here once checking starts.'}</small></div></div></div>`;
+      return;
+    }
     const pct=r.total_marks?Math.round(r.total_awarded/r.total_marks*100):0;
     const vClass=r.verdict==='Excellent'?'exc':r.verdict==='Good'?'good':'imp';
     const biling=r.medium==='Bilingual';
@@ -7236,14 +7418,128 @@ async function openExamResult(id){
         const ok=!!it.is_correct;
         const your=(it.your_answer===null||it.your_answer===undefined||it.your_answer==='')?'Not answered':it.your_answer;
         const ex_=(biling&&it.explanation_hi)?(it.explanation||'')+'\n'+it.explanation_hi:(it.explanation||'');
-        return `<div class="rs-q ${ok?'rs-ok':'rs-bad'}"><div class="rs-qhead"><div class="rs-qtext"><b>Q${it.q_no}.</b> ${esc(it.question)}${(biling&&it.question_hi)?`<div class="rs-qtext-hi">${esc(it.question_hi)}</div>`:''}</div><div class="rs-marks">${it.marks}/${it.max}</div></div><div class="rs-ans-row ${ok?'ok':'bad'}"><span class="rs-ans-ic">${ok?'\u2714':'\u2716'}</span><span><b>Your answer:</b> ${esc(String(your))}</span></div>${ok?'':`<div class="rs-ans-row ok"><span class="rs-ans-ic">\u2714</span><span><b>Correct answer:</b> ${esc(String(it.correct_answer||''))}</span></div>`}${ex_?`<div class="rs-expl"><b>Explanation:</b> ${esc(ex_)}</div>`:''}</div>`;
+        return `<div class="rs-q ${ok?'rs-ok':'rs-bad'}"><div class="rs-qhead"><div class="rs-qtext"><b>Q${it.q_no}.</b> ${esc(it.question)}${(biling&&it.question_hi)?`<div class="rs-qtext-hi">${esc(it.question_hi)}</div>`:''}</div><div class="rs-marks">${it.marks}/${it.max}</div></div><div class="rs-ans-row ${ok?'ok':'bad'}"><span class="rs-ans-ic">${ok?'✔':'✖'}</span><span><b>Your answer:</b> ${esc(String(your))}</span></div>${ok?'':`<div class="rs-ans-row ok"><span class="rs-ans-ic">✔</span><span><b>Correct answer:</b> ${esc(String(it.correct_answer||''))}</span></div>`}${ex_?`<div class="rs-expl"><b>Explanation:</b> ${esc(ex_)}</div>`:''}</div>`;
       }
       return `<div class="rs-q"><div class="rs-qhead"><div class="rs-qtext"><b>Q${it.q_no}.</b> ${esc(it.question)}${(biling&&it.question_hi)?`<div class="rs-qtext-hi">${esc(it.question_hi)}</div>`:''}</div><div class="rs-marks">${it.marks}/${it.max}</div></div>${it.remark?`<div class="rs-remark">${esc(it.remark)}</div>`:''}</div>`;
     }).join('');
-    el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" onclick="loadSTests()">${ic('home')} Back</button><div class="pl-title">${esc(r.title)} \u2014 Result</div></div><div class="rs-score-card"><div><div class="rs-score-big">${r.total_awarded}/${r.total_marks}</div><div class="rs-score-sub">${pct}% scored</div></div><div class="rs-verdict ${vClass}">${esc(r.verdict||'')}</div></div>${r.has_answer?`<div class="rs-dl"><span class="rs-dl-marks">Your Score: ${r.total_awarded}/${r.total_marks}</span><button class="btn btn-ghost btn-sm" onclick="downloadMyAnswer(${id})">${ic('download')} Download My Answer Sheet</button></div>`:''}<div class="rs-list">${items}</div><div class="rs-feedback"><div class="rs-fb-title">Teacher's Feedback</div><div class="rs-fb-text">${esc(r.feedback||'')}</div><div class="rs-fb-teacher">\u2014 ${esc(r.teacher_name||'Your Teacher')}</div></div>`;
+    const st=localStorage.getItem('mvs_start_'+id);
+    const dur=r.duration_min||r.duration||0;
+    let dlBlock='';
+    if(dur&&st){ const left=parseInt(st)+dur*60000-Date.now(); if(left>0)dlBlock=`<span class="rs-dl-note">Answer sheet download test duration khatam hone ke baad available hogi.</span>`; }
+    const hasSol=isMcq||((r.results||[]).some(it=>it.model_answer||it.model));
+    el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" onclick="loadSTests()">${ic('home')} Back</button><div class="pl-title">${esc(r.title)} — Result</div></div><div class="rs-score-card"><div><div class="rs-score-big">${r.total_awarded}/${r.total_marks}</div><div class="rs-score-sub">${pct}% scored</div></div><div class="rs-verdict ${vClass}">${esc(r.verdict||'')}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0"><span class="tx-pill g">CHECKING DONE ✓</span>${hasSol?`<button class="btn btn-primary btn-sm" onclick="_solHub(${id})">Solutions</button>`:''}${r.has_answer?(dlBlock||`<button class="btn btn-ghost btn-sm" onclick="downloadMyAnswer(${id})">${ic('download')} Download My Answer Sheet</button>`):''}</div><div class="rs-list">${items}</div>${(r.feedback||'').trim()?`<div class="rs-feedback"><div class="rs-fb-title">Teacher's Suggestion <span class="rs-fb-lang"><button class="on" id="rsfb-en" onclick="rsFbLang('en')">EN</button><button id="rsfb-hi" onclick="rsFbLang('hi')">हिंदी</button></span></div><div class="rs-fb-text" id="rs-fb-text" data-en="${esc(r.feedback)}">${esc(r.feedback)}</div><div class="rs-fb-teacher">— ${esc(r.teacher_name||'Your Teacher')}</div></div>`:''}`;
     renderMath(el);
   }catch(e){ el.innerHTML=errHtml(e); }
 }
+async function rsFbLang(m){
+  const box=document.getElementById('rs-fb-text'); if(!box)return;
+  const enB=document.getElementById('rsfb-en'), hiB=document.getElementById('rsfb-hi');
+  if(enB)enB.classList.toggle('on',m==='en'); if(hiB)hiB.classList.toggle('on',m==='hi');
+  if(m==='en'){ box.textContent=box.dataset.en||box.textContent; return; }
+  const en=box.dataset.en||box.textContent;
+  const sub=spDetectSubject(((window._lastResult||{}).subject||'')+' '+((window._lastResult||{}).title||''));
+  const t=await spTranslate(en,sub);
+  if(t)box.textContent=t;
+}
+/* ---- student solutions: view / download with medium selection ---- */
+function _solHub(id){
+  showModal('Solutions',
+  `<div class="pm-grid">`
+  +`<button class="pm-opt" onclick="_solMedPick(${id},'view')"><span class="pm-ic">V</span><span class="pm-tx"><b>View Solutions</b><small>Portal pe hi padhein — medium choose hoga</small></span></button>`
+  +`<button class="pm-opt" onclick="_solMedPick(${id},'pdf')"><span class="pm-ic">D</span><span class="pm-tx"><b>Download PDF</b><small>Premium formatted solutions PDF</small></span></button>`
+  +`</div>`);
+}
+function _solMedPick(id,mode){
+  showModal('Select Medium',
+  `<div class="pm-grid">`
+  +`<button class="pm-opt" onclick="${mode==='view'?`_solView(${id},'en')`:`_solPdf(${id},'en')`}"><span class="pm-ic">A</span><span class="pm-tx"><b>English</b><small>Solutions in English</small></span></button>`
+  +`<button class="pm-opt" onclick="${mode==='view'?`_solView(${id},'hi')`:`_solPdf(${id},'hi')`}"><span class="pm-ic">अ</span><span class="pm-tx"><b>हिंदी</b><small>हल हिंदी में</small></span></button>`
+  +`<button class="pm-opt" onclick="${mode==='view'?`_solView(${id},'both')`:`_solPdf(${id},'both')`}"><span class="pm-ic">Aअ</span><span class="pm-tx"><b>English + हिंदी</b><small>दोनों माध्यम</small></span></button>`
+  +`</div>`);
+}
+async function _solData(id,med){
+  let r=window._lastResult;
+  if(!r||r.id!==id){ r=await api('/api/student/exam/'+id+'/result'); window._lastResult=r; r.id=id; }
+  const sub=spDetectSubject((r.subject||'')+' '+(r.title||''));
+  const items=[];
+  for(const it of (r.results||[])){
+    const o={q_no:it.q_no,max:it.max,marks:it.marks};
+    o.q_en=it.question||''; o.q_hi=it.question_hi||'';
+    if(med!=='en'&&!o.q_hi&&o.q_en){ const t=await spTranslate(o.q_en,sub); if(t)o.q_hi=t; }
+    if(r.test_type==='mcq'){
+      o.a_en=it.correct_answer!=null?String(it.correct_answer):''; o.a_hi='';
+      o.x_en=it.explanation||''; o.x_hi=it.explanation_hi||'';
+      if(med!=='en'){
+        if(o.a_en&&/[A-Za-z]/.test(o.a_en)&&o.a_en.length<200){ const t=await spTranslate(o.a_en,sub); if(t)o.a_hi=t; }
+        if(o.x_en&&!o.x_hi){ const t=await spTranslate(o.x_en,sub); if(t)o.x_hi=t; }
+      }
+    } else {
+      o.a_en=it.model_answer||it.model||''; o.a_hi=it.model_answer_hi||it.model_hi||'';
+      if(med!=='en'&&o.a_en&&!o.a_hi){ const t=await spTranslate(o.a_en,sub); if(t)o.a_hi=t; }
+      o.rmk=it.remark||'';
+    }
+    items.push(o);
+  }
+  return {r,items};
+}
+async function _solView(id,med){
+  closeModal();
+  const el=document.getElementById('s-tests-content'); softSpin(el);
+  try{
+    const d=await _solData(id,med); const r=d.r, items=d.items;
+    const rows=items.map(o=>{
+      const qMain=med==='hi'?(o.q_hi||o.q_en):o.q_en;
+      const qHi=(med==='both'&&o.q_hi)?`<div class="rs-qtext-hi">${esc(o.q_hi)}</div>`:'';
+      let ans='';
+      if(r.test_type==='mcq'){
+        const aMain=med==='hi'?(o.a_hi||o.a_en):o.a_en;
+        ans=`<div class="rs-ans-row ok"><span class="rs-ans-ic">✔</span><span><b>Correct answer:</b> ${esc(aMain||'—')}</span></div>`;
+        const xMain=med==='hi'?(o.x_hi||o.x_en):o.x_en;
+        if(xMain)ans+=`<div class="rs-expl"><b>Explanation:</b> ${esc(xMain)}</div>`;
+        if(med==='both'&&o.x_hi)ans+=`<div class="rs-expl">${esc(o.x_hi)}</div>`;
+      } else {
+        const aMain=med==='hi'?(o.a_hi||o.a_en):o.a_en;
+        if(aMain)ans=`<div class="rs-expl"><b>Model answer:</b> ${esc(aMain)}</div>`+(med==='both'&&o.a_hi?`<div class="rs-expl">${esc(o.a_hi)}</div>`:'');
+        if(o.rmk)ans+=`<div class="rs-remark">${esc(o.rmk)}</div>`;
+      }
+      return `<div class="rs-q"><div class="rs-qhead"><div class="rs-qtext"><b>Q${o.q_no}.</b> ${esc(qMain)}${qHi}</div><div class="rs-marks">${o.max} marks</div></div>${ans}</div>`;
+    }).join('');
+    el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" onclick="openExamResult(${id})">${ic('home')} Back to Result</button><div class="pl-title">${esc(r.title||'Test')} — Solutions</div></div><div class="rs-list">${rows}</div>`;
+    renderMath(el);
+  }catch(e){ el.innerHTML=errHtml(e); }
+}
+async function _solPdf(id,med){
+  closeModal();
+  toast('Preparing solutions PDF…');
+  try{
+    const d=await _solData(id,med); const r=d.r, items=d.items;
+    const isM=r.test_type==='mcq';
+    const ex={title:(r.title||'Test')+' — Solutions',subject:r.subject,chapter:'',test_type:r.test_type,duration_min:null,total_marks:r.total_marks};
+    const qLbl=med==='hi'?'प्रश्न':'Question';
+    const body=items.map(o=>{
+      const qMain=med==='hi'?(o.q_hi||o.q_en):o.q_en;
+      let h='';
+      if(med==='both'&&o.q_hi)h+='<div class="q-hi">'+escH(o.q_hi)+'</div>';
+      if(isM){
+        const aMain=med==='hi'?(o.a_hi||o.a_en):o.a_en;
+        h+='<div class="sol"><div class="sol-l">'+(med==='hi'?'उत्तर':'Answer')+'</div><div class="sol-t">'+escH(aMain||'—')+'</div>';
+        const xMain=med==='hi'?(o.x_hi||o.x_en):o.x_en;
+        if(xMain)h+='<div class="sol-t" style="margin-top:4px">'+escH(xMain)+'</div>';
+        if(med==='both'&&o.x_hi)h+='<div class="q-hi">'+escH(o.x_hi)+'</div>';
+        h+='</div>';
+      } else {
+        const aMain=med==='hi'?(o.a_hi||o.a_en):o.a_en;
+        if(aMain){ h+='<div class="sol"><div class="sol-l">'+(med==='hi'?'हल':'Model Answer')+'</div><div class="sol-t">'+escH(aMain)+'</div>'+(med==='both'&&o.a_hi?'<div class="q-hi">'+escH(o.a_hi)+'</div>':'')+'</div>'; }
+      }
+      return '<div class="q"><div class="q-h"><b>'+qLbl+' '+o.q_no+'</b><span class="q-m">[ '+o.max+' '+(med==='hi'?'अंक':'marks')+' ]</span></div><div class="q-t">'+escH(qMain)+'</div>'+h+'</div>';
+    }).join('');
+    const w=window.open('','_blank');
+    if(!w){ toast('Popup blocked — please allow popups.',true); return; }
+    w.document.write(buildPdfDoc(ex,body,true,isM,med==='hi'?'hi':'en',null));
+    w.document.close();
+  }catch(e){ toast(e.message,true); }
+}
+
 
 async function loadSDoubts(){
   const el=document.getElementById('s-doubts-content');
@@ -8919,6 +9215,18 @@ function examCardHTML_v1(e){
    questions, then Save -> submitExam PATCHes /api/teacher/exam/{id} with full question set
    (window._editExamId branch). Live-test warning banner when submissions exist. Needs backend snippet
    v2 (PATCH with questions replacement). Rollback: restore from pre-qedit backup.
+   UPDATE 10: legacy PDF-upload block removed from Tests page. Teacher card: single 'Download PDF'
+   button -> examPdfHub (Question Paper / Ques. with Answer) -> medium -> auto download; actions grid
+   (.tx-acts) + portal-wide phone responsive (@media 720px: modal full-screen, tabs scroll, 2-col grids).
+   Player v2: medium selection at start (Bilingual) + in-test EN/हिंदी toggle (selections preserved,
+   missing Hindi auto-translated free), live duration timer (pl-timer), MCQ question palette (pl-pn),
+   Review & Submit screen (per-question Attempted/Not answered + live marks summary) -> thank-you
+   screen with teacher name + attempted/marks stats + all-attempted excellence note + CHECKING SOON.
+   Status flow: CHECKING SOON (grading) -> MARKING BY TEACHER (teacher downloads sheet/opens grader,
+   silent POST /api/teacher/attempt/{id}/marking — backend snippet v3) -> CHECKING DONE (graded).
+   Result: per-question marks, feedback suggestion with EN/हिंदी toggle (free spTranslate), Solutions
+   button (_solHub: View with medium select / Download PDF client-side from result data), Download My
+   Answer Sheet gated until test duration over. Rollback: restore from pre-playerv2 backup.
    Premium modal CSS clearly marked hai: 'PREMIUM CREATE-TEST MODAL (cx)' block ko delete karo,
    showModal ki first line se cx-reset code hatao, openCreateExam se cx-add lines hatao.
    autoFormatField aur ocrFillQuestion ke AI versions neeche saved hain.
