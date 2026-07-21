@@ -4691,10 +4691,40 @@ async function spTrEngine(text){
   for(const c of chunks){ const t=await spTrChunk(c); if(t==null)return null; outs.push(t); }
   return outs.join(' ');
 }
+async function spTranslateArrayTexts(block, subject){
+  // Match-the-following table ($\begin{array}) poora ka poora math ban ke mask ho
+  // jata tha, isliye Hindi translate ke baad bhi cells English rehte the. Ab
+  // andar ke \text{...} chunks translate hote hain - (a)/(i) markers aur poora
+  // LaTeX structure (&, \\, \hline) waise ka waisa rehta hai.
+  const re=/\\text\{([^{}]*)\}/g;
+  const found=[]; let m;
+  while((m=re.exec(block))) found.push(m[1]);
+  const uniq=[...new Set(found.filter(t=>/[A-Za-z]{2,}/.test(t)))];
+  if(!uniq.length) return block;
+  const map={};
+  for(const t of uniq){
+    const hm=t.match(/^\(\s*[A-Za-z0-9]{1,4}\s*\)\s*/);
+    const head=hm?hm[0]:'', body=t.slice(head.length);
+    if(!/[A-Za-z]{2,}/.test(body)) continue;
+    const tr=await spTranslate(body, subject);
+    if(tr&&tr!==body) map[t]=head+tr;
+  }
+  if(!Object.keys(map).length) return block;
+  return block.replace(/\\text\{([^{}]*)\}/g,(mm,inner)=> map[inner]!=null ? '\\text{'+map[inner]+'}' : mm);
+}
 async function spTranslate(text,subject){
   text=(text==null?'':String(text)).trim();
   if(!text)return text;
   if(!/[A-Za-z]/.test(text))return text;   // already Hindi / numeric only
+  if(text.indexOf('\\begin{array}')>=0){
+    const blocks=text.match(spTRMATH)||[];
+    for(const b of blocks){
+      if(b.indexOf('\\begin{array}')>=0){
+        const nb=await spTranslateArrayTexts(b, subject);
+        if(nb!==b) text=text.replace(b, nb);
+      }
+    }
+  }
   const math=[],gl=[];
   let s=text.replace(spTRMATH,m=>{ math.push(m); return '\u27E6'+(math.length-1)+'\u27E7'; });
   const pairs=spGlossPairs(subject||'general');
