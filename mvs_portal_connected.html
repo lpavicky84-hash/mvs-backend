@@ -4157,7 +4157,7 @@ async function examPdfPremium(id,mode,medium){
         if(withSol&&ci>=0&&q.options[ci]!=null){
           const ansO=medium==='hi'?((Array.isArray(q.options_hi)&&(q.options_hi[ci]||'').trim())?q.options_hi[ci]:q.options[ci]):q.options[ci];
           const ansBoth=medium==='both'&&Array.isArray(q.options_hi)&&(q.options_hi[ci]||'').trim()?q.options_hi[ci]:null;
-          h+='<div class="sol"><div class="sol-l">'+(medium==='hi'?'\u0909\u0924\u094d\u0924\u0930':'Answer')+'</div><div class="sol-t"><b>('+String.fromCharCode(65+ci)+')</b> '+escH(ansO)+(ansBoth?' / '+escH(ansBoth):'')+'</div>';
+          h+='<div class="sol"><div class="sol-l">'+(medium==='hi'?'\u0909\u0924\u094d\u0924\u0930':'Answer')+'</div><div class="sol-t"><b>('+String.fromCharCode(65+ci)+')</b> '+_fmtRich(ansO)+(ansBoth?' / '+_fmtRich(ansBoth):'')+'</div>';
           const ex0=q.explanation||q.expl||'', exH=q.explanation_hi||q.expl_hi||'';
           if((ex0||'').trim()||(exH||'').trim()){
             if(medium==='hi'&&(exH||'').trim()) h+='<div class="sol-t" style="margin-top:4px">'+escH(exH)+'</div>';
@@ -5424,6 +5424,43 @@ function spMarkerStats(t){
     hasRoman:marks.some(x=>isRm(x.l)),
     hasDigit:marks.some(x=>/^\d{1,2}$/.test(x.l))};
 }
+const _SP_SUP={'0':'\u2070','1':'\u00b9','2':'\u00b2','3':'\u00b3','4':'\u2074','5':'\u2075','6':'\u2076','7':'\u2077','8':'\u2078','9':'\u2079'};
+function spFixBrokenSup(t){
+  // Rendered maths copy karne par power apni line pe chala jata hai:
+  //   "a velocity of 2 ms"  /  "-1"  /  ", and"
+  // Aisi akeli power line ko wapas upar wali line pe superscript bana dete hain.
+  const lines=String(t||'').split(/\r?\n/);
+  const out=[];
+  for(const ln of lines){
+    const m=ln.trim().match(/^([\u2212\u2013-]?)(\d{1,2})([,.;:]?)$/);
+    const prev=out.length?out[out.length-1]:'';
+    if(m && /[A-Za-z\u0370-\u03ff\)\]]\s*$/.test(prev)){
+      const sup=(m[1]?'\u207b':'')+m[2].split('').map(d=>_SP_SUP[d]||d).join('');
+      out[out.length-1]=prev.replace(/\s+$/,'')+sup+(m[3]||'');
+      continue;
+    }
+    // ", and" / "." jaisi continuation line bhi upar hi jud jaati hai
+    const cont=ln.trim().match(/^([,.;:]\s*\S[\s\S]*|[,.;:])$/);
+    if(cont && out.length && out[out.length-1].trim()){
+      out[out.length-1]=out[out.length-1].replace(/\s+$/,'')+ln.trim();
+      continue;
+    }
+    out.push(ln);
+  }
+  return out.join('\n');
+}
+function spItemsLookLabelled(t){
+  // Match-the-following ke items chhote labels hote hain; sub-question wale
+  // parts poore vaakya hote hain. Isi se dono ko alag karte hain.
+  const st=spMarkerStats(t);
+  if(st.marks.length<4) return false;
+  let long=0;
+  st.marks.forEach((mk,k)=>{
+    const end=k+1<st.marks.length?st.marks[k+1].i:t.length;
+    if(t.slice(mk.e,end).trim().length>70) long++;
+  });
+  return long===0;
+}
 function spLooksPassage(t){
   // Passage / comprehension MCQ: koi marker label DOBARA aata hai (har
   // sub-question ke apne (A)-(D) hote hain), ya lamba quoted passage hai
@@ -5506,10 +5543,22 @@ document.addEventListener('paste',function(e){
     t.dispatchEvent(new Event('input',{bubbles:true}));
     if(msg) toast(msg);
   };
-  const asPassage=()=>{ const r=spFormatPassage(plain); return r||plain; };
+  const asPassage=()=>{
+    // Rendered maths wali site se copy hua ho to pehle MathML -> $...$ nikaalo,
+    // phir tooti hui powers jodo, tabhi structure banao. Warna ms^-1 jaisa
+    // formula tukdon me bikhar jata tha.
+    let base=null;
+    if(html&&html.indexOf('<math')>=0){ try{ base=spFromClipboardHTML(html); }catch(e){} }
+    if(base==null) base=plain;
+    base=spFixBrokenSup(base);
+    const r=spFormatPassage(base);
+    return r||base;
+  };
   const asMatch=()=>spFormatMatch(plain,html);
   const asPlainSmart=()=>{
-    if(html&&html.indexOf('<math')>=0){ const r=spFromClipboardHTML(html); if(r!=null) return r; }
+    if(html&&html.indexOf('<math')>=0){ const r=spFromClipboardHTML(html); if(r!=null) return spFixBrokenSup(r); }
+    const fixed=spFixBrokenSup(plain);
+    if(fixed!==plain) return spSmartFormat(fixed);
     return (plain&&spTrig.test(plain))?spSmartFormat(plain):null;
   };
   // 1) Pakka passage / MCQ (koi marker label repeat hota hai) -> kabhi table nahi
@@ -5525,7 +5574,7 @@ document.addEventListener('paste',function(e){
   }
   // 3) Doubt hai (markers to hain par confirm nahi) -> teacher se hi pooch lo
   const st=spMarkerStats(plain);
-  if(st.marks.length>=4 && asMatch()!=null){
+  if(st.marks.length>=4 && spItemsLookLabelled(plain) && asMatch()!=null){
     e.preventDefault();
     const snapshot={a:t.selectionStart||0,b:t.selectionEnd||0};
     spAskPasteType(kind=>{
@@ -7863,25 +7912,25 @@ async function examPdfStudent(id,medium,withSol){
       const en=q.question_text||'', hi=q.question_text_hi||'';
       const qMain=medium==='hi'?(hi.trim()?hi:en):en;
       let h='';
-      if(q.image_b64) h+='<img class="qimg" src="'+q.image_b64+'">';
+      // Part A / Part B figures ab _pdfQHTML handle karta hai
       if(isM&&Array.isArray(q.options)&&q.options.length){
         let ci=-1;
         if(withSol&&q.correct_option!=null) ci=q.options.findIndex(o=>String(o).trim()===String(q.correct_option).trim());
         h+='<div class="opts">'+q.options.map((o,oi)=>{
           const oh=(medium==='hi'&&Array.isArray(q.options_hi)&&(q.options_hi[oi]||'').trim())?q.options_hi[oi]:null;
-          return '<div class="opt'+(withSol&&ci===oi?' correct':'')+'"><b>'+String.fromCharCode(65+oi)+'</b><span>'+escH(oh||o)+'</span></div>';
+          return '<div class="opt'+(withSol&&ci===oi?' correct':'')+'"><b>'+String.fromCharCode(65+oi)+'</b><span>'+_fmtRich(oh||o)+'</span></div>';
         }).join('')+'</div>';
         if(withSol&&ci>=0&&q.options[ci]!=null){
           const ansO=(medium==='hi'&&Array.isArray(q.options_hi)&&(q.options_hi[ci]||'').trim())?q.options_hi[ci]:q.options[ci];
-          h+='<div class="sol"><div class="sol-l">'+(medium==='hi'?'\u0909\u0924\u094d\u0924\u0930':'Answer')+'</div><div class="sol-t"><b>('+String.fromCharCode(65+ci)+')</b> '+escH(ansO)+'</div>';
-          if((q.explanation||'').trim()) h+='<div class="sol-t" style="margin-top:4px">'+escH(q.explanation)+'</div>';
+          h+='<div class="sol"><div class="sol-l">'+(medium==='hi'?'\u0909\u0924\u094d\u0924\u0930':'Answer')+'</div><div class="sol-t"><b>('+String.fromCharCode(65+ci)+')</b> '+_fmtRich(ansO)+'</div>';
+          if((q.explanation||'').trim()) h+='<div class="sol-t" style="margin-top:4px">'+_fmtRich(q.explanation)+'</div>';
           h+='</div>';
         }
       }
       if(withSol&&!isM&&(q.model_answer||'').trim()){
-        h+='<div class="sol"><div class="sol-l">'+(medium==='hi'?'\u0939\u0932':'Solution')+'</div><div class="sol-t">'+escH(q.model_answer)+'</div>'+(q.model_answer_image?'<img class="qimg" src="'+q.model_answer_image+'">':'')+'</div>';
+        h+='<div class="sol"><div class="sol-l">'+(medium==='hi'?'\u0939\u0932':'Solution')+'</div><div class="sol-t">'+_fmtRich(q.model_answer)+'</div>'+(q.model_answer_image?'<img class="qimg" src="'+q.model_answer_image+'">':'')+'</div>';
       }
-      return '<div class="q"><div class="q-h"><b>'+qLbl+' '+qno+'</b><span class="q-m">'+mkLbl(q.max_marks)+'</span></div><div class="q-t">'+escH(qMain)+'</div>'+h+'</div>';
+      return '<div class="q"><div class="q-h"><b>'+qLbl+' '+qno+'</b><span class="q-m">'+mkLbl(q.max_marks)+'</span></div>'+_pdfQHTML(qMain,q.image_b64,q.alt_image_b64,'q-t')+h+'</div>';
     }).join('');
     const w=window.open('','_blank');
     if(!w){ toast('Popup blocked — please allow popups.',true); return; }
@@ -8288,16 +8337,16 @@ async function _solPdf(id,med){
       if(med==='both'&&o.q_hi)h+='<div class="q-hi">'+escH(o.q_hi)+'</div>';
       if(isM){
         const aMain=med==='hi'?(o.a_hi||o.a_en):o.a_en;
-        h+='<div class="sol"><div class="sol-l">'+(med==='hi'?'उत्तर':'Answer')+'</div><div class="sol-t">'+escH(aMain||'—')+'</div>';
+        h+='<div class="sol"><div class="sol-l">'+(med==='hi'?'उत्तर':'Answer')+'</div><div class="sol-t">'+_fmtRich(aMain||'—')+'</div>';
         const xMain=med==='hi'?(o.x_hi||o.x_en):o.x_en;
-        if(xMain)h+='<div class="sol-t" style="margin-top:4px">'+escH(xMain)+'</div>';
-        if(med==='both'&&o.x_hi)h+='<div class="q-hi">'+escH(o.x_hi)+'</div>';
+        if(xMain)h+='<div class="sol-t" style="margin-top:4px">'+_fmtRich(xMain)+'</div>';
+        if(med==='both'&&o.x_hi)h+='<div class="q-hi">'+_fmtRich(o.x_hi)+'</div>';
         h+='</div>';
       } else {
         const aMain=med==='hi'?(o.a_hi||o.a_en):o.a_en;
-        if(aMain){ h+='<div class="sol"><div class="sol-l">'+(med==='hi'?'हल':'Model Answer')+'</div><div class="sol-t">'+escH(aMain)+'</div>'+(med==='both'&&o.a_hi?'<div class="q-hi">'+escH(o.a_hi)+'</div>':'')+'</div>'; }
+        if(aMain){ h+='<div class="sol"><div class="sol-l">'+(med==='hi'?'हल':'Model Answer')+'</div><div class="sol-t">'+_fmtRich(aMain)+'</div>'+(med==='both'&&o.a_hi?'<div class="q-hi">'+_fmtRich(o.a_hi)+'</div>':'')+'</div>'; }
       }
-      return '<div class="q"><div class="q-h"><b>'+qLbl+' '+o.q_no+'</b><span class="q-m">[ '+o.max+' '+(med==='hi'?'अंक':'marks')+' ]</span></div><div class="q-t">'+escH(qMain)+'</div>'+h+'</div>';
+      return '<div class="q"><div class="q-h"><b>'+qLbl+' '+o.q_no+'</b><span class="q-m">[ '+o.max+' '+(med==='hi'?'अंक':'marks')+' ]</span></div>'+_pdfQHTML(qMain,o.image_b64||null,o.alt_image_b64||null,'q-t')+h+'</div>';
     }).join('');
     const w=window.open('','_blank');
     if(!w){ toast('Popup blocked — please allow popups.',true); return; }
