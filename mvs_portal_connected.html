@@ -10075,8 +10075,9 @@ function buildLetterHTML(c){
     <table class="terms">
       <tr><td>Designation</td><td>${esc(c.designation||'Subject Teacher')}</td></tr>
       <tr><td>Date of Joining</td><td>${esc(jd)}</td></tr>
-      <tr><td>Monthly Base Salary</td><td>${fmtINR(c.base_salary)}</td></tr>
-      <tr><td>Fixed Monthly Allowances</td><td>${fmtINR(c.allowances)}</td></tr>
+      ${(c.breakup||[]).length?c.breakup.map(b=>`<tr><td>${esc(b.label)}</td><td>${fmtINR(b.amount)}</td></tr>`).join(''):`<tr><td>Monthly Base Salary</td><td>${fmtINR(c.base_salary)}</td></tr>
+      <tr><td>Fixed Monthly Allowances</td><td>${fmtINR(c.allowances)}</td></tr>`}
+      <tr><td style="font-weight:700">Gross Monthly Salary</td><td style="font-weight:700">${fmtINR(c.gross_salary||(c.base_salary+(c.allowances||0)))}</td></tr>
       <tr><td>Payable Working Days</td><td>${c.working_days} days per month</td></tr>
       <tr><td>Per Day Rate</td><td>${fmtINR(c.per_day_rate)}</td></tr>
     </table>
@@ -10292,7 +10293,7 @@ let _aPayMonth='';
 async function loadAPayouts(){
   const el=document.getElementById('a-payouts-content');
   _aPayMonth=_aPayMonth||curMonth();
-  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>Payouts</h2><p>Auto-calculated from base salary, attendance and adjustments.</p></div><input type="month" class="form-control" style="width:auto;padding:7px 12px" value="${_aPayMonth}" onchange="_aPayMonth=this.value;aPayFetch()"></div>
+  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>Payouts</h2><p>Auto-calculated from work completion, attendance and adjustments.</p></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn btn-primary btn-sm" onclick="openSalarySetup()">${ic('check')} Salary Setup (All Teachers)</button><input type="month" class="form-control" style="width:auto;padding:7px 12px" value="${_aPayMonth}" onchange="_aPayMonth=this.value;aPayFetch()"></div></div>
     <div class="stats-grid" id="ap-stats"></div>
     <div id="ap-body" style="margin-top:6px"><div class="spinner"></div></div>`;
   aPayFetch();
@@ -10333,31 +10334,82 @@ async function aPayFetch(){
     aPerfApprovals();
   }catch(e){ body.innerHTML=errHtml(e); }
 }
+/* ===== BULK SALARY SETUP (sabhi teachers ek saath - sirf gross, baaki sab auto) ===== */
+async function openSalarySetup(){
+  showModal('Salary Setup — All Teachers','<div class="spinner"></div>',`<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="ss-btn" onclick="submitSalarySetup()">Save All</button>`);
+  try{
+    const d=await api('/api/admin/contracts-overview');
+    const rows=(d.teachers||[]).map((t,i)=>`
+      <div class="pc-tpl-row" style="grid-template-columns:1fr 130px 150px">
+        <span><b>${esc(t.name)}</b><span style="font-size:.72rem;color:var(--text-muted)"> · ${esc((t.subjects||[]).slice(0,2).join(', ')||'—')}</span>${t.accepted?' <span class="pc-chip appr">accepted</span>':(t.has_contract?' <span class="pc-chip pend">letter pending</span>':'')}</span>
+        <input type="text" class="form-control" id="ss-des-${i}" value="${esc(t.designation||'Subject Teacher')}" placeholder="Designation">
+        <input type="number" min="0" class="form-control" id="ss-gross-${i}" value="${t.gross_salary||''}" placeholder="Gross Rs/month">
+      </div>`).join('');
+    document.querySelector('#modal .modal-body').innerHTML=
+      `<div class="alert alert-info">Har teacher ka <b>sirf gross monthly salary</b> dalo — breakup (Basic 50%, HRA 25%, Conveyance 5%, Medical 3.125%, LTA 4.375%, Special 12.5%), standard rules (Annexure A) aur 26 working days <b>sab automatic</b> set honge. Salary badalne pe teacher ko letter re-accept karna hoga. Khaali chhodo to skip.</div>
+       <div class="pc-tpl-row" style="grid-template-columns:1fr 130px 150px;font-weight:800;font-size:.68rem;color:var(--text-muted);letter-spacing:.05em"><span>TEACHER</span><span>DESIGNATION</span><span>GROSS SALARY</span></div>
+       ${rows||'<div class="empty-state"><p>Koi teacher nahi mila.</p></div>'}`;
+    window._ssTeachers=d.teachers||[];
+  }catch(e){ document.querySelector('#modal .modal-body').innerHTML=errHtml(e); }
+}
+async function submitSalarySetup(){
+  const items=(window._ssTeachers||[]).map((t,i)=>({teacher_id:t.teacher_id,
+    designation:(document.getElementById('ss-des-'+i)||{}).value||'',
+    gross_salary:parseInt((document.getElementById('ss-gross-'+i)||{}).value)||0}))
+    .filter(x=>x.gross_salary>0);
+  if(!items.length){ toast('Kisi bhi teacher ki salary dalo pehle',true); return; }
+  const btn=document.getElementById('ss-btn'); btn.disabled=true; btn.textContent='Saving...';
+  try{
+    const r=await api('/api/admin/contracts-bulk','POST',{items});
+    closeModal(); toast(r.message); aPayFetch();
+  }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Save All'; }
+}
 async function openContractModal(tid,name){
   let c={exists:false};
   try{ c=await api('/api/admin/teacher/'+tid+'/contract'); }catch(e){}
-  showModal((c.exists?'Edit Contract - ':'Set Contract - ')+name,
-    `<div class="alert alert-info">These details build the appointment letter and the payout calculation. The teacher must accept the letter on their next portal open${c.exists?' if you tick the re-accept option below':''}.</div>
+  window._ctRules=c.exists?(c.rules||[]).join('\n'):'';
+  showModal((c.exists?'Edit Salary - ':'Set Salary - ')+name,
+    `<div class="alert alert-info"><b>Sirf gross monthly salary dalo</b> — breakup (Basic/HRA/Conveyance/Medical/LTA/Special), standard rules (Annexure A) aur 26 working days <b>sab automatic</b> set ho jayenge, Faculty Service Agreement ke hisaab se. Teacher ko next portal open pe appointment letter accept karna hoga.</div>
      <div class="form-group"><label>Designation</label><input class="form-control" id="ct-des" value="${esc(c.designation||'Subject Teacher')}"></div>
      <div class="form-group"><label>Date of Joining</label><input type="date" class="form-control" id="ct-join" value="${esc(c.joining_date||'')}"></div>
-     <div class="form-group"><label>Monthly Base Salary (Rs)</label><input type="number" min="0" class="form-control" id="ct-base" value="${c.base_salary||0}"></div>
-     <div class="form-group"><label>Fixed Monthly Allowances (Rs)</label><input type="number" min="0" class="form-control" id="ct-allow" value="${c.allowances||0}"></div>
-     <div class="form-group"><label>Payable Working Days per Month</label><input type="number" min="1" max="31" class="form-control" id="ct-wd" value="${c.working_days||26}"></div>
-     <div class="form-group"><label>Rules and Conditions (one per line - shown in the letter and Payout page)</label><textarea class="form-control" id="ct-rules" rows="5" placeholder="Classes must start on scheduled time.\nDPP and notes must be uploaded on the day of the class.">${esc((c.rules||[]).join('\n'))}</textarea></div>
-     ${c.exists?`<label style="display:flex;align-items:center;gap:8px;font-size:.85rem"><input type="checkbox" id="ct-reaccept"> Terms changed - ask the teacher to accept the letter again</label>`:''}
+     <div class="form-group"><label>Monthly Gross Salary (Rs)</label><input type="number" min="1" class="form-control" id="ct-gross" value="${c.gross_salary||''}" placeholder="e.g. 40000" oninput="ctBreakPreview()"></div>
+     <div id="ct-break"></div>
+     <div class="form-group"><label>Rules and Conditions (one per line — agreement ke standard rules auto-filled)</label><textarea class="form-control" id="ct-rules" rows="6">${esc(window._ctRules)}</textarea></div>
+     ${c.exists?`<label style="display:flex;align-items:center;gap:8px;font-size:.85rem"><input type="checkbox" id="ct-reaccept" ${'checked'} disabled> Salary change pe teacher letter re-accept karega (automatic)</label>`:''}
      ${c.exists?`<div style="margin-top:10px"><button class="btn btn-ghost btn-sm" onclick="adminViewLetter(${tid})">${ic('download')} Preview Letter</button></div>`:''}`,
-    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="ct-btn" onclick="submitContract(${tid})">Save Contract</button>`);
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="ct-btn" onclick="submitContract(${tid})">Save</button>`);
+  if(!c.exists){ document.getElementById('ct-rules').value=window._DEF_RULES||''; }
+  ctBreakPreview();
+}
+window._DEF_RULES=`Har class scheduled time par shuru hogi; bina prior intimation ke 15 minute se zyada der ho to class delayed/missed mani jayegi.
+Month me sirf 1 approved class re-scheduling allowed hai; uske baad har approved re-schedule par Rs 300/-, aur bina intimation/approval ke re-schedule par Rs 600/- per class deduction lagega.
+Class notes, DPP aur lecture report har class ke baad prescribed interval me upload karna compulsory hai; delay par 1st instance Rs 200/-, 2nd Rs 400/-, 3rd aur uske baad har instance par Rs 700/- auto-deduction hoga.
+Portal ke student doubts 24 hours me resolve karo; doubt pending >1 din Rs 100/-, >2 din Rs 300/-, >5 din Rs 600/- per doubt auto-deduction hoga.
+Shorts, strategy, promotional aur recording tasks deadline tak submit karo; 1st delay par warning, 2nd delay se Rs 100/- per day deduction submission tak lagega.
+Har Sunday doubt class + DPP solutions discussion compulsory hai.
+Monthly payout portal verification ke baad next month ki first week me process hoga; salary confidential hai aur payout ke liye sirf designated Account Manager se contact karna hai.`;
+const _SAL_SPLIT=[['Basic Pay',.50],['House Rent Allowance (HRA)',.25],['Conveyance / Transport Allowance',.05],['Medical Reimbursement',.03125],['Leave Travel Allowance (LTA)',.04375],['Special Academic Allowance',.125]];
+function ctBreakPreview(){
+  const el=document.getElementById('ct-break'); if(!el) return;
+  const g=parseInt(document.getElementById('ct-gross').value)||0;
+  if(!g){ el.innerHTML=''; return; }
+  let used=0, rows='';
+  _SAL_SPLIT.forEach((sp,i)=>{
+    const v=i===_SAL_SPLIT.length-1?g-used:Math.round(g*sp[1]); used+= i===_SAL_SPLIT.length-1?0:v;
+    rows+=`<tr><td>${sp[0]}</td><td style="text-align:right">${(sp[1]*100).toFixed(sp[1]*100%1?3:0)}%</td><td style="text-align:right;font-weight:700">${fmtINR(v)}</td></tr>`;
+  });
+  el.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:.82rem;margin-bottom:12px">
+    <tr style="color:var(--text-muted);font-size:.68rem;letter-spacing:.05em"><th style="text-align:left;padding:4px 0">AUTO BREAKUP (AGREEMENT)</th><th style="text-align:right">%</th><th style="text-align:right">AMOUNT</th></tr>
+    ${rows}<tr style="border-top:2px solid var(--border);font-weight:800"><td style="padding:5px 0">Gross Salary</td><td></td><td style="text-align:right;color:#059669">${fmtINR(g)}</td></tr>
+    <tr><td colspan="3" style="font-size:.72rem;color:var(--text-muted);padding-top:4px">Per-day rate (attendance): ${fmtINR(Math.round(g/26))} × 26 working days · Annual: ${fmtINR(g*12)}</td></tr></table>`;
 }
 async function submitContract(tid){
   const btn=document.getElementById('ct-btn'); btn.disabled=true; btn.textContent='Saving...';
   try{
-    const re=document.getElementById('ct-reaccept');
     const r=await api('/api/admin/teacher/'+tid+'/contract','POST',{
-      designation:val('ct-des'),joining_date:val('ct-join'),base_salary:val('ct-base'),
-      allowances:val('ct-allow'),working_days:val('ct-wd'),rules_text:val('ct-rules'),
-      require_reaccept:!!(re&&re.checked)});
+      designation:val('ct-des'),joining_date:val('ct-join'),gross_salary:val('ct-gross'),rules_text:val('ct-rules')});
     closeModal(); toast(r.message); aPayFetch();
-  }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Save Contract'; }
+  }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Save'; }
 }
 async function adminViewLetter(tid){
   try{ const c=await api('/api/admin/teacher/'+tid+'/contract'); if(!c.exists){ toast('No contract set.',true); return; } printLetter(c); }

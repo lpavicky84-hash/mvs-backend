@@ -2545,12 +2545,67 @@ def compute_payout(db, teacher_id: int, month: str):
         "designation": c.designation, "accepted": bool(c.accepted)
     }
 
+# Faculty Service Agreement - Table A-0: sirf GROSS salary input hoti hai,
+# breakup in fixed % se automatic banta hai (sabhi teachers ke liye same).
+SALARY_SPLIT = [("basic", "Basic Pay", 0.50), ("hra", "House Rent Allowance (HRA)", 0.25),
+                ("conveyance", "Conveyance / Transport Allowance", 0.05),
+                ("medical", "Medical Reimbursement", 0.03125),
+                ("lta", "Leave Travel Allowance (LTA)", 0.04375),
+                ("special_allowance", "Special Academic Allowance", 0.125)]
+
+_CONTRACT_COLS_READY = False
+def _ensure_contract_columns(db):
+    """teacher_contracts me salary-breakup columns pehli use me add karta hai."""
+    global _CONTRACT_COLS_READY
+    if _CONTRACT_COLS_READY:
+        return
+    from sqlalchemy import text as _text
+    cols = ["basic", "hra", "conveyance", "medical", "lta", "special_allowance"]
+    for col in cols:
+        for ddl in ("ALTER TABLE teacher_contracts ADD COLUMN %s INTEGER NULL" % col,):
+            try:
+                db.execute(_text(ddl)); db.commit(); break
+            except Exception:
+                db.rollback()
+    _CONTRACT_COLS_READY = True
+
+def _salary_breakup(gross):
+    """Gross se agreement-ke-% me breakup. Rounding ke baad total gross ke
+    barabar rahe, isliye last component adjust hota hai."""
+    gross = int(gross or 0)
+    out, used = {}, 0
+    for i, (k, _lbl, pct) in enumerate(SALARY_SPLIT):
+        if i == len(SALARY_SPLIT) - 1:
+            v = gross - used
+        else:
+            v = round(gross * pct)
+            used += v
+        out[k] = max(0, v)
+    return out
+
+# Annexure A (Penalty & Deduction Schedule) se auto rules - naye contract me pre-fill
+DEFAULT_CONTRACT_RULES = """Har class scheduled time par shuru hogi; bina prior intimation ke 15 minute se zyada der ho to class delayed/missed mani jayegi.
+Month me sirf 1 approved class re-scheduling allowed hai; uske baad har approved re-schedule par Rs 300/-, aur bina intimation/approval ke re-schedule par Rs 600/- per class deduction lagega.
+Class notes, DPP aur lecture report har class ke baad prescribed interval me upload karna compulsory hai; delay par 1st instance Rs 200/-, 2nd Rs 400/-, 3rd aur uske baad har instance par Rs 700/- auto-deduction hoga.
+Portal ke student doubts 24 hours me resolve karo; doubt pending >1 din Rs 100/-, >2 din Rs 300/-, >5 din Rs 600/- per doubt auto-deduction hoga.
+Shorts, strategy, promotional aur recording tasks deadline tak submit karo; 1st delay par warning, 2nd delay se Rs 100/- per day deduction submission tak lagega.
+Har Sunday doubt class + DPP solutions discussion compulsory hai.
+Monthly payout portal verification ke baad next month ki first week me process hoga; salary confidential hai aur payout ke liye sirf designated Account Manager se contact karna hai."""
+
 def _contract_out(c, teacher_name=""):
+    gross = (c.base_salary or 0) + (c.allowances or 0)
+    if c.basic is not None:
+        brk = {"basic": c.basic, "hra": c.hra, "conveyance": c.conveyance,
+               "medical": c.medical, "lta": c.lta, "special_allowance": c.special_allowance}
+    else:
+        brk = _salary_breakup(gross)
+    brk_lbl = [{"key": k, "label": lbl, "amount": brk[k]} for k, lbl, _p in SALARY_SPLIT]
     return {
         "exists": True, "teacher_name": teacher_name,
         "designation": c.designation or "Subject Teacher",
         "joining_date": str(c.joining_date) if c.joining_date else None,
         "base_salary": c.base_salary or 0, "allowances": c.allowances or 0,
+        "gross_salary": gross, "breakup": brk_lbl,
         "working_days": c.working_days or 26,
         "per_day_rate": round((c.base_salary or 0) / (c.working_days or 26)),
         "rules": [r.strip() for r in (c.rules_text or "").splitlines() if r.strip()],

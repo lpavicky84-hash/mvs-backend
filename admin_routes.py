@@ -2057,11 +2057,14 @@ def admin_set_contract(tid: int, payload: dict, db: Session = Depends(get_db), _
     tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
     if not tp:
         raise HTTPException(status_code=404, detail="Teacher not found")
+    from teacher_routes import _ensure_contract_columns as _ecc
+    _ecc(db)   # pehle migration (rollback pending work uda sakta hai, isliye sabse pehle)
     c = db.query(TeacherContract).filter(TeacherContract.teacher_id == tid).first()
     creating = c is None
     if creating:
         c = TeacherContract(teacher_id=tid)
         db.add(c)
+    _old_gross = (c.base_salary or 0) + (c.allowances or 0)
     if "designation" in payload:
         c.designation = (payload.get("designation") or "Subject Teacher").strip() or "Subject Teacher"
     if "joining_date" in payload:
@@ -2078,16 +2081,32 @@ def admin_set_contract(tid: int, payload: dict, db: Session = Depends(get_db), _
             return max(0, int(payload.get(k)))
         except Exception:
             return cur
-    if "base_salary" in payload:
-        c.base_salary = _num("base_salary", c.base_salary or 0)
-    if "allowances" in payload:
-        c.allowances = _num("allowances", c.allowances or 0)
-    if "working_days" in payload:
-        wd = _num("working_days", c.working_days or 26)
-        c.working_days = min(31, max(1, wd))
-    if "rules_text" in payload:
-        c.rules_text = (payload.get("rules_text") or "").strip() or None
-    if creating or payload.get("require_reaccept"):
+    from teacher_routes import _salary_breakup, DEFAULT_CONTRACT_RULES
+    if "gross_salary" in payload:
+        # AUTO MODE (Faculty Service Agreement): sirf gross do - breakup, rules,
+        # working days sab agreement ke % se khud set hote hain.
+        gross = _num("gross_salary", 0)
+        if gross <= 0:
+            raise HTTPException(status_code=400, detail="Gross salary 0 se zyada honi chahiye")
+        c.base_salary = gross
+        c.allowances = 0
+        c.working_days = 26
+        for k, v in _salary_breakup(gross).items():
+            setattr(c, k, v)
+        if not (payload.get("rules_text") or "").strip():
+            c.rules_text = DEFAULT_CONTRACT_RULES
+    else:
+        if "base_salary" in payload:
+            c.base_salary = _num("base_salary", c.base_salary or 0)
+        if "allowances" in payload:
+            c.allowances = _num("allowances", c.allowances or 0)
+        if "working_days" in payload:
+            wd = _num("working_days", c.working_days or 26)
+            c.working_days = min(31, max(1, wd))
+    if "rules_text" in payload and (payload.get("rules_text") or "").strip():
+        c.rules_text = (payload.get("rules_text") or "").strip()
+    _new_gross = (c.base_salary or 0) + (c.allowances or 0)
+    if creating or payload.get("require_reaccept") or _old_gross != _new_gross:
         c.accepted = False
         c.accepted_at = None
         c.signature_name = None
@@ -2284,6 +2303,77 @@ def admin_payout_paid(tid: int, payload: dict = Body(...), db: Session = Depends
     rec.paid_at = datetime.utcnow()
     db.commit()
     return {"message": "Paid mark ho gaya"}
+
+# ===== SALARY BULK SETUP (sabhi teachers, sirf gross - baaki sab auto) =====
+@router.get("/contracts-overview")
+def admin_contracts_overview(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Saare active teachers ka contract/salary status - bulk setup screen ke liye."""
+    from models import TeacherProfile, TeacherContract, User
+    from teacher_routes import _ensure_contract_columns
+    _ensure_contract_columns(db)
+    tps = db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(
+        User.is_active == True).order_by(User.name).all()
+    out = []
+    for tp in tps:
+        c = db.query(TeacherContract).filter(TeacherContract.teacher_id == tp.id).first()
+        out.append({"teacher_id": tp.id, "name": tp.user.name if tp.user else "",
+                    "subjects": tp.subjects or [],
+                    "designation": (c.designation if c else "Subject Teacher"),
+                    "joining_date": str(c.joining_date) if c and c.joining_date else None,
+                    "gross_salary": ((c.base_salary or 0) + (c.allowances or 0)) if c else 0,
+                    "accepted": bool(c and c.accepted), "has_contract": bool(c)})
+    return {"teachers": out}
+
+@router.post("/contracts-bulk")
+def admin_contracts_bulk(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Ek hi baar me saare teachers ki gross salary set karo. Breakup (Basic/HRA/
+    Conv/Medical/LTA/Special), standard rules (Annexure A) aur 26 working days
+    SAB automatic - Faculty Service Agreement ke % ke hisaab se. Salary badalne
+    par teacher ko letter re-accept karna hota hai."""
+    from models import TeacherProfile, TeacherContract
+    from teacher_routes import _salary_breakup, _ensure_contract_columns, DEFAULT_CONTRACT_RULES
+    _ensure_contract_columns(db)
+    items = payload.get("items") or []
+    saved, skipped = [], []
+    for it in items:
+        tid = int(it.get("teacher_id") or 0)
+        gross = int(it.get("gross_salary") or 0)
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+        if not tp:
+            continue
+        if gross <= 0:
+            skipped.append(tp.user.name if tp.user else str(tid))
+            continue
+        c = db.query(TeacherContract).filter(TeacherContract.teacher_id == tid).first()
+        creating = c is None
+        if creating:
+            c = TeacherContract(teacher_id=tid)
+            db.add(c)
+        old_gross = (c.base_salary or 0) + (c.allowances or 0)
+        c.designation = (it.get("designation") or c.designation or "Subject Teacher").strip() or "Subject Teacher"
+        jd = (it.get("joining_date") or "").strip()
+        if jd:
+            try:
+                c.joining_date = datetime.strptime(jd, "%Y-%m-%d").date()
+            except Exception:
+                pass
+        c.base_salary = gross
+        c.allowances = 0
+        c.working_days = 26
+        for k, v in _salary_breakup(gross).items():
+            setattr(c, k, v)
+        if not (c.rules_text or "").strip():
+            c.rules_text = DEFAULT_CONTRACT_RULES
+        if creating or old_gross != gross:
+            c.accepted = False
+            c.accepted_at = None
+            c.signature_name = None
+        saved.append(tp.user.name if tp.user else str(tid))
+    db.commit()
+    msg = "%d teacher(s) ka contract set ho gaya (breakup + rules auto)." % len(saved)
+    if skipped:
+        msg += " %d skip (salary 0/khaali): %s" % (len(skipped), ", ".join(skipped))
+    return {"message": msg, "saved": saved, "skipped": skipped}
 
 @router.post("/teacher/{tid}/payout-adjust")
 def admin_add_adjustment(tid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):

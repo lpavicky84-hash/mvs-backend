@@ -637,6 +637,13 @@ class TeacherContract(Base):
     allowances     = Column(Integer, default=0)    # fixed monthly allowances INR
     working_days   = Column(Integer, default=26)   # payable working days per month
     rules_text     = Column(Text, nullable=True)   # one rule per line; letter + payout page dono me dikhta hai
+    # salary breakup (Faculty Service Agreement Table A-0 ke % se auto-computed)
+    basic            = Column(Integer, nullable=True)
+    hra              = Column(Integer, nullable=True)
+    conveyance       = Column(Integer, nullable=True)
+    medical          = Column(Integer, nullable=True)
+    lta              = Column(Integer, nullable=True)
+    special_allowance = Column(Integer, nullable=True)
     accepted       = Column(Boolean, default=False)
     accepted_at    = Column(DateTime, nullable=True)
     signature_name = Column(String(120), nullable=True)
