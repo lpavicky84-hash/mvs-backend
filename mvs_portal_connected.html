@@ -601,6 +601,11 @@
   .pt-opt:hover{border-color:hsl(25 95% 55%);background:rgba(249,115,22,.06);transform:translateY(-1px)}
   .pt-opt b{display:block;font-size:.94rem;margin-bottom:3px}
   .pt-opt span{display:block;font-size:.78rem;color:var(--text-muted);line-height:1.45}
+  .sp-ask-ov{position:fixed;inset:0;z-index:9600;background:rgba(8,14,30,.55);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:20px}
+  .sp-ask-box{background:var(--card);border:1px solid var(--border);border-radius:16px;max-width:480px;width:100%;padding:20px;box-shadow:0 24px 60px rgba(0,0,0,.3);cursor:default}
+  .sp-ask-h{font-size:1.05rem;font-weight:800;margin-bottom:6px}
+  .sp-ask-sub{font-size:.82rem;color:var(--text-muted);line-height:1.5;margin-bottom:14px}
+  .sp-ask-f{display:flex;justify-content:flex-end;margin-top:12px}
 
   .ex-lang-tab.ex-tr.tr-none{background:hsl(25 95% 53%);border-color:hsl(25 95% 53%);color:#fff;font-weight:800}
   .ex-lang-tab.ex-tr.tr-part{background:rgba(245,158,11,.16);border-color:hsl(38 92% 50%);color:hsl(38 92% 38%);font-weight:800}
@@ -5457,15 +5462,26 @@ function spFormatPassage(t){
   return s.trim();
 }
 function spAskPasteType(cb){
-  showModal('How should this be formatted?',
-   `<div class="alert alert-info">This paste could be a match-the-following table or a passage-based question. Choose the correct type so the formatting comes out right.</div>
-    <div class="pt-opts">
-      <button type="button" class="pt-opt" onclick="_spPick('match')"><b>Match the Following</b><span>Two columns pair up, for example (A) to (D) with (i) to (iv). Creates a bordered table.</span></button>
-      <button type="button" class="pt-opt" onclick="_spPick('passage')"><b>Passage or MCQ Question</b><span>A passage with sub-questions, or options (A) to (D) under a question. Keeps each option on its own line.</span></button>
-      <button type="button" class="pt-opt" onclick="_spPick('plain')"><b>Paste as it is</b><span>No automatic formatting.</span></button>
-    </div>`,
-   `<button class="btn btn-ghost" onclick="closeModal();_spPick(null)">Cancel</button>`);
-  window._spPick=function(kind){ closeModal(); window._spPick=null; cb(kind); };
+  // NOTE: exam form khud ek modal ke andar khulta hai, isliye yahan showModal()
+  // use NAHI kar sakte - wo form ko replace kar deta hai aur closeModal() poora
+  // form band kar deta. Ye apna alag overlay hai, modal system ko chhuta hi nahi.
+  const old=document.getElementById('sp-ask'); if(old) old.remove();
+  const d=document.createElement('div');
+  d.id='sp-ask'; d.className='sp-ask-ov';
+  const done=kind=>{ const el=document.getElementById('sp-ask'); if(el) el.remove(); window._spPick=null; cb(kind); };
+  window._spPick=done;
+  d.innerHTML=`<div class="sp-ask-box" onclick="event.stopPropagation()">
+      <div class="sp-ask-h">How should this be pasted?</div>
+      <div class="sp-ask-sub">This paste could be a match-the-following table or a passage-based question. Choose the correct type so the formatting comes out right.</div>
+      <div class="pt-opts">
+        <button type="button" class="pt-opt" onclick="_spPick('match')"><b>Match the Following</b><span>Two columns pair up, for example (A) to (D) with (i) to (iv). Creates a bordered table.</span></button>
+        <button type="button" class="pt-opt" onclick="_spPick('passage')"><b>Passage or MCQ Question</b><span>A passage with sub-questions, or options (A) to (D) under a question. Keeps each option on its own line.</span></button>
+        <button type="button" class="pt-opt" onclick="_spPick('plain')"><b>Paste as it is</b><span>No automatic formatting.</span></button>
+      </div>
+      <div class="sp-ask-f"><button type="button" class="btn btn-ghost btn-sm" onclick="_spPick(null)">Cancel</button></div>
+    </div>`;
+  d.onclick=()=>done(null);
+  document.body.appendChild(d);
 }
 function spFormatMatch(text,html){
   if(html&&html.indexOf('<table')>=0){ const r=spMatchFromTable(html); if(r) return r; }
