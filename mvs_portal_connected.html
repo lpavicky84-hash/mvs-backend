@@ -622,6 +622,18 @@
   .sd-empty{font-size:.82rem;color:var(--text-muted)}
   .gm-total{margin:10px 0 12px;font-size:.9rem;text-align:right;color:var(--text-muted)}
   .gm-total b{color:var(--text);font-size:1rem}
+  .math-block{display:block;margin:10px 0;overflow-x:auto;max-width:100%}
+  .math-block .katex-display{margin:0}
+  .rs-qtext .math-block,.exp-qt .math-block,.pl-qtext .math-block{margin:8px 0 4px}
+  /* question paper view: options apni line pe + newlines preserve */
+  .exp-qt{white-space:pre-wrap;line-height:1.55}
+  .exp-opts{margin-top:8px;display:flex;flex-direction:column;gap:4px}
+  .exp-opt{font-size:.9rem;line-height:1.5}
+  .exp-opt b{margin-right:5px}
+  /* match-the-following jaisi badi KaTeX table apni line pe, scroll ke saath */
+  .exp-q .katex-display,.rs-q .katex-display,.pl-q .katex-display{display:block;margin:10px 0;overflow-x:auto;overflow-y:hidden;text-align:left}
+  .exp-q .katex-display>.katex,.rs-q .katex-display>.katex,.pl-q .katex-display>.katex{text-align:left}
+  .exp-q .katex .array,.rs-q .katex .array{max-width:100%}
   .mat-acts{display:flex;gap:7px;justify-content:flex-end;align-items:center}
   .mc-del{margin-left:auto;margin-right:10px;flex-shrink:0}
   .mt-delname{font-weight:700;font-size:.9rem;word-break:break-word}
@@ -4097,6 +4109,7 @@ function buildPdfDoc(ex,body,withSol,isM,lang,logo){
   +'.meta b{font-size:12.5px;color:#0F2A54}'
   +'.ins{font-size:11px;background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:8px 12px;margin-bottom:14px}'
   +'.q-or,.q-t .rt-or,.q-hi .rt-or{display:block;text-align:center;font-weight:800;letter-spacing:.14em;margin:7px 0;color:#475569;font-size:11.5px}'
+  +'.math-block{display:block;margin:8px 0;overflow-x:auto;max-width:100%}.math-block .katex-display{margin:0}'
   +'.q-t b,.q-hi b,.sol-t b{font-weight:800}.q-t u,.q-hi u,.sol-t u{text-decoration:underline}'
   +'.q{border:1px solid #e6ebf4;border-left:4px solid #0F2A54;border-radius:10px;padding:11px 13px;margin-bottom:10px;page-break-inside:avoid;background:#fff}'
   +'.q-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;border-bottom:1px dashed #e2e8f0;padding-bottom:5px}'
@@ -4153,7 +4166,7 @@ function buildPdfDoc(ex,body,withSol,isM,lang,logo){
   +'t.split(/(\\$[^$]+\\$)/g).forEach(function(p){'
   +'if(!p)return;'
   +'var m=p.match(/^\\$([\\s\\S]+)\\$$/);'
-  +'if(m){var sp=document.createElement(\'span\');try{katex.render(m[1],sp,{throwOnError:false});}catch(e){sp.textContent=p;}frag.appendChild(sp);}'
+  +'if(m){var bk=/\\\\begin\\{(array|matrix|aligned|cases)\\}/.test(m[1]);var sp=document.createElement(bk?\'div\':\'span\');if(bk)sp.className=\'math-block\';try{katex.render(m[1],sp,{throwOnError:false,displayMode:bk});}catch(e){sp.textContent=p;}frag.appendChild(sp);}'
   +'else frag.appendChild(document.createTextNode(p));'
   +'});'
   +'if(node.parentNode)node.parentNode.replaceChild(frag,node);'
@@ -4562,8 +4575,17 @@ function renderMath(el){
       if(parts.length<=1) return;
       const frag=document.createDocumentFragment();
       parts.forEach(part=>{
-        if(/^[$][$][^$]*[$][$]$/.test(part)){ const s=document.createElement('span'); try{katex.render(part.slice(2,-2),s,{throwOnError:false,displayMode:true});}catch(e){s.textContent=part;} frag.appendChild(s); }
-        else if(/^[$][^$]+[$]$/.test(part)){ const s=document.createElement('span'); try{katex.render(part.slice(1,-1),s,{throwOnError:false,displayMode:false});}catch(e){s.textContent=part;} frag.appendChild(s); }
+        if(/^[$][$][^$]*[$][$]$/.test(part)){ const s=document.createElement('div'); s.className='math-block'; try{katex.render(part.slice(2,-2),s,{throwOnError:false,displayMode:true});}catch(e){s.textContent=part;} frag.appendChild(s); }
+        else if(/^[$][^$]+[$]$/.test(part)){
+          const inner=part.slice(1,-1);
+          // Match-the-following jaisi tables ko apni line par block me dikhao -
+          // inline rehne par wo question ke text se chipak jati thi
+          const blk=/\\begin\{(array|matrix|[bpvBV]matrix|aligned|cases)\}/.test(inner);
+          const s=document.createElement(blk?'div':'span');
+          if(blk) s.className='math-block';
+          try{katex.render(inner,s,{throwOnError:false,displayMode:blk});}catch(e){s.textContent=part;}
+          frag.appendChild(s);
+        }
         else if(part){ frag.appendChild(document.createTextNode(part)); }
       });
       node.parentNode.replaceChild(frag,node);
@@ -5873,7 +5895,14 @@ function gradeManual(attId,examId){
     return `<div class="gm-q"><div class="gm-qtext"><b>Q${q.q_no}.</b> ${_fmtRich(q.question_text)}</div><div class="gm-qin"><input type="number" id="gm-m-${q.q_no}" class="form-control" value="${esc(mv)}" placeholder="0" min="0" max="${q.max_marks}" step="0.5" style="width:84px"><span class="gm-max">/ ${q.max_marks}</span><input id="gm-r-${q.q_no}" class="form-control" value="${esc(sv.remark||'')}" placeholder="Remark for this question (optional)"></div></div>`;
   }).join('');
   const hasSaved=(att.results||[]).length>0;
-  const savedNote=hasSaved?`<div class="alert alert-info">Marks you saved earlier are already filled in below. Change only what you need and save again.</div>`:'';
+  // Agar attempt graded hai lekin per-question marks nahi aaye, matlab backend
+  // (teacher_routes.py) purana hai - warna teacher chup-chaap 0 save kar dega
+  const staleBackend=!hasSaved && att.status==='graded' && (att.total_awarded||0)>0;
+  const savedNote=hasSaved
+    ? `<div class="alert alert-info">Marks you saved earlier are already filled in below. Change only what you need, then save again.</div>`
+    : (staleBackend
+      ? `<div class="alert alert-danger">This student already has <b>${esc(String(att.total_awarded))}/${esc(String(d.exam.total_marks||''))}</b> saved, but the server did not send the question-wise marks, so the boxes below are blank. Please deploy the latest <b>teacher_routes.py</b> on the server first, otherwise saving now will overwrite the existing marks with zeros.</div>`
+      : '');
   const vd=att.verdict||'Good';
   const vOpt=v=>`<option${vd===v?' selected':''}>${v}</option>`;
   showModal((hasSaved?'Edit Marks \u2014 ':'Grade Manually \u2014 ')+esc(att.student_name||'Student'),
@@ -8174,20 +8203,21 @@ async function openExamPlayer(id){
 }
 /* test window over: view-only mode with paper + solutions */
 function _expiredView(el,ex,id){
+  // Ye SIRF question paper hai - solutions alag "Solutions" button se khulte
+  // hain, isliye yahan koi answer/solution nahi dikhaya jaata
   const qs=ex.questions||[], isM=ex.test_type==='mcq';
   const list=qs.map((q,i)=>{
-    let ans='';
-    if(isM&&q.correct_option!=null){
-      const ci=(q.options||[]).findIndex(o=>String(o).trim()===String(q.correct_option).trim());
-      ans=`<div class="exp-a"><b>Answer:</b> (${esc(String.fromCharCode(65+(ci<0?0:ci)))}) ${esc(ci>=0?String(q.options[ci]):String(q.correct_option))}</div>`;
-    }else if(!isM&&(q.model_answer||'').trim()){
-      ans=`<div class="exp-a"><b>Solution:</b> ${esc(q.model_answer)}</div>`;
-    }
-    return `<div class="exp-q"><div class="pl-qtop"><div class="exp-qt"><b>Q${q.q_no||i+1}.</b> ${esc(q.question_text||'')}</div><span class="pl-marks">${q.max_marks} marks</span></div>${ans}</div>`;
+    const no=q.q_no||i+1;
+    // question text + uske figures (OR wale question me dono parts ke)
+    const body=_qBodyHTML(q.question_text||'', q.image_b64||null, q.alt_image_b64||null);
+    const opts=(isM&&Array.isArray(q.options)&&q.options.length)
+      ? `<div class="exp-opts">${q.options.map((o,oi)=>`<div class="exp-opt"><b>(${String.fromCharCode(65+oi)})</b> <span>${_fmtRich(o)}</span></div>`).join('')}</div>`
+      : '';
+    return `<div class="exp-q"><div class="pl-qtop"><div class="exp-qt"><b>Q${no}.</b> ${body}</div><span class="pl-marks">${q.max_marks} marks</span></div>${opts}</div>`;
   }).join('');
   el.innerHTML=`<div class="pl-head pl-sticky"><div class="pl-band"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('back')}</button><div style="flex:1;min-width:180px"><div class="pl-title">${esc(ex.title)}</div><div class="pl-info">${ex.subject?`<span class="pl-sub">${esc(ex.subject)}</span> \u00b7 `:''}${qs.length} questions \u00b7 ${ex.total_marks} marks${ex.teacher_name?' \u00b7 By '+esc(ex.teacher_name):''}</div></div><span class="tx-pill tx-up">WINDOW OVER</span></div></div>
-  <div class="pl-note">${ic('clock')} Ye test ki time window khatam ho gayi hai \u2014 ab attempt nahi kiya ja sakta. Paper aur solutions neeche dekh sakte ho.</div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px"><button class="btn btn-ghost btn-sm" onclick="downloadPaper(${id})">${ic('download')} Paper</button><button class="btn btn-primary btn-sm" onclick="examSolPick(${id})">${ic('download')} Solutions PDF</button></div>
+  <div class="pl-note">${ic('clock')} The test window is over, so this test can no longer be attempted. This is the question paper. Use the Solutions button on the Tests page to see the answers.</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px"><button class="btn btn-ghost btn-sm" onclick="downloadPaper(${id})">${ic('download')} Download Paper</button></div>
   ${list||'<div class="tx-empty"><b>No questions</b></div>'}`;
   renderMath(el);
   _txLoadLogos(el);
@@ -8490,7 +8520,11 @@ async function _solView(id,med){
       }
       return `<div class="rs-q"><div class="rs-qhead"><div class="rs-qtext"><b>Q${o.q_no}.</b> ${_fmtRich(qMain)}${qHi}</div><div class="rs-marks">${o.max} marks</div></div>${ans}</div>`;
     }).join('');
-    el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" onclick="openExamResult(${id})">${ic('back')} Back to Result</button><div class="pl-title">${esc(r.title||'Test')} — Solutions</div></div><div class="rs-list">${rows}</div>`;
+    // Jis student ne test attempt nahi kiya uska result hi nahi hota - uske
+    // liye "Back to Result" 404 ("No attempt found") de raha tha
+    const _hasAtt=(r.total_awarded!=null);
+    const _back=_hasAtt?`openExamResult(${id})`:`loadSTests()`;
+    el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" onclick="${_back}">${ic('back')} ${_hasAtt?'Back to Result':'Back to Tests'}</button><div class="pl-title">${esc(r.title||'Test')} — Solutions</div></div><div class="rs-list">${rows}</div>`;
     renderMath(el);
   }catch(e){ el.innerHTML=errHtml(e); }
 }

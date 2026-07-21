@@ -884,26 +884,52 @@ def teacher_student_photo(sid: int, db: Session = Depends(get_db), current_user=
         raise HTTPException(status_code=404, detail="Photo nahi")
     return Response(content=base64.b64decode(sp.photo_b64), media_type="image/jpeg")
 
+def _subj_key(name):
+    """Subject naam ko compare karne layak banata hai: extra space, case aur
+    "(Class 12)" jaisa suffix hata deta hai. Excel upload se aksar "Physics "
+    jaise trailing space aa jaate the aur student teacher ki list me hi
+    nahi dikhta tha."""
+    t = str(name or "")
+    t = re.sub(r"\((?:class\s*)?\d+(?:th)?\)", " ", t, flags=re.I)
+    t = re.sub(r"[^a-z0-9]+", " ", t.lower())
+    return " ".join(t.split()).strip()
+
+
 @router.get("/my-students-list")
 def teacher_my_students_list(q: str = "", subject: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import StudentProfile
     tp = get_teacher_profile(current_user, db)
     subs = tp.subjects or []
-    ql = q.strip().lower()
+    sub_keys = {_subj_key(x) for x in subs if _subj_key(x)}
+    want = _subj_key(subject) if subject else ""
+    ql = " ".join((q or "").split()).strip().lower()
+    q_tokens = [t for t in ql.split(" ") if t]
     rows = db.query(StudentProfile).all()
     out = []
     for sp in rows:
         ssubs = sp.subjects or []
-        if not any(s in subs for s in ssubs):
+        matched = [x for x in ssubs if _subj_key(x) in sub_keys]
+        if not matched:
             continue
-        if subject and subject not in ssubs:
+        if want and want not in {_subj_key(x) for x in ssubs}:
             continue
-        nm = sp.user.name if sp.user else ""
-        if ql and ql not in nm.lower() and ql not in (sp.phone or ""):
-            continue
+        nm = (sp.user.name if sp.user else "") or ""
+        if q_tokens:
+            hay = " ".join([
+                " ".join(nm.split()).lower(),
+                (sp.phone or ""),
+                (sp.user.user_id if sp.user else "") or "",
+                (sp.batch_name or ""),
+            ]).lower()
+            # har shabd alag se match ho - "tanu sharma" "TANU  SHARMA" se bhi mile
+            if not all(t in hay for t in q_tokens):
+                continue
         out.append({"id": sp.id, "name": nm, "phone": sp.phone, "class": sp.class_level,
-                    "subjects": [s for s in ssubs if s in subs], "has_photo": bool(sp.photo_b64)})
-    out.sort(key=lambda x: x["name"].lower())
+                    "user_id": (sp.user.user_id if sp.user else None),
+                    "batch": sp.batch_name, "medium": sp.medium,
+                    "email": sp.email,
+                    "subjects": matched, "has_photo": bool(sp.photo_b64)})
+    out.sort(key=lambda x: (x["name"] or "").lower())
     return {"total": len(out), "students": out}
 
 # ===== TEACHER -> ADMIN MESSAGE =====
@@ -1428,6 +1454,7 @@ def exam_audience(exam_id: int, db: Session = Depends(get_db), current_user=Depe
 
 @router.get("/exam/{exam_id}/attempts")
 def exam_attempts(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import StudentProfile
     _ensure_exam_columns(db)
     tp = get_teacher_profile(current_user, db)
     ex = db.query(Exam).filter(Exam.id == exam_id, Exam.teacher_id == tp.id).first()
@@ -1438,9 +1465,24 @@ def exam_attempts(exam_id: int, db: Session = Depends(get_db), current_user=Depe
     for a in atts:
         _atl = getattr(a, "attempted", None)
         _skl = getattr(a, "skipped", None)
+        _sp = db.query(StudentProfile).filter(StudentProfile.id == a.student_id).first()
+        _su = _sp.user if _sp else None
         out.append({"attempt_id": a.id, "student_id": a.student_id, "student_name": a.student_name,
             "status": a.status, "total_awarded": a.total_awarded, "verdict": a.verdict,
             "has_answer": bool(a.answer_image_b64),
+            "feedback": a.overall_feedback,
+            "results": [{"q_no": rr.q_no, "marks": rr.marks_awarded,
+                         "max": rr.max_marks, "remark": rr.remark or ""}
+                        for rr in db.query(ExamResult)
+                                    .filter(ExamResult.attempt_id == a.id)
+                                    .order_by(ExamResult.q_no).all()],
+            "phone": (_sp.phone if _sp else None),
+            "student_code": (_su.user_id if _su else None),
+            "batch": (_sp.batch_name if _sp else None),
+            "class_level": (_sp.class_level if _sp else None),
+            "medium": (_sp.medium if _sp else None),
+            "email": (_sp.email if _sp else None),
+            "subjects": ((_sp.subjects or []) if _sp else []),
             "attempted_count": (len(_atl) if isinstance(_atl, list) else None),
             "skipped_count": (len(_skl) if isinstance(_skl, list) else None),
             "submitted_at": a.submitted_at.isoformat() if a.submitted_at else None})
