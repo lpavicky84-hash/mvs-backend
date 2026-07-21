@@ -440,6 +440,7 @@ class ExamQuestion(Base):
     model_answer_hi    = Column(Text, nullable=True)       # Hindi model answer (bilingual)
     options_hi         = Column(JSON, nullable=True)       # Hindi mcq options (bilingual)
     model_answer_image = Column(_BIGTEXT, nullable=True)   # optional diagram for the model answer
+    alt_image_b64      = Column(_BIGTEXT, nullable=True)   # figure for the part after an "OR" alternative
     explanation        = Column(Text, nullable=True)       # mcq: shown to students after submit
     explanation_hi     = Column(Text, nullable=True)       # Hindi explanation (bilingual)
 

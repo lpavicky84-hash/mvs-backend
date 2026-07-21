@@ -1038,6 +1038,8 @@ def _ensure_exam_columns(db):
          "ALTER TABLE exam_attempts ADD COLUMN attempted TEXT NULL"),
         ("ALTER TABLE exam_attempts ADD COLUMN skipped JSON NULL",
          "ALTER TABLE exam_attempts ADD COLUMN skipped TEXT NULL"),
+        ("ALTER TABLE exam_questions ADD COLUMN alt_image_b64 LONGTEXT NULL",
+         "ALTER TABLE exam_questions ADD COLUMN alt_image_b64 TEXT NULL"),
     ]
     for group in stmts:
         for st in group:
@@ -1102,6 +1104,7 @@ def student_exam_paper(exam_id: int, medium: str = "english", db: Session = Depe
     from types import SimpleNamespace as _NS
     qs = [_NS(q_no=q.q_no, question_text=q.question_text, max_marks=q.max_marks,
               model_answer=None, options=q.options, correct_option=None, image_b64=q.image_b64,
+              alt_image_b64=getattr(q, "alt_image_b64", None),
               question_text_hi=q.question_text_hi, model_answer_hi=None, options_hi=q.options_hi,
               model_answer_image=None, explanation=None, explanation_hi=None) for q in qs]
     from exam_pdf import build_exam_pdf
@@ -1132,7 +1135,8 @@ def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=D
              "question_text_hi": q.question_text_hi,
              "options": q.options if ex.test_type == "mcq" else None,
              "options_hi": q.options_hi if ex.test_type == "mcq" else None,
-             "image_b64": q.image_b64}
+             "image_b64": q.image_b64,
+             "alt_image_b64": getattr(q, "alt_image_b64", None)}
         if _exp:   # window over -> solutions become visible (attempting stays closed)
             d.update({"model_answer": q.model_answer, "model_answer_hi": q.model_answer_hi,
                       "correct_option": q.correct_option, "explanation": q.explanation,

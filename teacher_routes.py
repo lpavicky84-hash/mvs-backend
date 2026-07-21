@@ -1227,6 +1227,8 @@ def _ensure_exam_columns(db):
          "ALTER TABLE exam_attempts ADD COLUMN attempted TEXT NULL"),
         ("ALTER TABLE exam_attempts ADD COLUMN skipped JSON NULL",
          "ALTER TABLE exam_attempts ADD COLUMN skipped TEXT NULL"),
+        ("ALTER TABLE exam_questions ADD COLUMN alt_image_b64 LONGTEXT NULL",
+         "ALTER TABLE exam_questions ADD COLUMN alt_image_b64 TEXT NULL"),
     ]
     for group in stmts:
         for s in group:
@@ -1290,6 +1292,7 @@ def create_exam(payload: dict = Body(...), background_tasks: BackgroundTasks = N
                model_answer_hi=(q.get("model_answer_hi") or None),
                options_hi=(opts_hi if opts_hi else None),
                model_answer_image=q.get("model_answer_image"),
+               alt_image_b64=q.get("alt_image_b64"),
                explanation=(q.get("explanation") or None),
                explanation_hi=(q.get("explanation_hi") or None)))
     db.commit()
@@ -1447,6 +1450,7 @@ def exam_attempts(exam_id: int, db: Session = Depends(get_db), current_user=Depe
                   "correct_option": q.correct_option, "image_b64": q.image_b64,
                   "question_text_hi": q.question_text_hi, "model_answer_hi": q.model_answer_hi,
                   "options_hi": q.options_hi, "model_answer_image": q.model_answer_image,
+                  "alt_image_b64": getattr(q, "alt_image_b64", None),
                   "explanation": q.explanation, "explanation_hi": q.explanation_hi} for q in qrows]
     return {"exam": {"id": ex.id, "title": ex.title, "total_marks": ex.total_marks,
                      "test_type": ex.test_type, "subject": ex.subject, "chapter": ex.chapter,
@@ -2463,6 +2467,7 @@ def update_exam(exam_id: int, payload: dict = Body(...), db: Session = Depends(g
                    model_answer_hi=(q.get("model_answer_hi") or None),
                    options_hi=(opts_hi if opts_hi else None),
                    model_answer_image=q.get("model_answer_image"),
+                   alt_image_b64=q.get("alt_image_b64"),
                    explanation=(q.get("explanation") or None),
                    explanation_hi=(q.get("explanation_hi") or None)))
         ex.total_marks = total
