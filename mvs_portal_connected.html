@@ -4080,7 +4080,7 @@ function _dppFilter(mode){
 
 /* ================= PREMIUM PDF (question paper + with solutions) ================= */
 function escH(x){ return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function buildPdfDoc(ex,body,withSol,isM,lang,logo){
+function buildPdfDoc(ex,body,withSol,isM,lang,logo,copyLabel){
   lang=lang||'en';
   const docTitle='MVS '+(ex.title||'Test')+(withSol?' — With Solutions':' — Question Paper');
   const logoHtml=logo
@@ -4128,7 +4128,7 @@ function buildPdfDoc(ex,body,withSol,isM,lang,logo){
   +'.sol-t{white-space:pre-wrap;font-size:12px;overflow-x:auto}'
   +'.foot{margin-top:16px;text-align:center;font-size:9px;color:#94a3b8;letter-spacing:.07em;border-top:1px solid #e2e8f0;padding-top:8px}'
   +'</style></head><body>'
-  +'<div class="band">'+logoHtml+'<div class="brand"><div class="logo-t">MVS FOUNDATION</div><div class="tag">Test Series</div></div><div class="band-r"><div class="yr">'+escH(new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}))+'</div>'+(withSol?'<div class="tcopy">TEACHER COPY</div>':'')+'</div></div>'
+  +'<div class="band">'+logoHtml+'<div class="brand"><div class="logo-t">MVS FOUNDATION</div><div class="tag">Test Series</div></div><div class="band-r"><div class="yr">'+escH(new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}))+'</div>'+(withSol?'<div class="tcopy">'+escH(copyLabel||'TEACHER COPY')+'</div>':'')+'</div></div>'
   +'<div class="tstrip"><div class="ttitle">'+escH(ex.title||'Test')+'</div><div class="tchips">'
   +(ex.subject?'<span class="tchip">'+escH(ex.subject)+'</span>':'')
   +(spCleanCh(ex.chapter)?'<span class="tchip">'+escH(spCleanCh(ex.chapter))+'</span>':'')
@@ -8025,6 +8025,21 @@ async function loadSTests(){
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 /* swap subject-initial tiles for the teacher's real photo (falls back to initials) */
+async function _txLogoData(tid){
+  // Solutions PDF popup ke liye teacher ki photo data-URL me chahiye -
+  // blob: URL naye window me load nahi hoti, isliye MVS wala placeholder aata tha
+  if(!tid) return null;
+  window._tlogoData=window._tlogoData||{};
+  if(tid in window._tlogoData) return window._tlogoData[tid];
+  try{
+    const r=await fetch(API+'/api/student/teacher/'+tid+'/photo',{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('x');
+    const b=await r.blob(); if(!b||!b.size) throw new Error('x');
+    const d=await new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=()=>res(null); fr.readAsDataURL(b); });
+    window._tlogoData[tid]=d||null;
+    return window._tlogoData[tid];
+  }catch(e){ window._tlogoData[tid]=null; return null; }
+}
 async function _txLoadLogos(root){
   window._tphotoCache=window._tphotoCache||{};
   const spots=[...root.querySelectorAll('.tx-tlogo[data-tid],.pl-tlogo[data-tid]')];
@@ -8534,7 +8549,7 @@ async function _solPdf(id,med){
   try{
     const d=await _solData(id,med); const r=d.r, items=d.items;
     const isM=r.test_type==='mcq';
-    const ex={title:(r.title||'Test')+' — Solutions',subject:r.subject,chapter:'',test_type:r.test_type,duration_min:null,total_marks:r.total_marks};
+    const ex={title:(r.title||'Test')+' — Solutions',subject:r.subject,chapter:'',test_type:r.test_type,duration_min:null,total_marks:r.total_marks,teacher_name:r.teacher_name||''};
     const qLbl=med==='hi'?'प्रश्न':'Question';
     const body=items.map(o=>{
       const qMain=med==='hi'?(o.q_hi||o.q_en):o.q_en;
@@ -8555,7 +8570,12 @@ async function _solPdf(id,med){
     }).join('');
     const w=window.open('','_blank');
     if(!w){ toast('Popup blocked — please allow popups.',true); return; }
-    w.document.write(buildPdfDoc(ex,body,true,isM,med==='hi'?'hi':'en',null));
+    let _logo=null;
+    try{
+      const _tid=r.teacher_id||((window._sExams||[]).find(x=>x.id===id)||{}).teacher_id;
+      _logo=await _txLogoData(_tid);
+    }catch(e){}
+    w.document.write(buildPdfDoc(ex,body,true,isM,med==='hi'?'hi':'en',_logo,'SOLUTIONS'));
     w.document.close();
   }catch(e){ toast(e.message,true); }
 }

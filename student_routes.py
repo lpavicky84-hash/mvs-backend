@@ -1224,6 +1224,7 @@ def student_exam_result(exam_id: int, db: Session = Depends(get_db), current_use
             })
         items.append(it)
     return {"status": att.status, "title": ex.title, "teacher_name": ex.teacher_name,
+            "teacher_id": ex.teacher_id,
             "subject": ex.subject, "duration_min": ex.duration_min,
             "total_awarded": att.total_awarded, "total_marks": ex.total_marks,
             "verdict": att.verdict, "feedback": att.overall_feedback,
