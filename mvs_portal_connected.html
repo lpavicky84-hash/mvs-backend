@@ -4052,7 +4052,7 @@ function buildPdfDoc(ex,body,withSol,isM,lang,logo){
   +'.sol-t{white-space:pre-wrap;font-size:12px;overflow-x:auto}'
   +'.foot{margin-top:16px;text-align:center;font-size:9px;color:#94a3b8;letter-spacing:.07em;border-top:1px solid #e2e8f0;padding-top:8px}'
   +'</style></head><body>'
-  +'<div class="band">'+logoHtml+'<div class="brand"><div class="logo-t">MVS FOUNDATION</div><div class="tag">Test Series \u00b7 NIOS Coaching</div></div><div class="band-r"><div class="yr">'+escH(new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}))+'</div>'+(withSol?'<div class="tcopy">TEACHER COPY</div>':'')+'</div></div>'
+  +'<div class="band">'+logoHtml+'<div class="brand"><div class="logo-t">MVS FOUNDATION</div><div class="tag">Test Series</div></div><div class="band-r"><div class="yr">'+escH(new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}))+'</div>'+(withSol?'<div class="tcopy">TEACHER COPY</div>':'')+'</div></div>'
   +'<div class="tstrip"><div class="ttitle">'+escH(ex.title||'Test')+'</div><div class="tchips">'
   +(ex.subject?'<span class="tchip">'+escH(ex.subject)+'</span>':'')
   +(spCleanCh(ex.chapter)?'<span class="tchip">'+escH(spCleanCh(ex.chapter))+'</span>':'')
