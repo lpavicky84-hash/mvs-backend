@@ -97,7 +97,7 @@ def _supsub(t):
 # isliye PDF ko bhi wahi samajhna padta hai. Markers _clean() se PEHLE nikaale
 # jaate hain, warna "__x__" ko _supsub subscript samajh leta hai.
 _RICH_RE = re.compile(r"\*\*(.+?)\*\*|__(.+?)__|(?<![\*\w])\*(?!\s)(.+?)(?<!\s)\*(?!\*)", re.S)
-_OR_LINE_RE = re.compile(r"^\s*(?:\*\*)?\s*(?:OR|or|Or|oR)\s*(?:\*\*)?\s*$")
+_OR_LINE_RE = re.compile(u"^\\s*(?:\\*\\*)?\\s*(OR|or|Or|oR|\u092f\u093e)\\s*(?:\\*\\*)?\\s*$")
 
 
 def _strip_rich(t):
@@ -133,6 +133,14 @@ def _rich_runs(t):
 
 def _is_or_line(ln):
     return bool(_OR_LINE_RE.match((ln or "").strip()))
+
+
+def _or_token(ln):
+    """Hindi paper me separator "\u092f\u093e" hota hai, English me "OR"."""
+    m = _OR_LINE_RE.match((ln or "").strip())
+    if m and m.group(1) == u"\u092f\u093e":
+        return u"\u092f\u093e"
+    return "OR"
 
 
 def _style_font(pdf, style, size, base_bold=False):
@@ -313,7 +321,7 @@ def _blocks(text):
     blocks = []
     for ln in _presplit(text):
         if _is_or_line(ln):
-            blocks.append(("oralt", "OR", ln))
+            blocks.append(("oralt", _or_token(ln), ln))
             continue
         low = _strip_rich(ln).lower()
         c = _clean(_strip_rich(ln))
@@ -781,7 +789,7 @@ def _render_block(pdf, kind, c, LM, EPW, is_q, raw=None):
         pdf.set_x(LM)
         _style_font(pdf, "B", 12)
         pdf.set_text_color(*NAVY)
-        pdf.cell(EPW, 7.5, "OR", align="C")
+        pdf.cell(EPW, 7.5, (c or "OR"), align="C")
         pdf.ln(9.5)
         pdf.set_text_color(20, 22, 28)
         return
