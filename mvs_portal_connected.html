@@ -609,6 +609,7 @@
   .mat-acts{display:flex;gap:7px;justify-content:flex-end;align-items:center}
   .mc-del{margin-left:auto;margin-right:10px;flex-shrink:0}
   .mt-delname{font-weight:700;font-size:.9rem;word-break:break-word}
+  .gm-pdf{width:100%;height:min(70vh,620px);border:1px solid var(--border);border-radius:10px;background:#fff}
   .mat-acts{display:flex;gap:7px;justify-content:flex-end;align-items:center}
   .mc-del{margin-left:auto;margin-right:10px;flex-shrink:0}
   .mt-delname{font-weight:700;font-size:.9rem;word-break:break-word}
@@ -5727,13 +5728,30 @@ async function importExamPdf(inp){
 }
 async function downloadStudentAnswer(attId,name){
   try{ api('/api/teacher/attempt/'+attId+'/marking','POST',{}).catch(()=>{}); }catch(e){}
+  toast('Fetching the answer sheet\u2026');
   try{
     const r=await fetch(API+'/api/teacher/attempt/'+attId+'/answer',{headers:{Authorization:'Bearer '+TOKEN}});
-    if(!r.ok){ toast('No answer sheet available for this student.',true); return; }
-    const b=await r.blob(); const u=URL.createObjectURL(b);
-    const a=document.createElement('a'); a.href=u; a.download='answer-'+(name||'student')+'.jpg'; document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(()=>URL.revokeObjectURL(u),2000);
-  }catch(e){ toast(e.message,true); }
+    if(!r.ok){
+      let msg='No answer sheet available for this student.';
+      try{ const j=await r.json(); if(j&&j.detail) msg=j.detail; }catch(e){}
+      toast(msg,true); return;
+    }
+    const ct=(r.headers.get('content-type')||'').toLowerCase();
+    const b=await r.blob();
+    if(!b||!b.size){ toast('The answer sheet file is empty. Ask the student to upload it again.',true); return; }
+    // PDF ho ya photo - extension response se hi lete hain, warna PDF .jpg
+    // ban ke corrupt download hota tha
+    const ext=ct.indexOf('pdf')>=0?'pdf':(ct.indexOf('png')>=0?'png':'jpg');
+    const u=URL.createObjectURL(b);
+    const a=document.createElement('a'); a.href=u; a.download='answer-'+(name||'student')+'.'+ext;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(u),4000);
+    toast('Answer sheet downloaded.');
+  }catch(e){
+    // "Failed to fetch" = network/size problem, HTTP error nahi
+    toast('Could not download the sheet right now. Opening it in a new tab instead.',true);
+    try{ window.open(API+'/api/teacher/attempt/'+attId+'/answer?t='+TOKEN,'_blank'); }catch(e2){}
+  }
 }
 async function submitExam(){
   const title=val('ex-title'); if(!title){ toast('Enter a test title',true); return; }
@@ -5787,10 +5805,24 @@ async function viewExamAttempts(id){
   }catch(e){ toast(e.message,true); }
 }
 async function loadAnsImg(attId,imgId){
-  try{ const r=await fetch(API+'/api/teacher/attempt/'+attId+'/answer',{headers:{Authorization:'Bearer '+TOKEN}});
-    if(r.ok){ const u=URL.createObjectURL(await r.blob()); const el=document.getElementById(imgId); if(el){ el.src=u; el.style.display='block'; } }
-    else { const w=document.getElementById(imgId+'-wrap'); if(w) w.innerHTML='<div class="gm-noimg">No answer sheet image (this may be an MCQ test).</div>'; }
-  }catch(e){}
+  const wrap=()=>document.getElementById(imgId+'-wrap');
+  try{
+    const r=await fetch(API+'/api/teacher/attempt/'+attId+'/answer',{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok){ const w=wrap(); if(w) w.innerHTML='<div class="gm-noimg">No answer sheet uploaded (this may be an MCQ test).</div>'; return; }
+    const ct=(r.headers.get('content-type')||'').toLowerCase();
+    const b=await r.blob(); const u=URL.createObjectURL(b);
+    if(ct.indexOf('pdf')>=0){
+      // PDF sheet <img> me kabhi nahi khulti thi - ab inline viewer + open link
+      const w=wrap();
+      if(w) w.innerHTML='<iframe class="gm-pdf" src="'+u+'"></iframe>'
+        +'<div style="margin-top:8px"><a class="btn btn-ghost btn-sm" href="'+u+'" target="_blank" rel="noopener">Open the sheet in a new tab</a></div>';
+      return;
+    }
+    const el=document.getElementById(imgId); if(el){ el.src=u; el.style.display='block'; }
+  }catch(e){
+    const w=wrap();
+    if(w) w.innerHTML='<div class="gm-noimg">The answer sheet could not be loaded. Please check your connection and try again.</div>';
+  }
 }
 function gradeManual(attId,examId){
   const d=window._examAttData; if(!d){ toast('Please reopen Results and try again.',true); return; }

@@ -1598,6 +1598,9 @@ async def parse_exam_pdf(file: UploadFile = File(...), test_type: str = Form("su
 @router.get("/attempt/{attempt_id}/answer")
 def attempt_answer_image(attempt_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     _ensure_exam_columns(db)
+    import base64          # ROOT CAUSE: ye import missing tha -> NameError ->
+                           # unhandled 500 (CORS headers ke bina) -> portal par
+                           # "Failed to fetch". Isi wajah se sheet kabhi nahi khulti thi.
     from fastapi import Response
     tp = get_teacher_profile(current_user, db)
     att = db.query(ExamAttempt).filter(ExamAttempt.id == attempt_id).first()
@@ -1611,8 +1614,30 @@ def attempt_answer_image(attempt_id: int, db: Session = Depends(get_db), current
         db.commit()
     if not att.answer_image_b64:
         raise HTTPException(404, "No answer sheet uploaded")
-    raw = att.answer_image_b64.split(",")[-1]
-    return Response(content=base64.b64decode(raw), media_type="image/jpeg")
+    # Students upload a photo OR a PDF. Pehle hamesha image/jpeg bheja jaata tha
+    # aur decode fail hone par unhandled 500 aata tha - browser use CORS ke bina
+    # block kar deta tha, isliye portal par "Failed to fetch" dikhta tha.
+    raw = att.answer_image_b64 or ""
+    mime = "image/jpeg"
+    if raw.startswith("data:") and "," in raw:
+        header, raw = raw.split(",", 1)
+        try:
+            mime = header.split(":", 1)[1].split(";", 1)[0] or "image/jpeg"
+        except Exception:
+            mime = "image/jpeg"
+    raw = "".join(raw.split())          # stray whitespace/newlines hatao
+    raw += "=" * (-len(raw) % 4)        # padding theek karo
+    try:
+        data = base64.b64decode(raw)
+    except Exception:
+        raise HTTPException(400, "The uploaded answer sheet could not be read. Ask the student to upload it again.")
+    if not data:
+        raise HTTPException(404, "No answer sheet uploaded")
+    ext = "pdf" if "pdf" in mime else ("png" if "png" in mime else "jpg")
+    safe = "".join(c for c in (att.student_name or "student") if c.isalnum() or c in " -_").strip() or "student"
+    return Response(content=data, media_type=mime,
+                    headers={"Content-Disposition": 'inline; filename="answer-%s.%s"' % (safe, ext),
+                             "Content-Length": str(len(data))})
 
 @router.post("/attempt/{attempt_id}/grade-manual")
 def grade_attempt_manual(attempt_id: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
