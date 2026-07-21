@@ -610,6 +610,18 @@
   .mc-del{margin-left:auto;margin-right:10px;flex-shrink:0}
   .mt-delname{font-weight:700;font-size:.9rem;word-break:break-word}
   .gm-pdf{width:100%;height:min(70vh,620px);border:1px solid var(--border);border-radius:10px;background:#fff}
+  .tr-stu .sd-toggle{cursor:pointer;user-select:none}
+  .tr-stu .sd-toggle:hover{color:hsl(25 95% 45%)}
+  .sd-chev{display:inline-block;margin-left:6px;font-size:1.05rem;color:var(--text-muted);transition:transform .15s}
+  .sd-chev.on{transform:rotate(90deg)}
+  .sd-box{margin-top:10px;padding:12px 14px;border:1px solid var(--border);border-radius:11px;background:var(--bg)}
+  .sd-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 16px}
+  .sd-item span{display:block;font-size:.66rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)}
+  .sd-item b{font-size:.85rem;word-break:break-word}
+  .sd-acts{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap}
+  .sd-empty{font-size:.82rem;color:var(--text-muted)}
+  .gm-total{margin:10px 0 12px;font-size:.9rem;text-align:right;color:var(--text-muted)}
+  .gm-total b{color:var(--text);font-size:1rem}
   .mat-acts{display:flex;gap:7px;justify-content:flex-end;align-items:center}
   .mc-del{margin-left:auto;margin-right:10px;flex-shrink:0}
   .mt-delname{font-weight:700;font-size:.9rem;word-break:break-word}
@@ -5799,10 +5811,32 @@ async function viewExamAttempts(id){
       const info=(a.status==='graded'?('Score: '+a.total_awarded+'/'+d.exam.total_marks+(a.verdict?' \u00b7 '+esc(a.verdict):'')):a.status==='marking'?'Marking in progress':a.status==='grading'?'Pending evaluation':'Awaiting submission')+(a.attempted_count!=null?' \u00b7 Answered '+a.attempted_count+'/'+(d.questions||[]).length:'');
       const btns=`<button class="btn btn-primary btn-sm" onclick="gradeManual(${a.attempt_id},${id})">${a.status==='graded'?'Edit Marks':'Grade Manually'}</button>`;
       const dl=a.has_answer?`<button class="btn btn-ghost btn-sm ansdl-btn" onclick="downloadStudentAnswer(${a.attempt_id},'${esc((a.student_name||'student').replace(/[^A-Za-z0-9]/g,'-'))}')">${ic('download')} Sheet</button>`:'';
-      return `<div class="today-row"><div><div class="tr-sub">${esc(a.student_name||('Student #'+a.student_id))}</div><div class="tr-topic">${info}</div></div><div class="tmeta"><span class="tstatus ${a.status==='graded'?'done':''}">${a.status==='grading'?'pending evaluation':esc(a.status)}</span>${dl}${btns}</div></div>`;
+      // naam pe click -> student ki poori detail usi row me khul jati hai
+      const det=[
+        ['Student ID', a.student_code],
+        ['Phone', a.phone],
+        ['Batch', a.batch],
+        ['Class', a.class_level?('Class '+a.class_level):null],
+        ['Medium', a.medium],
+        ['Email', a.email],
+        ['Subjects', (a.subjects||[]).join(', ')]
+      ].filter(x=>x[1]).map(x=>`<div class="sd-item"><span>${x[0]}</span><b>${esc(String(x[1]))}</b></div>`).join('');
+      const phone=(a.phone||'').replace(/[^0-9]/g,'');
+      const acts=phone?`<div class="sd-acts"><a class="btn btn-ghost btn-sm" href="tel:${esc(phone)}">Call</a><a class="btn btn-ghost btn-sm" href="https://wa.me/${phone.length===10?('91'+phone):esc(phone)}" target="_blank" rel="noopener">WhatsApp</a></div>`:'';
+      return `<div class="today-row tr-stu"><div style="min-width:0;flex:1">
+          <div class="tr-sub sd-toggle" title="Click to see the full student details" onclick="_toggleStuDet(${a.attempt_id})">${esc(a.student_name||('Student #'+a.student_id))}<span class="sd-chev" id="sdc-${a.attempt_id}">\u203a</span></div>
+          <div class="tr-topic">${info}</div>
+          <div class="sd-box" id="sd-${a.attempt_id}" style="display:none">${det?`<div class="sd-grid">${det}</div>${acts}`:'<div class="sd-empty">No extra details are saved for this student yet.</div>'}</div>
+        </div><div class="tmeta"><span class="tstatus ${a.status==='graded'?'done':''}">${a.status==='grading'?'pending evaluation':esc(a.status)}</span>${dl}${btns}</div></div>`;
     }).join(''):'<div class="empty-state"><p>No submissions yet.</p></div>';
     showModal('Results \u2014 '+esc(d.exam.title), rows);
   }catch(e){ toast(e.message,true); }
+}
+function _toggleStuDet(id){
+  const b=document.getElementById('sd-'+id); if(!b) return;
+  const open=b.style.display==='none';
+  b.style.display=open?'block':'none';
+  const c=document.getElementById('sdc-'+id); if(c) c.classList.toggle('on',open);
 }
 async function loadAnsImg(attId,imgId){
   const wrap=()=>document.getElementById(imgId+'-wrap');
@@ -5831,13 +5865,33 @@ function gradeManual(attId,examId){
   const qs=d.questions||[];
   const isSubj=(d.exam.test_type||'')!=='mcq';
   const ansBlock=isSubj?`<div class="gm-ans" id="gm-ans-img-wrap"><div class="gm-ans-lbl">Student's handwritten answer sheet</div><img id="gm-ans-img" class="gm-ans-img" style="display:none"></div>`:'';
-  const rows=qs.map(q=>`<div class="gm-q"><div class="gm-qtext"><b>Q${q.q_no}.</b> ${esc(q.question_text)}</div><div class="gm-qin"><input type="number" id="gm-m-${q.q_no}" class="form-control" placeholder="0" min="0" max="${q.max_marks}" style="width:84px"><span class="gm-max">/ ${q.max_marks}</span><input id="gm-r-${q.q_no}" class="form-control" placeholder="Remark for this question (optional)"></div></div>`).join('');
-  showModal('Grade Manually \u2014 '+esc(att.student_name||'Student'),
-    ansBlock+`<div class="gm-list">${rows}</div>`
-    +`<div class="form-group" style="margin-top:14px"><label>Overall feedback (shown to student)</label><textarea id="gm-fb" class="form-control" rows="2" placeholder="e.g. Good attempt. Work on diagrams."></textarea></div>`
-    +`<div class="form-group"><label>Verdict</label><select id="gm-verdict" class="form-control"><option>Excellent</option><option selected>Good</option><option>Needs Improvement</option></select></div>`
-    +`<button class="btn btn-primary" style="width:100%" onclick="submitManualGrade(${attId},${examId})">Save Marks (visible to student)</button>`);
+  // pehle diye hue marks/remark wapas bhar do - warna edit karte waqt sab 0 dikhta tha
+  const saved={}; (att.results||[]).forEach(r=>{ saved[r.q_no]=r; });
+  const rows=qs.map(q=>{
+    const sv=saved[q.q_no]||{};
+    const mv=(sv.marks==null||sv.marks==='')?'':String(sv.marks);
+    return `<div class="gm-q"><div class="gm-qtext"><b>Q${q.q_no}.</b> ${_fmtRich(q.question_text)}</div><div class="gm-qin"><input type="number" id="gm-m-${q.q_no}" class="form-control" value="${esc(mv)}" placeholder="0" min="0" max="${q.max_marks}" step="0.5" style="width:84px"><span class="gm-max">/ ${q.max_marks}</span><input id="gm-r-${q.q_no}" class="form-control" value="${esc(sv.remark||'')}" placeholder="Remark for this question (optional)"></div></div>`;
+  }).join('');
+  const hasSaved=(att.results||[]).length>0;
+  const savedNote=hasSaved?`<div class="alert alert-info">Marks you saved earlier are already filled in below. Change only what you need and save again.</div>`:'';
+  const vd=att.verdict||'Good';
+  const vOpt=v=>`<option${vd===v?' selected':''}>${v}</option>`;
+  showModal((hasSaved?'Edit Marks \u2014 ':'Grade Manually \u2014 ')+esc(att.student_name||'Student'),
+    savedNote+ansBlock+`<div class="gm-list">${rows}</div>`
+    +`<div class="form-group" style="margin-top:14px"><label>Overall feedback (shown to student)</label><textarea id="gm-fb" class="form-control" rows="2" placeholder="e.g. Good attempt. Work on diagrams.">${esc(att.feedback||'')}</textarea></div>`
+    +`<div class="form-group"><label>Verdict</label><select id="gm-verdict" class="form-control">${vOpt('Excellent')}${vOpt('Good')}${vOpt('Needs Improvement')}</select></div>`
+    +`<div class="gm-total" id="gm-total"></div>`
+    +`<button class="btn btn-primary" style="width:100%" onclick="submitManualGrade(${attId},${examId})">${hasSaved?'Update Marks':'Save Marks'} (visible to student)</button>`);
+  _gmTotal();
+  qs.forEach(q=>{ const el=document.getElementById('gm-m-'+q.q_no); if(el) el.addEventListener('input',_gmTotal); });
   if(isSubj) renderMath(document.getElementById('modal-body')), loadAnsImg(attId,'gm-ans-img');
+}
+function _gmTotal(){
+  const d=window._examAttData; const qs=(d&&d.questions)||[];
+  let got=0,max=0;
+  qs.forEach(q=>{ const v=parseFloat(val('gm-m-'+q.q_no)); if(!isNaN(v)) got+=v; max+=(+q.max_marks||0); });
+  const el=document.getElementById('gm-total');
+  if(el) el.innerHTML='Total so far: <b>'+(Math.round(got*100)/100)+' / '+max+'</b>';
 }
 async function submitManualGrade(attId,examId){
   const d=window._examAttData; const qs=(d&&d.questions)||[];
@@ -6803,7 +6857,7 @@ function aRenderStudents(){
   el.innerHTML=`<div class="card-header" style="padding:0 4px 12px;border:none"><h3 style="font-size:1.3rem">Students</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-success btn-sm" onclick="openBulkPhone()">${ic('users')} Add by Phone</button><button class="btn btn-ghost btn-sm" onclick="openExcelUpload()">${ic('upload')} Excel Upload</button><button class="btn btn-primary btn-sm" onclick="openAddStudent()">${ic('user')} Add Student</button><button class="btn btn-success btn-sm" onclick="openWhatsApp()">${ic('megaphone')} WhatsApp</button><button class="btn btn-ghost btn-sm" onclick="openPortalSync()">${ic('refresh')} Sync Portal</button><button class="btn btn-ghost btn-sm" onclick="openSsoCheck()">${ic('shield')} Portal Check</button><button class="btn btn-danger btn-sm" onclick="openDeleteAllStudents()">${ic('trash')} Delete All</button></div></div>${srcChips}
     ${cards.join('')}
     <div class="card"><div class="card-body">
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"><input class="form-control" style="flex:1;min-width:180px" placeholder="Search name, phone, ID, email..." value="${esc(_stuSearch)}" oninput="aStuSearch(this.value)"><select class="form-control" style="width:auto" onchange="aStuSize(this.value)">${[10,25,50,100].map(n=>`<option value="${n}"${_stuSize===n?' selected':''}>${n} / page</option>`).join('')}</select></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"><input id="a-stu-q" class="form-control" style="flex:1;min-width:180px" placeholder="Search name, phone, ID, email..." value="${esc(_stuSearch)}" oninput="aStuSearch(this.value,this)"><select class="form-control" style="width:auto" onchange="aStuSize(this.value)">${[10,25,50,100].map(n=>`<option value="${n}"${_stuSize===n?' selected':''}>${n} / page</option>`).join('')}</select></div>
       ${_stuFilter?`<div style="margin-bottom:12px"><span class="tag tag-active">Filter: ${esc(_stuFilter)} <span style="cursor:pointer;margin-left:6px" onclick="aStuSetFilter('')">✕</span></span></div>`:''}
       ${rows}
       <div class="pager"><div class="pager-info">Showing ${filtered.length?start+1:0}–${Math.min(start+_stuSize,filtered.length)} of ${filtered.length}</div><div style="display:flex;gap:8px;align-items:center"><button class="btn btn-ghost btn-sm" ${_stuPage<=1?'disabled':''} onclick="aStuPage(${_stuPage-1})">Prev</button><span class="pager-info">Page ${_stuPage} / ${totalPages}</span><button class="btn btn-ghost btn-sm" ${_stuPage>=totalPages?'disabled':''} onclick="aStuPage(${_stuPage+1})">Next</button></div></div>
@@ -6811,7 +6865,18 @@ function aRenderStudents(){
   page.forEach(s=>{ if(s.has_photo) loadImgInto('sphoto-'+s.profile_id,'/api/admin/student/'+s.profile_id+'/photo'); });
 }
 function aStuSetFilter(sub){ _stuFilter=sub; _stuPage=1; aRenderStudents(); }
-function aStuSearch(q){ _stuSearch=q; _stuPage=1; aRenderStudents(); }
+function aStuSearch(q,inp){
+  // Poora page re-render hota hai to search input ka DOM node badal jata tha
+  // aur cursor gayab ho jata - isliye caret yaad rakh ke wapas focus dete hain
+  const pos=inp?(inp.selectionStart||String(q||'').length):null;
+  _stuSearch=q; _stuPage=1;
+  aRenderStudents();
+  const el=document.getElementById('a-stu-q');
+  if(el){
+    el.focus();
+    if(pos!=null){ try{ el.setSelectionRange(pos,pos); }catch(e){} }
+  }
+}
 function aStuSize(n){ _stuSize=parseInt(n); _stuPage=1; aRenderStudents(); }
 function aStuPage(p){ _stuPage=p; aRenderStudents(); }
 function openStudentProfile(sid){
@@ -8022,11 +8087,13 @@ async function examPdfStudent(id,medium,withSol){
 }
 function examCardHTML(e){
   const isM=e.test_type==='mcq';
+  // backend `awarded` bhejta hai; purana card `score` padhta tha -> undefined/45
+  const _got=(e.score!=null?e.score:(e.awarded!=null?e.awarded:null));
   const tyPill=isM?`<span class="tx-pill o">OBJECTIVE</span>`:`<span class="tx-pill v">SUBJECTIVE</span>`;
   const topCol=isM?'linear-gradient(90deg,#FF6B2B,#ffb347)':'linear-gradient(90deg,#7c3aed,#a78bfa)';
   let stPill='', right='';
   if(e.status==='graded'){
-    const pct=Math.round((e.score||0)/(e.total_marks||1)*100);
+    const pct=Math.round((_got||0)/(e.total_marks||1)*100);
     const off=(169.6*(1-pct/100)).toFixed(1);
     stPill=`<span class="tx-pill g">CHECKING DONE ✓</span>`;
     right=`<div class="tx-ring"><svg width="60" height="60" viewBox="0 0 60 60"><circle cx="30" cy="30" r="27" fill="none" stroke="var(--border)" stroke-width="5"/><circle cx="30" cy="30" r="27" fill="none" stroke="${pct>=60?'#059669':'#d97706'}" stroke-width="5" stroke-linecap="round" stroke-dasharray="169.6" stroke-dashoffset="${off}"/></svg><div class="t">${pct}%</div></div>`;
@@ -8044,10 +8111,10 @@ function examCardHTML(e){
     stPill=_future?`<span class="tx-pill tx-up">UPCOMING</span>`:(isM?`<span class="tx-pill g">INSTANT RESULT</span>`:`<span class="tx-pill s">TEACHER GRADES</span>`);
   }
   const action = e.status==='graded'
-    ? `<button class="btn btn-primary btn-sm" onclick="openExamResult(${e.id})">View Result · ${e.score}/${e.total_marks}</button>`
+    ? `<button class="btn btn-primary btn-sm" onclick="openExamResult(${e.id})">View Result${_got!=null?' \u00b7 '+_got+'/'+e.total_marks:''}</button>`
     : (e.status==='grading'||e.status==='marking')
     ? `<button class="btn btn-ghost btn-sm" disabled>${e.status==='marking'?'Marking by teacher':'Checking soon'}</button>`
-    : (_exp?`<button class="btn btn-primary btn-sm" onclick="openExamPlayer(${e.id})">${ic('book')} View & Solutions</button>`
+    : (_exp?`<button class="btn btn-primary btn-sm" onclick="openExamPlayer(${e.id})">${ic('book')} View Paper</button>`
     : (_future?`<span class="tx-cdchip">Starts in <b data-cd="${_sch.getTime()}">\u2026</b></span>`:`<button class="btn btn-primary btn-sm" onclick="openExamPlayer(${e.id})">Start Test</button>`));
   return `<div class="tx-card ${e.status!=='graded'&&e.status!=='grading'&&e.status!=='marking'?'tx-live':''}"><div class="top" style="background:${topCol}"></div><div class="tx-pad">
     <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
@@ -8063,7 +8130,8 @@ function examCardHTML(e){
       ${right}
     </div>
     <div class="tx-acts" style="display:flex;gap:8px;margin-top:13px;justify-content:flex-end;flex-wrap:wrap">
-      ${_future?'':`<button class="btn btn-ghost btn-sm" onclick="downloadPaper(${e.id})">${ic('download')} Paper</button>`}
+      ${(_future||_exp)?'':`<button class="btn btn-ghost btn-sm" onclick="downloadPaper(${e.id})">${ic('download')} Paper</button>`}
+      ${_exp?`<button class="btn btn-ghost btn-sm" onclick="_solHub(${e.id})">${ic('book')} Solutions</button>`:''}
       ${action}
     </div>
   </div></div>`;
@@ -8356,7 +8424,28 @@ function _solMedPick(id,mode){
 }
 async function _solData(id,med){
   let r=window._lastResult;
-  if(!r||r.id!==id){ r=await api('/api/student/exam/'+id+'/result'); window._lastResult=r; r.id=id; }
+  if(!r||r.id!==id){
+    try{ r=await api('/api/student/exam/'+id+'/result'); }
+    catch(err){
+      // Jis student ne test attempt hi nahi kiya uske liye result nahi hota -
+      // window khatam hone ke baad exam detail me hi solutions aa jate hain
+      const d=await api('/api/student/exam/'+id);
+      const ex=d.exam||d;
+      r={ id:id, title:ex.title, subject:ex.subject, test_type:ex.test_type,
+          total_marks:ex.total_marks, total_awarded:null, verdict:null, feedback:'',
+          results:(d.questions||[]).map(q=>({
+            q_no:q.q_no, max:q.max_marks, marks:null,
+            question:q.question_text||'', question_hi:q.question_text_hi||'',
+            model_answer:q.model_answer||'', model_answer_hi:q.model_answer_hi||'',
+            correct_answer:q.correct_option!=null?q.correct_option:'',
+            explanation:q.explanation||'', explanation_hi:q.explanation_hi||'', remark:''
+          })) };
+      if(!r.results.length || !r.results.some(x=>x.model_answer||x.correct_answer||x.explanation)){
+        throw new Error('Solutions are not available yet. They open once the test window is over.');
+      }
+    }
+    window._lastResult=r; r.id=id;
+  }
   const sub=spDetectSubject((r.subject||'')+' '+(r.title||''));
   const items=[];
   for(const it of (r.results||[])){
