@@ -4691,6 +4691,33 @@ async function spTrEngine(text){
   for(const c of chunks){ const t=await spTrChunk(c); if(t==null)return null; outs.push(t); }
   return outs.join(' ');
 }
+function spMaskFormulas(str, store){
+  // Maths terms / formulas engine ko bhejne hi nahi chahiye - jaise likhe hain
+  // waise hi rehne chahiye. Mathish tokens (=, ^, \\, unicode powers/fractions,
+  // letter-digit mix jaise kx2, H2O) mask ho jaate hain; formula-context me
+  // chhote 1-3 letter tokens (mgh, KE, cos) bhi. Asli English words (4+ letters)
+  // hamesha translate hote hain.
+  const MATHCH=/[=^\\\u221a\u00d7\u00f7\u00b1\u0394\u00bd\u00bc\u00be\u00b9\u00b2\u00b3\u2070\u2074-\u2079\u2080-\u2089]/;
+  const toks=String(str).split(/(\s+)/);
+  const isMathTok=tok=>{
+    const bare=tok.replace(/\\[a-zA-Z]+/g,'');
+    return MATHCH.test(tok) || /\d[A-Za-z]|[A-Za-z]\d/.test(bare);
+  };
+  const hasMath=toks.some(t=>t.trim()&&isMathTok(t)&&!/[A-Za-z]{4,}/.test(t.replace(/\\[a-zA-Z]+/g,'')));
+  return toks.map(tok=>{
+    if(!tok.trim()) return tok;
+    const bare=tok.replace(/\\[a-zA-Z]+/g,'');
+    const longWord=/[A-Za-z]{4,}/.test(bare);
+    const mask = (isMathTok(tok)&&!longWord) || (hasMath&&/^[A-Za-z]{1,3}[.,;:]?$/.test(bare)&&bare.replace(/[.,;:]/g,'').length<=3&&!/^(the|and|for|are|not|all|its|has|was|is|of|to|in|on|at|by|an|a|or|as|if|it|be|do|no|so|we|he)$/i.test(bare.replace(/[.,;:]/g,'')));
+    if(mask){ store.push(tok); return '\u27E6'+(9000+store.length-1)+'\u27E7'; }
+    return tok;
+  }).join('');
+}
+function spUnmaskFormulas(str, store){
+  // Placeholder digits-only hai (9000+) taaki koi bhi engine use word samajh
+  // ke translate na kare; math ⟦n⟧ chhote indices use karta hai, collision nahi
+  return String(str).replace(/\u27E6\s*(9\d{3,})\s*\u27E7/g,(m,n)=>{ const i=+n-9000; return store[i]!=null?store[i]:m; });
+}
 async function spTranslateArrayTexts(block, subject){
   // Match-the-following table ($\begin{array}) poora ka poora math ban ke mask ho
   // jata tha, isliye Hindi translate ke baad bhi cells English rehte the. Ab
@@ -4705,9 +4732,13 @@ async function spTranslateArrayTexts(block, subject){
   for(const t of uniq){
     const hm=t.match(/^\(\s*[A-Za-z0-9]{1,4}\s*\)\s*/);
     const head=hm?hm[0]:'', body=t.slice(head.length);
-    if(!/[A-Za-z]{2,}/.test(body)) continue;
-    const tr=await spTranslate(body, subject);
-    if(tr&&tr!==body) map[t]=head+tr;
+    // Formula-only cell (½kx², mgh, W=KE...): koi 4+ letter English word nahi,
+    // to poori cell waise hi chhod do - translate karne ki koshish hi nahi
+    if(!/[A-Za-z]{4,}/.test(body.replace(/\\[a-zA-Z]+/g,''))) continue;
+    const fx=[];
+    const masked=spMaskFormulas(body, fx);
+    let tr=await spTranslate(masked, subject);
+    if(tr&&tr!==masked){ tr=spUnmaskFormulas(tr, fx); map[t]=head+tr; }
   }
   if(!Object.keys(map).length) return block;
   return block.replace(/\\text\{([^{}]*)\}/g,(mm,inner)=> map[inner]!=null ? '\\text{'+map[inner]+'}' : mm);
@@ -4725,8 +4756,9 @@ async function spTranslate(text,subject){
       }
     }
   }
-  const math=[],gl=[];
+  const math=[],gl=[],fx=[];
   let s=text.replace(spTRMATH,m=>{ math.push(m); return '\u27E6'+(math.length-1)+'\u27E7'; });
+  s=spMaskFormulas(s, fx);   // bina $ wale formulas (½kx², W=KE, mgh) bhi protected
   const pairs=spGlossPairs(subject||'general');
   for(const [en,hi] of pairs){
     const rx=new RegExp('(^|[^\\w\u0900-\u097F])'+spTrEsc(en)+'(?![\\w\u0900-\u097F])','gi');
@@ -4735,6 +4767,7 @@ async function spTranslate(text,subject){
   let out;
   if(!/[A-Za-z]/.test(s.replace(/\u27E6G?\d+\u27E7/g,''))){ out=s; }   // only math/glossary tokens — nothing to send
   else { out=await spTrEngine(s); if(out==null)return null; }
+  out=spUnmaskFormulas(out, fx);
   out=out.replace(/\u27E6\s*G\s*(\d+)\s*\u27E7/g,(m,n)=>(gl[+n]!=null?gl[+n]:m));
   out=out.replace(/\u27E6\s*(\d+)\s*\u27E7/g,(m,n)=>(math[+n]!=null?math[+n]:m));
   return out;
