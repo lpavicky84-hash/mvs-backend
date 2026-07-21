@@ -2262,6 +2262,128 @@ body.dark .cal-d.on{color:#34d399}
   .dark .modal.cx .alert-info code{background:#0c1626;border-color:#2a3c5a;color:#9ec1ff}
   .dark .modal.cx .btn-ghost{background:#0c1626;border-color:#2a3c5a!important;color:#9ec1ff}
 
+/* ── Performance Payout (Aug 2026) — theme-responsive (light default / dark override) ── */
+.pc-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+/* stat cards — light */
+.pc-stat{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px 16px;box-shadow:var(--shadow)}
+.pc-stat .n{font-size:1.5rem;font-weight:800;line-height:1.15}
+.pc-stat .l{font-size:.66rem;font-weight:700;letter-spacing:.07em;color:var(--text-muted);text-transform:uppercase;margin-top:2px}
+.pc-stat .s{font-size:.72rem;color:var(--text-muted);margin-top:3px}
+.pc-stat.indigo .n{color:#4f46e5}.pc-stat.green .n{color:#059669}.pc-stat.amber .n{color:#d97706}.pc-stat.purple .n{color:#7c3aed}
+/* stat cards — dark */
+.dark .pc-stat{background:#1b1f2e;border-color:#2a3047;box-shadow:none}
+.dark .pc-stat .l{color:#8b93ad}.dark .pc-stat .s{color:#6b7290}
+.dark .pc-stat.indigo .n{color:#a5b4fc}.dark .pc-stat.green .n{color:#34d399}.dark .pc-stat.amber .n{color:#fbbf24}.dark .pc-stat.purple .n{color:#c4b5fd}
+/* hero — dono modes mein premium navy (pay-net ke saath match) */
+.pc-hero{background:linear-gradient(135deg,#12152a,#1c2340);border:1px solid #2a3047;border-radius:18px;padding:18px 20px;color:#fff;margin-bottom:16px;position:relative;overflow:hidden}
+.pc-hero .glow{position:absolute;top:-40px;right:-40px;width:180px;height:180px;background:radial-gradient(circle,rgba(245,197,66,.28),transparent 70%)}
+.pc-hero .top{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+.pc-hero .pct{font-size:2rem;font-weight:900;line-height:1}
+.pc-hero .lbl{font-size:.7rem;font-weight:700;letter-spacing:.08em;color:rgba(255,255,255,.6);text-transform:uppercase}
+.pc-hero .amt{font-size:1.05rem;font-weight:800;color:#f5c542}
+.pc-bar{height:10px;background:rgba(255,255,255,.12);border-radius:99px;overflow:hidden;margin-top:12px}
+.pc-bar .fill{height:100%;border-radius:99px;background:linear-gradient(90deg,#eab308,#f5c542);transition:width .6s}
+/* category panel — light */
+.pc-panel{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:16px 18px;margin-bottom:16px;color:var(--text);box-shadow:var(--shadow)}
+.pc-panel .ph{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:4px;flex-wrap:wrap}
+.pc-panel h3{color:var(--text);font-size:.95rem;margin:0}
+.pc-cat{padding:12px 0;border-bottom:1px solid var(--border)}
+.pc-cat:last-child{border-bottom:none}
+.pc-cat .row1{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.pc-cat .nm{font-size:.88rem;font-weight:700;color:var(--text)}
+.pc-cat .bdg{font-size:.58rem;font-weight:800;letter-spacing:.05em;padding:2px 7px;border-radius:99px;margin-left:6px;vertical-align:middle}
+.pc-cat .bdg.auto{background:rgba(5,150,105,.11);color:#047857}
+.pc-cat .bdg.man{background:rgba(124,58,237,.11);color:#6d28d9}
+.pc-cat .val{font-size:.86rem;font-weight:800;color:var(--text)}
+.pc-cat .wt{font-size:.68rem;font-weight:800;color:var(--text-muted);background:var(--bg);padding:3px 8px;border-radius:8px;white-space:nowrap}
+.pc-cat .tr{height:7px;background:#e9edf5;border-radius:99px;overflow:hidden;margin-top:8px}
+.pc-cat .tr .f{height:100%;border-radius:99px;background:#f0b429;transition:width .5s}
+.pc-cat .tr .f.full{background:#059669}
+.pc-cat .help{font-size:.75rem;margin-top:5px;color:var(--text-muted)}
+.pc-cat .help b{color:#b45309;font-weight:800}
+.pc-cat .help.red,.pc-cat .help.red b{color:#dc2626}
+.pc-cat .help.green{color:#059669;font-weight:700}
+.pc-cat .help.dely{color:#7c3aed}
+/* category panel — dark */
+.dark .pc-panel{background:#171a29;border-color:#262b3f;color:#e6e9f5;box-shadow:none}
+.dark .pc-panel h3{color:#fff}
+.dark .pc-cat{border-bottom-color:#232840}
+.dark .pc-cat .nm{color:#f1f3fb}
+.dark .pc-cat .bdg.auto{background:rgba(52,211,153,.14);color:#34d399}
+.dark .pc-cat .bdg.man{background:rgba(196,181,253,.14);color:#c4b5fd}
+.dark .pc-cat .val{color:#fff}
+.dark .pc-cat .wt{color:#8b93ad;background:#232840}
+.dark .pc-cat .tr{background:#262b3f}
+.dark .pc-cat .tr .f{background:#f5c542}
+.dark .pc-cat .tr .f.full{background:#34d399}
+.dark .pc-cat .help{color:#8b93ad}
+.dark .pc-cat .help b{color:#fbbf24}
+.dark .pc-cat .help.red,.dark .pc-cat .help.red b{color:#f87171}
+.dark .pc-cat .help.green{color:#34d399}
+.dark .pc-cat .help.dely{color:#c4b5fd}
+/* pills — light */
+.pc-pill{font-size:.6rem;font-weight:800;letter-spacing:.06em;padding:4px 10px;border-radius:99px;text-transform:uppercase}
+.pc-pill.done{background:rgba(5,150,105,.1);color:#047857;border:1px solid rgba(5,150,105,.35)}
+.pc-pill.prog{background:rgba(90,107,133,.1);color:#5a6b85;border:1px solid rgba(90,107,133,.3)}
+.pc-pill.pend{background:rgba(220,38,38,.09);color:#b91c1c;border:1px solid rgba(220,38,38,.3)}
+/* pills — dark */
+.dark .pc-pill.done{background:rgba(52,211,153,.15);color:#34d399;border-color:rgba(52,211,153,.4)}
+.dark .pc-pill.prog{background:rgba(139,147,173,.12);color:#9aa3bd;border-color:rgba(139,147,173,.3)}
+.dark .pc-pill.pend{background:rgba(248,113,113,.13);color:#f87171;border-color:rgba(248,113,113,.35)}
+/* done banner */
+.pc-done-banner{background:rgba(5,150,105,.07);border:1px solid rgba(5,150,105,.3);color:#047857;border-radius:14px;padding:11px 16px;font-size:.84rem;font-weight:700;margin-bottom:16px}
+.pc-done-banner .who{color:#065f46;font-weight:700}
+.dark .pc-done-banner{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.35);color:#34d399}
+.dark .pc-done-banner .who{color:#a7f3d0}
+/* chips + task rows */
+.pc-chip{font-size:.62rem;font-weight:800;letter-spacing:.04em;padding:3px 9px;border-radius:99px;text-transform:uppercase}
+.pc-chip.pend{background:rgba(217,119,6,.13);color:#b45309}
+.pc-chip.appr{background:rgba(5,150,105,.12);color:#047857}
+.pc-chip.rej{background:rgba(220,38,38,.1);color:#b91c1c}
+.pc-chip.dely{background:rgba(124,58,237,.12);color:#6d28d9}
+.pc-chip.miss{background:rgba(90,107,133,.12);color:#475569}
+.dark .pc-chip.pend{background:rgba(245,158,11,.15);color:#fbbf24}
+.dark .pc-chip.appr{background:rgba(52,211,153,.15);color:#34d399}
+.dark .pc-chip.rej{background:rgba(248,113,113,.13);color:#f87171}
+.dark .pc-chip.dely{background:rgba(196,181,253,.15);color:#c4b5fd}
+.dark .pc-chip.miss{background:rgba(139,147,173,.15);color:#9aa3bd}
+.pc-task{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:.83rem}
+.pc-task:last-child{border-bottom:none}
+.pc-task .t{flex:1;min-width:0}
+.pc-task .t .tt{font-weight:700;color:var(--text)}
+.pc-task .t .td{font-size:.72rem;color:var(--text-muted)}
+.dark .pc-task{border-bottom-color:#232840}
+.dark .pc-task .t .tt{color:#f1f3fb}
+.dark .pc-task .t .td{color:#8b93ad}
+/* approvals queue (admin) */
+.pc-appr{background:rgba(245,158,11,.06);border:1.5px solid rgba(245,158,11,.35);border-radius:16px;padding:14px 16px;margin-bottom:16px}
+.pc-appr .pc-task{border-bottom-color:rgba(245,158,11,.18)}
+/* template editor */
+.pc-tpl-row{display:grid;grid-template-columns:1fr 84px 84px;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:.83rem}
+.pc-tpl-row .form-control{padding:6px 10px;font-size:.82rem}
+/* finalize/paid banner */
+.pc-fin{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-radius:12px;font-size:.8rem;font-weight:700;margin-bottom:12px}
+.pc-fin.ok{background:rgba(16,185,129,.09);border:1.5px solid rgba(16,185,129,.4);color:#047857}
+.pc-fin.pd{background:rgba(99,102,241,.09);border:1.5px solid rgba(99,102,241,.4);color:#4338ca}
+.dark .pc-fin.ok{color:#34d399}
+.dark .pc-fin.pd{color:#a5b4fc}
+/* admin teacher cards — dark mode mein navy, light mein default */
+.dark .pay-card{background:#171a29;border-color:#262b3f;color:#e6e9f5}
+.dark .pay-card .pay-chip{background:#1b1f2e;border-color:#2a3047}
+.dark .pay-card .pay-chip .n{color:#f5c542}
+.dark .pay-card .pay-chip .l{color:#8b93ad}
+.pay-card .pc-mini{font-size:.74rem;color:var(--text-muted);margin-top:3px}
+.pay-card .pc-mini b{color:#b45309}
+.dark .pay-card .pc-mini{color:#8b93ad}
+.dark .pay-card .pc-mini b{color:#fbbf24}
+.pc-minitr{height:6px;background:#e9edf5;border-radius:99px;overflow:hidden;margin-top:6px}
+.dark .pc-minitr{background:#262b3f}
+.pc-minitr .f{height:100%;border-radius:99px;background:#f0b429}
+.pc-minitr .f.full{background:#059669}
+.dark .pc-minitr .f{background:#f5c542}
+.dark .pc-minitr .f.full{background:#34d399}
+@media(max-width:640px){.pc-cat .row1{flex-direction:column;align-items:flex-start;gap:6px}}
+
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -10034,6 +10156,7 @@ async function loadTPayout(){
     if(!c.accepted){ el.innerHTML=''; showContractGate(c); return; }
     window._tPayContract=c;
     el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>My Payout</h2><p>Transparent earning calculator - base, extras, bonus and deductions.</p></div><input type="month" class="form-control" style="width:auto;padding:7px 12px" id="tp-month" value="${_tPayMonth}" onchange="_tPayMonth=this.value;tPayRender()"></div>
+      <div id="tp-perf"></div>
       <div class="po-grid">
         <div>
           <div id="tp-hero"></div>
@@ -10051,9 +10174,13 @@ function payoutBreakHTML(p){
     const kindLbl=a.kind==='extra'?'Extra Class Payment':a.kind==='bonus'?'Bonus':'Deduction';
     return `<div class="r"><span>${esc(kindLbl)}${a.note?` - ${esc(a.note)}`:''}</span><span class="${cls}">${sign} ${fmtINR(a.amount)}</span></div>`;
   }).join('');
+  const perfRows=(p.performance&&p.performance.started)?`
+    <div class="r"><span>Gross (Base + Allowances)</span><span>${fmtINR(p.gross_salary)}</span></div>
+    <div class="r"><span>Performance Deduction (${p.perf_pct}% work complete)</span><span class="${p.perf_deduction?'neg':''}">${p.perf_deduction?'- '+fmtINR(p.perf_deduction):fmtINR(0)}</span></div>`:'';
   return `<div class="po-brk">
     <div class="r"><span>Base Salary</span><span>${fmtINR(p.base_salary)}</span></div>
     ${p.allowances?`<div class="r"><span>Fixed Allowances</span><span class="pos">+ ${fmtINR(p.allowances)}</span></div>`:''}
+    ${perfRows}
     ${adj}
     <div class="r"><span>Attendance Deduction (${p.absent_days} day${p.absent_days===1?'':'s'} x ${fmtINR(p.per_day_rate)})</span><span class="${p.attendance_deduction?'neg':''}">${p.attendance_deduction?'- '+fmtINR(p.attendance_deduction):fmtINR(0)}</span></div>
     <div class="r net"><span>Net Payout</span><span>${fmtINR(p.net_payout)}</span></div>
@@ -10061,7 +10188,12 @@ function payoutBreakHTML(p){
 }
 function payoutRulesHTML(p,c){
   const attHit=p.absent_days>0;
-  let html=`<div class="rule-card${attHit?' hit':''}"><div class="rr"><span class="rn">Working day not attended</span><span class="ra">- ${fmtINR(p.per_day_rate)}/day</span></div>${attHit?`<span class="rt">TRIGGERED x${p.absent_days} = - ${fmtINR(p.attendance_deduction)}</span>`:`<span class="ok">NO DEDUCTION SO FAR</span>`}</div>`;
+  let html='';
+  if(p.performance&&p.performance.started){
+    const perf=p.performance, hit=perf.totals.pending>0||perf.totals.done<perf.totals.target;
+    html+=`<div class="rule-card${hit?' hit':''}"><div class="rr"><span class="rn">Monthly work 100% complete nahi</span><span class="ra">${p.perf_deduction?'- '+fmtINR(p.perf_deduction):'0'}</span></div>${hit?`<span class="rt">ACTIVE - ${perf.totals.done}/${perf.totals.target} tasks complete (${p.perf_pct}%)</span>`:`<span class="ok">100% COMPLETE - FULL PAYOUT</span>`}</div>`;
+  }
+  html+=`<div class="rule-card${attHit?' hit':''}"><div class="rr"><span class="rn">Working day not attended</span><span class="ra">- ${fmtINR(p.per_day_rate)}/day</span></div>${attHit?`<span class="rt">TRIGGERED x${p.absent_days} = - ${fmtINR(p.attendance_deduction)}</span>`:`<span class="ok">NO DEDUCTION SO FAR</span>`}</div>`;
   (p.adjustments||[]).filter(a=>a.kind==='deduction').forEach(a=>{
     html+=`<div class="rule-card hit"><div class="rr"><span class="rn">${esc(a.note||'Deduction')}</span><span class="ra">- ${fmtINR(a.amount)}</span></div><span class="rt">APPLIED THIS MONTH</span></div>`;
   });
@@ -10076,6 +10208,7 @@ async function tPayRender(){
   try{
     const p=await api('/api/teacher/payout?month='+encodeURIComponent(_tPayMonth||curMonth()));
     if(!p.exists){ brk.innerHTML='<div class="empty-state"><p>Payout not configured.</p></div>'; return; }
+    const perfEl=document.getElementById('tp-perf'); if(perfEl) perfEl.innerHTML=perfSectionHTML(p);
     const pct=p.working_days?Math.min(100,Math.round(p.present_days/p.working_days*100)):0;
     hero.innerHTML=`<div class="pw-shell"><div class="po-banner"><div class="glow"></div>
         <div><div class="pw-lbl" style="color:rgba(255,255,255,.7)">${p.is_current_month?'ESTIMATED NET PAYOUT':'NET PAYOUT'} - ${esc(fmtMonthLabel(p.month)).toUpperCase()}</div>
@@ -10178,23 +10311,26 @@ async function aPayFetch(){
       statCard('Letters Pending',pending,'clipboard','amber')+
       statCard('Deductions Applied',fmtINR(totalDed),'chart','red');
     if(!d.teachers.length){ body.innerHTML='<div class="empty-state"><p>No active teachers found.</p></div>'; return; }
-    body.innerHTML=`<div class="pay-grid">${d.teachers.map(t=>{
+    body.innerHTML=`<div id="ap-appr"></div><div class="pay-grid">${d.teachers.map(t=>{
       const nm=esc((t.name||'').replace(/'/g,''));
       if(!t.configured) return `<div class="pay-card"><div class="pay-head"><div class="pay-av">${esc(initials(t.name||'T'))}</div><div><div class="pay-name">${esc(t.name)}</div><div class="pay-sub">Payout not configured</div></div></div><div class="pay-empty">Set the contract to generate this teacher's appointment letter and payout.</div><div class="pay-actions"><button class="btn btn-primary btn-sm" style="flex:1" onclick="openContractModal(${t.teacher_id},'${nm}')">Set Contract</button></div></div>`;
       const extras=(t.extras||0)+(t.bonus||0)+(t.allowances||0);
       const ded=(t.attendance_deduction||0)+(t.manual_deductions||0);
       const letter=t.accepted?'<span class="po-pill green">ACCEPTED</span>':'<span class="po-pill amber">LETTER PENDING</span>';
       return `<div class="pay-card">
-        <div class="pay-head"><div class="pay-av">${esc(initials(t.name||'T'))}</div><div style="flex:1"><div class="pay-name">${esc(t.name)}</div><div class="pay-sub">${esc(t.designation||'')} - Base ${fmtINR(t.base_salary)}</div></div>${letter}</div>
+        <div class="pay-head"><div class="pay-av">${esc(initials(t.name||'T'))}</div><div style="flex:1"><div class="pay-name">${esc(t.name)}</div><div class="pay-sub">${esc(t.designation||'')} - Base ${fmtINR(t.base_salary)}</div></div>${t.performance&&t.performance.started?(t.perf_deduction?`<span class="pc-pill pend">Deduction</span>`:`<span class="pc-pill done">Full Payout</span>`):''}${letter}</div>
+        ${t.performance&&t.performance.started?`<div class="pc-mini">Est. performance pay: <b>${fmtINR(t.perf_pay)}</b> / ${fmtINR(t.gross_salary)} · work <b>${t.perf_pct}%</b>${t.performance.totals.pending?` · <b>${t.performance.totals.pending}</b> tasks baaki`:''}</div><div class="pc-minitr"><div class="f${t.perf_pct>=100?' full':''}" style="width:${Math.min(100,t.perf_pct)}%"></div></div>`:''}
         <div class="pay-net"><div><div class="l">NET PAYOUT</div><div class="n">${fmtINR(t.net_payout)}</div></div><div class="side">${extras?`<div class="g">+ ${fmtINR(extras)} extras</div>`:''}${ded?`<div class="r">- ${fmtINR(ded)} deductions</div>`:''}${(!extras&&!ded)?`<div style="color:rgba(255,255,255,.6)">No adjustments</div>`:''}</div></div>
         <div class="pay-chips">
           <div class="pay-chip"><div class="n">${t.present_days}/${t.working_days}</div><div class="l">Days</div></div>
           <div class="pay-chip"><div class="n">${fmtINR(t.per_day_rate)}</div><div class="l">Per Day</div></div>
           <div class="pay-chip"><div class="n">${(t.adjustments||[]).length}</div><div class="l">Adjustments</div></div>
+          <div class="pay-chip"><div class="n">${t.performance&&t.performance.started?t.performance.perf_pct+'%':'—'}</div><div class="l">Work Done</div></div>
         </div>
         <div class="pay-actions"><button class="btn btn-ghost btn-sm" style="flex:1" onclick="openPayoutDetail(${t.teacher_id},'${nm}')">Details</button><button class="btn btn-ghost btn-sm" style="flex:1" onclick="openAdjustModal(${t.teacher_id},'${nm}')">Adjust</button><button class="btn btn-primary btn-sm" style="flex:1" onclick="openContractModal(${t.teacher_id},'${nm}')">Contract</button></div>
       </div>`;
     }).join('')}</div>`;
+    aPerfApprovals();
   }catch(e){ body.innerHTML=errHtml(e); }
 }
 async function openContractModal(tid,name){
@@ -10259,6 +10395,223 @@ async function delAdjust(aid,tid,name){
   try{ await api('/api/admin/payout-adjust/'+aid,'DELETE'); toast('Adjustment removed.'); openPayoutDetail(tid,name); aPayFetch(); }
   catch(e){ toast(e.message,true); }
 }
+
+/* ================= PERFORMANCE PAYOUT UI (1 Aug 2026 se) ================= */
+function _pcCatRow(c,gross,wsum){
+  const pct=Math.min(100,Math.round(c.completion*100));
+  const earn=Math.round(gross*(c.weight/wsum)*c.completion);
+  let help;
+  if(pct>=100) help=`<div class="help green">Target complete · ${fmtINR(earn)} earned</div>`;
+  else help=`<div class="help${c.done===0?' red':''}"><b>${c.target-c.done}</b> more to complete target (${c.target}) · abhi ${fmtINR(earn)}</div>`;
+  if(c.key==='dpp'&&(c.missing||[]).length) help+=`<div class="help red">DPP nahi: ${c.missing.slice(0,4).map(esc).join(', ')}${c.missing.length>4?' +'+(c.missing.length-4)+' aur':''}</div>`;
+  if(c.delayed) help+=`<div class="help dely">${c.delayed} delayed — is month count nahi</div>`;
+  const pill=pct>=100?'<span class="pc-pill done">Done</span>':(c.done>0?'<span class="pc-pill prog">In Progress</span>':'<span class="pc-pill pend">Pending</span>');
+  return `<div class="pc-cat">
+    <div class="row1"><div><span class="nm">${esc(c.label)}</span><span class="bdg ${c.source==='auto'?'auto':'man'}">${c.source==='auto'?'AUTO':'MANUAL'}</span></div>
+    <div style="display:flex;align-items:center;gap:8px">${pill}<span class="val">${c.done}/${c.target}</span><span class="wt">${c.weight}%</span></div></div>
+    <div class="tr"><div class="f${pct>=100?' full':''}" style="width:${pct}%"></div></div>
+    ${help}</div>`;
+}
+function perfSectionHTML(p){
+  const perf=p.performance;
+  if(!perf) return '';
+  if(!perf.started){
+    return `<div class="card" style="margin-bottom:16px"><div class="card-body" style="font-size:.84rem;color:var(--text-muted)"><b style="color:var(--text)">Performance-based payout 1 August 2026 se shuru hoga.</b><br>Is month ka payout attendance + adjustments se calculate ho raha hai. Aug 2026 se salary monthly work completion (classes, DPP, tests, videos...) se link ho jayegi — 100% kaam = 100% payout.</div></div></div>`;
+  }
+  const t=perf.totals, gross=p.gross_salary||0, est=!!p.is_current_month;
+  const active=(perf.categories||[]).filter(c=>c.target>0);
+  const wsum=active.reduce((a,c)=>a+c.weight,0)||1;
+  let html=`<div class="pc-hero"><div class="glow"></div>
+    <div class="top"><div><div class="lbl">Work Completion — ${esc(fmtMonthLabel(perf.month))}${est?' (abhi tak)':''}</div>
+    <div class="pct">${perf.perf_pct}%</div></div>
+    <div style="text-align:right"><div class="lbl">${est?'Estimated Performance Pay':'Performance Pay'}</div>
+    <div class="amt">${fmtINR(p.perf_pay)} <span style="font-size:.68rem;color:rgba(255,255,255,.6);font-weight:600">/ ${fmtINR(gross)}</span></div>
+    ${p.perf_deduction?`<div style="font-size:.72rem;color:#f87171;font-weight:700;margin-top:2px">Deduction: - ${fmtINR(p.perf_deduction)}</div>`:`<div style="font-size:.72rem;color:#34d399;font-weight:700;margin-top:2px">No deduction — full payout!</div>`}</div></div>
+    <div class="pc-bar"><div class="fill" style="width:${Math.min(100,perf.perf_pct)}%"></div></div></div>`;
+  html+=`<div class="pc-cards">
+    <div class="pc-stat indigo"><div class="n">${t.target}</div><div class="l">Monthly Target</div><div class="s">total assigned</div></div>
+    <div class="pc-stat green"><div class="n">${t.done}</div><div class="l">Completed</div><div class="s">counted this month</div></div>
+    <div class="pc-stat amber"><div class="n">${t.pending}</div><div class="l">Pending</div><div class="s">baaki work</div></div>
+    <div class="pc-stat purple"><div class="n">${t.delayed}</div><div class="l">Delayed</div><div class="s">late — count nahi</div></div>
+  </div>`;
+  const doneCats=active.filter(c=>c.completion>=1);
+  if(doneCats.length) html+=`<div class="pc-done-banner">Target complete: <span class="who">${doneCats.map(c=>esc(c.label)).join(' · ')}</span></div>`;
+  html+=`<div class="pc-panel"><div class="ph"><h3>Category-wise Progress</h3>${active.some(c=>c.source==='manual')?`<button class="btn btn-primary btn-sm" onclick="openPerfTask()">${ic('check')} Work Done Mark Karo</button>`:''}</div>`;
+  if(!active.length) html+='<div class="empty-state"><p>Is month ke liye koi target set nahi hai — admin se template set karwao.</p></div>';
+  active.forEach(c=>{ html+=_pcCatRow(c,gross,wsum); });
+  html+='</div>';
+  const tasks=(perf.tasks||[]).filter(x=>x.status!=='missed');
+  if(tasks.length){
+    html+=`<div class="pc-panel"><div class="ph"><h3>My Marked Work</h3></div>`;
+    tasks.forEach(x=>{
+      let chip;
+      if(x.status==='approved'&&x.delayed) chip='<span class="pc-chip dely">Delayed — count nahi</span>';
+      else if(x.status==='approved') chip='<span class="pc-chip appr">Approved</span>';
+      else if(x.status==='rejected') chip='<span class="pc-chip rej">Rejected</span>';
+      else chip='<span class="pc-chip pend">Approval baaki</span>';
+      const catLbl=((perf.categories||[]).find(c=>c.key===x.key)||{}).label||x.key;
+      html+=`<div class="pc-task"><div class="t"><div class="tt">${esc(x.title)}</div><div class="td">${esc(catLbl)}${x.done_date?' · kaam hua: '+esc(x.done_date):''}${x.note?' · '+esc(x.note):''}</div></div>${chip}${x.status!=='approved'?`<button class="btn btn-ghost btn-sm" onclick="delPerfTask(${x.id})">${ic('trash')}</button>`:''}</div>`;
+    });
+    html+='</div>';
+  }
+  if(perf.finalized) html+=`<div class="pc-fin ${perf.paid?'ok':'pd'}">${perf.paid?'Payout PAID ho chuka hai':'Month FINALIZE ho chuka hai'}${perf.finalized_at?' · '+esc(perf.finalized_at):''}</div>`;
+  html+=`<div class="card"><div class="card-body" style="font-size:.76rem;color:var(--text-muted)"><b style="color:var(--text)">Performance Policy:</b> 100% kaam same month me = full payout. Same month me postpone karke complete = no deduction. Next month me complete = <b>delayed</b> (pichle month me count nahi hoga). Deduction category-weight ke proportional hai. Classes, DPP, tests, doubts, notes portal se <b>auto-count</b> hote hain — <b>1 chapter ka 1 DPP compulsory</b> hai (kisi bhi part me upload ho to chapter complete). YouTube/shorts aap mark karo — admin approve karega tab count hoga.</div></div>`;
+  return html;
+}
+async function openPerfTask(){
+  let d;
+  try{ d=await api('/api/teacher/payout-tasks?month='+encodeURIComponent(_tPayMonth||curMonth())); }
+  catch(e){ toast(e.message,true); return; }
+  const cats=d.categories||[];
+  if(!cats.length){ toast('Aapke template me koi manual category nahi hai',true); return; }
+  showModal('Work Done Mark Karo',
+   `<div class="alert alert-info">YouTube video, Short, Live session jaise off-portal kaam yahan mark karo. <b>Admin approve karega tab count hoga.</b> Date wahi likho jis din kaam HUA — same month me hua to count, agle month me hua to <b>delayed</b> (count nahi hoga).</div>
+    <div class="form-group"><label>Category</label><select class="form-control" id="pt-key">${cats.map(c=>`<option value="${c.key}">${esc(c.label)} (monthly target ${c.target})</option>`).join('')}</select></div>
+    <div class="form-group"><label>Kaam ka naam</label><input class="form-control" id="pt-title" placeholder="e.g. One Shot — Electrostatics"></div>
+    <div class="form-group"><label>Date (jis din kaam hua)</label><input type="date" class="form-control" id="pt-date" value="${new Date().toISOString().slice(0,10)}"></div>
+    <div class="form-group"><label>Note (optional)</label><input class="form-control" id="pt-note" placeholder="link ya detail"></div>`,
+   `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="pt-btn" onclick="submitPerfTask()">Mark Done</button>`);
+}
+async function submitPerfTask(){
+  const btn=document.getElementById('pt-btn'); btn.disabled=true; btn.textContent='Saving...';
+  try{
+    const r=await api('/api/teacher/payout-task','POST',{key:val('pt-key'),title:val('pt-title'),done_date:val('pt-date'),note:val('pt-note'),month:_tPayMonth||curMonth()});
+    closeModal(); toast(r.message); tPayRender();
+  }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Mark Done'; }
+}
+async function delPerfTask(id){
+  if(!confirm('Ye entry hata do?')) return;
+  try{ const r=await api('/api/teacher/payout-task/'+id,'DELETE'); toast(r.message); tPayRender(); }
+  catch(e){ toast(e.message,true); }
+}
+
+/* ---- ADMIN: work approvals queue ---- */
+async function aPerfApprovals(){
+  const el=document.getElementById('ap-appr'); if(!el) return;
+  try{
+    const d=await api('/api/admin/payout-approvals?month='+encodeURIComponent(_aPayMonth||curMonth()));
+    if(!(d.pending||[]).length){ el.innerHTML=''; return; }
+    el.innerHTML=`<div class="pc-appr"><div style="font-weight:800;font-size:.9rem;margin-bottom:6px">Work Approvals — ${d.pending.length} pending</div>${d.pending.map(x=>`
+      <div class="pc-task"><div class="t"><div class="tt">${esc(x.teacher_name)} — ${esc(x.title)}</div><div class="td">${esc(x.key)}${x.done_date?' · kaam hua: '+esc(x.done_date):''}${x.note?' · '+esc(x.note):''} · marked ${esc(x.created_at)}</div></div>
+      <button class="btn btn-primary btn-sm" onclick="aApproveTask(${x.id})">Approve</button>
+      <button class="btn btn-danger btn-sm" onclick="aRejectTask(${x.id})">Reject</button></div>`).join('')}</div>`;
+  }catch(e){ el.innerHTML=''; }
+}
+async function aApproveTask(id){
+  try{ const r=await api('/api/admin/payout-task/'+id+'/approve','POST',{}); toast(r.message); aPayFetch(); }
+  catch(e){ toast(e.message,true); }
+}
+async function aRejectTask(id){
+  if(!confirm('Reject karein? Teacher ko dubara mark karna hoga.')) return;
+  try{ const r=await api('/api/admin/payout-task/'+id+'/reject','POST',{}); toast(r.message); aPayFetch(); }
+  catch(e){ toast(e.message,true); }
+}
+
+/* ---- ADMIN: payout detail (performance-aware, overrides old) ---- */
+async function openPayoutDetail(tid,name){
+  const safe=(name||'').replace(/'/g,'');
+  showModal('Payout Detail — '+name,`<div id="pd-body"><div class="spinner"></div></div>`,
+    `<button class="btn btn-ghost" onclick="openTemplateModal(${tid},'${safe}')">Targets</button><button class="btn btn-primary" onclick="closeModal()">Close</button>`);
+  try{
+    const p=await api('/api/admin/teacher/'+tid+'/payout?month='+encodeURIComponent(_aPayMonth||curMonth()));
+    const b=document.getElementById('pd-body'); if(!b) return;
+    if(!p.exists){ b.innerHTML='<div class="empty-state"><p>Payout not configured.</p></div>'; return; }
+    const adjRows=(p.adjustments||[]).length?`<div style="margin-top:14px"><strong style="font-size:.85rem">Adjustments</strong>${p.adjustments.map(a=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:.85rem"><span>${esc(a.kind==='extra'?'Extra Class Payment':a.kind==='bonus'?'Bonus':'Deduction')}${a.note?` — ${esc(a.note)}`:''}</span><span style="display:flex;align-items:center;gap:8px"><b>${a.kind==='deduction'?'-':'+'} ${fmtINR(a.amount)}</b><button class="btn btn-danger btn-sm" onclick="delAdjust(${a.id},${tid},'${safe}')">${ic('trash')}</button></span></div>`).join('')}</div>`:'';
+    let perfHtml='';
+    const perf=p.performance;
+    if(perf&&perf.started){
+      const t=perf.totals, act=(perf.categories||[]).filter(c=>c.target>0);
+      perfHtml=`<div class="pc-hero" style="margin:14px 0 10px"><div class="glow"></div><div class="top"><div><div class="lbl">Work Completion</div><div class="pct">${perf.perf_pct}%</div></div>
+        <div style="text-align:right"><div class="lbl">Performance Pay</div><div class="amt">${fmtINR(p.perf_pay)}</div>${p.perf_deduction?`<div style="font-size:.7rem;color:#fca5a5;font-weight:700">- ${fmtINR(p.perf_deduction)} deduction</div>`:`<div style="font-size:.7rem;color:#6ee7b7;font-weight:700">no deduction</div>`}</div></div></div>
+      <div class="pc-cards" style="grid-template-columns:repeat(4,1fr)">
+        <div class="pc-stat indigo"><div class="n">${t.target}</div><div class="l">Target</div></div>
+        <div class="pc-stat green"><div class="n">${t.done}</div><div class="l">Done</div></div>
+        <div class="pc-stat amber"><div class="n">${t.pending}</div><div class="l">Pending</div></div>
+        <div class="pc-stat purple"><div class="n">${t.delayed}</div><div class="l">Delayed</div></div>
+      </div>
+      <div class="pc-panel" style="margin-bottom:10px"><div class="ph"><h3>Category-wise Progress</h3></div>${act.map(c=>_pcCatRow(c,p.gross_salary||0,(act.reduce((x,y)=>x+y.weight,0)||1))).join('')}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;align-items:center">
+        <button class="btn btn-ghost btn-sm" onclick="openMissedClasses(${tid},'${safe}')">Classes / Missed</button>
+        ${perf.finalized?`<span class="pc-chip appr">FINALIZED${perf.finalized_at?' · '+esc(perf.finalized_at):''}</span>`:`<button class="btn btn-ghost btn-sm" onclick="payoutFinalize(${tid},'${safe}')">Finalize Month</button>`}
+        ${perf.paid?`<span class="pc-chip appr">PAID</span>`:(perf.finalized?`<button class="btn btn-primary btn-sm" onclick="payoutPaid(${tid},'${safe}')">Mark Paid</button>`:'')}
+      </div>`;
+      const tasks=(perf.tasks||[]).filter(x=>x.status!=='missed');
+      if(tasks.length) perfHtml+=`<div style="margin-top:8px"><strong style="font-size:.85rem">Marked Work (YouTube / Shorts etc.)</strong>${tasks.map(x=>`
+        <div class="pc-task"><div class="t"><div class="tt">${esc(x.title)}</div><div class="td">${esc(x.key)}${x.done_date?' · '+esc(x.done_date):''} · ${esc(x.status)}${x.delayed?' · delayed (count nahi)':''}</div></div>
+        ${x.status==='pending'?`<button class="btn btn-primary btn-sm" onclick="aApproveTaskD(${x.id},${tid},'${safe}')">Approve</button><button class="btn btn-danger btn-sm" onclick="aRejectTaskD(${x.id},${tid},'${safe}')">Reject</button>`:''}</div>`).join('')}</div>`;
+    } else if(perf) {
+      perfHtml=`<div class="alert alert-info" style="margin-top:10px">Performance-based payout 1 Aug 2026 se apply hoga — is month ka calculation attendance-based hai.</div>`;
+    }
+    b.innerHTML=`<div style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px">${esc(fmtMonthLabel(p.month))} — Present ${p.present_days}/${p.working_days} days</div>`+payoutBreakHTML(p)+perfHtml+adjRows;
+  }catch(e){ const b=document.getElementById('pd-body'); if(b) b.innerHTML=errHtml(e); }
+}
+async function aApproveTaskD(id,tid,name){
+  try{ const r=await api('/api/admin/payout-task/'+id+'/approve','POST',{}); toast(r.message); openPayoutDetail(tid,name); aPayFetch(); }
+  catch(e){ toast(e.message,true); }
+}
+async function aRejectTaskD(id,tid,name){
+  if(!confirm('Reject karein?')) return;
+  try{ const r=await api('/api/admin/payout-task/'+id+'/reject','POST',{}); toast(r.message); openPayoutDetail(tid,name); aPayFetch(); }
+  catch(e){ toast(e.message,true); }
+}
+
+/* ---- ADMIN: template editor (targets + weights) ---- */
+async function openTemplateModal(tid,name){
+  let d;
+  try{ d=await api('/api/admin/teacher/'+tid+'/payout-template'); }
+  catch(e){ toast(e.message,true); return; }
+  window._tplData=d.template;
+  showModal('Monthly Targets & Weights — '+name,
+   `<div class="alert alert-info">Har category ka <b>monthly target</b> aur salary me <b>weight %</b> set karo. Weight total <b>100</b> hona chahiye. Target 0 = category off (uska weight baakiyon me bat jayega). AUTO categories portal se khud count hoti hain; MANUAL teacher mark karega + aap approve karoge. Live Classes ka target timetable se auto aata hai — yahan 0 hi rakho.</div>
+    <div class="pc-tpl-row" style="font-weight:800;font-size:.68rem;color:var(--text-muted);letter-spacing:.05em"><span>CATEGORY</span><span>TARGET</span><span>WEIGHT %</span></div>
+    ${d.template.map((t,i)=>`<div class="pc-tpl-row"><span style="font-weight:700">${esc(t.label)} <span class="bdg ${t.source==='auto'?'auto':'man'}">${t.source.toUpperCase()}</span></span><input type="number" min="0" class="form-control" id="tpl-t-${i}" value="${t.target}"><input type="number" min="0" step="0.5" class="form-control" id="tpl-w-${i}" value="${t.weight}" oninput="tplSum()"></div>`).join('')}
+    <div style="display:flex;justify-content:flex-end;margin-top:10px;font-weight:800;font-size:.88rem;gap:6px">Weight Total: <span id="tpl-sum">${d.weight_sum}</span>%</div>`,
+   `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="tpl-btn" onclick="submitTemplate(${tid})">Save Template</button>`);
+  tplSum();
+}
+function tplSum(){
+  let s=0; (window._tplData||[]).forEach((t,i)=>{ const el=document.getElementById('tpl-w-'+i); if(el) s+=parseFloat(el.value)||0; });
+  const el=document.getElementById('tpl-sum'); if(!el) return;
+  el.textContent=Math.round(s*10)/10; el.style.color=Math.abs(s-100)<0.01?'#059669':'#dc2626';
+}
+async function submitTemplate(tid){
+  const items=(window._tplData||[]).map((t,i)=>({key:t.key,label:t.label,source:t.source,
+    target:parseInt(document.getElementById('tpl-t-'+i).value)||0,
+    weight:parseFloat(document.getElementById('tpl-w-'+i).value)||0}));
+  const btn=document.getElementById('tpl-btn'); btn.disabled=true; btn.textContent='Saving...';
+  try{ const r=await api('/api/admin/teacher/'+tid+'/payout-template','PUT',{template:items}); closeModal(); toast(r.message); aPayFetch(); }
+  catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Save Template'; }
+}
+
+/* ---- ADMIN: missed-class flagging ---- */
+async function openMissedClasses(tid,name){
+  const safe=(name||'').replace(/'/g,'');
+  let d;
+  try{ d=await api('/api/admin/teacher/'+tid+'/payout-classes?month='+encodeURIComponent(_aPayMonth||curMonth())); }
+  catch(e){ toast(e.message,true); return; }
+  showModal('Classes — '+name+' ('+fmtMonthLabel(d.month)+')',
+   `<div class="alert alert-info">Jo class <b>hui nahi</b> usko MISSED mark karo — us month ke live-class count se ghat jayegi (salary pe asar). Galat mark ho to wapas hata sakte ho.</div>`+
+   (d.classes.length? d.classes.map(c=>`<div class="pc-task"><div class="t"><div class="tt">${esc(c.chapter||c.subject)}</div><div class="td">${esc(c.date)} · ${esc(c.subject)}</div></div>
+     <button class="btn ${c.missed?'btn-danger':'btn-ghost'} btn-sm" onclick="flagMissed(${tid},${c.id},${c.missed?0:1},'${safe}')">${c.missed?'MISSED':'Hui'}</button></div>`).join('') : '<div class="empty-state"><p>Is month koi scheduled class nahi.</p></div>'),
+   `<button class="btn btn-ghost" onclick="openPayoutDetail(${tid},'${safe}')">Back to Payout</button><button class="btn btn-primary" onclick="closeModal()">Close</button>`);
+}
+async function flagMissed(tid,eid,missed,name){
+  try{ const r=await api('/api/admin/teacher/'+tid+'/payout-missed-class','POST',{entry_id:eid,missed:!!missed}); toast(r.message); openMissedClasses(tid,name); aPayFetch(); }
+  catch(e){ toast(e.message,true); }
+}
+
+/* ---- ADMIN: finalize / paid ---- */
+async function payoutFinalize(tid,name){
+  if(!confirm(fmtMonthLabel(_aPayMonth||curMonth())+' ka payout FINALIZE karein? Ab calculation snapshot freeze ho jayega.')) return;
+  try{ const r=await api('/api/admin/teacher/'+tid+'/payout-finalize','POST',{month:_aPayMonth||curMonth()}); toast(r.message); openPayoutDetail(tid,name); aPayFetch(); }
+  catch(e){ toast(e.message,true); }
+}
+async function payoutPaid(tid,name){
+  if(!confirm('Payout PAID mark karein?')) return;
+  try{ const r=await api('/api/admin/teacher/'+tid+'/payout-paid','POST',{month:_aPayMonth||curMonth()}); toast(r.message); openPayoutDetail(tid,name); aPayFetch(); }
+  catch(e){ toast(e.message,true); }
+}
+
 window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 </script>
 

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, date, timedelta
@@ -2124,6 +2124,166 @@ def admin_teacher_payout(tid: int, month: str = "", db: Session = Depends(get_db
         return {"exists": False}
     p["exists"] = True
     return p
+
+# ===== PERFORMANCE PAYOUT (template, approvals, finalize) =====
+@router.get("/teacher/{tid}/payout-template")
+def admin_get_payout_template(tid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Teacher ki monthly responsibility template (target + weight%)."""
+    from teacher_routes import _perf_seed
+    from models import PayoutTemplate
+    _perf_seed(db, tid)
+    rows = db.query(PayoutTemplate).filter(PayoutTemplate.teacher_id == tid).order_by(PayoutTemplate.sort, PayoutTemplate.id).all()
+    return {"template": [{"id": r.id, "key": r.key, "label": r.label, "target": r.target or 0,
+                          "weight": r.weight_pct or 0, "source": r.source} for r in rows],
+            "weight_sum": sum(r.weight_pct or 0 for r in rows)}
+
+@router.put("/teacher/{tid}/payout-template")
+def admin_set_payout_template(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Template save: [{key,label,target,weight,source}]. Weight sum 100 hona
+    chahiye (0-target wali categories calculation se baahar ho jaati hain)."""
+    from teacher_routes import _perf_seed
+    from models import PayoutTemplate
+    _perf_seed(db, tid)
+    items = payload.get("template") or []
+    if not items:
+        raise HTTPException(400, "Template khaali hai")
+    wsum = sum(float(i.get("weight") or 0) for i in items)
+    if abs(wsum - 100) > 0.01:
+        raise HTTPException(400, "Weight ka total 100%% hona chahiye (abhi %.1f%%)" % wsum)
+    rows = {r.key: r for r in db.query(PayoutTemplate).filter(PayoutTemplate.teacher_id == tid).all()}
+    for i, it in enumerate(items):
+        key = (it.get("key") or "").strip()
+        if not key:
+            continue
+        r = rows.get(key)
+        if not r:
+            r = PayoutTemplate(teacher_id=tid, key=key)
+            db.add(r)
+        r.label = (it.get("label") or r.label or key)[:80]
+        r.target = max(0, int(it.get("target") or 0))
+        r.weight_pct = max(0.0, float(it.get("weight") or 0))
+        r.source = "auto" if it.get("source") == "auto" else "manual"
+        r.sort = i
+    db.commit()
+    return {"message": "Template save ho gayi - ab se har month isi se calculate hoga"}
+
+@router.get("/payout-approvals")
+def admin_payout_approvals(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Saare teachers ke pending manual tasks (approve/reject queue)."""
+    from models import PayoutTask, TeacherProfile, User
+    from teacher_routes import _month_range
+    start, _e = _month_range(month)
+    mk = start.strftime("%Y-%m")
+    rows = db.query(PayoutTask).filter(PayoutTask.status == "pending", PayoutTask.month == mk).order_by(PayoutTask.created_at).all()
+    out = []
+    for t in rows:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == t.teacher_id).first()
+        out.append({"id": t.id, "teacher_id": t.teacher_id,
+                    "teacher_name": (tp.user.name if tp and tp.user else ""),
+                    "key": t.key, "title": t.title, "note": t.note or "",
+                    "done_date": str(t.done_date) if t.done_date else None,
+                    "created_at": t.created_at.strftime("%d %b, %I:%M %p") if t.created_at else ""})
+    return {"month": mk, "pending": out}
+
+@router.post("/payout-task/{task_id}/approve")
+def admin_approve_payout_task(task_id: int, db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    from models import PayoutTask
+    t = db.query(PayoutTask).filter(PayoutTask.id == task_id).first()
+    if not t:
+        raise HTTPException(404, "Task nahi mila")
+    t.status = "approved"
+    t.approved_by = getattr(current_user, "name", "Admin") or "Admin"
+    t.approved_at = datetime.utcnow()
+    db.commit()
+    return {"message": "Approved - ab ye count hoga"}
+
+@router.post("/payout-task/{task_id}/reject")
+def admin_reject_payout_task(task_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import PayoutTask
+    t = db.query(PayoutTask).filter(PayoutTask.id == task_id).first()
+    if not t:
+        raise HTTPException(404, "Task nahi mila")
+    t.status = "rejected"
+    db.commit()
+    return {"message": "Rejected"}
+
+@router.post("/teacher/{tid}/payout-missed-class")
+def admin_flag_missed_class(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Scheduled class nahi hui -> us month ke live_class count se ghatao."""
+    from models import PayoutTask, TimetableEntry
+    from teacher_routes import _month_range
+    eid = int(payload.get("entry_id") or 0)
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == eid, TimetableEntry.teacher_id == tid).first()
+    if not e:
+        raise HTTPException(404, "Class entry nahi mili")
+    mk = e.entry_date.strftime("%Y-%m") if e.entry_date else ""
+    if not mk:
+        raise HTTPException(400, "Entry ka date nahi hai")
+    flag = (payload.get("missed") is True) or (str(payload.get("missed")) == "true")
+    ex = db.query(PayoutTask).filter(PayoutTask.teacher_id == tid, PayoutTask.key == "live_class",
+                                     PayoutTask.status == "missed", PayoutTask.ref_id == eid).first()
+    if flag and not ex:
+        db.add(PayoutTask(teacher_id=tid, month=mk, key="live_class",
+                          title="Class nahi hui: %s (%s)" % (e.chapter or e.subject, e.entry_date),
+                          status="missed", ref_id=eid, done_date=e.entry_date,
+                          note=(payload.get("note") or "")[:300]))
+        db.commit()
+        return {"message": "Missed mark ho gaya - is month ke count se ghata diya"}
+    if not flag and ex:
+        db.delete(ex); db.commit()
+        return {"message": "Missed flag hata diya"}
+    return {"message": "Koi change nahi"}
+
+@router.get("/teacher/{tid}/payout-classes")
+def admin_payout_classes(tid: int, month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Us month ki scheduled classes + missed flags (detail modal ke liye)."""
+    from models import TimetableEntry, PayoutTask
+    from teacher_routes import _month_range
+    start, end = _month_range(month)
+    mk = start.strftime("%Y-%m")
+    entries = db.query(TimetableEntry).filter(
+        TimetableEntry.teacher_id == tid,
+        TimetableEntry.entry_date >= start, TimetableEntry.entry_date < end,
+        TimetableEntry.entry_type == "chapter", TimetableEntry.status == "approved"
+    ).order_by(TimetableEntry.entry_date).all()
+    missed = {x.ref_id for x in db.query(PayoutTask).filter(
+        PayoutTask.teacher_id == tid, PayoutTask.key == "live_class", PayoutTask.status == "missed").all()}
+    return {"month": mk, "classes": [
+        {"id": e.id, "date": str(e.entry_date), "subject": e.subject,
+         "chapter": e.chapter or "", "missed": e.id in missed} for e in entries]}
+
+@router.post("/teacher/{tid}/payout-finalize")
+def admin_finalize_payout(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Month lock: poora breakdown snapshot me freeze. Paid mark alag action."""
+    import json as _json
+    from models import PayoutMonth
+    from teacher_routes import compute_payout, _month_range
+    mk = _month_range(payload.get("month") or "")[0].strftime("%Y-%m")
+    p = compute_payout(db, tid, mk)
+    if not p:
+        raise HTTPException(400, "Is teacher ka payout configured nahi hai")
+    rec = db.query(PayoutMonth).filter(PayoutMonth.teacher_id == tid, PayoutMonth.month == mk).first()
+    if not rec:
+        rec = PayoutMonth(teacher_id=tid, month=mk)
+        db.add(rec)
+    rec.snapshot = _json.dumps(p, default=str)
+    rec.status = "finalized"
+    rec.finalized_at = datetime.utcnow()
+    db.commit()
+    return {"message": "Month finalize ho gaya - snapshot save ho gaya"}
+
+@router.post("/teacher/{tid}/payout-paid")
+def admin_payout_paid(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import PayoutMonth
+    from teacher_routes import _month_range
+    mk = _month_range(payload.get("month") or "")[0].strftime("%Y-%m")
+    rec = db.query(PayoutMonth).filter(PayoutMonth.teacher_id == tid, PayoutMonth.month == mk).first()
+    if not rec:
+        raise HTTPException(400, "Pehle month finalize karo")
+    rec.status = "paid"
+    rec.paid_at = datetime.utcnow()
+    db.commit()
+    return {"message": "Paid mark ho gaya"}
 
 @router.post("/teacher/{tid}/payout-adjust")
 def admin_add_adjustment(tid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):

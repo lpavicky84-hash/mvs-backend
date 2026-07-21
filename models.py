@@ -646,6 +646,70 @@ class TeacherContract(Base):
     teacher = relationship("TeacherProfile")
 
 # =============================================
+# PERFORMANCE PAYOUT (monthly task-based salary, 1 Aug 2026 se)
+# =============================================
+class PayoutTemplate(Base):
+    """Teacher ki monthly responsibilities ka template: har category ka target
+    aur salary-weight (%). Admin edit karta hai; har mahine yahi se compute hota.
+    source='auto' -> portal ka data khud count hota hai (classes, dpp, tests...);
+    source='manual' -> teacher mark karta hai, admin approve karta hai."""
+    __tablename__ = "payout_templates"
+
+    id         = Column(Integer, primary_key=True)
+    teacher_id = Column(Integer, ForeignKey("teacher_profiles.id"), index=True)
+    key        = Column(String(30))          # live_class | dpp | test | doubt | content | oneshot | rapid | ytlive | shorts | promo | crash | tandav
+    label      = Column(String(80))
+    target     = Column(Integer, default=0)  # monthly target count (0 = category off)
+    weight_pct = Column(Float, default=0)    # salary ka kitna % is category pe
+    source     = Column(String(10), default="manual")  # auto | manual
+    sort       = Column(Integer, default=0)
+
+    teacher = relationship("TeacherProfile")
+
+
+class PayoutTask(Base):
+    """Ek kaam ki entry. Manual categories me teacher 'done' mark karta hai aur
+    admin approve karta hai. status: pending | approved | rejected | missed.
+    done_date us din ki hoti hai jab kaam HUA - wahi decide karta hai ki kaunse
+    mahine me count hoga (policy rule 2/3). 'missed' + ref_id = auto category ka
+    exception (jaise scheduled class nahi hui)."""
+    __tablename__ = "payout_tasks"
+
+    id          = Column(Integer, primary_key=True)
+    teacher_id  = Column(Integer, ForeignKey("teacher_profiles.id"), index=True)
+    month       = Column(String(7), index=True)     # "2026-08" - jis month ke target ka hissa
+    key         = Column(String(30))
+    title       = Column(String(200))
+    status      = Column(String(20), default="pending")
+    ref_id      = Column(Integer, nullable=True)
+    done_date   = Column(Date, nullable=True)
+    note        = Column(String(300), nullable=True)
+    approved_by = Column(String(120), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    created_at  = Column(DateTime, server_default=func.now())
+
+    teacher = relationship("TeacherProfile")
+
+
+class PayoutMonth(Base):
+    """Month-end finalize/paid record. Finalize karte hi us waqt ka poora
+    calculation snapshot freeze ho jaata hai (baad me data badle to bhi record
+    nahi badalta)."""
+    __tablename__ = "payout_months"
+
+    id           = Column(Integer, primary_key=True)
+    teacher_id   = Column(Integer, ForeignKey("teacher_profiles.id"), index=True)
+    month        = Column(String(7), index=True)
+    status       = Column(String(20), default="finalized")  # finalized | paid
+    snapshot     = Column(Text, nullable=True)              # JSON of full breakdown
+    finalized_at = Column(DateTime, nullable=True)
+    paid_at      = Column(DateTime, nullable=True)
+    created_at   = Column(DateTime, server_default=func.now())
+
+    teacher = relationship("TeacherProfile")
+
+
+# =============================================
 # PAYOUT ADJUSTMENT (manual extra / bonus / deduction per month)
 # =============================================
 class PayoutAdjustment(Base):

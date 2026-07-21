@@ -2286,6 +2286,217 @@ def _month_range(month: str):
     end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
     return start, end
 
+# =====================================================================
+# PERFORMANCE PAYOUT ENGINE (monthly task-based, 1 Aug 2026 se effective)
+# =====================================================================
+PAYOUT_PERF_START = "2026-08"   # is month se performance system apply hota hai
+
+# default template: (key, label, source, weight%, target) - total weight 100
+PERF_DEFAULT_TEMPLATE = [
+    ("live_class", "Live Classes",            "auto",   40, 0),   # target auto = timetable count
+    ("dpp",        "DPP (1 per chapter)",     "auto",   15, 0),   # target auto = us month padhe gaye chapters
+    ("test",       "Weekly Tests",            "auto",   15, 4),
+    ("doubt",      "Doubt Resolution",        "auto",   5,  8),
+    ("content",    "Notes / Free Content",    "auto",   5,  4),
+    ("oneshot",    "One Shot Videos",         "manual", 8,  8),
+    ("rapid",      "Rapid Revision Videos",   "manual", 4,  4),
+    ("ytlive",     "YouTube Live Sessions",   "manual", 4,  4),
+    ("shorts",     "Shorts",                  "manual", 4,  8),
+]
+
+_PAYOUT_TABLES_READY = False
+def _ensure_payout_tables(db):
+    """payout_templates / payout_tasks / payout_months tables pehli use me bana do
+    (server pe Base.metadata.create_all na ho to bhi upgrade ho jaye). MySQL/Postgres
+    dono dialects handle; har statement best-effort."""
+    global _PAYOUT_TABLES_READY
+    if _PAYOUT_TABLES_READY:
+        return
+    from sqlalchemy import text as _text
+    stmts = [
+        """CREATE TABLE IF NOT EXISTS payout_templates (
+             id INTEGER PRIMARY KEY, teacher_id INTEGER, key VARCHAR(30),
+             label VARCHAR(80), target INTEGER DEFAULT 0,
+             weight_pct FLOAT DEFAULT 0, source VARCHAR(10) DEFAULT 'manual',
+             sort INTEGER DEFAULT 0)""",
+        "CREATE INDEX IF NOT EXISTS ix_payout_templates_teacher ON payout_templates (teacher_id)",
+        """CREATE TABLE IF NOT EXISTS payout_tasks (
+             id INTEGER PRIMARY KEY, teacher_id INTEGER, month VARCHAR(7),
+             key VARCHAR(30), title VARCHAR(200), status VARCHAR(20) DEFAULT 'pending',
+             ref_id INTEGER, done_date DATE, note VARCHAR(300),
+             approved_by VARCHAR(120), approved_at DATETIME, created_at DATETIME)""",
+        "CREATE INDEX IF NOT EXISTS ix_payout_tasks_teacher ON payout_tasks (teacher_id)",
+        "CREATE INDEX IF NOT EXISTS ix_payout_tasks_month ON payout_tasks (month)",
+        """CREATE TABLE IF NOT EXISTS payout_months (
+             id INTEGER PRIMARY KEY, teacher_id INTEGER, month VARCHAR(7),
+             status VARCHAR(20) DEFAULT 'finalized', snapshot TEXT,
+             finalized_at DATETIME, paid_at DATETIME, created_at DATETIME)""",
+        "CREATE INDEX IF NOT EXISTS ix_payout_months_teacher ON payout_months (teacher_id)",
+    ]
+    for st in stmts:
+        try:
+            db.execute(_text(st))
+            db.commit()
+        except Exception:
+            db.rollback()
+    _PAYOUT_TABLES_READY = True
+
+def _chapter_key(name):
+    """Chapter naam ko compare-able key me badalta hai: 'Chapter 3: Motion' -> 'n3',
+    'Lesson 3 - X (Part 2)' -> 'n3'. Parts ignore hote hain (kisi bhi part ka DPP chalega).
+    Number na mile to normalized string."""
+    import re as _re
+    s2 = _re.sub(r"\bpart\s*\d+\b", "", (name or "").lower())
+    m = _re.search(r"(?:chapter|lesson|ch\.?|path|paath)\s*[-\u2013:.]?\s*(\d+)", s2)
+    if m:
+        return "n" + m.group(1)
+    m2 = _re.search(r"(\d+)", s2)
+    if m2:
+        return "n" + m2.group(1)
+    return _re.sub(r"[^a-z0-9\u0900-\u097F]+", " ", s2).strip()[:40]
+
+def _is_grammar_entry(name):
+    """Grammar/writing entries ke liye DPP compulsory nahi (book chapters ke liye hi)."""
+    import re as _re
+    return bool(_re.search(r"grammar|tense|narration|direct|indirect|voice|clause|modal|preposition|conjunction|writing|essay|letter|notice|punctuation|comprehension", (name or ""), _re.I))
+
+def _perf_seed(db, tp_id):
+    """Teacher ka template nahi hai to default bana do (idempotent)."""
+    from models import PayoutTemplate
+    _ensure_payout_tables(db)
+    if db.query(PayoutTemplate).filter(PayoutTemplate.teacher_id == tp_id).count():
+        return
+    for i, (k, lbl, src, w, tg) in enumerate(PERF_DEFAULT_TEMPLATE):
+        db.add(PayoutTemplate(teacher_id=tp_id, key=k, label=lbl, source=src,
+                              weight_pct=w, target=tg, sort=i))
+    db.commit()
+
+def compute_performance(db, teacher_id: int, month: str):
+    """Month ka performance calculation - policy ke 5 rules ke saath:
+    1. sab kuch same month me complete -> 100% payout
+    2. same month me postpone karke complete -> completed (no deduction)
+    3. next month me complete -> previous month ke liye count NAHI (delayed)
+    4. delayed sirf record ke liye; next month ka assigned ho tabhi wahan count
+    5. assigned/completed/pending/delayed/completion%/payout% sab auto.
+    Category weight% ke hisaab se proportional deduction."""
+    from models import (PayoutTemplate, PayoutTask, PayoutMonth, TimetableEntry,
+                        DPP, Doubt, Material)
+    start, end = _month_range(month)
+    mk = start.strftime("%Y-%m")
+    today = _ist_now().date()
+    period_end = min(today, end - timedelta(days=1))
+    is_current = (start.year == today.year and start.month == today.month)
+    started = mk >= PAYOUT_PERF_START
+
+    _perf_seed(db, teacher_id)
+    tpl = db.query(PayoutTemplate).filter(
+        PayoutTemplate.teacher_id == teacher_id).order_by(PayoutTemplate.sort, PayoutTemplate.id).all()
+
+    tasks = db.query(PayoutTask).filter(
+        PayoutTask.teacher_id == teacher_id, PayoutTask.month == mk).all()
+    def _task_out(t):
+        delayed = bool(t.done_date and not (start <= t.done_date < end))
+        return {"id": t.id, "key": t.key, "title": t.title, "status": t.status,
+                "done_date": str(t.done_date) if t.done_date else None,
+                "note": t.note or "", "delayed": delayed,
+                "approved_by": t.approved_by, "ref_id": t.ref_id,
+                "created_at": t.created_at.strftime("%d %b") if t.created_at else ""}
+
+    cats = []
+    for t in tpl:
+        target = t.target or 0
+        done = pending = delayed = 0
+        missing = []
+        if not started:
+            cats.append({"key": t.key, "label": t.label, "source": t.source,
+                         "target": 0, "done": 0, "pending": 0, "delayed": 0,
+                         "weight": t.weight_pct, "completion": 0})
+            continue
+        if t.key == "live_class":
+            entries = db.query(TimetableEntry).filter(
+                TimetableEntry.teacher_id == teacher_id,
+                TimetableEntry.entry_date >= start, TimetableEntry.entry_date < end,
+                TimetableEntry.entry_type == "chapter",
+                TimetableEntry.status == "approved").all()
+            missed = {x.ref_id for x in tasks if x.key == "live_class" and x.status == "missed"}
+            target = len(entries)
+            due = [e for e in entries if e.entry_date and e.entry_date <= period_end and e.id not in missed]
+            done = len(due)
+            pending = max(0, target - done)
+        elif t.source == "auto":
+            if t.key == "dpp":
+                # RULE: 1 chapter = 1 DPP compulsory. Chapter ke 4 parts ho to kisi
+                # bhi 1 part me DPP aa jaye -> chapter complete (baaki parts optional).
+                # Kisi bhi part me DPP nahi -> wo chapter miss -> proportional deduction.
+                entries = db.query(TimetableEntry).filter(
+                    TimetableEntry.teacher_id == teacher_id,
+                    TimetableEntry.entry_date >= start, TimetableEntry.entry_date < end,
+                    TimetableEntry.entry_type == "chapter",
+                    TimetableEntry.status == "approved").all()
+                chapters = {}
+                for e in entries:
+                    if _is_grammar_entry(e.chapter):
+                        continue
+                    chapters.setdefault(((e.subject or "").strip().lower(), _chapter_key(e.chapter)),
+                                        (e.chapter or "").strip())
+                target = len(chapters)
+                dpps = db.query(DPP).filter(
+                    DPP.teacher_id == teacher_id, DPP.is_active == True,
+                    DPP.created_at >= start, DPP.created_at < end).all()
+                have = {((d.subject or "").strip().lower(), _chapter_key(d.reference)) for d in dpps}
+                missing = [nm for k, nm in chapters.items() if k not in have]
+                done = target - len(missing)
+            elif t.key == "test":
+                from models import Exam
+                done = db.query(Exam).filter(Exam.teacher_id == teacher_id,
+                        Exam.created_at >= start, Exam.created_at < end).count()
+            elif t.key == "doubt":
+                done = db.query(Doubt).filter(Doubt.teacher_id == teacher_id,
+                        Doubt.resolved_at >= start, Doubt.resolved_at < end).count()
+            elif t.key == "content":
+                done = db.query(Material).filter(Material.teacher_id == teacher_id,
+                        Material.created_at >= start, Material.created_at < end).count()
+            pending = max(0, target - done) if target else 0
+        else:  # manual - approved + done_date is month me ho tabhi count (rule 2/3)
+            mine = [x for x in tasks if x.key == t.key and x.status == "approved"]
+            in_month = [x for x in mine if x.done_date and start <= x.done_date < end]
+            delayed = len([x for x in mine if x.done_date and not (start <= x.done_date < end)])
+            done = len(in_month)
+            pending = max(0, target - done) if target else 0
+        completion = (min(done, target) / target) if target else 0
+        row = {"key": t.key, "label": t.label, "source": t.source,
+               "target": target, "done": done, "pending": pending,
+               "delayed": delayed, "weight": t.weight_pct,
+               "completion": round(completion, 4)}
+        if t.key == "dpp" and started:
+            row["missing"] = sorted(missing)
+        cats.append(row)
+
+    # weight renormalize: jin categories ka target 0 hai wo calculation se baahar
+    active = [c for c in cats if c["target"] > 0]
+    wsum = sum(c["weight"] for c in active) or 1
+    perf_pct = sum(c["weight"] * c["completion"] for c in active) / wsum
+    totals = {
+        "target": sum(c["target"] for c in active),
+        "done": sum(min(c["done"], c["target"]) for c in active),
+        "pending": sum(c["pending"] for c in active),
+        "delayed": sum(c["delayed"] for c in active),
+        "completion_pct": round(perf_pct * 100, 1),
+    }
+    fin = db.query(PayoutMonth).filter(
+        PayoutMonth.teacher_id == teacher_id, PayoutMonth.month == mk).first()
+    return {
+        "month": mk, "started": started, "is_current_month": is_current,
+        "perf_start": PAYOUT_PERF_START,
+        "perf_ratio": round(perf_pct, 6),
+        "categories": cats, "totals": totals,
+        "perf_pct": round(perf_pct * 100, 1),
+        "tasks": [_task_out(x) for x in sorted(tasks, key=lambda z: (z.key, z.id))],
+        "awaiting_approval": len([x for x in tasks if x.status == "pending"]),
+        "finalized": bool(fin), "paid": bool(fin and fin.status == "paid"),
+        "finalized_at": fin.finalized_at.strftime("%d %b %Y") if fin and fin.finalized_at else None,
+    }
+
 def compute_payout(db, teacher_id: int, month: str):
     """Transparent payout breakdown — teacher aur admin dono yahi dekhte hain.
     Net = Base + Allowances + Extras + Bonus - Manual Deductions - Attendance Deduction.
@@ -2311,7 +2522,12 @@ def compute_payout(db, teacher_id: int, month: str):
     extras = sum(a.amount or 0 for a in adjs if a.kind == "extra")
     bonus = sum(a.amount or 0 for a in adjs if a.kind == "bonus")
     manual_ded = sum(a.amount or 0 for a in adjs if a.kind == "deduction")
-    net = base + (c.allowances or 0) + extras + bonus - manual_ded - att_deduction
+    perf = compute_performance(db, teacher_id, month)
+    gross = base + (c.allowances or 0)
+    perf_pct = (perf.get("perf_ratio", perf["perf_pct"] / 100.0)) if (perf and perf["started"]) else 1.0
+    perf_pay = round(gross * perf_pct)
+    perf_ded = gross - perf_pay
+    net = perf_pay + extras + bonus - manual_ded - att_deduction
     now = _ist_now()
     return {
         "month": month_key,
@@ -2320,6 +2536,9 @@ def compute_payout(db, teacher_id: int, month: str):
         "working_days": wd, "present_days": present, "absent_days": absent,
         "per_day_rate": per_day, "attendance_deduction": att_deduction,
         "extras": extras, "bonus": bonus, "manual_deductions": manual_ded,
+        "gross_salary": gross, "performance": perf,
+        "perf_pct": perf["perf_pct"] if perf["started"] else None,
+        "perf_pay": perf_pay, "perf_deduction": perf_ded,
         "net_payout": net,
         "rules": [r.strip() for r in (c.rules_text or "").splitlines() if r.strip()],
         "adjustments": [{"id": a.id, "kind": a.kind, "amount": a.amount, "note": a.note or ""} for a in adjs],
@@ -2440,6 +2659,57 @@ def my_payout(month: str = "", db: Session = Depends(get_db), current_user=Depen
     p["exists"] = True
     p["teacher_name"] = current_user.name
     return p
+
+@router.get("/payout-tasks")
+def my_payout_tasks(month: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Teacher ke manual-category tasks (marked work) us month ke liye."""
+    tp = get_teacher_profile(current_user, db)
+    perf = compute_performance(db, tp.id, month)
+    return {"tasks": perf["tasks"], "categories": [
+        {"key": c["key"], "label": c["label"], "source": c["source"], "target": c["target"]}
+        for c in perf["categories"] if c["source"] == "manual" and c["target"] > 0]}
+
+@router.post("/payout-task")
+def mark_payout_task(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Teacher off-portal kaam (YouTube video, Short, Live session...) done mark
+    karta hai. Admin approve karega tab count hoga. done_date us din ka jab kaam
+    HUA - same month me hua to count, next month me hua to 'delayed' (policy)."""
+    from models import PayoutTask, PayoutTemplate
+    tp = get_teacher_profile(current_user, db)
+    mk = (payload.get("month") or "").strip() or _ist_now().strftime("%Y-%m")
+    if mk < PAYOUT_PERF_START:
+        raise HTTPException(400, "Performance payout %s se shuru hoga" % PAYOUT_PERF_START)
+    key = (payload.get("key") or "").strip()
+    tpl = db.query(PayoutTemplate).filter(
+        PayoutTemplate.teacher_id == tp.id, PayoutTemplate.key == key,
+        PayoutTemplate.source == "manual").first()
+    if not tpl or (tpl.target or 0) <= 0:
+        raise HTTPException(400, "Ye category aapke monthly target me nahi hai")
+    title = (payload.get("title") or "").strip()
+    if not title:
+        raise HTTPException(400, "Kaam ka naam likhna zaroori hai")
+    dd = None
+    if payload.get("done_date"):
+        try:
+            dd = datetime.strptime(str(payload["done_date"])[:10], "%Y-%m-%d").date()
+        except Exception:
+            raise HTTPException(400, "Date format galat hai")
+    t = PayoutTask(teacher_id=tp.id, month=mk, key=key, title=title[:200],
+                   status="pending", done_date=dd, note=(payload.get("note") or "")[:300])
+    db.add(t); db.commit()
+    return {"message": "Marked! Admin approve karte hi count ho jayega.", "id": t.id}
+
+@router.delete("/payout-task/{tid}")
+def delete_payout_task(tid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import PayoutTask
+    tp = get_teacher_profile(current_user, db)
+    t = db.query(PayoutTask).filter(PayoutTask.id == tid, PayoutTask.teacher_id == tp.id).first()
+    if not t:
+        raise HTTPException(404, "Task nahi mila")
+    if t.status == "approved":
+        raise HTTPException(400, "Approved task delete nahi ho sakta - admin se bolo")
+    db.delete(t); db.commit()
+    return {"message": "Task hata diya"}
 
 # ===== TEACHER: CHANGE CLASS SLOT (subject ka time — aage ki saari classes) =====
 @router.post("/change-slot")
