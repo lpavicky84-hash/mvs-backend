@@ -606,6 +606,12 @@
   .sp-ask-h{font-size:1.05rem;font-weight:800;margin-bottom:6px}
   .sp-ask-sub{font-size:.82rem;color:var(--text-muted);line-height:1.5;margin-bottom:14px}
   .sp-ask-f{display:flex;justify-content:flex-end;margin-top:12px}
+  .mat-acts{display:flex;gap:7px;justify-content:flex-end;align-items:center}
+  .mc-del{margin-left:auto;margin-right:10px;flex-shrink:0}
+  .mt-delname{font-weight:700;font-size:.9rem;word-break:break-word}
+  .mat-acts{display:flex;gap:7px;justify-content:flex-end;align-items:center}
+  .mc-del{margin-left:auto;margin-right:10px;flex-shrink:0}
+  .mt-delname{font-weight:700;font-size:.9rem;word-break:break-word}
 
   .ex-lang-tab.ex-tr.tr-none{background:hsl(25 95% 53%);border-color:hsl(25 95% 53%);color:#fff;font-weight:800}
   .ex-lang-tab.ex-tr.tr-part{background:rgba(245,158,11,.16);border-color:hsl(38 92% 50%);color:hsl(38 92% 38%);font-weight:800}
@@ -3881,11 +3887,12 @@ async function loadTMaterial(){
 
 // Subject cards -> chapter/part table of every upload, with engagement.
 // Used by BOTH the teacher and the admin portal (same renderer, same numbers).
-let _mtData=null, _mtSub=null, _mtBase='/api/teacher';
+let _mtData=null, _mtSub=null, _mtBase='/api/teacher', _mtLast=null;
 async function _renderMaterialTree(wrapId, endpoint, apiBase){
   const wrap=document.getElementById(wrapId); if(!wrap) return;
   softSpin(wrap);
   _mtBase=apiBase;
+  _mtLast={wrapId:wrapId, endpoint:endpoint, apiBase:apiBase};
   try{
     const d=await api(endpoint);
     _mtData=d.subjects||[];
@@ -3893,6 +3900,49 @@ async function _renderMaterialTree(wrapId, endpoint, apiBase){
     if(!_mtSub||!_mtData.find(s=>s.subject===_mtSub)) _mtSub=_mtData[0].subject;
     _mtPaint(wrapId);
   }catch(e){ wrap.innerHTML=errHtml(e); }
+}
+function _mtReload(){ if(_mtLast) _renderMaterialTree(_mtLast.wrapId,_mtLast.endpoint,_mtLast.apiBase); }
+function deleteMaterial(who,id,name){
+  const nm=decodeURIComponent(name||'this file');
+  showModal('Delete Material',
+   `<div class="alert alert-danger">This permanently removes the file for everyone. Students will no longer see it, and this cannot be undone.</div>
+    <div class="form-group"><label>File</label><div class="mt-delname">${esc(nm)}</div></div>`,
+   `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-danger" id="mdel-btn" onclick="_doDeleteMaterial('${who}',${id})">Delete Permanently</button>`);
+}
+async function _doDeleteMaterial(who,id){
+  const b=document.getElementById('mdel-btn'); if(b){ b.disabled=true; b.textContent='Deleting...'; }
+  try{
+    await api('/api/'+who+'/material/'+id,'DELETE');
+    closeModal(); toast('Material deleted.');
+    _mtReload();
+  }catch(e){ toast(e.message,true); if(b){ b.disabled=false; b.textContent='Delete Permanently'; } }
+}
+function deleteMatCategory(who,cat){
+  const sub=_mtData?_mtData.find(x=>x.subject===_mtSub):null; if(!sub) return;
+  const label=decodeURIComponent(cat);
+  const items=sub.chapters.flatMap(c=>c.items).filter(i=>{
+    const k=_MT_CAT[i.type]?_MT_CAT[i.type].label:(i.category||'Other Material');
+    return k===label;
+  });
+  if(!items.length){ toast('Nothing to delete here.',true); return; }
+  window._mtDelIds=items.map(i=>i.id);
+  showModal('Delete All Files',
+   `<div class="alert alert-danger">All <b>${items.length}</b> file${items.length>1?'s':''} under <b>${esc(label)}</b> in <b>${esc(sub.subject)}</b> will be permanently removed for everyone. This cannot be undone.</div>
+    <div class="form-group"><label>Type DELETE to confirm</label><input class="form-control" id="mdelall-in" placeholder="DELETE" autocomplete="off"></div>`,
+   `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-danger" id="mdelall-btn" onclick="_doDeleteMatCategory('${who}')">Delete All</button>`);
+}
+async function _doDeleteMatCategory(who){
+  if((val('mdelall-in')||'').trim().toUpperCase()!=='DELETE'){ toast('Please type DELETE to confirm.',true); return; }
+  const ids=window._mtDelIds||[];
+  const b=document.getElementById('mdelall-btn'); if(b){ b.disabled=true; b.textContent='Deleting...'; }
+  let ok=0,fail=0;
+  for(const id of ids){
+    try{ await api('/api/'+who+'/material/'+id,'DELETE'); ok++; }catch(e){ fail++; }
+  }
+  window._mtDelIds=null;
+  closeModal();
+  toast(ok+' file'+(ok===1?'':'s')+' deleted'+(fail?', '+fail+' could not be removed':'.'), fail>0);
+  _mtReload();
 }
 function _mtPick(wrapId,sub){ _mtSub=decodeURIComponent(sub); _mtPaint(wrapId); }
 function _mtBack(wrapId){ _mtSub=null; _mtPaint(wrapId); }
@@ -3937,9 +3987,9 @@ function _mtPaint(wrapId){
       <td class="mt-dim">${esc(i.date)}</td>
       <td><button class="mt-eng" title="Students who viewed" onclick="openMatAudience(${i.id},'view')">${ic('users')} ${i.views}</button></td>
       <td><button class="mt-eng" title="Students who downloaded" onclick="openMatAudience(${i.id},'download')">${ic('download')} ${i.downloads}</button></td>
-      <td class="mat-dl-cell"><button class="btn btn-primary btn-sm" onclick="downloadMaterial('${who}',${i.id},'${esc(fname)}')">${ic('download')} Download</button></td>
+      <td class="mat-dl-cell"><div class="mat-acts"><button class="btn btn-primary btn-sm" onclick="downloadMaterial('${who}',${i.id},'${esc(fname)}')">${ic('download')} Download</button><button class="btn btn-danger btn-sm" title="Delete this file permanently" onclick="deleteMaterial('${who}',${i.id},'${encodeURIComponent(i.filename||i.title||'')}')">${ic('trash')}</button></div></td>
     </tr>`;}).join('');
-    html+=`<div class="mat-cat"><div class="mat-cat-head" onclick="_mtToggle(this)"><div class="mc-badge ${meta.badge}">${ic(meta.icon)}</div>${esc(cat)}<span class="mc-count">${byCat[cat].length} file${byCat[cat].length>1?'s':''}</span><span class="mc-chev">\u203a</span></div><div class="mat-twrap"><table class="mat-table"><thead><tr><th>Chapter</th><th>Class / Part</th><th>File</th><th>Uploaded</th><th>Views</th><th>Downloads</th><th style="text-align:right">Download</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+    html+=`<div class="mat-cat"><div class="mat-cat-head" onclick="_mtToggle(this)"><div class="mc-badge ${meta.badge}">${ic(meta.icon)}</div>${esc(cat)}<span class="mc-count">${byCat[cat].length} file${byCat[cat].length>1?'s':''}</span><button class="btn btn-danger btn-sm mc-del" title="Delete every file in this category" onclick="event.stopPropagation();deleteMatCategory('${who}','${encodeURIComponent(cat)}')">${ic('trash')} Delete All</button><span class="mc-chev">\u203a</span></div><div class="mat-twrap"><table class="mat-table"><thead><tr><th>Chapter</th><th>Class / Part</th><th>File</th><th>Uploaded</th><th>Views</th><th>Downloads</th><th style="text-align:right">Actions</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   });
   html+=`</div></div>`;
   wrap.innerHTML=html;
