@@ -91,6 +91,90 @@ def _supsub(t):
     return t
 
 
+# ------------------------------------------------- portal ka light rich markup
+# Portal me teacher **bold**, __underline__, *italic* likhta hai aur alternative
+# question ke liye akeli "OR" line. Ye markers plain text me save hote hain,
+# isliye PDF ko bhi wahi samajhna padta hai. Markers _clean() se PEHLE nikaale
+# jaate hain, warna "__x__" ko _supsub subscript samajh leta hai.
+_RICH_RE = re.compile(r"\*\*(.+?)\*\*|__(.+?)__|(?<![\*\w])\*(?!\s)(.+?)(?<!\s)\*(?!\*)", re.S)
+_OR_LINE_RE = re.compile(r"^\s*(?:\*\*)?\s*(?:OR|or|Or|oR)\s*(?:\*\*)?\s*$")
+
+
+def _strip_rich(t):
+    """Markers hata ke plain text - classification aur width measure ke liye."""
+    prev = None
+    out = t or ""
+    while prev != out:
+        prev = out
+        out = _RICH_RE.sub(lambda m: m.group(1) or m.group(2) or m.group(3) or "", out)
+    return out
+
+
+def _rich_runs(t):
+    """[(text, style)] deta hai; style fpdf ka 'B' / 'I' / 'U' / combo hota hai."""
+    runs, pos = [], 0
+    for m in _RICH_RE.finditer(t or ""):
+        if m.start() > pos:
+            runs.append((t[pos:m.start()], ""))
+        if m.group(1) is not None:
+            inner, st = m.group(1), "B"
+        elif m.group(2) is not None:
+            inner, st = m.group(2), "U"
+        else:
+            inner, st = m.group(3), "I"
+        for sub_txt, sub_st in _rich_runs(inner):
+            merged = "".join(sorted(set(st + sub_st)))
+            runs.append((sub_txt, merged))
+        pos = m.end()
+    if pos < len(t or ""):
+        runs.append((t[pos:], ""))
+    return [(x, y) for x, y in runs if x]
+
+
+def _is_or_line(ln):
+    return bool(_OR_LINE_RE.match((ln or "").strip()))
+
+
+def _style_font(pdf, style, size, base_bold=False):
+    """fpdf style string set karta hai; italic file na ho to bhi crash nahi hota."""
+    st = "".join(sorted(set(style + ("B" if base_bold else ""))))
+    try:
+        pdf.set_font("Noto", st, size)
+    except Exception:
+        try:
+            pdf.set_font("Noto", st.replace("I", ""), size)
+        except Exception:
+            pdf.set_font("Noto", "B" if "B" in st else "", size)
+
+
+def _write_rich(pdf, raw, LM, EPW, size, line_h, base_bold=False, color=(22, 26, 34)):
+    """Mixed bold/italic/underline text ko wrap karke likhta hai.
+    Koi marker na ho to False lautata hai taaki caller purana multi_cell use kare."""
+    runs = _rich_runs(raw or "")
+    if not any(st for _, st in runs):
+        return False
+    # write() hamesha left margin pe wrap karta hai - bullet jaisi indented
+    # lines ke liye margin ko temporarily shift karte hain
+    old_lm, old_rm = pdf.l_margin, pdf.r_margin
+    pdf.l_margin = LM
+    pdf.r_margin = pdf.w - LM - EPW
+    pdf.set_x(LM)
+    pdf.set_text_color(*color)
+    try:
+        for txt, st in runs:
+            piece = _clean(txt)
+            if not piece:
+                continue
+            _style_font(pdf, st, size, base_bold)
+            pdf.write(line_h, piece)
+        pdf.ln(line_h)
+    finally:
+        pdf.l_margin, pdf.r_margin = old_lm, old_rm
+    _style_font(pdf, "", size, base_bold)
+    pdf.set_text_color(20, 22, 28)
+    return True
+
+
 def _clean(text):
     t = text or ""
     t = re.sub(r"\\ce\{([^{}]*)\}", r"\1", t)
@@ -228,8 +312,11 @@ def _presplit(text):
 def _blocks(text):
     blocks = []
     for ln in _presplit(text):
-        low = ln.lower()
-        c = _clean(ln)
+        if _is_or_line(ln):
+            blocks.append(("oralt", "OR", ln))
+            continue
+        low = _strip_rich(ln).lower()
+        c = _clean(_strip_rich(ln))
         if not c:
             continue
         if low.startswith("final answer") or low.startswith(
@@ -457,6 +544,13 @@ def build_exam_pdf(ex, questions, medium="english"):
     pdf.set_auto_page_break(True, margin=18)
     pdf.add_font("Noto", "", FONT)
     pdf.add_font("Noto", "B", _font_path_bold() or FONT)
+    # Devanagari font me alag italic file nahi hoti - regular/bold hi register
+    # kar dete hain taaki *italic* markup pe PDF crash na kare
+    try:
+        pdf.add_font("Noto", "I", FONT)
+        pdf.add_font("Noto", "BI", _font_path_bold() or FONT)
+    except Exception:
+        pass
     pdf.add_page()
     pdf.set_text_shaping(True)
     EPW = pdf.epw
@@ -539,10 +633,23 @@ def build_exam_pdf(ex, questions, medium="english"):
         pdf.cell(pw, 8.1, pill, align="C")
         pdf.set_xy(LM, y0 + 13)
 
-        # question body
-        for kind, c, raw in _blocks(qtext):
+        # question body - "OR" wale question me har part ka apna figure:
+        # Part A -> uska diagram -> OR -> Part B -> uska diagram
+        qblocks = _blocks(qtext)
+        alt_img = getattr(q, "alt_image_b64", None)
+        has_or = any(k == "oralt" for k, _, _ in qblocks)
+        drawn_first = False
+        for kind, c, raw in qblocks:
+            if kind == "oralt" and has_or and alt_img and not drawn_first:
+                _img(pdf, q.image_b64)
+                drawn_first = True
             _render_block(pdf, kind, c, LM, EPW, is_q=True, raw=raw)
-        _img(pdf, q.image_b64)
+        if drawn_first:
+            _img(pdf, alt_img)
+        else:
+            _img(pdf, q.image_b64)
+            if alt_img:
+                _img(pdf, alt_img)
 
         if (ex.test_type or "") == "mcq":
             opts = (q.options_hi if (is_hi and q.options_hi) else q.options) or []
@@ -556,12 +663,12 @@ def build_exam_pdf(ex, questions, medium="english"):
                     pdf.set_draw_color(*GREEN)
                     pdf.set_text_color(*GREEN)
                     pdf.set_x(LM)
-                    pdf.multi_cell(EPW, 7, "   %s)   %s      %s" % (chr(65 + idx), _clean(str(op)), L["correct"]),
+                    pdf.multi_cell(EPW, 7, "   %s)   %s      %s" % (chr(65 + idx), _clean(_strip_rich(str(op))), L["correct"]),
                                    new_x="LMARGIN", new_y="NEXT", fill=True, border=1)
                 else:
                     pdf.set_text_color(28, 32, 40)
                     pdf.set_x(LM)
-                    pdf.multi_cell(EPW, 7, "   %s)   %s" % (chr(65 + idx), _clean(str(op))),
+                    pdf.multi_cell(EPW, 7, "   %s)   %s" % (chr(65 + idx), _clean(_strip_rich(str(op)))),
                                    new_x="LMARGIN", new_y="NEXT")
                 pdf.ln(0.8)
             pdf.set_text_color(0, 0, 0)
@@ -668,6 +775,16 @@ _MAJOR_HEAD_RE = re.compile(
 
 
 def _render_block(pdf, kind, c, LM, EPW, is_q, raw=None):
+    if kind == "oralt":
+        # Alternative question separator - hamesha page ke beech me, bold
+        pdf.ln(2.2)
+        pdf.set_x(LM)
+        _style_font(pdf, "B", 12)
+        pdf.set_text_color(*NAVY)
+        pdf.cell(EPW, 7.5, "OR", align="C")
+        pdf.ln(9.5)
+        pdf.set_text_color(20, 22, 28)
+        return
     if kind == "head":
         acc = NAVY if is_q else NAVY2
         if _MAJOR_HEAD_RE.match(c.strip()):
@@ -724,17 +841,23 @@ def _render_block(pdf, kind, c, LM, EPW, is_q, raw=None):
             pdf.set_text_color(20, 22, 28)
     elif kind == "bullet":
         pdf.set_x(LM + 4)
-        pdf.set_font("Noto", size=11.5)
+        _style_font(pdf, "", 11.5, base_bold=is_q)
         pdf.set_text_color(*(NAVY if is_q else GREEN))
         pdf.cell(5, 6.8, "\u2022")
         pdf.set_text_color(28, 32, 40)
-        pdf.multi_cell(EPW - 9, 6.8, c, new_x="LMARGIN", new_y="NEXT")
+        if not _write_rich(pdf, raw, LM + 9, EPW - 9, 11.5, 6.8,
+                           base_bold=is_q, color=(28, 32, 40)):
+            _style_font(pdf, "", 11.5, base_bold=is_q)
+            pdf.multi_cell(EPW - 9, 6.8, c, new_x="LMARGIN", new_y="NEXT")
         pdf.ln(0.4)
     else:
-        pdf.set_x(LM)
-        pdf.set_font("Noto", size=11.5)
-        pdf.set_text_color(22, 26, 34)
-        pdf.multi_cell(EPW, 6.8, c, new_x="LMARGIN", new_y="NEXT")
+        # Question text bold rehta hai (exam paper style), answer normal weight
+        if not _write_rich(pdf, raw, LM, EPW, 11.5, 6.8,
+                           base_bold=is_q, color=(22, 26, 34)):
+            pdf.set_x(LM)
+            _style_font(pdf, "", 11.5, base_bold=is_q)
+            pdf.set_text_color(22, 26, 34)
+            pdf.multi_cell(EPW, 6.8, c, new_x="LMARGIN", new_y="NEXT")
         pdf.ln(0.4)
 
 

@@ -588,14 +588,15 @@
   .rt-bar button{width:30px;height:28px;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:7px;font-size:.82rem;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;transition:all .13s}
   .rt-bar button:hover{border-color:hsl(25 95% 55%);color:hsl(25 95% 45%);background:rgba(249,115,22,.07)}
   .rt-bar button.rt-or-btn{width:auto;padding:0 11px;font-weight:800;font-size:.72rem;letter-spacing:.05em}
-  .rt-or{display:block;text-align:center;font-weight:800;letter-spacing:.14em;margin:9px 0}
+  .rt-or{display:flex;align-items:center;gap:14px;font-weight:800;letter-spacing:.16em;margin:7px 0;color:var(--text-muted);font-size:.85em}
+  .rt-or::before,.rt-or::after{content:'';flex:1;height:1px;background:var(--border)}
   .pl-qtext-wrap{flex:1;min-width:0}
   .ex-ipart{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:8px 0 6px}
   .ex-ipart-lbl{font-size:.7rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted)}
   .ex-ipart-tab{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:9999px;padding:5px 12px;font-size:.74rem;font-weight:700;cursor:pointer;transition:all .13s}
   .ex-ipart-tab:hover{border-color:hsl(25 95% 55%)}
   .ex-ipart-tab.on{background:hsl(25 95% 53%);border-color:hsl(25 95% 53%);color:#fff}
-  .pl-qtext .rt-or,.ex-prev .rt-or,.rs-qtext .rt-or{color:var(--text-muted)}
+
   .ex-lang-tab.ex-tr.tr-none{background:hsl(25 95% 53%);border-color:hsl(25 95% 53%);color:#fff;font-weight:800}
   .ex-lang-tab.ex-tr.tr-part{background:rgba(245,158,11,.16);border-color:hsl(38 92% 50%);color:hsl(38 92% 38%);font-weight:800}
   .ex-lang-tab.ex-tr.tr-done{background:rgba(16,185,129,.15);border-color:rgba(16,185,129,.55);color:#047857;font-weight:800}
@@ -4396,10 +4397,13 @@ const TEX={frac:'\\frac{a}{b}',pow:'x^{2}',sub:'x_{n}',sqrt:'\\sqrt{x}',pi:'\\pi
 function _fmtRich(t){
   let s=esc(String(t==null?'':t));
   const lines=s.split(/\r?\n/).map(ln=>{
-    if(/^\s*(?:\*\*)?\s*(OR|or|Or)\s*(?:\*\*)?\s*$/.test(ln)) return '<span class="rt-or">OR</span>';
+    if(/^\s*(?:\*\*)?\s*(OR|or|Or|oR)\s*(?:\*\*)?\s*$/.test(ln)) return '@@OR@@';
     return ln;
   });
   s=lines.join('\n');
+  s=s.replace(/\n*@@OR@@\n*/g,'@@OR@@');
+  s=s.replace(/\n{3,}/g,'\n\n');
+  s=s.replace(/@@OR@@/g,'<span class="rt-or">OR</span>');
   s=s.replace(/\*\*([^\n*]+?)\*\*/g,'<b>$1</b>');
   s=s.replace(/__([^\n_]+?)__/g,'<u>$1</u>');
   s=s.replace(/(^|[^*])\*([^\n*]+?)\*(?!\*)/g,'$1<i>$2</i>');
@@ -4434,13 +4438,27 @@ function _rtApply(id, kind){
   t.focus();
   t.dispatchEvent(new Event('input',{bubbles:true}));
 }
-function _rtBar(id){
+function _rtBar(id, qi){
+  const orClick=`_rtApply('${id}','or')`+((qi!=null)?`;_orInserted(${qi})`:'');
   return `<div class="rt-bar">`
     +`<button type="button" title="Bold - wrap the selected text" onclick="_rtApply('${id}','bold')"><b>B</b></button>`
     +`<button type="button" title="Italic" onclick="_rtApply('${id}','italic')"><i>I</i></button>`
     +`<button type="button" title="Underline" onclick="_rtApply('${id}','underline')"><u>U</u></button>`
-    +`<button type="button" class="rt-or-btn" title="Insert a centred OR separator for an alternative question" onclick="_rtApply('${id}','or')">OR</button>`
+    +`<button type="button" class="rt-or-btn" title="Insert a centred OR separator for an alternative question" onclick="${orClick}">OR</button>`
     +`</div>`;
+}
+function _syncImgSec(i){ const el=document.getElementById('ex-imgsec-'+i); if(el) el.innerHTML=_qImgSection(i); }
+function _syncImgSecLive(i,v){
+  const q=_examQs[i]; if(!q) return;
+  const has=_hasOr(v);
+  if(q._hadOr!==has){ q._hadOr=has; if(!has) q._ipart='a'; _syncImgSec(i); }
+}
+function _orInserted(i){
+  const q=_examQs[i]; if(!q) return;
+  q._hadOr=true;
+  if(!q.alt_image_b64) q._ipart='b';
+  _syncImgSec(i);
+  toast('Alternative question added. Attach the figure for the OR part below - you can paste it straight from the clipboard.');
 }
 function renderMath(el){
   if(!el||!window.katex) return;
@@ -4577,9 +4595,9 @@ function renderExamQs(){
     const autoHint='';
     const qval=isHi?(q.q_hi||''):(q.q||'');
     const qbind=isHi?`_examQs[${i}].q_hi=this.value`:`_examQs[${i}].q=this.value`;
-    const qImg=isHi?'':_qImgSection(i);
+    const qImg=isHi?'':`<div id="ex-imgsec-${i}">${_qImgSection(i)}</div>`;
     const qId=`exq-${i}`;
-    const qsec=`<div class="ex-sec ex-sec-q"><div class="ex-sec-lbl">Question${isHi?' \u00b7 Hindi':''}</div>${_rtBar(qId)}<textarea id="${qId}" class="form-control" rows="2" placeholder="${isHi?'\u092a\u094d\u0930\u0936\u094d\u0928 \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902 (\u0935\u093f\u0915\u0932\u094d\u092a\u093f\u0915)':'Type the question here \u2014 maths & reactions supported'}" onfocus="_lastField=this" oninput="${qbind};examPrev(this,'pv-q-${i}')">${esc(qval)}</textarea><div class="ex-prev" id="pv-q-${i}"></div>${autoHint}${qImg}</div>`;
+    const qsec=`<div class="ex-sec ex-sec-q"><div class="ex-sec-lbl">Question${isHi?' \u00b7 Hindi':''}</div>${_rtBar(qId,isHi?null:i)}<textarea id="${qId}" class="form-control" rows="2" placeholder="${isHi?'\u092a\u094d\u0930\u0936\u094d\u0928 \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902 (\u0935\u093f\u0915\u0932\u094d\u092a\u093f\u0915)':'Type the question here \u2014 maths & reactions supported'}" onfocus="_lastField=this" oninput="${qbind};examPrev(this,'pv-q-${i}')${isHi?'':`;_syncImgSecLive(${i},this.value)`}">${esc(qval)}</textarea><div class="ex-prev" id="pv-q-${i}"></div>${autoHint}${qImg}</div>`;
     let mid;
     if(_examType==='mcq'){
       let opts;
