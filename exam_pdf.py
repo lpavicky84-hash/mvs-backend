@@ -91,6 +91,43 @@ def _supsub(t):
     return t
 
 
+# --------------------------------------------- font coverage safety (IMPORTANT)
+# Noto Sans Devanagari me Latin + Devanagari to hai, lekin math/Greek glyphs
+# NAHI hain: ^2 (superscripts), pi/theta/lambda jaise Greek, sqrt, infinity,
+# <=, >=, +/-, arrows, ticks. fpdf2 missing glyph ko CHUPCHAP drop kar deta
+# hai - "v^2 - u^2 = 2as" paper me "v - u = 2as" ban jaata (GALAT formula!).
+# Isliye render se pehle inhe ASCII me badal dete hain. Map tabhi badlo jab
+# fonts/ me aisa font rakha jaye jinme ye glyphs hon (tab _fx ko skip karna).
+_MISSING_FIX = {
+    # superscripts / subscripts -> caret/underscore notation (unambiguous)
+    "⁰": "^0", "¹": "^1", "²": "^2", "³": "^3", "⁴": "^4",
+    "⁵": "^5", "⁶": "^6", "⁷": "^7", "⁸": "^8", "⁹": "^9",
+    "⁺": "^+", "⁻": "^-", "ⁿ": "^n",
+    "₀": "_0", "₁": "_1", "₂": "_2", "₃": "_3", "₄": "_4",
+    "₅": "_5", "₆": "_6", "₇": "_7", "₈": "_8", "₉": "_9",
+    # vulgar fractions
+    "½": "1/2", "¼": "1/4", "¾": "3/4",
+    # Greek letters (physics/maths symbols) -> spelled out
+    "α": "alpha", "β": "beta", "γ": "gamma", "δ": "delta",
+    "θ": "theta", "λ": "lambda", "μ": "mu", "π": "pi",
+    "ρ": "rho", "σ": "sigma", "τ": "tau", "φ": "phi",
+    "ω": "omega", "Δ": "Delta", "Σ": "Sigma", "Ω": "Omega",
+    # operators / relations / arrows
+    "√": "sqrt", "∞": "infinity", "≈": "~=", "≠": "!=",
+    "≤": "<=", "≥": ">=", "±": "+/-", "∓": "-/+",
+    "→": "->", "←": "<-", "⇒": "=>",
+    # check marks -> simple text marker
+    "✓": "[OK]", "✔": "[OK]",
+}
+_FIX_TRANS = str.maketrans(_MISSING_FIX)
+
+
+def _fx(t):
+    """Font me na hone wale chars ko ASCII equivalent se badalta hai.
+    _clean() ke andar call hota hai, isliye saara question/answer text cover."""
+    return (t or "").translate(_FIX_TRANS)
+
+
 # ------------------------------------------------- portal ka light rich markup
 # Portal me teacher **bold**, __underline__, *italic* likhta hai aur alternative
 # question ke liye akeli "OR" line. Ye markers plain text me save hote hain,
@@ -195,7 +232,7 @@ def _clean(text):
     t = t.replace("\\\\", "\n").replace("$", "")
     t = re.sub(r"\\[,;:! ]", " ", t)
     t = re.sub(r"[ \t]{2,}", " ", t)
-    return t.strip()
+    return _fx(t).strip()
 
 
 # ------------------------------------------------------ structure the run-on text
@@ -1061,7 +1098,7 @@ def stamp_marks_on_answer(data, mime, obtained, total, verdict=None, per_q=None)
     downloads keep working exactly as before."""
     try:
         label_big = "%s / %s" % (_fmt_num(obtained), _fmt_num(total))
-        label_small = ("MARKS  \u00b7  " + str(verdict).upper()) if verdict else "MARKS  \u00b7  CHECKED"
+        label_small = ("MARKS  \u00b7  " + _fx(str(verdict)).upper()) if verdict else "MARKS  \u00b7  CHECKED"
         m = (mime or "").lower()
         if "pdf" in m:
             return _stamp_pdf(data, label_big, label_small, per_q=per_q)
