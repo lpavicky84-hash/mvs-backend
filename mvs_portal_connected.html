@@ -6629,18 +6629,28 @@ function adminEditTT(id){
  `<div class="alert alert-info">You can change any detail of this entry. The day is calculated automatically from the date.</div>
   <div class="form-group"><label>Subject</label><input class="form-control" id="ae-sub" list="ae-sublist" value="${esc(e.subject||'')}"><datalist id="ae-sublist">${dl}</datalist></div>
   <div class="form-group"><label>Class</label><select class="form-control" id="ae-cls">${clsOpts.map(c=>`<option value="${esc(c)}"${c===cls?' selected':''}>${esc(c)}</option>`).join('')}</select></div>
-  <div class="form-group"><label>Type</label><select class="form-control" id="ae-type"><option value="chapter"${(e.type||'chapter')==='chapter'?' selected':''}>Chapter</option><option value="event"${e.type==='event'?' selected':''}>Event (Doubt Class / Test / Special)</option></select></div>
-  <div class="form-group"><label>Chapter / Event Name</label><input class="form-control" id="ae-ch" value="${esc(e.chapter||'')}"></div>
+  <div class="form-group"><label>Type</label><select class="form-control" id="ae-type">${(()=>{
+    const isEv=e.type==='event';
+    const isGr=!isEv&&(/^\s*Grammar\s*:/i.test(e.chapter||'')||(typeof _isNonBookChapter==='function'&&_isNonBookChapter(e.chapter||'')));
+    return `<option value="chapter"${(!isEv&&!isGr)?' selected':''}>Chapter</option><option value="grammar"${isGr?' selected':''}>Grammar / Extra Topic (not counted as a chapter)</option><option value="event"${isEv?' selected':''}>Event (Doubt Class / Test / Special)</option>`;
+  })()}</select></div>
+  <div class="form-group"><label>Chapter / Event Name</label><input class="form-control" id="ae-ch" value="${esc(String(e.chapter||'').replace(/^\s*Grammar\s*:\s*/i,''))}"></div>
   <div class="form-group"><label>Topic / Part</label><input class="form-control" id="ae-part" value="${esc(e.part||'')}" placeholder="e.g. Part 1 - Introduction"></div>
   <div class="form-group"><label>Date</label><input type="date" class="form-control" id="ae-date" value="${esc(e.date||'')}"></div>
   <div class="form-group"><label>Time</label><input class="form-control" id="ae-time" value="${esc(e.time||'')}" placeholder="e.g. 8:00 PM"></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitAdminEditTT(${id})">Save Changes</button>`);
 }
 async function submitAdminEditTT(id){
-  const sub=val('ae-sub'), ch=val('ae-ch');
+  const sub=val('ae-sub');
+  let ch=(val('ae-ch')||'').replace(/^\s*Grammar\s*:\s*/i,'').trim();
   if(!sub){ toast('Subject is required.',true); return; }
   if(!ch){ toast('Chapter name is required.',true); return; }
-  const body={subject:sub,class_name:val('ae-cls'),chapter:ch,part:val('ae-part'),entry_date:val('ae-date'),time:val('ae-time'),type:val('ae-type')};
+  // Grammar / Extra Topic: timetable me class ki tarah dikhta hai lekin
+  // "Grammar: " prefix ki wajah se book-chapter counts me nahi ginta.
+  // Chapter chunne par prefix hat jata hai, taaki dono taraf change ho sake.
+  let ty=val('ae-type');
+  if(ty==='grammar'){ ch='Grammar: '+ch; ty='chapter'; }
+  const body={subject:sub,class_name:val('ae-cls'),chapter:ch,part:val('ae-part'),entry_date:val('ae-date'),time:val('ae-time'),type:ty};
   try{
     await api('/api/admin/timetable-entry/'+id,'PATCH',body);
     closeModal(); toast('Entry updated.');
