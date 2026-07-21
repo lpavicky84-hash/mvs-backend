@@ -5189,10 +5189,36 @@ function spFromClipboardHTML(html){
 const QTYPES=[['general','Written Answer (short / long)'],['match','Match the Following'],['fill','Fill in the Blanks'],['tf','True / False'],['num','Numerical / Formula based'],['diagram','Diagram / Graph based']];
 /* ---- match-the-following formatter: builds a KaTeX two-column table ---- */
 function spEscTex(t){ return t.replace(/([&%#_{}$])/g,'\\$1'); }
+function spDedupCell(str){
+  // MathJax/KaTeX wali sites se copy karne par formula clipboard me DO baar aata
+  // hai (dikhne wala + screen-reader text). Cell ke body ke dono half same nikle
+  // (exact ya characters ka multiset) to pehla half hi rakhte hain.
+  const s0=String(str||'').trim();
+  if(s0.length<6) return s0;
+  const MAP={'\u00b9':'1','\u00b2':'2','\u00b3':'3','\u2070':'0','\u2074':'4','\u2075':'5','\u2076':'6','\u2077':'7','\u2078':'8','\u2079':'9','\u00bd':'12','\u00bc':'14','\u00be':'34','\u2080':'0','\u2081':'1','\u2082':'2','\u2083':'3','\u2084':'4','\u2085':'5','\u2086':'6','\u2087':'7','\u2088':'8','\u2089':'9'};
+  const norm=x=>String(x).toLowerCase().replace(/\\[a-z]+/gi,'').split('').map(ch=>MAP[ch]||ch).join('').replace(/[^a-z0-9]/g,'');
+  const head=(s0.match(/^\(\s*[A-Za-z0-9]{1,4}\s*\)\s*/)||[''])[0];
+  const body=s0.slice(head.length);
+  const n=norm(body);
+  if(n.length>=4 && n.length%2===0){
+    const h=n.length/2, A=n.slice(0,h), B=n.slice(h);
+    const same=(A===B)||(A.split('').sort().join('')===B.split('').sort().join(''));
+    if(same){
+      let idx=-1;
+      for(let i=1;i<=body.length;i++){ if(norm(body.slice(0,i)).length===h){ idx=i; break; } }
+      if(idx>0) return (head+body.slice(0,idx)).trim();
+    }
+  }
+  return s0;
+}
 function spCellTex(td){
   const c=td.cloneNode(true);
+  // KaTeX (.katex-html) aur MathJax (mjx-math) apna visible duplicate
+  // aria-hidden="true" mark karte hain - use hata do, warna formula 2 baar aata hai
+  c.querySelectorAll('[aria-hidden="true"]').forEach(x=>{ if(!x.querySelector('math')) x.remove(); });
   c.querySelectorAll('math').forEach(m=>{ const t=spMathToTex(m).trim(); m.replaceWith(m.ownerDocument.createTextNode(' $'+t+'$ ')); });
   let t=(c.textContent||'').replace(/\s+/g,' ').replace(/\$\s+/g,'$').replace(/\s+\$/g,'$').trim();
+  t=spDedupCell(t);
   // format only the non-math parts (math already converted from MathML)
   return t.split(/(\$[^$]+\$)/g).map(p=>/^\$/.test(p)?p:spSmartFormat(p)).join('');
 }
@@ -5257,15 +5283,19 @@ function spMatchFromMarkers(t){
   while((m=re.exec(t))){ if(!stop.test(m[1])) marks.push({l:m[1],i:m.index,e:re.lastIndex}); }
   if(marks.length<4) return null;
   const isU=s=>/^[A-Z]{1,4}$/.test(s), isL=s=>/^[a-z]{1,4}$/.test(s), isD=s=>/^\d{1,2}$/.test(s);
+  const isRm=s=>/^(i|ii|iii|iv|v|vi|vii|viii|ix|x|xi|xii)$/i.test(s);
   const hasU=marks.some(x=>isU(x.l)), hasL=marks.some(x=>isL(x.l)), hasD=marks.some(x=>isD(x.l));
+  const hasRm=marks.some(x=>isL(x.l)&&isRm(x.l));                 // (i)-(iv) lowercase roman
+  const hasPl=marks.some(x=>isL(x.l)&&!isRm(x.l));                // (a)/(b) plain letters
   let isC1;
   if(hasU&&(hasL||hasD)) isC1=x=>isU(x.l);          // (A)-(D) vs (1)-(8) or (i)-(iv)
   else if(hasL&&hasD) isC1=x=>isL(x.l);             // (a)-(d) vs (1)-(8)
+  else if(hasPl&&hasRm) isC1=x=>isL(x.l)&&!isRm(x.l); // (a)-(d) vs (i)-(iv) - answers me common
   else return null;
   const col1=[],col2=[];
   marks.forEach((mk,k)=>{
     const end=k+1<marks.length?marks[k+1].i:t.length;
-    const txt=t.slice(mk.e,end).trim().replace(/\s+/g,' ');
+    const txt=spDedupCell(t.slice(mk.e,end).trim().replace(/\s+/g,' '));
     if(!txt) return;
     const item='('+mk.l+') '+txt;
     (isC1(mk)?col1:col2).push(item);
