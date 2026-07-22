@@ -10042,38 +10042,46 @@ function _getLocation(onProg){
       err=>{ if(err&&err.code===1) fail(_geoErrMsg(1)); },
       {enableHighAccuracy:true,maximumAge:0,timeout:20000});
     setTimeout(()=>{ if(best) ok(); else fail(_geoErrMsg(3)); }, window._GEO_MAX_WAIT||14000);
+    setTimeout(()=>{ if(best&&best.accuracy>=1500) ok(); }, window._GEO_FAST_WAIT||6000);   // IP-based reading (PC) — aur improve nahi hogi
   });
 }
 async function doPunch(kind){
   const btn=document.getElementById('pw-btn');
   window._geoFlash=null;
   if(!window._geoState.checked) await _loadGeofence();
-  let payload={};
+  let payload={}, geoErr=null;
   if(window._geoState.active){
     if(btn){ btn.disabled=true; btn.textContent='Location check...'; }
-    // permission state pehle dekho (supported browsers me) — denied ho to turant steps dikhao
+    // permission state pehle dekho — denied ho to GPS skip, WiFi fallback try hoga
+    let denied=false;
     try{
       if(navigator.permissions&&navigator.permissions.query){
         const st=await navigator.permissions.query({name:'geolocation'});
         if(st&&st.state==='denied'){
-          _geoNote(_geoErrMsg(1),'error'); toast('Location permission blocked hai',true);
-          if(btn){ btn.disabled=false; btn.textContent='Try Again'; }
+          denied=true; geoErr=_geoErrMsg(1);
           if(!window._geoPermWatch){ window._geoPermWatch=true;   // settings me allow karte hi auto-punch
             st.onchange=()=>{ if(st.state==='granted'){ window._geoPermWatch=false; _geoNote('Permission mil gayi — punch continue ho raha hai...','info'); doPunch(kind); } }; }
-          return;
         }
-        if(st&&st.state==='prompt') _geoNote('Browser <b>location permission</b> maangega — <b>Allow</b> dabao, punch apne aap ho jayega.','info');
+        else if(st.state==='prompt') _geoNote('Browser <b>location permission</b> maangega — <b>Allow</b> dabao, punch apne aap ho jayega.','info');
         else _geoNote('Aapki location check ho rahi hai...','info');
       } else _geoNote('Aapki location check ho rahi hai...','info');
     }catch(e){ _geoNote('Aapki location check ho rahi hai...','info'); }
-    try{ payload=await _getLocation(b=>_geoNote(`Location mil rahi hai... (±${Math.round(b.accuracy)}m — best reading li ja rahi hai)`,'info')); }
-    catch(e){ _geoNote(e.message,'error'); toast(String(e.message).replace(/<[^>]+>/g,''),true); if(btn){ btn.disabled=false; btn.textContent='Try Again'; } return; }
+    if(!denied){
+      try{ payload=await _getLocation(b=>_geoNote(`Location mil rahi hai... (±${Math.round(b.accuracy)}m — best reading li ja rahi hai)`,'info')); }
+      catch(e){ geoErr=e.message; payload={}; }
+    }
+    if(geoErr || (payload.accuracy!=null && payload.accuracy>80)){
+      // GPS fail/PC — office WiFi (trusted IP) se auto-verify try karo, coords ke bina
+      payload={wifi_fallback:true};
+      _geoNote('GPS se accurate nahi mil pa rahi — <b>office WiFi</b> se verify kar raha hun...','info');
+    }
   }
   if(btn){ btn.disabled=true; btn.textContent=kind==='in'?'Punching In...':'Punching Out...'; }
   try{
     const r=await api('/api/teacher/attendance/punch-'+kind,'POST',payload);
     toast(r.message);
-    if(r.distance!=null) _geoNote(`Location verified — <b>${esc(r.office||'office')}</b> me ho (office se <b>${r.distance}m</b>).`,'success');
+    if(r.wifi) _geoNote(`<b>Office WiFi</b> se verified — <b>${esc(r.office||'office')}</b> me ho. Punch ho gaya.`,'success');
+    else if(r.distance!=null) _geoNote(`Location verified — <b>${esc(r.office||'office')}</b> me ho (office se <b>${r.distance}m</b>).`,'success');
   }catch(e){
     const m=String(e.message||'');
     if(m.startsWith('outside|')){
@@ -10081,6 +10089,8 @@ async function doPunch(kind){
       const [,branch,dist,rad]=parts.length===4?parts:[null,'office',parts[1],parts[2]];
       _geoNote(`<b>Outside Office Area</b> — aap <b>${esc(branch)}</b> se <b>${dist}m</b> door ho (allowed: ${rad}m). Office ke paas jaa ke punch karo.`,'error');
       toast('Outside office area — punch nahi hua',true);
+    } else if(payload.wifi_fallback && geoErr){
+      _geoNote(geoErr,'error'); toast(String(geoErr).replace(/<[^>]+>/g,''),true);
     } else { toast(m,true); if(m.includes('Location')||m.includes('GPS')) _geoNote(esc(m),'error'); }
   }
   if(document.getElementById('t-punch-wrap')) renderPunchCard('t-punch-wrap');
@@ -10349,8 +10359,9 @@ async function aAttFetch(){
       if(!d.teachers.length){ body.innerHTML='<div class="empty-state"><p>No active teachers found.</p></div>'; return; }
       const pill=t=>t.status==='working'?'<span class="po-pill green">ON DUTY</span>':t.status==='done'?'<span class="po-pill gold">DAY COMPLETE</span>':'<span class="po-pill amber">NOT PUNCHED</span>';
       window._aAttRows={}; d.teachers.forEach(t=>window._aAttRows[t.teacher_id]=t);
+      const _chip=(dist,office)=>dist==null?'':(dist===0&&office)?` <span style="font-size:.62rem;font-weight:800;color:#059669" title="Office WiFi/PC se punch (network verified)">(WiFi)</span>`:` <span style="font-size:.62rem;font-weight:800;color:${dist<=50?'#059669':'#d97706'}" title="Office se punch distance">(${dist}m)</span>`;
       body.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Teacher</th><th>Punch In</th><th>Punch Out</th><th>Hours</th><th>Status</th><th></th></tr></thead><tbody>${
-        d.teachers.map(t=>`<tr><td style="font-weight:600">${esc(t.name)}</td><td>${esc(t.punch_in||'-')}${t.in_dist!=null?` <span style="font-size:.62rem;font-weight:800;color:${t.in_dist<=50?'#059669':'#d97706'}" title="Office se punch-in distance">(${t.in_dist}m)</span>`:''}</td><td>${esc(t.punch_out||'-')}${t.out_dist!=null?` <span style="font-size:.62rem;font-weight:800;color:${t.out_dist<=50?'#059669':'#d97706'}" title="Office se punch-out distance">(${t.out_dist}m)</span>`:''}</td><td>${t.hours!=null?`<a href="javascript:void(0)" onclick="openAttDayStatus(${t.teacher_id})" title="Location status dekho" style="font-weight:700;color:var(--primary,#4f46e5);text-decoration:underline dotted">${t.hours} h</a>`:'-'}</td><td>${pill(t)}</td><td><button class="btn btn-ghost btn-sm" onclick="openTeacherAttDetail(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">History</button></td></tr>`).join('')
+        d.teachers.map(t=>`<tr><td style="font-weight:600">${esc(t.name)}</td><td>${esc(t.punch_in||'-')}${_chip(t.in_dist,t.in_office)}</td><td>${esc(t.punch_out||'-')}${_chip(t.out_dist,t.out_office)}</td><td>${t.hours!=null?`<a href="javascript:void(0)" onclick="openAttDayStatus(${t.teacher_id})" title="Location status dekho" style="font-weight:700;color:var(--primary,#4f46e5);text-decoration:underline dotted">${t.hours} h</a>`:'-'}</td><td>${pill(t)}</td><td><button class="btn btn-ghost btn-sm" onclick="openTeacherAttDetail(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">History</button></td></tr>`).join('')
       }</tbody></table></div>`;
     } else {
       const d=await api('/api/admin/attendance/month?month='+encodeURIComponent(_aAttMonth));
@@ -10370,7 +10381,8 @@ async function openAttDayStatus(tid){
   const row=(lbl,time,office,dist)=>{
     if(!time) return `<div style="display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px dashed var(--border)"><span style="color:var(--text-muted)">${lbl}</span><span>-</span></div>`;
     let loc='';
-    if(office&&dist!=null){ const lim=limOf(office); const out=lim!=null&&dist>lim;
+    if(office&&dist===0) loc=`<div style="font-size:.78rem;margin-top:3px">${ic('location')} <b>${esc(office)}</b> · <span style="color:#059669;font-weight:700">Office WiFi/PC se punch</span> (network verified)</div>`;
+    else if(office&&dist!=null){ const lim=limOf(office); const out=lim!=null&&dist>lim;
       loc=`<div style="font-size:.78rem;margin-top:3px">${ic('location')} <b>${esc(office)}</b> · office se <b style="color:${out?'#dc2626':(dist<=50?'#059669':'#d97706')}">${dist}m</b>${out?' <span style="color:#dc2626;font-weight:700">(radius ke bahar tha!)</span>':''}</div>`; }
     else loc=`<div style="font-size:.78rem;color:var(--text-muted);margin-top:3px">location record nahi hui (geofence off tha)</div>`;
     return `<div style="padding:10px 0;border-bottom:1px dashed var(--border)"><div style="display:flex;justify-content:space-between;gap:10px"><span style="color:var(--text-muted)">${lbl}</span><b>${esc(time)}</b></div>${loc}</div>`;
@@ -10766,10 +10778,10 @@ async function flagMissed(tid,eid,missed,name){
 }
 
 // ---- Office Locations (geofence, multi-branch) setup ----
-window._olOffices=[];
+window._olOffices=[]; window._olIps=[];
 async function openOfficeLocation(){
-  try{ const d=await api('/api/admin/office-location'); window._olOffices=(d.offices||[]).map(o=>({name:o.name,lat:o.lat,lng:o.lng,radius:o.radius})); }
-  catch(e){ window._olOffices=[]; }
+  try{ const d=await api('/api/admin/office-location'); window._olOffices=(d.offices||[]).map(o=>({name:o.name,lat:o.lat,lng:o.lng,radius:o.radius})); window._olIps=(d.ips||[]).slice(); }
+  catch(e){ window._olOffices=[]; window._olIps=[]; }
   showModal('Office Locations (Geofence)',
    `<div class="alert alert-info" style="font-size:.82rem">Har branch ka <b>naam + location + radius</b> add karo. Teacher <b>kisi bhi branch</b> ke radius ke andar se punch kar payega — punch ke saath <b>branch ka naam aur distance</b> record hoga. Bahar se punch <b>block</b> rahega.</div>
     <div id="ol-list"></div>
@@ -10787,10 +10799,36 @@ async function openOfficeLocation(){
         <button class="btn btn-primary btn-sm" onclick="olAddBranch()">+ Branch Add Karo</button>
       </div>
       <div id="ol-note" style="margin-top:8px"></div>
+    </div>
+    <div style="border:1px dashed var(--border);border-radius:12px;padding:14px;margin-top:10px">
+      <div style="font-weight:700;font-size:.85rem;margin-bottom:4px">Office WiFi / PC Punch</div>
+      <div style="font-size:.76rem;color:var(--text-muted);margin-bottom:8px">Office ke broadband/WiFi se connected <b>PC/laptop</b> (jahan GPS nahi hota) se punch <b>bina location ke</b> ho jayega. <b>Office ke PC me hi</b> "Is PC ka IP Add Karo" dabao. <b>Ghar ka IP kabhi add mat karo</b> — warna ghar se bhi punch ho jayega!</div>
+      <div id="ol-ip-list"></div>
+      <button class="btn btn-ghost btn-sm" onclick="olAddMyIp()">${ic('location')} Is PC ka IP Add Karo</button>
+      <div id="ol-ip-note" style="margin-top:6px"></div>
     </div>`,
    `${window._olOffices.length?`<button class="btn btn-danger" onclick="olClear()">Sab Hatao (Geofence OFF)</button>`:''}<button class="btn btn-primary" onclick="saveOfficeLocation()">Save (${window._olOffices.length} branch)</button>`);
-  _olRenderList();
+  _olRenderList(); _olRenderIps();
 }
+function _olRenderIps(){
+  const el=document.getElementById('ol-ip-list'); if(!el) return;
+  if(!window._olIps.length){ el.innerHTML='<div style="font-size:.76rem;color:var(--text-muted);margin-bottom:8px">Abhi koi WiFi IP nahi — PC se punch karne pe location maangega.</div>'; return; }
+  el.innerHTML=window._olIps.map((ip,i)=>`<div class="pc-task"><div class="t"><div class="tt">${esc(ip)}</div><div class="td">Office WiFi — is network se PC punch bina GPS ke chalega</div></div>
+    <button class="btn btn-ghost btn-sm" onclick="olDelIp(${i})">Remove</button></div>`).join('');
+}
+async function olAddMyIp(){
+  const n=document.getElementById('ol-ip-note');
+  try{
+    const d=await api('/api/admin/my-ip');
+    const ip=String(d.ip||'').trim();
+    if(!ip){ if(n) n.innerHTML='<div class="alert alert-danger" style="font-size:.8rem;margin-bottom:0">IP pata nahi chal payi.</div>'; return; }
+    if(window._olIps.includes(ip)){ if(n) n.innerHTML=`<div class="alert alert-info" style="font-size:.8rem;margin-bottom:0">IP ${esc(ip)} pehle se list me hai.</div>`; return; }
+    if(window._olIps.length>=10){ if(n) n.innerHTML='<div class="alert alert-danger" style="font-size:.8rem;margin-bottom:0">Max 10 IPs.</div>'; return; }
+    window._olIps.push(ip); _olRenderIps();
+    if(n) n.innerHTML=`<div class="alert alert-success" style="font-size:.8rem;margin-bottom:0">Is PC ka IP <b>${esc(ip)}</b> add ho gaya — Save dabana mat bhoolo.</div>`;
+  }catch(e){ if(n) n.innerHTML=`<div class="alert alert-danger" style="font-size:.8rem;margin-bottom:0">${esc(e.message)}</div>`; }
+}
+function olDelIp(i){ window._olIps.splice(i,1); _olRenderIps(); }
 function _olRenderList(){
   const el=document.getElementById('ol-list'); if(!el) return;
   if(!window._olOffices.length){ el.innerHTML='<div class="alert alert-warning" style="font-size:.82rem">Abhi koi branch nahi — <b>geofence OFF</b> hai, teacher kahin se bhi (ghar se bhi) punch kar sakte hain.</div>'; return; }
@@ -10829,7 +10867,7 @@ function olAddBranch(){
 function olDelBranch(i){ window._olOffices.splice(i,1); _olRenderList(); }
 async function saveOfficeLocation(){
   if(!window._olOffices.length){ toast('Kam se kam 1 branch add karo (ya Sab Hatao se geofence OFF karo)',true); return; }
-  try{ const r=await api('/api/admin/office-location','POST',{offices:window._olOffices}); window._aOffices=null; toast(r.message); closeModal(); }
+  try{ const r=await api('/api/admin/office-location','POST',{offices:window._olOffices,ips:window._olIps}); window._aOffices=null; toast(r.message); closeModal(); }
   catch(e){ toast(e.message,true); }
 }
 async function olClear(){

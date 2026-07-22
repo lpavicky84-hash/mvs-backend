@@ -1,6 +1,6 @@
 import json
 import re
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract
 from datetime import datetime, date, timedelta
@@ -2502,6 +2502,7 @@ def compute_payout(db, teacher_id: int, month: str):
     Net = Base + Allowances + Extras + Bonus - Manual Deductions - Attendance Deduction.
     Attendance Deduction = (working_days - present_days) x per-day rate."""
     from models import TeacherContract, TeacherAttendance, PayoutAdjustment
+    _ensure_geofence(db)
     c = db.query(TeacherContract).filter(TeacherContract.teacher_id == teacher_id).first()
     if not c:
         return None
@@ -2619,6 +2620,7 @@ def _contract_out(c, teacher_name=""):
 def attendance_today(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
     from models import TeacherAttendance
+    _ensure_geofence(db)
     now = _ist_now(); today = now.date()
     a = db.query(TeacherAttendance).filter(
         TeacherAttendance.teacher_id == tp.id, TeacherAttendance.att_date == today).first()
@@ -2688,6 +2690,27 @@ def _office_list(db):
             out = []
     return out
 
+def _office_ips(db):
+    """Office ke broadband/WiFi ke public IPs — in se aaye punch GPS ke bina allowed."""
+    from models import AppSetting
+    import json as _json
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == "office_ips").first()
+        data = _json.loads(row.value) if row and row.value else []
+        return [str(ip).strip() for ip in data if str(ip).strip()][:10] if isinstance(data, list) else []
+    except Exception:
+        return []
+
+def _client_ip(request):
+    """Railway/proxy ke peeche real client IP (X-Forwarded-For ka pehla)."""
+    try:
+        xff = request.headers.get("x-forwarded-for", "") if request else ""
+        if xff:
+            return xff.split(",")[0].strip()
+        return request.client.host if request and request.client else ""
+    except Exception:
+        return ""
+
 def _nearest_office(offices, lat, lng):
     """Sabse nazdeek branch aur uska distance (m)."""
     best, best_d = None, None
@@ -2707,12 +2730,24 @@ def _haversine_m(lat1, lng1, lat2, lng2):
     h = sin(dp / 2) ** 2 + cos(p1) * cos(p2) * sin(dl / 2) ** 2
     return 2 * R * asin(sqrt(h))
 
-def _geofence_check(db, lat, lng, accuracy):
+def _geofence_check(db, lat, lng, accuracy, client_ip=""):
     """Koi bhi branch set hai to nearest se distance validate karta hai. Returns (office|None, dist_m).
+    Office ke WiFi/broadband IP se aaya punch GPS ke bina bhi allowed hai (office dict me wifi=True).
     Fail ho to HTTPException raise (403 'outside|<branch>|<dist>|<radius>' = geofence breach)."""
     offices = _office_list(db)
     if not offices:
         return None, None      # geofence off - purana behavior
+    if client_ip and client_ip in _office_ips(db):
+        # office ka WiFi/broadband — trusted network, GPS optional (PC ke liye)
+        acc = None
+        try:
+            acc = float(accuracy) if accuracy is not None else None
+        except Exception:
+            acc = None
+        if lat is not None and lng is not None and acc is not None and acc <= 80:
+            o, d = _nearest_office(offices, float(lat), float(lng))
+            return {"name": o["name"], "wifi": True}, d
+        return {"name": offices[0]["name"], "wifi": True}, None
     if lat is None or lng is None:
         raise HTTPException(status_code=400, detail="Location chahiye. Browser me location permission allow karo, tabhi punch hoga.")
     try:
@@ -2736,11 +2771,11 @@ def teacher_geofence_status(db: Session = Depends(get_db), current_user=Depends(
     return {"active": True, "offices": [{"name": o["name"], "radius": int(o["radius"])} for o in offices]}
 
 @router.post("/attendance/punch-in")
-def punch_in(payload: dict = Body(default={}), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+def punch_in(request: Request, payload: dict = Body(default={}), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
     from models import TeacherAttendance
     _ensure_geofence(db)
-    office, dist = _geofence_check(db, payload.get("lat"), payload.get("lng"), payload.get("accuracy"))
+    office, dist = _geofence_check(db, payload.get("lat"), payload.get("lng"), payload.get("accuracy"), _client_ip(request))
     now = _ist_now(); today = now.date()
     a = db.query(TeacherAttendance).filter(
         TeacherAttendance.teacher_id == tp.id, TeacherAttendance.att_date == today).first()
@@ -2750,22 +2785,25 @@ def punch_in(payload: dict = Body(default={}), db: Session = Depends(get_db), cu
         a = TeacherAttendance(teacher_id=tp.id, att_date=today)
         db.add(a)
     a.punch_in = now
+    wifi = bool(office and office.get("wifi"))
     if office:
-        a.in_lat = float(payload.get("lat")); a.in_lng = float(payload.get("lng")); a.in_dist = dist
+        if payload.get("lat") is not None and payload.get("lng") is not None and not wifi:
+            a.in_lat = float(payload.get("lat")); a.in_lng = float(payload.get("lng"))
+        a.in_dist = dist if dist is not None else 0
         a.in_office = office["name"]
     db.commit()
     msg = f"Punched in at {_fmt_t(now)}"
     if office:
-        msg += " (%s - office se %dm)" % (office["name"], dist)
+        msg += " (%s - Office WiFi)" % office["name"] if wifi else " (%s - office se %dm)" % (office["name"], dist)
     return {"message": msg, "punch_in": _fmt_t(now), "distance": dist,
-            "office": office["name"] if office else None}
+            "office": office["name"] if office else None, "wifi": wifi}
 
 @router.post("/attendance/punch-out")
-def punch_out(payload: dict = Body(default={}), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+def punch_out(request: Request, payload: dict = Body(default={}), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
     from models import TeacherAttendance
     _ensure_geofence(db)
-    office, dist = _geofence_check(db, payload.get("lat"), payload.get("lng"), payload.get("accuracy"))
+    office, dist = _geofence_check(db, payload.get("lat"), payload.get("lng"), payload.get("accuracy"), _client_ip(request))
     now = _ist_now(); today = now.date()
     a = db.query(TeacherAttendance).filter(
         TeacherAttendance.teacher_id == tp.id, TeacherAttendance.att_date == today).first()
@@ -2774,20 +2812,24 @@ def punch_out(payload: dict = Body(default={}), db: Session = Depends(get_db), c
     if a.punch_out:
         raise HTTPException(status_code=400, detail=f"You already punched out today at {_fmt_t(a.punch_out)}")
     a.punch_out = now
+    wifi = bool(office and office.get("wifi"))
     if office:
-        a.out_lat = float(payload.get("lat")); a.out_lng = float(payload.get("lng")); a.out_dist = dist
+        if payload.get("lat") is not None and payload.get("lng") is not None and not wifi:
+            a.out_lat = float(payload.get("lat")); a.out_lng = float(payload.get("lng"))
+        a.out_dist = dist if dist is not None else 0
         a.out_office = office["name"]
     db.commit()
     msg = f"Punched out at {_fmt_t(now)}"
     if office:
-        msg += " (%s - office se %dm)" % (office["name"], dist)
+        msg += " (%s - Office WiFi)" % office["name"] if wifi else " (%s - office se %dm)" % (office["name"], dist)
     return {"message": msg, "punch_out": _fmt_t(now), "hours": _att_hours(a), "distance": dist,
-            "office": office["name"] if office else None}
+            "office": office["name"] if office else None, "wifi": wifi}
 
 @router.get("/attendance/history")
 def attendance_history(month: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
     from models import TeacherAttendance
+    _ensure_geofence(db)
     start, end = _month_range(month)
     rows = db.query(TeacherAttendance).filter(
         TeacherAttendance.teacher_id == tp.id,

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, date, timedelta
@@ -1975,7 +1975,8 @@ def _teacher_name_map(db):
 def admin_attendance_day(day: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
     """Ek din ki attendance — saare active teachers, punch in/out ke saath."""
     from models import TeacherAttendance, TeacherProfile, User
-    from teacher_routes import _ist_now, _fmt_t, _att_hours
+    from teacher_routes import _ist_now, _fmt_t, _att_hours, _ensure_geofence
+    _ensure_geofence(db)
     try:
         d = datetime.strptime(day, "%Y-%m-%d").date() if day else _ist_now().date()
     except Exception:
@@ -2004,7 +2005,8 @@ def admin_attendance_day(day: str = "", db: Session = Depends(get_db), _=Depends
 def admin_attendance_month(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
     """Month summary — teacher-wise present days + total hours."""
     from models import TeacherAttendance, TeacherProfile, User
-    from teacher_routes import _month_range
+    from teacher_routes import _month_range, _ensure_geofence
+    _ensure_geofence(db)
     start, end = _month_range(month)
     rows = db.query(TeacherAttendance).filter(
         TeacherAttendance.att_date >= start, TeacherAttendance.att_date < end).all()
@@ -2027,7 +2029,8 @@ def admin_attendance_month(month: str = "", db: Session = Depends(get_db), _=Dep
 def admin_attendance_teacher(tid: int, month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
     """Ek teacher ki date-wise attendance (admin detail view)."""
     from models import TeacherAttendance
-    from teacher_routes import _month_range, _fmt_t, _att_hours
+    from teacher_routes import _month_range, _fmt_t, _att_hours, _ensure_geofence
+    _ensure_geofence(db)
     start, end = _month_range(month)
     rows = db.query(TeacherAttendance).filter(
         TeacherAttendance.teacher_id == tid,
@@ -2309,11 +2312,18 @@ def admin_payout_paid(tid: int, payload: dict = Body(...), db: Session = Depends
 # ===== OFFICE LOCATION (punch geofence) =====
 @router.get("/office-location")
 def admin_get_office(db: Session = Depends(get_db), _=Depends(get_admin)):
-    from teacher_routes import _ensure_geofence, _office_list
+    from teacher_routes import _ensure_geofence, _office_list, _office_ips
     _ensure_geofence(db)
     offices = _office_list(db)
     return {"active": bool(offices),
-            "offices": [{"name": o["name"], "lat": o["lat"], "lng": o["lng"], "radius": int(o["radius"])} for o in offices]}
+            "offices": [{"name": o["name"], "lat": o["lat"], "lng": o["lng"], "radius": int(o["radius"])} for o in offices],
+            "ips": _office_ips(db)}
+
+@router.get("/my-ip")
+def admin_my_ip(request: Request, _=Depends(get_admin)):
+    """Admin ke current device ka public IP — office WiFi add karne ke liye."""
+    from teacher_routes import _client_ip
+    return {"ip": _client_ip(request)}
 
 @router.post("/office-location")
 def admin_set_office(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -2329,9 +2339,24 @@ def admin_set_office(payload: dict = Body(...), db: Session = Depends(get_db), _
             row = AppSetting(key=k); db.add(row)
         row.value = str(v)
     if payload.get("clear"):
-        _set("offices", ""); _set("office_lat", ""); _set("office_lng", "")
+        _set("offices", ""); _set("office_lat", ""); _set("office_lng", ""); _set("office_ips", "")
         db.commit()
         return {"message": "Geofence band kar diya - ab kahin se bhi punch hoga"}
+    # office WiFi/broadband IPs (optional) — in se aaye punch GPS ke bina allowed
+    import re as _re
+    raw_ips = payload.get("ips") or []
+    if not isinstance(raw_ips, list) or len(raw_ips) > 10:
+        raise HTTPException(status_code=400, detail="Max 10 WiFi IPs add kar sakte ho")
+    clean_ips = []
+    for ip in raw_ips:
+        ip = str(ip).strip()
+        if not ip:
+            continue
+        if not (_re.match(r"^\d{1,3}(\.\d{1,3}){3}$", ip) or ":" in ip):
+            raise HTTPException(status_code=400, detail=f"IP address sahi nahi lag raha: {ip}")
+        if ip not in clean_ips:
+            clean_ips.append(ip)
+    _set("office_ips", _json.dumps(clean_ips))
     raw = payload.get("offices")
     if not isinstance(raw, list) or not raw:
         raise HTTPException(status_code=400, detail="Kam se kam 1 office branch bhejo")
@@ -2359,7 +2384,10 @@ def admin_set_office(payload: dict = Body(...), db: Session = Depends(get_db), _
     _set("office_lat", ""); _set("office_lng", "")   # purane single-office keys hatao
     db.commit()
     names_txt = ", ".join(o["name"] for o in clean)
-    return {"message": f"{len(clean)} office branch(es) save ho gaye ({names_txt}) - ab punch sirf inke radius me hoga"}
+    msg = f"{len(clean)} office branch(es) save ho gaye ({names_txt}) - ab punch sirf inke radius me hoga"
+    if clean_ips:
+        msg += f". Office WiFi ({len(clean_ips)} IP) se PC punch bina GPS ke chalega"
+    return {"message": msg}
 
 # ===== SALARY BULK SETUP (sabhi teachers, sirf gross - baaki sab auto) =====
 @router.get("/contracts-overview")
