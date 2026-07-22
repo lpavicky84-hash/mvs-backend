@@ -2630,10 +2630,89 @@ def attendance_today(db: Session = Depends(get_db), current_user=Depends(get_tea
         "hours": _att_hours(a)
     }
 
+# ===== GEOFENCE (punch sirf office ke radius me) =====
+_GEOFENCE_READY = False
+def _ensure_geofence(db):
+    """app_settings table + attendance ke location columns pehli use me bana/add karta hai."""
+    global _GEOFENCE_READY
+    if _GEOFENCE_READY:
+        return
+    from sqlalchemy import text as _text
+    try:
+        db.execute(_text("CREATE TABLE IF NOT EXISTS app_settings (key VARCHAR(50) PRIMARY KEY, value TEXT NULL)"))
+        db.commit()
+    except Exception:
+        db.rollback()
+    for col in ["in_lat FLOAT NULL", "in_lng FLOAT NULL", "in_dist INTEGER NULL",
+                "out_lat FLOAT NULL", "out_lng FLOAT NULL", "out_dist INTEGER NULL"]:
+        try:
+            db.execute(_text("ALTER TABLE teacher_attendance ADD COLUMN %s" % col)); db.commit()
+        except Exception:
+            db.rollback()
+    _GEOFENCE_READY = True
+
+def _office_location(db):
+    """Admin ne jo office location set ki hai. {'lat':..,'lng':..,'radius':..} ya None."""
+    from models import AppSetting
+    try:
+        rows = {r.key: (r.value or "") for r in db.query(AppSetting).filter(
+            AppSetting.key.in_(["office_lat", "office_lng", "office_radius"])).all()}
+    except Exception:
+        return None
+    try:
+        lat = float(rows.get("office_lat") or "")
+        lng = float(rows.get("office_lng") or "")
+        radius = float(rows.get("office_radius") or 30)
+    except Exception:
+        return None
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180) or radius <= 0:
+        return None
+    return {"lat": lat, "lng": lng, "radius": radius}
+
+def _haversine_m(lat1, lng1, lat2, lng2):
+    """Do GPS points ke beech ka distance, meters me."""
+    from math import radians, sin, cos, asin, sqrt
+    R = 6371000.0
+    p1, p2 = radians(lat1), radians(lat2)
+    dp = radians(lat2 - lat1)
+    dl = radians(lng2 - lng1)
+    h = sin(dp / 2) ** 2 + cos(p1) * cos(p2) * sin(dl / 2) ** 2
+    return 2 * R * asin(sqrt(h))
+
+def _geofence_check(db, lat, lng, accuracy):
+    """Office set hai to distance validate karta hai. Returns (office|None, dist_m).
+    Fail ho to HTTPException raise (403 'outside' = geofence breach)."""
+    office = _office_location(db)
+    if not office:
+        return None, None      # geofence off - purana behavior
+    if lat is None or lng is None:
+        raise HTTPException(status_code=400, detail="Location chahiye. Browser me location permission allow karo, tabhi punch hoga.")
+    try:
+        acc = float(accuracy or 0)
+    except Exception:
+        acc = 0
+    if acc > 80:
+        raise HTTPException(status_code=400, detail="Accurate location nahi mil pa rahi (GPS weak, +-%dm). Khuli jagah jaa ke mobile se try karo." % int(acc))
+    dist = _haversine_m(float(lat), float(lng), office["lat"], office["lng"])
+    if dist > office["radius"] + min(acc, 20):
+        raise HTTPException(status_code=403, detail="outside|%d|%d" % (int(round(dist)), int(office["radius"])))
+    return office, int(round(dist))
+
+@router.get("/geofence")
+def teacher_geofence_status(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Punch card pe dikhane ke liye: geofence on hai ya nahi + radius."""
+    _ensure_geofence(db)
+    office = _office_location(db)
+    if not office:
+        return {"active": False}
+    return {"active": True, "radius": int(office["radius"])}
+
 @router.post("/attendance/punch-in")
-def punch_in(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+def punch_in(payload: dict = Body(default={}), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
     from models import TeacherAttendance
+    _ensure_geofence(db)
+    office, dist = _geofence_check(db, payload.get("lat"), payload.get("lng"), payload.get("accuracy"))
     now = _ist_now(); today = now.date()
     a = db.query(TeacherAttendance).filter(
         TeacherAttendance.teacher_id == tp.id, TeacherAttendance.att_date == today).first()
@@ -2643,13 +2722,20 @@ def punch_in(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
         a = TeacherAttendance(teacher_id=tp.id, att_date=today)
         db.add(a)
     a.punch_in = now
+    if office:
+        a.in_lat = float(payload.get("lat")); a.in_lng = float(payload.get("lng")); a.in_dist = dist
     db.commit()
-    return {"message": f"Punched in at {_fmt_t(now)}", "punch_in": _fmt_t(now)}
+    msg = f"Punched in at {_fmt_t(now)}"
+    if office:
+        msg += " (office se %dm - location verified)" % dist
+    return {"message": msg, "punch_in": _fmt_t(now), "distance": dist}
 
 @router.post("/attendance/punch-out")
-def punch_out(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+def punch_out(payload: dict = Body(default={}), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
     from models import TeacherAttendance
+    _ensure_geofence(db)
+    office, dist = _geofence_check(db, payload.get("lat"), payload.get("lng"), payload.get("accuracy"))
     now = _ist_now(); today = now.date()
     a = db.query(TeacherAttendance).filter(
         TeacherAttendance.teacher_id == tp.id, TeacherAttendance.att_date == today).first()
@@ -2658,8 +2744,13 @@ def punch_out(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     if a.punch_out:
         raise HTTPException(status_code=400, detail=f"You already punched out today at {_fmt_t(a.punch_out)}")
     a.punch_out = now
+    if office:
+        a.out_lat = float(payload.get("lat")); a.out_lng = float(payload.get("lng")); a.out_dist = dist
     db.commit()
-    return {"message": f"Punched out at {_fmt_t(now)}", "punch_out": _fmt_t(now), "hours": _att_hours(a)}
+    msg = f"Punched out at {_fmt_t(now)}"
+    if office:
+        msg += " (office se %dm - location verified)" % dist
+    return {"message": msg, "punch_out": _fmt_t(now), "hours": _att_hours(a), "distance": dist}
 
 @router.get("/attendance/history")
 def attendance_history(month: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):

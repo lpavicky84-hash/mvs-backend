@@ -1992,6 +1992,7 @@ def admin_attendance_day(day: str = "", db: Session = Depends(get_db), _=Depends
         out.append({"teacher_id": tp.id, "name": tp.user.name if tp.user else "",
                     "punch_in": _fmt_t(a.punch_in) if a else None,
                     "punch_out": _fmt_t(a.punch_out) if a else None,
+                    "in_dist": a.in_dist if a else None, "out_dist": a.out_dist if a else None,
                     "hours": _att_hours(a), "status": status})
     out.sort(key=lambda x: (x["status"] == "absent", x["name"]))
     return {"date": str(d), "day": d.strftime("%A"), "teachers": out,
@@ -2303,6 +2304,45 @@ def admin_payout_paid(tid: int, payload: dict = Body(...), db: Session = Depends
     rec.paid_at = datetime.utcnow()
     db.commit()
     return {"message": "Paid mark ho gaya"}
+
+# ===== OFFICE LOCATION (punch geofence) =====
+@router.get("/office-location")
+def admin_get_office(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from teacher_routes import _ensure_geofence, _office_location
+    _ensure_geofence(db)
+    office = _office_location(db)
+    if not office:
+        return {"active": False}
+    return {"active": True, "lat": office["lat"], "lng": office["lng"], "radius": int(office["radius"])}
+
+@router.post("/office-location")
+def admin_set_office(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Office GPS location + radius (meters) set karo. Iske baad teachers sirf
+    radius ke andar se hi punch kar payenge; bahar se 'outside office area' aayega."""
+    from teacher_routes import _ensure_geofence
+    from models import AppSetting
+    _ensure_geofence(db)
+    def _set(k, v):
+        row = db.query(AppSetting).filter(AppSetting.key == k).first()
+        if not row:
+            row = AppSetting(key=k); db.add(row)
+        row.value = str(v)
+    if payload.get("clear"):
+        _set("office_lat", ""); _set("office_lng", "")
+        db.commit()
+        return {"message": "Geofence band kar diya - ab kahin se bhi punch hoga"}
+    try:
+        lat = float(payload.get("lat")); lng = float(payload.get("lng"))
+        radius = int(payload.get("radius") or 30)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Latitude/longitude sahi nahi hain")
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        raise HTTPException(status_code=400, detail="Latitude/longitude range ke bahar hain")
+    if radius < 5 or radius > 500:
+        raise HTTPException(status_code=400, detail="Radius 5-500 meter ke beech rakho (GPS error ke karan 20-50m practical hai)")
+    _set("office_lat", lat); _set("office_lng", lng); _set("office_radius", radius)
+    db.commit()
+    return {"message": "Office location set ho gayi - ab punch sirf %dm radius me hoga" % radius}
 
 # ===== SALARY BULK SETUP (sabhi teachers, sirf gross - baaki sab auto) =====
 @router.get("/contracts-overview")

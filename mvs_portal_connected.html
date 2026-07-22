@@ -9983,17 +9983,69 @@ async function renderPunchCard(wrapId){
         <div class="m"><div class="l">Punch Out</div><div class="v">${esc(d.punch_out||'--:--')}</div></div>
         <div class="m"><div class="l">Hours</div><div class="v">${d.hours!=null?d.hours+' h':'--'}</div></div>
       </div>
+      <div id="geo-note"></div>
       <div class="pw-cap">Time is captured automatically in IST. The admin sees your attendance in real time.</div>
     </div></div>`;
   _pwTick();
   if(!_pwInt) _pwInt=setInterval(_pwTick,1000);
+  if(!window._geoState.checked) _loadGeofence(); else _geoNote();
+}
+// geofence status cache
+window._geoState=window._geoState||{checked:false,active:false,radius:0};
+async function _loadGeofence(){
+  try{ const g=await api('/api/teacher/geofence'); window._geoState={checked:true,active:!!g.active,radius:g.radius||0}; }
+  catch(e){ window._geoState={checked:true,active:false,radius:0}; }
+  _geoNote();
+}
+function _geoNote(txt,cls){
+  const ns=document.querySelectorAll('#geo-note'); if(!ns.length) return;   // dashboard + attendance dono cards update (DOM me 2 ho sakte hain)
+  let h='';
+  if(txt){
+    if(cls==='success'||cls==='error') window._geoFlash={txt,cls,at:Date.now()};   // re-render ke baad bhi dikhe (10 min tak)
+    h=`<div class="alert alert-${cls==='error'?'danger':(cls||'info')}" style="margin-top:10px;font-size:.8rem">${txt}</div>`;
+  } else {
+    const f=window._geoFlash;
+    if(f && Date.now()-f.at<10*60*1000) h=`<div class="alert alert-${f.cls==='error'?'danger':(f.cls||'info')}" style="margin-top:10px;font-size:.8rem">${f.txt}</div>`;
+    else{
+      window._geoFlash=null;
+      if(window._geoState.active) h=`<div style="font-size:.72rem;color:var(--text-muted);margin-top:8px;text-align:center">Location check ON — punch sirf office ke <b>${window._geoState.radius}m radius</b> ke andar se hoga.</div>`;
+    }
+  }
+  ns.forEach(n=>n.innerHTML=h);
+}
+function _getLocation(){
+  return new Promise((res,rej)=>{
+    if(!navigator.geolocation){ rej(new Error('Is device/browser me location support nahi hai.')); return; }
+    navigator.geolocation.getCurrentPosition(
+      pos=>res({lat:pos.coords.latitude,lng:pos.coords.longitude,accuracy:pos.coords.accuracy||0}),
+      err=>{ const m=err.code===1?'Location permission BLOCKED hai — address bar ke lock icon se location allow karo, fir try karo.':err.code===3?'Location timeout — GPS weak hai, khuli jagah se try karo.':'Location nahi mil pa rahi. GPS on karke try karo.'; rej(new Error(m)); },
+      {enableHighAccuracy:true,timeout:15000,maximumAge:0});
+  });
 }
 async function doPunch(kind){
-  const btn=document.getElementById('pw-btn'); if(btn){ btn.disabled=true; btn.textContent=kind==='in'?'Punching In...':'Punching Out...'; }
+  const btn=document.getElementById('pw-btn');
+  window._geoFlash=null;
+  if(!window._geoState.checked) await _loadGeofence();
+  let payload={};
+  if(window._geoState.active){
+    if(btn){ btn.disabled=true; btn.textContent='Location check...'; }
+    _geoNote('Aapki location check ho rahi hai...','info');
+    try{ payload=await _getLocation(); }
+    catch(e){ _geoNote(esc(e.message),'error'); toast(e.message,true); if(btn){ btn.disabled=false; btn.textContent='Try Again'; } return; }
+  }
+  if(btn){ btn.disabled=true; btn.textContent=kind==='in'?'Punching In...':'Punching Out...'; }
   try{
-    const r=await api('/api/teacher/attendance/punch-'+kind,'POST',{});
+    const r=await api('/api/teacher/attendance/punch-'+kind,'POST',payload);
     toast(r.message);
-  }catch(e){ toast(e.message,true); }
+    if(r.distance!=null) _geoNote(`Location verified — office se <b>${r.distance}m</b> ke andar ho.`,'success');
+  }catch(e){
+    const m=String(e.message||'');
+    if(m.startsWith('outside|')){
+      const [,dist,rad]=m.split('|');
+      _geoNote(`<b>Outside Office Area</b> — aap office se <b>${dist}m</b> door ho (allowed: ${rad}m). Office ke paas jaa ke punch karo.`,'error');
+      toast('Outside office area — punch nahi hua',true);
+    } else { toast(m,true); if(m.includes('Location')||m.includes('GPS')) _geoNote(esc(m),'error'); }
+  }
   if(document.getElementById('t-punch-wrap')) renderPunchCard('t-punch-wrap');
   if(document.getElementById('ta-punch-wrap')) renderPunchCard('ta-punch-wrap');
   if(document.getElementById('ta-history')) tAttHistory();
@@ -10241,6 +10293,7 @@ async function loadAAttendance(){
   _aAttMonth=_aAttMonth||curMonth();
   el.innerHTML=`<div class="sm-head"><h2>Teacher Attendance</h2><p>Live punch in and punch out status of every teacher, day-wise and month-wise.</p></div><div class="card"><div class="card-header"><h3>Attendance</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-ghost btn-sm" onclick="openOfficeLocation()">${ic('location')} Office Location</button>
         <div class="tt-toggle"><button class="${_aAttView==='day'?'active':''}" onclick="_aAttView='day';loadAAttendance()">Day View</button><button class="${_aAttView==='month'?'active':''}" onclick="_aAttView='month';loadAAttendance()">Month Summary</button></div>
         ${_aAttView==='day'
           ?`<input type="date" class="form-control" style="width:auto;padding:7px 12px" value="${_aAttDate}" onchange="_aAttDate=this.value;aAttFetch()">`
@@ -10259,7 +10312,7 @@ async function aAttFetch(){
       if(!d.teachers.length){ body.innerHTML='<div class="empty-state"><p>No active teachers found.</p></div>'; return; }
       const pill=t=>t.status==='working'?'<span class="po-pill green">ON DUTY</span>':t.status==='done'?'<span class="po-pill gold">DAY COMPLETE</span>':'<span class="po-pill amber">NOT PUNCHED</span>';
       body.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Teacher</th><th>Punch In</th><th>Punch Out</th><th>Hours</th><th>Status</th><th></th></tr></thead><tbody>${
-        d.teachers.map(t=>`<tr><td style="font-weight:600">${esc(t.name)}</td><td>${esc(t.punch_in||'-')}</td><td>${esc(t.punch_out||'-')}</td><td>${t.hours!=null?t.hours+' h':'-'}</td><td>${pill(t)}</td><td><button class="btn btn-ghost btn-sm" onclick="openTeacherAttDetail(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">History</button></td></tr>`).join('')
+        d.teachers.map(t=>`<tr><td style="font-weight:600">${esc(t.name)}</td><td>${esc(t.punch_in||'-')}${t.in_dist!=null?` <span style="font-size:.62rem;font-weight:800;color:${t.in_dist<=50?'#059669':'#d97706'}" title="Office se punch-in distance">(${t.in_dist}m)</span>`:''}</td><td>${esc(t.punch_out||'-')}${t.out_dist!=null?` <span style="font-size:.62rem;font-weight:800;color:${t.out_dist<=50?'#059669':'#d97706'}" title="Office se punch-out distance">(${t.out_dist}m)</span>`:''}</td><td>${t.hours!=null?t.hours+' h':'-'}</td><td>${pill(t)}</td><td><button class="btn btn-ghost btn-sm" onclick="openTeacherAttDetail(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">History</button></td></tr>`).join('')
       }</tbody></table></div>`;
     } else {
       const d=await api('/api/admin/attendance/month?month='+encodeURIComponent(_aAttMonth));
@@ -10649,6 +10702,48 @@ async function openMissedClasses(tid,name){
 }
 async function flagMissed(tid,eid,missed,name){
   try{ const r=await api('/api/admin/teacher/'+tid+'/payout-missed-class','POST',{entry_id:eid,missed:!!missed}); toast(r.message); openMissedClasses(tid,name); aPayFetch(); }
+  catch(e){ toast(e.message,true); }
+}
+
+// ---- Office Location (geofence) setup ----
+async function openOfficeLocation(){
+  let cur={active:false};
+  try{ cur=await api('/api/admin/office-location'); }catch(e){}
+  showModal('Office Location (Geofence)',
+   `<div class="alert alert-info" style="font-size:.82rem">Punch sirf office ke <b>radius ke andar</b> se hoga. Bahar se punch karne pe teacher ko <b>"Outside Office Area"</b> dikhega aur punch save <b>nahi</b> hoga.<br>Office me khade ho ke <b>Use My Current Location</b> dabao — GPS coords apne aap bhar jayenge.</div>`+
+   (cur.active
+     ?`<div class="alert alert-success" style="font-size:.82rem">Abhi <b>ON</b> hai — ${cur.lat}, ${cur.lng} · radius <b>${cur.radius}m</b></div>`
+     :`<div class="alert alert-warning" style="font-size:.82rem">Abhi <b>OFF</b> hai — teacher kahin se bhi (ghar se bhi) punch kar sakte hain.</div>`)+
+   `<div class="form-group"><label>Latitude</label><input class="form-control" id="ol-lat" value="${cur.active?cur.lat:''}" placeholder="e.g. 28.613900"></div>
+    <div class="form-group"><label>Longitude</label><input class="form-control" id="ol-lng" value="${cur.active?cur.lng:''}" placeholder="e.g. 77.209000"></div>
+    <div class="form-group"><label>Radius (meter)</label><input class="form-control" id="ol-radius" type="number" min="5" max="500" value="${cur.active?cur.radius:30}">
+    <div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">Mobile GPS me 5-20m ka error hota hai — bahut chhota radius (jaise 10m) rakhoge to office me bhi punch fail ho sakta hai. <b>20-30m practical hai</b>; max 500m.</div></div>
+    <div id="ol-note"></div>`,
+   `<button class="btn btn-ghost" onclick="olUseCurrent()">${ic('location')} Use My Current Location</button>`+
+   (cur.active?`<button class="btn btn-danger" onclick="olClear()">Geofence OFF Karo</button>`:'')+
+   `<button class="btn btn-primary" onclick="saveOfficeLocation()">Save</button>`);
+}
+function olUseCurrent(){
+  const n=document.getElementById('ol-note');
+  if(!navigator.geolocation){ if(n) n.innerHTML='<div class="alert alert-danger" style="font-size:.8rem">Is device/browser me location support nahi hai — manual type karo.</div>'; return; }
+  if(n) n.innerHTML='<div class="alert alert-info" style="font-size:.8rem;margin-bottom:0">Location le raha hun... (GPS on rakho)</div>';
+  navigator.geolocation.getCurrentPosition(
+    pos=>{ document.getElementById('ol-lat').value=pos.coords.latitude.toFixed(6);
+           document.getElementById('ol-lng').value=pos.coords.longitude.toFixed(6);
+           if(n) n.innerHTML=`<div class="alert alert-success" style="font-size:.8rem;margin-bottom:0">Location bhar gayi (GPS accuracy ~${Math.round(pos.coords.accuracy||0)}m). Radius isse bada rakho.</div>`; },
+    err=>{ if(n) n.innerHTML='<div class="alert alert-danger" style="font-size:.8rem;margin-bottom:0">Location nahi mili — browser me permission allow karo ya manual type karo.</div>'; },
+    {enableHighAccuracy:true,timeout:15000,maximumAge:0});
+}
+async function saveOfficeLocation(){
+  const lat=parseFloat(document.getElementById('ol-lat').value), lng=parseFloat(document.getElementById('ol-lng').value);
+  const radius=parseInt(document.getElementById('ol-radius').value)||30;
+  if(isNaN(lat)||isNaN(lng)){ toast('Latitude/longitude bharo (ya Use My Current Location dabao)',true); return; }
+  try{ const r=await api('/api/admin/office-location','POST',{lat,lng,radius}); toast(r.message); closeModal(); }
+  catch(e){ toast(e.message,true); }
+}
+async function olClear(){
+  if(!confirm('Geofence OFF karne se teacher kahin se bhi punch kar payenge. Pakka?')) return;
+  try{ const r=await api('/api/admin/office-location','POST',{clear:true}); toast(r.message); closeModal(); }
   catch(e){ toast(e.message,true); }
 }
 

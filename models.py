@@ -617,9 +617,26 @@ class TeacherAttendance(Base):
     att_date   = Column(Date, index=True)
     punch_in   = Column(DateTime, nullable=True)
     punch_out  = Column(DateTime, nullable=True)
+    # geofence: punch kahan se hua (office se kitne meter door)
+    in_lat     = Column(Float, nullable=True)
+    in_lng     = Column(Float, nullable=True)
+    in_dist    = Column(Integer, nullable=True)    # meters from office at punch-in
+    out_lat    = Column(Float, nullable=True)
+    out_lng    = Column(Float, nullable=True)
+    out_dist   = Column(Integer, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 
     teacher = relationship("TeacherProfile")
+
+# =============================================
+# APP SETTINGS (office location etc. key-value)
+# =============================================
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    key   = Column(String(50), primary_key=True)
+    value = Column(Text, nullable=True)
+
 
 # =============================================
 # TEACHER CONTRACT (appointment letter + payout rules)
