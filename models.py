@@ -621,9 +621,11 @@ class TeacherAttendance(Base):
     in_lat     = Column(Float, nullable=True)
     in_lng     = Column(Float, nullable=True)
     in_dist    = Column(Integer, nullable=True)    # meters from office at punch-in
+    in_office  = Column(String(80), nullable=True) # kaunse branch se punch-in
     out_lat    = Column(Float, nullable=True)
     out_lng    = Column(Float, nullable=True)
     out_dist   = Column(Integer, nullable=True)
+    out_office = Column(String(80), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 
     teacher = relationship("TeacherProfile")

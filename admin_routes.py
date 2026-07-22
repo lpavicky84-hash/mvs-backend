@@ -1993,6 +1993,7 @@ def admin_attendance_day(day: str = "", db: Session = Depends(get_db), _=Depends
                     "punch_in": _fmt_t(a.punch_in) if a else None,
                     "punch_out": _fmt_t(a.punch_out) if a else None,
                     "in_dist": a.in_dist if a else None, "out_dist": a.out_dist if a else None,
+                    "in_office": a.in_office if a else None, "out_office": a.out_office if a else None,
                     "hours": _att_hours(a), "status": status})
     out.sort(key=lambda x: (x["status"] == "absent", x["name"]))
     return {"date": str(d), "day": d.strftime("%A"), "teachers": out,
@@ -2308,19 +2309,19 @@ def admin_payout_paid(tid: int, payload: dict = Body(...), db: Session = Depends
 # ===== OFFICE LOCATION (punch geofence) =====
 @router.get("/office-location")
 def admin_get_office(db: Session = Depends(get_db), _=Depends(get_admin)):
-    from teacher_routes import _ensure_geofence, _office_location
+    from teacher_routes import _ensure_geofence, _office_list
     _ensure_geofence(db)
-    office = _office_location(db)
-    if not office:
-        return {"active": False}
-    return {"active": True, "lat": office["lat"], "lng": office["lng"], "radius": int(office["radius"])}
+    offices = _office_list(db)
+    return {"active": bool(offices),
+            "offices": [{"name": o["name"], "lat": o["lat"], "lng": o["lng"], "radius": int(o["radius"])} for o in offices]}
 
 @router.post("/office-location")
 def admin_set_office(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
-    """Office GPS location + radius (meters) set karo. Iske baad teachers sirf
-    radius ke andar se hi punch kar payenge; bahar se 'outside office area' aayega."""
+    """Office branches (multi-location) save karo. Body: {'offices':[{name,lat,lng,radius},...]}
+    ya {'clear': true} (geofence band). Save ke baad teachers sirf kisi branch ke radius me se hi punch kar payenge."""
     from teacher_routes import _ensure_geofence
     from models import AppSetting
+    import json as _json
     _ensure_geofence(db)
     def _set(k, v):
         row = db.query(AppSetting).filter(AppSetting.key == k).first()
@@ -2328,21 +2329,37 @@ def admin_set_office(payload: dict = Body(...), db: Session = Depends(get_db), _
             row = AppSetting(key=k); db.add(row)
         row.value = str(v)
     if payload.get("clear"):
-        _set("office_lat", ""); _set("office_lng", "")
+        _set("offices", ""); _set("office_lat", ""); _set("office_lng", "")
         db.commit()
         return {"message": "Geofence band kar diya - ab kahin se bhi punch hoga"}
-    try:
-        lat = float(payload.get("lat")); lng = float(payload.get("lng"))
-        radius = int(payload.get("radius") or 30)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Latitude/longitude sahi nahi hain")
-    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
-        raise HTTPException(status_code=400, detail="Latitude/longitude range ke bahar hain")
-    if radius < 5 or radius > 500:
-        raise HTTPException(status_code=400, detail="Radius 5-500 meter ke beech rakho (GPS error ke karan 20-50m practical hai)")
-    _set("office_lat", lat); _set("office_lng", lng); _set("office_radius", radius)
+    raw = payload.get("offices")
+    if not isinstance(raw, list) or not raw:
+        raise HTTPException(status_code=400, detail="Kam se kam 1 office branch bhejo")
+    if len(raw) > 6:
+        raise HTTPException(status_code=400, detail="Max 6 branches add kar sakte ho")
+    clean, names = [], set()
+    for o in raw:
+        name = str((o or {}).get("name") or "").strip()[:80]
+        if not name:
+            raise HTTPException(status_code=400, detail="Har branch ka naam chahiye")
+        if name.lower() in names:
+            raise HTTPException(status_code=400, detail=f"Branch naam '{name}' do baar hai - alag naam rakho")
+        names.add(name.lower())
+        try:
+            lat = float(o.get("lat")); lng = float(o.get("lng"))
+            radius = int(o.get("radius") or 30)
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"'{name}' ka latitude/longitude sahi nahi hain")
+        if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+            raise HTTPException(status_code=400, detail=f"'{name}' ka latitude/longitude range ke bahar hain")
+        if radius < 5 or radius > 500:
+            raise HTTPException(status_code=400, detail=f"'{name}' ka radius 5-500 meter ke beech rakho (GPS error ke karan 20-50m practical hai)")
+        clean.append({"name": name, "lat": lat, "lng": lng, "radius": radius})
+    _set("offices", _json.dumps(clean))
+    _set("office_lat", ""); _set("office_lng", "")   # purane single-office keys hatao
     db.commit()
-    return {"message": "Office location set ho gayi - ab punch sirf %dm radius me hoga" % radius}
+    names_txt = ", ".join(o["name"] for o in clean)
+    return {"message": f"{len(clean)} office branch(es) save ho gaye ({names_txt}) - ab punch sirf inke radius me hoga"}
 
 # ===== SALARY BULK SETUP (sabhi teachers, sirf gross - baaki sab auto) =====
 @router.get("/contracts-overview")

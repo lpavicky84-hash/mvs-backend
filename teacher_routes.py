@@ -2643,31 +2643,59 @@ def _ensure_geofence(db):
         db.commit()
     except Exception:
         db.rollback()
-    for col in ["in_lat FLOAT NULL", "in_lng FLOAT NULL", "in_dist INTEGER NULL",
-                "out_lat FLOAT NULL", "out_lng FLOAT NULL", "out_dist INTEGER NULL"]:
+    for col in ["in_lat FLOAT NULL", "in_lng FLOAT NULL", "in_dist INTEGER NULL", "in_office VARCHAR(80) NULL",
+                "out_lat FLOAT NULL", "out_lng FLOAT NULL", "out_dist INTEGER NULL", "out_office VARCHAR(80) NULL"]:
         try:
             db.execute(_text("ALTER TABLE teacher_attendance ADD COLUMN %s" % col)); db.commit()
         except Exception:
             db.rollback()
     _GEOFENCE_READY = True
 
-def _office_location(db):
-    """Admin ne jo office location set ki hai. {'lat':..,'lng':..,'radius':..} ya None."""
+def _office_list(db):
+    """Admin ke saare office branches: [{'name','lat','lng','radius'}, ...]. Empty list = geofence off."""
     from models import AppSetting
+    import json as _json
     try:
         rows = {r.key: (r.value or "") for r in db.query(AppSetting).filter(
-            AppSetting.key.in_(["office_lat", "office_lng", "office_radius"])).all()}
+            AppSetting.key.in_(["offices", "office_lat", "office_lng", "office_radius"])).all()}
     except Exception:
-        return None
-    try:
-        lat = float(rows.get("office_lat") or "")
-        lng = float(rows.get("office_lng") or "")
-        radius = float(rows.get("office_radius") or 30)
-    except Exception:
-        return None
-    if not (-90 <= lat <= 90 and -180 <= lng <= 180) or radius <= 0:
-        return None
-    return {"lat": lat, "lng": lng, "radius": radius}
+        return []
+    out = []
+    raw = rows.get("offices") or ""
+    if raw:
+        try:
+            data = _json.loads(raw)
+            if isinstance(data, list):
+                for o in data:
+                    try:
+                        lat = float(o.get("lat")); lng = float(o.get("lng"))
+                        radius = float(o.get("radius") or 30)
+                        name = str(o.get("name") or "Office").strip()[:80] or "Office"
+                    except Exception:
+                        continue
+                    if -90 <= lat <= 90 and -180 <= lng <= 180 and radius > 0:
+                        out.append({"name": name, "lat": lat, "lng": lng, "radius": radius})
+        except Exception:
+            out = []
+    if not out and rows.get("office_lat"):
+        # purana single-office setup -> auto migrate (naam "Main Office")
+        try:
+            lat = float(rows.get("office_lat")); lng = float(rows.get("office_lng") or "")
+            radius = float(rows.get("office_radius") or 30)
+            if -90 <= lat <= 90 and -180 <= lng <= 180 and radius > 0:
+                out = [{"name": "Main Office", "lat": lat, "lng": lng, "radius": radius}]
+        except Exception:
+            out = []
+    return out
+
+def _nearest_office(offices, lat, lng):
+    """Sabse nazdeek branch aur uska distance (m)."""
+    best, best_d = None, None
+    for o in offices:
+        d = _haversine_m(lat, lng, o["lat"], o["lng"])
+        if best is None or d < best_d:
+            best, best_d = o, d
+    return best, (int(round(best_d)) if best_d is not None else None)
 
 def _haversine_m(lat1, lng1, lat2, lng2):
     """Do GPS points ke beech ka distance, meters me."""
@@ -2680,10 +2708,10 @@ def _haversine_m(lat1, lng1, lat2, lng2):
     return 2 * R * asin(sqrt(h))
 
 def _geofence_check(db, lat, lng, accuracy):
-    """Office set hai to distance validate karta hai. Returns (office|None, dist_m).
-    Fail ho to HTTPException raise (403 'outside' = geofence breach)."""
-    office = _office_location(db)
-    if not office:
+    """Koi bhi branch set hai to nearest se distance validate karta hai. Returns (office|None, dist_m).
+    Fail ho to HTTPException raise (403 'outside|<branch>|<dist>|<radius>' = geofence breach)."""
+    offices = _office_list(db)
+    if not offices:
         return None, None      # geofence off - purana behavior
     if lat is None or lng is None:
         raise HTTPException(status_code=400, detail="Location chahiye. Browser me location permission allow karo, tabhi punch hoga.")
@@ -2692,20 +2720,20 @@ def _geofence_check(db, lat, lng, accuracy):
     except Exception:
         acc = 0
     if acc > 80:
-        raise HTTPException(status_code=400, detail="Accurate location nahi mil pa rahi (GPS weak, +-%dm). Khuli jagah jaa ke mobile se try karo." % int(acc))
-    dist = _haversine_m(float(lat), float(lng), office["lat"], office["lng"])
+        raise HTTPException(status_code=400, detail="Accurate location nahi mil pa rahi (+-%dm error). PC/laptop me GPS nahi hota - mobile ke Chrome/Safari se khuli jagah try karo." % int(acc))
+    office, dist = _nearest_office(offices, float(lat), float(lng))
     if dist > office["radius"] + min(acc, 20):
-        raise HTTPException(status_code=403, detail="outside|%d|%d" % (int(round(dist)), int(office["radius"])))
-    return office, int(round(dist))
+        raise HTTPException(status_code=403, detail="outside|%s|%d|%d" % (office["name"], int(dist), int(office["radius"])))
+    return office, dist
 
 @router.get("/geofence")
 def teacher_geofence_status(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     """Punch card pe dikhane ke liye: geofence on hai ya nahi + radius."""
     _ensure_geofence(db)
-    office = _office_location(db)
-    if not office:
-        return {"active": False}
-    return {"active": True, "radius": int(office["radius"])}
+    offices = _office_list(db)
+    if not offices:
+        return {"active": False, "offices": []}
+    return {"active": True, "offices": [{"name": o["name"], "radius": int(o["radius"])} for o in offices]}
 
 @router.post("/attendance/punch-in")
 def punch_in(payload: dict = Body(default={}), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
@@ -2724,11 +2752,13 @@ def punch_in(payload: dict = Body(default={}), db: Session = Depends(get_db), cu
     a.punch_in = now
     if office:
         a.in_lat = float(payload.get("lat")); a.in_lng = float(payload.get("lng")); a.in_dist = dist
+        a.in_office = office["name"]
     db.commit()
     msg = f"Punched in at {_fmt_t(now)}"
     if office:
-        msg += " (office se %dm - location verified)" % dist
-    return {"message": msg, "punch_in": _fmt_t(now), "distance": dist}
+        msg += " (%s - office se %dm)" % (office["name"], dist)
+    return {"message": msg, "punch_in": _fmt_t(now), "distance": dist,
+            "office": office["name"] if office else None}
 
 @router.post("/attendance/punch-out")
 def punch_out(payload: dict = Body(default={}), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
@@ -2746,11 +2776,13 @@ def punch_out(payload: dict = Body(default={}), db: Session = Depends(get_db), c
     a.punch_out = now
     if office:
         a.out_lat = float(payload.get("lat")); a.out_lng = float(payload.get("lng")); a.out_dist = dist
+        a.out_office = office["name"]
     db.commit()
     msg = f"Punched out at {_fmt_t(now)}"
     if office:
-        msg += " (office se %dm - location verified)" % dist
-    return {"message": msg, "punch_out": _fmt_t(now), "hours": _att_hours(a), "distance": dist}
+        msg += " (%s - office se %dm)" % (office["name"], dist)
+    return {"message": msg, "punch_out": _fmt_t(now), "hours": _att_hours(a), "distance": dist,
+            "office": office["name"] if office else None}
 
 @router.get("/attendance/history")
 def attendance_history(month: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
