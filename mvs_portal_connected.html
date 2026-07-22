@@ -512,6 +512,21 @@
   .ex-img-x{position:absolute;top:2px;right:2px;background:var(--danger);color:#fff;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:1rem;line-height:1}
   .pl-qimg{max-width:100%;max-height:260px;border-radius:10px;margin:10px 0;border:1px solid var(--border)}
   .katex{font-size:1.04em}.ex-prev .katex,.pl-qtext .katex{font-size:1em}
+  .rt-h{font-weight:800;font-size:1.02em;margin:8px 0 3px;color:var(--text)}
+  .rt-h1{font-size:1.14em}.rt-h2{font-size:1.08em}
+  .rt-ul,.rt-ol{margin:4px 0 6px;padding-left:20px}
+  .rt-ul li,.rt-ol li{margin:2px 0;line-height:1.5}
+  .rt-tw{overflow-x:auto;margin:6px 0;max-width:100%}
+  .rt-t{border-collapse:collapse;font-size:.88em;min-width:40%}
+  .rt-t th,.rt-t td{border:1px solid var(--border);padding:5px 10px;text-align:left}
+  .rt-t th{background:var(--bg,#f1f5f9);font-weight:700}
+  .dark .rt-t th{background:#111a2e}
+  .rt-bq{border-left:3px solid var(--primary,#4f46e5);padding:2px 10px;margin:4px 0;color:var(--text-muted);font-style:italic}
+  .rt-hr{border:none;border-top:1px solid var(--border);margin:8px 0}
+  .rt-code{background:var(--bg,#f1f5f9);border:1px solid var(--border);border-radius:5px;padding:0 5px;font-family:monospace;font-size:.88em}
+  .dark .rt-code{background:#111a2e}
+  .rt-m{display:inline-block;vertical-align:middle;max-width:100%;overflow-x:auto}
+  .rt-msrc{font-family:monospace;font-size:.9em;color:var(--text-muted)}
   .ex-import{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
   .ex-import-hint{font-size:.74rem;color:var(--text-muted)}
   .ex-qhead-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
@@ -4619,20 +4634,111 @@ const TEX={frac:'\\frac{a}{b}',pow:'x^{2}',sub:'x_{n}',sqrt:'\\sqrt{x}',pi:'\\pi
 /* ============ LIGHT RICH TEXT (portal preview + PDF ke liye same markup) ============
    **bold**   __underline__   *italic*   aur akela "OR" line = center + bold.
    Markup plain text me hi save hota hai, isliye PDF/DB pipeline nahi badalti. */
+// ---------- bulletproof rich formatter: markdown + LaTeX (Kimi/Claude/Gemini paste-safe) ----------
+function _fmtMath(tex,disp){
+  const t=String(tex||'').trim();
+  if(!t) return '';
+  if(window.katex&&window.katex.renderToString){
+    try{
+      const h=katex.renderToString(t,{displayMode:!!disp,throwOnError:false,strict:'ignore',output:'html'});
+      return disp?'<div class="math-block">'+h+'</div>':'<span class="rt-m">'+h+'</span>';
+    }catch(e){}
+  }
+  return disp?'<div class="math-block rt-msrc">'+esc(t)+'</div>':'<span class="rt-m rt-msrc">'+esc(t)+'</span>';
+}
+function _fmtTable(rows){
+  const parse=r=>r.trim().replace(/^\s*\||\|\s*$/g,'').split('|').map(c=>c.trim());
+  const isSep=r=>parse(r).every(c=>/^:?-{1,}:?$/.test(c));
+  let head=null; const body=[];
+  for(const r of rows){
+    if(isSep(r)) continue;
+    if(head===null){ head=parse(r); continue; }
+    body.push(parse(r));
+  }
+  if(head===null) return rows.join('\n');
+  const ncol=Math.max(head.length, ...body.map(b=>b.length));
+  const cell=(c,tag)=>'<'+tag+'>'+(c||'')+'</'+tag+'>';
+  const th=head.concat(Array(ncol).fill('')).slice(0,ncol).map(c=>cell(c,'th')).join('');
+  const trs=body.map(r=>'<tr>'+r.concat(Array(ncol).fill('')).slice(0,ncol).map(c=>cell(c,'td')).join('')+'</tr>').join('');
+  return '<div class="rt-tw"><table class="rt-t"><thead><tr>'+th+'</tr></thead><tbody>'+trs+'</tbody></table></div>';
+}
 function _fmtRich(t){
-  let s=esc(String(t==null?'':t));
-  const lines=s.split(/\r?\n/).map(ln=>{
-    const om=ln.match(/^\s*(?:\*\*)?\s*(OR|or|Or|oR|\u092f\u093e)\s*(?:\*\*)?\s*$/);
-    if(om) return '@@OR:'+(/^\u092f\u093e$/.test(om[1])?'\u092f\u093e':'OR')+'@@';
+  let s=String(t==null?'':t).replace(/\r\n?/g,'\n').replace(/ /g,' ');
+  // ---- 1) math stash (placeholders) — escape se PEHLE ----
+  const M=[];
+  const stash=(tex,disp)=>{ M.push({tex,disp:!!disp}); return '\u0001'+(M.length-1)+'\u0002'; };
+  s=s.replace(/\$\$([\s\S]+?)\$\$/g,(m,g)=>stash(g,true));
+  s=s.replace(/\\\[([\s\S]+?)\\\]/g,(m,g)=>stash(g,true));
+  s=s.replace(/\\\(([\s\S]+?)\\\)/g,(m,g)=>stash(g,false));
+  // stray $ cleanup: line me odd $ ho to AAKHIRI wala hatao (pair-shift se text math ban jaata tha)
+  s=s.split('\n').map(ln=>{
+    if(!ln.includes('$')) return ln;
+    let n=(ln.match(/\$/g)||[]).length;
+    if(n%2===1){ const li=ln.lastIndexOf('$'); ln=ln.slice(0,li)+ln.slice(li+1); }
     return ln;
+  }).join('\n');
+  // inline $...$ — poora sentence wrap ho to text hi rakho (math mode spaces kha jaata hai)
+  s=s.replace(/\$([^\n$]+?)\$/g,(m,g)=>{
+    const gg=g.trim();
+    if(!gg) return ' ';
+    const stripped=gg.replace(/\\[a-zA-Z]+\{([^{}]*)\}/g,'$1').replace(/\\[a-zA-Z]+/g,' ');
+    const words=(stripped.match(/[\p{L}\p{M}]{2,}/gu)||[]).length;
+    const specials=(gg.match(/[_^\\=<>|]/g)||[]).length;
+    if(words>=6||(words>=5&&specials===0)) return gg;
+    return stash(gg,false);
   });
-  s=lines.join('\n');
-  s=s.replace(/\n*@@OR:([^@]*)@@\n*/g,'@@OR:$1@@');
-  s=s.replace(/\n{3,}/g,'\n\n');
+  // bare math fragments (bina $ ke): 0^\circ, x^2, T^{2}
+  s=s.replace(/([0-9A-Za-z)\u0900-\u097F])\s*\^\s*(\\[A-Za-z]+|\{[^{}\n]*\}|[A-Za-z0-9.]+)/g,(m,b,e)=>stash(b+'^{'+e+'}',false));
+  // lone LaTeX commands bina $ ke
+  s=s.replace(/\\(frac|dfrac|tfrac)\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g,(m)=>stash(m,false));
+  s=s.replace(/\\(sqrt)\s*\{([^{}]*)\}/g,(m)=>stash(m,false));
+  s=s.replace(/\\text\s*\{([^{}]*)\}/g,(m)=>stash(m,false));
+  s=s.replace(/\\(times|div|cdot|circ|pm|mp|approx|neq|leq|le|geq|ge|implies|Rightarrow|rightarrow|infty|alpha|beta|gamma|delta|eta|theta|lambda|mu|pi|sigma|phi|omega|degree|therefore|because|%)(?![a-zA-Z])/g,(m)=>stash(m,false));
+  // ---- 2) HTML escape ----
+  s=esc(s);
+  // ---- 3) OR marker (purana behavior) ----
+  s=s.split('\n').map(ln=>{
+    const om=ln.match(/^\s*(?:\*\*)?\s*(OR|or|Or|oR|या)\s*(?:\*\*)?\s*$/);
+    return om?'@@OR:'+(/^या$/.test(om[1])?'या':'OR')+'@@':ln;
+  }).join('\n');
+  s=s.replace(/\n*@@OR:([^@]*)@@\n*/g,'@@OR:$1@@').replace(/\n{3,}/g,'\n\n');
   s=s.replace(/@@OR:([^@]*)@@/g,'<span class="rt-or">$1</span>');
+  // ---- 4) block markdown: tables / headings / lists / quotes / hr ----
+  const L=s.split('\n'), out=[];
+  let list=null;
+  const closeList=()=>{ if(list){ out.push(list==='ul'?'</ul>':'</ol>'); list=null; } };
+  for(let i=0;i<L.length;i++){
+    const ln=L[i];
+    if(/^\s*\|.*\|\s*$/.test(ln)){
+      closeList();
+      const rows=[];
+      while(i<L.length&&/^\s*\|.*\|\s*$/.test(L[i])){ rows.push(L[i]); i++; }
+      i--; out.push(_fmtTable(rows)); continue;
+    }
+    const h=ln.match(/^\s*(#{1,4})\s+(.+)$/);
+    if(h){ closeList(); out.push('<div class="rt-h rt-h'+h[1].length+'">'+h[2]+'</div>'); continue; }
+    const ul=ln.match(/^\s*(?:[-–•*○◦▪·])\s+(.+)$/);
+    if(ul){ if(list!=='ul'){ closeList(); out.push('<ul class="rt-ul">'); list='ul'; } out.push('<li>'+ul[1]+'</li>'); continue; }
+    const ol=ln.match(/^\s*(\d+)[.)]\s+(.+)$/);
+    if(ol){ if(list!=='ol'){ closeList(); out.push('<ol class="rt-ol">'); list='ol'; } out.push('<li>'+ol[2]+'</li>'); continue; }
+    const bq=ln.match(/^\s*&gt;\s?(.*)$/);
+    if(bq){ closeList(); out.push('<div class="rt-bq">'+bq[1]+'</div>'); continue; }
+    if(/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(ln)){ closeList(); out.push('<hr class="rt-hr">'); continue; }
+    closeList();
+    out.push(ln);
+  }
+  closeList();
+  s=out.join('\n');
+  // ---- 5) inline markdown ----
   s=s.replace(/\*\*([^\n*]+?)\*\*/g,'<b>$1</b>');
   s=s.replace(/__([^\n_]+?)__/g,'<u>$1</u>');
-  s=s.replace(/(^|[^*])\*([^\n*]+?)\*(?!\*)/g,'$1<i>$2</i>');
+  s=s.replace(/(^|[^*\w])\*([^\n*]+?)\*(?!\*)/g,'$1<i>$2</i>');
+  s=s.replace(/~~([^\n~]+?)~~/g,'<s>$1</s>');
+  s=s.replace(/`([^`\n]+?)`/g,'<code class="rt-code">$1</code>');
+  // ---- 6) math placeholders wapas (rendered) ----
+  s=s.replace(/\u0001(\d+)\u0002/g,(m,i)=>{
+    const it=M[+i]; return it?_fmtMath(it.tex,it.disp):'';
+  });
   return s;
 }
 function _rtField(id){ const t=document.getElementById(id); if(!t){ toast('Click inside the box first, then use the formatting tools.',true); return null; } return t; }
@@ -4716,7 +4822,13 @@ function renderMath(el){
 }
 function insertTex(snip){ const t=_lastField; if(!t){ toast('Tip: click inside a question or answer box first, then tap a tool.',true); return; } const s=t.selectionStart||0,e=t.selectionEnd||0; t.value=t.value.slice(0,s)+snip+t.value.slice(e); const p=s+snip.length; t.selectionStart=t.selectionEnd=p; t.focus(); t.dispatchEvent(new Event('input',{bubbles:true})); }
 function insertTexKey(k){ insertTex('$'+TEX[k]+'$'); }
-function examPrev(inp,prevId){ const p=document.getElementById(prevId); if(p){ p.innerHTML=_fmtRich(inp.value||''); renderMath(p); } }
+function examPrev(inp,prevId){
+  const p=document.getElementById(prevId); if(!p) return;
+  p.innerHTML=_fmtRich(inp.value||'');
+  renderMath(p);
+  if(p.querySelector('.rt-msrc')&&!window.katex){ const n=+(p.dataset.kx||0)+1; p.dataset.kx=n; if(n<10) setTimeout(()=>examPrev(inp,prevId),600); }
+  else p.dataset.kx='0';
+}
 function _setExamImg(i,d){ _examQs[i].image_b64=d; renderExamQs(); }
 async function examImgFile(inp,i){ const f=inp.files[0]; if(f&&f.type.indexOf('image')===0) _setExamImg(i, await _fileB64(f)); }
 function examImgDrop(e,i){ e.preventDefault(); const f=(e.dataTransfer.files||[])[0]; if(f&&f.type.indexOf('image')===0) _fileB64(f).then(d=>_setExamImg(i,d)); }
@@ -10014,6 +10126,10 @@ function _geoNote(txt,cls){
   }
   ns.forEach(n=>n.innerHTML=h);
 }
+function _stripTags(h){
+  const d=document.createElement('div'); d.innerHTML=String(h||'');
+  return d.textContent||'';
+}
 function _geoErrMsg(code){
   const ua=navigator.userAgent||'';
   const ios=/iPad|iPhone|iPod/.test(ua), and=/Android/i.test(ua);
@@ -10068,7 +10184,7 @@ async function doPunch(kind){
     }catch(e){ _geoNote('Aapki location check ho rahi hai...','info'); }
     if(!denied){
       try{ payload=await _getLocation(b=>_geoNote(`Location mil rahi hai... (±${Math.round(b.accuracy)}m — best reading li ja rahi hai)`,'info')); }
-      catch(e){ geoErr=e.message; payload={}; }
+      catch(e){ geoErr=e.message; payload={}; }   /* GPS fail — neeche WiFi fallback try hoga */
     }
     if(geoErr || (payload.accuracy!=null && payload.accuracy>80)){
       // GPS fail/PC — office WiFi (trusted IP) se auto-verify try karo, coords ke bina
@@ -10090,7 +10206,7 @@ async function doPunch(kind){
       _geoNote(`<b>Outside Office Area</b> — aap <b>${esc(branch)}</b> se <b>${dist}m</b> door ho (allowed: ${rad}m). Office ke paas jaa ke punch karo.`,'error');
       toast('Outside office area — punch nahi hua',true);
     } else if(payload.wifi_fallback && geoErr){
-      _geoNote(geoErr,'error'); toast(String(geoErr).replace(/<[^>]+>/g,''),true);
+      _geoNote(geoErr,'error'); toast(_stripTags(geoErr),true);
     } else { toast(m,true); if(m.includes('Location')||m.includes('GPS')) _geoNote(esc(m),'error'); }
   }
   if(document.getElementById('t-punch-wrap')) renderPunchCard('t-punch-wrap');
@@ -10778,10 +10894,10 @@ async function flagMissed(tid,eid,missed,name){
 }
 
 // ---- Office Locations (geofence, multi-branch) setup ----
-window._olOffices=[]; window._olIps=[];
+window._olOffices=[]; window._olIps=[]; window._olUnknown=[];
 async function openOfficeLocation(){
-  try{ const d=await api('/api/admin/office-location'); window._olOffices=(d.offices||[]).map(o=>({name:o.name,lat:o.lat,lng:o.lng,radius:o.radius})); window._olIps=(d.ips||[]).slice(); }
-  catch(e){ window._olOffices=[]; window._olIps=[]; }
+  try{ const d=await api('/api/admin/office-location'); window._olOffices=(d.offices||[]).map(o=>({name:o.name,lat:o.lat,lng:o.lng,radius:o.radius})); window._olIps=(d.ips||[]).slice(); window._olUnknown=(d.unknown_ips||[]).slice(); }
+  catch(e){ window._olOffices=[]; window._olIps=[]; window._olUnknown=[]; }
   showModal('Office Locations (Geofence)',
    `<div class="alert alert-info" style="font-size:.82rem">Har branch ka <b>naam + location + radius</b> add karo. Teacher <b>kisi bhi branch</b> ke radius ke andar se punch kar payega — punch ke saath <b>branch ka naam aur distance</b> record hoga. Bahar se punch <b>block</b> rahega.</div>
     <div id="ol-list"></div>
@@ -10802,8 +10918,9 @@ async function openOfficeLocation(){
     </div>
     <div style="border:1px dashed var(--border);border-radius:12px;padding:14px;margin-top:10px">
       <div style="font-weight:700;font-size:.85rem;margin-bottom:4px">Office WiFi / PC Punch</div>
-      <div style="font-size:.76rem;color:var(--text-muted);margin-bottom:8px">Office ke broadband/WiFi se connected <b>PC/laptop</b> (jahan GPS nahi hota) se punch <b>bina location ke</b> ho jayega. <b>Office ke PC me hi</b> "Is PC ka IP Add Karo" dabao. <b>Ghar ka IP kabhi add mat karo</b> — warna ghar se bhi punch ho jayega!</div>
+      <div style="font-size:.76rem;color:var(--text-muted);margin-bottom:8px">Office ke broadband/WiFi se connected <b>PC/laptop ya phone</b> se punch <b>bina location ke</b> ho jayega. <b>7-8 WiFi hain?</b> Agar sab ek hi broadband line pe hain to <b>ek hi IP</b> kaafi hai; alag-alag lines hain to har line ka IP alag add karo (us WiFi se connect karke "Is PC ka IP Add Karo" dabao, ya niche unknown list se). <b>Ghar ka IP kabhi add mat karo</b> — warna ghar se bhi punch ho jayega!</div>
       <div id="ol-ip-list"></div>
+      <div id="ol-unknown"></div>
       <button class="btn btn-ghost btn-sm" onclick="olAddMyIp()">${ic('location')} Is PC ka IP Add Karo</button>
       <div id="ol-ip-note" style="margin-top:6px"></div>
     </div>`,
@@ -10812,9 +10929,23 @@ async function openOfficeLocation(){
 }
 function _olRenderIps(){
   const el=document.getElementById('ol-ip-list'); if(!el) return;
-  if(!window._olIps.length){ el.innerHTML='<div style="font-size:.76rem;color:var(--text-muted);margin-bottom:8px">Abhi koi WiFi IP nahi — PC se punch karne pe location maangega.</div>'; return; }
-  el.innerHTML=window._olIps.map((ip,i)=>`<div class="pc-task"><div class="t"><div class="tt">${esc(ip)}</div><div class="td">Office WiFi — is network se PC punch bina GPS ke chalega</div></div>
-    <button class="btn btn-ghost btn-sm" onclick="olDelIp(${i})">Remove</button></div>`).join('');
+  el.innerHTML=window._olIps.length
+    ? window._olIps.map((ip,i)=>`<div class="pc-task"><div class="t"><div class="tt">${esc(ip)}</div><div class="td">Office WiFi — is network se punch bina GPS ke chalega</div></div>
+      <button class="btn btn-ghost btn-sm" onclick="olDelIp(${i})">Remove</button></div>`).join('')
+    : '<div style="font-size:.76rem;color:var(--text-muted);margin-bottom:8px">Abhi koi WiFi IP nahi — PC/4G pe punch karne pe location (GPS) maangega.</div>';
+  const un=document.getElementById('ol-unknown');
+  if(un){
+    const list=(window._olUnknown||[]).filter(x=>!window._olIps.includes(x.ip));
+    un.innerHTML=list.length?`<div style="font-size:.78rem;font-weight:700;margin:10px 0 6px">Naye IPs — in se punch try hua hai (office ka WiFi hai to Add karo):</div>`+list.map((x,i)=>`<div class="pc-task"><div class="t"><div class="tt">${esc(x.ip)}</div><div class="td">last try: ${esc(x.at||'-')}</div></div>
+      <button class="btn btn-primary btn-sm" onclick="olAddUnknown(${i})">Add Karo</button></div>`).join(''):'';
+  }
+}
+function olAddUnknown(i){
+  const list=(window._olUnknown||[]).filter(x=>!window._olIps.includes(x.ip));
+  const x=list[i]; if(!x) return;
+  window._olIps.push(x.ip); _olRenderIps();
+  const n=document.getElementById('ol-ip-note');
+  if(n) n.innerHTML=`<div class="alert alert-success" style="font-size:.8rem;margin-bottom:0">IP <b>${esc(x.ip)}</b> add ho gaya — Save dabana mat bhoolo.</div>`;
 }
 async function olAddMyIp(){
   const n=document.getElementById('ol-ip-note');

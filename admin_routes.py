@@ -2315,9 +2315,19 @@ def admin_get_office(db: Session = Depends(get_db), _=Depends(get_admin)):
     from teacher_routes import _ensure_geofence, _office_list, _office_ips
     _ensure_geofence(db)
     offices = _office_list(db)
+    unknown = []
+    try:
+        from models import AppSetting
+        import json as _json
+        row = db.query(AppSetting).filter(AppSetting.key == "unknown_ips").first()
+        data = _json.loads(row.value) if row and row.value else []
+        have = set(_office_ips(db))
+        unknown = [x for x in data if isinstance(x, dict) and x.get("ip") and x["ip"] not in have][:10]
+    except Exception:
+        unknown = []
     return {"active": bool(offices),
             "offices": [{"name": o["name"], "lat": o["lat"], "lng": o["lng"], "radius": int(o["radius"])} for o in offices],
-            "ips": _office_ips(db)}
+            "ips": _office_ips(db), "unknown_ips": unknown}
 
 @router.get("/my-ip")
 def admin_my_ip(request: Request, _=Depends(get_admin)):

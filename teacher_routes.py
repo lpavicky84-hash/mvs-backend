@@ -2701,6 +2701,33 @@ def _office_ips(db):
     except Exception:
         return []
 
+def _log_unknown_ip(db, ip):
+    """Geofence ke bahar/GPS-fail punch try karne wala IP (office WiFi list me nahi) — admin ko dikhane ke liye."""
+    from models import AppSetting
+    import json as _json
+    ip = (ip or "").strip()
+    if not ip:
+        return
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == "unknown_ips").first()
+        if not row:
+            row = AppSetting(key="unknown_ips", value="[]"); db.add(row)
+        try:
+            data = _json.loads(row.value or "[]")
+            if not isinstance(data, list):
+                data = []
+        except Exception:
+            data = []
+        data = [x for x in data if isinstance(x, dict) and x.get("ip") != ip]
+        data.insert(0, {"ip": ip, "at": _ist_now().strftime("%d %b %Y, %I:%M %p")})
+        row.value = _json.dumps(data[:15])
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
 def _client_ip(request):
     """Railway/proxy ke peeche real client IP (X-Forwarded-For ka pehla)."""
     try:
@@ -2737,7 +2764,10 @@ def _geofence_check(db, lat, lng, accuracy, client_ip=""):
     offices = _office_list(db)
     if not offices:
         return None, None      # geofence off - purana behavior
-    if client_ip and client_ip in _office_ips(db):
+    ips = _office_ips(db)
+    if client_ip and ips and client_ip not in ips:
+        _log_unknown_ip(db, client_ip)   # naya WiFi/IP — admin ko one-click add ka option milega
+    if client_ip and client_ip in ips:
         # office ka WiFi/broadband — trusted network, GPS optional (PC ke liye)
         acc = None
         try:
