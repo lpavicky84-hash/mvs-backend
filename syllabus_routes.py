@@ -608,6 +608,33 @@ async def syl_admin_parse_pdf(file: UploadFile = File(...), _=Depends(get_admin)
     return res
 
 
+@router.post("/admin/parse-weightage")
+async def syl_admin_parse_weightage(request: Request,
+                                    file: UploadFile = File(None),
+                                    _=Depends(get_admin)):
+    """
+    Read a Weightage by Content table that the admin pasted, either as text in
+    the request body or as a screenshot upload.
+    """
+    import weightage_reader
+    if file is not None:
+        data = await file.read()
+        if not data:
+            raise HTTPException(status_code=400, detail="The uploaded file is empty.")
+        if len(data) > 12 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="Image is too large. Maximum size is 12 MB.")
+        res = weightage_reader.parse_weightage_image(data)
+    else:
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        res = weightage_reader.parse_weightage_text(body.get("text") or "")
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Could not read the table."))
+    return res
+
+
 @router.get("/admin/settings")
 def syl_admin_settings(db: Session = Depends(get_db), _=Depends(get_admin)):
     _ensure_syllabus(db)

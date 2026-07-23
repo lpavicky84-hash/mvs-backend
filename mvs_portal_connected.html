@@ -11250,6 +11250,14 @@ async function ocrFillQuestion_v1(inp,i){
 .syl-drop:hover,.syl-drop.over{border-color:#f59e0b;background:rgba(245,158,11,.06)}
 .syl-chip{display:inline-block;background:rgba(127,127,127,.1);border-radius:8px;padding:5px 10px;font-size:.72rem;margin:0 6px 6px 0;font-weight:600}
 .syl-chip b{color:#a16207}
+.syl-paste{border:1.5px dashed var(--border,#cbd5e1);border-radius:12px;padding:14px;transition:.15s}
+.syl-paste.over{border-color:#4f46e5;background:rgba(79,70,229,.05)}
+.syl-paste textarea{width:100%;border:1px solid var(--border,#e6e9f0);border-radius:9px;padding:10px 12px;
+  font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.78rem;background:var(--card,#fff);color:inherit;resize:vertical}
+.syl-mt2{width:100%;border-collapse:collapse;font-size:.8rem;margin-top:10px}
+.syl-mt2 td{padding:7px 10px;border-bottom:1px solid rgba(127,127,127,.14)}
+.syl-mt2 td:last-child{text-align:right;font-weight:700;color:#b45309;font-variant-numeric:tabular-nums}
+.syl-mt2 tr.miss td{opacity:.45}
 .syl-note{border-radius:10px;padding:11px 13px;font-size:.78rem;margin-top:10px}
 .syl-note.w{background:rgba(245,158,11,.09);border:1px solid rgba(245,158,11,.28);color:#8a5a06}
 .syl-note.e{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.28);color:#b91c1c}
@@ -11975,6 +11983,16 @@ async function sylEdit(code){
      +'<b style="display:block;font-size:.88rem">Drop the syllabus PDF here, or click to choose a file</b>'
      +'<small style="opacity:.6;font-size:.75rem">Ruled tables, unruled columns, science format (L-3 Laws of Motion) '
      +'and language format (3 : Gillu) are all read automatically</small></div><div id="syl-pdfout"></div></div>'
+     +'<div class="syl-fs"><h5>Module marks from a Weightage by Content table</h5>'
+     +'<div class="syl-paste" id="syl-paste">'
+     +'<p style="font-size:.78rem;opacity:.7;margin:0 0 9px">Paste the table as text, or paste a '
+     +'screenshot of it straight from your clipboard with Ctrl and V. You can also drop an image here.</p>'
+     +'<textarea id="syl-wtext" rows="4" placeholder="Motion Force and Energy 14&#10;Mechanics of solid and Fluid 6&#10;Thermal Physics 6"></textarea>'
+     +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px">'
+     +'<button class="syl-b pri" onclick="sylReadWeightText()">Read the pasted text</button>'
+     +'<button class="syl-b" onclick="document.getElementById(\'syl-wimg\').click()">Choose a screenshot</button>'
+     +'<input type="file" id="syl-wimg" accept="image/*" style="display:none" onchange="sylReadWeightImage(this.files[0])">'
+     +'</div></div><div id="syl-wout"></div></div>'
      +'<div class="syl-fs"><h5>Chapters</h5><div id="syl-chapbox"></div></div>'
      +'<div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
      +'<button class="btn btn-primary" onclick="sylSaveSubject()">Save subject</button>'
@@ -11983,6 +12001,24 @@ async function sylEdit(code){
     _SYL.mods = JSON.parse(JSON.stringify(s.modules||[]));
     sylChapRender();
     box.scrollIntoView({behavior:'smooth',block:'nearest'});
+    var pz=_sylEl('syl-paste');
+    if(pz){
+      pz.addEventListener('dragover',function(e){e.preventDefault();pz.classList.add('over')});
+      pz.addEventListener('dragleave',function(){pz.classList.remove('over')});
+      pz.addEventListener('drop',function(e){
+        e.preventDefault(); pz.classList.remove('over');
+        var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
+        if(f && /^image\//.test(f.type)) sylReadWeightImage(f);
+      });
+      pz.addEventListener('paste',function(e){
+        var items=(e.clipboardData&&e.clipboardData.items)||[];
+        for(var i=0;i<items.length;i++){
+          if(items[i].type && items[i].type.indexOf('image')===0){
+            e.preventDefault(); sylReadWeightImage(items[i].getAsFile()); return;
+          }
+        }
+      });
+    }
     var dz=_sylEl('syl-drop');
     if(dz){
       dz.addEventListener('dragover',function(e){e.preventDefault();dz.classList.add('over')});
@@ -12194,6 +12230,121 @@ function sylTextMode(){
 function sylTextApply(){
   _SYL.mods=sylParseMods(_sylEl('sylf_mods').value);
   sylChapRender(); toast('Chapters updated.');
+}
+
+/* ---------- module marks from a pasted table or screenshot ---------- */
+
+async function sylReadWeightText(){
+  var t=(_sylEl('syl-wtext')||{}).value||'';
+  if(!t.trim()) return toast('Paste the table first.',true);
+  _sylWeightCall('/api/syllabus/admin/parse-weightage','POST',{text:t});
+}
+
+async function sylReadWeightImage(file){
+  if(!file) return;
+  var out=_sylEl('syl-wout');
+  out.innerHTML='<p style="font-size:.78rem;opacity:.7;margin-top:10px">Reading the screenshot</p>';
+  try{
+    var fd=new FormData(); fd.append('file',file,file.name||'paste.png');
+    var hd={}; if(typeof TOKEN!=='undefined'&&TOKEN) hd['Authorization']='Bearer '+TOKEN;
+    var r=await fetch(API+'/api/syllabus/admin/parse-weightage',{method:'POST',headers:hd,body:fd});
+    var d=await r.json().catch(function(){return{}});
+    if(!r.ok) throw new Error(d.detail||'Could not read the screenshot');
+    sylWeightShow(d);
+  }catch(e){ out.innerHTML='<div class="syl-note e" style="margin-top:10px">'+esc(e.message)+'</div>'; }
+}
+
+async function _sylWeightCall(url,method,body){
+  var out=_sylEl('syl-wout');
+  out.innerHTML='<p style="font-size:.78rem;opacity:.7;margin-top:10px">Reading</p>';
+  try{ sylWeightShow(await api(url,method,body)); }
+  catch(e){ out.innerHTML='<div class="syl-note e" style="margin-top:10px">'+esc(e.message)+'</div>'; }
+}
+
+function sylWeightShow(d){
+  _SYL.wrows=d.rows||[];
+  var mods=_SYL.mods||[];
+  var matched=sylWeightMatch(_SYL.wrows, mods);
+  var h='<div style="margin-top:11px"><span class="syl-chip">Rows read <b>'+_SYL.wrows.length+'</b></span>'
+   +'<span class="syl-chip">Total marks <b>'+d.total+'</b></span>'
+   +'<span class="syl-chip">Matched to modules <b>'+matched.hit+'</b> of '+mods.length+'</span></div>';
+  h+='<table class="syl-mt2"><tbody>';
+  _SYL.wrows.forEach(function(r,i){
+    var to=matched.map[i];
+    h+='<tr'+(to==null?' class="miss"':'')+'><td>'+esc(r.module)+'</td>'
+     +'<td style="opacity:.6;font-size:.74rem">'+(to==null?'no matching module':'&rarr; '+esc(mods[to].module))+'</td>'
+     +'<td>'+r.marks+'</td></tr>';
+  });
+  h+='</tbody></table>';
+  if(d.warnings&&d.warnings.length)
+    h+='<div class="syl-note w"><b>Please check</b><ul>'
+      +d.warnings.map(function(w){return '<li>'+esc(w)+'</li>'}).join('')+'</ul></div>';
+  h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:11px">'
+   +(matched.hit?'<button class="syl-b pri" onclick="sylWeightApply()">Apply these marks to the modules</button>':'')
+   +'<button class="syl-b" onclick="document.getElementById(\'syl-wout\').innerHTML=\'\'">Discard</button></div>';
+  _sylEl('syl-wout').innerHTML=h;
+}
+
+/* match read rows to loaded modules by name, then pair whatever is left over
+   in order. OCR and NIOS both change the wording slightly, so the comparison
+   forgives plurals and shortened words. */
+function _sylNorm(x){
+  return String(x||'').toLowerCase()
+    .replace(/[^a-z0-9\u0900-\u097F ]+/g,' ')
+    .replace(/\b(and|of|the|module|in|for|its|with)\b/g,' ')
+    .replace(/\s+/g,' ').trim();
+}
+function _sylWordSame(a,b){
+  if(a===b) return true;
+  var x=a.replace(/(ies|es|s)$/,''), y=b.replace(/(ies|es|s)$/,'');
+  if(x&&x===y) return true;
+  if(x.length>=4 && y.length>=4 && (x.indexOf(y)===0 || y.indexOf(x)===0)) return true;
+  return false;
+}
+function _sylScore(rn,mn){
+  if(!rn||!mn) return 0;
+  if(rn===mn) return 1;
+  var a=rn.split(' '), b=mn.split(' '), used={}, hit=0;
+  a.forEach(function(w){
+    for(var j=0;j<b.length;j++){
+      if(!used[j] && _sylWordSame(w,b[j])){ used[j]=1; hit++; return; }
+    }
+  });
+  return hit/Math.max(a.length,b.length,1);
+}
+function sylWeightMatch(rows, mods){
+  var map={}, used={}, hit=0;
+  rows.forEach(function(r,i){
+    var best=null, bs=0, rn=_sylNorm(r.module);
+    mods.forEach(function(m,j){
+      if(used[j]) return;
+      var sc=_sylScore(rn,_sylNorm(m.module));
+      if(sc>bs){ bs=sc; best=j; }
+    });
+    if(best!=null && bs>=0.34){ map[i]=best; used[best]=1; hit++; }
+    else map[i]=null;
+  });
+  // leftovers: if the same number of rows and modules are still unmatched,
+  // they are almost certainly in the same printed order
+  var freeRows=[], freeMods=[];
+  rows.forEach(function(_,i){ if(map[i]==null) freeRows.push(i); });
+  mods.forEach(function(_,j){ if(!used[j]) freeMods.push(j); });
+  if(freeRows.length && freeRows.length===freeMods.length){
+    freeRows.forEach(function(i,k){ map[i]=freeMods[k]; used[freeMods[k]]=1; hit++; });
+  }
+  return {map:map, hit:hit};
+}
+
+function sylWeightApply(){
+  var mods=_SYL.mods||[], rows=_SYL.wrows||[];
+  var m=sylWeightMatch(rows,mods), n=0;
+  rows.forEach(function(r,i){
+    var to=m.map[i];
+    if(to!=null){ mods[to].weightage=Number(r.marks)||0; n++; }
+  });
+  _sylEl('syl-wout').innerHTML='';
+  sylChapRender();
+  toast(n+' module marks filled. Check the total at the bottom of the chapter table.');
 }
 
 async function sylImportPdf(file){

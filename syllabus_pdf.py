@@ -52,8 +52,14 @@ HEADER_CELL_RE = re.compile(
     r"|^\s*module\s*$|total\s+no\.?\s*of|^\s*(?:I|II|III)\s*$"
     r"|\u092a\u093e\u0920\u094b\u0902\s*\u0915\u0940", re.I)
 MODULE_HINT = re.compile(r"module", re.I)
-TMA_HINT = re.compile(r"\bTMA\b", re.I)
-PE_HINT = re.compile(r"public\s+exam", re.I)
+# NIOS language syllabus PDFs carry no English header at all, so match the
+# Devanagari wording and the 40% / 60% split that every one of them prints.
+TMA_HINT = re.compile(
+    r"\bTMA\b|\u091f\u0940\u090f\u092e\u090f|\u092e\u0942\u0932\u094d\u092f\u093e\u0902\u0915\u0928"
+    r"|\u0905\u0902\u0915\u093f\u0924|40\s*%", re.I)
+PE_HINT = re.compile(
+    r"public\s+exam|\u0938\u093e\u0930\u094d\u0935\u091c\u0928\u093f\u0915"
+    r"|\u092a\u0930\u0940\u0915\u094d\u0937\u093e|60\s*%", re.I)
 MARKS_HINT = re.compile(r"^\s*marks?\s*$", re.I)
 WEIGHT_HINT = re.compile(r"weightage\s+by\s+content", re.I)
 TOTAL_RE = re.compile(r"^\s*total\s*$", re.I)
@@ -71,6 +77,7 @@ def _clean(s):
     # NIOS Devanagari PDFs often carry a broken font encoding that drops NULs
     # and other control bytes where a matra should be. Strip them so the text
     # is at least usable, and warn separately.
+    s = re.sub(r"\(cid\s*:\s*\d+\)", "", s)
     s = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", s)
     s = re.sub(r"[\r\n]+", " ", s)
     s = re.sub(r"\s+", " ", s)
@@ -135,6 +142,7 @@ def _lessons(cell):
       language    3 : Gillu              (one lesson per line)
     """
     raw = "" if cell is None else str(cell)
+    raw = re.sub(r"\(cid\s*:\s*\d+\)", "", raw)
     raw = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", raw)
     txt = _clean(raw)
     if not txt or txt in {"-", "_", "--", "\u2013", "\u2014"}:
@@ -148,18 +156,26 @@ def _lessons(cell):
         if len(title) >= 3:
             out.append((int(m.group(1)), title))
 
-    # language subjects: every line is "<number> : <title>"
+    # language subjects: a numbered line starts a lesson, the lines after it
+    # continue the same title until the next number
     if not out:
+        cur_no, cur_title = None, []
+        def _flush():
+            if cur_no is not None:
+                t = COUNT_MARK_RE.sub("", " ".join(cur_title)).strip(" .:\u0964-\u2013\u2014")
+                if t:
+                    out.append((cur_no, _clean(t)))
         for line in raw.split("\n"):
             line = _clean(line)
             if not line or SKIP_LINE_RE.search(line):
                 continue
             m = COLON_LINE_RE.match(line)
-            if not m:
-                continue
-            title = COUNT_MARK_RE.sub("", m.group(2)).strip(" .:\u0964-")
-            if title:
-                out.append((int(m.group(1)), title))
+            if m:
+                _flush()
+                cur_no, cur_title = int(m.group(1)), [m.group(2)]
+            elif cur_no is not None:
+                cur_title.append(line)
+        _flush()
 
     seen, uniq = set(), []
     for no, title in out:
@@ -534,7 +550,9 @@ def parse_syllabus_pdf(data: bytes):
     if empty_mods:
         warnings.append("These modules have no separate lessons in the PDF and were skipped: "
                         + ", ".join(empty_mods))
-    if re.search(r"[\u0900-\u097F]", joined) and re.search(r"[\x00-\x08\x0e-\x1f]", "".join(page_texts)):
+    if re.search(r"[\u0900-\u097F]", joined) and (
+            re.search(r"[\x00-\x08\x0e-\x1f]", "".join(page_texts))
+            or "(cid:" in "".join(page_texts)):
         warnings.append("This PDF uses a broken Devanagari font encoding, so some Hindi titles may be "
                         "missing matras. Please read through the chapter list and correct the spellings.")
     if warn_fallback:
@@ -575,8 +593,20 @@ def parse_syllabus_pdf(data: bytes):
         expected["pe"] = hdr_counts["pe"]
     if "total" not in expected:
         m = re.search(r"total\s+no\.?\s*of\s*lessons\s*[=:\-\u2013]?\s*(\d{1,3})", joined, re.I)
+        if not m:
+            # कुल पाठ : 25
+            m = re.search(r"\u0915\u0941\s*\u0932\s*\u092a\u093e\u0920\s*[=:\-\u2013]?\s*(\d{1,3})", joined)
         if m:
             expected["total"] = int(m.group(1))
+    if "tma" not in expected or "pe" not in expected:
+        # the column counts print as  पाठ - 9   and   पाठ – 16  with a dash.
+        # the grand total uses a colon (कुल पाठ : 25) so a dash only match keeps
+        # the two apart even when the font mangles कुल into "कु ल".
+        dev = [int(x) for x in re.findall(
+            r"\u092a\u093e\u0920\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212]\s*(\d{1,3})", joined)]
+        if len(dev) >= 2:
+            expected["tma"] = dev[0]
+            expected["pe"] = dev[1]
     if not expected:
         warnings.append("The lesson count line could not be read from this PDF. "
                         "Enter the totals printed on it manually so the chapter tags can be verified.")
