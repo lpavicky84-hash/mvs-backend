@@ -235,13 +235,20 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
     pass_raw = round(((need_theory_final / scale) if scale else 0), 1)
     high_raw = round(((max(high_target - tma - pr, 0) / scale) if scale else 0), 1)
     theory_raw = round(((need_theory / scale) if scale else 0), 1)
-    # a percentage margin plus a few flat marks, because some answers always go wrong
-    def _pad(x):
-        return min(round(x * buf + extra_marks, 1), total_paper)
-    pass_paper = _pad(pass_raw)
-    high_paper = _pad(high_raw)
+    # Three levels, reported separately so nothing is hidden from the learner.
+    #   raw   the bare rule
+    #   core  raw plus the percentage margin, this is what must be covered
+    #   safe  core plus a flat bonus, the cushion for a skipped or wrong answer
+    def _core(x):
+        return min(round(x * buf, 1), total_paper)
+
+    def _safe(x):
+        return min(round(x + extra_marks, 1), total_paper)
+
+    pass_core, high_core = _core(pass_raw), _core(high_raw)
     # theory alone is compulsory: a learner can clear the aggregate and still fail
-    theory_paper = _pad(theory_raw)
+    theory_core = _core(theory_raw)
+    pass_paper, high_paper, theory_paper = _safe(pass_core), _safe(high_core), _safe(theory_core)
 
     remaining = sorted([r for r in pe_rows if r["no"] not in sel],
                        key=lambda r: (-r["marks"], r["no"]))
@@ -255,6 +262,11 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
             chosen.append(r); acc += r["marks"]
         return chosen
 
+    def bonus_after(core_paper, safe_paper):
+        """Chapters sitting between the requirement and the cushion."""
+        core_set = {r["no"] for r in pick_until(core_paper)}
+        return [r for r in pick_until(safe_paper) if r["no"] not in core_set]
+
     has_marks = total_paper > 0
     return {
         "paper_marks": paper, "scale": round(scale, 4),
@@ -264,6 +276,14 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
         "projected_total": round(covered_theory + tma + pr, 1),
         "pass_rule": pass_rule,
         "extra_marks": extra_marks,
+        "bonus_marks": extra_marks,
+        "pass_core_needed": pass_core,
+        "pass_core_reached": has_marks and covered_paper + 0.01 >= pass_core,
+        "pass_bonus_chapters": bonus_after(pass_core, pass_paper),
+        "high_core_needed": high_core,
+        "high_core_reached": has_marks and covered_paper + 0.01 >= high_core,
+        "high_bonus_chapters": bonus_after(high_core, high_paper),
+        "theory_core_needed": theory_core,
         "pass_paper_raw": pass_raw,
         "high_paper_raw": high_raw,
         "theory_paper_raw": theory_raw,
@@ -573,6 +593,10 @@ def syl_strategy(db: Session = Depends(get_db), user=Depends(get_student)):
             "total": calc["total_pe_marks"],
             "pending_chapters": len(rows),
             "chapters_left": len(rows),
+            "core_needed": calc["high_core_needed"] if target == "high" else max(
+                calc["pass_core_needed"], calc["theory_core_needed"]),
+            "core_reached": calc["high_core_reached"] if target == "high" else (
+                calc["pass_core_reached"] and calc["theory_reached"]),
             "pending_marks": round(sum(r["marks"] for r in rows), 1),
             "done": list(done),
             "reached": calc["high_reached"] if target == "high" else (

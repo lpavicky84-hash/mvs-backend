@@ -11388,6 +11388,32 @@ async function ocrFillQuestion_v1(inp,i){
 .syl-seg2 button{border:0;background:transparent;padding:8px 18px;border-radius:8px;font-size:.82rem;
   font-weight:700;cursor:pointer;color:inherit;opacity:.6;font-family:inherit;transition:.15s}
 .syl-seg2 button.on{background:#4f46e5;color:#fff;opacity:1;box-shadow:0 3px 10px rgba(79,70,229,.3)}
+.syl-bonus{border-radius:14px;padding:15px 17px;margin-top:14px;
+  background:rgba(217,119,6,.08);border:1.5px solid rgba(217,119,6,.35)}
+.syl-bonus.done{background:rgba(16,185,129,.09);border-color:rgba(16,185,129,.35)}
+.syl-bonus h6{margin:0 0 4px;font-size:.9rem;font-weight:800;color:#92400e;display:flex;
+  align-items:center;gap:8px;flex-wrap:wrap}
+.syl-bonus.done h6{color:#047857}
+.syl-bonus p{margin:0;font-size:.78rem;opacity:.85;line-height:1.6}
+.syl-btag{display:inline-block;background:rgba(217,119,6,.2);color:#92400e;border-radius:99px;
+  padding:2px 9px;font-size:.66rem;font-weight:800;letter-spacing:.4px;text-transform:uppercase}
+.syl-bonus.done .syl-btag{background:rgba(16,185,129,.22);color:#047857}
+.syl-blist{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.syl-bch{display:inline-flex;align-items:center;gap:6px;background:var(--card,#fff);
+  border:1px solid rgba(217,119,6,.35);border-radius:9px;padding:6px 11px;font-size:.76rem;
+  font-weight:600;cursor:pointer;transition:.14s}
+.syl-bch:hover{border-color:#d97706;background:rgba(217,119,6,.07)}
+.syl-bch.in{border-color:#059669;background:rgba(16,185,129,.1);color:#047857}
+.syl-bch b{color:#b45309}
+.syl-bch.in b{color:#047857}
+.syl-lvl{display:flex;gap:0;margin-top:12px;border-radius:11px;overflow:hidden;
+  border:1px solid var(--border,#e6e9f0)}
+.syl-lvl>div{flex:1;padding:10px 12px;text-align:center;border-right:1px solid var(--border,#e6e9f0)}
+.syl-lvl>div:last-child{border-right:0}
+.syl-lvl b{display:block;font-size:1.05rem;font-weight:800;letter-spacing:-.3px}
+.syl-lvl span{font-size:.64rem;text-transform:uppercase;letter-spacing:.5px;font-weight:700;opacity:.6}
+.syl-lvl>div.on{background:rgba(16,185,129,.1)}
+.syl-lvl>div.on b{color:#047857}
 .syl-act2{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
 .syl-cta{display:inline-flex;align-items:center;gap:7px;border:0;border-radius:11px;padding:10px 17px;
   font-size:.83rem;font-weight:700;cursor:pointer;font-family:inherit;transition:.16s;letter-spacing:.1px}
@@ -11465,6 +11491,8 @@ async function ocrFillQuestion_v1(inp,i){
 .syl-stat{background:rgba(127,127,127,.07);border-radius:11px;padding:12px 13px}
 .syl-stat b{display:block;font-size:1.12rem;font-weight:700;letter-spacing:-.3px}
 .syl-stat span{font-size:.65rem;opacity:.6;text-transform:uppercase;letter-spacing:.5px;font-weight:700}
+.syl-stat em{display:block;font-style:normal;font-size:.68rem;opacity:.62;margin-top:5px;font-weight:600;
+  font-variant-numeric:tabular-nums}
 .syl-banner{border-radius:14px;padding:15px 17px;margin-top:14px;display:flex;gap:13px;align-items:flex-start}
 .syl-banner.g{background:rgba(16,185,129,.09);border:1px solid rgba(16,185,129,.3)}
 .syl-banner.a{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.32)}
@@ -11514,8 +11542,9 @@ async function loadSSyllabus(){
 function sylKpi(v,l,c){
   return '<div class="syl-kpi" style="--kc:'+(c||'#94a3b8')+'"><b'+(c?' style="color:'+c+'"':'')+'>'+v+'</b><span>'+l+'</span></div>';
 }
-function sylStat(v,l,c){
-  return '<div class="syl-stat"><b'+(c?' style="color:'+c+'"':'')+'>'+v+'</b><span>'+l+'</span></div>';
+function sylStat(v,l,c,sub){
+  return '<div class="syl-stat"><b'+(c?' style="color:'+c+'"':'')+'>'+v+'</b><span>'+l+'</span>'
+   +(sub?'<em>'+sub+'</em>':'')+'</div>';
 }
 
 function sylHome(){
@@ -11620,6 +11649,42 @@ function sylHome(){
   _sylEl('s-syl-content').innerHTML=h;
 }
 
+/* The cushion is never hidden inside the target. It is shown as its own block
+   with the reason, for both the passing target and the high target. */
+function sylBonusBlock(c, kind){
+  var isHigh = kind==='high';
+  var core = isHigh ? c.high_core_needed : Math.max(c.pass_core_needed, c.theory_core_needed);
+  var safe = isHigh ? c.high_paper_needed : Math.max(c.pass_paper_needed, c.theory_paper_needed);
+  var coreOk = isHigh ? c.high_core_reached : (c.pass_core_reached && c.theory_reached);
+  var safeOk = isHigh ? c.high_reached : c.pass_reached;
+  var list = isHigh ? (c.high_bonus_chapters||[]) : (c.pass_bonus_chapters||[]);
+  var label = isHigh ? (_SYL.me.high_target+' percent') : 'Passing';
+  if(!c.bonus_marks) return '';
+
+  var h='<div class="syl-bonus'+(safeOk?' done':'')+'">'
+   +'<h6>Bonus chapters for '+esc(label)+' <span class="syl-btag">'+(safeOk?'covered':'+'+_sylN(c.bonus_marks)+' marks')+'</span></h6>'
+   +'<p>'+esc(label)+' actually needs <b>'+_sylN(core)+' marks</b> worth of chapters. '
+   +'If you cover only that much and one question is skipped in the paper, or an answer goes wrong, '
+   +'you can slip below the line. These bonus chapters take you to <b>'+_sylN(safe)+' marks</b> so a '
+   +'few lost questions still leave you safe.</p>'
+   +'<div class="syl-lvl">'
+   +'<div'+(coreOk?' class="on"':'')+'><b>'+_sylN(core)+'</b><span>'+esc(label)+' needs</span></div>'
+   +'<div><b>+'+_sylN(c.bonus_marks)+'</b><span>bonus cushion</span></div>'
+   +'<div'+(safeOk?' class="on"':'')+'><b>'+_sylN(safe)+'</b><span>safe target</span></div>'
+   +'<div'+(safeOk?' class="on"':'')+'><b>'+_sylN(c.covered_paper)+'</b><span>you have</span></div>'
+   +'</div>';
+  if(list.length){
+    h+='<div class="syl-blist">'+list.map(function(r){
+      var inPlan=_SYL.cur && _SYL.cur.selected.indexOf(r.no)>-1;
+      return '<span class="syl-bch'+(inPlan?' in':'')+'" onclick="sylToggle(\''+esc(r.no)+'\')">'
+       +esc(r.no)+' '+esc(r.title)+' <b>'+_sylN(r.marks)+'</b></span>';
+    }).join('')+'</div>';
+  } else if(safeOk){
+    h+='<div class="syl-blist"><span style="font-size:.77rem;opacity:.75">The cushion is already covered by your plan.</span></div>';
+  }
+  return h+'</div>';
+}
+
 function sylDate(iso){
   try{
     var d=new Date(iso+'T00:00:00');
@@ -11705,16 +11770,26 @@ function sylSubject(scrollTop){
    +'<div class="syl-code">Paper marks covered</div></div></div>'
    +'<div style="padding:16px 18px">'
    +'<div class="syl-bar"><i style="width:'+_sylPct(c.covered_paper,c.total_pe_marks)+'%;background:'+col+'"></i>'
-   +'<u style="left:'+_sylPct(c.pass_paper_needed,c.total_pe_marks)+'%;background:#059669"></u>'
-   +'<u style="left:'+_sylPct(c.high_paper_needed,c.total_pe_marks)+'%;background:#d97706"></u></div>'
-   +'<div class="syl-foot"><span>Passing needs '+_sylN(c.pass_paper_needed)+' marks</span>'
-   +'<span>'+_SYL.me.high_target+' percent needs '+_sylN(c.high_paper_needed)+' marks</span></div>'
+   +'<u style="left:'+_sylPct(c.pass_core_needed,c.total_pe_marks)+'%;background:#059669"></u>'
+   +'<u style="left:'+_sylPct(c.pass_paper_needed,c.total_pe_marks)+'%;background:#059669;opacity:.45"></u>'
+   +'<u style="left:'+_sylPct(c.high_core_needed,c.total_pe_marks)+'%;background:#d97706"></u>'
+   +'<u style="left:'+_sylPct(c.high_paper_needed,c.total_pe_marks)+'%;background:#d97706;opacity:.45"></u></div>'
+   +'<div class="syl-foot"><span>Passing needs '+_sylN(c.pass_core_needed)+' marks'
+   +(c.bonus_marks?' plus '+_sylN(c.bonus_marks)+' bonus':'')+'</span>'
+   +'<span>'+_SYL.me.high_target+' percent needs '+_sylN(c.high_core_needed)+' marks'
+   +(c.bonus_marks?' plus '+_sylN(c.bonus_marks)+' bonus':'')+'</span></div>'
    +'<div class="syl-stats">'
-   +sylStat(_sylN(c.projected_total)+' / 100','Projected total',allGood?'#059669':'#dc2626')
-   +sylStat(_sylN(c.covered_theory)+' / '+m.theory_max,'Theory projection',c.theory_reached?'#059669':'#dc2626')
+   +sylStat(_sylN(c.projected_total)+' / 100','Projected total',allGood?'#059669':'#dc2626',
+      _sylN(c.covered_theory)+' theory + '+_sylN(c.tma_assumed)+' TMA'
+      +(m.has_practical?' + '+_sylN(c.practical_assumed)+' practical':''))
+   +sylStat(_sylN(c.covered_theory)+' / '+m.theory_max,'Theory projection',
+      c.theory_reached?'#059669':'#dc2626', _sylN(c.covered_paper)+' paper marks x '+c.scale)
    +sylStat(_sylN(c.tma_assumed)+' / '+m.tma_max,'TMA expected','')
    +(m.has_practical?sylStat(_sylN(c.practical_assumed)+' / '+m.practical_max,'Practical expected',''):'')
    +'</div>'
+   +'<p style="font-size:.74rem;opacity:.65;margin:11px 0 0">Projected total is only your own estimate: '
+   +'the theory marks your picked chapters can earn, plus the TMA and practical marks you entered below. '
+   +'It has nothing to do with the passing mark of '+m.aggregate_pass+'.</p>'
    +'<div class="syl-thline '+(c.theory_reached?'yes':'no')+'">'
    +(c.theory_reached
      ? '<span><b>Theory passing secured.</b> Your theory projection is '+_sylN(c.covered_theory)+' against the required '+_sylN(c.theory_pass_mark)+'.</span>'
@@ -11723,9 +11798,10 @@ function sylSubject(scrollTop){
        +' in theory to pass, and that is compulsory.</span>'
        +'<span>Pick '+_sylN(c.theory_gap_paper)+' more paper marks of chapters</span>')
    +'</div>'
+   + sylBonusBlock(c,'pass') + sylBonusBlock(c,'high')
    +'<p style="font-size:.75rem;opacity:.6;margin:12px 0 0">'+esc(c.pass_rule)
    +', and all three together must reach '+m.aggregate_pass+'. A safety margin of '+c.buffer_pct
-   +' percent is already added to the targets above.</p></div></div>';
+   +' percent is already included in the numbers above, the bonus marks are on top of that.</p></div></div>';
 
   h+='<div class="syl-panel" style="margin-top:14px"><div class="syl-phead"><div><h4>Marks you expect</h4>'
    +'<p>Change these if your TMA or practical marks will be different</p></div></div>'
@@ -11807,22 +11883,29 @@ function sylImportant(){
 
 function sylImpList(target){
   var d=_SYL.cur, s=d.subject, c=d.calc;
-  var need = target==='high' ? c.high_paper_needed : Math.max(c.pass_paper_needed, c.theory_paper_needed);
+  _SYL.impTarget=target;
+  var isHigh = target==='high';
+  var core = isHigh ? c.high_core_needed : Math.max(c.pass_core_needed, c.theory_core_needed);
+  var need = isHigh ? c.high_paper_needed : Math.max(c.pass_paper_needed, c.theory_paper_needed);
   var rows=d.chapters.filter(function(ch){ return ch.kind==='PE'; })
     .slice().sort(function(a,b){ return b.marks-a.marks || (a.no<b.no?-1:1); });
-  var acc=0, cutAt=-1, list='';
+  var acc=0, coreAt=-1, cutAt=-1, list='';
   rows.forEach(function(ch,i){
     var inPlan=d.selected.indexOf(ch.no)>-1;
     acc=Math.round((acc+ch.marks)*100)/100;
+    if(coreAt<0 && acc>=core-0.01) coreAt=i;
     if(cutAt<0 && acc>=need-0.01) cutAt=i;
     list+='<div class="syl-imp'+(inPlan?' in':'')+(cutAt>=0&&i>cutAt?' cut':'')+'" onclick="sylImpPick(\''+esc(ch.no)+'\')">'
      +'<div class="syl-rank">'+(i+1)+'</div>'
      +'<div style="flex:1;min-width:0"><b style="font-size:.87rem;display:block">'+esc(ch.no)+' '+esc(ch.title)+'</b>'
-     +'<small style="font-size:.72rem;opacity:.6">'+esc(ch.module)+'</small></div>'
+     +'<small style="font-size:.72rem;opacity:.6">'+esc(ch.module)+(coreAt>=0&&i>coreAt&&cutAt>=0&&i<=cutAt?' &middot; bonus cushion':'')+'</small></div>'
      +'<div style="text-align:right"><span class="syl-mk">'+_sylN(ch.marks)+'</span>'
      +'<div class="syl-cum">running '+acc+'</div></div>'
      +'<div class="syl-box" style="width:17px;height:17px">'+(inPlan?'&#10003;':'')+'</div></div>';
-    if(cutAt===i) list+='<div class="syl-line"><span>target reached here</span></div>';
+    if(coreAt===i && coreAt!==cutAt)
+      list+='<div class="syl-line" style="border-color:#059669"><span style="color:#047857">'
+        +(isHigh?_SYL.me.high_target+' percent':'passing')+' requirement met here</span></div>';
+    if(cutAt===i) list+='<div class="syl-line"><span>safe with the bonus cushion</span></div>';
   });
   var picked=rows.filter(function(ch){ return d.selected.indexOf(ch.no)>-1; }).length;
   var el=_sylEl('s-syl-content');
@@ -11832,11 +11915,20 @@ function sylImpList(target){
    +'<button class="syl-cta p" onclick="sylImpAdd('+(cutAt<0?rows.length:cutAt+1)+',\''+target+'\')">'
    +'Add the top '+(cutAt<0?rows.length:cutAt+1)+' to my plan</button></div>'
    +'<div class="syl-top">'
-   +sylKpi(_sylN(need),'Marks needed','#4f46e5')
-   +sylKpi((cutAt<0?rows.length:cutAt+1),'Chapters enough','#059669')
+   +sylKpi(_sylN(core),'Requirement','#059669','','',
+      '<b>The rule itself</b><br>This much must be covered.')
+   +sylKpi('+'+_sylN(c.bonus_marks||0),'Bonus cushion','#d97706','','',
+      '<b>Why a cushion</b><br>If you cover only the requirement and one question is skipped '
+      +'or goes wrong, you can slip below the line.')
+   +sylKpi((cutAt<0?rows.length:cutAt+1),'Chapters to be safe','#4f46e5','','',
+      '<b>'+_sylN(need)+' marks</b><br>requirement plus cushion.')
    +sylKpi(picked,'Already in your plan','#0ea5e9')
-   +sylKpi(target==='high'?_SYL.me.high_target+'%':'Passing','Target','#d97706')
    +'</div>'
+   +'<div class="syl-bonus" style="margin-bottom:14px"><h6>Why the extra chapters</h6>'
+   +'<p>'+(target==='high'?_SYL.me.high_target+' percent':'Passing')+' needs <b>'+_sylN(core)+' marks</b>. '
+   +'We plan for <b>'+_sylN(need)+' marks</b> instead. Those extra '+_sylN(c.bonus_marks||0)
+   +' marks are your protection: if a question is skipped in the paper, or an answer goes wrong, '
+   +'you still stay above the line. The same cushion applies to both targets.</p></div>'
    +'<div class="syl-panel"><div class="syl-phead"><div><h4>Highest weightage first</h4>'
    +'<p>Tap any chapter to add or remove it. Everything above the dashed line is enough for your target.</p></div></div>'
    +'<div style="padding:8px 18px 18px">'+list+'</div></div></div>';
@@ -11969,8 +12061,8 @@ function sylPlanRender(){
       '<b>Question paper marks</b><br>carried by the chapters above.')
    +sylKpi(buckets.length,(mode==='monthly'?'Months':'Weeks')+' available','#059669','','','')
    +sylKpi(tgt,'Your target','#d97706','','',
-      '<b>Every plan carries '+_sylN(s.extra_marks)+' extra marks</b><br>on top of the requirement, '
-      +'because a few questions always go wrong in the paper.')
+      '<b>Bonus cushion of '+_sylN(s.extra_marks)+' marks</b><br>is added on top of the requirement, '
+      +'so a skipped or wrong question in the paper cannot pull you below the line.')
    +'</div>';
 
   h+='<div class="syl-panel"><div class="syl-phead"><div><h4>'+(mode==='monthly'?'Monthly':'Weekly')+' plan</h4>'
@@ -12009,10 +12101,15 @@ function sylPlanRender(){
   h+='<div class="syl-panel" style="margin-top:14px"><div class="syl-phead"><div><h4>Target check</h4>'
    +'<p>Where each subject stands against '+esc(tgt)+'</p></div></div><div style="padding:8px 18px 18px">';
   (s.per_subject||[]).forEach(function(x){
+    var core=x.core_needed!=null?x.core_needed:x.needed;
+    var coreOk=x.core_reached!=null?x.core_reached:x.reached;
     h+='<div class="syl-goal '+(x.reached?'ok':'no')+'" style="margin-top:9px">'
-     +'<span><b>'+esc(x.name)+'</b> &middot; '+_sylN(x.covered)+' of '+_sylN(x.needed)+' marks'
+     +'<span><b>'+esc(x.name)+'</b> &middot; '+_sylN(x.covered)+' marks covered'
+     +' &middot; needs '+_sylN(core)+(s.extra_marks?' plus '+_sylN(s.extra_marks)+' bonus = '+_sylN(x.needed):'')
      +(x.theory_reached?'':' &middot; theory still short')+'</span>'
-     +'<span>'+(x.reached?'Target reached':(x.chapters_left+' chapters left'))+'</span></div>';
+     +'<span>'+(x.reached?'Safe with the cushion'
+       :(coreOk?'Requirement met, '+x.chapters_left+' bonus chapters left'
+              :x.chapters_left+' chapters left'))+'</span></div>';
   });
   if(!(s.per_subject||[]).length) h+='<div class="syl-empty">No verified subject yet.</div>';
   h+='</div></div></div>';
