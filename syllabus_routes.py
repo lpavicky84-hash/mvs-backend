@@ -225,9 +225,12 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
         need_theory = m["theory_pass"]
         pass_rule = "Theory must reach %s out of %s" % (m["theory_pass"], m["theory_max"])
 
-    need_theory_final = max(need_theory, max(m["aggregate_pass"] - tma - pr, 0))
+    need_theory_agg = max(m["aggregate_pass"] - tma - pr, 0)
+    need_theory_final = max(need_theory, need_theory_agg)
     pass_paper = min(round(((need_theory_final / scale) if scale else 0) * buf, 1), total_paper)
     high_paper = min(round(((max(high_target - tma - pr, 0) / scale) if scale else 0) * buf, 1), total_paper)
+    # theory alone is compulsory: a learner can clear the aggregate and still fail
+    theory_paper = min(round(((need_theory / scale) if scale else 0) * buf, 1), total_paper)
 
     remaining = sorted([r for r in pe_rows if r["no"] not in sel],
                        key=lambda r: (-r["marks"], r["no"]))
@@ -251,6 +254,13 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
         "pass_rule": pass_rule,
         "pass_paper_needed": pass_paper,
         "pass_reached": has_marks and covered_paper + 0.01 >= pass_paper,
+        # theory only requirement, tracked separately because it is compulsory
+        "theory_pass_mark": round(need_theory, 1),
+        "theory_paper_needed": theory_paper,
+        "theory_reached": has_marks and covered_theory + 0.01 >= need_theory,
+        "theory_gap_theory": max(round(need_theory - covered_theory, 1), 0),
+        "theory_gap_paper": max(round(theory_paper - covered_paper, 1), 0),
+        "aggregate_reached": round(covered_theory + tma + pr, 1) + 0.01 >= m["aggregate_pass"],
         "high_target": high_target,
         "high_paper_needed": high_paper,
         "high_reached": has_marks and covered_paper + 0.01 >= high_paper,
