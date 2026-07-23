@@ -536,18 +536,28 @@ def syl_me(db: Session = Depends(get_db), user=Depends(get_student)):
 def syl_profile(payload: dict = Body(...), db: Session = Depends(get_db), user=Depends(get_student)):
     _ensure_syllabus(db)
     sp = _student_profile(db, user)
-    # the stream follows the chosen examination, it is never sent by the client
-    sess = (payload.get("exam_session") or "")[:30]
-    st = "1"
-    for x in _sessions(db):
-        if x.get("id") == sess:
-            st = "1" if x.get("tma", True) else "2"
-            break
-    db.execute(_text("UPDATE student_profiles SET exam_session=:e, study_target=:t, "
-                     "exam_date=:d, exam_stream=:s WHERE id=:i"),
-               {"e": sess, "t": (payload.get("target") or "")[:10],
-                "d": (payload.get("exam_date") or "")[:20], "s": st, "i": sp.id})
-    db.commit()
+    # partial-update safe: only the fields actually sent are changed, so a
+    # date-only change can never wipe the session/target (and vice versa)
+    sets, params = [], {"i": sp.id}
+    if payload.get("exam_session") is not None:
+        sess = str(payload.get("exam_session") or "")[:30]
+        # the stream follows the chosen examination, it is never sent by the client
+        st = "1"
+        for x in _sessions(db):
+            if x.get("id") == sess:
+                st = "1" if x.get("tma", True) else "2"
+                break
+        sets += ["exam_session=:e", "exam_stream=:s"]
+        params["e"], params["s"] = sess, st
+    if payload.get("target") is not None:
+        sets.append("study_target=:t")
+        params["t"] = str(payload.get("target") or "")[:10]
+    if payload.get("exam_date") is not None:
+        sets.append("exam_date=:d")
+        params["d"] = str(payload.get("exam_date") or "")[:20]
+    if sets:
+        db.execute(_text("UPDATE student_profiles SET " + ", ".join(sets) + " WHERE id=:i"), params)
+        db.commit()
     return {"ok": True}
 
 
@@ -925,15 +935,85 @@ def syl_admin_progress(class_level: str = "", db: Session = Depends(get_db), _=D
                 sel = []
             c = compute(subj, sel, p[4] if p[4] is not None else -1,
                         p[5] if p[5] is not None else -1, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp))
+            try:
+                done_list = json.loads(p[3] or "[]")
+            except Exception:
+                done_list = []
             subs.append({"code": subj["code"], "name": subj["name"],
+                         "selected": len(sel), "done": len(done_list),
                          "covered": c["covered_paper"], "total": c["total_pe_marks"],
                          "pass": c["pass_reached"], "high": c["high_reached"]})
+        last_up = max((str(p[6] or "") for p in plans), default="")
+        info, _sess = _exam_dates(db, getattr(sp, "exam_session", "") or "",
+                                  getattr(sp, "exam_date", "") or "")
         out.append({"student_id": sid, "name": sp.user.name if sp.user else "",
                     "phone": sp.phone, "class_level": cl,
                     "exam_session": getattr(sp, "exam_session", "") or "",
+                    "exam_date": getattr(sp, "exam_date", "") or "",
+                    "days_left": info["theory_days"],
                     "target": getattr(sp, "study_target", "") or "pass",
+                    "last_update": last_up,
                     "subjects": subs})
+    out.sort(key=lambda x: x["last_update"], reverse=True)
     return {"items": out}
+
+
+@router.get("/admin/progress/{student_id}")
+def syl_admin_progress_detail(student_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """One student's full tracker report - profile, per-subject plan and coverage."""
+    _ensure_syllabus(db)
+    sp = db.query(StudentProfile).filter(StudentProfile.id == student_id).first()
+    if not sp:
+        raise HTTPException(status_code=404, detail="Student not found")
+    cfg = _cfg(db)
+    cl = str(sp.class_level or class_level_from_name(sp.class_name) or "12")
+    plans = db.execute(_text(
+        "SELECT subject_code, selected, done, tma_assumed, practical_assumed, updated_at "
+        "FROM chapter_plans WHERE student_id=:i"), {"i": student_id}).fetchall()
+    info, _sess = _exam_dates(db, getattr(sp, "exam_session", "") or "",
+                              getattr(sp, "exam_date", "") or "")
+    subs = []
+    for p in plans:
+        subj = get_subject(db, cl, p[0])
+        if not subj:
+            continue
+        try:
+            sel = json.loads(p[1] or "[]")
+        except Exception:
+            sel = []
+        try:
+            done = json.loads(p[2] or "[]")
+        except Exception:
+            done = []
+        entry = {"code": subj["code"], "name": subj["name"],
+                 "status": subj.get("status", "pending"),
+                 "selected": len(sel), "done": len(done),
+                 "updated_at": str(p[5] or "")}
+        if subj.get("status") == "ready":
+            c = compute(subj, sel, p[3] if p[3] is not None else -1,
+                        p[4] if p[4] is not None else -1, cfg["high_target"], cfg["buffer_pct"],
+                        cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp))
+            entry.update({"covered": c["covered_paper"], "total": c["total_pe_marks"],
+                          "pass": c["pass_reached"], "high": c["high_reached"],
+                          "projected": c["projected_total"]})
+            by_no = {r["no"]: r for r in SD.flatten(subj)}
+            entry["done_chapters"] = [
+                {"no": n, "title": by_no[n]["title"], "marks": by_no[n]["marks"]}
+                for n in done if n in by_no]
+            entry["todo_chapters"] = [
+                {"no": n, "title": by_no[n]["title"], "marks": by_no[n]["marks"]}
+                for n in sel if n in by_no and n not in done]
+        subs.append(entry)
+    return {"student": {"id": sp.id, "name": sp.user.name if sp.user else "",
+                        "phone": sp.phone, "class_level": cl,
+                        "class_name": sp.class_name or "",
+                        "subjects_enrolled": sp.subjects if isinstance(sp.subjects, list) else [],
+                        "exam_session": getattr(sp, "exam_session", "") or "",
+                        "exam_date": getattr(sp, "exam_date", "") or "",
+                        "days_left": info["theory_days"],
+                        "target": getattr(sp, "study_target", "") or "",
+                        "high_target": cfg["high_target"]},
+            "subjects": subs}
 
 
 # ---------------------------------------------------------------------------

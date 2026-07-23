@@ -11371,6 +11371,18 @@ async function ocrFillQuestion_v1(inp,i){
 .syl-tip b{font-weight:700}
 .syl-kpi:hover .syl-tip,.syl-kpi:focus-within .syl-tip{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
 .syl-top{position:relative;z-index:5}
+.syl-chdate{margin-top:8px;background:none;border:none;color:#4f46e5;font-size:.74rem;font-weight:800;cursor:pointer;padding:0;text-decoration:underline;font-family:inherit}
+.dark .syl-chdate{color:#a5b4fc}
+.syl-datenote{font-size:.74rem;color:#059669;margin-top:5px;font-weight:600}
+.dark .syl-datenote{color:#6ee7b7}
+.syl-clear{background:rgba(239,68,68,.09);color:#dc2626;border:1px solid rgba(239,68,68,.3);border-radius:999px;padding:5px 13px;font-size:.72rem;font-weight:800;cursor:pointer;font-family:inherit;transition:all .2s}
+.syl-mini{background:rgba(99,102,241,.07);border:1px solid rgba(99,102,241,.18);border-radius:12px;padding:10px 13px}
+.syl-mini span{font-size:.7rem;font-weight:800;opacity:.55;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:3px}
+.syl-rsub{border:1px solid var(--border,#e2e8f0);border-radius:14px;padding:13px 15px;margin-bottom:10px;background:var(--card,#fff)}
+.syl-rsub-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.syl-chips{display:flex;flex-wrap:wrap;gap:6px}
+.syl-clear:hover{background:rgba(239,68,68,.18)}
+.dark .syl-clear{color:#fca5a5}
 .syl-busy{position:relative}
 .syl-busy:after{content:"";position:absolute;left:0;right:0;top:0;height:3px;border-radius:99px;
   background:linear-gradient(90deg,transparent,#4f46e5,transparent);background-size:40% 100%;
@@ -11644,7 +11656,7 @@ function sylHome(){
   var high=ready.filter(function(s){return s.calc.high_reached}).length;
   var picked=ov.subjects.reduce(function(a,s){return a+(s.selected||0)},0);
   var noTarget=!me.target, noSession=!me.exam_session;
-  var needDate=!!(me.exam_session && ex.custom && !ex.theory_date);
+  var showDate=!!(me.exam_session && ex.custom);
   var opts='<option value="">Select your exam session</option>'+(me.sessions||[]).map(function(x){
     return '<option value="'+esc(x.id)+'"'+(me.exam_session===x.id?' selected':'')+'>'+esc(x.label)+'</option>';}).join('');
 
@@ -11662,10 +11674,13 @@ function sylHome(){
    +'</select>'
    +(noTarget?'<div class="syl-reqmsg">Target is compulsory, everything below is planned around it</div>':'')+'</div>'
    +'</div>'
-   +(needDate?'<div class="syl-g syl-g2" style="margin-top:12px"><div>'
+   +(showDate?'<div class="syl-g syl-g2" style="margin-top:12px"><div>'
      +'<label class="form-label">Your On Demand examination date</label>'
-     +'<input type="date" class="form-control syl-req" id="syl-exdate" onchange="sylProfile(null,null,this.value)">'
-     +'<div class="syl-reqmsg">On Demand has no fixed date, so enter yours to build the plan</div></div></div>':'')
+     +'<input type="date" class="form-control'+(ex.theory_date?'':' syl-req')+'" id="syl-exdate" value="'+esc(ex.theory_date||'')+'" onchange="sylProfile(null,null,this.value)">'
+     +(ex.theory_date
+       ?'<div class="syl-datenote">Date kabhi bhi change kar sakte ho — poora plan nayi date ke hisaab se adjust ho jayega.</div>'
+       :'<div class="syl-reqmsg">On Demand has no fixed date, so enter yours to build the plan</div>')
+     +'</div></div>':'')
    +'</div>';
 
   h += sylExamCards(ex);
@@ -11807,6 +11822,12 @@ function sylTargetCard(c, kind, done, isNext){
   return h+'</div>';
 }
 
+function sylFocusDate(){
+  var el=document.getElementById('syl-exdate');
+  if(!el){ window.scrollTo({top:0,behavior:'smooth'}); return; }
+  window.scrollTo({top:0,behavior:'smooth'});
+  setTimeout(function(){ el.focus(); if(el.showPicker) try{ el.showPicker(); }catch(e){} },350);
+}
 function sylToggleHelp(){ _SYL.showHelp=!_SYL.showHelp; sylSubject(); }
 
 function sylToggleTarget(kind){
@@ -11882,7 +11903,9 @@ function sylExamCards(ex){
    +'<small>'+esc(tLab)+'</small>'
    +'<span class="why">'+(own?'This is the date you entered for your On Demand paper.'
      :'The papers usually begin in this week. The exact date sheet is published by NIOS closer to the exam.')
-   +'</span></div>'
+   +'</span>'
+   +(own&&ex.theory_date?'<button type="button" class="syl-chdate" onclick="sylFocusDate()">Change date</button>':'')
+   +'</div>'
    +(own?'<div class="syl-ex p"><span class="syl-extag">not fixed</span><h5>Practical examination</h5>'
      +'<b>Not scheduled</b><small>Your centre gives you the practical date</small>'
      +'<span class="why">On Demand practicals have no announced date. Your study centre schedules them, '
@@ -12024,6 +12047,7 @@ function sylSubject(scrollTop){
    +'<div><h4>Chapter list</h4><p>'+peDone+' of '+peTotal+' exam chapters picked. '
    +'Only Public Examination chapters carry marks.</p></div>'
    +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
+   +(sel.length?'<button class="syl-clear" onclick="sylClearAll()">Clear all ('+sel.length+')</button>':'')
    +'<button class="syl-cta o" style="padding:7px 13px;font-size:.76rem" onclick="sylTmaToggle()">'
    +(showTma?'Hide TMA chapters':'Show TMA chapters')+'</button>'
    +'<button class="syl-cta o" style="padding:7px 13px;font-size:.76rem" onclick="sylChOpen()">'
@@ -12188,6 +12212,11 @@ function sylCelebrate(){
     '<button class="btn btn-primary" onclick="closeModal();sylSubject(true)">See my progress</button>');
 }
 
+function sylClearAll(){
+  var d=_SYL.cur; if(!d||!d.selected.length) return;
+  if(!confirm(d.subject.name+': saare '+d.selected.length+' selected chapters (aur unke done marks) clear ho jayenge. Pakka karna hai?')) return;
+  d.selected=[]; d.done=[]; sylSave();
+}
 function sylToggle(no){
   var d=_SYL.cur, i=d.selected.indexOf(no);
   if(i>-1){ d.selected.splice(i,1); var j=d.done.indexOf(no); if(j>-1) d.done.splice(j,1); }
@@ -12381,13 +12410,88 @@ function sylAdminRender(){
    +'<label style="display:flex;align-items:center;gap:6px;font-size:.78rem;cursor:pointer;user-select:none">'
    +'<input type="checkbox" '+(_SYL.showHidden?'checked':'')+' onchange="sylToggleHidden(this.checked)"> Show removed'
    +(nHid?' ('+nHid+')':'')+'</label>'
-   +'<button class="syl-ib" style="margin-left:auto" onclick="sylEdit(\'\')">Add subject</button></div>';
+   +'<button class="syl-ib" style="margin-left:auto" onclick="sylReport()">Students report</button>'
+   +'<button class="syl-ib" onclick="sylEdit(\'\')">Add subject</button></div>';
 
   h+='<div id="syl-rows"></div></div><div id="syl-editor"></div></div>';
   _sylEl('a-syl-content').innerHTML=h;
   sylRows();
 }
 
+function _sylSessName(id){
+  var m={'oct2026':'October 2026','apr2027':'April 2027','stream2':'Stream 2 (no TMA)','ondemand':'On Demand'};
+  return m[id]||id||'\u2014';
+}
+async function sylReport(){
+  var box=document.getElementById('a-syl-content'); if(!box) return;
+  box.innerHTML='<div class="spinner"></div>';
+  try{
+    var d=await api('/api/syllabus/admin/progress');
+    var items=d.items||[];
+    var pass=items.filter(function(x){ return (x.subjects||[]).some(function(su){return su.pass;}); }).length;
+    var chapDone=items.reduce(function(a,x){ return a+(x.subjects||[]).reduce(function(b2,su){return b2+(su.done||0);},0); },0);
+    var h='<div class="syl-wrap">'
+     +'<div class="syl-panel"><div class="syl-phead">'
+     +'<div><h4>Students report</h4><p>Syllabus Tracker ka live use \u2014 kaun student kitna cover kar chuka hai. Har visit aur Refresh pe latest data aata hai.</p></div>'
+     +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="syl-ib" onclick="sylReport()">Refresh</button>'
+     +'<button class="syl-ib" onclick="loadASyllabus()">Back to subjects</button></div></div>'
+     +'<div class="syl-g syl-g3" style="margin:6px 0 16px">'
+     +sylKpi(items.length,'Students using tracker','#6366f1')
+     +sylKpi(chapDone,'Chapters completed','#059669')
+     +sylKpi(pass,'Passing secured (1+ subject)','#d97706')+'</div>';
+    if(!items.length){ h+='<div class="syl-empty">Abhi tak kisi student ne tracker use nahi kiya.</div></div></div>'; box.innerHTML=h; return; }
+    h+='<div class="syl-tbl"><table><thead><tr><th>Student</th><th>Class</th><th>Session</th><th>Target</th><th>Days left</th><th>Subjects</th><th>Chapters done</th><th>Best coverage</th><th>Last active</th></tr></thead><tbody>';
+    items.forEach(function(x){
+      var done=(x.subjects||[]).reduce(function(a,su){return a+(su.done||0);},0);
+      var best=0; (x.subjects||[]).forEach(function(su){ if(su.total) best=Math.max(best, Math.round(su.covered/su.total*100)); });
+      h+='<tr>'
+       +'<td><a href="#" onclick="sylReportStudent('+x.student_id+');return false" style="font-weight:800">'+esc(x.name||'\u2014')+'</a><br><small style="opacity:.6">'+esc(x.phone||'')+'</small></td>'
+       +'<td>'+esc(x.class_level||'')+'</td>'
+       +'<td>'+esc(_sylSessName(x.exam_session))+(x.exam_session==='ondemand'&&x.exam_date?'<br><small style="opacity:.6">'+esc(x.exam_date)+'</small>':'')+'</td>'
+       +'<td>'+(x.target==='high'?'75%+':'Passing')+'</td>'
+       +'<td>'+(x.days_left===null||x.days_left===undefined?'\u2014':x.days_left)+'</td>'
+       +'<td>'+(x.subjects||[]).length+'</td>'
+       +'<td><b>'+done+'</b></td>'
+       +'<td>'+best+'%</td>'
+       +'<td><small>'+esc((x.last_update||'').slice(0,10))+'</small></td>'
+       +'</tr>';
+    });
+    h+='</tbody></table></div></div></div>';
+    box.innerHTML=h;
+  }catch(e){ box.innerHTML='<div class="syl-empty">'+esc(e.message||e)+'</div>'; }
+}
+async function sylReportStudent(id){
+  try{
+    var d=await api('/api/syllabus/admin/progress/'+id);
+    var st=d.student||{}, subs=d.subjects||[];
+    var h='<div style="text-align:left">'
+     +'<div style="font-size:.82rem;opacity:.7;margin-bottom:8px">'+esc(st.phone||'')+' \u00b7 '+esc(st.class_name||('Class '+(st.class_level||'')))+'</div>'
+     +'<div class="syl-g syl-g2" style="margin:10px 0 14px">'
+     +'<div class="syl-mini"><span>Exam session</span><b>'+esc(st.exam_session?_sylSessName(st.exam_session):'Not set')+'</b>'+(st.exam_date?'<div style="font-size:.76rem;opacity:.7;margin-top:3px">'+esc(st.exam_date)+(st.days_left!==null&&st.days_left!==undefined?' \u00b7 '+st.days_left+' days left':'')+'</div>':'')+'</div>'
+     +'<div class="syl-mini"><span>Target</span><b>'+(st.target==='high'?(st.high_target||75)+'% marks':'Passing marks')+'</b></div>'
+     +'</div>';
+    if(!subs.length) h+='<p style="opacity:.6;font-size:.86rem">Tracker me abhi koi subject plan nahi banaya.</p>';
+    subs.forEach(function(x){
+      var pct=x.total?Math.round(x.covered/x.total*100):0;
+      h+='<div class="syl-rsub">'
+       +'<div class="syl-rsub-h"><b>'+esc(x.name)+'</b><span style="flex:1"></span>'
+       +(x.status==='ready'
+          ?'<span class="syl-pill '+(x.pass?'ok':'warn')+'">'+(x.pass?'Passing secured':'Passing pending')+'</span>'
+          +'<span class="syl-pill '+(x.high?'ok':'info')+'">'+(st.high_target||75)+'% '+(x.high?'ready':'pending')+'</span>'
+          :'<span class="syl-pill nm">'+esc(x.status)+'</span>')
+       +'</div>'
+       +(x.status==='ready'
+          ?'<div class="syl-bar" style="margin:9px 0 6px"><i style="width:'+Math.min(100,pct)+'%"></i></div>'
+          +'<div style="font-size:.78rem;opacity:.75">'+x.done+' chapters done \u00b7 '+x.selected+' planned \u00b7 '+x.covered+' / '+x.total+' exam marks \u00b7 projected '+x.projected+'</div>'
+          +((x.done_chapters&&x.done_chapters.length)?'<div style="margin-top:9px"><div style="font-size:.7rem;font-weight:800;opacity:.55;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Covered</div><div class="syl-chips">'+x.done_chapters.map(function(c){return '<span class="syl-chip ok">'+esc(c.no)+' \u00b7 '+esc(c.title)+'</span>';}).join('')+'</div></div>':'')
+          +((x.todo_chapters&&x.todo_chapters.length)?'<div style="margin-top:8px"><div style="font-size:.7rem;font-weight:800;opacity:.55;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Planned</div><div class="syl-chips">'+x.todo_chapters.map(function(c){return '<span class="syl-chip">'+esc(c.no)+' \u00b7 '+esc(c.title)+'</span>';}).join('')+'</div></div>':'')
+          :'')
+       +'</div>';
+    });
+    h+='</div>';
+    showModal((st.name||'Student')+' \u2014 syllabus report', h, '<button class="btn btn-primary" onclick="hideModal()">Close</button>');
+  }catch(e){ toast(e.message||e,true); }
+}
 /* rows render on their own so typing in the search box never rebuilds the
    input, which is what used to throw the cursor to the end on every keystroke */
 function sylRows(){
