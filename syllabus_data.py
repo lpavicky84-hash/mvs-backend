@@ -502,15 +502,21 @@ def resolve_chapter(subject, text, accept=0.62, review=0.42):
 # here is an expectation, not a confirmation. The labels below are what the
 # learner sees, the dates are only used to count the days.
 EXAM_SESSIONS = [
+    # tma: True  -> Stream 1, the learner gets an assignment share of the paper
+    # tma: False -> no assignment, the whole written paper counts as theory
     {"id": "oct2026", "label": "October 2026 Public Examination",
-     "theory_date": "2026-10-05", "practical_date": "2026-09-16",
+     "theory_date": "2026-10-05", "practical_date": "2026-09-16", "tma": True,
      "theory_label": "First week of October 2026",
      "practical_label": "Around 16 September 2026"},
     {"id": "apr2027", "label": "April 2027 Public Examination",
-     "theory_date": "2027-04-02", "practical_date": "2027-03-15",
+     "theory_date": "2027-04-02", "practical_date": "2027-03-15", "tma": True,
      "theory_label": "First week of April 2027",
      "practical_label": "Around 15 March 2027"},
+    {"id": "stream2", "label": "Stream 2 Examination",
+     "theory_date": "2026-10-05", "practical_date": "2026-09-16", "tma": False,
+     "theory_label": "First week of October 2026",
+     "practical_label": "Around 16 September 2026"},
     {"id": "ondemand", "label": "On Demand Examination",
-     "theory_date": "", "practical_date": "", "ask_date": True,
+     "theory_date": "", "practical_date": "", "ask_date": True, "tma": False,
      "theory_label": "", "practical_label": "About three weeks before your paper"},
 ]

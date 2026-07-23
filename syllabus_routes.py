@@ -395,9 +395,16 @@ def _plan_row(db, student_id, code):
     return sel, done, (r[2] if r[2] is not None else -1.0), (r[3] if r[3] is not None else -1.0)
 
 
-def _stream(sp):
-    """Stream 1 by default. Stream 2, 3 and 4 have no TMA."""
-    return str(getattr(sp, "exam_stream", "") or "1")
+def _stream_for(db, sp):
+    """
+    The stream is never asked from the learner. It follows the examination they
+    picked: October and April carry a TMA, Stream 2 and On Demand do not.
+    """
+    sid = getattr(sp, "exam_session", "") or ""
+    for x in _sessions(db):
+        if x.get("id") == sid:
+            return "1" if x.get("tma", True) else "2"
+    return "1"
 
 
 def _student_profile(db, user):
@@ -509,7 +516,8 @@ def syl_me(db: Session = Depends(get_db), user=Depends(get_student)):
         "unmapped_subjects": unmapped,
         "exam_session": getattr(sp, "exam_session", "") or "",
         "exam_date": getattr(sp, "exam_date", "") or "",
-        "stream": _stream(sp),
+        "stream": _stream_for(db, sp),
+        "has_tma": _stream_for(db, sp) == "1",
         "target": getattr(sp, "study_target", "") or "",
         "days_left": info["theory_days"], "exam": info,
         "session": sess, "sessions": _sessions(db),
@@ -522,13 +530,16 @@ def syl_me(db: Session = Depends(get_db), user=Depends(get_student)):
 def syl_profile(payload: dict = Body(...), db: Session = Depends(get_db), user=Depends(get_student)):
     _ensure_syllabus(db)
     sp = _student_profile(db, user)
-    st = str(payload.get("stream") or getattr(sp, "exam_stream", "") or "1")[:4]
-    if st not in ("1", "2", "3", "4"):
-        st = "1"
+    # the stream follows the chosen examination, it is never sent by the client
+    sess = (payload.get("exam_session") or "")[:30]
+    st = "1"
+    for x in _sessions(db):
+        if x.get("id") == sess:
+            st = "1" if x.get("tma", True) else "2"
+            break
     db.execute(_text("UPDATE student_profiles SET exam_session=:e, study_target=:t, "
                      "exam_date=:d, exam_stream=:s WHERE id=:i"),
-               {"e": (payload.get("exam_session") or "")[:30],
-                "t": (payload.get("target") or "")[:10],
+               {"e": sess, "t": (payload.get("target") or "")[:10],
                 "d": (payload.get("exam_date") or "")[:20], "s": st, "i": sp.id})
     db.commit()
     return {"ok": True}
@@ -547,7 +558,7 @@ def syl_overview(db: Session = Depends(get_db), user=Depends(get_student)):
             continue
         sel, done, tma, pr = _plan_row(db, sp.id, code)
         ready = subj.get("status") == "ready"
-        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream(sp)) if ready else None
+        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp)) if ready else None
         out.append({"code": subj["code"], "name": subj["name"],
                     "status": subj.get("status", "pending"),
                     "selected": len(sel) if ready else 0,
@@ -585,7 +596,7 @@ def syl_subject(code: str, db: Session = Depends(get_db), user=Depends(get_stude
         "modules": subj.get("modules", []),
         "chapters": SD.flatten(subj),
         "selected": sel, "done": done,
-        "calc": compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream(sp)),
+        "calc": compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp)),
     }
 
 
@@ -621,7 +632,7 @@ def syl_plan(payload: dict = Body(...), db: Session = Depends(get_db), user=Depe
                          "VALUES (:s, :c, :sel, :dn, :t, :p, :u)"), args)
     db.commit()
     cfg = _cfg(db)
-    return {"ok": True, "calc": compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream(sp))}
+    return {"ok": True, "calc": compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp))}
 
 
 @router.get("/strategy")
@@ -660,7 +671,7 @@ def syl_strategy(db: Session = Depends(get_db), user=Depends(get_student)):
         if not subj or subj.get("status") != "ready":
             continue
         sel, done, tma, pr = _plan_row(db, sp.id, code)
-        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream(sp))
+        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp))
         need = calc["high_paper_needed"] if target == "high" else max(
             calc["pass_paper_needed"], calc["theory_paper_needed"])
         pool = calc["high_gap_chapters"] if target == "high" else calc["pass_gap_chapters"]
@@ -907,7 +918,7 @@ def syl_admin_progress(class_level: str = "", db: Session = Depends(get_db), _=D
             except Exception:
                 sel = []
             c = compute(subj, sel, p[4] if p[4] is not None else -1,
-                        p[5] if p[5] is not None else -1, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream(sp))
+                        p[5] if p[5] is not None else -1, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp))
             subs.append({"code": subj["code"], "name": subj["name"],
                          "covered": c["covered_paper"], "total": c["total_pe_marks"],
                          "pass": c["pass_reached"], "high": c["high_reached"]})

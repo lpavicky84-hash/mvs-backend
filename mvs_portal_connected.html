@@ -11349,14 +11349,16 @@ async function ocrFillQuestion_v1(inp,i){
 .syl-kpi.blinkA{border-color:rgba(217,119,6,.42)}
 .syl-kpi.blinkG{border-color:rgba(5,150,105,.42)}
 .syl-ex.warn{animation:sylPulse 2.1s infinite}
-.syl-tip{position:absolute;left:50%;transform:translateX(-50%) translateY(4px);bottom:calc(100% + 10px);
-  z-index:60;width:250px;max-width:78vw;background:rgba(30,41,59,.94);color:#e8edf7;
-  border:1px solid rgba(148,163,184,.28);border-radius:12px;padding:11px 13px;font-size:.73rem;
+.syl-tip{position:absolute;left:50%;transform:translateX(-50%) translateY(-4px);top:calc(100% + 9px);
+  z-index:60;width:250px;max-width:80vw;background:var(--card,#fff);color:var(--text,#1e293b);
+  border:1px solid rgba(100,116,139,.28);border-radius:12px;padding:11px 13px;font-size:.74rem;
   line-height:1.55;opacity:0;visibility:hidden;transition:opacity .16s,transform .16s;
-  box-shadow:0 10px 26px rgba(15,23,42,.22);pointer-events:none;font-weight:400;text-align:left}
-.syl-tip:after{content:"";position:absolute;left:50%;top:100%;transform:translateX(-50%);
-  border:6px solid transparent;border-top-color:rgba(30,41,59,.94)}
-.syl-tip b{color:#fff;font-weight:700}
+  box-shadow:0 10px 24px rgba(15,23,42,.13);pointer-events:none;font-weight:400;text-align:left}
+.syl-tip:before{content:"";position:absolute;left:50%;bottom:100%;transform:translateX(-50%);
+  border:6px solid transparent;border-bottom-color:rgba(100,116,139,.28)}
+.syl-tip:after{content:"";position:absolute;left:50%;bottom:100%;transform:translateX(-50%);
+  border:5px solid transparent;border-bottom-color:var(--card,#fff);margin-bottom:-1px}
+.syl-tip b{font-weight:700}
 .syl-kpi:hover .syl-tip,.syl-kpi:focus-within .syl-tip{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
 .syl-top{position:relative;z-index:5}
 .syl-busy{position:relative}
@@ -11609,31 +11611,21 @@ function sylHome(){
 
   var h='<div class="syl-wrap">';
 
-  h+='<div class="syl-hero"><div class="syl-g syl-g2b">'
+  h+='<div class="syl-hero"><div class="syl-g syl-g2">'
    +'<div><label class="form-label">Exam session</label>'
-   +'<select class="form-control'+(noSession?' syl-req':'')+'" id="syl-sess" onchange="sylProfile(this.value,null,null,null)">'+opts+'</select>'
+   +'<select class="form-control'+(noSession?' syl-req':'')+'" id="syl-sess" onchange="sylProfile(this.value,null,null)">'+opts+'</select>'
    +(noSession?'<div class="syl-reqmsg">Choose your exam session first</div>':'')+'</div>'
    +'<div><label class="form-label">My target</label>'
-   +'<select class="form-control'+(noTarget?' syl-req':'')+'" id="syl-tgt" onchange="sylProfile(null,this.value,null,null)">'
+   +'<select class="form-control'+(noTarget?' syl-req':'')+'" id="syl-tgt" onchange="sylProfile(null,this.value,null)">'
    +'<option value=""'+(noTarget?' selected':'')+'>Select your target</option>'
    +'<option value="pass"'+(me.target==='pass'?' selected':'')+'>Clear the exam (passing marks)</option>'
    +'<option value="high"'+(me.target==='high'?' selected':'')+'>Score '+me.high_target+' percent or above</option>'
    +'</select>'
    +(noTarget?'<div class="syl-reqmsg">Target is compulsory, everything below is planned around it</div>':'')+'</div>'
-   +'<div><label class="form-label">My stream</label>'
-   +'<select class="form-control" id="syl-stream" onchange="sylProfile(null,null,null,this.value)">'
-   +'<option value="1"'+(me.stream==='1'?' selected':'')+'>Stream 1, with TMA</option>'
-   +'<option value="2"'+(me.stream==='2'?' selected':'')+'>Stream 2, no TMA</option>'
-   +'<option value="3"'+(me.stream==='3'?' selected':'')+'>Stream 3, no TMA</option>'
-   +'<option value="4"'+(me.stream==='4'?' selected':'')+'>Stream 4, no TMA</option>'
-   +'</select>'
-   +(me.stream!=='1'?'<div style="font-size:.72rem;opacity:.65;margin-top:5px">'
-     +'Stream '+esc(me.stream)+' has no TMA, so the full question paper counts towards your theory marks.</div>':'')
-   +'</div>'
    +'</div>'
    +(needDate?'<div class="syl-g syl-g2" style="margin-top:12px"><div>'
      +'<label class="form-label">Your On Demand examination date</label>'
-     +'<input type="date" class="form-control syl-req" id="syl-exdate" onchange="sylProfile(null,null,this.value,null)">'
+     +'<input type="date" class="form-control syl-req" id="syl-exdate" onchange="sylProfile(null,null,this.value)">'
      +'<div class="syl-reqmsg">On Demand has no fixed date, so enter yours to build the plan</div></div></div>':'')
    +'</div>';
 
@@ -11823,15 +11815,14 @@ function sylKpi(v,l,c,cls,onclick,tip){
    +(tip?'<div class="syl-tip">'+tip+'</div>':'')+'</div>';
 }
 
-async function sylProfile(session,target,examDate,stream){
+async function sylProfile(session,target,examDate){
   var me=_SYL.me;
   sylBusy(true);
   try{
     await api('/api/syllabus/profile','POST',{
       exam_session: session===null||session===undefined ? (me.exam_session||'') : session,
       target: target===null||target===undefined ? (me.target||'') : target,
-      exam_date: examDate===null||examDate===undefined ? (me.exam_date||'') : examDate,
-      stream: stream===null||stream===undefined ? (me.stream||'1') : stream});
+      exam_date: examDate===null||examDate===undefined ? (me.exam_date||'') : examDate});
     _SYL.me = await api('/api/syllabus/me');
     _SYL.ov = await api('/api/syllabus/overview');
     sylBusy(false); sylHome();
