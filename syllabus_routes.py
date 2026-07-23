@@ -38,8 +38,11 @@ CHAPTER_API_KEY = os.environ.get("CHAPTER_API_KEY", "")
 
 DEFAULTS = {
     "syl_high_target": "75",
-    "syl_safety_buffer": "20",
-    "syl_extra_marks": "6",
+    "syl_safety_buffer": "0",
+    # the cushion is measured in chapters, not marks: one extra chapter, and a
+    # second only if the first one is too small to be worth anything
+    "syl_bonus_chapters": "2",
+    "syl_bonus_min_marks": "6",
     "syl_ondemand_practical_gap": "20",
     "syl_sessions": json.dumps(SD.EXAM_SESSIONS),
 }
@@ -85,7 +88,7 @@ def _ensure_syllabus(db):
             except Exception:
                 db.rollback()
     for col in ["exam_session VARCHAR(30) NULL", "study_target VARCHAR(10) NULL",
-                "exam_date VARCHAR(20) NULL"]:
+                "exam_date VARCHAR(20) NULL", "exam_stream VARCHAR(4) NULL"]:
         try:
             db.execute(_text("ALTER TABLE student_profiles ADD COLUMN %s" % col)); db.commit()
         except Exception:
@@ -120,8 +123,9 @@ def _set_setting(db, key, value):
 def _cfg(db):
     return {
         "high_target": float(_setting(db, "syl_high_target", "75") or 75),
-        "buffer_pct": float(_setting(db, "syl_safety_buffer", "20") or 20),
-        "extra_marks": float(_setting(db, "syl_extra_marks", "6") or 0),
+        "buffer_pct": float(_setting(db, "syl_safety_buffer", "0") or 0),
+        "bonus_chapters": int(float(_setting(db, "syl_bonus_chapters", "2") or 2)),
+        "bonus_min_marks": float(_setting(db, "syl_bonus_min_marks", "6") or 6),
     }
 
 
@@ -202,9 +206,36 @@ def class_level_from_name(class_name):
 # Calculation engine (identical maths to the standalone tracker)
 # ---------------------------------------------------------------------------
 
+def apply_stream(marks, stream):
+    """
+    Stream 2, 3 and 4 learners have no TMA (Notification 34/2021 Annexure).
+    Their theory paper is not scaled down, so the full question paper counts
+    and the pass mark is 33 percent of it.
+    """
+    m = dict(marks)
+    if str(stream) not in ("2", "3", "4"):
+        return m
+    paper = float(m.get("paper_marks") or m.get("theory_max") or 0)
+    pr = float(m.get("practical_max") or 0)
+    m["theory_max"] = paper
+    m["tma_max"] = 0
+    m["practical_max"] = pr
+    if m.get("combined_pass"):
+        m["combined_pass"] = int(round((paper + pr) * 0.33))
+        m["theory_pass"] = 0
+        m["practical_pass"] = 0
+    else:
+        m["theory_pass"] = int(round(paper * 0.33))
+        m["practical_pass"] = int(round(pr * 0.33)) if pr else 0
+    m["aggregate_pass"] = 33
+    m["stream"] = str(stream)
+    return m
+
+
 def compute(subject, selected, tma_assumed=None, practical_assumed=None,
-            high_target=75.0, buffer_pct=20.0, extra_marks=0.0):
-    m = subject["marks"]
+            high_target=75.0, buffer_pct=0.0, bonus_chapters=2, bonus_min_marks=6.0,
+            stream="1"):
+    m = apply_stream(subject["marks"], stream)
     rows = SD.flatten(subject)
     pe_rows = [r for r in rows if r["kind"] == "PE"]
     paper = float(m.get("paper_marks") or (m["theory_max"] / 0.8 if m["theory_max"] else 0))
@@ -235,20 +266,41 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
     pass_raw = round(((need_theory_final / scale) if scale else 0), 1)
     high_raw = round(((max(high_target - tma - pr, 0) / scale) if scale else 0), 1)
     theory_raw = round(((need_theory / scale) if scale else 0), 1)
-    # Three levels, reported separately so nothing is hidden from the learner.
-    #   raw   the bare rule
-    #   core  raw plus the percentage margin, this is what must be covered
-    #   safe  core plus a flat bonus, the cushion for a skipped or wrong answer
-    def _core(x):
-        return min(round(x * buf, 1), total_paper)
+    # The requirement is exactly the NIOS rule. The cushion on top is measured
+    # in whole chapters, not in marks, because a learner studies chapters:
+    # one extra chapter, and a second one only if the first is too small to
+    # give any real protection.
+    ranked = sorted(pe_rows, key=lambda r: (-r["marks"], r["no"]))
+    max_bonus_ch = max(int(bonus_chapters or 0), 0)
+    min_bonus = float(bonus_min_marks or 0)
 
-    def _safe(x):
-        return min(round(x + extra_marks, 1), total_paper)
+    def with_bonus(req):
+        """Return (total_target, bonus_marks, bonus_rows) for a requirement."""
+        acc, idx = 0.0, len(ranked)
+        for i, r in enumerate(ranked):
+            if acc + 0.01 >= req:
+                idx = i
+                break
+            acc += r["marks"]
+        else:
+            idx = len(ranked)
+        rows_, bmarks = [], 0.0
+        for r in ranked[idx:]:
+            if len(rows_) >= max_bonus_ch:
+                break
+            rows_.append(r)
+            bmarks = round(bmarks + r["marks"], 2)
+            if bmarks + 0.01 >= min_bonus:
+                break
+        return (min(round(req + bmarks, 1), total_paper), round(bmarks, 1), rows_)
 
-    pass_core, high_core = _core(pass_raw), _core(high_raw)
+    pass_core = min(round(pass_raw, 1), total_paper)
+    high_core = min(round(high_raw, 1), total_paper)
     # theory alone is compulsory: a learner can clear the aggregate and still fail
-    theory_core = _core(theory_raw)
-    pass_paper, high_paper, theory_paper = _safe(pass_core), _safe(high_core), _safe(theory_core)
+    theory_core = min(round(theory_raw, 1), total_paper)
+    pass_paper, pass_bonus, pass_bonus_rows = with_bonus(pass_core)
+    high_paper, high_bonus, high_bonus_rows = with_bonus(high_core)
+    theory_paper, theory_bonus, _ = with_bonus(theory_core)
 
     remaining = sorted([r for r in pe_rows if r["no"] not in sel],
                        key=lambda r: (-r["marks"], r["no"]))
@@ -275,14 +327,18 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
         "tma_assumed": tma, "practical_assumed": pr,
         "projected_total": round(covered_theory + tma + pr, 1),
         "pass_rule": pass_rule,
-        "extra_marks": extra_marks,
-        "bonus_marks": extra_marks,
+        "bonus_chapter_count": len(pass_bonus_rows),
+        # the cushion is whatever sits above the NIOS requirement
+        "bonus_marks": pass_bonus,
+        "pass_bonus_marks": pass_bonus,
+        "high_bonus_marks": high_bonus,
+        "theory_bonus_marks": theory_bonus,
         "pass_core_needed": pass_core,
         "pass_core_reached": has_marks and covered_paper + 0.01 >= pass_core,
-        "pass_bonus_chapters": bonus_after(pass_core, pass_paper),
+        "pass_bonus_chapters": pass_bonus_rows,
         "high_core_needed": high_core,
         "high_core_reached": has_marks and covered_paper + 0.01 >= high_core,
-        "high_bonus_chapters": bonus_after(high_core, high_paper),
+        "high_bonus_chapters": high_bonus_rows,
         "theory_core_needed": theory_core,
         "pass_paper_raw": pass_raw,
         "high_paper_raw": high_raw,
@@ -296,6 +352,21 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
         "theory_gap_theory": max(round(need_theory - covered_theory, 1), 0),
         "theory_gap_paper": max(round(theory_paper - covered_paper, 1), 0),
         "aggregate_reached": round(covered_theory + tma + pr, 1) + 0.01 >= m["aggregate_pass"],
+        # NIOS checks three things separately. All of them are reported in the
+        # units the marksheet uses, so nothing has to be converted by the reader.
+        "theory_have": covered_theory,
+        "theory_need": round(need_theory, 1),
+        "theory_max": m["theory_max"],
+        "practical_have": pr,
+        "practical_need": float(m.get("practical_pass") or 0),
+        "practical_max": m["practical_max"],
+        "practical_reached": (not m.get("has_practical")) or pr + 0.01 >= float(m.get("practical_pass") or 0),
+        "tma_have": tma,
+        "tma_max": m["tma_max"],
+        "aggregate_have": round(covered_theory + tma + pr, 1),
+        "aggregate_need": m["aggregate_pass"],
+        "has_practical": bool(m.get("has_practical")),
+        "combined_pass": float(m.get("combined_pass") or 0),
         "high_target": high_target,
         "high_paper_needed": high_paper,
         "high_reached": has_marks and covered_paper + 0.01 >= high_paper,
@@ -303,6 +374,7 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
         "high_gap_chapters": pick_until(high_paper),
         "selected_count": len([r for r in pe_rows if r["no"] in sel]),
         "pe_count": len(pe_rows), "buffer_pct": buffer_pct,
+        "stream": str(stream), "marks": m,
     }
 
 
@@ -321,6 +393,11 @@ def _plan_row(db, student_id, code):
     except Exception:
         done = []
     return sel, done, (r[2] if r[2] is not None else -1.0), (r[3] if r[3] is not None else -1.0)
+
+
+def _stream(sp):
+    """Stream 1 by default. Stream 2, 3 and 4 have no TMA."""
+    return str(getattr(sp, "exam_stream", "") or "1")
 
 
 def _student_profile(db, user):
@@ -402,6 +479,11 @@ def _exam_dates(db, session_id, custom_date=""):
     td, pd_ = _dleft(theory), _dleft(practical)
     return ({"theory_date": theory, "practical_date": practical,
              "theory_days": td, "practical_days": pd_,
+             # what the learner reads. NIOS announces the date sheet late, so
+             # these stay worded as expectations rather than fixed dates
+             "theory_label": sess.get("theory_label", ""),
+             "practical_label": sess.get("practical_label", ""),
+             "theory_confirmed": bool(custom),
              "days_left": td, "custom": custom}, sess)
 
 
@@ -427,11 +509,12 @@ def syl_me(db: Session = Depends(get_db), user=Depends(get_student)):
         "unmapped_subjects": unmapped,
         "exam_session": getattr(sp, "exam_session", "") or "",
         "exam_date": getattr(sp, "exam_date", "") or "",
+        "stream": _stream(sp),
         "target": getattr(sp, "study_target", "") or "",
         "days_left": info["theory_days"], "exam": info,
         "session": sess, "sessions": _sessions(db),
         "high_target": cfg["high_target"], "buffer_pct": cfg["buffer_pct"],
-        "extra_marks": cfg["extra_marks"],
+        "bonus_chapters": cfg["bonus_chapters"], "bonus_min_marks": cfg["bonus_min_marks"],
     }
 
 
@@ -439,10 +522,14 @@ def syl_me(db: Session = Depends(get_db), user=Depends(get_student)):
 def syl_profile(payload: dict = Body(...), db: Session = Depends(get_db), user=Depends(get_student)):
     _ensure_syllabus(db)
     sp = _student_profile(db, user)
-    db.execute(_text("UPDATE student_profiles SET exam_session=:e, study_target=:t, exam_date=:d WHERE id=:i"),
+    st = str(payload.get("stream") or getattr(sp, "exam_stream", "") or "1")[:4]
+    if st not in ("1", "2", "3", "4"):
+        st = "1"
+    db.execute(_text("UPDATE student_profiles SET exam_session=:e, study_target=:t, "
+                     "exam_date=:d, exam_stream=:s WHERE id=:i"),
                {"e": (payload.get("exam_session") or "")[:30],
                 "t": (payload.get("target") or "")[:10],
-                "d": (payload.get("exam_date") or "")[:20], "i": sp.id})
+                "d": (payload.get("exam_date") or "")[:20], "s": st, "i": sp.id})
     db.commit()
     return {"ok": True}
 
@@ -460,7 +547,7 @@ def syl_overview(db: Session = Depends(get_db), user=Depends(get_student)):
             continue
         sel, done, tma, pr = _plan_row(db, sp.id, code)
         ready = subj.get("status") == "ready"
-        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["extra_marks"]) if ready else None
+        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream(sp)) if ready else None
         out.append({"code": subj["code"], "name": subj["name"],
                     "status": subj.get("status", "pending"),
                     "selected": len(sel) if ready else 0,
@@ -498,7 +585,7 @@ def syl_subject(code: str, db: Session = Depends(get_db), user=Depends(get_stude
         "modules": subj.get("modules", []),
         "chapters": SD.flatten(subj),
         "selected": sel, "done": done,
-        "calc": compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["extra_marks"]),
+        "calc": compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream(sp)),
     }
 
 
@@ -534,7 +621,7 @@ def syl_plan(payload: dict = Body(...), db: Session = Depends(get_db), user=Depe
                          "VALUES (:s, :c, :sel, :dn, :t, :p, :u)"), args)
     db.commit()
     cfg = _cfg(db)
-    return {"ok": True, "calc": compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["extra_marks"])}
+    return {"ok": True, "calc": compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream(sp))}
 
 
 @router.get("/strategy")
@@ -573,7 +660,7 @@ def syl_strategy(db: Session = Depends(get_db), user=Depends(get_student)):
         if not subj or subj.get("status") != "ready":
             continue
         sel, done, tma, pr = _plan_row(db, sp.id, code)
-        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["extra_marks"])
+        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream(sp))
         need = calc["high_paper_needed"] if target == "high" else max(
             calc["pass_paper_needed"], calc["theory_paper_needed"])
         pool = calc["high_gap_chapters"] if target == "high" else calc["pass_gap_chapters"]
@@ -634,7 +721,8 @@ def syl_strategy(db: Session = Depends(get_db), user=Depends(get_student)):
 
     return {
         "days_left": theory_days, "exam": info, "weeks": weeks, "months": months,
-        "target": target, "high_target": cfg["high_target"], "extra_marks": cfg["extra_marks"],
+        "target": target, "high_target": cfg["high_target"],
+        "bonus_chapters": cfg["bonus_chapters"], "bonus_min_marks": cfg["bonus_min_marks"],
         "total_pending": len(queue),
         "pending_marks": round(sum(r["marks"] for r in queue), 1),
         "per_subject": per_subject,
@@ -819,7 +907,7 @@ def syl_admin_progress(class_level: str = "", db: Session = Depends(get_db), _=D
             except Exception:
                 sel = []
             c = compute(subj, sel, p[4] if p[4] is not None else -1,
-                        p[5] if p[5] is not None else -1, cfg["high_target"], cfg["buffer_pct"], cfg["extra_marks"])
+                        p[5] if p[5] is not None else -1, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream(sp))
             subs.append({"code": subj["code"], "name": subj["name"],
                          "covered": c["covered_paper"], "total": c["total_pe_marks"],
                          "pass": c["pass_reached"], "high": c["high_reached"]})

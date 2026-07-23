@@ -76,6 +76,7 @@ def ensure_columns():
         "ALTER TABLE student_profiles ADD COLUMN exam_session VARCHAR(30)",
         "ALTER TABLE student_profiles ADD COLUMN study_target VARCHAR(10)",
         "ALTER TABLE student_profiles ADD COLUMN exam_date VARCHAR(20)",
+        "ALTER TABLE student_profiles ADD COLUMN exam_stream VARCHAR(4)",
     ]
     for s in stmts:
         try:
