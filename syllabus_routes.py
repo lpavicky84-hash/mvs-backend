@@ -241,6 +241,7 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
             chosen.append(r); acc += r["marks"]
         return chosen
 
+    has_marks = total_paper > 0
     return {
         "paper_marks": paper, "scale": round(scale, 4),
         "total_pe_marks": total_paper, "covered_paper": covered_paper,
@@ -249,10 +250,10 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
         "projected_total": round(covered_theory + tma + pr, 1),
         "pass_rule": pass_rule,
         "pass_paper_needed": pass_paper,
-        "pass_reached": covered_paper + 0.01 >= pass_paper,
+        "pass_reached": has_marks and covered_paper + 0.01 >= pass_paper,
         "high_target": high_target,
         "high_paper_needed": high_paper,
-        "high_reached": covered_paper + 0.01 >= high_paper,
+        "high_reached": has_marks and covered_paper + 0.01 >= high_paper,
         "pass_gap_chapters": pick_until(pass_paper),
         "high_gap_chapters": pick_until(high_paper),
         "selected_count": len([r for r in pe_rows if r["no"] in sel]),
@@ -371,10 +372,12 @@ def syl_overview(db: Session = Depends(get_db), user=Depends(get_student)):
         if not subj:
             continue
         sel, done, tma, pr = _plan_row(db, sp.id, code)
-        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"])
+        ready = subj.get("status") == "ready"
+        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"]) if ready else None
         out.append({"code": subj["code"], "name": subj["name"],
                     "status": subj.get("status", "pending"),
-                    "selected": len(sel), "done": len(done), "calc": calc})
+                    "selected": len(sel) if ready else 0,
+                    "done": len(done) if ready else 0, "calc": calc})
     for n in unmapped:
         out.append({"code": "", "name": n, "status": "pending",
                     "selected": 0, "done": 0, "calc": None})

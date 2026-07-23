@@ -56,6 +56,10 @@ def _clean(s):
     if s is None:
         return ""
     s = str(s).replace("\u00ad", "")
+    # NIOS Devanagari PDFs often carry a broken font encoding that drops NULs
+    # and other control bytes where a matra should be. Strip them so the text
+    # is at least usable, and warn separately.
+    s = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", s)
     s = re.sub(r"[\r\n]+", " ", s)
     s = re.sub(r"\s+", " ", s)
     return s.strip()
@@ -74,20 +78,62 @@ def _module_name(s):
     return LEAD_NUM_RE.sub("", _clean(s)).strip()
 
 
+COUNT_MARK_RE = re.compile(r"\(\s*(\d{1,3})\s*(?:\u092a\u093e\u0920|lessons?|\u0932\u0947\u0938\u0928)\s*\)", re.I)
+COLON_LINE_RE = re.compile(r"^\s*(\d{1,2})\s*[:\.\u0964]\s*(.+?)\s*$")
+SKIP_LINE_RE = re.compile(
+    r"^\s*[\(\)\-\u2013\u2014_\s]*$"
+    r"|no\.?\s*of\s*lessons"
+    r"|\u092a\u093e\u0920\u094b\u0902"
+    r"|^\s*\(\s*\d{1,3}\s*(?:\u092a\u093e\u0920|lessons?)\s*\)\s*$",
+    re.I)
+
+
+def _stated_count(cell):
+    """The '(3 lessons)' style number printed at the bottom of a cell."""
+    m = COUNT_MARK_RE.search(_clean(cell))
+    return int(m.group(1)) if m else None
+
+
 def _lessons(cell):
-    """Pull [(no, title)] out of one table cell."""
-    txt = _clean(cell)
+    """
+    Pull [(no, title)] out of one table cell.
+
+    Two layouts are supported:
+      science style   L-3 (Laws of Motion)
+      language style  3 : Gillu          (one lesson per line)
+    """
+    raw = "" if cell is None else str(cell)
+    raw = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", raw)
+    txt = _clean(raw)
     if not txt or txt in {"-", "_", "--", "\u2013", "\u2014"}:
         return []
+
     out = []
     for no, title in LESSON_RE.findall(txt):
         title = _clean(title)
         title = re.sub(r"\s*\.\s*$", "", title)
         if title:
             out.append((int(no), title))
+
+    # language subjects: every line is "<number> : <title>"
+    if not out:
+        for line in raw.split("\n"):
+            line = _clean(line)
+            if not line or SKIP_LINE_RE.search(line):
+                continue
+            m = COLON_LINE_RE.match(line)
+            if not m:
+                continue
+            title = COUNT_MARK_RE.sub("", m.group(2)).strip(" .:\u0964-")
+            if title:
+                out.append((int(m.group(1)), title))
+
     if not out:
         for no, title in LESSON_LOOSE_RE.findall(txt):
-            out.append((int(no), _clean(title)))
+            t = _clean(title)
+            if t and not SKIP_LINE_RE.search(t):
+                out.append((int(no), t))
+
     seen, uniq = set(), []
     for no, title in out:
         if no in seen:
@@ -130,19 +176,33 @@ def _find_bifurcation(tables):
             continue
         if mod_col is None:
             mod_col = 0
-        rows = []
+        rows, hdr = [], {}
         for row in tbl:
             if max(mod_col, tma_col, pe_col) >= len(row):
                 continue
             name = _clean(row[mod_col])
+            tma_cell, pe_cell = row[tma_col], row[pe_col]
+            # header cell "( No. of lessons ) 8" carries the column total
+            for key, cell in (("tma", tma_cell), ("pe", pe_cell)):
+                c = _clean(cell)
+                if re.search(r"no\.?\s*of\s*lessons", c, re.I):
+                    m = re.search(r"no\.?\s*of\s*lessons\s*\)?\s*[:=\-]?\s*(\d{1,3})", c, re.I)
+                    if m:
+                        hdr[key] = int(m.group(1))
             if not name or MODULE_HINT.search(name) or TOTAL_RE.match(name):
                 continue
-            if not re.search(r"[A-Za-z]{3}", name):
+            # banner rows like "Total No. of Lessons=22" span the table
+            if re.search(r"total\s+no\.?\s*of\s*lessons", name, re.I):
                 continue
-            rows.append((_module_name(name), row[tma_col], row[pe_col]))
+            if not _clean(tma_cell) and not _clean(pe_cell):
+                continue
+            # a module name has letters in any script, not just Latin
+            if not re.search(r"[A-Za-z]{3}|[\u0900-\u097F]{2}", name):
+                continue
+            rows.append((_module_name(name), tma_cell, pe_cell))
         if rows and (best is None or len(rows) > len(best)):
-            best = rows
-    return best or []
+            best = (rows, hdr)
+    return best or ([], {})
 
 
 def _find_weightage(tables, page_texts):
@@ -279,7 +339,7 @@ def parse_syllabus_pdf(data: bytes):
     if len(joined) < 60:
         return {"ok": False, "error": "No readable text found. This looks like a scanned PDF. Please download the text version from the NIOS website."}
 
-    rows = _find_bifurcation(tables)
+    rows, hdr_counts = _find_bifurcation(tables)
     if not rows:
         return {"ok": False,
                 "error": "Bifurcation of Syllabus table could not be located in this PDF. Make sure you uploaded the syllabus PDF and not the sample question paper."}
@@ -288,13 +348,24 @@ def parse_syllabus_pdf(data: bytes):
     weights, warnings = _match_weightage(module_names, _find_weightage(tables, page_texts))
 
     modules, seen_no = [], set()
-    dup = []
+    dup, empty_mods, count_mismatch = [], [], []
     for (name, tma_cell, pe_cell), w in zip(rows, weights):
         lessons = []
-        for no, title in _lessons(tma_cell):
+        t_l = _lessons(tma_cell)
+        p_l = _lessons(pe_cell)
+        for no, title in t_l:
             lessons.append({"no": no, "title": title, "kind": "TMA"})
-        for no, title in _lessons(pe_cell):
+        for no, title in p_l:
             lessons.append({"no": no, "title": title, "kind": "PE"})
+        # the PDF prints "(3 lessons)" at the bottom of each cell - use it
+        for label, cell, got in (("TMA", tma_cell, len(t_l)), ("Public Examination", pe_cell, len(p_l))):
+            want = _stated_count(cell)
+            if want is not None and want != got:
+                count_mismatch.append("%s, %s column: PDF says %d lessons but %d were read."
+                                      % (name, label, want, got))
+        if not lessons:
+            empty_mods.append(name)
+            continue
         lessons.sort(key=lambda x: x["no"])
         for l in lessons:
             if l["no"] in seen_no:
@@ -312,11 +383,18 @@ def parse_syllabus_pdf(data: bytes):
 
     if dup:
         warnings.append("These lesson numbers appeared more than once: " + ", ".join(sorted(set(dup))))
+    warnings.extend(count_mismatch)
+    if empty_mods:
+        warnings.append("These modules have no separate lessons in the PDF and were skipped: "
+                        + ", ".join(empty_mods))
+    if re.search(r"[\u0900-\u097F]", joined) and re.search(r"[\x00-\x08\x0e-\x1f]", "".join(page_texts)):
+        warnings.append("This PDF uses a broken Devanagari font encoding, so some Hindi titles may be "
+                        "missing matras. Please read through the chapter list and correct the spellings.")
     if not all_lessons:
         return {"ok": False, "error": "The bifurcation table was found but no lessons could be read from it. Please add the chapters manually."}
 
     totals, splits = [], []
-    for m in re.finditer(r"(total\s+)?no\.?\s*of\s*lessons\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212:]?\s*(\d{1,3})",
+    for m in re.finditer(r"(total\s+)?no\.?\s*of\s*lessons\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212:=]?\s*(\d{1,3})",
                          joined, re.I):
         (totals if m.group(1) else splits).append(int(m.group(2)))
     if totals and totals[0] != len(all_lessons):
@@ -338,6 +416,15 @@ def parse_syllabus_pdf(data: bytes):
     if len(splits) >= 2:
         expected["tma"] = splits[0]
         expected["pe"] = splits[1]
+    # header cells of the bifurcation table are the most reliable source
+    if hdr_counts.get("tma") is not None:
+        expected["tma"] = hdr_counts["tma"]
+    if hdr_counts.get("pe") is not None:
+        expected["pe"] = hdr_counts["pe"]
+    if "total" not in expected:
+        m = re.search(r"total\s+no\.?\s*of\s*lessons\s*[=:\-\u2013]?\s*(\d{1,3})", joined, re.I)
+        if m:
+            expected["total"] = int(m.group(1))
     if not expected:
         warnings.append("The lesson count line could not be read from this PDF. "
                         "Enter the totals printed on it manually so the chapter tags can be verified.")
