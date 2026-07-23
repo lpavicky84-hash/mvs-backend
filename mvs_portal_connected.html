@@ -2417,9 +2417,9 @@ body.dark .cal-d.on{color:#34d399}
 </div>
 <div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP Result</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="tPage('extmat',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-item" onclick="tPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="tPage('payout',this)"><span>Payout</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule:</b> Har reschedule admin approval ke baad hi apply hota hai.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-extmat"><div id="t-extmat-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-attendance"><div id="t-attendance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-payout"><div id="t-payout-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== ADMIN APP ===== -->
-<div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#ef4444">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Users</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-section">Academics</div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('tests',this)"><span>Tests Tracker</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('compliance',this)"><span>Class Compliance</span></div><div class="nav-item" onclick="aPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="aPage('payouts',this)"><span>Payouts</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#ef4444" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-reviews-wrap"></div><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-tests"><div id="a-tests-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-compliance"><div id="a-compliance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"></div><div class="card" style="margin-top:18px;border:1.5px solid rgba(220,38,38,.3)"><div class="card-header"><h3 style="color:var(--danger)">Danger Zone</h3></div><div class="card-body"><p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Testing ka saara content data (timetable, materials, doubts, submissions...) ek saath saaf karein \u2014 students, teachers aur admins safe rehte hain.</p><button class="btn btn-danger" onclick="openResetData()">\ud83e\uddf9 Reset Portal Data</button></div></div><div style="display:none"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div><div class="page" id="a-page-attendance"><div id="a-attendance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-payouts"><div id="a-payouts-content"><div class="spinner"></div></div></div></div>
+<div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#ef4444">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Users</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-section">Academics</div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('tests',this)"><span>Tests Tracker</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('compliance',this)"><span>Class Compliance</span></div><div class="nav-item" onclick="aPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="aPage('payouts',this)"><span>Payouts</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('syllabus',this)"><span>Syllabus Manager</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#ef4444" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-reviews-wrap"></div><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-tests"><div id="a-tests-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-compliance"><div id="a-compliance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"></div><div class="card" style="margin-top:18px;border:1.5px solid rgba(220,38,38,.3)"><div class="card-header"><h3 style="color:var(--danger)">Danger Zone</h3></div><div class="card-body"><p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Testing ka saara content data (timetable, materials, doubts, submissions...) ek saath saaf karein \u2014 students, teachers aur admins safe rehte hain.</p><button class="btn btn-danger" onclick="openResetData()">\ud83e\uddf9 Reset Portal Data</button></div></div><div style="display:none"><div class="spinner"></div></div></div><div class="page" id="a-page-syllabus"><div id="a-syl-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div><div class="page" id="a-page-attendance"><div id="a-attendance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-payouts"><div id="a-payouts-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== STUDENT APP ===== -->
-<div id="student-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#06b6d4">S</div><div><span>MVS Foundation</span><small>Student</small></div></div><nav class="sidebar-nav"><div class="nav-section">Home</div><div class="nav-item active" onclick="sPage('dashboard',this)"><span>Home</span></div><div class="nav-item" onclick="sPage('teachers',this)"><span>Know Your Teacher</span></div><div class="nav-item" onclick="sPage('timetable',this)"><span>Time Table</span></div><div class="nav-section">Materials</div><div class="nav-item" onclick="sPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="sPage('materials',this)"><span>Classes Material</span></div><div class="nav-section">Work</div><div class="nav-item" onclick="sPage('dpp',this)"><span>DPP Submit</span></div><div class="nav-item" onclick="sPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="sPage('doubts',this)"><span>Doubts</span></div><div class="nav-section">Progress</div><div class="nav-item" onclick="sPage('progress',this)"><span>Progress</span></div><div class="nav-item" onclick="sPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="sPage('profile',this)"><span>My Profile</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#06b6d4" id="s-avatar">S</div><div><span id="s-name">Student</span><small id="s-batch">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="s-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="s-topavatar" title="Set or change profile photo" onclick="openSetStudentPhoto()">S</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('student')"><span class="notif-badge" id="s-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="s-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="s-page-dashboard"><div id="s-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-timetable"><div id="s-timetable-content"><div class="spinner"></div></div></div><div class="page" id="s-page-materials"><div id="s-materials-content"><div class="spinner"></div></div></div><div class="page" id="s-page-qbank"><div id="s-qbank-content"><div class="spinner"></div></div></div><div class="page" id="s-page-teachers"><div id="s-teachers-content"><div class="spinner"></div></div></div><div class="page" id="s-page-dpp"><div id="s-dpp-content"><div class="spinner"></div></div></div><div class="page" id="s-page-tests"><div id="s-tests-content"><div class="spinner"></div></div></div><div class="page" id="s-page-doubts"><div id="s-doubts-content"><div class="spinner"></div></div></div><div class="page" id="s-page-progress"><div id="s-progress-content"><div class="spinner"></div></div></div><div class="page" id="s-page-notifications"><div id="s-notif-content"><div class="spinner"></div></div></div><div class="page" id="s-page-profile"><div id="s-profile-content"><div class="spinner"></div></div></div></div>
+<div id="student-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#06b6d4">S</div><div><span>MVS Foundation</span><small>Student</small></div></div><nav class="sidebar-nav"><div class="nav-section">Home</div><div class="nav-item active" onclick="sPage('dashboard',this)"><span>Home</span></div><div class="nav-item" onclick="sPage('teachers',this)"><span>Know Your Teacher</span></div><div class="nav-item" onclick="sPage('timetable',this)"><span>Time Table</span></div><div class="nav-section">Materials</div><div class="nav-item" onclick="sPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="sPage('materials',this)"><span>Classes Material</span></div><div class="nav-section">Work</div><div class="nav-item" onclick="sPage('dpp',this)"><span>DPP Submit</span></div><div class="nav-item" onclick="sPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="sPage('doubts',this)"><span>Doubts</span></div><div class="nav-section">Progress</div><div class="nav-item" onclick="sPage('syllabus',this)"><span>Syllabus Tracker</span></div><div class="nav-item" onclick="sPage('progress',this)"><span>Progress</span></div><div class="nav-item" onclick="sPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="sPage('profile',this)"><span>My Profile</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#06b6d4" id="s-avatar">S</div><div><span id="s-name">Student</span><small id="s-batch">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="s-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="s-topavatar" title="Set or change profile photo" onclick="openSetStudentPhoto()">S</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('student')"><span class="notif-badge" id="s-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="s-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="s-page-dashboard"><div id="s-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-timetable"><div id="s-timetable-content"><div class="spinner"></div></div></div><div class="page" id="s-page-materials"><div id="s-materials-content"><div class="spinner"></div></div></div><div class="page" id="s-page-qbank"><div id="s-qbank-content"><div class="spinner"></div></div></div><div class="page" id="s-page-teachers"><div id="s-teachers-content"><div class="spinner"></div></div></div><div class="page" id="s-page-dpp"><div id="s-dpp-content"><div class="spinner"></div></div></div><div class="page" id="s-page-tests"><div id="s-tests-content"><div class="spinner"></div></div></div><div class="page" id="s-page-doubts"><div id="s-doubts-content"><div class="spinner"></div></div></div><div class="page" id="s-page-progress"><div id="s-progress-content"><div class="spinner"></div></div></div><div class="page" id="s-page-notifications"><div id="s-notif-content"><div class="spinner"></div></div></div><div class="page" id="s-page-syllabus"><div id="s-syl-content"><div class="spinner"></div></div></div><div class="page" id="s-page-profile"><div id="s-profile-content"><div class="spinner"></div></div></div></div>
 </div><!-- Generic Modal -->
 <div class="modal-overlay" id="modal"><div class="modal"><div class="modal-header"><h3 id="modal-title">Modal</h3><button class="modal-close" onclick="closeModal()">×</button></div><div class="modal-body" id="modal-body"></div><div class="modal-footer" id="modal-footer"></div></div></div>
 <!-- Limit Popup -->
@@ -2591,7 +2591,13 @@ async function api(path, method='GET', body=null) {
   const opts = { method, headers: { 'Content-Type':'application/json' } };
   if (TOKEN) opts.headers['Authorization'] = 'Bearer ' + TOKEN;
   if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(API + path, opts);
+  // network fail (Failed to fetch) pe 2 baar aur retry — backend cold-start/restart sambhal jaata hai
+  let res=null;
+  for(let attempt=0; attempt<3; attempt++){
+    try{ res=await fetch(API+path, opts); break; }
+    catch(e){ res=null; if(attempt<2) await new Promise(r=>setTimeout(r, attempt===0?2000:5000)); }
+  }
+  if(!res) throw new Error('Server se connect nahi ho pa raha — internet check karo aur 30-60 second baad dobara try karo (backend start ho raha hai).');
   let data;
   try { data = await res.json(); } catch { data = null; }
   if (!res.ok) {
@@ -4663,7 +4669,12 @@ function _fmtTable(rows){
   return '<div class="rt-tw"><table class="rt-t"><thead><tr>'+th+'</tr></thead><tbody>'+trs+'</tbody></table></div>';
 }
 function _fmtRich(t){
-  let s=String(t==null?'':t).replace(/\r\n?/g,'\n').replace(/ /g,' ');
+  let s=String(t==null?'':t).replace(/\r\n?/g,'\n');
+  // mobile/AI paste cleanup: thin/narrow spaces (KaTeX me black box ban jaate hain) -> normal space,
+  // zero-width chars hatao, Unicode line separators (U+2028/2029 — mobile clipboard) -> \n
+  s=s.replace(/[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g,' ')
+     .replace(/[\u200B\u200C\u200D\uFEFF]/g,'')
+     .replace(/[\u2028\u2029\u0085]/g,'\n');
   // ---- 1) math stash (placeholders) — escape se PEHLE ----
   const M=[];
   const stash=(tex,disp)=>{ M.push({tex,disp:!!disp}); return '\u0001'+(M.length-1)+'\u0002'; };
@@ -5915,6 +5926,8 @@ async function autoFormatField(){
   const t=_lastField; if(!t){ toast('Click inside a question or answer box first, then Auto-format.',true); return; }
   if(!(t.value||'').trim()){ toast('Nothing to format in this box.',true); return; }
   if(t.value.indexOf('\\begin{array}')>=0){ toast('Already formatted — nothing to change.'); return; }
+  // LaTeX/AI paste pehle se structured hai — Auto-format se bigad jaata hai, skip
+  if(/\$|\\frac|\\sqrt|\\text\s*\{|\\\[|\\\(|\^\{|_\{|\\implies|\\times|\\circ/.test(t.value)){ toast('Ye content pehle se LaTeX formatted hai — Auto-format ki zaroorat nahi, preview sahi dikhega.'); return; }
   let after=spFormatMatch(t.value,null)||spSmartFormat(t.value);
   // Alternative-question wala akela "or" -> apni line pe seedha "OR"
   // (preview aur PDF dono me center + bold render hota hai)
@@ -6421,7 +6434,7 @@ function aPage(page,el){
   document.getElementById('a-page-'+page).classList.add('active');
   if(!el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) el=n; }); }
   if(el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',students:'Students',admins:'Admin Users',subjects:'Subjects',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',attendance:'Teacher Attendance',payouts:'Payouts'};
+  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',attendance:'Teacher Attendance',payouts:'Payouts'};
   _setPage(titles[page]||page);
   document.getElementById('a-title').textContent=titles[page];
   if(page==='dashboard') loadADashboard();
@@ -6436,6 +6449,7 @@ function aPage(page,el){
   else if(page==='live') loadALive();
   else if(page==='students') loadAStudents();
   else if(page==='admins') loadAAdmins();
+  else if(page==='syllabus') loadASyllabus();
   else if(page==='subjects') loadASubjects();
   else if(page==='counts') loadACounts();
   else if(page==='timetable') loadATimetable();
@@ -7795,7 +7809,7 @@ function sPage(page,el){
   document.querySelectorAll('#student-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('s-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#student-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Home',timetable:'Time Table',materials:'Classes Material',teachers:'Know Your Teacher',dpp:'DPP Submit',tests:'Tests',doubts:'Doubts',progress:'Progress',notifications:'Notifications',profile:'My Profile',qbank:'Study Material'};
+  const titles={dashboard:'Home',timetable:'Time Table',materials:'Classes Material',teachers:'Know Your Teacher',dpp:'DPP Submit',tests:'Tests',doubts:'Doubts',progress:'Progress',syllabus:'Syllabus Tracker',notifications:'Notifications',profile:'My Profile',qbank:'Study Material'};
   _setPage(titles[page]||page);
   document.getElementById('s-title').textContent=titles[page];
   stopCountdown();
@@ -7807,6 +7821,7 @@ function sPage(page,el){
   else if(page==='tests') loadSTests();
   else if(page==='doubts') loadSDoubts();
   else if(page==='progress') loadSProgress();
+  else if(page==='syllabus') loadSSyllabus();
   else if(page==='notifications') loadSNotif();
   else if(page==='profile') loadSProfile();
   else if(page==='qbank') loadSQBank();
@@ -9986,7 +10001,7 @@ function renderPdfPreview(){
   const subs=[...new Set(P.rows.map(r=>r.subject).filter(Boolean))];
   const chaps=new Set(P.rows.filter(r=>r.type!=='event'&&!_isNonBookChapter(r.chapter)).map(r=>r.subject+'|'+(r.chapter||'').toLowerCase()));
   const gcount=new Set(P.rows.filter(r=>r.type!=='event'&&_isNonBookChapter(r.chapter)).map(r=>r.subject+'|'+(r.chapter||'').toLowerCase()));
-  head.innerHTML=`<div class="alert alert-info" style="margin-bottom:8px"><strong>${P.rows.length} entries \u00b7 ${chaps.size} chapters</strong>${gcount.size?` <span style="color:#b07f1e">+ ${gcount.size} grammar</span>`:''} \u00b7 ${esc(P.class_name)}${subs.length?` \u00b7 ${esc(subs.join(', '))}`:''}<br><span style="font-size:.8rem">Abhi kuch save nahi hua. <b>Chapter/Grammar</b> toggle se mark karo (grammar count nahi hota), <b>Split</b> se merged alag karo, delete se extra hatao \u2014 fir <b>Final Upload</b> dabao.</span></div>`;
+  head.innerHTML=`<div class="alert alert-info" style="margin-bottom:8px"><strong>${P.rows.length} entries \u00b7 ${chaps.size} chapters</strong>${gcount.size?` <span style="color:#b07f1e">+ ${gcount.size} grammar</span>`:''} \u00b7 ${esc(P.class_name)}${subs.length?` \u00b7 ${esc(subs.join(', '))}`:''}<br><span style="font-size:.8rem">Abhi kuch save nahi hua. <b>Chapter/Grammar</b> toggle se mark karo (grammar count nahi hota), <b>Split</b> se merged alag karo, delete se extra hatao \u2014 fir <b>Final Upload</b> dabao.</span></div>` + _sylSummary(P.rows);
   const b=document.getElementById('pvw-btn');
   if(!P.rows.length){ list.innerHTML='<div class="ws-empty"><p>Saari rows delete ho gayi.</p></div>'; if(b) b.disabled=true; return; }
   if(b) b.disabled=false;
@@ -9999,6 +10014,7 @@ function renderPdfPreview(){
       <div class="pvw-main">
         <input class="form-control pvw-ch" value="${esc(r.chapter||'')}" placeholder="Chapter name" onchange="pvwEdit(${i},'chapter',this.value)">
         <input class="form-control pvw-pt" value="${esc(r.part||'')}" placeholder="Part" onchange="pvwEdit(${i},'part',this.value)">
+        ${_sylBadge(r)}
       </div>
       ${merged?'<span class="pvw-merged">Merged</span>':''}
       ${r.type!=='event'?`<div class="pvw-tog"><button class="${!r._grammar?'on':''}" onclick="pvwType(${i},'chapter')">Chapter</button><button class="${r._grammar?'on g':''}" onclick="pvwType(${i},'grammar')">Grammar</button></div>`:''}
@@ -10165,7 +10181,7 @@ async function doPunch(kind){
   const btn=document.getElementById('pw-btn');
   window._geoFlash=null;
   if(!window._geoState.checked) await _loadGeofence();
-  let payload={}, geoErr=null;
+  let payload={}, geoErr=null, wifiWhy=null;
   if(window._geoState.active){
     if(btn){ btn.disabled=true; btn.textContent='Location check...'; }
     // permission state pehle dekho — denied ho to GPS skip, WiFi fallback try hoga
@@ -10188,6 +10204,7 @@ async function doPunch(kind){
     }
     if(geoErr || (payload.accuracy!=null && payload.accuracy>80)){
       // GPS fail/PC — office WiFi (trusted IP) se auto-verify try karo, coords ke bina
+      wifiWhy = geoErr || `Aapke device ki location bahut weak hai (±${Math.round(payload.accuracy)}m) — office WiFi ya mobile se try karo.`;
       payload={wifi_fallback:true};
       _geoNote('GPS se accurate nahi mil pa rahi — <b>office WiFi</b> se verify kar raha hun...','info');
     }
@@ -10205,8 +10222,10 @@ async function doPunch(kind){
       const [,branch,dist,rad]=parts.length===4?parts:[null,'office',parts[1],parts[2]];
       _geoNote(`<b>Outside Office Area</b> — aap <b>${esc(branch)}</b> se <b>${dist}m</b> door ho (allowed: ${rad}m). Office ke paas jaa ke punch karo.`,'error');
       toast('Outside office area — punch nahi hua',true);
-    } else if(payload.wifi_fallback && geoErr){
-      _geoNote(geoErr,'error'); toast(_stripTags(geoErr),true);
+    } else if(payload.wifi_fallback){
+      const wifiHelp='<div style="margin-top:6px">Agar aap <b>office WiFi</b> pe ho: is WiFi ka IP abhi list me nahi hai — <b>admin ko bolo</b> Office Location → "Naye IPs" se Add kare (1 click ka kaam hai).</div>';
+      _geoNote((wifiWhy||esc(m))+wifiHelp,'error');
+      toast(_stripTags(wifiWhy||m),true);
     } else { toast(m,true); if(m.includes('Location')||m.includes('GPS')) _geoNote(esc(m),'error'); }
   }
   if(document.getElementById('t-punch-wrap')) renderPunchCard('t-punch-wrap');
@@ -11169,5 +11188,535 @@ async function ocrFillQuestion_v1(inp,i){
   }catch(e){ toast(e.message,true); }
 }
 </script>
+<style id="syl-css">
+.syl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.syl-card{background:var(--card,#fff);border:1px solid var(--border,#e5e7eb);border-radius:12px;padding:16px;cursor:pointer;transition:.15s}
+.syl-card:hover{border-color:#6366f1;transform:translateY(-2px)}
+.syl-card h4{margin:0 0 2px;font-size:1rem}
+.syl-code{font-size:.72rem;opacity:.6}
+.syl-nums{display:flex;justify-content:space-between;font-size:.78rem;opacity:.75;margin:12px 0 6px}
+.syl-bar{position:relative;height:9px;border-radius:99px;background:rgba(127,127,127,.18);overflow:visible}
+.syl-bar>i{display:block;height:9px;border-radius:99px;transition:width .4s}
+.syl-bar>u{position:absolute;top:-4px;width:2px;height:17px;text-decoration:none}
+.syl-mk{font-weight:700;color:#b07f1e}
+.syl-mods{margin-top:18px}
+.syl-modhead{display:flex;justify-content:space-between;align-items:center;padding:10px 0 7px;border-bottom:1px solid var(--border,#e5e7eb);margin-top:14px;font-weight:600;font-size:.92rem}
+.syl-ch{display:flex;align-items:flex-start;gap:11px;padding:11px 12px;border:1px solid var(--border,#e5e7eb);border-radius:10px;margin-top:8px}
+.syl-ch.pe{cursor:pointer}
+.syl-ch.pe:hover{border-color:#6366f1}
+.syl-ch.on{border-color:#f59e0b;background:rgba(245,158,11,.08)}
+.syl-ch.tma{opacity:.55}
+.syl-ch input[type=checkbox]{width:17px;height:17px;margin-top:2px;flex:none}
+.syl-ch .t{flex:1;min-width:0}
+.syl-ch .t b{display:block;font-size:.88rem;font-weight:600}
+.syl-ch .t small{font-size:.74rem;opacity:.65}
+.syl-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:14px}
+.syl-stat{background:rgba(127,127,127,.08);border-radius:10px;padding:11px}
+.syl-stat b{display:block;font-size:1.15rem;font-weight:700}
+.syl-stat span{font-size:.7rem;opacity:.65;text-transform:uppercase;letter-spacing:.4px;font-weight:600}
+.syl-pill{display:inline-block;padding:3px 9px;border-radius:99px;font-size:.68rem;font-weight:700;letter-spacing:.4px;text-transform:uppercase}
+.syl-ok{background:rgba(16,185,129,.15);color:#047857}
+.syl-warn{background:rgba(245,158,11,.16);color:#b07f1e}
+.syl-err{background:rgba(239,68,68,.15);color:#b91c1c}
+.syl-info{background:rgba(99,102,241,.15);color:#4338ca}
+.syl-issue{background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.28);border-radius:10px;padding:10px 12px;font-size:.8rem;margin-top:8px}
+.syl-issue ul{margin:6px 0 0 16px}
+.syl-wk{border:1px solid var(--border,#e5e7eb);border-radius:10px;margin-top:10px;overflow:hidden}
+.syl-wk .h{display:flex;justify-content:space-between;padding:10px 13px;background:rgba(127,127,127,.08);font-weight:600;font-size:.85rem}
+.syl-wk ul{list-style:none;margin:0;padding:6px 13px 11px}
+.syl-wk li{font-size:.79rem;opacity:.8;padding:4px 0;border-bottom:1px solid rgba(127,127,127,.12)}
+.syl-wk li:last-child{border:0}
+.syl-drop{border:1.5px dashed var(--border,#cbd5e1);border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:.15s}
+.syl-drop:hover,.syl-drop.over{border-color:#f59e0b;background:rgba(245,158,11,.06)}
+.syl-chip{display:inline-block;background:rgba(127,127,127,.1);border-radius:8px;padding:4px 9px;font-size:.72rem;margin:0 6px 6px 0}
+.syl-chip b{color:#b07f1e}
+.pvw-match{font-size:.7rem;font-weight:700;margin-top:5px;display:block}
+.pvw-match.ok{color:#047857}
+.pvw-match.rv{color:#b07f1e}
+.pvw-match.no{color:#b91c1c}
+.pvw-match.nm{color:#6b7280}
+</style>
+<script id="syl-js">
+/* ============================================================
+   NIOS Syllabus Tracker - student page, admin manager,
+   and timetable chapter match badges.
+   Reuses api(), esc(), toast(), ic() from the main portal script.
+   ============================================================ */
+
+var _SYL = { me:null, ov:null, cur:null, cls:'12', edit:null };
+
+function _sylPct(a,b){ return b>0 ? Math.min(100, a/b*100) : 0; }
+function _sylNum(n){ return Math.round((Number(n)||0)*10)/10; }
+
+/* ---------------- STUDENT ---------------- */
+
+async function loadSSyllabus(){
+  var el=document.getElementById('s-syl-content');
+  el.innerHTML='<div class="spinner"></div>';
+  try{
+    _SYL.me = await api('/api/syllabus/me');
+    _SYL.ov = await api('/api/syllabus/overview');
+    _SYL.cur=null;
+    sylRenderHome();
+  }catch(e){
+    el.innerHTML='<div class="ws-empty"><p>'+esc(e.message||'Could not load your syllabus.')+'</p></div>';
+  }
+}
+
+function sylRenderHome(){
+  var me=_SYL.me, ov=_SYL.ov;
+  var ready=ov.subjects.filter(function(s){return s.calc});
+  var passed=ready.filter(function(s){return s.calc.pass_reached}).length;
+  var high=ready.filter(function(s){return s.calc.high_reached}).length;
+  var picked=ov.subjects.reduce(function(a,s){return a+(s.selected||0)},0);
+
+  var sOpts='<option value="">Select your exam session</option>'+(me.sessions||[]).map(function(s){
+    return '<option value="'+esc(s.id)+'"'+(me.exam_session===s.id?' selected':'')+'>'+esc(s.label)+'</option>';}).join('');
+
+  var h='<div class="card"><div class="form-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">'
+   +'<div><label class="form-label">Exam session</label><select class="form-control" onchange="sylSetProfile(this.value,null)">'+sOpts+'</select></div>'
+   +'<div><label class="form-label">My target</label><select class="form-control" onchange="sylSetProfile(null,this.value)">'
+   +'<option value="pass"'+(ov.target==='pass'?' selected':'')+'>Clear the exam (passing marks)</option>'
+   +'<option value="high"'+(ov.target==='high'?' selected':'')+'>Score '+me.high_target+' percent or above</option>'
+   +'</select></div></div></div>';
+
+  h+='<div class="syl-stats" style="margin:14px 0">'
+   +sylStat(ov.days_left===null?'--':ov.days_left,'Days to exam','')
+   +sylStat(picked,'Chapters in plan','')
+   +sylStat(passed+' / '+ready.length,'Passing secured','#047857')
+   +sylStat(high+' / '+ready.length,me.high_target+' percent ready','#b07f1e')
+   +'</div>';
+
+  if(ov.days_left!==null && ov.days_left<45)
+    h+='<div class="alert alert-warning">Only '+ov.days_left+' days left. Focus on the highest weightage chapters first.</div>';
+
+  h+='<div style="margin:16px 0 10px;display:flex;gap:8px;flex-wrap:wrap">'
+   +'<button class="btn btn-primary btn-sm" onclick="sylStrategy()">Build my weekly plan</button></div>';
+
+  h+='<div class="syl-grid">';
+  ov.subjects.forEach(function(s){
+    if(!s.calc){
+      h+='<div class="syl-card" style="cursor:default"><h4>'+esc(s.name)+'</h4>'
+       +'<div class="syl-code">'+(s.code?'Subject code '+esc(s.code):'Not linked to the syllabus master')+'</div>'
+       +'<p style="font-size:.8rem;opacity:.7;margin-top:12px">Chapter list is being prepared for this subject.</p>'
+       +'<span class="syl-pill syl-warn" style="margin-top:8px">Under verification</span></div>';
+      return;
+    }
+    var c=s.calc;
+    var col=c.high_reached?'#f59e0b':(c.pass_reached?'#10b981':'#6366f1');
+    var pill=c.high_reached?'<span class="syl-pill syl-ok">'+_SYL.me.high_target+' percent ready</span>'
+            :(c.pass_reached?'<span class="syl-pill syl-ok">Passing secured</span>'
+            :'<span class="syl-pill syl-info">In progress</span>');
+    h+='<div class="syl-card" onclick="sylOpen(\''+esc(s.code)+'\')">'
+     +'<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">'
+     +'<div><h4>'+esc(s.name)+'</h4><div class="syl-code">Subject code '+esc(s.code)+'</div></div>'+pill+'</div>'
+     +'<div class="syl-nums"><span>'+s.selected+' of '+c.pe_count+' exam chapters</span>'
+     +'<span class="syl-mk">'+_sylNum(c.covered_paper)+' / '+_sylNum(c.total_pe_marks)+' marks</span></div>'
+     +'<div class="syl-bar"><i style="width:'+_sylPct(c.covered_paper,c.total_pe_marks)+'%;background:'+col+'"></i>'
+     +'<u style="left:'+_sylPct(c.pass_paper_needed,c.total_pe_marks)+'%;background:#10b981"></u>'
+     +'<u style="left:'+_sylPct(c.high_paper_needed,c.total_pe_marks)+'%;background:#f59e0b"></u></div>'
+     +'<div style="display:flex;justify-content:space-between;font-size:.72rem;opacity:.6;margin-top:7px">'
+     +'<span>Projected '+_sylNum(c.projected_total)+' / 100</span><span>Tap to open</span></div></div>';
+  });
+  h+='</div>';
+  document.getElementById('s-syl-content').innerHTML=h;
+}
+
+function sylStat(v,l,c){
+  return '<div class="syl-stat"><b'+(c?' style="color:'+c+'"':'')+'>'+v+'</b><span>'+l+'</span></div>';
+}
+
+async function sylSetProfile(session,target){
+  try{
+    await api('/api/syllabus/profile','POST',{
+      exam_session: session===null ? (_SYL.me.exam_session||'') : session,
+      target: target===null ? (_SYL.ov.target||'pass') : target});
+    await loadSSyllabus();
+  }catch(e){ toast(e.message,true); }
+}
+
+async function sylOpen(code){
+  var el=document.getElementById('s-syl-content');
+  el.innerHTML='<div class="spinner"></div>';
+  try{
+    _SYL.cur = await api('/api/syllabus/subject/'+encodeURIComponent(code));
+    if(!_SYL.cur.calc){
+      el.innerHTML='<button class="btn btn-ghost btn-sm" onclick="loadSSyllabus()">Back to my subjects</button>'
+       +'<div class="alert alert-info" style="margin-top:12px">'+esc(_SYL.cur.message||'Syllabus under verification.')+'</div>';
+      return;
+    }
+    sylRenderSubject();
+  }catch(e){ toast(e.message,true); loadSSyllabus(); }
+}
+
+function sylRenderSubject(){
+  var d=_SYL.cur, s=d.subject, c=d.calc, m=s.marks;
+  var sel=d.selected.slice(), done=d.done.slice();
+  var mods={};
+  d.chapters.forEach(function(ch){ (mods[ch.module]=mods[ch.module]||[]).push(ch); });
+
+  var col=c.high_reached?'#f59e0b':(c.pass_reached?'#10b981':'#6366f1');
+  var h='<button class="btn btn-ghost btn-sm" onclick="loadSSyllabus()">Back to my subjects</button>';
+
+  if(c.high_reached)
+    h+='<div class="alert alert-success" style="margin-top:12px"><strong>'+_SYL.me.high_target+' percent plan ready.</strong> '
+     +'Your plan covers '+_sylNum(c.covered_paper)+' of '+_sylNum(c.total_pe_marks)+' exam marks. Projected total '+_sylNum(c.projected_total)+' out of 100.</div>';
+  else if(c.pass_reached){
+    var gap=(c.high_gap_chapters||[]).map(function(r){return r.no}).join(', ');
+    h+='<div class="alert alert-success" style="margin-top:12px"><strong>Passing marks secured.</strong> '
+     +'Next target '+_SYL.me.high_target+' percent'+(gap?' — add these chapters: '+esc(gap):'')+'.'
+     +(gap?' <button class="btn btn-primary btn-sm" style="margin-left:8px" onclick="sylAddGap()">Add them</button>':'')+'</div>';
+  }
+
+  h+='<div class="card" style="margin-top:12px">'
+   +'<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">'
+   +'<div><h3 style="margin:0">'+esc(s.name)+'</h3><div class="syl-code">Subject code '+esc(s.code)
+   +' &middot; Question paper '+_sylNum(c.paper_marks)+' marks'
+   +(m.has_practical?' &middot; Practical '+m.practical_max+' marks':' &middot; Theory only')+'</div></div>'
+   +'<div style="text-align:right"><div class="syl-mk" style="font-size:1.3rem">'+_sylNum(c.covered_paper)+' / '+_sylNum(c.total_pe_marks)+'</div>'
+   +'<div class="syl-code">Paper marks covered</div></div></div>'
+   +'<div class="syl-bar" style="margin-top:14px"><i style="width:'+_sylPct(c.covered_paper,c.total_pe_marks)+'%;background:'+col+'"></i>'
+   +'<u style="left:'+_sylPct(c.pass_paper_needed,c.total_pe_marks)+'%;background:#10b981"></u>'
+   +'<u style="left:'+_sylPct(c.high_paper_needed,c.total_pe_marks)+'%;background:#f59e0b"></u></div>'
+   +'<div style="display:flex;justify-content:space-between;font-size:.74rem;opacity:.65;margin-top:8px">'
+   +'<span>Passing needs '+_sylNum(c.pass_paper_needed)+' marks</span>'
+   +'<span>'+_SYL.me.high_target+' percent needs '+_sylNum(c.high_paper_needed)+' marks</span></div>'
+   +'<div class="syl-stats">'
+   +sylStat(_sylNum(c.projected_total)+' / 100','Projected total',c.projected_total>=33?'#047857':'#b91c1c')
+   +sylStat(_sylNum(c.covered_theory)+' / '+m.theory_max,'Theory projection','')
+   +sylStat(_sylNum(c.tma_assumed)+' / '+m.tma_max,'TMA assumed','')
+   +(m.has_practical?sylStat(_sylNum(c.practical_assumed)+' / '+m.practical_max,'Practical assumed',''):'')
+   +'</div>'
+   +'<p class="syl-code" style="margin-top:12px">'+esc(c.pass_rule)+', and all three together must reach '
+   +m.aggregate_pass+'. A safety margin of '+c.buffer_pct+' percent is already added to the targets above.</p></div>';
+
+  h+='<div class="card" style="margin-top:12px"><h4 style="margin:0 0 10px">Marks you expect</h4>'
+   +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">'
+   +'<div><label class="form-label">TMA (out of '+m.tma_max+')</label>'
+   +'<input type="number" class="form-control" id="syl-tma" min="0" max="'+m.tma_max+'" value="'+_sylNum(c.tma_assumed)+'" onchange="sylSave()"></div>'
+   +(m.has_practical?'<div><label class="form-label">Practical (out of '+m.practical_max+')</label>'
+     +'<input type="number" class="form-control" id="syl-pr" min="0" max="'+m.practical_max+'" value="'+_sylNum(c.practical_assumed)+'" onchange="sylSave()"></div>':'')
+   +'</div></div>';
+
+  h+='<div class="card syl-mods" style="margin-top:12px"><h4 style="margin:0">Chapter list</h4>'
+   +'<p style="font-size:.8rem;opacity:.7;margin:6px 0 0">Tick the chapters you will study. Only Public Examination chapters carry marks. '
+   +'TMA chapters are part of your assignment and are never asked in the question paper.</p>';
+
+  Object.keys(mods).forEach(function(mod){
+    var list=mods[mod], mw=list.length?list[0].module_weightage:0;
+    var got=0; list.forEach(function(ch){ if(ch.kind==='PE'&&sel.indexOf(ch.no)>-1) got+=ch.marks; });
+    h+='<div class="syl-modhead"><span>'+esc(mod)+'</span>'
+     +'<span style="font-weight:400;font-size:.78rem;opacity:.7">'+_sylNum(got)+' of '+mw+' marks selected</span></div>';
+    list.forEach(function(ch){
+      if(ch.kind==='TMA'){
+        h+='<div class="syl-ch tma"><input type="checkbox" disabled><div class="t"><b>'+esc(ch.no)+' '+esc(ch.title)+'</b>'
+         +'<small>Assignment only</small></div><span class="syl-pill syl-warn">TMA</span></div>';
+      }else{
+        var on=sel.indexOf(ch.no)>-1, dn=done.indexOf(ch.no)>-1;
+        h+='<div class="syl-ch pe'+(on?' on':'')+'" onclick="sylToggle(\''+esc(ch.no)+'\')">'
+         +'<input type="checkbox" '+(on?'checked':'')+' onclick="event.stopPropagation();sylToggle(\''+esc(ch.no)+'\')">'
+         +'<div class="t"><b>'+esc(ch.no)+' '+esc(ch.title)+'</b><small>'
+         +(on?(dn?'Marked as completed':'In your plan'):'Not selected')+'</small></div>'
+         +'<div style="text-align:right"><span class="syl-mk" style="font-size:.8rem">'+_sylNum(ch.marks)+' marks</span>'
+         +(on?'<br><button class="btn btn-ghost btn-sm" style="margin-top:5px;padding:2px 8px;font-size:.68rem" '
+              +'onclick="event.stopPropagation();sylDone(\''+esc(ch.no)+'\')">'+(dn?'Completed':'Mark done')+'</button>':'')
+         +'</div></div>';
+      }
+    });
+  });
+  h+='</div>';
+  document.getElementById('s-syl-content').innerHTML=h;
+}
+
+function sylToggle(no){
+  var d=_SYL.cur, i=d.selected.indexOf(no);
+  if(i>-1){ d.selected.splice(i,1); var j=d.done.indexOf(no); if(j>-1) d.done.splice(j,1); }
+  else d.selected.push(no);
+  sylSave();
+}
+function sylDone(no){
+  var d=_SYL.cur, i=d.done.indexOf(no);
+  if(i>-1) d.done.splice(i,1); else d.done.push(no);
+  sylSave();
+}
+function sylAddGap(){
+  var d=_SYL.cur;
+  (d.calc.high_gap_chapters||[]).forEach(function(r){ if(d.selected.indexOf(r.no)<0) d.selected.push(r.no); });
+  sylSave();
+}
+async function sylSave(){
+  var d=_SYL.cur, t=document.getElementById('syl-tma'), p=document.getElementById('syl-pr');
+  try{
+    var res=await api('/api/syllabus/plan','POST',{
+      subject_code:d.subject.code, selected:d.selected, done:d.done,
+      tma_assumed: t? parseFloat(t.value) : -1,
+      practical_assumed: p? parseFloat(p.value) : -1});
+    d.calc=res.calc;
+    sylRenderSubject();
+  }catch(e){ toast(e.message,true); }
+}
+
+async function sylStrategy(){
+  var el=document.getElementById('s-syl-content');
+  el.innerHTML='<div class="spinner"></div>';
+  try{
+    var s=await api('/api/syllabus/strategy');
+    var h='<button class="btn btn-ghost btn-sm" onclick="loadSSyllabus()">Back to my subjects</button>';
+    if(!s.total_pending){
+      h+='<div class="alert alert-info" style="margin-top:12px">Select some chapters in your subjects first, then your weekly and monthly plan will appear here.</div>';
+    }else{
+      h+='<div class="syl-stats" style="margin:14px 0">'
+       +sylStat(s.days_left,'Days left','')+sylStat(s.total_pending,'Chapters pending','')
+       +sylStat(s.weeks,'Weeks available','')
+       +sylStat(s.target==='high'?_SYL.me.high_target+' percent':'Passing','Target','')+'</div>';
+      h+='<div class="card"><h4 style="margin:0">Weekly plan</h4>'+s.weekly.map(sylWk).join('')+'</div>';
+      h+='<div class="card" style="margin-top:12px"><h4 style="margin:0">Monthly plan</h4>'+s.monthly.map(sylWk).join('')+'</div>';
+    }
+    el.innerHTML=h;
+  }catch(e){ toast(e.message,true); loadSSyllabus(); }
+}
+function sylWk(b){
+  return '<div class="syl-wk"><div class="h"><span>'+esc(b.label)+'</span><span class="syl-mk">'+_sylNum(b.marks)+' marks</span></div><ul>'
+   +b.items.map(function(i){ return '<li>'+esc(i.subject)+' &middot; '+esc(i.no)+' '+esc(i.title)
+     +'<span class="syl-mk" style="float:right">'+_sylNum(i.marks)+'</span></li>'; }).join('')+'</ul></div>';
+}
+
+/* ---------------- ADMIN ---------------- */
+
+async function loadASyllabus(){
+  var el=document.getElementById('a-syl-content');
+  el.innerHTML='<div class="spinner"></div>';
+  try{
+    var d=await api('/api/syllabus/admin/subjects?class_level='+_SYL.cls);
+    var h='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
+     +'<button class="btn '+(_SYL.cls==='10'?'btn-primary':'btn-ghost')+' btn-sm" onclick="_SYL.cls=\'10\';loadASyllabus()">Class 10</button>'
+     +'<button class="btn '+(_SYL.cls==='12'?'btn-primary':'btn-ghost')+' btn-sm" onclick="_SYL.cls=\'12\';loadASyllabus()">Class 12</button>'
+     +'<button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="sylEdit(\'\')">Add subject</button></div>';
+    h+='<div class="table-wrap"><table class="table"><thead><tr><th>Code</th><th>Subject</th><th>Exam</th><th>TMA</th>'
+     +'<th>Theory</th><th>Practical</th><th>TMA max</th><th>Status</th><th></th></tr></thead><tbody>';
+    d.items.forEach(function(r){
+      var pill=r.status==='ready'?'<span class="syl-pill syl-ok">verified</span>'
+              :(r.status==='needs_review'?'<span class="syl-pill syl-err">needs review</span>'
+              :'<span class="syl-pill syl-warn">pending</span>');
+      h+='<tr'+(r.hidden?' style="opacity:.45"':'')+'><td>'+esc(r.code)+'</td><td><b>'+esc(r.name)+'</b></td>'
+       +'<td>'+r.pe+((r.expected&&r.expected.pe)?' <span style="opacity:.5">/ '+r.expected.pe+'</span>':'')+'</td>'
+       +'<td>'+r.tma+((r.expected&&r.expected.tma)?' <span style="opacity:.5">/ '+r.expected.tma+'</span>':'')+'</td>'
+       +'<td>'+r.marks.theory_max+'</td><td>'+(r.marks.practical_max||'-')+'</td><td>'+r.marks.tma_max+'</td>'
+       +'<td>'+pill+'</td><td style="white-space:nowrap">'
+       +'<button class="btn btn-ghost btn-sm" onclick="sylEdit(\''+esc(r.code)+'\')">Edit</button> '
+       +'<button class="btn btn-ghost btn-sm" onclick="sylHide(\''+esc(r.code)+'\','+(!r.hidden)+')">'+(r.hidden?'Restore':'Remove')+'</button></td></tr>';
+      if(r.issues&&r.issues.length){
+        h+='<tr><td colspan="9" style="padding-top:0"><div class="syl-issue"><b>Held back from students</b><ul>'
+         +r.issues.map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul></div></td></tr>';
+      }
+    });
+    h+='</tbody></table></div><div id="syl-editor"></div>';
+    el.innerHTML=h;
+  }catch(e){ el.innerHTML='<div class="ws-empty"><p>'+esc(e.message)+'</p></div>'; }
+}
+
+async function sylHide(code,hidden){
+  try{ await api('/api/syllabus/admin/subject-visibility','POST',{class_level:_SYL.cls,code:code,hidden:hidden});
+    loadASyllabus(); }catch(e){ toast(e.message,true); }
+}
+
+async function sylEdit(code){
+  var box=document.getElementById('syl-editor');
+  box.innerHTML='<div class="spinner"></div>';
+  try{
+    var ref=await api('/api/syllabus/admin/subject?class_level='+_SYL.cls+'&code='+(code||(_SYL.cls==='12'?'312':'211')));
+    var tpl=ref.template_values;
+    var s = code ? ref.subject : {code:'',name:'',template:(_SYL.cls==='12'?'SR_THEORY':'SEC_THEORY'),
+      marks:JSON.parse(JSON.stringify(tpl[_SYL.cls==='12'?'SR_THEORY':'SEC_THEORY'])),expected:{},modules:[]};
+    _SYL.edit={tpl:tpl, code:code};
+    var txt=(s.modules||[]).map(function(m){
+      return '# '+m.module+' | '+m.weightage+'\n'+m.lessons.map(function(l){
+        return l.no+' | '+l.title+' | '+l.kind; }).join('\n'); }).join('\n\n');
+    var ex=s.expected||{};
+    var nf=function(k,l,v){ return '<div><label class="form-label">'+l+'</label>'
+      +'<input type="number" class="form-control" id="sylf_'+k+'" value="'+(v||0)+'"></div>'; };
+    var h='<div class="card" style="margin-top:16px"><h4 style="margin:0 0 12px">'+(code?'Edit subject':'Add subject')+'</h4>'
+     +'<div style="display:grid;grid-template-columns:1fr 2fr;gap:12px">'
+     +'<div><label class="form-label">Subject code</label><input class="form-control" id="sylf_code" value="'+esc(s.code)+'"></div>'
+     +'<div><label class="form-label">Subject name</label><input class="form-control" id="sylf_name" value="'+esc(s.name)+'"></div></div>'
+     +'<div style="margin-top:12px"><label class="form-label">Marks template</label>'
+     +'<select class="form-control" id="sylf_tpl" onchange="sylApplyTpl()">'
+     + Object.keys(tpl).map(function(k){return '<option value="'+k+'"'+(s.template===k?' selected':'')+'>'+k+'</option>'}).join('')
+     +'</select></div>'
+     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:12px">'
+     +nf('theory_max','Theory max',s.marks.theory_max)+nf('practical_max','Practical max',s.marks.practical_max)
+     +nf('tma_max','TMA max',s.marks.tma_max)+nf('paper_marks','Paper marks',s.marks.paper_marks)
+     +nf('theory_pass','Theory pass',s.marks.theory_pass)+nf('practical_pass','Practical pass',s.marks.practical_pass)
+     +nf('combined_pass','Combined pass',s.marks.combined_pass)+nf('aggregate_pass','Aggregate pass',s.marks.aggregate_pass)
+     +'</div>'
+     +'<div style="margin-top:14px"><label class="form-label">Lesson counts printed on the syllabus PDF</label>'
+     +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">'
+     +nf('exp_total','Total lessons',ex.total)+nf('exp_tma','TMA lessons',ex.tma)+nf('exp_pe','Public Exam lessons',ex.pe)
+     +'</div><p style="font-size:.74rem;opacity:.65;margin-top:6px">Until the loaded chapters match these three numbers exactly, '
+     +'the subject stays hidden from students.</p></div>'
+     +'<div style="margin-top:14px"><label class="form-label">Import from NIOS syllabus PDF</label>'
+     +'<div class="syl-drop" id="syl-drop" onclick="document.getElementById(\'syl-pdf\').click()">'
+     +'<input type="file" id="syl-pdf" accept="application/pdf,.pdf" style="display:none" onchange="sylImportPdf(this.files[0])">'
+     +'<b style="display:block;font-size:.86rem">Drop the syllabus PDF here, or click to choose a file</b>'
+     +'<small style="opacity:.6;font-size:.74rem">Bifurcation of Syllabus and Weightage by Content tables are read automatically</small>'
+     +'</div><div id="syl-pdfout"></div></div>'
+     +'<div style="margin-top:14px"><label class="form-label">Chapters</label>'
+     +'<textarea class="form-control" id="sylf_mods" rows="14" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.78rem">'+esc(txt)+'</textarea>'
+     +'<p style="font-size:.74rem;opacity:.65;margin-top:6px">Format: a line starting with # is a module, written as '
+     +'<b># Module name | module marks</b>. Every following line is a chapter, written as <b>L-1 | Chapter title | PE</b> or '
+     +'<b>L-1 | Chapter title | TMA</b>. Module marks are split equally across that module Public Examination chapters.</p></div>'
+     +'<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">'
+     +'<button class="btn btn-primary" onclick="sylSaveSubject()">Save subject</button>'
+     +'<button class="btn btn-ghost" onclick="document.getElementById(\'syl-editor\').innerHTML=\'\'">Cancel</button>'
+     +(code?'<button class="btn btn-ghost" style="margin-left:auto" onclick="sylResetSubject(\''+esc(code)+'\')">Reset to built in data</button>':'')
+     +'</div></div>';
+    box.innerHTML=h;
+    box.scrollIntoView({behavior:'smooth',block:'nearest'});
+    var dz=document.getElementById('syl-drop');
+    if(dz){
+      dz.addEventListener('dragover',function(e){e.preventDefault();dz.classList.add('over')});
+      dz.addEventListener('dragleave',function(){dz.classList.remove('over')});
+      dz.addEventListener('drop',function(e){e.preventDefault();dz.classList.remove('over');
+        if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length) sylImportPdf(e.dataTransfer.files[0]);});
+    }
+  }catch(e){ box.innerHTML=''; toast(e.message,true); }
+}
+
+function sylApplyTpl(){
+  var t=_SYL.edit.tpl[document.getElementById('sylf_tpl').value];
+  Object.keys(t).forEach(function(k){ var n=document.getElementById('sylf_'+k); if(n) n.value=t[k]; });
+}
+
+function sylParseMods(txt){
+  var mods=[], cur=null;
+  String(txt||'').split(/\r?\n/).forEach(function(line){
+    var t=line.trim(); if(!t) return;
+    if(t.charAt(0)==='#'){
+      var p=t.slice(1).split('|');
+      cur={module:(p[0]||'Module').trim(), weightage:parseFloat(p[1]||0)||0, lessons:[]};
+      mods.push(cur);
+    }else if(cur){
+      var q=t.split('|'); if(q.length<2) return;
+      var k=(q[2]||'PE').trim().toUpperCase();
+      cur.lessons.push({no:q[0].trim(), title:q[1].trim(), kind:(k==='TMA'?'TMA':'PE')});
+    }
+  });
+  return mods;
+}
+
+async function sylImportPdf(file){
+  if(!file) return;
+  var out=document.getElementById('syl-pdfout');
+  out.innerHTML='<p style="font-size:.8rem;opacity:.7;margin-top:10px">Reading '+esc(file.name)+'</p>';
+  try{
+    var fd=new FormData(); fd.append('file',file);
+    var hd={}; if(typeof TOKEN!=='undefined'&&TOKEN) hd['Authorization']='Bearer '+TOKEN;
+    var r=await fetch(API+'/api/syllabus/admin/parse-pdf',{method:'POST',headers:hd,body:fd});
+    var d=await r.json().catch(function(){return{}});
+    if(!r.ok) throw new Error(d.detail||'Could not read this PDF');
+    document.getElementById('sylf_mods').value=d.text;
+    if(d.expected){
+      if(d.expected.total) document.getElementById('sylf_exp_total').value=d.expected.total;
+      if(d.expected.tma)   document.getElementById('sylf_exp_tma').value=d.expected.tma;
+      if(d.expected.pe)    document.getElementById('sylf_exp_pe').value=d.expected.pe;
+    }
+    var s=d.stats;
+    var h='<div style="margin-top:10px">'
+     +'<span class="syl-chip">Modules <b>'+s.modules+'</b></span>'
+     +'<span class="syl-chip">Total chapters <b>'+s.total+'</b></span>'
+     +'<span class="syl-chip">Public Examination <b>'+s.pe+'</b></span>'
+     +'<span class="syl-chip">TMA <b>'+s.tma+'</b></span>'
+     +'<span class="syl-chip">Paper marks <b>'+d.paper_marks+'</b></span></div>';
+    var pm=parseFloat(document.getElementById('sylf_paper_marks').value)||0;
+    if(d.paper_marks && Math.abs(pm-d.paper_marks)>0.5){
+      h+='<div class="syl-issue" style="background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.3)">'
+       +'This PDF adds up to '+d.paper_marks+' paper marks but the template above says '+pm+'. '
+       +'<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="sylUsePaper('+d.paper_marks+')">Use '+d.paper_marks+' and recalculate theory</button></div>';
+    }
+    if(d.warnings&&d.warnings.length){
+      h+='<div class="syl-issue" style="background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.3)"><b>Please check</b><ul>'
+       +d.warnings.map(function(w){return '<li>'+esc(w)+'</li>'}).join('')+'</ul></div>';
+    }
+    h+='<p style="font-size:.74rem;opacity:.65;margin-top:8px">Chapters box filled. Review it and press Save subject.</p>';
+    out.innerHTML=h;
+  }catch(e){
+    out.innerHTML='<div class="syl-issue" style="margin-top:10px">'+esc(e.message)+'</div>';
+  }
+}
+
+function sylUsePaper(p){
+  document.getElementById('sylf_paper_marks').value=p;
+  var th=Math.round(p*0.8);
+  document.getElementById('sylf_theory_max').value=th;
+  var pr=parseFloat(document.getElementById('sylf_practical_max').value)||0;
+  document.getElementById('sylf_tma_max').value=Math.max(100-th-pr,0);
+  toast('Theory and TMA recalculated. Please verify the passing marks fields.');
+}
+
+async function sylSaveSubject(){
+  var marks={};
+  ['theory_max','practical_max','tma_max','paper_marks','theory_pass','practical_pass','combined_pass','aggregate_pass']
+    .forEach(function(k){ marks[k]=parseFloat(document.getElementById('sylf_'+k).value)||0; });
+  marks.has_practical = marks.practical_max>0;
+  var expected={};
+  ['total','tma','pe'].forEach(function(k){
+    var v=parseInt(document.getElementById('sylf_exp_'+k).value,10); if(v>0) expected[k]=v; });
+  var code=document.getElementById('sylf_code').value.trim();
+  var name=document.getElementById('sylf_name').value.trim();
+  if(!code||!name) return toast('Subject code and name are required.',true);
+  try{
+    var res=await api('/api/syllabus/admin/subject','POST',{class_level:_SYL.cls,code:code,
+      payload:{code:code,name:name,template:document.getElementById('sylf_tpl').value,
+        marks:marks,expected:expected,modules:sylParseMods(document.getElementById('sylf_mods').value)}});
+    document.getElementById('syl-editor').innerHTML='';
+    loadASyllabus();
+    if(res.status==='ready') toast('Subject saved and verified. Students can see it now.');
+    else if(res.issues&&res.issues.length) toast('Saved, but held back from students: '+res.issues[0],true);
+    else toast('Saved as pending. Add chapters to publish it.');
+  }catch(e){ toast(e.message,true); }
+}
+
+async function sylResetSubject(code){
+  try{ await api('/api/syllabus/admin/reset-subject','POST',{class_level:_SYL.cls,code:code});
+    document.getElementById('syl-editor').innerHTML=''; loadASyllabus(); toast('Reset to built in data.');
+  }catch(e){ toast(e.message,true); }
+}
+
+/* ---------------- TIMETABLE PREVIEW BADGES ---------------- */
+
+function _sylBadge(r){
+  var a=r.match_action;
+  if(!a) return '';
+  if(a==='accept') return '<span class="pvw-match ok">Matched '+esc(r.match_no||'')+' '+esc(r.match_title||'')
+    +' ['+esc(r.match_kind||'')+']</span>';
+  if(a==='review') return '<span class="pvw-match rv">Close to '+esc(r.match_no||'')+' '+esc(r.match_title||'')
+    +' — please confirm</span>';
+  if(a==='reject') return '<span class="pvw-match no">Not in the verified syllabus'
+    +(r.match_candidates&&r.match_candidates.length?' — did you mean '+esc(r.match_candidates[0])+'?':'')+'</span>';
+  return '<span class="pvw-match nm">Syllabus not verified for this subject</span>';
+}
+
+function _sylSummary(rows){
+  var a=0,rv=0,no=0,nm=0;
+  rows.forEach(function(r){
+    if(r.match_action==='accept')a++; else if(r.match_action==='review')rv++;
+    else if(r.match_action==='reject')no++; else if(r.match_action==='no_master')nm++;
+  });
+  if(!a&&!rv&&!no&&!nm) return '';
+  var h='<div class="alert alert-info" style="margin-bottom:8px"><strong>Syllabus check:</strong> '
+   +a+' matched, '+rv+' need confirmation, '+no+' not in syllabus'+(nm?', '+nm+' subject not verified':'')+'.';
+  if(no) h+=' <button class="btn btn-danger btn-sm" style="margin-left:8px" onclick="pvwDropRejected()">Remove the '+no+' unmatched rows</button>';
+  return h+'</div>';
+}
+
+function pvwDropRejected(){
+  var P=window._pdfPreview; if(!P) return;
+  var before=P.rows.length;
+  P.rows=P.rows.filter(function(r){ return r.match_action!=='reject'; });
+  renderPdfPreview();
+  toast((before-P.rows.length)+' rows removed.');
+}
+</script>
+
 </body>
 </html>
