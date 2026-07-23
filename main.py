@@ -75,6 +75,7 @@ def ensure_columns():
         # ===== NIOS Syllabus Tracker =====
         "ALTER TABLE student_profiles ADD COLUMN exam_session VARCHAR(30)",
         "ALTER TABLE student_profiles ADD COLUMN study_target VARCHAR(10)",
+        "ALTER TABLE student_profiles ADD COLUMN exam_date VARCHAR(20)",
     ]
     for s in stmts:
         try:

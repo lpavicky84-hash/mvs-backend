@@ -122,6 +122,7 @@ class StudentProfile(Base):
     class_level  = Column(String(5), nullable=True)      # "10" or "12"
     exam_session = Column(String(30), nullable=True)     # syllabus tracker: chosen exam session
     study_target = Column(String(10), nullable=True)     # syllabus tracker: pass | high
+    exam_date    = Column(String(20), nullable=True)     # syllabus tracker: On Demand exam date
     photo_b64    = Column(_PHOTO, nullable=True)
     active_session_token = Column(String(255), nullable=True)  # Single session
     last_seen    = Column(DateTime, nullable=True)

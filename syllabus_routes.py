@@ -19,7 +19,7 @@ import os
 import json
 import math
 import hmac
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Body, Request
@@ -39,6 +39,8 @@ CHAPTER_API_KEY = os.environ.get("CHAPTER_API_KEY", "")
 DEFAULTS = {
     "syl_high_target": "75",
     "syl_safety_buffer": "20",
+    "syl_extra_marks": "6",
+    "syl_ondemand_practical_gap": "20",
     "syl_sessions": json.dumps(SD.EXAM_SESSIONS),
 }
 
@@ -82,7 +84,8 @@ def _ensure_syllabus(db):
                 db.execute(_text(alt)); db.commit()
             except Exception:
                 db.rollback()
-    for col in ["exam_session VARCHAR(30) NULL", "study_target VARCHAR(10) NULL"]:
+    for col in ["exam_session VARCHAR(30) NULL", "study_target VARCHAR(10) NULL",
+                "exam_date VARCHAR(20) NULL"]:
         try:
             db.execute(_text("ALTER TABLE student_profiles ADD COLUMN %s" % col)); db.commit()
         except Exception:
@@ -118,6 +121,7 @@ def _cfg(db):
     return {
         "high_target": float(_setting(db, "syl_high_target", "75") or 75),
         "buffer_pct": float(_setting(db, "syl_safety_buffer", "20") or 20),
+        "extra_marks": float(_setting(db, "syl_extra_marks", "6") or 0),
     }
 
 
@@ -199,7 +203,7 @@ def class_level_from_name(class_name):
 # ---------------------------------------------------------------------------
 
 def compute(subject, selected, tma_assumed=None, practical_assumed=None,
-            high_target=75.0, buffer_pct=20.0):
+            high_target=75.0, buffer_pct=20.0, extra_marks=0.0):
     m = subject["marks"]
     rows = SD.flatten(subject)
     pe_rows = [r for r in rows if r["kind"] == "PE"]
@@ -227,10 +231,17 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
 
     need_theory_agg = max(m["aggregate_pass"] - tma - pr, 0)
     need_theory_final = max(need_theory, need_theory_agg)
-    pass_paper = min(round(((need_theory_final / scale) if scale else 0) * buf, 1), total_paper)
-    high_paper = min(round(((max(high_target - tma - pr, 0) / scale) if scale else 0) * buf, 1), total_paper)
+    # bare requirement, before any margin
+    pass_raw = round(((need_theory_final / scale) if scale else 0), 1)
+    high_raw = round(((max(high_target - tma - pr, 0) / scale) if scale else 0), 1)
+    theory_raw = round(((need_theory / scale) if scale else 0), 1)
+    # a percentage margin plus a few flat marks, because some answers always go wrong
+    def _pad(x):
+        return min(round(x * buf + extra_marks, 1), total_paper)
+    pass_paper = _pad(pass_raw)
+    high_paper = _pad(high_raw)
     # theory alone is compulsory: a learner can clear the aggregate and still fail
-    theory_paper = min(round(((need_theory / scale) if scale else 0) * buf, 1), total_paper)
+    theory_paper = _pad(theory_raw)
 
     remaining = sorted([r for r in pe_rows if r["no"] not in sel],
                        key=lambda r: (-r["marks"], r["no"]))
@@ -252,6 +263,10 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
         "tma_assumed": tma, "practical_assumed": pr,
         "projected_total": round(covered_theory + tma + pr, 1),
         "pass_rule": pass_rule,
+        "extra_marks": extra_marks,
+        "pass_paper_raw": pass_raw,
+        "high_paper_raw": high_raw,
+        "theory_paper_raw": theory_raw,
         "pass_paper_needed": pass_paper,
         "pass_reached": has_marks and covered_paper + 0.01 >= pass_paper,
         # theory only requirement, tracked separately because it is compulsory
@@ -318,20 +333,61 @@ def _student_codes(db, sp):
     return cl, codes, unmapped
 
 
-def _days_left(db, session_id):
+def _sessions(db):
     try:
-        sessions = json.loads(_setting(db, "syl_sessions", "[]"))
+        out = json.loads(_setting(db, "syl_sessions", "[]"))
+        return out if out else SD.EXAM_SESSIONS
     except Exception:
-        sessions = SD.EXAM_SESSIONS
-    for s in sessions:
-        if s.get("id") == session_id:
-            if s.get("date"):
-                try:
-                    return (date.fromisoformat(s["date"]) - date.today()).days, s
-                except Exception:
-                    return None, s
-            return None, s
-    return None, None
+        return SD.EXAM_SESSIONS
+
+
+def _dleft(iso):
+    if not iso:
+        return None
+    try:
+        return (date.fromisoformat(str(iso)[:10]) - date.today()).days
+    except Exception:
+        return None
+
+
+def _exam_dates(db, session_id, custom_date=""):
+    """
+    Return (info, session) where info carries both countdowns.
+
+    NIOS runs practicals before the theory papers, so a learner needs to see
+    both. For On Demand the learner picks the date, and the practical is
+    assumed a few weeks before it unless the admin says otherwise.
+    """
+    sess = None
+    for x in _sessions(db):
+        if x.get("id") == session_id:
+            sess = x
+            break
+    if not sess:
+        return {"theory_date": "", "practical_date": "", "theory_days": None,
+                "practical_days": None, "days_left": None, "custom": False}, None
+
+    theory = sess.get("theory_date") or sess.get("date") or ""
+    practical = sess.get("practical_date") or ""
+    custom = False
+    if sess.get("ask_date") or (not theory and custom_date):
+        theory = str(custom_date or "")[:10]
+        custom = True
+        if theory and not practical:
+            try:
+                gap = int(float(_setting(db, "syl_ondemand_practical_gap", "20") or 20))
+                practical = (date.fromisoformat(theory) - timedelta(days=gap)).isoformat()
+            except Exception:
+                practical = ""
+    td, pd_ = _dleft(theory), _dleft(practical)
+    return ({"theory_date": theory, "practical_date": practical,
+             "theory_days": td, "practical_days": pd_,
+             "days_left": td, "custom": custom}, sess)
+
+
+def _days_left(db, session_id, custom_date=""):
+    info, sess = _exam_dates(db, session_id, custom_date)
+    return info["theory_days"], sess
 
 
 # ---------------------------------------------------------------------------
@@ -344,18 +400,18 @@ def syl_me(db: Session = Depends(get_db), user=Depends(get_student)):
     sp = _student_profile(db, user)
     cl, codes, unmapped = _student_codes(db, sp)
     cfg = _cfg(db)
-    dl, sess = _days_left(db, getattr(sp, "exam_session", "") or "")
-    try:
-        sessions = json.loads(_setting(db, "syl_sessions", "[]"))
-    except Exception:
-        sessions = SD.EXAM_SESSIONS
+    info, sess = _exam_dates(db, getattr(sp, "exam_session", "") or "",
+                             getattr(sp, "exam_date", "") or "")
     return {
         "name": user.name, "class_level": cl, "subject_codes": codes,
         "unmapped_subjects": unmapped,
         "exam_session": getattr(sp, "exam_session", "") or "",
-        "target": getattr(sp, "study_target", "") or "pass",
-        "days_left": dl, "session": sess, "sessions": sessions,
+        "exam_date": getattr(sp, "exam_date", "") or "",
+        "target": getattr(sp, "study_target", "") or "",
+        "days_left": info["theory_days"], "exam": info,
+        "session": sess, "sessions": _sessions(db),
         "high_target": cfg["high_target"], "buffer_pct": cfg["buffer_pct"],
+        "extra_marks": cfg["extra_marks"],
     }
 
 
@@ -363,9 +419,10 @@ def syl_me(db: Session = Depends(get_db), user=Depends(get_student)):
 def syl_profile(payload: dict = Body(...), db: Session = Depends(get_db), user=Depends(get_student)):
     _ensure_syllabus(db)
     sp = _student_profile(db, user)
-    db.execute(_text("UPDATE student_profiles SET exam_session=:e, study_target=:t WHERE id=:i"),
+    db.execute(_text("UPDATE student_profiles SET exam_session=:e, study_target=:t, exam_date=:d WHERE id=:i"),
                {"e": (payload.get("exam_session") or "")[:30],
-                "t": (payload.get("target") or "pass")[:10], "i": sp.id})
+                "t": (payload.get("target") or "")[:10],
+                "d": (payload.get("exam_date") or "")[:20], "i": sp.id})
     db.commit()
     return {"ok": True}
 
@@ -383,7 +440,7 @@ def syl_overview(db: Session = Depends(get_db), user=Depends(get_student)):
             continue
         sel, done, tma, pr = _plan_row(db, sp.id, code)
         ready = subj.get("status") == "ready"
-        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"]) if ready else None
+        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["extra_marks"]) if ready else None
         out.append({"code": subj["code"], "name": subj["name"],
                     "status": subj.get("status", "pending"),
                     "selected": len(sel) if ready else 0,
@@ -391,10 +448,11 @@ def syl_overview(db: Session = Depends(get_db), user=Depends(get_student)):
     for n in unmapped:
         out.append({"code": "", "name": n, "status": "pending",
                     "selected": 0, "done": 0, "calc": None})
-    dl, sess = _days_left(db, getattr(sp, "exam_session", "") or "")
-    return {"subjects": out, "days_left": dl, "session": sess,
+    info, sess = _exam_dates(db, getattr(sp, "exam_session", "") or "",
+                             getattr(sp, "exam_date", "") or "")
+    return {"subjects": out, "days_left": info["theory_days"], "exam": info, "session": sess,
             "unmapped_subjects": unmapped,
-            "target": getattr(sp, "study_target", "") or "pass"}
+            "target": getattr(sp, "study_target", "") or ""}
 
 
 @router.get("/subject/{code}")
@@ -420,7 +478,7 @@ def syl_subject(code: str, db: Session = Depends(get_db), user=Depends(get_stude
         "modules": subj.get("modules", []),
         "chapters": SD.flatten(subj),
         "selected": sel, "done": done,
-        "calc": compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"]),
+        "calc": compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["extra_marks"]),
     }
 
 
@@ -456,54 +514,111 @@ def syl_plan(payload: dict = Body(...), db: Session = Depends(get_db), user=Depe
                          "VALUES (:s, :c, :sel, :dn, :t, :p, :u)"), args)
     db.commit()
     cfg = _cfg(db)
-    return {"ok": True, "calc": compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"])}
+    return {"ok": True, "calc": compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["extra_marks"])}
 
 
 @router.get("/strategy")
 def syl_strategy(db: Session = Depends(get_db), user=Depends(get_student)):
+    """
+    Weekly and monthly plan.
+
+    Only chapters needed for the chosen target are planned, never the whole
+    syllabus. Every bucket is grouped by subject with its own marks total, and
+    the response says whether the target is already covered.
+    """
     _ensure_syllabus(db)
     sp = _student_profile(db, user)
     cl, codes, unmapped = _student_codes(db, sp)
     cfg = _cfg(db)
-    target = getattr(sp, "study_target", "") or "pass"
-    dl, sess = _days_left(db, getattr(sp, "exam_session", "") or "")
-    dl = max(dl if dl is not None else 120, 7)
-    weeks = max(math.ceil(dl / 7), 1)
-    months = max(math.ceil(dl / 30), 1)
+    target = getattr(sp, "study_target", "") or ""
+    if target not in ("pass", "high"):
+        raise HTTPException(status_code=409,
+                            detail="Please choose your target first, then build the plan.")
 
-    queue = []
+    info, sess = _exam_dates(db, getattr(sp, "exam_session", "") or "",
+                             getattr(sp, "exam_date", "") or "")
+    theory_days = info["theory_days"]
+    if theory_days is None:
+        raise HTTPException(status_code=409,
+                            detail="Please choose your exam session first, then build the plan.")
+    if theory_days < 1:
+        raise HTTPException(status_code=409, detail="That exam date has already passed.")
+
+    weeks = max(math.ceil(theory_days / 7), 1)
+    months = max(math.ceil(theory_days / 30), 1)
+
+    queue, per_subject = [], []
     for code in codes:
         subj = get_subject(db, cl, code)
         if not subj or subj.get("status") != "ready":
             continue
         sel, done, tma, pr = _plan_row(db, sp.id, code)
-        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"])
+        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["extra_marks"])
+        need = calc["high_paper_needed"] if target == "high" else max(
+            calc["pass_paper_needed"], calc["theory_paper_needed"])
         pool = calc["high_gap_chapters"] if target == "high" else calc["pass_gap_chapters"]
-        merged = {r["no"]: r for r in SD.flatten(subj)
-                  if r["kind"] == "PE" and r["no"] in set(sel) and r["no"] not in set(done)}
+
+        # chapters already chosen but not finished, plus whatever is still missing
+        pending = [r for r in SD.flatten(subj)
+                   if r["kind"] == "PE" and r["no"] in set(sel) and r["no"] not in set(done)]
+        merged = {r["no"]: r for r in pending}
         for r in pool:
             merged.setdefault(r["no"], r)
-        for r in merged.values():
+        rows = list(merged.values())
+        for r in rows:
             queue.append({"subject": subj["name"], "code": subj["code"], **r})
+        per_subject.append({
+            "code": subj["code"], "name": subj["name"],
+            "covered": calc["covered_paper"], "needed": need,
+            "total": calc["total_pe_marks"],
+            "pending_chapters": len(rows),
+            "chapters_left": len(rows),
+            "pending_marks": round(sum(r["marks"] for r in rows), 1),
+            "done": list(done),
+            "reached": calc["high_reached"] if target == "high" else (
+                calc["pass_reached"] and calc["theory_reached"]),
+            "theory_reached": calc["theory_reached"],
+        })
 
     queue.sort(key=lambda r: (-r["marks"], r["subject"], r["no"]))
 
-    def bucket(n, label):
-        b = [[] for _ in range(n)]
+    def bucket(n, label, span_days):
+        buckets = [[] for _ in range(n)]
         for i, item in enumerate(queue):
-            b[i % n].append(item)
-        return [{"label": "%s %d" % (label, i + 1), "items": x,
-                 "marks": round(sum(y["marks"] for y in x), 1)}
-                for i, x in enumerate(b) if x]
+            buckets[i % n].append(item)
+        out = []
+        start = date.today()
+        for i, b in enumerate(buckets):
+            if not b:
+                continue
+            by_sub = {}
+            for it in b:
+                by_sub.setdefault(it["subject"], {"subject": it["subject"], "code": it["code"],
+                                                  "items": [], "marks": 0.0})
+                by_sub[it["subject"]]["items"].append(it)
+                by_sub[it["subject"]]["marks"] = round(
+                    by_sub[it["subject"]]["marks"] + it["marks"], 1)
+            out.append({
+                "label": "%s %d" % (label, i + 1),
+                "from": (start + timedelta(days=i * span_days)).isoformat(),
+                "to": (start + timedelta(days=(i + 1) * span_days - 1)).isoformat(),
+                "subjects": sorted(by_sub.values(), key=lambda x: -x["marks"]),
+                "chapters": len(b),
+                "marks": round(sum(x["marks"] for x in b), 1),
+            })
+        return out
 
-    return {"days_left": dl, "weeks": weeks, "months": months, "target": target,
-            "total_pending": len(queue),
-            "weekly": bucket(weeks, "Week"), "monthly": bucket(months, "Month")}
+    return {
+        "days_left": theory_days, "exam": info, "weeks": weeks, "months": months,
+        "target": target, "high_target": cfg["high_target"], "extra_marks": cfg["extra_marks"],
+        "total_pending": len(queue),
+        "pending_marks": round(sum(r["marks"] for r in queue), 1),
+        "per_subject": per_subject,
+        "all_reached": all(x["reached"] for x in per_subject) if per_subject else False,
+        "weekly": bucket(weeks, "Week", 7),
+        "monthly": bucket(months, "Month", 30),
+    }
 
-
-# ---------------------------------------------------------------------------
-# ADMIN ENDPOINTS
-# ---------------------------------------------------------------------------
 
 @router.get("/admin/subjects")
 def syl_admin_subjects(class_level: str = "12", db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -680,7 +795,7 @@ def syl_admin_progress(class_level: str = "", db: Session = Depends(get_db), _=D
             except Exception:
                 sel = []
             c = compute(subj, sel, p[4] if p[4] is not None else -1,
-                        p[5] if p[5] is not None else -1, cfg["high_target"], cfg["buffer_pct"])
+                        p[5] if p[5] is not None else -1, cfg["high_target"], cfg["buffer_pct"], cfg["extra_marks"])
             subs.append({"code": subj["code"], "name": subj["name"],
                          "covered": c["covered_paper"], "total": c["total_pe_marks"],
                          "pass": c["pass_reached"], "high": c["high_reached"]})

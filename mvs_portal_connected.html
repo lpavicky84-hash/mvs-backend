@@ -11303,6 +11303,13 @@ async function ocrFillQuestion_v1(inp,i){
 .syl-pin:hover{background:rgba(180,83,9,.26)}
 .syl-mhint{font-size:.66rem;opacity:.6;white-space:nowrap}
 .syl-mhint b{color:#92400e}
+.syl-ver{display:flex;gap:9px;flex-wrap:wrap;align-items:center;border-radius:12px;padding:11px 14px;
+  margin-bottom:11px;font-size:.8rem;font-weight:600}
+.syl-ver.ok{background:rgba(16,185,129,.11);border:1px solid rgba(16,185,129,.35);color:#047857}
+.syl-ver.no{background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.32);color:#b91c1c}
+.syl-vchip{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.6);
+  border-radius:8px;padding:4px 10px;font-size:.75rem;font-weight:700}
+.syl-vchip.bad{background:rgba(220,38,38,.14)}
 .syl-x{border:0;background:transparent;color:inherit;opacity:.35;cursor:pointer;font-size:1rem;
   line-height:1;padding:3px 6px;border-radius:6px;font-family:inherit}
 .syl-x:hover{opacity:1;color:#dc2626;background:rgba(239,68,68,.1)}
@@ -11330,6 +11337,57 @@ async function ocrFillQuestion_v1(inp,i){
 .syl-f small{display:block;font-size:.63rem;opacity:.5;margin-top:4px;text-align:center}
 
 /* ---------- student ---------- */
+@keyframes sylPulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.42)}50%{box-shadow:0 0 0 9px rgba(220,38,38,0)}}
+@keyframes sylPulseA{0%,100%{box-shadow:0 0 0 0 rgba(217,119,6,.42)}50%{box-shadow:0 0 0 9px rgba(217,119,6,0)}}
+@keyframes sylPulseG{0%,100%{box-shadow:0 0 0 0 rgba(5,150,105,.4)}50%{box-shadow:0 0 0 9px rgba(5,150,105,0)}}
+.syl-kpi{position:relative;background:var(--card,#fff);border:1px solid var(--border,#e6e9f0);border-radius:14px;
+  padding:15px 16px;overflow:visible;transition:.16s}
+.syl-kpi.tap{cursor:pointer}
+.syl-kpi.tap:hover{border-color:#4f46e5;transform:translateY(-2px);box-shadow:0 8px 20px rgba(15,23,42,.09)}
+.syl-kpi.blink{animation:sylPulse 1.9s infinite;border-color:rgba(220,38,38,.4)}
+.syl-kpi.blinkA{animation:sylPulseA 1.9s infinite;border-color:rgba(217,119,6,.42)}
+.syl-kpi.blinkG{animation:sylPulseG 2.2s infinite;border-color:rgba(5,150,105,.42)}
+.syl-tip{position:absolute;left:0;right:0;top:calc(100% + 8px);z-index:30;background:#0f172a;color:#e2e8f0;
+  border-radius:11px;padding:11px 13px;font-size:.74rem;line-height:1.55;opacity:0;visibility:hidden;
+  transition:.15s;box-shadow:0 12px 28px rgba(2,6,23,.32);pointer-events:none;font-weight:400;min-width:210px}
+.syl-tip b{color:#fff}
+.syl-kpi:hover .syl-tip{opacity:1;visibility:visible}
+.syl-exam{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-bottom:16px}
+.syl-ex{border-radius:14px;padding:15px 16px;border:1.5px solid;position:relative}
+.syl-ex.t{background:rgba(79,70,229,.07);border-color:rgba(79,70,229,.35)}
+.syl-ex.p{background:rgba(217,119,6,.08);border-color:rgba(217,119,6,.38)}
+.syl-ex.warn{animation:sylPulse 1.9s infinite;background:rgba(220,38,38,.07);border-color:rgba(220,38,38,.42)}
+.syl-ex h5{margin:0 0 5px;font-size:.66rem;text-transform:uppercase;letter-spacing:.7px;opacity:.65;font-weight:800}
+.syl-ex b{display:block;font-size:1.5rem;font-weight:800;letter-spacing:-.6px;line-height:1.1}
+.syl-ex small{display:block;font-size:.73rem;opacity:.72;margin-top:3px}
+.syl-req{border:1.5px solid rgba(220,38,38,.5)!important;background:rgba(220,38,38,.05)!important;
+  animation:sylPulse 1.9s infinite}
+.syl-reqmsg{font-size:.74rem;color:#dc2626;font-weight:700;margin-top:5px}
+.syl-note2{font-size:.73rem;opacity:.7;line-height:1.6;margin-top:9px;padding:10px 12px;
+  background:rgba(127,127,127,.07);border-radius:10px}
+.syl-wk{border:1px solid var(--border,#e6e9f0);border-radius:14px;margin-top:12px;overflow:hidden;transition:.15s}
+.syl-wk.done{border-color:rgba(5,150,105,.42);background:rgba(16,185,129,.04)}
+.syl-wkh{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:12px 15px;background:rgba(127,127,127,.06)}
+.syl-wkh b{font-size:.9rem}
+.syl-wkh small{display:block;font-size:.7rem;opacity:.6;font-weight:500}
+.syl-wsub{padding:9px 15px;border-top:1px solid rgba(127,127,127,.12)}
+.syl-wsub>div.h{display:flex;justify-content:space-between;font-size:.78rem;font-weight:700;margin-bottom:5px}
+.syl-wsub>div.h span:last-child{color:#b45309}
+.syl-wrow{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:.78rem;cursor:pointer}
+.syl-wrow:hover{opacity:.85}
+.syl-wbox{width:17px;height:17px;flex:none;border:1.5px solid #cbd5e1;border-radius:5px;display:flex;
+  align-items:center;justify-content:center;font-size:.62rem;font-weight:800;color:#fff}
+.syl-wrow.on .syl-wbox{background:#059669;border-color:#059669}
+.syl-wrow.on span.t{text-decoration:line-through;opacity:.55}
+.syl-goal{border-radius:13px;padding:14px 16px;margin-top:14px;font-size:.85rem;font-weight:600;
+  display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.syl-goal.ok{background:rgba(16,185,129,.11);border:1px solid rgba(16,185,129,.35);color:#047857}
+.syl-goal.no{background:rgba(217,119,6,.1);border:1px solid rgba(217,119,6,.35);color:#92400e}
+.syl-seg2{display:inline-flex;background:rgba(127,127,127,.1);border-radius:11px;padding:4px;gap:3px}
+.syl-seg2 button{border:0;background:transparent;padding:8px 18px;border-radius:8px;font-size:.82rem;
+  font-weight:700;cursor:pointer;color:inherit;opacity:.6;font-family:inherit;transition:.15s}
+.syl-seg2 button.on{background:#4f46e5;color:#fff;opacity:1;box-shadow:0 3px 10px rgba(79,70,229,.3)}
 .syl-act2{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
 .syl-cta{display:inline-flex;align-items:center;gap:7px;border:0;border-radius:11px;padding:10px 17px;
   font-size:.83rem;font-weight:700;cursor:pointer;font-family:inherit;transition:.16s;letter-spacing:.1px}
@@ -11461,35 +11519,74 @@ function sylStat(v,l,c){
 }
 
 function sylHome(){
-  var me=_SYL.me, ov=_SYL.ov;
+  var me=_SYL.me, ov=_SYL.ov, ex=me.exam||{};
   var ready=ov.subjects.filter(function(s){return s.calc});
-  var passed=ready.filter(function(s){return s.calc.pass_reached}).length;
+  var passed=ready.filter(function(s){return s.calc.pass_reached&&s.calc.theory_reached}).length;
   var high=ready.filter(function(s){return s.calc.high_reached}).length;
   var picked=ov.subjects.reduce(function(a,s){return a+(s.selected||0)},0);
+  var noTarget=!me.target, noSession=!me.exam_session;
+  var needDate=!!(me.exam_session && ex.custom && !ex.theory_date);
   var opts='<option value="">Select your exam session</option>'+(me.sessions||[]).map(function(x){
     return '<option value="'+esc(x.id)+'"'+(me.exam_session===x.id?' selected':'')+'>'+esc(x.label)+'</option>';}).join('');
 
   var h='<div class="syl-wrap">';
+
   h+='<div class="syl-hero"><div class="syl-g syl-g2">'
    +'<div><label class="form-label">Exam session</label>'
-   +'<select class="form-control" onchange="sylProfile(this.value,null)">'+opts+'</select></div>'
-   +'<div><label class="form-label">My target</label><select class="form-control" onchange="sylProfile(null,this.value)">'
-   +'<option value="pass"'+(ov.target==='pass'?' selected':'')+'>Clear the exam (passing marks)</option>'
-   +'<option value="high"'+(ov.target==='high'?' selected':'')+'>Score '+me.high_target+' percent or above</option>'
-   +'</select></div></div></div>';
-
-  h+='<div class="syl-top">'
-   +sylKpi(ov.days_left===null?'--':ov.days_left,'Days to exam','#6366f1')
-   +sylKpi(picked,'Chapters in plan','#0ea5e9')
-   +sylKpi(passed+' / '+(ready.length||0),'Passing secured','#059669')
-   +sylKpi(high+' / '+(ready.length||0),me.high_target+' percent ready','#d97706')
+   +'<select class="form-control'+(noSession?' syl-req':'')+'" id="syl-sess" onchange="sylProfile(this.value,null,null)">'+opts+'</select>'
+   +(noSession?'<div class="syl-reqmsg">Choose your exam session first</div>':'')+'</div>'
+   +'<div><label class="form-label">My target</label>'
+   +'<select class="form-control'+(noTarget?' syl-req':'')+'" id="syl-tgt" onchange="sylProfile(null,this.value,null)">'
+   +'<option value=""'+(noTarget?' selected':'')+'>Select your target</option>'
+   +'<option value="pass"'+(me.target==='pass'?' selected':'')+'>Clear the exam (passing marks)</option>'
+   +'<option value="high"'+(me.target==='high'?' selected':'')+'>Score '+me.high_target+' percent or above</option>'
+   +'</select>'
+   +(noTarget?'<div class="syl-reqmsg">Target is compulsory, everything below is planned around it</div>':'')+'</div>'
+   +'</div>'
+   +(needDate?'<div class="syl-g syl-g2" style="margin-top:12px"><div>'
+     +'<label class="form-label">Your On Demand examination date</label>'
+     +'<input type="date" class="form-control syl-req" id="syl-exdate" onchange="sylProfile(null,null,this.value)">'
+     +'<div class="syl-reqmsg">On Demand has no fixed date, so enter yours to build the plan</div></div></div>':'')
    +'</div>';
 
-  if(ov.days_left!==null && ov.days_left<45)
-    h+='<div class="syl-note w" style="margin-bottom:14px">Only '+ov.days_left+' days left. Focus on the highest weightage chapters first.</div>';
+  if(ex.theory_date || ex.practical_date){
+    var td=ex.theory_days, pd=ex.practical_days;
+    h+='<div class="syl-exam">'
+     +'<div class="syl-ex p'+(pd!==null&&pd<=30?' warn':'')+'"><h5>Practical examination</h5>'
+     +'<b>'+(pd===null?'--':(pd<0?'over':pd+' days'))+'</b>'
+     +'<small>'+(ex.practical_date?sylDate(ex.practical_date):'date not set')
+     +(ex.custom?' (about three weeks before your paper)':'')+'</small></div>'
+     +'<div class="syl-ex t'+(td!==null&&td<=45?' warn':'')+'"><h5>Theory examination</h5>'
+     +'<b>'+(td===null?'--':(td<0?'over':td+' days'))+'</b>'
+     +'<small>'+(ex.theory_date?sylDate(ex.theory_date):'date not set')+'</small></div>'
+     +'</div>';
+  }
+
+  var subjLine=ready.map(function(s){
+    var c=s.calc, left=Math.max(0,Math.ceil((( _SYL.me.target==='high'?c.high_paper_needed:Math.max(c.pass_paper_needed,c.theory_paper_needed))-c.covered_paper)/Math.max(c.total_pe_marks/Math.max(c.pe_count,1),1)));
+    return s.name+': '+(left?left+' more chapters':'target reached');
+  }).join('<br>') || 'No verified subject yet';
+
+  h+='<div class="syl-top">'
+   +sylKpi(ex.theory_days===null?'--':ex.theory_days,'Days to exam','#4f46e5',
+      (ex.theory_days!==null&&ex.theory_days<=45)?'blink':'', 'sylPlan()',
+      '<b>Theory paper</b><br>'+(ex.theory_date?sylDate(ex.theory_date):'date not set')
+      +'<br><b>Practical</b><br>'+(ex.practical_date?sylDate(ex.practical_date):'date not set')
+      +'<br><br>Tap to open your study plan')
+   +sylKpi(picked,'Chapters in plan','#0ea5e9','', 'sylPlan()',
+      '<b>Subject wise</b><br>'+subjLine+'<br><br>Tap to open your study plan')
+   +sylKpi(passed+' / '+(ready.length||0),'Passing secured','#059669',
+      (ready.length&&passed<ready.length)?'blink':'blinkG','sylPlan()',
+      '<b>Passing is compulsory in every subject</b><br>Theory alone must clear the minimum, the aggregate is not enough.'
+      +'<br><br>Tap to see what is left')
+   +sylKpi(high+' / '+(ready.length||0),me.high_target+' percent ready','#d97706',
+      (ready.length&&high<ready.length)?'blinkA':'blinkG','sylPlan()',
+      '<b>Second target</b><br>Reach '+me.high_target+' percent overall in each subject.<br><br>Tap to open your study plan')
+   +'</div>';
 
   if(ready.length)
-    h+='<div style="margin-bottom:14px"><button class="btn btn-primary btn-sm" onclick="sylPlan()">Build my weekly plan</button></div>';
+    h+='<div class="syl-act2"><button class="syl-cta p" onclick="sylPlan(\'weekly\')">Build my weekly plan</button>'
+     +'<button class="syl-cta a" onclick="sylPlan(\'monthly\')">Monthly plan</button></div>';
 
   h+='<div class="syl-grid">';
   ov.subjects.forEach(function(s){
@@ -11504,9 +11601,9 @@ function sylHome(){
       return;
     }
     var c=s.calc;
-    var col=c.high_reached?'#f59e0b':(c.pass_reached?'#10b981':'#6366f1');
+    var col=c.high_reached?'#d97706':((c.pass_reached&&c.theory_reached)?'#059669':'#4f46e5');
     var pill=c.high_reached?'<span class="syl-pill syl-ok">'+_SYL.me.high_target+'% ready</span>'
-            :(c.pass_reached?'<span class="syl-pill syl-ok">Passing secured</span>'
+            :((c.pass_reached&&c.theory_reached)?'<span class="syl-pill syl-ok">Passing secured</span>'
             :(s.selected?'<span class="syl-pill syl-info">In progress</span>'
             :'<span class="syl-pill syl-info">Not started</span>'));
     h+='<div class="syl-card tap" style="--cc:'+col+'" onclick="sylOpen(\''+esc(s.code)+'\')">'
@@ -11515,24 +11612,51 @@ function sylHome(){
      +'<div class="syl-nums"><span>'+s.selected+' of '+c.pe_count+' exam chapters</span>'
      +'<span class="syl-mk">'+_sylN(c.covered_paper)+' / '+_sylN(c.total_pe_marks)+'</span></div>'
      +'<div class="syl-bar"><i style="width:'+_sylPct(c.covered_paper,c.total_pe_marks)+'%;background:'+col+'"></i>'
-     +'<u style="left:'+_sylPct(c.pass_paper_needed,c.total_pe_marks)+'%;background:#10b981"></u>'
-     +'<u style="left:'+_sylPct(c.high_paper_needed,c.total_pe_marks)+'%;background:#f59e0b"></u></div>'
+     +'<u style="left:'+_sylPct(c.pass_paper_needed,c.total_pe_marks)+'%;background:#059669"></u>'
+     +'<u style="left:'+_sylPct(c.high_paper_needed,c.total_pe_marks)+'%;background:#d97706"></u></div>'
      +'<div class="syl-foot"><span>Projected '+_sylN(c.projected_total)+' / 100</span><span>Open</span></div></div>';
   });
   h+='</div></div>';
   _sylEl('s-syl-content').innerHTML=h;
 }
 
-async function sylProfile(session,target){
+function sylDate(iso){
+  try{
+    var d=new Date(iso+'T00:00:00');
+    var M=['January','February','March','April','May','June','July','August','September','October','November','December'];
+    return d.getDate()+' '+M[d.getMonth()]+' '+d.getFullYear();
+  }catch(e){ return iso; }
+}
+
+function sylKpi(v,l,c,cls,onclick,tip){
+  return '<div class="syl-kpi'+(onclick?' tap':'')+(cls?' '+cls:'')+'" style="--kc:'+(c||'#94a3b8')+'"'
+   +(onclick?' onclick="'+onclick+'"':'')+'>'
+   +'<b'+(c?' style="color:'+c+'"':'')+'>'+v+'</b><span>'+l+'</span>'
+   +(tip?'<div class="syl-tip">'+tip+'</div>':'')+'</div>';
+}
+
+async function sylProfile(session,target,examDate){
+  var me=_SYL.me;
   try{
     await api('/api/syllabus/profile','POST',{
-      exam_session: session===null ? (_SYL.me.exam_session||'') : session,
-      target: target===null ? (_SYL.ov.target||'pass') : target});
+      exam_session: session===null ? (me.exam_session||'') : session,
+      target: target===null ? (me.target||'') : target,
+      exam_date: examDate===null||examDate===undefined ? (me.exam_date||'') : examDate});
     await loadSSyllabus();
   }catch(e){ toast(e.message,true); }
 }
 
+/* every action needs a target, otherwise the plan has nothing to aim at */
+function sylNeedTarget(){
+  if(_SYL.me && _SYL.me.target) return false;
+  var n=_sylEl('syl-tgt');
+  if(n){ n.classList.add('syl-req'); if(n.scrollIntoView) n.scrollIntoView({behavior:'smooth',block:'center'}); }
+  toast('Please select your target first.',true);
+  return true;
+}
+
 async function sylOpen(code){
+  if(sylNeedTarget()) return;
   var el=_sylEl('s-syl-content'); el.innerHTML='<div class="spinner"></div>';
   try{
     _SYL.cur = await api('/api/syllabus/subject/'+encodeURIComponent(code));
@@ -11553,8 +11677,9 @@ function sylSubject(scrollTop){
   var allGood = c.theory_reached && c.aggregate_reached;
 
   var h='<div class="syl-wrap"><div class="syl-act2">'
-   +'<button class="syl-cta o" onclick="loadSSyllabus()">Back to my subjects</button>'
-   +'<button class="syl-cta a" onclick="sylImportant()">'+esc(s.name)+' important chapters</button></div>'
+   +'<button class="syl-cta a" onclick="sylImportant()" style="animation:sylPulseA 2.4s infinite">'
+   +esc(s.name)+' important chapters</button>'
+   +'<button class="syl-cta o" onclick="loadSSyllabus()">Back to my subjects</button></div>'
    +'<div id="syl-top"></div>';
 
   if(c.high_reached)
@@ -11609,7 +11734,12 @@ function sylSubject(scrollTop){
    +'<input type="number" class="form-control" id="syl-tma" min="0" max="'+m.tma_max+'" value="'+_sylN(c.tma_assumed)+'" onchange="sylSave()"></div>'
    +(m.has_practical?'<div><label class="form-label">Practical expected (out of '+m.practical_max+')</label>'
      +'<input type="number" class="form-control" id="syl-pr" min="0" max="'+m.practical_max+'" value="'+_sylN(c.practical_assumed)+'" onchange="sylSave()"></div>':'')
-   +'</div></div></div>';
+   +'</div>'
+   +'<div class="syl-note2">These TMA'+(m.has_practical?' and practical':'')+' numbers are what you '
+   +'<b>expect</b> to score, they are not your real marks. If you actually get them, the projected total '
+   +'shown above is what your final result will look like. The projected score is an estimate only, your '
+   +'actual marks will appear in the NIOS result.</div>'
+   +'</div></div>';
 
   var showTma=!!_SYL.showTma, open=!!_SYL.chOpen;
   var peTotal=0, peDone=0;
@@ -11660,6 +11790,7 @@ function sylChOpen(){ _SYL.chOpen=!_SYL.chOpen; sylSubject(); }
 /* ---------- important chapters ---------- */
 
 function sylImportant(){
+  if(sylNeedTarget()) return;
   var s=_SYL.cur.subject;
   var el=_sylEl('s-syl-content');
   el.innerHTML='<div class="syl-wrap"><div class="syl-act2">'
@@ -11790,32 +11921,126 @@ async function sylSave(){
   }catch(e){ toast(e.message,true); }
 }
 
-async function sylPlan(){
+async function sylPlan(mode){
+  if(sylNeedTarget()) return;
+  _SYL.planMode = mode || _SYL.planMode || 'weekly';
   var el=_sylEl('s-syl-content'); el.innerHTML='<div class="spinner"></div>';
   try{
-    var s=await api('/api/syllabus/strategy');
-    var h='<div class="syl-wrap"><button class="syl-ib" onclick="loadSSyllabus()">Back to my subjects</button>';
-    if(!s.total_pending){
-      h+='<div class="syl-note w" style="margin-top:14px">Select some chapters in your subjects first, '
-       +'then your weekly and monthly plan will appear here.</div>';
-    }else{
-      h+='<div class="syl-top" style="margin-top:14px">'
-       +sylKpi(s.days_left,'Days left','#6366f1')+sylKpi(s.total_pending,'Chapters pending','#0ea5e9')
-       +sylKpi(s.weeks,'Weeks available','#059669')
-       +sylKpi(s.target==='high'?_SYL.me.high_target+'%':'Passing','Target','#d97706')+'</div>';
-      h+='<div class="syl-panel"><div class="syl-phead"><div><h4>Weekly plan</h4>'
-       +'<p>Highest weightage chapters come first</p></div></div><div style="padding:8px 18px 18px">'
-       +s.weekly.map(sylWk).join('')+'</div></div>';
-      h+='<div class="syl-panel" style="margin-top:14px"><div class="syl-phead"><div><h4>Monthly plan</h4></div></div>'
-       +'<div style="padding:8px 18px 18px">'+s.monthly.map(sylWk).join('')+'</div></div>';
-    }
-    el.innerHTML=h+'</div>';
+    _SYL.plan = await api('/api/syllabus/strategy');
+    _SYL.planDone={};
+    (_SYL.plan.per_subject||[]).forEach(function(x){ _SYL.planDone[x.code]=(x.done||[]).slice(); });
+    sylPlanRender();
   }catch(e){ toast(e.message,true); loadSSyllabus(); }
 }
-function sylWk(b){
-  return '<div class="syl-wk"><div class="h"><span>'+esc(b.label)+'</span><span class="syl-mk">'+_sylN(b.marks)+' marks</span></div><ul>'
-   +b.items.map(function(i){ return '<li>'+esc(i.subject)+' &middot; '+esc(i.no)+' '+esc(i.title)
-     +'<span class="syl-mk" style="float:right">'+_sylN(i.marks)+'</span></li>'; }).join('')+'</ul></div>';
+
+function sylPlanRender(){
+  var s=_SYL.plan, ex=s.exam||{}, mode=_SYL.planMode||'weekly';
+  var buckets = mode==='monthly' ? (s.monthly||[]) : (s.weekly||[]);
+  var tgt = s.target==='high' ? (s.high_target+' percent') : 'Passing marks';
+
+  var h='<div class="syl-wrap"><div class="syl-act2">'
+   +'<button class="syl-cta o" onclick="loadSSyllabus()">Back to my subjects</button>'
+   +'<div class="syl-seg2" style="margin-left:auto">'
+   +'<button class="'+(mode==='weekly'?'on':'')+'" onclick="_SYL.planMode=\'weekly\';sylPlanRender()">Weekly plan</button>'
+   +'<button class="'+(mode==='monthly'?'on':'')+'" onclick="_SYL.planMode=\'monthly\';sylPlanRender()">Monthly plan</button>'
+   +'</div></div>';
+
+  if(ex.theory_date || ex.practical_date){
+    var td=ex.theory_days, pd=ex.practical_days;
+    h+='<div class="syl-exam">'
+     +'<div class="syl-ex p'+(pd!==null&&pd<=30?' warn':'')+'"><h5>Practical examination</h5>'
+     +'<b>'+(pd===null?'--':(pd<0?'over':pd+' days'))+'</b>'
+     +'<small>'+(ex.practical_date?sylDate(ex.practical_date):'date not set')+'</small></div>'
+     +'<div class="syl-ex t'+(td!==null&&td<=45?' warn':'')+'"><h5>Theory examination</h5>'
+     +'<b>'+(td===null?'--':(td<0?'over':td+' days'))+'</b>'
+     +'<small>'+(ex.theory_date?sylDate(ex.theory_date):'date not set')+'</small></div>'
+     +'</div>';
+  }
+
+  if(!s.total_pending && s.all_reached){
+    h+='<div class="syl-goal ok" style="margin-bottom:14px"><span>Your '+esc(tgt)
+     +' target is already covered in every subject. Now finish these chapters properly.</span></div>';
+  }
+
+  h+='<div class="syl-top">'
+   +sylKpi(s.total_pending,'Chapters left','#4f46e5','','',
+      '<b>Everything still to study</b><br>Across all your verified subjects.')
+   +sylKpi(_sylN(s.pending_marks),'Marks left','#0ea5e9','','',
+      '<b>Question paper marks</b><br>carried by the chapters above.')
+   +sylKpi(buckets.length,(mode==='monthly'?'Months':'Weeks')+' available','#059669','','','')
+   +sylKpi(tgt,'Your target','#d97706','','',
+      '<b>Every plan carries '+_sylN(s.extra_marks)+' extra marks</b><br>on top of the requirement, '
+      +'because a few questions always go wrong in the paper.')
+   +'</div>';
+
+  h+='<div class="syl-panel"><div class="syl-phead"><div><h4>'+(mode==='monthly'?'Monthly':'Weekly')+' plan</h4>'
+   +'<p>Highest weightage chapters come first. Tick a chapter once you have finished it.</p></div></div>'
+   +'<div style="padding:8px 18px 18px">';
+
+  if(!buckets.length){
+    h+='<div class="syl-empty">Pick some chapters in your subjects first, then your plan will appear here.</div>';
+  } else {
+    buckets.forEach(function(b){
+      var doneAll=true, tot=0, dn=0;
+      b.subjects.forEach(function(su){ su.items.forEach(function(it){
+        tot++; if(sylIsDone(it.code,it.no)) dn++; else doneAll=false; }); });
+      h+='<div class="syl-wk'+(doneAll?' done':'')+'">'
+       +'<div class="syl-wkh"><div><b>'+esc(b.label)+'</b>'
+       +'<small>'+sylDate(b.from)+' to '+sylDate(b.to)+'</small></div>'
+       +'<div style="text-align:right"><b class="syl-mk">'+dn+' of '+tot+' done</b>'
+       +'<small>'+b.chapters+' chapters</small></div></div>';
+      b.subjects.forEach(function(su){
+        h+='<div class="syl-wsub"><div class="h"><span>'+esc(su.subject)+'</span>'
+         +'<span>'+_sylN(su.marks)+' marks</span></div>';
+        su.items.forEach(function(it){
+          var d=sylIsDone(it.code,it.no);
+          h+='<div class="syl-wrow'+(d?' on':'')+'" onclick="sylPlanTick(\''+esc(it.code)+'\',\''+esc(it.no)+'\')">'
+           +'<div class="syl-wbox">'+(d?'&#10003;':'')+'</div>'
+           +'<span class="t" style="flex:1;min-width:0">'+esc(it.no)+' '+esc(it.title)+'</span>'
+           +'<span class="syl-mk">'+_sylN(it.marks)+'</span></div>';
+        });
+        h+='</div>';
+      });
+      h+='</div>';
+    });
+  }
+  h+='</div></div>';
+
+  h+='<div class="syl-panel" style="margin-top:14px"><div class="syl-phead"><div><h4>Target check</h4>'
+   +'<p>Where each subject stands against '+esc(tgt)+'</p></div></div><div style="padding:8px 18px 18px">';
+  (s.per_subject||[]).forEach(function(x){
+    h+='<div class="syl-goal '+(x.reached?'ok':'no')+'" style="margin-top:9px">'
+     +'<span><b>'+esc(x.name)+'</b> &middot; '+_sylN(x.covered)+' of '+_sylN(x.needed)+' marks'
+     +(x.theory_reached?'':' &middot; theory still short')+'</span>'
+     +'<span>'+(x.reached?'Target reached':(x.chapters_left+' chapters left'))+'</span></div>';
+  });
+  if(!(s.per_subject||[]).length) h+='<div class="syl-empty">No verified subject yet.</div>';
+  h+='</div></div></div>';
+  _sylEl('s-syl-content').innerHTML=h;
+}
+
+function sylIsDone(code,no){
+  var d=_SYL.planDone||{};
+  return !!(d[code] && d[code].indexOf(no)>-1);
+}
+
+async function sylPlanTick(code,no){
+  _SYL.planDone=_SYL.planDone||{};
+  var arr=_SYL.planDone[code]=_SYL.planDone[code]||[];
+  var i=arr.indexOf(no);
+  if(i>-1) arr.splice(i,1); else arr.push(no);
+  sylPlanRender();
+  try{
+    var d=await api('/api/syllabus/subject/'+encodeURIComponent(code));
+    var done=d.done.slice(), j=done.indexOf(no);
+    if(i>-1){ if(j>-1) done.splice(j,1); } else if(j<0) done.push(no);
+    var sel=d.selected.slice();
+    if(sel.indexOf(no)<0) sel.push(no);
+    await api('/api/syllabus/plan','POST',{subject_code:code,selected:sel,done:done,
+      tma_assumed:d.calc?d.calc.tma_assumed:-1, practical_assumed:d.calc?d.calc.practical_assumed:-1});
+    _SYL.plan=await api('/api/syllabus/strategy');
+    sylPlanRender();
+  }catch(e){ toast(e.message,true); }
 }
 
 /* ================= ADMIN ================= */
@@ -12085,7 +12310,23 @@ function sylChapRender(){
     m.lessons.forEach(function(l){ if(l.kind==='PE')pe++; else tma++; }); });
   wsum=Math.round(wsum*100)/100;
 
-  var h='<div class="syl-btnrow">'
+  var expT=parseInt((_sylEl('sylf_exp_total')||{}).value,10)||0;
+  var expA=parseInt((_sylEl('sylf_exp_tma')||{}).value,10)||0;
+  var expP=parseInt((_sylEl('sylf_exp_pe')||{}).value,10)||0;
+  var h='';
+  if(expT||expA||expP){
+    var okT=!expT||expT===pe+tma, okA=!expA||expA===tma, okP=!expP||expP===pe;
+    var allOk=okT&&okA&&okP;
+    h+='<div class="syl-ver '+(allOk?'ok':'no')+'">'
+     +'<span>'+(allOk?'Counts match the syllabus PDF, this subject can go live'
+                    :'Counts do not match the syllabus PDF yet, students cannot see this subject')+'</span>'
+     +'<span style="margin-left:auto;display:flex;gap:7px;flex-wrap:wrap">'
+     +'<span class="syl-vchip'+(okT?'':' bad')+'">Total '+(pe+tma)+(expT?' / '+expT:'')+'</span>'
+     +'<span class="syl-vchip'+(okP?'':' bad')+'">Exam '+pe+(expP?' / '+expP:'')+'</span>'
+     +'<span class="syl-vchip'+(okA?'':' bad')+'">TMA '+tma+(expA?' / '+expA:'')+'</span>'
+     +'</span></div>';
+  }
+  h+='<div class="syl-btnrow">'
    +'<button class="syl-b" onclick="sylAddModule()">Add module</button>'
    +'<button class="syl-b" onclick="sylSpread()">Split paper marks by chapter count</button>'
    +(wsum&&paper&&Math.abs(wsum-paper)>0.01?'<button class="syl-b pri" onclick="sylScaleMarks()">Scale current marks to '+paper+'</button>':'')
@@ -12357,15 +12598,18 @@ async function sylImportPdf(file){
     var r=await fetch(API+'/api/syllabus/admin/parse-pdf',{method:'POST',headers:hd,body:fd});
     var d=await r.json().catch(function(){return{}});
     if(!r.ok) throw new Error(d.detail||'Could not read this PDF');
-    _SYL.mods = (d.modules||sylParseMods(d.text));
-    sylChapRender();
+    // fill the expected counts BEFORE drawing the table, otherwise the live
+    // verification strip renders with nothing to compare against
     if(d.expected){
       if(d.expected.total) _sylEl('sylf_exp_total').value=d.expected.total;
       if(d.expected.tma)   _sylEl('sylf_exp_tma').value=d.expected.tma;
       if(d.expected.pe)    _sylEl('sylf_exp_pe').value=d.expected.pe;
     }
+    _SYL.mods = (d.modules||sylParseMods(d.text));
+    sylChapRender();
     var s=d.stats;
-    var h='<div style="margin-top:11px">'
+    var h='<div style="margin-top:11px"><span style="font-size:.72rem;opacity:.55;display:block;margin-bottom:6px">'
+     +'Read from the PDF. The live count is shown above the chapter table below.</span>'
      +'<span class="syl-chip">Modules <b>'+s.modules+'</b></span>'
      +'<span class="syl-chip">Chapters <b>'+s.total+'</b></span>'
      +'<span class="syl-chip">Public Examination <b>'+s.pe+'</b></span>'

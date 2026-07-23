@@ -495,8 +495,14 @@ def resolve_chapter(subject, text, accept=0.62, review=0.42):
             "reason": "Does not match any chapter in the verified syllabus.", "input": raw}
 
 
+# NIOS runs the practical examination a few weeks before the theory papers.
+# theory_date is the first day of the theory schedule, practical_date is the
+# first day of the practical schedule. Both are editable from Admin settings.
 EXAM_SESSIONS = [
-    {"id": "oct2026", "label": "October 2026 Public Examination", "date": "2026-10-05"},
-    {"id": "apr2027", "label": "April 2027 Public Examination", "date": "2027-04-02"},
-    {"id": "ondemand", "label": "On Demand Examination", "date": ""},
+    {"id": "oct2026", "label": "October 2026 Public Examination",
+     "theory_date": "2026-10-05", "practical_date": "2026-09-16"},
+    {"id": "apr2027", "label": "April 2027 Public Examination",
+     "theory_date": "2027-04-09", "practical_date": "2027-03-15"},
+    {"id": "ondemand", "label": "On Demand Examination",
+     "theory_date": "", "practical_date": "", "ask_date": True},
 ]

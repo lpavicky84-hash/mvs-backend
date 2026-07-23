@@ -31,7 +31,7 @@ except ImportError:
 
 
 LESSON_RE = re.compile(
-    r"(?:Lesson|Chapter|Ch|L)\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212]?\s*(\d{1,2})\s*"
+    r"(?:Lesson|Chapter|Ch|L)\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212\.:]?\s*(\d{1,2})\s*\.?\s*"
     r"[\(\[]\s*(.+?)\s*[\)\]]",
     re.S | re.I,
 )
@@ -114,13 +114,13 @@ def _stated_count(cell):
 
 
 MARKER_RE = re.compile(
-    r"\b(?:Lesson|Chapter|Ch|L)\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212]?\s*(\d{1,2})\b", re.I)
+    r"\b(?:Lesson|Chapter|Ch|L)\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212\.:]?\s*(\d{1,2})\b", re.I)
 
 
 def _title_from_chunk(chunk):
     """A lesson title is either wrapped in brackets or runs to the next marker."""
     c = _clean(chunk)
-    c = re.sub(r"^[\-\u2013\u2014:\s]+", "", c)
+    c = re.sub(r"^[\-\u2013\u2014:\.\s]+", "", c)
     if c.startswith("(") or c.startswith("["):
         m = re.match(r"[\(\[]\s*(.+?)\s*[\)\]]", c, re.S)
         if m:
@@ -211,8 +211,53 @@ def _find_bifurcation(tables):
     If no row in the table carries such a marker, every non empty module cell
     is treated as a new module, which is the layout A behaviour.
     """
+    def _body(tbl, mod_col, tma_col, pe_col):
+        """Rows of one table reduced to (module, tma cell, pe cell)."""
+        hdr, body = {}, []
+        for row in tbl:
+            if max(mod_col, tma_col, pe_col) >= len(row):
+                continue
+            name = _clean(row[mod_col])
+            tma_cell, pe_cell = row[tma_col] or "", row[pe_col] or ""
+            for key, cell in (("tma", tma_cell), ("pe", pe_cell)):
+                c = _clean(cell)
+                if re.search(r"no\.?\s*of\s*lessons", c, re.I):
+                    m = re.search(r"no\.?\s*of\s*lessons\s*\)?\s*[:=\-\u2013]?\s*(\d{1,3})", c, re.I)
+                    if m:
+                        hdr[key] = int(m.group(1))
+            joined = " ".join(_clean(x) for x in (name, tma_cell, pe_cell))
+            has_lesson = bool(_lessons(tma_cell) or _lessons(pe_cell))
+            if not has_lesson and HEADER_CELL_RE.search(joined):
+                continue
+            if not (name or _clean(tma_cell) or _clean(pe_cell)):
+                continue
+            body.append((name, tma_cell, pe_cell))
+        return body, hdr
+
+    def _group(body):
+        """Join continuation rows into whole modules."""
+        numbered = any(MODULE_START_RE.match(n) for n, _, _ in body)
+        groups = []
+        for name, tma_cell, pe_cell in body:
+            starts = MODULE_START_RE.match(name) if numbered else bool(name)
+            if starts or not groups:
+                groups.append([name, [tma_cell], [pe_cell]])
+            else:
+                if name:
+                    groups[-1][0] = (groups[-1][0] + " " + name).strip()
+                groups[-1][1].append(tma_cell)
+                groups[-1][2].append(pe_cell)
+        rows = []
+        for name, tmas, pes in groups:
+            nm = _module_name(name)
+            if not nm or not re.search(r"[A-Za-z]{3}|[\u0900-\u097F]{2}", nm):
+                nm = nm or "Module"
+            rows.append((nm, "\n".join(x for x in tmas if _clean(x)),
+                         "\n".join(x for x in pes if _clean(x))))
+        return rows
+
     candidates = []
-    for rank, tbl in tables:
+    for rank, pg, tbl in tables:
         if not tbl or len(tbl) < 2:
             continue
         flat = " | ".join(_clean(c) for row in tbl[:8] for c in row if c)
@@ -229,76 +274,51 @@ def _find_bifurcation(tables):
                     pe_col = i
                 if mod_col is None and re.search(r"module", t, re.I) and not MODULE_START_RE.match(t):
                     mod_col = i
-        if tma_col is None or pe_col is None:
+        if tma_col is None or pe_col is None or tma_col == pe_col:
             continue
         if mod_col is None:
             mod_col = 0
-        if tma_col == pe_col:
-            continue
 
-        hdr = {}
-        body = []
-        for row in tbl:
-            if max(mod_col, tma_col, pe_col) >= len(row):
-                continue
-            name = _clean(row[mod_col])
-            tma_cell, pe_cell = row[tma_col] or "", row[pe_col] or ""
-
-            for key, cell in (("tma", tma_cell), ("pe", pe_cell)):
-                c = _clean(cell)
-                if re.search(r"no\.?\s*of\s*lessons", c, re.I):
-                    m = re.search(r"no\.?\s*of\s*lessons\s*\)?\s*[:=\-\u2013]?\s*(\d{1,3})", c, re.I)
-                    if m:
-                        hdr[key] = int(m.group(1))
-
-            joined = " ".join(_clean(x) for x in (name, tma_cell, pe_cell))
-            has_lesson = bool(_lessons(tma_cell) or _lessons(pe_cell))
-            if not has_lesson and HEADER_CELL_RE.search(joined):
-                continue
-            if not (name or _clean(tma_cell) or _clean(pe_cell)):
-                continue
-            body.append((name, tma_cell, pe_cell))
-
+        body, hdr = _body(tbl, mod_col, tma_col, pe_col)
         if not body:
             continue
-
-        numbered = any(MODULE_START_RE.match(n) for n, _, _ in body)
-        groups = []
-        for name, tma_cell, pe_cell in body:
-            starts = MODULE_START_RE.match(name) if numbered else bool(name)
-            if starts or not groups:
-                groups.append([name, [tma_cell], [pe_cell]])
-            else:
-                if name:
-                    groups[-1][0] = (groups[-1][0] + " " + name).strip()
-                groups[-1][1].append(tma_cell)
-                groups[-1][2].append(pe_cell)
-
-        rows = []
-        for name, tmas, pes in groups:
-            nm = _module_name(name)
-            if not nm or not re.search(r"[A-Za-z]{3}|[\u0900-\u097F]{2}", nm):
-                nm = nm or "Module"
-            rows.append((nm, "\n".join(x for x in tmas if _clean(x)),
-                         "\n".join(x for x in pes if _clean(x))))
-
+        rows = _group(body)
         score = sum(len(_lessons(a)) + len(_lessons(b)) for _, a, b in rows)
-        # a module name that reads like a lesson means the columns were split
-        # in the wrong place, so penalise that candidate
         junk = sum(1 for n, _, _ in rows if MARKER_RE.search(n) or len(n) < 3)
         if score:
-            candidates.append((score, junk, rank, len(rows), rows, hdr))
+            candidates.append({"score": score, "junk": junk, "rank": rank, "page": pg,
+                               "ncols": len(tbl[0]), "cols": (mod_col, tma_col, pe_col),
+                               "body": body, "hdr": hdr, "nrows": len(rows)})
 
     if not candidates:
         return [], {}
-    candidates.sort(key=lambda c: (-c[0], c[1], c[2], c[3]))
-    return candidates[0][4], candidates[0][5]
+    candidates.sort(key=lambda c: (-c["score"], c["junk"], c["rank"], c["nrows"]))
+    best = candidates[0]
+    mod_col, tma_col, pe_col = best["cols"]
+
+    # A long syllabus table runs over several pages. The continuation pages
+    # carry no header, so they never become candidates on their own. Pick up
+    # any table of the same shape on a later page and append its rows.
+    body = list(best["body"])
+    for rank, pg, tbl in tables:
+        if rank != best["rank"] or pg <= best["page"] or not tbl:
+            continue
+        if len(tbl[0]) != best["ncols"]:
+            continue
+        flat = " | ".join(_clean(c) for row in tbl[:4] for c in row if c)
+        if TMA_HINT.search(flat) and PE_HINT.search(flat):
+            continue  # a fresh header means a different table, not a continuation
+        more, _ = _body(tbl, mod_col, tma_col, pe_col)
+        if more and any(_lessons(a) or _lessons(b) for _, a, b in more):
+            body.extend(more)
+
+    return _group(body), best["hdr"]
 
 
 def _find_weightage(tables, page_texts):
     """Return list of (module_name, marks) from the Weightage by Content table."""
     best = None
-    for _rank, tbl in tables:
+    for _rank, _pg, tbl in tables:
         if not tbl or len(tbl) < 2:
             continue
         header = " | ".join(_clean(c) for c in (tbl[0] or []) if c)
@@ -465,10 +485,10 @@ def parse_syllabus_pdf(data: bytes):
     tables, page_texts = [], []
     warn_fallback = False
     try:
-        for page in pdf.pages[:40]:
+        for pageno, page in enumerate(pdf.pages[:40]):
             page_texts.append(page.extract_text() or "")
             for t in (page.extract_tables() or []):
-                tables.append((0, t))
+                tables.append((0, pageno, t))
             # NIOS PDFs come in every flavour: ruled tables, partially ruled,
             # and plain text columns. Try each strategy and keep everything.
             for rank, opts in enumerate((
@@ -477,7 +497,7 @@ def parse_syllabus_pdf(data: bytes):
                     {"vertical_strategy": "text", "horizontal_strategy": "text"}), start=1):
                 try:
                     for t in (page.extract_tables(opts) or []):
-                        tables.append((rank, t))
+                        tables.append((rank, pageno, t))
                 except Exception:
                     pass
     finally:
