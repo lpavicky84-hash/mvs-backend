@@ -36,7 +36,8 @@ LESSON_RE = re.compile(
     re.S,
 )
 LESSON_LOOSE_RE = re.compile(
-    r"(?:L|Lesson)\s*[\-\u2013\u2014]?\s*(\d{1,2})\s*[\.\:\)]?\s*([A-Za-z][^\n]{3,80})"
+    r"(?:L|Lesson|Ch|Chapter|\u092a\u093e\u0920)\s*[\-\u2013\u2014]?\s*(\d{1,2})\s*[\.\:\)\u2013]?\s*"
+    r"([A-Za-z\u0900-\u097F][^\n]{2,90})", re.I
 )
 LEAD_NUM_RE = re.compile(r"^\s*\d{1,2}\s*[\.\)]\s*")
 MODULE_HINT = re.compile(r"module", re.I)
@@ -154,11 +155,11 @@ def _to_float(s):
 
 def _find_bifurcation(tables):
     """Return list of (module_name, tma_cell, pe_cell) from the bifurcation table."""
-    best = None
+    candidates = []
     for tbl in tables:
         if not tbl or len(tbl) < 2:
             continue
-        flat = " | ".join(_clean(c) for row in tbl[:4] for c in row if c)
+        flat = " | ".join(_clean(c) for row in tbl[:6] for c in row if c)
         if not (TMA_HINT.search(flat) and PE_HINT.search(flat)):
             continue
         # locate the column indexes from the header rows
@@ -200,9 +201,15 @@ def _find_bifurcation(tables):
             if not re.search(r"[A-Za-z]{3}|[\u0900-\u097F]{2}", name):
                 continue
             rows.append((_module_name(name), tma_cell, pe_cell))
-        if rows and (best is None or len(rows) > len(best)):
-            best = (rows, hdr)
-    return best or ([], {})
+        if rows:
+            # score by how many real lessons the candidate yields, not by row
+            # count. Loose extraction strategies produce many junk rows.
+            score = sum(len(_lessons(a)) + len(_lessons(b)) for _, a, b in rows)
+            candidates.append((score, len(rows), rows, hdr))
+    if not candidates:
+        return [], {}
+    candidates.sort(key=lambda c: (-c[0], -c[1]))
+    return candidates[0][2], candidates[0][3]
 
 
 def _find_weightage(tables, page_texts):
@@ -298,6 +305,59 @@ def _match_weightage(modules, weights):
 # public entry point
 # ---------------------------------------------------------------------------
 
+def _words_fallback(pdf_pages):
+    """
+    Last resort for PDFs with no ruled table.
+
+    Finds the x position of the TMA and Public Examination headers, then
+    assigns every word on the page to the module / TMA / PE column by its own
+    x position. Works on layouts that pdfplumber cannot see as a table.
+    """
+    out_rows = []
+    for page in pdf_pages[:20]:
+        try:
+            words = page.extract_words(use_text_flow=False, keep_blank_chars=False) or []
+        except Exception:
+            continue
+        if not words:
+            continue
+        tma_x = pe_x = None
+        for w in words:
+            t = (w.get("text") or "").strip()
+            if tma_x is None and re.fullmatch(r"TMA", t, re.I):
+                tma_x = w["x0"]
+            if pe_x is None and re.fullmatch(r"Public", t, re.I):
+                pe_x = w["x0"]
+        if tma_x is None or pe_x is None or pe_x <= tma_x:
+            continue
+
+        lines = {}
+        for w in words:
+            key = round(w["top"] / 4.0)
+            lines.setdefault(key, []).append(w)
+
+        cur = None
+        for key in sorted(lines):
+            ws = sorted(lines[key], key=lambda x: x["x0"])
+            mod_txt = " ".join(w["text"] for w in ws if w["x1"] <= tma_x + 4)
+            tma_txt = " ".join(w["text"] for w in ws if tma_x - 4 < w["x0"] < pe_x - 4)
+            pe_txt = " ".join(w["text"] for w in ws if w["x0"] >= pe_x - 4)
+            mod_txt = _clean(mod_txt)
+            if mod_txt and not MODULE_HINT.search(mod_txt) and \
+               re.search(r"[A-Za-z]{3}|[\u0900-\u097F]{2}", mod_txt) and \
+               not re.search(r"total\s+no\.?\s*of|no\.?\s*of\s*lessons", mod_txt, re.I):
+                cur = [_module_name(mod_txt), [], []]
+                out_rows.append(cur)
+            if cur is not None:
+                if _clean(tma_txt):
+                    cur[1].append(tma_txt)
+                if _clean(pe_txt):
+                    cur[2].append(pe_txt)
+        if out_rows:
+            break
+    return [(n, "\n".join(a), "\n".join(b)) for n, a, b in out_rows if a or b]
+
+
 def parse_syllabus_pdf(data: bytes):
     """
     Parse a NIOS syllabus PDF.
@@ -320,18 +380,22 @@ def parse_syllabus_pdf(data: bytes):
         return {"ok": False, "error": "This file could not be opened as a PDF. " + str(exc)[:150]}
 
     tables, page_texts = [], []
+    warn_fallback = False
     try:
         for page in pdf.pages[:40]:
             page_texts.append(page.extract_text() or "")
             for t in (page.extract_tables() or []):
                 tables.append(t)
-            # some NIOS PDFs draw tables without ruling lines
-            try:
-                for t in (page.extract_tables({"vertical_strategy": "text",
-                                               "horizontal_strategy": "text"}) or []):
-                    tables.append(t)
-            except Exception:
-                pass
+            # NIOS PDFs come in every flavour: ruled tables, partially ruled,
+            # and plain text columns. Try each strategy and keep everything.
+            for opts in ({"vertical_strategy": "text", "horizontal_strategy": "text"},
+                         {"vertical_strategy": "lines", "horizontal_strategy": "text"},
+                         {"vertical_strategy": "text", "horizontal_strategy": "lines"}):
+                try:
+                    for t in (page.extract_tables(opts) or []):
+                        tables.append(t)
+                except Exception:
+                    pass
     finally:
         pdf.close()
 
@@ -340,9 +404,22 @@ def parse_syllabus_pdf(data: bytes):
         return {"ok": False, "error": "No readable text found. This looks like a scanned PDF. Please download the text version from the NIOS website."}
 
     rows, hdr_counts = _find_bifurcation(tables)
-    if not rows:
-        return {"ok": False,
-                "error": "Bifurcation of Syllabus table could not be located in this PDF. Make sure you uploaded the syllabus PDF and not the sample question paper."}
+    if not rows or not any(_lessons(a) or _lessons(b) for _, a, b in rows):
+        try:
+            pdf2 = pdfplumber.open(io.BytesIO(data))
+            try:
+                fb = _words_fallback(pdf2.pages)
+            finally:
+                pdf2.close()
+        except Exception:
+            fb = []
+        if fb and any(_lessons(a) or _lessons(b) for _, a, b in fb):
+            rows = fb
+            warn_fallback = True
+        elif not rows:
+            return {"ok": False,
+                    "error": "Bifurcation of Syllabus table could not be located in this PDF. "
+                             "Make sure you uploaded the syllabus PDF and not the sample question paper."}
 
     module_names = [r[0] for r in rows]
     weights, warnings = _match_weightage(module_names, _find_weightage(tables, page_texts))
@@ -390,8 +467,13 @@ def parse_syllabus_pdf(data: bytes):
     if re.search(r"[\u0900-\u097F]", joined) and re.search(r"[\x00-\x08\x0e-\x1f]", "".join(page_texts)):
         warnings.append("This PDF uses a broken Devanagari font encoding, so some Hindi titles may be "
                         "missing matras. Please read through the chapter list and correct the spellings.")
+    if warn_fallback:
+        warnings.insert(0, "This PDF had no readable table, so the columns were detected by position. "
+                           "Please check the chapter list carefully before saving.")
     if not all_lessons:
-        return {"ok": False, "error": "The bifurcation table was found but no lessons could be read from it. Please add the chapters manually."}
+        return {"ok": False,
+                "error": "The bifurcation table was found but no lessons could be read from it. "
+                         "The lesson format in this PDF is not recognised. Send the PDF to support so it can be added."}
 
     totals, splits = [], []
     for m in re.finditer(r"(total\s+)?no\.?\s*of\s*lessons\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212:=]?\s*(\d{1,3})",

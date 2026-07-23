@@ -2550,7 +2550,7 @@ async function smartCompress(file,statusCb){
   }
   return {file, ok:file.size<=MAXB};
 }
-const NAV_ICON={'tests tracker':'clipboard','dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book','classes material':'folder','attendance':'clock','teacher attendance':'clock','payout':'wallet','payouts':'wallet','my attendance':'clock','my payout':'wallet','study material':'book','teacher reports':'chart','class compliance':'shield','live users':'user','admin users':'shield','send notice':'megaphone'};
+const NAV_ICON={'syllabus tracker':'clipboard','syllabus manager':'book','tests tracker':'clipboard','dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book','classes material':'folder','attendance':'clock','teacher attendance':'clock','payout':'wallet','payouts':'wallet','my attendance':'clock','my payout':'wallet','study material':'book','teacher reports':'chart','class compliance':'shield','live users':'user','admin users':'shield','send notice':'megaphone'};
 function injectNavIcons(){
   document.querySelectorAll('.nav-item').forEach(el=>{
     if(el.querySelector('svg')) return;
@@ -11255,6 +11255,59 @@ async function ocrFillQuestion_v1(inp,i){
 .syl-note.e{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.28);color:#b91c1c}
 .syl-note ul{margin:6px 0 0;padding-left:16px}
 
+
+/* chapter table editor */
+.syl-mt{width:100%;border-collapse:collapse;font-size:.83rem}
+.syl-mt th{text-align:left;padding:9px 12px;font-size:.63rem;text-transform:uppercase;letter-spacing:.7px;
+  font-weight:700;opacity:.5;border-bottom:1px solid var(--border,#e6e9f0)}
+.syl-mrow>td{background:rgba(99,102,241,.08);border-top:2px solid rgba(99,102,241,.25);
+  border-bottom:1px solid rgba(99,102,241,.18);padding:9px 12px}
+.syl-mrow input.mn{border:0;background:transparent;font-weight:700;font-size:.9rem;width:100%;
+  color:inherit;font-family:inherit;padding:3px 4px;border-radius:6px}
+.syl-mrow input.mn:focus{background:var(--card,#fff);outline:1px solid #6366f1}
+.syl-wt{display:flex;align-items:center;gap:6px;justify-content:flex-end}
+.syl-wt input{width:66px;text-align:center;padding:5px 6px;border:1px solid rgba(99,102,241,.35);
+  border-radius:7px;background:var(--card,#fff);color:inherit;font-weight:700;font-size:.84rem;font-family:inherit}
+.syl-wt input.bad{border-color:#ef4444;color:#dc2626}
+.syl-wt small{font-size:.66rem;opacity:.55;white-space:nowrap}
+.syl-crow td{padding:7px 12px;border-bottom:1px solid rgba(127,127,127,.1)}
+.syl-crow:hover td{background:rgba(127,127,127,.04)}
+.syl-crow input.ct{border:1px solid transparent;background:transparent;width:100%;font-size:.83rem;
+  color:inherit;font-family:inherit;padding:5px 7px;border-radius:7px}
+.syl-crow input.ct:focus{border-color:#6366f1;background:var(--card,#fff);outline:none}
+.syl-no{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.76rem;font-weight:700;opacity:.6;white-space:nowrap}
+.syl-kt{display:inline-flex;background:rgba(127,127,127,.12);border-radius:8px;padding:2px;gap:2px}
+.syl-kt button{border:0;background:transparent;padding:4px 11px;border-radius:6px;font-size:.68rem;
+  font-weight:700;cursor:pointer;color:inherit;opacity:.6;font-family:inherit;transition:.14s;letter-spacing:.3px}
+.syl-kt button.on{background:#6366f1;color:#fff;opacity:1}
+.syl-kt button.on.t{background:#94a3b8}
+.syl-mkr{font-weight:700;color:#b45309;font-variant-numeric:tabular-nums;font-size:.79rem;white-space:nowrap}
+.syl-x{border:0;background:transparent;color:inherit;opacity:.35;cursor:pointer;font-size:1rem;
+  line-height:1;padding:3px 6px;border-radius:6px;font-family:inherit}
+.syl-x:hover{opacity:1;color:#dc2626;background:rgba(239,68,68,.1)}
+.syl-tot{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:12px 14px;border-radius:11px;margin-top:12px;font-size:.83rem;font-weight:600}
+.syl-tot.ok{background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);color:#047857}
+.syl-tot.bad{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);color:#b91c1c}
+.syl-btnrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:11px}
+.syl-b{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border,#e6e9f0);background:transparent;
+  color:inherit;border-radius:9px;padding:7px 14px;font-size:.78rem;font-weight:600;cursor:pointer;
+  font-family:inherit;transition:.15s}
+.syl-b:hover{border-color:#6366f1;color:#6366f1;background:rgba(99,102,241,.05)}
+.syl-b.pri{background:#6366f1;border-color:#6366f1;color:#fff}
+.syl-b.pri:hover{background:#4f46e5;border-color:#4f46e5;color:#fff}
+.syl-b.dz:hover{border-color:#dc2626;color:#dc2626;background:rgba(239,68,68,.06)}
+/* premium marks fields */
+.syl-f{background:rgba(127,127,127,.05);border:1px solid var(--border,#e6e9f0);border-radius:11px;padding:10px 12px}
+.syl-f.hi{background:rgba(99,102,241,.07);border-color:rgba(99,102,241,.3)}
+.syl-f.hg{background:rgba(16,185,129,.07);border-color:rgba(16,185,129,.3)}
+.syl-f label{display:block;font-size:.64rem;text-transform:uppercase;letter-spacing:.6px;font-weight:700;
+  opacity:.6;margin-bottom:5px}
+.syl-f input{width:100%;border:1px solid var(--border,#e6e9f0);background:var(--card,#fff);border-radius:8px;
+  padding:8px 10px;font-size:.92rem;font-weight:700;color:inherit;font-family:inherit;text-align:center}
+.syl-f input:focus{border-color:#6366f1;outline:none;box-shadow:0 0 0 3px rgba(99,102,241,.14)}
+.syl-f small{display:block;font-size:.63rem;opacity:.5;margin-top:4px;text-align:center}
+
 /* ---------- student ---------- */
 .syl-hero{background:var(--card,#fff);border:1px solid var(--border,#e6e9f0);border-radius:16px;padding:18px;margin-bottom:16px}
 .syl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
@@ -11690,8 +11743,9 @@ async function sylEdit(code){
       return '# '+m.module+' | '+m.weightage+'\n'+m.lessons.map(function(l){
         return l.no+' | '+l.title+' | '+l.kind; }).join('\n'); }).join('\n\n');
     var ex=s.expected||{};
-    var nf=function(k,l,v){ return '<div><label class="form-label">'+l+'</label>'
-      +'<input type="number" class="form-control" id="sylf_'+k+'" value="'+(v||0)+'"></div>'; };
+    var mf=function(k,l,v,cls,hint){ return '<div class="syl-f'+(cls?' '+cls:'')+'"><label>'+l+'</label>'
+      +'<input type="number" id="sylf_'+k+'" value="'+(v||0)+'" oninput="sylChapRender()">'
+      +(hint?'<small>'+hint+'</small>':'')+'</div>'; };
 
     box.innerHTML='<div class="syl-ed"><div class="syl-edh">'
      +'<div><h4 style="margin:0;font-size:1rem">'+(code?'Edit subject':'Add subject')+'</h4>'
@@ -11705,34 +11759,34 @@ async function sylEdit(code){
      +'<div><label class="form-label">Template</label><select class="form-control" id="sylf_tpl" onchange="sylApplyTpl()">'
      + Object.keys(tpl).map(function(k){return '<option value="'+k+'"'+(s.template===k?' selected':'')+'>'+k+'</option>'}).join('')
      +'</select></div>'
-     +'<div class="syl-g syl-g3" style="margin-top:11px">'
-     +nf('theory_max','Theory max',s.marks.theory_max)+nf('practical_max','Practical max',s.marks.practical_max)
-     +nf('tma_max','TMA max',s.marks.tma_max)+nf('paper_marks','Paper marks',s.marks.paper_marks)
-     +nf('theory_pass','Theory pass',s.marks.theory_pass)+nf('practical_pass','Practical pass',s.marks.practical_pass)
-     +nf('combined_pass','Combined pass',s.marks.combined_pass)+nf('aggregate_pass','Aggregate pass',s.marks.aggregate_pass)
+     +'<div class="syl-g syl-g3" style="margin-top:12px">'
+     +mf('paper_marks','Paper marks',s.marks.paper_marks,'hi','Question paper total')
+     +mf('theory_max','Theory max',s.marks.theory_max,'hi','Marks statement')
+     +mf('practical_max','Practical max',s.marks.practical_max,'','0 if theory only')
+     +mf('tma_max','TMA max',s.marks.tma_max,'','Internal assessment')
+     +mf('theory_pass','Theory pass',s.marks.theory_pass,'hg','Minimum in theory')
+     +mf('practical_pass','Practical pass',s.marks.practical_pass,'hg','Minimum in practical')
+     +mf('combined_pass','Combined pass',s.marks.combined_pass,'hg','Theory plus practical')
+     +mf('aggregate_pass','Aggregate pass',s.marks.aggregate_pass,'hg','Out of 100')
      +'</div></div>'
      +'<div class="syl-fs"><h5>Lesson counts printed on the syllabus PDF</h5>'
-     +'<div class="syl-g syl-g3">'+nf('exp_total','Total lessons',ex.total)+nf('exp_tma','TMA lessons',ex.tma)
-     +nf('exp_pe','Public Exam lessons',ex.pe)+'</div>'
+     +'<div class="syl-g syl-g3">'+mf('exp_total','Total lessons',ex.total,'hi','')
+     +mf('exp_tma','TMA lessons',ex.tma,'hi','')+mf('exp_pe','Public Exam lessons',ex.pe,'hi','')+'</div>'
      +'<p style="font-size:.74rem;opacity:.6;margin:9px 0 0">Until the loaded chapters match these three numbers exactly, '
      +'the subject stays hidden from students.</p></div>'
      +'<div class="syl-fs"><h5>Import from NIOS syllabus PDF</h5>'
      +'<div class="syl-drop" id="syl-drop" onclick="document.getElementById(\'syl-pdf\').click()">'
      +'<input type="file" id="syl-pdf" accept="application/pdf,.pdf" style="display:none" onchange="sylImportPdf(this.files[0])">'
      +'<b style="display:block;font-size:.88rem">Drop the syllabus PDF here, or click to choose a file</b>'
-     +'<small style="opacity:.6;font-size:.75rem">Both the science format (L-3 Laws of Motion) and the language format '
-     +'(3 : Gillu) are read automatically</small></div><div id="syl-pdfout"></div></div>'
-     +'<div class="syl-fs"><h5>Chapters</h5>'
-     +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:9px">'
-     +'<button class="syl-ib" onclick="sylSpread()">Split paper marks across modules</button></div>'
-     +'<textarea class="form-control" id="sylf_mods" rows="14" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.78rem;line-height:1.6">'+esc(txt)+'</textarea>'
-     +'<p style="font-size:.74rem;opacity:.6;margin:8px 0 0">A line starting with # is a module, written as '
-     +'<b># Module name | module marks</b>. Every following line is a chapter, written as <b>L-1 | Chapter title | PE</b> '
-     +'or <b>L-1 | Chapter title | TMA</b>. Module marks are split equally across that module Public Examination chapters.</p></div>'
+     +'<small style="opacity:.6;font-size:.75rem">Ruled tables, unruled columns, science format (L-3 Laws of Motion) '
+     +'and language format (3 : Gillu) are all read automatically</small></div><div id="syl-pdfout"></div></div>'
+     +'<div class="syl-fs"><h5>Chapters</h5><div id="syl-chapbox"></div></div>'
      +'<div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
      +'<button class="btn btn-primary" onclick="sylSaveSubject()">Save subject</button>'
      +(code?'<button class="syl-ib dz" style="margin-left:auto" onclick="sylResetSubject(\''+esc(code)+'\')">Reset to built in data</button>':'')
      +'</div></div></div>';
+    _SYL.mods = JSON.parse(JSON.stringify(s.modules||[]));
+    sylChapRender();
     box.scrollIntoView({behavior:'smooth',block:'nearest'});
     var dz=_sylEl('syl-drop');
     if(dz){
@@ -11766,13 +11820,93 @@ function sylParseMods(txt){
   return mods;
 }
 
+/* ---------- visual chapter table ---------- */
+
+function sylPaper(){ var n=_sylEl('sylf_paper_marks'); return n?(parseFloat(n.value)||0):0; }
+
+function sylChapRender(){
+  var box=_sylEl('syl-chapbox'); if(!box) return;
+  var mods=_SYL.mods||[], paper=sylPaper();
+  var wsum=0, pe=0, tma=0;
+  mods.forEach(function(m){ wsum+=Number(m.weightage)||0;
+    m.lessons.forEach(function(l){ if(l.kind==='PE')pe++; else tma++; }); });
+  wsum=Math.round(wsum*100)/100;
+
+  var h='<div class="syl-btnrow">'
+   +'<button class="syl-b" onclick="sylAddModule()">Add module</button>'
+   +'<button class="syl-b" onclick="sylSpread()">Split paper marks by chapter count</button>'
+   +(wsum&&paper&&Math.abs(wsum-paper)>0.01?'<button class="syl-b pri" onclick="sylScaleMarks()">Scale current marks to '+paper+'</button>':'')
+   +'<button class="syl-b" onclick="sylTextMode()">Edit as text</button>'
+   +'<span style="margin-left:auto;font-size:.76rem;opacity:.6">'+pe+' exam &middot; '+tma+' TMA &middot; '+mods.length+' modules</span>'
+   +'</div>';
+
+  if(!mods.length){
+    h+='<div class="syl-empty" style="border:1px dashed var(--border,#e6e9f0);border-radius:12px">'
+     +'No chapters yet. Import the syllabus PDF above, or press Add module.</div>';
+    box.innerHTML=h; return;
+  }
+
+  h+='<div style="border:1px solid var(--border,#e6e9f0);border-radius:12px;overflow:hidden">'
+   +'<table class="syl-mt"><thead><tr><th style="width:78px">Lesson</th><th>Chapter title</th>'
+   +'<th style="width:150px">Type</th><th style="width:92px;text-align:right">Marks</th><th style="width:40px"></th></tr></thead><tbody>';
+
+  mods.forEach(function(m,mi){
+    var mpe=m.lessons.filter(function(l){return l.kind==='PE'}).length;
+    var each=mpe?Math.round((Number(m.weightage)||0)/mpe*100)/100:0;
+    h+='<tr class="syl-mrow"><td colspan="2"><input class="mn" value="'+esc(m.module)+'" '
+     +'onchange="sylModName('+mi+',this.value)" placeholder="Module name"></td>'
+     +'<td colspan="2"><div class="syl-wt"><small>module marks</small>'
+     +'<input type="number" step="0.5" value="'+(Number(m.weightage)||0)+'" '
+     +(Number(m.weightage)>0?'':'class="bad" ')+'onchange="sylModWt('+mi+',this.value)">'
+     +'<small>'+(mpe?'&divide; '+mpe+' = '+each:'no exam chapter')+'</small></div></td>'
+     +'<td><button class="syl-x" title="Delete module" onclick="sylDelModule('+mi+')">&times;</button></td></tr>';
+    m.lessons.forEach(function(l,li){
+      h+='<tr class="syl-crow"><td><input class="ct syl-no" value="'+esc(l.no)+'" onchange="sylChNo('+mi+','+li+',this.value)"></td>'
+       +'<td><input class="ct" value="'+esc(l.title)+'" onchange="sylChTitle('+mi+','+li+',this.value)"></td>'
+       +'<td><div class="syl-kt">'
+       +'<button class="'+(l.kind==='PE'?'on':'')+'" onclick="sylChKind('+mi+','+li+',\'PE\')">Exam</button>'
+       +'<button class="'+(l.kind==='TMA'?'on t':'')+'" onclick="sylChKind('+mi+','+li+',\'TMA\')">TMA</button></div></td>'
+       +'<td style="text-align:right"><span class="syl-mkr">'+(l.kind==='PE'?each:'&ndash;')+'</span></td>'
+       +'<td><button class="syl-x" title="Delete chapter" onclick="sylDelCh('+mi+','+li+')">&times;</button></td></tr>';
+    });
+    h+='<tr class="syl-crow"><td colspan="5" style="padding:6px 12px">'
+     +'<button class="syl-b" style="padding:4px 11px;font-size:.72rem" onclick="sylAddCh('+mi+')">Add chapter</button></td></tr>';
+  });
+  h+='</tbody></table></div>';
+
+  var okw = paper>0 && Math.abs(wsum-paper)<=0.01;
+  h+='<div class="syl-tot '+(okw?'ok':'bad')+'"><span>Module marks total '+wsum
+   +(paper?' of '+paper+' paper marks':'')+'</span>'
+   +'<span>'+(okw?'Matches the question paper':(paper?(wsum<paper?(Math.round((paper-wsum)*100)/100)+' marks short':(Math.round((wsum-paper)*100)/100)+' marks extra'):'Set the paper marks above'))+'</span></div>';
+  box.innerHTML=h;
+}
+
+function sylModName(i,v){ _SYL.mods[i].module=v; }
+function sylModWt(i,v){ _SYL.mods[i].weightage=parseFloat(v)||0; sylChapRender(); }
+function sylChNo(m,l,v){ _SYL.mods[m].lessons[l].no=v; }
+function sylChTitle(m,l,v){ _SYL.mods[m].lessons[l].title=v; }
+function sylChKind(m,l,k){ _SYL.mods[m].lessons[l].kind=k; sylChapRender(); }
+function sylDelCh(m,l){ _SYL.mods[m].lessons.splice(l,1); sylChapRender(); }
+function sylAddCh(m){
+  var used=[]; _SYL.mods.forEach(function(x){ x.lessons.forEach(function(y){
+    var n=parseInt(String(y.no).replace(/\D/g,''),10); if(n) used.push(n); }); });
+  var next=1; while(used.indexOf(next)>-1) next++;
+  _SYL.mods[m].lessons.push({no:'L-'+next,title:'',kind:'PE'}); sylChapRender();
+}
+function sylAddModule(){ _SYL.mods.push({module:'',weightage:0,lessons:[]}); sylChapRender(); }
+function sylDelModule(i){
+  if(_SYL.mods[i].lessons.length && !confirm('Delete this module and its '+_SYL.mods[i].lessons.length+' chapters?')) return;
+  _SYL.mods.splice(i,1); sylChapRender();
+}
+
 /* language syllabus PDFs carry no Weightage by Content table, so the admin
    splits the paper marks across modules by exam chapter count in one click */
 function sylSpread(){
-  var mods=sylParseMods(_sylEl('sylf_mods').value);
-  var paper=parseFloat(_sylEl('sylf_paper_marks').value)||0;
+  var mods=_SYL.mods||[], paper=sylPaper();
   if(!mods.length) return toast('Add the chapters first.',true);
   if(!paper) return toast('Set the paper marks first.',true);
+  var has=mods.some(function(m){ return (Number(m.weightage)||0)>0; });
+  if(has && !confirm('Some modules already have marks from the syllabus PDF. Overwrite them with an even split?')) return;
   var tot=0; mods.forEach(function(m){ tot+=m.lessons.filter(function(l){return l.kind==='PE'}).length; });
   if(!tot) return toast('No Public Examination chapter found.',true);
   var acc=0;
@@ -11781,10 +11915,40 @@ function sylSpread(){
     m.weightage = (i===mods.length-1) ? Math.round((paper-acc)*100)/100 : Math.round(paper*pe/tot);
     acc+=m.weightage;
   });
-  _sylEl('sylf_mods').value=mods.map(function(m){
+  sylChapRender();
+  toast(paper+' marks split across '+mods.length+' modules by chapter count.');
+}
+
+/* keeps the ratio the PDF gave and only rescales it to the paper total */
+function sylScaleMarks(){
+  var mods=_SYL.mods||[], paper=sylPaper();
+  var cur=0; mods.forEach(function(m){ cur+=Number(m.weightage)||0; });
+  if(!cur||!paper) return toast('Nothing to scale.',true);
+  var acc=0;
+  mods.forEach(function(m,i){
+    m.weightage = (i===mods.length-1) ? Math.round((paper-acc)*100)/100
+                : Math.round((Number(m.weightage)||0)*paper/cur*100)/100;
+    acc+=m.weightage;
+  });
+  sylChapRender();
+  toast('Module marks scaled to '+paper+', the ratio from the PDF is kept.');
+}
+
+function sylTextMode(){
+  var txt=(_SYL.mods||[]).map(function(m){
     return '# '+m.module+' | '+m.weightage+'\n'+m.lessons.map(function(l){
       return l.no+' | '+l.title+' | '+l.kind; }).join('\n'); }).join('\n\n');
-  toast(paper+' marks split across '+mods.length+' modules by chapter count. Adjust if the PDF says otherwise.');
+  var box=_sylEl('syl-chapbox');
+  box.innerHTML='<div class="syl-btnrow"><button class="syl-b pri" onclick="sylTextApply()">Apply and go back to table</button>'
+   +'<button class="syl-b" onclick="sylChapRender()">Cancel</button></div>'
+   +'<textarea class="form-control" id="sylf_mods" rows="16" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.78rem;line-height:1.65">'+esc(txt)+'</textarea>'
+   +'<p style="font-size:.74rem;opacity:.6;margin:8px 0 0">A line starting with # is a module, written as '
+   +'<b># Module name | module marks</b>. Every following line is a chapter, written as <b>L-1 | Chapter title | PE</b> '
+   +'or <b>L-1 | Chapter title | TMA</b>.</p>';
+}
+function sylTextApply(){
+  _SYL.mods=sylParseMods(_sylEl('sylf_mods').value);
+  sylChapRender(); toast('Chapters updated.');
 }
 
 async function sylImportPdf(file){
@@ -11797,7 +11961,8 @@ async function sylImportPdf(file){
     var r=await fetch(API+'/api/syllabus/admin/parse-pdf',{method:'POST',headers:hd,body:fd});
     var d=await r.json().catch(function(){return{}});
     if(!r.ok) throw new Error(d.detail||'Could not read this PDF');
-    _sylEl('sylf_mods').value=d.text;
+    _SYL.mods = (d.modules||sylParseMods(d.text));
+    sylChapRender();
     if(d.expected){
       if(d.expected.total) _sylEl('sylf_exp_total').value=d.expected.total;
       if(d.expected.tma)   _sylEl('sylf_exp_tma').value=d.expected.tma;
@@ -11813,7 +11978,7 @@ async function sylImportPdf(file){
     var pm=parseFloat(_sylEl('sylf_paper_marks').value)||0;
     if(!d.paper_marks){
       h+='<div class="syl-note w">This PDF has no Weightage by Content table, so module marks are zero. '
-       +'Use <b>Split paper marks across modules</b> below, or type the marks after each module name.</div>';
+       +'Type each module marks in the table below, or press <b>Split paper marks by chapter count</b>.</div>';
     }else if(Math.abs(pm-d.paper_marks)>0.5){
       h+='<div class="syl-note w">This PDF adds up to '+d.paper_marks+' paper marks but the template says '+pm+'. '
        +'<button class="syl-ib" style="margin-top:8px" onclick="sylUsePaper('+d.paper_marks+')">Use '+d.paper_marks+' and recalculate theory</button></div>';
@@ -11849,7 +12014,7 @@ async function sylSaveSubject(){
   try{
     var res=await api('/api/syllabus/admin/subject','POST',{class_level:_SYL.cls,code:code,
       payload:{code:code,name:name,template:_sylEl('sylf_tpl').value,marks:marks,expected:expected,
-        modules:sylParseMods(_sylEl('sylf_mods').value)}});
+        modules:_SYL.mods||[]}});
     _sylEl('syl-editor').innerHTML='';
     await loadASyllabus();
     if(res.status==='ready') toast('Subject saved and verified. Students can see it now.');
