@@ -349,9 +349,19 @@ def validate_subject(subject):
 
     # 3. a module that carries marks must have at least one PE chapter
     for m in modules:
-        if float(m.get("weightage") or 0) > 0 and not [l for l in m["lessons"] if l["kind"] == "PE"]:
+        pe_l = [l for l in m["lessons"] if l["kind"] == "PE"]
+        w = float(m.get("weightage") or 0)
+        if w > 0 and not pe_l:
             issues.append("Module '%s' carries %s marks but has no Public Examination chapter."
                           % (m["module"], m["weightage"]))
+        # 3b. hand entered chapter marks must fit inside the module weightage
+        fixed = sum(float(l.get("marks") or 0) for l in pe_l)
+        if fixed > w + 0.01:
+            issues.append("Module '%s': the marks set by hand add up to %s, which is more than the "
+                          "module weightage of %s." % (m["module"], round(fixed, 2), round(w, 2)))
+        elif fixed > 0 and len([l for l in pe_l if not l.get("marks")]) == 0 and abs(fixed - w) > 0.01:
+            issues.append("Module '%s': every chapter has a fixed mark and they add up to %s, "
+                          "but the module weightage is %s." % (m["module"], round(fixed, 2), round(w, 2)))
 
     # 4. no duplicate or missing lesson numbers
     nums = [r["no"] for r in rows]

@@ -11282,6 +11282,19 @@ async function ocrFillQuestion_v1(inp,i){
 .syl-kt button.on{background:#6366f1;color:#fff;opacity:1}
 .syl-kt button.on.t{background:#94a3b8}
 .syl-mkr{font-weight:700;color:#b45309;font-variant-numeric:tabular-nums;font-size:.79rem;white-space:nowrap}
+.syl-mc{display:flex;align-items:center;gap:4px;justify-content:flex-end}
+.syl-mc input{width:56px;text-align:center;padding:5px 4px;border:1px solid transparent;border-radius:7px;
+  background:transparent;color:#b45309;font-weight:700;font-size:.79rem;font-family:inherit;
+  font-variant-numeric:tabular-nums}
+.syl-mc input:hover{border-color:var(--border,#e6e9f0)}
+.syl-mc input:focus{border-color:#6366f1;background:var(--card,#fff);outline:none;color:inherit}
+.syl-mc input.fx{background:rgba(180,83,9,.12);border-color:rgba(180,83,9,.35);color:#92400e}
+.syl-mc input::placeholder{color:#b45309;opacity:.55;font-weight:700}
+.syl-pin{border:0;background:transparent;cursor:pointer;font-size:.6rem;font-weight:800;letter-spacing:.4px;
+  padding:3px 5px;border-radius:5px;font-family:inherit;color:#92400e;background:rgba(180,83,9,.14)}
+.syl-pin:hover{background:rgba(180,83,9,.26)}
+.syl-mhint{font-size:.66rem;opacity:.6;white-space:nowrap}
+.syl-mhint b{color:#92400e}
 .syl-x{border:0;background:transparent;color:inherit;opacity:.35;cursor:pointer;font-size:1rem;
   line-height:1;padding:3px 6px;border-radius:6px;font-family:inherit}
 .syl-x:hover{opacity:1;color:#dc2626;background:rgba(239,68,68,.1)}
@@ -11814,7 +11827,10 @@ function sylParseMods(txt){
     }else if(cur){
       var q=t.split('|'); if(q.length<2) return;
       var k=(q[2]||'PE').trim().toUpperCase();
-      cur.lessons.push({no:q[0].trim(), title:q[1].trim(), kind:(k==='TMA'?'TMA':'PE')});
+      var ch={no:q[0].trim(), title:q[1].trim(), kind:(k==='TMA'?'TMA':'PE')};
+      var fm=parseFloat(q[3]);
+      if(ch.kind==='PE' && !isNaN(fm) && fm>0) ch.marks=Math.round(fm*100)/100;
+      cur.lessons.push(ch);
     }
   });
   return mods;
@@ -11823,6 +11839,25 @@ function sylParseMods(txt){
 /* ---------- visual chapter table ---------- */
 
 function sylPaper(){ var n=_sylEl('sylf_paper_marks'); return n?(parseFloat(n.value)||0):0; }
+
+/* Mirrors chapter_weightage() on the server exactly.
+   A chapter with its own marks keeps them, the rest split what is left. */
+function sylShares(m){
+  var pe=(m.lessons||[]).filter(function(l){return l.kind==='PE'});
+  var fixed=0; pe.forEach(function(l){ fixed += Number(l.marks)||0; });
+  var remaining=Math.max((Number(m.weightage)||0)-fixed, 0);
+  var auto=pe.filter(function(l){ return !(Number(l.marks)>0); });
+  var out={};
+  if(auto.length){
+    var base=Math.round(remaining/auto.length*100)/100;
+    auto.forEach(function(l){ out[l.no]=base; });
+    var drift=Math.round((remaining-base*auto.length)*100)/100;
+    if(drift) out[auto[0].no]=Math.round((base+drift)*100)/100;
+  }
+  pe.forEach(function(l){ if(Number(l.marks)>0) out[l.no]=Number(l.marks); });
+  return {shares:out, fixed:Math.round(fixed*100)/100, autoCount:auto.length,
+          remaining:Math.round(remaining*100)/100, peCount:pe.length};
+}
 
 function sylChapRender(){
   var box=_sylEl('syl-chapbox'); if(!box) return;
@@ -11848,25 +11883,36 @@ function sylChapRender(){
 
   h+='<div style="border:1px solid var(--border,#e6e9f0);border-radius:12px;overflow:hidden">'
    +'<table class="syl-mt"><thead><tr><th style="width:78px">Lesson</th><th>Chapter title</th>'
-   +'<th style="width:150px">Type</th><th style="width:92px;text-align:right">Marks</th><th style="width:40px"></th></tr></thead><tbody>';
+   +'<th style="width:150px">Type</th><th style="width:118px;text-align:right">Marks</th><th style="width:40px"></th></tr></thead><tbody>';
 
   mods.forEach(function(m,mi){
-    var mpe=m.lessons.filter(function(l){return l.kind==='PE'}).length;
-    var each=mpe?Math.round((Number(m.weightage)||0)/mpe*100)/100:0;
+    var sh=sylShares(m), hint;
+    if(!sh.peCount) hint='no exam chapter';
+    else if(!sh.fixed) hint='&divide; '+sh.peCount+' = '+(sh.shares[m.lessons.filter(function(l){return l.kind==='PE'})[0].no]||0);
+    else if(sh.autoCount) hint='<b>'+sh.fixed+' fixed</b>, '+sh.remaining+' split over '+sh.autoCount;
+    else hint='<b>all '+sh.peCount+' fixed</b> = '+sh.fixed;
+    var over = sh.fixed > (Number(m.weightage)||0)+0.01;
     h+='<tr class="syl-mrow"><td colspan="2"><input class="mn" value="'+esc(m.module)+'" '
      +'onchange="sylModName('+mi+',this.value)" placeholder="Module name"></td>'
      +'<td colspan="2"><div class="syl-wt"><small>module marks</small>'
      +'<input type="number" step="0.5" value="'+(Number(m.weightage)||0)+'" '
-     +(Number(m.weightage)>0?'':'class="bad" ')+'onchange="sylModWt('+mi+',this.value)">'
-     +'<small>'+(mpe?'&divide; '+mpe+' = '+each:'no exam chapter')+'</small></div></td>'
+     +((Number(m.weightage)>0&&!over)?'':'class="bad" ')+'onchange="sylModWt('+mi+',this.value)">'
+     +'<small class="syl-mhint"'+(over?' style="color:#dc2626;opacity:1"':'')+'>'
+     +(over?'fixed marks exceed the module':hint)+'</small></div></td>'
      +'<td><button class="syl-x" title="Delete module" onclick="sylDelModule('+mi+')">&times;</button></td></tr>';
     m.lessons.forEach(function(l,li){
+      var pinned=Number(l.marks)>0, val=sh.shares[l.no];
       h+='<tr class="syl-crow"><td><input class="ct syl-no" value="'+esc(l.no)+'" onchange="sylChNo('+mi+','+li+',this.value)"></td>'
        +'<td><input class="ct" value="'+esc(l.title)+'" onchange="sylChTitle('+mi+','+li+',this.value)"></td>'
        +'<td><div class="syl-kt">'
        +'<button class="'+(l.kind==='PE'?'on':'')+'" onclick="sylChKind('+mi+','+li+',\'PE\')">Exam</button>'
        +'<button class="'+(l.kind==='TMA'?'on t':'')+'" onclick="sylChKind('+mi+','+li+',\'TMA\')">TMA</button></div></td>'
-       +'<td style="text-align:right"><span class="syl-mkr">'+(l.kind==='PE'?each:'&ndash;')+'</span></td>'
+       +'<td>'+(l.kind==='PE'
+         ? '<div class="syl-mc">'+(pinned?'<button class="syl-pin" title="Back to automatic split" onclick="sylChMarks('+mi+','+li+',\'\')">FIXED</button>':'')
+           +'<input type="number" step="0.5" min="0" '+(pinned?'class="fx" value="'+Number(l.marks)+'"':'placeholder="'+(val||0)+'"')
+           +' title="Type a mark to fix this chapter, clear it to go back to the automatic split" '
+           +'onchange="sylChMarks('+mi+','+li+',this.value)"></div>'
+         : '<div class="syl-mc"><span class="syl-mkr" style="opacity:.35">&ndash;</span></div>')+'</td>'
        +'<td><button class="syl-x" title="Delete chapter" onclick="sylDelCh('+mi+','+li+')">&times;</button></td></tr>';
     });
     h+='<tr class="syl-crow"><td colspan="5" style="padding:6px 12px">'
@@ -11877,7 +11923,10 @@ function sylChapRender(){
   var okw = paper>0 && Math.abs(wsum-paper)<=0.01;
   h+='<div class="syl-tot '+(okw?'ok':'bad')+'"><span>Module marks total '+wsum
    +(paper?' of '+paper+' paper marks':'')+'</span>'
-   +'<span>'+(okw?'Matches the question paper':(paper?(wsum<paper?(Math.round((paper-wsum)*100)/100)+' marks short':(Math.round((wsum-paper)*100)/100)+' marks extra'):'Set the paper marks above'))+'</span></div>';
+   +'<span>'+(okw?'Matches the question paper':(paper?(wsum<paper?(Math.round((paper-wsum)*100)/100)+' marks short':(Math.round((wsum-paper)*100)/100)+' marks extra'):'Set the paper marks above'))+'</span></div>'
+   +'<p style="font-size:.74rem;opacity:.6;margin:9px 0 0">Chapter marks split automatically inside each module. '
+   +'If you know from past papers that a chapter always carries a fixed mark, type it in the Marks column and the '
+   +'rest of that module adjusts around it. Press FIXED to release it back to the automatic split.</p>';
   box.innerHTML=h;
 }
 
@@ -11885,7 +11934,19 @@ function sylModName(i,v){ _SYL.mods[i].module=v; }
 function sylModWt(i,v){ _SYL.mods[i].weightage=parseFloat(v)||0; sylChapRender(); }
 function sylChNo(m,l,v){ _SYL.mods[m].lessons[l].no=v; }
 function sylChTitle(m,l,v){ _SYL.mods[m].lessons[l].title=v; }
-function sylChKind(m,l,k){ _SYL.mods[m].lessons[l].kind=k; sylChapRender(); }
+function sylChKind(m,l,k){
+  var ch=_SYL.mods[m].lessons[l]; ch.kind=k;
+  if(k==='TMA') delete ch.marks;
+  sylChapRender();
+}
+/* fix one chapter at a known mark, for example when past papers show that
+   Dispersion and Scattering of Light is always 6 marks */
+function sylChMarks(m,l,v){
+  var ch=_SYL.mods[m].lessons[l];
+  var n=parseFloat(v);
+  if(!v || isNaN(n) || n<=0) delete ch.marks; else ch.marks=Math.round(n*100)/100;
+  sylChapRender();
+}
 function sylDelCh(m,l){ _SYL.mods[m].lessons.splice(l,1); sylChapRender(); }
 function sylAddCh(m){
   var used=[]; _SYL.mods.forEach(function(x){ x.lessons.forEach(function(y){
@@ -11937,14 +11998,16 @@ function sylScaleMarks(){
 function sylTextMode(){
   var txt=(_SYL.mods||[]).map(function(m){
     return '# '+m.module+' | '+m.weightage+'\n'+m.lessons.map(function(l){
-      return l.no+' | '+l.title+' | '+l.kind; }).join('\n'); }).join('\n\n');
+      return l.no+' | '+l.title+' | '+l.kind+((l.kind==='PE'&&Number(l.marks)>0)?' | '+Number(l.marks):''); }).join('\n');
+  }).join('\n\n');
   var box=_sylEl('syl-chapbox');
   box.innerHTML='<div class="syl-btnrow"><button class="syl-b pri" onclick="sylTextApply()">Apply and go back to table</button>'
    +'<button class="syl-b" onclick="sylChapRender()">Cancel</button></div>'
    +'<textarea class="form-control" id="sylf_mods" rows="16" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.78rem;line-height:1.65">'+esc(txt)+'</textarea>'
    +'<p style="font-size:.74rem;opacity:.6;margin:8px 0 0">A line starting with # is a module, written as '
    +'<b># Module name | module marks</b>. Every following line is a chapter, written as <b>L-1 | Chapter title | PE</b> '
-   +'or <b>L-1 | Chapter title | TMA</b>.</p>';
+   +'or <b>L-1 | Chapter title | TMA</b>. Ek chapter ke marks fix karne hain to chautha field lagao: '
+   +'<b>L-21 | Dispersion and Scattering of Light | PE | 6</b>.</p>';
 }
 function sylTextApply(){
   _SYL.mods=sylParseMods(_sylEl('sylf_mods').value);

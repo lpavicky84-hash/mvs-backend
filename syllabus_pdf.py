@@ -31,15 +31,26 @@ except ImportError:
 
 
 LESSON_RE = re.compile(
-    r"L\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212]?\s*(\d{1,2})\s*"
+    r"(?:Lesson|Chapter|Ch|L)\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212]?\s*(\d{1,2})\s*"
     r"[\(\[]\s*(.+?)\s*[\)\]]",
-    re.S,
+    re.S | re.I,
 )
 LESSON_LOOSE_RE = re.compile(
     r"(?:L|Lesson|Ch|Chapter|\u092a\u093e\u0920)\s*[\-\u2013\u2014]?\s*(\d{1,2})\s*[\.\:\)\u2013]?\s*"
     r"([A-Za-z\u0900-\u097F][^\n]{2,90})", re.I
 )
-LEAD_NUM_RE = re.compile(r"^\s*\d{1,2}\s*[\.\)]\s*")
+LEAD_NUM_RE = re.compile(
+    r"^\s*(?:module\s*[\-\u2013]?\s*(?:[IVXLC]+|\d{1,2})\b[\.\):]?\s*|\d{1,2}\s*[\.\)]\s*)", re.I)
+
+# A cell that begins a new module: "Module I", "Module-2", "1." or "1)"
+MODULE_START_RE = re.compile(
+    r"^\s*(?:module\s*[\-\u2013]?\s*(?:[IVXLC]+|\d{1,2})\b|\d{1,2}\s*[\.\)]\s*\S)", re.I)
+
+# A row that is part of the table heading, never a module
+HEADER_CELL_RE = re.compile(
+    r"no\.?\s*&\s*name|TMA\s*\(|public\s+exam|no\.?\s*of\s*lessons"
+    r"|^\s*module\s*$|total\s+no\.?\s*of|^\s*(?:I|II|III)\s*$"
+    r"|\u092a\u093e\u0920\u094b\u0902\s*\u0915\u0940", re.I)
 MODULE_HINT = re.compile(r"module", re.I)
 TMA_HINT = re.compile(r"\bTMA\b", re.I)
 PE_HINT = re.compile(r"public\s+exam", re.I)
@@ -95,13 +106,33 @@ def _stated_count(cell):
     return int(m.group(1)) if m else None
 
 
+MARKER_RE = re.compile(
+    r"\b(?:Lesson|Chapter|Ch|L)\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212]?\s*(\d{1,2})\b", re.I)
+
+
+def _title_from_chunk(chunk):
+    """A lesson title is either wrapped in brackets or runs to the next marker."""
+    c = _clean(chunk)
+    c = re.sub(r"^[\-\u2013\u2014:\s]+", "", c)
+    if c.startswith("(") or c.startswith("["):
+        m = re.match(r"[\(\[]\s*(.+?)\s*[\)\]]", c, re.S)
+        if m:
+            return _clean(m.group(1))
+        return _clean(c.lstrip("(["))
+    c = COUNT_MARK_RE.sub("", c)
+    c = re.sub(r"[\-\u2013\u2014\s]+$", "", c)
+    c = re.sub(r"^[\)\]]\s*", "", c)
+    return _clean(c)
+
+
 def _lessons(cell):
     """
     Pull [(no, title)] out of one table cell.
 
-    Two layouts are supported:
-      science style   L-3 (Laws of Motion)
-      language style  3 : Gillu          (one lesson per line)
+    Three layouts are supported:
+      bracketed   L-3 (Laws of Motion)   /  Lesson-1 (Atoms and Molecules)
+      bare        Lesson-21 d-Block and f-Block Elements
+      language    3 : Gillu              (one lesson per line)
     """
     raw = "" if cell is None else str(cell)
     raw = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", raw)
@@ -110,11 +141,12 @@ def _lessons(cell):
         return []
 
     out = []
-    for no, title in LESSON_RE.findall(txt):
-        title = _clean(title)
-        title = re.sub(r"\s*\.\s*$", "", title)
-        if title:
-            out.append((int(no), title))
+    marks = list(MARKER_RE.finditer(txt))
+    for i, m in enumerate(marks):
+        chunk = txt[m.end(): marks[i + 1].start() if i + 1 < len(marks) else len(txt)]
+        title = _title_from_chunk(chunk)
+        if len(title) >= 3:
+            out.append((int(m.group(1)), title))
 
     # language subjects: every line is "<number> : <title>"
     if not out:
@@ -128,12 +160,6 @@ def _lessons(cell):
             title = COUNT_MARK_RE.sub("", m.group(2)).strip(" .:\u0964-")
             if title:
                 out.append((int(m.group(1)), title))
-
-    if not out:
-        for no, title in LESSON_LOOSE_RE.findall(txt):
-            t = _clean(title)
-            if t and not SKIP_LINE_RE.search(t):
-                out.append((int(no), t))
 
     seen, uniq = set(), []
     for no, title in out:
@@ -154,68 +180,109 @@ def _to_float(s):
 # ---------------------------------------------------------------------------
 
 def _find_bifurcation(tables):
-    """Return list of (module_name, tma_cell, pe_cell) from the bifurcation table."""
+    """
+    Return (rows, header_counts) where rows = [(module_name, tma_text, pe_text)].
+
+    NIOS lays this table out in three different ways:
+
+      A. one table row per module, each cell holding every lesson of that module
+      B. one table row per printed LINE, so a module spans many rows and the
+         continuation rows have an empty module cell
+      C. module names that wrap over two or three lines
+
+    The grouper below handles all three. A row starts a new module when its
+    module cell carries an explicit marker (Module I, Module-2, 1., 2)).
+    If no row in the table carries such a marker, every non empty module cell
+    is treated as a new module, which is the layout A behaviour.
+    """
     candidates = []
-    for tbl in tables:
+    for rank, tbl in tables:
         if not tbl or len(tbl) < 2:
             continue
-        flat = " | ".join(_clean(c) for row in tbl[:6] for c in row if c)
+        flat = " | ".join(_clean(c) for row in tbl[:8] for c in row if c)
         if not (TMA_HINT.search(flat) and PE_HINT.search(flat)):
             continue
-        # locate the column indexes from the header rows
+
         tma_col = pe_col = mod_col = None
-        for row in tbl[:4]:
+        for row in tbl[:8]:
             for i, c in enumerate(row):
                 t = _clean(c)
                 if tma_col is None and TMA_HINT.search(t):
                     tma_col = i
                 if pe_col is None and PE_HINT.search(t):
                     pe_col = i
-                if mod_col is None and MODULE_HINT.search(t):
+                if mod_col is None and re.search(r"module", t, re.I) and not MODULE_START_RE.match(t):
                     mod_col = i
         if tma_col is None or pe_col is None:
             continue
         if mod_col is None:
             mod_col = 0
-        rows, hdr = [], {}
+        if tma_col == pe_col:
+            continue
+
+        hdr = {}
+        body = []
         for row in tbl:
             if max(mod_col, tma_col, pe_col) >= len(row):
                 continue
             name = _clean(row[mod_col])
-            tma_cell, pe_cell = row[tma_col], row[pe_col]
-            # header cell "( No. of lessons ) 8" carries the column total
+            tma_cell, pe_cell = row[tma_col] or "", row[pe_col] or ""
+
             for key, cell in (("tma", tma_cell), ("pe", pe_cell)):
                 c = _clean(cell)
                 if re.search(r"no\.?\s*of\s*lessons", c, re.I):
-                    m = re.search(r"no\.?\s*of\s*lessons\s*\)?\s*[:=\-]?\s*(\d{1,3})", c, re.I)
+                    m = re.search(r"no\.?\s*of\s*lessons\s*\)?\s*[:=\-\u2013]?\s*(\d{1,3})", c, re.I)
                     if m:
                         hdr[key] = int(m.group(1))
-            if not name or MODULE_HINT.search(name) or TOTAL_RE.match(name):
+
+            joined = " ".join(_clean(x) for x in (name, tma_cell, pe_cell))
+            has_lesson = bool(_lessons(tma_cell) or _lessons(pe_cell))
+            if not has_lesson and HEADER_CELL_RE.search(joined):
                 continue
-            # banner rows like "Total No. of Lessons=22" span the table
-            if re.search(r"total\s+no\.?\s*of\s*lessons", name, re.I):
+            if not (name or _clean(tma_cell) or _clean(pe_cell)):
                 continue
-            if not _clean(tma_cell) and not _clean(pe_cell):
-                continue
-            # a module name has letters in any script, not just Latin
-            if not re.search(r"[A-Za-z]{3}|[\u0900-\u097F]{2}", name):
-                continue
-            rows.append((_module_name(name), tma_cell, pe_cell))
-        if rows:
-            # score by how many real lessons the candidate yields, not by row
-            # count. Loose extraction strategies produce many junk rows.
-            score = sum(len(_lessons(a)) + len(_lessons(b)) for _, a, b in rows)
-            candidates.append((score, len(rows), rows, hdr))
+            body.append((name, tma_cell, pe_cell))
+
+        if not body:
+            continue
+
+        numbered = any(MODULE_START_RE.match(n) for n, _, _ in body)
+        groups = []
+        for name, tma_cell, pe_cell in body:
+            starts = MODULE_START_RE.match(name) if numbered else bool(name)
+            if starts or not groups:
+                groups.append([name, [tma_cell], [pe_cell]])
+            else:
+                if name:
+                    groups[-1][0] = (groups[-1][0] + " " + name).strip()
+                groups[-1][1].append(tma_cell)
+                groups[-1][2].append(pe_cell)
+
+        rows = []
+        for name, tmas, pes in groups:
+            nm = _module_name(name)
+            if not nm or not re.search(r"[A-Za-z]{3}|[\u0900-\u097F]{2}", nm):
+                nm = nm or "Module"
+            rows.append((nm, "\n".join(x for x in tmas if _clean(x)),
+                         "\n".join(x for x in pes if _clean(x))))
+
+        score = sum(len(_lessons(a)) + len(_lessons(b)) for _, a, b in rows)
+        # a module name that reads like a lesson means the columns were split
+        # in the wrong place, so penalise that candidate
+        junk = sum(1 for n, _, _ in rows if MARKER_RE.search(n) or len(n) < 3)
+        if score:
+            candidates.append((score, junk, rank, len(rows), rows, hdr))
+
     if not candidates:
         return [], {}
-    candidates.sort(key=lambda c: (-c[0], -c[1]))
-    return candidates[0][2], candidates[0][3]
+    candidates.sort(key=lambda c: (-c[0], c[1], c[2], c[3]))
+    return candidates[0][4], candidates[0][5]
 
 
 def _find_weightage(tables, page_texts):
     """Return list of (module_name, marks) from the Weightage by Content table."""
     best = None
-    for tbl in tables:
+    for _rank, tbl in tables:
         if not tbl or len(tbl) < 2:
             continue
         header = " | ".join(_clean(c) for c in (tbl[0] or []) if c)
@@ -385,15 +452,16 @@ def parse_syllabus_pdf(data: bytes):
         for page in pdf.pages[:40]:
             page_texts.append(page.extract_text() or "")
             for t in (page.extract_tables() or []):
-                tables.append(t)
+                tables.append((0, t))
             # NIOS PDFs come in every flavour: ruled tables, partially ruled,
             # and plain text columns. Try each strategy and keep everything.
-            for opts in ({"vertical_strategy": "text", "horizontal_strategy": "text"},
-                         {"vertical_strategy": "lines", "horizontal_strategy": "text"},
-                         {"vertical_strategy": "text", "horizontal_strategy": "lines"}):
+            for rank, opts in enumerate((
+                    {"vertical_strategy": "lines", "horizontal_strategy": "text"},
+                    {"vertical_strategy": "text", "horizontal_strategy": "lines"},
+                    {"vertical_strategy": "text", "horizontal_strategy": "text"}), start=1):
                 try:
                     for t in (page.extract_tables(opts) or []):
-                        tables.append(t)
+                        tables.append((rank, t))
                 except Exception:
                     pass
     finally:
@@ -441,7 +509,9 @@ def parse_syllabus_pdf(data: bytes):
                 count_mismatch.append("%s, %s column: PDF says %d lessons but %d were read."
                                       % (name, label, want, got))
         if not lessons:
-            empty_mods.append(name)
+            # a leftover heading fragment is not worth reporting to the admin
+            if not HEADER_CELL_RE.search(name) and len(name) > 2:
+                empty_mods.append(name)
             continue
         lessons.sort(key=lambda x: x["no"])
         for l in lessons:
