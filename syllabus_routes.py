@@ -426,10 +426,16 @@ def _student_codes(db, sp):
     cl = str(sp.class_level or class_level_from_name(sp.class_name) or "12")
     names = sp.subjects if isinstance(sp.subjects, list) else []
     codes, unmapped = [], []
-    known = {s["code"] for s in subject_list(db, cl, include_hidden=True)}
+    subs = subject_list(db, cl, include_hidden=True)
+    known = {s["code"] for s in subs}
+    hidden = {s["code"] for s in subs if s.get("hidden")}
     for n in names:
         c = subject_code_for_name(db, cl, n)
         if c and c in known:
+            # a subject hidden by the admin is removed from the tracker
+            # entirely - not listed, not accessible, not reported as missing
+            if c in hidden:
+                continue
             if c not in codes:
                 codes.append(c)
         else:

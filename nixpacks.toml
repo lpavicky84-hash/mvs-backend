@@ -1,11 +1,3 @@
-# Railway build config for the MVS Foundation CRM Portal.
-#
-# tesseract-ocr is only needed by the Syllabus Manager screenshot reader
-# (Weightage by Content table pasted as an image). Everything else works
-# without it: if the binary is missing the screenshot button returns a clear
-# message and the "paste as text" path keeps working.
-#
-# tesseract-ocr-hin adds Devanagari, needed for Hindi weightage tables.
-
+# Optional: enables OCR for weightage screenshots (weightage_reader.py image upload)
 [phases.setup]
-aptPkgs = ["tesseract-ocr", "tesseract-ocr-hin"]
+nixPkgs = ["tesseract"]

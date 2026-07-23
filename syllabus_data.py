@@ -154,7 +154,7 @@ PHYSICS_312 = [
         ("L-20", "Reflection and Refraction of Light", "TMA"),
         ("L-21", "Dispersion and Scattering of Light", "PE"),
         ("L-22", "Wave Phenomena and Light", "PE"),
-        ("L-23", "Optical Instruments", "PE"),
+        ("L-23", "Optical Instruments", "TMA"),
     ]),
     _m("Atoms and Nuclei", 8, [
         ("L-24", "Structure of Atom", "PE"),
