@@ -120,6 +120,8 @@ class StudentProfile(Base):
     is_verified  = Column(Boolean, default=False)
     plain_password = Column(String(255), nullable=True)  # for phone-lookup onboarding
     class_level  = Column(String(5), nullable=True)      # "10" or "12"
+    exam_session = Column(String(30), nullable=True)     # syllabus tracker: chosen exam session
+    study_target = Column(String(10), nullable=True)     # syllabus tracker: pass | high
     photo_b64    = Column(_PHOTO, nullable=True)
     active_session_token = Column(String(255), nullable=True)  # Single session
     last_seen    = Column(DateTime, nullable=True)
@@ -750,3 +752,35 @@ class PayoutAdjustment(Base):
     created_at = Column(DateTime, server_default=func.now())
 
     teacher = relationship("TeacherProfile")
+
+
+# ===== NIOS SYLLABUS TRACKER =====
+class SyllabusOverride(Base):
+    """Admin edited syllabus for one subject. Overrides the built in seed data."""
+    __tablename__ = "syllabus_overrides"
+    id          = Column(Integer, primary_key=True)
+    class_level = Column(String(5), index=True)
+    code        = Column(String(20), index=True)
+    payload     = Column(_BIGTEXT)                 # JSON: name, marks, expected, modules
+    updated_at  = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class SyllabusHidden(Base):
+    """Subjects removed from the tracker by admin."""
+    __tablename__ = "syllabus_hidden"
+    id          = Column(Integer, primary_key=True)
+    class_level = Column(String(5), index=True)
+    code        = Column(String(20), index=True)
+
+
+class ChapterPlan(Base):
+    """One student's chapter selection for one subject."""
+    __tablename__ = "chapter_plans"
+    id                = Column(Integer, primary_key=True)
+    student_id        = Column(Integer, ForeignKey("student_profiles.id"), index=True)
+    subject_code      = Column(String(20), index=True)
+    selected          = Column(Text)               # JSON list of lesson numbers
+    done              = Column(Text)               # JSON list of lesson numbers
+    tma_assumed       = Column(Float, nullable=True)
+    practical_assumed = Column(Float, nullable=True)
+    updated_at        = Column(DateTime, default=func.now(), onupdate=func.now())

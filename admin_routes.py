@@ -449,6 +449,11 @@ async def admin_upload_timetable_pdf(
     subjects_found = sorted(set(r["subject"] for r in rows))
     # preview mode: sirf parsed rows dikhao, DB me kuch save mat karo
     if preview.lower() == "true":
+        try:
+            import syllabus_routes
+            rows = syllabus_routes.annotate_timetable_rows(db, class_name, rows)
+        except Exception:
+            pass
         return {"added": 0, "subjects": subjects_found, "preview": rows}
     # replace sirf SAME CLASS ki entries hatao — dusri class ka same-name subject alag timetable hai
     if replace.lower() == "true":

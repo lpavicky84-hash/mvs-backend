@@ -11,6 +11,7 @@ import teacher_routes
 import admin_routes
 import student_routes
 import ext_materials
+import syllabus_routes
 
 load_dotenv()
 
@@ -71,6 +72,9 @@ def ensure_columns():
         "ALTER TABLE student_profiles ADD COLUMN source VARCHAR(20) DEFAULT 'mvs_app'",
         "ALTER TABLE student_profiles ADD COLUMN welcome_sent_at DATETIME",
         "ALTER TABLE timetable_entries ADD COLUMN shift_plan TEXT",
+        # ===== NIOS Syllabus Tracker =====
+        "ALTER TABLE student_profiles ADD COLUMN exam_session VARCHAR(30)",
+        "ALTER TABLE student_profiles ADD COLUMN study_target VARCHAR(10)",
     ]
     for s in stmts:
         try:
@@ -154,6 +158,7 @@ app.include_router(teacher_routes.router)
 app.include_router(admin_routes.router)
 app.include_router(student_routes.router)
 app.include_router(ext_materials.router)
+app.include_router(syllabus_routes.router)
 
 # ===== ROOT =====
 # ===== ROOT: serve the portal =====
@@ -186,3 +191,32 @@ def portal():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/health/syllabus")
+def health_syllabus():
+    """Which subjects are verified and usable by the tracker, and why not."""
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        out = {}
+        for cl in ("10", "12"):
+            items = []
+            for s in syllabus_routes.subject_list(db, cl, include_hidden=True):
+                items.append({
+                    "code": s["code"], "name": s["name"],
+                    "status": s.get("status", "pending"),
+                    "issues": s.get("issues", []),
+                })
+            out[cl] = {
+                "ready": [i["code"] for i in items if i["status"] == "ready"],
+                "needs_review": [{"code": i["code"], "name": i["name"], "issues": i["issues"]}
+                                 for i in items if i["status"] == "needs_review"],
+                "pending": len([i for i in items if i["status"] == "pending"]),
+                "total": len(items),
+            }
+        return {"status": "ok", "syllabus": out}
+    except Exception as exc:
+        return {"status": "error", "detail": str(exc)[:300]}
+    finally:
+        db.close()
