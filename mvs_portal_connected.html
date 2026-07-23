@@ -2602,7 +2602,7 @@ async function api(path, method='GET', body=null) {
   try { data = await res.json(); } catch { data = null; }
   if (!res.ok) {
  const msg = (data && data.detail) ? data.detail : ('Error ' + res.status);
- throw new Error(msg);
+ const err = new Error(msg); err.status = res.status; throw err;
   }
   return data;
 }
@@ -2681,9 +2681,10 @@ function toggleDark(){
 }
 // ===== NOTIFICATIONS =====
 function notifEp(role,suffix){ return '/api/'+(role==='teacher'?'teacher':role==='admin'?'admin':'student')+suffix; }
-async function fetchNotifs(role){ try{ return await api(notifEp(role,'/notifications')); }catch(e){ return []; } }
+async function fetchNotifs(role){ try{ return await api(notifEp(role,'/notifications')); }catch(e){ if(e&&e.status===401) throw e; return []; } }
 async function refreshNotifBadge(role){
-  const list=await fetchNotifs(role);
+  let list;
+  try{ list=await fetchNotifs(role); }catch(e){ if(e&&e.status===401){ _sessionExpired(); return []; } list=[]; }
   const unread=list.filter(n=>!n.is_read).length;
   const badge=document.getElementById((role==='teacher'?'t':role==='admin'?'a':'s')+'-notif-badge');
   if(badge){ badge.style.display=unread?'flex':'none'; badge.textContent=unread; }
@@ -2696,7 +2697,7 @@ async function pollAdminLive(){
   // Only keeps the header badge in sync. The Live Users page repaints itself, so
   // this must never re-render it (that was overwriting the page every 15s).
   try{
-    const d=await api('/api/admin/live-users'); window._lastLive=d;
+    const d=await api('/api/admin/live-users').catch(e=>{ if(e&&e.status===401){ _sessionExpired(); } throw e; }); window._lastLive=d;
     const n=(d.counts&&d.counts.live)||0;
     const ind=document.getElementById('a-live-ind'), cnt=document.getElementById('a-live-count'), bdg=document.getElementById('a-live-badge');
     if(ind&&cnt){ if(n>0){ ind.style.display='inline-flex'; cnt.textContent=n; } else ind.style.display='none'; }
@@ -2713,7 +2714,7 @@ function _pingNow(){
   // ping ruk jaata hai aur LIVE_WINDOW (3 min) ke baad live list se hat jaate ho
   if(document.visibilityState!=='visible') return;
   if(!TOKEN) return;
-  api('/api/auth/ping','POST',{page:_curPage||''}).catch(()=>{});
+  api('/api/auth/ping','POST',{page:_curPage||''}).catch(e=>{ if(e&&e.status===401) _sessionExpired(); });
 }
 // wapas tab pe aate hi turant ping — live list mein turant wapas aa jaao
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') _pingNow(); });
@@ -2733,12 +2734,14 @@ async function sendMessageAdmin(){
   catch(e){ document.getElementById('ma-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Send'; }
 }
 async function openNotifPanel(role){
-  const list=await fetchNotifs(role);
+  let list;
+  try{ list=await fetchNotifs(role); }catch(e){ if(e&&e.status===401){ _sessionExpired(); return; } list=[]; }
   const html=list.length?list.map(n=>`<div class="notif-item ${n.is_read?'':'unread'}"><div class="ni-title">${esc(n.title)}</div><div class="ni-msg">${esc(n.message)}</div><div class="ni-time"> ${fmtNice(n.created_at)}</div></div>`).join(''):'<div class="empty-state"><div class="empty-icon"></div><p>No notifications yet</p></div>';
   showModal(' Notifications',html,list.some(n=>!n.is_read)?`<button class="btn btn-primary" onclick="markAllRead('${role}')">Mark All Read</button>`:`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
 }
 async function markAllRead(role){
-  const list=await fetchNotifs(role);
+  let list;
+  try{ list=await fetchNotifs(role); }catch(e){ if(e&&e.status===401){ _sessionExpired(); return; } list=[]; }
   for(const n of list.filter(x=>!x.is_read)){ try{ await api(notifEp(role,'/notifications/'+n.id+'/read'),'PATCH'); }catch(e){} }
   closeModal(); refreshNotifBadge(role); _lastUnread[role]=0; var _np=document.getElementById('notif-pop'); if(_np)_np.remove(); toast('All marked as read.');
 }
@@ -2761,7 +2764,8 @@ async function notifPopupOnOpen(role){
   startNotifPolling(role);
 }
 async function pollNotifs(role){
-  const list=await fetchNotifs(role);
+  let list;
+  try{ list=await fetchNotifs(role); }catch(e){ if(e&&e.status===401){ _sessionExpired(); return; } throw e; }
   const unread=list.filter(n=>!n.is_read);
   const badge=document.getElementById((role==='teacher'?'t':role==='admin'?'a':'s')+'-notif-badge');
   if(badge){ badge.style.display=unread.length?'flex':'none'; badge.textContent=unread.length; }
@@ -2769,7 +2773,13 @@ async function pollNotifs(role){
   if(unread.length>prev){ showNotifPop(role,unread); }
   _lastUnread[role]=unread.length;
 }
-function startNotifPolling(role){ stopNotifPolling(); _notifInt=setInterval(()=>pollNotifs(role).catch(()=>{}),25000); }
+function _sessionExpired(){
+  if(window._sessDead) return; window._sessDead=true;
+  stopNotifPolling(); stopStudentHeartbeat(); stopAdminLivePoll();
+  toast('Session expire ho gaya — dobara login karo', true);
+  setTimeout(()=>{ window._sessDead=false; goHome(); }, 1600);
+}
+function startNotifPolling(role){ stopNotifPolling(); _notifInt=setInterval(()=>pollNotifs(role).catch(e=>{ if(e&&e.status===401) _sessionExpired(); }),25000); }
 function stopNotifPolling(){ if(_notifInt){ clearInterval(_notifInt); _notifInt=null; } }
 // ===== SEND NOTIFICATIONS (admin + teacher) =====
 function openAdminNotify(){
@@ -3088,7 +3098,7 @@ function startDoubtBadge(role){
       else{ const all=await api('/api/admin/doubts?status=pending'); n=all.length||0; }
       const b=document.getElementById(role==='teacher'?'t-doubt-badge':'a-doubt-badge');
       if(b){ b.textContent=n; b.style.display=n>0?'':'none'; }
-    }catch(e){}
+    }catch(e){ if(e&&e.status===401) _sessionExpired(); }
   };
   run(); if(_dbadgeInt) clearInterval(_dbadgeInt); _dbadgeInt=setInterval(run,90000);
 }

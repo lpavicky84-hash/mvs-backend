@@ -1,3 +1,13 @@
-# Optional: enables OCR for weightage screenshots (weightage_reader.py image upload)
+# Railway (nixpacks) build config
+# Python 3.12 PIN kiya hai — isse pip ke saare pinned packages ke ready-made
+# wheels mil jaate hain. Bina pin ke nixpacks naya Python utha sakta hai jahan
+# purane pins (psycopg2-binary, Pillow, pydantic-core) source se build hone ki
+# koshish karte hain aur BUILD FAIL ho jaata hai. Ye pin hi permanent fix hai.
 [phases.setup]
-nixPkgs = ["tesseract"]
+nixPkgs = ["python312", "tesseract"]
+
+[phases.install]
+cmds = ["pip install --no-cache-dir -r requirements.txt"]
+
+# NOTE: start command is file me jaan-bujhkar nahi hai — wo Railway dashboard
+# (Settings > Deploy > Custom Start Command) se aati hai, waise hi rehne do.
