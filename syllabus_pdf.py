@@ -94,7 +94,25 @@ def _norm(s):
 
 
 def _module_name(s):
-    return LEAD_NUM_RE.sub("", _clean(s)).strip()
+    """Strip leading numbering/module prefixes, repeatedly ('1.Module-II: X' -> 'X')."""
+    s = _clean(s)
+    while True:
+        t = LEAD_NUM_RE.sub("", s).strip()
+        if t == s:
+            return s
+        s = t
+
+
+# "(12 Marks)" printed inside a module name (NIOS bifurcation sheets do this)
+MARKS_NAME_RE = re.compile(r"\(\s*(\d{1,3})\s*marks?\s*\)", re.I)
+
+
+def _split_name_marks(name):
+    """-> (clean_name, marks or None) for names like 'Module-II Ecology (26 Marks)'."""
+    m = MARKS_NAME_RE.search(name or "")
+    marks = float(m.group(1)) if m else None
+    clean = MARKS_NAME_RE.sub("", name or "")
+    return _module_name(clean), marks
 
 
 COUNT_MARK_RE = re.compile(r"\(\s*(\d{1,3})\s*(?:\u092a\u093e\u0920|lessons?|\u0932\u0947\u0938\u0928)\s*\)", re.I)
@@ -408,6 +426,127 @@ def _match_weightage(modules, weights):
 # public entry point
 # ---------------------------------------------------------------------------
 
+def _position_rows(pdf_pages):
+    """
+    Read the bifurcation table by word x-position instead of ruling lines.
+
+    NIOS prints these sheets with partial or broken ruling, so pdfplumber's
+    table extraction often shifts cells between columns from row to row.
+    Word positions do not have that problem: locate the MODULE / TMA / Public
+    Examination header words, split the column boundaries at the midpoints
+    between them, then bucket every word below the header by its x position.
+
+    Handles both known layouts:
+      module rows : module name in col 1, lesson lists in the TMA/PE columns
+      lesson rows : one lesson per row, the TMA/PE column carries the word
+                    "TMA" or "Public Examination" as the category tag
+
+    Returns (rows, hdr_counts) in the same shape as _find_bifurcation.
+    """
+    groups = []          # [name, [tma chunks], [pe chunks]]
+    hdr = {}
+    flat_mode = False
+    last_flat = None     # chunk list of the last per-lesson row (for wrapped titles)
+    b_mod = b_pe = None  # column boundaries (midpoints between header x0s)
+
+    for page in pdf_pages[:40]:
+        try:
+            words = page.extract_words(use_text_flow=False, keep_blank_chars=False) or []
+        except Exception:
+            continue
+        if not words:
+            continue
+
+        mod_x = tma_x = pe_x = None
+        for w in words:
+            t = (w.get("text") or "").strip()
+            if mod_x is None and re.match(r"(?:MODULE|Lesson)\b", t, re.I):
+                mod_x = w["x0"]
+            if tma_x is None and re.match(r"TMA\b", t, re.I):
+                tma_x = w["x0"]
+            if pe_x is None and re.match(r"Public\b", t, re.I):
+                pe_x = w["x0"]
+        header_top = None
+        if tma_x is not None and pe_x is not None and pe_x > tma_x:
+            mx = mod_x if mod_x is not None and mod_x < tma_x else 0.0
+            b_mod = (mx + tma_x) / 2.0
+            b_pe = (tma_x + pe_x) / 2.0
+            header_top = min((w["top"] for w in words
+                              if re.match(r"(?:TMA|Public)\b", (w.get("text") or "").strip(), re.I)),
+                             default=None)
+        if b_mod is None or b_pe is None:
+            continue
+
+        lines = []  # words on one visual row; tops on that row can jitter a few px
+        for w in sorted(words, key=lambda x: (x["top"], x["x0"])):
+            if header_top is not None and w["top"] < header_top - 2:
+                continue
+            if lines and w["top"] <= lines[-1][1] + 3:
+                lines[-1][1] = max(lines[-1][1], w["top"])
+                lines[-1][2].append(w)
+            else:
+                lines.append([w["top"], w["top"], [w]])
+
+        for _top0, _top1, ws in lines:
+            ws = sorted(ws, key=lambda x: x["x0"])
+            mod = _clean(" ".join(w["text"] for w in ws if w["x0"] < b_mod))
+            tma = _clean(" ".join(w["text"] for w in ws if b_mod <= w["x0"] < b_pe))
+            pe = _clean(" ".join(w["text"] for w in ws if w["x0"] >= b_pe))
+            if not (mod or tma or pe):
+                continue
+            joined = " ".join(x for x in (mod, tma, pe) if x)
+
+            for cell, k2 in ((tma, "tma"), (pe, "pe")):
+                m = re.search(r"no\.?\s*of\s*lessons\s*\)?\s*[:=\-\u2013]?\s*(\d{1,3})", cell, re.I)
+                if m:
+                    hdr[k2] = int(m.group(1))
+
+            tma_cat = bool(re.match(r"TMA\b", tma, re.I)) if tma else False
+            pe_cat = bool(re.match(r"(?:Public|PE)\b", pe, re.I)) if pe else False
+            has_markers = bool(MARKER_RE.search(tma) or MARKER_RE.search(pe))
+
+            # per-lesson category layout: "1. Basics of" + category word
+            mnum = re.match(r"^\s*(\d{1,2})\s*[\.\)]\s*(\S.*)$", mod)
+            if mnum and (tma_cat or pe_cat) and not has_markers:
+                flat_mode = True
+                no = int(mnum.group(1))
+                title = _clean(mnum.group(2))
+                if not groups or groups[-1][0] != "__flat__":
+                    groups.append(["__flat__", [], []])
+                idx = 1 if tma_cat else 2
+                groups[-1][idx].append("L-%d %s" % (no, title))
+                last_flat = groups[-1][idx]
+                continue
+            if flat_mode and mod and not tma and not pe and last_flat is not None:
+                last_flat[-1] = last_flat[-1] + " " + mod   # wrapped lesson title
+                continue
+
+            if HEADER_CELL_RE.search(joined) and not has_markers:
+                continue
+
+            if MODULE_START_RE.match(mod) or (mod and not groups):
+                groups.append([mod, [], []])
+                last_flat = None
+            elif mod and groups:
+                groups[-1][0] = (groups[-1][0] + " " + mod).strip()   # wrapped module name
+            if groups:
+                if tma and not tma_cat:
+                    groups[-1][1].append(tma)
+                if pe and not pe_cat:
+                    groups[-1][2].append(pe)
+
+    rows = []
+    for name, tmas, pes in groups:
+        nm = "All Lessons" if name == "__flat__" else name
+        if _clean("\n".join(tmas)) or _clean("\n".join(pes)):
+            rows.append((nm, "\n".join(tmas), "\n".join(pes)))
+    return rows, hdr
+
+
+def _lesson_total(rows):
+    return sum(len(_lessons(a)) + len(_lessons(b)) for _, a, b in rows)
+
+
 def _words_fallback(pdf_pages):
     """
     Last resort for PDFs with no ruled table.
@@ -508,6 +647,24 @@ def parse_syllabus_pdf(data: bytes):
         return {"ok": False, "error": "No readable text found. This looks like a scanned PDF. Please download the text version from the NIOS website."}
 
     rows, hdr_counts = _find_bifurcation(tables)
+
+    # NIOS sheets are often ruled so badly that table extraction shifts cells
+    # between columns. Read the same page by word x-position too and keep
+    # whichever method finds more lessons.
+    pos_rows, pos_hdr = [], {}
+    try:
+        pdf2 = pdfplumber.open(io.BytesIO(data))
+        try:
+            pos_rows, pos_hdr = _position_rows(pdf2.pages)
+        finally:
+            pdf2.close()
+    except Exception:
+        pos_rows, pos_hdr = [], {}
+    if _lesson_total(pos_rows) > _lesson_total(rows):
+        rows, hdr_counts = pos_rows, pos_hdr
+    elif not hdr_counts:
+        hdr_counts = pos_hdr
+
     if not rows or not any(_lessons(a) or _lessons(b) for _, a, b in rows):
         try:
             pdf2 = pdfplumber.open(io.BytesIO(data))
@@ -525,12 +682,27 @@ def parse_syllabus_pdf(data: bytes):
                     "error": "Bifurcation of Syllabus table could not be located in this PDF. "
                              "Make sure you uploaded the syllabus PDF and not the sample question paper."}
 
-    module_names = [r[0] for r in rows]
-    weights, warnings = _match_weightage(module_names, _find_weightage(tables, page_texts))
+    clean_names, embedded = [], []
+    for r in rows:
+        cn, em = _split_name_marks(r[0])
+        clean_names.append(cn)
+        embedded.append(em)
+    wrows = _find_weightage(tables, page_texts)
+    weights, warnings = _match_weightage(clean_names, wrows)
+    if not wrows and any(e is not None for e in embedded):
+        # module names themselves carry "(NN Marks)" - that IS the weightage
+        weights = [e if e is not None else 0.0 for e in embedded]
+        warnings = [w for w in warnings if not w.startswith("Weightage by Content table not found")]
+        if any(e is None for e in embedded):
+            warnings.append("Some modules have no marks printed in their name - please fill those manually.")
+    else:
+        # weightage table wins, embedded marks only fill the gaps
+        weights = [w if w else (e or 0.0) for w, e in zip(weights, embedded)]
 
     modules, seen_no = [], set()
     dup, empty_mods, count_mismatch = [], [], []
-    for (name, tma_cell, pe_cell), w in zip(rows, weights):
+    for (name, tma_cell, pe_cell), w, cname in zip(rows, weights, clean_names):
+        name = cname or name
         lessons = []
         t_l = _lessons(tma_cell)
         p_l = _lessons(pe_cell)
@@ -550,10 +722,14 @@ def parse_syllabus_pdf(data: bytes):
                 empty_mods.append(name)
             continue
         lessons.sort(key=lambda x: x["no"])
+        kept = []
         for l in lessons:
             if l["no"] in seen_no:
                 dup.append("L-%d" % l["no"])
+                continue
             seen_no.add(l["no"])
+            kept.append(l)
+        lessons = kept
         modules.append({
             "module": name,
             "weightage": float(w),

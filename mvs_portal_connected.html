@@ -11536,6 +11536,12 @@ async function ocrFillQuestion_v1(inp,i){
   display:flex;align-items:center;justify-content:center;font-size:.76rem;font-weight:800}
 .syl-imp.in .syl-rank{background:#059669;color:#fff}
 .syl-cum{font-size:.7rem;opacity:.6;white-space:nowrap}
+.syl-impmod{border:1px solid var(--border,#e6e9f0);border-radius:14px;margin-top:12px;overflow:hidden}
+.syl-impmod.in{border-color:#059669;box-shadow:0 0 0 1px rgba(5,150,105,.18)}
+.syl-impmod-h{display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(127,127,127,.06)}
+.syl-impmod-h b{font-size:.9rem;display:block}
+.syl-impmod-h small{font-size:.72rem;opacity:.68;display:block;margin-top:2px;line-height:1.45}
+.dark .syl-impmod-h{background:rgba(255,255,255,.045)}
 .syl-line{border-top:2px dashed #d97706;margin:14px 0 6px;position:relative}
 .syl-line span{position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:var(--card,#fff);
   padding:0 12px;font-size:.7rem;font-weight:800;color:#b45309;text-transform:uppercase;letter-spacing:.6px}
@@ -11671,6 +11677,7 @@ function sylHome(){
    +'<option value=""'+(noTarget?' selected':'')+'>Select your target</option>'
    +'<option value="pass"'+(me.target==='pass'?' selected':'')+'>Clear the exam (passing marks)</option>'
    +'<option value="high"'+(me.target==='high'?' selected':'')+'>Score '+me.high_target+' percent or above</option>'
+   +'<option value="top"'+(me.target==='top'?' selected':'')+'>Score '+(me.top_target||90)+' percent or above</option>'
    +'</select>'
    +(noTarget?'<div class="syl-reqmsg">Target is compulsory, everything below is planned around it</div>':'')+'</div>'
    +'</div>'
@@ -11782,27 +11789,33 @@ function sylReqTable(c){
 function sylTargetCards(c){
   var passOk = c.pass_reached && c.theory_reached && c.practical_reached;
   var highOk = c.high_reached;
-  // the passing target is always the first goal, 75 percent comes after it
-  var nextKind = passOk ? (highOk ? null : 'high') : 'pass';
+  var topOk = !!c.top_reached;
+  // passing first, then 75 percent, then 90 percent
+  var nextKind = passOk ? (highOk ? (topOk ? null : 'top') : 'high') : 'pass';
   return '<div style="margin-top:15px">'
    + sylTargetCard(c,'pass',passOk,nextKind==='pass')
    + sylTargetCard(c,'high',highOk,nextKind==='high')
+   + sylTargetCard(c,'top',topOk,nextKind==='top')
    + '</div>';
 }
 
 function sylTargetCard(c, kind, done, isNext){
-  var isHigh = kind==='high';
   var open = _SYL.openTarget===kind;
-  var req   = isHigh ? c.high_core_needed : Math.max(c.pass_core_needed, c.theory_core_needed);
-  var total = isHigh ? c.high_paper_needed : Math.max(c.pass_paper_needed, c.theory_paper_needed);
+  var req   = kind==='top' ? (c.top_core_needed!=null?c.top_core_needed:c.top_paper_needed)
+            : kind==='high' ? c.high_core_needed
+            : Math.max(c.pass_core_needed, c.theory_core_needed);
+  var total = kind==='top' ? c.top_paper_needed
+            : kind==='high' ? c.high_paper_needed
+            : Math.max(c.pass_paper_needed, c.theory_paper_needed);
   var have  = c.covered_paper;
-  var label = isHigh ? (_SYL.me.high_target+' percent target') : 'Passing target';
+  var label = kind==='top' ? ((_SYL.me.top_target||90)+' percent target')
+            : kind==='high' ? (_SYL.me.high_target+' percent target') : 'Passing target';
   var col   = done ? '#059669' : (isNext ? '#d97706' : '#94a3b8');
   var left  = Math.max(0, Math.round((total-have)*10)/10);
 
   var pill = done ? '<span class="syl-pill2 ok">covered</span>'
            : (isNext ? '<span class="syl-pill2 next">your next target</span>'
-                     : '<span class="syl-pill2 wait">after passing</span>');
+                     : '<span class="syl-pill2 wait">'+(kind==='top'?('after '+_SYL.me.high_target+' percent'):'after passing')+'</span>');
   var sub  = done ? 'Done. You have '+_sylN(have)+' of the '+_sylN(total)+' marks we plan for.'
            : (left ? left+' marks of chapters still to pick' : 'Almost there');
 
@@ -11818,7 +11831,7 @@ function sylTargetCard(c, kind, done, isNext){
    +'<span>NIOS needs '+_sylN(req)+'</span><span>plan '+_sylN(total)+'</span></div></div>';
 
   if(open) h += '<div class="syl-tgbody">' + sylBonusBlock(c,kind)
-    + (isHigh?'':sylReqTable(c)) + '</div>';
+    + (kind==='pass'?sylReqTable(c):'') + '</div>';
   return h+'</div>';
 }
 
@@ -11836,21 +11849,26 @@ function sylToggleTarget(kind){
 }
 
 function sylBonusBlock(c, kind){
-  var isHigh = kind==='high';
   var m = c.marks || {};
   // requirement = exactly what NIOS asks, nothing added
-  var req  = isHigh ? c.high_core_needed : Math.max(c.pass_core_needed, c.theory_core_needed);
-  var total= isHigh ? c.high_paper_needed : Math.max(c.pass_paper_needed, c.theory_paper_needed);
+  var req  = kind==='top' ? (c.top_core_needed!=null?c.top_core_needed:c.top_paper_needed)
+           : kind==='high' ? c.high_core_needed : Math.max(c.pass_core_needed, c.theory_core_needed);
+  var total= kind==='top' ? c.top_paper_needed
+           : kind==='high' ? c.high_paper_needed : Math.max(c.pass_paper_needed, c.theory_paper_needed);
   var bonus= Math.round((total-req)*10)/10;
-  var reqOk  = isHigh ? c.high_core_reached : (c.pass_core_reached && c.theory_reached);
-  var totOk  = isHigh ? c.high_reached : c.pass_reached;
-  var list   = isHigh ? (c.high_bonus_chapters||[]) : (c.pass_bonus_chapters||[]);
-  var label  = isHigh ? (_SYL.me.high_target+' percent') : 'Passing';
+  var reqOk  = kind==='top' ? (!!c.top_core_reached)
+           : kind==='high' ? c.high_core_reached : (c.pass_core_reached && c.theory_reached);
+  var totOk  = kind==='top' ? (!!c.top_reached)
+           : kind==='high' ? c.high_reached : c.pass_reached;
+  var list   = kind==='top' ? (c.top_bonus_chapters||[])
+           : kind==='high' ? (c.high_bonus_chapters||[]) : (c.pass_bonus_chapters||[]);
+  var label  = kind==='top' ? ((_SYL.me.top_target||90)+' percent')
+           : kind==='high' ? (_SYL.me.high_target+' percent') : 'Passing';
   if(!bonus) return '';
 
-  var rule = isHigh
-    ? _SYL.me.high_target+' percent of 100 marks overall'
-    : _sylN(c.theory_pass_mark)+' theory marks out of '+m.theory_max;
+  var rule = kind==='pass'
+    ? _sylN(c.theory_pass_mark)+' theory marks out of '+m.theory_max
+    : (kind==='top' ? (_SYL.me.top_target||90) : _SYL.me.high_target)+' percent of 100 marks overall';
 
   var h='<div class="syl-bonus'+(totOk?' done':'')+'" style="margin-top:0">'
    +'<p>NIOS asks for <b>'+esc(rule)+'</b>. To earn that from the '+_sylN(c.paper_marks)
@@ -11982,9 +12000,15 @@ function sylSubject(scrollTop){
    +'<div id="syl-top"></div>';
 
   if(c.high_reached)
-    h+='<div class="syl-banner g" id="syl-cong"><div><b>Congratulations, '+_SYL.me.high_target+' percent plan ready</b>'
+    h+='<div class="syl-banner g" id="syl-cong"><div><b>Congratulations, '+(_SYL.me.target==='top'?(_SYL.me.top_target||90):_SYL.me.high_target)+' percent plan ready</b>'
      +'<p>Your plan covers '+_sylN(c.covered_paper)+' of '+_sylN(c.total_pe_marks)
-     +' exam marks. Projected total '+_sylN(c.projected_total)+' out of 100. Now finish these chapters properly.</p></div></div>';
+     +' exam marks. Projected total '+_sylN(c.projected_total)+' out of 100. Now finish these chapters properly.</p>'
+     +((_SYL.me.target==='high' && !c.top_reached)
+       ?'<div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+        +'<button class="syl-cta a" onclick="sylProfile(null,\'top\',null)">Ab '+(_SYL.me.top_target||90)+' percent ka target set karo</button>'
+        +'<span style="font-size:.72rem;opacity:.75">'+_SYL.me.high_target+' percent ho gaya — agla step '+(_SYL.me.top_target||90)+' percent hai, same module priority se.</span></div>'
+       :'')
+     +'</div></div>';
   else if(c.pass_reached){
     var gap=(c.high_gap_chapters||[]);
     var need=Math.max(_sylN(c.high_paper_needed-c.covered_paper),0);
@@ -12071,8 +12095,8 @@ function sylSubject(scrollTop){
          +'<div class="syl-box">'+(on?'&#10003;':'')+'</div>'
          +'<div class="t"><b>'+esc(ch.no)+' '+esc(ch.title)+'</b><small>'
          +(on?(dn?'Covered and marked done':'In your plan'):'Not picked yet')+'</small></div>'
-         +'<div style="text-align:right;white-space:nowrap"><span class="syl-mk" style="font-size:.79rem">'+_sylN(ch.marks)+' marks</span>'
-         +(on?'<br><button class="syl-cta o" style="margin-top:6px;padding:3px 9px;font-size:.68rem" '
+         +'<div style="text-align:right;white-space:nowrap">'
+         +(on?'<button class="syl-cta o" style="margin-top:6px;padding:3px 9px;font-size:.68rem" '
              +'onclick="event.stopPropagation();sylDone(\''+esc(ch.no)+'\')">'+(dn?'Done':'Mark done')+'</button>':'')
          +'</div></div>';
       }
@@ -12094,71 +12118,108 @@ function sylImportant(){
   var el=_sylEl('s-syl-content');
   el.innerHTML='<div class="syl-wrap"><div class="syl-act2">'
    +'<button class="syl-cta o" onclick="sylSubject()">Back to '+esc(s.name)+'</button></div>'
-   +'<div class="syl-panel"><div class="syl-phead"><div><h4>'+esc(s.name)+' important chapters</h4>'
-   +'<p>Choose your target and the highest weightage chapters will be listed in order</p></div></div>'
+   +'<div class="syl-panel"><div class="syl-phead"><div><h4>'+esc(s.name)+' important modules</h4>'
+   +'<p>NIOS gives weightage module-wise, never chapter-wise. So we suggest whole modules: '
+   +'the module that carries the most marks per chapter comes first.</p></div></div>'
    +'<div style="padding:16px 18px"><div class="syl-tgt">'
    +'<div class="syl-tgtc" onclick="sylImpList(\'pass\')"><b>Clear the exam</b>'
-   +'<p>The shortest list that gets you past the passing mark, theory rule included</p></div>'
+   +'<p>The shortest module list that gets you past the passing mark, theory rule included</p></div>'
    +'<div class="syl-tgtc" onclick="sylImpList(\'high\')"><b>Score '+_SYL.me.high_target+' percent</b>'
-   +'<p>The chapters needed to reach '+_SYL.me.high_target+' percent overall</p></div>'
+   +'<p>The modules needed to reach '+_SYL.me.high_target+' percent overall</p></div>'
+   +'<div class="syl-tgtc" onclick="sylImpList(\'top\')"><b>Score '+(_SYL.me.top_target||90)+' percent</b>'
+   +'<p>The modules needed to reach '+(_SYL.me.top_target||90)+' percent overall</p></div>'
    +'</div></div></div></div>';
 }
 
 function sylImpList(target){
   var d=_SYL.cur, s=d.subject, c=d.calc;
   _SYL.impTarget=target;
-  var isHigh = target==='high';
-  var core = isHigh ? c.high_core_needed : Math.max(c.pass_core_needed, c.theory_core_needed);
-  var need = isHigh ? c.high_paper_needed : Math.max(c.pass_paper_needed, c.theory_paper_needed);
-  var rows=d.chapters.filter(function(ch){ return ch.kind==='PE'; })
-    .slice().sort(function(a,b){ return b.marks-a.marks || (a.no<b.no?-1:1); });
-  var acc=0, coreAt=-1, cutAt=-1, list='';
-  rows.forEach(function(ch,i){
-    var inPlan=d.selected.indexOf(ch.no)>-1;
-    acc=Math.round((acc+ch.marks)*100)/100;
-    if(coreAt<0 && acc>=core-0.01) coreAt=i;
-    if(cutAt<0 && acc>=need-0.01) cutAt=i;
-    list+='<div class="syl-imp'+(inPlan?' in':'')+(cutAt>=0&&i>cutAt?' cut':'')+'" onclick="sylImpPick(\''+esc(ch.no)+'\')">'
-     +'<div class="syl-rank">'+(i+1)+'</div>'
-     +'<div style="flex:1;min-width:0"><b style="font-size:.87rem;display:block">'+esc(ch.no)+' '+esc(ch.title)+'</b>'
-     +'<small style="font-size:.72rem;opacity:.6">'+esc(ch.module)+(coreAt>=0&&i>coreAt&&cutAt>=0&&i<=cutAt?' &middot; bonus cushion':'')+'</small></div>'
-     +'<div style="text-align:right"><span class="syl-mk">'+_sylN(ch.marks)+'</span>'
-     +'<div class="syl-cum">running '+acc+'</div></div>'
-     +'<div class="syl-box" style="width:17px;height:17px">'+(inPlan?'&#10003;':'')+'</div></div>';
-    if(coreAt===i && coreAt!==cutAt)
-      list+='<div class="syl-line" style="border-color:#059669"><span style="color:#047857">'
-        +'NIOS requirement met here</span></div>';
-    if(cutAt===i) list+='<div class="syl-line"><span>with bonus, safe here</span></div>';
+  var mods = (target==='top' ? c.top_plan_modules
+           : target==='high' ? c.high_plan_modules : c.pass_plan_modules) || [];
+  var need = target==='top' ? c.top_paper_needed
+           : target==='high' ? c.high_paper_needed
+           : Math.max(c.pass_paper_needed, c.theory_paper_needed);
+  var core = target==='top' ? (c.top_core_needed!=null?c.top_core_needed:need)
+           : target==='high' ? c.high_core_needed
+           : Math.max(c.pass_core_needed, c.theory_core_needed);
+  var tgtLabel = target==='top' ? ((_SYL.me.top_target||90)+' percent')
+               : target==='high' ? (_SYL.me.high_target+' percent') : 'Passing marks';
+
+  // every exam module of the subject, so the student also sees what comes later
+  var byMod={}, order=[];
+  d.chapters.forEach(function(ch){
+    if(ch.kind!=='PE') return;
+    if(!byMod[ch.module]){ byMod[ch.module]={module:ch.module, weightage:ch.module_weightage||0, chapters:[]}; order.push(ch.module); }
+    byMod[ch.module].chapters.push(ch);
   });
-  var picked=rows.filter(function(ch){ return d.selected.indexOf(ch.no)>-1; }).length;
+  order.forEach(function(k){ var m=byMod[k]; m.ratio=m.weightage/Math.max(m.chapters.length,1); });
+  var inPlan={}; mods.forEach(function(mo){ inPlan[mo.module]=1; });
+  var rest=order.map(function(k){ return byMod[k]; }).filter(function(m){ return !inPlan[m.module]; })
+    .sort(function(a,b){ return b.ratio-a.ratio || b.weightage-a.weightage; });
+
+  function modCard(mo, idx, planned, cum){
+    var chH='';
+    mo.chapters.forEach(function(ch){
+      var pk=d.selected.indexOf(ch.no)>-1, dn=d.done.indexOf(ch.no)>-1;
+      chH+='<div class="syl-ch pe'+(pk?(dn?' on done':' on'):'')+'" style="margin:0 10px 8px;padding:8px 10px" onclick="sylImpPick(\''+esc(ch.no)+'\')">'
+       +'<div class="syl-box">'+(pk?'&#10003;':'')+'</div>'
+       +'<div class="t"><b>'+esc(ch.no)+' '+esc(ch.title)+'</b>'
+       +'<small>'+(dn?'Covered and marked done':(pk?'In your plan':'Tap to add'))+'</small></div></div>';
+    });
+    var ratio=Math.round(mo.weightage/Math.max(mo.chapters.length,1)*10)/10;
+    return '<div class="syl-impmod'+(planned?' in':'')+'"><div class="syl-impmod-h">'
+     +'<div class="syl-rank">'+(idx+1)+'</div>'
+     +'<div style="flex:1;min-width:0"><b>'+esc(mo.module)+'</b>'
+     +'<small>'+mo.chapters.length+' exam chapter'+(mo.chapters.length===1?'':'s')
+     +' &middot; '+_sylN(mo.weightage)+' marks &middot; <b>'+_sylN(ratio)+' marks per chapter</b></small></div>'
+     +'<div style="text-align:right"><span class="syl-mk">'+_sylN(mo.weightage)+'</span>'
+     +(cum!=null?'<div class="syl-cum">running '+cum+'</div>':'')+'</div></div>'
+     +'<div style="padding-top:10px">'+chH+'</div></div>';
+  }
+
+  var acc=0, list='', newMarks=0;
+  mods.forEach(function(mo,i){
+    newMarks=Math.round((newMarks+mo.new_marks)*10)/10;
+    acc=Math.round((acc+mo.new_marks)*10)/10;
+    list+=modCard(mo,i,true,acc);
+  });
+  if(rest.length && mods.length){
+    list+='<div class="syl-line"><span>'+tgtLabel+' covered up to here</span></div>';
+    rest.forEach(function(mo,j){ list+=modCard(mo,mods.length+j,false,null); });
+  } else {
+    if(!mods.length)
+      list='<div class="syl-goal ok" style="margin:0 0 12px"><span>'+esc(tgtLabel)
+        +' is already covered by the chapters in your plan. Any module below only raises the score further.</span></div>';
+    rest.forEach(function(mo,j){ list+=modCard(mo,mods.length+j,false,null); });
+  }
+
+  var picked=d.selected.length;
+  var projected=Math.round((Math.min(c.covered_paper+newMarks,c.total_pe_marks)*c.scale
+      +c.tma_assumed+c.practical_assumed)*10)/10;
   var el=_sylEl('s-syl-content');
   el.innerHTML='<div class="syl-wrap"><div class="syl-act2">'
    +'<button class="syl-cta o" onclick="sylSubject()">Back to '+esc(s.name)+'</button>'
    +'<button class="syl-cta o" onclick="sylImportant()">Change target</button>'
-   +'<button class="syl-cta p" onclick="sylImpAdd('+(cutAt<0?rows.length:cutAt+1)+',\''+target+'\')">'
-   +'Add the top '+(cutAt<0?rows.length:cutAt+1)+' to my plan</button></div>'
+   +(mods.length?'<button class="syl-cta p" onclick="sylImpAddModules(\''+target+'\')">Add these '+mods.length+' modules to my plan</button>':'')
+   +'</div>'
    +'<div class="syl-top">'
    +sylKpi(_sylN(core),'NIOS requires','#059669','','',
-      '<b>'+_sylN(core)+' question paper marks</b><br>NIOS asks for '+_sylN(c.theory_pass_mark)
-      +' theory marks out of '+c.marks.theory_max+'. The paper is '+_sylN(c.paper_marks)
-      +' marks, so that is '+_sylN(core)+' marks worth of chapters. Nothing added.')
-   +sylKpi('+'+_sylN(need-core),'Our bonus','#d97706','','',
-      '<b>Why a cushion</b><br>If you cover only the requirement and one question is skipped '
-      +'or goes wrong, you can slip below the line.')
+      '<b>'+_sylN(core)+' question paper marks</b><br>the bare NIOS requirement for '+esc(tgtLabel)+', nothing added.')
+   +sylKpi('+'+_sylN(Math.round((need-core)*10)/10),'Our bonus','#d97706','','',
+      '<b>Why a cushion</b><br>If you cover only the requirement and one question is skipped or goes wrong, you can slip below the line.')
    +sylKpi(_sylN(need),'We plan for','#4f46e5','','',
-      '<b>'+(cutAt<0?rows.length:cutAt+1)+' chapters</b><br>requirement plus bonus.')
-   +sylKpi(picked,'Already in your plan','#0ea5e9')
+      '<b>'+mods.length+' module'+(mods.length===1?'':'s')+'</b><br>requirement plus bonus, in whole modules.')
+   +sylKpi(picked,'Chapters in your plan','#0ea5e9')
    +'</div>'
-   +'<div class="syl-bonus" style="margin-bottom:14px"><h6>Why the extra chapters</h6>'
-   +'<p>All numbers here are <b>question paper marks</b>. '
-   +'<b>NIOS requires '+_sylN(core)+'</b>'
-   +(target==='high'?' for '+_SYL.me.high_target+' percent'
-     :', which is exactly the '+_sylN(c.theory_pass_mark)+' theory marks in the passing rule')+'. '
-   +'We plan for <b>'+_sylN(need)+'</b>, so the bonus is '+_sylN(need-core)+' marks. '
-   +'That bonus is your protection: if a question is skipped in the paper, or an answer goes wrong, '
-   +'you still stay above the line. Both targets get the same treatment.</p></div>'
-   +'<div class="syl-panel"><div class="syl-phead"><div><h4>Highest weightage first</h4>'
-   +'<p>Tap any chapter to add or remove it. Everything above the dashed line is enough for your target.</p></div></div>'
+   +'<div class="syl-bonus" style="margin-bottom:14px"><h6>How the priority works</h6>'
+   +'<p>NIOS publishes weightage <b>module-wise, not chapter-wise</b> — so no chapter here carries '
+   +'its own marks, only the official module marks are shown. We rank modules by '
+   +'<b>marks per chapter</b>: a module with more marks and fewer chapters comes first, a heavy '
+   +'module with many chapters goes last. Finish the modules above the dashed line and you cover '
+   +'<b>'+_sylN(newMarks)+' more marks</b> of the paper — projected total becomes '
+   +'<b>'+_sylN(projected)+' out of 100</b>.</p></div>'
+   +'<div class="syl-panel"><div class="syl-phead"><div><h4>'+esc(tgtLabel)+' module plan</h4>'
+   +'<p>Best value module first. Tap any chapter to add or remove it.</p></div></div>'
    +'<div style="padding:8px 18px 18px">'+list+'</div></div></div>';
 }
 
@@ -12175,20 +12236,23 @@ async function sylImpPick(no){
   }catch(e){ toast(e.message,true); }
 }
 
-async function sylImpAdd(n,target){
-  var d=_SYL.cur;
-  var rows=d.chapters.filter(function(ch){ return ch.kind==='PE'; })
-    .slice().sort(function(a,b){ return b.marks-a.marks || (a.no<b.no?-1:1); }).slice(0,n);
-  rows.forEach(function(ch){ if(d.selected.indexOf(ch.no)<0) d.selected.push(ch.no); });
+async function sylImpAddModules(target){
+  var d=_SYL.cur, c=d.calc;
+  var mods = (target==='top' ? c.top_plan_modules
+           : target==='high' ? c.high_plan_modules : c.pass_plan_modules) || [];
+  mods.forEach(function(mo){
+    mo.chapters.forEach(function(ch){ if(d.selected.indexOf(ch.no)<0) d.selected.push(ch.no); });
+  });
   _SYL.impTarget=target;
-  var was=d.calc.pass_reached;
+  var was=d.calc.pass_reached, wasHigh=d.calc.high_reached;
   try{
     var res=await api('/api/syllabus/plan','POST',{subject_code:d.subject.code,
       selected:d.selected, done:d.done, tma_assumed:d.calc.tma_assumed, practical_assumed:d.calc.practical_assumed});
     d.calc=res.calc;
-    sylSubject();
-    if(!was && res.calc.pass_reached) sylCelebrate();
-    else toast(n+' chapters added to your plan.');
+    sylImpList(target);
+    if(!wasHigh && res.calc.high_reached) toast(_SYL.me.high_target+' percent plan complete for '+d.subject.name);
+    else if(!was && res.calc.pass_reached) sylCelebrate();
+    else toast('Modules added to your plan.');
   }catch(e){ toast(e.message,true); }
 }
 
@@ -12262,7 +12326,8 @@ async function sylPlan(mode){
 function sylPlanRender(){
   var s=_SYL.plan, ex=s.exam||{}, mode=_SYL.planMode||'weekly';
   var buckets = mode==='monthly' ? (s.monthly||[]) : (s.weekly||[]);
-  var tgt = s.target==='high' ? (s.high_target+' percent') : 'Passing marks';
+  var tgt = s.target==='top' ? ((s.top_target||90)+' percent')
+          : s.target==='high' ? (s.high_target+' percent') : 'Passing marks';
 
   var h='<div class="syl-wrap"><div class="syl-act2">'
    +'<button class="syl-cta o" onclick="loadSSyllabus()">Back to my subjects</button>'
@@ -12289,8 +12354,33 @@ function sylPlanRender(){
       +'paper cannot pull you below the line. The requirement itself is never changed.')
    +'</div>';
 
+  var hasPlanMods=(s.per_subject||[]).some(function(x){ return (x.plan_modules||[]).length; });
+  if(hasPlanMods){
+    h+='<div class="syl-panel" style="margin-bottom:14px"><div class="syl-phead"><div><h4>Your module plan</h4>'
+     +'<p>NIOS gives weightage module-wise, so whole modules are suggested — best marks per chapter first. '
+     +'Finish these and your target is covered.</p></div></div><div style="padding:6px 18px 16px">';
+    (s.per_subject||[]).forEach(function(x){
+      if(!(x.plan_modules||[]).length) return;
+      var nch=0; x.plan_modules.forEach(function(mo){ nch+=mo.pe_count; });
+      h+='<div style="margin-top:12px"><b style="font-size:.92rem">'+esc(x.name)+'</b>'
+       +'<div style="font-size:.73rem;opacity:.68;margin:3px 0 2px;line-height:1.5">'
+       +'<b>'+x.plan_modules.length+' modules</b> &middot; '+nch+' chapters &middot; +'+_sylN(x.plan_marks)
+       +' paper marks &middot; projected total <b>'+_sylN(x.projected_after)+' out of 100</b> after these</div>';
+      x.plan_modules.forEach(function(mo,i){
+        h+='<div class="syl-impmod-h" style="border-radius:10px;margin-top:6px">'
+         +'<div class="syl-rank">'+(i+1)+'</div>'
+         +'<div style="flex:1;min-width:0"><b>'+esc(mo.module)+'</b>'
+         +'<small>'+mo.pe_count+' chapters &middot; '+_sylN(mo.weightage)+' marks &middot; '
+         +_sylN(mo.ratio)+' marks per chapter &middot; '+mo.done+' of '+mo.pe_count+' done</small></div>'
+         +'<span class="syl-mk">'+_sylN(mo.weightage)+'</span></div>';
+      });
+      h+='</div>';
+    });
+    h+='</div></div>';
+  }
+
   h+='<div class="syl-panel"><div class="syl-phead"><div><h4>'+(mode==='monthly'?'Monthly':'Weekly')+' plan</h4>'
-   +'<p>Highest weightage chapters come first. Tick a chapter once you have finished it.</p></div></div>'
+   +'<p>Best value modules first — most marks per chapter. Tick a chapter once you have finished it.</p></div></div>'
    +'<div style="padding:8px 18px 18px">';
 
   if(!buckets.length){
@@ -12312,8 +12402,8 @@ function sylPlanRender(){
           var d=sylIsDone(it.code,it.no);
           h+='<div class="syl-wrow'+(d?' on':'')+'" onclick="sylPlanTick(\''+esc(it.code)+'\',\''+esc(it.no)+'\')">'
            +'<div class="syl-wbox">'+(d?'&#10003;':'')+'</div>'
-           +'<span class="t" style="flex:1;min-width:0">'+esc(it.no)+' '+esc(it.title)+'</span>'
-           +'<span class="syl-mk">'+_sylN(it.marks)+'</span></div>';
+           +'<span class="t" style="flex:1;min-width:0">'+esc(it.no)+' '+esc(it.title)
+           +' <small style="opacity:.55;font-weight:400">'+esc(it.module||'')+'</small></span></div>';
         });
         h+='</div>';
       });

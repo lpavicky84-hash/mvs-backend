@@ -38,6 +38,7 @@ CHAPTER_API_KEY = os.environ.get("CHAPTER_API_KEY", "")
 
 DEFAULTS = {
     "syl_high_target": "75",
+    "syl_top_target": "90",
     "syl_safety_buffer": "0",
     # the cushion is measured in chapters, not marks: one extra chapter, and a
     # second only if the first one is too small to be worth anything
@@ -123,6 +124,7 @@ def _set_setting(db, key, value):
 def _cfg(db):
     return {
         "high_target": float(_setting(db, "syl_high_target", "75") or 75),
+        "top_target": float(_setting(db, "syl_top_target", "90") or 90),
         "buffer_pct": float(_setting(db, "syl_safety_buffer", "0") or 0),
         "bonus_chapters": int(float(_setting(db, "syl_bonus_chapters", "2") or 2)),
         "bonus_min_marks": float(_setting(db, "syl_bonus_min_marks", "6") or 6),
@@ -234,7 +236,7 @@ def apply_stream(marks, stream):
 
 def compute(subject, selected, tma_assumed=None, practical_assumed=None,
             high_target=75.0, buffer_pct=0.0, bonus_chapters=2, bonus_min_marks=6.0,
-            stream="1"):
+            stream="1", top_target=90.0):
     m = apply_stream(subject["marks"], stream)
     rows = SD.flatten(subject)
     pe_rows = [r for r in rows if r["kind"] == "PE"]
@@ -265,12 +267,29 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
     # bare requirement, before any margin
     pass_raw = round(((need_theory_final / scale) if scale else 0), 1)
     high_raw = round(((max(high_target - tma - pr, 0) / scale) if scale else 0), 1)
+    top_raw = round(((max(top_target - tma - pr, 0) / scale) if scale else 0), 1)
     theory_raw = round(((need_theory / scale) if scale else 0), 1)
     # The requirement is exactly the NIOS rule. The cushion on top is measured
     # in whole chapters, not in marks, because a learner studies chapters:
     # one extra chapter, and a second one only if the first is too small to
     # give any real protection.
-    ranked = sorted(pe_rows, key=lambda r: (-r["marks"], r["no"]))
+    # NIOS publishes weightage per MODULE, never per chapter. So suggestions
+    # are whole modules, best value first: the module that carries the most
+    # marks per chapter to study (high weightage, few chapters) ranks first.
+    modules = []
+    for r in pe_rows:
+        if not modules or modules[-1]["module"] != r["module"]:
+            modules.append({"module": r["module"],
+                            "weightage": float(r.get("module_weightage") or 0),
+                            "rows": []})
+        modules[-1]["rows"].append(r)
+    for i, mo in enumerate(modules):
+        mo["pe_count"] = len(mo["rows"])
+        mo["marks"] = round(sum(r["marks"] for r in mo["rows"]), 2)
+        mo["ratio"] = round(mo["weightage"] / mo["pe_count"], 3) if mo["pe_count"] else 0.0
+        mo["order"] = i
+    ranked_mods = sorted(modules, key=lambda mo: (-mo["ratio"], -mo["weightage"], mo["order"]))
+    ranked = [r for mo in ranked_mods for r in mo["rows"]]
     max_bonus_ch = max(int(bonus_chapters or 0), 0)
     min_bonus = float(bonus_min_marks or 0)
 
@@ -301,9 +320,32 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
     pass_paper, pass_bonus, pass_bonus_rows = with_bonus(pass_core)
     high_paper, high_bonus, high_bonus_rows = with_bonus(high_core)
     theory_paper, theory_bonus, _ = with_bonus(theory_core)
+    top_core = min(round(top_raw, 1), total_paper)
+    top_paper, top_bonus, top_bonus_rows = with_bonus(top_core)
 
-    remaining = sorted([r for r in pe_rows if r["no"] not in sel],
-                       key=lambda r: (-r["marks"], r["no"]))
+    remaining = [r for mo in ranked_mods for r in mo["rows"] if r["no"] not in sel]
+
+    def modules_until(target_paper):
+        """Whole modules, best marks-per-chapter first, until the target is covered."""
+        need = target_paper - covered_paper
+        chosen, acc = [], 0.0
+        for mo in ranked_mods:
+            if need - acc <= 0.01:
+                break
+            new_marks = round(sum(r["marks"] for r in mo["rows"] if r["no"] not in sel), 2)
+            chosen.append({
+                "module": mo["module"], "weightage": mo["weightage"],
+                "pe_count": mo["pe_count"], "ratio": mo["ratio"],
+                "marks": mo["marks"], "new_marks": new_marks,
+                "picked": len([r for r in mo["rows"] if r["no"] in sel]),
+                "chapters": mo["rows"],
+            })
+            acc += new_marks
+        return chosen, round(acc, 2)
+
+    pass_plan_modules, pass_plan_marks = modules_until(pass_paper)
+    high_plan_modules, high_plan_marks = modules_until(high_paper)
+    top_plan_modules, top_plan_marks = modules_until(top_paper)
 
     def pick_until(target_paper):
         need = target_paper - covered_paper
@@ -370,8 +412,22 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
         "high_target": high_target,
         "high_paper_needed": high_paper,
         "high_reached": has_marks and covered_paper + 0.01 >= high_paper,
+        "top_target": top_target,
+        "top_core_needed": top_core,
+        "top_paper_needed": top_paper,
+        "top_reached": has_marks and covered_paper + 0.01 >= top_paper,
+        "top_bonus_marks": top_bonus,
+        "top_bonus_chapters": top_bonus_rows,
+        "top_core_reached": has_marks and covered_paper + 0.01 >= top_core,
+        "pass_plan_modules": pass_plan_modules,
+        "pass_plan_marks": pass_plan_marks,
+        "high_plan_modules": high_plan_modules,
+        "high_plan_marks": high_plan_marks,
+        "top_plan_modules": top_plan_modules,
+        "top_plan_marks": top_plan_marks,
         "pass_gap_chapters": pick_until(pass_paper),
         "high_gap_chapters": pick_until(high_paper),
+        "top_gap_chapters": pick_until(top_paper),
         "selected_count": len([r for r in pe_rows if r["no"] in sel]),
         "pe_count": len(pe_rows), "buffer_pct": buffer_pct,
         "stream": str(stream), "marks": m,
@@ -527,7 +583,8 @@ def syl_me(db: Session = Depends(get_db), user=Depends(get_student)):
         "target": getattr(sp, "study_target", "") or "",
         "days_left": info["theory_days"], "exam": info,
         "session": sess, "sessions": _sessions(db),
-        "high_target": cfg["high_target"], "buffer_pct": cfg["buffer_pct"],
+        "high_target": cfg["high_target"], "top_target": cfg["top_target"],
+        "buffer_pct": cfg["buffer_pct"],
         "bonus_chapters": cfg["bonus_chapters"], "bonus_min_marks": cfg["bonus_min_marks"],
     }
 
@@ -665,7 +722,7 @@ def syl_strategy(db: Session = Depends(get_db), user=Depends(get_student)):
     cl, codes, unmapped = _student_codes(db, sp)
     cfg = _cfg(db)
     target = getattr(sp, "study_target", "") or ""
-    if target not in ("pass", "high"):
+    if target not in ("pass", "high", "top"):
         raise HTTPException(status_code=409,
                             detail="Please choose your target first, then build the plan.")
 
@@ -687,38 +744,71 @@ def syl_strategy(db: Session = Depends(get_db), user=Depends(get_student)):
         if not subj or subj.get("status") != "ready":
             continue
         sel, done, tma, pr = _plan_row(db, sp.id, code)
-        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp))
-        need = calc["high_paper_needed"] if target == "high" else max(
-            calc["pass_paper_needed"], calc["theory_paper_needed"])
-        pool = calc["high_gap_chapters"] if target == "high" else calc["pass_gap_chapters"]
+        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp), cfg["top_target"])
+        if target == "top":
+            need = calc["top_paper_needed"]
+            plan_mods = calc["top_plan_modules"]
+        elif target == "high":
+            need = calc["high_paper_needed"]
+            plan_mods = calc["high_plan_modules"]
+        else:
+            need = max(calc["pass_paper_needed"], calc["theory_paper_needed"])
+            plan_mods = calc["pass_plan_modules"]
 
-        # chapters already chosen but not finished, plus whatever is still missing
+        # chapters already chosen but not finished, plus the modules the plan says
         pending = [r for r in SD.flatten(subj)
                    if r["kind"] == "PE" and r["no"] in set(sel) and r["no"] not in set(done)]
         merged = {r["no"]: r for r in pending}
-        for r in pool:
-            merged.setdefault(r["no"], r)
+        plan_out = []
+        for mo in plan_mods:
+            chs = []
+            for r in mo["chapters"]:
+                row = dict(r)
+                row["done"] = r["no"] in set(done)
+                row["picked"] = r["no"] in set(sel)
+                chs.append(row)
+                merged.setdefault(r["no"], r)
+            plan_out.append({
+                "module": mo["module"], "weightage": mo["weightage"],
+                "pe_count": mo["pe_count"], "ratio": mo["ratio"],
+                "marks": mo["marks"], "new_marks": mo["new_marks"],
+                "done": len([r for r in mo["chapters"] if r["no"] in set(done)]),
+                "chapters": chs,
+            })
         rows = list(merged.values())
+        ratio_of = {r["no"]: mo["ratio"] for mo in plan_mods for r in mo["chapters"]}
         for r in rows:
-            queue.append({"subject": subj["name"], "code": subj["code"], **r})
+            queue.append({"subject": subj["name"], "code": subj["code"],
+                          "ratio": ratio_of.get(r["no"], 0.0), **r})
+        # what the result looks like once the suggested modules are finished
+        new_marks = round(sum(mo["new_marks"] for mo in plan_mods), 1)
+        projected_after = round(min(calc["covered_paper"] + new_marks, calc["total_pe_marks"])
+                                * calc["scale"] + calc["tma_assumed"] + calc["practical_assumed"], 1)
         per_subject.append({
             "code": subj["code"], "name": subj["name"],
             "covered": calc["covered_paper"], "needed": need,
             "total": calc["total_pe_marks"],
             "pending_chapters": len(rows),
             "chapters_left": len(rows),
-            "core_needed": calc["high_core_needed"] if target == "high" else max(
-                calc["pass_core_needed"], calc["theory_core_needed"]),
-            "core_reached": calc["high_core_reached"] if target == "high" else (
-                calc["pass_core_reached"] and calc["theory_reached"]),
+            "core_needed": calc["top_core_needed"] if target == "top" else (
+                calc["high_core_needed"] if target == "high" else max(
+                    calc["pass_core_needed"], calc["theory_core_needed"])),
+            "core_reached": calc["top_paper_needed"] <= calc["covered_paper"] if target == "top" else (
+                calc["high_core_reached"] if target == "high" else (
+                    calc["pass_core_reached"] and calc["theory_reached"])),
             "pending_marks": round(sum(r["marks"] for r in rows), 1),
             "done": list(done),
-            "reached": calc["high_reached"] if target == "high" else (
-                calc["pass_reached"] and calc["theory_reached"]),
+            "reached": calc["top_reached"] if target == "top" else (
+                calc["high_reached"] if target == "high" else (
+                    calc["pass_reached"] and calc["theory_reached"])),
             "theory_reached": calc["theory_reached"],
+            "plan_modules": plan_out,
+            "plan_marks": new_marks,
+            "projected_after": projected_after,
+            "projected_now": calc["projected_total"],
         })
 
-    queue.sort(key=lambda r: (-r["marks"], r["subject"], r["no"]))
+    queue.sort(key=lambda r: (-r.get("ratio", 0.0), -r["marks"], r["subject"], r["no"]))
 
     def bucket(n, label, span_days):
         buckets = [[] for _ in range(n)]
@@ -748,7 +838,7 @@ def syl_strategy(db: Session = Depends(get_db), user=Depends(get_student)):
 
     return {
         "days_left": theory_days, "exam": info, "weeks": weeks, "months": months,
-        "target": target, "high_target": cfg["high_target"],
+        "target": target, "high_target": cfg["high_target"], "top_target": cfg["top_target"],
         "bonus_chapters": cfg["bonus_chapters"], "bonus_min_marks": cfg["bonus_min_marks"],
         "total_pending": len(queue),
         "pending_marks": round(sum(r["marks"] for r in queue), 1),
