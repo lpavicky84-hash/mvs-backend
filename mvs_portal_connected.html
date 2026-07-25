@@ -11533,6 +11533,42 @@ async function ocrFillQuestion_v1(inp,i){
 .syl-mpt-note{font-size:.78rem;line-height:1.65;margin:10px 12px 12px;padding:9px 12px;border-radius:10px;
  background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25)}
 .syl-mpt-note.grey{background:rgba(100,116,139,.08);border-color:rgba(100,116,139,.22)}
+.syl-dual b{display:block;font-size:.95rem;white-space:nowrap}
+.syl-dual b small{font-weight:500;font-size:.68rem;opacity:.6}
+.syl-dual b.sc{color:#4f46e5;margin-top:4px;padding-top:4px;border-top:1px dashed rgba(127,127,127,.32)}
+.dark .syl-dual b.sc{color:#a5b4fc}
+.syl-verdict2{display:block;margin:0 auto;padding:9px 16px;border-radius:12px;font-size:.84rem;max-width:340px}
+.syl-verdict2 b{display:block;font-size:.92rem}
+.syl-verdict2 small{display:block;margin-top:3px;font-size:.74rem;opacity:.85;line-height:1.5}
+.syl-verdict2.ok{background:#d1fae5;color:#047857}
+.syl-verdict2.no{background:#fee2e2;color:#b91c1c}
+.dark .syl-verdict2.ok{background:rgba(16,185,129,.18);color:#34d399}
+.dark .syl-verdict2.no{background:rgba(239,68,68,.16);color:#f87171}
+.syl-instruct{display:flex;gap:9px;align-items:flex-start;margin:12px 15px 0;padding:10px 13px;
+ font-size:.79rem;line-height:1.55;border-radius:10px;background:rgba(79,70,229,.07);
+ border:1px solid rgba(99,102,241,.22)}
+.syl-instruct span{animation:sylBlink 1.5s ease-in-out infinite;font-size:1.05rem;line-height:1.2}
+.dark .syl-instruct{background:rgba(99,102,241,.13);border-color:rgba(99,102,241,.35)}
+.syl-chmod{border:1px solid var(--border,#e6e9f0);border-radius:14px;margin-top:12px;overflow:hidden}
+.syl-chmod-h{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 14px;
+ font-weight:700;font-size:.9rem;background:linear-gradient(135deg,rgba(79,70,229,.10),rgba(14,165,233,.07));
+ border-bottom:1px solid rgba(100,116,139,.16)}
+.syl-chmod-h em{font-style:normal;font-weight:600;font-size:.74rem;opacity:.65;text-align:right}
+.dark .syl-chmod-h{background:linear-gradient(135deg,rgba(129,140,248,.17),rgba(56,189,248,.09))}
+.syl-chmod .syl-ch{margin:8px 10px}
+.syl-chmod .syl-ch:last-child{margin-bottom:10px}
+.syl-mpt-row td:first-child{word-break:normal;line-height:1.4}
+.syl-mpt-tag{white-space:nowrap}
+.syl-mpt-row .syl-ok2,.syl-mpt-row .syl-no2{white-space:nowrap;display:inline-block;line-height:1.3}
+.syl-req2 table{table-layout:fixed}
+.syl-req2 .syl-mpt-row td:nth-child(1){width:40%}
+.syl-req2 .syl-mpt-row td:nth-child(2){width:32%}
+.syl-req2 .syl-mpt-row td:nth-child(3){width:28%}
+.syl-need{display:inline-block;margin-top:3px;font-size:.66rem;font-weight:700;color:#6366f1;
+ background:rgba(99,102,241,.1);padding:2px 8px;border-radius:999px}
+.dark .syl-need{color:#a5b4fc}
+.syl-dual b{font-size:.88rem}
+.syl-dual b small{font-size:.62rem}
 .syl-act2{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
 .syl-cta{display:inline-flex;align-items:center;gap:7px;border:0;border-radius:11px;padding:10px 17px;
   font-size:.83rem;font-weight:700;cursor:pointer;font-family:inherit;transition:.16s;letter-spacing:.1px}
@@ -11827,52 +11863,63 @@ function sylReqTable(c){
   var allOk=thOk&&prOk&&agOk;
   var sessName=_sylSessName((_SYL.me||{}).exam_session||'');
   var gap=function(need,got){ return _sylN(Math.max(Math.round((need-got)*10)/10,0)); };
-  var st=function(ok,g){ return ok?'<span class="syl-ok2">Done &#10003;</span>':'<span class="syl-no2">'+g+' short</span>'; };
+  var st=function(ok,g){ return ok?'<span class="syl-ok2">Done &#10003;</span>':'<span class="syl-no2">'+g+' more</span>'; };
   var info='<span class="syl-mpt-info">i</span>';
 
   var shorts=[];
-  if(!thOk) shorts.push('theory '+gap(c.theory_pass_mark,c.covered_theory)+' short');
-  if(!prOk) shorts.push('practical '+gap(m.practical_pass,prGot)+' short');
-  if(!agOk) shorts.push('total '+gap(m.aggregate_pass,agGot)+' short');
+  if(!thOk) shorts.push('theory: '+gap(c.theory_pass_mark,c.covered_theory)+' more marks needed');
+  if(!prOk) shorts.push('practical: '+gap(m.practical_pass,prGot)+' more marks needed');
+  if(!agOk) shorts.push('total: '+gap(m.aggregate_pass,agGot)+' more marks needed');
   var verdict = allOk
-    ? '<span class="syl-verdict ok">'+esc(sub)+' passed with '+agGot+'% marks &#127881;</span>'
-    : '<span class="syl-verdict no">'+agGot+'% &mdash; '+shorts.join(' &middot; ')+'</span>';
+    ? '<span class="syl-verdict2 ok"><b>'+esc(sub)+' passed with '+agGot+'% marks &#127881;</b></span>'
+    : '<span class="syl-verdict2 no"><b>'+agGot+'% &mdash; not passing yet</b>'
+      +'<small>'+shorts.join(' &middot; ')+'</small>'
+      +'<small style="opacity:.7">Pick chapters from the list below &mdash; each chapter raises your theory and total together.</small></span>';
 
   var strip = tmaSess
-    ? esc(sub)+' exam = <b>'+_sylN(c.paper_marks)+' marks</b> &middot; 20% of theory ('+_sylN(c.paper_marks)
-      +') = <b>'+m.tma_max+' marks TMA</b> &middot; written paper marksheet mein <b>'+m.theory_max+'</b> ban ke ginte hain'
-    : esc(sub)+' exam = <b>'+_sylN(c.paper_marks)+' marks</b> &middot; aapke session mein <b>TMA nahi</b> hota &mdash; saare marks paper se hi aate hain';
+    ? esc(sub)+' paper = <b>'+_sylN(c.paper_marks)+' marks</b> &middot; TMA = 20% of theory = <b>'+m.tma_max
+      +' marks</b> &middot; your written paper counts as <b>'+m.theory_max+'</b> in the marksheet'
+    : esc(sub)+' paper = <b>'+_sylN(c.paper_marks)+' marks</b> &middot; <b>no TMA</b> in your session &mdash; every mark comes straight from this paper';
+
+  var thVal = tmaSess
+    ? '<div class="syl-dual"><b>'+_sylN(c.covered_paper)+' <small>of '+_sylN(c.paper_marks)+' paper</small></b>'
+      +'<b class="sc">'+thGot+' <small>of '+m.theory_max+' marksheet</small></b></div>'
+    : '<div class="syl-dual"><b>'+_sylN(c.covered_paper)+' <small>of '+_sylN(c.paper_marks)+'</small></b></div>';
 
   var h='<div class="syl-req2"><div class="h"><span>Marks Predictor</span>'
    +'<span class="syl-mpt-sess'+(tmaSess?'':' notma')+'">'+esc(sessName)+(tmaSess?' &middot; TMA':' &middot; No TMA')+'</span>'
-   +'<small>har row pe click karo &mdash; poora calculation khulega</small></div>'
+   +'<small>Tap any row to see the full calculation</small></div>'
    +'<div class="syl-mpt-strip">'+strip+'</div>'
    +'<table><tbody>'
    +'<tr class="syl-mpt-row" onclick="sylMarksExplain(\'theory\')"><td><b>Theory paper</b><br>'
-     +'<small style="opacity:.6">from your chapters</small></td>'
-   +'<td class="n">'+thGot+' <small style="opacity:.55;font-weight:500">of '+m.theory_max+'</small></td>'
-   +'<td><small style="opacity:.6">pass needs '+thNeed+'</small></td>'
-   +'<td>'+st(thOk,gap(c.theory_pass_mark,c.covered_theory))+info+'</td></tr>';
+     +'<small style="opacity:.6">from your chapters</small><br>'
+     +'<small class="syl-need">pass needs '+thNeed+'</small></td>'
+   +'<td class="n">'+thVal+'</td>'
+   +'<td style="white-space:nowrap;text-align:right">'
+   +st(thOk,gap(c.theory_pass_mark,c.covered_theory))+info+'</td></tr>';
   if(tmaSess)
     h+='<tr class="syl-mpt-row exp" onclick="sylMarksExplain(\'tma\')"><td><b>TMA</b><span class="syl-mpt-tag">expected</span><br>'
-     +'<small style="opacity:.6">assignment marks</small></td>'
+     +'<small style="opacity:.6">assignment marks</small><br>'
+     +'<small class="syl-need">no minimum</small></td>'
    +'<td class="n">'+_sylN(c.tma_assumed)+' <small style="opacity:.55;font-weight:500">of '+m.tma_max+'</small></td>'
-   +'<td><small style="opacity:.6">no minimum</small></td><td>'+info+'</td></tr>';
+   +'<td style="white-space:nowrap;text-align:right">'+info+'</td></tr>';
   if(has)
     h+='<tr class="syl-mpt-row exp" onclick="sylMarksExplain(\'practical\')"><td><b>Practical</b><span class="syl-mpt-tag">expected</span><br>'
-     +'<small style="opacity:.6">practical exam</small></td>'
+     +'<small style="opacity:.6">practical exam</small><br>'
+     +'<small class="syl-need">pass needs '+prNeed+'</small></td>'
    +'<td class="n">'+prGot+' <small style="opacity:.55;font-weight:500">of '+m.practical_max+'</small></td>'
-   +'<td><small style="opacity:.6">pass needs '+prNeed+'</small></td>'
-   +'<td>'+st(prOk,gap(m.practical_pass,prGot))+info+'</td></tr>';
+   +'<td style="white-space:nowrap;text-align:right">'
+   +st(prOk,gap(m.practical_pass,prGot))+info+'</td></tr>';
   h+='<tr class="syl-mpt-row tot" onclick="sylMarksExplain(\'total\')"><td><b>Marksheet total</b><br>'
-     +'<small style="opacity:.6">theory'+(tmaSess?' + TMA':'')+(has?' + practical':'')+'</small></td>'
+     +'<small style="opacity:.6">theory'+(tmaSess?' + TMA':'')+(has?' + practical':'')+'</small><br>'
+     +'<small class="syl-need">pass needs '+agNeed+'</small></td>'
    +'<td class="n">'+agGot+' <small style="opacity:.55;font-weight:500">of 100</small></td>'
-   +'<td><small style="opacity:.6">pass needs '+agNeed+'</small></td><td>'+info+'</td></tr>'
+   +'<td style="white-space:nowrap;text-align:right">'+info+'</td></tr>'
    +'</tbody></table>'
    +'<div style="padding:11px 12px 4px;text-align:center">'+verdict+'</div>'
    +(tmaSess
-     ?'<div class="syl-mpt-note">October/April exam mein <b>TMA assignment ke marks milte hain</b> &mdash; ye apki final percentage badhane mein bahut helpful hain. <b>TMA submit karna bilkul na bhoolein.</b></div>'
-     :'<div class="syl-mpt-note grey"><b>Note:</b> aapke chune hue exam session mein <b>TMA assignment ke marks nahi milte</b> &mdash; saare marks theory paper'+(has?' aur practical':'')+' se hi aate hain.</div>')
+     ?'<div class="syl-mpt-note">October and April exams include <b>TMA (assignment) marks</b> &mdash; they directly boost your final percentage. <b>Do not forget to submit your TMA.</b></div>'
+     :'<div class="syl-mpt-note grey"><b>Note:</b> your chosen exam session has <b>no TMA (assignment) marks</b> &mdash; every mark comes from the written paper'+(has?' and practical':'')+'.</div>')
    +'</div>';
   return h;
 }
@@ -11886,29 +11933,29 @@ function sylMarksExplain(kind){
   var paper=c.paper_marks, scale=paper?Math.round(m.theory_max/paper*100):100;
   var row=function(k,v,b){ return '<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 2px;'
     +(b?'border-top:1px dashed rgba(127,127,127,.25);font-weight:800':'')+'"><span style="opacity:.75">'+k+'</span><b>'+v+'</b></div>'; };
-  var T='', B='', F='<button class="btn btn-primary" onclick="closeModal()">Samajh gaya</button>';
+  var T='', B='', F='<button class="btn btn-primary" onclick="closeModal()">Got it</button>';
 
   if(kind==='theory' || kind==='req'){
-    T = tmaSess ? ('Theory paper — '+_sylN(c.theory_pass_mark)+' of '+m.theory_max+' kyun?')
+    T = tmaSess ? ('Theory paper — why '+_sylN(c.theory_pass_mark)+' of '+m.theory_max+'?')
                 : ('Theory paper — '+_sylN(c.theory_pass_mark)+' of '+m.theory_max);
     B = '<div style="font-size:.88rem;line-height:1.7">'
       +(tmaSess
-        ? '<p>'+esc(sub)+' ka written paper <b>'+_sylN(paper)+' marks</b> ka hota hai, lekin marksheet mein theory sirf <b>'+m.theory_max+'</b> ke roop mein ginti hai ('+scale+'%) — baaki '+m.tma_max+' marks TMA se aate hain.</p>'
-        : '<p>Aapke session mein <b>TMA nahi hota</b>, isliye paper ke saare '+_sylN(paper)+' marks marksheet mein ginte hain.</p>')
-      +row('Aapke chapters ka coverage', _sylN(c.covered_paper)+' paper marks')
-      +(tmaSess?row('&times; '+scale+'% (scaling)', '= '+_sylN(c.covered_theory)+' theory marks'):'')
-      +row('Passing ke liye chahiye', _sylN(c.theory_pass_mark)+' of '+m.theory_max, true)
+        ? '<p>The '+esc(sub)+' written paper is <b>'+_sylN(paper)+' marks</b>, but the marksheet counts theory as only <b>'+m.theory_max+'</b> ('+scale+'%) — the remaining '+m.tma_max+' marks come from your TMA.</p>'
+        : '<p>Your session has <b>no TMA</b>, so the full '+_sylN(paper)+'-mark paper counts in the marksheet.</p>')
+      +row('Your chapters cover', _sylN(c.covered_paper)+' paper marks')
+      +(tmaSess?row('&times; '+scale+'% (NIOS scaling)', '= '+_sylN(c.covered_theory)+' theory marks'):'')
+      +row('Needed to pass', _sylN(c.theory_pass_mark)+' of '+m.theory_max, true)
       +'<p style="margin-top:10px">'+(c.theory_reached
-        ? '<b style="color:#047857">Theory requirement poori ho gayi &#10003;</b>'
-        : 'Abhi <b>'+_sylN(Math.max(Math.round((c.theory_pass_mark-c.covered_theory)*10)/10,0))+' theory marks</b> ki kami hai.')
-      +(tmaSess?'<br>Chapters mein <b>'+_sylN(c.pass_core_needed)+' paper marks</b> ka coverage chahiye kyunki '+_sylN(c.theory_pass_mark)+' &divide; '+(scale/100)+' = '+_sylN(c.pass_core_needed)+'.':'')+'</p></div>';
+        ? '<b style="color:#047857">Theory requirement met &#10003;</b>'
+        : 'You are <b>'+_sylN(Math.max(Math.round((c.theory_pass_mark-c.covered_theory)*10)/10,0))+' theory marks</b> short.')
+      +(tmaSess?'<br>That is why your chapters must cover <b>'+_sylN(c.pass_core_needed)+' paper marks</b>: '+_sylN(c.theory_pass_mark)+' &divide; '+(scale/100)+' = '+_sylN(c.pass_core_needed)+'.':'')+'</p></div>';
   }
   else if(kind==='tma'){
     T='TMA — '+m.tma_max+' marks (expected)';
     B='<div style="font-size:.88rem;line-height:1.7">'
-      +'<p>TMA (Tutor Marked Assignment) = theory ke '+_sylN(paper)+' marks ka <b>20% = '+m.tma_max+' marks</b>. '
-      +'Ye <b>expected marks</b> hain — aapki umeed. Agar TMA mein sach mein itne mil gaye, to upar wala predicted result aapki final NIOS marksheet mein dikhega.</p>'
-      +'<p>TMA ka koi alag minimum nahi hota — ye seedha total mein judta hai, isliye percentage badhane mein bahut helpful hai. <b>TMA submit karna bilkul na bhoolein.</b></p>'
+      +'<p>TMA (Tutor Marked Assignment) = 20% of the theory paper ('+_sylN(paper)+') = <b>'+m.tma_max+' marks</b>. '
+      +'These are <b>expected marks</b> — your estimate. If you actually score them, the predicted result above is what your final NIOS marksheet will show.</p>'
+      +'<p>TMA has no minimum of its own — it adds straight to your total, so it strongly boosts your percentage. <b>Do not forget to submit your TMA.</b></p>'
       +'<label class="form-label" style="margin-top:6px">Expected TMA marks (out of '+m.tma_max+')</label>'
       +'<input type="number" class="form-control" id="syl-mpx-in" min="0" max="'+m.tma_max+'" value="'+_sylN(c.tma_assumed)+'"></div>';
     F='<button class="btn btn-primary" onclick="sylMpxSave(\'tma\')">Save expected marks</button>';
@@ -11916,37 +11963,37 @@ function sylMarksExplain(kind){
   else if(kind==='practical'){
     T='Practical — '+m.practical_max+' marks (expected)';
     B='<div style="font-size:.88rem;line-height:1.7">'
-      +'<p>Practical exam <b>'+m.practical_max+' marks</b> ka hota hai, pass ke liye <b>'+_sylN(m.practical_pass)+'</b> chahiye. '
-      +'Ye bhi <b>expected marks</b> hain — practical mein jo actually milega wahi marksheet mein aayega.</p>'
+      +'<p>The practical exam carries <b>'+m.practical_max+' marks</b>; <b>'+_sylN(m.practical_pass)+'</b> are needed to pass. '
+      +'These are <b>expected marks</b> too — the marksheet will show what you actually score.</p>'
       +'<label class="form-label" style="margin-top:6px">Expected practical marks (out of '+m.practical_max+')</label>'
       +'<input type="number" class="form-control" id="syl-mpx-in" min="0" max="'+m.practical_max+'" value="'+_sylN(c.practical_assumed)+'"></div>';
     F='<button class="btn btn-primary" onclick="sylMpxSave(\'practical\')">Save expected marks</button>';
   }
   else if(kind==='total'){
-    var parts=row('Theory (chapters se)', _sylN(c.covered_theory)+' of '+m.theory_max)
+    var parts=row('Theory (from chapters)', _sylN(c.covered_theory)+' of '+m.theory_max)
       +(tmaSess?row('TMA (expected)', _sylN(c.tma_assumed)+' of '+m.tma_max):'')
       +(has?row('Practical (expected)', _sylN(c.practical_assumed)+' of '+m.practical_max):'')
       +row('Total', _sylN(c.projected_total)+' of 100', true);
-    T='Marksheet total — poora calculation';
+    T='Marksheet total — full calculation';
     B='<div style="font-size:.88rem;line-height:1.7">'+parts
       +'<p style="margin-top:10px">'+(c.aggregate_reached
         ? '<b style="color:#047857">'+esc(sub)+' passed with '+_sylN(c.projected_total)+'% marks &#127881;</b>'
-        : 'Passing ke liye '+_sylN(m.aggregate_pass)+' chahiye — abhi <b>'+_sylN(Math.max(Math.round((m.aggregate_pass-c.projected_total)*10)/10,0))+' marks</b> ki kami hai.')
-      +'<br><span style="opacity:.65;font-size:.8rem">Projected score ek estimate hai — actual marks NIOS result mein aayenge.</span></p></div>';
+        : 'Passing needs '+_sylN(m.aggregate_pass)+' — you are <b>'+_sylN(Math.max(Math.round((m.aggregate_pass-c.projected_total)*10)/10,0))+' marks</b> short.')
+      +'<br><span style="opacity:.65;font-size:.8rem">The projected score is an estimate — your actual marks appear in the NIOS result.</span></p></div>';
   }
   else if(kind==='bonus'){
-    T='Bonus chapter kyun?';
-    B='<div style="font-size:.88rem;line-height:1.7"><p>Agar sirf requirement ('+_sylN(c.pass_core_needed)+' paper marks) hi cover ki '
-      +'aur exam mein ek question chhoot gaya ya answer galat ho gaya, to passing line se neeche slip ho jaoge. '
-      +'Isliye hum <b>1 extra chapter</b> add karte hain — ye aapki safety cushion hai. Pehla chapter bahut chhota ho to doosra bhi add hota hai.</p></div>';
+    T='Why a bonus chapter?';
+    B='<div style="font-size:.88rem;line-height:1.7"><p>If you cover only the exact requirement ('+_sylN(c.pass_core_needed)+' paper marks) '
+      +'and one question gets skipped or an answer goes wrong in the exam, you slip below the passing line. '
+      +'So we add <b>1 extra chapter</b> as your safety cushion. A second chapter is added only when the first one is too small to protect you.</p></div>';
   }
   else if(kind==='plan'){
-    T='Plan total kaise bana?';
+    T='How the plan total works';
     B='<div style="font-size:.88rem;line-height:1.7">'
       +row('NIOS requirement', _sylN(c.pass_core_needed)+' paper marks')
       +row('Safety bonus', '+ '+_sylN(Math.round((c.pass_paper_needed-c.pass_core_needed)*10)/10)+' marks')
       +row('Plan total', _sylN(c.pass_paper_needed)+' paper marks', true)
-      +'<p style="margin-top:10px">Itne marks ke chapters finish karo to passing comfortably cross ho jaati hai.</p></div>';
+      +'<p style="margin-top:10px">Finish chapters worth these marks and passing is comfortably covered.</p></div>';
   }
   if(typeof showModal==='function') showModal(T,B,F); else toast(T,true);
 }
@@ -12267,6 +12314,7 @@ function sylSubject(scrollTop){
    +(showTma?'Hide TMA chapters':'Show TMA chapters')+'</button>'
    +'<button class="syl-cta o" style="padding:7px 13px;font-size:.76rem" onclick="sylChOpen()">'
    +(open?'Collapse list':'Expand list')+'</button></div></div>'
+   +'<div class="syl-instruct"><span>&#128073;</span><div><b>What to do here:</b> tap a chapter once you finish studying it &mdash; it joins your plan and your covered marks above update instantly. Tap <b>Mark done</b> when the chapter is fully revised.</div></div>'
    +'<div style="padding:4px 18px 18px"><div class="syl-chwrap">'
    +'<div class="syl-chscroll'+(open?' open':'')+'" id="syl-chscroll">';
 
@@ -12275,7 +12323,7 @@ function sylSubject(scrollTop){
     if(!list.length) return;
     var all=mods[mod], mw=all.length?all[0].module_weightage:0, got=0;
     all.forEach(function(ch){ if(ch.kind==='PE'&&sel.indexOf(ch.no)>-1) got+=ch.marks; });
-    h+='<div class="syl-modhead"><span>'+esc(mod)+'</span><em>'+_sylN(got)+' of '+mw+' marks picked</em></div>';
+    h+='<div class="syl-chmod"><div class="syl-chmod-h"><span>'+esc(mod)+'</span><em>'+_sylN(got)+' of '+mw+' marks picked</em></div>';
     list.forEach(function(ch){
       if(ch.kind==='TMA'){
         h+='<div class="syl-ch tma"><div class="syl-box"></div><div class="t"><b>'+esc(ch.no)+' '+esc(ch.title)+'</b>'
@@ -12292,6 +12340,7 @@ function sylSubject(scrollTop){
          +'</div></div>';
       }
     });
+    h+='</div>';
   });
   h+='</div>'+(open?'':'<div class="syl-fade"></div>')+'</div></div></div></div>';
   _sylEl('s-syl-content').innerHTML=h;
