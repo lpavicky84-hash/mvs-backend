@@ -4691,6 +4691,10 @@ function _fmtRich(t){
   s=s.replace(/\$\$([\s\S]+?)\$\$/g,(m,g)=>stash(g,true));
   s=s.replace(/\\\[([\s\S]+?)\\\]/g,(m,g)=>stash(g,true));
   s=s.replace(/\\\(([\s\S]+?)\\\)/g,(m,g)=>stash(g,false));
+  // table/structural math blocks (match-the-following, difference tables, \boxed) —
+  // inke $ delimiters ko niche wala stray-$ cleanup kha jata tha aur word-heuristic
+  // inhe sentence samajh leti thi, isliye PEHLE pakad ke math stash karo ([^$] newline bhi match karta hai)
+  s=s.replace(/\$([^$]*\\(?:begin|end|hline|boxed|colorbox|fcolorbox)\b[^$]*)\$/g,(m,g)=>stash(g,/\\begin\{/.test(g)));
   // stray $ cleanup: line me odd $ ho to AAKHIRI wala hatao (pair-shift se text math ban jaata tha)
   s=s.split('\n').map(ln=>{
     if(!ln.includes('$')) return ln;
@@ -4702,6 +4706,8 @@ function _fmtRich(t){
   s=s.replace(/\$([^\n$]+?)\$/g,(m,g)=>{
     const gg=g.trim();
     if(!gg) return ' ';
+    // structural LaTeX (table/boxed/colorbox) kabhi plain sentence nahi hota
+    if(/\\begin\{|\\end\{|\\hline|\\boxed|\\colorbox|\\fcolorbox/.test(gg)) return stash(gg, /\\begin\{/.test(gg));
     const stripped=gg.replace(/\\[a-zA-Z]+\{([^{}]*)\}/g,'$1').replace(/\\[a-zA-Z]+/g,' ');
     const words=(stripped.match(/[\p{L}\p{M}]{2,}/gu)||[]).length;
     const specials=(gg.match(/[_^\\=<>|]/g)||[]).length;
@@ -11455,7 +11461,7 @@ async function ocrFillQuestion_v1(inp,i){
 .syl-lvl>div{flex:1;padding:10px 12px;text-align:center;border-right:1px solid var(--border,#e6e9f0)}
 .syl-lvl>div:last-child{border-right:0}
 .syl-lvl b{display:block;font-size:1.05rem;font-weight:800;letter-spacing:-.3px}
-.syl-lvl span{font-size:.64rem;text-transform:uppercase;letter-spacing:.5px;font-weight:700;opacity:.6}
+.syl-lvl span{font-size:.64rem;text-transform:uppercase;letter-spacing:.4px;font-weight:700;opacity:.6;line-height:1.4;word-break:normal;overflow-wrap:break-word}
 .syl-lvl>div.on{background:rgba(16,185,129,.1)}
 .syl-lvl>div.on b{color:#047857}
 /* target progress cards, the table only opens when the learner asks for it */
@@ -11487,6 +11493,16 @@ async function ocrFillQuestion_v1(inp,i){
 .syl-pill2.ok{background:rgba(16,185,129,.16);color:#047857}
 .syl-pill2.next{background:rgba(217,119,6,.18);color:#92400e}
 .syl-pill2.wait{background:rgba(127,127,127,.14);opacity:.75}
+.syl-pill2.aim{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;
+  box-shadow:0 2px 10px rgba(79,70,229,.35);animation:sylBlink 1.6s ease-in-out infinite}
+.syl-lvl .syl-pickgo{cursor:pointer;transition:transform .15s,box-shadow .15s}
+.syl-lvl .syl-pickgo span{font-size:.55rem;letter-spacing:.2px}
+.syl-lvl .syl-pickgo:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(79,70,229,.16)}
+.syl-fchip{display:inline-flex;align-items:center;gap:6px;margin-left:8px;padding:3px 11px;border-radius:999px;
+ background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;font-size:.64rem;font-weight:700;
+ letter-spacing:.3px;vertical-align:middle;text-transform:none}
+.syl-fchip b{cursor:pointer;font-size:.9rem;line-height:1;opacity:.85;padding:0 1px}
+.syl-fchip b:hover{opacity:1}
 .syl-act2{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
 .syl-cta{display:inline-flex;align-items:center;gap:7px;border:0;border-radius:11px;padding:10px 17px;
   font-size:.83rem;font-weight:700;cursor:pointer;font-family:inherit;transition:.16s;letter-spacing:.1px}
@@ -11826,9 +11842,11 @@ function sylTargetCard(c, kind, done, isNext){
   var col   = done ? '#059669' : (isNext ? '#d97706' : '#94a3b8');
   var left  = Math.max(0, Math.round((total-have)*10)/10);
 
-  var pill = done ? '<span class="syl-pill2 ok">covered</span>'
-           : (isNext ? '<span class="syl-pill2 next">your next target</span>'
-                     : '<span class="syl-pill2 wait">'+(kind==='top'?('after '+_SYL.me.high_target+' percent'):'after passing')+'</span>');
+  var aim = (_SYL.me.target===kind);
+  var pill = (done ? '<span class="syl-pill2 ok">covered</span>' : '')
+    + (aim ? '<span class="syl-pill2 aim">Your Aim</span>' : '')
+    + (!done && !aim ? (isNext ? '<span class="syl-pill2 next">your first priority</span>'
+                     : '<span class="syl-pill2 wait">'+(kind==='top'?('after '+_SYL.me.high_target+' percent'):'after passing')+'</span>') : '');
   var sub  = done ? 'Done. You have '+_sylN(have)+' of the '+_sylN(total)+' marks we plan for.'
            : (left ? left+' marks of chapters still to pick' : 'Almost there');
 
@@ -11857,9 +11875,21 @@ function sylFocusDate(){
 function sylToggleHelp(){ _SYL.showHelp=!_SYL.showHelp; sylSubject(); }
 
 function sylToggleTarget(kind){
-  _SYL.openTarget = (_SYL.openTarget===kind) ? null : kind;
+  var opening = (_SYL.openTarget!==kind);
+  _SYL.openTarget = opening ? kind : null;
+  _SYL.targetFilter = opening ? kind : null;
+  if(opening) _SYL.chOpen = true;
   sylSubject();
+  if(opening) setTimeout(sylScrollChapters, 80);
 }
+function sylScrollChapters(){
+  if(!_SYL.chOpen){ _SYL.chOpen = true; sylSubject(); }
+  setTimeout(function(){
+    var el=_sylEl('syl-chpanel');
+    if(el && el.scrollIntoView) el.scrollIntoView({behavior:'smooth',block:'start'});
+  },80);
+}
+function sylClearTargetFilter(){ _SYL.targetFilter=null; sylSubject(); }
 
 function sylBonusBlock(c, kind){
   var m = c.marks || {};
@@ -11877,6 +11907,8 @@ function sylBonusBlock(c, kind){
            : kind==='high' ? (c.high_bonus_chapters||[]) : (c.pass_bonus_chapters||[]);
   var label  = kind==='top' ? ((_SYL.me.top_target||90)+' percent')
            : kind==='high' ? (_SYL.me.high_target+' percent') : 'Passing';
+  var reqLbl = kind==='top' ? ('NIOS '+(_SYL.me.top_target||90)+'% Marks')
+           : kind==='high' ? ('NIOS '+_SYL.me.high_target+'% Marks') : 'NIOS Passing Marks';
   if(!bonus) return '';
 
   var rule = kind==='pass'
@@ -11891,10 +11923,10 @@ function sylBonusBlock(c, kind){
    +'That one extra chapter is your protection if a question is skipped in the paper or an answer '
    +'goes wrong. A second chapter is added only when the first one is small.</p>'
    +'<div class="syl-lvl">'
-   +'<div'+(reqOk?' class="on"':'')+'><b>'+_sylN(req)+'</b><span>NIOS requirement</span></div>'
+   +'<div'+(reqOk?' class="on"':'')+'><b>'+_sylN(req)+'</b><span>'+esc(reqLbl)+'</span></div>'
    +'<div><b>+'+_sylN(bonus)+'</b><span>bonus, '+list.length+' chapter'+(list.length===1?'':'s')+'</span></div>'
    +'<div'+(totOk?' class="on"':'')+'><b>'+_sylN(total)+'</b><span>what we plan for</span></div>'
-   +'<div'+(totOk?' class="on"':'')+'><b>'+_sylN(c.covered_paper)+'</b><span>you have picked</span></div>'
+   +'<div class="syl-pickgo'+(totOk?' on':'')+'" onclick="sylScrollChapters()" title="Jump to the chapter list"><b>'+_sylN(c.covered_paper)+'</b><span>Select your completed chapters &#8595;</span></div>'
    +'</div>';
   if(list.length){
     h+='<div class="syl-blist">'+list.map(function(r){
@@ -12003,6 +12035,15 @@ function sylSubject(scrollTop){
   c.subject_name = s.name;
   var sel=d.selected, done=d.done, mods={};
   d.chapters.forEach(function(ch){ (mods[ch.module]=mods[ch.module]||[]).push(ch); });
+  var planSet=null, filterLbl='';
+  if(_SYL.targetFilter){
+    var fm = (_SYL.targetFilter==='top' ? c.top_plan_modules
+           : _SYL.targetFilter==='high' ? c.high_plan_modules : c.pass_plan_modules) || [];
+    planSet={};
+    fm.forEach(function(mo){ (mo.chapters||[]).forEach(function(ch){ planSet[ch.no]=1; }); });
+    filterLbl = _SYL.targetFilter==='top' ? ((_SYL.me.top_target||90)+' percent')
+             : _SYL.targetFilter==='high' ? (_SYL.me.high_target+' percent') : 'Passing marks';
+  }
   var col=c.high_reached?'#d97706':(c.pass_reached?'#059669':'#4f46e5');
   var allGood = c.theory_reached && c.aggregate_reached;
 
@@ -12080,8 +12121,8 @@ function sylSubject(scrollTop){
   var peTotal=0, peDone=0;
   d.chapters.forEach(function(ch){ if(ch.kind==='PE'){ peTotal++; if(sel.indexOf(ch.no)>-1) peDone++; } });
 
-  h+='<div class="syl-panel" style="margin-top:14px"><div class="syl-phead">'
-   +'<div><h4>Chapter list</h4><p>'+peDone+' of '+peTotal+' exam chapters picked. '
+  h+='<div class="syl-panel" style="margin-top:14px" id="syl-chpanel"><div class="syl-phead">'
+   +'<div><h4>Chapter list'+(planSet?' <span class="syl-fchip">Showing '+esc(filterLbl)+' plan chapters <b onclick="sylClearTargetFilter()" title="Show all chapters">&times;</b></span>':'')+'</h4><p>'+peDone+' of '+peTotal+' exam chapters picked. '
    +'Only Public Examination chapters carry marks.</p></div>'
    +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
    +(sel.length?'<button class="syl-clear" onclick="sylClearAll()">Clear all ('+sel.length+')</button>':'')
@@ -12093,7 +12134,7 @@ function sylSubject(scrollTop){
    +'<div class="syl-chscroll'+(open?' open':'')+'" id="syl-chscroll">';
 
   Object.keys(mods).forEach(function(mod){
-    var list=mods[mod].filter(function(ch){ return showTma || ch.kind==='PE'; });
+    var list=mods[mod].filter(function(ch){ return (showTma || ch.kind==='PE') && (!planSet || planSet[ch.no]); });
     if(!list.length) return;
     var all=mods[mod], mw=all.length?all[0].module_weightage:0, got=0;
     all.forEach(function(ch){ if(ch.kind==='PE'&&sel.indexOf(ch.no)>-1) got+=ch.marks; });
@@ -12263,13 +12304,14 @@ async function sylImpAddModules(target){
     mo.chapters.forEach(function(ch){ if(d.selected.indexOf(ch.no)<0) d.selected.push(ch.no); });
   });
   _SYL.impTarget=target;
-  var was=d.calc.pass_reached, wasHigh=d.calc.high_reached;
+  var was=d.calc.pass_reached, wasHigh=d.calc.high_reached, wasTop=!!d.calc.top_reached;
   try{
     var res=await api('/api/syllabus/plan','POST',{subject_code:d.subject.code,
       selected:d.selected, done:d.done, tma_assumed:d.calc.tma_assumed, practical_assumed:d.calc.practical_assumed});
     d.calc=res.calc;
     sylImpList(target);
-    if(!wasHigh && res.calc.high_reached) toast(_SYL.me.high_target+' percent plan complete for '+d.subject.name);
+    if(!wasTop && res.calc.top_reached) sylCongrats('top');
+    else if(!wasHigh && res.calc.high_reached) sylCongrats('high');
     else if(!was && res.calc.pass_reached) sylCelebrate();
     else toast('Modules added to your plan.');
   }catch(e){ toast(e.message,true); }
@@ -12292,6 +12334,27 @@ function sylCelebrate(){
     +'</p>'
     +'<p style="margin:10px 0 0;font-size:.86rem;opacity:.8">Next target is '+_SYL.me.high_target
     +' percent. That needs '+need+' more marks worth of chapters.</p></div>',
+    '<button class="btn btn-primary" onclick="closeModal();sylSubject(true)">See my progress</button>');
+}
+
+function sylCongrats(kind){
+  var c=_SYL.cur.calc, s=_SYL.cur.subject;
+  var isTop = (kind==='top');
+  var tgt = isTop ? ((_SYL.me.top_target||90)+' percent')
+        : (_SYL.me.high_target+' percent');
+  if(typeof showModal!=='function'){ toast('Congratulations, '+tgt+' plan complete in '+s.name); return; }
+  showModal(
+    isTop ? 'Congratulations, all targets complete' : ('Congratulations, '+tgt+' secured'),
+    '<div style="text-align:center;padding:6px 4px 2px">'
+    +'<div style="font-size:2.2rem">'+(isTop?'&#127942;':'&#127881;')+'</div>'
+    +'<div style="font-size:2.4rem;font-weight:800;color:'+(isTop?'#7c3aed':'#d97706')+';letter-spacing:-1px">'
+    +_sylN(c.covered_paper)+' / '+_sylN(c.total_pe_marks)+'</div>'
+    +'<p style="margin:6px 0 0;font-size:.86rem;opacity:.75">exam marks covered in '+esc(s.name)+'</p>'
+    +'<p style="margin:12px 0 0;font-size:.92rem">Your '+tgt+' plan is complete. Projected total <b>'
+    +_sylN(c.projected_total)+' out of 100</b>.'
+    +(isTop ? '<br>Passing, '+_SYL.me.high_target+' percent and '+(_SYL.me.top_target||90)
+      +' percent — teeno targets ab covered hain. Bas in chapters ko achhe se finish karo.' : '')
+    +'</p></div>',
     '<button class="btn btn-primary" onclick="closeModal();sylSubject(true)">See my progress</button>');
 }
 
@@ -12322,9 +12385,10 @@ async function sylSave(){
     var res=await api('/api/syllabus/plan','POST',{subject_code:d.subject.code,
       selected:d.selected, done:d.done,
       tma_assumed: t? parseFloat(t.value) : -1, practical_assumed: p? parseFloat(p.value) : -1});
-    var was=d.calc.pass_reached, wasHigh=d.calc.high_reached;
+    var was=d.calc.pass_reached, wasHigh=d.calc.high_reached, wasTop=!!d.calc.top_reached;
     d.calc=res.calc; sylSubject();
-    if(!wasHigh && res.calc.high_reached) toast(_SYL.me.high_target+' percent plan complete for '+d.subject.name);
+    if(!wasTop && res.calc.top_reached) sylCongrats('top');
+    else if(!wasHigh && res.calc.high_reached) sylCongrats('high');
     else if(!was && res.calc.pass_reached) sylCelebrate();
   }catch(e){ toast(e.message,true); }
 }

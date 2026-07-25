@@ -825,6 +825,12 @@ def syl_strategy(db: Session = Depends(get_db), user=Depends(get_student)):
 
     queue.sort(key=lambda r: (-r.get("ratio", 0.0), -r["marks"], r["subject"], r["no"]))
 
+    exam_day = None
+    try:
+        exam_day = date.fromisoformat(info["theory_date"]) if info.get("theory_date") else None
+    except Exception:
+        exam_day = None
+
     def bucket(n, label, span_days):
         buckets = [[] for _ in range(n)]
         for i, item in enumerate(queue):
@@ -834,6 +840,12 @@ def syl_strategy(db: Session = Depends(get_db), user=Depends(get_student)):
         for i, b in enumerate(buckets):
             if not b:
                 continue
+            b_from = start + timedelta(days=i * span_days)
+            b_to = start + timedelta(days=(i + 1) * span_days - 1)
+            if exam_day and b_from > exam_day:
+                break                      # nothing is planned after the exam
+            if exam_day and b_to > exam_day:
+                b_to = exam_day            # the plan stops at the exam
             by_sub = {}
             for it in b:
                 by_sub.setdefault(it["subject"], {"subject": it["subject"], "code": it["code"],
@@ -843,8 +855,8 @@ def syl_strategy(db: Session = Depends(get_db), user=Depends(get_student)):
                     by_sub[it["subject"]]["marks"] + it["marks"], 1)
             out.append({
                 "label": "%s %d" % (label, i + 1),
-                "from": (start + timedelta(days=i * span_days)).isoformat(),
-                "to": (start + timedelta(days=(i + 1) * span_days - 1)).isoformat(),
+                "from": b_from.isoformat(),
+                "to": b_to.isoformat(),
                 "subjects": sorted(by_sub.values(), key=lambda x: -x["marks"]),
                 "chapters": len(b),
                 "marks": round(sum(x["marks"] for x in b), 1),
