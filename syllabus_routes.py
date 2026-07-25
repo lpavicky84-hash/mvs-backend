@@ -326,18 +326,32 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
     remaining = [r for mo in ranked_mods for r in mo["rows"] if r["no"] not in sel]
 
     def modules_until(target_paper):
-        """Whole modules, best marks-per-chapter first, until the target is covered."""
+        """Whole modules, best marks-per-chapter first, until the target is covered.
+        The last module may not need to be finished completely: when a heavy
+        multi-chapter module crosses the target with only a few chapters, the
+        plan says "any k chapters" instead of the whole module."""
         need = target_paper - covered_paper
         chosen, acc = [], 0.0
         for mo in ranked_mods:
             if need - acc <= 0.01:
                 break
+            picked = len([r for r in mo["rows"] if r["no"] in sel])
             new_marks = round(sum(r["marks"] for r in mo["rows"] if r["no"] not in sel), 2)
+            left = mo["pe_count"] - picked
+            per_ch = (mo["marks"] / mo["pe_count"]) if mo["pe_count"] else 0.0
+            missing = need - acc
+            require = None
+            if per_ch > 0 and left > 0 and missing > 0:
+                k = int(missing / per_ch + 0.999999)
+                if 0 < k < left:
+                    require = {"type": "any", "k": k}    # any k chapters are enough
+                else:
+                    require = {"type": "full"}           # the whole module is compulsory
             chosen.append({
                 "module": mo["module"], "weightage": mo["weightage"],
                 "pe_count": mo["pe_count"], "ratio": mo["ratio"],
                 "marks": mo["marks"], "new_marks": new_marks,
-                "picked": len([r for r in mo["rows"] if r["no"] in sel]),
+                "picked": picked, "require": require,
                 "chapters": mo["rows"],
             })
             acc += new_marks
@@ -772,6 +786,7 @@ def syl_strategy(db: Session = Depends(get_db), user=Depends(get_student)):
                 "module": mo["module"], "weightage": mo["weightage"],
                 "pe_count": mo["pe_count"], "ratio": mo["ratio"],
                 "marks": mo["marks"], "new_marks": mo["new_marks"],
+                "require": mo.get("require"),
                 "done": len([r for r in mo["chapters"] if r["no"] in set(done)]),
                 "chapters": chs,
             })

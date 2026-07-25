@@ -11539,10 +11539,22 @@ async function ocrFillQuestion_v1(inp,i){
 .syl-cum{font-size:.7rem;opacity:.6;white-space:nowrap}
 .syl-impmod{border:1px solid var(--border,#e6e9f0);border-radius:14px;margin-top:12px;overflow:hidden}
 .syl-impmod.in{border-color:#059669;box-shadow:0 0 0 1px rgba(5,150,105,.18)}
-.syl-impmod-h{display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(127,127,127,.06)}
+.syl-impmod-h{display:flex;align-items:center;gap:12px;padding:11px 14px;
+  background:linear-gradient(135deg,rgba(79,70,229,.10),rgba(14,165,233,.07));
+  border-bottom:1px solid rgba(100,116,139,.16)}
+.syl-impmod.in .syl-impmod-h{background:linear-gradient(135deg,rgba(5,150,105,.13),rgba(14,165,233,.08))}
 .syl-impmod-h b{font-size:.9rem;display:block}
 .syl-impmod-h small{font-size:.72rem;opacity:.68;display:block;margin-top:2px;line-height:1.45}
-.dark .syl-impmod-h{background:rgba(255,255,255,.045)}
+.dark .syl-impmod-h{background:linear-gradient(135deg,rgba(129,140,248,.17),rgba(56,189,248,.09))}
+.dark .syl-impmod.in .syl-impmod-h{background:linear-gradient(135deg,rgba(52,211,153,.19),rgba(56,189,248,.10))}
+.syl-blink{display:inline-block;font-size:.64rem;font-weight:800;letter-spacing:.4px;
+  text-transform:uppercase;padding:3px 9px;border-radius:99px;white-space:nowrap;
+  animation:sylBlink 1.5s ease-in-out infinite}
+.syl-blink.imp{background:#fef3c7;color:#b45309;border:1px solid #f59e0b}
+.syl-blink.any{background:#e0e7ff;color:#4338ca;border:1px solid #818cf8}
+.dark .syl-blink.imp{background:rgba(245,158,11,.16);color:#fbbf24;border-color:rgba(245,158,11,.45)}
+.dark .syl-blink.any{background:rgba(99,102,241,.2);color:#a5b4fc;border-color:rgba(99,102,241,.5)}
+@keyframes sylBlink{0%,100%{opacity:1}50%{opacity:.3}}
 .syl-line{border-top:2px dashed #d97706;margin:14px 0 6px;position:relative}
 .syl-line span{position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:var(--card,#fff);
   padding:0 12px;font-size:.7rem;font-weight:800;color:#b45309;text-transform:uppercase;letter-spacing:.6px}
@@ -12167,12 +12179,18 @@ function sylImpList(target){
        +'<div class="t"><b>'+esc(ch.no)+' '+esc(ch.title)+'</b>'
        +'<small>'+(dn?'Covered and marked done':(pk?'In your plan':'Tap to add'))+'</small></div></div>';
     });
-    var ratio=Math.round(mo.weightage/Math.max(mo.chapters.length,1)*10)/10;
+    var badge='';
+    if(planned && mo.require){
+      badge = mo.require.type==='any'
+        ? '<span class="syl-blink any">Choose any '+mo.require.k+'</span>'
+        : '<span class="syl-blink imp">Important Module</span>';
+    }
     return '<div class="syl-impmod'+(planned?' in':'')+'"><div class="syl-impmod-h">'
      +'<div class="syl-rank">'+(idx+1)+'</div>'
      +'<div style="flex:1;min-width:0"><b>'+esc(mo.module)+'</b>'
      +'<small>'+mo.chapters.length+' exam chapter'+(mo.chapters.length===1?'':'s')
-     +' &middot; '+_sylN(mo.weightage)+' marks &middot; <b>'+_sylN(ratio)+' marks per chapter</b></small></div>'
+     +' &middot; '+_sylN(mo.weightage)+' marks</small></div>'
+     +badge
      +'<div style="text-align:right"><span class="syl-mk">'+_sylN(mo.weightage)+'</span>'
      +(cum!=null?'<div class="syl-cum">running '+cum+'</div>':'')+'</div></div>'
      +'<div style="padding-top:10px">'+chH+'</div></div>';
@@ -12368,11 +12386,18 @@ function sylPlanRender(){
        +'<b>'+x.plan_modules.length+' modules</b> &middot; '+nch+' chapters &middot; +'+_sylN(x.plan_marks)
        +' paper marks &middot; projected total <b>'+_sylN(x.projected_after)+' out of 100</b> after these</div>';
       x.plan_modules.forEach(function(mo,i){
+        var badge='';
+        if(mo.require){
+          badge = mo.require.type==='any'
+            ? '<span class="syl-blink any">Choose any '+mo.require.k+'</span>'
+            : '<span class="syl-blink imp">Important Module</span>';
+        }
         h+='<div class="syl-impmod-h" style="border-radius:10px;margin-top:6px">'
          +'<div class="syl-rank">'+(i+1)+'</div>'
          +'<div style="flex:1;min-width:0"><b>'+esc(mo.module)+'</b>'
          +'<small>'+mo.pe_count+' chapters &middot; '+_sylN(mo.weightage)+' marks &middot; '
-         +_sylN(mo.ratio)+' marks per chapter &middot; '+mo.done+' of '+mo.pe_count+' done</small></div>'
+         +mo.done+' of '+mo.pe_count+' done</small></div>'
+         +badge
          +'<span class="syl-mk">'+_sylN(mo.weightage)+'</span></div>';
       });
       h+='</div>';
