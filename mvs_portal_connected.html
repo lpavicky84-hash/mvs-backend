@@ -3405,7 +3405,7 @@ async function loadTMyRank(){
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
         <div style="font-size:1.8rem">&#127942;</div>
         <div style="flex:1;min-width:180px"><b style="font-size:.95rem">My Teacher Rank</b>
-          <div style="font-size:.74rem;color:var(--text-muted)">Reports, DPPs, notes, doubts, lectures aur attendance se (last 90 days)</div></div>
+          <div style="font-size:.74rem;color:var(--text-muted)">Based on reports, DPPs, notes, doubts, lectures and attendance (last 90 days)</div></div>
         <div class="trk-score" style="text-align:center"><b>#${me.rank}</b><span>of ${d.total||me.total||'-'} teachers &middot; score ${me.score}</span></div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:13px;justify-content:space-between">${mets}</div>
@@ -6588,7 +6588,7 @@ async function loadATeacherRanks(days){
     el.innerHTML=`<div class="card" style="margin-bottom:16px"><div class="card-body" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <div style="font-size:1.8rem">&#127942;</div>
       <div style="flex:1;min-width:220px"><h3 style="margin:0 0 3px">Teacher Ranking Board</h3>
-      <p style="margin:0;font-size:.8rem;color:var(--text-muted)">Reports, DPPs, class notes, doubts, lectures aur attendance ke basis par composite score (last ${days} days).</p></div>
+      <p style="margin:0;font-size:.8rem;color:var(--text-muted)">Composite score based on reports, DPPs, class notes, doubts, lectures and attendance (last ${days} days).</p></div>
       <div class="perf-tabs" style="margin:0">
         <div class="perf-tab${days===30?' active':''}" onclick="loadATeacherRanks(30)">30d</div>
         <div class="perf-tab${days===90?' active':''}" onclick="loadATeacherRanks(90)">90d</div>
@@ -12008,12 +12008,34 @@ function sylBusy(on){
   if(on) el.classList.add('syl-busy'); else el.classList.remove('syl-busy');
 }
 
+/* MVS Portal ka exam session (SSO ke saath aata hai) ko syllabus tracker ke
+   session se map karta hai — warna auto-select galat session chun sakta hai */
+async function _sylApplyPortalSession(){
+  var sess = window._ssoSession || (window._ssoProfile && window._ssoProfile.session) || '';
+  if(!sess) return;
+  var me=_SYL.me; if(!me || !(me.sessions||[]).length) return;
+  var want=String(sess).toLowerCase().trim();
+  var hit=null;
+  (me.sessions||[]).forEach(function(x){
+    var lbl=String(x.label||'').toLowerCase(), id=String(x.id||'').toLowerCase();
+    if(lbl.indexOf(want)>-1 || id===want.replace(/\s+/g,'') || lbl===want) hit=hit||x;
+  });
+  if(!hit) return;
+  window._ssoSession='';
+  if(window._ssoProfile) window._ssoProfile.session='';
+  if(me.exam_session===hit.id) return;
+  try{
+    await api('/api/syllabus/profile','POST',{exam_session:hit.id});
+    _SYL.me=await api('/api/syllabus/me');
+  }catch(e){}
+}
 async function loadSSyllabus(){
   var el=_sylEl('s-syl-content');
   var first = !_SYL.me;
   if(first) el.innerHTML='<div class="spinner"></div>'; else sylBusy(true);
   try{
     _SYL.me = await api('/api/syllabus/me');
+    await _sylApplyPortalSession();
     _SYL.ov = await api('/api/syllabus/overview');
     try{ _SYL.cards=(await api('/api/syllabus/predicted/mine')).cards||[]; }catch(e){ _SYL.cards=[]; }
     _SYL.cur=null; sylBusy(false); sylHome();
@@ -12058,12 +12080,12 @@ function sylHome(){
    +'<option value="high"'+(me.target==='high'?' selected':'')+'>Score '+me.high_target+' percent or above</option>'
    +'<option value="top"'+(me.target==='top'?' selected':'')+'>Score '+(me.top_target||90)+' percent or above</option>'
    +'</select>'
-   +(noTarget?'<div class="syl-reqmsg">Target marks compulsory hai &mdash; neeche ka poora plan isi par banta hai</div>':'')+'</div>'
+   +(noTarget?'<div class="syl-reqmsg">Target marks are required &mdash; your entire plan below is built around them</div>':'')+'</div>'
    +'</div>'
    +'<div class="syl-g syl-g2" style="margin-top:12px"><div>'
    +'<label class="form-label">Select your goal</label>'
    +'<select class="form-control'+(noGoal?' syl-req':'')+'" id="syl-goal" onchange="sylGoalSave(this.value)">'
-   +'<option value=""'+(noGoal?' selected':'')+'>Kis liye padh rahe ho? (compulsory)</option>'
+   +'<option value=""'+(noGoal?' selected':'')+'>What are you studying for? (Required)</option>'
    +'<option value="jee"'+(me.goal==='jee'?' selected':'')+'>JEE Aspirant</option>'
    +'<option value="neet"'+(me.goal==='neet'?' selected':'')+'>NEET Aspirant</option>'
    +'<option value="other"'+(me.goal==='other'?' selected':'')+'>Other</option>'
@@ -12071,8 +12093,8 @@ function sylHome(){
    +(me.goal==='other'
      ?'<input type="text" class="form-control'+(noGoalCustom?' syl-req':'')+'" id="syl-goalc" style="margin-top:8px" maxlength="120" '
       +'placeholder="Write your goal (e.g. CA Foundation, Boards, Skill course)" value="'+esc(me.goal_custom||'')+'" onchange="sylGoalCustomSave(this.value)">'
-      +(noGoalCustom?'<div class="syl-reqmsg">Apna goal likhna compulsory hai</div>':''):'')
-   +(noGoal?'<div class="syl-reqmsg">Goal select karna compulsory hai &mdash; congratulations aur reports isi ke hisaab se bante hain</div>':'')
+      +(noGoalCustom?'<div class="syl-reqmsg">Please write your goal &mdash; this field is required</div>':''):'')
+   +(noGoal?'<div class="syl-reqmsg">Selecting a goal is required &mdash; your celebrations and reports are personalised around it</div>':'')
    +'</div></div>'
    +(showDate?'<div class="syl-g syl-g2" style="margin-top:12px"><div>'
      +'<label class="form-label">Your On Demand examination date</label>'
@@ -12536,14 +12558,14 @@ function sylNeedTarget(){
   });
   sylNeedTarget._scrolled=false;
   if(typeof showModal==='function'){
-    showModal('Pehle ye complete karo',
+    showModal('Complete This First',
       '<div style="text-align:center;padding:8px 4px 2px"><div style="font-size:1.9rem">&#9873;&#65039;</div>'
-      +'<p style="font-size:.9rem;line-height:1.7;margin:8px auto;max-width:320px">Aage badhne se pehle upar ye field'+(missing.length>1?'s':'')+' bharna <b>compulsory</b> hai:</p>'
+      +'<p style="font-size:.9rem;line-height:1.7;margin:8px auto;max-width:320px">Before you continue, the following field'+(missing.length>1?'s are':' is')+' <b>required</b>:</p>'
       +'<div style="display:flex;flex-direction:column;gap:7px;max-width:260px;margin:0 auto">'
       +missing.map(function(m){ return '<div style="padding:9px 12px;border-radius:10px;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.25);font-weight:700;font-size:.85rem;color:#b91c1c">'+esc(m)+'</div>'; }).join('')
       +'</div></div>',
-      '<button class="btn btn-primary" onclick="closeModal()">Theek hai, bharta hoon</button>');
-  } else toast('Pehle '+missing.join(' aur ')+' bharna compulsory hai.',true);
+      '<button class="btn btn-primary" onclick="closeModal()">OK, I\'ll Fill It In</button>');
+  } else toast('Please complete '+missing.join(' and ')+' first.',true);
   return true;
 }
 async function sylGoalSave(v){
@@ -12556,7 +12578,7 @@ async function sylGoalSave(v){
 }
 async function sylGoalCustomSave(v){
   v=(v||'').trim();
-  if(!v){ toast('Apna goal likhna compulsory hai.',true); return; }
+  if(!v){ toast('Please write your goal — it is required.',true); return; }
   try{
     await api('/api/syllabus/profile','POST',{goal_custom:v});
     _SYL.me=await api('/api/syllabus/me');
@@ -12744,6 +12766,9 @@ function sylImportant(){
 
 function sylImpList(target){
   var d=_SYL.cur, s=d.subject, c=d.calc;
+  // admin ne jis display mode mein upload kiya hai, students ko wahi view milega —
+  // chapter-wise weightage wale subjects mein module logic nahi, chapter ranking dikhegi
+  if(((d.subject.display_mode)||'modules')==='chapters') return sylImpListChapters(target);
   _SYL.impTarget=target;
   var mods = (target==='top' ? c.top_plan_modules
            : target==='high' ? c.high_plan_modules : c.pass_plan_modules) || [];
@@ -12840,6 +12865,87 @@ function sylImpList(target){
    +'<div style="padding:8px 18px 18px">'+list+'</div></div></div>';
 }
 
+/* chapter-wise subjects (e.g. Data Entry Operations): NIOS prints marks per
+   chapter, so the plan ranks CHAPTERS by weightage — heaviest chapter first */
+function sylImpListChapters(target){
+  var d=_SYL.cur, s=d.subject, c=d.calc;
+  _SYL.impTarget=target;
+  var mods = (target==='top' ? c.top_plan_modules
+           : target==='high' ? c.high_plan_modules : c.pass_plan_modules) || [];
+  var need = target==='top' ? c.top_paper_needed
+           : target==='high' ? c.high_paper_needed
+           : Math.max(c.pass_paper_needed, c.theory_paper_needed);
+  var core = target==='top' ? (c.top_core_needed!=null?c.top_core_needed:need)
+           : target==='high' ? c.high_core_needed
+           : Math.max(c.pass_core_needed, c.theory_core_needed);
+  var tgtLabel = target==='top' ? ((_SYL.me.top_target||90)+' percent')
+               : target==='high' ? (_SYL.me.high_target+' percent') : 'Passing marks';
+
+  var mk=function(ch){ return ch.marks||0; };
+  var planned=[], plannedSet={};
+  mods.forEach(function(mo){ (mo.chapters||[]).forEach(function(ch){
+    if(!plannedSet[ch.no]){ plannedSet[ch.no]=1; planned.push(ch); }
+  }); });
+  planned.sort(function(a,b){ return mk(b)-mk(a); });
+  var rest=(d.chapters||[]).filter(function(ch){ return ch.kind==='PE' && !plannedSet[ch.no]; })
+    .sort(function(a,b){ return mk(b)-mk(a); });
+
+  function chCard(ch, idx, inPlan, cum){
+    var pk=d.selected.indexOf(ch.no)>-1, dn=d.done.indexOf(ch.no)>-1;
+    return '<div class="syl-impmod'+(inPlan?' in':'')+'"><div class="syl-impmod-h">'
+     +'<div class="syl-rank">'+(idx+1)+'</div>'
+     +'<div style="flex:1;min-width:0"><b>'+esc(ch.no)+' '+esc(ch.title)+'</b>'
+     +'<small>'+(dn?'Covered and marked done':(pk?'In your plan':'Tap to add to your plan'))+'</small></div>'
+     +'<div style="text-align:right"><span class="syl-mk">'+_sylN(mk(ch))+'</span>'
+     +(cum!=null?'<div class="syl-cum">running '+cum+'</div>':'')+'</div></div>'
+     +'<div style="padding-top:10px"><div class="syl-ch pe'+(pk?(dn?' on done':' on'):'')+'" style="margin:0" onclick="sylImpPick(\''+esc(ch.no)+'\')">'
+     +'<div class="syl-box">'+(pk?'&#10003;':'')+'</div>'
+     +'<div class="t"><b>'+esc(ch.title)+'</b><small>'+(dn?'Covered and marked done':(pk?'In your plan':'Tap to add'))+'</small></div></div></div></div>';
+  }
+
+  var list='', newMarks=0, covered=Math.round((c.covered_paper||0)*10)/10;
+  planned.forEach(function(ch,i){
+    if(d.selected.indexOf(ch.no)<0) newMarks=Math.round((newMarks+mk(ch))*10)/10;
+    var cum=Math.min(c.total_pe_marks, covered+planned.slice(0,i+1).reduce(function(a,x){ return a+(d.selected.indexOf(x.no)<0?mk(x):0); },0));
+    list+=chCard(ch,i,true,Math.round(cum*10)/10);
+  });
+  if(rest.length && planned.length){
+    list+='<div class="syl-line"><span>'+tgtLabel+' covered up to here</span></div>';
+  } else if(!planned.length){
+    list='<div class="syl-goal ok" style="margin:0 0 12px"><span>'+esc(tgtLabel)
+      +' is already covered by the chapters in your plan. Any chapter below only raises the score further.</span></div>';
+  }
+  rest.forEach(function(ch,j){ list+=chCard(ch,planned.length+j,false,null); });
+
+  var picked=d.selected.length;
+  var projected=Math.round((Math.min(c.covered_paper+newMarks,c.total_pe_marks)*c.scale
+      +c.tma_assumed+c.practical_assumed)*10)/10;
+  var el=_sylEl('s-syl-content');
+  el.innerHTML='<div class="syl-wrap"><div class="syl-act2">'
+   +'<button class="syl-cta o" onclick="sylSubject()">Back to '+esc(s.name)+'</button>'
+   +'<button class="syl-cta o" onclick="sylImportant()">Change target</button>'
+   +(planned.length?'<button class="syl-cta p" onclick="sylImpAddModules(\''+target+'\')">Add these '+planned.length+' chapters to my plan</button>':'')
+   +'</div>'
+   +'<div class="syl-top">'
+   +sylKpi(_sylN(core),'NIOS requires','#059669','','',
+      '<b>'+_sylN(core)+' question paper marks</b><br>the bare NIOS requirement for '+esc(tgtLabel)+', nothing added.')
+   +sylKpi('+'+_sylN(Math.round((need-core)*10)/10),'Our bonus','#d97706','','',
+      '<b>Why a cushion</b><br>If you cover only the requirement and one question is skipped or goes wrong, you can slip below the line.')
+   +sylKpi(_sylN(need),'We plan for','#4f46e5','','',
+      '<b>'+planned.length+' chapters</b><br>requirement plus bonus, heaviest chapters first.')
+   +sylKpi(picked,'Chapters in your plan','#0ea5e9')
+   +'</div>'
+   +'<div class="syl-bonus" style="margin-bottom:14px"><h6>How the priority works</h6>'
+   +'<p>NIOS publishes weightage <b>chapter-wise</b> for this subject, so every chapter carries its own marks. '
+   +'We rank chapters by <b>weightage, highest first</b>: the chapter carrying the most marks comes first, '
+   +'the lightest goes last. Finish the chapters above the dashed line and you cover '
+   +'<b>'+_sylN(newMarks)+' more marks</b> of the paper &mdash; projected total becomes '
+   +'<b>'+_sylN(projected)+' out of 100</b>.</p></div>'
+   +'<div class="syl-panel"><div class="syl-phead"><div><h4>'+esc(tgtLabel)+' chapter plan</h4>'
+   +'<p>Highest weightage chapter first. Tap any chapter to add or remove it.</p></div></div>'
+   +'<div style="padding:8px 18px 18px">'+list+'</div></div></div>';
+}
+
 async function sylImpPick(no){
   var d=_SYL.cur, i=d.selected.indexOf(no);
   if(i>-1){ d.selected.splice(i,1); var j=d.done.indexOf(no); if(j>-1) d.done.splice(j,1); }
@@ -12921,10 +13027,14 @@ function sylAskRef(tier){
   return new Promise(function(resolve){
     showModal('Write your NIOS Reference/Enrollment No.',
       '<div style="padding:4px 2px 2px">'
-      +'<p style="font-size:.86rem;line-height:1.7;margin:0 0 10px">Aapka predicted score card ban raha hai! Card par print karne ke liye apna '
-      +'<b>NIOS Reference ya Enrollment No.</b> likho &mdash; ye sirf <b>ek baar</b> maanga jayega, agli baar apne aap aa jayega.</p>'
-      +'<input type="text" class="form-control" id="syl-ref-in" maxlength="40" placeholder="e.g. 12345678901234 ya NIOS/2026/12345">'
-      +'<div class="syl-reqmsg" id="syl-ref-err" style="display:none">Sahi reference/enrollment no. likho (letters, digits, / ya -)</div>'
+      +'<p style="font-size:.86rem;line-height:1.7;margin:0 0 10px">Your predicted score card is being created! Please enter your '
+      +'<b>NIOS Reference or Enrollment No.</b> to print on the card &mdash; this is asked <b>only once</b>; it will appear automatically on every future card.</p>'
+      +'<input type="text" class="form-control" id="syl-ref-in" maxlength="12" style="letter-spacing:1px;font-weight:700" placeholder="A0726320328 or 050108263013">'
+      +'<div style="margin-top:9px;padding:9px 11px;border-radius:9px;background:rgba(79,70,229,.06);border:1px solid rgba(79,70,229,.18);font-size:.72rem;line-height:1.8;color:var(--text-muted)">'
+      +'<b style="color:var(--text)">Check your NIOS documents:</b><br>'
+      +'&bull; <b>Reference No.</b> &mdash; like <b>A0726320328</b> (1 letter + 10 digits, 11 in total)<br>'
+      +'&bull; <b>Enrollment No.</b> &mdash; like <b>050108263013</b> (12 digits)</div>'
+      +'<div class="syl-reqmsg" id="syl-ref-err" style="display:none">Enter a valid Reference No. (e.g. A0726320328) or Enrollment No. (e.g. 050108263013)</div>'
       +'</div>',
       '<button class="btn btn-primary" onclick="sylRefSubmit(\''+tier+'\')">Save &amp; continue</button>');
     _SYL._refResolve=resolve;
@@ -12933,8 +13043,8 @@ function sylAskRef(tier){
 }
 async function sylRefSubmit(tier){
   var n=document.getElementById('syl-ref-in'), err=document.getElementById('syl-ref-err');
-  var v=n?(n.value||'').trim():'';
-  if(!/^[A-Za-z0-9/\-]{4,40}$/.test(v)){ if(err) err.style.display='block'; if(n) n.classList.add('syl-req'); return; }
+  var v=n?(n.value||'').trim().toUpperCase():'';
+  if(!/^([A-Z][0-9]{10}|[0-9]{12})$/.test(v)){ if(err) err.style.display='block'; if(n) n.classList.add('syl-req'); return; }
   var card=null;
   try{
     card=await api('/api/syllabus/predicted','POST',{target:tier,nios_ref:v});
@@ -13025,9 +13135,9 @@ function sylAllSubjects(tier, card){
   var highMsg = goal==='JEE'
       ?'All your subjects have crossed <b>'+esc(lbl)+'</b> &mdash; the <b>JEE percentage criteria</b> is now fulfilled. Congratulations!'
       : goal==='NEET'
-      ?'All your subjects have crossed <b>'+esc(lbl)+'</b> &mdash; ye <b>NEET ki taiyari</b> ke liye bahut strong base hai. Congratulations!'
+      ?'All your subjects have crossed <b>'+esc(lbl)+'</b> &mdash; a strong foundation for your <b>NEET preparation</b>. Congratulations!'
       : goal
-      ?'All your subjects have crossed <b>'+esc(lbl)+'</b> &mdash; ab aap apne goal <b>'+esc(goal)+'</b> ke bahut kareeb ho. Congratulations!'
+      ?'All your subjects have crossed <b>'+esc(lbl)+'</b> &mdash; you are now well on your way to your goal: <b>'+esc(goal)+'</b>. Congratulations!'
       :'All your subjects have crossed <b>'+esc(lbl)+'</b>. Congratulations!';
   var list=card?card.subjects:[];
   showModal(title,
@@ -13125,15 +13235,15 @@ function sylCardTheory(code){
     '<div style="text-align:center;padding:4px 2px 2px">'
     +'<div style="font-size:.72rem;font-weight:800;letter-spacing:.05em;opacity:.55">EXPECTED MARKS IN '+esc(s.name).toUpperCase()+'<br>THEORY EXAMINATION</div>'
     +'<div style="font-size:2.5rem;font-weight:800;color:#4f46e5;letter-spacing:-1px;margin:6px 0 2px">'+_sylN(pap)+'<span style="font-size:1.1rem;opacity:.5;font-weight:700"> / '+_sylN(paper)+'</span></div>'
-    +'<div style="font-size:.78rem;opacity:.65;margin-bottom:10px">(question paper ke '+_sylN(paper)+' marks mein se)</div>'
+    +'<div style="font-size:.78rem;opacity:.65;margin-bottom:10px">(out of the '+_sylN(paper)+'-mark question paper)</div>'
     +'<div style="text-align:left;font-size:.86rem;max-width:320px;margin:0 auto">'
     +row('Paper marks (chapters covered)', _sylN(pap)+' of '+_sylN(paper))
     +row('NIOS scaling \u00d7 '+(scale/100), '= '+_sylN(th)+' of '+thMax+' in marksheet')
     +row('<span class="syl-passlink" onclick="sylCardGrowth(\''+esc(code)+'\')" style="color:#dc2626;cursor:pointer;border-bottom:1.5px dotted #dc2626">Passing marks &#9432;</span>',
          _sylN(pass)+' of '+thMax, true)
     +'</div>'
-    +'<p style="margin:12px 0 0;font-size:.8rem;opacity:.7">Marksheet mein theory sirf '+thMax+' marks ka hota hai'
-    +(thMax<paper?' (paper ka '+scale+'%) — baaki TMA se aata hai.':'')+' Passing marks par tap karke dekho kitni growth chahiye.</p>'
+    +'<p style="margin:12px 0 0;font-size:.8rem;opacity:.7">The marksheet counts theory out of '+thMax+' marks only'
+    +(thMax<paper?' ('+scale+'% of the paper) — the rest comes from the TMA.':'')+' Tap the passing marks to see the growth you need.</p>'
     +'</div>',
     '<button class="btn btn-primary" onclick="closeModal()">Got it</button>');
 }
@@ -13146,12 +13256,12 @@ function sylCardGrowth(code){
   showModal('Passing growth \u00b7 '+esc(s.name),
     '<div style="text-align:center;padding:6px 4px 2px">'
     +(gap<=0
-      ?'<div style="font-size:2rem">&#127881;</div><p style="font-size:.92rem;margin-top:8px"><b>'+esc(s.name)+'</b> mein theory passing already secured hai — koi extra growth nahi chahiye.</p>'
+      ?'<div style="font-size:2rem">&#127881;</div><p style="font-size:.92rem;margin-top:8px">Theory passing is already secured in <b>'+esc(s.name)+'</b> — no extra growth needed.</p>'
       :'<div style="font-size:.72rem;font-weight:800;letter-spacing:.05em;opacity:.55">GROWTH NEEDED TO PASS THEORY</div>'
        +'<div style="font-size:2.5rem;font-weight:800;color:#dc2626;margin:6px 0">+'+growth+'%</div>'
-       +'<p style="font-size:.88rem;line-height:1.7;margin:0 auto;max-width:300px">Abhi theory mein <b>'+_sylN(th)+'/'+thMax+'</b> hai. '
-       +'Passing ke liye <b>'+_sylN(pass)+'/'+thMax+'</b> chahiye &mdash; matlab <b>'+_sylN(gap)+' marks</b> aur, '
-       +'yaani current score par <b>'+growth+'% growth</b>. Agle chapters pick karte hi ye gap ghatega.</p>')
+       +'<p style="font-size:.88rem;line-height:1.7;margin:0 auto;max-width:300px">Your current theory score is <b>'+_sylN(th)+'/'+thMax+'</b>. '
+       +'Passing requires <b>'+_sylN(pass)+'/'+thMax+'</b> &mdash; that is <b>'+_sylN(gap)+' more marks</b>, '
+       +'a <b>'+growth+'% growth</b> over your current score. Every new chapter you pick closes this gap.</p>')
     +'</div>',
     '<button class="btn btn-primary" onclick="closeModal()">Got it</button>');
 }
@@ -13177,9 +13287,9 @@ async function loadSResultCards(){
      +'<div style="font-size:2.6rem">&#127942;</div>'
      +'<h3 style="margin:10px 0 6px">No score card yet</h3>'
      +'<p style="font-size:.88rem;color:var(--text-muted);max-width:420px;margin:0 auto 18px">'
-     +'Jab aap <b>har subject</b> mein ek target (passing, '+((_SYL.me||{}).high_target||75)+'% ya '+((_SYL.me||{}).top_target||90)
-     +'%) complete kar lenge, aapka <b>MVS Foundation predicted score card</b> yahan automatically ban jayega. '
-     +'Selection clear karne par card wapas hat jayega.</p>'
+     +'Once you complete a target (passing, '+((_SYL.me||{}).high_target||75)+'% or '+((_SYL.me||{}).top_target||90)
+     +'%) in <b>every subject</b>, your <b>MVS Foundation predicted score card</b> will be generated here automatically. '
+     +'Clearing your selection removes the card.</p>'
      +'<button class="btn btn-primary" onclick="sPage(\'syllabus\',null)">Open Syllabus Tracker</button>'
      +'</div></div>';
     return;
@@ -13197,8 +13307,8 @@ async function loadSResultCards(){
   var h='<div class="card glass-soft" style="margin-bottom:16px"><div class="card-body" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">'
    +'<div style="font-size:1.9rem">&#127942;</div>'
    +'<div style="flex:1;min-width:220px"><h3 style="margin:0 0 3px">My Predicted Score Card</h3>'
-   +'<p style="margin:0;font-size:.82rem;color:var(--text-muted)">Abhi aapka latest target <b>'+esc(lbl)+'</b> hai &mdash; iska score card niche hai. '
-   +'Naya target complete karte hi card apne aap upgrade ho jayega. Theory figure par tap karke poora calculation dekho.</p></div></div></div>'
+   +'<p style="margin:0;font-size:.82rem;color:var(--text-muted)">Your latest achievement is the <b>'+esc(lbl)+'</b> target &mdash; its score card is shown below. '
+   +'Complete a higher target and the card upgrades automatically. Tap any theory figure to see its full calculation.</p></div></div></div>'
    +'<div style="margin-bottom:22px">'+sylResultCardHtml(latest)+'</div>';
   el.innerHTML=h;
 }
@@ -13285,15 +13395,17 @@ function sylPlanRender(){
 
   var hasPlanMods=(s.per_subject||[]).some(function(x){ return (x.plan_modules||[]).length; });
   if(hasPlanMods){
-    h+='<div class="syl-panel" style="margin-bottom:14px"><div class="syl-phead"><div><h4>Your module plan</h4>'
-     +'<p>NIOS gives weightage module-wise, so whole modules are suggested — best marks per chapter first. '
+    h+='<div class="syl-panel" style="margin-bottom:14px"><div class="syl-phead"><div><h4>Your study plan</h4>'
+     +'<p>Best-value chapters and modules first, as per the official weightage. '
      +'Finish these and your target is covered.</p></div></div><div style="padding:6px 18px 16px">';
     (s.per_subject||[]).forEach(function(x){
       if(!(x.plan_modules||[]).length) return;
       var nch=0; x.plan_modules.forEach(function(mo){ nch+=mo.pe_count; });
+      var chWise=(x.display_mode==='chapters');
       h+='<div style="margin-top:12px"><b style="font-size:.92rem">'+esc(x.name)+'</b>'
        +'<div style="font-size:.73rem;opacity:.68;margin:3px 0 2px;line-height:1.5">'
-       +'<b>'+x.plan_modules.length+' modules</b> &middot; '+nch+' chapters &middot; +'+_sylN(x.plan_marks)
+       +(chWise?'<b>'+nch+' chapters</b>':'<b>'+x.plan_modules.length+' modules</b> &middot; '+nch+' chapters')
+       +' &middot; +'+_sylN(x.plan_marks)
        +' paper marks &middot; projected total <b>'+_sylN(x.projected_after)+' out of 100</b> after these</div>';
       x.plan_modules.forEach(function(mo,i){
         var badge='';
@@ -13468,7 +13580,7 @@ function _sylPredRows(rows){
     var gw=goalWord(r);
     return '<div class="syl-prrow"><div class="syl-prank'+(r.rank<=3?' t'+r.rank:'')+'">'+r.rank+'</div>'
      +'<div class="syl-prmain"><b>'+esc(r.name)+'</b>'
-     +(gw?' <span class="syl-pill2" style="background:rgba(79,70,229,.12);color:#4f46e5;font-size:.6rem" title="Student ka goal">&#127919; '+esc(gw)+'</span>':'')
+     +(gw?' <span class="syl-pill2" style="background:rgba(79,70,229,.12);color:#4f46e5;font-size:.6rem" title="Student&#39;s goal">&#127919; '+esc(gw)+'</span>':'')
      +'<small>'+esc(r.user_id||'')+(r.batch?' &middot; '+esc(r.batch):'')+(r.class_level?' &middot; Class '+esc(r.class_level):'')
      +(r.nios_ref?' &middot; Ref: '+esc(r.nios_ref):'')+'</small>'
      +'<small class="syl-prsubs">'+r.subjects.map(function(s){return esc(s.name)+' '+_sylN(s.projected);}).join(' &middot; ')+'</small></div>'

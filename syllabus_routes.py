@@ -56,6 +56,16 @@ _SYL_READY = False
 # Lazy migration
 # ---------------------------------------------------------------------------
 
+_NIOS_REF_HINT = ("Enter a valid NIOS Reference No. (e.g. A0726320328 - 1 letter + 10 digits) "
+                  "or Enrollment No. (e.g. 050108263013 - 12 digits).")
+_NIOS_REF_RE = re.compile(r"^([A-Z][0-9]{10}|[0-9]{12})$")
+
+def _valid_nios_ref(v):
+    """Reference No. like A0726320328 (1 alphabet + 10 digits = 11 total) or
+    Enrollment No. like 050108263013 (12 digits)."""
+    return bool(_NIOS_REF_RE.match((v or "").strip().upper()))
+
+
 def _ensure_syllabus(db):
     """Creates syllabus tables and student columns on first use. Idempotent."""
     global _SYL_READY
@@ -688,10 +698,9 @@ def syl_profile(payload: dict = Body(...), db: Session = Depends(get_db), user=D
         sets.append("goal_custom=:gc")
         params["gc"] = str(payload.get("goal_custom") or "")[:120]
     if payload.get("nios_ref") is not None:
-        ref = str(payload.get("nios_ref") or "").strip()[:40]
-        if ref and not re.match(r"^[A-Za-z0-9/\-]{4,40}$", ref):
-            raise HTTPException(status_code=400,
-                                detail="Reference/Enrollment No. sirf letters, digits, / aur - mein hona chahiye.")
+        ref = str(payload.get("nios_ref") or "").strip().upper()[:40]
+        if ref and not _valid_nios_ref(ref):
+            raise HTTPException(status_code=400, detail=_NIOS_REF_HINT)
         sets.append("nios_ref=:r")
         params["r"] = ref
     if sets:
@@ -921,20 +930,19 @@ def syl_predicted_record(payload: dict = Body(...), db: Session = Depends(get_db
     if not complete:
         raise HTTPException(status_code=409,
                             detail="Every subject must reach this target before the result card is made.")
-    # NIOS reference/enrollment number — app students are asked once, the
-    # saved value is reused on every later card; portal students' value is
-    # fetched straight from their profile record
+    # NIOS reference/enrollment number — EVERY student (mvs app ya mvs portal,
+    # dono) enters it manually, exactly once; the saved value is then reused on
+    # every later card. Strict format check, warna card nahi banta.
     ref = getattr(sp, "nios_ref", "") or ""
-    sent_ref = str((payload or {}).get("nios_ref") or "").strip()[:40]
+    sent_ref = str((payload or {}).get("nios_ref") or "").strip().upper()[:40]
     if not ref and sent_ref:
-        if not re.match(r"^[A-Za-z0-9/\-]{4,40}$", sent_ref):
-            raise HTTPException(status_code=400,
-                                detail="Reference/Enrollment No. sirf letters, digits, / aur - mein hona chahiye.")
+        if not _valid_nios_ref(sent_ref):
+            raise HTTPException(status_code=400, detail=_NIOS_REF_HINT)
         db.execute(_text("UPDATE student_profiles SET nios_ref=:r WHERE id=:i"),
                    {"r": sent_ref, "i": sp.id})
         db.commit()
         ref = sent_ref
-    if not ref and (getattr(sp, "source", "") or "") != "mvs_portal":
+    if not ref:
         return {"need_ref": True, "target": tier}
     now = datetime.utcnow()
     ex = db.execute(_text("SELECT id FROM predicted_results WHERE student_id=:s AND target=:t"),
@@ -1231,6 +1239,7 @@ def syl_strategy(db: Session = Depends(get_db), user=Depends(get_student)):
             "plan_marks": new_marks,
             "projected_after": projected_after,
             "projected_now": calc["projected_total"],
+            "display_mode": subj.get("display_mode") or "modules",
         })
 
     queue.sort(key=lambda r: (-r.get("ratio", 0.0), -r["marks"], r["subject"], r["no"]))
