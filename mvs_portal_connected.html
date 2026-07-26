@@ -11924,6 +11924,14 @@ async function ocrFillQuestion_v1(inp,i){
 .syl-oc-row{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap;margin-top:8px}
 .syl-oc-row+.syl-oc-row{margin-top:12px}
 .syl-oc-or{align-self:center;font-size:.72rem;font-weight:800;color:#6366f1;letter-spacing:1px}
+.syl-opthead{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:12px 10px 6px;font-size:.8rem;font-weight:800;color:#4338ca}
+.syl-opthead i,.syl-opthead b{font-style:normal;font-size:.66rem;font-weight:700}
+.syl-opthead b{color:#059669}
+.syl-opthead i{opacity:.55;font-weight:600}
+.syl-opthead.lock{opacity:.55}
+.syl-ch.lock{opacity:.48;cursor:not-allowed;background:rgba(100,116,139,.06)}
+.dark .syl-opthead{color:#a5b4fc}
+.dark .syl-ch.lock{background:rgba(148,163,184,.08)}
 .syl-oc-b{flex:1;min-width:200px;display:flex;flex-direction:column;gap:5px;padding:12px 14px;
   border-radius:12px;border:1.5px solid #c7d2fe;background:#fff;cursor:pointer;text-align:left;
   font-family:inherit;transition:all .18s}
@@ -12552,6 +12560,7 @@ function sylKpi(v,l,c,cls,onclick,tip){
 
 async function sylProfile(session,target,examDate){
   var me=_SYL.me;
+  var sessChanged=(session!==null&&session!==undefined&&session!==(me.exam_session||''));
   sylBusy(true);
   try{
     await api('/api/syllabus/profile','POST',{
@@ -12560,6 +12569,13 @@ async function sylProfile(session,target,examDate){
       exam_date: examDate===null||examDate===undefined ? (me.exam_date||'') : examDate});
     _SYL.me = await api('/api/syllabus/me');
     _SYL.ov = await api('/api/syllabus/overview');
+    if(sessChanged){
+      /* session badla to TMA/theory scaling bhi badli — saved score cards ko
+         purani ginti ke saath mat dikhao, server se nayi ginti laao */
+      _SYL.lastCard=null;
+      try{ _SYL.cards=(await api('/api/syllabus/predicted/mine')).cards||[]; }catch(e){ _SYL.cards=[]; }
+      toast('Exam session updated — your plan and score card have been recalculated.');
+    }
     sylBusy(false); sylHome();
   }catch(e){ sylBusy(false); toast(e.message,true); }
 }
@@ -12726,7 +12742,24 @@ function sylSubject(scrollTop){
 
   var showTma=!!_SYL.showTma, open=!!_SYL.chOpen;
   var peTotal=0, peDone=0;
-  d.chapters.forEach(function(ch){ if(ch.kind==='PE'){ peTotal++; if(sel.indexOf(ch.no)>-1) peDone++; } });
+  var _reps=(d.calc&&d.calc.option_reps)||{};
+  var _ogRep={};
+  Object.keys(ogroups).forEach(function(g){
+    var pick=oc[g]||_reps[g];
+    if(!pick){   // no choice yet: count the heavier side, like NIOS totals do
+      var bw=-1;
+      (d.modules||[]).forEach(function(mo){
+        if(mo.optional_group===g && (parseFloat(mo.weightage)||0)>=bw){ bw=parseFloat(mo.weightage)||0; pick=mo.module; }
+      });
+    }
+    _ogRep[g]=pick;
+  });
+  d.chapters.forEach(function(ch){
+    if(ch.kind!=='PE') return;
+    var mg=modGroup[ch.module];
+    if(mg && _ogRep[mg] && ch.module!==_ogRep[mg]) return;   // the pair is one module: it counts once
+    peTotal++; if(sel.indexOf(ch.no)>-1) peDone++;
+  });
 
   h+='<div class="syl-panel" style="margin-top:14px" id="syl-chpanel"><div class="syl-phead">'
    +'<div><h4>Chapter list'+(planSet?' <span class="syl-fchip">Showing '+esc(filterLbl)+' plan chapters <b onclick="sylClearTargetFilter()" title="Show all chapters">&times;</b></span>':'')+'</h4><p>'+peDone+' of '+peTotal+' exam chapters picked. '
@@ -12806,6 +12839,8 @@ async function sylChoice(group, module){
       {subject_code:d.subject.code, group:group, module:module});
     if(res&&res.ok){
       d.option_choice=res.option_choice||{};
+      if(res.selected) d.selected=res.selected;
+      if(res.done) d.done=res.done;
       if(res.calc) d.calc=res.calc;
       if(res.milestones) d.milestones=res.milestones;
       sylSubject();
@@ -12860,30 +12895,76 @@ function sylImpList(target){
     byMod[ch.module].chapters.push(ch);
   });
   order.forEach(function(k){ var m=byMod[k]; m.ratio=m.weightage/Math.max(m.chapters.length,1); });
-  var inPlan={}; mods.forEach(function(mo){ inPlan[mo.module]=1; });
-  var rest=order.map(function(k){ return byMod[k]; }).filter(function(m){ return !inPlan[m.module]; })
-    .sort(function(a,b){ return b.ratio-a.ratio || b.weightage-a.weightage; });
+
+  /* an optional pair is ONE module. In the plan it occupies one slot; both
+     options are shown inside that slot so the student taps from the side
+     they actually study. The marks count once. The sibling never appears
+     again as its own card further down the list */
+  var og=_sylOG(d), oc=d.option_choice||{};
+  var inPlan={}, inPlanG={};
+  mods.forEach(function(mo){ inPlan[mo.module]=1; if(og.modGroup[mo.module]) inPlanG[og.modGroup[mo.module]]=1; });
+  var seenG={}, rest=[];
+  order.map(function(k){ return byMod[k]; }).filter(function(m){ return !inPlan[m.module]; })
+    .forEach(function(m){
+      var g=og.modGroup[m.module];
+      if(!g){ rest.push(m); return; }
+      if(inPlanG[g] || seenG[g]) return;
+      seenG[g]=1;
+      var names=og.ogroups[g]||[m.module];
+      var ms=names.map(function(n){ return byMod[n]; }).filter(Boolean);
+      var w=Math.max.apply(null, ms.map(function(x){ return x.weightage; }).concat([0]));
+      var cnt=Math.max.apply(null, ms.map(function(x){ return x.chapters.length; }).concat([1]));
+      rest.push({module:names[0], pair:g, weightage:w, chapters:ms[0]?ms[0].chapters:[],
+                 ratio:w/Math.max(cnt,1)});
+    });
+  rest.sort(function(a,b){ return b.ratio-a.ratio || b.weightage-a.weightage; });
 
   function modCard(mo, idx, planned, cum){
     var chH='';
-    mo.chapters.forEach(function(ch){
+    var renderCh=function(ch, locked){
       var pk=d.selected.indexOf(ch.no)>-1, dn=d.done.indexOf(ch.no)>-1;
-      chH+='<div class="syl-ch pe'+(pk?(dn?' on done':' on'):'')+'" style="margin:0 10px 8px;padding:8px 10px" onclick="sylImpPick(\''+esc(ch.no)+'\')">'
+      chH+='<div class="syl-ch pe'+(pk?(dn?' on done':' on'):'')+(locked?' lock':'')
+       +'" style="margin:0 10px 8px;padding:8px 10px"'
+       +(locked?' title="Locked — you are studying the other option of this module"':' onclick="sylImpPick(\''+esc(ch.no)+'\')"')+'>'
        +'<div class="syl-box">'+(pk?'&#10003;':'')+'</div>'
        +'<div class="t"><b>'+esc(ch.no)+' '+esc(ch.title)+'</b>'
-       +'<small>'+(dn?'Covered and marked done':(pk?'In your plan':'Tap to add'))+'</small></div></div>';
-    });
+       +'<small>'+(locked?'Locked &middot; your choice is the other option':(dn?'Covered and marked done':(pk?'In your plan':'Tap to add')))+'</small></div></div>';
+    };
+    var g=mo.pair||og.modGroup[mo.module];
+    if(g){
+      var names=og.ogroups[g]||[mo.module];
+      names.forEach(function(nm, oi){
+        var side=(byMod[nm]||{chapters:[]}).chapters;
+        var locked=!!(oc[g] && oc[g]!==nm);
+        var letter=(String(nm).match(/\(Option\s*([AB])\)/)||[])[1];
+        chH+='<div class="syl-opthead'+(locked?' lock':'')+'"><span>'
+          +(letter?'Option '+esc(letter)+' &middot; ':'')+esc(nm.replace(/\s*\(Option\s*[AB]\)\s*$/,''))+'</span>'
+          +(oc[g]===nm?'<b>&#10003; your choice</b>':(locked?'<i>locked</i>':'<i>tap a chapter to choose this side</i>'))
+          +'</div>';
+        side.forEach(function(ch){ renderCh(ch, locked); });
+        if(oi<names.length-1) chH+='<div class="syl-oc-or" style="margin:0 10px 8px">OR</div>';
+      });
+    } else {
+      mo.chapters.forEach(function(ch){ renderCh(ch, false); });
+    }
     var badge='';
     if(planned && mo.require){
       badge = mo.require.type==='any'
         ? '<span class="syl-blink any">Choose any '+mo.require.k+'</span>'
         : '<span class="syl-blink imp">Important Module</span>';
     }
+    var title=esc(mo.module), sub=mo.chapters.length+' exam chapter'+(mo.chapters.length===1?'':'s')
+      +' &middot; '+_sylN(mo.weightage)+' marks';
+    if(g){
+      title=(og.ogroups[g]||[mo.module]).map(function(n){
+        return esc(n.replace(/\s*\(Option\s*[AB]\)\s*$/,'')); }).join(' <span class="syl-oc-or">OR</span> ');
+      sub='Optional module &middot; pick any ONE side &middot; '+_sylN(mo.weightage)
+        +' marks (the pair counts once)';
+    }
     return '<div class="syl-impmod'+(planned?' in':'')+'"><div class="syl-impmod-h">'
      +'<div class="syl-rank">'+(idx+1)+'</div>'
-     +'<div style="flex:1;min-width:0"><b>'+esc(mo.module)+'</b>'
-     +'<small>'+mo.chapters.length+' exam chapter'+(mo.chapters.length===1?'':'s')
-     +' &middot; '+_sylN(mo.weightage)+' marks</small></div>'
+     +'<div style="flex:1;min-width:0"><b>'+title+'</b>'
+     +'<small>'+sub+'</small></div>'
      +badge
      +'<div style="text-align:right"><span class="syl-mk">'+_sylN(mo.weightage)+'</span>'
      +(cum!=null?'<div class="syl-cum">running '+cum+'</div>':'')+'</div></div>'
@@ -13018,13 +13099,26 @@ function sylImpListChapters(target){
 }
 
 async function sylImpPick(no){
-  var d=_SYL.cur, i=d.selected.indexOf(no);
+  var d=_SYL.cur;
+  var ch=(d.chapters||[]).filter(function(x){return x.no===no;})[0];
+  var og=_sylOG(d), oc=d.option_choice||{};
+  var mg=ch?og.modGroup[ch.module]:null;
+  if(mg && oc[mg] && oc[mg]!==ch.module){
+    toast('You are studying "'+oc[mg]+'" for this optional module — this chapter is from the other option.', true);
+    return;
+  }
+  var i=d.selected.indexOf(no);
   if(i>-1){ d.selected.splice(i,1); var j=d.done.indexOf(no); if(j>-1) d.done.splice(j,1); }
-  else d.selected.push(no);
+  else{
+    if(ch) await _sylAutoChoose(d, ch);
+    if(d.selected.indexOf(no)<0) d.selected.push(no);
+  }
   try{
     var res=await api('/api/syllabus/plan','POST',{subject_code:d.subject.code,
       selected:d.selected, done:d.done, tma_assumed:d.calc.tma_assumed, practical_assumed:d.calc.practical_assumed});
     var was=d.calc.pass_reached; d.calc=res.calc;
+    if(res.selected) d.selected=res.selected;
+    if(res.done) d.done=res.done;
     sylImpList(_SYL.impTarget||'pass');
     if(!was && res.calc.pass_reached) sylCelebrate();
   }catch(e){ toast(e.message,true); }
@@ -13389,10 +13483,46 @@ function sylClearAll(){
   if(!confirm(d.subject.name+': saare '+d.selected.length+' selected chapters (aur unke done marks) clear ho jayenge. Pakka karna hai?')) return;
   d.selected=[]; d.done=[]; sylSave();
 }
-function sylToggle(no){
+/* optional module (A/B) = ONE exam slot. These maps drive the three rules:
+   the pair counts once in every count, the first chapter tapped on a side
+   IS the choice, and the other side then locks out */
+function _sylOG(d){
+  var og={ogroups:{}, ogMax:{}, modGroup:{}};
+  (d.modules||[]).forEach(function(mo){
+    if(!mo.optional_group) return;
+    (og.ogroups[mo.optional_group]=og.ogroups[mo.optional_group]||[]).push(mo.module);
+    og.modGroup[mo.module]=mo.optional_group;
+    var w=parseFloat(mo.weightage)||0;
+    if(w>(og.ogMax[mo.optional_group]||0)) og.ogMax[mo.optional_group]=w;
+  });
+  return og;
+}
+async function _sylAutoChoose(d, ch){
+  /* tapping a chapter of an untouched option pair = choosing that side */
+  var og=_sylOG(d), mg=og.modGroup[ch.module];
+  if(!mg || (d.option_choice||{})[mg]) return false;
+  d.option_choice=d.option_choice||{}; d.option_choice[mg]=ch.module;
+  try{
+    var r0=await api('/api/syllabus/option-choice','POST',
+      {subject_code:d.subject.code, group:mg, module:ch.module});
+    if(r0&&r0.ok){
+      d.option_choice=r0.option_choice||d.option_choice;
+      if(r0.selected) d.selected=r0.selected;
+      if(r0.done) d.done=r0.done;
+      if(r0.calc) d.calc=r0.calc;
+      if(r0.milestones) d.milestones=r0.milestones;
+    }
+  }catch(e){}
+  return true;
+}
+async function sylToggle(no){
   var d=_SYL.cur, i=d.selected.indexOf(no);
   if(i>-1){ d.selected.splice(i,1); var j=d.done.indexOf(no); if(j>-1) d.done.splice(j,1); }
-  else d.selected.push(no);
+  else{
+    var ch=(d.chapters||[]).filter(function(x){return x.no===no;})[0];
+    if(ch) await _sylAutoChoose(d, ch);
+    if(d.selected.indexOf(no)<0) d.selected.push(no);
+  }
   sylSave();
 }
 function sylDone(no){
@@ -13413,7 +13543,10 @@ async function sylSave(){
       tma_assumed: t? parseFloat(t.value) : (d.calc&&d.calc.tma_assumed!=null?d.calc.tma_assumed:-1),
       practical_assumed: p? parseFloat(p.value) : (d.calc&&d.calc.practical_assumed!=null?d.calc.practical_assumed:-1)});
     var was=d.calc.pass_reached, wasHigh=d.calc.high_reached, wasTop=!!d.calc.top_reached;
-    d.calc=res.calc; sylSubject();
+    d.calc=res.calc;
+    if(res.selected) d.selected=res.selected;   // server may have healed a legacy double-option pick
+    if(res.done) d.done=res.done;
+    sylSubject();
     if(!wasTop && res.calc.top_reached) sylCongrats('top');
     else if(!wasHigh && res.calc.high_reached) sylCongrats('high');
     else if(!was && res.calc.pass_reached) sylCelebrate();

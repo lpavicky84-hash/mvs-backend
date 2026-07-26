@@ -900,16 +900,22 @@ def _link_or_options(modules):
     return [m for m in modules if m["lessons"] or not m.get("optional_group")]
 
 
-def _effective_counts(modules):
-    """
-    (total, tma, pe) lesson counts the way NIOS states them on the PDF:
-    every OR option pair is counted once, as the bigger of the two options.
-    """
+def _groups_of(modules):
+    """{group_key: [modules]} for OR option pairs ('6A/6B - one exam slot')."""
     groups = {}
     for m in modules:
         g = m.get("optional_group")
         if g:
             groups.setdefault(g, []).append(m)
+    return groups
+
+
+def _effective_counts(modules):
+    """
+    (total, tma, pe) lesson counts the way NIOS states them on the PDF:
+    every OR option pair is counted once, as the bigger of the two options.
+    """
+    groups = _groups_of(modules)
     grouped = {id(m) for ms in groups.values() for m in ms}
 
     def _k(m, kind):
@@ -1253,7 +1259,12 @@ def parse_syllabus_pdf(data: bytes):
         "text": text,
         "paper_marks": paper,
         "expected": expected,
-        "stats": {"total": len(all_lessons), "pe": pe, "tma": tma, "modules": len(modules)},
+        # an OR option pair is ONE exam slot (the student sits only one side),
+        # so the headline counts show the pair once, exactly the way NIOS
+        # prints the totals on the syllabus PDF
+        "stats": {"total": eff_total, "pe": eff_pe, "tma": eff_tma,
+                  "modules": len(modules) - sum(
+                      len(ms) - 1 for ms in _groups_of(modules).values())},
         "warnings": warnings,
     }
 

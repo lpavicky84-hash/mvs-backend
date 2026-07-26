@@ -715,6 +715,8 @@ def syl_profile(payload: dict = Body(...), db: Session = Depends(get_db), user=D
     # partial-update safe: only the fields actually sent are changed, so a
     # date-only change can never wipe the session/target (and vice versa)
     sets, params = [], {"i": sp.id}
+    old_session = getattr(sp, "exam_session", "") or ""
+    session_changed = False
     if payload.get("exam_session") is not None:
         sess = str(payload.get("exam_session") or "")[:30]
         # the stream follows the chosen examination, it is never sent by the client
@@ -723,6 +725,7 @@ def syl_profile(payload: dict = Body(...), db: Session = Depends(get_db), user=D
             if x.get("id") == sess:
                 st = "1" if x.get("tma", True) else "2"
                 break
+        session_changed = sess != old_session
         sets += ["exam_session=:e", "exam_stream=:s"]
         params["e"], params["s"] = sess, st
     if payload.get("target") is not None:
@@ -753,6 +756,14 @@ def syl_profile(payload: dict = Body(...), db: Session = Depends(get_db), user=D
     if sets:
         db.execute(_text("UPDATE student_profiles SET " + ", ".join(sets) + " WHERE id=:i"), params)
         db.commit()
+    if session_changed:
+        # the stream has moved with the new examination — every saved result
+        # card must be re-scored (TMA share and theory scaling both follow
+        # the session), otherwise it would keep showing the old maths
+        if payload.get("exam_session") is not None:
+            sp.exam_session = params.get("e", old_session)
+            sp.exam_stream = params.get("s", getattr(sp, "exam_stream", "") or "")
+        _refresh_stored_cards(db, sp)
     return {"ok": True}
 
 
@@ -834,26 +845,52 @@ def syl_plan(payload: dict = Body(...), db: Session = Depends(get_db), user=Depe
     tma = float(payload.get("tma_assumed", -1) or -1)
     pr = float(payload.get("practical_assumed", -1) or -1)
 
+    _prev_sel, _prev_done, _t, _p, choice = _plan_row(db, sp.id, code)
+    # an OR option pair is ONE module — one exam slot, the student sits only
+    # one side. Tapping a chapter of a side IS the choice, and chapters of
+    # the other side can never join the plan. Older plans that carry chapters
+    # from both sides are healed here: the side the student actually studies
+    # (saved choice, else the side with more chapters picked) stays, the
+    # other side is dropped.
+    for g, ms in SD._optional_groups(subj.get("modules", [])).items():
+        sides = {m["module"]: {l["no"] for l in m["lessons"] if l["kind"] == "PE"}
+                 for m in ms}
+        keep = choice.get(g) if choice.get(g) in sides else None
+        if keep is None:
+            best = max(sides, key=lambda n: len([x for x in sel if x in sides[n]]))
+            keep = best if any(x in sides[best] for x in sel) else None
+        if keep is None:
+            continue
+        drop = set()
+        for n, nos in sides.items():
+            if n != keep:
+                drop |= nos
+        sel = [x for x in sel if x not in drop]
+        done = [x for x in done if x in sel]
+        if choice.get(g) != keep:
+            choice[g] = keep
+
     exists = db.execute(_text(
         "SELECT id FROM chapter_plans WHERE student_id=:s AND subject_code=:c"),
         {"s": sp.id, "c": code}).fetchone()
     args = {"s": sp.id, "c": code, "sel": json.dumps(sel), "dn": json.dumps(done),
-            "t": tma, "p": pr, "u": datetime.utcnow()}
+            "t": tma, "p": pr, "oc": json.dumps(choice), "u": datetime.utcnow()}
     if exists:
         db.execute(_text("UPDATE chapter_plans SET selected=:sel, done=:dn, tma_assumed=:t, "
-                         "practical_assumed=:p, updated_at=:u WHERE student_id=:s AND subject_code=:c"), args)
+                         "practical_assumed=:p, option_choice=:oc, updated_at=:u "
+                         "WHERE student_id=:s AND subject_code=:c"), args)
     else:
         db.execute(_text("INSERT INTO chapter_plans (student_id, subject_code, selected, done, "
-                         "tma_assumed, practical_assumed, updated_at) "
-                         "VALUES (:s, :c, :sel, :dn, :t, :p, :u)"), args)
+                         "tma_assumed, practical_assumed, option_choice, updated_at) "
+                         "VALUES (:s, :c, :sel, :dn, :t, :p, :oc, :u)"), args)
     db.commit()
-    _prev_sel, _prev_done, _t, _p, choice = _plan_row(db, sp.id, code)
     cfg = _cfg(db)
     calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"],
                    cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp), choice=choice)
     _sync_milestones(db, sp, code, calc)
     db.commit()
     return {"ok": True, "calc": calc, "option_choice": choice,
+            "selected": sel, "done": done,
             "milestones": _milestone_map(db, sp.id).get(code, {})}
 
 
@@ -881,13 +918,20 @@ def syl_option_choice(payload: dict = Body(...), db: Session = Depends(get_db), 
 
     sel, done, tma, pr, choice = _plan_row(db, sp.id, code)
     choice[group] = module
+    # the pair is one module: choosing a side retires the other side's
+    # chapters from the plan (the student studies only the chosen one)
+    other_nos = {l["no"] for m in groups[group] if m["module"] != module
+                 for l in m["lessons"]}
+    sel = [x for x in sel if x not in other_nos]
+    done = [x for x in done if x in sel]
     exists = db.execute(_text(
         "SELECT id FROM chapter_plans WHERE student_id=:s AND subject_code=:c"),
         {"s": sp.id, "c": code}).fetchone()
     if exists:
-        db.execute(_text("UPDATE chapter_plans SET option_choice=:oc, updated_at=:u "
-                         "WHERE student_id=:s AND subject_code=:c"),
-                   {"oc": json.dumps(choice), "u": datetime.utcnow(), "s": sp.id, "c": code})
+        db.execute(_text("UPDATE chapter_plans SET selected=:sel, done=:dn, option_choice=:oc, "
+                         "updated_at=:u WHERE student_id=:s AND subject_code=:c"),
+                   {"sel": json.dumps(sel), "dn": json.dumps(done),
+                    "oc": json.dumps(choice), "u": datetime.utcnow(), "s": sp.id, "c": code})
     else:
         db.execute(_text("INSERT INTO chapter_plans (student_id, subject_code, selected, done, "
                          "tma_assumed, practical_assumed, option_choice, updated_at) "
@@ -899,7 +943,7 @@ def syl_option_choice(payload: dict = Body(...), db: Session = Depends(get_db), 
                    cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp), choice=choice)
     _sync_milestones(db, sp, code, calc)
     db.commit()
-    return {"ok": True, "option_choice": choice, "calc": calc,
+    return {"ok": True, "option_choice": choice, "selected": sel, "done": done, "calc": calc,
             "milestones": _milestone_map(db, sp.id).get(code, {})}
 
 
@@ -1014,6 +1058,32 @@ def _prediction_card(db, sp, tier):
                   "max_marks": n * 100, "percentage": round(total / n, 1) if n else 0.0}
 
 
+def _refresh_stored_cards(db, sp):
+    """Recompute every saved result card against the CURRENT exam session.
+    A session change (e.g. October 2026 -> Stream 2) changes the TMA share
+    and the theory scaling, so a card saved earlier would otherwise keep
+    showing the old session's maths forever. Cards whose tier is no longer
+    reached under the new session are removed — exactly the rule
+    _sync_milestones already applies."""
+    rows = db.execute(_text(
+        "SELECT target FROM predicted_results WHERE student_id=:s"), {"s": sp.id}).fetchall()
+    for r in rows:
+        tier = r[0]
+        complete, card = _prediction_card(db, sp, tier)
+        if complete and card:
+            db.execute(_text(
+                "UPDATE predicted_results SET subjects=:sub, total=:tot, max_marks=:mx, "
+                "percentage=:pc, updated_at=:u WHERE student_id=:s AND target=:t"),
+                {"s": sp.id, "t": tier, "sub": json.dumps(card["subjects"]),
+                 "tot": card["total"], "mx": card["max_marks"],
+                 "pc": card["percentage"], "u": datetime.utcnow()})
+        else:
+            db.execute(_text(
+                "DELETE FROM predicted_results WHERE student_id=:s AND target=:t"),
+                {"s": sp.id, "t": tier})
+    db.commit()
+
+
 @router.post("/predicted")
 def syl_predicted_record(payload: dict = Body(...), db: Session = Depends(get_db),
                          user=Depends(get_student)):
@@ -1063,6 +1133,10 @@ def syl_predicted_record(payload: dict = Body(...), db: Session = Depends(get_db
 def syl_predicted_mine(db: Session = Depends(get_db), user=Depends(get_student)):
     _ensure_syllabus(db)
     sp = _student_profile(db, user)
+    # self-healing: if the exam session moved since a card was saved (through
+    # any route — profile change, portal SSO mapping, auto-session), re-score
+    # it with the current stream before it is shown
+    _refresh_stored_cards(db, sp)
     rows = db.execute(_text(
         "SELECT target, subjects, total, max_marks, percentage, updated_at "
         "FROM predicted_results WHERE student_id=:s ORDER BY id"), {"s": sp.id}).fetchall()
