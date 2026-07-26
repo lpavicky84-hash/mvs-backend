@@ -805,6 +805,31 @@
   .popup{background:var(--card);border-radius:20px;padding:32px;max-width:400px;text-align:center;box-shadow:var(--shadow-lg)}.popup .popup-icon{font-size:3rem;margin-bottom:16px}.popup h3{font-size:1.2rem;font-weight:700;margin-bottom:10px}.popup p{font-size:.875rem;color:var(--text-muted);line-height:1.6}
   ::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
   .doubt-card{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px;border-left:4px solid var(--danger)}.doubt-card.resolved{border-left-color:var(--success)}
+  /* doubts — warm professional theme: cream cards, amber accents, clean pills */
+  .dbt-sec{font-size:.72rem;font-weight:800;letter-spacing:1.4px;color:var(--text-muted);margin:22px 2px 12px;text-transform:uppercase}
+  .dbt-sec:first-child{margin-top:4px}
+  .dbt-card{position:relative;background:linear-gradient(180deg,#fffdf6,#fdf7e6);border:1px solid #eadfc2;border-radius:16px;padding:18px 20px;margin-bottom:16px;box-shadow:0 2px 10px rgba(146,110,30,.07)}
+  .dbt-card.pend{border-left:4px solid #d97706}
+  .dbt-card.res{border-left:4px solid #059669}
+  .dbt-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
+  .dbt-name{font-weight:800;font-size:.95rem;color:#3f2f0b;line-height:1.3}
+  .dbt-meta{font-size:.74rem;color:#8a7a4e;margin-top:3px}
+  .dbt-badges{display:flex;gap:6px;align-items:center;flex-shrink:0}
+  .dbt-pill{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:99px;font-size:.68rem;font-weight:800;letter-spacing:.4px;white-space:nowrap}
+  .dbt-pill.open{background:#fef3c7;color:#92400e;border:1px solid #f0d488}
+  .dbt-pill.res{background:#d1fae5;color:#065f46;border:1px solid #a3e6c4}
+  .dbt-q{background:rgba(255,255,255,.78);border:1px solid #eee2bd;border-radius:12px;padding:12px 14px;font-size:.875rem;color:#4a3a14;line-height:1.55}
+  .dbt-a{margin-top:12px;background:#f0fdf4;border:1px solid #bbe7c8;border-radius:12px;padding:12px 14px;font-size:.85rem;color:#14532d;line-height:1.55}
+  .dbt-a b{color:#166534}
+  .dbt-media{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .dark .dbt-card{background:linear-gradient(180deg,#1a2233,#161d2d);border-color:var(--border);box-shadow:none}
+  .dark .dbt-name{color:#e8dfc8}
+  .dark .dbt-meta{color:#9a8f74}
+  .dark .dbt-q{background:rgba(255,255,255,.04);border-color:var(--border);color:#d9cfae}
+  .dark .dbt-a{background:rgba(5,150,105,.12);border-color:rgba(5,150,105,.35);color:#a7e9c8}
+  .dark .dbt-a b{color:#6ee7b7}
+  .dark .dbt-pill.open{background:rgba(217,119,6,.18);color:#fcd34d;border-color:rgba(217,119,6,.4)}
+  .dark .dbt-pill.res{background:rgba(16,185,129,.16);color:#6ee7b7;border-color:rgba(16,185,129,.35)}
   /* Accordion (chapter -> parts) */
   .subj-group{margin-bottom:20px}
   .subj-group-title{font-size:.95rem;font-weight:700;color:var(--primary);margin-bottom:10px;display:flex;align-items:center;gap:8px}
@@ -6363,18 +6388,28 @@ function tRenderDoubts(){
     }).join('')+`</div>`;
     el.innerHTML=html; return;
   }
-  // ---- SUBJECT DRILL VIEW ----
+  // ---- SUBJECT DRILL VIEW (sectioned: Pending upar, Resolved neeche) ----
   const list=doubts.filter(d=>(d.subject||'Other')===_tdSub);
   const pend=list.filter(d=>d.status!=='resolved'), done=list.filter(d=>d.status==='resolved');
-  html+=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="_tdSub=null;tRenderDoubts()">\u2190 All Subjects</button><h3 style="margin:0">${esc(_tdSub)} <span style="color:var(--text-muted);font-weight:600;font-size:.85rem">(${list.length})</span></h3></div><div class="hide-scroll doubt-drill">`;
-  const rows=[...pend,...done].map(d=>{
-    const media=`${d.has_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/voice')">${ic('play')} Voice Note</button>`:''}${d.has_image?`<button class="btn btn-ghost btn-sm" onclick="viewDoubtFile('teacher',${d.id},'${esc(d.attach_mime||'')}')">${ic('folder')} Attachment</button>`:''}`;
-    if(d.status==='resolved'){
-      return `<div class="doubt-card resolved"><div style="display:flex;justify-content:space-between;gap:10px"><div style="min-width:0"><h4 style="font-size:.9rem">${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}</h4><p style="font-size:.74rem;color:var(--text-muted)">by ${esc(d.student_name||'Student')}</p><p style="font-size:.78rem;color:var(--text-muted);margin-top:4px">${esc(d.question)}</p><p style="font-size:.8rem;margin-top:8px;color:var(--success)">Your answer: ${esc(d.answer||'')}</p>${d.has_answer_voice?`<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/answer-voice')">${ic('play')} Your Voice Answer</button>`:''}${d.has_answer_file?`<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="viewAnswerFile('teacher',${d.id},'${esc(d.attach_mime&&false?'':''+(d.answer_attach_mime||''))}')">${ic('folder')} Answer Attachment</button>`:''}</div><span class="tag tag-done">Resolved</span></div></div>`;
-    }
-    return `<div class="doubt-card"><div style="display:flex;justify-content:space-between;margin-bottom:12px;gap:10px"><div style="min-width:0"><h4 style="font-size:.9rem">${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}</h4><p style="font-size:.74rem;color:var(--text-muted)">by ${esc(d.student_name||'Student')} \u00b7 ${esc(d.created_at||'')}</p></div><span class="tag tag-reschedule">Pending</span></div><div style="background:var(--bg);border-radius:8px;padding:12px;margin-bottom:10px;font-size:.875rem">${esc(d.question)}</div>${media?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${media}</div>`:''}
-      <div style="margin-top:6px">${composerHTML('ta'+d.id,'Write your answer... ya voice/file bhejein','resolveDoubt('+d.id+')','Resolve')}</div></div>`;
-  }).join('');
+  html+=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="_tdSub=null;tRenderDoubts()">\u2190 All Subjects</button><h3 style="margin:0">${esc(_tdSub)} <span style="color:var(--text-muted);font-weight:600;font-size:.85rem">(${list.length})</span></h3></div><div class="hide-scroll doubt-drill">`;
+  const mediaOf=d=>`${d.has_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/voice')">${ic('play')} Voice Note</button>`:''}${d.has_image?`<button class="btn btn-ghost btn-sm" onclick="viewDoubtFile('teacher',${d.id},'${esc(d.attach_mime||'')}')">${ic('folder')} Attachment</button>`:''}`;
+  const headOf=(d,pill)=>`<div class="dbt-head"><div style="min-width:0"><div class="dbt-name">${esc(d.student_name||'Student')}</div><div class="dbt-meta">${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}${d.created_at?' \u00b7 '+esc(d.created_at):''}</div></div><div class="dbt-badges">${pill}</div></div>`;
+  let rows='';
+  if(pend.length){
+    rows+=`<div class="dbt-sec">Pending (${pend.length})</div>`;
+    rows+=pend.map(d=>{
+      const media=mediaOf(d);
+      return `<div class="dbt-card pend">${headOf(d,'<span class="dbt-pill open">Pending</span>')}<div class="dbt-q">${esc(d.question)}</div>${media?`<div class="dbt-media">${media}</div>`:''}<div style="margin-top:12px">${composerHTML('ta'+d.id,'Write your answer... ya voice/file bhejein','resolveDoubt('+d.id+')','Resolve')}</div></div>`;
+    }).join('');
+  }
+  if(done.length){
+    rows+=`<div class="dbt-sec">Resolved (${done.length})</div>`;
+    rows+=done.map(d=>{
+      const media=mediaOf(d);
+      const amedia=`${d.has_answer_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/answer-voice')">${ic('play')} Your Voice Answer</button>`:''}${d.has_answer_file?`<button class="btn btn-ghost btn-sm" onclick="viewAnswerFile('teacher',${d.id},'${esc(d.answer_attach_mime||'')}')">${ic('folder')} Answer Attachment</button>`:''}`;
+      return `<div class="dbt-card res">${headOf(d,'<span class="dbt-pill res">\u2713 Resolved</span>')}<div class="dbt-q">${esc(d.question)}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> ${esc(d.answer)}</div>`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}</div>`;
+    }).join('');
+  }
   html+=(rows||`<div class="empty-state"><p>No doubts in this subject.</p></div>`)+`</div>`;
   el.innerHTML=html;
 }
@@ -9015,7 +9050,7 @@ async function loadSDoubts(){
     else html+=mine.map(d=>{
       const media=`${d.has_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/student/doubt/${d.id}/voice')">${ic('play')} My Voice Note</button>`:''}${d.has_file?`<button class="btn btn-ghost btn-sm" onclick="viewDoubtFile('student',${d.id},'${esc(d.attach_mime||'')}')">${ic('folder')} Attachment</button>`:''}`;
       const ansv=`${d.has_answer_voice?`<button class="btn btn-success btn-sm" style="margin-top:8px" onclick="playDoubtVoice(this,'/api/student/doubt/${d.id}/answer-voice')">${ic('play')} Voice Answer</button>`:''}${d.has_answer_file?`<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="viewAnswerFile('student',${d.id},'${esc(d.answer_attach_mime||'')}')">${ic('folder')} Answer Attachment</button>`:''}`;
-      return `<div class="doubt-card" style="border-left-color:${d.status==='resolved'?'var(--success)':'var(--warning)'}"><div style="display:flex;justify-content:space-between;gap:10px"><div style="min-width:0"><h4>${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}</h4><p style="font-size:.82rem;margin-top:4px">${esc(d.question)}</p></div><span class="tag ${d.status==='resolved'?'tag-done':'tag-pending'}">${d.status}</span></div>${media?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">${media}</div>`:''}${d.answer?`<div class="alert alert-success" style="margin-top:10px"><strong>Answer:</strong> ${esc(d.answer)}</div>`:''}${ansv}</div>`;
+      return `<div class="dbt-card ${d.status==='resolved'?'res':'pend'}"><div class="dbt-head"><div style="min-width:0"><div class="dbt-name">${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}</div><div class="dbt-meta">${esc(d.created_at||'')}</div></div><div class="dbt-badges"><span class="dbt-pill ${d.status==='resolved'?'res':'open'}">${d.status==='resolved'?'\u2713 Resolved':'Pending'}</span></div></div><div class="dbt-q">${esc(d.question)}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Answer:</b> ${esc(d.answer)}</div>`:''}${ansv?`<div class="dbt-media">${ansv}</div>`:''}</div>`;
     }).join('');
     html+=`</div></div></div>`;
     el.innerHTML=html;
