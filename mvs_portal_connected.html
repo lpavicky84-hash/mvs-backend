@@ -11915,6 +11915,30 @@ async function ocrFillQuestion_v1(inp,i){
   animation:sylBlink 1.5s ease-in-out infinite}
 .syl-blink.imp{background:#fef3c7;color:#b45309;border:1px solid #f59e0b}
 .syl-blink.any{background:#e0e7ff;color:#4338ca;border:1px solid #818cf8}
+.syl-blink.yours{background:#d1fae5;color:#047857;border:1px solid #34d399}
+.dark .syl-blink.yours{background:rgba(16,185,129,.18);color:#6ee7b7;border-color:rgba(16,185,129,.45)}
+.syl-oc{margin-top:14px;background:linear-gradient(135deg,#eef2ff,#f5f3ff);border:1.5px solid #c7d2fe}
+.syl-oc-in{padding:16px 18px}
+.syl-oc-in h4{margin:0 0 4px;font-size:.95rem;color:#3730a3}
+.syl-oc-in p{font-size:.76rem;opacity:.78;margin:0 0 12px;line-height:1.6}
+.syl-oc-row{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap;margin-top:8px}
+.syl-oc-row+.syl-oc-row{margin-top:12px}
+.syl-oc-or{align-self:center;font-size:.72rem;font-weight:800;color:#6366f1;letter-spacing:1px}
+.syl-oc-b{flex:1;min-width:200px;display:flex;flex-direction:column;gap:5px;padding:12px 14px;
+  border-radius:12px;border:1.5px solid #c7d2fe;background:#fff;cursor:pointer;text-align:left;
+  font-family:inherit;transition:all .18s}
+.syl-oc-b span{font-size:.83rem;font-weight:700;color:#1e293b;line-height:1.4}
+.syl-oc-b i{font-size:.68rem;font-style:normal;color:#6366f1;font-weight:600}
+.syl-oc-b b{font-size:.7rem;color:#059669;font-weight:800}
+.syl-oc-b:hover{border-color:#818cf8;box-shadow:0 4px 14px rgba(99,102,241,.18);transform:translateY(-1px)}
+.syl-oc-b.on{border-color:#4f46e5;background:#4f46e5;box-shadow:0 6px 18px rgba(79,70,229,.28)}
+.syl-oc-b.on span{color:#fff}
+.dark .syl-oc{background:linear-gradient(135deg,rgba(99,102,241,.14),rgba(139,92,246,.12));border-color:rgba(99,102,241,.4)}
+.dark .syl-oc-in h4{color:#a5b4fc}
+.dark .syl-oc-b{background:#1e293b;border-color:rgba(99,102,241,.35)}
+.dark .syl-oc-b span{color:#e2e8f0}
+.dark .syl-oc-b.on{background:#4f46e5;border-color:#6366f1}
+.dark .syl-oc-b.on span{color:#fff}
 .dark .syl-blink.imp{background:rgba(245,158,11,.16);color:#fbbf24;border-color:rgba(245,158,11,.45)}
 .dark .syl-blink.any{background:rgba(99,102,241,.2);color:#a5b4fc;border-color:rgba(99,102,241,.5)}
 @keyframes sylBlink{0%,100%{opacity:1}50%{opacity:.3}}
@@ -12674,6 +12698,32 @@ function sylSubject(scrollTop){
      +'The chapter numbers on the bars are counted on the '+_sylN(c.paper_marks)+' mark paper.</p>':'')
    +'</div></div></div>';
 
+  // NIOS optional module: one exam slot, two options - "which is your choice?"
+  var oc=d.option_choice||{}, ogroups={}, ogMax={}, modGroup={};
+  (d.modules||[]).forEach(function(mo){
+    if(mo.optional_group){
+      (ogroups[mo.optional_group]=ogroups[mo.optional_group]||[]).push(mo.module);
+      modGroup[mo.module]=mo.optional_group;
+      var w=parseFloat(mo.weightage)||0;
+      if(w>(ogMax[mo.optional_group]||0)) ogMax[mo.optional_group]=w;
+    }
+  });
+  var ogKeys=Object.keys(ogroups);
+  if(ogKeys.length){
+    h+='<div class="syl-panel syl-oc"><div class="syl-oc-in">'
+     +'<h4>Which is your choice?</h4>'
+     +'<p>NIOS counts only <b>one</b> of these two modules &mdash; both carry the same marks. '
+     +'Pick the one you are studying; your plan and marks will follow it. You can change this anytime.</p>';
+    ogKeys.forEach(function(g){
+      h+='<div class="syl-oc-row">'+ogroups[g].map(function(mn){
+        var on=oc[g]===mn;
+        return '<button class="syl-oc-b'+(on?' on':'')+'" onclick="sylChoice(\''+esc(g)+'\',\''+esc(mn)+'\')">'
+         +'<span>'+esc(mn)+'</span>'+(on?'<b>&#10003; Your choice</b>':'<i>Tap to choose</i>')+'</button>';
+      }).join('<span class="syl-oc-or">OR</span>')+'</div>';
+    });
+    h+='</div></div>';
+  }
+
   var showTma=!!_SYL.showTma, open=!!_SYL.chOpen;
   var peTotal=0, peDone=0;
   d.chapters.forEach(function(ch){ if(ch.kind==='PE'){ peTotal++; if(sel.indexOf(ch.no)>-1) peDone++; } });
@@ -12722,15 +12772,20 @@ function sylSubject(scrollTop){
     h+='<div class="syl-chmod">'+fList.map(function(ch){ return chRow(ch,true); }).join('')+'</div>';
   }else{
   Object.keys(mods).forEach(function(mod){
+    var mg=modGroup[mod];
+    if(mg && oc[mg] && oc[mg]!==mod) return;   // student studies the other option
     var list=mods[mod].filter(function(ch){ return (showTma || ch.kind==='PE') && (!planSet || planSet[ch.no]); });
     if(!list.length) return;
     var all=mods[mod], mw=all.length?all[0].module_weightage:0, got=0;
+    if(mg && ogMax[mg]) mw=ogMax[mg];          // the slot's marks show on the option
     all.forEach(function(ch){ if(ch.kind==='PE'&&sel.indexOf(ch.no)>-1) got+=ch.marks; });
     var rq=planReq[mod];
     h+='<div class="syl-chmod"><div class="syl-chmod-h"><span>'+esc(mod)
+      +(mg ? (oc[mg]===mod ? ' <span class="syl-blink yours">&#10003; Your choice</span>'
+                           : ' <span class="syl-blink any">Optional &middot; pick one above</span>') : '')
       +(rq ? (rq.type==='any' ? ' <span class="syl-blink any">Choose any '+rq.k+'</span>'
                                     : ' <span class="syl-blink imp">Important Module</span>') : '')
-      +'</span><em>'+_sylN(got)+' of '+mw+' marks picked</em></div>';
+      +'</span><em>'+_sylN(got)+' of '+_sylN(mw)+' marks picked</em></div>';
     list.forEach(function(ch){ h+=chRow(ch); });
     h+='</div>';
   });
@@ -12742,6 +12797,22 @@ function sylSubject(scrollTop){
 
 function sylTmaToggle(){ _SYL.showTma=!_SYL.showTma; sylSubject(); }
 function sylChOpen(){ _SYL.chOpen=!_SYL.chOpen; sylSubject(); }
+
+async function sylChoice(group, module){
+  var d=_SYL.cur; if(!d) return;
+  if(d.option_choice && d.option_choice[group]===module) return;   // already chosen
+  try{
+    var res=await api('/api/syllabus/option-choice','POST',
+      {subject_code:d.subject.code, group:group, module:module});
+    if(res&&res.ok){
+      d.option_choice=res.option_choice||{};
+      if(res.calc) d.calc=res.calc;
+      if(res.milestones) d.milestones=res.milestones;
+      sylSubject();
+      toast('Your choice is saved &mdash; '+module);
+    }
+  }catch(e){ toast(e.message||'Could not save your choice', true); }
+}
 
 /* ---------- important chapters ---------- */
 

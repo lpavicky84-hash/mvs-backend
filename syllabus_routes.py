@@ -116,6 +116,11 @@ def _ensure_syllabus(db):
             db.execute(_text("ALTER TABLE student_profiles ADD COLUMN %s" % col)); db.commit()
         except Exception:
             db.rollback()
+    for col in ["option_choice TEXT NULL"]:
+        try:
+            db.execute(_text("ALTER TABLE chapter_plans ADD COLUMN %s" % col)); db.commit()
+        except Exception:
+            db.rollback()
     for idx in ["CREATE INDEX ix_chapter_plans_student ON chapter_plans (student_id)"]:
         try:
             db.execute(_text(idx)); db.commit()
@@ -258,16 +263,48 @@ def apply_stream(marks, stream):
 
 def compute(subject, selected, tma_assumed=None, practical_assumed=None,
             high_target=75.0, buffer_pct=0.0, bonus_chapters=2, bonus_min_marks=6.0,
-            stream="1", top_target=90.0):
+            stream="1", top_target=90.0, choice=None):
     m = apply_stream(subject["marks"], stream)
     rows = SD.flatten(subject)
     pe_rows = [r for r in rows if r["kind"] == "PE"]
     paper = float(m.get("paper_marks") or (m["theory_max"] / 0.8 if m["theory_max"] else 0))
     scale = (m["theory_max"] / paper) if paper else 0
 
-    total_paper = round(sum(r["marks"] for r in pe_rows), 2)
     sel = set(selected or [])
-    covered_paper = round(sum(r["marks"] for r in pe_rows if r["no"] in sel), 2)
+
+    # OR option pairs: one exam slot, two options. Plans see the pair as one
+    # module (the chosen option, else the heaviest); the pair's marks count
+    # once; the student's covered marks are their best option's worth.
+    groups = SD._optional_groups(subject.get("modules", []))
+    group_of, reps = {}, {}
+    mod_order = {mod["module"]: i for i, mod in enumerate(subject.get("modules", []))}
+    for g, ms in groups.items():
+        pick = (choice or {}).get(g)
+        rep = next((mod for mod in ms if mod["module"] == pick), None)
+        if rep is None:
+            rep = max(ms, key=lambda mod: (
+                float(mod.get("weightage") or 0),
+                len([l for l in mod["lessons"] if l["kind"] == "PE"]),
+                -mod_order.get(mod["module"], 0)))
+        reps[g] = rep["module"]
+        for mod in ms:
+            group_of[mod["module"]] = g
+    pe_plan = [r for r in pe_rows
+               if r["module"] not in group_of or reps.get(group_of[r["module"]]) == r["module"]]
+
+    covered_group = 0.0
+    for g, ms in groups.items():
+        per_mod = {}
+        for mod in ms:
+            per_mod[mod["module"]] = round(sum(
+                r["marks"] for r in pe_rows if r["module"] == mod["module"] and r["no"] in sel), 2)
+        pick = (choice or {}).get(g)
+        covered_group += per_mod.get(pick, max(per_mod.values()) if per_mod else 0.0)
+
+    total_paper = round(sum(r["marks"] for r in pe_plan), 2)
+    covered_paper = round(
+        sum(r["marks"] for r in pe_plan if r["no"] in sel and r["module"] not in group_of)
+        + covered_group, 2)
     covered_theory = round(covered_paper * scale, 2)
 
     tma = float(m["tma_max"]) if tma_assumed is None or tma_assumed < 0 else float(tma_assumed)
@@ -298,11 +335,15 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
     # NIOS publishes weightage per MODULE, never per chapter. So suggestions
     # are whole modules, best value first: the module that carries the most
     # marks per chapter to study (high weightage, few chapters) ranks first.
+    group_max_w = {g: max(float(mod.get("weightage") or 0) for mod in ms)
+                   for g, ms in groups.items()}
     modules = []
-    for r in pe_rows:
+    for r in pe_plan:
         if not modules or modules[-1]["module"] != r["module"]:
+            w = float(r.get("module_weightage") or 0) or \
+                group_max_w.get(group_of.get(r["module"]), 0.0)
             modules.append({"module": r["module"],
-                            "weightage": float(r.get("module_weightage") or 0),
+                            "weightage": w,
                             "rows": []})
         modules[-1]["rows"].append(r)
     for i, mo in enumerate(modules):
@@ -464,18 +505,19 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
         "pass_gap_chapters": pick_until(pass_paper),
         "high_gap_chapters": pick_until(high_paper),
         "top_gap_chapters": pick_until(top_paper),
-        "selected_count": len([r for r in pe_rows if r["no"] in sel]),
-        "pe_count": len(pe_rows), "buffer_pct": buffer_pct,
+        "selected_count": len([r for r in pe_plan if r["no"] in sel]),
+        "pe_count": len(pe_plan), "buffer_pct": buffer_pct,
+        "option_reps": reps,
         "stream": str(stream), "marks": m,
     }
 
 
 def _plan_row(db, student_id, code):
     r = db.execute(_text(
-        "SELECT selected, done, tma_assumed, practical_assumed FROM chapter_plans "
+        "SELECT selected, done, tma_assumed, practical_assumed, option_choice FROM chapter_plans "
         "WHERE student_id=:s AND subject_code=:c"), {"s": student_id, "c": str(code)}).fetchone()
     if not r:
-        return [], [], -1.0, -1.0
+        return [], [], -1.0, -1.0, {}
     try:
         sel = json.loads(r[0] or "[]")
     except Exception:
@@ -484,7 +526,12 @@ def _plan_row(db, student_id, code):
         done = json.loads(r[1] or "[]")
     except Exception:
         done = []
-    return sel, done, (r[2] if r[2] is not None else -1.0), (r[3] if r[3] is not None else -1.0)
+    try:
+        choice = json.loads(r[4] or "{}") if len(r) > 4 else {}
+    except Exception:
+        choice = {}
+    return (sel, done, (r[2] if r[2] is not None else -1.0),
+            (r[3] if r[3] is not None else -1.0), choice if isinstance(choice, dict) else {})
 
 
 def _stream_for(db, sp):
@@ -720,9 +767,9 @@ def syl_overview(db: Session = Depends(get_db), user=Depends(get_student)):
         subj = get_subject(db, cl, code)
         if not subj:
             continue
-        sel, done, tma, pr = _plan_row(db, sp.id, code)
+        sel, done, tma, pr, choice = _plan_row(db, sp.id, code)
         ready = subj.get("status") == "ready"
-        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp)) if ready else None
+        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp), choice=choice) if ready else None
         out.append({"code": subj["code"], "name": subj["name"],
                     "status": subj.get("status", "pending"),
                     "selected": len(sel) if ready else 0,
@@ -755,7 +802,7 @@ def syl_subject(code: str, db: Session = Depends(get_db), user=Depends(get_stude
                             "marks": subj["marks"]},
                 "modules": [], "chapters": [], "selected": [], "done": [], "calc": None,
                 "message": "Syllabus for this subject is under verification. It will be available shortly."}
-    sel, done, tma, pr = _plan_row(db, sp.id, code)
+    sel, done, tma, pr, choice = _plan_row(db, sp.id, code)
     cfg = _cfg(db)
     return {
         "subject": {"code": subj["code"], "name": subj["name"], "status": subj["status"],
@@ -763,8 +810,9 @@ def syl_subject(code: str, db: Session = Depends(get_db), user=Depends(get_stude
         "modules": subj.get("modules", []),
         "chapters": SD.flatten(subj),
         "selected": sel, "done": done,
+        "option_choice": choice,
         "milestones": _milestone_map(db, sp.id).get(str(code), {}),
-        "calc": compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp)),
+        "calc": compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp), choice=choice),
     }
 
 
@@ -799,12 +847,60 @@ def syl_plan(payload: dict = Body(...), db: Session = Depends(get_db), user=Depe
                          "tma_assumed, practical_assumed, updated_at) "
                          "VALUES (:s, :c, :sel, :dn, :t, :p, :u)"), args)
     db.commit()
+    _prev_sel, _prev_done, _t, _p, choice = _plan_row(db, sp.id, code)
     cfg = _cfg(db)
     calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"],
-                   cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp))
+                   cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp), choice=choice)
     _sync_milestones(db, sp, code, calc)
     db.commit()
-    return {"ok": True, "calc": calc, "milestones": _milestone_map(db, sp.id).get(code, {})}
+    return {"ok": True, "calc": calc, "option_choice": choice,
+            "milestones": _milestone_map(db, sp.id).get(code, {})}
+
+
+@router.post("/option-choice")
+def syl_option_choice(payload: dict = Body(...), db: Session = Depends(get_db), user=Depends(get_student)):
+    """NIOS optional module: one exam slot, two options ("which is your
+    choice?"). The student studies only one - plans and marks follow it."""
+    _ensure_syllabus(db)
+    sp = _student_profile(db, user)
+    cl, codes, _un = _student_codes(db, sp)
+    code = str(payload.get("subject_code") or "")
+    if code not in codes:
+        raise HTTPException(status_code=403, detail="This subject is not in your enrolment.")
+    subj = get_subject(db, cl, code)
+    if not subj or subj.get("status") != "ready":
+        raise HTTPException(status_code=409, detail="Syllabus for this subject is not verified yet.")
+    group = str(payload.get("group") or "").strip()
+    module = str(payload.get("module") or "").strip()
+    groups = SD._optional_groups(subj.get("modules", []))
+    if group not in groups:
+        raise HTTPException(status_code=400, detail="Unknown option group for this subject.")
+    names = [m["module"] for m in groups[group]]
+    if module not in names:
+        raise HTTPException(status_code=400, detail="That module is not one of the options.")
+
+    sel, done, tma, pr, choice = _plan_row(db, sp.id, code)
+    choice[group] = module
+    exists = db.execute(_text(
+        "SELECT id FROM chapter_plans WHERE student_id=:s AND subject_code=:c"),
+        {"s": sp.id, "c": code}).fetchone()
+    if exists:
+        db.execute(_text("UPDATE chapter_plans SET option_choice=:oc, updated_at=:u "
+                         "WHERE student_id=:s AND subject_code=:c"),
+                   {"oc": json.dumps(choice), "u": datetime.utcnow(), "s": sp.id, "c": code})
+    else:
+        db.execute(_text("INSERT INTO chapter_plans (student_id, subject_code, selected, done, "
+                         "tma_assumed, practical_assumed, option_choice, updated_at) "
+                         "VALUES (:s, :c, '[]', '[]', -1, -1, :oc, :u)"),
+                   {"s": sp.id, "c": code, "oc": json.dumps(choice), "u": datetime.utcnow()})
+    db.commit()
+    cfg = _cfg(db)
+    calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"],
+                   cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp), choice=choice)
+    _sync_milestones(db, sp, code, calc)
+    db.commit()
+    return {"ok": True, "option_choice": choice, "calc": calc,
+            "milestones": _milestone_map(db, sp.id).get(code, {})}
 
 
 def _tier_hit(calc, tier):
@@ -878,9 +974,9 @@ def _progress_rows(db, sp):
         subj = get_subject(db, cl, code)
         if not subj or subj.get("status") != "ready":
             continue
-        sel, done, tma, pr = _plan_row(db, sp.id, code)
+        sel, done, tma, pr, choice = _plan_row(db, sp.id, code)
         calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"],
-                       cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp))
+                       cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp), choice=choice)
         out.append({"code": subj["code"], "name": subj["name"],
                     "selected": len(sel), "calc": calc})
     return out
@@ -1063,9 +1159,9 @@ def _rank_rows(db):
             subj = get_subject(db, cl, code)
             if not subj or subj.get("status") != "ready":
                 continue
-            sel, done, tma, pr = _plan_row(db, sp.id, code)
+            sel, done, tma, pr, choice = _plan_row(db, sp.id, code)
             c = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"],
-                        cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp))
+                        cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp), choice=choice)
             paper = float(c.get("paper_marks") or 0)
             covered = float(c.get("covered_paper") or 0)
             if paper > 0:
@@ -1175,8 +1271,8 @@ def syl_strategy(db: Session = Depends(get_db), user=Depends(get_student)):
         subj = get_subject(db, cl, code)
         if not subj or subj.get("status") != "ready":
             continue
-        sel, done, tma, pr = _plan_row(db, sp.id, code)
-        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp), cfg["top_target"])
+        sel, done, tma, pr, choice = _plan_row(db, sp.id, code)
+        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp), cfg["top_target"], choice=choice)
         if target == "top":
             need = calc["top_paper_needed"]
             plan_mods = calc["top_plan_modules"]
@@ -1447,8 +1543,8 @@ def syl_admin_progress(class_level: str = "", db: Session = Depends(get_db), _=D
     _ensure_syllabus(db)
     cfg = _cfg(db)
     rows = db.execute(_text(
-        "SELECT student_id, subject_code, selected, done, tma_assumed, practical_assumed, updated_at "
-        "FROM chapter_plans ORDER BY updated_at DESC")).fetchall()
+        "SELECT student_id, subject_code, selected, done, tma_assumed, practical_assumed, updated_at, "
+        "option_choice FROM chapter_plans ORDER BY updated_at DESC")).fetchall()
     by_student = {}
     for r in rows:
         by_student.setdefault(r[0], []).append(r)
@@ -1469,8 +1565,12 @@ def syl_admin_progress(class_level: str = "", db: Session = Depends(get_db), _=D
                 sel = json.loads(p[2] or "[]")
             except Exception:
                 sel = []
+            try:
+                choice = json.loads(p[7] or "{}") if len(p) > 7 else {}
+            except Exception:
+                choice = {}
             c = compute(subj, sel, p[4] if p[4] is not None else -1,
-                        p[5] if p[5] is not None else -1, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp))
+                        p[5] if p[5] is not None else -1, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp), choice=choice)
             try:
                 done_list = json.loads(p[3] or "[]")
             except Exception:
@@ -1504,7 +1604,7 @@ def syl_admin_progress_detail(student_id: int, db: Session = Depends(get_db), _=
     cfg = _cfg(db)
     cl = str(sp.class_level or class_level_from_name(sp.class_name) or "12")
     plans = db.execute(_text(
-        "SELECT subject_code, selected, done, tma_assumed, practical_assumed, updated_at "
+        "SELECT subject_code, selected, done, tma_assumed, practical_assumed, updated_at, option_choice "
         "FROM chapter_plans WHERE student_id=:i"), {"i": student_id}).fetchall()
     info, _sess = _exam_dates(db, getattr(sp, "exam_session", "") or "",
                               getattr(sp, "exam_date", "") or "")
@@ -1521,6 +1621,10 @@ def syl_admin_progress_detail(student_id: int, db: Session = Depends(get_db), _=
             done = json.loads(p[2] or "[]")
         except Exception:
             done = []
+        try:
+            choice = json.loads(p[6] or "{}") if len(p) > 6 else {}
+        except Exception:
+            choice = {}
         entry = {"code": subj["code"], "name": subj["name"],
                  "status": subj.get("status", "pending"),
                  "selected": len(sel), "done": len(done),
@@ -1528,7 +1632,7 @@ def syl_admin_progress_detail(student_id: int, db: Session = Depends(get_db), _=
         if subj.get("status") == "ready":
             c = compute(subj, sel, p[3] if p[3] is not None else -1,
                         p[4] if p[4] is not None else -1, cfg["high_target"], cfg["buffer_pct"],
-                        cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp))
+                        cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp), choice=choice)
             entry.update({"covered": c["covered_paper"], "total": c["total_pe_marks"],
                           "pass": c["pass_reached"], "high": c["high_reached"],
                           "projected": c["projected_total"]})
