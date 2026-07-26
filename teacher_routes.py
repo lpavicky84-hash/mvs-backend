@@ -13,8 +13,10 @@ from models import (
     User, TeacherProfile, ClassEntry, ClassStatus,
     RescheduleRequest, RescheduleStatus, DPP, Test, Doubt,
     DoubtStatus, Timetable, Notification, TestStatus,
-    Exam, ExamQuestion, ExamAttempt, ExamResult
+    Exam, ExamQuestion, ExamAttempt, ExamResult,
+    Material, Lecture, TeacherAttendance
 )
+from security import get_admin
 from schemas import (
     ClassEntryCreate, ClassEntryUpdate, ClassEntryOut,
     TimetableCreate, TimetableOut,
@@ -3096,3 +3098,82 @@ def attempt_marking(attempt_id: int, db: Session = Depends(get_db), current_user
         att.status = "marking"
         db.commit()
     return {"status": att.status}
+
+
+# ---------------------------------------------------------------------------
+# Teacher ranking - podium board fed by real activity
+# ---------------------------------------------------------------------------
+# Reports, DPPs, class notes, tests, doubts and attendance all count toward a
+# teacher's rank. Scores are normalised against the best teacher in each
+# metric so the board stays meaningful as activity grows.
+
+TEACHER_RANK_WEIGHTS = {
+    "tests": 0.20, "dpps": 0.20, "doubts": 0.15,
+    "notes": 0.10, "lectures": 0.20, "attendance": 0.15,
+}
+
+
+def _teacher_rank_rows(db, days=90):
+    since = datetime.utcnow() - timedelta(days=days)
+    rows = []
+    for tp in db.query(TeacherProfile).all():
+        u = db.query(User).filter(User.id == tp.user_id).first()
+        if not u:
+            continue
+        tests = db.query(Test).filter(Test.teacher_id == tp.id,
+                                      Test.created_at >= since).count()
+        dpps = db.query(DPP).filter(DPP.teacher_id == tp.id, DPP.is_active == True,
+                                    DPP.created_at >= since).count()
+        doubts = db.query(Doubt).filter(Doubt.teacher_id == tp.id,
+                                        Doubt.status == DoubtStatus.resolved,
+                                        Doubt.resolved_at >= since).count()
+        notes = db.query(Material).filter(Material.teacher_id == tp.id,
+                                          Material.created_at >= since).count()
+        lectures = db.query(Lecture).filter(Lecture.teacher_id == tp.id,
+                                            Lecture.lecture_date >= since.date()).count()
+        att_rows = db.query(TeacherAttendance).filter(
+            TeacherAttendance.teacher_id == tp.id,
+            TeacherAttendance.att_date >= since.date()).all()
+        present = len({a.att_date for a in att_rows if a.punch_in})
+        attendance_pct = round(present / days * 100, 1)
+        rows.append({
+            "teacher_id": tp.id, "name": u.name or "", "user_id": u.user_id or "",
+            "photo": getattr(u, "photo_b64", None) or "",
+            "subjects": tp.subjects or [], "batch": tp.batch or "",
+            "metrics": {"tests": tests, "dpps": dpps, "doubts": doubts,
+                        "notes": notes, "lectures": lectures,
+                        "attendance": attendance_pct},
+        })
+    # normalise each metric against the best teacher, then weight into 0-100
+    for key, w in TEACHER_RANK_WEIGHTS.items():
+        top = max((r["metrics"][key] for r in rows), default=0) or 0
+        for r in rows:
+            r.setdefault("_parts", {})[key] = (r["metrics"][key] / top * 100) if top else 0.0
+    for r in rows:
+        r["score"] = round(sum(r["_parts"][k] * w for k, w in TEACHER_RANK_WEIGHTS.items()), 1)
+        r.pop("_parts", None)
+    rows.sort(key=lambda r: (-r["score"], r["name"].lower()))
+    for i, r in enumerate(rows, 1):
+        r["rank"] = i
+    return rows
+
+
+@router.get("/rankings")
+def teacher_rankings(days: int = 90, db: Session = Depends(get_db),
+                     _admin=Depends(get_admin)):
+    """Admin board: every teacher ranked by activity (podium UI)."""
+    days = max(7, min(int(days or 90), 365))
+    return {"days": days, "results": _teacher_rank_rows(db, days),
+            "weights": TEACHER_RANK_WEIGHTS}
+
+
+@router.get("/my-rank")
+def teacher_my_rank(days: int = 90, db: Session = Depends(get_db),
+                    current_user=Depends(get_teacher)):
+    """The logged-in teacher's own position on the board."""
+    days = max(7, min(int(days or 90), 365))
+    tp = get_teacher_profile(current_user, db)
+    rows = _teacher_rank_rows(db, days)
+    mine = next((r for r in rows if r["teacher_id"] == tp.id), None)
+    return {"days": days, "total": len(rows), "me": mine,
+            "top3": [{k: r[k] for k in ("rank", "name", "score", "photo")} for r in rows[:3]]}

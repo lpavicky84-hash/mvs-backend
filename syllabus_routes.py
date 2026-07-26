@@ -80,6 +80,10 @@ def _ensure_syllabus(db):
              student_id INTEGER, target VARCHAR(10),
              subjects LONGTEXT, total FLOAT, max_marks FLOAT, percentage FLOAT,
              created_at DATETIME NULL, updated_at DATETIME NULL)""",
+        """CREATE TABLE IF NOT EXISTS milestone_dates (
+             id INTEGER PRIMARY KEY AUTO_INCREMENT,
+             student_id INTEGER, subject_code VARCHAR(10), target VARCHAR(10),
+             reached_at DATETIME)""",
     ]
     for s in stmts:
         try:
@@ -660,6 +664,9 @@ def syl_overview(db: Session = Depends(get_db), user=Depends(get_student)):
                     "selected": 0, "done": 0, "calc": None})
     info, sess = _exam_dates(db, getattr(sp, "exam_session", "") or "",
                              getattr(sp, "exam_date", "") or "")
+    ms = _milestone_map(db, sp.id)
+    for r in out:
+        r["milestones"] = ms.get(r["code"], {})
     return {"subjects": out, "days_left": info["theory_days"], "exam": info, "session": sess,
             "unmapped_subjects": unmapped,
             "target": getattr(sp, "study_target", "") or ""}
@@ -688,6 +695,7 @@ def syl_subject(code: str, db: Session = Depends(get_db), user=Depends(get_stude
         "modules": subj.get("modules", []),
         "chapters": SD.flatten(subj),
         "selected": sel, "done": done,
+        "milestones": _milestone_map(db, sp.id).get(str(code), {}),
         "calc": compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp)),
     }
 
@@ -724,7 +732,57 @@ def syl_plan(payload: dict = Body(...), db: Session = Depends(get_db), user=Depe
                          "VALUES (:s, :c, :sel, :dn, :t, :p, :u)"), args)
     db.commit()
     cfg = _cfg(db)
-    return {"ok": True, "calc": compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp))}
+    calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"],
+                   cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp))
+    _sync_milestones(db, sp, code, calc)
+    db.commit()
+    return {"ok": True, "calc": calc, "milestones": _milestone_map(db, sp.id).get(code, {})}
+
+
+def _tier_hit(calc, tier):
+    if tier == "pass":
+        return bool(calc.get("pass_reached") and calc.get("theory_reached"))
+    return bool(calc.get(tier + "_reached"))
+
+
+def _milestone_map(db, student_id):
+    """{subject_code: {target: 'YYYY-MM-DD'}} of every target ever reached
+    (and still standing) by this student."""
+    out = {}
+    for r in db.execute(_text(
+            "SELECT subject_code, target, reached_at FROM milestone_dates WHERE student_id=:s"),
+            {"s": student_id}).fetchall():
+        out.setdefault(r[0], {})[r[1]] = str(r[2])[:10]
+    return out
+
+
+def _sync_milestones(db, sp, code, calc):
+    """
+    Stamp the day a target is first reached; wipe the stamp when the target
+    drops back below the line (clear-all really does send the student back to
+    square one, dates included). Stored result cards that the student no
+    longer qualifies for are erased the same way.
+    """
+    now = datetime.utcnow()
+    for tier in ("pass", "high", "top"):
+        ex = db.execute(_text(
+            "SELECT id FROM milestone_dates WHERE student_id=:s AND subject_code=:c AND target=:t"),
+            {"s": sp.id, "c": code, "t": tier}).fetchone()
+        if _tier_hit(calc, tier):
+            if not ex:
+                db.execute(_text(
+                    "INSERT INTO milestone_dates (student_id, subject_code, target, reached_at) "
+                    "VALUES (:s,:c,:t,:u)"), {"s": sp.id, "c": code, "t": tier, "u": now})
+        elif ex:
+            db.execute(_text("DELETE FROM milestone_dates WHERE id=:i"), {"i": ex[0]})
+    # a result card stays only while every subject still reaches its tier
+    rows = _progress_rows(db, sp)
+    for tier in ("pass", "high", "top"):
+        card = db.execute(_text(
+            "SELECT id FROM predicted_results WHERE student_id=:s AND target=:t"),
+            {"s": sp.id, "t": tier}).fetchone()
+        if card and not (rows and all(_tier_hit(r["calc"], tier) for r in rows)):
+            db.execute(_text("DELETE FROM predicted_results WHERE id=:i"), {"i": card[0]})
 
 
 # ---------------------------------------------------------------------------
@@ -768,12 +826,20 @@ def _prediction_card(db, sp, tier):
     subs, total = [], 0.0
     for r in rows:
         c = r["calc"]
-        hit = (c.get("pass_reached") and c.get("theory_reached")) if tier == "pass" \
-              else c.get(tier + "_reached")
-        if not hit:
+        if not _tier_hit(c, tier):
             return False, None
         proj = min(100.0, round(float(c.get("projected_total") or 0), 1))
-        subs.append({"code": r["code"], "name": r["name"], "projected": proj})
+        mk = c.get("marks") or {}
+        subs.append({
+            "code": r["code"], "name": r["name"], "projected": proj,
+            # marksheet bifurcation for the result card
+            "theory": round(float(c.get("covered_theory") or 0), 1),
+            "theory_max": mk.get("theory_max") or 0,
+            "tma": round(float(c.get("tma_assumed") or 0), 1),
+            "tma_max": mk.get("tma_max") or 0,
+            "practical": round(float(c.get("practical_assumed") or 0), 1),
+            "practical_max": mk.get("practical_max") or 0,
+        })
         total += proj
     n = len(subs)
     return True, {"target": tier, "subjects": subs, "total": round(total, 1),
@@ -878,6 +944,102 @@ def syl_teacher_predicted(target: str = "", db: Session = Depends(get_db),
     for i, r in enumerate(out, 1):
         r["rank"] = i
     return {"results": out}
+
+
+# ---------------------------------------------------------------------------
+# Student ranks - who has covered how much of the syllabus
+# ---------------------------------------------------------------------------
+
+def _rank_rows(db):
+    """
+    Every student ranked by average syllabus coverage across their ready
+    subjects (descending), milestone stamps as the tie-breaker. This one list
+    feeds the student's own rank card, the teacher view and the admin report.
+    """
+    from models import StudentProfile, User
+    cfg = _cfg(db)
+    rows = []
+    profiles = db.query(StudentProfile).all()
+    users = {u.id: u for u in db.query(User).all()}
+    for sp in profiles:
+        cl, codes, _un = _student_codes(db, sp)
+        tot, n, covered_sum, paper_sum = 0.0, 0, 0.0, 0.0
+        for code in codes:
+            subj = get_subject(db, cl, code)
+            if not subj or subj.get("status") != "ready":
+                continue
+            sel, done, tma, pr = _plan_row(db, sp.id, code)
+            c = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"],
+                        cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp))
+            paper = float(c.get("paper_marks") or 0)
+            covered = float(c.get("covered_paper") or 0)
+            if paper > 0:
+                tot += min(100.0, covered / paper * 100.0)
+                n += 1
+                covered_sum += covered
+                paper_sum += paper
+        if not n:
+            continue
+        ms = db.execute(_text(
+            "SELECT target, reached_at FROM milestone_dates WHERE student_id=:s ORDER BY reached_at"),
+            {"s": sp.id}).fetchall()
+        u = users.get(sp.user_id)
+        rows.append({
+            "student_id": sp.id, "name": (u.name if u else "") or "",
+            "user_id": (u.user_id if u else "") or "",
+            "batch": getattr(sp, "batch_name", None) or "",
+            "class_level": cl,
+            "coverage": round(tot / n, 1),
+            "covered_marks": round(covered_sum, 1), "paper_marks": round(paper_sum, 1),
+            "milestones": len(ms),
+            "first_milestone": str(ms[0][1])[:10] if ms else "",
+            "pass_done": any(m[0] == "pass" for m in ms),
+            "high_done": any(m[0] == "high" for m in ms),
+            "top_done": any(m[0] == "top" for m in ms),
+        })
+    rows.sort(key=lambda r: (-r["coverage"], -r["milestones"], r["name"].lower()))
+    for i, r in enumerate(rows, 1):
+        r["rank"] = i
+    return rows
+
+
+@router.get("/ranks")
+def syl_my_rank(db: Session = Depends(get_db), user=Depends(get_student)):
+    """The logged-in student's own rank card + the top five, for their
+    progress page."""
+    _ensure_syllabus(db)
+    sp = _student_profile(db, user)
+    rows = _rank_rows(db)
+    mine = next((r for r in rows if r["student_id"] == sp.id), None)
+    return {"total": len(rows), "me": mine,
+            "top5": [{k: r[k] for k in ("rank", "name", "coverage", "milestones",
+                                        "pass_done", "high_done", "top_done")}
+                     for r in rows[:5]]}
+
+
+@router.get("/teacher/ranks")
+def syl_teacher_ranks(db: Session = Depends(get_db), user=Depends(get_teacher)):
+    """The full rank list, scoped to the teacher's own students."""
+    _ensure_syllabus(db)
+    from models import TeacherProfile, StudentProfile
+    tp = db.query(TeacherProfile).filter(TeacherProfile.user_id == user.id).first()
+    tsubs = {str(x).strip().lower() for x in (tp.subjects or []) if str(x).strip()} if tp else set()
+    mine_ids = set()
+    if tsubs:
+        for s in db.query(StudentProfile).all():
+            ss = {str(x).strip().lower() for x in (s.subjects or []) if str(x).strip()}
+            if tsubs & ss:
+                mine_ids.add(s.id)
+    rows = [r for r in _rank_rows(db) if not mine_ids or r["student_id"] in mine_ids]
+    for i, r in enumerate(rows, 1):
+        r["rank"] = i
+    return {"results": rows}
+
+
+@router.get("/admin/ranks")
+def syl_admin_ranks(db: Session = Depends(get_db), _=Depends(get_admin)):
+    _ensure_syllabus(db)
+    return {"results": _rank_rows(db)}
 
 
 @router.get("/strategy")
