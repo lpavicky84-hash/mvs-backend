@@ -600,8 +600,10 @@ def _position_rows(pdf_pages):
     flat_mode = False
     last_flat = None     # chunk list of the last per-lesson row (for wrapped titles)
     b_mod = b_pe = None  # column boundaries (midpoints between header x0s)
+    mod_y = []           # (group idx, page idx, y) where each module name starts
+    assign = []          # (page idx, y, group idx, slot 1|2, chunk) per lesson line
 
-    for page in pdf_pages[:40]:
+    for page_i, page in enumerate(pdf_pages[:40]):
         try:
             words = page.extract_words(use_text_flow=False, keep_blank_chars=False) or []
         except Exception:
@@ -769,12 +771,14 @@ def _position_rows(pdf_pages):
 
             if MODULE_START_RE.match(mod):
                 groups.append([mod, [], []])
+                mod_y.append((len(groups) - 1, page_i, _top0))
                 last_flat = None
             elif mod and not groups:
                 # a sheet title is not a module; wait for the real first module
                 if TITLE_JUNK_RE.search(mod):
                     continue
                 groups.append([mod, [], []])
+                mod_y.append((len(groups) - 1, page_i, _top0))
                 last_flat = None
             elif mod and groups:
                 groups[-1][0] = (groups[-1][0] + " " + mod).strip()   # wrapped module name
@@ -786,8 +790,12 @@ def _position_rows(pdf_pages):
             if groups:
                 if tma and not tma_cat:
                     groups[-1][1].append(tma)
+                    assign.append((page_i, _top0, len(groups) - 1, 1, tma))
                 if pe and not pe_cat:
                     groups[-1][2].append(pe)
+                    assign.append((page_i, _top0, len(groups) - 1, 2, pe))
+
+    _rehome_by_blocks(groups, mod_y, assign, pdf_pages, b_mod)
 
     rows = []
     pending = None
@@ -808,6 +816,96 @@ def _position_rows(pdf_pages):
         p_txt = "\n".join(x for x in (pending[1], rows[-1][2]) if x)
         rows[-1] = (rows[-1][0], t_txt, p_txt)
     return rows, hdr
+
+
+def _module_block_bounds(page, b_mod):
+    """
+    Y coordinates of the horizontal rulings that cross the module column.
+    On fully cell-ruled sheets (e.g. Sociology 331) every module gets one
+    tall bordered cell; the borders of those cells are the only trustworthy
+    module boundaries, because the module NAME is printed in the vertical
+    middle of its cell while its first lesson lines sit above the name.
+    """
+    ys = []
+    try:
+        for rc in page.rects:
+            h = rc["bottom"] - rc["top"]
+            wdt = rc["x1"] - rc["x0"]
+            if h < 2.5 and wdt > 20 and rc["x0"] <= b_mod + 4:
+                ys.append((rc["top"] + rc["bottom"]) / 2.0)
+    except Exception:
+        pass
+    try:
+        for ln in page.lines:
+            if abs(ln["top"] - ln["bottom"]) < 2 and \
+                    ln["x1"] - ln["x0"] > 20 and ln["x0"] <= b_mod + 4:
+                ys.append((ln["top"] + ln["bottom"]) / 2.0)
+    except Exception:
+        pass
+    ys = sorted(ys)
+    out = []
+    for y in ys:
+        if not out or y - out[-1] > 3:
+            out.append(y)
+    return out
+
+
+def _rehome_by_blocks(groups, mod_y, assign, pdf_pages, b_mod):
+    """
+    Fix lessons that were appended to the wrong module because the module
+    name is centred inside a tall bordered cell: lesson lines ABOVE the name
+    line (same cell) went to the previous module. The cell rulings decide:
+    every lesson line belongs to the bordered block that contains it.
+
+    Safe no-op on sheets ruled per lesson row (each lesson line is then its
+    own block, blocks without a module name keep their current owner) and on
+    unruled sheets (no boundaries found at all).
+    """
+    if b_mod is None or not mod_y or not assign:
+        return
+    import bisect as _bs
+    for pi in {a[0] for a in assign}:
+        try:
+            page = pdf_pages[pi]
+        except Exception:
+            continue
+        bounds = _module_block_bounds(page, b_mod)
+        if len(bounds) < 2:
+            continue
+        def _blk(y, bounds=bounds):
+            return _bs.bisect_right(bounds, y) - 1
+        owners = {}
+        ok = True
+        for gi, p2, y in mod_y:
+            if p2 != pi:
+                continue
+            b = _blk(y)
+            if b < 0 or b >= len(bounds) - 1 or b in owners:
+                ok = False          # two names in one cell: do not trust the grid
+                break
+            owners[b] = gi
+        if not ok or not owners:
+            continue
+        touched = set()
+        for ai, (p2, y, gi, slot, chunk) in enumerate(assign):
+            if p2 != pi:
+                continue
+            tgt = owners.get(_blk(y))
+            if tgt is not None and tgt != gi and chunk in groups[gi][slot]:
+                groups[gi][slot].remove(chunk)
+                groups[tgt][slot].append(chunk)
+                touched.add((gi, slot))
+                touched.add((tgt, slot))
+                assign[ai] = (p2, y, tgt, slot, chunk)
+        if not touched:
+            continue
+        # keep every touched slot in reading order after the moves
+        y_of = {}
+        for p2, y, gi, slot, chunk in assign:
+            if p2 == pi:
+                y_of.setdefault((gi, slot, chunk), y)
+        for gi, slot in touched:
+            groups[gi][slot].sort(key=lambda c: y_of.get((gi, slot, c), 0))
 
 
 def _lesson_total(rows):

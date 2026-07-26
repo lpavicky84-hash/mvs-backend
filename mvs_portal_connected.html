@@ -779,6 +779,16 @@
   .alert{padding:14px 18px;border-radius:12px;font-size:.875rem;margin-bottom:16px}
   .alert-warning{background:#fffbeb;border:1px solid #fcd34d;color:#92400e}.alert-success{background:#f0fdf4;border:1px solid #86efac;color:#166534}.alert-danger{background:#fef2f2;border:1px solid #fca5a5;color:#991b1b}.alert-info{background:#eff6ff;border:1px solid #93c5fd;color:#1e40af}
   .chip{display:inline-flex;padding:3px 10px;border-radius:99px;font-size:.72rem;font-weight:600;background:var(--bg);border:1px solid var(--border);margin:2px}
+  /* login credential rows: per-field copy buttons (ID copy, password eye+copy) */
+  .cred-box{margin-top:6px}
+  .cred-row{display:flex;align-items:center;gap:8px;margin-top:10px}
+  .cred-lab{font-size:.72rem;font-weight:700;color:var(--text-muted);width:74px;flex-shrink:0}
+  .cred-val{flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-weight:800;font-size:.95rem;letter-spacing:.4px;user-select:all;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cred-btn{flex-shrink:0;width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text-muted);cursor:pointer;transition:all .15s}
+  .cred-btn:hover{color:var(--primary);border-color:var(--primary);background:var(--primary-50)}
+  .cred-btn.ok{color:#059669;border-color:#059669;background:#ecfdf5}
+  .cred-btn svg{width:16px;height:16px}
+  .cred-all{margin-top:12px;width:100%;justify-content:center}
   .tabs{display:flex;gap:4px;background:var(--bg);padding:4px;border-radius:10px;margin-bottom:24px;width:fit-content;border:1px solid var(--border);flex-wrap:wrap}
   .tab{padding:8px 18px;border-radius:8px;cursor:pointer;font-size:.85rem;font-weight:600;color:var(--text-muted)}.tab.active{background:var(--card);color:var(--primary);box-shadow:var(--shadow)}
   .countdown{display:inline-flex;gap:8px;align-items:center;background:var(--primary);color:#fff;padding:8px 16px;border-radius:8px;font-weight:700;font-size:.9rem}
@@ -2436,6 +2446,9 @@ const ICONS={
   calendar:_S+'<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
   upload:_S+'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
   clipboard:_S+'<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>',
+  copy:_S+'<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+  eye:_S+'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
+  eyeOff:_S+'<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>',
   edit:_S+'<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>',
   book:_S+'<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
   folder:_S+'<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
@@ -6764,26 +6777,58 @@ async function loadAReports(){
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 
+// ============ LOGIN CREDENTIAL ROWS (per-field copy, like the app) ============
+// renders: [Login ID  | value | copy] [Password | value | eye | copy] [Copy both]
+function _credRows(uid,pass,shareWith){
+  return `<div class="cred-box">
+    <div class="cred-row"><span class="cred-lab">Login ID</span>
+      <div class="cred-val" id="cred-uid">${esc(uid)}</div>
+      <button class="cred-btn" title="Copy ID" onclick="copyCred(this,'uid')">${ic('copy')}</button></div>
+    <div class="cred-row"><span class="cred-lab">Password</span>
+      <div class="cred-val" id="cred-pass">${esc(pass)}</div>
+      <button class="cred-btn" title="Show / hide password" onclick="toggleCredPass(this)">${ic('eyeOff')}</button>
+      <button class="cred-btn" title="Copy password" onclick="copyCred(this,'pass')">${ic('copy')}</button></div>
+    <button class="btn btn-ghost btn-sm cred-all" onclick="copyCred(this,'both')">${ic('copy')} Copy both (ID + password)</button>
+    ${shareWith?`<div style="font-size:.72rem;color:var(--text-muted);margin-top:8px">Share these with the ${esc(shareWith)} — tap any copy button; only that one value is copied.</div>`:''}
+  </div>`;
+}
+function copyCred(btn,what){
+  const uid=(document.getElementById('cred-uid')||{}).textContent||'';
+  const passEl=document.getElementById('cred-pass')||{};
+  // masked dots are never copied — always the real password
+  const pass=(passEl.dataset&&passEl.dataset.masked==='1') ? (passEl.dataset.real||'') : (passEl.textContent||'');
+  const text = what==='uid' ? uid : what==='pass' ? pass : `Login ID: ${uid}\nPassword: ${pass}`;
+  navigator.clipboard.writeText(text).then(()=>{
+    toast(what==='both' ? 'ID + password copied!' : (what==='uid' ? 'Login ID copied!' : 'Password copied!'));
+    if(what!=='both'){ const old=btn.innerHTML; btn.innerHTML=ic('check'); btn.classList.add('ok');
+      setTimeout(()=>{ btn.innerHTML=old; btn.classList.remove('ok'); },1200); }
+  });
+}
+function toggleCredPass(btn){
+  const el=document.getElementById('cred-pass'); if(!el) return;
+  if(el.dataset.masked==='1'){ el.textContent=el.dataset.real||''; el.dataset.masked='0'; btn.innerHTML=ic('eyeOff'); btn.title='Hide password'; }
+  else{ el.dataset.real=el.textContent; el.textContent='\u2022'.repeat(Math.max(el.textContent.length,6)); el.dataset.masked='1'; btn.innerHTML=ic('eye'); btn.title='Show password'; }
+}
+
 // ============ ADMIN PASSWORD RESET ============
 function openResetPassword(role,profileId,name){
   showModal('Reset Password \u2014 '+name,
     `<p style="font-size:.85rem;color:var(--text-muted);margin-bottom:14px">For security reasons, the current password cannot be viewed. Set a new password below \u2014 leave the field empty to auto-generate a strong password.</p>
      <div class="form-group"><label>New Password (optional)</label><input class="form-control" id="rp-pass" placeholder="Leave empty to auto-generate" autocomplete="new-password"></div>
-     <div id="rp-result" style="display:none;margin-top:14px;padding:14px;border-radius:12px;background:var(--primary-50);border:1px solid var(--border)"><div style="font-size:.78rem;color:var(--text-muted);margin-bottom:6px">New login credentials \u2014 share these with the teacher:</div><div style="font-weight:800;font-size:1.02rem;user-select:all" id="rp-creds"></div><button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick="copyResetCreds()">Copy</button></div>`,
+     <div id="rp-result" style="display:none;margin-top:14px;padding:14px 14px 6px;border-radius:12px;background:var(--primary-50);border:1px solid var(--border)"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" id="rp-save" onclick="doResetPassword('${role}',${profileId})">Reset Password</button>`);
 }
 async function doResetPassword(role,profileId){
   const btn=document.getElementById('rp-save'); btn.disabled=true; btn.textContent='Resetting...';
   try{
     const r=await api('/api/admin/reset-password','POST',{role,profile_id:profileId,password:document.getElementById('rp-pass').value.trim()});
-    document.getElementById('rp-creds').textContent=`ID: ${r.user_id}   \u2022   Password: ${r.password}`;
-    window._rpCreds=`Login ID: ${r.user_id}\nPassword: ${r.password}`;
+    document.getElementById('rp-result').innerHTML=
+      `<div style="font-size:.78rem;color:var(--text-muted)">New login credentials:</div>`+_credRows(r.user_id,r.password,role);
     document.getElementById('rp-result').style.display='block';
     btn.textContent='Done \u2713';
     toast('Password reset successfully.');
   }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Reset Password'; }
 }
-function copyResetCreds(){ navigator.clipboard.writeText(window._rpCreds||'').then(()=>toast('Copied!')); }
 async function loadATeachers(){
   const el=document.getElementById('a-teachers-content');
   try{
@@ -9826,7 +9871,7 @@ function renderStudentWeekly(tl, subjects, opts){
 function genPassword(){ const c='abcdefghjkmnpqrstuvwxyz23456789'; let p=''; for(let i=0;i<6;i++)p+=c[Math.floor(Math.random()*c.length)]; return p; }
 function showCredentials(role,name,uid,pass){
   showModal(role+' Added Successfully',
- `<div class="alert alert-success">Share these login details with the ${role.toLowerCase()}. Please note them down.</div><div class="form-group"><label>Name</label><input class="form-control" value="${esc(name)}" readonly></div><div class="form-group"><label>User ID</label><input class="form-control" value="${esc(uid)}" readonly onclick="this.select()"></div><div class="form-group"><label>Password</label><input class="form-control" value="${esc(pass)}" readonly onclick="this.select()"></div>`,
+ `<div class="alert alert-success">Share these login details with the ${role.toLowerCase()}. Please note them down.</div><div class="form-group" style="margin-bottom:2px"><label>Name</label><input class="form-control" value="${esc(name)}" readonly></div>${_credRows(uid,pass,role.toLowerCase())}`,
  `<button class="btn btn-primary" onclick="closeModal()">OK, Noted</button>`);
 }
 
