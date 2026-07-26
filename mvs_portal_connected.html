@@ -2406,7 +2406,7 @@ body.dark .cal-d.on{color:#34d399}
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
 </head>
 <body><!-- LANDING -->
-<div id="landing"><div class="landing-logo"><h1> MVS Foundation</h1><p>Institute Management Portal — Teachers · Students · Admin</p></div><div class="portal-cards"><div class="portal-card" onclick="goLogin('teacher')"><div class="icon"></div><h3>Teacher Portal</h3><p>Class tracking, PDF upload, DPP, doubts</p></div><div class="portal-card" onclick="goLogin('student')"><div class="icon"></div><h3>Student Portal</h3><p>Time table, downloads, tests, progress</p></div><div class="portal-card" onclick="goLogin('admin')"><div class="icon"></div><h3>Admin Panel</h3><p>Approvals, manage teachers & students</p></div></div>
+<div id="landing"><div class="landing-logo"><h1> MVS Foundation</h1><p>Class Manager — Teachers · Students · Admin</p></div><div class="portal-cards"><div class="portal-card" onclick="goLogin('teacher')"><div class="icon"></div><h3>Teacher Portal</h3><p>Class tracking, PDF upload, DPP, doubts</p></div><div class="portal-card" onclick="goLogin('student')"><div class="icon"></div><h3>Student Portal</h3><p>Time table, downloads, tests, progress</p></div><div class="portal-card" onclick="goLogin('admin')"><div class="icon"></div><h3>Admin Panel</h3><p>Approvals, manage teachers & students</p></div></div>
 </div><!-- LOGIN -->
 <div id="login-screen"><div class="login-box"><!-- Standard login (teacher/admin, and student fallback) --><div id="login-standard"><h2 id="login-title">Login</h2><p id="login-subtitle">MVS Foundation Portal</p><div class="form-group"><label>User ID</label><input class="form-control" id="login-uid" placeholder="User ID"></div><div class="form-group"><label>Password</label><input class="form-control" type="password" id="login-pass" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()"></div><button class="login-btn" id="login-btn" onclick="doLogin()">Login</button><p style="text-align:center;margin-top:16px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Back</p></div><!-- Student phone onboarding --><div id="login-student-phone" style="display:none"><h2> Welcome!</h2><p>Enter your registered phone number</p><div class="form-group"><label>Phone Number</label><input class="form-control" id="sp-phone" placeholder="98765xxxxx" onkeydown="if(event.key==='Enter')fetchStudent()"></div><button class="login-btn" id="sp-fetch-btn" onclick="fetchStudent()">View My Details</button><p style="text-align:center;margin-top:16px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Back</p></div><!-- Student credentials display --><div id="login-student-creds" style="display:none"><h2 id="sc-congrats"> Congratulations!</h2><p>These are your login details — please copy them.</p><div class="form-group"><label>User ID</label><input class="form-control" id="sc-uid" readonly onclick="this.select()"></div><div class="form-group"><label>Password</label><input class="form-control" id="sc-pass" readonly onclick="this.select()"></div><button class="login-btn" onclick="studentDirectLogin()">Login →</button><p style="text-align:center;margin-top:16px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Back</p></div></div>
 </div><!-- SUBJECT SELECTION (student onboarding) -->
@@ -2452,7 +2452,9 @@ const ICONS={
   download:_S+'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
   moon:_S+'<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
   sun:_S+'<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>',
-  play:_S+'<polygon points="5 3 19 12 5 21 5 3"/></svg>'
+  play:_S+'<polygon points="5 3 19 12 5 21 5 3"/></svg>',
+  trophy:_S+'<path d="M6 9a6 6 0 0 0 12 0V3H6z"/><path d="M6 5H3v2a3 3 0 0 0 3 3"/><path d="M18 5h3v2a3 3 0 0 1-3 3"/><path d="M12 15v3"/><path d="M8 21h8"/><path d="M10 18h4"/></svg>',
+  target:_S+'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>'
 };
 function ic(k){ return ICONS[k]||''; }
 function statCard(label,num,iconKey,accent,nav){
@@ -2550,7 +2552,7 @@ async function smartCompress(file,statusCb){
   }
   return {file, ok:file.size<=MAXB};
 }
-const NAV_ICON={'syllabus tracker':'clipboard','syllabus manager':'book','tests tracker':'clipboard','dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book','classes material':'folder','attendance':'clock','teacher attendance':'clock','payout':'wallet','payouts':'wallet','my attendance':'clock','my payout':'wallet','study material':'book','teacher reports':'chart','class compliance':'shield','live users':'user','admin users':'shield','send notice':'megaphone'};
+const NAV_ICON={'result card':'trophy','teacher ranking':'trophy','predicted results':'chart','syllabus tracker':'clipboard','syllabus manager':'book','tests tracker':'clipboard','dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book','classes material':'folder','attendance':'clock','teacher attendance':'clock','payout':'wallet','payouts':'wallet','my attendance':'clock','my payout':'wallet','study material':'book','teacher reports':'chart','class compliance':'shield','live users':'user','admin users':'shield','send notice':'megaphone'};
 function injectNavIcons(){
   document.querySelectorAll('.nav-item').forEach(el=>{
     if(el.querySelector('svg')) return;
@@ -2733,10 +2735,40 @@ async function sendMessageAdmin(){
   try{ const r=await api('/api/teacher/message-admin','POST',{title,message}); toast(r.message||'Message sent.'); closeModal(); }
   catch(e){ document.getElementById('ma-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Send'; }
 }
+/* notification type -> us section ka page jahan redirect hona hai */
+const NOTIF_GO={
+  student:{new_material:'materials',new_notes:'materials',questionbank:'qbank',test_reminder:'tests',exam_result:'tests',marks:'tests',
+    doubt_resolved:'doubts',new_doubt:'doubts',doubt:'doubts',timetable:'timetable',new_class:'timetable',class:'timetable',
+    reschedule_approved:'timetable',reschedule_rejected:'timetable',dpp:'dpp',new_dpp:'dpp',dpp_checked:'dpp',
+    result:'resultcard',predicted:'resultcard',warning:'dashboard'},
+  teacher:{class_request:'timetable',class_approved:'timetable',class_rejected:'timetable',new_class:'timetable',timetable:'timetable',
+    doubt:'doubts',new_doubt:'doubts',admin_message:'notifications',admin_broadcast:'notifications',broadcast:'notifications',
+    payout:'payout',attendance:'attendance',dpp:'dpp',test:'tests',warning:'dashboard'},
+  admin:{class_request:'approvals',teacher_to_admin:'reports',app_review:'approvals',new_class:'timetable',timetable:'timetable',
+    doubt:'doubts',teacher_message:'reports',payout:'payouts',attendance:'attendance',warning:'dashboard'}
+};
+async function notifGo(role,nid,type){
+  if(nid){ try{ await api(notifEp(role,'/notifications/'+nid+'/read'),'PATCH'); }catch(e){} }
+  refreshNotifBadge(role);
+  const page=(NOTIF_GO[role]||{})[type||''];
+  closeModal();
+  if(!page) return;
+  const navTo=(role==='teacher')?tPage:(role==='admin')?aPage:sPage;
+  try{ navTo(page,null); }catch(e){}
+  // navbar me active item bhi sahi dikhe
+  const appId=role==='teacher'?'teacher-app':role==='admin'?'admin-app':'student-app';
+  document.querySelectorAll('#'+appId+' .nav-item').forEach(el=>{
+    el.classList.remove('active');
+    if((el.getAttribute('onclick')||'').includes("'"+page+"'")) el.classList.add('active');
+  });
+}
 async function openNotifPanel(role){
   let list;
   try{ list=await fetchNotifs(role); }catch(e){ if(e&&e.status===401){ _sessionExpired(); return; } list=[]; }
-  const html=list.length?list.map(n=>`<div class="notif-item ${n.is_read?'':'unread'}"><div class="ni-title">${esc(n.title)}</div><div class="ni-msg">${esc(n.message)}</div><div class="ni-time"> ${fmtNice(n.created_at)}</div></div>`).join(''):'<div class="empty-state"><div class="empty-icon"></div><p>No notifications yet</p></div>';
+  const html=list.length?list.map(n=>{
+    const go=(NOTIF_GO[role]||{})[n.notif_type||''];
+    return `<div class="notif-item ${n.is_read?'':'unread'}"${go?` style="cursor:pointer" onclick="notifGo('${role}',${n.id},'${esc(n.notif_type||'')}')" title="Tap to open this section"`:''}><div class="ni-title">${esc(n.title)}${go?' <span style="font-size:.68rem;color:var(--primary);font-weight:800">&#8250;</span>':''}</div><div class="ni-msg">${esc(n.message)}</div><div class="ni-time"> ${fmtNice(n.created_at)}</div></div>`;
+  }).join(''):'<div class="empty-state"><div class="empty-icon"></div><p>No notifications yet</p></div>';
   showModal(' Notifications',html,list.some(n=>!n.is_read)?`<button class="btn btn-primary" onclick="markAllRead('${role}')">Mark All Read</button>`:`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
 }
 async function markAllRead(role){
@@ -9278,9 +9310,13 @@ async function loadNotif(path,elId){
   try{
  let ns=await api(path);
  try{ const loc=JSON.parse(localStorage.getItem('mvs_local_notifs')||'[]'); if(loc.length&&elId==='s-notif-content') ns=loc.concat(ns); }catch(e){}
+ const role=elId.startsWith('t-')?'teacher':elId.startsWith('a-')?'admin':'student';
  let html=`<div class="card"><div class="card-header"><h3> Notifications</h3></div><div class="card-body">`;
  if(ns.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No notifications yet</p></div>`;
- ns.forEach(n=>{ html+=`<div class="doubt-card" style="border-left-color:${n.is_read?'var(--border)':'var(--primary)'}"><div style="display:flex;justify-content:space-between"><h4 style="font-size:.9rem">${esc(n.title)}</h4><small style="color:var(--text-muted)">${new Date(n.created_at).toLocaleString()}</small></div><p style="font-size:.82rem;color:var(--text-muted);margin-top:6px">${esc(n.message)}</p></div>`; });
+ ns.forEach(n=>{
+   const go=(NOTIF_GO[role]||{})[n.notif_type||''];
+   html+=`<div class="doubt-card" style="border-left-color:${n.is_read?'var(--border)':'var(--primary)'}${go?';cursor:pointer':''}"${go?` onclick="notifGo('${role}',${n.id||0},'${esc(n.notif_type||'')}')" title="Tap to open this section"`:''}><div style="display:flex;justify-content:space-between"><h4 style="font-size:.9rem">${esc(n.title)}${go?' <span style="font-size:.7rem;color:var(--primary);font-weight:800">&#8250;</span>':''}</h4><small style="color:var(--text-muted)">${new Date(n.created_at).toLocaleString()}</small></div><p style="font-size:.82rem;color:var(--text-muted);margin-top:6px">${esc(n.message)}</p></div>`;
+ });
  html+=`</div></div>`;
  el.innerHTML=html;
   }catch(e){ el.innerHTML=errHtml(e); }
@@ -11483,6 +11519,27 @@ async function ocrFillQuestion_v1(inp,i){
 .dark .syl-rcard{background:#171a26;border-color:#2a2e3f}
 .syl-rcard-h{display:flex;align-items:center;gap:11px;padding:16px 18px;color:#fff;position:relative;
  background:linear-gradient(120deg,#1e1b4b,#4f46e5 60%,#7c3aed)}
+/* per-target themes */
+.syl-rcard.pass .syl-rcard-h{background:linear-gradient(120deg,#064e3b,#059669 60%,#10b981)}
+.syl-rcard.pass .syl-rcard-cong{background:linear-gradient(120deg,#ecfdf5,#f0fdf4);color:#065f46}
+.syl-rcard.pass .syl-rcard-pct{background:linear-gradient(120deg,#ecfdf5,#f0fdf4);border-color:#bbf7d0}
+.syl-rcard.high .syl-rcard-h{background:linear-gradient(120deg,#1e3a8a,#2563eb 60%,#0ea5e9)}
+.syl-rcard.high .syl-rcard-cong{background:linear-gradient(120deg,#eff6ff,#ecfeff);color:#1e40af}
+.syl-rcard.high .syl-rcard-pct{background:linear-gradient(120deg,#eff6ff,#ecfeff);border-color:#bfdbfe}
+.syl-rcard.high .syl-rcard-pct b{color:#2563eb}
+.syl-rcard.high .syl-rcard-pct span{color:#1e40af}
+.syl-rcard.top .syl-rcard-h{background:linear-gradient(120deg,#581c87,#9333ea 55%,#f59e0b)}
+.syl-rcard.top .syl-rcard-cong{background:linear-gradient(120deg,#faf5ff,#fefce8);color:#6b21a8}
+.syl-rcard.top .syl-rcard-pct{background:linear-gradient(120deg,#faf5ff,#fef9c3);border-color:#e9d5ff}
+.syl-rcard.top .syl-rcard-pct b{color:#9333ea}
+.syl-rcard.top .syl-rcard-pct span{color:#6b21a8}
+.syl-rcard.top{box-shadow:0 14px 44px rgba(147,51,234,.22)}
+.dark .syl-rcard.pass .syl-rcard-cong,.dark .syl-rcard.high .syl-rcard-cong,.dark .syl-rcard.top .syl-rcard-cong{background:rgba(255,255,255,.05)}
+.syl-rcard-ref{padding:9px 18px;font-size:.78rem;border-bottom:1px dashed #e6e9f0;color:#475569;background:#fafbff}
+.dark .syl-rcard-ref{border-color:#2a2e3f;background:#1a1d2b;color:#cbd5e1}
+.syl-thcell{cursor:pointer;position:relative}
+.syl-thcell:hover{background:rgba(79,70,229,.08)}
+.syl-thcell b{border-bottom:1.5px dotted rgba(79,70,229,.6)}
 .syl-rcard-h b{display:block;font-size:.95rem;letter-spacing:.08em}
 .syl-rcard-h span{display:block;font-size:.7rem;opacity:.85;margin-top:1px}
 .syl-rcard-logo{width:38px;height:38px;border-radius:11px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);
@@ -11982,6 +12039,7 @@ function sylHome(){
   var high=ready.filter(function(s){return s.calc.high_reached}).length;
   var picked=ov.subjects.reduce(function(a,s){return a+(s.selected||0)},0);
   var noTarget=!me.target, noSession=!me.exam_session;
+  var noGoal=!me.goal, noGoalCustom=(me.goal==='other' && !(me.goal_custom||'').trim());
   var showDate=!!(me.exam_session && ex.custom);
   var opts='<option value="">Select your exam session</option>'+(me.sessions||[]).map(function(x){
     return '<option value="'+esc(x.id)+'"'+(me.exam_session===x.id?' selected':'')+'>'+esc(x.label)+'</option>';}).join('');
@@ -11991,16 +12049,31 @@ function sylHome(){
   h+='<div class="syl-hero"><div class="syl-g syl-g2">'
    +'<div><label class="form-label">Exam session</label>'
    +'<select class="form-control'+(noSession?' syl-req':'')+'" id="syl-sess" onchange="sylProfile(this.value,null,null)">'+opts+'</select>'
-   +(noSession?'<div class="syl-reqmsg">Choose your exam session first</div>':'')+'</div>'
-   +'<div><label class="form-label">My target</label>'
+   +(noSession?'<div class="syl-reqmsg">Choose your exam session first</div>'
+     :(me.session_auto?'<div class="syl-datenote">Auto-selected for you &mdash; tap to change if needed</div>':''))+'</div>'
+   +'<div><label class="form-label">My Target Marks</label>'
    +'<select class="form-control'+(noTarget?' syl-req':'')+'" id="syl-tgt" onchange="sylProfile(null,this.value,null)">'
-   +'<option value=""'+(noTarget?' selected':'')+'>Select your target</option>'
+   +'<option value=""'+(noTarget?' selected':'')+'>Select your target marks</option>'
    +'<option value="pass"'+(me.target==='pass'?' selected':'')+'>Clear the exam (passing marks)</option>'
    +'<option value="high"'+(me.target==='high'?' selected':'')+'>Score '+me.high_target+' percent or above</option>'
    +'<option value="top"'+(me.target==='top'?' selected':'')+'>Score '+(me.top_target||90)+' percent or above</option>'
    +'</select>'
-   +(noTarget?'<div class="syl-reqmsg">Target is compulsory, everything below is planned around it</div>':'')+'</div>'
+   +(noTarget?'<div class="syl-reqmsg">Target marks compulsory hai &mdash; neeche ka poora plan isi par banta hai</div>':'')+'</div>'
    +'</div>'
+   +'<div class="syl-g syl-g2" style="margin-top:12px"><div>'
+   +'<label class="form-label">Select your goal</label>'
+   +'<select class="form-control'+(noGoal?' syl-req':'')+'" id="syl-goal" onchange="sylGoalSave(this.value)">'
+   +'<option value=""'+(noGoal?' selected':'')+'>Kis liye padh rahe ho? (compulsory)</option>'
+   +'<option value="jee"'+(me.goal==='jee'?' selected':'')+'>JEE Aspirant</option>'
+   +'<option value="neet"'+(me.goal==='neet'?' selected':'')+'>NEET Aspirant</option>'
+   +'<option value="other"'+(me.goal==='other'?' selected':'')+'>Other</option>'
+   +'</select>'
+   +(me.goal==='other'
+     ?'<input type="text" class="form-control'+(noGoalCustom?' syl-req':'')+'" id="syl-goalc" style="margin-top:8px" maxlength="120" '
+      +'placeholder="Write your goal (e.g. CA Foundation, Boards, Skill course)" value="'+esc(me.goal_custom||'')+'" onchange="sylGoalCustomSave(this.value)">'
+      +(noGoalCustom?'<div class="syl-reqmsg">Apna goal likhna compulsory hai</div>':''):'')
+   +(noGoal?'<div class="syl-reqmsg">Goal select karna compulsory hai &mdash; congratulations aur reports isi ke hisaab se bante hain</div>':'')
+   +'</div></div>'
    +(showDate?'<div class="syl-g syl-g2" style="margin-top:12px"><div>'
      +'<label class="form-label">Your On Demand examination date</label>'
      +'<input type="date" class="form-control'+(ex.theory_date?'':' syl-req')+'" id="syl-exdate" value="'+esc(ex.theory_date||'')+'" onchange="sylProfile(null,null,this.value)">'
@@ -12445,13 +12518,50 @@ async function sylProfile(session,target,examDate){
   }catch(e){ sylBusy(false); toast(e.message,true); }
 }
 
-/* every action needs a target, otherwise the plan has nothing to aim at */
+/* target marks + goal dono compulsory hain — inke bina neeche ke buttons
+   kaam nahi karte, popup batata hai kaunsa field khali hai */
 function sylNeedTarget(){
-  if(_SYL.me && _SYL.me.target) return false;
-  var n=_sylEl('syl-tgt');
-  if(n){ n.classList.add('syl-req'); if(n.scrollIntoView) n.scrollIntoView({behavior:'smooth',block:'center'}); }
-  toast('Please select your target first.',true);
+  var me=_SYL.me||{};
+  var missing=[];
+  if(!me.target) missing.push('My Target Marks');
+  if(!me.goal) missing.push('Select your goal');
+  else if(me.goal==='other' && !(me.goal_custom||'').trim()) missing.push('Write your goal (Other)');
+  if(!missing.length) return false;
+  ['syl-tgt','syl-goal','syl-goalc'].forEach(function(id){
+    var n=_sylEl(id);
+    if(n && ((id==='syl-tgt'&&!me.target)||(id==='syl-goal'&&!me.goal)||(id==='syl-goalc'&&me.goal==='other'&&!(me.goal_custom||'').trim()))){
+      n.classList.add('syl-req');
+      if(!sylNeedTarget._scrolled){ n.scrollIntoView&&n.scrollIntoView({behavior:'smooth',block:'center'}); sylNeedTarget._scrolled=true; }
+    }
+  });
+  sylNeedTarget._scrolled=false;
+  if(typeof showModal==='function'){
+    showModal('Pehle ye complete karo',
+      '<div style="text-align:center;padding:8px 4px 2px"><div style="font-size:1.9rem">&#9873;&#65039;</div>'
+      +'<p style="font-size:.9rem;line-height:1.7;margin:8px auto;max-width:320px">Aage badhne se pehle upar ye field'+(missing.length>1?'s':'')+' bharna <b>compulsory</b> hai:</p>'
+      +'<div style="display:flex;flex-direction:column;gap:7px;max-width:260px;margin:0 auto">'
+      +missing.map(function(m){ return '<div style="padding:9px 12px;border-radius:10px;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.25);font-weight:700;font-size:.85rem;color:#b91c1c">'+esc(m)+'</div>'; }).join('')
+      +'</div></div>',
+      '<button class="btn btn-primary" onclick="closeModal()">Theek hai, bharta hoon</button>');
+  } else toast('Pehle '+missing.join(' aur ')+' bharna compulsory hai.',true);
   return true;
+}
+async function sylGoalSave(v){
+  try{
+    await api('/api/syllabus/profile','POST',{goal:v});
+    _SYL.me=await api('/api/syllabus/me');
+    if(v==='other'){ sylHome(); setTimeout(function(){ var n=_sylEl('syl-goalc'); if(n) n.focus(); },120); }
+    else sylHome();
+  }catch(e){ toast(e.message,true); }
+}
+async function sylGoalCustomSave(v){
+  v=(v||'').trim();
+  if(!v){ toast('Apna goal likhna compulsory hai.',true); return; }
+  try{
+    await api('/api/syllabus/profile','POST',{goal_custom:v});
+    _SYL.me=await api('/api/syllabus/me');
+    sylHome(); toast('Goal saved: '+v);
+  }catch(e){ toast(e.message,true); }
 }
 
 async function sylOpen(code){
@@ -12797,6 +12907,45 @@ function _sylTierHit(c, tier){
        : !!(c.pass_reached && c.theory_reached);
 }
 function _sylTierCol(tier){ return tier==='top'?'#7c3aed':tier==='high'?'#d97706':'#059669'; }
+function _sylGoalWord(){
+  var me=_SYL.me||{};
+  if(me.goal==='jee') return 'JEE';
+  if(me.goal==='neet') return 'NEET';
+  if(me.goal==='other' && (me.goal_custom||'').trim()) return me.goal_custom.trim();
+  return '';
+}
+
+/* NIOS ref one-time ask: card banane se pehle reference/enrollment no.
+   maanga jaata hai (sirf jab saved na ho) */
+function sylAskRef(tier){
+  return new Promise(function(resolve){
+    showModal('Write your NIOS Reference/Enrollment No.',
+      '<div style="padding:4px 2px 2px">'
+      +'<p style="font-size:.86rem;line-height:1.7;margin:0 0 10px">Aapka predicted score card ban raha hai! Card par print karne ke liye apna '
+      +'<b>NIOS Reference ya Enrollment No.</b> likho &mdash; ye sirf <b>ek baar</b> maanga jayega, agli baar apne aap aa jayega.</p>'
+      +'<input type="text" class="form-control" id="syl-ref-in" maxlength="40" placeholder="e.g. 12345678901234 ya NIOS/2026/12345">'
+      +'<div class="syl-reqmsg" id="syl-ref-err" style="display:none">Sahi reference/enrollment no. likho (letters, digits, / ya -)</div>'
+      +'</div>',
+      '<button class="btn btn-primary" onclick="sylRefSubmit(\''+tier+'\')">Save &amp; continue</button>');
+    _SYL._refResolve=resolve;
+    setTimeout(function(){ var n=document.getElementById('syl-ref-in'); if(n) n.focus(); },150);
+  });
+}
+async function sylRefSubmit(tier){
+  var n=document.getElementById('syl-ref-in'), err=document.getElementById('syl-ref-err');
+  var v=n?(n.value||'').trim():'';
+  if(!/^[A-Za-z0-9/\-]{4,40}$/.test(v)){ if(err) err.style.display='block'; if(n) n.classList.add('syl-req'); return; }
+  var card=null;
+  try{
+    card=await api('/api/syllabus/predicted','POST',{target:tier,nios_ref:v});
+    _SYL.lastCard=card;
+    try{ _SYL.cards=(await api('/api/syllabus/predicted/mine')).cards||[]; }catch(e){}
+    if(_SYL.me) _SYL.me.nios_ref=card.nios_ref||v;
+  }catch(e){ if(err){ err.textContent=e.message||'Save nahi ho paya, dobara try karo.'; err.style.display='block'; } return; }
+  closeModal();
+  var res=_SYL._refResolve; _SYL._refResolve=null;
+  if(res) res(card);
+}
 
 /* fired from the plan save paths when a target is newly reached in the open subject */
 async function sylMilestone(tier){
@@ -12818,8 +12967,11 @@ async function sylMilestone(tier){
     var card=null;
     try{
       card=await api('/api/syllabus/predicted','POST',{target:tier});
-      _SYL.lastCard=card;
-      try{ _SYL.cards=(await api('/api/syllabus/predicted/mine')).cards||[]; }catch(e){}
+      if(card && card.need_ref){ card=await sylAskRef(tier); }
+      else{
+        _SYL.lastCard=card;
+        try{ _SYL.cards=(await api('/api/syllabus/predicted/mine')).cards||[]; }catch(e){}
+      }
     }catch(e){}
     sylAllSubjects(tier, card);
   }else{
@@ -12866,16 +13018,23 @@ function sylSubjectMilestone(tier, others, days){
 
 function sylAllSubjects(tier, card){
   var lbl=_sylTierLabel(tier), col=_sylTierCol(tier);
-  var title = tier==='high' ? ('JEE '+lbl+' criteria fulfilled')
+  var goal=_sylGoalWord();
+  var title = tier==='high' ? ((goal?goal+' ':'')+lbl+' criteria fulfilled')
             : tier==='pass' ? 'Passing secured in every subject'
             : ('Outstanding &mdash; '+lbl+' in every subject');
+  var highMsg = goal==='JEE'
+      ?'All your subjects have crossed <b>'+esc(lbl)+'</b> &mdash; the <b>JEE percentage criteria</b> is now fulfilled. Congratulations!'
+      : goal==='NEET'
+      ?'All your subjects have crossed <b>'+esc(lbl)+'</b> &mdash; ye <b>NEET ki taiyari</b> ke liye bahut strong base hai. Congratulations!'
+      : goal
+      ?'All your subjects have crossed <b>'+esc(lbl)+'</b> &mdash; ab aap apne goal <b>'+esc(goal)+'</b> ke bahut kareeb ho. Congratulations!'
+      :'All your subjects have crossed <b>'+esc(lbl)+'</b>. Congratulations!';
   var list=card?card.subjects:[];
   showModal(title,
     '<div style="text-align:center;padding:6px 4px 2px">'
     +'<div style="font-size:2.4rem">&#127942;</div>'
     +'<p style="margin:5px 0 0;font-size:.93rem">'
-    +(tier==='high'
-      ?'All your subjects have crossed <b>'+esc(lbl)+'</b> &mdash; the <b>JEE percentage criteria</b> is now fulfilled. Congratulations!'
+    +(tier==='high'?highMsg
       :'Every subject has reached the <b>'+esc(lbl)+'</b> target. Congratulations!')+'</p>'
     +(list.length
       ?'<div style="margin:13px auto 0;max-width:330px;text-align:left">'
@@ -12883,7 +13042,7 @@ function sylAllSubjects(tier, card){
            return '<div class="syl-msrow"><span>'+esc(x.name)+'</span><b style="color:'+col+'">'+esc(lbl)+' &#10003; &middot; '+_sylN(x.projected)+'/100</b></div>';
          }).join('')+'</div>':'')
     +'</div>',
-    (card?'<button class="btn btn-primary" onclick="closeModal();sylCardShow(\''+tier+'\')">View my predicted result card</button>':'')
+    (card?'<button class="btn btn-primary" onclick="closeModal();sylCardShow(\''+tier+'\')">View my predicted score card</button>':'')
     +'<button class="btn btn-ghost" onclick="closeModal();sylSubject(true)">Close</button>');
 }
 
@@ -12895,6 +13054,7 @@ function sylResultCardHtml(card){
   var sess=_sylSessName(me.exam_session||'');
   var name=card.student||((typeof NAME!=='undefined'&&NAME)?NAME:'Student');
   var subs=card.subjects||[];
+  _SYL._rcData=card;
   var showTma=subs.some(function(s){return (s.tma_max||0)>0;});
   var showPr =subs.some(function(s){return (s.practical_max||0)>0;});
   var cell=function(v,mx){
@@ -12906,16 +13066,18 @@ function sylResultCardHtml(card){
     tTh+=(+s.theory||0); tPr+=(+s.practical||0); tTma+=(+s.tma||0);
     var tot=(s.projected!=null)?s.projected:((+s.theory||0)+(+s.tma||0)+(+s.practical||0));
     return '<tr><td>'+(i+1)+'</td><td style="text-align:left">'+esc(s.name)+'</td>'
-     +'<td>'+cell(s.theory,s.theory_max)+'</td>'
+     +'<td class="syl-thcell" onclick="sylCardTheory(\''+esc(s.code)+'\')" title="Tap to see the theory calculation">'+cell(s.theory,s.theory_max)+'</td>'
      +(showPr?'<td>'+cell(s.practical,s.practical_max)+'</td>':'')
      +(showTma?'<td>'+cell(s.tma,s.tma_max)+'</td>':'')
      +'<td><b>'+_sylN(tot)+'</b><span style="opacity:.5;font-size:.7rem">/100</span></td></tr>';
   }).join('');
-  return '<div class="syl-rcard">'
+  var tier=(card.target==='top'?'top':card.target==='high'?'high':'pass');
+  return '<div class="syl-rcard '+tier+'">'
    +'<div class="syl-rcard-h"><div class="syl-rcard-logo">MVS</div>'
-   +'<div style="text-align:left"><b>MVS FOUNDATION</b><span>Predicted Result Card &middot; '+esc(lbl)+' Target</span></div></div>'
+   +'<div style="text-align:left"><b>MVS FOUNDATION</b><span>Predicted Score Card &middot; '+esc(lbl)+' Target</span></div></div>'
    +'<div class="syl-rcard-cong">&#127881; <b>Congratulations, '+esc(name)+'!</b> You have secured the '+esc(lbl)+' target in every subject.</div>'
    +'<div class="syl-rcard-id"><span><b>'+esc(name)+'</b> &middot; Class '+esc(me.class_level||'12')+'</span><span>'+esc(sess)+'</span></div>'
+   +(card.nios_ref?'<div class="syl-rcard-ref">NIOS Reference/Enrollment No.: <b>'+esc(card.nios_ref)+'</b></div>':'')
    +'<table class="syl-rcard-t"><thead><tr><th style="width:26px">#</th><th style="text-align:left">Subject</th>'
    +'<th>Theory</th>'+(showPr?'<th>Practical</th>':'')+(showTma?'<th>TMA</th>':'')+'<th>Total</th></tr></thead>'
    +'<tbody>'+rows+'</tbody>'
@@ -12927,7 +13089,8 @@ function sylResultCardHtml(card){
    +'<div class="syl-rcard-pct"><span>Overall percentage</span><b>'+_sylN(card.percentage)+'%</b></div>'
    +'<p class="syl-rcard-note"><b>Expected result:</b> this card is <b>auto-generated</b> from the syllabus you have '
    +'covered. If you attempt every question in the final paper the same way, your marks should come close to '
-   +'these predicted marks. This is not the official NIOS marksheet.</p>'
+   +'these predicted marks. This is not the official NIOS marksheet. '
+   +'Tap any theory figure to see its full calculation.</p>'
    +'</div>';
 }
 
@@ -12949,6 +13112,50 @@ async function sylCardShow(tier){
 function sylCelebrate(){ sylMilestone('pass'); }
 function sylCongrats(kind){ sylMilestone(kind==='top'?'top':'high'); }
 
+/* ---------- result card: theory calculation popup ---------- */
+function sylCardTheory(code){
+  var card=_SYL._rcData; if(!card) return;
+  var s=(card.subjects||[]).filter(function(x){return x.code===code;})[0]; if(!s) return;
+  var paper=s.paper_max||0, thMax=s.theory_max||0, pass=s.theory_pass||0;
+  var scale=paper?Math.round(thMax/paper*100):100;
+  var th=(+s.theory||0), pap=(+s.paper||0);
+  var row=function(k,v,b){ return '<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 2px;'
+    +(b?'border-top:1px dashed rgba(127,127,127,.3);font-weight:800':'')+'"><span style="opacity:.75">'+k+'</span><b>'+v+'</b></div>'; };
+  showModal('Theory calculation \u00b7 '+esc(s.name),
+    '<div style="text-align:center;padding:4px 2px 2px">'
+    +'<div style="font-size:.72rem;font-weight:800;letter-spacing:.05em;opacity:.55">EXPECTED MARKS IN '+esc(s.name).toUpperCase()+'<br>THEORY EXAMINATION</div>'
+    +'<div style="font-size:2.5rem;font-weight:800;color:#4f46e5;letter-spacing:-1px;margin:6px 0 2px">'+_sylN(pap)+'<span style="font-size:1.1rem;opacity:.5;font-weight:700"> / '+_sylN(paper)+'</span></div>'
+    +'<div style="font-size:.78rem;opacity:.65;margin-bottom:10px">(question paper ke '+_sylN(paper)+' marks mein se)</div>'
+    +'<div style="text-align:left;font-size:.86rem;max-width:320px;margin:0 auto">'
+    +row('Paper marks (chapters covered)', _sylN(pap)+' of '+_sylN(paper))
+    +row('NIOS scaling \u00d7 '+(scale/100), '= '+_sylN(th)+' of '+thMax+' in marksheet')
+    +row('<span class="syl-passlink" onclick="sylCardGrowth(\''+esc(code)+'\')" style="color:#dc2626;cursor:pointer;border-bottom:1.5px dotted #dc2626">Passing marks &#9432;</span>',
+         _sylN(pass)+' of '+thMax, true)
+    +'</div>'
+    +'<p style="margin:12px 0 0;font-size:.8rem;opacity:.7">Marksheet mein theory sirf '+thMax+' marks ka hota hai'
+    +(thMax<paper?' (paper ka '+scale+'%) — baaki TMA se aata hai.':'')+' Passing marks par tap karke dekho kitni growth chahiye.</p>'
+    +'</div>',
+    '<button class="btn btn-primary" onclick="closeModal()">Got it</button>');
+}
+function sylCardGrowth(code){
+  var card=_SYL._rcData; if(!card) return;
+  var s=(card.subjects||[]).filter(function(x){return x.code===code;})[0]; if(!s) return;
+  var th=(+s.theory||0), thMax=s.theory_max||0, pass=s.theory_pass||0;
+  var gap=Math.max(0, Math.round((pass-th)*10)/10);
+  var growth=th>0?Math.round(gap/th*100):(gap>0?100:0);
+  showModal('Passing growth \u00b7 '+esc(s.name),
+    '<div style="text-align:center;padding:6px 4px 2px">'
+    +(gap<=0
+      ?'<div style="font-size:2rem">&#127881;</div><p style="font-size:.92rem;margin-top:8px"><b>'+esc(s.name)+'</b> mein theory passing already secured hai — koi extra growth nahi chahiye.</p>'
+      :'<div style="font-size:.72rem;font-weight:800;letter-spacing:.05em;opacity:.55">GROWTH NEEDED TO PASS THEORY</div>'
+       +'<div style="font-size:2.5rem;font-weight:800;color:#dc2626;margin:6px 0">+'+growth+'%</div>'
+       +'<p style="font-size:.88rem;line-height:1.7;margin:0 auto;max-width:300px">Abhi theory mein <b>'+_sylN(th)+'/'+thMax+'</b> hai. '
+       +'Passing ke liye <b>'+_sylN(pass)+'/'+thMax+'</b> chahiye &mdash; matlab <b>'+_sylN(gap)+' marks</b> aur, '
+       +'yaani current score par <b>'+growth+'% growth</b>. Agle chapters pick karte hi ye gap ghatega.</p>')
+    +'</div>',
+    '<button class="btn btn-primary" onclick="closeModal()">Got it</button>');
+}
+
 /* ---------- dedicated Result Card section (student) ---------- */
 async function loadSResultCards(){
   var el=document.getElementById('s-resultcard-content');
@@ -12968,23 +13175,31 @@ async function loadSResultCards(){
   if(!cards.length){
     el.innerHTML='<div class="card glass-soft"><div class="card-body" style="text-align:center;padding:46px 22px">'
      +'<div style="font-size:2.6rem">&#127942;</div>'
-     +'<h3 style="margin:10px 0 6px">No result card yet</h3>'
+     +'<h3 style="margin:10px 0 6px">No score card yet</h3>'
      +'<p style="font-size:.88rem;color:var(--text-muted);max-width:420px;margin:0 auto 18px">'
      +'Jab aap <b>har subject</b> mein ek target (passing, '+((_SYL.me||{}).high_target||75)+'% ya '+((_SYL.me||{}).top_target||90)
-     +'%) complete kar lenge, aapka <b>MVS Foundation predicted result card</b> yahan automatically ban jayega. '
+     +'%) complete kar lenge, aapka <b>MVS Foundation predicted score card</b> yahan automatically ban jayega. '
      +'Selection clear karne par card wapas hat jayega.</p>'
      +'<button class="btn btn-primary" onclick="sPage(\'syllabus\',null)">Open Syllabus Tracker</button>'
      +'</div></div>';
     return;
   }
-  var order={top:0,high:1,pass:2};
-  cards=cards.slice().sort(function(a,b){return (order[a.target]!=null?order[a.target]:9)-(order[b.target]!=null?order[b.target]:9);});
+  // sirf latest target ka card dikhta hai — passing se 75% par pahunchne par
+  // ab sirf 75% wala card, 90% par pahunchne par sirf 90% wala
+  var rank={top:3,high:2,pass:1};
+  cards=cards.slice().sort(function(a,b){
+    var ta=a.updated_at||'', tb=b.updated_at||'';
+    if(ta!==tb) return ta<tb?1:-1;
+    return (rank[b.target]||0)-(rank[a.target]||0);
+  });
+  var latest=cards[0];
+  var lbl=_sylTierLabel(latest.target);
   var h='<div class="card glass-soft" style="margin-bottom:16px"><div class="card-body" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">'
    +'<div style="font-size:1.9rem">&#127942;</div>'
-   +'<div style="flex:1;min-width:220px"><h3 style="margin:0 0 3px">My Predicted Result Cards</h3>'
-   +'<p style="margin:0;font-size:.82rem;color:var(--text-muted)">Har target ka card tab banta hai jab <b>saare subjects</b> mein woh target cover ho jaye. '
-   +'Theory &middot; Practical &middot; TMA ka bifurcation niche card mein hai.</p></div></div></div>';
-  cards.forEach(function(cd){ h+='<div style="margin-bottom:22px">'+sylResultCardHtml(cd)+'</div>'; });
+   +'<div style="flex:1;min-width:220px"><h3 style="margin:0 0 3px">My Predicted Score Card</h3>'
+   +'<p style="margin:0;font-size:.82rem;color:var(--text-muted)">Abhi aapka latest target <b>'+esc(lbl)+'</b> hai &mdash; iska score card niche hai. '
+   +'Naya target complete karte hi card apne aap upgrade ho jayega. Theory figure par tap karke poora calculation dekho.</p></div></div></div>'
+   +'<div style="margin-bottom:22px">'+sylResultCardHtml(latest)+'</div>';
   el.innerHTML=h;
 }
 
@@ -13241,12 +13456,21 @@ function _sylPredRows(rows){
   if(!rows.length)
     return '<div class="syl-empty">No predicted results yet. They appear automatically once a student '
      +'completes a target in every subject.</div>';
+  var goalWord=function(r){
+    if(r.goal==='jee') return 'JEE Aspirant';
+    if(r.goal==='neet') return 'NEET Aspirant';
+    if(r.goal==='other' && r.goal_custom) return r.goal_custom;
+    return '';
+  };
   return rows.map(function(r){
     var tcol=r.target==='top'?'#7c3aed':r.target==='high'?'#d97706':'#059669';
     var tlbl=r.target==='top'?'90%':r.target==='high'?'75%':'Passing';
+    var gw=goalWord(r);
     return '<div class="syl-prrow"><div class="syl-prank'+(r.rank<=3?' t'+r.rank:'')+'">'+r.rank+'</div>'
      +'<div class="syl-prmain"><b>'+esc(r.name)+'</b>'
-     +'<small>'+esc(r.user_id||'')+(r.batch?' &middot; '+esc(r.batch):'')+(r.class_level?' &middot; Class '+esc(r.class_level):'')+'</small>'
+     +(gw?' <span class="syl-pill2" style="background:rgba(79,70,229,.12);color:#4f46e5;font-size:.6rem" title="Student ka goal">&#127919; '+esc(gw)+'</span>':'')
+     +'<small>'+esc(r.user_id||'')+(r.batch?' &middot; '+esc(r.batch):'')+(r.class_level?' &middot; Class '+esc(r.class_level):'')
+     +(r.nios_ref?' &middot; Ref: '+esc(r.nios_ref):'')+'</small>'
      +'<small class="syl-prsubs">'+r.subjects.map(function(s){return esc(s.name)+' '+_sylN(s.projected);}).join(' &middot; ')+'</small></div>'
      +'<div class="syl-prside"><span class="syl-pill2" style="background:'+tcol+'1a;color:'+tcol+'">'+tlbl+'</span>'
      +'<b style="font-size:1.15rem;color:'+tcol+'">'+_sylN(r.percentage)+'%</b>'

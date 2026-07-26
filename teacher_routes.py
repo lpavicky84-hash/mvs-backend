@@ -215,6 +215,18 @@ def upload_dpp(req: DPPCreate, db: Session = Depends(get_db), current_user=Depen
     db.add(dpp)
     db.commit()
     db.refresh(dpp)
+    # Notify students of this subject — har change ka update students tak pahunchna chahiye
+    try:
+        from models import StudentProfile
+        for sp in db.query(StudentProfile).all():
+            if sp.subjects and (dpp.subject or "").strip() in sp.subjects and sp.user:
+                notify(db, sp.user.id,
+                       f"📝 New DPP: {(dpp.subject or '').strip()}",
+                       f"{current_user.name} ne {(dpp.subject or '').strip()} ({dpp.reference or 'General'}) ka naya DPP diya hai. DPP section mein dekho!",
+                       "new_dpp")
+        db.commit()
+    except Exception:
+        db.rollback()
     return dpp
 
 @router.get("/dpp", response_model=List[DPPOut])
@@ -230,6 +242,19 @@ def create_test(req: TestCreate, db: Session = Depends(get_db), current_user=Dep
     db.add(test)
     db.commit()
     db.refresh(test)
+    # Notify students of this subject about the new test
+    try:
+        from models import StudentProfile
+        when = f"{test.test_date} {test.test_time or ''}".strip()
+        for sp in db.query(StudentProfile).all():
+            if sp.subjects and (test.subject or "").strip() in sp.subjects and sp.user:
+                notify(db, sp.user.id,
+                       f"🧪 New Test Scheduled: {(test.subject or '').strip()}",
+                       f"{current_user.name} ne {(test.subject or '').strip()} ka test schedule kiya hai — {when}. Tests section mein dekho!",
+                       "test_reminder")
+        db.commit()
+    except Exception:
+        db.rollback()
     return test
 
 @router.patch("/tests/{test_id}/upload-paper")

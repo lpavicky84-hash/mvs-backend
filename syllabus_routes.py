@@ -16,6 +16,7 @@ endpoint that touches syllabus tables. Removing it breaks a fresh deploy.
 """
 
 import os
+import re
 import json
 import math
 import hmac
@@ -98,7 +99,9 @@ def _ensure_syllabus(db):
             except Exception:
                 db.rollback()
     for col in ["exam_session VARCHAR(30) NULL", "study_target VARCHAR(10) NULL",
-                "exam_date VARCHAR(20) NULL", "exam_stream VARCHAR(4) NULL"]:
+                "exam_date VARCHAR(20) NULL", "exam_stream VARCHAR(4) NULL",
+                "goal VARCHAR(20) NULL", "goal_custom VARCHAR(120) NULL",
+                "nios_ref VARCHAR(40) NULL"]:
         try:
             db.execute(_text("ALTER TABLE student_profiles ADD COLUMN %s" % col)); db.commit()
         except Exception:
@@ -588,22 +591,58 @@ def _days_left(db, session_id, custom_date=""):
 # STUDENT ENDPOINTS
 # ---------------------------------------------------------------------------
 
+def _auto_session(db, sp):
+    """Portal/app students often never open the session dropdown. Pick the
+    nearest upcoming exam session for them and persist it (stream follows),
+    so days-left, plans and result cards always have a session behind them."""
+    cur = getattr(sp, "exam_session", "") or ""
+    if cur:
+        return cur
+    sess_list = _sessions(db)
+    best = None
+    for x in sess_list:
+        td = _dleft(x.get("theory_date") or x.get("date") or "")
+        if td is not None and td >= 0:
+            if best is None or td < best[1]:
+                best = (x, td)
+    if best is None and sess_list:
+        best = (sess_list[0], None)
+    if not best:
+        return ""
+    x = best[0]
+    st = "1" if x.get("tma", True) else "2"
+    try:
+        db.execute(_text("UPDATE student_profiles SET exam_session=:e, exam_stream=:s WHERE id=:i"),
+                   {"e": x.get("id") or "", "s": st, "i": sp.id})
+        db.commit()
+        sp.exam_session, sp.exam_stream = x.get("id") or "", st
+    except Exception:
+        db.rollback()
+    return getattr(sp, "exam_session", "") or ""
+
+
 @router.get("/me")
 def syl_me(db: Session = Depends(get_db), user=Depends(get_student)):
     _ensure_syllabus(db)
     sp = _student_profile(db, user)
     cl, codes, unmapped = _student_codes(db, sp)
     cfg = _cfg(db)
-    info, sess = _exam_dates(db, getattr(sp, "exam_session", "") or "",
-                             getattr(sp, "exam_date", "") or "")
+    had_session = bool(getattr(sp, "exam_session", "") or "")
+    session_id = _auto_session(db, sp)
+    info, sess = _exam_dates(db, session_id, getattr(sp, "exam_date", "") or "")
     return {
         "name": user.name, "class_level": cl, "subject_codes": codes,
         "unmapped_subjects": unmapped,
-        "exam_session": getattr(sp, "exam_session", "") or "",
+        "exam_session": session_id,
+        "session_auto": bool(session_id) and not had_session,
         "exam_date": getattr(sp, "exam_date", "") or "",
         "stream": _stream_for(db, sp),
         "has_tma": _stream_for(db, sp) == "1",
         "target": getattr(sp, "study_target", "") or "",
+        "goal": getattr(sp, "goal", "") or "",
+        "goal_custom": getattr(sp, "goal_custom", "") or "",
+        "nios_ref": getattr(sp, "nios_ref", "") or "",
+        "source": getattr(sp, "source", "") or "mvs_app",
         "days_left": info["theory_days"], "exam": info,
         "session": sess, "sessions": _sessions(db),
         "high_target": cfg["high_target"], "top_target": cfg["top_target"],
@@ -635,6 +674,26 @@ def syl_profile(payload: dict = Body(...), db: Session = Depends(get_db), user=D
     if payload.get("exam_date") is not None:
         sets.append("exam_date=:d")
         params["d"] = str(payload.get("exam_date") or "")[:20]
+    if payload.get("goal") is not None:
+        g = str(payload.get("goal") or "")[:20]
+        if g not in ("", "jee", "neet", "other"):
+            raise HTTPException(status_code=400, detail="Unknown goal.")
+        sets.append("goal=:g")
+        params["g"] = g
+        if g != "other":
+            # switching away from Other clears the handwritten goal
+            sets.append("goal_custom=:gc")
+            params["gc"] = ""
+    if payload.get("goal_custom") is not None:
+        sets.append("goal_custom=:gc")
+        params["gc"] = str(payload.get("goal_custom") or "")[:120]
+    if payload.get("nios_ref") is not None:
+        ref = str(payload.get("nios_ref") or "").strip()[:40]
+        if ref and not re.match(r"^[A-Za-z0-9/\-]{4,40}$", ref):
+            raise HTTPException(status_code=400,
+                                detail="Reference/Enrollment No. sirf letters, digits, / aur - mein hona chahiye.")
+        sets.append("nios_ref=:r")
+        params["r"] = ref
     if sets:
         db.execute(_text("UPDATE student_profiles SET " + ", ".join(sets) + " WHERE id=:i"), params)
         db.commit()
@@ -839,6 +898,10 @@ def _prediction_card(db, sp, tier):
             "tma_max": mk.get("tma_max") or 0,
             "practical": round(float(c.get("practical_assumed") or 0), 1),
             "practical_max": mk.get("practical_max") or 0,
+            # paper-level numbers for the theory calculation popup
+            "paper": round(float(c.get("covered_paper") or 0), 1),
+            "paper_max": float(c.get("paper_marks") or 0),
+            "theory_pass": float(c.get("theory_pass_mark") or 0),
         })
         total += proj
     n = len(subs)
@@ -858,6 +921,21 @@ def syl_predicted_record(payload: dict = Body(...), db: Session = Depends(get_db
     if not complete:
         raise HTTPException(status_code=409,
                             detail="Every subject must reach this target before the result card is made.")
+    # NIOS reference/enrollment number — app students are asked once, the
+    # saved value is reused on every later card; portal students' value is
+    # fetched straight from their profile record
+    ref = getattr(sp, "nios_ref", "") or ""
+    sent_ref = str((payload or {}).get("nios_ref") or "").strip()[:40]
+    if not ref and sent_ref:
+        if not re.match(r"^[A-Za-z0-9/\-]{4,40}$", sent_ref):
+            raise HTTPException(status_code=400,
+                                detail="Reference/Enrollment No. sirf letters, digits, / aur - mein hona chahiye.")
+        db.execute(_text("UPDATE student_profiles SET nios_ref=:r WHERE id=:i"),
+                   {"r": sent_ref, "i": sp.id})
+        db.commit()
+        ref = sent_ref
+    if not ref and (getattr(sp, "source", "") or "") != "mvs_portal":
+        return {"need_ref": True, "target": tier}
     now = datetime.utcnow()
     ex = db.execute(_text("SELECT id FROM predicted_results WHERE student_id=:s AND target=:t"),
                     {"s": sp.id, "t": tier}).fetchone()
@@ -872,6 +950,7 @@ def syl_predicted_record(payload: dict = Body(...), db: Session = Depends(get_db
                          "VALUES (:s,:t,:sub,:tot,:mx,:pc,:u,:u)"), args)
     db.commit()
     card["student"] = (sp.user.name if getattr(sp, "user", None) else "") or ""
+    card["nios_ref"] = ref
     card["recorded"] = True
     return card
 
@@ -883,16 +962,21 @@ def syl_predicted_mine(db: Session = Depends(get_db), user=Depends(get_student))
     rows = db.execute(_text(
         "SELECT target, subjects, total, max_marks, percentage, updated_at "
         "FROM predicted_results WHERE student_id=:s ORDER BY id"), {"s": sp.id}).fetchall()
+    ref = getattr(sp, "nios_ref", "") or ""
     return {"cards": [{"target": r[0], "subjects": json.loads(r[1] or "[]"), "total": r[2],
-                       "max_marks": r[3], "percentage": r[4], "updated_at": str(r[5] or "")}
-                      for r in rows]}
+                       "max_marks": r[3], "percentage": r[4], "updated_at": str(r[5] or ""),
+                       "nios_ref": ref}
+                      for r in rows],
+            "goal": getattr(sp, "goal", "") or "",
+            "goal_custom": getattr(sp, "goal_custom", "") or ""}
 
 
 @router.get("/admin/predicted")
 def syl_admin_predicted(target: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
     _ensure_syllabus(db)
     q = ("SELECT pr.student_id, pr.target, pr.subjects, pr.total, pr.max_marks, pr.percentage, "
-         "pr.updated_at, sp.class_level, sp.batch_name, u.name, u.user_id "
+         "pr.updated_at, sp.class_level, sp.batch_name, u.name, u.user_id, "
+         "sp.goal, sp.goal_custom, sp.nios_ref "
          "FROM predicted_results pr "
          "JOIN student_profiles sp ON sp.id = pr.student_id "
          "JOIN users u ON u.id = sp.user_id")
@@ -902,7 +986,8 @@ def syl_admin_predicted(target: str = "", db: Session = Depends(get_db), _=Depen
         args["t"] = target
     out = [{"student_id": r[0], "target": r[1], "subjects": json.loads(r[2] or "[]"),
             "total": r[3], "max_marks": r[4], "percentage": r[5], "updated_at": str(r[6] or ""),
-            "class_level": r[7], "batch": r[8], "name": r[9], "user_id": r[10]}
+            "class_level": r[7], "batch": r[8], "name": r[9], "user_id": r[10],
+            "goal": r[11] or "", "goal_custom": r[12] or "", "nios_ref": r[13] or ""}
            for r in db.execute(_text(q), args).fetchall()]
     out.sort(key=lambda x: (-(x["percentage"] or 0), (x["name"] or "").lower()))
     for i, r in enumerate(out, 1):
@@ -920,7 +1005,8 @@ def syl_teacher_predicted(target: str = "", db: Session = Depends(get_db),
     tp = db.query(TeacherProfile).filter(TeacherProfile.user_id == user.id).first()
     tsubs = {str(x).strip().lower() for x in (tp.subjects or []) if str(x).strip()} if tp else set()
     q = ("SELECT pr.student_id, pr.target, pr.subjects, pr.total, pr.max_marks, pr.percentage, "
-         "pr.updated_at, sp.class_level, sp.batch_name, sp.subjects, u.name, u.user_id "
+         "pr.updated_at, sp.class_level, sp.batch_name, sp.subjects, u.name, u.user_id, "
+         "sp.goal, sp.goal_custom, sp.nios_ref "
          "FROM predicted_results pr "
          "JOIN student_profiles sp ON sp.id = pr.student_id "
          "JOIN users u ON u.id = sp.user_id")
@@ -939,7 +1025,8 @@ def syl_teacher_predicted(target: str = "", db: Session = Depends(get_db),
         out.append({"student_id": r[0], "target": r[1], "subjects": json.loads(r[2] or "[]"),
                     "total": r[3], "max_marks": r[4], "percentage": r[5], "updated_at": str(r[6] or ""),
                     "class_level": r[7], "batch": r[8],
-                    "name": r[10], "user_id": r[11]})
+                    "name": r[10], "user_id": r[11],
+                    "goal": r[12] or "", "goal_custom": r[13] or "", "nios_ref": r[14] or ""})
     out.sort(key=lambda x: (-(x["percentage"] or 0), (x["name"] or "").lower()))
     for i, r in enumerate(out, 1):
         r["rank"] = i
@@ -996,6 +1083,9 @@ def _rank_rows(db):
             "pass_done": any(m[0] == "pass" for m in ms),
             "high_done": any(m[0] == "high" for m in ms),
             "top_done": any(m[0] == "top" for m in ms),
+            "goal": getattr(sp, "goal", "") or "",
+            "goal_custom": getattr(sp, "goal_custom", "") or "",
+            "nios_ref": getattr(sp, "nios_ref", "") or "",
         })
     rows.sort(key=lambda r: (-r["coverage"], -r["milestones"], r["name"].lower()))
     for i, r in enumerate(rows, 1):

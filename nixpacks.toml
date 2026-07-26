@@ -1,0 +1,14 @@
+# Railway (nixpacks) build config — FIXED VERSION
+# Pichli file ka install command pip ko PATH pe nahi rakh pata tha
+# ("pip: command not found"). Ab install nixpacks ke apne tareeke se hota hai:
+# pehle venv banta hai, phir usi venv ka pip use hota hai.
+[phases.setup]
+nixPkgs = ["python312"]
+
+[phases.install]
+cmds = ["python -m venv /opt/venv && . /opt/venv/bin/activate && pip install --no-cache-dir -r requirements.txt"]
+
+# Start: agar Railway dashboard me Custom Start Command set hai to WOH chalega
+# (dashboard hamesha is file ke upar hota hai). Ye sirf backup hai.
+[start]
+cmd = "/opt/venv/bin/uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"

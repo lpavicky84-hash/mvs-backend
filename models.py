@@ -124,6 +124,9 @@ class StudentProfile(Base):
     study_target = Column(String(10), nullable=True)     # syllabus tracker: pass | high
     exam_date    = Column(String(20), nullable=True)     # syllabus tracker: On Demand exam date
     exam_stream  = Column(String(4), nullable=True)      # syllabus tracker: NIOS stream 1 / 2 / 3 / 4
+    goal         = Column(String(20), nullable=True)     # jee | neet | other
+    goal_custom  = Column(String(120), nullable=True)    # handwritten goal when goal=other
+    nios_ref     = Column(String(40), nullable=True)     # NIOS reference/enrollment no. (asked once)
     photo_b64    = Column(_PHOTO, nullable=True)
     active_session_token = Column(String(255), nullable=True)  # Single session
     last_seen    = Column(DateTime, nullable=True)
