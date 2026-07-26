@@ -40,11 +40,11 @@ LESSON_LOOSE_RE = re.compile(
     r"([A-Za-z\u0900-\u097F][^\n]{2,90})", re.I
 )
 LEAD_NUM_RE = re.compile(
-    r"^\s*(?:module\s*[\-\u2013]?\s*(?:[IVXLC]+|\d{1,2})\b[\.\):]?\s*|\d{1,2}\s*[\.\)]\s*)", re.I)
+    r"^\s*(?:module\s*[\-\u2013]?\s*(?:[IVXLC]+|\d{1,2}\s*[AB]?)\b[\.\):]?\s*|\d{1,2}\s*[AB]?\s*[\.\)]\s*)", re.I)
 
-# A cell that begins a new module: "Module I", "Module-2", "1." or "1)"
+# A cell that begins a new module: "Module I", "Module-2", "1.", "1)", "6A."
 MODULE_START_RE = re.compile(
-    r"^\s*(?:module\s*[\-\u2013]?\s*(?:[IVXLC]+|\d{1,2})\b|\d{1,2}\s*[\.\)]\s*\S)", re.I)
+    r"^\s*(?:module\s*[\-\u2013]?\s*(?:[IVXLC]+|\d{1,2}\s*[AB]?)\b|\d{1,2}\s*[AB]?\s*[\.\)]\s*\S)", re.I)
 
 # A row that is part of the table heading, never a module
 HEADER_CELL_RE = re.compile(
@@ -81,6 +81,8 @@ def _clean(s):
     s = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", s)
     s = re.sub(r"[\r\n]+", " ", s)
     s = re.sub(r"\s+", " ", s)
+    # a word broken across lines at a hyphen joins back: "pre- historic" -> "pre-historic"
+    s = re.sub(r"(\w)-\s+([a-z])", r"\1-\2", s)
     return s.strip()
 
 
@@ -99,8 +101,11 @@ def _module_name(s):
     while True:
         t = LEAD_NUM_RE.sub("", s).strip()
         if t == s:
-            return s
+            break
         s = t
+    # frequent NIOS print typo: "2oth Century" for "20th Century"
+    s = re.sub(r"\b2oth\b", "20th", s, flags=re.I)
+    return s
 
 
 # "(12 Marks)" printed inside a module name (NIOS bifurcation sheets do this)
@@ -132,7 +137,8 @@ def _stated_count(cell):
 
 
 MARKER_RE = re.compile(
-    r"\b(?:Lesson|Chapter|Ch|L)\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212\.:]?\s*(\d{1,2})\b", re.I)
+    r"\b(?:Lesson|Chapter|Ch|L)\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212\.:]?\s*"
+    r"(\d{1,2})(?:([AB])(?=[\.\s]|$)|\s+([AB])\s*\.)?", re.I)
 
 
 def _title_from_chunk(chunk):
@@ -152,12 +158,14 @@ def _title_from_chunk(chunk):
 
 def _lessons(cell):
     """
-    Pull [(no, title)] out of one table cell.
+    Pull [(no, letter, title)] out of one table cell.
 
     Three layouts are supported:
       bracketed   L-3 (Laws of Motion)   /  Lesson-1 (Atoms and Molecules)
       bare        Lesson-21 d-Block and f-Block Elements
       language    3 : Gillu              (one lesson per line)
+
+    Optional-module variants keep their letter: L-29A / L-30 B. -> (29, "A"/"B", ..).
     """
     raw = "" if cell is None else str(cell)
     raw = re.sub(r"\(cid\s*:\s*\d+\)", "", raw)
@@ -172,7 +180,8 @@ def _lessons(cell):
         chunk = txt[m.end(): marks[i + 1].start() if i + 1 < len(marks) else len(txt)]
         title = _title_from_chunk(chunk)
         if len(title) >= 3:
-            out.append((int(m.group(1)), title))
+            letter = (m.group(2) or m.group(3) or "").upper()
+            out.append((int(m.group(1)), letter, title))
 
     # language subjects: a numbered line starts a lesson, the lines after it
     # continue the same title until the next number
@@ -182,7 +191,7 @@ def _lessons(cell):
             if cur_no is not None:
                 t = COUNT_MARK_RE.sub("", " ".join(cur_title)).strip(" .:\u0964-\u2013\u2014")
                 if t:
-                    out.append((cur_no, _clean(t)))
+                    out.append((cur_no, "", _clean(t)))
         for line in raw.split("\n"):
             line = _clean(line)
             if not line or SKIP_LINE_RE.search(line):
@@ -196,11 +205,11 @@ def _lessons(cell):
         _flush()
 
     seen, uniq = set(), []
-    for no, title in out:
-        if no in seen:
+    for no, letter, title in out:
+        if (no, letter) in seen:
             continue
-        seen.add(no)
-        uniq.append((no, title))
+        seen.add((no, letter))
+        uniq.append((no, letter, title))
     return uniq
 
 
@@ -267,9 +276,9 @@ def _find_bifurcation(tables):
                 groups[-1][2].append(pe_cell)
         rows = []
         for name, tmas, pes in groups:
-            nm = _module_name(name)
-            if not nm or not re.search(r"[A-Za-z]{3}|[\u0900-\u097F]{2}", nm):
-                nm = nm or "Module"
+            # keep the raw numbering here ("6A.") - the caller cleans the name
+            # and reads the option letter off it
+            nm = name if re.search(r"[A-Za-z]{3}|[\u0900-\u097F]{2}", name or "") else (name or "Module")
             rows.append((nm, "\n".join(x for x in tmas if _clean(x)),
                          "\n".join(x for x in pes if _clean(x))))
         return rows
@@ -426,6 +435,35 @@ def _match_weightage(modules, weights):
 # public entry point
 # ---------------------------------------------------------------------------
 
+def _bucket_line(ws, b_mod, b_pe, slack=80):
+    """
+    Split one visual row into (module, tma, pe) word lists. The cut is made
+    at the widest horizontal gap near each header-derived boundary, so a
+    wrapped TMA title that runs long does not bleed into the PE cell.
+    """
+    def cut(words, bound):
+        best = None
+        for i, (a, b) in enumerate(zip(words, words[1:])):
+            # never split right before a bracket: "(14 Marks)" or "(A.D. 300)"
+            # is part of the name or title on the left, not a new column
+            if str(b["text"]).startswith("("):
+                continue
+            gap = b["x0"] - a["x1"]
+            mid = (a["x1"] + b["x0"]) / 2.0
+            if gap > 6 and abs(mid - bound) <= slack and (best is None or gap > best[0]):
+                best = (gap, i + 1)
+        if best is not None:
+            return words[:best[1]], words[best[1]:]
+        i = 0
+        while i < len(words) and words[i]["x0"] < bound:
+            i += 1
+        return words[:i], words[i:]
+
+    mod_ws, rest = cut(ws, b_mod)
+    tma_ws, pe_ws = cut(rest, b_pe)
+    return mod_ws, tma_ws, pe_ws
+
+
 def _position_rows(pdf_pages):
     """
     Read the bifurcation table by word x-position instead of ruling lines.
@@ -457,22 +495,31 @@ def _position_rows(pdf_pages):
         if not words:
             continue
 
+        # the exam column is headed "Public Examination" in older PDFs and
+        # "Term End Examination (60%)" in newer ones - accept both
+        PE_HEAD_RE = re.compile(r"(?:Public|Term|Examination|PE)\b", re.I)
         mod_x = tma_x = pe_x = None
+        tma_top = pe_top = None
         for w in words:
             t = (w.get("text") or "").strip()
             if mod_x is None and re.match(r"(?:MODULE|Lesson)\b", t, re.I):
                 mod_x = w["x0"]
             if tma_x is None and re.match(r"TMA\b", t, re.I):
-                tma_x = w["x0"]
-            if pe_x is None and re.match(r"Public\b", t, re.I):
-                pe_x = w["x0"]
+                tma_x, tma_top = w["x0"], w["top"]
+            if pe_x is None and PE_HEAD_RE.match(t):
+                pe_x, pe_top = w["x0"], w["top"]
+        # a "Term"/"Examination" hit far below the TMA header is a lesson
+        # title word, not the column header - reject it
+        if tma_top is not None and pe_top is not None and abs(tma_top - pe_top) > 42:
+            pe_x = None
         header_top = None
         if tma_x is not None and pe_x is not None and pe_x > tma_x:
             mx = mod_x if mod_x is not None and mod_x < tma_x else 0.0
             b_mod = (mx + tma_x) / 2.0
             b_pe = (tma_x + pe_x) / 2.0
             header_top = min((w["top"] for w in words
-                              if re.match(r"(?:TMA|Public)\b", (w.get("text") or "").strip(), re.I)),
+                              if re.match(r"(?:TMA|Public|Term|Examination)\b",
+                                          (w.get("text") or "").strip(), re.I)),
                              default=None)
         if b_mod is None or b_pe is None:
             continue
@@ -489,9 +536,10 @@ def _position_rows(pdf_pages):
 
         for _top0, _top1, ws in lines:
             ws = sorted(ws, key=lambda x: x["x0"])
-            mod = _clean(" ".join(w["text"] for w in ws if w["x0"] < b_mod))
-            tma = _clean(" ".join(w["text"] for w in ws if b_mod <= w["x0"] < b_pe))
-            pe = _clean(" ".join(w["text"] for w in ws if w["x0"] >= b_pe))
+            mod_ws, tma_ws, pe_ws = _bucket_line(ws, b_mod, b_pe)
+            mod = _clean(" ".join(w["text"] for w in mod_ws))
+            tma = _clean(" ".join(w["text"] for w in tma_ws))
+            pe = _clean(" ".join(w["text"] for w in pe_ws))
             if not (mod or tma or pe):
                 continue
             joined = " ".join(x for x in (mod, tma, pe) if x)
@@ -502,7 +550,7 @@ def _position_rows(pdf_pages):
                     hdr[k2] = int(m.group(1))
 
             tma_cat = bool(re.match(r"TMA\b", tma, re.I)) if tma else False
-            pe_cat = bool(re.match(r"(?:Public|PE)\b", pe, re.I)) if pe else False
+            pe_cat = bool(PE_HEAD_RE.match(pe)) if pe else False
             has_markers = bool(MARKER_RE.search(tma) or MARKER_RE.search(pe))
 
             # per-lesson category layout: "1. Basics of" + category word
@@ -547,6 +595,81 @@ def _lesson_total(rows):
     return sum(len(_lessons(a)) + len(_lessons(b)) for _, a, b in rows)
 
 
+MOD_LETTER_RE = re.compile(r"^\s*(?:module\s*[\-\u2013]?\s*)?(\d{1,2})\s*([AB])\s*[\.\)]", re.I)
+LESSON_NO_RE = re.compile(r"^L-(\d{1,2})([AB]?)$")
+
+
+def _link_or_options(modules):
+    """
+    NIOS optional modules are numbered 6A / 6B: one exam slot, two options,
+    the student sits only one of them. Link each A/B pair with an
+    optional_group, route every lettered lesson to its own option (the PDF
+    often misplaces one), and tidy the option names. Marks stay on the option
+    that carried them; the sibling borrows through the group at read time.
+    """
+    by_num = {}
+    for i, m in enumerate(modules):
+        ml = m.get("_ml")
+        if ml:
+            by_num.setdefault(ml[0], []).append(i)
+    for num, idxs in by_num.items():
+        letters = {modules[i]["_ml"][1] for i in idxs}
+        if not ({"A", "B"} <= letters):
+            continue
+        grp = "option " + num
+        pair = [modules[i] for i in idxs]
+        pool = [l for m in pair for l in m["lessons"]]
+        for m in pair:
+            want = m["_ml"][1]
+            m["optional_group"] = grp
+            m["module"] = re.sub(r"\s+OR\s*$", "", m["module"], flags=re.I).strip() \
+                          + " (Option %s)" % want
+            if want == "A":
+                m["lessons"] = [l for l in pool if not str(l["no"]).endswith("B")]
+            else:
+                m["lessons"] = [l for l in pool if str(l["no"]).endswith("B")]
+            m["lessons"].sort(key=lambda l: (int(LESSON_NO_RE.match(l["no"]).group(1))
+                                             if LESSON_NO_RE.match(l["no"]) else 999, l["no"]))
+        ws = [m["weightage"] for m in pair]
+        if sum(ws) and any(w == 0 for w in ws):
+            top = max(ws)
+            for m in pair:
+                m["weightage"] = top if m["_ml"][1] == "A" else 0.0
+    for m in modules:
+        m.pop("_ml", None)
+    # an option that ended up with no lessons at all only confuses the editor
+    return [m for m in modules if m["lessons"] or not m.get("optional_group")]
+
+
+def _effective_counts(modules):
+    """
+    (total, tma, pe) lesson counts the way NIOS states them on the PDF:
+    every OR option pair is counted once, as the bigger of the two options.
+    """
+    groups = {}
+    for m in modules:
+        g = m.get("optional_group")
+        if g:
+            groups.setdefault(g, []).append(m)
+    grouped = {id(m) for ms in groups.values() for m in ms}
+
+    def _k(m, kind):
+        return len([l for l in m["lessons"] if l["kind"] == kind])
+
+    tot = tma = pe = 0
+    for m in modules:
+        if id(m) in grouped:
+            continue
+        tot += len(m["lessons"])
+        tma += _k(m, "TMA")
+        pe += _k(m, "PE")
+    for ms in groups.values():
+        tot += max(len(m["lessons"]) for m in ms)
+        tma += max(_k(m, "TMA") for m in ms)
+        pe += max(_k(m, "PE") for m in ms)
+    return tot, tma, pe
+
+
 def _words_fallback(pdf_pages):
     """
     Last resort for PDFs with no ruled table.
@@ -568,7 +691,7 @@ def _words_fallback(pdf_pages):
             t = (w.get("text") or "").strip()
             if tma_x is None and re.fullmatch(r"TMA", t, re.I):
                 tma_x = w["x0"]
-            if pe_x is None and re.fullmatch(r"Public", t, re.I):
+            if pe_x is None and re.fullmatch(r"Public|Term|Examination|PE", t, re.I):
                 pe_x = w["x0"]
         if tma_x is None or pe_x is None or pe_x <= tma_x:
             continue
@@ -701,19 +824,20 @@ def parse_syllabus_pdf(data: bytes):
 
     modules, seen_no = [], set()
     dup, empty_mods, count_mismatch = [], [], []
-    for (name, tma_cell, pe_cell), w, cname in zip(rows, weights, clean_names):
-        name = cname or name
+    for (raw_name, tma_cell, pe_cell), w, cname in zip(rows, weights, clean_names):
+        name = cname or raw_name
+        mletter = MOD_LETTER_RE.match(raw_name or "")
         lessons = []
         t_l = _lessons(tma_cell)
         p_l = _lessons(pe_cell)
-        for no, title in t_l:
-            lessons.append({"no": no, "title": title, "kind": "TMA"})
-        for no, title in p_l:
-            lessons.append({"no": no, "title": title, "kind": "PE"})
+        for no, letter, title in t_l:
+            lessons.append({"no": no, "letter": letter, "title": title, "kind": "TMA"})
+        for no, letter, title in p_l:
+            lessons.append({"no": no, "letter": letter, "title": title, "kind": "PE"})
         # the PDF prints "(3 lessons)" at the bottom of each cell - use it
         for label, cell, got in (("TMA", tma_cell, len(t_l)), ("Public Examination", pe_cell, len(p_l))):
             want = _stated_count(cell)
-            if want is not None and want != got:
+            if want is not None and got < want:
                 count_mismatch.append("%s, %s column: PDF says %d lessons but %d were read."
                                       % (name, label, want, got))
         if not lessons:
@@ -721,20 +845,24 @@ def parse_syllabus_pdf(data: bytes):
             if not HEADER_CELL_RE.search(name) and len(name) > 2:
                 empty_mods.append(name)
             continue
-        lessons.sort(key=lambda x: x["no"])
+        lessons.sort(key=lambda x: (x["no"], x["letter"]))
         kept = []
         for l in lessons:
-            if l["no"] in seen_no:
-                dup.append("L-%d" % l["no"])
+            if (l["no"], l["letter"]) in seen_no:
+                dup.append("L-%d%s" % (l["no"], l["letter"]))
                 continue
-            seen_no.add(l["no"])
+            seen_no.add((l["no"], l["letter"]))
             kept.append(l)
         lessons = kept
         modules.append({
             "module": name,
             "weightage": float(w),
-            "lessons": [{"no": "L-%d" % l["no"], "title": l["title"], "kind": l["kind"]} for l in lessons],
+            "lessons": [{"no": "L-%d%s" % (l["no"], l["letter"]), "title": l["title"], "kind": l["kind"]}
+                        for l in lessons],
+            "_ml": (mletter.group(1), mletter.group(2).upper()) if mletter else None,
         })
+
+    modules = _link_or_options(modules)
 
     all_lessons = [l for m in modules for l in m["lessons"]]
     pe = len([l for l in all_lessons if l["kind"] == "PE"])
@@ -763,14 +891,18 @@ def parse_syllabus_pdf(data: bytes):
     for m in re.finditer(r"(total\s+)?no\.?\s*of\s*lessons\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212:=]?\s*(\d{1,3})",
                          joined, re.I):
         (totals if m.group(1) else splits).append(int(m.group(2)))
-    if totals and totals[0] != len(all_lessons):
+    # an OR pair counts once in the NIOS totals (the student sits one option)
+    eff_total, eff_tma, eff_pe = _effective_counts(modules)
+    # only an under-read is a real problem: extra entries are the OR variants,
+    # which the admin can see and trim in the chapter list
+    if totals and eff_total < totals[0]:
         warnings.append("The PDF says %d lessons in total but %d were read. Please check the chapter list below."
-                        % (totals[0], len(all_lessons)))
+                        % (totals[0], eff_total))
     if len(splits) >= 2:
-        if splits[0] != tma:
-            warnings.append("The PDF lists %d TMA lessons but %d were read." % (splits[0], tma))
-        if splits[1] != pe:
-            warnings.append("The PDF lists %d Public Examination lessons but %d were read." % (splits[1], pe))
+        if eff_tma < splits[0]:
+            warnings.append("The PDF lists %d TMA lessons but %d were read." % (splits[0], eff_tma))
+        if splits[1] > eff_pe:
+            warnings.append("The PDF lists %d Public Examination lessons but %d were read." % (splits[1], eff_pe))
 
     paper = round(sum(m["weightage"] for m in modules), 2)
     if paper and paper not in (30, 40, 60, 70, 80, 85, 100):

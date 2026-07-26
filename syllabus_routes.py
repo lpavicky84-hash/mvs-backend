@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text as _text
 
 from database import get_db
-from security import get_admin, get_student
+from security import get_admin, get_student, get_teacher
 from models import StudentProfile, AvailableSubject, AppSetting
 
 import syllabus_data as SD
@@ -75,6 +75,11 @@ def _ensure_syllabus(db):
              tma_assumed FLOAT NULL, practical_assumed FLOAT NULL,
              updated_at DATETIME NULL)""",
         "CREATE TABLE IF NOT EXISTS app_settings (`key` VARCHAR(50) PRIMARY KEY, value TEXT NULL)",
+        """CREATE TABLE IF NOT EXISTS predicted_results (
+             id INTEGER PRIMARY KEY AUTO_INCREMENT,
+             student_id INTEGER, target VARCHAR(10),
+             subjects LONGTEXT, total FLOAT, max_marks FLOAT, percentage FLOAT,
+             created_at DATETIME NULL, updated_at DATETIME NULL)""",
     ]
     for s in stmts:
         try:
@@ -679,7 +684,7 @@ def syl_subject(code: str, db: Session = Depends(get_db), user=Depends(get_stude
     cfg = _cfg(db)
     return {
         "subject": {"code": subj["code"], "name": subj["name"], "status": subj["status"],
-                    "marks": subj["marks"]},
+                    "marks": subj["marks"], "display_mode": subj.get("display_mode") or "modules"},
         "modules": subj.get("modules", []),
         "chapters": SD.flatten(subj),
         "selected": sel, "done": done,
@@ -720,6 +725,159 @@ def syl_plan(payload: dict = Body(...), db: Session = Depends(get_db), user=Depe
     db.commit()
     cfg = _cfg(db)
     return {"ok": True, "calc": compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp))}
+
+
+# ---------------------------------------------------------------------------
+# Predicted results
+# ---------------------------------------------------------------------------
+# A predicted result card is unlocked only when EVERY ready subject of the
+# student reaches a target tier (pass / high / top). The server recomputes
+# everything from the saved chapter plans - the client only asks.
+
+def _tier_needed(calc, tier):
+    if tier == "top":
+        return float(calc.get("top_paper_needed") or 0)
+    if tier == "high":
+        return float(calc.get("high_paper_needed") or 0)
+    return max(float(calc.get("pass_paper_needed") or 0),
+               float(calc.get("theory_paper_needed") or 0))
+
+
+def _progress_rows(db, sp):
+    """Per-subject fresh calc for one student (ready subjects only)."""
+    cl, codes, _un = _student_codes(db, sp)
+    cfg = _cfg(db)
+    out = []
+    for code in codes:
+        subj = get_subject(db, cl, code)
+        if not subj or subj.get("status") != "ready":
+            continue
+        sel, done, tma, pr = _plan_row(db, sp.id, code)
+        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"],
+                       cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp))
+        out.append({"code": subj["code"], "name": subj["name"],
+                    "selected": len(sel), "calc": calc})
+    return out
+
+
+def _prediction_card(db, sp, tier):
+    """(complete, card). complete = every ready subject reached the tier."""
+    rows = _progress_rows(db, sp)
+    if not rows:
+        return False, None
+    subs, total = [], 0.0
+    for r in rows:
+        c = r["calc"]
+        hit = (c.get("pass_reached") and c.get("theory_reached")) if tier == "pass" \
+              else c.get(tier + "_reached")
+        if not hit:
+            return False, None
+        proj = min(100.0, round(float(c.get("projected_total") or 0), 1))
+        subs.append({"code": r["code"], "name": r["name"], "projected": proj})
+        total += proj
+    n = len(subs)
+    return True, {"target": tier, "subjects": subs, "total": round(total, 1),
+                  "max_marks": n * 100, "percentage": round(total / n, 1) if n else 0.0}
+
+
+@router.post("/predicted")
+def syl_predicted_record(payload: dict = Body(...), db: Session = Depends(get_db),
+                         user=Depends(get_student)):
+    _ensure_syllabus(db)
+    sp = _student_profile(db, user)
+    tier = str((payload or {}).get("target") or "")
+    if tier not in ("pass", "high", "top"):
+        raise HTTPException(status_code=400, detail="Unknown target.")
+    complete, card = _prediction_card(db, sp, tier)
+    if not complete:
+        raise HTTPException(status_code=409,
+                            detail="Every subject must reach this target before the result card is made.")
+    now = datetime.utcnow()
+    ex = db.execute(_text("SELECT id FROM predicted_results WHERE student_id=:s AND target=:t"),
+                    {"s": sp.id, "t": tier}).fetchone()
+    args = {"s": sp.id, "t": tier, "sub": json.dumps(card["subjects"]),
+            "tot": card["total"], "mx": card["max_marks"], "pc": card["percentage"], "u": now}
+    if ex:
+        db.execute(_text("UPDATE predicted_results SET subjects=:sub, total=:tot, max_marks=:mx, "
+                         "percentage=:pc, updated_at=:u WHERE student_id=:s AND target=:t"), args)
+    else:
+        db.execute(_text("INSERT INTO predicted_results (student_id, target, subjects, total, "
+                         "max_marks, percentage, created_at, updated_at) "
+                         "VALUES (:s,:t,:sub,:tot,:mx,:pc,:u,:u)"), args)
+    db.commit()
+    card["student"] = (sp.user.name if getattr(sp, "user", None) else "") or ""
+    card["recorded"] = True
+    return card
+
+
+@router.get("/predicted/mine")
+def syl_predicted_mine(db: Session = Depends(get_db), user=Depends(get_student)):
+    _ensure_syllabus(db)
+    sp = _student_profile(db, user)
+    rows = db.execute(_text(
+        "SELECT target, subjects, total, max_marks, percentage, updated_at "
+        "FROM predicted_results WHERE student_id=:s ORDER BY id"), {"s": sp.id}).fetchall()
+    return {"cards": [{"target": r[0], "subjects": json.loads(r[1] or "[]"), "total": r[2],
+                       "max_marks": r[3], "percentage": r[4], "updated_at": str(r[5] or "")}
+                      for r in rows]}
+
+
+@router.get("/admin/predicted")
+def syl_admin_predicted(target: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    _ensure_syllabus(db)
+    q = ("SELECT pr.student_id, pr.target, pr.subjects, pr.total, pr.max_marks, pr.percentage, "
+         "pr.updated_at, sp.class_level, sp.batch_name, u.name, u.user_id "
+         "FROM predicted_results pr "
+         "JOIN student_profiles sp ON sp.id = pr.student_id "
+         "JOIN users u ON u.id = sp.user_id")
+    args = {}
+    if target in ("pass", "high", "top"):
+        q += " WHERE pr.target=:t"
+        args["t"] = target
+    out = [{"student_id": r[0], "target": r[1], "subjects": json.loads(r[2] or "[]"),
+            "total": r[3], "max_marks": r[4], "percentage": r[5], "updated_at": str(r[6] or ""),
+            "class_level": r[7], "batch": r[8], "name": r[9], "user_id": r[10]}
+           for r in db.execute(_text(q), args).fetchall()]
+    out.sort(key=lambda x: (-(x["percentage"] or 0), (x["name"] or "").lower()))
+    for i, r in enumerate(out, 1):
+        r["rank"] = i
+    return {"results": out}
+
+
+@router.get("/teacher/predicted")
+def syl_teacher_predicted(target: str = "", db: Session = Depends(get_db),
+                          user=Depends(get_teacher)):
+    """Same rank list as the admin sees, scoped to the teacher's own students
+    (subject overlap, exactly like the teacher student search)."""
+    _ensure_syllabus(db)
+    from models import TeacherProfile
+    tp = db.query(TeacherProfile).filter(TeacherProfile.user_id == user.id).first()
+    tsubs = {str(x).strip().lower() for x in (tp.subjects or []) if str(x).strip()} if tp else set()
+    q = ("SELECT pr.student_id, pr.target, pr.subjects, pr.total, pr.max_marks, pr.percentage, "
+         "pr.updated_at, sp.class_level, sp.batch_name, sp.subjects, u.name, u.user_id "
+         "FROM predicted_results pr "
+         "JOIN student_profiles sp ON sp.id = pr.student_id "
+         "JOIN users u ON u.id = sp.user_id")
+    args = {}
+    if target in ("pass", "high", "top"):
+        q += " WHERE pr.target=:t"
+        args["t"] = target
+    out = []
+    for r in db.execute(_text(q), args).fetchall():
+        try:
+            ssubs = {str(x).strip().lower() for x in json.loads(r[9] or "[]")}
+        except Exception:
+            ssubs = set()
+        if tsubs and not (tsubs & ssubs):
+            continue
+        out.append({"student_id": r[0], "target": r[1], "subjects": json.loads(r[2] or "[]"),
+                    "total": r[3], "max_marks": r[4], "percentage": r[5], "updated_at": str(r[6] or ""),
+                    "class_level": r[7], "batch": r[8],
+                    "name": r[10], "user_id": r[11]})
+    out.sort(key=lambda x: (-(x["percentage"] or 0), (x["name"] or "").lower()))
+    for i, r in enumerate(out, 1):
+        r["rank"] = i
+    return {"results": out}
 
 
 @router.get("/strategy")

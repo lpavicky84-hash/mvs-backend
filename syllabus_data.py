@@ -258,15 +258,61 @@ SUBJECTS = {
 # Derived helpers
 # ---------------------------------------------------------------------------
 
+def _optional_groups(modules):
+    """{group_key: [modules]} for OR option pairs ('6A/6B - one exam slot')."""
+    groups = {}
+    for m in modules:
+        g = m.get("optional_group")
+        if g:
+            groups.setdefault(g, []).append(m)
+    return groups
+
+
+def _effective_counts(modules):
+    """
+    (total, tma, pe) lesson counts the way NIOS states them on the syllabus
+    PDF: an OR option pair is counted once, as the bigger of the two options,
+    because the student sits only one of them.
+    """
+    groups = _optional_groups(modules)
+    grouped = {id(m) for ms in groups.values() for m in ms}
+
+    def _k(m, kind):
+        return len([l for l in m["lessons"] if l["kind"] == kind])
+
+    tot = tma = pe = 0
+    for m in modules:
+        if id(m) in grouped:
+            continue
+        tot += len(m["lessons"])
+        tma += _k(m, "TMA")
+        pe += _k(m, "PE")
+    for ms in groups.values():
+        tot += max(len(m["lessons"]) for m in ms)
+        tma += max(_k(m, "TMA") for m in ms)
+        pe += max(_k(m, "PE") for m in ms)
+    return tot, tma, pe
+
+
 def chapter_weightage(modules):
     """Return {lesson_no: marks} for PE lessons, module weightage split equally."""
+    # an OR option with no marks of its own borrows the sibling option's
+    # marks: both options cover the same exam slot
+    group_max = {}
+    for mod in modules:
+        g = mod.get("optional_group")
+        if g:
+            group_max[g] = max(group_max.get(g, 0.0), float(mod.get("weightage") or 0))
     out = {}
     for mod in modules:
         pe = [l for l in mod["lessons"] if l["kind"] == "PE"]
         if not pe:
             continue
+        mod_w = float(mod["weightage"] or 0)
+        if not mod_w and mod.get("optional_group"):
+            mod_w = group_max.get(mod["optional_group"], 0.0)
         explicit = sum(l.get("marks", 0) or 0 for l in pe)
-        remaining = max(float(mod["weightage"]) - explicit, 0.0)
+        remaining = max(mod_w - explicit, 0.0)
         auto = [l for l in pe if not l.get("marks")]
         shares = {}
         if auto:
@@ -327,22 +373,28 @@ def validate_subject(subject):
     exp = subject.get("expected") or {}
 
     # 1. counts printed on the syllabus PDF must match exactly
-    if exp.get("total") and exp["total"] != len(rows):
+    #    (an OR option pair counts once - NIOS states the totals that way)
+    eff_total, eff_tma, eff_pe = _effective_counts(modules)
+    if exp.get("total") and exp["total"] != eff_total:
         issues.append("Syllabus PDF says %d lessons in total but %d are loaded."
-                      % (exp["total"], len(rows)))
-    if exp.get("tma") is not None and exp["tma"] != len(tma):
+                      % (exp["total"], eff_total))
+    if exp.get("tma") is not None and exp["tma"] != eff_tma:
         issues.append("Syllabus PDF says %d TMA lessons but %d are tagged TMA."
-                      % (exp["tma"], len(tma)))
-    if exp.get("pe") is not None and exp["pe"] != len(pe):
+                      % (exp["tma"], eff_tma))
+    if exp.get("pe") is not None and exp["pe"] != eff_pe:
         issues.append("Syllabus PDF says %d Public Examination lessons but %d are tagged PE."
-                      % (exp["pe"], len(pe)))
+                      % (exp["pe"], eff_pe))
     if not exp:
         issues.append("Expected lesson counts are not set. Import the syllabus PDF, "
                       "or enter the totals printed on it, so the chapter tags can be verified.")
 
     # 2. module weightage must add up to the question paper total
+    #    (an OR option pair is one exam slot, so it counts once - the max)
     paper = float(subject.get("marks", {}).get("paper_marks") or 0)
-    wsum = round(sum(float(m.get("weightage") or 0) for m in modules), 2)
+    _og = _optional_groups(modules)
+    _ogged = {id(m) for ms in _og.values() for m in ms}
+    wsum = round(sum(float(m.get("weightage") or 0) for m in modules if id(m) not in _ogged)
+                 + sum(max(float(m.get("weightage") or 0) for m in ms) for ms in _og.values()), 2)
     if paper and abs(wsum - paper) > 0.51:
         issues.append("Module weightage adds up to %s but the question paper is %s marks."
                       % (wsum, paper))
