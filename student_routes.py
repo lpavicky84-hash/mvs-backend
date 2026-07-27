@@ -26,7 +26,7 @@ router = APIRouter(prefix="/api/student", tags=["Student"])
 def get_student_profile(user, db) -> StudentProfile:
     sp = db.query(StudentProfile).filter(StudentProfile.user_id == user.id).first()
     if not sp:
-        raise HTTPException(status_code=404, detail="Student profile nahi mila")
+        raise HTTPException(status_code=404, detail="Student profile not found")
     return sp
 
 def notify(db, user_id, title, message, notif_type):
@@ -307,7 +307,7 @@ def submit_dpp(req: DPPSubmissionCreate, db: Session = Depends(get_db), current_
         DPPSubmission.student_id == sp.id
     ).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Yeh DPP aap pehle se submit kar chuke hain")
+        raise HTTPException(status_code=400, detail="You have already submitted this DPP")
 
     sub = DPPSubmission(dpp_id=req.dpp_id, student_id=sp.id, drive_link=req.drive_link)
     db.add(sub)
@@ -359,14 +359,14 @@ def submit_test(req: TestSubmissionCreate, db: Session = Depends(get_db), curren
 
     test = db.query(Test).filter(Test.id == req.test_id).first()
     if not test:
-        raise HTTPException(status_code=404, detail="Test nahi mila")
+        raise HTTPException(status_code=404, detail="Test not found")
 
     now = datetime.now()
     test_end = datetime.combine(test.test_date, test.test_time) + timedelta(minutes=test.duration_mins)
     submission_deadline = datetime.combine(test.test_date, test.test_time) + timedelta(hours=6)
 
     if now > submission_deadline:
-        raise HTTPException(status_code=400, detail="Submission window band ho gayi (6 ghante baad)")
+        raise HTTPException(status_code=400, detail="The submission window has closed (6 hours after the test)")
 
     # Determine status
     if now <= test_end:
@@ -379,7 +379,7 @@ def submit_test(req: TestSubmissionCreate, db: Session = Depends(get_db), curren
         TestSubmission.student_id == sp.id
     ).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Test pehle se submit hai")
+        raise HTTPException(status_code=400, detail="This test is already submitted")
 
     sub = TestSubmission(test_id=req.test_id, student_id=sp.id, drive_link=req.drive_link, status=sub_status)
     db.add(sub)
@@ -390,7 +390,7 @@ def submit_test(req: TestSubmissionCreate, db: Session = Depends(get_db), curren
     if test.teacher and test.teacher.user:
         notify(db, test.teacher.user.id,
                f"Test Submitted — {current_user.name}",
-               f"{current_user.name} ne {test.subject} test submit ki ({sub_status})",
+               f"{current_user.name} submitted the {test.subject} test ({sub_status})",
                "test_submitted")
     db.commit()
     return sub
@@ -452,11 +452,11 @@ async def ask_doubt(
                   audio_b64=audio_b64)
     db.add(doubt)
     if tp and tp.user:
-        notify(db, tp.user.id, f"Naya Doubt — {current_user.name}",
+        notify(db, tp.user.id, f"New Doubt — {current_user.name}",
                f"Subject: {subject} | Topic: {topic} | {question[:100]}", "new_doubt")
     db.commit()
     db.refresh(doubt)
-    return {"id": doubt.id, "message": "Doubt bhej diya!" + (f" Teacher: {tp.user.name}" if tp and tp.user else "")}
+    return {"id": doubt.id, "message": "Doubt sent!" + (f" Teacher: {tp.user.name}" if tp and tp.user else "")}
 
 def _doubt_media(b64, mime, name):
     import base64
@@ -827,10 +827,10 @@ async def submit_answer(
     sp = get_student_profile(current_user, db)
     parent = db.query(Material).filter(Material.id == parent_id).first()
     if not parent:
-        raise HTTPException(status_code=404, detail="Item nahi mila")
+        raise HTTPException(status_code=404, detail="Item not found")
     raw = await file.read()
     if len(raw) > 20 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File 20MB se badi hai")
+        raise HTTPException(status_code=400, detail="File is larger than 20MB")
     # remove previous submission (resubmit)
     old = _my_submission(db, sp, parent_id)
     if old:
@@ -855,7 +855,7 @@ async def submit_answer(
         background_tasks.add_task(
             _notify_submission, parent.teacher_id, parent.subject or "",
             parent.title or "", current_user.name)
-    return {"id": m.id, "message": "Submit ho gaya! Thank you 🎉"}
+    return {"id": m.id, "message": "Submitted! Thank you 🎉"}
 
 
 def _notify_submission(teacher_id, subject, title, student_name):
@@ -867,7 +867,7 @@ def _notify_submission(teacher_id, subject, title, student_name):
         tp = db.query(TeacherProfile).filter(TeacherProfile.id == teacher_id).first()
         if tp and tp.user:
             notify(db, tp.user.id, "📥 Submission: %s" % subject,
-                   "%s ne %s ka answer submit kiya hai." % (student_name, title), "submission")
+                   "%s submitted an answer for %s." % (student_name, title), "submission")
             db.commit()
     except Exception:
         db.rollback()
@@ -881,10 +881,10 @@ async def student_set_photo(file: UploadFile = File(...), db: Session = Depends(
     sp = get_student_profile(current_user, db)
     raw = await file.read()
     if len(raw) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Photo 5MB se badi hai")
+        raise HTTPException(status_code=400, detail="Photo is larger than 5MB")
     sp.photo_b64 = base64.b64encode(raw).decode("ascii")
     db.commit()
-    return {"message": "Profile photo set ho gayi!"}
+    return {"message": "Profile photo set!"}
 
 @router.get("/my-photo")
 def student_my_photo(db: Session = Depends(get_db), current_user=Depends(get_student)):
@@ -892,7 +892,7 @@ def student_my_photo(db: Session = Depends(get_db), current_user=Depends(get_stu
     from fastapi import Response
     sp = get_student_profile(current_user, db)
     if not sp.photo_b64:
-        raise HTTPException(status_code=404, detail="Photo nahi")
+        raise HTTPException(status_code=404, detail="No photo")
     return Response(content=base64.b64decode(sp.photo_b64), media_type="image/jpeg")
 
 @router.get("/has-photo")
@@ -927,7 +927,7 @@ def student_teacher_photo(tid: int, db: Session = Depends(get_db), current_user=
     from models import TeacherProfile
     tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
     if not tp or not tp.photo_b64:
-        raise HTTPException(status_code=404, detail="Photo nahi")
+        raise HTTPException(status_code=404, detail="No photo")
     return Response(content=base64.b64decode(tp.photo_b64), media_type="image/jpeg")
 
 # ===== LIVE PRESENCE: student heartbeat =====
@@ -1841,7 +1841,7 @@ def submit_app_review(payload: dict, db: Session = Depends(get_db), current_user
     db.add(AppReview(student_id=sp.id, rating=rating, review=review, status="posted"))
     for adm in db.query(User).filter(User.role == UserRole.admin).all():
         db.add(Notification(user_id=adm.id, title="New App Review",
-                            message=f"{current_user.name} ne {rating}\u2605 review Play Store par post kiya hai.",
+                            message=f"{current_user.name} posted a {rating}\u2605 review on the Play Store.",
                             notif_type="app_review"))
     db.commit()
     return {"message": "Saved! Taking you to the Play Store now."}

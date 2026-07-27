@@ -56,9 +56,9 @@ def review_reschedule(
 ):
     rs = db.query(RescheduleRequest).filter(RescheduleRequest.id == rs_id).first()
     if not rs:
-        raise HTTPException(status_code=404, detail="Request nahi mili")
+        raise HTTPException(status_code=404, detail="Request not found")
     if rs.status != RescheduleStatus.pending:
-        raise HTTPException(status_code=400, detail="Yeh request already process ho chuki hai")
+        raise HTTPException(status_code=400, detail="This request has already been processed")
 
     rs.status = req.status
     rs.admin_note = req.admin_note
@@ -102,7 +102,7 @@ def review_reschedule(
                    "reschedule_rejected")
 
     db.commit()
-    return {"message": f"Reschedule {req.status} kar diya. Teacher ko notification chali gayi."}
+    return {"message": f"Reschedule {req.status}. The teacher has been notified."}
 
 # ===== TEACHER MANAGEMENT =====
 def _derive_subject_classes(profile, db):
@@ -210,17 +210,17 @@ def add_teacher(req: RegisterRequest, db: Session = Depends(get_db), _=Depends(g
     )
     db.add(profile)
     db.commit()
-    return {"message": f"Teacher {req.name} add ho gaya!", "user_id": candidate}
+    return {"message": f"Teacher {req.name} added successfully!", "user_id": candidate}
 
 @router.patch("/teachers/{user_id}/toggle")
 def toggle_teacher(user_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     user = db.query(User).filter(User.id == user_id, User.role == UserRole.teacher).first()
     if not user:
-        raise HTTPException(status_code=404, detail="Teacher nahi mila")
+        raise HTTPException(status_code=404, detail="Teacher not found")
     user.is_active = not user.is_active
     db.commit()
     status = "active" if user.is_active else "inactive"
-    return {"message": f"Teacher {user.name} ab {status} hai"}
+    return {"message": f"Teacher {user.name} is now {status}"}
 
 # ===== STUDENT MANAGEMENT =====
 @router.get("/students")
@@ -258,7 +258,7 @@ def get_all_students(db: Session = Depends(get_db), _=Depends(get_admin)):
 def add_student(req: RegisterRequest, db: Session = Depends(get_db), _=Depends(get_admin)):
     existing = db.query(User).filter(User.user_id == req.user_id).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Yeh User ID already hai")
+        raise HTTPException(status_code=400, detail="This User ID already exists")
     if req.phone:
         existing_phone = db.query(StudentProfile).filter(StudentProfile.phone == req.phone).first()
         if existing_phone:
@@ -280,7 +280,7 @@ def add_student(req: RegisterRequest, db: Session = Depends(get_db), _=Depends(g
     )
     db.add(sp)
     db.commit()
-    return {"message": f"Student {req.name} add ho gaya!"}
+    return {"message": f"Student {req.name} added successfully!"}
 
 # ===== TEACHER ACTIVITY MONITOR =====
 @router.get("/activity")
@@ -327,7 +327,7 @@ def teacher_activity(db: Session = Depends(get_db), _=Depends(get_admin)):
 def add_admin(req: RegisterRequest, db: Session = Depends(get_db), _=Depends(get_admin)):
     existing = db.query(User).filter(User.user_id == req.user_id).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Yeh User ID already hai")
+        raise HTTPException(status_code=400, detail="This User ID already exists")
     user = User(
         name=req.name, user_id=req.user_id,
         password=hash_password(req.password),
@@ -335,7 +335,7 @@ def add_admin(req: RegisterRequest, db: Session = Depends(get_db), _=Depends(get
     )
     db.add(user)
     db.commit()
-    return {"message": f"Admin {req.name} add ho gaya! User ID: {req.user_id}"}
+    return {"message": f"Admin {req.name} added successfully! User ID: {req.user_id}"}
 
 # ===== NOTIFICATIONS TO ALL =====
 @router.post("/broadcast")
@@ -350,7 +350,7 @@ def broadcast_notification(
     for u in users:
         notify(db, u.id, title, message, "broadcast")
     db.commit()
-    return {"message": f"{len(users)} users ko notification bhej di gayi."}
+    return {"message": f"Notification sent to {len(users)} users."}
 
 # ===== SUBJECT MANAGEMENT =====
 @router.get("/subjects")
@@ -387,21 +387,21 @@ def delete_subject(subject_id: int, db: Session = Depends(get_db), _=Depends(get
     from models import AvailableSubject
     s = db.query(AvailableSubject).filter(AvailableSubject.id == subject_id).first()
     if not s:
-        raise HTTPException(status_code=404, detail="Subject nahi mila")
+        raise HTTPException(status_code=404, detail="Subject not found")
     s.is_active = False   # soft delete
     db.commit()
-    return {"message": f"{s.name} delete ho gaya"}
+    return {"message": f"{s.name} deleted"}
 
 @router.post("/subjects")
 def add_subject(class_level: str, name: str, code: str = "", mode: str = "live", db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import AvailableSubject
     if class_level not in ("10", "12"):
-        raise HTTPException(status_code=400, detail="class_level 10 ya 12 hona chahiye")
+        raise HTTPException(status_code=400, detail="class_level must be 10 or 12")
     s = AvailableSubject(class_level=class_level, name=name, code=code,
                          mode=(mode if mode in ("live", "recorded") else "live"), is_active=True)
     db.add(s)
     db.commit()
-    return {"message": f"{name} add ho gaya"}
+    return {"message": f"{name} added"}
 
 # ===== TIMETABLE (all teachers) =====
 @router.get("/timetable-all")
@@ -445,7 +445,7 @@ async def admin_upload_timetable_pdf(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"PDF parse error: {e}")
     if not rows:
-        raise HTTPException(status_code=400, detail="PDF se koi valid row nahi mili.")
+        raise HTTPException(status_code=400, detail="No valid row found in the PDF.")
     subjects_found = sorted(set(r["subject"] for r in rows))
     # preview mode: sirf parsed rows dikhao, DB me kuch save mat karo
     if preview.lower() == "true":
@@ -492,7 +492,7 @@ def admin_timetable_pdf_commit(payload: dict, db: Session = Depends(get_db), _=D
                       "date": r.get("date") or "", "day": (r.get("day") or "").strip(),
                       "time": (r.get("time") or "").strip(), "type": r.get("type") or "chapter"})
     if not clean:
-        raise HTTPException(status_code=400, detail="Koi valid row nahi bachi — kam se kam 1 chapter rakho.")
+        raise HTTPException(status_code=400, detail="No valid rows left — keep at least 1 chapter.")
     subjects_found = sorted(set(r["subject"] for r in clean))
     if replace.lower() == "true":
         db.query(TimetableEntry).filter(
@@ -520,7 +520,7 @@ def admin_notify(payload: dict, db: Session = Depends(get_db), _=Depends(get_adm
     message = (payload.get("message") or "").strip()
     target = (payload.get("target") or "all").strip()   # teachers | students | all
     if not title or not message:
-        raise HTTPException(status_code=400, detail="Title aur message zaroori hain")
+        raise HTTPException(status_code=400, detail="Title and message are required")
     q = db.query(User).filter(User.is_active == True, User.role != "admin")
     if target == "teachers":
         q = q.filter(User.role == "teacher")
@@ -530,7 +530,7 @@ def admin_notify(payload: dict, db: Session = Depends(get_db), _=Depends(get_adm
     for u in users:
         notify(db, u.id, "📢 " + title, message, "admin_broadcast")
     db.commit()
-    return {"message": f"{len(users)} logo ko notification bhej di!", "count": len(users)}
+    return {"message": f"Notification sent to {len(users)} people!", "count": len(users)}
 
 # ===== ADMIN: MATERIAL UPLOAD (direct PDF) + pending view =====
 @router.post("/material")
@@ -550,7 +550,7 @@ async def admin_upload_material(
     from models import Material, StudentProfile
     raw = await file.read()
     if len(raw) > 20 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File 20MB se badi hai")
+        raise HTTPException(status_code=400, detail="File is larger than 20MB")
     m = Material(
         teacher_id=None, teacher_name="Admin", subject=subject.strip(),
         class_name=class_name.strip(), chapter=chapter.strip(),
@@ -566,12 +566,12 @@ async def admin_upload_material(
         for sp in db.query(StudentProfile).all():
             if sp.subjects and subject.strip() in sp.subjects and sp.user:
                 n = Notification(user_id=sp.user.id, title=f"📚 New {label}: {subject.strip()}",
-                                 message=f"Admin ne {subject.strip()} ke liye {label} upload ki hai.", notif_type="new_material")
+                                 message=f"Admin uploaded {label} for {subject.strip()}.", notif_type="new_material")
                 db.add(n)
         db.commit()
     except Exception:
         db.rollback()
-    return {"id": m.id, "message": "Upload ho gaya!"}
+    return {"id": m.id, "message": "Uploaded successfully!"}
 
 @router.get("/material/{mid}/download")
 def admin_download(mid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -579,7 +579,7 @@ def admin_download(mid: int, db: Session = Depends(get_db), _=Depends(get_admin)
     from fastapi import Response
     from models import Material
     m = db.query(Material).filter(Material.id == mid).first()
-    if not m: raise HTTPException(status_code=404, detail="Nahi mila")
+    if not m: raise HTTPException(status_code=404, detail="Not found")
     return Response(content=base64.b64decode(m.content_b64), media_type="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="{m.filename or "file.pdf"}"'})
 
@@ -625,7 +625,7 @@ def approve_class(eid: int, db: Session = Depends(get_db), _=Depends(get_admin))
     from models import TimetableEntry, TeacherProfile, StudentProfile, Notification
     e = db.query(TimetableEntry).filter(TimetableEntry.id == eid).first()
     if not e:
-        raise HTTPException(status_code=404, detail="Nahi mila")
+        raise HTTPException(status_code=404, detail="Not found")
     e.status = "approved"
     # ---- AUTO-SHIFT: extra class ke saath jo plan bana tha, ab apply karo ----
     shifted = 0
@@ -652,14 +652,14 @@ def approve_class(eid: int, db: Session = Depends(get_db), _=Depends(get_admin))
         if tp and tp.user:
             msg = f"Aapki {e.subject} extra class ({e.entry_date}) approve ho gayi."
             if shifted:
-                msg += f" Aage ki {shifted} classes automatically shift kar di gayi hain."
+                msg += f" {shifted} later classes were shifted automatically."
             db.add(Notification(user_id=tp.user.id, title="Extra Class Approved",
                                 message=msg, notif_type="class_approved"))
     # notify students of that subject
     for sp in db.query(StudentProfile).all():
         if sp.subjects and e.subject in sp.subjects and sp.user:
             db.add(Notification(user_id=sp.user.id, title=f"New Class: {e.subject}",
-                                message=f"{e.subject} ki extra class add hui hai ({e.entry_date} {e.time_text or ''}). Time table dekho.",
+                                message=f"An extra class was added for {e.subject} ({e.entry_date} {e.time_text or ''}). See the time table.",
                                 notif_type="new_class"))
     db.commit()
     return {"message": "Class approved!" + (f" {shifted} upcoming classes auto-shifted." if shifted else ""),
@@ -670,16 +670,16 @@ def reject_class(eid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import TimetableEntry, TeacherProfile, Notification
     e = db.query(TimetableEntry).filter(TimetableEntry.id == eid).first()
     if not e:
-        raise HTTPException(status_code=404, detail="Nahi mila")
+        raise HTTPException(status_code=404, detail="Not found")
     tid = e.teacher_id; subj = e.subject
     db.delete(e)
     if tid:
         tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
         if tp and tp.user:
             db.add(Notification(user_id=tp.user.id, title="Extra Class Rejected",
-                                message=f"Aapki {subj} extra class request reject ho gayi.", notif_type="class_rejected"))
+                                message=f"Your {subj} extra class request was rejected.", notif_type="class_rejected"))
     db.commit()
-    return {"message": "Reject ho gaya"}
+    return {"message": "Rejected"}
 
 # ===== ADMIN: SUBJECT-WISE STUDENT COUNTS =====
 @router.get("/student-counts")
@@ -702,9 +702,9 @@ def admin_delete_tt(eid: int, db: Session = Depends(get_db), _=Depends(get_admin
     from models import TimetableEntry
     e = db.query(TimetableEntry).filter(TimetableEntry.id == eid).first()
     if not e:
-        raise HTTPException(status_code=404, detail="Entry nahi mili")
+        raise HTTPException(status_code=404, detail="Entry not found")
     db.delete(e); db.commit()
-    return {"message": "Class delete ho gayi"}
+    return {"message": "Class deleted"}
 
 # ===== ADMIN: FULL EDIT OF ANY TIMETABLE ENTRY =====
 @router.patch("/timetable-entry/{eid}")
@@ -778,7 +778,7 @@ def _img_response(b64):
     import base64
     from fastapi import Response
     if not b64:
-        raise HTTPException(status_code=404, detail="Photo nahi")
+        raise HTTPException(status_code=404, detail="No photo")
     return Response(content=base64.b64decode(b64), media_type="image/jpeg")
 
 @router.post("/teacher/{tid}/photo")
@@ -787,13 +787,13 @@ async def admin_upload_teacher_photo(tid: int, file: UploadFile = File(...), db:
     from models import TeacherProfile
     tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
     if not tp:
-        raise HTTPException(status_code=404, detail="Teacher nahi mila")
+        raise HTTPException(status_code=404, detail="Teacher not found")
     raw = await file.read()
     if len(raw) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Photo 5MB se badi hai")
+        raise HTTPException(status_code=400, detail="Photo is larger than 5MB")
     tp.photo_b64 = base64.b64encode(raw).decode("ascii")
     db.commit()
-    return {"message": "Photo upload ho gayi!"}
+    return {"message": "Photo uploaded!"}
 
 @router.delete("/teacher/{tid}/photo")
 def remove_teacher_photo(tid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -976,7 +976,7 @@ def edit_teacher(tid: int, payload: dict, db: Session = Depends(get_db), _=Depen
     from models import TeacherProfile
     tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
     if not tp:
-        raise HTTPException(status_code=404, detail="Teacher nahi mila")
+        raise HTTPException(status_code=404, detail="Teacher not found")
     if "name" in payload and tp.user:
         tp.user.name = (payload["name"] or "").strip() or tp.user.name
     if "phone" in payload:
@@ -998,7 +998,7 @@ def delete_teacher(tid: int, db: Session = Depends(get_db), _=Depends(get_admin)
     from models import TeacherProfile
     tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
     if not tp:
-        raise HTTPException(status_code=404, detail="Teacher nahi mila")
+        raise HTTPException(status_code=404, detail="Teacher not found")
     uid = tp.user_id
     stmts = [
         ("UPDATE doubts SET teacher_id=NULL WHERE teacher_id=:t", {"t": tid}),
@@ -1028,14 +1028,14 @@ def delete_teacher(tid: int, db: Session = Depends(get_db), _=Depends(get_admin)
     for sql, p in stmts:
         db.execute(_sqltext(sql), p)
     db.commit()
-    return {"message": "Teacher delete ho gaya"}
+    return {"message": "Teacher deleted"}
 
 @router.patch("/student/{sid}")
 def edit_student(sid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import StudentProfile
     sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
     if not sp:
-        raise HTTPException(status_code=404, detail="Student nahi mili")
+        raise HTTPException(status_code=404, detail="Student not found")
     if "name" in payload and sp.user:
         sp.user.name = (payload["name"] or "").strip() or sp.user.name
     if "phone" in payload:
@@ -1055,14 +1055,14 @@ def edit_student(sid: int, payload: dict, db: Session = Depends(get_db), _=Depen
     if "subjects" in payload and isinstance(payload["subjects"], list):
         sp.subjects = [s.strip() for s in payload["subjects"] if s.strip()]
     db.commit()
-    return {"message": "Student update ho gaya"}
+    return {"message": "Student updated"}
 
 @router.delete("/student/{sid}")
 def delete_student(sid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import StudentProfile
     sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
     if not sp:
-        raise HTTPException(status_code=404, detail="Student nahi mili")
+        raise HTTPException(status_code=404, detail="Student not found")
     uid = sp.user_id
     stmts = [
         ("DELETE FROM doubts WHERE student_id=:s", {"s": sid}),
@@ -1076,7 +1076,7 @@ def delete_student(sid: int, db: Session = Depends(get_db), _=Depends(get_admin)
     for sql, p in stmts:
         db.execute(_sqltext(sql), p)
     db.commit()
-    return {"message": "Student delete ho gayi"}
+    return {"message": "Student deleted"}
 
 # ===== ADMIN: SEND NOTIFICATION TO A SINGLE TEACHER =====
 @router.post("/teacher/{tid}/notify")
@@ -1515,10 +1515,10 @@ def admin_warn_teacher(teacher_id: int, db: Session = Depends(get_db), _=Depends
     tp = db.query(TeacherProfile).filter(TeacherProfile.id == teacher_id).first()
     if not tp or not tp.user:
         raise HTTPException(status_code=404, detail="Teacher not found")
-    msg = ("Aapki classes baar-baar late shuru ho rahi hain.\n\n"
-           "Isse MVS Foundation ki reputation par asar padta hai aur bachche panic hote hain. "
-           "Ye aapki monthly report par bhi impact karega.\n\n"
-           "Please classes time par shuru karein.")
+    msg = ("Your classes have been starting late repeatedly.\n\n"
+           "This affects MVS Foundation's reputation and makes the children anxious. "
+           "It will also reflect in your monthly report.\n\n"
+           "Please start your classes on time.")
     db.add(Notification(user_id=tp.user.id, title="\u26a0\ufe0f Class Punctuality Reminder",
                         message=msg, notif_type="warning"))
     db.commit()
@@ -1917,9 +1917,9 @@ def action_app_review(rid: int, payload: dict, db: Session = Depends(get_db), _=
     r.reviewed_at = _dtx.now()
     if r.student and r.student.user:
         if action == "approve":
-            msg = "Aapka review approve ho gaya! Ab portal se ise Play Store par bhi post kar dein."
+            msg = "Your review has been approved! You can now post it on the Play Store straight from the portal."
         else:
-            msg = "Aapke review par kaam ho gaya hai." + (f" Note: {note}" if note else "") + " Aap apna review update kar sakte hain."
+            msg = "Your review has been addressed." + (f" Note: {note}" if note else "") + " You can update your review now."
         db.add(Notification(user_id=r.student.user.id, title="Your App Review",
                             message=msg, notif_type="app_review"))
     db.commit()
@@ -2097,7 +2097,7 @@ def admin_set_contract(tid: int, payload: dict, db: Session = Depends(get_db), _
         # working days sab agreement ke % se khud set hote hain.
         gross = _num("gross_salary", 0)
         if gross <= 0:
-            raise HTTPException(status_code=400, detail="Gross salary 0 se zyada honi chahiye")
+            raise HTTPException(status_code=400, detail="Gross salary must be greater than 0")
         c.base_salary = gross
         c.allowances = 0
         c.working_days = 26
@@ -2194,7 +2194,7 @@ def admin_set_payout_template(tid: int, payload: dict = Body(...), db: Session =
         r.source = "auto" if it.get("source") == "auto" else "manual"
         r.sort = i
     db.commit()
-    return {"message": "Template save ho gayi - ab se har month isi se calculate hoga"}
+    return {"message": "Template saved - every month will now be calculated from it"}
 
 @router.get("/payout-approvals")
 def admin_payout_approvals(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -2224,7 +2224,7 @@ def admin_approve_payout_task(task_id: int, db: Session = Depends(get_db), curre
     t.approved_by = getattr(current_user, "name", "Admin") or "Admin"
     t.approved_at = datetime.utcnow()
     db.commit()
-    return {"message": "Approved - ab ye count hoga"}
+    return {"message": "Approved - it now counts"}
 
 @router.post("/payout-task/{task_id}/reject")
 def admin_reject_payout_task(task_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -2253,15 +2253,15 @@ def admin_flag_missed_class(tid: int, payload: dict = Body(...), db: Session = D
                                      PayoutTask.status == "missed", PayoutTask.ref_id == eid).first()
     if flag and not ex:
         db.add(PayoutTask(teacher_id=tid, month=mk, key="live_class",
-                          title="Class nahi hui: %s (%s)" % (e.chapter or e.subject, e.entry_date),
+                          title="Class not held: %s (%s)" % (e.chapter or e.subject, e.entry_date),
                           status="missed", ref_id=eid, done_date=e.entry_date,
                           note=(payload.get("note") or "")[:300]))
         db.commit()
-        return {"message": "Missed mark ho gaya - is month ke count se ghata diya"}
+        return {"message": "Marked as missed - removed from this month's count"}
     if not flag and ex:
         db.delete(ex); db.commit()
-        return {"message": "Missed flag hata diya"}
-    return {"message": "Koi change nahi"}
+        return {"message": "Missed flag removed"}
+    return {"message": "No change"}
 
 @router.get("/teacher/{tid}/payout-classes")
 def admin_payout_classes(tid: int, month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -2299,7 +2299,7 @@ def admin_finalize_payout(tid: int, payload: dict = Body(...), db: Session = Dep
     rec.status = "finalized"
     rec.finalized_at = datetime.utcnow()
     db.commit()
-    return {"message": "Month finalize ho gaya - snapshot save ho gaya"}
+    return {"message": "Month finalized - snapshot saved"}
 
 @router.post("/teacher/{tid}/payout-paid")
 def admin_payout_paid(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -2312,7 +2312,7 @@ def admin_payout_paid(tid: int, payload: dict = Body(...), db: Session = Depends
     rec.status = "paid"
     rec.paid_at = datetime.utcnow()
     db.commit()
-    return {"message": "Paid mark ho gaya"}
+    return {"message": "Marked as paid"}
 
 # ===== OFFICE LOCATION (punch geofence) =====
 @router.get("/office-location")
@@ -2356,19 +2356,19 @@ def admin_set_office(payload: dict = Body(...), db: Session = Depends(get_db), _
     if payload.get("clear"):
         _set("offices", ""); _set("office_lat", ""); _set("office_lng", ""); _set("office_ips", "")
         db.commit()
-        return {"message": "Geofence band kar diya - ab kahin se bhi punch hoga"}
+        return {"message": "Geofence turned off - punching is now allowed from anywhere"}
     # office WiFi/broadband IPs (optional) — in se aaye punch GPS ke bina allowed
     import re as _re
     raw_ips = payload.get("ips") or []
     if not isinstance(raw_ips, list) or len(raw_ips) > 10:
-        raise HTTPException(status_code=400, detail="Max 10 WiFi IPs add kar sakte ho")
+        raise HTTPException(status_code=400, detail="You can add at most 10 WiFi IPs")
     clean_ips = []
     for ip in raw_ips:
         ip = str(ip).strip()
         if not ip:
             continue
         if not (_re.match(r"^\d{1,3}(\.\d{1,3}){3}$", ip) or ":" in ip):
-            raise HTTPException(status_code=400, detail=f"IP address sahi nahi lag raha: {ip}")
+            raise HTTPException(status_code=400, detail=f"Invalid IP address: {ip}")
         if ip not in clean_ips:
             clean_ips.append(ip)
     _set("office_ips", _json.dumps(clean_ips))
@@ -2376,32 +2376,32 @@ def admin_set_office(payload: dict = Body(...), db: Session = Depends(get_db), _
     if not isinstance(raw, list) or not raw:
         raise HTTPException(status_code=400, detail="Kam se kam 1 office branch bhejo")
     if len(raw) > 6:
-        raise HTTPException(status_code=400, detail="Max 6 branches add kar sakte ho")
+        raise HTTPException(status_code=400, detail="You can add at most 6 branches")
     clean, names = [], set()
     for o in raw:
         name = str((o or {}).get("name") or "").strip()[:80]
         if not name:
-            raise HTTPException(status_code=400, detail="Har branch ka naam chahiye")
+            raise HTTPException(status_code=400, detail="Every branch needs a name")
         if name.lower() in names:
-            raise HTTPException(status_code=400, detail=f"Branch naam '{name}' do baar hai - alag naam rakho")
+            raise HTTPException(status_code=400, detail=f"Branch name '{name}' is used twice - use distinct names")
         names.add(name.lower())
         try:
             lat = float(o.get("lat")); lng = float(o.get("lng"))
             radius = int(o.get("radius") or 30)
         except Exception:
-            raise HTTPException(status_code=400, detail=f"'{name}' ka latitude/longitude sahi nahi hain")
+            raise HTTPException(status_code=400, detail=f"'{name}' has invalid latitude/longitude")
         if not (-90 <= lat <= 90 and -180 <= lng <= 180):
-            raise HTTPException(status_code=400, detail=f"'{name}' ka latitude/longitude range ke bahar hain")
+            raise HTTPException(status_code=400, detail=f"'{name}' latitude/longitude is out of range")
         if radius < 5 or radius > 500:
-            raise HTTPException(status_code=400, detail=f"'{name}' ka radius 5-500 meter ke beech rakho (GPS error ke karan 20-50m practical hai)")
+            raise HTTPException(status_code=400, detail=f"Keep '{name}' radius between 5-500 metres (20-50m is practical due to GPS error)")
         clean.append({"name": name, "lat": lat, "lng": lng, "radius": radius})
     _set("offices", _json.dumps(clean))
     _set("office_lat", ""); _set("office_lng", "")   # purane single-office keys hatao
     db.commit()
     names_txt = ", ".join(o["name"] for o in clean)
-    msg = f"{len(clean)} office branch(es) save ho gaye ({names_txt}) - ab punch sirf inke radius me hoga"
+    msg = f"{len(clean)} office branch(es) saved ({names_txt}) - punching is now limited to their radius"
     if clean_ips:
-        msg += f". Office WiFi ({len(clean_ips)} IP) se PC punch bina GPS ke chalega"
+        msg += f". PC punching from office WiFi ({len(clean_ips)} IP) works without GPS"
     return {"message": msg}
 
 # ===== SALARY BULK SETUP (sabhi teachers, sirf gross - baaki sab auto) =====
@@ -2470,7 +2470,7 @@ def admin_contracts_bulk(payload: dict = Body(...), db: Session = Depends(get_db
             c.signature_name = None
         saved.append(tp.user.name if tp.user else str(tid))
     db.commit()
-    msg = "%d teacher(s) ka contract set ho gaya (breakup + rules auto)." % len(saved)
+    msg = "Contract set for %d teacher(s) (breakup + rules auto-filled)." % len(saved)
     if skipped:
         msg += " %d skip (salary 0/khaali): %s" % (len(skipped), ", ".join(skipped))
     return {"message": msg, "saved": saved, "skipped": skipped}
