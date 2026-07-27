@@ -586,6 +586,9 @@ def get_profile(db: Session = Depends(get_db), current_user=Depends(get_student)
         "batch": sp.batch,
         "batch_name": sp.batch_name,
         "class_name": sp.class_name,
+        "exam_session": sp.exam_session,
+        "exam_stream": sp.exam_stream,
+        "nios_ref": sp.nios_ref,
         "has_photo": bool(sp.photo_b64)
     }
 
@@ -720,6 +723,9 @@ def timetable_plan(db: Session = Depends(get_db), current_user=Depends(get_stude
             "type": getattr(e,"entry_type",None) or "chapter",
             "teacher_id": e.teacher_id, "teacher_name": tname,
             "lecture_id": (lec.id if lec else None),
+            "has_notes": bool(lec and lec.pdf_b64),
+            "has_dpp": bool(lec and lec.dpp_b64),
+            "class_done": bool(e.completed or lec),
             "verif_status": verif_status, "cooling": cooling,
         })
     return result
@@ -1571,6 +1577,136 @@ def _compute_ranks(db, sp):
     return {"overall_rank": overall_rank, "overall_total": total,
             "batch_rank": batch_rank, "batch_total": len(batch_list) or 1,
             "top_percent": top_pct}
+
+
+
+def _exam_ranking_rows(db, exam_id):
+    """Graded attempts -> ranked rows (top 3 podium + list). Shared by all roles."""
+    from models import Exam, ExamAttempt, StudentProfile
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        return None
+    atts = (db.query(ExamAttempt)
+            .filter(ExamAttempt.exam_id == exam_id, ExamAttempt.status == "graded")
+            .all())
+    rows = []
+    for a in atts:
+        sp = db.query(StudentProfile).filter(StudentProfile.id == a.student_id).first()
+        nm = a.student_name or ((sp.user.name if sp and sp.user else "") or "Student")
+        att_n = None
+        if a.attempted:
+            att_n = len(a.attempted)
+        elif a.mcq_answers:
+            att_n = len([v for v in (a.mcq_answers or {}).values() if v not in (None, "", [])])
+        rows.append({"student_id": a.student_id, "name": nm,
+                     "marks": round(float(a.total_awarded or 0), 1),
+                     "attempted": att_n,
+                     "batch": (sp.batch_name if sp else None),
+                     "has_photo": bool(sp and sp.photo_b64)})
+    rows.sort(key=lambda r: (-r["marks"], r["name"].lower()))
+    for i, r in enumerate(rows, 1):
+        r["rank"] = i
+    return {"exam": {"id": exam.id, "title": exam.title, "subject": exam.subject,
+                     "chapter": exam.chapter, "total_marks": exam.total_marks,
+                     "test_type": exam.test_type},
+            "graded": len(rows), "rows": rows}
+
+@router.get("/exam/{exam_id}/ranking")
+def student_exam_ranking(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    sp = get_student_profile(current_user, db)
+    from models import Exam
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Test not found")
+    data = _exam_ranking_rows(db, exam_id)
+    data["me_id"] = sp.id
+    return data
+
+
+# ================== STUDENT DPP PACKS ==================
+@router.get("/dpp-packs")
+def student_dpp_packs(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Mere subjects+class ke DPP packs + meri submission status."""
+    from models import DppPack, DppAnswer, TeacherProfile, User
+    sp = get_student_profile(current_user, db)
+    import re as _re
+    def _cls_norm(x):
+        m = _re.search(r"\d+", str(x or ""))
+        return m.group(0) if m else ""
+    my_cls = _cls_norm(sp.class_level) or _cls_norm(sp.class_name)
+    packs = (db.query(DppPack).filter(DppPack.subject.in_(sp.subjects or []))
+             .order_by(DppPack.created_at.desc()).all())
+    out = []
+    for pk in packs:
+        pk_cls = _cls_norm(pk.class_name)
+        if my_cls and pk_cls and pk_cls != my_cls:
+            continue
+        tname = ""
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == pk.teacher_id).first()
+        if tp and tp.user_id:
+            u = db.query(User).filter(User.id == tp.user_id).first()
+            tname = u.name if u else ""
+        ans = (db.query(DppAnswer)
+               .filter(DppAnswer.pack_id == pk.id, DppAnswer.student_id == sp.id)
+               .order_by(DppAnswer.submitted_at.desc()).first())
+        out.append({"id": pk.id, "subject": pk.subject, "chapter": pk.chapter, "part": pk.part,
+                    "title": pk.title, "medium": pk.medium, "source": pk.source,
+                    "teacher": tname, "questions_n": len(pk.questions or []),
+                    "created_at": pk.created_at.strftime("%d %b %Y") if pk.created_at else None,
+                    "has_questions": bool(pk.q_pdf or pk.questions),
+                    "has_solution": bool(pk.s_pdf),
+                    "my_status": (ans.status if ans else None),
+                    "my_remarks": (ans.remarks if ans and ans.status == "checked" else None),
+                    "my_checked_by": (ans.checked_by if ans and ans.status == "checked" else None),
+                    "submitted": bool(ans)})
+    return {"packs": out}
+
+
+@router.post("/dpp-packs/{pack_id}/submit")
+async def student_dpp_submit(pack_id: int, file: UploadFile = File(...),
+                             db: Session = Depends(get_db), current_user=Depends(get_student)):
+    from models import DppPack, DppAnswer
+    sp = get_student_profile(current_user, db)
+    pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
+    if not pk:
+        raise HTTPException(status_code=404, detail="DPP not found")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="File is empty")
+    # ek pack par ek active answer — dobara submit karein to replace
+    old = (db.query(DppAnswer)
+           .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id).all())
+    for o in old:
+        db.delete(o)
+    a = DppAnswer(pack_id=pack_id, student_id=sp.id,
+                  answer_b64=base64.b64encode(data).decode(),
+                  filename=file.filename or "dpp-answer.pdf", status="submitted")
+    db.add(a); db.commit()
+    return {"ok": True, "status": "submitted"}
+
+
+@router.get("/dpp-packs/{pack_id}/file")
+def student_dpp_file(pack_id: int, kind: str = "q", db: Session = Depends(get_db),
+                     current_user=Depends(get_student)):
+    """kind=q -> questions PDF (hamesha); kind=s -> solutions PDF (SIRF submit ke baad)."""
+    from models import DppPack, DppAnswer
+    sp = get_student_profile(current_user, db)
+    pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
+    if not pk:
+        raise HTTPException(status_code=404, detail="DPP not found")
+    if kind == "s":
+        ans = (db.query(DppAnswer)
+               .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id).first())
+        if not ans:
+            raise HTTPException(status_code=403, detail="Submit your DPP first to view the solution")
+        blob = pk.s_pdf
+    else:
+        blob = pk.q_pdf
+    if not blob:
+        raise HTTPException(status_code=404, detail="File not available")
+    fname = (pk.title or "DPP").replace("/", "-") + ("-solutions.pdf" if kind == "s" else "-questions.pdf")
+    return Response(content=base64.b64decode(blob), media_type="application/pdf",
+                    headers={"Content-Disposition": 'attachment; filename="%s"' % fname})
 
 
 @router.get("/batch-board")

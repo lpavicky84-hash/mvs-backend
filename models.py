@@ -308,6 +308,42 @@ class Doubt(Base):
 # =============================================
 # NOTIFICATION
 # =============================================
+class DppPack(Base):
+    """Teacher ka DPP — created (editor se) ya uploaded (2 PDFs).
+    Timetable-connected: subject -> chapter -> part."""
+    __tablename__ = "dpp_packs"
+
+    id          = Column(Integer, primary_key=True)
+    teacher_id  = Column(Integer, ForeignKey("teacher_profiles.id"))
+    subject     = Column(String(120))
+    class_name  = Column(String(50), default="")
+    chapter     = Column(String(250), default="")
+    part        = Column(String(120), default="")
+    title       = Column(String(250))
+    medium      = Column(String(20), default="English")   # English / Hindi / Bilingual
+    source      = Column(String(10), default="created")   # created | uploaded
+    questions   = Column(JSON, default=list)              # created DPP ke Q+A
+    q_pdf       = Column(Text)   # base64 — questions paper (no answers)
+    s_pdf       = Column(Text)   # base64 — solutions paper (with answers)
+    created_at  = Column(DateTime, default=func.now())
+
+
+class DppAnswer(Base):
+    """Student ka submitted DPP — checked + remarks flow (no marks)."""
+    __tablename__ = "dpp_answers"
+
+    id           = Column(Integer, primary_key=True)
+    pack_id      = Column(Integer, ForeignKey("dpp_packs.id"))
+    student_id   = Column(Integer, ForeignKey("student_profiles.id"))
+    answer_b64   = Column(Text)
+    filename     = Column(String(250), default="dpp-answer.pdf")
+    status       = Column(String(12), default="submitted")   # submitted | checked
+    remarks      = Column(Text, default="")
+    checked_by   = Column(String(120), default="")
+    submitted_at = Column(DateTime, default=func.now())
+    checked_at   = Column(DateTime)
+
+
 class Notification(Base):
     __tablename__ = "notifications"
 

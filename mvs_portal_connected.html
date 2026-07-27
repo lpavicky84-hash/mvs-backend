@@ -33,6 +33,40 @@
   .nav-item .badge{position:absolute;right:16px;background:var(--danger);color:#fff;font-size:.65rem;padding:2px 6px;border-radius:99px;font-weight:700}
   .sidebar-bottom{padding:14px 20px;border-top:1px solid var(--border);flex-shrink:0;background:var(--sidebar)}
   .user-info{display:flex;align-items:center;gap:12px}
+  .uinfo-link{cursor:pointer;border-radius:12px;padding:6px 8px;margin:-6px -8px;transition:.15s}
+  .mstat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  .mstat-cell{border:1px solid var(--border);border-radius:14px;padding:14px;text-align:center;cursor:pointer;transition:.15s;background:var(--card)}
+  .mstat-cell:hover{border-color:var(--accent);box-shadow:0 8px 18px -10px rgba(90,70,15,.35);transform:translateY(-2px)}
+  .mstat-num{font-size:1.35rem;font-weight:900;color:var(--text)}
+  .mstat-num.acc{color:#b45309}
+  .mstat-lbl{font-size:.78rem;font-weight:700;margin-top:2px}
+  .mstat-sub{font-size:.68rem;color:var(--text-muted);margin-top:2px}
+  .mstat-rank{margin-left:auto;background:linear-gradient(135deg,#e2b458,#c9a227);color:#241a05;font-size:.74rem;font-weight:800;padding:5px 14px;border-radius:99px;cursor:pointer;transition:.15s}
+  .mstat-rank:hover{transform:translateY(-1px);box-shadow:0 6px 14px -6px rgba(184,148,31,.6)}
+  .mstat-rank small{opacity:.75}
+  .tc-dd{margin-left:auto;display:flex;gap:6px}
+  .tc-dd-btn{border:1px solid var(--border);background:var(--card);color:var(--text-muted);font-size:.72rem;font-weight:700;padding:5px 13px;border-radius:99px;cursor:pointer;transition:.15s}
+  .tc-dd-btn.on{background:linear-gradient(135deg,#e2b458,#c9a227);border-color:transparent;color:#241a05}
+  .tc-cal{padding:4px 18px 10px;border-bottom:1px solid var(--border)}
+  .tc-cal-title{font-size:.74rem;font-weight:800;color:var(--accent);margin-bottom:8px}
+  .tc-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;max-width:340px}
+  .tc-cal-h{font-size:.62rem;font-weight:800;color:var(--text-muted);text-align:center}
+  .tc-cal-d{border:1px solid var(--border);background:var(--card);border-radius:8px;font-size:.72rem;padding:5px 0;cursor:pointer;text-align:center;color:var(--text)}
+  .tc-cal-d.has{border-color:var(--accent);font-weight:800}
+  .tc-cal-d.on{background:linear-gradient(135deg,#e2b458,#c9a227);color:#241a05;font-weight:900}
+  .tc-cal-d.today{box-shadow:0 0 0 2px rgba(184,148,31,.35)}
+  .tc-chip{font-size:.64rem;font-weight:800;padding:3px 10px;border-radius:99px;background:rgba(138,109,16,.12);color:#8a6d10;flex-shrink:0}
+  .tc-chip.done{background:rgba(5,150,105,.14);color:#047857}
+  .tc-chip.live{background:#dc2626;color:#fff;animation:livePillPulse 1.5s ease-in-out infinite}
+  .tc-chip.blink{animation:txBlink 1.6s ease-in-out infinite}
+  .tc-mat{position:relative;flex-shrink:0}
+  .tc-mat-btn{border:1px solid var(--accent);background:rgba(184,148,31,.08);color:#8a6d10;font-size:.68rem;font-weight:800;padding:4px 12px;border-radius:99px;cursor:pointer;transition:.15s}
+  .tc-mat-btn:hover{background:rgba(184,148,31,.18)}
+  .tc-mat-pop{position:absolute;right:0;top:110%;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 30px -10px rgba(0,0,0,.25);z-index:50;overflow:hidden;min-width:170px}
+  .tc-mat-pop button{display:block;width:100%;text-align:left;border:none;background:none;padding:10px 14px;font-size:.78rem;font-weight:700;color:var(--text);cursor:pointer}
+  .tc-mat-pop button:hover{background:rgba(184,148,31,.1)}
+  .uinfo-link:hover{background:rgba(184,148,31,.1)}
+  .dark .uinfo-link:hover{background:rgba(226,180,88,.12)}
   .avatar{width:36px;height:36px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:.85rem}
   .user-info span{color:#3d3113;font-size:.85rem;font-weight:600}.user-info small{display:block;color:var(--sidebar-text);font-size:.75rem;opacity:.75}
   .main{margin-left:260px;flex:1;display:flex;flex-direction:column;width:calc(100% - 260px)}
@@ -326,6 +360,17 @@
   .dark .dp-tag.pending{background:rgba(245,158,11,.2);color:#fcd34d}
   .dark .dp-tag.done{background:rgba(22,163,74,.2);color:#86efac}
   .dp-acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .dpp-card{border:1.5px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:12px;background:var(--card2)}
+  .dpp-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+  .dpp-title{font-size:1.02rem;font-weight:800;color:var(--text)}
+  .dpp-meta{font-size:.78rem;color:var(--muted);margin-top:3px;font-weight:600}
+  .dpp-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;flex-wrap:wrap}
+  .dpp-btns{display:flex;gap:6px;flex-wrap:wrap}
+  .dark .dpp-card{background:rgba(255,255,255,.03)}
+  .remarks-card{border:1.5px solid var(--border);border-radius:12px;overflow:hidden}
+  .remarks-head{background:#dcfce7;color:#15803d;font-weight:700;padding:10px 14px;font-size:.88rem}
+  .dark .remarks-head{background:rgba(22,163,74,.18);color:#86efac}
+  .remarks-body{padding:14px;font-size:.92rem;line-height:1.6;color:var(--text)}
   .mat-cat-head{cursor:pointer;user-select:none}
   .mc-chev{margin-left:auto;font-size:1.2rem;color:var(--text-muted);transition:transform .2s;transform:rotate(90deg)}
   .mat-cat.closed .mc-chev{transform:rotate(0deg)}
@@ -1007,7 +1052,8 @@
   .prio-card{position:relative;display:flex;align-items:center;gap:16px;padding:20px;border-radius:16px;background:linear-gradient(120deg,#8a6d10,#6b550b 70%,#5c4a0a);color:#fff;box-shadow:0 10px 30px -12px rgba(184,148,31,.5);margin-bottom:16px;animation:ttFade .5s ease both}
   .prio-x{position:absolute;top:8px;right:10px;width:24px;height:24px;border:none;border-radius:50%;background:rgba(255,255,255,.18);color:#fff;font-size:.9rem;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center}
   .prio-x:hover{background:rgba(255,255,255,.3)}
-  .tc-date{font-size:.74rem;color:var(--accent);font-weight:700;margin-left:auto;margin-right:10px}
+  .tc-date{font-size:.74rem;color:#7a5f12;font-weight:700;margin-left:auto;margin-right:10px}
+  .dark .tc-date{color:#e3c568}
   .tc-link{cursor:pointer;transition:.15s}
   .tc-link:hover{background:rgba(184,148,31,.06);border-radius:10px}
   .prio-ic{width:52px;height:52px;flex:0 0 52px;border-radius:14px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center}
@@ -2481,11 +2527,11 @@ body.dark .cal-d.on{color:#34d399}
 <!-- TEACHER SUBJECT SELECTION (first login) -->
 <div id="t-subject-screen" style="display:none;min-height:100vh;background:linear-gradient(150deg,#171203,#2e2408 55%,#4a3c12);align-items:center;justify-content:center;padding:20px"><div class="login-box" style="max-width:620px"><h2>Select Your Subjects</h2><p>Select the subjects you teach, class by class.</p><div style="display:flex;justify-content:space-between;margin:14px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 10</label></div><div id="t-sub-10" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><div style="display:flex;justify-content:space-between;margin:16px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 12</label></div><div id="t-sub-12" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><button class="login-btn" id="t-save-subj" style="margin-top:18px" onclick="saveTeacherSubjects()">Save & Continue →</button><p style="text-align:center;margin-top:14px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Logout</p></div>
 </div>
-<div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP Result</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="tPage('extmat',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-item" onclick="tPage('predicted',this)"><span>Predicted Results</span></div><div class="nav-item" onclick="tPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="tPage('payout',this)"><span>Payout</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule:</b> Every reschedule applies only after admin approval.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-extmat"><div id="t-extmat-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-predicted"><div id="t-predicted-content"><div class="spinner"></div></div></div><div class="page" id="t-page-attendance"><div id="t-attendance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-payout"><div id="t-payout-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
+<div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="tPage('extmat',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-item" onclick="tPage('predicted',this)"><span>Predicted Results</span></div><div class="nav-item" onclick="tPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="tPage('payout',this)"><span>Payout</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule:</b> Every reschedule applies only after admin approval.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-extmat"><div id="t-extmat-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-predicted"><div id="t-predicted-content"><div class="spinner"></div></div></div><div class="page" id="t-page-attendance"><div id="t-attendance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-payout"><div id="t-payout-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== ADMIN APP ===== -->
 <div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#b06d12">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Users</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-section">Academics</div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('tests',this)"><span>Tests Tracker</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('tranks',this)"><span>Teacher Ranking</span></div><div class="nav-item" onclick="aPage('compliance',this)"><span>Class Compliance</span></div><div class="nav-item" onclick="aPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="aPage('payouts',this)"><span>Payouts</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('syllabus',this)"><span>Syllabus Manager</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#b06d12" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-reviews-wrap"></div><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-tests"><div id="a-tests-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-compliance"><div id="a-compliance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-tranks"><div id="a-tranks-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"></div><div class="card" style="margin-top:18px;border:1.5px solid rgba(220,38,38,.3)"><div class="card-header"><h3 style="color:var(--danger)">Danger Zone</h3></div><div class="card-body"><p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Clear all testing content data (timetable, materials, doubts, submissions...) in one go \u2014 students, teachers and admins remain safe.</p><button class="btn btn-danger" onclick="openResetData()">\ud83e\uddf9 Reset Portal Data</button></div></div><div style="display:none"><div class="spinner"></div></div></div><div class="page" id="a-page-syllabus"><div id="a-syl-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div><div class="page" id="a-page-attendance"><div id="a-attendance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-payouts"><div id="a-payouts-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== STUDENT APP ===== -->
-<div id="student-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#b8941f">S</div><div><span>MVS Foundation</span><small>Student</small></div></div><nav class="sidebar-nav"><div class="nav-section">Home</div><div class="nav-item active" onclick="sPage('dashboard',this)"><span>Home</span></div><div class="nav-item" onclick="sPage('teachers',this)"><span>Know Your Teacher</span></div><div class="nav-item" onclick="sPage('timetable',this)"><span>Time Table</span></div><div class="nav-section">Materials</div><div class="nav-item" onclick="sPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="sPage('materials',this)"><span>Classes Material</span></div><div class="nav-section">Work</div><div class="nav-item" onclick="sPage('dpp',this)"><span>DPP Submit</span></div><div class="nav-item" onclick="sPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="sPage('doubts',this)"><span>Doubts</span></div><div class="nav-section">Progress</div><div class="nav-item" onclick="sPage('syllabus',this)"><span>Syllabus Tracker</span></div><div class="nav-item" onclick="sPage('resultcard',this)"><span>Result Card</span></div><div class="nav-item" onclick="sPage('progress',this)"><span>Progress</span></div><div class="nav-item" onclick="sPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="sPage('profile',this)"><span>My Profile</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#b8941f" id="s-avatar">S</div><div><span id="s-name">Student</span><small id="s-batch">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="s-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="s-topavatar" title="Set or change profile photo" onclick="openSetStudentPhoto()">S</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('student')"><span class="notif-badge" id="s-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="s-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="s-page-dashboard"><div id="s-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-timetable"><div id="s-timetable-content"><div class="spinner"></div></div></div><div class="page" id="s-page-materials"><div id="s-materials-content"><div class="spinner"></div></div></div><div class="page" id="s-page-qbank"><div id="s-qbank-content"><div class="spinner"></div></div></div><div class="page" id="s-page-teachers"><div id="s-teachers-content"><div class="spinner"></div></div></div><div class="page" id="s-page-dpp"><div id="s-dpp-content"><div class="spinner"></div></div></div><div class="page" id="s-page-tests"><div id="s-tests-content"><div class="spinner"></div></div></div><div class="page" id="s-page-doubts"><div id="s-doubts-content"><div class="spinner"></div></div></div><div class="page" id="s-page-progress"><div id="s-progress-content"><div class="spinner"></div></div></div><div class="page" id="s-page-notifications"><div id="s-notif-content"><div class="spinner"></div></div></div><div class="page" id="s-page-syllabus"><div id="s-syl-content"><div class="spinner"></div></div></div><div class="page" id="s-page-resultcard"><div id="s-resultcard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-profile"><div id="s-profile-content"><div class="spinner"></div></div></div></div>
+<div id="student-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#b8941f">S</div><div><span>MVS Foundation</span><small>Student</small></div></div><nav class="sidebar-nav"><div class="nav-section">Home</div><div class="nav-item active" onclick="sPage('dashboard',this)"><span>Home</span></div><div class="nav-item" onclick="sPage('teachers',this)"><span>Know Your Teacher</span></div><div class="nav-item" onclick="sPage('timetable',this)"><span>Time Table</span></div><div class="nav-section">Materials</div><div class="nav-item" onclick="sPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="sPage('materials',this)"><span>Classes Material</span></div><div class="nav-section">Work</div><div class="nav-item" onclick="sPage('dpp',this)"><span>DPP Submit</span></div><div class="nav-item" onclick="sPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="sPage('doubts',this)"><span>Doubts</span></div><div class="nav-section">Progress</div><div class="nav-item" onclick="sPage('syllabus',this)"><span>Syllabus Tracker</span></div><div class="nav-item" onclick="sPage('resultcard',this)"><span>Result Card</span></div><div class="nav-item" onclick="sPage('progress',this)"><span>Progress</span></div><div class="nav-item" onclick="sPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="sPage('profile',this)"><span>My Profile</span></div></nav><div class="sidebar-bottom"><div class="user-info uinfo-link" onclick="sPage('profile',null)" title="Open My Profile"><div class="avatar" style="background:#b8941f" id="s-avatar">S</div><div><span id="s-name">Student</span><small id="s-batch">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="s-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="s-topavatar" title="Set or change profile photo" onclick="openSetStudentPhoto()">S</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('student')"><span class="notif-badge" id="s-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="s-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="s-page-dashboard"><div id="s-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-timetable"><div id="s-timetable-content"><div class="spinner"></div></div></div><div class="page" id="s-page-materials"><div id="s-materials-content"><div class="spinner"></div></div></div><div class="page" id="s-page-qbank"><div id="s-qbank-content"><div class="spinner"></div></div></div><div class="page" id="s-page-teachers"><div id="s-teachers-content"><div class="spinner"></div></div></div><div class="page" id="s-page-dpp"><div id="s-dpp-content"><div class="spinner"></div></div></div><div class="page" id="s-page-tests"><div id="s-tests-content"><div class="spinner"></div></div></div><div class="page" id="s-page-doubts"><div id="s-doubts-content"><div class="spinner"></div></div></div><div class="page" id="s-page-progress"><div id="s-progress-content"><div class="spinner"></div></div></div><div class="page" id="s-page-notifications"><div id="s-notif-content"><div class="spinner"></div></div></div><div class="page" id="s-page-syllabus"><div id="s-syl-content"><div class="spinner"></div></div></div><div class="page" id="s-page-resultcard"><div id="s-resultcard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-profile"><div id="s-profile-content"><div class="spinner"></div></div></div></div>
 </div><!-- Generic Modal -->
 <div class="modal-overlay" id="modal"><div class="modal"><div class="modal-header"><h3 id="modal-title">Modal</h3><button class="modal-close" onclick="closeModal()">×</button></div><div class="modal-body" id="modal-body"></div><div class="modal-footer" id="modal-footer"></div></div></div>
 <!-- Limit Popup -->
@@ -3232,6 +3278,7 @@ async function openTeacher(){
 }
 function enterTeacherApp(){
   document.getElementById('t-subject-screen').style.display='none';
+  document.getElementById('student-app').classList.remove('active');
   document.getElementById('teacher-app').classList.add('active');
   document.getElementById('t-name').textContent=NAME+_tSuffix;
   document.getElementById('t-avatar').textContent=initials(NAME);
@@ -3274,7 +3321,7 @@ function tPage(page,el){
   document.querySelectorAll('#teacher-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('t-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#teacher-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',performance:'Performance',predicted:'Predicted Results',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP Result',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',material:'Classes Material',extmat:'Study Material',attendance:'Attendance',payout:'Payout'};
+  const titles={dashboard:'Dashboard',performance:'Performance',predicted:'Predicted Results',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',material:'Classes Material',extmat:'Study Material',attendance:'Attendance',payout:'Payout'};
   _setPage(titles[page]||page);
   document.getElementById('t-title').textContent=titles[page];
   stopCountdown();
@@ -3379,7 +3426,7 @@ function openClassReport(id){
      <textarea class="form-control" id="lec-summary" rows="2" placeholder="What was taught in this lecture?"></textarea>
      <div class="ex-grid2">
        <div><label class="ex-lbl">Class Notes <span class="req">*</span></label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-pdf').click()">${ic('upload')} <span id="lec-pdf-name">Upload Class Notes</span></button><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
-       <div><label class="ex-lbl">DPP PDF <span class="opt">(optional)</span></label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-dpp').click()">${ic('upload')} <span id="lec-dpp-name">Upload DPP PDF</span></button><input type="file" id="lec-dpp" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'dpp')"></div>
+       <div><label class="ex-lbl">DPP</label><div style="font-size:.72rem;color:var(--text-muted);padding:8px 10px;border:1px dashed var(--border);border-radius:8px">DPP ab <b>DPP page</b> se — Create DPP ya Upload DPP (timetable-connected).</div></div>
      </div>
      <div class="cr-sec">3. Verification Question <span class="cr-sec-sub">mandatory \u2014 students answer one at random</span></div>
      <div id="lec-qs"></div>
@@ -3419,7 +3466,7 @@ async function submitClassReport(id){
   const btn=document.getElementById('cr-btn'); btn.disabled=true; btn.textContent='Submitting...';
   try{
     // 1) class report -> marks the class Done (delay is derived from these times)
-    await api('/api/teacher/class/'+id+'/complete','POST',{topic_covered:val('cr-topic'),start_time:val('cr-start'),end_time:val('cr-end'),homework:val('cr-hw'),dpp_given:!!_lecFiles.dpp,remarks:val('cr-remarks')});
+    await api('/api/teacher/class/'+id+'/complete','POST',{topic_covered:val('cr-topic'),start_time:val('cr-start'),end_time:val('cr-end'),homework:val('cr-hw'),dpp_given:false,remarks:val('cr-remarks')});
     // 2) lecture report -> gives students the verification question, auto-linked to this class
     let pdf_b64=null,dpp_b64=null;
     if(_lecFiles.pdf) pdf_b64=await _fileB64(_lecFiles.pdf);
@@ -3452,8 +3499,7 @@ async function loadTDashboard(){
   try{
  const d=await api('/api/teacher/dashboard');
  document.getElementById('t-subjects').textContent='Teacher';
- el.innerHTML=`${greetingCard(NAME,_tSuffix)}<div id="t-myrank-wrap"></div><div id="t-punch-wrap"></div><div class="stats-grid">${statCard('Classes Done',d.total_done,'check','green')}${statCard('Pending',d.total_pending,'clipboard','amber')}${statCard('DPPs',d.total_dpps,'clipboard','indigo',"navTo('teacher-app','dpp')")}${statCard('Tests',d.total_tests,'edit','teal',"navTo('teacher-app','tests')")}${statCard('Unresolved Doubts',d.unresolved_doubts,'help','red',"navTo('teacher-app','doubts')")}</div><div class="card"><div class="card-header"><h3> Today's Classes</h3></div><div class="card-body"><div id="t-today-wrap"><div class="spinner"></div></div></div></div>`;
- loadTMyRank();
+ el.innerHTML=`${greetingCard(NAME,_tSuffix)}<div id="t-punch-wrap"></div><div class="stats-grid">${statCard('Classes Done',d.total_done,'check','green')}${statCard('Pending',d.total_pending,'clipboard','amber')}${statCard('DPPs',d.total_dpps,'clipboard','indigo',"navTo('teacher-app','dpp')")}${statCard('Tests',d.total_tests,'edit','teal',"navTo('teacher-app','tests')")}${statCard('Unresolved Doubts',d.unresolved_doubts,'help','red',"navTo('teacher-app','doubts')")}</div><div class="card"><div class="card-header"><h3> Today's Classes</h3></div><div class="card-body"><div id="t-today-wrap"><div class="spinner"></div></div></div></div>`;
  const badge=document.getElementById('t-doubt-badge');
  if(d.unresolved_doubts>0){ badge.style.display='inline-block'; badge.textContent=d.unresolved_doubts; } else badge.style.display='none';
  renderPunchCard('t-punch-wrap');
@@ -4176,6 +4222,7 @@ const UPLOAD_TYPES={
   'Test Paper':       {mt:'test'},
   'Assignment':       {mt:'other', cat:'Assignment'},
   'Question Bank':    {mt:'other', cat:'Question Bank'},
+  'Solved PYQs':      {mt:'other', cat:'PYQ'},
   'Practical File':   {mt:'other', cat:'Practical File'},
   'Revision Notes':   {mt:'other', cat:'Revision Notes'},
   'Other (custom)':   {mt:'other', cat:''}
@@ -4416,27 +4463,175 @@ async function loadTDpp(){
   const el=document.getElementById('t-dpp-content');
   softSpin(el);
   try{
-    const d=await api('/api/teacher/dpp-results');
-    const t=d.totals||{};
-    const cards=`<div class="stats-grid">${statCard('DPPs Uploaded',t.dpps||0,'clipboard','indigo')}${statCard('Submissions',t.submitted||0,'users','green',"_dppFilter('all')")}${statCard('Checked',t.checked||0,'check','teal',"_dppFilter('checked')")}${statCard('Pending Checking',t.pending||0,'edit','amber',"_dppFilter('pending')")}</div>`;
-    const rows=(d.rows||[]).map(m=>{
-      const pct=m.total_students?Math.round(m.submitted/m.total_students*100):0;
-      const pendTag=m.pending?`<span class="dp-tag pending">${m.pending} to check</span>`:(m.submitted?`<span class="dp-tag done">All checked</span>`:'');
-      return `<div class="dp-row" data-pending="${m.pending}" data-checked="${m.checked}">
-        <div class="dp-main"><div class="dp-title">${esc(m.subject)}${m.chapter?' \u00b7 '+esc(m.chapter):''}</div><div class="dp-meta">${esc(m.title||m.filename||'DPP')} \u00b7 ${esc(m.date)}</div>
-          <div class="dp-bar"><div class="dp-fill" style="width:${pct}%"></div></div>
-          <div class="dp-sub">${m.submitted} of ${m.total_students||'\u2014'} students submitted ${pendTag}</div>
-        </div>
-        <div class="dp-acts">
-          <button class="mt-eng" title="Students who viewed" onclick="openMatAudience(${m.id},'view')">${ic('users')} ${m.views}</button>
-          <button class="mt-eng" title="Students who downloaded" onclick="openMatAudience(${m.id},'download')">${ic('download')} ${m.downloads}</button>
-          <button class="btn btn-primary btn-sm" onclick="openSubmissions(${m.id},'${esc((m.title||'DPP')).replace(/'/g,'')}')">${ic('users')} Submissions (${m.submitted})</button>
-          <button class="btn btn-ghost btn-sm" onclick="downloadMaterial('teacher',${m.id},'DPP.pdf')">${ic('download')}</button>
-          <button class="btn btn-danger btn-sm" onclick="delMaterial(${m.id},'dpp')">${ic('trash')}</button>
+    const d=await api('/api/teacher/dpp-packs');
+    window._dppPacks=d.packs||[];
+    const cards=_dppPacks.map(pk=>`<div class="card dpp-card"><div class="card-body">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap">
+        <div style="flex:1;min-width:220px"><b style="font-size:.95rem">${esc(pk.title)}</b>
+          <div style="font-size:.72rem;color:var(--text-muted);margin-top:3px">${esc(pk.subject)}${pk.chapter?' \u00b7 '+esc(pk.chapter):''}${pk.part?' \u00b7 '+esc(pk.part):''}</div>
+          <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">
+            <span class="chip" style="font-size:.62rem">${pk.source==='created'?'Created':'Uploaded'}</span>
+            <span class="chip" style="font-size:.62rem">${esc(pk.medium)}</span>
+            <span class="chip" style="font-size:.62rem">${pk.created_at||''}</span></div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" title="Download questions paper" onclick="dppDl(${pk.id},'q')">${ic('download')} Questions</button>
+          <button class="btn btn-ghost btn-sm" title="Download solutions paper" onclick="dppDl(${pk.id},'s')">${ic('download')} Solutions</button>
+          <button class="btn btn-primary btn-sm" title="See student submissions" onclick="openDppResults(${pk.id})">${ic('users')} Submissions (${pk.submitted||0})</button>
+        </div></div></div></div>`).join('');
+    el.innerHTML=`<div class="card" style="margin-bottom:16px;border:1.5px solid rgba(184,148,31,.3)"><div class="card-body" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <div style="font-size:1.8rem">&#128221;</div>
+      <div style="flex:1;min-width:220px"><h3 style="margin:0 0 3px">Daily Practice Problems</h3>
+      <p style="margin:0;font-size:.78rem;color:var(--text-muted)">Timetable se connected — subject, chapter aur part choose karke DPP banao ya upload karo. Students ko questions turant dikhenge; submit ke baad solutions.</p></div>
+      <button class="btn btn-primary btn-sm" onclick="openCreateDpp()">${ic('plus')} Create DPP</button>
+      <button class="btn btn-ghost btn-sm" onclick="openUploadDpp()">${ic('upload')} Upload DPP</button>
+    </div></div>
+    ${cards||'<div class="card"><div class="card-body ws-empty"><div class="big">&#128221;</div><p><b>No DPP yet</b></p><small>Create DPP (editor) ya Upload DPP (2 PDFs) — dono timetable ke chapter/part se linked.</small></div></div>'}`;
+  }catch(e){ el.innerHTML=errHtml(e); }
+}
+async function dppDl(pid,kind){
+  try{
+    const r=await fetch(API+`/api/teacher/dpp-packs/${pid}/file?kind=${kind}`,{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('nf');
+    const bl=await r.blob(); const a=document.createElement('a');
+    a.href=URL.createObjectURL(bl); a.download=(kind==='s'?'DPP-solutions.pdf':'DPP-questions.pdf'); a.click();
+  }catch(e){ toast('File not available',true); }
+}
+// ---------- submissions (results) — Checking / Checked + Remarks (no marks) ----------
+async function openDppResults(pid){
+  showModal('DPP Submissions','<div class="spinner"></div>','');
+  try{
+    const d=await api(`/api/teacher/dpp-packs/${pid}/answers`);
+    const rows=(d.answers||[]).map(a=>{
+      const chk=a.status==='checked';
+      return `<div class="slist-row" style="align-items:flex-start">
+        <div class="slist-av">${esc((a.student||'?').slice(0,1).toUpperCase())}</div>
+        <div class="slist-info" style="flex:1">
+          <div class="slist-name">${esc(a.student)} ${a.class_level?`<span class="chip" style="font-size:.6rem">Class ${esc(a.class_level)}</span>`:''}</div>
+          <div class="slist-meta">Submitted: ${a.submitted_at||'\u2014'} \u00b7 <b class="dpp-st ${chk?'ok':'wait'}">${chk?'Checked':'Checking\u2026'}</b></div>
+          ${chk&&a.remarks?`<div style="font-size:.74rem;margin-top:5px;background:rgba(184,148,31,.08);border-radius:8px;padding:7px 10px"><b>Your remarks:</b> ${esc(a.remarks)}</div>`:''}
+          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
+            <button class="btn btn-ghost btn-sm" onclick="dppAnsDl(${a.id})">${ic('download')} Student PDF</button>
+            ${chk?'':`<input class="form-control" id="dpp-remark-${a.id}" placeholder="Write remarks for the student\u2026" style="flex:1;min-width:180px;font-size:.78rem">
+            <button class="btn btn-primary btn-sm" onclick="dppMarkChecked(${a.id},${pid})">Mark Checked</button>`}
+          </div>
         </div></div>`;
     }).join('');
-    el.innerHTML=cards+`<div class="card"><div class="card-header"><h3>DPP Result</h3><button class="btn btn-primary btn-sm" onclick="openUploadHub({type:'dpp'})">${ic('upload')} Upload DPP</button></div><div class="card-body" id="t-dpp-list">${rows||'<div class="ws-empty"><div class="big">\ud83d\udcdd</div><p>No DPP uploaded yet</p><small>Upload a DPP from a class report or here.</small></div>'}</div></div>`;
-  }catch(e){ el.innerHTML=errHtml(e); }
+    const pk=d.pack||{};
+    showModal(`${esc(pk.title||'DPP')} — Submissions`,
+      `<div style="font-size:.74rem;color:var(--text-muted);margin-bottom:10px">${esc(pk.subject||'')}${pk.chapter?' \u00b7 '+esc(pk.chapter):''}${pk.part?' \u00b7 '+esc(pk.part):''}</div>
+       ${rows||'<div class="ws-empty"><p><b>No submissions yet</b></p><small>Students submit karne ke baad yahan dikhenge — status "Checking" rahega.</small></div>'}`,
+      `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+  }catch(e){ showModal('DPP Submissions',errHtml(e),`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`); }
+}
+async function dppAnsDl(aid){
+  try{
+    const r=await fetch(API+`/api/teacher/dpp-answers/${aid}/file`,{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('nf');
+    const bl=await r.blob(); const a=document.createElement('a');
+    a.href=URL.createObjectURL(bl); a.download='dpp-answer.pdf'; a.click();
+  }catch(e){ toast('File not available',true); }
+}
+async function dppMarkChecked(aid,pid){
+  const remarks=(document.getElementById('dpp-remark-'+aid)||{}).value||'';
+  try{
+    await api(`/api/teacher/dpp-answers/${aid}/check`,'POST',{remarks});
+    toast('Marked checked — student ko notification mil gaya.');
+    openDppResults(pid);
+  }catch(e){ toast(e.message||'Failed',true); }
+}
+// ---------- CREATE DPP (test-style editor, timetable-connected) ----------
+async function _dppTtData(){
+  if(window._dppTt) return window._dppTt;
+  try{ window._dppTt=await api('/api/teacher/my-timetable'); }catch(e){ window._dppTt=[]; }
+  return window._dppTt;
+}
+function _dppFillChapters(){
+  const sub=val('ex-sub');
+  const es=(window._dppTt||[]).filter(e=>e.subject===sub);
+  const cls=[...new Set(es.map(e=>(e.class_name||'').trim()).filter(Boolean))];
+  const csel=document.getElementById('ex-cls-sel');
+  if(csel) csel.innerHTML='<option value="">All Classes</option>'+cls.map(c=>`<option>${esc(c)}</option>`).join('');
+  const chs=[...new Set(es.map(e=>(e.chapter||'').trim()).filter(Boolean))];
+  const sel=document.getElementById('ex-ch-sel');
+  if(sel){
+    sel.innerHTML='<option value="">— Full chapter / General —</option>'+chs.map(c=>`<option>${esc(c)}</option>`).join('');
+    _dppFillParts();
+  }
+}
+function _dppFillParts(){
+  const sub=val('ex-sub'); const ch=val('ex-ch-sel');
+  const es=(window._dppTt||[]).filter(e=>e.subject===sub&&((e.chapter||'').trim()===ch));
+  const parts=[...new Set(es.map(e=>(e.part||'').trim()).filter(Boolean))];
+  const sel=document.getElementById('ex-part-sel');
+  if(sel) sel.innerHTML='<option value="">— Whole chapter —</option>'+parts.map(p2=>`<option>${esc(p2)}</option>`).join('');
+}
+async function openCreateDpp(){
+  window._dppMode='pending';
+  await _dppTtData();
+  await openCreateExam('subjective');
+  // DPP mode: no schedule/duration; chapter/part = timetable dropdowns; answers mandatory (already)
+  const dur=document.getElementById('ex-dur'); if(dur) dur.closest('.form-group').style.display='none';
+  const sch=document.getElementById('ex-sched'); if(sch) sch.closest('.form-group').style.display='none';
+  const chIn=document.getElementById('ex-ch');
+  if(chIn){
+    chIn.closest('.form-group').innerHTML=`<label>Chapter &amp; Part <span style="font-weight:400;color:var(--accent)">(from your timetable)</span></label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><select class="form-control" id="ex-cls-sel" style="flex:0 0 110px" title="Class"></select>
+      <select class="form-control" id="ex-ch-sel" style="flex:1;min-width:160px" onchange="_dppFillParts()"></select>
+      <select class="form-control" id="ex-part-sel" style="flex:1;min-width:140px"></select></div>`;
+  }
+  const tIn=document.getElementById('ex-title');
+  if(tIn) tIn.placeholder='e.g. DPP — Direct and Indirect Speech (Part 1)';
+  const sb=document.querySelector('#modal .btn.btn-primary[onclick^="submitExam"]');
+  if(sb) sb.textContent='Create DPP — generate premium PDFs';
+  const mt=document.getElementById('modal-title'); if(mt) mt.textContent='Create DPP';
+  const sub=document.getElementById('ex-sub');
+  if(sub) sub.addEventListener('change',_dppFillChapters);
+  _dppFillChapters();
+}
+// ---------- UPLOAD DPP (2 PDFs mandatory) ----------
+async function openUploadDpp(){
+  await _dppTtData();
+  const subs=[...new Set((window._dppTt||[]).map(e=>e.subject).filter(Boolean))];
+  showModal('Upload DPP',
+    `<div class="alert alert-info">Ready-made DPP upload karo — <b>Questions PDF</b> aur <b>Solutions PDF</b> dono zaroori hain. Students ko pehle questions dikhenge; submit karne ke baad solutions.</div>
+     <div class="form-group"><label>Subject</label><select class="form-control" id="ud-sub">${subs.map(x=>`<option>${esc(x)}</option>`).join('')||'<option>General</option>'}</select></div>
+     <div class="form-group"><label>Class, Chapter &amp; Part (from your timetable)</label>
+       <div style="display:flex;gap:8px;flex-wrap:wrap"><select class="form-control" id="ud-cls" style="flex:0 0 110px" title="Class"></select>
+       <select class="form-control" id="ud-ch" style="flex:1;min-width:160px" onchange="_udFillParts()"></select>
+       <select class="form-control" id="ud-part" style="flex:1;min-width:140px"></select></div></div>
+     <div class="form-group"><label>Title</label><input class="form-control" id="ud-title" placeholder="e.g. DPP — Tenses (Part 2)"></div>
+     <div class="form-group"><label>Medium</label><select class="form-control" id="ud-medium"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div>
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+       <div class="form-group"><label>Questions PDF *</label><input type="file" class="form-control" id="ud-qpdf" accept="application/pdf"></div>
+       <div class="form-group"><label>Solutions PDF *</label><input type="file" class="form-control" id="ud-spdf" accept="application/pdf"></div></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitUploadDpp()">Upload DPP</button>`);
+  const fill=()=>{ const sub=val('ud-sub'); const es=(window._dppTt||[]).filter(e=>e.subject===sub);
+    const cls=[...new Set(es.map(e=>(e.class_name||'').trim()).filter(Boolean))];
+    document.getElementById('ud-cls').innerHTML='<option value="">All Classes</option>'+cls.map(c=>`<option>${esc(c)}</option>`).join('');
+    const chs=[...new Set(es.map(e=>(e.chapter||'').trim()).filter(Boolean))];
+    document.getElementById('ud-ch').innerHTML='<option value="">— Full chapter / General —</option>'+chs.map(c=>`<option>${esc(c)}</option>`).join('');
+    _udFillParts(); };
+  document.getElementById('ud-sub').addEventListener('change',fill); fill();
+}
+function _udFillParts(){
+  const sub=val('ud-sub'); const ch=val('ud-ch');
+  const es=(window._dppTt||[]).filter(e=>e.subject===sub&&((e.chapter||'').trim()===ch));
+  const parts=[...new Set(es.map(e=>(e.part||'').trim()).filter(Boolean))];
+  document.getElementById('ud-part').innerHTML='<option value="">— Whole chapter —</option>'+parts.map(p2=>`<option>${esc(p2)}</option>`).join('');
+}
+async function submitUploadDpp(){
+  const qf=(document.getElementById('ud-qpdf')||{}).files||[];
+  const sf=(document.getElementById('ud-spdf')||{}).files||[];
+  if(!qf.length||!sf.length){ toast('Questions aur Solutions — dono PDF upload karo',true); return; }
+  const fd=new FormData();
+  fd.append('subject',val('ud-sub')); fd.append('class_name',val('ud-cls')); fd.append('chapter',val('ud-ch')); fd.append('part',val('ud-part'));
+  fd.append('title',val('ud-title')); fd.append('medium',val('ud-medium'));
+  fd.append('q_pdf',qf[0]); fd.append('s_pdf',sf[0]);
+  try{
+    const r=await fetch(API+'/api/teacher/dpp-packs/upload',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+    if(!r.ok){ const j=await r.json().catch(()=>({})); throw new Error(j.detail||'Upload failed'); }
+    closeModal(); toast('DPP uploaded — students ko dikhega.'); loadTDpp();
+  }catch(e){ toast(e.message,true); }
 }
 function _dppFilter(mode){
   document.querySelectorAll('#t-dpp-list .dp-row').forEach(r=>{
@@ -4534,7 +4729,7 @@ function buildPdfDoc(ex,body,withSol,isM,lang,logo){
   +'t.split(/(\\$[^$]+\\$)/g).forEach(function(p){'
   +'if(!p)return;'
   +'var m=p.match(/^\\$([\\s\\S]+)\\$$/);'
-  +'if(m){var bk=/\\\\begin\\{(array|matrix|aligned|cases)\\}/.test(m[1]);var sp=document.createElement(bk?\'div\':\'span\');if(bk)sp.className=\'math-block\';try{katex.render(m[1],sp,{throwOnError:false,displayMode:bk});}catch(e){sp.textContent=p;}frag.appendChild(sp);}'
+  +'if(m){var bk=/\\\\begin\\{(array|matrix|aligned|cases)\\}/.test(m[1]);var sp=document.createElement(bk?\'div\':\'span\');if(bk)sp.className=\'math-block\';_kRender(sp,m[1],bk,p);frag.appendChild(sp);}'
   +'else frag.appendChild(document.createTextNode(p));'
   +'});'
   +'if(node.parentNode)node.parentNode.replaceChild(frag,node);'
@@ -4699,7 +4894,7 @@ async function openLectureForm(prefill){
     <textarea class="form-control" id="lec-hw" rows="2" placeholder="Homework / practice for students"></textarea>
     <div class="ex-grid2">
       <div><label class="ex-lbl">Class Notes <span class="req">*</span></label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-pdf').click()">${ic('upload')} <span id="lec-pdf-name">Upload Class Notes</span></button><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
-      <div><label class="ex-lbl">DPP PDF <span class="opt">(optional)</span></label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-dpp').click()">${ic('upload')} <span id="lec-dpp-name">Upload DPP PDF</span></button><input type="file" id="lec-dpp" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'dpp')"></div>
+      <div><label class="ex-lbl">DPP</label><div style="font-size:.72rem;color:var(--text-muted);padding:8px 10px;border:1px dashed var(--border);border-radius:8px">DPP ab <b>DPP page</b> se — Create DPP ya Upload DPP (timetable-connected).</div></div>
     </div>
     <div class="lecq-head"><h3 style="font-size:.95rem;font-weight:800;margin:14px 0 4px">Verification Questions <span style="font-weight:500;color:var(--text-muted);font-size:.8rem">\u2014 mandatory, students answer one at random</span></h3></div>
     <div id="lec-qs"></div>
@@ -4841,6 +5036,7 @@ async function loadTTests(){
             <button class="mt-eng" title="Students who downloaded the paper" onclick="openExamAudience(${e.id},'download')">${ic('download')} ${e.downloads||0}</button>
             <button class="btn btn-ghost btn-sm" title="Edit title / schedule / duration" onclick="examEditTest(${e.id})">${ic('edit')} Edit</button>
             <button class="btn btn-ghost btn-sm tx-del" title="Delete this test" onclick="examDelete(${e.id})">${ic('trash')} Delete</button>
+            ${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'teacher')">${ic('chart')} Ranking</button>`:''}
             <button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>
             <button class="btn btn-primary btn-sm tst-pdfbtn" title="Premium formatted PDF download" onclick="examPdfHub(${e.id})">${ic('download')} Download PDF</button>
           </div>
@@ -4866,16 +5062,54 @@ const TEX={frac:'\\frac{a}{b}',pow:'x^{2}',sub:'x_{n}',sqrt:'\\sqrt{x}',pi:'\\pi
    **bold**   __underline__   *italic*   aur akela "OR" line = center + bold.
    Markup plain text me hi save hota hai, isliye PDF/DB pipeline nahi badalti. */
 // ---------- bulletproof rich formatter: markdown + LaTeX (Kimi/Claude/Gemini paste-safe) ----------
+// _texFix: AI-paste ki common LaTeX galtiyan theek karta hai (\text K, dangling _^, \cir...)
+function _texFix(t){
+  let s=String(t||'');
+  s=s.replace(/\\text\s*([^\s{][^}]*)/g,'\\text{$1}');
+  s=s.replace(/\\(mathrm|mathbf|mathit)\s*([^\s{])/g,'\\mathrm{$2}');
+  s=s.replace(/\^\{\}/g,'').replace(/_\{\}/g,'');
+  s=s.replace(/[_^]\s*(?=[\s$])/g,'');
+  s=s.replace(/\\cir(?!c|[a-zA-Z])/g,'^\\circ');
+  s=s.replace(/\\left\s*(?=[^([{|$])/g,'').replace(/\\right\s*(?=[^)\]}|$])/g,'');
+  return s;
+}
+// _texPlain: last-resort readable plain text (kabhi red error NAHI)
+function _texPlain(t){
+  let s=String(t||'');
+  s=s.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g,'($1)/($2)');
+  s=s.replace(/\\sqrt\{([^{}]*)\}/g,'\u221a($1)');
+  s=s.replace(/\\times/g,'\u00d7').replace(/\\div/g,'\u00f7').replace(/\\pm/g,'\u00b1');
+  s=s.replace(/\\pi/g,'\u03c0').replace(/\\theta/g,'\u03b8').replace(/\\Delta/g,'\u0394').replace(/\\sigma/g,'\u03c3');
+  s=s.replace(/\\circ|\\degree/g,'\u00b0');
+  s=s.replace(/\^\{([^{}]*)\}/g,'^$1').replace(/_\{([^{}]*)\}/g,'_$1');
+  s=s.replace(/\^([A-Za-z0-9]+)/g,'^$1').replace(/_([A-Za-z0-9]+)/g,'_$1');
+  s=s.replace(/\\text\{([^{}]*)\}/g,'$1').replace(/\\(?:mathrm|mathbf|mathit)\{([^{}]*)\}/g,'$1');
+  s=s.replace(/\\[a-zA-Z]+/g,'').replace(/[{}]/g,'');
+  return s.trim();
+}
+// _kRender: render karo; fail -> sanitize retry; phir fail -> clean plain text
+function _kRender(el,tex,disp,raw){
+  if(window.katex&&window.katex.render){
+    try{ katex.render(tex,el,{throwOnError:true,displayMode:!!disp,strict:'ignore'}); return; }catch(e){}
+    try{ katex.render(_texFix(tex),el,{throwOnError:true,displayMode:!!disp,strict:'ignore'}); return; }catch(e){}
+  }
+  el.textContent=_texPlain(tex)||raw||tex;
+}
 function _fmtMath(tex,disp){
   const t=String(tex||'').trim();
   if(!t) return '';
   if(window.katex&&window.katex.renderToString){
     try{
-      const h=katex.renderToString(t,{displayMode:!!disp,throwOnError:false,strict:'ignore',output:'html'});
+      const h=katex.renderToString(t,{displayMode:!!disp,throwOnError:true,strict:'ignore',output:'html'});
       return disp?'<div class="math-block">'+h+'</div>':'<span class="rt-m">'+h+'</span>';
     }catch(e){}
+    try{
+      const h2=katex.renderToString(_texFix(t),{displayMode:!!disp,throwOnError:true,strict:'ignore',output:'html'});
+      return disp?'<div class="math-block">'+h2+'</div>':'<span class="rt-m">'+h2+'</span>';
+    }catch(e){}
   }
-  return disp?'<div class="math-block rt-msrc">'+esc(t)+'</div>':'<span class="rt-m rt-msrc">'+esc(t)+'</span>';
+  const plain=_texPlain(t)||t;
+  return disp?'<div class="math-block rt-msrc">'+esc(plain)+'</div>':'<span class="rt-m rt-msrc">'+esc(plain)+'</span>';
 }
 function _fmtTable(rows){
   const parse=r=>r.trim().replace(/^\s*\||\|\s*$/g,'').split('|').map(c=>c.trim());
@@ -5045,7 +5279,7 @@ function renderMath(el){
       if(parts.length<=1) return;
       const frag=document.createDocumentFragment();
       parts.forEach(part=>{
-        if(/^[$][$][^$]*[$][$]$/.test(part)){ const s=document.createElement('div'); s.className='math-block'; try{katex.render(part.slice(2,-2),s,{throwOnError:false,displayMode:true});}catch(e){s.textContent=part;} frag.appendChild(s); }
+        if(/^[$][$][^$]*[$][$]$/.test(part)){ const s=document.createElement('div'); s.className='math-block'; _kRender(s,part.slice(2,-2),true,part); frag.appendChild(s); }
         else if(/^[$][^$]+[$]$/.test(part)){
           const inner=part.slice(1,-1);
           // Match-the-following jaisi tables ko apni line par block me dikhao -
@@ -5053,7 +5287,7 @@ function renderMath(el){
           const blk=/\\begin\{(array|matrix|[bpvBV]matrix|aligned|cases)\}/.test(inner);
           const s=document.createElement(blk?'div':'span');
           if(blk) s.className='math-block';
-          try{katex.render(inner,s,{throwOnError:false,displayMode:blk});}catch(e){s.textContent=part;}
+          _kRender(s,inner,blk,part);
           frag.appendChild(s);
         }
         else if(part){ frag.appendChild(document.createTextNode(part)); }
@@ -5077,13 +5311,14 @@ function examImgDrop(e,i){ e.preventDefault(); const f=(e.dataTransfer.files||[]
 function examImgPaste(e,i){ const items=(e.clipboardData||{}).items||[]; for(let k=0;k<items.length;k++){ if(items[k].type&&items[k].type.indexOf('image')===0){ const f=items[k].getAsFile(); if(f){ _fileB64(f).then(d=>_setExamImg(i,d)); e.preventDefault(); } break; } } }
 function examImgRemove(i,ev){ if(ev)ev.stopPropagation(); _examQs[i].image_b64=null; renderExamQs(); }
 async function openCreateExam(type,editData){
+  window._dppMode=(window._dppMode==='pending');
   _examType=type; _examQs=[]; _lastField=null; _examMedium='English';
   window._editExamId=editData?editData.id:null;
   let subs=[];
   try{ const es=await api('/api/teacher/my-timetable'); subs=[...new Set(es.filter(e=>e.subject).map(e=>e.subject))]; }catch(e){}
   const subOpts=subs.length?subs.map(s=>`<option>${esc(s)}</option>`).join(''):'<option>General</option>';
   const tl=type==='mcq'?'MCQ':'Mission 75';
-  const tools=`<div class="ex-tools"><span class="ex-tools-lbl">Maths & Chemistry:</span><button type="button" onclick="insertTexKey('frac')">a&frasl;b</button><button type="button" onclick="insertTexKey('pow')">x&sup2;</button><button type="button" onclick="insertTexKey('sub')">x&#8345;</button><button type="button" onclick="insertTexKey('sqrt')">&radic;</button><button type="button" onclick="insertTexKey('pi')">&pi;</button><button type="button" onclick="insertTexKey('theta')">&theta;</button><button type="button" onclick="insertTexKey('delta')">&Delta;</button><button type="button" onclick="insertTexKey('times')">&times;</button><button type="button" onclick="insertTexKey('deg')">&deg;</button><button type="button" onclick="insertTexKey('intg')">&int;</button><button type="button" onclick="insertTexKey('sum')">&Sigma;</button><button type="button" class="chem" onclick="insertTexKey('rxn')">Reaction</button><button type="button" class="chem" onclick="insertTexKey('chem')">Formula</button><button type="button" class="ai" onclick="autoFormatField()" title="Offline &amp; free — no AI cost">Auto-format</button><button type="button" class="ai" id="ex-tr-all" onclick="examTranslateAll(this)" title="Translate every question to Hindi — free, no AI cost">Translate All to Hindi</button></div>`;
+  const tools=`<div class="ex-tools"><span class="ex-tools-lbl">Maths & Chemistry:</span><button type="button" onclick="insertTexKey('frac')">a&frasl;b</button><button type="button" onclick="insertTexKey('pow')">x&sup2;</button><button type="button" onclick="insertTexKey('sub')">x&#8345;</button><button type="button" onclick="insertTexKey('sqrt')">&radic;</button><button type="button" onclick="insertTexKey('pi')">&pi;</button><button type="button" onclick="insertTexKey('theta')">&theta;</button><button type="button" onclick="insertTexKey('delta')">&Delta;</button><button type="button" onclick="insertTexKey('times')">&times;</button><button type="button" onclick="insertTexKey('deg')">&deg;</button><button type="button" onclick="insertTexKey('intg')">&int;</button><button type="button" onclick="insertTexKey('sum')">&Sigma;</button><button type="button" class="chem" onclick="insertTexKey('rxn')">Reaction</button><button type="button" class="chem" onclick="insertTexKey('chem')">Formula</button><button type="button" class="ai" onclick="autoFormatField()" title="Format the text automatically">Auto-format</button><button type="button" class="ai" id="ex-tr-all" onclick="examTranslateAll(this)" title="Translate every question to Hindi">Translate All to Hindi</button></div>`;
   const note=type==='subjective'
     ?'<div class="alert alert-info">Students upload a photo of their handwritten answers. You grade each answer manually from Results — award marks + remarks per question (your model answers stay visible to you while checking). Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{2H2 + O2 -> 2H2O}$</code> &mdash; they render automatically.</div>'
     :'<div class="alert alert-info">Students select an option. Auto-graded instantly. Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{...}$</code>.</div>';
@@ -5175,12 +5410,12 @@ function renderExamQs(){
   const biling=(_examMedium==='Bilingual');
   el.innerHTML=_examQs.map((q,i)=>{
     const isHi=biling&&q._tab==='hi';
-    const head=`<div class="ex-qhead"><span class="ex-qnum">Question ${i+1}</span><div class="ex-qhead-actions"><button type="button" class="btn btn-sm ex-ocr" title="Attach a screenshot of the question — looks 100% identical, no AI cost" onclick="document.getElementById('ex-ocrf-${i}').click()">Add Screenshot</button><input type="file" id="ex-ocrf-${i}" accept="image/*" style="display:none" onchange="ocrFillQuestion(this,${i})">${_examQs.length>1?`<button class="btn btn-danger btn-sm" onclick="removeExamQ(${i})">${ic('trash')}</button>`:''}</div></div>`;
+    const head=`<div class="ex-qhead"><span class="ex-qnum">Question ${i+1}</span><div class="ex-qhead-actions"><button type="button" class="btn btn-sm ex-ocr" title="Attach a screenshot of the question" onclick="document.getElementById('ex-ocrf-${i}').click()">Add Screenshot</button><input type="file" id="ex-ocrf-${i}" accept="image/*" style="display:none" onchange="ocrFillQuestion(this,${i})">${_examQs.length>1?`<button class="btn btn-danger btn-sm" onclick="removeExamQ(${i})">${ic('trash')}</button>`:''}</div></div>`;
     const _ts=_qTransState(q);
     const _tsLbl=_ts==='done'?'Hindi Added':(_ts==='part'?'Finish Hindi':'Translate to Hindi');
     const _tsTitle=_ts==='done'?'Hindi is filled for this question. Click to translate anything still empty.'
       :(_ts==='part'?'Some Hindi fields are still empty. Click to fill them.'
-      :'Translate this question to Hindi (free, no AI cost)');
+      :'Translate this question to Hindi');
     const tabs=biling?`<div class="ex-lang-tabs"><button type="button" class="ex-lang-tab ${q._tab!=='hi'?'active':''}" onclick="setExamTab(${i},'en')">English</button><button type="button" class="ex-lang-tab ${q._tab==='hi'?'active':''}" onclick="setExamTab(${i},'hi')">\u0939\u093f\u0902\u0926\u0940</button><button type="button" class="ex-lang-tab ex-tr tr-${_ts}" title="${_tsTitle}" onclick="examTranslate(${i},this)">${_tsLbl}</button></div>`:'';
     const autoHint='';
     const qval=isHi?(q.q_hi||''):(q.q||'');
@@ -5394,7 +5629,7 @@ async function examTranslateAll(btn){
     await new Promise(r=>setTimeout(r,120));
   }
   btn.disabled=false; btn.textContent=old; renderExamQs();
-  toast(done?('Translated '+done+' field(s) to Hindi — free, no AI cost'):'Nothing translated (Hindi already filled or English empty)');
+  toast(done?('Translated '+done+' field(s) to Hindi.'):'Nothing translated — Hindi already filled or English empty.');
 }
 /* ---- PDF medium chooser ---- */
 function examPdfChoose(id,mode){
@@ -5646,7 +5881,7 @@ async function loadATests(){
       +(rows.length? subs.map(sub=>`<div class="card"><div class="card-header"><h3>${esc(sub)}</h3><span class="tx-pill nv">${bySub[sub].length} test${bySub[sub].length>1?'s':''}</span></div><div class="card-body">`
         +bySub[sub].map(e=>{
           const sch=spSchedOf(e);
-          return `<div class="today-row"><div><div class="tr-sub">${esc(e.title||'')}</div><div class="tr-topic">${esc(e.teacher_name||'')}${spCleanCh(e.chapter)?' \u00b7 '+esc(spCleanCh(e.chapter)):''} \u00b7 ${e.questions||0} Qs \u00b7 ${e.total_marks||0} marks \u00b7 ${e.duration_min||0} min${sch?' \u00b7 '+spSchedFmt(sch):''}</div></div><div class="tmeta"><span class="tstatus">${e.attempts||0} submitted</span><span class="tstatus ${(e.graded||0)>0?'done':''}">${e.graded||0} evaluated</span><span class="tstatus" style="color:#b45309">${Math.max(0,(e.attempts||0)-(e.graded||0))} pending</span></div></div>`;
+          return `<div class="today-row"><div><div class="tr-sub">${esc(e.title||'')}</div><div class="tr-topic">${esc(e.teacher_name||'')}${spCleanCh(e.chapter)?' \u00b7 '+esc(spCleanCh(e.chapter)):''} \u00b7 ${e.questions||0} Qs \u00b7 ${e.total_marks||0} marks \u00b7 ${e.duration_min||0} min${sch?' \u00b7 '+spSchedFmt(sch):''}</div></div><div class="tmeta"><span class="tstatus">${e.attempts||0} submitted</span><span class="tstatus ${(e.graded||0)>0?'done':''}">${e.graded||0} evaluated</span><span class="tstatus" style="color:#b45309">${Math.max(0,(e.attempts||0)-(e.graded||0))} pending</span>${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'admin')">${ic('chart')} Ranking</button>`:''}</div></div>`;
         }).join('')+`</div></div>`).join('')
         : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests yet</b><p>Tests from teachers will appear here, subject-wise.</p></div>`);
   }catch(e){
@@ -6150,7 +6385,7 @@ document.addEventListener('paste',function(e){
   text=asPlainSmart();
   if(text==null) return; // ordinary paste, leave untouched
   e.preventDefault();
-  put(text,'Pasted & formatted — offline, no AI cost.');
+  put(text,'Pasted & formatted successfully.');
 },true);
 
 async function autoFormatField(){
@@ -6166,14 +6401,14 @@ async function autoFormatField(){
   after=after.replace(/\n{3,}/g,'\n\n');
   if(after===t.value){ toast('Already looks formatted — nothing to change.'); return; }
   t.value=after; t.dispatchEvent(new Event('input',{bubbles:true}));
-  toast('Formatted instantly — offline, no AI cost.');
+  toast('Formatted instantly.');
 }
 async function ocrFillQuestion(inp,i){
   const f=inp.files[0]; inp.value=''; if(!f) return;
   if(f.size>15*1024*1024){ toast('Image too large (max 15MB)',true); return; }
   const b64=await _fileB64(f);
   _setExamImg(i,b64);
-  toast('Screenshot attached to Question '+(i+1)+' — 100% identical to the original, no AI cost.');
+  toast('Screenshot attached to Question '+(i+1)+'.');
 }
 // ---- import progress bar helpers ----
 let _exProgTimer=null;
@@ -6266,6 +6501,25 @@ async function downloadStudentAnswer(attId,name){
   }
 }
 async function submitExam(){
+  // ---- DPP mode: editor se DPP banao (answers already mandatory) ----
+  if(window._dppMode){
+    const title=val('ex-title'); if(!title){ toast('Enter a DPP title',true); return; }
+    if(!_examQs.length){ toast('Add at least one question',true); return; }
+    for(let i=0;i<_examQs.length;i++){ const q=_examQs[i];
+      if(!(q.q||'').trim()&&!q.image){ toast('Question '+(i+1)+': please fill the question',true); return; }
+      if(!(q.model||'').trim()&&!q.model_answer_image){ toast('Question '+(i+1)+': model answer MANDATORY hai — answer bharo',true); return; } }
+    const payload={ subject:val('ex-sub'), class_name:(val('ex-cls-sel')||''),
+      chapter:(val('ex-ch-sel')!==undefined?val('ex-ch-sel'):val('ex-ch')), part:(val('ex-part-sel')||''),
+      title, medium:_examMedium||'English',
+      questions:_examQs.map(q=>({ q:q.q||'', q_hi:q.q_hi||'', model:q.model||'', model_hi:q.model_hi||'',
+        image:q.image||null, alt_image:q.alt_image||null, model_image:q.model_answer_image||null })) };
+    try{
+      await api('/api/teacher/dpp-packs/create','POST',payload);
+      window._dppMode=false; closeModal();
+      toast('DPP created — premium questions + solutions PDFs ready. Students ko dikhega.');
+      loadTDpp(); return;
+    }catch(e){ toast(e.message||'Create failed',true); return; }
+  }
   const title=val('ex-title'); if(!title){ toast('Enter a test title',true); return; }
   if(!_examQs.length){ toast('Add at least one question',true); return; }
   const biling=(_examMedium==='Bilingual');
@@ -7657,10 +7911,10 @@ function xhrUpload(url,formData,onProgress){
 let _extMats=[], _extCtx=null, _extRole='', _extCid='', _extSubject=null;
 let _extSession='', _extClass='', _extMedium='';
 // display order + rename for categories coming from the MVS Portal
-const _XM_CAT_ORDER=[['syllabus',1],['book',2],['studymaterial',3],['chapterwisenote',3],['questionbank',4],['tma',5],['practical',6],['exampattern',7],['samplepaper',8]];
+const _XM_CAT_ORDER=[['syllabus',1],['book',2],['studymaterial',3],['chapterwisenote',3],['questionbank',4],['tma',5],['practical',6],['exampattern',7],['samplepaper',8],['pyq',9],['previousyear',9],['solvedpyq',9]];
 function _xmCatKey(c){ return (c||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
 function _xmCatOrder(c){ const k=_xmCatKey(c); for(const [kw,o] of _XM_CAT_ORDER){ if(k.includes(kw)) return o; } return 50; }
-function _xmCatName(c){ const k=_xmCatKey(c); if(k.includes('studymaterial')) return 'Chapterwise Notes'; return c||'Other'; }
+function _xmCatName(c){ const k=_xmCatKey(c); if(k.includes('studymaterial')) return 'Chapterwise Notes'; if(k.includes('pyq')||k.includes('previousyear')) return 'Solved PYQs'; return c||'Other'; }
 function _xmSortCats(keys){ return keys.sort((a,b)=>{ const oa=_xmCatOrder(a),ob=_xmCatOrder(b); return oa!==ob?oa-ob:_xmCatName(a).localeCompare(_xmCatName(b)); }); }
 async function loadExtMaterials(cid){
   _extCid=cid; _extSubject=null;
@@ -7733,17 +7987,29 @@ function _extRender(){
 function _extOpenSubject(sub){ _extSubject=sub; _extRenderSubject(); }
 const _XM_CAT_IC={syllabus:'clipboard',book:'book',studymaterial:'book',chapterwisenote:'book',questionbank:'folder',tma:'edit',practical:'clipboard',exampattern:'chart',samplepaper:'folder'};
 function _xmCatIc(c){ const k=_xmCatKey(c); for(const kw in _XM_CAT_IC){ if(k.includes(kw)) return ic(_XM_CAT_IC[kw]); } return ic('book'); }
+let _pyqYear='';
 function _extRenderSubject(){
   const el=document.getElementById(_extCid); if(!el) return;
   const pool=_extPool().filter(m=>(((m.subject||'').trim())||'General & Others')===_extSubject);
   const groups={}; pool.forEach(m=>{ const c=m.category||'Other'; (groups[c]=groups[c]||[]).push(m); });
   let body='';
   _xmSortCats(Object.keys(groups)).forEach(c=>{
-    const rows=groups[c].map(m=>{
+    const _isPyq=_xmCatKey(c).includes('pyq')||_xmCatKey(c).includes('previousyear');
+    let items=groups[c], chipsHtml='';
+    if(_isPyq){
+      // Solved PYQs — session(year) wise chips (2026 / 2025 / 2024...)
+      const years=[...new Set(items.map(m=>{ const y=(String(m.session||'')+' '+String(m.title||'')).match(/(20\d{2})/); return y?y[1]:''; }).filter(Boolean))].sort((a,b)=>b-a);
+      if(years.length){
+        if(!_pyqYear||!years.includes(_pyqYear)) _pyqYear=years[0];
+        items=items.filter(m=>(String(m.session||'')+' '+String(m.title||'')).includes(_pyqYear));
+        chipsHtml=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 12px">${years.map(y=>`<button class="btn ${_pyqYear===y?'btn-primary':'btn-ghost'} btn-sm" onclick="_pyqYear='${y}';_extRenderSubject()">${y}</button>`).join('')}</div>`;
+      }
+    }
+    const rows=items.map(m=>{
       const isLink=(m.kind==='link'&&m.link);
-      return `<div class="xm-row"><div style="flex:1;min-width:0"><div class="xm-row-t">${esc(m.title||'Untitled')}</div><div class="xm-row-m">${m.medium?`<span class="qb-medium ${(m.medium||'').toLowerCase()==='hindi'?'hindi':''}">${esc(m.medium)}</span>`:''}${m.class_level?`<span>Class ${esc(String(m.class_level))}</span>`:''}<span>${isLink?'Link':'PDF'}</span></div></div><button class="btn btn-primary btn-sm" onclick="openExtMaterial('${esc(String(m.id))}',${isLink?`'${esc(m.link)}'`:'null'},'${esc((m.filename||m.title||'material').replace(/'/g,''))}')">${ic(isLink?'play':'download')} ${isLink?'Open':'Download'}</button></div>`;
+      return `<div class="xm-row"><div style="flex:1;min-width:0"><div class="xm-row-t">${esc(m.title||'Untitled')}</div><div class="xm-row-m">${m.medium?`<span class="qb-medium ${(m.medium||'').toLowerCase()==='hindi'?'hindi':''}">${esc(m.medium)}</span>`:''}${m.class_level?`<span>Class ${esc(String(m.class_level))}</span>`:''}${m.session?`<span>${esc(m.session)}</span>`:''}<span>${isLink?'Link':'PDF'}</span></div></div><button class="btn btn-primary btn-sm" onclick="openExtMaterial('${esc(String(m.id))}',${isLink?`'${esc(m.link)}'`:'null'},'${esc((m.filename||m.title||'material').replace(/'/g,''))}')">${ic(isLink?'play':'download')} ${isLink?'Open':'Download'}</button></div>`;
     }).join('');
-    body+=`<div class="xm-sec"><div class="xm-sec-h"><div class="xm-sec-ic">${_xmCatIc(c)}</div><h3>${esc(_xmCatName(c))}</h3><span class="xm-count">${groups[c].length} ${groups[c].length===1?'file':'files'}</span></div>${rows}</div>`;
+    body+=`<div class="xm-sec"><div class="xm-sec-h"><div class="xm-sec-ic">${_xmCatIc(c)}</div><h3>${esc(_xmCatName(c))}</h3><span class="xm-count">${items.length} ${items.length===1?'file':'files'}</span></div>${chipsHtml}${rows}</div>`;
   });
   if(!pool.length) body=`<div class="empty-state"><p>No material in this subject yet.</p></div>`;
   el.innerHTML=`<div class="sm-head" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px"><button class="btn btn-ghost btn-sm" onclick="_extSubject=null;_extRender()">\u2190 Back</button><div style="display:flex;align-items:center;gap:12px"><div class="xm-ic" style="width:42px;height:42px">${ic('book')}</div><div><h2 style="margin:0;font-size:1.35rem">${esc(_extSubject)}</h2></div></div></div><div class="xm-wrap">${body}</div>`;
@@ -7909,7 +8175,7 @@ async function submitTTDelete(){
 }
 function openAdminMaterial(){
   showModal('Upload Material (Admin)',
- `<div class="alert alert-info">The admin can upload any material directly. Students of that subject will be notified.</div><div class="form-group"><label>Subject</label><input class="form-control" id="am-sub" placeholder="e.g. Physics"></div><div class="form-group"><label>Type</label><select class="form-control" id="am-type" onchange="amToggle()"><option value="notes">Class Notes</option><option value="dpp">DPP</option><option value="test">Test</option><option value="other">Other (category)</option></select></div><div class="form-group" id="am-cat-wrap" style="display:none"><label>Category</label><input class="form-control" id="am-cat" placeholder="e.g. Formula Sheet / PYQ"></div><div class="form-group" id="am-dur-wrap" style="display:none"><label>Test Duration (min)</label><input type="number" class="form-control" id="am-dur" value="60"></div><div class="form-group"><label>Chapter</label><input class="form-control" id="am-ch" placeholder="e.g. Laws of Motion"></div><div class="form-group"><label>Title</label><input class="form-control" id="am-title" placeholder="Title"></div><div class="form-group"><label>PDF File</label>${fileDropHTML('am-file','am-label')}</div><div id="am-status"></div>`,
+ `<div class="alert alert-info">The admin can upload any material directly. Students of that subject will be notified.</div><div class="form-group"><label>Subject</label><input class="form-control" id="am-sub" placeholder="e.g. Physics"></div><div class="form-group"><label>Type</label><select class="form-control" id="am-type" onchange="amToggle()"><option value="notes">Class Notes</option><option value="dpp">DPP</option><option value="test">Test</option><option value="pyq">Solved PYQs</option><option value="other">Other (category)</option></select></div><div class="form-group" id="am-cat-wrap" style="display:none"><label>Category</label><input class="form-control" id="am-cat" placeholder="e.g. Formula Sheet / PYQ"></div><div class="form-group" id="am-dur-wrap" style="display:none"><label>Test Duration (min)</label><input type="number" class="form-control" id="am-dur" value="60"></div><div class="form-group"><label>Chapter</label><input class="form-control" id="am-ch" placeholder="e.g. Laws of Motion"></div><div class="form-group"><label>Title</label><input class="form-control" id="am-title" placeholder="Title"></div><div class="form-group"><label>PDF File</label>${fileDropHTML('am-file','am-label')}</div><div id="am-status"></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="am-btn" onclick="submitAdminMaterial()">Upload</button>`);
 }
 function amToggle(){
@@ -7926,8 +8192,10 @@ async function submitAdminMaterial(){
   const btn=document.getElementById('am-btn'); btn.disabled=true; btn.textContent='Uploading...';
   const fd=new FormData();
   fd.append('file',_upf); fd.append('subject',val('am-sub'));
-  fd.append('chapter',val('am-ch')); fd.append('material_type',val('am-type'));
-  fd.append('title',val('am-title')); fd.append('category',val('am-cat')); fd.append('class_name','Class 12');
+  fd.append('chapter',val('am-ch'));
+  const _amt=val('am-type');
+  fd.append('material_type',_amt==='pyq'?'other':_amt);
+  fd.append('title',val('am-title')); fd.append('category',_amt==='pyq'?'PYQ':val('am-cat')); fd.append('class_name','Class 12');
   if(val('am-type')==='test') fd.append('duration_min',val('am-dur')||'60');
   try{
  const r=await fetch(API+'/api/admin/material',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
@@ -8054,6 +8322,7 @@ function selectMedium(m){
 }
 function enterStudentApp(){
   document.getElementById('subject-screen').style.display='none';
+  document.getElementById('teacher-app').classList.remove('active');
   document.getElementById('student-app').classList.add('active');
   document.getElementById('s-name').textContent=NAME;
   document.getElementById('s-avatar').textContent=initials(NAME);
@@ -8184,6 +8453,9 @@ async function loadSProfile(){
       ['Batch', p.batch_name||'—'],
       ['Medium', p.medium||'—'],
       ['Class', p.class_level?('Class '+p.class_level):'—'],
+      ['Exam Session', p.exam_session||'—'],
+      ['Exam Stream', p.exam_stream?('Stream '+p.exam_stream):'—'],
+      ['NIOS Reference', p.nios_ref||'—'],
     ];
     el.innerHTML=`<div class="card glass-soft"><div class="card-body">
       <div class="prof-head">
@@ -8300,7 +8572,7 @@ function renderRecordedTimetable(el){
   const rows=subs.length?subs.map(s=>`<div class="rb-row">
       <div class="rb-ic">${ic('play')}</div>
       <div class="rb-main"><div class="rb-sub">${esc(s)}</div><div class="rb-note">Recorded lectures \u00b7 watch anytime in the app</div></div>
-      <button class="btn btn-primary btn-sm rb-watch" onclick="openMVC()">${ic('play')} Watch</button>
+      <button class="btn btn-primary btn-sm rb-watch" onclick="openMVC()" title="Open the Manish Verma Classes app to watch this subject's recorded lectures">${ic('play')} Watch Lectures</button>
     </div>`).join(''):`<div class="empty-state"><p>No subjects on your profile yet. Please contact the admin.</p></div>`;
   el.innerHTML=`<div id="s-verify-wrap"></div>
     <div class="rb-grid">
@@ -8349,6 +8621,29 @@ async function loadSDashboard(){
     const batch=prof.batch_name||'';
     document.getElementById('s-batch').textContent=batch||'Student';
 
+    // ---- My Stats (clickable cards: syllabus / DPP / tests / doubts + batch rank chip)
+    let _ms={syl:null,dpp:null,test:null,doubt:null,rank:null};
+    try{
+      const perf=await api('/api/student/performance');
+      _ms.dpp={done:perf.dpp.done,total:perf.dpp.total,pend:Math.max(0,perf.dpp.total-perf.dpp.done)};
+      _ms.test={done:perf.tests.done,total:perf.tests.total,miss:Math.max(0,perf.tests.total-perf.tests.done)};
+    }catch(e){}
+    try{
+      const ov2=await api('/api/syllabus/overview');
+      let cw=0,tw=0;
+      (ov2.subjects||[]).forEach(x=>{ if(x.calc){ const pm=x.calc.paper_marks||x.calc.total_pe_marks||0; tw+=pm; cw+=Math.min(pm,x.calc.covered_paper||0); } });
+      if(tw>0) _ms.syl={pct:Math.round(cw/tw*100)};
+    }catch(e){}
+    try{
+      const db2=await api('/api/student/doubts');
+      const res=(db2||[]).filter(x=>x.status==='resolved').length;
+      _ms.doubt={total:(db2||[]).length,res:res,pend:(db2||[]).length-res};
+    }catch(e){}
+    try{
+      const bb2=await api('/api/student/batch-board');
+      if(bb2&&bb2.me) _ms.rank={r:bb2.me.rank,t:bb2.total};
+    }catch(e){}
+
     // ---- Today's Priority (hidden when the upcoming-test banner already covers a test)
     const _up=await _sUpcomingExam();
     const p=w.priority||{kind:'lecture',label:"Watch today's lecture",title:'Open the Manish Verma Classes App',action:'mvc'};
@@ -8395,9 +8690,18 @@ async function loadSDashboard(){
     const qa=[['Open MVC App','play','mvc','mvc'],['Time Table','calendar','timetable',''],['Classes Material','book','materials',''],['Study Material','folder','qbank',''],['Submit DPP','clipboard','dpp',''],['Attempt Test','edit','tests',''],['Ask Doubt','help','doubts',''],['Progress','chart','progress','']];
     const qaHtml=`<div class="card"><div class="card-header"><h3>Quick Access</h3></div><div class="card-body"><div class="qa-grid">${qa.map(([l,i,pg,cls])=>`<button class="qa-btn ${cls}" onclick="wsGo('${pg}')"><div class="qa-ic">${ic(i)}</div><div class="qa-lbl">${l}</div></button>`).join('')}</div></div></div>`;
 
+    const _statCell=(num,lbl,sub,pg,accent)=>`<div class="mstat-cell" onclick="wsGo('${pg}')" role="button">
+        <div class="mstat-num ${accent?'acc':''}">${num}</div><div class="mstat-lbl">${lbl}</div><div class="mstat-sub">${sub}</div></div>`;
+    const statsHtml=`<div class="card"><div class="card-header"><h3>My Stats</h3>${_ms.rank?`<span class="mstat-rank" onclick="wsGo('progress')" title="See your batch ranking">Batch Rank <b>#${_ms.rank.r}</b><small>/${_ms.rank.t}</small></span>`:''}</div><div class="card-body"><div class="mstat-grid">
+      ${_statCell(_ms.syl?_ms.syl.pct+'%':'0%','Syllabus Covered',_ms.syl?'tap to open tracker':'start now — tap','syllabus',!_ms.syl)}
+      ${_ms.dpp?_statCell(_ms.dpp.done+'/'+_ms.dpp.total,'DPPs Submitted',_ms.dpp.pend?(_ms.dpp.pend+' pending'):'all done','dpp',_ms.dpp.pend>0):''}
+      ${_ms.test?_statCell(_ms.test.done+'/'+_ms.test.total,'Tests Given',_ms.test.miss?(_ms.test.miss+' missed'):'none missed','tests',_ms.test.miss>0):''}
+      ${_ms.doubt?_statCell(_ms.doubt.total,'Doubts Asked',_ms.doubt.res+' resolved · '+_ms.doubt.pend+' pending','doubts',_ms.doubt.pend>0):''}
+    </div></div></div>`;
     setIf(el,`${greetingCard(NAME)}<div id="s-live-banner" style="display:none"></div>
       ${prio}
       <div id="s-today-wrap"></div>
+      ${statsHtml}
       ${qaHtml}`);
     loadStudentLiveBanner();
     _renderTodayClassesStudent();
@@ -8406,42 +8710,107 @@ async function loadSDashboard(){
 }
 
 // Today's Classes on the student dashboard — subject, teacher (photo + name) and time slot.
+// ---------- Today's / Tomorrow's / Custom-date classes (smart dropdown) ----------
+let _tcMode='today', _tcDate=null;
 async function _renderTodayClassesStudent(){
   const wrap=document.getElementById('s-today-wrap'); if(!wrap) return;
   if(sMode()!=='live'){
     setIf(wrap,`<div class="card"><div class="card-body" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
         <div class="rb-ic" style="flex-shrink:0">${ic('play')}</div>
         <div style="flex:1;min-width:200px"><b>Recorded batch \u2014 no live classes.</b><div style="font-size:.8rem;color:var(--text-muted)">Watch the recorded lectures of your subjects anytime in the Manish Verma Classes app.</div></div>
-        <button class="btn btn-primary btn-sm" onclick="openMVC()">${ic('play')} Watch Now</button>
+        <button class="btn btn-primary btn-sm" onclick="openMVC()" title="Open the Manish Verma Classes app to watch the recorded lectures">${ic('play')} Watch Now</button>
       </div></div>`);
     return;
   }
   try{
     const plan=await api('/api/student/timetable-plan');
-    const todayStr=new Date().toLocaleDateString('en-CA');
-    const today=plan.filter(e=>e.date===todayStr)
-                     .sort((a,b)=>_timeKey(a.time)-_timeKey(b.time));
-    if(!today.length){
-      setIf(wrap,`<div class="card"><div class="card-header"><h3>Today's Classes</h3></div><div class="card-body"><div class="ws-empty"><div class="big">\u2615</div><p>No classes scheduled today</p><small>Use the free time to revise or clear pending work.</small></div></div></div>`);
-      return;
-    }
-    const rows=today.map(c=>{
-      const isTest=(c.type||'')==='test'||/test|exam/i.test(c.chapter||'');
-      const photo=c.teacher_id?`<img class="tc-photo" src="" data-tid="${c.teacher_id}" data-ini="${esc((c.teacher_name||'S').charAt(0).toUpperCase())}" alt="">`:`<div class="tc-photo tc-ph">${esc((c.teacher_name||'S').charAt(0).toUpperCase())}</div>`;
-      const topic=esc(c.part||c.chapter||'');
-      return `<div class="tc-row tc-link" onclick="sPage('timetable',null)" title="Open Time Table"><div class="tc-time"><span class="tc-t">${esc(c.time||'TBA')}</span></div><div class="tc-body"><div class="tc-sub">${esc(c.subject)}${isTest?'<span class="tc-tag">TEST</span>':''}</div>${topic?`<div class="tc-topic">${topic}</div>`:''}</div><div class="tc-teach">${photo}<span class="tc-tname">${esc(c.teacher_name||'\u2014')}</span></div><span class="slist-go">&rsaquo;</span></div>`;
-    }).join('');
-    const _dStr=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
-    setIf(wrap,`<div class="card"><div class="card-header"><h3>Today's Classes</h3><span class="tc-date">${_dStr}</span><span class="tc-count">${today.length} class${today.length===1?'':'es'}</span></div><div class="card-body">${rows}</div></div>`);
-    // load teacher photos
-    wrap.querySelectorAll('img.tc-photo[data-tid]').forEach(async im=>{
-      try{
-        const r=await fetch(API+`/api/student/teacher/${im.dataset.tid}/photo`,{headers:{Authorization:'Bearer '+TOKEN}});
-        if(!r.ok){ im.replaceWith(Object.assign(document.createElement('div'),{className:'tc-photo tc-ph',textContent:im.dataset.ini||'S'})); return; }
-        im.src=URL.createObjectURL(await r.blob());
-      }catch(e){}
-    });
+    window._tcPlan=plan||[];
+    _tcPaint();
   }catch(e){ wrap.innerHTML=''; }
+}
+function _tcPaint(){
+  const wrap=document.getElementById('s-today-wrap'); if(!wrap) return;
+  const plan=window._tcPlan||[];
+  const todayStr=new Date().toLocaleDateString('en-CA');
+  const tmr=new Date(); tmr.setDate(tmr.getDate()+1);
+  const tmrStr=tmr.toLocaleDateString('en-CA');
+  const selDate=_tcMode==='today'?todayStr:_tcMode==='tomorrow'?tmrStr:(_tcDate||todayStr);
+  const selD=new Date(selDate+'T00:00:00');
+  const title=_tcMode==='today'?"Today's Classes":_tcMode==='tomorrow'?"Tomorrow's Classes":'Classes';
+  const dStr=selD.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
+  const list=plan.filter(e=>e.date===selDate).sort((a,b)=>_timeKey(a.time)-_timeKey(b.time));
+  const ddBtn=(m,lbl)=>`<button class="tc-dd-btn ${_tcMode===m?'on':''}" onclick="tcSetDay('${m}')">${lbl}</button>`;
+  const dd=`<div class="tc-dd">${ddBtn('today','Today')}${ddBtn('tomorrow','Tomorrow')}<button class="tc-dd-btn ${_tcMode==='custom'?'on':''}" onclick="tcSetDay('custom')">Pick date</button></div>`;
+  let calHtml='';
+  if(_tcMode==='custom'){
+    const y=selD.getFullYear(), mo=selD.getMonth();
+    const first=new Date(y,mo,1), dim=new Date(y,mo+1,0).getDate();
+    const startDow=(first.getDay()+6)%7;
+    const hasCls={}; plan.forEach(e=>{ if(e.date) hasCls[e.date]=1; });
+    let cells='';
+    ['M','T','W','T','F','S','S'].forEach(d=>cells+=`<span class="tc-cal-h">${d}</span>`);
+    for(let k=0;k<startDow;k++) cells+='<span></span>';
+    for(let d=1;d<=dim;d++){
+      const iso=y+'-'+String(mo+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+      cells+=`<button class="tc-cal-d ${iso===selDate?'on':''} ${hasCls[iso]?'has':''} ${iso===todayStr?'today':''}" onclick="tcPickDate('${iso}')">${d}</button>`;
+    }
+    calHtml=`<div class="tc-cal"><div class="tc-cal-title">${selD.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</div><div class="tc-cal-grid">${cells}</div></div>`;
+  }
+  let rows='';
+  if(!list.length){
+    rows=`<div class="ws-empty"><div class="big">\u2615</div><p>No classes on ${dStr}</p><small>${_tcMode==='today'?'Use the free time to revise or clear pending work.':'Check another day from the buttons above.'}</small></div>`;
+  }else{
+    const nowMin=new Date().getHours()*60+new Date().getMinutes();
+    rows=list.map(c=>{
+      const isTest=(c.type||'')==='test'||/test|exam/i.test(c.chapter||'');
+      const ini=esc((c.teacher_name||'S').charAt(0).toUpperCase());
+      const photo=c.teacher_id?`<img class="tc-photo" src="" data-tid="${c.teacher_id}" data-ini="${ini}" alt="">`:`<div class="tc-photo tc-ph">${ini}</div>`;
+      const topic=esc(c.part||c.chapter||'');
+      // status chip: Done / Live / Upcoming
+      let chip='';
+      if(c.class_done) chip='<span class="tc-chip done">Done</span>';
+      else if(_tcMode==='today'){ const st=_timeKey(c.time); chip=(st<=nowMin&&nowMin<=st+90)?'<span class="tc-chip live">Live</span>':'<span class="tc-chip">Upcoming</span>'; }
+      else chip='<span class="tc-chip blink">Upcoming</span>';
+      // class materials shortcut (sirf jab teacher ne notes/dpp upload kiye ho)
+      let matBtn='';
+      if(c.lecture_id&&(c.has_notes||c.has_dpp)){
+        matBtn=`<div class="tc-mat"><button class="tc-mat-btn" onclick="tcMatMenu(event,${c.lecture_id},${c.has_notes?1:0},${c.has_dpp?1:0})" title="Download this class's notes / DPP">Class Materials</button></div>`;
+      }
+      return `<div class="tc-row tc-link" onclick="sPage('timetable',null)" title="Open Time Table"><div class="tc-time"><span class="tc-t">${esc(c.time||'TBA')}</span></div><div class="tc-body"><div class="tc-sub">${esc(c.subject)}${isTest?'<span class="tc-tag">TEST</span>':''}</div>${topic?`<div class="tc-topic">${topic}</div>`:''}</div><div class="tc-teach">${photo}<span class="tc-tname">${esc(c.teacher_name||'\u2014')}</span></div>${chip}${matBtn}<span class="slist-go">&rsaquo;</span></div>`;
+    }).join('');
+  }
+  setIf(wrap,`<div class="card"><div class="card-header" style="flex-wrap:wrap;gap:8px"><h3>${title}</h3><span class="tc-date">${dStr}</span><span class="tc-count">${list.length} class${list.length===1?'':'es'}</span>${dd}</div>${calHtml}<div class="card-body">${rows}</div></div>`);
+  wrap.querySelectorAll('img.tc-photo[data-tid]').forEach(async im=>{
+    try{
+      const r=await fetch(API+`/api/student/teacher/${im.dataset.tid}/photo`,{headers:{Authorization:'Bearer '+TOKEN}});
+      if(!r.ok){ im.replaceWith(Object.assign(document.createElement('div'),{className:'tc-photo tc-ph',textContent:im.dataset.ini||'S'})); return; }
+      im.src=URL.createObjectURL(await r.blob());
+    }catch(e){}
+  });
+}
+function tcSetDay(m){ _tcMode=m; if(m==='custom'&&!_tcDate) _tcDate=new Date().toLocaleDateString('en-CA'); _tcPaint(); }
+function tcPickDate(iso){ _tcDate=iso; _tcPaint(); }
+// Class Materials popup: Class Notes / DPP download
+function tcMatMenu(ev,lid,hasNotes,hasDpp){
+  ev.stopPropagation();
+  document.querySelectorAll('.tc-mat-pop').forEach(x=>x.remove());
+  const pop=document.createElement('div');
+  pop.className='tc-mat-pop';
+  pop.innerHTML=`${hasNotes?`<button onclick="tcMatDl(${lid},'pdf')">Class Notes (PDF)</button>`:''}${hasDpp?`<button onclick="tcMatDl(${lid},'dpp')">DPP (PDF)</button>`:''}`;
+  pop.addEventListener('click',e=>e.stopPropagation());
+  ev.target.closest('.tc-mat').appendChild(pop);
+  setTimeout(()=>document.addEventListener('click',()=>pop.remove(),{once:true}),10);
+}
+async function tcMatDl(lid,kind){
+  document.querySelectorAll('.tc-mat-pop').forEach(x=>x.remove());
+  try{
+    const r=await fetch(API+`/api/student/lecture/${lid}/file?kind=${kind}`,{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('nf');
+    const bl=await r.blob();
+    const a=document.createElement('a'); a.href=URL.createObjectURL(bl);
+    a.download=(kind==='dpp'?'DPP':'Class-Notes')+'.pdf'; a.click();
+    toast((kind==='dpp'?'DPP':'Class notes')+' download started.');
+  }catch(e){ toast('File not available yet.'); }
 }
 function _timeKey(t){
   if(!t) return 9999;
@@ -8459,7 +8828,7 @@ async function _loadRecordedSubjects(){
     const m=await api('/api/student/my-subjects-mode');
     const rec=m.recorded||[];
     if(!rec.length){ wrap.innerHTML=''; return; }
-    const rows=rec.map(s=>`<div class="rec-row"><div class="rec-ic">${ic('play')}</div><div class="rec-main"><div class="rec-sub">${esc(s)}</div><div class="rec-note">Recorded classes \u2014 watch anytime in the app</div></div><button class="btn btn-primary btn-sm" onclick="openMVC()">${ic('play')} Watch</button></div>`).join('');
+    const rows=rec.map(s=>`<div class="rec-row"><div class="rec-ic">${ic('play')}</div><div class="rec-main"><div class="rec-sub">${esc(s)}</div><div class="rec-note">Recorded classes \u2014 watch anytime in the app</div></div><button class="btn btn-primary btn-sm" onclick="openMVC()" title="Open the Manish Verma Classes app to watch the recorded lectures">${ic('play')} Watch Lectures</button></div>`).join('');
     setIf(wrap,`<div class="rec-card"><div class="rec-head"><div class="rec-badge">${rec.length}</div><div><div class="rec-title">Recorded Subjects</div><div class="rec-sub2">These subjects have no live timetable \u2014 their lectures are pre-recorded in the Manish Verma Classes App.</div></div></div>${rows}</div>`);
   }catch(e){ wrap.innerHTML=''; }
 }
@@ -8545,15 +8914,80 @@ function openSubjectMaterials(encSub){
 
 async function loadSDpp(){
   const el=document.getElementById('s-dpp-content');
+  el.innerHTML='<div class="spinner"></div>';
   try{
- const dpps=await api('/api/student/dpp-list');
- let html=`<div class="card"><div class="card-header"><h3> DPP — Download & Submit</h3></div><div class="card-body">`;
- if(dpps.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No DPP available yet. Please wait for the teacher to upload.</p></div>`;
- else html+=dpps.map(d=>`<div class="today-row"><div><div class="tr-sub"> ${esc(d.subject)}</div><div class="tr-topic">${esc(d.chapter||'')} — ${esc(d.title||'DPP')}</div></div><div class="tmeta"><button class="btn btn-primary btn-sm" onclick="downloadMaterial('student',${d.id},'DPP.pdf')">${ic('download')} Download</button>${d.marks?`<span class="dp-tag done">\u2714 Checked \u00b7 Marks: ${esc(d.marks)}</span>`:d.submitted?`<span class="dp-tag pending">\u23f3 Submitted \u00b7 Checking</span><button class="btn btn-ghost btn-sm" onclick="openSubmitAnswer(${d.id},'${esc((d.title||'DPP')).replace(/'/g,'')}')">Re-submit</button>`:`<button class="btn btn-success btn-sm" onclick="openSubmitAnswer(${d.id},'${esc((d.title||'DPP')).replace(/'/g,'')}')">${ic('upload')} Submit</button>`}
- </div></div>`).join('');
- html+=`</div></div>`;
- el.innerHTML=html;
+    const d=await api('/api/student/dpp-packs');
+    const packs=(d&&d.packs)||[];
+    let html=`<div class="card"><div class="card-header"><h3> DPP — Practice & Submit</h3><span class="chip-sub">${packs.length} DPP</span></div><div class="card-body">`;
+    if(packs.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No DPP available yet. Your teacher will add one soon.</p></div>`;
+    else html+=packs.map(pk=>{
+      const checked=pk.my_status==='checked', subm=!!pk.submitted;
+      const statusChip=checked?`<span class="dp-tag done">✔ Checked</span>`:(subm?`<span class="dp-tag pending">⏳ Checking…</span>`:`<span class="dp-tag">Pending</span>`);
+      const srcChip=pk.source==='uploaded'?`<span class="chip-sub">Uploaded</span>`:`<span class="chip-sub"> ${pk.questions_n||0} Questions</span>`;
+      const solBtn=subm&&pk.has_solution?`<button class="btn btn-ghost btn-sm" onclick="sDppDl(${pk.id},'s')">${ic('eye')} View Solution</button>`:'';
+      const remBtn=checked?`<button class="btn btn-primary btn-sm" onclick="openDppRemarks(${pk.id})"> View Remarks</button>`:'';
+      const subBtn=`<button class="btn ${subm?'btn-ghost':'btn-success'} btn-sm" onclick="openDppSubmit(${pk.id})">${ic('upload')} ${subm?'Re-submit':'Submit'}</button>`;
+      return `<div class="dpp-card">
+        <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div>${srcChip}</div>
+        <div class="dpp-title">${esc(pk.title||'DPP')}</div>
+        <div class="dpp-meta"> ${esc(pk.chapter||'—')}${pk.part?` · Part: ${esc(pk.part)}`:''} ·  ${esc(pk.medium||'English')}</div>
+        <div class="dpp-meta"> ${esc(pk.teacher||'Teacher')}${pk.created_at?` · ${esc(pk.created_at)}`:''}</div>
+        <div class="dpp-foot">${statusChip}<div class="dpp-btns">
+          ${pk.has_questions?`<button class="btn btn-ghost btn-sm" onclick="sDppDl(${pk.id},'q')">${ic('eye')} View Questions</button>`:''}
+          ${solBtn}${subBtn}${remBtn}
+        </div></div>
+      </div>`;
+    }).join('');
+    html+=`</div></div>`;
+    // legacy materials-based DPPs (old records) — read-only archive
+    try{
+      const old=await api('/api/student/dpp-list');
+      if(old&&old.length) html+=`<div class="card"><div class="card-header"><h3> Previous DPPs (Archive)</h3></div><div class="card-body">`
+        +old.map(d2=>`<div class="today-row"><div><div class="tr-sub"> ${esc(d2.subject)}</div><div class="tr-topic">${esc(d2.chapter||'')} — ${esc(d2.title||'DPP')}</div></div><div class="tmeta"><button class="btn btn-ghost btn-sm" onclick="downloadMaterial('student',${d2.id},'DPP.pdf')">${ic('download')} Download</button></div></div>`).join('')
+        +`</div></div>`;
+    }catch(_e){}
+    el.innerHTML=html;
   }catch(e){ el.innerHTML=errHtml(e); }
+}
+async function sDppDl(pid,kind){
+  try{
+    const r=await fetch(API+`/api/student/dpp-packs/${pid}/file?kind=${kind}`,{headers:{Authorization:'Bearer '+TOKEN}});
+    if(r.status===403){ toast('Submit your DPP first to view the solution.',true); return; }
+    if(!r.ok) throw new Error('nf');
+    const bl=await r.blob(); const a=document.createElement('a');
+    a.href=URL.createObjectURL(bl); a.download=(kind==='s'?'DPP-solutions.pdf':'DPP-questions.pdf'); a.click();
+  }catch(e){ toast('File not available',true); }
+}
+function openDppSubmit(pid){
+  showModal(' Submit DPP Answer',
+ `<div class="alert alert-info">Upload your solved DPP as a PDF (max 20MB). Your teacher will be notified and will check it.</div><div class="form-group"><label>Answer PDF</label>${fileDropHTML('dpp-sub-file','dpp-sub-label','.pdf,image/*')}</div>`,
+ `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-success" id="dpp-sub-btn" onclick="submitDppFile(${pid})">Submit</button>`);
+}
+async function submitDppFile(pid){
+  const fi=document.getElementById('dpp-sub-file');
+  if(!fi.files.length){ toast('Please select a file.',true); return; }
+  toast('Preparing the file...'); const _r=await smartCompress(fi.files[0],m=>toast(m)); let f=_r.file;
+  if(!_r.ok){ toast('The file is still too large after compression. Please try a smaller file.',true); return; }
+  if(_r.compressed) toast('Compressed. Uploading...');
+  const btn=document.getElementById('dpp-sub-btn'); btn.disabled=true; btn.textContent='Submitting...';
+  try{
+    const fd=new FormData(); fd.append('file',f,f.name||'dpp-answer.pdf');
+    const r=await fetch(API+`/api/student/dpp-packs/${pid}/submit`,{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+    if(!r.ok){ const er=await r.json().catch(()=>({})); throw new Error(er.detail||'Submit failed'); }
+    closeModal(); toast('DPP submitted! Status: Checking.');
+    loadSDpp();
+  }catch(e){ toast(e.message||'Submit failed',true); btn.disabled=false; btn.textContent='Submit'; }
+}
+async function openDppRemarks(pid){
+  showModal(' Teacher Remarks','<div class="spinner"></div>','');
+  try{
+    const d=await api('/api/student/dpp-packs');
+    const pk=((d&&d.packs)||[]).find(x=>x.id===pid);
+    if(!pk) throw new Error('nf');
+    document.getElementById('modal-body').innerHTML=
+      `<div class="remarks-card"><div class="remarks-head">✔ Checked by <strong>${esc(pk.my_checked_by||'Teacher')}</strong></div>
+       <div class="remarks-body">${pk.my_remarks?esc(pk.my_remarks).replace(/\n/g,'<br>'):'<em>No remarks written.</em>'}</div></div>`;
+  }catch(e){ document.getElementById('modal-body').innerHTML=errHtml(e); }
 }
 function openSubmitAnswer(parentId,title){
   showModal(' Answer Submit',
@@ -8759,11 +9193,84 @@ function examCardHTML(e){
     <div class="tx-acts" style="display:flex;gap:8px;margin-top:13px;justify-content:flex-end;flex-wrap:wrap">
       ${(_future||_exp)?'':`<button class="btn btn-ghost btn-sm" onclick="downloadPaper(${e.id})">${ic('download')} Paper</button>`}
       ${_exp?`<button class="btn btn-ghost btn-sm" onclick="_solHub(${e.id})">${ic('book')} Solutions</button>`:''}
+      ${e.status==='graded'?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'student')">${ic('chart')} Ranking</button>`:''}
       ${action}
     </div>
   </div></div>`;
 }
 
+/* ================= TEST RANKING (podium + list + compare) ================= */
+async function openExamRanking(examId,role){
+  role=role||ROLE||'student';
+  showModal('Test Ranking','<div class="spinner"></div>','');
+  try{
+    const d=await api(`/api/${role}/exam/${examId}/ranking`);
+    window._rankData=d; window._rankRole=role;
+    const rows=d.rows||[];
+    if(!rows.length){
+      showModal('Test Ranking',`<div class="ws-empty"><div class="big">${ic('chart')}</div><p><b>No evaluated copies yet</b></p><small>Ranking appears as soon as the checking is done.</small></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+      return;
+    }
+    const medal=['#f59e0b','#a2946d','#b45309'];
+    const total=(d.exam&&d.exam.total_marks)||0;
+    const bav=(r,sz)=>`<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:linear-gradient(135deg,#b8941f,#a1741a);color:#241a05;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:${Math.round(sz*.42)}px;border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.18)">${esc((r.name||'?').slice(0,1).toUpperCase())}</div>`;
+    const pod=[rows[1],rows[0],rows[2]].filter(Boolean);
+    const podHtml=`<div class="trk-podium">${pod.map(r=>{
+      const h=r.rank===1?104:r.rank===2?80:66; const sz=r.rank===1?60:50;
+      return `<div class="trk-pod trk-click" onclick="rankClick(${r.student_id})"><div class="trk-pod-av" style="position:relative">${bav(r,sz)}<span class="trk-medal" style="background:${medal[r.rank-1]}">${r.rank}</span></div>
+        <div class="trk-pod-nm">${esc(r.name)}${(role==='student'&&r.student_id===d.me_id)?' <span class="trk-you">(you)</span>':''}</div><div class="trk-pod-sc">${r.marks}<small>/${total}</small></div>
+        <div class="trk-pod-base" style="height:${h}px;background:linear-gradient(180deg,${medal[r.rank-1]}33,${medal[r.rank-1]}0d);border-top:4px solid ${medal[r.rank-1]}"><b>#${r.rank}</b></div></div>`;
+    }).join('')}</div>`;
+    const meRow=(role==='student'&&d.me_id)?rows.find(r=>r.student_id===d.me_id):null;
+    const meHtml=meRow?`<div class="trk-me"><div class="trk-me-l"><div class="trk-me-rank">#${meRow.rank}</div><div><b>Your Rank</b><div class="trk-me-sub">of ${rows.length} students &middot; <b>${meRow.marks}/${total}</b></div></div></div><div class="trk-me-hint">Tap any student to compare</div></div>`:'';
+    const list=rows.map(r=>`<div class="sbb-row ${(role==='student'&&r.student_id===d.me_id)?'me':''}" onclick="rankClick(${r.student_id})">
+      <span class="sbb-rank ${r.rank<=3?'top':''}">${r.rank}</span>
+      <span class="sbb-av">${esc((r.name||'?').slice(0,1).toUpperCase())}</span>
+      <div class="sbb-main"><div class="sbb-nm">${esc(r.name)}${(role==='student'&&r.student_id===d.me_id)?' <span class="trk-you">(you)</span>':''}</div></div>
+      ${r.attempted!=null?`<span style="font-size:.68rem;color:var(--text-muted)">${r.attempted} Qs</span>`:''}
+      <b class="sbb-xp">${r.marks}<small style="font-weight:600;color:var(--text-muted)">/${total}</small></b></div>`).join('');
+    showModal(`${esc(d.exam.title||'Test')} — Ranking`,
+      `<div style="font-size:.74rem;color:var(--text-muted);margin-bottom:10px">${esc(d.exam.subject||'')}${d.exam.chapter?' &middot; '+esc(d.exam.chapter):''} &middot; ${total} marks &middot; ${d.graded} evaluated</div>
+       ${podHtml}${meHtml}<div class="hide-scroll" style="max-height:280px;overflow-y:auto;padding-right:4px">${list}</div>
+       ${rows.length>5?`<div class="trk-scroll-hint">Scroll for all ${rows.length} students</div>`:''}`,
+      `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+  }catch(e){ showModal('Test Ranking',errHtml(e),`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`); }
+}
+function rankClick(sid){
+  const d=window._rankData; if(!d) return;
+  const role=window._rankRole;
+  const r=(d.rows||[]).find(x=>x.student_id===sid); if(!r) return;
+  const total=d.exam.total_marks||0;
+  if(role==='student'&&d.me_id){
+    const me=(d.rows||[]).find(x=>x.student_id===d.me_id);
+    if(!me){ return; }
+    if(sid===d.me_id){
+      showModal('That\'s you!',`<p style="font-size:.88rem">You scored <b>${me.marks}/${total}</b> (Rank #${me.rank}). Tap another student to compare.</p>`,`<button class="btn btn-primary btn-sm" onclick="openExamRanking(${d.exam.id},'student')">&larr; Back</button>`);
+      return;
+    }
+    const gap=Math.round((r.marks-me.marks)*10)/10;
+    const ahead=gap>0;
+    const attL=(r.attempted!=null&&me.attempted!=null)?`<div class="sdet-row"><span>Questions attempted</span><b>${r.attempted} vs ${me.attempted} (you)</b></div>`:'';
+    showModal(`${esc(r.name)} — Rank #${r.rank}`,
+      `<div class="trk-cmp-head"><div class="trk-cmp-cell"><div class="trk-cmp-score">${me.marks}</div><div class="trk-cmp-who">You &middot; Rank #${me.rank}</div></div>
+        <div class="trk-cmp-diff ${ahead?'behind':'ahead'}">${ahead?gap+' marks behind':Math.abs(gap)+' marks ahead'}</div>
+        <div class="trk-cmp-cell"><div class="trk-cmp-score">${r.marks}</div><div class="trk-cmp-who">${esc(r.name)} &middot; Rank #${r.rank}</div></div></div>
+      <div class="sdet-grid" style="grid-template-columns:1fr;margin-top:6px">${attL}</div>
+      ${ahead?`<div class="trk-sugg"><b>&#128161; Rank #${r.rank} tak kaise pahunche:</b><div class="trk-sugg-note">Aapko <b>${gap} marks</b> aur chahiye. Solutions dekho, galtiyan note karo aur agle test mein unhi topics ko strong karo — har question ki practice se gap band ho jayega.</div></div>`
+            :`<div class="trk-sugg"><b>&#127881; You are ahead!</b><div class="trk-sugg-note">${esc(r.name)} se aap <b>${Math.abs(gap)} marks</b> aage ho. Aise hi consistent raho.</div></div>`}`,
+      `<button class="btn btn-ghost" onclick="openExamRanking(${d.exam.id},'student')">&larr; Back</button><button class="btn btn-primary btn-sm" onclick="closeModal()">Close</button>`);
+  }else{
+    // teacher / admin — student detail card
+    showModal(`${esc(r.name)} — Test Details`,
+      `<div class="sdet-grid" style="grid-template-columns:1fr 1fr">
+        <div class="sdet-row"><span>Rank</span><b>#${r.rank} of ${d.graded}</b></div>
+        <div class="sdet-row"><span>Marks</span><b>${r.marks} / ${total}</b></div>
+        ${r.attempted!=null?`<div class="sdet-row"><span>Questions attempted</span><b>${r.attempted}</b></div>`:''}
+        ${r.batch?`<div class="sdet-row"><span>Batch</span><b>${esc(r.batch)}</b></div>`:''}
+      </div>`,
+      `<button class="btn btn-ghost" onclick="openExamRanking(${d.exam.id},'${role}')">&larr; Back</button><button class="btn btn-primary btn-sm" onclick="closeModal()">Close</button>`);
+  }
+}
 /* ================= STUDENT TEST PLAYER v2 =================
    medium selection at start + in-test medium toggle + live timer + MCQ palette
    + review-and-submit (attempted / not-answered) + thank-you stats screen */
@@ -9850,7 +10357,9 @@ function renderStudentTimetable(entries, containerId, opts={}){
     const _we=new Date(_ws); _we.setDate(_ws.getDate()+6);
     const _wsK=_isoW(_ws), _weK=_isoW(_we);
     const _wkAll=opts.activeSubject==='__all'||!active;
-    const wkEntries=entries.filter(e=>e.date&&e.date>=_wsK&&e.date<=_weK&&(_wkAll||e.subject===active));
+    const _wkSeen=new Set();
+    const wkEntries=entries.filter(e=>e.date&&e.date>=_wsK&&e.date<=_weK&&(_wkAll||e.subject===active))
+      .filter(e=>{ const _k=(e.subject||'')+'|'+(e.date||'')+'|'+(e.time||''); if(_wkSeen.has(_k)) return false; _wkSeen.add(_k); return true; });
     const perSub={};
     wkEntries.forEach(e=>{ perSub[e.subject]=(perSub[e.subject]||0)+1; });
     const wkDoubt=wkEntries.filter(e=>/doubt/i.test(e.chapter||'')).length;
@@ -9997,7 +10506,8 @@ function renderStudentWeekly(tl, subjects, opts){
   const subProg={};
   subjects.forEach(s=>{ let tp=0,dp=0; tl[s].forEach(it=>{ if(it.kind==='chapter') it.parts.forEach(p=>{tp++; if(_partDone(p))dp++;}); else {tp++; if(_partDone(it.data))dp++;} }); subProg[s]={done:dp,total:tp,pct:tp?Math.round(dp/tp*100):0}; });
   const byDay={};
-  subjects.forEach(s=>tl[s].forEach(it=>{ const arr=it.kind==='chapter'?it.parts:[it.data]; arr.forEach(p=>{ if(!p.day)return; (byDay[p.day]=byDay[p.day]||[]).push({subject:s,time:p.time,st:_statusOf([p.date]),date:p.date}); }); }));
+  const _seenSlot=new Set();
+  subjects.forEach(s=>tl[s].forEach(it=>{ const arr=it.kind==='chapter'?it.parts:[it.data]; arr.forEach(p=>{ if(!p.day)return; const _k=s+'|'+(p.date||'')+'|'+(p.time||''); if(_seenSlot.has(_k))return; _seenSlot.add(_k); (byDay[p.day]=byDay[p.day]||[]).push({subject:s,time:p.time,st:_statusOf([p.date]),date:p.date}); }); }));
   // Har subject/day ka CURRENT slot dikhta hai: sabse pehli aane wali (upcoming)
   // class ka time; koi upcoming na ho to sabse recent past ka. Isse slot change
   // (e.g. 10:00 -> 9:30) hote hi weekly view naya time dikhata hai.
@@ -10007,17 +10517,10 @@ function renderStudentWeekly(tl, subjects, opts){
   const _fdD=x=>x.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
   const _todayKW=_tz.toLocaleDateString('en-CA');
   const cols=days.filter(d=>byDay[d]&&byDay[d].length).map(d=>{
-    const pick={};
-    byDay[d].forEach(x=>{
-      const cur=pick[x.subject];
-      if(!cur){ pick[x.subject]=x; return; }
-      const dx=x.date?new Date(x.date+'T00:00:00'):null, dc=cur.date?new Date(cur.date+'T00:00:00'):null;
-      if(!dx) return; if(!dc){ pick[x.subject]=x; return; }
-      const fx=dx>=_tz, fc=dc>=_tz;
-      if(fx&&!fc){ pick[x.subject]=x; return; }
-      if(fx===fc){ if(fx ? dx<dc : dx>dc) pick[x.subject]=x; }
-    });
-    const list=Object.values(pick);
+    // Saari classes dikhao (pehle same-subject same-day ek me collapse ho jati thi
+    // jisse counting galat aati thi) — time ke hisaab se sort.
+    const _tmin=t=>{ const m=/(\d+):(\d+)\s*(am|pm)/i.exec(t||''); if(!m) return 9999; let h=+m[1]%12; if(/pm/i.test(m[3]))h+=12; return h*60+(+m[2]); };
+    const list=byDay[d].slice().sort((a,b)=>_tmin(a.time)-_tmin(b.time));
     const rows=list.map(x=>{
       const tmap=(opts.tipTeacherMap||{})[x.subject]||opts.tipTeacher||{}, pr=subProg[x.subject]||{done:0,total:0,pct:0};
       const tav=tmap.name?(tmap.url?`<span class="wkc-tav" style="background-image:url(${tmap.url});cursor:zoom-in" onclick="photoZoom('${tmap.url}','${esc((tmap.name||'').replace(/'/g,''))}')" title="Click to view photo"></span>`:`<span class="wkc-tav">${esc(initials(tmap.name))}</span>`):'';

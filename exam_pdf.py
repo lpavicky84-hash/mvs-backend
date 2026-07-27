@@ -627,7 +627,7 @@ def build_exam_pdf(ex, questions, medium="english"):
     pdf.set_text_color(255, 255, 255)
     pdf.cell(pdf.w - pdf.r_margin - text_x, 10.5, _clean(ex.title or "Test"), new_x="LMARGIN", new_y="NEXT")
     # info chips row: subject / medium / total marks as highlighted rounded pills
-    chips = [c for c in [ex.subject or "", L["medium"], "%s: %s" % (L["total"], ex.total_marks)] if c.strip()]
+    chips = [c for c in [ex.subject or "", L["medium"], ("%s: %s" % (L["total"], ex.total_marks)) if ex.total_marks is not None else ""] if c and c.strip()]
     cy = 20.5
     cx = text_x
     pdf.set_font("Noto", "B", 10)
@@ -666,16 +666,17 @@ def build_exam_pdf(ex, questions, medium="english"):
         pdf.rect(LM, y0, bw, 9.5, style="F", round_corners=True, corner_radius=2.5)
         pdf.set_xy(LM, y0 + 0.7)
         pdf.cell(bw, 8.1, badge, align="C")
-        # marks pill
-        pill = "%d %s" % (q.max_marks, L["marks"])
-        pdf.set_font("Noto", "B", 9)
-        pw = pdf.get_string_width(pill) + 9
-        pdf.set_fill_color(*LIGHT)
-        pdf.set_draw_color(*BORDER)
-        pdf.rect(pdf.w - pdf.r_margin - pw, y0, pw, 9.5, style="DF", round_corners=True, corner_radius=2.5)
-        pdf.set_xy(pdf.w - pdf.r_margin - pw, y0 + 0.7)
-        pdf.set_text_color(*GREY)
-        pdf.cell(pw, 8.1, pill, align="C")
+        # marks pill (DPP jaise mark-less papers me skip)
+        if getattr(q, "max_marks", None) is not None:
+            pill = "%d %s" % (q.max_marks, L["marks"])
+            pdf.set_font("Noto", "B", 9)
+            pw = pdf.get_string_width(pill) + 9
+            pdf.set_fill_color(*LIGHT)
+            pdf.set_draw_color(*BORDER)
+            pdf.rect(pdf.w - pdf.r_margin - pw, y0, pw, 9.5, style="DF", round_corners=True, corner_radius=2.5)
+            pdf.set_xy(pdf.w - pdf.r_margin - pw, y0 + 0.7)
+            pdf.set_text_color(*GREY)
+            pdf.cell(pw, 8.1, pill, align="C")
         pdf.set_xy(LM, y0 + 13)
 
         # question body - "OR" wale question me har part ka apna figure:

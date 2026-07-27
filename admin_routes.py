@@ -682,6 +682,47 @@ def reject_class(eid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     return {"message": "Rejected"}
 
 # ===== ADMIN: SUBJECT-WISE STUDENT COUNTS =====
+
+def _exam_ranking_rows(db, exam_id):
+    """Graded attempts -> ranked rows (top 3 podium + list). Shared by all roles."""
+    from models import Exam, ExamAttempt, StudentProfile
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        return None
+    atts = (db.query(ExamAttempt)
+            .filter(ExamAttempt.exam_id == exam_id, ExamAttempt.status == "graded")
+            .all())
+    rows = []
+    for a in atts:
+        sp = db.query(StudentProfile).filter(StudentProfile.id == a.student_id).first()
+        nm = a.student_name or ((sp.user.name if sp and sp.user else "") or "Student")
+        att_n = None
+        if a.attempted:
+            att_n = len(a.attempted)
+        elif a.mcq_answers:
+            att_n = len([v for v in (a.mcq_answers or {}).values() if v not in (None, "", [])])
+        rows.append({"student_id": a.student_id, "name": nm,
+                     "marks": round(float(a.total_awarded or 0), 1),
+                     "attempted": att_n,
+                     "batch": (sp.batch_name if sp else None),
+                     "has_photo": bool(sp and sp.photo_b64)})
+    rows.sort(key=lambda r: (-r["marks"], r["name"].lower()))
+    for i, r in enumerate(rows, 1):
+        r["rank"] = i
+    return {"exam": {"id": exam.id, "title": exam.title, "subject": exam.subject,
+                     "chapter": exam.chapter, "total_marks": exam.total_marks,
+                     "test_type": exam.test_type},
+            "graded": len(rows), "rows": rows}
+
+@router.get("/exam/{exam_id}/ranking")
+def admin_exam_ranking(exam_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    data = _exam_ranking_rows(db, exam_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Test not found")
+    data["me_id"] = None
+    return data
+
+
 @router.get("/student-counts")
 def admin_student_counts(db: Session = Depends(get_db), _=Depends(get_admin)):
     """Subject counts SPLIT BY CLASS LEVEL — same-name subjects (English 202 vs

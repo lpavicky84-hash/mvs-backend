@@ -1,6 +1,7 @@
+import base64
 import json
 import re
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, BackgroundTasks, Request
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, BackgroundTasks, Request, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract
 from datetime import datetime, date, timedelta
@@ -810,6 +811,221 @@ def request_class(payload: dict, db: Session = Depends(get_db), current_user=Dep
     return {"id": e.id, "message": "Request sent to the admin! It will appear in the timetable once approved."}
 
 # ===== TEACHER: SUBJECT-WISE STUDENT COUNTS =====
+
+def _exam_ranking_rows(db, exam_id):
+    """Graded attempts -> ranked rows (top 3 podium + list). Shared by all roles."""
+    from models import Exam, ExamAttempt, StudentProfile
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        return None
+    atts = (db.query(ExamAttempt)
+            .filter(ExamAttempt.exam_id == exam_id, ExamAttempt.status == "graded")
+            .all())
+    rows = []
+    for a in atts:
+        sp = db.query(StudentProfile).filter(StudentProfile.id == a.student_id).first()
+        nm = a.student_name or ((sp.user.name if sp and sp.user else "") or "Student")
+        att_n = None
+        if a.attempted:
+            att_n = len(a.attempted)
+        elif a.mcq_answers:
+            att_n = len([v for v in (a.mcq_answers or {}).values() if v not in (None, "", [])])
+        rows.append({"student_id": a.student_id, "name": nm,
+                     "marks": round(float(a.total_awarded or 0), 1),
+                     "attempted": att_n,
+                     "batch": (sp.batch_name if sp else None),
+                     "has_photo": bool(sp and sp.photo_b64)})
+    rows.sort(key=lambda r: (-r["marks"], r["name"].lower()))
+    for i, r in enumerate(rows, 1):
+        r["rank"] = i
+    return {"exam": {"id": exam.id, "title": exam.title, "subject": exam.subject,
+                     "chapter": exam.chapter, "total_marks": exam.total_marks,
+                     "test_type": exam.test_type},
+            "graded": len(rows), "rows": rows}
+
+@router.get("/exam/{exam_id}/ranking")
+def teacher_exam_ranking(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    data = _exam_ranking_rows(db, exam_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Test not found")
+    data["me_id"] = None
+    return data
+
+
+# ================== DPP PACKS (Create / Upload / Results) ==================
+def _dpp_pack_out(db, pk, with_counts=True):
+    out = {"id": pk.id, "subject": pk.subject, "class_name": pk.class_name,
+           "chapter": pk.chapter, "part": pk.part, "title": pk.title,
+           "medium": pk.medium, "source": pk.source,
+           "created_at": pk.created_at.strftime("%d %b %Y") if pk.created_at else None}
+    if with_counts:
+        from models import DppAnswer
+        subs = db.query(DppAnswer).filter(DppAnswer.pack_id == pk.id).all()
+        out["submitted"] = len(subs)
+        out["checked"] = sum(1 for a in subs if a.status == "checked")
+    return out
+
+
+@router.get("/dpp-packs")
+def teacher_dpp_packs(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import DppPack
+    tp = get_teacher_profile(current_user, db)
+    packs = (db.query(DppPack).filter(DppPack.teacher_id == tp.id)
+             .order_by(DppPack.created_at.desc()).all())
+    return {"packs": [_dpp_pack_out(db, pk) for pk in packs]}
+
+
+@router.post("/dpp-packs/create")
+def teacher_dpp_create(data: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Editor se bana DPP — har question ka model answer MANDATORY;
+    questions paper (no answers) + solutions paper (with answers) dono PDFs generate."""
+    from models import DppPack
+    tp = get_teacher_profile(current_user, db)
+    subject = (data.get("subject") or "").strip()
+    chapter = (data.get("chapter") or "").strip()
+    part = (data.get("part") or "").strip()
+    title = (data.get("title") or "").strip() or ("DPP - " + (part or chapter or subject))
+    medium = (data.get("medium") or "English").strip()
+    questions = data.get("questions") or []
+    if not subject:
+        raise HTTPException(status_code=400, detail="Subject is required")
+    if not questions:
+        raise HTTPException(status_code=400, detail="Add at least one question")
+    for i, q in enumerate(questions, 1):
+        if not (q.get("q") or "").strip() and not q.get("image"):
+            raise HTTPException(status_code=400, detail=f"Question {i} is empty")
+        if not (q.get("model") or "").strip() and not q.get("model_image"):
+            raise HTTPException(status_code=400,
+                                detail=f"Answer mandatory: Question {i} ka model answer bharo")
+    pk = DppPack(teacher_id=tp.id, subject=subject, class_name=(data.get("class_name") or ""),
+                 chapter=chapter, part=part, title=title, medium=medium,
+                 source="created", questions=questions)
+    # premium PDFs (test jaisa) — teacher logo header, medium-wise
+    try:
+        from types import SimpleNamespace as _NS
+        import exam_pdf
+        ex = _NS(teacher_name=(tp.user.name if tp.user else "Teacher"), title=title,
+                 subject=subject, chapter=chapter, part=part, test_type="DPP",
+                 duration_mins=None, total_marks=None)
+        med = "hindi" if medium.lower().startswith("hin") else "english"
+        qobjs_q, qobjs_s = [], []
+        for i, q in enumerate(questions, 1):
+            base = dict(q_no=i, question_text=q.get("q"), max_marks=None,
+                        options=None, correct_option=None, image_b64=q.get("image"),
+                        alt_image_b64=q.get("alt_image"), question_text_hi=q.get("q_hi"),
+                        options_hi=None, explanation=None, explanation_hi=None)
+            qobjs_q.append(_NS(**base, model_answer=None, model_answer_hi=None, model_answer_image=None))
+            qobjs_s.append(_NS(**base, model_answer=q.get("model"), model_answer_hi=q.get("model_hi"),
+                               model_answer_image=q.get("model_image")))
+        pk.q_pdf = base64.b64encode(exam_pdf.build_exam_pdf(ex, qobjs_q, med)).decode()
+        pk.s_pdf = base64.b64encode(exam_pdf.build_exam_pdf(ex, qobjs_s, med)).decode()
+    except Exception:
+        pk.q_pdf = pk.q_pdf or ""
+        pk.s_pdf = pk.s_pdf or ""
+    db.add(pk); db.commit(); db.refresh(pk)
+    return {"ok": True, "pack": _dpp_pack_out(db, pk, False)}
+
+
+@router.post("/dpp-packs/upload")
+async def teacher_dpp_upload(subject: str = Form(...), chapter: str = Form(""), part: str = Form(""),
+                             title: str = Form(""), medium: str = Form("English"),
+                             class_name: str = Form(""),
+                             q_pdf: UploadFile = File(...), s_pdf: UploadFile = File(...),
+                             db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Ready-made DPP upload — questions PDF + solutions PDF dono MANDATORY."""
+    from models import DppPack
+    tp = get_teacher_profile(current_user, db)
+    qd = await q_pdf.read(); sd = await s_pdf.read()
+    if not qd or not sd:
+        raise HTTPException(status_code=400, detail="Questions aur Solutions dono PDF upload karna zaroori hai")
+    pk = DppPack(teacher_id=tp.id, subject=subject.strip(), class_name=class_name.strip(),
+                 chapter=chapter.strip(), part=part.strip(),
+                 title=(title.strip() or "DPP - " + (part.strip() or chapter.strip() or subject.strip())),
+                 medium=medium, source="uploaded", questions=[],
+                 q_pdf=base64.b64encode(qd).decode(), s_pdf=base64.b64encode(sd).decode())
+    db.add(pk); db.commit(); db.refresh(pk)
+    return {"ok": True, "pack": _dpp_pack_out(db, pk, False)}
+
+
+@router.get("/dpp-packs/{pack_id}/answers")
+def teacher_dpp_answers(pack_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import DppPack, DppAnswer, StudentProfile, User
+    tp = get_teacher_profile(current_user, db)
+    pk = db.query(DppPack).filter(DppPack.id == pack_id, DppPack.teacher_id == tp.id).first()
+    if not pk:
+        raise HTTPException(status_code=404, detail="DPP not found")
+    rows = (db.query(DppAnswer).filter(DppAnswer.pack_id == pack_id)
+            .order_by(DppAnswer.submitted_at.desc()).all())
+    out = []
+    for a in rows:
+        sp = db.query(StudentProfile).filter(StudentProfile.id == a.student_id).first()
+        nm = ""
+        if sp and sp.user_id:
+            u = db.query(User).filter(User.id == sp.user_id).first()
+            nm = u.name if u else ""
+        out.append({"id": a.id, "student": nm or f"Student #{a.student_id}",
+                    "class_level": (sp.class_level if sp else None),
+                    "filename": a.filename, "status": a.status, "remarks": a.remarks,
+                    "submitted_at": a.submitted_at.strftime("%d %b %Y, %I:%M %p") if a.submitted_at else None,
+                    "checked_at": a.checked_at.strftime("%d %b %Y") if a.checked_at else None})
+    return {"pack": _dpp_pack_out(db, pk, False), "answers": out}
+
+
+@router.get("/dpp-answers/{answer_id}/file")
+def teacher_dpp_answer_file(answer_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import DppAnswer
+    get_teacher_profile(current_user, db)
+    a = db.query(DppAnswer).filter(DppAnswer.id == answer_id).first()
+    if not a or not a.answer_b64:
+        raise HTTPException(status_code=404, detail="File not found")
+    data = base64.b64decode(a.answer_b64)
+    return Response(content=data, media_type="application/pdf",
+                    headers={"Content-Disposition": 'attachment; filename="%s"' % (a.filename or "dpp-answer.pdf")})
+
+
+@router.get("/dpp-packs/{pack_id}/file")
+def teacher_dpp_pack_file(pack_id: int, kind: str = "q", db: Session = Depends(get_db),
+                          current_user=Depends(get_teacher)):
+    from models import DppPack
+    tp = get_teacher_profile(current_user, db)
+    pk = db.query(DppPack).filter(DppPack.id == pack_id, DppPack.teacher_id == tp.id).first()
+    if not pk:
+        raise HTTPException(status_code=404, detail="DPP not found")
+    blob = pk.s_pdf if kind == "s" else pk.q_pdf
+    if not blob:
+        raise HTTPException(status_code=404, detail="File not generated")
+    fname = (pk.title or "DPP").replace("/", "-") + ("-solutions.pdf" if kind == "s" else "-questions.pdf")
+    return Response(content=base64.b64decode(blob), media_type="application/pdf",
+                    headers={"Content-Disposition": 'attachment; filename="%s"' % fname})
+
+
+@router.post("/dpp-answers/{answer_id}/check")
+def teacher_dpp_check(answer_id: int, data: dict, db: Session = Depends(get_db),
+                      current_user=Depends(get_teacher)):
+    """Marks nahi — sirf Checked + Remarks. Student ko notification teacher ke naam se."""
+    import datetime as _dt
+    from models import DppAnswer, DppPack, Notification, StudentProfile
+    tp = get_teacher_profile(current_user, db)
+    a = db.query(DppAnswer).filter(DppAnswer.id == answer_id).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    pk = db.query(DppPack).filter(DppPack.id == a.pack_id).first()
+    tname = tp.user.name if tp.user else "Teacher"
+    a.status = "checked"
+    a.remarks = (data.get("remarks") or "").strip()
+    a.checked_by = tname
+    a.checked_at = _dt.datetime.utcnow()
+    sp = db.query(StudentProfile).filter(StudentProfile.id == a.student_id).first()
+    if sp and sp.user_id:
+        msg = tname + " checked your DPP \"" + (pk.title if pk else "") + "\"."
+        if a.remarks:
+            msg += " Remarks: " + a.remarks
+        db.add(Notification(user_id=sp.user_id, title="DPP Checked - " + tname, message=msg))
+    db.commit()
+    return {"ok": True, "status": "checked"}
+
+
 @router.get("/student-counts")
 def teacher_student_counts(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     """Per-subject counts SPLIT BY CLASS LEVEL — English (Class 10, code 202) aur
