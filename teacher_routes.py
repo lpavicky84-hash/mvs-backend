@@ -812,18 +812,33 @@ def request_class(payload: dict, db: Session = Depends(get_db), current_user=Dep
 # ===== TEACHER: SUBJECT-WISE STUDENT COUNTS =====
 @router.get("/student-counts")
 def teacher_student_counts(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
-    from models import StudentProfile
+    """Per-subject counts SPLIT BY CLASS LEVEL — English (Class 10, code 202) aur
+    English (Class 12, code 302) alag alag cards. Pehle same-name subjects merge
+    ho jaate the aur Class 10/12 ke bache ek hi list me dikhte the."""
+    from models import StudentProfile, AvailableSubject
     tp = get_teacher_profile(current_user, db)
     subs = tp.subjects or []
-    sc = tp.subject_classes or []
     students = db.query(StudentProfile).all()
+    # (subject_key, class_level) -> NIOS subject code
+    code_map = {}
+    for a in db.query(AvailableSubject).all():
+        code_map[(_subj_key(a.name), str(a.class_level or "").strip())] = a.code
     out = []
+    seen_ids = set()
     for s in subs:
-        cnt = sum(1 for sp in students if sp.subjects and s in sp.subjects)
-        cls = next((x.get("class") for x in sc if x.get("subject") == s), None)
-        out.append({"subject": s, "class": cls, "count": cnt})
-    out.sort(key=lambda x: -x["count"])
-    return {"total": sum(o["count"] for o in out), "subjects": out}
+        sk = _subj_key(s)
+        per_cls = {}
+        for sp in students:
+            if not sp.subjects or sk not in {_subj_key(x) for x in sp.subjects}:
+                continue
+            seen_ids.add(sp.id)
+            cls = str(sp.class_level or "").strip() or "?"
+            per_cls[cls] = per_cls.get(cls, 0) + 1
+        for cls in sorted(per_cls):
+            out.append({"subject": s, "class": cls,
+                        "code": code_map.get((sk, cls)), "count": per_cls[cls]})
+    out.sort(key=lambda x: (-x["count"], (x["subject"] or ""), x["class"]))
+    return {"total": len(seen_ids), "subjects": out}
 
 # ===== TEACHER: VIEW SUBMISSIONS + GIVE MARKS =====
 @router.get("/dpp-results")
@@ -928,12 +943,13 @@ def _subj_key(name):
 
 
 @router.get("/my-students-list")
-def teacher_my_students_list(q: str = "", subject: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+def teacher_my_students_list(q: str = "", subject: str = "", cls: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import StudentProfile
     tp = get_teacher_profile(current_user, db)
     subs = tp.subjects or []
     sub_keys = {_subj_key(x) for x in subs if _subj_key(x)}
     want = _subj_key(subject) if subject else ""
+    want_cls = (cls or "").strip()
     ql = " ".join((q or "").split()).strip().lower()
     q_tokens = [t for t in ql.split(" ") if t]
     rows = db.query(StudentProfile).all()
@@ -944,6 +960,8 @@ def teacher_my_students_list(q: str = "", subject: str = "", db: Session = Depen
         if not matched:
             continue
         if want and want not in {_subj_key(x) for x in ssubs}:
+            continue
+        if want_cls and str(sp.class_level or "").strip() != want_cls:
             continue
         nm = (sp.user.name if sp.user else "") or ""
         if q_tokens:
@@ -960,6 +978,12 @@ def teacher_my_students_list(q: str = "", subject: str = "", db: Session = Depen
                     "user_id": (sp.user.user_id if sp.user else None),
                     "batch": sp.batch_name, "medium": sp.medium,
                     "email": sp.email,
+                    "class_name": sp.class_name, "nios_ref": sp.nios_ref,
+                    "exam_session": sp.exam_session, "exam_stream": sp.exam_stream,
+                    "goal": (sp.goal_custom if sp.goal == "other" else sp.goal),
+                    "last_seen": sp.last_seen.strftime("%d %b %Y, %I:%M %p") if sp.last_seen else None,
+                    "is_verified": bool(sp.is_verified),
+                    "all_subjects": ssubs,
                     "subjects": matched, "has_photo": bool(sp.photo_b64)})
     out.sort(key=lambda x: (x["name"] or "").lower())
     return {"total": len(out), "students": out}
@@ -1258,6 +1282,7 @@ def teacher_student_engagement(db: Session = Depends(get_db), current_user=Depen
         out.append({
             "name": (sp.user.name if sp.user else "Student"),
             "phone": sp.phone, "subjects": sp.subjects or [],
+            "class_level": sp.class_level,
             "dpp_completed": dpp_done, "tests_completed": test_done,
             "material_downloads": downloads,
             "last_active": str(last_act.created_at)[:16] if last_act else None,
@@ -3200,5 +3225,8 @@ def teacher_my_rank(days: int = 90, db: Session = Depends(get_db),
     tp = get_teacher_profile(current_user, db)
     rows = _teacher_rank_rows(db, days)
     mine = next((r for r in rows if r["teacher_id"] == tp.id), None)
-    return {"days": days, "total": len(rows), "me": mine,
+    # full board bhi bhejo — teacher apne Performance page par podium + list dekhe
+    # aur kisi bhi rank par click karke comparison + suggestions paaye
+    return {"days": days, "total": len(rows), "me": mine, "results": rows,
+            "weights": TEACHER_RANK_WEIGHTS,
             "top3": [{k: r[k] for k in ("rank", "name", "score", "photo")} for r in rows[:3]]}
