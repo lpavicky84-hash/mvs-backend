@@ -684,16 +684,28 @@ def reject_class(eid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
 # ===== ADMIN: SUBJECT-WISE STUDENT COUNTS =====
 @router.get("/student-counts")
 def admin_student_counts(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Subject counts SPLIT BY CLASS LEVEL — same-name subjects (English 202 vs
+    English 302, Hindi, Data Entry Operations) alag alag cards me dikhte hain."""
     from models import StudentProfile, AvailableSubject
+    import re as _re
+    def _sk(name):
+        t = str(name or "")
+        t = _re.sub(r"\((?:class\s*)?\d+(?:th)?\)", " ", t, flags=_re.I)
+        t = _re.sub(r"[^a-z0-9]+", " ", t.lower())
+        return " ".join(t.split()).strip()
     students = db.query(StudentProfile).all()
+    code_map, class_map = {}, {}
+    for a in db.query(AvailableSubject).all():
+        code_map[(_sk(a.name), str(a.class_level or "").strip())] = a.code
+        class_map.setdefault(_sk(a.name), str(a.class_level or "").strip())
     counts = {}
     for sp in students:
+        cls = str(sp.class_level or "").strip() or "?"
         for s in (sp.subjects or []):
-            counts[s] = counts.get(s, 0) + 1
-    # attach class level from AvailableSubject if available
-    subj_class = {a.name: a.class_level for a in db.query(AvailableSubject).all()}
-    out = [{"subject": k, "class": subj_class.get(k), "count": v} for k, v in counts.items()]
-    out.sort(key=lambda x: -x["count"])
+            counts[(s, cls)] = counts.get((s, cls), 0) + 1
+    out = [{"subject": k[0], "class": k[1], "code": code_map.get((_sk(k[0]), k[1])), "count": v}
+           for k, v in counts.items()]
+    out.sort(key=lambda x: (-x["count"], (x["subject"] or ""), x["class"]))
     return {"total_students": len(students), "subjects": out}
 
 # ===== ADMIN: DELETE A TIMETABLE CLASS (admin-only) =====
@@ -818,17 +830,36 @@ def admin_student_photo(sid: int, db: Session = Depends(get_db), _=Depends(get_a
     return _img_response(sp.photo_b64 if sp else None)
 
 @router.get("/students-list")
-def admin_students_list(q: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+def admin_students_list(q: str = "", subject: str = "", cls: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import StudentProfile
+    import re as _re
+    def _sk(name):
+        t = str(name or "")
+        t = _re.sub(r"\((?:class\s*)?\d+(?:th)?\)", " ", t, flags=_re.I)
+        t = _re.sub(r"[^a-z0-9]+", " ", t.lower())
+        return " ".join(t.split()).strip()
     rows = db.query(StudentProfile).all()
     ql = q.strip().lower()
+    want = _sk(subject) if subject else ""
+    want_cls = (cls or "").strip()
     out = []
     for sp in rows:
         nm = sp.user.name if sp.user else ""
         if ql and ql not in nm.lower() and ql not in (sp.phone or ""):
             continue
+        ssubs = sp.subjects or []
+        if want and want not in {_sk(x) for x in ssubs}:
+            continue
+        if want_cls and str(sp.class_level or "").strip() != want_cls:
+            continue
         out.append({"id": sp.id, "name": nm, "phone": sp.phone, "class": sp.class_level,
-                    "subjects": sp.subjects or [], "has_photo": bool(sp.photo_b64),
+                    "subjects": ssubs, "all_subjects": ssubs, "has_photo": bool(sp.photo_b64),
+                    "batch": sp.batch_name, "medium": sp.medium, "email": sp.email,
+                    "class_name": sp.class_name, "nios_ref": sp.nios_ref,
+                    "exam_session": sp.exam_session, "exam_stream": sp.exam_stream,
+                    "goal": (sp.goal_custom if sp.goal == "other" else sp.goal),
+                    "last_seen": sp.last_seen.strftime("%d %b %Y, %I:%M %p") if sp.last_seen else None,
+                    "is_verified": bool(sp.is_verified),
                     "user_id": sp.user.user_id if sp.user else None})
     out.sort(key=lambda x: x["name"].lower())
     return {"total": len(out), "students": out}

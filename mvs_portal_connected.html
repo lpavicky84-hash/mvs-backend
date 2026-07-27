@@ -116,6 +116,23 @@
   .kyt-sub{display:inline-block;margin-top:8px;font-size:.74rem;font-weight:600;color:var(--primary);background:rgba(90,70,15,.1);padding:4px 12px;border-radius:99px}
   .slist-search{display:flex;align-items:center;gap:8px;margin-bottom:14px}
   .slist-row{display:flex;align-items:center;gap:13px;padding:11px 14px;border:1px solid var(--border);border-radius:11px;margin-bottom:8px;background:var(--card)}
+  .slist-row.clickable{cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .15s}
+  .slist-row.clickable:hover{border-color:var(--accent);box-shadow:0 6px 16px -8px rgba(90,70,15,.35);transform:translateY(-1px)}
+  .slist-go{margin-left:auto;font-size:1.25rem;color:var(--accent);font-weight:800;flex-shrink:0}
+  .slist-hint{font-size:.72rem;color:var(--text-muted);margin:2px 0 10px}
+  .count-code{font-size:.72em;font-weight:800;color:var(--accent)}
+  .eng-cls{font-size:.62rem;padding:1px 8px;vertical-align:1px}
+  .sdet-head{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+  .sdet-av{width:60px;height:60px;border-radius:16px;background:linear-gradient(135deg,var(--primary),var(--primary-dark));color:#241a05;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.25rem;background-size:cover;background-position:center;flex-shrink:0;box-shadow:0 6px 16px -6px rgba(90,70,15,.4)}
+  .sdet-name{font-size:1.08rem;font-weight:800}
+  .sdet-meta{font-size:.78rem;color:var(--text-muted);margin-top:3px}
+  .sdet-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 20px}
+  .sdet-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:7px 0;border-bottom:1px dashed var(--border);font-size:.8rem}
+  .sdet-row span{color:var(--text-muted);flex-shrink:0}
+  .sdet-row b{text-align:right;word-break:break-word}
+  .sdet-subs{margin-top:14px}
+  .sdet-subs-lbl{font-size:.68rem;font-weight:800;letter-spacing:.06em;color:var(--text-muted);margin-bottom:7px}
+  @media (max-width:640px){.sdet-grid{grid-template-columns:1fr}}
   .slist-av{width:42px;height:42px;border-radius:50%;background:var(--primary);background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:.92rem;flex-shrink:0}
   .slist-info{flex:1;min-width:0}
   .slist-name{font-weight:700;font-size:.92rem}
@@ -987,7 +1004,12 @@
   @media(max-width:820px){.ws-grid,.ws-grid-3{grid-template-columns:1fr}}
   .ws-sec-title{font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin:22px 0 10px}
   .ws-sec-title:first-child{margin-top:0}
-  .prio-card{display:flex;align-items:center;gap:16px;padding:20px;border-radius:16px;background:linear-gradient(120deg,#8a6d10,#6b550b 70%,#5c4a0a);color:#fff;box-shadow:0 10px 30px -12px rgba(184,148,31,.5);margin-bottom:16px;animation:ttFade .5s ease both}
+  .prio-card{position:relative;display:flex;align-items:center;gap:16px;padding:20px;border-radius:16px;background:linear-gradient(120deg,#8a6d10,#6b550b 70%,#5c4a0a);color:#fff;box-shadow:0 10px 30px -12px rgba(184,148,31,.5);margin-bottom:16px;animation:ttFade .5s ease both}
+  .prio-x{position:absolute;top:8px;right:10px;width:24px;height:24px;border:none;border-radius:50%;background:rgba(255,255,255,.18);color:#fff;font-size:.9rem;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center}
+  .prio-x:hover{background:rgba(255,255,255,.3)}
+  .tc-date{font-size:.74rem;color:var(--accent);font-weight:700;margin-left:auto;margin-right:10px}
+  .tc-link{cursor:pointer;transition:.15s}
+  .tc-link:hover{background:rgba(184,148,31,.06);border-radius:10px}
   .prio-ic{width:52px;height:52px;flex:0 0 52px;border-radius:14px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center}
   .prio-ic svg{width:26px;height:26px;stroke:#fff}
   .prio-body{flex:1;min-width:0}
@@ -3438,27 +3460,98 @@ async function loadTDashboard(){
  loadTeacherToday();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
-async function loadTMyRank(){
-  const wrap=document.getElementById('t-myrank-wrap'); if(!wrap) return;
+// ---------- Teacher Ranking Board (Performance page) ----------
+// Podium top 3 + full board; kisi bhi teacher par click -> comparison + suggestions.
+let _trkBoard=null, _trkMe=null;
+async function loadTRankBoard(){
+  const wrap=document.getElementById('t-rankboard-wrap'); if(!wrap) return;
   try{
     const d=await api('/api/teacher/my-rank');
-    const me=d.me||d.my||null; if(!me){ wrap.innerHTML=''; return; }
-    const top3=d.top||d.top3||[];
-    const mets=_TRK_METRICS.map(m=>{
-      const v=(me.metrics||{})[m[0]]||0;
-      return `<div style="text-align:center;min-width:78px"><div style="font-size:1.05rem;font-weight:800;color:${m[2]}">${v}</div><div style="font-size:.62rem;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted)">${m[1]}</div></div>`;
+    _trkBoard=d.results||[]; _trkMe=d.me||null;
+    if(!_trkBoard.length){ wrap.innerHTML=''; return; }
+    const medal=['#f59e0b','#a2946d','#b45309'];
+    const av=function(r,sz){
+      const ini=esc((r.name||'?').slice(0,1).toUpperCase());
+      return r.photo
+        ? `<img src="${r.photo}" style="width:${sz}px;height:${sz}px;border-radius:50%;object-fit:cover;border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.18)">`
+        : `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:linear-gradient(135deg,#b8941f,#a1741a);color:#241a05;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:${Math.round(sz*.4)}px;border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.18)">${ini}</div>`;
+    };
+    // podium top 3 (clickable)
+    const pod=[_trkBoard[1],_trkBoard[0],_trkBoard[2]].filter(Boolean);
+    const podHtml=`<div class="trk-podium">${pod.map(r=>{
+      const h=r.rank===1?118:r.rank===2?88:72;
+      const sz=r.rank===1?66:54;
+      const isMe=_trkMe&&r.teacher_id===_trkMe.teacher_id;
+      return `<div class="trk-pod trk-click" onclick="trkCompare(${r.teacher_id})" title="Tap to compare with yourself"><div class="trk-pod-av" style="position:relative">${av(r,sz)}<span class="trk-medal" style="background:${medal[r.rank-1]}">${r.rank}</span></div>
+        <div class="trk-pod-nm">${esc(r.name)}${isMe?' <span class="trk-you">(you)</span>':''}</div><div class="trk-pod-sc">${r.score}<small>/100</small></div>
+        <div class="trk-pod-base" style="height:${h}px;background:linear-gradient(180deg,${medal[r.rank-1]}33,${medal[r.rank-1]}0d);border-top:4px solid ${medal[r.rank-1]}"><b>#${r.rank}</b></div></div>`;
+    }).join('')}</div>`;
+    // my rank strip
+    const me=_trkMe;
+    const meHtml=me?`<div class="trk-me"><div class="trk-me-l"><div class="trk-me-rank">#${me.rank}</div><div><b>Your Rank</b><div class="trk-me-sub">of ${_trkBoard.length} teachers &middot; score <b>${me.score}</b>/100 &middot; last ${d.days||90} days</div></div></div><div class="trk-me-hint">Tap any teacher to see the gap &amp; how to catch up</div></div>`:'';
+    // full board list (hidden scroll)
+    const maxM={};
+    _TRK_METRICS.forEach(m=>{ maxM[m[0]]=Math.max(1,..._trkBoard.map(r=>((r.metrics||{})[m[0]]||0))); });
+    const rows=_trkBoard.map(r=>{
+      const isMe=me&&r.teacher_id===me.teacher_id;
+      const bars=_TRK_METRICS.map(m=>{
+        const v=(r.metrics||{})[m[0]]||0, pct=Math.round(v/maxM[m[0]]*100);
+        return `<div class="trk-mrow"><span class="trk-mlbl">${m[1]}</span><div class="trk-mtrack"><div class="trk-mfill" style="width:${pct}%;background:${m[2]}"></div></div><b class="trk-mval">${v}</b></div>`;
+      }).join('');
+      return `<div class="card trk-card trk-click ${isMe?'trk-me-card':''}" onclick="trkCompare(${r.teacher_id})"><div class="card-body">
+        <div class="trk-head"><div style="position:relative">${av(r,46)}<span class="trk-medal sm" style="background:${medal[r.rank-1]||'#8a7c55'}">${r.rank}</span></div>
+        <div style="flex:1;min-width:150px"><b style="font-size:.95rem">${esc(r.name)}</b>${isMe?' <span class="trk-you">(you)</span>':''}<div style="font-size:.72rem;color:var(--text-muted)">${esc(r.user_id||'')}${r.subjects?' &middot; '+esc((r.subjects||[]).join?r.subjects.join(', '):r.subjects):''}</div></div>
+        <div class="trk-score"><b>${r.score}</b><span>score</span></div></div>
+        <div class="trk-mets">${bars}</div></div></div>`;
     }).join('');
-    wrap.innerHTML=`<div class="card" style="margin-bottom:16px;border:1.5px solid rgba(169,132,32,.25);background:linear-gradient(120deg,rgba(169,132,32,.06),rgba(161,116,26,.04))"><div class="card-body">
-      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-        <div style="font-size:1.8rem">&#127942;</div>
-        <div style="flex:1;min-width:180px"><b style="font-size:.95rem">My Teacher Rank</b>
-          <div style="font-size:.74rem;color:var(--text-muted)">Based on reports, DPPs, notes, doubts, lectures and attendance (last 90 days)</div></div>
-        <div class="trk-score" style="text-align:center"><b>#${me.rank}</b><span>of ${d.total||me.total||'-'} teachers &middot; score ${me.score}</span></div>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:13px;justify-content:space-between">${mets}</div>
-      ${top3.length?`<div style="margin-top:12px;border-top:1px dashed var(--border);padding-top:10px;font-size:.76rem;color:var(--text-muted)"><b style="color:var(--text)">Top 3:</b> ${top3.map(t=>`#${t.rank} ${esc(t.name)} (${t.score})`).join(' &middot; ')}</div>`:''}
-    </div></div>`;
+    const list=`<div class="hide-scroll trk-scroll">${rows}</div>${_trkBoard.length>5?`<div class="trk-scroll-hint">Scroll for all ${_trkBoard.length} teachers</div>`:''}`;
+    wrap.innerHTML=`<div class="card" style="margin-bottom:14px;border:1.5px solid rgba(184,148,31,.3)"><div class="card-body" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="font-size:1.8rem">&#127942;</div>
+      <div style="flex:1;min-width:220px"><h3 style="margin:0 0 3px">Teacher Ranking</h3>
+      <p style="margin:0;font-size:.8rem;color:var(--text-muted)">Composite score — tests, DPPs, doubts, class notes, lectures and attendance (last ${d.days||90} days). Tap any teacher to compare.</p></div></div></div>
+      ${podHtml}${meHtml}${list}`;
   }catch(e){ wrap.innerHTML=''; }
+}
+function trkCompare(tid){
+  const me=_trkMe, other=(_trkBoard||[]).find(r=>r.teacher_id===tid);
+  if(!me||!other) return;
+  if(other.teacher_id===me.teacher_id){
+    showModal('That\'s you!',`<p style="font-size:.88rem">You are at <b>Rank #${me.rank}</b> with a score of <b>${me.score}/100</b>. Tap another teacher to see what it takes to catch them.</p>`,`<button class="btn btn-primary btn-sm" onclick="closeModal()">OK</button>`);
+    return;
+  }
+  const diff=Math.round((other.score-me.score)*10)/10;
+  const ahead=diff>0;
+  const mm=(me.metrics||{}), om=(other.metrics||{});
+  const MET=[['tests','tests'],['dpps','DPPs'],['doubts','doubts resolved'],['notes','class notes'],['lectures','lectures'],['attendance','attendance days']];
+  const gaps=MET.map(([k,lbl])=>({k,lbl,ov:(om[k]||0),mv:(mm[k]||0)}));
+  gaps.forEach(g=>g.gap=g.ov-g.mv);
+  const gapRows=gaps.map(g=>{
+    const max=Math.max(1,g.ov,g.mv);
+    return `<div class="trk-cmp-row"><span class="trk-cmp-lbl">${g.lbl[0].toUpperCase()+g.lbl.slice(1)}</span>
+      <div class="trk-cmp-bars"><div class="trk-cmp-bar them" style="width:${Math.round(g.ov/max*100)}%"></div><div class="trk-cmp-bar me" style="width:${Math.round(g.mv/max*100)}%"></div></div>
+      <span class="trk-cmp-val">${g.ov} vs ${g.mv}</span></div>`;
+  }).join('');
+  let suggest='';
+  if(ahead){
+    const steps=gaps.filter(g=>g.gap>0).map(g=>{
+      const n=g.gap;
+      const lbl={tests:'test',dpps:'DPP',doubts:'doubt',notes:'class note',lectures:'lecture',attendance:'punch-in day'}[g.k];
+      const many={tests:'tests',dpps:'DPPs',doubts:'doubts',notes:'class notes',lectures:'lectures',attendance:'punch-in days'}[g.k];
+      const verb={tests:'Create',dpps:'Upload',doubts:'Resolve',notes:'Upload',lectures:'Complete',attendance:'Add'}[g.k];
+      return `<li>${verb} <b>${n}</b> more ${n===1?lbl:many}</li>`;
+    }).join('');
+    suggest=`<div class="trk-sugg"><b>&#128161; How to reach Rank #${other.rank}:</b><ul>${steps||'<li>You are already level on activity — consistency will tip the score.</li>'}</ul>
+      <div class="trk-sugg-note">Match these and your score can climb to about <b>${other.score}</b> — right at Rank #${other.rank}.</div></div>`;
+  }else{
+    suggest=`<div class="trk-sugg"><b>&#127881; You are ahead!</b><div class="trk-sugg-note">You lead ${esc(other.name)} by <b>${Math.abs(diff)} points</b>. Keep your tests, DPPs and attendance steady to hold the position.</div></div>`;
+  }
+  showModal(`${esc(other.name)} — Rank #${other.rank}`,
+    `<div class="trk-cmp-head"><div class="trk-cmp-cell"><div class="trk-cmp-score">${me.score}</div><div class="trk-cmp-who">You &middot; Rank #${me.rank}</div></div>
+     <div class="trk-cmp-diff ${ahead?'behind':'ahead'}">${ahead?`${diff} pts behind`:`${Math.abs(diff)} pts ahead`}</div>
+     <div class="trk-cmp-cell"><div class="trk-cmp-score">${other.score}</div><div class="trk-cmp-who">${esc(other.name)} &middot; Rank #${other.rank}</div></div></div>
+     <div class="trk-cmp-legend"><span><i class="dot them"></i>${esc(other.name)}</span><span><i class="dot me"></i>You</span></div>
+     ${gapRows}${suggest}`,
+    `<button class="btn btn-primary btn-sm" onclick="closeModal()">Close</button>`);
 }
 async function loadTeacherToday(wrapId){
   const wrap=document.getElementById(wrapId||'t-today-wrap'); if(!wrap) return;
@@ -3739,19 +3832,38 @@ async function loadSTeachers(){
 }
 // ===== STUDENTS LIST MODAL (teacher + admin) =====
 let _slistRole='teacher', _slistSubject='';
-async function openStudentsListModal(role,subject){
-  _slistRole=role; _slistSubject=subject||'';
-  showModal((subject?subject+' — ':'')+'Students',
-    `<div class="slist-search"><input class="form-control" id="slist-q" placeholder="Search by name or phone..." oninput="renderSlist()"></div><div id="slist-wrap"><div class="spinner"></div></div>`,
+let _slistCls='', _slistCode='';
+async function openStudentsListModal(role,subject,cls,code){
+  _slistRole=role; _slistSubject=subject||''; _slistCls=cls||''; _slistCode=code||'';
+  const ttl=(subject?subject+(_slistCode?' ('+_slistCode+')':'')+' — ':'')+(_slistCls&&_slistCls!=='?'?'Class '+_slistCls+' ':'')+'Students';
+  showModal(ttl,
+    `<div class="slist-search"><input class="form-control" id="slist-q" placeholder="Search by name or phone..." oninput="renderSlist()"></div><div class="slist-hint">Tap any student to see complete details.</div><div id="slist-wrap"><div class="spinner"></div></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
   await fetchSlist();
 }
 let _slistData=[];
 async function fetchSlist(){
   const base=_slistRole==='teacher'?'/api/teacher/my-students-list':'/api/admin/students-list';
-  const u=base+(_slistRole==='teacher'&&_slistSubject?('?subject='+encodeURIComponent(_slistSubject)):'');
-  try{ const r=await api(u); _slistData=r.students||[]; renderSlist(); }
+  const prm=[];
+  if(_slistSubject) prm.push('subject='+encodeURIComponent(_slistSubject));
+  if(_slistCls) prm.push('cls='+encodeURIComponent(_slistCls));
+  const u=base+(prm.length?'?'+prm.join('&'):'');
+  try{ const r=await api(u); _slistData=r.students||[]; _slistData.forEach((x,i)=>x._i=i); renderSlist(); }
   catch(e){ document.getElementById('slist-wrap').innerHTML=errHtml(e); }
+}
+function _slistDetail(i){
+  const s=_slistData[i]; if(!s) return;
+  const subs=(s.all_subjects||s.subjects||[]).map(x=>`<span class="chip">${esc(x)}</span>`).join('');
+  const row=(l,v)=>(v!==undefined&&v!==null&&v!=='')?`<div class="sdet-row"><span>${l}</span><b>${esc(String(v))}</b></div>`:'';
+  const av=s.has_photo?`<div class="sdet-av" id="sdet-av"></div>`:`<div class="sdet-av">${esc(initials(s.name||'S'))}</div>`;
+  showModal('Student Details',
+    `<div class="sdet-head">${av}<div><div class="sdet-name">${esc(s.name||'Student')}</div><div class="sdet-meta">${s.class?'Class '+esc(s.class):''}${s.batch?' · '+esc(s.batch):''}</div></div></div>
+     <div class="sdet-grid">${row('Phone',s.phone)}${row('User ID',s.user_id)}${row('Email',s.email)}${row('Medium',s.medium)}${row('Batch',s.batch)}${row('Section',s.class_name)}${row('NIOS Ref',s.nios_ref)}${row('Exam Session',s.exam_session)}${row('Stream',s.exam_stream)}${row('Goal',s.goal)}${row('Verified',s.is_verified?'Yes':'')}${row('Last Active',s.last_seen)}</div>
+     <div class="sdet-subs"><div class="sdet-subs-lbl">SUBJECTS</div><div class="slist-chips">${subs||'<span style="color:var(--text-muted);font-size:.8rem">—</span>'}</div></div>`,
+    `<button class="btn btn-ghost" onclick="openStudentsListModal(_slistRole,_slistSubject,_slistCls,_slistCode)">&larr; Back to List</button><button class="btn btn-primary btn-sm" onclick="closeModal()">Done</button>`);
+  if(s.has_photo){ const pb=_slistRole==='teacher'?'/api/teacher/student/':'/api/admin/student/';
+    fetch(API+pb+s.id+'/photo',{headers:{Authorization:'Bearer '+TOKEN}}).then(r=>r.ok?r.blob():null).then(bl=>{ if(!bl) return; const d=document.getElementById('sdet-av'); if(d){ d.style.backgroundImage=`url(${URL.createObjectURL(bl)})`; d.textContent=''; } }).catch(()=>{});
+  }
 }
 function renderSlist(){
   const q=(val('slist-q')||'').toLowerCase();
@@ -3762,7 +3874,7 @@ function renderSlist(){
     const chips=(s.subjects||[]).map(x=>`<span class="chip">${esc(x)}</span>`).join('');
     const avId=`sav-${s.id}`;
     const av=s.has_photo?`<div class="slist-av" id="${avId}"></div>`:`<div class="slist-av">${esc(initials(s.name||'S'))}</div>`;
-    return `<div class="slist-row">${av}<div class="slist-info"><div class="slist-name">${esc(s.name||'Student')}</div><div class="slist-meta">${esc(s.phone||'—')}${s.class?' · Class '+esc(s.class):''}</div><div class="slist-chips">${chips}</div></div></div>`;
+    return `<div class="slist-row clickable" onclick="_slistDetail(${s._i})" title="View complete details">${av}<div class="slist-info"><div class="slist-name">${esc(s.name||'Student')}</div><div class="slist-meta">${esc(s.phone||'—')}${s.class?' · Class '+esc(s.class):''}</div><div class="slist-chips">${chips}</div></div><span class="slist-go">&rsaquo;</span></div>`;
   }).join('');
   // load photos
   const photoBase=_slistRole==='teacher'?'/api/teacher/student/':'/api/admin/student/';
@@ -3779,7 +3891,7 @@ async function loadTStudents(){
     let html=`<div class="alert alert-info">Click a card to see that subject's students with a <strong>searchable list</strong>.</div><div class="card"><div class="card-header"><h3>My Students</h3><button class="btn btn-primary btn-sm" onclick="openStudentsListModal('teacher','')">${ic('users')} View All + Search</button></div><div class="card-body">`;
     if(d.subjects.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No subjects set yet.</p></div>`;
     else{
-      html+=`<div class="count-grid"><div class="count-card clickable" onclick="openStudentsListModal('teacher','')"><div class="count-num">${d.total}</div><div class="count-sub">Total Students</div></div>`+d.subjects.map(s=>`<div class="count-card clickable" onclick="openStudentsListModal('teacher','${esc(s.subject).replace(/'/g,'')}')"><div class="count-num">${s.count}</div><div class="count-sub">${esc(s.subject)}</div>${s.class?`<div class="count-cls">Class ${esc(s.class)}</div>`:''}</div>`).join('')+`</div>`;
+      html+=`<div class="count-grid"><div class="count-card clickable" onclick="openStudentsListModal('teacher','')"><div class="count-num">${d.total}</div><div class="count-sub">Total Students</div></div>`+d.subjects.map(s=>`<div class="count-card clickable" onclick="openStudentsListModal('teacher','${esc(s.subject).replace(/'/g,'')}','${esc(s.class||'')}','${esc(s.code||'')}')"><div class="count-num">${s.count}</div><div class="count-sub">${esc(s.subject)}${s.code?` <span class="count-code">(${esc(s.code)})</span>`:''}</div>${s.class&&s.class!=='?'?`<div class="count-cls">Class ${esc(s.class)}</div>`:''}</div>`).join('')+`</div>`;
     }
     html+=`</div></div><div id="t-engagement"><div class="spinner"></div></div>`;
     el.innerHTML=html;
@@ -4153,7 +4265,7 @@ async function loadTEngagement(){
   try{
     const eng=await api('/api/teacher/student-engagement');
     if(!eng.length){ wrap.innerHTML=''; return; }
-    const rows=eng.map(s=>`<tr><td><strong>${esc(s.name)}</strong><div style="font-size:.72rem;color:var(--text-muted)">${esc((s.subjects||[]).join(', '))}</div></td><td>${s.dpp_completed}</td><td>${s.tests_completed}</td><td>${s.material_downloads}</td><td>${esc(s.last_active||'—')}</td></tr>`).join('');
+    const rows=eng.map(s=>`<tr><td><strong>${esc(s.name)}</strong>${s.class_level?` <span class="chip eng-cls">Class ${esc(s.class_level)}</span>`:''}<div style="font-size:.72rem;color:var(--text-muted)">${esc((s.subjects||[]).join(', '))}</div></td><td>${s.dpp_completed}</td><td>${s.tests_completed}</td><td>${s.material_downloads}</td><td>${esc(s.last_active||'—')}</td></tr>`).join('');
     wrap.innerHTML=`<div class="card"><div class="card-header"><h3>Student Engagement</h3><span class="pager-info">DPP &amp; test completion · material downloads · last active</span></div><div class="card-body"><div class="table-wrap"><table><thead><tr><th>Student</th><th>DPP Done</th><th>Tests Done</th><th>Downloads</th><th>Last Active</th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
   }catch(e){ wrap.innerHTML=''; }
 }
@@ -6335,7 +6447,8 @@ async function loadTPerformance(){
     const chart=`<div class="card"><div class="card-header"><h3>Monthly Classes Completed</h3></div><div class="card-body"><div class="bar-chart">${bars}</div></div></div>`;
     const tl=pf.recent.length?pf.recent.map(a=>`<div class="act-item"><div class="act-dot ${esc(a.type)}"></div><div><div class="act-text">${esc(a.text)}</div><div class="act-time">${esc(a.at)}</div></div></div>`).join(''):'<div class="empty-state"><p>No recent activity.</p></div>';
     const timeline=`<div class="card"><div class="card-header"><h3>Recent Activity</h3></div><div class="card-body"><div class="act-list">${tl}</div></div></div>`;
-    el.innerHTML=cards+`<div class="grid-2">${chart}${timeline}</div><div id="t-reports-wrap"></div>`;
+    el.innerHTML=`<div id="t-rankboard-wrap"></div>`+cards+`<div class="grid-2">${chart}${timeline}</div><div id="t-reports-wrap"></div>`;
+    loadTRankBoard();
     _renderClassReports('t-reports-wrap','/api/teacher/class-reports');
   }catch(e){ el.innerHTML=errHtml(e); }
 }
@@ -6747,7 +6860,7 @@ async function loadACounts(){
     const d=await api('/api/admin/student-counts');
     let html=`<div class="alert alert-info">Click a card to see the students with a <strong>searchable list</strong>.</div><div class="card"><div class="card-header"><h3>Students Count</h3><button class="btn btn-primary btn-sm" onclick="openStudentsListModal('admin','')">${ic('users')} View All + Search</button></div><div class="card-body">`;
     if(d.subjects.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No students enrolled yet.</p></div>`;
-    else html+=`<div class="count-grid"><div class="count-card clickable" onclick="openStudentsListModal('admin','')"><div class="count-num">${d.total_students}</div><div class="count-sub">Total Students</div></div>`+d.subjects.map(s=>`<div class="count-card"><div class="count-num">${s.count}</div><div class="count-sub">${esc(s.subject)}</div>${s.class?`<div class="count-cls">Class ${esc(s.class)}</div>`:''}</div>`).join('')+`</div>`;
+    else html+=`<div class="count-grid"><div class="count-card clickable" onclick="openStudentsListModal('admin','')"><div class="count-num">${d.total_students}</div><div class="count-sub">Total Students</div></div>`+d.subjects.map(s=>`<div class="count-card clickable" onclick="openStudentsListModal('admin','${esc(s.subject).replace(/'/g,'')}','${esc(s.class||'')}','${esc(s.code||'')}')"><div class="count-num">${s.count}</div><div class="count-sub">${esc(s.subject)}${s.code?` <span class="count-code">(${esc(s.code)})</span>`:''}</div>${s.class&&s.class!=='?'?`<div class="count-cls">Class ${esc(s.class)}</div>`:''}</div>`).join('')+`</div>`;
     html+=`</div></div>`;
     el.innerHTML=html;
   }catch(e){ el.innerHTML=errHtml(e); }
@@ -8222,6 +8335,11 @@ async function _renderPlayCard(){
     <button class="ps-rev" onclick="openWriteReview()">\u2b50 Rate &amp; Review</button>
     <div class="ps-links"><a href="${MVC_PLAY_URL}" target="_blank" rel="noopener">Google Play</a><i></i><a href="${MVC_IOS_URL}" target="_blank" rel="noopener">App Store</a></div>`;
 }
+function dismissPrio(ev){
+  ev.stopPropagation();
+  const c=ev.target.closest('.prio-card'); if(c) c.remove();
+  try{ localStorage.setItem('s_prio_hide', new Date().toLocaleDateString('en-CA')); }catch(e){}
+}
 async function loadSDashboard(){
   const el=document.getElementById('s-dashboard-content');
   try{
@@ -8236,7 +8354,8 @@ async function loadSDashboard(){
     const p=w.priority||{kind:'lecture',label:"Watch today's lecture",title:'Open the Manish Verma Classes App',action:'mvc'};
     const isLec=p.action==='mvc'||p.kind==='lecture';
     const _dupeTest=_up&&(p.kind==='test'||p.action==='tests');
-    const prio=_dupeTest?'':`<div class="prio-card"><div class="prio-ic">${ic(_WS_PRIO_IC[p.kind]||'play')}</div><div class="prio-body"><div class="prio-tag">Today's Priority</div><h3>${esc(p.label||'')}</h3>${p.title?`<p>${esc(p.title)}</p>`:''}</div><button class="prio-btn" onclick="wsGo('${isLec?'mvc':(p.action||'materials')}')">${isLec?'Open MVC App':'Start now'}</button></div>`;
+    const _prioHidden=(()=>{ try{ return localStorage.getItem('s_prio_hide')===new Date().toLocaleDateString('en-CA'); }catch(e){ return false; } })();
+    const prio=(_dupeTest||_prioHidden)?'':`<div class="prio-card"><button class="prio-x" onclick="dismissPrio(event)" title="Hide for today">&times;</button><div class="prio-ic">${ic(_WS_PRIO_IC[p.kind]||'play')}</div><div class="prio-body"><div class="prio-tag">Today's Priority</div><h3>${esc(p.label||'')}</h3>${p.title?`<p>${esc(p.title)}</p>`:''}</div><button class="prio-btn" onclick="wsGo('${isLec?'mvc':(p.action||'materials')}')">${isLec?'Open MVC App':'Start now'}</button></div>`;
 
     // ---- Today's Tasks
     const tasks=(w.tasks||[]);
@@ -8273,15 +8392,12 @@ async function loadSDashboard(){
       ac.length?ac.map(a=>`<div class="act-row"><span class="act-dot"></span><div class="act-main"><div class="act-txt">${esc(a.text)}</div><div class="act-when">${esc(a.subject||'')}${a.when?' \u00b7 '+esc(a.when.replace('T',' ')):''}</div></div></div>`).join(''):'<div class="ws-empty"><p>No recent activity</p><small>Your opened & submitted work will show here.</small></div>'}</div></div>`;
 
     // ---- Quick Actions
-    const qa=[['Open MVC App','play','mvc','mvc'],['Classes Material','book','materials',''],['Study Material','folder','qbank',''],['Submit DPP','clipboard','dpp',''],['Attempt Test','edit','tests',''],['Ask Doubt','help','doubts',''],['Progress','chart','progress',''],['Notifications','bell','notifications','']];
-    const qaHtml=`<div class="card"><div class="card-header"><h3>Quick Actions</h3></div><div class="card-body"><div class="qa-grid">${qa.map(([l,i,pg,cls])=>`<button class="qa-btn ${cls}" onclick="wsGo('${pg}')"><div class="qa-ic">${ic(i)}</div><div class="qa-lbl">${l}</div></button>`).join('')}</div></div></div>`;
+    const qa=[['Open MVC App','play','mvc','mvc'],['Time Table','calendar','timetable',''],['Classes Material','book','materials',''],['Study Material','folder','qbank',''],['Submit DPP','clipboard','dpp',''],['Attempt Test','edit','tests',''],['Ask Doubt','help','doubts',''],['Progress','chart','progress','']];
+    const qaHtml=`<div class="card"><div class="card-header"><h3>Quick Access</h3></div><div class="card-body"><div class="qa-grid">${qa.map(([l,i,pg,cls])=>`<button class="qa-btn ${cls}" onclick="wsGo('${pg}')"><div class="qa-ic">${ic(i)}</div><div class="qa-lbl">${l}</div></button>`).join('')}</div></div></div>`;
 
     setIf(el,`${greetingCard(NAME)}<div id="s-live-banner" style="display:none"></div>
       ${prio}
       <div id="s-today-wrap"></div>
-      <div class="ws-grid">${tasksHtml}${pendHtml}</div>
-      <div class="ws-grid">${ovHtml}${mpHtml}</div>
-      <div class="ws-grid">${dlHtml}${acHtml}</div>
       ${qaHtml}`);
     loadStudentLiveBanner();
     _renderTodayClassesStudent();
@@ -8311,16 +8427,17 @@ async function _renderTodayClassesStudent(){
     }
     const rows=today.map(c=>{
       const isTest=(c.type||'')==='test'||/test|exam/i.test(c.chapter||'');
-      const photo=c.teacher_id?`<img class="tc-photo" src="" data-tid="${c.teacher_id}" alt="">`:`<div class="tc-photo tc-ph">${esc((c.teacher_name||'T').charAt(0))}</div>`;
+      const photo=c.teacher_id?`<img class="tc-photo" src="" data-tid="${c.teacher_id}" data-ini="${esc((c.teacher_name||'S').charAt(0).toUpperCase())}" alt="">`:`<div class="tc-photo tc-ph">${esc((c.teacher_name||'S').charAt(0).toUpperCase())}</div>`;
       const topic=esc(c.part||c.chapter||'');
-      return `<div class="tc-row"><div class="tc-time"><span class="tc-t">${esc(c.time||'TBA')}</span></div><div class="tc-body"><div class="tc-sub">${esc(c.subject)}${isTest?'<span class="tc-tag">TEST</span>':''}</div>${topic?`<div class="tc-topic">${topic}</div>`:''}</div><div class="tc-teach">${photo}<span class="tc-tname">${esc(c.teacher_name||'\u2014')}</span></div></div>`;
+      return `<div class="tc-row tc-link" onclick="sPage('timetable',null)" title="Open Time Table"><div class="tc-time"><span class="tc-t">${esc(c.time||'TBA')}</span></div><div class="tc-body"><div class="tc-sub">${esc(c.subject)}${isTest?'<span class="tc-tag">TEST</span>':''}</div>${topic?`<div class="tc-topic">${topic}</div>`:''}</div><div class="tc-teach">${photo}<span class="tc-tname">${esc(c.teacher_name||'\u2014')}</span></div><span class="slist-go">&rsaquo;</span></div>`;
     }).join('');
-    setIf(wrap,`<div class="card"><div class="card-header"><h3>Today's Classes</h3><span class="tc-count">${today.length} class${today.length===1?'':'es'}</span></div><div class="card-body">${rows}</div></div>`);
+    const _dStr=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
+    setIf(wrap,`<div class="card"><div class="card-header"><h3>Today's Classes</h3><span class="tc-date">${_dStr}</span><span class="tc-count">${today.length} class${today.length===1?'':'es'}</span></div><div class="card-body">${rows}</div></div>`);
     // load teacher photos
     wrap.querySelectorAll('img.tc-photo[data-tid]').forEach(async im=>{
       try{
         const r=await fetch(API+`/api/student/teacher/${im.dataset.tid}/photo`,{headers:{Authorization:'Bearer '+TOKEN}});
-        if(!r.ok){ im.replaceWith(Object.assign(document.createElement('div'),{className:'tc-photo tc-ph',textContent:'T'})); return; }
+        if(!r.ok){ im.replaceWith(Object.assign(document.createElement('div'),{className:'tc-photo tc-ph',textContent:im.dataset.ini||'S'})); return; }
         im.src=URL.createObjectURL(await r.blob());
       }catch(e){}
     });
@@ -9287,101 +9404,97 @@ async function loadSProgress(){
   const el=document.getElementById('s-progress-content');
   softSpin(el);
   try{
-    const d=await api('/api/student/performance');
-    window._perfData=d;
-    // syllabus-tracker based progress + rank (new system)
+    // ---------- 1) BATCH RANKING (podium + your rank + clickable list) ----------
+    let rankSec='';
+    try{
+      const bb=await api('/api/student/batch-board');
+      window._sbbRows=bb.rows||[]; window._sbbMe=bb.me||null;
+      if(_sbbRows.length){
+        const medal=['#f59e0b','#a2946d','#b45309'];
+        const bav=(r,sz)=>`<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:linear-gradient(135deg,#b8941f,#a1741a);color:#241a05;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:${Math.round(sz*.42)}px;border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.18)">${esc((r.name||'?').slice(0,1).toUpperCase())}</div>`;
+        const pod=[_sbbRows[1],_sbbRows[0],_sbbRows[2]].filter(Boolean);
+        const podHtml=`<div class="trk-podium">${pod.map(r=>{
+          const h=r.rank===1?110:r.rank===2?84:r.rank===3?68:60;
+          const sz=r.rank===1?62:52;
+          return `<div class="trk-pod trk-click" onclick="sbbCompare(${r.id})" title="Tap to compare"><div class="trk-pod-av" style="position:relative">${bav(r,sz)}<span class="trk-medal" style="background:${medal[r.rank-1]}">${r.rank}</span></div>
+            <div class="trk-pod-nm">${esc(r.name)}${r.me?' <span class="trk-you">(you)</span>':''}</div><div class="trk-pod-sc">${r.xp}<small>XP</small></div>
+            <div class="trk-pod-base" style="height:${h}px;background:linear-gradient(180deg,${medal[r.rank-1]}33,${medal[r.rank-1]}0d);border-top:4px solid ${medal[r.rank-1]}"><b>#${r.rank}</b></div></div>`;
+        }).join('')}</div>`;
+        const me=bb.me;
+        const meHtml=me?`<div class="trk-me"><div class="trk-me-l"><div class="trk-me-rank">#${me.rank}</div><div><b>Your Rank</b><div class="trk-me-sub">of ${bb.total} students${bb.batch?` &middot; ${esc(bb.batch)}`:''} &middot; <b>${me.xp} XP</b></div></div></div><div class="trk-me-hint">Tap any student to compare</div></div>`:'';
+        const maxXp=Math.max(1,..._sbbRows.map(r=>r.xp));
+        const rows=_sbbRows.map(r=>`<div class="sbb-row ${r.me?'me':''}" onclick="sbbCompare(${r.id})">
+          <span class="sbb-rank ${r.rank<=3?'top':''}">${r.rank}</span>
+          <span class="sbb-av">${esc((r.name||'?').slice(0,1).toUpperCase())}</span>
+          <div class="sbb-main"><div class="sbb-nm">${esc(r.name)}${r.me?' <span class="trk-you">(you)</span>':''}</div>
+            <div class="sbb-track"><div class="sbb-fill" style="width:${Math.round(r.xp/maxXp*100)}%"></div></div></div>
+          <b class="sbb-xp">${r.xp} XP</b></div>`).join('');
+        rankSec=`<div class="card" style="border:1.5px solid rgba(184,148,31,.3)"><div class="card-header"><h3>&#127942; Batch Ranking${bb.batch?' — '+esc(bb.batch):''}</h3></div><div class="card-body">
+          ${podHtml}${meHtml}
+          <div class="hide-scroll sbb-scroll">${rows}</div>
+          ${_sbbRows.length>5?`<div class="trk-scroll-hint">Showing top 5 &middot; scroll for all ${bb.total} students</div>`:''}
+        </div></div>`;
+      }
+    }catch(e0){}
+
+    // ---------- 2) SYLLABUS TRACKER PROGRESS (simple subject bars) ----------
     let sylSec='';
     try{
       const ov=await api('/api/syllabus/overview');
-      let rk=null; try{ rk=await api('/api/syllabus/ranks'); }catch(e2){}
       const subs=(ov.subjects||[]).filter(x=>x.calc);
       const rows=subs.map(s=>{
         const c=s.calc, paper=c.paper_marks||c.total_pe_marks||100;
         const pct=Math.min(100,Math.round((c.covered_paper||0)/Math.max(paper,0.01)*100));
-        const ms=s.milestones||{};
-        const tags=['pass','high','top'].filter(k=>ms[k]).map(k=>
-          `<span class="syl-pill2 ok" style="font-size:.58rem;padding:2px 8px">${k==='pass'?'Passing':k==='high'?((_SYL.me||{}).high_target||75)+'%':((_SYL.me||{}).top_target||90)+'%'} &middot; ${esc(_sylCovDate(ms,k))}</span>`).join(' ');
-        return `<div class="mprog-row"><div class="mprog-top"><span class="mprog-sub">${esc(s.name)}</span><span class="mprog-val">${_sylN(c.covered_paper)}/${_sylN(paper)} paper marks &middot; ${pct}%</span></div><div class="mprog-track"><div class="mprog-fill" style="width:${pct}%;background:linear-gradient(90deg,#b8941f,#b8941f)"></div></div>${tags?`<div style="margin-top:5px;display:flex;gap:5px;flex-wrap:wrap">${tags}</div>`:''}</div>`;
+        return `<div class="mprog-row"><div class="mprog-top"><span class="mprog-sub">${esc(s.name)}</span><span class="mprog-val">${_sylN(c.covered_paper)}/${_sylN(paper)} paper marks &middot; ${pct}%</span></div><div class="mprog-track"><div class="mprog-fill" style="width:${pct}%;background:linear-gradient(90deg,#c9a227,#b8941f)"></div></div></div>`;
       }).join('');
-      let rankHtml='';
-      if(rk&&rk.me){
-        const top5=(rk.top||rk.top5||[]);
-        rankHtml=`<div class="card"><div class="card-header"><h3>My Syllabus Rank</h3></div><div class="card-body">
-          <div class="lb-grid"><div class="lb-cell"><div class="lb-rank">#${rk.me.rank}<small>/${rk.total||rk.me.total||'-'}</small></div><div class="lb-lbl">All Students</div></div>
-          <div class="lb-cell"><div class="lb-rank">${rk.me.coverage||rk.me.coverage_pct||0}%</div><div class="lb-lbl">Syllabus Covered</div></div>
-          <div class="lb-cell"><div class="lb-rank">${rk.me.milestones||0}</div><div class="lb-lbl">Milestones</div></div></div>
-          ${top5.length?`<div style="margin-top:14px"><div style="font-size:.7rem;font-weight:800;letter-spacing:.05em;opacity:.55;margin-bottom:6px">TOP 5 &mdash; SYLLABUS COVERAGE</div>${top5.map(t=>`<div class="syl-msrow"><span>${t.rank===rk.me.rank?'<b>'+esc(t.name)+' (you)</b>':esc(t.name)}</span><b style="color:#b8941f">${t.coverage||t.coverage_pct||0}%</b></div>`).join('')}</div>`:''}
-        </div></div>`;
-      }
-      sylSec=`<div class="card"><div class="card-header"><h3>Syllabus Tracker Progress</h3><button class="btn btn-ghost btn-sm" onclick="sPage('syllabus',null)">Open Tracker</button></div><div class="card-body">${rows||'<div class="ws-empty"><p>No subjects planned yet &mdash; open the Syllabus Tracker and pick your chapters.</p></div>'}</div></div>${rankHtml}`;
+      sylSec=`<div class="card"><div class="card-header"><h3>Syllabus Progress</h3><button class="btn btn-ghost btn-sm" onclick="sPage('syllabus',null)">Open Tracker</button></div><div class="card-body">${rows||'<div class="ws-empty"><p>No subjects planned yet &mdash; open the Syllabus Tracker and pick your chapters.</p></div>'}</div></div>`;
     }catch(e1){}
-    const sylGrid=sylSec?`<div class="perf-grid">${sylSec}</div>`:'';
-    const h=d.health||{score:0,label:''};
-    const lb=d.leaderboard||{};
-    // hero: health ring + level/xp + streak
-    const hero=`<div class="perf-hero"><div class="health-ring">${_ring(h.score,120,11,'#fff')}<div class="hr-num"><b>${h.score}</b><span>Health</span></div></div><div class="hero-mid"><h3>Academic Health</h3><h2>${esc(h.label)}</h2><div class="hero-chips"><span class="hero-chip">\u2b50 Level ${d.level}</span><span class="hero-chip">\ud83d\udd25 ${d.streak} day streak</span><span class="hero-chip">\ud83c\udfc6 Rank #${lb.overall_rank||'-'}</span></div></div><div class="hero-xp"><div class="xp-big">${d.xp}</div><div class="xp-lbl">Total XP</div></div></div>`;
 
-    // overall ring + lecture/dpp/test rings
-    const rings=`<div class="card"><div class="card-header"><h3>Overall Progress</h3></div><div class="card-body"><div class="ring-wrap"><div class="ring-sm">${_ring(d.overall_pct,92,9,'var(--primary)')}<div class="rs-num">${d.overall_pct}%</div></div><div class="ring-leg"><div class="rl-row"><span>Lectures Verified</span><b>${d.lectures.verified}/${d.lectures.total}</b></div>${sMode()==='live'?`<div class="rl-row"><span>DPP Completed</span><b>${d.dpp.done}/${d.dpp.total}</b></div>`:''}<div class="rl-row"><span>Tests Attempted</span><b>${d.tests.done}/${d.tests.total}</b></div><div class="rl-row"><span>Avg Test Score</span><b>${d.tests.avg_score}%</b></div></div></div></div></div>`;
+    // ---------- 3) STUDY SNAPSHOT (simple real numbers) ----------
+    const d=await api('/api/student/performance');
+    const snap=`<div class="card"><div class="card-header"><h3>Study Snapshot</h3></div><div class="card-body">
+      <div class="ovv-grid">
+        <div class="ovv-cell"><div class="ovv-num">${d.lectures.verified}/${d.lectures.total}</div><div class="ovv-lbl">Lectures Verified</div></div>
+        ${sMode()==='live'?`<div class="ovv-cell"><div class="ovv-num">${d.dpp.done}/${d.dpp.total}</div><div class="ovv-lbl">DPP Done</div></div>`:''}
+        <div class="ovv-cell"><div class="ovv-num">${d.tests.done}/${d.tests.total}</div><div class="ovv-lbl">Tests Attempted</div></div>
+        <div class="ovv-cell"><div class="ovv-num">${d.tests.avg_score}%</div><div class="ovv-lbl">Avg Test Score</div></div>
+      </div>
+      <div style="margin-top:12px;font-size:.76rem;color:var(--text-muted)">Lecture verify = <b>+20 XP</b> &middot; DPP submit = <b>+15 XP</b> &middot; Test attempt = <b>+25 XP</b> — yahi XP aapki batch ranking banata hai.</div>
+    </div></div>`;
 
-    // subject progress bars
-    const sp=sMode()==='live'?(d.subject_progress||[]):[];
-    const subjBars=sMode()!=='live'
-      ? `<div class="card"><div class="card-header"><h3>Subject-wise Progress</h3></div><div class="card-body"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div class="rb-ic">${ic('play')}</div><div style="flex:1;min-width:200px"><b>Recorded batch</b><div style="font-size:.8rem;color:var(--text-muted)">Progress is built through lecture verification \u2014 watch a lecture in the app, then verify it on the Time Table page. XP, streak and rank all grow from there.</div></div><button class="btn btn-primary btn-sm" onclick="openMVC()">${ic('play')} Watch</button></div></div></div>`
-      : `<div class="card"><div class="card-header"><h3>Subject-wise Progress</h3></div><div class="card-body">${sp.length?sp.map(s=>`<div class="mprog-row"><div class="mprog-top"><span class="mprog-sub">${esc(s.subject)}</span><span class="mprog-val">Lec ${s.lectures} \u00b7 DPP ${s.dpp} \u00b7 ${s.pct}%</span></div><div class="mprog-track"><div class="mprog-fill" style="width:${s.pct}%"></div></div></div>`).join(''):'<div class="ws-empty"><p>No subject data yet</p></div>'}</div></div>`;
-
-    // performance graph (tabbed)
-    const graph=`<div class="card"><div class="card-header"><h3>Performance Graph</h3></div><div class="card-body"><div class="perf-tabs"><div class="perf-tab active" onclick="switchPerfGraph(this,'weekly')">Weekly</div><div class="perf-tab" onclick="switchPerfGraph(this,'monthly')">Monthly</div><div class="perf-tab" onclick="switchPerfGraph(this,'quarterly')">Quarterly</div></div><div id="perf-graph">${_barChart(d.graphs.weekly)}</div></div></div>`;
-
-    // leaderboard + rank movement
-    const mv=d.rank_movement;
-    const mvHtml=mv===null||mv===undefined?'<span class="move-badge move-flat">New</span>':mv>0?`<span class="move-badge move-up">\u25b2 +${mv}</span>`:mv<0?`<span class="move-badge move-down">\u25bc ${mv}</span>`:'<span class="move-badge move-flat">\u2013 No change</span>';
-    const leader=`<div class="card"><div class="card-header"><h3>Leaderboard</h3></div><div class="card-body"><div class="lb-grid"><div class="lb-cell"><div class="lb-rank">#${lb.batch_rank||'-'}<small>/${lb.batch_total||'-'}</small></div><div class="lb-lbl">Batch Rank</div></div><div class="lb-cell"><div class="lb-rank">#${lb.overall_rank||'-'}<small>/${lb.overall_total||'-'}</small></div><div class="lb-lbl">Overall Rank</div>${mvHtml}</div><div class="lb-cell"><div class="lb-rank">Top ${lb.top_percent||100}%</div><div class="lb-lbl">Percentile</div></div></div></div></div>`;
-
-    // chapter cards
-    const cc=(d.chapter_cards||[]);
-    const chaps=`<div class="card"><div class="card-header"><h3>Chapter Completion</h3></div><div class="card-body">${cc.length?`<div class="chap-grid">${cc.map(c=>`<div class="chap-card"><div class="cc-sub">${esc(c.subject)}</div><div class="cc-ch">${esc(c.chapter)}</div><div class="cc-track"><div class="cc-fill" style="width:${c.pct}%"></div></div><div class="cc-meta"><span>${c.done}/${c.total}</span><span>${c.pct}%</span></div></div>`).join('')}</div>`:'<div class="ws-empty"><p>No chapters yet</p><small>Verify lectures to build chapter progress.</small></div>'}</div></div>`;
-
-    // lecture / dpp / test analytics trio
-    const analytics=`<div class="perf-grid-3">
-      <div class="card"><div class="card-header"><h3>Lecture Verification</h3></div><div class="card-body" style="text-align:center"><div class="ring-sm" style="margin:auto">${_ring(d.lectures.pct,92,9,'#a1741a')}<div class="rs-num">${d.lectures.pct}%</div></div><p style="font-size:.82rem;color:var(--text-muted);margin-top:10px">${d.lectures.verified} of ${d.lectures.total} verified</p></div></div>
-      <div class="card"><div class="card-header"><h3>DPP Completion</h3></div><div class="card-body" style="text-align:center"><div class="ring-sm" style="margin:auto">${_ring(d.dpp.pct,92,9,'#16a34a')}<div class="rs-num">${d.dpp.pct}%</div></div><p style="font-size:.82rem;color:var(--text-muted);margin-top:10px">${d.dpp.done} of ${d.dpp.total} done</p></div></div>
-      <div class="card"><div class="card-header"><h3>Test Performance</h3></div><div class="card-body" style="text-align:center"><div class="ring-sm" style="margin:auto">${_ring(d.tests.avg_score,92,9,'#f59e0b')}<div class="rs-num">${d.tests.avg_score}%</div></div><p style="font-size:.82rem;color:var(--text-muted);margin-top:10px">Avg over ${d.tests.graded} graded</p></div></div>
-    </div>`;
-
-    // streak + consistency calendar
-    const cal=(d.calendar||[]);
-    const streakCal=`<div class="card"><div class="card-header"><h3>Study Streak</h3></div><div class="card-body"><div class="streak-box"><div class="streak-flame">\ud83d\udd25</div><div><div class="sb-num">${d.streak} days</div><div class="sb-lbl">Current streak \u00b7 Best: ${d.best_streak} days</div></div></div><div style="margin-top:16px"><div class="cal-wrap">${cal.map(c=>`<div class="cal-cell ${c.level?'l'+c.level:''}" title="${c.date}"></div>`).join('')}</div><div class="cal-legend"><span>Less</span><span class="cal-cell"></span><span class="cal-cell l1"></span><span class="cal-cell l2"></span><span class="cal-cell l3"></span><span class="cal-cell l4"></span><span>More</span></div></div></div></div>`;
-
-    // radar
-    const radar=`<div class="card"><div class="card-header"><h3>Performance Radar</h3></div><div class="card-body">${_radar(d.radar||[])}</div></div>`;
-
-    // badges
-    const bg=(d.badges||[]);
-    const badges=`<div class="card"><div class="card-header"><h3>Achievement Badges</h3></div><div class="card-body"><div class="badge-grid">${bg.map(b=>`<div class="badge-item ${b.earned?'earned':''}"><div class="badge-ic">${_BADGE_IC[b.key]||'\ud83c\udfc5'}</div><div class="badge-nm">${esc(b.name)}</div><div class="badge-ds">${esc(b.desc)}</div></div>`).join('')}</div></div></div>`;
-
-    // timeline
-    const tl=(d.timeline||[]);
-    const timeline=`<div class="card"><div class="card-header"><h3>Activity Timeline</h3></div><div class="card-body">${tl.length?tl.map(a=>`<div class="tl-row"><div class="tl-ic">${_TL_IC[a.kind]||'\u2b50'}</div><div class="tl-main"><div class="tl-txt">${esc(a.text)}</div><div class="tl-when">${esc((a.when||'').replace('T',' '))}</div></div>${a.xp?`<div class="tl-xp">+${a.xp}</div>`:''}</div>`).join(''):'<div class="ws-empty"><p>No activity yet</p></div>'}</div></div>`;
-
-    // targets + insights
-    const tg=(d.targets||[]);
-    const targets=`<div class="card"><div class="card-header"><h3>Upcoming Targets</h3></div><div class="card-body">${tg.map(t=>`<div class="tgt-row"><span class="tgt-dot"></span><span class="tgt-txt">${esc(t.text)}</span></div>`).join('')}</div></div>`;
-    const ins=(d.insights||[]);
-    const insights=`<div class="card"><div class="card-header"><h3>AI Performance Insights</h3></div><div class="card-body">${ins.map(x=>`<div class="ai-insight"><span class="ai-ic">\ud83d\udca1</span><span class="ai-txt">${esc(x)}</span></div>`).join('')}</div></div>`;
-
-    el.innerHTML=`${greetingCard(NAME,"'s Performance")}
-      ${hero}
-      ${sylGrid}
-      <div class="perf-grid">${rings}${leader}</div>
-      <div class="perf-grid">${subjBars}${graph}</div>
-      ${analytics}
-      ${chaps}
-      <div class="perf-grid">${streakCal}${radar}</div>
-      ${badges}
-      <div class="perf-grid">${targets}${insights}</div>
-      ${timeline}`;
+    el.innerHTML=(rankSec||'')+(sylSec||'')+snap;
+    if(!rankSec&&!sylSec) el.innerHTML=snap;
   }catch(e){ el.innerHTML=errHtml(e); }
+}
+function sbbCompare(sid){
+  const rows=window._sbbRows||[], me=window._sbbMe;
+  const other=rows.find(r=>r.id===sid);
+  if(!me||!other) return;
+  if(other.id===me.id){
+    showModal('That\'s you!',`<p style="font-size:.88rem">You are at <b>Rank #${me.rank}</b> in your batch with <b>${me.xp} XP</b>. Tap another student to see what it takes to catch them.</p>`,`<button class="btn btn-primary btn-sm" onclick="closeModal()">OK</button>`);
+    return;
+  }
+  const gap=other.xp-me.xp;
+  const ahead=gap>0;
+  let body='';
+  if(ahead){
+    const lec=Math.ceil(gap/20), dpp=Math.ceil(gap/15), tst=Math.ceil(gap/25);
+    body=`<div class="trk-cmp-head"><div class="trk-cmp-cell"><div class="trk-cmp-score">${me.xp}</div><div class="trk-cmp-who">You &middot; Rank #${me.rank}</div></div>
+      <div class="trk-cmp-diff behind">${gap} XP behind</div>
+      <div class="trk-cmp-cell"><div class="trk-cmp-score">${other.xp}</div><div class="trk-cmp-who">${esc(other.name)} &middot; Rank #${other.rank}</div></div></div>
+      <div class="trk-sugg"><b>&#128161; Rank #${other.rank} tak kaise pahunche:</b><ul>
+        <li><b>${lec}</b> lectures verify karo (+20 XP each) — ya</li>
+        <li><b>${dpp}</b> DPP submit karo (+15 XP each) — ya</li>
+        <li><b>${tst}</b> tests attempt karo (+25 XP each)</li>
+      </ul>
+      <div class="trk-sugg-note">Inme se mix bhi chalega — roz thoda sa, aur aap ${esc(other.name)} ko catch kar loge. Har verified lecture/DPP/test se XP milta hai.</div></div>`;
+  }else{
+    body=`<div class="trk-cmp-head"><div class="trk-cmp-cell"><div class="trk-cmp-score">${me.xp}</div><div class="trk-cmp-who">You &middot; Rank #${me.rank}</div></div>
+      <div class="trk-cmp-diff ahead">${Math.abs(gap)} XP ahead</div>
+      <div class="trk-cmp-cell"><div class="trk-cmp-score">${other.xp}</div><div class="trk-cmp-who">${esc(other.name)} &middot; Rank #${other.rank}</div></div></div>
+      <div class="trk-sugg"><b>&#127881; Great — you are ahead!</b><div class="trk-sugg-note">${esc(other.name)} se aap <b>${Math.abs(gap)} XP</b> aage ho. Apni ranking pakki rakhne ke liye roz lectures verify aur DPP karte raho.</div></div>`;
+  }
+  showModal(`${esc(other.name)} — Rank #${other.rank}`,body,`<button class="btn btn-primary btn-sm" onclick="closeModal()">Close</button>`);
 }
 function switchPerfGraph(tab,period){
   document.querySelectorAll('#s-progress-content .perf-tab').forEach(t=>t.classList.remove('active')); tab.classList.add('active');
@@ -9889,6 +10002,10 @@ function renderStudentWeekly(tl, subjects, opts){
   // class ka time; koi upcoming na ho to sabse recent past ka. Isse slot change
   // (e.g. 10:00 -> 9:30) hote hi weekly view naya time dikhata hai.
   const _tz=new Date(); _tz.setHours(0,0,0,0);
+  const _dowW=(_tz.getDay()+6)%7; const _monW=new Date(_tz); _monW.setDate(_tz.getDate()-_dowW);
+  const _dayDate={}; days.forEach((d,i)=>{ const dd=new Date(_monW); dd.setDate(_monW.getDate()+i); _dayDate[d]=dd; });
+  const _fdD=x=>x.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+  const _todayKW=_tz.toLocaleDateString('en-CA');
   const cols=days.filter(d=>byDay[d]&&byDay[d].length).map(d=>{
     const pick={};
     byDay[d].forEach(x=>{
@@ -9905,10 +10022,11 @@ function renderStudentWeekly(tl, subjects, opts){
       const tmap=(opts.tipTeacherMap||{})[x.subject]||opts.tipTeacher||{}, pr=subProg[x.subject]||{done:0,total:0,pct:0};
       const tav=tmap.name?(tmap.url?`<span class="wkc-tav" style="background-image:url(${tmap.url});cursor:zoom-in" onclick="photoZoom('${tmap.url}','${esc((tmap.name||'').replace(/'/g,''))}')" title="Click to view photo"></span>`:`<span class="wkc-tav">${esc(initials(tmap.name))}</span>`):'';
       const stb=x.st==='current'?`<span class="wkc-status live">Live</span>`:x.st==='done'?`<span class="wkc-status done">Completed</span>`:`<span class="wkc-status up">Upcoming</span>`;
-      return `<div class="wkc-row"><div class="wkc-time">${esc(x.time||'—')}<span>90min</span></div><div class="wkc-main"><div class="wkc-sub">${esc(x.subject)} <span class="wkc-cls">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span></div>${tmap.name?`<div class="wkc-teacher">${tav}${esc(tmap.name)}</div>`:''}<div class="wkc-bar"><div class="wkc-fill" style="width:${pr.pct}%"></div></div><div class="wkc-cnt">${pr.done}/${pr.total} classes</div></div><div class="wkc-right">${stb}<div class="wkc-pct">${pr.pct}%</div></div></div>`;
+      return `<div class="wkc-row"><div class="wkc-time">${esc(x.time||'—')}<span>90min</span>${x.date?`<span class="wkc-date">${esc(fmtNice(x.date))}</span>`:''}</div><div class="wkc-main"><div class="wkc-sub">${esc(x.subject)} <span class="wkc-cls">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span></div>${tmap.name?`<div class="wkc-teacher">${tav}${esc(tmap.name)}</div>`:''}<div class="wkc-bar"><div class="wkc-fill" style="width:${pr.pct}%"></div></div><div class="wkc-cnt">${pr.done}/${pr.total} classes</div></div><div class="wkc-right">${stb}<div class="wkc-pct">${pr.pct}%</div></div></div>`;
     }).join('');
     const n=list.length;
-    return `<div class="card wk-day-card"><div class="wk-day-head"><span>${esc(d)}</span><span class="wk-day-cnt">${n} class${n>1?'es':''}</span></div><div class="wk-day-body">${rows}</div></div>`;
+    const _isTodayW=byDay[d].some(x=>x.date===_todayKW);
+    return `<div class="card wk-day-card ${_isTodayW?'today':''}"><div class="wk-day-head"><span>${esc(d)} <span class="wk-day-date">&middot; ${_fdD(_dayDate[d])}</span>${_isTodayW?'<span class="wk-today-chip">Today</span>':''}</span><span class="wk-day-cnt">${n} class${n>1?'es':''}</span></div><div class="wk-day-body">${rows}</div></div>`;
   }).join('');
   return cols||'<div class="empty-state"><p>No weekly schedule yet.</p></div>';
 }
@@ -11580,6 +11698,55 @@ async function ocrFillQuestion_v1(inp,i){
 .syl-brrow:hover{background:rgba(169,132,32,.08)}
 /* teacher ranking podium */
 .trk-podium{display:flex;align-items:flex-end;justify-content:center;gap:18px;margin:6px 0 22px;flex-wrap:wrap}
+.trk-click{cursor:pointer;transition:transform .15s,box-shadow .15s}
+.trk-click:hover{transform:translateY(-2px);box-shadow:0 10px 22px -10px rgba(90,70,15,.35)}
+.trk-you{color:var(--accent);font-size:.72rem;font-weight:800}
+.trk-me{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:linear-gradient(120deg,rgba(184,148,31,.1),rgba(184,148,31,.05));border:1.5px solid rgba(184,148,31,.35);border-radius:14px;padding:12px 18px;margin-bottom:14px}
+.trk-me-l{display:flex;align-items:center;gap:14px}
+.trk-me-rank{font-size:1.7rem;font-weight:900;color:var(--accent)}
+.trk-me-sub{font-size:.74rem;color:var(--text-muted)}
+.trk-me-hint{font-size:.74rem;color:var(--accent);font-weight:700}
+.trk-scroll{max-height:430px;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;padding-right:4px}
+.trk-scroll-hint{text-align:center;font-size:.72rem;color:var(--text-muted);padding-top:10px}
+.trk-me-card{border:1.5px solid rgba(184,148,31,.5);background:linear-gradient(120deg,rgba(184,148,31,.07),transparent)}
+.trk-cmp-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.trk-cmp-cell{text-align:center;flex:1}
+.trk-cmp-score{font-size:1.5rem;font-weight:900;color:var(--accent)}
+.trk-cmp-who{font-size:.72rem;color:var(--text-muted)}
+.trk-cmp-diff{font-size:.78rem;font-weight:800;padding:4px 12px;border-radius:99px}
+.trk-cmp-diff.behind{background:rgba(220,38,38,.12);color:#b91c1c}
+.trk-cmp-diff.ahead{background:rgba(5,150,105,.12);color:#047857}
+.trk-cmp-legend{display:flex;gap:16px;font-size:.72rem;color:var(--text-muted);margin:6px 0 10px}
+.trk-cmp-legend .dot{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px}
+.trk-cmp-legend .dot.them{background:#b8941f}
+.trk-cmp-legend .dot.me{background:#8a7c55}
+.trk-cmp-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px dashed var(--border);font-size:.78rem}
+.trk-cmp-lbl{width:110px;flex-shrink:0;color:var(--text-muted)}
+.trk-cmp-bars{flex:1;display:flex;flex-direction:column;gap:3px}
+.trk-cmp-bar{height:7px;border-radius:4px;min-width:2px}
+.trk-cmp-bar.them{background:#b8941f}
+.trk-cmp-bar.me{background:#8a7c55}
+.trk-cmp-val{width:74px;text-align:right;font-weight:700;flex-shrink:0}
+.trk-sugg{margin-top:14px;background:rgba(184,148,31,.08);border:1px solid rgba(184,148,31,.3);border-radius:12px;padding:12px 14px;font-size:.82rem}
+.trk-sugg ul{margin:8px 0 0;padding-left:18px}
+.trk-sugg li{margin:3px 0}
+.trk-sugg-note{margin-top:8px;font-size:.76rem;color:var(--text-muted)}
+.wk-day-date{font-weight:600;color:var(--accent);font-size:.82em}
+.wk-today-chip{margin-left:8px;background:linear-gradient(135deg,#e2b458,#c9a227);color:#241a05;font-size:.62rem;font-weight:800;padding:2px 9px;border-radius:99px;letter-spacing:.04em}
+.wkc-date{display:block;font-size:.66rem;color:var(--accent);font-weight:700;margin-top:2px}
+.wk-day-card.today{border:1.5px solid rgba(184,148,31,.45)}
+.sbb-scroll{max-height:295px;overflow-y:auto;padding-right:4px}
+.sbb-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;background:var(--card);cursor:pointer;transition:.15s}
+.sbb-row:hover{border-color:var(--accent);box-shadow:0 6px 16px -8px rgba(90,70,15,.35);transform:translateY(-1px)}
+.sbb-row.me{border:1.5px solid rgba(184,148,31,.5);background:linear-gradient(120deg,rgba(184,148,31,.07),transparent)}
+.sbb-rank{width:26px;height:26px;border-radius:8px;background:rgba(138,109,16,.12);color:#8a6d10;font-weight:800;font-size:.78rem;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sbb-rank.top{background:linear-gradient(135deg,#e2b458,#c9a227);color:#241a05}
+.sbb-av{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#b8941f,#a1741a);color:#241a05;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.85rem;flex-shrink:0}
+.sbb-main{flex:1;min-width:120px}
+.sbb-nm{font-size:.86rem;font-weight:700;margin-bottom:5px}
+.sbb-track{height:6px;border-radius:4px;background:rgba(138,109,16,.12);overflow:hidden}
+.sbb-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#e2b458,#b8941f)}
+.sbb-xp{font-size:.82rem;color:var(--accent);flex-shrink:0}
 .trk-pod{display:flex;flex-direction:column;align-items:center;gap:6px;width:130px}
 .trk-medal{position:absolute;bottom:-6px;right:-6px;width:24px;height:24px;border-radius:50%;color:#fff;
   display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:800;border:2px solid #fff}

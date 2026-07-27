@@ -673,6 +673,16 @@ def timetable_plan(db: Session = Depends(get_db), current_user=Depends(get_stude
         TimetableEntry.subject.in_(sp.subjects or []),
         or_(TimetableEntry.status==None, TimetableEntry.status!='pending')
     ).order_by(TimetableEntry.subject, TimetableEntry.chapter, TimetableEntry.entry_date).all()
+    # CLASS-WARE FILTER (permanent fix): same-name subjects (English 202 vs 302,
+    # Hindi, DEO) ke entries class ke hisaab se alag — Class 12 student ko
+    # Class 10 ki timetable entries kabhi NAHI dikhni chahiye.
+    import re as _re
+    def _cls_norm(x):
+        m = _re.search(r"\d+", str(x or ""))
+        return m.group(0) if m else ""
+    _my_cls = _cls_norm(sp.class_level) or _cls_norm(sp.class_name)
+    if _my_cls:
+        es = [e for e in es if (not _cls_norm(e.class_name)) or _cls_norm(e.class_name) == _my_cls]
     # lectures linked to timetable entries (for the "Mark Done" verification)
     lecs = db.query(Lecture).filter(
         Lecture.is_active == True, Lecture.subject.in_(sp.subjects or []),
@@ -1561,6 +1571,30 @@ def _compute_ranks(db, sp):
     return {"overall_rank": overall_rank, "overall_total": total,
             "batch_rank": batch_rank, "batch_total": len(batch_list) or 1,
             "top_percent": top_pct}
+
+
+@router.get("/batch-board")
+def student_batch_board(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Batch-wise XP leaderboard for the student's Progress page —
+    podium top 3 + full ranked list (click -> comparison + suggestions)."""
+    sp = get_student_profile(current_user, db)
+    xp_map = _student_xp_map(db)
+    my_batch = sp.batch_name or ""
+    q = db.query(StudentProfile)
+    mates = (q.filter(StudentProfile.batch_name == my_batch).all()
+             if my_batch else q.all())
+    rows = []
+    for m in mates:
+        u = m.user
+        rows.append({"id": m.id, "name": (u.name if u else "") or "Student",
+                     "xp": int(xp_map.get(m.id, 0) or 0),
+                     "has_photo": bool(m.photo_b64),
+                     "me": m.id == sp.id})
+    rows.sort(key=lambda r: (-r["xp"], r["name"].lower()))
+    for i, r in enumerate(rows, 1):
+        r["rank"] = i
+    me = next((r for r in rows if r["me"]), None)
+    return {"batch": my_batch, "total": len(rows), "me": me, "rows": rows}
 
 
 @router.get("/performance")
