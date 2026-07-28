@@ -7619,8 +7619,29 @@ function openSsoCheck(){
   showModal('MVS Portal Connection Check',
     `<p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Enter a student\u2019s phone number to see exactly what the MVS Portal returns. Auto-login (Class Manager \u2192 batch select) works only when the status is <b>ok</b>.</p>
      <div class="form-group"><label>Student Phone</label><input class="form-control" id="ssoc-phone" placeholder="10-digit mobile"></div>
-     <div id="ssoc-out"></div>`,
+     <div id="ssoc-out"></div>
+     <hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
+     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div style="font-size:.82rem;font-weight:700">Materials Feed (PYQ check)</div><button class="btn btn-ghost btn-sm" id="ssoc-feed-btn" onclick="runExtFeedCheck()">Check Feed</button></div>
+     <div id="ssoc-feed-out"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" id="ssoc-btn" onclick="runSsoCheck()">Check</button>`);
+}
+
+async function runExtFeedCheck(){
+  const btn=document.getElementById('ssoc-feed-btn'); btn.disabled=true; btn.textContent='Checking\u2026';
+  const out=document.getElementById('ssoc-feed-out');
+  try{
+    const r=await api('/api/ext/status');
+    if(!r.configured){ out.innerHTML='<div class="alert alert-warning">Portal integration configured nahi hai.</div>'; }
+    else if(!r.reachable){ out.innerHTML=`<div class="alert alert-danger">Class manager tak pahunch nahi ban pa rahi (status ${esc(String(r.status_code||''))}).</div>`; }
+    else{
+      const cats=r.categories||{};
+      const keys=Object.keys(cats).sort((a2,b2)=>cats[b2]-cats[a2]);
+      const hasPyq=keys.some(k=>/pyq|previous/i.test(k));
+      out.innerHTML=`<div class="alert ${hasPyq?'alert-success':'alert-warning'}" style="margin-top:8px">Feed mein <b>${r.count}</b> materials hain, <b>${keys.length}</b> categories.${hasPyq?' <b>PYQ category mil gayi!</b>':' <b>PYQ category nahi mili</b> — class manager ko feed mein Solved PYQs include karne honge.'}</div>
+        <div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:.78rem;line-height:1.8">${keys.map(k=>`<div style="display:flex;justify-content:space-between"><span>${esc(k)}</span><b>${cats[k]}</b></div>`).join('')}</div>`;
+    }
+  }catch(e){ out.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
+  btn.disabled=false; btn.textContent='Check Feed'
 }
 async function runSsoCheck(){
   const ph=val('ssoc-phone').replace(/\D/g,'');
@@ -7638,8 +7659,9 @@ async function runSsoCheck(){
       not_on_portal:'No student with this phone number exists on the MVS Portal.',
       locked:'Unlock Class Access for this student on the MVS Portal.'
     };
+    const rawHtml=(r.data&&typeof r.data==='object')?`<div style="margin-top:10px"><div style="font-size:.72rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Class manager ke saare fields (screenshot bhejo)</div><div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;max-height:260px;overflow:auto;font-size:.74rem;line-height:1.7">${Object.keys(r.data).sort().map(k=>{let v=r.data[k];if(v==null||v==='')v='\u2014';else if(typeof v==='object')v=JSON.stringify(v);return `<div><b style="color:var(--accent)">${esc(k)}</b>: ${esc(String(v).slice(0,120))}</div>`;}).join('')}</div></div>`:'';
     out.innerHTML=`<div class="alert ${ok?'alert-success':'alert-warning'}"><b>Status: ${esc(r.status)}</b><br>${esc(r.detail||'')}${!ok&&fixes[r.status]?`<br><br><b>Fix:</b> ${esc(fixes[r.status])}`:''}</div>
-      ${ok&&r.data?`<div style="font-size:.78rem;margin-top:8px"><b>${esc(r.data.name||'')}</b> \u00b7 Class ${esc(String(r.data.class_level||'\u2014'))} \u00b7 ${esc(r.data.medium||'\u2014')} \u00b7 ${(r.data.subjects||[]).length} subjects<br><span style="color:var(--text-muted)">Auto-login ready \u2014 the student only needs to select a batch.</span></div>`:''}`;
+      ${ok&&r.data?`<div style="font-size:.78rem;margin-top:8px"><b>${esc(r.data.name||'')}</b> \u00b7 Class ${esc(String(r.data.class_level||'\u2014'))} \u00b7 ${esc(r.data.medium||'\u2014')} \u00b7 ${(r.data.subjects||[]).length} subjects</div>`:''}${rawHtml}`;
   }catch(e){ out.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
   btn.disabled=false; btn.textContent='Check';
 }
