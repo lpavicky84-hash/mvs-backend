@@ -820,12 +820,14 @@ _MAJOR_HEAD_RE = re.compile(
     re.IGNORECASE)
 
 
-def _render_block(pdf, kind, c, LM, EPW, is_q, raw=None):
+def _render_block(pdf, kind, c, LM, EPW, is_q, raw=None, scale=1.0):
+    def _S(v):
+        return round(v * scale, 1)
     if kind == "oralt":
         # Alternative question separator - hamesha page ke beech me, bold
         pdf.ln(2.2)
         pdf.set_x(LM)
-        _style_font(pdf, "B", 12)
+        _style_font(pdf, "B", _S(12))
         pdf.set_text_color(*NAVY)
         pdf.cell(EPW, 7.5, (c or "OR"), align="C")
         pdf.ln(9.5)
@@ -837,25 +839,25 @@ def _render_block(pdf, kind, c, LM, EPW, is_q, raw=None):
             # major section heading: larger navy type - clean, no side bar
             pdf.ln(2.6)
             pdf.set_x(LM)
-            pdf.set_font("Noto", "B", 13)
+            pdf.set_font("Noto", "B", _S(13))
             pdf.set_text_color(*acc)
-            pdf.multi_cell(EPW, 7.4, c, new_x="LMARGIN", new_y="NEXT")
+            pdf.multi_cell(EPW, _S(7.4), c, new_x="LMARGIN", new_y="NEXT")
             pdf.ln(0.6)
         else:
             # minor connector line ("According to...", "Substitute the values:"):
             # coloured text only - no bar, so the left edge stays clean
             pdf.ln(1.4)
             pdf.set_x(LM)
-            pdf.set_font("Noto", size=11.8)
+            pdf.set_font("Noto", size=_S(11.8))
             pdf.set_text_color(*acc)
-            pdf.multi_cell(EPW, 7, c, new_x="LMARGIN", new_y="NEXT")
+            pdf.multi_cell(EPW, _S(7), c, new_x="LMARGIN", new_y="NEXT")
         pdf.set_text_color(20, 22, 28)
     elif kind == "final":
         pdf.ln(2.2)
         yy = pdf.get_y()
-        pdf.set_font("Noto", "B", 11.5)
-        lines = pdf.multi_cell(EPW - 10, 7, c, dry_run=True, output="LINES")
-        bh = 7 * max(1, len(lines)) + 5
+        pdf.set_font("Noto", "B", _S(11.5))
+        lines = pdf.multi_cell(EPW - 10, _S(7), c, dry_run=True, output="LINES")
+        bh = _S(7) * max(1, len(lines)) + 5
         # box + text use absolute coords - jump to a fresh page if it won't fit
         if yy + bh + 3 > pdf.h - 18:
             pdf.add_page()
@@ -879,31 +881,31 @@ def _render_block(pdf, kind, c, LM, EPW, is_q, raw=None):
             _render_fraction(pdf, frac, LM, EPW, color)
         else:
             pdf.ln(1.6)
-            pdf.set_font("Noto", size=13.5)
+            pdf.set_font("Noto", size=_S(13.5))
             pdf.set_text_color(*color)
             pdf.set_x(LM)
-            pdf.cell(EPW, 8.5, c, align="C")
+            pdf.cell(EPW, _S(8.5), c, align="C")
             pdf.ln(10)
             pdf.set_text_color(20, 22, 28)
     elif kind == "bullet":
         pdf.set_x(LM + 4)
-        _style_font(pdf, "", 11.5, base_bold=is_q)
+        _style_font(pdf, "", _S(11.5), base_bold=is_q)
         pdf.set_text_color(*(NAVY if is_q else GREEN))
-        pdf.cell(5, 6.8, "\u2022")
+        pdf.cell(5, _S(6.8), "\u2022")
         pdf.set_text_color(28, 32, 40)
-        if not _write_rich(pdf, raw, LM + 9, EPW - 9, 11.5, 6.8,
+        if not _write_rich(pdf, raw, LM + 9, EPW - 9, _S(11.5), _S(6.8),
                            base_bold=is_q, color=(28, 32, 40)):
-            _style_font(pdf, "", 11.5, base_bold=is_q)
-            pdf.multi_cell(EPW - 9, 6.8, c, new_x="LMARGIN", new_y="NEXT")
+            _style_font(pdf, "", _S(11.5), base_bold=is_q)
+            pdf.multi_cell(EPW - 9, _S(6.8), c, new_x="LMARGIN", new_y="NEXT")
         pdf.ln(0.4)
     else:
         # Question text bold rehta hai (exam paper style), answer normal weight
-        if not _write_rich(pdf, raw, LM, EPW, 11.5, 6.8,
+        if not _write_rich(pdf, raw, LM, EPW, _S(11.5), _S(6.8),
                            base_bold=is_q, color=(22, 26, 34)):
             pdf.set_x(LM)
-            _style_font(pdf, "", 11.5, base_bold=is_q)
+            _style_font(pdf, "", _S(11.5), base_bold=is_q)
             pdf.set_text_color(22, 26, 34)
-            pdf.multi_cell(EPW, 6.8, c, new_x="LMARGIN", new_y="NEXT")
+            pdf.multi_cell(EPW, _S(6.8), c, new_x="LMARGIN", new_y="NEXT")
         pdf.ln(0.4)
 
 
@@ -1245,7 +1247,7 @@ def build_dpp_pdf(ex, questions, medium="english", kind="q"):
     pdf.set_xy(bx, 12.6)
     pdf.set_font("Noto", "B", 7)
     pdf.set_text_color(120, 113, 92)
-    pdf.cell(0, 4, "MANISH VERMA CLASSES  —  NIOS COACHING")
+    pdf.cell(0, 4, "MANISH VERMA CLASSES")
     # --- right: SET BY + teacher name + subject Faculty + photo circle
     pd_ = 15.5                                  # photo diameter
     px = pdf.w - pdf.r_margin - pd_
@@ -1435,7 +1437,7 @@ def build_dpp_pdf(ex, questions, medium="english", kind="q"):
             if kb == "oralt" and has_or and alt_img and not drawn_first:
                 _img(pdf, getattr(q, "image_b64", None))
                 drawn_first = True
-            _render_block(pdf, kb, c, LM, EPW, is_q=True, raw=raw)
+            _render_block(pdf, kb, c, LM, EPW, is_q=True, raw=raw, scale=0.88)
         if drawn_first:
             _img(pdf, alt_img)
         else:
@@ -1449,10 +1451,10 @@ def build_dpp_pdf(ex, questions, medium="english", kind="q"):
         if opts:
             pdf.ln(1.5)
             for idx, op in enumerate(opts):
-                pdf.set_font("Noto", size=10.5)
+                pdf.set_font("Noto", size=10)
                 pdf.set_text_color(28, 32, 40)
                 pdf.set_x(LM)
-                pdf.multi_cell(EPW, 7, "   (%s)   %s" % (chr(65 + idx), _clean(_strip_rich(str(op)))),
+                pdf.multi_cell(EPW, 6.6, "   (%s)   %s" % (chr(65 + idx), _clean(_strip_rich(str(op)))),
                                new_x="LMARGIN", new_y="NEXT")
                 pdf.ln(0.8)
 
@@ -1475,7 +1477,7 @@ def build_dpp_pdf(ex, questions, medium="english", kind="q"):
                 pdf.cell(lw, 6.5, L["model"], align="C")
                 pdf.set_xy(LM, yy + 11)
                 for kb, c, raw in _blocks(ans):
-                    _render_block(pdf, kb, c, LM, EPW, is_q=False, raw=raw)
+                    _render_block(pdf, kb, c, LM, EPW, is_q=False, raw=raw, scale=0.9)
                 _img(pdf, getattr(q, "model_answer_image", None))
 
         # separator rule

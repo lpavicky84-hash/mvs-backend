@@ -474,8 +474,9 @@
   .pl-qtop .pl-qtext{flex:1;min-width:0}
   .tx-pill.tx-up{background:linear-gradient(135deg,#a1741a,#d4a94e)!important;color:#fff!important;animation:txBlink 1.4s ease-in-out infinite;box-shadow:0 4px 12px -4px rgba(161,116,26,.5)}
   .tx-pill.nv.inf b{color:inherit}
-  .pl-note{display:flex;align-items:center;gap:9px;background:#fff7ed;border:1.5px solid #fdba74;color:#9a3412;font-weight:700;font-size:.83rem;border-radius:13px;padding:11px 14px}
-  .pl-note .nav-ic{width:16px;height:16px;flex-shrink:0}
+  .pl-note{display:flex;align-items:flex-start;gap:9px;background:#fff7ed;border:1.5px solid #fdba74;color:#9a3412;font-weight:700;font-size:.83rem;border-radius:13px;padding:11px 14px;flex-wrap:wrap}
+  .pl-note .nav-ic{width:16px;height:16px;flex-shrink:0;margin-top:1px}
+  .pl-note-tx{flex:1;min-width:0;line-height:1.45}
   .exp-q{background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:13px 15px;margin-bottom:10px}
   .exp-qt{font-size:.9rem;line-height:1.65;flex:1;min-width:0}
   .exp-a{margin-top:9px;background:#f0fdf4;border:1.5px solid #bbf7d0;color:#15803d;border-radius:11px;padding:9px 12px;font-size:.85rem;line-height:1.6}
@@ -9074,10 +9075,15 @@ function _tcPaint(){
       const ini=esc((c.teacher_name||'S').charAt(0).toUpperCase());
       const photo=c.teacher_id?`<img class="tc-photo" src="" data-tid="${c.teacher_id}" data-ini="${ini}" alt="">`:`<div class="tc-photo tc-ph">${ini}</div>`;
       const topic=esc(c.part||c.chapter||'');
-      // status chip: Done / Live / Upcoming
+      // status chip: Done / Live / Upcoming (time ke hisaab se auto)
       let chip='';
       if(c.class_done) chip='<span class="tc-chip done">Done</span>';
-      else if(_tcMode==='today'){ const st=_timeKey(c.time); chip=(st<=nowMin&&nowMin<=st+90)?'<span class="tc-chip live">Live</span>':'<span class="tc-chip">Upcoming</span>'; }
+      else if(_tcMode==='today'){
+        const st=_timeKey(c.time);
+        if(st>nowMin) chip='<span class="tc-chip">Upcoming</span>';
+        else if(nowMin<=st+90) chip='<span class="tc-chip live">Live</span>';
+        else chip='<span class="tc-chip done">Done</span>';
+      }
       else chip='<span class="tc-chip blink">Upcoming</span>';
       // class materials shortcut (sirf jab teacher ne notes/dpp upload kiye ho)
       let matBtn='';
@@ -9410,9 +9416,9 @@ async function openSDppPanel(pid){
     }
     const d=await api(`/api/student/dpp-packs/${pid}/questions`);
     const qs=d.questions||[];
-    const info=`${d.subject?`<span class="pl-sub">${esc(d.subject)}</span> · `:''}${qs.length} questions${d.chapter?' · '+esc(d.chapter):''}${d.part?' · '+esc(d.part):''}${d.teacher?' · By '+esc(d.teacher):''}`;
+    const info=`${d.subject?`<span class="pl-sub">${esc(d.subject)}</span> · `:''}${qs.length} question${qs.length===1?'':'s'}${d.chapter?' · '+esc(d.chapter):''}${d.part?' · '+esc(d.part):''}${d.teacher?' · By '+esc(d.teacher):''}`;
     el.innerHTML=_dppBandHTML('loadSDpp()',d.title,info,'DPP')
-      +`<div class="pl-note">${ic('clipboard')} ${d.submitted?'Aapka answer <b>submitted</b> hai — model answers neeche khul gaye hain.':'Saare questions notebook me solve karo, phir neeche se answer PDF upload karke <b>Submit</b> dabao.'} Kisi question me doubt ho to uske neeche <b>Raise Doubt</b> — screenshot ki zaroorat nahi.</div>
+      +`<div class="pl-note">${ic('clipboard')}<span class="pl-note-tx">${d.submitted?'Your answer is <b>submitted</b> — model answers are unlocked below.':'Solve all questions in your notebook, then upload your answer PDF below and press <b>Submit</b>.'}</span></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px">
         <button class="btn btn-dl btn-sm" onclick="sDppDl(${pid},'q')">${ic('download')} Download Paper</button>
         ${d.submitted?`<button class="btn btn-dl-sol btn-sm" onclick="sDppDl(${pid},'s')">${ic('download')} Download Solutions</button>`:''}</div>`
@@ -9479,12 +9485,12 @@ async function sDppDoubtSend(pid){
 }
 function openDppSubmit(pid){
   showModal(' Submit DPP Answer',
- `<div class="alert alert-info">PDF/photo select karte hi <b>upload apne aap shuru</b> ho jayega (progress % dikhega). Upload 100% hone ke baad <b>Submit</b> dabao. Bada file pehle apne aap chhota ho jayega.</div><div class="form-group"><label>Answer PDF</label>${fileDropHTML('dpp-sub-file','dpp-sub-label','.pdf,image/*')}</div>
+ `<div class="form-group"><label>Answer PDF</label>${fileDropHTML('dpp-sub-file','dpp-sub-label','.pdf,image/*')}</div>
   <div id="dpp-up-wrap" style="display:none;margin-top:12px">
     <div style="height:12px;background:rgba(0,0,0,.09);border-radius:99px;overflow:hidden;border:1px solid var(--border)"><div id="dpp-up-fill" style="height:100%;width:0%;background:linear-gradient(90deg,var(--acc),#d4af37);transition:width .25s;border-radius:99px"></div></div>
     <div id="dpp-up-text" style="font-size:.78rem;color:var(--text-muted);margin-top:6px;text-align:center;line-height:1.4">0%</div>
   </div>`,
- `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-success" id="dpp-sub-btn" disabled title="Pehle file ka upload 100% hone do" onclick="submitDppFile(${pid})">Submit</button>`);
+ `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-success" id="dpp-sub-btn" disabled title="Wait for the upload to reach 100%" onclick="submitDppFile(${pid})">Submit</button>`);
   window._dppStaged=null;
   _dppWireStage(pid);
 }
@@ -9499,14 +9505,13 @@ function _dppWireStage(pid){
 // inline submit card (panel ke bottom me) — modal wala hi flow, same ids
 function _dppSubmitCardHTML(pid,subm){
   return `<div class="card" style="margin-top:18px;border:1.5px solid rgba(184,148,31,.35)"><div class="card-body" style="padding:16px">
-    <h4 style="margin:0 0 4px;font-size:.95rem">${ic('upload')} ${subm?'Re-submit Your Answer':'Submit Your Answer'}</h4>
-    <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px;line-height:1.5">PDF/photo select karte hi <b>upload apne aap shuru</b> ho jayega (progress % dikhega). 100% hone ke baad <b>Submit</b> dabao. Bada file apne aap chhota ho jayega.</div>
+    <h4 style="margin:0 0 10px;font-size:.95rem">${ic('upload')} ${subm?'Re-submit Your Answer':'Submit Your Answer'}</h4>
     ${fileDropHTML('dpp-sub-file','dpp-sub-label','.pdf,image/*')}
     <div id="dpp-up-wrap" style="display:none;margin-top:12px">
       <div style="height:12px;background:rgba(0,0,0,.09);border-radius:99px;overflow:hidden;border:1px solid var(--border)"><div id="dpp-up-fill" style="height:100%;width:0%;background:linear-gradient(90deg,var(--acc),#d4af37);transition:width .25s;border-radius:99px"></div></div>
       <div id="dpp-up-text" style="font-size:.78rem;color:var(--text-muted);margin-top:6px;text-align:center;line-height:1.4">0%</div>
     </div>
-    <div style="margin-top:14px;text-align:right"><button class="btn btn-success" id="dpp-sub-btn" disabled title="Pehle file ka upload 100% hone do" onclick="submitDppFile(${pid})">${subm?'Re-submit Answer':'Submit Answer'}</button></div>
+    <div style="margin-top:14px;text-align:right"><button class="btn btn-success" id="dpp-sub-btn" disabled title="Wait for the upload to reach 100%" onclick="submitDppFile(${pid})">${subm?'Re-submit Answer':'Submit Answer'}</button></div>
   </div></div>`;
 }
 // File select hote hi background upload (progress % ke saath) — submit sirf 100% ke baad
@@ -9517,13 +9522,13 @@ async function _dppStageUpload(pid,file){
   window._dppStaged=null; if(btn){ btn.disabled=true; btn.textContent='Submit'; }
   wrap.style.display='block'; fill.style.width='0%';
   const setp=p=>{ fill.style.width=p+'%'; txt.innerHTML='Uploading… <b>'+Math.round(p)+'%</b>'; };
-  txt.textContent='File taiyar ho rahi hai…';
+  txt.textContent='Preparing your file…';
   let f;
   try{
     const _r=await _prepDppAnswer(file,m=>{ txt.textContent=m; });
-    if(!_r.ok){ txt.innerHTML='<span style="color:var(--danger)">File bahut badi hai — kam pages wala ya chhota PDF/photo try karo.</span>'; return; }
+    if(!_r.ok){ txt.innerHTML='<span style="color:var(--danger)">File is too large — try a shorter PDF or a smaller photo.</span>'; return; }
     f=_r.file;
-  }catch(e){ txt.textContent='File read nahi ho paya — dobara select karo.'; return; }
+  }catch(e){ txt.textContent='Could not read the file — please select it again.'; return; }
   const kb=Math.round(f.size/1024);
   // Test-answer sheet wala hi proven flow: EK direct upload, live progress % ke
   // saath (koi chunks nahi). 100% pe Submit enable hota hai.
@@ -9532,15 +9537,15 @@ async function _dppStageUpload(pid,file){
       const res=await _dppStageXHR(pid,f,setp);
       window._dppStaged={pid:pid,answer_id:res.answer_id};
       fill.style.width='100%';
-      txt.innerHTML='<span style="color:var(--acc);font-weight:600">✔ Upload complete ('+(kb>1024?(kb/1024).toFixed(1)+'MB':kb+'KB')+')</span> — ab <b>Submit</b> dabao';
+      txt.innerHTML='<span style="color:var(--acc);font-weight:600">✔ Upload complete ('+(kb>1024?(kb/1024).toFixed(1)+'MB':kb+'KB')+')</span> — now press <b>Submit</b>';
       if(btn){ btn.disabled=false; btn.focus(); }
       return;
     }catch(e){
       if(att===0 && /fail|fetch|network|timeout|abort/i.test(e.message||'')){
-        txt.textContent='Network issue — 4 sec me upload dobara shuru…';
+        txt.textContent='Network issue — retrying in 4 seconds…';
         await new Promise(r=>setTimeout(r,4000)); setp(0); continue;
       }
-      txt.innerHTML='<span style="color:var(--danger)">'+(e.message||'Upload nahi ho paya')+' — file dobara select karke try karo.</span>';
+      txt.innerHTML='<span style="color:var(--danger)">'+(e.message||'Upload failed')+' — please select the file and try again.</span>';
       return;
     }
   }
@@ -9569,13 +9574,13 @@ function _dppStageXHR(pid,f,onp){
 async function _prepDppAnswer(file,statusCb){
   const IMG_MAX=2*1024*1024, PDF_TRIG=2*1024*1024, PDF_TARGET=4*1024*1024, HARD=8*1024*1024;
   if(file.type && file.type.startsWith('image/')){
-    statusCb&&statusCb('Photo compress ho rahi hai...');
+    statusCb&&statusCb('Compressing the photo…');
     let f=await compressIfImage(file,1400,0.72), q=0.6;
     while(f.size>IMG_MAX && q>=0.3){ f=await compressIfImage(file,1400,q); q-=0.15; }
     return {file:f, ok:f.size<=IMG_MAX};
   }
   if(file.type==='application/pdf' && file.size>PDF_TRIG){
-    statusCb&&statusCb('PDF chhoti ki ja rahi hai (upload fast hoga)...');
+    statusCb&&statusCb('Optimizing the PDF for a faster upload…');
     try{ const f=await compressPdf(file,statusCb,PDF_TARGET);
       if(f && f.size<file.size) return {file:f, ok:f.size<=HARD, compressed:true}; }catch(e){}
   }
@@ -9584,7 +9589,7 @@ async function _prepDppAnswer(file,statusCb){
 // File server pe staged hai — submit sirf confirm karta hai (INSTANT, koi file transfer nahi)
 async function submitDppFile(pid){
   const st=window._dppStaged;
-  if(!st||st.pid!==pid){ toast('Pehle file ka upload 100% hone do.',true); return; }
+  if(!st||st.pid!==pid){ toast('Let the upload reach 100% first.',true); return; }
   const btn=document.getElementById('dpp-sub-btn'); btn.disabled=true; btn.textContent='Submitting...';
   for(let att=0;att<2;att++){
     try{
