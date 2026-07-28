@@ -8051,13 +8051,17 @@ function pickedSubjects(wrapId){
 let _stuSrcFilter='';
 function aStuSrcFilter(src){ _stuSrcFilter=src; _stuPage=1; aRenderStudents(); }
 function aStuClass(c){ _stuClass=c; _stuFilter=''; _stuPage=1; aRenderStudents(); }
+// Subject filter class-aware hai: value "English||10" — same-name subjects
+// (Class 10 English vs Class 12 English) kabhi merge nahi honge
+function _stuFParts(){ const v=_stuFilter||''; const i=v.lastIndexOf('||'); if(i<0) return {sub:v,cls:''}; return {sub:v.slice(0,i),cls:v.slice(i+2)}; }
 function _stuFiltered(){
   let list=_aStu;
   if(_stuSrcFilter) list=list.filter(s=>(s.source||'mvs_app')===_stuSrcFilter);
   if(_stuSess) list=list.filter(s=>(s.exam_session||'')===_stuSess);
   if(_stuMed) list=list.filter(s=>(s.medium||'')===_stuMed);
   if(_stuClass) list=list.filter(s=>String(s.class_level||'')===_stuClass);
-  if(_stuFilter) list=list.filter(s=>(s.subjects||[]).some(x=>x.toLowerCase()===_stuFilter.toLowerCase()));
+  if(_stuFilter){ const fp=_stuFParts();
+    list=list.filter(s=>(s.subjects||[]).some(x=>x.toLowerCase()===fp.sub.toLowerCase())&&(!fp.cls||String(s.class_level||'')===fp.cls)); }
   if(_stuSearch){ const q=_stuSearch.toLowerCase(); list=list.filter(s=>(s.name||'').toLowerCase().includes(q)||(s.phone||'').includes(q)||(s.user_id||'').toLowerCase().includes(q)||(s.email||'').toLowerCase().includes(q)); }
   return list;
 }
@@ -8068,7 +8072,9 @@ function aRenderStudents(){
   const classes=[...new Set(_aStu.map(s=>String(s.class_level||'')).filter(Boolean))].sort();
   const sessions=[...new Set(_aStu.map(s=>s.exam_session).filter(Boolean))];
   const subsForClass=subsAll.filter(c=>!_stuClass||String(c['class']||c.class_level||'')===_stuClass);
-  const selCount=_stuFilter?(subsAll.find(c=>c.subject===_stuFilter)||{}).count:_stuFiltered().length;
+  const _fp=_stuFParts();
+  // Count bhi subject+class dono se — sirf naam se dhoondne pe doosri class ka count aa jata tha
+  const selCount=_stuFilter?((subsAll.find(c=>c.subject===_fp.sub&&String(c['class']||c.class_level||'')===_fp.cls)||{}).count??_stuFiltered().length):_stuFiltered().length;
   const cards=[`<div class="fbar fbar-wide">
       <div class="fbar-l">${ic('calendar')}<span>Session</span></div>
       <select class="fbar-sel" onchange="aStuSess(this.value)"><option value="">All Sessions</option>${sessions.map(x=>`<option value="${esc(x)}"${_stuSess===x?' selected':''}>${esc(_sylSessName(x))}</option>`).join('')}</select>
@@ -8077,8 +8083,8 @@ function aRenderStudents(){
       <div class="fbar-l">${ic('user')}<span>Class</span></div>
       <select class="fbar-sel" onchange="aStuClass(this.value)"><option value="">All Classes</option>${classes.map(c=>`<option value="${esc(c)}"${_stuClass===c?' selected':''}>Class ${esc(c)}</option>`).join('')}</select>
       <div class="fbar-l">${ic('book')}<span>Subject</span></div>
-      <select class="fbar-sel" style="min-width:250px" onchange="aStuSetFilter(this.value)"><option value="">All Subjects</option>${subsForClass.map(c=>`<option value="${esc(c.subject)}"${_stuFilter===c.subject?' selected':''}>${esc(c.subject)}${(c['class']||c.class_level)?` \u00b7 Class ${esc(String(c['class']||c.class_level))}`:''} \u00b7 ${c.count}</option>`).join('')}</select>
-      <div class="fbar-res"><b>${selCount||0}</b> ${_stuFilter?esc(_stuFilter):'students'}</div>
+      <select class="fbar-sel" style="min-width:250px" onchange="aStuSetFilter(this.value)"><option value="">All Subjects</option>${subsForClass.map(c=>{const cv=c.subject+'||'+String(c['class']||c.class_level||'');return `<option value="${esc(cv)}"${_stuFilter===cv?' selected':''}>${esc(c.subject)}${(c['class']||c.class_level)?` \u00b7 Class ${esc(String(c['class']||c.class_level))}`:''} \u00b7 ${c.count}</option>`;}).join('')}</select>
+      <div class="fbar-res"><b>${selCount||0}</b> ${_stuFilter?esc(_fp.sub):'students'}</div>
       ${(_stuFilter||_stuClass||_stuSess||_stuMed)?`<button class="fchip fchip-clear" onclick="aStuSess('');aStuMed('');aStuClass('');aStuSetFilter('')">${ic('trash')} Clear</button>`:''}
     </div>`]
   const filtered=_stuFiltered();
@@ -8100,7 +8106,7 @@ function aRenderStudents(){
     ${cards.join('')}
     <div class="card"><div class="card-body">
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"><input id="a-stu-q" class="form-control" style="flex:1;min-width:180px" placeholder="Search name, phone, ID, email..." value="${esc(_stuSearch)}" oninput="aStuSearch(this.value,this)"><select class="form-control" style="width:auto" onchange="aStuSize(this.value)">${[10,25,50,100].map(n=>`<option value="${n}"${_stuSize===n?' selected':''}>${n} / page</option>`).join('')}</select></div>
-      ${_stuFilter?`<div style="margin-bottom:12px"><span class="tag tag-active">Filter: ${esc(_stuFilter)} <span style="cursor:pointer;margin-left:6px" onclick="aStuSetFilter('')">✕</span></span></div>`:''}
+      ${_stuFilter?`<div style="margin-bottom:12px"><span class="tag tag-active">Filter: ${esc(_stuFParts().sub)}${_stuFParts().cls?` \u00b7 Class ${esc(_stuFParts().cls)}`:''} <span style="cursor:pointer;margin-left:6px" onclick="aStuSetFilter('')">✕</span></span></div>`:''}
       ${rows}
       <div class="pager"><div class="pager-info">Showing ${filtered.length?start+1:0}–${Math.min(start+_stuSize,filtered.length)} of ${filtered.length}</div><div style="display:flex;gap:8px;align-items:center"><button class="btn btn-ghost btn-sm" ${_stuPage<=1?'disabled':''} onclick="aStuPage(${_stuPage-1})">Prev</button><span class="pager-info">Page ${_stuPage} / ${totalPages}</span><button class="btn btn-ghost btn-sm" ${_stuPage>=totalPages?'disabled':''} onclick="aStuPage(${_stuPage+1})">Next</button></div></div>
     </div></div>`;
@@ -10160,7 +10166,7 @@ function examCardHTML(e){
     <div class="tx-acts" style="display:flex;gap:8px;margin-top:13px;justify-content:flex-end;flex-wrap:wrap">
       ${(_future||_exp)?'':`<button class="btn btn-ghost btn-sm" onclick="downloadPaper(${e.id})">${ic('download')} Paper</button>`}
       ${_exp?`<button class="btn btn-ghost btn-sm" onclick="_solHub(${e.id})">${ic('book')} Solutions</button>`:''}
-      ${e.status==='graded'?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'student')">${ic('chart')} Ranking</button>`:''}
+      ${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test — attempt na bhi kiya ho to dikh sakta hai" onclick="openExamRanking(${e.id},'student')">${ic('chart')} Ranking</button>`:''}
       ${action}
     </div>
   </div></div>`;
@@ -10208,9 +10214,8 @@ function rankClick(sid){
   const role=window._rankRole;
   const r=(d.rows||[]).find(x=>x.student_id===sid); if(!r) return;
   const total=d.exam.total_marks||0;
-  if(role==='student'&&d.me_id){
+  if(role==='student'&&d.me_id&&(d.rows||[]).some(x=>x.student_id===d.me_id)){
     const me=(d.rows||[]).find(x=>x.student_id===d.me_id);
-    if(!me){ return; }
     if(sid===d.me_id){
       showModal('That\'s you!',`<p style="font-size:.88rem">You scored <b>${me.marks}/${total}</b> (Rank #${me.rank}). Tap another student to compare.</p>`,`<button class="btn btn-primary btn-sm" onclick="openExamRanking(${d.exam.id},'student')">&larr; Back</button>`);
       return;
@@ -13280,6 +13285,24 @@ async function ocrFillQuestion_v1(inp,i){
 .trk-pod-sc small{font-weight:600;opacity:.7}
 .trk-pod-base{width:100%;border-radius:12px 12px 6px 6px;display:flex;align-items:flex-start;justify-content:center;padding-top:10px}
 .trk-pod-base b{font-size:1.15rem;color:var(--text);opacity:.75}
+/* phone: podium 3-in-a-row shrink + list rows compact — kuch overflow/wrap nahi */
+@media(max-width:640px){
+  .trk-podium{gap:8px;flex-wrap:nowrap;margin:4px 0 16px}
+  .trk-pod{width:auto;flex:1 1 0;min-width:0}
+  .trk-pod-nm{font-size:.7rem;line-height:1.25;word-break:break-word}
+  .trk-pod-sc{font-size:.7rem}
+  .trk-pod-base b{font-size:.95rem}
+  .trk-me{padding:10px 12px;gap:8px}
+  .trk-me-hint{display:none}
+  .trk-me-rank{font-size:1.3rem}
+  .sbb-row{gap:8px;padding:8px 10px}
+  .sbb-av{width:30px;height:30px;font-size:.76rem}
+  .sbb-main{min-width:0}
+  .sbb-nm{font-size:.78rem;margin-bottom:2px}
+  .trk-cmp-score{font-size:1.15rem}
+  .trk-cmp-who{font-size:.64rem}
+  .trk-cmp-diff{font-size:.66rem;padding:3px 8px;text-align:center}
+}
 .trk-card{border-radius:14px}
 .trk-head{display:flex;align-items:center;gap:12px;margin-bottom:13px}
 .trk-score{text-align:right}.trk-score b{display:block;font-size:1.4rem;color:#b8941f;letter-spacing:-.02em}

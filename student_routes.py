@@ -1185,6 +1185,12 @@ def student_exams(db: Session = Depends(get_db), current_user=Depends(get_studen
         # Naam-variant tolerant ('PHYSICS' wala student bhi 'Physics' ka test dekhe)
         q = q.filter(Exam.subject.in_(list(_subj_scope_for(db, Exam, subs))))
     rows = q.order_by(Exam.created_at.desc()).all()
+    # Har exam me kitni copies evaluate ho chuki — Ranking button isi se dikhta hai
+    # (taaki jis student ne attempt nahi kiya usko bhi ranking/marks dekhne ko mile)
+    from sqlalchemy import func as _func
+    graded_map = dict(db.query(ExamAttempt.exam_id, _func.count(ExamAttempt.id))
+                      .filter(ExamAttempt.status == "graded")
+                      .group_by(ExamAttempt.exam_id).all())
     out = []
     for e in rows:
         # Class-targeted test: sirf usi class ke students ko dikhe ("" = sabhi classes)
@@ -1200,6 +1206,7 @@ def student_exams(db: Session = Depends(get_db), current_user=Depends(get_studen
                     "teacher_id": e.teacher_id,
                     "scheduled_at": e.scheduled_at.isoformat() if getattr(e, "scheduled_at", None) else None,
                     "status": att.status if att else "not_attempted",
+                    "graded": int(graded_map.get(e.id, 0)),
                     "awarded": att.total_awarded if att else None})
     return out
 
