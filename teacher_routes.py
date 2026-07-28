@@ -964,15 +964,17 @@ def _dpp_build_pdf(db, pk, kind="q", med=None):
     import base64 as _b64
     import exam_pdf
     tname = ""
+    tphoto = None
     try:
         from models import TeacherProfile as _TP
         _tp = db.query(_TP).filter(_TP.id == pk.teacher_id).first()
         tname = _tp.user.name if _tp and _tp.user else "Teacher"
+        tphoto = _tp.photo_b64 if _tp else None
     except Exception:
         tname = "Teacher"
     med = (med or pk.medium or "english").lower()
     med = "hindi" if med.startswith("hin") else "english"
-    ex = _NS(teacher_name=tname, title=pk.title, subject=pk.subject,
+    ex = _NS(teacher_name=tname, teacher_photo_b64=tphoto, title=pk.title, subject=pk.subject,
              chapter=pk.chapter, part=pk.part, test_type="DPP",
              duration_mins=None, total_marks=None)
     qobjs = []
@@ -1115,12 +1117,15 @@ def teacher_dpp_questions(pack_id: int, db: Session = Depends(get_db), current_u
                    "model": q.get("model") or "", "model_hi": q.get("model_hi") or "",
                    "model_image": q.get("model_image")})
     tname = ""
+    tph = False
     try:
         tname = tp.user.name if tp and tp.user else ""
+        tph = bool(tp.photo_b64)
     except Exception:
         pass
     return {"id": pk.id, "title": pk.title, "subject": pk.subject, "chapter": pk.chapter,
             "part": pk.part, "medium": pk.medium, "source": pk.source, "teacher": tname,
+            "teacher_id": tp.id, "has_teacher_photo": tph,
             "class_name": pk.class_name, "has_solution": bool(pk.s_pdf) or any(
                 (q.get("model") or q.get("model_image")) for q in (pk.questions or [])),
             "questions": qs}
@@ -1186,12 +1191,15 @@ def teacher_dpp_pack_file(pack_id: int, kind: str = "q", db: Session = Depends(g
     pk = db.query(DppPack).filter(DppPack.id == pack_id, DppPack.teacher_id == tp.id).first()
     if not pk:
         raise HTTPException(status_code=404, detail="DPP not found")
-    blob = pk.s_pdf if kind == "s" else pk.q_pdf
-    if not blob and pk.source == "created" and pk.questions:
+    blob = None
+    if pk.source == "created" and pk.questions:
+        # created pack: FRESH premium PDF (naya format + teacher photo) — cache sirf fallback
         try:
             blob = _dpp_build_pdf(db, pk, kind, pk.medium)
         except Exception:
             blob = None
+    if not blob:
+        blob = pk.s_pdf if kind == "s" else pk.q_pdf
     if not blob:
         raise HTTPException(status_code=404, detail="File not generated")
     fname = (pk.title or "DPP").replace("/", "-") + ("-solutions.pdf" if kind == "s" else "-questions.pdf")

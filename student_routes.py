@@ -502,10 +502,21 @@ def my_doubts(db: Session = Depends(get_db), current_user=Depends(get_student)):
     sp = get_student_profile(current_user, db)
     out = []
     for d in db.query(Doubt).filter(Doubt.student_id == sp.id).order_by(Doubt.created_at.desc()).all():
+        # teacher ka naam + photo (reply card ke avatar ke liye)
+        tname, tph = "", bool(False)
+        try:
+            tp = d.teacher or (db.query(TeacherProfile).filter(TeacherProfile.id == d.teacher_id).first()
+                               if d.teacher_id else None)
+            if tp:
+                tname = tp.user.name if tp.user else ""
+                tph = bool(tp.photo_b64)
+        except Exception:
+            pass
         out.append({"id": d.id, "subject": d.subject, "topic": d.topic, "question": d.question,
                     "answer": d.answer, "answer_image_link": d.answer_image_link,
                     "status": d.status.value if hasattr(d.status, "value") else d.status,
                     "created_at": str(d.created_at)[:16],
+                    "teacher_id": d.teacher_id, "teacher_name": tname, "has_teacher_photo": tph,
                     "has_file": bool(d.image_b64), "attach_mime": d.attach_mime, "attach_name": d.attach_name,
                     "has_voice": bool(d.audio_b64), "has_answer_voice": bool(d.answer_audio_b64),
                     "has_answer_file": bool(d.answer_attach_b64), "answer_attach_mime": d.answer_attach_mime})
@@ -1755,13 +1766,17 @@ def student_dpp_packs(db: Session = Depends(get_db), current_user=Depends(get_st
         out.append({"id": pk.id, "subject": pk.subject, "chapter": pk.chapter, "part": pk.part,
                     "class_name": getattr(pk, "class_name", "") or "",
                     "title": pk.title, "medium": pk.medium, "source": pk.source,
-                    "teacher": tname, "questions_n": len(pk.questions or []),
+                    "teacher": tname, "teacher_id": pk.teacher_id,
+                    "has_teacher_photo": bool(tp and tp.photo_b64),
+                    "questions_n": len(pk.questions or []),
                     "created_at": pk.created_at.strftime("%d %b %Y") if pk.created_at else None,
+                    "created_ts": pk.created_at.isoformat() if pk.created_at else None,
                     "has_questions": bool(pk.q_pdf or pk.questions),
                     "has_solution": bool(pk.s_pdf),
                     "my_status": (ans.status if ans else None),
                     "my_remarks": (ans.remarks if ans and ans.status == "checked" else None),
                     "my_checked_by": (ans.checked_by if ans and ans.status == "checked" else None),
+                    "my_submitted_at": (ans.submitted_at.strftime("%d %b %Y") if ans and ans.submitted_at else None),
                     "submitted": bool(ans)})
     return {"packs": out}
 
@@ -2017,13 +2032,16 @@ def student_dpp_questions(pack_id: int, db: Session = Depends(get_db),
                          "model_image": q.get("model_image")})
         qs.append(item)
     tname = ""
+    tph = False
     try:
         tp = db.query(TeacherProfile).filter(TeacherProfile.id == pk.teacher_id).first()
         tname = tp.user.name if tp and tp.user else ""
+        tph = bool(tp and tp.photo_b64)
     except Exception:
         pass
     return {"id": pk.id, "title": pk.title, "subject": pk.subject, "chapter": pk.chapter,
             "part": pk.part, "medium": pk.medium, "teacher": tname, "source": pk.source,
+            "teacher_id": pk.teacher_id, "has_teacher_photo": tph,
             "submitted": submitted, "questions": qs}
 
 
@@ -2099,15 +2117,17 @@ def student_dpp_file(pack_id: int, kind: str = "q", db: Session = Depends(get_db
                        DppAnswer.status != "staged").first())
         if not ans:
             raise HTTPException(status_code=403, detail="Submit your DPP first to view the solution")
-        blob = pk.s_pdf
-    else:
-        blob = pk.q_pdf
-    if not blob and pk.source == "created" and pk.questions:
+    blob = None
+    if pk.source == "created" and pk.questions:
+        # created pack: hamesha FRESH premium PDF banao (naya format + teacher photo)
+        # — purana cache fallback hi rahega
         try:
             import teacher_routes as _TR
             blob = _TR._dpp_build_pdf(db, pk, kind, pk.medium)
         except Exception:
             blob = None
+    if not blob:
+        blob = pk.s_pdf if kind == "s" else pk.q_pdf
     if not blob:
         raise HTTPException(status_code=404, detail="File not available")
     fname = (pk.title or "DPP").replace("/", "-") + ("-solutions.pdf" if kind == "s" else "-questions.pdf")

@@ -367,6 +367,42 @@
   .dpp-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;flex-wrap:wrap}
   .dpp-btns{display:flex;gap:6px;flex-wrap:wrap}
   .dark .dpp-card{background:rgba(255,255,255,.03)}
+  /* ---- v48: DPP premium look + blink animations + subject cards ---- */
+  @keyframes dppBlink{0%,100%{opacity:1}50%{opacity:.35}}
+  @keyframes dppGlow{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.45)}50%{box-shadow:0 0 0 5px rgba(220,38,38,0)}}
+  .blink-soft{animation:dppBlink 1.6s ease-in-out infinite}
+  .dp-tag.pending{animation:dppBlink 1.6s ease-in-out infinite}
+  .dp-new{display:inline-flex;align-items:center;gap:4px;background:#dc2626;color:#fff;font-size:.6rem;font-weight:900;letter-spacing:.08em;padding:2.5px 8px;border-radius:99px;animation:dppBlink 1.1s ease-in-out infinite,dppGlow 1.6s ease-out infinite;vertical-align:middle}
+  .dpp-card.premium{background:linear-gradient(180deg,#fffdf5,#fdf8e8);border:1.5px solid #e7d9ac;border-radius:18px;box-shadow:0 3px 14px rgba(146,110,30,.10);transition:transform .15s,box-shadow .15s}
+  .dpp-card.premium:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(146,110,30,.16)}
+  .dark .dpp-card.premium{background:linear-gradient(180deg,#1c2436,#171f30);border-color:rgba(212,175,55,.28)}
+  .dpp-ava{width:46px;height:46px;border-radius:50%;object-fit:cover;background:#e8dfc2 center/cover no-repeat;border:2.5px solid #fff;box-shadow:0 0 0 2px #d4af37,0 2px 8px rgba(0,0,0,.14);flex-shrink:0}
+  .dpp-ava-init{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.92rem;color:#fff;background:linear-gradient(135deg,#b8941f,#8a6d10);border:2.5px solid #fff;box-shadow:0 0 0 2px #d4af37,0 2px 8px rgba(0,0,0,.14);flex-shrink:0}
+  .dpp-subdate{display:inline-flex;align-items:center;gap:4px;font-size:.68rem;font-weight:700;color:#047857;background:rgba(4,120,87,.08);border:1px solid rgba(4,120,87,.22);padding:2.5px 9px;border-radius:99px}
+  .dark .dpp-subdate{color:#6ee7b7;background:rgba(4,120,87,.15);border-color:rgba(4,120,87,.35)}
+  .dps-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:16px}
+  .dps-card{position:relative;cursor:pointer;border:1.5px solid #e7d9ac;border-radius:16px;padding:14px 15px;background:linear-gradient(150deg,#fffdf5,#f9f1da);box-shadow:0 2px 10px rgba(146,110,30,.08);transition:transform .15s,box-shadow .15s,border-color .15s}
+  .dps-card:hover{transform:translateY(-2px);box-shadow:0 7px 18px rgba(146,110,30,.16)}
+  .dps-card.open{border-color:var(--acc);box-shadow:0 0 0 2px rgba(184,148,31,.25),0 7px 18px rgba(146,110,30,.16)}
+  .dark .dps-card{background:linear-gradient(150deg,#1c2436,#171f30);border-color:rgba(212,175,55,.25)}
+  .dps-name{font-weight:900;font-size:.98rem;color:#3f2f0b}
+  .dark .dps-name{color:#f0e6c8}
+  .dps-count{font-size:.7rem;color:#8a7a4e;font-weight:700;margin-top:3px}
+  .dark .dps-count{color:#a99c77}
+  .dps-badge{position:absolute;top:-8px;right:10px;background:#dc2626;color:#fff;font-size:.6rem;font-weight:900;letter-spacing:.05em;padding:3px 9px;border-radius:99px;box-shadow:0 2px 8px rgba(220,38,38,.4);animation:dppBlink 1.2s ease-in-out infinite}
+  .dps-tick{position:absolute;bottom:10px;right:12px;font-size:.72rem;font-weight:800;color:#8a6d10}
+  .btn-blink{animation:dppBlink 1.8s ease-in-out infinite}
+  .btn-dl{background:linear-gradient(135deg,#b8941f,#8a6d10);color:#fff;border:none;font-weight:800;box-shadow:0 3px 10px rgba(146,110,30,.3)}
+  .btn-dl:hover{filter:brightness(1.08);color:#fff}
+  .btn-dl-sol{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;font-weight:800;box-shadow:0 3px 12px rgba(21,128,61,.35);animation:dppBlink 1.5s ease-in-out infinite,dppGlow 2s ease-out infinite}
+  .btn-dl-sol:hover{filter:brightness(1.08);color:#fff}
+  .btn-dl-g{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;font-weight:800;box-shadow:0 3px 10px rgba(21,128,61,.28)}
+  .btn-dl-g:hover{filter:brightness(1.08);color:#fff}
+  .dbt-a-head{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+  .dbt-a-ava{width:38px;height:38px;border-radius:50%;object-fit:cover;background:#d9e9dc center/cover no-repeat;border:2px solid #fff;box-shadow:0 0 0 2px #16a34a,0 2px 6px rgba(0,0,0,.12)}
+  .dbt-a-init{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.8rem;color:#fff;background:linear-gradient(135deg,#16a34a,#166534);border:2px solid #fff;box-shadow:0 0 0 2px #16a34a,0 2px 6px rgba(0,0,0,.12)}
+  .dbt-q{white-space:pre-line}
+  .dbt-a{white-space:pre-line}
   .remarks-card{border:1.5px solid var(--border);border-radius:12px;overflow:hidden}
   .remarks-head{background:#dcfce7;color:#15803d;font-weight:700;padding:10px 14px;font-size:.88rem}
   .dark .remarks-head{background:rgba(22,163,74,.18);color:#86efac}
@@ -6950,7 +6986,7 @@ function tRenderDoubts(){
     rows+=`<div class="dbt-sec">Pending (${pend.length})</div>`;
     rows+=pend.map(d=>{
       const media=mediaOf(d);
-      return `<div class="dbt-card pend">${headOf(d,'<span class="dbt-pill open">Pending</span>')}<div class="dbt-q">${esc(d.question)}</div>${media?`<div class="dbt-media">${media}</div>`:''}<div style="margin-top:12px">${composerHTML('ta'+d.id,'Write your answer\u2026 or send a voice note / file','resolveDoubt('+d.id+')','Resolve')}</div></div>`;
+      return `<div class="dbt-card pend">${headOf(d,'<span class="dbt-pill open">Pending</span>')}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}<div style="margin-top:12px">${composerHTML('ta'+d.id,'Write your answer\u2026 or send a voice note / file','resolveDoubt('+d.id+')','Resolve')}</div></div>`;
     }).join('');
   }
   if(done.length){
@@ -6958,11 +6994,16 @@ function tRenderDoubts(){
     rows+=done.map(d=>{
       const media=mediaOf(d);
       const amedia=`${d.has_answer_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/answer-voice')">${ic('play')} Your Voice Answer</button>`:''}${d.has_answer_file?`<button class="btn btn-ghost btn-sm" onclick="viewAnswerFile('teacher',${d.id},'${esc(d.answer_attach_mime||'')}')">${ic('folder')} Answer Attachment</button>`:''}`;
-      return `<div class="dbt-card res">${headOf(d,'<span class="dbt-pill res">\u2713 Resolved</span>')}<div class="dbt-q">${esc(d.question)}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> ${esc(d.answer)}</div>`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}<div style="margin-top:10px"><button class="btn btn-danger btn-sm" title="Apna response delete karo — doubt wapas pending ho jayega" onclick="tDelDoubtAnswer(${d.id})">${ic('trash')} Delete Response</button></div></div>`;
+      return `<div class="dbt-card res">${headOf(d,'<span class="dbt-pill res">\u2713 Resolved</span>')}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> <span id="tda-${d.id}">${_fmtRich(d.answer)}</span></div>`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}<div style="margin-top:10px"><button class="btn btn-danger btn-sm" title="Apna response delete karo — doubt wapas pending ho jayega" onclick="tDelDoubtAnswer(${d.id})">${ic('trash')} Delete Response</button></div></div>`;
     }).join('');
   }
   html+=(rows||`<div class="empty-state"><p>No doubts in this subject.</p></div>`)+`</div>`;
   el.innerHTML=html;
+  // KaTeX math render ($..$) — DPP questions ke formulas sahi dikhenge
+  list.forEach(d=>{
+    const q=document.getElementById(`tdq-${d.id}`); if(q) renderMath(q);
+    const a=document.getElementById(`tda-${d.id}`); if(a) renderMath(a);
+  });
 }
 function tPickDoubtSub(sub){ _tdSub=sub; tRenderDoubts(); }
 async function tDelDoubtAnswer(id){
@@ -9179,6 +9220,53 @@ function openSubjectMaterials(encSub){
   el.innerHTML=html;
 }
 
+// teacher photo ko div me background-image ki tarah load karo (auth header ke saath)
+async function _loadPhotoInto(elId,url){
+  try{ const r=await fetch(API+url,{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) return; const u=URL.createObjectURL(await r.blob());
+    const d=document.getElementById(elId); if(d){ d.style.backgroundImage=`url(${u})`; d.textContent=''; } }catch(e){}
+}
+function _sDppCardHTML(pk,isNew){
+  const checked=pk.my_status==='checked', subm=!!pk.submitted;
+  const statusChip=checked?`<span class="dp-tag done">✔ Checked</span>`:(subm?`<span class="dp-tag pending">⏳ Checking…</span>`:`<span class="dp-tag">Pending</span>`);
+  const srcChip=pk.source==='uploaded'?`<span class="chip-sub">Uploaded</span>`:`<span class="chip-sub"> ${pk.questions_n||0} Questions</span>`;
+  const newTag=isNew?` <span class="dp-new">NEW</span>`:'';
+  const avaId=`dppava-${pk.id}`;
+  const ava=pk.has_teacher_photo
+    ? `<div class="dpp-ava" id="${avaId}" title="${esc(pk.teacher||'Teacher')}"></div>`
+    : `<div class="dpp-ava-init" title="${esc(pk.teacher||'Teacher')}">${esc(initials(pk.teacher||'T'))}</div>`;
+  // submit ke baad: View Questions -> View Solution (green); pehle: gold View Questions
+  const viewBtn=subm
+    ? `<button class="btn btn-success btn-sm" onclick="openSDppPanel(${pk.id})">${ic('eye')} View Solution</button>`
+    : `<button class="btn btn-primary btn-sm" onclick="openSDppPanel(${pk.id})">${ic('eye')} View Questions</button>`;
+  const doubtBtn=`<button class="btn btn-ghost btn-sm" title="Is DPP me doubt ho to yahan bhejo — screenshot ki zaroorat nahi" onclick="sDppDoubtOpen(${pk.id},0)">${ic('headset')} Raise Doubt</button>`;
+  const remBtn=checked?`<button class="btn btn-primary btn-sm" onclick="openDppRemarks(${pk.id})"> View Remarks</button>`:'';
+  const subBtn=`<button class="btn ${subm?'btn-ghost':'btn-success'} btn-sm" onclick="openDppSubmit(${pk.id})">${ic('upload')} ${subm?'Re-submit':'Submit'}</button>`;
+  const subDate=subm&&pk.my_submitted_at?`<span class="dpp-subdate"> Submitted: ${esc(pk.my_submitted_at)}</span>`:'';
+  return `<div class="dpp-card premium">
+    <div style="display:flex;gap:13px;align-items:flex-start">
+      ${ava}
+      <div style="flex:1;min-width:0">
+        <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div><div style="display:flex;gap:6px;align-items:center">${pk.class_name?`<span class="chip-sub" style="color:#047857">${esc(pk.class_name)}</span>`:''}${srcChip}</div></div>
+        <div class="dpp-title">${esc(pk.title||'DPP')}${newTag}</div>
+        <div class="dpp-meta"> ${esc(pk.chapter||'—')}${pk.part?` · Part: ${esc(pk.part)}`:''} ·  ${esc(pk.medium||'English')}</div>
+        <div class="dpp-meta"> ${esc(pk.teacher||'Teacher')}${pk.created_at?` · ${esc(pk.created_at)}`:''}</div>
+        <div class="dpp-foot"><div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">${statusChip}${subDate}</div><div class="dpp-btns">
+          ${viewBtn}${doubtBtn}${subBtn}${remBtn}
+        </div></div>
+      </div>
+    </div>
+  </div>`;
+}
+function sDppSubject(i){
+  window._sDppOpen=i;
+  (window._sDppGroups||[]).forEach((g,j)=>{
+    const card=document.getElementById(`dps-${j}`), sec=document.getElementById(`dps-sec-${j}`);
+    const open=(j===i);
+    if(card){ card.classList.toggle('open',open); const t=card.querySelector('.dps-tick'); if(t) t.textContent=open?'▲':'▼'; }
+    if(sec) sec.style.display=open?'block':'none';
+  });
+}
 async function loadSDpp(){
   const el=document.getElementById('s-dpp-content');
   el.innerHTML='<div class="spinner"></div>';
@@ -9188,27 +9276,28 @@ async function loadSDpp(){
     window._sDppPacks=packs;
     let html=`<div class="card"><div class="card-header"><h3> DPP — Practice & Submit</h3><span class="chip-sub">${packs.length} DPP</span></div><div class="card-body">`;
     if(packs.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No DPP available yet. Your teacher will add one soon.</p></div>`;
-    else html+=packs.map(pk=>{
-      const checked=pk.my_status==='checked', subm=!!pk.submitted;
-      const statusChip=checked?`<span class="dp-tag done">✔ Checked</span>`:(subm?`<span class="dp-tag pending">⏳ Checking…</span>`:`<span class="dp-tag">Pending</span>`);
-      const srcChip=pk.source==='uploaded'?`<span class="chip-sub">Uploaded</span>`:`<span class="chip-sub"> ${pk.questions_n||0} Questions</span>`;
-      const solBtn=subm&&pk.has_solution?`<button class="btn btn-ghost btn-sm" onclick="sDppDl(${pk.id},'s')">${ic('eye')} View Solution</button>`:'';
-      const remBtn=checked?`<button class="btn btn-primary btn-sm" onclick="openDppRemarks(${pk.id})"> View Remarks</button>`:'';
-      const subBtn=`<button class="btn ${subm?'btn-ghost':'btn-success'} btn-sm" onclick="openDppSubmit(${pk.id})">${ic('upload')} ${subm?'Re-submit':'Submit'}</button>`;
-      // View -> test-jaisa in-page panel (Download upar, Submit neeche, Raise Doubt har question pe)
-      const viewBtn=`<button class="btn btn-primary btn-sm" onclick="openSDppPanel(${pk.id})">${ic('eye')} View Questions</button>`;
-      const doubtBtn=`<button class="btn btn-ghost btn-sm" title="Is DPP me doubt ho to yahan bhejo — screenshot ki zaroorat nahi" onclick="sDppDoubtOpen(${pk.id},0)">${ic('headset')} Raise Doubt</button>`;
-      return `<div class="dpp-card">
-        <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div><div style="display:flex;gap:6px;align-items:center">${pk.class_name?`<span class="chip-sub" style="color:#047857">${esc(pk.class_name)}</span>`:''}${srcChip}</div></div>
-        <div class="dpp-title">${esc(pk.title||'DPP')}</div>
-        <div class="dpp-meta"> ${esc(pk.chapter||'—')}${pk.part?` · Part: ${esc(pk.part)}`:''} ·  ${esc(pk.medium||'English')}</div>
-        <div class="dpp-meta"> ${esc(pk.teacher||'Teacher')}${pk.created_at?` · ${esc(pk.created_at)}`:''}</div>
-        <div class="dpp-foot">${statusChip}<div class="dpp-btns">
-          ${viewBtn}${doubtBtn}
-          ${solBtn}${subBtn}${remBtn}
-        </div></div>
-      </div>`;
-    }).join('');
+    else{
+      // subject-wise groups (packs newest-first hain → har subject ka pehla = latest)
+      const gmap={}; const groups=[];
+      packs.forEach(pk=>{ const s=pk.subject||'Other';
+        if(!gmap[s]){ gmap[s]={subject:s,items:[]}; groups.push(gmap[s]); }
+        gmap[s].items.push(pk); });
+      groups.forEach(g=>{ g.latestId=g.items[0].id; g.newPending=!g.items[0].submitted;
+        g.done=g.items.filter(x=>x.submitted).length; });
+      window._sDppGroups=groups;
+      // kaunsa subject khula rahe: nayi unsubmitted DPP wala, warna pehla
+      let openIdx=groups.findIndex(g=>g.newPending); if(openIdx<0) openIdx=0;
+      window._sDppOpen=openIdx;
+      html+=`<div class="dps-grid">`+groups.map((g,i)=>`
+        <div class="dps-card ${i===openIdx?'open':''}" id="dps-${i}" onclick="sDppSubject(${i})">
+          ${g.newPending?`<span class="dps-badge">Nayi DPP</span>`:''}
+          <div class="dps-name"> ${esc(g.subject)}</div>
+          <div class="dps-count">${g.items.length} DPP · ${g.done}/${g.items.length} submitted</div>
+          <div class="dps-tick">${i===openIdx?'▲':'▼'}</div>
+        </div>`).join('')+`</div>`;
+      html+=groups.map((g,i)=>`<div class="dps-sec" id="dps-sec-${i}" style="display:${i===openIdx?'block':'none'}">`
+        +g.items.map(pk=>_sDppCardHTML(pk,pk.id===g.latestId)).join('')+`</div>`).join('');
+    }
     html+=`</div></div>`;
     // legacy materials-based DPPs (old records) — read-only archive
     try{
@@ -9218,6 +9307,9 @@ async function loadSDpp(){
         +`</div></div>`;
     }catch(_e){}
     el.innerHTML=html;
+    // teacher photos (avatar) — auth header ke saath fetch karke lagao
+    packs.filter(pk=>pk.has_teacher_photo).forEach(pk=>{
+      _loadPhotoInto(`dppava-${pk.id}`,`/api/student/teacher/${pk.teacher_id}/photo`); });
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function _imgSrc(b64){
@@ -9286,7 +9378,7 @@ function _dppQCards(qs,showModel,pid){
     ${q.image?`<img src="${_imgSrc(q.image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
     ${q.alt_image?`<img src="${_imgSrc(q.alt_image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
     ${showModel&&(q.model||q.model_image)?`<div style="margin-top:12px;padding:10px 12px;border-left:3px solid #15803d;background:rgba(21,128,61,.06);border-radius:8px"><div style="font-size:.68rem;font-weight:800;color:#15803d;margin-bottom:5px">MODEL ANSWER</div><div id="da-${pid}-${q.qno}">${_fmtRich(q.model||'')}</div>${q.model_image?`<img src="${_imgSrc(q.model_image)}" style="max-width:100%;margin-top:8px;border-radius:8px">`:''}</div>`:''}
-    ${pid?`<div style="margin-top:11px"><button class="btn btn-ghost btn-sm" title="Doubt ho to yahan bhejo — question ka text+image apne aap teacher ko chala jayega" onclick="sDppDoubtOpen(${pid},${q.qno},${q.qno})">${ic('headset')} Raise Doubt</button></div>`:''}
+    ${pid?`<div style="margin-top:11px"><button class="btn btn-ghost btn-sm btn-blink" title="Doubt ho to yahan bhejo — question ka text+image apne aap teacher ko chala jayega" onclick="sDppDoubtOpen(${pid},${q.qno},${q.qno})">${ic('headset')} Raise Doubt</button></div>`:''}
   </div>`).join('');
 }
 function _dppMathAll(pid,qs){
@@ -9309,8 +9401,8 @@ async function openSDppPanel(pid){
       // uploaded PDF pack: panel + embedded PDF
       const info=`${pk.subject?`<span class="pl-sub">${esc(pk.subject)}</span> · `:''}${pk.class_name?esc(pk.class_name)+' · ':''}${pk.teacher?'By '+esc(pk.teacher):''}`;
       el.innerHTML=_dppBandHTML('loadSDpp()',pk.title||'DPP',info,'DPP')
-        +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px"><button class="btn btn-ghost btn-sm" onclick="sDppDl(${pid},'q')">${ic('download')} Download Paper</button>
-          ${pk.submitted&&pk.has_solution?`<button class="btn btn-ghost btn-sm" onclick="sDppDl(${pid},'s')">${ic('download')} Download Solutions</button>`:''}</div>`
+        +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px"><button class="btn btn-dl btn-sm" onclick="sDppDl(${pid},'q')">${ic('download')} Download Paper</button>
+          ${pk.submitted&&pk.has_solution?`<button class="btn btn-dl-sol btn-sm" onclick="sDppDl(${pid},'s')">${ic('download')} Download Solutions</button>`:''}</div>`
         +_dppSubmitCardHTML(pid,!!pk.submitted);
       await _dppIframePanel(el,API+`/api/student/dpp-packs/${pid}/file?kind=q`,'DPP.pdf');
       window._dppStaged=null; _dppWireStage(pid);
@@ -9322,8 +9414,8 @@ async function openSDppPanel(pid){
     el.innerHTML=_dppBandHTML('loadSDpp()',d.title,info,'DPP')
       +`<div class="pl-note">${ic('clipboard')} ${d.submitted?'Aapka answer <b>submitted</b> hai — model answers neeche khul gaye hain.':'Saare questions notebook me solve karo, phir neeche se answer PDF upload karke <b>Submit</b> dabao.'} Kisi question me doubt ho to uske neeche <b>Raise Doubt</b> — screenshot ki zaroorat nahi.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px">
-        <button class="btn btn-ghost btn-sm" onclick="sDppDl(${pid},'q')">${ic('download')} Download Paper</button>
-        ${d.submitted?`<button class="btn btn-ghost btn-sm" onclick="sDppDl(${pid},'s')">${ic('download')} Download Solutions</button>`:''}</div>`
+        <button class="btn btn-dl btn-sm" onclick="sDppDl(${pid},'q')">${ic('download')} Download Paper</button>
+        ${d.submitted?`<button class="btn btn-dl-sol btn-sm" onclick="sDppDl(${pid},'s')">${ic('download')} Download Solutions</button>`:''}</div>`
       +_dppQCards(qs,!!d.submitted,pid)
       +_dppSubmitCardHTML(pid,!!d.submitted);
     _dppMathAll(pid,qs);
@@ -9341,7 +9433,7 @@ async function openTDppPanel(pid){
       const info=`${pk.subject?`<span class="pl-sub">${esc(pk.subject)}</span> · `:''}${pk.class_name?esc(pk.class_name)+' · ':''}Uploaded PDF`;
       el.innerHTML=_dppBandHTML('loadTDpp()',pk.title||'DPP',info,'DPP')
         +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px">
-          <button class="btn btn-ghost btn-sm" onclick="dppPdfGo(${pid},'download','q','${med}')">${ic('download')} Download Paper</button>
+          <button class="btn btn-dl btn-sm" onclick="dppPdfGo(${pid},'download','q','${med}')">${ic('download')} Download Paper</button>
           <button class="btn btn-ghost btn-sm" onclick="openDppResults(${pid})">${ic('users')} Submissions (${pk.submitted||0})</button></div>`;
       await _dppIframePanel(el,API+`/api/teacher/dpp-packs/${pid}/file?kind=q`,'DPP.pdf');
       return;
@@ -9351,8 +9443,8 @@ async function openTDppPanel(pid){
     const info=`${d.subject?`<span class="pl-sub">${esc(d.subject)}</span> · `:''}${qs.length} questions${d.chapter?' · '+esc(d.chapter):''}${d.part?' · '+esc(d.part):''}${d.class_name?' · '+esc(d.class_name):''}`;
     el.innerHTML=_dppBandHTML('loadTDpp()',d.title,info,'DPP')
       +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px">
-        <button class="btn btn-ghost btn-sm" onclick="dppPdfGo(${pid},'download','q','${med}')">${ic('download')} Download Paper</button>
-        ${d.has_solution?`<button class="btn btn-ghost btn-sm" onclick="dppPdfGo(${pid},'download','s','${med}')">${ic('download')} Download Solutions</button>`:''}
+        <button class="btn btn-dl btn-sm" onclick="dppPdfGo(${pid},'download','q','${med}')">${ic('download')} Download Paper</button>
+        ${d.has_solution?`<button class="btn btn-dl-g btn-sm" onclick="dppPdfGo(${pid},'download','s','${med}')">${ic('download')} Download Solutions</button>`:''}
         <button class="btn btn-ghost btn-sm" onclick="openDppResults(${pid})">${ic('users')} Submissions (${pk.submitted||0})</button></div>`
       +_dppQCards(qs,true,0);
     _dppMathAll(0,qs);
@@ -10215,10 +10307,21 @@ async function loadSDoubts(){
     else html+=mine.map(d=>{
       const media=`${d.has_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/student/doubt/${d.id}/voice')">${ic('play')} My Voice Note</button>`:''}${d.has_file?`<button class="btn btn-ghost btn-sm" onclick="viewDoubtFile('student',${d.id},'${esc(d.attach_mime||'')}')">${ic('folder')} Attachment</button>`:''}`;
       const ansv=`${d.has_answer_voice?`<button class="btn btn-success btn-sm" style="margin-top:8px" onclick="playDoubtVoice(this,'/api/student/doubt/${d.id}/answer-voice')">${ic('play')} Voice Answer</button>`:''}${d.has_answer_file?`<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="viewAnswerFile('student',${d.id},'${esc(d.answer_attach_mime||'')}')">${ic('folder')} Answer Attachment</button>`:''}`;
-      return `<div class="dbt-card ${d.status==='resolved'?'res':'pend'}"><div class="dbt-head"><div style="min-width:0"><div class="dbt-name">${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}</div><div class="dbt-meta">${esc(d.created_at||'')}</div></div><div class="dbt-badges"><span class="dbt-pill ${d.status==='resolved'?'res':'open'}">${d.status==='resolved'?'\u2713 Resolved':'Pending'}</span></div></div><div class="dbt-q">${esc(d.question)}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Answer:</b> ${esc(d.answer)}</div>`:''}${ansv?`<div class="dbt-media">${ansv}</div>`:''}</div>`;
+      // teacher reply: photo avatar + naam ke saath (logo jaisa)
+      const tAva=d.has_teacher_photo
+        ? `<div class="dbt-a-ava" id="dbtava-${d.id}"></div>`
+        : `<div class="dbt-a-init">${esc(initials(d.teacher_name||'T'))}</div>`;
+      const ansBlock=d.answer?`<div class="dbt-a"><div class="dbt-a-head">${tAva}<div style="min-width:0"><div style="font-weight:800;font-size:.86rem;color:#166534">${esc(d.teacher_name||'Teacher')}</div><div style="font-size:.66rem;font-weight:700;color:#4d7c5f;letter-spacing:.04em">TEACHER'S REPLY</div></div></div><div id="dbta-${d.id}">${_fmtRich(d.answer)}</div></div>`:'';
+      return `<div class="dbt-card ${d.status==='resolved'?'res':'pend'}"><div class="dbt-head"><div style="min-width:0"><div class="dbt-name">${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}</div><div class="dbt-meta">${esc(d.created_at||'')}</div></div><div class="dbt-badges"><span class="dbt-pill ${d.status==='resolved'?'res':'open'}">${d.status==='resolved'?'\u2713 Resolved':'Pending'}</span></div></div><div class="dbt-q" id="dbtq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${ansBlock}${ansv?`<div class="dbt-media">${ansv}</div>`:''}</div>`;
     }).join('');
     html+=`</div></div></div>`;
     el.innerHTML=html;
+    // math render ($..$ KaTeX) + teacher photos
+    mine.forEach(d=>{
+      const q=document.getElementById(`dbtq-${d.id}`); if(q) renderMath(q);
+      const a=document.getElementById(`dbta-${d.id}`); if(a) renderMath(a);
+      if(d.has_teacher_photo) _loadPhotoInto(`dbtava-${d.id}`,`/api/student/teacher/${d.teacher_id}/photo`);
+    });
     sdoBindPaste();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
