@@ -1884,7 +1884,8 @@ def student_dpp_chunk(pack_id: int, data: dict = Body(...),
         return {"ok": True, "probe": True}
     if not part:
         raise HTTPException(status_code=400, detail="Bad chunk data")
-    if idx < 0 or total < 1 or total > 4000 or idx >= total:
+    # total=-1 => adaptive mode: final count assemble ke time client bhejega
+    if idx < 0 or idx > 3999 or (total != -1 and (total < 1 or total > 4000 or idx >= total)):
         raise HTTPException(status_code=400, detail="Bad chunk index")
     if len(part) > 2_500_000:      # ~1.8MB binary se zyada chunk nahi hona chahiye
         raise HTTPException(status_code=400, detail="Chunk too large")
@@ -2420,3 +2421,35 @@ def submit_app_review(payload: dict, db: Session = Depends(get_db), current_user
                             notif_type="app_review"))
     db.commit()
     return {"message": "Saved! Taking you to the Play Store now."}
+
+
+# ---------------------------------------------------------------------------
+# One-time self-heal migration: live MySQL me purani TEXT (64KB) columns ko
+# LONGTEXT me badlo. create_all existing tables ALTER nahi karta, isliye ye
+# startup pe chalta hai. SQLite ho to skip; table na ho to ignore (create_all
+# naya schema bana dega). Idempotent — har boot pe safe.
+def _migrate_dpp_bigtext():
+    try:
+        from database import SessionLocal as _SL
+        from sqlalchemy import text as _sqltext
+        db = _SL()
+        try:
+            if not (db.bind and db.bind.dialect.name == "mysql"):
+                return
+            for table, col in (("dpp_chunks", "data"),
+                               ("dpp_answers", "answer_b64"),
+                               ("dpp_packs", "q_pdf"),
+                               ("dpp_packs", "s_pdf")):
+                try:
+                    db.execute(_sqltext(
+                        "ALTER TABLE %s MODIFY COLUMN %s LONGTEXT" % (table, col)))
+                    db.commit()
+                except Exception:
+                    db.rollback()
+        finally:
+            db.close()
+    except Exception:
+        pass
+
+
+_migrate_dpp_bigtext()

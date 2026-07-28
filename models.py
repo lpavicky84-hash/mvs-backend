@@ -278,6 +278,14 @@ try:
 except Exception:
     _IMGTEXT = _T2()
 
+# Bade file/PDF payloads ke liye — MySQL TEXT sirf 64KB hota hai, LONGTEXT chahiye
+# (warna "Data too long for column" 500 aata hai). SQLite pe TEXT hi rehta hai.
+try:
+    from sqlalchemy.dialects.mysql import LONGTEXT as _LT3
+    _FILETEXT = Text().with_variant(_LT3, "mysql")
+except Exception:
+    _FILETEXT = Text()
+
 class Doubt(Base):
     __tablename__ = "doubts"
 
@@ -323,8 +331,8 @@ class DppPack(Base):
     medium      = Column(String(20), default="English")   # English / Hindi / Bilingual
     source      = Column(String(10), default="created")   # created | uploaded
     questions   = Column(JSON, default=list)              # created DPP ke Q+A
-    q_pdf       = Column(Text)   # base64 — questions paper (no answers)
-    s_pdf       = Column(Text)   # base64 — solutions paper (with answers)
+    q_pdf       = Column(_FILETEXT)  # base64 — questions paper (no answers)
+    s_pdf       = Column(_FILETEXT)  # base64 — solutions paper (with answers)
     created_at  = Column(DateTime, default=func.now())
 
 
@@ -335,7 +343,7 @@ class DppAnswer(Base):
     id           = Column(Integer, primary_key=True)
     pack_id      = Column(Integer, ForeignKey("dpp_packs.id"))
     student_id   = Column(Integer, ForeignKey("student_profiles.id"))
-    answer_b64   = Column(Text)
+    answer_b64   = Column(_FILETEXT)
     filename     = Column(String(250), default="dpp-answer.pdf")
     status       = Column(String(12), default="submitted")   # submitted | checked
     remarks      = Column(Text, default="")
@@ -356,7 +364,7 @@ class DppChunk(Base):
     idx        = Column(Integer)
     total      = Column(Integer)
     filename   = Column(String(250), default="")
-    data       = Column(Text)                    # base64 chunk (no dataURL prefix)
+    data       = Column(_FILETEXT)                 # base64 chunk (no dataURL prefix)
     created_at = Column(DateTime, default=func.now())
 
 

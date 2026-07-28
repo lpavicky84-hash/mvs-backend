@@ -9433,50 +9433,43 @@ async function _dppStageUpload(pid,file){
     f=_r.file;
   }catch(e){ txt.textContent='File read nahi ho paya — dobara select karo.'; return; }
   const kb=Math.round(f.size/1024);
-  // CHUNKED upload — file chhote parts me jati hai (har part ek chhota sa POST,
-  // seconds me complete). Lambi single request kabhi nahi banti, isliye strict/
-  // slow network pe bhi upload mar nahi sakta. Har part ki alag retry hoti hai.
-  let b64;
-  try{ const du=await _fileB64(f); b64=(du.split(',')[1]||du); }
-  catch(e){ txt.textContent='File read nahi ho paya — dobara select karo.'; return; }
-  const CH=400*1024;
-  const total=Math.max(1,Math.ceil(b64.length/CH));
-  const ukey='u'+pid+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
-  // pehle chhota probe POST — agar ye bhi nahi pahuncha to device/network hi
-  // upload requests block kar raha hai (firewall/antivirus) — saaf diagnosis do
-  txt.textContent='Connection check ho raha hai…';
-  try{
-    await api(`/api/student/dpp-packs/${pid}/chunk`,'POST',
-      {upload_key:ukey, idx:-1, total_chunks:total, filename:f.name||'dpp-answer.pdf', data:'cHJvYmU='});
-  }catch(e){
-    txt.innerHTML='<span style="color:var(--danger);line-height:1.5">Upload server tak <b>pahunch hi nahi pa raha</b> (chhota test bhi fail — server theek hai, block beech me hai).<br>➤ <b>Mobile hotspot laga kar try karo</b> — agar wahan ho jaye, to office WiFi ka <b>firewall</b> ya PC ka <b>antivirus web-protection</b> (Quick Heal/K7/Defender) is site ki uploads rok raha hai — usme <b>mvs-foundation-api-production-0553.up.railway.app</b> ko allow karwao.</span>';
-    return;
-  }
-  for(let i=0;i<total;i++){
-    const part=b64.slice(i*CH,(i+1)*CH);
-    let done=false, err=null;
-    for(let att=0;att<3 && !done;att++){
-      try{
-        txt.innerHTML='Uploading… <b>'+Math.round(i/total*100)+'%</b>'+(total>1?' (part '+(i+1)+'/'+total+')':'');
-        fill.style.width=Math.round(i/total*100)+'%';
-        await api(`/api/student/dpp-packs/${pid}/chunk`,'POST',
-          {upload_key:ukey, idx:i, total_chunks:total, filename:f.name||'dpp-answer.pdf', data:part});
-        done=true;
-      }catch(e){
-        err=e;
-        if(att<2){ txt.textContent='Network issue — part '+(i+1)+' dobara bhej rahe…';
-          await new Promise(r=>setTimeout(r,3000)); }
+  // Test-answer sheet wala hi proven flow: EK direct upload, live progress % ke
+  // saath (koi chunks nahi). 100% pe Submit enable hota hai.
+  for(let att=0;att<2;att++){
+    try{
+      const res=await _dppStageXHR(pid,f,setp);
+      window._dppStaged={pid:pid,answer_id:res.answer_id};
+      fill.style.width='100%';
+      txt.innerHTML='<span style="color:var(--acc);font-weight:600">✔ Upload complete ('+(kb>1024?(kb/1024).toFixed(1)+'MB':kb+'KB')+')</span> — ab <b>Submit</b> dabao';
+      if(btn){ btn.disabled=false; btn.focus(); }
+      return;
+    }catch(e){
+      if(att===0 && /fail|fetch|network|timeout|abort/i.test(e.message||'')){
+        txt.textContent='Network issue — 4 sec me upload dobara shuru…';
+        await new Promise(r=>setTimeout(r,4000)); setp(0); continue;
       }
-    }
-    if(!done){
-      txt.innerHTML='<span style="color:var(--danger)">'+((err&&err.message)||'Upload nahi ho paya')+' — <b>mobile hotspot</b> laga kar dobara try karo (firewall/antivirus block ho sakta hai).</span>';
+      txt.innerHTML='<span style="color:var(--danger)">'+(e.message||'Upload nahi ho paya')+' — file dobara select karke try karo.</span>';
       return;
     }
   }
-  fill.style.width='100%';
-  window._dppStaged={pid:pid,upload_key:ukey,filename:f.name||'dpp-answer.pdf',total_chunks:total};
-  txt.innerHTML='<span style="color:var(--acc);font-weight:600">✔ Upload complete ('+(kb>1024?(kb/1024).toFixed(1)+'MB':kb+'KB')+')</span> — ab <b>Submit</b> dabao';
-  if(btn){ btn.disabled=false; btn.focus(); }
+}
+// Direct multipart upload (test-answer jaisa) — live byte-level progress %
+function _dppStageXHR(pid,f,onp){
+  return new Promise((res,rej)=>{
+    const x=new XMLHttpRequest();
+    x.open('POST',API+`/api/student/dpp-packs/${pid}/stage`);
+    x.setRequestHeader('Authorization','Bearer '+TOKEN);
+    x.timeout=10*60*1000;
+    x.upload.onprogress=e=>{ if(e.lengthComputable&&e.total>0) onp(Math.min(99,e.loaded/e.total*100)); };
+    x.onload=()=>{
+      if(x.status>=200&&x.status<300){ try{ res(JSON.parse(x.responseText)); }catch(e){ rej(new Error('Bad response')); } }
+      else{ let d='Upload failed ('+x.status+')'; try{ d=JSON.parse(x.responseText).detail||d; }catch(e){} rej(new Error(d)); }
+    };
+    x.onerror=()=>rej(new TypeError('Failed to fetch'));
+    x.ontimeout=()=>rej(new TypeError('Upload timeout — network slow hai'));
+    const fd=new FormData(); fd.append('file',f,f.name||'dpp-answer.pdf');
+    x.send(fd);
+  });
 }
 
 // DPP answer upload ke liye tight prep: bada PDF/photo chhota karke hi bhejo
@@ -9496,15 +9489,14 @@ async function _prepDppAnswer(file,statusCb){
   }
   return {file, ok:file.size<=HARD};
 }
-// File ke saare chunks server pe hain — submit = assemble (chhota sa confirm call)
+// File server pe staged hai — submit sirf confirm karta hai (INSTANT, koi file transfer nahi)
 async function submitDppFile(pid){
   const st=window._dppStaged;
   if(!st||st.pid!==pid){ toast('Pehle file ka upload 100% hone do.',true); return; }
   const btn=document.getElementById('dpp-sub-btn'); btn.disabled=true; btn.textContent='Submitting...';
   for(let att=0;att<2;att++){
     try{
-      await api(`/api/student/dpp-packs/${pid}/assemble`,'POST',
-        {upload_key:st.upload_key, filename:st.filename, total_chunks:st.total_chunks});
+      await api(`/api/student/dpp-packs/${pid}/submit-staged`,'POST',{answer_id:st.answer_id});
       try{ closeModal(); }catch(e){}
       toast('DPP submitted! Status: Checking.');
       loadSDpp(); return;
