@@ -403,6 +403,14 @@
   .dbt-a-init{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.8rem;color:#fff;background:linear-gradient(135deg,#16a34a,#166534);border:2px solid #fff;box-shadow:0 0 0 2px #16a34a,0 2px 6px rgba(0,0,0,.12)}
   .dbt-q{white-space:pre-line}
   .dbt-a{white-space:pre-line}
+  /* ---- v51: crop-question + language dropdown ---- */
+  .crop-wrap{position:relative;display:inline-block;user-select:none;touch-action:none;line-height:0;border-radius:10px;overflow:hidden;border:1px solid var(--border)}
+  .crop-sel{position:absolute;border:2px dashed #dc2626;background:rgba(220,38,38,.13);pointer-events:none;display:none}
+  .crop-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+  .crop-status{font-size:.76rem;color:var(--text-muted);font-weight:600}
+  .crop-prev{text-align:center;margin-top:12px}
+  .crop-prev img{max-width:100%;border-radius:10px;border:1.5px solid var(--border);background:#fff}
+  .dpp-lang-sel{margin-left:auto;padding:7px 10px;border-radius:9px;border:1.5px solid var(--border);font-weight:700;font-size:.78rem;background:var(--card);color:var(--text);cursor:pointer}
   .remarks-card{border:1.5px solid var(--border);border-radius:12px;overflow:hidden}
   .remarks-head{background:#dcfce7;color:#15803d;font-weight:700;padding:10px 14px;font-size:.88rem}
   .dark .remarks-head{background:rgba(22,163,74,.18);color:#86efac}
@@ -4591,7 +4599,47 @@ function dppLangPick(pid,action){
     </div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
 }
-// In-portal PDF viewer — class manager ke andar hi PDF dikhta hai (naya tab nahi)
+// ---------- DPP premium View/Download hub (test-section jaisa) ----------
+function _dppMeds(pk){ return (pk&&pk.medium==='Hindi')?['hindi']:(pk&&pk.medium==='English')?['english']:['english','hindi']; }
+function _dppHubHTML(pid,kind,action,created,goFn){
+  // medium selection step (sirf created packs ke liye)
+  const pk=(window._sDppPacks||[]).find(x=>x.id===pid)||(window._dppPacks||[]).find(x=>x.id===pid)||{};
+  if(!created){ closeModal(); window[goFn](pid,action,kind,''); return; }
+  const meds=_dppMeds(pk);
+  showModal('Select Medium',
+   `<div class="pm-grid">`+meds.map(m=>m==='hindi'
+     ?`<button class="pm-opt" onclick="closeModal();${goFn}(${pid},'${action}','${kind}','hindi')"><span class="pm-ic">अ</span><span class="pm-tx"><b>हिंदी</b><small>${kind==='s'?'हल':'प्रश्न पत्र'} हिंदी में</small></span></button>`
+     :`<button class="pm-opt" onclick="closeModal();${goFn}(${pid},'${action}','${kind}','english')"><span class="pm-ic">A</span><span class="pm-tx"><b>English</b><small>${kind==='s'?'Solutions':'Question paper'} in English</small></span></button>`).join('')+`</div>`,
+   `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+}
+function _dppHub(pid,kind,goFn,cacheName){
+  const pk=((window[cacheName]||[]).find(x=>x.id===pid))||{};
+  const created=pk.source==='created';
+  const kName=kind==='s'?'Solutions':'Question Paper';
+  showModal(kName+(pk.title?' — '+esc(pk.title):''),
+   `<div class="pm-grid">`
+   +`<button class="pm-opt" onclick="_dppHubHTML(${pid},'${kind}','view',${created?1:0},'${goFn}')"><span class="pm-ic">V</span><span class="pm-tx"><b>View ${kind==='s'?'Solutions':'Paper'}</b><small>Read right here on the portal${created?' — choose a medium':''}</small></span></button>`
+   +`<button class="pm-opt" onclick="_dppHubHTML(${pid},'${kind}','download',${created?1:0},'${goFn}')"><span class="pm-ic">D</span><span class="pm-tx"><b>Download PDF</b><small>Premium formatted PDF${created?' — choose a medium':''}</small></span></button>`
+   +`</div>`,
+   `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+}
+function sDppHub(pid,kind){ _dppHub(pid,kind,'sDppGo','_sDppPacks'); }
+function tDppHub(pid,kind){ _dppHub(pid,kind,'dppPdfGo','_dppPacks'); }
+// student PDF fetch (view ya download) — medium ke saath
+async function sDppGo(pid,action,kind,med,_retry){
+  try{
+    const r=await fetch(API+`/api/student/dpp-packs/${pid}/file?kind=${kind}&med=${med||''}`,{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('nf');
+    const bl=await r.blob(); const u=URL.createObjectURL(bl);
+    const fname=(kind==='s'?'DPP-solutions':'DPP-questions')+'-'+(med||'paper')+'.pdf';
+    if(action==='view') pdfViewerModal(u,(kind==='s'?'Solutions':'Questions')+(med==='hindi'?' — हिंदी':' — English'),fname);
+    else{ const a=document.createElement('a'); a.href=u; a.download=fname; document.body.appendChild(a); a.click(); a.remove(); }
+    setTimeout(()=>URL.revokeObjectURL(u),300000);
+  }catch(e){
+    if(!_retry){ toast('Server slow hai — 3 sec me dobara…',true); await new Promise(r=>setTimeout(r,3000)); return sDppGo(pid,action,kind,med,true); }
+    toast('PDF abhi nahi khul pa rahi — thodi der baad try karo.',true);
+  }
+}
 function pdfViewerModal(u,title,fname){
   showModal(esc(title||'PDF'),
     `<div style="height:72vh;min-height:420px;background:#525659;border-radius:10px;overflow:hidden">
@@ -4639,6 +4687,9 @@ async function openDppResults(pid){
           ${chk&&a.remarks?`<div style="font-size:.74rem;margin-top:5px;background:rgba(184,148,31,.08);border-radius:8px;padding:7px 10px"><b>Your remarks:</b> ${esc(a.remarks)}</div>`:''}
           <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
             <button class="btn btn-ghost btn-sm" onclick="dppAnsDl(${a.id})">${ic('download')} Student PDF</button>
+            ${a.allow_resubmit
+              ?`<button class="btn btn-ghost btn-sm" style="color:#047857;border-color:rgba(4,120,87,.4)" title="Student dobara submit kar sakta hai (ek baar) — band karne ke liye click karo" onclick="dppAllowResubmit(${pid},${a.id},false)">✓ Re-submit ON</button>`
+              :`<button class="btn btn-ghost btn-sm" title="Is student ko ek baar re-submit ki permission do" onclick="dppAllowResubmit(${pid},${a.id},true)">↻ Allow Re-submit</button>`}
             ${chk?'':`<input class="form-control" id="dpp-remark-${a.id}" placeholder="Write remarks for the student\u2026" style="flex:1;min-width:180px;font-size:.78rem">
             <button class="btn btn-primary btn-sm" onclick="dppMarkChecked(${a.id},${pid})">Mark Checked</button>`}
           </div>
@@ -4664,6 +4715,13 @@ async function dppMarkChecked(aid,pid){
   try{
     await api(`/api/teacher/dpp-answers/${aid}/check`,'POST',{remarks});
     toast('Marked checked — student ko notification mil gaya.');
+    openDppResults(pid);
+  }catch(e){ toast(e.message||'Failed',true); }
+}
+async function dppAllowResubmit(pid,aid,allow){
+  try{
+    await api(`/api/teacher/dpp-packs/${pid}/answers/${aid}/allow-resubmit`,'POST',{allow});
+    toast(allow?'Re-submit ON — student ko dobara Submit ka option dikhega (ek baar).':'Re-submit band kar diya.');
     openDppResults(pid);
   }catch(e){ toast(e.message||'Failed',true); }
 }
@@ -9247,7 +9305,7 @@ function _sDppCardHTML(pk,isNew){
     : `<button class="btn btn-primary btn-sm" onclick="openSDppPanel(${pk.id})">${ic('eye')} View Questions</button>`;
   const doubtBtn=`<button class="btn btn-ghost btn-sm" title="Is DPP me doubt ho to yahan bhejo — screenshot ki zaroorat nahi" onclick="sDppDoubtOpen(${pk.id},0)">${ic('headset')} Raise Doubt</button>`;
   const remBtn=checked?`<button class="btn btn-primary btn-sm" onclick="openDppRemarks(${pk.id})"> View Remarks</button>`:'';
-  const subBtn=`<button class="btn ${subm?'btn-ghost':'btn-success'} btn-sm" onclick="openDppSubmit(${pk.id})">${ic('upload')} ${subm?'Re-submit':'Submit'}</button>`;
+  const subBtn=(!subm||pk.can_resubmit)?`<button class="btn ${subm?'btn-ghost':'btn-success'} btn-sm" onclick="openDppSubmit(${pk.id})">${ic('upload')} ${subm?'Re-submit':'Submit'}</button>`:'';
   const subDate=subm&&pk.my_submitted_at?`<span class="dpp-subdate"> Submitted: ${esc(pk.my_submitted_at)}</span>`:'';
   return `<div class="dpp-card premium">
     <div style="display:flex;gap:13px;align-items:flex-start">
@@ -9378,14 +9436,25 @@ function _dppBandHTML(backFn,title,infoHtml,badge){
     <div class="pl-info">${infoHtml}</div></div>
     <span class="tx-pill tx-up">${badge||'DPP'}</span></div></div>`;
 }
-function _dppQCards(qs,showModel,pid){
-  return qs.map(q=>`<div class="exp-q"><div class="pl-qtop"><div class="exp-qt"><b>Q${q.qno}.</b></div></div>
-    <div class="pl-qtext" id="dq-${pid}-${q.qno}">${_fmtRich(q.q||'')}</div>
+function _dppQCards(qs,showModel,pid,lang){
+  const hi=(lang==='hi');
+  return qs.map(q=>{
+    const qtx=(hi&&q.q_hi)?q.q_hi:(q.q||'');
+    const mtx=(hi&&q.model_hi)?q.model_hi:(q.model||'');
+    return `<div class="exp-q"><div class="pl-qtop"><div class="exp-qt"><b>Q${q.qno}.</b></div></div>
+    <div class="pl-qtext" id="dq-${pid}-${q.qno}">${_fmtRich(qtx)}</div>
     ${q.image?`<img src="${_imgSrc(q.image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
     ${q.alt_image?`<img src="${_imgSrc(q.alt_image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
-    ${showModel&&(q.model||q.model_image)?`<div style="margin-top:12px;padding:10px 12px;border-left:3px solid #15803d;background:rgba(21,128,61,.06);border-radius:8px"><div style="font-size:.68rem;font-weight:800;color:#15803d;margin-bottom:5px">MODEL ANSWER</div><div id="da-${pid}-${q.qno}">${_fmtRich(q.model||'')}</div>${q.model_image?`<img src="${_imgSrc(q.model_image)}" style="max-width:100%;margin-top:8px;border-radius:8px">`:''}</div>`:''}
+    ${showModel&&(mtx||q.model_image)?`<div style="margin-top:12px;padding:10px 12px;border-left:3px solid #15803d;background:rgba(21,128,61,.06);border-radius:8px"><div style="font-size:.68rem;font-weight:800;color:#15803d;margin-bottom:5px">MODEL ANSWER</div><div id="da-${pid}-${q.qno}">${_fmtRich(mtx)}</div>${q.model_image?`<img src="${_imgSrc(q.model_image)}" style="max-width:100%;margin-top:8px;border-radius:8px">`:''}</div>`:''}
     ${pid?`<div style="margin-top:11px"><button class="btn btn-ghost btn-sm btn-blink" title="Doubt ho to yahan bhejo — question ka text+image apne aap teacher ko chala jayega" onclick="sDppDoubtOpen(${pid},${q.qno},${q.qno})">${ic('headset')} Raise Doubt</button></div>`:''}
-  </div>`).join('');
+  </div>`;}).join('');
+}
+// panel ke top-right language dropdown se re-render
+function _dppSetLang(l){
+  const P=window._dppPanel; if(!P) return; P.lang=l;
+  const w=document.getElementById('dpp-qs-wrap'); if(!w) return;
+  w.innerHTML=_dppQCards(P.qs,P.showModel,P.pid,l);
+  _dppMathAll(P.pid,P.qs);
 }
 function _dppMathAll(pid,qs){
   qs.forEach(q=>{ const el=document.getElementById(`dq-${pid}-${q.qno}`); if(el) renderMath(el);
@@ -9398,32 +9467,130 @@ async function _dppIframePanel(el,url,fname){
   el.insertAdjacentHTML('beforeend',`<div style="height:72vh;min-height:420px;background:#525659;border-radius:12px;overflow:hidden;border:1px solid var(--border)"><iframe src="${u}" style="width:100%;height:100%;border:0" title="DPP PDF"></iframe></div>`);
   setTimeout(()=>URL.revokeObjectURL(u),300000);
 }
-// STUDENT panel: view pe click karte hi test-jaisa page — Download upar, Submit neeche
+// ---------- Crop question from uploaded DPP PDF -> direct Raise Doubt ----------
+let _crop=null;
+async function sDppCropOpen(pid){
+  showModal('✂ Crop Question & Raise Doubt','<div class="spinner"></div>',`<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>`);
+  { const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.add('cx'); }
+  try{
+    const r=await fetch(API+`/api/student/dpp-packs/${pid}/file?kind=q`,{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('nf');
+    const buf=await r.arrayBuffer();
+    try{ window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }catch(e){}
+    const pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
+    _crop={pid,pdf,page:1,total:pdf.numPages,rect:null,dataUrl:null};
+    _cropPaint();
+  }catch(e){ closeModal(); toast('PDF load nahi ho payi — thodi der baad try karo.',true); }
+}
+function _cropPaint(){
+  showModal('✂ Crop Question & Raise Doubt',
+   `<div class="crop-bar">
+      <button class="btn btn-ghost btn-sm" onclick="_cropNav(-1)">‹ Prev</button>
+      <span class="crop-status" id="crop-pg">Page ${_crop.page} / ${_crop.total}</span>
+      <button class="btn btn-ghost btn-sm" onclick="_cropNav(1)">Next ›</button>
+      <span class="crop-status" style="margin-left:auto">Drag karke question select karo</span>
+    </div>
+    <div class="crop-wrap" id="crop-wrap"><canvas id="crop-cv"></canvas><div class="crop-sel" id="crop-sel"></div></div>
+    <div class="crop-status" id="crop-hint" style="margin-top:9px;line-height:1.4">Page render ho raha hai…</div>`,
+   `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" id="crop-use" disabled onclick="_cropConfirm()">Use This Crop →</button>`);
+  { const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.add('cx'); }
+  _cropRender();
+}
+async function _cropRender(){
+  try{
+    const page=await _crop.pdf.getPage(_crop.page);
+    const base=page.getViewport({scale:1});
+    const wrapW=Math.min(860,(document.querySelector('#modal .modal').clientWidth||900)-70);
+    const cssScale=wrapW/base.width;
+    const vp=page.getViewport({scale:cssScale*2});   // 2x pixels — crop sharp rahe
+    const cv=document.getElementById('crop-cv'); if(!cv) return;
+    const ctx=cv.getContext('2d');
+    cv.width=vp.width; cv.height=vp.height;
+    cv.style.width=(vp.width/2)+'px'; cv.style.height=(vp.height/2)+'px';
+    await page.render({canvasContext:ctx,viewport:vp}).promise;
+    const hint=document.getElementById('crop-hint'); if(hint) hint.textContent='Ab mouse/finger se drag karke question ke upar box banao — phir Use This Crop dabao.';
+    const pg=document.getElementById('crop-pg'); if(pg) pg.textContent=`Page ${_crop.page} / ${_crop.total}`;
+    _crop.rect=null;
+    const sel=document.getElementById('crop-sel'); if(sel) sel.style.display='none';
+    const use=document.getElementById('crop-use'); if(use) use.disabled=true;
+    _cropWire();
+  }catch(e){ const hint=document.getElementById('crop-hint'); if(hint) hint.textContent='Page render nahi ho paya.'; }
+}
+function _cropWire(){
+  const wrap=document.getElementById('crop-wrap'); const sel=document.getElementById('crop-sel');
+  if(!wrap||!sel) return;
+  let sx=0,sy=0,drag=false;
+  const pos=e=>{ const r=wrap.getBoundingClientRect(); const p=(e.touches&&e.touches[0])||e; return {x:p.clientX-r.left,y:p.clientY-r.top}; };
+  const start=e=>{ drag=true; const p=pos(e); sx=p.x; sy=p.y; sel.style.display='none'; e.preventDefault(); };
+  const move=e=>{ if(!drag) return; const p=pos(e);
+    const x=Math.min(sx,p.x), y=Math.min(sy,p.y), w=Math.abs(p.x-sx), h=Math.abs(p.y-sy);
+    sel.style.display='block'; sel.style.left=x+'px'; sel.style.top=y+'px'; sel.style.width=w+'px'; sel.style.height=h+'px';
+    _crop.rect={x,y,w,h};
+    const use=document.getElementById('crop-use'); if(use) use.disabled=!(w>25&&h>15);
+    e.preventDefault(); };
+  const end=()=>{ drag=false; };
+  wrap.onmousedown=start; wrap.onmousemove=move; wrap.onmouseup=end; wrap.onmouseleave=end;
+  wrap.ontouchstart=start; wrap.ontouchmove=move; wrap.ontouchend=end;
+}
+function _cropNav(d){ if(!_crop) return; const n=_crop.page+d; if(n<1||n>_crop.total) return; _crop.page=n; _cropPaint(); }
+function _cropConfirm(){
+  const cv=document.getElementById('crop-cv'), R=_crop&&_crop.rect; if(!cv||!R) return;
+  const k=cv.width/(cv.getBoundingClientRect().width||1);
+  const t=document.createElement('canvas');
+  t.width=Math.max(1,Math.round(R.w*k)); t.height=Math.max(1,Math.round(R.h*k));
+  t.getContext('2d').drawImage(cv, R.x*k, R.y*k, R.w*k, R.h*k, 0, 0, t.width, t.height);
+  _crop.dataUrl=t.toDataURL('image/png');
+  showModal('✂ Crop Question & Raise Doubt',
+   `<div class="crop-prev"><img src="${_crop.dataUrl}" alt="crop"></div>
+    <div class="form-group" style="margin-top:12px"><label>Question No. (PDF me kaunsa question hai)</label><input class="form-control" id="crop-qno" type="number" min="1" value="1"></div>
+    <div class="form-group"><label>Apna doubt (optional)</label><textarea class="form-control" id="crop-note" rows="2" placeholder="e.g. Sir, is step me yeh value kaise aayi?"></textarea></div>
+    <div style="font-size:.72rem;color:var(--text-muted);line-height:1.5">Crop ki hui image aur aapka doubt seedha teacher ke doubt section me chala jayega.</div>`,
+   `<button class="btn btn-ghost" onclick="_cropPaint()">← Change Crop</button>
+    <button class="btn btn-primary" onclick="_cropSend()">Send Doubt</button>`);
+  { const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.add('cx'); }
+}
+async function _cropSend(){
+  if(!_crop||!_crop.dataUrl) return;
+  const qno=parseInt(val('crop-qno'))||1; const note=(val('crop-note')||'').trim();
+  try{
+    const r=await api(`/api/student/dpp-packs/${_crop.pid}/doubt`,'POST',{qno,note,image_b64:_crop.dataUrl});
+    closeModal(); toast(r.message||'Doubt sent!');
+  }catch(e){ toast(e.message||'Could not send the doubt',true); }
+}
+// STUDENT panel: view pe click karte hi test-jaisa page — PDF upar, Submit neeche
 async function openSDppPanel(pid){
   const el=document.getElementById('s-dpp-content'); softSpin(el);
   try{
     const pk=(window._sDppPacks||[]).find(x=>x.id===pid)||{};
     if((pk.source||'created')!=='created'||!pk.questions_n){
-      // uploaded PDF pack: panel + embedded PDF
+      // uploaded PDF pack: PDF VIEW upar, submit card NEECHE (ek baar submit -> card gayab)
       const info=`${pk.subject?`<span class="pl-sub">${esc(pk.subject)}</span> · `:''}${pk.class_name?esc(pk.class_name)+' · ':''}${pk.teacher?'By '+esc(pk.teacher):''}`;
       el.innerHTML=_dppBandHTML('loadSDpp()',pk.title||'DPP',info,'DPP')
-        +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px"><button class="btn btn-dl btn-sm" onclick="sDppDl(${pid},'q')">${ic('download')} Download Paper</button>
-          ${pk.submitted&&pk.has_solution?`<button class="btn btn-dl-sol btn-sm" onclick="sDppDl(${pid},'s')">${ic('download')} Download Solutions</button>`:''}</div>`
-        +_dppSubmitCardHTML(pid,!!pk.submitted);
+        +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px">
+          <button class="btn btn-dl btn-sm" onclick="sDppHub(${pid},'q')">${ic('download')} Download Paper</button>
+          ${pk.submitted&&pk.has_solution?`<button class="btn btn-dl-sol btn-sm" onclick="sDppHub(${pid},'s')">${ic('download')} Download Solutions</button>`:''}
+          <button class="btn btn-ghost btn-sm" title="PDF pe drag karke question crop karo — seedha teacher ko doubt chala jayega" onclick="sDppCropOpen(${pid})">✂ Crop & Raise Doubt</button></div>`;
       await _dppIframePanel(el,API+`/api/student/dpp-packs/${pid}/file?kind=q`,'DPP.pdf');
+      el.insertAdjacentHTML('beforeend',_dppSubmitCardHTML(pid,!!pk.submitted,!!pk.can_resubmit));
       window._dppStaged=null; _dppWireStage(pid);
+      el.scrollIntoView({behavior:'smooth',block:'start'});
       return;
     }
     const d=await api(`/api/student/dpp-packs/${pid}/questions`);
     const qs=d.questions||[];
+    const meds=_dppMeds(pk);
+    const langSel=meds.length>1?`<select class="dpp-lang-sel" title="Language badlo" onchange="_dppSetLang(this.value)"><option value="en">English</option><option value="hi">हिंदी</option></select>`:'';
     const info=`${d.subject?`<span class="pl-sub">${esc(d.subject)}</span> · `:''}${qs.length} question${qs.length===1?'':'s'}${d.chapter?' · '+esc(d.chapter):''}${d.part?' · '+esc(d.part):''}${d.teacher?' · By '+esc(d.teacher):''}`;
+    window._dppPanel={pid:pid,qs:qs,showModel:!!d.submitted,lang:'en'};
     el.innerHTML=_dppBandHTML('loadSDpp()',d.title,info,'DPP')
       +`<div class="pl-note">${ic('clipboard')}<span class="pl-note-tx">${d.submitted?'Your answer is <b>submitted</b> — model answers are unlocked below.':'Solve all questions in your notebook, then upload your answer PDF below and press <b>Submit</b>.'}</span></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px">
-        <button class="btn btn-dl btn-sm" onclick="sDppDl(${pid},'q')">${ic('download')} Download Paper</button>
-        ${d.submitted?`<button class="btn btn-dl-sol btn-sm" onclick="sDppDl(${pid},'s')">${ic('download')} Download Solutions</button>`:''}</div>`
-      +_dppQCards(qs,!!d.submitted,pid)
-      +_dppSubmitCardHTML(pid,!!d.submitted);
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px;align-items:center">
+        <button class="btn btn-dl btn-sm" onclick="sDppHub(${pid},'q')">${ic('download')} Download Paper</button>
+        ${d.submitted?`<button class="btn btn-dl-sol btn-sm" onclick="sDppHub(${pid},'s')">${ic('download')} Download Solutions</button>`:''}
+        ${langSel}</div>`
+      +`<div id="dpp-qs-wrap">`+_dppQCards(qs,!!d.submitted,pid,'en')+`</div>`
+      +_dppSubmitCardHTML(pid,!!d.submitted,!!d.can_resubmit);
     _dppMathAll(pid,qs);
     window._dppStaged=null; _dppWireStage(pid);
     el.scrollIntoView({behavior:'smooth',block:'start'});
@@ -9439,20 +9606,23 @@ async function openTDppPanel(pid){
       const info=`${pk.subject?`<span class="pl-sub">${esc(pk.subject)}</span> · `:''}${pk.class_name?esc(pk.class_name)+' · ':''}Uploaded PDF`;
       el.innerHTML=_dppBandHTML('loadTDpp()',pk.title||'DPP',info,'DPP')
         +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px">
-          <button class="btn btn-dl btn-sm" onclick="dppPdfGo(${pid},'download','q','${med}')">${ic('download')} Download Paper</button>
+          <button class="btn btn-dl btn-sm" onclick="tDppHub(${pid},'q')">${ic('download')} Download Paper</button>
           <button class="btn btn-ghost btn-sm" onclick="openDppResults(${pid})">${ic('users')} Submissions (${pk.submitted||0})</button></div>`;
       await _dppIframePanel(el,API+`/api/teacher/dpp-packs/${pid}/file?kind=q`,'DPP.pdf');
       return;
     }
     const d=await api(`/api/teacher/dpp-packs/${pid}/questions`);
     const qs=d.questions||[];
+    const meds=_dppMeds(pk);
+    const langSel=meds.length>1?`<select class="dpp-lang-sel" title="Language badlo" onchange="_dppSetLang(this.value)"><option value="en">English</option><option value="hi">हिंदी</option></select>`:'';
     const info=`${d.subject?`<span class="pl-sub">${esc(d.subject)}</span> · `:''}${qs.length} questions${d.chapter?' · '+esc(d.chapter):''}${d.part?' · '+esc(d.part):''}${d.class_name?' · '+esc(d.class_name):''}`;
+    window._dppPanel={pid:0,qs:qs,showModel:true,lang:'en'};
     el.innerHTML=_dppBandHTML('loadTDpp()',d.title,info,'DPP')
-      +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px">
-        <button class="btn btn-dl btn-sm" onclick="dppPdfGo(${pid},'download','q','${med}')">${ic('download')} Download Paper</button>
-        ${d.has_solution?`<button class="btn btn-dl-g btn-sm" onclick="dppPdfGo(${pid},'download','s','${med}')">${ic('download')} Download Solutions</button>`:''}
-        <button class="btn btn-ghost btn-sm" onclick="openDppResults(${pid})">${ic('users')} Submissions (${pk.submitted||0})</button></div>`
-      +_dppQCards(qs,true,0);
+      +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px;align-items:center">
+        <button class="btn btn-dl btn-sm" onclick="tDppHub(${pid},'q')">${ic('download')} Download Paper</button>
+        ${d.has_solution?`<button class="btn btn-dl-g btn-sm" onclick="tDppHub(${pid},'s')">${ic('download')} Download Solutions</button>`:''}
+        <button class="btn btn-ghost btn-sm" onclick="openDppResults(${pid})">${ic('users')} Submissions (${pk.submitted||0})</button>${langSel}</div>`
+      +`<div id="dpp-qs-wrap">`+_dppQCards(qs,true,0,'en')+`</div>`;
     _dppMathAll(0,qs);
     el.scrollIntoView({behavior:'smooth',block:'start'});
   }catch(e){ el.innerHTML=errHtml(e); }
@@ -9503,7 +9673,9 @@ function _dppWireStage(pid){
   if(dz) dz.addEventListener('drop',e=>{ const f=e.dataTransfer&&e.dataTransfer.files; if(f&&f.length) _dppStageUpload(pid,f[0]); });
 }
 // inline submit card (panel ke bottom me) — modal wala hi flow, same ids
-function _dppSubmitCardHTML(pid,subm){
+// one-time submit: submit ke baad card gayab — sirf teacher ke allow pe Re-submit
+function _dppSubmitCardHTML(pid,subm,canRe){
+  if(subm&&!canRe) return '';
   return `<div class="card" style="margin-top:18px;border:1.5px solid rgba(184,148,31,.35)"><div class="card-body" style="padding:16px">
     <h4 style="margin:0 0 10px;font-size:.95rem">${ic('upload')} ${subm?'Re-submit Your Answer':'Submit Your Answer'}</h4>
     ${fileDropHTML('dpp-sub-file','dpp-sub-label','.pdf,image/*')}

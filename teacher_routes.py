@@ -1151,9 +1151,29 @@ def teacher_dpp_answers(pack_id: int, db: Session = Depends(get_db), current_use
         out.append({"id": a.id, "student": nm or f"Student #{a.student_id}",
                     "class_level": (sp.class_level if sp else None),
                     "filename": a.filename, "status": a.status, "remarks": a.remarks,
+                    "allow_resubmit": bool(getattr(a, "allow_resubmit", False)),
                     "submitted_at": a.submitted_at.strftime("%d %b %Y, %I:%M %p") if a.submitted_at else None,
                     "checked_at": a.checked_at.strftime("%d %b %Y") if a.checked_at else None})
     return {"pack": _dpp_pack_out(db, pk, False), "answers": out}
+
+
+@router.post("/dpp-packs/{pack_id}/answers/{answer_id}/allow-resubmit")
+def teacher_dpp_allow_resubmit(pack_id: int, answer_id: int, data: dict = Body(...),
+                               db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Teacher kisi student ka re-submit ON/OFF kare — ON pe student ko dobara
+    'Re-submit' option dikhta hai; wo ek baar use hote hi apne aap OFF ho jata hai."""
+    from models import DppPack, DppAnswer
+    tp = get_teacher_profile(current_user, db)
+    pk = db.query(DppPack).filter(DppPack.id == pack_id, DppPack.teacher_id == tp.id).first()
+    if not pk:
+        raise HTTPException(status_code=404, detail="DPP not found")
+    a = db.query(DppAnswer).filter(DppAnswer.id == answer_id, DppAnswer.pack_id == pack_id,
+                                   DppAnswer.status != "staged").first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    a.allow_resubmit = bool((data or {}).get("allow", True))
+    db.commit()
+    return {"ok": True, "allow_resubmit": a.allow_resubmit}
 
 
 @router.get("/dpp-answers/{answer_id}/file")

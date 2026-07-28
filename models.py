@@ -348,6 +348,7 @@ class DppAnswer(Base):
     status       = Column(String(12), default="submitted")   # submitted | checked
     remarks      = Column(Text, default="")
     checked_by   = Column(String(120), default="")
+    allow_resubmit = Column(Boolean, default=False)  # teacher ne re-submit on kiya ho
     submitted_at = Column(DateTime, default=func.now())
     checked_at   = Column(DateTime)
 

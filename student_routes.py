@@ -1777,6 +1777,7 @@ def student_dpp_packs(db: Session = Depends(get_db), current_user=Depends(get_st
                     "my_remarks": (ans.remarks if ans and ans.status == "checked" else None),
                     "my_checked_by": (ans.checked_by if ans and ans.status == "checked" else None),
                     "my_submitted_at": (ans.submitted_at.strftime("%d %b %Y") if ans and ans.submitted_at else None),
+                    "can_resubmit": bool(ans and getattr(ans, "allow_resubmit", False)),
                     "submitted": bool(ans)})
     return {"packs": out}
 
@@ -1795,6 +1796,14 @@ async def student_dpp_submit(pack_id: int, file: UploadFile = File(...),
     if len(data) > 25 * 1024 * 1024:
         raise HTTPException(status_code=400,
                             detail="File bahut badi hai (25MB se zyada). Chhota PDF ya photo bhejo.")
+    # one-time submit: pehle se submitted answer hai aur teacher ne re-submit
+    # allow nahi kiya -> naya upload block
+    _old = (db.query(DppAnswer)
+            .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id,
+                    DppAnswer.status != "staged").first())
+    if _old and not getattr(_old, "allow_resubmit", False):
+        raise HTTPException(status_code=403,
+                            detail="You have already submitted this DPP. Re-submit tabhi hoga jab teacher allow kare.")
     # ek pack par ek active answer — dobara submit karein to replace
     old = (db.query(DppAnswer)
            .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id).all())
@@ -1824,6 +1833,14 @@ async def student_dpp_stage(pack_id: int, file: UploadFile = File(...),
     if len(data) > 25 * 1024 * 1024:
         raise HTTPException(status_code=400,
                             detail="File bahut badi hai (25MB se zyada). Chhota PDF ya photo bhejo.")
+    # one-time submit: pehle se submitted answer hai aur teacher ne re-submit
+    # allow nahi kiya -> naya upload block
+    _old = (db.query(DppAnswer)
+            .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id,
+                    DppAnswer.status != "staged").first())
+    if _old and not getattr(_old, "allow_resubmit", False):
+        raise HTTPException(status_code=403,
+                            detail="You have already submitted this DPP. Re-submit tabhi hoga jab teacher allow kare.")
     # purane staged uploads saaf (replace)
     for o in (db.query(DppAnswer)
               .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id,
@@ -1994,6 +2011,7 @@ def student_dpp_submit_staged(pack_id: int, data: dict = Body(...),
                       DppAnswer.id != a.id).all()):
         db.delete(o)
     a.status = "submitted"
+    a.allow_resubmit = False   # ek baar ka allowance — use hote hi reset
     db.commit()
     return {"ok": True, "status": "submitted"}
 
@@ -2019,10 +2037,12 @@ def student_dpp_questions(pack_id: int, db: Session = Depends(get_db),
     pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
     if not pk or not _dpp_visible(pk, sp):
         raise HTTPException(status_code=404, detail="DPP not found")
-    submitted = (db.query(DppAnswer)
-                 .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id,
-                         DppAnswer.status != "staged")
-                 .first() is not None)
+    _ans = (db.query(DppAnswer)
+            .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id,
+                    DppAnswer.status != "staged")
+            .first())
+    submitted = _ans is not None
+    can_re = bool(_ans and getattr(_ans, "allow_resubmit", False))
     qs = []
     for i, q in enumerate(pk.questions or [], 1):
         item = {"qno": i, "q": q.get("q") or "", "q_hi": q.get("q_hi") or "",
@@ -2042,7 +2062,7 @@ def student_dpp_questions(pack_id: int, db: Session = Depends(get_db),
     return {"id": pk.id, "title": pk.title, "subject": pk.subject, "chapter": pk.chapter,
             "part": pk.part, "medium": pk.medium, "teacher": tname, "source": pk.source,
             "teacher_id": pk.teacher_id, "has_teacher_photo": tph,
-            "submitted": submitted, "questions": qs}
+            "submitted": submitted, "can_resubmit": can_re, "questions": qs}
 
 
 @router.post("/dpp-packs/{pack_id}/doubt")
@@ -2068,6 +2088,21 @@ def student_dpp_raise_doubt(pack_id: int, data: dict = Body(...), db: Session = 
         q = qs[qno - 1]
         qtext = (q.get("q") or "").strip()
         qimg = q.get("image")
+    # crop-and-raise: student ne PDF se crop kiya question image (priority)
+    _crop = (data.get("image_b64") or "").strip()
+    if _crop:
+        if "," in _crop[:60]:
+            _crop = _crop.split(",", 1)[1]   # dataURL prefix hatao
+        try:
+            _raw = base64.b64decode(_crop)
+            if len(_raw) > 4 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail="Crop image bahut badi hai — chhota hissa select karo.")
+            if len(_raw) > 200:
+                qimg = _crop
+        except HTTPException:
+            raise
+        except Exception:
+            pass
     if qimg:
         try:
             raw = base64.b64decode(qimg)
@@ -2103,7 +2138,7 @@ def student_dpp_raise_doubt(pack_id: int, data: dict = Body(...), db: Session = 
 
 
 @router.get("/dpp-packs/{pack_id}/file")
-def student_dpp_file(pack_id: int, kind: str = "q", db: Session = Depends(get_db),
+def student_dpp_file(pack_id: int, kind: str = "q", med: str = "", db: Session = Depends(get_db),
                      current_user=Depends(get_student)):
     """kind=q -> questions PDF (hamesha); kind=s -> solutions PDF (SIRF submit ke baad)."""
     from models import DppPack, DppAnswer
@@ -2120,10 +2155,10 @@ def student_dpp_file(pack_id: int, kind: str = "q", db: Session = Depends(get_db
     blob = None
     if pk.source == "created" and pk.questions:
         # created pack: hamesha FRESH premium PDF banao (naya format + teacher photo)
-        # — purana cache fallback hi rahega
+        # — purana cache fallback hi rahega. med = student ka chosen medium.
         try:
             import teacher_routes as _TR
-            blob = _TR._dpp_build_pdf(db, pk, kind, pk.medium)
+            blob = _TR._dpp_build_pdf(db, pk, kind, (med or pk.medium))
         except Exception:
             blob = None
     if not blob:
@@ -2466,6 +2501,13 @@ def _migrate_dpp_bigtext():
                     db.commit()
                 except Exception:
                     db.rollback()
+            # v51: allow_resubmit column (create_all purani tables ALTER nahi karta)
+            try:
+                db.execute(_sqltext(
+                    "ALTER TABLE dpp_answers ADD COLUMN allow_resubmit TINYINT(1) NOT NULL DEFAULT 0"))
+                db.commit()
+            except Exception:
+                db.rollback()
         finally:
             db.close()
     except Exception:
