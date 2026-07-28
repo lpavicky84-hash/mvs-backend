@@ -5420,9 +5420,15 @@ function examPrev(inp,prevId){
   else p.dataset.kx='0';
 }
 function _setExamImg(i,d){ _examQs[i].image_b64=d; renderExamQs(); }
-async function examImgFile(inp,i){ const f=inp.files[0]; if(f&&f.type.indexOf('image')===0) _setExamImg(i, await _fileB64(f)); }
-function examImgDrop(e,i){ e.preventDefault(); const f=(e.dataTransfer.files||[])[0]; if(f&&f.type.indexOf('image')===0) _fileB64(f).then(d=>_setExamImg(i,d)); }
-function examImgPaste(e,i){ const items=(e.clipboardData||{}).items||[]; for(let k=0;k<items.length;k++){ if(items[k].type&&items[k].type.indexOf('image')===0){ const f=items[k].getAsFile(); if(f){ _fileB64(f).then(d=>_setExamImg(i,d)); e.preventDefault(); } break; } } }
+async function _examReadImg(f){
+  // Phone photos 5-10MB raw hote hain — compress karke JPEG dataURL (~200-400KB)
+  // do, warna bada payload server ko crash/error de sakta hai.
+  try{ const cf=await compressIfImage(f,1400,0.72); return await _fileB64(cf||f); }
+  catch(e){ return await _fileB64(f); }
+}
+async function examImgFile(inp,i){ const f=inp.files[0]; if(f&&f.type.indexOf('image')===0) _setExamImg(i, await _examReadImg(f)); }
+function examImgDrop(e,i){ e.preventDefault(); const f=(e.dataTransfer.files||[])[0]; if(f&&f.type.indexOf('image')===0) _examReadImg(f).then(d=>_setExamImg(i,d)); }
+function examImgPaste(e,i){ const items=(e.clipboardData||{}).items||[]; for(let k=0;k<items.length;k++){ if(items[k].type&&items[k].type.indexOf('image')===0){ const f=items[k].getAsFile(); if(f){ _examReadImg(f).then(d=>_setExamImg(i,d)); e.preventDefault(); } break; } } }
 function examImgRemove(i,ev){ if(ev)ev.stopPropagation(); _examQs[i].image_b64=null; renderExamQs(); }
 async function openCreateExam(type,editData){
   window._dppMode=(window._dppMode==='pending');
@@ -5496,9 +5502,9 @@ function addExamQ(){ _examQs.push(_examType==='mcq'?{q:'',q_hi:'',opts:['','',''
 function setExamTab(i,tab){ _examQs[i]._tab=tab; renderExamQs(); }
 function examMediumChange(){ _examMedium=val('ex-medium')||'English'; renderExamQs(); }
 function _setExamAnsImg(i,d){ _examQs[i].model_answer_image=d; renderExamQs(); }
-async function examAnsImgFile(inp,i){ const f=inp.files[0]; if(f&&f.type.indexOf('image')===0) _setExamAnsImg(i, await _fileB64(f)); }
-function examAnsImgDrop(e,i){ e.preventDefault(); const f=(e.dataTransfer.files||[])[0]; if(f&&f.type.indexOf('image')===0) _fileB64(f).then(d=>_setExamAnsImg(i,d)); }
-function examAnsImgPaste(e,i){ const items=(e.clipboardData||{}).items||[]; for(let k=0;k<items.length;k++){ if(items[k].type&&items[k].type.indexOf('image')===0){ const f=items[k].getAsFile(); if(f){ _fileB64(f).then(d=>_setExamAnsImg(i,d)); e.preventDefault(); } break; } } }
+async function examAnsImgFile(inp,i){ const f=inp.files[0]; if(f&&f.type.indexOf('image')===0) _setExamAnsImg(i, await _examReadImg(f)); }
+function examAnsImgDrop(e,i){ e.preventDefault(); const f=(e.dataTransfer.files||[])[0]; if(f&&f.type.indexOf('image')===0) _examReadImg(f).then(d=>_setExamAnsImg(i,d)); }
+function examAnsImgPaste(e,i){ const items=(e.clipboardData||{}).items||[]; for(let k=0;k<items.length;k++){ if(items[k].type&&items[k].type.indexOf('image')===0){ const f=items[k].getAsFile(); if(f){ _examReadImg(f).then(d=>_setExamAnsImg(i,d)); e.preventDefault(); } break; } } }
 function examAnsImgRemove(i,ev){ if(ev)ev.stopPropagation(); _examQs[i].model_answer_image=null; renderExamQs(); }
 function _ansImgZone(i){ const q=_examQs[i]; return q.model_answer_image
   ? `<div class="ex-img has" onclick="document.getElementById('ex-aimgf-${i}').click()"><img src="${q.model_answer_image}"><button type="button" class="ex-img-x" onclick="examAnsImgRemove(${i},event)">&times;</button></div>`
@@ -5517,9 +5523,9 @@ function _hasOr(t){ return _splitOr(t).b!==null; }
 function setExamImgPart(i,part){ _examQs[i]._ipart=part; renderExamQs(); }
 function examAltImgRemove(i,ev){ if(ev)ev.stopPropagation(); _examQs[i].alt_image_b64=null; renderExamQs(); }
 function _setExamAltImg(i,d){ _examQs[i].alt_image_b64=d; renderExamQs(); }
-async function examAltImgFile(inp,i){ const f=inp.files[0]; if(f&&f.type.indexOf('image')===0) _setExamAltImg(i, await _fileB64(f)); }
-function examAltImgDrop(e,i){ e.preventDefault(); const f=(e.dataTransfer.files||[])[0]; if(f&&f.type.indexOf('image')===0) _fileB64(f).then(d=>_setExamAltImg(i,d)); }
-function examAltImgPaste(e,i){ const items=(e.clipboardData||{}).items||[]; for(let k=0;k<items.length;k++){ if(items[k].type&&items[k].type.indexOf('image')===0){ const f=items[k].getAsFile(); if(f){ _fileB64(f).then(d=>_setExamAltImg(i,d)); e.preventDefault(); } break; } } }
+async function examAltImgFile(inp,i){ const f=inp.files[0]; if(f&&f.type.indexOf('image')===0) _setExamAltImg(i, await compressIfImage(await _fileB64(f),1400,0.72)); }
+function examAltImgDrop(e,i){ e.preventDefault(); const f=(e.dataTransfer.files||[])[0]; if(f&&f.type.indexOf('image')===0) _fileB64(f).then(d=>compressIfImage(d,1400,0.72)).then(d=>_setExamAltImg(i,d)); }
+function examAltImgPaste(e,i){ const items=(e.clipboardData||{}).items||[]; for(let k=0;k<items.length;k++){ if(items[k].type&&items[k].type.indexOf('image')===0){ const f=items[k].getAsFile(); if(f){ _fileB64(f).then(d=>compressIfImage(d,1400,0.72)).then(d=>_setExamAltImg(i,d)); e.preventDefault(); } break; } } }
 function _altImgZone(i){ const q=_examQs[i]; return q.alt_image_b64
   ? `<div class="ex-img has" onclick="document.getElementById('ex-altimgf-${i}').click()"><img src="${q.alt_image_b64}"><button type="button" class="ex-img-x" onclick="examAltImgRemove(${i},event)">&times;</button></div>`
   : `<div class="ex-img" tabindex="0" onpaste="examAltImgPaste(event,${i})" ondragover="event.preventDefault()" ondrop="examAltImgDrop(event,${i})" onclick="document.getElementById('ex-altimgf-${i}').click()"><span>Attach the figure for the OR part (optional)</span></div>`; }
@@ -6549,7 +6555,7 @@ async function autoFormatField(){
 async function ocrFillQuestion(inp,i){
   const f=inp.files[0]; inp.value=''; if(!f) return;
   if(f.size>15*1024*1024){ toast('Image too large (max 15MB)',true); return; }
-  const b64=await _fileB64(f);
+  const b64=await _examReadImg(f);
   _setExamImg(i,b64);
   toast('Screenshot attached to Question '+(i+1)+'.');
 }
@@ -6649,13 +6655,13 @@ async function submitExam(){
     const title=val('ex-title'); if(!title){ toast('Enter a DPP title',true); return; }
     if(!_examQs.length){ toast('Add at least one question',true); return; }
     for(let i=0;i<_examQs.length;i++){ const q=_examQs[i];
-      if(!(q.q||'').trim()&&!q.image){ toast('Question '+(i+1)+': please fill the question',true); return; }
+      if(!(q.q||'').trim()&&!q.image_b64){ toast('Question '+(i+1)+': please fill the question',true); return; }
       if(!(q.model||'').trim()&&!q.model_answer_image){ toast('Question '+(i+1)+': model answer MANDATORY hai — answer bharo',true); return; } }
     const payload={ subject:val('ex-sub'), class_name:(val('ex-cls-sel')||''),
       chapter:(val('ex-ch-sel')!==undefined?val('ex-ch-sel'):val('ex-ch')), part:(val('ex-part-sel')||''),
       title, medium:_examMedium||'English', client_key:(window._dppCk||''),
       questions:_examQs.map(q=>({ q:q.q||'', q_hi:q.q_hi||'', model:q.model||'', model_hi:q.model_hi||'',
-        image:q.image||null, alt_image:q.alt_image||null, model_image:q.model_answer_image||null })) };
+        image:q.image_b64||null, alt_image:q.alt_image_b64||null, model_image:q.model_answer_image||null })) };
     // Network error pe EK baar auto-retry (backend cold-start) — duplicate nahi banega
     // (client_key + server-side 90s dedupe). Form data modal me safe rehta hai.
     let res=null, err=null;

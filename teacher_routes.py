@@ -1058,13 +1058,8 @@ def teacher_dpp_create(data: dict, db: Session = Depends(get_db), current_user=D
     pk = DppPack(teacher_id=tp.id, subject=subject, class_name=(data.get("class_name") or ""),
                  chapter=chapter, part=part, title=title, medium=medium,
                  source="created", questions=questions)
-    # premium PDFs (test jaisa) — teacher logo header, medium-wise
-    try:
-        pk.q_pdf = _dpp_build_pdf(db, pk, "q", medium)
-        pk.s_pdf = _dpp_build_pdf(db, pk, "s", medium)
-    except Exception:
-        pk.q_pdf = pk.q_pdf or ""
-        pk.s_pdf = pk.s_pdf or ""
+    # PDFs LAZY banenge (view/download pe on-demand) — create instant + crash-proof.
+    # Bade images ke saath sync PDF build se server OOM/crash ho sakta tha.
     db.add(pk); db.commit(); db.refresh(pk)
     return {"ok": True, "pack": _dpp_pack_out(db, pk, False)}
 
@@ -1152,6 +1147,11 @@ def teacher_dpp_pack_file(pack_id: int, kind: str = "q", db: Session = Depends(g
     if not pk:
         raise HTTPException(status_code=404, detail="DPP not found")
     blob = pk.s_pdf if kind == "s" else pk.q_pdf
+    if not blob and pk.source == "created" and pk.questions:
+        try:
+            blob = _dpp_build_pdf(db, pk, kind, pk.medium)
+        except Exception:
+            blob = None
     if not blob:
         raise HTTPException(status_code=404, detail="File not generated")
     fname = (pk.title or "DPP").replace("/", "-") + ("-solutions.pdf" if kind == "s" else "-questions.pdf")

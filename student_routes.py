@@ -1905,6 +1905,12 @@ def student_dpp_file(pack_id: int, kind: str = "q", db: Session = Depends(get_db
         blob = pk.s_pdf
     else:
         blob = pk.q_pdf
+    if not blob and pk.source == "created" and pk.questions:
+        try:
+            import teacher_routes as _TR
+            blob = _TR._dpp_build_pdf(db, pk, kind, pk.medium)
+        except Exception:
+            blob = None
     if not blob:
         raise HTTPException(status_code=404, detail="File not available")
     fname = (pk.title or "DPP").replace("/", "-") + ("-solutions.pdf" if kind == "s" else "-questions.pdf")
