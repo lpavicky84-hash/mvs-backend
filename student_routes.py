@@ -1821,6 +1821,42 @@ async def student_dpp_stage(pack_id: int, file: UploadFile = File(...),
     return {"ok": True, "answer_id": a.id, "size_kb": round(len(data) / 1024)}
 
 
+@router.post("/dpp-packs/{pack_id}/stage-json")
+def student_dpp_stage_json(pack_id: int, data: dict = Body(...),
+                           db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Stage via JSON/base64 — kuch networks/antivirus multipart uploads ko rok dete
+    hain, lekin JSON POST har jagah chalta hai (DPP create bhi JSON hi hota hai).
+    Frontend XHR se bhejta hai taaki upload progress % bhi dikhe."""
+    from models import DppPack, DppAnswer
+    sp = get_student_profile(current_user, db)
+    pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
+    if not pk:
+        raise HTTPException(status_code=404, detail="DPP not found")
+    raw = (data or {}).get("file_b64") or ""
+    if "," in raw[:80]:           # dataURL prefix ho to hatao
+        raw = raw.split(",", 1)[1]
+    try:
+        blob = base64.b64decode(raw)
+    except Exception:
+        raise HTTPException(status_code=400, detail="File data corrupt hai — dobara try karo.")
+    if not blob:
+        raise HTTPException(status_code=400, detail="File is empty")
+    if len(blob) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=400,
+                            detail="File bahut badi hai (25MB se zyada). Chhota PDF ya photo bhejo.")
+    # purane staged uploads saaf (replace)
+    for o in (db.query(DppAnswer)
+              .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id,
+                      DppAnswer.status == "staged").all()):
+        db.delete(o)
+    a = DppAnswer(pack_id=pack_id, student_id=sp.id,
+                  answer_b64=base64.b64encode(blob).decode(),
+                  filename=str((data or {}).get("filename") or "dpp-answer.pdf")[:240],
+                  status="staged")
+    db.add(a); db.commit()
+    return {"ok": True, "answer_id": a.id, "size_kb": round(len(blob) / 1024)}
+
+
 @router.post("/dpp-packs/{pack_id}/submit-staged")
 def student_dpp_submit_staged(pack_id: int, data: dict = Body(...),
                               db: Session = Depends(get_db), current_user=Depends(get_student)):

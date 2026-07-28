@@ -977,7 +977,7 @@ def _dpp_build_pdf(db, pk, kind="q", med=None):
              duration_mins=None, total_marks=None)
     qobjs = []
     for i, q in enumerate(pk.questions or [], 1):
-        base = dict(q_no=i, question_text=q.get("q"), max_marks=None,
+        base = dict(q_no=i, question_text=q.get("q"), max_marks=q.get("marks"),
                     options=None, correct_option=None, image_b64=q.get("image"),
                     alt_image_b64=q.get("alt_image"), question_text_hi=q.get("q_hi"),
                     options_hi=None, explanation=None, explanation_hi=None)
@@ -988,7 +988,8 @@ def _dpp_build_pdf(db, pk, kind="q", med=None):
         else:
             qobjs.append(_NS(**base, model_answer=None, model_answer_hi=None,
                              model_answer_image=None))
-    return _b64.b64encode(exam_pdf.build_exam_pdf(ex, qobjs, med)).decode()
+    # professional gold-band DPP layout (question paper / solutions)
+    return _b64.b64encode(exam_pdf.build_dpp_pdf(ex, qobjs, med, kind)).decode()
 
 
 @router.get("/dpp-packs/{pack_id}/pdf")
@@ -1097,6 +1098,32 @@ async def teacher_dpp_upload(subject: str = Form(...), chapter: str = Form(""), 
                  q_pdf=base64.b64encode(qd).decode(), s_pdf=base64.b64encode(sd).decode())
     db.add(pk); db.commit(); db.refresh(pk)
     return {"ok": True, "pack": _dpp_pack_out(db, pk, False)}
+
+
+@router.get("/dpp-packs/{pack_id}/questions")
+def teacher_dpp_questions(pack_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Panel view ke liye pack ke questions — model answers SAHIT (teacher ka apna pack)."""
+    from models import DppPack
+    tp = get_teacher_profile(current_user, db)
+    pk = db.query(DppPack).filter(DppPack.id == pack_id, DppPack.teacher_id == tp.id).first()
+    if not pk:
+        raise HTTPException(status_code=404, detail="DPP not found")
+    qs = []
+    for i, q in enumerate(pk.questions or [], 1):
+        qs.append({"qno": i, "q": q.get("q") or "", "q_hi": q.get("q_hi") or "",
+                   "image": q.get("image"), "alt_image": q.get("alt_image"),
+                   "model": q.get("model") or "", "model_hi": q.get("model_hi") or "",
+                   "model_image": q.get("model_image")})
+    tname = ""
+    try:
+        tname = tp.user.name if tp and tp.user else ""
+    except Exception:
+        pass
+    return {"id": pk.id, "title": pk.title, "subject": pk.subject, "chapter": pk.chapter,
+            "part": pk.part, "medium": pk.medium, "source": pk.source, "teacher": tname,
+            "class_name": pk.class_name, "has_solution": bool(pk.s_pdf) or any(
+                (q.get("model") or q.get("model_image")) for q in (pk.questions or [])),
+            "questions": qs}
 
 
 @router.get("/dpp-packs/{pack_id}/answers")

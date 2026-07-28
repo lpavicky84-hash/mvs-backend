@@ -1106,3 +1106,255 @@ def stamp_marks_on_answer(data, mime, obtained, total, verdict=None, per_q=None)
         return _stamp_image(data, m, label_big, label_small, per_q=per_q)
     except Exception:
         return data, (mime or "application/octet-stream")
+
+
+
+# ============================================================ DPP premium layout
+DPPGOLD = (143, 117, 17)       # image-4 jaisa olive-gold band
+DPPGOLD_D = (112, 91, 13)      # darker separator line
+DPPCREAM = (250, 246, 232)     # instructions cream box
+DPPTEXT = (30, 28, 22)
+
+
+def build_dpp_pdf(ex, questions, medium="english", kind="q"):
+    """Professional DPP paper — gold-band layout (question paper / solutions).
+    kind="q" -> sirf questions; kind="s" -> har question ke neeche model answer."""
+    from fpdf import FPDF
+    from datetime import datetime
+    is_hi = (medium == "hindi")
+    L = {
+        "subtitle": ("DAILY PRACTICE PAPER"),
+        "qp":      ("प्रश्न पत्र" if is_hi else "QUESTION PAPER"),
+        "sol":     ("उत्तर पत्र" if is_hi else "SOLUTIONS"),
+        "question":("प्रश्न" if is_hi else "Question"),
+        "questions":("प्रश्न" if is_hi else "QUESTIONS"),
+        "marks":   ("अंक" if is_hi else "MARKS"),
+        "max":     ("पूर्णांक" if is_hi else "MAX MARKS"),
+        "model":   ("मॉडल उत्तर" if is_hi else "MODEL ANSWER"),
+        "instr":   (("निर्देश: सभी प्रश्न अनिवार्य हैं। उत्तर अपनी कॉपी में साफ़-साफ़ लिखें। "
+                     "हल करने के बाद अपनी answer PDF पोर्टल पर अपने teacher को submit करें।")
+                    if is_hi else
+                    ("Instructions: All questions are compulsory. Solve neatly in your notebook. "
+                     "After solving, upload your answer PDF on the portal and press Submit.")),
+        "medium":  ("हिंदी माध्यम" if is_hi else "English Medium"),
+    }
+    FONT = _font_path()
+    qs = list(questions or [])
+    total_marks = None
+    try:
+        ms = [q.max_marks for q in qs if getattr(q, "max_marks", None) is not None]
+        if ms and len(ms) == len(qs):
+            total_marks = sum(ms)
+    except Exception:
+        total_marks = None
+
+    class PDF(FPDF):
+        def footer(self):
+            self.set_y(-12)
+            self.set_font("Noto", "B", 8)
+            self.set_text_color(*GREY)
+            self.cell(0, 6, "MVS Foundation  ·  %s" % (getattr(ex, "teacher_name", "") or ""), align="L")
+            self.set_y(-12)
+            self.cell(0, 6, "Page %d" % self.page_no(), align="R")
+
+    pdf = PDF()
+    pdf.set_auto_page_break(True, margin=18)
+    pdf.add_font("Noto", "", FONT)
+    pdf.add_font("Noto", "B", _font_path_bold() or FONT)
+    try:
+        pdf.add_font("Noto", "I", FONT)
+        pdf.add_font("Noto", "BI", _font_path_bold() or FONT)
+    except Exception:
+        pass
+    pdf.add_page()
+    pdf.set_text_shaping(True)
+    EPW = pdf.epw
+    LM = pdf.l_margin
+
+    # ---------- gold band: logo + MVS FOUNDATION + subtitle + date
+    BAND_H = 34
+    pdf.set_fill_color(*DPPGOLD)
+    pdf.rect(0, 0, pdf.w, BAND_H, style="F")
+    pdf.set_fill_color(*DPPGOLD_D)
+    pdf.rect(0, BAND_H, pdf.w, 1.2, style="F")
+    text_x = LM
+    logo = _logo_path()
+    if logo:
+        try:
+            D = 24
+            ly = (BAND_H - D) / 2
+            pdf.set_fill_color(255, 255, 255)
+            pdf.ellipse(LM - 1.1, ly - 1.1, D + 2.2, D + 2.2, style="F")
+            pdf.image(logo, x=LM, y=ly, w=D, h=D)
+            text_x = LM + D + 7
+        except Exception:
+            text_x = LM
+    pdf.set_xy(text_x, 7)
+    pdf.set_font("Noto", "B", 17)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(0, 9, "MVS FOUNDATION", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_x(text_x)
+    pdf.set_font("Noto", "B", 8.5)
+    pdf.set_text_color(255, 244, 214)
+    pdf.cell(0, 5.5, L["subtitle"])
+    # date top-right
+    pdf.set_xy(-48, 7)
+    pdf.set_font("Noto", "B", 9)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(38, 6, datetime.now().strftime("%d %b %Y"), align="R")
+
+    # ---------- title + chips
+    pdf.set_xy(LM, BAND_H + 7)
+    pdf.set_font("Noto", "B", 15.5)
+    pdf.set_text_color(*DPPTEXT)
+    pdf.multi_cell(EPW, 8, _clean(getattr(ex, "title", "") or "DPP"), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(1.5)
+    chips = []
+    if getattr(ex, "subject", ""):
+        chips.append(_clean(ex.subject))
+    chp = " · ".join(c for c in [("Chapter - %s" % _clean(ex.chapter)) if getattr(ex, "chapter", "") else "",
+                                 _clean(getattr(ex, "part", "") or "")] if c)
+    if chp:
+        chips.append(chp)
+    chips.append(L["medium"])
+    cx = LM
+    cy = pdf.get_y()
+    pdf.set_font("Noto", "B", 9)
+    for chip in chips:
+        cw = pdf.get_string_width(chip) + 8
+        pdf.set_fill_color(255, 255, 255)
+        pdf.set_draw_color(*DPPGOLD)
+        pdf.set_line_width(0.35)
+        pdf.rect(cx, cy, cw, 7.5, style="DF", round_corners=True, corner_radius=3.4)
+        pdf.set_xy(cx, cy + 0.5)
+        pdf.set_text_color(*DPPGOLD_D)
+        pdf.cell(cw, 6.5, chip, align="C")
+        cx += cw + 3
+    # question/solutions badge right-aligned
+    tag = L["sol"] if kind == "s" else L["qp"]
+    pdf.set_font("Noto", "B", 9)
+    tw = pdf.get_string_width(tag) + 10
+    pdf.set_fill_color(*(GREEN if kind == "s" else DPPGOLD))
+    pdf.rect(pdf.w - pdf.r_margin - tw, cy, tw, 7.5, style="F", round_corners=True, corner_radius=3.4)
+    pdf.set_xy(pdf.w - pdf.r_margin - tw, cy + 0.5)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(tw, 6.5, tag, align="C")
+    pdf.set_xy(LM, cy + 13)
+
+    # ---------- info boxes: QUESTIONS (+ MAX MARKS if marks hain)
+    boxes = [(L["questions"], str(len(qs)))]
+    if total_marks is not None:
+        boxes.append((L["max"], str(total_marks)))
+    bw = (EPW - 6 * (len(boxes) - 1)) / len(boxes)
+    bx = LM
+    by = pdf.get_y()
+    for label, val in boxes:
+        pdf.set_fill_color(255, 255, 255)
+        pdf.set_draw_color(*BORDER)
+        pdf.set_line_width(0.3)
+        pdf.rect(bx, by, bw, 16, style="DF", round_corners=True, corner_radius=2.5)
+        pdf.set_xy(bx + 4, by + 2.4)
+        pdf.set_font("Noto", "B", 7)
+        pdf.set_text_color(*GREY)
+        pdf.cell(bw - 8, 4, label)
+        pdf.set_xy(bx + 4, by + 7)
+        pdf.set_font("Noto", "B", 12)
+        pdf.set_text_color(*DPPTEXT)
+        pdf.cell(bw - 8, 7, val)
+        bx += bw + 6
+    pdf.set_xy(LM, by + 20)
+
+    # ---------- instructions cream box
+    pdf.set_fill_color(*DPPCREAM)
+    pdf.set_draw_color(232, 220, 180)
+    pdf.set_font("Noto", size=9.5)
+    instr = L["instr"]
+    ih = 12
+    pdf.set_xy(LM, pdf.get_y())
+    y_i = pdf.get_y()
+    pdf.rect(LM, y_i, EPW, ih, style="DF", round_corners=True, corner_radius=2)
+    pdf.set_xy(LM + 4, y_i + 2.2)
+    pdf.set_text_color(96, 80, 20)
+    pdf.multi_cell(EPW - 8, 4.6, instr)
+    pdf.set_xy(LM, y_i + ih + 6)
+
+    # ---------- questions
+    for q in qs:
+        qtext = (getattr(q, "question_text_hi", None) if (is_hi and getattr(q, "question_text_hi", None))
+                 else getattr(q, "question_text", "")) or ""
+        if pdf.get_y() > pdf.h - 55:
+            pdf.add_page()
+        y0 = pdf.get_y()
+        # "Question N" bold left + optional marks right
+        pdf.set_font("Noto", "B", 12)
+        pdf.set_text_color(*DPPTEXT)
+        pdf.set_xy(LM, y0)
+        pdf.cell(EPW, 7, "%s %s" % (L["question"], getattr(q, "q_no", "")), new_x="LMARGIN", new_y="NEXT")
+        if getattr(q, "max_marks", None) is not None:
+            pill = "[ %d %s ]" % (q.max_marks, L["marks"])
+            pdf.set_font("Noto", "B", 8.5)
+            pw = pdf.get_string_width(pill) + 6
+            pdf.set_xy(pdf.w - pdf.r_margin - pw, y0 + 0.5)
+            pdf.set_text_color(*GREY)
+            pdf.cell(pw, 6, pill)
+        pdf.ln(1.5)
+
+        qblocks = _blocks(qtext)
+        alt_img = getattr(q, "alt_image_b64", None)
+        has_or = any(k == "oralt" for k, _, _ in qblocks)
+        drawn_first = False
+        for kb, c, raw in qblocks:
+            if kb == "oralt" and has_or and alt_img and not drawn_first:
+                _img(pdf, getattr(q, "image_b64", None))
+                drawn_first = True
+            _render_block(pdf, kb, c, LM, EPW, is_q=True, raw=raw)
+        if drawn_first:
+            _img(pdf, alt_img)
+        else:
+            _img(pdf, getattr(q, "image_b64", None))
+            if alt_img:
+                _img(pdf, alt_img)
+
+        # options (A)-(D) agar hain
+        opts = (getattr(q, "options_hi", None) if (is_hi and getattr(q, "options_hi", None))
+                else getattr(q, "options", None)) or []
+        if opts:
+            pdf.ln(1.5)
+            for idx, op in enumerate(opts):
+                pdf.set_font("Noto", size=10.5)
+                pdf.set_text_color(28, 32, 40)
+                pdf.set_x(LM)
+                pdf.multi_cell(EPW, 7, "   (%s)   %s" % (chr(65 + idx), _clean(_strip_rich(str(op)))),
+                               new_x="LMARGIN", new_y="NEXT")
+                pdf.ln(0.8)
+
+        # solutions paper: model answer
+        if kind == "s":
+            ans = (getattr(q, "model_answer_hi", None) if (is_hi and getattr(q, "model_answer_hi", None))
+                   else getattr(q, "model_answer", "")) or ""
+            if ans.strip() or getattr(q, "model_answer_image", None):
+                pdf.ln(2.5)
+                yy = pdf.get_y()
+                if yy + 16 > pdf.h - 18:
+                    pdf.add_page()
+                    yy = pdf.get_y()
+                pdf.set_fill_color(*GREEN)
+                pdf.set_text_color(255, 255, 255)
+                pdf.set_font("Noto", "B", 9.5)
+                lw = pdf.get_string_width(L["model"]) + 10
+                pdf.rect(LM, yy, lw, 7.5, style="F", round_corners=True, corner_radius=2)
+                pdf.set_xy(LM, yy + 0.5)
+                pdf.cell(lw, 6.5, L["model"], align="C")
+                pdf.set_xy(LM, yy + 11)
+                for kb, c, raw in _blocks(ans):
+                    _render_block(pdf, kb, c, LM, EPW, is_q=False, raw=raw)
+                _img(pdf, getattr(q, "model_answer_image", None))
+
+        # separator rule
+        pdf.ln(3)
+        pdf.set_draw_color(*BORDER)
+        pdf.set_line_width(0.3)
+        pdf.line(LM, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
+        pdf.ln(4.5)
+
+    return bytes(pdf.output())

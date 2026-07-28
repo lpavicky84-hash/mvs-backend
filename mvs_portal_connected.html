@@ -4510,7 +4510,7 @@ async function loadTDpp(){
             <span class="chip" style="font-size:.62rem">${esc(pk.medium)}</span>
             <span class="chip" style="font-size:.62rem">${pk.created_at||''}</span></div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-ghost btn-sm" title="View PDF portal ke andar hi (language select hoga)" onclick="dppLangPick(${pk.id},'view')">${ic('eye')} View</button>
+          <button class="btn btn-ghost btn-sm" title="Panel me questions + downloads + submissions" onclick="openTDppPanel(${pk.id})">${ic('eye')} View</button>
           <button class="btn btn-primary btn-sm" title="Click karne pe hi PDF banti hai — create instant, timeout kabhi nahi" onclick="dppLangPick(${pk.id},'download')">${ic('download')} Download PDF</button>
           <button class="btn btn-ghost btn-sm" title="See student submissions" onclick="openDppResults(${pk.id})">${ic('users')} Submissions (${pk.submitted||0})</button>
           <button class="btn btn-danger btn-sm" title="Delete this DPP (submissions bhi delete ho jayengi)" onclick="dppDelete(${pk.id},'${esc(pk.title||'DPP').replace(/'/g,'')}')">${ic('trash')} Delete</button>
@@ -9195,11 +9195,8 @@ async function loadSDpp(){
       const solBtn=subm&&pk.has_solution?`<button class="btn btn-ghost btn-sm" onclick="sDppDl(${pk.id},'s')">${ic('eye')} View Solution</button>`:'';
       const remBtn=checked?`<button class="btn btn-primary btn-sm" onclick="openDppRemarks(${pk.id})"> View Remarks</button>`:'';
       const subBtn=`<button class="btn ${subm?'btn-ghost':'btn-success'} btn-sm" onclick="openDppSubmit(${pk.id})">${ic('upload')} ${subm?'Re-submit':'Submit'}</button>`;
-      // Created DPP -> question-wise interactive view (har question pe Raise Doubt);
-      // Uploaded DPP -> PDF view + Raise Doubt (question no. select)
-      const viewBtn=pk.source==='created'&&pk.questions_n
-        ?`<button class="btn btn-primary btn-sm" onclick="openSDppView(${pk.id})">${ic('eye')} View Questions</button>`
-        :(pk.has_questions?`<button class="btn btn-ghost btn-sm" onclick="sDppViewPdf(${pk.id})">${ic('eye')} View Questions</button>`:'');
+      // View -> test-jaisa in-page panel (Download upar, Submit neeche, Raise Doubt har question pe)
+      const viewBtn=`<button class="btn btn-primary btn-sm" onclick="openSDppPanel(${pk.id})">${ic('eye')} View Questions</button>`;
       const doubtBtn=`<button class="btn btn-ghost btn-sm" title="Is DPP me doubt ho to yahan bhejo — screenshot ki zaroorat nahi" onclick="sDppDoubtOpen(${pk.id},0)">${ic('headset')} Raise Doubt</button>`;
       return `<div class="dpp-card">
         <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div><div style="display:flex;gap:6px;align-items:center">${pk.class_name?`<span class="chip-sub" style="color:#047857">${esc(pk.class_name)}</span>`:''}${srcChip}</div></div>
@@ -9275,6 +9272,93 @@ async function openSDppView(pid){
     qs.forEach(q=>{ const el=document.getElementById('dq-'+q.qno); if(el) renderMath(el); const a=document.getElementById('da-'+q.qno); if(a) renderMath(a); });
   }catch(e){ closeModal(); toast(e.message||'Could not open the DPP',true); }
 }
+// ---------- DPP in-page PANEL views (test-section jaisa) ----------
+function _dppBandHTML(backFn,title,infoHtml,badge){
+  return `<div class="pl-head pl-sticky"><div class="pl-band">
+    <button class="btn btn-ghost btn-sm" title="Back" onclick="${backFn}">${ic('back')}</button>
+    <div style="flex:1;min-width:180px"><div class="pl-title">${esc(title||'DPP')}</div>
+    <div class="pl-info">${infoHtml}</div></div>
+    <span class="tx-pill tx-up">${badge||'DPP'}</span></div></div>`;
+}
+function _dppQCards(qs,showModel,pid){
+  return qs.map(q=>`<div class="exp-q"><div class="pl-qtop"><div class="exp-qt"><b>Q${q.qno}.</b></div></div>
+    <div class="pl-qtext" id="dq-${pid}-${q.qno}">${_fmtRich(q.q||'')}</div>
+    ${q.image?`<img src="${_imgSrc(q.image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
+    ${q.alt_image?`<img src="${_imgSrc(q.alt_image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
+    ${showModel&&(q.model||q.model_image)?`<div style="margin-top:12px;padding:10px 12px;border-left:3px solid #15803d;background:rgba(21,128,61,.06);border-radius:8px"><div style="font-size:.68rem;font-weight:800;color:#15803d;margin-bottom:5px">MODEL ANSWER</div><div id="da-${pid}-${q.qno}">${_fmtRich(q.model||'')}</div>${q.model_image?`<img src="${_imgSrc(q.model_image)}" style="max-width:100%;margin-top:8px;border-radius:8px">`:''}</div>`:''}
+    ${pid?`<div style="margin-top:11px"><button class="btn btn-ghost btn-sm" title="Doubt ho to yahan bhejo — question ka text+image apne aap teacher ko chala jayega" onclick="sDppDoubtOpen(${pid},${q.qno},${q.qno})">${ic('headset')} Raise Doubt</button></div>`:''}
+  </div>`).join('');
+}
+function _dppMathAll(pid,qs){
+  qs.forEach(q=>{ const el=document.getElementById(`dq-${pid}-${q.qno}`); if(el) renderMath(el);
+                  const a=document.getElementById(`da-${pid}-${q.qno}`); if(a) renderMath(a); });
+}
+async function _dppIframePanel(el,url,fname){
+  const r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}});
+  if(!r.ok) throw new Error('nf');
+  const bl=await r.blob(); const u=URL.createObjectURL(bl);
+  el.insertAdjacentHTML('beforeend',`<div style="height:72vh;min-height:420px;background:#525659;border-radius:12px;overflow:hidden;border:1px solid var(--border)"><iframe src="${u}" style="width:100%;height:100%;border:0" title="DPP PDF"></iframe></div>`);
+  setTimeout(()=>URL.revokeObjectURL(u),300000);
+}
+// STUDENT panel: view pe click karte hi test-jaisa page — Download upar, Submit neeche
+async function openSDppPanel(pid){
+  const el=document.getElementById('s-dpp-content'); softSpin(el);
+  try{
+    const pk=(window._sDppPacks||[]).find(x=>x.id===pid)||{};
+    if((pk.source||'created')!=='created'||!pk.questions_n){
+      // uploaded PDF pack: panel + embedded PDF
+      const info=`${pk.subject?`<span class="pl-sub">${esc(pk.subject)}</span> · `:''}${pk.class_name?esc(pk.class_name)+' · ':''}${pk.teacher?'By '+esc(pk.teacher):''}`;
+      el.innerHTML=_dppBandHTML('loadSDpp()',pk.title||'DPP',info,'DPP')
+        +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px"><button class="btn btn-ghost btn-sm" onclick="sDppDl(${pid},'q')">${ic('download')} Download Paper</button>
+          ${pk.submitted&&pk.has_solution?`<button class="btn btn-ghost btn-sm" onclick="sDppDl(${pid},'s')">${ic('download')} Download Solutions</button>`:''}</div>`
+        +_dppSubmitCardHTML(pid,!!pk.submitted);
+      await _dppIframePanel(el,API+`/api/student/dpp-packs/${pid}/file?kind=q`,'DPP.pdf');
+      window._dppStaged=null; _dppWireStage(pid);
+      return;
+    }
+    const d=await api(`/api/student/dpp-packs/${pid}/questions`);
+    const qs=d.questions||[];
+    const info=`${d.subject?`<span class="pl-sub">${esc(d.subject)}</span> · `:''}${qs.length} questions${d.chapter?' · '+esc(d.chapter):''}${d.part?' · '+esc(d.part):''}${d.teacher?' · By '+esc(d.teacher):''}`;
+    el.innerHTML=_dppBandHTML('loadSDpp()',d.title,info,'DPP')
+      +`<div class="pl-note">${ic('clipboard')} ${d.submitted?'Aapka answer <b>submitted</b> hai — model answers neeche khul gaye hain.':'Saare questions notebook me solve karo, phir neeche se answer PDF upload karke <b>Submit</b> dabao.'} Kisi question me doubt ho to uske neeche <b>Raise Doubt</b> — screenshot ki zaroorat nahi.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px">
+        <button class="btn btn-ghost btn-sm" onclick="sDppDl(${pid},'q')">${ic('download')} Download Paper</button>
+        ${d.submitted?`<button class="btn btn-ghost btn-sm" onclick="sDppDl(${pid},'s')">${ic('download')} Download Solutions</button>`:''}</div>`
+      +_dppQCards(qs,!!d.submitted,pid)
+      +_dppSubmitCardHTML(pid,!!d.submitted);
+    _dppMathAll(pid,qs);
+    window._dppStaged=null; _dppWireStage(pid);
+    el.scrollIntoView({behavior:'smooth',block:'start'});
+  }catch(e){ el.innerHTML=errHtml(e); }
+}
+// TEACHER panel: view pe click karte hi panel — model answers sahit, downloads upar
+async function openTDppPanel(pid){
+  const el=document.getElementById('t-dpp-content'); softSpin(el);
+  try{
+    const pk=(window._dppPacks||[]).find(x=>x.id===pid)||{};
+    const med=(pk.medium||'English').toLowerCase().startsWith('hin')?'hindi':'english';
+    if((pk.source||'created')!=='created'){
+      const info=`${pk.subject?`<span class="pl-sub">${esc(pk.subject)}</span> · `:''}${pk.class_name?esc(pk.class_name)+' · ':''}Uploaded PDF`;
+      el.innerHTML=_dppBandHTML('loadTDpp()',pk.title||'DPP',info,'DPP')
+        +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px">
+          <button class="btn btn-ghost btn-sm" onclick="dppPdfGo(${pid},'download','q','${med}')">${ic('download')} Download Paper</button>
+          <button class="btn btn-ghost btn-sm" onclick="openDppResults(${pid})">${ic('users')} Submissions (${pk.submitted||0})</button></div>`;
+      await _dppIframePanel(el,API+`/api/teacher/dpp-packs/${pid}/file?kind=q`,'DPP.pdf');
+      return;
+    }
+    const d=await api(`/api/teacher/dpp-packs/${pid}/questions`);
+    const qs=d.questions||[];
+    const info=`${d.subject?`<span class="pl-sub">${esc(d.subject)}</span> · `:''}${qs.length} questions${d.chapter?' · '+esc(d.chapter):''}${d.part?' · '+esc(d.part):''}${d.class_name?' · '+esc(d.class_name):''}`;
+    el.innerHTML=_dppBandHTML('loadTDpp()',d.title,info,'DPP')
+      +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px">
+        <button class="btn btn-ghost btn-sm" onclick="dppPdfGo(${pid},'download','q','${med}')">${ic('download')} Download Paper</button>
+        ${d.has_solution?`<button class="btn btn-ghost btn-sm" onclick="dppPdfGo(${pid},'download','s','${med}')">${ic('download')} Download Solutions</button>`:''}
+        <button class="btn btn-ghost btn-sm" onclick="openDppResults(${pid})">${ic('users')} Submissions (${pk.submitted||0})</button></div>`
+      +_dppQCards(qs,true,0);
+    _dppMathAll(0,qs);
+    el.scrollIntoView({behavior:'smooth',block:'start'});
+  }catch(e){ el.innerHTML=errHtml(e); }
+}
 // ---------- Raise Doubt (created + uploaded dono) ----------
 function sDppDoubtOpen(pid,qno,qtextFrom){
   const pk=(window._sDppPacks||[]).find(x=>x.id===pid)||{};
@@ -9310,10 +9394,28 @@ function openDppSubmit(pid){
   </div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-success" id="dpp-sub-btn" disabled title="Pehle file ka upload 100% hone do" onclick="submitDppFile(${pid})">Submit</button>`);
   window._dppStaged=null;
+  _dppWireStage(pid);
+}
+// modal + panel dono ke liye shared: file select/drag karte hi staged upload shuru
+function _dppWireStage(pid){
   const fi=document.getElementById('dpp-sub-file');
+  if(!fi) return;
   fi.addEventListener('change',()=>{ if(fi.files.length) _dppStageUpload(pid,fi.files[0]); });
   const dz=fi.closest('.file-drop');
   if(dz) dz.addEventListener('drop',e=>{ const f=e.dataTransfer&&e.dataTransfer.files; if(f&&f.length) _dppStageUpload(pid,f[0]); });
+}
+// inline submit card (panel ke bottom me) — modal wala hi flow, same ids
+function _dppSubmitCardHTML(pid,subm){
+  return `<div class="card" style="margin-top:18px;border:1.5px solid rgba(184,148,31,.35)"><div class="card-body" style="padding:16px">
+    <h4 style="margin:0 0 4px;font-size:.95rem">${ic('upload')} ${subm?'Re-submit Your Answer':'Submit Your Answer'}</h4>
+    <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px;line-height:1.5">PDF/photo select karte hi <b>upload apne aap shuru</b> ho jayega (progress % dikhega). 100% hone ke baad <b>Submit</b> dabao. Bada file apne aap chhota ho jayega.</div>
+    ${fileDropHTML('dpp-sub-file','dpp-sub-label','.pdf,image/*')}
+    <div id="dpp-up-wrap" style="display:none;margin-top:12px">
+      <div style="height:12px;background:rgba(0,0,0,.09);border-radius:99px;overflow:hidden;border:1px solid var(--border)"><div id="dpp-up-fill" style="height:100%;width:0%;background:linear-gradient(90deg,var(--acc),#d4af37);transition:width .25s;border-radius:99px"></div></div>
+      <div id="dpp-up-text" style="font-size:.78rem;color:var(--text-muted);margin-top:6px;text-align:center;line-height:1.4">0%</div>
+    </div>
+    <div style="margin-top:14px;text-align:right"><button class="btn btn-success" id="dpp-sub-btn" disabled title="Pehle file ka upload 100% hone do" onclick="submitDppFile(${pid})">${subm?'Re-submit Answer':'Submit Answer'}</button></div>
+  </div></div>`;
 }
 // File select hote hi background upload (progress % ke saath) — submit sirf 100% ke baad
 async function _dppStageUpload(pid,file){
@@ -9349,21 +9451,26 @@ async function _dppStageUpload(pid,file){
     }
   }
 }
+// JSON/base64 transport — kuch networks/antivirus multipart ko rok dete hain,
+// lekin JSON POST har jagah chalta hai (DPP create bhi JSON hi hota hai).
+// XHR isliye taaki upload progress % dikhe.
 function _dppStageXHR(pid,f,onp){
   return new Promise((res,rej)=>{
-    const x=new XMLHttpRequest();
-    x.open('POST',API+`/api/student/dpp-packs/${pid}/stage`);
-    x.setRequestHeader('Authorization','Bearer '+TOKEN);
-    x.timeout=10*60*1000;
-    x.upload.onprogress=e=>{ if(e.lengthComputable&&e.total>0) onp(Math.min(99,e.loaded/e.total*100)); };
-    x.onload=()=>{
-      if(x.status>=200&&x.status<300){ try{ res(JSON.parse(x.responseText)); }catch(e){ rej(new Error('Bad response')); } }
-      else{ let d='Upload failed ('+x.status+')'; try{ d=JSON.parse(x.responseText).detail||d; }catch(e){} rej(new Error(d)); }
-    };
-    x.onerror=()=>rej(new TypeError('Failed to fetch'));
-    x.ontimeout=()=>rej(new TypeError('Upload timeout — network slow hai'));
-    const fd=new FormData(); fd.append('file',f,f.name||'dpp-answer.pdf');
-    x.send(fd);
+    _fileB64(f).then(du=>{
+      const x=new XMLHttpRequest();
+      x.open('POST',API+`/api/student/dpp-packs/${pid}/stage-json`);
+      x.setRequestHeader('Authorization','Bearer '+TOKEN);
+      x.setRequestHeader('Content-Type','application/json');
+      x.timeout=10*60*1000;
+      x.upload.onprogress=e=>{ if(e.lengthComputable&&e.total>0) onp(Math.min(99,e.loaded/e.total*100)); };
+      x.onload=()=>{
+        if(x.status>=200&&x.status<300){ try{ res(JSON.parse(x.responseText)); }catch(e){ rej(new Error('Bad response')); } }
+        else{ let d='Upload failed ('+x.status+')'; try{ d=JSON.parse(x.responseText).detail||d; }catch(e){} rej(new Error(d)); }
+      };
+      x.onerror=()=>rej(new TypeError('Failed to fetch'));
+      x.ontimeout=()=>rej(new TypeError('Upload timeout — network slow hai'));
+      x.send(JSON.stringify({filename:f.name||'dpp-answer.pdf', file_b64:du}));
+    }).catch(()=>rej(new Error('File read nahi ho paya')));
   });
 }
 // DPP answer upload ke liye tight prep: bada PDF/photo chhota karke hi bhejo
