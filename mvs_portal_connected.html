@@ -980,6 +980,8 @@
   .stl-node.current .stl-part .btn-ghost,.stl-node.ongoing .stl-part .btn-ghost{color:#fff;border-color:rgba(255,255,255,.32);background:rgba(255,255,255,.06)}
   .stl-cmeta .stl-act{margin-left:2px}
   .wk-day-card{margin-bottom:16px;overflow:hidden;padding:0}
+  .wk-click{cursor:pointer;transition:transform .15s,box-shadow .15s}
+  .wk-click:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.1)}
   .wk-day-head{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);font-weight:700}.wk-day-cnt{font-size:.78rem;color:var(--text-muted);font-weight:600}
   .wk-day-body{padding:4px 0}
   .wkc-row{display:flex;align-items:center;gap:16px;padding:14px 20px;border-bottom:1px solid var(--border)}.wkc-row:last-child{border-bottom:none}
@@ -4491,6 +4493,7 @@ async function loadTDpp(){
           <button class="btn btn-ghost btn-sm" title="Download questions paper" onclick="dppDl(${pk.id},'q')">${ic('download')} Questions</button>
           <button class="btn btn-ghost btn-sm" title="Download solutions paper" onclick="dppDl(${pk.id},'s')">${ic('download')} Solutions</button>
           <button class="btn btn-primary btn-sm" title="See student submissions" onclick="openDppResults(${pk.id})">${ic('users')} Submissions (${pk.submitted||0})</button>
+          <button class="btn btn-danger btn-sm" title="Delete this DPP (submissions bhi delete ho jayengi)" onclick="dppDelete(${pk.id},'${esc(pk.title||'DPP').replace(/'/g,'')}')">${ic('trash')} Delete</button>
         </div></div></div></div>`).join('');
     el.innerHTML=`<div class="card" style="margin-bottom:16px;border:1.5px solid rgba(184,148,31,.3)"><div class="card-body" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <div style="font-size:1.8rem">&#128221;</div>
@@ -4511,6 +4514,11 @@ async function dppDl(pid,kind){
   }catch(e){ toast('File not available',true); }
 }
 // ---------- submissions (results) — Checking / Checked + Remarks (no marks) ----------
+async function dppDelete(pid,title){
+  if(!confirm(`Delete "${title||'this DPP'}"?\n\nIski saari student submissions bhi delete ho jayengi. Ye action undo nahi hoga.`)) return;
+  try{ await api('/api/teacher/dpp-packs/'+pid,'DELETE'); toast('DPP deleted.'); loadTDpp(); }
+  catch(e){ toast(e.message||'Delete failed',true); }
+}
 async function openDppResults(pid){
   showModal('DPP Submissions','<div class="spinner"></div>','');
   try{
@@ -5478,7 +5486,7 @@ function renderExamQs(){
       const aval=isHi?(q.model_hi||''):(q.model||'');
       const abind=isHi?`_examQs[${i}].model_hi=this.value`:`_examQs[${i}].model=this.value`;
       const aImg=isHi?'':(_ansImgZone(i)+`<input type="file" id="ex-aimgf-${i}" accept="image/*" style="display:none" onchange="examAnsImgFile(this,${i})">`);
-      const marks=isHi?'':`<div class="ex-marks"><label>Max Marks</label><input type="number" class="form-control" style="width:80px" value="${q.marks}" oninput="_examQs[${i}].marks=this.value"></div>`;
+      const marks=isHi||window._dppMode?'':`<div class="ex-marks"><label>Max Marks</label><input type="number" class="form-control" style="width:80px" value="${q.marks}" oninput="_examQs[${i}].marks=this.value"></div>`;
       const aId=`exa-${i}`;
       mid=`<div class="ex-sec ex-sec-a"><div class="ex-sec-lbl">Model Answer${isHi?' \u00b7 Hindi':''}</div>${_rtBar(aId)}<textarea id="${aId}" class="form-control" rows="2" placeholder="${isHi?'\u0906\u0926\u0930\u094d\u0936 \u0909\u0924\u094d\u0924\u0930 \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902 (\u0935\u093f\u0915\u0932\u094d\u092a\u093f\u0915)':'Type the ideal/model answer here'}" onfocus="_lastField=this" oninput="${abind};examPrev(this,'pv-a-${i}')">${esc(aval)}</textarea><div class="ex-prev" id="pv-a-${i}"></div>${autoHint}${aImg}${marks}</div>`;
     }
@@ -6819,13 +6827,18 @@ function tRenderDoubts(){
     rows+=done.map(d=>{
       const media=mediaOf(d);
       const amedia=`${d.has_answer_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/answer-voice')">${ic('play')} Your Voice Answer</button>`:''}${d.has_answer_file?`<button class="btn btn-ghost btn-sm" onclick="viewAnswerFile('teacher',${d.id},'${esc(d.answer_attach_mime||'')}')">${ic('folder')} Answer Attachment</button>`:''}`;
-      return `<div class="dbt-card res">${headOf(d,'<span class="dbt-pill res">\u2713 Resolved</span>')}<div class="dbt-q">${esc(d.question)}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> ${esc(d.answer)}</div>`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}</div>`;
+      return `<div class="dbt-card res">${headOf(d,'<span class="dbt-pill res">\u2713 Resolved</span>')}<div class="dbt-q">${esc(d.question)}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> ${esc(d.answer)}</div>`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}<div style="margin-top:10px"><button class="btn btn-danger btn-sm" title="Apna response delete karo — doubt wapas pending ho jayega" onclick="tDelDoubtAnswer(${d.id})">${ic('trash')} Delete Response</button></div></div>`;
     }).join('');
   }
   html+=(rows||`<div class="empty-state"><p>No doubts in this subject.</p></div>`)+`</div>`;
   el.innerHTML=html;
 }
 function tPickDoubtSub(sub){ _tdSub=sub; tRenderDoubts(); }
+async function tDelDoubtAnswer(id){
+  if(!confirm('Apna response delete karein?\n\nDoubt wapas Pending ho jayega aur student ko aapka jawab nahi dikhega.')) return;
+  try{ await api('/api/teacher/doubt/'+id+'/answer','DELETE'); toast('Response deleted — doubt pending hai.'); loadTDoubts(); }
+  catch(e){ toast(e.message||'Delete failed',true); }
+}
 async function viewDoubtImage(id){ viewDoubtFile('teacher',id,'image/jpeg'); }
 async function resolveDoubt(id){
   const key='ta'+id; const st=_cmpState[key]||{};
@@ -7915,6 +7928,11 @@ let _attEntries=[]; let _attActiveSub=''; let _attClass=''; let _attTeacherMap={
 let _aDoubtFilter='all';
 let _adSub=null;
 function adPickSub(sub){ _adSub=sub?decodeURIComponent(sub):''; _aDoubtFilter='all'; aRenderDoubts(); }
+async function aDelDoubt(id){
+  if(!confirm('Ye doubt delete karein?\n\nYe student aur teacher DONO portals se turant delete ho jayega. Undo nahi hoga.')) return;
+  try{ await api('/api/admin/doubt/'+id,'DELETE'); toast('Doubt deleted.'); loadADoubts(); }
+  catch(e){ toast(e.message||'Delete failed',true); }
+}
 async function loadADoubts(){
   const el=document.getElementById('a-doubts-content');
   try{
@@ -7961,7 +7979,7 @@ function aRenderDoubts(){
     const ans=d.answer||d.answer_image_link||d.has_answer_voice
       ? `<div class="bubble bubble-a"><div class="who">${esc(d.teacher_name)} (Teacher)</div>${esc(d.answer||'')}${avoice}${d.answer_image_link?`<a href="${esc(d.answer_image_link)}" target="_blank" style="color:var(--primary);display:block;margin-top:6px">View attached solution \u2197</a>`:''}</div>`
       : `<div class="bubble-pending">Awaiting teacher's reply...</div>`;
-    return `<div class="dcard"><div class="dcard-head"><div class="dcard-who"><b>${esc(d.student_name)}</b>${d.student_phone?' \u00b7 '+esc(d.student_phone):''} asked <b>${esc(d.teacher_name)}</b><div style="margin-top:3px">${esc(d.subject||'')}${d.topic?' \u00b7 '+esc(d.topic):''} \u00b7 ${esc(when)}</div></div><span class="tag ${d.status==='resolved'?'tag-done':'tag-pending'}">${d.status==='resolved'?'Resolved':'Pending'}</span></div>
+    return `<div class="dcard"><div class="dcard-head"><div class="dcard-who"><b>${esc(d.student_name)}</b>${d.student_phone?' \u00b7 '+esc(d.student_phone):''} asked <b>${esc(d.teacher_name)}</b><div style="margin-top:3px">${esc(d.subject||'')}${d.topic?' \u00b7 '+esc(d.topic):''} \u00b7 ${esc(when)}</div></div><div style="display:flex;align-items:center;gap:8px"><span class="tag ${d.status==='resolved'?'tag-done':'tag-pending'}">${d.status==='resolved'?'Resolved':'Pending'}</span><button class="btn btn-danger btn-sm" title="Ye doubt delete karo (student aur teacher dono portals se hat jayega)" onclick="aDelDoubt(${d.id})">${ic('trash')}</button></div></div>
       <div class="chat-thread"><div class="bubble bubble-q"><div class="who">${esc(d.student_name)} (Student)</div>${esc(d.question||'')}${qvoice}${qfile}${qimg}</div>${ans}</div></div>`;
   }).join(''):`<div class="empty-state"><p>No doubts in this view.</p></div>`;
   el.innerHTML=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="adPickSub('')">\u2190 All Subjects</button><h3 style="margin:0;font-size:1.2rem">${esc(_adSub)}</h3></div>
@@ -10599,7 +10617,18 @@ function renderStudentWeekly(tl, subjects, opts){
   subjects.forEach(s=>{ let tp=0,dp=0; tl[s].forEach(it=>{ if(it.kind==='chapter') it.parts.forEach(p=>{tp++; if(_partDone(p))dp++;}); else {tp++; if(_partDone(it.data))dp++;} }); subProg[s]={done:dp,total:tp,pct:tp?Math.round(dp/tp*100):0}; });
   const byDay={};
   const _seenSlot=new Set();
-  subjects.forEach(s=>tl[s].forEach(it=>{ const arr=it.kind==='chapter'?it.parts:[it.data]; arr.forEach(p=>{ if(!p.day)return; const _k=s+'|'+(p.date||'')+'|'+(p.time||''); if(_seenSlot.has(_k))return; _seenSlot.add(_k); (byDay[p.day]=byDay[p.day]||[]).push({subject:s,time:p.time,st:_statusOf([p.date]),date:p.date}); }); }));
+  // WEEK FILTER: sirf is week (Mon..Sun) ki classes — purani/aane wali weeks ki nahi
+  const _tzW0=new Date(); _tzW0.setHours(0,0,0,0);
+  const _dowW0=(_tzW0.getDay()+6)%7; const _monW0=new Date(_tzW0); _monW0.setDate(_tzW0.getDate()-_dowW0);
+  const _sunW0=new Date(_monW0); _sunW0.setDate(_monW0.getDate()+6);
+  const _wsKW=_monW0.toLocaleDateString('en-CA'), _weKW=_sunW0.toLocaleDateString('en-CA');
+  subjects.forEach(s=>tl[s].forEach(it=>{ const arr=it.kind==='chapter'?it.parts:[it.data]; arr.forEach(p=>{
+    if(!p.day||!p.date) return;
+    if(p.date<_wsKW||p.date>_weKW) return;  // is week ke bahar
+    const _k=s+'|'+(p.date||'')+'|'+(p.time||''); if(_seenSlot.has(_k))return; _seenSlot.add(_k);
+    (byDay[p.day]=byDay[p.day]||[]).push({subject:s,time:p.time,st:_statusOf([p.date]),date:p.date});
+  }); }));
+  window._wkByDay=byDay; window._wkOpts=opts||{};
   // Har subject/day ka CURRENT slot dikhta hai: sabse pehli aane wali (upcoming)
   // class ka time; koi upcoming na ho to sabse recent past ka. Isse slot change
   // (e.g. 10:00 -> 9:30) hote hi weekly view naya time dikhata hai.
@@ -10621,9 +10650,22 @@ function renderStudentWeekly(tl, subjects, opts){
     }).join('');
     const n=list.length;
     const _isTodayW=byDay[d].some(x=>x.date===_todayKW);
-    return `<div class="card wk-day-card ${_isTodayW?'today':''}"><div class="wk-day-head"><span>${esc(d)} <span class="wk-day-date">&middot; ${_fdD(_dayDate[d])}</span>${_isTodayW?'<span class="wk-today-chip">Today</span>':''}</span><span class="wk-day-cnt">${n} class${n>1?'es':''}</span></div><div class="wk-day-body">${rows}</div></div>`;
+    return `<div class="card wk-day-card ${_isTodayW?'today':''} wk-click" onclick="wkDayDetail('${d}')" title="Click to view ${d}'s classes"><div class="wk-day-head"><span>${esc(d)} <span class="wk-day-date">&middot; ${_fdD(_dayDate[d])}</span>${_isTodayW?'<span class="wk-today-chip">Today</span>':''}</span><span class="wk-day-cnt">${n} class${n>1?'es':''}</span></div><div class="wk-day-body">${rows}</div></div>`;
   }).join('');
   return cols||'<div class="empty-state"><p>No weekly schedule yet.</p></div>';
+}
+function wkDayDetail(day){
+  const list=((window._wkByDay||{})[day]||[]).slice();
+  const _tmin=t=>{ const m=/(\d+):(\d+)\s*(am|pm)/i.exec(t||''); if(!m) return 9999; let h=+m[1]%12; if(/pm/i.test(m[3]))h+=12; return h*60+(+m[2]); };
+  list.sort((a,b)=>_tmin(a.time)-_tmin(b.time));
+  const opts=window._wkOpts||{};
+  const rows=list.map(x=>{
+    const tmap=(opts.tipTeacherMap||{})[x.subject]||{};
+    const stb=x.st==='current'?'<span class="wkc-status live">Live</span>':x.st==='done'?'<span class="wkc-status done">Completed</span>':'<span class="wkc-status up">Upcoming</span>';
+    return `<div class="wkc-row"><div class="wkc-time">${esc(x.time||'\u2014')}<span>90min</span></div><div class="wkc-main"><div class="wkc-sub">${esc(x.subject)}</div>${tmap.name?`<div class="wkc-teacher">${esc(tmap.name)}</div>`:''}</div><div class="wkc-right">${stb}</div></div>`;
+  }).join('');
+  showModal(`${day} \u2014 ${list.length} class${list.length>1?'es':''}`,
+    rows||'<div class="empty-state"><p>No classes this day.</p></div>','');
 }
 function genPassword(){ const c='abcdefghjkmnpqrstuvwxyz23456789'; let p=''; for(let i=0;i<6;i++)p+=c[Math.floor(Math.random()*c.length)]; return p; }
 function showCredentials(role,name,uid,pass){

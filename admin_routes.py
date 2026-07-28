@@ -1266,6 +1266,18 @@ def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depend
         })
     return out
 
+@router.delete("/doubt/{did}")
+def admin_delete_doubt(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin kisi bhi doubt ko delete kar sakta hai (demo/test doubts) —
+    student aur teacher dono portals se turant hat jata hai."""
+    d = db.query(Doubt).get(did)
+    if not d:
+        raise HTTPException(status_code=404, detail="Doubt not found")
+    db.delete(d)
+    db.commit()
+    return {"message": "Doubt deleted"}
+
+
 @router.get("/doubt/{did}/image")
 def admin_doubt_image(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import Doubt

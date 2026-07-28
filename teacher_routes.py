@@ -340,6 +340,22 @@ def teacher_doubt_answer_file(did: int, db: Session = Depends(get_db), current_u
     d = _t_own_doubt(did, db, current_user)
     return _t_doubt_media(d.answer_attach_b64, d.answer_attach_mime, d.answer_attach_name)
 
+
+@router.delete("/doubt/{did}/answer")
+def teacher_delete_doubt_answer(did: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Teacher apna diya hua response delete kar sakta hai — doubt wapas
+    pending ho jata hai (student ko fir se jawab mil sakta hai)."""
+    d = _t_own_doubt(did, db, current_user)
+    d.answer = None
+    d.answer_image_link = None
+    d.answer_audio_b64 = None
+    d.answer_attach_b64 = None
+    d.answer_attach_mime = None
+    d.status = DoubtStatus.pending
+    d.resolved_at = None
+    db.commit()
+    return {"message": "Response deleted — doubt wapas pending hai"}
+
 @router.patch("/doubts/{doubt_id}/resolve")
 def resolve_doubt(
     doubt_id: int,
@@ -982,6 +998,21 @@ def teacher_dpp_answer_file(answer_id: int, db: Session = Depends(get_db), curre
     data = base64.b64decode(a.answer_b64)
     return Response(content=data, media_type="application/pdf",
                     headers={"Content-Disposition": 'attachment; filename="%s"' % (a.filename or "dpp-answer.pdf")})
+
+
+@router.delete("/dpp-packs/{pack_id}")
+def delete_dpp_pack(pack_id: int, db: Session = Depends(get_db), user=Depends(get_teacher)):
+    """Teacher apni banaayi/upload ki gayi DPP delete kar sake — saari
+    submissions bhi saath hat jati hain."""
+    from models import DppPack, DppAnswer
+    tp = db.query(TeacherProfile).filter(TeacherProfile.user_id == user.id).first()
+    pk = db.query(DppPack).get(pack_id)
+    if not pk or not tp or pk.teacher_id != tp.id:
+        raise HTTPException(status_code=404, detail="DPP not found")
+    db.query(DppAnswer).filter(DppAnswer.pack_id == pack_id).delete()
+    db.delete(pk)
+    db.commit()
+    return {"message": "DPP deleted"}
 
 
 @router.get("/dpp-packs/{pack_id}/file")
