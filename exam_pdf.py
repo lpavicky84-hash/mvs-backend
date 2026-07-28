@@ -1157,6 +1157,24 @@ def build_dpp_pdf(ex, questions, medium="english", kind="q"):
         "marks":   ("अंक" if is_hi else "MARKS"),
         "max":     ("पूर्णांक" if is_hi else "MAX MARKS"),
         "model":   ("मॉडल उत्तर" if is_hi else "MODEL ANSWER"),
+        "gi":      ("सामान्य निर्देश" if is_hi else "GENERAL INSTRUCTIONS"),
+        "setby":   ("SET BY"),
+        "faculty": ("Faculty"),
+        "class_l": ("कक्षा" if is_hi else "CLASS"),
+        "subject_l": ("विषय" if is_hi else "SUBJECT"),
+        "medium_l": ("माध्यम" if is_hi else "MEDIUM"),
+        "date_l":  ("तिथि" if is_hi else "DATE"),
+        "instr_list": ([
+            "सभी प्रश्न अनिवार्य हैं।",
+            "उत्तर अपनी कॉपी में साफ़-साफ़ लिखें।",
+            "हल करने के बाद अपनी answer PDF पोर्टल पर अपलोड करके Submit दबाएँ।",
+            "Model answers submit करने के बाद खुलेंगे।",
+        ] if is_hi else [
+            "All questions are compulsory.",
+            "Solve the paper neatly in your notebook.",
+            "After solving, upload your answer PDF on the portal and press Submit.",
+            "Model answers will unlock after you submit.",
+        ]),
         "instr":   (("निर्देश: सभी प्रश्न अनिवार्य हैं। उत्तर अपनी कॉपी में साफ़-साफ़ लिखें। "
                      "हल करने के बाद अपनी answer PDF पोर्टल पर अपने teacher को submit करें।")
                     if is_hi else
@@ -1197,14 +1215,40 @@ def build_dpp_pdf(ex, questions, medium="english", kind="q"):
     EPW = pdf.epw
     LM = pdf.l_margin
 
-    # ---------- gold band (test-jaisa premium): TEACHER PHOTO + bada title + chips
-    BAND_H = 40
-    pdf.set_fill_color(*DPPGOLD)
-    pdf.rect(0, 0, pdf.w, BAND_H, style="F")
-    pdf.set_fill_color(*DPPGOLD_D)
-    pdf.rect(0, BAND_H, pdf.w, 1.5, style="F")
-    text_x = LM
-    # logo ki jagah TEACHER PHOTO (circular, white ring) — fallback: MVS logo
+    # ============================================================
+    # HEADER (image-267 style): white top — MVS logo + brand | SET BY + teacher
+    # ============================================================
+    HDR_H = 24
+    _tname = _clean(getattr(ex, "teacher_name", "") or "")
+    _subj  = _clean(getattr(ex, "subject", "") or "")
+    # --- left: logo + brand name
+    logo = _logo_path()
+    lx, ly, ld = LM, 4.5, 15.5
+    if logo:
+        try:
+            pdf.image(logo, x=lx, y=ly, w=ld, h=ld)
+        except Exception:
+            logo = None
+    if not logo:
+        # fallback: gold rounded box with MVS
+        pdf.set_fill_color(*DPPGOLD)
+        pdf.rect(lx, ly, ld, ld, style="F", round_corners=True, corner_radius=3)
+        pdf.set_xy(lx, ly + 4.4)
+        pdf.set_font("Noto", "B", 9.5)
+        pdf.set_text_color(255, 255, 255)
+        pdf.cell(ld, 6, "MVS", align="C")
+    bx = lx + ld + 5
+    pdf.set_xy(bx, 5.2)
+    pdf.set_font("Noto", "B", 14.5)
+    pdf.set_text_color(31, 41, 55)
+    pdf.cell(0, 7, "MVS Foundation")
+    pdf.set_xy(bx, 12.6)
+    pdf.set_font("Noto", "B", 7)
+    pdf.set_text_color(120, 113, 92)
+    pdf.cell(0, 4, "MANISH VERMA CLASSES  —  NIOS COACHING")
+    # --- right: SET BY + teacher name + subject Faculty + photo circle
+    pd_ = 15.5                                  # photo diameter
+    px = pdf.w - pdf.r_margin - pd_
     photo = None
     _tb64 = getattr(ex, "teacher_photo_b64", None)
     if _tb64:
@@ -1212,113 +1256,147 @@ def build_dpp_pdf(ex, questions, medium="english", kind="q"):
             photo = _teacher_photo_circle(_tb64)
         except Exception:
             photo = None
-    if not photo:
-        photo = _logo_path()
     if photo:
         try:
-            D = 28
-            ly = (BAND_H - D) / 2
             pdf.set_fill_color(255, 255, 255)
-            pdf.ellipse(LM - 1.2, ly - 1.2, D + 2.4, D + 2.4, style="F")
-            pdf.image(photo, x=LM, y=ly, w=D, h=D)
-            text_x = LM + D + 7
+            pdf.ellipse(px - 1.1, ly - 1.1, pd_ + 2.2, pd_ + 2.2, style="F")
+            pdf.set_draw_color(*DPPGOLD)
+            pdf.set_line_width(0.5)
+            pdf.ellipse(px - 1.1, ly - 1.1, pd_ + 2.2, pd_ + 2.2, style="D")
+            pdf.image(photo, x=px, y=ly, w=pd_, h=pd_)
         except Exception:
-            text_x = LM
-    # brand line (chhota) + bada title band ke andar — test paper jaisa
-    pdf.set_xy(text_x, 4.6)
-    pdf.set_font("Noto", "B", 7.5)
-    pdf.set_text_color(255, 238, 196)
-    pdf.cell(pdf.w - pdf.r_margin - text_x, 4, "MVS FOUNDATION  ·  " + L["subtitle"])
-    _title = _clean(getattr(ex, "title", "") or "DPP")
-    pdf.set_xy(text_x, 9.6)
-    pdf.set_font("Noto", "B", 16 if len(_title) > 58 else 18)
-    pdf.set_text_color(255, 255, 255)
-    pdf.multi_cell(pdf.w - pdf.r_margin - text_x - 34, 7.6, _title,
-                   new_x="LMARGIN", new_y="NEXT")
-    # chips band ke andar (lighter gold) + QUESTION PAPER / SOLUTIONS badge
-    _chips = [c for c in [_clean(getattr(ex, "subject", "") or ""), L["medium"]] if c]
-    cy = max(pdf.get_y() + 1.4, BAND_H - 12.6)
-    cx = text_x
-    pdf.set_font("Noto", "B", 8.5)
-    for chip in _chips:
-        cw = pdf.get_string_width(chip) + 8
-        pdf.set_fill_color(*DPPCHIP)
-        pdf.rect(cx, cy, cw, 7, style="F", round_corners=True, corner_radius=3.4)
-        pdf.set_xy(cx, cy + 0.4)
+            pass
+    else:
+        # initials circle (gold)
+        pdf.set_fill_color(*DPPGOLD)
+        pdf.ellipse(px, ly, pd_, pd_, style="F")
+        ini = "".join(w[0] for w in (_tname or "T").split()[:2]).upper()
+        pdf.set_xy(px, ly + 4.6)
+        pdf.set_font("Noto", "B", 8.5)
         pdf.set_text_color(255, 255, 255)
-        pdf.cell(cw, 6.2, chip, align="C")
-        cx += cw + 3
-    tag = L["sol"] if kind == "s" else L["qp"]
-    pdf.set_font("Noto", "B", 8.5)
-    tw = pdf.get_string_width(tag) + 9
-    pdf.set_fill_color(*(GREEN if kind == "s" else AMBER))
-    pdf.rect(cx + 1, cy, tw, 7, style="F", round_corners=True, corner_radius=3.4)
-    pdf.set_xy(cx + 1, cy + 0.4)
-    pdf.set_text_color(255, 255, 255)
-    pdf.cell(tw, 6.2, tag, align="C")
-    # date + teacher name top-right
-    pdf.set_xy(-52, 4.6)
-    pdf.set_font("Noto", "B", 9)
-    pdf.set_text_color(255, 255, 255)
-    pdf.cell(42, 6, datetime.now().strftime("%d %b %Y"), align="R")
-    _tname = _clean(getattr(ex, "teacher_name", "") or "")
-    if _tname:
-        pdf.set_xy(-72, 11.6)
-        pdf.set_font("Noto", "B", 8)
-        pdf.set_text_color(255, 238, 196)
-        pdf.cell(62, 5, "By " + _tname, align="R")
+        pdf.cell(pd_, 6, ini, align="C")
+    tx = LM + 40                                # text block: right-aligned, ends photo se pehle
+    tw2 = px - 4 - tx
+    pdf.set_xy(tx, 4.2)
+    pdf.set_font("Noto", "B", 6)
+    pdf.set_text_color(156, 147, 120)
+    pdf.cell(tw2, 3.6, L["setby"], align="R")
+    pdf.set_xy(tx, 8.2)
+    pdf.set_font("Noto", "B", 10.5)
+    pdf.set_text_color(31, 41, 55)
+    pdf.cell(tw2, 5, _tname or "Teacher", align="R")
+    pdf.set_xy(tx, 13.8)
+    pdf.set_font("Noto", "B", 7)
+    pdf.set_text_color(120, 113, 92)
+    pdf.cell(tw2, 4, ((_subj + " ") if _subj else "") + L["faculty"], align="R")
+    # thin rule under header
+    pdf.set_draw_color(226, 220, 200)
+    pdf.set_line_width(0.3)
+    pdf.line(LM, HDR_H - 1.5, pdf.w - pdf.r_margin, HDR_H - 1.5)
 
-    # ---------- chapter/part line (band ke neeche) — duplicate prefix avoid karo
-    pdf.set_xy(LM, BAND_H + 5)
+    # ============================================================
+    # GOLD BAND: bada title + DPP subtitle + chapter | stat boxes right
+    # ============================================================
+    BAND_Y, BAND_H = HDR_H + 2.5, 27
+    pdf.set_fill_color(*DPPGOLD)
+    pdf.rect(0, BAND_Y, pdf.w, BAND_H, style="F")
+    pdf.set_fill_color(*DPPGOLD_D)
+    pdf.rect(0, BAND_Y + BAND_H, pdf.w, 1.4, style="F")
+    # stat boxes (right): QUESTIONS + MAX MARKS (agar marks hain)
+    stats = [(str(len(qs)), L["questions"])]
+    if total_marks is not None:
+        stats.append((str(total_marks), L["max"]))
+    sbw, sbh, sgap = 25, 17.5, 4
+    sx = pdf.w - pdf.r_margin - (sbw * len(stats) + sgap * (len(stats) - 1))
+    sy = BAND_Y + (BAND_H - sbh) / 2
+    for val, lab in stats:
+        pdf.set_fill_color(255, 255, 255)
+        pdf.rect(sx, sy, sbw, sbh, style="F", round_corners=True, corner_radius=2.2)
+        pdf.set_xy(sx, sy + 2.2)
+        pdf.set_font("Noto", "B", 12.5)
+        pdf.set_text_color(*DPPGOLD_D)
+        pdf.cell(sbw, 7, val, align="C")
+        pdf.set_xy(sx, sy + 10.6)
+        pdf.set_font("Noto", "B", 5.8)
+        pdf.set_text_color(120, 110, 80)
+        pdf.cell(sbw, 3.6, lab, align="C")
+        sx += sbw + sgap
+    # title + subtitle (chapter dedup ke saath)
+    _title = _clean(getattr(ex, "title", "") or "DPP")
     _ch_raw = _clean(getattr(ex, "chapter", "") or "")
     _pt_raw = _clean(getattr(ex, "part", "") or "")
-    _chp = " · ".join(c for c in [
-        (_ch_raw if _ch_raw.lower().startswith("chapter") else ("Chapter - " + _ch_raw)) if _ch_raw else "",
-        (_pt_raw if _pt_raw.lower().startswith("part") else ("Part: " + _pt_raw)) if _pt_raw else ""] if c)
-    if _chp:
-        pdf.set_font("Noto", "B", 9.5)
-        pdf.set_text_color(*DPPGOLD_D)
-        pdf.multi_cell(EPW, 5.5, _chp, new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(1)
-    else:
-        pdf.ln(2)
+    _chp = " · ".join(c for c in [_ch_raw, _pt_raw] if c)
+    _sub_line = L["subtitle"] + (("   ·   " + _chp) if _chp else "")
+    text_w = (pdf.w - pdf.r_margin - (sbw * len(stats) + sgap * (len(stats) - 1)) - 8) - LM
+    pdf.set_xy(LM, BAND_Y + 5)
+    pdf.set_font("Noto", "B", 15 if len(_title) > 60 else 17)
+    pdf.set_text_color(255, 255, 255)
+    pdf.multi_cell(text_w, 7.4, _title, new_x="LMARGIN", new_y="NEXT")
+    pdf.set_x(LM)
+    pdf.set_font("Noto", "B", 7.6)
+    pdf.set_text_color(255, 238, 196)
+    pdf.multi_cell(text_w, 4.4, _sub_line, new_x="LMARGIN", new_y="NEXT")
 
-    # ---------- info boxes: QUESTIONS (+ MAX MARKS if marks hain)
-    boxes = [(L["questions"], str(len(qs)))]
-    if total_marks is not None:
-        boxes.append((L["max"], str(total_marks)))
-    bw = (EPW - 6 * (len(boxes) - 1)) / len(boxes)
-    bx = LM
-    by = pdf.get_y()
-    for label, val in boxes:
+    # ============================================================
+    # INFO ROW: CLASS / SUBJECT / MEDIUM / DATE + QUESTION PAPER·SOLUTIONS badge
+    # ============================================================
+    iy = BAND_Y + BAND_H + 6
+    _cls = _clean(getattr(ex, "class_name", "") or "") or "—"
+    _med_lbl = ("हिंदी" if is_hi else "English")
+    info = [(L["class_l"], _cls), (L["subject_l"], _subj or "—"),
+            (L["medium_l"], _med_lbl), (L["date_l"], datetime.now().strftime("%d %b %Y"))]
+    tag = L["sol"] if kind == "s" else L["qp"]
+    pdf.set_font("Noto", "B", 8.5)
+    tagw = pdf.get_string_width(tag) + 12
+    ib_gap = 4
+    ibw = (EPW - tagw - ib_gap * len(info)) / len(info)
+    ix = LM
+    for lab, val in info:
         pdf.set_fill_color(255, 255, 255)
         pdf.set_draw_color(*BORDER)
         pdf.set_line_width(0.3)
-        pdf.rect(bx, by, bw, 16, style="DF", round_corners=True, corner_radius=2.5)
-        pdf.set_xy(bx + 4, by + 2.4)
-        pdf.set_font("Noto", "B", 7)
+        pdf.rect(ix, iy, ibw, 14.5, style="DF", round_corners=True, corner_radius=2.2)
+        pdf.set_xy(ix + 3.5, iy + 2.2)
+        pdf.set_font("Noto", "B", 6.2)
         pdf.set_text_color(*GREY)
-        pdf.cell(bw - 8, 4, label)
-        pdf.set_xy(bx + 4, by + 7)
-        pdf.set_font("Noto", "B", 12)
+        pdf.cell(ibw - 7, 3.6, lab)
+        pdf.set_xy(ix + 3.5, iy + 6.8)
+        pdf.set_font("Noto", "B", 9.5)
         pdf.set_text_color(*DPPTEXT)
-        pdf.cell(bw - 8, 7, val)
-        bx += bw + 6
-    pdf.set_xy(LM, by + 20)
+        pdf.cell(ibw - 7, 5.5, val)
+        ix += ibw + ib_gap
+    # question paper / solutions badge (solid)
+    pdf.set_fill_color(*(GREEN if kind == "s" else DPPGOLD))
+    pdf.rect(ix, iy, tagw, 14.5, style="F", round_corners=True, corner_radius=2.2)
+    pdf.set_xy(ix, iy + 4.6)
+    pdf.set_font("Noto", "B", 8.5)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(tagw, 6, tag, align="C")
 
-    # ---------- instructions cream box
+    # ============================================================
+    # GENERAL INSTRUCTIONS (automatic numbered list) — cream box, gold left bar
+    # ============================================================
+    gy = iy + 20
+    items = L["instr_list"]
+    gih = 8 + len(items) * 5.4
     pdf.set_fill_color(*DPPCREAM)
     pdf.set_draw_color(232, 220, 180)
-    pdf.set_font("Noto", size=9.5)
-    instr = L["instr"]
-    ih = 12
-    pdf.set_xy(LM, pdf.get_y())
-    y_i = pdf.get_y()
-    pdf.rect(LM, y_i, EPW, ih, style="DF", round_corners=True, corner_radius=2)
-    pdf.set_xy(LM + 4, y_i + 2.2)
+    pdf.set_line_width(0.3)
+    pdf.rect(LM, gy, EPW, gih, style="DF", round_corners=True, corner_radius=2)
+    pdf.set_fill_color(*DPPGOLD)
+    pdf.rect(LM, gy, 2.2, gih, style="F")
+    pdf.set_xy(LM + 6, gy + 2.6)
+    pdf.set_font("Noto", "B", 8.5)
+    pdf.set_text_color(*DPPGOLD_D)
+    pdf.cell(0, 5, L["gi"])
+    yy = gy + 8.6
+    pdf.set_font("Noto", size=9)
     pdf.set_text_color(96, 80, 20)
-    pdf.multi_cell(EPW - 8, 4.6, instr)
-    pdf.set_xy(LM, y_i + ih + 6)
+    for i, it in enumerate(items, 1):
+        pdf.set_xy(LM + 6, yy)
+        pdf.cell(EPW - 12, 5, "%d.  %s" % (i, it))
+        yy += 5.4
+    pdf.set_xy(LM, gy + gih + 6)
 
     # ---------- questions
     for q in qs:

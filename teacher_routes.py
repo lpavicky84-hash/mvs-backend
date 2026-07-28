@@ -975,7 +975,7 @@ def _dpp_build_pdf(db, pk, kind="q", med=None):
     med = (med or pk.medium or "english").lower()
     med = "hindi" if med.startswith("hin") else "english"
     ex = _NS(teacher_name=tname, teacher_photo_b64=tphoto, title=pk.title, subject=pk.subject,
-             chapter=pk.chapter, part=pk.part, test_type="DPP",
+             chapter=pk.chapter, part=pk.part, class_name=(pk.class_name or ""), test_type="DPP",
              duration_mins=None, total_marks=None)
     qobjs = []
     for i, q in enumerate(pk.questions or [], 1):
