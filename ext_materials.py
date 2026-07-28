@@ -62,10 +62,16 @@ def _normalize(raw):
             continue
         link = m.get("link") or m.get("external_link") or m.get("url") or ""
         kind = m.get("kind") or ("link" if link and not m.get("has_file") else "file")
+        cat = m.get("category") or m.get("tab") or m.get("section") or "Other"
+        # PYQ safety-net: category ya title me PYQ/Previous Year ho to canonical karo
+        _blob = (str(cat) + " " + str(m.get("title") or m.get("name") or "")).lower()
+        if re.search(r"\bpyq\b|previous year|prev\.? year|past year|solved paper|old paper", _blob):
+            if "pyq" not in _norm(cat) and "previousyear" not in _norm(cat):
+                cat = "Solved PYQs"
         out.append({
             "id": str(m.get("id") or m.get("material_id") or ""),
             "title": m.get("title") or m.get("name") or "Untitled",
-            "category": m.get("category") or m.get("tab") or m.get("section") or "Other",
+            "category": cat,
             "session": m.get("session") or m.get("batch") or m.get("stream") or "",
             "class_level": str(m.get("class_level") or m.get("class") or "") or None,
             "subject": m.get("subject") or "",
@@ -88,6 +94,31 @@ def _normalize(raw):
 # ------------------------------------------------------------------
 def _norm(t):
     return re.sub(r"[^a-z0-9]", "", (t or "").lower())
+
+
+def _norm_cls(v):
+    """Class level ko '10'/'12' par lao: '12th', 'Class 12', 'XII' sab '12'."""
+    t = (v or "").strip().lower()
+    if not t:
+        return ""
+    if t in ("xii", "x", "xi"):
+        return {"xii": "12", "x": "10"}.get(t, "")
+    m = re.search(r"(1[0-2]|[1-9])", t)
+    return m.group(1) if m else ""
+
+
+def _medium_ok(medium_mat, medium_stu):
+    """'Both', 'Bilingual', 'Hindi/English', 'All', blank — sabko pass."""
+    mm = (medium_mat or "").strip().lower()
+    if not mm:
+        return True
+    if mm in ("both", "bilingual", "all", "hindi/english", "english/hindi",
+              "hin/eng", "hindi & english", "english & hindi"):
+        return True
+    ms = (medium_stu or "").strip().lower()
+    if not ms:
+        return True
+    return mm == ms
 
 
 def _sess_bucket(session_text):
@@ -143,6 +174,7 @@ def _filter_for_student(mats, sp):
                               (getattr(sp, "batch", None).value if getattr(sp, "batch", None) else ""))
     if not cls:
         cls = getattr(sp, "class_level", None)
+    cls = _norm_cls(cls) or cls
     medium = (getattr(sp, "medium", None) or "").lower()
     subs_norm = [_norm(x) for x in (getattr(sp, "subjects", None) or [])]
 
@@ -151,13 +183,12 @@ def _filter_for_student(mats, sp):
         # session (bucket-based; blank = stream2 default)
         if sess and _sess_bucket(m.get("session")) != sess:
             continue
-        # class
-        mc = _norm(m.get("class_level"))
-        if cls and mc and mc != _norm(cls):
+        # class ('12th' / 'Class 12' / 'XII' sab '12' ke barabar)
+        mc = _norm_cls(m.get("class_level"))
+        if cls and mc and mc != _norm_cls(cls):
             continue
-        # medium ('Both' / blank always passes)
-        mm = (m.get("medium") or "").lower()
-        if medium and mm and mm not in ("both", "bilingual") and mm != medium:
+        # medium ('Both' / bilingual / blank always passes)
+        if medium and not _medium_ok(m.get("medium"), medium):
             continue
         # subject
         if subs_norm and not _subject_match(m.get("subject"), subs_norm):
@@ -197,14 +228,14 @@ def _filter_for_teacher(mats, tp):
             out.append(m)
             continue
         # class check: material ki class teacher ki us subject ki classes me honi chahiye
-        mc = _norm(m.get("class_level"))
+        mc = _norm_cls(m.get("class_level"))
         if mc:
             allowed = set()
             for sn, classes in cls_map.items():
                 a, b = (sn, _norm(msub)) if len(sn) <= len(_norm(msub)) else (_norm(msub), sn)
                 if sn == _norm(msub) or (len(a) >= 4 and a in b):
                     allowed |= {c for c in classes if c}
-            if allowed and mc not in {_norm(c) for c in allowed}:
+            if allowed and mc not in {_norm_cls(c) for c in allowed}:
                 continue
         out.append(m)
     return out, {"subjects": subs}
@@ -303,6 +334,12 @@ def portal_fetch_student(phone):
         nm = (nm or "").split("(")[0].strip()
         if nm:
             subs.append(nm)
+    def _pick(*keys):
+        for k in keys:
+            v = d.get(k)
+            if v and str(v).strip():
+                return str(v).strip()
+        return ""
     return {
         "name": (d.get("name") or "").strip() or None,
         "phone": str(d.get("phone") or phone),
@@ -311,6 +348,12 @@ def portal_fetch_student(phone):
         "session": (d.get("session") or "").strip(),
         "subjects": subs,
         "unlocked": _is_included(d),
+        # exam info — class manager ke alag-alag naam se bhi accept karo
+        "exam_session": _pick("exam_session", "examSession", "exam_session_label", "session"),
+        "exam_stream": _pick("exam_stream", "examStream", "stream", "nios_stream"),
+        "nios_ref": _pick("nios_ref", "nios_reference", "reference", "reference_no",
+                          "ref_no", "enrollment", "enrollment_no", "enrolment_no",
+                          "nios_enrollment", "roll_no", "registration_no"),
     }
 
 
@@ -413,9 +456,17 @@ def ext_status(current_user=Depends(get_current_user)):
                       headers={"X-MVS-KEY": key}, timeout=15)
         ok = r.status_code == 200
         n = 0
+        cats, sess_seen = {}, {}
         if ok:
             d = r.json()
-            n = len(d.get("materials", d if isinstance(d, list) else []))
-        return {"configured": True, "reachable": ok, "status_code": r.status_code, "count": n}
+            raw = d.get("materials", d if isinstance(d, list) else [])
+            n = len(raw)
+            for m in _normalize(raw):
+                c = m.get("category") or "Other"
+                cats[c] = cats.get(c, 0) + 1
+                sv = m.get("session") or "(blank)"
+                sess_seen[sv] = sess_seen.get(sv, 0) + 1
+        return {"configured": True, "reachable": ok, "status_code": r.status_code,
+                "count": n, "categories": cats, "sessions": sess_seen}
     except Exception as e:
         return {"configured": True, "reachable": False, "error": str(e)}
