@@ -1876,7 +1876,13 @@ def student_dpp_chunk(pack_id: int, data: dict = Body(...),
         fname = str(data.get("filename") or "dpp-answer.pdf")[:240]
     except Exception:
         raise HTTPException(status_code=400, detail="Bad chunk data")
-    if not ukey or not part:
+    if not ukey:
+        raise HTTPException(status_code=400, detail="Bad chunk data")
+    if idx == -1:
+        # connectivity probe (chhota sa test POST) — store kuch nahi, sirf
+        # confirm karta hai ki device/network se POST server tak pahunch raha hai
+        return {"ok": True, "probe": True}
+    if not part:
         raise HTTPException(status_code=400, detail="Bad chunk data")
     if idx < 0 or total < 1 or total > 4000 or idx >= total:
         raise HTTPException(status_code=400, detail="Bad chunk index")

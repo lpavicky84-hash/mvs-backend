@@ -9439,9 +9439,19 @@ async function _dppStageUpload(pid,file){
   let b64;
   try{ const du=await _fileB64(f); b64=(du.split(',')[1]||du); }
   catch(e){ txt.textContent='File read nahi ho paya — dobara select karo.'; return; }
-  const CH=700*1024;
+  const CH=400*1024;
   const total=Math.max(1,Math.ceil(b64.length/CH));
   const ukey='u'+pid+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
+  // pehle chhota probe POST — agar ye bhi nahi pahuncha to device/network hi
+  // upload requests block kar raha hai (firewall/antivirus) — saaf diagnosis do
+  txt.textContent='Connection check ho raha hai…';
+  try{
+    await api(`/api/student/dpp-packs/${pid}/chunk`,'POST',
+      {upload_key:ukey, idx:-1, total_chunks:total, filename:f.name||'dpp-answer.pdf', data:'cHJvYmU='});
+  }catch(e){
+    txt.innerHTML='<span style="color:var(--danger);line-height:1.5">Upload server tak <b>pahunch hi nahi pa raha</b> (chhota test bhi fail — server theek hai, block beech me hai).<br>➤ <b>Mobile hotspot laga kar try karo</b> — agar wahan ho jaye, to office WiFi ka <b>firewall</b> ya PC ka <b>antivirus web-protection</b> (Quick Heal/K7/Defender) is site ki uploads rok raha hai — usme <b>mvs-foundation-api-production-0553.up.railway.app</b> ko allow karwao.</span>';
+    return;
+  }
   for(let i=0;i<total;i++){
     const part=b64.slice(i*CH,(i+1)*CH);
     let done=false, err=null;
@@ -9459,7 +9469,7 @@ async function _dppStageUpload(pid,file){
       }
     }
     if(!done){
-      txt.innerHTML='<span style="color:var(--danger)">'+((err&&err.message)||'Upload nahi ho paya')+' — file dobara select karke try karo.</span>';
+      txt.innerHTML='<span style="color:var(--danger)">'+((err&&err.message)||'Upload nahi ho paya')+' — <b>mobile hotspot</b> laga kar dobara try karo (firewall/antivirus block ho sakta hai).</span>';
       return;
     }
   }
