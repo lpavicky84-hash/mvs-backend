@@ -405,9 +405,44 @@ def mark_read(notif_id: int, db: Session = Depends(get_db), current_user=Depends
     return {"message": "Marked as read"}
 
 # ===== TIMETABLE ENTRIES (chapter + parts + date + day) =====
-def _serialize_tt(e):
+def _subj_norm(s):
+    """Subject matching ke liye normalize: trailing code '(229)' / '- 229' hatao,
+    spaces collapse, casefold. 'Data Entry Operations (229)' == 'Data Entry Operations'."""
+    import re as _re
+    s = str(s or "")
+    s = _re.sub(r"\s*[\(\[][^\)\]]*\d+[^\)\]]*[\)\]]\s*$", "", s)
+    s = _re.sub(r"\s*[-–—_/]\s*\d{2,}\s*$", "", s)
+    s = _re.sub(r"\s+", " ", s).strip().lower()
+    # NIOS PDF abbreviations: "Data Entry Op" -> "data entry operations"
+    s = _re.sub(r"\bop\b", "operations", s)
+    return s
+
+def _subj_eq(a, b):
+    na, nb = _subj_norm(a), _subj_norm(b)
+    return bool(na) and na == nb
+
+def _subj_scope_for(db, model, subjects):
+    """Assigned subjects + DB me stored unke variants (e.g. 'X (229)') ka map:
+    {stored_subject: canonical_assigned_subject}. Exact naam ho to wahi."""
+    scope, norm = {}, {}
+    for s in subjects or []:
+        n = _subj_norm(s)
+        if n:
+            norm[n] = s
+            scope[s] = s
+    if not norm:
+        return scope
+    try:
+        for (v,) in db.query(model.subject).distinct().all():
+            if v and v not in scope and _subj_norm(v) in norm:
+                scope[v] = norm[_subj_norm(v)]
+    except Exception:
+        pass
+    return scope
+
+def _serialize_tt(e, canon=None):
     return {
-        "id": e.id, "subject": e.subject, "class_name": e.class_name,
+        "id": e.id, "subject": canon or e.subject, "class_name": e.class_name,
         "chapter": e.chapter, "part": e.part,
         "date": str(e.entry_date) if e.entry_date else None, "day": e.day,
         "time": getattr(e, "time_text", None), "type": getattr(e, "entry_type", None) or "chapter", "status": getattr(e, "status", None) or "approved",
@@ -616,7 +651,8 @@ def teacher_delete_tt_subject(subject: str, db: Session = Depends(get_db), curre
             TimetableEntry.subject == subject, TimetableEntry.teacher_id == tp.id).first()
         if not owned:
             raise HTTPException(status_code=403, detail="This subject is not assigned to you")
-    n = db.query(TimetableEntry).filter(TimetableEntry.subject == subject).delete(synchronize_session=False)
+    _sc = _subj_scope_for(db, TimetableEntry, [subject])
+    n = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(list(_sc))).delete(synchronize_session=False)
     db.commit()
     return {"deleted": n, "message": f"{n} entries deleted for {subject}"}
 
@@ -766,10 +802,12 @@ def my_timetable(db: Session = Depends(get_db), current_user=Depends(get_teacher
     if not subs:
         return []
     from sqlalchemy import or_
-    es = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(subs),
+    # Naam me code-suffix variant ho ('X (229)') to bhi match — display canonical naam se
+    scope = _subj_scope_for(db, TimetableEntry, subs)
+    es = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(list(scope)),
         or_(TimetableEntry.status==None, TimetableEntry.status!='pending')).order_by(
         TimetableEntry.subject, TimetableEntry.entry_date).all()
-    return [_serialize_tt(e) for e in es]
+    return [_serialize_tt(e, scope.get(e.subject)) for e in es]
 
 # ===== TEACHER: TODAY'S CLASSES with material status =====
 @router.get("/today-classes")
@@ -781,15 +819,16 @@ def today_classes(db: Session = Depends(get_db), current_user=Depends(get_teache
         return []
     today = date.today()
     from sqlalchemy import or_
+    scope = _subj_scope_for(db, TimetableEntry, subs)
     es = db.query(TimetableEntry).filter(
-        TimetableEntry.subject.in_(subs), TimetableEntry.entry_date == today,
+        TimetableEntry.subject.in_(list(scope)), TimetableEntry.entry_date == today,
         or_(TimetableEntry.status==None, TimetableEntry.status!='pending')).all()
-    mats = db.query(Material).filter(Material.subject.in_(subs)).all()
+    mats = db.query(Material).filter(Material.subject.in_(list(_subj_scope_for(db, Material, subs)))).all()
     out = []
     for e in es:
-        notes = any(m.chapter == e.chapter and m.subject == e.subject and m.material_type == "notes" for m in mats)
-        dpp = any(m.chapter == e.chapter and m.subject == e.subject and m.material_type == "dpp" for m in mats)
-        d = _serialize_tt(e); d["notes"] = notes; d["dpp"] = dpp
+        notes = any(m.chapter == e.chapter and _subj_eq(m.subject, e.subject) and m.material_type == "notes" for m in mats)
+        dpp = any(m.chapter == e.chapter and _subj_eq(m.subject, e.subject) and m.material_type == "dpp" for m in mats)
+        d = _serialize_tt(e, scope.get(e.subject)); d["notes"] = notes; d["dpp"] = dpp
         out.append(d)
     out.sort(key=lambda x: x.get("time") or "")
     return out
@@ -1563,6 +1602,8 @@ def _ensure_exam_columns(db):
          "ALTER TABLE exam_attempts ADD COLUMN skipped TEXT NULL"),
         ("ALTER TABLE exam_questions ADD COLUMN alt_image_b64 LONGTEXT NULL",
          "ALTER TABLE exam_questions ADD COLUMN alt_image_b64 TEXT NULL"),
+        ("ALTER TABLE exams ADD COLUMN class_name VARCHAR(50) NULL",
+         "ALTER TABLE exams ADD COLUMN class_name TEXT NULL"),
     ]
     for group in stmts:
         for s in group:
@@ -1608,6 +1649,7 @@ def create_exam(payload: dict = Body(...), background_tasks: BackgroundTasks = N
     ex = Exam(teacher_id=tp.id, teacher_name=current_user.name,
               subject=payload.get("subject", ""), title=payload["title"],
               chapter=payload.get("chapter"), test_type=ttype,
+              class_name=(payload.get("class_name") or "").strip(),
               medium=payload.get("medium", "English"),
               total_marks=total, duration_min=int(payload.get("duration_min", 60) or 60),
               scheduled_at=_exam_parse_dt(payload.get("scheduled_at")))
@@ -1716,6 +1758,7 @@ def list_exams(db: Session = Depends(get_db), current_user=Depends(get_teacher))
         na = db.query(ExamAttempt).filter(ExamAttempt.exam_id == e.id).count()
         ng = db.query(ExamAttempt).filter(ExamAttempt.exam_id == e.id, ExamAttempt.status == "graded").count()
         out.append({"id": e.id, "title": e.title, "subject": e.subject, "chapter": e.chapter,
+                    "class_name": getattr(e, "class_name", "") or "",
                     "test_type": e.test_type, "total_marks": e.total_marks, "duration_min": e.duration_min,
                     "medium": e.medium, "questions": nq, "attempts": na, "graded": ng,
                     "views": len(views.get(e.id, ())), "downloads": len(downloads.get(e.id, ())),
@@ -2324,7 +2367,7 @@ def _material_tree(db, subjects=None):
     if subjects is not None:
         if not subjects:
             return []
-        q = q.filter(Material.subject.in_(subjects))
+        q = q.filter(Material.subject.in_(list(_subj_scope_for(db, Material, subjects))))
     mats = q.order_by(Material.created_at.desc()).all()
     ids = [m.id for m in mats]
     views, downloads = {}, {}
@@ -2332,14 +2375,43 @@ def _material_tree(db, subjects=None):
         for v in db.query(MaterialView).filter(MaterialView.material_id.in_(ids)).all():
             d = downloads if v.action == "download" else views
             d.setdefault(v.material_id, set()).add(v.student_id)
+    import re as _re
+    def _cls_d(x):
+        m2 = _re.search(r"\d+", str(x or ""))
+        return m2.group(0) if m2 else ""
+    # Stored variant naam ('X (229)') ko assigned canonical naam pe lao (teacher scope me)
+    _canon = {}
+    if subjects:
+        try:
+            _sc = _subj_scope_for(db, Material, subjects)
+            _canon = {_subj_norm(k): v for k, v in _sc.items()}
+        except Exception:
+            _canon = {}
+    def _cn(s):
+        return _canon.get(_subj_norm(s), s or "General")
+    # Same-naam subjects (e.g. Data Entry Operations) Class 10 & 12 dono me ho to
+    # tree me alag-alag node banao: "Subject (Class 10)" / "Subject (Class 12)".
+    raw = {}
+    for m in mats:
+        cd = _cls_d(getattr(m, "class_name", ""))
+        raw.setdefault(_cn(m.subject), set()).add(cd)
+    def _disp(sub, cd):
+        cls_set = raw.get(sub) or set()
+        real = {c for c in cls_set if c}
+        if len(real) > 1 and cd:
+            return "%s (Class %s)" % (sub, cd)
+        return sub
     tree = {}
     for m in mats:
-        sub = tree.setdefault(m.subject or "General", {"subject": m.subject or "General", "chapters": {}})
+        cd = _cls_d(getattr(m, "class_name", ""))
+        label = _disp(_cn(m.subject), cd)
+        sub = tree.setdefault(label, {"subject": label, "chapters": {}})
         ch = sub["chapters"].setdefault(m.chapter or "General", {"chapter": m.chapter or "General", "items": []})
         ch["items"].append({
             "id": m.id, "part": m.part or "", "type": m.material_type,
             "category": m.category or "", "title": m.title or "",
             "filename": m.filename or "", "teacher_name": m.teacher_name or "",
+            "class_name": getattr(m, "class_name", "") or "",
             "date": str(m.created_at)[:10] if m.created_at else "",
             "views": len(views.get(m.id, ())), "downloads": len(downloads.get(m.id, ())),
         })
@@ -3289,8 +3361,9 @@ def change_slot(payload: dict, db: Session = Depends(get_db), current_user=Depen
         if not owned:
             raise HTTPException(status_code=403, detail="This subject is not assigned to you")
     today = _ist_now().date()
+    _sc = _subj_scope_for(db, TimetableEntry, [subject])
     entries = db.query(TimetableEntry).filter(
-        TimetableEntry.subject == subject,
+        TimetableEntry.subject.in_(list(_sc)),
         TimetableEntry.entry_date.isnot(None),
         TimetableEntry.entry_date >= today,
         TimetableEntry.completed == False
@@ -3331,6 +3404,8 @@ def update_exam(exam_id: int, payload: dict = Body(...), db: Session = Depends(g
     for f in ("title", "subject", "chapter", "medium", "test_type"):
         if payload.get(f) is not None:
             setattr(ex, f, payload.get(f))
+    if payload.get("class_name") is not None:
+        ex.class_name = (payload.get("class_name") or "").strip()
     if payload.get("duration_min") is not None:
         try:
             ex.duration_min = int(payload.get("duration_min") or 60)

@@ -4486,6 +4486,7 @@ async function loadTDpp(){
         <div style="flex:1;min-width:220px"><b style="font-size:.95rem">${esc(pk.title)}</b>
           <div style="font-size:.72rem;color:var(--text-muted);margin-top:3px">${esc(pk.subject)}${pk.chapter?' \u00b7 '+esc(pk.chapter):''}${pk.part?' \u00b7 '+esc(pk.part):''}</div>
           <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">
+            ${pk.class_name?`<span class="chip" style="font-size:.62rem;border-color:rgba(4,120,87,.4);color:#047857">${esc(pk.class_name)}</span>`:''}
             <span class="chip" style="font-size:.62rem">${pk.source==='created'?'Created':'Uploaded'}</span>
             <span class="chip" style="font-size:.62rem">${esc(pk.medium)}</span>
             <span class="chip" style="font-size:.62rem">${pk.created_at||''}</span></div></div>
@@ -4573,16 +4574,30 @@ function _dppAllSubjects(){
   ((window._tProfile||{}).subject_classes||[]).forEach(x=>x&&x.subject&&set.add(x.subject));
   return [...set].sort();
 }
-function _dppFillChapters(){
-  const sub=val('ex-sub');
-  const es=(window._dppTt||[]).filter(e=>e.subject===sub);
-  const clsSet=new Set(es.map(e=>(e.class_name||'').trim()).filter(Boolean));
+function _dppClsOptions(sub){
+  // Subject ki saari classes (timetable entries + assignment) — "Class 10"/"Class 12"
+  const clsSet=new Set((window._dppTt||[]).filter(e=>e.subject===sub).map(e=>(e.class_name||'').trim()).filter(Boolean));
   ((window._tProfile||{}).subject_classes||[]).forEach(x=>{
     if(x&&x.subject===sub&&x.class){ const d=String(x.class).replace(/\D/g,''); clsSet.add(d?('Class '+d):String(x.class)); }
   });
-  const cls=[...clsSet].sort();
+  return [...clsSet].sort();
+}
+function _dppFillChapters(auto){
+  const sub=val('ex-sub');
   const csel=document.getElementById('ex-cls-sel');
-  if(csel) csel.innerHTML='<option value="">All Classes</option>'+cls.map(c=>`<option>${esc(c)}</option>`).join('');
+  const prevC=csel?csel.value:'';
+  const es0=(window._dppTt||[]).filter(e=>e.subject===sub);
+  const cls=_dppClsOptions(sub);
+  if(csel){
+    csel.innerHTML='<option value="">All Classes</option>'+cls.map(c=>`<option>${esc(c)}</option>`).join('');
+    // Class select restore karo; pehli baar ho to ek class auto-select (chapters class-wise alag dikhen)
+    if(prevC&&cls.includes(prevC)) csel.value=prevC;
+    else if(cls.length===1) csel.value=cls[0];
+    else if(auto&&cls.length>1) csel.value=cls[0];
+  }
+  // SELECTED class ke hi chapters — class 10/12 ke same-naam subject kabhi mix nahi honge
+  const cd=_clsDigits(csel?csel.value:'');
+  const es=cd?es0.filter(e=>_clsOfEntry(e)===cd):es0;
   const chs=[...new Set(es.map(e=>(e.chapter||'').trim()).filter(Boolean))];
   const sel=document.getElementById('ex-ch-sel');
   if(sel){
@@ -4592,7 +4607,9 @@ function _dppFillChapters(){
 }
 function _dppFillParts(){
   const sub=val('ex-sub'); const ch=val('ex-ch-sel');
-  const es=(window._dppTt||[]).filter(e=>e.subject===sub&&((e.chapter||'').trim()===ch));
+  const cd=_clsDigits(val('ex-cls-sel'));
+  let es=(window._dppTt||[]).filter(e=>e.subject===sub&&((e.chapter||'').trim()===ch));
+  if(cd) es=es.filter(e=>_clsOfEntry(e)===cd);
   const parts=[...new Set(es.map(e=>(e.part||'').trim()).filter(Boolean))];
   const sel=document.getElementById('ex-part-sel');
   if(sel) sel.innerHTML='<option value="">— Whole chapter —</option>'+parts.map(p2=>`<option>${esc(p2)}</option>`).join('');
@@ -4607,7 +4624,7 @@ async function openCreateDpp(){
   const chIn=document.getElementById('ex-ch');
   if(chIn){
     chIn.closest('.form-group').innerHTML=`<label>Chapter &amp; Part <span style="font-weight:400;color:var(--accent)">(from your timetable)</span></label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><select class="form-control" id="ex-cls-sel" style="flex:0 0 132px" title="Class"></select>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><select class="form-control" id="ex-cls-sel" style="flex:0 0 132px" title="Class" onchange="_dppFillChapters(false)"></select>
       <select class="form-control" id="ex-ch-sel" style="flex:1;min-width:160px" onchange="_dppFillParts()"></select>
       <select class="form-control" id="ex-part-sel" style="flex:1;min-width:140px"></select></div>`;
   }
@@ -4617,8 +4634,10 @@ async function openCreateDpp(){
   if(sb) sb.textContent='Create DPP — generate premium PDFs';
   const mt=document.getElementById('modal-title'); if(mt) mt.textContent='Create DPP';
   const sub=document.getElementById('ex-sub');
-  if(sub) sub.addEventListener('change',_dppFillChapters);
-  _dppFillChapters();
+  if(sub) sub.addEventListener('change',()=>_dppFillChapters(true));
+  _dppFillChapters(true);
+  // DPP mode me test-wala class select chhupao (chapter row me apna class select hai)
+  const _ctw=document.getElementById('ex-cls-test-wrap'); if(_ctw) _ctw.style.display='none';
 }
 // ---------- UPLOAD DPP (2 PDFs mandatory) ----------
 async function openUploadDpp(){
@@ -4628,7 +4647,7 @@ async function openUploadDpp(){
     `<div class="alert alert-info">Ready-made DPP upload karo — <b>Questions PDF</b> aur <b>Solutions PDF</b> dono zaroori hain. Students ko pehle questions dikhenge; submit karne ke baad solutions.</div>
      <div class="form-group"><label>Subject</label><select class="form-control" id="ud-sub">${subs.map(x=>`<option>${esc(x)}</option>`).join('')||'<option>General</option>'}</select></div>
      <div class="form-group"><label>Class, Chapter &amp; Part (from your timetable)</label>
-       <div style="display:flex;gap:8px;flex-wrap:wrap"><select class="form-control" id="ud-cls" style="flex:0 0 132px" title="Class"></select>
+       <div style="display:flex;gap:8px;flex-wrap:wrap"><select class="form-control" id="ud-cls" style="flex:0 0 132px" title="Class" onchange="window._udFillFn&&window._udFillFn(false)"></select>
        <select class="form-control" id="ud-ch" style="flex:1;min-width:160px" onchange="_udFillParts()"></select>
        <select class="form-control" id="ud-part" style="flex:1;min-width:140px"></select></div></div>
      <div class="form-group"><label>Title</label><input class="form-control" id="ud-title" placeholder="e.g. DPP — Tenses (Part 2)"></div>
@@ -4637,21 +4656,28 @@ async function openUploadDpp(){
        <div class="form-group"><label>Questions PDF *</label><input type="file" class="form-control" id="ud-qpdf" accept="application/pdf"></div>
        <div class="form-group"><label>Solutions PDF *</label><input type="file" class="form-control" id="ud-spdf" accept="application/pdf"></div></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitUploadDpp()">Upload DPP</button>`);
-  const fill=()=>{ const sub=val('ud-sub'); const es=(window._dppTt||[]).filter(e=>e.subject===sub);
-    const clsSet=new Set(es.map(e=>(e.class_name||'').trim()).filter(Boolean));
-    ((window._tProfile||{}).subject_classes||[]).forEach(x=>{
-      if(x&&x.subject===sub&&x.class){ const d=String(x.class).replace(/\D/g,''); clsSet.add(d?('Class '+d):String(x.class)); }
-    });
-    const cls=[...clsSet].sort();
-    document.getElementById('ud-cls').innerHTML='<option value="">All Classes</option>'+cls.map(c=>`<option>${esc(c)}</option>`).join('');
+  const fill=(auto)=>{ const sub=val('ud-sub'); const es0=(window._dppTt||[]).filter(e=>e.subject===sub);
+    const cls=_dppClsOptions(sub);
+    const csel=document.getElementById('ud-cls');
+    const prevC=csel.value;
+    csel.innerHTML='<option value="">All Classes</option>'+cls.map(c=>`<option>${esc(c)}</option>`).join('');
+    if(prevC&&cls.includes(prevC)) csel.value=prevC;
+    else if(cls.length===1) csel.value=cls[0];
+    else if(auto&&cls.length>1) csel.value=cls[0];
+    // SELECTED class ke hi chapters
+    const cd=_clsDigits(csel.value);
+    const es=cd?es0.filter(e=>_clsOfEntry(e)===cd):es0;
     const chs=[...new Set(es.map(e=>(e.chapter||'').trim()).filter(Boolean))];
     document.getElementById('ud-ch').innerHTML='<option value="">— Full chapter / General —</option>'+chs.map(c=>`<option>${esc(c)}</option>`).join('');
     _udFillParts(); };
-  document.getElementById('ud-sub').addEventListener('change',fill); fill();
+  window._udFillFn=fill;
+  document.getElementById('ud-sub').addEventListener('change',()=>fill(true)); fill(true);
 }
 function _udFillParts(){
   const sub=val('ud-sub'); const ch=val('ud-ch');
-  const es=(window._dppTt||[]).filter(e=>e.subject===sub&&((e.chapter||'').trim()===ch));
+  const cd=_clsDigits(val('ud-cls'));
+  let es=(window._dppTt||[]).filter(e=>e.subject===sub&&((e.chapter||'').trim()===ch));
+  if(cd) es=es.filter(e=>_clsOfEntry(e)===cd);
   const parts=[...new Set(es.map(e=>(e.part||'').trim()).filter(Boolean))];
   document.getElementById('ud-part').innerHTML='<option value="">— Whole chapter —</option>'+parts.map(p2=>`<option>${esc(p2)}</option>`).join('');
 }
@@ -5061,6 +5087,7 @@ async function loadTTests(){
               <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap"><b style="font-size:.95rem">${esc(e.title)}</b>${tyPill}${stPill}</div>
               <div class="tx-meta">
                 ${e.subject?`<span class="tx-pill nv">${esc(e.subject)}</span>`:''}
+                ${e.class_name?`<span class="tx-pill s" style="border-color:rgba(4,120,87,.4);color:#047857">${esc(e.class_name)}</span>`:`<span class="tx-pill s">All Classes</span>`}
                 ${spCleanCh(e.chapter)?`<span class="tx-pill s">${esc(spCleanCh(e.chapter))}</span>`:''}
                 <span class="tx-pill s inf">${ic('clipboard')} <b>${e.questions}</b> Qs</span><span class="tx-pill s inf">${ic('chart')} <b>${e.total_marks}</b> marks</span><span class="tx-pill s inf">${ic('clock')} <b>${e.duration_min}</b> min</span>${_schT?`<span class="tx-pill s inf">${ic('calendar')} ${_schTF}</span>`:''}
               </div>
@@ -5351,7 +5378,7 @@ async function openCreateExam(type,editData){
   _examType=type; _examQs=[]; _lastField=null; _examMedium='English';
   window._editExamId=editData?editData.id:null;
   let subs=[];
-  try{ const es=await api('/api/teacher/my-timetable'); subs=[...new Set(es.filter(e=>e.subject).map(e=>e.subject))]; }catch(e){}
+  try{ const es=await api('/api/teacher/my-timetable'); window._dppTt=es; subs=[...new Set(es.filter(e=>e.subject).map(e=>e.subject))]; }catch(e){}
   try{
     if(!window._tProfile) window._tProfile=await api('/api/teacher/profile');
     const tp=window._tProfile||{};
@@ -5367,7 +5394,7 @@ async function openCreateExam(type,editData){
     ?'<div class="alert alert-info">Students upload a photo of their handwritten answers. You grade each answer manually from Results — award marks + remarks per question (your model answers stay visible to you while checking). Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{2H2 + O2 -> 2H2O}$</code> &mdash; they render automatically.</div>'
     :'<div class="alert alert-info">Students select an option. Auto-graded instantly. Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{...}$</code>.</div>';
   showModal(editData?('Edit '+tl+' Test'):('Create '+tl+' Test'),
-    (editData&&editData.attempts>0?'<div class="alert alert-info">This test is live — <b>'+editData.attempts+' submission(s)</b> have already been received. You may add new questions; previous submissions and their marks will remain safe.</div>':'')+`<div style="display:flex;gap:12px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:160px"><label>Subject</label><select class="form-control" id="ex-sub">${subOpts}</select></div><div class="form-group" style="width:110px"><label>Duration (min)</label><input type="number" class="form-control" id="ex-dur" value="60"></div><div class="form-group" style="width:140px"><label>Medium</label><select class="form-control" id="ex-medium" onchange="examMediumChange()"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div><div class="form-group" style="min-width:210px;flex:1"><label>Schedule (optional)</label><input type="datetime-local" class="form-control" id="ex-sched" title="Students can start only after this date & time"></div></div>`
+    (editData&&editData.attempts>0?'<div class="alert alert-info">This test is live — <b>'+editData.attempts+' submission(s)</b> have already been received. You may add new questions; previous submissions and their marks will remain safe.</div>':'')+`<div style="display:flex;gap:12px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:160px"><label>Subject</label><select class="form-control" id="ex-sub">${subOpts}</select></div><div class="form-group" style="width:128px" id="ex-cls-test-wrap"><label>Class</label><select class="form-control" id="ex-cls-test" title="Sirf is class ke students ko test dikhega"></select></div><div class="form-group" style="width:110px"><label>Duration (min)</label><input type="number" class="form-control" id="ex-dur" value="60"></div><div class="form-group" style="width:140px"><label>Medium</label><select class="form-control" id="ex-medium" onchange="examMediumChange()"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div><div class="form-group" style="min-width:210px;flex:1"><label>Schedule (optional)</label><input type="datetime-local" class="form-control" id="ex-sched" title="Students can start only after this date & time"></div></div>`
     +`<div class="form-group"><label>${window._dppMode?'DPP Title':'Test Title'}</label><input class="form-control" id="ex-title" placeholder="e.g. Physics Chapter Test - Electric Charges"></div>`
     +`<div class="form-group"><label>Chapter (optional)</label><input class="form-control" id="ex-ch" placeholder="e.g. Electric Charges"></div>`
     +`<div class="ex-prog" id="ex-prog"><div class="ex-prog-top"><span class="ex-prog-label" id="ex-prog-label">Uploading\u2026</span><span class="ex-prog-pct" id="ex-prog-pct">0%</span></div><div class="ex-prog-track"><div class="ex-prog-fill" id="ex-prog-fill"></div></div></div>`
@@ -5375,6 +5402,10 @@ async function openCreateExam(type,editData){
     +`<div id="ex-qs"></div><button class="btn btn-ghost btn-sm" onclick="addExamQ()" style="margin:4px 0 14px">+ Add Question</button>`
     +`<button class="btn btn-primary" onclick="submitExam()" style="width:100%">${editData?'Save Changes — Update Test':'Create Test'}</button>`);
   { const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.add('cx'); }
+  // Class select (test targeting): subject ki classes timetable + assignment se
+  const _subEl=document.getElementById('ex-sub');
+  if(_subEl) _subEl.addEventListener('change',()=>_examFillTestCls(true));
+  _examFillTestCls(true);
   addExamQ();
   if(editData){
     const ex=editData.ex||{};
@@ -5389,9 +5420,26 @@ async function openCreateExam(type,editData){
     const med=ex.medium||'English';
     document.getElementById('ex-medium').value=med; _examMedium=med;
     const sch=spSchedOf(ex); if(sch)document.getElementById('ex-sched').value=spSchedLocal(sch);
+    _examFillTestCls(false);
+    if(ex.class_name){ const cs=document.getElementById('ex-cls-test');
+      if(cs){ if(![...cs.options].some(o=>o.text===ex.class_name)){ const op=document.createElement('option'); op.text=ex.class_name; cs.add(op); } cs.value=ex.class_name; } }
     const mapped=_examFormQs(editData.questions||[],_examType==='mcq');
     if(mapped.length){ _examQs=mapped; renderExamQs(); }
   }
+}
+function _examFillTestCls(auto){
+  // Test class targeting — DPP mode me chapter row ka apna class select hota hai
+  const wrap=document.getElementById('ex-cls-test-wrap'); const csel=document.getElementById('ex-cls-test');
+  if(!csel) return;
+  if(window._dppMode){ if(wrap) wrap.style.display='none'; return; }
+  if(wrap) wrap.style.display='';
+  const sub=val('ex-sub');
+  const prev=csel.value;
+  const cls=_dppClsOptions(sub);
+  csel.innerHTML='<option value="">All Classes</option>'+cls.map(c=>`<option>${esc(c)}</option>`).join('');
+  if(prev&&cls.includes(prev)) csel.value=prev;
+  else if(cls.length===1) csel.value=cls[0];
+  else if(auto&&cls.length>1) csel.value=cls[0];
 }
 function addExamQ(){ _examQs.push(_examType==='mcq'?{q:'',q_hi:'',opts:['','','',''],opts_hi:['','','',''],correct:0,marks:1,expl:'',expl_hi:'',image_b64:null,alt_image_b64:null,_ipart:'a',_tab:'en'}:{q:'',q_hi:'',model:'',model_hi:'',marks:5,image_b64:null,alt_image_b64:null,_ipart:'a',model_answer_image:null,qtype:'general',_tab:'en'}); renderExamQs(); }
 function setExamTab(i,tab){ _examQs[i]._tab=tab; renderExamQs(); }
@@ -6586,7 +6634,7 @@ async function submitExam(){
             model_answer_hi:biling?((q.model_hi||'').trim()||null):null};
   });
   const _sched=(val('ex-sched')||'').trim(); const _chRaw=(val('ex-ch')||'').trim();
-  const body={subject:val('ex-sub'),title:title,chapter:(_sched?(_chRaw+' \u27E6S:'+_sched+'\u27E7'):_chRaw),test_type:_examType,medium:_examMedium,duration_min:parseInt(val('ex-dur'))||60,scheduled_at:_sched||null,questions:questions};
+  const body={subject:val('ex-sub'),class_name:(val('ex-cls-test')||''),title:title,chapter:(_sched?(_chRaw+' \u27E6S:'+_sched+'\u27E7'):_chRaw),test_type:_examType,medium:_examMedium,duration_min:parseInt(val('ex-dur'))||60,scheduled_at:_sched||null,questions:questions};
   try{
     const _editId=window._editExamId;
     if(_editId){ await api('/api/teacher/exam/'+_editId,'PATCH',body); }
@@ -9038,7 +9086,7 @@ async function loadSDpp(){
       const remBtn=checked?`<button class="btn btn-primary btn-sm" onclick="openDppRemarks(${pk.id})"> View Remarks</button>`:'';
       const subBtn=`<button class="btn ${subm?'btn-ghost':'btn-success'} btn-sm" onclick="openDppSubmit(${pk.id})">${ic('upload')} ${subm?'Re-submit':'Submit'}</button>`;
       return `<div class="dpp-card">
-        <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div>${srcChip}</div>
+        <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div><div style="display:flex;gap:6px;align-items:center">${pk.class_name?`<span class="chip-sub" style="color:#047857">${esc(pk.class_name)}</span>`:''}${srcChip}</div></div>
         <div class="dpp-title">${esc(pk.title||'DPP')}</div>
         <div class="dpp-meta"> ${esc(pk.chapter||'—')}${pk.part?` · Part: ${esc(pk.part)}`:''} ·  ${esc(pk.medium||'English')}</div>
         <div class="dpp-meta"> ${esc(pk.teacher||'Teacher')}${pk.created_at?` · ${esc(pk.created_at)}`:''}</div>
@@ -9294,6 +9342,7 @@ function examCardHTML(e){
         <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap"><b style="font-size:.93rem">${esc(e.title)}</b>${tyPill}${stPill}</div>
         <div class="tx-meta">
           ${e.subject?`<span class="tx-pill nv inf"><b>${esc(e.subject)}</b></span>`:''}
+          ${e.class_name?`<span class="tx-pill s" style="border-color:rgba(4,120,87,.4);color:#047857">${esc(e.class_name)}</span>`:''}
           ${spCleanCh(e.chapter)?`<span class="tx-pill s">${esc(spCleanCh(e.chapter))}</span>`:''}
           <span class="tx-pill s inf">${ic('clipboard')} <b>${e.questions}</b> Qs</span><span class="tx-pill s inf">${ic('chart')} <b>${e.total_marks}</b> marks</span><span class="tx-pill s inf">${ic('clock')} <b>${e.duration_min}</b> min</span>${_sch?`<span class="tx-pill s inf">${ic('calendar')} ${spSchedFmt(_sch)}</span>`:''}
         </div>
@@ -10367,18 +10416,37 @@ function ttJump(cid, subjEnc, tabFn, cls, clsFn){
   const pick=()=>{ if(subjEnc&&tabFn&&window[tabFn]){ window[tabFn](subjEnc); setTimeout(scroll,320); } else scroll(); };
   if(cls&&clsFn&&window[clsFn]){ window[clsFn](cls); setTimeout(pick,320); } else pick();
 }
-function _clsOfEntry(e){ const c=String(e.class_name||''); if(/(^|[^0-9])10([^0-9]|$)/.test(c)) return '10'; if(/12/.test(c)) return '12'; return ''; }
+function _clsOfEntry(e){
+  // Class detect: "Class 10"/"10th"/"X"/"Secondary" -> '10',
+  // "Class 12"/"12th"/"XII"/"Sr. Secondary" -> '12'. Na mile to ''.
+  const c=String(e.class_name||'').toLowerCase();
+  if(!c.trim()) return '';
+  if(/(^|[^0-9])10([^0-9]|$)/.test(c)) return '10';
+  if(/12/.test(c)) return '12';
+  if(/\bxii\b|sr\.?\s*secondary|senior\s*secondary/.test(c)) return '12';
+  if(/\bx\b/.test(c)||(/\bsecondary\b/.test(c)&&!/senior|\bsr\b/.test(c))) return '10';
+  return '';
+}
+function _clsDigits(v){ const m=String(v||'').match(/\d+/); return m?m[0]:''; }
 function _classSplit(entries, opts){
   // Same naam ke subjects (e.g. Data Entry Operations) Class 10 aur 12 dono me hon
   // to tabs alag-alag dikhte hain: "Name (Class 10)" / "Name (Class 12)".
+  // Fallback: entry pe class na ho aur teacher profile us subject ko sirf EK class
+  // me teach karta ho to wahi class maan lo (admin ne class set karna bhool gaye ho).
+  const _profCls=sub=>{
+    const sc=((window._tProfile||{}).subject_classes||[]).filter(x=>x&&x.subject===sub);
+    const s=new Set(sc.map(x=>String(x.class||'').replace(/\D/g,'')).filter(Boolean));
+    return s.size===1?[...s][0]:'';
+  };
+  const _cls=e=>_clsOfEntry(e)||_profCls(e.subject||'');
   const buckets={};
-  entries.forEach(e=>{ const k=e.subject||''; const c=_clsOfEntry(e); if(!buckets[k]) buckets[k]=new Set(); if(c) buckets[k].add(c); });
+  entries.forEach(e=>{ const k=e.subject||''; const c=_cls(e); if(!buckets[k]) buckets[k]=new Set(); if(c) buckets[k].add(c); });
   const need=new Set(Object.keys(buckets).filter(k=>buckets[k].has('10')&&buckets[k].has('12')));
   if(!need.size) return entries;
   const tmap=(opts&&opts.tipTeacherMap)||{};
   return entries.map(e=>{
     if(!need.has(e.subject)) return e;
-    const cl=_clsOfEntry(e);
+    const cl=_cls(e);
     const disp=e.subject+(cl?` (Class ${cl})`:'');
     if(tmap[e.subject]&&!tmap[disp]) tmap[disp]=tmap[e.subject];
     return Object.assign({},e,{subject:disp});

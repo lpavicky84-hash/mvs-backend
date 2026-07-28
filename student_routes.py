@@ -134,13 +134,14 @@ def student_workspace(db: Session = Depends(get_db), current_user=Depends(get_st
     # ---- upcoming deadlines from timetable entries flagged as test/exam/assignment
     deadlines = []
     try:
-        tt = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(subs)).all() if subs else []
+        _sc = _subj_scope_for(db, TimetableEntry, subs)
+        tt = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(list(_sc))).all() if subs else []
         for e in tt:
             et = (getattr(e, "entry_type", "") or "").lower()
             if e.entry_date and e.entry_date >= today and et in ("test", "exam", "assignment", "dpp"):
                 days = (e.entry_date - today).days
                 deadlines.append({
-                    "subject": e.subject, "title": e.chapter or e.part or et.title(),
+                    "subject": _sc.get(e.subject, e.subject), "title": e.chapter or e.part or et.title(),
                     "type": et, "date": str(e.entry_date), "days_left": days,
                     "urgency": "high" if days <= 1 else ("med" if days <= 3 else "low")})
         deadlines.sort(key=lambda x: x["date"])
@@ -688,8 +689,9 @@ def timetable_plan(db: Session = Depends(get_db), current_user=Depends(get_stude
     sp = get_student_profile(current_user, db)
     from models import TimetableEntry
     from sqlalchemy import or_
+    _scope = _subj_scope_for(db, TimetableEntry, sp.subjects or [])
     es = db.query(TimetableEntry).filter(
-        TimetableEntry.subject.in_(sp.subjects or []),
+        TimetableEntry.subject.in_(list(_scope)),
         or_(TimetableEntry.status==None, TimetableEntry.status!='pending')
     ).order_by(TimetableEntry.subject, TimetableEntry.chapter, TimetableEntry.entry_date).all()
     # CLASS-WARE FILTER (permanent fix): same-name subjects (English 202 vs 302,
@@ -732,7 +734,7 @@ def timetable_plan(db: Session = Depends(get_db), current_user=Depends(get_stude
             verif_status = (v.status if v else "pending")
             cooling = bool(v and v.cooldown_until and v.cooldown_until > datetime.utcnow())
         result.append({
-            "id": e.id, "subject": e.subject, "class_name": e.class_name,
+            "id": e.id, "subject": _scope.get(e.subject, e.subject), "class_name": e.class_name,
             "chapter": e.chapter, "part": e.part,
             "date": str(e.entry_date) if e.entry_date else None,
             "day": e.day, "time": getattr(e,"time_text",None),
@@ -787,13 +789,23 @@ def student_materials_v2(db: Session = Depends(get_db), current_user=Depends(get
     from models import Material
     sp = get_student_profile(current_user, db)
     subs = sp.subjects or []
+    my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
     ms = db.query(Material).filter(
         Material.subject.in_(subs),
         Material.material_type.in_(["notes", "dpp", "other"])
     ).order_by(Material.subject, Material.chapter, Material.created_at.desc()).all()
-    return [{"id": m.id, "subject": m.subject, "chapter": m.chapter, "type": m.material_type,
-             "category": m.category, "title": m.title, "teacher_name": m.teacher_name,
-             "filename": m.filename, "date": str(m.created_at)[:10]} for m in ms]
+    # Same-naam subject (Class 10 & 12) ho to sirf apni class ka material dikhe
+    # (material pe class tag nahi hai to sabko dikhta hai — backward compatible)
+    out = []
+    for m in ms:
+        mc = _class_digits(getattr(m, "class_name", ""))
+        if my_cls and mc and mc != my_cls:
+            continue
+        out.append({"id": m.id, "subject": m.subject, "chapter": m.chapter, "type": m.material_type,
+                    "category": m.category, "title": m.title, "teacher_name": m.teacher_name,
+                    "class_name": getattr(m, "class_name", "") or "",
+                    "filename": m.filename, "date": str(m.created_at)[:10]})
+    return out
 
 @router.get("/material/{mid}/download")
 def student_download(mid: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
@@ -1072,6 +1084,8 @@ def _ensure_exam_columns(db):
          "ALTER TABLE exam_attempts ADD COLUMN skipped TEXT NULL"),
         ("ALTER TABLE exam_questions ADD COLUMN alt_image_b64 LONGTEXT NULL",
          "ALTER TABLE exam_questions ADD COLUMN alt_image_b64 TEXT NULL"),
+        ("ALTER TABLE exams ADD COLUMN class_name VARCHAR(50) NULL",
+         "ALTER TABLE exams ADD COLUMN class_name TEXT NULL"),
     ]
     for group in stmts:
         for st in group:
@@ -1084,20 +1098,73 @@ def _ensure_exam_columns(db):
     _EXAM_COLS_READY = True
 
 
+def _subj_norm(s):
+    """Subject matching normalize: trailing code '(229)' / '- 229' hatao, casefold.
+    'Data Entry Operations (229)' == 'Data Entry Operations'."""
+    import re as _re
+    s = str(s or "")
+    s = _re.sub(r"\s*[\(\[][^\)\]]*\d+[^\)\]]*[\)\]]\s*$", "", s)
+    s = _re.sub(r"\s*[-–—_/]\s*\d{2,}\s*$", "", s)
+    s = _re.sub(r"\s+", " ", s).strip().lower()
+    s = _re.sub(r"\bop\b", "operations", s)   # "Data Entry Op" abbreviation
+    return s
+
+
+def _subj_scope_for(db, model, subjects):
+    """Assigned subjects + DB me stored variants ka map: {stored: canonical}."""
+    scope, norm = {}, {}
+    for s in subjects or []:
+        n = _subj_norm(s)
+        if n:
+            norm[n] = s
+            scope[s] = s
+    if not norm:
+        return scope
+    try:
+        for (v,) in db.query(model.subject).distinct().all():
+            if v and v not in scope and _subj_norm(v) in norm:
+                scope[v] = norm[_subj_norm(v)]
+    except Exception:
+        pass
+    return scope
+
+
+def _class_digits(x):
+    """'Class 10' / '10th' / 'X' -> '10'; 'Class 12' / 'XII' -> '12'; else ''."""
+    import re as _re
+    s = str(x or "").strip().lower()
+    if not s:
+        return ""
+    m = _re.search(r"\d+", s)
+    if m:
+        return m.group(0)
+    if _re.search(r"\bxii\b|sr\.?\s*secondary|senior\s*secondary", s):
+        return "12"
+    if _re.search(r"\bx\b", s) or ("secondary" in s and "senior" not in s and "sr" not in s):
+        return "10"
+    return ""
+
+
 @router.get("/exams")
 def student_exams(db: Session = Depends(get_db), current_user=Depends(get_student)):
     _ensure_exam_columns(db)
     sp = get_student_profile(current_user, db)
     subs = sp.subjects or []
+    my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
     q = db.query(Exam).filter(Exam.is_active == True)
     if subs:
         q = q.filter(Exam.subject.in_(subs))
     rows = q.order_by(Exam.created_at.desc()).all()
     out = []
     for e in rows:
+        # Class-targeted test: sirf usi class ke students ko dikhe ("" = sabhi classes)
+        ex_cls = _class_digits(getattr(e, "class_name", ""))
+        if my_cls and ex_cls and ex_cls != my_cls:
+            continue
         att = db.query(ExamAttempt).filter(ExamAttempt.exam_id == e.id, ExamAttempt.student_id == sp.id).order_by(ExamAttempt.submitted_at.desc()).first()
         nq = db.query(ExamQuestion).filter(ExamQuestion.exam_id == e.id).count()
         out.append({"id": e.id, "title": e.title, "subject": e.subject, "chapter": e.chapter,
+                    "class_name": getattr(e, "class_name", "") or "",
                     "test_type": e.test_type, "total_marks": e.total_marks, "duration_min": e.duration_min,
                     "medium": e.medium, "questions": nq, "teacher_name": e.teacher_name,
                     "teacher_id": e.teacher_id,
@@ -1131,6 +1198,10 @@ def student_exam_paper(exam_id: int, medium: str = "english", db: Session = Depe
         raise HTTPException(404, "Test not found")
     if ex.subject and ex.subject not in (sp.subjects or []):
         raise HTTPException(403, "Not your subject")
+    _my = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
+    _ec = _class_digits(getattr(ex, "class_name", ""))
+    if _my and _ec and _ec != _my:
+        raise HTTPException(403, "This test is for another class")
     qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).order_by(ExamQuestion.q_no).all()
     # student paper must NEVER contain answers — strip every answer field defensively
     from types import SimpleNamespace as _NS
@@ -1645,16 +1716,12 @@ def student_dpp_packs(db: Session = Depends(get_db), current_user=Depends(get_st
     """Mere subjects+class ke DPP packs + meri submission status."""
     from models import DppPack, DppAnswer, TeacherProfile, User
     sp = get_student_profile(current_user, db)
-    import re as _re
-    def _cls_norm(x):
-        m = _re.search(r"\d+", str(x or ""))
-        return m.group(0) if m else ""
-    my_cls = _cls_norm(sp.class_level) or _cls_norm(sp.class_name)
+    my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
     packs = (db.query(DppPack).filter(DppPack.subject.in_(sp.subjects or []))
              .order_by(DppPack.created_at.desc()).all())
     out = []
     for pk in packs:
-        pk_cls = _cls_norm(pk.class_name)
+        pk_cls = _class_digits(pk.class_name)
         if my_cls and pk_cls and pk_cls != my_cls:
             continue
         tname = ""
@@ -1666,6 +1733,7 @@ def student_dpp_packs(db: Session = Depends(get_db), current_user=Depends(get_st
                .filter(DppAnswer.pack_id == pk.id, DppAnswer.student_id == sp.id)
                .order_by(DppAnswer.submitted_at.desc()).first())
         out.append({"id": pk.id, "subject": pk.subject, "chapter": pk.chapter, "part": pk.part,
+                    "class_name": getattr(pk, "class_name", "") or "",
                     "title": pk.title, "medium": pk.medium, "source": pk.source,
                     "teacher": tname, "questions_n": len(pk.questions or []),
                     "created_at": pk.created_at.strftime("%d %b %Y") if pk.created_at else None,

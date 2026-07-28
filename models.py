@@ -460,6 +460,7 @@ class Exam(Base):
     subject     = Column(String(120))
     title       = Column(String(200))
     chapter     = Column(String(200), nullable=True)
+    class_name  = Column(String(50), default="")            # "Class 10" / "Class 12" — "" = sabhi classes
     test_type   = Column(String(20), default="subjective")  # mcq | subjective
     medium      = Column(String(20), default="English")     # English | Hindi | Bilingual
     total_marks = Column(Integer, default=0)
