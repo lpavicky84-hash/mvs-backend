@@ -340,7 +340,8 @@ def portal_fetch_student(phone):
             if v and str(v).strip():
                 return str(v).strip()
         return ""
-    return {
+    out = dict(d)  # saare original keys bhi pass — unknown naam se bhi data na khoye
+    out.update({
         "name": (d.get("name") or "").strip() or None,
         "phone": str(d.get("phone") or phone),
         "class_level": str(d.get("class_level") or d.get("class") or "") or None,
@@ -351,10 +352,13 @@ def portal_fetch_student(phone):
         # exam info — class manager ke alag-alag naam se bhi accept karo
         "exam_session": _pick("exam_session", "examSession", "exam_session_label", "session"),
         "exam_stream": _pick("exam_stream", "examStream", "stream", "nios_stream"),
-        "nios_ref": _pick("nios_ref", "nios_reference", "reference", "reference_no",
-                          "ref_no", "enrollment", "enrollment_no", "enrolment_no",
-                          "nios_enrollment", "roll_no", "registration_no"),
-    }
+        "nios_ref": _pick("nios_ref", "nios_reference", "niosref", "reference",
+                          "reference_no", "ref_no", "refno", "enrollment",
+                          "enrollment_no", "enrollment_number", "enrolment_no",
+                          "nios_enrollment", "roll_no", "registration_no",
+                          "reg_no", "regno", "admission_no", "adm_no"),
+    })
+    return out
 
 
 def portal_unlocked_students():

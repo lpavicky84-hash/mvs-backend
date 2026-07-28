@@ -1138,21 +1138,20 @@ def edit_student(sid: int, payload: dict, db: Session = Depends(get_db), _=Depen
         sp.class_level = (payload.get("class_level") or "").strip() or None
     if "subjects" in payload and isinstance(payload["subjects"], list):
         sp.subjects = [s.strip() for s in payload["subjects"] if s.strip()]
-    if payload.get("exam_session") is not None:
+    if payload.get("exam_session"):
         sid = (payload.get("exam_session") or "").strip()[:30]
-        if sid:
-            mapped = _map_session_text(db, sid)
-            if not mapped:
-                raise HTTPException(status_code=400, detail="Unknown exam session")
-            sp.exam_session = mapped
-            stv = _stream_for_session(db, mapped)
-            if stv:
-                sp.exam_stream = stv
-        else:
-            sp.exam_session, sp.exam_stream = None, None
-    if payload.get("nios_ref") is not None:
+        mapped = _map_session_text(db, sid)
+        if not mapped:
+            raise HTTPException(status_code=400, detail="Unknown exam session")
+        sp.exam_session = mapped
+        stv = _stream_for_session(db, mapped)
+        if stv:
+            sp.exam_stream = stv
+    # NOTE: empty exam_session / nios_ref form value se PURANA value kabhi
+    # erase nahi hota — sirf non-empty value hi update karti hai.
+    if payload.get("nios_ref"):
         ref = (payload.get("nios_ref") or "").strip().upper()[:40]
-        sp.nios_ref = ref or None
+        sp.nios_ref = ref
     db.commit()
     return {"message": "Student updated"}
 
@@ -1795,16 +1794,32 @@ def delete_all_students(payload: dict, db: Session = Depends(get_db), _=Depends(
 _EXAM_KEY_CANDIDATES = {
     "session": ("exam_session", "session", "exam_session_label", "examsession"),
     "stream":  ("exam_stream", "stream", "nios_stream", "examstream"),
-    "ref":     ("nios_ref", "nios_reference", "reference", "ref",
-                "reference_no", "enrollment", "enrollment_no", "enrolment_no"),
+    "ref":     ("nios_ref", "nios_reference", "niosref", "nios_ref_no", "niosrefno",
+                "reference", "ref", "ref_no", "refno", "reference_no", "referenceno",
+                "enrollment", "enrollment_no", "enrollmentno", "enrollment_number",
+                "enrolment_no", "enroll_no", "enrollno", "registration_no",
+                "registration_number", "reg_no", "regno", "admission_no",
+                "adm_no", "admno", "student_ref", "roll_no", "uid"),
 }
 
 
 def _portal_pick(st, keys):
+    # case-insensitive bhi: class manager 'refNo' / 'Ref_No' / 'NIOS_REF' bheje to bhi mile
+    lower_map = {}
+    for k in st.keys():
+        try:
+            lower_map.setdefault(str(k).lower(), k)
+        except Exception:
+            pass
     for k in keys:
         v = st.get(k)
         if v and str(v).strip():
             return str(v).strip()
+        lk = lower_map.get(k.lower())
+        if lk is not None:
+            v = st.get(lk)
+            if v and str(v).strip():
+                return str(v).strip()
     return ""
 
 
