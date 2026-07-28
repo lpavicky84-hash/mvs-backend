@@ -1,3 +1,4 @@
+import re
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -248,6 +249,9 @@ def get_all_students(db: Session = Depends(get_db), _=Depends(get_admin)):
                 "is_verified": sp.is_verified,
                 "source": getattr(sp, "source", None) or "mvs_app",
                 "medium": getattr(sp, "medium", None),
+                "exam_session": getattr(sp, "exam_session", None),
+                "exam_stream": getattr(sp, "exam_stream", None),
+                "nios_ref": getattr(sp, "nios_ref", None),
                 "is_active": s.is_active,
                 "dpp_submitted": dpp_submitted,
                 "tests_attempted": test_attempted,
@@ -1003,6 +1007,7 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
             continue
         # naya student — pehle dekho MVS Portal ka to nahi (priority rule)
         psrc, psubs, pmed, pcls = "mvs_app", [], None, None
+        _st_exam = None
         try:
             from ext_materials import portal_fetch_student
             st = portal_fetch_student(phone)
@@ -1013,6 +1018,7 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
                 pcls = st.get("class_level")
                 if st.get("name"):
                     name = st["name"]
+                _st_exam = dict(st)  # exam info niche profile banne ke baad apply hogi
         except Exception:
             pass
         i = 1
@@ -1024,10 +1030,16 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
         u = User(name=name, user_id=cand, password=hash_password(phone),
                  role=UserRole.student, is_active=True)
         db.add(u); db.flush()
-        db.add(StudentProfile(user_id=u.id, phone=phone, subjects=psubs, class_name="",
+        _nsp = StudentProfile(user_id=u.id, phone=phone, subjects=psubs, class_name="",
                               batch_name=batch, email=email, is_verified=True,
                               plain_password=phone, source=psrc,
-                              medium=pmed, class_level=pcls))
+                              medium=pmed, class_level=pcls)
+        db.add(_nsp)
+        if _st_exam:
+            try:
+                _apply_portal_exam_info(_nsp, _st_exam, db)
+            except Exception:
+                pass
         if psrc == "mvs_portal":
             duplicates.append({"phone": phone, "sheet_name": name,
                                "existing_name": name, "existing_user_id": cand,
@@ -1126,6 +1138,21 @@ def edit_student(sid: int, payload: dict, db: Session = Depends(get_db), _=Depen
         sp.class_level = (payload.get("class_level") or "").strip() or None
     if "subjects" in payload and isinstance(payload["subjects"], list):
         sp.subjects = [s.strip() for s in payload["subjects"] if s.strip()]
+    if payload.get("exam_session") is not None:
+        sid = (payload.get("exam_session") or "").strip()[:30]
+        if sid:
+            mapped = _map_session_text(db, sid)
+            if not mapped:
+                raise HTTPException(status_code=400, detail="Unknown exam session")
+            sp.exam_session = mapped
+            stv = _stream_for_session(db, mapped)
+            if stv:
+                sp.exam_stream = stv
+        else:
+            sp.exam_session, sp.exam_stream = None, None
+    if payload.get("nios_ref") is not None:
+        ref = (payload.get("nios_ref") or "").strip().upper()[:40]
+        sp.nios_ref = ref or None
     db.commit()
     return {"message": "Student updated"}
 
@@ -1765,6 +1792,101 @@ def delete_all_students(payload: dict, db: Session = Depends(get_db), _=Depends(
 #  Yeh sync MVS App students ko portal par check karke unhe transfer kar
 #  deta hai aur unka data (class, medium, subjects) portal se refresh karta hai.
 # ==================================================================
+_EXAM_KEY_CANDIDATES = {
+    "session": ("exam_session", "session", "exam_session_label", "examsession"),
+    "stream":  ("exam_stream", "stream", "nios_stream", "examstream"),
+    "ref":     ("nios_ref", "nios_reference", "reference", "ref",
+                "reference_no", "enrollment", "enrollment_no", "enrolment_no"),
+}
+
+
+def _portal_pick(st, keys):
+    for k in keys:
+        v = st.get(k)
+        if v and str(v).strip():
+            return str(v).strip()
+    return ""
+
+
+def _map_session_text(db, text):
+    """Class-manager ka exam session text (e.g. 'Stream 2', 'October 2026')
+    ko hamare session id (stream2 / oct2026 / ondemand / apr2027) se map karo.
+    Match na mile to '' (kuch overwrite mat karo)."""
+    t = (text or "").strip().lower()
+    if not t:
+        return ""
+    t2 = t.replace(" ", "")
+    try:
+        from syllabus_routes import _sessions
+        sess = _sessions(db)
+    except Exception:
+        sess = []
+    for x in sess:
+        xid = (x.get("id") or "").lower()
+        lbl = (x.get("label") or "").lower()
+        if t2 == xid or t == lbl:
+            return xid
+    for x in sess:  # substring match on label: 'stream 2' ⊂ 'stream 2 examination'
+        xid = (x.get("id") or "").lower()
+        lbl2 = (x.get("label") or "").lower().replace(" ", "")
+        if t2 and t2 in lbl2:
+            return xid
+    if "ondemand" in t2 or "odes" in t2:
+        return "ondemand"
+    if "stream2" in t2:
+        return "stream2"
+    if "stream1" in t2:
+        # NIOS stream 1 = public exam — nearest upcoming tma session
+        for x in sess:
+            if x.get("tma", True) and (x.get("id") or "").startswith("oct"):
+                return x.get("id") or ""
+        for x in sess:
+            if x.get("tma", True):
+                return x.get("id") or ""
+    return ""
+
+
+def _stream_for_session(db, session_id):
+    try:
+        from syllabus_routes import _sessions
+        for x in _sessions(db):
+            if (x.get("id") or "") == session_id:
+                return "1" if x.get("tma", True) else "2"
+    except Exception:
+        pass
+    return ""
+
+
+def _apply_portal_exam_info(sp, st, db=None):
+    """Class manager se exam session / stream / NIOS ref copy karo.
+    RULE: kabhi bhi empty value se overwrite nahi — jo class manager
+    na bheje wo portal ka apna value bana rahe."""
+    if not isinstance(st, dict):
+        return
+    # session: pehle direct id-ish keys, phir free-text ko map karke
+    raw_sess = _portal_pick(st, _EXAM_KEY_CANDIDATES["session"])
+    raw_stream = _portal_pick(st, _EXAM_KEY_CANDIDATES["stream"])
+    ref = _portal_pick(st, _EXAM_KEY_CANDIDATES["ref"])
+    # class manager ke 'Exam Session' field me aksar 'Stream 2' likha hota hai
+    blob = " ".join(x for x in [raw_sess, raw_stream] if x)
+    new_sid = ""
+    if raw_sess and not re.search(r"stream", raw_sess, re.I):
+        new_sid = _map_session_text(db, raw_sess) or (raw_sess[:30] if re.fullmatch(r"[a-z0-9_-]+", raw_sess, re.I) else "")
+    if not new_sid and blob:
+        new_sid = _map_session_text(db, blob)
+    if new_sid:
+        sp.exam_session = new_sid
+        stv = _stream_for_session(db, new_sid)
+        if stv:
+            sp.exam_stream = stv
+    elif raw_stream:
+        m = re.search(r"([1-4])", raw_stream)
+        if m:
+            sp.exam_stream = m.group(1)
+    if ref:
+        sp.nios_ref = ref.upper()[:40]
+
+
 def _sync_one_from_portal(sp, db):
     """Ek student ko portal par check karo. True agar mvs_portal me transfer hua."""
     from ext_materials import portal_fetch_student
@@ -1782,6 +1904,7 @@ def _sync_one_from_portal(sp, db):
         sp.class_level = st["class_level"]
     if st.get("name") and sp.user and (not sp.user.name or sp.user.name.startswith("Student ")):
         sp.user.name = st["name"]
+    _apply_portal_exam_info(sp, st, db)
     return True
 
 
@@ -1804,9 +1927,27 @@ def sync_students_with_portal(payload: dict = None, db: Session = Depends(get_db
                               "user_id": sp.user.user_id if sp.user else ""})
         except Exception:
             continue
+    # existing MVS Portal students: class manager se exam info REFRESH karo
+    # (galat auto-guess stream/session repair ho jata hai; empty kabhi overwrite nahi)
+    refreshed = 0
+    portal_students = db.query(_SP).filter(
+        _SP.source == "mvs_portal", _SP.phone.isnot(None)).limit(limit).all()
+    for sp in portal_students:
+        try:
+            from ext_materials import portal_fetch_student
+            st = portal_fetch_student(sp.phone)
+            if st and st.get("unlocked"):
+                before = (sp.exam_session, sp.exam_stream, sp.nios_ref)
+                _apply_portal_exam_info(sp, st, db)
+                if (sp.exam_session, sp.exam_stream, sp.nios_ref) != before:
+                    refreshed += 1
+        except Exception:
+            continue
     db.commit()
     return {"checked": len(app_students), "moved": len(moved), "students": moved[:200],
-            "message": f"{len(moved)} student(s) moved from MVS App to MVS Portal."}
+            "exam_refreshed": refreshed,
+            "message": f"{len(moved)} student(s) moved from MVS App to MVS Portal. "
+                       f"{refreshed} portal student(s) exam info refreshed."}
 
 
 # ==================================================================

@@ -655,6 +655,23 @@ def _auto_session(db, sp):
     cur = getattr(sp, "exam_session", "") or ""
     if cur:
         return cur
+    # MVS Portal students: class manager hi source of truth hai — pehle wahan
+    # se exam session lao (galat guess se bachne ke liye), phir hi guess karo.
+    if (getattr(sp, "source", "") or "") == "mvs_portal" and getattr(sp, "phone", ""):
+        try:
+            from ext_materials import portal_fetch_student
+            from admin_routes import _apply_portal_exam_info
+            st = portal_fetch_student(sp.phone)
+            if st and st.get("unlocked"):
+                _apply_portal_exam_info(sp, st, db)
+                if getattr(sp, "exam_session", ""):
+                    db.commit()
+                    return sp.exam_session
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
     sess_list = _sessions(db)
     best = None
     for x in sess_list:

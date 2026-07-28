@@ -572,6 +572,21 @@ def mark_read(notif_id: int, db: Session = Depends(get_db), current_user=Depends
     return {"ok": True}
 
 # ===== PROFILE & SUBJECT SELECTION =====
+def _session_label(db, sid):
+    # oct2026 -> 'October 2026', stream2 -> 'Stream 2'
+    if not sid:
+        return ''
+    try:
+        from syllabus_routes import _sessions
+        for x in _sessions(db):
+            if (x.get('id') or '') == sid:
+                lbl = x.get('label') or ''
+                return lbl.replace(' Public Examination', '').replace(' Examination', '') or sid
+    except Exception:
+        pass
+    return sid
+
+
 @router.get("/profile")
 def get_profile(db: Session = Depends(get_db), current_user=Depends(get_student)):
     sp = get_student_profile(current_user, db)
@@ -587,6 +602,7 @@ def get_profile(db: Session = Depends(get_db), current_user=Depends(get_student)
         "batch_name": sp.batch_name,
         "class_name": sp.class_name,
         "exam_session": sp.exam_session,
+        "exam_session_label": _session_label(db, sp.exam_session),
         "exam_stream": sp.exam_stream,
         "nios_ref": sp.nios_ref,
         "has_photo": bool(sp.photo_b64)

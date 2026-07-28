@@ -7366,6 +7366,11 @@ async function openEditStudent(sid,data){
      <div class="form-group"><label>Batch</label><select class="form-control" id="es-batch">${batchOptions(data.batch_name||'',cls)}</select></div>
      <div class="form-group"><label>Medium</label><select class="form-control" id="es-medium"><option value="">\u2014 Select medium \u2014</option><option ${data.medium==='Hindi'?'selected':''}>Hindi</option><option ${data.medium==='English'?'selected':''}>English</option></select></div>
      <div class="form-group"><label>Subjects <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(tap to select)</span></label><div id="es-subj-wrap">${cls?subjectCheckboxes('es-subj-wrap',cls,data.subjects):'<span style="color:var(--text-muted);font-size:.82rem">Select a class first.</span>'}</div></div>
+     <div class="form-group"><label>Exam Session</label><select class="form-control" id="es-session">
+       <option value="">— Not set —</option>
+       ${[['oct2026','October 2026 (Stream 1)'],['apr2027','April 2027 (Stream 1)'],['stream2','Stream 2 Examination'],['ondemand','On Demand Examination']].map(x=>`<option value="${x[0]}"${data.exam_session===x[0]?' selected':''}>${x[1]}</option>`).join('')}
+     </select></div>
+     <div class="form-group"><label>NIOS Reference No.</label><input class="form-control" id="es-niosref" value="${esc(data.nios_ref||'')}" placeholder="e.g. B1126300356"></div>
      <div id="es-status"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="es-btn" onclick="saveEditStudent(${sid})">Save</button>`);
 }
@@ -7378,7 +7383,7 @@ async function saveEditStudent(sid){
   const subjects=pickedSubjects('es-subj-wrap');
   const btn=document.getElementById('es-btn'); btn.disabled=true; btn.textContent='Saving...';
   try{
-    await api('/api/admin/student/'+sid,'PATCH',{name:val('es-name'),phone:val('es-phone'),email:val('es-email'),batch_name:val('es-batch'),class_level:val('es-class'),medium:val('es-medium'),subjects});
+    await api('/api/admin/student/'+sid,'PATCH',{name:val('es-name'),phone:val('es-phone'),email:val('es-email'),batch_name:val('es-batch'),class_level:val('es-class'),medium:val('es-medium'),subjects,exam_session:val('es-session'),nios_ref:val('es-niosref')});
     toast('Student updated.'); closeModal(); loadAStudents();
   }catch(e){ document.getElementById('es-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Save'; }
 }
@@ -7721,7 +7726,7 @@ function aRenderStudents(){
   const page=filtered.slice(start,start+_stuSize);
   const rows=page.length?page.map(s=>{
     const subs=(s.subjects||[]).slice(0,4).map(x=>`<span class="chip">${esc(x)}</span>`).join('');
-    return `<div class="stu-row" onclick="openStudentProfile(${s.profile_id})"><div class="stu-photo" id="sphoto-${s.profile_id}" onclick="event.stopPropagation();viewPhoto('sphoto-${s.profile_id}','${esc((s.name||'').replace(/'/g,''))}',0)">${esc(initials(s.name||'S'))}</div><div class="stu-info"><div class="stu-name">${esc(s.name)}</div><div class="stu-meta">${esc(s.user_id)} · ${esc(s.phone||'no phone')} · ${esc(s.batch||'no batch')} · <span class="xm-chip" style="font-size:.6rem;padding:2px 7px;${s.source==='mvs_portal'?'background:rgba(201,150,46,.16);color:#b07f1e':''}">${s.source==='mvs_portal'?'MVS PORTAL':'MVS APP'}</span></div><div class="slist-chips" style="margin-top:4px">${subs}</div></div><div class="stu-act" onclick="event.stopPropagation()"><button class="btn btn-ghost btn-sm" onclick='openEditStudent(${s.profile_id},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,medium:s.medium||'',subjects:s.subjects||[]}).replace(/'/g,"&#39;")})'>${ic('edit')}</button><button class="btn btn-danger btn-sm" onclick="deleteStudent(${s.profile_id},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
+    return `<div class="stu-row" onclick="openStudentProfile(${s.profile_id})"><div class="stu-photo" id="sphoto-${s.profile_id}" onclick="event.stopPropagation();viewPhoto('sphoto-${s.profile_id}','${esc((s.name||'').replace(/'/g,''))}',0)">${esc(initials(s.name||'S'))}</div><div class="stu-info"><div class="stu-name">${esc(s.name)}</div><div class="stu-meta">${esc(s.user_id)} · ${esc(s.phone||'no phone')} · ${esc(s.batch||'no batch')} · <span class="xm-chip" style="font-size:.6rem;padding:2px 7px;${s.source==='mvs_portal'?'background:rgba(201,150,46,.16);color:#b07f1e':''}">${s.source==='mvs_portal'?'MVS PORTAL':'MVS APP'}</span></div><div class="slist-chips" style="margin-top:4px">${subs}</div></div><div class="stu-act" onclick="event.stopPropagation()"><button class="btn btn-ghost btn-sm" onclick='openEditStudent(${s.profile_id},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,medium:s.medium||'',subjects:s.subjects||[],exam_session:s.exam_session||'',nios_ref:s.nios_ref||''}).replace(/'/g,"&#39;")})'>${ic('edit')}</button><button class="btn btn-danger btn-sm" onclick="deleteStudent(${s.profile_id},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
   }).join(''):`<div class="empty-state"><p>No students match this view.</p></div>`;
   const ov=window._aPortalOv;
   const segB=(id,label,n)=>`<button class="seg-b ${_stuSrcFilter===id?'active':''}" onclick="aStuSrcFilter('${id}')">${label}<span class="seg-n">${n}</span></button>`;
@@ -7762,7 +7767,7 @@ function openStudentProfile(sid){
     `<div class="prof-head" style="padding-bottom:16px;margin-bottom:16px"><div class="prof-photo" id="spp-${sid}">${esc(initials(s.name||'S'))}</div><div class="prof-id"><h2 style="font-size:1.2rem">${esc(s.name)}</h2><span class="chip" style="margin-top:6px">${esc(s.batch||'Student')}</span></div></div>
      <div class="prof-grid">${rows.map(([k,v])=>`<div class="prof-cell"><div class="prof-k">${k}</div><div class="prof-v">${esc(v)}</div></div>`).join('')}</div>
      <div class="prof-cell" style="margin-top:14px"><div class="prof-k">Subjects</div><div class="slist-chips" style="margin-top:6px">${subs}</div></div>`,
-    `<button class="btn btn-danger" onclick="closeModal();deleteStudent(${sid},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')} Delete</button><button class="btn btn-primary" onclick='closeModal();openEditStudent(${sid},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,medium:s.medium||'',subjects:s.subjects||[]}).replace(/"/g,"&quot;").replace(/'/g,"&#39;")})'>${ic('edit')} Edit</button>`);
+    `<button class="btn btn-danger" onclick="closeModal();deleteStudent(${sid},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')} Delete</button><button class="btn btn-primary" onclick='closeModal();openEditStudent(${sid},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,medium:s.medium||'',subjects:s.subjects||[],exam_session:s.exam_session||'',nios_ref:s.nios_ref||''}).replace(/"/g,"&quot;").replace(/'/g,"&#39;")})'>${ic('edit')} Edit</button>`);
   if(s.has_photo) loadImgInto('spp-'+sid,'/api/admin/student/'+sid+'/photo');
 }
 async function openAddStudent(){
@@ -7991,7 +7996,15 @@ let _pyqYear='';
 function _extRenderSubject(){
   const el=document.getElementById(_extCid); if(!el) return;
   const pool=_extPool().filter(m=>(((m.subject||'').trim())||'General & Others')===_extSubject);
-  const groups={}; pool.forEach(m=>{ const c=m.category||'Other'; (groups[c]=groups[c]||[]).push(m); });
+  const groups={}; pool.forEach(m=>{
+    let c=m.category||'Other';
+    // PYQ safety-net: agar server ne category kuch aur bheji par title/session me
+    // PYQ/Previous Year likha hai to bhi Solved PYQs me daalo
+    const k=_xmCatKey(c);
+    const blob=(String(m.title||'')+' '+String(m.session||'')).toLowerCase();
+    if(!k.includes('pyq')&&!k.includes('previousyear')&&/\bpyq\b|previous year|prev\.? year|past year|solved paper|old paper/.test(blob)) c='Solved PYQs';
+    (groups[c]=groups[c]||[]).push(m);
+  });
   let body='';
   _xmSortCats(Object.keys(groups)).forEach(c=>{
     const _isPyq=_xmCatKey(c).includes('pyq')||_xmCatKey(c).includes('previousyear');
@@ -8453,7 +8466,7 @@ async function loadSProfile(){
       ['Batch', p.batch_name||'—'],
       ['Medium', p.medium||'—'],
       ['Class', p.class_level?('Class '+p.class_level):'—'],
-      ['Exam Session', p.exam_session||'—'],
+      ['Exam Session', (p.exam_session_label||_sylSessName(p.exam_session)||'—')],
       ['Exam Stream', p.exam_stream?('Stream '+p.exam_stream):'—'],
       ['NIOS Reference', p.nios_ref||'—'],
     ];
