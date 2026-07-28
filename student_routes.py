@@ -1776,6 +1776,9 @@ async def student_dpp_submit(pack_id: int, file: UploadFile = File(...),
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="File is empty")
+    if len(data) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=400,
+                            detail="File bahut badi hai (25MB se zyada). Chhota PDF ya photo bhejo.")
     # ek pack par ek active answer — dobara submit karein to replace
     old = (db.query(DppAnswer)
            .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id).all())

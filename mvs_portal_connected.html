@@ -2640,7 +2640,8 @@ async function compressIfImage(file,maxDim=1800,quality=0.72){
 }
 const MAXB=20*1024*1024;
 // Compress a big PDF by rasterising pages (handles photo/scan-heavy PDFs)
-async function compressPdf(file,statusCb){
+async function compressPdf(file,statusCb,target){
+  const TARGET=target||MAXB;
   if(!window.pdfjsLib || !window.jspdf) return file;
   try{ window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }catch(e){}
   const buf=await file.arrayBuffer();
@@ -2662,7 +2663,7 @@ async function compressPdf(file,statusCb){
       statusCb&&statusCb(`Compressing the PDF... (page ${p}/${pdf.numPages})`);
     }
     const blob=doc.output('blob'); last=blob;
-    if(blob.size<=MAXB) return new File([blob],(file.name||'file.pdf'),{type:'application/pdf'});
+    if(blob.size<=TARGET) return new File([blob],(file.name||'file.pdf'),{type:'application/pdf'});
   }
   return last?new File([last],(file.name||'file.pdf'),{type:'application/pdf'}):file;
 }
@@ -9302,23 +9303,49 @@ async function sDppDoubtSend(pid){
 }
 function openDppSubmit(pid){
   showModal(' Submit DPP Answer',
- `<div class="alert alert-info">Upload your solved DPP as a PDF (max 20MB). Your teacher will be notified and will check it.</div><div class="form-group"><label>Answer PDF</label>${fileDropHTML('dpp-sub-file','dpp-sub-label','.pdf,image/*')}</div>`,
+ `<div class="alert alert-info">Upload your solved DPP as a PDF — bada file apne aap chhota ho jayega, phir fast upload hoga. Your teacher will be notified and will check it.</div><div class="form-group"><label>Answer PDF</label>${fileDropHTML('dpp-sub-file','dpp-sub-label','.pdf,image/*')}</div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-success" id="dpp-sub-btn" onclick="submitDppFile(${pid})">Submit</button>`);
+}
+// DPP answer upload ke liye tight prep: bada PDF/photo chhota karke hi bhejo
+// (warna slow net pe proxy connection kaat deta hai — "Failed to fetch")
+async function _prepDppAnswer(file,statusCb){
+  const IMG_MAX=2*1024*1024, PDF_TRIG=2*1024*1024, PDF_TARGET=4*1024*1024, HARD=8*1024*1024;
+  if(file.type && file.type.startsWith('image/')){
+    statusCb&&statusCb('Photo compress ho rahi hai...');
+    let f=await compressIfImage(file,1400,0.72), q=0.6;
+    while(f.size>IMG_MAX && q>=0.3){ f=await compressIfImage(file,1400,q); q-=0.15; }
+    return {file:f, ok:f.size<=IMG_MAX};
+  }
+  if(file.type==='application/pdf' && file.size>PDF_TRIG){
+    statusCb&&statusCb('PDF chhoti ki ja rahi hai (upload fast hoga)...');
+    try{ const f=await compressPdf(file,statusCb,PDF_TARGET);
+      if(f && f.size<file.size) return {file:f, ok:f.size<=HARD, compressed:true}; }catch(e){}
+  }
+  return {file, ok:file.size<=HARD};
 }
 async function submitDppFile(pid){
   const fi=document.getElementById('dpp-sub-file');
   if(!fi.files.length){ toast('Please select a file.',true); return; }
-  toast('Preparing the file...'); const _r=await smartCompress(fi.files[0],m=>toast(m)); let f=_r.file;
-  if(!_r.ok){ toast('The file is still too large after compression. Please try a smaller file.',true); return; }
-  if(_r.compressed) toast('Compressed. Uploading...');
-  const btn=document.getElementById('dpp-sub-btn'); btn.disabled=true; btn.textContent='Submitting...';
-  try{
-    const fd=new FormData(); fd.append('file',f,f.name||'dpp-answer.pdf');
-    const r=await fetch(API+`/api/student/dpp-packs/${pid}/submit`,{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
-    if(!r.ok){ const er=await r.json().catch(()=>({})); throw new Error(er.detail||'Submit failed'); }
-    closeModal(); toast('DPP submitted! Status: Checking.');
-    loadSDpp();
-  }catch(e){ toast(e.message||'Submit failed',true); btn.disabled=false; btn.textContent='Submit'; }
+  toast('Preparing the file...'); const _r=await _prepDppAnswer(fi.files[0],m=>toast(m)); let f=_r.file;
+  if(!_r.ok){ toast('File bahut badi hai — kam pages wala ya chhota PDF/photo try karo.',true); return; }
+  if(_r.compressed) toast('Ready ('+Math.round(f.size/1024)+'KB). Uploading...');
+  const btn=document.getElementById('dpp-sub-btn'); btn.disabled=true;
+  for(let att=0;att<2;att++){
+    btn.textContent=att?'Retrying...':'Submitting...';
+    try{
+      const fd=new FormData(); fd.append('file',f,f.name||'dpp-answer.pdf');
+      const r=await fetch(API+`/api/student/dpp-packs/${pid}/submit`,{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+      if(!r.ok){ const er=await r.json().catch(()=>({})); throw new Error(er.detail||'Submit failed'); }
+      closeModal(); toast('DPP submitted! Status: Checking.');
+      loadSDpp(); return;
+    }catch(e){
+      if(att===0 && /fail|fetch|network|abort/i.test(e.message||'')){
+        toast('Network issue — 4 sec me dobara try ho raha hai…',true);
+        await new Promise(r=>setTimeout(r,4000)); continue;
+      }
+      toast(e.message||'Submit failed',true); btn.disabled=false; btn.textContent='Submit'; return;
+    }
+  }
 }
 async function openDppRemarks(pid){
   showModal(' Teacher Remarks','<div class="spinner"></div>','');
