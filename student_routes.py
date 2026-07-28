@@ -1749,7 +1749,8 @@ def student_dpp_packs(db: Session = Depends(get_db), current_user=Depends(get_st
             u = db.query(User).filter(User.id == tp.user_id).first()
             tname = u.name if u else ""
         ans = (db.query(DppAnswer)
-               .filter(DppAnswer.pack_id == pk.id, DppAnswer.student_id == sp.id)
+               .filter(DppAnswer.pack_id == pk.id, DppAnswer.student_id == sp.id,
+                       DppAnswer.status != "staged")
                .order_by(DppAnswer.submitted_at.desc()).first())
         out.append({"id": pk.id, "subject": pk.subject, "chapter": pk.chapter, "part": pk.part,
                     "class_name": getattr(pk, "class_name", "") or "",
@@ -1791,6 +1792,62 @@ async def student_dpp_submit(pack_id: int, file: UploadFile = File(...),
     return {"ok": True, "status": "submitted"}
 
 
+@router.post("/dpp-packs/{pack_id}/stage")
+async def student_dpp_stage(pack_id: int, file: UploadFile = File(...),
+                            db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Staged upload: file select hote hi yahan aati hai (progress ke saath).
+    Submit alag step hai (submit-staged) — isse slow net pe bhi upload reliable.
+    Staged rows kahin count/display NAHI hote (status='staged' filtered)."""
+    from models import DppPack, DppAnswer
+    sp = get_student_profile(current_user, db)
+    pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
+    if not pk:
+        raise HTTPException(status_code=404, detail="DPP not found")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="File is empty")
+    if len(data) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=400,
+                            detail="File bahut badi hai (25MB se zyada). Chhota PDF ya photo bhejo.")
+    # purane staged uploads saaf (replace)
+    for o in (db.query(DppAnswer)
+              .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id,
+                      DppAnswer.status == "staged").all()):
+        db.delete(o)
+    a = DppAnswer(pack_id=pack_id, student_id=sp.id,
+                  answer_b64=base64.b64encode(data).decode(),
+                  filename=file.filename or "dpp-answer.pdf", status="staged")
+    db.add(a); db.commit()
+    return {"ok": True, "answer_id": a.id, "size_kb": round(len(data) / 1024)}
+
+
+@router.post("/dpp-packs/{pack_id}/submit-staged")
+def student_dpp_submit_staged(pack_id: int, data: dict = Body(...),
+                              db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Staged upload ko final submit karo — INSTANT (file server pe pahunch chuki hai)."""
+    from models import DppPack, DppAnswer
+    sp = get_student_profile(current_user, db)
+    try:
+        aid = int((data or {}).get("answer_id") or 0)
+    except Exception:
+        aid = 0
+    a = (db.query(DppAnswer)
+         .filter(DppAnswer.id == aid, DppAnswer.pack_id == pack_id,
+                 DppAnswer.student_id == sp.id, DppAnswer.status == "staged")
+         .first())
+    if not a:
+        raise HTTPException(status_code=404,
+                            detail="Upload nahi mila — file dobara select karke upload complete karo.")
+    # baaki sab answers hatao (replace semantics), ye wala submitted
+    for o in (db.query(DppAnswer)
+              .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id,
+                      DppAnswer.id != a.id).all()):
+        db.delete(o)
+    a.status = "submitted"
+    db.commit()
+    return {"ok": True, "status": "submitted"}
+
+
 def _dpp_visible(pk, sp):
     """Pack is student ke liye visible? (subject canon-match + class match)"""
     if _subj_norm(pk.subject) not in {_subj_norm(x) for x in (sp.subjects or [])}:
@@ -1813,7 +1870,8 @@ def student_dpp_questions(pack_id: int, db: Session = Depends(get_db),
     if not pk or not _dpp_visible(pk, sp):
         raise HTTPException(status_code=404, detail="DPP not found")
     submitted = (db.query(DppAnswer)
-                 .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id)
+                 .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id,
+                         DppAnswer.status != "staged")
                  .first() is not None)
     qs = []
     for i, q in enumerate(pk.questions or [], 1):
@@ -1902,7 +1960,8 @@ def student_dpp_file(pack_id: int, kind: str = "q", db: Session = Depends(get_db
         raise HTTPException(status_code=404, detail="DPP not found")
     if kind == "s":
         ans = (db.query(DppAnswer)
-               .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id).first())
+               .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id,
+                       DppAnswer.status != "staged").first())
         if not ans:
             raise HTTPException(status_code=403, detail="Submit your DPP first to view the solution")
         blob = pk.s_pdf

@@ -941,7 +941,8 @@ def _dpp_pack_out(db, pk, with_counts=True):
            "created_at": pk.created_at.strftime("%d %b %Y") if pk.created_at else None}
     if with_counts:
         from models import DppAnswer
-        subs = db.query(DppAnswer).filter(DppAnswer.pack_id == pk.id).all()
+        subs = (db.query(DppAnswer).filter(DppAnswer.pack_id == pk.id,
+                                           DppAnswer.status != "staged").all())
         out["submitted"] = len(subs)
         out["checked"] = sum(1 for a in subs if a.status == "checked")
     return out
@@ -1105,7 +1106,8 @@ def teacher_dpp_answers(pack_id: int, db: Session = Depends(get_db), current_use
     pk = db.query(DppPack).filter(DppPack.id == pack_id, DppPack.teacher_id == tp.id).first()
     if not pk:
         raise HTTPException(status_code=404, detail="DPP not found")
-    rows = (db.query(DppAnswer).filter(DppAnswer.pack_id == pack_id)
+    rows = (db.query(DppAnswer).filter(DppAnswer.pack_id == pack_id,
+                                       DppAnswer.status != "staged")
             .order_by(DppAnswer.submitted_at.desc()).all())
     out = []
     for a in rows:

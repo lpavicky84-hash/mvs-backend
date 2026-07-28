@@ -9303,8 +9303,68 @@ async function sDppDoubtSend(pid){
 }
 function openDppSubmit(pid){
   showModal(' Submit DPP Answer',
- `<div class="alert alert-info">Upload your solved DPP as a PDF — bada file apne aap chhota ho jayega, phir fast upload hoga. Your teacher will be notified and will check it.</div><div class="form-group"><label>Answer PDF</label>${fileDropHTML('dpp-sub-file','dpp-sub-label','.pdf,image/*')}</div>`,
- `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-success" id="dpp-sub-btn" onclick="submitDppFile(${pid})">Submit</button>`);
+ `<div class="alert alert-info">PDF/photo select karte hi <b>upload apne aap shuru</b> ho jayega (progress % dikhega). Upload 100% hone ke baad <b>Submit</b> dabao. Bada file pehle apne aap chhota ho jayega.</div><div class="form-group"><label>Answer PDF</label>${fileDropHTML('dpp-sub-file','dpp-sub-label','.pdf,image/*')}</div>
+  <div id="dpp-up-wrap" style="display:none;margin-top:12px">
+    <div style="height:12px;background:rgba(0,0,0,.09);border-radius:99px;overflow:hidden;border:1px solid var(--border)"><div id="dpp-up-fill" style="height:100%;width:0%;background:linear-gradient(90deg,var(--acc),#d4af37);transition:width .25s;border-radius:99px"></div></div>
+    <div id="dpp-up-text" style="font-size:.78rem;color:var(--text-muted);margin-top:6px;text-align:center;line-height:1.4">0%</div>
+  </div>`,
+ `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-success" id="dpp-sub-btn" disabled title="Pehle file ka upload 100% hone do" onclick="submitDppFile(${pid})">Submit</button>`);
+  window._dppStaged=null;
+  const fi=document.getElementById('dpp-sub-file');
+  fi.addEventListener('change',()=>{ if(fi.files.length) _dppStageUpload(pid,fi.files[0]); });
+  const dz=fi.closest('.file-drop');
+  if(dz) dz.addEventListener('drop',e=>{ const f=e.dataTransfer&&e.dataTransfer.files; if(f&&f.length) _dppStageUpload(pid,f[0]); });
+}
+// File select hote hi background upload (progress % ke saath) — submit sirf 100% ke baad
+async function _dppStageUpload(pid,file){
+  const wrap=document.getElementById('dpp-up-wrap'), fill=document.getElementById('dpp-up-fill'),
+        txt=document.getElementById('dpp-up-text'), btn=document.getElementById('dpp-sub-btn');
+  if(!wrap||!fill||!txt) return;
+  window._dppStaged=null; if(btn){ btn.disabled=true; btn.textContent='Submit'; }
+  wrap.style.display='block'; fill.style.width='0%';
+  const setp=p=>{ fill.style.width=p+'%'; txt.innerHTML='Uploading… <b>'+Math.round(p)+'%</b>'; };
+  txt.textContent='File taiyar ho rahi hai…';
+  let f;
+  try{
+    const _r=await _prepDppAnswer(file,m=>{ txt.textContent=m; });
+    if(!_r.ok){ txt.innerHTML='<span style="color:var(--danger)">File bahut badi hai — kam pages wala ya chhota PDF/photo try karo.</span>'; return; }
+    f=_r.file;
+  }catch(e){ txt.textContent='File read nahi ho paya — dobara select karo.'; return; }
+  const kb=Math.round(f.size/1024);
+  for(let att=0;att<2;att++){
+    try{
+      const res=await _dppStageXHR(pid,f,setp);
+      window._dppStaged={pid:pid,answer_id:res.answer_id};
+      fill.style.width='100%';
+      txt.innerHTML='<span style="color:var(--acc);font-weight:600">✔ Upload complete ('+(kb>1024?(kb/1024).toFixed(1)+'MB':kb+'KB')+')</span> — ab <b>Submit</b> dabao';
+      if(btn){ btn.disabled=false; btn.focus(); }
+      return;
+    }catch(e){
+      if(att===0 && /fail|fetch|network|timeout/i.test(e.message||'')){
+        txt.textContent='Network issue — 4 sec me upload dobara shuru…';
+        await new Promise(r=>setTimeout(r,4000)); setp(0); continue;
+      }
+      txt.innerHTML='<span style="color:var(--danger)">'+(e.message||'Upload nahi ho paya')+' — file dobara select karke try karo.</span>';
+      return;
+    }
+  }
+}
+function _dppStageXHR(pid,f,onp){
+  return new Promise((res,rej)=>{
+    const x=new XMLHttpRequest();
+    x.open('POST',API+`/api/student/dpp-packs/${pid}/stage`);
+    x.setRequestHeader('Authorization','Bearer '+TOKEN);
+    x.timeout=10*60*1000;
+    x.upload.onprogress=e=>{ if(e.lengthComputable&&e.total>0) onp(Math.min(99,e.loaded/e.total*100)); };
+    x.onload=()=>{
+      if(x.status>=200&&x.status<300){ try{ res(JSON.parse(x.responseText)); }catch(e){ rej(new Error('Bad response')); } }
+      else{ let d='Upload failed ('+x.status+')'; try{ d=JSON.parse(x.responseText).detail||d; }catch(e){} rej(new Error(d)); }
+    };
+    x.onerror=()=>rej(new TypeError('Failed to fetch'));
+    x.ontimeout=()=>rej(new TypeError('Upload timeout — network slow hai'));
+    const fd=new FormData(); fd.append('file',f,f.name||'dpp-answer.pdf');
+    x.send(fd);
+  });
 }
 // DPP answer upload ke liye tight prep: bada PDF/photo chhota karke hi bhejo
 // (warna slow net pe proxy connection kaat deta hai — "Failed to fetch")
@@ -9323,24 +9383,19 @@ async function _prepDppAnswer(file,statusCb){
   }
   return {file, ok:file.size<=HARD};
 }
+// File server pe staged hai — submit sirf confirm karta hai (INSTANT, koi file transfer nahi)
 async function submitDppFile(pid){
-  const fi=document.getElementById('dpp-sub-file');
-  if(!fi.files.length){ toast('Please select a file.',true); return; }
-  toast('Preparing the file...'); const _r=await _prepDppAnswer(fi.files[0],m=>toast(m)); let f=_r.file;
-  if(!_r.ok){ toast('File bahut badi hai — kam pages wala ya chhota PDF/photo try karo.',true); return; }
-  if(_r.compressed) toast('Ready ('+Math.round(f.size/1024)+'KB). Uploading...');
-  const btn=document.getElementById('dpp-sub-btn'); btn.disabled=true;
+  const st=window._dppStaged;
+  if(!st||st.pid!==pid){ toast('Pehle file ka upload 100% hone do.',true); return; }
+  const btn=document.getElementById('dpp-sub-btn'); btn.disabled=true; btn.textContent='Submitting...';
   for(let att=0;att<2;att++){
-    btn.textContent=att?'Retrying...':'Submitting...';
     try{
-      const fd=new FormData(); fd.append('file',f,f.name||'dpp-answer.pdf');
-      const r=await fetch(API+`/api/student/dpp-packs/${pid}/submit`,{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
-      if(!r.ok){ const er=await r.json().catch(()=>({})); throw new Error(er.detail||'Submit failed'); }
+      await api(`/api/student/dpp-packs/${pid}/submit-staged`,'POST',{answer_id:st.answer_id});
       closeModal(); toast('DPP submitted! Status: Checking.');
       loadSDpp(); return;
     }catch(e){
-      if(att===0 && /fail|fetch|network|abort/i.test(e.message||'')){
-        toast('Network issue — 4 sec me dobara try ho raha hai…',true);
+      if(att===0 && /fail|fetch|network|reach/i.test(e.message||'')){
+        toast('Network issue — 4 sec me dobara try…',true);
         await new Promise(r=>setTimeout(r,4000)); continue;
       }
       toast(e.message||'Submit failed',true); btn.disabled=false; btn.textContent='Submit'; return;
