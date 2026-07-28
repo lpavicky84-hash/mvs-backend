@@ -4509,9 +4509,9 @@ async function loadTDpp(){
             <span class="chip" style="font-size:.62rem">${esc(pk.medium)}</span>
             <span class="chip" style="font-size:.62rem">${pk.created_at||''}</span></div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-ghost btn-sm" title="View PDF (language select hoga)" onclick="dppLangPick(${pk.id},'view')">${ic('eye')} View</button>
-          <button class="btn btn-ghost btn-sm" title="Download PDF (language select hoga)" onclick="dppLangPick(${pk.id},'download')">${ic('download')} Download</button>
-          <button class="btn btn-primary btn-sm" title="See student submissions" onclick="openDppResults(${pk.id})">${ic('users')} Submissions (${pk.submitted||0})</button>
+          <button class="btn btn-ghost btn-sm" title="View PDF portal ke andar hi (language select hoga)" onclick="dppLangPick(${pk.id},'view')">${ic('eye')} View</button>
+          <button class="btn btn-primary btn-sm" title="Click karne pe hi PDF banti hai — create instant, timeout kabhi nahi" onclick="dppLangPick(${pk.id},'download')">${ic('download')} Download PDF</button>
+          <button class="btn btn-ghost btn-sm" title="See student submissions" onclick="openDppResults(${pk.id})">${ic('users')} Submissions (${pk.submitted||0})</button>
           <button class="btn btn-danger btn-sm" title="Delete this DPP (submissions bhi delete ho jayengi)" onclick="dppDelete(${pk.id},'${esc(pk.title||'DPP').replace(/'/g,'')}')">${ic('trash')} Delete</button>
         </div></div></div></div>`).join('');
     el.innerHTML=`<div class="card" style="margin-bottom:16px;border:1.5px solid rgba(184,148,31,.3)"><div class="card-body" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
@@ -4553,16 +4553,33 @@ function dppLangPick(pid,action){
     </div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
 }
-async function dppPdfGo(pid,action,kind,med){
+// In-portal PDF viewer — class manager ke andar hi PDF dikhta hai (naya tab nahi)
+function pdfViewerModal(u,title,fname){
+  showModal(esc(title||'PDF'),
+    `<div style="height:72vh;min-height:420px;background:#525659;border-radius:10px;overflow:hidden">
+       <iframe src="${u}" style="width:100%;height:100%;border:0" title="PDF"></iframe>
+     </div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button>
+     <a class="btn btn-primary" href="${u}" download="${esc(fname||'document.pdf')}">${ic('download')} Download PDF</a>`);
+  { const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.add('cx'); }
+}
+async function dppPdfGo(pid,action,kind,med,_retry){
   try{
-    toast('Preparing '+(med==='hindi'?'Hindi':'English')+' '+(kind==='s'?'solutions':'questions')+' PDF…');
+    toast('PDF ban rahi hai ('+(med==='hindi'?'Hindi':'English')+' '+(kind==='s'?'solutions':'questions')+') — pehli baar thoda time…');
     const r=await fetch(API+`/api/teacher/dpp-packs/${pid}/pdf?kind=${kind}&medium=${med||''}`,{headers:{Authorization:'Bearer '+TOKEN}});
     if(!r.ok) throw new Error('nf');
     const bl=await r.blob(); const u=URL.createObjectURL(bl);
-    if(action==='view'){ window.open(u,'_blank'); }
-    else{ const a=document.createElement('a'); a.href=u; a.download=(kind==='s'?'DPP-solutions':'DPP-questions')+'-'+(med||'english')+'.pdf'; document.body.appendChild(a); a.click(); a.remove(); }
-    setTimeout(()=>URL.revokeObjectURL(u),90000);
-  }catch(e){ toast('PDF abhi available nahi hai — thodi der baad try karo.',true); }
+    const fname=(kind==='s'?'DPP-solutions':'DPP-questions')+'-'+(med||'english')+'.pdf';
+    if(action==='view'){
+      pdfViewerModal(u,(kind==='s'?'Solutions':'Questions')+' — '+(med==='hindi'?'हिंदी':'English'),fname);
+    }else{
+      const a=document.createElement('a'); a.href=u; a.download=fname; document.body.appendChild(a); a.click(); a.remove();
+    }
+    setTimeout(()=>URL.revokeObjectURL(u),300000);
+  }catch(e){
+    if(!_retry){ toast('Server slow hai — 4 sec me dobara try…',true); await new Promise(r=>setTimeout(r,4000)); return dppPdfGo(pid,action,kind,med,true); }
+    toast('PDF abhi nahi ban pa rahi — thodi der baad try karo.',true);
+  }
 }
 // ---------- submissions (results) — Checking / Checked + Remarks (no marks) ----------
 async function dppDelete(pid,title){
@@ -6674,9 +6691,8 @@ async function submitExam(){
     }
     if(err||!res){ toast((err&&err.message)||'Create failed',true); return; }
     window._dppMode=false; closeModal();
-    toast(res.duplicate?'DPP pehle hi ban gaya tha — ye raha.':'DPP created — premium questions + solutions PDFs ready. Students ko dikhega.');
-    await loadTDpp();
-    dppLangPick(res.pack.id,'view'); return;
+    toast(res.duplicate?'DPP pehle hi ban gaya tha — card me dikhega.':'DPP created — ab card pe "Download PDF" ya "View" dabao. PDF click pe hi banti hai, timeout nahi hoga.');
+    await loadTDpp(); return;
   }
   const title=val('ex-title'); if(!title){ toast('Enter a test title',true); return; }
   if(!_examQs.length){ toast('Add at least one question',true); return; }
@@ -9227,8 +9243,8 @@ async function sDppViewPdf(pid){
     const r=await fetch(API+`/api/student/dpp-packs/${pid}/file?kind=q`,{headers:{Authorization:'Bearer '+TOKEN}});
     if(!r.ok) throw new Error('nf');
     const bl=await r.blob(); const u=URL.createObjectURL(bl);
-    window.open(u,'_blank');
-    setTimeout(()=>URL.revokeObjectURL(u),90000);
+    pdfViewerModal(u,'DPP — Questions','DPP-questions.pdf');
+    setTimeout(()=>URL.revokeObjectURL(u),300000);
   }catch(e){ toast('File not available',true); }
 }
 // ---------- Created DPP: question-wise interactive view + Raise Doubt ----------

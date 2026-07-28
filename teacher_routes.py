@@ -1004,6 +1004,17 @@ def teacher_dpp_pdf(pack_id: int, kind: str = "q", medium: str = "",
     if pk.source == "created" and pk.questions:
         try:
             blob = _dpp_build_pdf(db, pk, kind, medium or pk.medium)
+            # Cache: agli baar instant (default medium wala hi store karo)
+            try:
+                med_l = (medium or pk.medium or "").lower()
+                if not med_l.startswith("hin") or (pk.medium or "").lower().startswith("hin"):
+                    if kind == "s":
+                        pk.s_pdf = pk.s_pdf or blob
+                    else:
+                        pk.q_pdf = pk.q_pdf or blob
+                    db.commit()
+            except Exception:
+                db.rollback()
         except Exception:
             blob = (pk.q_pdf if kind == "q" else pk.s_pdf)
     else:
