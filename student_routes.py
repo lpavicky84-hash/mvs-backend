@@ -2218,6 +2218,24 @@ def student_performance(db: Session = Depends(get_db), current_user=Depends(get_
     done_parents = set(a.parent_id for a in answers if a.parent_id)
     dpps = db.query(Material).filter(Material.subject.in_(subs), Material.material_type == "dpp").all() if subs else []
     dpp_total = len(dpps); dpp_done = sum(1 for m in dpps if m.id in done_parents)
+    # new DPP packs (v42+) bhi count karo — warna stats 0/0 dikhta hai
+    try:
+        from models import DppPack, DppAnswer
+        my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
+        counted_ids = set()
+        if subs:
+            for pk in db.query(DppPack).filter(
+                    DppPack.subject.in_(list(_subj_scope_for(db, DppPack, subs)))).all():
+                pk_cls = _class_digits(pk.class_name)
+                if my_cls and pk_cls and pk_cls != my_cls:
+                    continue
+                counted_ids.add(pk.id)
+        answered_ids = set(a.pack_id for a in db.query(DppAnswer).filter(
+            DppAnswer.student_id == sp.id, DppAnswer.status != "staged").all())
+        dpp_total += len(counted_ids)
+        dpp_done += len(counted_ids & answered_ids)
+    except Exception:
+        pass
 
     exam_attempts = db.query(ExamAttempt).filter(ExamAttempt.student_id == sp.id).all()
     graded = [a for a in exam_attempts if (a.status or "") == "graded"]

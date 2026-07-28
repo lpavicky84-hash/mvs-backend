@@ -411,6 +411,24 @@
   .crop-prev{text-align:center;margin-top:12px}
   .crop-prev img{max-width:100%;border-radius:10px;border:1.5px solid var(--border);background:#fff}
   .dpp-lang-sel{margin-left:auto;padding:7px 10px;border-radius:9px;border:1.5px solid var(--border);font-weight:700;font-size:.78rem;background:var(--card);color:var(--text);cursor:pointer}
+  /* ---- v52: premium in-portal PDF viewer (pdf.js, sidebar-free) ---- */
+  .pvw{border:1.5px solid var(--border);border-radius:16px;overflow:hidden;background:#3f4248}
+  .pvw-head{display:flex;align-items:center;gap:10px;padding:9px 13px;background:linear-gradient(135deg,#8a6d10,#b8941f);color:#fff;flex-wrap:wrap}
+  .pvw-brand{display:flex;align-items:center;gap:9px;font-weight:800;font-size:.86rem;min-width:0;flex:1}
+  .pvw-logo{width:26px;height:26px;border-radius:8px;background:#fff;color:#8a6d10;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:900;flex-shrink:0}
+  .pvw-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pvw-ctrl{display:flex;align-items:center;gap:5px;flex-shrink:0}
+  .pvw-btn{min-width:30px;height:30px;border-radius:8px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;font-weight:800;cursor:pointer;font-size:.9rem;display:flex;align-items:center;justify-content:center;padding:0 6px}
+  .pvw-btn:hover{background:rgba(255,255,255,.26)}
+  .pvw-btn .nav-ic{width:15px;height:15px}
+  .pvw-pg,.pvw-zoom{font-size:.72rem;font-weight:800;min-width:42px;text-align:center}
+  .pvw-body{overflow:auto;max-height:72vh;min-height:300px;display:flex;justify-content:center;padding:14px}
+  .pvw-stage{position:relative;line-height:0;touch-action:pan-x pan-y;height:fit-content}
+  .pvw-stage canvas{box-shadow:0 2px 14px rgba(0,0,0,.35);border-radius:4px;background:#fff}
+  .pvw-tip{background:#fff7ed;color:#9a3412;font-size:.71rem;font-weight:700;padding:8px 12px;border-top:1px solid #fdba74;line-height:1.45}
+  .pvw-load{color:#e5e7eb;font-size:.8rem;font-weight:700;padding:46px 20px;text-align:center;width:100%}
+  .dpp-exp{padding:10px 12px !important}
+  @media(max-width:640px){.pvw-title{font-size:.78rem}.pvw-body{padding:8px;max-height:64vh}.pvw-pg,.pvw-zoom{min-width:36px}}
   .remarks-card{border:1.5px solid var(--border);border-radius:12px;overflow:hidden}
   .remarks-head{background:#dcfce7;color:#15803d;font-weight:700;padding:10px 14px;font-size:.88rem}
   .dark .remarks-head{background:rgba(22,163,74,.18);color:#86efac}
@@ -4641,13 +4659,10 @@ async function sDppGo(pid,action,kind,med,_retry){
   }
 }
 function pdfViewerModal(u,title,fname){
-  showModal(esc(title||'PDF'),
-    `<div style="height:72vh;min-height:420px;background:#525659;border-radius:10px;overflow:hidden">
-       <iframe src="${u}" style="width:100%;height:100%;border:0" title="PDF"></iframe>
-     </div>`,
-    `<button class="btn btn-ghost" onclick="closeModal()">Close</button>
-     <a class="btn btn-primary" href="${u}" download="${esc(fname||'document.pdf')}">${ic('download')} Download PDF</a>`);
+  showModal(esc(title||'PDF'), `<div id="pvm-view"></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
   { const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.add('cx'); }
+  _pdfView(document.getElementById('pvm-view'), u, {title:title||'PDF', downloadName:fname||'document.pdf', src:u});
 }
 async function dppPdfGo(pid,action,kind,med,_retry){
   try{
@@ -8707,7 +8722,7 @@ function enterStudentApp(){
 let _preloaded=false;
 function startStudentPreload(){
   if(_preloaded) return; _preloaded=true;
-  const jobs=[loadSTimetable,()=>{ if(sMode()!=='syc') loadSMaterials(); },loadSQBank,loadSTeachers,()=>{ if(sMode()==='live') loadSDpp(); },loadSTests,loadSDoubts,loadSProgress,loadSProfile];
+  const jobs=[loadSTimetable,()=>{ if(sMode()!=='syc') loadSMaterials(); },loadSQBank,loadSTeachers,()=>{ if(sMode()==='live'&&!window._sDppOpenPid) loadSDpp(); },loadSTests,loadSDoubts,loadSProgress,loadSProfile];
   jobs.forEach((fn,i)=>{ setTimeout(()=>{ try{ fn(); }catch(e){} }, 1200+i*450); });
 }
 async function loadStudentLiveBanner(){
@@ -9130,8 +9145,8 @@ function _tcPaint(){
     const nowMin=new Date().getHours()*60+new Date().getMinutes();
     rows=list.map(c=>{
       const isTest=(c.type||'')==='test'||/test|exam/i.test(c.chapter||'');
-      const ini=esc((c.teacher_name||'S').charAt(0).toUpperCase());
-      const photo=c.teacher_id?`<img class="tc-photo" src="" data-tid="${c.teacher_id}" data-ini="${ini}" alt="">`:`<div class="tc-photo tc-ph">${ini}</div>`;
+      // photo sirf tab jab teacher ki asli photo ho — initials wala S circle hata diya
+      const photo=c.teacher_id?`<img class="tc-photo" src="" data-tid="${c.teacher_id}" alt="">`:'';
       const topic=esc(c.part||c.chapter||'');
       // status chip: Done / Live / Upcoming (time ke hisaab se auto)
       let chip='';
@@ -9155,9 +9170,9 @@ function _tcPaint(){
   wrap.querySelectorAll('img.tc-photo[data-tid]').forEach(async im=>{
     try{
       const r=await fetch(API+`/api/student/teacher/${im.dataset.tid}/photo`,{headers:{Authorization:'Bearer '+TOKEN}});
-      if(!r.ok){ im.replaceWith(Object.assign(document.createElement('div'),{className:'tc-photo tc-ph',textContent:im.dataset.ini||'S'})); return; }
+      if(!r.ok){ im.remove(); return; }   // photo nahi to circle hi hatao
       im.src=URL.createObjectURL(await r.blob());
-    }catch(e){}
+    }catch(e){ im.remove(); }
   });
 }
 function tcSetDay(m){ _tcMode=m; if(m==='custom'&&!_tcDate) _tcDate=new Date().toLocaleDateString('en-CA'); _tcPaint(); }
@@ -9331,7 +9346,15 @@ function sDppSubject(i){
     if(sec) sec.style.display=open?'block':'none';
   });
 }
+// loadSDpp serialize: concurrent calls se do _fillSDppPanel ek dusre ka expanded DOM wipe kar dete hain
+let _loadSDppBusy=false,_loadSDppAgain=false;
 async function loadSDpp(){
+  if(_loadSDppBusy){ _loadSDppAgain=true; return; }
+  _loadSDppBusy=true;
+  try{ await _loadSDppReal(); }
+  finally{ _loadSDppBusy=false; if(_loadSDppAgain){ _loadSDppAgain=false; loadSDpp(); } }
+}
+async function _loadSDppReal(){
   const el=document.getElementById('s-dpp-content');
   el.innerHTML='<div class="spinner"></div>';
   try{
@@ -9349,18 +9372,24 @@ async function loadSDpp(){
       groups.forEach(g=>{ g.latestId=g.items[0].id; g.newPending=!g.items[0].submitted;
         g.done=g.items.filter(x=>x.submitted).length; });
       window._sDppGroups=groups;
-      // kaunsa subject khula rahe: nayi unsubmitted DPP wala, warna pehla
+      // kaunsa subject khula rahe: open panel wala subject, warna nayi unsubmitted DPP wala, warna pehla
       let openIdx=groups.findIndex(g=>g.newPending); if(openIdx<0) openIdx=0;
+      const _op=window._sDppOpenPid||0;
+      if(_op){ const _gi=groups.findIndex(g=>g.items.some(x=>x.id===_op)); if(_gi>=0) openIdx=_gi; }
       window._sDppOpen=openIdx;
       html+=`<div class="dps-grid">`+groups.map((g,i)=>`
         <div class="dps-card ${i===openIdx?'open':''}" id="dps-${i}" onclick="sDppSubject(${i})">
-          ${g.newPending?`<span class="dps-badge">Nayi DPP</span>`:''}
+          ${g.newPending?`<span class="dps-badge">NEW DPP</span>`:''}
           <div class="dps-name"> ${esc(g.subject)}</div>
           <div class="dps-count">${g.items.length} DPP · ${g.done}/${g.items.length} submitted</div>
           <div class="dps-tick">${i===openIdx?'▲':'▼'}</div>
         </div>`).join('')+`</div>`;
+      // open panel wali DPP apne CARD ke andar expand hoti hai — back pe minimize
+      const openPid=window._sDppOpenPid||0;
       html+=groups.map((g,i)=>`<div class="dps-sec" id="dps-sec-${i}" style="display:${i===openIdx?'block':'none'}">`
-        +g.items.map(pk=>_sDppCardHTML(pk,pk.id===g.latestId)).join('')+`</div>`).join('');
+        +g.items.map(pk=> pk.id===openPid
+          ? `<div class="dpp-card premium dpp-exp" id="dpp-exp-${pk.id}"><div class="spinner"></div></div>`
+          : _sDppCardHTML(pk,pk.id===g.latestId)).join('')+`</div>`).join('');
     }
     html+=`</div></div>`;
     // legacy materials-based DPPs (old records) — read-only archive
@@ -9374,6 +9403,11 @@ async function loadSDpp(){
     // teacher photos (avatar) — auth header ke saath fetch karke lagao
     packs.filter(pk=>pk.has_teacher_photo).forEach(pk=>{
       _loadPhotoInto(`dppava-${pk.id}`,`/api/student/teacher/${pk.teacher_id}/photo`); });
+    // expanded card ke andar panel bharo
+    if(window._sDppOpenPid){
+      const t=document.getElementById('dpp-exp-'+window._sDppOpenPid);
+      if(t) _fillSDppPanel(window._sDppOpenPid,t);
+    }
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function _imgSrc(b64){
@@ -9460,12 +9494,141 @@ function _dppMathAll(pid,qs){
   qs.forEach(q=>{ const el=document.getElementById(`dq-${pid}-${q.qno}`); if(el) renderMath(el);
                   const a=document.getElementById(`da-${pid}-${q.qno}`); if(a) renderMath(a); });
 }
-async function _dppIframePanel(el,url,fname){
-  const r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}});
-  if(!r.ok) throw new Error('nf');
-  const bl=await r.blob(); const u=URL.createObjectURL(bl);
-  el.insertAdjacentHTML('beforeend',`<div style="height:72vh;min-height:420px;background:#525659;border-radius:12px;overflow:hidden;border:1px solid var(--border)"><iframe src="${u}" style="width:100%;height:100%;border:0" title="DPP PDF"></iframe></div>`);
-  setTimeout(()=>URL.revokeObjectURL(u),300000);
+// ---------- premium in-portal PDF viewer (pdf.js) — sidebar-free ----------
+async function _pdfView(container, src, opts){
+  opts=opts||{};
+  const crop=!!opts.cropPid;
+  const st={pdf:null,page:1,total:1,zoom:0,opts:opts,rect:null,cropMode:false};
+  container._pvw=st;
+  container.innerHTML=`<div class="pvw">
+    <div class="pvw-head">
+      <div class="pvw-brand"><span class="pvw-logo">MVS</span><span class="pvw-title">${esc(opts.title||'PDF')}</span></div>
+      <div class="pvw-ctrl">
+        <button class="pvw-btn" data-a="prev" title="Previous page">‹</button>
+        <span class="pvw-pg">– / –</span>
+        <button class="pvw-btn" data-a="next" title="Next page">›</button>
+        <button class="pvw-btn" data-a="zout" title="Zoom out">−</button>
+        <span class="pvw-zoom">Fit</span>
+        <button class="pvw-btn" data-a="zin" title="Zoom in">+</button>
+        <button class="pvw-btn" data-a="dl" title="Download PDF">${ic('download')}</button>
+      </div>
+    </div>
+    <div class="pvw-body"><div class="pvw-stage"><canvas></canvas>${crop?'<div class="crop-sel"></div>':''}</div><div class="pvw-load">PDF load ho rahi hai…</div></div>
+    ${crop?`<div class="pvw-tip">💡 Page pe <b>drag</b> (mouse) ya <b>touch-hold</b> karke question select karo — crop seedha teacher ko doubt me chala jayega</div>`:''}
+  </div>`;
+  container.querySelectorAll('.pvw-btn').forEach(b=>b.onclick=()=>_pvwAct(container,b.dataset.a));
+  try{
+    let buf=null;
+    if(typeof src==='string'){
+      if(src.startsWith('blob:')){ buf=await (await fetch(src)).arrayBuffer(); }
+      else{
+        const r=await fetch(src,{headers:{Authorization:'Bearer '+TOKEN}});
+        if(!r.ok) throw new Error('nf');
+        buf=await r.arrayBuffer();
+      }
+    } else if(src instanceof Blob){ buf=await src.arrayBuffer(); }
+    else buf=src;
+    try{ window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }catch(e){}
+    st.pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
+    st.total=st.pdf.numPages;
+    await _pvwRender(container);
+  }catch(e){
+    const l=container.querySelector('.pvw-load'); if(l) l.textContent='PDF load nahi ho payi — thodi der baad try karo.';
+  }
+}
+async function _pvwRender(container){
+  const st=container._pvw; if(!st||!st.pdf) return;
+  const page=await st.pdf.getPage(st.page);
+  const base=page.getViewport({scale:1});
+  const body=container.querySelector('.pvw-body');
+  const stage=container.querySelector('.pvw-stage');
+  const cv=stage.querySelector('canvas');
+  const ZS=[1,1.5,2,2.75];
+  const cssScale=(st.zoom===0)?Math.max(0.4,((body.clientWidth||600)-48)/base.width):ZS[st.zoom-1];  // padding + scrollbar ka margin
+  const vp=page.getViewport({scale:cssScale*2});
+  cv.width=vp.width; cv.height=vp.height;
+  cv.style.width=(vp.width/2)+'px'; cv.style.height=(vp.height/2)+'px';
+  const load=container.querySelector('.pvw-load'); if(load) load.style.display='none';
+  await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+  container.querySelector('.pvw-pg').textContent=`${st.page} / ${st.total}`;
+  container.querySelector('.pvw-zoom').textContent=(st.zoom===0)?'Fit':(ZS[st.zoom-1]*100+'%');
+  st.rect=null; st.cropMode=false;
+  const sel=stage.querySelector('.crop-sel'); if(sel) sel.style.display='none';
+  if(st.opts.cropPid) _pvwWireCrop(container,stage);
+}
+async function _pvwAct(container,a){
+  const st=container._pvw; if(!st) return;
+  if(a==='prev'&&st.page>1){ st.page++; st.page-=2; }
+  else if(a==='next'&&st.page<st.total){ st.page++; }
+  else if(a==='zin'&&st.zoom<4){ st.zoom++; }
+  else if(a==='zout'&&st.zoom>0){ st.zoom--; }
+  else if(a==='dl'){
+    try{
+      const src=st.opts.src||'';
+      let u=null;
+      if(typeof src==='string'&&src.startsWith('blob:')) u=src;
+      else{ const r=await fetch(src,{headers:{Authorization:'Bearer '+TOKEN}}); const bl=await r.blob(); u=URL.createObjectURL(bl); }
+      const an=document.createElement('a'); an.href=u; an.download=st.opts.downloadName||'document.pdf';
+      document.body.appendChild(an); an.click(); an.remove();
+      if(u!==src) setTimeout(()=>URL.revokeObjectURL(u),60000);
+    }catch(e){ toast('Download nahi ho paya.',true); }
+    return;
+  } else return;
+  _pvwRender(container);
+}
+// viewer page pe DIRECT crop: mouse drag / touch-hold (button ki zaroorat nahi)
+function _pvwWireCrop(container,stage){
+  const sel=stage.querySelector('.crop-sel'); if(!sel) return;
+  const st=container._pvw;
+  let sx=0,sy=0,drag=false,lpTimer=null,touchCrop=false,startX=0,startY=0,moved=false;
+  const pos=e=>{ const r=stage.getBoundingClientRect(); const p=(e.touches&&e.touches[0])||e;
+    return {x:p.clientX-r.left,y:p.clientY-r.top}; };
+  const draw=p=>{ const x=Math.min(sx,p.x),y=Math.min(sy,p.y),w=Math.abs(p.x-sx),h=Math.abs(p.y-sy);
+    sel.style.display='block'; sel.style.left=x+'px'; sel.style.top=y+'px'; sel.style.width=w+'px'; sel.style.height=h+'px';
+    st.rect={x,y,w,h}; };
+  stage.onmousedown=e=>{ drag=true; moved=false; const p=pos(e); sx=p.x; sy=p.y; sel.style.display='none'; st.rect=null; e.preventDefault(); };
+  stage.onmousemove=e=>{ if(!drag) return; draw(pos(e)); e.preventDefault(); };
+  stage.onmouseup=()=>{ if(!drag) return; drag=false; if(st.rect&&st.rect.w>30&&st.rect.h>20) _pvwCropCapture(container); };
+  stage.onmouseleave=()=>{ if(drag){ drag=false; sel.style.display='none'; st.rect=null; } };
+  // touch: hold ~450ms = crop mode; normal swipe = scroll/page nav
+  stage.ontouchstart=e=>{ const p=pos(e); sx=p.x; sy=p.y; startX=p.x; startY=p.y; moved=false; touchCrop=false;
+    lpTimer=setTimeout(()=>{ touchCrop=true; st.cropMode=true; sel.style.display='none'; st.rect=null;
+      if(navigator.vibrate) navigator.vibrate(20);
+      toast('Crop mode — ab drag karke question select karo'); },450); };
+  stage.ontouchmove=e=>{ const p=pos(e);
+    if(!touchCrop){ if(Math.abs(p.x-startX)>12||Math.abs(p.y-startY)>12){ clearTimeout(lpTimer); moved=true; } return; }
+    draw(p); e.preventDefault(); };
+  stage.ontouchend=e=>{ clearTimeout(lpTimer);
+    if(touchCrop){ st.cropMode=false; if(st.rect&&st.rect.w>30&&st.rect.h>20) _pvwCropCapture(container); }
+    else if(!moved){ /* tap — kuch nahi */ } };
+  stage.ontouchcancel=()=>{ clearTimeout(lpTimer); touchCrop=false; st.cropMode=false; };
+}
+function _pvwCropCapture(container){
+  const st=container._pvw; const stage=container.querySelector('.pvw-stage');
+  const cv=stage.querySelector('canvas'); const R=st.rect; if(!cv||!R) return;
+  const k=cv.width/(stage.getBoundingClientRect().width||1);
+  const t=document.createElement('canvas');
+  t.width=Math.max(1,Math.round(R.w*k)); t.height=Math.max(1,Math.round(R.h*k));
+  t.getContext('2d').drawImage(cv, R.x*k, R.y*k, R.w*k, R.h*k, 0, 0, t.width, t.height);
+  _crop={pid:st.opts.cropPid,dataUrl:t.toDataURL('image/png')};
+  _cropConfirmModal();
+}
+// crop confirm modal — modal-cropper aur viewer-crop dono isi se
+function _cropConfirmModal(){
+  if(!_crop||!_crop.dataUrl) return;
+  showModal('✂ Crop Question & Raise Doubt',
+   `<div class="crop-prev"><img src="${_crop.dataUrl}" alt="crop"></div>
+    <div class="form-group" style="margin-top:12px"><label>Question No. (PDF me kaunsa question hai)</label><input class="form-control" id="crop-qno" type="number" min="1" value="1"></div>
+    <div class="form-group"><label>Apna doubt (optional)</label><textarea class="form-control" id="crop-note" rows="2" placeholder="e.g. Sir, is step me yeh value kaise aayi?"></textarea></div>
+    <div style="font-size:.72rem;color:var(--text-muted);line-height:1.5">Crop ki hui image aur aapka doubt seedha teacher ke doubt section me chala jayega.</div>`,
+   `${_crop.pdf?'<button class="btn btn-ghost" onclick="_cropPaint()">← Change Crop</button>':''}
+    <button class="btn btn-primary" onclick="_cropSend()">Send Doubt</button>`);
+  { const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.add('cx'); }
+}
+async function _dppPdfPanel(el,url,title,pid){
+  const holder=document.createElement('div');
+  el.appendChild(holder);
+  _pdfView(holder,url,{title:title||'DPP',downloadName:(title||'DPP')+'.pdf',src:url,cropPid:pid||0});
 }
 // ---------- Crop question from uploaded DPP PDF -> direct Raise Doubt ----------
 let _crop=null;
@@ -9541,14 +9704,7 @@ function _cropConfirm(){
   t.width=Math.max(1,Math.round(R.w*k)); t.height=Math.max(1,Math.round(R.h*k));
   t.getContext('2d').drawImage(cv, R.x*k, R.y*k, R.w*k, R.h*k, 0, 0, t.width, t.height);
   _crop.dataUrl=t.toDataURL('image/png');
-  showModal('✂ Crop Question & Raise Doubt',
-   `<div class="crop-prev"><img src="${_crop.dataUrl}" alt="crop"></div>
-    <div class="form-group" style="margin-top:12px"><label>Question No. (PDF me kaunsa question hai)</label><input class="form-control" id="crop-qno" type="number" min="1" value="1"></div>
-    <div class="form-group"><label>Apna doubt (optional)</label><textarea class="form-control" id="crop-note" rows="2" placeholder="e.g. Sir, is step me yeh value kaise aayi?"></textarea></div>
-    <div style="font-size:.72rem;color:var(--text-muted);line-height:1.5">Crop ki hui image aur aapka doubt seedha teacher ke doubt section me chala jayega.</div>`,
-   `<button class="btn btn-ghost" onclick="_cropPaint()">← Change Crop</button>
-    <button class="btn btn-primary" onclick="_cropSend()">Send Doubt</button>`);
-  { const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.add('cx'); }
+  _cropConfirmModal();
 }
 async function _cropSend(){
   if(!_crop||!_crop.dataUrl) return;
@@ -9558,34 +9714,44 @@ async function _cropSend(){
     closeModal(); toast(r.message||'Doubt sent!');
   }catch(e){ toast(e.message||'Could not send the doubt',true); }
 }
-// STUDENT panel: view pe click karte hi test-jaisa page — PDF upar, Submit neeche
+// STUDENT panel: card ke ANDAR expand hota hai — back pe wapas minimize
 async function openSDppPanel(pid){
-  const el=document.getElementById('s-dpp-content'); softSpin(el);
+  window._sDppOpenPid=pid;
+  loadSDpp();
+}
+function sDppClosePanel(){
+  window._sDppOpenPid=null;
+  loadSDpp();
+}
+// expanded card ke andar panel ka content bharo
+async function _fillSDppPanel(pid,el){
   try{
     const pk=(window._sDppPacks||[]).find(x=>x.id===pid)||{};
     if((pk.source||'created')!=='created'||!pk.questions_n){
-      // uploaded PDF pack: PDF VIEW upar, submit card NEECHE (ek baar submit -> card gayab)
+      // uploaded PDF pack: premium viewer UPAR (direct touch-hold crop), submit NEECHE
       const info=`${pk.subject?`<span class="pl-sub">${esc(pk.subject)}</span> · `:''}${pk.class_name?esc(pk.class_name)+' · ':''}${pk.teacher?'By '+esc(pk.teacher):''}`;
-      el.innerHTML=_dppBandHTML('loadSDpp()',pk.title||'DPP',info,'DPP')
-        +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px">
+      el.innerHTML=_dppBandHTML('sDppClosePanel()',pk.title||'DPP',info,'DPP')
+        +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 4px 14px">
           <button class="btn btn-dl btn-sm" onclick="sDppHub(${pid},'q')">${ic('download')} Download Paper</button>
           ${pk.submitted&&pk.has_solution?`<button class="btn btn-dl-sol btn-sm" onclick="sDppHub(${pid},'s')">${ic('download')} Download Solutions</button>`:''}
-          <button class="btn btn-ghost btn-sm" title="PDF pe drag karke question crop karo — seedha teacher ko doubt chala jayega" onclick="sDppCropOpen(${pid})">✂ Crop & Raise Doubt</button></div>`;
-      await _dppIframePanel(el,API+`/api/student/dpp-packs/${pid}/file?kind=q`,'DPP.pdf');
+          <button class="btn btn-ghost btn-sm" title="PDF pe drag/touch-hold karke question crop karo — seedha teacher ko doubt" onclick="sDppCropOpen(${pid})">✂ Crop & Raise Doubt</button></div>`;
+      await _dppPdfPanel(el,API+`/api/student/dpp-packs/${pid}/file?kind=q`,pk.title||'DPP',pid);
+      if(!document.contains(el)||window._sDppOpenPid!==pid) return;  // stale fill — naya render aa chuka
       el.insertAdjacentHTML('beforeend',_dppSubmitCardHTML(pid,!!pk.submitted,!!pk.can_resubmit));
       window._dppStaged=null; _dppWireStage(pid);
       el.scrollIntoView({behavior:'smooth',block:'start'});
       return;
     }
     const d=await api(`/api/student/dpp-packs/${pid}/questions`);
+    if(!document.contains(el)||window._sDppOpenPid!==pid) return;  // stale fill
     const qs=d.questions||[];
     const meds=_dppMeds(pk);
     const langSel=meds.length>1?`<select class="dpp-lang-sel" title="Language badlo" onchange="_dppSetLang(this.value)"><option value="en">English</option><option value="hi">हिंदी</option></select>`:'';
     const info=`${d.subject?`<span class="pl-sub">${esc(d.subject)}</span> · `:''}${qs.length} question${qs.length===1?'':'s'}${d.chapter?' · '+esc(d.chapter):''}${d.part?' · '+esc(d.part):''}${d.teacher?' · By '+esc(d.teacher):''}`;
     window._dppPanel={pid:pid,qs:qs,showModel:!!d.submitted,lang:'en'};
-    el.innerHTML=_dppBandHTML('loadSDpp()',d.title,info,'DPP')
+    el.innerHTML=_dppBandHTML('sDppClosePanel()',d.title,info,'DPP')
       +`<div class="pl-note">${ic('clipboard')}<span class="pl-note-tx">${d.submitted?'Your answer is <b>submitted</b> — model answers are unlocked below.':'Solve all questions in your notebook, then upload your answer PDF below and press <b>Submit</b>.'}</span></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px;align-items:center">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 4px 14px;align-items:center">
         <button class="btn btn-dl btn-sm" onclick="sDppHub(${pid},'q')">${ic('download')} Download Paper</button>
         ${d.submitted?`<button class="btn btn-dl-sol btn-sm" onclick="sDppHub(${pid},'s')">${ic('download')} Download Solutions</button>`:''}
         ${langSel}</div>`
@@ -9608,7 +9774,7 @@ async function openTDppPanel(pid){
         +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px">
           <button class="btn btn-dl btn-sm" onclick="tDppHub(${pid},'q')">${ic('download')} Download Paper</button>
           <button class="btn btn-ghost btn-sm" onclick="openDppResults(${pid})">${ic('users')} Submissions (${pk.submitted||0})</button></div>`;
-      await _dppIframePanel(el,API+`/api/teacher/dpp-packs/${pid}/file?kind=q`,'DPP.pdf');
+      await _dppPdfPanel(el,API+`/api/teacher/dpp-packs/${pid}/file?kind=q`,pk.title||'DPP',0);
       return;
     }
     const d=await api(`/api/teacher/dpp-packs/${pid}/questions`);
