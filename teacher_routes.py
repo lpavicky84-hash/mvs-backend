@@ -405,16 +405,35 @@ def mark_read(notif_id: int, db: Session = Depends(get_db), current_user=Depends
     return {"message": "Marked as read"}
 
 # ===== TIMETABLE ENTRIES (chapter + parts + date + day) =====
+try:
+    import subjects_registry as _SR
+except Exception:
+    _SR = None
+
 def _subj_norm(s):
-    """Subject matching ke liye normalize: trailing code '(229)' / '- 229' hatao,
-    spaces collapse, casefold. 'Data Entry Operations (229)' == 'Data Entry Operations'."""
+    """Subject matching key — NIOS canonical registry se (case/alias/code/prefix
+    sab handle). 'PHYSICS'=='Physics', 'SCIENCE'=='Science and Technology',
+    'Data Entry Op (229)'=='Data Entry Operations'."""
+    if _SR is not None:
+        try:
+            return _SR.canon_norm(s)
+        except Exception:
+            pass
     import re as _re
     s = str(s or "")
     s = _re.sub(r"\s*[\(\[][^\)\]]*\d+[^\)\]]*[\)\]]\s*$", "", s)
     s = _re.sub(r"\s*[-–—_/]\s*\d{2,}\s*$", "", s)
     s = _re.sub(r"\s+", " ", s).strip().lower()
-    # NIOS PDF abbreviations: "Data Entry Op" -> "data entry operations"
     s = _re.sub(r"\bop\b", "operations", s)
+    return re.sub(r"[^a-z0-9]", "", s)
+
+def _subj_canon(s):
+    """Display ke liye official naam (registry se; fallback cleaned input)."""
+    if _SR is not None:
+        try:
+            return _SR.canon_display(s)
+        except Exception:
+            pass
     return s
 
 def _subj_eq(a, b):
@@ -428,8 +447,8 @@ def _subj_scope_for(db, model, subjects):
     for s in subjects or []:
         n = _subj_norm(s)
         if n:
-            norm[n] = s
-            scope[s] = s
+            norm[n] = _subj_canon(s)
+            scope[s] = _subj_canon(s)
     if not norm:
         return scope
     try:
@@ -692,6 +711,8 @@ async def upload_material(
     if len(raw) > 20 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File is larger than 20MB. Please use a smaller PDF.")
     b64 = base64.b64encode(raw).decode("ascii")
+    if _SR is not None:
+        subject = _SR.canon_display(subject.strip(), class_name)
     m = Material(
         teacher_id=tp.id, teacher_name=current_user.name, subject=subject.strip(),
         class_name=class_name.strip(), chapter=chapter.strip(),
@@ -706,8 +727,9 @@ async def upload_material(
         from models import StudentProfile
         label = {"notes": "Class Notes", "dpp": "DPP", "test": "Test"}.get(m.material_type, (m.category or "Material"))
         sps = db.query(StudentProfile).all()
+        _nk = _subj_norm(subject.strip())
         for sp in sps:
-            if sp.subjects and subject.strip() in sp.subjects and sp.user:
+            if sp.subjects and _nk in {_subj_norm(x) for x in sp.subjects} and sp.user:
                 notify(db, sp.user.id, f"📚 New {label}: {subject.strip()}",
                        f"{current_user.name} ne {subject.strip()} ({chapter.strip() or 'General'}) ke liye {label} upload ki hai. Materials section mein dekho!",
                        "new_material")
@@ -788,6 +810,9 @@ def teacher_set_subjects(payload: dict, db: Session = Depends(get_db), current_u
     selections = payload.get("selections", [])   # [{"subject":..,"class":"10"/"12"}]
     if not selections:
         raise HTTPException(status_code=400, detail="Select at least 1 subject")
+    if _SR is not None:
+        selections = [dict(x, subject=_SR.canon_display(x.get("subject"), x.get("class") or x.get("class_name")))
+                      for x in selections if x.get("subject")]
     tp.subject_classes = selections
     tp.subjects = sorted({s.get("subject") for s in selections if s.get("subject")})
     db.commit()
@@ -931,6 +956,68 @@ def teacher_dpp_packs(db: Session = Depends(get_db), current_user=Depends(get_te
     return {"packs": [_dpp_pack_out(db, pk) for pk in packs]}
 
 
+def _dpp_build_pdf(db, pk, kind="q", med=None):
+    """Created pack se on-demand premium PDF (language select ke saath).
+    kind=q -> questions paper (no answers), kind=s -> solutions paper."""
+    from types import SimpleNamespace as _NS
+    import base64 as _b64
+    import exam_pdf
+    tname = ""
+    try:
+        from models import TeacherProfile as _TP
+        _tp = db.query(_TP).filter(_TP.id == pk.teacher_id).first()
+        tname = _tp.user.name if _tp and _tp.user else "Teacher"
+    except Exception:
+        tname = "Teacher"
+    med = (med or pk.medium or "english").lower()
+    med = "hindi" if med.startswith("hin") else "english"
+    ex = _NS(teacher_name=tname, title=pk.title, subject=pk.subject,
+             chapter=pk.chapter, part=pk.part, test_type="DPP",
+             duration_mins=None, total_marks=None)
+    qobjs = []
+    for i, q in enumerate(pk.questions or [], 1):
+        base = dict(q_no=i, question_text=q.get("q"), max_marks=None,
+                    options=None, correct_option=None, image_b64=q.get("image"),
+                    alt_image_b64=q.get("alt_image"), question_text_hi=q.get("q_hi"),
+                    options_hi=None, explanation=None, explanation_hi=None)
+        if kind == "s":
+            qobjs.append(_NS(**base, model_answer=q.get("model"),
+                             model_answer_hi=q.get("model_hi"),
+                             model_answer_image=q.get("model_image")))
+        else:
+            qobjs.append(_NS(**base, model_answer=None, model_answer_hi=None,
+                             model_answer_image=None))
+    return _b64.b64encode(exam_pdf.build_exam_pdf(ex, qobjs, med)).decode()
+
+
+@router.get("/dpp-packs/{pack_id}/pdf")
+def teacher_dpp_pdf(pack_id: int, kind: str = "q", medium: str = "",
+                    db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """View/Download ke liye: created DPP -> language ke saath fresh premium PDF;
+    uploaded DPP -> stored file (language ignore)."""
+    from models import DppPack
+    tp = get_teacher_profile(current_user, db)
+    pk = db.query(DppPack).filter(DppPack.id == pack_id, DppPack.teacher_id == tp.id).first()
+    if not pk:
+        raise HTTPException(status_code=404, detail="DPP not found")
+    blob = None
+    if pk.source == "created" and pk.questions:
+        try:
+            blob = _dpp_build_pdf(db, pk, kind, medium or pk.medium)
+        except Exception:
+            blob = (pk.q_pdf if kind == "q" else pk.s_pdf)
+    else:
+        blob = (pk.q_pdf if kind == "q" else pk.s_pdf)
+    if not blob:
+        raise HTTPException(status_code=404, detail="File not available")
+    med = "hindi" if (medium or "").lower().startswith("hin") else "english"
+    fname = (pk.title or "DPP").replace("/", "-") + \
+        ("-solutions" if kind == "s" else "-questions") + "-" + med + ".pdf"
+    import base64 as _b64
+    return Response(content=_b64.b64decode(blob), media_type="application/pdf",
+                    headers={"Content-Disposition": 'inline; filename="%s"' % fname})
+
+
 @router.post("/dpp-packs/create")
 def teacher_dpp_create(data: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     """Editor se bana DPP — har question ka model answer MANDATORY;
@@ -953,28 +1040,28 @@ def teacher_dpp_create(data: dict, db: Session = Depends(get_db), current_user=D
         if not (q.get("model") or "").strip() and not q.get("model_image"):
             raise HTTPException(status_code=400,
                                 detail=f"Answer mandatory: Question {i} ka model answer bharo")
+    if _SR is not None:
+        subject = _SR.canon_display(subject, data.get("class_name"))
+    # Idempotency: network error ke baad retry pe DUPLICATE DPP na bane
+    # (same teacher + same title, 90 sec ke andar -> purana pack hi return)
+    ck = (data.get("client_key") or "").strip()
+    if ck:
+        try:
+            dup = (db.query(DppPack)
+                   .filter(DppPack.teacher_id == tp.id, DppPack.title == title,
+                           DppPack.created_at >= datetime.utcnow() - timedelta(seconds=90))
+                   .first())
+            if dup:
+                return {"ok": True, "pack": _dpp_pack_out(db, dup, False), "duplicate": True}
+        except Exception:
+            db.rollback()
     pk = DppPack(teacher_id=tp.id, subject=subject, class_name=(data.get("class_name") or ""),
                  chapter=chapter, part=part, title=title, medium=medium,
                  source="created", questions=questions)
     # premium PDFs (test jaisa) — teacher logo header, medium-wise
     try:
-        from types import SimpleNamespace as _NS
-        import exam_pdf
-        ex = _NS(teacher_name=(tp.user.name if tp.user else "Teacher"), title=title,
-                 subject=subject, chapter=chapter, part=part, test_type="DPP",
-                 duration_mins=None, total_marks=None)
-        med = "hindi" if medium.lower().startswith("hin") else "english"
-        qobjs_q, qobjs_s = [], []
-        for i, q in enumerate(questions, 1):
-            base = dict(q_no=i, question_text=q.get("q"), max_marks=None,
-                        options=None, correct_option=None, image_b64=q.get("image"),
-                        alt_image_b64=q.get("alt_image"), question_text_hi=q.get("q_hi"),
-                        options_hi=None, explanation=None, explanation_hi=None)
-            qobjs_q.append(_NS(**base, model_answer=None, model_answer_hi=None, model_answer_image=None))
-            qobjs_s.append(_NS(**base, model_answer=q.get("model"), model_answer_hi=q.get("model_hi"),
-                               model_answer_image=q.get("model_image")))
-        pk.q_pdf = base64.b64encode(exam_pdf.build_exam_pdf(ex, qobjs_q, med)).decode()
-        pk.s_pdf = base64.b64encode(exam_pdf.build_exam_pdf(ex, qobjs_s, med)).decode()
+        pk.q_pdf = _dpp_build_pdf(db, pk, "q", medium)
+        pk.s_pdf = _dpp_build_pdf(db, pk, "s", medium)
     except Exception:
         pk.q_pdf = pk.q_pdf or ""
         pk.s_pdf = pk.s_pdf or ""
@@ -994,6 +1081,8 @@ async def teacher_dpp_upload(subject: str = Form(...), chapter: str = Form(""), 
     qd = await q_pdf.read(); sd = await s_pdf.read()
     if not qd or not sd:
         raise HTTPException(status_code=400, detail="Questions aur Solutions dono PDF upload karna zaroori hai")
+    if _SR is not None:
+        subject = _SR.canon_display(subject.strip(), class_name)
     pk = DppPack(teacher_id=tp.id, subject=subject.strip(), class_name=class_name.strip(),
                  chapter=chapter.strip(), part=part.strip(),
                  title=(title.strip() or "DPP - " + (part.strip() or chapter.strip() or subject.strip())),
@@ -1119,14 +1208,25 @@ def teacher_student_counts(db: Session = Depends(get_db), current_user=Depends(g
         seen_sk.add(sk)
         per_cls = {}
         for sp in students:
-            if not sp.subjects or sk not in {_subj_key(x) for x in sp.subjects}:
+            if not sp.subjects:
+                continue
+            cls = str(sp.class_level or "").strip() or "?"
+            if _SR is not None:
+                tkey = _SR.canon_key(s, cls)
+                hit = any(_SR.canon_key(x, cls) == tkey for x in sp.subjects)
+            else:
+                hit = sk in {_subj_key(x) for x in sp.subjects}
+            if not hit:
                 continue
             seen_ids.add(sp.id)
-            cls = str(sp.class_level or "").strip() or "?"
             per_cls[cls] = per_cls.get(cls, 0) + 1
         for cls in sorted(per_cls):
-            out.append({"subject": s, "class": cls,
-                        "code": code_map.get((sk, cls)), "count": per_cls[cls]})
+            disp = _SR.canon_display(s, cls) if _SR else s
+            code = code_map.get((sk, cls))
+            if _SR is not None:
+                code = (_SR.canon_subject(s, cls) or {}).get("code") or code
+            out.append({"subject": disp, "class": cls,
+                        "code": code, "count": per_cls[cls]})
     out.sort(key=lambda x: (-x["count"], (x["subject"] or ""), x["class"]))
     return {"total": len(seen_ids), "subjects": out}
 
@@ -1237,8 +1337,16 @@ def teacher_my_students_list(q: str = "", subject: str = "", cls: str = "", db: 
     from models import StudentProfile
     tp = get_teacher_profile(current_user, db)
     subs = tp.subjects or []
-    sub_keys = {_subj_key(x) for x in subs if _subj_key(x)}
-    want = _subj_key(subject) if subject else ""
+    # Class-aware canonical keys: 'PHYSICS'(Cl-12 student) aur teacher ka 'Physics'
+    # dono ka key 'c312' — koi bhi case/alias/class-variant miss nahi hoga.
+    def _tkeys(cls):
+        if _SR is not None:
+            return {_SR.canon_key(x, cls) for x in subs}
+        return {_subj_key(x) for x in subs if _subj_key(x)}
+    def _skeys(ssubs, cls):
+        if _SR is not None:
+            return {_SR.canon_key(x, cls) for x in ssubs}
+        return {_subj_key(x) for x in ssubs if _subj_key(x)}
     want_cls = (cls or "").strip()
     ql = " ".join((q or "").split()).strip().lower()
     q_tokens = [t for t in ql.split(" ") if t]
@@ -1246,11 +1354,15 @@ def teacher_my_students_list(q: str = "", subject: str = "", cls: str = "", db: 
     out = []
     for sp in rows:
         ssubs = sp.subjects or []
-        matched = [x for x in ssubs if _subj_key(x) in sub_keys]
+        scls = "".join(ch for ch in str(sp.class_level or "") if ch.isdigit())[:2] or None
+        tkeys = _tkeys(scls)
+        matched = [x for x in ssubs if (_SR.canon_key(x, scls) if _SR else _subj_key(x)) in tkeys]
         if not matched:
             continue
-        if want and want not in {_subj_key(x) for x in ssubs}:
-            continue
+        if subject:
+            wk = (_SR.canon_key(subject, scls) if _SR else _subj_key(subject))
+            if wk not in _skeys(ssubs, scls):
+                continue
         if want_cls and str(sp.class_level or "").strip() != want_cls:
             continue
         nm = (sp.user.name if sp.user else "") or ""
@@ -1273,8 +1385,9 @@ def teacher_my_students_list(q: str = "", subject: str = "", cls: str = "", db: 
                     "goal": (sp.goal_custom if sp.goal == "other" else sp.goal),
                     "last_seen": sp.last_seen.strftime("%d %b %Y, %I:%M %p") if sp.last_seen else None,
                     "is_verified": bool(sp.is_verified),
-                    "all_subjects": ssubs,
-                    "subjects": matched, "has_photo": bool(sp.photo_b64)})
+                    "all_subjects": (_SR.canon_list(ssubs, scls) if _SR else ssubs),
+                    "subjects": (_SR.canon_list(matched, scls) if _SR else matched),
+                    "has_photo": bool(sp.photo_b64)})
     out.sort(key=lambda x: (x["name"] or "").lower())
     return {"total": len(out), "students": out}
 
@@ -1646,8 +1759,11 @@ def create_exam(payload: dict = Body(...), background_tasks: BackgroundTasks = N
         raise HTTPException(400, "Title and at least one question are required")
     ttype = payload.get("test_type", "subjective")
     total = sum(int(q.get("max_marks", 1) or 1) for q in qs)
+    _subj_in = payload.get("subject", "")
+    if _SR is not None and _subj_in:
+        _subj_in = _SR.canon_display(_subj_in, payload.get("class_name"))
     ex = Exam(teacher_id=tp.id, teacher_name=current_user.name,
-              subject=payload.get("subject", ""), title=payload["title"],
+              subject=_subj_in, title=payload["title"],
               chapter=payload.get("chapter"), test_type=ttype,
               class_name=(payload.get("class_name") or "").strip(),
               medium=payload.get("medium", "English"),

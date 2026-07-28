@@ -1,4 +1,8 @@
 import re
+try:
+    import subjects_registry as _SR
+except Exception:
+    _SR = None
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -244,7 +248,7 @@ def get_all_students(db: Session = Depends(get_db), _=Depends(get_admin)):
                 "batch_name": sp.batch_name,
                 "class_level": sp.class_level,
                 "has_photo": bool(sp.photo_b64),
-                "subjects": sp.subjects,
+                "subjects": (_SR.canon_list(sp.subjects, sp.class_level) if _SR else sp.subjects),
                 "class_name": sp.class_name,
                 "is_verified": sp.is_verified,
                 "source": getattr(sp, "source", None) or "mvs_app",
@@ -450,6 +454,10 @@ async def admin_upload_timetable_pdf(
         raise HTTPException(status_code=400, detail=f"PDF parse error: {e}")
     if not rows:
         raise HTTPException(status_code=400, detail="No valid row found in the PDF.")
+    # Subject naam canonical karo (PHYSICS/Physics/Data Entry Op (229) -> official NIOS naam)
+    if _SR is not None:
+        for r in rows:
+            r["subject"] = _SR.canon_display(r.get("subject"), class_name)
     subjects_found = sorted(set(r["subject"] for r in rows))
     # preview mode: sirf parsed rows dikhao, DB me kuch save mat karo
     if preview.lower() == "true":
@@ -497,6 +505,9 @@ def admin_timetable_pdf_commit(payload: dict, db: Session = Depends(get_db), _=D
                       "time": (r.get("time") or "").strip(), "type": r.get("type") or "chapter"})
     if not clean:
         raise HTTPException(status_code=400, detail="No valid rows left — keep at least 1 chapter.")
+    if _SR is not None:
+        for r in clean:
+            r["subject"] = _SR.canon_display(r.get("subject"), class_name)
     subjects_found = sorted(set(r["subject"] for r in clean))
     if replace.lower() == "true":
         db.query(TimetableEntry).filter(
@@ -555,6 +566,8 @@ async def admin_upload_material(
     raw = await file.read()
     if len(raw) > 20 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File is larger than 20MB")
+    if _SR is not None:
+        subject = _SR.canon_display(subject.strip(), class_name)
     m = Material(
         teacher_id=None, teacher_name="Admin", subject=subject.strip(),
         class_name=class_name.strip(), chapter=chapter.strip(),
@@ -660,8 +673,9 @@ def approve_class(eid: int, db: Session = Depends(get_db), _=Depends(get_admin))
             db.add(Notification(user_id=tp.user.id, title="Extra Class Approved",
                                 message=msg, notif_type="class_approved"))
     # notify students of that subject
+    _nk = (_SR.canon_norm(e.subject) if _SR else e.subject)
     for sp in db.query(StudentProfile).all():
-        if sp.subjects and e.subject in sp.subjects and sp.user:
+        if sp.subjects and _nk in {(_SR.canon_norm(x) if _SR else x) for x in sp.subjects} and sp.user:
             db.add(Notification(user_id=sp.user.id, title=f"New Class: {e.subject}",
                                 message=f"An extra class was added for {e.subject} ({e.entry_date} {e.time_text or ''}). See the time table.",
                                 notif_type="new_class"))
@@ -746,9 +760,26 @@ def admin_student_counts(db: Session = Depends(get_db), _=Depends(get_admin)):
     counts = {}
     for sp in students:
         cls = str(sp.class_level or "").strip() or "?"
+        seen = set()   # ek student ka same canonical subject 2 baar na gine
         for s in (sp.subjects or []):
-            counts[(s, cls)] = counts.get((s, cls), 0) + 1
-    out = [{"subject": k[0], "class": k[1], "code": code_map.get((_sk(k[0]), k[1])), "count": v}
+            if _SR is not None:
+                key = (_SR.canon_key(s, cls), cls)
+                if key in seen:
+                    continue
+                seen.add(key)
+                disp = _SR.canon_display(s, cls)
+                can = _SR.canon_subject(s, cls)
+                code = (can or {}).get("code") or code_map.get((_sk(disp), cls))
+            else:
+                key = (s, cls)
+                if key in seen:
+                    continue
+                seen.add(key)
+                disp = s
+                code = code_map.get((_sk(s), cls))
+            k = (disp, cls, code)
+            counts[k] = counts.get(k, 0) + 1
+    out = [{"subject": k[0], "class": k[1], "code": k[2], "count": v}
            for k, v in counts.items()]
     out.sort(key=lambda x: (-x["count"], (x["subject"] or ""), x["class"]))
     return {"total_students": len(students), "subjects": out}
@@ -875,10 +906,13 @@ def admin_student_photo(sid: int, db: Session = Depends(get_db), _=Depends(get_a
     return _img_response(sp.photo_b64 if sp else None)
 
 @router.get("/students-list")
-def admin_students_list(q: str = "", subject: str = "", cls: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+def admin_students_list(q: str = "", subject: str = "", cls: str = "", session: str = "",
+                        medium: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import StudentProfile
     import re as _re
     def _sk(name):
+        if _SR is not None:
+            return _SR.canon_norm(name)
         t = str(name or "")
         t = _re.sub(r"\((?:class\s*)?\d+(?:th)?\)", " ", t, flags=_re.I)
         t = _re.sub(r"[^a-z0-9]+", " ", t.lower())
@@ -887,6 +921,8 @@ def admin_students_list(q: str = "", subject: str = "", cls: str = "", db: Sessi
     ql = q.strip().lower()
     want = _sk(subject) if subject else ""
     want_cls = (cls or "").strip()
+    want_sess = (session or "").strip()
+    want_med = (medium or "").strip().lower()
     out = []
     for sp in rows:
         nm = sp.user.name if sp.user else ""
@@ -897,8 +933,13 @@ def admin_students_list(q: str = "", subject: str = "", cls: str = "", db: Sessi
             continue
         if want_cls and str(sp.class_level or "").strip() != want_cls:
             continue
+        if want_sess and (sp.exam_session or "") != want_sess:
+            continue
+        if want_med and (sp.medium or "").strip().lower() != want_med:
+            continue
+        disp_subs = _SR.canon_list(ssubs, sp.class_level) if _SR else ssubs
         out.append({"id": sp.id, "name": nm, "phone": sp.phone, "class": sp.class_level,
-                    "subjects": ssubs, "all_subjects": ssubs, "has_photo": bool(sp.photo_b64),
+                    "subjects": disp_subs, "all_subjects": disp_subs, "has_photo": bool(sp.photo_b64),
                     "batch": sp.batch_name, "medium": sp.medium, "email": sp.email,
                     "class_name": sp.class_name, "nios_ref": sp.nios_ref,
                     "exam_session": sp.exam_session, "exam_stream": sp.exam_stream,
@@ -1066,12 +1107,23 @@ def edit_teacher(tid: int, payload: dict, db: Session = Depends(get_db), _=Depen
     if "phone" in payload:
         tp.phone = (payload.get("phone") or "").strip() or None
     if "subject_classes" in payload and isinstance(payload["subject_classes"], list):
-        sc = [x for x in payload["subject_classes"]
-              if isinstance(x, dict) and (x.get("subject") or "").strip()]
+        sc = []
+        for x in payload["subject_classes"]:
+            if not (isinstance(x, dict) and (x.get("subject") or "").strip()):
+                continue
+            x = dict(x)
+            if _SR is not None:
+                x["subject"] = _SR.canon_display(x["subject"].strip(), x.get("class") or x.get("class_name"))
+            sc.append(x)
         tp.subject_classes = sc
-        tp.subjects = [x["subject"].strip() for x in sc]
+        seen = []
+        for x in sc:
+            if x["subject"] not in seen:
+                seen.append(x["subject"])
+        tp.subjects = seen
     elif "subjects" in payload and isinstance(payload["subjects"], list):
-        tp.subjects = [s.strip() for s in payload["subjects"] if s.strip()]
+        _raw = [s.strip() for s in payload["subjects"] if s.strip()]
+        tp.subjects = _SR.canon_list(_raw) if _SR else _raw
     if "is_active" in payload and tp.user:
         tp.user.is_active = bool(payload["is_active"])
     db.commit()
@@ -1137,7 +1189,8 @@ def edit_student(sid: int, payload: dict, db: Session = Depends(get_db), _=Depen
     if "class_level" in payload:
         sp.class_level = (payload.get("class_level") or "").strip() or None
     if "subjects" in payload and isinstance(payload["subjects"], list):
-        sp.subjects = [s.strip() for s in payload["subjects"] if s.strip()]
+        _raw = [s.strip() for s in payload["subjects"] if s.strip()]
+        sp.subjects = _SR.canon_list(_raw, sp.class_level) if _SR else _raw
     if payload.get("exam_session"):
         sid = (payload.get("exam_session") or "").strip()[:30]
         mapped = _map_session_text(db, sid)
@@ -1923,12 +1976,14 @@ def _sync_one_from_portal(sp, db):
     if not st or not st.get("unlocked"):
         return False
     sp.source = "mvs_portal"                       # priority: portal jeet-ta hai
-    if st.get("subjects"):
-        sp.subjects = st["subjects"]
-    if st.get("medium"):
-        sp.medium = st["medium"]
     if st.get("class_level"):
         sp.class_level = st["class_level"]
+    if st.get("subjects"):
+        # class manager ke raw naam (PHYSICS / SCIENCE / DATA ENTRY) official
+        # NIOS naam pe canonical karo — duplicate subjects kabhi nahi banenge
+        sp.subjects = _SR.canon_list(st["subjects"], sp.class_level) if _SR else st["subjects"]
+    if st.get("medium"):
+        sp.medium = st["medium"]
     if st.get("name") and sp.user and (not sp.user.name or sp.user.name.startswith("Student ")):
         sp.user.name = st["name"]
     _apply_portal_exam_info(sp, st, db)

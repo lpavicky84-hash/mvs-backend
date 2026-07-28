@@ -791,7 +791,7 @@ def student_materials_v2(db: Session = Depends(get_db), current_user=Depends(get
     subs = sp.subjects or []
     my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
     ms = db.query(Material).filter(
-        Material.subject.in_(subs),
+        Material.subject.in_(list(_subj_scope_for(db, Material, subs))),
         Material.material_type.in_(["notes", "dpp", "other"])
     ).order_by(Material.subject, Material.chapter, Material.created_at.desc()).all()
     # Same-naam subject (Class 10 & 12) ho to sirf apni class ka material dikhe
@@ -1098,15 +1098,33 @@ def _ensure_exam_columns(db):
     _EXAM_COLS_READY = True
 
 
+try:
+    import subjects_registry as _SR
+except Exception:
+    _SR = None
+
 def _subj_norm(s):
-    """Subject matching normalize: trailing code '(229)' / '- 229' hatao, casefold.
-    'Data Entry Operations (229)' == 'Data Entry Operations'."""
+    """Subject matching key — NIOS canonical registry se ('PHYSICS'=='Physics',
+    'SCIENCE'=='Science and Technology', 'Data Entry Op (229)'=='Data Entry Operations')."""
+    if _SR is not None:
+        try:
+            return _SR.canon_norm(s)
+        except Exception:
+            pass
     import re as _re
     s = str(s or "")
     s = _re.sub(r"\s*[\(\[][^\)\]]*\d+[^\)\]]*[\)\]]\s*$", "", s)
     s = _re.sub(r"\s*[-–—_/]\s*\d{2,}\s*$", "", s)
     s = _re.sub(r"\s+", " ", s).strip().lower()
-    s = _re.sub(r"\bop\b", "operations", s)   # "Data Entry Op" abbreviation
+    s = _re.sub(r"\bop\b", "operations", s)
+    return re.sub(r"[^a-z0-9]", "", s)
+
+def _subj_canon(s):
+    if _SR is not None:
+        try:
+            return _SR.canon_display(s)
+        except Exception:
+            pass
     return s
 
 
@@ -1116,8 +1134,8 @@ def _subj_scope_for(db, model, subjects):
     for s in subjects or []:
         n = _subj_norm(s)
         if n:
-            norm[n] = s
-            scope[s] = s
+            norm[n] = _subj_canon(s)
+            scope[s] = _subj_canon(s)
     if not norm:
         return scope
     try:
@@ -1153,7 +1171,8 @@ def student_exams(db: Session = Depends(get_db), current_user=Depends(get_studen
     my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
     q = db.query(Exam).filter(Exam.is_active == True)
     if subs:
-        q = q.filter(Exam.subject.in_(subs))
+        # Naam-variant tolerant ('PHYSICS' wala student bhi 'Physics' ka test dekhe)
+        q = q.filter(Exam.subject.in_(list(_subj_scope_for(db, Exam, subs))))
     rows = q.order_by(Exam.created_at.desc()).all()
     out = []
     for e in rows:
@@ -1196,7 +1215,7 @@ def student_exam_paper(exam_id: int, medium: str = "english", db: Session = Depe
     ex = db.query(Exam).filter(Exam.id == exam_id, Exam.is_active == True).first()
     if not ex:
         raise HTTPException(404, "Test not found")
-    if ex.subject and ex.subject not in (sp.subjects or []):
+    if ex.subject and _subj_norm(ex.subject) not in {_subj_norm(x) for x in (sp.subjects or [])}:
         raise HTTPException(403, "Not your subject")
     _my = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
     _ec = _class_digits(getattr(ex, "class_name", ""))
@@ -1717,7 +1736,7 @@ def student_dpp_packs(db: Session = Depends(get_db), current_user=Depends(get_st
     from models import DppPack, DppAnswer, TeacherProfile, User
     sp = get_student_profile(current_user, db)
     my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
-    packs = (db.query(DppPack).filter(DppPack.subject.in_(sp.subjects or []))
+    packs = (db.query(DppPack).filter(DppPack.subject.in_(list(_subj_scope_for(db, DppPack, sp.subjects or []))))
              .order_by(DppPack.created_at.desc()).all())
     out = []
     for pk in packs:
@@ -1767,6 +1786,106 @@ async def student_dpp_submit(pack_id: int, file: UploadFile = File(...),
                   filename=file.filename or "dpp-answer.pdf", status="submitted")
     db.add(a); db.commit()
     return {"ok": True, "status": "submitted"}
+
+
+def _dpp_visible(pk, sp):
+    """Pack is student ke liye visible? (subject canon-match + class match)"""
+    if _subj_norm(pk.subject) not in {_subj_norm(x) for x in (sp.subjects or [])}:
+        return False
+    my = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
+    pc = _class_digits(pk.class_name)
+    if my and pc and pc != my:
+        return False
+    return True
+
+
+@router.get("/dpp-packs/{pack_id}/questions")
+def student_dpp_questions(pack_id: int, db: Session = Depends(get_db),
+                          current_user=Depends(get_student)):
+    """Created DPP ka interactive view — questions (model answers SIRF submit ke baad).
+    Har question pe Raise Doubt hota hai frontend me."""
+    from models import DppPack, DppAnswer
+    sp = get_student_profile(current_user, db)
+    pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
+    if not pk or not _dpp_visible(pk, sp):
+        raise HTTPException(status_code=404, detail="DPP not found")
+    submitted = (db.query(DppAnswer)
+                 .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id)
+                 .first() is not None)
+    qs = []
+    for i, q in enumerate(pk.questions or [], 1):
+        item = {"qno": i, "q": q.get("q") or "", "q_hi": q.get("q_hi") or "",
+                "image": q.get("image"), "alt_image": q.get("alt_image")}
+        if submitted:
+            item.update({"model": q.get("model") or "", "model_hi": q.get("model_hi") or "",
+                         "model_image": q.get("model_image")})
+        qs.append(item)
+    tname = ""
+    try:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == pk.teacher_id).first()
+        tname = tp.user.name if tp and tp.user else ""
+    except Exception:
+        pass
+    return {"id": pk.id, "title": pk.title, "subject": pk.subject, "chapter": pk.chapter,
+            "part": pk.part, "medium": pk.medium, "teacher": tname, "source": pk.source,
+            "submitted": submitted, "questions": qs}
+
+
+@router.post("/dpp-packs/{pack_id}/doubt")
+def student_dpp_raise_doubt(pack_id: int, data: dict = Body(...), db: Session = Depends(get_db),
+                            current_user=Depends(get_student)):
+    """DPP ke kisi question pe doubt — seedha DPP teacher ke doubt section me.
+    Screenshot ki zaroorat nahi: question ka text (+ image) automatically attach hota hai."""
+    from models import DppPack
+    sp = get_student_profile(current_user, db)
+    pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
+    if not pk or not _dpp_visible(pk, sp):
+        raise HTTPException(status_code=404, detail="DPP not found")
+    try:
+        qno = int(data.get("qno") or 0)
+    except Exception:
+        qno = 0
+    if qno < 1:
+        raise HTTPException(status_code=400, detail="Question number daalo")
+    note = (data.get("note") or "").strip()
+    qs = pk.questions or []
+    qtext, qimg, mime = "", None, None
+    if pk.source == "created" and qno <= len(qs):
+        q = qs[qno - 1]
+        qtext = (q.get("q") or "").strip()
+        qimg = q.get("image")
+    if qimg:
+        try:
+            raw = base64.b64decode(qimg)
+            if raw[:4] == b"\x89PNG":
+                mime = "image/png"
+            elif raw[:2] == b"\xff\xd8":
+                mime = "image/jpeg"
+            elif raw[:4] == b"RIFF":
+                mime = "image/webp"
+            else:
+                mime = "image/png"
+        except Exception:
+            qimg = None
+    head = "DPP '%s' — Question %d" % (pk.title or "DPP", qno)
+    if qtext:
+        head += ":\n" + qtext
+    if note:
+        head += "\n\nStudent's doubt: " + note
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == pk.teacher_id).first()
+    topic = ("DPP: " + (pk.title or "")) + ((" (" + pk.chapter + ")") if pk.chapter else "")
+    doubt = Doubt(student_id=sp.id, teacher_id=(tp.id if tp else None),
+                  subject=(pk.subject or "")[:60], topic=topic[:200], question=head,
+                  image_b64=qimg, attach_mime=mime,
+                  attach_name=("question.%s" % ("jpg" if mime == "image/jpeg" else "png")) if qimg else None)
+    db.add(doubt)
+    if tp and tp.user:
+        notify(db, tp.user.id, "DPP Doubt — %s" % current_user.name,
+               "%s | Q%d | %s" % (pk.title, qno, (note or qtext)[:100]), "new_doubt")
+    db.commit()
+    db.refresh(doubt)
+    return {"id": doubt.id,
+            "message": "Doubt sent" + (" to %s" % tp.user.name if tp and tp.user else "") + "!"}
 
 
 @router.get("/dpp-packs/{pack_id}/file")

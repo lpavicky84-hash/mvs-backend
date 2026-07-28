@@ -3895,11 +3895,18 @@ async function loadSTeachers(){
 // ===== STUDENTS LIST MODAL (teacher + admin) =====
 let _slistRole='teacher', _slistSubject='';
 let _slistCls='', _slistCode='';
+let _slistSess='', _slistMed='';
 async function openStudentsListModal(role,subject,cls,code){
   _slistRole=role; _slistSubject=subject||''; _slistCls=cls||''; _slistCode=code||'';
+  _slistSess=''; _slistMed='';
   const ttl=(subject?subject+(_slistCode?' ('+_slistCode+')':'')+' — ':'')+(_slistCls&&_slistCls!=='?'?'Class '+_slistCls+' ':'')+'Students';
   showModal(ttl,
-    `<div class="slist-search"><input class="form-control" id="slist-q" placeholder="Search by name or phone..." oninput="renderSlist()"></div><div class="slist-hint">Tap any student to see complete details.</div><div id="slist-wrap"><div class="spinner"></div></div>`,
+    `<div class="slist-search"><input class="form-control" id="slist-q" placeholder="Search by name or phone..." oninput="renderSlist()"></div>
+     <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+       <select class="form-control" id="slist-sess" style="flex:1;min-width:140px" onchange="_slistSess=this.value;renderSlist()"><option value="">All Sessions</option></select>
+       <select class="form-control" id="slist-med" style="flex:0 0 130px" onchange="_slistMed=this.value;renderSlist()"><option value="">All Mediums</option><option>Hindi</option><option>English</option></select>
+     </div>
+     <div class="slist-hint">Tap any student to see complete details.</div><div id="slist-wrap"><div class="spinner"></div></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
   await fetchSlist();
 }
@@ -3910,7 +3917,14 @@ async function fetchSlist(){
   if(_slistSubject) prm.push('subject='+encodeURIComponent(_slistSubject));
   if(_slistCls) prm.push('cls='+encodeURIComponent(_slistCls));
   const u=base+(prm.length?'?'+prm.join('&'):'');
-  try{ const r=await api(u); _slistData=r.students||[]; _slistData.forEach((x,i)=>x._i=i); renderSlist(); }
+  try{
+    const r=await api(u); _slistData=r.students||[]; _slistData.forEach((x,i)=>x._i=i);
+    // Session dropdown data se banao (sirf jo sessions actually hain)
+    const ss=document.getElementById('slist-sess');
+    if(ss){ const sess=[...new Set(_slistData.map(x=>x.exam_session).filter(Boolean))];
+      ss.innerHTML='<option value="">All Sessions</option>'+sess.map(x=>`<option value="${esc(x)}">${esc(_sylSessName(x))}</option>`).join(''); }
+    renderSlist();
+  }
   catch(e){ document.getElementById('slist-wrap').innerHTML=errHtml(e); }
 }
 function _slistDetail(i){
@@ -3930,7 +3944,11 @@ function _slistDetail(i){
 function renderSlist(){
   const q=(val('slist-q')||'').toLowerCase();
   const wrap=document.getElementById('slist-wrap'); if(!wrap) return;
-  const rows=_slistData.filter(s=>!q || (s.name||'').toLowerCase().includes(q) || (s.phone||'').includes(q));
+  let rows=_slistData.filter(s=>!q || (s.name||'').toLowerCase().includes(q) || (s.phone||'').includes(q));
+  if(_slistSess) rows=rows.filter(s=>(s.exam_session||'')===_slistSess);
+  if(_slistMed) rows=rows.filter(s=>(s.medium||'')===_slistMed);
+  const hint=document.querySelector('.slist-hint');
+  if(hint) hint.textContent=`${rows.length} student${rows.length===1?'':'s'}${(_slistSess||_slistMed)?' (filtered)':''} — tap for complete details.`;
   if(rows.length===0){ wrap.innerHTML=`<div class="empty-state"><p>No students found.</p></div>`; return; }
   wrap.innerHTML=rows.map(s=>{
     const chips=(s.subjects||[]).map(x=>`<span class="chip">${esc(x)}</span>`).join('');
@@ -4491,8 +4509,8 @@ async function loadTDpp(){
             <span class="chip" style="font-size:.62rem">${esc(pk.medium)}</span>
             <span class="chip" style="font-size:.62rem">${pk.created_at||''}</span></div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-ghost btn-sm" title="Download questions paper" onclick="dppDl(${pk.id},'q')">${ic('download')} Questions</button>
-          <button class="btn btn-ghost btn-sm" title="Download solutions paper" onclick="dppDl(${pk.id},'s')">${ic('download')} Solutions</button>
+          <button class="btn btn-ghost btn-sm" title="View PDF (language select hoga)" onclick="dppLangPick(${pk.id},'view')">${ic('eye')} View</button>
+          <button class="btn btn-ghost btn-sm" title="Download PDF (language select hoga)" onclick="dppLangPick(${pk.id},'download')">${ic('download')} Download</button>
           <button class="btn btn-primary btn-sm" title="See student submissions" onclick="openDppResults(${pk.id})">${ic('users')} Submissions (${pk.submitted||0})</button>
           <button class="btn btn-danger btn-sm" title="Delete this DPP (submissions bhi delete ho jayengi)" onclick="dppDelete(${pk.id},'${esc(pk.title||'DPP').replace(/'/g,'')}')">${ic('trash')} Delete</button>
         </div></div></div></div>`).join('');
@@ -4513,6 +4531,38 @@ async function dppDl(pid,kind){
     const bl=await r.blob(); const a=document.createElement('a');
     a.href=URL.createObjectURL(bl); a.download=(kind==='s'?'DPP-solutions.pdf':'DPP-questions.pdf'); a.click();
   }catch(e){ toast('File not available',true); }
+}
+// ---------- View / Download with language selection (test jaise) ----------
+function dppLangPick(pid,action){
+  const pk=(window._dppPacks||[]).find(x=>x.id===pid); if(!pk) return;
+  // Uploaded PDF pack -> language nahi, seedha kholo/download karo
+  if(pk.source!=='created'){ dppPdfGo(pid,action,'q',''); return; }
+  const meds=(pk.medium==='Hindi')?['hindi']:['english','hindi'];
+  window._dppLang=meds[0];
+  showModal((action==='view'?'View':'Download')+' — '+esc(pk.title||'DPP'),
+    `<div style="padding:4px 2px">
+      <div style="font-size:.82rem;font-weight:700;color:var(--text-muted);margin-bottom:8px">1. LANGUAGE SELECT KARO</div>
+      <div style="display:flex;gap:8px;margin-bottom:18px" id="dpp-lang-row">
+        ${meds.map(m=>`<button class="btn ${m===meds[0]?'btn-primary':'btn-ghost'} btn-sm" data-lang="${m}" onclick="window._dppLang='${m}';document.querySelectorAll('#dpp-lang-row .btn').forEach(b=>{b.classList.remove('btn-primary');b.classList.add('btn-ghost')});this.classList.remove('btn-ghost');this.classList.add('btn-primary')">${m==='hindi'?'हिंदी':'English'}</button>`).join('')}
+      </div>
+      <div style="font-size:.82rem;font-weight:700;color:var(--text-muted);margin-bottom:8px">2. KAUNSA PAPER?</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" onclick="closeModal();dppPdfGo(${pid},'${action}','q',window._dppLang||'english')">${ic('file')} Questions Paper</button>
+        <button class="btn btn-ghost btn-sm" onclick="closeModal();dppPdfGo(${pid},'${action}','s',window._dppLang||'english')">${ic('check')} Solutions Paper</button>
+      </div>
+    </div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+}
+async function dppPdfGo(pid,action,kind,med){
+  try{
+    toast('Preparing '+(med==='hindi'?'Hindi':'English')+' '+(kind==='s'?'solutions':'questions')+' PDF…');
+    const r=await fetch(API+`/api/teacher/dpp-packs/${pid}/pdf?kind=${kind}&medium=${med||''}`,{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('nf');
+    const bl=await r.blob(); const u=URL.createObjectURL(bl);
+    if(action==='view'){ window.open(u,'_blank'); }
+    else{ const a=document.createElement('a'); a.href=u; a.download=(kind==='s'?'DPP-solutions':'DPP-questions')+'-'+(med||'english')+'.pdf'; document.body.appendChild(a); a.click(); a.remove(); }
+    setTimeout(()=>URL.revokeObjectURL(u),90000);
+  }catch(e){ toast('PDF abhi available nahi hai — thodi der baad try karo.',true); }
 }
 // ---------- submissions (results) — Checking / Checked + Remarks (no marks) ----------
 async function dppDelete(pid,title){
@@ -4616,6 +4666,7 @@ function _dppFillParts(){
 }
 async function openCreateDpp(){
   window._dppMode='pending';
+  window._dppCk='dpp-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);  // idempotency key (retry pe duplicate na bane)
   await _dppTtData();
   await openCreateExam('subjective');
   // DPP mode: no schedule/duration; chapter/part = timetable dropdowns; answers mandatory (already)
@@ -6602,15 +6653,24 @@ async function submitExam(){
       if(!(q.model||'').trim()&&!q.model_answer_image){ toast('Question '+(i+1)+': model answer MANDATORY hai — answer bharo',true); return; } }
     const payload={ subject:val('ex-sub'), class_name:(val('ex-cls-sel')||''),
       chapter:(val('ex-ch-sel')!==undefined?val('ex-ch-sel'):val('ex-ch')), part:(val('ex-part-sel')||''),
-      title, medium:_examMedium||'English',
+      title, medium:_examMedium||'English', client_key:(window._dppCk||''),
       questions:_examQs.map(q=>({ q:q.q||'', q_hi:q.q_hi||'', model:q.model||'', model_hi:q.model_hi||'',
         image:q.image||null, alt_image:q.alt_image||null, model_image:q.model_answer_image||null })) };
-    try{
-      await api('/api/teacher/dpp-packs/create','POST',payload);
-      window._dppMode=false; closeModal();
-      toast('DPP created — premium questions + solutions PDFs ready. Students ko dikhega.');
-      loadTDpp(); return;
-    }catch(e){ toast(e.message||'Create failed',true); return; }
+    // Network error pe EK baar auto-retry (backend cold-start) — duplicate nahi banega
+    // (client_key + server-side 90s dedupe). Form data modal me safe rehta hai.
+    let res=null, err=null;
+    try{ res=await api('/api/teacher/dpp-packs/create','POST',payload); }
+    catch(e1){
+      err=e1;
+      toast('Server tak nahi pahunch pa rahe — 4 sec me dobara try…',true);
+      await new Promise(r=>setTimeout(r,4000));
+      try{ res=await api('/api/teacher/dpp-packs/create','POST',payload); err=null; }catch(e2){ err=e2; }
+    }
+    if(err||!res){ toast((err&&err.message)||'Create failed',true); return; }
+    window._dppMode=false; closeModal();
+    toast(res.duplicate?'DPP pehle hi ban gaya tha — ye raha.':'DPP created — premium questions + solutions PDFs ready. Students ko dikhega.');
+    await loadTDpp();
+    dppLangPick(res.pack.id,'view'); return;
   }
   const title=val('ex-title'); if(!title){ toast('Enter a test title',true); return; }
   if(!_examQs.length){ toast('Add at least one question',true); return; }
@@ -7523,6 +7583,7 @@ async function submitBulkPhone(){
   }catch(e){ document.getElementById('bp-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Add Students'; }
 }
 let _aStu=[]; let _aCounts={total:0,subjects:[]}; let _stuFilter=''; let _stuClass=''; let _stuSearch=''; let _stuPage=1; let _stuSize=10;
+let _stuSess=''; let _stuMed='';   // master filters: Exam Session + Medium
 async function loadAStudents(){
   const el=document.getElementById('a-students-content');
   try{
@@ -7533,9 +7594,25 @@ async function loadAStudents(){
  ]);
  _aStu=ss; _aCounts={total:counts.total_students||ss.length,subjects:counts.subjects||[]};
  window._aPortalOv=ov;
- _stuFilter=''; _stuSearch=''; _stuPage=1;
+ _stuFilter=''; _stuSearch=''; _stuPage=1; _stuSess=''; _stuMed='';
  aRenderStudents();
   }catch(e){ el.innerHTML=errHtml(e); }
+}
+function _aStuCounts(){
+  // Session + Medium filter lagakar per-subject counts — "April 2027 me Physics kitne?"
+  let list=_aStu;
+  if(_stuSess) list=list.filter(s=>(s.exam_session||'')===_stuSess);
+  if(_stuMed) list=list.filter(s=>(s.medium||'')===_stuMed);
+  const m={};
+  list.forEach(s=>{
+    const cls=String(s.class_level||''); const seen=new Set();
+    (s.subjects||[]).forEach(x=>{
+      const k=x+'|'+cls; if(seen.has(k)) return; seen.add(k);
+      if(!m[k]) m[k]={subject:x,class:cls,count:0};
+      m[k].count++;
+    });
+  });
+  return Object.values(m).sort((a,b)=>b.count-a.count||String(a.subject).localeCompare(String(b.subject)));
 }
 let _pp={q:'',cls:'',sess:''};
 function openPortalPending(){
@@ -7839,6 +7916,8 @@ function aStuClass(c){ _stuClass=c; _stuFilter=''; _stuPage=1; aRenderStudents()
 function _stuFiltered(){
   let list=_aStu;
   if(_stuSrcFilter) list=list.filter(s=>(s.source||'mvs_app')===_stuSrcFilter);
+  if(_stuSess) list=list.filter(s=>(s.exam_session||'')===_stuSess);
+  if(_stuMed) list=list.filter(s=>(s.medium||'')===_stuMed);
   if(_stuClass) list=list.filter(s=>String(s.class_level||'')===_stuClass);
   if(_stuFilter) list=list.filter(s=>(s.subjects||[]).some(x=>x.toLowerCase()===_stuFilter.toLowerCase()));
   if(_stuSearch){ const q=_stuSearch.toLowerCase(); list=list.filter(s=>(s.name||'').toLowerCase().includes(q)||(s.phone||'').includes(q)||(s.user_id||'').toLowerCase().includes(q)||(s.email||'').toLowerCase().includes(q)); }
@@ -7846,18 +7925,23 @@ function _stuFiltered(){
 }
 function aRenderStudents(){
   const el=document.getElementById('a-students-content');
-  // ---- MASTER FILTER: class + subject dropdown (tabs ki jagah) ----
-  const subsAll=(_aCounts.subjects||[]);
-  const classes=[...new Set(subsAll.map(c=>String(c['class']||c.class_level||'')).filter(Boolean))].sort();
+  // ---- MASTER FILTER: session + medium + class + subject (counts live-update) ----
+  const subsAll=_aStuCounts();
+  const classes=[...new Set(_aStu.map(s=>String(s.class_level||'')).filter(Boolean))].sort();
+  const sessions=[...new Set(_aStu.map(s=>s.exam_session).filter(Boolean))];
   const subsForClass=subsAll.filter(c=>!_stuClass||String(c['class']||c.class_level||'')===_stuClass);
-  const selCount=_stuFilter?(subsAll.find(c=>c.subject===_stuFilter)||{}).count:_aCounts.total;
+  const selCount=_stuFilter?(subsAll.find(c=>c.subject===_stuFilter)||{}).count:_stuFiltered().length;
   const cards=[`<div class="fbar fbar-wide">
+      <div class="fbar-l">${ic('calendar')}<span>Session</span></div>
+      <select class="fbar-sel" onchange="aStuSess(this.value)"><option value="">All Sessions</option>${sessions.map(x=>`<option value="${esc(x)}"${_stuSess===x?' selected':''}>${esc(_sylSessName(x))}</option>`).join('')}</select>
+      <div class="fbar-l">${ic('book')}<span>Medium</span></div>
+      <select class="fbar-sel" onchange="aStuMed(this.value)"><option value="">All Mediums</option>${['Hindi','English'].map(x=>`<option${_stuMed===x?' selected':''}>${x}</option>`).join('')}</select>
       <div class="fbar-l">${ic('user')}<span>Class</span></div>
       <select class="fbar-sel" onchange="aStuClass(this.value)"><option value="">All Classes</option>${classes.map(c=>`<option value="${esc(c)}"${_stuClass===c?' selected':''}>Class ${esc(c)}</option>`).join('')}</select>
       <div class="fbar-l">${ic('book')}<span>Subject</span></div>
       <select class="fbar-sel" style="min-width:250px" onchange="aStuSetFilter(this.value)"><option value="">All Subjects</option>${subsForClass.map(c=>`<option value="${esc(c.subject)}"${_stuFilter===c.subject?' selected':''}>${esc(c.subject)}${(c['class']||c.class_level)?` \u00b7 Class ${esc(String(c['class']||c.class_level))}`:''} \u00b7 ${c.count}</option>`).join('')}</select>
       <div class="fbar-res"><b>${selCount||0}</b> ${_stuFilter?esc(_stuFilter):'students'}</div>
-      ${(_stuFilter||_stuClass)?`<button class="fchip fchip-clear" onclick="aStuClass('');aStuSetFilter('')">${ic('trash')} Clear</button>`:''}
+      ${(_stuFilter||_stuClass||_stuSess||_stuMed)?`<button class="fchip fchip-clear" onclick="aStuSess('');aStuMed('');aStuClass('');aStuSetFilter('')">${ic('trash')} Clear</button>`:''}
     </div>`]
   const filtered=_stuFiltered();
   const totalPages=Math.max(1,Math.ceil(filtered.length/_stuSize));
@@ -7885,6 +7969,8 @@ function aRenderStudents(){
   page.forEach(s=>{ if(s.has_photo) loadImgInto('sphoto-'+s.profile_id,'/api/admin/student/'+s.profile_id+'/photo'); });
 }
 function aStuSetFilter(sub){ _stuFilter=sub; _stuPage=1; aRenderStudents(); }
+function aStuSess(v){ _stuSess=v; _stuPage=1; aRenderStudents(); }
+function aStuMed(v){ _stuMed=v; _stuPage=1; aRenderStudents(); }
 function aStuSearch(q,inp){
   // Poora page re-render hota hai to search input ka DOM node badal jata tha
   // aur cursor gayab ho jata - isliye caret yaad rakh ke wapas focus dete hain
@@ -9076,6 +9162,7 @@ async function loadSDpp(){
   try{
     const d=await api('/api/student/dpp-packs');
     const packs=(d&&d.packs)||[];
+    window._sDppPacks=packs;
     let html=`<div class="card"><div class="card-header"><h3> DPP — Practice & Submit</h3><span class="chip-sub">${packs.length} DPP</span></div><div class="card-body">`;
     if(packs.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No DPP available yet. Your teacher will add one soon.</p></div>`;
     else html+=packs.map(pk=>{
@@ -9085,13 +9172,19 @@ async function loadSDpp(){
       const solBtn=subm&&pk.has_solution?`<button class="btn btn-ghost btn-sm" onclick="sDppDl(${pk.id},'s')">${ic('eye')} View Solution</button>`:'';
       const remBtn=checked?`<button class="btn btn-primary btn-sm" onclick="openDppRemarks(${pk.id})"> View Remarks</button>`:'';
       const subBtn=`<button class="btn ${subm?'btn-ghost':'btn-success'} btn-sm" onclick="openDppSubmit(${pk.id})">${ic('upload')} ${subm?'Re-submit':'Submit'}</button>`;
+      // Created DPP -> question-wise interactive view (har question pe Raise Doubt);
+      // Uploaded DPP -> PDF view + Raise Doubt (question no. select)
+      const viewBtn=pk.source==='created'&&pk.questions_n
+        ?`<button class="btn btn-primary btn-sm" onclick="openSDppView(${pk.id})">${ic('eye')} View Questions</button>`
+        :(pk.has_questions?`<button class="btn btn-ghost btn-sm" onclick="sDppViewPdf(${pk.id})">${ic('eye')} View Questions</button>`:'');
+      const doubtBtn=`<button class="btn btn-ghost btn-sm" title="Is DPP me doubt ho to yahan bhejo — screenshot ki zaroorat nahi" onclick="sDppDoubtOpen(${pk.id},0)">${ic('headset')} Raise Doubt</button>`;
       return `<div class="dpp-card">
         <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div><div style="display:flex;gap:6px;align-items:center">${pk.class_name?`<span class="chip-sub" style="color:#047857">${esc(pk.class_name)}</span>`:''}${srcChip}</div></div>
         <div class="dpp-title">${esc(pk.title||'DPP')}</div>
         <div class="dpp-meta"> ${esc(pk.chapter||'—')}${pk.part?` · Part: ${esc(pk.part)}`:''} ·  ${esc(pk.medium||'English')}</div>
         <div class="dpp-meta"> ${esc(pk.teacher||'Teacher')}${pk.created_at?` · ${esc(pk.created_at)}`:''}</div>
         <div class="dpp-foot">${statusChip}<div class="dpp-btns">
-          ${pk.has_questions?`<button class="btn btn-ghost btn-sm" onclick="sDppDl(${pk.id},'q')">${ic('eye')} View Questions</button>`:''}
+          ${viewBtn}${doubtBtn}
           ${solBtn}${subBtn}${remBtn}
         </div></div>
       </div>`;
@@ -9107,6 +9200,12 @@ async function loadSDpp(){
     el.innerHTML=html;
   }catch(e){ el.innerHTML=errHtml(e); }
 }
+function _imgSrc(b64){
+  if(!b64) return '';
+  if(b64.startsWith('data:')) return b64;
+  const mime=b64.startsWith('/9j/')?'image/jpeg':(b64.startsWith('iVBOR')?'image/png':(b64.startsWith('UklGR')?'image/webp':'image/png'));
+  return `data:${mime};base64,${b64}`;
+}
 async function sDppDl(pid,kind){
   try{
     const r=await fetch(API+`/api/student/dpp-packs/${pid}/file?kind=${kind}`,{headers:{Authorization:'Bearer '+TOKEN}});
@@ -9115,6 +9214,69 @@ async function sDppDl(pid,kind){
     const bl=await r.blob(); const a=document.createElement('a');
     a.href=URL.createObjectURL(bl); a.download=(kind==='s'?'DPP-solutions.pdf':'DPP-questions.pdf'); a.click();
   }catch(e){ toast('File not available',true); }
+}
+// ---------- Uploaded DPP: PDF view (new tab) ----------
+async function sDppViewPdf(pid){
+  try{
+    const r=await fetch(API+`/api/student/dpp-packs/${pid}/file?kind=q`,{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('nf');
+    const bl=await r.blob(); const u=URL.createObjectURL(bl);
+    window.open(u,'_blank');
+    setTimeout(()=>URL.revokeObjectURL(u),90000);
+  }catch(e){ toast('File not available',true); }
+}
+// ---------- Created DPP: question-wise interactive view + Raise Doubt ----------
+async function openSDppView(pid){
+  showModal('DPP','<div class="spinner"></div>','');
+  { const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.add('cx'); }
+  try{
+    const d=await api(`/api/student/dpp-packs/${pid}/questions`);
+    const qs=d.questions||[];
+    const html=`<div class="card" style="margin-bottom:12px;border:1.5px solid rgba(184,148,31,.3)"><div class="card-body" style="padding:14px 16px">
+      <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:flex-start"><div>
+        <b style="font-size:1rem">${esc(d.title)}</b>
+        <div style="font-size:.72rem;color:var(--text-muted);margin-top:3px">${esc(d.subject)}${d.chapter?' · '+esc(d.chapter):''}${d.part?' · '+esc(d.part):''}${d.teacher?' ·  '+esc(d.teacher):''}</div>
+      </div><span class="chip" style="font-size:.62rem">${qs.length} Questions</span></div>
+      <div style="font-size:.74rem;color:var(--text-muted);margin-top:9px;line-height:1.5">Kisi question me doubt ho to uske neeche <b>Raise Doubt</b> dabao — question ka text + image apne aap teacher ke paas chala jayega, <b>screenshot ki zaroorat nahi</b>.</div>
+    </div></div>`
+    +qs.map(q=>`<div class="card" style="margin-bottom:10px"><div class="card-body" style="padding:14px 16px">
+      <div style="font-size:.68rem;font-weight:800;letter-spacing:.06em;color:#8a6d10;margin-bottom:6px">QUESTION ${q.qno}</div>
+      <div class="pl-qtext" id="dq-${q.qno}">${_fmtRich(q.q||'')}</div>
+      ${q.image?`<img src="${_imgSrc(q.image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
+      ${q.alt_image?`<img src="${_imgSrc(q.alt_image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
+      ${d.submitted&&q.model?`<div style="margin-top:12px;padding:10px 12px;border-left:3px solid #15803d;background:rgba(21,128,61,.06);border-radius:8px"><div style="font-size:.68rem;font-weight:800;color:#15803d;margin-bottom:5px">MODEL ANSWER</div><div id="da-${q.qno}">${_fmtRich(q.model)}</div>${q.model_image?`<img src="${_imgSrc(q.model_image)}" style="max-width:100%;margin-top:8px;border-radius:8px">`:''}</div>`:''}
+      <div style="margin-top:11px"><button class="btn btn-ghost btn-sm" onclick="sDppDoubtOpen(${pid},${q.qno},${q.qno})">${ic('headset')} Raise Doubt</button></div>
+    </div></div>`).join('');
+    showModal(esc(d.title), html, `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+    { const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.add('cx'); }
+    qs.forEach(q=>{ const el=document.getElementById('dq-'+q.qno); if(el) renderMath(el); const a=document.getElementById('da-'+q.qno); if(a) renderMath(a); });
+  }catch(e){ closeModal(); toast(e.message||'Could not open the DPP',true); }
+}
+// ---------- Raise Doubt (created + uploaded dono) ----------
+function sDppDoubtOpen(pid,qno,qtextFrom){
+  const pk=(window._sDppPacks||[]).find(x=>x.id===pid)||{};
+  const isCreated=pk.source==='created';
+  const qPrev=(isCreated&&qtextFrom)?document.getElementById('dq-'+qtextFrom):null;
+  showModal(' Raise Doubt',
+    `<div class="form-group"><label>DPP</label><div style="font-size:.86rem;font-weight:600">${esc(pk.title||'DPP')}</div><div style="font-size:.72rem;color:var(--text-muted)">${esc(pk.subject||'')}${pk.chapter?' · '+esc(pk.chapter):''}${pk.teacher?' ·  '+esc(pk.teacher):''}</div></div>
+    ${qPrev?`<div class="form-group"><label>Question</label><div style="padding:10px 12px;background:var(--bg);border-radius:8px;font-size:.85rem;max-height:160px;overflow:auto">${qPrev.innerHTML}</div></div>`:''}
+    <div class="form-group"><label>Question No.${isCreated?'':' (PDF me jis question me doubt hai)'}</label>
+      <input class="form-control" id="dpp-doubt-qno" type="number" min="1" ${isCreated&&pk.questions_n?`max="${pk.questions_n}"`:''} value="${qno||1}">
+    </div>
+    <div class="form-group"><label>Apna doubt likho (optional — sirf question bhi bhej sakte ho)</label>
+      <textarea class="form-control" id="dpp-doubt-note" rows="3" placeholder="e.g. Sir, is question ka step 2 samajh nahi aaya…"></textarea></div>
+    <div style="font-size:.72rem;color:var(--text-muted);line-height:1.5">Question ka text ${isCreated?'+ image ':''}automatically <b>${esc(pk.teacher||'subject teacher')}</b> ke doubt section me chala jayega — screenshot upload karne ki zaroorat nahi.</div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+     <button class="btn btn-primary" onclick="sDppDoubtSend(${pid})">Send Doubt</button>`);
+}
+async function sDppDoubtSend(pid){
+  const qno=parseInt(val('dpp-doubt-qno'))||0;
+  if(qno<1){ toast('Question number daalo',true); return; }
+  const note=(val('dpp-doubt-note')||'').trim();
+  try{
+    const r=await api(`/api/student/dpp-packs/${pid}/doubt`,'POST',{qno,note});
+    closeModal(); toast(r.message||'Doubt sent!');
+  }catch(e){ toast(e.message||'Could not send the doubt',true); }
 }
 function openDppSubmit(pid){
   showModal(' Submit DPP Answer',
