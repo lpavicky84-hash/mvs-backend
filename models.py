@@ -344,6 +344,22 @@ class DppAnswer(Base):
     checked_at   = Column(DateTime)
 
 
+class DppChunk(Base):
+    """Chunked upload ke parts — slow/strict networks pe bada single request mar
+    jata hai, isliye file chhote chunks me aati hai aur assemble hoti hai."""
+    __tablename__ = "dpp_chunks"
+
+    id         = Column(Integer, primary_key=True)
+    pack_id    = Column(Integer, ForeignKey("dpp_packs.id"))
+    student_id = Column(Integer, ForeignKey("student_profiles.id"))
+    upload_key = Column(String(64), index=True)
+    idx        = Column(Integer)
+    total      = Column(Integer)
+    filename   = Column(String(250), default="")
+    data       = Column(Text)                    # base64 chunk (no dataURL prefix)
+    created_at = Column(DateTime, default=func.now())
+
+
 class Notification(Base):
     __tablename__ = "notifications"
 

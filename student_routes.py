@@ -1857,6 +1857,98 @@ def student_dpp_stage_json(pack_id: int, data: dict = Body(...),
     return {"ok": True, "answer_id": a.id, "size_kb": round(len(blob) / 1024)}
 
 
+@router.post("/dpp-packs/{pack_id}/chunk")
+def student_dpp_chunk(pack_id: int, data: dict = Body(...),
+                      db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Ek chunk receive karo. Slow/strict network pe bada single upload mar jata hai —
+    chhote chunks hamesha pahunchte hain. Idempotent: same idx dobara aaye to overwrite.
+    idx=0 pe naya upload shuru — purane upload ke chunks saaf."""
+    from models import DppPack, DppAnswer, DppChunk
+    sp = get_student_profile(current_user, db)
+    pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
+    if not pk:
+        raise HTTPException(status_code=404, detail="DPP not found")
+    try:
+        ukey = str(data.get("upload_key") or "")[:64]
+        idx = int(data.get("idx"))
+        total = int(data.get("total_chunks"))
+        part = str(data.get("data") or "")
+        fname = str(data.get("filename") or "dpp-answer.pdf")[:240]
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad chunk data")
+    if not ukey or not part:
+        raise HTTPException(status_code=400, detail="Bad chunk data")
+    if idx < 0 or total < 1 or total > 4000 or idx >= total:
+        raise HTTPException(status_code=400, detail="Bad chunk index")
+    if len(part) > 2_500_000:      # ~1.8MB binary se zyada chunk nahi hona chahiye
+        raise HTTPException(status_code=400, detail="Chunk too large")
+    if idx == 0:
+        # naya upload — is pack+student ke PURANE sab chunks saaf
+        db.query(DppChunk).filter(DppChunk.pack_id == pack_id,
+                                  DppChunk.student_id == sp.id,
+                                  DppChunk.upload_key != ukey).delete(synchronize_session=False)
+    row = (db.query(DppChunk)
+           .filter(DppChunk.pack_id == pack_id, DppChunk.student_id == sp.id,
+                   DppChunk.upload_key == ukey, DppChunk.idx == idx).first())
+    if row:
+        row.data = part; row.filename = fname; row.total = total
+    else:
+        db.add(DppChunk(pack_id=pack_id, student_id=sp.id, upload_key=ukey,
+                        idx=idx, total=total, filename=fname, data=part))
+    db.commit()
+    got = (db.query(DppChunk)
+           .filter(DppChunk.pack_id == pack_id, DppChunk.student_id == sp.id,
+                   DppChunk.upload_key == ukey).count())
+    return {"ok": True, "received": got}
+
+
+@router.post("/dpp-packs/{pack_id}/assemble")
+def student_dpp_assemble(pack_id: int, data: dict = Body(...),
+                         db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Saare chunks jodkar final DppAnswer (submitted) banao — replace semantics."""
+    from models import DppPack, DppAnswer, DppChunk
+    sp = get_student_profile(current_user, db)
+    pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
+    if not pk:
+        raise HTTPException(status_code=404, detail="DPP not found")
+    ukey = str((data or {}).get("upload_key") or "")[:64]
+    try:
+        total = int((data or {}).get("total_chunks"))
+    except Exception:
+        total = 0
+    rows = (db.query(DppChunk)
+            .filter(DppChunk.pack_id == pack_id, DppChunk.student_id == sp.id,
+                    DppChunk.upload_key == ukey)
+            .order_by(DppChunk.idx).all())
+    if not rows or total < 1 or len({r.idx for r in rows}) < total:
+        raise HTTPException(status_code=400,
+                            detail="Upload adhura hai — file dobara select karke poora upload hone do.")
+    try:
+        blob = base64.b64decode("".join(r.data for r in rows))
+    except Exception:
+        raise HTTPException(status_code=400, detail="File data corrupt hai — dobara try karo.")
+    if not blob:
+        raise HTTPException(status_code=400, detail="File is empty")
+    if len(blob) > 25 * 1024 * 1024:
+        for r in rows:
+            db.delete(r)
+        db.commit()
+        raise HTTPException(status_code=400,
+                            detail="File bahut badi hai (25MB se zyada). Chhota PDF ya photo bhejo.")
+    fname = (str((data or {}).get("filename") or rows[0].filename or "dpp-answer.pdf"))[:240]
+    for o in (db.query(DppAnswer)
+              .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id).all()):
+        db.delete(o)
+    a = DppAnswer(pack_id=pack_id, student_id=sp.id,
+                  answer_b64=base64.b64encode(blob).decode(),
+                  filename=fname, status="submitted")
+    db.add(a)
+    for r in rows:
+        db.delete(r)
+    db.commit()
+    return {"ok": True, "status": "submitted", "size_kb": round(len(blob) / 1024)}
+
+
 @router.post("/dpp-packs/{pack_id}/submit-staged")
 def student_dpp_submit_staged(pack_id: int, data: dict = Body(...),
                               db: Session = Depends(get_db), current_user=Depends(get_student)):
