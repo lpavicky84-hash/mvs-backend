@@ -1041,8 +1041,12 @@ def teacher_student_counts(db: Session = Depends(get_db), current_user=Depends(g
         code_map[(_subj_key(a.name), str(a.class_level or "").strip())] = a.code
     out = []
     seen_ids = set()
+    seen_sk = set()  # same subject do baar list me ho to duplicate card na bane
     for s in subs:
         sk = _subj_key(s)
+        if sk in seen_sk:
+            continue
+        seen_sk.add(sk)
         per_cls = {}
         for sp in students:
             if not sp.subjects or sk not in {_subj_key(x) for x in sp.subjects}:

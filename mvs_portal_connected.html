@@ -1614,6 +1614,20 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 
 /* Subject picker (dropdown-style multi select) */
 .subj-pick{display:flex;flex-wrap:wrap;gap:8px;max-height:190px;overflow-y:auto;padding:10px;border:1.5px solid var(--border);border-radius:12px;background:var(--bg);scrollbar-width:none}
+.msd{position:relative}
+.msd-btn{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;border:1.5px solid var(--border);border-radius:12px;background:var(--bg);color:var(--text);font:inherit;font-size:.9rem;font-weight:600;cursor:pointer}
+.msd-btn:hover{border-color:var(--accent)}
+.msd.open .msd-btn{border-color:var(--accent);box-shadow:0 0 0 3px rgba(184,148,31,.15)}
+.msd-caret{font-size:.8rem;color:var(--muted)}
+.msd-panel{display:none;position:absolute;z-index:40;top:calc(100% + 6px);left:0;right:0;max-height:230px;overflow-y:auto;background:var(--card);border:1.5px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.16);padding:6px}
+.msd.open .msd-panel{display:block}
+.msd-opt{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font-size:.86rem;font-weight:600;color:var(--text);cursor:pointer}
+.msd-opt:hover{background:var(--bg)}
+.msd-opt.on{background:rgba(184,148,31,.1)}
+.msd-opt input{accent-color:var(--accent);width:15px;height:15px}
+.msd-opt span{flex:1}
+.msd-opt b{font-size:.72rem;color:var(--muted)}
+.dark .msd-panel{box-shadow:0 12px 32px rgba(0,0,0,.5)}
 .subj-pick::-webkit-scrollbar{display:none}
 .subj-opt{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:99px;border:1.5px solid var(--border);background:var(--card);font-size:.79rem;font-weight:700;cursor:pointer;transition:.15s;color:var(--text)}
 .subj-opt:hover{border-color:var(--accent)}
@@ -4541,14 +4555,24 @@ async function dppMarkChecked(aid,pid){
 }
 // ---------- CREATE DPP (test-style editor, timetable-connected) ----------
 async function _dppTtData(){
-  if(window._dppTt) return window._dppTt;
-  try{ window._dppTt=await api('/api/teacher/my-timetable'); }catch(e){ window._dppTt=[]; }
+  if(!window._dppTt){ try{ window._dppTt=await api('/api/teacher/my-timetable'); }catch(e){ window._dppTt=[]; } }
+  if(!window._tProfile){ try{ window._tProfile=await api('/api/teacher/profile'); }catch(e){ window._tProfile={}; } }
   return window._dppTt;
+}
+function _dppAllSubjects(){
+  const set=new Set((window._dppTt||[]).map(e=>e.subject).filter(Boolean));
+  ((window._tProfile||{}).subjects||[]).forEach(x=>x&&set.add(x));
+  ((window._tProfile||{}).subject_classes||[]).forEach(x=>x&&x.subject&&set.add(x.subject));
+  return [...set].sort();
 }
 function _dppFillChapters(){
   const sub=val('ex-sub');
   const es=(window._dppTt||[]).filter(e=>e.subject===sub);
-  const cls=[...new Set(es.map(e=>(e.class_name||'').trim()).filter(Boolean))];
+  const clsSet=new Set(es.map(e=>(e.class_name||'').trim()).filter(Boolean));
+  ((window._tProfile||{}).subject_classes||[]).forEach(x=>{
+    if(x&&x.subject===sub&&x.class){ const d=String(x.class).replace(/\D/g,''); clsSet.add(d?('Class '+d):String(x.class)); }
+  });
+  const cls=[...clsSet].sort();
   const csel=document.getElementById('ex-cls-sel');
   if(csel) csel.innerHTML='<option value="">All Classes</option>'+cls.map(c=>`<option>${esc(c)}</option>`).join('');
   const chs=[...new Set(es.map(e=>(e.chapter||'').trim()).filter(Boolean))];
@@ -4575,7 +4599,7 @@ async function openCreateDpp(){
   const chIn=document.getElementById('ex-ch');
   if(chIn){
     chIn.closest('.form-group').innerHTML=`<label>Chapter &amp; Part <span style="font-weight:400;color:var(--accent)">(from your timetable)</span></label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><select class="form-control" id="ex-cls-sel" style="flex:0 0 110px" title="Class"></select>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><select class="form-control" id="ex-cls-sel" style="flex:0 0 132px" title="Class"></select>
       <select class="form-control" id="ex-ch-sel" style="flex:1;min-width:160px" onchange="_dppFillParts()"></select>
       <select class="form-control" id="ex-part-sel" style="flex:1;min-width:140px"></select></div>`;
   }
@@ -4591,12 +4615,12 @@ async function openCreateDpp(){
 // ---------- UPLOAD DPP (2 PDFs mandatory) ----------
 async function openUploadDpp(){
   await _dppTtData();
-  const subs=[...new Set((window._dppTt||[]).map(e=>e.subject).filter(Boolean))];
+  const subs=_dppAllSubjects();
   showModal('Upload DPP',
     `<div class="alert alert-info">Ready-made DPP upload karo — <b>Questions PDF</b> aur <b>Solutions PDF</b> dono zaroori hain. Students ko pehle questions dikhenge; submit karne ke baad solutions.</div>
      <div class="form-group"><label>Subject</label><select class="form-control" id="ud-sub">${subs.map(x=>`<option>${esc(x)}</option>`).join('')||'<option>General</option>'}</select></div>
      <div class="form-group"><label>Class, Chapter &amp; Part (from your timetable)</label>
-       <div style="display:flex;gap:8px;flex-wrap:wrap"><select class="form-control" id="ud-cls" style="flex:0 0 110px" title="Class"></select>
+       <div style="display:flex;gap:8px;flex-wrap:wrap"><select class="form-control" id="ud-cls" style="flex:0 0 132px" title="Class"></select>
        <select class="form-control" id="ud-ch" style="flex:1;min-width:160px" onchange="_udFillParts()"></select>
        <select class="form-control" id="ud-part" style="flex:1;min-width:140px"></select></div></div>
      <div class="form-group"><label>Title</label><input class="form-control" id="ud-title" placeholder="e.g. DPP — Tenses (Part 2)"></div>
@@ -4606,7 +4630,11 @@ async function openUploadDpp(){
        <div class="form-group"><label>Solutions PDF *</label><input type="file" class="form-control" id="ud-spdf" accept="application/pdf"></div></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitUploadDpp()">Upload DPP</button>`);
   const fill=()=>{ const sub=val('ud-sub'); const es=(window._dppTt||[]).filter(e=>e.subject===sub);
-    const cls=[...new Set(es.map(e=>(e.class_name||'').trim()).filter(Boolean))];
+    const clsSet=new Set(es.map(e=>(e.class_name||'').trim()).filter(Boolean));
+    ((window._tProfile||{}).subject_classes||[]).forEach(x=>{
+      if(x&&x.subject===sub&&x.class){ const d=String(x.class).replace(/\D/g,''); clsSet.add(d?('Class '+d):String(x.class)); }
+    });
+    const cls=[...clsSet].sort();
     document.getElementById('ud-cls').innerHTML='<option value="">All Classes</option>'+cls.map(c=>`<option>${esc(c)}</option>`).join('');
     const chs=[...new Set(es.map(e=>(e.chapter||'').trim()).filter(Boolean))];
     document.getElementById('ud-ch').innerHTML='<option value="">— Full chapter / General —</option>'+chs.map(c=>`<option>${esc(c)}</option>`).join('');
@@ -5316,6 +5344,14 @@ async function openCreateExam(type,editData){
   window._editExamId=editData?editData.id:null;
   let subs=[];
   try{ const es=await api('/api/teacher/my-timetable'); subs=[...new Set(es.filter(e=>e.subject).map(e=>e.subject))]; }catch(e){}
+  try{
+    if(!window._tProfile) window._tProfile=await api('/api/teacher/profile');
+    const tp=window._tProfile||{};
+    const asubs=new Set(subs);
+    (tp.subjects||[]).forEach(x=>x&&asubs.add(x));
+    (tp.subject_classes||[]).forEach(x=>x&&x.subject&&asubs.add(x.subject));
+    subs=[...asubs].sort();
+  }catch(e){}
   const subOpts=subs.length?subs.map(s=>`<option>${esc(s)}</option>`).join(''):'<option>General</option>';
   const tl=type==='mcq'?'MCQ':'Mission 75';
   const tools=`<div class="ex-tools"><span class="ex-tools-lbl">Maths & Chemistry:</span><button type="button" onclick="insertTexKey('frac')">a&frasl;b</button><button type="button" onclick="insertTexKey('pow')">x&sup2;</button><button type="button" onclick="insertTexKey('sub')">x&#8345;</button><button type="button" onclick="insertTexKey('sqrt')">&radic;</button><button type="button" onclick="insertTexKey('pi')">&pi;</button><button type="button" onclick="insertTexKey('theta')">&theta;</button><button type="button" onclick="insertTexKey('delta')">&Delta;</button><button type="button" onclick="insertTexKey('times')">&times;</button><button type="button" onclick="insertTexKey('deg')">&deg;</button><button type="button" onclick="insertTexKey('intg')">&int;</button><button type="button" onclick="insertTexKey('sum')">&Sigma;</button><button type="button" class="chem" onclick="insertTexKey('rxn')">Reaction</button><button type="button" class="chem" onclick="insertTexKey('chem')">Formula</button><button type="button" class="ai" onclick="autoFormatField()" title="Format the text automatically">Auto-format</button><button type="button" class="ai" id="ex-tr-all" onclick="examTranslateAll(this)" title="Translate every question to Hindi">Translate All to Hindi</button></div>`;
@@ -5324,7 +5360,7 @@ async function openCreateExam(type,editData){
     :'<div class="alert alert-info">Students select an option. Auto-graded instantly. Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{...}$</code>.</div>';
   showModal(editData?('Edit '+tl+' Test'):('Create '+tl+' Test'),
     (editData&&editData.attempts>0?'<div class="alert alert-info">This test is live — <b>'+editData.attempts+' submission(s)</b> have already been received. You may add new questions; previous submissions and their marks will remain safe.</div>':'')+`<div style="display:flex;gap:12px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:160px"><label>Subject</label><select class="form-control" id="ex-sub">${subOpts}</select></div><div class="form-group" style="width:110px"><label>Duration (min)</label><input type="number" class="form-control" id="ex-dur" value="60"></div><div class="form-group" style="width:140px"><label>Medium</label><select class="form-control" id="ex-medium" onchange="examMediumChange()"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div><div class="form-group" style="min-width:210px;flex:1"><label>Schedule (optional)</label><input type="datetime-local" class="form-control" id="ex-sched" title="Students can start only after this date & time"></div></div>`
-    +`<div class="form-group"><label>Test Title</label><input class="form-control" id="ex-title" placeholder="e.g. Physics Chapter Test - Electric Charges"></div>`
+    +`<div class="form-group"><label>${window._dppMode?'DPP Title':'Test Title'}</label><input class="form-control" id="ex-title" placeholder="e.g. Physics Chapter Test - Electric Charges"></div>`
     +`<div class="form-group"><label>Chapter (optional)</label><input class="form-control" id="ex-ch" placeholder="e.g. Electric Charges"></div>`
     +`<div class="ex-prog" id="ex-prog"><div class="ex-prog-top"><span class="ex-prog-label" id="ex-prog-label">Uploading\u2026</span><span class="ex-prog-pct" id="ex-prog-pct">0%</span></div><div class="ex-prog-track"><div class="ex-prog-fill" id="ex-prog-fill"></div></div></div>`
     +tools
@@ -7365,7 +7401,7 @@ async function openEditStudent(sid,data){
      <div class="form-group"><label>Class</label><select class="form-control" id="es-class" onchange="esClassChange()"><option value="">\u2014 Select class \u2014</option><option value="10"${cls==='10'?' selected':''}>Class 10</option><option value="12"${cls==='12'?' selected':''}>Class 12</option></select></div>
      <div class="form-group"><label>Batch</label><select class="form-control" id="es-batch">${batchOptions(data.batch_name||'',cls)}</select></div>
      <div class="form-group"><label>Medium</label><select class="form-control" id="es-medium"><option value="">\u2014 Select medium \u2014</option><option ${data.medium==='Hindi'?'selected':''}>Hindi</option><option ${data.medium==='English'?'selected':''}>English</option></select></div>
-     <div class="form-group"><label>Subjects <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(tap to select)</span></label><div id="es-subj-wrap">${cls?subjectCheckboxes('es-subj-wrap',cls,data.subjects):'<span style="color:var(--text-muted);font-size:.82rem">Select a class first.</span>'}</div></div>
+     <div class="form-group"><label>Subjects</label><div id="es-subj-wrap">${cls?subjectDropdown('es-subj-wrap',cls,data.subjects):'<span style="color:var(--text-muted);font-size:.82rem">Select a class first.</span>'}</div></div>
      <div class="form-group"><label>Exam Session</label><select class="form-control" id="es-session">
        <option value="">— Not set —</option>
        ${[['oct2026','October 2026 (Stream 1)'],['apr2027','April 2027 (Stream 1)'],['stream2','Stream 2 Examination'],['ondemand','On Demand Examination']].map(x=>`<option value="${x[0]}"${data.exam_session===x[0]?' selected':''}>${x[1]}</option>`).join('')}
@@ -7377,7 +7413,7 @@ async function openEditStudent(sid,data){
 function esClassChange(){
   const cls=val('es-class');
   document.getElementById('es-batch').innerHTML=batchOptions(val('es-batch'),cls);
-  document.getElementById('es-subj-wrap').innerHTML=cls?subjectCheckboxes('es-subj-wrap',cls,(window._esData||{}).subjects||[]):'<span style="color:var(--text-muted);font-size:.82rem">Select a class first.</span>';
+  document.getElementById('es-subj-wrap').innerHTML=cls?subjectDropdown('es-subj-wrap',cls,(window._esData||{}).subjects||[]):'<span style="color:var(--text-muted);font-size:.82rem">Select a class first.</span>';
 }
 async function saveEditStudent(sid){
   const subjects=pickedSubjects('es-subj-wrap');
@@ -7702,6 +7738,27 @@ async function ensureSubjects(){
   try{ window._allSubjects=await api('/api/admin/subjects'); }
   catch(e){ window._allSubjects=window._allSubjects||{'10':[],'12':[]}; }
 }
+function subjectDropdown(wrapId,cls,selected){
+  const subs=((window._allSubjects||{})[cls]||[]);
+  if(!subs.length) return '<span style="color:var(--text-muted);font-size:.82rem">No subjects found for this class. Add them in Settings \u2192 Subjects.</span>';
+  const sel=(selected||[]).map(x=>(x||'').trim().toLowerCase());
+  const n=sel.length;
+  return `<div class="msd" onclick="event.stopPropagation()">
+    <button type="button" class="msd-btn" onclick="this.parentElement.classList.toggle('open')">
+      <span class="msd-label" id="${wrapId}-label">${n?n+' subject'+(n>1?'s':'')+' selected':'Select subjects'}</span>
+      <span class="msd-caret">\u25be</span></button>
+    <div class="msd-panel">${subs.map(s2=>{
+      const nm=s2.name||s2;
+      const on=sel.includes((nm||'').toLowerCase());
+      return `<label class="msd-opt${on?' on':''}"><input type="checkbox" value="${esc(nm)}" ${on?'checked':''} onchange="this.closest('.msd-opt').classList.toggle('on',this.checked);_msdRefresh('${wrapId}')"><span>${esc(nm)}</span>${s2.code?`<b>${esc(s2.code)}</b>`:''}</label>`;
+    }).join('')}</div></div>`;
+}
+function _msdRefresh(wrapId){
+  const n=document.querySelectorAll('#'+wrapId+' input[type=checkbox]:checked').length;
+  const l=document.getElementById(wrapId+'-label');
+  if(l) l.textContent=n?n+' subject'+(n>1?'s':'')+' selected':'Select subjects';
+}
+document.addEventListener('click',()=>{ document.querySelectorAll('.msd.open').forEach(x=>x.classList.remove('open')); });
 function subjectCheckboxes(wrapId,cls,selected){
   const subs=((window._allSubjects||{})[cls]||[]);
   if(!subs.length) return '<span style="color:var(--text-muted);font-size:.82rem">No subjects found for this class. Add them in Settings \u2192 Subjects.</span>';
