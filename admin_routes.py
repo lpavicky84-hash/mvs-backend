@@ -2951,7 +2951,7 @@ def admin_dpp_ranking(pack_id: int, db: Session = Depends(get_db), _=Depends(get
         raise HTTPException(404, "DPP pack not found")
     rows = (db.query(DppAnswer)
             .filter(DppAnswer.pack_id == pack_id, DppAnswer.status != "staged")
-            .order_by(DppAnswer.submitted_at.asc().nullslast(), DppAnswer.id.asc()).all())
+            .order_by(DppAnswer.submitted_at.asc(), DppAnswer.id.asc()).all())
     out = []
     for i, a in enumerate(rows):
         srow = db.query(StudentProfile).filter(StudentProfile.id == a.student_id).first()

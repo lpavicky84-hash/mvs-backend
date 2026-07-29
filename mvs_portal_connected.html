@@ -445,7 +445,8 @@
   .pvw-pages{display:flex;flex-direction:column;align-items:center;gap:16px}
   .pvw-page{width:100%;display:flex;justify-content:center}
   .pvw-logo-img{width:26px;height:26px;border-radius:8px;object-fit:cover;background:#fff;flex-shrink:0}
-  .pvw-stage{position:relative;line-height:0;touch-action:pan-x pan-y;height:fit-content}
+  .pvw-stage{position:relative;line-height:0;touch-action:pan-x pan-y;height:fit-content;user-select:none;cursor:default}
+  .pvw-stage.pvw-armed{cursor:crosshair;outline:2px dashed rgba(201,162,39,.85);outline-offset:-2px;border-radius:4px}
   .pvw-stage canvas{box-shadow:0 2px 14px rgba(0,0,0,.35);border-radius:4px;background:#fff}
   .pvw-tip{background:#fff7ed;color:#9a3412;font-size:.71rem;font-weight:700;padding:8px 12px;border-top:1px solid #fdba74;line-height:1.45}
   .pvw-load{color:#e5e7eb;font-size:.8rem;font-weight:700;padding:46px 20px;text-align:center;width:100%}
@@ -9810,20 +9811,43 @@ async function _pvwAct(container,a){
     return;
   } else return;
 }
-// viewer page pe DIRECT crop: mouse drag / touch-hold (button ki zaroorat nahi)
-// mouseup stage ke bahar ho jaye to bhi drag finalize ho — document-level wiring (ek hi baar)
+// viewer page pe DIRECT crop: SIRF long-press (~450ms hold) se selection ARM hota hai.
+// ek selection ke baad AUTO-DISARM — dobara select karna ho to dobara long-press.
+// mouseup/touchend stage ke bahar ho jaye to bhi finalize ho — document-level wiring (ek hi baar)
 if(!window._pvwDocWired){
   window._pvwDocWired=true;
   document.addEventListener('mousemove',e=>{
-    const c=window._pvwDragC; if(!c||!c._pvw||!c._pvw._drag) return;
+    const c=window._pvwDragC; if(!c||!c._pvw) return;
+    const st=c._pvw;
+    if(st._armPending){ // hold se pehle 12px+ hil gaya -> arm cancel (normal drag/scroll samjho)
+      const dx=e.clientX-st._armX0, dy=e.clientY-st._armY0;
+      if(dx*dx+dy*dy>144){ clearTimeout(st._armTimer); st._armPending=false; }
+    }
+    if(!st._armed||!st._drag) return;
     _pvwDragDraw(c,e); e.preventDefault();
   },true);
   document.addEventListener('mouseup',()=>{
-    const c=window._pvwDragC; if(!c||!c._pvw||!c._pvw._drag) return;
-    const st=c._pvw; st._drag=false; window._pvwDragC=null;
-    if(st.rect&&st.rect.w>30&&st.rect.h>20) _pvwCropCapture(c);
-    else { const sel=st._dragStage&&st._dragStage.querySelector('.crop-sel'); if(sel) sel.style.display='none'; st.rect=null; }
+    const c=window._pvwDragC; if(!c||!c._pvw) return;
+    const st=c._pvw; window._pvwDragC=null;
+    clearTimeout(st._armTimer); st._armPending=false; st._drag=false;
+    const wasArmed=st._armed, ok=st.rect&&st.rect.w>30&&st.rect.h>20;
+    if(!ok){ const sel=st._dragStage&&st._dragStage.querySelector('.crop-sel'); if(sel) sel.style.display='none'; st.rect=null; }
+    if(wasArmed) _pvwDisarm(c);   // ek baar select (ya chhodne) ke baad disarm — dobara long-press chahiye
+    if(ok) _pvwCropCapture(c);
   },true);
+}
+function _pvwDisarm(container){
+  const st=container._pvw; if(!st) return;
+  st._armed=false; st._armPending=false; clearTimeout(st._armTimer); st._drag=false;
+  container.querySelectorAll('.pvw-stage.pvw-armed').forEach(x=>x.classList.remove('pvw-armed'));
+}
+function _pvwArm(container,stage){
+  const st=container._pvw; if(!st||st._armed) return;
+  st._armed=true; st._armPending=false;
+  container.querySelectorAll('.pvw-stage.pvw-armed').forEach(x=>x.classList.remove('pvw-armed'));
+  stage.classList.add('pvw-armed');
+  if(navigator.vibrate) navigator.vibrate(20);
+  toast('Selection on — drag to select the question');
 }
 function _pvwDragDraw(container,e){
   const st=container._pvw; const stage=st._dragStage; if(!stage) return;
@@ -9839,29 +9863,40 @@ function _pvwDragDraw(container,e){
 function _pvwWireCrop(container,stage){
   const sel=stage.querySelector('.crop-sel'); if(!sel) return;
   const st=container._pvw;
-  let sx=0,sy=0,drag=false,lpTimer=null,touchCrop=false,startX=0,startY=0,moved=false;
+  let lpTimer=null,touchArmed=false,startX=0,startY=0;
   const pos=e=>{ const r=stage.getBoundingClientRect(); const p=(e.touches&&e.touches[0])||e;
     return {x:p.clientX-r.left,y:p.clientY-r.top}; };
-  const draw=p=>{ const x=Math.min(sx,p.x),y=Math.min(sy,p.y),w=Math.abs(p.x-sx),h=Math.abs(p.y-sy);
+  const draw=p=>{ const x=Math.min(st._dragX,p.x),y=Math.min(st._dragY,p.y),w=Math.abs(p.x-st._dragX),h=Math.abs(p.y-st._dragY);
     sel.style.display='block'; sel.style.left=x+'px'; sel.style.top=y+'px'; sel.style.width=w+'px'; sel.style.height=h+'px';
     st.rect={x,y,w,h}; };
-  stage.onmousedown=e=>{ drag=true; moved=false; st.activeStage=stage; st._drag=true; st._dragStage=stage;
+  // MOUSE: ~450ms bina hile hold = arm (long-press); uske baad drag = select
+  stage.onmousedown=e=>{
+    st._armPending=true; st._armX0=e.clientX; st._armY0=e.clientY;
     window._pvwDragC=container;
-    const p=pos(e); sx=p.x; sy=p.y; st._dragX=p.x; st._dragY=p.y; sel.style.display='none'; st.rect=null; e.preventDefault(); };
-  stage.onmousemove=e=>{ if(!drag) return; draw(pos(e)); e.preventDefault(); };
-  stage.onmouseleave=()=>{ /* drag document-level pe chalti rahegi — cancel nahi */ };
-  // touch: hold ~450ms = crop mode; normal swipe = scroll/page nav
-  stage.ontouchstart=e=>{ const p=pos(e); st.activeStage=stage; sx=p.x; sy=p.y; startX=p.x; startY=p.y; moved=false; touchCrop=false;
-    lpTimer=setTimeout(()=>{ touchCrop=true; st.cropMode=true; sel.style.display='none'; st.rect=null;
-      if(navigator.vibrate) navigator.vibrate(20);
-      toast('Crop mode — drag to select the question'); },450); };
+    clearTimeout(st._armTimer);
+    st._armTimer=setTimeout(()=>{
+      if(!st._armPending) return;
+      _pvwArm(container,stage);
+      st._drag=true; st._dragStage=stage; st.activeStage=stage;
+      const p=pos(e); st._dragX=p.x; st._dragY=p.y; sel.style.display='none'; st.rect=null;
+    },450);
+    e.preventDefault();
+  };
+  // TOUCH: hold ~450ms = arm; normal swipe = scroll (arm cancel)
+  stage.ontouchstart=e=>{ const p=pos(e); st.activeStage=stage; startX=p.x; startY=p.y; touchArmed=false;
+    clearTimeout(lpTimer);
+    lpTimer=setTimeout(()=>{ touchArmed=true; _pvwArm(container,stage);
+      st._dragStage=stage; st._dragX=startX; st._dragY=startY; sel.style.display='none'; st.rect=null; },450); };
   stage.ontouchmove=e=>{ const p=pos(e);
-    if(!touchCrop){ if(Math.abs(p.x-startX)>12||Math.abs(p.y-startY)>12){ clearTimeout(lpTimer); moved=true; } return; }
+    if(!touchArmed){ if(Math.abs(p.x-startX)>12||Math.abs(p.y-startY)>12) clearTimeout(lpTimer); return; }
     draw(p); e.preventDefault(); };
-  stage.ontouchend=e=>{ clearTimeout(lpTimer);
-    if(touchCrop){ st.cropMode=false; if(st.rect&&st.rect.w>30&&st.rect.h>20) _pvwCropCapture(container); }
-    else if(!moved){ /* tap — kuch nahi */ } };
-  stage.ontouchcancel=()=>{ clearTimeout(lpTimer); touchCrop=false; st.cropMode=false; };
+  stage.ontouchend=()=>{ clearTimeout(lpTimer);
+    if(!touchArmed) return;
+    const ok=st.rect&&st.rect.w>30&&st.rect.h>20;
+    if(!ok){ sel.style.display='none'; st.rect=null; }   // chhota/adhura selection — box latka nahi rahega
+    _pvwDisarm(container);                               // ek selection ke baad auto-disarm
+    if(ok) _pvwCropCapture(container); };
+  stage.ontouchcancel=()=>{ clearTimeout(lpTimer); touchArmed=false; sel.style.display='none'; st.rect=null; _pvwDisarm(container); };
 }
 function _pvwCropCapture(container){
   const st=container._pvw; const stage=st.activeStage||container.querySelector('.pvw-stage');
