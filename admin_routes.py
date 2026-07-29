@@ -2910,7 +2910,7 @@ def orphan_data_cleanup(db: Session = Depends(get_db), _=Depends(get_admin)):
 # ===== DPP RANKINGS — admin: sab packs + submission counts =====
 @router.get("/dpp-rankings")
 def admin_dpp_rankings(db: Session = Depends(get_db), _=Depends(get_admin)):
-    from models import DppPack, DppAnswer, TeacherProfile, User as _U
+    from models import DppPack, DppAnswer, DppEvent, TeacherProfile, User as _U
     packs = db.query(DppPack).order_by(DppPack.created_at.desc()).all()
     out = []
     for pk in packs:
@@ -2932,7 +2932,13 @@ def admin_dpp_rankings(db: Session = Depends(get_db), _=Depends(get_admin)):
                     "teacher": tname,
                     "created_at": pk.created_at.strftime("%d %b %Y") if pk.created_at else "",
                     "submitted": len(subs), "checked": checked,
-                    "pending": len(subs) - checked})
+                    "pending": len(subs) - checked,
+                    "views": (db.query(DppEvent.student_id)
+                              .filter(DppEvent.pack_id == pk.id, DppEvent.event == "view")
+                              .distinct().count()),
+                    "downloads": (db.query(DppEvent.student_id)
+                                  .filter(DppEvent.pack_id == pk.id, DppEvent.event == "download")
+                                  .distinct().count())})
     return {"packs": out}
 
 
@@ -2967,3 +2973,33 @@ def admin_dpp_ranking(pack_id: int, db: Session = Depends(get_db), _=Depends(get
                      "chapter": pk.chapter or "", "part": pk.part or "",
                      "class_name": getattr(pk, "class_name", "") or ""},
             "count": len(out), "rows": out}
+
+
+@router.get("/dpp-packs/{pack_id}/track-list")
+def admin_dpp_track_list(pack_id: int, event: str = "view",
+                         db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import DppPack, DppEvent, StudentProfile, User as _U3
+    pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
+    if not pk:
+        raise HTTPException(404, "DPP pack not found")
+    ev = (event or "view").lower()
+    if ev not in ("view", "download"):
+        raise HTTPException(400, "event 'view' ya 'download' hona chahiye")
+    rows = (db.query(DppEvent)
+            .filter(DppEvent.pack_id == pack_id, DppEvent.event == ev)
+            .order_by(DppEvent.created_at.desc(), DppEvent.id.desc()).all())
+    seen = set()
+    out = []
+    for e in rows:
+        if e.student_id in seen:
+            continue
+        seen.add(e.student_id)
+        nm = ""
+        srow = db.query(StudentProfile).filter(StudentProfile.id == e.student_id).first()
+        if srow:
+            u = db.query(_U3).filter(_U3.id == srow.user_id).first()
+            nm = (u.name if u else "") or ""
+        out.append({"name": nm or f"Student #{e.student_id}",
+                    "at": e.created_at.strftime("%d %b %Y, %I:%M %p") if e.created_at else ""})
+    return {"pack": {"id": pk.id, "title": pk.title or "DPP"},
+            "event": ev, "count": len(out), "rows": out}

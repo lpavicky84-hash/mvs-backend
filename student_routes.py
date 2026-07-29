@@ -1839,6 +1839,30 @@ def student_dpp_ranking(pack_id: int, db: Session = Depends(get_db), current_use
             "count": len(out), "rows": out, "me_id": sp.id}
 
 
+# ===== DPP VIEW/DOWNLOAD TRACKING — teacher ke tracker ke liye =====
+@router.post("/dpp-packs/{pack_id}/track")
+def student_dpp_track(pack_id: int, payload: dict = Body(...),
+                      db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Student ne DPP view/download kiya — event note karo (15-min dedupe)."""
+    from models import DppPack, DppEvent
+    sp = get_student_profile(current_user, db)
+    ev = str((payload or {}).get("event") or "").lower()
+    if ev not in ("view", "download"):
+        raise HTTPException(400, "event 'view' ya 'download' hona chahiye")
+    pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
+    if not pk:
+        raise HTTPException(404, "DPP pack not found")
+    recent = (db.query(DppEvent)
+              .filter(DppEvent.pack_id == pack_id, DppEvent.student_id == sp.id,
+                      DppEvent.event == ev,
+                      DppEvent.created_at >= datetime.utcnow() - timedelta(minutes=15))
+              .first())
+    if not recent:
+        db.add(DppEvent(pack_id=pack_id, student_id=sp.id, event=ev))
+        db.commit()
+    return {"ok": True, "event": ev}
+
+
 @router.post("/dpp-packs/{pack_id}/submit")
 async def student_dpp_submit(pack_id: int, file: UploadFile = File(...),
                              db: Session = Depends(get_db), current_user=Depends(get_student)):

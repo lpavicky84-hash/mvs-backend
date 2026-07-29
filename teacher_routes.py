@@ -940,11 +940,18 @@ def _dpp_pack_out(db, pk, with_counts=True):
            "medium": pk.medium, "source": pk.source,
            "created_at": pk.created_at.strftime("%d %b %Y") if pk.created_at else None}
     if with_counts:
-        from models import DppAnswer
+        from models import DppAnswer, DppEvent
         subs = (db.query(DppAnswer).filter(DppAnswer.pack_id == pk.id,
                                            DppAnswer.status != "staged").all())
         out["submitted"] = len(subs)
         out["checked"] = sum(1 for a in subs if a.status == "checked")
+        # tracker: kitne DISTINCT students ne view / download kiya
+        out["views"] = (db.query(DppEvent.student_id)
+                        .filter(DppEvent.pack_id == pk.id, DppEvent.event == "view")
+                        .distinct().count())
+        out["downloads"] = (db.query(DppEvent.student_id)
+                            .filter(DppEvent.pack_id == pk.id, DppEvent.event == "download")
+                            .distinct().count())
     return out
 
 
@@ -989,6 +996,38 @@ def teacher_dpp_ranking(pack_id: int, db: Session = Depends(get_db), current_use
                      "chapter": pk.chapter or "", "part": pk.part or "",
                      "class_name": getattr(pk, "class_name", "") or ""},
             "count": len(out), "rows": out}
+
+
+# ===== DPP TRACK-LIST — kis kis student ne view/download kiya (clickable chips ke liye) =====
+@router.get("/dpp-packs/{pack_id}/track-list")
+def teacher_dpp_track_list(pack_id: int, event: str = "view",
+                           db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import DppPack, DppEvent, StudentProfile, User
+    tp = get_teacher_profile(current_user, db)
+    pk = db.query(DppPack).filter(DppPack.id == pack_id, DppPack.teacher_id == tp.id).first()
+    if not pk:
+        raise HTTPException(404, "DPP pack not found")
+    ev = (event or "view").lower()
+    if ev not in ("view", "download"):
+        raise HTTPException(400, "event 'view' ya 'download' hona chahiye")
+    rows = (db.query(DppEvent)
+            .filter(DppEvent.pack_id == pack_id, DppEvent.event == ev)
+            .order_by(DppEvent.created_at.desc(), DppEvent.id.desc()).all())
+    seen = set()
+    out = []
+    for e in rows:
+        if e.student_id in seen:
+            continue
+        seen.add(e.student_id)
+        nm = ""
+        srow = db.query(StudentProfile).filter(StudentProfile.id == e.student_id).first()
+        if srow:
+            u = db.query(User).filter(User.id == srow.user_id).first()
+            nm = (u.name if u else "") or ""
+        out.append({"name": nm or f"Student #{e.student_id}",
+                    "at": e.created_at.strftime("%d %b %Y, %I:%M %p") if e.created_at else ""})
+    return {"pack": {"id": pk.id, "title": pk.title or "DPP"},
+            "event": ev, "count": len(out), "rows": out}
 
 
 def _dpp_build_pdf(db, pk, kind="q", med=None):

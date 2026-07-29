@@ -353,6 +353,17 @@ class DppAnswer(Base):
     checked_at   = Column(DateTime)
 
 
+class DppEvent(Base):
+    """DPP view/download tracking — kaunse student ne kab view/download kiya."""
+    __tablename__ = "dpp_events"
+
+    id         = Column(Integer, primary_key=True)
+    pack_id    = Column(Integer, ForeignKey("dpp_packs.id"))
+    student_id = Column(Integer, ForeignKey("student_profiles.id"))
+    event      = Column(String(10), default="view")   # view | download
+    created_at = Column(DateTime, default=func.now())
+
+
 class DppChunk(Base):
     """Chunked upload ke parts — slow/strict networks pe bada single request mar
     jata hai, isliye file chhote chunks me aati hai aur assemble hoti hai."""

@@ -4619,10 +4619,14 @@ async function loadTDpp(){
       <div style="display:flex;gap:13px;align-items:flex-start">
         <div class="dpp-ava-init" title="${esc(pk.subject)}">${ini}</div>
         <div style="flex:1;min-width:0">
-          <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div><div style="display:flex;gap:6px;align-items:center">${pk.class_name?`<span class="xm-chip xm-chip-hl2">${ic('book')} ${esc(pk.class_name)}</span>`:''}${pk.medium?`<span class="xm-chip xm-chip-hl2">${esc(pk.medium)}</span>`:''}${srcChip}</div></div>
+          <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div><div class="dpp-chips">${pk.class_name?`<span class="xm-chip xm-chip-hl2">${ic('book')} ${esc(pk.class_name)}</span>`:''}${pk.medium?`<span class="xm-chip xm-chip-hl2">${esc(pk.medium)}</span>`:''}${srcChip}</div></div>
           <div class="dpp-title">${esc(pk.title)}</div>
           <div class="dpp-meta"> ${esc(pk.chapter||'—')}${pk.part?` · Part: ${esc(pk.part)}`:''}</div>
           <div class="dpp-meta"> ${esc(pk.created_at||'')} · ${pk.submitted||0} submission${(pk.submitted||0)===1?'':'s'}</div>
+          <div class="dpp-track">
+            <button class="dpp-trk-btn" title="Kis kis student ne DPP kholi (view) — click pe list" onclick="openDppTrack(${pk.id},'view')">${ic('eye')} <b>${pk.views||0}</b> views</button>
+            <button class="dpp-trk-btn" title="Kis kis student ne PDF download ki — click pe list" onclick="openDppTrack(${pk.id},'download')">${ic('download')} <b>${pk.downloads||0}</b> downloads</button>
+          </div>
           <div class="dpp-foot"><div></div><div class="dpp-btns">
             <button class="btn btn-primary btn-sm" onclick="openTDppPanel(${pk.id})">${ic('eye')} View</button>
             <button class="btn btn-ghost btn-sm" title="Sabse pehle submit karne waale students ki ranking" onclick="openDppRanking(${pk.id},'teacher')">${ic('chart')} Ranking${(pk.submitted||0)>0?` (${pk.submitted})`:''}</button>
@@ -4711,7 +4715,7 @@ async function sDppGo(pid,action,kind,med,_retry){
     const bl=await r.blob(); const u=URL.createObjectURL(bl);
     const fname=(kind==='s'?'DPP-solutions':'DPP-questions')+'-'+(med||'paper')+'.pdf';
     if(action==='view') pdfViewerModal(u,(kind==='s'?'Solutions':'Questions')+(med==='hindi'?' — हिंदी':(med==='both'?' — English + हिंदी':' — English')),fname);
-    else{ const a=document.createElement('a'); a.href=u; a.download=fname; document.body.appendChild(a); a.click(); a.remove(); }
+    else{ const a=document.createElement('a'); a.href=u; a.download=fname; document.body.appendChild(a); a.click(); a.remove(); _dppTrack(pid,'download'); }
     setTimeout(()=>URL.revokeObjectURL(u),300000);
   }catch(e){
     if(!_retry){ toast('Server slow hai — 3 sec me dobara…',true); await new Promise(r=>setTimeout(r,3000)); return sDppGo(pid,action,kind,med,true); }
@@ -7413,10 +7417,12 @@ async function loadADppRanks(){
       <td>${esc(p.teacher||'—')}</td>
       <td style="text-align:center"><b>${p.submitted}</b></td>
       <td style="text-align:center"><span style="color:var(--success);font-weight:700">${p.checked}</span><span style="color:var(--text-muted)"> / </span><span style="color:var(--warning);font-weight:700">${p.pending}</span></td>
+      <td style="text-align:center">${p.views||0}</td>
+      <td style="text-align:center">${p.downloads||0}</td>
       <td style="text-align:right"><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openDppRanking(${p.id},'admin')">${ic('chart')} Ranking</button></td></tr>`).join('');
     el.innerHTML=`<div class="card" style="margin-top:18px"><div class="card-header"><h3>${ic('clipboard')} DPP Rankings</h3><span class="xm-chip">${packs.length}</span></div>
       <div class="card-body"><p style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">Har DPP pack ke submissions — sabse pehle submit karne wala Rank 1. Row pe click karo for podium + full list (names clickable).</p>
-      ${packs.length?`<div class="mat-twrap"><table class="mat-table"><thead><tr><th>DPP</th><th>Class</th><th>Teacher</th><th style="text-align:center">Submitted</th><th style="text-align:center">Checked / Pending</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      ${packs.length?`<div class="mat-twrap"><table class="mat-table"><thead><tr><th>DPP</th><th>Class</th><th>Teacher</th><th style="text-align:center">Submitted</th><th style="text-align:center">Checked / Pending</th><th style="text-align:center">Views</th><th style="text-align:center">Downloads</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
         :`<div class="ws-empty"><p>Abhi koi DPP pack nahi hai.</p></div>`}</div></div>`;
   }catch(e){ el.innerHTML=`<div class="card" style="margin-top:18px"><div class="card-body">${errHtml(e)}</div></div>`; }
 }
@@ -9473,7 +9479,7 @@ function _sDppCardHTML(pk,isNew){
     <div style="display:flex;gap:13px;align-items:flex-start">
       ${ava}
       <div style="flex:1;min-width:0">
-        <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div><div style="display:flex;gap:6px;align-items:center">${pk.class_name?`<span class="xm-chip xm-chip-hl2">${ic('book')} ${esc(pk.class_name)}</span>`:''}${pk.medium?`<span class="xm-chip xm-chip-hl2">${esc(pk.medium)}</span>`:''}${srcChip}</div></div>
+        <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div><div class="dpp-chips">${pk.class_name?`<span class="xm-chip xm-chip-hl2">${ic('book')} ${esc(pk.class_name)}</span>`:''}${pk.medium?`<span class="xm-chip xm-chip-hl2">${esc(pk.medium)}</span>`:''}${srcChip}</div></div>
         <div class="dpp-title">${esc(pk.title||'DPP')}${newTag}</div>
         <div class="dpp-meta"> ${esc(pk.chapter||'—')}${pk.part?` · Part: ${esc(pk.part)}`:''}</div>
         <div class="dpp-meta"> ${esc(pk.teacher||'Teacher')}${pk.created_at?` · ${esc(pk.created_at)}`:''}</div>
@@ -9975,8 +9981,10 @@ async function _cropSend(){
   }catch(e){ toast(e.message||'Could not send the doubt',true); }
 }
 // STUDENT panel: card ke ANDAR expand hota hai — back pe wapas minimize
+function _dppTrack(pid,event){ try{ api(`/api/student/dpp-packs/${pid}/track`,'POST',{event}).catch(()=>{}); }catch(e){} }
 async function openSDppPanel(pid){
   window._sDppOpenPid=pid;
+  _dppTrack(pid,'view');
   loadSDpp();
 }
 function sDppClosePanel(){
@@ -10558,6 +10566,31 @@ function dppRankStudent(rank){
     </div>
     ${r.remarks?`<div class="sdet-row" style="margin-top:8px;flex-direction:column;align-items:flex-start;gap:4px"><span>Remarks</span><b style="font-weight:600">${esc(r.remarks)}</b></div>`:''}`,
     `<button class="btn btn-ghost" onclick="openDppRanking(${pid},'${role}')">&larr; Back</button><button class="btn btn-primary btn-sm" onclick="closeModal()">Close</button>`);
+}
+/* ================= DPP VIEW/DOWNLOAD TRACKER (teacher/admin — clickable chips) ================= */
+async function openDppTrack(pid,event){
+  const role=(ROLE==='admin')?'admin':'teacher';
+  showModal('DPP Tracker','<div class="spinner"></div>','');
+  try{
+    const d=await api(`/api/${role}/dpp-packs/${pid}/track-list?event=${event}`);
+    const rows=d.rows||[];
+    const isV=d.event==='view';
+    const title=`${esc((d.pack&&d.pack.title)||'DPP')} — ${isV?'Views':'Downloads'}`;
+    if(!rows.length){
+      showModal(title,`<div class="ws-empty"><div class="big">${ic(isV?'eye':'download')}</div><p><b>Abhi kisi ne ${isV?'view':'download'} nahi kiya</b></p><small>Jaise hi students DPP ${isV?'kholenge':'download karenge'}, unke naam yaha aa jayenge.</small></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+      return;
+    }
+    const list=rows.map((r,i)=>`<div class="sbb-row nosel">
+      <span class="sbb-rank ${i<3?'top':''}">${i+1}</span>
+      <span class="sbb-av">${esc((r.name||'?').slice(0,1).toUpperCase())}</span>
+      <div class="sbb-main"><div class="sbb-nm">${esc(r.name)}</div><div class="sbb-sub">${esc(r.at||'')}</div></div>
+      <span class="dpp-rk-st${isV?'':' ok'}">${ic(isV?'eye':'download')} ${isV?'Viewed':'Downloaded'}</span></div>`).join('');
+    showModal(title,
+      `<div style="font-size:.74rem;color:var(--text-muted);margin-bottom:10px"><b>${rows.length}</b> student${rows.length>1?'s':''} ne ${isV?'DPP kholi (view)':'PDF download ki'} &middot; latest pehle</div>
+       <div class="hide-scroll" style="max-height:300px;overflow-y:auto;padding-right:4px">${list}</div>
+       ${rows.length>6?`<div class="trk-scroll-hint">Scroll for all ${rows.length} students</div>`:''}`,
+      `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+  }catch(e){ showModal('DPP Tracker',errHtml(e),`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`); }
 }
 /* ================= STUDENT TEST PLAYER v2 =================
    medium selection at start + in-test medium toggle + live timer + MCQ palette
@@ -13613,6 +13646,24 @@ async function ocrFillQuestion_v1(inp,i){
 @media(max-width:640px){.dpp-rk-st{font-size:.55rem;padding:2px 6px}.sbb-sub{font-size:.6rem}}
 .dpp-rk-row{cursor:pointer;transition:background .15s}
 .dpp-rk-row:hover{background:rgba(184,148,31,.06)}
+/* DPP card top chips — wrap-safe */
+.dpp-chips{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;max-width:62%}
+/* teacher tracker chips — clickable */
+.dpp-track{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 2px}
+.dpp-trk-btn{display:inline-flex;align-items:center;gap:5px;font-size:.7rem;font-weight:700;padding:4px 11px;border-radius:999px;
+  border:1.5px solid rgba(184,148,31,.4);background:linear-gradient(135deg,rgba(184,148,31,.1),rgba(201,162,39,.06));color:#8a6d10;
+  cursor:pointer;transition:all .15s;font-family:inherit}
+.dpp-trk-btn b{font-size:.78rem}
+.dpp-trk-btn svg{width:12px;height:12px}
+.dpp-trk-btn:hover{background:linear-gradient(135deg,rgba(184,148,31,.22),rgba(201,162,39,.14));transform:translateY(-1px);box-shadow:0 3px 8px -3px rgba(184,148,31,.5)}
+.dark .dpp-trk-btn{color:#e8c476;border-color:rgba(226,180,88,.4);background:rgba(226,180,88,.08)}
+@media(max-width:640px){
+  .dpp-top{flex-wrap:wrap;gap:5px}
+  .dpp-top .tr-sub{flex:1 1 100%;min-width:0}
+  .dpp-chips{max-width:100%;justify-content:flex-start;gap:5px}
+  .dpp-chips .xm-chip-hl2,.dpp-chips .chip-sub{font-size:.6rem;padding:2px 7px;white-space:nowrap}
+  .dpp-trk-btn{font-size:.64rem;padding:3px 9px}
+}
 /* phone: podium 3-in-a-row shrink + list rows compact — kuch overflow/wrap nahi */
 @media(max-width:640px){
   .trk-podium{gap:8px;flex-wrap:nowrap;margin:4px 0 16px}
