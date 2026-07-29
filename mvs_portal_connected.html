@@ -7430,7 +7430,7 @@ async function loadTVTasks(){
 }
 async function openTVTPropose(){
   showModal('Propose a Video',`
-    <div class="form-grid">
+    <div class="form-grid vt-form">
       <div class="form-group" style="grid-column:1/-1"><label>Video Title</label><input id="tvt-p-title" class="input" placeholder="e.g. Probability Short Tricks — NIOS Special"></div>
       <div class="form-group" style="grid-column:1/-1"><label>Why this video? (optional)</label><textarea id="tvt-p-ref" class="input" rows="2" placeholder="Student demand, exam relevance, etc."></textarea></div>
     </div>
@@ -7547,8 +7547,8 @@ async function loadAVTasks(){
     }).join('');
     el.innerHTML=`
       <div class="vt-hero"><div><h3>Production Task Manager</h3><p>Assign video tasks with thumbnails & deadlines, review submissions, and publish to students.</p></div><div class="vt-sp"></div>
-        <button class="btn btn-ghost btn-sm" style="color:#ffe9ad;border-color:rgba(255,233,173,.5)" onclick="openVTChannels()">${ic('settings')} Channels (${_vtChannels.length})</button>
-        <button class="btn btn-primary" onclick="openVTAssign()">${ic('plus')} Assign Task</button></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="vt-btn-dark" onclick="openVTChannels()">${ic('settings')} Channels (${_vtChannels.length})</button>
+        <button class="vt-btn-gold" onclick="openVTAssign()">${ic('plus')} Assign Task</button></div></div>
       <div class="vt-cards">
         ${stat('Total Assigned',stats.total,'#8a6d10','clipboard')}
         ${stat('Completed',stats.done,'#059669','check')}
@@ -7601,14 +7601,19 @@ async function openVTAssign(proposalId){
   const dl=new Date(Date.now()+48*3600*1000); dl.setMinutes(0);
   const dlVal=`${dl.getFullYear()}-${String(dl.getMonth()+1).padStart(2,'0')}-${String(dl.getDate()).padStart(2,'0')}T${String(dl.getHours()).padStart(2,'0')}:00`;
   showModal(pre?'Approve Proposal & Assign':'Assign Video Task',`
-    <div class="form-grid">
+    <div class="form-grid vt-form">
       <div class="form-group"><label>Teacher</label><select id="vt-f-teacher" class="input">${tOpts}</select></div>
       <div class="form-group"><label>YouTube Channel</label><select id="vt-f-channel" class="input"><option value="">— Select channel —</option>${cOpts}</select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Video Title</label><input id="vt-f-title" class="input" placeholder="e.g. Thermodynamics Part 1 — Full Concept" value="${pre?esc(pre.title):''}"></div>
-      <div class="form-group"><label>Deadline</label><input id="vt-f-deadline" type="datetime-local" class="input" value="${dlVal}"></div>
-      <div class="form-group"><label>Thumbnail (image upload)</label><input id="vt-f-thumb" type="file" accept="image/*" class="input" onchange="vtThumbPreview(this)"></div>
-      <div class="form-group" style="grid-column:1/-1"><label>or Thumbnail Drive Link</label><input id="vt-f-thumblink" class="input" placeholder="https://drive.google.com/..."></div>
-      <div id="vt-thumb-prev" style="grid-column:1/-1"></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Deadline</label><input id="vt-f-deadline" type="datetime-local" class="input" value="${dlVal}"></div>
+      <div class="form-group vt-thumb-box" style="grid-column:1/-1"><label>Thumbnail</label>
+        <div class="vt-file"><label class="vt-file-btn" for="vt-f-thumb">${ic('image')} Upload Image</label>
+          <span class="vt-file-name" id="vt-thumb-name">No file chosen</span></div>
+        <input id="vt-f-thumb" type="file" accept="image/*" style="display:none" onchange="vtThumbPreview(this)">
+        <div class="vt-hint">or paste a drive link below (max 2.5 MB for upload)</div>
+        <input id="vt-f-thumblink" class="input" style="margin-top:8px" placeholder="https://drive.google.com/...">
+        <div id="vt-thumb-prev" style="margin-top:8px"></div>
+      </div>
       <div class="form-group" style="grid-column:1/-1"><label>Reference / Brief (optional)</label><textarea id="vt-f-ref" class="input" rows="2" placeholder="Points to cover, sample video link, style notes...">${pre?esc(pre.reference||''):''}</textarea></div>
       <div class="form-group" style="grid-column:1/-1"><label>Remarks for Teacher (optional)</label><textarea id="vt-f-remarks" class="input" rows="2" placeholder="Any instructions..."></textarea></div>
     </div>`,
@@ -7618,8 +7623,9 @@ function vtThumbPreview(inp){
   const f=inp.files&&inp.files[0]; if(!f) return;
   if(f.size>2.5*1024*1024){ toast('Image too large — keep it under 2.5 MB'); inp.value=''; return; }
   const r=new FileReader();
+  const nm=document.getElementById('vt-thumb-name'); if(nm) nm.textContent=f.name;
   r.onload=()=>{ window._vtThumbB64=r.result;
-    document.getElementById('vt-thumb-prev').innerHTML=`<img src="${r.result}" style="max-height:110px;border-radius:10px;border:1px solid var(--border)">`; };
+    document.getElementById('vt-thumb-prev').innerHTML=`<img src="${r.result}" style="max-height:110px;border-radius:10px;border:1px solid var(--border);display:block">`; };
   r.readAsDataURL(f);
 }
 async function vtAssignSave(proposalId){
@@ -7654,13 +7660,13 @@ async function openVTReview(id){
       ${t.submitted_at?`<div class="sdet-row"><span>Submitted</span><b>${esc(t.submitted_at)} ${t.on_time?'(on time)':'(delayed)'}</b></div>`:''}
       ${t.submitted_link?`<div class="sdet-row"><span>Video</span><b><a href="${esc(t.submitted_link)}" target="_blank" rel="noopener" style="color:var(--primary)">Open drive link</a></b></div>`:''}
     </div>
-    <div class="form-group"><label>Set Status</label>
+    <div class="vt-form"><div class="form-group"><label>Set Status</label>
       <div style="display:flex;gap:7px;flex-wrap:wrap" id="vt-rv-actions">
         ${['approved','editing_soon','editing_done','uploaded'].map(a=>`<button class="btn btn-ghost btn-sm" data-act="${a}" onclick="vtRvPick(this)">${VT_LBL[a]}</button>`).join('')}
         <button class="btn btn-ghost btn-sm" data-act="rejected" style="border-color:rgba(220,38,38,.5);color:#b91c1c" onclick="vtRvPick(this)">Rejected</button>
       </div></div>
     <div class="form-group"><label>Remarks (reason — required for rejection)</label><textarea id="vt-rv-remarks" class="input" rows="2" placeholder="e.g. Audio not clear in the middle section..."></textarea></div>
-    <div class="form-group" id="vt-rv-ndl" style="display:none"><label>New Deadline (for reshoot)</label><input id="vt-rv-deadline" type="datetime-local" class="input" value="${ndVal}"></div>`,
+    <div class="form-group" id="vt-rv-ndl" style="display:none"><label>New Deadline (for reshoot)</label><input id="vt-rv-deadline" type="datetime-local" class="input" value="${ndVal}"></div></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="vtReviewSave(${t.id})">${ic('check')} Save Status</button>`);
   window._vtRvAct=null;
 }
@@ -14118,6 +14124,41 @@ async function ocrFillQuestion_v1(inp,i){
   border:1.5px solid rgba(184,148,31,.4);margin-bottom:14px}
 .vt-rank-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:11px;border:1px solid var(--border);margin-bottom:8px;background:var(--bg)}
 .vt-rank-row.me{border-color:var(--primary);background:rgba(184,148,31,.07)}
+/* hero buttons — dark hero pe readable */
+.vt-btn-dark{display:inline-flex;align-items:center;gap:6px;padding:9px 15px;border-radius:11px;
+  border:1.5px solid rgba(255,233,173,.6);background:rgba(255,233,173,.1);color:#ffe9ad;
+  font-weight:700;font-size:.78rem;cursor:pointer;transition:.15s;font-family:inherit;white-space:nowrap}
+.vt-btn-dark svg{width:13px;height:13px}
+.vt-btn-dark:hover{background:rgba(255,233,173,.22);transform:translateY(-1px)}
+.vt-btn-gold{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:11px;border:none;
+  background:linear-gradient(135deg,#e2c254,#b8941f);color:#241a05;font-weight:800;font-size:.82rem;
+  cursor:pointer;box-shadow:0 4px 14px -4px rgba(217,184,74,.65);transition:.15s;font-family:inherit;white-space:nowrap}
+.vt-btn-gold svg{width:13px;height:13px}
+.vt-btn-gold:hover{filter:brightness(1.08);transform:translateY(-1px)}
+/* premium form — video task modals */
+.vt-form .form-group{margin-bottom:14px}
+.vt-form .form-group label{display:block;font-size:.66rem;font-weight:800;text-transform:uppercase;
+  letter-spacing:.07em;color:#8a6d10;margin-bottom:6px}
+.vt-form .input{width:100%;padding:10px 13px;border-radius:11px;border:1.5px solid #e2d9c4;
+  background:#fffdf7;font-size:.86rem;font-family:inherit;color:var(--text);
+  transition:border-color .15s,box-shadow .15s;box-sizing:border-box}
+.vt-form .input:focus{outline:none;border-color:#c9a227;box-shadow:0 0 0 3px rgba(201,162,39,.16)}
+.vt-form select.input{appearance:none;-webkit-appearance:none;cursor:pointer;padding-right:36px;
+  background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="%238a6d10" stroke-width="3" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>');
+  background-repeat:no-repeat;background-position:right 13px center}
+.vt-form textarea.input{resize:vertical;min-height:66px;line-height:1.45}
+.vt-form input[type="datetime-local"].input{font-variant-numeric:tabular-nums}
+.vt-file{display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+.vt-file-btn{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:11px;cursor:pointer;
+  border:1.5px dashed #c9a227;background:rgba(201,162,39,.07);color:#8a6d10;font-weight:800;font-size:.76rem;transition:.15s}
+.vt-file-btn:hover{background:rgba(201,162,39,.15)}
+.vt-file-btn svg{width:14px;height:14px}
+.vt-file-name{font-size:.72rem;color:var(--text-muted);font-weight:600}
+.vt-thumb-box{border:1px solid var(--border);border-radius:12px;padding:10px 12px;background:rgba(201,162,39,.04)}
+.vt-form .vt-hint{font-size:.66rem;color:var(--text-muted);margin-top:5px;font-weight:600}
+.dark .vt-form .input{background:#241c08;border-color:#4a3b14;color:#f0e6cc}
+.dark .vt-form .form-group label{color:#e0be5c}
+.dark .vt-thumb-box{background:rgba(201,162,39,.07)}
 @media(max-width:640px){
   .vt-grid{grid-template-columns:1fr}
   .vt-thumb{height:120px}
