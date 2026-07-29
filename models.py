@@ -353,6 +353,49 @@ class DppAnswer(Base):
     checked_at   = Column(DateTime)
 
 
+# =============================================
+# VIDEO TASK MANAGER (production tasks for YouTube channels)
+# =============================================
+class VideoChannel(Base):
+    __tablename__ = "video_channels"
+
+    id         = Column(Integer, primary_key=True)
+    name       = Column(String(160), unique=True)
+    active     = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=func.now())
+
+
+class VideoTask(Base):
+    """Production manager -> teacher video task: thumbnail + deadline + review workflow."""
+    __tablename__ = "video_tasks"
+
+    id             = Column(Integer, primary_key=True)
+    teacher_id     = Column(Integer, ForeignKey("teacher_profiles.id"))
+    title          = Column(String(300))
+    channel_id     = Column(Integer, ForeignKey("video_channels.id"), nullable=True)
+    channel_name   = Column(String(160), default="")
+    thumbnail_b64  = Column(Text, nullable=True)          # uploaded thumbnail image
+    thumbnail_link = Column(String(600), default="")      # ya drive link
+    reference      = Column(Text, default="")             # manager ka reference/brief
+    remarks        = Column(Text, default="")             # assignment remarks
+    deadline       = Column(DateTime, nullable=True)
+    status         = Column(String(20), default="assigned")
+    # assigned -> submitted -> approved|editing_soon|editing_done|uploaded
+    # rejected -> wapas assigned (reshoot, new deadline)
+    proposed_by    = Column(String(10), default="admin")  # admin | teacher
+    proposal_ok    = Column(String(10), default="")       # pending | approved | rejected
+    submitted_link = Column(String(600), default="")
+    submitted_at   = Column(DateTime, nullable=True)
+    on_time        = Column(Boolean, nullable=True)       # submit ke waqt set
+    reviewed       = Column(Boolean, default=False)       # admin check = checking blink off
+    review_remarks = Column(Text, default="")             # rejection reason etc.
+    reject_count   = Column(Integer, default=0)
+    warned_24h     = Column(Boolean, default=False)
+    warned_overdue = Column(Boolean, default=False)
+    created_at     = Column(DateTime, default=func.now())
+    updated_at     = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
 class DppEvent(Base):
     """DPP view/download tracking — kaunse student ne kab view/download kiya."""
     __tablename__ = "dpp_events"
@@ -388,6 +431,7 @@ class Notification(Base):
     title      = Column(String(200))
     message    = Column(Text)
     notif_type = Column(String(50))   # reschedule_approved, reschedule_rejected, new_notes, test_reminder, doubt_resolved
+    link       = Column(String(500), nullable=True)  # video_task link — click pe open
     is_read    = Column(Boolean, default=False)
     created_at = Column(DateTime, default=func.now())
 

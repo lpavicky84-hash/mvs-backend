@@ -3796,8 +3796,10 @@ def teacher_rankings(days: int = 90, db: Session = Depends(get_db),
                      _admin=Depends(get_admin)):
     """Admin board: every teacher ranked by activity (podium UI)."""
     days = max(7, min(int(days or 90), 365))
+    from video_tasks import vt_task_rank_rows
     return {"days": days, "results": _teacher_rank_rows(db, days),
-            "weights": TEACHER_RANK_WEIGHTS}
+            "weights": TEACHER_RANK_WEIGHTS,
+            "task_ranking": vt_task_rank_rows(db)}
 
 
 @router.get("/my-rank")
@@ -3810,6 +3812,8 @@ def teacher_my_rank(days: int = 90, db: Session = Depends(get_db),
     mine = next((r for r in rows if r["teacher_id"] == tp.id), None)
     # full board bhi bhejo — teacher apne Performance page par podium + list dekhe
     # aur kisi bhi rank par click karke comparison + suggestions paaye
+    from video_tasks import vt_task_rank_rows
     return {"days": days, "total": len(rows), "me": mine, "results": rows,
             "weights": TEACHER_RANK_WEIGHTS,
+            "task_ranking": vt_task_rank_rows(db),
             "top3": [{k: r[k] for k in ("rank", "name", "score", "photo")} for r in rows[:3]]}

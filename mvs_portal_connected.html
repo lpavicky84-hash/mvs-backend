@@ -2656,9 +2656,9 @@ body.dark .cal-d.on{color:#34d399}
 <!-- TEACHER SUBJECT SELECTION (first login) -->
 <div id="t-subject-screen" style="display:none;min-height:100vh;background:linear-gradient(150deg,#171203,#2e2408 55%,#4a3c12);align-items:center;justify-content:center;padding:20px"><div class="login-box" style="max-width:620px"><h2>Select Your Subjects</h2><p>Select the subjects you teach, class by class.</p><div style="display:flex;justify-content:space-between;margin:14px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 10</label></div><div id="t-sub-10" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><div style="display:flex;justify-content:space-between;margin:16px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 12</label></div><div id="t-sub-12" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><button class="login-btn" id="t-save-subj" style="margin-top:18px" onclick="saveTeacherSubjects()">Save & Continue →</button><p style="text-align:center;margin-top:14px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Logout</p></div>
 </div>
-<div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="tPage('extmat',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-item" onclick="tPage('predicted',this)"><span>Predicted Results</span></div><div class="nav-item" onclick="tPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="tPage('payout',this)"><span>Payout</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule:</b> Every reschedule applies only after admin approval.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-extmat"><div id="t-extmat-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-predicted"><div id="t-predicted-content"><div class="spinner"></div></div></div><div class="page" id="t-page-attendance"><div id="t-attendance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-payout"><div id="t-payout-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
+<div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('vtasks',this)"><span>My Tasks</span><span class="badge" id="t-vt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="tPage('extmat',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-item" onclick="tPage('predicted',this)"><span>Predicted Results</span></div><div class="nav-item" onclick="tPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="tPage('payout',this)"><span>Payout</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule:</b> Every reschedule applies only after admin approval.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-vt-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-vtasks"><div id="t-vtasks-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-extmat"><div id="t-extmat-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-predicted"><div id="t-predicted-content"><div class="spinner"></div></div></div><div class="page" id="t-page-attendance"><div id="t-attendance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-payout"><div id="t-payout-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== ADMIN APP ===== -->
-<div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#b06d12">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Users</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-section">Academics</div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('tests',this)"><span>Tests Tracker</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('tranks',this)"><span>Teacher Ranking</span></div><div class="nav-item" onclick="aPage('compliance',this)"><span>Class Compliance</span></div><div class="nav-item" onclick="aPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="aPage('payouts',this)"><span>Payouts</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('syllabus',this)"><span>Syllabus Manager</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#b06d12" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-reviews-wrap"></div><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-tests"><div id="a-tests-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-compliance"><div id="a-compliance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-tranks"><div id="a-tranks-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"></div><div class="card" style="margin-top:18px;border:1.5px solid rgba(220,38,38,.3)"><div class="card-header"><h3 style="color:var(--danger)">Danger Zone</h3></div><div class="card-body"><p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Clear all testing content data (timetable, materials, doubts, submissions...) in one go \u2014 students, teachers and admins remain safe.</p><button class="btn btn-danger" onclick="openResetData()">\ud83e\uddf9 Reset Portal Data</button></div></div><div style="display:none"><div class="spinner"></div></div></div><div class="page" id="a-page-syllabus"><div id="a-syl-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div><div class="page" id="a-page-attendance"><div id="a-attendance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-payouts"><div id="a-payouts-content"><div class="spinner"></div></div></div></div>
+<div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#b06d12">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Users</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-section">Academics</div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('tests',this)"><span>Tests Tracker</span></div><div class="nav-section">Production</div><div class="nav-item" onclick="aPage('vtasks',this)"><span>Task Manager</span><span class="badge" id="a-vt-badge" style="display:none">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('tranks',this)"><span>Teacher Ranking</span></div><div class="nav-item" onclick="aPage('compliance',this)"><span>Class Compliance</span></div><div class="nav-item" onclick="aPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="aPage('payouts',this)"><span>Payouts</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('syllabus',this)"><span>Syllabus Manager</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#b06d12" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-vtasks"><div id="a-vtasks-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-reviews-wrap"></div><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-tests"><div id="a-tests-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-compliance"><div id="a-compliance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-tranks"><div id="a-tranks-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"></div><div class="card" style="margin-top:18px;border:1.5px solid rgba(220,38,38,.3)"><div class="card-header"><h3 style="color:var(--danger)">Danger Zone</h3></div><div class="card-body"><p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Clear all testing content data (timetable, materials, doubts, submissions...) in one go \u2014 students, teachers and admins remain safe.</p><button class="btn btn-danger" onclick="openResetData()">\ud83e\uddf9 Reset Portal Data</button></div></div><div style="display:none"><div class="spinner"></div></div></div><div class="page" id="a-page-syllabus"><div id="a-syl-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div><div class="page" id="a-page-attendance"><div id="a-attendance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-payouts"><div id="a-payouts-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== STUDENT APP ===== -->
 <div id="student-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#b8941f">S</div><div><span>MVS Foundation</span><small>Student</small></div></div><nav class="sidebar-nav"><div class="nav-section">Home</div><div class="nav-item active" onclick="sPage('dashboard',this)"><span>Home</span></div><div class="nav-item" onclick="sPage('teachers',this)"><span>Know Your Teacher</span></div><div class="nav-item" onclick="sPage('timetable',this)"><span>Time Table</span></div><div class="nav-section">Materials</div><div class="nav-item" onclick="sPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="sPage('materials',this)"><span>Classes Material</span></div><div class="nav-section">Work</div><div class="nav-item" onclick="sPage('dpp',this)"><span>DPP Submit</span></div><div class="nav-item" onclick="sPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="sPage('doubts',this)"><span>Doubts</span></div><div class="nav-section">Progress</div><div class="nav-item" onclick="sPage('syllabus',this)"><span>Syllabus Tracker</span></div><div class="nav-item" onclick="sPage('resultcard',this)"><span>Result Card</span></div><div class="nav-item" onclick="sPage('progress',this)"><span>Progress</span></div><div class="nav-item" onclick="sPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="sPage('profile',this)"><span>My Profile</span></div></nav><div class="sidebar-bottom"><div class="user-info uinfo-link" onclick="sPage('profile',null)" title="Open My Profile"><div class="avatar" style="background:#b8941f" id="s-avatar">S</div><div><span id="s-name">Student</span><small id="s-batch">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="s-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="s-topavatar" title="Set or change profile photo" onclick="openSetStudentPhoto()">S</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('student')"><span class="notif-badge" id="s-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="s-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="s-page-dashboard"><div id="s-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-timetable"><div id="s-timetable-content"><div class="spinner"></div></div></div><div class="page" id="s-page-materials"><div id="s-materials-content"><div class="spinner"></div></div></div><div class="page" id="s-page-qbank"><div id="s-qbank-content"><div class="spinner"></div></div></div><div class="page" id="s-page-teachers"><div id="s-teachers-content"><div class="spinner"></div></div></div><div class="page" id="s-page-dpp"><div id="s-dpp-content"><div class="spinner"></div></div></div><div class="page" id="s-page-tests"><div id="s-tests-content"><div class="spinner"></div></div></div><div class="page" id="s-page-doubts"><div id="s-doubts-content"><div class="spinner"></div></div></div><div class="page" id="s-page-progress"><div id="s-progress-content"><div class="spinner"></div></div></div><div class="page" id="s-page-notifications"><div id="s-notif-content"><div class="spinner"></div></div></div><div class="page" id="s-page-syllabus"><div id="s-syl-content"><div class="spinner"></div></div></div><div class="page" id="s-page-resultcard"><div id="s-resultcard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-profile"><div id="s-profile-content"><div class="spinner"></div></div></div></div>
 </div><!-- Generic Modal -->
@@ -3012,9 +3012,19 @@ async function openNotifPanel(role){
   try{ list=await fetchNotifs(role); }catch(e){ if(e&&e.status===401){ _sessionExpired(); return; } list=[]; }
   const html=list.length?list.map(n=>{
     const go=(NOTIF_GO[role]||{})[n.notif_type||''];
-    return `<div class="notif-item ${n.is_read?'':'unread'}"${go?` style="cursor:pointer" onclick="notifGo('${role}',${n.id},'${esc(n.notif_type||'')}')" title="Tap to open this section"`:''}><div class="ni-title">${esc(n.title)}${go?' <span style="font-size:.68rem;color:var(--primary);font-weight:800">&#8250;</span>':''}</div><div class="ni-msg">${esc(n.message)}</div><div class="ni-time"> ${fmtNice(n.created_at)}</div></div>`;
+    const hasLink=!!n.link;
+    const click=hasLink?`notifLinkOpen('${role}',${n.id},'${encodeURIComponent(n.link)}')`:(go?`notifGo('${role}',${n.id},'${esc(n.notif_type||'')}')`:'');
+    const clickable=hasLink||go;
+    const hint=hasLink?` <span style="font-size:.68rem;color:var(--primary);font-weight:800">Open Link &#8250;</span>`:(go?' <span style="font-size:.68rem;color:var(--primary);font-weight:800">&#8250;</span>':'');
+    return `<div class="notif-item ${n.is_read?'':'unread'}"${clickable?` style="cursor:pointer" onclick="${click}"`:' '} title="${hasLink?'Tap to open the link':'Tap to open this section'}"><div class="ni-title">${esc(n.title)}${hint}</div><div class="ni-msg">${esc(n.message)}</div><div class="ni-time"> ${fmtNice(n.created_at)}</div></div>`;
   }).join(''):'<div class="empty-state"><div class="empty-icon"></div><p>No notifications yet</p></div>';
   showModal(' Notifications',html,list.some(n=>!n.is_read)?`<button class="btn btn-primary" onclick="markAllRead('${role}')">Mark All Read</button>`:`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+}
+async function notifLinkOpen(role,id,encLink){
+  try{ await api(notifEp(role,'/notifications/'+id+'/read'),'PATCH'); }catch(e){}
+  const link=decodeURIComponent(encLink||'');
+  if(link) window.open(link,'_blank','noopener');
+  refreshNotifBadge(role); openNotifPanel(role);
 }
 async function markAllRead(role){
   let list;
@@ -3451,11 +3461,12 @@ function tPage(page,el){
   document.querySelectorAll('#teacher-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('t-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#teacher-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',performance:'Performance',predicted:'Predicted Results',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',material:'Classes Material',extmat:'Study Material',attendance:'Attendance',payout:'Payout'};
+  const titles={dashboard:'Dashboard',vtasks:'My Tasks',performance:'Performance',predicted:'Predicted Results',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',material:'Classes Material',extmat:'Study Material',attendance:'Attendance',payout:'Payout'};
   _setPage(titles[page]||page);
   document.getElementById('t-title').textContent=titles[page];
   stopCountdown();
   if(page==='dashboard') loadTDashboard();
+  else if(page==='vtasks') loadTVTasks();
   else if(page==='today'){ _ttTab='today'; tPage('timetable'); return; }
   else if(page==='performance') loadTPerformance();
   else if(page==='predicted') loadTPredicted();
@@ -3633,6 +3644,7 @@ async function loadTDashboard(){
  const badge=document.getElementById('t-doubt-badge');
  if(d.unresolved_doubts>0){ badge.style.display='inline-block'; badge.textContent=d.unresolved_doubts; } else badge.style.display='none';
  renderPunchCard('t-punch-wrap');
+ loadVTBanner();
  loadTeacherToday();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
@@ -3686,7 +3698,16 @@ async function loadTRankBoard(){
       <div style="flex:1;min-width:220px"><h3 style="margin:0 0 3px">Teacher Ranking</h3>
       <p style="margin:0;font-size:.8rem;color:var(--text-muted)">Composite score — tests, DPPs, doubts, class notes, lectures and attendance (last ${d.days||90} days). Tap any teacher to compare.</p></div></div></div>
       ${podHtml}${meHtml}${list}`;
+    wrap.innerHTML+=_vtTaskRankHTML(d.task_ranking||[], me?me.teacher_id:0);
   }catch(e){ wrap.innerHTML=''; }
+}
+function _vtTaskRankHTML(tr, meTid){
+  if(!tr||!tr.length) return '';
+  return `<div class="card" style="margin-top:14px;border:1.5px solid rgba(184,148,31,.3)"><div class="card-header"><h3>${ic('play')} Video Task Completion Ranking</h3><span class="xm-chip">${tr.length}</span></div><div class="card-body">
+    <p style="font-size:.76rem;color:var(--text-muted);margin-bottom:10px">Ranked by on-time video delivery — tasks submitted before the deadline.</p>
+    ${tr.map(r=>`<div class="vt-rank-row${meTid&&r.teacher_id===meTid?' me':''}"><span class="sbb-rank ${r.rank<=3?'top':''}">${r.rank}</span><span class="sbb-av">${esc((r.name||'?').slice(0,1))}</span>
+      <div class="sbb-main"><div class="sbb-nm">${esc(r.name)}${meTid&&r.teacher_id===meTid?' <span class="trk-you">(you)</span>':''}</div><div class="sbb-sub">${r.done}/${r.assigned} completed · ${r.ontime} on time · ${r.delayed} delayed</div></div>
+      <span class="vt-pill ${r.rate>=80?'ontime':r.rate>=50?'submitted':'delayed'}">${r.rate}% on time</span></div>`).join('')}</div></div>`;
 }
 function trkCompare(tid){
   const me=_trkMe, other=(_trkBoard||[]).find(r=>r.teacher_id===tid);
@@ -7327,10 +7348,11 @@ function aPage(page,el){
   document.getElementById('a-page-'+page).classList.add('active');
   if(!el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) el=n; }); }
   if(el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',attendance:'Teacher Attendance',payouts:'Payouts'};
+  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',attendance:'Teacher Attendance',payouts:'Payouts'};
   _setPage(titles[page]||page);
   document.getElementById('a-title').textContent=titles[page];
   if(page==='dashboard') loadADashboard();
+  else if(page==='vtasks') loadAVTasks();
   else if(page==='approvals') loadAApprovals();
   else if(page==='material') loadAMaterial();
   else if(page==='compliance') loadACompliance();
@@ -7349,6 +7371,350 @@ function aPage(page,el){
   else if(page==='timetable') loadATimetable();
   else if(page==='attendance') loadAAttendance();
   else if(page==='payouts') loadAPayouts();
+}
+
+/* ================= VIDEO TASK MANAGER (teacher) ================= */
+let _tvtTimer=null;
+async function loadTVTasks(){
+  const el=document.getElementById('t-vtasks-content');
+  softSpin(el);
+  if(_tvtTimer){ clearInterval(_tvtTimer); _tvtTimer=null; }
+  try{
+    const d=await api('/api/teacher/video-tasks/my');
+    const tasks=d.tasks||[];
+    const active=tasks.filter(t=>t.status==='assigned');
+    const badge=document.getElementById('t-vt-badge');
+    if(badge){ badge.style.display=active.length?'inline-block':'none'; badge.textContent=active.length; }
+    const nxt=d.next_deadline;
+    const hero=nxt?`
+      <div class="vt-hero"><div><h3>${esc(nxt.title)}</h3><p>${nxt.channel?esc(nxt.channel)+' · ':''}Deadline: ${esc(nxt.deadline_nice)}</p></div><div class="vt-sp"></div>
+        <div class="vt-count" id="tvt-hero-cd" data-secs="${nxt.seconds_left||0}"></div></div>`:'';
+    const card=t=>{
+      const subBox=(t.status==='assigned')?`
+        <div class="form-group" style="margin:4px 0 0"><label>Paste video drive link</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="tvt-link-${t.id}" class="input" style="flex:1;min-width:200px" placeholder="https://drive.google.com/...">
+          <button class="btn btn-primary btn-sm" onclick="tvtSubmit(${t.id})">${ic('send')} Submit Video</button></div></div>`:'';
+      const reviewNote=(t.status==='submitted')?`<span class="vt-pill submitted">${ic('clock')} Under Review — Checking</span>`:'';
+      const statusNote=(['approved','editing_soon','editing_done','uploaded'].includes(t.status))
+        ?`<span class="vt-pill ${t.status}">${VT_LBL[t.status]}</span>`:'';
+      const rejNote=(t.reject_count>0&&t.status==='assigned')
+        ?`<div class="vt-meta" style="color:#b91c1c">Sent back for reshoot${t.review_remarks?`: ${esc(t.review_remarks)}`:''} — new deadline above. Reshoot #${t.reject_count}</div>`:'';
+      const propNote=(t.proposal_ok==='pending')?`<span class="vt-pill proposal">Pending Approval</span>`:'';
+      return `<div class="vt-card">${_vtThumb(t)}<div class="vt-body">
+        <div class="vt-chips">${propNote||_vtPill(t)}${reviewNote}${statusNote}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
+        <div class="vt-title">${esc(t.title)}</div>
+        <div class="vt-meta">
+          ${t.deadline_nice?`<span>${ic('clock')} Deadline: <b>${esc(t.deadline_nice)}</b></span>`:''}
+          ${t.status==='assigned'&&t.seconds_left!=null?`<span data-tvt-cd="${t.id}" data-secs="${t.seconds_left}" style="font-weight:800"></span>`:''}
+          ${t.reference?`<span>Reference: ${esc(t.reference)}</span>`:''}
+          ${t.remarks?`<span>Manager remarks: ${esc(t.remarks)}</span>`:''}
+          ${t.submitted_at?`<span>${ic('check')} Submitted: ${esc(t.submitted_at)} — <b>${t.on_time?'on time':'delayed'}</b></span>`:''}
+          ${t.status!=='assigned'&&t.review_remarks?`<span>Review remarks: ${esc(t.review_remarks)}</span>`:''}
+        </div>
+        ${rejNote}${subBox}
+      </div></div>`;
+    };
+    el.innerHTML=`${hero}
+      <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="openTVTPropose()">${ic('plus')} Propose a Video</button>
+        <span style="font-size:.74rem;color:var(--text-muted);align-self:center">Have a video idea? Propose it — once approved, a thumbnail & deadline will be assigned.</span>
+      </div>
+      ${tasks.length?`<div class="vt-grid">${tasks.map(card).join('')}</div>`
+        :`<div class="ws-empty"><div class="big">${ic('clipboard')}</div><p><b>No video tasks yet</b></p><small>When the production manager assigns you a task, it will appear here with its deadline countdown.</small></div>`}`;
+    const tick=()=>{ document.querySelectorAll('[data-tvt-cd]').forEach(sp=>{
+      let s=+sp.dataset.secs; if(isNaN(s))return; s--; sp.dataset.secs=s;
+      const neg=s<0; sp.textContent=_vtCdText(s);
+      sp.style.color=neg?'#b91c1c':(s<86400?'#b45309':'#047857'); }); };
+    tick(); _tvtTimer=setInterval(tick,1000);
+  }catch(e){ el.innerHTML=errHtml(e); }
+}
+async function openTVTPropose(){
+  showModal('Propose a Video',`
+    <div class="form-grid">
+      <div class="form-group" style="grid-column:1/-1"><label>Video Title</label><input id="tvt-p-title" class="input" placeholder="e.g. Probability Short Tricks — NIOS Special"></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Why this video? (optional)</label><textarea id="tvt-p-ref" class="input" rows="2" placeholder="Student demand, exam relevance, etc."></textarea></div>
+    </div>
+    <p style="font-size:.74rem;color:var(--text-muted)">Your proposal goes to the production manager. Once approved, you will get the thumbnail and deadline here.</p>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="tvtProposeSave()">${ic('send')} Send for Approval</button>`);
+}
+async function tvtProposeSave(){
+  const title=document.getElementById('tvt-p-title').value.trim();
+  if(!title){ toast('Please enter a video title'); return; }
+  try{
+    await api('/api/teacher/video-tasks/propose','POST',{title,reference:document.getElementById('tvt-p-ref').value.trim()});
+    closeModal(); toast('Proposal sent for approval.'); loadTVTasks();
+  }catch(e){ toast(e.message||'Could not send'); }
+}
+async function tvtSubmit(id){
+  const link=document.getElementById('tvt-link-'+id).value.trim();
+  if(!link){ toast('Please paste the video drive link'); return; }
+  try{
+    const r=await api(`/api/teacher/video-tasks/${id}/submit`,'POST',{link});
+    toast(r.on_time?'Submitted on time — great job!':'Submitted (after deadline).');
+    loadTVTasks();
+  }catch(e){ toast(e.message||'Could not submit'); }
+}
+/* dashboard countdown banner */
+async function loadVTBanner(){
+  const el=document.getElementById('t-vt-banner'); if(!el) return;
+  try{
+    const d=await api('/api/teacher/video-tasks/my');
+    const nxt=d.next_deadline;
+    if(!nxt){ el.style.display='none'; el.innerHTML=''; return; }
+    el.style.display='block';
+    el.innerHTML=`<div class="vt-banner" onclick="tPage('vtasks',null)" style="cursor:pointer">
+      <div style="width:40px;height:40px;border-radius:11px;background:rgba(184,148,31,.15);color:#8a6d10;display:flex;align-items:center;justify-content:center;flex-shrink:0">${ic('clipboard')}</div>
+      <div style="flex:1;min-width:160px"><div style="font-weight:800;font-size:.86rem">${esc(nxt.title)}</div>
+        <div style="font-size:.7rem;color:var(--text-muted)">${nxt.channel?esc(nxt.channel)+' · ':''}Due ${esc(nxt.deadline_nice)} — tap to open My Tasks</div></div>
+      <div class="vt-count" id="tvt-banner-cd" data-secs="${nxt.seconds_left||0}"></div></div>`;
+    const cd=document.getElementById('tvt-banner-cd');
+    const paint=()=>{ let s=+cd.dataset.secs; s=Math.max(0,s-1); cd.dataset.secs=s;
+      const m=Math.floor(s%3600/60),ss=s%60;
+      const cls=s<=0?'over':(s<86400?'urgent':'');
+      const cells=s>=86400?[[''+Math.floor(s/86400),'days'],[''+String(Math.floor(s%86400/3600)).padStart(2,'0'),'hrs'],[''+String(m).padStart(2,'0'),'min'],[''+String(ss).padStart(2,'0'),'sec']]
+        :[[''+String(Math.floor(s/3600)).padStart(2,'0'),'hrs'],[''+String(m).padStart(2,'0'),'min'],[''+String(ss).padStart(2,'0'),'sec']];
+      cd.innerHTML=cells.map(x=>`<div class="vt-cd ${cls}"><b>${x[0]}</b><small>${x[1]}</small></div>`).join(''); };
+    paint(); if(window._tvtBannerInt) clearInterval(window._tvtBannerInt);
+    window._tvtBannerInt=setInterval(()=>{ if(!document.getElementById('tvt-banner-cd')){ clearInterval(window._tvtBannerInt); return; } paint(); },1000);
+  }catch(e){ el.style.display='none'; }
+}
+
+/* ================= VIDEO TASK MANAGER (admin) ================= */
+let _vtTeachers=[], _vtChannels=[], _vtF={teacher_id:0,status:'',channel_id:0}, _vtTimer=null;
+const VT_LBL={assigned:'Assigned',submitted:'Submitted',approved:'Approved',editing_soon:'Editing Soon',editing_done:'Editing Done',uploaded:'Uploaded',rejected:'Rejected',proposal:'Pending Approval'};
+function _vtQs(){ const f=_vtF,q=[]; if(f.teacher_id)q.push('teacher_id='+f.teacher_id); if(f.status)q.push('status='+f.status); if(f.channel_id)q.push('channel_id='+f.channel_id); return q.length?'?'+q.join('&'):''; }
+function _vtPill(t){
+  let cls=t.status, lbl=VT_LBL[t.status]||t.status;
+  if(t.status==='assigned'&&t.overdue){ cls='delayed'; lbl='Overdue'; }
+  let extra='';
+  if(t.status==='submitted') extra=` <span class="vt-pill ${t.on_time?'ontime':'delayed'}">${t.on_time?'On Time':'Delayed'}</span>`;
+  return `<span class="vt-pill ${cls}">${lbl}</span>${extra}`;
+}
+function _vtThumb(t){
+  const img=t.thumbnail_b64?`<img src="${t.thumbnail_b64}" alt="">`
+    :(t.thumbnail_link?`<img src="${esc(t.thumbnail_link)}" onerror="this.remove()" alt="">`:'');
+  return `<div class="vt-thumb">${img||esc((t.title||'V').slice(0,1).toUpperCase())}<div class="vt-status">${_vtPill(t)}</div></div>`;
+}
+async function loadAVTasks(){
+  const el=document.getElementById('a-vtasks-content');
+  softSpin(el);
+  if(_vtTimer){ clearInterval(_vtTimer); _vtTimer=null; }
+  try{
+    const [stats,ch,ts,list]=await Promise.all([
+      api('/api/admin/video-tasks/stats'),
+      api('/api/admin/video-channels'),
+      api('/api/admin/teachers'),
+      api('/api/admin/video-tasks'+_vtQs())]);
+    _vtChannels=ch.channels||[];
+    _vtTeachers=(Array.isArray(ts)?ts:(ts.teachers||[])).map(t=>({pid:t.profile_id,name:t.name}));
+    const checking=(list.tasks||[]).filter(t=>t.status==='submitted'&&!t.reviewed).length;
+    const badge=document.getElementById('a-vt-badge');
+    const bn=checking+(list.proposals||[]).length;
+    if(badge){ badge.style.display=bn?'inline-block':'none'; badge.textContent=bn; }
+    const stat=(l,n,color,icn)=>`<div class="vt-stat"><div class="vs-ic" style="background:${color}1f;color:${color}">${ic(icn)}</div><div><div class="vs-n" style="color:${color}">${n}</div><div class="vs-l">${l}</div></div></div>`;
+    const tOpt=`<option value="0">All Teachers</option>`+_vtTeachers.map(t=>`<option value="${t.pid}" ${_vtF.teacher_id==t.pid?'selected':''}>${esc(t.name)}</option>`).join('');
+    const cOpt=`<option value="0">All Channels</option>`+_vtChannels.map(c=>`<option value="${c.id}" ${_vtF.channel_id==c.id?'selected':''}>${esc(c.name)}</option>`).join('');
+    const sOpt=['<option value="">All Status</option>','assigned','submitted','approved','editing_soon','editing_done','uploaded'].map(v=>v==='<option value="">All Status</option>'?v:`<option value="${v}" ${_vtF.status===v?'selected':''}>${VT_LBL[v]}</option>`).join('');
+    const propHtml=(list.proposals||[]).length?`<div class="card" style="margin-bottom:16px;border:1.5px solid rgba(217,119,6,.45)"><div class="card-header"><h3>${ic('help')} Video Proposals — Approval Needed</h3><span class="xm-chip">${list.proposals.length}</span></div><div class="card-body"><div class="vt-grid">${list.proposals.map(t=>`
+      <div class="vt-card"><div class="vt-body">
+        <div class="vt-chips"><span class="vt-pill proposal">Proposal</span>${t.channel?`<span class="vt-pill assigned">${esc(t.channel)}</span>`:''}</div>
+        <div class="vt-title">${esc(t.title)}</div>
+        <div class="vt-meta"><span>Proposed by <b>${esc(t.teacher)}</b> · ${esc(t.created_at)}</span>${t.reference?`<span>Note: ${esc(t.reference)}</span>`:''}</div>
+        <div class="vt-foot"><button class="btn btn-primary btn-sm" onclick="openVTAssign(${t.id})">${ic('check')} Approve & Assign</button><button class="btn btn-ghost btn-sm" onclick="vtRejectProposal(${t.id})">Decline</button></div>
+      </div></div>`).join('')}</div></div></div>`:'';
+    const rankRows=(stats.by_teacher||[]);
+    const taskCards=(list.tasks||[]).map(t=>{
+      const reviewBtn=(t.status==='submitted')
+        ?`<button class="btn btn-primary btn-sm ${t.reviewed?'':'vt-checking'}" onclick="openVTReview(${t.id})">${ic('check')} ${t.reviewed?'Review Again':'Checking — Review'}</button>`:'';
+      const editBtn=(['approved','editing_soon','editing_done'].includes(t.status))
+        ?`<button class="btn btn-ghost btn-sm" onclick="openVTReview(${t.id})">${ic('edit')} Update Status</button>`:'';
+      const notifyBtn=(t.submitted_link)
+        ?`<button class="btn btn-gold btn-sm" onclick="vtNotifyStudents(${t.id})" title="Send this video link to all students">${ic('send')} Send to Students</button>`:'';
+      return `<div class="vt-card">${_vtThumb(t)}<div class="vt-body">
+        <div class="vt-title">${esc(t.title)}</div>
+        <div class="vt-chips"><span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
+        <div class="vt-meta">
+          <span>${ic('clock')} Deadline: <b>${esc(t.deadline_nice)}</b>${t.status==='assigned'&&t.seconds_left!=null?` · <span data-vt-cd="${t.id}" data-secs="${t.seconds_left}"></span>`:''}</span>
+          ${t.submitted_at?`<span>${ic('check')} Submitted: <b>${esc(t.submitted_at)}</b> ${t.on_time?'(on time)':'(delayed)'}</span>`:''}
+          ${t.reference?`<span>Reference: ${esc(t.reference)}</span>`:''}
+          ${t.remarks?`<span>Remarks: ${esc(t.remarks)}</span>`:''}
+          ${t.review_remarks?`<span>Review: ${esc(t.review_remarks)}${t.reject_count?` · Reshoot #${t.reject_count}`:''}</span>`:''}
+        </div>
+        <div class="vt-foot">
+          ${t.submitted_link?`<a class="btn btn-ghost btn-sm" href="${esc(t.submitted_link)}" target="_blank" rel="noopener">${ic('link')} Open Video</a>`:''}
+          ${reviewBtn}${editBtn}${notifyBtn}
+        </div></div></div>`;
+    }).join('');
+    el.innerHTML=`
+      <div class="vt-hero"><div><h3>Production Task Manager</h3><p>Assign video tasks with thumbnails & deadlines, review submissions, and publish to students.</p></div><div class="vt-sp"></div>
+        <button class="btn btn-ghost btn-sm" style="color:#ffe9ad;border-color:rgba(255,233,173,.5)" onclick="openVTChannels()">${ic('settings')} Channels (${_vtChannels.length})</button>
+        <button class="btn btn-primary" onclick="openVTAssign()">${ic('plus')} Assign Task</button></div>
+      <div class="vt-cards">
+        ${stat('Total Assigned',stats.total,'#8a6d10','clipboard')}
+        ${stat('Completed',stats.done,'#059669','check')}
+        ${stat('Pending',stats.pending,'#0891b2','clock')}
+        ${stat('Delayed',stats.delayed,'#dc2626','alert')}
+        ${stats.top?`<div class="vt-stat" style="border-color:rgba(16,185,129,.5)"><div class="vs-ic" style="background:rgba(16,185,129,.12);color:#047857">${ic('star')}</div><div><div style="font-size:.8rem;font-weight:800;color:#047857">${esc(stats.top.name)}</div><div class="vs-l">Top — ${stats.top.rate}% on time</div></div></div>`:''}
+        ${stats.most_delayed?`<div class="vt-stat" style="border-color:rgba(220,38,38,.45)"><div class="vs-ic" style="background:rgba(220,38,38,.1);color:#b91c1c">${ic('alert')}</div><div><div style="font-size:.8rem;font-weight:800;color:#b91c1c">${esc(stats.most_delayed.name)}</div><div class="vs-l">Most delayed — ${stats.most_delayed.delayed}</div></div></div>`:''}
+      </div>
+      ${propHtml}
+      <div class="vt-filters">
+        ${ic('filter')} <select onchange="_vtF.teacher_id=+this.value;loadAVTasks()">${tOpt}</select>
+        <select onchange="_vtF.channel_id=+this.value;loadAVTasks()">${cOpt}</select>
+        <select onchange="_vtF.status=this.value;loadAVTasks()">${sOpt}</select>
+        <div style="flex:1"></div>
+        <button class="btn btn-gold btn-sm" onclick="vtDownloadReport()">${ic('download')} Download Report</button>
+      </div>
+      ${rankRows.length?`<div class="card" style="margin-bottom:16px"><div class="card-header"><h3>${ic('chart')} Task Completion Ranking</h3></div><div class="card-body">${rankRows.slice(0,5).map(r=>`
+        <div class="vt-rank-row"><span class="sbb-rank ${r.rank<=3?'top':''}">${r.rank}</span><span class="sbb-av">${esc((r.name||'?').slice(0,1))}</span>
+          <div class="sbb-main"><div class="sbb-nm">${esc(r.name)}</div><div class="sbb-sub">${r.done}/${r.assigned} done · ${r.ontime} on time · ${r.delayed} delayed</div></div>
+          <span class="vt-pill ${r.rate>=80?'ontime':r.rate>=50?'submitted':'delayed'}">${r.rate}% on time</span></div>`).join('')}</div></div>`:''}
+      <div class="vt-grid">${taskCards||`<div class="ws-empty"><div class="big">${ic('clipboard')}</div><p><b>No tasks found</b></p><small>Adjust the filters or assign a new video task.</small></div>`}</div>`;
+    // countdowns tick (assigned tasks)
+    const tick=()=>{ document.querySelectorAll('[data-vt-cd]').forEach(sp=>{
+      let s=+sp.dataset.secs; if(isNaN(s)) return; s--; sp.dataset.secs=s;
+      sp.innerHTML=_vtCdText(s); sp.className=s<0?'vt-over':''; }); };
+    tick(); _vtTimer=setInterval(tick,1000);
+  }catch(e){ el.innerHTML=errHtml(e); }
+}
+function _vtCdText(s){
+  const neg=s<0; s=Math.abs(s);
+  const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60),ss=s%60;
+  const txt=(d?d+'d ':'')+String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0');
+  return neg?`Overdue by ${txt}`:`${txt} left`;
+}
+async function vtDownloadReport(){
+  try{
+    const r=await fetch(API+'/api/admin/video-tasks/report.csv'+_vtQs(),{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('Download failed');
+    const u=URL.createObjectURL(await r.blob());
+    const a=document.createElement('a'); a.href=u; a.download='video_tasks_report.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('Report downloaded.');
+  }catch(e){ toast('Could not download the report'); }
+}
+async function openVTAssign(proposalId){
+  let pre=null;
+  if(proposalId){ try{ const l=await api('/api/admin/video-tasks'); pre=(l.proposals||[]).find(t=>t.id===proposalId); }catch(e){} }
+  const tOpts=_vtTeachers.map(t=>`<option value="${t.pid}" ${pre&&pre.teacher_id===t.pid?'selected':''}>${esc(t.name)}</option>`).join('');
+  const cOpts=_vtChannels.map(c=>`<option value="${c.id}" ${pre&&pre.channel_id===c.id?'selected':''}>${esc(c.name)}</option>`).join('');
+  const dl=new Date(Date.now()+48*3600*1000); dl.setMinutes(0);
+  const dlVal=`${dl.getFullYear()}-${String(dl.getMonth()+1).padStart(2,'0')}-${String(dl.getDate()).padStart(2,'0')}T${String(dl.getHours()).padStart(2,'0')}:00`;
+  showModal(pre?'Approve Proposal & Assign':'Assign Video Task',`
+    <div class="form-grid">
+      <div class="form-group"><label>Teacher</label><select id="vt-f-teacher" class="input">${tOpts}</select></div>
+      <div class="form-group"><label>YouTube Channel</label><select id="vt-f-channel" class="input"><option value="">— Select channel —</option>${cOpts}</select></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Video Title</label><input id="vt-f-title" class="input" placeholder="e.g. Thermodynamics Part 1 — Full Concept" value="${pre?esc(pre.title):''}"></div>
+      <div class="form-group"><label>Deadline</label><input id="vt-f-deadline" type="datetime-local" class="input" value="${dlVal}"></div>
+      <div class="form-group"><label>Thumbnail (image upload)</label><input id="vt-f-thumb" type="file" accept="image/*" class="input" onchange="vtThumbPreview(this)"></div>
+      <div class="form-group" style="grid-column:1/-1"><label>or Thumbnail Drive Link</label><input id="vt-f-thumblink" class="input" placeholder="https://drive.google.com/..."></div>
+      <div id="vt-thumb-prev" style="grid-column:1/-1"></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Reference / Brief (optional)</label><textarea id="vt-f-ref" class="input" rows="2" placeholder="Points to cover, sample video link, style notes...">${pre?esc(pre.reference||''):''}</textarea></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Remarks for Teacher (optional)</label><textarea id="vt-f-remarks" class="input" rows="2" placeholder="Any instructions..."></textarea></div>
+    </div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="vtAssignSave(${proposalId||0})">${ic('check')} ${pre?'Approve & Assign':'Assign Task'}</button>`);
+}
+function vtThumbPreview(inp){
+  const f=inp.files&&inp.files[0]; if(!f) return;
+  if(f.size>2.5*1024*1024){ toast('Image too large — keep it under 2.5 MB'); inp.value=''; return; }
+  const r=new FileReader();
+  r.onload=()=>{ window._vtThumbB64=r.result;
+    document.getElementById('vt-thumb-prev').innerHTML=`<img src="${r.result}" style="max-height:110px;border-radius:10px;border:1px solid var(--border)">`; };
+  r.readAsDataURL(f);
+}
+async function vtAssignSave(proposalId){
+  const teacher_id=+document.getElementById('vt-f-teacher').value;
+  const title=document.getElementById('vt-f-title').value.trim();
+  const channel_id=+document.getElementById('vt-f-channel').value||null;
+  const deadline=document.getElementById('vt-f-deadline').value;
+  if(!teacher_id||!title){ toast('Teacher and title are required'); return; }
+  if(!deadline){ toast('Please set a deadline'); return; }
+  const payload={teacher_id,title,channel_id,deadline,
+    thumbnail_b64:window._vtThumbB64||null,
+    thumbnail_link:document.getElementById('vt-f-thumblink').value.trim(),
+    reference:document.getElementById('vt-f-ref').value.trim(),
+    remarks:document.getElementById('vt-f-remarks').value.trim()};
+  try{
+    if(proposalId) await api(`/api/admin/video-tasks/${proposalId}/approve-proposal`,'POST',payload);
+    else await api('/api/admin/video-tasks','POST',payload);
+    window._vtThumbB64=null; closeModal(); toast(proposalId?'Proposal approved & task assigned.':'Task assigned successfully.');
+    loadAVTasks();
+  }catch(e){ toast(e.message||'Could not assign'); }
+}
+async function openVTReview(id){
+  const l=await api('/api/admin/video-tasks');
+  const t=(l.tasks||[]).find(x=>x.id===id); if(!t){ toast('Task not found'); return; }
+  const nd=new Date(Date.now()+48*3600*1000); nd.setMinutes(0);
+  const ndVal=`${nd.getFullYear()}-${String(nd.getMonth()+1).padStart(2,'0')}-${String(nd.getDate()).padStart(2,'0')}T${String(nd.getHours()).padStart(2,'0')}:00`;
+  showModal(`Review — ${esc(t.title)}`,`
+    <div style="margin-bottom:12px">${_vtPill(t)}</div>
+    <div class="sdet-grid" style="grid-template-columns:1fr 1fr;margin-bottom:12px">
+      <div class="sdet-row"><span>Teacher</span><b>${esc(t.teacher)}</b></div>
+      <div class="sdet-row"><span>Deadline</span><b>${esc(t.deadline_nice)}</b></div>
+      ${t.submitted_at?`<div class="sdet-row"><span>Submitted</span><b>${esc(t.submitted_at)} ${t.on_time?'(on time)':'(delayed)'}</b></div>`:''}
+      ${t.submitted_link?`<div class="sdet-row"><span>Video</span><b><a href="${esc(t.submitted_link)}" target="_blank" rel="noopener" style="color:var(--primary)">Open drive link</a></b></div>`:''}
+    </div>
+    <div class="form-group"><label>Set Status</label>
+      <div style="display:flex;gap:7px;flex-wrap:wrap" id="vt-rv-actions">
+        ${['approved','editing_soon','editing_done','uploaded'].map(a=>`<button class="btn btn-ghost btn-sm" data-act="${a}" onclick="vtRvPick(this)">${VT_LBL[a]}</button>`).join('')}
+        <button class="btn btn-ghost btn-sm" data-act="rejected" style="border-color:rgba(220,38,38,.5);color:#b91c1c" onclick="vtRvPick(this)">Rejected</button>
+      </div></div>
+    <div class="form-group"><label>Remarks (reason — required for rejection)</label><textarea id="vt-rv-remarks" class="input" rows="2" placeholder="e.g. Audio not clear in the middle section..."></textarea></div>
+    <div class="form-group" id="vt-rv-ndl" style="display:none"><label>New Deadline (for reshoot)</label><input id="vt-rv-deadline" type="datetime-local" class="input" value="${ndVal}"></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="vtReviewSave(${t.id})">${ic('check')} Save Status</button>`);
+  window._vtRvAct=null;
+}
+function vtRvPick(btn){
+  document.querySelectorAll('#vt-rv-actions .btn').forEach(b=>{ b.classList.remove('btn-primary'); b.classList.add('btn-ghost'); });
+  btn.classList.remove('btn-ghost'); btn.classList.add('btn-primary');
+  window._vtRvAct=btn.dataset.act;
+  document.getElementById('vt-rv-ndl').style.display=(window._vtRvAct==='rejected')?'block':'none';
+}
+async function vtReviewSave(id){
+  const act=window._vtRvAct;
+  if(!act){ toast('Please pick a status first'); return; }
+  const remarks=document.getElementById('vt-rv-remarks').value.trim();
+  const payload={action:act,remarks};
+  if(act==='rejected'){
+    const ndl=document.getElementById('vt-rv-deadline').value;
+    if(!ndl){ toast('A new deadline is required for a reshoot'); return; }
+    if(!remarks){ toast('Please mention the rejection reason'); return; }
+    payload.new_deadline=ndl;
+  }
+  try{ await api(`/api/admin/video-tasks/${id}/review`,'POST',payload);
+    closeModal(); toast('Status updated.'); loadAVTasks();
+  }catch(e){ toast(e.message||'Could not update'); }
+}
+async function vtRejectProposal(id){
+  showConfirm('Decline this video proposal?',async()=>{
+    try{ await api(`/api/admin/video-tasks/${id}/reject-proposal`,'POST',{}); toast('Proposal declined.'); loadAVTasks(); }catch(e){ toast(e.message||'Failed'); }
+  });
+}
+function vtNotifyStudents(id){
+  showModal('Send Video to Students',`
+    <p style="font-size:.84rem;color:var(--text-muted);margin-bottom:10px">All students will receive a notification with the video link attached — tapping it opens the video directly.</p>
+    <div class="form-group"><label>Message (optional)</label><textarea id="vt-ns-msg" class="input" rows="3" placeholder="A new video is now available..."></textarea></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="vtNotifySave(${id})">${ic('send')} Send to All Students</button>`);
+}
+async function vtNotifySave(id){
+  try{
+    const r=await api(`/api/admin/video-tasks/${id}/notify-students`,'POST',{message:document.getElementById('vt-ns-msg').value.trim()});
+    closeModal(); toast(`Sent to ${r.count} students.`);
+  }catch(e){ toast(e.message||'Could not send'); }
+}
+function openVTChannels(){
+  const rows=_vtChannels.map(c=>`<div class="vt-rank-row"><span class="sbb-av">${ic('play')}</span><div class="sbb-main"><div class="sbb-nm">${esc(c.name)}</div></div></div>`).join('');
+  showModal('YouTube Channels',`
+    <p style="font-size:.78rem;color:var(--text-muted);margin-bottom:10px">These channels appear in the channel dropdown while assigning a task.</p>
+    <div style="max-height:280px;overflow-y:auto;margin-bottom:12px">${rows}</div>
+    <div style="display:flex;gap:8px"><input id="vt-ch-new" class="input" placeholder="New channel name" style="flex:1"><button class="btn btn-primary btn-sm" onclick="vtAddChannel()">${ic('plus')} Add</button></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+}
+async function vtAddChannel(){
+  const name=document.getElementById('vt-ch-new').value.trim();
+  if(!name){ toast('Enter a channel name'); return; }
+  try{ await api('/api/admin/video-channels','POST',{name}); closeModal(); toast('Channel added.'); loadAVTasks(); setTimeout(openVTChannels,400); }
+  catch(e){ toast(e.message||'Could not add'); }
 }
 
 /* ---------- teacher ranking board (admin) ---------- */
@@ -7402,6 +7768,7 @@ async function loadATeacherRanks(days){
       </div></div></div>
       ${podHtml}
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px">${board}</div>
+      ${_vtTaskRankHTML(d.task_ranking||[], 0)}
       <div id="a-dpp-ranks"><div class="card" style="margin-top:18px"><div class="card-body"><div class="spinner"></div></div></div></div>`;
     loadADppRanks();
   }catch(e){ el.innerHTML=errHtml(e); }
@@ -13692,6 +14059,73 @@ async function ocrFillQuestion_v1(inp,i){
 .dpp-trk-btn svg{width:12px;height:12px}
 .dpp-trk-btn:hover{background:linear-gradient(135deg,rgba(184,148,31,.22),rgba(201,162,39,.14));transform:translateY(-1px);box-shadow:0 3px 8px -3px rgba(184,148,31,.5)}
 .dark .dpp-trk-btn{color:#e8c476;border-color:rgba(226,180,88,.4);background:rgba(226,180,88,.08)}
+/* ================= VIDEO TASK MANAGER (premium) ================= */
+.vt-hero{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:18px 20px;border-radius:16px;
+  background:linear-gradient(120deg,#2a1f06,#4a3608 55%,#6b4f0c);color:#f7e7b8;
+  border:1px solid rgba(201,162,39,.4);box-shadow:0 8px 24px -10px rgba(107,79,12,.55);margin-bottom:16px}
+.vt-hero h3{margin:0;font-size:1.05rem;color:#ffe9ad;letter-spacing:.02em}
+.vt-hero p{margin:2px 0 0;font-size:.74rem;color:#e6cf90;opacity:.9}
+.vt-hero .vt-sp{flex:1}
+.dark .vt-hero{background:linear-gradient(120deg,#1c1505,#33260a 55%,#4a370d)}
+.vt-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.vt-stat{padding:14px 16px;border-radius:14px;border:1.5px solid var(--border);background:var(--card-bg);
+  display:flex;align-items:center;gap:12px;transition:.18s}
+.vt-stat:hover{transform:translateY(-2px);box-shadow:0 6px 16px -8px rgba(0,0,0,.25)}
+.vt-stat .vs-ic{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.vt-stat .vs-ic svg{width:20px;height:20px}
+.vt-stat .vs-n{font-size:1.35rem;font-weight:800;line-height:1.1}
+.vt-stat .vs-l{font-size:.68rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em}
+.vt-filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;padding:12px 14px;
+  border-radius:14px;border:1px solid var(--border);background:var(--card-bg)}
+.vt-filters select{padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg);
+  color:var(--text);font-size:.8rem;font-weight:600;font-family:inherit;max-width:210px}
+.vt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+.vt-card{border:1.5px solid var(--border);border-radius:16px;background:var(--card-bg);overflow:hidden;
+  display:flex;flex-direction:column;transition:.18s}
+.vt-card:hover{box-shadow:0 10px 26px -12px rgba(0,0,0,.28);transform:translateY(-2px)}
+.vt-thumb{height:150px;background:linear-gradient(135deg,#3a2c07,#6b4f0c);position:relative;display:flex;
+  align-items:center;justify-content:center;color:#ffe9ad;font-size:2rem;font-weight:800;overflow:hidden}
+.vt-thumb img{width:100%;height:100%;object-fit:cover}
+.vt-thumb .vt-status{position:absolute;top:10px;right:10px}
+.vt-body{padding:13px 15px;display:flex;flex-direction:column;gap:8px;flex:1}
+.vt-title{font-weight:800;font-size:.92rem;line-height:1.35}
+.vt-chips{display:flex;gap:6px;flex-wrap:wrap}
+.vt-pill{display:inline-flex;align-items:center;gap:4px;font-size:.64rem;font-weight:800;padding:3px 10px;
+  border-radius:999px;letter-spacing:.03em;text-transform:uppercase;white-space:nowrap}
+.vt-pill svg{width:10px;height:10px}
+.vt-pill.assigned{background:rgba(8,145,178,.12);color:#0e7490;border:1px solid rgba(8,145,178,.35)}
+.vt-pill.submitted{background:rgba(217,119,6,.12);color:#b45309;border:1px solid rgba(217,119,6,.4)}
+.vt-pill.approved{background:rgba(16,185,129,.12);color:#047857;border:1px solid rgba(16,185,129,.35)}
+.vt-pill.editing_soon,.vt-pill.editing_done{background:rgba(124,58,237,.12);color:#6d28d9;border:1px solid rgba(124,58,237,.35)}
+.vt-pill.uploaded{background:rgba(5,150,105,.14);color:#065f46;border:1px solid rgba(5,150,105,.4)}
+.vt-pill.rejected{background:rgba(220,38,38,.1);color:#b91c1c;border:1px solid rgba(220,38,38,.35)}
+.vt-pill.proposal{background:rgba(100,116,139,.12);color:#475569;border:1px solid rgba(100,116,139,.35)}
+.vt-pill.ontime{background:rgba(16,185,129,.12);color:#047857;border:1px solid rgba(16,185,129,.35)}
+.vt-pill.delayed{background:rgba(220,38,38,.1);color:#b91c1c;border:1px solid rgba(220,38,38,.35)}
+.vt-meta{font-size:.72rem;color:var(--text-muted);display:flex;flex-direction:column;gap:3px}
+.vt-foot{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto;padding-top:6px}
+.vt-checking{animation:vtBlink 1.4s ease-in-out infinite}
+@keyframes vtBlink{0%,100%{box-shadow:0 0 0 0 rgba(217,119,6,.0);filter:brightness(1)}50%{box-shadow:0 0 0 5px rgba(217,119,6,.18);filter:brightness(1.18)}}
+.vt-count{display:flex;gap:6px;align-items:center}
+.vt-cd{min-width:44px;padding:5px 7px;border-radius:9px;text-align:center;color:#fff;
+  background:linear-gradient(135deg,#8a6d10,#c9a227);box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}
+.vt-cd b{display:block;font-size:.95rem;line-height:1.1}
+.vt-cd small{font-size:.52rem;text-transform:uppercase;letter-spacing:.06em;opacity:.85}
+.vt-cd.urgent{background:linear-gradient(135deg,#b45309,#d97706)}
+.vt-cd.over{background:linear-gradient(135deg,#991b1b,#dc2626);animation:vtBlink 1.4s infinite}
+.vt-banner{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px 18px;border-radius:14px;
+  background:linear-gradient(120deg,rgba(138,109,16,.12),rgba(201,162,39,.07));
+  border:1.5px solid rgba(184,148,31,.4);margin-bottom:14px}
+.vt-rank-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:11px;border:1px solid var(--border);margin-bottom:8px;background:var(--bg)}
+.vt-rank-row.me{border-color:var(--primary);background:rgba(184,148,31,.07)}
+@media(max-width:640px){
+  .vt-grid{grid-template-columns:1fr}
+  .vt-thumb{height:120px}
+  .vt-hero{padding:14px}
+  .vt-filters select{max-width:100%;flex:1 1 46%}
+  .vt-cards{grid-template-columns:repeat(2,1fr)}
+}
+
 @media(max-width:640px){
   .dpp-top{flex-wrap:wrap;gap:5px}
   .dpp-top .tr-sub{flex:1 1 100%;min-width:0}

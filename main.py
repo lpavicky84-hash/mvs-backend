@@ -12,6 +12,7 @@ import admin_routes
 import student_routes
 import ext_materials
 import syllabus_routes
+import video_tasks
 
 load_dotenv()
 
@@ -61,6 +62,7 @@ def ensure_columns():
         "ALTER TABLE exam_questions ADD COLUMN explanation_hi TEXT",
         "ALTER TABLE materials ADD COLUMN part VARCHAR(200)",
         "ALTER TABLE available_subjects ADD COLUMN mode VARCHAR(12) DEFAULT 'live'",
+        "ALTER TABLE notifications ADD COLUMN link VARCHAR(500)",
         "ALTER TABLE student_profiles ADD COLUMN medium VARCHAR(12)",
         "ALTER TABLE doubts ADD COLUMN attach_mime VARCHAR(100)",
         "ALTER TABLE doubts ADD COLUMN attach_name VARCHAR(255)",
@@ -161,6 +163,7 @@ app.include_router(admin_routes.router)
 app.include_router(student_routes.router)
 app.include_router(ext_materials.router)
 app.include_router(syllabus_routes.router)
+app.include_router(video_tasks.router)
 
 # ===== ROOT =====
 # ===== ROOT: serve the portal =====
