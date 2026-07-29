@@ -973,7 +973,7 @@ def _dpp_build_pdf(db, pk, kind="q", med=None):
     except Exception:
         tname = "Teacher"
     med = (med or pk.medium or "english").lower()
-    med = "hindi" if med.startswith("hin") else "english"
+    med = "both" if med.startswith("bo") else ("hindi" if med.startswith("hin") else "english")
     ex = _NS(teacher_name=tname, teacher_photo_b64=tphoto, title=pk.title, subject=pk.subject,
              chapter=pk.chapter, part=pk.part, class_name=(pk.class_name or ""), test_type="DPP",
              duration_mins=None, total_marks=None)
@@ -1025,7 +1025,7 @@ def teacher_dpp_pdf(pack_id: int, kind: str = "q", medium: str = "",
         blob = (pk.q_pdf if kind == "q" else pk.s_pdf)
     if not blob:
         raise HTTPException(status_code=404, detail="File not available")
-    med = "hindi" if (medium or "").lower().startswith("hin") else "english"
+    med = ("both" if (medium or "").lower().startswith("bo") else ("hindi" if (medium or "").lower().startswith("hin") else "english"))
     fname = (pk.title or "DPP").replace("/", "-") + \
         ("-solutions" if kind == "s" else "-questions") + "-" + med + ".pdf"
     import base64 as _b64
@@ -1911,7 +1911,7 @@ def teacher_exam_pdf(exam_id: int, medium: str = "english",
     if not ex:
         raise HTTPException(404, "Test not found")
     qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == ex.id).order_by(ExamQuestion.q_no).all()
-    med = "hindi" if str(medium).lower().startswith("hi") else "english"
+    med = ("both" if str(medium).lower().startswith("bo") else ("hindi" if str(medium).lower().startswith("hi") else "english"))
     try:
         data = exam_pdf.build_exam_pdf(ex, qs, med)
     except Exception as e:

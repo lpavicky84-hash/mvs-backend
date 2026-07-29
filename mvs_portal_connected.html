@@ -411,6 +411,12 @@
   .crop-prev{text-align:center;margin-top:12px}
   .crop-prev img{max-width:100%;border-radius:10px;border:1.5px solid var(--border);background:#fff}
   .dpp-lang-sel{margin-left:auto;padding:7px 10px;border-radius:9px;border:1.5px solid var(--border);font-weight:700;font-size:.78rem;background:var(--card);color:var(--text);cursor:pointer}
+  /* premium language segmented control (English / हिंदी / Both) */
+  .lang-seg{margin-left:auto;display:inline-flex;background:rgba(184,148,31,.1);border:1.5px solid rgba(184,148,31,.35);border-radius:12px;padding:3px;gap:3px;flex-shrink:0}
+  .lang-seg button{border:none;background:transparent;padding:7px 13px;border-radius:9px;font-weight:800;font-size:.76rem;color:#8a6d10;cursor:pointer;display:flex;align-items:center;gap:5px;line-height:1;font-family:inherit;white-space:nowrap}
+  .lang-seg button.on{background:linear-gradient(135deg,#8a6d10,#c9a227);color:#fff;box-shadow:0 3px 9px -3px rgba(138,109,16,.6)}
+  .dark .lang-seg{background:rgba(184,148,31,.14)}
+  .q-alt-lang{margin-top:9px;padding-top:9px;border-top:1.5px dashed rgba(184,148,31,.4)}
   /* ---- v52: premium in-portal PDF viewer (pdf.js, sidebar-free) ---- */
   .pvw{border:1.5px solid var(--border);border-radius:16px;overflow:hidden;background:#3f4248}
   .pvw-head{display:flex;align-items:center;gap:10px;padding:9px 13px;background:linear-gradient(135deg,#8a6d10,#b8941f);color:#fff;flex-wrap:wrap}
@@ -422,7 +428,11 @@
   .pvw-btn:hover{background:rgba(255,255,255,.26)}
   .pvw-btn .nav-ic{width:15px;height:15px}
   .pvw-pg,.pvw-zoom{font-size:.72rem;font-weight:800;min-width:42px;text-align:center}
-  .pvw-body{overflow:auto;max-height:72vh;min-height:300px;display:flex;justify-content:center;padding:14px}
+  .pvw-body{overflow:auto;max-height:72vh;min-height:300px;padding:14px;scrollbar-width:none;-ms-overflow-style:none}
+  .pvw-body::-webkit-scrollbar{display:none}
+  .pvw-pages{display:flex;flex-direction:column;align-items:center;gap:16px}
+  .pvw-page{width:100%;display:flex;justify-content:center}
+  .pvw-logo-img{width:26px;height:26px;border-radius:8px;object-fit:cover;background:#fff;flex-shrink:0}
   .pvw-stage{position:relative;line-height:0;touch-action:pan-x pan-y;height:fit-content}
   .pvw-stage canvas{box-shadow:0 2px 14px rgba(0,0,0,.35);border-radius:4px;background:#fff}
   .pvw-tip{background:#fff7ed;color:#9a3412;font-size:.71rem;font-weight:700;padding:8px 12px;border-top:1px solid #fdba74;line-height:1.45}
@@ -4618,16 +4628,20 @@ function dppLangPick(pid,action){
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
 }
 // ---------- DPP premium View/Download hub (test-section jaisa) ----------
-function _dppMeds(pk){ return (pk&&pk.medium==='Hindi')?['hindi']:(pk&&pk.medium==='English')?['english']:['english','hindi']; }
+function _dppMeds(pk){ return (pk&&pk.medium==='Hindi')?['hindi']:(pk&&pk.medium==='English')?['english']:['english','hindi','both']; }
 function _dppHubHTML(pid,kind,action,created,goFn){
   // medium selection step (sirf created packs ke liye)
   const pk=(window._sDppPacks||[]).find(x=>x.id===pid)||(window._dppPacks||[]).find(x=>x.id===pid)||{};
   if(!created){ closeModal(); window[goFn](pid,action,kind,''); return; }
   const meds=_dppMeds(pk);
+  const _MED={
+    english:{ic:'A', t:'English', s:(kind==='s'?'Solutions':'Question paper')+' in English'},
+    hindi:{ic:'अ', t:'हिंदी', s:(kind==='s'?'हल':'प्रश्न पत्र')+' हिंदी में'},
+    both:{ic:'Aअ', t:'English + हिंदी', s:'दोनों माध्यम — bilingual'}
+  };
   showModal('Select Medium',
-   `<div class="pm-grid">`+meds.map(m=>m==='hindi'
-     ?`<button class="pm-opt" onclick="closeModal();${goFn}(${pid},'${action}','${kind}','hindi')"><span class="pm-ic">अ</span><span class="pm-tx"><b>हिंदी</b><small>${kind==='s'?'हल':'प्रश्न पत्र'} हिंदी में</small></span></button>`
-     :`<button class="pm-opt" onclick="closeModal();${goFn}(${pid},'${action}','${kind}','english')"><span class="pm-ic">A</span><span class="pm-tx"><b>English</b><small>${kind==='s'?'Solutions':'Question paper'} in English</small></span></button>`).join('')+`</div>`,
+   `<div class="pm-grid">`+meds.map(m=>{const o=_MED[m]||_MED.english;
+     return `<button class="pm-opt" onclick="closeModal();${goFn}(${pid},'${action}','${kind}','${m}')"><span class="pm-ic">${o.ic}</span><span class="pm-tx"><b>${o.t}</b><small>${o.s}</small></span></button>`;}).join('')+`</div>`,
    `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
 }
 function _dppHub(pid,kind,goFn,cacheName){
@@ -4650,7 +4664,7 @@ async function sDppGo(pid,action,kind,med,_retry){
     if(!r.ok) throw new Error('nf');
     const bl=await r.blob(); const u=URL.createObjectURL(bl);
     const fname=(kind==='s'?'DPP-solutions':'DPP-questions')+'-'+(med||'paper')+'.pdf';
-    if(action==='view') pdfViewerModal(u,(kind==='s'?'Solutions':'Questions')+(med==='hindi'?' — हिंदी':' — English'),fname);
+    if(action==='view') pdfViewerModal(u,(kind==='s'?'Solutions':'Questions')+(med==='hindi'?' — हिंदी':(med==='both'?' — English + हिंदी':' — English')),fname);
     else{ const a=document.createElement('a'); a.href=u; a.download=fname; document.body.appendChild(a); a.click(); a.remove(); }
     setTimeout(()=>URL.revokeObjectURL(u),300000);
   }catch(e){
@@ -5754,12 +5768,27 @@ chemistry:{'chemical reaction':'रासायनिक अभिक्रि�
 maths:{'quadratic equation':'द्विघात समीकरण','linear equation':'रैखिक समीकरण','arithmetic progression':'समांतर श्रेढ़ी','common difference':'सार्व अंतर','coordinate geometry':'निर्देशांक ज्यामिति','surface area':'पृष्ठीय क्षेत्रफल','curved surface area':'वक्र पृष्ठीय क्षेत्रफल','simple interest':'साधारण ब्याज','compound interest':'चक्रवृद्धि ब्याज','similar triangles':'समरूप त्रिभुज','parallel lines':'समांतर रेखाएँ','prime number':'अभाज्य संख्या','composite number':'भाज्य संख्या','rational number':'परिमेय संख्या','irrational number':'अपरिमेय संख्या','real number':'वास्तविक संख्या','power':'घात','equation':'समीकरण','variable':'चर','constant':'अचर','polynomial':'बहुपद','roots':'मूल','root':'मूल','zeroes':'शून्यक','triangle':'त्रिभुज','circle':'वृत्त','radius':'त्रिज्या','diameter':'व्यास','chord':'जीवा','tangent':'स्पर्श रेखा','secant':'छेदक रेखा','angle':'कोण','perpendicular':'लंब','quadrilateral':'चतुर्भुज','parallelogram':'समांतर चतुर्भुज','rectangle':'आयत','square':'वर्ग','rhombus':'समचतुर्भुज','trapezium':'समलंब चतुर्भुज','area':'क्षेत्रफल','perimeter':'परिमाप','volume':'आयतन','probability':'प्रायिकता','statistics':'सांख्यिकी','mean':'माध्य','median':'माध्यिका','mode':'बहुलक','ratio':'अनुपात','proportion':'समानुपात','percentage':'प्रतिशत','interest':'ब्याज','profit':'लाभ','loss':'हानि','discount':'छूट','theorem':'प्रमेय','hypotenuse':'कर्ण','congruent':'सर्वांगसम','similar':'समरूप','trigonometry':'त्रिकोणमिति','term':'पद','sum':'योग','product':'गुणनफल','quotient':'भागफल','remainder':'शेषफल','divisor':'भाजक','dividend':'भाज्य','factor':'गुणनखंड','multiple':'गुणज','integer':'पूर्णांक','fraction':'भिन्न','decimal':'दशमलव','exponent':'घातांक','base':'आधार','coefficient':'गुणांक','degree':'घात','identity':'सर्वसमिका','solve':'हल कीजिए','simplify':'सरल कीजिए','evaluate':'मान ज्ञात कीजिए','construct':'रचना कीजिए','height':'ऊँचाई','length':'लंबाई','breadth':'चौड़ाई','side':'भुजा','vertex':'शीर्ष','midpoint':'मध्यबिंदु','line segment':'रेखाखंड'},
 biology:{'photosynthesis':'प्रकाश संश्लेषण','respiration':'श्वसन','organ system':'अंग तंत्र','food chain':'खाद्य श्रृंखला','food web':'खाद्य जाल','cell membrane':'कोशिका झिल्ली','blood vessel':'रक्त वाहिका','reflex action':'प्रतिवर्ती क्रिया','spinal cord':'मेरुरज्जु','sense organ':'ज्ञानेंद्रिय','carbon dioxide':'कार्बन डाइऑक्साइड','nervous system':'तंत्रिका तंत्र','digestive system':'पाचन तंत्र','cell':'कोशिका','tissue':'ऊतक','organ':'अंग','organism':'जीव','digestion':'पाचन','nutrition':'पोषण','reproduction':'जनन','evolution':'विकास','heredity':'आनुवंशिकता','variation':'विविधता','chromosome':'गुणसूत्र','gene':'जीन','nucleus':'केंद्रक','cytoplasm':'कोशिकाद्रव्य','mitochondria':'माइटोकॉन्ड्रिया','chloroplast':'हरितलवक','blood':'रक्त','artery':'धमनी','vein':'शिरा','heart':'हृदय','kidney':'वृक्क','liver':'यकृत','neuron':'तंत्रिका कोशिका','nerve':'तंत्रिका','hormone':'हार्मोन','enzyme':'एंजाइम','protein':'प्रोटीन','carbohydrate':'कार्बोहाइड्रेट','vitamin':'विटामिन','bacteria':'जीवाणु','virus':'विषाणु','fungus':'कवक','ecosystem':'पारिस्थितिकी तंत्र','pollination':'परागण','fertilization':'निषेचन','germination':'अंकुरण','transpiration':'वाष्पोत्सर्जन','excretion':'उत्सर्जन','xylem':'जाइलम','phloem':'फ्लोएम','stem':'तना','leaf':'पत्ती','flower':'पुष्प','seed':'बीज','fruit':'फल','stomata':'रंध्र','chlorophyll':'हरितलवक','breathing':'श्वसन क्रिया','lungs':'फेफड़े','alveoli':'वायुकोशिकाएँ','nephron':'वृक्काणु','brain':'मस्तिष्क','muscle':'पेशी','skeleton':'कंकाल','joint':'जोड़'}
 };
+/* ---- v54 hardening: phrases + extra subjects (political/history/geography/economics/computer) ---- */
+Object.assign(spGloss.general,{
+ 'using':'का प्रयोग करके','using the formula':'सूत्र का प्रयोग करके','according to':'के अनुसार','therefore':'अतः','hence':'अतः','thus':'इस प्रकार','since':'चूंकि','because':'क्योंकि','we know that':'हम जानते हैं कि','substituting':'मान रखने पर','given':'दिया गया है','to find':'ज्ञात करने के लिए','determine':'निर्धारित कीजिए','let':'मान लीजिए','suppose':'मान लीजिए','consider':'पर विचार कीजिए','assume':'मानिए','step':'चरण','given by':'द्वारा दिया गया','we get':'प्राप्त होता है','we have':'हमारे पास है','on solving':'हल करने पर','solving':'हल करने पर','answer:':'उत्तर:','ans:':'उत्तर:','solution:':'हल:','correct answer':'सही उत्तर','the following':'निम्नलिखित','each':'प्रत्येक','respectively':'क्रमशः','per':'प्रति','rate':'दर','ratio':'अनुपात'});
+Object.assign(spGloss.physics,{
+ 'net force':'कुल बल','balanced forces':'संतुलित बल','unbalanced forces':'असंतुलित बल','constant velocity':'अचर वेग','uniform velocity':'एकसमान वेग','uniform acceleration':'एकसमान त्वरण','come to rest':'विरामावस्था में आ जाएगा','at rest':'विरामावस्था में','accelerate':'त्वरित','decelerate':'मंदित','tug of war':'रस्साकशी','tension':'तनाव','incompressible':'असंपीड्य','compressible':'संपीड्य','thermodynamic':'उष्मागतिकी','internal energy':'आंतरिक ऊर्जा','first law of motion':'गति का प्रथम नियम','second law of motion':'गति का द्वितीय नियम','third law of motion':'गति का तृतीय नियम','newton\'s first law':'न्यूटन का प्रथम नियम','newton\'s second law':'न्यूटन का द्वितीय नियम','newton\'s third law':'न्यूटन का तृतीय नियम','law of motion':'गति का नियम','inertia':'जड़त्व','uniform motion':'एकसमान गति','non-uniform motion':'असमान गति','average speed':'औसत चाल','average velocity':'औसत वेग','instantaneous':'तात्क्षणिक','slope':'ढाल','retardation':'मंदन','fluid':'तरल','liquid':'द्रव','gas':'गैस','solid':'ठोस','machine':'यंत्र','lever':'उत्तोलक','pulley':'घिरनी','inclined plane':'आनत तल','screw':'पेंच','wedge':'पच्चर','efficiency':'दक्षता','elasticity':'प्रत्यास्थता','surface tension':'पृष्ठ तनाव','viscosity':'श्यानता','streamline':'धारारेखी','turbulent':'अशांत','capillary':'केशिका','barometer':'दाबमापी','manometer':'दाबमापी','hydrometer':'द्रवघनत्वमापी','velocity-time graph':'वेग-समय ग्राफ़','distance-time graph':'दूरी-समय ग्राफ़','scalar quantity':'अदिश राशि','vector quantity':'सदिश राशि','quantity':'राशि'});
+spGloss.political={'constitution':'संविधान','constitutional':'संवैधानिक','democracy':'लोकतंत्र','democratic':'लोकतांत्रिक','parliament':'संसद','lok sabha':'लोक सभा','rajya sabha':'राज्य सभा','election':'चुनाव','electorate':'मतदाता','voting':'मतदान','vote':'मत','government':'सरकार','governance':'शासन','federalism':'संघवाद','federal':'संघीय','secularism':'धर्मनिरपेक्षता','secular':'धर्मनिरपेक्ष','socialism':'समाजवाद','sovereignty':'संप्रभुता','sovereign':'संप्रभु','republic':'गणतंत्र','fundamental rights':'मौलिक अधिकार','fundamental duties':'मौलिक कर्तव्य','rights':'अधिकार','duties':'कर्तव्य','directive principles':'नीति निर्देशक तत्त्व','judiciary':'न्यायपालिका','legislature':'विधायिका','executive':'कार्यपालिका','supreme court':'सर्वोच्च न्यायालय','high court':'उच्च न्यायालय','amendment':'संशोधन','preamble':'प्रस्तावना','citizen':'नागरिक','citizenship':'नागरिकता','president':'राष्ट्रपति','prime minister':'प्रधानमंत्री','chief minister':'मुख्यमंत्री','minister':'मंत्री','opposition':'विपक्ष','ruling party':'सत्तारूढ़ दल','political party':'राजनीतिक दल','party':'दल','coalition':'गठबंधन','majority':'बहुमत','minority':'अल्पसंख्यक','reservation':'आरक्षण','panchayat':'पंचायत','municipality':'नगरपालिका','local government':'स्थानीय शासन','civil service':'सिविल सेवा','bureaucracy':'नौकरशाही','law':'कानून','bill':'विधेयक','act':'अधिनियम','article':'अनुच्छेद','clause':'खंड','justice':'न्याय','liberty':'स्वतंत्रता','equality':'समानता','fraternity':'बंधुत्व','welfare state':'कल्याणकारी राज्य','public interest':'जनहित','governor':'राज्यपाल','speaker':'अध्यक्ष','member of parliament':'सांसद','mla':'विधायक','council':'परिषद्','commission':'आयोग','election commission':'निर्वाचन आयोग','pressure group':'दबाव समूह','public opinion':'जनमत','nationalism':'राष्ट्रवाद','international':'अंतरराष्ट्रीय','treaty':'संधि','diplomacy':'कूटनीति','united nations':'संयुक्त राष्ट्र'};
+spGloss.history={'empire':'साम्राज्य','emperor':'सम्राट','dynasty':'वंश','kingdom':'राज्य','king':'राजा','queen':'रानी','ruler':'शासक','throne':'सिंहासन','revolution':'क्रांति','revolt':'विद्रोह','movement':'आंदोलन','independence':'स्वतंत्रता','freedom struggle':'स्वतंत्रता संग्राम','colonialism':'उपनिवेशवाद','colonial':'औपनिवेशिक','british rule':'ब्रिटिश शासन','east india company':'ईस्ट इंडिया कंपनी','nationalism':'राष्ट्रवाद','civilization':'सभ्यता','ancient':'प्राचीन','medieval':'मध्यकालीन','modern':'आधुनिक','culture':'संस्कृति','heritage':'विरासत','war':'युद्ध','battle':'लड़ाई','treaty':'संधि','invasion':'आक्रमण','conquest':'विजय','annexation':'विलय','reform':'सुधार','renaissance':'पुनर्जागरण','reformation':'धर्मसुधार','industrial revolution':'औद्योगिक क्रांति','french revolution':'फ्रांसीसी क्रांति','russian revolution':'रूसी क्रांति','world war':'विश्व युद्ध','cold war':'शीत युद्ध','caste':'जाति','religion':'धर्म','temple':'मंदिर','mosque':'मस्जिद','church':'गिरजाघर','monastery':'मठ','trade':'व्यापार','merchant':'व्यापारी','agriculture':'कृषि','peasant':'किसान','tribe':'जनजाति','archaeology':'पुरातत्व','source':'स्रोत','manuscript':'पांडुलिपि','inscription':'अभिलेख','coin':'सिक्का','monument':'स्मारक','sculpture':'मूर्तिकला','art':'कला','literature':'साहित्य','saint':'संत','sufi':'सूफ़ी','bhakti movement':'भक्ति आंदोलन','satyagraha':'सत्याग्रह','non-cooperation':'असहयोग','civil disobedience':'सविनय अवज्ञा','quit india':'भारत छोड़ो','partition':'विभाजन','constituent assembly':'संविधान सभा','viceroy':'वायसराय','governor general':'गवर्नर जनरल'};
+spGloss.geography={'latitude':'अक्षांश','longitude':'देशांतर','equator':'भूमध्य रेखा','tropic of cancer':'कर्क रेखा','tropic of capricorn':'मकर रेखा','climate':'जलवायु','weather':'मौसम','rainfall':'वर्षा','monsoon':'मानसून','river':'नदी','tributary':'सहायक नदी','delta':'डेल्टा','mountain':'पर्वत','plateau':'पठार','plain':'मैदान','valley':'घाटी','desert':'मरुस्थल','forest':'वन','soil':'मिट्टी','mineral':'खनिज','ore':'अयस्क','vegetation':'वनस्पति','wildlife':'वन्यजीव','population':'जनसंख्या','census':'जनगणना','migration':'प्रवास','earthquake':'भूकंप','volcano':'ज्वालामुखी','ocean':'महासागर','sea':'सागर','coast':'तट','island':'द्वीप','peninsula':'प्रायद्वीप','strait':'जलडमरूमध्य','dam':'बांध','irrigation':'सिंचाई','crop':'फसल','agriculture':'कृषि','farming':'खेती','industry':'उद्योग','transport':'परिवहन','trade':'व्यापार','resources':'संसाधन','natural resources':'प्राकृतिक संसाधन','conservation':'संरक्षण','environment':'पर्यावरण','pollution':'प्रदूषण','erosion':'अपक्षय','glacier':'हिमनद','hemisphere':'गोलार्ध','continent':'महाद्वीप','map':'मानचित्र','scale':'पैमाना','globe':'ग्लोब'};
+spGloss.economics={'demand':'मांग','supply':'पूर्ति','market':'बाजार','price':'कीमत','money':'मुद्रा','bank':'बैंक','interest rate':'ब्याज दर','inflation':'मुद्रास्फीति','deflation':'अपस्फीति','budget':'बजट','tax':'कर','income tax':'आयकर','income':'आय','poverty':'गरीबी','unemployment':'बेरोजगारी','employment':'रोजगार','production':'उत्पादन','consumption':'उपभोग','consumer':'उपभोक्ता','producer':'उत्पादक','investment':'निवेश','capital':'पूंजी','labour':'श्रम','wages':'मजदूरी','salary':'वेतन','economy':'अर्थव्यवस्था','economic':'आर्थिक','development':'विकास','sector':'क्षेत्रक','primary sector':'प्राथमिक क्षेत्रक','secondary sector':'द्वितीयक क्षेत्रक','tertiary sector':'तृतीयक क्षेत्रक','gdp':'सकल घरेलू उत्पाद','national income':'राष्ट्रीय आय','per capita income':'प्रति व्यक्ति आय','foreign trade':'विदेशी व्यापार','export':'निर्यात','import':'आयात','balance of payments':'भुगतान संतुलन','currency':'मुद्रा','credit':'ऋण','loan':'ऋण','debt':'कर्ज','savings':'बचत','profit':'लाभ','loss':'हानि','cost':'लागत','revenue':'राजस्व','expenditure':'व्यय','public sector':'सार्वजनिक क्षेत्र','private sector':'निजी क्षेत्र','globalization':'वैश्वीकरण','liberalization':'उदारीकरण','privatization':'निजीकरण','planning':'नियोजन','five year plan':'पंचवर्षीय योजना'};
+spGloss.computer={'data':'आंकड़े','database':'डेटाबेस','software':'सॉफ्टवेयर','hardware':'हार्डवेयर','network':'नेटवर्क','internet':'इंटरनेट','website':'वेबसाइट','browser':'ब्राउज़र','file':'फ़ाइल','folder':'फ़ोल्डर','document':'दस्तावेज़','presentation':'प्रस्तुति','slide':'स्लाइड','spreadsheet':'स्प्रेडशीट','worksheet':'वर्कशीट','cell':'सेल','row':'पंक्ति','column':'स्तंभ','chart':'चार्ट','table':'तालिका','formula':'सूत्र','function':'फलन','operating system':'प्रचालन तंत्र','memory':'स्मृति','storage':'भंडारण','input':'निवेश','output':'निर्गत','keyboard':'कुंजीपटल','mouse':'माउस','printer':'मुद्रक','scanner':'स्कैनर','monitor':'मॉनिटर','processor':'प्रोसेसर','program':'प्रोग्राम','programming':'प्रोग्रामिंग','code':'कोड','algorithm':'कलन विधि','flowchart':'प्रवाह चित्र','virus':'वाइरस','antivirus':'प्रतिवाइरस','password':'पासवर्ड','email':'ईमेल','download':'डाउनलोड','upload':'अपलोड','copy':'प्रतिलिपि','paste':'चिपकाना','cut':'काटना','save':'सहेजना','delete':'हटाना','edit':'संपादन','format':'स्वरूपण','toolbar':'टूलबार','menu':'मेनू','icon':'आइकन','cursor':'कर्सर','screen':'स्क्रीन','digital':'डिजिटल','computer':'कंप्यूटर'};
 function spDetectSubject(t){
   t=(t||'').toLowerCase();
   if(/physic|भौतिक/.test(t))return 'physics';
   if(/chem|रसायन/.test(t))return 'chemistry';
   if(/math|गणित/.test(t))return 'maths';
   if(/bio|जीव विज्ञान/.test(t))return 'biology';
+  if(/politic|civics|राजनीति|नागरिक/.test(t))return 'political';
+  if(/history|इतिहास/.test(t))return 'history';
+  if(/geograph|भूगोल/.test(t))return 'geography';
+  if(/econom|business|account|अर्थशास्त्र|व्यवसाय|लेखा/.test(t))return 'economics';
+  if(/computer|data entry|information technology|कंप्यूटर|सूचना/.test(t))return 'computer';
   return 'general';
 }
 function spGlossPairs(sub){
@@ -5800,7 +5829,14 @@ function spMaskFormulas(str, store){
   // chhote 1-3 letter tokens (mgh, KE, cos) bhi. Asli English words (4+ letters)
   // hamesha translate hote hain.
   const MATHCH=/[=^\\\u221a\u00d7\u00f7\u00b1\u0394\u00bd\u00bc\u00be\u00b9\u00b2\u00b3\u2070\u2074-\u2079\u2080-\u2089]/;
-  const toks=String(str).split(/(\s+)/);
+  str=String(str);
+  // Option labels (A) (B) a) b) — engine inhe "ए)" me transliterate kar deta tha
+  str=str.replace(/(^|[\s(\n])([A-Ea-e])\)(?=\s)/g,(m,pre,L)=>{ store.push(L+')'); return pre+'\u27E6'+(9000+store.length-1)+'\u27E7'; });
+  // Number+unit pairs (8 kg, 100 N, 3 m/s², 500 J, 36 km/h…) — units kabhi translate nahi hote
+  str=str.replace(/\d+(?:[.,]\d+)?\s*(?:N|J|W|Pa|Hz|kWh|eV|V|Ω|C|K|kg|mg|km|cm|mm|mL|mol|m\/s²|m\/s2|m\/s|km\/h|g|m|s|min|h|L|A|°C|°F|%)(?=[\s.,;:!?)\n]|$)/g,m=>{ store.push(m); return '\u27E6'+(9000+store.length-1)+'\u27E7'; });
+  // Akela unit-symbol bhi — sirf math symbol ya digit ke turant baad ("= 24 N", "F/N")
+  str=str.replace(/(?<=[=+\-×÷/\d])(N|J|W|Pa|Hz|V|Ω|eV|kWh)(?=[\s.,;:!?)\n]|$)/g,m=>{ store.push(m); return '\u27E6'+(9000+store.length-1)+'\u27E7'; });
+  const toks=str.split(/(\s+)/);
   const isMathTok=tok=>{
     const bare=tok.replace(/\\[a-zA-Z]+/g,'');
     return MATHCH.test(tok) || /\d[A-Za-z]|[A-Za-z]\d/.test(bare);
@@ -9328,7 +9364,7 @@ function _sDppCardHTML(pk,isNew){
   const remBtn=checked?`<button class="btn btn-primary btn-sm" onclick="openDppRemarks(${pk.id})"> View Remarks</button>`:'';
   const subBtn=(!subm||pk.can_resubmit)?`<button class="btn ${subm?'btn-ghost':'btn-success'} btn-sm" onclick="openDppSubmit(${pk.id})">${ic('upload')} ${subm?'Re-submit':'Submit'}</button>`:'';
   const subDate=subm&&pk.my_submitted_at?`<span class="dpp-subdate"> Submitted: ${esc(pk.my_submitted_at)}</span>`:'';
-  return `<div class="dpp-card premium">
+  return `<div class="dpp-card premium" style="cursor:pointer" title="Tap to open this DPP" onclick="sDppCardToggle(${pk.id},event)">
     <div style="display:flex;gap:13px;align-items:flex-start">
       ${ava}
       <div style="flex:1;min-width:0">
@@ -9342,6 +9378,11 @@ function _sDppCardHTML(pk,isNew){
       </div>
     </div>
   </div>`;
+}
+// Card pe kahin bhi click = maximize (buttons pe nahi); expanded ho to band pe click = minimize
+function sDppCardToggle(pid,ev){
+  if(ev&&ev.target&&ev.target.closest('button,a,select,input,textarea')) return;
+  openSDppPanel(pid);
 }
 function sDppSubject(i){
   window._sDppOpen=i;
@@ -9383,7 +9424,9 @@ async function _loadSDppReal(){
       const _op=window._sDppOpenPid||0;
       if(_op){ const _gi=groups.findIndex(g=>g.items.some(x=>x.id===_op)); if(_gi>=0) openIdx=_gi; }
       window._sDppOpen=openIdx;
-      html+=`<div class="dps-grid">`+groups.map((g,i)=>`
+      // open panel ho to subject grid + baaki cards hide — sirf expanded DPP dikhti hai
+      const openPid0=window._sDppOpenPid||0;
+      if(!openPid0) html+=`<div class="dps-grid">`+groups.map((g,i)=>`
         <div class="dps-card ${i===openIdx?'open':''}" id="dps-${i}" onclick="sDppSubject(${i})">
           ${g.newPending?`<span class="dps-badge">NEW DPP</span>`:''}
           <div class="dps-name"> ${esc(g.subject)}</div>
@@ -9393,9 +9436,10 @@ async function _loadSDppReal(){
       // open panel wali DPP apne CARD ke andar expand hoti hai — back pe minimize
       const openPid=window._sDppOpenPid||0;
       html+=groups.map((g,i)=>`<div class="dps-sec" id="dps-sec-${i}" style="display:${i===openIdx?'block':'none'}">`
-        +g.items.map(pk=> pk.id===openPid
-          ? `<div class="dpp-card premium dpp-exp" id="dpp-exp-${pk.id}"><div class="spinner"></div></div>`
-          : _sDppCardHTML(pk,pk.id===g.latestId)).join('')+`</div>`).join('');
+        +(openPid
+          ? g.items.filter(pk=>pk.id===openPid).map(pk=>`<div class="dpp-card premium dpp-exp" id="dpp-exp-${pk.id}"><div class="spinner"></div></div>`).join('')
+          : g.items.map(pk=>_sDppCardHTML(pk,pk.id===g.latestId)).join(''))
+        +`</div>`).join('');
     }
     html+=`</div></div>`;
     // legacy materials-based DPPs (old records) — read-only archive
@@ -9470,28 +9514,44 @@ async function openSDppView(pid){
 }
 // ---------- DPP in-page PANEL views (test-section jaisa) ----------
 function _dppBandHTML(backFn,title,infoHtml,badge){
-  return `<div class="pl-head pl-sticky"><div class="pl-band">
+  const min=backFn==='sDppClosePanel()';  // student expanded card: band pe click = minimize
+  return `<div class="pl-head pl-sticky"><div class="pl-band" ${min?`style="cursor:pointer" title="Tap here to minimize" onclick="_dppBandMin(event)"`:''}>
     <button class="btn btn-ghost btn-sm" title="Back" onclick="${backFn}">${ic('back')}</button>
     <div style="flex:1;min-width:180px"><div class="pl-title">${esc(title||'DPP')}</div>
     <div class="pl-info">${infoHtml}</div></div>
     <span class="tx-pill tx-up">${badge||'DPP'}</span></div></div>`;
 }
+function _dppBandMin(ev){
+  if(ev&&ev.target&&ev.target.closest('button,a,select,input,textarea')) return;
+  sDppClosePanel();
+}
 function _dppQCards(qs,showModel,pid,lang){
-  const hi=(lang==='hi');
+  const hi=(lang==='hi'), both=(lang==='both');
   return qs.map(q=>{
-    const qtx=(hi&&q.q_hi)?q.q_hi:(q.q||'');
-    const mtx=(hi&&q.model_hi)?q.model_hi:(q.model||'');
+    const qEn=q.q||'', qHi=q.q_hi||'';
+    const mEn=q.model||'', mHi=q.model_hi||'';
+    const qHtml=hi?_fmtRich(qHi||qEn):(both?(_fmtRich(qEn)+(qHi?`<div class="q-alt-lang">${_fmtRich(qHi)}</div>`:'')):_fmtRich(qEn));
+    const mtx=hi?(mHi||mEn):mEn;
+    const mBothHtml=(both&&mHi)?`<div class="q-alt-lang">${_fmtRich(mHi)}</div>`:'';
     return `<div class="exp-q"><div class="pl-qtop"><div class="exp-qt"><b>Q${q.qno}.</b></div></div>
-    <div class="pl-qtext" id="dq-${pid}-${q.qno}">${_fmtRich(qtx)}</div>
+    <div class="pl-qtext" id="dq-${pid}-${q.qno}">${qHtml}</div>
     ${q.image?`<img src="${_imgSrc(q.image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
     ${q.alt_image?`<img src="${_imgSrc(q.alt_image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
-    ${showModel&&(mtx||q.model_image)?`<div style="margin-top:12px;padding:10px 12px;border-left:3px solid #15803d;background:rgba(21,128,61,.06);border-radius:8px"><div style="font-size:.68rem;font-weight:800;color:#15803d;margin-bottom:5px">MODEL ANSWER</div><div id="da-${pid}-${q.qno}">${_fmtRich(mtx)}</div>${q.model_image?`<img src="${_imgSrc(q.model_image)}" style="max-width:100%;margin-top:8px;border-radius:8px">`:''}</div>`:''}
+    ${showModel&&(mtx||q.model_image)?`<div style="margin-top:12px;padding:10px 12px;border-left:3px solid #15803d;background:rgba(21,128,61,.06);border-radius:8px"><div style="font-size:.68rem;font-weight:800;color:#15803d;margin-bottom:5px">MODEL ANSWER</div><div id="da-${pid}-${q.qno}">${_fmtRich(mtx)}${mBothHtml}</div>${q.model_image?`<img src="${_imgSrc(q.model_image)}" style="max-width:100%;margin-top:8px;border-radius:8px">`:''}</div>`:''}
     ${pid?`<div style="margin-top:11px"><button class="btn btn-ghost btn-sm btn-blink" title="Doubt ho to yahan bhejo — question ka text+image apne aap teacher ko chala jayega" onclick="sDppDoubtOpen(${pid},${q.qno},${q.qno})">${ic('headset')} Raise Doubt</button></div>`:''}
   </div>`;}).join('');
 }
-// panel ke top-right language dropdown se re-render
+// premium segmented language control (English / हिंदी / A+अ)
+function _dppLangSeg(meds){
+  if(!meds||meds.length<2) return '';
+  const cur=(window._dppPanel&&window._dppPanel.lang)||'en';
+  const L={english:['en','English'],hindi:['hi','हिंदी'],both:['both','A + अ']};
+  return `<span class="lang-seg" title="Question language">`+meds.map(m=>{const x=L[m];return x?`<button type="button" class="${cur===x[0]?'on':''}" data-lang="${x[0]}" onclick="_dppSetLang('${x[0]}')">${x[1]}</button>`:'';}).join('')+`</span>`;
+}
+// panel ke top-right language selector se re-render
 function _dppSetLang(l){
   const P=window._dppPanel; if(!P) return; P.lang=l;
+  document.querySelectorAll('.lang-seg button').forEach(b=>b.classList.toggle('on',b.dataset.lang===l));
   const w=document.getElementById('dpp-qs-wrap'); if(!w) return;
   w.innerHTML=_dppQCards(P.qs,P.showModel,P.pid,l);
   _dppMathAll(P.pid,P.qs);
@@ -9504,11 +9564,11 @@ function _dppMathAll(pid,qs){
 async function _pdfView(container, src, opts){
   opts=opts||{};
   const crop=!!opts.cropPid;
-  const st={pdf:null,page:1,total:1,zoom:0,opts:opts,rect:null,cropMode:false};
+  const st={pdf:null,page:1,total:1,zoom:0,opts:opts,rect:null,cropMode:false,activeStage:null};
   container._pvw=st;
   container.innerHTML=`<div class="pvw">
     <div class="pvw-head">
-      <div class="pvw-brand"><span class="pvw-logo">MVS</span><span class="pvw-title">${esc(opts.title||'PDF')}</span></div>
+      <div class="pvw-brand"><span class="pvw-logo">MVS</span><img class="pvw-logo-img" src="${API}/api/student/logo" alt="MVS" style="display:none" onload="this.previousElementSibling.style.display='none';this.style.display='block'" onerror="this.remove()"><span class="pvw-title">${esc(opts.title||'PDF')}</span></div>
       <div class="pvw-ctrl">
         <button class="pvw-btn" data-a="prev" title="Previous page">‹</button>
         <span class="pvw-pg">– / –</span>
@@ -9519,8 +9579,8 @@ async function _pdfView(container, src, opts){
         <button class="pvw-btn" data-a="dl" title="Download PDF">${ic('download')}</button>
       </div>
     </div>
-    <div class="pvw-body"><div class="pvw-stage"><canvas></canvas>${crop?'<div class="crop-sel"></div>':''}</div><div class="pvw-load">PDF load ho rahi hai…</div></div>
-    ${crop?`<div class="pvw-tip">💡 Page pe <b>drag</b> (mouse) ya <b>touch-hold</b> karke question select karo — crop seedha teacher ko doubt me chala jayega</div>`:''}
+    <div class="pvw-body"><div class="pvw-pages"></div><div class="pvw-load">Loading PDF…</div></div>
+    ${crop?`<div class="pvw-tip">💡 <b>Drag</b> (mouse) or <b>touch &amp; hold</b> on any question — the crop goes straight to your teacher as a doubt.</div>`:''}
   </div>`;
   container.querySelectorAll('.pvw-btn').forEach(b=>b.onclick=()=>_pvwAct(container,b.dataset.a));
   try{
@@ -9537,37 +9597,75 @@ async function _pdfView(container, src, opts){
     try{ window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }catch(e){}
     st.pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
     st.total=st.pdf.numPages;
-    await _pvwRender(container);
+    await _pvwRenderAll(container);
+    _pvwWatchScroll(container);
   }catch(e){
-    const l=container.querySelector('.pvw-load'); if(l) l.textContent='PDF load nahi ho payi — thodi der baad try karo.';
+    const l=container.querySelector('.pvw-load'); if(l) l.textContent='Could not load the PDF — please try again in a moment.';
   }
 }
-async function _pvwRender(container){
+// CONTINUOUS SCROLL: saare pages ek ke neeche ek — chhupa hua scrollbar, label scroll-follow
+async function _pvwRenderAll(container){
   const st=container._pvw; if(!st||!st.pdf) return;
-  const page=await st.pdf.getPage(st.page);
-  const base=page.getViewport({scale:1});
   const body=container.querySelector('.pvw-body');
-  const stage=container.querySelector('.pvw-stage');
-  const cv=stage.querySelector('canvas');
+  const wrap=container.querySelector('.pvw-pages');
+  wrap.innerHTML='';
   const ZS=[1,1.5,2,2.75];
-  const cssScale=(st.zoom===0)?Math.max(0.4,((body.clientWidth||600)-48)/base.width):ZS[st.zoom-1];  // padding + scrollbar ka margin
-  const vp=page.getViewport({scale:cssScale*2});
-  cv.width=vp.width; cv.height=vp.height;
-  cv.style.width=(vp.width/2)+'px'; cv.style.height=(vp.height/2)+'px';
-  const load=container.querySelector('.pvw-load'); if(load) load.style.display='none';
-  await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
-  container.querySelector('.pvw-pg').textContent=`${st.page} / ${st.total}`;
+  const crop=!!st.opts.cropPid;
+  const load=container.querySelector('.pvw-load');
+  const curPage=st.page||1;
+  for(let i=1;i<=st.total;i++){
+    const page=await st.pdf.getPage(i);
+    const base=page.getViewport({scale:1});
+    const cssScale=(st.zoom===0)?Math.max(0.4,((body.clientWidth||600)-46)/base.width):ZS[st.zoom-1];  // padding ka margin
+    const vp=page.getViewport({scale:cssScale*2});
+    const pd=document.createElement('div'); pd.className='pvw-page'; pd.dataset.pg=i;
+    pd.innerHTML=`<div class="pvw-stage"><canvas></canvas>${crop?'<div class="crop-sel"></div>':''}</div>`;
+    wrap.appendChild(pd);
+    const cv=pd.querySelector('canvas');
+    cv.width=vp.width; cv.height=vp.height;
+    cv.style.width=(vp.width/2)+'px'; cv.style.height=(vp.height/2)+'px';
+    if(load) load.textContent=`Rendering page ${i} / ${st.total}…`;
+    await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+    if(crop) _pvwWireCrop(container,pd.querySelector('.pvw-stage'));
+  }
+  if(load) load.style.display='none';
   container.querySelector('.pvw-zoom').textContent=(st.zoom===0)?'Fit':(ZS[st.zoom-1]*100+'%');
   st.rect=null; st.cropMode=false;
-  const sel=stage.querySelector('.crop-sel'); if(sel) sel.style.display='none';
-  if(st.opts.cropPid) _pvwWireCrop(container,stage);
+  _pvwGoTo(container,Math.min(curPage,st.total),true);
+}
+function _pvwSetPg(container,n){
+  const st=container._pvw; if(!st) return;
+  st.page=n;
+  const l=container.querySelector('.pvw-pg'); if(l) l.textContent=`${n} / ${st.total}`;
+}
+function _pvwGoTo(container,n,instant){
+  const st=container._pvw; if(!st) return;
+  const body=container.querySelector('.pvw-body');
+  const p=body.querySelector(`.pvw-page[data-pg="${n}"]`); if(!p){ _pvwSetPg(container,n); return; }
+  const top=p.getBoundingClientRect().top-body.getBoundingClientRect().top+body.scrollTop-10;
+  body.scrollTo({top:Math.max(0,top),behavior:instant?'auto':'smooth'});
+  _pvwSetPg(container,n);
+}
+// scroll karte karte page label apne aap update hota hai
+function _pvwWatchScroll(container){
+  const st=container._pvw; const body=container.querySelector('.pvw-body');
+  if(!st||!body) return;
+  let t=null;
+  body.onscroll=()=>{ if(t) return;
+    t=setTimeout(()=>{ t=null;
+      const br=body.getBoundingClientRect(); const mark=body.clientHeight*0.35;
+      let cur=st.page||1;
+      body.querySelectorAll('.pvw-page').forEach(p=>{ const r=p.getBoundingClientRect(); if(r.top-br.top<=mark) cur=+p.dataset.pg; });
+      if(cur!==st.page) _pvwSetPg(container,cur);
+    },80);
+  };
 }
 async function _pvwAct(container,a){
   const st=container._pvw; if(!st) return;
-  if(a==='prev'&&st.page>1){ st.page++; st.page-=2; }
-  else if(a==='next'&&st.page<st.total){ st.page++; }
-  else if(a==='zin'&&st.zoom<4){ st.zoom++; }
-  else if(a==='zout'&&st.zoom>0){ st.zoom--; }
+  if(a==='prev'&&st.page>1){ _pvwGoTo(container,st.page-1); }
+  else if(a==='next'&&st.page<st.total){ _pvwGoTo(container,st.page+1); }
+  else if(a==='zin'&&st.zoom<4){ st.zoom++; _pvwRenderAll(container); }
+  else if(a==='zout'&&st.zoom>0){ st.zoom--; _pvwRenderAll(container); }
   else if(a==='dl'){
     try{
       const src=st.opts.src||'';
@@ -9580,9 +9678,33 @@ async function _pvwAct(container,a){
     }catch(e){ toast('Download nahi ho paya.',true); }
     return;
   } else return;
-  _pvwRender(container);
 }
 // viewer page pe DIRECT crop: mouse drag / touch-hold (button ki zaroorat nahi)
+// mouseup stage ke bahar ho jaye to bhi drag finalize ho — document-level wiring (ek hi baar)
+if(!window._pvwDocWired){
+  window._pvwDocWired=true;
+  document.addEventListener('mousemove',e=>{
+    const c=window._pvwDragC; if(!c||!c._pvw||!c._pvw._drag) return;
+    _pvwDragDraw(c,e); e.preventDefault();
+  },true);
+  document.addEventListener('mouseup',()=>{
+    const c=window._pvwDragC; if(!c||!c._pvw||!c._pvw._drag) return;
+    const st=c._pvw; st._drag=false; window._pvwDragC=null;
+    if(st.rect&&st.rect.w>30&&st.rect.h>20) _pvwCropCapture(c);
+    else { const sel=st._dragStage&&st._dragStage.querySelector('.crop-sel'); if(sel) sel.style.display='none'; st.rect=null; }
+  },true);
+}
+function _pvwDragDraw(container,e){
+  const st=container._pvw; const stage=st._dragStage; if(!stage) return;
+  const r=stage.getBoundingClientRect();
+  // stage ke andar clamp karo
+  const cx=Math.max(0,Math.min(e.clientX-r.left,r.width));
+  const cy=Math.max(0,Math.min(e.clientY-r.top,r.height));
+  const sel=stage.querySelector('.crop-sel'); if(!sel) return;
+  const x=Math.min(st._dragX,cx),y=Math.min(st._dragY,cy),w=Math.abs(cx-st._dragX),h=Math.abs(cy-st._dragY);
+  sel.style.display='block'; sel.style.left=x+'px'; sel.style.top=y+'px'; sel.style.width=w+'px'; sel.style.height=h+'px';
+  st.rect={x,y,w,h};
+}
 function _pvwWireCrop(container,stage){
   const sel=stage.querySelector('.crop-sel'); if(!sel) return;
   const st=container._pvw;
@@ -9592,15 +9714,16 @@ function _pvwWireCrop(container,stage){
   const draw=p=>{ const x=Math.min(sx,p.x),y=Math.min(sy,p.y),w=Math.abs(p.x-sx),h=Math.abs(p.y-sy);
     sel.style.display='block'; sel.style.left=x+'px'; sel.style.top=y+'px'; sel.style.width=w+'px'; sel.style.height=h+'px';
     st.rect={x,y,w,h}; };
-  stage.onmousedown=e=>{ drag=true; moved=false; const p=pos(e); sx=p.x; sy=p.y; sel.style.display='none'; st.rect=null; e.preventDefault(); };
+  stage.onmousedown=e=>{ drag=true; moved=false; st.activeStage=stage; st._drag=true; st._dragStage=stage;
+    window._pvwDragC=container;
+    const p=pos(e); sx=p.x; sy=p.y; st._dragX=p.x; st._dragY=p.y; sel.style.display='none'; st.rect=null; e.preventDefault(); };
   stage.onmousemove=e=>{ if(!drag) return; draw(pos(e)); e.preventDefault(); };
-  stage.onmouseup=()=>{ if(!drag) return; drag=false; if(st.rect&&st.rect.w>30&&st.rect.h>20) _pvwCropCapture(container); };
-  stage.onmouseleave=()=>{ if(drag){ drag=false; sel.style.display='none'; st.rect=null; } };
+  stage.onmouseleave=()=>{ /* drag document-level pe chalti rahegi — cancel nahi */ };
   // touch: hold ~450ms = crop mode; normal swipe = scroll/page nav
-  stage.ontouchstart=e=>{ const p=pos(e); sx=p.x; sy=p.y; startX=p.x; startY=p.y; moved=false; touchCrop=false;
+  stage.ontouchstart=e=>{ const p=pos(e); st.activeStage=stage; sx=p.x; sy=p.y; startX=p.x; startY=p.y; moved=false; touchCrop=false;
     lpTimer=setTimeout(()=>{ touchCrop=true; st.cropMode=true; sel.style.display='none'; st.rect=null;
       if(navigator.vibrate) navigator.vibrate(20);
-      toast('Crop mode — ab drag karke question select karo'); },450); };
+      toast('Crop mode — drag to select the question'); },450); };
   stage.ontouchmove=e=>{ const p=pos(e);
     if(!touchCrop){ if(Math.abs(p.x-startX)>12||Math.abs(p.y-startY)>12){ clearTimeout(lpTimer); moved=true; } return; }
     draw(p); e.preventDefault(); };
@@ -9610,12 +9733,16 @@ function _pvwWireCrop(container,stage){
   stage.ontouchcancel=()=>{ clearTimeout(lpTimer); touchCrop=false; st.cropMode=false; };
 }
 function _pvwCropCapture(container){
-  const st=container._pvw; const stage=container.querySelector('.pvw-stage');
+  const st=container._pvw; const stage=st.activeStage||container.querySelector('.pvw-stage');
+  if(!stage) return;
   const cv=stage.querySelector('canvas'); const R=st.rect; if(!cv||!R) return;
   const k=cv.width/(stage.getBoundingClientRect().width||1);
   const t=document.createElement('canvas');
   t.width=Math.max(1,Math.round(R.w*k)); t.height=Math.max(1,Math.round(R.h*k));
   t.getContext('2d').drawImage(cv, R.x*k, R.y*k, R.w*k, R.h*k, 0, 0, t.width, t.height);
+  // selection saaf — crop confirm ke baad viewer wapas normal scroll mode me
+  const sel=stage.querySelector('.crop-sel'); if(sel) sel.style.display='none';
+  st.rect=null; st.cropMode=false;
   _crop={pid:st.opts.cropPid,dataUrl:t.toDataURL('image/png')};
   _cropConfirmModal();
 }
@@ -9718,6 +9845,8 @@ async function _cropSend(){
   try{
     const r=await api(`/api/student/dpp-packs/${_crop.pid}/doubt`,'POST',{qno,note,image_b64:_crop.dataUrl});
     closeModal(); toast(r.message||'Doubt sent!');
+    // doubt send hote hi viewer wapas normal scroll mode me (selection saaf)
+    document.querySelectorAll('.crop-sel').forEach(s=>s.style.display='none');
   }catch(e){ toast(e.message||'Could not send the doubt',true); }
 }
 // STUDENT panel: card ke ANDAR expand hota hai — back pe wapas minimize
@@ -9752,7 +9881,7 @@ async function _fillSDppPanel(pid,el){
     if(!document.contains(el)||window._sDppOpenPid!==pid) return;  // stale fill
     const qs=d.questions||[];
     const meds=_dppMeds(pk);
-    const langSel=meds.length>1?`<select class="dpp-lang-sel" title="Language badlo" onchange="_dppSetLang(this.value)"><option value="en">English</option><option value="hi">हिंदी</option></select>`:'';
+    const langSel=_dppLangSeg(meds);
     const info=`${d.subject?`<span class="pl-sub">${esc(d.subject)}</span> · `:''}${qs.length} question${qs.length===1?'':'s'}${d.chapter?' · '+esc(d.chapter):''}${d.part?' · '+esc(d.part):''}${d.teacher?' · By '+esc(d.teacher):''}`;
     window._dppPanel={pid:pid,qs:qs,showModel:!!d.submitted,lang:'en'};
     el.innerHTML=_dppBandHTML('sDppClosePanel()',d.title,info,'DPP')
@@ -9786,7 +9915,7 @@ async function openTDppPanel(pid){
     const d=await api(`/api/teacher/dpp-packs/${pid}/questions`);
     const qs=d.questions||[];
     const meds=_dppMeds(pk);
-    const langSel=meds.length>1?`<select class="dpp-lang-sel" title="Language badlo" onchange="_dppSetLang(this.value)"><option value="en">English</option><option value="hi">हिंदी</option></select>`:'';
+    const langSel=_dppLangSeg(meds);
     const info=`${d.subject?`<span class="pl-sub">${esc(d.subject)}</span> · `:''}${qs.length} questions${d.chapter?' · '+esc(d.chapter):''}${d.part?' · '+esc(d.part):''}${d.class_name?' · '+esc(d.class_name):''}`;
     window._dppPanel={pid:0,qs:qs,showModel:true,lang:'en'};
     el.innerHTML=_dppBandHTML('loadTDpp()',d.title,info,'DPP')

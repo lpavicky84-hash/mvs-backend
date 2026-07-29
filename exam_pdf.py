@@ -354,6 +354,24 @@ def _presplit(text):
     return out
 
 
+def _both_txt(en, hi):
+    """Bilingual mode: English ke neeche Hindi — dono medium ek saath (A+अ)."""
+    en = (en or "").strip()
+    hi = (hi or "").strip()
+    if hi and hi != en:
+        return (en + "\n" + hi) if en else hi
+    return en
+
+
+def _both_opts(en_list, hi_list):
+    """Options bhi bilingual: 'A) text / हिंदी' — length mismatch pe sirf English."""
+    en_list = list(en_list or [])
+    hi_list = list(hi_list or [])
+    if not hi_list or len(hi_list) != len(en_list):
+        return en_list
+    return [((e or "") + (" / " + h if h and h != e else "")) for e, h in zip(en_list, hi_list)]
+
+
 def _blocks(text):
     blocks = []
     for ln in _presplit(text):
@@ -565,12 +583,13 @@ def _draw_best_of_luck(pdf, LM, EPW, is_hi, teacher_name):
 def build_exam_pdf(ex, questions, medium="english"):
     from fpdf import FPDF
     is_hi = (medium == "hindi")
+    is_both = (medium == "both")
     L = {
         "q":       ("\u092a\u094d\u0930. " if is_hi else "Q"),
         "marks":   ("\u0905\u0902\u0915" if is_hi else "marks"),
         "answer":  ("\u0909\u0924\u094d\u0924\u0930" if is_hi else "ANSWER"),
         "correct": ("\u0938\u0939\u0940 \u0909\u0924\u094d\u0924\u0930" if is_hi else "Correct"),
-        "medium":  ("\u0939\u093f\u0902\u0926\u0940 \u092e\u093e\u0927\u094d\u092f\u092e" if is_hi else "English Medium"),
+        "medium":  ("Bilingual (A + \u0905)" if is_both else ("\u0939\u093f\u0902\u0926\u0940 \u092e\u093e\u0927\u094d\u092f\u092e" if is_hi else "English Medium")),
         "total":   ("\u0915\u0941\u0932 \u0905\u0902\u0915" if is_hi else "Total Marks"),
         "qpaper":  ("\u092a\u094d\u0930\u0936\u094d\u0928 \u092a\u0924\u094d\u0930 (\u0909\u0924\u094d\u0924\u0930 \u0938\u0939\u093f\u0924)" if is_hi else "QUESTION PAPER WITH ANSWER KEY"),
     }
@@ -652,7 +671,7 @@ def build_exam_pdf(ex, questions, medium="english"):
     pdf.set_xy(LM, BAND_H + 8)
 
     for q in questions:
-        qtext = (q.question_text_hi if (is_hi and q.question_text_hi) else q.question_text) or ""
+        qtext = (_both_txt(q.question_text, q.question_text_hi) if is_both else (q.question_text_hi if (is_hi and q.question_text_hi) else q.question_text)) or ""
         if pdf.get_y() > pdf.h - 55:
             pdf.add_page()
 
@@ -698,7 +717,7 @@ def build_exam_pdf(ex, questions, medium="english"):
                 _img(pdf, alt_img)
 
         if (ex.test_type or "") == "mcq":
-            opts = (q.options_hi if (is_hi and q.options_hi) else q.options) or []
+            opts = (_both_opts(q.options, q.options_hi) if is_both else (q.options_hi if (is_hi and q.options_hi) else q.options)) or []
             pdf.ln(1.5)
             for idx, op in enumerate(opts):
                 is_corr = q.correct_option and str(op).strip() == str(q.correct_option).strip()
@@ -719,7 +738,7 @@ def build_exam_pdf(ex, questions, medium="english"):
                 pdf.ln(0.8)
             pdf.set_text_color(0, 0, 0)
         else:
-            ans = (q.model_answer_hi if (is_hi and q.model_answer_hi) else q.model_answer) or ""
+            ans = (_both_txt(q.model_answer, q.model_answer_hi) if is_both else (q.model_answer_hi if (is_hi and q.model_answer_hi) else q.model_answer)) or ""
             if ans.strip():
                 pdf.ln(2.5)
                 yy = pdf.get_y()
@@ -1149,6 +1168,7 @@ def build_dpp_pdf(ex, questions, medium="english", kind="q"):
     from fpdf import FPDF
     from datetime import datetime
     is_hi = (medium == "hindi")
+    is_both = (medium == "both")
     L = {
         "subtitle": ("DAILY PRACTICE PAPER"),
         "qp":      ("प्रश्न पत्र" if is_hi else "QUESTION PAPER"),
@@ -1182,7 +1202,7 @@ def build_dpp_pdf(ex, questions, medium="english", kind="q"):
                     if is_hi else
                     ("Instructions: All questions are compulsory. Solve neatly in your notebook. "
                      "After solving, upload your answer PDF on the portal and press Submit.")),
-        "medium":  ("हिंदी माध्यम" if is_hi else "English Medium"),
+        "medium":  ("Bilingual (A + अ)" if is_both else ("हिंदी माध्यम" if is_hi else "English Medium")),
     }
     FONT = _font_path()
     qs = list(questions or [])
@@ -1402,7 +1422,7 @@ def build_dpp_pdf(ex, questions, medium="english", kind="q"):
 
     # ---------- questions
     for q in qs:
-        qtext = (getattr(q, "question_text_hi", None) if (is_hi and getattr(q, "question_text_hi", None))
+        qtext = (_both_txt(getattr(q, "question_text", ""), getattr(q, "question_text_hi", "")) if is_both else getattr(q, "question_text_hi", None) if (is_hi and getattr(q, "question_text_hi", None))
                  else getattr(q, "question_text", "")) or ""
         if pdf.get_y() > pdf.h - 55:
             pdf.add_page()
@@ -1446,7 +1466,7 @@ def build_dpp_pdf(ex, questions, medium="english", kind="q"):
                 _img(pdf, alt_img)
 
         # options (A)-(D) agar hain
-        opts = (getattr(q, "options_hi", None) if (is_hi and getattr(q, "options_hi", None))
+        opts = (_both_opts(getattr(q, "options", None), getattr(q, "options_hi", None)) if is_both else getattr(q, "options_hi", None) if (is_hi and getattr(q, "options_hi", None))
                 else getattr(q, "options", None)) or []
         if opts:
             pdf.ln(1.5)
@@ -1460,7 +1480,7 @@ def build_dpp_pdf(ex, questions, medium="english", kind="q"):
 
         # solutions paper: model answer
         if kind == "s":
-            ans = (getattr(q, "model_answer_hi", None) if (is_hi and getattr(q, "model_answer_hi", None))
+            ans = (_both_txt(getattr(q, "model_answer", ""), getattr(q, "model_answer_hi", "")) if is_both else getattr(q, "model_answer_hi", None) if (is_hi and getattr(q, "model_answer_hi", None))
                    else getattr(q, "model_answer", "")) or ""
             if ans.strip() or getattr(q, "model_answer_image", None):
                 pdf.ln(2.5)

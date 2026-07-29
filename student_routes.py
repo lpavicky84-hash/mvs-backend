@@ -33,6 +33,22 @@ def notify(db, user_id, title, message, notif_type):
     n = Notification(user_id=user_id, title=title, message=message, notif_type=notif_type)
     db.add(n)
 
+# ===== MVS brand logo (premium viewers ka header) — public branding, auth nahi =====
+@router.get("/logo")
+def mvs_brand_logo():
+    """Server pe rakhi logo.png/jpg ko serve karta hai (wahi file jo PDF header
+    me bhi lagti hai). File na ho to 404 — frontend apna gold 'MVS' box dikhata hai."""
+    import os
+    from fastapi.responses import FileResponse
+    try:
+        import exam_pdf
+        p = exam_pdf._logo_path()
+    except Exception:
+        p = None
+    if not p or not os.path.exists(p):
+        raise HTTPException(status_code=404, detail="No logo file on server")
+    return FileResponse(p)
+
 # ===== DASHBOARD =====
 @router.get("/dashboard", response_model=StudentDashboard)
 def student_dashboard(db: Session = Depends(get_db), current_user=Depends(get_student)):
