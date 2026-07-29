@@ -289,6 +289,12 @@
   .rec-sub2{font-size:.79rem;color:var(--text-muted)}
   .rec-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--border)}
   .rec-ic{width:34px;height:34px;flex:0 0 34px;border-radius:9px;background:rgba(161,116,26,.12);display:flex;align-items:center;justify-content:center}
+  .rec-logo{overflow:hidden;animation:recLogoBlink 2s ease-in-out infinite}
+  .rec-logo img{width:100%;height:100%;object-fit:cover;border-radius:9px}
+  .rec-tphoto{background-size:cover;background-position:center;background-color:rgba(161,116,26,.15)}
+  .rec-tinit{font-weight:800;font-size:.78rem;color:#a1741a;letter-spacing:.02em}
+  .rec-logo-fb{display:flex;align-items:center;justify-content:center}
+  @keyframes recLogoBlink{0%,100%{box-shadow:0 0 0 0 rgba(201,162,39,.0);filter:brightness(1)}50%{box-shadow:0 0 0 3px rgba(201,162,39,.45),0 0 12px rgba(201,162,39,.6);filter:brightness(1.08)}}
   .rec-ic svg{width:17px;height:17px;stroke:#a1741a}
   .rec-main{flex:1;min-width:0}
   .rec-sub{font-size:.92rem;font-weight:700;color:var(--text)}
@@ -411,11 +417,17 @@
   .crop-prev{text-align:center;margin-top:12px}
   .crop-prev img{max-width:100%;border-radius:10px;border:1.5px solid var(--border);background:#fff}
   .dpp-lang-sel{margin-left:auto;padding:7px 10px;border-radius:9px;border:1.5px solid var(--border);font-weight:700;font-size:.78rem;background:var(--card);color:var(--text);cursor:pointer}
-  /* premium language segmented control (English / हिंदी / Both) */
-  .lang-seg{margin-left:auto;display:inline-flex;background:rgba(184,148,31,.1);border:1.5px solid rgba(184,148,31,.35);border-radius:12px;padding:3px;gap:3px;flex-shrink:0}
-  .lang-seg button{border:none;background:transparent;padding:7px 13px;border-radius:9px;font-weight:800;font-size:.76rem;color:#8a6d10;cursor:pointer;display:flex;align-items:center;gap:5px;line-height:1;font-family:inherit;white-space:nowrap}
-  .lang-seg button.on{background:linear-gradient(135deg,#8a6d10,#c9a227);color:#fff;box-shadow:0 3px 9px -3px rgba(138,109,16,.6)}
-  .dark .lang-seg{background:rgba(184,148,31,.14)}
+  /* premium language dropdown (English / हिंदी / Both) — phone responsive */
+  .lang-dd{margin-left:auto;position:relative;flex-shrink:0}
+  .lang-dd-btn{display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(184,148,31,.14),rgba(201,162,39,.08));border:1.5px solid rgba(184,148,31,.45);color:#8a6d10;font-weight:800;font-size:.76rem;padding:8px 12px;border-radius:11px;cursor:pointer;font-family:inherit;box-shadow:0 2px 8px -3px rgba(184,148,31,.3);white-space:nowrap}
+  .dark .lang-dd-btn{color:#e8c476;background:rgba(226,180,88,.12)}
+  .lang-dd-globe{font-size:.82rem}
+  .lang-dd-caret{font-size:.6rem;opacity:.8}
+  .lang-dd-menu{display:none;position:absolute;right:0;top:calc(100% + 6px);background:var(--card);border:1.5px solid rgba(184,148,31,.4);border-radius:12px;box-shadow:0 14px 34px -10px rgba(60,42,6,.35);padding:5px;min-width:158px;z-index:120;flex-direction:column;gap:2px}
+  .lang-dd.open .lang-dd-menu{display:flex}
+  .lang-dd-menu button{border:none;background:transparent;text-align:left;padding:9px 11px;border-radius:8px;font-weight:700;font-size:.78rem;color:var(--text);cursor:pointer;font-family:inherit;white-space:nowrap}
+  .lang-dd-menu button:hover{background:rgba(184,148,31,.12)}
+  .lang-dd-menu button.on{background:linear-gradient(135deg,#8a6d10,#c9a227);color:#fff}
   .q-alt-lang{margin-top:9px;padding-top:9px;border-top:1.5px dashed rgba(184,148,31,.4)}
   /* ---- v52: premium in-portal PDF viewer (pdf.js, sidebar-free) ---- */
   .pvw{border:1.5px solid var(--border);border-radius:16px;overflow:hidden;background:#3f4248}
@@ -1362,10 +1374,20 @@
   .live-banner.upcoming{--lb-acc:var(--accent);--lb-bg:var(--primary-50);border-left-width:4px;box-shadow:0 8px 24px -10px rgba(184,148,31,.35)}
   .live-banner.soon{--lb-acc:#d97706;--lb-bg:#fffbeb;box-shadow:0 8px 24px -10px rgba(217,119,6,.4)}
   .live-banner.now{--lb-acc:#dc2626;--lb-bg:#fef2f2}
-  .countdown{display:flex;gap:7px}
-  .cd-box{background:var(--lb-bg,#fffbeb);border:1px solid var(--lb-acc,#d97706);border-radius:9px;padding:6px 11px;text-align:center;min-width:50px}
-  .cd-box .num{font-size:1.3rem;font-weight:800;line-height:1;color:var(--lb-acc,#d97706)}
-  .cd-box .lbl{font-size:.56rem;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em;margin-top:3px}
+  .countdown{display:flex;gap:7px;margin-left:auto;flex-shrink:0}
+  .cd-box{background:linear-gradient(135deg,#8a6d10,#c9a227);border:none;border-radius:10px;padding:7px 12px;text-align:center;min-width:52px;box-shadow:0 6px 14px -6px rgba(138,109,16,.55)}
+  .cd-box .num{font-size:1.25rem;font-weight:800;line-height:1;color:#fff;font-variant-numeric:tabular-nums}
+  .cd-box .lbl{font-size:.54rem;text-transform:uppercase;color:rgba(255,255,255,.85);letter-spacing:.06em;margin-top:3px}
+  /* phone: timer hamesha RIGHT me compact, text truncate — kuch wrap/toote nahi */
+  @media(max-width:640px){
+    .live-banner{flex-wrap:nowrap;padding:12px 14px;gap:10px}
+    .live-banner .lb-left{flex:1;min-width:0;gap:10px}
+    .live-banner .lb-icon{width:38px;height:38px}
+    .live-banner h3{font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .live-banner small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .cd-box{min-width:42px;padding:5px 8px;border-radius:9px}
+    .cd-box .num{font-size:1.02rem}
+  }
   .live-banner.now{background:linear-gradient(120deg,#7f1d1d 0%,#dc2626 55%,#ef4444 100%);border:none;box-shadow:0 14px 38px -12px rgba(220,38,38,.65);position:relative;overflow:hidden;animation:lbGlow 2.4s ease-in-out infinite}
   @keyframes lbGlow{0%,100%{box-shadow:0 14px 38px -12px rgba(220,38,38,.65)}50%{box-shadow:0 14px 46px -8px rgba(220,38,38,.9)}}
   .live-banner.now::after{content:'';position:absolute;inset:0;background:radial-gradient(120% 140% at 100% 0%,rgba(255,255,255,.16),transparent 55%);pointer-events:none}
@@ -1500,6 +1522,8 @@ canvas{max-width:100%}
 .xm-chips{display:flex;gap:6px;flex-wrap:wrap}
 .xm-chip{font-size:.68rem;font-weight:700;padding:3px 9px;border-radius:99px;background:var(--primary-50);color:var(--primary);white-space:nowrap}
 .xm-chip-hl{background:var(--accent);color:#fff}
+.xm-chip-hl2{background:linear-gradient(135deg,rgba(184,148,31,.16),rgba(201,162,39,.1));color:#8a6d10;border:1px solid rgba(184,148,31,.45);box-shadow:0 2px 8px -3px rgba(184,148,31,.35);display:inline-flex;align-items:center;gap:4px}
+.dark .xm-chip-hl2{background:rgba(226,180,88,.15);color:#e8c476;border-color:rgba(226,180,88,.4)}
 .dark .xm-chip{background:rgba(255,255,255,.09);color:#d9d0b8}
 .dark .xm-chip-hl{background:var(--accent);color:#04211f}
 .xm-arw{font-size:1.5rem;color:var(--text-muted);flex-shrink:0}
@@ -1760,7 +1784,8 @@ body.dark{background:radial-gradient(1100px 620px at 85% -10%,#152643 0%,transpa
 .dark .stl-node.ongoing .stl-cname,.dark .stl-node.ongoing .stl-arrow,.dark .stl-node.ongoing .stl-part{color:#fdf6e0}
 .stl-node.ongoing .stl-cname{font-weight:800}
 
-.stl-badge.ongoing{background:linear-gradient(135deg,#e2b458,#d4a94e);color:#3d2e0a;font-weight:900;letter-spacing:.05em;box-shadow:0 4px 12px -3px rgba(184,148,31,.55);border:1px solid rgba(255,255,255,.4)}
+.stl-badge.ongoing{background:linear-gradient(135deg,#e2b458,#d4a94e);color:#3d2e0a;font-weight:900;letter-spacing:.05em;box-shadow:0 4px 12px -3px rgba(184,148,31,.55);border:1px solid rgba(255,255,255,.4);animation:stlOngoingGlow 1.6s ease-in-out infinite}
+@keyframes stlOngoingGlow{0%,100%{box-shadow:0 4px 12px -3px rgba(184,148,31,.45);filter:brightness(1)}50%{box-shadow:0 4px 22px -2px rgba(212,169,78,.95),0 0 14px rgba(234,179,8,.55);filter:brightness(1.09)}}
 .stl-badge.progress{background:rgba(138,109,16,.12);color:var(--text-muted);font-weight:800}
 .dark .stl-badge.progress{background:rgba(255,255,255,.1);color:#a8b6cc}
 
@@ -2216,6 +2241,20 @@ body.dark .al-sig{color:hsl(45 90% 60%)}
 .ov2-ringtxt .l{font-size:.55rem;letter-spacing:.12em;opacity:.7;font-weight:800}
 .ov2-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:18px}
 @media(max-width:640px){.ov2-tiles{grid-template-columns:repeat(2,1fr)}}
+/* phone: ring right me hi rahe (wrap nahi), title safely wrap — kuch toote nahi */
+@media(max-width:640px){
+  .ov2 .ov2-top{flex-wrap:nowrap;gap:12px;align-items:center}
+  .ov2-id{flex:1;min-width:0;gap:11px}
+  .ov2-av{width:48px;height:48px;border-radius:13px;font-size:.9rem}
+  .ov2-name{font-size:1.15rem;overflow-wrap:anywhere}
+  .ov2-sub{font-size:.73rem;line-height:1.35}
+  .ov2-ring{width:78px;height:78px}
+  .ov2-ringtxt .n{font-size:1.02rem}
+  .ov2-ringtxt .l{font-size:.48rem}
+  .ov2-tile{padding:10px 12px}
+  .ov2-foot{font-size:.75rem}
+}
+@media(max-width:370px){.ov2-ring{width:66px;height:66px}.ov2-name{font-size:1.02rem}}
 .ov2-tile{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:13px;padding:12px 14px;cursor:pointer;transition:background .15s,transform .15s}
 .ov2-tile:hover{background:rgba(255,255,255,.14);transform:translateY(-1px);border-color:#d4a94e;box-shadow:0 0 0 3px rgba(201,162,39,.25)}
 .ov2-tile.static{cursor:default}
@@ -4326,7 +4365,7 @@ function approvalTag(s){ const cls={approved:'tag-done',pending:'tag-pending',re
 // ============================================================
 const UPLOAD_TYPES={
   'Class Notes':      {mt:'notes'},
-  'DPP':              {mt:'dpp'},
+  // DPP yahan se HATA DIYA — ab DPP ka apna section hai (DPP packs wahi manage hote hain)
   'Test Paper':       {mt:'test'},
   'Assignment':       {mt:'other', cat:'Assignment'},
   'Question Bank':    {mt:'other', cat:'Question Bank'},
@@ -4573,21 +4612,27 @@ async function loadTDpp(){
   try{
     const d=await api('/api/teacher/dpp-packs');
     window._dppPacks=d.packs||[];
-    const cards=_dppPacks.map(pk=>`<div class="card dpp-card"><div class="card-body">
-      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap">
-        <div style="flex:1;min-width:220px"><b style="font-size:.95rem">${esc(pk.title)}</b>
-          <div style="font-size:.72rem;color:var(--text-muted);margin-top:3px">${esc(pk.subject)}${pk.chapter?' \u00b7 '+esc(pk.chapter):''}${pk.part?' \u00b7 '+esc(pk.part):''}</div>
-          <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">
-            ${pk.class_name?`<span class="chip" style="font-size:.62rem;border-color:rgba(4,120,87,.4);color:#047857">${esc(pk.class_name)}</span>`:''}
-            <span class="chip" style="font-size:.62rem">${pk.source==='created'?'Created':'Uploaded'}</span>
-            <span class="chip" style="font-size:.62rem">${esc(pk.medium)}</span>
-            <span class="chip" style="font-size:.62rem">${pk.created_at||''}</span></div></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-ghost btn-sm" title="Panel me questions + downloads + submissions" onclick="openTDppPanel(${pk.id})">${ic('eye')} View</button>
-          <button class="btn btn-primary btn-sm" title="Click karne pe hi PDF banti hai — create instant, timeout kabhi nahi" onclick="dppLangPick(${pk.id},'download')">${ic('download')} Download PDF</button>
-          <button class="btn btn-ghost btn-sm" title="See student submissions" onclick="openDppResults(${pk.id})">${ic('users')} Submissions (${pk.submitted||0})</button>
-          <button class="btn btn-danger btn-sm" title="Delete this DPP (submissions bhi delete ho jayengi)" onclick="dppDelete(${pk.id},'${esc(pk.title||'DPP').replace(/'/g,'')}')">${ic('trash')} Delete</button>
-        </div></div></div></div>`).join('');
+    const cards=_dppPacks.map(pk=>{
+      const ini=(pk.subject||'D').trim()[0].toUpperCase();
+      const srcChip=pk.source==='created'?`<span class="chip-sub" style="color:#b45309"> ${pk.questions_n||0} Questions</span>`:`<span class="chip-sub">Uploaded</span>`;
+      return `<div class="dpp-card premium">
+      <div style="display:flex;gap:13px;align-items:flex-start">
+        <div class="dpp-ava-init" title="${esc(pk.subject)}">${ini}</div>
+        <div style="flex:1;min-width:0">
+          <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div><div style="display:flex;gap:6px;align-items:center">${pk.class_name?`<span class="xm-chip xm-chip-hl2">${ic('book')} ${esc(pk.class_name)}</span>`:''}${pk.medium?`<span class="xm-chip xm-chip-hl2">${esc(pk.medium)}</span>`:''}${srcChip}</div></div>
+          <div class="dpp-title">${esc(pk.title)}</div>
+          <div class="dpp-meta"> ${esc(pk.chapter||'—')}${pk.part?` · Part: ${esc(pk.part)}`:''}</div>
+          <div class="dpp-meta"> ${esc(pk.created_at||'')} · ${pk.submitted||0} submission${(pk.submitted||0)===1?'':'s'}</div>
+          <div class="dpp-foot"><div></div><div class="dpp-btns">
+            <button class="btn btn-primary btn-sm" onclick="openTDppPanel(${pk.id})">${ic('eye')} View</button>
+            <button class="btn btn-ghost btn-sm" title="Sabse pehle submit karne waale students ki ranking" onclick="openDppRanking(${pk.id},'teacher')">${ic('chart')} Ranking${(pk.submitted||0)>0?` (${pk.submitted})`:''}</button>
+            <button class="btn btn-ghost btn-sm" onclick="dppLangPick(${pk.id},'download')">${ic('download')} Download</button>
+            <button class="btn btn-ghost btn-sm" onclick="openDppResults(${pk.id})">${ic('users')} Submissions (${pk.submitted||0})</button>
+            <button class="btn btn-danger btn-sm" onclick="dppDelete(${pk.id},'${esc(pk.title).replace(/'/g,'')}')">${ic('trash')} Delete</button>
+          </div></div>
+        </div>
+      </div>
+    </div>`;}).join('');
     el.innerHTML=`<div class="card" style="margin-bottom:16px;border:1.5px solid rgba(184,148,31,.3)"><div class="card-body" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <div style="font-size:1.8rem">&#128221;</div>
       <div style="flex:1;min-width:220px"><h3 style="margin:0 0 3px">Daily Practice Problems</h3>
@@ -4631,7 +4676,7 @@ function dppLangPick(pid,action){
 function _dppMeds(pk){ return (pk&&pk.medium==='Hindi')?['hindi']:(pk&&pk.medium==='English')?['english']:['english','hindi','both']; }
 function _dppHubHTML(pid,kind,action,created,goFn){
   // medium selection step (sirf created packs ke liye)
-  const pk=(window._sDppPacks||[]).find(x=>x.id===pid)||(window._dppPacks||[]).find(x=>x.id===pid)||{};
+  const pk=(window._sDppPacks||[]).find(x=>x.id===pid)||(window._dppPacks||[]).find(x=>x.id===pid)||(window._sMatDppPacks||[]).find(x=>x.id===pid)||{};
   if(!created){ closeModal(); window[goFn](pid,action,kind,''); return; }
   const meds=_dppMeds(pk);
   const _MED={
@@ -4655,8 +4700,9 @@ function _dppHub(pid,kind,goFn,cacheName){
    +`</div>`,
    `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
 }
-function sDppHub(pid,kind){ _dppHub(pid,kind,'sDppGo','_sDppPacks'); }
-function tDppHub(pid,kind){ _dppHub(pid,kind,'dppPdfGo','_dppPacks'); }
+// View/Download hub step HATA DIYA — Download click pe seedha medium puchho, phir turant download
+function sDppHub(pid,kind){ const pk=(window._sDppPacks||window._sMatDppPacks||[]).find(x=>x.id===pid)||{}; _dppHubHTML(pid,kind,'download',pk.source==='created'?1:0,'sDppGo'); }
+function tDppHub(pid,kind){ const pk=(window._dppPacks||[]).find(x=>x.id===pid)||{}; _dppHubHTML(pid,kind,'download',pk.source==='created'?1:0,'dppPdfGo'); }
 // student PDF fetch (view ya download) — medium ke saath
 async function sDppGo(pid,action,kind,med,_retry){
   try{
@@ -6178,7 +6224,7 @@ async function orphanCleanupGo(){
 }
 async function loadATests(){
   const el=document.getElementById('a-tests-content'); if(!el)return;
-  el.innerHTML='<div class="spinner"></div>';
+  softSpin(el);
   try{
     const rows=await api('/api/admin/exams');
     const bySub={};
@@ -6998,7 +7044,7 @@ async function gradeAttemptNow(attId,examId){
 function monthName(ym){ const m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; const mo=parseInt(ym.slice(5))-1; return (m[mo]||ym.slice(5))+" '"+ym.slice(2,4); }
 async function loadTPredicted(target){
   const box=document.getElementById('t-predicted-content'); if(!box) return;
-  box.innerHTML='<div class="spinner"></div>';
+  softSpin(box);
   try{
     const d=await api('/api/syllabus/teacher/predicted'+(target?('?target='+target):''));
     window._tprTarget=target||'';
@@ -7304,7 +7350,7 @@ function aPage(page,el){
 const _TRK_METRICS=[['tests','Tests Given','#b8941f'],['dpps','DPPs Given','#0891b2'],['doubts','Doubts Resolved','#059669'],['notes','Class Notes','#d97706'],['lectures','Lectures Taken','#a1741a'],['attendance','Attendance Days','#dc2626']];
 async function loadATeacherRanks(days){
   const el=document.getElementById('a-tranks-content');
-  el.innerHTML='<div class="spinner"></div>';
+  softSpin(el);
   days=days||90;
   try{
     const d=await api('/api/teacher/rankings?days='+days);
@@ -7350,8 +7396,29 @@ async function loadATeacherRanks(days){
         <div class="perf-tab${days===365?' active':''}" onclick="loadATeacherRanks(365)">1y</div>
       </div></div></div>
       ${podHtml}
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px">${board}</div>`;
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px">${board}</div>
+      <div id="a-dpp-ranks"><div class="card" style="margin-top:18px"><div class="card-body"><div class="spinner"></div></div></div></div>`;
+    loadADppRanks();
   }catch(e){ el.innerHTML=errHtml(e); }
+}
+/* Admin: DPP rankings — sab packs + kaun kitni baar submit hua (click = podium modal) */
+async function loadADppRanks(){
+  const el=document.getElementById('a-dpp-ranks'); if(!el) return;
+  try{
+    const d=await api('/api/admin/dpp-rankings');
+    const packs=d.packs||[];
+    const rows=packs.map(p=>`<tr class="dpp-rk-row" onclick="openDppRanking(${p.id},'admin')">
+      <td><b>${esc(p.title||'DPP')}</b><div style="font-size:.68rem;color:var(--text-muted)">${esc(p.subject)}${p.chapter?' · '+esc(p.chapter):''} · ${p.part?esc(p.part):'Whole Chapter'}</div></td>
+      <td>${esc(p.class_name||'—')}</td>
+      <td>${esc(p.teacher||'—')}</td>
+      <td style="text-align:center"><b>${p.submitted}</b></td>
+      <td style="text-align:center"><span style="color:var(--success);font-weight:700">${p.checked}</span><span style="color:var(--text-muted)"> / </span><span style="color:var(--warning);font-weight:700">${p.pending}</span></td>
+      <td style="text-align:right"><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openDppRanking(${p.id},'admin')">${ic('chart')} Ranking</button></td></tr>`).join('');
+    el.innerHTML=`<div class="card" style="margin-top:18px"><div class="card-header"><h3>${ic('clipboard')} DPP Rankings</h3><span class="xm-chip">${packs.length}</span></div>
+      <div class="card-body"><p style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">Har DPP pack ke submissions — sabse pehle submit karne wala Rank 1. Row pe click karo for podium + full list (names clickable).</p>
+      ${packs.length?`<div class="mat-twrap"><table class="mat-table"><thead><tr><th>DPP</th><th>Class</th><th>Teacher</th><th style="text-align:center">Submitted</th><th style="text-align:center">Checked / Pending</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+        :`<div class="ws-empty"><p>Abhi koi DPP pack nahi hai.</p></div>`}</div></div>`;
+  }catch(e){ el.innerHTML=`<div class="card" style="margin-top:18px"><div class="card-body">${errHtml(e)}</div></div>`; }
 }
 
 async function renderAdminHealth(){
@@ -8365,7 +8432,7 @@ function _extPool(){
 function _extHeader(){
   let chips='';
   if(_extRole==='student' && _extCtx){
-    chips=`<div class="xm-chips" style="margin-top:8px">${_extCtx.batch?`<span class="xm-chip xm-chip-hl">${esc(_extCtx.batch)}</span>`:''}${_extCtx.class_level?`<span class="xm-chip">Class ${esc(_extCtx.class_level)}</span>`:''}${_extCtx.medium?`<span class="xm-chip">${esc(_extCtx.medium)} Medium</span>`:''}</div>`;
+    chips=`<div class="xm-chips" style="margin-top:8px">${_extCtx.batch?`<span class="xm-chip xm-chip-hl">${esc(_extCtx.batch)}</span>`:''}${_extCtx.class_level?`<span class="xm-chip xm-chip-hl2">${ic('book')} Class ${esc(_extCtx.class_level)}</span>`:''}${_extCtx.medium?`<span class="xm-chip xm-chip-hl2">${esc(_extCtx.medium)} Medium</span>`:''}</div>`;
   }
   return `<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><div><h2>Study Material</h2>${chips}</div><button class="btn btn-ghost btn-sm" onclick="_extRefresh()">\u21bb Refresh</button></div>`;
 }
@@ -9257,12 +9324,37 @@ async function _loadRecordedSubjects(){
     const m=await api('/api/student/my-subjects-mode');
     const rec=m.recorded||[];
     if(!rec.length){ wrap.innerHTML=''; return; }
-    const rows=rec.map(s=>`<div class="rec-row"><div class="rec-ic">${ic('play')}</div><div class="rec-main"><div class="rec-sub">${esc(s)}</div><div class="rec-note">Recorded classes \u2014 watch anytime in the app</div></div><button class="btn btn-primary btn-sm" onclick="openMVC()" title="Open the Manish Verma Classes app to watch the recorded lectures">${ic('play')} Watch Lectures</button></div>`).join('');
+    // subject-wise assigned teacher ka photo (logo) — na ho to initials, blink ke saath
+    let ts=[]; try{ ts=await api('/api/student/my-teachers'); }catch(e){}
+    const tmap={}; (ts||[]).forEach(t=>{ if(t&&t.subject) tmap[t.subject]=t; });
+    const rows=rec.map(s=>{
+      const t=tmap[s];
+      const pid=`rect-${t?t.teacher_id:0}-${String(s).replace(/[^a-z0-9]/gi,'')}`;
+      const ava=(t&&t.has_photo)
+        ? `<div class="rec-ic rec-logo rec-tphoto" id="${pid}" title="${esc(t.name)}"></div>`
+        : `<div class="rec-ic rec-logo rec-tinit" title="${t?esc(t.name):''}">${t?esc(initials(t.name)):ic('play')}</div>`;
+      const note=t
+        ? `${esc(t.name)} ${esc(t.suffix||'')} \u2014 recorded classes, watch anytime in the app`
+        : `Recorded classes \u2014 watch anytime in the app`;
+      return `<div class="rec-row">${ava}<div class="rec-main"><div class="rec-sub">${esc(s)}</div><div class="rec-note">${note}</div></div><button class="btn btn-primary btn-sm" onclick="openMVC()" title="Open the Manish Verma Classes app to watch the recorded lectures">${ic('play')} Watch Lectures</button></div>`;
+    }).join('');
     setIf(wrap,`<div class="rec-card"><div class="rec-head"><div class="rec-badge">${rec.length}</div><div><div class="rec-title">Recorded Subjects</div><div class="rec-sub2">These subjects have no live timetable \u2014 their lectures are pre-recorded in the Manish Verma Classes App.</div></div></div>${rows}</div>`);
+    // teacher photos async load (auth header ke saath)
+    (ts||[]).filter(t=>t&&t.has_photo&&rec.includes(t.subject)).forEach(async t=>{
+      try{
+        const r=await fetch(API+`/api/student/teacher/${t.teacher_id}/photo`,{headers:{Authorization:'Bearer '+TOKEN}});
+        if(!r.ok) return;
+        const u=URL.createObjectURL(await r.blob());
+        const key=`rect-${t.teacher_id}-${String(t.subject).replace(/[^a-z0-9]/gi,'')}`;
+        const d=document.getElementById(key);
+        if(d){ d.style.backgroundImage=`url(${u})`; }
+      }catch(e){}
+    });
   }catch(e){ wrap.innerHTML=''; }
 }
 async function loadSTimetable(){
   const el=document.getElementById('s-timetable-content');
+  softSpin(el);
   try{
  // profile pehle — recorded batch ka timetable hota hi nahi
  try{ const p0=await api('/api/student/profile'); window._sBatch=p0.batch_name||p0.batch||window._sBatch||''; window._sClass=p0.class_level||window._sClass||'12'; window._sSubjects=p0.subjects||window._sSubjects||[]; applyBatchMode(); }catch(e){}
@@ -9303,15 +9395,21 @@ async function loadSToday(){
 
 async function loadSMaterials(){
   const el=document.getElementById('s-materials-content');
+  softSpin(el);
   try{
+    // DPP section ke packs bhi laao — table me part-wise / whole-chapter rows banenge
+    try{ const dd=await api('/api/student/dpp-packs'); window._sMatDppPacks=dd.packs||[]; }catch(e){ window._sMatDppPacks=[]; }
     const mats=await api('/api/student/materials-v2');
     window._sMats=mats;
-    if(mats.length===0){ el.innerHTML=`<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>No study material uploaded yet. Once teachers add notes or DPP, they will appear here.</p></div></div></div>`; return; }
+    const packCount=(window._sMatDppPacks||[]).length;
+    if(mats.length===0&&packCount===0){ el.innerHTML=`<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>No study material uploaded yet. Once teachers add notes or DPP, they will appear here.</p></div></div></div>`; return; }
     const bySub={};
     mats.forEach(m=>{ (bySub[m.subject]=bySub[m.subject]||[]).push(m); });
+    (window._sMatDppPacks||[]).forEach(p=>{ const s=p.subject||'Other'; if(!bySub[s]) bySub[s]=[]; });  // sirf DPP wala subject bhi dikhe
     const cards=Object.keys(bySub).sort().map(sub=>{
       const items=bySub[sub];
-      const nNotes=items.filter(m=>m.type==='notes').length, nDpp=items.filter(m=>m.type==='dpp').length, nTest=items.filter(m=>m.type==='test').length, nOther=items.filter(m=>!['notes','dpp','test'].includes(m.type)).length;
+      const nPacks=(window._sMatDppPacks||[]).filter(p=>(p.subject||'')===sub).length;
+      const nNotes=items.filter(m=>m.type==='notes').length, nDpp=items.filter(m=>m.type==='dpp').length+nPacks, nTest=items.filter(m=>m.type==='test').length, nOther=items.filter(m=>!['notes','dpp','test'].includes(m.type)).length;
       let badges='';
       if(nNotes) badges+=`<span class="sm-badge sm-notes">${nNotes} Class Notes</span>`;
       if(nDpp) badges+=`<span class="sm-badge sm-dpp">${nDpp} DPP</span>`;
@@ -9337,6 +9435,13 @@ function openSubjectMaterials(encSub){
     items.forEach(m=>{ const fname=m.filename||((m.title||cat)+'.pdf'); html+=`<tr><td class="mat-ch">${esc(m.chapter||m.title||'\u2014')}</td><td class="mat-dl-cell"><button class="btn btn-primary btn-sm" onclick="downloadMaterial('student',${m.id},'${esc(fname).replace(/'/g,'')}')">${ic('download')} Download</button></td></tr>`; });
     html+=`</tbody></table></div></div>`;
   });
+  // DPP section ke packs — part-wise alag rows, whole-chapter ki 1 row
+  const packs=(window._sMatDppPacks||[]).filter(p=>(p.subject||'')===sub);
+  if(packs.length){
+    html+=`<div class="mat-cat"><div class="mat-cat-head"><div class="mc-badge sc-green">${ic('clipboard')}</div>DPP (Practice Papers)<span class="mc-count">${packs.length} DPP${packs.length>1?'s':''}</span></div><div class="mat-twrap"><table class="mat-table mat-2col"><thead><tr><th>DPP</th><th style="text-align:right">Download</th></tr></thead><tbody>`;
+    packs.forEach(p=>{ html+=`<tr><td class="mat-ch">${esc(p.title||'DPP')}<div class="mt-sub" style="font-size:.72rem;color:var(--text-muted);margin-top:2px">${esc(p.chapter||'—')} · ${p.part?esc(p.part):'<b>Whole Chapter</b>'} · ${esc(p.medium||'English')}</div></td><td class="mat-dl-cell"><button class="btn btn-primary btn-sm" title="Download this DPP PDF" onclick="sDppHub(${p.id},'q')">${ic('download')} Download</button></td></tr>`; });
+    html+=`</tbody></table></div></div>`;
+  }
   html+=`</div></div>`;
   el.innerHTML=html;
 }
@@ -9360,7 +9465,7 @@ function _sDppCardHTML(pk,isNew){
   const viewBtn=subm
     ? `<button class="btn btn-success btn-sm" onclick="openSDppPanel(${pk.id})">${ic('eye')} View Solution</button>`
     : `<button class="btn btn-primary btn-sm" onclick="openSDppPanel(${pk.id})">${ic('eye')} View Questions</button>`;
-  const doubtBtn=`<button class="btn btn-ghost btn-sm" title="Is DPP me doubt ho to yahan bhejo — screenshot ki zaroorat nahi" onclick="sDppDoubtOpen(${pk.id},0)">${ic('headset')} Raise Doubt</button>`;
+  const rankBtn=`<button class="btn btn-ghost btn-sm" title="Sabse pehle submit karne waale ki ranking dekho" onclick="openDppRanking(${pk.id},'student')">${ic('chart')} Ranking${(pk.submissions||0)>0?` (${pk.submissions})`:''}</button>`;
   const remBtn=checked?`<button class="btn btn-primary btn-sm" onclick="openDppRemarks(${pk.id})"> View Remarks</button>`:'';
   const subBtn=(!subm||pk.can_resubmit)?`<button class="btn ${subm?'btn-ghost':'btn-success'} btn-sm" onclick="openDppSubmit(${pk.id})">${ic('upload')} ${subm?'Re-submit':'Submit'}</button>`:'';
   const subDate=subm&&pk.my_submitted_at?`<span class="dpp-subdate"> Submitted: ${esc(pk.my_submitted_at)}</span>`:'';
@@ -9368,12 +9473,12 @@ function _sDppCardHTML(pk,isNew){
     <div style="display:flex;gap:13px;align-items:flex-start">
       ${ava}
       <div style="flex:1;min-width:0">
-        <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div><div style="display:flex;gap:6px;align-items:center">${pk.class_name?`<span class="chip-sub" style="color:#047857">${esc(pk.class_name)}</span>`:''}${srcChip}</div></div>
+        <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div><div style="display:flex;gap:6px;align-items:center">${pk.class_name?`<span class="xm-chip xm-chip-hl2">${ic('book')} ${esc(pk.class_name)}</span>`:''}${pk.medium?`<span class="xm-chip xm-chip-hl2">${esc(pk.medium)}</span>`:''}${srcChip}</div></div>
         <div class="dpp-title">${esc(pk.title||'DPP')}${newTag}</div>
-        <div class="dpp-meta"> ${esc(pk.chapter||'—')}${pk.part?` · Part: ${esc(pk.part)}`:''} ·  ${esc(pk.medium||'English')}</div>
+        <div class="dpp-meta"> ${esc(pk.chapter||'—')}${pk.part?` · Part: ${esc(pk.part)}`:''}</div>
         <div class="dpp-meta"> ${esc(pk.teacher||'Teacher')}${pk.created_at?` · ${esc(pk.created_at)}`:''}</div>
         <div class="dpp-foot"><div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">${statusChip}${subDate}</div><div class="dpp-btns">
-          ${viewBtn}${doubtBtn}${subBtn}${remBtn}
+          ${viewBtn}${rankBtn}${subBtn}${remBtn}
         </div></div>
       </div>
     </div>
@@ -9385,10 +9490,11 @@ function sDppCardToggle(pid,ev){
   openSDppPanel(pid);
 }
 function sDppSubject(i){
-  window._sDppOpen=i;
+  const minimize=(window._sDppOpen===i);
+  window._sDppOpen=minimize?-1:i;  // open card pe dobara click = minimize
   (window._sDppGroups||[]).forEach((g,j)=>{
     const card=document.getElementById(`dps-${j}`), sec=document.getElementById(`dps-sec-${j}`);
-    const open=(j===i);
+    const open=(!minimize&&j===i);
     if(card){ card.classList.toggle('open',open); const t=card.querySelector('.dps-tick'); if(t) t.textContent=open?'▲':'▼'; }
     if(sec) sec.style.display=open?'block':'none';
   });
@@ -9403,7 +9509,7 @@ async function loadSDpp(){
 }
 async function _loadSDppReal(){
   const el=document.getElementById('s-dpp-content');
-  el.innerHTML='<div class="spinner"></div>';
+  softSpin(el);
   try{
     const d=await api('/api/student/dpp-packs');
     const packs=(d&&d.packs)||[];
@@ -9541,17 +9647,36 @@ function _dppQCards(qs,showModel,pid,lang){
     ${pid?`<div style="margin-top:11px"><button class="btn btn-ghost btn-sm btn-blink" title="Doubt ho to yahan bhejo — question ka text+image apne aap teacher ko chala jayega" onclick="sDppDoubtOpen(${pid},${q.qno},${q.qno})">${ic('headset')} Raise Doubt</button></div>`:''}
   </div>`;}).join('');
 }
-// premium segmented language control (English / हिंदी / A+अ)
+// premium language DROPDOWN (English / हिंदी / English + हिंदी) — phone responsive
 function _dppLangSeg(meds){
   if(!meds||meds.length<2) return '';
   const cur=(window._dppPanel&&window._dppPanel.lang)||'en';
-  const L={english:['en','English'],hindi:['hi','हिंदी'],both:['both','A + अ']};
-  return `<span class="lang-seg" title="Question language">`+meds.map(m=>{const x=L[m];return x?`<button type="button" class="${cur===x[0]?'on':''}" data-lang="${x[0]}" onclick="_dppSetLang('${x[0]}')">${x[1]}</button>`:'';}).join('')+`</span>`;
+  const L={english:['en','English'],hindi:['hi','हिंदी'],both:['both','English + हिंदी']};
+  const curL=(Object.values(L).find(x=>x[0]===cur)||L.english)[1];
+  return `<span class="lang-dd" onclick="event.stopPropagation()">
+    <button type="button" class="lang-dd-btn" title="Question language badlo" onclick="_langDdToggle(event)"><span class="lang-dd-globe">🌐</span><span>${curL}</span><span class="lang-dd-caret">▾</span></button>
+    <span class="lang-dd-menu">`+meds.map(m=>{const x=L[m];return x?`<button type="button" class="${cur===x[0]?'on':''}" data-lang="${x[0]}" onclick="_langDdPick('${x[0]}')">${x[1]}</button>`:'';}).join('')+`</span>
+  </span>`;
 }
-// panel ke top-right language selector se re-render
+function _langDdToggle(ev){
+  ev.stopPropagation();
+  const dd=ev.target.closest('.lang-dd'); if(!dd) return;
+  const was=dd.classList.contains('open');
+  document.querySelectorAll('.lang-dd.open').forEach(x=>x.classList.remove('open'));
+  if(!was) dd.classList.add('open');
+}
+function _langDdPick(l){
+  document.querySelectorAll('.lang-dd.open').forEach(x=>x.classList.remove('open'));
+  _dppSetLang(l);
+}
+if(!window._langDdDocWired){ window._langDdDocWired=true;
+  document.addEventListener('click',e=>{ if(!e.target.closest('.lang-dd')) document.querySelectorAll('.lang-dd.open').forEach(x=>x.classList.remove('open')); });
+}
+// panel ke top-right language dropdown se re-render
 function _dppSetLang(l){
   const P=window._dppPanel; if(!P) return; P.lang=l;
-  document.querySelectorAll('.lang-seg button').forEach(b=>b.classList.toggle('on',b.dataset.lang===l));
+  const dd=document.querySelector('.lang-dd');
+  if(dd){ const tmp=document.createElement('span'); tmp.innerHTML=_dppLangSeg(P.meds||[]); dd.outerHTML=tmp.innerHTML; }
   const w=document.getElementById('dpp-qs-wrap'); if(!w) return;
   w.innerHTML=_dppQCards(P.qs,P.showModel,P.pid,l);
   _dppMathAll(P.pid,P.qs);
@@ -9883,7 +10008,7 @@ async function _fillSDppPanel(pid,el){
     const meds=_dppMeds(pk);
     const langSel=_dppLangSeg(meds);
     const info=`${d.subject?`<span class="pl-sub">${esc(d.subject)}</span> · `:''}${qs.length} question${qs.length===1?'':'s'}${d.chapter?' · '+esc(d.chapter):''}${d.part?' · '+esc(d.part):''}${d.teacher?' · By '+esc(d.teacher):''}`;
-    window._dppPanel={pid:pid,qs:qs,showModel:!!d.submitted,lang:'en'};
+    window._dppPanel={pid:pid,qs:qs,showModel:!!d.submitted,lang:'en',meds:meds};
     el.innerHTML=_dppBandHTML('sDppClosePanel()',d.title,info,'DPP')
       +`<div class="pl-note">${ic('clipboard')}<span class="pl-note-tx">${d.submitted?'Your answer is <b>submitted</b> — model answers are unlocked below.':'Solve all questions in your notebook, then upload your answer PDF below and press <b>Submit</b>.'}</span></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 4px 14px;align-items:center">
@@ -9917,7 +10042,7 @@ async function openTDppPanel(pid){
     const meds=_dppMeds(pk);
     const langSel=_dppLangSeg(meds);
     const info=`${d.subject?`<span class="pl-sub">${esc(d.subject)}</span> · `:''}${qs.length} questions${d.chapter?' · '+esc(d.chapter):''}${d.part?' · '+esc(d.part):''}${d.class_name?' · '+esc(d.class_name):''}`;
-    window._dppPanel={pid:0,qs:qs,showModel:true,lang:'en'};
+    window._dppPanel={pid:0,qs:qs,showModel:true,lang:'en',meds:meds};
     el.innerHTML=_dppBandHTML('loadTDpp()',d.title,info,'DPP')
       +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px;align-items:center">
         <button class="btn btn-dl btn-sm" onclick="tDppHub(${pid},'q')">${ic('download')} Download Paper</button>
@@ -10124,6 +10249,7 @@ async function submitAnswerFile(parentId){
 
 async function loadSTests(){
   const el=document.getElementById('s-tests-content');
+  softSpin(el);
   try{
     const exams=await api('/api/student/exams');
     const F=window._sTestFilter||'mcq';
@@ -10371,6 +10497,67 @@ function rankClick(sid){
       </div>`,
       `<button class="btn btn-ghost" onclick="openExamRanking(${d.exam.id},'${role}')">&larr; Back</button><button class="btn btn-primary btn-sm" onclick="closeModal()">Close</button>`);
   }
+}
+/* ================= DPP RANKING (earliest submission first — podium + full list) ================= */
+async function openDppRanking(pid,role){
+  role=role||ROLE||'student';
+  showModal('DPP Ranking','<div class="spinner"></div>','');
+  try{
+    const d=await api(`/api/${role}/dpp-packs/${pid}/ranking`);
+    window._dppRankData=d; window._dppRankRole=role; window._dppRankPid=pid;
+    const rows=d.rows||[];
+    const pk=d.pack||{};
+    const pkLine=`${esc(pk.subject||'')}${pk.chapter?' &middot; '+esc(pk.chapter):''}${pk.part?' &middot; '+esc(pk.part):' &middot; Whole Chapter'}${pk.class_name?' &middot; Class '+esc(pk.class_name):''}`;
+    if(!rows.length){
+      showModal(`${esc(pk.title||'DPP')} — Ranking`,`<div class="ws-empty"><div class="big">${ic('chart')}</div><p><b>Kisi ne abhi submit nahi kiya</b></p><small>Jaise hi pehla student submit karega, ranking yaha dikhne lagegi.</small></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+      return;
+    }
+    const canClick=(role==='teacher'||role==='admin');
+    const medal=['#f59e0b','#a2946d','#b45309'];
+    const stChip=r=>r.status==='checked'
+      ?`<span class="dpp-rk-st ok">${ic('check')} Checked</span>`
+      :`<span class="dpp-rk-st">${ic('clock')} Submitted</span>`;
+    const bav=(r,sz)=>`<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:linear-gradient(135deg,#b8941f,#a1741a);color:#241a05;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:${Math.round(sz*.42)}px;border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.18)">${esc((r.name||'?').slice(0,1).toUpperCase())}</div>`;
+    const youTag=r=>(role==='student'&&r.me)?' <span class="trk-you">(you)</span>':'';
+    const pod=[rows[1],rows[0],rows[2]].filter(Boolean);
+    const podHtml=`<div class="trk-podium">${pod.map(r=>{
+      const h=r.rank===1?104:r.rank===2?80:66; const sz=r.rank===1?60:50;
+      const click=canClick?` trk-click" onclick="dppRankStudent(${r.rank})`:` nosel`;
+      return `<div class="trk-pod${click}"><div class="trk-pod-av" style="position:relative">${bav(r,sz)}<span class="trk-medal" style="background:${medal[r.rank-1]}">${r.rank}</span></div>
+        <div class="trk-pod-nm">${esc(r.name)}${youTag(r)}</div><div class="trk-pod-sc dpp-rk-time">${esc((r.submitted_at||'').split(',')[0])}</div>
+        <div class="trk-pod-base" style="height:${h}px;background:linear-gradient(180deg,${medal[r.rank-1]}33,${medal[r.rank-1]}0d);border-top:4px solid ${medal[r.rank-1]}"><b>#${r.rank}</b></div></div>`;
+    }).join('')}</div>`;
+    const meRow=(role==='student')?rows.find(r=>r.me):null;
+    const meHtml=meRow?`<div class="trk-me"><div class="trk-me-l"><div class="trk-me-rank">#${meRow.rank}</div><div><b>Your Rank</b><div class="trk-me-sub">of ${rows.length} submissions &middot; ${esc(meRow.submitted_at||'')}</div></div></div></div>`:'';
+    const list=rows.map(r=>`<div class="sbb-row${r.me?' me':''}${canClick?' trk-click':''}" ${canClick?`onclick="dppRankStudent(${r.rank})"`:''}>
+      <span class="sbb-rank ${r.rank<=3?'top':''}">${r.rank}</span>
+      <span class="sbb-av">${esc((r.name||'?').slice(0,1).toUpperCase())}</span>
+      <div class="sbb-main"><div class="sbb-nm">${esc(r.name)}${youTag(r)}</div><div class="sbb-sub">${esc(r.submitted_at||'')}</div></div>
+      ${stChip(r)}</div>`).join('');
+    showModal(`${esc(pk.title||'DPP')} — Ranking`,
+      `<div style="font-size:.74rem;color:var(--text-muted);margin-bottom:10px">${pkLine} &middot; <b>${rows.length}</b> submission${rows.length>1?'s':''} &middot; sabse pehle submit = Rank 1</div>
+       ${podHtml}${meHtml}<div class="hide-scroll" style="max-height:260px;overflow-y:auto;padding-right:4px">${list}</div>
+       ${rows.length>5?`<div class="trk-scroll-hint">Scroll for all ${rows.length} submissions</div>`:''}`,
+      `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+  }catch(e){ showModal('DPP Ranking',errHtml(e),`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`); }
+}
+function dppRankStudent(rank){
+  const d=window._dppRankData; if(!d) return;
+  const role=window._dppRankRole; const pid=window._dppRankPid;
+  const r=(d.rows||[]).find(x=>x.rank===rank); if(!r) return;
+  showModal(`${esc(r.name)} — DPP Details`,
+    `<div class="sdet-grid" style="grid-template-columns:1fr 1fr">
+      <div class="sdet-row"><span>Rank</span><b>#${r.rank} of ${d.count||d.rows.length}</b></div>
+      <div class="sdet-row"><span>Status</span><b>${r.status==='checked'?'Checked':'Submitted'}</b></div>
+      <div class="sdet-row"><span>Submitted</span><b>${esc(r.submitted_at||'—')}</b></div>
+      ${r.class_name?`<div class="sdet-row"><span>Class</span><b>${esc(r.class_name)}</b></div>`:''}
+      ${r.phone?`<div class="sdet-row"><span>Phone</span><b>${esc(r.phone)}</b></div>`:''}
+      ${r.filename?`<div class="sdet-row"><span>File</span><b>${esc(r.filename)}</b></div>`:''}
+      ${r.checked_at?`<div class="sdet-row"><span>Checked at</span><b>${esc(r.checked_at)}</b></div>`:''}
+      ${r.checked_by?`<div class="sdet-row"><span>Checked by</span><b>${esc(r.checked_by)}</b></div>`:''}
+    </div>
+    ${r.remarks?`<div class="sdet-row" style="margin-top:8px;flex-direction:column;align-items:flex-start;gap:4px"><span>Remarks</span><b style="font-weight:600">${esc(r.remarks)}</b></div>`:''}`,
+    `<button class="btn btn-ghost" onclick="openDppRanking(${pid},'${role}')">&larr; Back</button><button class="btn btn-primary btn-sm" onclick="closeModal()">Close</button>`);
 }
 /* ================= STUDENT TEST PLAYER v2 =================
    medium selection at start + in-test medium toggle + live timer + MCQ palette
@@ -10769,6 +10956,7 @@ async function _solPdf(id,med){
 
 async function loadSDoubts(){
   const el=document.getElementById('s-doubts-content');
+  softSpin(el);
   try{
     let mine=[]; try{ mine=await api('/api/student/doubts'); }catch(e){}
     let subs=[]; try{ const p=await api('/api/student/profile'); subs=p.subjects||[]; }catch(e){}
@@ -13414,6 +13602,17 @@ async function ocrFillQuestion_v1(inp,i){
 .trk-pod-sc small{font-weight:600;opacity:.7}
 .trk-pod-base{width:100%;border-radius:12px 12px 6px 6px;display:flex;align-items:flex-start;justify-content:center;padding-top:10px}
 .trk-pod-base b{font-size:1.15rem;color:var(--text);opacity:.75}
+/* DPP ranking — earliest submission */
+.nosel{cursor:default}
+.sbb-sub{font-size:.68rem;color:var(--text-muted);margin-top:1px}
+.dpp-rk-time{font-size:.7rem;color:var(--text-muted)!important;font-weight:700!important}
+.dpp-rk-st{display:inline-flex;align-items:center;gap:3px;font-size:.62rem;font-weight:800;padding:3px 8px;border-radius:999px;
+  background:rgba(138,109,16,.1);color:#8a6d10;border:1px solid rgba(138,109,16,.25);flex-shrink:0;white-space:nowrap}
+.dpp-rk-st.ok{background:rgba(16,185,129,.12);color:#047857;border-color:rgba(16,185,129,.35)}
+.dpp-rk-st svg{width:10px;height:10px}
+@media(max-width:640px){.dpp-rk-st{font-size:.55rem;padding:2px 6px}.sbb-sub{font-size:.6rem}}
+.dpp-rk-row{cursor:pointer;transition:background .15s}
+.dpp-rk-row:hover{background:rgba(184,148,31,.06)}
 /* phone: podium 3-in-a-row shrink + list rows compact — kuch overflow/wrap nahi */
 @media(max-width:640px){
   .trk-podium{gap:8px;flex-wrap:nowrap;margin:4px 0 16px}
@@ -15368,7 +15567,7 @@ function sylCardGrowth(code){
 async function loadSResultCards(){
   var el=document.getElementById('s-resultcard-content');
   if(!el) return;
-  el.innerHTML='<div class="spinner"></div>';
+  softSpin(el);
   var cards=[];
   try{
     if(!_SYL.me){ try{ _SYL.me=await api('/api/syllabus/me'); }catch(e){} }
@@ -15642,7 +15841,7 @@ async function sylPlanTick(code,no){
 /* ================= ADMIN ================= */
 
 async function loadASyllabus(){
-  var el=_sylEl('a-syl-content'); el.innerHTML='<div class="spinner"></div>';
+  var el=_sylEl('a-syl-content'); softSpin(el);
   try{
     var d=await api('/api/syllabus/admin/subjects?class_level='+_SYL.cls);
     _SYL.rows=d.items||[];
@@ -15729,7 +15928,7 @@ function _sylPredRows(rows){
 
 async function sylPredictedReport(target){
   var box=_sylEl('a-syl-content'); if(!box) return;
-  box.innerHTML='<div class="spinner"></div>';
+  softSpin(box);
   try{
     var d=await api('/api/syllabus/admin/predicted'+(target?('?target='+target):''));
     _SYL.prTarget=target||'';
@@ -15746,7 +15945,7 @@ async function sylPredictedReport(target){
 
 async function sylReport(){
   var box=document.getElementById('a-syl-content'); if(!box) return;
-  box.innerHTML='<div class="spinner"></div>';
+  softSpin(box);
   try{
     var d=await api('/api/syllabus/admin/progress');
     var items=d.items||[];
@@ -15878,7 +16077,7 @@ async function sylHide(code,hidden){
 }
 
 async function sylEdit(code){
-  var box=_sylEl('syl-editor'); box.innerHTML='<div class="spinner"></div>';
+  var box=_sylEl('syl-editor'); softSpin(box);
   try{
     var ref=await api('/api/syllabus/admin/subject?class_level='+_SYL.cls+'&code='+(code||(_SYL.cls==='12'?'312':'211')));
     var tpl=ref.template_values;

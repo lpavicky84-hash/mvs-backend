@@ -957,6 +957,40 @@ def teacher_dpp_packs(db: Session = Depends(get_db), current_user=Depends(get_te
     return {"packs": [_dpp_pack_out(db, pk) for pk in packs]}
 
 
+# ===== DPP RANKING — sabse pehle submit karne wala rank #1 (teacher = full details) =====
+@router.get("/dpp-packs/{pack_id}/ranking")
+def teacher_dpp_ranking(pack_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import DppPack, DppAnswer, StudentProfile, User
+    tp = get_teacher_profile(current_user, db)
+    pk = db.query(DppPack).filter(DppPack.id == pack_id, DppPack.teacher_id == tp.id).first()
+    if not pk:
+        raise HTTPException(404, "DPP pack not found")
+    rows = (db.query(DppAnswer)
+            .filter(DppAnswer.pack_id == pack_id, DppAnswer.status != "staged")
+            .order_by(DppAnswer.submitted_at.asc().nullslast(), DppAnswer.id.asc()).all())
+    out = []
+    for i, a in enumerate(rows):
+        srow = db.query(StudentProfile).filter(StudentProfile.id == a.student_id).first()
+        nm = ""
+        if srow:
+            u = db.query(User).filter(User.id == srow.user_id).first()
+            nm = (u.name if u else "") or ""
+        nm = nm or f"Student #{a.student_id}"
+        out.append({"rank": i + 1, "name": nm, "student_id": a.student_id,
+                    "submitted_at": a.submitted_at.strftime("%d %b %Y, %I:%M %p") if a.submitted_at else "",
+                    "status": a.status or "submitted",
+                    "checked_at": a.checked_at.strftime("%d %b %Y, %I:%M %p") if getattr(a, "checked_at", None) else "",
+                    "checked_by": getattr(a, "checked_by", None) or "",
+                    "remarks": a.remarks or "",
+                    "filename": a.filename or "",
+                    "class_name": (srow.class_name if srow else "") or "",
+                    "phone": (srow.phone if srow else "") or ""})
+    return {"pack": {"id": pk.id, "title": pk.title or "DPP", "subject": pk.subject or "",
+                     "chapter": pk.chapter or "", "part": pk.part or "",
+                     "class_name": getattr(pk, "class_name", "") or ""},
+            "count": len(out), "rows": out}
+
+
 def _dpp_build_pdf(db, pk, kind="q", med=None):
     """Created pack se on-demand premium PDF (language select ke saath).
     kind=q -> questions paper (no answers), kind=s -> solutions paper."""

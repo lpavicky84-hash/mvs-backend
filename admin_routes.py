@@ -2905,3 +2905,65 @@ def orphan_data_cleanup(db: Session = Depends(get_db), _=Depends(get_admin)):
             except Exception:
                 db.rollback()
     return {"removed": counts, "total": sum(counts.values())}
+
+
+# ===== DPP RANKINGS — admin: sab packs + submission counts =====
+@router.get("/dpp-rankings")
+def admin_dpp_rankings(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import DppPack, DppAnswer, TeacherProfile, User as _U
+    packs = db.query(DppPack).order_by(DppPack.created_at.desc()).all()
+    out = []
+    for pk in packs:
+        subs = (db.query(DppAnswer)
+                .filter(DppAnswer.pack_id == pk.id, DppAnswer.status != "staged")
+                .all())
+        checked = sum(1 for a in subs if a.status == "checked")
+        tname = ""
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == pk.teacher_id).first()
+        if tp and tp.user_id:
+            u = db.query(_U).filter(_U.id == tp.user_id).first()
+            tname = u.name if u else ""
+        if not subs and not tname:
+            tname = ""
+        out.append({"id": pk.id, "title": pk.title or "DPP", "subject": pk.subject or "",
+                    "chapter": pk.chapter or "", "part": pk.part or "",
+                    "class_name": getattr(pk, "class_name", "") or "",
+                    "medium": pk.medium or "", "source": pk.source or "",
+                    "teacher": tname,
+                    "created_at": pk.created_at.strftime("%d %b %Y") if pk.created_at else "",
+                    "submitted": len(subs), "checked": checked,
+                    "pending": len(subs) - checked})
+    return {"packs": out}
+
+
+@router.get("/dpp-packs/{pack_id}/ranking")
+def admin_dpp_ranking(pack_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin ranking rows — same details as teacher (names clickable)."""
+    from models import DppPack, DppAnswer, StudentProfile, User as _U2
+    pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
+    if not pk:
+        raise HTTPException(404, "DPP pack not found")
+    rows = (db.query(DppAnswer)
+            .filter(DppAnswer.pack_id == pack_id, DppAnswer.status != "staged")
+            .order_by(DppAnswer.submitted_at.asc().nullslast(), DppAnswer.id.asc()).all())
+    out = []
+    for i, a in enumerate(rows):
+        srow = db.query(StudentProfile).filter(StudentProfile.id == a.student_id).first()
+        nm = ""
+        if srow:
+            u = db.query(_U2).filter(_U2.id == srow.user_id).first()
+            nm = (u.name if u else "") or ""
+        nm = nm or f"Student #{a.student_id}"
+        out.append({"rank": i + 1, "name": nm, "student_id": a.student_id,
+                    "submitted_at": a.submitted_at.strftime("%d %b %Y, %I:%M %p") if a.submitted_at else "",
+                    "status": a.status or "submitted",
+                    "checked_at": a.checked_at.strftime("%d %b %Y, %I:%M %p") if a.checked_at else "",
+                    "checked_by": a.checked_by or "",
+                    "remarks": a.remarks or "",
+                    "filename": a.filename or "",
+                    "class_name": (srow.class_name if srow else "") or "",
+                    "phone": (srow.phone if srow else "") or ""})
+    return {"pack": {"id": pk.id, "title": pk.title or "DPP", "subject": pk.subject or "",
+                     "chapter": pk.chapter or "", "part": pk.part or "",
+                     "class_name": getattr(pk, "class_name", "") or ""},
+            "count": len(out), "rows": out}

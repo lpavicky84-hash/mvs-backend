@@ -1786,7 +1786,11 @@ def student_dpp_packs(db: Session = Depends(get_db), current_user=Depends(get_st
                .filter(DppAnswer.pack_id == pk.id, DppAnswer.student_id == sp.id,
                        DppAnswer.status != "staged")
                .order_by(DppAnswer.submitted_at.desc()).first())
+        subs_n = (db.query(DppAnswer)
+                  .filter(DppAnswer.pack_id == pk.id, DppAnswer.status != "staged")
+                  .count())
         out.append({"id": pk.id, "subject": pk.subject, "chapter": pk.chapter, "part": pk.part,
+                    "submissions": subs_n,
                     "class_name": getattr(pk, "class_name", "") or "",
                     "title": pk.title, "medium": pk.medium, "source": pk.source,
                     "teacher": tname, "teacher_id": pk.teacher_id,
@@ -1803,6 +1807,36 @@ def student_dpp_packs(db: Session = Depends(get_db), current_user=Depends(get_st
                     "can_resubmit": bool(ans and getattr(ans, "allow_resubmit", False)),
                     "submitted": bool(ans)})
     return {"packs": out}
+
+
+# ===== DPP RANKING — sabse pehle submit karne wala rank #1 =====
+@router.get("/dpp-packs/{pack_id}/ranking")
+def student_dpp_ranking(pack_id: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Is pack ke sabhi submissions — earliest submit = rank 1. Students ko sirf naam dikhte hain."""
+    from models import DppPack, DppAnswer, StudentProfile, User
+    sp = get_student_profile(current_user, db)
+    pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
+    if not pk:
+        raise HTTPException(404, "DPP pack not found")
+    rows = (db.query(DppAnswer)
+            .filter(DppAnswer.pack_id == pack_id, DppAnswer.status != "staged")
+            .order_by(DppAnswer.submitted_at.asc().nullslast(), DppAnswer.id.asc()).all())
+    out = []
+    for i, a in enumerate(rows):
+        srow = db.query(StudentProfile).filter(StudentProfile.id == a.student_id).first()
+        nm = ""
+        if srow:
+            u = db.query(User).filter(User.id == srow.user_id).first()
+            nm = (u.name if u else "") or ""
+        nm = nm or "Student"
+        out.append({"rank": i + 1, "name": nm,
+                    "submitted_at": a.submitted_at.strftime("%d %b %Y, %I:%M %p") if a.submitted_at else "",
+                    "status": a.status or "submitted",
+                    "me": bool(srow and srow.id == sp.id)})
+    return {"pack": {"id": pk.id, "title": pk.title or "DPP", "subject": pk.subject or "",
+                     "chapter": pk.chapter or "", "part": pk.part or "",
+                     "class_name": getattr(pk, "class_name", "") or ""},
+            "count": len(out), "rows": out, "me_id": sp.id}
 
 
 @router.post("/dpp-packs/{pack_id}/submit")
