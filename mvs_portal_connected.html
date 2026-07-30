@@ -16418,10 +16418,13 @@ function sylResultCardHtml(card){
   var name=card.student||((typeof NAME!=='undefined'&&NAME)?NAME:'Student');
   var subs=card.subjects||[];
   _SYL._rcData=card;
-  var showTma=subs.some(function(s){return (s.tma_max||0)>0;});
-  var showPr =subs.some(function(s){return (s.practical_max||0)>0;});
+  /* TMA/Practical column TABHI dikhta hai jab student ne kam se kam ek subject mein
+     marks bhare hon — unset hai to column hi nahi aata, aur kisi subject mein unset
+     hai to us cell khaali rahegi (0 ya — nahi dikhega) */
+  var showTma=subs.some(function(s){return (s.tma_max||0)>0 && s.tma!=null;});
+  var showPr =subs.some(function(s){return (s.practical_max||0)>0 && s.practical!=null;});
   var cell=function(v,mx){
-    if(v==null) return '&mdash;';
+    if(v==null) return '';
     return '<b>'+_sylN(v)+'</b><span style="opacity:.5;font-size:.7rem">/'+_sylN(mx||0)+'</span>';
   };
   var tTh=0,tPr=0,tTma=0;
