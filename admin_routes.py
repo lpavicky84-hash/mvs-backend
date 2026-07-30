@@ -1202,7 +1202,12 @@ def edit_student(sid: int, payload: dict, db: Session = Depends(get_db), _=Depen
             sp.exam_stream = stv
     # NOTE: empty exam_session / nios_ref form value se PURANA value kabhi
     # erase nahi hota — sirf non-empty value hi update karti hai.
-    if payload.get("nios_ref"):
+    # Admin chahe to explicit nios_ref_clear=true bhej ke reference hata sakta
+    # hai (test/dummy refs) — har jagah (profile, result cards, admin views)
+    # live read hota hai, isliye sab jagah se apne aap update ho jaata hai.
+    if payload.get("nios_ref_clear"):
+        sp.nios_ref = None
+    elif payload.get("nios_ref"):
         ref = (payload.get("nios_ref") or "").strip().upper()[:40]
         sp.nios_ref = ref
     db.commit()

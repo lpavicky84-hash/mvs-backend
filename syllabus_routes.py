@@ -448,13 +448,23 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
         return [r for r in pick_until(safe_paper) if r["no"] not in core_set]
 
     has_marks = total_paper > 0
+    pass_reached = has_marks and covered_paper + 0.01 >= pass_paper
+    theory_reached = has_marks and covered_theory + 0.01 >= need_theory
+    # TMA/Practical ke bharose wale marks tabhi dikhte hain jab student ka
+    # passing criteria (chapter plan se) complete ho chuka ho. Usse pehle
+    # projection sirf theory (chapters) pe chalti hai — saved expected marks
+    # DB mein safe rehte hain, sirf display/projections se bahar rehte hain.
+    marks_unlocked = bool(pass_reached and theory_reached)
+    tma_d = tma if marks_unlocked else 0.0
+    pr_d = pr if marks_unlocked else 0.0
     return {
         "paper_marks": paper, "scale": round(scale, 4),
         "total_pe_marks": total_paper, "covered_paper": covered_paper,
         "covered_theory": covered_theory,
         "tma_assumed": tma, "practical_assumed": pr,
         "tma_set": bool(tma_set), "practical_set": bool(pr_set),
-        "projected_total": round(covered_theory + tma + pr, 1),
+        "marks_unlocked": marks_unlocked,
+        "projected_total": round(covered_theory + tma_d + pr_d, 1),
         "pass_rule": pass_rule,
         "bonus_chapter_count": len(pass_bonus_rows),
         # the cushion is whatever sits above the NIOS requirement
@@ -473,26 +483,26 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
         "high_paper_raw": high_raw,
         "theory_paper_raw": theory_raw,
         "pass_paper_needed": pass_paper,
-        "pass_reached": has_marks and covered_paper + 0.01 >= pass_paper,
+        "pass_reached": pass_reached,
         # theory only requirement, tracked separately because it is compulsory
         "theory_pass_mark": round(need_theory, 1),
         "theory_paper_needed": theory_paper,
-        "theory_reached": has_marks and covered_theory + 0.01 >= need_theory,
+        "theory_reached": theory_reached,
         "theory_gap_theory": max(round(need_theory - covered_theory, 1), 0),
         "theory_gap_paper": max(round(theory_paper - covered_paper, 1), 0),
-        "aggregate_reached": round(covered_theory + tma + pr, 1) + 0.01 >= m["aggregate_pass"],
+        "aggregate_reached": round(covered_theory + tma_d + pr_d, 1) + 0.01 >= m["aggregate_pass"],
         # NIOS checks three things separately. All of them are reported in the
         # units the marksheet uses, so nothing has to be converted by the reader.
         "theory_have": covered_theory,
         "theory_need": round(need_theory, 1),
         "theory_max": m["theory_max"],
-        "practical_have": pr,
+        "practical_have": pr_d,
         "practical_need": float(m.get("practical_pass") or 0),
         "practical_max": m["practical_max"],
-        "practical_reached": (not m.get("has_practical")) or pr + 0.01 >= float(m.get("practical_pass") or 0),
-        "tma_have": tma,
+        "practical_reached": (not m.get("has_practical")) or pr_d + 0.01 >= float(m.get("practical_pass") or 0),
+        "tma_have": tma_d,
         "tma_max": m["tma_max"],
-        "aggregate_have": round(covered_theory + tma + pr, 1),
+        "aggregate_have": round(covered_theory + tma_d + pr_d, 1),
         "aggregate_need": m["aggregate_pass"],
         "has_practical": bool(m.get("has_practical")),
         "combined_pass": float(m.get("combined_pass") or 0),
@@ -852,6 +862,245 @@ def syl_subject(code: str, db: Session = Depends(get_db), user=Depends(get_stude
         "milestones": _milestone_map(db, sp.id).get(str(code), {}),
         "calc": compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp), choice=choice),
     }
+
+
+@router.get("/important-pdf/{code}")
+def syl_important_pdf(code: str, target: str = "pass",
+                      db: Session = Depends(get_db), user=Depends(get_student)):
+    """Important chapters ki premium PDF — 'Premium Syllabus with Marks Weightage'
+    header ke saath. Student apne target ke plan modules + baaki modules ki poori
+    list download kar sakta hai (selection nahi, sirf list)."""
+    _ensure_syllabus(db)
+    sp = _student_profile(db, user)
+    cl, codes, unmapped = _student_codes(db, sp)
+    if str(code) not in codes:
+        raise HTTPException(status_code=403, detail="This subject is not in your enrolment.")
+    subj = get_subject(db, cl, code)
+    if not subj:
+        raise HTTPException(status_code=404, detail="Subject not found.")
+    if subj.get("status") != "ready":
+        raise HTTPException(status_code=409, detail="Syllabus for this subject is not verified yet.")
+    if target not in ("pass", "high", "top"):
+        target = "pass"
+    sel, done, tma, pr, choice = _plan_row(db, sp.id, code)
+    cfg = _cfg(db)
+    calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"],
+                   cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp), choice=choice)
+    mods = calc[{"pass": "pass_plan_modules", "high": "high_plan_modules",
+                 "top": "top_plan_modules"}[target]] or []
+    def num(v):
+        f = float(v or 0)
+        return str(int(round(f))) if abs(f - round(f)) < 0.05 else ("%.1f" % f).rstrip("0").rstrip(".")
+    if target == "top":
+        need, core = calc["top_paper_needed"], calc.get("top_core_needed") or calc["top_paper_needed"]
+        tgt_label = "%s percent" % num(calc["top_target"])
+    elif target == "high":
+        need, core = calc["high_paper_needed"], calc["high_core_needed"]
+        tgt_label = "%s percent" % num(calc["high_target"])
+    else:
+        need = max(calc["pass_paper_needed"], calc["theory_paper_needed"])
+        core = max(calc["pass_core_needed"], calc["theory_core_needed"])
+        tgt_label = "Passing marks"
+
+    # plan ke baad aane wale baaki exam modules (pairs ek hi baar)
+    plan_names = {mo["module"] for mo in mods}
+    groups = SD._optional_groups(subj.get("modules", []))
+    group_of, reps = {}, {}
+    mod_order = {mod["module"]: i for i, mod in enumerate(subj.get("modules", []))}
+    for g, ms in groups.items():
+        pick = (choice or {}).get(g)
+        rep = next((mod for mod in ms if mod["module"] == pick), None)
+        if rep is None:
+            rep = max(ms, key=lambda mod: (float(mod.get("weightage") or 0),
+                                           -mod_order.get(mod["module"], 0)))
+        reps[g] = rep["module"]
+        for mod in ms:
+            group_of[mod["module"]] = g
+    rest, seen_g = [], set()
+    for mod in subj.get("modules", []):
+        name = mod["module"]
+        if name in plan_names:
+            continue
+        g = group_of.get(name)
+        if g:
+            if g in seen_g or reps.get(g) != name:
+                continue
+            seen_g.add(g)
+        chs = [l for l in mod.get("lessons", []) if l.get("kind") == "PE"]
+        rest.append({"module": name, "weightage": float(mod.get("weightage") or 0),
+                     "chapters": chs})
+    rest.sort(key=lambda x: (x["weightage"] / max(len(x["chapters"]), 1), x["weightage"]),
+              reverse=True)
+
+    from fpdf import FPDF
+    from fpdf.enums import XPos, YPos
+    from exam_pdf import _font_path, _font_path_bold
+    import io as _io
+
+    pdf = FPDF(unit="mm", format="A4")
+    pdf.set_auto_page_break(True, margin=16)
+    pdf.add_page()
+    FONT = _font_path()
+    BOLD = _font_path_bold() or FONT
+    pdf.add_font("Noto", "", FONT)
+    pdf.add_font("Noto", "B", BOLD)
+    LM = 14.0
+    EPW = 210 - 2 * LM
+
+    # ---------- premium gold header band ----------
+    pdf.set_fill_color(23, 18, 3)
+    pdf.rect(0, 0, 210, 40, "F")
+    pdf.set_fill_color(184, 148, 31)
+    pdf.rect(0, 40, 210, 1.6, "F")
+    pdf.set_xy(LM, 7)
+    pdf.set_text_color(212, 169, 78)
+    pdf.set_font("Noto", "B", 9.5)
+    pdf.cell(EPW, 5, "MVS FOUNDATION  ·  NIOS CLASS %s" % cl, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_x(LM)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Noto", "B", 16.5)
+    pdf.cell(EPW, 9, "Premium Syllabus with Marks Weightage", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_x(LM)
+    pdf.set_font("Noto", "", 10)
+    pdf.set_text_color(235, 224, 200)
+    pdf.cell(EPW, 6, "%s (Code %s)   ·   Target: %s plan   ·   %s"
+             % (subj["name"], subj["code"], tgt_label, date.today().strftime("%d %b %Y")),
+             new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.ln(10)
+
+    # ---------- requirement strip ----------
+    pdf.set_fill_color(250, 244, 230)
+    pdf.set_draw_color(222, 196, 130)
+    y0 = pdf.get_y()
+    pdf.rect(LM, y0, EPW, 15, "DF")
+    pdf.set_xy(LM + 4, y0 + 2.2)
+    pdf.set_text_color(120, 84, 10)
+    pdf.set_font("Noto", "", 9.5)
+    pdf.cell(EPW - 8, 5, "NIOS requirement", new_x=XPos.RIGHT, new_y=YPos.TOP)
+    pdf.set_x(LM + 4 + EPW / 3 - 2)
+    pdf.cell(EPW / 3, 5, "Safety bonus", new_x=XPos.RIGHT, new_y=YPos.TOP)
+    pdf.set_x(LM + 4 + 2 * EPW / 3 - 2)
+    pdf.cell(EPW / 3 - 8, 5, "We plan for", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_xy(LM + 4, y0 + 8)
+    pdf.set_font("Noto", "B", 12)
+    pdf.set_text_color(5, 150, 105)
+    pdf.cell(EPW / 3, 6, "%s marks" % num(core), new_x=XPos.RIGHT, new_y=YPos.TOP)
+    pdf.set_text_color(217, 119, 6)
+    pdf.cell(EPW / 3 - 4, 6, "+%s marks" % num(round(need - core, 1)), new_x=XPos.RIGHT, new_y=YPos.TOP)
+    pdf.set_text_color(184, 148, 31)
+    pdf.cell(EPW / 3 - 8, 6, "%s marks" % num(need), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.ln(12)
+
+    pdf.set_text_color(60, 52, 30)
+    pdf.set_font("Noto", "", 9.5)
+    pdf.multi_cell(EPW, 5,
+        "Best value module first — the module carrying the most marks per chapter comes "
+        "first. Finish the modules above the dashed line and your %s target is covered; "
+        "modules below it only raise the score further." % tgt_label)
+    pdf.ln(2)
+
+    def module_block(idx, name, weightage, chapters, require, cum, planned):
+        if pdf.get_y() > 250:
+            pdf.add_page()
+        y = pdf.get_y()
+        if planned:
+            pdf.set_fill_color(231, 245, 236)
+            pdf.set_draw_color(151, 210, 175)
+        else:
+            pdf.set_fill_color(246, 244, 240)
+            pdf.set_draw_color(214, 208, 196)
+        pdf.rect(LM, y, EPW, 13.5, "DF")
+        pdf.set_xy(LM + 3.5, y + 2.6)
+        pdf.set_text_color(22, 26, 34)
+        pdf.set_font("Noto", "B", 10.5)
+        title = ("%s.  " % idx) + name
+        orig = title
+        while pdf.get_string_width(title) > EPW - 42 and len(title) > 12:
+            title = title[:-2]
+        if title != orig:
+            title = title.rstrip() + "…"
+        pdf.cell(EPW - 40, 6, title)
+        pdf.set_y(y + 2.6)
+        pdf.set_x(LM + EPW - 36)
+        pdf.set_text_color(184, 148, 31)
+        pdf.cell(33, 6, "%s marks" % num(weightage), align="R",
+                 new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_xy(LM + 3.5, y + 8.2)
+        pdf.set_font("Noto", "", 8.5)
+        pdf.set_text_color(120, 110, 88)
+        tag = ""
+        if require and require.get("type") == "any":
+            tag = "CHOOSE ANY %s   ·   " % require.get("k")
+        elif require and require.get("type") == "full":
+            tag = "IMPORTANT MODULE   ·   "
+        sub = "%s%s chapter%s" % (tag, len(chapters), "" if len(chapters) == 1 else "s")
+        if cum is not None:
+            sub += "   ·   running %s" % num(cum)
+        pdf.cell(EPW - 8, 5, sub, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.ln(1.2)
+        for ch in chapters:
+            if pdf.get_y() > 262:
+                pdf.add_page()
+            pdf.set_x(LM + 8)
+            pdf.set_text_color(52, 48, 40)
+            pdf.set_font("Noto", "", 9.5)
+            label = "%s  %s" % (ch.get("no") or "", ch.get("title") or "")
+            pdf.multi_cell(EPW - 14, 5, "•  " + label.strip())
+        pdf.ln(2.5)
+
+    acc = 0.0
+    for i, mo in enumerate(mods):
+        acc = round(acc + (mo.get("new_marks") or 0), 1)
+        module_block(i + 1, mo["module"], mo.get("weightage") or 0,
+                     mo.get("chapters") or [], mo.get("require"), acc, True)
+
+    if rest and not mods:
+        pdf.set_font("Noto", "B", 9.5)
+        pdf.set_text_color(4, 120, 87)
+        pdf.set_x(LM)
+        pdf.multi_cell(EPW, 5.5,
+            "%s is already covered by the chapters in your plan. Any module below only raises "
+            "the score further." % tgt_label)
+        pdf.ln(2)
+    elif rest:
+        # dashed divider
+        y = pdf.get_y() + 2
+        pdf.set_draw_color(190, 160, 90)
+        pdf.set_dash_pattern(dash=1.2, gap=1.6)
+        pdf.line(LM, y, LM + EPW, y)
+        pdf.set_dash_pattern()
+        pdf.set_xy(LM, y + 1.5)
+        pdf.set_font("Noto", "B", 9)
+        pdf.set_text_color(146, 64, 14)
+        pdf.cell(EPW, 5, "%s target covered up to here — modules below only add more marks" % tgt_label,
+                 align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.ln(3)
+        for j, mo in enumerate(rest):
+            module_block(len(mods) + j + 1, mo["module"], mo["weightage"],
+                         mo["chapters"], None, None, False)
+
+    # ---------- footer ----------
+    pdf.ln(1)
+    if pdf.get_y() > 255:
+        pdf.add_page()
+    pdf.set_font("Noto", "", 8.5)
+    pdf.set_text_color(140, 130, 105)
+    pdf.multi_cell(EPW, 4.6,
+        "This list is prepared from the official NIOS marks weightage for your exam stream. "
+        "Finish the chapters in order — and along with them, solve the last 3 years' PYQ papers "
+        "for the best final result.")
+    pdf.set_font("Noto", "B", 8.5)
+    pdf.set_text_color(184, 148, 31)
+    pdf.set_x(LM)   # multi_cell ke baad cursor right edge pe hota hai
+    pdf.cell(EPW, 5, "MVS Foundation  ·  app.mvsfoundation.in", align="C",
+             new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+    fname = "%s_Important_Chapters_%s.pdf" % (
+        re.sub(r"[^A-Za-z0-9]+", "_", subj["name"]).strip("_"), target)
+    buf = _io.BytesIO(bytes(pdf.output()))
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(buf, media_type="application/pdf",
+                             headers={"Content-Disposition": 'attachment; filename="%s"' % fname})
 
 
 @router.post("/plan")
