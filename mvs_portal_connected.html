@@ -14432,6 +14432,56 @@ async function ocrFillQuestion_v1(inp,i){
   display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .syl-goal.ok{background:rgba(16,185,129,.11);border:1px solid rgba(16,185,129,.35);color:#047857}
 .syl-goal.no{background:rgba(217,119,6,.1);border:1px solid rgba(217,119,6,.35);color:#92400e}
+/* v68 — study plan: subject accordion (default band, header click pe khulta) */
+.syl-psub{border:1.5px solid var(--border,#e6e9f0);border-radius:14px;margin-top:11px;overflow:hidden;
+  background:var(--card,#fff);transition:.18s}
+.syl-psub:hover{border-color:rgba(184,148,31,.45)}
+.syl-psub.open{border-color:rgba(184,148,31,.6);box-shadow:0 8px 22px rgba(15,23,42,.07)}
+.syl-psubh{display:flex;align-items:center;gap:11px;padding:13px 15px;cursor:pointer;user-select:none}
+.syl-psubh:hover{background:rgba(127,127,127,.04)}
+.syl-psubi{flex:1;min-width:0}
+.syl-psubi>b{font-size:.92rem;font-weight:700;letter-spacing:-.2px}
+.syl-psubi>small{display:block;font-size:.72rem;opacity:.65;margin-top:3px;line-height:1.5}
+.syl-psubb{display:none;border-top:1px solid var(--border,#e6e9f0);padding:6px 12px 12px;
+  background:rgba(127,127,127,.03)}
+.syl-psub.open .syl-psubb{display:block}
+.syl-psub.open .syl-psubh .syl-chev{transform:rotate(180deg)}
+/* v68 — weekly plan: week accordion (ek time pe sirf ek week khula) */
+.syl-wkh{cursor:pointer;user-select:none}
+.syl-wkb{display:none}
+.syl-wk.open .syl-wkb{display:block}
+.syl-wk.open .syl-wkh .syl-chev{transform:rotate(180deg)}
+.syl-wk.open{border-color:rgba(184,148,31,.55);box-shadow:0 8px 22px rgba(15,23,42,.06)}
+/* v68 — target check: premium card */
+.syl-tck{margin-top:11px;border-radius:16px;padding:15px 17px 13px;position:relative;overflow:hidden;
+  border:1px solid rgba(217,119,6,.3);
+  background:linear-gradient(135deg,rgba(255,251,235,.95),rgba(255,247,224,.55));
+  box-shadow:0 6px 18px rgba(146,64,14,.06);transition:.18s}
+.syl-tck.ok{border-color:rgba(5,150,105,.38);
+  background:linear-gradient(135deg,rgba(236,253,245,.95),rgba(209,250,229,.5));
+  box-shadow:0 6px 18px rgba(4,120,87,.09)}
+.syl-tck:hover{transform:translateY(-1px);box-shadow:0 10px 24px rgba(15,23,42,.09)}
+.syl-tck-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
+.syl-tck-name{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.syl-tck-name>b{font-size:.93rem;letter-spacing:-.2px}
+.syl-tck-pill{font-size:.6rem;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#047857;
+  background:rgba(16,185,129,.16);border:1px solid rgba(16,185,129,.45);padding:3px 9px;border-radius:99px;
+  white-space:nowrap}
+.syl-tck-left{font-size:.66rem;font-weight:800;color:#b45309;background:rgba(217,119,6,.13);
+  border:1px solid rgba(217,119,6,.35);padding:3px 9px;border-radius:99px;white-space:nowrap}
+.syl-tck-num{text-align:right;line-height:1.15;white-space:nowrap}
+.syl-tck-num b{font-size:1.18rem;font-weight:800;font-variant-numeric:tabular-nums}
+.syl-tck.ok .syl-tck-num b{color:#047857}
+.syl-tck.no .syl-tck-num b{color:#b45309}
+.syl-tck-num small{font-size:.63rem;opacity:.6;font-weight:600}
+.syl-tck-bar{height:7px;border-radius:99px;background:rgba(127,127,127,.15);margin-top:11px;overflow:hidden}
+.syl-tck-bar>i{display:block;height:100%;border-radius:99px;transition:width .5s ease;
+  background:linear-gradient(90deg,#f59e0b,#d97706)}
+.syl-tck.ok .syl-tck-bar>i{background:linear-gradient(90deg,#34d399,#059669);
+  box-shadow:0 0 8px rgba(16,185,129,.5)}
+.syl-tck-sub{margin-top:8px;font-size:.7rem;font-weight:600;opacity:.72;line-height:1.55}
+.dark .syl-tck{background:linear-gradient(135deg,rgba(120,72,10,.16),rgba(120,72,10,.07))}
+.dark .syl-tck.ok{background:linear-gradient(135deg,rgba(6,95,70,.3),rgba(6,95,70,.12))}
 .syl-seg2{display:inline-flex;background:rgba(127,127,127,.1);border-radius:11px;padding:4px;gap:3px}
 .syl-seg2 button{border:0;background:transparent;padding:8px 18px;border-radius:8px;font-size:.82rem;
   font-weight:700;cursor:pointer;color:inherit;opacity:.6;font-family:inherit;transition:.15s}
@@ -16667,6 +16717,8 @@ async function sylPlan(mode){
     sylBusy(false);
     _SYL.planDone={};
     (_SYL.plan.per_subject||[]).forEach(function(x){ _SYL.planDone[x.code]=(x.done||[]).slice(); });
+    _SYL.openPlanSub={};   // v68 — study plan ke subjects default band
+    _SYL.openWeek=null;    // v68 — weekly/monthly plan ke saare week default band
     sylPlanRender();
   }catch(e){ sylBusy(false); toast(e.message,true); loadSSyllabus(); }
 }
@@ -16682,8 +16734,8 @@ function sylPlanRender(){
    +'<button class="syl-cta o" onclick="loadSSyllabus()">Back to my subjects</button>'
    +(anyTicks?'<button class="syl-cta o" style="color:#b91c1c" onclick="sylPlanClearAll()">Clear all ticks</button>':'')
    +'<div class="syl-seg2" style="margin-left:auto">'
-   +'<button class="'+(mode==='weekly'?'on':'')+'" onclick="_SYL.planMode=\'weekly\';sylPlanRender()">Weekly plan</button>'
-   +'<button class="'+(mode==='monthly'?'on':'')+'" onclick="_SYL.planMode=\'monthly\';sylPlanRender()">Monthly plan</button>'
+   +'<button class="'+(mode==='weekly'?'on':'')+'" onclick="_SYL.planMode=\'weekly\';_SYL.openWeek=null;sylPlanRender()">Weekly plan</button>'
+   +'<button class="'+(mode==='monthly'?'on':'')+'" onclick="_SYL.planMode=\'monthly\';_SYL.openWeek=null;sylPlanRender()">Monthly plan</button>'
    +'</div></div>';
 
   h += sylExamCards(ex);
@@ -16713,11 +16765,15 @@ function sylPlanRender(){
       if(!(x.plan_modules||[]).length) return;
       var nch=0; x.plan_modules.forEach(function(mo){ nch+=mo.pe_count; });
       var chWise=(x.display_mode==='chapters');
-      h+='<div style="margin-top:12px"><b style="font-size:.92rem">'+esc(x.name)+'</b>'
-       +'<div style="font-size:.73rem;opacity:.68;margin:3px 0 2px;line-height:1.5">'
-       +(chWise?'<b>'+nch+' chapters</b>':'<b>'+x.plan_modules.length+' modules</b> &middot; '+nch+' chapters')
+      var subOpen=!!(_SYL.openPlanSub&&_SYL.openPlanSub[x.code]);
+      h+='<div class="syl-psub'+(subOpen?' open':'')+'">'
+       +'<div class="syl-psubh" onclick="sylPlanSubToggle(\''+esc(x.code)+'\')">'
+       +'<div class="syl-psubi"><b>'+esc(x.name)+'</b>'
+       +'<small>'+(chWise?'<b>'+nch+' chapters</b>':'<b>'+x.plan_modules.length+' modules</b> &middot; '+nch+' chapters')
        +' &middot; +'+_sylN(x.plan_marks)
-       +' paper marks &middot; projected total <b>'+_sylN(x.projected_after)+' out of 100</b> after these</div>';
+       +' paper marks &middot; projected total <b>'+_sylN(x.projected_after)+' out of 100</b> after these</small></div>'
+       +'<span class="syl-chev">&#9662;</span></div>'
+       +'<div class="syl-psubb">';
       x.plan_modules.forEach(function(mo,i){
         var badge='';
         if(mo.require){
@@ -16733,7 +16789,7 @@ function sylPlanRender(){
          +badge
          +'<span class="syl-mk">'+_sylN(mo.weightage)+'</span></div>';
       });
-      h+='</div>';
+      h+='</div></div>';
     });
     h+='</div></div>';
   }
@@ -16749,11 +16805,15 @@ function sylPlanRender(){
       var doneAll=true, tot=0, dn=0;
       b.subjects.forEach(function(su){ su.items.forEach(function(it){
         tot++; if(sylIsDone(it.code,it.no)) dn++; else doneAll=false; }); });
-      h+='<div class="syl-wk'+(doneAll?' done':'')+'">'
-       +'<div class="syl-wkh"><div><b>'+esc(b.label)+'</b>'
+      var wkOpen=(_SYL.openWeek===b.label);
+      h+='<div class="syl-wk'+(doneAll?' done':'')+(wkOpen?' open':'')+'">'
+       +'<div class="syl-wkh" onclick="sylWeekToggle(\''+esc(b.label)+'\')"><div><b>'+esc(b.label)+'</b>'
        +'<small>'+sylDate(b.from)+' to '+sylDate(b.to)+'</small></div>'
-       +'<div style="text-align:right"><b class="syl-mk">'+dn+' of '+tot+' done</b>'
-       +'<small>'+b.chapters+' chapters</small></div></div>';
+       +'<div style="text-align:right;display:flex;align-items:center;gap:9px"><div>'
+       +'<b class="syl-mk">'+dn+' of '+tot+' done</b>'
+       +'<small>'+b.chapters+' chapters</small></div>'
+       +'<span class="syl-chev">&#9662;</span></div></div>'
+       +'<div class="syl-wkb">';
       b.subjects.forEach(function(su){
         h+='<div class="syl-wsub"><div class="h"><span>'+esc(su.subject)+'</span>'
          +'<span>'+_sylN(su.marks)+' marks</span></div>';
@@ -16766,7 +16826,7 @@ function sylPlanRender(){
         });
         h+='</div>';
       });
-      h+='</div>';
+      h+='</div></div>';
     });
   }
   h+='</div></div>';
@@ -16780,17 +16840,38 @@ function sylPlanRender(){
     var doneLbl = s.target==='top' ? ((s.top_target||90)+' Percent Target Completed')
                : s.target==='high' ? (s.high_target+' Percent Target Completed')
                : 'Passing Marks Criteria Completed';
-    h+='<div class="syl-goal '+(x.reached?'ok':'no')+'" style="margin-top:9px">'
-     +'<span><b>'+esc(x.name)+'</b> &middot; '+_sylN(x.covered)+' marks covered'
-     +' &middot; NIOS '+_sylN(core)+' + bonus '+_sylN(Math.round((x.needed-core)*10)/10)+' = '+_sylN(x.needed)
-     +(x.theory_reached?'':' &middot; theory still short')+'</span>'
-     +'<span>'+(completed
-       ? esc(doneLbl)+'<span class="syl-expblink" onclick="event.stopPropagation();sylExpNote()" title="What do expected marks mean?">Expected &#9432;</span>'
-       : x.chapters_left+' chapters left')+'</span></div>';
+    var pct=x.needed>0 ? Math.min(100,Math.round((x.covered/x.needed)*1000)/10) : 0;
+    h+='<div class="syl-tck '+(completed?'ok':'no')+'">'
+     +'<div class="syl-tck-top">'
+     +'<div class="syl-tck-name"><b>'+esc(x.name)+'</b>'
+     +(completed
+       ? '<span class="syl-tck-pill">'+esc(doneLbl)+'</span>'
+         +'<span class="syl-expblink" onclick="event.stopPropagation();sylExpNote()" title="What do expected marks mean?">Expected &#9432;</span>'
+       : '<span class="syl-tck-left">'+x.chapters_left+' chapters left</span>')
+     +'</div>'
+     +'<div class="syl-tck-num"><b>'+_sylN(x.covered)+'</b> <small>/ '+_sylN(x.needed)+' marks</small></div>'
+     +'</div>'
+     +'<div class="syl-tck-bar"><i style="width:'+pct+'%"></i></div>'
+     +'<div class="syl-tck-sub">NIOS '+_sylN(core)+' + bonus '+_sylN(Math.round((x.needed-core)*10)/10)
+     +' = '+_sylN(x.needed)+' &middot; '+pct+'% covered'
+     +(x.theory_reached?'':' &middot; theory still short')+'</div>'
+     +'</div>';
   });
   if(!(s.per_subject||[]).length) h+='<div class="syl-empty">No verified subject yet.</div>';
   h+='</div></div></div>';
   _sylEl('s-syl-content').innerHTML=h;
+}
+
+/* v68 — study plan subject accordion: har subject apne aap khul/band hota */
+function sylPlanSubToggle(code){
+  _SYL.openPlanSub=_SYL.openPlanSub||{};
+  _SYL.openPlanSub[code]=!_SYL.openPlanSub[code];
+  sylPlanRender();
+}
+/* v68 — week accordion: naya week kholte hi pichhla apne aap band */
+function sylWeekToggle(label){
+  _SYL.openWeek=(_SYL.openWeek===label)?null:label;
+  sylPlanRender();
 }
 
 function sylIsDone(code,no){
