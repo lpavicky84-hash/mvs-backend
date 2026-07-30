@@ -5,6 +5,7 @@
 # v71: status history timeline, admin edit, auto One Shot (per subject chapters) aur
 # Rapid Revision (per subject link) special tasks — no approval, progress tracking.
 import json
+import re
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Body
@@ -62,6 +63,9 @@ def _ensure_special_columns():
         "ALTER TABLE video_tasks ADD COLUMN status_history TEXT NULL",
         "ALTER TABLE video_tasks ADD COLUMN last_link_at DATETIME NULL",
         "ALTER TABLE video_tasks ADD COLUMN admin_seen_at DATETIME NULL",
+        "ALTER TABLE video_tasks ADD COLUMN weekly_quota INTEGER DEFAULT 0",
+        "ALTER TABLE video_tasks ADD COLUMN weekly_day VARCHAR(12) DEFAULT ''",
+        "ALTER TABLE video_tasks ADD COLUMN item_source VARCHAR(12) DEFAULT ''",
     ]
     for ddl in alters:
         try:
@@ -105,6 +109,7 @@ REVIEW_ACTIONS = ("approved", "editing_soon", "editing_done", "uploaded", "rejec
 # jayega (har list call pe missing chapters add hote hain — links kabhi nahi
 # hataye jaate).
 # =============================================================
+WEEK_DAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 ONE_SHOT_DEADLINE = "2026-09-10T23:59"     # saare One Shot chapters ki deadline
 RAPID_REVISION_DEADLINE = "2026-09-30T23:59"  # Rapid Revision (per subject) deadline
 
@@ -182,16 +187,12 @@ def _chapters_for(db, tid, name, cls):
     import syllabus_routes as SR
     import syllabus_data as SD
     from models import Timetable
-    levels = []
-    try:
-        lv = SR.class_level_from_name(cls)
-        if lv in ("10", "12"):
-            levels.append(lv)
-    except Exception:
-        pass
-    for lv in ("12", "10"):
-        if lv not in levels:
-            levels.append(lv)
+    lv0 = _class_level(cls)
+    if lv0:
+        levels = [lv0]   # class pata ho to SIRF usi class ka syllabus — doosri
+                         # class ke chapters kabhi merge nahi (bulletproof)
+    else:
+        levels = ["12", "10"]
     for lv in levels:
         code = None
         try:
@@ -225,11 +226,16 @@ def _chapters_for(db, tid, name, cls):
     # fallback: timetable ke distinct topics (teacher + subject)
     try:
         sq = squash(name)
+        lv_want = _class_level(cls)
         tops, seen_t = [], set()
         for r in db.query(Timetable).filter(Timetable.teacher_id == tid,
                                             Timetable.is_active == True).all():
             if squash(r.subject or "") != sq:
                 continue
+            if lv_want:
+                rl = _class_level(getattr(r, "class_name", ""))
+                if rl and rl != lv_want:
+                    continue  # doosri class ka period — merge bilkul nahi
             tp2 = (r.topic or "").strip()
             if tp2 and tp2.lower() not in seen_t:
                 seen_t.add(tp2.lower())
@@ -241,31 +247,52 @@ def _chapters_for(db, tid, name, cls):
     return [], "pending"
 
 
-def _special_subject_names(db, tp, subs):
-    """Teacher ke subjects ke STABLE display naam — same subject do classes me ho
-    to class suffix. One Shot task key aur Rapid rows dono isi se bante hain,
-    taaki baad me syllabus aane pe naam na badle (duplicate task na bane)."""
-    from collections import Counter
+def _class_level(cl):
+    """'Class 12' / '12' / 'XII' → '12'; samajh na aaye to ''."""
+    try:
+        import syllabus_routes as SR
+        lv = SR.class_level_from_name(cl)
+        if lv in ("10", "12"):
+            return lv
+    except Exception:
+        pass
+    d = re.sub(r"\D", "", str(cl or ""))
+    return d if d in ("10", "12") else ""
+
+
+def _stable_subject_display(nm, cl):
+    """HAMESHA stable display naam: class pata ho to 'Physics 12' / 'Physics 10'.
+    Baad me doosri class add/remove hone pe bhi naam WAHY rehta hai — isi se
+    duplicate/merge task ka jad kaaran khatam hota hai."""
     from subjects_registry import canon_display
-    import syllabus_routes as SR
-    cnt = Counter(n.lower() for n, _c in subs)
-    out = []
-    seen = set()
+    base = (canon_display(nm, cl or None) or "").strip() or (nm or "").strip()
+    lv = _class_level(cl)
+    return ("%s %s" % (base, lv)).strip() if lv else base
+
+
+def _legacy_subject_names(nm, cl, display):
+    """Purane naam formats (v71: plain 'Physics' ya 'Physics · Class 12') —
+    self-heal rename ke candidates; naya stable naam isme shamil nahi."""
+    from subjects_registry import canon_display
+    base = (canon_display(nm, cl or None) or "").strip() or (nm or "").strip()
+    lv = _class_level(cl)
+    cands = {base}
+    if lv:
+        cands.add("%s · Class %s" % (base, lv))
+    cands.discard(display)
+    return [c for c in cands if c]
+
+
+def _special_subject_names(db, tp, subs):
+    """[(raw, cls, STABLE display)] — same subject alag classes me ho to bhi
+    'Physics 12' / 'Physics 10' hamesha alag-alag aur kabhi nahi badalte."""
+    out, seen = [], set()
     for nm, cl in subs:
-        dn = canon_display(nm, cl or None)
-        if cnt[nm.lower()] > 1:
-            lv = ""
-            try:
-                lv = SR.class_level_from_name(cl) or ""
-            except Exception:
-                pass
-            if lv:
-                dn = "%s · Class %s" % (dn, lv)
-        if dn.lower() not in seen:
+        dn = _stable_subject_display(nm, cl)
+        if dn and dn.lower() not in seen:
             seen.add(dn.lower())
             out.append((nm, cl, dn))
     return out
-
 
 def _dl(val):
     return datetime.strptime(val, "%Y-%m-%dT%H:%M")
@@ -287,9 +314,55 @@ def _sync_chapters(db, t, titles):
     return changed
 
 
+def _dedupe_special(db, teacher_id, kind):
+    """Same teacher+kind+subject ke duplicate tasks self-heal merge (kahin purana
+    bug ya double-create ho to bhi): sabse purana task rakho, baaki ke chapters
+    move karke (link wale preserve) task delete. History bhi merge hoti hai."""
+    tasks = (db.query(VideoTask)
+             .filter(VideoTask.teacher_id == teacher_id, VideoTask.kind == kind)
+             .order_by(VideoTask.created_at.asc(), VideoTask.id.asc()).all())
+    groups = {}
+    for t in tasks:
+        groups.setdefault((t.subject or "").strip().lower(), []).append(t)
+    changed = False
+    for _k, grp in groups.items():
+        if len(grp) < 2:
+            continue
+        keep = grp[0]
+        existing = { (c.title or "").strip().lower(): c for c in
+                     db.query(VideoTaskChapter)
+                     .filter(VideoTaskChapter.task_id == keep.id).all() }
+        for extra in grp[1:]:
+            for c in (db.query(VideoTaskChapter)
+                      .filter(VideoTaskChapter.task_id == extra.id).all()):
+                key = (c.title or "").strip().lower()
+                tgt = existing.get(key)
+                if tgt is None:
+                    c.task_id = keep.id
+                    existing[key] = c
+                else:
+                    if (c.link or "").strip() and not (tgt.link or "").strip():
+                        tgt.link, tgt.submitted_at = c.link, c.submitted_at
+                    db.delete(c)
+            if (getattr(extra, "last_link_at", None) or datetime.min) > \
+               (getattr(keep, "last_link_at", None) or datetime.min):
+                keep.last_link_at = extra.last_link_at
+            # timelines merge — purane task ki history bhi survive kare
+            mh = { (h.get("s"), h.get("at"), h.get("note")): h for h in _hist(keep) }
+            for h in _hist(extra):
+                mh.setdefault((h.get("s"), h.get("at"), h.get("note")), h)
+            merged = sorted(mh.values(), key=lambda h: h.get("at") or "")
+            keep.status_history = json.dumps(merged)
+            db.delete(extra)
+            _hist_add(keep, "edited", "Duplicate task merged automatically")
+            changed = True
+    return changed
+
+
 def _ensure_special_teacher(db, tp):
     """Teacher ke One Shot (per subject) + Rapid Revision tasks banao/sync karo.
-    Idempotent — har list call pe chalta hai; naye subjects/chapters auto-add."""
+    Idempotent + self-heal: purane naam formats rename, duplicate tasks merge,
+    links/history kabhi delete nahi hote."""
     subs = _teacher_subject_list(db, tp)
     if not subs:
         return
@@ -303,7 +376,25 @@ def _ensure_special_teacher(db, tp):
         titles, _src = _chapters_for(db, tp.id, nm, cl)
         t = (db.query(VideoTask)
              .filter(VideoTask.teacher_id == tp.id, VideoTask.kind == "one_shot",
-                     VideoTask.subject == display).first())
+                     VideoTask.subject == display)
+             .order_by(VideoTask.id.asc()).first())
+        # purane naam ('Physics' / 'Physics · Class 12') ke tasks HAMESHA rename —
+        # canonical task pehle se ho tab bhi, warna legacy kabhi heal nahi hoga
+        legacy = _legacy_subject_names(nm, cl, display)
+        if legacy:
+            q = (db.query(VideoTask)
+                 .filter(VideoTask.teacher_id == tp.id, VideoTask.kind == "one_shot",
+                         VideoTask.subject.in_(legacy))
+                 .order_by(VideoTask.id.asc()))
+            if t:
+                q = q.filter(VideoTask.id != t.id)
+            for lt in q.all():
+                lt.subject = display
+                lt.title = "One Shot — %s (All Chapters)" % display
+                _hist_add(lt, "edited", "Subject name standardized: %s" % display)
+                changed = True
+                if t is None:
+                    t = lt
         if not t:
             t = VideoTask(teacher_id=tp.id, title="One Shot — %s (All Chapters)" % display,
                           kind="one_shot", subject=display, video_type="One Shot Video",
@@ -313,28 +404,90 @@ def _ensure_special_teacher(db, tp):
             db.flush()
             _hist_add(t, "assigned", "One Shot task auto-created — %s" % display)
             if tp.user_id:
-                _vt_notify(db, tp.user_id, "🎬 One Shot Task — %s" % display,
+                _vt_notify(db, tp.user_id, "One Shot Task — %s" % display,
                            'A One Shot video task for %s is now in My Tasks — record one-shot '
                            'videos of every chapter and paste each chapter\'s link in front of it. '
                            'Deadline: %s.' % (display, _dl(ONE_SHOT_DEADLINE).strftime("%d %b %Y")))
             changed = True
         if titles and _sync_chapters(db, t, titles):
             changed = True
-    # Rapid Revision — ek task, rows = teacher ke subjects
-    rt = (db.query(VideoTask)
-          .filter(VideoTask.teacher_id == tp.id, VideoTask.kind == "rapid_revision").first())
-    if not rt:
-        rt = VideoTask(teacher_id=tp.id, title="Rapid Revision — All Subjects",
-                       kind="rapid_revision", subject="", video_type="Rapid Revision",
-                       status="assigned", proposed_by="admin", proposal_ok="approved",
-                       deadline=_dl(RAPID_REVISION_DEADLINE))
-        db.add(rt)
-        db.flush()
-        _hist_add(rt, "assigned", "Rapid Revision task auto-created")
+    # Rapid Revision — har subject ka ek task, chapters syllabus/timetable se (One Shot jaisa)
+    for nm, cl, display in named:
+        titles, _src = _chapters_for(db, tp.id, nm, cl)
+        rt = (db.query(VideoTask)
+              .filter(VideoTask.teacher_id == tp.id, VideoTask.kind == "rapid_revision",
+                      VideoTask.subject == display)
+              .order_by(VideoTask.id.asc()).first())
+        legacy = _legacy_subject_names(nm, cl, display)
+        if legacy:
+            q = (db.query(VideoTask)
+                 .filter(VideoTask.teacher_id == tp.id, VideoTask.kind == "rapid_revision",
+                         VideoTask.subject.in_(legacy))
+                 .order_by(VideoTask.id.asc()))
+            if rt:
+                q = q.filter(VideoTask.id != rt.id)
+            for lt in q.all():
+                lt.subject = display
+                lt.title = "Rapid Revision — %s (All Chapters)" % display
+                _hist_add(lt, "edited", "Subject name standardized: %s" % display)
+                changed = True
+                if rt is None:
+                    rt = lt
+        if not rt:
+            rt = VideoTask(teacher_id=tp.id,
+                           title="Rapid Revision — %s (All Chapters)" % display,
+                           kind="rapid_revision", subject=display,
+                           video_type="Rapid Revision",
+                           status="assigned", proposed_by="admin", proposal_ok="approved",
+                           deadline=_dl(RAPID_REVISION_DEADLINE))
+            db.add(rt)
+            db.flush()
+            _hist_add(rt, "assigned", "Rapid Revision task auto-created — %s" % display)
+            if tp.user_id:
+                _vt_notify(db, tp.user_id, "Rapid Revision Task — %s" % display,
+                           'A Rapid Revision task for %s is now in My Tasks — record a rapid '
+                           'revision video of every chapter and paste each chapter\'s link in '
+                           'front of it. Deadline: %s.'
+                           % (display, _dl(RAPID_REVISION_DEADLINE).strftime("%d %b %Y")))
+            changed = True
+        if titles and _sync_chapters(db, rt, titles):
+            changed = True
+    # Legacy single-task format (subject="" — ek task jisme har subject ki ek row thi)
+    # migrate: purane links naye per-subject task ki history me note karke task delete.
+    legacy_single = (db.query(VideoTask)
+                     .filter(VideoTask.teacher_id == tp.id,
+                             VideoTask.kind == "rapid_revision",
+                             VideoTask.subject == "")
+                     .all())
+    if legacy_single:
+        legacy_map = {}
+        for nm, cl, display in named:
+            legacy_map[display.lower()] = display
+            for lg in _legacy_subject_names(nm, cl, display):
+                legacy_map[lg.lower()] = display
+        for old in legacy_single:
+            rows = (db.query(VideoTaskChapter)
+                    .filter(VideoTaskChapter.task_id == old.id).all())
+            for crow in rows:
+                tgt_disp = legacy_map.get((crow.title or "").strip().lower())
+                if not tgt_disp or not (crow.link or "").strip():
+                    continue
+                nrt = (db.query(VideoTask)
+                       .filter(VideoTask.teacher_id == tp.id,
+                               VideoTask.kind == "rapid_revision",
+                               VideoTask.subject == tgt_disp)
+                       .order_by(VideoTask.id.asc()).first())
+                if nrt is not None:
+                    _hist_add(nrt, "progress",
+                              'Migrated subject-level link for %s: %s' % (tgt_disp, crow.link))
+            for crow in rows:
+                db.delete(crow)
+            db.delete(old)
+            changed = True
+    # task-level duplicate merge (rename ke baad bhi ban sakte hain)
+    if _dedupe_special(db, tp.id, "one_shot"):
         changed = True
-    # rapid rows = wahi stable display names
-    rsubs = [display for _nm, _cl, display in named]
-    if rsubs and _sync_chapters(db, rt, rsubs):
+    if _dedupe_special(db, tp.id, "rapid_revision"):
         changed = True
     if changed:
         try:
@@ -448,6 +601,9 @@ def _task_out(db, t, with_thumb=True):
         "reject_count": t.reject_count or 0,
         "kind": getattr(t, "kind", "normal") or "normal",
         "subject": getattr(t, "subject", "") or "",
+        "weekly_quota": getattr(t, "weekly_quota", 0) or 0,
+        "weekly_day": getattr(t, "weekly_day", "") or "",
+        "item_source": getattr(t, "item_source", "") or "",
         "created_at": t.created_at.strftime("%d %b %Y") if t.created_at else "",
         "history": _hist_out(t),
     }
@@ -858,6 +1014,22 @@ def vt_edit(task_id: int, payload: dict = Body(...),
             changes.append("channel")
             t.channel_id = nid
             t.channel_name = ch.name if ch else ""
+    if (getattr(t, "kind", "") or "") in ("one_shot", "rapid_revision", "project"):
+        if payload.get("weekly_quota") is not None:
+            try:
+                wq = max(0, min(50, int(payload.get("weekly_quota") or 0)))
+            except Exception:
+                wq = 0
+            if wq != (getattr(t, "weekly_quota", 0) or 0):
+                changes.append("weekly target → %d videos/week" % wq if wq else "weekly target hataya")
+                t.weekly_quota = wq
+        if payload.get("weekly_day") is not None:
+            wd = (payload.get("weekly_day") or "").strip().lower()
+            if wd and wd not in WEEK_DAYS:
+                raise HTTPException(400, "Weekly day invalid — monday..sunday")
+            if wd != (getattr(t, "weekly_day", "") or ""):
+                changes.append("weekly deadline day → " + (wd.title() if wd else "—"))
+                t.weekly_day = wd
     for fld, col in (("reference", "reference"), ("remarks", "remarks")):
         if payload.get(fld) is not None:
             v = (payload.get(fld) or "").strip()
@@ -888,6 +1060,128 @@ def vt_edit(task_id: int, payload: dict = Body(...),
     return {"ok": True, "changed": changes}
 
 
+def _subject_teachers(db, subject, class_level=""):
+    """Subject (+optional class '10'/'12') ke ACTIVE teachers — auto-fetch."""
+    from subjects_registry import squash
+    sq = squash(subject)
+    out = []
+    if not sq:
+        return out
+    lv_want = class_level if class_level in ("10", "12") else ""
+    for tp in db.query(TeacherProfile).all():
+        _u = db.query(User).filter(User.id == tp.user_id).first()
+        if _u is not None and _u.is_active is False:
+            continue
+        for nm, cl in _teacher_subject_list(db, tp):
+            if squash(nm) != sq:
+                continue
+            lv = _class_level(cl)
+            if lv_want and lv and lv != lv_want:
+                continue
+            out.append({"profile_id": tp.id,
+                        "name": (_u.name if _u else "") or ("Teacher #%d" % tp.id),
+                        "class": cl, "level": lv})
+    return out
+
+
+@router.get("/admin/video-tasks/subject-teachers")
+def vt_subject_teachers(subject: str = "", class_level: str = "",
+                        db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Project assign form — subject chunte hi teacher auto-fetch."""
+    return {"teachers": _subject_teachers(db, subject, class_level)}
+
+
+@router.post("/admin/video-tasks/project")
+def vt_create_project(payload: dict = Body(...),
+                      db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Multi-video PROJECT assign karo — weekly quota/day + FINAL deadline ke saath.
+    Items: syllabus chapters se (connect=true) YA custom naam list (connect=false —
+    timetable/chapters/parts se juda nahi). Teacher: manual ya subject se auto."""
+    subject = (payload.get("subject") or "").strip()
+    class_level = (payload.get("class_level") or "").strip()
+    if class_level not in ("10", "12"):
+        class_level = ""
+    connect = bool(payload.get("connect"))
+    final_dl = _parse_deadline(payload.get("deadline"))
+    if not final_dl:
+        raise HTTPException(400, "Final deadline is required")
+    # teacher — manual dropdown ya subject se auto
+    tp = None
+    tid = int(payload.get("teacher_id") or 0)
+    if tid:
+        tp = _teacher_profile(db, tid)
+        if not tp:
+            raise HTTPException(404, "Teacher not found")
+    elif subject:
+        matches = _subject_teachers(db, subject, class_level)
+        if not matches:
+            raise HTTPException(400, "No active teacher found for this subject — "
+                                     "please select one manually.")
+        tp = _teacher_profile(db, matches[0]["profile_id"])
+    if not tp:
+        raise HTTPException(400, "Select a teacher, or choose a subject for auto-fetch.")
+    display = _stable_subject_display(subject, class_level) if subject else ""
+    title = (payload.get("title") or "").strip()
+    if not title:
+        title = "Project — %s" % display if display else ""
+    if not title:
+        raise HTTPException(400, "A subject or a project title is required")
+    try:
+        weekly_quota = max(0, min(50, int(payload.get("weekly_quota") or 0)))
+    except Exception:
+        weekly_quota = 0
+    weekly_day = (payload.get("weekly_day") or "").strip().lower()
+    if weekly_day and weekly_day not in WEEK_DAYS:
+        raise HTTPException(400, "Invalid weekly day — use monday..sunday")
+    # items — syllabus chapters (connect) ya custom list
+    item_source, items = "custom", []
+    if connect and subject:
+        items, _src = _chapters_for(db, tp.id, subject, class_level)
+        item_source = "syllabus"
+    else:
+        seen_it = set()
+        for it in (payload.get("items") or []):
+            s2 = re.sub(r"\s+", " ", str(it or "")).strip()
+            if s2 and s2.lower() not in seen_it:
+                seen_it.add(s2.lower())
+                items.append(s2[:300])
+            if len(items) >= 100:
+                break
+        if not items:
+            raise HTTPException(400, "Add at least 1 video/item name "
+                                     "(or turn on syllabus connect).")
+    t = VideoTask(teacher_id=tp.id, title=title, kind="project", subject=display,
+                  video_type="Project", status="assigned", proposed_by="admin",
+                  proposal_ok="approved", deadline=final_dl,
+                  remarks=(payload.get("remarks") or "").strip(),
+                  reference=(payload.get("reference") or "").strip(),
+                  weekly_quota=weekly_quota, weekly_day=weekly_day,
+                  item_source=item_source)
+    db.add(t)
+    db.flush()
+    if items:
+        _sync_chapters(db, t, items)
+    wk = []
+    if weekly_quota:
+        wk.append("%d videos/week" % weekly_quota)
+    if weekly_day:
+        wk.append("due every %s" % weekly_day.title())
+    _hist_add(t, "assigned", "Project assigned — %s. Final deadline: %s" % (
+        ("Weekly: " + " · ".join(wk)) if wk else "No weekly target",
+        final_dl.strftime("%d %b %Y, %I:%M %p")))
+    if tp.user_id:
+        _vt_notify(db, tp.user_id, "New Project — %s" % title,
+                   'You have been assigned a new project: "%s" (%d videos). %s'
+                   'Final deadline: %s. Paste each video\'s link in My Tasks as '
+                   'you complete them.'
+                   % (title, len(items),
+                      ("Weekly target: " + " · ".join(wk) + ". " if wk else ""),
+                      final_dl.strftime("%d %b %Y, %I:%M %p")))
+    db.commit()
+    return {"ok": True, "id": t.id, "teacher": _teacher_name(db, tp.id),
+            "total": len(items)}
+
+
 def _special_payload(db, kind):
     tasks = (db.query(VideoTask).filter(VideoTask.kind == kind)
              .order_by(VideoTask.created_at.asc()).all())
@@ -904,7 +1198,7 @@ def vt_admin_special(kind: str = "one_shot",
                      db: Session = Depends(get_db), _=Depends(get_admin)):
     """One Shot / Rapid Revision tasks sabhi teachers ke — chapters + progress +
     NEW blink (last_link_at > admin_seen_at). kind=all pe dono ek saath."""
-    if kind not in ("one_shot", "rapid_revision", "all"):
+    if kind not in ("one_shot", "rapid_revision", "project", "all"):
         raise HTTPException(400, "Invalid kind")
     for tp in db.query(TeacherProfile).all():
         try:
@@ -913,7 +1207,8 @@ def vt_admin_special(kind: str = "one_shot",
             db.rollback()
     if kind == "all":
         return {"one_shot": _special_payload(db, "one_shot"),
-                "rapid_revision": _special_payload(db, "rapid_revision")}
+                "rapid_revision": _special_payload(db, "rapid_revision"),
+                "project": _special_payload(db, "project")}
     return _special_payload(db, kind)
 
 
@@ -1007,7 +1302,7 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
     # special tasks (One Shot per subject + Rapid Revision) — chapters ke saath
     spts = (db.query(VideoTask)
             .filter(VideoTask.teacher_id == tp.id,
-                    VideoTask.kind.in_(["one_shot", "rapid_revision"]))
+                    VideoTask.kind.in_(["one_shot", "rapid_revision", "project"]))
             .order_by(VideoTask.kind.asc(), VideoTask.subject.asc()).all())
     special = [_special_out(db, t) for t in spts]
     return {"tasks": out, "stats": stats, "special": special,
@@ -1052,7 +1347,7 @@ def vt_submit(task_id: int, payload: dict = Body(...), db: Session = Depends(get
     if not t:
         raise HTTPException(404, "Task not found")
     if (getattr(t, "kind", "normal") or "normal") != "normal":
-        raise HTTPException(400, "One Shot / Rapid Revision task me chapter ke saamne link lagao")
+        raise HTTPException(400, "For One Shot / Rapid Revision tasks, paste the link next to each chapter")
     if t.status != "assigned":
         raise HTTPException(400, "This task is not open for submission")
     link = (payload.get("link") or "").strip()
@@ -1093,7 +1388,7 @@ def vt_chapter_link(task_id: int, payload: dict = Body(...), db: Session = Depen
     tp = _get_tp(current_user, db)
     t = db.query(VideoTask).filter(VideoTask.id == task_id,
                                    VideoTask.teacher_id == tp.id).first()
-    if not t or (getattr(t, "kind", "") or "") not in ("one_shot", "rapid_revision"):
+    if not t or (getattr(t, "kind", "") or "") not in ("one_shot", "rapid_revision", "project"):
         raise HTTPException(404, "Special task not found")
     cid = int(payload.get("chapter_id") or 0)
     row = (db.query(VideoTaskChapter)
@@ -1122,17 +1417,25 @@ def vt_chapter_link(task_id: int, payload: dict = Body(...), db: Session = Depen
         t.status = "submitted"
         t.submitted_at = now
         t.on_time = bool(t.deadline and now <= t.deadline)
+        unit = {"one_shot": "chapters", "rapid_revision": "chapters",
+                "project": "videos"}.get(t.kind, "items")
         _hist_add(t, "submitted", "All %d %s linked — %s" % (
-            total, "chapters" if t.kind == "one_shot" else "subjects",
-            "on time" if t.on_time else "delayed"))
+            total, unit, "on time" if t.on_time else "delayed"))
     if just_completed:
         uname = db.query(User).filter(User.id == tp.user_id).first()
-        label = "One Shot — %s" % t.subject if t.kind == "one_shot" else "Rapid Revision"
+        if t.kind == "one_shot":
+            label = "One Shot — %s" % t.subject
+        elif t.kind == "project":
+            label = t.title
+        else:
+            label = "Rapid Revision — %s" % t.subject
+        unit = {"one_shot": "chapters", "rapid_revision": "chapters",
+                "project": "videos"}.get(t.kind, "items")
         for a in db.query(User).filter(User.role == "admin", User.is_active == True).all():
-            _vt_notify(db, a.id, "🎉 %s Complete" % label,
-                       f'{(uname.name if uname else "A teacher")} ne {label} ke saare '
-                       f'{total} {"chapters" if t.kind == "one_shot" else "subjects"} ke links '
-                       f'daale ({"on time" if t.on_time else "delayed"}). Task Manager me dekhein.')
+            _vt_notify(db, a.id, "%s Complete" % label,
+                       '%s completed all %d %s of "%s" (%s). View it in the Task Manager.'
+                       % ((uname.name if uname else "A teacher"), total, unit, label,
+                          "on time" if t.on_time else "delayed"))
     db.commit()
     return {"ok": True, "done": done, "total": total,
             "completed": bool(total and done == total)}

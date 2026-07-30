@@ -7484,14 +7484,44 @@ async function loadTVTasks(){
         ${rejNote}${subBox}${doneBox}
       </div></div>`;
     };
-    el.innerHTML=`${hero}${statCards}${mtHtml}
-      ${_vtSpecialT(d.special)}
+    // ---- v73: master Task/Project cards + subject & type filters ----
+    const spec=d.special||[];
+    const specSubs=[...new Set(spec.map(t=>t.subject).filter(Boolean))].sort();
+    const fSpec=spec.filter(t=>(!_tvtSpecSub||t.subject===_tvtSpecSub)&&(!_tvtSpecKind||t.kind===_tvtSpecKind));
+    const subjSpec=spec.filter(t=>!_tvtSpecSub||t.subject===_tvtSpecSub);
+    let spD=0,spT=0; subjSpec.forEach(t=>{spD+=t.done||0;spT+=t.total||0});
+    const fTasks=_tvtSpecSub?tasks.filter(t=>!t.subject||t.subject===_tvtSpecSub):tasks;
+    const showTasks=(!_tvtView||_tvtView==='tasks'), showProj=(!_tvtView||_tvtView==='projects');
+    const masterCards=`<div class="vtm-cards">
+      <div class="vtm-card ${_tvtView==='tasks'?'on':''}" onclick="tvtView('tasks')">
+        <div class="vtm-ic">${ic('clipboard')}</div>
+        <div class="vtm-main"><div class="vtm-n">${active.length}<span> active</span></div>
+          <div class="vtm-l">Tasks</div>
+          <div class="vtm-s">Single video assignments · ${st.uploaded||0} uploaded · ${st.pending||0} pending</div></div>
+        <div class="vtm-go">${ic('chev-down')}</div></div>
+      <div class="vtm-card ${_tvtView==='projects'?'on':''}" onclick="tvtView('projects')">
+        <div class="vtm-ic">${ic('folder')}</div>
+        <div class="vtm-main"><div class="vtm-n">${spD}<span> / ${spT} videos done</span></div>
+          <div class="vtm-l">Projects</div>
+          <div class="vtm-s">One Shot · Rapid Revision · Projects${_tvtSpecSub?' — '+esc(_tvtSpecSub):''} · ${subjSpec.length} cards</div></div>
+        <div class="vtm-go">${ic('chev-down')}</div></div></div>`;
+    const filterBar=specSubs.length?`<div class="vtm-filter">
+      <span class="vtm-fl">Subject</span>
+      <button class="vtm-chip ${!_tvtSpecSub?'on':''}" onclick="tvtSpecSubSet('')">All Subjects</button>
+      ${specSubs.map(s=>`<button class="vtm-chip ${_tvtSpecSub===s?'on':''}" data-s="${esc(s)}" onclick="tvtSpecSubSet(this.dataset.s)">${esc(s)}</button>`).join('')}
+      <span class="vtm-fl">Type</span>
+      ${[['','All Types'],['one_shot','One Shot'],['rapid_revision','Rapid Revision'],['project','Projects']].map(([k,l])=>`<button class="vtm-chip ${_tvtSpecKind===k?'on':''}" onclick="tvtSpecKindSet('${k}')">${l}</button>`).join('')}
+    </div>`:'';
+    el.innerHTML=`${hero}${statCards}${mtHtml}${masterCards}${filterBar}
+      ${showProj?`<div class="vtm-sec-cap">Projects — click a card to open it</div>
+        <div id="tvt-spec-wrap">${_vtSpecialT(fSpec)}</div>`:''}
+      ${showTasks?`<div class="vtm-sec-cap">Tasks — single video assignments</div>
       <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="openTVTPropose()">${ic('plus')} Propose a Video</button>
         <span style="font-size:.74rem;color:var(--text-muted);align-self:center">Have a video idea? Propose it — once approved, a thumbnail & deadline will be assigned.</span>
       </div>
-      ${tasks.length?`<div class="vt-grid">${tasks.map(card).join('')}</div>`
-        :`<div class="ws-empty"><div class="big">${ic('clipboard')}</div><p><b>No video tasks yet</b></p><small>When the production manager assigns you a task, it will appear here with its deadline countdown.</small></div>`}`;
+      ${fTasks.length?`<div class="vt-grid">${fTasks.map(card).join('')}</div>`
+        :`<div class="ws-empty"><div class="big">${ic('clipboard')}</div><p><b>No video tasks yet</b></p><small>When the production manager assigns you a task, it will appear here with its deadline countdown.</small></div>`}`:''}`;
     const tick=()=>{ document.querySelectorAll('[data-tvt-cd]').forEach(sp=>{
       let s=+sp.dataset.secs; if(isNaN(s))return; s--; sp.dataset.secs=s;
       const neg=s<0; sp.textContent=_vtCdText(s);
@@ -7602,12 +7632,24 @@ function vtStatusOpen(id,who,ev){
     <div class="vt-tl">${rows||'<div style="font-size:.8rem;color:var(--text-muted)">No history yet.</div>'}</div>`,
     `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
 }
-// ---- special tasks (One Shot / Rapid Revision) — teacher side ----
+// ---- special tasks (One Shot / Rapid Revision / Projects) — teacher side ----
+let _tvtView='', _tvtSpecSub='', _tvtSpecKind='';
+function tvtView(v){ _tvtView=(_tvtView===v?'':v); loadTVTasks(); }
+function tvtSpecSubSet(s){ _tvtSpecSub=s||''; loadTVTasks(); }
+function tvtSpecKindSet(k){ _tvtSpecKind=k||''; loadTVTasks(); }
+function _vtOsUnit(t){ return t.kind==='project'?'videos':'chapters'; }
+function _vtOsWeek(t){
+  const w=[];
+  if(t.weekly_quota) w.push(`Weekly: ${t.weekly_quota} videos`);
+  if(t.weekly_day) w.push(`due every ${VTP_DLBL[t.weekly_day]||t.weekly_day}`);
+  return w.length?`<span class="vt-os-week">${ic('clock')} ${w.join(' · ')}</span>`:'';
+}
 function _vtOsProg(t){
-  return `<div class="vt-os-prog"><span class="n os-txt">${t.done} / ${t.total} ${t.kind==='one_shot'?'chapters':'subjects'} done</span>
+  return `<div class="vt-os-prog"><span class="n os-txt">${t.done} / ${t.total} ${_vtOsUnit(t)} done</span>
     <span class="vt-os-bar"><i style="width:${t.pct}%"></i></span><span class="n">${t.pct}%</span>
     <span class="vt-os-chev">${ic('chev-down')}</span></div>`;
 }
+function _vtKindLbl(t){ return {one_shot:'ONE SHOT',rapid_revision:'RAPID REVISION',project:'PROJECT'}[t.kind]||'PROJECT'; }
 function _vtChRow(t,c){
   if(c.link) return `<div class="vt-chr done" id="vt-chr-${t.id}-${c.id}"><span class="dot"></span><span class="nm">${esc(c.title)}</span>
     <span class="dt">${esc(c.submitted_at||'')}</span>
@@ -7618,29 +7660,22 @@ function _vtChRow(t,c){
     <button class="btn btn-primary btn-sm" style="padding:5px 12px" onclick="tvtChapterSave(${t.id},${c.id})">${ic('send')} Save</button></span></div>`;
 }
 function _vtSpecialT(sp){
-  if(!sp||!sp.length) return '';
+  if(!sp||!sp.length) return `<div class="ws-empty"><p><b>No projects match this filter</b></p><small>Choose All Subjects / All Types, or wait for projects to be assigned.</small></div>`;
   return sp.map(t=>{
-    const open=(t.done<t.total||!t.total)?' open':'';
+    const subTxt=t.kind==='project'
+      ?`<b>${t.total||''} videos</b> to deliver — paste each video's link as you complete it`
+      :(t.kind==='rapid_revision'
+        ?`Rapid revision video for every chapter — paste each chapter's link`
+        :`One-shot video for every chapter — paste each chapter's link`);
     const head=`<div class="vt-os-h" onclick="this.parentElement.classList.toggle('open')">
-      <div><h4>${t.kind==='one_shot'?'🎬 ONE SHOT — '+esc(t.subject):'⚡ RAPID REVISION'}</h4>
-      <div class="os-sub">${t.kind==='one_shot'?'Har chapter ka one-shot video — chapter ke saamne link lagao':'Har subject ka rapid revision video — dropdown se subject chuno, link daalo'} · Deadline: <b>${esc(t.deadline_nice||'—')}</b>${t.total?'': ' · chapters jald auto-fill honge'}</div></div>
-      <button class="btn btn-ghost btn-sm" style="color:#ffe9a8;border-color:rgba(255,233,168,.4)" onclick="vtStatusOpen(${t.id},'t',event)" title="Status history">${ic('history')}</button>
+      <div><h4><span class="vt-os-kind ${t.kind}">${_vtKindLbl(t)}</span>${esc(t.subject||t.title)}</h4>
+      <div class="os-sub">${subTxt} · ${t.kind==='project'?'Final deadline':'Deadline'}: <b>${esc(t.deadline_nice||'—')}</b>${t.total?'': ' · items will auto-fill shortly'}</div>
+      ${_vtOsWeek(t)}</div>
+      <button class="vt-os-hbtn" onclick="vtStatusOpen(${t.id},'t',event)">${ic('history')} History</button>
       ${_vtOsProg(t)}</div>`;
-    let body='';
-    if(t.kind==='one_shot'){
-      body=t.total?`<div>${t.chapters.map(c=>_vtChRow(t,c)).join('')}</div>`
-        :`<div style="font-size:.78rem;color:var(--text-muted);padding:8px 4px">Is subject ke chapters abhi syllabus manager / timetable me nahi hain — jaise hi upload honge, list apne aap yahan aa jayegi.</div>`;
-    }else{
-      const pend=t.chapters.filter(c=>!c.link);
-      const doneR=t.chapters.filter(c=>c.link);
-      body=`${pend.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-          <select class="input" id="tvt-rr-sub-${t.id}" style="flex:1;min-width:170px">${pend.map(c=>`<option value="${c.id}">${esc(c.title)}</option>`).join('')}</select>
-          <input class="input" id="tvt-rr-link-${t.id}" placeholder="https://drive.google.com/..." style="flex:2;min-width:210px">
-          <button class="btn btn-primary btn-sm" onclick="tvtRapidSave(${t.id})">${ic('send')} Save Link</button></div>`:''}
-        ${doneR.map(c=>_vtChRow(t,c)).join('')}
-        ${!pend.length&&doneR.length?`<div style="font-size:.78rem;font-weight:800;color:#047857;padding:6px 4px">${ic('check')} Sabhi subjects ke rapid revision links aa gaye — great job!</div>`:''}`;
-    }
-    return `<div class="vt-os${open}" id="vt-os-${t.id}">${head}<div class="vt-os-b">${body}</div></div>`;
+    const body=t.total?`<div>${t.chapters.map(c=>_vtChRow(t,c)).join('')}</div>`
+      :`<div style="font-size:.78rem;color:var(--text-muted);padding:8px 4px">This subject's chapters are not in the syllabus manager / timetable yet — the list will appear here automatically once they are uploaded.</div>`;
+    return `<div class="vt-os" id="vt-os-${t.id}">${head}<div class="vt-os-b">${body}</div></div>`;
   }).join('');
 }
 function tvtChEdit(tid,cid){
@@ -7655,22 +7690,10 @@ function tvtChEdit(tid,cid){
 async function tvtChapterSave(tid,cid){
   const inp=document.getElementById(`tvt-ch-${tid}-${cid}`);
   const link=(inp&&inp.value||'').trim();
-  if(!link){ toast('Pehle video ka link paste karo'); return; }
+  if(!link){ toast('Paste the video link first'); return; }
   try{
     const r=await api(`/api/teacher/video-tasks/${tid}/chapter-link`,'POST',{chapter_id:cid,link});
-    toast(r.completed?'🎉 Saare chapters complete — shabash!':`Saved — ${r.done}/${r.total} done.`);
-    loadTVTasks();
-  }catch(e){ toast(e.message||'Could not save'); }
-}
-async function tvtRapidSave(tid){
-  const sel=document.getElementById(`tvt-rr-sub-${tid}`);
-  const inp=document.getElementById(`tvt-rr-link-${tid}`);
-  const cid=sel?+sel.value:0, link=(inp&&inp.value||'').trim();
-  if(!cid){ toast('Subject chuno pehle'); return; }
-  if(!link){ toast('Pehle video ka link paste karo'); return; }
-  try{
-    const r=await api(`/api/teacher/video-tasks/${tid}/chapter-link`,'POST',{chapter_id:cid,link});
-    toast(r.completed?'🎉 Rapid Revision complete — shabash!':`Saved — ${r.done}/${r.total} done.`);
+    toast(r.completed?'All items completed — great work!':`Saved — ${r.done}/${r.total} done.`);
     loadTVTasks();
   }catch(e){ toast(e.message||'Could not save'); }
 }
@@ -7690,7 +7713,7 @@ async function loadAVTasks(){
     _vtTypes=ty.types||[];
     window._avtMap={}; (list.tasks||[]).forEach(t=>window._avtMap[t.id]=t); (list.proposals||[]).forEach(t=>window._avtMap[t.id]=t);
     window._avtSpec=(spec&&spec.one_shot)?spec:null;
-    if(window._avtSpec){ (spec.one_shot.tasks||[]).forEach(t=>window._avtMap[t.id]=t); ((spec.rapid_revision||{}).tasks||[]).forEach(t=>window._avtMap[t.id]=t); }
+    if(window._avtSpec){ (spec.one_shot.tasks||[]).forEach(t=>window._avtMap[t.id]=t); ((spec.rapid_revision||{}).tasks||[]).forEach(t=>window._avtMap[t.id]=t); ((spec.project||{}).tasks||[]).forEach(t=>window._avtMap[t.id]=t); }
     _vtTeachers=(Array.isArray(ts)?ts:(ts.teachers||[])).map(t=>({pid:t.profile_id,name:t.name}));
     const checking=(list.tasks||[]).filter(t=>t.status==='submitted'&&!t.reviewed).length;
     const badge=document.getElementById('a-vt-badge');
@@ -7732,11 +7755,29 @@ async function loadAVTasks(){
           ${reviewBtn}${editBtn}${editTaskBtn}${notifyBtn}
         </div></div></div>`;
     }).join('');
+    // ---- v73: master Task/Project cards + view toggle ----
+    const _spt=_avtSpecTotals();
+    const spAll=(window._avtSpec&&window._avtSpec.one_shot)?['one_shot','rapid_revision','project'].reduce((n,k)=>n+(((window._avtSpec[k]||{}).tasks)||[]).length,0):0;
+    const spNewN=_spt.osN+_spt.rrN+_spt.prN;
+    const showTasks=(!_avtView||_avtView==='tasks'), showProj=(!_avtView||_avtView==='projects');
+    const masterCards=`<div class="vtm-cards">
+      <div class="vtm-card ${_avtView==='tasks'?'on':''}" onclick="avtView('tasks')">
+        <div class="vtm-ic">${ic('clipboard')}</div>
+        <div class="vtm-main"><div class="vtm-n">${stats.total||0}<span> assigned</span></div>
+          <div class="vtm-l">Tasks</div>
+          <div class="vtm-s">Single video assignments · ${stats.done||0} completed · ${stats.pending||0} pending</div></div>
+        <div class="vtm-go">${ic('chev-down')}</div></div>
+      <div class="vtm-card ${_avtView==='projects'?'on':''}" onclick="avtView('projects')">
+        <div class="vtm-ic">${ic('folder')}</div>
+        <div class="vtm-main"><div class="vtm-n">${_spt.osD+_spt.rrD+_spt.prD}<span> / ${_spt.osT+_spt.rrT+_spt.prT} videos done</span>${spNewN?` <span class="vt-new">NEW ${spNewN}</span>`:''}</div>
+          <div class="vtm-l">Projects</div>
+          <div class="vtm-s">One Shot · Rapid Revision · Projects · ${spAll} cards</div></div>
+        <div class="vtm-go">${ic('chev-down')}</div></div></div>`;
     el.innerHTML=`
       <div class="vt-hero"><div><h3>Production Task Manager</h3><p>Assign video tasks with thumbnails & deadlines, review submissions, and publish to students.</p></div><div class="vt-sp"></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="vt-btn-dark" onclick="openVTChannels()">${ic('settings')} Channels (${_vtChannels.length})</button>
         <button class="vt-btn-dark" onclick="openVTTypes()">${ic('plus')} Video Types (${_vtTypes.length})</button>
-        <button class="vt-btn-gold" onclick="openVTAssign()">${ic('plus')} Assign Task</button></div></div>
+        <button class="vt-btn-gold" onclick="openVTAssign()">${ic('plus')} Assign Work</button></div></div>
       <div class="vt-cards">
         ${stat('Total Assigned',stats.total,'#8a6d10','clipboard')}
         ${stat('Completed',stats.done,'#059669','check')}
@@ -7745,10 +7786,11 @@ async function loadAVTasks(){
         ${stats.top?`<div class="vt-stat" style="border-color:rgba(16,185,129,.5)"><div class="vs-ic" style="background:rgba(16,185,129,.12);color:#047857">${ic('star')}</div><div><div style="font-size:.8rem;font-weight:800;color:#047857">${esc(stats.top.name)}</div><div class="vs-l">Top — ${stats.top.rate}% on time</div></div></div>`:''}
         ${stats.most_delayed?`<div class="vt-stat" style="border-color:rgba(220,38,38,.45)"><div class="vs-ic" style="background:rgba(220,38,38,.1);color:#b91c1c">${ic('alert')}</div><div><div style="font-size:.8rem;font-weight:800;color:#b91c1c">${esc(stats.most_delayed.name)}</div><div class="vs-l">Most delayed — ${stats.most_delayed.delayed}</div></div></div>`:''}
       </div>
-      ${(stats.by_type&&Object.keys(stats.by_type).length)?`<div class="card" style="margin-bottom:16px"><div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px"><span style="font-size:.68rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">${ic('chart')} Type-wise tasks</span>${Object.entries(stats.by_type).map(([k,v])=>`<span class="vt-type">${esc(k)} · ${v}</span>`).join('')}</div></div>`:''}
-      ${_avtSpecHtml()}
-      ${propHtml}
-      <div class="vt-filters">
+      ${masterCards}
+      ${showTasks&&(stats.by_type&&Object.keys(stats.by_type).length)?`<div class="card" style="margin-bottom:16px"><div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px"><span style="font-size:.68rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">${ic('chart')} Type-wise tasks</span>${Object.entries(stats.by_type).map(([k,v])=>`<span class="vt-type">${esc(k)} · ${v}</span>`).join('')}</div></div>`:''}
+      ${showProj?_avtSpecHtml():''}
+      ${showTasks?propHtml:''}
+      ${showTasks?`<div class="vt-filters">
         ${ic('filter')} <select onchange="_vtF.teacher_id=+this.value;loadAVTasks()">${tOpt}</select>
         <select onchange="_vtF.channel_id=+this.value;loadAVTasks()">${cOpt}</select>
         <select onchange="_vtF.video_type=this.value;loadAVTasks()">${tyOpt}</select>
@@ -7760,7 +7802,7 @@ async function loadAVTasks(){
         <div class="vt-rank-row"><span class="sbb-rank ${r.rank<=3?'top':''}">${r.rank}</span><span class="sbb-av">${esc((r.name||'?').slice(0,1))}</span>
           <div class="sbb-main"><div class="sbb-nm">${esc(r.name)}</div><div class="sbb-sub">${r.done}/${r.assigned} done · ${r.ontime} on time · ${r.delayed} delayed</div></div>
           <span class="vt-pill ${r.rate>=80?'ontime':r.rate>=50?'submitted':'delayed'}">${r.rate}% on time</span></div>`).join('')}</div></div>`:''}
-      <div class="vt-grid">${taskCards||`<div class="ws-empty"><div class="big">${ic('clipboard')}</div><p><b>No tasks found</b></p><small>Adjust the filters or assign a new video task.</small></div>`}</div>`;
+      <div class="vt-grid">${taskCards||`<div class="ws-empty"><div class="big">${ic('clipboard')}</div><p><b>No tasks found</b></p><small>Adjust the filters or assign a new video task.</small></div>`}</div>`:''}`;
     // countdowns tick (assigned tasks)
     const tick=()=>{ document.querySelectorAll('[data-vt-cd]').forEach(sp=>{
       let s=+sp.dataset.secs; if(isNaN(s)) return; s--; sp.dataset.secs=s;
@@ -7774,41 +7816,47 @@ function _vtCdText(s){
   const txt=(d?d+'d ':'')+String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0');
   return neg?`Overdue by ${txt}`:`${txt} left`;
 }
-// ---- admin: One Shot & Rapid Revision hidden section ----
-let _avtSpecTab='one_shot', _avtSpecSub='', _avtSpecOpen=false;
+// ---- admin: One Shot / Rapid Revision / Projects monitor ----
+let _avtSpecTab='one_shot', _avtSpecSub='', _avtSpecOpen=false, _avtView='';
+function avtView(v){ _avtView=(_avtView===v?'':v); if(_avtView==='projects') _avtSpecOpen=true; loadAVTasks(); }
 function _avtSpecTotals(){
-  const sp=window._avtSpec; if(!sp||!sp.one_shot) return {osN:0,osD:0,osT:0,rrN:0,rrD:0,rrT:0};
-  const agg=p=>{let d=0,t=0;(p.tasks||[]).forEach(x=>{d+=x.done||0;t+=x.total||0});return [d,t];};
-  const [osD,osT]=agg(sp.one_shot||{}), [rrD,rrT]=agg(sp.rapid_revision||{});
-  return {osN:(sp.one_shot||{}).new_count||0,osD,osT,rrN:(sp.rapid_revision||{}).new_count||0,rrD,rrT};
+  const sp=window._avtSpec; if(!sp||!sp.one_shot) return {osN:0,osD:0,osT:0,rrN:0,rrD:0,rrT:0,prN:0,prD:0,prT:0};
+  const agg=p=>{let d=0,t=0;((p||{}).tasks||[]).forEach(x=>{d+=x.done||0;t+=x.total||0});return [d,t];};
+  const [osD,osT]=agg(sp.one_shot||{}), [rrD,rrT]=agg(sp.rapid_revision||{}), [prD,prT]=agg(sp.project||{});
+  return {osN:(sp.one_shot||{}).new_count||0,osD,osT,rrN:(sp.rapid_revision||{}).new_count||0,rrD,rrT,prN:(sp.project||{}).new_count||0,prD,prT};
 }
 function _avtSpecHtml(){
   const sp=window._avtSpec; if(!sp||!sp.one_shot) return '';
-  const t=_avtSpecTotals(), newN=t.osN+t.rrN;
+  const t=_avtSpecTotals(), newN=t.osN+t.rrN+t.prN;
   return `<div class="card" style="margin-bottom:16px;border:1.5px solid ${newN?'rgba(220,38,38,.5)':'rgba(184,148,31,.4)'}">
     <div class="card-header" style="cursor:pointer;user-select:none" onclick="avtSpecToggle()">
-      <h3>${ic('play')} One Shot &amp; Rapid Revision ${newN?`<span class="vt-new" id="avt-spec-new">NEW ${newN}</span>`:''}</h3>
+      <h3>${ic('folder')} One Shot · Rapid Revision · Projects ${newN?`<span class="vt-new" id="avt-spec-new">NEW ${newN}</span>`:''}</h3>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <span class="vt-type">One Shot · ${t.osD}/${t.osT} chapters</span>
-        <span class="vt-type">Rapid · ${t.rrD}/${t.rrT} subjects</span>
+        <span class="vt-type">Rapid · ${t.rrD}/${t.rrT} chapters</span>
+        ${t.prT?`<span class="vt-type">Projects · ${t.prD}/${t.prT} videos</span>`:''}
         <span class="vt-os-chev" style="color:var(--text-muted);${_avtSpecOpen?'transform:rotate(180deg)':''}">${ic('chev-down')}</span>
       </div></div>
     <div class="card-body" id="avt-spec-b" style="display:${_avtSpecOpen?'block':'none'}">${_avtSpecOpen?_avtSpecBody():''}</div></div>`;
 }
 function _avtSpecBody(){
   const sp=window._avtSpec; if(!sp||!sp.one_shot) return '';
+  const subs=[...new Set([].concat(...['one_shot','rapid_revision','project'].map(k=>(((sp||{})[k]||{}).subjects)||[])))].sort();
   const data=sp[_avtSpecTab]||{tasks:[],subjects:[]};
-  const subs=_avtSpecTab==='one_shot'?(data.subjects||[]):[];
   let tasks=(data.tasks||[]);
-  if(_avtSpecTab==='one_shot'&&_avtSpecSub) tasks=tasks.filter(x=>x.subject===_avtSpecSub);
-  const tabBtn=(k,l,n)=>`<button class="btn ${_avtSpecTab===k?'btn-primary':'btn-ghost'} btn-sm" onclick="_avtSpecTab='${k}';_avtSpecSub='';avtSpecRefresh()">${l}${n?` (${n})`:''}</button>`;
-  return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+  if(_avtSpecSub) tasks=tasks.filter(x=>x.subject===_avtSpecSub);
+  const tabBtn=(k,l,n)=>`<button class="btn ${_avtSpecTab===k?'btn-primary':'btn-ghost'} btn-sm" onclick="_avtSpecTab='${k}';avtSpecRefresh()">${l}${n?` (${n})`:''}</button>`;
+  const kindLbl={one_shot:'One Shot',rapid_revision:'Rapid Revision',project:'Project'}[_avtSpecTab];
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
       ${tabBtn('one_shot','One Shot',(sp.one_shot.tasks||[]).length)}
       ${tabBtn('rapid_revision','Rapid Revision',(sp.rapid_revision.tasks||[]).length)}
-      ${_avtSpecTab==='one_shot'&&subs.length?`<select class="input" style="width:auto;padding:6px 10px" onchange="_avtSpecSub=this.value;avtSpecRefresh()">
-        <option value="">All Subjects</option>${subs.map(s=>`<option value="${esc(s)}" ${_avtSpecSub===s?'selected':''}>${esc(s)}</option>`).join('')}</select>`:''}
-      <span style="font-size:.7rem;color:var(--text-muted)">Card kholte hi NEW hat jata hai · chapter links clickable hain</span></div>
-    ${tasks.length?tasks.map(_avtSpecCard).join(''):`<div class="ws-empty"><p><b>Koi ${ _avtSpecTab==='one_shot'?'One Shot':'Rapid Revision'} task nahi mila</b></p><small>Teachers ke subjects set hote hi ye tasks apne aap ban jaate hain.</small></div>`}`;
+      ${tabBtn('project','Projects',((sp.project||{}).tasks||[]).length)}
+      <span style="font-size:.7rem;color:var(--text-muted)">Opening a card clears its NEW flag · chapter links are clickable</span></div>
+    ${subs.length?`<div class="vtm-filter" style="margin-bottom:12px;padding:8px 10px">
+      <span class="vtm-fl">Subject</span>
+      <button class="vtm-chip ${!_avtSpecSub?'on':''}" data-s="" onclick="avtSpecSubSet(this.dataset.s)">All Subjects</button>
+      ${subs.map(s=>`<button class="vtm-chip ${_avtSpecSub===s?'on':''}" data-s="${esc(s)}" onclick="avtSpecSubSet(this.dataset.s)">${esc(s)}</button>`).join('')}</div>`:''}
+    ${tasks.length?tasks.map(_avtSpecCard).join(''):`<div class="ws-empty"><p><b>No ${kindLbl} tasks found${_avtSpecSub?' for '+esc(_avtSpecSub):''}</b></p><small>${_avtSpecTab==='project'?'Assign a new project from Assign Work → Project tab.':'These tasks are created automatically once teacher subjects are set.'}</small></div>`}`;
 }
 function _avtSpecCard(t){
   const rows=(t.chapters||[]).map(c=> c.link
@@ -7816,13 +7864,15 @@ function _avtSpecCard(t){
     : `<div class="vt-chr"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">pending</span></div>`).join('');
   return `<div class="vt-os" id="avt-os-${t.id}">
     <div class="vt-os-h" onclick="avtSpecOpen(${t.id})">
-      <div><h4>${t.kind==='one_shot'?'🎬 '+esc(t.subject):'⚡ RAPID REVISION'} ${t.is_new?`<span class="vt-new" id="avt-new-${t.id}">NEW</span>`:''}</h4>
-      <div class="os-sub">${esc(t.teacher)} · Deadline: <b>${esc(t.deadline_nice||'—')}</b>${t.last_link_at?' · Last update: '+esc(t.last_link_at):''}</div></div>
-      <button class="btn btn-ghost btn-sm" style="color:#ffe9a8;border-color:rgba(255,233,168,.4)" onclick="vtStatusOpen(${t.id},'a',event)" title="Status history">${ic('history')}</button>
-      <button class="btn btn-ghost btn-sm" style="color:#ffe9a8;border-color:rgba(255,233,168,.4)" onclick="openVTEdit(${t.id},event)" title="Edit deadline / title">${ic('edit')}</button>
+      <div><h4><span class="vt-os-kind ${t.kind}">${_vtKindLbl(t)}</span>${esc(t.subject||t.title)} ${t.is_new?`<span class="vt-new" id="avt-new-${t.id}">NEW</span>`:''}</h4>
+      <div class="os-sub">${esc(t.teacher)} · ${t.kind==='project'?'Final deadline':'Deadline'}: <b>${esc(t.deadline_nice||'—')}</b>${t.last_link_at?' · Last update: '+esc(t.last_link_at):''}</div>
+      ${_vtOsWeek(t)}</div>
+      <button class="vt-os-hbtn" onclick="vtStatusOpen(${t.id},'a',event)">${ic('history')} History</button>
+      <button class="vt-os-hbtn" onclick="openVTEdit(${t.id},event)">${ic('edit')} Edit</button>
       ${_vtOsProg(t)}</div>
-    <div class="vt-os-b">${rows||`<div style="font-size:.78rem;color:var(--text-muted);padding:6px 2px">Chapters abhi syllabus manager / timetable me nahi hain — upload hote hi auto-fill ho jayenge.</div>`}</div></div>`;
+    <div class="vt-os-b">${rows||`<div style="font-size:.78rem;color:var(--text-muted);padding:6px 2px">Chapters are not in the syllabus manager / timetable yet — they will auto-fill once uploaded.</div>`}</div></div>`;
 }
+function avtSpecSubSet(s){ _avtSpecSub=s||''; avtSpecRefresh(); }
 function avtSpecToggle(){
   _avtSpecOpen=!_avtSpecOpen;
   const b=document.getElementById('avt-spec-b');
@@ -7843,8 +7893,8 @@ async function avtSpecOpen(id){
     try{ await api(`/api/admin/video-tasks/${id}/seen`,'POST',{}); }catch(e){}
     // header NEW count refresh
     const sp=window._avtSpec;
-    if(sp){ ['one_shot','rapid_revision'].forEach(k=>{ sp[k].new_count=(sp[k].tasks||[]).filter(x=>x.is_new).length; });
-      const t2=_avtSpecTotals(), n=t2.osN+t2.rrN;
+    if(sp){ ['one_shot','rapid_revision','project'].forEach(k=>{ if(sp[k]) sp[k].new_count=(sp[k].tasks||[]).filter(x=>x.is_new).length; });
+      const t2=_avtSpecTotals(), n=t2.osN+t2.rrN+t2.prN;
       const hp=document.getElementById('avt-spec-new');
       if(hp){ if(n) hp.textContent='NEW '+n; else hp.remove(); } }
   }
@@ -7860,10 +7910,12 @@ async function openVTEdit(id,ev){
   showModal(`Edit Task — ${esc(t.title)}`,`
     <div class="form-grid vt-form">
       <div class="form-group" style="grid-column:1/-1"><label>Video Title</label><input id="vt-e-title" class="input" value="${esc(t.title)}"></div>
-      <div class="form-group" style="grid-column:1/-1"><label>Deadline</label><input id="vt-e-deadline" type="datetime-local" class="input" value="${esc(t.deadline||'')}"></div>
+      <div class="form-group" style="grid-column:1/-1"><label>${special?'Final deadline':'Deadline'}</label><input id="vt-e-deadline" type="datetime-local" class="input" value="${esc(t.deadline||'')}"></div>
+      ${special?`<div class="form-group"><label>Weekly target (videos / week)</label><input id="vt-e-quota" type="number" min="0" max="50" class="input" value="${t.weekly_quota||0}"></div>
+      <div class="form-group"><label>Weekly deadline day</label><select id="vt-e-day" class="input"><option value="">— Not set —</option>${VTP_DAYS.map(d=>`<option value="${d}" ${t.weekly_day===d?'selected':''}>${VTP_DLBL[d]}</option>`).join('')}</select></div>`:''}
       ${special?'':`<div class="form-group"><label>YouTube Channel</label><select id="vt-e-channel" class="input"><option value="">— No channel —</option>${cOpts}</select></div>
       <div class="form-group"><label>Video Type</label><select id="vt-e-type" class="input"><option value="">— No type —</option>${tyOpts}</select></div>
-      <div class="form-group vt-thumb-box" style="grid-column:1/-1"><label>Thumbnail (nayi dene par hi badlegi)</label>
+      <div class="form-group vt-thumb-box" style="grid-column:1/-1"><label>Thumbnail (changes only if you provide a new one)</label>
         <div class="vt-file"><label class="vt-file-btn" for="vt-e-thumb">${ic('image')} Upload Image</label>
           <span class="vt-file-name" id="vt-thumb-name">No file chosen</span></div>
         <input id="vt-e-thumb" type="file" accept="image/*" style="display:none" onchange="vtThumbPreview(this)">
@@ -7886,6 +7938,8 @@ async function vtEditSave(id){
   if(chEl){ payload.channel_id=+chEl.value||null; payload.video_type=(document.getElementById('vt-e-type')||{}).value||'';
     payload.thumbnail_link=document.getElementById('vt-e-thumblink').value.trim();
     if(window._vtThumbB64) payload.thumbnail_b64=window._vtThumbB64; }
+  const qEl=document.getElementById('vt-e-quota');
+  if(qEl){ payload.weekly_quota=+qEl.value||0; payload.weekly_day=(document.getElementById('vt-e-day')||{}).value||''; }
   if(!payload.title){ toast('Title is required'); return; }
   if(!payload.deadline){ toast('Please set a deadline'); return; }
   try{
@@ -7914,8 +7968,7 @@ async function openVTAssign(proposalId){
   const dl=new Date(Date.now()+48*3600*1000); dl.setMinutes(0);
   const dlVal=`${dl.getFullYear()}-${String(dl.getMonth()+1).padStart(2,'0')}-${String(dl.getDate()).padStart(2,'0')}T${String(dl.getHours()).padStart(2,'0')}:00`;
   const tyOpts=_vtTypes.map(c=>`<option value="${esc(c.name)}" ${pre&&pre.video_type===c.name?'selected':''}>${esc(c.name)}</option>`).join('');
-  showModal(pre?'Approve Proposal & Assign':'Assign Video Task',`
-    <div class="form-grid vt-form">
+  const taskForm=`<div class="form-grid vt-form">
       <div class="form-group"><label>Teacher</label><select id="vt-f-teacher" class="input">${tOpts}</select></div>
       <div class="form-group"><label>YouTube Channel</label><select id="vt-f-channel" class="input"><option value="">— Select channel —</option>${cOpts}</select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Video Type</label><select id="vt-f-type" class="input"><option value="">— Select type —</option>${tyOpts}</select></div>
@@ -7931,32 +7984,108 @@ async function openVTAssign(proposalId){
       </div>
       <div class="form-group" style="grid-column:1/-1"><label>Reference / Brief (optional)</label><textarea id="vt-f-ref" class="input" rows="2" placeholder="Points to cover, sample video link, style notes...">${pre?esc(pre.reference||''):''}</textarea></div>
       <div class="form-group" style="grid-column:1/-1"><label>Remarks for Teacher (optional)</label><textarea id="vt-f-remarks" class="input" rows="2" placeholder="Any instructions..."></textarea></div>
-    </div>`,
-    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="vtAssignSave(${proposalId||0})">${ic('check')} ${pre?'Approve & Assign':'Assign Task'}</button>`);
+    </div>`;
+  if(pre){ // proposal approve hamesha single task hota hai — tabs nahi
+    showModal('Approve Proposal & Assign',taskForm,
+      `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="vtAssignSave(${proposalId||0})">${ic('check')} Approve & Assign</button>`);
+    return;
+  }
+  showModal('Assign Work',`
+    <div class="vtaw-tabs">
+      <button class="vtaw-tab on" id="vtaw-t-task" onclick="vtAwTab('task')">${ic('play')} Task Assign</button>
+      <button class="vtaw-tab" id="vtaw-t-proj" onclick="vtAwTab('proj')">${ic('clipboard')} Project</button>
+    </div>
+    <div id="vtaw-b-task">${taskForm}</div>
+    <div id="vtaw-b-proj" style="display:none">${_vtProjectForm()}</div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="vtaw-save" onclick="vtAwSave()">${ic('check')} Assign Task</button>`);
+  vtpLoadSubjects();
 }
-function vtThumbPreview(inp){
-  const f=inp.files&&inp.files[0]; if(!f) return;
-  if(f.size>10*1024*1024){ toast('Image too large — keep it under 10 MB'); inp.value=''; return; }
-  const nm=document.getElementById('vt-thumb-name'); if(nm) nm.textContent=f.name;
-  // phone photo ko upload se pehle COMPRESS karo (max 1024px, JPEG) — bada base64 payload
-  // server body-limit/DB limit pe fail hota tha, isliye resize zaroori
-  const img=new Image();
-  const url=URL.createObjectURL(f);
-  img.onload=()=>{
-    const sc=Math.min(1,1024/img.width);
-    const w=Math.max(1,Math.round(img.width*sc)), h=Math.max(1,Math.round(img.height*sc));
-    const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
-    const ctx=cv.getContext('2d');
-    ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,w,h);
-    ctx.drawImage(img,0,0,w,h);
-    URL.revokeObjectURL(url);
-    let out=cv.toDataURL('image/jpeg',0.82);
-    if(out.length>450*1024) out=cv.toDataURL('image/jpeg',0.6);
-    window._vtThumbB64=out;
-    document.getElementById('vt-thumb-prev').innerHTML=`<img src="${out}" style="max-height:110px;border-radius:10px;border:1px solid var(--border);display:block">`;
-  };
-  img.onerror=()=>{ URL.revokeObjectURL(url); toast('Could not read that image'); };
-  img.src=url;
+function vtAwTab(k){
+  window._vtAwTab=k;
+  document.getElementById('vtaw-b-task').style.display=k==='task'?'block':'none';
+  document.getElementById('vtaw-b-proj').style.display=k==='proj'?'block':'none';
+  document.getElementById('vtaw-t-task').classList.toggle('on',k==='task');
+  document.getElementById('vtaw-t-proj').classList.toggle('on',k==='proj');
+  document.getElementById('vtaw-save').innerHTML=(k==='task'?ic('check')+' Assign Task':ic('check')+' Assign Project');
+}
+function vtAwSave(){ (window._vtAwTab==='proj')?vtProjectSave():vtAssignSave(0); }
+const VTP_DAYS=['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+const VTP_DLBL={monday:'Monday',tuesday:'Tuesday',wednesday:'Wednesday',thursday:'Thursday',friday:'Friday',saturday:'Saturday',sunday:'Sunday'};
+function _vtProjectForm(){
+  const dl=new Date(Date.now()+45*24*3600*1000); dl.setHours(23,59,0,0);
+  const dlVal=`${dl.getFullYear()}-${String(dl.getMonth()+1).padStart(2,'0')}-${String(dl.getDate()).padStart(2,'0')}T23:59`;
+  const tOpts=`<option value="0">Auto — fetched from the subject</option>`+_vtTeachers.map(t=>`<option value="${t.pid}">${esc(t.name)}</option>`).join('');
+  const dOpts=VTP_DAYS.map(d=>`<option value="${d}" ${d==='sunday'?'selected':''}>${VTP_DLBL[d]}</option>`).join('');
+  return `<div class="form-grid vt-form">
+      <div class="form-group"><label>Subject</label><select id="vtp-subject" class="input" onchange="vtpSubjectChange()"><option value="">— Loading subjects… —</option></select></div>
+      <div class="form-group"><label>Class</label><select id="vtp-class" class="input" onchange="vtpSubjectChange()"><option value="">— Auto from subject —</option><option value="10">Class 10</option><option value="12">Class 12</option></select></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Teacher</label>
+        <div id="vtp-autot" class="vtp-auto">Select a subject — the teacher will be fetched automatically, or choose manually below</div>
+        <select id="vtp-teacher" class="input" style="margin-top:7px">${tOpts}</select></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Project Title (optional)</label><input id="vtp-title" class="input" placeholder="Auto: Project — {Subject}"></div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label class="vtp-conn"><input type="checkbox" id="vtp-connect" checked onchange="vtpConnectToggle()"><span><b>Connect to syllabus chapters</b> — chapters automatically become the video items (verified list)</span></label>
+        <div class="vt-hint">When off, the project stays independent of timetable / chapters / parts — enter the video names yourself</div></div>
+      <div class="form-group" id="vtp-items-wrap" style="grid-column:1/-1;display:none"><label>Videos / Deliverables — one row per video</label>
+        <div id="vtp-items"></div>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="vtpItemAdd()">${ic('plus')} Add video</button></div>
+      <div class="form-group"><label>Weekly target (videos / week)</label><input id="vtp-quota" type="number" min="0" max="50" class="input" value="2"></div>
+      <div class="form-group"><label>Weekly deadline day</label><select id="vtp-day" class="input">${dOpts}</select></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Final deadline — when the full project must be completed</label><input id="vtp-deadline" type="datetime-local" class="input" value="${dlVal}"></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Remarks for Teacher (optional)</label><textarea id="vtp-remarks" class="input" rows="2" placeholder="Instructions about the project..."></textarea></div>
+    </div>`;
+}
+async function vtpLoadSubjects(){
+  const sel=document.getElementById('vtp-subject'); if(!sel) return;
+  try{
+    const d=await api('/api/admin/subjects');
+    window._vtpSubs=d;
+    const grp=(lv,lbl)=>`<optgroup label="${lbl}">${(d[lv]||[]).map(x=>`<option value="${esc(x.name)}" data-level="${lv}">${esc(x.name)}</option>`).join('')}</optgroup>`;
+    sel.innerHTML=`<option value="">— Select subject —</option>`+grp('12','Class 12')+grp('10','Class 10');
+  }catch(e){ sel.innerHTML=`<option value="">— Could not load subjects —</option>`; }
+}
+async function vtpSubjectChange(){
+  const sel=document.getElementById('vtp-subject'), cls=document.getElementById('vtp-class'), box=document.getElementById('vtp-autot');
+  if(!sel||!box) return;
+  const opt=sel.options[sel.selectedIndex];
+  if(opt&&opt.dataset&&opt.dataset.level) cls.value=opt.dataset.level;  // subject's class auto
+  const subject=sel.value, level=cls.value;
+  if(!subject){ box.className='vtp-auto'; box.textContent='Select a subject — the teacher will be fetched automatically, or choose manually below'; return; }
+  box.className='vtp-auto'; box.textContent='Fetching teacher…';
+  try{
+    const r=await api('/api/admin/video-tasks/subject-teachers?subject='+encodeURIComponent(subject)+(level?'&class_level='+level:''));
+    const ts=r.teachers||[];
+    if(ts.length){ box.className='vtp-auto ok'; box.textContent='Will be assigned to: '+ts.map(t=>t.name+(t.level?' (Class '+t.level+')':'')).join(', ')+' — you can override this manually below'; }
+    else{ box.className='vtp-auto warn'; box.textContent='No active teacher found for this subject'+(level?' + class':'')+' — please select one manually below'; }
+  }catch(e){ box.className='vtp-auto warn'; box.textContent='Could not fetch the teacher — please select manually'; }
+}
+function vtpConnectToggle(){
+  const on=document.getElementById('vtp-connect').checked;
+  document.getElementById('vtp-items-wrap').style.display=on?'none':'block';
+  if(!on&&!document.querySelectorAll('#vtp-items .vtp-item').length){ vtpItemAdd(); vtpItemAdd(); vtpItemAdd(); }
+}
+function vtpItemAdd(v){
+  const w=document.getElementById('vtp-items'); if(!w) return;
+  const d=document.createElement('div'); d.className='vtp-item';
+  d.innerHTML=`<input class="input vtp-itm" placeholder="e.g. Ray Optics — full project video" value="${esc(v||'')}"><button type="button" onclick="this.parentElement.remove()">×</button>`;
+  w.appendChild(d);
+}
+async function vtProjectSave(){
+  const gv=id=>(document.getElementById(id)||{}).value||'';
+  const connect=document.getElementById('vtp-connect').checked;
+  const items=connect?[]:[...document.querySelectorAll('#vtp-items .vtp-itm')].map(i=>i.value.trim()).filter(Boolean);
+  const payload={subject:gv('vtp-subject').trim(),class_level:gv('vtp-class'),
+    teacher_id:+gv('vtp-teacher')||0,title:gv('vtp-title').trim(),connect,items,
+    weekly_quota:+gv('vtp-quota')||0,weekly_day:gv('vtp-day'),
+    deadline:gv('vtp-deadline'),remarks:gv('vtp-remarks').trim()};
+  if(!payload.subject&&!payload.teacher_id){ toast('Select a subject, or choose a teacher manually'); return; }
+  if(!connect&&!items.length){ toast('Enter at least 1 video name'); return; }
+  if(!payload.deadline){ toast('Please set the final deadline'); return; }
+  try{
+    const r=await api('/api/admin/video-tasks/project','POST',payload);
+    closeModal(); toast(`Project assigned — ${r.teacher} (${r.total} videos)`);
+    loadAVTasks();
+  }catch(e){ toast(e.message||'Could not assign project'); }
 }
 async function vtAssignSave(proposalId){
   const teacher_id=+document.getElementById('vt-f-teacher').value;
@@ -14740,6 +14869,57 @@ body.dark .po-pill.red{color:#f87171}
 .vt-chr .inp{display:flex;gap:7px;flex:1;min-width:210px}
 .vt-chr .inp .input{flex:1;padding:6px 10px;font-size:.76rem}
 @media(max-width:640px){.vt-os-prog .os-txt{display:none}.vt-os-bar{width:70px}}
+.vtaw-tabs{display:flex;gap:6px;background:linear-gradient(135deg,#2a2113,#3a2e18);padding:6px;border-radius:14px;margin-bottom:16px}
+.vtaw-tab{flex:1;border:0;background:transparent;color:#cbb98a;font-weight:800;font-size:.8rem;padding:10px 12px;border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;transition:all .18s}
+.vtaw-tab.on{background:linear-gradient(135deg,#b8941f,#8a6d10);color:#fff8e1;box-shadow:0 4px 14px -4px rgba(184,148,31,.55)}
+.vtaw-tab:not(.on):hover{color:#f0e3b8;background:rgba(255,255,255,.06)}
+.vtp-auto{font-size:.78rem;font-weight:700;padding:9px 12px;border-radius:10px;background:rgba(184,148,31,.08);border:1px dashed rgba(184,148,31,.4);color:#8a6d10}
+.vtp-auto.ok{background:rgba(5,150,105,.08);border-color:rgba(5,150,105,.4);color:#047857}
+.vtp-auto.warn{background:rgba(220,38,38,.07);border-color:rgba(220,38,38,.4);color:#b91c1c}
+.vtp-conn{display:flex;gap:8px;align-items:flex-start;font-size:.8rem;cursor:pointer}
+.vtp-conn input{margin-top:3px;accent-color:#8a6d10}
+.vtp-item{display:flex;gap:8px;margin-bottom:8px}
+.vtp-item .input{flex:1}
+.vtp-item button{border:0;background:rgba(220,38,38,.1);color:#b91c1c;border-radius:8px;padding:0 12px;font-weight:800;cursor:pointer}
+.vt-os-week{display:inline-flex;align-items:center;gap:5px;background:rgba(255,233,168,.14);border:1px solid rgba(255,233,168,.3);color:#ffe9a8;font-size:.66rem;font-weight:800;padding:3px 9px;border-radius:999px;margin-top:4px}
+/* v73 — master Task/Project cards + filter chips + premium special headers */
+.vtm-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:16px}
+.vtm-card{display:flex;align-items:center;gap:14px;padding:16px 18px;border-radius:18px;cursor:pointer;user-select:none;
+  background:var(--card);border:1.5px solid rgba(184,148,31,.35);box-shadow:0 4px 16px -8px rgba(90,66,10,.18);transition:all .2s}
+.vtm-card:hover{transform:translateY(-2px);box-shadow:0 10px 26px -10px rgba(90,66,10,.3);border-color:rgba(184,148,31,.65)}
+.vtm-card.on{background:linear-gradient(135deg,#3a2c07,#6b4f0c);border-color:rgba(255,233,168,.5);color:#f5e9c8}
+.vtm-ic{width:46px;height:46px;border-radius:14px;flex:none;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,rgba(184,148,31,.16),rgba(184,148,31,.06));color:#8a6d10;border:1px solid rgba(184,148,31,.3)}
+.vtm-ic svg{width:22px;height:22px}
+.vtm-card.on .vtm-ic{background:rgba(255,233,168,.14);color:#ffe9a8;border-color:rgba(255,233,168,.35)}
+.vtm-main{flex:1;min-width:0}
+.vtm-n{font-size:1.35rem;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+.vtm-n span{font-size:.72rem;font-weight:800;color:var(--text-muted);margin-left:3px}
+.vtm-card.on .vtm-n span{color:rgba(245,233,200,.75)}
+.vtm-l{font-size:.72rem;font-weight:800;margin-top:2px}
+.vtm-s{font-size:.66rem;font-weight:700;color:var(--text-muted);margin-top:3px}
+.vtm-card.on .vtm-s{color:rgba(245,233,200,.75)}
+.vtm-go{flex:none;color:var(--text-muted);transition:transform .2s}
+.vtm-card.on .vtm-go{color:#ffe9a8;transform:rotate(-90deg)}
+.vtm-go svg{width:18px;height:18px}
+.vtm-filter{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:11px 13px;margin-bottom:16px;border-radius:16px;
+  background:var(--card);border:1.5px solid var(--border)}
+.vtm-fl{font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted)}
+.vtm-fl:not(:first-child){margin-left:10px;padding-left:10px;border-left:1px solid var(--border)}
+.vtm-chip{border:1.5px solid var(--border);background:var(--panel);color:var(--text);font-size:.7rem;font-weight:800;
+  padding:6px 13px;border-radius:999px;cursor:pointer;transition:all .18s;white-space:nowrap}
+.vtm-chip:hover{border-color:rgba(184,148,31,.55);color:#8a6d10}
+.vtm-chip.on{background:linear-gradient(135deg,#b8941f,#8a6d10);border-color:transparent;color:#fff8e1;box-shadow:0 3px 10px -4px rgba(184,148,31,.6)}
+.vtm-sec-cap{display:flex;align-items:center;gap:9px;margin:4px 0 12px;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--text-muted)}
+.vtm-sec-cap::after{content:'';flex:1;height:1px;background:var(--border)}
+.vt-os-hbtn{display:inline-flex;align-items:center;gap:6px;background:rgba(255,233,168,.1);border:1.5px solid rgba(255,233,168,.5);
+  color:#ffe9a8;font-size:.66rem;font-weight:800;padding:6px 12px;border-radius:9px;cursor:pointer;transition:all .2s;white-space:nowrap}
+.vt-os-hbtn:hover{background:rgba(255,233,168,.24);color:#fff}
+.vt-os-hbtn svg{width:13px;height:13px}
+.vt-os-kind{display:inline-block;font-size:.58rem;font-weight:800;letter-spacing:.09em;padding:3px 9px;border-radius:999px;margin-right:9px;vertical-align:2px;
+  background:rgba(255,233,168,.16);border:1px solid rgba(255,233,168,.4);color:#ffe9a8}
+.vt-os-kind.rapid_revision{background:rgba(147,197,253,.18);border-color:rgba(147,197,253,.45);color:#cfe4ff}
+.vt-os-kind.project{background:rgba(196,167,255,.18);border-color:rgba(196,167,255,.45);color:#e3d4ff}
 @media(max-width:640px){
   .vt-grid{grid-template-columns:1fr}
   .vt-thumb{height:120px}
