@@ -7430,26 +7430,46 @@ async function loadTVTasks(){
   try{
     const d=await api('/api/teacher/video-tasks/my');
     const tasks=d.tasks||[];
+    window._tvtMap={}; tasks.forEach(t=>window._tvtMap[t.id]=t);
     const active=tasks.filter(t=>t.status==='assigned');
     const badge=document.getElementById('t-vt-badge');
     if(badge){ badge.style.display=active.length?'inline-block':'none'; badge.textContent=active.length; }
     const nxt=d.next_deadline;
     const hero=nxt?`
-      <div class="vt-hero"><div><h3>${esc(nxt.title)}</h3><p>${nxt.channel?esc(nxt.channel)+' · ':''}Deadline: ${esc(nxt.deadline_nice)}</p></div><div class="vt-sp"></div>
+      <div class="vt-hero"><div><h3>${esc(nxt.title)}</h3><p>${nxt.video_type?esc(nxt.video_type)+' · ':''}${nxt.channel?esc(nxt.channel)+' · ':''}Deadline: ${esc(nxt.deadline_nice)}</p></div><div class="vt-sp"></div>
         <div class="vt-count" id="tvt-hero-cd" data-secs="${nxt.seconds_left||0}"></div></div>`:'';
+    const st=d.stats||{};
+    const stat=(l,n,color,icn)=>`<div class="vt-stat"><div class="vs-ic" style="background:${color}1f;color:${color}">${ic(icn)}</div><div><div class="vs-n" style="color:${color}">${n}</div><div class="vs-l">${l}</div></div></div>`;
+    const statCards=`<div class="vt-cards">
+      ${stat('Assigned',st.assigned||0,'#8a6d10','clipboard')}
+      ${stat('Uploaded',st.uploaded||0,'#059669','check')}
+      ${stat('Pending',st.pending||0,'#0891b2','clock')}
+      ${stat('On Time',st.on_time||0,'#047857','star')}
+      ${stat('Delayed',st.delayed||0,'#dc2626','alert')}
+    </div>`;
+    const mt=Object.entries(st.month_types||{});
+    const mtHtml=mt.length?`<div class="card" style="margin-bottom:16px"><div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px"><span style="font-size:.68rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">${ic('chart')} This month you shot</span>${mt.map(([k,v])=>`<span class="vt-type">${esc(k)} · ${v}</span>`).join('')}</div></div>`:'';
     const card=t=>{
       const subBox=(t.status==='assigned')?`
-        <div class="form-group" style="margin:4px 0 0"><label>Paste video drive link</label>
-          <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="tvt-link-${t.id}" class="input" style="flex:1;min-width:200px" placeholder="https://drive.google.com/...">
-          <button class="btn btn-primary btn-sm" onclick="tvtSubmit(${t.id})">${ic('send')} Submit Video</button></div></div>`:'';
-      const reviewNote=(t.status==='submitted')?`<span class="vt-pill submitted">${ic('clock')} Under Review — Checking</span>`:'';
+        <div class="vt-subm">
+          <div class="vs-h">${ic('link')} Submit your recorded video</div>
+          <div class="vt-subm-row"><input id="tvt-link-${t.id}" class="input" placeholder="https://drive.google.com/file/d/...">
+          <button class="btn btn-primary btn-sm" onclick="tvtSubmit(${t.id})">${ic('send')} Submit Video</button></div>
+          <div class="vt-subm-note">Upload the video to the MVS drive folder first, then paste its shareable link here. Submit before the deadline for on-time credit.</div>
+        </div>`:'';
+      const doneBox=(t.submitted_link&&t.status!=='assigned')?`
+        <div class="vt-subm done">
+          <div class="vs-h">${ic('check')} Video submitted ${t.on_time===true?'— on time':(t.on_time===false?'— delayed':'')}</div>
+          <div class="vt-done-link"><a href="${esc(t.submitted_link)}" target="_blank" rel="noopener">${ic('link')} Open your video link</a>${t.submitted_at?`<span style="color:var(--text-muted);font-weight:600">· ${esc(t.submitted_at)}</span>`:''}</div>
+        </div>`:'';
+      const reviewNote=(t.status==='submitted')?`<span class="vt-pill submitted blink">${ic('clock')} Under Review — Checking</span>`:'';
       const statusNote=(['approved','editing_soon','editing_done','uploaded'].includes(t.status))
-        ?`<span class="vt-pill ${t.status}">${VT_LBL[t.status]}</span>`:'';
+        ?`<span class="vt-pill ${t.status}${t.status!=='uploaded'?' blink':''}">${VT_LBL[t.status]}</span>`:'';
       const rejNote=(t.reject_count>0&&t.status==='assigned')
         ?`<div class="vt-meta" style="color:#b91c1c">Sent back for reshoot${t.review_remarks?`: ${esc(t.review_remarks)}`:''} — new deadline above. Reshoot #${t.reject_count}</div>`:'';
       const propNote=(t.proposal_ok==='pending')?`<span class="vt-pill proposal">Pending Approval</span>`:'';
-      return `<div class="vt-card">${_vtThumb(t)}<div class="vt-body">
-        <div class="vt-chips">${propNote||_vtPill(t)}${reviewNote}${statusNote}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
+      return `<div class="vt-card">${_vtThumb(t,'t')}<div class="vt-body">
+        <div class="vt-chips">${propNote||_vtPill(t,true)}${reviewNote}${statusNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
         <div class="vt-title">${esc(t.title)}</div>
         <div class="vt-meta">
           ${t.deadline_nice?`<span>${ic('clock')} Deadline: <b>${esc(t.deadline_nice)}</b></span>`:''}
@@ -7459,10 +7479,10 @@ async function loadTVTasks(){
           ${t.submitted_at?`<span>${ic('check')} Submitted: ${esc(t.submitted_at)} — <b>${t.on_time?'on time':'delayed'}</b></span>`:''}
           ${t.status!=='assigned'&&t.review_remarks?`<span>Review remarks: ${esc(t.review_remarks)}</span>`:''}
         </div>
-        ${rejNote}${subBox}
+        ${rejNote}${subBox}${doneBox}
       </div></div>`;
     };
-    el.innerHTML=`${hero}
+    el.innerHTML=`${hero}${statCards}${mtHtml}
       <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="openTVTPropose()">${ic('plus')} Propose a Video</button>
         <span style="font-size:.74rem;color:var(--text-muted);align-self:center">Have a video idea? Propose it — once approved, a thumbnail & deadline will be assigned.</span>
@@ -7477,9 +7497,12 @@ async function loadTVTasks(){
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 async function openTVTPropose(){
+  let types=window._vtTypesT;
+  if(!types){ try{ types=((await api('/api/teacher/video-types')).types)||[]; window._vtTypesT=types; }catch(e){ types=[]; } }
   showModal('Propose a Video',`
     <div class="form-grid vt-form">
       <div class="form-group" style="grid-column:1/-1"><label>Video Title</label><input id="tvt-p-title" class="input" placeholder="e.g. Probability Short Tricks — NIOS Special"></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Video Type</label><select id="tvt-p-type" class="input">${types.map(t=>`<option value="${esc(t.name)}">${esc(t.name)}</option>`).join('')}</select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Why this video? (optional)</label><textarea id="tvt-p-ref" class="input" rows="2" placeholder="Student demand, exam relevance, etc."></textarea></div>
     </div>
     <p style="font-size:.74rem;color:var(--text-muted)">Your proposal goes to the production manager. Once approved, you will get the thumbnail and deadline here.</p>`,
@@ -7489,7 +7512,7 @@ async function tvtProposeSave(){
   const title=document.getElementById('tvt-p-title').value.trim();
   if(!title){ toast('Please enter a video title'); return; }
   try{
-    await api('/api/teacher/video-tasks/propose','POST',{title,reference:document.getElementById('tvt-p-ref').value.trim()});
+    await api('/api/teacher/video-tasks/propose','POST',{title,video_type:(document.getElementById('tvt-p-type')||{}).value||'',reference:document.getElementById('tvt-p-ref').value.trim()});
     closeModal(); toast('Proposal sent for approval.'); loadTVTasks();
   }catch(e){ toast(e.message||'Could not send'); }
 }
@@ -7528,32 +7551,49 @@ async function loadVTBanner(){
 }
 
 /* ================= VIDEO TASK MANAGER (admin) ================= */
-let _vtTeachers=[], _vtChannels=[], _vtF={teacher_id:0,status:'',channel_id:0}, _vtTimer=null;
+let _vtTeachers=[], _vtChannels=[], _vtTypes=[], _vtF={teacher_id:0,status:'',channel_id:0,video_type:''}, _vtTimer=null;
 const VT_LBL={assigned:'Assigned',submitted:'Submitted',approved:'Approved',editing_soon:'Editing Soon',editing_done:'Editing Done',uploaded:'Uploaded',rejected:'Rejected',proposal:'Pending Approval'};
-function _vtQs(){ const f=_vtF,q=[]; if(f.teacher_id)q.push('teacher_id='+f.teacher_id); if(f.status)q.push('status='+f.status); if(f.channel_id)q.push('channel_id='+f.channel_id); return q.length?'?'+q.join('&'):''; }
-function _vtPill(t){
+function _vtQs(){ const f=_vtF,q=[]; if(f.teacher_id)q.push('teacher_id='+f.teacher_id); if(f.status)q.push('status='+f.status); if(f.channel_id)q.push('channel_id='+f.channel_id); if(f.video_type)q.push('video_type='+encodeURIComponent(f.video_type)); return q.length?'?'+q.join('&'):''; }
+function _vtPill(t,blink){
   let cls=t.status, lbl=VT_LBL[t.status]||t.status;
   if(t.status==='assigned'&&t.overdue){ cls='delayed'; lbl='Overdue'; }
+  // teacher side: upload hone tak status blink karta rahe
+  const bl=(blink&&t.status!=='uploaded'&&t.proposal_ok!=='pending')?' blink':'';
   let extra='';
-  if(t.status==='submitted') extra=` <span class="vt-pill ${t.on_time?'ontime':'delayed'}">${t.on_time?'On Time':'Delayed'}</span>`;
-  return `<span class="vt-pill ${cls}">${lbl}</span>${extra}`;
+  if(t.status==='submitted') extra=` <span class="vt-pill ${t.on_time?'ontime':'delayed'}${bl}">${t.on_time?'On Time':'Delayed'}</span>`;
+  return `<span class="vt-pill ${cls}${bl}">${lbl}</span>${extra}`;
 }
-function _vtThumb(t){
+function _vtThumb(t,who){
+  const has=!!(t.thumbnail_b64||t.thumbnail_link);
   const img=t.thumbnail_b64?`<img src="${t.thumbnail_b64}" alt="">`
     :(t.thumbnail_link?`<img src="${esc(t.thumbnail_link)}" onerror="this.remove()" alt="">`:'');
-  return `<div class="vt-thumb">${img||esc((t.title||'V').slice(0,1).toUpperCase())}<div class="vt-status">${_vtPill(t)}</div></div>`;
+  const blink=who==='t';
+  return `<div class="vt-thumb${has?' click':''}"${has?` onclick="vtThumbOpen(${t.id},'${who||'t'}')" title="Open full screen — download available"`:''}>${img||esc((t.title||'V').slice(0,1).toUpperCase())}<div class="vt-status">${_vtPill(t,blink)}</div>${has?`<span class="vt-dl">${ic('download')} View</span>`:''}</div>`;
+}
+function _vtTypeBadge(t){ return t.video_type?`<span class="vt-type">${ic('play')} ${esc(t.video_type)}</span>`:''; }
+function vtThumbOpen(id,who){
+  const t=(((who==='a')?window._avtMap:window._tvtMap)||{})[id]; if(!t) return;
+  const name=((t.title||'thumbnail').replace(/[^\w\- ]+/g,'').trim().slice(0,60)||'thumbnail');
+  if(t.thumbnail_b64){ openImageViewerSrc(t.thumbnail_b64,name+'.jpg'); return; }
+  const link=t.thumbnail_link||'';
+  if(/\.(png|jpe?g|webp|gif|bmp)(\?|#|$)/i.test(link)) openImageViewerSrc(link,name+'.jpg');
+  else if(link) window.open(link,'_blank');
+  else toast('No thumbnail attached to this task');
 }
 async function loadAVTasks(){
   const el=document.getElementById('a-vtasks-content');
   softSpin(el);
   if(_vtTimer){ clearInterval(_vtTimer); _vtTimer=null; }
   try{
-    const [stats,ch,ts,list]=await Promise.all([
+    const [stats,ch,ts,ty,list]=await Promise.all([
       api('/api/admin/video-tasks/stats'),
       api('/api/admin/video-channels'),
       api('/api/admin/teachers'),
+      api('/api/admin/video-types'),
       api('/api/admin/video-tasks'+_vtQs())]);
     _vtChannels=ch.channels||[];
+    _vtTypes=ty.types||[];
+    window._avtMap={}; (list.tasks||[]).forEach(t=>window._avtMap[t.id]=t); (list.proposals||[]).forEach(t=>window._avtMap[t.id]=t);
     _vtTeachers=(Array.isArray(ts)?ts:(ts.teachers||[])).map(t=>({pid:t.profile_id,name:t.name}));
     const checking=(list.tasks||[]).filter(t=>t.status==='submitted'&&!t.reviewed).length;
     const badge=document.getElementById('a-vt-badge');
@@ -7562,10 +7602,11 @@ async function loadAVTasks(){
     const stat=(l,n,color,icn)=>`<div class="vt-stat"><div class="vs-ic" style="background:${color}1f;color:${color}">${ic(icn)}</div><div><div class="vs-n" style="color:${color}">${n}</div><div class="vs-l">${l}</div></div></div>`;
     const tOpt=`<option value="0">All Teachers</option>`+_vtTeachers.map(t=>`<option value="${t.pid}" ${_vtF.teacher_id==t.pid?'selected':''}>${esc(t.name)}</option>`).join('');
     const cOpt=`<option value="0">All Channels</option>`+_vtChannels.map(c=>`<option value="${c.id}" ${_vtF.channel_id==c.id?'selected':''}>${esc(c.name)}</option>`).join('');
+    const tyOpt=`<option value="">All Types</option>`+_vtTypes.map(c=>`<option value="${esc(c.name)}" ${_vtF.video_type===c.name?'selected':''}>${esc(c.name)}</option>`).join('');
     const sOpt=['<option value="">All Status</option>','assigned','submitted','approved','editing_soon','editing_done','uploaded'].map(v=>v==='<option value="">All Status</option>'?v:`<option value="${v}" ${_vtF.status===v?'selected':''}>${VT_LBL[v]}</option>`).join('');
     const propHtml=(list.proposals||[]).length?`<div class="card" style="margin-bottom:16px;border:1.5px solid rgba(217,119,6,.45)"><div class="card-header"><h3>${ic('help')} Video Proposals — Approval Needed</h3><span class="xm-chip">${list.proposals.length}</span></div><div class="card-body"><div class="vt-grid">${list.proposals.map(t=>`
       <div class="vt-card"><div class="vt-body">
-        <div class="vt-chips"><span class="vt-pill proposal">Proposal</span>${t.channel?`<span class="vt-pill assigned">${esc(t.channel)}</span>`:''}</div>
+        <div class="vt-chips"><span class="vt-pill proposal">Proposal</span>${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill assigned">${esc(t.channel)}</span>`:''}</div>
         <div class="vt-title">${esc(t.title)}</div>
         <div class="vt-meta"><span>Proposed by <b>${esc(t.teacher)}</b> · ${esc(t.created_at)}</span>${t.reference?`<span>Note: ${esc(t.reference)}</span>`:''}</div>
         <div class="vt-foot"><button class="btn btn-primary btn-sm" onclick="openVTAssign(${t.id})">${ic('check')} Approve & Assign</button><button class="btn btn-ghost btn-sm" onclick="vtRejectProposal(${t.id})">Decline</button></div>
@@ -7578,9 +7619,9 @@ async function loadAVTasks(){
         ?`<button class="btn btn-ghost btn-sm" onclick="openVTReview(${t.id})">${ic('edit')} Update Status</button>`:'';
       const notifyBtn=(t.submitted_link)
         ?`<button class="btn btn-gold btn-sm" onclick="vtNotifyStudents(${t.id})" title="Send this video link to all students">${ic('send')} Send to Students</button>`:'';
-      return `<div class="vt-card">${_vtThumb(t)}<div class="vt-body">
+      return `<div class="vt-card">${_vtThumb(t,'a')}<div class="vt-body">
         <div class="vt-title">${esc(t.title)}</div>
-        <div class="vt-chips"><span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
+        <div class="vt-chips"><span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
         <div class="vt-meta">
           <span>${ic('clock')} Deadline: <b>${esc(t.deadline_nice)}</b>${t.status==='assigned'&&t.seconds_left!=null?` · <span data-vt-cd="${t.id}" data-secs="${t.seconds_left}"></span>`:''}</span>
           ${t.submitted_at?`<span>${ic('check')} Submitted: <b>${esc(t.submitted_at)}</b> ${t.on_time?'(on time)':'(delayed)'}</span>`:''}
@@ -7596,6 +7637,7 @@ async function loadAVTasks(){
     el.innerHTML=`
       <div class="vt-hero"><div><h3>Production Task Manager</h3><p>Assign video tasks with thumbnails & deadlines, review submissions, and publish to students.</p></div><div class="vt-sp"></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="vt-btn-dark" onclick="openVTChannels()">${ic('settings')} Channels (${_vtChannels.length})</button>
+        <button class="vt-btn-dark" onclick="openVTTypes()">${ic('plus')} Video Types (${_vtTypes.length})</button>
         <button class="vt-btn-gold" onclick="openVTAssign()">${ic('plus')} Assign Task</button></div></div>
       <div class="vt-cards">
         ${stat('Total Assigned',stats.total,'#8a6d10','clipboard')}
@@ -7605,10 +7647,12 @@ async function loadAVTasks(){
         ${stats.top?`<div class="vt-stat" style="border-color:rgba(16,185,129,.5)"><div class="vs-ic" style="background:rgba(16,185,129,.12);color:#047857">${ic('star')}</div><div><div style="font-size:.8rem;font-weight:800;color:#047857">${esc(stats.top.name)}</div><div class="vs-l">Top — ${stats.top.rate}% on time</div></div></div>`:''}
         ${stats.most_delayed?`<div class="vt-stat" style="border-color:rgba(220,38,38,.45)"><div class="vs-ic" style="background:rgba(220,38,38,.1);color:#b91c1c">${ic('alert')}</div><div><div style="font-size:.8rem;font-weight:800;color:#b91c1c">${esc(stats.most_delayed.name)}</div><div class="vs-l">Most delayed — ${stats.most_delayed.delayed}</div></div></div>`:''}
       </div>
+      ${(stats.by_type&&Object.keys(stats.by_type).length)?`<div class="card" style="margin-bottom:16px"><div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px"><span style="font-size:.68rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">${ic('chart')} Type-wise tasks</span>${Object.entries(stats.by_type).map(([k,v])=>`<span class="vt-type">${esc(k)} · ${v}</span>`).join('')}</div></div>`:''}
       ${propHtml}
       <div class="vt-filters">
         ${ic('filter')} <select onchange="_vtF.teacher_id=+this.value;loadAVTasks()">${tOpt}</select>
         <select onchange="_vtF.channel_id=+this.value;loadAVTasks()">${cOpt}</select>
+        <select onchange="_vtF.video_type=this.value;loadAVTasks()">${tyOpt}</select>
         <select onchange="_vtF.status=this.value;loadAVTasks()">${sOpt}</select>
         <div style="flex:1"></div>
         <button class="btn btn-gold btn-sm" onclick="vtDownloadReport()">${ic('download')} Download Report</button>
@@ -7649,10 +7693,12 @@ async function openVTAssign(proposalId){
   const cOpts=_vtChannels.map(c=>`<option value="${c.id}" ${pre&&pre.channel_id===c.id?'selected':''}>${esc(c.name)}</option>`).join('');
   const dl=new Date(Date.now()+48*3600*1000); dl.setMinutes(0);
   const dlVal=`${dl.getFullYear()}-${String(dl.getMonth()+1).padStart(2,'0')}-${String(dl.getDate()).padStart(2,'0')}T${String(dl.getHours()).padStart(2,'0')}:00`;
+  const tyOpts=_vtTypes.map(c=>`<option value="${esc(c.name)}" ${pre&&pre.video_type===c.name?'selected':''}>${esc(c.name)}</option>`).join('');
   showModal(pre?'Approve Proposal & Assign':'Assign Video Task',`
     <div class="form-grid vt-form">
       <div class="form-group"><label>Teacher</label><select id="vt-f-teacher" class="input">${tOpts}</select></div>
       <div class="form-group"><label>YouTube Channel</label><select id="vt-f-channel" class="input"><option value="">— Select channel —</option>${cOpts}</select></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Video Type</label><select id="vt-f-type" class="input"><option value="">— Select type —</option>${tyOpts}</select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Video Title</label><input id="vt-f-title" class="input" placeholder="e.g. Thermodynamics Part 1 — Full Concept" value="${pre?esc(pre.title):''}"></div>
       <div class="form-group" style="grid-column:1/-1"><label>Deadline</label><input id="vt-f-deadline" type="datetime-local" class="input" value="${dlVal}"></div>
       <div class="form-group vt-thumb-box" style="grid-column:1/-1"><label>Thumbnail</label>
@@ -7700,6 +7746,7 @@ async function vtAssignSave(proposalId){
   if(!teacher_id||!title){ toast('Teacher and title are required'); return; }
   if(!deadline){ toast('Please set a deadline'); return; }
   const payload={teacher_id,title,channel_id,deadline,
+    video_type:(document.getElementById('vt-f-type')||{}).value||'',
     thumbnail_b64:window._vtThumbB64||null,
     thumbnail_link:document.getElementById('vt-f-thumblink').value.trim(),
     reference:document.getElementById('vt-f-ref').value.trim(),
@@ -7785,6 +7832,20 @@ async function vtAddChannel(){
   const name=document.getElementById('vt-ch-new').value.trim();
   if(!name){ toast('Enter a channel name'); return; }
   try{ await api('/api/admin/video-channels','POST',{name}); closeModal(); toast('Channel added.'); loadAVTasks(); setTimeout(openVTChannels,400); }
+  catch(e){ toast(e.message||'Could not add'); }
+}
+function openVTTypes(){
+  const rows=_vtTypes.map(c=>`<div class="vt-rank-row"><span class="sbb-av">${ic('play')}</span><div class="sbb-main"><div class="sbb-nm">${esc(c.name)}</div></div></div>`).join('');
+  showModal('Video Types',`
+    <p style="font-size:.78rem;color:var(--text-muted);margin-bottom:10px">These types appear in the type dropdown while assigning a task and in the teacher's proposal form (e.g. Short Video, Long Video, One Shot Video, Strategy Video).</p>
+    <div style="max-height:280px;overflow-y:auto;margin-bottom:12px">${rows}</div>
+    <div style="display:flex;gap:8px"><input id="vt-ty-new" class="input" placeholder="New type name" style="flex:1"><button class="btn btn-primary btn-sm" onclick="vtAddType()">${ic('plus')} Add</button></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+}
+async function vtAddType(){
+  const name=document.getElementById('vt-ty-new').value.trim();
+  if(!name){ toast('Enter a type name'); return; }
+  try{ await api('/api/admin/video-types','POST',{name}); window._vtTypesT=null; closeModal(); toast('Type added.'); loadAVTasks(); setTimeout(openVTTypes,400); }
   catch(e){ toast(e.message||'Could not add'); }
 }
 
@@ -9838,10 +9899,10 @@ async function loadSTimetable(){
        if(r.ok) window._sttTeacherMap[t.subject].url=URL.createObjectURL(await r.blob()); }catch(e){}
    }));
  }catch(e){}
- renderStudentTimetable(_sttEntries,'s-tline-wrap',{emptyMsg:'No timetable for your subjects yet.',onTab:'sSetSubj',activeSubject:_sttActiveSub||(_sttEntries[0]||{}).subject||'',tipTeacherMap:window._sttTeacherMap,batch:window._sBatch,classLevel:window._sClass});
+ renderStudentTimetable(_sttEntries,'s-tline-wrap',{emptyMsg:'No timetable for your subjects yet.',onTab:'sSetSubj',subjectDrop:true,activeSubject:_sttActiveSub||'',tipTeacherMap:window._sttTeacherMap,batch:window._sBatch,classLevel:window._sClass});
   }catch(e){ el.innerHTML=errHtml(e); }
 }
-function sSetSubj(s){ _sttActiveSub=decodeURIComponent(s); renderStudentTimetable(_sttEntries,'s-tline-wrap',{emptyMsg:'No timetable for your subjects yet.',onTab:'sSetSubj',activeSubject:_sttActiveSub,tipTeacherMap:window._sttTeacherMap,batch:window._sBatch,classLevel:window._sClass}); }
+function sSetSubj(s){ _sttActiveSub=decodeURIComponent(s||''); renderStudentTimetable(_sttEntries,'s-tline-wrap',{emptyMsg:'No timetable for your subjects yet.',onTab:'sSetSubj',subjectDrop:true,activeSubject:_sttActiveSub,tipTeacherMap:window._sttTeacherMap,batch:window._sBatch,classLevel:window._sClass}); }
 
 async function loadSToday(){
   const el=document.getElementById('s-today-content');
@@ -12126,11 +12187,12 @@ function renderStudentTimetable(entries, containerId, opts={}){
   const tl=buildTimeline(entries);
   const subjects=Object.keys(tl);
   const _casc=!!opts.onClassFilter;   // admin/teacher: class -> subject cascade dropdowns
-  // Weekly view cascade me by default ALL SUBJECTS dikhata hai
-  if(_casc && _ttView==='weekly' && !opts.activeSubject) opts=Object.assign({},opts,{activeSubject:'__all'});
+  const _stuDD=!!opts.subjectDrop;    // student: subject dropdown (chips nahi)
+  // Weekly view me by default ALL SUBJECTS dikhata hai
+  if((_casc||_stuDD) && _ttView==='weekly' && !opts.activeSubject) opts=Object.assign({},opts,{activeSubject:'__all'});
   let active;
-  if(_casc && _ttView!=='weekly'){
-    // Timeline cascade: jab tak subject select nahi hota, kuch nahi dikhta
+  if((_casc||_stuDD) && _ttView!=='weekly'){
+    // Timeline: jab tak subject select nahi hota, kuch nahi dikhta
     active=(opts.activeSubject&&tl[opts.activeSubject])?opts.activeSubject:null;
   } else {
     active=opts.activeSubject&&tl[opts.activeSubject]?opts.activeSubject:subjects[0];
@@ -12261,6 +12323,9 @@ function renderStudentTimetable(entries, containerId, opts={}){
       <div class="ov-bar ov2-bar"><div class="ov-fill" style="width:${subPct}%"></div></div>
       <div class="ov2-foot"><span class="nw">${_nowTxt}</span>${_nextTest?`<span class="nt">Next test: ${esc(fmtNice(_nextTest))}</span>`:''}</div>
     </div>`;
+  } else if(_stuDD && !active && _ttView!=='weekly'){
+    // student timeline, abhi subject select nahi kiya — prompt hero
+    overall=`<div class="ov-card"><div class="ov-top"><div><div class="ov-lbl">Chapter Timeline</div><div class="ov-big" style="font-size:1.02rem;line-height:1.55">Select your subject below — its complete timetable will appear here</div></div></div></div>`;
   } else {
     overall=`<div class="ov-card"><div class="ov-top"><div><div class="ov-lbl">Overall Progress</div><div class="ov-big">${subD} / ${subT} Classes</div></div><div class="ov-pct"><div class="ov-pct-num">${subPct}%</div><div class="ov-pct-lbl">Completed</div></div></div><div class="ov-bar"><div class="ov-fill" style="width:${subPct}%"></div></div><div class="ov-badges">${opts.batch?`<span class="ov-badge">${esc(opts.batch)}</span><span class="ov-badge">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span>`:(opts.scopeLabel?`<span class="ov-badge">${esc(opts.scopeLabel)}</span>`:'')}<span class="ov-badge-plain">${subjects.length} subject${subjects.length>1?'s':''}</span><span class="ov-badge-plain ov-all">All subjects: <b>${doneParts}/${totalParts}</b> \u00b7 ${pct}%</span></div>${chapChips}</div>`;
   }
@@ -12284,7 +12349,16 @@ function renderStudentTimetable(entries, containerId, opts={}){
            ${(_noCls&&!isWeek)?'':subjects.map(s=>{const n=_countBookChapters(tl[s])||tl[s].length; return `<option value="${esc(s)}"${(!allSel&&s===active)?' selected':''}>${esc(s)} \u00b7 ${n} chapters</option>`;}).join('')}
          </select>
        </div>`
-    : `<div class="fbar"><div class="fbar-chips">${isWeek?`<button class="fchip ${allSel?'on':''}" onclick="${_tab}('__all')">All Subjects</button>`:''}${subjects.map(s=>{ const n=_countBookChapters(tl[s])||tl[s].length; return `<button class="fchip ${(!allSel&&s===active)?'on':''}" onclick="${_tab}('${encodeURIComponent(s)}')">${esc(s)}<span class="fchip-n">${n}</span></button>`; }).join('')}</div></div>`;
+    : (_stuDD
+      ? `<div class="fbar">
+           <div class="fbar-l">${ic('book')}<span>Subject</span></div>
+           <select class="fbar-sel" style="flex:0 1 290px" onchange="${_tab}(encodeURIComponent(this.value))">
+             ${isWeek?`<option value="__all"${allSel?' selected':''}>All Subjects \u00b7 ${subjects.length}</option>`
+                     :`<option value=""${!active?' selected':''}>Select your subject</option>`}
+             ${subjects.map(s=>{const n=_countBookChapters(tl[s])||tl[s].length; return `<option value="${esc(s)}"${(!allSel&&s===active)?' selected':''}>${esc(s)} \u00b7 ${n} chapters</option>`;}).join('')}
+           </select>
+         </div>`
+      : `<div class="fbar"><div class="fbar-chips">${isWeek?`<button class="fchip ${allSel?'on':''}" onclick="${_tab}('__all')">All Subjects</button>`:''}${subjects.map(s=>{ const n=_countBookChapters(tl[s])||tl[s].length; return `<button class="fchip ${(!allSel&&s===active)?'on':''}" onclick="${_tab}('${encodeURIComponent(s)}')">${esc(s)}<span class="fchip-n">${n}</span></button>`; }).join('')}</div></div>`);
   const wkSubs=(_ttView==='weekly'&&opts.activeSubject==='__all')?subjects:(_ttView==='weekly'?[active]:subjects);
   const body=_ttView==='weekly'
     ? renderStudentWeekly(tl,wkSubs,opts)
@@ -12932,9 +13006,10 @@ function _getLocation(onProg){
     setTimeout(()=>{ if(best&&best.accuracy>=1500) ok(); }, window._GEO_FAST_WAIT||6000);   // IP-based reading (PC) — aur improve nahi hogi
   });
 }
-async function doPunch(kind){
+async function doPunch(kind,confirm){
   const btn=document.getElementById('pw-btn');
   window._geoFlash=null;
+  if(kind==='out'&&!confirm){ window._punchOutArmed=false; }
   if(!window._geoState.checked) await _loadGeofence();
   let payload={}, geoErr=null, wifiWhy=null;
   if(window._geoState.active){
@@ -12965,8 +13040,22 @@ async function doPunch(kind){
     }
   }
   if(btn){ btn.disabled=true; btn.textContent=kind==='in'?'Punching In...':'Punching Out...'; }
+  if(kind==='out'&&confirm) payload.confirm=true;
   try{
     const r=await api('/api/teacher/attendance/punch-'+kind,'POST',payload);
+    if(r.need_confirm){
+      // <1h punch-out: teacher ko warn karo + dobara press pe confirm
+      window._punchOutArmed=true;
+      toast(r.message,true);
+      _geoNote('<b>Short day warning</b> — '+esc(r.message),'error');
+      document.querySelectorAll('.pw-punchbtn.out').forEach(b=>{
+        b.disabled=false; b.classList.add('confirm-arm');
+        b.innerHTML='Confirm Punch Out — Present nahi lagega';
+        b.onclick=()=>doPunch('out',true);
+      });
+      return;   // re-render nahi — armed button apni jagah rahe
+    }
+    window._punchOutArmed=false;
     toast(r.message);
     if(r.wifi) _geoNote(`Verified via <b>Office WiFi</b> — you are at <b>${esc(r.office||'office')}</b>. Punch recorded.`,'success');
     else if(r.distance!=null) _geoNote(`Location verified — you are at <b>${esc(r.office||'office')}</b> (<b>${r.distance}m</b> from office).`,'success');
@@ -12993,15 +13082,52 @@ let _tAttMonth='';
 async function loadTAttendance(){
   const el=document.getElementById('t-attendance-content');
   _tAttMonth=_tAttMonth||curMonth();
-  el.innerHTML=`<div class="sm-head"><h2>My Attendance</h2><p>Punch in and punch out daily. The admin sees your attendance in real time.</p></div>
+  el.innerHTML=`<div class="sm-head"><h2>My Attendance</h2><p>Punch in / punch out daily — present tabhi lagega jab punch gap kam se kam <b>1 hour</b> ho. Leave ke liye pehle approval lein.</p></div>
     <div class="att-grid">
       <div id="ta-punch-wrap"></div>
       <div class="card"><div class="card-header"><h3>Month Overview</h3><input type="month" class="form-control" style="width:auto;padding:6px 10px" id="ta-month" value="${_tAttMonth}" onchange="_tAttMonth=this.value;tAttHistory()"></div><div class="card-body" id="ta-cal"><div class="spinner"></div></div></div>
-      <div class="card"><div class="card-header"><h3>Recent Days</h3></div><div class="card-body" id="ta-logs"><div class="spinner"></div></div></div>
+      <div class="card"><div class="card-header"><h3>Leave Requests</h3><button class="btn btn-primary btn-sm" onclick="openTLeave()">${ic('plus')} Apply Leave</button></div><div class="card-body" id="ta-leaves"><div class="spinner"></div></div></div>
     </div>
+    <div class="card" style="margin-top:18px"><div class="card-header"><h3>Recent Days</h3></div><div class="card-body" id="ta-logs"><div class="spinner"></div></div></div>
     <div class="card" style="margin-top:18px"><div class="card-header"><h3>Full Month Record</h3><span id="ta-summary" style="display:flex;gap:8px;flex-wrap:wrap"></span></div><div class="card-body"><div id="ta-history"><div class="spinner"></div></div></div></div>`;
   renderPunchCard('ta-punch-wrap');
   tAttHistory();
+  tLeaveFetch();
+}
+// ---- Leave (teacher) ----
+async function tLeaveFetch(){
+  const box=document.getElementById('ta-leaves'); if(!box) return;
+  try{
+    const d=await api('/api/teacher/leaves/my');
+    const rows=d.leaves||[];
+    box.innerHTML=rows.length?rows.map(l=>{
+      const pill=l.status==='approved'?'<span class="po-pill green">APPROVED</span>':l.status==='rejected'?'<span class="po-pill red">REJECTED</span>':'<span class="po-pill amber">PENDING</span>';
+      return `<div class="lv-row"><div style="min-width:0"><div class="lv-d">${esc(fmtNice(l.start_date))}${l.end_date!==l.start_date?' → '+esc(fmtNice(l.end_date)):''} <span style="font-weight:600;color:var(--text-muted)">(${l.leave_type==='half'?'Half day':'Full day'})</span></div>
+        <div class="lv-r">${esc(l.reason)}${l.admin_remark?` · <b>Admin:</b> ${esc(l.admin_remark)}`:''}</div></div>${pill}</div>`;
+    }).join(''):`<div class="pay-empty">No leave requests yet. Need a day off? Apply first — approved leave is marked as <b>Leave</b>, not absent. Without approval, the day counts as <b>AB</b>.</div>`;
+  }catch(e){ box.innerHTML=errHtml(e); }
+}
+function openTLeave(){
+  const today=new Date().toISOString().slice(0,10);
+  showModal('Apply for Leave',`
+    <div class="form-grid vt-form">
+      <div class="form-group"><label>From Date</label><input id="tlv-from" type="date" class="input" value="${today}" min="${today}"></div>
+      <div class="form-group"><label>To Date</label><input id="tlv-to" type="date" class="input" value="${today}" min="${today}"></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Leave Type</label><select id="tlv-type" class="input"><option value="full">Full Day</option><option value="half">Half Day (same date)</option></select></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Reason</label><textarea id="tlv-reason" class="input" rows="2" placeholder="e.g. Family function, medical appointment..."></textarea></div>
+    </div>
+    <p style="font-size:.74rem;color:var(--text-muted)">Your request goes to the admin for approval. <b>Approved</b> leave is marked as Leave in your record; leave taken <b>without approval</b> is marked AB (absent).</p>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="tLeaveApply()">${ic('send')} Send for Approval</button>`);
+}
+async function tLeaveApply(){
+  const payload={start_date:val('tlv-from'),end_date:val('tlv-to'),leave_type:val('tlv-type'),reason:(val('tlv-reason')||'').trim()};
+  if(!payload.start_date||!payload.end_date){ toast('Please pick the leave dates'); return; }
+  if(payload.reason.length<3){ toast('Please write a short reason'); return; }
+  try{
+    await api('/api/teacher/leaves/apply','POST',payload);
+    closeModal(); toast('Leave request sent for approval.');
+    tLeaveFetch(); tAttHistory();
+  }catch(e){ toast(e.message||'Could not apply'); }
 }
 async function tAttHistory(){
   const box=document.getElementById('ta-history'); if(!box) return;
@@ -13009,42 +13135,51 @@ async function tAttHistory(){
   try{
     const d=await api('/api/teacher/attendance/history?month='+encodeURIComponent(_tAttMonth||curMonth()));
     const sm=document.getElementById('ta-summary');
-    if(sm) sm.innerHTML=`<span class="po-pill green">PRESENT ${d.present_days} DAY${d.present_days===1?'':'S'}</span><span class="po-pill gold">${d.total_hours} HOURS</span>`;
+    if(sm) sm.innerHTML=`<span class="po-pill green">PRESENT ${d.present_days}</span><span class="po-pill blue">LEAVE ${d.leave_days||0}</span><span class="po-pill amber">SHORT ${d.short_days||0}</span><span class="po-pill red">AB ${d.absent_days||0}</span><span class="po-pill gold">${d.total_hours} HOURS</span>`;
     // ---- calendar ----
     if(cal){
       const [yy,mm]=d.month.split('-').map(Number);
       const daysIn=new Date(yy,mm,0).getDate();
-      const present=new Set(d.rows.filter(r=>r.punch_in).map(r=>Number(r.date.split('-')[2])));
+      const byDate={}; d.rows.forEach(r=>byDate[r.date]=r);
+      const leaves=new Set(d.leave_dates||[]);
       const now=new Date(); const isCur=(now.getFullYear()===yy&&now.getMonth()+1===mm);
+      const lastEl=isCur?now.getDate():daysIn;
       let cells='';
       for(let day=1;day<=daysIn;day++){
-        const on=present.has(day);
+        const ds=`${yy}-${String(mm).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+        const r=byDate[ds];
+        let cls='';
+        if(r){ cls=r.status==='present'?' on':(r.status==='short'?' sh':''); }
+        else if(leaves.has(ds)) cls=' lv';
+        else if(day<=lastEl&&!isCur||(isCur&&day<now.getDate())) cls=' ab';
+        if(isCur&&day>now.getDate()) cls='';
         const today=isCur&&now.getDate()===day;
-        const future=isCur&&day>now.getDate();
-        cells+=`<div class="cal-d${on?' on':''}${today?' today':''}${(!on&&future)?' future':''}">${day}</div>`;
+        cells+=`<div class="cal-d${cls}${today?' today':''}${(!cls&&isCur&&day>now.getDate())?' future':''}">${day}</div>`;
       }
-      const pastDays=isCur?now.getDate():daysIn;
-      const missed=Math.max(0,pastDays-d.present_days);
       cal.innerHTML=`<div class="cal-head">
           <div class="cal-stat g"><div class="n">${d.present_days}</div><div class="l">Present</div></div>
-          <div class="cal-stat r"><div class="n">${missed}</div><div class="l">Not Punched</div></div>
+          <div class="cal-stat" style="--x:1"><div class="n" style="color:#1d4ed8">${d.leave_days||0}</div><div class="l">Leave</div></div>
+          <div class="cal-stat"><div class="n" style="color:#b45309">${d.short_days||0}</div><div class="l">Short</div></div>
+          <div class="cal-stat r"><div class="n">${d.absent_days||0}</div><div class="l">AB</div></div>
           <div class="cal-stat b"><div class="n">${d.total_hours}</div><div class="l">Hours</div></div>
         </div>
         <div class="cal-grid">${cells}</div>
-        <div class="cal-leg"><span><i style="background:rgba(16,185,129,.6)"></i>Present</span><span><i style="background:var(--border)"></i>No punch</span><span><i style="outline:2px solid #b8941f;outline-offset:-1px;background:transparent"></i>Today</span></div>`;
+        <div class="cal-leg"><span><i style="background:rgba(16,185,129,.6)"></i>Present</span><span><i style="background:rgba(59,130,246,.55)"></i>Leave</span><span><i style="background:rgba(245,158,11,.6)"></i>Short (&lt;1h)</span><span><i style="background:rgba(220,38,38,.45)"></i>AB</span><span><i style="outline:2px solid #b8941f;outline-offset:-1px;background:transparent"></i>Today</span></div>`;
     }
     // ---- recent logs ----
     if(logs){
-      const recent=d.rows.slice(0,5);
+      const recent=d.rows.slice(0,6);
+      const pill=r=>r.status==='present'?'<span class="po-pill green">PRESENT</span>':r.status==='short'?'<span class="po-pill amber">SHORT &lt;1H</span>':r.status==='working'?'<span class="po-pill blue">ON DUTY</span>':'<span class="po-pill amber">NO PUNCH</span>';
       logs.innerHTML=recent.length?recent.map(r=>`<div class="log-row">
           <div><div class="d">${esc(fmtNice(r.date))}</div><div class="t">${esc(r.punch_in||'-')} ${r.punch_out?'to '+esc(r.punch_out):''}${r.hours!=null?' - '+r.hours+' hrs':''}</div></div>
-          <span class="po-pill ${r.punch_in?'green':'amber'}">${r.punch_in?'PRESENT':'NO PUNCH'}</span>
+          ${pill(r)}
         </div>`).join(''):`<div class="pay-empty">No attendance yet this month. Punch in on any working day and it will appear here.</div>`;
     }
     // ---- full table ----
+    const stPill=s=>s==='present'?'<span class="po-pill green">PRESENT</span>':s==='short'?'<span class="po-pill amber">SHORT</span>':s==='working'?'<span class="po-pill blue">ON DUTY</span>':'-';
     if(!d.rows.length){ box.innerHTML=`<div class="empty-state"><p>No attendance recorded in ${esc(fmtMonthLabel(d.month))} yet.</p></div>`; return; }
-    box.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Date</th><th>Day</th><th>Punch In</th><th>Punch Out</th><th>Hours</th></tr></thead><tbody>${
-      d.rows.map(r=>`<tr><td>${esc(fmtNice(r.date))}</td><td>${esc(r.day)}</td><td>${esc(r.punch_in||'-')}</td><td>${esc(r.punch_out||'-')}</td><td>${r.hours!=null?r.hours+' h':'-'}</td></tr>`).join('')
+    box.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Date</th><th>Day</th><th>Punch In</th><th>Punch Out</th><th>Hours</th><th>Status</th></tr></thead><tbody>${
+      d.rows.map(r=>`<tr><td>${esc(fmtNice(r.date))}</td><td>${esc(r.day)}</td><td>${esc(r.punch_in||'-')}</td><td>${esc(r.punch_out||'-')}</td><td>${r.hours!=null?r.hours+' h':'-'}</td><td>${stPill(r.status)}</td></tr>`).join('')
     }</tbody></table></div>`;
   }catch(e){ box.innerHTML=errHtml(e); if(cal)cal.innerHTML=''; if(logs)logs.innerHTML=''; }
 }
@@ -13228,7 +13363,10 @@ async function loadAAttendance(){
   const el=document.getElementById('a-attendance-content');
   _aAttDate=_aAttDate||new Date().toISOString().slice(0,10);
   _aAttMonth=_aAttMonth||curMonth();
-  el.innerHTML=`<div class="sm-head"><h2>Teacher Attendance</h2><p>Live punch in and punch out status of every teacher, day-wise and month-wise.</p></div><div class="card"><div class="card-header"><h3>Attendance</h3>
+  el.innerHTML=`<div class="sm-head"><h2>Teacher Attendance</h2><p>Live punch in / punch out status, leave approvals, and month-wise summary. Present counts only when the punch gap is at least <b>1 hour</b>.</p></div>
+    <div class="card" style="margin-bottom:18px"><div class="card-header"><h3>${ic('clipboard')} Leave Requests</h3><span id="a-lv-badge"></span></div>
+      <div class="card-body" id="a-leave-body"><div class="spinner"></div></div></div>
+    <div class="card"><div class="card-header"><h3>Attendance</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button class="btn btn-ghost btn-sm" onclick="openOfficeLocation()">${ic('location')} Office Location</button>
         <div class="tt-toggle"><button class="${_aAttView==='day'?'active':''}" onclick="_aAttView='day';loadAAttendance()">Day View</button><button class="${_aAttView==='month'?'active':''}" onclick="_aAttView='month';loadAAttendance()">Month Summary</button></div>
@@ -13238,6 +13376,41 @@ async function loadAAttendance(){
       </div></div>
     <div class="card-body"><div id="a-att-summary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div><div id="a-att-body"><div class="spinner"></div></div></div></div>`;
   aAttFetch();
+  aLeaveFetch();
+}
+// ---- Leave approvals (admin) ----
+async function aLeaveFetch(){
+  const box=document.getElementById('a-leave-body'); if(!box) return;
+  try{
+    const d=await api('/api/admin/leaves');
+    const rows=d.leaves||[];
+    const badge=document.getElementById('a-lv-badge');
+    if(badge) badge.innerHTML=d.pending_count?`<span class="po-pill amber">${d.pending_count} PENDING</span>`:`<span class="po-pill green">ALL CLEAR</span>`;
+    if(!rows.length){ box.innerHTML=`<div class="pay-empty">No leave requests yet. When a teacher applies for leave, it will appear here for approval.</div>`; return; }
+    const pend=rows.filter(l=>l.status==='pending');
+    const done=rows.filter(l=>l.status!=='pending').slice(0,6);
+    const pill=l=>l.status==='approved'?'<span class="po-pill green">APPROVED</span>':'<span class="po-pill red">REJECTED</span>';
+    box.innerHTML=(pend.length?pend.map(l=>`<div class="lv-card pend">
+        <div class="lv-head"><div><div class="lv-name">${esc(l.teacher)}</div><div class="lv-dates">${esc(fmtNice(l.start_date))}${l.end_date!==l.start_date?' → '+esc(fmtNice(l.end_date)):''} · ${l.days} day${l.days>1?'s':''} · ${l.leave_type==='half'?'Half day':'Full day'} · applied ${esc(l.created_at)}</div></div><span class="po-pill amber">PENDING</span></div>
+        <div class="lv-reason">${esc(l.reason)}</div>
+        <div class="lv-actions"><button class="btn btn-primary btn-sm" onclick="aLeaveReview(${l.id},'approved')">${ic('check')} Approve</button><button class="btn btn-ghost btn-sm" style="border-color:rgba(220,38,38,.5);color:#b91c1c" onclick="aLeaveReject(${l.id})">Reject</button></div>
+      </div>`).join(''):'')
+      +(done.length?`<div style="font-size:.68rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin:12px 0 4px">Recently reviewed</div>`:'')
+      +done.map(l=>`<div class="lv-row"><div style="min-width:0"><div class="lv-d">${esc(l.teacher)} — ${esc(fmtNice(l.start_date))}${l.end_date!==l.start_date?' → '+esc(fmtNice(l.end_date)):''}</div>
+        <div class="lv-r">${esc(l.reason)}${l.admin_remark?` · Remark: ${esc(l.admin_remark)}`:''}</div></div>${pill(l)}</div>`).join('');
+  }catch(e){ box.innerHTML=errHtml(e); }
+}
+async function aLeaveReview(id,action,remark){
+  try{
+    await api('/api/admin/leaves/'+id+'/review','POST',{action,remark:remark||''});
+    toast(action==='approved'?'Leave approved.':'Leave rejected.');
+    closeModal(); aLeaveFetch(); aAttFetch();
+  }catch(e){ toast(e.message||'Could not review'); }
+}
+function aLeaveReject(id){
+  showModal('Reject Leave',`
+    <div class="form-group"><label>Reason for rejection (shown to the teacher)</label><textarea id="alv-remark" class="input" rows="2" placeholder="e.g. Exam week — classes cannot be cancelled"></textarea></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="aLeaveReview(${id},'rejected',(document.getElementById('alv-remark')||{}).value||'')">Reject Leave</button>`);
 }
 async function aAttFetch(){
   const body=document.getElementById('a-att-body'), sum=document.getElementById('a-att-summary');
@@ -13245,9 +13418,11 @@ async function aAttFetch(){
   try{
     if(_aAttView==='day'){
       const d=await api('/api/admin/attendance?day='+encodeURIComponent(_aAttDate));
-      sum.innerHTML=`<span class="po-pill green">PRESENT ${d.present} / ${d.total}</span><span class="po-pill slate">${esc(d.day).toUpperCase()}, ${esc(fmtNice(d.date)).toUpperCase()}</span>`;
+      const nLeave=(d.teachers||[]).filter(t=>t.status==='leave').length;
+      const nShort=(d.teachers||[]).filter(t=>t.status==='short').length;
+      sum.innerHTML=`<span class="po-pill green">PRESENT ${d.present} / ${d.total}</span>${nLeave?`<span class="po-pill blue">ON LEAVE ${nLeave}</span>`:''}${nShort?`<span class="po-pill amber">SHORT ${nShort}</span>`:''}<span class="po-pill slate">${esc(d.day).toUpperCase()}, ${esc(fmtNice(d.date)).toUpperCase()}</span>`;
       if(!d.teachers.length){ body.innerHTML='<div class="empty-state"><p>No active teachers found.</p></div>'; return; }
-      const pill=t=>t.status==='working'?'<span class="po-pill green">ON DUTY</span>':t.status==='done'?'<span class="po-pill gold">DAY COMPLETE</span>':'<span class="po-pill amber">NOT PUNCHED</span>';
+      const pill=t=>t.status==='working'?'<span class="po-pill green">ON DUTY</span>':t.status==='done'?'<span class="po-pill gold">DAY COMPLETE</span>':t.status==='leave'?'<span class="po-pill blue">ON LEAVE</span>':t.status==='short'?'<span class="po-pill amber">SHORT &lt;1H</span>':'<span class="po-pill red">NOT PUNCHED</span>';
       window._aAttRows={}; d.teachers.forEach(t=>window._aAttRows[t.teacher_id]=t);
       const _chip=(dist,office)=>dist==null?'':(dist===0&&office)?` <span style="font-size:.62rem;font-weight:800;color:#059669" title="Office WiFi/PC se punch (network verified)">(WiFi)</span>`:` <span style="font-size:.62rem;font-weight:800;color:${dist<=50?'#059669':'#d97706'}" title="Office se punch distance">(${dist}m)</span>`;
       body.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Teacher</th><th>Punch In</th><th>Punch Out</th><th>Hours</th><th>Status</th><th></th></tr></thead><tbody>${
@@ -13255,10 +13430,10 @@ async function aAttFetch(){
       }</tbody></table></div>`;
     } else {
       const d=await api('/api/admin/attendance/month?month='+encodeURIComponent(_aAttMonth));
-      sum.innerHTML=`<span class="po-pill slate">${esc(fmtMonthLabel(d.month)).toUpperCase()}</span>`;
+      sum.innerHTML=`<span class="po-pill slate">${esc(fmtMonthLabel(d.month)).toUpperCase()}</span><span class="po-pill gold">ELAPSED ${d.elapsed_days||0} DAYS</span>`;
       if(!d.teachers.length){ body.innerHTML='<div class="empty-state"><p>No active teachers found.</p></div>'; return; }
-      body.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Teacher</th><th>Days Present</th><th>Total Hours</th><th></th></tr></thead><tbody>${
-        d.teachers.map(t=>`<tr><td style="font-weight:600">${esc(t.name)}</td><td>${t.present_days}</td><td>${t.total_hours} h</td><td><button class="btn btn-ghost btn-sm" onclick="openTeacherAttDetail(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">History</button></td></tr>`).join('')
+      body.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Teacher</th><th>Present</th><th>Leave</th><th>Short</th><th>AB</th><th>Total Hours</th><th></th></tr></thead><tbody>${
+        d.teachers.map(t=>`<tr><td style="font-weight:600">${esc(t.name)}</td><td><b style="color:#059669">${t.present_days}</b></td><td><b style="color:#1d4ed8">${t.leave_days||0}</b></td><td><b style="color:#b45309">${t.short_days||0}</b></td><td><b style="color:#b91c1c">${t.absent_days||0}</b></td><td>${t.total_hours} h</td><td><button class="btn btn-ghost btn-sm" onclick="openTeacherAttDetail(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">History</button></td></tr>`).join('')
       }</tbody></table></div>`;
     }
   }catch(e){ body.innerHTML=errHtml(e); }
@@ -13296,9 +13471,12 @@ async function tadFetch(tid){
   const b=document.getElementById('tad-body'); if(!b) return;
   try{
     const d=await api('/api/admin/attendance/teacher/'+tid+'?month='+encodeURIComponent(val('tad-month')));
-    if(!d.rows.length){ b.innerHTML='<div class="empty-state"><p>No attendance in this month.</p></div>'; return; }
-    b.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Date</th><th>Day</th><th>In</th><th>Out</th><th>Hours</th></tr></thead><tbody>${
-      d.rows.map(r=>`<tr><td>${esc(fmtNice(r.date))}</td><td>${esc(r.day)}</td><td>${esc(r.punch_in||'-')}</td><td>${esc(r.punch_out||'-')}</td><td>${r.hours!=null?r.hours+' h':'-'}</td></tr>`).join('')
+    const lvs=(d.leave_dates||[]);
+    const lvNote=lvs.length?`<div style="margin-bottom:10px"><span class="po-pill blue">LEAVE: ${lvs.map(x=>esc(fmtNice(x))).join(', ')}</span></div>`:'';
+    const stPill=s=>s==='present'?'<span class="po-pill green">PRESENT</span>':s==='short'?'<span class="po-pill amber">SHORT</span>':s==='working'?'<span class="po-pill blue">ON DUTY</span>':'-';
+    if(!d.rows.length){ b.innerHTML=lvNote+'<div class="empty-state"><p>No attendance in this month.</p></div>'; return; }
+    b.innerHTML=lvNote+`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Date</th><th>Day</th><th>In</th><th>Out</th><th>Hours</th><th>Status</th></tr></thead><tbody>${
+      d.rows.map(r=>`<tr><td>${esc(fmtNice(r.date))}</td><td>${esc(r.day)}</td><td>${esc(r.punch_in||'-')}</td><td>${esc(r.punch_out||'-')}</td><td>${r.hours!=null?r.hours+' h':'-'}</td><td>${stPill(r.status)}</td></tr>`).join('')
     }</tbody></table></div>`;
   }catch(e){ b.innerHTML=errHtml(e); }
 }
@@ -14244,6 +14422,63 @@ async function ocrFillQuestion_v1(inp,i){
 .dark .vt-form .input{background:#241c08;border-color:#4a3b14;color:#f0e6cc}
 .dark .vt-form .form-group label{color:#e0be5c}
 .dark .vt-thumb-box{background:rgba(201,162,39,.07)}
+/* ===== v70: premium task manager + attendance upgrades ===== */
+.vt-thumb.click{cursor:zoom-in}
+.vt-thumb img{transition:transform .25s}
+.vt-thumb.click:hover img{transform:scale(1.04)}
+.vt-thumb .vt-dl{position:absolute;bottom:10px;right:10px;display:inline-flex;align-items:center;gap:5px;
+  padding:5px 11px;border-radius:999px;background:rgba(20,14,2,.72);color:#ffe9ad;font-size:.6rem;font-weight:800;
+  letter-spacing:.06em;text-transform:uppercase;backdrop-filter:blur(4px);border:1px solid rgba(255,233,173,.35)}
+.vt-thumb .vt-dl svg{width:11px;height:11px}
+.vt-pill.blink{animation:vtPillBlink 1.5s ease-in-out infinite}
+@keyframes vtPillBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(217,119,6,0)}50%{opacity:.5;box-shadow:0 0 0 4px rgba(217,119,6,.18)}}
+.vt-type{display:inline-flex;align-items:center;gap:4px;font-size:.6rem;font-weight:800;padding:3px 10px;border-radius:999px;
+  background:linear-gradient(135deg,rgba(201,162,39,.16),rgba(184,148,31,.07));color:#8a6d10;border:1px solid rgba(184,148,31,.45);
+  letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.dark .vt-type{color:#e8c96a;background:rgba(201,162,39,.12)}
+.vt-type svg{width:10px;height:10px}
+.vt-subm{margin-top:6px;border-radius:14px;padding:13px 14px;border:1.5px solid rgba(184,148,31,.4);
+  background:linear-gradient(135deg,rgba(201,162,39,.1),rgba(201,162,39,.03))}
+.dark .vt-subm{background:linear-gradient(135deg,rgba(201,162,39,.13),rgba(201,162,39,.04));border-color:rgba(201,162,39,.35)}
+.vt-subm .vs-h{display:flex;align-items:center;gap:7px;font-size:.66rem;font-weight:800;letter-spacing:.07em;
+  text-transform:uppercase;color:#8a6d10;margin-bottom:9px}
+.dark .vt-subm .vs-h{color:#e8c96a}
+.vt-subm .vs-h svg{width:13px;height:13px}
+.vt-subm-row{display:flex;gap:8px;flex-wrap:wrap}
+.vt-subm-row .input{flex:1;min-width:190px;background:#fff}
+.dark .vt-subm-row .input{background:#241c08;border-color:#4a3b14;color:#f0e6cc}
+.vt-subm-note{font-size:.66rem;color:var(--text-muted);margin-top:7px;font-weight:600;line-height:1.45}
+.vt-done-link{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.76rem;font-weight:700;color:#047857}
+.dark .vt-done-link{color:#34d399}
+.vt-done-link a{color:var(--primary);font-weight:800}
+.vt-subm.done{border-color:rgba(16,185,129,.4);background:linear-gradient(135deg,rgba(16,185,129,.09),rgba(16,185,129,.02))}
+.vt-subm.done .vs-h{color:#047857}
+.dark .vt-subm.done .vs-h{color:#34d399}
+/* punch-out confirm arm (<1h) */
+.pw-punchbtn.confirm-arm{background:linear-gradient(135deg,#b45309,#dc2626);animation:vtPillBlink 1.3s ease-in-out infinite}
+/* attendance premium: calendar states + summary */
+.cal-d.lv{background:rgba(59,130,246,.14);border-color:rgba(59,130,246,.4);color:#1d4ed8}
+body.dark .cal-d.lv{color:#93c5fd}
+.cal-d.sh{background:rgba(245,158,11,.16);border-color:rgba(245,158,11,.45);color:#b45309}
+body.dark .cal-d.sh{color:#fbbf24}
+.cal-d.ab{background:rgba(220,38,38,.09);border-color:rgba(220,38,38,.3);color:#b91c1c}
+body.dark .cal-d.ab{color:#f87171}
+.po-pill.blue{background:rgba(59,130,246,.14);color:#1d4ed8}
+body.dark .po-pill.blue{color:#93c5fd}
+.po-pill.red{background:rgba(220,38,38,.12);color:#b91c1c}
+body.dark .po-pill.red{color:#f87171}
+/* leave cards */
+.lv-row{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:11px 0;border-bottom:1px solid var(--border)}
+.lv-row:last-child{border-bottom:none}
+.lv-row .lv-d{font-weight:800;font-size:.84rem}
+.lv-row .lv-r{font-size:.72rem;color:var(--text-muted);margin-top:2px}
+.lv-card{border:1.5px solid var(--border);border-radius:14px;padding:12px 14px;margin-bottom:10px;background:var(--bg)}
+.lv-card.pend{border-color:rgba(217,119,6,.5);background:linear-gradient(135deg,rgba(217,119,6,.07),rgba(217,119,6,.02))}
+.lv-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.lv-name{font-weight:800;font-size:.88rem}
+.lv-dates{font-size:.72rem;color:var(--text-muted);font-weight:700;margin-top:2px}
+.lv-reason{font-size:.78rem;margin-top:7px;line-height:1.5}
+.lv-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 @media(max-width:640px){
   .vt-grid{grid-template-columns:1fr}
   .vt-thumb{height:120px}

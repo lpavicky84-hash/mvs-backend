@@ -4,6 +4,11 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+try:
+    from sqlalchemy.dialects.mysql import MEDIUMTEXT
+    _B64TEXT = Text().with_variant(MEDIUMTEXT(), "mysql")   # MySQL TEXT = 64KB limit hota hai
+except Exception:
+    _B64TEXT = Text()
 from database import Base
 import enum
 
@@ -365,6 +370,17 @@ class VideoChannel(Base):
     created_at = Column(DateTime, default=func.now())
 
 
+class VideoType(Base):
+    """Video ka type (Short / Long / One Shot / Strategy ...). Admin naye add kar sakta hai."""
+    __tablename__ = "video_types"
+
+    id         = Column(Integer, primary_key=True)
+    name       = Column(String(120), unique=True)
+    active     = Column(Boolean, default=True)
+    sort       = Column(Integer, default=0)
+    created_at = Column(DateTime, default=func.now())
+
+
 class VideoTask(Base):
     """Production manager -> teacher video task: thumbnail + deadline + review workflow."""
     __tablename__ = "video_tasks"
@@ -374,7 +390,8 @@ class VideoTask(Base):
     title          = Column(String(300))
     channel_id     = Column(Integer, ForeignKey("video_channels.id"), nullable=True)
     channel_name   = Column(String(160), default="")
-    thumbnail_b64  = Column(Text, nullable=True)          # uploaded thumbnail image
+    video_type     = Column(String(120), default="")      # Short Video / Long Video / One Shot / Strategy ...
+    thumbnail_b64  = Column(_B64TEXT, nullable=True)      # uploaded thumbnail image (compressed)
     thumbnail_link = Column(String(600), default="")      # ya drive link
     reference      = Column(Text, default="")             # manager ka reference/brief
     remarks        = Column(Text, default="")             # assignment remarks
@@ -751,6 +768,25 @@ class TeacherAttendance(Base):
     out_dist   = Column(Integer, nullable=True)
     out_office = Column(String(80), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+
+    teacher = relationship("TeacherProfile")
+
+
+class TeacherLeave(Base):
+    """Teacher ka leave request: start-end date + reason. Admin approve/reject karta hai.
+    Approved leave absent ki jagah 'Leave' count hoti hai; bina approval ki chhutti = AB."""
+    __tablename__ = "teacher_leaves"
+
+    id           = Column(Integer, primary_key=True)
+    teacher_id   = Column(Integer, ForeignKey("teacher_profiles.id"), index=True)
+    start_date   = Column(Date, index=True)
+    end_date     = Column(Date, index=True)
+    leave_type   = Column(String(30), default="full")   # full | half
+    reason       = Column(Text, default="")
+    status       = Column(String(20), default="pending", index=True)  # pending | approved | rejected
+    admin_remark = Column(Text, default="")
+    reviewed_at  = Column(DateTime, nullable=True)
+    created_at   = Column(DateTime, server_default=func.now())
 
     teacher = relationship("TeacherProfile")
 

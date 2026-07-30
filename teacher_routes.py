@@ -2912,6 +2912,46 @@ def _att_hours(a):
         return round((a.punch_out - a.punch_in).total_seconds() / 3600, 1)
     return None
 
+# Present tabhi count hoga jab punch-in aur punch-out ke beech kam se kam itne ghante hon.
+MIN_PRESENT_HOURS = 1.0
+
+def _is_present(a):
+    """Present = punch-in + punch-out dono, aur gap >= MIN_PRESENT_HOURS."""
+    if not a or not a.punch_in or not a.punch_out:
+        return False
+    return (a.punch_out - a.punch_in).total_seconds() >= MIN_PRESENT_HOURS * 3600
+
+def _is_short(a):
+    """Short day = punch complete but gap < MIN_PRESENT_HOURS (present nahi, absent bhi nahi)."""
+    if not a or not a.punch_in or not a.punch_out:
+        return False
+    return (a.punch_out - a.punch_in).total_seconds() < MIN_PRESENT_HOURS * 3600
+
+def _leave_days_map(db, teacher_id, start, end):
+    """Approved leaves -> {date: 1.0|0.5} month range ke andar."""
+    from models import TeacherLeave
+    out = {}
+    rows = db.query(TeacherLeave).filter(
+        TeacherLeave.teacher_id == teacher_id,
+        TeacherLeave.status == "approved",
+        TeacherLeave.start_date < end, TeacherLeave.end_date >= start).all()
+    for lv in rows:
+        d = max(lv.start_date, start)
+        e = min(lv.end_date, end - timedelta(days=1))
+        val = 0.5 if lv.leave_type == "half" else 1.0
+        while d <= e:
+            out[d] = val
+            d += timedelta(days=1)
+    return out
+
+def _elapsed_days(start, end):
+    """Month range me aaj tak kitne din guzar chuke (future month = 0)."""
+    today = _ist_now().date()
+    if today < start:
+        return 0
+    last = min(today, end - timedelta(days=1))
+    return (last - start).days + 1
+
 def _month_range(month: str):
     """'2026-07' -> (date(2026,7,1), date(2026,8,1)). Galat format pe current month."""
     try:
@@ -3145,14 +3185,17 @@ def compute_payout(db, teacher_id: int, month: str):
         return None
     start, end = _month_range(month)
     month_key = start.strftime("%Y-%m")
-    present = db.query(TeacherAttendance).filter(
+    att_rows = db.query(TeacherAttendance).filter(
         TeacherAttendance.teacher_id == teacher_id,
-        TeacherAttendance.att_date >= start, TeacherAttendance.att_date < end,
-        TeacherAttendance.punch_in.isnot(None)).count()
+        TeacherAttendance.att_date >= start, TeacherAttendance.att_date < end).all()
+    present = sum(1 for a in att_rows if _is_present(a))
+    short = sum(1 for a in att_rows if _is_short(a))
+    leave_days = sum(_leave_days_map(db, teacher_id, start, end).values())
     wd = c.working_days or 26
     base = c.base_salary or 0
     per_day = round(base / wd) if wd else 0
-    absent = max(0, wd - present)
+    # Approved leave = paid (deduction nahi); short day (<1h) aur bina approval ki chhutti = deduction.
+    absent = max(0, round(wd - present - leave_days - short))
     att_deduction = per_day * absent
     adjs = db.query(PayoutAdjustment).filter(
         PayoutAdjustment.teacher_id == teacher_id,
@@ -3172,6 +3215,8 @@ def compute_payout(db, teacher_id: int, month: str):
         "is_current_month": (start.year == now.year and start.month == now.month),
         "base_salary": base, "allowances": c.allowances or 0,
         "working_days": wd, "present_days": present, "absent_days": absent,
+        "short_days": short, "leave_days": leave_days,
+        "min_hours": MIN_PRESENT_HOURS,
         "per_day_rate": per_day, "attendance_deduction": att_deduction,
         "extras": extras, "bonus": bonus, "manual_deductions": manual_ded,
         "gross_salary": gross, "performance": perf,
@@ -3478,6 +3523,13 @@ def punch_out(request: Request, payload: dict = Body(default={}), db: Session = 
         raise HTTPException(status_code=400, detail="Please punch in first")
     if a.punch_out:
         raise HTTPException(status_code=400, detail=f"You already punched out today at {_fmt_t(a.punch_out)}")
+    gap_h = (now - a.punch_in).total_seconds() / 3600.0
+    if gap_h < MIN_PRESENT_HOURS and not payload.get("confirm"):
+        # 1 ghante se pehle punch-out: confirm maango — ye din PRESENT nahi lagega.
+        mins = int(gap_h * 60)
+        return {"need_confirm": True, "hours": round(gap_h, 2),
+                "message": f"Sirf {mins} min me punch-out — minimum {int(MIN_PRESENT_HOURS)} hour required. "
+                           f"Aise punch-out karne par aaj PRESENT nahi lagega. Confirm karne ke liye dobara PUNCH OUT dabayen."}
     a.punch_out = now
     wifi = bool(office and office.get("wifi"))
     if office:
@@ -3486,10 +3538,14 @@ def punch_out(request: Request, payload: dict = Body(default={}), db: Session = 
         a.out_dist = dist if dist is not None else 0
         a.out_office = office["name"]
     db.commit()
+    short = gap_h < MIN_PRESENT_HOURS
     msg = f"Punched out at {_fmt_t(now)}"
     if office:
         msg += " (%s - Office WiFi)" % office["name"] if wifi else " (%s - office se %dm)" % (office["name"], dist)
-    return {"message": msg, "punch_out": _fmt_t(now), "hours": _att_hours(a), "distance": dist,
+    if short:
+        msg += " — Short day (<1h), present count nahi hoga"
+    return {"message": msg, "punch_out": _fmt_t(now), "hours": _att_hours(a),
+            "short": short, "present": not short, "distance": dist,
             "office": office["name"] if office else None, "wifi": wifi}
 
 @router.get("/attendance/history")
@@ -3502,12 +3558,95 @@ def attendance_history(month: str = "", db: Session = Depends(get_db), current_u
         TeacherAttendance.teacher_id == tp.id,
         TeacherAttendance.att_date >= start, TeacherAttendance.att_date < end
     ).order_by(TeacherAttendance.att_date.desc()).all()
+    lvmap = _leave_days_map(db, tp.id, start, end)
+
+    def _st(r):
+        if _is_present(r):
+            return "present"
+        if _is_short(r):
+            return "short"
+        if r and r.punch_in:
+            return "working"
+        return ""
+
     out = [{"date": str(r.att_date), "day": r.att_date.strftime("%A"),
             "punch_in": _fmt_t(r.punch_in), "punch_out": _fmt_t(r.punch_out),
-            "hours": _att_hours(r)} for r in rows]
+            "hours": _att_hours(r), "status": _st(r)} for r in rows]
     total_hours = round(sum(x["hours"] or 0 for x in out), 1)
+    present_days = sum(1 for r in rows if _is_present(r))
+    short_days = sum(1 for r in rows if _is_short(r))
+    today = _ist_now().date()
+    leave_days = round(sum(v for d, v in lvmap.items()), 1)
+    leave_elapsed = round(sum(v for d, v in lvmap.items() if d <= today), 1)
+    elapsed = _elapsed_days(start, end)
+    absent_days = max(0, round(elapsed - present_days - short_days - leave_elapsed))
+    # leave dates list (calendar me blue dikhane ke liye)
+    leave_dates = sorted(str(d) for d in lvmap.keys())
     return {"month": start.strftime("%Y-%m"), "rows": out,
-            "present_days": sum(1 for x in out if x["punch_in"]), "total_hours": total_hours}
+            "present_days": present_days, "short_days": short_days,
+            "leave_days": leave_days, "absent_days": absent_days,
+            "leave_dates": leave_dates, "elapsed_days": elapsed,
+            "min_hours": MIN_PRESENT_HOURS,
+            "total_hours": total_hours}
+
+
+# ===== LEAVE REQUESTS (apply -> admin approve/reject) =====
+@router.post("/leaves/apply")
+def leave_apply(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    from models import TeacherLeave, User
+    try:
+        sd = date.fromisoformat((payload.get("start_date") or "")[:10])
+        ed = date.fromisoformat((payload.get("end_date") or "")[:10])
+    except Exception:
+        raise HTTPException(400, "Valid start and end dates are required (YYYY-MM-DD)")
+    if ed < sd:
+        raise HTTPException(400, "End date cannot be before the start date")
+    if (ed - sd).days > 60:
+        raise HTTPException(400, "Leave cannot be longer than 60 days")
+    ltype = (payload.get("leave_type") or "full").strip().lower()
+    if ltype not in ("full", "half"):
+        ltype = "full"
+    if ltype == "half" and sd != ed:
+        raise HTTPException(400, "Half day leave must start and end on the same date")
+    reason = (payload.get("reason") or "").strip()
+    if len(reason) < 3:
+        raise HTTPException(400, "Please write a short reason for the leave")
+    overlap = db.query(TeacherLeave).filter(
+        TeacherLeave.teacher_id == tp.id,
+        TeacherLeave.status.in_(["pending", "approved"]),
+        TeacherLeave.start_date <= ed, TeacherLeave.end_date >= sd).first()
+    if overlap:
+        raise HTTPException(400, "A leave request already exists for overlapping dates "
+                                 f"({overlap.start_date} to {overlap.end_date} — {overlap.status})")
+    lv = TeacherLeave(teacher_id=tp.id, start_date=sd, end_date=ed,
+                      leave_type=ltype, reason=reason, status="pending")
+    db.add(lv)
+    uname = current_user.name if current_user else "A teacher"
+    admins = db.query(User).filter(User.role == "admin", User.is_active == True).all()
+    for a in admins:
+        db.add(Notification(user_id=a.id, title="🌴 New Leave Request",
+                            message=f'{uname} requested leave from {sd.strftime("%d %b")} to {ed.strftime("%d %b")} '
+                                    f'({"Half day" if ltype == "half" else "Full day"}): {reason}. '
+                                    f'Review it in Attendance > Leave Requests.',
+                            notif_type="leave"))
+    db.commit()
+    return {"ok": True, "id": lv.id}
+
+
+@router.get("/leaves/my")
+def leave_my(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = get_teacher_profile(current_user, db)
+    from models import TeacherLeave
+    rows = (db.query(TeacherLeave).filter(TeacherLeave.teacher_id == tp.id)
+            .order_by(TeacherLeave.created_at.desc()).limit(50).all())
+    return {"leaves": [{
+        "id": r.id, "start_date": str(r.start_date), "end_date": str(r.end_date),
+        "leave_type": r.leave_type, "reason": r.reason or "",
+        "status": r.status, "admin_remark": r.admin_remark or "",
+        "reviewed_at": r.reviewed_at.strftime("%d %b %Y, %I:%M %p") if r.reviewed_at else "",
+        "created_at": r.created_at.strftime("%d %b %Y") if r.created_at else "",
+    } for r in rows]}
 
 # ===== CONTRACT (APPOINTMENT LETTER) =====
 @router.get("/contract")

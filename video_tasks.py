@@ -11,7 +11,7 @@ from sqlalchemy import text
 
 from database import get_db, engine
 from security import get_admin, get_teacher
-from models import User, TeacherProfile, Notification, VideoChannel, VideoTask
+from models import User, TeacherProfile, Notification, VideoChannel, VideoTask, VideoType
 
 router = APIRouter(prefix="/api", tags=["Video Task Manager"])
 
@@ -35,6 +35,20 @@ def _ensure_thumbnail_column():
 
 _ensure_thumbnail_column()
 
+
+def _ensure_vtype_column():
+    """video_tasks.video_type column — purane deploys pe best-effort ADD COLUMN."""
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE video_tasks ADD COLUMN video_type VARCHAR(120) DEFAULT ''"))
+            conn.commit()
+        print("[video_tasks] video_type column added")
+    except Exception as e:
+        print("[video_tasks] video_type column check skipped:", e)
+
+
+_ensure_vtype_column()
+
 DEFAULT_CHANNELS = [
     "Manish Verma Official - Main Channel",
     "Manish Verma",
@@ -46,6 +60,8 @@ DEFAULT_CHANNELS = [
     "Dignity",
     "Dignity 11th & 12th",
 ]
+
+DEFAULT_TYPES = ["Short Video", "Long Video", "One Shot Video", "Strategy Video"]
 
 REVIEW_ACTIONS = ("approved", "editing_soon", "editing_done", "uploaded", "rejected")
 
@@ -83,6 +99,13 @@ def _seed_channels(db):
     if db.query(VideoChannel).count() == 0:
         for n in DEFAULT_CHANNELS:
             db.add(VideoChannel(name=n))
+        db.commit()
+
+
+def _seed_types(db):
+    if db.query(VideoType).count() == 0:
+        for i, n in enumerate(DEFAULT_TYPES):
+            db.add(VideoType(name=n, sort=i))
         db.commit()
 
 
@@ -130,6 +153,7 @@ def _task_out(db, t, with_thumb=True):
         "id": t.id, "title": t.title, "teacher_id": t.teacher_id,
         "teacher": _teacher_name(db, t.teacher_id),
         "channel_id": t.channel_id, "channel": t.channel_name or "",
+        "video_type": getattr(t, "video_type", "") or "",
         "has_thumbnail": bool(t.thumbnail_b64),
         "thumbnail_link": t.thumbnail_link or "",
         "reference": t.reference or "", "remarks": t.remarks or "",
@@ -217,6 +241,39 @@ def vt_add_channel(payload: dict = Body(...), db: Session = Depends(get_db), _=D
 
 
 # =============================================================
+# VIDEO TYPES (Short / Long / One Shot / Strategy ... admin add kar sakta hai)
+# =============================================================
+@router.get("/admin/video-types")
+def vt_list_types(db: Session = Depends(get_db), _=Depends(get_admin)):
+    _seed_types(db)
+    rows = db.query(VideoType).order_by(VideoType.sort.asc(), VideoType.id.asc()).all()
+    return {"types": [{"id": c.id, "name": c.name, "active": bool(c.active)} for c in rows]}
+
+
+@router.post("/admin/video-types")
+def vt_add_type(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    _seed_types(db)
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "Type name is required")
+    if db.query(VideoType).filter(VideoType.name == name).first():
+        raise HTTPException(400, "This type already exists")
+    mx = db.query(VideoType).order_by(VideoType.sort.desc()).first()
+    c = VideoType(name=name, sort=(mx.sort + 1) if mx else 0)
+    db.add(c)
+    db.commit()
+    return {"ok": True, "id": c.id, "name": c.name}
+
+
+@router.get("/teacher/video-types")
+def vt_teacher_types(db: Session = Depends(get_db), _=Depends(get_teacher)):
+    _seed_types(db)
+    rows = (db.query(VideoType).filter(VideoType.active == True)
+            .order_by(VideoType.sort.asc(), VideoType.id.asc()).all())
+    return {"types": [{"id": c.id, "name": c.name} for c in rows]}
+
+
+# =============================================================
 # ADMIN — ASSIGN / LIST / STATS / REVIEW / PROPOSALS / REPORT
 # =============================================================
 @router.post("/admin/video-tasks")
@@ -241,6 +298,7 @@ def vt_assign(payload: dict = Body(...), db: Session = Depends(get_db), _=Depend
             teacher_id=tid, title=title,
             channel_id=ch.id if ch else None,
             channel_name=ch.name if ch else "",
+            video_type=(payload.get("video_type") or "").strip(),
             thumbnail_b64=_checked_b64(payload),
             thumbnail_link=(payload.get("thumbnail_link") or "").strip(),
             reference=(payload.get("reference") or "").strip(),
@@ -270,6 +328,7 @@ def vt_assign(payload: dict = Body(...), db: Session = Depends(get_db), _=Depend
 
 @router.get("/admin/video-tasks")
 def vt_admin_list(teacher_id: int = 0, status: str = "", channel_id: int = 0,
+                  video_type: str = "",
                   db: Session = Depends(get_db), _=Depends(get_admin)):
     _seed_channels(db)
     _vt_sweep(db)
@@ -280,6 +339,8 @@ def vt_admin_list(teacher_id: int = 0, status: str = "", channel_id: int = 0,
         q = q.filter(VideoTask.status == status)
     if channel_id:
         q = q.filter(VideoTask.channel_id == channel_id)
+    if video_type:
+        q = q.filter(VideoTask.video_type == video_type)
     tasks = q.order_by(VideoTask.created_at.desc()).all()
     props = (db.query(VideoTask).filter(VideoTask.proposal_ok == "pending")
              .order_by(VideoTask.created_at.desc()).all())
@@ -308,8 +369,12 @@ def vt_admin_stats(db: Session = Depends(get_db), _=Depends(get_admin)):
         if md["delayed"] > 0:
             most_delayed = md
     proposals = db.query(VideoTask).filter(VideoTask.proposal_ok == "pending").count()
+    by_type = {}
+    for t in tasks:
+        k = (getattr(t, "video_type", "") or "").strip() or "Uncategorized"
+        by_type[k] = by_type.get(k, 0) + 1
     return {"total": total, "done": done, "pending": pending, "delayed": delayed,
-            "proposals": proposals, "by_teacher": ranks,
+            "proposals": proposals, "by_teacher": ranks, "by_type": by_type,
             "top": top, "most_delayed": most_delayed}
 
 
@@ -384,6 +449,8 @@ def vt_approve_proposal(task_id: int, payload: dict = Body(...),
             t.reference = payload["reference"].strip()
         if payload.get("remarks"):
             t.remarks = payload["remarks"].strip()
+        if payload.get("video_type") is not None:
+            t.video_type = (payload.get("video_type") or "").strip()
         if ch:
             t.channel_id = ch.id
             t.channel_name = ch.name
@@ -447,6 +514,7 @@ def vt_notify_students(task_id: int, payload: dict = Body(default={}),
 
 @router.get("/admin/video-tasks/report.csv")
 def vt_report_csv(teacher_id: int = 0, status: str = "", channel_id: int = 0,
+                  video_type: str = "",
                   db: Session = Depends(get_db), _=Depends(get_admin)):
     import csv
     import io
@@ -457,14 +525,17 @@ def vt_report_csv(teacher_id: int = 0, status: str = "", channel_id: int = 0,
         q = q.filter(VideoTask.status == status)
     if channel_id:
         q = q.filter(VideoTask.channel_id == channel_id)
+    if video_type:
+        q = q.filter(VideoTask.video_type == video_type)
     tasks = q.order_by(VideoTask.created_at.desc()).all()
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["ID", "Title", "Teacher", "Channel", "Deadline", "Status",
+    w.writerow(["ID", "Title", "Teacher", "Channel", "Type", "Deadline", "Status",
                 "Submitted At", "On Time", "Reshoots", "Review Remarks", "Created"])
     for t in tasks:
         w.writerow([
             t.id, t.title, _teacher_name(db, t.teacher_id), t.channel_name or "",
+            getattr(t, "video_type", "") or "",
             t.deadline.strftime("%d %b %Y %H:%M") if t.deadline else "",
             t.status,
             t.submitted_at.strftime("%d %b %Y %H:%M") if t.submitted_at else "",
@@ -499,7 +570,25 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
     rest = [t for t in tasks if t not in active]
     out = [_task_out(db, t) for t in active + rest]
     nxt = active[0] if active else None
-    return {"tasks": out,
+    # teacher ke apne stats: kitni upload hui, pending, on-time, delayed + is mahine type-wise
+    now = datetime.now()
+    real = [t for t in tasks if t.proposal_ok != "pending"]
+    subs = [t for t in real if t.submitted_at]
+    month_type = {}
+    for t in subs:
+        if t.submitted_at and t.submitted_at.year == now.year and t.submitted_at.month == now.month:
+            k = (getattr(t, "video_type", "") or "").strip() or "Uncategorized"
+            month_type[k] = month_type.get(k, 0) + 1
+    stats = {
+        "assigned": len(real),
+        "uploaded": sum(1 for t in real if t.status == "uploaded"),
+        "submitted": len(subs),
+        "pending": sum(1 for t in real if t.status == "assigned"),
+        "on_time": sum(1 for t in subs if t.on_time),
+        "delayed": sum(1 for t in subs if t.on_time is False),
+        "month_types": month_type,
+    }
+    return {"tasks": out, "stats": stats,
             "next_deadline": (_task_out(db, nxt) if nxt else None)}
 
 
@@ -517,6 +606,7 @@ def vt_propose(payload: dict = Body(...), db: Session = Depends(get_db),
     t = VideoTask(teacher_id=tp.id, title=title,
                   channel_id=ch.id if ch else None,
                   channel_name=ch.name if ch else "",
+                  video_type=(payload.get("video_type") or "").strip(),
                   reference=(payload.get("reference") or "").strip(),
                   status="proposal", proposed_by="teacher", proposal_ok="pending")
     db.add(t)

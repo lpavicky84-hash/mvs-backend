@@ -2278,73 +2278,169 @@ def _teacher_name_map(db):
 
 @router.get("/attendance")
 def admin_attendance_day(day: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
-    """Ek din ki attendance — saare active teachers, punch in/out ke saath."""
-    from models import TeacherAttendance, TeacherProfile, User
-    from teacher_routes import _ist_now, _fmt_t, _att_hours, _ensure_geofence
+    """Ek din ki attendance — saare active teachers, punch in/out + leave status ke saath."""
+    from models import TeacherAttendance, TeacherProfile, User, TeacherLeave
+    from teacher_routes import (_ist_now, _fmt_t, _att_hours, _ensure_geofence,
+                                _is_present, _is_short)
     _ensure_geofence(db)
     try:
         d = datetime.strptime(day, "%Y-%m-%d").date() if day else _ist_now().date()
     except Exception:
         d = _ist_now().date()
     rows = {a.teacher_id: a for a in db.query(TeacherAttendance).filter(TeacherAttendance.att_date == d).all()}
+    lrows = {l.teacher_id: l for l in db.query(TeacherLeave).filter(
+        TeacherLeave.status == "approved",
+        TeacherLeave.start_date <= d, TeacherLeave.end_date >= d).all()}
     out = []
     for tp in db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all():
         a = rows.get(tp.id)
+        lv = lrows.get(tp.id)
         status = "absent"
         if a and a.punch_in and a.punch_out:
-            status = "done"
+            status = "done" if _is_present(a) else "short"
         elif a and a.punch_in:
             status = "working"
+        elif lv:
+            status = "leave"
         out.append({"teacher_id": tp.id, "name": tp.user.name if tp.user else "",
                     "punch_in": _fmt_t(a.punch_in) if a else None,
                     "punch_out": _fmt_t(a.punch_out) if a else None,
                     "in_dist": a.in_dist if a else None, "out_dist": a.out_dist if a else None,
                     "in_office": a.in_office if a else None, "out_office": a.out_office if a else None,
+                    "leave_type": (lv.leave_type if lv else None),
                     "hours": _att_hours(a), "status": status})
-    out.sort(key=lambda x: (x["status"] == "absent", x["name"]))
+    out.sort(key=lambda x: (x["status"] in ("absent",), x["name"]))
     return {"date": str(d), "day": d.strftime("%A"), "teachers": out,
-            "present": sum(1 for x in out if x["status"] != "absent"),
+            "present": sum(1 for x in out if x["status"] in ("done", "working", "leave")),
             "total": len(out)}
 
 @router.get("/attendance/month")
 def admin_attendance_month(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
-    """Month summary — teacher-wise present days + total hours."""
+    """Month summary — teacher-wise present / leave / short / absent + total hours.
+    Present = punch gap >= 1h. Approved leave alag count; bina punch/leave = AB."""
     from models import TeacherAttendance, TeacherProfile, User
-    from teacher_routes import _month_range, _ensure_geofence
+    from teacher_routes import (_month_range, _ensure_geofence, _is_present, _is_short,
+                                _leave_days_map, _elapsed_days, _ist_now)
     _ensure_geofence(db)
     start, end = _month_range(month)
     rows = db.query(TeacherAttendance).filter(
         TeacherAttendance.att_date >= start, TeacherAttendance.att_date < end).all()
     agg = {}
     for a in rows:
-        g = agg.setdefault(a.teacher_id, {"present": 0, "hours": 0.0})
-        if a.punch_in:
+        g = agg.setdefault(a.teacher_id, {"present": 0, "short": 0, "hours": 0.0})
+        if _is_present(a):
             g["present"] += 1
+        elif _is_short(a):
+            g["short"] += 1
         if a.punch_in and a.punch_out:
             g["hours"] += (a.punch_out - a.punch_in).total_seconds() / 3600
+    today = _ist_now().date()
+    elapsed = _elapsed_days(start, end)
     out = []
     for tp in db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all():
-        g = agg.get(tp.id, {"present": 0, "hours": 0.0})
+        g = agg.get(tp.id, {"present": 0, "short": 0, "hours": 0.0})
+        lvmap = _leave_days_map(db, tp.id, start, end)
+        leave_days = round(sum(lvmap.values()), 1)
+        leave_elapsed = round(sum(v for d, v in lvmap.items() if d <= today), 1)
+        absent = max(0, round(elapsed - g["present"] - g["short"] - leave_elapsed))
         out.append({"teacher_id": tp.id, "name": tp.user.name if tp.user else "",
-                    "present_days": g["present"], "total_hours": round(g["hours"], 1)})
+                    "present_days": g["present"], "short_days": g["short"],
+                    "leave_days": leave_days, "absent_days": absent,
+                    "total_hours": round(g["hours"], 1)})
     out.sort(key=lambda x: -x["present_days"])
-    return {"month": start.strftime("%Y-%m"), "teachers": out}
+    return {"month": start.strftime("%Y-%m"), "elapsed_days": elapsed, "teachers": out}
 
 @router.get("/attendance/teacher/{tid}")
 def admin_attendance_teacher(tid: int, month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
-    """Ek teacher ki date-wise attendance (admin detail view)."""
+    """Ek teacher ki date-wise attendance (admin detail view) + status."""
     from models import TeacherAttendance
-    from teacher_routes import _month_range, _fmt_t, _att_hours, _ensure_geofence
+    from teacher_routes import (_month_range, _fmt_t, _att_hours, _ensure_geofence,
+                                _is_present, _is_short, _leave_days_map)
     _ensure_geofence(db)
     start, end = _month_range(month)
     rows = db.query(TeacherAttendance).filter(
         TeacherAttendance.teacher_id == tid,
         TeacherAttendance.att_date >= start, TeacherAttendance.att_date < end
     ).order_by(TeacherAttendance.att_date.desc()).all()
+    lvmap = _leave_days_map(db, tid, start, end)
+
+    def _st(r):
+        if _is_present(r):
+            return "present"
+        if _is_short(r):
+            return "short"
+        if r and r.punch_in:
+            return "working"
+        return ""
+
     return {"month": start.strftime("%Y-%m"),
+            "leave_dates": sorted(str(d) for d in lvmap.keys()),
             "rows": [{"date": str(r.att_date), "day": r.att_date.strftime("%A"),
                       "punch_in": _fmt_t(r.punch_in), "punch_out": _fmt_t(r.punch_out),
-                      "hours": _att_hours(r)} for r in rows]}
+                      "hours": _att_hours(r), "status": _st(r)} for r in rows]}
+
+
+# ===== LEAVE REQUESTS (admin review) =====
+@router.get("/leaves")
+def admin_leaves(status: str = "", teacher_id: int = 0,
+                 db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Saare leave requests — default pending pehle, teacher ka naam ke saath."""
+    from models import TeacherLeave, TeacherProfile, User
+    q = db.query(TeacherLeave)
+    if status:
+        q = q.filter(TeacherLeave.status == status)
+    if teacher_id:
+        q = q.filter(TeacherLeave.teacher_id == teacher_id)
+    rows = q.order_by(TeacherLeave.created_at.desc()).limit(200).all()
+    names = {}
+    for tp in db.query(TeacherProfile).all():
+        u = db.query(User).filter(User.id == tp.user_id).first()
+        names[tp.id] = u.name if u else f"Teacher #{tp.id}"
+    pend = db.query(TeacherLeave).filter(TeacherLeave.status == "pending").count()
+    return {"pending_count": pend, "leaves": [{
+        "id": r.id, "teacher_id": r.teacher_id,
+        "teacher": names.get(r.teacher_id, f"Teacher #{r.teacher_id}"),
+        "start_date": str(r.start_date), "end_date": str(r.end_date),
+        "days": (r.end_date - r.start_date).days + 1,
+        "leave_type": r.leave_type, "reason": r.reason or "",
+        "status": r.status, "admin_remark": r.admin_remark or "",
+        "reviewed_at": r.reviewed_at.strftime("%d %b %Y, %I:%M %p") if r.reviewed_at else "",
+        "created_at": r.created_at.strftime("%d %b %Y") if r.created_at else "",
+    } for r in rows]}
+
+
+@router.post("/leaves/{lid}/review")
+def admin_leave_review(lid: int, payload: dict = Body(default={}),
+                       db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Approve / reject leave. Teacher ko notification jaati hai."""
+    from models import TeacherLeave, TeacherProfile, Notification
+    from teacher_routes import _ist_now
+    lv = db.query(TeacherLeave).filter(TeacherLeave.id == lid).first()
+    if not lv:
+        raise HTTPException(status_code=404, detail="Leave request not found")
+    if lv.status != "pending":
+        raise HTTPException(status_code=400, detail=f"This request is already {lv.status}")
+    action = (payload.get("action") or "").strip().lower()
+    if action not in ("approved", "rejected"):
+        raise HTTPException(status_code=400, detail="Action must be 'approved' or 'rejected'")
+    lv.status = action
+    lv.admin_remark = (payload.get("remark") or "").strip()
+    lv.reviewed_at = _ist_now()
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == lv.teacher_id).first()
+    if tp and tp.user_id:
+        rng = f'{lv.start_date.strftime("%d %b")} - {lv.end_date.strftime("%d %b")}'
+        if action == "approved":
+            db.add(Notification(user_id=tp.user_id, title="✅ Leave Approved",
+                                message=f"Your leave ({rng}) has been approved"
+                                        + (f": {lv.admin_remark}" if lv.admin_remark else "."),
+                                notif_type="leave"))
+        else:
+            db.add(Notification(user_id=tp.user_id, title="❌ Leave Rejected",
+                                message=f"Your leave request ({rng}) was rejected"
+                                        + (f": {lv.admin_remark}" if lv.admin_remark else "."),
+                                notif_type="leave"))
+    db.commit()
+    return {"ok": True, "status": lv.status}
 
 # ===== CONTRACTS =====
 @router.get("/teacher/{tid}/contract")
