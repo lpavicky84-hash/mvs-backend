@@ -14482,7 +14482,11 @@ async function ocrFillQuestion_v1(inp,i){
 .syl-tgwrap{padding:0 17px 15px}
 .syl-tgbar{height:9px;border-radius:99px;background:rgba(127,127,127,.15);position:relative;overflow:hidden}
 .syl-tgbar>i{display:block;height:9px;border-radius:99px;min-width:0;transition:width .45s cubic-bezier(.4,0,.2,1)}
-.syl-tgbar>u{position:absolute;top:-3px;bottom:-3px;width:2px;border-radius:2px;text-decoration:none;opacity:.9}
+.syl-tgbar>u{position:absolute;top:-5px;bottom:-5px;width:16px;margin-left:-8px;border-radius:4px;text-decoration:none;cursor:pointer;background:transparent;display:flex;justify-content:center}
+.syl-tgbar>u>i{display:block;width:2px;border-radius:2px;opacity:.95}
+.syl-tgbar>u:hover{background:rgba(127,127,127,.18)}
+.syl-mslegend span{cursor:pointer}
+.syl-mslegend span:hover{text-decoration:underline}
 .syl-tgh{align-items:flex-start}
 .syl-tgh>.syl-tgn{padding-top:1px}
 .syl-tgbody{padding:15px 17px 17px;border-top:1px solid var(--border,#e6e9f0);margin-top:2px}
@@ -15250,14 +15254,23 @@ function sylTargetCards(c, ms){
     + (dleft!=null ? '<span class="syl-daysblink">&#9200; '+dleft+' days left</span>' : '');
 
   // progress bar — har milestone ka apna marker tick (pass green, 75% amber, 90% violet)
+  // tick pe hover = tooltip batata hai line kya hai; tap/click = us target ki
+  // chapter list neeche filter ho jati hai (chhote sub-rows ki zaroorat nahi)
   var mcol = {pass:'#059669', high:'#d97706', top:'#7c3aed'};
+  var tickTip = function(t){
+    var hint = t.kind==='pass' ? 'Chapters up to this line secure your passing.'
+             : t.kind==='high' ? 'Chapters up to this line take you to 75 percent.'
+             : 'Chapters up to this line take you to 90 percent.';
+    return t.label+' — '+_sylN(t.total)+' paper marks. '+hint
+      +(t.done?' Covered ✓.':'')+' Tap to see these chapters below.';
+  };
   var bar = '<i style="width:'+_sylPct(have,A.total)+'%;background:'+tcol+'"></i>'
     + infos.map(function(t){
-        return '<u style="left:'+_sylPct(t.total,A.total)+'%;background:'+mcol[t.kind]
-          +'" title="'+esc(t.label)+' — plan '+_sylN(t.total)+'"></u>';
+        return '<u style="left:'+_sylPct(t.total,A.total)+'%" onclick="sylFilterTarget(\''+t.kind+'\')" title="'+esc(tickTip(t))+'">'
+          +'<i style="background:'+mcol[t.kind]+'"></i></u>';
       }).join('');
   var legend = infos.map(function(t){
-      return '<span><b style="background:'+mcol[t.kind]+'"></b>'+esc(t.label.replace(' target',''))+' '+_sylN(t.total)+'</span>';
+      return '<span onclick="sylFilterTarget(\''+t.kind+'\')" title="'+esc(tickTip(t))+'"><b style="background:'+mcol[t.kind]+'"></b>'+esc(t.label.replace(' target',''))+' '+_sylN(t.total)+'</span>';
     }).join('');
 
   var h='<div class="syl-tg uni'+(A.done?' ok':'')+(!A.done?' next':'')+(bodyOpen?' open':'')+'" style="margin-top:15px">'
@@ -15276,23 +15289,9 @@ function sylTargetCards(c, ms){
        +'<span>plan '+_sylN(A.total)+'</span></div>')
    +'</div>';
 
-  // milestone sub-rows — jab aim ke andar 2+ targets hon (75%/90% wale)
-  if(infos.length>1){
-    h+='<div class="syl-mslist">'+infos.map(function(t,i){
-      var active=(_SYL.targetFilter===t.kind);
-      var status = t.done ? 'Covered'+(t.covd?' on '+esc(t.covd):'')+' &#10003;'
-        : (t.kind===aim ? 'Your current aim &mdash; '+_sylN(Math.max(0,Math.round((t.total-have)*10)/10))+' marks of chapters to pick'
-                        : _sylN(Math.max(0,Math.round((t.total-have)*10)/10))+' marks still to pick');
-      return '<div class="syl-msrow2'+(t.done?' done':'')+(t.kind===aim?' aimrow':'')+(active?' active':'')
-       +'" onclick="sylFilterTarget(\''+t.kind+'\')" title="Tap to see this target&#39;s plan chapters below">'
-       +'<div class="msdot">'+(t.done?'&#10003;':(i+1))+'</div>'
-       +'<div class="mst"><b style="color:'+(t.done?'#047857':(t.kind===aim?'#b45309':'#7a6d45'))+'">'+esc(t.label)
-       +(t.kind===aim?' <span class="syl-pill2 aim" style="font-size:.58rem;padding:2px 8px">Your Aim</span>':'')+'</b>'
-       +'<small>'+status+'</small></div>'
-       +'<div class="msn"><b style="color:'+(t.done?'#047857':'#b8941f')+'">'+_sylN(Math.min(have,t.total))+' / '+_sylN(t.total)+'</b>'
-       +'<small>paper marks</small></div></div>';
-    }).join('')+'</div>';
-  }
+  /* Milestone sub-rows HATA DIYE — students confuse hote the (ek hi card mein
+     chhote-chhote progress rows). Ab sirf progress bar ke ticks hain: hover pe
+     tooltip, tap pe chapter list us target ki filter ho jati hai. */
 
   if(bodyOpen) h += '<div class="syl-tgbody">' + sylBonusBlock(c, aim) + sylReqTable(c) + '</div>';
   return h+'</div>';
@@ -15300,11 +15299,17 @@ function sylTargetCards(c, ms){
 
 function sylTgBody(){ _SYL.tgBody = !_SYL.tgBody; sylSubject(); }
 
-/* Milestone row click → chapter list us target ke plan chapters pe filter */
+/* Milestone tick/legend click → chapter list us target ke plan chapters pe filter */
 function sylFilterTarget(kind){
   _SYL.targetFilter = (_SYL.targetFilter===kind) ? null : kind;
   sylSubject();
-  if(_SYL.targetFilter) setTimeout(sylScrollChapters, 80);
+  if(_SYL.targetFilter){
+    setTimeout(sylScrollChapters, 80);
+    var t=_sylTInfo(_SYL.cur.calc, kind, (_SYL.cur && _SYL.cur.milestones) || {});
+    toast(t.label+' — '+_sylN(t.total)+' paper marks. Showing its plan chapters below.');
+  }else{
+    toast('Back to your aim chapters.');
+  }
 }
 
 function sylFocusDate(){
