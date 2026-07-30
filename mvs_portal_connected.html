@@ -3371,9 +3371,55 @@ async function viewDoubtFile(role,id,mime,name){
     const r=await fetch(API+'/api/'+role+'/doubt/'+id+'/image',{headers:{Authorization:'Bearer '+TOKEN}});
     if(!r.ok) throw new Error('Attachment not found');
     const blob=await r.blob(); const url=URL.createObjectURL(blob);
-    if((mime||'').startsWith('image/')) showModal('Attachment',`<img src="${url}" style="width:100%;border-radius:10px">`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+    if((mime||'').startsWith('image/')) openImageViewerSrc(url,_dlName(name,blob.type));
     else window.open(url,'_blank');
   }catch(e){ toast(e.message,true); }
+}
+/* v69 — doubt image attachments: fullscreen viewer + download + inline thumbs */
+function _dlName(name,mime){
+  let nm=(name||'').trim()||'attachment';
+  if(!/\.[a-z0-9]{2,5}$/i.test(nm)){ const ext=((mime||'image/jpeg').split('/')[1]||'jpeg').split('+')[0]; nm+='.'+ext; }
+  return nm;
+}
+function doubtAttachHtml(role,id,mime,name,isAns){
+  if((mime||'').startsWith('image/')){
+    const url='/api/'+role+'/doubt/'+id+(isAns?'/answer-file':'/image');
+    return `<img class="doubt-thumb" data-url="${url}" data-name="${esc(name||'')}" alt="attachment photo" onclick="openImageViewer(this)">`;
+  }
+  return `<button class="btn btn-ghost btn-sm" onclick="${isAns?'viewAnswerFile':'viewDoubtFile'}('${role}',${id},'${esc(mime||'')}')">${ic('folder')} ${esc(name||'Attachment')}</button>`;
+}
+function loadDoubtThumbs(root){
+  (root||document).querySelectorAll('img.doubt-thumb[data-url]:not(.loaded)').forEach(im=>{
+    im.classList.add('loaded');
+    fetch(API+im.getAttribute('data-url'),{headers:{Authorization:'Bearer '+TOKEN}})
+      .then(r=>{ if(!r.ok) throw 0; return r.blob(); })
+      .then(b=>{ im._blobUrl=URL.createObjectURL(b); im._dlName=_dlName(im.getAttribute('data-name'),b.type); im.src=im._blobUrl; })
+      .catch(()=>{ const s=document.createElement('span'); s.className='doubt-thumb-fail'; s.textContent='Attachment could not be loaded'; im.replaceWith(s); });
+  });
+}
+function openImageViewer(img){
+  const src=img._blobUrl||'';
+  if(!src){ toast('Photo is still loading — ek second rukiye.',true); return; }
+  openImageViewerSrc(src,img._dlName||_dlName(img.getAttribute('data-name')));
+}
+function openImageViewerSrc(src,name){
+  let ov=document.getElementById('imgviewer');
+  if(!ov){
+    ov=document.createElement('div'); ov.id='imgviewer'; ov.className='imgviewer';
+    ov.innerHTML=`<div class="iv-bar"><span class="iv-name" id="iv-name"></span><span style="display:flex;gap:8px;flex:none"><a class="iv-btn" id="iv-dl" href="#" download>&#8681; Download</a><button class="iv-btn" onclick="closeImageViewer()">&#10005; Close</button></span></div><img id="iv-img" alt="attachment full view">`;
+    document.body.appendChild(ov);
+    ov.addEventListener('click',e=>{ if(e.target===ov) closeImageViewer(); });
+    document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeImageViewer(); });
+  }
+  document.getElementById('iv-img').src=src;
+  document.getElementById('iv-name').textContent=name||'attachment';
+  const dl=document.getElementById('iv-dl'); dl.href=src; dl.setAttribute('download',name||'attachment');
+  ov.classList.add('on'); document.body.style.overflow='hidden';
+}
+function closeImageViewer(){
+  const ov=document.getElementById('imgviewer');
+  if(ov) ov.classList.remove('on');
+  document.body.style.overflow='';
 }
 // ============ DOUBT NAV BADGES ============
 let _dbadgeInt=null;
@@ -7162,7 +7208,7 @@ function tRenderDoubts(){
   const list=doubts.filter(d=>(d.subject||'Other')===_tdSub);
   const pend=list.filter(d=>d.status!=='resolved'), done=list.filter(d=>d.status==='resolved');
   html+=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="_tdSub=null;tRenderDoubts()">\u2190 All Subjects</button><h3 style="margin:0">${esc(_tdSub)} <span style="color:var(--text-muted);font-weight:600;font-size:.85rem">(${list.length})</span></h3></div><div class="hide-scroll doubt-drill">`;
-  const mediaOf=d=>`${d.has_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/voice')">${ic('play')} Voice Note</button>`:''}${d.has_image?`<button class="btn btn-ghost btn-sm" onclick="viewDoubtFile('teacher',${d.id},'${esc(d.attach_mime||'')}')">${ic('folder')} Attachment</button>`:''}`;
+  const mediaOf=d=>`${d.has_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/voice')">${ic('play')} Voice Note</button>`:''}${d.has_image?doubtAttachHtml('teacher',d.id,d.attach_mime,d.attach_name,false):''}`;
   const headOf=(d,pill)=>`<div class="dbt-head"><div style="min-width:0"><div class="dbt-name">${esc(d.student_name||'Student')}</div><div class="dbt-meta">${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}${d.created_at?' \u00b7 '+esc(d.created_at):''}</div></div><div class="dbt-badges">${pill}</div></div>`;
   let rows='';
   if(pend.length){
@@ -7176,12 +7222,13 @@ function tRenderDoubts(){
     rows+=`<div class="dbt-sec">Resolved (${done.length})</div>`;
     rows+=done.map(d=>{
       const media=mediaOf(d);
-      const amedia=`${d.has_answer_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/answer-voice')">${ic('play')} Your Voice Answer</button>`:''}${d.has_answer_file?`<button class="btn btn-ghost btn-sm" onclick="viewAnswerFile('teacher',${d.id},'${esc(d.answer_attach_mime||'')}')">${ic('folder')} Answer Attachment</button>`:''}`;
+      const amedia=`${d.has_answer_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/answer-voice')">${ic('play')} Your Voice Answer</button>`:''}${d.has_answer_file?doubtAttachHtml('teacher',d.id,d.answer_attach_mime,d.answer_attach_name,true):''}`;
       return `<div class="dbt-card res">${headOf(d,'<span class="dbt-pill res">\u2713 Resolved</span>')}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> <span id="tda-${d.id}">${_fmtRich(d.answer)}</span></div>`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}<div style="margin-top:10px"><button class="btn btn-danger btn-sm" title="Apna response delete karo — doubt wapas pending ho jayega" onclick="tDelDoubtAnswer(${d.id})">${ic('trash')} Delete Response</button></div></div>`;
     }).join('');
   }
   html+=(rows||`<div class="empty-state"><p>No doubts in this subject.</p></div>`)+`</div>`;
   el.innerHTML=html;
+  loadDoubtThumbs(el);   // v69 — image attachments ke inline previews
   // KaTeX math render ($..$) — DPP questions ke formulas sahi dikhenge
   list.forEach(d=>{
     const q=document.getElementById(`tdq-${d.id}`); if(q) renderMath(q);
@@ -7216,10 +7263,10 @@ async function resolveDoubt(id){
     toast('Doubt resolved.'); loadTDoubts();
   }catch(e){ toast(e.message,true); if(btn){btn.disabled=false;btn.textContent='Resolve';} }
 }
-function viewAnswerFile(role,id,mime){
+function viewAnswerFile(role,id,mime,name){
   fetch(API+'/api/'+role+'/doubt/'+id+'/answer-file',{headers:{Authorization:'Bearer '+TOKEN}}).then(r=>{ if(!r.ok) throw 0; return r.blob(); }).then(b=>{
     const url=URL.createObjectURL(b);
-    if((mime||'').startsWith('image/')) showModal('Answer Attachment',`<img src="${url}" style="width:100%;border-radius:10px">`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+    if((mime||'').startsWith('image/')) openImageViewerSrc(url,_dlName(name,b.type));
     else window.open(url,'_blank');
   }).catch(()=>toast('Attachment not found.',true));
 }
@@ -8770,7 +8817,7 @@ function aRenderDoubts(){
   const fbtn=(f,label)=>`<button class="btn btn-sm ${_aDoubtFilter===f?'btn-primary':'btn-ghost'}" onclick="aDoubtFilter('${f}')">${label}</button>`;
   const cards=list.length?list.map(d=>{
     const when=d.created_at?new Date(d.created_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
-    const qimg=d.has_image&&(d.attach_mime||'image/jpeg').startsWith('image/')?`<img id="adimg-${d.id}" alt="doubt attachment">`:'';
+    const qimg=d.has_image&&(d.attach_mime||'image/jpeg').startsWith('image/')?`<img class="doubt-thumb" id="adimg-${d.id}" data-name="${esc(d.attach_name||'')}" alt="doubt attachment" onclick="openImageViewer(this)">`:'';
     const qfile=d.has_image&&!(d.attach_mime||'image/jpeg').startsWith('image/')?`<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="viewDoubtFile('admin',${d.id},'${esc(d.attach_mime||'')}')">${ic('folder')} ${esc(d.attach_name||'Attachment')}</button>`:'';
     const qvoice=d.has_voice?`<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="playDoubtVoice(this,'/api/admin/doubt/${d.id}/voice')">${ic('play')} Voice Note</button>`:'';
     const avoice=`${d.has_answer_voice?`<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="playDoubtVoice(this,'/api/admin/doubt/${d.id}/answer-voice')">${ic('play')} Voice Answer</button>`:''}${d.has_answer_file?`<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="viewAnswerFile('admin',${d.id},'${esc(d.answer_attach_mime||'')}')">${ic('folder')} Answer Attachment</button>`:''}`;
@@ -8786,7 +8833,7 @@ function aRenderDoubts(){
   list.forEach(d=>{ if(d.has_image&&(d.attach_mime||'image/jpeg').startsWith('image/')) loadImgInto2('adimg-'+d.id,'/api/admin/doubt/'+d.id+'/image'); });
 }
 function loadImgInto2(elId,url){
-  fetch(API+url,{headers:{Authorization:'Bearer '+TOKEN}}).then(r=>r.ok?r.blob():null).then(b=>{ if(b){ const el=document.getElementById(elId); if(el) el.src=URL.createObjectURL(b); } }).catch(()=>{});
+  fetch(API+url,{headers:{Authorization:'Bearer '+TOKEN}}).then(r=>r.ok?r.blob():null).then(b=>{ if(b){ const el=document.getElementById(elId); if(el){ el._blobUrl=URL.createObjectURL(b); el._dlName=_dlName(el.getAttribute('data-name'),b.type); el.src=el._blobUrl; } } }).catch(()=>{});
 }
 function xhrUpload(url,formData,onProgress){
   return new Promise((resolve,reject)=>{
@@ -11448,8 +11495,8 @@ async function loadSDoubts(){
     </div></div><div class="card"><div class="card-header"><h3>My Doubts</h3></div><div class="card-body hide-scroll s-dlist">`;
     if(mine.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No doubts yet.</p></div>`;
     else html+=mine.map(d=>{
-      const media=`${d.has_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/student/doubt/${d.id}/voice')">${ic('play')} My Voice Note</button>`:''}${d.has_file?`<button class="btn btn-ghost btn-sm" onclick="viewDoubtFile('student',${d.id},'${esc(d.attach_mime||'')}')">${ic('folder')} Attachment</button>`:''}`;
-      const ansv=`${d.has_answer_voice?`<button class="btn btn-success btn-sm" style="margin-top:8px" onclick="playDoubtVoice(this,'/api/student/doubt/${d.id}/answer-voice')">${ic('play')} Voice Answer</button>`:''}${d.has_answer_file?`<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="viewAnswerFile('student',${d.id},'${esc(d.answer_attach_mime||'')}')">${ic('folder')} Answer Attachment</button>`:''}`;
+      const media=`${d.has_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/student/doubt/${d.id}/voice')">${ic('play')} My Voice Note</button>`:''}${d.has_file?doubtAttachHtml('student',d.id,d.attach_mime,d.attach_name,false):''}`;
+      const ansv=`${d.has_answer_voice?`<button class="btn btn-success btn-sm" style="margin-top:8px" onclick="playDoubtVoice(this,'/api/student/doubt/${d.id}/answer-voice')">${ic('play')} Voice Answer</button>`:''}${d.has_answer_file?doubtAttachHtml('student',d.id,d.answer_attach_mime,d.answer_attach_name,true):''}`;
       // teacher reply: photo avatar + naam ke saath (logo jaisa)
       const tAva=d.has_teacher_photo
         ? `<div class="dbt-a-ava" id="dbtava-${d.id}"></div>`
@@ -11459,6 +11506,7 @@ async function loadSDoubts(){
     }).join('');
     html+=`</div></div></div>`;
     el.innerHTML=html;
+    loadDoubtThumbs(el);   // v69 — image attachments ke inline previews
     // math render ($..$ KaTeX) + teacher photos
     mine.forEach(d=>{
       const q=document.getElementById(`dbtq-${d.id}`); if(q) renderMath(q);
@@ -14482,6 +14530,33 @@ async function ocrFillQuestion_v1(inp,i){
 .syl-tck-sub{margin-top:8px;font-size:.7rem;font-weight:600;opacity:.72;line-height:1.55}
 .dark .syl-tck{background:linear-gradient(135deg,rgba(120,72,10,.16),rgba(120,72,10,.07))}
 .dark .syl-tck.ok{background:linear-gradient(135deg,rgba(6,95,70,.3),rgba(6,95,70,.12))}
+/* v69 — doubt attachments: inline image thumb + fullscreen viewer + download */
+.doubt-thumb{margin-top:8px;display:block;max-width:230px;max-height:150px;width:auto;height:auto;
+  border-radius:12px;border:1.5px solid var(--border,#e6e9f0);cursor:zoom-in;
+  box-shadow:0 3px 10px rgba(15,23,42,.08);transition:.15s;min-width:70px;min-height:46px;
+  object-fit:cover}
+.doubt-thumb:hover{transform:scale(1.02);box-shadow:0 8px 20px rgba(15,23,42,.15)}
+.doubt-thumb:not([src]){border-color:transparent;
+  background:linear-gradient(100deg,#eee7d0 30%,#f9f5e8 50%,#eee7d0 70%);background-size:200% 100%;
+  animation:dtb-shimmer 1.2s infinite linear}
+@keyframes dtb-shimmer{to{background-position:-200% 0}}
+.dark .doubt-thumb:not([src]){background:linear-gradient(100deg,#1c2a44 30%,#263a5e 50%,#1c2a44 70%);background-size:200% 100%}
+.doubt-thumb-fail{display:inline-block;margin-top:8px;font-size:.74rem;color:var(--text-muted);
+  padding:8px 12px;border:1px dashed var(--border,#ddd);border-radius:10px}
+.imgviewer{position:fixed;inset:0;z-index:99999;background:rgba(8,10,16,.93);display:none;
+  align-items:center;justify-content:center;padding:62px 16px 20px}
+.imgviewer.on{display:flex}
+.imgviewer img{max-width:100%;max-height:100%;object-fit:contain;border-radius:10px;
+  box-shadow:0 24px 70px rgba(0,0,0,.55)}
+.iv-bar{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;
+  justify-content:space-between;gap:10px;padding:13px 16px;
+  background:linear-gradient(180deg,rgba(0,0,0,.55),transparent)}
+.iv-name{font-size:.85rem;font-weight:700;color:#fff;opacity:.92;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;max-width:58vw}
+.iv-btn{appearance:none;border:1px solid rgba(255,255,255,.38);background:rgba(255,255,255,.13);
+  color:#fff;font-weight:700;font-size:.82rem;padding:8px 15px;border-radius:11px;cursor:pointer;
+  text-decoration:none;font-family:inherit;display:inline-flex;align-items:center;gap:6px}
+.iv-btn:hover{background:rgba(255,255,255,.24)}
 .syl-seg2{display:inline-flex;background:rgba(127,127,127,.1);border-radius:11px;padding:4px;gap:3px}
 .syl-seg2 button{border:0;background:transparent;padding:8px 18px;border-radius:8px;font-size:.82rem;
   font-weight:700;cursor:pointer;color:inherit;opacity:.6;font-family:inherit;transition:.15s}
