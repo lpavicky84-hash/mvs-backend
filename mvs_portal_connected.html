@@ -16243,9 +16243,16 @@ function sylProjBreak(c){
   return '<div style="margin:12px auto 0;max-width:320px;text-align:left;font-size:.86rem">'
     +'<div style="font-size:.68rem;font-weight:800;letter-spacing:.05em;opacity:.5;margin-bottom:4px">TAP ANY ROW TO SEE ITS CALCULATION</div>'
     +row('Theory (from chapters)', _sylN(c.covered_theory)+' of '+m.theory_max, false, 'theory')
-    +(tmaSess?row('TMA (expected)', _sylN(c.tma_have!=null?c.tma_have:0)+' of '+m.tma_max, false, 'tma'):'')
-    +(has?row('Practical (expected)', _sylN(c.practical_have!=null?c.practical_have:0)+' of '+m.practical_max, false, 'practical'):'')
+    /* TMA/Practical rows TABHI dikhte hain jab student ne khud marks bhare hon —
+       unset hai to row hi nahi aati (0 ya assumed marks kabhi nahi) */
+    +(tmaSess&&c.tma_set?row('TMA (expected)', _sylN(c.tma_have!=null?c.tma_have:0)+' of '+m.tma_max, false, 'tma'):'')
+    +(has&&c.practical_set?row('Practical (expected)', _sylN(c.practical_have!=null?c.practical_have:0)+' of '+m.practical_max, false, 'practical'):'')
     +row('Projected total', _sylN(c.projected_total)+' out of 100', true, 'total')
+    +(((tmaSess&&!c.tma_set)||(has&&!c.practical_set))
+      ?'<div style="margin-top:8px;font-size:.74rem;line-height:1.6;opacity:.7">'
+       +(tmaSess&&!c.tma_set?'TMA':'')+((tmaSess&&!c.tma_set&&has&&!c.practical_set)?' and ':'')+(has&&!c.practical_set?'Practical':'')
+       +' marks are not counted yet &mdash; tap the blinking row'+(tmaSess&&has?'s':'')
+       +' in the Marks Predictor to add yours.</div>':'')
     +'</div>';
 }
 
