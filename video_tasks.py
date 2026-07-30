@@ -7,12 +7,33 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Body
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
-from database import get_db
+from database import get_db, engine
 from security import get_admin, get_teacher
 from models import User, TeacherProfile, Notification, VideoChannel, VideoTask
 
 router = APIRouter(prefix="/api", tags=["Video Task Manager"])
+
+# ===== SELF-HEALING SCHEMA FIX (thumbnail_b64) =====
+# Purane deploys mein video_tasks.thumbnail_b64 MySQL TEXT (64KB) bana tha — bada
+# thumbnail dalte hi "Data too long for column" (error 1406) aata tha. main.py ke
+# ensure_columns ke alawa YE FILE KHUD bhi import pe column MEDIUMTEXT kar deti hai,
+# taaki sirf video_tasks.py deploy + restart karne se bhi permanent fix lag jaye.
+# Idempotent (har boot pe run hota hai, same type pe no-op). SQLite pe skip.
+def _ensure_thumbnail_column():
+    try:
+        if engine.dialect.name != "mysql":
+            return
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE video_tasks MODIFY thumbnail_b64 MEDIUMTEXT"))
+            conn.commit()
+        print("[video_tasks] thumbnail_b64 ensured MEDIUMTEXT")
+    except Exception as e:
+        print("[video_tasks] thumbnail_b64 MEDIUMTEXT migration skipped:", e)
+
+
+_ensure_thumbnail_column()
 
 DEFAULT_CHANNELS = [
     "Manish Verma Official - Main Channel",
@@ -238,6 +259,11 @@ def vt_assign(payload: dict = Body(...), db: Session = Depends(get_db), _=Depend
         raise
     except Exception as e:
         db.rollback()
+        msg = str(e)
+        if "1406" in msg or "Data too long" in msg:
+            raise HTTPException(400, "Thumbnail database ki limit se bada hai — "
+                                     "drive link paste karke assign karein. (Ek baar backend "
+                                     "restart karwein: column apne aap upgrade ho jayega.)")
         raise HTTPException(400, f"Could not assign the task: {e}")
     return {"ok": True, "id": t.id}
 
