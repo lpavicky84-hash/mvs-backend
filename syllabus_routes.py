@@ -126,6 +126,24 @@ def _ensure_syllabus(db):
             db.execute(_text(idx)); db.commit()
         except Exception:
             db.rollback()
+    # v66 one-time cleanup — purane version ne students ki taraf se TMA/Practical
+    # marks AUTO-SAVE kar diye the (full TMA / 80% practical defaults bina poochhe).
+    # Wo legacy values ek baar khaali kar do, taaki ab sirf student ke KHUD bhare
+    # marks count hon. Marker app_settings mein — sirf ek baar chalega.
+    try:
+        if not _setting(db, "mig_v66_clear_assumed"):
+            db.execute(_text(
+                "UPDATE chapter_plans SET tma_assumed=NULL, practical_assumed=NULL "
+                "WHERE (tma_assumed IS NOT NULL AND tma_assumed >= 0) "
+                "   OR (practical_assumed IS NOT NULL AND practical_assumed >= 0)"))
+            db.commit()
+            _set_setting(db, "mig_v66_clear_assumed", datetime.utcnow().isoformat())
+            db.commit()
+            print("[syllabus] v66 one-time: legacy auto-saved TMA/Practical marks "
+                  "cleared — ab students khud bharenge")
+    except Exception as e:
+        db.rollback()
+        print("[syllabus] v66 assumed-marks cleanup skipped:", e)
     _SYL_READY = True
 
 
@@ -1118,8 +1136,11 @@ def syl_plan(payload: dict = Body(...), db: Session = Depends(get_db), user=Depe
     valid = {r["no"] for r in SD.flatten(subj) if r["kind"] == "PE"}
     sel = [x for x in (payload.get("selected") or []) if x in valid]
     done = [x for x in (payload.get("done") or []) if x in sel]
-    tma = float(payload.get("tma_assumed", -1) or -1)
-    pr = float(payload.get("practical_assumed", -1) or -1)
+    # NB: `or -1` nahi — student ka 0 bhi ek valid bhara hua mark hai, use unset na banao
+    _t = payload.get("tma_assumed", -1)
+    tma = float(_t) if _t is not None else -1.0
+    _p = payload.get("practical_assumed", -1)
+    pr = float(_p) if _p is not None else -1.0
 
     _prev_sel, _prev_done, _t, _p, choice = _plan_row(db, sp.id, code)
     # an OR option pair is ONE module — one exam slot, the student sits only
