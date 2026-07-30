@@ -28,6 +28,18 @@ DEFAULT_CHANNELS = [
 
 REVIEW_ACTIONS = ("approved", "editing_soon", "editing_done", "uploaded", "rejected")
 
+# ~2MB image ka base64 — isse bada payload proxy/DB dono ke liye risky.
+# Frontend compress karta hai; ye server-side safety net hai.
+MAX_B64 = 2_800_000
+
+
+def _checked_b64(payload):
+    b64 = payload.get("thumbnail_b64") or None
+    if b64 and len(b64) > MAX_B64:
+        raise HTTPException(400, "Thumbnail image is too large. Please paste a drive "
+                                 "link instead, or choose a smaller image.")
+    return b64
+
 
 def _vt_notify(db, user_id, title, message, ntype="video_task", link=None):
     db.add(Notification(user_id=user_id, title=title, message=message,
@@ -54,7 +66,15 @@ def _seed_channels(db):
 
 
 def _vt_sweep(db):
-    """Deadline reminders — idempotent (flags se sirf ek baar jaate hain)."""
+    """Deadline reminders — idempotent (flags se sirf ek baar jaate hain).
+    Kabhi bhi caller ka main operation fail nahi hone deta."""
+    try:
+        _vt_sweep_inner(db)
+    except Exception:
+        db.rollback()
+
+
+def _vt_sweep_inner(db):
     now = datetime.now()
     acts = db.query(VideoTask).filter(VideoTask.status == "assigned").all()
     changed = False
@@ -195,24 +215,30 @@ def vt_assign(payload: dict = Body(...), db: Session = Depends(get_db), _=Depend
     cid = payload.get("channel_id")
     if cid:
         ch = db.query(VideoChannel).filter(VideoChannel.id == int(cid)).first()
-    t = VideoTask(
-        teacher_id=tid, title=title,
-        channel_id=ch.id if ch else None,
-        channel_name=ch.name if ch else "",
-        thumbnail_b64=(payload.get("thumbnail_b64") or None),
-        thumbnail_link=(payload.get("thumbnail_link") or "").strip(),
-        reference=(payload.get("reference") or "").strip(),
-        remarks=(payload.get("remarks") or "").strip(),
-        deadline=dl, status="assigned", proposed_by="admin", proposal_ok="approved",
-    )
-    db.add(t)
-    if tp.user_id:
-        _vt_notify(db, tp.user_id, "🎬 New Video Task Assigned",
-                   f'You have been assigned a new video task: "{title}"'
-                   + (f' for {ch.name}' if ch else '')
-                   + f'. Deadline: {dl.strftime("%d %b %Y, %I:%M %p")}. '
-                   f'Please check My Tasks for the thumbnail and details.')
-    db.commit()
+    try:
+        t = VideoTask(
+            teacher_id=tid, title=title,
+            channel_id=ch.id if ch else None,
+            channel_name=ch.name if ch else "",
+            thumbnail_b64=_checked_b64(payload),
+            thumbnail_link=(payload.get("thumbnail_link") or "").strip(),
+            reference=(payload.get("reference") or "").strip(),
+            remarks=(payload.get("remarks") or "").strip(),
+            deadline=dl, status="assigned", proposed_by="admin", proposal_ok="approved",
+        )
+        db.add(t)
+        if tp.user_id:
+            _vt_notify(db, tp.user_id, "🎬 New Video Task Assigned",
+                       f'You have been assigned a new video task: "{title}"'
+                       + (f' for {ch.name}' if ch else '')
+                       + f'. Deadline: {dl.strftime("%d %b %Y, %I:%M %p")}. '
+                       f'Please check My Tasks for the thumbnail and details.')
+        db.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(400, f"Could not assign the task: {e}")
     return {"ok": True, "id": t.id}
 
 
@@ -322,27 +348,34 @@ def vt_approve_proposal(task_id: int, payload: dict = Body(...),
     cid = payload.get("channel_id")
     if cid:
         ch = db.query(VideoChannel).filter(VideoChannel.id == int(cid)).first()
-    if payload.get("thumbnail_b64"):
-        t.thumbnail_b64 = payload["thumbnail_b64"]
-    if payload.get("thumbnail_link"):
-        t.thumbnail_link = payload["thumbnail_link"].strip()
-    if payload.get("reference"):
-        t.reference = payload["reference"].strip()
-    if payload.get("remarks"):
-        t.remarks = payload["remarks"].strip()
-    if ch:
-        t.channel_id = ch.id
-        t.channel_name = ch.name
-    t.deadline = dl
-    t.status = "assigned"
-    t.proposal_ok = "approved"
-    tp = _teacher_profile(db, t.teacher_id)
-    if tp and tp.user_id:
-        _vt_notify(db, tp.user_id, "✅ Video Proposal Approved",
-                   f'Your video proposal "{t.title}" has been approved. '
-                   f'Deadline: {dl.strftime("%d %b %Y, %I:%M %p")}. '
-                   f'Thumbnail and details are available in My Tasks.')
-    db.commit()
+    try:
+        b64 = _checked_b64(payload)
+        if b64:
+            t.thumbnail_b64 = b64
+        if payload.get("thumbnail_link"):
+            t.thumbnail_link = payload["thumbnail_link"].strip()
+        if payload.get("reference"):
+            t.reference = payload["reference"].strip()
+        if payload.get("remarks"):
+            t.remarks = payload["remarks"].strip()
+        if ch:
+            t.channel_id = ch.id
+            t.channel_name = ch.name
+        t.deadline = dl
+        t.status = "assigned"
+        t.proposal_ok = "approved"
+        tp = _teacher_profile(db, t.teacher_id)
+        if tp and tp.user_id:
+            _vt_notify(db, tp.user_id, "✅ Video Proposal Approved",
+                       f'Your video proposal "{t.title}" has been approved. '
+                       f'Deadline: {dl.strftime("%d %b %Y, %I:%M %p")}. '
+                       f'Thumbnail and details are available in My Tasks.')
+        db.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(400, f"Could not approve the proposal: {e}")
     return {"ok": True, "id": t.id}
 
 

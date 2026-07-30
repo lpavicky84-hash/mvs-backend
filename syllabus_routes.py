@@ -307,26 +307,35 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
         + covered_group, 2)
     covered_theory = round(covered_paper * scale, 2)
 
-    tma = float(m["tma_max"]) if tma_assumed is None or tma_assumed < 0 else float(tma_assumed)
-    pr_default = round(m["practical_max"] * 0.8, 2)
-    pr = pr_default if practical_assumed is None or practical_assumed < 0 else float(practical_assumed)
+    tma_set = tma_assumed is not None and tma_assumed >= 0
+    pr_set = practical_assumed is not None and practical_assumed >= 0
+    # Plan-target lines keep the long-standing optimistic assumption (full TMA,
+    # 80% practical) so plan marks stay stable for everyone. The student-facing
+    # projection uses ONLY the marks the student actually filled in — 0 until
+    # they tell us their expected TMA / practical marks themselves.
+    tma_plan = float(m["tma_max"]) if not tma_set else float(tma_assumed)
+    pr_plan = round(m["practical_max"] * 0.8, 2) if not pr_set else float(practical_assumed)
+    tma = float(tma_assumed) if tma_set else 0.0
+    pr = float(practical_assumed) if pr_set else 0.0
     pr = min(pr, m["practical_max"])
     tma = min(tma, m["tma_max"])
+    pr_plan = min(pr_plan, m["practical_max"])
+    tma_plan = min(tma_plan, m["tma_max"])
     buf = 1 + (buffer_pct / 100.0)
 
     if m.get("combined_pass"):
-        need_theory = max(m["combined_pass"] - pr, 0)
+        need_theory = max(m["combined_pass"] - pr_plan, 0)
         pass_rule = "Theory and Practical together must reach %s" % m["combined_pass"]
     else:
         need_theory = m["theory_pass"]
         pass_rule = "Theory must reach %s out of %s" % (m["theory_pass"], m["theory_max"])
 
-    need_theory_agg = max(m["aggregate_pass"] - tma - pr, 0)
+    need_theory_agg = max(m["aggregate_pass"] - tma_plan - pr_plan, 0)
     need_theory_final = max(need_theory, need_theory_agg)
     # bare requirement, before any margin
     pass_raw = round(((need_theory_final / scale) if scale else 0), 1)
-    high_raw = round(((max(high_target - tma - pr, 0) / scale) if scale else 0), 1)
-    top_raw = round(((max(top_target - tma - pr, 0) / scale) if scale else 0), 1)
+    high_raw = round(((max(high_target - tma_plan - pr_plan, 0) / scale) if scale else 0), 1)
+    top_raw = round(((max(top_target - tma_plan - pr_plan, 0) / scale) if scale else 0), 1)
     theory_raw = round(((need_theory / scale) if scale else 0), 1)
     # The requirement is exactly the NIOS rule. The cushion on top is measured
     # in whole chapters, not in marks, because a learner studies chapters:
@@ -444,6 +453,7 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
         "total_pe_marks": total_paper, "covered_paper": covered_paper,
         "covered_theory": covered_theory,
         "tma_assumed": tma, "practical_assumed": pr,
+        "tma_set": bool(tma_set), "practical_set": bool(pr_set),
         "projected_total": round(covered_theory + tma + pr, 1),
         "pass_rule": pass_rule,
         "bonus_chapter_count": len(pass_bonus_rows),

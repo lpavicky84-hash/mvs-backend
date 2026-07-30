@@ -2797,7 +2797,7 @@ async function smartCompress(file,statusCb){
   }
   return {file, ok:file.size<=MAXB};
 }
-const NAV_ICON={'result card':'trophy','teacher ranking':'trophy','predicted results':'chart','syllabus tracker':'clipboard','syllabus manager':'book','tests tracker':'clipboard','dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book','classes material':'folder','attendance':'clock','teacher attendance':'clock','payout':'wallet','payouts':'wallet','my attendance':'clock','my payout':'wallet','study material':'book','teacher reports':'chart','class compliance':'shield','live users':'user','admin users':'shield','send notice':'megaphone'};
+const NAV_ICON={'task manager':'play','my tasks':'target','result card':'trophy','teacher ranking':'trophy','predicted results':'chart','syllabus tracker':'clipboard','syllabus manager':'book','tests tracker':'clipboard','dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book','classes material':'folder','attendance':'clock','teacher attendance':'clock','payout':'wallet','payouts':'wallet','my attendance':'clock','my payout':'wallet','study material':'book','teacher reports':'chart','class compliance':'shield','live users':'user','admin users':'shield','send notice':'megaphone'};
 function injectNavIcons(){
   document.querySelectorAll('.nav-item').forEach(el=>{
     if(el.querySelector('svg')) return;
@@ -3395,7 +3395,8 @@ function initials(name){ const p=(name||'U').trim().split(' '); return ((p[0]||'
 
 // Modal helpers
 function showModal(title,bodyHtml,footerHtml){ const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.remove('cx'); const _cs=document.querySelector('.cx-sub'); if(_cs)_cs.remove(); document.getElementById('modal-title').textContent=title; document.getElementById('modal-body').innerHTML=bodyHtml; document.getElementById('modal-footer').innerHTML=footerHtml||''; document.getElementById('modal').classList.add('open'); }
-function closeModal(){ document.getElementById('modal').classList.remove('open'); }
+function closeModal(){ document.getElementById('modal').classList.remove('open');
+  if(window._afterModalCb){ var cb=window._afterModalCb; window._afterModalCb=null; setTimeout(cb,240); } }
 
 function stopCountdown(){ if(countdownTimer){clearInterval(countdownTimer);countdownTimer=null;} }
 
@@ -7594,6 +7595,7 @@ async function vtDownloadReport(){
   }catch(e){ toast('Could not download the report'); }
 }
 async function openVTAssign(proposalId){
+  window._vtThumbB64=null; // har baar fresh state — warna pichli failed attempt ka bada base64 dobara chala jaata hai
   let pre=null;
   if(proposalId){ try{ const l=await api('/api/admin/video-tasks'); pre=(l.proposals||[]).find(t=>t.id===proposalId); }catch(e){} }
   const tOpts=_vtTeachers.map(t=>`<option value="${t.pid}" ${pre&&pre.teacher_id===t.pid?'selected':''}>${esc(t.name)}</option>`).join('');
@@ -7610,7 +7612,7 @@ async function openVTAssign(proposalId){
         <div class="vt-file"><label class="vt-file-btn" for="vt-f-thumb">${ic('image')} Upload Image</label>
           <span class="vt-file-name" id="vt-thumb-name">No file chosen</span></div>
         <input id="vt-f-thumb" type="file" accept="image/*" style="display:none" onchange="vtThumbPreview(this)">
-        <div class="vt-hint">or paste a drive link below (max 2.5 MB for upload)</div>
+        <div class="vt-hint">or paste a drive link below (photos are auto-compressed)</div>
         <input id="vt-f-thumblink" class="input" style="margin-top:8px" placeholder="https://drive.google.com/...">
         <div id="vt-thumb-prev" style="margin-top:8px"></div>
       </div>
@@ -7621,12 +7623,27 @@ async function openVTAssign(proposalId){
 }
 function vtThumbPreview(inp){
   const f=inp.files&&inp.files[0]; if(!f) return;
-  if(f.size>2.5*1024*1024){ toast('Image too large — keep it under 2.5 MB'); inp.value=''; return; }
-  const r=new FileReader();
+  if(f.size>10*1024*1024){ toast('Image too large — keep it under 10 MB'); inp.value=''; return; }
   const nm=document.getElementById('vt-thumb-name'); if(nm) nm.textContent=f.name;
-  r.onload=()=>{ window._vtThumbB64=r.result;
-    document.getElementById('vt-thumb-prev').innerHTML=`<img src="${r.result}" style="max-height:110px;border-radius:10px;border:1px solid var(--border);display:block">`; };
-  r.readAsDataURL(f);
+  // phone photo ko upload se pehle COMPRESS karo (max 1024px, JPEG) — bada base64 payload
+  // server body-limit/DB limit pe fail hota tha, isliye resize zaroori
+  const img=new Image();
+  const url=URL.createObjectURL(f);
+  img.onload=()=>{
+    const sc=Math.min(1,1024/img.width);
+    const w=Math.max(1,Math.round(img.width*sc)), h=Math.max(1,Math.round(img.height*sc));
+    const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+    const ctx=cv.getContext('2d');
+    ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,w,h);
+    ctx.drawImage(img,0,0,w,h);
+    URL.revokeObjectURL(url);
+    let out=cv.toDataURL('image/jpeg',0.82);
+    if(out.length>450*1024) out=cv.toDataURL('image/jpeg',0.6);
+    window._vtThumbB64=out;
+    document.getElementById('vt-thumb-prev').innerHTML=`<img src="${out}" style="max-height:110px;border-radius:10px;border:1px solid var(--border);display:block">`;
+  };
+  img.onerror=()=>{ URL.revokeObjectURL(url); toast('Could not read that image'); };
+  img.src=url;
 }
 async function vtAssignSave(proposalId){
   const teacher_id=+document.getElementById('vt-f-teacher').value;
@@ -7640,6 +7657,7 @@ async function vtAssignSave(proposalId){
     thumbnail_link:document.getElementById('vt-f-thumblink').value.trim(),
     reference:document.getElementById('vt-f-ref').value.trim(),
     remarks:document.getElementById('vt-f-remarks').value.trim()};
+  if(JSON.stringify(payload).length>1400*1024){ toast('Thumbnail is too heavy — please paste a drive link instead'); return; }
   try{
     if(proposalId) await api(`/api/admin/video-tasks/${proposalId}/approve-proposal`,'POST',payload);
     else await api('/api/admin/video-tasks','POST',payload);
@@ -14610,6 +14628,47 @@ async function ocrFillQuestion_v1(inp,i){
 .syl-blink.any{background:#f7f0d8;color:#4338ca;border:1px solid #818cf8}
 .syl-blink.yours{background:#d1fae5;color:#047857;border:1px solid #34d399}
 .dark .syl-blink.yours{background:rgba(16,185,129,.18);color:#6ee7b7;border-color:rgba(16,185,129,.45)}
+/* Expected chip — blinking, clickable, note popup ke saath */
+.syl-expblink{display:inline-flex;align-items:center;gap:4px;margin-left:7px;padding:3px 10px;border-radius:99px;
+  font-size:.64rem;font-weight:800;letter-spacing:.4px;text-transform:uppercase;white-space:nowrap;cursor:pointer;
+  background:linear-gradient(135deg,#c9a227,#b8941f);color:#241a05;border:1px solid #d4af37;
+  box-shadow:0 2px 10px rgba(169,132,32,.35);animation:sylBlink 1.5s ease-in-out infinite;vertical-align:middle}
+.syl-expblink:hover{filter:brightness(1.07)}
+/* Unified target card — milestone sub-rows */
+.syl-mslist{margin:2px 17px 13px;border-top:1px dashed rgba(127,127,127,.25);padding-top:4px}
+.syl-msrow2{display:flex;align-items:center;gap:11px;padding:9px 6px;border-radius:11px;cursor:pointer;transition:.15s}
+.syl-msrow2:hover{background:rgba(169,132,32,.07)}
+.syl-msrow2.active{background:rgba(169,132,32,.10);box-shadow:inset 0 0 0 1.5px rgba(184,148,31,.45)}
+.syl-msrow2 .msdot{width:26px;height:26px;flex:none;border-radius:99px;display:flex;align-items:center;justify-content:center;
+  font-size:.72rem;font-weight:800;background:rgba(127,127,127,.14);color:#7a6d45}
+.syl-msrow2.done .msdot{background:rgba(16,185,129,.18);color:#047857}
+.syl-msrow2.aimrow .msdot{background:linear-gradient(135deg,#c9a227,#b8941f);color:#241a05}
+.syl-msrow2 .mst{flex:1;min-width:0}
+.syl-msrow2 .mst b{display:block;font-size:.84rem;font-weight:700}
+.syl-msrow2 .mst small{display:block;font-size:.7rem;opacity:.65;margin-top:1px}
+.syl-msrow2 .msn{text-align:right;white-space:nowrap}
+.syl-msrow2 .msn b{display:block;font-size:.86rem;font-weight:800;font-variant-numeric:tabular-nums}
+.syl-msrow2 .msn small{font-size:.64rem;opacity:.55}
+.syl-mslegend{display:flex;gap:14px;flex-wrap:wrap;font-size:.66rem;opacity:.85;margin-top:7px;padding:0 1px}
+.syl-mslegend b{ display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+/* Module accordion — chapter list ab collapsed module cards */
+.syl-mod{border:1.5px solid var(--border,#e6e9f0);border-radius:14px;margin-top:11px;overflow:hidden;
+  background:var(--card,#fff);transition:.18s}
+.syl-mod:hover{border-color:rgba(184,148,31,.45)}
+.syl-mod.open{border-color:rgba(184,148,31,.6);box-shadow:0 8px 22px rgba(15,23,42,.07)}
+.syl-modh{display:flex;align-items:center;gap:11px;padding:13px 15px;cursor:pointer;user-select:none}
+.syl-modh:hover{background:rgba(127,127,127,.04)}
+.syl-modi{flex:1;min-width:0}
+.syl-modi b{font-size:.9rem;font-weight:700;letter-spacing:-.2px}
+.syl-modi small{display:block;font-size:.71rem;opacity:.62;margin-top:3px}
+.syl-modn{text-align:right;white-space:nowrap}
+.syl-modn b{display:block;font-size:.92rem;font-weight:800;color:#b8941f;font-variant-numeric:tabular-nums}
+.syl-modn small{font-size:.64rem;opacity:.55}
+.syl-pck{display:inline-flex;align-items:center;gap:3px;margin-left:7px;padding:2px 9px;border-radius:99px;
+  font-size:.62rem;font-weight:800;background:rgba(16,185,129,.15);color:#047857;border:1px solid rgba(16,185,129,.4);
+  vertical-align:middle;white-space:nowrap}
+.syl-modb{border-top:1px solid var(--border,#e6e9f0);padding:9px 10px 11px;background:rgba(127,127,127,.03)}
+.syl-modb .syl-ch{margin-top:7px}
 .syl-oc{margin-top:14px;background:linear-gradient(135deg,#f7f0d8,#f7f0d8);border:1.5px solid #e7dfc6}
 .syl-oc-in{padding:16px 18px}
 .syl-oc-in h4{margin:0 0 4px;font-size:.95rem;color:#6b550b}
@@ -14946,13 +15005,13 @@ function sylReqTable(c){
   if(tmaSess)
     h+='<tr class="syl-mpt-row exp" onclick="sylMarksExplain(\'tma\')"><td><b>TMA</b><span class="syl-mpt-tag">expected</span><br>'
      +'<small style="opacity:.6">assignment marks</small><br>'
-     +'<small class="syl-need">no minimum</small></td>'
+     +'<small class="syl-need">'+(c.tma_set?'no minimum':'tap to fill your expectation')+'</small></td>'
    +'<td class="n">'+_sylN(c.tma_assumed)+' <small style="opacity:.55;font-weight:500">of '+m.tma_max+'</small></td>'
    +'<td style="white-space:nowrap;text-align:right">'+info+'</td></tr>';
   if(has)
     h+='<tr class="syl-mpt-row exp" onclick="sylMarksExplain(\'practical\')"><td><b>Practical</b><span class="syl-mpt-tag">expected</span><br>'
      +'<small style="opacity:.6">practical exam</small><br>'
-     +'<small class="syl-need">pass needs '+prNeed+'</small></td>'
+     +'<small class="syl-need">'+(c.practical_set?('pass needs '+prNeed):'tap to fill your expectation')+'</small></td>'
    +'<td class="n">'+prGot+' <small style="opacity:.55;font-weight:500">of '+m.practical_max+'</small></td>'
    +'<td style="white-space:nowrap;text-align:right">'
    +st(prOk,gap(m.practical_pass,prGot))+info+'</td></tr>';
@@ -15047,15 +15106,93 @@ function sylMarksExplain(kind){
 async function sylMpxSave(kind){
   var d=_SYL.cur; if(!d) return;
   var inp=_sylEl('syl-mpx-in'); if(!inp) return;
-  var v=parseFloat(inp.value); if(isNaN(v)||v<0) v=0;
+  var m=(d.calc&&d.calc.marks)||{};
+  var max= kind==='tma' ? (m.tma_max||0) : (m.practical_max||0);
+  var v=parseFloat(inp.value);
+  if(isNaN(v)||v<0){ toast('Please enter marks between 0 and '+max+'.',true); return; }
+  if(v>max){ toast('Expected marks cannot be more than '+max+'.',true); return; }  // popup khula rahega
   try{
     var res=await api('/api/syllabus/plan','POST',{subject_code:d.subject.code,
       selected:d.selected, done:d.done,
-      tma_assumed: kind==='tma'? v : (d.calc.tma_assumed!=null?d.calc.tma_assumed:-1),
-      practical_assumed: kind==='practical'? v : (d.calc.practical_assumed!=null?d.calc.practical_assumed:-1)});
+      tma_assumed: kind==='tma'? v : (d.calc.tma_set?d.calc.tma_assumed:-1),
+      practical_assumed: kind==='practical'? v : (d.calc.practical_set?d.calc.practical_assumed:-1)});
     d.calc=res.calc; closeModal(); sylSubject();
-    toast('Expected marks save ho gaye.');
+    toast('Expected marks saved.');
   }catch(e){ toast(e.message,true); }
+}
+
+/* Expected marks ka matlab — banner ke blinking "Expected" chip ka note popup */
+function sylExpNote(){
+  showModal('About these expected marks',
+    '<div style="font-size:.9rem;line-height:1.8">'
+    +'<p>These are <b>expected marks</b> — they are decided on the basis of the chapters you have selected.</p>'
+    +'<p>To actually achieve these marks, along with finishing these chapters you must also <b>solve the last 3 years&#39; PYQ papers</b>.</p>'
+    +'<p>And if in the exam you attempt <b>every question from your selected chapters — skipping none</b> — then your final result can also come close to these expected marks.</p></div>',
+    '<button class="btn btn-primary" onclick="closeModal()">Got it</button>');
+}
+
+/* Passing target achieve hote hi — expected TMA + practical marks poochho.
+   Max se zyada likha to error, popup band nahi hoga. */
+function _sylExpNeeded(c){
+  var m=(c&&c.marks)||{};
+  return ((m.tma_max||0)>0 && !c.tma_set) || (!!m.has_practical && !c.practical_set);
+}
+function sylAskExpected(){
+  var d=_SYL.cur; if(!d||!d.calc) return;
+  var c=d.calc, m=c.marks||{};
+  var needTma=(m.tma_max||0)>0 && !c.tma_set;
+  var needPr=!!m.has_practical && !c.practical_set;
+  if(!needTma && !needPr) return;
+  var b='<div style="font-size:.9rem;line-height:1.7">'
+   +'<p style="text-align:center;margin-top:0">&#127881; <b>Passing target achieved!</b><br>'
+   +'Your chapter plan now covers the passing marks.</p>'
+   +'<p style="text-align:center;opacity:.72;font-size:.84rem">Now tell us your honestly <b>expected marks</b>, so the '
+   +'Marks Predictor shows your real projected score. You can change these anytime.</p>'
+   +(needTma
+     ?'<label class="form-label" style="margin-top:8px">What about your expected TMA marks? '
+      +'<span style="opacity:.6;font-weight:600">(maximum '+m.tma_max+')</span></label>'
+      +'<input type="number" class="form-control" id="syl-exp-tma" min="0" max="'+m.tma_max+'" step="0.5" placeholder="0 to '+m.tma_max+'">'
+     :'')
+   +(needPr
+     ?'<label class="form-label" style="margin-top:10px">What about your expected practical marks? '
+      +'<span style="opacity:.6;font-weight:600">(maximum '+m.practical_max+')</span></label>'
+      +'<input type="number" class="form-control" id="syl-exp-pr" min="0" max="'+m.practical_max+'" step="0.5" placeholder="0 to '+m.practical_max+'">'
+     :'')
+   +'<div id="syl-exp-err" style="display:none;margin-top:10px;padding:9px 12px;border-radius:10px;'
+   +'background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.3);color:#b91c1c;font-size:.8rem;font-weight:700"></div>'
+   +'</div>';
+  showModal('Your expected marks', b,
+    '<button class="btn btn-ghost" onclick="closeModal()">Skip for now</button>'
+   +'<button class="btn btn-primary" onclick="sylExpSave()">Save my expected marks</button>');
+}
+async function sylExpSave(){
+  var d=_SYL.cur; if(!d||!d.calc) return;
+  var c=d.calc, m=c.marks||{};
+  var needTma=(m.tma_max||0)>0 && !c.tma_set;
+  var needPr=!!m.has_practical && !c.practical_set;
+  var err=function(msg){ var e=_sylEl('syl-exp-err'); if(e){ e.textContent=msg; e.style.display='block'; } };
+  var tma=-1, pr=-1, v;
+  if(needTma){
+    v=parseFloat(_sylEl('syl-exp-tma').value);
+    if(isNaN(v)||v<0){ err('Please enter your expected TMA marks (0 to '+m.tma_max+').'); return; }
+    if(v>m.tma_max){ err('TMA marks cannot be more than '+m.tma_max+'. Enter a value between 0 and '+m.tma_max+'.'); return; }
+    tma=v;
+  }
+  if(needPr){
+    v=parseFloat(_sylEl('syl-exp-pr').value);
+    if(isNaN(v)||v<0){ err('Please enter your expected practical marks (0 to '+m.practical_max+').'); return; }
+    if(v>m.practical_max){ err('Practical marks cannot be more than '+m.practical_max+'. Enter a value between 0 and '+m.practical_max+'.'); return; }
+    pr=v;
+  }
+  try{
+    var res=await api('/api/syllabus/plan','POST',{subject_code:d.subject.code,
+      selected:d.selected, done:d.done, tma_assumed:tma, practical_assumed:pr});
+    d.calc=res.calc;
+    if(res.selected) d.selected=res.selected;
+    if(res.done) d.done=res.done;
+    closeModal(); sylSubject();
+    toast('Expected marks saved — your predictor is updated.');
+  }catch(e){ err(e.message||'Could not save. Please try again.'); }
 }
 
 /* Two collapsible target cards. The learner sees a progress bar and a status,
@@ -15071,59 +15208,102 @@ function _sylCovDate(ms, kind){
   var M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   return (+p[2])+' '+(M[(+p[1])-1]||'')+' '+p[0];
 }
-function sylTargetCards(c, ms){
-  ms = ms || (_SYL.cur && _SYL.cur.milestones) || {};
-  var passOk = c.pass_reached && c.theory_reached && c.practical_reached;
-  var highOk = c.high_reached;
-  var topOk = !!c.top_reached;
-  // passing first, then 75 percent, then 90 percent
-  var nextKind = passOk ? (highOk ? (topOk ? null : 'top') : 'high') : 'pass';
-  return '<div style="margin-top:15px">'
-   + sylTargetCard(c,'pass',passOk,nextKind==='pass',ms)
-   + sylTargetCard(c,'high',highOk,nextKind==='high',ms)
-   + sylTargetCard(c,'top',topOk,nextKind==='top',ms)
-   + '</div>';
-}
-
-function sylTargetCard(c, kind, done, isNext, ms){
-  var open = _SYL.openTarget===kind;
-  var req   = kind==='top' ? (c.top_core_needed!=null?c.top_core_needed:c.top_paper_needed)
-            : kind==='high' ? c.high_core_needed
-            : Math.max(c.pass_core_needed, c.theory_core_needed);
+/* Per-target info — ek hi jagah se, taaki unified card aur milestone rows
+   dono same numbers dikhayein */
+function _sylTInfo(c, kind, ms){
+  var me=_SYL.me||{};
   var total = kind==='top' ? c.top_paper_needed
             : kind==='high' ? c.high_paper_needed
             : Math.max(c.pass_paper_needed, c.theory_paper_needed);
-  var have  = c.covered_paper;
-  var label = kind==='top' ? ((_SYL.me.top_target||90)+' percent target')
-            : kind==='high' ? (_SYL.me.high_target+' percent target') : 'Passing target';
-  var col   = done ? '#059669' : (isNext ? '#b45309' : '#7a6d45');
-  var left  = Math.max(0, Math.round((total-have)*10)/10);
+  var req   = kind==='top' ? (c.top_core_needed!=null?c.top_core_needed:c.top_paper_needed)
+            : kind==='high' ? c.high_core_needed
+            : Math.max(c.pass_core_needed, c.theory_core_needed);
+  var done  = kind==='top' ? !!c.top_reached
+            : kind==='high' ? !!c.high_reached
+            : !!(c.pass_reached && c.theory_reached);
+  var label = kind==='top' ? ((me.top_target||90)+' percent target')
+            : kind==='high' ? (me.high_target+' percent target') : 'Passing target';
+  var col   = done ? '#059669' : (kind==='pass' ? '#b45309' : (kind==='high' ? '#b45309' : '#7a6d45'));
+  return {kind:kind, total:total, req:req, done:done, label:label, col:col,
+          covd: done ? _sylCovDate(ms||{}, kind) : ''};
+}
 
-  var aim = (_SYL.me.target===kind);
-  var covd = done ? _sylCovDate(ms, kind) : '';
-  var dleft = (isNext && !done) ? _sylDaysLeft() : null;
-  var pill = (done ? '<span class="syl-pill2 ok">covered'+(covd?' on '+esc(covd):'')+'</span>' : '')
-    + (aim ? '<span class="syl-pill2 aim">Your Aim</span>' : '')
-    + (!done && !aim ? (isNext ? (kind==='top' ? '<span class="syl-pill2 next">your last goal</span>' : '<span class="syl-pill2 next">your first priority</span>')
-                     : '<span class="syl-pill2 wait">'+(kind==='top'?('after '+_SYL.me.high_target+' percent'):'after passing')+'</span>') : '')
+/* UNIFIED target card — student ka aim jo bhi ho, sirf ek hi card dikhta hai.
+   aim=pass  → sirf passing target
+   aim=high  → ek card mein passing + 75% dono milestones (markers ke saath)
+   aim=top   → ek card mein teeno milestones (markers ke saath) */
+function sylTargetCards(c, ms){
+  ms = ms || (_SYL.cur && _SYL.cur.milestones) || {};
+  var me=_SYL.me||{}, aim=me.target||'pass';
+  var kinds = aim==='top' ? ['pass','high','top'] : aim==='high' ? ['pass','high'] : ['pass'];
+  var infos = kinds.map(function(k){ return _sylTInfo(c,k,ms); });
+  var A = infos[infos.length-1];            // the aim itself
+  var have = c.covered_paper;
+  var bodyOpen = (_SYL.tgBody!==false);
+  var dleft = (!A.done) ? _sylDaysLeft() : null;
+  var left = Math.max(0, Math.round((A.total-have)*10)/10);
+  var tcol = A.done ? '#059669' : '#b45309';
+
+  var pills = (A.done ? '<span class="syl-pill2 ok">covered'+(A.covd?' on '+esc(A.covd):'')+'</span>' : '')
+    + '<span class="syl-pill2 aim">Your Aim</span>'
     + (dleft!=null ? '<span class="syl-daysblink">&#9200; '+dleft+' days left</span>' : '');
-  var sub  = done ? 'Done'+(covd?(' on '+esc(covd)):'')+'. You have '+_sylN(have)+' of the '+_sylN(total)+' marks we plan for.'
-           : (left ? left+' marks of chapters still to pick' : 'Almost there');
 
-  var h='<div class="syl-tg'+(done?' ok':'')+(isNext&&!done?' next':'')+(open?' open':'')+'">'
-   +'<div class="syl-tgh" onclick="sylToggleTarget(\''+kind+'\')">'
-   +'<div class="syl-tgt2"><b style="color:'+col+'">'+esc(label)+' '+pill+'</b><small>'+esc(sub)+'</small></div>'
-   +'<div class="syl-tgn"><b style="color:'+col+'">'+_sylN(have)+' / '+_sylN(total)+'</b><small>paper marks</small></div>'
+  // progress bar — har milestone ka apna marker tick (pass green, 75% amber, 90% violet)
+  var mcol = {pass:'#059669', high:'#d97706', top:'#7c3aed'};
+  var bar = '<i style="width:'+_sylPct(have,A.total)+'%;background:'+tcol+'"></i>'
+    + infos.map(function(t){
+        return '<u style="left:'+_sylPct(t.total,A.total)+'%;background:'+mcol[t.kind]
+          +'" title="'+esc(t.label)+' — plan '+_sylN(t.total)+'"></u>';
+      }).join('');
+  var legend = infos.map(function(t){
+      return '<span><b style="background:'+mcol[t.kind]+'"></b>'+esc(t.label.replace(' target',''))+' '+_sylN(t.total)+'</span>';
+    }).join('');
+
+  var h='<div class="syl-tg uni'+(A.done?' ok':'')+(!A.done?' next':'')+(bodyOpen?' open':'')+'" style="margin-top:15px">'
+   +'<div class="syl-tgh" onclick="sylTgBody()">'
+   +'<div class="syl-tgt2"><b style="color:'+tcol+'">'+esc(A.label)+' '+pills+'</b><small>'
+   +esc(A.done ? 'Covered'+(A.covd?' on '+A.covd:'')+'. You have '+_sylN(have)+' of the '+_sylN(A.total)+' marks we plan for.'
+              : (left ? left+' marks of chapters still to pick' : 'Almost there'))
+   +'</small></div>'
+   +'<div class="syl-tgn"><b style="color:'+tcol+'">'+_sylN(have)+' / '+_sylN(A.total)+'</b><small>paper marks</small></div>'
    +'<div class="syl-chev">&#9660;</div></div>'
-   +'<div class="syl-tgwrap"><div class="syl-tgbar">'
-   +'<i style="width:'+_sylPct(have,total)+'%;background:'+col+'"></i>'
-   +'<u style="left:'+_sylPct(req,total)+'%;background:'+(done?'#047857':'#8a7c55')+'" title="NIOS requirement"></u>'
-   +'</div><div style="display:flex;justify-content:space-between;font-size:.68rem;opacity:.55;margin-top:6px">'
-   +'<span>'+(kind==='pass'&&(c.marks||{}).tma_max?('NIOS needs '+_sylN(c.theory_pass_mark)+'/'+c.marks.theory_max+' theory'):('NIOS needs '+_sylN(req)))+'</span><span>plan '+_sylN(total)+'</span></div></div>';
+   +'<div class="syl-tgwrap" style="padding-bottom:11px"><div class="syl-tgbar">'+bar+'</div>'
+   +(infos.length>1
+     ? '<div class="syl-mslegend">'+legend+'</div>'
+     : '<div style="display:flex;justify-content:space-between;font-size:.68rem;opacity:.55;margin-top:6px">'
+       +'<span>'+((c.marks||{}).tma_max?('NIOS needs '+_sylN(c.theory_pass_mark)+'/'+c.marks.theory_max+' theory'):('NIOS needs '+_sylN(A.req)))+'</span>'
+       +'<span>plan '+_sylN(A.total)+'</span></div>')
+   +'</div>';
 
-  if(open) h += '<div class="syl-tgbody">' + sylBonusBlock(c,kind)
-    + (kind==='pass'?sylReqTable(c):'') + '</div>';
+  // milestone sub-rows — jab aim ke andar 2+ targets hon (75%/90% wale)
+  if(infos.length>1){
+    h+='<div class="syl-mslist">'+infos.map(function(t,i){
+      var active=(_SYL.targetFilter===t.kind);
+      var status = t.done ? 'Covered'+(t.covd?' on '+esc(t.covd):'')+' &#10003;'
+        : (t.kind===aim ? 'Your current aim &mdash; '+_sylN(Math.max(0,Math.round((t.total-have)*10)/10))+' marks of chapters to pick'
+                        : _sylN(Math.max(0,Math.round((t.total-have)*10)/10))+' marks still to pick');
+      return '<div class="syl-msrow2'+(t.done?' done':'')+(t.kind===aim?' aimrow':'')+(active?' active':'')
+       +'" onclick="sylFilterTarget(\''+t.kind+'\')" title="Tap to see this target&#39;s plan chapters below">'
+       +'<div class="msdot">'+(t.done?'&#10003;':(i+1))+'</div>'
+       +'<div class="mst"><b style="color:'+(t.done?'#047857':(t.kind===aim?'#b45309':'#7a6d45'))+'">'+esc(t.label)
+       +(t.kind===aim?' <span class="syl-pill2 aim" style="font-size:.58rem;padding:2px 8px">Your Aim</span>':'')+'</b>'
+       +'<small>'+status+'</small></div>'
+       +'<div class="msn"><b style="color:'+(t.done?'#047857':'#b8941f')+'">'+_sylN(Math.min(have,t.total))+' / '+_sylN(t.total)+'</b>'
+       +'<small>paper marks</small></div></div>';
+    }).join('')+'</div>';
+  }
+
+  if(bodyOpen) h += '<div class="syl-tgbody">' + sylBonusBlock(c, aim) + sylReqTable(c) + '</div>';
   return h+'</div>';
+}
+
+function sylTgBody(){ _SYL.tgBody = !(_SYL.tgBody!==false); sylSubject(); }
+
+/* Milestone row click → chapter list us target ke plan chapters pe filter */
+function sylFilterTarget(kind){
+  _SYL.targetFilter = (_SYL.targetFilter===kind) ? null : kind;
+  sylSubject();
+  if(_SYL.targetFilter) setTimeout(sylScrollChapters, 80);
 }
 
 function sylFocusDate(){
@@ -15134,16 +15314,7 @@ function sylFocusDate(){
 }
 function sylToggleHelp(){ _SYL.showHelp=!_SYL.showHelp; sylSubject(); }
 
-function sylToggleTarget(kind){
-  var opening = (_SYL.openTarget!==kind);
-  _SYL.openTarget = opening ? kind : null;
-  _SYL.targetFilter = opening ? kind : null;
-  if(opening) _SYL.chOpen = true;
-  sylSubject();
-  if(opening) setTimeout(sylScrollChapters, 80);
-}
 function sylScrollChapters(){
-  if(!_SYL.chOpen){ _SYL.chOpen = true; sylSubject(); }
   setTimeout(function(){
     var el=_sylEl('syl-chpanel');
     if(el && el.scrollIntoView) el.scrollIntoView({behavior:'smooth',block:'start'});
@@ -15325,6 +15496,11 @@ async function sylOpen(code){
   try{
     _SYL.cur = await api('/api/syllabus/subject/'+encodeURIComponent(code));
     if(_SYL.cur.calc) _SYL.cur.calc.subject_name = _SYL.cur.subject.name;
+    /* student ka aim hi default view hai — chapter list usi target ke plan
+       chapters se khulti hai (click ki zaroorat nahi), card bhi wahi aim */
+    _SYL.targetFilter = (_SYL.me && _SYL.me.target) || null;
+    _SYL.tgBody = true;
+    _SYL.openMod = null;
     sylBusy(false);
     if(!_SYL.cur.calc){
       _sylEl('s-syl-content').innerHTML='<div class="syl-wrap"><button class="syl-ib" onclick="loadSSyllabus()">Back to my subjects</button>'
@@ -15389,10 +15565,19 @@ function sylSubject(scrollTop){
    +'<div class="syl-bar"><i style="width:'+_sylPct(c.covered_paper,c.total_pe_marks)+'%;background:'+col+'"></i>'
    +'<u style="left:'+_sylPct(c.pass_core_needed,c.total_pe_marks)+'%;background:#059669" title="NIOS passing requirement"></u>'
    +'<u style="left:'+_sylPct(c.pass_paper_needed,c.total_pe_marks)+'%;background:#059669;opacity:.45" title="passing with bonus"></u>'
-   +'<u style="left:'+_sylPct(c.high_core_needed,c.total_pe_marks)+'%;background:#d97706" title="'+_SYL.me.high_target+' percent requirement"></u>'
-   +'<u style="left:'+_sylPct(c.high_paper_needed,c.total_pe_marks)+'%;background:#d97706;opacity:.45" title="'+_SYL.me.high_target+' percent with bonus"></u></div>'
+   +(((_SYL.me||{}).target==='high'||(_SYL.me||{}).target==='top')
+      ?'<u style="left:'+_sylPct(c.high_core_needed,c.total_pe_marks)+'%;background:#d97706" title="'+_SYL.me.high_target+' percent requirement"></u>'
+      +'<u style="left:'+_sylPct(c.high_paper_needed,c.total_pe_marks)+'%;background:#d97706;opacity:.45" title="'+_SYL.me.high_target+' percent with bonus"></u>'
+      :'')
+   +(((_SYL.me||{}).target==='top')
+      ?'<u style="left:'+_sylPct(c.top_core_needed,c.total_pe_marks)+'%;background:#7c3aed" title="'+(_SYL.me.top_target||90)+' percent requirement"></u>'
+      +'<u style="left:'+_sylPct(c.top_paper_needed,c.total_pe_marks)+'%;background:#7c3aed;opacity:.45" title="'+(_SYL.me.top_target||90)+' percent with bonus"></u>'
+      :'')
+   +'</div>'
    +'<div class="syl-foot"><span>Passing plan '+_sylN(c.pass_paper_needed)+' marks</span>'
-   +'<span>'+_SYL.me.high_target+' percent plan '+_sylN(c.high_paper_needed)+' marks</span></div>'
+   +(((_SYL.me||{}).target==='high'||(_SYL.me||{}).target==='top')?'<span>'+_SYL.me.high_target+' percent plan '+_sylN(c.high_paper_needed)+' marks</span>':'')
+   +(((_SYL.me||{}).target==='top')?'<span>'+(_SYL.me.top_target||90)+' percent plan '+_sylN(c.top_paper_needed)+' marks</span>':'')
+   +'</div>'
    + sylTargetCards(c, (_SYL.cur && _SYL.cur.milestones) || (s && s.milestones) || {})
    +'<div style="margin-top:12px">'
    +'<button class="syl-ib" style="font-size:.73rem;padding:5px 11px" onclick="sylToggleHelp()">'
@@ -15456,16 +15641,14 @@ function sylSubject(scrollTop){
 
   h+='<div class="syl-panel" style="margin-top:14px" id="syl-chpanel"><div class="syl-phead">'
    +'<div><h4>Chapter list'+(planSet?' <span class="syl-fchip">Showing '+esc(filterLbl)+' plan chapters <b onclick="sylClearTargetFilter()" title="Show all chapters">&times;</b></span>':'')+'</h4><p>'+peDone+' of '+peTotal+' exam chapters picked. '
-   +'Only Public Examination chapters carry marks.</p></div>'
+   +'Tap a module to open its chapters.</p></div>'
    +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
    +(sel.length?'<button class="syl-clear" onclick="sylClearAll()">Clear all ('+sel.length+')</button>':'')
    +'<button class="syl-cta o" style="padding:7px 13px;font-size:.76rem" onclick="sylTmaToggle()">'
-   +(showTma?'Hide TMA chapters':'Show TMA chapters')+'</button>'
-   +'<button class="syl-cta o" style="padding:7px 13px;font-size:.76rem" onclick="sylChOpen()">'
-   +(open?'Collapse list':'Expand list')+'</button></div></div>'
-   +'<div class="syl-instruct"><span>&#128073;</span><div><b>What to do here:</b> tap a chapter once you finish studying it &mdash; it joins your plan and your covered marks above update instantly. Tap <b>Mark done</b> when the chapter is fully revised.</div></div>'
+   +(showTma?'Hide TMA chapters':'Show TMA chapters')+'</button></div></div>'
+   +'<div class="syl-instruct"><span>&#128073;</span><div><b>What to do here:</b> tap a module to open it, then tap a chapter once you finish studying it &mdash; it joins your plan and your covered marks above update instantly. Tap <b>Mark done</b> when the chapter is fully revised.</div></div>'
    +'<div style="padding:4px 18px 18px"><div class="syl-chwrap">'
-   +'<div class="syl-chscroll'+(open?' open':'')+'" id="syl-chscroll">';
+   +'<div id="syl-chscroll">';
 
   var flatMode=(s.display_mode==='chapters');
   function chRow(ch, showMarks){
@@ -15497,32 +15680,53 @@ function sylSubject(scrollTop){
     var fList=allCh.filter(function(ch){ return (showTma || ch.kind==='PE') && (!planSet || planSet[ch.no]); });
     h+='<div class="syl-chmod">'+fList.map(function(ch){ return chRow(ch,true); }).join('')+'</div>';
   }else{
+  /* Module accordion — collapsed module cards (rank list jaisa clean look).
+     Ek module kholo to baaki apne aap band; picked chapters ka green indicator
+     module row pe hi dikh jaata hai. */
   Object.keys(mods).forEach(function(mod){
     var mg=modGroup[mod];
     if(mg && oc[mg] && oc[mg]!==mod) return;   // student studies the other option
     var list=mods[mod].filter(function(ch){ return (showTma || ch.kind==='PE') && (!planSet || planSet[ch.no]); });
     if(!list.length) return;
-    var all=mods[mod], mw=all.length?all[0].module_weightage:0, got=0;
+    var all=mods[mod], mw=all.length?all[0].module_weightage:0, got=0, pickedN=0;
     if(mg && ogMax[mg]) mw=ogMax[mg];          // the slot's marks show on the option
-    all.forEach(function(ch){ if(ch.kind==='PE'&&sel.indexOf(ch.no)>-1) got+=ch.marks; });
+    all.forEach(function(ch){ if(ch.kind==='PE'&&sel.indexOf(ch.no)>-1){ got+=ch.marks; pickedN++; } });
     var rq=planReq[mod];
-    h+='<div class="syl-chmod"><div class="syl-chmod-h"><span>'+esc(mod)
+    var mOpen=(_SYL.openMod===mod);
+    h+='<div class="syl-mod'+(mOpen?' open':'')+'">'
+      +'<div class="syl-modh" data-mod="'+esc(mod)+'" onclick="sylModToggle(this.getAttribute(\'data-mod\'))">'
+      +'<div class="syl-modi"><b>'+esc(mod)+'</b>'
       +(mg ? (oc[mg]===mod ? ' <span class="syl-blink yours">&#10003; Your choice</span>'
                            : ' <span class="syl-blink any">Optional &middot; pick one above</span>') : '')
       +(rq ? (rq.type==='any' ? ' <span class="syl-blink any">Choose any '+rq.k+'</span>'
                                     : ' <span class="syl-blink imp">Important Module</span>') : '')
-      +'</span><em>'+_sylN(got)+' of '+_sylN(mw)+' marks picked</em></div>';
-    list.forEach(function(ch){ h+=chRow(ch); });
-    h+='</div>';
+      +(pickedN?'<span class="syl-pck">&#10003; '+pickedN+' picked</span>':'')
+      +'<small>'+list.length+' chapter'+(list.length===1?'':'s')+' &middot; '+_sylN(mw)+' marks module</small></div>'
+      +'<div class="syl-modn"><b>'+_sylN(got)+' / '+_sylN(mw)+'</b><small>marks picked</small></div>'
+      +'<div class="syl-chev">&#9660;</div></div>'
+      +(mOpen?'<div class="syl-modb">'+list.map(function(ch){ return chRow(ch); }).join('')+'</div>':'')
+      +'</div>';
   });
   }
-  h+='</div>'+(open?'':'<div class="syl-fade"></div>')+'</div></div></div></div>';
+  h+='</div></div></div></div></div>';
   _sylEl('s-syl-content').innerHTML=h;
   if(scrollTop){ var t=_sylEl('syl-cong'); if(t&&t.scrollIntoView) t.scrollIntoView({behavior:'smooth',block:'center'}); }
+  /* passing complete hai par expected TMA/practical kabhi bhare nahi — ek baar poochho */
+  if(c.pass_reached && c.theory_reached && _sylExpNeeded(c)){
+    _SYL.expAsked=_SYL.expAsked||{};
+    if(!_SYL.expAsked[s.code] && !document.getElementById('modal').classList.contains('open')){
+      _SYL.expAsked[s.code]=1;
+      setTimeout(sylAskExpected, 450);
+    }
+  }
 }
 
+/* Ek module kholo — pichla apne aap band */
+function sylModToggle(mod){
+  _SYL.openMod = (_SYL.openMod===mod) ? null : mod;
+  sylSubject();
+}
 function sylTmaToggle(){ _SYL.showTma=!_SYL.showTma; sylSubject(); }
-function sylChOpen(){ _SYL.chOpen=!_SYL.chOpen; sylSubject(); }
 
 async function sylChoice(group, module){
   var d=_SYL.cur; if(!d) return;
@@ -16233,16 +16437,24 @@ async function sylSave(){
   try{
     var res=await api('/api/syllabus/plan','POST',{subject_code:d.subject.code,
       selected:d.selected, done:d.done,
-      tma_assumed: t? parseFloat(t.value) : (d.calc&&d.calc.tma_assumed!=null?d.calc.tma_assumed:-1),
-      practical_assumed: p? parseFloat(p.value) : (d.calc&&d.calc.practical_assumed!=null?d.calc.practical_assumed:-1)});
+      tma_assumed: t? parseFloat(t.value) : (d.calc&&d.calc.tma_set?d.calc.tma_assumed:-1),
+      practical_assumed: p? parseFloat(p.value) : (d.calc&&d.calc.practical_set?d.calc.practical_assumed:-1)});
     var was=d.calc.pass_reached, wasHigh=d.calc.high_reached, wasTop=!!d.calc.top_reached;
     d.calc=res.calc;
     if(res.selected) d.selected=res.selected;   // server may have healed a legacy double-option pick
     if(res.done) d.done=res.done;
+    /* passing abhi-abbhi achieve hui aur expected marks unset — to celebration
+       ke baad poochha jayega; auto-ask ko pehle se mark kar do (double nahi) */
+    var justPassed = !was && res.calc.pass_reached;
+    var willAsk = justPassed && _sylExpNeeded(res.calc);
+    if(willAsk){ _SYL.expAsked=_SYL.expAsked||{}; _SYL.expAsked[d.subject.code]=1; }
     sylSubject();
     if(!wasTop && res.calc.top_reached) sylCongrats('top');
     else if(!wasHigh && res.calc.high_reached) sylCongrats('high');
-    else if(!was && res.calc.pass_reached) sylCelebrate();
+    else if(justPassed) sylCelebrate();
+    else willAsk=false;
+    /* celebration popup band hote hi expected TMA/practical marks poochho */
+    if(willAsk) window._afterModalCb=function(){ sylAskExpected(); };
   }catch(e){ toast(e.message,true); }
 }
 
@@ -16362,13 +16574,17 @@ function sylPlanRender(){
   (s.per_subject||[]).forEach(function(x){
     var core=x.core_needed!=null?x.core_needed:x.needed;
     var coreOk=x.core_reached!=null?x.core_reached:x.reached;
+    var completed = x.reached || coreOk;
+    var doneLbl = s.target==='top' ? ((s.top_target||90)+' Percent Target Completed')
+               : s.target==='high' ? (s.high_target+' Percent Target Completed')
+               : 'Passing Marks Criteria Completed';
     h+='<div class="syl-goal '+(x.reached?'ok':'no')+'" style="margin-top:9px">'
      +'<span><b>'+esc(x.name)+'</b> &middot; '+_sylN(x.covered)+' marks covered'
      +' &middot; NIOS '+_sylN(core)+' + bonus '+_sylN(Math.round((x.needed-core)*10)/10)+' = '+_sylN(x.needed)
      +(x.theory_reached?'':' &middot; theory still short')+'</span>'
-     +'<span>'+(x.reached?'Safe with the cushion'
-       :(coreOk?'NIOS requirement met, '+x.chapters_left+' bonus chapters left'
-              :x.chapters_left+' chapters left'))+'</span></div>';
+     +'<span>'+(completed
+       ? esc(doneLbl)+'<span class="syl-expblink" onclick="event.stopPropagation();sylExpNote()" title="What do expected marks mean?">Expected &#9432;</span>'
+       : x.chapters_left+' chapters left')+'</span></div>';
   });
   if(!(s.per_subject||[]).length) h+='<div class="syl-empty">No verified subject yet.</div>';
   h+='</div></div></div>';
@@ -16393,7 +16609,8 @@ async function sylPlanTick(code,no){
     var sel=d.selected.slice();
     if(sel.indexOf(no)<0) sel.push(no);
     await api('/api/syllabus/plan','POST',{subject_code:code,selected:sel,done:done,
-      tma_assumed:d.calc?d.calc.tma_assumed:-1, practical_assumed:d.calc?d.calc.practical_assumed:-1});
+      tma_assumed:d.calc&&d.calc.tma_set?d.calc.tma_assumed:-1,
+      practical_assumed:d.calc&&d.calc.practical_set?d.calc.practical_assumed:-1});
     _SYL.plan=await api('/api/syllabus/strategy');
     sylPlanRender();
   }catch(e){ toast(e.message,true); }
