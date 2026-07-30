@@ -409,8 +409,26 @@ class VideoTask(Base):
     reject_count   = Column(Integer, default=0)
     warned_24h     = Column(Boolean, default=False)
     warned_overdue = Column(Boolean, default=False)
+    kind           = Column(String(20), default="normal") # normal | one_shot | rapid_revision
+    subject        = Column(String(160), default="")      # special task ka subject (one_shot)
+    status_history = Column(Text, default="")             # JSON [{s, at, note}] — status timeline
+    last_link_at   = Column(DateTime, nullable=True)      # special task me aakhri chapter link kab aaya
+    admin_seen_at  = Column(DateTime, nullable=True)      # admin ne special update kab dekha (NEW blink)
     created_at     = Column(DateTime, default=func.now())
     updated_at     = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class VideoTaskChapter(Base):
+    """Special video task (One Shot / Rapid Revision) ke chapter/subject rows —
+    har row pe teacher apna video link lagata hai, progress auto ginti hai."""
+    __tablename__ = "video_task_chapters"
+
+    id           = Column(Integer, primary_key=True)
+    task_id      = Column(Integer, ForeignKey("video_tasks.id"), index=True)
+    title        = Column(String(300))                    # chapter naam (rapid revision me subject naam)
+    sort         = Column(Integer, default=0)
+    link         = Column(String(600), default="")
+    submitted_at = Column(DateTime, nullable=True)
 
 
 class DppEvent(Base):

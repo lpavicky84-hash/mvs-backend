@@ -65,6 +65,11 @@ def ensure_columns():
         "ALTER TABLE notifications ADD COLUMN link VARCHAR(500)",
         "ALTER TABLE video_tasks MODIFY thumbnail_b64 MEDIUMTEXT",  # MySQL only; SQLite pe skip
         "ALTER TABLE video_tasks ADD COLUMN video_type VARCHAR(120) DEFAULT ''",
+        "ALTER TABLE video_tasks ADD COLUMN kind VARCHAR(20) DEFAULT 'normal'",
+        "ALTER TABLE video_tasks ADD COLUMN subject VARCHAR(160) DEFAULT ''",
+        "ALTER TABLE video_tasks ADD COLUMN status_history TEXT",
+        "ALTER TABLE video_tasks ADD COLUMN last_link_at DATETIME",
+        "ALTER TABLE video_tasks ADD COLUMN admin_seen_at DATETIME",
         "ALTER TABLE student_profiles ADD COLUMN medium VARCHAR(12)",
         "ALTER TABLE doubts ADD COLUMN attach_mime VARCHAR(100)",
         "ALTER TABLE doubts ADD COLUMN attach_name VARCHAR(255)",

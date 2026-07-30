@@ -2698,7 +2698,10 @@ const ICONS={
   sun:_S+'<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>',
   play:_S+'<polygon points="5 3 19 12 5 21 5 3"/></svg>',
   trophy:_S+'<path d="M6 9a6 6 0 0 0 12 0V3H6z"/><path d="M6 5H3v2a3 3 0 0 0 3 3"/><path d="M18 5h3v2a3 3 0 0 1-3 3"/><path d="M12 15v3"/><path d="M8 21h8"/><path d="M10 18h4"/></svg>',
-  target:_S+'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>'
+  target:_S+'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
+  'chev-down':_S+'<polyline points="6 9 12 15 18 9"/></svg>',
+  history:_S+'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+  link2:_S+'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
 };
 function ic(k){ return ICONS[k]||''; }
 function statCard(label,num,iconKey,accent,nav){
@@ -7431,6 +7434,7 @@ async function loadTVTasks(){
     const d=await api('/api/teacher/video-tasks/my');
     const tasks=d.tasks||[];
     window._tvtMap={}; tasks.forEach(t=>window._tvtMap[t.id]=t);
+    (d.special||[]).forEach(t=>window._tvtMap[t.id]=t);
     const active=tasks.filter(t=>t.status==='assigned');
     const badge=document.getElementById('t-vt-badge');
     if(badge){ badge.style.display=active.length?'inline-block':'none'; badge.textContent=active.length; }
@@ -7463,13 +7467,11 @@ async function loadTVTasks(){
           <div class="vt-done-link"><a href="${esc(t.submitted_link)}" target="_blank" rel="noopener">${ic('link')} Open your video link</a>${t.submitted_at?`<span style="color:var(--text-muted);font-weight:600">· ${esc(t.submitted_at)}</span>`:''}</div>
         </div>`:'';
       const reviewNote=(t.status==='submitted')?`<span class="vt-pill submitted blink">${ic('clock')} Under Review — Checking</span>`:'';
-      const statusNote=(['approved','editing_soon','editing_done','uploaded'].includes(t.status))
-        ?`<span class="vt-pill ${t.status}${t.status!=='uploaded'?' blink':''}">${VT_LBL[t.status]}</span>`:'';
       const rejNote=(t.reject_count>0&&t.status==='assigned')
         ?`<div class="vt-meta" style="color:#b91c1c">Sent back for reshoot${t.review_remarks?`: ${esc(t.review_remarks)}`:''} — new deadline above. Reshoot #${t.reject_count}</div>`:'';
       const propNote=(t.proposal_ok==='pending')?`<span class="vt-pill proposal">Pending Approval</span>`:'';
       return `<div class="vt-card">${_vtThumb(t,'t')}<div class="vt-body">
-        <div class="vt-chips">${propNote||_vtPill(t,true)}${reviewNote}${statusNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
+        <div class="vt-chips">${propNote}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
         <div class="vt-title">${esc(t.title)}</div>
         <div class="vt-meta">
           ${t.deadline_nice?`<span>${ic('clock')} Deadline: <b>${esc(t.deadline_nice)}</b></span>`:''}
@@ -7483,6 +7485,7 @@ async function loadTVTasks(){
       </div></div>`;
     };
     el.innerHTML=`${hero}${statCards}${mtHtml}
+      ${_vtSpecialT(d.special)}
       <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="openTVTPropose()">${ic('plus')} Propose a Video</button>
         <span style="font-size:.74rem;color:var(--text-muted);align-self:center">Have a video idea? Propose it — once approved, a thumbnail & deadline will be assigned.</span>
@@ -7554,21 +7557,22 @@ async function loadVTBanner(){
 let _vtTeachers=[], _vtChannels=[], _vtTypes=[], _vtF={teacher_id:0,status:'',channel_id:0,video_type:''}, _vtTimer=null;
 const VT_LBL={assigned:'Assigned',submitted:'Submitted',approved:'Approved',editing_soon:'Editing Soon',editing_done:'Editing Done',uploaded:'Uploaded',rejected:'Rejected',proposal:'Pending Approval'};
 function _vtQs(){ const f=_vtF,q=[]; if(f.teacher_id)q.push('teacher_id='+f.teacher_id); if(f.status)q.push('status='+f.status); if(f.channel_id)q.push('channel_id='+f.channel_id); if(f.video_type)q.push('video_type='+encodeURIComponent(f.video_type)); return q.length?'?'+q.join('&'):''; }
-function _vtPill(t,blink){
+function _vtPill(t,blink,who){
   let cls=t.status, lbl=VT_LBL[t.status]||t.status;
   if(t.status==='assigned'&&t.overdue){ cls='delayed'; lbl='Overdue'; }
   // teacher side: upload hone tak status blink karta rahe
   const bl=(blink&&t.status!=='uploaded'&&t.proposal_ok!=='pending')?' blink':'';
   let extra='';
   if(t.status==='submitted') extra=` <span class="vt-pill ${t.on_time?'ontime':'delayed'}${bl}">${t.on_time?'On Time':'Delayed'}</span>`;
-  return `<span class="vt-pill ${cls}${bl}">${lbl}</span>${extra}`;
+  const oc=who?` onclick="vtStatusOpen(${t.id},'${who}',event)" title="Tap for full status history"`:''; 
+  return `<span class="vt-pill ${cls}${bl}${who?' lnk':''}"${oc}>${lbl}</span>${extra}`;
 }
 function _vtThumb(t,who){
   const has=!!(t.thumbnail_b64||t.thumbnail_link);
   const img=t.thumbnail_b64?`<img src="${t.thumbnail_b64}" alt="">`
     :(t.thumbnail_link?`<img src="${esc(t.thumbnail_link)}" onerror="this.remove()" alt="">`:'');
   const blink=who==='t';
-  return `<div class="vt-thumb${has?' click':''}"${has?` onclick="vtThumbOpen(${t.id},'${who||'t'}')" title="Open full screen — download available"`:''}>${img||esc((t.title||'V').slice(0,1).toUpperCase())}<div class="vt-status">${_vtPill(t,blink)}</div>${has?`<span class="vt-dl">${ic('download')} View</span>`:''}</div>`;
+  return `<div class="vt-thumb${has?' click':''}"${has?` onclick="vtThumbOpen(${t.id},'${who||'t'}')" title="Open full screen — download available"`:''}>${img||esc((t.title||'V').slice(0,1).toUpperCase())}<div class="vt-status">${_vtPill(t,blink,who)}</div>${has?`<span class="vt-dl">${ic('download')} View</span>`:''}</div>`;
 }
 function _vtTypeBadge(t){ return t.video_type?`<span class="vt-type">${ic('play')} ${esc(t.video_type)}</span>`:''; }
 function vtThumbOpen(id,who){
@@ -7580,20 +7584,113 @@ function vtThumbOpen(id,who){
   else if(link) window.open(link,'_blank');
   else toast('No thumbnail attached to this task');
 }
+function vtStatusOpen(id,who,ev){
+  if(ev){ ev.stopPropagation(); ev.preventDefault(); }
+  const t=(((who==='a')?window._avtMap:window._tvtMap)||{})[id]; if(!t) return;
+  let hist=(t.history||[]).slice();
+  if(!hist.length){ // purane task — client-side synthesis
+    if(t.created_at) hist.push({s:'assigned',at:t.created_at,note:'Task assigned'});
+    if(t.submitted_at) hist.push({s:'submitted',at:t.submitted_at,note:'Video link submitted — '+(t.on_time?'on time':'delayed')});
+    if(t.reviewed&&!['assigned','submitted'].includes(t.status)) hist.push({s:t.status,at:'',note:t.review_remarks||''});
+  }
+  const lbl=s=>(VT_LBL[s]||(s==='progress'?'Progress':s==='edited'?'Updated':s));
+  const dotCls=s=>['submitted','approved','editing_done','uploaded'].includes(s)?'done':(['rejected'].includes(s)?'bad':'');
+  const rows=hist.map(h=>`<div class="vt-tl-i ${dotCls(h.s)}"><div class="vt-tl-s">${esc(lbl(h.s))}</div>
+    <div class="vt-tl-a">${esc(h.at||'')}</div>${h.note?`<div class="vt-tl-n">${esc(h.note)}</div>`:''}</div>`).join('');
+  showModal(`Status History — ${esc(t.title)}`,`
+    <div style="margin-bottom:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">${_vtPill(t,false)}<span style="font-size:.72rem;color:var(--text-muted);font-weight:700">current status</span></div>
+    <div class="vt-tl">${rows||'<div style="font-size:.8rem;color:var(--text-muted)">No history yet.</div>'}</div>`,
+    `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
+}
+// ---- special tasks (One Shot / Rapid Revision) — teacher side ----
+function _vtOsProg(t){
+  return `<div class="vt-os-prog"><span class="n os-txt">${t.done} / ${t.total} ${t.kind==='one_shot'?'chapters':'subjects'} done</span>
+    <span class="vt-os-bar"><i style="width:${t.pct}%"></i></span><span class="n">${t.pct}%</span>
+    <span class="vt-os-chev">${ic('chev-down')}</span></div>`;
+}
+function _vtChRow(t,c){
+  if(c.link) return `<div class="vt-chr done" id="vt-chr-${t.id}-${c.id}"><span class="dot"></span><span class="nm">${esc(c.title)}</span>
+    <span class="dt">${esc(c.submitted_at||'')}</span>
+    <a class="lk" href="${esc(c.link)}" target="_blank" rel="noopener">${ic('play')} Open video</a>
+    <button class="btn btn-ghost btn-sm" style="padding:3px 9px;font-size:.66rem" onclick="tvtChEdit(${t.id},${c.id})">Change</button></div>`;
+  return `<div class="vt-chr" id="vt-chr-${t.id}-${c.id}"><span class="dot"></span><span class="nm">${esc(c.title)}</span>
+    <span class="inp"><input class="input" id="tvt-ch-${t.id}-${c.id}" placeholder="https://drive.google.com/...">
+    <button class="btn btn-primary btn-sm" style="padding:5px 12px" onclick="tvtChapterSave(${t.id},${c.id})">${ic('send')} Save</button></span></div>`;
+}
+function _vtSpecialT(sp){
+  if(!sp||!sp.length) return '';
+  return sp.map(t=>{
+    const open=(t.done<t.total||!t.total)?' open':'';
+    const head=`<div class="vt-os-h" onclick="this.parentElement.classList.toggle('open')">
+      <div><h4>${t.kind==='one_shot'?'🎬 ONE SHOT — '+esc(t.subject):'⚡ RAPID REVISION'}</h4>
+      <div class="os-sub">${t.kind==='one_shot'?'Har chapter ka one-shot video — chapter ke saamne link lagao':'Har subject ka rapid revision video — dropdown se subject chuno, link daalo'} · Deadline: <b>${esc(t.deadline_nice||'—')}</b>${t.total?'': ' · chapters jald auto-fill honge'}</div></div>
+      <button class="btn btn-ghost btn-sm" style="color:#ffe9a8;border-color:rgba(255,233,168,.4)" onclick="vtStatusOpen(${t.id},'t',event)" title="Status history">${ic('history')}</button>
+      ${_vtOsProg(t)}</div>`;
+    let body='';
+    if(t.kind==='one_shot'){
+      body=t.total?`<div>${t.chapters.map(c=>_vtChRow(t,c)).join('')}</div>`
+        :`<div style="font-size:.78rem;color:var(--text-muted);padding:8px 4px">Is subject ke chapters abhi syllabus manager / timetable me nahi hain — jaise hi upload honge, list apne aap yahan aa jayegi.</div>`;
+    }else{
+      const pend=t.chapters.filter(c=>!c.link);
+      const doneR=t.chapters.filter(c=>c.link);
+      body=`${pend.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <select class="input" id="tvt-rr-sub-${t.id}" style="flex:1;min-width:170px">${pend.map(c=>`<option value="${c.id}">${esc(c.title)}</option>`).join('')}</select>
+          <input class="input" id="tvt-rr-link-${t.id}" placeholder="https://drive.google.com/..." style="flex:2;min-width:210px">
+          <button class="btn btn-primary btn-sm" onclick="tvtRapidSave(${t.id})">${ic('send')} Save Link</button></div>`:''}
+        ${doneR.map(c=>_vtChRow(t,c)).join('')}
+        ${!pend.length&&doneR.length?`<div style="font-size:.78rem;font-weight:800;color:#047857;padding:6px 4px">${ic('check')} Sabhi subjects ke rapid revision links aa gaye — great job!</div>`:''}`;
+    }
+    return `<div class="vt-os${open}" id="vt-os-${t.id}">${head}<div class="vt-os-b">${body}</div></div>`;
+  }).join('');
+}
+function tvtChEdit(tid,cid){
+  const t=(window._tvtMap||{})[tid]; if(!t) return;
+  const c=(t.chapters||[]).find(x=>x.id===cid); if(!c) return;
+  const row=document.getElementById(`vt-chr-${tid}-${cid}`);
+  if(!row) return;
+  row.outerHTML=`<div class="vt-chr" id="vt-chr-${tid}-${cid}"><span class="dot"></span><span class="nm">${esc(c.title)}</span>
+    <span class="inp"><input class="input" id="tvt-ch-${tid}-${cid}" value="${esc(c.link||'')}" placeholder="https://drive.google.com/...">
+    <button class="btn btn-primary btn-sm" style="padding:5px 12px" onclick="tvtChapterSave(${tid},${cid})">${ic('send')} Save</button></span></div>`;
+}
+async function tvtChapterSave(tid,cid){
+  const inp=document.getElementById(`tvt-ch-${tid}-${cid}`);
+  const link=(inp&&inp.value||'').trim();
+  if(!link){ toast('Pehle video ka link paste karo'); return; }
+  try{
+    const r=await api(`/api/teacher/video-tasks/${tid}/chapter-link`,'POST',{chapter_id:cid,link});
+    toast(r.completed?'🎉 Saare chapters complete — shabash!':`Saved — ${r.done}/${r.total} done.`);
+    loadTVTasks();
+  }catch(e){ toast(e.message||'Could not save'); }
+}
+async function tvtRapidSave(tid){
+  const sel=document.getElementById(`tvt-rr-sub-${tid}`);
+  const inp=document.getElementById(`tvt-rr-link-${tid}`);
+  const cid=sel?+sel.value:0, link=(inp&&inp.value||'').trim();
+  if(!cid){ toast('Subject chuno pehle'); return; }
+  if(!link){ toast('Pehle video ka link paste karo'); return; }
+  try{
+    const r=await api(`/api/teacher/video-tasks/${tid}/chapter-link`,'POST',{chapter_id:cid,link});
+    toast(r.completed?'🎉 Rapid Revision complete — shabash!':`Saved — ${r.done}/${r.total} done.`);
+    loadTVTasks();
+  }catch(e){ toast(e.message||'Could not save'); }
+}
 async function loadAVTasks(){
   const el=document.getElementById('a-vtasks-content');
   softSpin(el);
   if(_vtTimer){ clearInterval(_vtTimer); _vtTimer=null; }
   try{
-    const [stats,ch,ts,ty,list]=await Promise.all([
+    const [stats,ch,ts,ty,list,spec]=await Promise.all([
       api('/api/admin/video-tasks/stats'),
       api('/api/admin/video-channels'),
       api('/api/admin/teachers'),
       api('/api/admin/video-types'),
-      api('/api/admin/video-tasks'+_vtQs())]);
+      api('/api/admin/video-tasks'+_vtQs()),
+      api('/api/admin/video-tasks/special?kind=all').catch(()=>null)]);
     _vtChannels=ch.channels||[];
     _vtTypes=ty.types||[];
     window._avtMap={}; (list.tasks||[]).forEach(t=>window._avtMap[t.id]=t); (list.proposals||[]).forEach(t=>window._avtMap[t.id]=t);
+    window._avtSpec=(spec&&spec.one_shot)?spec:null;
+    if(window._avtSpec){ (spec.one_shot.tasks||[]).forEach(t=>window._avtMap[t.id]=t); ((spec.rapid_revision||{}).tasks||[]).forEach(t=>window._avtMap[t.id]=t); }
     _vtTeachers=(Array.isArray(ts)?ts:(ts.teachers||[])).map(t=>({pid:t.profile_id,name:t.name}));
     const checking=(list.tasks||[]).filter(t=>t.status==='submitted'&&!t.reviewed).length;
     const badge=document.getElementById('a-vt-badge');
@@ -7619,6 +7716,7 @@ async function loadAVTasks(){
         ?`<button class="btn btn-ghost btn-sm" onclick="openVTReview(${t.id})">${ic('edit')} Update Status</button>`:'';
       const notifyBtn=(t.submitted_link)
         ?`<button class="btn btn-gold btn-sm" onclick="vtNotifyStudents(${t.id})" title="Send this video link to all students">${ic('send')} Send to Students</button>`:'';
+      const editTaskBtn=`<button class="btn btn-ghost btn-sm" onclick="openVTEdit(${t.id})" title="Edit title, deadline, type, channel, thumbnail">${ic('edit')} Edit</button>`;
       return `<div class="vt-card">${_vtThumb(t,'a')}<div class="vt-body">
         <div class="vt-title">${esc(t.title)}</div>
         <div class="vt-chips"><span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
@@ -7631,7 +7729,7 @@ async function loadAVTasks(){
         </div>
         <div class="vt-foot">
           ${t.submitted_link?`<a class="btn btn-ghost btn-sm" href="${esc(t.submitted_link)}" target="_blank" rel="noopener">${ic('link')} Open Video</a>`:''}
-          ${reviewBtn}${editBtn}${notifyBtn}
+          ${reviewBtn}${editBtn}${editTaskBtn}${notifyBtn}
         </div></div></div>`;
     }).join('');
     el.innerHTML=`
@@ -7648,6 +7746,7 @@ async function loadAVTasks(){
         ${stats.most_delayed?`<div class="vt-stat" style="border-color:rgba(220,38,38,.45)"><div class="vs-ic" style="background:rgba(220,38,38,.1);color:#b91c1c">${ic('alert')}</div><div><div style="font-size:.8rem;font-weight:800;color:#b91c1c">${esc(stats.most_delayed.name)}</div><div class="vs-l">Most delayed — ${stats.most_delayed.delayed}</div></div></div>`:''}
       </div>
       ${(stats.by_type&&Object.keys(stats.by_type).length)?`<div class="card" style="margin-bottom:16px"><div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px"><span style="font-size:.68rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">${ic('chart')} Type-wise tasks</span>${Object.entries(stats.by_type).map(([k,v])=>`<span class="vt-type">${esc(k)} · ${v}</span>`).join('')}</div></div>`:''}
+      ${_avtSpecHtml()}
       ${propHtml}
       <div class="vt-filters">
         ${ic('filter')} <select onchange="_vtF.teacher_id=+this.value;loadAVTasks()">${tOpt}</select>
@@ -7674,6 +7773,127 @@ function _vtCdText(s){
   const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60),ss=s%60;
   const txt=(d?d+'d ':'')+String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0');
   return neg?`Overdue by ${txt}`:`${txt} left`;
+}
+// ---- admin: One Shot & Rapid Revision hidden section ----
+let _avtSpecTab='one_shot', _avtSpecSub='', _avtSpecOpen=false;
+function _avtSpecTotals(){
+  const sp=window._avtSpec; if(!sp||!sp.one_shot) return {osN:0,osD:0,osT:0,rrN:0,rrD:0,rrT:0};
+  const agg=p=>{let d=0,t=0;(p.tasks||[]).forEach(x=>{d+=x.done||0;t+=x.total||0});return [d,t];};
+  const [osD,osT]=agg(sp.one_shot||{}), [rrD,rrT]=agg(sp.rapid_revision||{});
+  return {osN:(sp.one_shot||{}).new_count||0,osD,osT,rrN:(sp.rapid_revision||{}).new_count||0,rrD,rrT};
+}
+function _avtSpecHtml(){
+  const sp=window._avtSpec; if(!sp||!sp.one_shot) return '';
+  const t=_avtSpecTotals(), newN=t.osN+t.rrN;
+  return `<div class="card" style="margin-bottom:16px;border:1.5px solid ${newN?'rgba(220,38,38,.5)':'rgba(184,148,31,.4)'}">
+    <div class="card-header" style="cursor:pointer;user-select:none" onclick="avtSpecToggle()">
+      <h3>${ic('play')} One Shot &amp; Rapid Revision ${newN?`<span class="vt-new" id="avt-spec-new">NEW ${newN}</span>`:''}</h3>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span class="vt-type">One Shot · ${t.osD}/${t.osT} chapters</span>
+        <span class="vt-type">Rapid · ${t.rrD}/${t.rrT} subjects</span>
+        <span class="vt-os-chev" style="color:var(--text-muted);${_avtSpecOpen?'transform:rotate(180deg)':''}">${ic('chev-down')}</span>
+      </div></div>
+    <div class="card-body" id="avt-spec-b" style="display:${_avtSpecOpen?'block':'none'}">${_avtSpecOpen?_avtSpecBody():''}</div></div>`;
+}
+function _avtSpecBody(){
+  const sp=window._avtSpec; if(!sp||!sp.one_shot) return '';
+  const data=sp[_avtSpecTab]||{tasks:[],subjects:[]};
+  const subs=_avtSpecTab==='one_shot'?(data.subjects||[]):[];
+  let tasks=(data.tasks||[]);
+  if(_avtSpecTab==='one_shot'&&_avtSpecSub) tasks=tasks.filter(x=>x.subject===_avtSpecSub);
+  const tabBtn=(k,l,n)=>`<button class="btn ${_avtSpecTab===k?'btn-primary':'btn-ghost'} btn-sm" onclick="_avtSpecTab='${k}';_avtSpecSub='';avtSpecRefresh()">${l}${n?` (${n})`:''}</button>`;
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+      ${tabBtn('one_shot','One Shot',(sp.one_shot.tasks||[]).length)}
+      ${tabBtn('rapid_revision','Rapid Revision',(sp.rapid_revision.tasks||[]).length)}
+      ${_avtSpecTab==='one_shot'&&subs.length?`<select class="input" style="width:auto;padding:6px 10px" onchange="_avtSpecSub=this.value;avtSpecRefresh()">
+        <option value="">All Subjects</option>${subs.map(s=>`<option value="${esc(s)}" ${_avtSpecSub===s?'selected':''}>${esc(s)}</option>`).join('')}</select>`:''}
+      <span style="font-size:.7rem;color:var(--text-muted)">Card kholte hi NEW hat jata hai · chapter links clickable hain</span></div>
+    ${tasks.length?tasks.map(_avtSpecCard).join(''):`<div class="ws-empty"><p><b>Koi ${ _avtSpecTab==='one_shot'?'One Shot':'Rapid Revision'} task nahi mila</b></p><small>Teachers ke subjects set hote hi ye tasks apne aap ban jaate hain.</small></div>`}`;
+}
+function _avtSpecCard(t){
+  const rows=(t.chapters||[]).map(c=> c.link
+    ? `<div class="vt-chr done"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">${esc(c.submitted_at||'')}</span><a class="lk" href="${esc(c.link)}" target="_blank" rel="noopener">${ic('play')} Open video</a></div>`
+    : `<div class="vt-chr"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">pending</span></div>`).join('');
+  return `<div class="vt-os" id="avt-os-${t.id}">
+    <div class="vt-os-h" onclick="avtSpecOpen(${t.id})">
+      <div><h4>${t.kind==='one_shot'?'🎬 '+esc(t.subject):'⚡ RAPID REVISION'} ${t.is_new?`<span class="vt-new" id="avt-new-${t.id}">NEW</span>`:''}</h4>
+      <div class="os-sub">${esc(t.teacher)} · Deadline: <b>${esc(t.deadline_nice||'—')}</b>${t.last_link_at?' · Last update: '+esc(t.last_link_at):''}</div></div>
+      <button class="btn btn-ghost btn-sm" style="color:#ffe9a8;border-color:rgba(255,233,168,.4)" onclick="vtStatusOpen(${t.id},'a',event)" title="Status history">${ic('history')}</button>
+      <button class="btn btn-ghost btn-sm" style="color:#ffe9a8;border-color:rgba(255,233,168,.4)" onclick="openVTEdit(${t.id},event)" title="Edit deadline / title">${ic('edit')}</button>
+      ${_vtOsProg(t)}</div>
+    <div class="vt-os-b">${rows||`<div style="font-size:.78rem;color:var(--text-muted);padding:6px 2px">Chapters abhi syllabus manager / timetable me nahi hain — upload hote hi auto-fill ho jayenge.</div>`}</div></div>`;
+}
+function avtSpecToggle(){
+  _avtSpecOpen=!_avtSpecOpen;
+  const b=document.getElementById('avt-spec-b');
+  if(b){ b.style.display=_avtSpecOpen?'block':'none'; if(_avtSpecOpen) b.innerHTML=_avtSpecBody(); }
+  const chev=document.querySelector('#a-vtasks-content .card-header .vt-os-chev');
+  if(chev) chev.style.transform=_avtSpecOpen?'rotate(180deg)':'';
+}
+function avtSpecRefresh(){
+  const b=document.getElementById('avt-spec-b'); if(b) b.innerHTML=_avtSpecBody();
+}
+async function avtSpecOpen(id){
+  const el=document.getElementById('avt-os-'+id); if(!el) return;
+  el.classList.toggle('open');
+  const t=(window._avtMap||{})[id];
+  if(t&&t.is_new){
+    t.is_new=false;
+    const pill=document.getElementById('avt-new-'+id); if(pill) pill.remove();
+    try{ await api(`/api/admin/video-tasks/${id}/seen`,'POST',{}); }catch(e){}
+    // header NEW count refresh
+    const sp=window._avtSpec;
+    if(sp){ ['one_shot','rapid_revision'].forEach(k=>{ sp[k].new_count=(sp[k].tasks||[]).filter(x=>x.is_new).length; });
+      const t2=_avtSpecTotals(), n=t2.osN+t2.rrN;
+      const hp=document.getElementById('avt-spec-new');
+      if(hp){ if(n) hp.textContent='NEW '+n; else hp.remove(); } }
+  }
+}
+// ---- admin: edit task (assign hone ke baad bhi changes) ----
+async function openVTEdit(id,ev){
+  if(ev){ ev.stopPropagation(); ev.preventDefault(); }
+  const t=(window._avtMap||{})[id]; if(!t){ toast('Task not found'); return; }
+  window._vtThumbB64=null;
+  const special=(t.kind&&t.kind!=='normal');
+  const cOpts=_vtChannels.map(c=>`<option value="${c.id}" ${t.channel_id===c.id?'selected':''}>${esc(c.name)}</option>`).join('');
+  const tyOpts=_vtTypes.map(c=>`<option value="${esc(c.name)}" ${t.video_type===c.name?'selected':''}>${esc(c.name)}</option>`).join('');
+  showModal(`Edit Task — ${esc(t.title)}`,`
+    <div class="form-grid vt-form">
+      <div class="form-group" style="grid-column:1/-1"><label>Video Title</label><input id="vt-e-title" class="input" value="${esc(t.title)}"></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Deadline</label><input id="vt-e-deadline" type="datetime-local" class="input" value="${esc(t.deadline||'')}"></div>
+      ${special?'':`<div class="form-group"><label>YouTube Channel</label><select id="vt-e-channel" class="input"><option value="">— No channel —</option>${cOpts}</select></div>
+      <div class="form-group"><label>Video Type</label><select id="vt-e-type" class="input"><option value="">— No type —</option>${tyOpts}</select></div>
+      <div class="form-group vt-thumb-box" style="grid-column:1/-1"><label>Thumbnail (nayi dene par hi badlegi)</label>
+        <div class="vt-file"><label class="vt-file-btn" for="vt-e-thumb">${ic('image')} Upload Image</label>
+          <span class="vt-file-name" id="vt-thumb-name">No file chosen</span></div>
+        <input id="vt-e-thumb" type="file" accept="image/*" style="display:none" onchange="vtThumbPreview(this)">
+        <div class="vt-hint">or paste a drive link below</div>
+        <input id="vt-e-thumblink" class="input" style="margin-top:8px" placeholder="https://drive.google.com/..." value="${esc(t.thumbnail_link||'')}">
+        <div id="vt-thumb-prev" style="margin-top:8px">${t.thumbnail_b64?`<img src="${t.thumbnail_b64}" style="max-height:90px;border-radius:10px;border:1px solid var(--border)">`:''}</div>
+      </div>`}
+      <div class="form-group" style="grid-column:1/-1"><label>Reference / Brief</label><textarea id="vt-e-ref" class="input" rows="2">${esc(t.reference||'')}</textarea></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Remarks for Teacher</label><textarea id="vt-e-remarks" class="input" rows="2">${esc(t.remarks||'')}</textarea></div>
+    </div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="vtEditSave(${t.id})">${ic('check')} Save Changes</button>`);
+}
+async function vtEditSave(id){
+  const payload={
+    title:document.getElementById('vt-e-title').value.trim(),
+    deadline:document.getElementById('vt-e-deadline').value,
+    reference:document.getElementById('vt-e-ref').value.trim(),
+    remarks:document.getElementById('vt-e-remarks').value.trim()};
+  const chEl=document.getElementById('vt-e-channel');
+  if(chEl){ payload.channel_id=+chEl.value||null; payload.video_type=(document.getElementById('vt-e-type')||{}).value||'';
+    payload.thumbnail_link=document.getElementById('vt-e-thumblink').value.trim();
+    if(window._vtThumbB64) payload.thumbnail_b64=window._vtThumbB64; }
+  if(!payload.title){ toast('Title is required'); return; }
+  if(!payload.deadline){ toast('Please set a deadline'); return; }
+  try{
+    const r=await api(`/api/admin/video-tasks/${id}/edit`,'POST',payload);
+    window._vtThumbB64=null; closeModal();
+    toast(r.changed&&r.changed.length?'Updated: '+r.changed.join(', '):'No changes made.');
+    loadAVTasks();
+  }catch(e){ toast(e.message||'Could not save'); }
 }
 async function vtDownloadReport(){
   try{
@@ -13307,7 +13527,8 @@ function payoutBreakHTML(p){
     ${p.allowances?`<div class="r"><span>Fixed Allowances</span><span class="pos">+ ${fmtINR(p.allowances)}</span></div>`:''}
     ${perfRows}
     ${adj}
-    <div class="r"><span>Attendance Deduction (${p.absent_days} day${p.absent_days===1?'':'s'} x ${fmtINR(p.per_day_rate)})</span><span class="${p.attendance_deduction?'neg':''}">${p.attendance_deduction?'- '+fmtINR(p.attendance_deduction):fmtINR(0)}</span></div>
+    <div class="r"><span>Attendance Deduction — Absent (${p.absent_days} day${p.absent_days===1?'':'s'} x ${fmtINR(p.per_day_rate)})</span><span class="${(p.attendance_deduction-(p.leave_deduction||0))?'neg':''}">${(p.attendance_deduction-(p.leave_deduction||0))?'- '+fmtINR(p.attendance_deduction-(p.leave_deduction||0)):fmtINR(0)}</span></div>
+    ${(p.leave_days||0)>0?`<div class="r"><span>Approved Leave — unpaid (${p.leave_days} day${p.leave_days===1?'':'s'} x ${fmtINR(p.per_day_rate)}) <span style="font-size:.72rem;color:#1d4ed8;font-weight:700">penalty nahi</span></span><span class="${p.leave_deduction?'neg':''}">${p.leave_deduction?'- '+fmtINR(p.leave_deduction):fmtINR(0)}</span></div>`:''}
     <div class="r net"><span>Net Payout</span><span>${fmtINR(p.net_payout)}</span></div>
   </div>`;
 }
@@ -13318,7 +13539,8 @@ function payoutRulesHTML(p,c){
     const perf=p.performance, hit=perf.totals.pending>0||perf.totals.done<perf.totals.target;
     html+=`<div class="rule-card${hit?' hit':''}"><div class="rr"><span class="rn">Monthly work not 100% complete</span><span class="ra">${p.perf_deduction?'- '+fmtINR(p.perf_deduction):'0'}</span></div>${hit?`<span class="rt">ACTIVE - ${perf.totals.done}/${perf.totals.target} tasks complete (${p.perf_pct}%)</span>`:`<span class="ok">100% COMPLETE - FULL PAYOUT</span>`}</div>`;
   }
-  html+=`<div class="rule-card${attHit?' hit':''}"><div class="rr"><span class="rn">Working day not attended</span><span class="ra">- ${fmtINR(p.per_day_rate)}/day</span></div>${attHit?`<span class="rt">TRIGGERED x${p.absent_days} = - ${fmtINR(p.attendance_deduction)}</span>`:`<span class="ok">NO DEDUCTION SO FAR</span>`}</div>`;
+  html+=`<div class="rule-card${attHit?' hit':''}"><div class="rr"><span class="rn">Working day not attended</span><span class="ra">- ${fmtINR(p.per_day_rate)}/day</span></div>${attHit?`<span class="rt">TRIGGERED x${p.absent_days} = - ${fmtINR(p.attendance_deduction-(p.leave_deduction||0))}</span>`:`<span class="ok">NO DEDUCTION SO FAR</span>`}</div>`;
+  if((p.leave_days||0)>0) html+=`<div class="rule-card"><div class="rr"><span class="rn">Approved leave — unpaid (penalty nahi)</span><span class="ra">- ${fmtINR(p.per_day_rate)}/day</span></div><span style="font-size:.74rem;font-weight:800;color:#1d4ed8;letter-spacing:.03em">APPLIED x${p.leave_days} = - ${fmtINR(p.leave_deduction||0)} — sirf din ki pay nahi, koi penalty nahi</span></div>`;
   (p.adjustments||[]).filter(a=>a.kind==='deduction').forEach(a=>{
     html+=`<div class="rule-card hit"><div class="rr"><span class="rn">${esc(a.note||'Deduction')}</span><span class="ra">- ${fmtINR(a.amount)}</span></div><span class="rt">APPLIED THIS MONTH</span></div>`;
   });
@@ -14479,6 +14701,45 @@ body.dark .po-pill.red{color:#f87171}
 .lv-dates{font-size:.72rem;color:var(--text-muted);font-weight:700;margin-top:2px}
 .lv-reason{font-size:.78rem;margin-top:7px;line-height:1.5}
 .lv-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+/* v71: clickable status pill + history timeline + special One Shot/Rapid cards */
+.vt-pill.lnk{cursor:pointer}
+.vt-pill.lnk:hover{filter:brightness(1.12)}
+.vt-tl{position:relative;margin-left:8px;padding-left:20px;border-left:2px solid var(--border)}
+.vt-tl-i{position:relative;padding:0 0 16px}
+.vt-tl-i:last-child{padding-bottom:2px}
+.vt-tl-i::before{content:'';position:absolute;left:-27px;top:3px;width:10px;height:10px;border-radius:50%;
+  background:var(--primary);box-shadow:0 0 0 3px var(--primary-50)}
+.vt-tl-i.done::before{background:#059669;box-shadow:0 0 0 3px rgba(16,185,129,.15)}
+.vt-tl-i.bad::before{background:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.13)}
+.vt-tl-s{font-weight:800;font-size:.84rem}
+.vt-tl-a{font-size:.7rem;color:var(--text-muted);font-weight:700;margin-top:1px}
+.vt-tl-n{font-size:.76rem;color:var(--text-muted);margin-top:3px;line-height:1.45}
+.vt-os{border:1.5px solid rgba(184,148,31,.4);border-radius:18px;overflow:hidden;margin-bottom:14px;background:var(--card)}
+.vt-os-h{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px;cursor:pointer;
+  background:linear-gradient(135deg,#3a2c07,#6b4f0c);color:#f5e9c8;user-select:none}
+.vt-os-h h4{margin:0;font-size:.95rem;font-weight:800;letter-spacing:.01em;color:#fff}
+.vt-os-h .os-sub{font-size:.68rem;font-weight:700;color:rgba(245,233,200,.75);margin-top:2px}
+.vt-os-prog{margin-left:auto;display:flex;align-items:center;gap:10px}
+.vt-os-prog .n{font-size:.82rem;font-weight:800;color:#ffe9a8}
+.vt-os-bar{width:110px;height:7px;border-radius:99px;background:rgba(255,255,255,.18);overflow:hidden}
+.vt-os-bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#f2c94c,#ffd873)}
+.vt-os-chev{transition:transform .25s;color:rgba(255,255,255,.8)}
+.vt-os.open .vt-os-chev{transform:rotate(180deg)}
+.vt-os-b{display:none;padding:12px 14px}
+.vt-os.open .vt-os-b{display:block}
+.vt-new{display:inline-flex;align-items:center;gap:4px;font-size:.6rem;font-weight:800;letter-spacing:.07em;
+  padding:2px 8px;border-radius:999px;background:#dc2626;color:#fff;animation:vtPillBlink 1.1s ease-in-out infinite}
+.vt-chr{display:flex;align-items:center;gap:9px;padding:8px 4px;border-bottom:1px dashed var(--border);flex-wrap:wrap}
+.vt-chr:last-child{border-bottom:none}
+.vt-chr .dot{width:8px;height:8px;border-radius:50%;flex:none;background:#d97706}
+.vt-chr.done .dot{background:#059669}
+.vt-chr .nm{flex:1;min-width:150px;font-size:.82rem;font-weight:600}
+.vt-chr.done .nm{color:var(--text-muted)}
+.vt-chr .dt{font-size:.66rem;color:var(--text-muted);font-weight:700}
+.vt-chr .lk{display:inline-flex;align-items:center;gap:4px;font-size:.72rem;font-weight:800;color:var(--primary)}
+.vt-chr .inp{display:flex;gap:7px;flex:1;min-width:210px}
+.vt-chr .inp .input{flex:1;padding:6px 10px;font-size:.76rem}
+@media(max-width:640px){.vt-os-prog .os-txt{display:none}.vt-os-bar{width:70px}}
 @media(max-width:640px){
   .vt-grid{grid-template-columns:1fr}
   .vt-thumb{height:120px}
