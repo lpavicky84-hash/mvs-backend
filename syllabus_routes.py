@@ -1319,9 +1319,10 @@ def _prediction_card(db, sp, tier):
             # marksheet bifurcation for the result card
             "theory": round(float(c.get("covered_theory") or 0), 1),
             "theory_max": mk.get("theory_max") or 0,
-            "tma": round(float(c.get("tma_assumed") or 0), 1),
+            # student ne khud bhare marks hi dikhenge — unset (None) rahe to card mein nahi
+            "tma": (round(float(c.get("tma_assumed") or 0), 1) if c.get("tma_set") else None),
             "tma_max": mk.get("tma_max") or 0,
-            "practical": round(float(c.get("practical_assumed") or 0), 1),
+            "practical": (round(float(c.get("practical_assumed") or 0), 1) if c.get("practical_set") else None),
             "practical_max": mk.get("practical_max") or 0,
             # paper-level numbers for the theory calculation popup
             "paper": round(float(c.get("covered_paper") or 0), 1),

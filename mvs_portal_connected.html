@@ -14575,6 +14575,8 @@ async function ocrFillQuestion_v1(inp,i){
 .syl-req2 .syl-mpt-row td:nth-child(1){width:40%}
 .syl-req2 .syl-mpt-row td:nth-child(2){width:32%}
 .syl-req2 .syl-mpt-row td:nth-child(3){width:28%}
+.syl-mpt-row.fillblink{animation:sylPulseA 2.2s infinite}
+.syl-need.blink{animation:txBlink 1.3s infinite;color:#b45309}
 .syl-need{display:inline-block;margin-top:3px;font-size:.66rem;font-weight:700;color:#6366f1;
  background:rgba(192,152,48,.1);padding:2px 8px;border-radius:999px}
 .dark .syl-need{color:#e8d29a}
@@ -15005,6 +15007,8 @@ function sylReqTable(c){
     var msg;
     if(!thOk)      msg = 'Theory needs <b>'+gap(c.theory_pass_mark,c.covered_theory)+' more marks</b> to pass &mdash; pick chapters from the list below, each one counts.';
     else if(!unlocked) msg = 'Pick the remaining plan chapters below &mdash; once your passing plan is covered, you will set your expected TMA'+(has?' and practical':'')+' marks.';
+    else if((tmaSess&&!c.tma_set)||(has&&!c.practical_set))
+                   msg = 'Tap the blinking '+((tmaSess&&!c.tma_set)?'TMA':'')+(((tmaSess&&!c.tma_set)&&(has&&!c.practical_set))?' and ':'')+((has&&!c.practical_set)?'practical':'')+' row above to fill your marks &mdash; only then will they count in your score card.';
     else if(!prOk) msg = 'Practical needs <b>'+gap(m.practical_pass,prGot)+' more marks</b> &mdash; tap the practical row above to update your expectation.';
     else           msg = 'Total needs <b>'+gap(m.aggregate_pass,agGot)+' more marks</b> &mdash; pick a few more chapters from the list below.';
     verdict = '<span class="syl-verdict3"><b>Right now: '+agGot+' of 100 marks</b><small>'+msg+'</small></span>';
@@ -15032,16 +15036,16 @@ function sylReqTable(c){
    +'<td style="white-space:nowrap;text-align:right">'
    +st(thOk,gap(c.theory_pass_mark,c.covered_theory))+info+'</td></tr>';
   if(tmaSess)
-    h+='<tr class="syl-mpt-row exp" onclick="sylMarksExplain(\'tma\')"><td><b>TMA</b><span class="syl-mpt-tag">expected</span><br>'
+    h+='<tr class="syl-mpt-row exp'+((unlocked&&!c.tma_set)?' fillblink':'')+'" onclick="sylMarksExplain(\'tma\')"><td><b>TMA</b><span class="syl-mpt-tag">expected</span><br>'
      +'<small style="opacity:.6">assignment marks</small><br>'
-     +'<small class="syl-need">'+(!unlocked?'&#128274; fills after passing criteria':(c.tma_set?'no minimum':'tap to fill your expectation'))+'</small></td>'
-   +'<td class="n">'+_sylN(unlocked?(c.tma_have!=null?c.tma_have:0):0)+' <small style="opacity:.55;font-weight:500">of '+m.tma_max+'</small></td>'
+     +'<small class="syl-need'+((unlocked&&!c.tma_set)?' blink':'')+'">'+(!unlocked?'&#128274; fills after passing criteria':(c.tma_set?'no minimum':'tap to fill your expectation'))+'</small></td>'
+   +'<td class="n">'+(!unlocked?_sylN(0):(c.tma_set?_sylN(c.tma_have!=null?c.tma_have:0):'&mdash;'))+' <small style="opacity:.55;font-weight:500">of '+m.tma_max+'</small></td>'
    +'<td style="white-space:nowrap;text-align:right">'+info+'</td></tr>';
   if(has)
-    h+='<tr class="syl-mpt-row exp" onclick="sylMarksExplain(\'practical\')"><td><b>Practical</b><span class="syl-mpt-tag">expected</span><br>'
+    h+='<tr class="syl-mpt-row exp'+((unlocked&&!c.practical_set)?' fillblink':'')+'" onclick="sylMarksExplain(\'practical\')"><td><b>Practical</b><span class="syl-mpt-tag">expected</span><br>'
      +'<small style="opacity:.6">practical exam</small><br>'
-     +'<small class="syl-need">'+(!unlocked?'&#128274; fills after passing criteria':(c.practical_set?('pass needs '+prNeed):'tap to fill your expectation'))+'</small></td>'
-   +'<td class="n">'+prGot+' <small style="opacity:.55;font-weight:500">of '+m.practical_max+'</small></td>'
+     +'<small class="syl-need'+((unlocked&&!c.practical_set)?' blink':'')+'">'+(!unlocked?'&#128274; fills after passing criteria':(c.practical_set?('pass needs '+prNeed):'tap to fill your expectation'))+'</small></td>'
+   +'<td class="n">'+((unlocked&&!c.practical_set)?'&mdash;':prGot)+' <small style="opacity:.55;font-weight:500">of '+m.practical_max+'</small></td>'
    +'<td style="white-space:nowrap;text-align:right">'
    +(unlocked?st(prOk,gap(m.practical_pass,prGot)):'')+info+'</td></tr>';
   h+='<tr class="syl-mpt-row tot" onclick="sylMarksExplain(\'total\')"><td><b>Marksheet total</b><br>'
@@ -15092,11 +15096,14 @@ function sylMarksExplain(kind){
       +'These are <b>expected marks</b> — your estimate. If you actually score them, the predicted result above is what your final NIOS marksheet will show.</p>'
       +'<p>TMA has no minimum of its own — it adds straight to your total, so it strongly boosts your percentage. <b>Do not forget to submit your TMA.</b></p>'
       +(unlocked
-        ? '<label class="form-label" style="margin-top:6px">Expected TMA marks (out of '+m.tma_max+')</label>'
-          +'<input type="number" class="form-control" id="syl-mpx-in" min="0" max="'+m.tma_max+'" value="'+_sylN(c.tma_assumed)+'">'
-        : '<div class="syl-reqmsg" style="display:block;margin-top:8px;background:rgba(184,148,31,.08);border:1px solid rgba(184,148,31,.35);border-radius:10px;padding:10px 12px;color:#8a6d1d">&#128274; First complete your <b>Passing Marks Criteria</b> (cover the plan chapters) — then we will ask for your expected TMA marks.</div>')
+        ? '<div class="syl-reqmsg" style="display:block;margin:8px 0;background:rgba(5,150,105,.07);border:1px solid rgba(5,150,105,.3);border-radius:10px;padding:10px 12px;color:#065f46">'
+          +'<b>Note:</b> If NIOS has already given you these marks, fill in the actual marks. If not, fill in the marks you honestly expect — your expected score card will count them. If you leave this empty, these marks will not be counted in your score.</div>'
+          +'<label class="form-label" style="margin-top:6px">Your TMA marks (out of '+m.tma_max+')</label>'
+          +'<input type="number" class="form-control" id="syl-mpx-in" min="0" max="'+m.tma_max+'" step="0.5" placeholder="0 to '+m.tma_max+'" value="'+(c.tma_set?_sylN(c.tma_assumed):'')+'">'
+        : '<div class="syl-reqmsg" style="display:block;margin-top:8px;background:rgba(184,148,31,.08);border:1px solid rgba(184,148,31,.35);border-radius:10px;padding:10px 12px;color:#8a6d1d">&#128274; First complete your <b>Passing Marks Criteria</b> (cover the plan chapters) — then you can fill your TMA marks here.</div>')
       +'</div>';
-    F= unlocked ? '<button class="btn btn-primary" onclick="sylMpxSave(\'tma\')">Save expected marks</button>' : F;
+    F= unlocked ? ('<button class="btn btn-primary" onclick="sylMpxSave(\'tma\')">Save marks</button>'
+      +(c.tma_set?'<button class="btn btn-ghost" onclick="sylMpxClear(\'tma\')">Remove my marks</button>':'')) : F;
   }
   else if(kind==='practical'){
     T='Practical — '+m.practical_max+' marks (expected)';
@@ -15104,16 +15111,19 @@ function sylMarksExplain(kind){
       +'<p>The practical exam carries <b>'+m.practical_max+' marks</b>; <b>'+_sylN(m.practical_pass)+'</b> are needed to pass. '
       +'These are <b>expected marks</b> too — the marksheet will show what you actually score.</p>'
       +(unlocked
-        ? '<label class="form-label" style="margin-top:6px">Expected practical marks (out of '+m.practical_max+')</label>'
-          +'<input type="number" class="form-control" id="syl-mpx-in" min="0" max="'+m.practical_max+'" value="'+_sylN(c.practical_assumed)+'">'
-        : '<div class="syl-reqmsg" style="display:block;margin-top:8px;background:rgba(184,148,31,.08);border:1px solid rgba(184,148,31,.35);border-radius:10px;padding:10px 12px;color:#8a6d1d">&#128274; First complete your <b>Passing Marks Criteria</b> (cover the plan chapters) — then we will ask for your expected practical marks.</div>')
+        ? '<div class="syl-reqmsg" style="display:block;margin:8px 0;background:rgba(5,150,105,.07);border:1px solid rgba(5,150,105,.3);border-radius:10px;padding:10px 12px;color:#065f46">'
+          +'<b>Note:</b> If NIOS has already given you these marks, fill in the actual marks. If not, fill in the marks you honestly expect — your expected score card will count them. If you leave this empty, these marks will not be counted in your score.</div>'
+          +'<label class="form-label" style="margin-top:6px">Your practical marks (out of '+m.practical_max+')</label>'
+          +'<input type="number" class="form-control" id="syl-mpx-in" min="0" max="'+m.practical_max+'" step="0.5" placeholder="0 to '+m.practical_max+'" value="'+(c.practical_set?_sylN(c.practical_assumed):'')+'">'
+        : '<div class="syl-reqmsg" style="display:block;margin-top:8px;background:rgba(184,148,31,.08);border:1px solid rgba(184,148,31,.35);border-radius:10px;padding:10px 12px;color:#8a6d1d">&#128274; First complete your <b>Passing Marks Criteria</b> (cover the plan chapters) — then you can fill your practical marks here.</div>')
       +'</div>';
-    F= unlocked ? '<button class="btn btn-primary" onclick="sylMpxSave(\'practical\')">Save expected marks</button>' : F;
+    F= unlocked ? ('<button class="btn btn-primary" onclick="sylMpxSave(\'practical\')">Save marks</button>'
+      +(c.practical_set?'<button class="btn btn-ghost" onclick="sylMpxClear(\'practical\')">Remove my marks</button>':'')) : F;
   }
   else if(kind==='total'){
     var parts=row('Theory (from chapters)', _sylN(c.covered_theory)+' of '+m.theory_max)
-      +(tmaSess?row('TMA (expected)', _sylN(c.tma_have!=null?c.tma_have:0)+' of '+m.tma_max):'')
-      +(has?row('Practical (expected)', _sylN(c.practical_have!=null?c.practical_have:0)+' of '+m.practical_max):'')
+      +(tmaSess?row('TMA (expected)', c.tma_set?(_sylN(c.tma_have!=null?c.tma_have:0)+' of '+m.tma_max):'&mdash; not counted'):'')
+      +(has?row('Practical (expected)', c.practical_set?(_sylN(c.practical_have!=null?c.practical_have:0)+' of '+m.practical_max):'&mdash; not counted'):'')
       +row('Total', _sylN(c.projected_total)+' of 100', true);
     T='Marksheet total — full calculation';
     B='<div style="font-size:.88rem;line-height:1.7">'+parts
@@ -15157,6 +15167,20 @@ async function sylMpxSave(kind){
   }catch(e){ toast(e.message,true); }
 }
 
+/* Student ne bhare TMA/practical marks hatana — -1 bhejte hi backend unset kar deta hai,
+   phir ye marks score card mein count nahi honge. */
+async function sylMpxClear(kind){
+  var d=_SYL.cur; if(!d) return;
+  try{
+    var res=await api('/api/syllabus/plan','POST',{subject_code:d.subject.code,
+      selected:d.selected, done:d.done,
+      tma_assumed: kind==='tma'? -1 : (d.calc.tma_set?d.calc.tma_assumed:-1),
+      practical_assumed: kind==='practical'? -1 : (d.calc.practical_set?d.calc.practical_assumed:-1)});
+    d.calc=res.calc; closeModal(); sylSubject();
+    toast('Marks removed — they will not be counted in your score.');
+  }catch(e){ toast(e.message,true); }
+}
+
 /* Expected marks ka matlab — banner ke blinking "Expected" chip ka note popup */
 function sylExpNote(){
   showModal('About these expected marks',
@@ -15167,69 +15191,8 @@ function sylExpNote(){
     '<button class="btn btn-primary" onclick="closeModal()">Got it</button>');
 }
 
-/* Passing target achieve hote hi — expected TMA + practical marks poochho.
-   Max se zyada likha to error, popup band nahi hoga. */
-function _sylExpNeeded(c){
-  var m=(c&&c.marks)||{};
-  return ((m.tma_max||0)>0 && !c.tma_set) || (!!m.has_practical && !c.practical_set);
-}
-function sylAskExpected(){
-  var d=_SYL.cur; if(!d||!d.calc) return;
-  var c=d.calc, m=c.marks||{};
-  var needTma=(m.tma_max||0)>0 && !c.tma_set;
-  var needPr=!!m.has_practical && !c.practical_set;
-  if(!needTma && !needPr) return;
-  var b='<div style="font-size:.9rem;line-height:1.7">'
-   +'<p style="text-align:center;margin-top:0">&#127881; <b>Passing target achieved!</b><br>'
-   +'Your chapter plan now covers the passing marks.</p>'
-   +'<p style="text-align:center;opacity:.72;font-size:.84rem">Now tell us your honestly <b>expected marks</b>, so the '
-   +'Marks Predictor shows your real projected score. You can change these anytime.</p>'
-   +(needTma
-     ?'<label class="form-label" style="margin-top:8px">What about your expected TMA marks? '
-      +'<span style="opacity:.6;font-weight:600">(maximum '+m.tma_max+')</span></label>'
-      +'<input type="number" class="form-control" id="syl-exp-tma" min="0" max="'+m.tma_max+'" step="0.5" placeholder="0 to '+m.tma_max+'">'
-     :'')
-   +(needPr
-     ?'<label class="form-label" style="margin-top:10px">What about your expected practical marks? '
-      +'<span style="opacity:.6;font-weight:600">(maximum '+m.practical_max+')</span></label>'
-      +'<input type="number" class="form-control" id="syl-exp-pr" min="0" max="'+m.practical_max+'" step="0.5" placeholder="0 to '+m.practical_max+'">'
-     :'')
-   +'<div id="syl-exp-err" style="display:none;margin-top:10px;padding:9px 12px;border-radius:10px;'
-   +'background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.3);color:#b91c1c;font-size:.8rem;font-weight:700"></div>'
-   +'</div>';
-  showModal('Your expected marks', b,
-    '<button class="btn btn-ghost" onclick="closeModal()">Skip for now</button>'
-   +'<button class="btn btn-primary" onclick="sylExpSave()">Save my expected marks</button>');
-}
-async function sylExpSave(){
-  var d=_SYL.cur; if(!d||!d.calc) return;
-  var c=d.calc, m=c.marks||{};
-  var needTma=(m.tma_max||0)>0 && !c.tma_set;
-  var needPr=!!m.has_practical && !c.practical_set;
-  var err=function(msg){ var e=_sylEl('syl-exp-err'); if(e){ e.textContent=msg; e.style.display='block'; } };
-  var tma=-1, pr=-1, v;
-  if(needTma){
-    v=parseFloat(_sylEl('syl-exp-tma').value);
-    if(isNaN(v)||v<0){ err('Please enter your expected TMA marks (0 to '+m.tma_max+').'); return; }
-    if(v>m.tma_max){ err('TMA marks cannot be more than '+m.tma_max+'. Enter a value between 0 and '+m.tma_max+'.'); return; }
-    tma=v;
-  }
-  if(needPr){
-    v=parseFloat(_sylEl('syl-exp-pr').value);
-    if(isNaN(v)||v<0){ err('Please enter your expected practical marks (0 to '+m.practical_max+').'); return; }
-    if(v>m.practical_max){ err('Practical marks cannot be more than '+m.practical_max+'. Enter a value between 0 and '+m.practical_max+'.'); return; }
-    pr=v;
-  }
-  try{
-    var res=await api('/api/syllabus/plan','POST',{subject_code:d.subject.code,
-      selected:d.selected, done:d.done, tma_assumed:tma, practical_assumed:pr});
-    d.calc=res.calc;
-    if(res.selected) d.selected=res.selected;
-    if(res.done) d.done=res.done;
-    closeModal(); sylSubject();
-    toast('Expected marks saved — your predictor is updated.');
-  }catch(e){ err(e.message||'Could not save. Please try again.'); }
-}
+/* Auto-ask popup HATA DIYA gaya hai — ab passing/target ke baad unset TMA/practical rows
+   blink karti hain; student khud click karke note padh kar marks bhare (auto-filled nahi hote). */
 
 /* Two collapsible target cards. The learner sees a progress bar and a status,
    and only opens the detail when they want it. The next target pulses. */
@@ -15275,7 +15238,9 @@ function sylTargetCards(c, ms){
   var infos = kinds.map(function(k){ return _sylTInfo(c,k,ms); });
   var A = infos[infos.length-1];            // the aim itself
   var have = c.covered_paper;
-  var bodyOpen = (_SYL.tgBody!==false);
+  /* detail (calculation + predictor) default BAND rahega — student header pe
+     click kare tab khule (auto-open nahi) */
+  var bodyOpen = !!_SYL.tgBody;
   var dleft = (!A.done) ? _sylDaysLeft() : null;
   var left = Math.max(0, Math.round((A.total-have)*10)/10);
   var tcol = A.done ? '#059669' : '#b45309';
@@ -15333,7 +15298,7 @@ function sylTargetCards(c, ms){
   return h+'</div>';
 }
 
-function sylTgBody(){ _SYL.tgBody = !(_SYL.tgBody!==false); sylSubject(); }
+function sylTgBody(){ _SYL.tgBody = !_SYL.tgBody; sylSubject(); }
 
 /* Milestone row click → chapter list us target ke plan chapters pe filter */
 function sylFilterTarget(kind){
@@ -15535,7 +15500,9 @@ async function sylOpen(code){
     /* student ka aim hi default view hai — chapter list usi target ke plan
        chapters se khulti hai (click ki zaroorat nahi), card bhi wahi aim */
     _SYL.targetFilter = (_SYL.me && _SYL.me.target) || null;
-    _SYL.tgBody = true;
+    /* target card ka detail (calculation + predictor) default BAND — student
+       header pe click kare tab khule (auto-open nahi) */
+    _SYL.tgBody = false;
     _SYL.openMod = null;
     sylBusy(false);
     if(!_SYL.cur.calc){
@@ -15747,14 +15714,7 @@ function sylSubject(scrollTop){
   h+='</div></div></div></div></div>';
   _sylEl('s-syl-content').innerHTML=h;
   if(scrollTop){ var t=_sylEl('syl-cong'); if(t&&t.scrollIntoView) t.scrollIntoView({behavior:'smooth',block:'center'}); }
-  /* passing complete hai par expected TMA/practical kabhi bhare nahi — ek baar poochho */
-  if(c.pass_reached && c.theory_reached && _sylExpNeeded(c)){
-    _SYL.expAsked=_SYL.expAsked||{};
-    if(!_SYL.expAsked[s.code] && !document.getElementById('modal').classList.contains('open')){
-      _SYL.expAsked[s.code]=1;
-      setTimeout(sylAskExpected, 450);
-    }
-  }
+  /* Auto popup nahi khulta — unset TMA/practical rows khud blink karti hain, student click karke bhare. */
 }
 
 /* Ek module kholo — pichla apne aap band */
@@ -16674,18 +16634,12 @@ async function sylSave(){
     d.calc=res.calc;
     if(res.selected) d.selected=res.selected;   // server may have healed a legacy double-option pick
     if(res.done) d.done=res.done;
-    /* passing abhi-abbhi achieve hui aur expected marks unset — to celebration
-       ke baad poochha jayega; auto-ask ko pehle se mark kar do (double nahi) */
     var justPassed = !was && res.calc.pass_reached;
-    var willAsk = justPassed && _sylExpNeeded(res.calc);
-    if(willAsk){ _SYL.expAsked=_SYL.expAsked||{}; _SYL.expAsked[d.subject.code]=1; }
     sylSubject();
     if(!wasTop && res.calc.top_reached) sylCongrats('top');
     else if(!wasHigh && res.calc.high_reached) sylCongrats('high');
     else if(justPassed) sylCelebrate();
-    else willAsk=false;
-    /* celebration popup band hote hi expected TMA/practical marks poochho */
-    if(willAsk) window._afterModalCb=function(){ sylAskExpected(); };
+    /* expected marks ka auto popup nahi — unset rows blink karti hain, student khud bhare */
   }catch(e){ toast(e.message,true); }
 }
 
