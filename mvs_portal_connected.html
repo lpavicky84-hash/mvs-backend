@@ -2327,6 +2327,9 @@ body.dark .al-sig{color:hsl(45 90% 60%)}
 .wt-now{font-size:.74rem;color:var(--text-muted);font-weight:600;background:var(--bg);border:1px dashed var(--border);border-radius:9px;padding:6px 10px;margin-bottom:10px}
 .wt-now b{color:var(--text)}
 .wt-form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.wt-form>div{min-width:0}
+.wt-form .input{width:100%;min-width:0;max-width:100%;box-sizing:border-box}
+.wt-form select.input{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}
 .wt-form .full{grid-column:1/-1}
 .wt-lbl{font-size:.62rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block}
 .wt-req{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.72rem;font-weight:700;color:var(--text-muted);margin-top:10px}
@@ -13897,17 +13900,17 @@ async function aWtFetch(){
             <span class="wt-chip ${set?'set':'def'}">${set?'SET':'DEFAULT'}</span></div>
           <div class="wt-now">Current: <b>${esc(p.label||'—')}</b>${p.break_minutes?` · lunch break <b>${p.break_minutes}m</b> skipped`:''} · target <b>${p.required}h/day</b></div>
           <div class="wt-form">
-            <div><span class="wt-lbl">Work Type</span><select class="input" id="wt-type-${i}" onchange="wtTypeChange(${i})">
-              <option value="full_time"${p.work_type==='full_time'?' selected':''}>Full Time (lunch break skipped)</option>
-              <option value="part_time"${p.work_type==='part_time'?' selected':''}>Part Time (no break)</option></select></div>
-            <div><span class="wt-lbl">Timing Mode</span><select class="input" id="wt-mode-${i}" onchange="wtModeChange(${i})">
-              <option value="fixed"${p.mode==='fixed'?' selected':''}>Fixed Timing — entry &amp; exit time</option>
-              <option value="hours"${p.mode==='hours'?' selected':''}>Hours Only — daily X hours</option>
-              <option value="flexible"${p.mode==='flexible'?' selected':''}>Flexible — minimum 1 hour</option></select></div>
+            <div class="full"><span class="wt-lbl">Work Type</span><select class="input" id="wt-type-${i}" onchange="wtTypeChange(${i})">
+              <option value="full_time"${p.work_type==='full_time'?' selected':''}>Full Time — lunch break skipped</option>
+              <option value="part_time"${p.work_type==='part_time'?' selected':''}>Part Time — no break</option></select></div>
+            <div class="full"><span class="wt-lbl">Timing Mode</span><select class="input" id="wt-mode-${i}" onchange="wtModeChange(${i})">
+              <option value="fixed"${p.mode==='fixed'?' selected':''}>Fixed Timing (entry &amp; exit)</option>
+              <option value="hours"${p.mode==='hours'?' selected':''}>Hours Only (daily target)</option>
+              <option value="flexible"${p.mode==='flexible'?' selected':''}>Flexible (min 1 hour)</option></select></div>
             <div class="wt-t" id="wt-en-w-${i}"><span class="wt-lbl">Entry Time</span><input type="time" class="input" id="wt-en-${i}" value="${esc(p.entry_time||'09:30')}" oninput="wtCalc(${i})"></div>
             <div class="wt-t" id="wt-ex-w-${i}"><span class="wt-lbl">Exit Time</span><input type="time" class="input" id="wt-ex-${i}" value="${esc(p.exit_time||'18:30')}" oninput="wtCalc(${i})"></div>
-            <div class="wt-h" id="wt-rh-w-${i}"><span class="wt-lbl">Required Hours / Day</span><input type="number" class="input" id="wt-rh-${i}" min="1" max="16" step="0.5" value="${p.required_hours||8}" oninput="wtCalc(${i})"></div>
-            <div class="wt-b" id="wt-br-w-${i}"><span class="wt-lbl">Lunch Break (minutes)</span><input type="number" class="input" id="wt-br-${i}" min="0" max="240" step="5" value="${p.break_minutes||0}" oninput="wtCalc(${i})"></div>
+            <div class="wt-h" id="wt-rh-w-${i}"><span class="wt-lbl">Required Hrs / Day</span><input type="number" class="input" id="wt-rh-${i}" min="1" max="16" step="0.5" value="${p.required_hours||8}" oninput="wtCalc(${i})"></div>
+            <div class="wt-b" id="wt-br-w-${i}"><span class="wt-lbl">Lunch Break (min)</span><input type="number" class="input" id="wt-br-${i}" min="0" max="240" step="5" value="${p.break_minutes||0}" oninput="wtCalc(${i})"></div>
           </div>
           <div class="wt-req"><span id="wt-calc-${i}">Target: <b>${p.required}h</b> counted per day</span><span class="att-brk">break never counted</span></div>
           <button class="btn btn-primary btn-sm wt-save" onclick="wtSave(${t.teacher_id},${i})">${ic('check')} Save Timing</button>
