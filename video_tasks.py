@@ -66,6 +66,7 @@ def _ensure_special_columns():
         "ALTER TABLE video_tasks ADD COLUMN weekly_quota INTEGER DEFAULT 0",
         "ALTER TABLE video_tasks ADD COLUMN weekly_day VARCHAR(12) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN item_source VARCHAR(12) DEFAULT ''",
+        "ALTER TABLE video_task_chapters ADD COLUMN edit_status VARCHAR(20) DEFAULT ''",
     ]
     for ddl in alters:
         try:
@@ -99,6 +100,29 @@ DEFAULT_CHANNELS = [
 DEFAULT_TYPES = ["Short Video", "Long Video", "One Shot Video", "Strategy Video"]
 
 REVIEW_ACTIONS = ("approved", "editing_soon", "editing_done", "uploaded", "rejected")
+
+# Chapter-level production status (admin/production team set karti hai):
+# link lagte hi chapter "editing_soon" (editing karwani hai) — phir admin
+# "editing_done" (edited rakhi hai) -> "uploaded" (upload ho gayi) karta hai.
+CHAPTER_EDIT_STATUSES = ("editing_soon", "editing_done", "uploaded")
+
+
+def _ch_status(c):
+    """Chapter ka logical production status — purana data (edit_status khali)
+    link wale rows pe 'editing_soon' mana jata hai."""
+    es = (getattr(c, "edit_status", "") or "").strip()
+    if es in CHAPTER_EDIT_STATUSES:
+        return es
+    return "editing_soon" if (c.link or "").strip() else ""
+
+
+def _subject_cls(subject):
+    """'Physics 12' -> '12', 'Social Science 10' -> '10', 'Mathematics' -> '' —
+    class filter ke liye display naam se class nikaalna."""
+    m = re.search(r"(\d{1,2})\s*$", (subject or "").strip())
+    if m and m.group(1) in ("10", "12"):
+        return m.group(1)
+    return ""
 
 # =============================================================
 # SPECIAL TASKS — One Shot (per subject, chapters auto) + Rapid Revision
@@ -179,14 +203,20 @@ def _teacher_subject_list(db, tp):
     return out
 
 
-def _chapters_for(db, tid, name, cls):
+def _chapters_for(db, tid, name, cls, scope=""):
     """([chapter titles], source). Syllabus manager (admin overrides included)
     -> timetable topics -> [] (baad me auto-sync). Display naam is function ka
-    kaam nahi — wo caller stable banata hai."""
+    kaam nahi — wo caller stable banata hai.
+    scope: '' / 'all' = saare chapters; 'pe' = sirf Public Exam chapters;
+    'tma' = sirf TMA chapters (kind flag syllabus manager se aata hai).
+    Timetable fallback pe kind pata nahi hota — wahan scope filter nahi lagta."""
     from subjects_registry import canon_subject, squash
     import syllabus_routes as SR
     import syllabus_data as SD
     from models import Timetable
+    scope = (scope or "").strip().lower()
+    if scope not in ("pe", "tma"):
+        scope = ""
     lv0 = _class_level(cls)
     if lv0:
         levels = [lv0]   # class pata ho to SIRF usi class ka syllabus — doosri
@@ -216,13 +246,19 @@ def _chapters_for(db, tid, name, cls):
         except Exception:
             rows = []
         titles = []
+        had_any = False
         for r in rows:
             no, ti = str(r.get("no") or "").strip(), (r.get("title") or "").strip()
             if not ti:
                 continue
+            had_any = True
+            if scope and (r.get("kind") or "").strip().lower() != scope:
+                continue   # PE/TMA scope — sirf wahi chapters
             titles.append(ti if (not no or ti[:1].isdigit()) else (no + ". " + ti))
         if titles:
             return titles, "syllabus"
+        if had_any and scope:
+            return [], "syllabus"   # chapters hain par is scope me koi nahi — fallback mat jao
     # fallback: timetable ke distinct topics (teacher + subject)
     try:
         sq = squash(name)
@@ -367,8 +403,9 @@ def _ensure_special_teacher(db, tp):
     if not subs:
         return
     _u = db.query(User).filter(User.id == tp.user_id).first()
-    if _u is not None and _u.is_active is False:
-        return
+    # Inactive teacher ke tasks bhi sync/create hote rahenge (admin monitor me
+    # One Shot vs Rapid Revision parity ke liye) — bas notification nahi jayega.
+    _inactive = bool(_u is not None and _u.is_active is False)
     named = _special_subject_names(db, tp, subs)   # [(raw_name, cls, stable_display)]
     changed = False
     # One Shot — har subject ka ek task, chapters syllabus/timetable se
@@ -403,7 +440,7 @@ def _ensure_special_teacher(db, tp):
             db.add(t)
             db.flush()
             _hist_add(t, "assigned", "One Shot task auto-created — %s" % display)
-            if tp.user_id:
+            if tp.user_id and not _inactive:
                 _vt_notify(db, tp.user_id, "One Shot Task — %s" % display,
                            'A One Shot video task for %s is now in My Tasks — record one-shot '
                            'videos of every chapter and paste each chapter\'s link in front of it. '
@@ -443,7 +480,7 @@ def _ensure_special_teacher(db, tp):
             db.add(rt)
             db.flush()
             _hist_add(rt, "assigned", "Rapid Revision task auto-created — %s" % display)
-            if tp.user_id:
+            if tp.user_id and not _inactive:
                 _vt_notify(db, tp.user_id, "Rapid Revision Task — %s" % display,
                            'A Rapid Revision task for %s is now in My Tasks — record a rapid '
                            'revision video of every chapter and paste each chapter\'s link in '
@@ -621,11 +658,13 @@ def _special_out(db, t):
     out["chapters"] = [{
         "id": c.id, "title": c.title, "link": c.link or "",
         "submitted_at": c.submitted_at.strftime("%d %b %Y, %I:%M %p") if c.submitted_at else "",
+        "edit_status": _ch_status(c),
     } for c in chs]
     done = sum(1 for c in chs if (c.link or "").strip())
     out["done"] = done
     out["total"] = len(chs)
     out["pct"] = round(100 * done / len(chs)) if chs else 0
+    out["cls"] = _subject_cls(out.get("subject") or "")
     lla = getattr(t, "last_link_at", None)
     asa = getattr(t, "admin_seen_at", None)
     out["is_new"] = bool(lla and (not asa or lla > asa))
@@ -1134,10 +1173,19 @@ def vt_create_project(payload: dict = Body(...),
     if weekly_day and weekly_day not in WEEK_DAYS:
         raise HTTPException(400, "Invalid weekly day — use monday..sunday")
     # items — syllabus chapters (connect) ya custom list
+    # chapter_scope: 'pe' = sirf Public Exam chapters (teacher ko TMA shoot nahi
+    # karne), 'tma' = sirf TMA, '' / 'all' = PE+TMA dono
+    chapter_scope = (payload.get("chapter_scope") or "").strip().lower()
+    if chapter_scope not in ("pe", "tma"):
+        chapter_scope = ""
     item_source, items = "custom", []
     if connect and subject:
-        items, _src = _chapters_for(db, tp.id, subject, class_level)
+        items, _src = _chapters_for(db, tp.id, subject, class_level, chapter_scope)
         item_source = "syllabus"
+        if not items:
+            raise HTTPException(400, "No chapters found for this scope in the syllabus "
+                                     "manager — choose a different chapter scope or enter "
+                                     "video names manually (Connect: No).")
     else:
         seen_it = set()
         for it in (payload.get("items") or []):
@@ -1166,9 +1214,13 @@ def vt_create_project(payload: dict = Body(...),
         wk.append("%d videos/week" % weekly_quota)
     if weekly_day:
         wk.append("due every %s" % weekly_day.title())
-    _hist_add(t, "assigned", "Project assigned — %s. Final deadline: %s" % (
+    scope_lbl = {"pe": "PE chapters only", "tma": "TMA chapters only"}.get(
+        chapter_scope, "PE + TMA chapters")
+    items_lbl = ("%d video items (%s)" % (len(items), scope_lbl)) if item_source == "syllabus" \
+        else "%d custom video items" % len(items)
+    _hist_add(t, "assigned", "Project assigned — %s. %s. Final deadline: %s" % (
         ("Weekly: " + " · ".join(wk)) if wk else "No weekly target",
-        final_dl.strftime("%d %b %Y, %I:%M %p")))
+        items_lbl, final_dl.strftime("%d %b %Y, %I:%M %p")))
     if tp.user_id:
         _vt_notify(db, tp.user_id, "New Project — %s" % title,
                    'You have been assigned a new project: "%s" (%d videos). %s'
@@ -1180,6 +1232,22 @@ def vt_create_project(payload: dict = Body(...),
     db.commit()
     return {"ok": True, "id": t.id, "teacher": _teacher_name(db, tp.id),
             "total": len(items)}
+
+
+@router.get("/admin/video-tasks/project-chapters")
+def vt_admin_project_chapters(subject: str = "", class_level: str = "",
+                              scope: str = "", teacher_id: int = 0,
+                              db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Project assign form ka LIVE preview — syllabus connect on hone pe is
+    subject/class/scope me kitne chapters video items banenge. count + sample."""
+    subject = (subject or "").strip()
+    if not subject:
+        return {"count": 0, "titles": [], "source": "none"}
+    if class_level not in ("10", "12"):
+        class_level = ""
+    tp = _teacher_profile(db, teacher_id) if teacher_id else None
+    titles, src = _chapters_for(db, tp.id if tp else 0, subject, class_level, scope)
+    return {"count": len(titles), "titles": titles[:8], "source": src}
 
 
 def _special_payload(db, kind):
@@ -1403,6 +1471,8 @@ def vt_chapter_link(task_id: int, payload: dict = Body(...), db: Session = Depen
     first_time = not (row.link or "").strip()
     row.link = link
     row.submitted_at = now
+    if first_time and _ch_status(row) == "editing_soon":
+        row.edit_status = "editing_soon"   # nayi recording — editing karwani hai
     t.last_link_at = now
     chs = (db.query(VideoTaskChapter)
            .filter(VideoTaskChapter.task_id == t.id).all())
@@ -1439,3 +1509,36 @@ def vt_chapter_link(task_id: int, payload: dict = Body(...), db: Session = Depen
     db.commit()
     return {"ok": True, "done": done, "total": total,
             "completed": bool(total and done == total)}
+
+
+@router.post("/admin/video-tasks/chapter-status")
+def vt_admin_chapter_status(payload: dict = Body(...), db: Session = Depends(get_db),
+                            _=Depends(get_admin)):
+    """Production team — kisi bhi special task (One Shot / Rapid Revision /
+    Project) ke chapter/video ka EDIT STATUS set karo:
+    editing_soon (editing karwani hai) -> editing_done (edited rakhi hai) ->
+    uploaded (upload ho gayi). Sirf link wale chapters pe."""
+    cid = int(payload.get("chapter_id") or 0)
+    status = (payload.get("status") or "").strip()
+    if status not in CHAPTER_EDIT_STATUSES:
+        raise HTTPException(400, "Invalid status — use editing_soon / editing_done / uploaded")
+    row = (db.query(VideoTaskChapter)
+           .filter(VideoTaskChapter.id == cid).first())
+    if not row:
+        raise HTTPException(404, "Chapter not found")
+    if not (row.link or "").strip():
+        raise HTTPException(400, "Video link is not submitted yet — status can be set only after that")
+    t = db.query(VideoTask).filter(VideoTask.id == row.task_id).first()
+    if not t or (getattr(t, "kind", "") or "") not in ("one_shot", "rapid_revision", "project"):
+        raise HTTPException(404, "Special task not found")
+    old = _ch_status(row)
+    if old == status:
+        return {"ok": True, "chapter_id": cid, "status": status, "changed": False}
+    row.edit_status = status
+    lbl = {"editing_soon": "To Edit", "editing_done": "Edited",
+           "uploaded": "Uploaded"}[status]
+    old_lbl = {"editing_soon": "To Edit", "editing_done": "Edited",
+               "uploaded": "Uploaded"}.get(old, "—")
+    _hist_add(t, "progress", '"%s" production status: %s → %s' % (row.title, old_lbl, lbl))
+    db.commit()
+    return {"ok": True, "chapter_id": cid, "status": status, "changed": True}

@@ -2281,7 +2281,8 @@ def admin_attendance_day(day: str = "", db: Session = Depends(get_db), _=Depends
     """Ek din ki attendance — saare active teachers, punch in/out + leave status ke saath."""
     from models import TeacherAttendance, TeacherProfile, User, TeacherLeave
     from teacher_routes import (_ist_now, _fmt_t, _att_hours, _ensure_geofence,
-                                _is_present, _is_short)
+                                _policy_map, _policy_required, _policy_label,
+                                _net_hours, _extra_hours)
     _ensure_geofence(db)
     try:
         d = datetime.strptime(day, "%Y-%m-%d").date() if day else _ist_now().date()
@@ -2291,13 +2292,18 @@ def admin_attendance_day(day: str = "", db: Session = Depends(get_db), _=Depends
     lrows = {l.teacher_id: l for l in db.query(TeacherLeave).filter(
         TeacherLeave.status == "approved",
         TeacherLeave.start_date <= d, TeacherLeave.end_date >= d).all()}
+    tps = db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all()
+    pols = _policy_map(db, [tp.id for tp in tps])
     out = []
-    for tp in db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all():
+    for tp in tps:
         a = rows.get(tp.id)
         lv = lrows.get(tp.id)
+        pol = pols.get(tp.id) or {}
+        req = _policy_required(pol)
         status = "absent"
         if a and a.punch_in and a.punch_out:
-            status = "done" if _is_present(a) else "short"
+            # Present (Short) bhi PRESENT hi hai — bas assigned hours se kam
+            status = "done" if (_net_hours(a, pol) or 0) >= req else "short"
         elif a and a.punch_in:
             status = "working"
         elif lv:
@@ -2308,54 +2314,67 @@ def admin_attendance_day(day: str = "", db: Session = Depends(get_db), _=Depends
                     "in_dist": a.in_dist if a else None, "out_dist": a.out_dist if a else None,
                     "in_office": a.in_office if a else None, "out_office": a.out_office if a else None,
                     "leave_type": (lv.leave_type if lv else None),
-                    "hours": _att_hours(a), "status": status})
+                    "hours": _att_hours(a), "net_hours": _net_hours(a, pol),
+                    "extra_hours": _extra_hours(a, pol), "required_hours": req,
+                    "policy_label": _policy_label(pol), "work_type": pol.get("work_type"),
+                    "mode": pol.get("mode"), "policy_set": bool(pol.get("configured")),
+                    "status": status})
     out.sort(key=lambda x: (x["status"] in ("absent",), x["name"]))
     return {"date": str(d), "day": d.strftime("%A"), "teachers": out,
-            "present": sum(1 for x in out if x["status"] in ("done", "working", "leave")),
+            "present": sum(1 for x in out if x["status"] in ("done", "short", "working", "leave")),
             "total": len(out)}
 
 @router.get("/attendance/month")
 def admin_attendance_month(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
-    """Month summary — teacher-wise present / leave / short / absent + total hours.
-    Present = punch gap >= 1h. Approved leave alag count; bina punch/leave = AB."""
+    """Month summary — teacher-wise present / leave / short / absent + net & extra hours.
+    Present = net hours (gap - lunch break) >= assigned required hours.
+    Short day (required se kam) bhi PRESENT count hota hai. Extra hours sirf display —
+    unka koi payout nahi. Approved leave alag count; bina punch/leave = AB."""
     from models import TeacherAttendance, TeacherProfile, User
-    from teacher_routes import (_month_range, _ensure_geofence, _is_present, _is_short,
-                                _leave_days_map, _elapsed_days, _ist_now)
+    from teacher_routes import (_month_range, _ensure_geofence, _leave_days_map, _elapsed_days,
+                                _ist_now, _policy_map, _policy_required, _policy_label,
+                                _day_status, _net_hours, _extra_hours)
     _ensure_geofence(db)
     start, end = _month_range(month)
     rows = db.query(TeacherAttendance).filter(
         TeacherAttendance.att_date >= start, TeacherAttendance.att_date < end).all()
-    agg = {}
+    by_tid = {}
     for a in rows:
-        g = agg.setdefault(a.teacher_id, {"present": 0, "short": 0, "hours": 0.0})
-        if _is_present(a):
-            g["present"] += 1
-        elif _is_short(a):
-            g["short"] += 1
-        if a.punch_in and a.punch_out:
-            g["hours"] += (a.punch_out - a.punch_in).total_seconds() / 3600
+        by_tid.setdefault(a.teacher_id, []).append(a)
+    tps = db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all()
+    pols = _policy_map(db, [tp.id for tp in tps])
     today = _ist_now().date()
     elapsed = _elapsed_days(start, end)
     out = []
-    for tp in db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all():
-        g = agg.get(tp.id, {"present": 0, "short": 0, "hours": 0.0})
+    for tp in tps:
+        pol = pols.get(tp.id) or {}
+        req = _policy_required(pol)
+        trows = by_tid.get(tp.id, [])
+        full = sum(1 for a in trows if _day_status(a, pol) == "present")
+        short = sum(1 for a in trows if _day_status(a, pol) == "short")
+        present = full + short          # short day bhi PRESENT
+        net = round(sum(_net_hours(a, pol) or 0 for a in trows), 1)
+        extra = round(sum(_extra_hours(a, pol) for a in trows), 1)
         lvmap = _leave_days_map(db, tp.id, start, end)
         leave_days = round(sum(lvmap.values()), 1)
         leave_elapsed = round(sum(v for d, v in lvmap.items() if d <= today), 1)
-        absent = max(0, round(elapsed - g["present"] - g["short"] - leave_elapsed))
+        absent = max(0, round(elapsed - present - leave_elapsed))
         out.append({"teacher_id": tp.id, "name": tp.user.name if tp.user else "",
-                    "present_days": g["present"], "short_days": g["short"],
+                    "present_days": present, "full_days": full, "short_days": short,
                     "leave_days": leave_days, "absent_days": absent,
-                    "total_hours": round(g["hours"], 1)})
+                    "total_hours": net, "extra_hours": extra, "required_hours": req,
+                    "policy_label": _policy_label(pol), "work_type": pol.get("work_type"),
+                    "mode": pol.get("mode"), "policy_set": bool(pol.get("configured"))})
     out.sort(key=lambda x: -x["present_days"])
     return {"month": start.strftime("%Y-%m"), "elapsed_days": elapsed, "teachers": out}
 
 @router.get("/attendance/teacher/{tid}")
 def admin_attendance_teacher(tid: int, month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
-    """Ek teacher ki date-wise attendance (admin detail view) + status."""
+    """Ek teacher ki date-wise attendance (admin detail view) + policy-aware status."""
     from models import TeacherAttendance
     from teacher_routes import (_month_range, _fmt_t, _att_hours, _ensure_geofence,
-                                _is_present, _is_short, _leave_days_map)
+                                _leave_days_map, _policy_dict, _policy_required, _policy_label,
+                                _day_status, _net_hours, _extra_hours)
     _ensure_geofence(db)
     start, end = _month_range(month)
     rows = db.query(TeacherAttendance).filter(
@@ -2363,21 +2382,110 @@ def admin_attendance_teacher(tid: int, month: str = "", db: Session = Depends(ge
         TeacherAttendance.att_date >= start, TeacherAttendance.att_date < end
     ).order_by(TeacherAttendance.att_date.desc()).all()
     lvmap = _leave_days_map(db, tid, start, end)
+    pol = _policy_dict(db, tid)
+    req = _policy_required(pol)
 
     def _st(r):
-        if _is_present(r):
-            return "present"
-        if _is_short(r):
-            return "short"
-        if r and r.punch_in:
-            return "working"
-        return ""
+        return _day_status(r, pol) if (r and (r.punch_in or r.punch_out)) else ""
 
     return {"month": start.strftime("%Y-%m"),
             "leave_dates": sorted(str(d) for d in lvmap.keys()),
+            "policy": {**pol, "required": req, "label": _policy_label(pol)},
+            "required_hours": req,
             "rows": [{"date": str(r.att_date), "day": r.att_date.strftime("%A"),
                       "punch_in": _fmt_t(r.punch_in), "punch_out": _fmt_t(r.punch_out),
-                      "hours": _att_hours(r), "status": _st(r)} for r in rows]}
+                      "hours": _att_hours(r), "net_hours": _net_hours(r, pol),
+                      "extra_hours": _extra_hours(r, pol),
+                      "status": _st(r)} for r in rows]}
+
+
+# ===== SMART WORK TIMING (per-teacher policy — admin set karta hai) =====
+@router.get("/attendance/policies")
+def admin_work_policies(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Saare active teachers ki work-timing policy (unset = default 8h/day full time)."""
+    from models import TeacherProfile, User
+    from teacher_routes import _policy_map, _policy_required, _policy_label
+    tps = db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all()
+    pols = _policy_map(db, [tp.id for tp in tps])
+    out = []
+    for tp in sorted(tps, key=lambda t: (t.user.name if t.user else "")):
+        pol = pols.get(tp.id) or {}
+        subs = tp.subjects if isinstance(tp.subjects, list) else []
+        subs = [s if isinstance(s, str) else (s.get("name") or "") for s in subs]
+        out.append({"teacher_id": tp.id, "name": tp.user.name if tp.user else "",
+                    "subjects": [s for s in subs if s],
+                    "policy": {**pol, "required": _policy_required(pol), "label": _policy_label(pol)}})
+    return {"teachers": out}
+
+@router.post("/attendance/policy")
+def admin_set_work_policy(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Ek teacher ki smart timing save karo:
+    work_type: full_time (lunch break skip) | part_time (no break);
+    mode: fixed (entry/exit pakka) | hours (sirf daily hours) | flexible (min 1h).
+    Validations: required >= 1h; fixed me exit > entry; break sirf full_time."""
+    from models import TeacherProfile, TeacherWorkPolicy
+    from teacher_routes import (WORK_TYPES, POLICY_MODES, MAX_WORK_HOURS, MIN_PRESENT_HOURS,
+                                _parse_hhmm, _policy_from_row, _policy_required, _policy_label,
+                                _ist_now)
+    tid = payload.get("teacher_id")
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first() if tid else None
+    if not tp:
+        raise HTTPException(404, "Teacher not found")
+    wt = (payload.get("work_type") or "full_time").strip().lower()
+    if wt not in WORK_TYPES:
+        raise HTTPException(400, "Work type must be full_time or part_time")
+    mode = (payload.get("mode") or "hours").strip().lower()
+    if mode not in POLICY_MODES:
+        raise HTTPException(400, "Mode must be fixed, hours or flexible")
+    try:
+        brk = int(payload.get("break_minutes") or 0)
+    except Exception:
+        raise HTTPException(400, "Break minutes must be a number")
+    if brk < 0 or brk > 240:
+        raise HTTPException(400, "Break must be between 0 and 240 minutes")
+    if wt != "full_time":
+        brk = 0                                  # lunch break sirf full-time me
+    entry = (payload.get("entry_time") or "").strip()
+    exit_ = (payload.get("exit_time") or "").strip()
+    try:
+        req_h = float(payload.get("required_hours") or 0)
+    except Exception:
+        raise HTTPException(400, "Required hours must be a number")
+    if mode == "fixed":
+        en, ex = _parse_hhmm(entry), _parse_hhmm(exit_)
+        if en is None or ex is None:
+            raise HTTPException(400, "Fixed mode needs valid entry and exit times (HH:MM)")
+        if ex <= en:
+            raise HTTPException(400, "Exit time must be after entry time")
+        span_h = (ex - en) / 60.0
+        if span_h > MAX_WORK_HOURS:
+            raise HTTPException(400, "Entry-exit span cannot exceed %d hours" % MAX_WORK_HOURS)
+        if brk >= (ex - en):
+            raise HTTPException(400, "Break cannot be longer than the entry-exit span")
+        req_h = round(span_h - brk / 60.0, 2)    # fixed mode me required auto = span - break
+        if req_h < MIN_PRESENT_HOURS:
+            raise HTTPException(400, "Fixed timing must allow at least 1 working hour after the break")
+    elif mode == "hours":
+        if req_h < MIN_PRESENT_HOURS or req_h > MAX_WORK_HOURS:
+            raise HTTPException(400, "Required hours must be between 1 and %d" % MAX_WORK_HOURS)
+        entry, exit_ = "", ""
+    else:                                        # flexible — sirf minimum 1h
+        req_h = MIN_PRESENT_HOURS
+        entry, exit_ = "", ""
+    p = db.query(TeacherWorkPolicy).filter(TeacherWorkPolicy.teacher_id == tp.id).first()
+    if not p:
+        p = TeacherWorkPolicy(teacher_id=tp.id)
+        db.add(p)
+    p.work_type, p.mode = wt, mode
+    p.required_hours = req_h
+    p.entry_time, p.exit_time = entry, exit_
+    p.break_minutes = brk
+    p.updated_at = _ist_now()
+    db.commit()
+    pol = _policy_from_row(p, tp.id)
+    return {"message": "Work timing saved for %s — %s" % (tp.user.name if tp.user else "teacher", _policy_label(pol)),
+            "teacher_id": tp.id,
+            "policy": {**pol, "required": _policy_required(pol), "label": _policy_label(pol)}}
 
 
 # ===== LEAVE REQUESTS (admin review) =====

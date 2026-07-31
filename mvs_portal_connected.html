@@ -2313,6 +2313,40 @@ body.dark .al-sig{color:hsl(45 90% 60%)}
 .att-grid{display:grid;grid-template-columns:1.05fr 1fr 1fr;gap:18px;align-items:start}
 @media(max-width:1100px){.att-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:760px){.att-grid{grid-template-columns:1fr}}
+/* ===== v76 smart work timings ===== */
+.wt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+.wt-card{border:1.5px solid var(--border);border-radius:16px;padding:14px 16px;background:var(--card-bg,#fff);transition:border-color .2s}
+.wt-card:hover{border-color:rgba(184,148,31,.45)}
+.wt-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.wt-av{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.85rem;background:linear-gradient(135deg,#b8941f,#d4af37);color:#fff;flex-shrink:0}
+.wt-name{font-weight:800;font-size:.92rem;line-height:1.2}
+.wt-sub{font-size:.7rem;color:var(--text-muted);font-weight:600}
+.wt-chip{margin-left:auto;font-size:.6rem;font-weight:800;padding:3px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em;flex-shrink:0}
+.wt-chip.set{background:rgba(22,163,74,.13);color:#15803d}
+.wt-chip.def{background:rgba(100,116,139,.13);color:#64748b}
+.wt-now{font-size:.74rem;color:var(--text-muted);font-weight:600;background:var(--bg);border:1px dashed var(--border);border-radius:9px;padding:6px 10px;margin-bottom:10px}
+.wt-now b{color:var(--text)}
+.wt-form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.wt-form .full{grid-column:1/-1}
+.wt-lbl{font-size:.62rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block}
+.wt-req{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.72rem;font-weight:700;color:var(--text-muted);margin-top:10px}
+.wt-req b{color:#b45309}
+.wt-save{margin-top:10px;width:100%}
+.wt-prog{height:9px;border-radius:999px;background:var(--bg);border:1px solid var(--border);overflow:hidden;margin-top:10px}
+.wt-prog>div{height:100%;border-radius:999px;background:linear-gradient(90deg,#d97706,#16a34a);transition:width .45s ease}
+.wt-prog>div.done{background:linear-gradient(90deg,#16a34a,#059669)}
+.wt-prog>div.extra{background:linear-gradient(90deg,#2563eb,#7c3aed)}
+.att-x{display:inline-block;font-size:.64rem;font-weight:800;color:#2563eb;background:rgba(37,99,235,.1);border-radius:999px;padding:2px 8px;margin-left:5px;white-space:nowrap}
+.att-pol{display:inline-block;font-size:.62rem;font-weight:800;color:var(--text-muted);background:var(--bg);border:1px solid var(--border);border-radius:999px;padding:2px 9px;white-space:nowrap}
+.att-net{font-weight:800}
+.att-brk{font-size:.66rem;color:var(--text-muted);font-weight:600}
+.myt-card{border-radius:16px;border:1.5px solid rgba(184,148,31,.35);background:linear-gradient(120deg,rgba(184,148,31,.07),rgba(212,175,55,.04));padding:16px 18px;margin-bottom:18px}
+.myt-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.myt-chip{font-size:.7rem;font-weight:800;padding:5px 12px;border-radius:999px;background:var(--card-bg,#fff);border:1.5px solid var(--border)}
+.myt-chip.gold{border-color:rgba(184,148,31,.5);color:#92680a}
+.myt-chip.green{border-color:rgba(22,163,74,.5);color:#15803d}
+.myt-chip.blue{border-color:rgba(37,99,235,.45);color:#1d4ed8}
+.myt-note{font-size:.72rem;color:var(--text-muted);margin-top:10px}
 .cal-head{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
 .cal-stat{flex:1;min-width:78px;background:var(--bg);border:1px solid var(--border);border-radius:12px;text-align:center;padding:10px 6px}
 .cal-stat .n{font-size:1.3rem;font-weight:800}
@@ -7487,8 +7521,10 @@ async function loadTVTasks(){
     // ---- v73: master Task/Project cards + subject & type filters ----
     const spec=d.special||[];
     const specSubs=[...new Set(spec.map(t=>t.subject).filter(Boolean))].sort();
-    const fSpec=spec.filter(t=>(!_tvtSpecSub||t.subject===_tvtSpecSub)&&(!_tvtSpecKind||t.kind===_tvtSpecKind));
-    const subjSpec=spec.filter(t=>!_tvtSpecSub||t.subject===_tvtSpecSub);
+    const specCls=[...new Set(spec.map(t=>t.cls).filter(Boolean))].sort();
+    if(_tvtSpecCls&&!specCls.includes(_tvtSpecCls)) specCls.push(_tvtSpecCls);
+    const fSpec=spec.filter(t=>(!_tvtSpecSub||t.subject===_tvtSpecSub)&&(!_tvtSpecKind||t.kind===_tvtSpecKind)&&(!_tvtSpecCls||t.cls===_tvtSpecCls));
+    const subjSpec=spec.filter(t=>(!_tvtSpecSub||t.subject===_tvtSpecSub)&&(!_tvtSpecCls||t.cls===_tvtSpecCls));
     let spD=0,spT=0; subjSpec.forEach(t=>{spD+=t.done||0;spT+=t.total||0});
     const fTasks=_tvtSpecSub?tasks.filter(t=>!t.subject||t.subject===_tvtSpecSub):tasks;
     const showTasks=(!_tvtView||_tvtView==='tasks'), showProj=(!_tvtView||_tvtView==='projects');
@@ -7507,8 +7543,15 @@ async function loadTVTasks(){
         <div class="vtm-go">${ic('chev-down')}</div></div></div>`;
     const filterBar=specSubs.length?`<div class="vtm-filter">
       <span class="vtm-fl">Subject</span>
-      <button class="vtm-chip ${!_tvtSpecSub?'on':''}" onclick="tvtSpecSubSet('')">All Subjects</button>
-      ${specSubs.map(s=>`<button class="vtm-chip ${_tvtSpecSub===s?'on':''}" data-s="${esc(s)}" onclick="tvtSpecSubSet(this.dataset.s)">${esc(s)}</button>`).join('')}
+      <select class="vtm-sel" id="tvt-spec-sub" onchange="tvtSpecSubSet(this.value)">
+        <option value="">All Subjects (${specSubs.length})</option>
+        ${specSubs.map(s=>`<option value="${esc(s)}" ${_tvtSpecSub===s?'selected':''}>${esc(s)}</option>`).join('')}
+      </select>
+      ${specCls.length?`<span class="vtm-fl">Class</span>
+      <select class="vtm-sel" id="tvt-spec-cls" onchange="tvtSpecClsSet(this.value)">
+        <option value="">All Classes</option>
+        ${specCls.map(c=>`<option value="${c}" ${_tvtSpecCls===c?'selected':''}>Class ${c}</option>`).join('')}
+      </select>`:''}
       <span class="vtm-fl">Type</span>
       ${[['','All Types'],['one_shot','One Shot'],['rapid_revision','Rapid Revision'],['project','Projects']].map(([k,l])=>`<button class="vtm-chip ${_tvtSpecKind===k?'on':''}" onclick="tvtSpecKindSet('${k}')">${l}</button>`).join('')}
     </div>`:'';
@@ -7633,10 +7676,11 @@ function vtStatusOpen(id,who,ev){
     `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
 }
 // ---- special tasks (One Shot / Rapid Revision / Projects) — teacher side ----
-let _tvtView='', _tvtSpecSub='', _tvtSpecKind='';
+let _tvtView='', _tvtSpecSub='', _tvtSpecKind='', _tvtSpecCls='';
 function tvtView(v){ _tvtView=(_tvtView===v?'':v); loadTVTasks(); }
 function tvtSpecSubSet(s){ _tvtSpecSub=s||''; loadTVTasks(); }
 function tvtSpecKindSet(k){ _tvtSpecKind=k||''; loadTVTasks(); }
+function tvtSpecClsSet(c){ _tvtSpecCls=c||''; loadTVTasks(); }
 function _vtOsUnit(t){ return t.kind==='project'?'videos':'chapters'; }
 function _vtOsWeek(t){
   const w=[];
@@ -7650,9 +7694,32 @@ function _vtOsProg(t){
     <span class="vt-os-chev">${ic('chev-down')}</span></div>`;
 }
 function _vtKindLbl(t){ return {one_shot:'ONE SHOT',rapid_revision:'RAPID REVISION',project:'PROJECT'}[t.kind]||'PROJECT'; }
+// ---- chapter production status (To Edit -> Edited -> Uploaded) ----
+const _CHST={editing_soon:['To Edit','#d97706'],editing_done:['Edited','#2563eb'],uploaded:['Uploaded','#16a34a']};
+function _vtChBadge(c){
+  const st=_CHST[c.edit_status||'']; if(!st||!c.link) return '';
+  return `<span class="vt-chst" style="color:${st[1]};border-color:${st[1]}66;background:${st[1]}14">${st[0]}</span>`;
+}
+function _avtChSel(t,c){
+  if(!c.link) return '';
+  const cur=c.edit_status||'editing_soon';
+  const st=_CHST[cur]||_CHST.editing_soon;
+  return `<select class="vt-chst-sel" data-cid="${c.id}" style="color:${st[1]};border-color:${st[1]}66" onclick="event.stopPropagation()" onchange="avtChStatus(${t.id},${c.id},this.value)">
+    ${Object.keys(_CHST).map(k=>`<option value="${k}" ${cur===k?'selected':''}>${_CHST[k][0]}</option>`).join('')}</select>`;
+}
+async function avtChStatus(tid,cid,st){
+  try{
+    await api('/api/admin/video-tasks/chapter-status','POST',{chapter_id:cid,status:st});
+    const t=(window._avtMap||{})[tid]; const c=t&&(t.chapters||[]).find(x=>x.id===cid);
+    if(c) c.edit_status=st;
+    const sel=document.querySelector(`#avt-os-${tid} .vt-chst-sel[data-cid="${cid}"]`);
+    if(sel){ const s2=_CHST[st]; if(s2){ sel.style.color=s2[1]; sel.style.borderColor=s2[1]+'66'; } }
+    toast('Production status updated — '+(_CHST[st]?_CHST[st][0]:st));
+  }catch(e){ toast(e.message||'Could not update the status'); }
+}
 function _vtChRow(t,c){
   if(c.link) return `<div class="vt-chr done" id="vt-chr-${t.id}-${c.id}"><span class="dot"></span><span class="nm">${esc(c.title)}</span>
-    <span class="dt">${esc(c.submitted_at||'')}</span>
+    <span class="dt">${esc(c.submitted_at||'')}</span>${_vtChBadge(c)}
     <a class="lk" href="${esc(c.link)}" target="_blank" rel="noopener">${ic('play')} Open video</a>
     <button class="btn btn-ghost btn-sm" style="padding:3px 9px;font-size:.66rem" onclick="tvtChEdit(${t.id},${c.id})">Change</button></div>`;
   return `<div class="vt-chr" id="vt-chr-${t.id}-${c.id}"><span class="dot"></span><span class="nm">${esc(c.title)}</span>
@@ -7817,7 +7884,7 @@ function _vtCdText(s){
   return neg?`Overdue by ${txt}`:`${txt} left`;
 }
 // ---- admin: One Shot / Rapid Revision / Projects monitor ----
-let _avtSpecTab='one_shot', _avtSpecSub='', _avtSpecOpen=false, _avtView='';
+let _avtSpecTab='one_shot', _avtSpecSub='', _avtSpecCls='', _avtSpecOpen=false, _avtView='';
 function avtView(v){ _avtView=(_avtView===v?'':v); if(_avtView==='projects') _avtSpecOpen=true; loadAVTasks(); }
 function _avtSpecTotals(){
   const sp=window._avtSpec; if(!sp||!sp.one_shot) return {osN:0,osD:0,osT:0,rrN:0,rrD:0,rrT:0,prN:0,prD:0,prT:0};
@@ -7842,9 +7909,12 @@ function _avtSpecHtml(){
 function _avtSpecBody(){
   const sp=window._avtSpec; if(!sp||!sp.one_shot) return '';
   const subs=[...new Set([].concat(...['one_shot','rapid_revision','project'].map(k=>(((sp||{})[k]||{}).subjects)||[])))].sort();
+  const clsList=[...new Set([].concat(...['one_shot','rapid_revision','project'].map(k=>((((sp||{})[k]||{}).tasks)||[]).map(t=>t.cls)))).values()].filter(Boolean).sort();
+  if(_avtSpecCls&&!clsList.includes(_avtSpecCls)) clsList.push(_avtSpecCls);
   const data=sp[_avtSpecTab]||{tasks:[],subjects:[]};
   let tasks=(data.tasks||[]);
   if(_avtSpecSub) tasks=tasks.filter(x=>x.subject===_avtSpecSub);
+  if(_avtSpecCls) tasks=tasks.filter(x=>x.cls===_avtSpecCls);
   const tabBtn=(k,l,n)=>`<button class="btn ${_avtSpecTab===k?'btn-primary':'btn-ghost'} btn-sm" onclick="_avtSpecTab='${k}';avtSpecRefresh()">${l}${n?` (${n})`:''}</button>`;
   const kindLbl={one_shot:'One Shot',rapid_revision:'Rapid Revision',project:'Project'}[_avtSpecTab];
   return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
@@ -7853,14 +7923,22 @@ function _avtSpecBody(){
       ${tabBtn('project','Projects',((sp.project||{}).tasks||[]).length)}
       <span style="font-size:.7rem;color:var(--text-muted)">Opening a card clears its NEW flag · chapter links are clickable</span></div>
     ${subs.length?`<div class="vtm-filter" style="margin-bottom:12px;padding:8px 10px">
+      <span class="vtm-fl">Class</span>
+      <select class="vtm-sel" id="avt-spec-cls" onchange="avtSpecClsSet(this.value)">
+        <option value="">All Classes</option>
+        ${clsList.map(c=>`<option value="${c}" ${_avtSpecCls===c?'selected':''}>Class ${c}</option>`).join('')}
+      </select>
       <span class="vtm-fl">Subject</span>
-      <button class="vtm-chip ${!_avtSpecSub?'on':''}" data-s="" onclick="avtSpecSubSet(this.dataset.s)">All Subjects</button>
-      ${subs.map(s=>`<button class="vtm-chip ${_avtSpecSub===s?'on':''}" data-s="${esc(s)}" onclick="avtSpecSubSet(this.dataset.s)">${esc(s)}</button>`).join('')}</div>`:''}
-    ${tasks.length?tasks.map(_avtSpecCard).join(''):`<div class="ws-empty"><p><b>No ${kindLbl} tasks found${_avtSpecSub?' for '+esc(_avtSpecSub):''}</b></p><small>${_avtSpecTab==='project'?'Assign a new project from Assign Work → Project tab.':'These tasks are created automatically once teacher subjects are set.'}</small></div>`}`;
+      <select class="vtm-sel" id="avt-spec-sub" onchange="avtSpecSubSet(this.value)">
+        <option value="">All Subjects (${subs.length})</option>
+        ${subs.map(s=>`<option value="${esc(s)}" ${_avtSpecSub===s?'selected':''}>${esc(s)}</option>`).join('')}
+      </select>
+      <span style="font-size:.68rem;color:var(--text-muted);font-weight:700">${(_avtSpecSub||_avtSpecCls)?'Showing '+[_avtSpecCls?'Class '+_avtSpecCls:'',_avtSpecSub].filter(Boolean).join(' · ')+' cards only':'Showing all '+kindLbl.toLowerCase()+' cards'}</span></div>`:''}
+    ${tasks.length?tasks.map(_avtSpecCard).join(''):`<div class="ws-empty"><p><b>No ${kindLbl} tasks found${_avtSpecSub?' for '+esc(_avtSpecSub):''}${_avtSpecCls?' in Class '+_avtSpecCls:''}</b></p><small>${_avtSpecTab==='project'?'Assign a new project from Assign Work → Project tab.':'These tasks are created automatically once teacher subjects are set.'}</small></div>`}`;
 }
 function _avtSpecCard(t){
   const rows=(t.chapters||[]).map(c=> c.link
-    ? `<div class="vt-chr done"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">${esc(c.submitted_at||'')}</span><a class="lk" href="${esc(c.link)}" target="_blank" rel="noopener">${ic('play')} Open video</a></div>`
+    ? `<div class="vt-chr done"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">${esc(c.submitted_at||'')}</span>${_avtChSel(t,c)}<a class="lk" href="${esc(c.link)}" target="_blank" rel="noopener">${ic('play')} Open video</a></div>`
     : `<div class="vt-chr"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">pending</span></div>`).join('');
   return `<div class="vt-os" id="avt-os-${t.id}">
     <div class="vt-os-h" onclick="avtSpecOpen(${t.id})">
@@ -7873,6 +7951,7 @@ function _avtSpecCard(t){
     <div class="vt-os-b">${rows||`<div style="font-size:.78rem;color:var(--text-muted);padding:6px 2px">Chapters are not in the syllabus manager / timetable yet — they will auto-fill once uploaded.</div>`}</div></div>`;
 }
 function avtSpecSubSet(s){ _avtSpecSub=s||''; avtSpecRefresh(); }
+function avtSpecClsSet(c){ _avtSpecCls=c||''; avtSpecRefresh(); }
 function avtSpecToggle(){
   _avtSpecOpen=!_avtSpecOpen;
   const b=document.getElementById('avt-spec-b');
@@ -8023,9 +8102,18 @@ function _vtProjectForm(){
         <div id="vtp-autot" class="vtp-auto">Select a subject — the teacher will be fetched automatically, or choose manually below</div>
         <select id="vtp-teacher" class="input" style="margin-top:7px">${tOpts}</select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Project Title (optional)</label><input id="vtp-title" class="input" placeholder="Auto: Project — {Subject}"></div>
-      <div class="form-group" style="grid-column:1/-1">
-        <label class="vtp-conn"><input type="checkbox" id="vtp-connect" checked onchange="vtpConnectToggle()"><span><b>Connect to syllabus chapters</b> — chapters automatically become the video items (verified list)</span></label>
-        <div class="vt-hint">When off, the project stays independent of timetable / chapters / parts — enter the video names yourself</div></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Connect to timetable / syllabus chapters</label>
+        <select id="vtp-connect" class="input" onchange="vtpConnectToggle()">
+          <option value="yes" selected>Yes — syllabus chapters automatically become the video items (verified list)</option>
+          <option value="no">No — independent project, enter the video names yourself</option>
+        </select></div>
+      <div class="form-group" style="grid-column:1/-1" id="vtp-scope-wrap"><label>Syllabus scope — which chapters become the video items</label>
+        <select id="vtp-scope" class="input" onchange="vtpChaptersPreview()">
+          <option value="pe" selected>PE Chapters — Public Exam only (recommended)</option>
+          <option value="tma">TMA Chapters only</option>
+          <option value="all">PE + TMA Chapters (full syllabus)</option>
+        </select>
+        <div class="vt-hint" id="vtp-chcount">Select a subject to see the chapter count</div></div>
       <div class="form-group" id="vtp-items-wrap" style="grid-column:1/-1;display:none"><label>Videos / Deliverables — one row per video</label>
         <div id="vtp-items"></div>
         <button type="button" class="btn btn-ghost btn-sm" onclick="vtpItemAdd()">${ic('plus')} Add video</button></div>
@@ -8050,7 +8138,7 @@ async function vtpSubjectChange(){
   const opt=sel.options[sel.selectedIndex];
   if(opt&&opt.dataset&&opt.dataset.level) cls.value=opt.dataset.level;  // subject's class auto
   const subject=sel.value, level=cls.value;
-  if(!subject){ box.className='vtp-auto'; box.textContent='Select a subject — the teacher will be fetched automatically, or choose manually below'; return; }
+  if(!subject){ box.className='vtp-auto'; box.textContent='Select a subject — the teacher will be fetched automatically, or choose manually below'; vtpChaptersPreview(); return; }
   box.className='vtp-auto'; box.textContent='Fetching teacher…';
   try{
     const r=await api('/api/admin/video-tasks/subject-teachers?subject='+encodeURIComponent(subject)+(level?'&class_level='+level:''));
@@ -8058,11 +8146,28 @@ async function vtpSubjectChange(){
     if(ts.length){ box.className='vtp-auto ok'; box.textContent='Will be assigned to: '+ts.map(t=>t.name+(t.level?' (Class '+t.level+')':'')).join(', ')+' — you can override this manually below'; }
     else{ box.className='vtp-auto warn'; box.textContent='No active teacher found for this subject'+(level?' + class':'')+' — please select one manually below'; }
   }catch(e){ box.className='vtp-auto warn'; box.textContent='Could not fetch the teacher — please select manually'; }
+  vtpChaptersPreview();
 }
 function vtpConnectToggle(){
-  const on=document.getElementById('vtp-connect').checked;
+  const on=((document.getElementById('vtp-connect')||{}).value==='yes');
   document.getElementById('vtp-items-wrap').style.display=on?'none':'block';
+  const sw=document.getElementById('vtp-scope-wrap'); if(sw) sw.style.display=on?'block':'none';
   if(!on&&!document.querySelectorAll('#vtp-items .vtp-item').length){ vtpItemAdd(); vtpItemAdd(); vtpItemAdd(); }
+  if(on) vtpChaptersPreview();
+}
+async function vtpChaptersPreview(){
+  const box=document.getElementById('vtp-chcount'); if(!box) return;
+  const subject=(document.getElementById('vtp-subject')||{}).value||'';
+  const level=(document.getElementById('vtp-class')||{}).value||'';
+  const scope=(document.getElementById('vtp-scope')||{}).value||'pe';
+  if(!subject){ box.textContent='Select a subject to see the chapter count'; return; }
+  box.textContent='Counting chapters…';
+  try{
+    const r=await api('/api/admin/video-tasks/project-chapters?subject='+encodeURIComponent(subject)+(level?'&class_level='+level:'')+'&scope='+scope);
+    box.innerHTML=r.count
+      ?`<b>${r.count} chapters</b> will become the video items — ${esc(r.titles.slice(0,3).join(' · '))}${r.count>3?' …':''}`
+      :'No chapters found for this scope — choose a different scope, or set Connect to No and enter videos manually';
+  }catch(e){ box.textContent='Could not fetch the chapter count'; }
 }
 function vtpItemAdd(v){
   const w=document.getElementById('vtp-items'); if(!w) return;
@@ -8072,10 +8177,11 @@ function vtpItemAdd(v){
 }
 async function vtProjectSave(){
   const gv=id=>(document.getElementById(id)||{}).value||'';
-  const connect=document.getElementById('vtp-connect').checked;
+  const connect=((document.getElementById('vtp-connect')||{}).value==='yes');
   const items=connect?[]:[...document.querySelectorAll('#vtp-items .vtp-itm')].map(i=>i.value.trim()).filter(Boolean);
   const payload={subject:gv('vtp-subject').trim(),class_level:gv('vtp-class'),
     teacher_id:+gv('vtp-teacher')||0,title:gv('vtp-title').trim(),connect,items,
+    chapter_scope:connect?(gv('vtp-scope')||'pe'):'',
     weekly_quota:+gv('vtp-quota')||0,weekly_day:gv('vtp-day'),
     deadline:gv('vtp-deadline'),remarks:gv('vtp-remarks').trim()};
   if(!payload.subject&&!payload.teacher_id){ toast('Select a subject, or choose a teacher manually'); return; }
@@ -13286,8 +13392,11 @@ async function renderPunchCard(wrapId){
       <div class="pw-mini">
         <div class="m"><div class="l">Punch In</div><div class="v">${esc(d.punch_in||'--:--')}</div></div>
         <div class="m"><div class="l">Punch Out</div><div class="v">${esc(d.punch_out||'--:--')}</div></div>
-        <div class="m"><div class="l">Hours</div><div class="v">${d.hours!=null?d.hours+' h':'--'}</div></div>
+        <div class="m"><div class="l">Counted</div><div class="v">${d.net_hours!=null?d.net_hours+' h':(d.hours!=null?d.hours+' h':'--')}</div></div>
+        <div class="m"><div class="l">Target</div><div class="v">${d.required_hours?d.required_hours+' h':'--'}</div></div>
       </div>
+      ${d.punch_in&&d.required_hours?`<div class="wt-prog" style="margin:10px 0 2px"><div class="${(d.net_hours||0)>=d.required_hours?'done':''}" style="width:${Math.min(100,Math.round((d.net_hours||0)/d.required_hours*100))}%"></div></div>
+      <div style="display:flex;justify-content:space-between;font-size:.68rem;font-weight:700;color:rgba(255,255,255,.75)"><span>${(d.net_hours||0)} of ${d.required_hours}h counted${d.policy&&d.policy.break_minutes?` (break ${d.policy.break_minutes}m skipped)`:''}</span>${d.extra_hours>0?`<span style="color:#93c5fd">+${d.extra_hours}h extra — no extra payout</span>`:`<span>${Math.min(100,Math.round((d.net_hours||0)/d.required_hours*100))}%</span>`}</div>`:''}
       <div id="geo-note"></div>
       <div class="pw-cap">Time is captured automatically in IST. The admin sees your attendance in real time.</div>
     </div></div>`;
@@ -13399,7 +13508,7 @@ async function doPunch(kind,confirm){
       _geoNote('<b>Short day warning</b> — '+esc(r.message),'error');
       document.querySelectorAll('.pw-punchbtn.out').forEach(b=>{
         b.disabled=false; b.classList.add('confirm-arm');
-        b.innerHTML='Confirm Punch Out — Present nahi lagega';
+        b.innerHTML='Confirm Punch Out — mark Present (Short)';
         b.onclick=()=>doPunch('out',true);
       });
       return;   // re-render nahi — armed button apni jagah rahe
@@ -13423,6 +13532,7 @@ async function doPunch(kind,confirm){
   }
   if(document.getElementById('t-punch-wrap')) renderPunchCard('t-punch-wrap');
   if(document.getElementById('ta-punch-wrap')) renderPunchCard('ta-punch-wrap');
+  if(document.getElementById('ta-timing')) tMyTiming();
   if(document.getElementById('ta-history')) tAttHistory();
 }
 
@@ -13431,7 +13541,8 @@ let _tAttMonth='';
 async function loadTAttendance(){
   const el=document.getElementById('t-attendance-content');
   _tAttMonth=_tAttMonth||curMonth();
-  el.innerHTML=`<div class="sm-head"><h2>My Attendance</h2><p>Punch in / punch out daily — present tabhi lagega jab punch gap kam se kam <b>1 hour</b> ho. Leave ke liye pehle approval lein.</p></div>
+  el.innerHTML=`<div class="sm-head"><h2>My Attendance</h2><p>Punch in / punch out daily. Your counted hours = punch gap <b>minus lunch break</b> (full time). Leaving before your assigned hours still marks you <b>Present (Short)</b>. Leave ke liye pehle approval lein.</p></div>
+    <div id="ta-timing"></div>
     <div class="att-grid">
       <div id="ta-punch-wrap"></div>
       <div class="card"><div class="card-header"><h3>Month Overview</h3><input type="month" class="form-control" style="width:auto;padding:6px 10px" id="ta-month" value="${_tAttMonth}" onchange="_tAttMonth=this.value;tAttHistory()"></div><div class="card-body" id="ta-cal"><div class="spinner"></div></div></div>
@@ -13440,8 +13551,43 @@ async function loadTAttendance(){
     <div class="card" style="margin-top:18px"><div class="card-header"><h3>Recent Days</h3></div><div class="card-body" id="ta-logs"><div class="spinner"></div></div></div>
     <div class="card" style="margin-top:18px"><div class="card-header"><h3>Full Month Record</h3><span id="ta-summary" style="display:flex;gap:8px;flex-wrap:wrap"></span></div><div class="card-body"><div id="ta-history"><div class="spinner"></div></div></div></div>`;
   renderPunchCard('ta-punch-wrap');
+  tMyTiming();
   tAttHistory();
   tLeaveFetch();
+}
+// ---- My Work Timing card (teacher, read-only) ----
+async function tMyTiming(){
+  const box=document.getElementById('ta-timing'); if(!box) return;
+  try{
+    const [wp,td]=await Promise.all([api('/api/teacher/work-policy'),api('/api/teacher/attendance/today')]);
+    const p=wp.policy||{};
+    const wtChip=p.work_type==='part_time'?'<span class="myt-chip blue">PART TIME</span>':'<span class="myt-chip gold">FULL TIME</span>';
+    const modeChip=p.mode==='flexible'?'<span class="myt-chip">FLEXIBLE · MIN 1H</span>'
+      :p.mode==='fixed'?`<span class="myt-chip">FIXED · ${esc(p.entry_time||'')} – ${esc(p.exit_time||'')}</span>`
+      :'<span class="myt-chip">HOURS ONLY · NO FIXED TIME</span>';
+    const brkChip=(p.work_type==='full_time'&&p.break_minutes)?`<span class="myt-chip">LUNCH ${p.break_minutes}M — NOT COUNTED</span>`:'';
+    const req=p.required||8;
+    const net=(td&&td.net_hours!=null)?td.net_hours:null;
+    const pct=net!=null?Math.min(100,Math.round(net/req*100)):0;
+    const extra=(td&&td.extra_hours)||0;
+    const state=net==null?'<span class="myt-chip">NOT PUNCHED IN YET</span>'
+      :td.punch_out&&net>=req?'<span class="myt-chip green">DAY TARGET COMPLETE</span>'
+      :td.punch_out?'<span class="myt-chip gold">PRESENT · SHORT</span>'
+      :net>=req?'<span class="myt-chip green">TARGET DONE — STILL ON DUTY</span>':'<span class="myt-chip">ON DUTY</span>';
+    box.innerHTML=`<div class="myt-card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+        <div><div style="font-size:.66rem;font-weight:800;letter-spacing:.07em;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">My Work Timing — set by admin</div>
+          <div class="myt-row">${wtChip}${modeChip}${brkChip}<span class="myt-chip gold">TARGET ${req}h / DAY</span></div></div>
+        ${state}
+      </div>
+      <div class="wt-prog" style="margin-top:14px"><div class="${net!=null&&net>=req?'done':''}" style="width:${pct}%"></div></div>
+      <div style="display:flex;justify-content:space-between;font-size:.74rem;font-weight:700;color:var(--text-muted);margin-top:6px">
+        <span>Today: <b style="color:var(--text)">${net!=null?net+' h':'—'}</b> counted of ${req}h</span>
+        ${extra>0?`<span style="color:#2563eb">+${extra}h extra today (no extra payout)</span>`:'<span>'+pct+'% of target</span>'}
+      </div>
+      ${p.work_type==='full_time'&&p.break_minutes?`<div class="myt-note">Lunch break of <b>${p.break_minutes} minutes</b> is skipped from your counted hours — e.g. a ${req}+${Math.round(p.break_minutes/60*10)/10}h punch gap counts as ${req}h.</div>`:''}
+    </div>`;
+  }catch(e){ box.innerHTML=''; }
 }
 // ---- Leave (teacher) ----
 async function tLeaveFetch(){
@@ -13484,7 +13630,7 @@ async function tAttHistory(){
   try{
     const d=await api('/api/teacher/attendance/history?month='+encodeURIComponent(_tAttMonth||curMonth()));
     const sm=document.getElementById('ta-summary');
-    if(sm) sm.innerHTML=`<span class="po-pill green">PRESENT ${d.present_days}</span><span class="po-pill blue">LEAVE ${d.leave_days||0}</span><span class="po-pill amber">SHORT ${d.short_days||0}</span><span class="po-pill red">AB ${d.absent_days||0}</span><span class="po-pill gold">${d.total_hours} HOURS</span>`;
+    if(sm) sm.innerHTML=`<span class="po-pill green">PRESENT ${d.present_days}</span><span class="po-pill blue">LEAVE ${d.leave_days||0}</span>${d.short_days?`<span class="po-pill amber">SHORT ${d.short_days} (PRESENT)</span>`:''}<span class="po-pill red">AB ${d.absent_days||0}</span><span class="po-pill gold">${d.total_hours} COUNTED HRS</span>${d.extra_hours>0?`<span class="po-pill" style="background:rgba(37,99,235,.12);color:#1d4ed8">+${d.extra_hours}H EXTRA (NO PAYOUT)</span>`:''}`;
     // ---- calendar ----
     if(cal){
       const [yy,mm]=d.month.split('-').map(Number);
@@ -13513,22 +13659,22 @@ async function tAttHistory(){
           <div class="cal-stat b"><div class="n">${d.total_hours}</div><div class="l">Hours</div></div>
         </div>
         <div class="cal-grid">${cells}</div>
-        <div class="cal-leg"><span><i style="background:rgba(16,185,129,.6)"></i>Present</span><span><i style="background:rgba(59,130,246,.55)"></i>Leave</span><span><i style="background:rgba(245,158,11,.6)"></i>Short (&lt;1h)</span><span><i style="background:rgba(220,38,38,.45)"></i>AB</span><span><i style="outline:2px solid #b8941f;outline-offset:-1px;background:transparent"></i>Today</span></div>`;
+        <div class="cal-leg"><span><i style="background:rgba(16,185,129,.6)"></i>Present</span><span><i style="background:rgba(59,130,246,.55)"></i>Leave</span><span><i style="background:rgba(245,158,11,.6)"></i>Present · Short (early leave)</span><span><i style="background:rgba(220,38,38,.45)"></i>AB</span><span><i style="outline:2px solid #b8941f;outline-offset:-1px;background:transparent"></i>Today</span></div>`;
     }
     // ---- recent logs ----
     if(logs){
       const recent=d.rows.slice(0,6);
-      const pill=r=>r.status==='present'?'<span class="po-pill green">PRESENT</span>':r.status==='short'?'<span class="po-pill amber">SHORT &lt;1H</span>':r.status==='working'?'<span class="po-pill blue">ON DUTY</span>':'<span class="po-pill amber">NO PUNCH</span>';
+      const pill=r=>r.status==='present'?'<span class="po-pill green">PRESENT</span>':r.status==='short'?'<span class="po-pill amber">PRESENT · SHORT</span>':r.status==='working'?'<span class="po-pill blue">ON DUTY</span>':'<span class="po-pill amber">NO PUNCH</span>';
       logs.innerHTML=recent.length?recent.map(r=>`<div class="log-row">
-          <div><div class="d">${esc(fmtNice(r.date))}</div><div class="t">${esc(r.punch_in||'-')} ${r.punch_out?'to '+esc(r.punch_out):''}${r.hours!=null?' - '+r.hours+' hrs':''}</div></div>
+          <div><div class="d">${esc(fmtNice(r.date))}</div><div class="t">${esc(r.punch_in||'-')} ${r.punch_out?'to '+esc(r.punch_out):''}${r.net_hours!=null?' - '+r.net_hours+' hrs counted':''}${r.extra_hours>0?` <span class="att-x">+${r.extra_hours}h extra</span>`:''}</div></div>
           ${pill(r)}
         </div>`).join(''):`<div class="pay-empty">No attendance yet this month. Punch in on any working day and it will appear here.</div>`;
     }
     // ---- full table ----
-    const stPill=s=>s==='present'?'<span class="po-pill green">PRESENT</span>':s==='short'?'<span class="po-pill amber">SHORT</span>':s==='working'?'<span class="po-pill blue">ON DUTY</span>':'-';
+    const stPill=s=>s==='present'?'<span class="po-pill green">PRESENT</span>':s==='short'?'<span class="po-pill amber">PRESENT · SHORT</span>':s==='working'?'<span class="po-pill blue">ON DUTY</span>':'-';
     if(!d.rows.length){ box.innerHTML=`<div class="empty-state"><p>No attendance recorded in ${esc(fmtMonthLabel(d.month))} yet.</p></div>`; return; }
-    box.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Date</th><th>Day</th><th>Punch In</th><th>Punch Out</th><th>Hours</th><th>Status</th></tr></thead><tbody>${
-      d.rows.map(r=>`<tr><td>${esc(fmtNice(r.date))}</td><td>${esc(r.day)}</td><td>${esc(r.punch_in||'-')}</td><td>${esc(r.punch_out||'-')}</td><td>${r.hours!=null?r.hours+' h':'-'}</td><td>${stPill(r.status)}</td></tr>`).join('')
+    box.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Date</th><th>Day</th><th>Punch In</th><th>Punch Out</th><th>Counted</th><th>Extra</th><th>Status</th></tr></thead><tbody>${
+      d.rows.map(r=>`<tr><td>${esc(fmtNice(r.date))}</td><td>${esc(r.day)}</td><td>${esc(r.punch_in||'-')}</td><td>${esc(r.punch_out||'-')}</td><td>${r.net_hours!=null?`<b>${r.net_hours} h</b>`:'-'}${r.net_hours!=null&&r.hours!=null&&r.net_hours!==r.hours?`<div class="att-brk">gap ${r.hours}h − break</div>`:''}</td><td>${r.extra_hours>0?`<b style="color:#2563eb">+${r.extra_hours}h</b>`:'—'}</td><td>${stPill(r.status)}</td></tr>`).join('')
     }</tbody></table></div>`;
   }catch(e){ box.innerHTML=errHtml(e); if(cal)cal.innerHTML=''; if(logs)logs.innerHTML=''; }
 }
@@ -13709,14 +13855,17 @@ async function tPayRender(){
 // =====================================================================
 // ADMIN: ATTENDANCE + PAYOUTS + CONTRACTS
 // =====================================================================
-let _aAttDate='', _aAttView='day', _aAttMonth='';
+let _aAttDate='', _aAttView='day', _aAttMonth='', _aWtOpen=false;
 async function loadAAttendance(){
   const el=document.getElementById('a-attendance-content');
   _aAttDate=_aAttDate||new Date().toISOString().slice(0,10);
   _aAttMonth=_aAttMonth||curMonth();
-  el.innerHTML=`<div class="sm-head"><h2>Teacher Attendance</h2><p>Live punch in / punch out status, leave approvals, and month-wise summary. Present counts only when the punch gap is at least <b>1 hour</b>.</p></div>
+  el.innerHTML=`<div class="sm-head"><h2>Teacher Attendance</h2><p>Smart timing per teacher — set fixed hours, hours-only or flexible (min 1h). Counted hours = punch gap <b>minus lunch break</b> (full time). Leaving early still counts <b>Present (Short)</b>; extra hours show in reports but <b>never add payout</b>.</p></div>
     <div class="card" style="margin-bottom:18px"><div class="card-header"><h3>${ic('clipboard')} Leave Requests</h3><span id="a-lv-badge"></span></div>
       <div class="card-body" id="a-leave-body"><div class="spinner"></div></div></div>
+    <div class="card" style="margin-bottom:18px"><div class="card-header"><h3>Work Timings — Per Teacher</h3>
+      <button class="btn btn-ghost btn-sm" id="a-wt-toggle" onclick="_aWtOpen=!_aWtOpen;loadAAttendance()">${_aWtOpen?'Hide':'Show'} Settings</button></div>
+      <div class="card-body" id="a-wt-body" style="${_aWtOpen?'':'display:none'}"><div class="spinner"></div></div></div>
     <div class="card"><div class="card-header"><h3>Attendance</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button class="btn btn-ghost btn-sm" onclick="openOfficeLocation()">${ic('location')} Office Location</button>
@@ -13728,6 +13877,82 @@ async function loadAAttendance(){
     <div class="card-body"><div id="a-att-summary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div><div id="a-att-body"><div class="spinner"></div></div></div></div>`;
   aAttFetch();
   aLeaveFetch();
+  if(_aWtOpen) aWtFetch();
+}
+// ---- Work Timings settings (per-teacher cards) ----
+async function aWtFetch(){
+  const box=document.getElementById('a-wt-body'); if(!box) return;
+  try{
+    const d=await api('/api/admin/attendance/policies');
+    const rows=d.teachers||[];
+    if(!rows.length){ box.innerHTML='<div class="empty-state"><p>No active teachers found.</p></div>'; return; }
+    window._wtRows=rows;
+    box.innerHTML=`<div class="alert alert-info" style="font-size:.78rem;margin-bottom:14px">Set each teacher's timing once — reports, short-day marking and extra hours all follow it automatically. <b>Full Time</b> skips the lunch break from counted hours; <b>Part Time</b> has no break. <b>Flexible</b> = minimum 1 hour, no fixed schedule. Extra hours are shown in reports but <b>never add payout</b>.</div>
+      <div class="wt-grid">${rows.map((t,i)=>{
+        const p=t.policy||{};
+        const set=p.configured;
+        return `<div class="wt-card" id="wt-card-${i}">
+          <div class="wt-head"><div class="wt-av">${esc(initials(t.name||'T'))}</div>
+            <div style="min-width:0"><div class="wt-name">${esc(t.name)}</div><div class="wt-sub">${esc((t.subjects||[]).slice(0,2).join(' · ')||'—')}</div></div>
+            <span class="wt-chip ${set?'set':'def'}">${set?'SET':'DEFAULT'}</span></div>
+          <div class="wt-now">Current: <b>${esc(p.label||'—')}</b>${p.break_minutes?` · lunch break <b>${p.break_minutes}m</b> skipped`:''} · target <b>${p.required}h/day</b></div>
+          <div class="wt-form">
+            <div><span class="wt-lbl">Work Type</span><select class="input" id="wt-type-${i}" onchange="wtTypeChange(${i})">
+              <option value="full_time"${p.work_type==='full_time'?' selected':''}>Full Time (lunch break skipped)</option>
+              <option value="part_time"${p.work_type==='part_time'?' selected':''}>Part Time (no break)</option></select></div>
+            <div><span class="wt-lbl">Timing Mode</span><select class="input" id="wt-mode-${i}" onchange="wtModeChange(${i})">
+              <option value="fixed"${p.mode==='fixed'?' selected':''}>Fixed Timing — entry &amp; exit time</option>
+              <option value="hours"${p.mode==='hours'?' selected':''}>Hours Only — daily X hours</option>
+              <option value="flexible"${p.mode==='flexible'?' selected':''}>Flexible — minimum 1 hour</option></select></div>
+            <div class="wt-t" id="wt-en-w-${i}"><span class="wt-lbl">Entry Time</span><input type="time" class="input" id="wt-en-${i}" value="${esc(p.entry_time||'09:30')}" oninput="wtCalc(${i})"></div>
+            <div class="wt-t" id="wt-ex-w-${i}"><span class="wt-lbl">Exit Time</span><input type="time" class="input" id="wt-ex-${i}" value="${esc(p.exit_time||'18:30')}" oninput="wtCalc(${i})"></div>
+            <div class="wt-h" id="wt-rh-w-${i}"><span class="wt-lbl">Required Hours / Day</span><input type="number" class="input" id="wt-rh-${i}" min="1" max="16" step="0.5" value="${p.required_hours||8}" oninput="wtCalc(${i})"></div>
+            <div class="wt-b" id="wt-br-w-${i}"><span class="wt-lbl">Lunch Break (minutes)</span><input type="number" class="input" id="wt-br-${i}" min="0" max="240" step="5" value="${p.break_minutes||0}" oninput="wtCalc(${i})"></div>
+          </div>
+          <div class="wt-req"><span id="wt-calc-${i}">Target: <b>${p.required}h</b> counted per day</span><span class="att-brk">break never counted</span></div>
+          <button class="btn btn-primary btn-sm wt-save" onclick="wtSave(${t.teacher_id},${i})">${ic('check')} Save Timing</button>
+        </div>`;
+      }).join('')}</div>`;
+    rows.forEach((t,i)=>wtModeChange(i,true));
+  }catch(e){ box.innerHTML=errHtml(e); }
+}
+function wtTypeChange(i){ wtModeChange(i,true); }
+function wtModeChange(i,silent){
+  const mode=(document.getElementById('wt-mode-'+i)||{}).value||'hours';
+  const wt=(document.getElementById('wt-type-'+i)||{}).value||'full_time';
+  const show=(id,on)=>{ const el=document.getElementById(id); if(el) el.style.display=on?'':'none'; };
+  show('wt-en-w-'+i, mode==='fixed'); show('wt-ex-w-'+i, mode==='fixed');
+  show('wt-rh-w-'+i, mode==='hours');
+  show('wt-br-w-'+i, wt==='full_time'&&mode!=='flexible');
+  wtCalc(i);
+}
+function wtCalc(i){
+  const mode=(document.getElementById('wt-mode-'+i)||{}).value||'hours';
+  const wt=(document.getElementById('wt-type-'+i)||{}).value||'full_time';
+  const gv=id=>{ const el=document.getElementById(id); return el?el.value:''; };
+  const brk=(wt==='full_time'&&mode!=='flexible')?(parseInt(gv('wt-br-'+i))||0):0;
+  let txt='';
+  if(mode==='flexible') txt='Target: <b>min 1h</b> — fully flexible';
+  else if(mode==='fixed'){
+    const en=gv('wt-en-'+i), ex=gv('wt-ex-'+i);
+    const pm=s=>{ const p=String(s||'').split(':'); return p.length===2?(+p[0])*60+(+p[1]):null; };
+    const a=pm(en), b=pm(ex);
+    if(a!=null&&b!=null&&b>a){ const h=((b-a-brk)/60); txt=`Target: <b>${Math.round(h*100)/100}h</b> counted (${en} – ${ex}${brk?` − ${brk}m break`:''})`; }
+    else txt='Target: set valid entry & exit times';
+  } else txt=`Target: <b>${gv('wt-rh-'+i)||8}h</b> counted per day${brk?` (− ${brk}m break)`:''}`;
+  const el=document.getElementById('wt-calc-'+i); if(el) el.innerHTML=txt;
+}
+async function wtSave(tid,i){
+  const gv=id=>{ const el=document.getElementById(id); return el?el.value:''; };
+  const payload={teacher_id:tid, work_type:gv('wt-type-'+i)||'full_time', mode:gv('wt-mode-'+i)||'hours',
+    entry_time:gv('wt-en-'+i), exit_time:gv('wt-ex-'+i),
+    required_hours:parseFloat(gv('wt-rh-'+i))||0, break_minutes:parseInt(gv('wt-br-'+i))||0};
+  const btn=document.querySelector('#wt-card-'+i+' .wt-save');
+  if(btn){ btn.disabled=true; btn.textContent='Saving...'; }
+  try{
+    const r=await api('/api/admin/attendance/policy','POST',payload);
+    toast(r.message); aWtFetch(); aAttFetch();
+  }catch(e){ toast(e.message||'Could not save',true); if(btn){ btn.disabled=false; btn.innerHTML=ic('check')+' Save Timing'; } }
 }
 // ---- Leave approvals (admin) ----
 async function aLeaveFetch(){
@@ -13771,20 +13996,27 @@ async function aAttFetch(){
       const d=await api('/api/admin/attendance?day='+encodeURIComponent(_aAttDate));
       const nLeave=(d.teachers||[]).filter(t=>t.status==='leave').length;
       const nShort=(d.teachers||[]).filter(t=>t.status==='short').length;
-      sum.innerHTML=`<span class="po-pill green">PRESENT ${d.present} / ${d.total}</span>${nLeave?`<span class="po-pill blue">ON LEAVE ${nLeave}</span>`:''}${nShort?`<span class="po-pill amber">SHORT ${nShort}</span>`:''}<span class="po-pill slate">${esc(d.day).toUpperCase()}, ${esc(fmtNice(d.date)).toUpperCase()}</span>`;
+      sum.innerHTML=`<span class="po-pill green">PRESENT ${d.present} / ${d.total}</span>${nLeave?`<span class="po-pill blue">ON LEAVE ${nLeave}</span>`:''}${nShort?`<span class="po-pill amber">PRESENT (SHORT) ${nShort}</span>`:''}<span class="po-pill slate">${esc(d.day).toUpperCase()}, ${esc(fmtNice(d.date)).toUpperCase()}</span>`;
       if(!d.teachers.length){ body.innerHTML='<div class="empty-state"><p>No active teachers found.</p></div>'; return; }
-      const pill=t=>t.status==='working'?'<span class="po-pill green">ON DUTY</span>':t.status==='done'?'<span class="po-pill gold">DAY COMPLETE</span>':t.status==='leave'?'<span class="po-pill blue">ON LEAVE</span>':t.status==='short'?'<span class="po-pill amber">SHORT &lt;1H</span>':'<span class="po-pill red">NOT PUNCHED</span>';
+      const pill=t=>t.status==='working'?'<span class="po-pill green">ON DUTY</span>':t.status==='done'?'<span class="po-pill gold">DAY COMPLETE</span>':t.status==='leave'?'<span class="po-pill blue">ON LEAVE</span>':t.status==='short'?'<span class="po-pill amber">PRESENT · SHORT</span>':'<span class="po-pill red">NOT PUNCHED</span>';
       window._aAttRows={}; d.teachers.forEach(t=>window._aAttRows[t.teacher_id]=t);
       const _chip=(dist,office)=>dist==null?'':(dist===0&&office)?` <span style="font-size:.62rem;font-weight:800;color:#059669" title="Office WiFi/PC se punch (network verified)">(WiFi)</span>`:` <span style="font-size:.62rem;font-weight:800;color:${dist<=50?'#059669':'#d97706'}" title="Office se punch distance">(${dist}m)</span>`;
-      body.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Teacher</th><th>Punch In</th><th>Punch Out</th><th>Hours</th><th>Status</th><th></th></tr></thead><tbody>${
-        d.teachers.map(t=>`<tr><td style="font-weight:600">${esc(t.name)}</td><td>${esc(t.punch_in||'-')}${_chip(t.in_dist,t.in_office)}</td><td>${esc(t.punch_out||'-')}${_chip(t.out_dist,t.out_office)}</td><td>${t.hours!=null?`<a href="javascript:void(0)" onclick="openAttDayStatus(${t.teacher_id})" title="View location status" style="font-weight:700;color:var(--primary,#b8941f);text-decoration:underline dotted">${t.hours} h</a>`:'-'}</td><td>${pill(t)}</td><td><button class="btn btn-ghost btn-sm" onclick="openTeacherAttDetail(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">History</button></td></tr>`).join('')
+      const _hrs=t=>{
+        if(t.net_hours==null&&t.hours==null) return '-';
+        const main=t.net_hours!=null?t.net_hours:t.hours;
+        const lnk=`<a href="javascript:void(0)" onclick="openAttDayStatus(${t.teacher_id})" title="View location status" style="font-weight:800;color:var(--primary,#b8941f);text-decoration:underline dotted">${main} h</a>`;
+        const sub=t.net_hours!=null&&t.hours!=null&&t.net_hours!==t.hours?`<div class="att-brk">gap ${t.hours}h − break · target ${t.required_hours}h</div>`:(t.required_hours?`<div class="att-brk">target ${t.required_hours}h</div>`:'');
+        return lnk+(t.extra_hours>0?`<span class="att-x">+${t.extra_hours}h extra</span>`:'')+sub;
+      };
+      body.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Teacher</th><th>Work Timing</th><th>Punch In</th><th>Punch Out</th><th>Counted Hours</th><th>Status</th><th></th></tr></thead><tbody>${
+        d.teachers.map(t=>`<tr><td style="font-weight:600">${esc(t.name)}</td><td><span class="att-pol" title="${t.policy_set?'Custom timing set':'Default timing (Full Time · 8h/day)'}">${esc(t.policy_label||'—')}</span></td><td>${esc(t.punch_in||'-')}${_chip(t.in_dist,t.in_office)}</td><td>${esc(t.punch_out||'-')}${_chip(t.out_dist,t.out_office)}</td><td>${_hrs(t)}</td><td>${pill(t)}</td><td><button class="btn btn-ghost btn-sm" onclick="openTeacherAttDetail(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">History</button></td></tr>`).join('')
       }</tbody></table></div>`;
     } else {
       const d=await api('/api/admin/attendance/month?month='+encodeURIComponent(_aAttMonth));
-      sum.innerHTML=`<span class="po-pill slate">${esc(fmtMonthLabel(d.month)).toUpperCase()}</span><span class="po-pill gold">ELAPSED ${d.elapsed_days||0} DAYS</span>`;
+      sum.innerHTML=`<span class="po-pill slate">${esc(fmtMonthLabel(d.month)).toUpperCase()}</span><span class="po-pill gold">ELAPSED ${d.elapsed_days||0} DAYS</span><span class="po-pill green">SHORT DAYS COUNT AS PRESENT</span>`;
       if(!d.teachers.length){ body.innerHTML='<div class="empty-state"><p>No active teachers found.</p></div>'; return; }
-      body.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Teacher</th><th>Present</th><th>Leave</th><th>Short</th><th>AB</th><th>Total Hours</th><th></th></tr></thead><tbody>${
-        d.teachers.map(t=>`<tr><td style="font-weight:600">${esc(t.name)}</td><td><b style="color:#059669">${t.present_days}</b></td><td><b style="color:#1d4ed8">${t.leave_days||0}</b></td><td><b style="color:#b45309">${t.short_days||0}</b></td><td><b style="color:#b91c1c">${t.absent_days||0}</b></td><td>${t.total_hours} h</td><td><button class="btn btn-ghost btn-sm" onclick="openTeacherAttDetail(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">History</button></td></tr>`).join('')
+      body.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Teacher</th><th>Work Timing</th><th>Present</th><th>Short</th><th>Leave</th><th>AB</th><th>Counted Hours</th><th>Extra Hours</th><th></th></tr></thead><tbody>${
+        d.teachers.map(t=>`<tr><td style="font-weight:600">${esc(t.name)}</td><td><span class="att-pol">${esc(t.policy_label||'—')}</span></td><td><b style="color:#059669">${t.present_days}</b><span class="att-brk"> (full ${t.full_days||0})</span></td><td><b style="color:#b45309">${t.short_days||0}</b></td><td><b style="color:#1d4ed8">${t.leave_days||0}</b></td><td><b style="color:#b91c1c">${t.absent_days||0}</b></td><td><span class="att-net">${t.total_hours} h</span></td><td>${t.extra_hours>0?`<b style="color:#2563eb">+${t.extra_hours} h</b><div class="att-brk">no extra payout</div>`:'—'}</td><td><button class="btn btn-ghost btn-sm" onclick="openTeacherAttDetail(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">History</button></td></tr>`).join('')
       }</tbody></table></div>`;
     }
   }catch(e){ body.innerHTML=errHtml(e); }
@@ -13823,11 +14055,12 @@ async function tadFetch(tid){
   try{
     const d=await api('/api/admin/attendance/teacher/'+tid+'?month='+encodeURIComponent(val('tad-month')));
     const lvs=(d.leave_dates||[]);
+    const polNote=d.policy?`<div style="margin-bottom:10px"><span class="att-pol">${esc(d.policy.label)}</span> <span class="att-brk">target ${d.required_hours}h/day${d.policy.break_minutes?` · ${d.policy.break_minutes}m break skipped`:''}</span></div>`:'';
     const lvNote=lvs.length?`<div style="margin-bottom:10px"><span class="po-pill blue">LEAVE: ${lvs.map(x=>esc(fmtNice(x))).join(', ')}</span></div>`:'';
-    const stPill=s=>s==='present'?'<span class="po-pill green">PRESENT</span>':s==='short'?'<span class="po-pill amber">SHORT</span>':s==='working'?'<span class="po-pill blue">ON DUTY</span>':'-';
-    if(!d.rows.length){ b.innerHTML=lvNote+'<div class="empty-state"><p>No attendance in this month.</p></div>'; return; }
-    b.innerHTML=lvNote+`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Date</th><th>Day</th><th>In</th><th>Out</th><th>Hours</th><th>Status</th></tr></thead><tbody>${
-      d.rows.map(r=>`<tr><td>${esc(fmtNice(r.date))}</td><td>${esc(r.day)}</td><td>${esc(r.punch_in||'-')}</td><td>${esc(r.punch_out||'-')}</td><td>${r.hours!=null?r.hours+' h':'-'}</td><td>${stPill(r.status)}</td></tr>`).join('')
+    const stPill=s=>s==='present'?'<span class="po-pill green">PRESENT</span>':s==='short'?'<span class="po-pill amber">PRESENT · SHORT</span>':s==='working'?'<span class="po-pill blue">ON DUTY</span>':'-';
+    if(!d.rows.length){ b.innerHTML=polNote+lvNote+'<div class="empty-state"><p>No attendance in this month.</p></div>'; return; }
+    b.innerHTML=polNote+lvNote+`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Date</th><th>Day</th><th>In</th><th>Out</th><th>Counted</th><th>Extra</th><th>Status</th></tr></thead><tbody>${
+      d.rows.map(r=>`<tr><td>${esc(fmtNice(r.date))}</td><td>${esc(r.day)}</td><td>${esc(r.punch_in||'-')}</td><td>${esc(r.punch_out||'-')}</td><td>${r.net_hours!=null?`<b>${r.net_hours} h</b>`:'-'}${r.net_hours!=null&&r.hours!=null&&r.net_hours!==r.hours?`<div class="att-brk">gap ${r.hours}h − break</div>`:''}</td><td>${r.extra_hours>0?`<b style="color:#2563eb">+${r.extra_hours}h</b>`:'—'}</td><td>${stPill(r.status)}</td></tr>`).join('')
     }</tbody></table></div>`;
   }catch(e){ b.innerHTML=errHtml(e); }
 }
@@ -14906,12 +15139,19 @@ body.dark .po-pill.red{color:#f87171}
   background:var(--card);border:1.5px solid var(--border)}
 .vtm-fl{font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted)}
 .vtm-fl:not(:first-child){margin-left:10px;padding-left:10px;border-left:1px solid var(--border)}
+.vtm-sel{width:auto;max-width:280px;padding:7px 34px 7px 13px;font-size:.74rem;font-weight:800;border-radius:10px;
+  border:1.5px solid var(--border);background:var(--panel);color:var(--text);cursor:pointer}
+.vtm-sel:focus{border-color:rgba(184,148,31,.6);outline:none;box-shadow:0 0 0 3px rgba(184,148,31,.12)}
 .vtm-chip{border:1.5px solid var(--border);background:var(--panel);color:var(--text);font-size:.7rem;font-weight:800;
   padding:6px 13px;border-radius:999px;cursor:pointer;transition:all .18s;white-space:nowrap}
 .vtm-chip:hover{border-color:rgba(184,148,31,.55);color:#8a6d10}
 .vtm-chip.on{background:linear-gradient(135deg,#b8941f,#8a6d10);border-color:transparent;color:#fff8e1;box-shadow:0 3px 10px -4px rgba(184,148,31,.6)}
 .vtm-sec-cap{display:flex;align-items:center;gap:9px;margin:4px 0 12px;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--text-muted)}
 .vtm-sec-cap::after{content:'';flex:1;height:1px;background:var(--border)}
+.vt-chst{font-size:.6rem;font-weight:800;padding:2px 9px;border-radius:999px;border:1.2px solid;
+  text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;flex-shrink:0}
+.vt-chst-sel{font-size:.66rem;font-weight:800;padding:3px 22px 3px 9px;border-radius:999px;cursor:pointer;
+  border:1.2px solid;background:var(--panel);flex-shrink:0;appearance:auto}
 .vt-os-hbtn{display:inline-flex;align-items:center;gap:6px;background:rgba(255,233,168,.1);border:1.5px solid rgba(255,233,168,.5);
   color:#ffe9a8;font-size:.66rem;font-weight:800;padding:6px 12px;border-radius:9px;cursor:pointer;transition:all .2s;white-space:nowrap}
 .vt-os-hbtn:hover{background:rgba(255,233,168,.24);color:#fff}

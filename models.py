@@ -409,11 +409,14 @@ class VideoTask(Base):
     reject_count   = Column(Integer, default=0)
     warned_24h     = Column(Boolean, default=False)
     warned_overdue = Column(Boolean, default=False)
-    kind           = Column(String(20), default="normal") # normal | one_shot | rapid_revision
-    subject        = Column(String(160), default="")      # special task ka subject (one_shot)
+    kind           = Column(String(20), default="normal") # normal | one_shot | rapid_revision | project
+    subject        = Column(String(160), default="")      # special/project task ka subject (class ke saath — "Physics 12")
     status_history = Column(Text, default="")             # JSON [{s, at, note}] — status timeline
     last_link_at   = Column(DateTime, nullable=True)      # special task me aakhri chapter link kab aaya
     admin_seen_at  = Column(DateTime, nullable=True)      # admin ne special update kab dekha (NEW blink)
+    weekly_quota   = Column(Integer, default=0)           # project/one-shot: har week kitni videos chahiye
+    weekly_day     = Column(String(12), default="")       # weekly deadline ka din — monday..sunday
+    item_source    = Column(String(12), default="")       # project items kahan se: custom | syllabus
     created_at     = Column(DateTime, default=func.now())
     updated_at     = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -429,6 +432,7 @@ class VideoTaskChapter(Base):
     sort         = Column(Integer, default=0)
     link         = Column(String(600), default="")
     submitted_at = Column(DateTime, nullable=True)
+    edit_status  = Column(String(20), default="")         # production: editing_soon / editing_done / uploaded
 
 
 class DppEvent(Base):
@@ -786,6 +790,29 @@ class TeacherAttendance(Base):
     out_dist   = Column(Integer, nullable=True)
     out_office = Column(String(80), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+
+    teacher = relationship("TeacherProfile")
+
+
+class TeacherWorkPolicy(Base):
+    """Per-teacher smart work-timing policy (admin set karta hai).
+    work_type: full_time (lunch break working hours me count nahi hota) | part_time.
+    mode: fixed (entry/exit time pakka) | hours (sirf daily hours, timing free) |
+          flexible (minimum 1 hour — poori tarah free).
+    Net working hours = punch gap - break_minutes (sirf full_time me).
+    Present = net >= required_hours; usse kam (par punch complete) = Present (Short).
+    Extra hours sirf display ke liye hain — unka koi extra payout nahi."""
+    __tablename__ = "teacher_work_policies"
+
+    id             = Column(Integer, primary_key=True)
+    teacher_id     = Column(Integer, ForeignKey("teacher_profiles.id"), unique=True, index=True)
+    work_type      = Column(String(12), default="full_time")   # full_time | part_time
+    mode           = Column(String(12), default="hours")       # fixed | hours | flexible
+    required_hours = Column(Float, default=8.0)                # assigned net hours/day
+    entry_time     = Column(String(5), default="")             # "09:30" (fixed mode)
+    exit_time      = Column(String(5), default="")             # "18:30" (fixed mode)
+    break_minutes  = Column(Integer, default=0)                # lunch break (full_time only)
+    updated_at     = Column(DateTime, nullable=True)
 
     teacher = relationship("TeacherProfile")
 

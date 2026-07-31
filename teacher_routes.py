@@ -2963,6 +2963,107 @@ def _month_range(month: str):
     end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
     return start, end
 
+# =============================================
+# SMART WORK POLICY (per-teacher timing — admin set karta hai)
+# =============================================
+WORK_TYPES = ("full_time", "part_time")
+POLICY_MODES = ("fixed", "hours", "flexible")
+DEFAULT_REQUIRED_HOURS = 8.0
+MAX_WORK_HOURS = 16.0
+
+def _default_policy(teacher_id=None):
+    return {"teacher_id": teacher_id, "configured": False,
+            "work_type": "full_time", "mode": "hours",
+            "required_hours": DEFAULT_REQUIRED_HOURS,
+            "entry_time": "", "exit_time": "", "break_minutes": 0}
+
+def _parse_hhmm(s):
+    """'09:30' -> minutes since midnight. Invalid -> None."""
+    try:
+        h, m = str(s or "").strip().split(":")
+        h, m = int(h), int(m)
+        if 0 <= h <= 23 and 0 <= m <= 59:
+            return h * 60 + m
+    except Exception:
+        pass
+    return None
+
+def _policy_from_row(p, teacher_id):
+    """Saved row + defaults merge -> normalized policy dict."""
+    d = _default_policy(teacher_id)
+    if p:
+        d.update({"configured": True,
+                  "work_type": p.work_type if p.work_type in WORK_TYPES else "full_time",
+                  "mode": p.mode if p.mode in POLICY_MODES else "hours",
+                  "required_hours": float(p.required_hours or DEFAULT_REQUIRED_HOURS),
+                  "entry_time": p.entry_time or "", "exit_time": p.exit_time or "",
+                  "break_minutes": int(p.break_minutes or 0)})
+    if d["work_type"] != "full_time":
+        d["break_minutes"] = 0          # lunch break sirf full-time me count hota hai
+    return d
+
+def _policy_dict(db, teacher_id):
+    """Teacher ki saved policy + defaults merge. Punch/reports/payout sab yahi use karte hain."""
+    from models import TeacherWorkPolicy
+    p = db.query(TeacherWorkPolicy).filter(TeacherWorkPolicy.teacher_id == teacher_id).first()
+    return _policy_from_row(p, teacher_id)
+
+def _policy_map(db, teacher_ids):
+    """Bulk: {teacher_id: policy dict} — admin reports me N+1 queries se bachne ke liye."""
+    from models import TeacherWorkPolicy
+    rows = db.query(TeacherWorkPolicy).filter(TeacherWorkPolicy.teacher_id.in_(teacher_ids or [0])).all()
+    by_id = {r.teacher_id: r for r in rows}
+    return {tid: _policy_from_row(by_id.get(tid), tid) for tid in (teacher_ids or [])}
+
+def _policy_required(pol):
+    """Ek din ke required NET hours.
+    flexible = sirf minimum 1h; fixed = entry-exit span - break; hours = saved value."""
+    if pol.get("mode") == "flexible":
+        return MIN_PRESENT_HOURS
+    if pol.get("mode") == "fixed":
+        en, ex = _parse_hhmm(pol.get("entry_time")), _parse_hhmm(pol.get("exit_time"))
+        if en is not None and ex is not None and ex > en:
+            span = (ex - en) / 60.0 - (pol.get("break_minutes") or 0) / 60.0
+            return max(MIN_PRESENT_HOURS, round(span, 2))
+    return max(MIN_PRESENT_HOURS, float(pol.get("required_hours") or DEFAULT_REQUIRED_HOURS))
+
+def _net_hours(a, pol):
+    """Punch gap - lunch break (sirf full_time) = counted working hours."""
+    gross = _att_hours(a)
+    if gross is None:
+        return None
+    brk = (pol.get("break_minutes") or 0) / 60.0 if pol.get("work_type") == "full_time" else 0.0
+    return round(max(0.0, gross - brk), 2)
+
+def _day_status(a, pol):
+    """Policy-aware day status: working | present | short | none.
+    short = punch complete par required hours se kam => 'Present (Short)' count hota hai."""
+    if not a or not a.punch_in:
+        return "none"
+    if not a.punch_out:
+        return "working"
+    net = _net_hours(a, pol)
+    return "present" if (net or 0) >= _policy_required(pol) else "short"
+
+def _extra_hours(a, pol):
+    """Required se zyada net hours — SIRF display ke liye, extra payout NAHI."""
+    if pol.get("mode") == "flexible":
+        return 0.0                       # flexible me assigned hours hi nahi — extra concept nahi
+    net = _net_hours(a, pol)
+    if net is None:
+        return 0.0
+    return round(max(0.0, net - _policy_required(pol)), 2)
+
+def _policy_label(pol):
+    """UI chip text, e.g. 'Full Time · 8h/day' / 'Part Time · 09:30-18:30'."""
+    wt = "Full Time" if pol.get("work_type") == "full_time" else "Part Time"
+    mode = pol.get("mode")
+    if mode == "flexible":
+        return wt + " · Flexible (min 1h)"
+    if mode == "fixed" and pol.get("entry_time") and pol.get("exit_time"):
+        return "%s · %s-%s" % (wt, pol["entry_time"], pol["exit_time"])
+    return "%s · %sh/day" % (wt, _policy_required(pol))
+
 # =====================================================================
 # PERFORMANCE PAYOUT ENGINE (monthly task-based, 1 Aug 2026 se effective)
 # =====================================================================
@@ -3177,7 +3278,9 @@ def compute_performance(db, teacher_id: int, month: str):
 def compute_payout(db, teacher_id: int, month: str):
     """Transparent payout breakdown — teacher aur admin dono yahi dekhte hain.
     Net = Base + Allowances + Extras + Bonus - Manual Deductions - Attendance Deduction.
-    Attendance Deduction = (working_days - present_days) x per-day rate."""
+    Attendance Deduction = (absent + approved leave) x per-day rate.
+    Approved leave UNPAID hai (us din ki pay nahi milti) par penalty NAHI lagti;
+    bina approval ki chhutti (absent) ka penalty rule baad me add hoga."""
     from models import TeacherContract, TeacherAttendance, PayoutAdjustment
     _ensure_geofence(db)
     c = db.query(TeacherContract).filter(TeacherContract.teacher_id == teacher_id).first()
@@ -3188,15 +3291,24 @@ def compute_payout(db, teacher_id: int, month: str):
     att_rows = db.query(TeacherAttendance).filter(
         TeacherAttendance.teacher_id == teacher_id,
         TeacherAttendance.att_date >= start, TeacherAttendance.att_date < end).all()
-    present = sum(1 for a in att_rows if _is_present(a))
-    short = sum(1 for a in att_rows if _is_short(a))
+    # Smart policy: short day (required hours se kam) bhi PRESENT/paid hai — deduction nahi.
+    # Isliye present + short ka total pehle jaisa hi rehta hai => payout figure bilkul same.
+    pol = _policy_dict(db, teacher_id)
+    full_days = sum(1 for a in att_rows if _day_status(a, pol) == "present")
+    short = sum(1 for a in att_rows if _day_status(a, pol) == "short")
+    present = full_days + short
+    extra_hours = round(sum(_extra_hours(a, pol) for a in att_rows), 1)
     leave_days = sum(_leave_days_map(db, teacher_id, start, end).values())
     wd = c.working_days or 26
     base = c.base_salary or 0
     per_day = round(base / wd) if wd else 0
-    # Approved leave = paid (deduction nahi); short day (<1h) aur bina approval ki chhutti = deduction.
-    absent = max(0, round(wd - present - leave_days - short))
-    att_deduction = per_day * absent
+    # Approved leave = UNPAID (per-day rate ki deduction, par koi penalty nahi);
+    # short day (assigned hours se kam) PRESENT hai — deduction nahi;
+    # bina approval ki chhutti (absent) = deduction
+    # (absent par alag PENALTY rule baad me add hoga).
+    absent = max(0, round(wd - present - leave_days))
+    leave_ded = round(per_day * leave_days)
+    att_deduction = per_day * absent + leave_ded
     adjs = db.query(PayoutAdjustment).filter(
         PayoutAdjustment.teacher_id == teacher_id,
         PayoutAdjustment.month == month_key).order_by(PayoutAdjustment.created_at).all()
@@ -3215,9 +3327,11 @@ def compute_payout(db, teacher_id: int, month: str):
         "is_current_month": (start.year == now.year and start.month == now.month),
         "base_salary": base, "allowances": c.allowances or 0,
         "working_days": wd, "present_days": present, "absent_days": absent,
-        "short_days": short, "leave_days": leave_days,
-        "min_hours": MIN_PRESENT_HOURS,
+        "short_days": short, "full_days": full_days, "leave_days": leave_days,
+        "extra_hours": extra_hours,
+        "min_hours": MIN_PRESENT_HOURS, "required_hours": _policy_required(pol),
         "per_day_rate": per_day, "attendance_deduction": att_deduction,
+        "leave_deduction": leave_ded, "unpaid_days": absent + leave_days,
         "extras": extras, "bonus": bonus, "manual_deductions": manual_ded,
         "gross_salary": gross, "performance": perf,
         "perf_pct": perf["perf_pct"] if perf["started"] else None,
@@ -3306,13 +3420,33 @@ def attendance_today(db: Session = Depends(get_db), current_user=Depends(get_tea
     now = _ist_now(); today = now.date()
     a = db.query(TeacherAttendance).filter(
         TeacherAttendance.teacher_id == tp.id, TeacherAttendance.att_date == today).first()
+    pol = _policy_dict(db, tp.id)
+    req = _policy_required(pol)
+    # live progress: abhi tak kitne counted hours (punch-out se pehle bhi)
+    live_net = None
+    if a and a.punch_in:
+        end_ref = a.punch_out or now
+        gross = (end_ref - a.punch_in).total_seconds() / 3600.0
+        brk = (pol.get("break_minutes") or 0) / 60.0 if pol.get("work_type") == "full_time" else 0.0
+        live_net = round(max(0.0, gross - brk), 2)
     return {
         "date": str(today), "day": today.strftime("%A"),
         "server_time": now.strftime("%I:%M:%S %p"),
         "punch_in": _fmt_t(a.punch_in if a else None),
         "punch_out": _fmt_t(a.punch_out if a else None),
-        "hours": _att_hours(a)
+        "hours": _att_hours(a),
+        "net_hours": live_net, "required_hours": req,
+        "extra_hours": round(max(0.0, (live_net or 0) - req), 2) if (live_net and pol.get("mode") != "flexible") else 0.0,
+        "on_track": bool(live_net is not None and live_net >= req),
+        "policy": {**pol, "required": req, "label": _policy_label(pol)}
     }
+
+@router.get("/work-policy")
+def teacher_work_policy(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Teacher ko apni admin-set work timing dikhane ke liye (read-only)."""
+    tp = get_teacher_profile(current_user, db)
+    pol = _policy_dict(db, tp.id)
+    return {"policy": {**pol, "required": _policy_required(pol), "label": _policy_label(pol)}}
 
 # ===== GEOFENCE (punch sirf office ke radius me) =====
 _GEOFENCE_READY = False
@@ -3525,11 +3659,11 @@ def punch_out(request: Request, payload: dict = Body(default={}), db: Session = 
         raise HTTPException(status_code=400, detail=f"You already punched out today at {_fmt_t(a.punch_out)}")
     gap_h = (now - a.punch_in).total_seconds() / 3600.0
     if gap_h < MIN_PRESENT_HOURS and not payload.get("confirm"):
-        # 1 ghante se pehle punch-out: confirm maango — ye din PRESENT nahi lagega.
+        # 1 ghante se pehle punch-out: accidental press se bachne ke liye confirm maango.
         mins = int(gap_h * 60)
         return {"need_confirm": True, "hours": round(gap_h, 2),
-                "message": f"Sirf {mins} min me punch-out — minimum {int(MIN_PRESENT_HOURS)} hour required. "
-                           f"Aise punch-out karne par aaj PRESENT nahi lagega. Confirm karne ke liye dobara PUNCH OUT dabayen."}
+                "message": f"Only {mins} min worked — you will be marked Present (Short) today. "
+                           f"To confirm, press PUNCH OUT again."}
     a.punch_out = now
     wifi = bool(office and office.get("wifi"))
     if office:
@@ -3538,14 +3672,22 @@ def punch_out(request: Request, payload: dict = Body(default={}), db: Session = 
         a.out_dist = dist if dist is not None else 0
         a.out_office = office["name"]
     db.commit()
-    short = gap_h < MIN_PRESENT_HOURS
+    # policy-aware result: net = gap - lunch break (full time); short = required se kam
+    pol = _policy_dict(db, tp.id)
+    req = _policy_required(pol)
+    net = _net_hours(a, pol)
+    extra = _extra_hours(a, pol)
+    short = (net or 0) < req
     msg = f"Punched out at {_fmt_t(now)}"
     if office:
         msg += " (%s - Office WiFi)" % office["name"] if wifi else " (%s - office se %dm)" % (office["name"], dist)
     if short:
-        msg += " — Short day (<1h), present count nahi hoga"
+        msg += " — Present (Short): %sh of %sh" % (net, req)
+    elif extra > 0:
+        msg += " — Extra %sh today" % extra
     return {"message": msg, "punch_out": _fmt_t(now), "hours": _att_hours(a),
-            "short": short, "present": not short, "distance": dist,
+            "net_hours": net, "required_hours": req, "extra_hours": extra,
+            "short": short, "present": True, "distance": dist,
             "office": office["name"] if office else None, "wifi": wifi}
 
 @router.get("/attendance/history")
@@ -3560,33 +3702,36 @@ def attendance_history(month: str = "", db: Session = Depends(get_db), current_u
     ).order_by(TeacherAttendance.att_date.desc()).all()
     lvmap = _leave_days_map(db, tp.id, start, end)
 
+    pol = _policy_dict(db, tp.id)
+    req = _policy_required(pol)
+
     def _st(r):
-        if _is_present(r):
-            return "present"
-        if _is_short(r):
-            return "short"
-        if r and r.punch_in:
-            return "working"
-        return ""
+        return _day_status(r, pol) if (r and (r.punch_in or r.punch_out)) else ""
 
     out = [{"date": str(r.att_date), "day": r.att_date.strftime("%A"),
             "punch_in": _fmt_t(r.punch_in), "punch_out": _fmt_t(r.punch_out),
-            "hours": _att_hours(r), "status": _st(r)} for r in rows]
-    total_hours = round(sum(x["hours"] or 0 for x in out), 1)
-    present_days = sum(1 for r in rows if _is_present(r))
-    short_days = sum(1 for r in rows if _is_short(r))
+            "hours": _att_hours(r), "net_hours": _net_hours(r, pol),
+            "extra_hours": _extra_hours(r, pol), "required_hours": req,
+            "status": _st(r)} for r in rows]
+    total_hours = round(sum(x["net_hours"] or 0 for x in out), 1)
+    extra_hours = round(sum(x["extra_hours"] or 0 for x in out), 1)
+    full_days = sum(1 for r in rows if _day_status(r, pol) == "present")
+    short_days = sum(1 for r in rows if _day_status(r, pol) == "short")
+    present_days = full_days + short_days      # short day bhi PRESENT hi count hota hai
     today = _ist_now().date()
     leave_days = round(sum(v for d, v in lvmap.items()), 1)
     leave_elapsed = round(sum(v for d, v in lvmap.items() if d <= today), 1)
     elapsed = _elapsed_days(start, end)
-    absent_days = max(0, round(elapsed - present_days - short_days - leave_elapsed))
+    absent_days = max(0, round(elapsed - present_days - leave_elapsed))
     # leave dates list (calendar me blue dikhane ke liye)
     leave_dates = sorted(str(d) for d in lvmap.keys())
     return {"month": start.strftime("%Y-%m"), "rows": out,
-            "present_days": present_days, "short_days": short_days,
+            "present_days": present_days, "full_days": full_days, "short_days": short_days,
             "leave_days": leave_days, "absent_days": absent_days,
             "leave_dates": leave_dates, "elapsed_days": elapsed,
-            "min_hours": MIN_PRESENT_HOURS,
+            "min_hours": MIN_PRESENT_HOURS, "required_hours": req,
+            "extra_hours": extra_hours,
+            "policy": {**pol, "required": req, "label": _policy_label(pol)},
             "total_hours": total_hours}
 
 
