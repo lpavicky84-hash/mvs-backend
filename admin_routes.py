@@ -212,6 +212,7 @@ def add_teacher(req: RegisterRequest, db: Session = Depends(get_db), _=Depends(g
         gender=(req.gender or "").strip().lower() or None,
         phone=(req.phone or None),
         batch=req.batch or "",
+        plain_password=req.password,
     )
     db.add(profile)
     db.commit()
@@ -1856,6 +1857,27 @@ def admin_doubts_overview(db: Session = Depends(get_db), _=Depends(get_admin)):
 # ------------------------------------------------------------------
 import secrets as _secrets, string as _string
 
+@router.get("/credentials")
+def admin_view_credentials(role: str, profile_id: int, db: Session = Depends(get_db),
+                           _=Depends(get_admin)):
+    """Admin ko kisi teacher/student ke CURRENT login credentials dikhao —
+    bina reset kiye. plain_password sirf tab available jab account portal se
+    bana ho ya kabhi admin ne reset kiya ho (hash se purana recover nahi hota)."""
+    if role == "teacher":
+        prof = db.query(TeacherProfile).filter(TeacherProfile.id == profile_id).first()
+    elif role == "student":
+        prof = db.query(StudentProfile).filter(StudentProfile.id == profile_id).first()
+    else:
+        raise HTTPException(status_code=400, detail="Role must be teacher or student")
+    if not prof:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    user = db.query(User).filter(User.id == prof.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User account not found")
+    return {"name": user.name, "user_id": user.user_id,
+            "password": (getattr(prof, "plain_password", None) or None)}
+
+
 @router.post("/reset-password")
 def admin_reset_password(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_admin)):
     role = (payload.get("role") or "").strip()          # 'teacher' | 'student'
@@ -1881,8 +1903,7 @@ def admin_reset_password(payload: dict, db: Session = Depends(get_db), current_u
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
 
     user.password = hash_password(new_pass)
-    if role == "student":
-        prof.plain_password = new_pass  # keep phone-lookup onboarding in sync
+    prof.plain_password = new_pass  # teacher+student dono — admin ko credentials visible rahen
     db.commit()
     return {"message": "Password reset successfully", "name": user.name,
             "user_id": user.user_id, "password": new_pass}

@@ -99,6 +99,7 @@ class TeacherProfile(Base):
     batch          = Column(String(50))
     reschedule_count_this_month = Column(Integer, default=0)
     reschedule_reset_month = Column(Integer, default=0)  # month number
+    plain_password = Column(String(255), nullable=True)  # admin ko current login credentials dikhane ke liye
 
     user    = relationship("User", back_populates="teacher_profile")
     classes = relationship("ClassEntry", back_populates="teacher")

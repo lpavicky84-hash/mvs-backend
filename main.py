@@ -23,6 +23,7 @@ Base.metadata.create_all(bind=engine)
 def ensure_columns():
     stmts = [
         "ALTER TABLE student_profiles ADD COLUMN plain_password VARCHAR(255)",
+        "ALTER TABLE teacher_profiles ADD COLUMN plain_password VARCHAR(255)",
         "ALTER TABLE student_profiles ADD COLUMN class_level VARCHAR(5)",
         "ALTER TABLE timetable_entries ADD COLUMN time_text VARCHAR(40)",
         "ALTER TABLE timetable_entries ADD COLUMN entry_type VARCHAR(20)",

@@ -8004,14 +8004,15 @@ function _avtSpecBody(){
   if(_avtSpecTab&&!_knds.some(x=>x[0]===_avtSpecTab)) _avtSpecTab='';
   const totalN=_allK.reduce((a,x)=>a+x[2],0);
   const KLBL={one_shot:'One Shot',rapid_revision:'Rapid Revision',project:'Projects'};
-  // v86 (image-5): Project-name filter — portal ke saare cards (har kind) ek
-  // dropdown me; select karne par sirf wahi card dikhta hai.
-  const _projOpts=[].concat(...['one_shot','rapid_revision','project'].map(k=>((((sp||{})[k]||{}).tasks)||[]).map(t=>({id:String(t.id),lbl:`${KLBL[k]} — ${t.subject||t.title}${t.teacher?' ('+t.teacher+')':''}`}))));
+  // v86 (image-5): Project-name filter — select karne par sirf wahi card dikhta
+  // hai. v87: options selected Project Type se cascade hote hain (All Types pe
+  // sab, warna sirf usi type ke; kind prefix tabhi jab All Types ho).
+  const _pKinds=_avtSpecTab?[_avtSpecTab]:['one_shot','rapid_revision','project'];
+  const _projOpts=[].concat(..._pKinds.map(k=>((((sp||{})[k]||{}).tasks)||[]).map(t=>({id:String(t.id),lbl:`${_avtSpecTab?'':KLBL[k]+' — '}${t.subject||t.title}${t.teacher?' ('+t.teacher+')':''}`}))));
   if(_avtSpecProj&&!_projOpts.some(o=>o.id===_avtSpecProj)) _avtSpecProj='';
   const inScope=k=>{ let ts=(((sp||{})[k]||{}).tasks)||[]; if(_avtSpecProj) ts=ts.filter(x=>String(x.id)===_avtSpecProj); if(_avtSpecSub) ts=ts.filter(x=>x.subject===_avtSpecSub); if(_avtSpecCls) ts=ts.filter(x=>x.cls===_avtSpecCls); return ts; };
   const groups=_avtSpecTab?[[_avtSpecTab,KLBL[_avtSpecTab],inScope(_avtSpecTab)]]:_knds.map(([k,l])=>[k,l,inScope(k)]);
   const kindLbl=_avtSpecTab?KLBL[_avtSpecTab]:'';
-  const chip=(k,l,n)=>`<button class="vt-knd-tab${_avtSpecTab===k?' on':''}" onclick="_avtSpecTab='${k}';avtSpecRefresh()">${l}${n!=null?` <span class="vt-knd-n">${n}</span>`:''}</button>`;
   const bodyHtml=groups.map(([k,l,ts])=>ts.length?`${_avtSpecTab?'':`<div class="vtm-sec-cap" style="margin:10px 0 8px">${l} · ${ts.length} card${ts.length>1?'s':''}</div>`}${ts.map(_avtSpecCard).join('')}`:'').join('');
   return `<div class="vtm-filter" style="margin-bottom:12px;padding:8px 10px">
       <span class="vtm-fl">Class</span>
@@ -8024,19 +8025,22 @@ function _avtSpecBody(){
         <option value="">All Subjects (${subs.length})</option>
         ${subs.map(s=>`<option value="${esc(s)}" ${_avtSpecSub===s?'selected':''}>${esc(s)}</option>`).join('')}
       </select>
+      <span class="vtm-fl">Project Type</span>
+      <select class="vtm-sel" id="avt-spec-type" onchange="avtSpecTypeSet(this.value)">
+        <option value="">All Types (${totalN})</option>
+        ${_knds.map(([k,l,n])=>`<option value="${k}" ${_avtSpecTab===k?'selected':''}>${l} (${n})</option>`).join('')}
+      </select>
       <span class="vtm-fl">Project</span>
       <select class="vtm-sel" id="avt-spec-proj" style="max-width:240px" onchange="avtSpecProjSet(this.value)">
         <option value="">All Projects (${_projOpts.length})</option>
         ${_projOpts.map(o=>`<option value="${esc(o.id)}" ${_avtSpecProj===o.id?'selected':''}>${esc(o.lbl)}</option>`).join('')}
       </select>
-      <span class="vtm-fl">Type</span>
-      ${chip('','All Types',totalN)}
-      ${_knds.map(([k,l,n])=>chip(k,l,n)).join('')}
       <span style="font-size:.68rem;color:var(--text-muted);font-weight:700">${_avtSpecProj?'Showing selected project only':(_avtSpecSub||_avtSpecCls)?'Showing '+[_avtSpecCls?'Class '+_avtSpecCls:'',_avtSpecSub].filter(Boolean).join(' · ')+' cards only':_avtSpecTab?'Showing all '+kindLbl.toLowerCase()+' cards':'Showing all cards'}</span>
       <span style="font-size:.7rem;color:var(--text-muted)">Opening a card clears its NEW flag · chapter links are clickable</span></div>
     <div class="hide-scroll" style="max-height:520px;overflow:auto;padding-right:4px">${bodyHtml||`<div class="ws-empty"><p><b>No ${kindLbl?kindLbl+' ':''}tasks found${_avtSpecSub?' for '+esc(_avtSpecSub):''}${_avtSpecCls?' in Class '+_avtSpecCls:''}${_avtSpecProj?' for the selected project':''}</b></p><small>${_avtSpecTab==='project'?'Assign a new project from Assign Work → Project tab.':'These tasks are created automatically once teacher subjects are set.'}</small></div>`}</div>`;
 }
 function avtSpecProjSet(p){ _avtSpecProj=p||''; avtSpecRefresh(); }
+function avtSpecTypeSet(k){ _avtSpecTab=k||''; _avtSpecProj=''; avtSpecRefresh(); }
 function _avtSpecCard(t){
   const rows=(t.chapters||[]).map(c=> c.link
     ? `<div class="vt-chr done"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">${esc(c.submitted_at||'')}</span>${_avtChSel(t,c)}<a class="lk" href="${esc(c.link)}" target="_blank" rel="noopener">${ic('play')} Open video</a></div>`
@@ -8413,7 +8417,7 @@ async function loadATeacherRanks(days){
   days=days||90;
   try{
     const d=await api('/api/teacher/rankings?days='+days);
-    const rows=d.teachers||d.rankings||d.rows||[];
+    const rows=d.results||d.teachers||d.rankings||d.rows||[];
     if(!rows.length){ el.innerHTML='<div class="card"><div class="card-body"><div class="ws-empty"><p>No teacher activity yet.</p></div></div></div>'; return; }
     const maxM={};
     _TRK_METRICS.forEach(m=>{ maxM[m[0]]=Math.max(1,...rows.map(r=>((r.metrics||{})[m[0]]||0))); });
@@ -8701,13 +8705,22 @@ function toggleCredPass(btn){
   else{ el.dataset.real=el.textContent; el.textContent='\u2022'.repeat(Math.max(el.textContent.length,6)); el.dataset.masked='1'; btn.innerHTML=ic('eye'); btn.title='Show password'; }
 }
 
-// ============ ADMIN PASSWORD RESET ============
+// ============ ADMIN: LOGIN CREDENTIALS (pehle current dikhao, reset optional) ============
 function openResetPassword(role,profileId,name){
-  showModal('Reset Password \u2014 '+name,
-    `<p style="font-size:.85rem;color:var(--text-muted);margin-bottom:14px">For security reasons, the current password cannot be viewed. Set a new password below \u2014 leave the field empty to auto-generate a strong password.</p>
-     <div class="form-group"><label>New Password (optional)</label><input class="form-control" id="rp-pass" placeholder="Leave empty to auto-generate" autocomplete="new-password"></div>
+  showModal('Login Credentials \u2014 '+name,
+    `<div id="rp-current" style="margin-bottom:4px"><div style="font-size:.85rem;color:var(--text-muted)">Loading current credentials...</div></div>
+     <div style="border-top:1.5px dashed var(--border);margin:14px 0 4px;padding-top:14px">
+       <div style="font-size:.74rem;font-weight:800;letter-spacing:.07em;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Reset Password (sirf agar badalna ho)</div>
+       <div class="form-group"><label>New Password (optional)</label><input class="form-control" id="rp-pass" placeholder="Leave empty to auto-generate" autocomplete="new-password"></div>
+     </div>
      <div id="rp-result" style="display:none;margin-top:14px;padding:14px 14px 6px;border-radius:12px;background:var(--primary-50);border:1px solid var(--border)"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" id="rp-save" onclick="doResetPassword('${role}',${profileId})">Reset Password</button>`);
+  api('/api/admin/credentials?role='+role+'&profile_id='+profileId).then(r=>{
+    const el=document.getElementById('rp-current'); if(!el) return;
+    el.innerHTML = r.password
+      ? `<div style="font-size:.78rem;color:var(--text-muted)">Current login credentials:</div>`+_credRows(r.user_id,r.password,role)
+      : `<div style="font-size:.82rem;color:var(--text-muted);background:var(--panel);border:1px dashed var(--border);border-radius:10px;padding:10px 12px">Current password saved record mein nahi hai (purana account). Neeche ek baar reset karo \u2014 naya password turant dikhega aur agli baar se yahan hamesha visible rahega.</div>`;
+  }).catch(e=>{ const el=document.getElementById('rp-current'); if(el) el.innerHTML=`<div style="font-size:.82rem;color:#dc2626">${esc(e.message)}</div>`; });
 }
 async function doResetPassword(role,profileId){
   const btn=document.getElementById('rp-save'); btn.disabled=true; btn.textContent='Resetting...';
@@ -8716,6 +8729,9 @@ async function doResetPassword(role,profileId){
     document.getElementById('rp-result').innerHTML=
       `<div style="font-size:.78rem;color:var(--text-muted)">New login credentials:</div>`+_credRows(r.user_id,r.password,role);
     document.getElementById('rp-result').style.display='block';
+    // current box bhi update — ab yehi password aage se saved rahega
+    const cur=document.getElementById('rp-current');
+    if(cur) cur.innerHTML=`<div style="font-size:.78rem;color:var(--text-muted)">Current login credentials:</div>`+_credRows(r.user_id,r.password,role);
     btn.textContent='Done \u2713';
     toast('Password reset successfully.');
   }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Reset Password'; }
