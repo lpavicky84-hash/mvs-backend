@@ -2812,9 +2812,13 @@ def _plan_shift(db, tp, subject, new_date):
     # jo classes new_date ke din ya uske baad hain, wo ek slot aage khiskengi
     affected = sorted([e for e in dated if e.entry_date >= new_date],
                       key=lambda e: (e.entry_date, e.id))
+    # TeacherProfile.batch plain String hai (StudentProfile ka enum nahi) —
+    # dono case sambhal lo, warna batch wale teacher ka extra-class 500 deta hai.
+    _b = getattr(tp, "batch", None)
+    _b = (getattr(_b, "value", None) or _b) or None
     end, end_src = session_end_for(db, subject=subject,
                                    class_level=(dated[0].class_name if dated else None),
-                                   batch=(tp.batch.value if getattr(tp, "batch", None) else None))
+                                   batch=_b)
     if not affected:
         return {"shifted": [], "weekdays": [WEEK[i] for i in weekdays], "overflow": False,
                 "last_date": None, "session_end": str(end), "deadline_for": end_src}
