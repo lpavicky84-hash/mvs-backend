@@ -831,6 +831,128 @@ def admin_edit_tt(eid: int, payload: dict, db: Session = Depends(get_db), _=Depe
     db.commit()
     return {"message": "Entry updated", "id": e.id}
 
+# ===== ADMIN: DIRECT RESCHEDULE (teacher ke count/salary pe koi asar NAHI) =====
+@router.post("/timetable-entry/{eid}/reschedule")
+def admin_reschedule_tt(eid: int, payload: dict = Body(...),
+                        db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Teacher centre pe hai par class ka time/date badalna hai — admin directly move
+    kare. Ye ADMIN move hai: teacher ke reschedule count me NAHI jata, salary pe asar
+    NAHI. Teacher + students (photo ke saath) ko notification jaati hai."""
+    from models import TimetableEntry, TeacherProfile, Notification
+    from teacher_routes import _ensure_v86, _notify_class_moved
+    _ensure_v86(db)
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == eid).first()
+    if not e:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    try:
+        nd = datetime.strptime((payload.get("new_date") or "").strip(), "%Y-%m-%d").date()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Please choose a valid new date")
+    nt = (payload.get("new_time") or "").strip()
+    od, ot = e.entry_date, e.time_text
+    e.entry_date = nd
+    e.day = nd.strftime("%A")
+    if nt:
+        e.time_text = nt
+    e.resched_by = "admin"
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == e.teacher_id).first() if e.teacher_id else None
+    if tp:
+        _notify_class_moved(db, tp, [(e, od, ot)], "Class Rescheduled — ",
+                            "The schedule was updated by the admin.")
+        if tp.user_id:
+            db.add(Notification(
+                user_id=tp.user_id, title="Class Rescheduled by Admin",
+                message=(f"Admin ne aapki {e.subject} ({e.class_name or ''}) class "
+                         f"{od} {ot or ''} se {nd} {e.time_text or ''} pe move ki hai"
+                         + (f". Reason: {(payload.get('reason') or '').strip()}" if (payload.get('reason') or '').strip() else "")
+                         + ". Ye aapke reschedule count ya salary pe asar nahi daalegi."),
+                notif_type="timetable"))
+    db.commit()
+    return {"ok": True, "message": "Class moved. Teacher and students have been notified — teacher ke reschedule count/salary par koi asar nahi."}
+
+# ===== ADMIN: TEACHER TT-RESCHEDULE REQUESTS (timetable entries) =====
+@router.get("/tt-reschedules/pending")
+def admin_tt_reschedules_pending(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Teacher ne timetable page se bheji reschedule requests (topic-edit modal)."""
+    from models import RescheduleRequest, RescheduleStatus, TimetableEntry, TeacherProfile
+    from teacher_routes import _ensure_v86
+    _ensure_v86(db)
+    rows = db.query(RescheduleRequest).filter(
+        RescheduleRequest.status == RescheduleStatus.pending,
+        RescheduleRequest.tt_entry_id != None).order_by(RescheduleRequest.created_at.desc()).all()
+    out = []
+    for r in rows:
+        e = db.query(TimetableEntry).filter(TimetableEntry.id == r.tt_entry_id).first()
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == r.teacher_id).first()
+        out.append({"id": r.id,
+                    "teacher": tp.user.name if tp and tp.user else "",
+                    "subject": e.subject if e else "", "class_name": (e.class_name if e else "") or "",
+                    "chapter": (e.chapter if e else "") or "",
+                    "original_date": str(e.entry_date) if e and e.entry_date else str(r.original_date or ""),
+                    "original_time": ((e.time_text if e else "") or ""),
+                    "new_date": str(r.new_date) if r.new_date else "",
+                    "new_time": r.new_time.strftime("%I:%M %p") if r.new_time else "",
+                    "reason": r.reason or "",
+                    "created_at": r.created_at.strftime("%d %b %Y, %I:%M %p") if r.created_at else ""})
+    return out
+
+@router.post("/tt-reschedules/{rid}/review")
+def admin_tt_reschedule_review(rid: int, payload: dict = Body(default={}),
+                               db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Approve => entry move + teacher ka monthly reschedule count +1 + notifications.
+    Reject => teacher ko note ke saath notification."""
+    from models import (RescheduleRequest, RescheduleStatus, TimetableEntry,
+                        TeacherProfile, Notification)
+    from teacher_routes import _ist_now, _ensure_v86, _notify_class_moved
+    _ensure_v86(db)
+    rs = db.query(RescheduleRequest).filter(RescheduleRequest.id == rid).first()
+    if not rs or rs.tt_entry_id is None:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if rs.status != RescheduleStatus.pending:
+        raise HTTPException(status_code=400, detail="This request has already been processed")
+    action = (payload.get("status") or payload.get("action") or "").strip().lower()
+    if action not in ("approved", "rejected"):
+        raise HTTPException(status_code=400, detail="status must be approved or rejected")
+    note = (payload.get("admin_note") or payload.get("note") or "").strip()
+    rs.status = RescheduleStatus.approved if action == "approved" else RescheduleStatus.rejected
+    rs.admin_note = note or None
+    rs.reviewed_at = _ist_now()
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == rs.tt_entry_id).first()
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == rs.teacher_id).first()
+    if action == "approved":
+        if not e:
+            raise HTTPException(status_code=404, detail="The timetable entry no longer exists")
+        od, ot = e.entry_date, e.time_text
+        e.entry_date = rs.new_date
+        e.day = rs.new_date.strftime("%A")
+        if rs.new_time:
+            e.time_text = rs.new_time.strftime("%I:%M %p").lstrip("0")
+        e.resched_by = "teacher"          # TEACHER request — count me jayegi
+        if tp:
+            now = _ist_now()
+            if tp.reschedule_reset_month != now.month:
+                tp.reschedule_count_this_month = 0
+                tp.reschedule_reset_month = now.month
+            tp.reschedule_count_this_month = (tp.reschedule_count_this_month or 0) + 1
+            _notify_class_moved(db, tp, [(e, od, ot)], "Class Rescheduled — ",
+                                "The class was rescheduled by your teacher.")
+        if tp and tp.user_id:
+            db.add(Notification(
+                user_id=tp.user_id, title="✅ Reschedule Approved",
+                message=(f"Aapki {e.subject} ({e.class_name or ''}) class {od} {ot or ''} se "
+                         f"{e.entry_date} {e.time_text or ''} pe move ho gayi."
+                         + (f" Note: {note}" if note else "")),
+                notif_type="reschedule_approved"))
+    else:
+        if tp and tp.user_id:
+            db.add(Notification(
+                user_id=tp.user_id, title="❌ Reschedule Rejected",
+                message=(f"{e.subject if e else 'Class'} ki reschedule request reject ho gayi."
+                         + (f" Note: {note}" if note else "")),
+                notif_type="reschedule_rejected"))
+    db.commit()
+    return {"ok": True, "status": action}
+
 # ===== ADMIN: DELETE ENTIRE SUBJECT TIMETABLE (one click, bulletproof on frontend) =====
 @router.delete("/timetable-subject")
 def admin_delete_tt_subject(subject: str, class_level: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -2225,6 +2347,17 @@ def action_app_review(rid: int, payload: dict, db: Session = Depends(get_db), _=
     db.commit()
     return {"message": "Review " + ("approved." if action == "approve" else "marked as resolved.")}
 
+
+@router.delete("/app-reviews/{rid}")
+def delete_app_review(rid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """v86: admin review-log entry delete kar sakta hai."""
+    from models import AppReview
+    r = db.query(AppReview).filter(AppReview.id == rid).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Review not found")
+    db.delete(r); db.commit()
+    return {"message": "Review deleted."}
+
 # ==================================================================
 #  DANGER: RESET PORTAL DATA (category-wise)
 #  Users (students/teachers/admins), profiles, subjects aur deadlines
@@ -2399,6 +2532,62 @@ def admin_attendance_teacher(tid: int, month: str = "", db: Session = Depends(ge
                       "status": _st(r)} for r in rows]}
 
 
+# ===== ADMIN: MANUAL PUNCH (teacher punch karna bhool gaya ho) =====
+@router.post("/attendance/punch")
+def admin_add_punch(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Teacher present tha par punch karna bhool gaya — admin kisi bhi date ke liye
+    punch-in / punch-out time add kare. Policy ke hisaab se present/short apne aap
+    calculate hoga; teacher ko notification jaati hai."""
+    from models import TeacherAttendance, TeacherProfile, Notification
+    from teacher_routes import _ist_now, _fmt_t, _ensure_geofence
+    _ensure_geofence(db)
+    tid = payload.get("teacher_id")
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first() if tid else None
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    try:
+        d = datetime.strptime((payload.get("date") or "").strip(), "%Y-%m-%d").date() \
+            if (payload.get("date") or "").strip() else _ist_now().date()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Date must be YYYY-MM-DD")
+    def _hm(s):
+        try:
+            h, m = str(s or "").strip().split(":")
+            h, m = int(h), int(m)
+            assert 0 <= h <= 23 and 0 <= m <= 59
+            return h, m
+        except Exception:
+            return None
+    pin_raw, pout_raw = (payload.get("punch_in") or "").strip(), (payload.get("punch_out") or "").strip()
+    pin, pout = _hm(pin_raw), _hm(pout_raw)
+    if not pin:
+        raise HTTPException(status_code=400, detail="Punch-in time is required (HH:MM)")
+    if pout_raw and not pout:
+        raise HTTPException(status_code=400, detail="Punch-out time must be HH:MM")
+    if pin and pout and (pout[0] * 60 + pout[1]) <= (pin[0] * 60 + pin[1]):
+        raise HTTPException(status_code=400, detail="Punch-out must be after punch-in")
+    a = db.query(TeacherAttendance).filter(
+        TeacherAttendance.teacher_id == tp.id, TeacherAttendance.att_date == d).first()
+    if not a:
+        a = TeacherAttendance(teacher_id=tp.id, att_date=d)
+        db.add(a)
+    a.punch_in = datetime.combine(d, datetime.min.time()).replace(hour=pin[0], minute=pin[1])
+    a.punch_out = datetime.combine(d, datetime.min.time()).replace(hour=pout[0], minute=pout[1]) if pout else None
+    a.in_office = a.in_office or "Admin entry"
+    if pout:
+        a.out_office = a.out_office or "Admin entry"
+    if tp.user_id:
+        db.add(Notification(
+            user_id=tp.user_id, title="Punch Added by Admin",
+            message=(f"Admin ne aapki {d.strftime('%d %b %Y')} ki punch entry add ki hai — "
+                     f"In {_fmt_t(a.punch_in)}"
+                     + (f", Out {_fmt_t(a.punch_out)}" if a.punch_out else "")
+                     + ". Galat lage to admin se sampark karein."),
+            notif_type="attendance"))
+    db.commit()
+    return {"ok": True, "message": "Punch saved.",
+            "date": str(d), "punch_in": _fmt_t(a.punch_in), "punch_out": _fmt_t(a.punch_out)}
+
 # ===== SMART WORK TIMING (per-teacher policy — admin set karta hai) =====
 @router.get("/attendance/policies")
 def admin_work_policies(db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -2512,6 +2701,7 @@ def admin_leaves(status: str = "", teacher_id: int = 0,
         "days": (r.end_date - r.start_date).days + 1,
         "leave_type": r.leave_type, "reason": r.reason or "",
         "status": r.status, "admin_remark": r.admin_remark or "",
+        "paid": bool(getattr(r, "paid", False)),
         "reviewed_at": r.reviewed_at.strftime("%d %b %Y, %I:%M %p") if r.reviewed_at else "",
         "created_at": r.created_at.strftime("%d %b %Y") if r.created_at else "",
     } for r in rows]}
@@ -2520,9 +2710,14 @@ def admin_leaves(status: str = "", teacher_id: int = 0,
 @router.post("/leaves/{lid}/review")
 def admin_leave_review(lid: int, payload: dict = Body(default={}),
                        db: Session = Depends(get_db), _=Depends(get_admin)):
-    """Approve / reject leave. Teacher ko notification jaati hai."""
+    """Approve / reject leave. v86: approve karte waqt PAID/UNPAID select hota hai
+    (paid => koi salary deduction nahi). Approved FULL leave ki us-din ki classes
+    apne aap aage move ho jaati hain (reschedule-approval me NAHI jaati, teacher
+    ke reschedule count/salary pe asar NAHI) aur students ko teacher ki photo ke
+    saath notification jaati hai."""
     from models import TeacherLeave, TeacherProfile, Notification
-    from teacher_routes import _ist_now
+    from teacher_routes import _ist_now, _ensure_v86, _auto_move_leave_classes, _notify_class_moved
+    _ensure_v86(db)
     lv = db.query(TeacherLeave).filter(TeacherLeave.id == lid).first()
     if not lv:
         raise HTTPException(status_code=404, detail="Leave request not found")
@@ -2533,22 +2728,38 @@ def admin_leave_review(lid: int, payload: dict = Body(default={}),
         raise HTTPException(status_code=400, detail="Action must be 'approved' or 'rejected'")
     lv.status = action
     lv.admin_remark = (payload.get("remark") or "").strip()
+    lv.paid = bool(payload.get("paid", False)) if action == "approved" else False
     lv.reviewed_at = _ist_now()
     tp = db.query(TeacherProfile).filter(TeacherProfile.id == lv.teacher_id).first()
+    moved = []
+    if action == "approved" and tp:
+        try:
+            moved = _auto_move_leave_classes(db, tp, lv)
+        except Exception:
+            moved = []
     if tp and tp.user_id:
         rng = f'{lv.start_date.strftime("%d %b")} - {lv.end_date.strftime("%d %b")}'
         if action == "approved":
+            tmsg = (f"Your leave ({rng}) has been approved as "
+                    f"{'PAID — iski koi salary deduction nahi hogi' if lv.paid else 'UNPAID — per-day rate se deduction hogi'}"
+                    + (f": {lv.admin_remark}" if lv.admin_remark else "."))
+            if moved:
+                tmsg += (f" Leave ke dinon ki {len(moved)} class(es) apne aap aage move ho gayi hain "
+                         f"(ye aapke reschedule count me nahi judegi). Time table check karein.")
             db.add(Notification(user_id=tp.user_id, title="✅ Leave Approved",
-                                message=f"Your leave ({rng}) has been approved"
-                                        + (f": {lv.admin_remark}" if lv.admin_remark else "."),
-                                notif_type="leave"))
+                                message=tmsg, notif_type="leave"))
         else:
             db.add(Notification(user_id=tp.user_id, title="❌ Leave Rejected",
                                 message=f"Your leave request ({rng}) was rejected"
                                         + (f": {lv.admin_remark}" if lv.admin_remark else "."),
                                 notif_type="leave"))
+    if moved:
+        tname = tp.user.name if tp.user else "Your teacher"
+        _notify_class_moved(db, tp, moved, "Class Rescheduled — ",
+                            f"{tname} is on approved leave, so the class has been moved.")
     db.commit()
-    return {"ok": True, "status": lv.status}
+    return {"ok": True, "status": lv.status, "paid": bool(lv.paid),
+            "classes_moved": len(moved)}
 
 # ===== CONTRACTS =====
 @router.get("/teacher/{tid}/contract")

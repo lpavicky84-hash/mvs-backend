@@ -460,7 +460,10 @@
   .mc-chev{margin-left:auto;font-size:1.2rem;color:var(--text-muted);transition:transform .2s;transform:rotate(90deg)}
   .mat-cat.closed .mc-chev{transform:rotate(0deg)}
   .mat-cat.closed .mat-twrap{display:none}
-  .mat-twrap{overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none}
+  .mat-twrap{overflow:auto;max-height:292px;scrollbar-width:thin;-ms-overflow-style:auto}
+  .mat-twrap .mat-table thead th{position:sticky;top:0;z-index:2;background:var(--card)}
+  .att-scroll{max-height:292px;overflow:auto}
+  .att-scroll .att-table thead th{position:sticky;top:0;z-index:2;background:var(--card)}
   .mat-twrap::-webkit-scrollbar{display:none}
   .ms-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-bottom:18px}
   .ms-card{padding:16px;border:1px solid var(--border);border-radius:14px;background:var(--bg-card,#fff);cursor:pointer;transition:.15s}
@@ -905,7 +908,8 @@
   .live-row{display:flex;align-items:center;gap:14px;padding:13px 16px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;background:var(--card)}
   .live-row .lr-dot{width:10px;height:10px;border-radius:50%;background:#10b981;animation:pulse 1.4s infinite;flex-shrink:0}
   .live-dur{margin-left:auto;font-weight:700;color:var(--success);font-size:.9rem;white-space:nowrap}
-  .table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:.875rem}
+  .table-wrap{overflow:auto;max-height:292px}table{width:100%;border-collapse:collapse;font-size:.875rem}
+  .table-wrap thead th{position:sticky;top:0;z-index:2;background:var(--card)}
   thead th{padding:12px 16px;text-align:left;font-weight:600;color:var(--text-muted);font-size:.78rem;text-transform:uppercase;border-bottom:2px solid var(--border)}
   tbody td{padding:14px 16px;border-bottom:1px solid var(--border)}tbody tr:last-child td{border-bottom:none}tbody tr:hover{background:var(--bg)}
   .tag{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:99px;font-size:.72rem;font-weight:600}
@@ -1363,6 +1367,11 @@
   .notif-item .ni-title{font-weight:700;font-size:.88rem;margin-bottom:3px}
   .notif-item .ni-msg{font-size:.82rem;color:var(--text-muted);line-height:1.5}
   .notif-item .ni-time{font-size:.7rem;color:var(--text-muted);margin-top:6px}
+  @keyframes notifBlink{0%,100%{box-shadow:0 0 0 0 rgba(184,148,31,0);border-color:var(--primary)}50%{box-shadow:0 0 0 5px rgba(184,148,31,.30);border-color:#e8c66a}}
+  .notif-item[data-go]:hover,.doubt-card.notif-click:hover{animation:notifBlink .95s ease-in-out infinite;border-color:var(--primary);transform:translateY(-1px)}
+  .notif-row{display:flex;gap:12px;align-items:flex-start}
+  .notif-av{width:42px;height:42px;border-radius:50%;background:var(--primary-50);background-size:cover;background-position:center;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.85rem;color:var(--primary);border:2px solid rgba(184,148,31,.4);position:relative}
+  .notif-av .mvs-b{position:absolute;right:-4px;bottom:-4px;width:17px;height:17px;border-radius:50%;background:linear-gradient(135deg,#c9a227,#8a6d1f);color:#fff;font-size:8.5px;font-weight:900;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--card);box-shadow:0 2px 5px rgba(0,0,0,.25)}
   .live-banner{background:var(--card);border:1px solid var(--border);border-left:4px solid var(--lb-acc,#6b550b);border-radius:13px;padding:15px 20px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;box-shadow:var(--shadow);animation:ttFade .4s ease both;transition:box-shadow .2s}
   .live-banner:hover{box-shadow:var(--shadow-lg)}
   .live-banner .lb-left{display:flex;align-items:center;gap:14px}
@@ -3051,14 +3060,31 @@ async function sendMessageAdmin(){
 const NOTIF_GO={
   student:{new_material:'materials',new_notes:'materials',questionbank:'qbank',test_reminder:'tests',exam_result:'tests',marks:'tests',
     doubt_resolved:'doubts',new_doubt:'doubts',doubt:'doubts',timetable:'timetable',new_class:'timetable',class:'timetable',
-    reschedule_approved:'timetable',reschedule_rejected:'timetable',dpp:'dpp',new_dpp:'dpp',dpp_checked:'dpp',
+    reschedule_approved:'timetable',reschedule_rejected:'timetable',class_rescheduled:'timetable',dpp:'dpp',new_dpp:'dpp',dpp_checked:'dpp',
     result:'resultcard',predicted:'resultcard',warning:'dashboard'},
   teacher:{class_request:'timetable',class_approved:'timetable',class_rejected:'timetable',new_class:'timetable',timetable:'timetable',
+    reschedule_approved:'timetable',reschedule_rejected:'timetable',reschedule_request:'timetable',leave:'attendance',
     doubt:'doubts',new_doubt:'doubts',admin_message:'notifications',admin_broadcast:'notifications',broadcast:'notifications',
     payout:'payout',attendance:'attendance',dpp:'dpp',test:'tests',warning:'dashboard'},
   admin:{class_request:'approvals',teacher_to_admin:'reports',app_review:'approvals',new_class:'timetable',timetable:'timetable',
+    reschedule_request:'approvals',class_rescheduled:'timetable',leave:'attendance',
     doubt:'doubts',teacher_message:'reports',payout:'payouts',attendance:'attendance',warning:'dashboard'}
 };
+function _notifAvHtml(n,fb){
+  if(!n.image_url) return '';
+  return `<div class="notif-av" data-nimg="${esc(n.image_url)}">${esc(initials(fb||'MVS'))}<span class="mvs-b">M</span></div>`;
+}
+async function _notifImgs(root){
+  if(!root) return;
+  for(const el of [...root.querySelectorAll('[data-nimg]')]){
+    const u=el.getAttribute('data-nimg'); if(!u) continue;
+    try{
+      const r=await fetch(API+u,{headers:{Authorization:'Bearer '+TOKEN}});
+      if(r.ok){ el.style.backgroundImage=`url(${URL.createObjectURL(await r.blob())})`;
+        el.textContent=''; const b=document.createElement('span'); b.className='mvs-b'; b.textContent='M'; el.appendChild(b); }
+    }catch(e){}
+  }
+}
 async function notifGo(role,nid,type){
   if(nid){ try{ await api(notifEp(role,'/notifications/'+nid+'/read'),'PATCH'); }catch(e){} }
   refreshNotifBadge(role);
@@ -3083,9 +3109,12 @@ async function openNotifPanel(role){
     const click=hasLink?`notifLinkOpen('${role}',${n.id},'${encodeURIComponent(n.link)}')`:(go?`notifGo('${role}',${n.id},'${esc(n.notif_type||'')}')`:'');
     const clickable=hasLink||go;
     const hint=hasLink?` <span style="font-size:.68rem;color:var(--primary);font-weight:800">Open Link &#8250;</span>`:(go?' <span style="font-size:.68rem;color:var(--primary);font-weight:800">&#8250;</span>':'');
-    return `<div class="notif-item ${n.is_read?'':'unread'}"${clickable?` style="cursor:pointer" onclick="${click}"`:' '} title="${hasLink?'Tap to open the link':'Tap to open this section'}"><div class="ni-title">${esc(n.title)}${hint}</div><div class="ni-msg">${esc(n.message)}</div><div class="ni-time"> ${fmtNice(n.created_at)}</div></div>`;
+    const av=_notifAvHtml(n,'MVS');
+    const inner=`<div class="ni-title">${esc(n.title)}${hint}</div><div class="ni-msg">${esc(n.message)}</div><div class="ni-time"> ${fmtNice(n.created_at)}</div>`;
+    return `<div class="notif-item ${n.is_read?'':'unread'}"${clickable?` data-go="1" style="cursor:pointer" onclick="${click}"`:' '} title="${hasLink?'Tap to open the link':'Tap to open this section'}">${av?`<div class="notif-row">${av}<div style="min-width:0;flex:1">${inner}</div></div>`:inner}</div>`;
   }).join(''):'<div class="empty-state"><div class="empty-icon"></div><p>No notifications yet</p></div>';
   showModal(' Notifications',html,list.some(n=>!n.is_read)?`<button class="btn btn-primary" onclick="markAllRead('${role}')">Mark All Read</button>`:`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+  _notifImgs(document.getElementById('modal-body'));
 }
 async function notifLinkOpen(role,id,encLink){
   try{ await api(notifEp(role,'/notifications/'+id+'/read'),'PATCH'); }catch(e){}
@@ -3238,7 +3267,36 @@ function openEditTopic(id, currentPart){
   const cur=decodeURIComponent(currentPart||'');
   showModal('Topic / Part Name',
  `<div class="alert alert-info">Students will see this topic for the class.</div><div class="form-group"><label>Enter Topic</label><input class="form-control" id="et-part" value="${esc(cur)}" placeholder="e.g. Part 1 - Newton's Laws"></div>`,
- `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitEditTopic(${id})">Save</button>`);
+ `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-ghost" onclick="openTTResched(${id})">${ic('calendar')} Reschedule</button><button class="btn btn-primary" onclick="submitEditTopic(${id})">Save</button>`);
+}
+function _ttEntryById(id){
+  const pools=[window._ttEntries||[],window._remEntries||[]];
+  for(const p of pools){ const f=p.find(e=>e.id===id); if(f) return f; }
+  return null;
+}
+function openTTResched(id){
+  const e=_ttEntryById(id)||{};
+  const today=new Date().toISOString().slice(0,10);
+  showModal('Reschedule Class',
+ `<div class="alert alert-info"><b>${esc(e.subject||'Class')}</b>${e.class_name?' · '+esc(e.class_name):''}${e.chapter?' — '+esc(e.chapter):''}<br>Abhi: <b>${e.date?fmtNice(e.date):'—'}</b>${e.time?' · '+esc(e.time):''}. Ye request <b>admin approval</b> ke baad hi apply hogi aur aapke <b>monthly reschedule count</b> me judegi. (Approved leave ya admin move count me nahi jata.)</div>
+  <div class="ex-grid2">
+   <div><label class="ex-lbl">New Date</label><input type="date" class="form-control" id="trs-date" min="${today}" value="${e.date&&e.date>=today?e.date:today}"></div>
+   <div><label class="ex-lbl">New Time</label><input type="time" class="form-control" id="trs-time" value="17:00"></div>
+  </div>
+  <div class="form-group" style="margin-top:10px"><label>Reason</label><textarea class="form-control" id="trs-reason" rows="2" placeholder="e.g. Centre pe urgent work tha / class miss ho gayi thi"></textarea></div>`,
+ `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="trs-btn" onclick="submitTTResched(${id})">${ic('check')} Send for Approval</button>`);
+}
+async function submitTTResched(id){
+  const date=val('trs-date'), t=val('trs-time'), reason=(val('trs-reason')||'').trim();
+  if(!date||!t){ toast('New date and time are required.',true); return; }
+  if(!reason){ toast('Please write a short reason.',true); return; }
+  const time=new Date('2000-01-01T'+t).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});
+  const btn=document.getElementById('trs-btn'); btn.disabled=true; btn.textContent='Sending...';
+  try{
+    const r=await api('/api/teacher/tt-reschedule','POST',{entry_id:id,new_date:date,new_time:time,reason});
+    closeModal(); toast(r.message||'Request sent to the admin.');
+    if(document.getElementById('t-page-timetable').classList.contains('active')) loadTTimetable();
+  }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Send for Approval'; }
 }
 async function submitEditTopic(id){
   const part=val('et-part'); if(!part){ toast('Please enter a topic!',true); return; }
@@ -3910,23 +3968,22 @@ async function openRequestClass(){
   if(subs.length===0){ try{ const p=await api('/api/teacher/profile'); subs=p.subjects||[]; }catch(e){} }
   const today=new Date().toISOString().slice(0,10);
   showModal('Add Extra Class',
-    `<div class="ex-grid2">
-       <div><label class="ex-lbl">Subject</label><select class="form-control" id="rc-sub" onchange="rcFillCls();rcFillCh();rcPreview()">${subs.map(s=>`<option>${esc(s)}</option>`).join('')}</select></div>
-       <div><label class="ex-lbl">Class</label><select class="form-control" id="rc-cls" onchange="rcFillCh();rcPreview()"></select></div>
+    `<div class="alert alert-info" style="font-size:.78rem">Missed class ya absent day ki compensation — extra class <b>alag slot / alag timing</b> pe add hoti hai. Baaki classes apni jagah rehti hain, <b>koi auto-shifting nahi</b> hoti.</div>
+    <div class="ex-grid2">
+       <div><label class="ex-lbl">Subject</label><select class="form-control" id="rc-sub" onchange="rcFillCls();rcFillCh()">${subs.map(s=>`<option>${esc(s)}</option>`).join('')}</select></div>
+       <div><label class="ex-lbl">Class</label><select class="form-control" id="rc-cls" onchange="rcFillCh()"></select></div>
      </div>
      <div style="margin-top:10px"><label class="ex-lbl">Chapter <span style="font-weight:600;color:var(--text-muted)">(selected class ke chapters)</span></label><select class="form-control" id="rc-ch" onchange="rcChSel()"></select></div>
      <div id="rc-newch" style="display:none;margin-top:10px"><label class="ex-lbl">New chapter / topic name</label><input class="form-control" id="rc-newch-in" placeholder="e.g. Chapter 12 \u2014 Thermodynamics"></div>
      <label class="ex-lbl" style="margin-top:10px">Part / Note <span style="font-weight:600;color:var(--text-muted)">(optional)</span></label>
      <input class="form-control" id="rc-topic" placeholder="e.g. Part 3 / Extra doubt class">
      <div class="ex-grid2" style="margin-top:10px">
-       <div><label class="ex-lbl">Date</label><input type="date" class="form-control" id="rc-date" min="${today}" value="${today}" onchange="rcPreview()"></div>
-       <div><label class="ex-lbl">Time</label><input type="time" class="form-control" id="rc-time" value="17:00"></div>
+       <div><label class="ex-lbl">Date</label><input type="date" class="form-control" id="rc-date" min="${today}" value="${today}"></div>
+       <div><label class="ex-lbl">Time <span style="font-weight:600;color:var(--text-muted)">(regular slot se alag)</span></label><input type="time" class="form-control" id="rc-time" value="17:00"></div>
      </div>
-     <label class="rc-shift"><input type="checkbox" id="rc-shift" checked onchange="rcPreview()"> <span><b>Auto-shift the following classes</b><br><span style="font-size:.72rem;color:var(--text-muted)">All later classes move forward automatically \u2014 only onto your regular class days.</span></span></label>
-     <div id="rc-preview"></div>
      <div id="rc-status"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="rc-btn" onclick="submitRequestClass()">Send for Approval</button>`);
-  rcFillCls(); rcFillCh(); rcPreview();
+  rcFillCls(); rcFillCh();
 }
 function rcFillCls(){
   const sel=document.getElementById('rc-cls'); if(!sel) return;
@@ -3948,27 +4005,6 @@ function rcChSel(){
   const nw=document.getElementById('rc-newch');
   if(nw) nw.style.display=(val('rc-ch')==='__new')?'block':'none';
 }
-let _rcTimer=null;
-function rcPreview(){
-  clearTimeout(_rcTimer);
-  _rcTimer=setTimeout(async()=>{
-    const box=document.getElementById('rc-preview'); if(!box) return;
-    if(!document.getElementById('rc-shift').checked){ box.innerHTML=''; return; }
-    const subject=val('rc-sub'), date=val('rc-date');
-    if(!subject||!date){ box.innerHTML=''; return; }
-    box.innerHTML='<div class="rc-prev muted">Checking the schedule\u2026</div>';
-    try{
-      const p=await api('/api/teacher/extra-class/preview','POST',{subject,date,shift:true,class_name:(document.getElementById('rc-cls')||{}).value||''});
-      const n=(p.shifted||[]).length;
-      if(!n){ box.innerHTML=`<div class="rc-prev ok">${ic('check')} No classes after this date \u2014 nothing to shift.</div>`; return; }
-      const rows=p.shifted.slice(0,6).map(x=>`<div class="rc-row"><span class="rc-ch">${esc(x.chapter)}${x.part?' \u00b7 '+esc(x.part):''}</span><span class="rc-move">${fmtNice(x.from)} \u2192 <b>${fmtNice(x.to)}</b> <span class="rc-day">${esc(x.day)}</span></span></div>`).join('');
-      const warn=p.overflow
-        ? `<div class="rc-warn">${ic('bell')} <div><b>Session limit crossed!</b> Shifting pushes the last class to <b>${fmtNice(p.last_date)}</b>, which is <b>${p.over_by} day(s)</b> past the session end (${fmtNice(p.session_end)}${p.deadline_for&&p.deadline_for!=='default'?` \u2014 ${esc(p.deadline_for)}`:''}).<br>Schedule this extra class on an <b>additional weekday</b> instead \u2014 your regular days are <b>${(p.weekdays||[]).join(', ')}</b>, so try <b>${(p.suggest_days||[]).join(' / ')}</b> (do not put two classes on the same day).</div></div>`
-        : '';
-      box.innerHTML=`<div class="rc-prev">${ic('refresh')} <b>${n} class${n>1?'es':''}</b> will auto-shift (regular days: ${(p.weekdays||[]).join(', ')})</div><div class="rc-list">${rows}${n>6?`<div class="rc-row more">+${n-6} more\u2026</div>`:''}</div>${warn}`;
-    }catch(e){ box.innerHTML=`<div class="rc-prev muted">${esc(e.message)}</div>`; }
-  },350);
-}
 async function submitRequestClass(){
   const subject=val('rc-sub'), date=val('rc-date');
   const t=val('rc-time');
@@ -3978,10 +4014,13 @@ async function submitRequestClass(){
   const topic=val('rc-topic');
   if(!subject||!date||!time){ toast('Subject, date and time are required.',true); return; }
   if(chSel==='__new'&&!val('rc-newch-in')){ toast('Please enter the new chapter/topic name.',true); return; }
+  // Same date + same time pe pehle se class hai to rok do — extra class alag slot pe honi chahiye
+  const sameTm=(window._rcEntries||[]).find(e=>e.date===date&&e.time&&e.status!=='pending'&&((e.time||'').toLowerCase().replace(/\s/g,'')===time.replace(/\s/g,'')));
+  if(sameTm){ document.getElementById('rc-status').innerHTML=`<div class="alert alert-danger">Is date/time pe aapki <b>${esc(sameTm.subject)}</b> class already hai (${esc(sameTm.time)}). Extra class ke liye alag timing choose karein.</div>`; return; }
   const btn=document.getElementById('rc-btn'); btn.disabled=true; btn.textContent='Sending...';
   try{
-    const r=await api('/api/teacher/extra-class','POST',{subject,topic,date,time,chapter,class_name:(document.getElementById('rc-cls')||{}).value||'',shift:document.getElementById('rc-shift').checked});
-    document.getElementById('rc-status').innerHTML=`<div class="alert alert-success">${esc(r.message)}${r.shift_count?`<br><b>${r.shift_count}</b> upcoming classes will auto-shift once approved.`:''}</div>`;
+    const r=await api('/api/teacher/extra-class','POST',{subject,topic,date,time,chapter,class_name:(document.getElementById('rc-cls')||{}).value||''});
+    document.getElementById('rc-status').innerHTML=`<div class="alert alert-success">${esc(r.message)}</div>`;
     toast('Request sent to the admin.'); btn.textContent='Sent'; btn.setAttribute('onclick','closeModal()'); btn.disabled=false;
   }catch(e){ document.getElementById('rc-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Send for Approval'; }
 }
@@ -4261,10 +4300,10 @@ async function loadTTimetable(){
       try{ const r=await fetch(API+'/api/teacher/my-photo',{headers:{Authorization:'Bearer '+TOKEN}}); if(r.ok) url=URL.createObjectURL(await r.blob()); }catch(e){}
       [...new Set(_ttEntries.map(e=>e.subject))].forEach(sub=>{ window._ttTeacherMap[sub]={name:me.name||NAME,url}; });
     }catch(e){ window._ttTeacherMap=window._ttTeacherMap||{}; }
-    renderStudentTimetable(_ttEntries,'t-tline-wrap',{onEdit:true,onDelete:'deleteTTEntry',tipTeacherMap:window._ttTeacherMap||{},onLecture:true,onComplete:'openClassReport',emptyMsg:'No timetable for your subjects yet.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'});
+    renderStudentTimetable(tFilteredTT(),'t-tline-wrap',{onEdit:true,onDelete:'deleteTTEntry',onClassFilter:'tClassFilter',activeClass:_ttClass,tipTeacherMap:window._ttTeacherMap||{},onLecture:true,onComplete:'openClassReport',emptyMsg:'No timetable for your subjects yet.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'});
   }catch(e){ el.innerHTML=errHtml(e); }
 }
-function tSetSubj(s){ _ttActiveSub=decodeURIComponent(s); renderStudentTimetable(_ttEntries,'t-tline-wrap',{tipTeacherMap:window._ttTeacherMap||{},onEdit:true,onDelete:'deleteTTEntry',onLecture:true,onComplete:'openClassReport',emptyMsg:'No entries.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'}); }
+function tSetSubj(s){ _ttActiveSub=decodeURIComponent(s); renderStudentTimetable(tFilteredTT(),'t-tline-wrap',{tipTeacherMap:window._ttTeacherMap||{},onEdit:true,onDelete:'deleteTTEntry',onClassFilter:'tClassFilter',activeClass:_ttClass,onLecture:true,onComplete:'openClassReport',emptyMsg:'No entries.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'}); }
 let _ttClass='';
 function tFilteredTT(){
   return (_ttEntries||[]).filter(e=>{
@@ -7929,7 +7968,7 @@ function _vtCdText(s){
   return neg?`Overdue by ${txt}`:`${txt} left`;
 }
 // ---- admin: One Shot / Rapid Revision / Projects monitor ----
-let _avtSpecTab='', _avtSpecSub='', _avtSpecCls='', _avtSpecOpen=false, _avtView='';
+let _avtSpecTab='', _avtSpecSub='', _avtSpecCls='', _avtSpecProj='', _avtSpecOpen=false, _avtView='';
 function avtView(v){ _avtView=(_avtView===v?'':v); if(_avtView==='projects') _avtSpecOpen=true; loadAVTasks(); }
 function _avtSpecTotals(){
   const sp=window._avtSpec; if(!sp||!sp.one_shot) return {osN:0,osD:0,osT:0,rrN:0,rrD:0,rrT:0,prN:0,prD:0,prT:0};
@@ -7965,7 +8004,11 @@ function _avtSpecBody(){
   if(_avtSpecTab&&!_knds.some(x=>x[0]===_avtSpecTab)) _avtSpecTab='';
   const totalN=_allK.reduce((a,x)=>a+x[2],0);
   const KLBL={one_shot:'One Shot',rapid_revision:'Rapid Revision',project:'Projects'};
-  const inScope=k=>{ let ts=(((sp||{})[k]||{}).tasks)||[]; if(_avtSpecSub) ts=ts.filter(x=>x.subject===_avtSpecSub); if(_avtSpecCls) ts=ts.filter(x=>x.cls===_avtSpecCls); return ts; };
+  // v86 (image-5): Project-name filter — portal ke saare cards (har kind) ek
+  // dropdown me; select karne par sirf wahi card dikhta hai.
+  const _projOpts=[].concat(...['one_shot','rapid_revision','project'].map(k=>((((sp||{})[k]||{}).tasks)||[]).map(t=>({id:String(t.id),lbl:`${KLBL[k]} — ${t.subject||t.title}${t.teacher?' ('+t.teacher+')':''}`}))));
+  if(_avtSpecProj&&!_projOpts.some(o=>o.id===_avtSpecProj)) _avtSpecProj='';
+  const inScope=k=>{ let ts=(((sp||{})[k]||{}).tasks)||[]; if(_avtSpecProj) ts=ts.filter(x=>String(x.id)===_avtSpecProj); if(_avtSpecSub) ts=ts.filter(x=>x.subject===_avtSpecSub); if(_avtSpecCls) ts=ts.filter(x=>x.cls===_avtSpecCls); return ts; };
   const groups=_avtSpecTab?[[_avtSpecTab,KLBL[_avtSpecTab],inScope(_avtSpecTab)]]:_knds.map(([k,l])=>[k,l,inScope(k)]);
   const kindLbl=_avtSpecTab?KLBL[_avtSpecTab]:'';
   const chip=(k,l,n)=>`<button class="vt-knd-tab${_avtSpecTab===k?' on':''}" onclick="_avtSpecTab='${k}';avtSpecRefresh()">${l}${n!=null?` <span class="vt-knd-n">${n}</span>`:''}</button>`;
@@ -7981,13 +8024,19 @@ function _avtSpecBody(){
         <option value="">All Subjects (${subs.length})</option>
         ${subs.map(s=>`<option value="${esc(s)}" ${_avtSpecSub===s?'selected':''}>${esc(s)}</option>`).join('')}
       </select>
+      <span class="vtm-fl">Project</span>
+      <select class="vtm-sel" id="avt-spec-proj" style="max-width:240px" onchange="avtSpecProjSet(this.value)">
+        <option value="">All Projects (${_projOpts.length})</option>
+        ${_projOpts.map(o=>`<option value="${esc(o.id)}" ${_avtSpecProj===o.id?'selected':''}>${esc(o.lbl)}</option>`).join('')}
+      </select>
       <span class="vtm-fl">Type</span>
       ${chip('','All Types',totalN)}
       ${_knds.map(([k,l,n])=>chip(k,l,n)).join('')}
-      <span style="font-size:.68rem;color:var(--text-muted);font-weight:700">${(_avtSpecSub||_avtSpecCls)?'Showing '+[_avtSpecCls?'Class '+_avtSpecCls:'',_avtSpecSub].filter(Boolean).join(' · ')+' cards only':_avtSpecTab?'Showing all '+kindLbl.toLowerCase()+' cards':'Showing all cards'}</span>
+      <span style="font-size:.68rem;color:var(--text-muted);font-weight:700">${_avtSpecProj?'Showing selected project only':(_avtSpecSub||_avtSpecCls)?'Showing '+[_avtSpecCls?'Class '+_avtSpecCls:'',_avtSpecSub].filter(Boolean).join(' · ')+' cards only':_avtSpecTab?'Showing all '+kindLbl.toLowerCase()+' cards':'Showing all cards'}</span>
       <span style="font-size:.7rem;color:var(--text-muted)">Opening a card clears its NEW flag · chapter links are clickable</span></div>
-    ${bodyHtml||`<div class="ws-empty"><p><b>No ${kindLbl?kindLbl+' ':''}tasks found${_avtSpecSub?' for '+esc(_avtSpecSub):''}${_avtSpecCls?' in Class '+_avtSpecCls:''}</b></p><small>${_avtSpecTab==='project'?'Assign a new project from Assign Work → Project tab.':'These tasks are created automatically once teacher subjects are set.'}</small></div>`}`;
+    <div class="hide-scroll" style="max-height:520px;overflow:auto;padding-right:4px">${bodyHtml||`<div class="ws-empty"><p><b>No ${kindLbl?kindLbl+' ':''}tasks found${_avtSpecSub?' for '+esc(_avtSpecSub):''}${_avtSpecCls?' in Class '+_avtSpecCls:''}${_avtSpecProj?' for the selected project':''}</b></p><small>${_avtSpecTab==='project'?'Assign a new project from Assign Work → Project tab.':'These tasks are created automatically once teacher subjects are set.'}</small></div>`}</div>`;
 }
+function avtSpecProjSet(p){ _avtSpecProj=p||''; avtSpecRefresh(); }
 function _avtSpecCard(t){
   const rows=(t.chapters||[]).map(c=> c.link
     ? `<div class="vt-chr done"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">${esc(c.submitted_at||'')}</span>${_avtChSel(t,c)}<a class="lk" href="${esc(c.link)}" target="_blank" rel="noopener">${ic('play')} Open video</a></div>`
@@ -8480,12 +8529,19 @@ async function loadAppReviews(){
         <div class="arv-top"><span class="arv-stars">${'\u2605'.repeat(r.rating)}${'\u2606'.repeat(5-r.rating)}</span>
           <span class="arv-name">${esc(r.student)}</span>
           <span class="arv-meta">${esc(r.phone)}${r.batch?' \u00b7 '+esc(r.batch):''}</span>
-          <span class="arv-meta" style="margin-left:auto">${esc((r.created_at||'').slice(0,16))}</span></div>
+          <span class="arv-meta" style="margin-left:auto">${esc((r.created_at||'').slice(0,16))}</span>
+          <button class="btn btn-danger btn-sm" style="padding:4px 10px;font-size:.72rem" title="Delete review" onclick="delAppReview(${r.id},this)">${ic('trash')}</button></div>
         <div class="arv-txt" style="margin-bottom:0">${esc(r.review)}</div></div>`;
     el.innerHTML=`<div class="card" style="margin-bottom:18px"><div class="card-header"><h3>\u2b50 App Reviews \u2014 Log</h3><span class="xm-chip">${all.length}</span></div>
       <div class="card-body"><p style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">Students who reviewed the app on the Play Store via the portal \u2014 their name, phone number and review text. Use this to match store reviews with your students.</p>
       <div class="hide-scroll" style="max-height:420px">${all.slice(0,100).map(row).join('')}</div></div></div>`;
   }catch(e){ el.innerHTML=''; }
+}
+// v86: admin review log se entry delete (image-4 request).
+async function delAppReview(id,btn){
+  if(btn){ btn.disabled=true; }
+  try{ await api('/api/admin/app-reviews/'+id,'DELETE'); toast('Review deleted.'); loadAppReviews(); }
+  catch(e){ if(btn){ btn.disabled=false; } toast(e.message,true); }
 }
 async function loadAApprovals(){
   const el=document.getElementById('a-approvals-content');
@@ -8507,8 +8563,21 @@ async function loadAApprovals(){
  html+=`<div class="doubt-card" style="border-left-color:var(--warning)"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><h4>Request #${r.id}</h4><p style="font-size:.82rem;color:var(--text-muted);margin-top:4px">Original: ${r.original_date} ${r.original_time} → New: ${r.new_date} ${r.new_time}</p><p style="font-size:.82rem;margin-top:8px"><strong>Reason:</strong> ${esc(r.reason)}</p></div><span class="tag tag-pending">Pending</span></div><div style="display:flex;gap:10px;margin-top:16px"><button class="btn btn-success btn-sm" onclick="reviewRs(${r.id},'approved')"> Approve</button><button class="btn btn-danger btn-sm" onclick="reviewRs(${r.id},'rejected')"> Reject</button></div></div>`;
  });
  html+=`</div></div>`;
+ // v86: Teacher ne topic-edit modal se bheji timetable-class reschedule requests.
+ // Approve karne par class move hoti hai + teacher ka monthly reschedule count +1.
+ let ttrs=[]; try{ ttrs=await api('/api/admin/tt-reschedules/pending'); }catch(e){}
+ html+=`<div class="card"><div class="card-header"><h3>Class Reschedule Requests (Timetable)</h3><span class="chip">${ttrs.length}</span></div><div class="card-body">`;
+ if(ttrs.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No pending class-reschedule requests.</p></div>`;
+ ttrs.forEach(r=>{
+   html+=`<div class="doubt-card" style="border-left-color:var(--primary)"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><h4>${esc(r.subject||'Class')} — ${esc(r.class_name||'')}</h4><p style="font-size:.82rem;color:var(--text-muted);margin-top:4px">Teacher: <strong>${esc(r.teacher||'-')}</strong>${r.chapter?' &nbsp;|&nbsp; '+esc(r.chapter):''}</p><p style="font-size:.82rem;margin-top:6px">${esc(r.original_date||'')} ${esc(r.original_time||'')} &nbsp;→&nbsp; <strong>${esc(r.new_date||'')} ${esc(r.new_time||'')}</strong></p><p style="font-size:.82rem;margin-top:6px"><strong>Reason:</strong> ${esc(r.reason||'-')}</p></div><span class="tag tag-pending">Pending</span></div><div style="display:flex;gap:10px;margin-top:16px"><button class="btn btn-success btn-sm" onclick="reviewTTRs(${r.id},'approved')">${ic('check')} Approve</button><button class="btn btn-danger btn-sm" onclick="reviewTTRs(${r.id},'rejected')">${ic('trash')} Reject</button></div></div>`;
+ });
+ html+=`</div></div>`;
  el.innerHTML=html;
   }catch(e){ el.innerHTML=errHtml(e); }
+}
+async function reviewTTRs(id,status){
+  // Approve => class move + teacher count +1 (sirf teacher-initiated count hota hai).
+  try{ await api(`/api/admin/tt-reschedules/${id}/review`,'POST',{status,admin_note:status==='rejected'?'Rejected by admin':'Approved'}); toast(`Class reschedule ${status}!`); loadAApprovals(); }catch(e){ toast(e.message,true); }
 }
 async function reviewRs(id,status){
   try{ await api(`/api/admin/reschedules/${id}/review`,'PATCH',{status,admin_note:status==='rejected'?'Rejected by admin':'Approved'}); toast(`Reschedule ${status}!`); loadAApprovals(); }catch(e){ toast(e.message,true); }
@@ -9624,7 +9693,33 @@ function adminEditTT(id){
   <div class="form-group"><label>Topic / Part</label><input class="form-control" id="ae-part" value="${esc(e.part||'')}" placeholder="e.g. Part 1 - Introduction"></div>
   <div class="form-group"><label>Date</label><input type="date" class="form-control" id="ae-date" value="${esc(e.date||'')}"></div>
   <div class="form-group"><label>Time</label><input class="form-control" id="ae-time" value="${esc(e.time||'')}" placeholder="e.g. 8:00 PM"></div>`,
- `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitAdminEditTT(${id})">Save Changes</button>`);
+ `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-ghost" onclick="openAdminReschedTT(${id})">${ic('calendar')} Reschedule</button><button class="btn btn-primary" onclick="submitAdminEditTT(${id})">Save Changes</button>`);
+}
+// ===== v86: ADMIN DIRECT RESCHEDULE (no approval, no salary/count impact) =====
+// Teacher centre pe hai par class ka time/date badalna hai — admin seedha move kare.
+// Ye teacher ke monthly reschedule count ya payout pe KOI asar nahi daalta
+// (resched_by = 'admin'; sirf teacher-panel requests count hoti hain).
+function openAdminReschedTT(id){
+  const e=(_attEntries||[]).find(x=>x.id===id); if(!e){ toast('Entry not found.',true); return; }
+  showModal(`${ic('calendar')} Reschedule Class — Admin`,
+  `<div class="alert alert-info">Yeh class admin ki taraf se move hogi — approval ki zaroorat nahi, aur <b>teacher ke reschedule count ya salary pe koi asar nahi padega</b>. Students ko teacher ki photo ke saath notification jayegi.</div>
+   <div class="alert alert-info" style="margin-top:6px"><b>${esc(e.subject||'')}</b> · ${esc(e.class_name||'')} · ${esc(e.chapter||'')}${e.part?' · '+esc(e.part):''}<br>Current: <b>${esc(e.date||'')}</b> · <b>${esc(e.time||'')}</b>${e.resched_by?`<br><span class="muted">Last moved by: ${esc(e.resched_by)}</span>`:''}</div>
+   <div class="form-group"><label>New Date</label><input type="date" class="form-control" id="ars-date" value="${esc(e.date||'')}"></div>
+   <div class="form-group"><label>New Time (optional — khali chhodo to time same rahega)</label><input class="form-control" id="ars-time" placeholder="e.g. 6:30 PM"></div>
+   <div class="form-group"><label>Reason (optional)</label><input class="form-control" id="ars-reason" placeholder="e.g. Centre work — class shifted"></div>`,
+  `<button class="btn btn-ghost" onclick="adminEditTT(${id})">Back</button><button class="btn btn-primary" onclick="submitAdminReschedTT(${id})">${ic('check')} Reschedule Now</button>`);
+}
+async function submitAdminReschedTT(id){
+  const nd=val('ars-date');
+  if(!nd){ toast('New date chuno.',true); return; }
+  const body={new_date:nd};
+  const nt=(val('ars-time')||'').trim(); if(nt) body.new_time=nt;
+  const rs=(val('ars-reason')||'').trim(); if(rs) body.reason=rs;
+  try{
+    const r=await api('/api/admin/timetable-entry/'+id+'/reschedule','POST',body);
+    closeModal(); toast(r.message||'Class rescheduled. Students notified.');
+    _attEntries=await api('/api/admin/timetable-all'); aRenderTT();
+  }catch(e){ toast(e.message,true); }
 }
 async function submitAdminEditTT(id){
   const sub=val('ae-sub');
@@ -12418,10 +12513,13 @@ async function loadNotif(path,elId){
  if(ns.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No notifications yet</p></div>`;
  ns.forEach(n=>{
    const go=(NOTIF_GO[role]||{})[n.notif_type||''];
-   html+=`<div class="doubt-card" style="border-left-color:${n.is_read?'var(--border)':'var(--primary)'}${go?';cursor:pointer':''}"${go?` onclick="notifGo('${role}',${n.id||0},'${esc(n.notif_type||'')}')" title="Tap to open this section"`:''}><div style="display:flex;justify-content:space-between"><h4 style="font-size:.9rem">${esc(n.title)}${go?' <span style="font-size:.7rem;color:var(--primary);font-weight:800">&#8250;</span>':''}</h4><small style="color:var(--text-muted)">${new Date(n.created_at).toLocaleString()}</small></div><p style="font-size:.82rem;color:var(--text-muted);margin-top:6px">${esc(n.message)}</p></div>`;
+   const av=_notifAvHtml(n,'MVS');
+   const core=`<div style="display:flex;justify-content:space-between;gap:8px"><h4 style="font-size:.9rem">${esc(n.title)}${go?' <span style="font-size:.7rem;color:var(--primary);font-weight:800">&#8250;</span>':''}</h4><small style="color:var(--text-muted);flex-shrink:0">${new Date(n.created_at).toLocaleString()}</small></div><p style="font-size:.82rem;color:var(--text-muted);margin-top:6px">${esc(n.message)}</p>`;
+   html+=`<div class="doubt-card${go?' notif-click':''}" style="border-left-color:${n.is_read?'var(--border)':'var(--primary)'}${go?';cursor:pointer':''}"${go?` onclick="notifGo('${role}',${n.id||0},'${esc(n.notif_type||'')}')" title="Tap to open this section"`:''}>${av?`<div class="notif-row">${av}<div style="min-width:0;flex:1">${core}</div></div>`:core}</div>`;
  });
  html+=`</div></div>`;
  el.innerHTML=html;
+ _notifImgs(el);
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function val(id){ const e=document.getElementById(id); return e?e.value.trim():''; }
@@ -13985,7 +14083,9 @@ function _slipHTML(d){
      <table style="width:100%;border-collapse:collapse;font-size:9.5px;border:1px solid #e4ebf5;border-top:none"><tbody>
       <tr style="border-bottom:1px solid #e4ebf5"><td style="padding:5px 9px;color:#1a2a3a">TDS / Income Tax</td><td style="padding:5px 9px;text-align:right;color:#c0392b;font-weight:700">${_inr(e.tds)}</td></tr>
       <tr style="border-bottom:1px solid #e4ebf5"><td style="padding:5px 9px;color:#1a2a3a">Other Deductions</td><td style="padding:5px 9px;text-align:right;color:#c0392b;font-weight:700">${_inr(e.other_deduct)}</td></tr>
-      <tr style="background:#fff8f7"><td style="padding:5px 9px;font-weight:800;color:#c0392b">Total Deductions</td><td style="padding:5px 9px;text-align:right;font-weight:800;color:#c0392b">${_inr(e.tds+e.other_deduct)}</td></tr>
+      ${(e.leave_deduction||0)>0?`<tr style="border-bottom:1px solid #e4ebf5"><td style="padding:5px 9px;color:#1a2a3a">Unpaid Leave (${e.leave_unpaid_days} day${e.leave_unpaid_days===1?'':'s'} × ${_inr(e.leave_per_day||0)}/day)</td><td style="padding:5px 9px;text-align:right;color:#c0392b;font-weight:700">${_inr(e.leave_deduction)}</td></tr>`:''}
+      ${(e.leave_paid_days||0)>0?`<tr style="border-bottom:1px solid #e4ebf5"><td style="padding:5px 9px;color:#5A6B85;font-style:italic">Paid Leave (${e.leave_paid_days} day${e.leave_paid_days===1?'':'s'}) — no deduction</td><td style="padding:5px 9px;text-align:right;color:#5A6B85">${_inr(0)}</td></tr>`:''}
+      <tr style="background:#fff8f7"><td style="padding:5px 9px;font-weight:800;color:#c0392b">Total Deductions</td><td style="padding:5px 9px;text-align:right;font-weight:800;color:#c0392b">${_inr(e.tds+e.other_deduct+(e.leave_deduction||0))}</td></tr>
      </tbody></table>
     </div>
     <div style="background:linear-gradient(135deg,#0F2A54,#1a3d70);border-radius:8px;padding:12px 14px;color:#fff">
@@ -14051,6 +14151,7 @@ function _earnHeroHTML(d,actions){
     <div style="font-size:.72rem;opacity:.62;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">Net Payable \u00B7 ${esc(d.month_label)}</div>
     <div style="font-size:2.2rem;font-weight:900;line-height:1.05">${_inr(e.net_payable)}</div>
     <div style="font-size:.74rem;opacity:.62;margin-top:6px">of maximum ${_inr(e.max_potential)} \u00B7 unclaimed ${_inr(Math.max(0,e.max_potential-e.net_payable))}</div>
+    ${(e.leave_deduction||0)>0?`<div style="font-size:.72rem;margin-top:5px;color:#fca5a5">Unpaid leave deduction: −${_inr(e.leave_deduction)} (${e.leave_unpaid_days} day${e.leave_unpaid_days===1?'':'s'} × ${_inr(e.leave_per_day||0)}/day)${(e.leave_paid_days||0)>0?` \u00B7 ${e.leave_paid_days} paid-leave day${e.leave_paid_days===1?'':'s'} (no deduction)`:''}</div>`:(e.leave_paid_days||0)>0?`<div style="font-size:.72rem;margin-top:5px;opacity:.7">${e.leave_paid_days} paid-leave day${e.leave_paid_days===1?'':'s'} — no salary deduction</div>`:''}
    </div>
    <div style="text-align:center;min-width:120px">
     <div style="font-size:2rem;font-weight:900;color:${e.perf_score>=85?'#34d399':e.perf_score>=65?'#fbbf24':'#f87171'}">${e.perf_score}%</div>
@@ -14137,6 +14238,7 @@ async function loadAAttendance(){
       <div class="card-body" id="a-wt-body" style="${_aWtOpen?'':'display:none'}"><div class="spinner"></div></div></div>
     <div class="card"><div class="card-header"><h3>Attendance</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-primary btn-sm" onclick="openAdminPunch()">${ic('clock')} Add Punch</button>
         <button class="btn btn-ghost btn-sm" onclick="openOfficeLocation()">${ic('location')} Office Location</button>
         <div class="tt-toggle"><button class="${_aAttView==='day'?'active':''}" onclick="_aAttView='day';loadAAttendance()">Day View</button><button class="${_aAttView==='month'?'active':''}" onclick="_aAttView='month';loadAAttendance()">Month Summary</button></div>
         ${_aAttView==='day'
@@ -14223,6 +14325,32 @@ async function wtSave(tid,i){
     toast(r.message); aWtFetch(); aAttFetch();
   }catch(e){ toast(e.message||'Could not save',true); if(btn){ btn.disabled=false; btn.innerHTML=ic('check')+' Save Timing'; } }
 }
+// ---- Admin manual punch (teacher punch karna bhool gaya ho) ----
+async function openAdminPunch(){
+  let ts=[];
+  try{ const d=await api('/api/admin/attendance/policies'); ts=d.teachers||[]; }catch(e){}
+  if(!ts.length){ toast('No active teachers found.',true); return; }
+  const today=new Date().toISOString().slice(0,10);
+  showModal('Add Punch — Admin Entry',
+ `<div class="alert alert-info" style="font-size:.78rem">Teacher present tha par <b>punch karna bhool gaya</b>? Date aur in/out time daal kar entry kar dein — present/short apne aap policy ke hisaab se calculate hoga, aur teacher ko notification chali jayegi.</div>
+  <div class="form-group"><label>Teacher</label><select class="form-control" id="ap-t">${ts.map(t=>`<option value="${t.teacher_id}">${esc(t.name)}</option>`).join('')}</select></div>
+  <div class="form-group"><label>Date</label><input type="date" class="form-control" id="ap-d" max="${today}" value="${_aAttDate||today}"></div>
+  <div class="ex-grid2">
+   <div><label class="ex-lbl">Punch In</label><input type="time" class="form-control" id="ap-in" value="09:30"></div>
+   <div><label class="ex-lbl">Punch Out</label><input type="time" class="form-control" id="ap-out" value="18:30"></div>
+  </div>`,
+ `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="ap-btn" onclick="submitAdminPunch()">${ic('check')} Save Punch</button>`);
+}
+async function submitAdminPunch(){
+  const body={teacher_id:parseInt(val('ap-t'))||0, date:val('ap-d'), punch_in:val('ap-in'), punch_out:val('ap-out')};
+  if(!body.teacher_id||!body.date||!body.punch_in){ toast('Teacher, date and punch-in time are required.',true); return; }
+  const btn=document.getElementById('ap-btn'); btn.disabled=true; btn.textContent='Saving...';
+  try{
+    const r=await api('/api/admin/attendance/punch','POST',body);
+    closeModal(); toast(`Punch saved — In ${r.punch_in}${r.punch_out?', Out '+r.punch_out:''}.`);
+    aAttFetch();
+  }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Save Punch'; }
+}
 // ---- Leave approvals (admin) ----
 async function aLeaveFetch(){
   const box=document.getElementById('a-leave-body'); if(!box) return;
@@ -14234,16 +14362,35 @@ async function aLeaveFetch(){
     if(!rows.length){ box.innerHTML=`<div class="pay-empty">No leave requests yet. When a teacher applies for leave, it will appear here for approval.</div>`; return; }
     const pend=rows.filter(l=>l.status==='pending');
     const done=rows.filter(l=>l.status!=='pending').slice(0,6);
-    const pill=l=>l.status==='approved'?'<span class="po-pill green">APPROVED</span>':'<span class="po-pill red">REJECTED</span>';
+    const pill=l=>l.status==='approved'?`<span class="po-pill green">APPROVED${l.paid?' · PAID':' · UNPAID'}</span>`:'<span class="po-pill red">REJECTED</span>';
     box.innerHTML=(pend.length?pend.map(l=>`<div class="lv-card pend">
         <div class="lv-head"><div><div class="lv-name">${esc(l.teacher)}</div><div class="lv-dates">${esc(fmtNice(l.start_date))}${l.end_date!==l.start_date?' → '+esc(fmtNice(l.end_date)):''} · ${l.days} day${l.days>1?'s':''} · ${l.leave_type==='half'?'Half day':'Full day'} · applied ${esc(l.created_at)}</div></div><span class="po-pill amber">PENDING</span></div>
         <div class="lv-reason">${esc(l.reason)}</div>
-        <div class="lv-actions"><button class="btn btn-primary btn-sm" onclick="aLeaveReview(${l.id},'approved')">${ic('check')} Approve</button><button class="btn btn-ghost btn-sm" style="border-color:rgba(220,38,38,.5);color:#b91c1c" onclick="aLeaveReject(${l.id})">Reject</button></div>
+        <div class="lv-actions"><button class="btn btn-primary btn-sm" onclick="aLeaveApproveOpen(${l.id})">${ic('check')} Approve</button><button class="btn btn-ghost btn-sm" style="border-color:rgba(220,38,38,.5);color:#b91c1c" onclick="aLeaveReject(${l.id})">Reject</button></div>
       </div>`).join(''):'')
       +(done.length?`<div style="font-size:.68rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin:12px 0 4px">Recently reviewed</div>`:'')
       +done.map(l=>`<div class="lv-row"><div style="min-width:0"><div class="lv-d">${esc(l.teacher)} — ${esc(fmtNice(l.start_date))}${l.end_date!==l.start_date?' → '+esc(fmtNice(l.end_date)):''}</div>
         <div class="lv-r">${esc(l.reason)}${l.admin_remark?` · Remark: ${esc(l.admin_remark)}`:''}</div></div>${pill(l)}</div>`).join('');
   }catch(e){ box.innerHTML=errHtml(e); }
+}
+function aLeaveApproveOpen(id){
+  showModal('Approve Leave',`
+    <div class="alert alert-info" style="font-size:.78rem">Approve karte waqt choose karein ki ye leave <b>paid</b> hai ya <b>unpaid</b>. Unpaid leave complete salary ke per-day rate se katti hai; paid pe koi deduction nahi. Approved full-day leave ki us-din ki classes time table me apne aap aage move ho jayengi (teacher ke reschedule count pe asar nahi) aur students ko notification chali jayegi.</div>
+    <div class="form-group"><label>Leave Type (pay)</label><select class="form-control" id="alv-paid">
+      <option value="unpaid" selected>Unpaid Leave — per-day salary deduction hogi</option>
+      <option value="paid">Paid Leave — payout pe koi asar nahi</option>
+    </select></div>
+    <div class="form-group"><label>Remark (optional)</label><input class="form-control" id="alv-remark2" placeholder="e.g. Approved — classes auto-moved"></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="aLeaveApproveSubmit(${id})">${ic('check')} Approve Leave</button>`);
+}
+async function aLeaveApproveSubmit(id){
+  const paid=val('alv-paid')==='paid';
+  const remark=(val('alv-remark2')||'').trim();
+  try{
+    const r=await api('/api/admin/leaves/'+id+'/review','POST',{action:'approved',paid,remark});
+    toast(`Leave approved (${paid?'PAID':'UNPAID'}).`+(r.classes_moved?` ${r.classes_moved} class(es) auto-moved — students notified.`:''));
+    closeModal(); aLeaveFetch(); aAttFetch();
+  }catch(e){ toast(e.message||'Could not review'); }
 }
 async function aLeaveReview(id,action,remark){
   try{
@@ -15196,7 +15343,8 @@ body.dark .po-pill.red{color:#f87171}
 .vt-knd-tab:hover{transform:translateY(-1px);box-shadow:0 5px 12px -6px rgba(15,23,42,.28);border-color:rgba(184,148,31,.6)}
 .vt-knd-tab.on{background:linear-gradient(135deg,#3a2c07,#6b4f0c);color:#fff;border-color:transparent;box-shadow:0 6px 16px -6px rgba(15,23,42,.42)}
 .vt-knd-tab.on .vt-knd-n{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.32);color:#ffe9a8}
-.vtm-sec-cap{display:flex;align-items:center;gap:9px;margin:4px 0 12px;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--text-muted)}
+.vtm-sec-cap{display:flex;align-items:center;gap:10px;margin:16px 0 10px;padding:11px 17px;font-size:.76rem;font-weight:900;text-transform:uppercase;letter-spacing:.11em;color:#fffdf2;background:linear-gradient(135deg,#3d2e0a,#6b5518 55%,#8a6d1f);border-radius:12px;box-shadow:0 8px 20px -8px rgba(90,70,15,.55);border:1px solid rgba(232,198,106,.4)}
+.vtm-sec-cap::before{content:'';width:9px;height:9px;border-radius:99px;background:#e8c66a;box-shadow:0 0 10px #e8c66a;flex-shrink:0}
 .vtm-sec-cap::after{content:'';flex:1;height:1px;background:var(--border)}
 .vt-chst{font-size:.6rem;font-weight:800;padding:2px 9px;border-radius:999px;border:1.2px solid;
   text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;flex-shrink:0}

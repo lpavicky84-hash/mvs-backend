@@ -190,6 +190,7 @@ class RescheduleRequest(Base):
 
     id             = Column(Integer, primary_key=True)
     class_entry_id = Column(Integer, ForeignKey("class_entries.id"), unique=True)
+    tt_entry_id    = Column(Integer, nullable=True)   # v86: timetable_entries wali request (class_entry NULL rehti hai)
     teacher_id     = Column(Integer, ForeignKey("teacher_profiles.id"))
     original_date  = Column(Date)
     original_time  = Column(Time)
@@ -471,6 +472,7 @@ class Notification(Base):
     message    = Column(Text)
     notif_type = Column(String(50))   # reschedule_approved, reschedule_rejected, new_notes, test_reminder, doubt_resolved
     link       = Column(String(500), nullable=True)  # video_task link — click pe open
+    image_url  = Column(String(500), nullable=True)  # v86: teacher photo endpoint — notification avatar
     is_read    = Column(Boolean, default=False)
     created_at = Column(DateTime, default=func.now())
 
@@ -515,6 +517,7 @@ class TimetableEntry(Base):
     homework        = Column(Text, nullable=True)
     dpp_given       = Column(Boolean, default=False)
     remarks         = Column(Text, nullable=True)
+    resched_by      = Column(String(20), nullable=True)  # v86: kaun move kiya — teacher | admin | leave (NULL = kabhi move nahi)
     created_at  = Column(DateTime, default=func.now())
 
 # =============================================
@@ -829,6 +832,7 @@ class TeacherLeave(Base):
     leave_type   = Column(String(30), default="full")   # full | half
     reason       = Column(Text, default="")
     status       = Column(String(20), default="pending", index=True)  # pending | approved | rejected
+    paid         = Column(Boolean, default=False)       # v86: admin approve karte waqt choose karta hai — paid leave pe salary deduction NAHI
     admin_remark = Column(Text, default="")
     reviewed_at  = Column(DateTime, nullable=True)
     created_at   = Column(DateTime, server_default=func.now())

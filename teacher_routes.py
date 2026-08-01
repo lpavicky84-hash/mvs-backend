@@ -472,6 +472,7 @@ def _serialize_tt(e, canon=None):
         "remarks": getattr(e, "remarks", None),
         "start_time": getattr(e, "start_time", None),
         "end_time": getattr(e, "end_time", None),
+        "resched_by": getattr(e, "resched_by", None),
         "completed_at": str(getattr(e, "completed_at", "")) if getattr(e, "completed_at", None) else None
     }
 
@@ -2873,10 +2874,12 @@ def extra_class_preview(payload: dict, db: Session = Depends(get_db), current_us
 
 @router.post("/extra-class")
 def create_extra_class(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
-    """Extra class request + (optional) baaki classes ka auto-shift.
-       Sab kuch admin approval par hi live hota hai."""
+    """v86: Extra class request — KOI AUTO-SHIFT NAHI. Missed/absent class ki
+       compensation teacher khud alag slot pe karta hai; baaki classes apni
+       jagah rehti hain. Sab kuch admin approval par hi live hota hai."""
     from models import TimetableEntry, User, UserRole, Notification
     tp = get_teacher_profile(current_user, db)
+    _ensure_v86(db)
     subject = (payload.get("subject") or "").strip()
     if subject not in (tp.subjects or []):
         raise HTTPException(status_code=400, detail="This is not your subject")
@@ -2887,10 +2890,23 @@ def create_extra_class(payload: dict, db: Session = Depends(get_db), current_use
     time_text = (payload.get("time") or "").strip()
     chapter = (payload.get("chapter") or payload.get("topic") or "Extra Class").strip()
     part = (payload.get("topic") or "").strip() or None
-    do_shift = bool(payload.get("shift", True))
 
-    plan = _plan_shift(db, tp, subject, nd,
-                       class_name=(payload.get("class_name") or None)) if do_shift else {"shifted": []}
+    # Same slot pe pehle se class hai to rok do — extra class alag timing pe hi honi chahiye
+    def _tmin(s):
+        m = _parse_hhmm(s)
+        return m if m is not None else -1
+    clash = None
+    for x in db.query(TimetableEntry).filter(
+            TimetableEntry.teacher_id == tp.id,
+            TimetableEntry.entry_date == nd,
+            TimetableEntry.status == "approved").all():
+        if time_text and _tmin(x.time_text) == _tmin(time_text) and _tmin(time_text) >= 0:
+            clash = x
+            break
+    if clash:
+        raise HTTPException(status_code=400,
+            detail=f"Is date/time pe aapki {clash.subject} class already hai "
+                   f"({clash.time_text or ''}). Extra class ke liye alag timing choose karein.")
 
     e = TimetableEntry(
         teacher_id=tp.id, subject=subject,
@@ -2900,21 +2916,146 @@ def create_extra_class(payload: dict, db: Session = Depends(get_db), current_use
     )
     db.add(e); db.flush()
 
-    # shift ko abhi apply nahi karte — admin approve karega tab hoga
-    if plan.get("shifted"):
-        e.shift_plan = json.dumps(plan["shifted"])[:60000]
-
     for adm in db.query(User).filter(User.role == UserRole.admin).all():
         msg = (f"{current_user.name} requested an extra class for {subject} "
-               f"({nd} {time_text}).")
-        if plan.get("shifted"):
-            msg += f" Approving it will auto-shift {len(plan['shifted'])} later classes."
+               f"({nd} {time_text}). Baaki classes shift nahi hongi — ye alag slot pe hogi.")
         db.add(Notification(user_id=adm.id, title="New Extra Class Request",
                             message=msg, notif_type="class_request"))
     db.commit(); db.refresh(e)
-    return {"id": e.id, "shift_count": len(plan.get("shifted", [])),
-            "overflow": plan.get("overflow", False),
-            "message": "Request sent to the admin. Once approved, the class and the auto-shift will apply."}
+    return {"id": e.id, "shift_count": 0,
+            "message": "Request sent to the admin. Once approved, this extra class will be added at your chosen time — other classes stay as they are."}
+
+# =====================================================================
+# v86: CLASS MOVE HELPERS (leave auto-move / admin move) + TEACHER RESCHEDULE
+# Sirf TEACHER ki khud ki request reschedule-count me jati hai —
+# admin ya approved-leave ki wajah se hua move count/salary ko touch nahi karta.
+# =====================================================================
+def _students_of_subject(db, subject):
+    """Us subject ke enrolled students (canon match) — notification targeting."""
+    from models import StudentProfile
+    nk = (_SR.canon_norm(subject) if _SR else subject)
+    out = []
+    for sp in db.query(StudentProfile).all():
+        try:
+            subs = sp.subjects or []
+        except Exception:
+            subs = []
+        if subs and nk in {(_SR.canon_norm(x) if _SR else x) for x in subs} and sp.user:
+            out.append(sp)
+    return out
+
+def _notify_class_moved(db, tp, moved, headline, note):
+    """moved = [(entry, old_date, old_time), ...] — students ko teacher ki PHOTO ke
+    saath notification (image_url -> student photo endpoint)."""
+    from models import Notification
+    img = f"/api/student/teacher/{tp.id}/photo" if getattr(tp, "photo_b64", None) else None
+    by_sub = {}
+    for e, od, ot in moved:
+        by_sub.setdefault(e.subject or "", []).append((e, od, ot))
+    for subj, rows in by_sub.items():
+        parts = []
+        for e, od, ot in rows[:6]:
+            cls = f" ({e.class_name})" if e.class_name else ""
+            ods = od.strftime("%d %b") if od else "—"
+            nds = e.entry_date.strftime("%d %b") if e.entry_date else "—"
+            parts.append(f"{subj}{cls}: {ods} {ot or ''} → {nds} {e.time_text or ''}".replace("  ", " ").strip())
+        if len(rows) > 6:
+            parts.append(f"+{len(rows) - 6} more")
+        msg = (note + " " if note else "") + "; ".join(parts) + ". Check your time table."
+        for sp in _students_of_subject(db, subj):
+            db.add(Notification(user_id=sp.user.id, title=f"{headline}{subj}",
+                                message=msg, notif_type="class_rescheduled",
+                                image_url=img))
+
+def _auto_move_leave_classes(db, tp, lv):
+    """Approved FULL leave ke dinon ki pending classes aage move karta hai —
+    leave ke span ke barabar days aage; same-time collision pe aur aage (max 14).
+    resched_by='leave' => teacher ke reschedule count/salary pe koi asar NAHI."""
+    from models import TimetableEntry
+    _ensure_v86(db)
+    if (lv.leave_type or "full") != "full":
+        return []
+    span = max(1, (lv.end_date - lv.start_date).days + 1)
+    rows = db.query(TimetableEntry).filter(
+        TimetableEntry.teacher_id == tp.id,
+        TimetableEntry.entry_date >= lv.start_date,
+        TimetableEntry.entry_date <= lv.end_date,
+        TimetableEntry.status == "approved",
+        TimetableEntry.completed == False).all()
+    moved = []
+    for e in rows:
+        od, ot = e.entry_date, e.time_text
+        nd = e.entry_date + timedelta(days=span)
+        em = _parse_hhmm(e.time_text)
+        for _try in range(14):
+            conf = db.query(TimetableEntry).filter(
+                TimetableEntry.teacher_id == tp.id,
+                TimetableEntry.entry_date == nd,
+                TimetableEntry.id != e.id,
+                TimetableEntry.status == "approved").all()
+            if em is None or not any(_parse_hhmm(x.time_text) == em for x in conf):
+                break
+            nd += timedelta(days=1)
+        e.entry_date = nd
+        e.day = nd.strftime("%A")
+        e.resched_by = "leave"
+        moved.append((e, od, ot))
+    return moved
+
+@router.post("/tt-reschedule")
+def request_tt_reschedule(payload: dict = Body(...), db: Session = Depends(get_db),
+                          current_user=Depends(get_teacher)):
+    """Topic-edit modal ka 'Reschedule' button — timetable entry ki nayi date/time
+    request. Admin approval ke baad apply hoti hai aur TEACHER ke monthly
+    reschedule count me jati hai."""
+    from models import (TimetableEntry, RescheduleRequest, RescheduleStatus,
+                        User, UserRole, Notification)
+    from datetime import time as _time
+    tp = get_teacher_profile(current_user, db)
+    _ensure_v86(db)
+    try:
+        eid = int(payload.get("entry_id"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="entry_id is required")
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == eid).first()
+    if not e or (e.subject not in (tp.subjects or []) and e.teacher_id != tp.id):
+        raise HTTPException(status_code=404, detail="Entry not found")
+    if e.completed:
+        raise HTTPException(status_code=400, detail="Completed class reschedule nahi ho sakti")
+    try:
+        nd = _dt2.strptime((payload.get("new_date") or "").strip(), "%Y-%m-%d").date()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Please choose a valid new date")
+    nt_txt = (payload.get("new_time") or "").strip()
+    mins = _parse_hhmm(nt_txt)
+    if not nt_txt or mins is None:
+        raise HTTPException(status_code=400, detail="Please enter a valid new time (e.g. 5:00 PM)")
+    reason = (payload.get("reason") or "").strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="Please write a short reason")
+    dup = db.query(RescheduleRequest).filter(
+        RescheduleRequest.tt_entry_id == e.id,
+        RescheduleRequest.status == RescheduleStatus.pending).first()
+    if dup:
+        raise HTTPException(status_code=400,
+                            detail="Is class ki reschedule request pehle se pending hai")
+    om = _parse_hhmm(e.time_text)
+    h, m = divmod(mins, 60)
+    rs = RescheduleRequest(
+        class_entry_id=None, tt_entry_id=e.id, teacher_id=tp.id,
+        original_date=e.entry_date,
+        original_time=(_time(*divmod(om, 60)) if om is not None else None),
+        new_date=nd, new_time=_time(h, m), reason=reason,
+        status=RescheduleStatus.pending)
+    db.add(rs)
+    for adm in db.query(User).filter(User.role == UserRole.admin).all():
+        db.add(Notification(
+            user_id=adm.id, title="Reschedule Request",
+            message=(f"{current_user.name} wants to move {e.subject} ({e.class_name or ''}) "
+                     f"of {e.entry_date} {e.time_text or ''} to {nd} {nt_txt}. Reason: {reason}"),
+            notif_type="reschedule_request"))
+    db.commit()
+    return {"message": "Request sent to the admin. Approval ke baad class move hogi — ye aapke monthly reschedule count me judegi."}
 
 # =====================================================================
 # TEACHER ATTENDANCE (PUNCH IN / PUNCH OUT) + CONTRACT + PAYOUT
@@ -2946,15 +3087,19 @@ def _is_short(a):
         return False
     return (a.punch_out - a.punch_in).total_seconds() < MIN_PRESENT_HOURS * 3600
 
-def _leave_days_map(db, teacher_id, start, end):
-    """Approved leaves -> {date: 1.0|0.5} month range ke andar."""
+def _leave_days_map(db, teacher_id, start, end, unpaid_only=False):
+    """Approved leaves -> {date: 1.0|0.5} month range ke andar.
+    v86: unpaid_only=True -> sirf UNPAID leaves (salary deduction ke liye);
+    paid leaves attendance me 'Leave' dikhti hain par pay se kati nahi."""
     from models import TeacherLeave
     out = {}
-    rows = db.query(TeacherLeave).filter(
+    q = db.query(TeacherLeave).filter(
         TeacherLeave.teacher_id == teacher_id,
         TeacherLeave.status == "approved",
-        TeacherLeave.start_date < end, TeacherLeave.end_date >= start).all()
-    for lv in rows:
+        TeacherLeave.start_date < end, TeacherLeave.end_date >= start)
+    for lv in q.all():
+        if unpaid_only and bool(getattr(lv, "paid", False)):
+            continue
         d = max(lv.start_date, start)
         e = min(lv.end_date, end - timedelta(days=1))
         val = 0.5 if lv.leave_type == "half" else 1.0
@@ -3299,11 +3444,12 @@ def compute_performance(db, teacher_id: int, month: str):
 def compute_payout(db, teacher_id: int, month: str):
     """Transparent payout breakdown — teacher aur admin dono yahi dekhte hain.
     Net = Base + Allowances + Extras + Bonus - Manual Deductions - Attendance Deduction.
-    Attendance Deduction = (absent + approved leave) x per-day rate.
-    Approved leave UNPAID hai (us din ki pay nahi milti) par penalty NAHI lagti;
-    bina approval ki chhutti (absent) ka penalty rule baad me add hoga."""
+    Attendance Deduction = (absent + UNPAID approved leave) x per-day rate.
+    v86: admin leave approve karte waqt PAID/UNPAID choose karta hai — PAID leave pe
+    koi deduction nahi; UNPAID leave (default) per-day rate se katti hai.
+    Bina approval ki chhutti (absent) ka penalty rule baad me add hoga."""
     from models import TeacherContract, TeacherAttendance, PayoutAdjustment
-    _ensure_geofence(db)
+    _ensure_geofence(db); _ensure_v86(db)
     c = db.query(TeacherContract).filter(TeacherContract.teacher_id == teacher_id).first()
     if not c:
         return None
@@ -3320,15 +3466,17 @@ def compute_payout(db, teacher_id: int, month: str):
     present = full_days + short
     extra_hours = round(sum(_extra_hours(a, pol) for a in att_rows), 1)
     leave_days = sum(_leave_days_map(db, teacher_id, start, end).values())
+    unpaid_leave = sum(_leave_days_map(db, teacher_id, start, end, unpaid_only=True).values())
+    paid_leave = round(leave_days - unpaid_leave, 1)
     wd = c.working_days or 26
     base = c.base_salary or 0
     per_day = round(base / wd) if wd else 0
-    # Approved leave = UNPAID (per-day rate ki deduction, par koi penalty nahi);
-    # short day (assigned hours se kam) PRESENT hai — deduction nahi;
+    # Approved UNPAID leave = per-day rate ki deduction (penalty nahi);
+    # PAID leave = deduction NAHI; short day (assigned hours se kam) PRESENT hai;
     # bina approval ki chhutti (absent) = deduction
     # (absent par alag PENALTY rule baad me add hoga).
     absent = max(0, round(wd - present - leave_days))
-    leave_ded = round(per_day * leave_days)
+    leave_ded = round(per_day * unpaid_leave)
     att_deduction = per_day * absent + leave_ded
     adjs = db.query(PayoutAdjustment).filter(
         PayoutAdjustment.teacher_id == teacher_id,
@@ -3349,10 +3497,11 @@ def compute_payout(db, teacher_id: int, month: str):
         "base_salary": base, "allowances": c.allowances or 0,
         "working_days": wd, "present_days": present, "absent_days": absent,
         "short_days": short, "full_days": full_days, "leave_days": leave_days,
+        "paid_leave_days": paid_leave, "unpaid_leave_days": unpaid_leave,
         "extra_hours": extra_hours,
         "min_hours": MIN_PRESENT_HOURS, "required_hours": _policy_required(pol),
         "per_day_rate": per_day, "attendance_deduction": att_deduction,
-        "leave_deduction": leave_ded, "unpaid_days": absent + leave_days,
+        "leave_deduction": leave_ded, "unpaid_days": absent + unpaid_leave,
         "extras": extras, "bonus": bonus, "manual_deductions": manual_ded,
         "gross_salary": gross, "performance": perf,
         "perf_pct": perf["perf_pct"] if perf["started"] else None,
@@ -3581,11 +3730,25 @@ def _month_activity(db, tp, month):
 
 def earnings_payload(db, tp, month):
     """Teacher + pay config + month activity + earnings — slip/letter dono ka data."""
+    _ensure_v86(db)
     cfg = get_pay_config(db, tp.id)
     act = _month_activity(db, tp, month)
     pay = {k: int(getattr(cfg, k) or 0) for k in EARNINGS_PAY_FIELDS}
     targets = {k: int(getattr(cfg, k) or 0) for k in EARNINGS_TARGET_FIELDS}
     e = calc_earnings(act, {**pay, **targets})
+    # ---- v86: UNPAID approved leave ka per-day deduction (complete salary se) ----
+    # PAID leave (admin ne approve karte waqt 'Paid' chuna) pe koi ktaunti nahi.
+    start, end = _month_range(month)
+    unpaid_lv = sum(_leave_days_map(db, tp.id, start, end, unpaid_only=True).values())
+    total_lv = sum(_leave_days_map(db, tp.id, start, end).values())
+    dim = max(1, (end - start).days)
+    per_day_sal = e["max_potential"] / dim
+    lv_ded = round(per_day_sal * unpaid_lv)
+    e["leave_unpaid_days"] = round(unpaid_lv, 1)
+    e["leave_paid_days"] = round(total_lv - unpaid_lv, 1)
+    e["leave_per_day"] = round(per_day_sal)
+    e["leave_deduction"] = lv_ded
+    e["net_payable"] = max(0, e["gross_earned"] - lv_ded)
     name = tp.user.name if tp.user else "Teacher"
     subs = tp.subjects or []
     now = _ist_now()
@@ -3728,6 +3891,26 @@ def teacher_work_policy(db: Session = Depends(get_db), current_user=Depends(get_
     tp = get_teacher_profile(current_user, db)
     pol = _policy_dict(db, tp.id)
     return {"policy": {**pol, "required": _policy_required(pol), "label": _policy_label(pol)}}
+
+# ===== v86 MIGRATION (leave paid flag, notif image, resched tracking) =====
+_V86_READY = False
+def _ensure_v86(db):
+    """v86 ke naye columns pehli use me add karta hai (MySQL/SQLite dono safe)."""
+    global _V86_READY
+    if _V86_READY:
+        return
+    from sqlalchemy import text as _text
+    for stmt in [
+        "ALTER TABLE teacher_leaves ADD COLUMN paid BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE notifications ADD COLUMN image_url VARCHAR(500) NULL",
+        "ALTER TABLE timetable_entries ADD COLUMN resched_by VARCHAR(20) NULL",
+        "ALTER TABLE reschedule_requests ADD COLUMN tt_entry_id INTEGER NULL",
+    ]:
+        try:
+            db.execute(_text(stmt)); db.commit()
+        except Exception:
+            db.rollback()
+    _V86_READY = True
 
 # ===== GEOFENCE (punch sirf office ke radius me) =====
 _GEOFENCE_READY = False
