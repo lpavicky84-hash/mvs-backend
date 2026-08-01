@@ -957,6 +957,37 @@ class PayoutAdjustment(Base):
     teacher = relationship("TeacherProfile")
 
 
+# =============================================
+# TEACHER PAY CONFIG (v80 earnings model — per-teacher editable pay structure)
+# =============================================
+class TeacherPayConfig(Base):
+    """Per-teacher pay structure + monthly content targets (admin editable).
+    Defaults mirror the appointment-letter model: max potential 25,000 of which
+    the class-conduct retainer (15,000) is 60%."""
+    __tablename__ = "teacher_pay_configs"
+
+    id               = Column(Integer, primary_key=True)
+    teacher_id       = Column(Integer, ForeignKey("teacher_profiles.id"), unique=True, index=True)
+    class_retainer   = Column(Integer, default=15000)   # 60% of max potential
+    class_quality    = Column(Integer, default=1000)
+    notes_dpp        = Column(Integer, default=2000)    # notes 40% + dpp 40% + tests 20%
+    doubt_resolution = Column(Integer, default=1000)
+    project_delivery = Column(Integer, default=6000)    # tasks 50% + content 50%
+    tests_target     = Column(Integer, default=4)
+    videos_target    = Column(Integer, default=8)
+    live_target      = Column(Integer, default=4)
+    shorts_target    = Column(Integer, default=8)
+    designation      = Column(String(120), default="")
+    department       = Column(String(120), default="")
+    employee_code    = Column(String(40), default="")
+    bank_name        = Column(String(120), default="")
+    account_no       = Column(String(60), default="")
+    ifsc             = Column(String(20), default="")
+    updated_at       = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    teacher = relationship("TeacherProfile")
+
+
 # ===== NIOS SYLLABUS TRACKER =====
 class SyllabusOverride(Base):
     """Admin edited syllabus for one subject. Overrides the built in seed data."""

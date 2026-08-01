@@ -2658,6 +2658,90 @@ def admin_teacher_payout(tid: int, month: str = "", db: Session = Depends(get_db
     p["exists"] = True
     return p
 
+# ===== EARNINGS MODEL (v80) — appointment-letter rule, admin controls =====
+@router.get("/earnings")
+def admin_earnings(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Saare active teachers ka earnings overview (appointment-letter model)."""
+    from teacher_routes import earnings_payload, _ist_now
+    month = (month or "").strip() or _ist_now().strftime("%Y-%m")
+    if not re.match(r"^\d{4}-\d{2}$", month):
+        raise HTTPException(status_code=400, detail="Invalid month (use YYYY-MM).")
+    out = []
+    for tp in db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all():
+        out.append(earnings_payload(db, tp, month))
+    out.sort(key=lambda x: x["teacher"]["name"])
+    total = sum(x["earnings"]["net_payable"] for x in out)
+    avg = round(sum(x["earnings"]["perf_score"] for x in out) / len(out)) if out else 0
+    return {"month": month, "teachers": out, "total_net": total, "avg_perf": avg}
+
+
+@router.get("/earnings/teacher/{tid}")
+def admin_earnings_teacher(tid: int, month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Ek teacher ka full earnings payload (slip / letter / detail modal ke liye)."""
+    from teacher_routes import earnings_payload, _ist_now
+    month = (month or "").strip() or _ist_now().strftime("%Y-%m")
+    if not re.match(r"^\d{4}-\d{2}$", month):
+        raise HTTPException(status_code=400, detail="Invalid month (use YYYY-MM).")
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    return earnings_payload(db, tp, month)
+
+
+@router.get("/earnings/configs")
+def admin_earnings_configs(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Har teacher ki pay structure + monthly targets (editor list)."""
+    from teacher_routes import get_pay_config, EARNINGS_PAY_FIELDS, EARNINGS_TARGET_FIELDS
+    out = []
+    for tp in db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all():
+        cfg = get_pay_config(db, tp.id)
+        row = {"teacher_id": tp.id, "name": tp.user.name if tp.user else "",
+               "subjects": tp.subjects or [], "saved": cfg.id is not None,
+               "designation": cfg.designation or "", "department": cfg.department or "",
+               "employee_code": cfg.employee_code or "", "bank_name": cfg.bank_name or "",
+               "account_no": cfg.account_no or "", "ifsc": cfg.ifsc or ""}
+        for k in EARNINGS_PAY_FIELDS + EARNINGS_TARGET_FIELDS:
+            row[k] = int(getattr(cfg, k) or 0)
+        out.append(row)
+    out.sort(key=lambda x: x["name"])
+    return {"configs": out}
+
+
+@router.post("/earnings/config")
+def admin_earnings_config_save(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Teacher ki pay structure + targets + bank details save karo (upsert)."""
+    from models import TeacherPayConfig
+    from teacher_routes import EARNINGS_PAY_FIELDS, EARNINGS_TARGET_FIELDS, EARNINGS_DEFAULTS
+    tid = int(payload.get("teacher_id") or 0)
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    cfg = db.query(TeacherPayConfig).filter(TeacherPayConfig.teacher_id == tid).first()
+    if not cfg:
+        cfg = TeacherPayConfig(teacher_id=tid, **EARNINGS_DEFAULTS)
+        db.add(cfg)
+
+    def _num(key, cur):
+        v = payload.get(key, None)
+        if v is None or v == "":
+            return cur
+        try:
+            v = int(v)
+        except Exception:
+            raise HTTPException(status_code=400, detail="%s must be a number" % key)
+        if v < 0:
+            raise HTTPException(status_code=400, detail="%s cannot be negative" % key)
+        return v
+
+    for k in EARNINGS_PAY_FIELDS + EARNINGS_TARGET_FIELDS:
+        cur = getattr(cfg, k)
+        setattr(cfg, k, _num(k, int(cur if cur is not None else EARNINGS_DEFAULTS[k])))
+    for k in ("designation", "department", "employee_code", "bank_name", "account_no", "ifsc"):
+        if k in payload and payload[k] is not None:
+            setattr(cfg, k, str(payload[k]).strip()[:120])
+    db.commit()
+    return {"message": "Pay structure saved for %s." % (tp.user.name if tp.user else "teacher")}
+
 # ===== PERFORMANCE PAYOUT (template, approvals, finalize) =====
 @router.get("/teacher/{tid}/payout-template")
 def admin_get_payout_template(tid: int, db: Session = Depends(get_db), _=Depends(get_admin)):

@@ -2369,6 +2369,8 @@ body.dark .cal-d.on{color:#34d399}
 .log-row .t{font-size:.8rem;color:var(--text-muted);margin-top:3px}
 .po-grid{display:grid;grid-template-columns:1.55fr 1fr;gap:18px;align-items:start}
 @media(max-width:1000px){.po-grid{grid-template-columns:1fr}}
+#printDoc{display:none}
+@media print{body>*:not(#printDoc){display:none!important}#printDoc{display:block!important}@page{size:A4;margin:13mm 16mm}}
 .po-banner{background:linear-gradient(120deg,hsl(43 45% 11%),hsl(42 48% 18%) 55%,hsl(46 42% 13%));border-radius:14px;color:#fff;padding:22px;display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;position:relative;overflow:hidden}
 .po-banner .glow{position:absolute;right:-50px;top:-50px;width:200px;height:200px;border-radius:9999px;background:rgba(201,162,39,.25);filter:blur(52px);pointer-events:none}
 .po-mini{display:grid;grid-template-columns:auto auto;gap:8px 26px;align-content:center}
@@ -2693,7 +2695,7 @@ body.dark .cal-d.on{color:#34d399}
 <!-- TEACHER SUBJECT SELECTION (first login) -->
 <div id="t-subject-screen" style="display:none;min-height:100vh;background:linear-gradient(150deg,#171203,#2e2408 55%,#4a3c12);align-items:center;justify-content:center;padding:20px"><div class="login-box" style="max-width:620px"><h2>Select Your Subjects</h2><p>Select the subjects you teach, class by class.</p><div style="display:flex;justify-content:space-between;margin:14px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 10</label></div><div id="t-sub-10" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><div style="display:flex;justify-content:space-between;margin:16px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 12</label></div><div id="t-sub-12" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><button class="login-btn" id="t-save-subj" style="margin-top:18px" onclick="saveTeacherSubjects()">Save & Continue →</button><p style="text-align:center;margin-top:14px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Logout</p></div>
 </div>
-<div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('vtasks',this)"><span>My Tasks</span><span class="badge" id="t-vt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="tPage('extmat',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-item" onclick="tPage('predicted',this)"><span>Predicted Results</span></div><div class="nav-item" onclick="tPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="tPage('payout',this)"><span>Payout</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule:</b> Every reschedule applies only after admin approval.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-vt-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-vtasks"><div id="t-vtasks-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-extmat"><div id="t-extmat-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-predicted"><div id="t-predicted-content"><div class="spinner"></div></div></div><div class="page" id="t-page-attendance"><div id="t-attendance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-payout"><div id="t-payout-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
+<div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('vtasks',this)"><span>My Tasks</span><span class="badge" id="t-vt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="tPage('extmat',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-item" onclick="tPage('predicted',this)"><span>Predicted Results</span></div><div class="nav-item" onclick="tPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="tPage('payout',this)"><span>My Earnings</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule:</b> Every reschedule applies only after admin approval.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-vt-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-vtasks"><div id="t-vtasks-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-extmat"><div id="t-extmat-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-predicted"><div id="t-predicted-content"><div class="spinner"></div></div></div><div class="page" id="t-page-attendance"><div id="t-attendance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-payout"><div id="t-payout-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== ADMIN APP ===== -->
 <div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#b06d12">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Users</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-section">Academics</div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('tests',this)"><span>Tests Tracker</span></div><div class="nav-section">Production</div><div class="nav-item" onclick="aPage('vtasks',this)"><span>Task Manager</span><span class="badge" id="a-vt-badge" style="display:none">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('tranks',this)"><span>Teacher Ranking</span></div><div class="nav-item" onclick="aPage('compliance',this)"><span>Class Compliance</span></div><div class="nav-item" onclick="aPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="aPage('payouts',this)"><span>Payouts</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('syllabus',this)"><span>Syllabus Manager</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#b06d12" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-vtasks"><div id="a-vtasks-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-reviews-wrap"></div><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-tests"><div id="a-tests-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-compliance"><div id="a-compliance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-tranks"><div id="a-tranks-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"></div><div class="card" style="margin-top:18px;border:1.5px solid rgba(220,38,38,.3)"><div class="card-header"><h3 style="color:var(--danger)">Danger Zone</h3></div><div class="card-body"><p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Clear all testing content data (timetable, materials, doubts, submissions...) in one go \u2014 students, teachers and admins remain safe.</p><button class="btn btn-danger" onclick="openResetData()">\ud83e\uddf9 Reset Portal Data</button></div></div><div style="display:none"><div class="spinner"></div></div></div><div class="page" id="a-page-syllabus"><div id="a-syl-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div><div class="page" id="a-page-attendance"><div id="a-attendance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-payouts"><div id="a-payouts-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== STUDENT APP ===== -->
@@ -3495,11 +3497,6 @@ async function openTeacher(){
  const p=await api('/api/teacher/profile');
  _tGender=p.gender||''; _tSuffix=_tGender==='male'?' Sir':_tGender==='female'?' Ma\'am':'';
  if(p.needs_subjects){ showTeacherSubjectScreen(); return; }
-  }catch(e){}
-  // First open: appointment letter accept karna zaroori hai (agar contract set hai)
-  try{
- const c=await api('/api/teacher/contract');
- if(c&&c.exists&&!c.accepted){ showContractGate(c); return; }
   }catch(e){}
   enterTeacherApp();
 }
@@ -7526,6 +7523,7 @@ async function loadTVTasks(){
     const specSubs=[...new Set(spec.map(t=>t.subject).filter(Boolean))].sort();
     const specCls=[...new Set(spec.map(t=>t.cls).filter(Boolean))].sort();
     if(_tvtSpecCls&&!specCls.includes(_tvtSpecCls)) specCls.push(_tvtSpecCls);
+    if(_tvtSpecKind&&!spec.some(t=>t.kind===_tvtSpecKind)) _tvtSpecKind='';
     const fSpec=spec.filter(t=>(!_tvtSpecSub||t.subject===_tvtSpecSub)&&(!_tvtSpecKind||t.kind===_tvtSpecKind)&&(!_tvtSpecCls||t.cls===_tvtSpecCls));
     const subjSpec=spec.filter(t=>(!_tvtSpecSub||t.subject===_tvtSpecSub)&&(!_tvtSpecCls||t.cls===_tvtSpecCls));
     let spD=0,spT=0; subjSpec.forEach(t=>{spD+=t.done||0;spT+=t.total||0});
@@ -7556,7 +7554,7 @@ async function loadTVTasks(){
         ${specCls.map(c=>`<option value="${c}" ${_tvtSpecCls===c?'selected':''}>Class ${c}</option>`).join('')}
       </select>`:''}
       <span class="vtm-fl">Type</span>
-      ${[['','All Types'],['one_shot','One Shot'],['rapid_revision','Rapid Revision'],['project','Projects']].map(([k,l])=>`<button class="vtm-chip ${_tvtSpecKind===k?'on':''}" onclick="tvtSpecKindSet('${k}')">${l}</button>`).join('')}
+      ${[['','All Types'],['one_shot','One Shot'],['rapid_revision','Rapid Revision'],['project','Projects']].filter(([k])=>!k||spec.some(t=>t.kind===k)).map(([k,l])=>`<button class="vtm-chip ${_tvtSpecKind===k?'on':''}" onclick="tvtSpecKindSet('${k}')">${l}</button>`).join('')}
     </div>`:'';
     el.innerHTML=`${hero}${statCards}${mtHtml}${masterCards}${filterBar}
       ${showProj?`<div class="vtm-sec-cap">Projects — click a card to open it</div>
@@ -7890,7 +7888,7 @@ function _vtCdText(s){
   return neg?`Overdue by ${txt}`:`${txt} left`;
 }
 // ---- admin: One Shot / Rapid Revision / Projects monitor ----
-let _avtSpecTab='one_shot', _avtSpecSub='', _avtSpecCls='', _avtSpecOpen=false, _avtView='';
+let _avtSpecTab='', _avtSpecSub='', _avtSpecCls='', _avtSpecOpen=false, _avtView='';
 function avtView(v){ _avtView=(_avtView===v?'':v); if(_avtView==='projects') _avtSpecOpen=true; loadAVTasks(); }
 function _avtSpecTotals(){
   const sp=window._avtSpec; if(!sp||!sp.one_shot) return {osN:0,osD:0,osT:0,rrN:0,rrD:0,rrT:0,prN:0,prD:0,prT:0};
@@ -7917,21 +7915,21 @@ function _avtSpecBody(){
   const subs=[...new Set([].concat(...['one_shot','rapid_revision','project'].map(k=>(((sp||{})[k]||{}).subjects)||[])))].sort();
   const clsList=[...new Set([].concat(...['one_shot','rapid_revision','project'].map(k=>((((sp||{})[k]||{}).tasks)||[]).map(t=>t.cls)))).values()].filter(Boolean).sort();
   if(_avtSpecCls&&!clsList.includes(_avtSpecCls)) clsList.push(_avtSpecCls);
-  // v78: 0-task wala kind tab dikhta hi nahi (e.g. Projects 0 → tab hidden).
-  // Active tab ka kind 0 ho jaye to pehle available kind pe auto-switch.
-  const _knds=[['one_shot','One Shot'],['rapid_revision','Rapid Revision'],['project','Projects']]
-    .map(([k,l])=>[k,l,(((sp||{})[k]||{}).tasks||[]).length]).filter(x=>x[2]>0);
-  if(_knds.length&&!_knds.some(x=>x[0]===_avtSpecTab)) _avtSpecTab=_knds[0][0];
-  const data=sp[_avtSpecTab]||{tasks:[],subjects:[]};
-  let tasks=(data.tasks||[]);
-  if(_avtSpecSub) tasks=tasks.filter(x=>x.subject===_avtSpecSub);
-  if(_avtSpecCls) tasks=tasks.filter(x=>x.cls===_avtSpecCls);
-  const tabBtn=(k,l,n)=>`<button class="vt-knd-tab${_avtSpecTab===k?' on':''}" onclick="_avtSpecTab='${k}';avtSpecRefresh()">${l}${n!=null?` <span class="vt-knd-n">${n}</span>`:''}</button>`;
-  const kindLbl={one_shot:'One Shot',rapid_revision:'Rapid Revision',project:'Project'}[_avtSpecTab];
-  return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-      ${_knds.map(([k,l,n])=>tabBtn(k,l,n)).join('')}
-      <span style="font-size:.7rem;color:var(--text-muted)">Opening a card clears its NEW flag · chapter links are clickable</span></div>
-    ${subs.length?`<div class="vtm-filter" style="margin-bottom:12px;padding:8px 10px">
+  // v79: teacher portal jaisa ek hi premium filter bar — Class + Subject +
+  // Type chips (All Types = sab kinds ek saath, group headers ke saath).
+  // 0-task kind ka chip hidden; active kind 0 ho jaye to All Types pe switch.
+  const _allK=[['one_shot','One Shot'],['rapid_revision','Rapid Revision'],['project','Projects']]
+    .map(([k,l])=>[k,l,(((sp||{})[k]||{}).tasks||[]).length]);
+  const _knds=_allK.filter(x=>x[2]>0);
+  if(_avtSpecTab&&!_knds.some(x=>x[0]===_avtSpecTab)) _avtSpecTab='';
+  const totalN=_allK.reduce((a,x)=>a+x[2],0);
+  const KLBL={one_shot:'One Shot',rapid_revision:'Rapid Revision',project:'Projects'};
+  const inScope=k=>{ let ts=(((sp||{})[k]||{}).tasks)||[]; if(_avtSpecSub) ts=ts.filter(x=>x.subject===_avtSpecSub); if(_avtSpecCls) ts=ts.filter(x=>x.cls===_avtSpecCls); return ts; };
+  const groups=_avtSpecTab?[[_avtSpecTab,KLBL[_avtSpecTab],inScope(_avtSpecTab)]]:_knds.map(([k,l])=>[k,l,inScope(k)]);
+  const kindLbl=_avtSpecTab?KLBL[_avtSpecTab]:'';
+  const chip=(k,l,n)=>`<button class="vt-knd-tab${_avtSpecTab===k?' on':''}" onclick="_avtSpecTab='${k}';avtSpecRefresh()">${l}${n!=null?` <span class="vt-knd-n">${n}</span>`:''}</button>`;
+  const bodyHtml=groups.map(([k,l,ts])=>ts.length?`${_avtSpecTab?'':`<div class="vtm-sec-cap" style="margin:10px 0 8px">${l} · ${ts.length} card${ts.length>1?'s':''}</div>`}${ts.map(_avtSpecCard).join('')}`:'').join('');
+  return `<div class="vtm-filter" style="margin-bottom:12px;padding:8px 10px">
       <span class="vtm-fl">Class</span>
       <select class="vtm-sel" id="avt-spec-cls" onchange="avtSpecClsSet(this.value)">
         <option value="">All Classes</option>
@@ -7942,8 +7940,12 @@ function _avtSpecBody(){
         <option value="">All Subjects (${subs.length})</option>
         ${subs.map(s=>`<option value="${esc(s)}" ${_avtSpecSub===s?'selected':''}>${esc(s)}</option>`).join('')}
       </select>
-      <span style="font-size:.68rem;color:var(--text-muted);font-weight:700">${(_avtSpecSub||_avtSpecCls)?'Showing '+[_avtSpecCls?'Class '+_avtSpecCls:'',_avtSpecSub].filter(Boolean).join(' · ')+' cards only':'Showing all '+kindLbl.toLowerCase()+' cards'}</span></div>`:''}
-    ${tasks.length?tasks.map(_avtSpecCard).join(''):`<div class="ws-empty"><p><b>No ${kindLbl} tasks found${_avtSpecSub?' for '+esc(_avtSpecSub):''}${_avtSpecCls?' in Class '+_avtSpecCls:''}</b></p><small>${_avtSpecTab==='project'?'Assign a new project from Assign Work → Project tab.':'These tasks are created automatically once teacher subjects are set.'}</small></div>`}`;
+      <span class="vtm-fl">Type</span>
+      ${chip('','All Types',totalN)}
+      ${_knds.map(([k,l,n])=>chip(k,l,n)).join('')}
+      <span style="font-size:.68rem;color:var(--text-muted);font-weight:700">${(_avtSpecSub||_avtSpecCls)?'Showing '+[_avtSpecCls?'Class '+_avtSpecCls:'',_avtSpecSub].filter(Boolean).join(' · ')+' cards only':_avtSpecTab?'Showing all '+kindLbl.toLowerCase()+' cards':'Showing all cards'}</span>
+      <span style="font-size:.7rem;color:var(--text-muted)">Opening a card clears its NEW flag · chapter links are clickable</span></div>
+    ${bodyHtml||`<div class="ws-empty"><p><b>No ${kindLbl?kindLbl+' ':''}tasks found${_avtSpecSub?' for '+esc(_avtSpecSub):''}${_avtSpecCls?' in Class '+_avtSpecCls:''}</b></p><small>${_avtSpecTab==='project'?'Assign a new project from Assign Work → Project tab.':'These tasks are created automatically once teacher subjects are set.'}</small></div>`}`;
 }
 function _avtSpecCard(t){
   const rows=(t.chapters||[]).map(c=> c.link
@@ -13718,151 +13720,348 @@ function buildLetterHTML(c){
     </div>
   </div>`;
 }
-function printLetter(c){
-  const w=window.open('','_blank');
-  if(!w){ toast('Please allow popups to download the letter.',true); return; }
-  w.document.write(`<!DOCTYPE html><html><head><title>Appointment Letter - ${esc(c.teacher_name||'')}</title><style>
-    :root{--border:#d7dce5;--text-muted:#5b6472}
-    body{font-family:Georgia,'Times New Roman',serif;color:#2e2716;margin:34px;font-size:14px;line-height:1.65}
-    .al-lh{text-align:center;border-bottom:3px solid #c9a227;padding-bottom:14px;margin-bottom:6px}
-    .al-lh .b{font-size:1.5rem;font-weight:800;letter-spacing:.04em;color:#1e3a6e}
-    .al-lh .s{font-size:.8rem;color:#5b6472;font-weight:600}
-    h2{letter-spacing:.14em;text-align:center;margin:20px 0 6px;font-size:1.15rem}
-    table.terms{width:100%;border-collapse:collapse;margin:12px 0}
-    table.terms td{border:1px solid #cfd6e0;padding:8px 10px}
-    table.terms td:first-child{font-weight:700;width:46%}
-    .al-sig{font-family:'Segoe Script','Brush Script MT',cursive;font-size:1.4rem;color:#1e3a6e}
-    .al-rules li{margin-bottom:5px}
-    @media print{body{margin:14mm}}
-  </style></head><body>${buildLetterHTML(c)}<script>window.onload=function(){window.print();}<\/script></body></html>`);
-  w.document.close();
-}
-async function downloadMyLetter(){
-  try{ const c=await api('/api/teacher/contract'); if(!c.exists){ toast('No appointment letter found.',true); return; } printLetter(c); }
-  catch(e){ toast(e.message,true); }
-}
+// =====================================================================
+//  EARNINGS MODEL (v80) — appointment-letter rule
+//  Teacher: My Earnings page + printable Earnings Slip + Appointment Letter
+//  Admin: earnings overview + per-teacher pay structure editor + documents
+// =====================================================================
+let _tEarnMonth='', _aEarnMonth='', _aEarnData=null;
+const _inr=n=>'\u20B9'+Number(n||0).toLocaleString('en-IN');
+const _pfCol=s=>s>=85?'#1b7a3e':s>=65?'#d97706':'#c0392b';
 
-// ---- First-open appointment letter gate ----
-function showContractGate(c){
-  const old=document.getElementById('al-gate'); if(old) old.remove();
-  const div=document.createElement('div');
-  div.className='al-gate'; div.id='al-gate';
-  div.innerHTML=`<div class="al-shell">
-    <div class="al-head"><div><div style="font-weight:800;font-size:1.05rem">Your Appointment Letter</div><div style="font-size:.78rem;opacity:.8">Please read and accept to continue to your portal</div></div><button class="btn btn-ghost btn-sm" style="color:#fff;border-color:rgba(255,255,255,.3)" onclick="printLetterFromGate()">Download PDF</button></div>
-    <div class="al-body" id="al-gate-letter">${buildLetterHTML(c)}</div>
-    <div class="al-foot">
-      <div class="form-group"><label>Digital Signature - type your full name</label><input class="form-control" id="al-sign" placeholder="${esc(c.teacher_name||'Your full name')}" oninput="alGateCheck()"><div class="al-sig" id="al-sign-preview" style="margin-top:6px;min-height:26px"></div></div>
-      <label style="display:flex;align-items:flex-start;gap:8px;font-size:.85rem;margin-bottom:12px"><input type="checkbox" id="al-agree" onchange="alGateCheck()" style="margin-top:3px"> I have read and understood the appointment letter above, and I accept all its terms and conditions.</label>
-      <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap"><button class="btn btn-ghost" onclick="logout()">Logout</button><button class="btn btn-primary" id="al-accept-btn" onclick="acceptContractGate()" disabled>Accept and Continue</button></div>
-    </div></div>`;
-  document.body.appendChild(div);
-  window._alGateContract=c;
+// ---------- shared print engine (Figma approach: hidden A4 doc + window.print) ----------
+function _printDocHTML(html){
+  let el=document.getElementById('printDoc');
+  if(!el){ el=document.createElement('div'); el.id='printDoc'; document.body.appendChild(el); }
+  el.innerHTML=html;
+  setTimeout(()=>window.print(),80);
 }
-function alGateCheck(){
-  const sig=(val('al-sign')||'').trim();
-  document.getElementById('al-sign-preview').textContent=sig;
-  document.getElementById('al-accept-btn').disabled=!(sig.length>=3&&document.getElementById('al-agree').checked);
-}
-function printLetterFromGate(){ if(window._alGateContract) printLetter(window._alGateContract); }
-async function acceptContractGate(){
-  const btn=document.getElementById('al-accept-btn'); btn.disabled=true; btn.textContent='Saving...';
-  try{
-    await api('/api/teacher/contract/accept','POST',{signature_name:(val('al-sign')||'').trim()});
-    const g=document.getElementById('al-gate'); if(g) g.remove();
-    toast('Welcome aboard. Your appointment letter has been accepted.');
-    enterTeacherApp();
-  }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Accept and Continue'; }
-}
+const _DOC_FONT='font-family:Inter,system-ui,sans-serif;color:#1a2a3a;background:#fff';
+const _LH=(refNo,date,conf)=>`
+<div style="border-bottom:3px solid #0F2A54;padding-bottom:12px;margin-bottom:14px">
+ <div style="display:flex;justify-content:space-between;align-items:flex-start">
+  <div style="display:flex;align-items:center;gap:13px">
+   <div style="width:58px;height:58px;border-radius:10px;background:linear-gradient(135deg,#0F2A54 60%,#FF6B2B);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">
+    <span style="color:#fff;font-size:22px;font-weight:900;line-height:1">M</span>
+    <span style="color:#FF6B2B;font-size:7.5px;font-weight:700;letter-spacing:1.5px">MVS</span>
+   </div>
+   <div>
+    <div style="font-weight:900;font-size:18px;color:#0F2A54;letter-spacing:.3px">MVS FOUNDATION</div>
+    <div style="font-size:9.5px;color:#5A6B85;font-weight:600;letter-spacing:.9px;text-transform:uppercase;margin-top:1px">Manish Verma Classes — NIOS Coaching Institute, Delhi</div>
+    <div style="font-size:8.5px;color:#8899aa;margin-top:2px">app.mvsfoundation.in &nbsp;|&nbsp; MVS Foundation Portal</div>
+   </div>
+  </div>
+  <div style="text-align:right">
+   <div style="font-size:9px;color:#5A6B85"><b>Ref:</b> ${esc(refNo)}</div>
+   <div style="font-size:9px;color:#5A6B85;margin-top:3px"><b>Date:</b> ${esc(date)}</div>
+   ${conf?'<div style="margin-top:8px;background:#FF6B2B;color:#fff;border-radius:4px;padding:2px 10px;font-size:8px;font-weight:700;letter-spacing:1px;text-transform:uppercase;display:inline-block">Confidential</div>':''}
+  </div>
+ </div>
+</div>`;
+const _SEC=(title,color)=>`<div style="display:flex;align-items:center;gap:9px;border-bottom:2.5px solid ${color||'#0F2A54'};padding-bottom:6px;margin-bottom:12px;margin-top:20px">
+ <div style="background:${color||'#0F2A54'};color:#fff;min-width:24px;height:24px;border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px;font-weight:900">${esc(title.split('.')[0])}</div>
+ <span style="font-weight:800;font-size:11.5px;color:${color||'#0F2A54'};letter-spacing:.8px;text-transform:uppercase">${esc(title)}</span></div>`;
+const _P=(html,style)=>`<p style="font-size:10px;color:#1a2a3a;line-height:1.75;margin:0 0 8px;${style||''}">${html}</p>`;
+const _DFOOT=(left,mid,right)=>`<div style="margin-top:18px;border-top:2px solid #0F2A54;padding-top:7px;display:flex;justify-content:space-between;gap:10px">
+ <div style="font-size:7.5px;color:#8899aa">${left}</div><div style="font-size:7.5px;color:#FF6B2B;font-weight:700">${mid}</div><div style="font-size:7.5px;color:#8899aa">${right}</div></div>`;
 
-// ---- Teacher Payout page ----
-let _tPayMonth='';
-async function loadTPayout(){
-  const el=document.getElementById('t-payout-content');
-  _tPayMonth=_tPayMonth||curMonth();
-  try{
-    const c=await api('/api/teacher/contract');
-    if(!c.exists){ el.innerHTML=`<div class="sm-head"><h2>My Payout</h2><p>Transparent earning calculator - base, extras, bonus and deductions.</p></div><div class="card"><div class="card-body"><div class="empty-state"><p>Your payout has not been configured yet. Please contact the admin to set up your appointment letter and salary details.</p></div></div></div>`; return; }
-    if(!c.accepted){ el.innerHTML=''; showContractGate(c); return; }
-    window._tPayContract=c;
-    el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>My Payout</h2><p>Transparent earning calculator - base, extras, bonus and deductions.</p></div><input type="month" class="form-control" style="width:auto;padding:7px 12px" id="tp-month" value="${_tPayMonth}" onchange="_tPayMonth=this.value;tPayRender()"></div>
-      <div id="tp-perf"></div>
-      <div class="po-grid">
-        <div>
-          <div id="tp-hero"></div>
-          <div class="card" style="margin-top:18px"><div class="card-header"><h3>Payout Breakdown</h3><button class="btn btn-primary btn-sm" onclick="downloadMyLetter()">${ic('download')} Appointment Letter</button></div><div class="card-body" id="tp-brk"><div class="spinner"></div></div></div>
-        </div>
-        <div class="card"><div class="card-header"><h3>Deduction Rules</h3></div><div class="card-body" id="tp-rules"><div class="spinner"></div></div></div>
-      </div>`;
-    tPayRender();
-  }catch(e){ el.innerHTML=errHtml(e); }
-}
-function payoutBreakHTML(p){
-  const adj=(p.adjustments||[]).map(a=>{
-    const sign=a.kind==='deduction'?'-':'+';
-    const cls=a.kind==='deduction'?'neg':'pos';
-    const kindLbl=a.kind==='extra'?'Extra Class Payment':a.kind==='bonus'?'Bonus':'Deduction';
-    return `<div class="r"><span>${esc(kindLbl)}${a.note?` - ${esc(a.note)}`:''}</span><span class="${cls}">${sign} ${fmtINR(a.amount)}</span></div>`;
-  }).join('');
-  const perfRows=(p.performance&&p.performance.started)?`
-    <div class="r"><span>Gross (Base + Allowances)</span><span>${fmtINR(p.gross_salary)}</span></div>
-    <div class="r"><span>Performance Deduction (${p.perf_pct}% work complete)</span><span class="${p.perf_deduction?'neg':''}">${p.perf_deduction?'- '+fmtINR(p.perf_deduction):fmtINR(0)}</span></div>`:'';
-  return `<div class="po-brk">
-    <div class="r"><span>Base Salary</span><span>${fmtINR(p.base_salary)}</span></div>
-    ${p.allowances?`<div class="r"><span>Fixed Allowances</span><span class="pos">+ ${fmtINR(p.allowances)}</span></div>`:''}
-    ${perfRows}
-    ${adj}
-    <div class="r"><span>Attendance Deduction — Absent (${p.absent_days} day${p.absent_days===1?'':'s'} x ${fmtINR(p.per_day_rate)})</span><span class="${(p.attendance_deduction-(p.leave_deduction||0))?'neg':''}">${(p.attendance_deduction-(p.leave_deduction||0))?'- '+fmtINR(p.attendance_deduction-(p.leave_deduction||0)):fmtINR(0)}</span></div>
-    ${(p.leave_days||0)>0?`<div class="r"><span>Approved Leave — unpaid (${p.leave_days} day${p.leave_days===1?'':'s'} x ${fmtINR(p.per_day_rate)}) <span style="font-size:.72rem;color:#1d4ed8;font-weight:700">penalty nahi</span></span><span class="${p.leave_deduction?'neg':''}">${p.leave_deduction?'- '+fmtINR(p.leave_deduction):fmtINR(0)}</span></div>`:''}
-    <div class="r net"><span>Net Payout</span><span>${fmtINR(p.net_payout)}</span></div>
+// ---------- Appointment Letter (3 pages, ported from the Figma doc) ----------
+const _LETTER_RULES=[
+ {num:'3.1',title:'Class Scheduling & Conduct',color:'#0F2A54',rules:[
+  'Classes must begin at the scheduled time listed on the portal timetable. A grace period of up to 15 minutes is always permitted without any prior notice. If a delay beyond 15 minutes is unavoidable, a notice must be posted on the portal before the class was due to start. Repeated delays without notice follow a warning escalation: the 1st and 2nd occurrence result in a written portal warning; the 3rd occurrence triggers a formal salary-impact warning; from the 4th occurrence onward the Admin may, at their discretion, deduct from your performance incentive. Deduction is not automatic — it is subject to Admin review and decision.',
+  'Reschedule Requests must be submitted on the portal at least 12 hours in advance. Only one (1) reschedule per subject per calendar month is permitted without consequence. From the second reschedule onward, each instance reduces the Class Quality Incentive proportionally.',
+  'Class cancellation (class neither conducted nor rescheduled within the same week) without the Academic Head\u2019s written approval forfeits that class\u2019s full retainer and a \u20B9200 administration fee.',
+  'Classes must run for their full scheduled duration. Ending significantly early without prior notice is treated as a partial conduct and the class retainer is proportionally reduced.',
+  'All teachers are required to be present and available for institute-wide events including product and batch launches, faculty meetings, strategy sessions, and any other event communicated by the management with at least 48 hours notice. Absence from such events without prior written approval from the Academic Head is treated as a breach of professional commitment and will attract a formal notice.']},
+ {num:'3.2',title:'Post-Class Obligations — Notes & DPP (Compulsory)',color:'#FF6B2B',rules:[
+  'Class Notes must be uploaded to the portal within 24 hours of each class. Notes must be chapter-wise, legible, and cover all topics discussed. This is non-negotiable.',
+  'Daily Practice Problems (DPP) must be uploaded within 24 hours of each class, along with a solutions sheet. Uploading DPP without solutions does not count as complete.',
+  'A 24-hour grace period applies after the deadline. If either item is not uploaded within 48 hours, the Notes/DPP incentive for that class is forfeited. Three or more such misses in a month trigger a formal review.']},
+ {num:'3.3',title:'Doubt Resolution',color:'#1b7a3e',rules:[
+  'All student doubts raised against your subject on the portal must be responded to substantively within 48 hours. Simply acknowledging a doubt is not resolution — a complete answer is required.',
+  'Doubts pending beyond 72 hours are escalated automatically to the Academic Head. Each such escalation reduces the Doubt Resolution bonus by \u20B950, regardless of subsequent resolution.',
+  'Your monthly Doubt Resolution Rate is calculated as (resolved \u00F7 assigned). Anything below 100% reduces your Doubt Resolution Bonus proportionally.']},
+ {num:'3.4',title:'Content Production & Project Delivery',color:'#6b3fd4',rules:[
+  'All production tasks assigned by the Production Manager on the portal carry a deadline. Tasks must be submitted through the portal — direct file sharing outside the portal does not count.',
+  'Projects carry both a weekly sub-deadline and a final delivery deadline. Missing the sub-deadline constitutes a warning. Missing the final deadline means the task-linked pay is not released.',
+  'Content deliverables (videos, shorts, live sessions) must meet the Content Quality Guidelines. Videos failing quality review must be re-recorded. Re-recorded versions still count toward targets if submitted before month end.',
+  'YouTube Live Sessions must be conducted on the designated MVS channel on the date listed in the schedule. Unilateral rescheduling of a live session is not permitted.']}
+];
+const _LETTER_VIOLATIONS=[
+ ['Class delayed > 15 minutes without prior portal notice','Class Quality Incentive (Admin Discretion)','1st & 2nd occurrence: Written warning notification on portal. 3rd occurrence: Formal salary-impact warning issued. 4th+ occurrence: Admin may deduct from performance incentive at their discretion — deduction is not automatic and depends on admin review.'],
+ ['Class rescheduled more than 1 time in a calendar month','Class Quality Incentive','Each reschedule beyond the 1-per-month limit reduces the Class Quality Incentive pool proportionally. A second reschedule in the same month will result in a deduction.'],
+ ['Class cancelled without 12-hour advance portal notice','Class Conduct Retainer','Full retainer for that class is forfeited. No compensation is payable for a cancelled class regardless of reason.'],
+ ['Class Notes OR DPP not uploaded within 48 hours of class','Notes, DPP & Weekly Tests','That class\u2019s Notes/DPP incentive share is not earned. Repeated misses (3+/month) trigger a formal review.'],
+ ['Portal doubt unresolved beyond 72 hours of submission','Doubt Resolution Bonus','Doubt Resolution pool is reduced proportionally. Each unresolved doubt directly lowers the month-end bonus.'],
+ ['Production task or project submitted after stated deadline','Project, Task & Content Delivery','Task-linked pay not released for that deliverable. A repeat offence in the same month attracts an additional penalty.'],
+ ['3 or more unapproved absences in a calendar month','Class Conduct Retainer','Retainer is reduced proportionally for each absent day beyond the permitted limit. Written notice is issued.'],
+ ['Monthly earned score below 40% of maximum potential','All Components','Formal performance review with Academic Head. Two consecutive months below threshold may result in contract notice.']
+];
+const _LETTER_TERMS=[
+ ['Intellectual Property','All study materials, tests, videos, and content produced during this engagement are the exclusive property of MVS Foundation. You may not redistribute or commercially use such content outside this platform.'],
+ ['Non-Compete (6 months)','For six months after this engagement ends, you agree not to establish or join a competing NIOS online coaching service targeting the same student demographic.'],
+ ['Portal Exclusivity','All official academic activities — scheduling, materials, doubts, tasks — must be conducted through the MVS Foundation portal. Circumventing the portal is a breach of this agreement.'],
+ ['Code of Conduct','Professional behaviour in all communications with students, parents, and colleagues is required at all times. Any form of harassment will result in immediate termination.'],
+ ['Amendments','MVS Foundation may revise targets or standards with 15 days written notice. Continued engagement constitutes acceptance of the revised terms.']
+];
+
+function _letterHTML(d){
+  const t=d.teacher, pay=d.pay, tg=d.targets;
+  const maxPot=pay.class_retainer+pay.class_quality+pay.notes_dpp+pay.doubt_resolution+pay.project_delivery;
+  const refNo=d.letter.ref+t.name.split(' ').map(w=>w[0]||'').join('');
+  const payRows=[
+   ['Class Conduct Retainer','Earned by conducting all scheduled timetable classes for the month. Proportionally reduced only if classes are not conducted without prior approval.',pay.class_retainer],
+   ['Class Quality Incentive','Earned by starting every class on time, maintaining full scheduled duration, and keeping portal attendance records accurate.',pay.class_quality],
+   ['Notes, DPP & Weekly Tests','Earned by uploading complete Class Notes and DPP within 24 hours for every class conducted, and creating the required Weekly Tests (MCQ / Subjective) each month.',pay.notes_dpp],
+   ['Doubt Resolution Bonus','Earned by resolving 100% of student doubts assigned on the portal within 48 hours. Proportionally reduced for unresolved doubts.',pay.doubt_resolution],
+   ['Project, Task & Content Delivery','Earned by submitting all production tasks and projects on time, and achieving monthly content targets: Weekly Tests, One Shot & Revision Videos, YouTube Live Sessions, and Shorts.',pay.project_delivery]
+  ];
+  const targetRows=[
+   ['Weekly Tests (MCQ / Subjective)', tg.tests_target+' per month', 'AUTO'],
+   ['Class Notes Upload (within 24 hrs)', '100% of classes conducted', 'AUTO'],
+   ['DPP Upload (within 24 hrs)', '100% of classes conducted', 'AUTO'],
+   ['One Shot / Revision Videos', tg.videos_target+' per month', 'MANUAL'],
+   ['YouTube Live Sessions', tg.live_target+' per month', 'MANUAL'],
+   ['Shorts (\u2265 60 seconds)', tg.shorts_target+' per month', 'MANUAL'],
+   ['Doubt Resolution', '100% of assigned doubts', 'AUTO'],
+   ['Project / Production Tasks', '100% on-time delivery', 'MANUAL']
+  ];
+  const details=[['Designation',t.designation],['Department',t.department],['Date of Joining','as mutually agreed'],['Reporting To','Academic Head, MVS Foundation'],['Mode of Work','Remote — MVS Foundation Online Teaching Portal'],['Contract Type','Performance-Linked Engagement (renewable annually)']];
+  return `<div style="${_DOC_FONT}">
+  ${_LH(refNo,d.letter.date,true)}
+  <div style="text-align:center;margin-bottom:16px"><div style="display:inline-block;border-top:2px solid #0F2A54;border-bottom:2px solid #0F2A54;padding:5px 28px"><span style="font-weight:800;font-size:14px;letter-spacing:3px;color:#0F2A54;text-transform:uppercase">Letter of Appointment</span></div></div>
+  ${_P('Dear <strong>'+esc(t.name)+',</strong>')}
+  ${_P('We are pleased to extend this offer of appointment to you as <strong>'+esc(t.designation)+'</strong> in the <strong>'+esc(t.department)+'</strong> division at MVS Foundation (Manish Verma Classes). This letter outlines the terms of your engagement, including how your compensation is earned, the performance targets you are expected to meet, and the professional standards required. Please read carefully — by signing and returning a copy you accept all terms herein.')}
+  ${_SEC('1. Appointment Details')}
+  <table style="width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:10px"><tbody>
+   ${details.map(r=>`<tr style="border-bottom:1px solid #e4ebf5"><td style="padding:5px 9px;font-weight:700;color:#0F2A54;width:36%;background:#f7f9fc">${r[0]}</td><td style="padding:5px 9px;color:#1a2a3a">${esc(r[1])}</td></tr>`).join('')}
+  </tbody></table>
+  ${_SEC('2. Work-Based Earnings Model')}
+  ${_P('At MVS Foundation, <strong>you earn based on the work you deliver</strong> — not a fixed salary that is then reduced for non-performance. Each component of your monthly pay is attached to a specific category of work. Complete that work fully and on time, and you earn the full amount for that component. This model is designed to be transparent, fair, and motivating.')}
+  <div style="background:linear-gradient(135deg,#0F2A54,#1a3d70);border-radius:8px;padding:12px 16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+   <div style="color:#fff">
+    <div style="font-size:9px;opacity:.65;margin-bottom:2px;letter-spacing:.5px;text-transform:uppercase">Maximum Monthly Earning Potential</div>
+    <div style="font-size:26px;font-weight:900">${_inr(maxPot)}</div>
+    <div style="font-size:8.5px;opacity:.65;margin-top:2px">Achieved by completing 100% of all commitments each month</div>
+   </div>
+   <div style="display:flex;gap:10px">
+    <div style="background:rgba(255,255,255,.1);border-radius:7px;padding:8px 14px;text-align:center;min-width:100px"><div style="color:#FF6B2B;font-weight:900;font-size:15px">${_inr(pay.class_retainer)}</div><div style="color:rgba(255,255,255,.9);font-size:8px;font-weight:700;margin-top:3px">Class Conduct Retainer (60%)</div><div style="color:rgba(255,255,255,.5);font-size:7.5px;margin-top:1px">Conduct all scheduled classes</div></div>
+    <div style="background:rgba(255,255,255,.1);border-radius:7px;padding:8px 14px;text-align:center;min-width:100px"><div style="color:#FF6B2B;font-weight:900;font-size:15px">${_inr(maxPot-pay.class_retainer)}</div><div style="color:rgba(255,255,255,.9);font-size:8px;font-weight:700;margin-top:3px">Performance Incentives</div><div style="color:rgba(255,255,255,.5);font-size:7.5px;margin-top:1px">Content, doubts & tasks</div></div>
+   </div>
+  </div>
+  <table style="width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:10px">
+   <thead><tr style="background:#0F2A54;color:#fff"><th style="padding:6px 9px;text-align:left;font-weight:700;width:28%">Earnings Component</th><th style="padding:6px 9px;text-align:left;font-weight:700">How It Is Earned</th><th style="padding:6px 9px;text-align:right;font-weight:700;width:16%">Max / Month</th></tr></thead>
+   <tbody>
+   ${payRows.map((r,i)=>`<tr style="background:${i%2===0?'#fff':'#f7f9fc'};border-bottom:1px solid #e4ebf5;vertical-align:top"><td style="padding:7px 9px;font-weight:700;color:#0F2A54">${r[0]}</td><td style="padding:7px 9px;color:#3a4a5c;line-height:1.55;font-size:9px">${r[1]}</td><td style="padding:7px 9px;text-align:right;font-weight:800;color:#1a2a3a;font-size:11px">${_inr(r[2])}</td></tr>`).join('')}
+   <tr style="background:#0F2A54;color:#fff"><td colspan="2" style="padding:7px 9px;font-weight:800">Maximum Monthly Earning Potential</td><td style="padding:7px 9px;text-align:right;font-weight:900;font-size:13px">${_inr(maxPot)}</td></tr>
+   </tbody></table>
+  ${_P('<em>Your portal\u2019s "My Earnings" dashboard shows a real-time breakdown of earnings accumulated vs remaining potential throughout each month. Payment is released by the 5th of the following month.</em>','color:#5A6B85;font-size:9px')}
+  <div style="page-break-after:always"></div>
+  ${_SEC('3. Professional Conduct Standards')}
+  ${_P('The following standards are mandatory. They exist to protect student experience and institute reputation. Non-compliance does not result in a penalty against a fixed salary — rather, it means the work for that component is considered incomplete and the corresponding earnings are not released.')}
+  ${_LETTER_RULES.map(s=>`<div style="margin-bottom:12px">
+    <div style="font-weight:800;font-size:10.5px;color:${s.color};margin-bottom:6px">${s.num} &nbsp; ${esc(s.title)}</div>
+    ${s.rules.map((r,i)=>`<div style="display:flex;gap:7px;margin-bottom:4px"><div style="min-width:17px;height:17px;border-radius:50%;background:${s.color}20;color:${s.color};font-size:8.5px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">${i+1}</div><p style="font-size:9.5px;color:#1a2a3a;line-height:1.7;margin:0">${esc(r)}</p></div>`).join('')}
+   </div>`).join('')}
+  <div style="page-break-after:always"></div>
+  ${_SEC('4. Monthly Earning Targets')}
+  <div style="border:1.5px solid #FF6B2B;border-radius:6px;padding:9px 13px;background:#fffbf5;margin-bottom:10px">
+   <div style="font-weight:800;font-size:9.5px;color:#FF6B2B;margin-bottom:3px">Targets Are Set by the Admin Each Month</div>
+   <p style="font-size:9px;color:#3a2a2a;line-height:1.65;margin:0">The specific quantities for each target category (number of videos, tests, sessions, etc.) are determined by the Academic Admin and updated on your portal during the <strong>first week of every month</strong>. It is your responsibility to check your portal at the start of each month and confirm your targets before commencing work. The categories below are fixed; only the monthly quantities vary.</p>
+  </div>
+  <table style="width:100%;border-collapse:collapse;font-size:9px;margin-bottom:12px">
+   <thead><tr style="background:#0F2A54;color:#fff"><th style="padding:5px 8px;text-align:left;font-weight:700;width:4%">#</th><th style="padding:5px 8px;text-align:left;font-weight:700">Target Category</th><th style="padding:5px 8px;text-align:center;font-weight:700;width:28%">Monthly Requirement</th><th style="padding:5px 8px;text-align:center;font-weight:700;width:10%">Tracking</th></tr></thead>
+   <tbody>${targetRows.map((r,i)=>`<tr style="background:${i%2===0?'#fff':'#f7f9fc'};border-bottom:1px solid #e4ebf5"><td style="padding:5px 8px;color:#8899aa;font-weight:700">${i+1}</td><td style="padding:5px 8px;color:#1a2a3a;font-weight:500">${esc(r[0])}</td><td style="padding:5px 8px;text-align:center;font-weight:700;color:#0F2A54;font-size:9px">${esc(r[1])}</td><td style="padding:5px 8px;text-align:center"><span style="background:${r[2]==='AUTO'?'#e8f5e9':'#f0ebff'};color:${r[2]==='AUTO'?'#1b7a3e':'#6b3fd4'};border-radius:3px;padding:1px 6px;font-size:7.5px;font-weight:800">${r[2]}</span></td></tr>`).join('')}</tbody></table>
+  ${_SEC('5. Non-Compliance — Earnings Impact','#c0392b')}
+  ${_P('The following specifies how each type of non-compliance affects your monthly earnings. These are not arbitrary deductions — they reflect that the associated work was not completed to the required standard and the corresponding pay is therefore not released.')}
+  <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px">
+   ${_LETTER_VIOLATIONS.map((v,i)=>`<div style="border:1px solid #f0d8d5;border-radius:6px;overflow:hidden;background:${i%2===0?'#fff':'#fffafa'}"><div style="display:grid;grid-template-columns:1fr auto;align-items:stretch">
+     <div style="padding:7px 10px;border-right:1px solid #f0d8d5"><div style="font-size:9px;font-weight:800;color:#1a2a3a;margin-bottom:2px">${esc(v[0])}</div><div style="font-size:7.5px;color:#8899aa">Affects: <span style="font-weight:700;color:#c0392b">${esc(v[1])}</span></div></div>
+     <div style="padding:7px 10px;background:#fff8f7;width:52%;display:flex;align-items:center"><p style="font-size:8.5px;color:#c0392b;line-height:1.6;margin:0">${esc(v[2])}</p></div>
+    </div></div>`).join('')}
+  </div>
+  <div style="border-left:3px solid #c0392b;border-radius:0 6px 6px 0;padding:9px 13px;background:#fff8f7;margin-bottom:12px">
+   <div style="font-weight:800;font-size:9.5px;color:#c0392b;margin-bottom:4px">Escalation & Contract Review</div>
+   <p style="font-size:9px;color:#3a2a2a;line-height:1.7;margin:0">Accumulation of three (3) or more written notices within any rolling 60-day period, or earning below 40% of monthly potential for two consecutive months, will trigger a formal performance review with the Academic Head. MVS Foundation reserves the right to conclude this engagement with 30 days written notice in the event of persistent non-compliance.</p>
+  </div>
+  ${_SEC('6. General Terms')}
+  ${_LETTER_TERMS.map(r=>`<div style="margin-bottom:7px;font-size:9.5px;line-height:1.7"><strong style="color:#0F2A54">${r[0]}: </strong>${esc(r[1])}</div>`).join('')}
+  <div style="margin-top:22px;border-top:2px solid #e4ebf5;padding-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:30px">
+   <div><div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:28px">For MVS Foundation</div><div style="border-top:1.5px solid #0F2A54;padding-top:5px"><div style="font-weight:700;font-size:10px">Manish Verma</div><div style="font-size:8.5px;color:#5A6B85">Founder & Director, MVS Foundation</div><div style="font-size:8.5px;color:#5A6B85;margin-top:2px">Date: ___________________</div></div></div>
+   <div><div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:28px">Accepted by Teacher</div><div style="border-top:1.5px solid #0F2A54;padding-top:5px"><div style="font-weight:700;font-size:10px">${esc(t.name)}</div><div style="font-size:8.5px;color:#5A6B85">${esc(t.designation)}, ${esc(t.department)}</div><div style="font-size:8.5px;color:#5A6B85;margin-top:2px">Date: ___________________</div></div></div>
+  </div>
+  ${_DFOOT('MVS Foundation | Manish Verma Classes | NIOS Coaching, Delhi','Excellence Through Discipline \u2726 MVS Foundation','Ref: '+esc(refNo))}
   </div>`;
 }
-function payoutRulesHTML(p,c){
-  const attHit=p.absent_days>0;
-  let html='';
-  if(p.performance&&p.performance.started){
-    const perf=p.performance, hit=perf.totals.pending>0||perf.totals.done<perf.totals.target;
-    html+=`<div class="rule-card${hit?' hit':''}"><div class="rr"><span class="rn">Monthly work not 100% complete</span><span class="ra">${p.perf_deduction?'- '+fmtINR(p.perf_deduction):'0'}</span></div>${hit?`<span class="rt">ACTIVE - ${perf.totals.done}/${perf.totals.target} tasks complete (${p.perf_pct}%)</span>`:`<span class="ok">100% COMPLETE - FULL PAYOUT</span>`}</div>`;
-  }
-  html+=`<div class="rule-card${attHit?' hit':''}"><div class="rr"><span class="rn">Working day not attended</span><span class="ra">- ${fmtINR(p.per_day_rate)}/day</span></div>${attHit?`<span class="rt">TRIGGERED x${p.absent_days} = - ${fmtINR(p.attendance_deduction-(p.leave_deduction||0))}</span>`:`<span class="ok">NO DEDUCTION SO FAR</span>`}</div>`;
-  if((p.leave_days||0)>0) html+=`<div class="rule-card"><div class="rr"><span class="rn">Approved leave — unpaid (penalty nahi)</span><span class="ra">- ${fmtINR(p.per_day_rate)}/day</span></div><span style="font-size:.74rem;font-weight:800;color:#1d4ed8;letter-spacing:.03em">APPLIED x${p.leave_days} = - ${fmtINR(p.leave_deduction||0)} — sirf din ki pay nahi, koi penalty nahi</span></div>`;
-  (p.adjustments||[]).filter(a=>a.kind==='deduction').forEach(a=>{
-    html+=`<div class="rule-card hit"><div class="rr"><span class="rn">${esc(a.note||'Deduction')}</span><span class="ra">- ${fmtINR(a.amount)}</span></div><span class="rt">APPLIED THIS MONTH</span></div>`;
-  });
-  const rules=(c&&c.rules)||p.rules||[];
-  if(rules.length) html+=`<div style="margin-top:14px"><div style="font-size:.72rem;letter-spacing:.07em;font-weight:800;color:var(--text-muted);margin-bottom:8px">TERMS FROM YOUR APPOINTMENT LETTER</div><ol class="al-rules" style="margin-left:18px;font-size:.85rem">${rules.map(r=>`<li>${esc(r)}</li>`).join('')}</ol></div>`;
-  html+=`<div style="margin-top:14px;font-size:.76rem;color:var(--text-muted)">Rules are set by the admin and are always visible here before they apply. Every extra payment, bonus and deduction is itemised in your breakdown with its reason.</div>`;
-  return html;
-}
-async function tPayRender(){
-  const hero=document.getElementById('tp-hero'), brk=document.getElementById('tp-brk'), rules=document.getElementById('tp-rules');
-  if(!hero||!brk) return;
-  try{
-    const p=await api('/api/teacher/payout?month='+encodeURIComponent(_tPayMonth||curMonth()));
-    if(!p.exists){ brk.innerHTML='<div class="empty-state"><p>Payout not configured.</p></div>'; return; }
-    const perfEl=document.getElementById('tp-perf'); if(perfEl) perfEl.innerHTML=perfSectionHTML(p);
-    const pct=p.working_days?Math.min(100,Math.round(p.present_days/p.working_days*100)):0;
-    hero.innerHTML=`<div class="pw-shell"><div class="po-banner"><div class="glow"></div>
-        <div><div class="pw-lbl" style="color:rgba(255,255,255,.7)">${p.is_current_month?'ESTIMATED NET PAYOUT':'NET PAYOUT'} - ${esc(fmtMonthLabel(p.month)).toUpperCase()}</div>
-        <div class="po-net">${fmtINR(p.net_payout)}</div>
-        <div class="po-sub">${esc(p.designation||'')}</div></div>
-        <div class="po-mini">
-          <div><div class="l">BASE</div><div class="v">${fmtINR(p.base_salary)}</div></div>
-          <div><div class="l">EXTRAS</div><div class="v g">+ ${fmtINR(p.extras+(p.allowances||0))}</div></div>
-          <div><div class="l">BONUS</div><div class="v g">+ ${fmtINR(p.bonus)}</div></div>
-          <div><div class="l">DEDUCTIONS</div><div class="v r">- ${fmtINR(p.manual_deductions+p.attendance_deduction)}</div></div>
-        </div></div>
-      <div class="pw-body" style="text-align:left">
-        <div style="display:flex;justify-content:space-between;font-size:.8rem;font-weight:700"><span>Attendance this month</span><span>${p.present_days} / ${p.working_days} days - ${fmtINR(p.per_day_rate)} per day</span></div>
-        <div class="po-attbar"><div class="bar"><div class="fill" style="width:${pct}%"></div></div></div>
-        ${p.is_current_month?`<div class="pw-cap" style="text-align:left">This month is still in progress - the figure improves as you punch in on more working days.</div>`:''}
-      </div></div>`;
-    brk.innerHTML=payoutBreakHTML(p);
-    if(rules) rules.innerHTML=payoutRulesHTML(p,window._tPayContract);
-  }catch(e){ brk.innerHTML=errHtml(e); }
+
+// ---------- Monthly Earnings Slip (ported from the Figma doc) ----------
+function _slipHTML(d){
+  const t=d.teacher, a=d.activity, e=d.earnings, tg=d.targets, pay=d.pay;
+  const perf=e.perf_score, pc=_pfCol(perf), pbg=perf>=85?'#e8f5e9':perf>=65?'#fffbeb':'#fff8f7';
+  const refNo='MVS/SAL/'+d.month_label.replace(' ','-').toUpperCase()+'/'+t.employee_code;
+  const today=new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+  const kv=(k,v)=>`<div style="display:flex;justify-content:space-between;font-size:9px;margin-bottom:3px"><span style="color:#5A6B85">${k}</span><span style="font-weight:700;color:#1a2a3a">${esc(v||'—')}</span></div>`;
+  const badges=[
+   ['Classes',a.classes_conducted+'/'+a.classes_scheduled,a.classes_conducted===a.classes_scheduled],
+   ['Notes',a.notes_uploaded+'/'+a.classes_conducted,a.notes_uploaded>=a.classes_conducted],
+   ['DPP',a.dpp_uploaded+'/'+a.classes_conducted,a.dpp_uploaded>=a.classes_conducted],
+   ['Tests',a.tests_created+'/'+tg.tests_target,a.tests_created>=tg.tests_target],
+   ['Doubts',a.doubts_resolved+'/'+a.doubts_assigned,a.doubts_resolved===a.doubts_assigned],
+   ['Tasks',a.tasks_on_time+'/'+a.tasks_assigned,a.tasks_on_time===a.tasks_assigned]
+  ];
+  const erow=(label,sub,amount,hl)=>`<tr style="border-bottom:1px solid #e4ebf5;background:${hl?'#f7f9fc':'#fff'}"><td style="padding:5px 9px"><div style="font-weight:${hl?700:500};font-size:9.5px;color:#1a2a3a">${label}</div>${sub?`<div style="font-size:8px;color:#8899aa;margin-top:1px">${sub}</div>`:''}</td><td style="padding:5px 9px;text-align:right;font-weight:${hl?800:600};font-size:${hl?'11px':'9.5px'};color:${hl?'#0F2A54':'#1a2a3a'}">${_inr(amount)}</td></tr>`;
+  return `<div style="${_DOC_FONT}">
+  ${_LH(refNo,today,false)}
+  <div style="text-align:center;margin-bottom:14px"><div style="display:inline-block;border-top:2px solid #0F2A54;border-bottom:2px solid #0F2A54;padding:5px 28px"><span style="font-weight:800;font-size:13px;letter-spacing:2.5px;color:#0F2A54;text-transform:uppercase">Monthly Earnings Statement — ${esc(d.month_label)}</span></div></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+   <div style="border:1px solid #e4ebf5;border-radius:7px;padding:10px 12px;background:#f7f9fc">
+    <div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:7px;text-transform:uppercase;letter-spacing:.5px">Employee Details</div>
+    ${kv('Name',t.name)}${kv('Employee ID',t.employee_code)}${kv('Designation',t.designation)}${kv('Department',t.department)}
+   </div>
+   <div style="border:1px solid #e4ebf5;border-radius:7px;padding:10px 12px;background:#f7f9fc">
+    <div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:7px;text-transform:uppercase;letter-spacing:.5px">Payment Details</div>
+    ${kv('Bank',t.bank)}${kv('Account No.',t.account_no)}${kv('IFSC',t.ifsc)}${kv('Pay Month',d.month_label)}
+   </div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:14px">
+   ${badges.map(b=>`<div style="border:1px solid ${b[2]?'#c3e6cb':'#f5c6cb'};border-radius:7px;padding:7px 5px;text-align:center;background:${b[2]?'#f0fff4':'#fff5f5'}"><div style="font-size:12px;font-weight:900;color:${b[2]?'#1b7a3e':'#c0392b'}">${b[1]}</div><div style="font-size:7.5px;color:${b[2]?'#1b7a3e':'#c0392b'};font-weight:600;margin-top:1px">${b[0]}</div></div>`).join('')}
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+   <div>
+    <div style="background:#0F2A54;color:#fff;padding:5px 9px;border-radius:5px 5px 0 0;font-weight:800;font-size:9.5px;letter-spacing:.5px">EARNINGS BREAKDOWN</div>
+    <table style="width:100%;border-collapse:collapse;font-size:9.5px;border:1px solid #e4ebf5;border-top:none"><tbody>
+     ${erow('Class Conduct Retainer',a.classes_conducted+' of '+a.classes_scheduled+' classes conducted',e.class_earned)}
+     ${erow('Class Quality Incentive',a.late_classes+' late start(s) this month',e.class_quality_earned)}
+     ${erow('Notes, DPP & Weekly Tests','Notes: '+a.notes_uploaded+'/'+a.classes_conducted+' \u00B7 DPP: '+a.dpp_uploaded+'/'+a.classes_conducted+' \u00B7 Tests: '+a.tests_created+'/'+tg.tests_target,e.notes_earned+e.dpp_earned+e.tests_earned)}
+     ${erow('Doubt Resolution Bonus',a.doubts_resolved+' of '+a.doubts_assigned+' doubts resolved',e.doubt_earned)}
+     ${erow('Project, Task & Content Delivery','Tasks: '+a.tasks_on_time+'/'+a.tasks_assigned+' \u00B7 Tests: '+a.tests_created+'/'+tg.tests_target+' \u00B7 Videos: '+a.videos_made+'/'+tg.videos_target+' \u00B7 Live: '+a.live_sessions+'/'+tg.live_target+' \u00B7 Shorts: '+a.shorts_made+'/'+tg.shorts_target,e.task_earned)}
+     ${erow('Gross Earned','',e.gross_earned,true)}
+    </tbody></table>
+   </div>
+   <div style="display:flex;flex-direction:column;gap:10px">
+    <div>
+     <div style="background:#c0392b;color:#fff;padding:5px 9px;border-radius:5px 5px 0 0;font-weight:800;font-size:9.5px;letter-spacing:.5px">DEDUCTIONS</div>
+     <table style="width:100%;border-collapse:collapse;font-size:9.5px;border:1px solid #e4ebf5;border-top:none"><tbody>
+      <tr style="border-bottom:1px solid #e4ebf5"><td style="padding:5px 9px;color:#1a2a3a">TDS / Income Tax</td><td style="padding:5px 9px;text-align:right;color:#c0392b;font-weight:700">${_inr(e.tds)}</td></tr>
+      <tr style="border-bottom:1px solid #e4ebf5"><td style="padding:5px 9px;color:#1a2a3a">Other Deductions</td><td style="padding:5px 9px;text-align:right;color:#c0392b;font-weight:700">${_inr(e.other_deduct)}</td></tr>
+      <tr style="background:#fff8f7"><td style="padding:5px 9px;font-weight:800;color:#c0392b">Total Deductions</td><td style="padding:5px 9px;text-align:right;font-weight:800;color:#c0392b">${_inr(e.tds+e.other_deduct)}</td></tr>
+     </tbody></table>
+    </div>
+    <div style="background:linear-gradient(135deg,#0F2A54,#1a3d70);border-radius:8px;padding:12px 14px;color:#fff">
+     <div style="font-size:8.5px;opacity:.65;letter-spacing:.5px;text-transform:uppercase;margin-bottom:2px">Net Payable — ${esc(d.month_label)}</div>
+     <div style="font-size:24px;font-weight:900">${_inr(e.net_payable)}</div>
+     <div style="font-size:8px;opacity:.6;margin-top:2px">Paid by the 5th of the following month</div>
+    </div>
+    <div style="border:1px solid #e4ebf5;border-radius:7px;padding:9px 11px;background:${pbg}">
+     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px"><span style="font-size:9px;font-weight:700;color:#5A6B85">Performance Score</span><span style="font-size:13px;font-weight:900;color:${pc}">${perf}%</span></div>
+     <div style="height:7px;border-radius:5px;background:#e4ebf5;overflow:hidden"><div style="height:100%;width:${Math.min(perf,100)}%;background:${pc};border-radius:5px"></div></div>
+    </div>
+    <div style="border:1px solid #e4ebf5;border-radius:7px;padding:8px 10px;background:#f7f9fc">
+     <div style="display:flex;justify-content:space-between;font-size:9px;margin-bottom:3px"><span style="color:#5A6B85">Maximum this month was</span><span style="font-weight:800;color:#0F2A54">${_inr(e.max_potential)}</span></div>
+     <div style="display:flex;justify-content:space-between;font-size:9px"><span style="color:#5A6B85">Unclaimed earnings</span><span style="font-weight:800;color:#c0392b">${_inr(e.max_potential-e.net_payable)}</span></div>
+    </div>
+   </div>
+  </div>
+  <div style="border:1px solid #e4ebf5;border-radius:6px;padding:8px 12px;background:#f7f9fc;margin-bottom:14px;font-size:8.5px;color:#5A6B85;line-height:1.6"><strong style="color:#0F2A54">Note:</strong> This earnings statement is generated from portal activity data for ${esc(d.month_label)}. All figures are auto-calculated based on your completed deliverables recorded on the MVS Foundation portal. If you believe any figure is incorrect, please raise a dispute through the portal within 5 working days of receipt. Disputes raised after this period will not be entertained.</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;border-top:2px solid #e4ebf5;padding-top:14px">
+   ${[['Prepared by','Accounts Team','MVS Foundation'],['Authorised by','Manish Verma','Director, MVS Foundation'],['Received by',t.name,t.designation]].map(s=>`<div style="text-align:center"><div style="border-top:1px solid #0F2A54;padding-top:5px;margin-top:25px"><div style="font-weight:700;font-size:9px;color:#1a2a3a">${esc(s[1])}</div><div style="font-size:7.5px;color:#5A6B85">${esc(s[2])}</div><div style="font-size:7.5px;color:#8899aa">${s[0]}</div></div></div>`).join('')}
+  </div>
+  ${_DFOOT('MVS Foundation | Manish Verma Classes | NIOS Coaching, Delhi','This is a system-generated document — no signature required for electronic copy','Earnings Stmt | '+esc(d.month_label))}
+  </div>`;
 }
 
-// =====================================================================
-// ADMIN: ATTENDANCE + PAYOUTS + CONTRACTS
+// ---------- shared earnings components (teacher page + admin detail) ----------
+function _ecard(title,desc,earned,max,subs){
+  const pct=max>0?Math.min(earned/max,1):(earned>0?1:0);
+  const col=pct>=1?'#1b7a3e':pct>=0.6?'var(--primary)':'#c0392b';
+  return `<div class="card" style="margin-bottom:0"><div class="card-body" style="padding:16px">
+   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px">
+    <div><div style="font-weight:800;font-size:.92rem">${title}</div><div style="font-size:.7rem;color:var(--text-muted);margin-top:2px;line-height:1.5">${desc}</div></div>
+    <div style="text-align:right;flex-shrink:0"><div style="font-weight:900;font-size:1.12rem;color:${col}">${_inr(earned)}</div><div style="font-size:.66rem;color:var(--text-muted)">of ${_inr(max)}</div></div>
+   </div>
+   <div style="height:7px;border-radius:6px;background:var(--border);overflow:hidden;margin:8px 0 6px"><div style="height:100%;width:${Math.round(pct*100)}%;background:${pct>=1?'linear-gradient(90deg,#1b7a3e,#34d399)':'linear-gradient(90deg,var(--primary),#e8c66a)'};border-radius:6px"></div></div>
+   ${subs||''}
+  </div></div>`;
+}
+const _esub=(l,r)=>`<div style="display:flex;justify-content:space-between;font-size:.71rem;color:var(--text-muted);padding:2px 0"><span>${l}</span><b style="color:var(--text)">${r}</b></div>`;
+
+function _earnComponentsHTML(d){
+  const a=d.activity, e=d.earnings, tg=d.targets, pay=d.pay;
+  const sub=(l,r)=>_esub(l,_inr(r));
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px">
+  ${_ecard('Class Conduct Retainer','60% of maximum potential — earned by conducting scheduled classes',e.class_earned,pay.class_retainer,
+    _esub(a.classes_conducted+' of '+a.classes_scheduled+' classes conducted',Math.round(e.pcts.class*100)+'%'))}
+  ${_ecard('Class Quality Incentive','On-time starts within the 15-minute grace window',e.class_quality_earned,pay.class_quality,
+    _esub(a.late_classes+' late of '+a.classes_scheduled+' scheduled',Math.round(e.pcts.quality*100)+'%'))}
+  ${_ecard('Notes, DPP & Weekly Tests','Notes 40% \u00B7 DPP 40% \u00B7 Weekly tests 20% of this pool',e.notes_earned+e.dpp_earned+e.tests_earned,pay.notes_dpp,
+    _esub('Notes uploaded ('+a.notes_uploaded+'/'+a.classes_conducted+')',_inr(e.notes_earned))+_esub('DPP uploaded ('+a.dpp_uploaded+'/'+a.classes_conducted+')',_inr(e.dpp_earned))+_esub('Weekly tests ('+a.tests_created+'/'+tg.tests_target+')',_inr(e.tests_earned)))}
+  ${_ecard('Doubt Resolution Bonus','Resolve 100% of assigned doubts within 48 hours',e.doubt_earned,pay.doubt_resolution,
+    _esub(a.doubts_resolved+' of '+a.doubts_assigned+' doubts resolved',Math.round(e.pcts.doubt*100)+'%'))}
+  ${_ecard('Project, Task & Content Delivery','On-time tasks 50% \u00B7 monthly content targets 50%',e.task_earned,pay.project_delivery,
+    _esub('Tasks on time ('+a.tasks_on_time+'/'+a.tasks_assigned+') — 50%',Math.round(e.pcts.task*100)+'%')+
+    _esub('Videos '+a.videos_made+'/'+tg.videos_target+' \u00B7 Live '+a.live_sessions+'/'+tg.live_target+' \u00B7 Shorts '+a.shorts_made+'/'+tg.shorts_target+' \u00B7 Tests '+a.tests_created+'/'+tg.tests_target,'content '+Math.round(e.pcts.content*100)+'%'))}
+  </div>`;
+}
+
+function _earnHeroHTML(d,actions){
+  const e=d.earnings, pc=_pfCol(e.perf_score);
+  return `<div class="po-hero" style="display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap">
+   <div>
+    <div style="font-size:.72rem;opacity:.62;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">Net Payable \u00B7 ${esc(d.month_label)}</div>
+    <div style="font-size:2.2rem;font-weight:900;line-height:1.05">${_inr(e.net_payable)}</div>
+    <div style="font-size:.74rem;opacity:.62;margin-top:6px">of maximum ${_inr(e.max_potential)} \u00B7 unclaimed ${_inr(Math.max(0,e.max_potential-e.net_payable))}</div>
+   </div>
+   <div style="text-align:center;min-width:120px">
+    <div style="font-size:2rem;font-weight:900;color:${e.perf_score>=85?'#34d399':e.perf_score>=65?'#fbbf24':'#f87171'}">${e.perf_score}%</div>
+    <div style="font-size:.68rem;opacity:.62;text-transform:uppercase;letter-spacing:.08em;margin-bottom:7px">Performance Score</div>
+    <div style="height:7px;width:150px;margin:0 auto;border-radius:6px;background:rgba(255,255,255,.14);overflow:hidden"><div style="height:100%;width:${Math.min(e.perf_score,100)}%;background:${e.perf_score>=85?'#34d399':e.perf_score>=65?'#fbbf24':'#f87171'};border-radius:6px"></div></div>
+   </div>
+   ${actions?`<div style="display:flex;flex-direction:column;gap:8px">${actions}</div>`:''}
+  </div>`;
+}
+
+function _activityStripHTML(d){
+  const a=d.activity;
+  const chips=[['Classes',a.classes_conducted+'/'+a.classes_scheduled],['Late',a.late_classes],['Notes',a.notes_uploaded],['DPP',a.dpp_uploaded],['Tests',a.tests_created],['Videos',a.videos_made],['Live',a.live_sessions],['Shorts',a.shorts_made],['Doubts',a.doubts_resolved+'/'+a.doubts_assigned],['Tasks on time',a.tasks_on_time+'/'+a.tasks_assigned]];
+  return `<div class="card" style="margin-top:18px"><div class="card-header"><h3>${ic('chart')} This Month's Activity (auto-tracked)</h3></div><div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap">
+   ${chips.map(c=>`<span class="chip" style="font-size:.74rem"><b>${c[0]}:</b>&nbsp;${c[1]}</span>`).join('')}
+  </div></div>`;
+}
+
+function _payStructureHTML(d,editable){
+  const pay=d.pay, tg=d.targets, t=d.teacher;
+  const row=(l,v)=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:.8rem"><span style="color:var(--text-muted)">${l}</span><b>${v}</b></div>`;
+  return `<div class="card" style="margin-top:18px"><div class="card-header"><h3>${ic('wallet')} My Pay Structure & Monthly Targets</h3></div><div class="card-body">
+   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0 28px">
+    <div>${row('Class Conduct Retainer (60%)',_inr(pay.class_retainer))}${row('Class Quality Incentive',_inr(pay.class_quality))}${row('Notes, DPP & Weekly Tests',_inr(pay.notes_dpp))}${row('Doubt Resolution Bonus',_inr(pay.doubt_resolution))}${row('Project, Task & Content Delivery',_inr(pay.project_delivery))}${row('<b>Maximum Monthly Potential</b>','<b>'+_inr(d.earnings.max_potential)+'</b>')}</div>
+    <div>${row('Weekly Tests target',tg.tests_target+' / month')}${row('One Shot / Revision Videos target',tg.videos_target+' / month')}${row('YouTube Live target',tg.live_target+' / month')}${row('Shorts target',tg.shorts_target+' / month')}${row('Designation',esc(t.designation))}${row('Department',esc(t.department))}</div>
+   </div>
+   <div class="alert alert-info" style="margin-top:12px;margin-bottom:0">Targets and amounts are set by the admin in the first week of each month. Any change here updates your live earnings calculation immediately.</div>
+  </div></div>`;
+}
+
+// ---------- TEACHER: My Earnings ----------
+async function loadTPayout(){
+  const el=document.getElementById('t-payout-content');
+  _tEarnMonth=_tEarnMonth||curMonth();
+  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>My Earnings</h2><p>Work-based earnings — every rupee linked to a deliverable, auto-calculated from your portal activity.</p></div><input type="month" class="form-control" style="width:auto;padding:7px 12px" value="${_tEarnMonth}" onchange="_tEarnMonth=this.value;tEarnFetch()"></div>
+  <div id="te-body"><div class="spinner"></div></div>`;
+  tEarnFetch();
+}
+async function tEarnFetch(){
+  const body=document.getElementById('te-body'); if(!body) return;
+  try{
+    const d=await api('/api/teacher/earnings?month='+encodeURIComponent(_tEarnMonth));
+    window._tEarn=d;
+    body.innerHTML=_earnHeroHTML(d,
+      `<button class="btn btn-light btn-sm" onclick="downloadMySlip()">${ic('download')} Earnings Slip</button>
+       <button class="btn btn-light btn-sm" onclick="viewMyLetter()">${ic('book')} Appointment Letter</button>`)
+      +_earnComponentsHTML(d)+_activityStripHTML(d)+_payStructureHTML(d);
+  }catch(e){ body.innerHTML=`<div class="card"><div class="card-body"><div class="empty-state"><p>${esc(e.message)}</p></div></div></div>`; }
+}
+function downloadMySlip(){ if(!window._tEarn){ toast('Earnings not loaded yet.',true); return; } _printDocHTML(_slipHTML(window._tEarn)); }
+function viewMyLetter(){ if(!window._tEarn){ toast('Earnings not loaded yet.',true); return; } _printDocHTML(_letterHTML(window._tEarn)); }
+
 // =====================================================================
 let _aAttDate='', _aAttView='day', _aAttMonth='', _aWtOpen=false;
 async function loadAAttendance(){
@@ -14076,366 +14275,122 @@ async function tadFetch(tid){
 
 // ---- Admin Payouts ----
 let _aPayMonth='';
+// ---------- ADMIN: Earnings overview + pay structure editor ----------
 async function loadAPayouts(){
   const el=document.getElementById('a-payouts-content');
-  _aPayMonth=_aPayMonth||curMonth();
-  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>Payouts</h2><p>Auto-calculated from work completion, attendance and adjustments.</p></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn btn-primary btn-sm" onclick="openSalarySetup()">${ic('check')} Salary Setup (All Teachers)</button><input type="month" class="form-control" style="width:auto;padding:7px 12px" value="${_aPayMonth}" onchange="_aPayMonth=this.value;aPayFetch()"></div></div>
-    <div class="stats-grid" id="ap-stats"></div>
-    <div id="ap-body" style="margin-top:6px"><div class="spinner"></div></div>`;
-  aPayFetch();
+  _aEarnMonth=_aEarnMonth||curMonth();
+  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>Payouts \u00B7 Earnings Model</h2><p>Live earnings per teacher — appointment-letter rule, auto-calculated from portal activity.</p></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="month" class="form-control" style="width:auto;padding:7px 12px" value="${_aEarnMonth}" onchange="_aEarnMonth=this.value;aEarnFetch()"></div></div>
+  <div class="stats-grid" id="ae-stats"></div>
+  <div id="ae-body" style="margin-top:6px"><div class="spinner"></div></div>`;
+  aEarnFetch();
 }
-async function aPayFetch(){
-  const body=document.getElementById('ap-body'), stats=document.getElementById('ap-stats');
+async function aEarnFetch(){
+  const body=document.getElementById('ae-body'), stats=document.getElementById('ae-stats');
   if(!body) return;
   try{
-    const d=await api('/api/admin/payouts?month='+encodeURIComponent(_aPayMonth));
-    const cfg=d.teachers.filter(t=>t.configured);
-    const totalDed=cfg.reduce((a,t)=>a+(t.attendance_deduction||0)+(t.manual_deductions||0),0);
-    const pending=cfg.filter(t=>!t.accepted).length;
+    const d=await api('/api/admin/earnings?month='+encodeURIComponent(_aEarnMonth));
+    _aEarnData=d;
     if(stats) stats.innerHTML=
-      statCard('Total Payout (est.)',fmtINR(d.total_net),'wallet','indigo')+
-      statCard('Configured',cfg.length+' / '+d.teachers.length,'users','green')+
-      statCard('Letters Pending',pending,'clipboard','amber')+
-      statCard('Deductions Applied',fmtINR(totalDed),'chart','red');
-    if(!d.teachers.length){ body.innerHTML='<div class="empty-state"><p>No active teachers found.</p></div>'; return; }
-    body.innerHTML=`<div id="ap-appr"></div><div class="pay-grid">${d.teachers.map(t=>{
-      const nm=esc((t.name||'').replace(/'/g,''));
-      if(!t.configured) return `<div class="pay-card"><div class="pay-head"><div class="pay-av">${esc(initials(t.name||'T'))}</div><div><div class="pay-name">${esc(t.name)}</div><div class="pay-sub">Payout not configured</div></div></div><div class="pay-empty">Set the contract to generate this teacher's appointment letter and payout.</div><div class="pay-actions"><button class="btn btn-primary btn-sm" style="flex:1" onclick="openContractModal(${t.teacher_id},'${nm}')">Set Contract</button></div></div>`;
-      const extras=(t.extras||0)+(t.bonus||0)+(t.allowances||0);
-      const ded=(t.attendance_deduction||0)+(t.manual_deductions||0);
-      const letter=t.accepted?'<span class="po-pill green">ACCEPTED</span>':'<span class="po-pill amber">LETTER PENDING</span>';
-      return `<div class="pay-card">
-        <div class="pay-head"><div class="pay-av">${esc(initials(t.name||'T'))}</div><div style="flex:1"><div class="pay-name">${esc(t.name)}</div><div class="pay-sub">${esc(t.designation||'')} - Base ${fmtINR(t.base_salary)}</div></div>${t.performance&&t.performance.started?(t.perf_deduction?`<span class="pc-pill pend">Deduction</span>`:`<span class="pc-pill done">Full Payout</span>`):''}${letter}</div>
-        ${t.performance&&t.performance.started?`<div class="pc-mini">Est. performance pay: <b>${fmtINR(t.perf_pay)}</b> / ${fmtINR(t.gross_salary)} · work <b>${t.perf_pct}%</b>${t.performance.totals.pending?` · <b>${t.performance.totals.pending}</b> tasks baaki`:''}</div><div class="pc-minitr"><div class="f${t.perf_pct>=100?' full':''}" style="width:${Math.min(100,t.perf_pct)}%"></div></div>`:''}
-        <div class="pay-net"><div><div class="l">NET PAYOUT</div><div class="n">${fmtINR(t.net_payout)}</div></div><div class="side">${extras?`<div class="g">+ ${fmtINR(extras)} extras</div>`:''}${ded?`<div class="r">- ${fmtINR(ded)} deductions</div>`:''}${(!extras&&!ded)?`<div style="color:rgba(255,255,255,.6)">No adjustments</div>`:''}</div></div>
-        <div class="pay-chips">
-          <div class="pay-chip"><div class="n">${t.present_days}/${t.working_days}</div><div class="l">Days</div></div>
-          <div class="pay-chip"><div class="n">${fmtINR(t.per_day_rate)}</div><div class="l">Per Day</div></div>
-          <div class="pay-chip"><div class="n">${(t.adjustments||[]).length}</div><div class="l">Adjustments</div></div>
-          <div class="pay-chip"><div class="n">${t.performance&&t.performance.started?t.performance.perf_pct+'%':'—'}</div><div class="l">Work Done</div></div>
-        </div>
-        <div class="pay-actions"><button class="btn btn-ghost btn-sm" style="flex:1" onclick="openPayoutDetail(${t.teacher_id},'${nm}')">Details</button><button class="btn btn-ghost btn-sm" style="flex:1" onclick="openAdjustModal(${t.teacher_id},'${nm}')">Adjust</button><button class="btn btn-primary btn-sm" style="flex:1" onclick="openContractModal(${t.teacher_id},'${nm}')">Contract</button></div>
-      </div>`;
-    }).join('')}</div>`;
-    aPerfApprovals();
-  }catch(e){ body.innerHTML=errHtml(e); }
+      `<div class="stat-card"><div class="stat-info"><h3>${d.teachers.length}</h3><p>Teachers</p></div></div>
+       <div class="stat-card"><div class="stat-info"><h3>${_inr(d.total_net)}</h3><p>Total Net Payable</p></div></div>
+       <div class="stat-card"><div class="stat-info"><h3>${d.avg_perf}%</h3><p>Average Performance</p></div></div>
+       <div class="stat-card"><div class="stat-info"><h3>${esc(fmtMonthLabel(d.month))}</h3><p>Pay Month</p></div></div>`;
+    body.innerHTML=`<div class="card"><div class="card-body" style="padding:6px 14px 12px">
+     <table class="tbl" style="width:100%"><thead><tr><th>Teacher</th><th style="text-align:center">Performance</th><th style="text-align:right">Retainer</th><th style="text-align:right">Incentives</th><th style="text-align:right">Net Payable</th><th style="text-align:right">Actions</th></tr></thead><tbody>
+     ${d.teachers.map(x=>{
+       const e=x.earnings, pc=_pfCol(e.perf_score);
+       const incent=e.gross_earned-e.class_earned;
+       return `<tr>
+        <td><div style="font-weight:700">${esc(x.teacher.name)}</div><div style="font-size:.68rem;color:var(--text-muted)">${esc(x.teacher.employee_code)} \u00B7 ${(x.teacher.subjects||[]).slice(0,2).map(esc).join(', ')||'—'}</div></td>
+        <td style="text-align:center"><span style="display:inline-block;min-width:52px;padding:3px 10px;border-radius:20px;font-weight:800;font-size:.78rem;color:${pc};background:${pc}18">${e.perf_score}%</span></td>
+        <td style="text-align:right;font-size:.82rem">${_inr(e.class_earned)}</td>
+        <td style="text-align:right;font-size:.82rem">${_inr(incent)}</td>
+        <td style="text-align:right;font-weight:900">${_inr(e.net_payable)}</td>
+        <td style="text-align:right;white-space:nowrap">
+         <button class="btn btn-ghost btn-sm" onclick="openEarnDetail(${x.teacher.id})">View</button>
+         <button class="btn btn-primary btn-sm" onclick="openPayConfig(${x.teacher.id})">${ic('edit')} Pay Structure</button>
+         <button class="btn btn-ghost btn-sm" onclick="adminSlip(${x.teacher.id})">Slip</button>
+         <button class="btn btn-ghost btn-sm" onclick="adminLetter(${x.teacher.id})">Letter</button>
+        </td></tr>`;}).join('')}
+     </tbody></table></div></div>`;
+  }catch(e){ body.innerHTML=`<div class="card"><div class="card-body"><div class="empty-state"><p>${esc(e.message)}</p></div></div></div>`; }
 }
-/* ===== BULK SALARY SETUP (sabhi teachers ek saath - sirf gross, baaki sab auto) ===== */
-async function openSalarySetup(){
-  showModal('Salary Setup — All Teachers','<div class="spinner"></div>',`<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="ss-btn" onclick="submitSalarySetup()">Save All</button>`);
-  try{
-    const d=await api('/api/admin/contracts-overview');
-    const rows=(d.teachers||[]).map((t,i)=>`
-      <div class="pc-tpl-row" style="grid-template-columns:1fr 130px 150px">
-        <span><b>${esc(t.name)}</b><span style="font-size:.72rem;color:var(--text-muted)"> · ${esc((t.subjects||[]).slice(0,2).join(', ')||'—')}</span>${t.accepted?' <span class="pc-chip appr">accepted</span>':(t.has_contract?' <span class="pc-chip pend">letter pending</span>':'')}</span>
-        <input type="text" class="form-control" id="ss-des-${i}" value="${esc(t.designation||'Subject Teacher')}" placeholder="Designation">
-        <input type="number" min="0" class="form-control" id="ss-gross-${i}" value="${t.gross_salary||''}" placeholder="Gross Rs/month">
-      </div>`).join('');
-    document.querySelector('#modal .modal-body').innerHTML=
-      `<div class="alert alert-info">Enter <b>only each teacher's gross monthly salary</b> — the breakup (Basic 50%, HRA 25%, Conveyance 5%, Medical 3.125%, LTA 4.375%, Special 12.5%), standard rules (Annexure A) and 26 working days are <b>all set automatically</b>. When the salary changes, the teacher must re-accept the letter. Leave blank to skip.</div>
-       <div class="pc-tpl-row" style="grid-template-columns:1fr 130px 150px;font-weight:800;font-size:.68rem;color:var(--text-muted);letter-spacing:.05em"><span>TEACHER</span><span>DESIGNATION</span><span>GROSS SALARY</span></div>
-       ${rows||'<div class="empty-state"><p>No teachers found.</p></div>'}`;
-    window._ssTeachers=d.teachers||[];
-  }catch(e){ document.querySelector('#modal .modal-body').innerHTML=errHtml(e); }
-}
-async function submitSalarySetup(){
-  const items=(window._ssTeachers||[]).map((t,i)=>({teacher_id:t.teacher_id,
-    designation:(document.getElementById('ss-des-'+i)||{}).value||'',
-    gross_salary:parseInt((document.getElementById('ss-gross-'+i)||{}).value)||0}))
-    .filter(x=>x.gross_salary>0);
-  if(!items.length){ toast('Please enter the salary for at least one teacher first',true); return; }
-  const btn=document.getElementById('ss-btn'); btn.disabled=true; btn.textContent='Saving...';
-  try{
-    const r=await api('/api/admin/contracts-bulk','POST',{items});
-    closeModal(); toast(r.message); aPayFetch();
-  }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Save All'; }
-}
-async function openContractModal(tid,name){
-  let c={exists:false};
-  try{ c=await api('/api/admin/teacher/'+tid+'/contract'); }catch(e){}
-  window._ctRules=c.exists?(c.rules||[]).join('\n'):'';
-  showModal((c.exists?'Edit Salary - ':'Set Salary - ')+name,
-    `<div class="alert alert-info"><b>Enter only the gross monthly salary</b> — the breakup (Basic/HRA/Conveyance/Medical/LTA/Special), standard rules (Annexure A) and 26 working days are <b>all set automatically</b>, as per the Faculty Service Agreement. The teacher must accept the appointment letter the next time they open the portal.</div>
-     <div class="form-group"><label>Designation</label><input class="form-control" id="ct-des" value="${esc(c.designation||'Subject Teacher')}"></div>
-     <div class="form-group"><label>Date of Joining</label><input type="date" class="form-control" id="ct-join" value="${esc(c.joining_date||'')}"></div>
-     <div class="form-group"><label>Monthly Gross Salary (Rs)</label><input type="number" min="1" class="form-control" id="ct-gross" value="${c.gross_salary||''}" placeholder="e.g. 40000" oninput="ctBreakPreview()"></div>
-     <div id="ct-break"></div>
-     <div class="form-group"><label>Rules and Conditions (one per line — the agreement's standard rules are auto-filled)</label><textarea class="form-control" id="ct-rules" rows="6">${esc(window._ctRules)}</textarea></div>
-     ${c.exists?`<label style="display:flex;align-items:center;gap:8px;font-size:.85rem"><input type="checkbox" id="ct-reaccept" ${'checked'} disabled> The teacher will re-accept the letter on any salary change (automatic)</label>`:''}
-     ${c.exists?`<div style="margin-top:10px"><button class="btn btn-ghost btn-sm" onclick="adminViewLetter(${tid})">${ic('download')} Preview Letter</button></div>`:''}`,
-    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="ct-btn" onclick="submitContract(${tid})">Save</button>`);
-  if(!c.exists){ document.getElementById('ct-rules').value=window._DEF_RULES||''; }
-  ctBreakPreview();
-}
-window._DEF_RULES=`Every class must begin at its scheduled time; a delay of more than 15 minutes without prior intimation will be treated as a delayed/missed class.
-Only 1 approved class re-scheduling is permitted per month; every further approved re-schedule carries a deduction of Rs 300/-, and a re-schedule without intimation/approval carries Rs 600/- per class.
-Class notes, DPP and the lecture report must be uploaded within the prescribed interval after every class; delays carry an auto-deduction of Rs 200/- for the 1st instance, Rs 400/- for the 2nd, and Rs 700/- for the 3rd and every subsequent instance.
-Student doubts on the portal must be resolved within 24 hours; a doubt pending for more than 1 day carries Rs 100/-, more than 2 days Rs 300/-, and more than 5 days Rs 600/- auto-deduction per doubt.
-Shorts, strategy, promotional and recording tasks must be submitted by their deadline; the 1st delay receives a warning, and from the 2nd delay a deduction of Rs 100/- per day applies until submission.
-The Sunday doubt class and DPP solutions discussion are compulsory every week.
-The monthly payout is processed in the first week of the following month after portal verification; salary is confidential and all payout queries must be directed only to the designated Account Manager.`;
-const _SAL_SPLIT=[['Basic Pay',.50],['House Rent Allowance (HRA)',.25],['Conveyance / Transport Allowance',.05],['Medical Reimbursement',.03125],['Leave Travel Allowance (LTA)',.04375],['Special Academic Allowance',.125]];
-function ctBreakPreview(){
-  const el=document.getElementById('ct-break'); if(!el) return;
-  const g=parseInt(document.getElementById('ct-gross').value)||0;
-  if(!g){ el.innerHTML=''; return; }
-  let used=0, rows='';
-  _SAL_SPLIT.forEach((sp,i)=>{
-    const v=i===_SAL_SPLIT.length-1?g-used:Math.round(g*sp[1]); used+= i===_SAL_SPLIT.length-1?0:v;
-    rows+=`<tr><td>${sp[0]}</td><td style="text-align:right">${(sp[1]*100).toFixed(sp[1]*100%1?3:0)}%</td><td style="text-align:right;font-weight:700">${fmtINR(v)}</td></tr>`;
-  });
-  el.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:.82rem;margin-bottom:12px">
-    <tr style="color:var(--text-muted);font-size:.68rem;letter-spacing:.05em"><th style="text-align:left;padding:4px 0">AUTO BREAKUP (AGREEMENT)</th><th style="text-align:right">%</th><th style="text-align:right">AMOUNT</th></tr>
-    ${rows}<tr style="border-top:2px solid var(--border);font-weight:800"><td style="padding:5px 0">Gross Salary</td><td></td><td style="text-align:right;color:#059669">${fmtINR(g)}</td></tr>
-    <tr><td colspan="3" style="font-size:.72rem;color:var(--text-muted);padding-top:4px">Per-day rate (attendance): ${fmtINR(Math.round(g/26))} × 26 working days · Annual: ${fmtINR(g*12)}</td></tr></table>`;
-}
-async function submitContract(tid){
-  const btn=document.getElementById('ct-btn'); btn.disabled=true; btn.textContent='Saving...';
-  try{
-    const r=await api('/api/admin/teacher/'+tid+'/contract','POST',{
-      designation:val('ct-des'),joining_date:val('ct-join'),gross_salary:val('ct-gross'),rules_text:val('ct-rules')});
-    closeModal(); toast(r.message); aPayFetch();
-  }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Save'; }
-}
-async function adminViewLetter(tid){
-  try{ const c=await api('/api/admin/teacher/'+tid+'/contract'); if(!c.exists){ toast('No contract set.',true); return; } printLetter(c); }
-  catch(e){ toast(e.message,true); }
-}
-function openAdjustModal(tid,name){
-  showModal('Payout Adjustment - '+name,
-    `<div class="alert alert-info">Extra class payments, bonuses and deductions always appear on the teacher's Payout page with the note you write here, so every rupee is accounted for.</div>
-     <div class="form-group"><label>Month</label><input type="month" class="form-control" id="aj-month" value="${_aPayMonth||curMonth()}"></div>
-     <div class="form-group"><label>Type</label><select class="form-control" id="aj-kind"><option value="extra">Extra Class Payment</option><option value="bonus">Bonus</option><option value="deduction">Deduction</option></select></div>
-     <div class="form-group"><label>Amount (Rs)</label><input type="number" min="1" class="form-control" id="aj-amount" placeholder="e.g. 500"></div>
-     <div class="form-group"><label>Reason / Note</label><input class="form-control" id="aj-note" placeholder="e.g. 2 extra classes on 12 and 14 July"></div>`,
-    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="aj-btn" onclick="submitAdjust(${tid})">Add</button>`);
-}
-async function submitAdjust(tid){
-  const btn=document.getElementById('aj-btn'); btn.disabled=true; btn.textContent='Adding...';
-  try{
-    const r=await api('/api/admin/teacher/'+tid+'/payout-adjust','POST',{month:val('aj-month'),kind:val('aj-kind'),amount:val('aj-amount'),note:val('aj-note')});
-    closeModal(); toast(r.message); aPayFetch();
-  }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Add'; }
-}
-async function openPayoutDetail(tid,name){
-  showModal('Payout Detail - '+name,`<div id="pd-body"><div class="spinner"></div></div>`,
-    `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
-  try{
-    const p=await api('/api/admin/teacher/'+tid+'/payout?month='+encodeURIComponent(_aPayMonth||curMonth()));
-    const b=document.getElementById('pd-body'); if(!b) return;
-    if(!p.exists){ b.innerHTML='<div class="empty-state"><p>Payout not configured.</p></div>'; return; }
-    const adjRows=(p.adjustments||[]).length?`<div style="margin-top:14px"><strong style="font-size:.85rem">Adjustments</strong>${p.adjustments.map(a=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:.85rem"><span>${esc(a.kind==='extra'?'Extra Class Payment':a.kind==='bonus'?'Bonus':'Deduction')}${a.note?` - ${esc(a.note)}`:''}</span><span style="display:flex;align-items:center;gap:8px"><b>${a.kind==='deduction'?'-':'+'} ${fmtINR(a.amount)}</b><button class="btn btn-danger btn-sm" onclick="delAdjust(${a.id},${tid},'${esc((name||'').replace(/'/g,''))}')">${ic('trash')}</button></span></div>`).join('')}</div>`:'';
-    b.innerHTML=`<div style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px">${esc(fmtMonthLabel(p.month))} - Present ${p.present_days}/${p.working_days} days</div>`+payoutBreakHTML(p)+adjRows;
-  }catch(e){ const b=document.getElementById('pd-body'); if(b) b.innerHTML=errHtml(e); }
-}
-async function delAdjust(aid,tid,name){
-  if(!confirm('Remove this adjustment?')) return;
-  try{ await api('/api/admin/payout-adjust/'+aid,'DELETE'); toast('Adjustment removed.'); openPayoutDetail(tid,name); aPayFetch(); }
-  catch(e){ toast(e.message,true); }
+function _aEarnRow(tid){ return (_aEarnData&&_aEarnData.teachers||[]).find(x=>x.teacher.id===tid); }
+
+function openEarnDetail(tid){
+  const x=_aEarnRow(tid); if(!x){ toast('Load the list first.',true); return; }
+  const e=x.earnings, a=x.activity;
+  showModal('Earnings — '+x.teacher.name+' ('+fmtMonthLabel(x.month)+')',
+   _earnHeroHTML(x)+'<div style="margin-top:4px">'+_earnComponentsHTML(x)+'</div>'+_activityStripHTML(x),
+   `<button class="btn btn-ghost" onclick="adminSlip(${tid})">${ic('download')} Earnings Slip</button>
+    <button class="btn btn-ghost" onclick="adminLetter(${tid})">${ic('book')} Appointment Letter</button>
+    <button class="btn btn-primary" onclick="closeModal()">Close</button>`);
 }
 
-/* ================= PERFORMANCE PAYOUT UI (1 Aug 2026 se) ================= */
-function _pcCatRow(c,gross,wsum){
-  const pct=Math.min(100,Math.round(c.completion*100));
-  const earn=Math.round(gross*(c.weight/wsum)*c.completion);
-  let help;
-  if(pct>=100) help=`<div class="help green">Target complete · ${fmtINR(earn)} earned</div>`;
-  else help=`<div class="help${c.done===0?' red':''}"><b>${c.target-c.done}</b> more to complete the target (${c.target}) · ${fmtINR(earn)} so far</div>`;
-  if(c.key==='dpp'&&(c.missing||[]).length) help+=`<div class="help red">DPP missing: ${c.missing.slice(0,4).map(esc).join(', ')}${c.missing.length>4?' +'+(c.missing.length-4)+' more':''}</div>`;
-  if(c.delayed) help+=`<div class="help dely">${c.delayed} delayed — not counted this month</div>`;
-  const pill=pct>=100?'<span class="pc-pill done">Done</span>':(c.done>0?'<span class="pc-pill prog">In Progress</span>':'<span class="pc-pill pend">Pending</span>');
-  return `<div class="pc-cat">
-    <div class="row1"><div><span class="nm">${esc(c.label)}</span><span class="bdg ${c.source==='auto'?'auto':'man'}">${c.source==='auto'?'AUTO':'MANUAL'}</span></div>
-    <div style="display:flex;align-items:center;gap:8px">${pill}<span class="val">${c.done}/${c.target}</span><span class="wt">${c.weight}%</span></div></div>
-    <div class="tr"><div class="f${pct>=100?' full':''}" style="width:${pct}%"></div></div>
-    ${help}</div>`;
+function openPayConfig(tid){
+  const x=_aEarnRow(tid); if(!x){ toast('Load the list first.',true); return; }
+  const p=x.pay, g=x.targets, t=x.teacher;
+  const num=(id,lbl,v,hint)=>`<div><label style="font-size:.7rem;color:var(--text-muted);font-weight:700;display:block;margin-bottom:4px">${lbl}</label><input type="number" min="0" class="form-control" id="${id}" value="${v}" oninput="_pcSum()">${hint?`<div style="font-size:.64rem;color:var(--text-muted);margin-top:3px">${hint}</div>`:''}</div>`;
+  const txt=(id,lbl,v,ph)=>`<div><label style="font-size:.7rem;color:var(--text-muted);font-weight:700;display:block;margin-bottom:4px">${lbl}</label><input class="form-control" id="${id}" value="${esc(v||'')}" placeholder="${ph||''}"></div>`;
+  showModal('Pay Structure — '+x.teacher.name,
+   `<div class="alert alert-info">Full control: amounts, monthly targets, designation and bank details. Saving updates this teacher's live earnings and documents immediately.</div>
+    <div style="font-weight:800;font-size:.8rem;margin:4px 0 8px;color:var(--primary)">EARNINGS COMPONENTS (per month)</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
+     ${num('pc_retainer','Class Retainer (60%)',p.class_retainer)}
+     ${num('pc_quality','Class Quality',p.class_quality)}
+     ${num('pc_notesdpp','Notes + DPP + Tests',p.notes_dpp)}
+     ${num('pc_doubt','Doubt Resolution',p.doubt_resolution)}
+     ${num('pc_project','Project & Content',p.project_delivery)}
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;background:var(--hover);border-radius:10px;padding:9px 14px;margin-top:10px">
+     <span style="font-size:.76rem;font-weight:700">Maximum Monthly Potential</span><b id="pc_max" style="font-size:1rem"></b>
+    </div>
+    <div id="pc_60" style="font-size:.68rem;color:var(--text-muted);margin-top:4px"></div>
+    <div style="font-weight:800;font-size:.8rem;margin:14px 0 8px;color:var(--primary)">MONTHLY TARGETS</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">
+     ${num('pc_tests','Weekly Tests',g.tests_target)}
+     ${num('pc_videos','Videos (One Shot/Revision)',g.videos_target)}
+     ${num('pc_live','YouTube Live',g.live_target)}
+     ${num('pc_shorts','Shorts',g.shorts_target)}
+    </div>
+    <div style="font-weight:800;font-size:.8rem;margin:14px 0 8px;color:var(--primary)">PROFILE & BANK (for letter & slip)</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px">
+     ${txt('pc_desig','Designation',t.designation==='Subject Teacher'?'':t.designation,'Subject Teacher')}
+     ${txt('pc_dept','Department',t.department,'Academic — NIOS Coaching')}
+     ${txt('pc_emp','Employee Code',t.employee_code,'MVS-T-000')}
+     ${txt('pc_bank','Bank Name',t.bank,'HDFC Bank')}
+     ${txt('pc_acct','Account No.',t.account_no)}
+     ${txt('pc_ifsc','IFSC',t.ifsc)}
+    </div>`,
+   `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitPayConfig(${tid})">${ic('check')} Save Pay Structure</button>`);
+  _pcSum();
 }
-function perfSectionHTML(p){
-  const perf=p.performance;
-  if(!perf) return '';
-  if(!perf.started){
-    return `<div class="card" style="margin-bottom:16px"><div class="card-body" style="font-size:.84rem;color:var(--text-muted)"><b style="color:var(--text)">Performance-based payout begins on 1 August 2026.</b><br>This month's payout is calculated from attendance + adjustments. From Aug 2026, salary will be linked to monthly work completion (classes, DPP, tests, videos...) — 100% work = 100% payout.</div></div></div>`;
-  }
-  const t=perf.totals, gross=p.gross_salary||0, est=!!p.is_current_month;
-  const active=(perf.categories||[]).filter(c=>c.target>0);
-  const wsum=active.reduce((a,c)=>a+c.weight,0)||1;
-  let html=`<div class="pc-hero"><div class="glow"></div>
-    <div class="top"><div><div class="lbl">Work Completion — ${esc(fmtMonthLabel(perf.month))}${est?' (so far)':''}</div>
-    <div class="pct">${perf.perf_pct}%</div></div>
-    <div style="text-align:right"><div class="lbl">${est?'Estimated Performance Pay':'Performance Pay'}</div>
-    <div class="amt">${fmtINR(p.perf_pay)} <span style="font-size:.68rem;color:rgba(255,255,255,.6);font-weight:600">/ ${fmtINR(gross)}</span></div>
-    ${p.perf_deduction?`<div style="font-size:.72rem;color:#f87171;font-weight:700;margin-top:2px">Deduction: - ${fmtINR(p.perf_deduction)}</div>`:`<div style="font-size:.72rem;color:#34d399;font-weight:700;margin-top:2px">No deduction — full payout!</div>`}</div></div>
-    <div class="pc-bar"><div class="fill" style="width:${Math.min(100,perf.perf_pct)}%"></div></div></div>`;
-  html+=`<div class="pc-cards">
-    <div class="pc-stat indigo"><div class="n">${t.target}</div><div class="l">Monthly Target</div><div class="s">total assigned</div></div>
-    <div class="pc-stat green"><div class="n">${t.done}</div><div class="l">Completed</div><div class="s">counted this month</div></div>
-    <div class="pc-stat amber"><div class="n">${t.pending}</div><div class="l">Pending</div><div class="s">baaki work</div></div>
-    <div class="pc-stat purple"><div class="n">${t.delayed}</div><div class="l">Delayed</div><div class="s">late — not counted</div></div>
-  </div>`;
-  const doneCats=active.filter(c=>c.completion>=1);
-  if(doneCats.length) html+=`<div class="pc-done-banner">Target complete: <span class="who">${doneCats.map(c=>esc(c.label)).join(' · ')}</span></div>`;
-  html+=`<div class="pc-panel"><div class="ph"><h3>Category-wise Progress</h3>${active.some(c=>c.source==='manual')?`<button class="btn btn-primary btn-sm" onclick="openPerfTask()">${ic('check')} Mark Work as Done</button>`:''}</div>`;
-  if(!active.length) html+='<div class="empty-state"><p>No targets set for this month — ask the admin to set up a template.</p></div>';
-  active.forEach(c=>{ html+=_pcCatRow(c,gross,wsum); });
-  html+='</div>';
-  const tasks=(perf.tasks||[]).filter(x=>x.status!=='missed');
-  if(tasks.length){
-    html+=`<div class="pc-panel"><div class="ph"><h3>My Marked Work</h3></div>`;
-    tasks.forEach(x=>{
-      let chip;
-      if(x.status==='approved'&&x.delayed) chip='<span class="pc-chip dely">Delayed — not counted</span>';
-      else if(x.status==='approved') chip='<span class="pc-chip appr">Approved</span>';
-      else if(x.status==='rejected') chip='<span class="pc-chip rej">Rejected</span>';
-      else chip='<span class="pc-chip pend">Approval pending</span>';
-      const catLbl=((perf.categories||[]).find(c=>c.key===x.key)||{}).label||x.key;
-      html+=`<div class="pc-task"><div class="t"><div class="tt">${esc(x.title)}</div><div class="td">${esc(catLbl)}${x.done_date?' · done on: '+esc(x.done_date):''}${x.note?' · '+esc(x.note):''}</div></div>${chip}${x.status!=='approved'?`<button class="btn btn-ghost btn-sm" onclick="delPerfTask(${x.id})">${ic('trash')}</button>`:''}</div>`;
-    });
-    html+='</div>';
-  }
-  if(perf.finalized) html+=`<div class="pc-fin ${perf.paid?'ok':'pd'}">${perf.paid?'Payout marked as PAID':'Month FINALIZED'}${perf.finalized_at?' · '+esc(perf.finalized_at):''}</div>`;
-  html+=`<div class="card"><div class="card-body" style="font-size:.76rem;color:var(--text-muted)"><b style="color:var(--text)">Performance Policy:</b> 100% of the work done within the same month = full payout. Postponed and completed within the same month = no deduction. Completed in a later month = <b>delayed</b> (not counted for the earlier month). Deduction is proportional to the category weights. Classes, DPP, tests, doubts and notes are <b>auto-counted</b> from the portal — <b>1 DPP per chapter is compulsory</b> (uploading any part completes the chapter). You mark YouTube/Shorts yourself — they count once the admin approves them.</div></div>`;
-  return html;
+function _pcSum(){
+  const v=id=>parseInt((document.getElementById(id)||{}).value)||0;
+  const mx=v('pc_retainer')+v('pc_quality')+v('pc_notesdpp')+v('pc_doubt')+v('pc_project');
+  const el=document.getElementById('pc_max'); if(el) el.textContent=_inr(mx);
+  const r=document.getElementById('pc_60');
+  if(r){ const pct=mx>0?Math.round(v('pc_retainer')/mx*100):0;
+    r.textContent='Retainer is '+pct+'% of maximum '+(pct===60?'— matches the 60% rule.':pct<60?'— below the 60% rule ('+_inr(Math.round(mx*0.6))+' would be 60%).':'— above 60% (rule: 60%).'); }
 }
-async function openPerfTask(){
-  let d;
-  try{ d=await api('/api/teacher/payout-tasks?month='+encodeURIComponent(_tPayMonth||curMonth())); }
-  catch(e){ toast(e.message,true); return; }
-  const cats=d.categories||[];
-  if(!cats.length){ toast('Your template has no manual categories.',true); return; }
-  showModal('Mark Work as Done',
-   `<div class="alert alert-info">Mark off-portal work such as YouTube videos, Shorts and live sessions here. <b>It counts once the admin approves it.</b> Enter the date the work was actually done — done in the same month = counted; done in a later month = <b>delayed</b> (not counted).</div>
-    <div class="form-group"><label>Category</label><select class="form-control" id="pt-key">${cats.map(c=>`<option value="${c.key}">${esc(c.label)} (monthly target ${c.target})</option>`).join('')}</select></div>
-    <div class="form-group"><label>Work title</label><input class="form-control" id="pt-title" placeholder="e.g. One Shot — Electrostatics"></div>
-    <div class="form-group"><label>Date (the day the work was done)</label><input type="date" class="form-control" id="pt-date" value="${new Date().toISOString().slice(0,10)}"></div>
-    <div class="form-group"><label>Note (optional)</label><input class="form-control" id="pt-note" placeholder="link or details"></div>`,
-   `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="pt-btn" onclick="submitPerfTask()">Mark Done</button>`);
-}
-async function submitPerfTask(){
-  const btn=document.getElementById('pt-btn'); btn.disabled=true; btn.textContent='Saving...';
-  try{
-    const r=await api('/api/teacher/payout-task','POST',{key:val('pt-key'),title:val('pt-title'),done_date:val('pt-date'),note:val('pt-note'),month:_tPayMonth||curMonth()});
-    closeModal(); toast(r.message); tPayRender();
-  }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Mark Done'; }
-}
-async function delPerfTask(id){
-  if(!confirm('Remove this entry?')) return;
-  try{ const r=await api('/api/teacher/payout-task/'+id,'DELETE'); toast(r.message); tPayRender(); }
+async function submitPayConfig(tid){
+  const v=id=>(document.getElementById(id)||{}).value;
+  const body={teacher_id:tid,
+    class_retainer:v('pc_retainer'),class_quality:v('pc_quality'),notes_dpp:v('pc_notesdpp'),
+    doubt_resolution:v('pc_doubt'),project_delivery:v('pc_project'),
+    tests_target:v('pc_tests'),videos_target:v('pc_videos'),live_target:v('pc_live'),shorts_target:v('pc_shorts'),
+    designation:v('pc_desig'),department:v('pc_dept'),employee_code:v('pc_emp'),
+    bank_name:v('pc_bank'),account_no:v('pc_acct'),ifsc:v('pc_ifsc')};
+  try{ const r=await api('/api/admin/earnings/config','POST',body); toast(r.message); closeModal(); aEarnFetch(); }
   catch(e){ toast(e.message,true); }
 }
-
-/* ---- ADMIN: work approvals queue ---- */
-async function aPerfApprovals(){
-  const el=document.getElementById('ap-appr'); if(!el) return;
-  try{
-    const d=await api('/api/admin/payout-approvals?month='+encodeURIComponent(_aPayMonth||curMonth()));
-    if(!(d.pending||[]).length){ el.innerHTML=''; return; }
-    el.innerHTML=`<div class="pc-appr"><div style="font-weight:800;font-size:.9rem;margin-bottom:6px">Work Approvals — ${d.pending.length} pending</div>${d.pending.map(x=>`
-      <div class="pc-task"><div class="t"><div class="tt">${esc(x.teacher_name)} — ${esc(x.title)}</div><div class="td">${esc(x.key)}${x.done_date?' · done on: '+esc(x.done_date):''}${x.note?' · '+esc(x.note):''} · marked ${esc(x.created_at)}</div></div>
-      <button class="btn btn-primary btn-sm" onclick="aApproveTask(${x.id})">Approve</button>
-      <button class="btn btn-danger btn-sm" onclick="aRejectTask(${x.id})">Reject</button></div>`).join('')}</div>`;
-  }catch(e){ el.innerHTML=''; }
+function adminSlip(tid){
+  const x=_aEarnRow(tid); if(!x){ toast('Load the list first.',true); return; }
+  _printDocHTML(_slipHTML(x));
 }
-async function aApproveTask(id){
-  try{ const r=await api('/api/admin/payout-task/'+id+'/approve','POST',{}); toast(r.message); aPayFetch(); }
-  catch(e){ toast(e.message,true); }
-}
-async function aRejectTask(id){
-  if(!confirm('Reject this entry? The teacher will have to mark it again.')) return;
-  try{ const r=await api('/api/admin/payout-task/'+id+'/reject','POST',{}); toast(r.message); aPayFetch(); }
-  catch(e){ toast(e.message,true); }
-}
-
-/* ---- ADMIN: payout detail (performance-aware, overrides old) ---- */
-async function openPayoutDetail(tid,name){
-  const safe=(name||'').replace(/'/g,'');
-  showModal('Payout Detail — '+name,`<div id="pd-body"><div class="spinner"></div></div>`,
-    `<button class="btn btn-ghost" onclick="openTemplateModal(${tid},'${safe}')">Targets</button><button class="btn btn-primary" onclick="closeModal()">Close</button>`);
-  try{
-    const p=await api('/api/admin/teacher/'+tid+'/payout?month='+encodeURIComponent(_aPayMonth||curMonth()));
-    const b=document.getElementById('pd-body'); if(!b) return;
-    if(!p.exists){ b.innerHTML='<div class="empty-state"><p>Payout not configured.</p></div>'; return; }
-    const adjRows=(p.adjustments||[]).length?`<div style="margin-top:14px"><strong style="font-size:.85rem">Adjustments</strong>${p.adjustments.map(a=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:.85rem"><span>${esc(a.kind==='extra'?'Extra Class Payment':a.kind==='bonus'?'Bonus':'Deduction')}${a.note?` — ${esc(a.note)}`:''}</span><span style="display:flex;align-items:center;gap:8px"><b>${a.kind==='deduction'?'-':'+'} ${fmtINR(a.amount)}</b><button class="btn btn-danger btn-sm" onclick="delAdjust(${a.id},${tid},'${safe}')">${ic('trash')}</button></span></div>`).join('')}</div>`:'';
-    let perfHtml='';
-    const perf=p.performance;
-    if(perf&&perf.started){
-      const t=perf.totals, act=(perf.categories||[]).filter(c=>c.target>0);
-      perfHtml=`<div class="pc-hero" style="margin:14px 0 10px"><div class="glow"></div><div class="top"><div><div class="lbl">Work Completion</div><div class="pct">${perf.perf_pct}%</div></div>
-        <div style="text-align:right"><div class="lbl">Performance Pay</div><div class="amt">${fmtINR(p.perf_pay)}</div>${p.perf_deduction?`<div style="font-size:.7rem;color:#fca5a5;font-weight:700">- ${fmtINR(p.perf_deduction)} deduction</div>`:`<div style="font-size:.7rem;color:#6ee7b7;font-weight:700">no deduction</div>`}</div></div></div>
-      <div class="pc-cards" style="grid-template-columns:repeat(4,1fr)">
-        <div class="pc-stat indigo"><div class="n">${t.target}</div><div class="l">Target</div></div>
-        <div class="pc-stat green"><div class="n">${t.done}</div><div class="l">Done</div></div>
-        <div class="pc-stat amber"><div class="n">${t.pending}</div><div class="l">Pending</div></div>
-        <div class="pc-stat purple"><div class="n">${t.delayed}</div><div class="l">Delayed</div></div>
-      </div>
-      <div class="pc-panel" style="margin-bottom:10px"><div class="ph"><h3>Category-wise Progress</h3></div>${act.map(c=>_pcCatRow(c,p.gross_salary||0,(act.reduce((x,y)=>x+y.weight,0)||1))).join('')}</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;align-items:center">
-        <button class="btn btn-ghost btn-sm" onclick="openMissedClasses(${tid},'${safe}')">Classes / Missed</button>
-        ${perf.finalized?`<span class="pc-chip appr">FINALIZED${perf.finalized_at?' · '+esc(perf.finalized_at):''}</span>`:`<button class="btn btn-ghost btn-sm" onclick="payoutFinalize(${tid},'${safe}')">Finalize Month</button>`}
-        ${perf.paid?`<span class="pc-chip appr">PAID</span>`:(perf.finalized?`<button class="btn btn-primary btn-sm" onclick="payoutPaid(${tid},'${safe}')">Mark Paid</button>`:'')}
-      </div>`;
-      const tasks=(perf.tasks||[]).filter(x=>x.status!=='missed');
-      if(tasks.length) perfHtml+=`<div style="margin-top:8px"><strong style="font-size:.85rem">Marked Work (YouTube / Shorts etc.)</strong>${tasks.map(x=>`
-        <div class="pc-task"><div class="t"><div class="tt">${esc(x.title)}</div><div class="td">${esc(x.key)}${x.done_date?' · '+esc(x.done_date):''} · ${esc(x.status)}${x.delayed?' · delayed (not counted)':''}</div></div>
-        ${x.status==='pending'?`<button class="btn btn-primary btn-sm" onclick="aApproveTaskD(${x.id},${tid},'${safe}')">Approve</button><button class="btn btn-danger btn-sm" onclick="aRejectTaskD(${x.id},${tid},'${safe}')">Reject</button>`:''}</div>`).join('')}</div>`;
-    } else if(perf) {
-      perfHtml=`<div class="alert alert-info" style="margin-top:10px">Performance-based payout will apply from 1 Aug 2026 — this month's calculation is attendance-based.</div>`;
-    }
-    b.innerHTML=`<div style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px">${esc(fmtMonthLabel(p.month))} — Present ${p.present_days}/${p.working_days} days</div>`+payoutBreakHTML(p)+perfHtml+adjRows;
-  }catch(e){ const b=document.getElementById('pd-body'); if(b) b.innerHTML=errHtml(e); }
-}
-async function aApproveTaskD(id,tid,name){
-  try{ const r=await api('/api/admin/payout-task/'+id+'/approve','POST',{}); toast(r.message); openPayoutDetail(tid,name); aPayFetch(); }
-  catch(e){ toast(e.message,true); }
-}
-async function aRejectTaskD(id,tid,name){
-  if(!confirm('Reject this entry?')) return;
-  try{ const r=await api('/api/admin/payout-task/'+id+'/reject','POST',{}); toast(r.message); openPayoutDetail(tid,name); aPayFetch(); }
-  catch(e){ toast(e.message,true); }
-}
-
-/* ---- ADMIN: template editor (targets + weights) ---- */
-async function openTemplateModal(tid,name){
-  let d;
-  try{ d=await api('/api/admin/teacher/'+tid+'/payout-template'); }
-  catch(e){ toast(e.message,true); return; }
-  window._tplData=d.template;
-  showModal('Monthly Targets & Weights — '+name,
-   `<div class="alert alert-info">Set each category's <b>monthly target</b> and its <b>weight %</b> of the salary. Weights must total <b>100</b>. Target 0 = category off (its weight is shared among the others). AUTO categories are counted by the portal itself; MANUAL categories are marked by the teacher and approved by you. The Live Classes target comes from the timetable automatically — keep it 0 here.</div>
-    <div class="pc-tpl-row" style="font-weight:800;font-size:.68rem;color:var(--text-muted);letter-spacing:.05em"><span>CATEGORY</span><span>TARGET</span><span>WEIGHT %</span></div>
-    ${d.template.map((t,i)=>`<div class="pc-tpl-row"><span style="font-weight:700">${esc(t.label)} <span class="bdg ${t.source==='auto'?'auto':'man'}">${t.source.toUpperCase()}</span></span><input type="number" min="0" class="form-control" id="tpl-t-${i}" value="${t.target}"><input type="number" min="0" step="0.5" class="form-control" id="tpl-w-${i}" value="${t.weight}" oninput="tplSum()"></div>`).join('')}
-    <div style="display:flex;justify-content:flex-end;margin-top:10px;font-weight:800;font-size:.88rem;gap:6px">Weight Total: <span id="tpl-sum">${d.weight_sum}</span>%</div>`,
-   `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="tpl-btn" onclick="submitTemplate(${tid})">Save Template</button>`);
-  tplSum();
-}
-function tplSum(){
-  let s=0; (window._tplData||[]).forEach((t,i)=>{ const el=document.getElementById('tpl-w-'+i); if(el) s+=parseFloat(el.value)||0; });
-  const el=document.getElementById('tpl-sum'); if(!el) return;
-  el.textContent=Math.round(s*10)/10; el.style.color=Math.abs(s-100)<0.01?'#059669':'#dc2626';
-}
-async function submitTemplate(tid){
-  const items=(window._tplData||[]).map((t,i)=>({key:t.key,label:t.label,source:t.source,
-    target:parseInt(document.getElementById('tpl-t-'+i).value)||0,
-    weight:parseFloat(document.getElementById('tpl-w-'+i).value)||0}));
-  const btn=document.getElementById('tpl-btn'); btn.disabled=true; btn.textContent='Saving...';
-  try{ const r=await api('/api/admin/teacher/'+tid+'/payout-template','PUT',{template:items}); closeModal(); toast(r.message); aPayFetch(); }
-  catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Save Template'; }
-}
-
-/* ---- ADMIN: missed-class flagging ---- */
-async function openMissedClasses(tid,name){
-  const safe=(name||'').replace(/'/g,'');
-  let d;
-  try{ d=await api('/api/admin/teacher/'+tid+'/payout-classes?month='+encodeURIComponent(_aPayMonth||curMonth())); }
-  catch(e){ toast(e.message,true); return; }
-  showModal('Classes — '+name+' ('+fmtMonthLabel(d.month)+')',
-   `<div class="alert alert-info">Mark a class <b>MISSED</b> if it did not happen — it is removed from that month's live-class count (affects salary). You can unmark it if it was marked by mistake.</div>`+
-   (d.classes.length? d.classes.map(c=>`<div class="pc-task"><div class="t"><div class="tt">${esc(c.chapter||c.subject)}</div><div class="td">${esc(c.date)} · ${esc(c.subject)}</div></div>
-     <button class="btn ${c.missed?'btn-danger':'btn-ghost'} btn-sm" onclick="flagMissed(${tid},${c.id},${c.missed?0:1},'${safe}')">${c.missed?'MISSED':'Held'}</button></div>`).join('') : '<div class="empty-state"><p>No scheduled classes this month.</p></div>'),
-   `<button class="btn btn-ghost" onclick="openPayoutDetail(${tid},'${safe}')">Back to Payout</button><button class="btn btn-primary" onclick="closeModal()">Close</button>`);
-}
-async function flagMissed(tid,eid,missed,name){
-  try{ const r=await api('/api/admin/teacher/'+tid+'/payout-missed-class','POST',{entry_id:eid,missed:!!missed}); toast(r.message); openMissedClasses(tid,name); aPayFetch(); }
-  catch(e){ toast(e.message,true); }
+function adminLetter(tid){
+  const x=_aEarnRow(tid); if(!x){ toast('Load the list first.',true); return; }
+  _printDocHTML(_letterHTML(x));
 }
 
 // ---- Office Locations (geofence, multi-branch) setup ----
@@ -14554,13 +14509,13 @@ async function olClear(){
 
 /* ---- ADMIN: finalize / paid ---- */
 async function payoutFinalize(tid,name){
-  if(!confirm('FINALIZE the payout for '+fmtMonthLabel(_aPayMonth||curMonth())+'? The calculation snapshot will now be frozen.')) return;
-  try{ const r=await api('/api/admin/teacher/'+tid+'/payout-finalize','POST',{month:_aPayMonth||curMonth()}); toast(r.message); openPayoutDetail(tid,name); aPayFetch(); }
+  if(!confirm('FINALIZE the payout for '+fmtMonthLabel(_aEarnMonth||curMonth())+'? The calculation snapshot will now be frozen.')) return;
+  try{ const r=await api('/api/admin/teacher/'+tid+'/payout-finalize','POST',{month:_aEarnMonth||curMonth()}); toast(r.message); if(window.aEarnFetch) aEarnFetch(); }
   catch(e){ toast(e.message,true); }
 }
 async function payoutPaid(tid,name){
   if(!confirm('Mark this payout as PAID?')) return;
-  try{ const r=await api('/api/admin/teacher/'+tid+'/payout-paid','POST',{month:_aPayMonth||curMonth()}); toast(r.message); openPayoutDetail(tid,name); aPayFetch(); }
+  try{ const r=await api('/api/admin/teacher/'+tid+'/payout-paid','POST',{month:_aEarnMonth||curMonth()}); toast(r.message); if(window.aEarnFetch) aEarnFetch(); }
   catch(e){ toast(e.message,true); }
 }
 

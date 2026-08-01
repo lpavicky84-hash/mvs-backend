@@ -2977,8 +2977,10 @@ def _default_policy(teacher_id=None):
             "required_hours": DEFAULT_REQUIRED_HOURS,
             "entry_time": "", "exit_time": "", "break_minutes": 0}
 
-def _parse_hhmm(s):
-    """'09:30' -> minutes since midnight. Invalid -> None."""
+def _parse_hhmm24(s):
+    """'09:30' (24h policy time) -> minutes since midnight. Invalid -> None.
+    NOTE: naam alag rakha hai — 2487 wala flexible _parse_hhmm (am/pm samajhta hai)
+    _delay_of/_duration_of ke liye chahiye; yeh usko shadow nahi karna chahiye."""
     try:
         h, m = str(s or "").strip().split(":")
         h, m = int(h), int(m)
@@ -3021,7 +3023,7 @@ def _policy_required(pol):
     if pol.get("mode") == "flexible":
         return MIN_PRESENT_HOURS
     if pol.get("mode") == "fixed":
-        en, ex = _parse_hhmm(pol.get("entry_time")), _parse_hhmm(pol.get("exit_time"))
+        en, ex = _parse_hhmm24(pol.get("entry_time")), _parse_hhmm24(pol.get("exit_time"))
         if en is not None and ex is not None and ex > en:
             span = (ex - en) / 60.0 - (pol.get("break_minutes") or 0) / 60.0
             return max(MIN_PRESENT_HOURS, round(span, 2))
@@ -3341,6 +3343,202 @@ def compute_payout(db, teacher_id: int, month: str):
         "adjustments": [{"id": a.id, "kind": a.kind, "amount": a.amount, "note": a.note or ""} for a in adjs],
         "designation": c.designation, "accepted": bool(c.accepted)
     }
+
+# =====================================================================
+# EARNINGS-BASED PAYOUT (v80) — appointment-letter model
+# pay structure: retainer (60% of max) + quality + notes/DPP + doubts + project
+# =====================================================================
+EARNINGS_DEFAULTS = {
+    "class_retainer": 15000, "class_quality": 1000, "notes_dpp": 2000,
+    "doubt_resolution": 1000, "project_delivery": 6000,
+    "tests_target": 4, "videos_target": 8, "live_target": 4, "shorts_target": 8,
+}
+EARNINGS_PAY_FIELDS = ("class_retainer", "class_quality", "notes_dpp",
+                       "doubt_resolution", "project_delivery")
+EARNINGS_TARGET_FIELDS = ("tests_target", "videos_target", "live_target", "shorts_target")
+
+
+def _jr(x):
+    """JS Math.round ke barabar (half-up) — Python round() banker's rounding karta hai."""
+    import math as _m
+    return int(_m.floor(float(x) + 0.5))
+
+
+def get_pay_config(db, teacher_id):
+    """Saved config ho to wo, warna defaults ke saath transient (unsaved) row."""
+    from models import TeacherPayConfig
+    cfg = db.query(TeacherPayConfig).filter(TeacherPayConfig.teacher_id == teacher_id).first()
+    if cfg:
+        return cfg
+    return TeacherPayConfig(teacher_id=teacher_id, **EARNINGS_DEFAULTS)
+
+
+def calc_earnings(a, pay):
+    """Appointment-letter earnings rule ka exact port.
+    a = month activity dict, pay = 5 amounts + 4 targets."""
+    sched = a["classes_scheduled"]
+    cond = a["classes_conducted"]
+
+    def _cap(x, t):
+        # target 0 -> full credit (JS me x/0 = Infinity -> min(...,1) = 1)
+        return min(x / t, 1) if t > 0 else 1
+
+    class_pct = cond / sched if sched > 0 else 1
+    class_earned = _jr(pay["class_retainer"] * class_pct)
+
+    late_pct = a["late_classes"] / sched if sched > 0 else 0
+    class_quality_earned = _jr(pay["class_quality"] * max(0, 1 - late_pct))
+
+    notes_pct = a["notes_uploaded"] / cond if cond > 0 else 1
+    dpp_pct = a["dpp_uploaded"] / cond if cond > 0 else 1
+    test_pct = _cap(a["tests_created"], pay["tests_target"])
+    notes_earned = _jr(pay["notes_dpp"] * 0.40 * notes_pct)
+    dpp_earned = _jr(pay["notes_dpp"] * 0.40 * dpp_pct)
+    tests_earned = _jr(pay["notes_dpp"] * 0.20 * test_pct)
+
+    doubt_pct = a["doubts_resolved"] / a["doubts_assigned"] if a["doubts_assigned"] > 0 else 1
+    doubt_earned = _jr(pay["doubt_resolution"] * doubt_pct)
+
+    task_pct = a["tasks_on_time"] / a["tasks_assigned"] if a["tasks_assigned"] > 0 else 1
+    content_pct = (_cap(a["tests_created"], pay["tests_target"]) * 0.25 +
+                   _cap(a["videos_made"], pay["videos_target"]) * 0.40 +
+                   _cap(a["live_sessions"], pay["live_target"]) * 0.24 +
+                   _cap(a["shorts_made"], pay["shorts_target"]) * 0.11)
+    task_earned = _jr(pay["project_delivery"] * (task_pct * 0.5 + content_pct * 0.5))
+
+    gross = (class_earned + class_quality_earned + notes_earned + dpp_earned +
+             tests_earned + doubt_earned + task_earned)
+    max_potential = sum(int(pay[k]) for k in EARNINGS_PAY_FIELDS)
+    perf = _jr(gross / max_potential * 100) if max_potential else 0
+    return {
+        "class_earned": class_earned, "class_quality_earned": class_quality_earned,
+        "notes_earned": notes_earned, "dpp_earned": dpp_earned, "tests_earned": tests_earned,
+        "doubt_earned": doubt_earned, "task_earned": task_earned,
+        "gross_earned": gross, "max_potential": max_potential, "perf_score": perf,
+        "tds": 0, "other_deduct": 0, "net_payable": gross,
+        "pcts": {"class": round(class_pct, 4), "quality": round(max(0, 1 - late_pct), 4),
+                 "notes": round(notes_pct, 4), "dpp": round(dpp_pct, 4), "tests": round(test_pct, 4),
+                 "doubt": round(doubt_pct, 4), "task": round(task_pct, 4),
+                 "content": round(content_pct, 4)},
+    }
+
+
+def _month_activity(db, tp, month):
+    """Portal activity logs se us month ke salary-input stats."""
+    from models import (TimetableEntry, Material, Test, DPP, Doubt, VideoTask,
+                        RescheduleRequest, RescheduleStatus)
+    y, m = int(month[:4]), int(month[5:7])
+    start = date(y, m, 1)
+    end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
+    dt0, dt1 = datetime.combine(start, datetime.min.time()), datetime.combine(end, datetime.min.time())
+
+    entries = db.query(TimetableEntry).filter(
+        TimetableEntry.teacher_id == tp.id,
+        TimetableEntry.entry_type == "chapter",
+        TimetableEntry.status == "approved",
+        TimetableEntry.entry_date >= start, TimetableEntry.entry_date < end).all()
+    scheduled = len(entries)
+    done = [e for e in entries if e.completed]
+    conducted = len(done)
+    late = sum(1 for e in done if _delay_band(_delay_of(e)) == "late")
+
+    mats = db.query(Material).filter(
+        Material.teacher_id == tp.id,
+        Material.created_at >= dt0, Material.created_at < dt1).all()
+    notes = sum(1 for x in mats if (x.material_type or "") == "notes")
+    mat_dpp = sum(1 for x in mats if (x.material_type or "") == "dpp")
+    mat_test = sum(1 for x in mats if (x.material_type or "") == "test")
+    dpps = db.query(DPP).filter(
+        DPP.teacher_id == tp.id, DPP.created_at >= dt0, DPP.created_at < dt1).count()
+    tests = db.query(Test).filter(
+        Test.teacher_id == tp.id, Test.created_at >= dt0, Test.created_at < dt1).count()
+
+    vids = db.query(VideoTask).filter(
+        VideoTask.teacher_id == tp.id,
+        VideoTask.submitted_at != None,
+        VideoTask.submitted_at >= dt0, VideoTask.submitted_at < dt1,
+        VideoTask.status != "rejected").all()
+    videos = live = shorts = 0
+    for t in vids:
+        vt = (t.video_type or "").lower()
+        if "short" in vt:
+            shorts += 1
+        elif "live" in vt:
+            live += 1
+        else:
+            videos += 1
+
+    doubts_assigned = db.query(Doubt).filter(
+        Doubt.teacher_id == tp.id, Doubt.created_at >= dt0, Doubt.created_at < dt1).count()
+    doubts_resolved = db.query(Doubt).filter(
+        Doubt.teacher_id == tp.id, Doubt.resolved_at != None,
+        Doubt.resolved_at >= dt0, Doubt.resolved_at < dt1).count()
+
+    tasks = db.query(VideoTask).filter(
+        VideoTask.teacher_id == tp.id,
+        VideoTask.created_at >= dt0, VideoTask.created_at < dt1).all()
+    tasks_assigned = len(tasks)
+    tasks_on_time = sum(1 for t in tasks if t.on_time)
+
+    resched = db.query(RescheduleRequest).filter(
+        RescheduleRequest.teacher_id == tp.id,
+        RescheduleRequest.status == RescheduleStatus.approved,
+        RescheduleRequest.created_at >= dt0, RescheduleRequest.created_at < dt1).count()
+
+    return {
+        "classes_scheduled": scheduled, "classes_conducted": conducted, "late_classes": late,
+        "extra_reschedules": max(0, resched - 1),
+        "notes_uploaded": notes, "dpp_uploaded": dpps + mat_dpp,
+        "tests_created": tests + mat_test,
+        "videos_made": videos, "live_sessions": live, "shorts_made": shorts,
+        "doubts_assigned": doubts_assigned, "doubts_resolved": doubts_resolved,
+        "tasks_assigned": tasks_assigned, "tasks_on_time": tasks_on_time,
+    }
+
+
+def earnings_payload(db, tp, month):
+    """Teacher + pay config + month activity + earnings — slip/letter dono ka data."""
+    cfg = get_pay_config(db, tp.id)
+    act = _month_activity(db, tp, month)
+    pay = {k: int(getattr(cfg, k) or 0) for k in EARNINGS_PAY_FIELDS}
+    targets = {k: int(getattr(cfg, k) or 0) for k in EARNINGS_TARGET_FIELDS}
+    e = calc_earnings(act, {**pay, **targets})
+    name = tp.user.name if tp.user else "Teacher"
+    subs = tp.subjects or []
+    now = _ist_now()
+    try:
+        ml = datetime(int(month[:4]), int(month[5:7]), 1).strftime("%B %Y")
+    except Exception:
+        ml = month
+    return {
+        "month": month, "month_label": ml,
+        "teacher": {
+            "id": tp.id, "name": name,
+            "employee_code": (cfg.employee_code or "").strip() or ("MVS-T-%03d" % tp.id),
+            "designation": (cfg.designation or "").strip() or "Subject Teacher",
+            "department": (cfg.department or "").strip() or
+                          ("Academic — " + subs[0] if subs else "Academic"),
+            "subjects": subs,
+            "bank": (cfg.bank_name or "").strip(), "account_no": (cfg.account_no or "").strip(),
+            "ifsc": (cfg.ifsc or "").strip(),
+        },
+        "pay": pay, "targets": targets, "activity": act, "earnings": e,
+        "letter": {"ref": "MVS/APT/%d/%03d" % (now.year, tp.id),
+                   "date": now.strftime("%d %B %Y"),
+                   "configured": cfg.id is not None},
+    }
+
+
+@router.get("/earnings")
+def teacher_earnings(month: str = "", db: Session = Depends(get_db),
+                     current_user=Depends(get_teacher)):
+    """Teacher ka apna earnings breakdown (appointment-letter model)."""
+    tp = get_teacher_profile(current_user, db)
+    month = (month or "").strip() or _ist_now().strftime("%Y-%m")
+    if not re.match(r"^\d{4}-\d{2}$", month):
+        raise HTTPException(status_code=400, detail="Invalid month (use YYYY-MM).")
+    return earnings_payload(db, tp, month)
+
 
 # Faculty Service Agreement - Table A-0: sirf GROSS salary input hoti hai,
 # breakup in fixed % se automatic banta hai (sabhi teachers ke liye same).
