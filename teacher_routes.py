@@ -3411,7 +3411,9 @@ def calc_earnings(a, pay):
     class_quality_earned = _jr(pay["class_quality"] * quality_pct)
 
     notes_pct = a["notes_uploaded"] / cond if cond > 0 else 0
-    dpp_pct = a["dpp_uploaded"] / cond if cond > 0 else 0
+    # v83: DPP pct chapter-coverage se (1 chapter = 1 DPP). Purane payloads me
+    # dpp_covered nahi hai to raw upload count par fallback.
+    dpp_pct = a.get("dpp_covered", a["dpp_uploaded"]) / cond if cond > 0 else 0
     test_pct = _cap(a["tests_created"], pay["tests_target"])
     notes_earned = _jr(pay["notes_dpp"] * 0.40 * notes_pct)
     dpp_earned = _jr(pay["notes_dpp"] * 0.40 * dpp_pct)
@@ -3506,10 +3508,51 @@ def _month_activity(db, tp, month):
         RescheduleRequest.status == RescheduleStatus.approved,
         RescheduleRequest.created_at >= dt0, RescheduleRequest.created_at < dt1).count()
 
+    # --- v83: DPP-per-chapter coverage (1 chapter = 1 DPP mandatory; part-wise OK) ---
+    # Chapter "covered" hai agar: class report me dpp_given=True, YA us chapter se
+    # match karta chapterwise DPP / material-dpp upload hai (month se pehle ka bhi chalega).
+    # Jo completed chapter cover nahi hua -> dpp_pending me teacher ko dikhega.
+    from models import DPPType as _DPPType
+    def _norm(s):
+        return re.sub(r"\s+", " ", (s or "").strip().lower())
+    chap_refs = []
+    for x in db.query(DPP).filter(DPP.teacher_id == tp.id, DPP.is_active == True).all():
+        if x.dpp_type == _DPPType.chapterwise or str(x.dpp_type) in ("chapterwise", "DPPType.chapterwise"):
+            if _norm(x.reference):
+                chap_refs.append((_norm(x.subject), _norm(x.reference)))
+    for x in db.query(Material).filter(Material.teacher_id == tp.id,
+                                       Material.material_type == "dpp",
+                                       Material.chapter != None).all():
+        if _norm(x.chapter):
+            chap_refs.append((_norm(x.subject), _norm(x.chapter)))
+
+    def _dpp_covered(subject, chapter):
+        ns, nc = _norm(subject), _norm(chapter)
+        if not nc:
+            return False
+        for s, r in chap_refs:
+            if s and ns and s != ns:
+                continue
+            if r and (r in nc or nc in r):
+                return True
+        return False
+
+    dpp_covered = 0
+    dpp_pending = []
+    for e in done:
+        if bool(getattr(e, "dpp_given", False)) or _dpp_covered(e.subject, e.chapter):
+            dpp_covered += 1
+        else:
+            dpp_pending.append({
+                "chapter": e.chapter or "", "subject": e.subject or "",
+                "class_name": e.class_name or "",
+                "date": e.entry_date.isoformat() if e.entry_date else ""})
+
     return {
         "classes_scheduled": scheduled, "classes_conducted": conducted, "late_classes": late,
         "extra_reschedules": max(0, resched - 1),
         "notes_uploaded": notes, "dpp_uploaded": dpps + mat_dpp,
+        "dpp_covered": dpp_covered, "dpp_pending": dpp_pending,
         "tests_created": tests + mat_test,
         "videos_made": videos, "live_sessions": live, "shorts_made": shorts,
         "doubts_assigned": doubts_assigned, "doubts_resolved": doubts_resolved,
