@@ -4328,12 +4328,16 @@ def _payout_status(tp):
         "letter_accepted": bool((tp.letter_accept_version or 0) >= LETTER_VERSION),
         "passcode_set": bool(tp.payout_passcode),
         "reset_pending": bool(tp.passcode_reset_pending),
+        "remark": tp.letter_remark or "",
+        "remark_status": tp.letter_remark_status or "",
+        "remark_reply": tp.letter_remark_reply or "",
     }
 
 @router.get("/payout/status")
 def payout_gate_status(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
-    """Payout section ka lock status — letter accept hua? passcode set? reset pending?"""
+    """Payout section ka lock status — letter accept hua? passcode set? reset pending? remark?"""
     _ensure_v89(db)
+    _ensure_v90(db)
     tp = get_teacher_profile(current_user, db)
     return _payout_status(tp)
 
@@ -4401,6 +4405,52 @@ def payout_request_passcode_reset(db: Session = Depends(get_db), current_user=De
             notif_type="passcode_reset_request"))
     db.commit()
     return {"message": "Reset request admin ko bhej di — approval ke baad naya passcode set kar paoge", **_payout_status(tp)}
+
+# ===== v90: LETTER REMARKS — accept se pehle doubt bhejo, admin reply kare =====
+_V90_READY = False
+
+def _ensure_v90(db):
+    """v90 ke remark columns pehli use me add karta hai (MySQL/SQLite dono safe)."""
+    global _V90_READY
+    if _V90_READY:
+        return
+    from sqlalchemy import text as _text
+    for stmt in [
+        "ALTER TABLE teacher_profiles ADD COLUMN letter_remark TEXT NULL",
+        "ALTER TABLE teacher_profiles ADD COLUMN letter_remark_status VARCHAR(20) NULL",
+        "ALTER TABLE teacher_profiles ADD COLUMN letter_remark_reply TEXT NULL",
+        "ALTER TABLE teacher_profiles ADD COLUMN letter_remark_at DATETIME NULL",
+    ]:
+        try:
+            db.execute(_text(stmt)); db.commit()
+        except Exception:
+            db.rollback()
+    _V90_READY = True
+
+
+@router.post("/payout/letter-remark")
+def payout_letter_remark(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Letter padhne ke baad accept karne se PEHLE teacher apna doubt bhejta hai.
+    Admin Approvals me check karke reply/resolve karta hai — tab teacher accept kare."""
+    _ensure_v90(db)
+    tp = get_teacher_profile(current_user, db)
+    remark = (payload.get("remark") or "").strip()
+    if len(remark) < 5:
+        raise HTTPException(status_code=400, detail="Apna doubt thoda detail me likho (min 5 characters)")
+    if tp.letter_remark_status == "pending":
+        raise HTTPException(status_code=400, detail="Aapka remark already admin ke paas pending hai — reply ka wait karo")
+    tp.letter_remark = remark
+    tp.letter_remark_status = "pending"
+    tp.letter_remark_reply = None
+    tp.letter_remark_at = _ist_now()
+    for adm in db.query(User).filter(User.role == "admin").all():
+        db.add(Notification(
+            user_id=adm.id,
+            title="Appointment Letter Remark",
+            message=f"{current_user.name} ne appointment letter pe doubt/remark bheja hai. Approvals section me check karke reply karo.",
+            notif_type="letter_remark"))
+    db.commit()
+    return {"message": "Remark admin ko bhej diya — reply aate hi notification mil jayega", **_payout_status(tp)}
 
 # ===== PAYOUT =====
 @router.get("/payout")

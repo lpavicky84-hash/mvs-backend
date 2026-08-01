@@ -1918,6 +1918,48 @@ def admin_passcode_reset_review(tid: int, payload: dict, db: Session = Depends(g
     return {"message": "Passcode reset " + status, "teacher_id": tid, "status": status}
 
 
+# ===== v90: LETTER REMARKS — teacher ke doubts admin check karke reply kare =====
+@router.get("/letter-remarks")
+def admin_letter_remarks(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Jin teachers ne appointment letter pe doubt/remark bheja hai (pending)."""
+    rows = (db.query(TeacherProfile, User)
+              .join(User, TeacherProfile.user_id == User.id)
+              .filter(TeacherProfile.letter_remark_status == "pending")
+              .order_by(TeacherProfile.letter_remark_at.desc().nullslast())
+              .all())
+    out = []
+    for tp, u in rows:
+        out.append({"teacher_id": tp.id, "name": u.name, "user_id": u.user_id,
+                    "subjects": tp.subjects or [], "has_photo": bool(tp.photo_b64),
+                    "remark": tp.letter_remark or "",
+                    "at": tp.letter_remark_at.isoformat() if tp.letter_remark_at else ""})
+    return out
+
+
+@router.post("/letter-remarks/{tid}/review")
+def admin_letter_remark_review(tid: int, payload: dict, db: Session = Depends(get_db),
+                               _=Depends(get_admin)):
+    """Reply likhkar remark resolve karo — teacher ko notification chala jaata hai.
+    Letter me kuch badalna ho to Payouts → Pay Structure se update karke yahan bata do."""
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    if tp.letter_remark_status != "pending":
+        raise HTTPException(status_code=400, detail="Is teacher ka koi pending remark nahi hai")
+    reply = (payload.get("reply") or "").strip()
+    if len(reply) < 3:
+        raise HTTPException(status_code=400, detail="Reply likho — teacher ko samajhna chahiye ki kya hua")
+    tp.letter_remark_status = "resolved"
+    tp.letter_remark_reply = reply
+    u = db.query(User).filter(User.id == tp.user_id).first()
+    if u:
+        db.add(Notification(user_id=u.id, title="Letter Remark — Admin Reply",
+                            message="Admin ne aapke appointment letter remark ka reply diya hai: " + reply[:180] + ("..." if len(reply) > 180 else ""),
+                            notif_type="letter_remark_resolved"))
+    db.commit()
+    return {"message": "Reply bhej diya — remark resolved", "teacher_id": tid, "status": "resolved"}
+
+
 @router.post("/reset-password")
 def admin_reset_password(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_admin)):
     role = (payload.get("role") or "").strip()          # 'teacher' | 'student'

@@ -103,6 +103,10 @@ class TeacherProfile(Base):
     payout_passcode = Column(String(255), nullable=True)      # v89: payout section lock (hashed)
     letter_accept_version = Column(Integer, default=0)        # v89: payout gate — LETTER_VERSION se kam ho to re-accept
     passcode_reset_pending = Column(Boolean, default=False)   # v89: admin approval pending
+    letter_remark = Column(Text, nullable=True)               # v90: appointment letter pe teacher ka doubt
+    letter_remark_status = Column(String(20), nullable=True)  # v90: pending | resolved
+    letter_remark_reply = Column(Text, nullable=True)         # v90: admin ka reply
+    letter_remark_at = Column(DateTime, nullable=True)        # v90: remark kab aaya
 
     user    = relationship("User", back_populates="teacher_profile")
     classes = relationship("ClassEntry", back_populates="teacher")
