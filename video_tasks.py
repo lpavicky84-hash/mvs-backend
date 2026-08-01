@@ -395,19 +395,63 @@ def _dedupe_special(db, teacher_id, kind):
     return changed
 
 
+def _ensure_kind_parity(db, tp):
+    """v78: One Shot jis-jis subject ka hai, un sabka Rapid Revision bhi ho.
+    Profile subjects baad me clear/change ho jayein to purane (orphan) One Shot
+    tasks ke liye RR kabhi banta hi nahi tha (early return) — isliye admin
+    monitor me One Shot 24 vs Rapid Revision 21 jaisa gap aa jata tha.
+    Ye pass existing One Shot tasks se chalti hai (profile subjects pe depend
+    nahi), idempotent hai — RR already ho to kuch nahi karti."""
+    os_subjects = [s for (s,) in db.query(VideoTask.subject)
+                   .filter(VideoTask.teacher_id == tp.id, VideoTask.kind == "one_shot")
+                   .distinct().all() if (s or "").strip()]
+    if not os_subjects:
+        return False
+    rr_subjects = {s for (s,) in db.query(VideoTask.subject)
+                   .filter(VideoTask.teacher_id == tp.id, VideoTask.kind == "rapid_revision")
+                   .distinct().all()}
+    missing = [s for s in os_subjects if s not in rr_subjects]
+    if not missing:
+        return False
+    _u = db.query(User).filter(User.id == tp.user_id).first()
+    _inactive = bool(_u is not None and _u.is_active is False)
+    for subj in missing:
+        rt = VideoTask(teacher_id=tp.id,
+                       title="Rapid Revision — %s (All Chapters)" % subj,
+                       kind="rapid_revision", subject=subj,
+                       video_type="Rapid Revision",
+                       status="assigned", proposed_by="admin", proposal_ok="approved",
+                       deadline=_dl(RAPID_REVISION_DEADLINE))
+        db.add(rt)
+        db.flush()
+        _hist_add(rt, "assigned", "Rapid Revision task auto-created — %s (One Shot parity)" % subj)
+        if tp.user_id and not _inactive:
+            _vt_notify(db, tp.user_id, "Rapid Revision Task — %s" % subj,
+                       'A Rapid Revision task for %s is now in My Tasks — record a rapid '
+                       'revision video of every chapter and paste each chapter\'s link in '
+                       'front of it. Deadline: %s.'
+                       % (subj, _dl(RAPID_REVISION_DEADLINE).strftime("%d %b %Y")))
+    return True
+
+
 def _ensure_special_teacher(db, tp):
     """Teacher ke One Shot (per subject) + Rapid Revision tasks banao/sync karo.
     Idempotent + self-heal: purane naam formats rename, duplicate tasks merge,
     links/history kabhi delete nahi hote."""
+    changed = _ensure_kind_parity(db, tp)
     subs = _teacher_subject_list(db, tp)
     if not subs:
+        if changed:
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
         return
     _u = db.query(User).filter(User.id == tp.user_id).first()
     # Inactive teacher ke tasks bhi sync/create hote rahenge (admin monitor me
     # One Shot vs Rapid Revision parity ke liye) — bas notification nahi jayega.
     _inactive = bool(_u is not None and _u.is_active is False)
     named = _special_subject_names(db, tp, subs)   # [(raw_name, cls, stable_display)]
-    changed = False
     # One Shot — har subject ka ek task, chapters syllabus/timetable se
     for nm, cl, display in named:
         titles, _src = _chapters_for(db, tp.id, nm, cl)
