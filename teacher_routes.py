@@ -3375,31 +3375,52 @@ def get_pay_config(db, teacher_id):
 
 def calc_earnings(a, pay):
     """Appointment-letter earnings rule ka exact port.
-    a = month activity dict, pay = 5 amounts + 4 targets."""
+    a = month activity dict, pay = 5 amounts + 4 targets.
+    STRICT (v82): koi free credit nahi — jis component ki activity/denominator
+    0 hai uska amount bhi 0. Sirf actual recorded activity se earning banti hai."""
+    max_potential = sum(int(pay[k]) for k in EARNINGS_PAY_FIELDS)
+    if not any([a["classes_scheduled"], a["classes_conducted"], a["notes_uploaded"],
+                a["dpp_uploaded"], a["tests_created"], a["videos_made"], a["live_sessions"],
+                a["shorts_made"], a["doubts_assigned"], a["doubts_resolved"],
+                a["tasks_assigned"], a["tasks_on_time"]]):
+        return {
+            "class_earned": 0, "class_quality_earned": 0, "notes_earned": 0,
+            "dpp_earned": 0, "tests_earned": 0, "doubt_earned": 0, "task_earned": 0,
+            "gross_earned": 0, "max_potential": max_potential, "perf_score": 0,
+            "tds": 0, "other_deduct": 0, "net_payable": 0,
+            "pcts": {"class": 0, "quality": 0, "notes": 0, "dpp": 0, "tests": 0,
+                     "doubt": 0, "task": 0, "content": 0},
+        }
     sched = a["classes_scheduled"]
     cond = a["classes_conducted"]
 
     def _cap(x, t):
-        # target 0 -> full credit (JS me x/0 = Infinity -> min(...,1) = 1)
-        return min(x / t, 1) if t > 0 else 1
+        # v82: target 0 hai aur actual bhi 0 -> 0 (free full credit nahi);
+        # target 0 par actual > 0 -> full credit (target exceed kar diya)
+        if t > 0:
+            return min(x / t, 1)
+        return 1 if x > 0 else 0
 
-    class_pct = cond / sched if sched > 0 else 1
+    class_pct = cond / sched if sched > 0 else 0
     class_earned = _jr(pay["class_retainer"] * class_pct)
 
-    late_pct = a["late_classes"] / sched if sched > 0 else 0
-    class_quality_earned = _jr(pay["class_quality"] * max(0, 1 - late_pct))
+    # Figma parity: late scheduled ke against measure hota hai (1 late of 20 -> 950),
+    # lekin v82: ek bhi class conduct nahi hui to quality bhi 0 (free credit nahi)
+    quality_pct = (max(0, 1 - a["late_classes"] / sched)
+                   if (sched > 0 and cond > 0) else 0)
+    class_quality_earned = _jr(pay["class_quality"] * quality_pct)
 
-    notes_pct = a["notes_uploaded"] / cond if cond > 0 else 1
-    dpp_pct = a["dpp_uploaded"] / cond if cond > 0 else 1
+    notes_pct = a["notes_uploaded"] / cond if cond > 0 else 0
+    dpp_pct = a["dpp_uploaded"] / cond if cond > 0 else 0
     test_pct = _cap(a["tests_created"], pay["tests_target"])
     notes_earned = _jr(pay["notes_dpp"] * 0.40 * notes_pct)
     dpp_earned = _jr(pay["notes_dpp"] * 0.40 * dpp_pct)
     tests_earned = _jr(pay["notes_dpp"] * 0.20 * test_pct)
 
-    doubt_pct = a["doubts_resolved"] / a["doubts_assigned"] if a["doubts_assigned"] > 0 else 1
+    doubt_pct = a["doubts_resolved"] / a["doubts_assigned"] if a["doubts_assigned"] > 0 else 0
     doubt_earned = _jr(pay["doubt_resolution"] * doubt_pct)
 
-    task_pct = a["tasks_on_time"] / a["tasks_assigned"] if a["tasks_assigned"] > 0 else 1
+    task_pct = a["tasks_on_time"] / a["tasks_assigned"] if a["tasks_assigned"] > 0 else 0
     content_pct = (_cap(a["tests_created"], pay["tests_target"]) * 0.25 +
                    _cap(a["videos_made"], pay["videos_target"]) * 0.40 +
                    _cap(a["live_sessions"], pay["live_target"]) * 0.24 +
@@ -3416,7 +3437,7 @@ def calc_earnings(a, pay):
         "doubt_earned": doubt_earned, "task_earned": task_earned,
         "gross_earned": gross, "max_potential": max_potential, "perf_score": perf,
         "tds": 0, "other_deduct": 0, "net_payable": gross,
-        "pcts": {"class": round(class_pct, 4), "quality": round(max(0, 1 - late_pct), 4),
+        "pcts": {"class": round(class_pct, 4), "quality": round(quality_pct, 4),
                  "notes": round(notes_pct, 4), "dpp": round(dpp_pct, 4), "tests": round(test_pct, 4),
                  "doubt": round(doubt_pct, 4), "task": round(task_pct, 4),
                  "content": round(content_pct, 4)},

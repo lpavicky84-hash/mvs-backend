@@ -2370,7 +2370,23 @@ body.dark .cal-d.on{color:#34d399}
 .po-grid{display:grid;grid-template-columns:1.55fr 1fr;gap:18px;align-items:start}
 @media(max-width:1000px){.po-grid{grid-template-columns:1fr}}
 #printDoc{display:none}
-@media print{body>*:not(#printDoc){display:none!important}#printDoc{display:block!important}@page{size:A4;margin:13mm 16mm}}
+@media print{html,body{background:#fff!important}body>*:not(#printDoc){display:none!important}#printDoc{display:block!important;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{size:A4;margin:12mm 14mm}}
+.ae-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:18px}
+.ae-stat{position:relative;overflow:hidden;display:flex;align-items:center;gap:13px;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px 18px;box-shadow:var(--shadow)}
+.ae-stat:before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--primary),#e8c66a)}
+.ae-stat-ic{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,var(--primary),#d9b54a);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ae-stat-ic svg{width:20px;height:20px}
+.ae-stat-v{font-size:1.28rem;font-weight:900;letter-spacing:-.02em}
+.ae-stat-l{font-size:.68rem;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.ae-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(430px,1fr));gap:14px}
+.ae-tcard{transition:transform .25s,box-shadow .25s,border-color .25s}
+.ae-tcard:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg);border-color:rgba(184,148,31,.45)}
+.ae-ava{width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,var(--primary),#d9b54a);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.95rem;flex-shrink:0;box-shadow:0 4px 12px rgba(184,148,31,.35)}
+.ae-mini{display:flex;border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin:12px 0}
+.ae-mini>div{flex:1;text-align:center;padding:8px 4px}
+.ae-mini>div+div{border-left:1px solid var(--border)}
+.ae-mini b{display:block;font-size:.95rem}
+.ae-mini span{font-size:.62rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em}
 .po-banner{background:linear-gradient(120deg,hsl(43 45% 11%),hsl(42 48% 18%) 55%,hsl(46 42% 13%));border-radius:14px;color:#fff;padding:22px;display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;position:relative;overflow:hidden}
 .po-banner .glow{position:absolute;right:-50px;top:-50px;width:200px;height:200px;border-radius:9999px;background:rgba(201,162,39,.25);filter:blur(52px);pointer-events:none}
 .po-mini{display:grid;grid-template-columns:auto auto;gap:8px 26px;align-content:center}
@@ -13758,9 +13774,9 @@ const _LH=(refNo,date,conf)=>`
   </div>
  </div>
 </div>`;
-const _SEC=(title,color)=>`<div style="display:flex;align-items:center;gap:9px;border-bottom:2.5px solid ${color||'#0F2A54'};padding-bottom:6px;margin-bottom:12px;margin-top:20px">
- <div style="background:${color||'#0F2A54'};color:#fff;min-width:24px;height:24px;border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px;font-weight:900">${esc(title.split('.')[0])}</div>
- <span style="font-weight:800;font-size:11.5px;color:${color||'#0F2A54'};letter-spacing:.8px;text-transform:uppercase">${esc(title)}</span></div>`;
+const _SEC=(title,color)=>{const num=title.split('.')[0],txt=title.replace(/^\d+\.\s*/,'');return `<div style="display:flex;align-items:center;gap:9px;border-bottom:2.5px solid ${color||'#0F2A54'};padding-bottom:6px;margin-bottom:12px;margin-top:16px">
+ <div style="background:${color||'#0F2A54'};color:#fff;min-width:24px;height:24px;border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px;font-weight:900">${esc(num)}</div>
+ <span style="font-weight:800;font-size:11.5px;color:${color||'#0F2A54'};letter-spacing:.8px;text-transform:uppercase">${esc(txt)}</span></div>`;};
 const _P=(html,style)=>`<p style="font-size:10px;color:#1a2a3a;line-height:1.75;margin:0 0 8px;${style||''}">${html}</p>`;
 const _DFOOT=(left,mid,right)=>`<div style="margin-top:18px;border-top:2px solid #0F2A54;padding-top:7px;display:flex;justify-content:space-between;gap:10px">
  <div style="font-size:7.5px;color:#8899aa">${left}</div><div style="font-size:7.5px;color:#FF6B2B;font-weight:700">${mid}</div><div style="font-size:7.5px;color:#8899aa">${right}</div></div>`;
@@ -13808,7 +13824,7 @@ const _LETTER_TERMS=[
 function _letterHTML(d){
   const t=d.teacher, pay=d.pay, tg=d.targets;
   const maxPot=pay.class_retainer+pay.class_quality+pay.notes_dpp+pay.doubt_resolution+pay.project_delivery;
-  const refNo=d.letter.ref+t.name.split(' ').map(w=>w[0]||'').join('');
+  const refNo=d.letter.ref;
   const payRows=[
    ['Class Conduct Retainer','Earned by conducting all scheduled timetable classes for the month. Proportionally reduced only if classes are not conducted without prior approval.',pay.class_retainer],
    ['Class Quality Incentive','Earned by starting every class on time, maintaining full scheduled duration, and keeping portal attendance records accurate.',pay.class_quality],
@@ -13859,36 +13875,36 @@ function _letterHTML(d){
   <div style="page-break-after:always"></div>
   ${_SEC('3. Professional Conduct Standards')}
   ${_P('The following standards are mandatory. They exist to protect student experience and institute reputation. Non-compliance does not result in a penalty against a fixed salary — rather, it means the work for that component is considered incomplete and the corresponding earnings are not released.')}
-  ${_LETTER_RULES.map(s=>`<div style="margin-bottom:12px">
+  ${_LETTER_RULES.map(s=>`<div style="margin-bottom:10px">
     <div style="font-weight:800;font-size:10.5px;color:${s.color};margin-bottom:6px">${s.num} &nbsp; ${esc(s.title)}</div>
     ${s.rules.map((r,i)=>`<div style="display:flex;gap:7px;margin-bottom:4px"><div style="min-width:17px;height:17px;border-radius:50%;background:${s.color}20;color:${s.color};font-size:8.5px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">${i+1}</div><p style="font-size:9.5px;color:#1a2a3a;line-height:1.7;margin:0">${esc(r)}</p></div>`).join('')}
    </div>`).join('')}
   <div style="page-break-after:always"></div>
   ${_SEC('4. Monthly Earning Targets')}
-  <div style="border:1.5px solid #FF6B2B;border-radius:6px;padding:9px 13px;background:#fffbf5;margin-bottom:10px">
+  <div style="border:1.5px solid #FF6B2B;border-radius:6px;padding:8px 13px;background:#fffbf5;margin-bottom:8px">
    <div style="font-weight:800;font-size:9.5px;color:#FF6B2B;margin-bottom:3px">Targets Are Set by the Admin Each Month</div>
    <p style="font-size:9px;color:#3a2a2a;line-height:1.65;margin:0">The specific quantities for each target category (number of videos, tests, sessions, etc.) are determined by the Academic Admin and updated on your portal during the <strong>first week of every month</strong>. It is your responsibility to check your portal at the start of each month and confirm your targets before commencing work. The categories below are fixed; only the monthly quantities vary.</p>
   </div>
   <table style="width:100%;border-collapse:collapse;font-size:9px;margin-bottom:12px">
-   <thead><tr style="background:#0F2A54;color:#fff"><th style="padding:5px 8px;text-align:left;font-weight:700;width:4%">#</th><th style="padding:5px 8px;text-align:left;font-weight:700">Target Category</th><th style="padding:5px 8px;text-align:center;font-weight:700;width:28%">Monthly Requirement</th><th style="padding:5px 8px;text-align:center;font-weight:700;width:10%">Tracking</th></tr></thead>
-   <tbody>${targetRows.map((r,i)=>`<tr style="background:${i%2===0?'#fff':'#f7f9fc'};border-bottom:1px solid #e4ebf5"><td style="padding:5px 8px;color:#8899aa;font-weight:700">${i+1}</td><td style="padding:5px 8px;color:#1a2a3a;font-weight:500">${esc(r[0])}</td><td style="padding:5px 8px;text-align:center;font-weight:700;color:#0F2A54;font-size:9px">${esc(r[1])}</td><td style="padding:5px 8px;text-align:center"><span style="background:${r[2]==='AUTO'?'#e8f5e9':'#f0ebff'};color:${r[2]==='AUTO'?'#1b7a3e':'#6b3fd4'};border-radius:3px;padding:1px 6px;font-size:7.5px;font-weight:800">${r[2]}</span></td></tr>`).join('')}</tbody></table>
+   <thead><tr style="background:#0F2A54;color:#fff"><th style="padding:5px 8px;text-align:left;font-weight:700;width:4%">#</th><th style="padding:5px 8px;text-align:left;font-weight:700">Target Category</th><th style="padding:5px 8px;text-align:center;font-weight:700;width:28%">Monthly Requirement</th><th style="padding:4px 8px;text-align:center;font-weight:700;width:10%">Tracking</th></tr></thead>
+   <tbody>${targetRows.map((r,i)=>`<tr style="background:${i%2===0?'#fff':'#f7f9fc'};border-bottom:1px solid #e4ebf5"><td style="padding:4px 8px;color:#8899aa;font-weight:700">${i+1}</td><td style="padding:4px 8px;color:#1a2a3a;font-weight:500">${esc(r[0])}</td><td style="padding:4px 8px;text-align:center;font-weight:700;color:#0F2A54;font-size:9px">${esc(r[1])}</td><td style="padding:4px 8px;text-align:center"><span style="background:${r[2]==='AUTO'?'#e8f5e9':'#f0ebff'};color:${r[2]==='AUTO'?'#1b7a3e':'#6b3fd4'};border-radius:3px;padding:1px 6px;font-size:7.5px;font-weight:800">${r[2]}</span></td></tr>`).join('')}</tbody></table>
   ${_SEC('5. Non-Compliance — Earnings Impact','#c0392b')}
   ${_P('The following specifies how each type of non-compliance affects your monthly earnings. These are not arbitrary deductions — they reflect that the associated work was not completed to the required standard and the corresponding pay is therefore not released.')}
-  <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px">
-   ${_LETTER_VIOLATIONS.map((v,i)=>`<div style="border:1px solid #f0d8d5;border-radius:6px;overflow:hidden;background:${i%2===0?'#fff':'#fffafa'}"><div style="display:grid;grid-template-columns:1fr auto;align-items:stretch">
-     <div style="padding:7px 10px;border-right:1px solid #f0d8d5"><div style="font-size:9px;font-weight:800;color:#1a2a3a;margin-bottom:2px">${esc(v[0])}</div><div style="font-size:7.5px;color:#8899aa">Affects: <span style="font-weight:700;color:#c0392b">${esc(v[1])}</span></div></div>
-     <div style="padding:7px 10px;background:#fff8f7;width:52%;display:flex;align-items:center"><p style="font-size:8.5px;color:#c0392b;line-height:1.6;margin:0">${esc(v[2])}</p></div>
-    </div></div>`).join('')}
+  <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px">
+   ${_LETTER_VIOLATIONS.map(v=>`<div style="border:1px solid #f0d8d5;border-left:3px solid #c0392b;border-radius:6px;overflow:hidden;background:#fff;display:grid;grid-template-columns:40% 60%">
+     <div style="padding:6px 11px;border-right:1px solid #f0d8d5;background:#fffafa"><div style="font-size:9px;font-weight:800;color:#1a2a3a;line-height:1.45;margin-bottom:2px">${esc(v[0])}</div><div style="font-size:7.5px;color:#8899aa">Affects: <span style="font-weight:700;color:#c0392b">${esc(v[1])}</span></div></div>
+     <div style="padding:6px 11px;display:flex;align-items:center"><p style="font-size:8.5px;color:#c0392b;line-height:1.55;margin:0">${esc(v[2])}</p></div>
+    </div>`).join('')}
   </div>
-  <div style="border-left:3px solid #c0392b;border-radius:0 6px 6px 0;padding:9px 13px;background:#fff8f7;margin-bottom:12px">
+  <div style="border-left:3px solid #c0392b;border-radius:0 6px 6px 0;padding:8px 13px;background:#fff8f7;margin-bottom:8px">
    <div style="font-weight:800;font-size:9.5px;color:#c0392b;margin-bottom:4px">Escalation & Contract Review</div>
    <p style="font-size:9px;color:#3a2a2a;line-height:1.7;margin:0">Accumulation of three (3) or more written notices within any rolling 60-day period, or earning below 40% of monthly potential for two consecutive months, will trigger a formal performance review with the Academic Head. MVS Foundation reserves the right to conclude this engagement with 30 days written notice in the event of persistent non-compliance.</p>
   </div>
   ${_SEC('6. General Terms')}
-  ${_LETTER_TERMS.map(r=>`<div style="margin-bottom:7px;font-size:9.5px;line-height:1.7"><strong style="color:#0F2A54">${r[0]}: </strong>${esc(r[1])}</div>`).join('')}
-  <div style="margin-top:22px;border-top:2px solid #e4ebf5;padding-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:30px">
-   <div><div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:28px">For MVS Foundation</div><div style="border-top:1.5px solid #0F2A54;padding-top:5px"><div style="font-weight:700;font-size:10px">Manish Verma</div><div style="font-size:8.5px;color:#5A6B85">Founder & Director, MVS Foundation</div><div style="font-size:8.5px;color:#5A6B85;margin-top:2px">Date: ___________________</div></div></div>
-   <div><div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:28px">Accepted by Teacher</div><div style="border-top:1.5px solid #0F2A54;padding-top:5px"><div style="font-weight:700;font-size:10px">${esc(t.name)}</div><div style="font-size:8.5px;color:#5A6B85">${esc(t.designation)}, ${esc(t.department)}</div><div style="font-size:8.5px;color:#5A6B85;margin-top:2px">Date: ___________________</div></div></div>
+  ${_LETTER_TERMS.map(r=>`<div style="margin-bottom:5px;font-size:9.5px;line-height:1.6"><strong style="color:#0F2A54">${r[0]}: </strong>${esc(r[1])}</div>`).join('')}
+  <div style="margin-top:12px;border-top:2px solid #e4ebf5;padding-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:30px">
+   <div><div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:22px">For MVS Foundation</div><div style="border-top:1.5px solid #0F2A54;padding-top:5px"><div style="font-weight:700;font-size:10px">Manish Verma</div><div style="font-size:8.5px;color:#5A6B85">Founder & Director, MVS Foundation</div><div style="font-size:8.5px;color:#5A6B85;margin-top:2px">Date: ___________________</div></div></div>
+   <div><div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:22px">Accepted by Teacher</div><div style="border-top:1.5px solid #0F2A54;padding-top:5px"><div style="font-weight:700;font-size:10px">${esc(t.name)}</div><div style="font-size:8.5px;color:#5A6B85">${esc(t.designation)}, ${esc(t.department)}</div><div style="font-size:8.5px;color:#5A6B85;margin-top:2px">Date: ___________________</div></div></div>
   </div>
   ${_DFOOT('MVS Foundation | Manish Verma Classes | NIOS Coaching, Delhi','Excellence Through Discipline \u2726 MVS Foundation','Ref: '+esc(refNo))}
   </div>`;
@@ -14053,9 +14069,13 @@ async function tEarnFetch(){
   try{
     const d=await api('/api/teacher/earnings?month='+encodeURIComponent(_tEarnMonth));
     window._tEarn=d;
+    const a0=d.activity, noAct=!(a0.classes_scheduled||a0.classes_conducted||a0.notes_uploaded||a0.dpp_uploaded||a0.tests_created||a0.videos_made||a0.live_sessions||a0.shorts_made||a0.doubts_assigned||a0.tasks_assigned);
+    const zeroPay=(d.earnings&&d.earnings.net_payable<=0);
     body.innerHTML=_earnHeroHTML(d,
       `<button class="btn btn-light btn-sm" onclick="downloadMySlip()">${ic('download')} Earnings Slip</button>
        <button class="btn btn-light btn-sm" onclick="viewMyLetter()">${ic('book')} Appointment Letter</button>`)
+      +(noAct?`<div class="alert alert-info" style="margin-bottom:14px">Is month me abhi koi activity record nahi hui — classes, notes, tests, videos, doubts, tasks complete hote hi aapki earnings yahan live build hoti jayengi.</div>`
+        :(zeroPay?`<div class="alert alert-info" style="margin-bottom:14px">Is month me abhi tak aapki koi earning build nahi hui — har component sirf actual activity (classes conduct, notes/DPP upload, tests, videos, doubts resolve, on-time tasks) par milta hai. Activity complete karte hi amount yahan live badhega.</div>`:''))
       +_earnComponentsHTML(d)+_activityStripHTML(d)+_payStructureHTML(d);
   }catch(e){ body.innerHTML=`<div class="card"><div class="card-body"><div class="empty-state"><p>${esc(e.message)}</p></div></div></div>`; }
 }
@@ -14280,7 +14300,7 @@ async function loadAPayouts(){
   const el=document.getElementById('a-payouts-content');
   _aEarnMonth=_aEarnMonth||curMonth();
   el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>Payouts \u00B7 Earnings Model</h2><p>Live earnings per teacher — appointment-letter rule, auto-calculated from portal activity.</p></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="month" class="form-control" style="width:auto;padding:7px 12px" value="${_aEarnMonth}" onchange="_aEarnMonth=this.value;aEarnFetch()"></div></div>
-  <div class="stats-grid" id="ae-stats"></div>
+  <div class="ae-stats" id="ae-stats"></div>
   <div id="ae-body" style="margin-top:6px"><div class="spinner"></div></div>`;
   aEarnFetch();
 }
@@ -14290,29 +14310,33 @@ async function aEarnFetch(){
   try{
     const d=await api('/api/admin/earnings?month='+encodeURIComponent(_aEarnMonth));
     _aEarnData=d;
-    if(stats) stats.innerHTML=
-      `<div class="stat-card"><div class="stat-info"><h3>${d.teachers.length}</h3><p>Teachers</p></div></div>
-       <div class="stat-card"><div class="stat-info"><h3>${_inr(d.total_net)}</h3><p>Total Net Payable</p></div></div>
-       <div class="stat-card"><div class="stat-info"><h3>${d.avg_perf}%</h3><p>Average Performance</p></div></div>
-       <div class="stat-card"><div class="stat-info"><h3>${esc(fmtMonthLabel(d.month))}</h3><p>Pay Month</p></div></div>`;
-    body.innerHTML=`<div class="card"><div class="card-body" style="padding:6px 14px 12px">
-     <table class="tbl" style="width:100%"><thead><tr><th>Teacher</th><th style="text-align:center">Performance</th><th style="text-align:right">Retainer</th><th style="text-align:right">Incentives</th><th style="text-align:right">Net Payable</th><th style="text-align:right">Actions</th></tr></thead><tbody>
-     ${d.teachers.map(x=>{
+    const _st=(icn,val,lbl)=>`<div class="ae-stat"><div class="ae-stat-ic">${ic(icn)}</div><div><div class="ae-stat-v">${val}</div><div class="ae-stat-l">${lbl}</div></div></div>`;
+    if(stats) stats.innerHTML=_st('users',d.teachers.length,'Teachers')+_st('wallet',_inr(d.total_net),'Total Net Payable')+_st('chart',d.avg_perf+'%','Average Performance')+_st('calendar',esc(fmtMonthLabel(d.month)),'Pay Month');
+    body.innerHTML=(d.total_net===0?`<div class="alert alert-info" style="margin-bottom:14px">Month abhi shuru hua hai — teachers ki portal activity record hote hi earnings yahan auto-build hoti jayengi. Abhi koi activity nahi, isliye sab ₹0 hai (demo numbers nahi).</div>`:'')
+     +`<div class="ae-grid">${d.teachers.map(x=>{
        const e=x.earnings, pc=_pfCol(e.perf_score);
        const incent=e.gross_earned-e.class_earned;
-       return `<tr>
-        <td><div style="font-weight:700">${esc(x.teacher.name)}</div><div style="font-size:.68rem;color:var(--text-muted)">${esc(x.teacher.employee_code)} \u00B7 ${(x.teacher.subjects||[]).slice(0,2).map(esc).join(', ')||'—'}</div></td>
-        <td style="text-align:center"><span style="display:inline-block;min-width:52px;padding:3px 10px;border-radius:20px;font-weight:800;font-size:.78rem;color:${pc};background:${pc}18">${e.perf_score}%</span></td>
-        <td style="text-align:right;font-size:.82rem">${_inr(e.class_earned)}</td>
-        <td style="text-align:right;font-size:.82rem">${_inr(incent)}</td>
-        <td style="text-align:right;font-weight:900">${_inr(e.net_payable)}</td>
-        <td style="text-align:right;white-space:nowrap">
+       return `<div class="card ae-tcard"><div class="card-body" style="padding:16px 18px">
+        <div style="display:flex;align-items:center;gap:12px">
+         <div class="ae-ava">${esc(initials(x.teacher.name))}</div>
+         <div style="flex:1;min-width:0">
+          <div style="font-weight:800;font-size:.98rem">${esc(x.teacher.name)}</div>
+          <div style="font-size:.7rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(x.teacher.employee_code)} \u00B7 ${(x.teacher.subjects||[]).slice(0,2).map(esc).join(', ')||'—'}</div>
+         </div>
+         <span style="display:inline-block;min-width:52px;text-align:center;padding:4px 10px;border-radius:20px;font-weight:800;font-size:.8rem;color:${pc};background:${pc}18">${e.perf_score}%</span>
+        </div>
+        <div class="ae-mini">
+         <div><b>${_inr(e.class_earned)}</b><span>Retainer</span></div>
+         <div><b>${_inr(incent)}</b><span>Incentives</span></div>
+         <div><b style="color:var(--primary)">${_inr(e.net_payable)}</b><span>Net Payable</span></div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
          <button class="btn btn-ghost btn-sm" onclick="openEarnDetail(${x.teacher.id})">View</button>
          <button class="btn btn-primary btn-sm" onclick="openPayConfig(${x.teacher.id})">${ic('edit')} Pay Structure</button>
          <button class="btn btn-ghost btn-sm" onclick="adminSlip(${x.teacher.id})">Slip</button>
          <button class="btn btn-ghost btn-sm" onclick="adminLetter(${x.teacher.id})">Letter</button>
-        </td></tr>`;}).join('')}
-     </tbody></table></div></div>`;
+        </div>
+       </div></div>`;}).join('')}</div>`;
   }catch(e){ body.innerHTML=`<div class="card"><div class="card-body"><div class="empty-state"><p>${esc(e.message)}</p></div></div></div>`; }
 }
 function _aEarnRow(tid){ return (_aEarnData&&_aEarnData.teachers||[]).find(x=>x.teacher.id===tid); }
@@ -14322,9 +14346,10 @@ function openEarnDetail(tid){
   const e=x.earnings, a=x.activity;
   showModal('Earnings — '+x.teacher.name+' ('+fmtMonthLabel(x.month)+')',
    _earnHeroHTML(x)+'<div style="margin-top:4px">'+_earnComponentsHTML(x)+'</div>'+_activityStripHTML(x),
-   `<button class="btn btn-ghost" onclick="adminSlip(${tid})">${ic('download')} Earnings Slip</button>
+   `<button class="btn btn-primary" onclick="openPayConfig(${tid})">${ic('edit')} Pay Structure</button>
+    <button class="btn btn-ghost" onclick="adminSlip(${tid})">${ic('download')} Earnings Slip</button>
     <button class="btn btn-ghost" onclick="adminLetter(${tid})">${ic('book')} Appointment Letter</button>
-    <button class="btn btn-primary" onclick="closeModal()">Close</button>`);
+    <button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
 }
 
 function openPayConfig(tid){
