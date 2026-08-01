@@ -7556,7 +7556,7 @@ async function loadTVTasks(){
         ${specCls.map(c=>`<option value="${c}" ${_tvtSpecCls===c?'selected':''}>Class ${c}</option>`).join('')}
       </select>`:''}
       <span class="vtm-fl">Type</span>
-      ${[['','All Types'],['one_shot','One Shot'],['rapid_revision','Rapid Revision'],['project','Projects']].map(([k,l])=>`<button class="vtm-chip ${_tvtSpecKind===k?'on':''}" onclick="tvtSpecKindSet('${k}')">${l}</button>`).join('')}
+      ${[['','All Types'],['one_shot','One Shot'],['rapid_revision','Rapid Revision'],['project','Projects']].map(([k,l])=>`<button class="vtm-chip ${_tvtSpecKind===k?'on':''}" ${k?`style="${_vtKindStyle(k)}"`:''} onclick="tvtSpecKindSet('${k}')">${l}</button>`).join('')}
     </div>`:'';
     el.innerHTML=`${hero}${statCards}${mtHtml}${masterCards}${filterBar}
       ${showProj?`<div class="vtm-sec-cap">Projects — click a card to open it</div>
@@ -7699,6 +7699,41 @@ function _vtOsProg(t){
 function _vtKindLbl(t){ return {one_shot:'ONE SHOT',rapid_revision:'RAPID REVISION',project:'PROJECT'}[t.kind]||'PROJECT'; }
 // ---- chapter production status (To Edit -> Edited -> Uploaded) ----
 const _CHST={editing_soon:['To Edit','#d97706'],editing_done:['Edited','#2563eb'],uploaded:['Uploaded','#16a34a']};
+/* ===== v77 — project-kind premium colour system =====
+   one_shot = royal gold (fixed), rapid_revision = royal violet (fixed),
+   project = royal emerald (fixed). Naye kinds ko _KIND_POOL se agla premium
+   colour milta hai; kind expire hote hi uska slot free — agle naye kind ko
+   wahi colour dobara mil jaata hai (first-appearance order, current data se). */
+const _KIND_FIXED={
+  one_shot:      {h:['#3a2c07','#6b4f0c'], acc:'#f2c94c', acc2:'#ffd873', brd:'rgba(184,148,31,.45)', badgeBg:'rgba(255,233,168,.16)', badgeBr:'rgba(255,233,168,.42)', badgeTx:'#ffe9a8'},
+  rapid_revision:{h:['#2e1065','#5b21b6'], acc:'#a78bfa', acc2:'#ddd6fe', brd:'rgba(124,58,237,.42)', badgeBg:'rgba(221,214,254,.16)', badgeBr:'rgba(221,214,254,.45)', badgeTx:'#ede9fe'},
+  project:       {h:['#022c22','#047857'], acc:'#34d399', acc2:'#a7f3d0', brd:'rgba(5,150,105,.4)',   badgeBg:'rgba(167,243,208,.14)', badgeBr:'rgba(167,243,208,.42)', badgeTx:'#d1fae5'}
+};
+const _KIND_POOL=[
+  {h:['#0c4a6e','#0369a1'], acc:'#38bdf8', acc2:'#bae6fd', brd:'rgba(2,132,199,.4)',  badgeBg:'rgba(186,230,253,.16)', badgeBr:'rgba(186,230,253,.45)', badgeTx:'#e0f2fe'},
+  {h:['#500724','#be185d'], acc:'#fb7185', acc2:'#fecdd3', brd:'rgba(190,24,93,.38)', badgeBg:'rgba(254,205,211,.16)', badgeBr:'rgba(254,205,211,.45)', badgeTx:'#ffe4e6'},
+  {h:['#431407','#c2410c'], acc:'#fb923c', acc2:'#fed7aa', brd:'rgba(194,65,12,.38)', badgeBg:'rgba(254,215,170,.16)', badgeBr:'rgba(254,215,170,.45)', badgeTx:'#ffedd5'},
+  {h:['#1a2e05','#4d7c0f'], acc:'#a3e635', acc2:'#d9f99d', brd:'rgba(77,124,15,.4)',  badgeBg:'rgba(217,249,157,.16)', badgeBr:'rgba(217,249,157,.45)', badgeTx:'#ecfccb'},
+  {h:['#4a044e','#a21caf'], acc:'#e879f9', acc2:'#f5d0fe', brd:'rgba(162,28,175,.38)',badgeBg:'rgba(245,208,254,.16)', badgeBr:'rgba(245,208,254,.45)', badgeTx:'#fae8ff'},
+  {h:['#0f172a','#475569'], acc:'#94a3b8', acc2:'#e2e8f0', brd:'rgba(71,85,105,.42)', badgeBg:'rgba(226,232,240,.16)', badgeBr:'rgba(226,232,240,.45)', badgeTx:'#f1f5f9'}
+];
+function _vtKindOrder(){
+  // current data me unknown kinds ka first-appearance order (teacher + admin dono sources)
+  const known=Object.keys(_KIND_FIXED), order=[];
+  const scan=list=>{(list||[]).forEach(t=>{const k=t&&t.kind; if(k&&!known.includes(k)&&!order.includes(k)) order.push(k);});};
+  scan(window._tvtSpec);
+  if(window._avtSpec) ['one_shot','rapid_revision','project'].forEach(k=>scan((window._avtSpec[k]||{}).tasks));
+  return order;
+}
+function _vtKindColor(kind){
+  if(_KIND_FIXED[kind]) return _KIND_FIXED[kind];
+  const order=_vtKindOrder(); if(!order.includes(kind)) order.push(kind);
+  return _KIND_POOL[order.indexOf(kind)%_KIND_POOL.length];
+}
+function _vtKindStyle(kind){
+  const c=_vtKindColor(kind);
+  return `--kh1:${c.h[0]};--kh2:${c.h[1]};--kacc:${c.acc};--kacc2:${c.acc2};--kbrd:${c.brd};--kbbg:${c.badgeBg};--kbbr:${c.badgeBr};--kbtx:${c.badgeTx}`;
+}
 function _vtChBadge(c){
   const st=_CHST[c.edit_status||'']; if(!st||!c.link) return '';
   return `<span class="vt-chst" style="color:${st[1]};border-color:${st[1]}66;background:${st[1]}14">${st[0]}</span>`;
@@ -7707,7 +7742,7 @@ function _avtChSel(t,c){
   if(!c.link) return '';
   const cur=c.edit_status||'editing_soon';
   const st=_CHST[cur]||_CHST.editing_soon;
-  return `<select class="vt-chst-sel" data-cid="${c.id}" style="color:${st[1]};border-color:${st[1]}66" onclick="event.stopPropagation()" onchange="avtChStatus(${t.id},${c.id},this.value)">
+  return `<select class="vt-chst-sel" data-cid="${c.id}" style="color:${st[1]};border-color:${st[1]}59;background-color:${st[1]}14" onclick="event.stopPropagation()" onchange="avtChStatus(${t.id},${c.id},this.value)">
     ${Object.keys(_CHST).map(k=>`<option value="${k}" ${cur===k?'selected':''}>${_CHST[k][0]}</option>`).join('')}</select>`;
 }
 async function avtChStatus(tid,cid,st){
@@ -7716,7 +7751,7 @@ async function avtChStatus(tid,cid,st){
     const t=(window._avtMap||{})[tid]; const c=t&&(t.chapters||[]).find(x=>x.id===cid);
     if(c) c.edit_status=st;
     const sel=document.querySelector(`#avt-os-${tid} .vt-chst-sel[data-cid="${cid}"]`);
-    if(sel){ const s2=_CHST[st]; if(s2){ sel.style.color=s2[1]; sel.style.borderColor=s2[1]+'66'; } }
+    if(sel){ const s2=_CHST[st]; if(s2){ sel.style.color=s2[1]; sel.style.borderColor=s2[1]+'59'; sel.style.backgroundColor=s2[1]+'14'; } }
     toast('Production status updated — '+(_CHST[st]?_CHST[st][0]:st));
   }catch(e){ toast(e.message||'Could not update the status'); }
 }
@@ -7745,7 +7780,7 @@ function _vtSpecialT(sp){
       ${_vtOsProg(t)}</div>`;
     const body=t.total?`<div>${t.chapters.map(c=>_vtChRow(t,c)).join('')}</div>`
       :`<div style="font-size:.78rem;color:var(--text-muted);padding:8px 4px">This subject's chapters are not in the syllabus manager / timetable yet — the list will appear here automatically once they are uploaded.</div>`;
-    return `<div class="vt-os" id="vt-os-${t.id}">${head}<div class="vt-os-b">${body}</div></div>`;
+    return `<div class="vt-os" id="vt-os-${t.id}" style="${_vtKindStyle(t.kind)}">${head}<div class="vt-os-b">${body}</div></div>`;
   }).join('');
 }
 function tvtChEdit(tid,cid){
@@ -7918,7 +7953,7 @@ function _avtSpecBody(){
   let tasks=(data.tasks||[]);
   if(_avtSpecSub) tasks=tasks.filter(x=>x.subject===_avtSpecSub);
   if(_avtSpecCls) tasks=tasks.filter(x=>x.cls===_avtSpecCls);
-  const tabBtn=(k,l,n)=>`<button class="btn ${_avtSpecTab===k?'btn-primary':'btn-ghost'} btn-sm" onclick="_avtSpecTab='${k}';avtSpecRefresh()">${l}${n?` (${n})`:''}</button>`;
+  const tabBtn=(k,l,n)=>`<button class="vt-knd-tab${_avtSpecTab===k?' on':''}" style="${_vtKindStyle(k)}" onclick="_avtSpecTab='${k}';avtSpecRefresh()">${l}${n!=null?` <span class="vt-knd-n">${n}</span>`:''}</button>`;
   const kindLbl={one_shot:'One Shot',rapid_revision:'Rapid Revision',project:'Project'}[_avtSpecTab];
   return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
       ${tabBtn('one_shot','One Shot',(sp.one_shot.tasks||[]).length)}
@@ -7943,7 +7978,7 @@ function _avtSpecCard(t){
   const rows=(t.chapters||[]).map(c=> c.link
     ? `<div class="vt-chr done"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">${esc(c.submitted_at||'')}</span>${_avtChSel(t,c)}<a class="lk" href="${esc(c.link)}" target="_blank" rel="noopener">${ic('play')} Open video</a></div>`
     : `<div class="vt-chr"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">pending</span></div>`).join('');
-  return `<div class="vt-os" id="avt-os-${t.id}">
+  return `<div class="vt-os" id="avt-os-${t.id}" style="${_vtKindStyle(t.kind)}">
     <div class="vt-os-h" onclick="avtSpecOpen(${t.id})">
       <div><h4><span class="vt-os-kind ${t.kind}">${_vtKindLbl(t)}</span>${esc(t.subject||t.title)} ${t.is_new?`<span class="vt-new" id="avt-new-${t.id}">NEW</span>`:''}</h4>
       <div class="os-sub">${esc(t.teacher)} · ${t.kind==='project'?'Final deadline':'Deadline'}: <b>${esc(t.deadline_nice||'—')}</b>${t.last_link_at?' · Last update: '+esc(t.last_link_at):''}</div>
@@ -15079,15 +15114,15 @@ body.dark .po-pill.red{color:#f87171}
 .vt-tl-s{font-weight:800;font-size:.84rem}
 .vt-tl-a{font-size:.7rem;color:var(--text-muted);font-weight:700;margin-top:1px}
 .vt-tl-n{font-size:.76rem;color:var(--text-muted);margin-top:3px;line-height:1.45}
-.vt-os{border:1.5px solid rgba(184,148,31,.4);border-radius:18px;overflow:hidden;margin-bottom:14px;background:var(--card)}
+.vt-os{border:1.5px solid var(--kbrd,rgba(184,148,31,.4));border-radius:18px;overflow:hidden;margin-bottom:14px;background:var(--card)}
 .vt-os-h{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px;cursor:pointer;
-  background:linear-gradient(135deg,#3a2c07,#6b4f0c);color:#f5e9c8;user-select:none}
+  background:linear-gradient(135deg,var(--kh1,#3a2c07),var(--kh2,#6b4f0c));color:#f5e9c8;user-select:none}
 .vt-os-h h4{margin:0;font-size:.95rem;font-weight:800;letter-spacing:.01em;color:#fff}
-.vt-os-h .os-sub{font-size:.68rem;font-weight:700;color:rgba(245,233,200,.75);margin-top:2px}
+.vt-os-h .os-sub{font-size:.68rem;font-weight:700;color:rgba(245,233,200,.78);margin-top:2px}
 .vt-os-prog{margin-left:auto;display:flex;align-items:center;gap:10px}
-.vt-os-prog .n{font-size:.82rem;font-weight:800;color:#ffe9a8}
+.vt-os-prog .n{font-size:.82rem;font-weight:800;color:var(--kacc2,#ffe9a8)}
 .vt-os-bar{width:110px;height:7px;border-radius:99px;background:rgba(255,255,255,.18);overflow:hidden}
-.vt-os-bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#f2c94c,#ffd873)}
+.vt-os-bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--kacc,#f2c94c),var(--kacc2,#ffd873))}
 .vt-os-chev{transition:transform .25s;color:rgba(255,255,255,.8)}
 .vt-os.open .vt-os-chev{transform:rotate(180deg)}
 .vt-os-b{display:none;padding:12px 14px}
@@ -15117,7 +15152,7 @@ body.dark .po-pill.red{color:#f87171}
 .vtp-item{display:flex;gap:8px;margin-bottom:8px}
 .vtp-item .input{flex:1}
 .vtp-item button{border:0;background:rgba(220,38,38,.1);color:#b91c1c;border-radius:8px;padding:0 12px;font-weight:800;cursor:pointer}
-.vt-os-week{display:inline-flex;align-items:center;gap:5px;background:rgba(255,233,168,.14);border:1px solid rgba(255,233,168,.3);color:#ffe9a8;font-size:.66rem;font-weight:800;padding:3px 9px;border-radius:999px;margin-top:4px}
+.vt-os-week{display:inline-flex;align-items:center;gap:5px;background:var(--kbbg,rgba(255,233,168,.14));border:1px solid var(--kbbr,rgba(255,233,168,.3));color:var(--kbtx,#ffe9a8);font-size:.66rem;font-weight:800;padding:3px 9px;border-radius:999px;margin-top:4px}
 /* v73 — master Task/Project cards + filter chips + premium special headers */
 .vtm-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:16px}
 .vtm-card{display:flex;align-items:center;gap:14px;padding:16px 18px;border-radius:18px;cursor:pointer;user-select:none;
@@ -15148,21 +15183,45 @@ body.dark .po-pill.red{color:#f87171}
 .vtm-chip{border:1.5px solid var(--border);background:var(--panel);color:var(--text);font-size:.7rem;font-weight:800;
   padding:6px 13px;border-radius:999px;cursor:pointer;transition:all .18s;white-space:nowrap}
 .vtm-chip:hover{border-color:rgba(184,148,31,.55);color:#8a6d10}
-.vtm-chip.on{background:linear-gradient(135deg,#b8941f,#8a6d10);border-color:transparent;color:#fff8e1;box-shadow:0 3px 10px -4px rgba(184,148,31,.6)}
+.vtm-chip.on{background:linear-gradient(135deg,var(--kh1,#b8941f),var(--kh2,#8a6d10));border-color:transparent;color:#fff;box-shadow:0 3px 10px -4px rgba(184,148,31,.6)}
+/* v77 — kind-coloured admin monitor tabs */
+.vt-knd-tab{display:inline-flex;align-items:center;gap:8px;border:1.5px solid var(--kbrd,rgba(184,148,31,.4));background:var(--card);color:var(--text);
+  font-size:.74rem;font-weight:800;padding:7px 15px;border-radius:999px;cursor:pointer;transition:all .18s;white-space:nowrap}
+.vt-knd-tab .vt-knd-n{font-size:.63rem;font-weight:800;background:var(--panel);border-radius:999px;padding:1px 8px;border:1px solid var(--border)}
+.vt-knd-tab:hover{transform:translateY(-1px);box-shadow:0 5px 12px -6px rgba(15,23,42,.28);border-color:var(--kacc,rgba(184,148,31,.6))}
+.vt-knd-tab.on{background:linear-gradient(135deg,var(--kh1,#3a2c07),var(--kh2,#6b4f0c));color:#fff;border-color:transparent;box-shadow:0 6px 16px -6px rgba(15,23,42,.42)}
+.vt-knd-tab.on .vt-knd-n{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.32);color:var(--kacc2,#ffe9a8)}
 .vtm-sec-cap{display:flex;align-items:center;gap:9px;margin:4px 0 12px;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--text-muted)}
 .vtm-sec-cap::after{content:'';flex:1;height:1px;background:var(--border)}
 .vt-chst{font-size:.6rem;font-weight:800;padding:2px 9px;border-radius:999px;border:1.2px solid;
   text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;flex-shrink:0}
-.vt-chst-sel{font-size:.66rem;font-weight:800;padding:3px 22px 3px 9px;border-radius:999px;cursor:pointer;
-  border:1.2px solid;background:var(--panel);flex-shrink:0;appearance:auto}
-.vt-os-hbtn{display:inline-flex;align-items:center;gap:6px;background:rgba(255,233,168,.1);border:1.5px solid rgba(255,233,168,.5);
-  color:#ffe9a8;font-size:.66rem;font-weight:800;padding:6px 12px;border-radius:9px;cursor:pointer;transition:all .2s;white-space:nowrap}
-.vt-os-hbtn:hover{background:rgba(255,233,168,.24);color:#fff}
+/* v77 — premium status dropdown */
+.vt-chst-sel{appearance:none;-webkit-appearance:none;font-size:.62rem;font-weight:800;letter-spacing:.04em;
+  text-transform:uppercase;padding:4px 26px 4px 12px;border-radius:999px;cursor:pointer;
+  border:1.5px solid;flex-shrink:0;box-shadow:0 2px 8px -3px rgba(15,23,42,.22);
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%237a6a3a' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat:no-repeat;background-position:right 9px center;background-size:10px;
+  transition:box-shadow .18s,transform .18s,border-color .18s}
+.vt-chst-sel:hover{box-shadow:0 5px 14px -5px rgba(15,23,42,.3);transform:translateY(-1px)}
+.vt-chst-sel:focus{outline:none;box-shadow:0 0 0 3px rgba(184,148,31,.2)}
+.vt-os-hbtn{display:inline-flex;align-items:center;gap:6px;background:var(--kbbg,rgba(255,233,168,.1));border:1.5px solid var(--kbbr,rgba(255,233,168,.5));
+  color:var(--kbtx,#ffe9a8);font-size:.66rem;font-weight:800;padding:6px 12px;border-radius:9px;cursor:pointer;transition:all .2s;white-space:nowrap}
+.vt-os-hbtn:hover{filter:brightness(1.25);color:#fff}
 .vt-os-hbtn svg{width:13px;height:13px}
 .vt-os-kind{display:inline-block;font-size:.58rem;font-weight:800;letter-spacing:.09em;padding:3px 9px;border-radius:999px;margin-right:9px;vertical-align:2px;
-  background:rgba(255,233,168,.16);border:1px solid rgba(255,233,168,.4);color:#ffe9a8}
-.vt-os-kind.rapid_revision{background:rgba(147,197,253,.18);border-color:rgba(147,197,253,.45);color:#cfe4ff}
-.vt-os-kind.project{background:rgba(196,167,255,.18);border-color:rgba(196,167,255,.45);color:#e3d4ff}
+  background:var(--kbbg,rgba(255,233,168,.16));border:1px solid var(--kbbr,rgba(255,233,168,.4));color:var(--kbtx,#ffe9a8)}
+/* v77 — premium dropdowns (work timings, filters, assign-work forms) */
+.wt-form select.input,.vtm-sel,#modal select.input,.vt-form select.input{
+  appearance:none;-webkit-appearance:none;cursor:pointer;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a3831f' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat:no-repeat;background-position:right 12px center;background-size:12px;
+  padding-right:38px;border:1.5px solid rgba(184,148,31,.35);border-radius:12px;
+  background-color:var(--panel);color:var(--text);font-weight:700;
+  box-shadow:0 2px 8px -5px rgba(90,66,10,.25);
+  transition:border-color .18s,box-shadow .18s}
+.wt-form select.input:hover,.vtm-sel:hover,#modal select.input:hover,.vt-form select.input:hover{border-color:rgba(184,148,31,.65)}
+.wt-form select.input:focus,.vtm-sel:focus,#modal select.input:focus,.vt-form select.input:focus{
+  border-color:#b8941f;outline:none;box-shadow:0 0 0 3px rgba(184,148,31,.16)}
 @media(max-width:640px){
   .vt-grid{grid-template-columns:1fr}
   .vt-thumb{height:120px}
