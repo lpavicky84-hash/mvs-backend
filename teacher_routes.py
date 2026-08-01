@@ -3765,6 +3765,7 @@ def earnings_payload(db, tp, month):
             "department": (cfg.department or "").strip() or
                           ("Academic — " + subs[0] if subs else "Academic"),
             "subjects": subs,
+            "has_photo": bool(tp.photo_b64),
             "bank": (cfg.bank_name or "").strip(), "account_no": (cfg.account_no or "").strip(),
             "ifsc": (cfg.ifsc or "").strip(),
         },
@@ -4283,6 +4284,123 @@ def accept_contract(payload: dict, db: Session = Depends(get_db), current_user=D
         c.signature_name = sig
         db.commit()
     return {"message": "Appointment letter accepted", "accepted_at": c.accepted_at.strftime("%d %b %Y, %I:%M %p")}
+
+# ===== v89: PAYOUT GATE — letter accept (v2) + passcode lock + admin-approved reset =====
+LETTER_VERSION = 2  # naya payout system — purane accept (v1/NULL) invalid, dubara sign hoga
+_V89_READY = False
+
+def _ensure_v89(db):
+    """v89 ke naye columns pehli use me add karta hai (MySQL/SQLite dono safe)."""
+    global _V89_READY
+    if _V89_READY:
+        return
+    from sqlalchemy import text as _text
+    for stmt in [
+        "ALTER TABLE teacher_profiles ADD COLUMN payout_passcode VARCHAR(255) NULL",
+        "ALTER TABLE teacher_profiles ADD COLUMN letter_accept_version INTEGER DEFAULT 0",
+        "ALTER TABLE teacher_profiles ADD COLUMN passcode_reset_pending BOOLEAN DEFAULT FALSE",
+    ]:
+        try:
+            db.execute(_text(stmt)); db.commit()
+        except Exception:
+            db.rollback()
+    _V89_READY = True
+
+try:
+    from security import verify_password as _sec_verify
+except Exception:
+    _sec_verify = None
+
+def _passcode_ok(plain, hashed):
+    if not hashed:
+        return False
+    if _sec_verify is not None:
+        try:
+            return bool(_sec_verify(plain, hashed))
+        except Exception:
+            pass
+    from security import hash_password as _hp
+    return _hp(plain) == hashed
+
+def _payout_status(tp):
+    return {
+        "letter_version": LETTER_VERSION,
+        "letter_accepted": bool((tp.letter_accept_version or 0) >= LETTER_VERSION),
+        "passcode_set": bool(tp.payout_passcode),
+        "reset_pending": bool(tp.passcode_reset_pending),
+    }
+
+@router.get("/payout/status")
+def payout_gate_status(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Payout section ka lock status — letter accept hua? passcode set? reset pending?"""
+    _ensure_v89(db)
+    tp = get_teacher_profile(current_user, db)
+    return _payout_status(tp)
+
+@router.post("/payout/accept-letter")
+def payout_accept_letter(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Payout kholne se pehle appointment letter ka digital sign (current version)."""
+    _ensure_v89(db)
+    tp = get_teacher_profile(current_user, db)
+    sig = (payload.get("signature_name") or "").strip()
+    if len(sig) < 3:
+        raise HTTPException(status_code=400, detail="Please type your full name as your digital signature")
+    tp.letter_accept_version = LETTER_VERSION
+    from models import TeacherContract
+    c = db.query(TeacherContract).filter(TeacherContract.teacher_id == tp.id).first()
+    if c:
+        c.accepted = True
+        c.accepted_at = _ist_now()
+        c.signature_name = sig
+    db.commit()
+    return {"message": "Appointment letter accepted", **_payout_status(tp)}
+
+@router.post("/payout/set-passcode")
+def payout_set_passcode(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Letter accept ke baad 4-6 digit passcode create."""
+    _ensure_v89(db)
+    tp = get_teacher_profile(current_user, db)
+    if (tp.letter_accept_version or 0) < LETTER_VERSION:
+        raise HTTPException(status_code=400, detail="Pehle appointment letter accept karo")
+    if tp.passcode_reset_pending:
+        raise HTTPException(status_code=400, detail="Reset request admin ke paas pending hai — approval ka wait karo")
+    code = (payload.get("passcode") or "").strip()
+    if not re.fullmatch(r"\d{4,6}", code or ""):
+        raise HTTPException(status_code=400, detail="Passcode 4-6 digits ka hona chahiye")
+    from security import hash_password as _hp
+    tp.payout_passcode = _hp(code)
+    db.commit()
+    return {"message": "Passcode set ho gaya", **_payout_status(tp)}
+
+@router.post("/payout/verify-passcode")
+def payout_verify_passcode(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Payout unlock — passcode check. Galat pe 403."""
+    _ensure_v89(db)
+    tp = get_teacher_profile(current_user, db)
+    if not tp.payout_passcode:
+        raise HTTPException(status_code=400, detail="Passcode abhi set nahi hai")
+    code = (payload.get("passcode") or "").strip()
+    if not _passcode_ok(code, tp.payout_passcode):
+        raise HTTPException(status_code=403, detail="Galat passcode — dubara try karo")
+    return {"ok": True, **_payout_status(tp)}
+
+@router.post("/payout/request-passcode-reset")
+def payout_request_passcode_reset(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Reset request ADMIN ke paas jaati hai — approve hone pe hi reset hota hai
+    (admin pehle teacher se confirm karega ki request usi ne bheji)."""
+    _ensure_v89(db)
+    tp = get_teacher_profile(current_user, db)
+    if tp.passcode_reset_pending:
+        return {"message": "Reset request already admin ke paas pending hai", **_payout_status(tp)}
+    tp.passcode_reset_pending = True
+    for adm in db.query(User).filter(User.role == "admin").all():
+        db.add(Notification(
+            user_id=adm.id,
+            title="Passcode Reset Request",
+            message=f"{current_user.name} ne payout passcode reset ki request bheji hai. Teacher se confirm karke Approvals section me approve/reject karo.",
+            notif_type="passcode_reset_request"))
+    db.commit()
+    return {"message": "Reset request admin ko bhej di — approval ke baad naya passcode set kar paoge", **_payout_status(tp)}
 
 # ===== PAYOUT =====
 @router.get("/payout")

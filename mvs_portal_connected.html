@@ -3625,6 +3625,7 @@ async function saveTeacherSubjects(){
 }
 function tPage(page,el){
   navPush('teacher-app',page);
+  if(page!=='payout') _payoutUnlocked=false;  // v89: payout se bahar nikalte hi re-lock
   document.querySelectorAll('#teacher-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('t-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#teacher-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
@@ -3647,7 +3648,7 @@ function tPage(page,el){
   else if(page==='extmat') loadExtMaterials('t-extmat-content');
   else if(page==='students') loadTStudents();
   else if(page==='attendance') loadTAttendance();
-  else if(page==='payout') loadTPayout();
+  else if(page==='payout') payoutGate();
 }
 
 // ===== TEACHER STUDY MATERIAL =====
@@ -8576,8 +8577,20 @@ async function loadAApprovals(){
    html+=`<div class="doubt-card" style="border-left-color:var(--primary)"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><h4>${esc(r.subject||'Class')} — ${esc(r.class_name||'')}</h4><p style="font-size:.82rem;color:var(--text-muted);margin-top:4px">Teacher: <strong>${esc(r.teacher||'-')}</strong>${r.chapter?' &nbsp;|&nbsp; '+esc(r.chapter):''}</p><p style="font-size:.82rem;margin-top:6px">${esc(r.original_date||'')} ${esc(r.original_time||'')} &nbsp;→&nbsp; <strong>${esc(r.new_date||'')} ${esc(r.new_time||'')}</strong></p><p style="font-size:.82rem;margin-top:6px"><strong>Reason:</strong> ${esc(r.reason||'-')}</p></div><span class="tag tag-pending">Pending</span></div><div style="display:flex;gap:10px;margin-top:16px"><button class="btn btn-success btn-sm" onclick="reviewTTRs(${r.id},'approved')">${ic('check')} Approve</button><button class="btn btn-danger btn-sm" onclick="reviewTTRs(${r.id},'rejected')">${ic('trash')} Reject</button></div></div>`;
  });
  html+=`</div></div>`;
+ // v89: Payout passcode reset requests — admin teacher se confirm karke approve kare;
+ // approve hone par hi purana passcode clear hota hai (teacher naya set karta hai).
+ let pcr=[]; try{ pcr=await api('/api/admin/passcode-resets'); }catch(e){}
+ html+=`<div class="card"><div class="card-header"><h3>Passcode Reset Requests (Payout Lock)</h3><span class="chip">${pcr.length}</span></div><div class="card-body">`;
+ if(pcr.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No passcode reset requests.</p></div>`;
+ pcr.forEach(r=>{
+   html+=`<div class="doubt-card" style="border-left-color:var(--warning)"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><h4>${esc(r.name||'Teacher')}</h4><p style="font-size:.82rem;color:var(--text-muted);margin-top:4px"><code>${esc(r.user_id||'')}</code>${(r.subjects||[]).length?' &nbsp;|&nbsp; '+r.subjects.map(esc).join(', '):''}</p><p style="font-size:.78rem;color:var(--warning);margin-top:6px;font-weight:700">Approve karne se pehle teacher se confirm kar lo ki request usi ne bheji hai.</p></div><span class="tag tag-pending">Pending</span></div><div style="display:flex;gap:10px;margin-top:16px"><button class="btn btn-success btn-sm" onclick="reviewPcReset(${r.teacher_id},'approved')">${ic('check')} Approve</button><button class="btn btn-danger btn-sm" onclick="reviewPcReset(${r.teacher_id},'rejected')">${ic('trash')} Reject</button></div></div>`;
+ });
+ html+=`</div></div>`;
  el.innerHTML=html;
   }catch(e){ el.innerHTML=errHtml(e); }
+}
+async function reviewPcReset(tid,status){
+  try{ const r=await api(`/api/admin/passcode-resets/${tid}/review`,'POST',{status}); toast(r.message); loadAApprovals(); }catch(e){ toast(e.message,true); }
 }
 async function reviewTTRs(id,status){
   // Approve => class move + teacher count +1 (sirf teacher-initiated count hota hai).
@@ -13896,14 +13909,15 @@ const _LH=(refNo,date,conf)=>`
 <div style="border-bottom:3px solid #0F2A54;padding-bottom:12px;margin-bottom:14px">
  <div style="display:flex;justify-content:space-between;align-items:flex-start">
   <div style="display:flex;align-items:center;gap:13px">
-   <div style="width:58px;height:58px;border-radius:10px;background:linear-gradient(135deg,#0F2A54 60%,#FF6B2B);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">
+   <div style="width:58px;height:58px;border-radius:10px;background:linear-gradient(135deg,#b8941f 55%,#8a6d10);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">
     <span style="color:#fff;font-size:22px;font-weight:900;line-height:1">M</span>
-    <span style="color:#FF6B2B;font-size:7.5px;font-weight:700;letter-spacing:1.5px">MVS</span>
+    <span style="color:#ffe9a8;font-size:7.5px;font-weight:700;letter-spacing:1.5px">MVS</span>
    </div>
    <div>
-    <div style="font-weight:900;font-size:18px;color:#0F2A54;letter-spacing:.3px">MVS FOUNDATION</div>
-    <div style="font-size:9.5px;color:#5A6B85;font-weight:600;letter-spacing:.9px;text-transform:uppercase;margin-top:1px">Manish Verma Classes — NIOS Coaching Institute, Delhi</div>
-    <div style="font-size:8.5px;color:#8899aa;margin-top:2px">app.mvsfoundation.in &nbsp;|&nbsp; MVS Foundation Portal</div>
+    <div style="font-weight:900;font-size:15.5px;color:#0F2A54;letter-spacing:.3px">MANISH VERMA STUDY FOUNDATION</div>
+    <div style="font-size:8.5px;color:#5A6B85;font-weight:600;margin-top:2px">Add.: Plot No. 51-B, 3rd floor, Gali No. 4-B, Maharani Enclave West Delhi, New Delhi-110059</div>
+    <div style="font-size:8.5px;color:#5A6B85;margin-top:1px">Phone No.: 011-41649013 &nbsp;&middot;&nbsp; Email Id.: info@mvsfoundation.in &nbsp;&middot;&nbsp; Website: www.mvsfoundation.in</div>
+    <div style="font-size:8.5px;color:#0F2A54;font-weight:700;margin-top:2px">GST No.: 07AARCM9457H1ZQ &nbsp;&middot;&nbsp; CIN No.: U85500DL2024NPL428819 &nbsp;&middot;&nbsp; PAN No.: AARCM9457H</div>
    </div>
   </div>
   <div style="text-align:right">
@@ -13986,7 +14000,7 @@ function _letterHTML(d){
   ${_LH(refNo,d.letter.date,true)}
   <div style="text-align:center;margin-bottom:16px"><div style="display:inline-block;border-top:2px solid #0F2A54;border-bottom:2px solid #0F2A54;padding:5px 28px"><span style="font-weight:800;font-size:14px;letter-spacing:3px;color:#0F2A54;text-transform:uppercase">Letter of Appointment</span></div></div>
   ${_P('Dear <strong>'+esc(t.name)+',</strong>')}
-  ${_P('We are pleased to extend this offer of appointment to you as <strong>'+esc(t.designation)+'</strong> in the <strong>'+esc(t.department)+'</strong> division at MVS Foundation (Manish Verma Classes). This letter outlines the terms of your engagement, including how your compensation is earned, the performance targets you are expected to meet, and the professional standards required. Please read carefully — by signing and returning a copy you accept all terms herein.')}
+  ${_P('We are pleased to extend this offer of appointment to you as <strong>'+esc(t.designation)+'</strong> in the <strong>'+esc(t.department)+'</strong> division at <strong>Manish Verma Study Foundation (MVS)</strong>. This letter outlines the terms of your engagement, including how your compensation is earned, the performance targets you are expected to meet, and the professional standards required. Please read carefully — by signing and returning a copy you accept all terms herein.')}
   ${_SEC('1. Appointment Details')}
   <table style="width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:10px"><tbody>
    ${details.map(r=>`<tr style="border-bottom:1px solid #e4ebf5"><td style="padding:5px 9px;font-weight:700;color:#0F2A54;width:36%;background:#f7f9fc">${r[0]}</td><td style="padding:5px 9px;color:#1a2a3a">${esc(r[1])}</td></tr>`).join('')}
@@ -14042,10 +14056,10 @@ function _letterHTML(d){
   ${_SEC('6. General Terms')}
   ${_LETTER_TERMS.map(r=>`<div style="margin-bottom:5px;font-size:9.5px;line-height:1.6"><strong style="color:#0F2A54">${r[0]}: </strong>${esc(r[1])}</div>`).join('')}
   <div style="margin-top:12px;border-top:2px solid #e4ebf5;padding-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:30px">
-   <div><div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:22px">For MVS Foundation</div><div style="border-top:1.5px solid #0F2A54;padding-top:5px"><div style="font-weight:700;font-size:10px">Manish Verma</div><div style="font-size:8.5px;color:#5A6B85">Founder & Director, MVS Foundation</div><div style="font-size:8.5px;color:#5A6B85;margin-top:2px">Date: ___________________</div></div></div>
+   <div><div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:22px">For Manish Verma Study Foundation</div><div style="border-top:1.5px solid #0F2A54;padding-top:5px"><div style="font-weight:700;font-size:10px">Manish Verma</div><div style="font-size:8.5px;color:#5A6B85">Founder & Director, Manish Verma Study Foundation</div><div style="font-size:8.5px;color:#5A6B85;margin-top:2px">Date: ___________________</div></div></div>
    <div><div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:22px">Accepted by Teacher</div><div style="border-top:1.5px solid #0F2A54;padding-top:5px"><div style="font-weight:700;font-size:10px">${esc(t.name)}</div><div style="font-size:8.5px;color:#5A6B85">${esc(t.designation)}, ${esc(t.department)}</div><div style="font-size:8.5px;color:#5A6B85;margin-top:2px">Date: ___________________</div></div></div>
   </div>
-  ${_DFOOT('MVS Foundation | Manish Verma Classes | NIOS Coaching, Delhi','Excellence Through Discipline \u2726 MVS Foundation','Ref: '+esc(refNo))}
+  ${_DFOOT('Manish Verma Study Foundation | Plot No. 51-B, Maharani Enclave, West Delhi-110059','GST: 07AARCM9457H1ZQ · CIN: U85500DL2024NPL428819 · PAN: AARCM9457H','Ref: '+esc(refNo))}
   </div>`;
 }
 
@@ -14121,9 +14135,9 @@ function _slipHTML(d){
   </div>
   <div style="border:1px solid #e4ebf5;border-radius:6px;padding:8px 12px;background:#f7f9fc;margin-bottom:14px;font-size:8.5px;color:#5A6B85;line-height:1.6"><strong style="color:#0F2A54">Note:</strong> This earnings statement is generated from portal activity data for ${esc(d.month_label)}. All figures are auto-calculated based on your completed deliverables recorded on the MVS Foundation portal. If you believe any figure is incorrect, please raise a dispute through the portal within 5 working days of receipt. Disputes raised after this period will not be entertained.</div>
   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;border-top:2px solid #e4ebf5;padding-top:14px">
-   ${[['Prepared by','Accounts Team','MVS Foundation'],['Authorised by','Manish Verma','Director, MVS Foundation'],['Received by',t.name,t.designation]].map(s=>`<div style="text-align:center"><div style="border-top:1px solid #0F2A54;padding-top:5px;margin-top:25px"><div style="font-weight:700;font-size:9px;color:#1a2a3a">${esc(s[1])}</div><div style="font-size:7.5px;color:#5A6B85">${esc(s[2])}</div><div style="font-size:7.5px;color:#8899aa">${s[0]}</div></div></div>`).join('')}
+   ${[['Prepared by','Accounts Team','Manish Verma Study Foundation'],['Authorised by','Manish Verma','Director, Manish Verma Study Foundation'],['Received by',t.name,t.designation]].map(s=>`<div style="text-align:center"><div style="border-top:1px solid #0F2A54;padding-top:5px;margin-top:25px"><div style="font-weight:700;font-size:9px;color:#1a2a3a">${esc(s[1])}</div><div style="font-size:7.5px;color:#5A6B85">${esc(s[2])}</div><div style="font-size:7.5px;color:#8899aa">${s[0]}</div></div></div>`).join('')}
   </div>
-  ${_DFOOT('MVS Foundation | Manish Verma Classes | NIOS Coaching, Delhi','This is a system-generated document — no signature required for electronic copy','Earnings Stmt | '+esc(d.month_label))}
+  ${_DFOOT('Manish Verma Study Foundation | Plot No. 51-B, Maharani Enclave, West Delhi-110059','This is a system-generated document — no signature required for electronic copy','Earnings Stmt | '+esc(d.month_label))}
   </div>`;
 }
 
@@ -14208,6 +14222,90 @@ function _payStructureHTML(d,editable){
    </div>
    <div class="alert alert-info" style="margin-top:12px;margin-bottom:0">Targets and amounts are set by the admin in the first week of each month. Any change here updates your live earnings calculation immediately.</div>
   </div></div>`;
+}
+
+// =====================================================================
+//  v89: PAYOUT GATE — payout click pe pehle letter sign, fir passcode
+//  create; har visit pe passcode entry. Reset sirf admin approval se.
+// =====================================================================
+let _payoutUnlocked=false, _payGate=null;
+async function payoutGate(){
+  const el=document.getElementById('t-payout-content');
+  if(_payoutUnlocked){ loadTPayout(); return; }
+  el.innerHTML=`<div class="sm-head"><h2>Payout</h2><p>Work-based earnings — appointment-letter rule, auto-calculated.</p></div>
+   <div class="card"><div class="card-body" style="text-align:center;padding:46px 20px">
+    <div style="width:62px;height:62px;border-radius:18px;background:linear-gradient(135deg,#b8941f,#8a6d10);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;color:#fff">${ic('shield')}</div>
+    <h3 style="margin-bottom:6px">Payout Locked</h3>
+    <p style="color:var(--text-muted);font-size:.85rem;max-width:440px;margin:0 auto 16px">Aapki earnings private hain — payout kholne se pehle verification complete karo. Panel kahin khula reh jaaye to bhi ye section kisi aur ke liye band rahega.</p>
+    <button class="btn btn-primary" onclick="payoutGate()">${ic('shield')} Unlock Payout</button>
+   </div></div>`;
+  try{
+    const st=await api('/api/teacher/payout/status'); _payGate=st;
+    if(!st.letter_accepted) return payoutShowLetter();
+    if(!st.passcode_set) return payoutShowSetPasscode();
+    return payoutShowUnlock();
+  }catch(e){ toast(e.message,true); }
+}
+async function payoutShowLetter(){
+  try{
+    const d=await api('/api/teacher/earnings?month='+encodeURIComponent(curMonth()));
+    showModal('Appointment Letter — Accept & Sign',
+     `<div class="alert alert-info" style="margin-bottom:10px">Payout system naya hai — pehle apna appointment letter padhkar <b>digitally sign</b> karo (one-time). Uske baad apna payout passcode banega.</div>
+      <div style="max-height:52vh;overflow:auto;border:1px solid var(--border);border-radius:12px;padding:16px;background:#fff">${_letterHTML(d)}</div>
+      <div class="form-group" style="margin-top:12px"><label>Digital Signature — apna poora naam type karo</label><input class="form-control" id="pg-sign" placeholder="e.g. ${esc(NAME)}" autocomplete="off"></div>`,
+     `<button class="btn btn-primary" onclick="payoutAcceptLetter()">${ic('check')} Accept & Sign</button>`);
+  }catch(e){ toast(e.message,true); }
+}
+async function payoutAcceptLetter(){
+  const sig=(document.getElementById('pg-sign').value||'').trim();
+  if(sig.length<3){ toast('Signature ke liye apna poora naam type karo.',true); return; }
+  try{
+    await api('/api/teacher/payout/accept-letter','POST',{signature_name:sig});
+    toast('Appointment letter accepted.');
+    payoutShowSetPasscode();
+  }catch(e){ toast(e.message,true); }
+}
+function payoutShowSetPasscode(){
+  showModal('Create Payout Passcode',
+   `<div style="font-size:.8rem;color:var(--text-muted);margin-bottom:12px">Ab apna <b>4-6 digit passcode</b> banao — payout section har baar isi se khulega, taaki aapka panel khula reh jaaye to bhi koi aur earnings na dekh paaye.</div>
+    <div class="form-group"><label>New Passcode (4-6 digits)</label><input class="form-control" id="pg-pc1" type="password" inputmode="numeric" maxlength="6" placeholder="e.g. 4821"></div>
+    <div class="form-group"><label>Confirm Passcode</label><input class="form-control" id="pg-pc2" type="password" inputmode="numeric" maxlength="6" placeholder="Same passcode dubara"></div>`,
+   `<button class="btn btn-primary" onclick="payoutSetPasscode()">${ic('check')} Set Passcode & Open Payout</button>`);
+}
+async function payoutSetPasscode(){
+  const p1=(document.getElementById('pg-pc1').value||'').trim(), p2=(document.getElementById('pg-pc2').value||'').trim();
+  if(!/^\d{4,6}$/.test(p1)){ toast('Passcode 4-6 digits ka hona chahiye.',true); return; }
+  if(p1!==p2){ toast('Dono passcode same nahi hain.',true); return; }
+  try{
+    await api('/api/teacher/payout/set-passcode','POST',{passcode:p1});
+    _payoutUnlocked=true; closeModal(); toast('Passcode set — payout unlocked.'); loadTPayout();
+  }catch(e){ toast(e.message,true); }
+}
+function payoutShowUnlock(){
+  const pend=_payGate&&_payGate.reset_pending;
+  showModal('Enter Payout Passcode',
+   `<div style="font-size:.8rem;color:var(--text-muted);margin-bottom:12px">Payout section protected hai — apna passcode daalo.</div>
+    <div class="form-group"><label>Passcode</label><input class="form-control" id="pg-pc" type="password" inputmode="numeric" maxlength="6" placeholder="4-6 digit passcode" onkeydown="if(event.key==='Enter')payoutVerify()"></div>
+    ${pend?`<div class="alert alert-warning" style="margin-bottom:0">Reset request <b>admin ke paas pending</b> hai — approve hote hi naya passcode set kar paoge. Tab tak purana passcode hi chalega.</div>`
+         :`<div style="text-align:right;margin-top:2px"><a href="javascript:void(0)" style="font-size:.76rem;font-weight:700;color:var(--primary)" onclick="payoutRequestReset()">Forgot / Reset Passcode</a></div>`}`,
+   `<button class="btn btn-primary" onclick="payoutVerify()">${ic('shield')} Unlock</button>`);
+  setTimeout(()=>{ const i=document.getElementById('pg-pc'); if(i) i.focus(); },120);
+}
+async function payoutVerify(){
+  const pc=(document.getElementById('pg-pc').value||'').trim();
+  if(!pc){ toast('Passcode daalo.',true); return; }
+  try{
+    await api('/api/teacher/payout/verify-passcode','POST',{passcode:pc});
+    _payoutUnlocked=true; closeModal(); loadTPayout();
+  }catch(e){ toast(e.message,true); }
+}
+async function payoutRequestReset(){
+  if(!confirm('Passcode reset request admin ke paas bheji jayegi — admin aapse confirm karke approve karega, tabhi reset hoga. Bheje?')) return;
+  try{
+    const r=await api('/api/teacher/payout/request-passcode-reset','POST',{});
+    if(_payGate) _payGate.reset_pending=true;
+    toast(r.message); payoutShowUnlock();
+  }catch(e){ toast(e.message,true); }
 }
 
 // ---------- TEACHER: My Earnings ----------
@@ -14515,14 +14613,16 @@ async function aEarnFetch(){
     const d=await api('/api/admin/earnings?month='+encodeURIComponent(_aEarnMonth));
     _aEarnData=d;
     const _st=(icn,val,lbl)=>`<div class="ae-stat"><div class="ae-stat-ic">${ic(icn)}</div><div><div class="ae-stat-v">${val}</div><div class="ae-stat-l">${lbl}</div></div></div>`;
-    if(stats) stats.innerHTML=_st('users',d.teachers.length,'Teachers')+_st('wallet',_inr(d.total_net),'Total Net Payable')+_st('chart',d.avg_perf+'%','Average Performance')+_st('calendar',esc(fmtMonthLabel(d.month)),'Pay Month');
+    // v89: decided monthly salary ka total (max potential sum) — monthly kitna ja sakta hai
+    const totSal=d.teachers.reduce((a,x)=>a+((x.earnings&&x.earnings.max_potential)||0),0);
+    if(stats) stats.innerHTML=_st('users',d.teachers.length,'Teachers')+_st('trophy',_inr(totSal),'Monthly Salary (Total)')+_st('wallet',_inr(d.total_net),'Total Net Payable')+_st('chart',d.avg_perf+'%','Average Performance')+_st('calendar',esc(fmtMonthLabel(d.month)),'Pay Month');
     body.innerHTML=(d.total_net===0?`<div class="alert alert-info" style="margin-bottom:14px">Month abhi shuru hua hai — teachers ki portal activity record hote hi earnings yahan auto-build hoti jayengi. Abhi koi activity nahi, isliye sab ₹0 hai (demo numbers nahi).</div>`:'')
      +`<div class="ae-grid">${d.teachers.map(x=>{
        const e=x.earnings, pc=_pfCol(e.perf_score);
        const incent=e.gross_earned-e.class_earned;
        return `<div class="card ae-tcard"><div class="card-body" style="padding:16px 18px">
         <div style="display:flex;align-items:center;gap:12px">
-         <div class="ae-ava">${esc(initials(x.teacher.name))}</div>
+         <div class="ae-ava" id="aephot-${x.teacher.id}">${esc(initials(x.teacher.name))}</div>
          <div style="flex:1;min-width:0">
           <div style="font-weight:800;font-size:.98rem">${esc(x.teacher.name)}</div>
           <div style="font-size:.7rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(x.teacher.employee_code)} \u00B7 ${(x.teacher.subjects||[]).slice(0,2).map(esc).join(', ')||'—'}</div>
@@ -14541,6 +14641,8 @@ async function aEarnFetch(){
          <button class="btn btn-ghost btn-sm" onclick="adminLetter(${x.teacher.id})">Letter</button>
         </div>
        </div></div>`;}).join('')}</div>`;
+    // v89: payout cards pe teacher photos (auth-header fetch → blob)
+    d.teachers.filter(x=>x.teacher&&x.teacher.has_photo).forEach(x=>loadImgInto('aephot-'+x.teacher.id,'/api/admin/teacher/'+x.teacher.id+'/photo'));
   }catch(e){ body.innerHTML=`<div class="card"><div class="card-body"><div class="empty-state"><p>${esc(e.message)}</p></div></div></div>`; }
 }
 function _aEarnRow(tid){ return (_aEarnData&&_aEarnData.teachers||[]).find(x=>x.teacher.id===tid); }

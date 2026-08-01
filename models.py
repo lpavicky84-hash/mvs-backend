@@ -100,6 +100,9 @@ class TeacherProfile(Base):
     reschedule_count_this_month = Column(Integer, default=0)
     reschedule_reset_month = Column(Integer, default=0)  # month number
     plain_password = Column(String(255), nullable=True)  # admin ko current login credentials dikhane ke liye
+    payout_passcode = Column(String(255), nullable=True)      # v89: payout section lock (hashed)
+    letter_accept_version = Column(Integer, default=0)        # v89: payout gate — LETTER_VERSION se kam ho to re-accept
+    passcode_reset_pending = Column(Boolean, default=False)   # v89: admin approval pending
 
     user    = relationship("User", back_populates="teacher_profile")
     classes = relationship("ClassEntry", back_populates="teacher")

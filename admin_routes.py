@@ -1878,6 +1878,46 @@ def admin_view_credentials(role: str, profile_id: int, db: Session = Depends(get
             "password": (getattr(prof, "plain_password", None) or None)}
 
 
+# ===== v89: PAYOUT PASSCODE RESET — admin approval ke baad hi reset =====
+@router.get("/passcode-resets")
+def admin_passcode_resets(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Jin teachers ne payout passcode reset maanga hai (pending approvals)."""
+    rows = (db.query(TeacherProfile, User)
+              .join(User, TeacherProfile.user_id == User.id)
+              .filter(TeacherProfile.passcode_reset_pending == True)
+              .order_by(TeacherProfile.id).all())
+    return [{"teacher_id": tp.id, "name": u.name, "user_id": u.user_id,
+             "subjects": tp.subjects or [], "has_photo": bool(tp.photo_b64)}
+            for tp, u in rows]
+
+
+@router.post("/passcode-resets/{tid}/review")
+def admin_passcode_reset_review(tid: int, payload: dict, db: Session = Depends(get_db),
+                                _=Depends(get_admin)):
+    """Approve → purana passcode clear (teacher naya banayega). Reject → kuch nahi badalta."""
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    status = (payload.get("status") or "").strip().lower()
+    if status not in ("approved", "rejected"):
+        raise HTTPException(status_code=400, detail="status must be approved or rejected")
+    tp.passcode_reset_pending = False
+    u = db.query(User).filter(User.id == tp.user_id).first()
+    if status == "approved":
+        tp.payout_passcode = None
+        if u:
+            db.add(Notification(user_id=u.id, title="Passcode Reset Approved",
+                                message="Admin ne aapki payout passcode reset request approve kar di hai. Payout section kholkar ab naya passcode set karo.",
+                                notif_type="passcode_reset_approved"))
+    else:
+        if u:
+            db.add(Notification(user_id=u.id, title="Passcode Reset Rejected",
+                                message="Aapki payout passcode reset request reject hui hai. Agar aapne ye request nahi bheji thi to admin se baat karo.",
+                                notif_type="passcode_reset_rejected"))
+    db.commit()
+    return {"message": "Passcode reset " + status, "teacher_id": tid, "status": status}
+
+
 @router.post("/reset-password")
 def admin_reset_password(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_admin)):
     role = (payload.get("role") or "").strip()          # 'teacher' | 'student'
