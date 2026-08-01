@@ -2371,6 +2371,15 @@ body.dark .cal-d.on{color:#34d399}
 @media(max-width:1000px){.po-grid{grid-template-columns:1fr}}
 #printDoc{display:none}
 @media print{html,body{background:#fff!important}body>*:not(#printDoc){display:none!important}#printDoc{display:block!important;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{size:A4;margin:12mm 14mm}}
+.act-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.act-tile{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:13px 15px;box-shadow:var(--shadow);transition:transform .18s,box-shadow .18s}
+.act-tile:hover{transform:translateY(-2px);box-shadow:0 10px 24px -8px rgba(60,45,10,.22)}
+.act-ic{width:40px;height:40px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:11px}
+.act-ic .nav-ic{width:19px;height:19px}
+.act-tx{min-width:0}
+.act-v{font-size:1.12rem;font-weight:900;line-height:1.1;letter-spacing:-.01em}
+.act-l{font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text);margin-top:2px}
+.act-s{font-size:.62rem;color:var(--text-muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ae-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:18px}
 .ae-stat{position:relative;overflow:hidden;display:flex;align-items:center;gap:13px;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px 18px;box-shadow:var(--shadow)}
 .ae-stat:before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--primary),#e8c66a)}
@@ -3884,22 +3893,28 @@ async function loadTeacherToday(wrapId){
 function statusTag(s){ if(s==='done')return '<span class="tag tag-done">Done</span>'; if(s==='rescheduled')return '<span class="tag tag-reschedule">Rescheduled</span>'; return '<span class="tag tag-pending">Pending</span>'; }
 
 let _ttEntries=[]; let _ttActiveSub='';
-let _rcChapters={};   // subject -> [chapters] from the existing timetable
+let _rcChapters={};   // 'subject||class' -> [chapters] from the existing timetable
+let _rcClasses={};    // subject -> [class_names]
 async function openRequestClass(){
-  let subs=[]; _rcChapters={}; window._rcEntries=[];
+  let subs=[]; _rcChapters={}; _rcClasses={}; window._rcEntries=[];
   try{
     const es=await api('/api/teacher/my-timetable');
     window._rcEntries=es;
     subs=[...new Set(es.map(e=>e.subject))];
-    es.forEach(e=>{ if(e.type!=='event'&&e.chapter){ (_rcChapters[e.subject]=_rcChapters[e.subject]||[]); if(!_rcChapters[e.subject].includes(e.chapter)) _rcChapters[e.subject].push(e.chapter); } });
+    es.forEach(e=>{
+      const cls=(e.class_name||'').trim();
+      if(cls){ (_rcClasses[e.subject]=_rcClasses[e.subject]||[]); if(!_rcClasses[e.subject].includes(cls)) _rcClasses[e.subject].push(cls); }
+      if(e.type!=='event'&&e.chapter){ const k=e.subject+'||'+cls; (_rcChapters[k]=_rcChapters[k]||[]); if(!_rcChapters[k].includes(e.chapter)) _rcChapters[k].push(e.chapter); }
+    });
   }catch(e){}
   if(subs.length===0){ try{ const p=await api('/api/teacher/profile'); subs=p.subjects||[]; }catch(e){} }
   const today=new Date().toISOString().slice(0,10);
   showModal('Add Extra Class',
     `<div class="ex-grid2">
-       <div><label class="ex-lbl">Subject</label><select class="form-control" id="rc-sub" onchange="rcFillCh();rcPreview()">${subs.map(s=>`<option>${esc(s)}</option>`).join('')}</select></div>
-       <div><label class="ex-lbl">Chapter</label><select class="form-control" id="rc-ch" onchange="rcChSel()"></select></div>
+       <div><label class="ex-lbl">Subject</label><select class="form-control" id="rc-sub" onchange="rcFillCls();rcFillCh();rcPreview()">${subs.map(s=>`<option>${esc(s)}</option>`).join('')}</select></div>
+       <div><label class="ex-lbl">Class</label><select class="form-control" id="rc-cls" onchange="rcFillCh();rcPreview()"></select></div>
      </div>
+     <div style="margin-top:10px"><label class="ex-lbl">Chapter <span style="font-weight:600;color:var(--text-muted)">(selected class ke chapters)</span></label><select class="form-control" id="rc-ch" onchange="rcChSel()"></select></div>
      <div id="rc-newch" style="display:none;margin-top:10px"><label class="ex-lbl">New chapter / topic name</label><input class="form-control" id="rc-newch-in" placeholder="e.g. Chapter 12 \u2014 Thermodynamics"></div>
      <label class="ex-lbl" style="margin-top:10px">Part / Note <span style="font-weight:600;color:var(--text-muted)">(optional)</span></label>
      <input class="form-control" id="rc-topic" placeholder="e.g. Part 3 / Extra doubt class">
@@ -3911,11 +3926,21 @@ async function openRequestClass(){
      <div id="rc-preview"></div>
      <div id="rc-status"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="rc-btn" onclick="submitRequestClass()">Send for Approval</button>`);
-  rcFillCh(); rcPreview();
+  rcFillCls(); rcFillCh(); rcPreview();
+}
+function rcFillCls(){
+  const sel=document.getElementById('rc-cls'); if(!sel) return;
+  const list=(_rcClasses[val('rc-sub')]||[]).slice().sort((a,b)=>{const na=parseInt((a.match(/\d+/)||['999'])[0])||999,nb=parseInt((b.match(/\d+/)||['999'])[0])||999;return na-nb||a.localeCompare(b);});
+  sel.innerHTML=list.map(c=>`<option>${esc(c)}</option>`).join('')+(list.length?'':'<option value="">All classes</option>');
 }
 function rcFillCh(){
   const sel=document.getElementById('rc-ch'); if(!sel) return;
-  const list=_rcChapters[val('rc-sub')]||[];
+  const sub=val('rc-sub'), cls=(document.getElementById('rc-cls')||{}).value||'';
+  let list=_rcChapters[sub+'||'+cls]||[];
+  if(!list.length){  // fallback: is subject ke saare chapters (class info nahi mili to)
+    const seen={}; list=[];
+    Object.keys(_rcChapters).forEach(k=>{ if(k.indexOf(sub+'||')===0) _rcChapters[k].forEach(c=>{ if(!seen[c]){ seen[c]=1; list.push(c); } }); });
+  }
   sel.innerHTML=list.map(c=>`<option>${esc(c)}</option>`).join('')+'<option value="__new">\u2795 New chapter / topic\u2026</option>';
   rcChSel();
 }
@@ -3933,7 +3958,7 @@ function rcPreview(){
     if(!subject||!date){ box.innerHTML=''; return; }
     box.innerHTML='<div class="rc-prev muted">Checking the schedule\u2026</div>';
     try{
-      const p=await api('/api/teacher/extra-class/preview','POST',{subject,date,shift:true});
+      const p=await api('/api/teacher/extra-class/preview','POST',{subject,date,shift:true,class_name:(document.getElementById('rc-cls')||{}).value||''});
       const n=(p.shifted||[]).length;
       if(!n){ box.innerHTML=`<div class="rc-prev ok">${ic('check')} No classes after this date \u2014 nothing to shift.</div>`; return; }
       const rows=p.shifted.slice(0,6).map(x=>`<div class="rc-row"><span class="rc-ch">${esc(x.chapter)}${x.part?' \u00b7 '+esc(x.part):''}</span><span class="rc-move">${fmtNice(x.from)} \u2192 <b>${fmtNice(x.to)}</b> <span class="rc-day">${esc(x.day)}</span></span></div>`).join('');
@@ -3955,7 +3980,7 @@ async function submitRequestClass(){
   if(chSel==='__new'&&!val('rc-newch-in')){ toast('Please enter the new chapter/topic name.',true); return; }
   const btn=document.getElementById('rc-btn'); btn.disabled=true; btn.textContent='Sending...';
   try{
-    const r=await api('/api/teacher/extra-class','POST',{subject,topic,date,time,chapter,shift:document.getElementById('rc-shift').checked});
+    const r=await api('/api/teacher/extra-class','POST',{subject,topic,date,time,chapter,class_name:(document.getElementById('rc-cls')||{}).value||'',shift:document.getElementById('rc-shift').checked});
     document.getElementById('rc-status').innerHTML=`<div class="alert alert-success">${esc(r.message)}${r.shift_count?`<br><b>${r.shift_count}</b> upcoming classes will auto-shift once approved.`:''}</div>`;
     toast('Request sent to the admin.'); btn.textContent='Sent'; btn.setAttribute('onclick','closeModal()'); btn.disabled=false;
   }catch(e){ document.getElementById('rc-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Send for Approval'; }
@@ -14038,9 +14063,21 @@ function _earnHeroHTML(d,actions){
 
 function _activityStripHTML(d){
   const a=d.activity;
-  const chips=[['Classes',a.classes_conducted+'/'+a.classes_scheduled],['Late',a.late_classes],['Notes',a.notes_uploaded],['DPP',a.dpp_uploaded],['Tests',a.tests_created],['Videos',a.videos_made],['Live',a.live_sessions],['Shorts',a.shorts_made],['Doubts',a.doubts_resolved+'/'+a.doubts_assigned],['Tasks on time',a.tasks_on_time+'/'+a.tasks_assigned]];
-  return `<div class="card" style="margin-top:18px"><div class="card-header"><h3>${ic('chart')} This Month's Activity (auto-tracked)</h3></div><div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap">
-   ${chips.map(c=>`<span class="chip" style="font-size:.74rem"><b>${c[0]}:</b>&nbsp;${c[1]}</span>`).join('')}
+  const cov=(a.dpp_covered!=null)?a.dpp_covered:a.dpp_uploaded;
+  const tiles=[
+    {i:'calendar', l:'Classes',      v:a.classes_conducted+'/'+a.classes_scheduled, s:'conducted / scheduled', c:'#1b7a3e', bg:'linear-gradient(135deg,#eef7f0,#e2f2e8)'},
+    {i:'clock',    l:'Late Starts',  v:a.late_classes, s:a.late_classes?'beyond 15-min grace':'all on time', c:a.late_classes?'#c0392b':'#1b7a3e', bg:a.late_classes?'linear-gradient(135deg,#fdf1f0,#fbe7e5)':'linear-gradient(135deg,#eef7f0,#e2f2e8)'},
+    {i:'book',     l:'Notes',        v:a.notes_uploaded, s:'uploaded this month', c:'#9a6b00', bg:'linear-gradient(135deg,#fbf6e9,#f6edda)'},
+    {i:'clipboard',l:'DPP',          v:a.dpp_uploaded, s:cov+' chapters covered', c:'#9a6b00', bg:'linear-gradient(135deg,#fbf6e9,#f6edda)'},
+    {i:'edit',     l:'Tests',        v:a.tests_created, s:'created this month', c:'#9a6b00', bg:'linear-gradient(135deg,#fbf6e9,#f6edda)'},
+    {i:'play',     l:'Videos',       v:a.videos_made, s:'one shot / revision', c:'#1a56a8', bg:'linear-gradient(135deg,#eef4fc,#e2ecfa)'},
+    {i:'megaphone',l:'Live',         v:a.live_sessions, s:'YouTube sessions', c:'#1a56a8', bg:'linear-gradient(135deg,#eef4fc,#e2ecfa)'},
+    {i:'sun',      l:'Shorts',       v:a.shorts_made, s:'made this month', c:'#1a56a8', bg:'linear-gradient(135deg,#eef4fc,#e2ecfa)'},
+    {i:'help',     l:'Doubts',       v:a.doubts_resolved+'/'+a.doubts_assigned, s:'resolved / assigned', c:'#6d28d9', bg:'linear-gradient(135deg,#f4f0fc,#ece5fa)'},
+    {i:'check',    l:'Tasks on time',v:a.tasks_on_time+'/'+a.tasks_assigned, s:'on-time / assigned', c:'#6d28d9', bg:'linear-gradient(135deg,#f4f0fc,#ece5fa)'}
+  ];
+  return `<div class="card" style="margin-top:18px"><div class="card-header"><h3>${ic('chart')} This Month's Activity (auto-tracked)</h3></div><div class="card-body">
+   <div class="act-grid">${tiles.map(t=>`<div class="act-tile"><div class="act-ic" style="color:${t.c};background:${t.bg}">${ic(t.i)}</div><div class="act-tx"><div class="act-v" style="color:${t.c}">${t.v}</div><div class="act-l">${t.l}</div><div class="act-s">${t.s}</div></div></div>`).join('')}</div>
   </div></div>`;
 }
 

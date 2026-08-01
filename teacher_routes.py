@@ -2798,14 +2798,28 @@ def _next_slots(start_after, weekdays, count, busy_dates):
     return out
 
 
-def _plan_shift(db, tp, subject, new_date):
-    """Preview: extra class ke baad kya-kya shift hoga."""
+def _cls_norm(s):
+    """'Class 12' == '12' == 'XII' na bhi ho to kam se kam number/base match."""
+    return re.sub(r"[^0-9a-z]", "", (s or "").lower().replace("class", "").strip())
+
+
+def _plan_shift(db, tp, subject, new_date, class_name=None):
+    """Preview: extra class ke baad kya-kya shift hoga.
+    Scope wahi jo teacher ko timetable me DIKHTA hai — subject-scope (teacher_id
+    se nahi) + subject name variants ('English (229)') + optional class filter.
+    Warna 'No classes after this date' ka jhootha message aata tha."""
     from models import TimetableEntry
+    canon = _subj_canon(subject)
+    scope = _subj_scope_for(db, TimetableEntry, tp.subjects or [])
+    variants = [s for s, c in scope.items() if c == canon] or [subject]
     rows = db.query(TimetableEntry).filter(
-        TimetableEntry.teacher_id == tp.id,
-        TimetableEntry.subject == subject,
+        TimetableEntry.subject.in_(variants),
         TimetableEntry.status == "approved",
     ).all()
+    # class filter: 10th ki extra class 12th ki timeline na khiskaye (aur vice-versa)
+    if class_name and any((e.class_name or "").strip() for e in rows):
+        cn = _cls_norm(class_name)
+        rows = [e for e in rows if _cls_norm(e.class_name) == cn]
     dated = [e for e in rows if e.entry_date]
     weekdays = _subject_weekdays(dated)
 
@@ -2854,7 +2868,7 @@ def extra_class_preview(payload: dict, db: Session = Depends(get_db), current_us
     if not bool(payload.get("shift", True)):
         end, src = session_end_for(db, subject=subject)
         return {"shifted": [], "overflow": False, "session_end": str(end), "deadline_for": src}
-    return _plan_shift(db, tp, subject, nd)
+    return _plan_shift(db, tp, subject, nd, class_name=(payload.get("class_name") or None))
 
 
 @router.post("/extra-class")
@@ -2875,7 +2889,8 @@ def create_extra_class(payload: dict, db: Session = Depends(get_db), current_use
     part = (payload.get("topic") or "").strip() or None
     do_shift = bool(payload.get("shift", True))
 
-    plan = _plan_shift(db, tp, subject, nd) if do_shift else {"shifted": []}
+    plan = _plan_shift(db, tp, subject, nd,
+                       class_name=(payload.get("class_name") or None)) if do_shift else {"shifted": []}
 
     e = TimetableEntry(
         teacher_id=tp.id, subject=subject,
