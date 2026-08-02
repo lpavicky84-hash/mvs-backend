@@ -580,6 +580,12 @@ class StudioReport(Base):
     status      = Column(String(20), default="held")    # held | issues | cancelled
     notes       = Column(Text, default="")
     reporter    = Column(String(160), default="")       # studio manager / admin ka naam
+    # v98: teacher report jaisa — actual class timing + class notes (PDF) upload
+    start_time  = Column(String(20), default="")
+    end_time    = Column(String(20), default="")
+    notes_file_b64  = Column(_FILETEXT, nullable=True)  # base64 (dataURL ok) — class notes PDF
+    notes_file_name = Column(String(255), default="")
+    notes_file_mime = Column(String(100), default="")
     created_by  = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at  = Column(DateTime, default=func.now())
     updated_at  = Column(DateTime, default=func.now(), onupdate=func.now())

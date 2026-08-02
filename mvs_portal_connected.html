@@ -3775,9 +3775,8 @@ async function loadTCompletion(){
 }
 function openClassReport(id){
   const c=((window._tClasses||[]).concat(typeof _ttEntries!=='undefined'?_ttEntries:[])).find(x=>x.id===id)||{};
-  // One form = class report + lecture report (with the verification question).
-  _lecQs=[{qtype:'mcq',question:'',question_hi:'',options:['','','',''],options_hi:['','','',''],correct:0,tolerance:'',image_b64:null,option_images:[null,null,null,null],_tab:'en'}];
-  _lecFiles={pdf:null,dpp:null};
+  // One form = class report + lecture report (class notes only — v98: no DPP, no verification question).
+  _lecFiles={pdf:null};
   const sched=esc(c.time||c.time_text||'');
   showModal('Class Report',
     `<div class="alert alert-info"><strong>${esc(c.subject||'')}</strong>${c.chapter?' \u00b7 '+esc(c.chapter):''}${c.part?' \u00b7 '+esc(c.part):''}${sched?` \u00b7 Scheduled <strong>${sched}</strong>`:''}</div>
@@ -3795,19 +3794,12 @@ function openClassReport(id){
      <label class="ex-lbl">Remarks (optional)</label>
      <textarea class="form-control" id="cr-remarks" rows="2" placeholder="Anything the admin should know">${esc(c.remarks||'')}</textarea>
 
-     <div class="cr-sec">2. Lecture Report <span class="cr-sec-sub">students see this &amp; must answer a question to verify</span></div>
+     <div class="cr-sec">2. Lecture Report <span class="cr-sec-sub">students see this in their Lectures feed</span></div>
      <label class="ex-lbl">Lecture Summary <span class="req">*</span></label>
      <textarea class="form-control" id="lec-summary" rows="2" placeholder="What was taught in this lecture?"></textarea>
-     <div class="ex-grid2">
-       <div><label class="ex-lbl">Class Notes <span class="req">*</span></label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-pdf').click()">${ic('upload')} <span id="lec-pdf-name">Upload Class Notes</span></button><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
-       <div><label class="ex-lbl">DPP</label><div style="font-size:.72rem;color:var(--text-muted);padding:8px 10px;border:1px dashed var(--border);border-radius:8px">DPP ab <b>DPP page</b> se — Create DPP ya Upload DPP (timetable-connected).</div></div>
-     </div>
-     <div class="cr-sec">3. Verification Question <span class="cr-sec-sub">mandatory \u2014 students answer one at random</span></div>
-     <div id="lec-qs"></div>
-     <button type="button" class="btn btn-ghost btn-sm" onclick="addLecQ()" style="margin-top:6px">+ Add another question</button>
+     <div><label class="ex-lbl">Class Notes <span class="req">*</span></label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-pdf').click()">${ic('upload')} <span id="lec-pdf-name">Upload Class Notes (PDF)</span></button><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
      <div id="cr-status"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-success" id="cr-btn" onclick="submitClassReport(${id})">Submit &amp; Mark Done</button>`);
-  renderLecQs();
   crDelayHint();
 }
 function crDelayHint(){
@@ -3825,43 +3817,25 @@ function _calcDelay(sched,actual){
   return b-a;
 }
 async function submitClassReport(id){
-  // required uploads + summary
+  // required uploads + summary (v98: no verification question, no DPP here)
   if(!val('lec-summary').trim()){ toast('Please write the lecture summary.',true); return; }
   if(!_lecFiles.pdf){ toast('Notes PDF is required.',true); return; }
-  // validate the verification question(s) exactly like the lecture form does
-  for(let i=0;i<_lecQs.length;i++){ const q=_lecQs[i];
-    if(!(q.question||'').trim()){ toast('Verification question '+(i+1)+': enter the question text',true); return; }
-    if(q.qtype==='mcq'){ if(q.options.some(o=>!(o||'').trim())){ toast('Question '+(i+1)+': fill all 4 options',true); return; } }
-    if(q.qtype==='image_mcq'){ const im=(q.option_images||[]).filter(x=>x); if(im.length<2){ toast('Question '+(i+1)+': upload at least 2 option images',true); return; } }
-    if(q.qtype==='numerical'&&(q.correct===''||q.correct==null)){ toast('Question '+(i+1)+': enter the correct value',true); return; }
-    if(q.qtype==='fill_blank'&&!(q.correct||'').trim()){ toast('Question '+(i+1)+': enter the correct answer',true); return; }
-  }
   const c=((window._tClasses||[]).concat(typeof _ttEntries!=='undefined'?_ttEntries:[])).find(x=>x.id===id)||{};
   const btn=document.getElementById('cr-btn'); btn.disabled=true; btn.textContent='Submitting...';
   try{
     // 1) class report -> marks the class Done (delay is derived from these times)
     await api('/api/teacher/class/'+id+'/complete','POST',{topic_covered:val('cr-topic'),start_time:val('cr-start'),end_time:val('cr-end'),homework:val('cr-hw'),dpp_given:false,remarks:val('cr-remarks')});
-    // 2) lecture report -> gives students the verification question, auto-linked to this class
-    let pdf_b64=null,dpp_b64=null;
+    // 2) lecture report -> summary + class notes, auto-linked to this class
+    let pdf_b64=null;
     if(_lecFiles.pdf) pdf_b64=await _fileB64(_lecFiles.pdf);
-    if(_lecFiles.dpp) dpp_b64=await _fileB64(_lecFiles.dpp);
-    const questions=_lecQs.map(q=>{
-      const base={qtype:q.qtype, question:q.question, question_hi:(q.question_hi||'').trim()||null, image_b64:q.image_b64||null};
-      if(q.qtype==='mcq'){ const oh=(q.options_hi||[]).map(o=>(o||'').trim()); return {...base, options:q.options, options_hi:oh.some(x=>x)?oh:null, correct:q.options[q.correct]}; }
-      if(q.qtype==='image_mcq') return {...base, option_images:q.option_images, correct:String(q.correct)};
-      if(q.qtype==='numerical') return {...base, correct:String(q.correct), tolerance:(q.tolerance!==''&&q.tolerance!=null)?q.tolerance:null};
-      if(q.qtype==='true_false') return {...base, correct:String(q.correct||'true')};
-      return {...base, correct:q.correct};
-    });
     await api('/api/teacher/lecture','POST',{
       subject:c.subject, chapter:c.chapter||null, part:c.part||null,
       title:(c.chapter||'Lecture')+(c.part?(' \u2013 '+c.part):''),
       lecture_date:c.date||null, timetable_entry_id:id,
       summary:val('lec-summary')||null, homework:val('cr-hw')||null,
       pdf_b64, pdf_filename:_lecFiles.pdf?_lecFiles.pdf.name:null,
-      dpp_b64, dpp_filename:_lecFiles.dpp?_lecFiles.dpp.name:null,
-      questions});
-    toast('Class marked Done. Students can now verify this lecture.');
+      questions:[]});
+    toast('Class marked Done. Students can now see this report.');
     closeModal();
     const active=document.querySelector('#teacher-app .page.active');
     if(active&&active.id==='t-page-timetable') loadTTimetable();
@@ -5416,24 +5390,22 @@ async function downloadExamPdf(id, medium){
   }catch(e){ toast('Could not download the PDF',true); }
 }
 // ========================================================
-//  TEACHER: LECTURE REPORTS + VERIFICATION QUESTIONS
+//  TEACHER: LECTURE REPORTS
 // ========================================================
-let _lecQs=[];          // [{qtype,question,question_hi,options[],options_hi[],correct,tolerance,image_b64,option_images[],_tab}]
 let _lecTT=[];          // timetable entries for optional linking
-let _lecFiles={pdf:null,dpp:null};
+let _lecFiles={pdf:null};
 
 async function loadTLectures(){
   const el=document.getElementById('t-lectures-content');
   softSpin(el);
   try{
     const lecs=await api('/api/teacher/lectures');
-    let html=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2>Lecture Reports</h2><p>Publish a report after teaching in the MVC App. Students must answer a verification question to mark it done.</p></div><button class="btn btn-primary btn-sm" onclick="openLectureForm()">${ic('upload')} New Lecture Report</button></div>`;
-    if(!lecs.length){ html+=`<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>No lecture reports yet. Create one so students can verify their learning.</p></div></div></div>`; }
+    let html=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2>Lecture Reports</h2><p>Publish a report after teaching in the MVC App. Students mark it done from their portal.</p></div><button class="btn btn-primary btn-sm" onclick="openLectureForm()">${ic('upload')} New Lecture Report</button></div>`;
+    if(!lecs.length){ html+=`<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>No lecture reports yet. Create one so students can mark it done.</p></div></div></div>`; }
     else{
       html+=lecs.map(l=>{
-        const rate=l.attempted?Math.round(l.verified/l.attempted*100):0;
-        const files=[]; if(l.has_pdf) files.push('Notes'); if(l.has_dpp) files.push('DPP');
-        return `<div class="lec-card"><div class="lec-head"><div><div class="lec-title">${esc(l.title)}</div><div class="lec-meta">${esc(l.subject)}${l.chapter?' \u00b7 '+esc(l.chapter):''} \u00b7 ${esc(l.date)} \u00b7 ${l.questions} question${l.questions===1?'':'s'}${files.length?' \u00b7 '+files.join(' + '):''}</div></div><button class="btn btn-danger btn-sm" onclick="deleteLecture(${l.id})">${ic('trash')}</button></div><div class="lec-body"><b>${l.verified}</b> verified \u00b7 <b>${l.attempted}</b> attempted${l.attempted?` \u00b7 ${rate}% success`:''}</div></div>`;
+         const files=[]; if(l.has_pdf) files.push('Notes'); if(l.has_dpp) files.push('DPP');
+        return `<div class="lec-card"><div class="lec-head"><div><div class="lec-title">${esc(l.title)}</div><div class="lec-meta">${esc(l.subject)}${l.chapter?' \u00b7 '+esc(l.chapter):''} \u00b7 ${esc(l.date)}${files.length?' \u00b7 '+files.join(' + '):''}</div></div><button class="btn btn-danger btn-sm" onclick="deleteLecture(${l.id})">${ic('trash')}</button></div><div class="lec-body"><b>${l.verified}</b> student${l.verified===1?'':'s'} marked done</div></div>`;
       }).join('');
     }
     el.innerHTML=html;
@@ -5448,8 +5420,7 @@ async function deleteLecture(id){
 
 async function openLectureForm(prefill){
   prefill=prefill||null;
-  _lecQs=[{qtype:'mcq',question:'',question_hi:'',options:['','','',''],options_hi:['','','',''],correct:0,tolerance:'',image_b64:null,option_images:[null,null,null,null],_tab:'en'}];
-  _lecFiles={pdf:null,dpp:null};
+  _lecFiles={pdf:null};
   _lecTT=[];
   try{ _lecTT=await api('/api/teacher/timetable-entries-lite'); }catch(e){}
   let subs=[]; try{ const p=await api('/api/teacher/profile'); subs=p.subjects||[]; }catch(e){}
@@ -5474,16 +5445,9 @@ async function openLectureForm(prefill){
     <textarea class="form-control" id="lec-summary" rows="2" placeholder="What was taught in this lecture?"></textarea>
     <label class="ex-lbl">Homework</label>
     <textarea class="form-control" id="lec-hw" rows="2" placeholder="Homework / practice for students"></textarea>
-    <div class="ex-grid2">
-      <div><label class="ex-lbl">Class Notes <span class="req">*</span></label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-pdf').click()">${ic('upload')} <span id="lec-pdf-name">Upload Class Notes</span></button><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
-      <div><label class="ex-lbl">DPP</label><div style="font-size:.72rem;color:var(--text-muted);padding:8px 10px;border:1px dashed var(--border);border-radius:8px">DPP ab <b>DPP page</b> se — Create DPP ya Upload DPP (timetable-connected).</div></div>
-    </div>
-    <div class="lecq-head"><h3 style="font-size:.95rem;font-weight:800;margin:14px 0 4px">Verification Questions <span style="font-weight:500;color:var(--text-muted);font-size:.8rem">\u2014 mandatory, students answer one at random</span></h3></div>
-    <div id="lec-qs"></div>
-    <button type="button" class="btn btn-ghost btn-sm" onclick="addLecQ()" style="margin-top:6px">+ Add another question</button>
+    <div><label class="ex-lbl">Class Notes <span class="req">*</span></label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-pdf').click()">${ic('upload')} <span id="lec-pdf-name">Upload Class Notes (PDF)</span></button><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
   `;
   showModal('New Lecture Report',body,`<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="lec-save" onclick="submitLecture()">Publish Report</button>`);
-  renderLecQs();
 }
 
 function _lecPickFile(inp,kind){
@@ -5493,72 +5457,21 @@ function _lecPickFile(inp,kind){
   const n=document.getElementById('lec-'+kind+'-name'); if(n) n.textContent=f.name;
 }
 
-function addLecQ(){ _lecQs.push({qtype:'mcq',question:'',question_hi:'',options:['','','',''],options_hi:['','','',''],correct:0,tolerance:'',image_b64:null,option_images:[null,null,null,null],_tab:'en'}); renderLecQs(); }
-function removeLecQ(i){ if(_lecQs.length<=1){ toast('At least one question is required',true); return; } _lecQs.splice(i,1); renderLecQs(); }
-function setLecType(i,t){ _lecQs[i].qtype=t; if((t==='mcq'||t==='image_mcq')&&(!_lecQs[i].options||!_lecQs[i].options.length)){ _lecQs[i].options=['','','','']; _lecQs[i].options_hi=['','','','']; _lecQs[i].option_images=[null,null,null,null]; } renderLecQs(); }
-function setLecTab(i,tab){ _lecQs[i]._tab=tab; renderLecQs(); }
-
-function renderLecQs(){
-  const el=document.getElementById('lec-qs'); if(!el) return;
-  el.innerHTML=_lecQs.map((q,i)=>{
-    const isHi=q._tab==='hi';
-    const typeSel=`<select class="form-control" style="max-width:200px" onchange="setLecType(${i},this.value)">${['mcq','image_mcq','numerical','fill_blank','true_false'].map(t=>`<option value="${t}" ${q.qtype===t?'selected':''}>${_VQ_LABEL[t]}</option>`).join('')}</select>`;
-    const tabs=`<div class="ex-lang-tabs"><button type="button" class="ex-lang-tab ${!isHi?'active':''}" onclick="setLecTab(${i},'en')">English</button><button type="button" class="ex-lang-tab ${isHi?'active':''}" onclick="setLecTab(${i},'hi')">\u0939\u093f\u0902\u0926\u0940</button></div>`;
-    const qval=isHi?(q.question_hi||''):(q.question||'');
-    const qbind=isHi?`_lecQs[${i}].question_hi=this.value`:`_lecQs[${i}].question=this.value`;
-    let mid='';
-    if(q.qtype==='mcq'){
-      const arr=isHi?(q.options_hi||['','','','']):(q.options||['','','','']);
-      mid=`<div class="ex-opts">${arr.map((o,j)=>`<div style="display:flex;align-items:center;gap:8px"><input type="radio" name="lecq-${i}" ${q.correct===j?'checked':''} onclick="_lecQs[${i}].correct=${j}" ${isHi?'disabled title=\"Set correct on English tab\"':'title=\"Correct answer\"'}><input class="form-control" placeholder="${isHi?'\u0935\u093f\u0915\u0932\u094d\u092a':'Option'} ${j+1}" value="${esc(o)}" oninput="${isHi?`_lecQs[${i}].options_hi[${j}]`:`_lecQs[${i}].options[${j}]`}=this.value"></div>`).join('')}</div>${isHi?'':'<div class="ex-hint" style="font-size:.76rem;color:var(--text-muted)">Select the radio next to the correct option.</div>'}`;
-    } else if(q.qtype==='image_mcq'){
-      mid=`<div class="ex-opts">${[0,1,2,3].map(j=>`<div style="display:flex;align-items:center;gap:8px"><input type="radio" name="lecq-${i}" ${q.correct===j?'checked':''} onclick="_lecQs[${i}].correct=${j}" ${isHi?'disabled':''} title="Correct answer"><button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('lecoimg-${i}-${j}').click()">${q.option_images&&q.option_images[j]?'\u2714 Image '+(j+1):'Upload image '+(j+1)}</button><input type="file" id="lecoimg-${i}-${j}" accept="image/*" style="display:none" onchange="_lecOptImg(this,${i},${j})"></div>`).join('')}</div>${isHi?'':'<div class="ex-hint" style="font-size:.76rem;color:var(--text-muted)">Upload 4 option images and mark the correct one.</div>'}`;
-    } else if(q.qtype==='numerical'){
-      mid=isHi?'':`<div class="ex-grid2"><div><label class="ex-lbl">Correct value</label><input class="form-control" type="text" inputmode="decimal" placeholder="e.g. 9.8" value="${esc(q.correct||'')}" oninput="_lecQs[${i}].correct=this.value"></div><div><label class="ex-lbl">Tolerance (\u00b1)</label><input class="form-control" type="text" inputmode="decimal" placeholder="e.g. 0.1" value="${esc(q.tolerance||'')}" oninput="_lecQs[${i}].tolerance=this.value"></div></div>`;
-    } else if(q.qtype==='fill_blank'){
-      mid=isHi?'':`<label class="ex-lbl">Correct answer(s)</label><input class="form-control" placeholder="Accepted answers, separate with comma" value="${esc(q.correct||'')}" oninput="_lecQs[${i}].correct=this.value">`;
-    } else if(q.qtype==='true_false'){
-      mid=isHi?'':`<label class="ex-lbl">Correct answer</label><select class="form-control" style="max-width:160px" onchange="_lecQs[${i}].correct=this.value"><option value="true" ${String(q.correct)==='true'?'selected':''}>True</option><option value="false" ${String(q.correct)==='false'?'selected':''}>False</option></select>`;
-    }
-    const imgBtn=isHi?'':`<button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('lecqimg-${i}').click()" style="margin-top:6px">${q.image_b64?'\u2714 Question image attached':'Attach question image (optional)'}</button><input type="file" id="lecqimg-${i}" accept="image/*" style="display:none" onchange="_lecQImg(this,${i})">`;
-    return `<div class="ex-qcard"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px"><span style="font-weight:700;font-size:.9rem">Question ${i+1}</span><div style="display:flex;gap:8px;align-items:center">${typeSel}${_lecQs.length>1?`<button class="btn btn-danger btn-sm" onclick="removeLecQ(${i})">${ic('trash')}</button>`:''}</div></div>${tabs}<textarea class="form-control" rows="2" placeholder="${isHi?'\u092a\u094d\u0930\u0936\u094d\u0928 \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902':'Verification question'}" oninput="${qbind}">${esc(qval)}</textarea>${imgBtn}${mid}</div>`;
-  }).join('');
-}
-
-function _lecQImg(inp,i){ const f=inp.files[0]; if(!f) return; if(f.size>8*1024*1024){ toast('Image too large (max 8MB)',true); return; } const r=new FileReader(); r.onload=()=>{ _lecQs[i].image_b64=r.result; renderLecQs(); }; r.readAsDataURL(f); }
-function _lecOptImg(inp,i,j){ const f=inp.files[0]; if(!f) return; if(f.size>8*1024*1024){ toast('Image too large (max 8MB)',true); return; } const r=new FileReader(); r.onload=()=>{ _lecQs[i].option_images[j]=r.result; renderLecQs(); }; r.readAsDataURL(f); }
 
 async function submitLecture(){
   const subject=val('lec-sub'); if(!subject){ toast('Select a subject',true); return; }
   if(!val('lec-summary').trim()){ toast('Please write the lecture summary.',true); return; }
   if(!_lecFiles.pdf){ toast('Notes PDF is required.',true); return; }
-  // validate questions
-  for(let i=0;i<_lecQs.length;i++){ const q=_lecQs[i];
-    if(!(q.question||'').trim()){ toast('Question '+(i+1)+': enter the question text',true); return; }
-    if(q.qtype==='mcq'){ if(q.options.some(o=>!(o||'').trim())){ toast('Question '+(i+1)+': fill all 4 options',true); return; } if(!(q.options[q.correct]||'').trim()){ toast('Question '+(i+1)+': mark the correct option',true); return; } }
-    if(q.qtype==='image_mcq'){ const imgs=q.option_images||[]; if(imgs.filter(x=>x).length<2){ toast('Question '+(i+1)+': upload at least 2 option images',true); return; } if(!imgs[q.correct]){ toast('Question '+(i+1)+': the correct option needs an image',true); return; } }
-    if(q.qtype==='numerical'&&(q.correct===''||q.correct===null||q.correct===undefined)){ toast('Question '+(i+1)+': enter the correct value',true); return; }
-    if(q.qtype==='fill_blank'&&!(q.correct||'').trim()){ toast('Question '+(i+1)+': enter the correct answer',true); return; }
-  }
   const btn=document.getElementById('lec-save'); if(btn){ btn.disabled=true; btn.textContent='Publishing...'; }
   try{
-    let pdf_b64=null,dpp_b64=null;
+    let pdf_b64=null;
     if(_lecFiles.pdf) pdf_b64=await _fileB64(_lecFiles.pdf);
-    if(_lecFiles.dpp) dpp_b64=await _fileB64(_lecFiles.dpp);
-    const questions=_lecQs.map(q=>{
-      const base={qtype:q.qtype, question:q.question, question_hi:(q.question_hi||'').trim()||null, image_b64:q.image_b64||null};
-      if(q.qtype==='mcq'){ const oh=(q.options_hi||[]).map(o=>(o||'').trim()); return {...base, options:q.options, options_hi:oh.some(x=>x)?oh:null, correct:q.options[q.correct]}; }
-      if(q.qtype==='image_mcq'){ return {...base, option_images:q.option_images, correct:String(q.correct)}; }
-      if(q.qtype==='numerical'){ return {...base, correct:String(q.correct), tolerance:(q.tolerance!==''&&q.tolerance!=null)?q.tolerance:null}; }
-      if(q.qtype==='true_false'){ return {...base, correct:String(q.correct||'true')}; }
-      return {...base, correct:q.correct}; // fill_blank
-    });
     const payload={subject, class_level:val('lec-cls')||null, chapter:val('lec-ch')||null, part:val('lec-part')||null,
       title:val('lec-title')||null, lecture_date:val('lec-date')||null,
       timetable_entry_id:(document.getElementById('lec-tt').value||null),
       summary:val('lec-summary')||null, homework:val('lec-hw')||null,
       pdf_b64, pdf_filename:_lecFiles.pdf?_lecFiles.pdf.name:null,
-      dpp_b64, dpp_filename:_lecFiles.dpp?_lecFiles.dpp.name:null,
-      questions};
+      questions:[]};
     await api('/api/teacher/lecture','POST',payload);
     closeModal(); toast('Lecture report published! Students are notified.');
     const active=document.querySelector('#teacher-app .page.active');
@@ -12734,20 +12647,17 @@ const _TL_IC={lecture:'\ud83c\udf93',dpp:'\ud83d\udcdd',test:'\u270f\ufe0f',doub
 const _BADGE_IC={first_verify:'\ud83c\udf1f',five_verify:'\ud83d\ude80',week_streak:'\ud83d\udd25',dpp_10:'\ud83d\udcaa',test_5:'\ud83c\udfaf',xp_500:'\u2b50'};
 
 // ========================================================
-//  STUDENT: LECTURES + SMART VERIFICATION
+//  STUDENT: LECTURES — MARK DONE (v98: no verification question)
 // ========================================================
-const _VQ_LABEL={mcq:'Multiple Choice',image_mcq:'Image MCQ',numerical:'Numerical',fill_blank:'Fill in the Blank',true_false:'True / False'};
-let _vqState=null;   // {lectureId, questionId, qtype, selected}
-
 async function loadSLectures(){
   const el=document.getElementById('s-lectures-content');
   softSpin(el);
   try{
     const lecs=await api('/api/student/lectures');
-    if(!lecs.length){ el.innerHTML=`<div class="sm-head"><h2>Lectures</h2><p>Verify each lecture after watching it in the Manish Verma Classes App.</p></div><div class="card"><div class="card-body"><div class="ws-empty"><div class="big">\ud83c\udf93</div><p>No lectures yet</p><small>When your teacher posts a lecture report, it appears here to verify.</small></div></div></div>`; return; }
+    if(!lecs.length){ el.innerHTML=`<div class="sm-head"><h2>Lectures</h2><p>Mark each lecture done after watching it in the Manish Verma Classes App.</p></div><div class="card"><div class="card-body"><div class="ws-empty"><div class="big">\ud83c\udf93</div><p>No lectures yet</p><small>When your teacher posts a lecture report, it appears here.</small></div></div></div>`; return; }
     const cards=lecs.map(l=>{
       const st=l.status==='verified'?'verified':(l.cooling?'cooling':'pending');
-      const stLabel=st==='verified'?'\u2714 Verified':(st==='cooling'?'On cooldown':'Not verified');
+      const stLabel=st==='verified'?'\u2714 Done':(st==='cooling'?'On cooldown':'Pending');
       let action='';
       if(l.status==='verified'){ action=`<span class="lec-status verified">\u2714 Verified</span>`; }
       else if(l.cooling){ action=`<button class="btn btn-ghost btn-sm" disabled>Try later</button>`; }
@@ -12757,7 +12667,7 @@ async function loadSLectures(){
       if(l.has_dpp) files.push(`<button class="btn btn-ghost btn-sm" onclick="dlLectureFile(${l.id},'dpp')">${ic('download')} DPP</button>`);
       return `<div class="lec-card"><div class="lec-head"><div><div class="lec-title">${esc(l.title)}</div><div class="lec-meta">${esc(l.subject)}${l.chapter?' \u00b7 '+esc(l.chapter):''}${l.part?' \u00b7 '+esc(l.part):''} \u00b7 ${esc(l.date)}</div></div><span class="lec-status ${st}">${stLabel}</span></div>${l.summary?`<div class="lec-body">${esc(l.summary)}</div>`:''}${l.homework?`<div class="lec-body"><b>Homework:</b> ${esc(l.homework)}</div>`:''}<div class="lec-actions">${files.join('')}${action}</div></div>`;
     }).join('');
-    el.innerHTML=`<div class="sm-head"><h2>Lectures</h2><p>Watch in the MVC App, then verify here by answering a quick question. Verified lectures build your progress & rank.</p></div>${cards}`;
+    el.innerHTML=`<div class="sm-head"><h2>Lectures</h2><p>Watch in the MVC App, then mark it done here. Completed lectures build your progress & rank.</p></div>${cards}`;
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 
@@ -12780,79 +12690,21 @@ async function _loadPendingVerifications(){
     if(!pending.length){ wrap.innerHTML=''; return; }
     const rows=pending.map(l=>{
       const cool=l.cooling;
-      const btn=cool?`<button class="btn btn-ghost btn-sm" disabled>Try later</button>`:`<button class="btn btn-success btn-sm" onclick="markLectureDone(${l.id})">Verify Now</button>`;
+      const btn=cool?`<button class="btn btn-ghost btn-sm" disabled>Try later</button>`:`<button class="btn btn-success btn-sm" onclick="markLectureDone(${l.id})">Mark Done</button>`;
       return `<div class="pv-row"><div class="pv-main"><div class="pv-title">${esc(l.title)}</div><div class="pv-meta">${esc(l.subject)}${l.chapter?' \u00b7 '+esc(l.chapter):''}${l.part?' \u00b7 '+esc(l.part):''} \u00b7 ${esc(l.teacher_name||'')}</div></div>${btn}</div>`;
     }).join('');
-    wrap.innerHTML=`<div class="pv-card"><div class="pv-head"><span class="pv-badge">${pending.length}</span><div><div class="pv-htitle">Lectures to Verify</div><div class="pv-hsub">Answer a quick question to verify each lecture and earn XP.</div></div></div>${rows}</div>`;
+    wrap.innerHTML=`<div class="pv-card"><div class="pv-head"><span class="pv-badge">${pending.length}</span><div><div class="pv-htitle">Lectures to Complete</div><div class="pv-hsub">Mark each lecture done after watching and earn XP.</div></div></div>${rows}</div>`;
   }catch(e){ wrap.innerHTML=''; }
 }
 
 async function markLectureDone(lectureId){
-  showModal('Verify Lecture','<div id="vq-body"><div class="spinner"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>');
+  // v98: no verification question — one tap marks the lecture done (XP awarded once, server-side).
   try{
-    const d=await api('/api/student/lecture/'+lectureId+'/question');
-    _vqState={lectureId, questionId:d.question.id, qtype:d.question.qtype, selected:null};
-    renderVQ(d.question, d.attempts_left);
-  }catch(e){
-    const b=document.getElementById('vq-body');
-    if(b) b.innerHTML=`<div class="vq-result bad">${esc(e.message||'Could not load the question')}</div>`;
-  }
-}
-
-function renderVQ(q, attemptsLeft){
-  const b=document.getElementById('vq-body'); if(!b) return;
-  const type=_VQ_LABEL[q.qtype]||'Question';
-  const biling=(q.question_hi&&q.question_hi.trim());
-  let img=q.has_image?`<img class="vq-img" src="" id="vq-qimg" alt="question">`:'';
-  let input='';
-  if(q.qtype==='mcq'){
-    input=`<div class="vq-opts">${(q.options||[]).map((o,i)=>`<div class="vq-opt" data-i="${i}" onclick="vqSelect(this,${i})"><span class="vq-opt-letter">${String.fromCharCode(65+i)}</span><span>${esc(o)}</span></div>`).join('')}</div>`;
-  } else if(q.qtype==='image_mcq'){
-    input=`<div class="vq-opts">${Array.from({length:q.option_images_count||0}).map((_,i)=>`<div class="vq-opt" data-i="${i}" onclick="vqSelect(this,${i})"><span class="vq-opt-letter">${String.fromCharCode(65+i)}</span><img class="vq-opt-img" src="" id="vq-oimg-${i}" alt="option ${i+1}"></div>`).join('')}</div>`;
-  } else if(q.qtype==='true_false'){
-    input=`<div class="vq-opts"><div class="vq-opt" data-v="true" onclick="vqSelectVal(this,'true')"><span class="vq-opt-letter">T</span><span>True</span></div><div class="vq-opt" data-v="false" onclick="vqSelectVal(this,'false')"><span class="vq-opt-letter">F</span><span>False</span></div></div>`;
-  } else if(q.qtype==='numerical'){
-    input=`<input class="form-control" id="vq-num" type="text" inputmode="decimal" placeholder="Enter your numerical answer" oninput="_vqState.selected=this.value">`;
-  } else { // fill_blank
-    input=`<input class="form-control" id="vq-fill" type="text" placeholder="Type your answer" oninput="_vqState.selected=this.value">`;
-  }
-  b.innerHTML=`<div class="vq-type">${type}</div><div class="vq-question">${esc(q.question)}</div>${biling?`<div class="vq-hi">${esc(q.question_hi)}</div>`:''}${img}${input}<div class="vq-attempts">${attemptsLeft} attempt${attemptsLeft===1?'':'s'} left \u00b7 answer correctly to verify this lecture</div><div id="vq-result"></div>`;
-  document.getElementById('modal-footer').innerHTML=`<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="vq-submit" onclick="submitVerify()">Submit Answer</button>`;
-  // load images
-  if(q.has_image){ _loadVQImg('vq-qimg',`/api/student/lecture-question/${q.id}/image`); }
-  if(q.qtype==='image_mcq'){ for(let i=0;i<(q.option_images_count||0);i++){ _loadVQImg('vq-oimg-'+i,`/api/student/lecture-question/${q.id}/image?which=${i}`); } }
-}
-async function _loadVQImg(elId,path){
-  try{ const r=await fetch(API+path,{headers:{Authorization:'Bearer '+TOKEN}}); if(!r.ok) return; const u=URL.createObjectURL(await r.blob()); const im=document.getElementById(elId); if(im) im.src=u; }catch(e){}
-}
-function vqSelect(elm,i){ document.querySelectorAll('#vq-body .vq-opt').forEach(o=>o.classList.remove('sel')); elm.classList.add('sel'); _vqState.selected=i; }
-function vqSelectVal(elm,v){ document.querySelectorAll('#vq-body .vq-opt').forEach(o=>o.classList.remove('sel')); elm.classList.add('sel'); _vqState.selected=v; }
-
-async function submitVerify(){
-  if(!_vqState){ return; }
-  const ans=_vqState.selected;
-  if(ans===null||ans===undefined||ans===''){ toast('Please choose or enter an answer.',true); return; }
-  const btn=document.getElementById('vq-submit'); if(btn){ btn.disabled=true; btn.textContent='Checking...'; }
-  const rd=document.getElementById('vq-result');
-  try{
-    const r=await api('/api/student/lecture/'+_vqState.lectureId+'/verify','POST',{question_id:_vqState.questionId, answer:ans});
-    if(r.correct){
-      if(rd) rd.innerHTML=`<div class="vq-result ok">\u2714 ${esc(r.message||'Correct! Lecture verified.')}</div>`;
-      toast('Lecture verified! +XP earned \ud83c\udf89');
-      document.getElementById('modal-footer').innerHTML=`<button class="btn btn-success" onclick="closeModal();_refreshAfterVerify()">Done</button>`;
-    } else {
-      if(rd) rd.innerHTML=`<div class="vq-result bad">${esc(r.message||'Incorrect. Try again.')}</div>`;
-      if(btn){ btn.disabled=false; btn.textContent='Try Again'; }
-      // clear selection for retry
-      document.querySelectorAll('#vq-body .vq-opt').forEach(o=>o.classList.remove('sel'));
-      const ni=document.getElementById('vq-num'); if(ni) ni.value=''; const fi=document.getElementById('vq-fill'); if(fi) fi.value='';
-      _vqState.selected=null;
-    }
-  }catch(e){
-    // 429 cooldown or other -> show message, close verify path
-    if(rd) rd.innerHTML=`<div class="vq-result bad">${esc(e.message||'Could not verify')}</div>`;
-    document.getElementById('modal-footer').innerHTML=`<button class="btn btn-ghost" onclick="closeModal();_refreshAfterVerify()">Close</button>`;
-  }
+    const r=await api('/api/student/lecture/'+lectureId+'/mark-done','POST',{});
+    toast(r.message||'Lecture marked done.');
+    _refreshAfterVerify();
+    _loadPendingVerifications();
+  }catch(e){ toast(e.message||'Could not mark the lecture done',true); }
 }
 
 async function loadSProgress(){
@@ -13552,27 +13404,66 @@ function openStudioReport(id){
   if(!e){ toast('Entry not found. Please refresh the page.',true); return; }
   const r=(window._srReports||{})[id];
   const st=(r&&r.status)||'held';
+  window._srFile=null; window._srRemove=false;
   const stOpt=(v,l,d)=>`<label class="sr-opt ${st===v?'on':''}"><input type="radio" name="sr-status" value="${v}" ${st===v?'checked':''} onchange="document.querySelectorAll('.sr-opt').forEach(o=>o.classList.remove('on'));this.closest('.sr-opt').classList.add('on')"><span class="sr-dot ${v}"></span><span style="min-width:0"><span class="sr-t">${l}</span><br><span class="sr-d">${d}</span></span></label>`;
+  const fileRow=(r&&r.has_notes_file)?`<div class="sr-file" id="sr-file-row"><span class="sr-file-ic">${ic('clipboard')}</span><span class="sr-file-nm" title="${esc(r.notes_file_name||'Class notes')}">${esc(r.notes_file_name||'Class notes')}</span><button type="button" class="btn btn-ghost btn-sm" onclick="dlStudioNotes(${r.id})">${ic('download')} Download</button><button type="button" class="sr-file-x" onclick="_srRemoveFile()" title="Remove attachment">\u2715</button></div>`:'';
   showModal(`Studio Report`,
-   `<div class="alert alert-info" style="margin-bottom:12px"><b>${esc(e.subject||'')}</b> · ${esc(e.class_name||'')}<br>${esc(e.chapter||'')}${e.part?' — '+esc(e.part):''}<br><span style="font-size:.72rem;color:var(--text-muted)">${e.date?fmtNice(e.date):''}${e.day?' · '+esc(e.day):''}${e.time?' · '+esc(e.time):''}${e.teacher_name?' · '+esc(e.teacher_name):''}</span></div>
+   `<div class="alert alert-info" style="margin-bottom:12px"><b>${esc(e.subject||'')}</b> \u00b7 ${esc(e.class_name||'')}<br>${esc(e.chapter||'')}${e.part?' \u2014 '+esc(e.part):''}<br><span style="font-size:.72rem;color:var(--text-muted)">${e.date?fmtNice(e.date):''}${e.day?' \u00b7 '+esc(e.day):''}${e.time?' \u00b7 Scheduled '+esc(e.time):''}${e.teacher_name?' \u00b7 '+esc(e.teacher_name):''}</span></div>
+    <div class="cr-sec">1. Class Details <span class="cr-sec-sub">actual timing of the class</span></div>
+    <div class="ex-grid2">
+      <div><label class="ex-lbl">Actual Start Time</label><input class="form-control" id="sr-start" maxlength="20" placeholder="${esc(e.time||'e.g. 6:35 pm')}" value="${esc((r&&r.start_time)||'')}"></div>
+      <div><label class="ex-lbl">End Time</label><input class="form-control" id="sr-end" maxlength="20" placeholder="e.g. 7:30 pm" value="${esc((r&&r.end_time)||'')}"></div>
+    </div>
+    <div class="cr-sec">2. Report <span class="cr-sec-sub">status, notes &amp; class notes upload</span></div>
     <div class="form-group"><label>Class Status</label><div class="sr-opts">
       ${stOpt('held','Class Held','The class happened as planned')}
-      ${stOpt('issues','Held with Issues','It happened, but there were problems — recording, setup, delay...')}
+      ${stOpt('issues','Held with Issues','It happened, but there were problems \u2014 recording, setup, delay...')}
       ${stOpt('cancelled','Cancelled / Not Held','The class could not take place')}
     </div></div>
-    <div class="form-group"><label>Report Notes</label><textarea class="form-control" id="sr-notes" rows="4" maxlength="4000" placeholder="Recording status, studio setup, delays, issues, follow-ups needed...">${esc((r&&r.notes)||'')}</textarea></div>
+    <div class="form-group"><label>Report Notes</label><textarea class="form-control" id="sr-notes" rows="3" maxlength="4000" placeholder="Recording status, studio setup, delays, issues, follow-ups needed...">${esc((r&&r.notes)||'')}</textarea></div>
+    <div class="form-group"><label>Class Notes (PDF, optional)</label>
+      <button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('sr-file').click()">${ic('upload')} <span id="sr-file-name">${(r&&r.has_notes_file)?'Replace Class Notes':'Upload Class Notes'}</span></button>
+      <input type="file" id="sr-file" accept="application/pdf" style="display:none" onchange="_srPickFile(this)">
+      ${fileRow}
+    </div>
     <div class="form-group"><label>Reported By</label><input class="form-control" id="sr-reporter" maxlength="160" value="${esc((r&&r.reporter)||NAME||'')}" placeholder="Your name"></div>
     ${r?`<div style="font-size:.7rem;color:var(--text-muted)">Last updated: ${esc(r.updated_at||'')}</div>`:''}`,
    `${r?`<button class="btn btn-danger" onclick="deleteStudioReport(${id},${r.id})">${ic('trash')} Remove</button>`:''}<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitStudioReport(${id})">${ic('check')} ${r?'Update Report':'Submit Report'}</button>`);
+}
+function _srPickFile(inp){
+  const f=inp.files[0]; if(!f) return;
+  if(f.size>20*1024*1024){ toast('PDF too large (max 20MB)',true); inp.value=''; return; }
+  window._srFile=f; window._srRemove=false;
+  const n=document.getElementById('sr-file-name'); if(n) n.textContent=f.name;
+  const row=document.getElementById('sr-file-row'); if(row) row.style.display='none';
+}
+function _srRemoveFile(){
+  window._srRemove=true; window._srFile=null;
+  const row=document.getElementById('sr-file-row'); if(row) row.style.display='none';
+  const n=document.getElementById('sr-file-name'); if(n) n.textContent='Upload Class Notes';
+}
+async function dlStudioNotes(rid){
+  try{
+    const r=await fetch(API+`/api/admin/studio-reports/${rid}/file`,{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok){ toast('File not available',true); return; }
+    const blob=await r.blob(); const u=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=u; a.download='Class Notes.pdf'; a.click(); URL.revokeObjectURL(u);
+  }catch(e){ toast(e.message,true); }
 }
 async function submitStudioReport(id){
   const st=((document.querySelector('input[name="sr-status"]:checked')||{}).value)||'held';
   const notes=(document.getElementById('sr-notes').value||'').trim();
   const reporter=(document.getElementById('sr-reporter').value||'').trim();
   if(st!=='held'&&!notes){ toast('Please add a short note about the issue / cancellation.',true); return; }
+  const payload={entry_id:id,status:st,notes:notes,reporter:reporter,
+    start_time:(document.getElementById('sr-start').value||'').trim(),
+    end_time:(document.getElementById('sr-end').value||'').trim()};
   try{
-    const r=await api('/api/admin/studio-reports','POST',{entry_id:id,status:st,notes:notes,reporter:reporter});
+    if(window._srFile){ payload.notes_file_b64=await _fileB64(window._srFile); payload.notes_file_name=window._srFile.name; payload.notes_file_mime=window._srFile.type||'application/pdf'; }
+    else if(window._srRemove){ payload.remove_notes_file=true; }
+    const r=await api('/api/admin/studio-reports','POST',payload);
     window._srReports=window._srReports||{}; window._srReports[id]=r.report;
+    window._srFile=null; window._srRemove=false;
     closeModal(); toast('Studio report saved.'); aRenderTT();
   }catch(e){ toast(e.message||'Could not save the report',true); }
 }
@@ -16886,6 +16777,11 @@ body.dark .po-pill.red{color:#f87171}
 .sr-dot.held{background:#059669}.sr-dot.issues{background:#d97706}.sr-dot.cancelled{background:#dc2626}
 .sr-t{font-size:.82rem;font-weight:800}
 .sr-d{font-size:.7rem;color:var(--text-muted)}
+.sr-file{display:flex;align-items:center;gap:8px;margin-top:8px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--card-bg,#fff)}
+.sr-file-ic{color:#8a6d10;display:inline-flex;flex:none}
+.sr-file-nm{flex:1;min-width:0;font-size:.78rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sr-file-x{border:none;background:none;color:var(--text-muted);cursor:pointer;font-size:.82rem;padding:2px 6px;border-radius:6px;flex:none}
+.sr-file-x:hover{background:rgba(220,38,38,.1);color:#dc2626}
 .att-grid>.card .card-body{flex:1}
 .att-grid #ta-punch-wrap{display:flex}
 .att-grid #ta-punch-wrap .pw-shell{flex:1;margin-bottom:0 !important;display:flex;flex-direction:column}

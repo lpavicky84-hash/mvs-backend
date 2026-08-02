@@ -2622,15 +2622,15 @@ def teacher_tt_entries_lite(db: Session = Depends(get_db), current_user=Depends(
 @router.post("/lecture")
 async def create_lecture(payload: dict = Body(...), background_tasks: BackgroundTasks = None,
                          db: Session = Depends(get_db), current_user=Depends(get_teacher)):
-    """Publish a lecture report with a mandatory verification question set."""
+    """Publish a lecture report (summary + class notes). v98: verification
+    questions removed — students mark the lecture done directly, so an empty
+    question set is fine."""
     tp = get_teacher_profile(current_user, db)
     subject = (payload.get("subject") or "").strip()
     if not subject:
         raise HTTPException(400, "Subject is required")
     qs = payload.get("questions") or []
     valid_qs = [q for q in qs if (q.get("question") or "").strip() and (q.get("qtype") in _LQ_TYPES)]
-    if not valid_qs:
-        raise HTTPException(400, "At least one valid verification question is required")
 
     lec = Lecture(
         teacher_id=tp.id, teacher_name=(current_user.name or ""),

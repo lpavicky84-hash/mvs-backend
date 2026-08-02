@@ -1731,6 +1731,33 @@ def verify_lecture(lecture_id: int, payload: dict = Body(...),
                 "message": "Incorrect answer. Revise the lecture and try again. (%d left)" % left}
 
 
+@router.post("/lecture/{lecture_id}/mark-done")
+def mark_lecture_done(lecture_id: int, db: Session = Depends(get_db),
+                      current_user=Depends(get_student)):
+    """v98: verification questions removed — the student directly marks the
+    lecture done. Idempotent: the lecture XP is awarded exactly once."""
+    sp = get_student_profile(current_user, db)
+    lec = db.query(Lecture).filter(Lecture.id == lecture_id, Lecture.is_active == True).first()
+    if not lec:
+        raise HTTPException(404, "Lecture not found")
+    if lec.subject not in (sp.subjects or []):
+        raise HTTPException(403, "Not your subject")
+    v = db.query(LectureVerification).filter(
+        LectureVerification.lecture_id == lecture_id, LectureVerification.student_id == sp.id).first()
+    if not v:
+        v = LectureVerification(lecture_id=lecture_id, student_id=sp.id, status="pending", attempts=0)
+        db.add(v); db.flush()
+    if v.status == "verified":
+        return {"ok": True, "already": True, "message": "Already marked done"}
+    v.status = "verified"; v.verified_at = datetime.utcnow(); v.xp_awarded = _XP_LECTURE
+    v.cooldown_until = None
+    _award_xp(db, sp.id, _XP_LECTURE, "lecture", "Lecture marked done: %s" % (lec.title or lec.subject))
+    db.commit()
+    st = _get_stats(db, sp.id)
+    return {"ok": True, "message": "Lecture marked done! +%d XP" % _XP_LECTURE,
+            "xp": st.xp, "streak": st.streak}
+
+
 # ============================================================
 #  ACADEMIC PERFORMANCE DASHBOARD (analytics + leaderboard)
 # ============================================================

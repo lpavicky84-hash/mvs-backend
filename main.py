@@ -114,6 +114,12 @@ def ensure_columns():
         # v95: editable monthly target labels + custom targets
         "ALTER TABLE teacher_pay_configs ADD COLUMN target_labels JSON",
         "ALTER TABLE teacher_pay_configs ADD COLUMN custom_targets JSON",
+        # v98: studio report — actual timing + class notes upload
+        "ALTER TABLE studio_reports ADD COLUMN start_time VARCHAR(20)",
+        "ALTER TABLE studio_reports ADD COLUMN end_time VARCHAR(20)",
+        "ALTER TABLE studio_reports ADD COLUMN notes_file_b64 LONGTEXT",
+        "ALTER TABLE studio_reports ADD COLUMN notes_file_name VARCHAR(255)",
+        "ALTER TABLE studio_reports ADD COLUMN notes_file_mime VARCHAR(100)",
     ]
     for s in stmts:
         try:

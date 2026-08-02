@@ -634,6 +634,10 @@ def _studio_report_json(r):
         "chapter": r.chapter or "", "part": r.part or "",
         "status": r.status or "held", "notes": r.notes or "",
         "reporter": r.reporter or "",
+        "start_time": getattr(r, "start_time", "") or "",
+        "end_time": getattr(r, "end_time", "") or "",
+        "has_notes_file": bool(getattr(r, "notes_file_b64", None)),
+        "notes_file_name": getattr(r, "notes_file_name", "") or "",
         "updated_at": r.updated_at.strftime("%d %b %Y, %I:%M %p") if r.updated_at else "",
     }
 
@@ -687,9 +691,39 @@ def studio_report_upsert(payload: dict = Body(...), db: Session = Depends(get_db
     r.status = status
     r.notes = notes
     r.reporter = reporter
+    # v98: actual timing + class notes upload (PDF)
+    r.start_time = (payload.get("start_time") or "").strip()[:20]
+    r.end_time = (payload.get("end_time") or "").strip()[:20]
+    fb64 = (payload.get("notes_file_b64") or "").strip()
+    if fb64:
+        r.notes_file_b64 = fb64
+        r.notes_file_name = ((payload.get("notes_file_name") or "notes.pdf").strip()[:255])
+        r.notes_file_mime = ((payload.get("notes_file_mime") or "application/pdf").strip()[:100])
+    elif payload.get("remove_notes_file"):
+        r.notes_file_b64 = None
+        r.notes_file_name = ""
+        r.notes_file_mime = ""
     db.commit()
     db.refresh(r)
     return {"ok": True, "report": _studio_report_json(r)}
+
+@router.get("/studio-reports/{rid}/file")
+def studio_report_file(rid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """v98: studio report pe attached class notes (PDF) download."""
+    import base64 as _b64
+    from fastapi import Response
+    from models import StudioReport
+    r = db.query(StudioReport).filter(StudioReport.id == rid).first()
+    if not r or not r.notes_file_b64:
+        raise HTTPException(404, "File not available")
+    try:
+        data = _b64.b64decode(r.notes_file_b64.split(",")[-1])
+    except Exception:
+        raise HTTPException(400, "Bad file")
+    fname = r.notes_file_name or "notes.pdf"
+    mime = r.notes_file_mime or "application/pdf"
+    return Response(content=data, media_type=mime,
+                    headers={"Content-Disposition": 'attachment; filename="%s"' % fname})
 
 @router.delete("/studio-reports/{rid}")
 def studio_report_delete(rid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
