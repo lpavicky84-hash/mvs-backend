@@ -10155,33 +10155,35 @@ const ADMIN_SECTIONS=[
   ['notify','Send Notice'],['subjects','Subjects'],['syllabus','Syllabus Manager'],['admins','Admin Users']
 ];
 let _aaFull=false, _aaSel=new Set(['dashboard']), _aaEdit={};
+window._sddOpen=new Set();
+document.addEventListener('click',()=>{ if(window._sddOpen.size){ window._sddOpen.clear(); document.querySelectorAll('.sdd.open').forEach(d=>d.classList.remove('open')); } });
 function _aaSecName(k){ const f=ADMIN_SECTIONS.find(x=>x[0]===k); return f?f[1]:k; }
-function _aaChipsHTML(prefix,full,sel,editId){
-  const dis=full?' dis':'';
-  const chips=ADMIN_SECTIONS.map(([k,label])=>{
-    const locked=k==='dashboard'&&!full;
+function _sddLabel(full,sel){
+  if(full) return 'Full Access — Everything';
+  const names=[...sel].filter(k=>k!=='dashboard').map(_aaSecName);
+  if(!names.length) return 'Dashboard only';
+  return 'Dashboard · '+names.slice(0,2).join(' · ')+(names.length>2?` +${names.length-2} more`:'');
+}
+function sddHTML(key,full,sel,editId){
+  const open=window._sddOpen.has(key);
+  const eid=editId?`,${editId}`:'';
+  const rows=ADMIN_SECTIONS.map(([k,v])=>{
+    const locked=k==='dashboard';
     const on=full||sel.has(k);
-    return `<div class="sec-chip${on?' on':''}${locked?' locked':''}${dis}" onclick="${locked?'':`aaChipToggle('${prefix}','${k}'${editId?`,${editId}`:''})`}" title="${locked?'Dashboard is always included':esc(label)}">${esc(label)}</div>`;
+    return `<div class="sdd-row${full||locked?' dis':''}" onclick="${full||locked?'':`sddChip('${key}','${k}',event${eid})`}"><span class="sdd-cb${on?' on':''}">${on?'\u2713':''}</span><span>${v}</span>${locked?'<span class="sdd-hint">always included</span>':''}</div>`;
   }).join('');
-  return `<div class="sec-chips"><div class="sec-chip full${full?' on':''}" onclick="aaFullToggle('${prefix}'${editId?`,${editId}`:''})">Full Access — Everything</div>${chips}</div>`;
+  return `<div class="sdd${open?' open':''}" id="sdd-${key}">
+    <div class="sdd-trig" onclick="sddToggle('${key}',event)"><span class="tt">${_sddLabel(full,sel)}</span>${!full&&sel.size>1?`<span class="sdd-count">${sel.size} sections</span>`:''}<span class="sdd-chev">\u25BC</span></div>
+    <div class="sdd-panel">
+      <div class="sdd-row full" onclick="sddFull('${key}',event${eid})"><span class="sdd-cb${full?' on':''}">${full?'\u2713':''}</span><span>Full Access — Everything</span><span class="sdd-hint">all 20 sections</span></div>
+      ${rows}
+    </div></div>`;
 }
-function aaFullToggle(prefix,editId){
-  if(editId){ const st=_aaEdit[editId]; if(!st) return; st.full=!st.full; if(st.full){} }
-  else { _aaFull=!_aaFull; }
-  _aaRerender(prefix,editId);
-}
-function aaChipToggle(prefix,key,editId){
-  if(editId){ const st=_aaEdit[editId]; if(!st) return; if(st.sel.has(key)) st.sel.delete(key); else st.sel.add(key); }
-  else { if(_aaSel.has(key)) _aaSel.delete(key); else _aaSel.add(key); }
-  _aaRerender(prefix,editId);
-}
-function _aaRerender(prefix,editId){
-  const box=document.getElementById(editId?`aa-echips-${editId}`:'aa-chips');
-  if(!box) return;
-  const full=editId?(_aaEdit[editId]||{}).full:_aaFull;
-  const sel=editId?((_aaEdit[editId]||{}).sel||new Set()):_aaSel;
-  box.innerHTML=_aaChipsHTML(prefix,full,sel,editId);
-}
+function sddToggle(key,ev){ ev.stopPropagation(); const el=document.getElementById('sdd-'+key); if(!el) return; const willOpen=!el.classList.contains('open'); window._sddOpen.clear(); document.querySelectorAll('.sdd.open').forEach(d=>d.classList.remove('open')); if(willOpen){ el.classList.add('open'); window._sddOpen.add(key); } }
+function _sddState(editId){ return editId?(_aaEdit[editId]||{full:false,sel:new Set(['dashboard'])}):{full:_aaFull,sel:_aaSel}; }
+function sddChip(key,k,ev,editId){ if(ev)ev.stopPropagation(); const st=_sddState(editId); if(st.sel.has(k)) st.sel.delete(k); else st.sel.add(k); sddRerender(key,editId); }
+function sddFull(key,ev,editId){ if(ev)ev.stopPropagation(); if(editId){ const st=_aaEdit[editId]; if(st) st.full=!st.full; } else { _aaFull=!_aaFull; } sddRerender(key,editId); }
+function sddRerender(key,editId){ const box=document.getElementById('sdd-wrap-'+key); if(!box) return; const st=_sddState(editId); box.innerHTML=sddHTML(key,st.full,st.sel,editId); }
 async function loadAAdmins(){
   const el=document.getElementById('a-admins-content');
   softSpin(el);
@@ -10194,16 +10196,16 @@ async function loadAAdmins(){
     const off=a.is_active?'':'<span class="adm-badge-off">DEACTIVATED</span>';
     const secs=a.full_access?[]:(a.sections||[]).filter(s=>s!=='dashboard');
     const secLine=secs.length?`<div class="adm-meta">Access: ${secs.map(_aaSecName).join(' · ')}</div>`:`<div class="adm-meta">${a.full_access?'Can open every section, including Payouts.':'Dashboard only'}</div>`;
-    const editOpen=_aaEdit[a.id]&&_aaEdit[a.id].open;
-    const editBox=editOpen?`<div class="adm-edit"><div style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:2px">Edit Access</div><div id="aa-echips-${a.id}">${_aaChipsHTML('edit',_aaEdit[a.id].full,_aaEdit[a.id].sel,a.id)}</div><div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-primary btn-sm" onclick="aaSaveSections(${a.id})">Save Access</button><button class="btn btn-ghost btn-sm" onclick="aaEditClose(${a.id})">Cancel</button></div></div>`:'';
-    return `<div class="adm-row${a.is_active?'':' off'}" style="flex-wrap:wrap"><div class="adm-ava">${esc(initials(a.name))}</div><div class="adm-main"><div class="adm-name">${esc(a.name)} ${badge} ${off}</div><div class="adm-meta">User ID: <b>${esc(a.user_id)}</b>${a.created_at?' · since '+esc(a.created_at.slice(0,10)):''}</div>${secLine}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="aaEditOpen(${a.id})">${editOpen?'Close':'Edit Access'}</button><button class="btn ${a.is_active?'btn-danger':'btn-primary'} btn-sm" onclick="aaToggleAdmin(${a.id},'${esc(a.name).replace(/'/g,'')}',${a.is_active})">${a.is_active?'Deactivate':'Activate'}</button></div><div style="flex-basis:100%"></div>${editBox}</div>`;
+    const st=_aaEdit[a.id];
+    const editBox=(st&&st.open)?`<div style="flex-basis:100%"></div><div class="adm-edit"><div class="ae-title">Edit Admin</div><div class="aa-grid"><div class="form-group" style="margin-bottom:10px"><label>Name</label><input class="form-control" id="aa-ename-${a.id}" value="${esc(st.name)}" maxlength="60"></div><div class="form-group" style="margin-bottom:10px"><label>Access</label><div id="sdd-wrap-edit-${a.id}">${sddHTML('edit-'+a.id,st.full,st.sel,a.id)}</div></div></div><div style="display:flex;gap:8px;margin-top:2px"><button class="btn btn-primary btn-sm" onclick="aaSaveEdit(${a.id})">Save Changes</button><button class="btn btn-ghost btn-sm" onclick="aaEditClose(${a.id})">Cancel</button></div></div>`:'';
+    return `<div class="adm-row${a.is_active?'':' off'}"><div class="adm-ava">${esc(initials(a.name))}</div><div class="adm-main"><div class="adm-name">${esc(a.name)} ${badge} ${off}</div><div class="adm-meta">User ID: <b>${esc(a.user_id)}</b>${a.created_at?' · since '+esc(a.created_at.slice(0,10)):''}</div>${secLine}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="aaEditOpen(${a.id})">${(st&&st.open)?'Close':'Edit'}</button><button class="btn ${a.is_active?'btn-danger':'btn-primary'} btn-sm" onclick="aaToggleAdmin(${a.id},'${esc(a.name).replace(/'/g,'')}',${a.is_active})">${a.is_active?'Deactivate':'Activate'}</button></div>${editBox}</div>`;
   }).join('');
   el.innerHTML=`
     <div class="sm-head"><h2>Admin Users</h2><p>Create admins with exactly the access they need — their panel shows only the sections you allow. Everything else, including Payouts, stays hidden.</p></div>
     <div class="card"><div class="card-header"><h3>Create New Admin</h3></div><div class="card-body">
       <div class="alert alert-info">Just enter a name — the User ID and password are generated automatically. Pick the sections this admin may open, or give Full Access.</div>
-      <div class="form-group"><label>Name</label><input class="form-control" id="aa-name" placeholder="e.g. Coordinator Raj" maxlength="60"></div>
-      <div class="form-group"><label>Access</label><div id="aa-chips">${_aaChipsHTML('new',_aaFull,_aaSel)}</div></div>
+      <div class="aa-grid"><div class="form-group"><label>Name</label><input class="form-control" id="aa-name" placeholder="e.g. Coordinator Raj" maxlength="60"></div>
+      <div class="form-group"><label>Access</label><div id="sdd-wrap-new">${sddHTML('new',_aaFull,_aaSel)}</div></div></div>
       <button class="btn btn-primary" onclick="submitAddAdmin()">Create Admin</button>
       <div id="aa-result"></div>
     </div></div>
@@ -10243,16 +10245,23 @@ function aaEditOpen(id){
   const a=(window._aaAdmins||[]).find(x=>x.id===id);
   if(!a) return;
   if(_aaEdit[id]&&_aaEdit[id].open){ delete _aaEdit[id]; }
-  else{ _aaEdit[id]={open:true, full:!!a.full_access, sel:new Set(a.full_access?['dashboard']:(a.sections&&a.sections.length?a.sections:['dashboard']))}; }
+  else{ _aaEdit[id]={open:true, name:a.name, full:!!a.full_access, sel:new Set(a.full_access?['dashboard']:(a.sections&&a.sections.length?a.sections:['dashboard']))}; }
   loadAAdmins();
 }
 function aaEditClose(id){ delete _aaEdit[id]; loadAAdmins(); }
-async function aaSaveSections(id){
+async function aaSaveEdit(id){
   const st=_aaEdit[id];
   if(!st) return;
+  const name=((document.getElementById('aa-ename-'+id)||{}).value||'').trim();
+  if(!name){ toast('Name cannot be empty.',true); return; }
   try{
-    await api('/api/admin/admins/'+id+'/sections','POST',{sections:st.full?null:[...st.sel]});
-    toast('Access updated.');
+    const r=await api('/api/admin/admins/'+id+'/edit','POST',{name, sections:st.full?null:[...st.sel], full_access:st.full});
+    toast(r.message||'Admin updated.');
+    if(window._adminMe&&window._adminMe.id===id){
+      const an=document.getElementById('a-name'); if(an) an.textContent=name;
+      const av=document.getElementById('a-avatar'); if(av) av.textContent=initials(name);
+      window._adminMe.name=name; NAME=name;
+    }
     delete _aaEdit[id];
     loadAAdmins();
   }catch(e){ toast(e.message,true); }
@@ -16692,8 +16701,31 @@ body.dark .po-pill.red{color:#f87171}
 .adm-cred-row{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:.85rem;flex-wrap:wrap}
 .adm-cred-row .k{font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);min-width:70px}
 .adm-cred-row code{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:5px 12px;font-weight:800;font-size:.9rem;letter-spacing:.04em}
-.adm-edit{padding:12px 14px;border:1.5px dashed var(--border);border-radius:12px;margin:6px 0 10px}
+.adm-edit{padding:14px 16px;border:1.5px solid rgba(201,162,39,.4);background:linear-gradient(135deg,rgba(201,162,39,.07),rgba(201,162,39,.02));border-radius:14px;margin:6px 0 12px}
+.adm-edit .ae-title{font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#8a6d10;margin-bottom:10px}
 @media(max-width:900px){.ws-grid-3.lu3{grid-template-columns:1fr}}
+/* v94.1: premium access dropdown */
+.aa-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px}
+@media(max-width:720px){.aa-grid{grid-template-columns:1fr}}
+.sdd{position:relative}
+.sdd-trig{display:flex;align-items:center;gap:8px;width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:12px;background:var(--bg);cursor:pointer;font-size:.85rem;font-weight:600;color:var(--text);transition:.15s;user-select:none;min-height:46px}
+.sdd-trig:hover{border-color:#c9a227}
+.sdd.open .sdd-trig{border-color:#c9a227;box-shadow:0 0 0 3px rgba(201,162,39,.16)}
+.sdd-trig .tt{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sdd-count{background:linear-gradient(135deg,#c9a227,#a8842a);color:#fff;font-size:.62rem;font-weight:800;padding:3px 9px;border-radius:99px;flex-shrink:0;letter-spacing:.02em}
+.sdd-chev{transition:.2s;color:var(--text-muted);font-size:.6rem;flex-shrink:0}
+.sdd.open .sdd-chev{transform:rotate(180deg)}
+.sdd-panel{position:absolute;z-index:80;top:calc(100% + 6px);left:0;right:0;max-height:292px;overflow:auto;background:var(--card);border:1.5px solid var(--border);border-radius:14px;box-shadow:0 18px 44px rgba(35,24,4,.24);padding:6px;display:none}
+.sdd.open .sdd-panel{display:block;animation:sddIn .16s ease}
+@keyframes sddIn{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+.sdd-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;cursor:pointer;font-size:.82rem;font-weight:600;color:var(--text);transition:background .12s}
+.sdd-row:hover{background:rgba(201,162,39,.1)}
+.sdd-row.dis{opacity:.5;pointer-events:none}
+.sdd-row.full{border-bottom:1px solid var(--border);margin-bottom:4px;padding-bottom:11px;font-weight:800;border-radius:10px 10px 0 0}
+.sdd-cb{width:17px;height:17px;border-radius:5px;border:1.5px solid var(--border);background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:.6rem;color:#fff;flex-shrink:0;transition:.12s}
+.sdd-cb.on{background:linear-gradient(135deg,#c9a227,#a8842a);border-color:#c9a227}
+.sdd-row.full .sdd-cb.on{background:linear-gradient(135deg,#b06d12,#8a560e);border-color:#b06d12}
+.sdd-hint{margin-left:auto;font-size:.62rem;color:var(--text-muted);font-weight:700;letter-spacing:.02em}
 </style>
 <script id="syl-js">
 /* ============================================================

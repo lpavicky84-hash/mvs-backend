@@ -415,6 +415,13 @@ class AdminSectionsIn(BaseModel):
     sections: Optional[List[str]] = None  # null -> full access
 
 
+class AdminEditIn(BaseModel):
+    """v94.1: naam + access dono ek saath edit. sections null + full_access true = full access."""
+    name: Optional[str] = None
+    sections: Optional[List[str]] = None
+    full_access: Optional[bool] = None
+
+
 def _clean_sections(raw):
     secs = sorted({s for s in (raw or []) if isinstance(s, str) and s.strip()})
     if "dashboard" not in secs:
@@ -488,6 +495,30 @@ def set_admin_sections(admin_id: int, req: AdminSectionsIn,
     db.commit()
     out = _admin_json(u)
     out["message"] = "Access updated."
+    return out
+
+
+@router.post("/admins/{admin_id}/edit")
+def edit_admin(admin_id: int, req: AdminEditIn,
+               db: Session = Depends(get_db), me=Depends(get_admin)):
+    """Naam rename + access update — ek hi call me. Naam apna bhi badal sakte ho;
+    access (sections) sirf doosre admins ka badal sakte ho."""
+    u = db.query(User).filter(User.id == admin_id, User.role == UserRole.admin).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    if req.name is not None:
+        nm = req.name.strip()
+        if not nm:
+            raise HTTPException(status_code=400, detail="Name cannot be empty")
+        u.name = nm[:120]
+    is_self = me is not None and getattr(me, "id", None) == admin_id
+    if req.full_access or req.sections is not None:
+        if is_self:
+            raise HTTPException(status_code=400, detail="You cannot change your own access.")
+        u.allowed_sections = None if req.full_access else _clean_sections(req.sections)
+    db.commit()
+    out = _admin_json(u)
+    out["message"] = "Admin updated."
     return out
 
 
