@@ -8,7 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Great+Vibes&display=swap" rel="stylesheet">
 <style>:root{--primary:#b8941f;--primary-dark:#9a7b16;--primary-50:#f7f0d8;--secondary:#b8941f;--accent:#b8941f;--success:#059669;--warning:#d97706;--danger:#dc2626;--bg:#f4f1e8;--card:#fffdf6;--bg-card:#fffdf6;--text:#2e2716;--text-muted:#8a7c55;--border:#e7dfc6;--sidebar:#f9f4e6;--sidebar-text:#5d4f27;--shadow:0 1px 2px rgba(90,70,15,.06),0 1px 3px rgba(90,70,15,.05);--shadow-lg:0 12px 32px -10px rgba(90,70,15,.18);--glass-bg:rgba(255,253,246,.72);--glass-brd:rgba(231,223,198,.6)}
   .dark{--bg:#0b1524;--card:#111f36;--bg-card:#111f36;--text:#eaf0fb;--text-muted:#93a6c4;--border:#22334f;--sidebar:#081120;--primary:#e2b458;--primary-dark:#c99e45;--primary-50:rgba(226,180,88,.13);--secondary:#e2b458;--accent:#e2b458;--glass-bg:rgba(13,23,40,.78);--glass-brd:rgba(255,255,255,.07);--shadow:0 1px 2px rgba(0,0,0,.45),0 1px 3px rgba(0,0,0,.35);--shadow-lg:0 18px 44px -14px rgba(0,0,0,.65)}
   h1,h2,h3,h4{letter-spacing:-.011em}
@@ -7593,13 +7593,13 @@ async function loadTVTasks(){
       const doneBox=(t.submitted_link&&t.status!=='assigned')?`
         <div class="vt-subm done">
           <div class="vs-h">${ic('check')} Video submitted ${t.on_time===true?'— on time':(t.on_time===false?'— delayed':'')}</div>
-          <div class="vt-done-link"><a href="${esc(t.submitted_link)}" target="_blank" rel="noopener">${ic('link')} Open your video link</a>${t.submitted_at?`<span style="color:var(--text-muted);font-weight:600">· ${esc(t.submitted_at)}</span>`:''}</div>
+          <div class="vt-done-link"><a href="${esc(t.submitted_link)}" target="_blank" rel="noopener">${ic('play')} Watch submitted video</a>${t.submitted_at?`<span style="color:var(--text-muted);font-weight:600">· ${esc(t.submitted_at)}</span>`:''}</div>
         </div>`:'';
       const reviewNote=(t.status==='submitted')?`<span class="vt-pill submitted blink">${ic('clock')} Under Review — Checking</span>`:'';
       const rejNote=(t.reject_count>0&&t.status==='assigned')
         ?`<div class="vt-meta" style="color:#b91c1c">Sent back for reshoot${t.review_remarks?`: ${esc(t.review_remarks)}`:''} — new deadline above. Reshoot #${t.reject_count}</div>`:'';
       const propNote=(t.proposal_ok==='pending')?`<span class="vt-pill proposal">Pending Approval</span>`:'';
-      return `<div class="vt-card">${_vtThumb(t,'t')}<div class="vt-body">
+      return `<div class="vt-card st-${t.status}">${_vtThumb(t,'t')}<div class="vt-body">
         <div class="vt-chips">${propNote}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
         <div class="vt-title">${esc(t.title)}</div>
         <div class="vt-meta">
@@ -7623,20 +7623,24 @@ async function loadTVTasks(){
     const subjSpec=spec.filter(t=>(!_tvtSpecSub||t.subject===_tvtSpecSub)&&(!_tvtSpecCls||t.cls===_tvtSpecCls));
     let spD=0,spT=0; subjSpec.forEach(t=>{spD+=t.done||0;spT+=t.total||0});
     const fTasks=_tvtSpecSub?tasks.filter(t=>!t.subject||t.subject===_tvtSpecSub):tasks;
-    const showTasks=(!_tvtView||_tvtView==='tasks'), showProj=(!_tvtView||_tvtView==='projects');
+    // v91: jab tak teacher ek card pe click na kare, neeche ka data hidden rahe —
+    // dono cards halki blink ke saath "click here" signal dete hain.
+    const showTasks=(_tvtView==='tasks'), showProj=(_tvtView==='projects');
+    const sug=_tvtView?'':' suggest';
     const masterCards=`<div class="vtm-cards">
-      <div class="vtm-card ${_tvtView==='tasks'?'on':''}" onclick="tvtView('tasks')">
+      <div class="vtm-card${sug} ${_tvtView==='tasks'?'on':''}" onclick="tvtView('tasks')">
         <div class="vtm-ic">${ic('clipboard')}</div>
         <div class="vtm-main"><div class="vtm-n">${active.length}<span> active</span></div>
           <div class="vtm-l">Tasks</div>
           <div class="vtm-s">Single video assignments · ${st.uploaded||0} uploaded · ${st.pending||0} pending</div></div>
         <div class="vtm-go">${ic('chev-down')}</div></div>
-      <div class="vtm-card ${_tvtView==='projects'?'on':''}" onclick="tvtView('projects')">
+      <div class="vtm-card${sug} ${_tvtView==='projects'?'on':''}" onclick="tvtView('projects')">
         <div class="vtm-ic">${ic('folder')}</div>
         <div class="vtm-main"><div class="vtm-n">${spD}<span> / ${spT} videos done</span></div>
           <div class="vtm-l">Projects</div>
           <div class="vtm-s">One Shot · Rapid Revision · Projects${_tvtSpecSub?' — '+esc(_tvtSpecSub):''} · ${subjSpec.length} cards</div></div>
-        <div class="vtm-go">${ic('chev-down')}</div></div></div>`;
+        <div class="vtm-go">${ic('chev-down')}</div></div></div>
+      ${!_tvtView?`<div class="vtm-hint">${ic('help')}<span><b>Tap Tasks or Projects above</b> — the matching details will open here.</span></div>`:''}`;
     const filterBar=specSubs.length?`<div class="vtm-filter">
       <span class="vtm-fl">Subject</span>
       <select class="vtm-sel" id="tvt-spec-sub" onchange="tvtSpecSubSet(this.value)">
@@ -7649,12 +7653,14 @@ async function loadTVTasks(){
         ${specCls.map(c=>`<option value="${c}" ${_tvtSpecCls===c?'selected':''}>Class ${c}</option>`).join('')}
       </select>`:''}
       <span class="vtm-fl">Type</span>
-      ${[['','All Types'],['one_shot','One Shot'],['rapid_revision','Rapid Revision'],['project','Projects']].filter(([k])=>!k||spec.some(t=>t.kind===k)).map(([k,l])=>`<button class="vtm-chip ${_tvtSpecKind===k?'on':''}" onclick="tvtSpecKindSet('${k}')">${l}</button>`).join('')}
+      <select class="vtm-sel" id="tvt-spec-kind" onchange="tvtSpecKindSet(this.value)">
+      ${[['','All Types'],['one_shot','One Shot'],['rapid_revision','Rapid Revision'],['project','Projects']].filter(([k])=>!k||spec.some(t=>t.kind===k)).map(([k,l])=>`<option value="${k}" ${_tvtSpecKind===k?'selected':''}>${l}</option>`).join('')}
+      </select>
     </div>`:'';
     el.innerHTML=`${hero}${statCards}${mtHtml}${masterCards}${filterBar}
-      ${showProj?`<div class="vtm-sec-cap">Projects — click a card to open it</div>
+      ${showProj?`<div class="vtm-sec-cap">Projects · One Shot, Rapid Revision &amp; custom — tap a card to expand</div>
         <div id="tvt-spec-wrap">${_vtSpecialT(fSpec)}</div>`:''}
-      ${showTasks?`<div class="vtm-sec-cap">Tasks — single video assignments</div>
+      ${showTasks?`<div class="vtm-sec-cap">Tasks · Single video assignments</div>
       <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="openTVTPropose()">${ic('plus')} Propose a Video</button>
         <span style="font-size:.74rem;color:var(--text-muted);align-self:center">Have a video idea? Propose it — once approved, a thumbnail & deadline will be assigned.</span>
@@ -7856,10 +7862,14 @@ function tvtChEdit(tid,cid){
 async function tvtChapterSave(tid,cid){
   const inp=document.getElementById(`tvt-ch-${tid}-${cid}`);
   const link=(inp&&inp.value||'').trim();
-  if(!link){ toast('Paste the video link first'); return; }
+  // v91: pehle se link hai aur input khaali kiya = link REMOVE (confirm ke saath)
+  const t=(window._tvtMap||{})[tid]; const c=t&&(t.chapters||[]).find(x=>x.id===cid);
+  const had=c&&(c.link||'').trim();
+  if(!link&&!had){ toast('Paste the video link first'); return; }
+  if(!link&&had&&!confirm('Remove this video link? The chapter will be marked as not submitted, and the admin will see this change.')) return;
   try{
     const r=await api(`/api/teacher/video-tasks/${tid}/chapter-link`,'POST',{chapter_id:cid,link});
-    toast(r.completed?'All items completed — great work!':`Saved — ${r.done}/${r.total} done.`);
+    toast(!link?'Link removed.':(r.completed?'All items completed — great work!':`Saved — ${r.done}/${r.total} done.`));
     loadTVTasks();
   }catch(e){ toast(e.message||'Could not save'); }
 }
@@ -7906,7 +7916,7 @@ async function loadAVTasks(){
       const notifyBtn=(t.submitted_link)
         ?`<button class="btn btn-gold btn-sm" onclick="vtNotifyStudents(${t.id})" title="Send this video link to all students">${ic('send')} Send to Students</button>`:'';
       const editTaskBtn=`<button class="btn btn-ghost btn-sm" onclick="openVTEdit(${t.id})" title="Edit title, deadline, type, channel, thumbnail">${ic('edit')} Edit</button>`;
-      return `<div class="vt-card">${_vtThumb(t,'a')}<div class="vt-body">
+      return `<div class="vt-card st-${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
         <div class="vt-title">${esc(t.title)}</div>
         <div class="vt-chips"><span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
         <div class="vt-meta">
@@ -8058,8 +8068,8 @@ function avtSpecProjSet(p){ _avtSpecProj=p||''; avtSpecRefresh(); }
 function avtSpecTypeSet(k){ _avtSpecTab=k||''; _avtSpecProj=''; avtSpecRefresh(); }
 function _avtSpecCard(t){
   const rows=(t.chapters||[]).map(c=> c.link
-    ? `<div class="vt-chr done"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">${esc(c.submitted_at||'')}</span>${_avtChSel(t,c)}<a class="lk" href="${esc(c.link)}" target="_blank" rel="noopener">${ic('play')} Open video</a></div>`
-    : `<div class="vt-chr"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">pending</span></div>`).join('');
+    ? `<div class="vt-chr done${c.changed?' vt-changed':''}"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">${esc(c.submitted_at||'')}</span>${c.changed?`<span class="vt-chg">Link updated${c.changed_at?' · '+esc(c.changed_at):''}</span>`:''}${_avtChSel(t,c)}<a class="lk" href="${esc(c.link)}" target="_blank" rel="noopener">${ic('play')} Open video</a></div>`
+    : `<div class="vt-chr${c.changed?' vt-changed':''}"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">pending</span>${c.changed?`<span class="vt-chg">Link removed${c.changed_at?' · '+esc(c.changed_at):''}</span>`:''}</div>`).join('');
   return `<div class="vt-os" id="avt-os-${t.id}">
     <div class="vt-os-h" onclick="avtSpecOpen(${t.id})">
       <div><h4><span class="vt-os-kind ${t.kind}">${_vtKindLbl(t)}</span>${esc(t.subject||t.title)} ${t.is_new?`<span class="vt-new" id="avt-new-${t.id}">NEW</span>`:''}</h4>
@@ -8597,7 +8607,7 @@ async function loadAApprovals(){
  html+=`<div class="card"><div class="card-header"><h3>Passcode Reset Requests (Payout Lock)</h3><span class="chip">${pcr.length}</span></div><div class="card-body">`;
  if(pcr.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No passcode reset requests.</p></div>`;
  pcr.forEach(r=>{
-   html+=`<div class="doubt-card" style="border-left-color:var(--warning)"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><h4>${esc(r.name||'Teacher')}</h4><p style="font-size:.82rem;color:var(--text-muted);margin-top:4px"><code>${esc(r.user_id||'')}</code>${(r.subjects||[]).length?' &nbsp;|&nbsp; '+r.subjects.map(esc).join(', '):''}</p><p style="font-size:.78rem;color:var(--warning);margin-top:6px;font-weight:700">Approve karne se pehle teacher se confirm kar lo ki request usi ne bheji hai.</p></div><span class="tag tag-pending">Pending</span></div><div style="display:flex;gap:10px;margin-top:16px"><button class="btn btn-success btn-sm" onclick="reviewPcReset(${r.teacher_id},'approved')">${ic('check')} Approve</button><button class="btn btn-danger btn-sm" onclick="reviewPcReset(${r.teacher_id},'rejected')">${ic('trash')} Reject</button></div></div>`;
+   html+=`<div class="doubt-card" style="border-left-color:var(--warning)"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><h4>${esc(r.name||'Teacher')}</h4><p style="font-size:.82rem;color:var(--text-muted);margin-top:4px"><code>${esc(r.user_id||'')}</code>${(r.subjects||[]).length?' &nbsp;|&nbsp; '+r.subjects.map(esc).join(', '):''}</p><p style="font-size:.78rem;color:var(--warning);margin-top:6px;font-weight:700">Please confirm with the teacher that they sent this request before approving.</p></div><span class="tag tag-pending">Pending</span></div><div style="display:flex;gap:10px;margin-top:16px"><button class="btn btn-success btn-sm" onclick="reviewPcReset(${r.teacher_id},'approved')">${ic('check')} Approve</button><button class="btn btn-danger btn-sm" onclick="reviewPcReset(${r.teacher_id},'rejected')">${ic('trash')} Reject</button></div></div>`;
  });
  html+=`</div></div>`;
  // v90: Appointment letter remarks — teacher ne accept se pehle doubt bheja hai.
@@ -8606,7 +8616,7 @@ async function loadAApprovals(){
  html+=`<div class="card"><div class="card-header"><h3>Appointment Letter Remarks</h3><span class="chip">${lrm.length}</span></div><div class="card-body">`;
  if(lrm.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No letter remarks pending.</p></div>`;
  lrm.forEach(r=>{
-   html+=`<div class="doubt-card" style="border-left-color:var(--primary)"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div style="flex:1;min-width:0"><h4>${esc(r.name||'Teacher')}</h4><p style="font-size:.82rem;color:var(--text-muted);margin-top:4px"><code>${esc(r.user_id||'')}</code>${(r.subjects||[]).length?' &nbsp;|&nbsp; '+r.subjects.map(esc).join(', '):''}${r.at?' &nbsp;|&nbsp; '+esc(String(r.at).slice(0,10)):''}</p><p style="font-size:.9rem;margin-top:10px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px">&ldquo;${esc(r.remark||'')}&rdquo;</p><p style="font-size:.75rem;color:var(--text-muted);margin-top:8px">Letter me kuch badalna ho to Payouts → Pay Structure se update karo, phir yahan reply likh do — teacher ko notification chala jayega.</p></div><span class="tag tag-pending">Pending</span></div><div class="form-group" style="margin-top:12px;margin-bottom:8px"><textarea class="form-control" id="lr-reply-${r.teacher_id}" rows="2" placeholder="Teacher ko reply — kya clarify/update kiya..."></textarea></div><div style="display:flex;gap:10px"><button class="btn btn-success btn-sm" onclick="reviewLetterRemark(${r.teacher_id})">${ic('check')} Reply &amp; Resolve</button></div></div>`;
+   html+=`<div class="doubt-card" style="border-left-color:var(--primary)"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div style="flex:1;min-width:0"><h4>${esc(r.name||'Teacher')}</h4><p style="font-size:.82rem;color:var(--text-muted);margin-top:4px"><code>${esc(r.user_id||'')}</code>${(r.subjects||[]).length?' &nbsp;|&nbsp; '+r.subjects.map(esc).join(', '):''}${r.at?' &nbsp;|&nbsp; '+esc(String(r.at).slice(0,10)):''}</p><p style="font-size:.9rem;margin-top:10px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px">&ldquo;${esc(r.remark||'')}&rdquo;</p><p style="font-size:.75rem;color:var(--text-muted);margin-top:8px">If the letter needs a change, update it via Payouts → Pay Structure first, then write your reply here — the teacher gets notified automatically.</p></div><span class="tag tag-pending">Pending</span></div><div class="form-group" style="margin-top:12px;margin-bottom:8px"><textarea class="form-control" id="lr-reply-${r.teacher_id}" rows="2" placeholder="Reply to the teacher — what was clarified or updated..."></textarea></div><div style="display:flex;gap:10px"><button class="btn btn-success btn-sm" onclick="reviewLetterRemark(${r.teacher_id})">${ic('check')} Reply &amp; Resolve</button></div></div>`;
  });
  html+=`</div></div>`;
  el.innerHTML=html;
@@ -14007,6 +14017,12 @@ function _letterHTML(d){
   const t=d.teacher, pay=d.pay, tg=d.targets;
   const maxPot=pay.class_retainer+pay.class_quality+pay.notes_dpp+pay.doubt_resolution+pay.project_delivery;
   const refNo=d.letter.ref;
+  // v91: digital signatures — founder ka authorised sign + teacher ka typed sign (accept ke baad)
+  const lt=d.letter||{};
+  const _sigCss="font-family:'Great Vibes',cursive;font-size:26px;color:#1a2a4a;line-height:1.05";
+  const fndSig=`<div style="${_sigCss}">Manish Verma</div>`;
+  const tchrSig=(lt.accepted&&lt.signature_name)?`<div style="${_sigCss}">${esc(lt.signature_name)}</div>`:`<div style="height:28px"></div>`;
+  const tchrDate=(lt.accepted&&lt.signed_at)?`Digitally signed on ${esc(lt.signed_at)}`:'Date: ___________________';
   const payRows=[
    ['Class Conduct Retainer','Earned by conducting all scheduled timetable classes for the month. Proportionally reduced only if classes are not conducted without prior approval.',pay.class_retainer],
    ['Class Quality Incentive','Earned by starting every class on time, maintaining full scheduled duration, and keeping portal attendance records accurate.',pay.class_quality],
@@ -14085,8 +14101,8 @@ function _letterHTML(d){
   ${_SEC('6. General Terms')}
   ${_LETTER_TERMS.map(r=>`<div style="margin-bottom:5px;font-size:9.5px;line-height:1.6"><strong style="color:#0F2A54">${r[0]}: </strong>${esc(r[1])}</div>`).join('')}
   <div style="margin-top:12px;border-top:2px solid #e4ebf5;padding-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:30px">
-   <div><div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:22px">For Manish Verma Study Foundation</div><div style="border-top:1.5px solid #0F2A54;padding-top:5px"><div style="font-weight:700;font-size:10px">Manish Verma</div><div style="font-size:8.5px;color:#5A6B85">Founder & Director, Manish Verma Study Foundation</div><div style="font-size:8.5px;color:#5A6B85;margin-top:2px">Date: ___________________</div></div></div>
-   <div><div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:22px">Accepted by Teacher</div><div style="border-top:1.5px solid #0F2A54;padding-top:5px"><div style="font-weight:700;font-size:10px">${esc(t.name)}</div><div style="font-size:8.5px;color:#5A6B85">${esc(t.designation)}, ${esc(t.department)}</div><div style="font-size:8.5px;color:#5A6B85;margin-top:2px">Date: ___________________</div></div></div>
+   <div><div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:6px">For Manish Verma Study Foundation</div>${fndSig}<div style="border-top:1.5px solid #0F2A54;padding-top:5px"><div style="font-weight:700;font-size:10px">Manish Verma</div><div style="font-size:8.5px;color:#5A6B85">Founder & Director, Manish Verma Study Foundation</div><div style="font-size:8.5px;color:#5A6B85;margin-top:2px">Date: ${esc(lt.date||'___________________')}</div></div></div>
+   <div><div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:6px">Accepted by Teacher</div>${tchrSig}<div style="border-top:1.5px solid #0F2A54;padding-top:5px"><div style="font-weight:700;font-size:10px">${esc(t.name)}</div><div style="font-size:8.5px;color:#5A6B85">${esc(t.designation)}, ${esc(t.department)}</div><div style="font-size:8.5px;color:#5A6B85;margin-top:2px">${tchrDate}</div></div></div>
   </div>
   ${_DFOOT('Manish Verma Study Foundation | Plot No. 51-B, Maharani Enclave, West Delhi-110059','GST: 07AARCM9457H1ZQ · CIN: U85500DL2024NPL428819 · PAN: AARCM9457H','Ref: '+esc(refNo))}
   </div>`;
@@ -14164,9 +14180,13 @@ function _slipHTML(d){
   </div>
   <div style="border:1px solid #e4ebf5;border-radius:6px;padding:8px 12px;background:#f7f9fc;margin-bottom:14px;font-size:8.5px;color:#5A6B85;line-height:1.6"><strong style="color:#0F2A54">Note:</strong> This earnings statement is generated from portal activity data for ${esc(d.month_label)}. All figures are auto-calculated based on your completed deliverables recorded on the MVS Foundation portal. If you believe any figure is incorrect, please raise a dispute through the portal within 5 working days of receipt. Disputes raised after this period will not be entertained.</div>
   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;border-top:2px solid #e4ebf5;padding-top:14px">
-   ${[['Prepared by','Accounts Team','Manish Verma Study Foundation'],['Authorised by','Manish Verma','Director, Manish Verma Study Foundation'],['Received by',t.name,t.designation]].map(s=>`<div style="text-align:center"><div style="border-top:1px solid #0F2A54;padding-top:5px;margin-top:25px"><div style="font-weight:700;font-size:9px;color:#1a2a3a">${esc(s[1])}</div><div style="font-size:7.5px;color:#5A6B85">${esc(s[2])}</div><div style="font-size:7.5px;color:#8899aa">${s[0]}</div></div></div>`).join('')}
+   ${(()=>{ const lt2=d.letter||{}; const sg="font-family:'Great Vibes',cursive;font-size:21px;color:#1a2a4a;line-height:1.05;height:25px";
+     const rows=[['Prepared by','Accounts Team','Manish Verma Study Foundation',''],
+      ['Authorised by','Manish Verma','Director, Manish Verma Study Foundation','Manish Verma'],
+      ['Received by',t.name,t.designation,(lt2.accepted&&lt2.signature_name)?lt2.signature_name:'']];
+     return rows.map(r=>`<div style="text-align:center"><div style="${sg}">${esc(r[3])}</div><div style="border-top:1px solid #0F2A54;padding-top:5px;margin-top:2px"><div style="font-weight:700;font-size:9px;color:#1a2a3a">${esc(r[1])}</div><div style="font-size:7.5px;color:#5A6B85">${esc(r[2])}</div><div style="font-size:7.5px;color:#8899aa">${r[0]}</div></div></div>`).join(''); })()}
   </div>
-  ${_DFOOT('Manish Verma Study Foundation | Plot No. 51-B, Maharani Enclave, West Delhi-110059','This is a system-generated document — no signature required for electronic copy','Earnings Stmt | '+esc(d.month_label))}
+  ${_DFOOT('Manish Verma Study Foundation | Plot No. 51-B, Maharani Enclave, West Delhi-110059','This is a system-generated document — signed and authorised electronically','Earnings Stmt | '+esc(d.month_label))}
   </div>`;
 }
 
@@ -14265,7 +14285,7 @@ async function payoutGate(){
    <div class="card"><div class="card-body" style="text-align:center;padding:46px 20px">
     <div style="width:62px;height:62px;border-radius:18px;background:linear-gradient(135deg,#b8941f,#8a6d10);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;color:#fff">${ic('shield')}</div>
     <h3 style="margin-bottom:6px">Payout Locked</h3>
-    <p style="color:var(--text-muted);font-size:.85rem;max-width:440px;margin:0 auto 16px">Aapki earnings private hain — payout kholne se pehle verification complete karo. Panel kahin khula reh jaaye to bhi ye section kisi aur ke liye band rahega.</p>
+    <p style="color:var(--text-muted);font-size:.85rem;max-width:440px;margin:0 auto 16px">Your earnings are private — complete verification to open the payout section. Even if your panel is left open somewhere, this section stays locked for everyone else.</p>
     <button class="btn btn-primary" onclick="payoutGate()">${ic('shield')} Unlock Payout</button>
    </div></div>`;
   try{
@@ -14285,7 +14305,7 @@ function _modalFsBtn(){
   const mh=document.querySelector('#modal .modal-header'); if(!mh) return;
   if(document.getElementById('modal-fs-btn')) return;
   const b=document.createElement('button');
-  b.id='modal-fs-btn'; b.className='modal-fs-btn'; b.title='Full screen me padho';
+  b.id='modal-fs-btn'; b.className='modal-fs-btn'; b.title='Read in full screen';
   b.innerHTML=ic('expand'); b.onclick=toggleModalFs;
   const x=mh.querySelector('.modal-close'); mh.insertBefore(b,x||null);
 }
@@ -14295,23 +14315,23 @@ async function payoutShowLetter(){
     const rs=(_payGate&&_payGate.remark_status)||'';
     const remarkForm=`<div style="margin-top:14px;border-top:1px dashed var(--border);padding-top:12px">
        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-        <b style="font-size:.86rem">Letter me koi doubt / issue hai?</b>
-        <button class="btn btn-ghost btn-sm" id="pg-remark-open" onclick="document.getElementById('pg-remark-wrap').style.display='block';this.style.display='none'">${ic('help')} Remark bhejo (accept se pehle)</button>
+        <b style="font-size:.86rem">Have a question about this letter?</b>
+        <button class="btn btn-ghost btn-sm" id="pg-remark-open" onclick="document.getElementById('pg-remark-wrap').style.display='block';this.style.display='none'">${ic('help')} Send a Remark (before accepting)</button>
        </div>
        <div id="pg-remark-wrap" style="display:none;margin-top:10px">
-        <textarea class="form-control" id="pg-remark" rows="3" placeholder="Apna doubt yahan detail me likho — admin check karke reply karega. Accept karna abhi zaroori nahi."></textarea>
+        <textarea class="form-control" id="pg-remark" rows="3" placeholder="Write your question in detail here — the admin will review it and reply. You do not have to accept the letter right away."></textarea>
         <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="payoutSendRemark()">${ic('send')} Send Remark to Admin</button>
        </div></div>`;
     const remarkState = rs==='pending'
-      ? `<div class="alert alert-warning" style="margin-top:12px;margin-bottom:0"><b>Aapka remark admin ke paas pending hai:</b><br>&ldquo;${esc((_payGate&&_payGate.remark)||'')}&rdquo;<br><span style="font-size:.76rem">Admin reply karte hi notification mil jayega. Agar aap phir bhi abhi se agree karte ho to neeche sign karke accept kar sakte ho.</span></div>`
+      ? `<div class="alert alert-warning" style="margin-top:12px;margin-bottom:0"><b>Your remark is pending with the admin:</b><br>&ldquo;${esc((_payGate&&_payGate.remark)||'')}&rdquo;<br><span style="font-size:.76rem">You will be notified as soon as the admin replies. If you still agree with the letter, you may sign and accept it below.</span></div>`
       : rs==='resolved'
-      ? `<div class="alert alert-success" style="margin-top:12px;margin-bottom:0"><b>Admin ka reply:</b> ${esc((_payGate&&_payGate.remark_reply)||'')}<br><span style="font-size:.76rem">Ab aap letter accept kar sakte ho — ya koi aur doubt ho to dobara remark bhejo.</span></div>`+remarkForm
+      ? `<div class="alert alert-success" style="margin-top:12px;margin-bottom:0"><b>Admin's reply:</b> ${esc((_payGate&&_payGate.remark_reply)||'')}<br><span style="font-size:.76rem">You may now accept the letter — or send another remark if you still have a question.</span></div>`+remarkForm
       : remarkForm;
     showModal('Appointment Letter — Accept & Sign',
-     `<div class="alert alert-info" style="margin-bottom:10px">Payout system naya hai — pehle apna appointment letter padhkar <b>digitally sign</b> karo (one-time). Uske baad apna payout passcode banega. Upar <b>full-screen</b> button se poora letter aaram se padh sakte ho.</div>
+     `<div class="alert alert-info" style="margin-bottom:10px">Please read your appointment letter and <b>sign it digitally</b> (one-time). You will then create your payout passcode. Use the <b>full-screen</b> button above to read the letter comfortably.</div>
       <div style="max-height:52vh;overflow:auto;border:1px solid var(--border);border-radius:12px;padding:16px;background:#fff">${_letterHTML(d)}</div>
       ${remarkState}
-      <div class="form-group" style="margin-top:12px"><label>Digital Signature — apna poora naam type karo</label><input class="form-control" id="pg-sign" placeholder="e.g. ${esc(NAME)}" autocomplete="off"></div>`,
+      <div class="form-group" style="margin-top:12px"><label>Digital Signature — type your full name</label><input class="form-control" id="pg-sign" placeholder="e.g. ${esc(NAME)}" autocomplete="off"></div>`,
      `<button class="btn btn-primary" onclick="payoutAcceptLetter()">${ic('check')} Accept & Sign</button>`);
     _modalFsBtn();
   }catch(e){ toast(e.message,true); }
@@ -14319,7 +14339,7 @@ async function payoutShowLetter(){
 async function payoutSendRemark(){
   const el=document.getElementById('pg-remark');
   const t=(el&&el.value||'').trim();
-  if(t.length<5){ toast('Apna doubt thoda detail me likho.',true); return; }
+  if(t.length<5){ toast('Please describe your question in a little more detail.',true); return; }
   try{
     const r=await api('/api/teacher/payout/letter-remark','POST',{remark:t});
     if(_payGate){ _payGate.remark=t; _payGate.remark_status='pending'; _payGate.remark_reply=''; }
@@ -14329,7 +14349,7 @@ async function payoutSendRemark(){
 }
 async function payoutAcceptLetter(){
   const sig=(document.getElementById('pg-sign').value||'').trim();
-  if(sig.length<3){ toast('Signature ke liye apna poora naam type karo.',true); return; }
+  if(sig.length<3){ toast('Please type your full name as the signature.',true); return; }
   try{
     await api('/api/teacher/payout/accept-letter','POST',{signature_name:sig});
     toast('Appointment letter accepted.');
@@ -14338,15 +14358,15 @@ async function payoutAcceptLetter(){
 }
 function payoutShowSetPasscode(){
   showModal('Create Payout Passcode',
-   `<div style="font-size:.8rem;color:var(--text-muted);margin-bottom:12px">Ab apna <b>4-6 digit passcode</b> banao — payout section har baar isi se khulega, taaki aapka panel khula reh jaaye to bhi koi aur earnings na dekh paaye.</div>
+   `<div style="font-size:.8rem;color:var(--text-muted);margin-bottom:12px">Now create your <b>4–6 digit passcode</b> — the payout section will open with this passcode every time, so nobody else can view your earnings even if your panel is left open.</div>
     <div class="form-group"><label>New Passcode (4-6 digits)</label><input class="form-control" id="pg-pc1" type="password" inputmode="numeric" maxlength="6" placeholder="e.g. 4821"></div>
-    <div class="form-group"><label>Confirm Passcode</label><input class="form-control" id="pg-pc2" type="password" inputmode="numeric" maxlength="6" placeholder="Same passcode dubara"></div>`,
+    <div class="form-group"><label>Confirm Passcode</label><input class="form-control" id="pg-pc2" type="password" inputmode="numeric" maxlength="6" placeholder="Re-enter the same passcode"></div>`,
    `<button class="btn btn-primary" onclick="payoutSetPasscode()">${ic('check')} Set Passcode & Open Payout</button>`);
 }
 async function payoutSetPasscode(){
   const p1=(document.getElementById('pg-pc1').value||'').trim(), p2=(document.getElementById('pg-pc2').value||'').trim();
-  if(!/^\d{4,6}$/.test(p1)){ toast('Passcode 4-6 digits ka hona chahiye.',true); return; }
-  if(p1!==p2){ toast('Dono passcode same nahi hain.',true); return; }
+  if(!/^\d{4,6}$/.test(p1)){ toast('Passcode must be 4–6 digits.',true); return; }
+  if(p1!==p2){ toast('The two passcodes do not match.',true); return; }
   try{
     await api('/api/teacher/payout/set-passcode','POST',{passcode:p1});
     _payoutUnlocked=true; closeModal(); toast('Passcode set — payout unlocked.'); loadTPayout();
@@ -14355,23 +14375,23 @@ async function payoutSetPasscode(){
 function payoutShowUnlock(){
   const pend=_payGate&&_payGate.reset_pending;
   showModal('Enter Payout Passcode',
-   `<div style="font-size:.8rem;color:var(--text-muted);margin-bottom:12px">Payout section protected hai — apna passcode daalo.</div>
+   `<div style="font-size:.8rem;color:var(--text-muted);margin-bottom:12px">The payout section is protected — enter your passcode.</div>
     <div class="form-group"><label>Passcode</label><input class="form-control" id="pg-pc" type="password" inputmode="numeric" maxlength="6" placeholder="4-6 digit passcode" onkeydown="if(event.key==='Enter')payoutVerify()"></div>
-    ${pend?`<div class="alert alert-warning" style="margin-bottom:0">Reset request <b>admin ke paas pending</b> hai — approve hote hi naya passcode set kar paoge. Tab tak purana passcode hi chalega.</div>`
+    ${pend?`<div class="alert alert-warning" style="margin-bottom:0">Your reset request is <b>pending with the admin</b> — once approved, you can set a new passcode. Until then your existing passcode remains active.</div>`
          :`<div style="text-align:right;margin-top:2px"><a href="javascript:void(0)" style="font-size:.76rem;font-weight:700;color:var(--primary)" onclick="payoutRequestReset()">Forgot / Reset Passcode</a></div>`}`,
    `<button class="btn btn-primary" onclick="payoutVerify()">${ic('shield')} Unlock</button>`);
   setTimeout(()=>{ const i=document.getElementById('pg-pc'); if(i) i.focus(); },120);
 }
 async function payoutVerify(){
   const pc=(document.getElementById('pg-pc').value||'').trim();
-  if(!pc){ toast('Passcode daalo.',true); return; }
+  if(!pc){ toast('Please enter your passcode.',true); return; }
   try{
     await api('/api/teacher/payout/verify-passcode','POST',{passcode:pc});
     _payoutUnlocked=true; closeModal(); loadTPayout();
   }catch(e){ toast(e.message,true); }
 }
 async function payoutRequestReset(){
-  if(!confirm('Passcode reset request admin ke paas bheji jayegi — admin aapse confirm karke approve karega, tabhi reset hoga. Bheje?')) return;
+  if(!confirm('A passcode reset request will be sent to the admin — they will confirm with you before approving it. Send the request?')) return;
   try{
     const r=await api('/api/teacher/payout/request-passcode-reset','POST',{});
     if(_payGate) _payGate.reset_pending=true;
@@ -14395,14 +14415,14 @@ async function tEarnFetch(){
     const a0=d.activity, noAct=!(a0.classes_scheduled||a0.classes_conducted||a0.notes_uploaded||a0.dpp_uploaded||a0.tests_created||a0.videos_made||a0.live_sessions||a0.shorts_made||a0.doubts_assigned||a0.tasks_assigned);
     const zeroPay=(d.earnings&&d.earnings.net_payable<=0);
     const pend=(d.activity&&d.activity.dpp_pending)||[];
-    const pendHTML=pend.length?`<div class="alert" style="margin-bottom:14px;background:#fff8f0;border:1px solid #f0dfb8;color:#8a5a00;border-radius:12px;padding:11px 16px;font-size:.8rem;line-height:1.5"><b>DPP Pending (${pend.length})</b> — 1 chapter ka 1 DPP mandatory hai (part-wise bhi de sakte hain). In finished chapters ka DPP abhi upload nahi hua:
+    const pendHTML=pend.length?`<div class="alert" style="margin-bottom:14px;background:#fff8f0;border:1px solid #f0dfb8;color:#8a5a00;border-radius:12px;padding:11px 16px;font-size:.8rem;line-height:1.5"><b>DPP Pending (${pend.length})</b> — one DPP per chapter is mandatory (part-wise uploads are also accepted). These finished chapters do not have a DPP uploaded yet:
       <div style="margin-top:7px;display:flex;flex-wrap:wrap;gap:6px">${pend.slice(0,8).map(p=>`<span style="background:#fff;border:1px solid #ecd9a8;border-radius:999px;padding:3px 11px;font-size:.72rem;font-weight:700">${esc(p.chapter||'—')}${p.subject?' · '+esc(p.subject):''}${p.class_name?' ('+esc(p.class_name)+')':''}${p.date?' — '+esc(p.date):''}</span>`).join('')}${pend.length>8?`<span style="font-size:.74rem;font-weight:800;align-self:center">+${pend.length-8} more</span>`:''}</div></div>`:'';
     body.innerHTML=_earnHeroHTML(d,
       `<button class="btn btn-light btn-sm" onclick="downloadMySlip()">${ic('download')} Earnings Slip</button>
        <button class="btn btn-light btn-sm" onclick="viewMyLetter()">${ic('book')} Appointment Letter</button>`)
       +pendHTML
       +(noAct?`<div class="alert alert-info" style="margin-bottom:14px">Is month me abhi koi activity record nahi hui — classes, notes, tests, videos, doubts, tasks complete hote hi aapki earnings yahan live build hoti jayengi.</div>`
-        :(zeroPay?`<div class="alert alert-info" style="margin-bottom:14px">Is month me abhi tak aapki koi earning build nahi hui — har component sirf actual activity (classes conduct, notes/DPP upload, tests, videos, doubts resolve, on-time tasks) par milta hai. Activity complete karte hi amount yahan live badhega.</div>`:''))
+        :(zeroPay?`<div class="alert alert-info" style="margin-bottom:14px">No earnings have built up for this month yet — every component pays only on actual activity (classes conducted, notes/DPP uploads, tests, videos, doubts resolved, on-time tasks). Amounts grow here live as activity is completed.</div>`:''))
       +_earnComponentsHTML(d)+_activityStripHTML(d)+_payStructureHTML(d);
   }catch(e){ body.innerHTML=`<div class="card"><div class="card-body"><div class="empty-state"><p>${esc(e.message)}</p></div></div></div>`; }
 }
@@ -14687,10 +14707,15 @@ async function aEarnFetch(){
     // v89: decided monthly salary ka total (max potential sum) — monthly kitna ja sakta hai
     const totSal=d.teachers.reduce((a,x)=>a+((x.earnings&&x.earnings.max_potential)||0),0);
     if(stats) stats.innerHTML=_st('users',d.teachers.length,'Teachers')+_st('trophy',_inr(totSal),'Monthly Salary (Total)')+_st('wallet',_inr(d.total_net),'Total Net Payable')+_st('chart',d.avg_perf+'%','Average Performance')+_st('calendar',esc(fmtMonthLabel(d.month)),'Pay Month');
-    body.innerHTML=(d.total_net===0?`<div class="alert alert-info" style="margin-bottom:14px">Month abhi shuru hua hai — teachers ki portal activity record hote hi earnings yahan auto-build hoti jayengi. Abhi koi activity nahi, isliye sab ₹0 hai (demo numbers nahi).</div>`:'')
+    body.innerHTML=(d.total_net===0?`<div class="alert alert-info" style="margin-bottom:14px">The month has just begun — earnings build here automatically as teacher activity is recorded on the portal. There is no activity yet, so all figures show ₹0 (never demo numbers).</div>`:'')
      +`<div class="ae-grid">${d.teachers.map(x=>{
        const e=x.earnings, pc=_pfCol(e.perf_score);
        const incent=e.gross_earned-e.class_earned;
+       // v91: appointment letter sign status — card pe turant update dikhta hai
+       const ltr=x.letter||{};
+       const lchip=ltr.accepted
+        ?`<span title="Appointment letter digitally signed${ltr.signed_at?' on '+esc(ltr.signed_at):''}${ltr.signature_name?' as '+esc(ltr.signature_name):''}" style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-weight:800;font-size:.6rem;letter-spacing:.04em;color:#047857;background:#04785714;border:1px solid #04785733">${ic('check')} LETTER SIGNED</span>`
+        :`<span title="Appointment letter not signed yet" style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-weight:800;font-size:.6rem;letter-spacing:.04em;color:#b45309;background:#b4530914;border:1px solid #b4530933">${ic('clock')} LETTER PENDING</span>`;
        return `<div class="card ae-tcard"><div class="card-body" style="padding:16px 18px">
         <div style="display:flex;align-items:center;gap:12px">
          <div class="ae-ava" id="aephot-${x.teacher.id}">${esc(initials(x.teacher.name))}</div>
@@ -14698,7 +14723,10 @@ async function aEarnFetch(){
           <div style="font-weight:800;font-size:.98rem">${esc(x.teacher.name)}</div>
           <div style="font-size:.7rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(x.teacher.employee_code)} \u00B7 ${(x.teacher.subjects||[]).slice(0,2).map(esc).join(', ')||'—'}</div>
          </div>
-         <span style="display:inline-block;min-width:52px;text-align:center;padding:4px 10px;border-radius:20px;font-weight:800;font-size:.8rem;color:${pc};background:${pc}18">${e.perf_score}%</span>
+         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+          <span style="display:inline-block;min-width:52px;text-align:center;padding:4px 10px;border-radius:20px;font-weight:800;font-size:.8rem;color:${pc};background:${pc}18">${e.perf_score}%</span>
+          ${lchip}
+         </div>
         </div>
         <div class="ae-mini">
          <div><b>${_inr(e.class_earned)}</b><span>Retainer</span></div>
@@ -14739,7 +14767,7 @@ function openPayConfig(tid){
     <div style="background:linear-gradient(135deg,#faf6e8,#f6efdb);border:1px solid #e6d9ac;border-radius:12px;padding:12px 16px;margin-bottom:12px">
      <label style="font-size:.7rem;color:#7a5c00;font-weight:800;display:block;margin-bottom:5px;letter-spacing:.04em">TOTAL MONTHLY SALARY — AUTO-SPLIT</label>
      <input type="number" min="0" class="form-control" id="pc_total" placeholder="e.g. 63000" style="font-weight:800;font-size:1rem" oninput="_pcSplit(this.value)">
-     <div style="font-size:.66rem;color:#8a6d1a;margin-top:5px">Total likhte hi components khud split ho jayenge — Classes <b>60%</b> · Tasks & Content <b>24%</b> · Notes/DPP/Tests <b>8%</b> · Doubts <b>4%</b> · Quality <b>4%</b> (sabse zyada classes, fir tasks, fir notes/DPP, fir doubts, fir quality). Split ke baad bhi koi bhi field individually edit kar sakte hain.</div>
+     <div style="font-size:.66rem;color:#8a6d1a;margin-top:5px">As you enter the total, components split automatically — Classes <b>60%</b> · Tasks & Content <b>24%</b> · Notes/DPP/Tests <b>8%</b> · Doubts <b>4%</b> · Quality <b>4%</b> (classes first, then tasks, notes/DPP, doubts, quality). Every field can still be edited individually after the split.</div>
     </div>
     <div style="font-weight:800;font-size:.8rem;margin:4px 0 8px;color:var(--primary)">EARNINGS COMPONENTS (per month)</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:10px">
@@ -15532,9 +15560,34 @@ body.dark .po-pill.red{color:#f87171}
 .vt-knd-tab:hover{transform:translateY(-1px);box-shadow:0 5px 12px -6px rgba(15,23,42,.28);border-color:rgba(184,148,31,.6)}
 .vt-knd-tab.on{background:linear-gradient(135deg,#3a2c07,#6b4f0c);color:#fff;border-color:transparent;box-shadow:0 6px 16px -6px rgba(15,23,42,.42)}
 .vt-knd-tab.on .vt-knd-n{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.32);color:#ffe9a8}
-.vtm-sec-cap{display:flex;align-items:center;gap:10px;margin:16px 0 10px;padding:11px 17px;font-size:.76rem;font-weight:900;text-transform:uppercase;letter-spacing:.11em;color:#fffdf2;background:linear-gradient(135deg,#3d2e0a,#6b5518 55%,#8a6d1f);border-radius:12px;box-shadow:0 8px 20px -8px rgba(90,70,15,.55);border:1px solid rgba(232,198,106,.4)}
-.vtm-sec-cap::before{content:'';width:9px;height:9px;border-radius:99px;background:#e8c66a;box-shadow:0 0 10px #e8c66a;flex-shrink:0}
-.vtm-sec-cap::after{content:'';flex:1;height:1px;background:var(--border)}
+.vtm-sec-cap{display:flex;align-items:center;gap:10px;margin:16px 0 10px;padding:11px 17px;font-size:.76rem;font-weight:900;text-transform:uppercase;letter-spacing:.11em;color:#3d2e0a;background:linear-gradient(135deg,#fdf8ea,#f6ecd2);border-radius:12px;box-shadow:0 4px 14px -8px rgba(90,70,15,.3);border:1px solid rgba(184,148,31,.35);border-left:4px solid #b8941f}
+.dark .vtm-sec-cap{color:#f5e9c8;background:linear-gradient(135deg,#2c2208,#3a2e0c);border-color:rgba(232,198,106,.3)}
+.vtm-sec-cap::before{content:'';width:9px;height:9px;border-radius:99px;background:#b8941f;box-shadow:0 0 8px rgba(184,148,31,.75);flex-shrink:0}
+.vtm-sec-cap::after{content:'';flex:1;height:1px;background:rgba(184,148,31,.32)}
+/* v91 — master cards suggest-blink + hint + thumb pill contrast + card state accent + chapter change blink */
+@keyframes vtmPulse{0%,100%{box-shadow:0 4px 16px -8px rgba(90,66,10,.18),0 0 0 0 rgba(184,148,31,.5)}50%{box-shadow:0 4px 16px -8px rgba(90,66,10,.18),0 0 0 8px rgba(184,148,31,0)}}
+.vtm-card.suggest{animation:vtmPulse 1.5s ease-in-out infinite;border-color:rgba(184,148,31,.8)}
+.vtm-hint{display:flex;align-items:center;gap:10px;margin:0 0 16px;padding:13px 16px;border-radius:14px;border:1.5px dashed rgba(184,148,31,.5);background:rgba(184,148,31,.06);color:#7a6110;font-size:.78rem;font-weight:700}
+.vtm-hint svg{width:18px;height:18px;flex:none}
+.dark .vtm-hint{color:#e8c66a;background:rgba(184,148,31,.1)}
+.vt-thumb .vt-status .vt-pill{box-shadow:0 2px 10px rgba(0,0,0,.45)}
+.vt-thumb .vt-status .vt-pill.uploaded{background:#16a34a;color:#fff;border-color:#15803d}
+.vt-thumb .vt-status .vt-pill.approved{background:#047857;color:#fff;border-color:#065f46}
+.vt-thumb .vt-status .vt-pill.submitted{background:#d97706;color:#fff;border-color:#b45309}
+.vt-thumb .vt-status .vt-pill.editing_soon{background:#7c3aed;color:#fff;border-color:#6d28d9}
+.vt-thumb .vt-status .vt-pill.editing_done{background:#2563eb;color:#fff;border-color:#1d4ed8}
+.vt-thumb .vt-status .vt-pill.rejected,.vt-thumb .vt-status .vt-pill.delayed{background:#dc2626;color:#fff;border-color:#b91c1c}
+.vt-thumb .vt-status .vt-pill.assigned{background:#0891b2;color:#fff;border-color:#0e7490}
+.vt-thumb .vt-status .vt-pill.ontime{background:#059669;color:#fff;border-color:#047857}
+.vt-thumb .vt-status .vt-pill.proposal{background:#9333ea;color:#fff;border-color:#7e22ce}
+.vt-card.st-assigned{border-left:4px solid #0891b2}
+.vt-card.st-submitted{border-left:4px solid #d97706}
+.vt-card.st-approved,.vt-card.st-editing_done,.vt-card.st-uploaded{border-left:4px solid #16a34a}
+.vt-card.st-editing_soon{border-left:4px solid #7c3aed}
+.vt-card.st-rejected{border-left:4px solid #dc2626}
+@keyframes vtChBlink{0%,100%{background:rgba(217,119,6,0)}50%{background:rgba(217,119,6,.14)}}
+.vt-chr.vt-changed{animation:vtChBlink 1.3s ease-in-out infinite;border-radius:10px}
+.vt-chg{font-size:.6rem;font-weight:800;padding:2px 9px;border-radius:999px;background:rgba(217,119,6,.15);color:#b45309;border:1px solid rgba(217,119,6,.4);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;flex-shrink:0}
 .vt-chst{font-size:.6rem;font-weight:800;padding:2px 9px;border-radius:999px;border:1.2px solid;
   text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;flex-shrink:0}
 /* v77 — premium status dropdown */

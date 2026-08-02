@@ -67,6 +67,7 @@ def _ensure_special_columns():
         "ALTER TABLE video_tasks ADD COLUMN weekly_day VARCHAR(12) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN item_source VARCHAR(12) DEFAULT ''",
         "ALTER TABLE video_task_chapters ADD COLUMN edit_status VARCHAR(20) DEFAULT ''",
+        "ALTER TABLE video_task_chapters ADD COLUMN changed_at DATETIME NULL",
     ]
     for ddl in alters:
         try:
@@ -535,11 +536,14 @@ def _ensure_special_teacher(db, tp):
             changed = True
     # Legacy single-task format (subject="" — ek task jisme har subject ki ek row thi)
     # migrate: purane links naye per-subject task ki history me note karke task delete.
-    legacy_single = (db.query(VideoTask)
+    # v79: purane format me subject "" ke saath-saath "All Subjects" bhi aata
+    # tha (case/space koi bhi) — dono pakdo, warna legacy card kabhi delete
+    # nahi hota aur saare subjects ek hi card me dikhte rehte hain.
+    legacy_single = [t for t in (db.query(VideoTask)
                      .filter(VideoTask.teacher_id == tp.id,
-                             VideoTask.kind == "rapid_revision",
-                             VideoTask.subject == "")
+                             VideoTask.kind == "rapid_revision")
                      .all())
+                     if (t.subject or "").strip().lower() in ("", "all subjects")]
     if legacy_single:
         legacy_map = {}
         for nm, cl, display in named:
@@ -699,18 +703,21 @@ def _special_out(db, t):
     chs = (db.query(VideoTaskChapter)
            .filter(VideoTaskChapter.task_id == t.id)
            .order_by(VideoTaskChapter.sort.asc(), VideoTaskChapter.id.asc()).all())
+    lla = getattr(t, "last_link_at", None)
+    asa = getattr(t, "admin_seen_at", None)
+    # v91: chapter-level change flag — link add/update/remove admin_seen ke baad hua ho
     out["chapters"] = [{
         "id": c.id, "title": c.title, "link": c.link or "",
         "submitted_at": c.submitted_at.strftime("%d %b %Y, %I:%M %p") if c.submitted_at else "",
         "edit_status": _ch_status(c),
+        "changed": bool(getattr(c, "changed_at", None) and (not asa or c.changed_at > asa)),
+        "changed_at": c.changed_at.strftime("%d %b %Y, %I:%M %p") if getattr(c, "changed_at", None) else "",
     } for c in chs]
     done = sum(1 for c in chs if (c.link or "").strip())
     out["done"] = done
     out["total"] = len(chs)
     out["pct"] = round(100 * done / len(chs)) if chs else 0
     out["cls"] = _subject_cls(out.get("subject") or "")
-    lla = getattr(t, "last_link_at", None)
-    asa = getattr(t, "admin_seen_at", None)
     out["is_new"] = bool(lla and (not asa or lla > asa))
     out["last_link_at"] = lla.strftime("%d %b %Y, %I:%M %p") if lla else ""
     return out
@@ -1509,21 +1516,39 @@ def vt_chapter_link(task_id: int, payload: dict = Body(...), db: Session = Depen
     if not row:
         raise HTTPException(404, "Chapter not found in this task")
     link = (payload.get("link") or "").strip()
-    if not link:
-        raise HTTPException(400, "Please paste the video link")
     now = datetime.now()
-    first_time = not (row.link or "").strip()
-    row.link = link
-    row.submitted_at = now
-    if first_time and _ch_status(row) == "editing_soon":
-        row.edit_status = "editing_soon"   # nayi recording — editing karwani hai
+    had_link = bool((row.link or "").strip())
+    # v91: blank link = REMOVE karna allowed hai (galat/test link hatane ke liye);
+    # existing link pe naya link = UPDATE bhi allowed hai.
+    if not link and not had_link:
+        raise HTTPException(400, "Please paste the video link")
+    removing = bool(not link and had_link)
+    first_time = not had_link
+    if removing:
+        row.link = ""
+        row.submitted_at = None
+        row.edit_status = ""
+    else:
+        row.link = link
+        row.submitted_at = now
+        if first_time and _ch_status(row) == "editing_soon":
+            row.edit_status = "editing_soon"   # nayi recording — editing karwani hai
+    row.changed_at = now                       # admin ko changed-link blink
     t.last_link_at = now
     chs = (db.query(VideoTaskChapter)
            .filter(VideoTaskChapter.task_id == t.id).all())
     done = sum(1 for c in chs if (c.link or "").strip())
     total = len(chs)
-    just_completed = bool(total and done == total and t.status == "assigned")
-    if first_time:
+    just_completed = bool(total and done == total and t.status == "assigned" and not removing)
+    # v91: link remove karne pe agar task submitted ho chuka tha to wapas open ho jaye
+    if removing and t.status != "assigned":
+        t.status = "assigned"
+        t.submitted_at = None
+        t.on_time = None
+        _hist_add(t, "progress", '"%s" link removed — task reopened (%d/%d)' % (row.title, done, total))
+    elif removing:
+        _hist_add(t, "progress", '"%s" link removed (%d/%d)' % (row.title, done, total))
+    elif first_time:
         _hist_add(t, "progress", '"%s" link added (%d/%d)' % (row.title, done, total))
     else:
         _hist_add(t, "progress", '"%s" link updated (%d/%d)' % (row.title, done, total))

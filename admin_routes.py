@@ -1907,12 +1907,12 @@ def admin_passcode_reset_review(tid: int, payload: dict, db: Session = Depends(g
         tp.payout_passcode = None
         if u:
             db.add(Notification(user_id=u.id, title="Passcode Reset Approved",
-                                message="Admin ne aapki payout passcode reset request approve kar di hai. Payout section kholkar ab naya passcode set karo.",
+                                message="Your payout passcode reset request has been approved by the admin. Open the Payout section to set a new passcode.",
                                 notif_type="passcode_reset_approved"))
     else:
         if u:
             db.add(Notification(user_id=u.id, title="Passcode Reset Rejected",
-                                message="Aapki payout passcode reset request reject hui hai. Agar aapne ye request nahi bheji thi to admin se baat karo.",
+                                message="Your payout passcode reset request has been rejected. If you did not send this request, please contact the admin.",
                                 notif_type="passcode_reset_rejected"))
     db.commit()
     return {"message": "Passcode reset " + status, "teacher_id": tid, "status": status}
@@ -1945,19 +1945,19 @@ def admin_letter_remark_review(tid: int, payload: dict, db: Session = Depends(ge
     if not tp:
         raise HTTPException(status_code=404, detail="Teacher not found")
     if tp.letter_remark_status != "pending":
-        raise HTTPException(status_code=400, detail="Is teacher ka koi pending remark nahi hai")
+        raise HTTPException(status_code=400, detail="This teacher has no pending remark.")
     reply = (payload.get("reply") or "").strip()
     if len(reply) < 3:
-        raise HTTPException(status_code=400, detail="Reply likho — teacher ko samajhna chahiye ki kya hua")
+        raise HTTPException(status_code=400, detail="Please write a reply the teacher can understand.")
     tp.letter_remark_status = "resolved"
     tp.letter_remark_reply = reply
     u = db.query(User).filter(User.id == tp.user_id).first()
     if u:
         db.add(Notification(user_id=u.id, title="Letter Remark — Admin Reply",
-                            message="Admin ne aapke appointment letter remark ka reply diya hai: " + reply[:180] + ("..." if len(reply) > 180 else ""),
+                            message="The admin has replied to your appointment letter remark: " + reply[:180] + ("..." if len(reply) > 180 else ""),
                             notif_type="letter_remark_resolved"))
     db.commit()
-    return {"message": "Reply bhej diya — remark resolved", "teacher_id": tid, "status": "resolved"}
+    return {"message": "Reply sent — remark resolved.", "teacher_id": tid, "status": "resolved"}
 
 
 @router.post("/reset-password")

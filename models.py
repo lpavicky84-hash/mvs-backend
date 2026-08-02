@@ -442,6 +442,7 @@ class VideoTaskChapter(Base):
     link         = Column(String(600), default="")
     submitted_at = Column(DateTime, nullable=True)
     edit_status  = Column(String(20), default="")         # production: editing_soon / editing_done / uploaded
+    changed_at   = Column(DateTime, nullable=True)        # v91: link add/update/remove kab hua (admin blink)
 
 
 class DppEvent(Base):

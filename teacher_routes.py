@@ -3756,6 +3756,12 @@ def earnings_payload(db, tp, month):
         ml = datetime(int(month[:4]), int(month[5:7]), 1).strftime("%B %Y")
     except Exception:
         ml = month
+    # ---- v91: digital signature details — letter/slip pe dikhane ke liye ----
+    from models import TeacherContract as _TC
+    _c = db.query(_TC).filter(_TC.teacher_id == tp.id).first()
+    _acc = bool((getattr(tp, "letter_accept_version", 0) or 0) >= LETTER_VERSION)
+    _sign = (_c.signature_name or "").strip() if (_c and _acc) else ""
+    _sat = _c.accepted_at.strftime("%d %B %Y") if (_c and _acc and _c.accepted_at) else ""
     return {
         "month": month, "month_label": ml,
         "teacher": {
@@ -3772,7 +3778,8 @@ def earnings_payload(db, tp, month):
         "pay": pay, "targets": targets, "activity": act, "earnings": e,
         "letter": {"ref": "MVS/APT/%d/%03d" % (now.year, tp.id),
                    "date": now.strftime("%d %B %Y"),
-                   "configured": cfg.id is not None},
+                   "configured": cfg.id is not None,
+                   "accepted": _acc, "signature_name": _sign, "signed_at": _sat},
     }
 
 
@@ -4352,10 +4359,13 @@ def payout_accept_letter(payload: dict, db: Session = Depends(get_db), current_u
     tp.letter_accept_version = LETTER_VERSION
     from models import TeacherContract
     c = db.query(TeacherContract).filter(TeacherContract.teacher_id == tp.id).first()
-    if c:
-        c.accepted = True
-        c.accepted_at = _ist_now()
-        c.signature_name = sig
+    if not c:
+        # v91: contract row na ho to bana do — signature kabhi lose nahi hona chahiye
+        c = TeacherContract(teacher_id=tp.id)
+        db.add(c)
+    c.accepted = True
+    c.accepted_at = _ist_now()
+    c.signature_name = sig
     db.commit()
     return {"message": "Appointment letter accepted", **_payout_status(tp)}
 
@@ -4365,16 +4375,16 @@ def payout_set_passcode(payload: dict, db: Session = Depends(get_db), current_us
     _ensure_v89(db)
     tp = get_teacher_profile(current_user, db)
     if (tp.letter_accept_version or 0) < LETTER_VERSION:
-        raise HTTPException(status_code=400, detail="Pehle appointment letter accept karo")
+        raise HTTPException(status_code=400, detail="Please accept the appointment letter first.")
     if tp.passcode_reset_pending:
-        raise HTTPException(status_code=400, detail="Reset request admin ke paas pending hai — approval ka wait karo")
+        raise HTTPException(status_code=400, detail="A reset request is already pending with the admin — please wait for approval.")
     code = (payload.get("passcode") or "").strip()
     if not re.fullmatch(r"\d{4,6}", code or ""):
-        raise HTTPException(status_code=400, detail="Passcode 4-6 digits ka hona chahiye")
+        raise HTTPException(status_code=400, detail="Passcode must be 4–6 digits.")
     from security import hash_password as _hp
     tp.payout_passcode = _hp(code)
     db.commit()
-    return {"message": "Passcode set ho gaya", **_payout_status(tp)}
+    return {"message": "Passcode created successfully — payout is now unlocked.", **_payout_status(tp)}
 
 @router.post("/payout/verify-passcode")
 def payout_verify_passcode(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
@@ -4382,10 +4392,10 @@ def payout_verify_passcode(payload: dict, db: Session = Depends(get_db), current
     _ensure_v89(db)
     tp = get_teacher_profile(current_user, db)
     if not tp.payout_passcode:
-        raise HTTPException(status_code=400, detail="Passcode abhi set nahi hai")
+        raise HTTPException(status_code=400, detail="No passcode has been set yet.")
     code = (payload.get("passcode") or "").strip()
     if not _passcode_ok(code, tp.payout_passcode):
-        raise HTTPException(status_code=403, detail="Galat passcode — dubara try karo")
+        raise HTTPException(status_code=403, detail="Incorrect passcode — please try again.")
     return {"ok": True, **_payout_status(tp)}
 
 @router.post("/payout/request-passcode-reset")
@@ -4395,16 +4405,16 @@ def payout_request_passcode_reset(db: Session = Depends(get_db), current_user=De
     _ensure_v89(db)
     tp = get_teacher_profile(current_user, db)
     if tp.passcode_reset_pending:
-        return {"message": "Reset request already admin ke paas pending hai", **_payout_status(tp)}
+        return {"message": "A reset request is already pending with the admin.", **_payout_status(tp)}
     tp.passcode_reset_pending = True
     for adm in db.query(User).filter(User.role == "admin").all():
         db.add(Notification(
             user_id=adm.id,
             title="Passcode Reset Request",
-            message=f"{current_user.name} ne payout passcode reset ki request bheji hai. Teacher se confirm karke Approvals section me approve/reject karo.",
+            message=f"{current_user.name} has requested a payout passcode reset. Please confirm with the teacher, then approve or reject it in the Approvals section.",
             notif_type="passcode_reset_request"))
     db.commit()
-    return {"message": "Reset request admin ko bhej di — approval ke baad naya passcode set kar paoge", **_payout_status(tp)}
+    return {"message": "Reset request sent to the admin — once approved, you can set a new passcode.", **_payout_status(tp)}
 
 # ===== v90: LETTER REMARKS — accept se pehle doubt bhejo, admin reply kare =====
 _V90_READY = False
@@ -4436,9 +4446,9 @@ def payout_letter_remark(payload: dict, db: Session = Depends(get_db), current_u
     tp = get_teacher_profile(current_user, db)
     remark = (payload.get("remark") or "").strip()
     if len(remark) < 5:
-        raise HTTPException(status_code=400, detail="Apna doubt thoda detail me likho (min 5 characters)")
+        raise HTTPException(status_code=400, detail="Please describe your question in a little more detail (minimum 5 characters).")
     if tp.letter_remark_status == "pending":
-        raise HTTPException(status_code=400, detail="Aapka remark already admin ke paas pending hai — reply ka wait karo")
+        raise HTTPException(status_code=400, detail="Your previous remark is still pending with the admin — please wait for the reply.")
     tp.letter_remark = remark
     tp.letter_remark_status = "pending"
     tp.letter_remark_reply = None
@@ -4447,10 +4457,10 @@ def payout_letter_remark(payload: dict, db: Session = Depends(get_db), current_u
         db.add(Notification(
             user_id=adm.id,
             title="Appointment Letter Remark",
-            message=f"{current_user.name} ne appointment letter pe doubt/remark bheja hai. Approvals section me check karke reply karo.",
+            message=f"{current_user.name} has sent a remark on the appointment letter. Please review and reply in the Approvals section.",
             notif_type="letter_remark"))
     db.commit()
-    return {"message": "Remark admin ko bhej diya — reply aate hi notification mil jayega", **_payout_status(tp)}
+    return {"message": "Remark sent to the admin — you will be notified as soon as they reply.", **_payout_status(tp)}
 
 # ===== PAYOUT =====
 @router.get("/payout")

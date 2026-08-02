@@ -31,6 +31,7 @@ def ensure_columns():
         "ALTER TABLE teacher_profiles ADD COLUMN letter_remark_status VARCHAR(20)",
         "ALTER TABLE teacher_profiles ADD COLUMN letter_remark_reply TEXT",
         "ALTER TABLE teacher_profiles ADD COLUMN letter_remark_at DATETIME",
+        "ALTER TABLE video_task_chapters ADD COLUMN changed_at DATETIME",
         "ALTER TABLE student_profiles ADD COLUMN class_level VARCHAR(5)",
         "ALTER TABLE timetable_entries ADD COLUMN time_text VARCHAR(40)",
         "ALTER TABLE timetable_entries ADD COLUMN entry_type VARCHAR(20)",
