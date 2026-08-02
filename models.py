@@ -323,9 +323,30 @@ class Doubt(Base):
     status      = Column(Enum(DoubtStatus), default=DoubtStatus.pending)
     created_at  = Column(DateTime, default=func.now())
     resolved_at = Column(DateTime, nullable=True)
+    # v93: doubt reassignment — teacher jisko answer nahi aata, woh doubt
+    # kisi doosre teacher ya admin ko assign kar sakta hai. Assigner ki
+    # taraf se doubt "resolved" maana jata hai; naya owner responsible.
+    assigned_by_teacher_id = Column(Integer, nullable=True)   # jis teacher ne assign kiya
+    assigned_by_name       = Column(String(160), nullable=True)
+    assigned_at            = Column(DateTime, nullable=True)
+    assigned_to_admin      = Column(Boolean, default=False)   # admin (MVS Foundation) ke paas
 
     student = relationship("StudentProfile", back_populates="doubts")
     teacher = relationship("TeacherProfile")
+
+
+class DoubtResponse(Base):
+    """v93: doubt thread — teacher / student / admin teeno likh sakte hain.
+    Admin ka response MVS Foundation branding ke saath jata hai."""
+    __tablename__ = "doubt_responses"
+
+    id          = Column(Integer, primary_key=True)
+    doubt_id    = Column(Integer, ForeignKey("doubts.id"), index=True)
+    role        = Column(String(20))          # teacher | student | admin
+    author_name = Column(String(160))
+    author_teacher_id = Column(Integer, nullable=True)  # role=teacher ho to
+    body        = Column(Text)
+    created_at  = Column(DateTime, default=func.now())
 
 # =============================================
 # NOTIFICATION
@@ -484,6 +505,12 @@ class Notification(Base):
     image_url  = Column(String(500), nullable=True)  # v86: teacher photo endpoint — notification avatar
     is_read    = Column(Boolean, default=False)
     created_at = Column(DateTime, default=func.now())
+    # v93: sent-notification views tracking (teacher → students batches)
+    sender_id   = Column(Integer, nullable=True)      # bhejne wale user ka id
+    sender_role = Column(String(20), nullable=True)   # teacher | admin
+    batch_key   = Column(String(40), nullable=True)   # ek send = ek batch
+    batch_label = Column(String(160), nullable=True)  # e.g. "Physics" / "All My Students"
+    read_at     = Column(DateTime, nullable=True)     # kab dekha
 
     user = relationship("User", back_populates="notifications")
 

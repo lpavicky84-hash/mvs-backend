@@ -530,6 +530,14 @@ def admin_timetable_pdf_commit(payload: dict, db: Session = Depends(get_db), _=D
     return {"added": added, "subjects": subjects_found}
 
 # ===== ADMIN: SEND NOTIFICATION (target teachers/students/all) =====
+@router.get("/notify-targets")
+def admin_notify_targets(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """v93: admin notify modal — har target pe kitne users jayenge (live counts)."""
+    q = db.query(User).filter(User.is_active == True, User.role != "admin")
+    teachers = q.filter(User.role == "teacher").count()
+    students = q.filter(User.role == "student").count()
+    return {"teachers": teachers, "students": students, "all": teachers + students}
+
 @router.post("/notify")
 def admin_notify(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
     title = (payload.get("title") or "").strip()
@@ -1413,6 +1421,8 @@ def admin_notif_read(notif_id: int, db: Session = Depends(get_db), current_user=
     ).first()
     if n:
         n.is_read = True
+        if not n.read_at:
+            n.read_at = datetime.now()
         db.commit()
     return {"ok": True}
 
@@ -1444,8 +1454,59 @@ def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depend
             "status": d.status.value if hasattr(d.status, "value") else d.status,
             "created_at": d.created_at.isoformat() if d.created_at else None,
             "resolved_at": d.resolved_at.isoformat() if d.resolved_at else None,
+            # v93: thread + reassignment context
+            "assigned_to_admin": bool(getattr(d, "assigned_to_admin", False)),
+            "assigned_by_name": getattr(d, "assigned_by_name", None),
+            "owner_name": ("MVS Foundation" if getattr(d, "assigned_to_admin", False)
+                           else (tp.user.name if tp and tp.user else "Unassigned")),
+            "responses": _admin_doubt_resps(db, d.id),
         })
     return out
+
+def _admin_doubt_resps(db, did):
+    """v93: doubt thread responses — admin view ke liye."""
+    from models import DoubtResponse
+    out = []
+    for r in (db.query(DoubtResponse).filter(DoubtResponse.doubt_id == did)
+              .order_by(DoubtResponse.created_at.asc(), DoubtResponse.id.asc()).all()):
+        out.append({"id": r.id, "role": r.role, "author_name": r.author_name,
+                    "body": r.body, "mine": (r.role == "admin"),
+                    "created_at": r.created_at.isoformat() if r.created_at else None})
+    return out
+
+@router.post("/doubts/{did}/respond")
+def admin_doubt_respond(did: int, payload: dict, db: Session = Depends(get_db),
+                        current_user=Depends(get_admin)):
+    """v93: admin doubt thread pe likhe — response MVS Foundation branding ke
+    saath jata hai. Pending doubt ho to admin ka jawab final maana jata hai
+    (status resolved)."""
+    from models import Doubt, DoubtResponse, DoubtStatus, StudentProfile, TeacherProfile
+    d = db.query(Doubt).get(did)
+    if not d:
+        raise HTTPException(status_code=404, detail="Doubt not found")
+    body = (payload.get("body") or "").strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="Response text is required")
+    db.add(DoubtResponse(doubt_id=d.id, role="admin", author_name="MVS Foundation", body=body))
+    was_pending = (d.status.value if hasattr(d.status, "value") else d.status) != "resolved"
+    if was_pending:
+        if not d.answer:
+            d.answer = body
+        d.status = DoubtStatus.resolved
+        d.resolved_at = datetime.now()
+    sp = db.query(StudentProfile).filter(StudentProfile.id == d.student_id).first()
+    if sp and sp.user:
+        notify(db, sp.user.id, "🏛️ MVS Foundation Replied to Your Doubt",
+               f"Your {d.subject or ''} doubt got an official response: {body[:120]}", "doubt_resolved")
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == d.teacher_id).first() if d.teacher_id else None
+    if tp and tp.user:
+        notify(db, tp.user.id, "🏛️ Admin Replied on a Doubt",
+               f"MVS Foundation posted an official reply on the {d.subject or ''} doubt by "
+               f"{sp.user.name if sp and sp.user else 'a student'}.", "doubt")
+    db.commit()
+    return {"message": "Official response posted",
+            "responses": _admin_doubt_resps(db, d.id),
+            "status": (d.status.value if hasattr(d.status, "value") else d.status)}
 
 @router.delete("/doubt/{did}")
 def admin_delete_doubt(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):

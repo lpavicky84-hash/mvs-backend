@@ -2746,7 +2746,7 @@ body.dark .cal-d.on{color:#34d399}
 <!-- TEACHER SUBJECT SELECTION (first login) -->
 <div id="t-subject-screen" style="display:none;min-height:100vh;background:linear-gradient(150deg,#171203,#2e2408 55%,#4a3c12);align-items:center;justify-content:center;padding:20px"><div class="login-box" style="max-width:620px"><h2>Select Your Subjects</h2><p>Select the subjects you teach, class by class.</p><div style="display:flex;justify-content:space-between;margin:14px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 10</label></div><div id="t-sub-10" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><div style="display:flex;justify-content:space-between;margin:16px 0 8px"><label style="color:rgba(255,255,255,.85);font-weight:700"> Class 12</label></div><div id="t-sub-12" style="background:rgba(255,255,255,.1);border-radius:12px;padding:12px;max-height:170px;overflow-y:auto"><div class="spinner"></div></div><button class="login-btn" id="t-save-subj" style="margin-top:18px" onclick="saveTeacherSubjects()">Save & Continue →</button><p style="text-align:center;margin-top:14px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Logout</p></div>
 </div>
-<div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('vtasks',this)"><span>My Tasks</span><span class="badge" id="t-vt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="tPage('extmat',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-item" onclick="tPage('predicted',this)"><span>Predicted Results</span></div><div class="nav-item" onclick="tPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="tPage('payout',this)"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/><circle cx="17" cy="15" r="1.4"/></svg><span>Payout</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="sidebar-rule"><b>Reschedule:</b> Every reschedule applies only after admin approval.</div><div class="user-info"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-vt-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-vtasks"><div id="t-vtasks-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-extmat"><div id="t-extmat-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-predicted"><div id="t-predicted-content"><div class="spinner"></div></div></div><div class="page" id="t-page-attendance"><div id="t-attendance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-payout"><div id="t-payout-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
+<div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('vtasks',this)"><span>My Tasks</span><span class="badge" id="t-vt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="tPage('extmat',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-item" onclick="tPage('predicted',this)"><span>Predicted Results</span></div><div class="nav-item" onclick="tPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="tPage('payout',this)"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/><circle cx="17" cy="15" r="1.4"/></svg><span>Payout</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="user-info uinfo-link" onclick="openTeacherProfile()" title="Open My Profile"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-vt-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-vtasks"><div id="t-vtasks-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-extmat"><div id="t-extmat-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-predicted"><div id="t-predicted-content"><div class="spinner"></div></div></div><div class="page" id="t-page-attendance"><div id="t-attendance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-payout"><div id="t-payout-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== ADMIN APP ===== -->
 <div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#b06d12">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Users</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-section">Academics</div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('tests',this)"><span>Tests Tracker</span></div><div class="nav-section">Production</div><div class="nav-item" onclick="aPage('vtasks',this)"><span>Task Manager</span><span class="badge" id="a-vt-badge" style="display:none">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('tranks',this)"><span>Teacher Ranking</span></div><div class="nav-item" onclick="aPage('compliance',this)"><span>Class Compliance</span></div><div class="nav-item" onclick="aPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="aPage('payouts',this)"><span>Payouts</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('syllabus',this)"><span>Syllabus Manager</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#b06d12" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-vtasks"><div id="a-vtasks-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-reviews-wrap"></div><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-tests"><div id="a-tests-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-compliance"><div id="a-compliance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-tranks"><div id="a-tranks-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"></div><div class="card" style="margin-top:18px;border:1.5px solid rgba(220,38,38,.3)"><div class="card-header"><h3 style="color:var(--danger)">Danger Zone</h3></div><div class="card-body"><p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Clear all testing content data (timetable, materials, doubts, submissions...) in one go \u2014 students, teachers and admins remain safe.</p><button class="btn btn-danger" onclick="openResetData()">\ud83e\uddf9 Reset Portal Data</button></div></div><div style="display:none"><div class="spinner"></div></div></div><div class="page" id="a-page-syllabus"><div id="a-syl-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div><div class="page" id="a-page-attendance"><div id="a-attendance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-payouts"><div id="a-payouts-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== STUDENT APP ===== -->
@@ -3104,10 +3104,10 @@ async function _notifImgs(root){
     }catch(e){}
   }
 }
-async function notifGo(role,nid,type){
+async function notifGo(role,nid,type,fbPage){
   if(nid){ try{ await api(notifEp(role,'/notifications/'+nid+'/read'),'PATCH'); }catch(e){} }
   refreshNotifBadge(role);
-  const page=(NOTIF_GO[role]||{})[type||''];
+  const page=(NOTIF_GO[role]||{})[type||'']||fbPage||'';
   closeModal();
   if(!page) return;
   const navTo=(role==='teacher')?tPage:(role==='admin')?aPage:sPage;
@@ -3122,12 +3122,13 @@ async function notifGo(role,nid,type){
 async function openNotifPanel(role){
   let list;
   try{ list=await fetchNotifs(role); }catch(e){ if(e&&e.status===401){ _sessionExpired(); return; } list=[]; }
+  const fbPage=role==='admin'?'dashboard':'notifications';
   const html=list.length?list.map(n=>{
     const go=(NOTIF_GO[role]||{})[n.notif_type||''];
     const hasLink=!!n.link;
-    const click=hasLink?`notifLinkOpen('${role}',${n.id},'${encodeURIComponent(n.link)}')`:(go?`notifGo('${role}',${n.id},'${esc(n.notif_type||'')}')`:'');
-    const clickable=hasLink||go;
-    const hint=hasLink?` <span style="font-size:.68rem;color:var(--primary);font-weight:800">Open Link &#8250;</span>`:(go?' <span style="font-size:.68rem;color:var(--primary);font-weight:800">&#8250;</span>':'');
+    const click=hasLink?`notifLinkOpen('${role}',${n.id},'${encodeURIComponent(n.link)}')`:(go?`notifGo('${role}',${n.id},'${esc(n.notif_type||'')}')`:`notifGo('${role}',${n.id},'','${fbPage}')`);
+    const clickable=true;   // v93: har notification clickable
+    const hint=hasLink?` <span style="font-size:.68rem;color:var(--primary);font-weight:800">Open Link &#8250;</span>`:' <span style="font-size:.68rem;color:var(--primary);font-weight:800">&#8250;</span>';
     const av=_notifAvHtml(n,'MVS');
     const inner=`<div class="ni-title">${esc(n.title)}${hint}</div><div class="ni-msg">${esc(n.message)}</div><div class="ni-time"> ${fmtNice(n.created_at)}</div>`;
     return `<div class="notif-item ${n.is_read?'':'unread'}"${clickable?` data-go="1" style="cursor:pointer" onclick="${click}"`:' '} title="${hasLink?'Tap to open the link':'Tap to open this section'}">${av?`<div class="notif-row">${av}<div style="min-width:0;flex:1">${inner}</div></div>`:inner}</div>`;
@@ -3184,25 +3185,69 @@ function _sessionExpired(){
 function startNotifPolling(role){ stopNotifPolling(); _notifInt=setInterval(()=>pollNotifs(role).catch(e=>{ if(e&&e.status===401) _sessionExpired(); }),25000); }
 function stopNotifPolling(){ if(_notifInt){ clearInterval(_notifInt); _notifInt=null; } }
 // ===== SEND NOTIFICATIONS (admin + teacher) =====
-function openAdminNotify(){
+// ===== v93: notify modals — recipient clarity + live student counts =====
+async function openAdminNotify(){
+  showModal(' Send Notification','<div class="spinner"></div>','');
+  let c={all:0,teachers:0,students:0};
+  try{ c=await api('/api/admin/notify-targets'); }catch(e){}
+  window._anCounts=c;
   showModal(' Send Notification',
- `<div class="form-group"><label>Send To</label><select class="form-control" id="an-target"><option value="all">Everyone (Teachers + Students)</option><option value="teachers">Teachers Only</option><option value="students">Students Only</option></select></div><div class="form-group"><label>Title</label><input class="form-control" id="an-title" placeholder="e.g. Holiday Notice"></div><div class="form-group"><label>Message</label><textarea class="form-control" id="an-msg" rows="4" placeholder="Write your message..."></textarea></div>`,
+ `<div class="form-group"><label>Send To</label><select class="form-control" id="an-target" onchange="anScope()"><option value="all">Everyone — Teachers + Students (${c.all})</option><option value="teachers">Teachers Only (${c.teachers})</option><option value="students">Students Only (${c.students})</option></select></div><div class="ntf-scope" id="an-scope"></div><div class="form-group"><label>Title</label><input class="form-control" id="an-title" placeholder="e.g. Holiday Notice"></div><div class="form-group"><label>Message</label><textarea class="form-control" id="an-msg" rows="4" placeholder="Write your message..."></textarea></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitAdminNotify()">Send</button>`);
+  anScope();
+}
+function anScope(){
+  const c=window._anCounts||{all:0,teachers:0,students:0};
+  const t=document.getElementById('an-target'); const box=document.getElementById('an-scope');
+  if(!t||!box) return;
+  const v=t.value;
+  const label=v==='teachers'?'Teachers Only':v==='students'?'Students Only':'Everyone — Teachers + Students';
+  const n=v==='teachers'?c.teachers:v==='students'?c.students:c.all;
+  box.innerHTML=`<div class="ns-n">${n}</div><div class="ns-t"><b>${label}</b><br>This notification will reach ${n} user${n===1?'':'s'}.</div>`;
 }
 async function submitAdminNotify(){
   const title=val('an-title'), message=document.getElementById('an-msg').value.trim(), target=val('an-target');
-  if(!title||!message){ toast('Title and message required!',true); return; }
+  if(!title||!message){ toast('Title and message are required.',true); return; }
   try{ const r=await api('/api/admin/notify','POST',{title,message,target}); closeModal(); toast(r.message); }catch(e){ toast(e.message,true); }
 }
-function openTeacherNotify(){
-  showModal(' Send Notification to Students',
- `<div class="alert alert-info">This will be sent to all students under your name.</div><div class="form-group"><label>Title</label><input class="form-control" id="tn-title" placeholder="e.g. Aaj ki class shift"></div><div class="form-group"><label>Message</label><textarea class="form-control" id="tn-msg" rows="4" placeholder="Message..."></textarea></div>`,
+async function openTeacherNotify(){
+  showModal(' Notify Students','<div class="spinner"></div>','');
+  let tg={subjects:[],all_count:0,scoped:false};
+  try{ tg=await api('/api/teacher/notify-targets'); }catch(e){}
+  window._tnTargets=tg;
+  const opts=[`<option value="">All My Students (${tg.all_count})</option>`]
+    .concat((tg.subjects||[]).map(s=>`<option value="${esc(s.name)}">${esc(s.name)} (${s.count})</option>`)).join('');
+  showModal(' Notify Students',
+ `<div class="form-group"><label>Send To</label><select class="form-control" id="tn-target" onchange="tnScope()">${opts}</select></div><div class="ntf-scope" id="tn-scope"></div><div class="form-group"><label>Title</label><input class="form-control" id="tn-title" placeholder="e.g. Today's class timing"></div><div class="form-group"><label>Message</label><textarea class="form-control" id="tn-msg" rows="4" placeholder="Write your message..."></textarea></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitTeacherNotify()">Send</button>`);
+  tnScope();
+}
+function tnScope(){
+  const tg=window._tnTargets||{subjects:[],all_count:0};
+  const t=document.getElementById('tn-target'); const box=document.getElementById('tn-scope');
+  if(!t||!box) return;
+  const v=t.value; let label='All My Students', n=tg.all_count;
+  if(v){ const s=(tg.subjects||[]).find(x=>x.name===v); label=v+' Students'; n=s?s.count:0; }
+  box.innerHTML=`<div class="ns-n">${n}</div><div class="ns-t"><b>${esc(label)}</b><br>This notification will reach ${n} student${n===1?'':'s'}.</div>`;
 }
 async function submitTeacherNotify(){
-  const title=val('tn-title'), message=document.getElementById('tn-msg').value.trim();
-  if(!title||!message){ toast('Title and message required!',true); return; }
-  try{ const r=await api('/api/teacher/notify','POST',{title,message}); closeModal(); toast(r.message); }catch(e){ toast(e.message,true); }
+  const title=val('tn-title'), message=document.getElementById('tn-msg').value.trim(), subject=val('tn-target');
+  if(!title||!message){ toast('Title and message are required.',true); return; }
+  try{ const r=await api('/api/teacher/notify','POST',{title,message,subject}); closeModal(); toast(r.message); }catch(e){ toast(e.message,true); }
+}
+// ===== v93: teacher profile (sidebar name click) =====
+async function openTeacherProfile(){
+  showModal(' My Profile','<div class="spinner"></div>','');
+  let p={};
+  try{ p=await api('/api/teacher/profile'); }catch(e){ showModal(' My Profile',errHtml(e)); return; }
+  const suf=p.gender==='male'?' Sir':p.gender==='female'?' Ma\'am':'';
+  const sc=p.subject_classes||[];
+  const clsTxt=sc.length?[...new Set(sc.map(x=>x.class).filter(Boolean))].map(c=>'Class '+c).join(' · '):'\u2014';
+  const cell=(k,v)=>`<div class="tprof-cell"><div class="k">${k}</div><div class="v">${v||'\u2014'}</div></div>`;
+  showModal(' My Profile',
+ `<div class="tprof-hero"><div class="tprof-ava" id="tprof-ava">${esc(initials(p.name||'T'))}</div><div style="min-width:0"><div style="font-weight:900;font-size:1.15rem">${esc(p.name||'Teacher')}${suf}</div><div style="font-size:.76rem;color:var(--text-muted);font-weight:700">${esc(p.user_id||'')}</div><div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">${(p.subjects||[]).map(s=>`<span class="xm-chip">${esc(s)}</span>`).join('')||'<span style="font-size:.76rem;color:var(--text-muted)">No subjects set</span>'}</div></div></div><div class="tprof-grid">${cell('Teacher ID',esc(p.user_id||''))}${cell('Phone',esc(p.phone||''))}${cell('Batch',esc(p.batch||''))}${cell('Classes',clsTxt)}</div>`,
+ `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+  if(p.has_photo) _loadPhotoInto('tprof-ava','/api/teacher/my-photo');
 }
 // ===== ADMIN PDF UPLOAD =====
 async function pdfSubjOptions(selId,cls){
@@ -7314,11 +7359,56 @@ async function _renderClassReports(wrapId, endpoint, showTeacher){
   }catch(e){ wrap.innerHTML=errHtml(e); }
 }
 let _tdSub=null;
+// ===== v93: doubt thread helpers (teacher / student / admin sab likh sakte hain) =====
+function dbtRespHTML(r){
+  const cls=r.role==='admin'?'adm':(r.role==='student'?'stu':'tch');
+  const tag=r.role==='admin'?'MVS Foundation':(r.role==='student'?'Student':'Teacher');
+  const ini=esc(initials(r.author_name||(r.role==='admin'?'MVS':'?')));
+  const when=r.created_at?new Date(r.created_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+  return `<div class="dbt-resp ${cls}"><div class="dbt-resp-ava">${ini}</div><div class="dbt-resp-b"><div class="dbt-resp-h"><span class="dbt-resp-n">${esc(r.author_name||tag)}</span><span class="dbt-resp-tag">${tag}</span>${r.mine?'<span style="font-size:.62rem;color:var(--text-muted);font-weight:700">(You)</span>':''}</div><div class="dbt-resp-t">${_fmtRich(r.body||'')}</div>${when?`<div class="dbt-resp-w">${when}</div>`:''}</div></div>`;
+}
+function dbtThreadHTML(d){
+  const rs=d.responses||[]; if(!rs.length) return '';
+  return `<div class="dbt-thread">${rs.map(dbtRespHTML).join('')}</div>`;
+}
+function dbtReplyRow(role,id,ph){
+  const iid='dbtr-'+role+'-'+id;
+  return `<div class="dbt-replyrow"><input class="form-control" id="${iid}" placeholder="${ph||'Write a reply...'}" onkeydown="if(event.key==='Enter')dbtRespond('${role}',${id},'${iid}')"><button class="btn btn-primary btn-sm" onclick="dbtRespond('${role}',${id},'${iid}')">Send</button></div>`;
+}
+async function dbtRespond(role,id,iid){
+  const inp=document.getElementById(iid); const body=(inp?inp.value:'').trim();
+  if(!body){ toast('Please write a reply first.',true); return; }
+  try{
+    await api('/api/'+role+'/doubts/'+id+'/respond','POST',{body});
+    toast('Reply added.');
+    if(role==='teacher') loadTDoubts(); else if(role==='student') loadSDoubts(); else loadADoubts();
+  }catch(e){ toast(e.message,true); }
+}
+async function tAssignDoubt(id){
+  const sel=document.getElementById('dbt-as-'+id);
+  const target=sel?sel.value:'';
+  if(!target){ toast('Choose who should take this doubt.',true); return; }
+  const name=(sel.options[sel.selectedIndex]||{}).text||'';
+  if(!confirm('Reassign this doubt to '+name+'?\n\nFrom your side this doubt will be treated as handed over — resolving it becomes their responsibility.')) return;
+  try{
+    const r=await api('/api/teacher/doubts/'+id+'/assign','POST',{target:target==='admin'?'admin':parseInt(target,10)});
+    toast(r.message||'Doubt assigned.'); loadTDoubts();
+  }catch(e){ toast(e.message,true); }
+}
+function tAssignRow(d){
+  const tg=window._tDoubtTargets||{teachers:[],admin:true};
+  if(!tg.teachers.length&&!tg.admin) return '';
+  const opts=tg.teachers.map(t=>`<option value="${t.id}">${esc(t.name)}${(t.subjects||[]).length?' — '+esc(t.subjects.join(', ')):''}</option>`).join('')
+    +(tg.admin?`<option value="admin">MVS Foundation (Admin)</option>`:'');
+  return `<div class="dbt-assign-row"><span style="font-size:.74rem;font-weight:800;color:#4f46e5;white-space:nowrap">Can't answer?</span><select class="form-control" id="dbt-as-${d.id}"><option value="" selected disabled>Reassign this doubt to…</option>${opts}</select><button class="btn btn-warning btn-sm" onclick="tAssignDoubt(${d.id})">Assign</button></div>`;
+}
+
 async function loadTDoubts(){
   const el=document.getElementById('t-doubts-content');
   try{
  const doubts=await api('/api/teacher/doubts');
  let ds={pending:0,resolved:0,avg_response_minutes:null}; try{ ds=await api('/api/teacher/doubt-stats'); }catch(e){}
+ try{ window._tDoubtTargets=await api('/api/teacher/doubts-assign-targets'); }catch(e){ window._tDoubtTargets={teachers:[],admin:false}; }
  window._tDoubts=doubts; window._tDoubtStats=ds;
  const b=document.getElementById('t-doubt-badge'); if(b){ b.textContent=ds.pending||0; b.style.display=(ds.pending||0)>0?'':'none'; }
  tRenderDoubts();
@@ -7332,7 +7422,7 @@ function tRenderDoubts(){
   if(_tdSub===null){
     // ---- SUBJECT CARDS VIEW ----
     html+=toppersHTML(doubts,'ttop',false);
-    const bySub={}; doubts.forEach(d=>{ const k=d.subject||'Other'; (bySub[k]=bySub[k]||{total:0,pending:0}); bySub[k].total++; if(d.status!=='resolved') bySub[k].pending++; });
+    const bySub={}; doubts.forEach(d=>{ const k=d.subject||'Other'; (bySub[k]=bySub[k]||{total:0,pending:0}); bySub[k].total++; if(d.status!=='resolved'&&!d.assigned_away) bySub[k].pending++; });
     const subs=Object.keys(bySub).sort();
     if(!subs.length) html+=`<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>No doubts yet.</p></div></div></div>`;
     else html+=`<div class="xm-grid">`+subs.map(sub=>{
@@ -7341,9 +7431,10 @@ function tRenderDoubts(){
     }).join('')+`</div>`;
     el.innerHTML=html; return;
   }
-  // ---- SUBJECT DRILL VIEW (sectioned: Pending upar, Resolved neeche) ----
+  // ---- SUBJECT DRILL VIEW (sectioned: Pending upar, Resolved neeche, Reassigned alag) ----
   const list=doubts.filter(d=>(d.subject||'Other')===_tdSub);
-  const pend=list.filter(d=>d.status!=='resolved'), done=list.filter(d=>d.status==='resolved');
+  const away=list.filter(d=>d.assigned_away);
+  const pend=list.filter(d=>d.status!=='resolved'&&!d.assigned_away), done=list.filter(d=>d.status==='resolved'&&!d.assigned_away);
   html+=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="_tdSub=null;tRenderDoubts()">\u2190 All Subjects</button><h3 style="margin:0">${esc(_tdSub)} <span style="color:var(--text-muted);font-weight:600;font-size:.85rem">(${list.length})</span></h3></div><div class="hide-scroll doubt-drill">`;
   const mediaOf=d=>`${d.has_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/voice')">${ic('play')} Voice Note</button>`:''}${d.has_image?doubtAttachHtml('teacher',d.id,d.attach_mime,d.attach_name,false):''}`;
   const headOf=(d,pill)=>`<div class="dbt-head"><div style="min-width:0"><div class="dbt-name">${esc(d.student_name||'Student')}</div><div class="dbt-meta">${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}${d.created_at?' \u00b7 '+esc(d.created_at):''}</div></div><div class="dbt-badges">${pill}</div></div>`;
@@ -7352,7 +7443,7 @@ function tRenderDoubts(){
     rows+=`<div class="dbt-sec">Pending (${pend.length})</div>`;
     rows+=pend.map(d=>{
       const media=mediaOf(d);
-      return `<div class="dbt-card pend">${headOf(d,'<span class="dbt-pill open">Pending</span>')}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}<div style="margin-top:12px">${composerHTML('ta'+d.id,'Write your answer\u2026 or send a voice note / file','resolveDoubt('+d.id+')','Resolve')}</div></div>`;
+      return `<div class="dbt-card pend">${headOf(d,'<span class="dbt-pill open">Pending</span>')}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${dbtThreadHTML(d)}<div style="margin-top:12px">${composerHTML('ta'+d.id,'Write your answer\u2026 or send a voice note / file','resolveDoubt('+d.id+')','Resolve')}</div>${dbtReplyRow('teacher',d.id,'Or add a note for the student...')}${tAssignRow(d)}</div>`;
     }).join('');
   }
   if(done.length){
@@ -7360,7 +7451,15 @@ function tRenderDoubts(){
     rows+=done.map(d=>{
       const media=mediaOf(d);
       const amedia=`${d.has_answer_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/answer-voice')">${ic('play')} Your Voice Answer</button>`:''}${d.has_answer_file?doubtAttachHtml('teacher',d.id,d.answer_attach_mime,d.answer_attach_name,true):''}`;
-      return `<div class="dbt-card res">${headOf(d,'<span class="dbt-pill res">\u2713 Resolved</span>')}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> <span id="tda-${d.id}">${_fmtRich(d.answer)}</span></div>`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}<div style="margin-top:10px"><button class="btn btn-danger btn-sm" title="Apna response delete karo — doubt wapas pending ho jayega" onclick="tDelDoubtAnswer(${d.id})">${ic('trash')} Delete Response</button></div></div>`;
+      return `<div class="dbt-card res">${headOf(d,'<span class="dbt-pill res">\u2713 Resolved</span>')}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> <span id="tda-${d.id}">${_fmtRich(d.answer)}</span></div>`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}${dbtThreadHTML(d)}${dbtReplyRow('teacher',d.id,'Write a follow-up reply...')}<div style="margin-top:10px"><button class="btn btn-danger btn-sm" title="Delete your response — the doubt moves back to Pending" onclick="tDelDoubtAnswer(${d.id})">${ic('trash')} Delete Response</button></div></div>`;
+    }).join('');
+  }
+  if(away.length){
+    rows+=`<div class="dbt-sec">Reassigned — Handed Over (${away.length})</div>`;
+    rows+=away.map(d=>{
+      const owner=d.assigned_to_name||'the new owner';
+      const st=(d.status==='resolved')?'<span class="dbt-pill res">\u2713 Resolved</span>':'<span class="dbt-pill open">Pending</span>';
+      return `<div class="dbt-away">${headOf(d,`<span class="dbt-pill away">Reassigned \u2192 ${esc(owner)}</span>`)}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${dbtThreadHTML(d)}<div style="font-size:.72rem;color:var(--text-muted);margin-top:8px">Handed over by you ${st} — resolving this doubt is now <b>${esc(owner)}</b>'s responsibility.</div></div>`;
     }).join('');
   }
   html+=(rows||`<div class="empty-state"><p>No doubts in this subject.</p></div>`)+`</div>`;
@@ -7374,8 +7473,8 @@ function tRenderDoubts(){
 }
 function tPickDoubtSub(sub){ _tdSub=sub; tRenderDoubts(); }
 async function tDelDoubtAnswer(id){
-  if(!confirm('Apna response delete karein?\n\nDoubt wapas Pending ho jayega aur student ko aapka jawab nahi dikhega.')) return;
-  try{ await api('/api/teacher/doubt/'+id+'/answer','DELETE'); toast('Response deleted — doubt pending hai.'); loadTDoubts(); }
+  if(!confirm('Delete your response?\n\nThe doubt will move back to Pending and the student will no longer see your answer.')) return;
+  try{ await api('/api/teacher/doubt/'+id+'/answer','DELETE'); toast('Response deleted — doubt is pending again.'); loadTDoubts(); }
   catch(e){ toast(e.message||'Delete failed',true); }
 }
 async function viewDoubtImage(id){ viewDoubtFile('teacher',id,'image/jpeg'); }
@@ -7428,7 +7527,28 @@ async function loadTReschedule(){
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 
-async function loadTNotif(){ await loadNotif('/api/teacher/notifications','t-notif-content'); }
+// ===== v93: teacher notifications — Sent by Me (views tracking) =====
+async function loadTNotif(){
+  const el=document.getElementById('t-notif-content');
+  softSpin(el);
+  let log=[]; try{ log=await api('/api/teacher/notify-log'); }catch(e){}
+  await loadNotif('/api/teacher/notifications','t-notif-content');
+  if(log.length){
+    const sentHtml=`<div class="card" style="margin-bottom:16px"><div class="card-header"><h3> Sent by Me <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">— tap Views to see exactly who read it</span></h3></div><div class="card-body">`+
+      log.map(b=>`<div class="ntlog-row"><div class="ntlog-ic"></div><div style="min-width:0;flex:1"><div style="font-weight:800;font-size:.88rem">${esc(b.title)}</div><div style="font-size:.74rem;color:var(--text-muted);margin-top:2px">${esc(b.label)} \u00b7 ${b.sent} recipient${b.sent===1?'':'s'}${b.created_at?' \u00b7 '+new Date(b.created_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):''}</div></div><div class="ntlog-views" onclick="openNtViews('${b.batch_key}')" title="See who viewed"><div class="nv-n">${b.viewed}/${b.sent}</div><div class="nv-t">Views</div></div></div>`).join('')+`</div></div>`;
+    el.insertAdjacentHTML('afterbegin',sentHtml);
+  }
+}
+async function openNtViews(batch){
+  showModal(' Notification Views','<div class="spinner"></div>','');
+  let d; try{ d=await api('/api/teacher/notify-log/'+batch); }catch(e){ showModal(' Notification Views',errHtml(e)); return; }
+  const recips=d.recipients||[];
+  const seen=recips.filter(r=>r.read).length, total=recips.length;
+  const rows=recips.map(r=>`<div class="ntv-row"><div class="ntv-ava">${esc(initials(r.name))}</div><div style="min-width:0;font-weight:700;font-size:.86rem">${esc(r.name)}</div>${r.read?`<div class="ntv-seen">\u2713 Viewed${r.read_at?' \u00b7 '+new Date(r.read_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):''}</div>`:'<div class="ntv-pend">Not viewed yet</div>'}</div>`).join('');
+  showModal(' Notification Views',
+   `<div class="ntf-scope"><div class="ns-n">${seen}/${total}</div><div class="ns-t"><b>${esc(d.title||'Notification')}</b><br>${esc(d.label||'')} \u2014 ${seen} of ${total} student${total===1?'':'s'} have viewed it.</div></div><div class="hide-scroll" style="max-height:320px;overflow:auto">${rows||'<div class="empty-state"><p>No recipients.</p></div>'}</div>`,
+   `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+}
 
 // ========================================================
 //  ADMIN PORTAL
@@ -9511,7 +9631,7 @@ let _aDoubtFilter='all';
 let _adSub=null;
 function adPickSub(sub){ _adSub=sub?decodeURIComponent(sub):''; _aDoubtFilter='all'; aRenderDoubts(); }
 async function aDelDoubt(id){
-  if(!confirm('Ye doubt delete karein?\n\nYe student aur teacher DONO portals se turant delete ho jayega. Undo nahi hoga.')) return;
+  if(!confirm('Delete this doubt?\n\nIt will be removed immediately from BOTH the student and teacher portals. This cannot be undone.')) return;
   try{ await api('/api/admin/doubt/'+id,'DELETE'); toast('Doubt deleted.'); loadADoubts(); }
   catch(e){ toast(e.message||'Delete failed',true); }
 }
@@ -9558,11 +9678,14 @@ function aRenderDoubts(){
     const qfile=d.has_image&&!(d.attach_mime||'image/jpeg').startsWith('image/')?`<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="viewDoubtFile('admin',${d.id},'${esc(d.attach_mime||'')}')">${ic('folder')} ${esc(d.attach_name||'Attachment')}</button>`:'';
     const qvoice=d.has_voice?`<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="playDoubtVoice(this,'/api/admin/doubt/${d.id}/voice')">${ic('play')} Voice Note</button>`:'';
     const avoice=`${d.has_answer_voice?`<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="playDoubtVoice(this,'/api/admin/doubt/${d.id}/answer-voice')">${ic('play')} Voice Answer</button>`:''}${d.has_answer_file?`<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="viewAnswerFile('admin',${d.id},'${esc(d.answer_attach_mime||'')}')">${ic('folder')} Answer Attachment</button>`:''}`;
+    const owner=d.owner_name||d.teacher_name;
     const ans=d.answer||d.answer_image_link||d.has_answer_voice
-      ? `<div class="bubble bubble-a"><div class="who">${esc(d.teacher_name)} (Teacher)</div>${esc(d.answer||'')}${avoice}${d.answer_image_link?`<a href="${esc(d.answer_image_link)}" target="_blank" style="color:var(--primary);display:block;margin-top:6px">View attached solution \u2197</a>`:''}</div>`
-      : `<div class="bubble-pending">Awaiting teacher's reply...</div>`;
-    return `<div class="dcard"><div class="dcard-head"><div class="dcard-who"><b>${esc(d.student_name)}</b>${d.student_phone?' \u00b7 '+esc(d.student_phone):''} asked <b>${esc(d.teacher_name)}</b><div style="margin-top:3px">${esc(d.subject||'')}${d.topic?' \u00b7 '+esc(d.topic):''} \u00b7 ${esc(when)}</div></div><div style="display:flex;align-items:center;gap:8px"><span class="tag ${d.status==='resolved'?'tag-done':'tag-pending'}">${d.status==='resolved'?'Resolved':'Pending'}</span><button class="btn btn-danger btn-sm" title="Ye doubt delete karo (student aur teacher dono portals se hat jayega)" onclick="aDelDoubt(${d.id})">${ic('trash')}</button></div></div>
-      <div class="chat-thread"><div class="bubble bubble-q"><div class="who">${esc(d.student_name)} (Student)</div>${esc(d.question||'')}${qvoice}${qfile}${qimg}</div>${ans}</div></div>`;
+      ? `<div class="bubble bubble-a"><div class="who">${esc(d.assigned_to_admin?'MVS Foundation (Official)':(d.teacher_name+' (Teacher)'))}</div>${esc(d.answer||'')}${avoice}${d.answer_image_link?`<a href="${esc(d.answer_image_link)}" target="_blank" style="color:var(--primary);display:block;margin-top:6px">View attached solution \u2197</a>`:''}</div>`
+      : `<div class="bubble-pending">${d.assigned_to_admin?'Awaiting an official reply from MVS Foundation...':'Awaiting teacher\'s reply...'}</div>`;
+    const reassignNote=d.assigned_by_name?`<div style="margin-top:3px;font-size:.72rem;color:#4f46e5;font-weight:700">Reassigned by ${esc(d.assigned_by_name)} \u2192 now with ${esc(owner)}</div>`:'';
+    const adminReply=`<div style="display:flex;align-items:center;gap:9px;margin-top:12px;background:linear-gradient(135deg,rgba(201,162,39,.1),rgba(201,162,39,.03));border:1px solid rgba(201,162,39,.4);border-radius:12px;padding:9px 12px"><div class="mvs-logo" style="width:30px;height:30px;font-size:.8rem">M</div><input class="form-control" style="flex:1;min-width:0" id="dbtr-admin-${d.id}" placeholder="Reply as MVS Foundation${d.status==='resolved'?'':''} — posting on a pending doubt resolves it" onkeydown="if(event.key==='Enter')dbtRespond('admin',${d.id},'dbtr-admin-${d.id}')"><button class="btn btn-primary btn-sm" onclick="dbtRespond('admin',${d.id},'dbtr-admin-${d.id}')">Post</button></div>`;
+    return `<div class="dcard"${d.assigned_to_admin?' style="border-color:rgba(201,162,39,.6);box-shadow:0 0 0 3px rgba(201,162,39,.12)"':''}><div class="dcard-head"><div class="dcard-who"><b>${esc(d.student_name)}</b>${d.student_phone?' \u00b7 '+esc(d.student_phone):''} asked <b>${esc(d.teacher_name)}</b><div style="margin-top:3px">${esc(d.subject||'')}${d.topic?' \u00b7 '+esc(d.topic):''} \u00b7 ${esc(when)}</div>${reassignNote}</div><div style="display:flex;align-items:center;gap:8px">${d.assigned_to_admin?'<span class="tag" style="background:linear-gradient(135deg,#c9a227,#a8841a);color:#241a05">With MVS Foundation</span>':''}<span class="tag ${d.status==='resolved'?'tag-done':'tag-pending'}">${d.status==='resolved'?'Resolved':'Pending'}</span><button class="btn btn-danger btn-sm" title="Delete this doubt (removed from student and teacher portals)" onclick="aDelDoubt(${d.id})">${ic('trash')}</button></div></div>
+      <div class="chat-thread"><div class="bubble bubble-q"><div class="who">${esc(d.student_name)} (Student)</div>${esc(d.question||'')}${qvoice}${qfile}${qimg}</div>${ans}</div>${dbtThreadHTML(d)}${adminReply}</div>`;
   }).join(''):`<div class="empty-state"><p>No doubts in this view.</p></div>`;
   el.innerHTML=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="adPickSub('')">\u2190 All Subjects</button><h3 style="margin:0;font-size:1.2rem">${esc(_adSub)}</h3></div>
     <div class="dfilter">${fbtn('all','All ('+total+')')}${fbtn('pending','Pending ('+pending+')')}${fbtn('resolved','Resolved ('+resolved+')')}</div>
@@ -12261,11 +12384,17 @@ async function loadSDoubts(){
       const media=`${d.has_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/student/doubt/${d.id}/voice')">${ic('play')} My Voice Note</button>`:''}${d.has_file?doubtAttachHtml('student',d.id,d.attach_mime,d.attach_name,false):''}`;
       const ansv=`${d.has_answer_voice?`<button class="btn btn-success btn-sm" style="margin-top:8px" onclick="playDoubtVoice(this,'/api/student/doubt/${d.id}/answer-voice')">${ic('play')} Voice Answer</button>`:''}${d.has_answer_file?doubtAttachHtml('student',d.id,d.answer_attach_mime,d.answer_attach_name,true):''}`;
       // teacher reply: photo avatar + naam ke saath (logo jaisa)
-      const tAva=d.has_teacher_photo
-        ? `<div class="dbt-a-ava" id="dbtava-${d.id}"></div>`
-        : `<div class="dbt-a-init">${esc(initials(d.teacher_name||'T'))}</div>`;
-      const ansBlock=d.answer?`<div class="dbt-a"><div class="dbt-a-head">${tAva}<div style="min-width:0"><div style="font-weight:800;font-size:.86rem;color:#166534">${esc(d.teacher_name||'Teacher')}</div><div style="font-size:.66rem;font-weight:700;color:#4d7c5f;letter-spacing:.04em">TEACHER'S REPLY</div></div></div><div id="dbta-${d.id}">${_fmtRich(d.answer)}</div></div>`:'';
-      return `<div class="dbt-card ${d.status==='resolved'?'res':'pend'}"><div class="dbt-head"><div style="min-width:0"><div class="dbt-name">${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}</div><div class="dbt-meta">${esc(d.created_at||'')}</div></div><div class="dbt-badges"><span class="dbt-pill ${d.status==='resolved'?'res':'open'}">${d.status==='resolved'?'\u2713 Resolved':'Pending'}</span></div></div><div class="dbt-q" id="dbtq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${ansBlock}${ansv?`<div class="dbt-media">${ansv}</div>`:''}</div>`;
+      // v93: admin (MVS Foundation) ka reply ho to gold M logo + OFFICIAL RESPONSE
+      const tAva=d.official
+        ? `<div class="mvs-logo" style="border-radius:50%">M</div>`
+        : (d.has_teacher_photo
+          ? `<div class="dbt-a-ava" id="dbtava-${d.id}"></div>`
+          : `<div class="dbt-a-init">${esc(initials(d.teacher_name||'T'))}</div>`);
+      const ansHead=d.official
+        ? `<div style="min-width:0"><div style="font-weight:800;font-size:.86rem;color:#8a6d10">${esc(d.teacher_name||'MVS Foundation')}</div><div style="font-size:.66rem;font-weight:800;color:#a8841a;letter-spacing:.06em">OFFICIAL RESPONSE</div></div>`
+        : `<div style="min-width:0"><div style="font-weight:800;font-size:.86rem;color:#166534">${esc(d.teacher_name||'Teacher')}</div><div style="font-size:.66rem;font-weight:700;color:#4d7c5f;letter-spacing:.04em">TEACHER'S REPLY</div></div>`;
+      const ansBlock=d.answer?`<div class="dbt-a"${d.official?' style="border-color:rgba(201,162,39,.55);background:linear-gradient(135deg,rgba(201,162,39,.08),rgba(201,162,39,.02))"':''}><div class="dbt-a-head">${tAva}${ansHead}</div><div id="dbta-${d.id}">${_fmtRich(d.answer)}</div></div>`:'';
+      return `<div class="dbt-card ${d.status==='resolved'?'res':'pend'}"><div class="dbt-head"><div style="min-width:0"><div class="dbt-name">${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}</div><div class="dbt-meta">${esc(d.created_at||'')}${d.official?' \u00b7 with <b>MVS Foundation</b>':''}</div></div><div class="dbt-badges"><span class="dbt-pill ${d.status==='resolved'?'res':'open'}">${d.status==='resolved'?'\u2713 Resolved':'Pending'}</span></div></div><div class="dbt-q" id="dbtq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${ansBlock}${ansv?`<div class="dbt-media">${ansv}</div>`:''}${dbtThreadHTML(d)}${dbtReplyRow('student',d.id,'Write a follow-up for '+(d.official?'MVS Foundation':'your teacher')+'...')}</div>`;
     }).join('');
     html+=`</div></div></div>`;
     el.innerHTML=html;
@@ -12611,11 +12740,12 @@ async function loadNotif(path,elId){
  const role=elId.startsWith('t-')?'teacher':elId.startsWith('a-')?'admin':'student';
  let html=`<div class="card"><div class="card-header"><h3> Notifications</h3></div><div class="card-body">`;
  if(ns.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No notifications yet</p></div>`;
+ const fbPage=role==='admin'?'dashboard':'notifications';
  ns.forEach(n=>{
    const go=(NOTIF_GO[role]||{})[n.notif_type||''];
    const av=_notifAvHtml(n,'MVS');
-   const core=`<div style="display:flex;justify-content:space-between;gap:8px"><h4 style="font-size:.9rem">${esc(n.title)}${go?' <span style="font-size:.7rem;color:var(--primary);font-weight:800">&#8250;</span>':''}</h4><small style="color:var(--text-muted);flex-shrink:0">${new Date(n.created_at).toLocaleString()}</small></div><p style="font-size:.82rem;color:var(--text-muted);margin-top:6px">${esc(n.message)}</p>`;
-   html+=`<div class="doubt-card${go?' notif-click':''}" style="border-left-color:${n.is_read?'var(--border)':'var(--primary)'}${go?';cursor:pointer':''}"${go?` onclick="notifGo('${role}',${n.id||0},'${esc(n.notif_type||'')}')" title="Tap to open this section"`:''}>${av?`<div class="notif-row">${av}<div style="min-width:0;flex:1">${core}</div></div>`:core}</div>`;
+   const core=`<div style="display:flex;justify-content:space-between;gap:8px"><h4 style="font-size:.9rem">${esc(n.title)} <span style="font-size:.7rem;color:var(--primary);font-weight:800">&#8250;</span></h4><small style="color:var(--text-muted);flex-shrink:0">${new Date(n.created_at).toLocaleString()}</small></div><p style="font-size:.82rem;color:var(--text-muted);margin-top:6px">${esc(n.message)}</p>`;
+   html+=`<div class="doubt-card notif-click" style="border-left-color:${n.is_read?'var(--border)':'var(--primary)'};cursor:pointer" onclick="notifGo('${role}',${n.id||0},'${esc(n.notif_type||'')}'${go?'':" ,'"+fbPage+"'"})" title="${go?'Tap to open this section':'Tap to mark as read'}">${av?`<div class="notif-row">${av}<div style="min-width:0;flex:1">${core}</div></div>`:core}</div>`;
  });
  html+=`</div></div>`;
  el.innerHTML=html;
@@ -16341,6 +16471,54 @@ body.dark .po-pill.red{color:#f87171}
   .syl-scroll{max-height:none}
   .syl-search{max-width:none}
 }
+/* ===== v93: doubt threads + notify premium UI ===== */
+.dbt-thread{margin-top:12px;border-top:1.5px dashed var(--border);padding-top:10px;display:flex;flex-direction:column;gap:9px}
+.dbt-thread:empty{display:none}
+.dbt-resp{display:flex;gap:10px;align-items:flex-start}
+.dbt-resp-ava{width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.72rem;color:#fff;background:linear-gradient(135deg,#334155,#0f172a)}
+.dbt-resp.stu .dbt-resp-ava{background:linear-gradient(135deg,#1d4ed8,#1e3a8a)}
+.dbt-resp.adm .dbt-resp-ava{background:linear-gradient(135deg,#c9a227,#8a6d10);color:#241a05;position:relative}
+.dbt-resp-b{min-width:0;flex:1;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:8px 12px}
+.dbt-resp.adm .dbt-resp-b{background:linear-gradient(135deg,rgba(201,162,39,.1),rgba(201,162,39,.04));border-color:rgba(201,162,39,.45)}
+.dbt-resp-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px}
+.dbt-resp-n{font-weight:800;font-size:.8rem}
+.dbt-resp-tag{font-size:.6rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:2px 8px;border-radius:999px;background:rgba(100,116,139,.12);color:var(--text-muted)}
+.dbt-resp.stu .dbt-resp-tag{background:rgba(29,78,216,.12);color:#1d4ed8}
+.dbt-resp.adm .dbt-resp-tag{background:linear-gradient(135deg,#c9a227,#a8841a);color:#241a05}
+.dbt-resp-t{font-size:.84rem;line-height:1.55;white-space:pre-wrap;word-break:break-word}
+.dbt-resp-w{font-size:.66rem;color:var(--text-muted);margin-top:4px}
+.dbt-replyrow{display:flex;gap:8px;margin-top:10px}
+.dbt-replyrow input{flex:1;min-width:0}
+.dbt-assign-row{display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap;background:rgba(99,102,241,.06);border:1px dashed rgba(99,102,241,.35);border-radius:12px;padding:10px 12px}
+.dbt-assign-row select{flex:1;min-width:200px}
+.dbt-away{background:rgba(100,116,139,.05);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:12px}
+.dbt-away .dbt-q{opacity:.75}
+.dbt-pill.away{background:rgba(99,102,241,.14);color:#4f46e5}
+.mvs-brand{display:flex;align-items:center;gap:10px}
+.mvs-logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#c9a227,#8a6d10);color:#241a05;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.95rem;flex-shrink:0;box-shadow:0 2px 8px rgba(138,109,16,.35)}
+.ntf-scope{background:linear-gradient(135deg,rgba(201,162,39,.12),rgba(201,162,39,.05));border:1px solid rgba(201,162,39,.4);border-radius:12px;padding:11px 14px;display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.ntf-scope .ns-n{font-weight:900;font-size:1.15rem;color:#8a6d10;min-width:28px;text-align:center}
+.ntf-scope .ns-t{font-size:.8rem;line-height:1.4}
+.ntf-scope .ns-t b{font-size:.84rem}
+.ntlog-row{display:flex;align-items:center;gap:12px;padding:13px 14px;border:1px solid var(--border);border-radius:14px;margin-bottom:10px;background:var(--card);transition:.15s}
+.ntlog-row:hover{border-color:var(--primary)}
+.ntlog-ic{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,rgba(201,162,39,.18),rgba(201,162,39,.06));display:flex;align-items:center;justify-content:center;font-size:1.05rem;flex-shrink:0}
+.ntlog-views{margin-left:auto;text-align:center;cursor:pointer;border:1px solid rgba(201,162,39,.45);background:rgba(201,162,39,.08);border-radius:12px;padding:6px 12px;transition:.15s;flex-shrink:0}
+.ntlog-views:hover{background:rgba(201,162,39,.18);transform:translateY(-1px)}
+.ntlog-views .nv-n{font-weight:900;font-size:.95rem;color:#8a6d10}
+.ntlog-views .nv-t{font-size:.62rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted)}
+.ntv-row{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid rgba(127,127,127,.12)}
+.ntv-row:last-child{border-bottom:0}
+.ntv-ava{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#334155,#0f172a);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.66rem;flex-shrink:0}
+.ntv-seen{margin-left:auto;font-size:.7rem;font-weight:800;color:var(--success);display:flex;align-items:center;gap:5px}
+.ntv-pend{margin-left:auto;font-size:.7rem;font-weight:700;color:var(--text-muted)}
+.tprof-hero{display:flex;align-items:center;gap:16px;padding:18px;border-radius:16px;background:linear-gradient(135deg,rgba(201,162,39,.14),rgba(201,162,39,.04));border:1px solid rgba(201,162,39,.4);margin-bottom:14px}
+.tprof-ava{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#c9a227,#8a6d10);color:#241a05;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.4rem;background-size:cover;background-position:center;flex-shrink:0;border:3px solid rgba(201,162,39,.5)}
+.tprof-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tprof-cell{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:10px 13px}
+.tprof-cell .k{font-size:.64rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted);margin-bottom:3px}
+.tprof-cell .v{font-weight:700;font-size:.88rem}
+@media(max-width:560px){.tprof-grid{grid-template-columns:1fr}}
 </style>
 <script id="syl-js">
 /* ============================================================

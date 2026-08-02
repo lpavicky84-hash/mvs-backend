@@ -36,9 +36,12 @@ def get_teacher_profile(user, db):
         raise HTTPException(status_code=404, detail="Teacher profile not found")
     return profile
 
-def notify(db, user_id: int, title: str, message: str, notif_type: str):
-    """Helper to create notification"""
-    n = Notification(user_id=user_id, title=title, message=message, notif_type=notif_type)
+def notify(db, user_id: int, title: str, message: str, notif_type: str,
+           sender_id=None, sender_role=None, batch_key=None, batch_label=None):
+    """Helper to create notification (v93: sender/batch fields optional — views tracking)"""
+    n = Notification(user_id=user_id, title=title, message=message, notif_type=notif_type,
+                     sender_id=sender_id, sender_role=sender_role,
+                     batch_key=batch_key, batch_label=batch_label)
     db.add(n)
 
 # ===== DASHBOARD =====
@@ -281,6 +284,25 @@ def get_tests(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     return db.query(Test).filter(Test.teacher_id == tp.id).all()
 
 # ===== DOUBTS =====
+def _doubt_resp_json(db, did, my_role, my_teacher_id=None):
+    """v93: doubt thread responses (oldest first) — mine flag viewer ke hisaab se."""
+    from models import DoubtResponse
+    out = []
+    for r in (db.query(DoubtResponse).filter(DoubtResponse.doubt_id == did)
+              .order_by(DoubtResponse.created_at.asc(), DoubtResponse.id.asc()).all()):
+        mine = (r.role == my_role) and (my_role != "teacher" or (my_teacher_id is not None and r.author_teacher_id == my_teacher_id))
+        out.append({"id": r.id, "role": r.role, "author_name": r.author_name,
+                    "body": r.body, "mine": bool(mine),
+                    "created_at": r.created_at.isoformat() if r.created_at else None})
+    return out
+
+def _doubt_owner_name(db, d):
+    """v93: ab ye doubt kiski responsibility hai — uska display naam."""
+    if getattr(d, "assigned_to_admin", False):
+        return "MVS Foundation"
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == d.teacher_id).first() if d.teacher_id else None
+    return (tp.user.name if tp and tp.user else "Unassigned")
+
 @router.get("/doubts")
 def get_doubts(
     status: Optional[str] = None,
@@ -288,20 +310,121 @@ def get_doubts(
     current_user=Depends(get_teacher)
 ):
     tp = get_teacher_profile(current_user, db)
-    q = db.query(Doubt).filter(Doubt.teacher_id == tp.id)
+    own = db.query(Doubt).filter(Doubt.teacher_id == tp.id).all()
+    away = (db.query(Doubt).filter(Doubt.assigned_by_teacher_id == tp.id, Doubt.teacher_id != tp.id).all())
+    rows, seen = [], set()
+    for d in own + away:
+        if d.id in seen:
+            continue
+        seen.add(d.id)
+        rows.append(d)
     if status:
-        q = q.filter(Doubt.status == status)
+        rows = [d for d in rows if (d.status.value if hasattr(d.status, "value") else d.status) == status]
+    rows.sort(key=lambda d: (d.created_at or datetime.now()), reverse=True)
     out = []
-    for d in q.order_by(Doubt.created_at.desc()).all():
+    for d in rows:
         sname = d.student.user.name if d.student and d.student.user else "Student"
+        is_away = (d.teacher_id != tp.id) or bool(getattr(d, "assigned_to_admin", False))
         out.append({"id": d.id, "student_name": sname, "subject": d.subject, "topic": d.topic,
                     "question": d.question, "has_image": bool(d.image_b64),
                     "attach_mime": d.attach_mime, "attach_name": d.attach_name,
                     "has_voice": bool(d.audio_b64), "has_answer_voice": bool(d.answer_audio_b64),
                     "has_answer_file": bool(d.answer_attach_b64), "answer_attach_mime": d.answer_attach_mime,
                     "answer": d.answer, "status": d.status.value if hasattr(d.status, "value") else d.status,
-                    "created_at": str(d.created_at)[:16]})
+                    "created_at": str(d.created_at)[:16],
+                    "assigned_away": is_away,
+                    "assigned_to_name": (_doubt_owner_name(db, d) if is_away else None),
+                    "responses": _doubt_resp_json(db, d.id, "teacher", tp.id)})
     return out
+
+@router.post("/doubts/{doubt_id}/respond")
+def teacher_doubt_respond(doubt_id: int, payload: dict, db: Session = Depends(get_db),
+                          current_user=Depends(get_teacher)):
+    """v93: teacher thread pe follow-up likhe (status change nahi hota)."""
+    from models import DoubtResponse
+    tp = get_teacher_profile(current_user, db)
+    d = db.query(Doubt).filter(Doubt.id == doubt_id, Doubt.teacher_id == tp.id,
+                               Doubt.assigned_to_admin == False).first()
+    if not d:
+        raise HTTPException(status_code=404, detail="Doubt not found")
+    body = (payload.get("body") or "").strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="Response text is required")
+    db.add(DoubtResponse(doubt_id=d.id, role="teacher", author_name=current_user.name,
+                         author_teacher_id=tp.id, body=body))
+    if d.student and d.student.user:
+        notify(db, d.student.user.id, "💬 New Reply on Your Doubt",
+               f"{current_user.name} added a reply on your {d.subject or ''} doubt: {body[:120]}", "doubt")
+    db.commit()
+    return {"message": "Reply added", "responses": _doubt_resp_json(db, d.id, "teacher", tp.id)}
+
+@router.get("/doubts-assign-targets")
+def doubt_assign_targets(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """v93: assign dropdown — saare active teachers (khud ko chhod kar) + Admin option."""
+    from models import User
+    tp = get_teacher_profile(current_user, db)
+    rows = (db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id)
+            .filter(User.is_active == True, TeacherProfile.id != tp.id)
+            .order_by(User.name.asc()).all())
+    teachers = [{"id": t.id, "name": (t.user.name if t.user else "Teacher"),
+                 "subjects": (t.subjects or [])} for t in rows]
+    return {"teachers": teachers, "admin": True}
+
+@router.post("/doubts/{doubt_id}/assign")
+def teacher_doubt_assign(doubt_id: int, payload: dict, db: Session = Depends(get_db),
+                         current_user=Depends(get_teacher)):
+    """v93: doubt ko doosre teacher ya admin ko assign karo.
+    Assign karne wale ki taraf se doubt resolved maana jata hai —
+    ab naye owner ki responsibility hai."""
+    from models import DoubtResponse
+    tp = get_teacher_profile(current_user, db)
+    d = db.query(Doubt).filter(Doubt.id == doubt_id, Doubt.teacher_id == tp.id).first()
+    if not d:
+        raise HTTPException(status_code=404, detail="Doubt not found")
+    if (d.status.value if hasattr(d.status, "value") else d.status) == "resolved":
+        raise HTTPException(status_code=400, detail="This doubt is already resolved")
+    target = payload.get("target")
+    to_admin = (str(target).lower() == "admin")
+    new_tp = None
+    if not to_admin:
+        try:
+            new_id = int(target)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid assign target")
+        new_tp = db.query(TeacherProfile).filter(TeacherProfile.id == new_id).first()
+        if not new_tp or new_tp.id == tp.id:
+            raise HTTPException(status_code=400, detail="Invalid teacher selected")
+    target_name = "MVS Foundation (Admin)" if to_admin else (new_tp.user.name if new_tp.user else "Teacher")
+    d.assigned_by_teacher_id = tp.id
+    d.assigned_by_name = current_user.name
+    d.assigned_at = datetime.now()
+    if to_admin:
+        d.assigned_to_admin = True
+    else:
+        d.teacher_id = new_tp.id
+        d.assigned_to_admin = False
+    db.add(DoubtResponse(doubt_id=d.id, role="teacher", author_name=current_user.name,
+                         author_teacher_id=tp.id,
+                         body=f"Reassigned this doubt to {target_name}. They will take it forward from here."))
+    # student ko batao ki unka doubt ab kiske paas hai
+    if d.student and d.student.user:
+        notify(db, d.student.user.id, "🔀 Your Doubt Has Been Reassigned",
+               f"Your {d.subject or ''} doubt is now with {target_name} — you will get the answer from them.", "doubt")
+    # naye owner ko notify
+    if to_admin:
+        from models import User
+        for au in db.query(User).filter(User.is_active == True, User.role == "admin").all():
+            notify(db, au.id, "📥 Doubt Assigned to Admin",
+                   f"{current_user.name} assigned a {d.subject or ''} doubt by "
+                   f"{d.student.user.name if d.student and d.student.user else 'a student'} to MVS Foundation. "
+                   f"Please reply from the Doubts page.", "doubt")
+    elif new_tp.user:
+        notify(db, new_tp.user.id, "📥 Doubt Reassigned to You",
+               f"{current_user.name} assigned a {d.subject or ''} doubt by "
+               f"{d.student.user.name if d.student and d.student.user else 'a student'} to you. "
+               f"It is now your responsibility to resolve it.", "new_doubt")
+    db.commit()
+    return {"message": f"Doubt assigned to {target_name}", "assigned_to": target_name}
 
 def _t_doubt_media(b64, mime, name):
     import base64
@@ -367,6 +490,8 @@ def resolve_doubt(
     doubt = db.query(Doubt).filter(Doubt.id == doubt_id, Doubt.teacher_id == tp.id).first()
     if not doubt:
         raise HTTPException(status_code=404, detail="Doubt not found")
+    if getattr(doubt, "assigned_to_admin", False):
+        raise HTTPException(status_code=400, detail="This doubt is with MVS Foundation now")
     doubt.answer = req.answer
     doubt.answer_image_link = req.answer_image_link
     if req.answer_audio_b64:
@@ -401,6 +526,8 @@ def mark_read(notif_id: int, db: Session = Depends(get_db), current_user=Depends
     n = db.query(Notification).filter(Notification.id == notif_id, Notification.user_id == current_user.id).first()
     if n:
         n.is_read = True
+        if not n.read_at:
+            n.read_at = datetime.now()
         db.commit()
     return {"message": "Marked as read"}
 
@@ -677,19 +804,139 @@ def teacher_delete_tt_subject(subject: str, db: Session = Depends(get_db), curre
     return {"deleted": n, "message": f"{n} entries deleted for {subject}"}
 
 # ===== TEACHER: SEND NOTIFICATION TO STUDENTS =====
+def _norm_sub(s):
+    return re.sub(r"\s+", " ", (s or "").strip().lower())
+
+def _teacher_subjects(tp):
+    return [s for s in (tp.subjects or []) if (s or "").strip()]
+
+def _students_for_subject(db, subject):
+    """v93: active students jinki profile subjects mein ye subject hai (case-insensitive)."""
+    from models import User, StudentProfile
+    want = _norm_sub(subject)
+    out = []
+    rows = (db.query(StudentProfile).join(User, StudentProfile.user_id == User.id)
+            .filter(User.is_active == True, User.role == "student").all())
+    for sp in rows:
+        subs = {_norm_sub(x) for x in (sp.subjects or []) if (x or "").strip()}
+        if want in subs:
+            out.append(sp)
+    return out
+
+def _my_students(db, tp):
+    """v93: teacher ke kisi bhi subject wale students (union)."""
+    mine = {_norm_sub(s) for s in _teacher_subjects(tp)}
+    if not mine:
+        return None   # fallback: sabhi active students
+    from models import User, StudentProfile
+    out = []
+    rows = (db.query(StudentProfile).join(User, StudentProfile.user_id == User.id)
+            .filter(User.is_active == True, User.role == "student").all())
+    for sp in rows:
+        subs = {_norm_sub(x) for x in (sp.subjects or []) if (x or "").strip()}
+        if subs & mine:
+            out.append(sp)
+    return out
+
+@router.get("/notify-targets")
+def teacher_notify_targets(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """v93: notify modal — subject-wise student counts + all-my-students count."""
+    from models import User
+    tp = get_teacher_profile(current_user, db)
+    subjects = []
+    for s in _teacher_subjects(tp):
+        subjects.append({"name": s, "count": len(_students_for_subject(db, s))})
+    mine = _my_students(db, tp)
+    if mine is None:
+        all_count = db.query(User).filter(User.is_active == True, User.role == "student").count()
+    else:
+        all_count = len(mine)
+    return {"subjects": subjects, "all_count": all_count, "scoped": mine is not None}
+
 @router.post("/notify")
 def teacher_notify(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import User
+    import uuid
+    tp = get_teacher_profile(current_user, db)
     title = (payload.get("title") or "").strip()
     message = (payload.get("message") or "").strip()
+    subject = (payload.get("subject") or "").strip()
     if not title or not message:
         raise HTTPException(status_code=400, detail="Title and message are required")
-    students = db.query(User).filter(User.is_active == True, User.role == "student").all()
+    if subject:
+        sps = _students_for_subject(db, subject)
+        label = subject
+    else:
+        mine = _my_students(db, tp)
+        if mine is None:
+            sps = db.query(StudentProfile).join(User, StudentProfile.user_id == User.id).filter(
+                User.is_active == True, User.role == "student").all()
+            label = "All Students"
+        else:
+            sps = mine
+            label = "All My Students"
+    batch = uuid.uuid4().hex[:24]
     sender = "👨‍🏫 " + current_user.name
-    for s in students:
-        notify(db, s.id, sender + ": " + title, message, "teacher_message")
+    sent = 0
+    for sp in sps:
+        if not sp.user_id:
+            continue
+        notify(db, sp.user_id, sender + ": " + title, message, "teacher_message",
+               sender_id=current_user.id, sender_role="teacher",
+               batch_key=batch, batch_label=label)
+        sent += 1
     db.commit()
-    return {"message": f"Sent to {len(students)} students!", "count": len(students)}
+    scope_txt = f"{label} — {sent} student{'s' if sent != 1 else ''}"
+    return {"message": f"Sent to {scope_txt}!", "count": sent, "batch_key": batch, "label": label}
+
+@router.get("/notify-log")
+def teacher_notify_log(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """v93: meri bheji hui notifications — kitne students ne dekhi (views)."""
+    rows = (db.query(Notification)
+            .filter(Notification.sender_id == current_user.id,
+                    Notification.sender_role == "teacher",
+                    Notification.batch_key.isnot(None))
+            .order_by(Notification.created_at.desc()).all())
+    batches = {}
+    for n in rows:
+        b = batches.get(n.batch_key)
+        if not b:
+            b = {"batch_key": n.batch_key, "title": n.title, "message": n.message,
+                 "label": n.batch_label or "Students", "sent": 0, "viewed": 0,
+                 "created_at": n.created_at.isoformat() if n.created_at else None}
+            batches[n.batch_key] = b
+        b["sent"] += 1
+        if n.is_read:
+            b["viewed"] += 1
+    return sorted(batches.values(), key=lambda b: b["created_at"] or "", reverse=True)
+
+@router.get("/notify-log/{batch_key}")
+def teacher_notify_log_detail(batch_key: str, db: Session = Depends(get_db),
+                              current_user=Depends(get_teacher)):
+    """v93: ek batch ke recipients — kis student ne dekha, kab dekha."""
+    from models import User, StudentProfile
+    rows = (db.query(Notification)
+            .filter(Notification.sender_id == current_user.id,
+                    Notification.sender_role == "teacher",
+                    Notification.batch_key == batch_key)
+            .order_by(Notification.created_at.asc()).all())
+    if not rows:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    out = []
+    for n in rows:
+        sp = db.query(StudentProfile).filter(StudentProfile.user_id == n.user_id).first()
+        name = "Student"
+        if sp and sp.user:
+            name = sp.user.name
+        else:
+            u = db.query(User).filter(User.id == n.user_id).first()
+            if u:
+                name = u.name
+        out.append({"name": name, "read": bool(n.is_read),
+                    "read_at": n.read_at.isoformat() if n.read_at else None})
+    out.sort(key=lambda r: (r["read"], r["name"].lower()), reverse=True)
+    return {"batch_key": batch_key, "title": rows[0].title, "label": rows[0].batch_label or "Students",
+            "recipients": out}
 
 # ===== STUDY MATERIAL (PDF upload to DB) =====
 @router.post("/material")
@@ -795,6 +1042,9 @@ def teacher_profile(db: Session = Depends(get_db), current_user=Depends(get_teac
         "gender": tp.gender,
         "subjects": tp.subjects or [],
         "subject_classes": sc,
+        "phone": tp.phone,
+        "batch": tp.batch,
+        "has_photo": bool(tp.photo_b64),
         "needs_subjects": len(sc) == 0
     }
 
@@ -1717,6 +1967,8 @@ def teacher_doubt_stats(db: Session = Depends(get_db), current_user=Depends(get_
     from models import Doubt, DoubtStatus
     tp = get_teacher_profile(current_user, db)
     ds = db.query(Doubt).filter(Doubt.teacher_id == tp.id).all()
+    # v93: admin ko assigned doubts meri pending/responsibility se bahar
+    ds = [d for d in ds if not getattr(d, "assigned_to_admin", False)]
     pending = sum(1 for d in ds if (d.status.value if hasattr(d.status, "value") else d.status) == "pending")
     resolved_list = [d for d in ds if (d.status.value if hasattr(d.status, "value") else d.status) == "resolved" and d.resolved_at and d.created_at]
     resolved = sum(1 for d in ds if (d.status.value if hasattr(d.status, "value") else d.status) == "resolved")

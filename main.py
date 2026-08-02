@@ -99,6 +99,16 @@ def ensure_columns():
         "ALTER TABLE student_profiles ADD COLUMN study_target VARCHAR(10)",
         "ALTER TABLE student_profiles ADD COLUMN exam_date VARCHAR(20)",
         "ALTER TABLE student_profiles ADD COLUMN exam_stream VARCHAR(4)",
+        # ===== v93: doubt threads + reassignment + notification views =====
+        "ALTER TABLE doubts ADD COLUMN assigned_by_teacher_id INTEGER",
+        "ALTER TABLE doubts ADD COLUMN assigned_by_name VARCHAR(160)",
+        "ALTER TABLE doubts ADD COLUMN assigned_at DATETIME",
+        "ALTER TABLE doubts ADD COLUMN assigned_to_admin BOOLEAN DEFAULT 0",
+        "ALTER TABLE notifications ADD COLUMN sender_id INTEGER",
+        "ALTER TABLE notifications ADD COLUMN sender_role VARCHAR(20)",
+        "ALTER TABLE notifications ADD COLUMN batch_key VARCHAR(40)",
+        "ALTER TABLE notifications ADD COLUMN batch_label VARCHAR(160)",
+        "ALTER TABLE notifications ADD COLUMN read_at DATETIME",
     ]
     for s in stmts:
         try:

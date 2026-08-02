@@ -528,15 +528,56 @@ def my_doubts(db: Session = Depends(get_db), current_user=Depends(get_student)):
                 tph = bool(tp.photo_b64)
         except Exception:
             pass
+        # v93: thread responses (student/teacher/admin sab ke replies)
+        resps = []
+        try:
+            from models import DoubtResponse
+            for r in (db.query(DoubtResponse).filter(DoubtResponse.doubt_id == d.id)
+                      .order_by(DoubtResponse.created_at.asc(), DoubtResponse.id.asc()).all()):
+                resps.append({"id": r.id, "role": r.role, "author_name": r.author_name,
+                              "body": r.body, "mine": (r.role == "student"),
+                              "created_at": r.created_at.isoformat() if r.created_at else None})
+        except Exception:
+            pass
+        official = bool(getattr(d, "assigned_to_admin", False))
         out.append({"id": d.id, "subject": d.subject, "topic": d.topic, "question": d.question,
                     "answer": d.answer, "answer_image_link": d.answer_image_link,
                     "status": d.status.value if hasattr(d.status, "value") else d.status,
                     "created_at": str(d.created_at)[:16],
-                    "teacher_id": d.teacher_id, "teacher_name": tname, "has_teacher_photo": tph,
+                    "teacher_id": d.teacher_id,
+                    "teacher_name": ("MVS Foundation" if official else tname),
+                    "has_teacher_photo": (False if official else tph),
+                    "official": official, "responses": resps,
                     "has_file": bool(d.image_b64), "attach_mime": d.attach_mime, "attach_name": d.attach_name,
                     "has_voice": bool(d.audio_b64), "has_answer_voice": bool(d.answer_audio_b64),
                     "has_answer_file": bool(d.answer_attach_b64), "answer_attach_mime": d.answer_attach_mime})
     return out
+
+@router.post("/doubts/{doubt_id}/respond")
+def student_doubt_respond(doubt_id: int, payload: dict, db: Session = Depends(get_db),
+                          current_user=Depends(get_student)):
+    """v93: student bhi apne doubt thread pe follow-up likh sakta hai."""
+    from models import DoubtResponse
+    sp = get_student_profile(current_user, db)
+    d = db.query(Doubt).filter(Doubt.id == doubt_id, Doubt.student_id == sp.id).first()
+    if not d:
+        raise HTTPException(status_code=404, detail="Doubt not found")
+    body = (payload.get("body") or "").strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="Response text is required")
+    db.add(DoubtResponse(doubt_id=d.id, role="student", author_name=current_user.name, body=body))
+    # owner ko notify — admin ke paas ho to sabhi admins, warna current teacher
+    if getattr(d, "assigned_to_admin", False):
+        for au in db.query(User).filter(User.is_active == True, User.role == "admin").all():
+            notify(db, au.id, "💬 Student Follow-up on Doubt",
+                   f"{current_user.name} added a follow-up on their {d.subject or ''} doubt: {body[:120]}", "doubt")
+    elif d.teacher_id:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == d.teacher_id).first()
+        if tp and tp.user:
+            notify(db, tp.user.id, "💬 Student Follow-up on Doubt",
+                   f"{current_user.name} added a follow-up on their {d.subject or ''} doubt: {body[:120]}", "doubt")
+    db.commit()
+    return {"message": "Reply added"}
 
 # ===== PROGRESS =====
 @router.get("/progress")
@@ -596,6 +637,8 @@ def mark_read(notif_id: int, db: Session = Depends(get_db), current_user=Depends
     n = db.query(Notification).filter(Notification.id == notif_id, Notification.user_id == current_user.id).first()
     if n:
         n.is_read = True
+        if not n.read_at:
+            n.read_at = datetime.now()
         db.commit()
     return {"ok": True}
 
