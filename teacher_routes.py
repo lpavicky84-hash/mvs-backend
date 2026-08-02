@@ -3987,6 +3987,17 @@ def earnings_payload(db, tp, month):
     act = _month_activity(db, tp, month)
     pay = {k: int(getattr(cfg, k) or 0) for k in EARNINGS_PAY_FIELDS}
     targets = {k: int(getattr(cfg, k) or 0) for k in EARNINGS_TARGET_FIELDS}
+    # v95: editable target names + admin ke custom extra targets (letter/display only)
+    _DEF_LABELS = {"tests": "Weekly Tests", "videos": "Videos (One Shot/Revision)",
+                   "live": "YouTube Live", "shorts": "Shorts"}
+    _saved_lab = getattr(cfg, "target_labels", None) or {}
+    targets["labels"] = {k: (str(_saved_lab.get(k) or "").strip()[:60] or v)
+                         for k, v in _DEF_LABELS.items()}
+    _cust = getattr(cfg, "custom_targets", None) or []
+    targets["custom"] = [{"name": str(c.get("name") or "").strip()[:60],
+                          "count": max(0, int(c.get("count") or 0))}
+                         for c in _cust
+                         if isinstance(c, dict) and str(c.get("name") or "").strip()][:12]
     e = calc_earnings(act, {**pay, **targets})
     # ---- v86: UNPAID approved leave ka per-day deduction (complete salary se) ----
     # PAID leave (admin ne approve karte waqt 'Paid' chuna) pe koi ktaunti nahi.

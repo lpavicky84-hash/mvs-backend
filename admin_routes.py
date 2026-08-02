@@ -3304,6 +3304,28 @@ def admin_earnings_config_save(payload: dict = Body(...), db: Session = Depends(
     for k in ("designation", "department", "employee_code", "bank_name", "account_no", "ifsc"):
         if k in payload and payload[k] is not None:
             setattr(cfg, k, str(payload[k]).strip()[:120])
+    # v95: editable target names (core 4) + custom extra targets (add/delete)
+    if isinstance(payload.get("target_labels"), dict):
+        lab = {}
+        for k in ("tests", "videos", "live", "shorts"):
+            v = str(payload["target_labels"].get(k) or "").strip()[:60]
+            if v:
+                lab[k] = v
+        cfg.target_labels = lab
+    if isinstance(payload.get("custom_targets"), list):
+        out = []
+        for c in payload["custom_targets"][:12]:
+            if not isinstance(c, dict):
+                continue
+            nm = str(c.get("name") or "").strip()[:60]
+            if not nm:
+                continue
+            try:
+                cnt = max(0, min(999, int(c.get("count") or 0)))
+            except Exception:
+                cnt = 0
+            out.append({"name": nm, "count": cnt})
+        cfg.custom_targets = out
     db.commit()
     return {"message": "Pay structure saved for %s." % (tp.user.name if tp.user else "teacher")}
 

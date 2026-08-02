@@ -1020,6 +1020,9 @@ class TeacherPayConfig(Base):
     videos_target    = Column(Integer, default=8)
     live_target      = Column(Integer, default=4)
     shorts_target    = Column(Integer, default=8)
+    # v95: target names editable + admin custom extra targets (display-only)
+    target_labels    = Column(JSON, nullable=True)   # {"tests": "Weekly Tests", ...}
+    custom_targets   = Column(JSON, nullable=True)   # [{"name": "Revision Sheets", "count": 10}]
     designation      = Column(String(120), default="")
     department       = Column(String(120), default="")
     employee_code    = Column(String(40), default="")

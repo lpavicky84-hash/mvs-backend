@@ -111,6 +111,9 @@ def ensure_columns():
         "ALTER TABLE notifications ADD COLUMN read_at DATETIME",
         # v94: restricted sub-admin sections
         "ALTER TABLE users ADD COLUMN allowed_sections JSON",
+        # v95: editable monthly target labels + custom targets
+        "ALTER TABLE teacher_pay_configs ADD COLUMN target_labels JSON",
+        "ALTER TABLE teacher_pay_configs ADD COLUMN custom_targets JSON",
     ]
     for s in stmts:
         try:
