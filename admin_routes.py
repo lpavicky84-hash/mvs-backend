@@ -37,6 +37,7 @@ ADMIN_SECTION_MAP = {
     "live-students": "live", "live-users": "live", "user": "live",
     "timetable-entry": "timetable", "timetable-all": "timetable", "timetable-clear": "timetable",
     "timetable-pdf": "timetable", "timetable-pdf-commit": "timetable", "timetable-subject": "timetable",
+    "studio-reports": "timetable",
     "questionbank": "qbank",
     "material": "material", "materials-tree": "material", "pending-materials": "material",
     "doubt": "doubts", "doubts": "doubts", "doubts-overview": "doubts",
@@ -623,6 +624,82 @@ def timetable_all(db: Session = Depends(get_db), _=Depends(get_admin)):
             "teacher_name": tname, "teacher_id": tpid, "teacher_has_photo": tphoto
         })
     return result
+
+# ===== v97: ADMIN STUDIO REPORTS (per timetable class) =====
+def _studio_report_json(r):
+    return {
+        "id": r.id, "entry_id": r.entry_id,
+        "entry_date": r.entry_date or "", "day": r.day or "", "time": r.time_str or "",
+        "subject": r.subject or "", "class_name": r.class_name or "",
+        "chapter": r.chapter or "", "part": r.part or "",
+        "status": r.status or "held", "notes": r.notes or "",
+        "reporter": r.reporter or "",
+        "updated_at": r.updated_at.strftime("%d %b %Y, %I:%M %p") if r.updated_at else "",
+    }
+
+@router.get("/studio-reports")
+def studio_reports_list(entry_ids: str = "", db: Session = Depends(get_db),
+                        _=Depends(get_admin)):
+    """Timetable page ke liye — saari (ya di gayi entry_ids ki) studio reports."""
+    from models import StudioReport
+    q = db.query(StudioReport)
+    ids = [int(x) for x in (entry_ids or "").split(",") if x.strip().isdigit()]
+    if ids:
+        q = q.filter(StudioReport.entry_id.in_(ids))
+    rows = q.order_by(StudioReport.updated_at.desc()).limit(1000).all()
+    return {"reports": [_studio_report_json(r) for r in rows]}
+
+@router.post("/studio-reports")
+def studio_report_upsert(payload: dict = Body(...), db: Session = Depends(get_db),
+                         admin=Depends(get_admin)):
+    """Ek class (entry) pe ek report — dobara submit karne pe update ho jati hai.
+    Studio manager / admin class ki recording, setup ya issue ka note rakhta hai."""
+    from models import StudioReport, TimetableEntry
+    try:
+        entry_id = int(payload.get("entry_id") or 0)
+    except Exception:
+        entry_id = 0
+    if not entry_id:
+        raise HTTPException(400, "entry_id is required")
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == entry_id).first()
+    if not e:
+        raise HTTPException(404, "Timetable entry not found")
+    status = (payload.get("status") or "held").strip().lower()
+    if status not in ("held", "issues", "cancelled"):
+        raise HTTPException(400, "Status must be held, issues or cancelled")
+    notes = (payload.get("notes") or "").strip()[:4000]
+    r = db.query(StudioReport).filter(StudioReport.entry_id == entry_id).first()
+    if not r:
+        r = StudioReport(entry_id=entry_id, created_by=admin.id if admin else None)
+        db.add(r)
+    # reporter: payload > purani value > logged-in admin ka naam
+    reporter = ((payload.get("reporter") or "").strip()[:160]
+                or (r.reporter or "").strip()
+                or (admin.name if admin else ""))
+    # snapshot hamesha entry ki latest position ka rahe (reschedule ke baad bhi sahi)
+    r.entry_date = str(e.entry_date) if e.entry_date else ""
+    r.day = e.day or ""
+    r.time_str = getattr(e, "time_text", "") or ""
+    r.subject = e.subject or ""
+    r.class_name = e.class_name or ""
+    r.chapter = e.chapter or ""
+    r.part = e.part or ""
+    r.status = status
+    r.notes = notes
+    r.reporter = reporter
+    db.commit()
+    db.refresh(r)
+    return {"ok": True, "report": _studio_report_json(r)}
+
+@router.delete("/studio-reports/{rid}")
+def studio_report_delete(rid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import StudioReport
+    r = db.query(StudioReport).filter(StudioReport.id == rid).first()
+    if not r:
+        raise HTTPException(404, "Report not found")
+    db.delete(r)
+    db.commit()
+    return {"ok": True, "message": "Report removed"}
 
 # ===== ADMIN: PDF TIMETABLE UPLOAD (all subjects) =====
 @router.post("/timetable-pdf")

@@ -1293,6 +1293,26 @@ def vt_edit(task_id: int, payload: dict = Body(...),
     return {"ok": True, "changed": changes}
 
 
+@router.delete("/admin/video-tasks/{task_id}", dependencies=[Depends(_admin_section_guard)])
+def vt_delete(task_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """v97: assigned video task delete — chapter rows bhi saath clean. Permanent action.
+    Teacher ko notification jati hai taaki My Tasks se gayab hone pe confusion na ho."""
+    t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
+    if not t:
+        raise HTTPException(404, "Task not found")
+    title = t.title or "Video task"
+    db.query(VideoTaskChapter).filter(VideoTaskChapter.task_id == t.id).delete(
+        synchronize_session=False)
+    tp = _teacher_profile(db, t.teacher_id)
+    db.delete(t)
+    if tp and tp.user_id:
+        _vt_notify(db, tp.user_id, "🗑️ Video Task Removed",
+                   f'Your video task "{title}" was removed by the admin. '
+                   f'It no longer appears in My Tasks.')
+    db.commit()
+    return {"ok": True, "message": "Task deleted"}
+
+
 @router.get("/admin/video-tasks/{task_id}/chapters", dependencies=[Depends(_admin_section_guard)])
 def vt_task_chapter_options(task_id: int,
                             db: Session = Depends(get_db), _=Depends(get_admin)):

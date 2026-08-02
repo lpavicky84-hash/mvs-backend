@@ -2336,7 +2336,7 @@ body.dark .al-sig{color:hsl(45 90% 60%)}
 .pw-mini .m{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:8px 14px;min-width:96px}
 .pw-mini .m .l{font-size:.64rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);font-weight:700}
 .pw-mini .m .v{font-weight:800;margin-top:2px;font-size:.95rem}
-.att-grid{display:grid;grid-template-columns:1.05fr 1fr 1fr;gap:18px;align-items:start}
+.att-grid{display:grid;grid-template-columns:1.05fr 1fr 1fr;gap:18px;align-items:stretch}
 @media(max-width:1100px){.att-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:760px){.att-grid{grid-template-columns:1fr}}
 /* ===== v76 smart work timings ===== */
@@ -8126,6 +8126,7 @@ async function loadAVTasks(){
       const notifyBtn=(t.submitted_link)
         ?`<button class="btn btn-gold btn-sm" onclick="vtNotifyStudents(${t.id})" title="Send this video link to all students">${ic('send')} Send to Students</button>`:'';
       const editTaskBtn=`<button class="btn btn-ghost btn-sm" onclick="openVTEdit(${t.id})" title="Edit title, deadline, type, channel, thumbnail">${ic('edit')} Edit</button>`;
+      const delTaskBtn=`<button class="btn btn-ghost btn-sm vt-del" onclick="vtDeleteTask(${t.id})" title="Delete this task permanently">${ic('trash')} Delete</button>`;
       return `<div class="vt-card st-${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
         <div class="vt-title">${esc(t.title)}</div>
         <div class="vt-chips"><span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
@@ -8138,7 +8139,7 @@ async function loadAVTasks(){
         </div>
         <div class="vt-foot">
           ${t.submitted_link?`<a class="btn btn-ghost btn-sm" href="${esc(t.submitted_link)}" target="_blank" rel="noopener">${ic('link')} Open Video</a>`:''}
-          ${reviewBtn}${editBtn}${editTaskBtn}${notifyBtn}
+          ${reviewBtn}${editBtn}${editTaskBtn}${notifyBtn}${delTaskBtn}
         </div></div></div>`;
     }).join('');
     // ---- v73: master Task/Project cards + view toggle ----
@@ -8630,9 +8631,14 @@ async function vtReviewSave(id){
   }catch(e){ toast(e.message||'Could not update'); }
 }
 async function vtRejectProposal(id){
-  showConfirm('Decline this video proposal?',async()=>{
-    try{ await api(`/api/admin/video-tasks/${id}/reject-proposal`,'POST',{}); toast('Proposal declined.'); loadAVTasks(); }catch(e){ toast(e.message||'Failed'); }
-  });
+  if(!confirm('Decline this video proposal?')) return;
+  try{ await api(`/api/admin/video-tasks/${id}/reject-proposal`,'POST',{}); toast('Proposal declined.'); loadAVTasks(); }catch(e){ toast(e.message||'Failed'); }
+}
+// v97: admin — assigned task delete (permanent, chapters bhi saath)
+async function vtDeleteTask(id){
+  const t=(window._avtMap||{})[id]||{};
+  if(!confirm(`Delete the task "${t.title||'Video task'}" permanently?\n\nThe teacher is notified and the task disappears from My Tasks. This cannot be undone.`)) return;
+  try{ await api(`/api/admin/video-tasks/${id}`,'DELETE'); toast('Task deleted.'); loadAVTasks(); }catch(e){ toast(e.message||'Delete failed',true); }
 }
 function vtNotifyStudents(id){
   showModal('Send Video to Students',`
@@ -9957,6 +9963,7 @@ async function loadSQBank(){ loadExtMaterials('s-qbank-content'); }
 async function loadATimetable(){
   try{
     _attEntries=await api('/api/admin/timetable-all'); _attActiveSub=''; _attTeacherMap={};
+    try{ const _sr=await api('/api/admin/studio-reports'); window._srReports={}; (_sr.reports||[]).forEach(r=>window._srReports[r.entry_id]=r); }catch(e){ window._srReports={}; }
     aRenderTT();
     const seen={};
     _attEntries.forEach(e=>{ if(e.subject && !seen[e.subject] && e.teacher_name){ seen[e.subject]=true; _attTeacherMap[e.subject]={name:e.teacher_name,url:null,tid:(e.teacher_has_photo?e.teacher_id:null)}; } });
@@ -9994,7 +10001,7 @@ function aFilteredTT(){
 function aRenderTT(){
   const el=document.getElementById('a-timetable-content');
   el.innerHTML=`<div class="card"><div class="card-header"><h3>All Teachers' Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-ghost btn-sm" onclick="openDeadlines()">${ic('calendar')} Session Deadlines</button><button class="btn btn-ghost btn-sm" onclick="openAdminMaterial()">Upload Material</button><button class="btn btn-primary btn-sm" onclick="openAdminPdf()">PDF Upload</button><button class="btn btn-danger btn-sm" onclick="openTTDelete()">${ic('trash')} Delete Timetable</button></div></div><div class="card-body"><div id="a-tline-wrap"></div></div></div>`;
-  renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',onEditAny:'adminEditTT',onClassFilter:'aClassFilter',activeClass:_attClass,emptyMsg:'No timetable uploaded yet',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers'});
+  renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',onEditAny:'adminEditTT',onClassFilter:'aClassFilter',activeClass:_attClass,emptyMsg:'No timetable uploaded yet',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers',onReport:true});
 }
 function aClassFilter(v){ _attClass=v; _attActiveSub=''; aRenderTT(); }
 async function adminDeleteTT(id){
@@ -10152,7 +10159,7 @@ async function submitAdminMaterial(){
  btn.textContent=' Done'; btn.setAttribute('onclick','closeModal()'); btn.disabled=false;
   }catch(e){ document.getElementById('am-status').innerHTML=`<div class="alert alert-danger"> ${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Upload'; }
 }
-function aSetSubj(s){ _attActiveSub=decodeURIComponent(s); renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',onEditAny:'adminEditTT',onClassFilter:'aClassFilter',activeClass:_attClass,emptyMsg:'No entries',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers'}); }
+function aSetSubj(s){ _attActiveSub=decodeURIComponent(s); renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',onEditAny:'adminEditTT',onClassFilter:'aClassFilter',activeClass:_attClass,emptyMsg:'No entries',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers',onReport:true}); }
 async function setSubjMode(id,mode){
   try{ const r=await api('/api/admin/subjects/'+id+'/mode','POST',{mode}); toast(r.message); loadASubjects(); }
   catch(e){ toast(e.message,true); }
@@ -13459,7 +13466,7 @@ function renderStudentNode(item, st, tmap, opts, ongoing){
   if(item.kind==='event'){
     const e=item.data; const isT=_isTest(e.chapter);
     const lbl=st==='current'?'Live':st==='done'?'Done':st==='progress'?'In Progress':'Upcoming';
-    const edel=`${opts.onEditAny?`<button class="btn btn-ghost btn-sm stl-act" onclick="${opts.onEditAny}(${e.id})">${ic('edit')}</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${e.id})">${ic('trash')}</button>`:''}`;
+    const edel=`${opts.onEditAny?`<button class="btn btn-ghost btn-sm stl-act" onclick="${opts.onEditAny}(${e.id})">${ic('edit')}</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${e.id})">${ic('trash')}</button>`:''}${opts.onReport?_srChipHTML(e.id):''}`;
     return `<div class="stl-node ${st}${ongoing?' ongoing':''}">${dot}<div class="stl-card event ${isT?'test':''}${ongoing?' ongoing':''}"><div class="stl-chead"><div class="stl-cname">${esc(e.chapter)}</div><div class="stl-cmeta">${e.date?`<span class="stl-date">${fmtNice(e.date)}${e.day?' · '+esc(e.day):''}</span>`:''}<span class="stl-badge ${st}">${lbl}</span>${edel}</div></div></div></div>`;
   }
   const parts=item.parts, open=(st==='current'||ongoing), id='stl-'+Math.random().toString(36).slice(2,8);
@@ -13473,7 +13480,7 @@ function renderStudentNode(item, st, tmap, opts, ongoing){
       else if(p.cooling){ verifyBtn=`<button class="btn btn-ghost btn-sm stl-act" disabled title="Too many wrong tries \u2014 try again shortly">Try later</button>`; }
       else{ verifyBtn=`<button class="btn btn-success btn-sm stl-act" onclick="markLectureDone(${p.lecture_id})">Mark Done</button>`; }
     }
-    const acts=_hasAct?`${opts.onEditAny?`<button class="btn btn-ghost btn-sm stl-act" onclick="${opts.onEditAny}(${p.id})">${ic('edit')}</button>`:''}${opts.onEdit?`<button class="btn btn-ghost btn-sm stl-act" onclick="openEditTopic(${p.id},'${encodeURIComponent(p.part||'')}')">${ic('edit')}</button>`:''}${opts.onComplete&&!p.completed?`<button class="btn btn-success btn-sm stl-act" onclick="${opts.onComplete}(${p.id})">Class Report</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${p.id})">${ic('trash')}</button>`:''}`:verifyBtn;
+    const acts=_hasAct?`${opts.onEditAny?`<button class="btn btn-ghost btn-sm stl-act" onclick="${opts.onEditAny}(${p.id})">${ic('edit')}</button>`:''}${opts.onEdit?`<button class="btn btn-ghost btn-sm stl-act" onclick="openEditTopic(${p.id},'${encodeURIComponent(p.part||'')}')">${ic('edit')}</button>`:''}${opts.onComplete&&!p.completed?`<button class="btn btn-success btn-sm stl-act" onclick="${opts.onComplete}(${p.id})">Class Report</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${p.id})">${ic('trash')}</button>`:''}${opts.onReport?_srChipHTML(p.id):''}`:verifyBtn;
     return `<div class="stl-part"><span class="stl-pdot ${pst}">${pst==='done'?'✓':''}</span><div class="stl-pname">${esc(p.part||'Full chapter')}</div><div class="stl-pright"><div class="stl-ptime">${p.date?fmtNice(p.date)+(p.day?' · '+esc(p.day):''):''}${p.time?'<br>'+esc(p.time):''}</div><span class="stl-pbadge ${pst}">${plbl}</span>${acts}</div></div>`; }).join('');
   const stlbl=st==='done'?'DONE':(ongoing?'ONGOING CHAPTER':(st==='progress'?'IN PROGRESS':(st==='current'?'ONGOING CHAPTER':'UPCOMING')));
   return `<div class="stl-node ${st}${ongoing?' ongoing':''}">${dot}<div class="stl-card chapter ${open?'open':''}${ongoing?' ongoing':''}" id="${id}"><div class="stl-chead" onclick="document.getElementById('${id}').classList.toggle('open')"><div class="stl-cname"><span class="stl-arrow">${open?'▾':'›'}</span>${esc(item.chapter)}</div><div class="stl-cmeta"><span class="stl-badge ${ongoing?'ongoing':st}">${stlbl}</span><span class="cnt-badge dark">${parts.length} part${parts.length>1?'s':''}</span></div></div><div class="stl-parts">${partsHtml}</div></div></div>`;
@@ -13493,7 +13500,7 @@ function renderStudentWeekly(tl, subjects, opts){
     if(!p.day||!p.date) return;
     if(p.date<_wsKW||p.date>_weKW) return;  // is week ke bahar
     const _k=s+'|'+(p.date||'')+'|'+(p.time||''); if(_seenSlot.has(_k))return; _seenSlot.add(_k);
-    (byDay[p.day]=byDay[p.day]||[]).push({subject:s,time:p.time,st:_statusOf([p.date]),date:p.date});
+    (byDay[p.day]=byDay[p.day]||[]).push({subject:s,time:p.time,st:_statusOf([p.date]),date:p.date,id:p.id,chapter:(it.kind==='event'?(p.chapter||''):(it.chapter||'')),part:(it.kind==='event'?'':(p.part||''))});
   }); }));
   window._wkByDay=byDay; window._wkOpts=opts||{};
   // Har subject/day ka CURRENT slot dikhta hai: sabse pehli aane wali (upcoming)
@@ -13529,10 +13536,49 @@ function wkDayDetail(day){
   const rows=list.map(x=>{
     const tmap=(opts.tipTeacherMap||{})[x.subject]||{};
     const stb=x.st==='current'?'<span class="wkc-status live">Live</span>':x.st==='done'?'<span class="wkc-status done">Completed</span>':'<span class="wkc-status up">Upcoming</span>';
-    return `<div class="wkc-row"><div class="wkc-time">${esc(x.time||'\u2014')}<span>90min</span></div><div class="wkc-main"><div class="wkc-sub">${esc(x.subject)}</div>${tmap.name?`<div class="wkc-teacher">${esc(tmap.name)}</div>`:''}</div><div class="wkc-right">${stb}</div></div>`;
+    return `<div class="wkc-row"><div class="wkc-time">${esc(x.time||'\u2014')}<span>90min</span></div><div class="wkc-main"><div class="wkc-sub">${esc(x.subject)}</div>${x.chapter?`<div class="wkc-teacher">${esc(x.chapter)}${x.part?' \u2014 '+esc(x.part):''}</div>`:''}${tmap.name?`<div class="wkc-teacher">${esc(tmap.name)}</div>`:''}</div><div class="wkc-right">${stb}${opts.onReport&&x.id?_srChipHTML(x.id):''}</div></div>`;
   }).join('');
   showModal(`${day} \u2014 ${list.length} class${list.length>1?'es':''}`,
-    rows||'<div class="empty-state"><p>No classes this day.</p></div>','');
+    (opts.onReport?`<div style="font-size:.72rem;color:var(--text-muted);margin-bottom:10px">Tap <b>Report</b> on any class to submit a studio report (recording, setup, issues) for it.</div>`:'')+(rows||'<div class="empty-state"><p>No classes this day.</p></div>'),'');
+}
+// ===== v97: STUDIO REPORTS (admin — per timetable class) =====
+function _srChipHTML(id){
+  const r=(window._srReports||{})[id];
+  return r?`<span class="tl-report done" onclick="event.stopPropagation();openStudioReport(${id})" title="Studio report submitted — click to view / edit">${ic('check')} Reported</span>`
+          :`<span class="tl-report" onclick="event.stopPropagation();openStudioReport(${id})" title="Submit a studio report for this class">${ic('clipboard')} Report</span>`;
+}
+function openStudioReport(id){
+  const e=(_attEntries||[]).find(x=>x.id===id);
+  if(!e){ toast('Entry not found. Please refresh the page.',true); return; }
+  const r=(window._srReports||{})[id];
+  const st=(r&&r.status)||'held';
+  const stOpt=(v,l,d)=>`<label class="sr-opt ${st===v?'on':''}"><input type="radio" name="sr-status" value="${v}" ${st===v?'checked':''} onchange="document.querySelectorAll('.sr-opt').forEach(o=>o.classList.remove('on'));this.closest('.sr-opt').classList.add('on')"><span class="sr-dot ${v}"></span><span style="min-width:0"><span class="sr-t">${l}</span><br><span class="sr-d">${d}</span></span></label>`;
+  showModal(`Studio Report`,
+   `<div class="alert alert-info" style="margin-bottom:12px"><b>${esc(e.subject||'')}</b> · ${esc(e.class_name||'')}<br>${esc(e.chapter||'')}${e.part?' — '+esc(e.part):''}<br><span style="font-size:.72rem;color:var(--text-muted)">${e.date?fmtNice(e.date):''}${e.day?' · '+esc(e.day):''}${e.time?' · '+esc(e.time):''}${e.teacher_name?' · '+esc(e.teacher_name):''}</span></div>
+    <div class="form-group"><label>Class Status</label><div class="sr-opts">
+      ${stOpt('held','Class Held','The class happened as planned')}
+      ${stOpt('issues','Held with Issues','It happened, but there were problems — recording, setup, delay...')}
+      ${stOpt('cancelled','Cancelled / Not Held','The class could not take place')}
+    </div></div>
+    <div class="form-group"><label>Report Notes</label><textarea class="form-control" id="sr-notes" rows="4" maxlength="4000" placeholder="Recording status, studio setup, delays, issues, follow-ups needed...">${esc((r&&r.notes)||'')}</textarea></div>
+    <div class="form-group"><label>Reported By</label><input class="form-control" id="sr-reporter" maxlength="160" value="${esc((r&&r.reporter)||NAME||'')}" placeholder="Your name"></div>
+    ${r?`<div style="font-size:.7rem;color:var(--text-muted)">Last updated: ${esc(r.updated_at||'')}</div>`:''}`,
+   `${r?`<button class="btn btn-danger" onclick="deleteStudioReport(${id},${r.id})">${ic('trash')} Remove</button>`:''}<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitStudioReport(${id})">${ic('check')} ${r?'Update Report':'Submit Report'}</button>`);
+}
+async function submitStudioReport(id){
+  const st=((document.querySelector('input[name="sr-status"]:checked')||{}).value)||'held';
+  const notes=(document.getElementById('sr-notes').value||'').trim();
+  const reporter=(document.getElementById('sr-reporter').value||'').trim();
+  if(st!=='held'&&!notes){ toast('Please add a short note about the issue / cancellation.',true); return; }
+  try{
+    const r=await api('/api/admin/studio-reports','POST',{entry_id:id,status:st,notes:notes,reporter:reporter});
+    window._srReports=window._srReports||{}; window._srReports[id]=r.report;
+    closeModal(); toast('Studio report saved.'); aRenderTT();
+  }catch(e){ toast(e.message||'Could not save the report',true); }
+}
+async function deleteStudioReport(entryId,rid){
+  if(!confirm('Remove this studio report?')) return;
+  try{ await api('/api/admin/studio-reports/'+rid,'DELETE'); if(window._srReports) delete window._srReports[entryId]; closeModal(); toast('Report removed.'); aRenderTT(); }catch(e){ toast(e.message||'Could not remove the report',true); }
 }
 function genPassword(){ const c='abcdefghjkmnpqrstuvwxyz23456789'; let p=''; for(let i=0;i<6;i++)p+=c[Math.floor(Math.random()*c.length)]; return p; }
 function showCredentials(role,name,uid,pass){
@@ -14025,8 +14071,8 @@ function _geoNote(txt,cls){
     if(f && Date.now()-f.at<10*60*1000) h=`<div class="alert alert-${f.cls==='error'?'danger':(f.cls||'info')}" style="margin-top:10px;font-size:.8rem">${f.txt}</div>`;
     else{
       window._geoFlash=null;
-      if(window._geoState.active){ const br=(window._geoState.offices||[]).map(o=>`${esc(o.name)}: ${o.radius}m`).join(' · ');
-        const rad=window._geoState.radius;
+      if(window._geoState.active){ const rad=window._geoState.radius;
+        const br=(window._geoState.offices||[]).map(o=>`${esc(o.name)}: ${o.radius||rad||0}m`).join(' · ');
         h=`<div style="font-size:.72rem;color:var(--text-muted);margin-top:8px;text-align:center">Location check ON — punch-in is allowed only from within the office radius${br?` (<b>${br}</b>)`:(rad?` (<b>${rad}m</b>)`:'')}.</div>`; }
     }
   }
@@ -14144,7 +14190,7 @@ let _tAttMonth='';
 async function loadTAttendance(){
   const el=document.getElementById('t-attendance-content');
   _tAttMonth=_tAttMonth||curMonth();
-  el.innerHTML=`<div class="sm-head"><h2>My Attendance</h2><p>Punch in / punch out daily. Your counted hours = punch gap <b>minus lunch break</b> (full time). Leaving before your assigned hours still marks you <b>Present (Short)</b>. Leave ke liye pehle approval lein.</p></div>
+  el.innerHTML=`<div class="sm-head"><h2>My Attendance</h2><p>Punch in / punch out daily. Your counted hours = punch gap <b>minus lunch break</b> (full time). Leaving before your assigned hours still marks you <b>Present (Short)</b>. Please take prior approval for any leave.</p></div>
     <div id="ta-timing"></div>
     <div class="att-grid">
       <div id="ta-punch-wrap"></div>
@@ -14242,7 +14288,9 @@ async function tAttHistory(){
       const leaves=new Set(d.leave_dates||[]);
       const now=new Date(); const isCur=(now.getFullYear()===yy&&now.getMonth()+1===mm);
       const lastEl=isCur?now.getDate():daysIn;
+      const _off=(new Date(yy,mm-1,1).getDay()+6)%7;
       let cells='';
+      for(let _b=0;_b<_off;_b++) cells+='<div class="cal-d blank"></div>';
       for(let day=1;day<=daysIn;day++){
         const ds=`${yy}-${String(mm).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
         const r=byDate[ds];
@@ -14261,6 +14309,7 @@ async function tAttHistory(){
           <div class="cal-stat r"><div class="n">${d.absent_days||0}</div><div class="l">AB</div></div>
           <div class="cal-stat b"><div class="n">${d.total_hours}</div><div class="l">Hours</div></div>
         </div>
+        <div class="cal-wk"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
         <div class="cal-grid">${cells}</div>
         <div class="cal-leg"><span><i style="background:rgba(16,185,129,.6)"></i>Present</span><span><i style="background:rgba(59,130,246,.55)"></i>Leave</span><span><i style="background:rgba(245,158,11,.6)"></i>Present · Short (early leave)</span><span><i style="background:rgba(220,38,38,.45)"></i>AB</span><span><i style="outline:2px solid #b8941f;outline-offset:-1px;background:transparent"></i>Today</span></div>`;
     }
@@ -16815,6 +16864,38 @@ body.dark .po-pill.red{color:#f87171}
 .pct-num{text-align:center}
 .pct-tag{font-size:.56rem;font-weight:900;letter-spacing:.08em;background:#eef2ff;color:#4f46e5;padding:4px 9px;border-radius:99px}
 .pct-del{padding:5px 11px;font-size:.95rem;line-height:1}
+
+.att-grid>.card{display:flex;flex-direction:column;margin-bottom:0}
+/* ===== v97: admin task delete + class studio report ===== */
+.vt-del{color:#dc2626 !important;border-color:rgba(220,38,38,.35) !important}
+.vt-del:hover{background:rgba(220,38,38,.08) !important}
+.tl-report{display:inline-flex;align-items:center;gap:4px;font-size:.62rem;font-weight:800;letter-spacing:.04em;padding:3px 9px;border-radius:99px;cursor:pointer;border:1.2px solid rgba(138,109,16,.35);color:#8a6d10;background:rgba(138,109,16,.07);transition:all .15s}
+.tl-report:hover{background:rgba(138,109,16,.14)}
+.tl-report.done{border-color:rgba(5,150,105,.4);color:#047857;background:rgba(5,150,105,.08)}
+.tl-report.done:hover{background:rgba(5,150,105,.14)}
+.stl-card.ongoing .tl-report{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.45);color:#fff}
+.stl-card.ongoing .tl-report:hover{background:rgba(255,255,255,.22)}
+.stl-card.ongoing .tl-report.done{background:rgba(16,185,129,.28);border-color:rgba(110,231,183,.65);color:#d1fae5}
+.stl-card.ongoing .tl-report.done:hover{background:rgba(16,185,129,.38)}
+.sr-opts{display:grid;gap:8px}
+.sr-opt{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1.4px solid rgba(138,109,16,.18);border-radius:12px;cursor:pointer;transition:all .15s;background:var(--card-bg,#fff)}
+.sr-opt:hover{border-color:rgba(138,109,16,.45)}
+.sr-opt input{display:none}
+.sr-opt.on{border-color:#8a6d10;background:rgba(138,109,16,.07);box-shadow:0 2px 10px -6px rgba(138,109,16,.5)}
+.sr-dot{width:11px;height:11px;border-radius:99px;margin-top:3px;flex:none}
+.sr-dot.held{background:#059669}.sr-dot.issues{background:#d97706}.sr-dot.cancelled{background:#dc2626}
+.sr-t{font-size:.82rem;font-weight:800}
+.sr-d{font-size:.7rem;color:var(--text-muted)}
+.att-grid>.card .card-body{flex:1}
+.att-grid #ta-punch-wrap{display:flex}
+.att-grid #ta-punch-wrap .pw-shell{flex:1;margin-bottom:0 !important;display:flex;flex-direction:column}
+.att-grid #ta-punch-wrap .pw-body{flex:1;display:flex;flex-direction:column;justify-content:center}
+.cal-d.blank{background:transparent;border-color:transparent;pointer-events:none}
+.cal-wk{display:grid;grid-template-columns:repeat(7,1fr);gap:7px;margin-bottom:7px}
+.cal-wk span{text-align:center;font-size:.6rem;font-weight:800;letter-spacing:.07em;color:var(--text-muted);text-transform:uppercase}
+
+.att-grid .pw-mini{display:grid;grid-template-columns:repeat(2,1fr)}
+.att-grid .pw-mini .m{min-width:0}
 </style>
 <script id="syl-js">
 /* ============================================================

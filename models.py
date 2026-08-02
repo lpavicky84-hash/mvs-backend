@@ -559,6 +559,31 @@ class TimetableEntry(Base):
     resched_by      = Column(String(20), nullable=True)  # v86: kaun move kiya — teacher | admin | leave (NULL = kabhi move nahi)
     created_at  = Column(DateTime, default=func.now())
 
+
+class StudioReport(Base):
+    """v97: admin / studio manager ka class report — timetable ki kisi bhi class
+    (part ya event) pe status + notes. Ek entry pe ek report (upsert); baad me
+    edit ki ja sakti hai. Teacher ke lecture report se ALAG hai — ye studio /
+    centre side ka internal note hai (recording, setup, issues...)."""
+    __tablename__ = "studio_reports"
+
+    id          = Column(Integer, primary_key=True)
+    entry_id    = Column(Integer, ForeignKey("timetable_entries.id"), unique=True, index=True)
+    # snapshot fields — entry baad me move/edit ho to bhi report ka context bana rahe
+    entry_date  = Column(String(12), default="")        # YYYY-MM-DD
+    day         = Column(String(20), default="")
+    time_str    = Column(String(40), default="")
+    subject     = Column(String(120), default="")
+    class_name  = Column(String(60), default="")
+    chapter     = Column(String(300), default="")
+    part        = Column(String(300), default="")
+    status      = Column(String(20), default="held")    # held | issues | cancelled
+    notes       = Column(Text, default="")
+    reporter    = Column(String(160), default="")       # studio manager / admin ka naam
+    created_by  = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at  = Column(DateTime, default=func.now())
+    updated_at  = Column(DateTime, default=func.now(), onupdate=func.now())
+
 # =============================================
 # STUDY MATERIAL (PDF stored as base64 in DB) — notes / dpp / test / answer
 # =============================================
