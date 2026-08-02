@@ -351,6 +351,98 @@ def _sync_chapters(db, t, titles):
     return changed
 
 
+def _tma_titles_for(db, tid, name, cls):
+    """(titles, ok) — syllabus ke SIRF TMA chapters; ok True tabhi jab subject ka
+    syllabus resolve ho (timetable fallback pe kind pata nahi — wahan prune skip)."""
+    titles, src = _chapters_for(db, tid, name, cls, "tma")
+    return titles, (src == "syllabus")
+
+
+def _prune_tma(db, t, tma_titles):
+    """v92: special tasks se TMA chapters hatao — sirf Public Examination chapters
+    shoot karne hain. Custom (syllabus se bahar ke) titles chhuwe nahi jaate —
+    sirf wo rows hat ti hain jo syllabus ke TMA list se exact match karti hain."""
+    tset = {x.strip().lower() for x in tma_titles if (x or "").strip()}
+    if not tset:
+        return False
+    rows = (db.query(VideoTaskChapter)
+            .filter(VideoTaskChapter.task_id == t.id).all())
+    hit = [c for c in rows if (c.title or "").strip().lower() in tset]
+    if not hit:
+        return False
+    for c in hit:
+        db.delete(c)
+    _hist_add(t, "edited",
+              "Chapters trimmed to Public Examination only — %d TMA chapter(s) removed"
+              % len(hit))
+    return True
+
+
+def _pe_sync_prune(db, t, tid, name, cls):
+    """v92: task ke chapters PE-only banao — missing PE chapters add + TMA rows prune.
+    Return None = syllabus resolve nahi hua (caller apne fallback pe jaye);
+    True/False = PE scope apply hua, kuch badla ya nahi."""
+    pe_titles, pe_src = _chapters_for(db, tid, name, cls, "pe")
+    if pe_src != "syllabus" or not pe_titles:
+        return None
+    changed = _sync_chapters(db, t, pe_titles)
+    tma_titles, tma_ok = _tma_titles_for(db, tid, name, cls)
+    if tma_ok and _prune_tma(db, t, tma_titles):
+        changed = True
+    return changed
+
+
+def _display_base_cls(display):
+    """'Physics 12' -> ('Physics', '12'); class na ho to ('Physics', '')."""
+    subj = (display or "").strip()
+    cls = _subject_cls(subj)
+    base = re.sub(r"\s*\d{1,2}\s*$", "", subj).strip() if cls else subj
+    return base, cls
+
+
+def _tagged_chapters_for(db, name, cls):
+    """([{title, kind}], source) — syllabus chapter master PE/TMA tag ke saath,
+    _chapters_for jaisi hi resolution + title format. Resolve na ho to ([], '')."""
+    from subjects_registry import canon_subject
+    import syllabus_routes as SR
+    import syllabus_data as SD
+    lv0 = _class_level(cls)
+    levels = [lv0] if lv0 else ["12", "10"]
+    for lv in levels:
+        code = None
+        try:
+            r = canon_subject(name, lv)
+            if r and r.get("code"):
+                code = r["code"]
+        except Exception:
+            pass
+        if not code:
+            try:
+                code = SR.subject_code_for_name(db, lv, name)
+            except Exception:
+                code = None
+        if not code:
+            continue
+        subj = SR.get_subject(db, lv, code)
+        if not subj:
+            continue
+        try:
+            rows = SD.chapter_master(subj)
+        except Exception:
+            rows = []
+        out = []
+        for r in rows:
+            no, ti = str(r.get("no") or "").strip(), (r.get("title") or "").strip()
+            if not ti:
+                continue
+            out.append({
+                "title": ti if (not no or ti[:1].isdigit()) else (no + ". " + ti),
+                "kind": (r.get("kind") or "").strip().upper()})
+        if out:
+            return out, "syllabus"
+    return [], ""
+
+
 def _dedupe_special(db, teacher_id, kind):
     """Same teacher+kind+subject ke duplicate tasks self-heal merge (kahin purana
     bug ya double-create ho to bhi): sabse purana task rakho, baaki ke chapters
@@ -491,7 +583,11 @@ def _ensure_special_teacher(db, tp):
                            'videos of every chapter and paste each chapter\'s link in front of it. '
                            'Deadline: %s.' % (display, _dl(ONE_SHOT_DEADLINE).strftime("%d %b %Y")))
             changed = True
-        if titles and _sync_chapters(db, t, titles):
+        _psr = _pe_sync_prune(db, t, tp.id, nm, cl)
+        if _psr is None:
+            if titles and _sync_chapters(db, t, titles):
+                changed = True
+        elif _psr:
             changed = True
     # Rapid Revision — har subject ka ek task, chapters syllabus/timetable se (One Shot jaisa)
     for nm, cl, display in named:
@@ -532,7 +628,19 @@ def _ensure_special_teacher(db, tp):
                            'front of it. Deadline: %s.'
                            % (display, _dl(RAPID_REVISION_DEADLINE).strftime("%d %b %Y")))
             changed = True
-        if titles and _sync_chapters(db, rt, titles):
+        _psr = _pe_sync_prune(db, rt, tp.id, nm, cl)
+        if _psr is None:
+            if titles and _sync_chapters(db, rt, titles):
+                changed = True
+        elif _psr:
+            changed = True
+    # v92: syllabus-connected custom PROJECTS bhi PE-only (One Shot/RR jaisa) —
+    # item_source 'custom' wale projects ke items admin ke banaye hue hain, unhe chhedo nahi.
+    for pt in (db.query(VideoTask)
+               .filter(VideoTask.teacher_id == tp.id, VideoTask.kind == "project",
+                       VideoTask.item_source == "syllabus").all()):
+        base, pcls = _display_base_cls(pt.subject)
+        if base and _pe_sync_prune(db, pt, tp.id, base, pcls):
             changed = True
     # Legacy single-task format (subject="" — ek task jisme har subject ki ek row thi)
     # migrate: purane links naye per-subject task ki history me note karke task delete.
@@ -1120,6 +1228,39 @@ def vt_edit(task_id: int, payload: dict = Body(...),
             if wd != (getattr(t, "weekly_day", "") or ""):
                 changes.append("weekly deadline day → " + (wd.title() if wd else "—"))
                 t.weekly_day = wd
+        # v92: chapters bhi edit — admin checklist se select kare kaunse chapters
+        # task me rahen (TMA hatana ho ya koi wapas add karna ho). Link wali row
+        # remove ho to wo bhi allow (admin ka conscious choice) — history me note.
+        sel = payload.get("chapters")
+        if sel is not None:
+            if not isinstance(sel, list):
+                raise HTTPException(400, "chapters must be a list of titles")
+            keep, seen_k = [], set()
+            for x in sel:
+                s2 = re.sub(r"\s+", " ", str(x or "")).strip()[:300]
+                if s2 and s2.lower() not in seen_k:
+                    seen_k.add(s2.lower())
+                    keep.append(s2)
+            if not keep:
+                raise HTTPException(400, "At least one chapter must stay selected")
+            rows = (db.query(VideoTaskChapter)
+                    .filter(VideoTaskChapter.task_id == t.id).all())
+            removed = 0
+            for crow in rows:
+                if (crow.title or "").strip().lower() not in seen_k:
+                    db.delete(crow)
+                    removed += 1
+            existing = {(crow.title or "").strip().lower() for crow in rows
+                        if (crow.title or "").strip().lower() in seen_k}
+            sort = max([getattr(crow, "sort", 0) or 0 for crow in rows] + [-1]) + 1
+            added = 0
+            for s2 in keep:
+                if s2.lower() not in existing:
+                    db.add(VideoTaskChapter(task_id=t.id, title=s2, sort=sort))
+                    sort += 1
+                    added += 1
+            if removed or added:
+                changes.append("chapters (%d added, %d removed)" % (added, removed))
     for fld, col in (("reference", "reference"), ("remarks", "remarks")):
         if payload.get(fld) is not None:
             v = (payload.get(fld) or "").strip()
@@ -1148,6 +1289,33 @@ def vt_edit(task_id: int, payload: dict = Body(...),
                    f'Check My Tasks for details.')
     db.commit()
     return {"ok": True, "changed": changes}
+
+
+@router.get("/admin/video-tasks/{task_id}/chapters")
+def vt_task_chapter_options(task_id: int,
+                            db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Edit modal ki chapter-checklist: subject ka poora syllabus master (PE/TMA tag
+    ke saath) + current task chapters pre-checked. Custom titles (master me na hon)
+    bhi dikhte hain — warna admin save karte hi wo silently remove ho jaate."""
+    t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
+    if not t:
+        raise HTTPException(404, "Task not found")
+    rows = (db.query(VideoTaskChapter)
+            .filter(VideoTaskChapter.task_id == t.id)
+            .order_by(VideoTaskChapter.sort.asc(), VideoTaskChapter.id.asc()).all())
+    current = [c.title for c in rows]
+    curset = {x.strip().lower() for x in current}
+    avail, source = [], ""
+    base, cls = _display_base_cls(t.subject)
+    if base:
+        avail, source = _tagged_chapters_for(db, base, cls)
+    items = [{"title": a["title"], "kind": a["kind"],
+              "sel": a["title"].strip().lower() in curset} for a in avail]
+    have = {a["title"].strip().lower() for a in avail}
+    for cti in current:
+        if cti.strip().lower() not in have:
+            items.append({"title": cti, "kind": "", "sel": True})
+    return {"items": items, "source": source, "total": len(current)}
 
 
 def _subject_teachers(db, subject, class_level=""):

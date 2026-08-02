@@ -1395,15 +1395,20 @@
   .cd-box{background:linear-gradient(135deg,#8a6d10,#c9a227);border:none;border-radius:10px;padding:7px 12px;text-align:center;min-width:52px;box-shadow:0 6px 14px -6px rgba(138,109,16,.55)}
   .cd-box .num{font-size:1.25rem;font-weight:800;line-height:1;color:#fff;font-variant-numeric:tabular-nums}
   .cd-box .lbl{font-size:.54rem;text-transform:uppercase;color:rgba(255,255,255,.85);letter-spacing:.06em;margin-top:3px}
-  /* phone: timer hamesha RIGHT me compact, text truncate — kuch wrap/toote nahi */
+  /* phone v92: banner stack hota hai — timer apni poori row pe ek premium gold
+     capsule ke andar (digits + ':' separators), text kabhi timer ke neeche nahi */
   @media(max-width:640px){
-    .live-banner{flex-wrap:nowrap;padding:12px 14px;gap:10px}
-    .live-banner .lb-left{flex:1;min-width:0;gap:10px}
+    .live-banner{flex-direction:column;align-items:stretch;flex-wrap:nowrap;padding:14px 16px;gap:12px}
+    .live-banner .lb-left{width:100%;min-width:0;gap:10px}
+    .live-banner .lb-left>div{min-width:0;flex:1}
     .live-banner .lb-icon{width:38px;height:38px}
-    .live-banner h3{font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .live-banner small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .cd-box{min-width:42px;padding:5px 8px;border-radius:9px}
-    .cd-box .num{font-size:1.02rem}
+    .live-banner h3{font-size:.98rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .live-banner small{display:block;font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .countdown{margin-left:0;width:100%;gap:0;background:linear-gradient(135deg,#8a6d10,#c9a227);border-radius:12px;padding:8px 6px;box-shadow:0 8px 18px -8px rgba(138,109,16,.6)}
+    .cd-box{flex:1;background:none;box-shadow:none;border:none;border-radius:0;min-width:0;padding:2px 4px;position:relative}
+    .cd-box+.cd-box::before{content:':';position:absolute;left:-3px;top:6px;color:rgba(255,255,255,.65);font-weight:800;font-size:1rem}
+    .cd-box .num{font-size:1.22rem}
+    .cd-box .lbl{font-size:.56rem;margin-top:2px}
   }
   .live-banner.now{background:linear-gradient(120deg,#7f1d1d 0%,#dc2626 55%,#ef4444 100%);border:none;box-shadow:0 14px 38px -12px rgba(220,38,38,.65);position:relative;overflow:hidden;animation:lbGlow 2.4s ease-in-out infinite}
   @keyframes lbGlow{0%,100%{box-shadow:0 14px 38px -12px rgba(220,38,38,.65)}50%{box-shadow:0 14px 46px -8px rgba(220,38,38,.9)}}
@@ -8134,9 +8139,34 @@ async function openVTEdit(id,ev){
       </div>`}
       <div class="form-group" style="grid-column:1/-1"><label>Reference / Brief</label><textarea id="vt-e-ref" class="input" rows="2">${esc(t.reference||'')}</textarea></div>
       <div class="form-group" style="grid-column:1/-1"><label>Remarks for Teacher</label><textarea id="vt-e-remarks" class="input" rows="2">${esc(t.remarks||'')}</textarea></div>
+      ${special?`<div class="form-group" style="grid-column:1/-1"><label>Chapters Included <span style="font-weight:500;color:var(--text-muted);font-size:.72rem;text-transform:none">— uncheck to remove, check to add (PE = exam chapters, TMA = assignment-only)</span></label>
+        <div id="vt-e-chaps" class="vt-echaps"><div style="padding:10px;font-size:.82rem;color:var(--text-muted)">Loading chapters…</div></div></div>`:''}
     </div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="vtEditSave(${t.id})">${ic('check')} Save Changes</button>`);
+  if(special) vtEditChapsLoad(t.id);
 }
+async function vtEditChapsLoad(id){
+  const box=document.getElementById('vt-e-chaps'); if(!box) return;
+  try{
+    const r=await api(`/api/admin/video-tasks/${id}/chapters`);
+    const items=r.items||[];
+    if(!items.length){ box.innerHTML=`<div style="padding:10px;font-size:.82rem;color:var(--text-muted)">No chapter list is available for this subject yet.</div>`; return; }
+    box.innerHTML=`<div class="vt-echaps-bar"><span id="vt-e-chaps-n"></span><span style="flex:1"></span>
+        <span class="vt-echaps-act" onclick="vtEditChapsAll(true)">Select all</span>
+        <span class="vt-echaps-act" onclick="vtEditChapsPE()">PE only</span></div>
+      <div class="vt-echaps-list">`+items.map(c=>`<label class="vt-echap">
+        <input type="checkbox" class="vt-echap-cb" data-kind="${esc(c.kind||'')}" value="${esc(c.title)}" ${c.sel?'checked':''} onchange="vtEditChapsCount()">
+        <span class="vt-echap-t">${esc(c.title)}</span>${c.kind?`<span class="vt-echap-k ${c.kind==='PE'?'pe':'tma'}">${c.kind}</span>`:''}</label>`).join('')+`</div>`;
+    vtEditChapsCount();
+  }catch(e){ box.innerHTML=`<div style="padding:10px;font-size:.82rem;color:var(--danger)">Could not load the chapter list — ${esc(e.message||'please try again')}</div>`; }
+}
+function vtEditChapsCount(){
+  const cbs=[...document.querySelectorAll('#vt-e-chaps .vt-echap-cb')];
+  const n=cbs.filter(c=>c.checked).length;
+  const el=document.getElementById('vt-e-chaps-n'); if(el) el.textContent=`${n} of ${cbs.length} chapters selected`;
+}
+function vtEditChapsAll(v){ document.querySelectorAll('#vt-e-chaps .vt-echap-cb').forEach(c=>{ c.checked=v; }); vtEditChapsCount(); }
+function vtEditChapsPE(){ document.querySelectorAll('#vt-e-chaps .vt-echap-cb').forEach(c=>{ c.checked=(c.dataset.kind==='PE'); }); vtEditChapsCount(); }
 async function vtEditSave(id){
   const payload={
     title:document.getElementById('vt-e-title').value.trim(),
@@ -8149,6 +8179,12 @@ async function vtEditSave(id){
     if(window._vtThumbB64) payload.thumbnail_b64=window._vtThumbB64; }
   const qEl=document.getElementById('vt-e-quota');
   if(qEl){ payload.weekly_quota=+qEl.value||0; payload.weekly_day=(document.getElementById('vt-e-day')||{}).value||''; }
+  const chBox=document.getElementById('vt-e-chaps');
+  if(chBox && chBox.querySelector('.vt-echap-cb')){
+    const sel=[...chBox.querySelectorAll('.vt-echap-cb:checked')].map(c=>c.value);
+    if(!sel.length){ toast('Select at least one chapter'); return; }
+    payload.chapters=sel;
+  }
   if(!payload.title){ toast('Title is required'); return; }
   if(!payload.deadline){ toast('Please set a deadline'); return; }
   try{
@@ -8576,25 +8612,23 @@ async function loadAApprovals(){
   const el=document.getElementById('a-approvals-content');
   loadAppReviews();
   try{
+ // v92: saari lists PARALLEL fetch — ek click pe poora page ek saath render
+ // (pehle 5 alag-alag sequential calls the, isliye spinner bahut der tak ata tha).
+ const [pc,ttrs,pcr,lrm]=await Promise.all([
+   api('/api/admin/pending-classes').catch(()=>[]),
+   api('/api/admin/tt-reschedules/pending').catch(()=>[]),
+   api('/api/admin/passcode-resets').catch(()=>[]),
+   api('/api/admin/letter-remarks').catch(()=>[])]);
  let html='';
  // Extra-class requests
- let pc=[]; try{ pc=await api('/api/admin/pending-classes'); }catch(e){}
  html+=`<div class="card"><div class="card-header"><h3>Extra Class Requests</h3><span class="chip">${pc.length}</span></div><div class="card-body">`;
  if(pc.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No extra-class requests.</p></div>`;
  pc.forEach(r=>{
    html+=`<div class="doubt-card" style="border-left-color:var(--primary)"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><h4>${esc(r.subject)} — ${esc(r.topic||'Extra Class')}</h4><p style="font-size:.82rem;color:var(--text-muted);margin-top:4px">Teacher: <strong>${esc(r.teacher||'-')}</strong> &nbsp;|&nbsp; ${esc(r.date||'')} ${esc(r.time||'')} &nbsp;|&nbsp; ${esc(r.class_name||'')}</p></div><span class="tag tag-pending">Pending</span></div><div style="display:flex;gap:10px;margin-top:16px"><button class="btn btn-success btn-sm" onclick="approveClass(${r.id})">${ic('check')} Approve</button><button class="btn btn-danger btn-sm" onclick="rejectClass(${r.id})">${ic('trash')} Reject</button></div></div>`;
  });
  html+=`</div></div>`;
- const reqs=await api('/api/admin/reschedules/pending');
- html+=`<div class="card"><div class="card-header"><h3>Reschedule Requests</h3></div><div class="card-body">`;
- if(reqs.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No pending requests.</p></div>`;
- reqs.forEach(r=>{
- html+=`<div class="doubt-card" style="border-left-color:var(--warning)"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><h4>Request #${r.id}</h4><p style="font-size:.82rem;color:var(--text-muted);margin-top:4px">Original: ${r.original_date} ${r.original_time} → New: ${r.new_date} ${r.new_time}</p><p style="font-size:.82rem;margin-top:8px"><strong>Reason:</strong> ${esc(r.reason)}</p></div><span class="tag tag-pending">Pending</span></div><div style="display:flex;gap:10px;margin-top:16px"><button class="btn btn-success btn-sm" onclick="reviewRs(${r.id},'approved')"> Approve</button><button class="btn btn-danger btn-sm" onclick="reviewRs(${r.id},'rejected')"> Reject</button></div></div>`;
- });
- html+=`</div></div>`;
  // v86: Teacher ne topic-edit modal se bheji timetable-class reschedule requests.
  // Approve karne par class move hoti hai + teacher ka monthly reschedule count +1.
- let ttrs=[]; try{ ttrs=await api('/api/admin/tt-reschedules/pending'); }catch(e){}
  html+=`<div class="card"><div class="card-header"><h3>Class Reschedule Requests (Timetable)</h3><span class="chip">${ttrs.length}</span></div><div class="card-body">`;
  if(ttrs.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No pending class-reschedule requests.</p></div>`;
  ttrs.forEach(r=>{
@@ -8603,7 +8637,6 @@ async function loadAApprovals(){
  html+=`</div></div>`;
  // v89: Payout passcode reset requests — admin teacher se confirm karke approve kare;
  // approve hone par hi purana passcode clear hota hai (teacher naya set karta hai).
- let pcr=[]; try{ pcr=await api('/api/admin/passcode-resets'); }catch(e){}
  html+=`<div class="card"><div class="card-header"><h3>Passcode Reset Requests (Payout Lock)</h3><span class="chip">${pcr.length}</span></div><div class="card-body">`;
  if(pcr.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No passcode reset requests.</p></div>`;
  pcr.forEach(r=>{
@@ -8612,7 +8645,6 @@ async function loadAApprovals(){
  html+=`</div></div>`;
  // v90: Appointment letter remarks — teacher ne accept se pehle doubt bheja hai.
  // Admin reply likhkar resolve kare; letter me badlav ho to Payouts → Pay Structure se.
- let lrm=[]; try{ lrm=await api('/api/admin/letter-remarks'); }catch(e){}
  html+=`<div class="card"><div class="card-header"><h3>Appointment Letter Remarks</h3><span class="chip">${lrm.length}</span></div><div class="card-body">`;
  if(lrm.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No letter remarks pending.</p></div>`;
  lrm.forEach(r=>{
@@ -8628,7 +8660,7 @@ async function reviewPcReset(tid,status){
 async function reviewLetterRemark(tid){
   const el=document.getElementById('lr-reply-'+tid);
   const t=(el&&el.value||'').trim();
-  if(t.length<3){ toast('Reply likho — teacher ko samajhna chahiye ki kya hua.',true); return; }
+  if(t.length<3){ toast('Please write a reply — the teacher should understand what was clarified.',true); return; }
   try{ const r=await api(`/api/admin/letter-remarks/${tid}/review`,'POST',{reply:t}); toast(r.message); loadAApprovals(); }catch(e){ toast(e.message,true); }
 }
 async function reviewTTRs(id,status){
@@ -15588,6 +15620,19 @@ body.dark .po-pill.red{color:#f87171}
 @keyframes vtChBlink{0%,100%{background:rgba(217,119,6,0)}50%{background:rgba(217,119,6,.14)}}
 .vt-chr.vt-changed{animation:vtChBlink 1.3s ease-in-out infinite;border-radius:10px}
 .vt-chg{font-size:.6rem;font-weight:800;padding:2px 9px;border-radius:999px;background:rgba(217,119,6,.15);color:#b45309;border:1px solid rgba(217,119,6,.4);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;flex-shrink:0}
+/* v92 — edit-task chapter checklist */
+.vt-echaps{border:1px solid var(--border);border-radius:12px;background:var(--bg);overflow:hidden}
+.vt-echaps-bar{display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--card);font-size:.74rem;font-weight:700;color:var(--text-muted)}
+.vt-echaps-act{cursor:pointer;color:var(--primary);font-weight:800;text-transform:uppercase;font-size:.66rem;letter-spacing:.05em;padding:3px 8px;border-radius:7px;border:1px solid rgba(184,148,31,.4);background:var(--primary-50)}
+.vt-echaps-act:hover{filter:brightness(.96)}
+.vt-echaps-list{max-height:220px;overflow-y:auto;padding:6px}
+.vt-echap{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;cursor:pointer;font-size:.82rem}
+.vt-echap:hover{background:rgba(184,148,31,.07)}
+.vt-echap input{accent-color:var(--primary);width:15px;height:15px;flex-shrink:0;cursor:pointer}
+.vt-echap-t{flex:1;min-width:0;color:var(--text)}
+.vt-echap-k{font-size:.58rem;font-weight:800;padding:2px 8px;border-radius:999px;letter-spacing:.05em;flex-shrink:0}
+.vt-echap-k.pe{background:rgba(22,163,74,.12);color:#15803d;border:1px solid rgba(22,163,74,.35)}
+.vt-echap-k.tma{background:rgba(100,116,139,.1);color:#64748b;border:1px solid rgba(100,116,139,.3)}
 .vt-chst{font-size:.6rem;font-weight:800;padding:2px 9px;border-radius:999px;border:1.2px solid;
   text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;flex-shrink:0}
 /* v77 — premium status dropdown */
