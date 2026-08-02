@@ -68,6 +68,9 @@ class User(Base):
     password   = Column(String(255), nullable=False)
     role       = Column(Enum(UserRole), nullable=False)
     is_active  = Column(Boolean, default=True)
+    # v94: restricted sub-admin — NULL = full access (super admin),
+    # otherwise JSON list of allowed admin section keys (e.g. ["dashboard","doubts"])
+    allowed_sections = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 

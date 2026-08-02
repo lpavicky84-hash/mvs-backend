@@ -1,9 +1,12 @@
 import re
+import secrets
+import string
 try:
     import subjects_registry as _SR
 except Exception:
     _SR = None
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, Request
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, date, timedelta
@@ -23,7 +26,65 @@ from schemas import (
 )
 from security import hash_password
 
-router = APIRouter(prefix="/api/admin", tags=["Admin"])
+# ==================================================== v94: RESTRICTED SUB-ADMIN ACCESS
+# Super admin (allowed_sections = NULL) ko sab kuch milta hai.
+# Restricted admin ke liye sirf listed sections ke endpoints chalte hain.
+# Map: pehla path segment (/api/admin/<segment>/...) -> sidebar section key.
+ADMIN_SECTION_MAP = {
+    "dashboard": "dashboard", "portal-overview": "dashboard", "activity": "dashboard", "my-ip": "dashboard",
+    "pending-classes": "approvals", "tt-reschedules": "approvals", "reschedules": "approvals",
+    "app-reviews": "approvals", "letter-remarks": "approvals", "class": "approvals",
+    "live-students": "live", "live-users": "live", "user": "live",
+    "timetable-entry": "timetable", "timetable-all": "timetable", "timetable-clear": "timetable",
+    "timetable-pdf": "timetable", "timetable-pdf-commit": "timetable", "timetable-subject": "timetable",
+    "questionbank": "qbank",
+    "material": "material", "materials-tree": "material", "pending-materials": "material",
+    "doubt": "doubts", "doubts": "doubts", "doubts-overview": "doubts",
+    "exam": "tests", "exams": "tests", "dpp-packs": "tests",
+    "teacher": "teachers", "teachers": "teachers", "warn-teacher": "teachers", "credentials": "teachers",
+    "class-reports": "reports",
+    "dpp-rankings": "tranks",
+    "class-compliance": "compliance",
+    "attendance": "attendance", "leaves": "attendance", "office-location": "attendance", "session-deadlines": "attendance",
+    "student": "students", "students": "students", "students-list": "students",
+    "student-counts": "students", "reset-password": "students",
+    "subjects": "subjects",
+    "earnings": "payouts", "payout-task": "payouts", "payouts": "payouts", "payout-approvals": "payouts",
+    "payout-adjust": "payouts", "passcode-resets": "payouts",
+    "contracts-overview": "payouts", "contracts-bulk": "payouts",
+    "admins": "admins", "reset-data": "admins", "whatsapp": "admins", "orphan-data": "admins",
+    "notify": "notify", "notify-targets": "notify", "broadcast": "notify",
+    "video-channels": "vtasks", "video-types": "vtasks", "video-tasks": "vtasks",
+}
+
+
+def admin_allowed_sections(user):
+    """None = full access; otherwise set of allowed section keys."""
+    secs = getattr(user, "allowed_sections", None)
+    if secs is None:
+        return None
+    return set(secs or [])
+
+
+def admin_section_guard(request: Request, current_user=Depends(get_admin)):
+    """Router-level guard: restricted sub-admin sirf apne allowed sections ke
+    endpoints call kar sakta hai. Unmapped endpoints (e.g. notifications bell)
+    sabke liye open rehte hain — safe default."""
+    allowed = admin_allowed_sections(current_user)
+    if allowed is None:
+        return current_user
+    path = request.url.path  # e.g. /api/admin/earnings/configs
+    if not path.startswith("/api/admin/"):
+        return current_user
+    parts = path.split("/")
+    first = parts[3] if len(parts) > 3 else ""
+    sec = ADMIN_SECTION_MAP.get(first)
+    if sec is not None and sec not in allowed:
+        raise HTTPException(status_code=403, detail="You do not have access to this section.")
+    return current_user
+
+
+router = APIRouter(prefix="/api/admin", tags=["Admin"], dependencies=[Depends(admin_section_guard)])
 
 def notify(db, user_id: int, title: str, message: str, notif_type: str):
     n = Notification(user_id=user_id, title=title, message=message, notif_type=notif_type)
@@ -332,19 +393,116 @@ def teacher_activity(db: Session = Depends(get_db), _=Depends(get_admin)):
     return result
 
 # ===== ADMIN USER MANAGEMENT =====
+def _admin_json(u: User):
+    secs = getattr(u, "allowed_sections", None)
+    return {
+        "id": u.id, "name": u.name, "user_id": u.user_id,
+        "is_active": bool(u.is_active),
+        "full_access": secs is None,
+        "sections": (sorted(secs) if isinstance(secs, (list, tuple)) else None),
+        "created_at": u.created_at.isoformat() if getattr(u, "created_at", None) else None,
+    }
+
+
+class AdminCreateIn(BaseModel):
+    name: str
+    user_id: Optional[str] = None     # blank -> auto-generate
+    password: Optional[str] = None    # blank -> auto-generate
+    sections: Optional[List[str]] = None  # null/omitted -> full access
+
+
+class AdminSectionsIn(BaseModel):
+    sections: Optional[List[str]] = None  # null -> full access
+
+
+def _clean_sections(raw):
+    secs = sorted({s for s in (raw or []) if isinstance(s, str) and s.strip()})
+    if "dashboard" not in secs:
+        secs.insert(0, "dashboard")
+    return secs
+
+
+@router.get("/me")
+def admin_me(db: Session = Depends(get_db), me=Depends(get_admin)):
+    """Logged-in admin ka access profile — frontend nav ko isi se filter karta hai."""
+    secs = getattr(me, "allowed_sections", None)
+    return {
+        "id": getattr(me, "id", None),
+        "name": getattr(me, "name", "Admin") or "Admin",
+        "user_id": getattr(me, "user_id", "") or "",
+        "full_access": secs is None,
+        "sections": (sorted(secs) if isinstance(secs, (list, tuple)) else ([] if secs is not None else None)),
+    }
+
+
+@router.get("/admins")
+def list_admins(db: Session = Depends(get_db), _=Depends(get_admin)):
+    rows = db.query(User).filter(User.role == UserRole.admin).order_by(User.created_at.asc()).all()
+    return {"admins": [_admin_json(u) for u in rows]}
+
+
 @router.post("/admins/add")
-def add_admin(req: RegisterRequest, db: Session = Depends(get_db), _=Depends(get_admin)):
-    existing = db.query(User).filter(User.user_id == req.user_id).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="This User ID already exists")
+def add_admin(req: AdminCreateIn, db: Session = Depends(get_db), _=Depends(get_admin)):
+    name = (req.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name is required")
+    uid = (req.user_id or "").strip()
+    if uid:
+        if db.query(User).filter(User.user_id == uid).first():
+            raise HTTPException(status_code=400, detail="This User ID already exists")
+    else:
+        uid = None
+        for _ in range(25):
+            cand = "adm_" + "".join(secrets.choice(string.digits) for _ in range(4))
+            if not db.query(User).filter(User.user_id == cand).first():
+                uid = cand
+                break
+        if not uid:
+            raise HTTPException(status_code=500, detail="Could not generate a unique User ID. Please try again.")
+    pwd = (req.password or "").strip() or "".join(
+        secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
+    secs = _clean_sections(req.sections) if req.sections is not None else None
     user = User(
-        name=req.name, user_id=req.user_id,
-        password=hash_password(req.password),
-        role=UserRole.admin, is_active=True
+        name=name, user_id=uid,
+        password=hash_password(pwd),
+        role=UserRole.admin, is_active=True,
+        allowed_sections=secs,
     )
     db.add(user)
     db.commit()
-    return {"message": f"Admin {req.name} added successfully! User ID: {req.user_id}"}
+    out = _admin_json(user)
+    out["message"] = f"Admin {name} added successfully!"
+    out["password"] = pwd  # shown once to the creator so they can share it
+    return out
+
+
+@router.post("/admins/{admin_id}/sections")
+def set_admin_sections(admin_id: int, req: AdminSectionsIn,
+                       db: Session = Depends(get_db), me=Depends(get_admin)):
+    if me is not None and getattr(me, "id", None) == admin_id:
+        raise HTTPException(status_code=400, detail="You cannot change your own access.")
+    u = db.query(User).filter(User.id == admin_id, User.role == UserRole.admin).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    u.allowed_sections = _clean_sections(req.sections) if req.sections is not None else None
+    db.commit()
+    out = _admin_json(u)
+    out["message"] = "Access updated."
+    return out
+
+
+@router.post("/admins/{admin_id}/toggle")
+def toggle_admin(admin_id: int, db: Session = Depends(get_db), me=Depends(get_admin)):
+    if me is not None and getattr(me, "id", None) == admin_id:
+        raise HTTPException(status_code=400, detail="You cannot deactivate your own account.")
+    u = db.query(User).filter(User.id == admin_id, User.role == UserRole.admin).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    u.is_active = not u.is_active
+    db.commit()
+    out = _admin_json(u)
+    out["message"] = f"{u.name} is now {'active' if u.is_active else 'deactivated'}."
+    return out
 
 # ===== NOTIFICATIONS TO ALL =====
 @router.post("/broadcast")
@@ -1688,7 +1846,7 @@ def admin_material_audience(mid: int, db: Session = Depends(get_db), current_use
     return _material_audience(db, mid)
 
 
-# ==================================================== LIVE USERS (students + teachers)
+# ==================================================== LIVE USERS (students + teachers + admins)
 LIVE_WINDOW_MIN = 3
 
 
@@ -1711,7 +1869,7 @@ def admin_live_users(db: Session = Depends(get_db), _=Depends(get_admin)):
         if s.last_seen and s.last_seen >= cutoff:
             d["live"] = s
 
-    users = db.query(User).filter(User.role.in_([UserRole.student, UserRole.teacher])).all()
+    users = db.query(User).filter(User.role.in_([UserRole.student, UserRole.teacher, UserRole.admin])).all()
     phones = {}
     for sp in db.query(StudentProfile).all():
         phones[sp.user_id] = sp.phone
@@ -1743,6 +1901,7 @@ def admin_live_users(db: Session = Depends(get_db), _=Depends(get_admin)):
     return {"live": live, "offline": offline, "never": never,
             "counts": {"live": len(live), "students_live": sum(1 for x in live if x["role"] == "student"),
                        "teachers_live": sum(1 for x in live if x["role"] == "teacher"),
+                       "admins_live": sum(1 for x in live if x["role"] == "admin"),
                        "never": len(never)}}
 
 

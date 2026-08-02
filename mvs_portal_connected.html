@@ -2748,7 +2748,7 @@ body.dark .cal-d.on{color:#34d399}
 </div>
 <div id="teacher-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon">M</div><div><span>MVS Foundation</span><small>Teacher</small></div></div><nav class="sidebar-nav"><div class="nav-section">Main</div><div class="nav-item active" onclick="tPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="tPage('vtasks',this)"><span>My Tasks</span><span class="badge" id="t-vt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="tPage('students',this)"><span>My Students</span></div><div class="nav-section">Content</div><div class="nav-item" onclick="tPage('dpp',this)"><span>DPP</span></div><div class="nav-item" onclick="tPage('lectures',this)"><span>Lecture Reports</span></div><div class="nav-item" onclick="tPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="tPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="tPage('extmat',this)"><span>Study Material</span></div><div class="nav-item" onclick="tPage('doubts',this)"><span>Doubts</span><span class="badge" id="t-doubt-badge" style="display:none">0</span></div><div class="nav-item" onclick="tPage('performance',this)"><span>Performance</span></div><div class="nav-item" onclick="tPage('predicted',this)"><span>Predicted Results</span></div><div class="nav-item" onclick="tPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="tPage('payout',this)"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/><circle cx="17" cy="15" r="1.4"/></svg><span>Payout</span></div><div class="nav-section">Account</div><div class="nav-item" onclick="tPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="openTeacherNotify()"><span>Notify Students</span></div><div class="nav-item" onclick="openMessageAdmin()"><span>Message Admin</span></div></nav><div class="sidebar-bottom"><div class="user-info uinfo-link" onclick="openTeacherProfile()" title="Open My Profile"><div class="avatar" id="t-avatar">T</div><div><span id="t-name">Teacher</span><small id="t-subjects">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="t-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="t-topavatar" title="Profile">T</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('teacher')"><span class="notif-badge" id="t-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="t-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="t-page-dashboard"><div id="t-reminder-banner" style="display:none"></div><div id="t-vt-banner" style="display:none"></div><div id="t-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="t-page-vtasks"><div id="t-vtasks-content"><div class="spinner"></div></div></div><div class="page" id="t-page-timetable"><div id="t-timetable-content"><div class="spinner"></div></div></div><div class="page" id="t-page-students"><div id="t-students-content"><div class="spinner"></div></div></div><div class="page" id="t-page-dpp"><div id="t-dpp-content"><div class="spinner"></div></div></div><div class="page" id="t-page-lectures"><div id="t-lectures-content"><div class="spinner"></div></div></div><div class="page" id="t-page-tests"><div id="t-tests-content"><div class="spinner"></div></div></div><div class="page" id="t-page-doubts"><div id="t-doubts-content"><div class="spinner"></div></div></div><div class="page" id="t-page-material"><div id="t-material-content"><div class="spinner"></div></div></div><div class="page" id="t-page-extmat"><div id="t-extmat-content"><div class="spinner"></div></div></div><div class="page" id="t-page-performance"><div id="t-performance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-predicted"><div id="t-predicted-content"><div class="spinner"></div></div></div><div class="page" id="t-page-attendance"><div id="t-attendance-content"><div class="spinner"></div></div></div><div class="page" id="t-page-payout"><div id="t-payout-content"><div class="spinner"></div></div></div><div class="page" id="t-page-notifications"><div id="t-notif-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== ADMIN APP ===== -->
-<div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#b06d12">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Users</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-section">Academics</div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('tests',this)"><span>Tests Tracker</span></div><div class="nav-section">Production</div><div class="nav-item" onclick="aPage('vtasks',this)"><span>Task Manager</span><span class="badge" id="a-vt-badge" style="display:none">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('tranks',this)"><span>Teacher Ranking</span></div><div class="nav-item" onclick="aPage('compliance',this)"><span>Class Compliance</span></div><div class="nav-item" onclick="aPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="aPage('payouts',this)"><span>Payouts</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('syllabus',this)"><span>Syllabus Manager</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#b06d12" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-vtasks"><div id="a-vtasks-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-reviews-wrap"></div><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-tests"><div id="a-tests-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-compliance"><div id="a-compliance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-tranks"><div id="a-tranks-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"></div><div class="card" style="margin-top:18px;border:1.5px solid rgba(220,38,38,.3)"><div class="card-header"><h3 style="color:var(--danger)">Danger Zone</h3></div><div class="card-body"><p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Clear all testing content data (timetable, materials, doubts, submissions...) in one go \u2014 students, teachers and admins remain safe.</p><button class="btn btn-danger" onclick="openResetData()">\ud83e\uddf9 Reset Portal Data</button></div></div><div style="display:none"><div class="spinner"></div></div></div><div class="page" id="a-page-syllabus"><div id="a-syl-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div><div class="page" id="a-page-attendance"><div id="a-attendance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-payouts"><div id="a-payouts-content"><div class="spinner"></div></div></div></div>
+<div id="admin-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#b06d12">A</div><div><span>MVS Foundation</span><small>Admin</small></div></div><nav class="sidebar-nav"><div class="nav-section">Overview</div><div class="nav-item active" onclick="aPage('dashboard',this)"><span>Dashboard</span></div><div class="nav-item" onclick="aPage('approvals',this)"><span>Approvals</span><span class="badge" id="a-appr-badge" style="display:none">0</span></div><div class="nav-item" onclick="aPage('live',this)"><span>Live Users</span><span class="badge" id="a-live-badge" style="display:none;background:#10b981">0</span></div><div class="nav-section">Academics</div><div class="nav-item" onclick="aPage('timetable',this)"><span>Time Table</span></div><div class="nav-item" onclick="aPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="aPage('material',this)"><span>Classes Material</span></div><div class="nav-item" onclick="aPage('doubts',this)"><span>Doubts</span><span class="badge" id="a-doubt-badge" style="display:none;background:#f59e0b">0</span></div><div class="nav-item" onclick="aPage('tests',this)"><span>Tests Tracker</span></div><div class="nav-section">Production</div><div class="nav-item" onclick="aPage('vtasks',this)"><span>Task Manager</span><span class="badge" id="a-vt-badge" style="display:none">0</span></div><div class="nav-section">Teachers</div><div class="nav-item" onclick="aPage('teachers',this)"><span>Teachers</span></div><div class="nav-item" onclick="aPage('reports',this)"><span>Teacher Reports</span></div><div class="nav-item" onclick="aPage('tranks',this)"><span>Teacher Ranking</span></div><div class="nav-item" onclick="aPage('compliance',this)"><span>Class Compliance</span></div><div class="nav-item" onclick="aPage('attendance',this)"><span>Attendance</span></div><div class="nav-item" onclick="aPage('payouts',this)"><span>Payouts</span></div><div class="nav-section">Students</div><div class="nav-item" onclick="aPage('students',this)"><span>Students</span></div><div class="nav-item" onclick="openAdminNotify()"><span>Send Notice</span></div><div class="nav-section">Settings</div><div class="nav-item" onclick="aPage('subjects',this)"><span>Subjects</span></div><div class="nav-item" onclick="aPage('syllabus',this)"><span>Syllabus Manager</span></div><div class="nav-item" onclick="aPage('admins',this)"><span>Admin Users</span></div></nav><div class="sidebar-bottom"><div class="user-info"><div class="avatar" style="background:#b06d12" id="a-avatar">A</div><div><span id="a-name">Admin</span><small>Administrator</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="a-title">Dashboard</h2><div class="topbar-actions"><div class="live-ind" id="a-live-ind" style="display:none;cursor:pointer" onclick="aPage('live',null)"><span class="live-dot"></span><span id="a-live-count">0</span> live</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('admin')"><span class="notif-badge" id="a-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="a-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="a-page-dashboard"><div id="a-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="a-page-vtasks"><div id="a-vtasks-content"><div class="spinner"></div></div></div><div class="page" id="a-page-approvals"><div id="a-reviews-wrap"></div><div id="a-approvals-content"><div class="spinner"></div></div></div><div class="page" id="a-page-tests"><div id="a-tests-content"><div class="spinner"></div></div></div><div class="page" id="a-page-material"><div id="a-material-content"><div class="spinner"></div></div></div><div class="page" id="a-page-compliance"><div id="a-compliance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-reports"><div id="a-reports-content"><div class="spinner"></div></div></div><div class="page" id="a-page-tranks"><div id="a-tranks-content"><div class="spinner"></div></div></div><div class="page" id="a-page-teachers"><div id="a-teachers-content"><div class="spinner"></div></div></div><div class="page" id="a-page-doubts"><div id="a-doubts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-students"><div id="a-students-content"><div class="spinner"></div></div></div><div class="page" id="a-page-live"><div id="a-live-content"><div class="spinner"></div></div></div><div class="page" id="a-page-qbank"><div id="a-qbank-content"><div class="spinner"></div></div></div><div class="page" id="a-page-counts"><div id="a-counts-content"><div class="spinner"></div></div></div><div class="page" id="a-page-admins"><div id="a-admins-content"></div><div class="card" style="margin-top:18px;border:1.5px solid rgba(220,38,38,.3)"><div class="card-header"><h3 style="color:var(--danger)">Danger Zone</h3></div><div class="card-body"><p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Clear all testing content data (timetable, materials, doubts, submissions...) in one go &mdash; students, teachers and admins remain safe.</p><button class="btn btn-danger" onclick="openResetData()">Reset Portal Data</button></div></div><div style="display:none"><div class="spinner"></div></div></div><div class="page" id="a-page-syllabus"><div id="a-syl-content"><div class="spinner"></div></div></div><div class="page" id="a-page-subjects"><div id="a-subjects-content"><div class="spinner"></div></div></div><div class="page" id="a-page-timetable"><div id="a-timetable-content"><div class="spinner"></div></div></div><div class="page" id="a-page-attendance"><div id="a-attendance-content"><div class="spinner"></div></div></div><div class="page" id="a-page-payouts"><div id="a-payouts-content"><div class="spinner"></div></div></div></div>
 </div><!-- ===== STUDENT APP ===== -->
 <div id="student-app" class="app"><div class="sidebar"><div class="sidebar-logo"><div class="logo-icon" style="background:#b8941f">S</div><div><span>MVS Foundation</span><small>Student</small></div></div><nav class="sidebar-nav"><div class="nav-section">Home</div><div class="nav-item active" onclick="sPage('dashboard',this)"><span>Home</span></div><div class="nav-item" onclick="sPage('teachers',this)"><span>Know Your Teacher</span></div><div class="nav-item" onclick="sPage('timetable',this)"><span>Time Table</span></div><div class="nav-section">Materials</div><div class="nav-item" onclick="sPage('qbank',this)"><span>Study Material</span></div><div class="nav-item" onclick="sPage('materials',this)"><span>Classes Material</span></div><div class="nav-section">Work</div><div class="nav-item" onclick="sPage('dpp',this)"><span>DPP Submit</span></div><div class="nav-item" onclick="sPage('tests',this)"><span>Tests</span></div><div class="nav-item" onclick="sPage('doubts',this)"><span>Doubts</span></div><div class="nav-section">Progress</div><div class="nav-item" onclick="sPage('syllabus',this)"><span>Syllabus Tracker</span></div><div class="nav-item" onclick="sPage('resultcard',this)"><span>Result Card</span></div><div class="nav-item" onclick="sPage('progress',this)"><span>Progress</span></div><div class="nav-item" onclick="sPage('notifications',this)"><span>Notifications</span></div><div class="nav-item" onclick="sPage('profile',this)"><span>My Profile</span></div></nav><div class="sidebar-bottom"><div class="user-info uinfo-link" onclick="sPage('profile',null)" title="Open My Profile"><div class="avatar" style="background:#b8941f" id="s-avatar">S</div><div><span id="s-name">Student</span><small id="s-batch">—</small></div></div></div></div><div class="main"><div class="topbar"><h2 id="s-title">Dashboard</h2><div class="topbar-actions"><div class="topbar-avatar" id="s-topavatar" title="Set or change profile photo" onclick="openSetStudentPhoto()">S</div><div class="icon-btn bell-wrap" onclick="openNotifPanel('student')"><span class="notif-badge" id="s-notif-badge" style="display:none">0</span></div><div class="icon-btn" id="s-theme" onclick="toggleDark()"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button></div></div><div class="page active" id="s-page-dashboard"><div id="s-dashboard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-timetable"><div id="s-timetable-content"><div class="spinner"></div></div></div><div class="page" id="s-page-materials"><div id="s-materials-content"><div class="spinner"></div></div></div><div class="page" id="s-page-qbank"><div id="s-qbank-content"><div class="spinner"></div></div></div><div class="page" id="s-page-teachers"><div id="s-teachers-content"><div class="spinner"></div></div></div><div class="page" id="s-page-dpp"><div id="s-dpp-content"><div class="spinner"></div></div></div><div class="page" id="s-page-tests"><div id="s-tests-content"><div class="spinner"></div></div></div><div class="page" id="s-page-doubts"><div id="s-doubts-content"><div class="spinner"></div></div></div><div class="page" id="s-page-progress"><div id="s-progress-content"><div class="spinner"></div></div></div><div class="page" id="s-page-notifications"><div id="s-notif-content"><div class="spinner"></div></div></div><div class="page" id="s-page-syllabus"><div id="s-syl-content"><div class="spinner"></div></div></div><div class="page" id="s-page-resultcard"><div id="s-resultcard-content"><div class="spinner"></div></div></div><div class="page" id="s-page-profile"><div id="s-profile-content"><div class="spinner"></div></div></div></div>
 </div><!-- Generic Modal -->
@@ -3187,6 +3187,7 @@ function stopNotifPolling(){ if(_notifInt){ clearInterval(_notifInt); _notifInt=
 // ===== SEND NOTIFICATIONS (admin + teacher) =====
 // ===== v93: notify modals — recipient clarity + live student counts =====
 async function openAdminNotify(){
+  if(!adminAllowed('notify')){ toast('You do not have access to this section.',true); return; }
   showModal(' Send Notification','<div class="spinner"></div>','');
   let c={all:0,teachers:0,students:0};
   try{ c=await api('/api/admin/notify-targets'); }catch(e){}
@@ -7553,12 +7554,48 @@ async function openNtViews(batch){
 // ========================================================
 //  ADMIN PORTAL
 // ========================================================
+/* ===== v94: restricted sub-admin access (frontend) ===== */
+window._adminMe=null;
+async function fetchAdminMe(){
+  try{
+    const me=await api('/api/admin/me');
+    window._adminMe=(me&&typeof me==='object'&&!Array.isArray(me)&&me.full_access===false)?me:{full_access:true};
+  }catch(e){ window._adminMe={full_access:true}; }
+  applyAdminAccess();
+}
+function adminAllowed(page){
+  const me=window._adminMe;
+  if(!me||me.full_access) return true;
+  return (me.sections||[]).includes(page);
+}
+function applyAdminAccess(){
+  document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ n.style.display=''; });
+  document.querySelectorAll('#admin-app .nav-section').forEach(s=>{ s.style.display=''; });
+  const me=window._adminMe;
+  if(!me||me.full_access) return;
+  document.querySelectorAll('#admin-app .nav-item').forEach(n=>{
+    const oc=n.getAttribute('onclick')||'';
+    const m=oc.match(/aPage\('([^']+)'/);
+    if(m){ if(!adminAllowed(m[1])) n.style.display='none'; return; }
+    if(oc.includes('openAdminNotify')&&!adminAllowed('notify')) n.style.display='none';
+  });
+  document.querySelectorAll('#admin-app .nav-section').forEach(s=>{
+    let vis=false, el=s.nextElementSibling;
+    while(el&&el.classList.contains('nav-item')){
+      if(el.style.display!=='none'){ vis=true; break; }
+      el=el.nextElementSibling;
+    }
+    s.style.display=vis?'':'none';
+  });
+}
 function openAdmin(){
   document.getElementById('admin-app').classList.add('active');
   document.getElementById('a-name').textContent=NAME;
   document.getElementById('a-avatar').textContent=initials(NAME);
   document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active'));
   document.querySelector('#admin-app .nav-item').classList.add('active');
+  window._adminMe=null;
+  fetchAdminMe();
   aPage('dashboard',null);
   startHeartbeat();
   notifPopupOnOpen('admin');
@@ -7599,7 +7636,7 @@ async function loadALive(){
   catch(e){ el.innerHTML=errHtml(e); }
 }
 function _luRow(u,tab){
-  const badge=u.role==='teacher'?'<span class="lu-role t">Teacher</span>':'<span class="lu-role s">Student</span>';
+  const badge=u.role==='teacher'?'<span class="lu-role t">Teacher</span>':(u.role==='admin'?'<span class="lu-role a">Admin</span>':'<span class="lu-role s">Student</span>');
   let right='';
   if(tab==='live') right=`<div class="lu-right"><span class="lu-page">${esc(u.page||'')}</span><span class="lu-dur">${u.duration_min}m</span></div>`;
   else if(tab==='offline') right=`<div class="lu-right"><span class="lu-dim">${u.last_seen_min<60?u.last_seen_min+'m ago':Math.floor(u.last_seen_min/60)+'h ago'}</span></div>`;
@@ -7616,14 +7653,15 @@ function _paintLive(d){
   const list=(d[_luTab]||[]);
   const students=list.filter(u=>u.role==='student');
   const teachers=list.filter(u=>u.role==='teacher');
-  const cards=`<div class="stats-grid">${statCard('Online Now',c.live||0,'user','green')}${statCard('Students Live',c.students_live||0,'users','indigo')}${statCard('Teachers Live',c.teachers_live||0,'user','teal')}${statCard('Never Logged In',c.never||0,'shield','amber',"luTab('never')")}</div>`;
+  const admins=list.filter(u=>u.role==='admin');
+  const cards=`<div class="stats-grid">${statCard('Online Now',c.live||0,'user','green')}${statCard('Students Live',c.students_live||0,'users','indigo')}${statCard('Teachers Live',c.teachers_live||0,'user','teal')}${statCard('Admins Live',c.admins_live||0,'shield','amber')}${statCard('Never Logged In',c.never||0,'shield','amber',"luTab('never')")}</div>`;
   const tabs=`<div class="tt-tabs"><button class="tt-tab ${_luTab==='live'?'active':''}" onclick="luTab('live')">Online (${(d.live||[]).length})</button><button class="tt-tab ${_luTab==='offline'?'active':''}" onclick="luTab('offline')">Recent (${(d.offline||[]).length})</button><button class="tt-tab ${_luTab==='never'?'active':''}" onclick="luTab('never')">Never Logged In (${(d.never||[]).length})</button></div>`;
-  const em={live:['No teachers online right now.','No students online right now.'],
-            offline:['No recent teacher sessions.','No recent student sessions.'],
-            never:['\u2705 All teachers have logged in.','\u2705 All students have logged in.']}[_luTab];
-  const body=`<div class="ws-grid">${_luSection('Teachers',teachers,_luTab,em[0])}${_luSection('Students',students,_luTab,em[1])}</div>`;
+  const em={live:['No admins online right now.','No teachers online right now.','No students online right now.'],
+            offline:['No recent admin sessions.','No recent teacher sessions.','No recent student sessions.'],
+            never:['\u2705 All admins have logged in.','\u2705 All teachers have logged in.','\u2705 All students have logged in.']}[_luTab];
+  const body=`<div class="ws-grid-3 lu3">${_luSection('Admins',admins,_luTab,em[0])}${_luSection('Teachers',teachers,_luTab,em[1])}${_luSection('Students',students,_luTab,em[2])}</div>`;
   el.dataset.painted='1';
-  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2>Live Users</h2><p>Teachers and students shown separately \u2014 who is online, what they are doing, and who never logs in.</p></div><span class="pager-info">Auto-refreshes every 15s</span></div>${cards}${tabs}${body}`;
+  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2>Live Users</h2><p>Admins, teachers and students shown separately \u2014 who is online, what they are doing, and who never logs in.</p></div><span class="pager-info">Auto-refreshes every 15s</span></div>${cards}${tabs}${body}`;
 }
 
 async function openUserSessions(uid){
@@ -7631,7 +7669,7 @@ async function openUserSessions(uid){
   try{
     const d=await api('/api/admin/user/'+uid+'/sessions');
     const det=d.detail||{};
-    const roleBadge=d.role==='teacher'?'<span class="lu-role t">Teacher</span>':'<span class="lu-role s">Student</span>';
+    const roleBadge=d.role==='teacher'?'<span class="lu-role t">Teacher</span>':(d.role==='admin'?'<span class="lu-role a">Admin</span>':'<span class="lu-role s">Student</span>');
     // full detail grid — batch, phone, class, medium, subjects (jo bhi available ho)
     const cells=[];
     const add=(k,v,lnk)=>{ if(v!=null&&String(v).trim()!=='') cells.push(`<div class="prof-cell"><div class="prof-k">${k}</div><div class="prof-v">${lnk?lnk:esc(String(v))}</div></div>`); };
@@ -7648,6 +7686,7 @@ async function openUserSessions(uid){
 }
 
 function aPage(page,el){
+  if(!adminAllowed(page)){ toast('You do not have access to this section.',true); return; }
   navPush('admin-app',page);
   document.querySelectorAll('#admin-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('a-page-'+page).classList.add('active');
@@ -10107,14 +10146,122 @@ async function doResetData(){
     btn.textContent='Deleted'; toast(r.message);
   }catch(e){ document.getElementById('rst-out').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.innerHTML='Delete Selected Data'; }
 }
+/* ===== v94: Admin Users — restricted sub-admins with section-wise access ===== */
+const ADMIN_SECTIONS=[
+  ['dashboard','Dashboard'],['approvals','Approvals'],['live','Live Users'],['timetable','Time Table'],
+  ['qbank','Study Material'],['material','Classes Material'],['doubts','Doubts'],['tests','Tests Tracker'],
+  ['vtasks','Task Manager'],['teachers','Teachers'],['reports','Teacher Reports'],['tranks','Teacher Ranking'],
+  ['compliance','Class Compliance'],['attendance','Attendance'],['payouts','Payouts'],['students','Students'],
+  ['notify','Send Notice'],['subjects','Subjects'],['syllabus','Syllabus Manager'],['admins','Admin Users']
+];
+let _aaFull=false, _aaSel=new Set(['dashboard']), _aaEdit={};
+function _aaSecName(k){ const f=ADMIN_SECTIONS.find(x=>x[0]===k); return f?f[1]:k; }
+function _aaChipsHTML(prefix,full,sel,editId){
+  const dis=full?' dis':'';
+  const chips=ADMIN_SECTIONS.map(([k,label])=>{
+    const locked=k==='dashboard'&&!full;
+    const on=full||sel.has(k);
+    return `<div class="sec-chip${on?' on':''}${locked?' locked':''}${dis}" onclick="${locked?'':`aaChipToggle('${prefix}','${k}'${editId?`,${editId}`:''})`}" title="${locked?'Dashboard is always included':esc(label)}">${esc(label)}</div>`;
+  }).join('');
+  return `<div class="sec-chips"><div class="sec-chip full${full?' on':''}" onclick="aaFullToggle('${prefix}'${editId?`,${editId}`:''})">Full Access — Everything</div>${chips}</div>`;
+}
+function aaFullToggle(prefix,editId){
+  if(editId){ const st=_aaEdit[editId]; if(!st) return; st.full=!st.full; if(st.full){} }
+  else { _aaFull=!_aaFull; }
+  _aaRerender(prefix,editId);
+}
+function aaChipToggle(prefix,key,editId){
+  if(editId){ const st=_aaEdit[editId]; if(!st) return; if(st.sel.has(key)) st.sel.delete(key); else st.sel.add(key); }
+  else { if(_aaSel.has(key)) _aaSel.delete(key); else _aaSel.add(key); }
+  _aaRerender(prefix,editId);
+}
+function _aaRerender(prefix,editId){
+  const box=document.getElementById(editId?`aa-echips-${editId}`:'aa-chips');
+  if(!box) return;
+  const full=editId?(_aaEdit[editId]||{}).full:_aaFull;
+  const sel=editId?((_aaEdit[editId]||{}).sel||new Set()):_aaSel;
+  box.innerHTML=_aaChipsHTML(prefix,full,sel,editId);
+}
 async function loadAAdmins(){
   const el=document.getElementById('a-admins-content');
-  el.innerHTML=`<div class="card" style="max-width:600px"><div class="card-header"><h3> New Admin Add</h3></div><div class="card-body"><div class="alert alert-info">Each admin gets a separate login. Share the User ID and password with them.</div><div class="form-group"><label>Name</label><input class="form-control" id="aa-name" placeholder="Coordinator Raj"></div><div class="form-group"><label>User ID</label><input class="form-control" id="aa-uid" placeholder="coord_raj"></div><div class="form-group"><label>Password</label><input class="form-control" id="aa-pass" placeholder="Password"></div><button class="btn btn-primary" onclick="submitAddAdmin()"> Admin Add</button></div></div>`;
+  softSpin(el);
+  let admins=[];
+  try{ const d=await api('/api/admin/admins'); admins=d.admins||[]; }
+  catch(e){ el.innerHTML=errHtml(e); return; }
+  window._aaAdmins=admins;
+  const rows=admins.map(a=>{
+    const badge=a.full_access?'<span class="adm-badge-full">FULL ACCESS</span>':`<span class="adm-badge-secs">${(a.sections||[]).length} SECTIONS</span>`;
+    const off=a.is_active?'':'<span class="adm-badge-off">DEACTIVATED</span>';
+    const secs=a.full_access?[]:(a.sections||[]).filter(s=>s!=='dashboard');
+    const secLine=secs.length?`<div class="adm-meta">Access: ${secs.map(_aaSecName).join(' · ')}</div>`:`<div class="adm-meta">${a.full_access?'Can open every section, including Payouts.':'Dashboard only'}</div>`;
+    const editOpen=_aaEdit[a.id]&&_aaEdit[a.id].open;
+    const editBox=editOpen?`<div class="adm-edit"><div style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:2px">Edit Access</div><div id="aa-echips-${a.id}">${_aaChipsHTML('edit',_aaEdit[a.id].full,_aaEdit[a.id].sel,a.id)}</div><div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-primary btn-sm" onclick="aaSaveSections(${a.id})">Save Access</button><button class="btn btn-ghost btn-sm" onclick="aaEditClose(${a.id})">Cancel</button></div></div>`:'';
+    return `<div class="adm-row${a.is_active?'':' off'}" style="flex-wrap:wrap"><div class="adm-ava">${esc(initials(a.name))}</div><div class="adm-main"><div class="adm-name">${esc(a.name)} ${badge} ${off}</div><div class="adm-meta">User ID: <b>${esc(a.user_id)}</b>${a.created_at?' · since '+esc(a.created_at.slice(0,10)):''}</div>${secLine}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="aaEditOpen(${a.id})">${editOpen?'Close':'Edit Access'}</button><button class="btn ${a.is_active?'btn-danger':'btn-primary'} btn-sm" onclick="aaToggleAdmin(${a.id},'${esc(a.name).replace(/'/g,'')}',${a.is_active})">${a.is_active?'Deactivate':'Activate'}</button></div><div style="flex-basis:100%"></div>${editBox}</div>`;
+  }).join('');
+  el.innerHTML=`
+    <div class="sm-head"><h2>Admin Users</h2><p>Create admins with exactly the access they need — their panel shows only the sections you allow. Everything else, including Payouts, stays hidden.</p></div>
+    <div class="card"><div class="card-header"><h3>Create New Admin</h3></div><div class="card-body">
+      <div class="alert alert-info">Just enter a name — the User ID and password are generated automatically. Pick the sections this admin may open, or give Full Access.</div>
+      <div class="form-group"><label>Name</label><input class="form-control" id="aa-name" placeholder="e.g. Coordinator Raj" maxlength="60"></div>
+      <div class="form-group"><label>Access</label><div id="aa-chips">${_aaChipsHTML('new',_aaFull,_aaSel)}</div></div>
+      <button class="btn btn-primary" onclick="submitAddAdmin()">Create Admin</button>
+      <div id="aa-result"></div>
+    </div></div>
+    <div class="card"><div class="card-header"><h3>Existing Admins</h3><span class="tc-count">${admins.length}</span></div><div class="card-body">${rows||'<div class="ws-empty"><p>No admins yet</p></div>'}</div></div>`;
 }
 async function submitAddAdmin(){
-  const body={name:val('aa-name'),user_id:val('aa-uid'),password:val('aa-pass'),role:'admin'};
-  if(!body.name||!body.user_id||!body.password){ toast('Please fill in all fields.',true); return; }
-  try{ await api('/api/admin/admins/add','POST',body); toast('Admin added. '); document.getElementById('aa-name').value='';document.getElementById('aa-uid').value='';document.getElementById('aa-pass').value=''; }catch(e){ toast(e.message,true); }
+  const name=val('aa-name').trim();
+  if(!name){ toast('Please enter a name.',true); return; }
+  const body={name, sections:_aaFull?null:[..._aaSel]};
+  try{
+    const r=await api('/api/admin/admins/add','POST',body);
+    const secs=r.full_access?'Full Access — every section':(r.sections||[]).map(_aaSecName).join(' · ');
+    document.getElementById('aa-result').innerHTML=`<div class="adm-cred"><h4>Admin Created — share these credentials</h4><p>This password is shown only once. Copy it now and share it with ${esc(r.name)}.</p>
+      <div class="adm-cred-row"><span class="k">Name</span><code>${esc(r.name)}</code></div>
+      <div class="adm-cred-row"><span class="k">User ID</span><code id="aa-cred-uid">${esc(r.user_id)}</code><button class="btn btn-ghost btn-sm" onclick="aaCopy('aa-cred-uid')">Copy</button></div>
+      <div class="adm-cred-row"><span class="k">Password</span><code id="aa-cred-pw">${esc(r.password)}</code><button class="btn btn-ghost btn-sm" onclick="aaCopy('aa-cred-pw')">Copy</button></div>
+      <div class="adm-cred-row"><span class="k">Access</span><span style="font-size:.8rem;font-weight:700">${esc(secs)}</span></div></div>`;
+    document.getElementById('aa-name').value='';
+    _aaFull=false; _aaSel=new Set(['dashboard']);
+    toast('Admin created.');
+    loadAAdmins_keepResult();
+  }catch(e){ toast(e.message,true); }
+}
+async function loadAAdmins_keepResult(){
+  const keep=document.getElementById('aa-result')?document.getElementById('aa-result').innerHTML:'';
+  await loadAAdmins();
+  const rb=document.getElementById('aa-result');
+  if(rb&&keep) rb.innerHTML=keep;
+}
+function aaCopy(elId){
+  const t=(document.getElementById(elId)||{}).textContent||'';
+  if(!t) return;
+  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(()=>toast('Copied: '+t)); }
+  else{ const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); toast('Copied: '+t); }catch(e){} ta.remove(); }
+}
+function aaEditOpen(id){
+  const a=(window._aaAdmins||[]).find(x=>x.id===id);
+  if(!a) return;
+  if(_aaEdit[id]&&_aaEdit[id].open){ delete _aaEdit[id]; }
+  else{ _aaEdit[id]={open:true, full:!!a.full_access, sel:new Set(a.full_access?['dashboard']:(a.sections&&a.sections.length?a.sections:['dashboard']))}; }
+  loadAAdmins();
+}
+function aaEditClose(id){ delete _aaEdit[id]; loadAAdmins(); }
+async function aaSaveSections(id){
+  const st=_aaEdit[id];
+  if(!st) return;
+  try{
+    await api('/api/admin/admins/'+id+'/sections','POST',{sections:st.full?null:[...st.sel]});
+    toast('Access updated.');
+    delete _aaEdit[id];
+    loadAAdmins();
+  }catch(e){ toast(e.message,true); }
+}
+async function aaToggleAdmin(id,name,isActive){
+  const msg=isActive?`Deactivate ${name}? They will not be able to log in until you activate them again.`:`Activate ${name} again?`;
+  if(!confirm(msg)) return;
+  try{ const r=await api('/api/admin/admins/'+id+'/toggle','POST',{}); toast(r.message||'Done.'); loadAAdmins(); }
+  catch(e){ toast(e.message,true); }
 }
 
 // ========================================================
@@ -16519,6 +16666,34 @@ body.dark .po-pill.red{color:#f87171}
 .tprof-cell .k{font-size:.64rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted);margin-bottom:3px}
 .tprof-cell .v{font-weight:700;font-size:.88rem}
 @media(max-width:560px){.tprof-grid{grid-template-columns:1fr}}
+/* ===== v94: restricted sub-admin + admin users page + live admins ===== */
+.lu-role.a{background:#fef3c7;color:#b45309}
+.dark .lu-role.a{background:rgba(245,158,11,.22);color:#fcd34d}
+.sec-chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 4px}
+.sec-chip{padding:7px 13px;border-radius:99px;border:1.5px solid var(--border);background:var(--bg);font-size:.76rem;font-weight:700;cursor:pointer;user-select:none;transition:.15s;color:var(--text-muted)}
+.sec-chip:hover{border-color:#c9a227;color:var(--text)}
+.sec-chip.on{background:linear-gradient(135deg,#c9a227,#a8842a);border-color:#c9a227;color:#fff}
+.sec-chip.locked{opacity:.8;cursor:not-allowed}
+.sec-chip.full.on{background:linear-gradient(135deg,#b06d12,#8a560e);border-color:#b06d12}
+.sec-chip.dis{opacity:.4;pointer-events:none}
+.adm-row{display:flex;align-items:center;gap:12px;padding:13px 2px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.adm-row:last-child{border-bottom:none}
+.adm-ava{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#b06d12,#8a560e);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.88rem;flex-shrink:0}
+.adm-main{flex:1;min-width:180px}
+.adm-name{font-weight:800;font-size:.92rem;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.adm-meta{font-size:.72rem;color:var(--text-muted);margin-top:3px}
+.adm-badge-full{font-size:.62rem;font-weight:800;padding:2px 9px;border-radius:99px;background:linear-gradient(135deg,#fef3c7,#fde68a);color:#92400e;border:1px solid #f5d77e;letter-spacing:.03em}
+.adm-badge-secs{font-size:.62rem;font-weight:800;padding:2px 9px;border-radius:99px;background:#eef2ff;color:#4f46e5;border:1px solid #c7d2fe;letter-spacing:.03em}
+.adm-badge-off{font-size:.62rem;font-weight:800;padding:2px 9px;border-radius:99px;background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;letter-spacing:.03em}
+.adm-row.off{opacity:.55}
+.adm-cred{border:1.5px solid rgba(201,162,39,.55);background:linear-gradient(135deg,rgba(201,162,39,.12),rgba(201,162,39,.03));border-radius:14px;padding:14px 16px;margin-top:14px}
+.adm-cred h4{margin:0 0 4px;font-size:.86rem;color:#8a6d10}
+.adm-cred p{font-size:.72rem;color:var(--text-muted);margin:0}
+.adm-cred-row{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:.85rem;flex-wrap:wrap}
+.adm-cred-row .k{font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);min-width:70px}
+.adm-cred-row code{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:5px 12px;font-weight:800;font-size:.9rem;letter-spacing:.04em}
+.adm-edit{padding:12px 14px;border:1.5px dashed var(--border);border-radius:12px;margin:6px 0 10px}
+@media(max-width:900px){.ws-grid-3.lu3{grid-template-columns:1fr}}
 </style>
 <script id="syl-js">
 /* ============================================================

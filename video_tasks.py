@@ -15,6 +15,8 @@ from sqlalchemy import text, or_
 
 from database import get_db, engine
 from security import get_admin, get_teacher
+# v94: restricted sub-admin — /api/admin/* video endpoints bhi section guard se cover
+from admin_routes import admin_section_guard as _admin_section_guard
 from models import User, TeacherProfile, Notification, VideoChannel, VideoTask, VideoType, VideoTaskChapter
 
 router = APIRouter(prefix="/api", tags=["Video Task Manager"])
@@ -874,14 +876,14 @@ def _parse_deadline(val):
 # =============================================================
 # CHANNELS
 # =============================================================
-@router.get("/admin/video-channels")
+@router.get("/admin/video-channels", dependencies=[Depends(_admin_section_guard)])
 def vt_list_channels(db: Session = Depends(get_db), _=Depends(get_admin)):
     _seed_channels(db)
     rows = db.query(VideoChannel).order_by(VideoChannel.id.asc()).all()
     return {"channels": [{"id": c.id, "name": c.name, "active": bool(c.active)} for c in rows]}
 
 
-@router.post("/admin/video-channels")
+@router.post("/admin/video-channels", dependencies=[Depends(_admin_section_guard)])
 def vt_add_channel(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
     _seed_channels(db)
     name = (payload.get("name") or "").strip()
@@ -898,14 +900,14 @@ def vt_add_channel(payload: dict = Body(...), db: Session = Depends(get_db), _=D
 # =============================================================
 # VIDEO TYPES (Short / Long / One Shot / Strategy ... admin add kar sakta hai)
 # =============================================================
-@router.get("/admin/video-types")
+@router.get("/admin/video-types", dependencies=[Depends(_admin_section_guard)])
 def vt_list_types(db: Session = Depends(get_db), _=Depends(get_admin)):
     _seed_types(db)
     rows = db.query(VideoType).order_by(VideoType.sort.asc(), VideoType.id.asc()).all()
     return {"types": [{"id": c.id, "name": c.name, "active": bool(c.active)} for c in rows]}
 
 
-@router.post("/admin/video-types")
+@router.post("/admin/video-types", dependencies=[Depends(_admin_section_guard)])
 def vt_add_type(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
     _seed_types(db)
     name = (payload.get("name") or "").strip()
@@ -931,7 +933,7 @@ def vt_teacher_types(db: Session = Depends(get_db), _=Depends(get_teacher)):
 # =============================================================
 # ADMIN — ASSIGN / LIST / STATS / REVIEW / PROPOSALS / REPORT
 # =============================================================
-@router.post("/admin/video-tasks")
+@router.post("/admin/video-tasks", dependencies=[Depends(_admin_section_guard)])
 def vt_assign(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
     _seed_channels(db)
     tid = int(payload.get("teacher_id") or 0)
@@ -982,7 +984,7 @@ def vt_assign(payload: dict = Body(...), db: Session = Depends(get_db), _=Depend
     return {"ok": True, "id": t.id}
 
 
-@router.get("/admin/video-tasks")
+@router.get("/admin/video-tasks", dependencies=[Depends(_admin_section_guard)])
 def vt_admin_list(teacher_id: int = 0, status: str = "", channel_id: int = 0,
                   video_type: str = "",
                   db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -1004,7 +1006,7 @@ def vt_admin_list(teacher_id: int = 0, status: str = "", channel_id: int = 0,
             "proposals": [_task_out(db, t) for t in props]}
 
 
-@router.get("/admin/video-tasks/stats")
+@router.get("/admin/video-tasks/stats", dependencies=[Depends(_admin_section_guard)])
 def vt_admin_stats(db: Session = Depends(get_db), _=Depends(get_admin)):
     _seed_channels(db)
     _vt_sweep(db)
@@ -1034,7 +1036,7 @@ def vt_admin_stats(db: Session = Depends(get_db), _=Depends(get_admin)):
             "top": top, "most_delayed": most_delayed}
 
 
-@router.post("/admin/video-tasks/{task_id}/review")
+@router.post("/admin/video-tasks/{task_id}/review", dependencies=[Depends(_admin_section_guard)])
 def vt_review(task_id: int, payload: dict = Body(...),
               db: Session = Depends(get_db), _=Depends(get_admin)):
     t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
@@ -1084,7 +1086,7 @@ def vt_review(task_id: int, payload: dict = Body(...),
     return {"ok": True, "status": t.status}
 
 
-@router.post("/admin/video-tasks/{task_id}/approve-proposal")
+@router.post("/admin/video-tasks/{task_id}/approve-proposal", dependencies=[Depends(_admin_section_guard)])
 def vt_approve_proposal(task_id: int, payload: dict = Body(...),
                         db: Session = Depends(get_db), _=Depends(get_admin)):
     t = db.query(VideoTask).filter(VideoTask.id == task_id,
@@ -1132,7 +1134,7 @@ def vt_approve_proposal(task_id: int, payload: dict = Body(...),
     return {"ok": True, "id": t.id}
 
 
-@router.post("/admin/video-tasks/{task_id}/reject-proposal")
+@router.post("/admin/video-tasks/{task_id}/reject-proposal", dependencies=[Depends(_admin_section_guard)])
 def vt_reject_proposal(task_id: int, payload: dict = Body(default={}),
                        db: Session = Depends(get_db), _=Depends(get_admin)):
     t = db.query(VideoTask).filter(VideoTask.id == task_id,
@@ -1153,7 +1155,7 @@ def vt_reject_proposal(task_id: int, payload: dict = Body(default={}),
     return {"ok": True}
 
 
-@router.post("/admin/video-tasks/{task_id}/notify-students")
+@router.post("/admin/video-tasks/{task_id}/notify-students", dependencies=[Depends(_admin_section_guard)])
 def vt_notify_students(task_id: int, payload: dict = Body(default={}),
                        db: Session = Depends(get_db), _=Depends(get_admin)):
     """Video link students ko notification se — click pe link open hota hai."""
@@ -1173,7 +1175,7 @@ def vt_notify_students(task_id: int, payload: dict = Body(default={}),
     return {"ok": True, "count": len(users)}
 
 
-@router.post("/admin/video-tasks/{task_id}/edit")
+@router.post("/admin/video-tasks/{task_id}/edit", dependencies=[Depends(_admin_section_guard)])
 def vt_edit(task_id: int, payload: dict = Body(...),
             db: Session = Depends(get_db), _=Depends(get_admin)):
     """Assign hone ke baad bhi task ke details badal sakte ho — title, channel,
@@ -1291,7 +1293,7 @@ def vt_edit(task_id: int, payload: dict = Body(...),
     return {"ok": True, "changed": changes}
 
 
-@router.get("/admin/video-tasks/{task_id}/chapters")
+@router.get("/admin/video-tasks/{task_id}/chapters", dependencies=[Depends(_admin_section_guard)])
 def vt_task_chapter_options(task_id: int,
                             db: Session = Depends(get_db), _=Depends(get_admin)):
     """Edit modal ki chapter-checklist: subject ka poora syllabus master (PE/TMA tag
@@ -1342,14 +1344,14 @@ def _subject_teachers(db, subject, class_level=""):
     return out
 
 
-@router.get("/admin/video-tasks/subject-teachers")
+@router.get("/admin/video-tasks/subject-teachers", dependencies=[Depends(_admin_section_guard)])
 def vt_subject_teachers(subject: str = "", class_level: str = "",
                         db: Session = Depends(get_db), _=Depends(get_admin)):
     """Project assign form — subject chunte hi teacher auto-fetch."""
     return {"teachers": _subject_teachers(db, subject, class_level)}
 
 
-@router.post("/admin/video-tasks/project")
+@router.post("/admin/video-tasks/project", dependencies=[Depends(_admin_section_guard)])
 def vt_create_project(payload: dict = Body(...),
                       db: Session = Depends(get_db), _=Depends(get_admin)):
     """Multi-video PROJECT assign karo — weekly quota/day + FINAL deadline ke saath.
@@ -1453,7 +1455,7 @@ def vt_create_project(payload: dict = Body(...),
             "total": len(items)}
 
 
-@router.get("/admin/video-tasks/project-chapters")
+@router.get("/admin/video-tasks/project-chapters", dependencies=[Depends(_admin_section_guard)])
 def vt_admin_project_chapters(subject: str = "", class_level: str = "",
                               scope: str = "", teacher_id: int = 0,
                               db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -1480,7 +1482,7 @@ def _special_payload(db, kind):
     return {"tasks": outs, "new_count": new_count, "subjects": subjects}
 
 
-@router.get("/admin/video-tasks/special")
+@router.get("/admin/video-tasks/special", dependencies=[Depends(_admin_section_guard)])
 def vt_admin_special(kind: str = "one_shot",
                      db: Session = Depends(get_db), _=Depends(get_admin)):
     """One Shot / Rapid Revision tasks sabhi teachers ke — chapters + progress +
@@ -1499,7 +1501,7 @@ def vt_admin_special(kind: str = "one_shot",
     return _special_payload(db, kind)
 
 
-@router.post("/admin/video-tasks/{task_id}/seen")
+@router.post("/admin/video-tasks/{task_id}/seen", dependencies=[Depends(_admin_section_guard)])
 def vt_admin_seen(task_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
     if not t:
@@ -1509,7 +1511,7 @@ def vt_admin_seen(task_id: int, db: Session = Depends(get_db), _=Depends(get_adm
     return {"ok": True}
 
 
-@router.get("/admin/video-tasks/report.csv")
+@router.get("/admin/video-tasks/report.csv", dependencies=[Depends(_admin_section_guard)])
 def vt_report_csv(teacher_id: int = 0, status: str = "", channel_id: int = 0,
                   video_type: str = "",
                   db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -1748,7 +1750,7 @@ def vt_chapter_link(task_id: int, payload: dict = Body(...), db: Session = Depen
             "completed": bool(total and done == total)}
 
 
-@router.post("/admin/video-tasks/chapter-status")
+@router.post("/admin/video-tasks/chapter-status", dependencies=[Depends(_admin_section_guard)])
 def vt_admin_chapter_status(payload: dict = Body(...), db: Session = Depends(get_db),
                             _=Depends(get_admin)):
     """Production team — kisi bhi special task (One Shot / Rapid Revision /

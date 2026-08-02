@@ -109,6 +109,8 @@ def ensure_columns():
         "ALTER TABLE notifications ADD COLUMN batch_key VARCHAR(40)",
         "ALTER TABLE notifications ADD COLUMN batch_label VARCHAR(160)",
         "ALTER TABLE notifications ADD COLUMN read_at DATETIME",
+        # v94: restricted sub-admin sections
+        "ALTER TABLE users ADD COLUMN allowed_sections JSON",
     ]
     for s in stmts:
         try:
