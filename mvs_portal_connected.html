@@ -4864,40 +4864,65 @@ async function loadTDpp(){
   try{
     const d=await api('/api/teacher/dpp-packs');
     window._dppPacks=d.packs||[];
-    const cards=_dppPacks.map(pk=>{
-      const ini=(pk.subject||'D').trim()[0].toUpperCase();
-      const srcChip=pk.source==='created'?`<span class="chip-sub" style="color:#b45309"> ${pk.questions_n||0} Questions</span>`:`<span class="chip-sub">Uploaded</span>`;
-      return `<div class="dpp-card premium">
-      <div style="display:flex;gap:13px;align-items:flex-start">
-        <div class="dpp-ava-init" title="${esc(pk.subject)}">${ini}</div>
-        <div style="flex:1;min-width:0">
-          <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div><div class="dpp-chips">${pk.class_name?`<span class="xm-chip xm-chip-hl2">${ic('book')} ${esc(pk.class_name)}</span>`:''}${pk.medium?`<span class="xm-chip xm-chip-hl2">${esc(pk.medium)}</span>`:''}${srcChip}</div></div>
-          <div class="dpp-title">${esc(pk.title)}</div>
-          <div class="dpp-meta"> ${esc(pk.chapter||'—')}${pk.part?` · Part: ${esc(pk.part)}`:''}</div>
-          <div class="dpp-meta"> ${esc(pk.created_at||'')} · ${pk.submitted||0} submission${(pk.submitted||0)===1?'':'s'}</div>
-          <div class="dpp-track">
-            <button class="dpp-trk-btn" title="Kis kis student ne DPP kholi (view) — click pe list" onclick="openDppTrack(${pk.id},'view')">${ic('eye')} <b>${pk.views||0}</b> views</button>
-            <button class="dpp-trk-btn" title="Kis kis student ne PDF download ki — click pe list" onclick="openDppTrack(${pk.id},'download')">${ic('download')} <b>${pk.downloads||0}</b> downloads</button>
-          </div>
-          <div class="dpp-foot"><div></div><div class="dpp-btns">
-            <button class="btn btn-primary btn-sm" onclick="openTDppPanel(${pk.id})">${ic('eye')} View</button>
-            <button class="btn btn-ghost btn-sm" title="Sabse pehle submit karne waale students ki ranking" onclick="openDppRanking(${pk.id},'teacher')">${ic('chart')} Ranking${(pk.submitted||0)>0?` (${pk.submitted})`:''}</button>
-            <button class="btn btn-ghost btn-sm" onclick="dppLangPick(${pk.id},'download')">${ic('download')} Download</button>
-            <button class="btn btn-ghost btn-sm" onclick="openDppResults(${pk.id})">${ic('users')} Submissions (${pk.submitted||0})</button>
-            <button class="btn btn-danger btn-sm" onclick="dppDelete(${pk.id},'${esc(pk.title).replace(/'/g,'')}')">${ic('trash')} Delete</button>
-          </div></div>
-        </div>
-      </div>
-    </div>`;}).join('');
-    el.innerHTML=`<div class="card" style="margin-bottom:16px;border:1.5px solid rgba(184,148,31,.3)"><div class="card-body" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-      <div style="font-size:1.8rem">&#128221;</div>
-      <div style="flex:1;min-width:220px"><h3 style="margin:0 0 3px">Daily Practice Problems</h3>
-      <p style="margin:0;font-size:.78rem;color:var(--text-muted)">Timetable se connected — subject, chapter aur part choose karke DPP banao ya upload karo. Students ko questions turant dikhenge; submit ke baad solutions.</p></div>
-      <button class="btn btn-primary btn-sm" onclick="openCreateDpp()">${ic('plus')} Create DPP</button>
-      <button class="btn btn-ghost btn-sm" onclick="openUploadDpp()">${ic('upload')} Upload DPP</button>
-    </div></div>
-    ${cards||'<div class="card"><div class="card-body ws-empty"><div class="big">&#128221;</div><p><b>No DPP yet</b></p><small>Create DPP (editor) ya Upload DPP (2 PDFs) — dono timetable ke chapter/part se linked.</small></div></div>'}`;
+    window._tDppSub=window._tDppSub||'all';
+    _renderTDpp();
   }catch(e){ el.innerHTML=errHtml(e); }
+}
+function tDppSubPick(s){ window._tDppSub=s; _renderTDpp(); }
+function tDppSubPickIdx(i){
+  const subs=[...new Set((window._dppPacks||[]).map(pk=>pk.subject||'General'))].sort();
+  tDppSubPick(subs[i]||'all');
+}
+function _tDppCardHTML(pk){
+  const ini=(pk.subject||'D').trim()[0].toUpperCase();
+  const srcChip=pk.source==='created'?`<span class="chip-sub" style="color:#b45309"> ${pk.questions_n||0} Questions</span>`:`<span class="chip-sub">Uploaded</span>`;
+  return `<div class="dpp-card premium">
+  <div style="display:flex;gap:13px;align-items:flex-start">
+    <div class="dpp-ava-init" title="${esc(pk.subject)}">${ini}</div>
+    <div style="flex:1;min-width:0">
+      <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div><div class="dpp-chips">${pk.class_name?`<span class="xm-chip xm-chip-hl2">${ic('book')} ${esc(pk.class_name)}</span>`:''}${pk.medium?`<span class="xm-chip xm-chip-hl2">${esc(pk.medium)}</span>`:''}${srcChip}</div></div>
+      <div class="dpp-title">${esc(pk.title)}</div>
+      <div class="dpp-meta"> ${esc(pk.chapter||'—')}${pk.part?` · Part: ${esc(pk.part)}`:''}</div>
+      <div class="dpp-meta"> ${esc(pk.created_at||'')} · ${pk.submitted||0} submission${(pk.submitted||0)===1?'':'s'}</div>
+      <div class="dpp-track">
+        <button class="dpp-trk-btn" title="Students who opened this DPP — click for the list" onclick="openDppTrack(${pk.id},'view')">${ic('eye')} <b>${pk.views||0}</b> views</button>
+        <button class="dpp-trk-btn" title="Students who downloaded the PDF — click for the list" onclick="openDppTrack(${pk.id},'download')">${ic('download')} <b>${pk.downloads||0}</b> downloads</button>
+      </div>
+      <div class="dpp-foot"><div></div><div class="dpp-btns">
+        <button class="btn btn-primary btn-sm" onclick="openTDppPanel(${pk.id})">${ic('eye')} View</button>
+        <button class="btn btn-ghost btn-sm" title="Ranking of students by earliest submission" onclick="openDppRanking(${pk.id},'teacher')">${ic('chart')} Ranking${(pk.submitted||0)>0?` (${pk.submitted})`:''}</button>
+        <button class="btn btn-ghost btn-sm" onclick="dppLangPick(${pk.id},'download')">${ic('download')} Download</button>
+        <button class="btn btn-ghost btn-sm" onclick="openDppResults(${pk.id})">${ic('users')} Submissions (${pk.submitted||0})</button>
+        <button class="btn btn-danger btn-sm" onclick="dppDelete(${pk.id},'${esc(pk.title).replace(/'/g,'')}')">${ic('trash')} Delete</button>
+      </div></div>
+    </div>
+  </div>
+</div>`;
+}
+function _renderTDpp(){
+  const el=document.getElementById('t-dpp-content'); if(!el) return;
+  const packs=window._dppPacks||[];
+  const sel=window._tDppSub||'all';
+  const bySub={};
+  packs.forEach(pk=>{ const s=pk.subject||'General'; (bySub[s]=bySub[s]||[]).push(pk); });
+  const subs=Object.keys(bySub).sort();
+  const list=sel==='all'?packs:(bySub[sel]||[]);
+  const totSub=l=>l.reduce((a,pk)=>a+(pk.submitted||0),0);
+  const cards=list.map(_tDppCardHTML).join('');
+  el.innerHTML=`<div class="card" style="margin-bottom:16px;border:1.5px solid rgba(184,148,31,.3)"><div class="card-body" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    <div style="font-size:1.8rem">&#128221;</div>
+    <div style="flex:1;min-width:220px"><h3 style="margin:0 0 3px">Daily Practice Problems</h3>
+    <p style="margin:0;font-size:.78rem;color:var(--text-muted)">Connected to the timetable — pick a subject, chapter and part to create or upload a DPP. Students see questions instantly; solutions unlock after submission.</p></div>
+    <button class="btn btn-primary btn-sm" onclick="openCreateDpp()">${ic('plus')} Create DPP</button>
+    <button class="btn btn-ghost btn-sm" onclick="openUploadDpp()">${ic('upload')} Upload DPP</button>
+  </div></div>`
+  +(packs.length? `<div class="dps-grid" style="margin-bottom:16px">`
+    +`<div class="dps-card ${sel==='all'?'open':''}" onclick="tDppSubPick('all')"><div class="dps-name">All Subjects</div><div class="dps-count">${packs.length} DPP${packs.length===1?'':'s'} \u00b7 ${totSub(packs)} submissions</div><div class="dps-tick">${sel==='all'?'\u25b2':'\u25bc'}</div></div>`
+    +subs.map((s,i)=>{const l=bySub[s];return `<div class="dps-card ${sel===s?'open':''}" onclick="tDppSubPickIdx(${i})"><div class="dps-name">${esc(s)}</div><div class="dps-count">${l.length} DPP${l.length>1?'s':''} \u00b7 ${totSub(l)} submission${totSub(l)===1?'':'s'}</div><div class="dps-tick">${sel===s?'\u25b2':'\u25bc'}</div></div>`;}).join('')
+    +`</div>`
+    +`<div style="font-size:.74rem;font-weight:800;color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase;margin:2px 0 10px">${sel==='all'?'All DPPs':esc(sel)+' \u00b7 '+list.length+' DPP'+(list.length===1?'':'s')}</div>`
+    :'')
+  +`${cards||'<div class="card"><div class="card-body ws-empty"><div class="big">&#128221;</div><p><b>No DPP yet</b></p><small>Use Create DPP (question editor) or Upload DPP (question + solution PDFs) — both are linked to the timetable chapter and part.</small></div></div>'}`;
 }
 async function dppDl(pid,kind){
   try{
@@ -6483,25 +6508,46 @@ async function loadATests(){
   softSpin(el);
   try{
     const rows=await api('/api/admin/exams');
-    const bySub={};
-    rows.forEach(e=>{ const s=e.subject||'General'; (bySub[s]=bySub[s]||[]).push(e); });
-    const subs=Object.keys(bySub).sort();
-    const totT=rows.length, totS=rows.reduce((a,e)=>a+(e.attempts||0),0), totG=rows.reduce((a,e)=>a+(e.graded||0),0);
-    el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests Tracker</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Subject-wise all tests · live submission tracking</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-danger btn-sm" onclick="orphanCleanup()">${ic('trash')} Clean Old Data</button><button class="btn btn-ghost btn-sm" onclick="loadATests()">${ic('refresh')} Refresh</button></div></div>`
-      +`<div class="tx-stats">`
-      +`<div class="tx-stat"><b style="color:#c2410c">${totT}</b><span>Total tests</span></div>`
-      +`<div class="tx-stat"><b>${totS}</b><span>Submissions</span></div>`
-      +`<div class="tx-stat"><b style="color:#b45309">${Math.max(0,totS-totG)}</b><span>Pending evaluation</span></div>`
-      +`<div class="tx-stat"><b style="color:#047857">${totG}</b><span>Evaluated</span></div></div>`
-      +(rows.length? subs.map(sub=>`<div class="card"><div class="card-header"><h3>${esc(sub)}</h3><span class="tx-pill nv">${bySub[sub].length} test${bySub[sub].length>1?'s':''}</span></div><div class="card-body">`
-        +bySub[sub].map(e=>{
-          const sch=spSchedOf(e);
-          return `<div class="today-row"><div><div class="tr-sub">${esc(e.title||'')}</div><div class="tr-topic">${esc(e.teacher_name||'')}${spCleanCh(e.chapter)?' \u00b7 '+esc(spCleanCh(e.chapter)):''} \u00b7 ${e.questions||0} Qs \u00b7 ${e.total_marks||0} marks \u00b7 ${e.duration_min||0} min${sch?' \u00b7 '+spSchedFmt(sch):''}</div></div><div class="tmeta"><span class="tstatus">${e.attempts||0} submitted</span><span class="tstatus ${(e.graded||0)>0?'done':''}">${e.graded||0} evaluated</span><span class="tstatus" style="color:#b45309">${Math.max(0,(e.attempts||0)-(e.graded||0))} pending</span>${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'admin')">${ic('chart')} Ranking</button>`:''}</div></div>`;
-        }).join('')+`</div></div>`).join('')
-        : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests yet</b><p>Tests from teachers will appear here, subject-wise.</p></div>`);
+    window._aTestsRows=rows||[];
+    window._aTestSub=window._aTestSub||'all';
+    _renderATests();
   }catch(e){
     el.innerHTML=`<div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic('clipboard')}</div><p><b>The Tests Tracker needs one small backend endpoint</b></p><small>Once <code>GET /api/admin/exams</code> is added, all tests with submission tracking appear here, subject-wise.<br>Ready-made code: <b>mvs_backend_exam_update.py</b> — paste it at the end of admin_routes.py and redeploy.</small></div></div></div>`;
   }
+}
+function aTestSubPick(s){ window._aTestSub=s; _renderATests(); }
+function _renderATests(){
+  const el=document.getElementById('a-tests-content'); if(!el)return;
+  const rows=window._aTestsRows||[];
+  const sel=window._aTestSub||'all';
+  const bySub={};
+  rows.forEach(e=>{ const s=e.subject||'General'; (bySub[s]=bySub[s]||[]).push(e); });
+  const subs=Object.keys(bySub).sort();
+  const _stat=l=>({t:l.length,s:l.reduce((a,e)=>a+(e.attempts||0),0),g:l.reduce((a,e)=>a+(e.graded||0),0)});
+  const selList=sel==='all'?rows:(bySub[sel]||[]);
+  const st=_stat(selList);
+  const _testRow=e=>{
+    const sch=spSchedOf(e);
+    return `<div class="today-row"><div><div class="tr-sub">${esc(e.title||'')}</div><div class="tr-topic">${esc(e.teacher_name||'')}${spCleanCh(e.chapter)?' \u00b7 '+esc(spCleanCh(e.chapter)):''} \u00b7 ${e.questions||0} Qs \u00b7 ${e.total_marks||0} marks \u00b7 ${e.duration_min||0} min${sch?' \u00b7 '+spSchedFmt(sch):''}</div></div><div class="tmeta"><span class="tstatus">${e.attempts||0} submitted</span><span class="tstatus ${(e.graded||0)>0?'done':''}">${e.graded||0} evaluated</span><span class="tstatus" style="color:#b45309">${Math.max(0,(e.attempts||0)-(e.graded||0))} pending</span>${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'admin')">${ic('chart')} Ranking</button>`:''}</div></div>`;
+  };
+  const _sec=(sub,list)=>`<div class="card"><div class="card-header"><h3>${esc(sub)}</h3><span class="tx-pill nv">${list.length} test${list.length>1?'s':''}</span></div><div class="card-body">${list.map(_testRow).join('')}</div></div>`;
+  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests Tracker</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Subject-wise all tests · live submission tracking</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-danger btn-sm" onclick="orphanCleanup()">${ic('trash')} Clean Old Data</button><button class="btn btn-ghost btn-sm" onclick="loadATests()">${ic('refresh')} Refresh</button></div></div>`
+    +`<div class="tx-stats">`
+    +`<div class="tx-stat"><b style="color:#c2410c">${st.t}</b><span>Total tests</span></div>`
+    +`<div class="tx-stat"><b>${st.s}</b><span>Submissions</span></div>`
+    +`<div class="tx-stat"><b style="color:#b45309">${Math.max(0,st.s-st.g)}</b><span>Pending evaluation</span></div>`
+    +`<div class="tx-stat"><b style="color:#047857">${st.g}</b><span>Evaluated</span></div></div>`
+    +(rows.length? `<div class="dps-grid">`
+      +`<div class="dps-card ${sel==='all'?'open':''}" onclick="aTestSubPick('all')"><div class="dps-name">All Subjects</div><div class="dps-count">${rows.length} test${rows.length===1?'':'s'} \u00b7 ${_stat(rows).s} submissions</div><div class="dps-tick">${sel==='all'?'\u25b2':'\u25bc'}</div></div>`
+      +subs.map((s,i)=>{const l=bySub[s];const ss=_stat(l);return `<div class="dps-card ${sel===s?'open':''}" onclick="aTestSubPickIdx(${i})"><div class="dps-name">${esc(s)}</div><div class="dps-count">${l.length} test${l.length>1?'s':''} \u00b7 ${ss.s} submission${ss.s===1?'':'s'}</div><div class="dps-tick">${sel===s?'\u25b2':'\u25bc'}</div></div>`;}).join('')
+      +`</div>`
+      +(sel==='all'? subs.map(sub=>_sec(sub,bySub[sub])).join('') : _sec(sel,selList))
+      : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests yet</b><p>Tests from teachers will appear here, subject-wise.</p></div>`);
+}
+function aTestSubPickIdx(i){
+  const rows=window._aTestsRows||[];
+  const subs=[...new Set(rows.map(e=>e.subject||'General'))].sort();
+  aTestSubPick(subs[i]||'all');
 }
 
 console.log('MVS Smart Paste build 2026-07-20 v5 + scheduling + premium PDF v2');
@@ -8690,21 +8736,42 @@ async function loadADppRanks(){
   const el=document.getElementById('a-dpp-ranks'); if(!el) return;
   try{
     const d=await api('/api/admin/dpp-rankings');
-    const packs=d.packs||[];
-    const rows=packs.map(p=>`<tr class="dpp-rk-row" onclick="openDppRanking(${p.id},'admin')">
-      <td><b>${esc(p.title||'DPP')}</b><div style="font-size:.68rem;color:var(--text-muted)">${esc(p.subject)}${p.chapter?' · '+esc(p.chapter):''} · ${p.part?esc(p.part):'Whole Chapter'}</div></td>
-      <td>${esc(p.class_name||'—')}</td>
-      <td>${esc(p.teacher||'—')}</td>
-      <td style="text-align:center"><b>${p.submitted}</b></td>
-      <td style="text-align:center"><span style="color:var(--success);font-weight:700">${p.checked}</span><span style="color:var(--text-muted)"> / </span><span style="color:var(--warning);font-weight:700">${p.pending}</span></td>
-      <td style="text-align:center">${p.views||0}</td>
-      <td style="text-align:center">${p.downloads||0}</td>
-      <td style="text-align:right"><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openDppRanking(${p.id},'admin')">${ic('chart')} Ranking</button></td></tr>`).join('');
-    el.innerHTML=`<div class="card" style="margin-top:18px"><div class="card-header"><h3>${ic('clipboard')} DPP Rankings</h3><span class="xm-chip">${packs.length}</span></div>
-      <div class="card-body"><p style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">Har DPP pack ke submissions — sabse pehle submit karne wala Rank 1. Row pe click karo for podium + full list (names clickable).</p>
-      ${packs.length?`<div class="mat-twrap"><table class="mat-table"><thead><tr><th>DPP</th><th>Class</th><th>Teacher</th><th style="text-align:center">Submitted</th><th style="text-align:center">Checked / Pending</th><th style="text-align:center">Views</th><th style="text-align:center">Downloads</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
-        :`<div class="ws-empty"><p>Abhi koi DPP pack nahi hai.</p></div>`}</div></div>`;
+    window._aDppPacks=d.packs||[];
+    window._aDppSub=window._aDppSub||'all';
+    _renderADppRanks();
   }catch(e){ el.innerHTML=`<div class="card" style="margin-top:18px"><div class="card-body">${errHtml(e)}</div></div>`; }
+}
+function aDppSubPick(s){ window._aDppSub=s; _renderADppRanks(); }
+function aDppSubPickIdx(i){
+  const subs=[...new Set((window._aDppPacks||[]).map(p=>p.subject||'General'))].sort();
+  aDppSubPick(subs[i]||'all');
+}
+function _renderADppRanks(){
+  const el=document.getElementById('a-dpp-ranks'); if(!el) return;
+  const packs=window._aDppPacks||[];
+  const sel=window._aDppSub||'all';
+  const bySub={};
+  packs.forEach(p=>{ const s=p.subject||'General'; (bySub[s]=bySub[s]||[]).push(p); });
+  const subs=Object.keys(bySub).sort();
+  const list=sel==='all'?packs:(bySub[sel]||[]);
+  const totSub=l=>l.reduce((a,p)=>a+(p.submitted||0),0);
+  const rows=list.map(p=>`<tr class="dpp-rk-row" onclick="openDppRanking(${p.id},'admin')">
+    <td><b>${esc(p.title||'DPP')}</b><div style="font-size:.68rem;color:var(--text-muted)">${esc(p.subject)}${p.chapter?' · '+esc(p.chapter):''} · ${p.part?esc(p.part):'Whole Chapter'}</div></td>
+    <td>${esc(p.class_name||'—')}</td>
+    <td>${esc(p.teacher||'—')}</td>
+    <td style="text-align:center"><b>${p.submitted}</b></td>
+    <td style="text-align:center"><span style="color:var(--success);font-weight:700">${p.checked}</span><span style="color:var(--text-muted)"> / </span><span style="color:var(--warning);font-weight:700">${p.pending}</span></td>
+    <td style="text-align:center">${p.views||0}</td>
+    <td style="text-align:center">${p.downloads||0}</td>
+    <td style="text-align:right"><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openDppRanking(${p.id},'admin')">${ic('chart')} Ranking</button></td></tr>`).join('');
+  el.innerHTML=`<div class="card" style="margin-top:18px"><div class="card-header"><h3>${ic('clipboard')} DPP Rankings</h3><span class="xm-chip">${packs.length}</span></div>
+    <div class="card-body"><p style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">Submissions for every DPP pack — the earliest submission earns Rank 1. Click a row for the podium and the full list (names are clickable).</p>
+    ${packs.length?`<div class="dps-grid" style="margin-bottom:14px">`
+      +`<div class="dps-card ${sel==='all'?'open':''}" onclick="aDppSubPick('all')"><div class="dps-name">All Subjects</div><div class="dps-count">${packs.length} DPP${packs.length===1?'':'s'} \u00b7 ${totSub(packs)} submissions</div><div class="dps-tick">${sel==='all'?'\u25b2':'\u25bc'}</div></div>`
+      +subs.map((s,i)=>{const l=bySub[s];return `<div class="dps-card ${sel===s?'open':''}" onclick="aDppSubPickIdx(${i})"><div class="dps-name">${esc(s)}</div><div class="dps-count">${l.length} DPP${l.length>1?'s':''} \u00b7 ${totSub(l)} submission${totSub(l)===1?'':'s'}</div><div class="dps-tick">${sel===s?'\u25b2':'\u25bc'}</div></div>`;}).join('')
+      +`</div>`
+      +`<div class="mat-twrap"><table class="mat-table"><thead><tr><th>DPP</th><th>Class</th><th>Teacher</th><th style="text-align:center">Submitted</th><th style="text-align:center">Checked / Pending</th><th style="text-align:center">Views</th><th style="text-align:center">Downloads</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      :`<div class="ws-empty"><p>No DPP packs yet.</p></div>`}</div></div>`;
 }
 
 async function renderAdminHealth(){
@@ -14348,16 +14415,17 @@ function _letterHTML(d){
    ['Doubt Resolution Bonus','Earned by resolving 100% of student doubts assigned on the portal within 48 hours. Proportionally reduced for unresolved doubts.',pay.doubt_resolution],
    ['Project, Task & Content Delivery','Earned by submitting all production tasks and projects on time, and achieving monthly content targets: Weekly Tests, One Shot & Revision Videos, YouTube Live Sessions, and Shorts.',pay.project_delivery]
   ];
+  const _tl=tg.labels||{};
   const targetRows=[
-   ['Weekly Tests (MCQ / Subjective)', tg.tests_target+' per month', 'AUTO'],
+   [(_tl.tests||'Weekly Tests')+' (MCQ / Subjective)', tg.tests_target+' per month', 'AUTO'],
    ['Class Notes Upload (within 24 hrs)', '100% of classes conducted', 'AUTO'],
    ['DPP Upload (within 24 hrs)', '100% of classes conducted', 'AUTO'],
-   ['One Shot / Revision Videos', tg.videos_target+' per month', 'MANUAL'],
-   ['YouTube Live Sessions', tg.live_target+' per month', 'MANUAL'],
-   ['Shorts (\u2265 60 seconds)', tg.shorts_target+' per month', 'MANUAL'],
+   [_tl.videos||'One Shot / Revision Videos', tg.videos_target+' per month', 'MANUAL'],
+   [_tl.live||'YouTube Live Sessions', tg.live_target+' per month', 'MANUAL'],
+   [(_tl.shorts||'Shorts')+' (\u2265 60 seconds)', tg.shorts_target+' per month', 'MANUAL'],
    ['Doubt Resolution', '100% of assigned doubts', 'AUTO'],
    ['Project / Production Tasks', '100% on-time delivery', 'MANUAL']
-  ];
+  ].concat((tg.custom||[]).map(c=>[c.name, c.count+' per month', 'MANUAL']));
   const details=[['Designation',t.designation],['Department',t.department],['Date of Joining','as mutually agreed'],['Reporting To','Academic Head, MVS Foundation'],['Mode of Work','Offline — MVS Foundation'],['Contract Type','Performance-Linked Engagement (renewable annually)']];
   return `<div style="${_DOC_FONT}">
   ${_LH(refNo,d.letter.date,true)}
@@ -14585,7 +14653,7 @@ function _payStructureHTML(d,editable){
   return `<div class="card" style="margin-top:18px"><div class="card-header"><h3>${ic('wallet')} My Pay Structure & Monthly Targets</h3></div><div class="card-body">
    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:0 28px">
     <div>${row('Class Conduct Retainer (60%)',_inr(pay.class_retainer))}${row('Class Quality Incentive',_inr(pay.class_quality))}${row('Notes, DPP & Weekly Tests',_inr(pay.notes_dpp))}${row('Doubt Resolution Bonus',_inr(pay.doubt_resolution))}${row('Project, Task & Content Delivery',_inr(pay.project_delivery))}${row('<b>Maximum Monthly Potential</b>','<b>'+_inr(d.earnings.max_potential)+'</b>')}</div>
-    <div>${row('Weekly Tests target',tg.tests_target+' / month')}${row('One Shot / Revision Videos target',tg.videos_target+' / month')}${row('YouTube Live target',tg.live_target+' / month')}${row('Shorts target',tg.shorts_target+' / month')}${row('Designation',esc(t.designation))}${row('Department',esc(t.department))}</div>
+    <div>${(()=>{const L=tg.labels||{};return row((L.tests||'Weekly Tests')+' target',tg.tests_target+' / month')+row((L.videos||'One Shot / Revision Videos')+' target',tg.videos_target+' / month')+row((L.live||'YouTube Live')+' target',tg.live_target+' / month')+row((L.shorts||'Shorts')+' target',tg.shorts_target+' / month')+(tg.custom||[]).map(c=>row(esc(c.name)+' target',c.count+' / month')).join('');})()}${row('Designation',esc(t.designation))}${row('Department',esc(t.department))}</div>
    </div>
    <div class="alert alert-info" style="margin-top:12px;margin-bottom:0">Targets and amounts are set by the admin in the first week of each month. Any change here updates your live earnings calculation immediately.</div>
   </div></div>`;
@@ -15080,6 +15148,9 @@ function openPayConfig(tid){
   const p=x.pay, g=x.targets, t=x.teacher;
   const num=(id,lbl,v,hint)=>`<div><label style="font-size:.7rem;color:var(--text-muted);font-weight:700;display:block;margin-bottom:4px">${lbl}</label><input type="number" min="0" class="form-control" id="${id}" value="${v}" oninput="_pcSum()">${hint?`<div style="font-size:.64rem;color:var(--text-muted);margin-top:3px">${hint}</div>`:''}</div>`;
   const txt=(id,lbl,v,ph)=>`<div><label style="font-size:.7rem;color:var(--text-muted);font-weight:700;display:block;margin-bottom:4px">${lbl}</label><input class="form-control" id="${id}" value="${esc(v||'')}" placeholder="${ph||''}"></div>`;
+  const _tgL=g.labels||{};
+  const tgRow=(key,defName,count)=>`<div class="pct-row"><input class="form-control pct-name" id="pc_lbl_${key}" value="${esc(_tgL[key]||defName)}" maxlength="60" placeholder="Target name"><input type="number" min="0" class="form-control pct-num" id="pc_${key}" value="${count}"><span class="pct-tag">CORE</span></div>`;
+  window._pcCustom=(g.custom||[]).map(c=>({name:c.name,count:c.count}));
   showModal('Pay Structure — '+x.teacher.name,
    `<div class="alert alert-info">Full control: amounts, monthly targets, designation and bank details. Saving updates this teacher's live earnings and documents immediately.</div>
     <div style="background:linear-gradient(135deg,#faf6e8,#f6efdb);border:1px solid #e6d9ac;border-radius:12px;padding:12px 16px;margin-bottom:12px">
@@ -15100,12 +15171,14 @@ function openPayConfig(tid){
     </div>
     <div id="pc_60" style="font-size:.68rem;color:var(--text-muted);margin-top:4px"></div>
     <div style="font-weight:800;font-size:.8rem;margin:14px 0 8px;color:var(--primary)">MONTHLY TARGETS</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(130px,100%),1fr));gap:10px">
-     ${num('pc_tests','Weekly Tests',g.tests_target)}
-     ${num('pc_videos','Videos (One Shot/Revision)',g.videos_target)}
-     ${num('pc_live','YouTube Live',g.live_target)}
-     ${num('pc_shorts','Shorts',g.shorts_target)}
+    <div style="font-size:.7rem;color:var(--text-muted);margin:-3px 0 10px">Core targets drive the earnings calculation — rename them anytime. Add your own extra targets below; they appear on the appointment letter.</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+     ${tgRow('tests','Weekly Tests',g.tests_target)}
+     ${tgRow('videos','Videos (One Shot/Revision)',g.videos_target)}
+     ${tgRow('live','YouTube Live',g.live_target)}
+     ${tgRow('shorts','Shorts',g.shorts_target)}
     </div>
+    <div id="pc_tg_custom" style="margin-top:8px"></div>
     <div style="font-weight:800;font-size:.8rem;margin:14px 0 8px;color:var(--primary)">PROFILE & BANK (for letter & slip)</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(160px,100%),1fr));gap:10px">
      ${txt('pc_desig','Designation',t.designation==='Subject Teacher'?'':t.designation,'Subject Teacher')}
@@ -15117,7 +15190,15 @@ function openPayConfig(tid){
     </div>`,
    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitPayConfig(${tid})">${ic('check')} Save Pay Structure</button>`);
   _pcSum();
+  _pcCustomRender();
 }
+function _pcCustomRender(){
+  const box=document.getElementById('pc_tg_custom'); if(!box) return;
+  const rows=(window._pcCustom||[]).map((c,i)=>`<div class="pct-row"><input class="form-control pct-name" id="pc_c_name_${i}" value="${esc(c.name)}" maxlength="60" placeholder="Target name" oninput="_pcCustom[${i}].name=this.value"><input type="number" min="0" class="form-control pct-num" value="${c.count}" oninput="_pcCustom[${i}].count=this.value"><button class="btn btn-ghost btn-sm pct-del" title="Remove this target" onclick="_pcCustomDel(${i})">×</button></div>`).join('');
+  box.innerHTML=rows+`<button class="btn btn-ghost btn-sm" onclick="_pcCustomAdd()">${ic('plus')} Add Target</button>`;
+}
+function _pcCustomAdd(){ window._pcCustom.push({name:'',count:4}); _pcCustomRender(); setTimeout(()=>{ const n=document.getElementById('pc_c_name_'+(window._pcCustom.length-1)); if(n) n.focus(); },60); }
+function _pcCustomDel(i){ window._pcCustom.splice(i,1); _pcCustomRender(); }
 function _pcSum(){
   const v=id=>parseInt((document.getElementById(id)||{}).value)||0;
   const mx=v('pc_retainer')+v('pc_quality')+v('pc_notesdpp')+v('pc_doubt')+v('pc_project');
@@ -15140,6 +15221,8 @@ async function submitPayConfig(tid){
     class_retainer:v('pc_retainer'),class_quality:v('pc_quality'),notes_dpp:v('pc_notesdpp'),
     doubt_resolution:v('pc_doubt'),project_delivery:v('pc_project'),
     tests_target:v('pc_tests'),videos_target:v('pc_videos'),live_target:v('pc_live'),shorts_target:v('pc_shorts'),
+    target_labels:{tests:v('pc_lbl_tests'),videos:v('pc_lbl_videos'),live:v('pc_lbl_live'),shorts:v('pc_lbl_shorts')},
+    custom_targets:(window._pcCustom||[]).map(c=>({name:(c.name||'').trim(),count:parseInt(c.count)||0})).filter(c=>c.name),
     designation:v('pc_desig'),department:v('pc_dept'),employee_code:v('pc_emp'),
     bank_name:v('pc_bank'),account_no:v('pc_acct'),ifsc:v('pc_ifsc')};
   try{ const r=await api('/api/admin/earnings/config','POST',body); toast(r.message); closeModal(); aEarnFetch(); }
@@ -16726,6 +16809,12 @@ body.dark .po-pill.red{color:#f87171}
 .sdd-cb.on{background:linear-gradient(135deg,#c9a227,#a8842a);border-color:#c9a227}
 .sdd-row.full .sdd-cb.on{background:linear-gradient(135deg,#b06d12,#8a560e);border-color:#b06d12}
 .sdd-hint{margin-left:auto;font-size:.62rem;color:var(--text-muted);font-weight:700;letter-spacing:.02em}
+
+.pct-row{display:grid;grid-template-columns:1fr 100px auto;gap:8px;align-items:center}
+.pct-name{min-width:0}
+.pct-num{text-align:center}
+.pct-tag{font-size:.56rem;font-weight:900;letter-spacing:.08em;background:#eef2ff;color:#4f46e5;padding:4px 9px;border-radius:99px}
+.pct-del{padding:5px 11px;font-size:.95rem;line-height:1}
 </style>
 <script id="syl-js">
 /* ============================================================
