@@ -38,6 +38,7 @@ ADMIN_SECTION_MAP = {
     "timetable-entry": "timetable", "timetable-all": "timetable", "timetable-clear": "timetable",
     "timetable-pdf": "timetable", "timetable-pdf-commit": "timetable", "timetable-subject": "timetable",
     "studio-reports": "timetable",
+    "class-report-backfill": "timetable",
     "questionbank": "qbank",
     "material": "material", "materials-tree": "material", "pending-materials": "material",
     "doubt": "doubts", "doubts": "doubts", "doubts-overview": "doubts",
@@ -605,10 +606,13 @@ def add_subject(class_level: str, name: str, code: str = "", mode: str = "live",
 # ===== TIMETABLE (all teachers) =====
 @router.get("/timetable-all")
 def timetable_all(db: Session = Depends(get_db), _=Depends(get_admin)):
-    from models import TimetableEntry, TeacherProfile
+    from models import TimetableEntry, TeacherProfile, Lecture
     es = db.query(TimetableEntry).order_by(
         TimetableEntry.subject, TimetableEntry.chapter, TimetableEntry.entry_date
     ).all()
+    # v99: kin entries ka class report (lecture) upload ho chuka hai — ek hi query me
+    lec_entry_ids = set(x[0] for x in db.query(Lecture.timetable_entry_id).filter(
+        Lecture.is_active == True, Lecture.timetable_entry_id.isnot(None)).all())
     result = []
     for e in es:
         tname = ""; tphoto = False; tpid = None
@@ -621,7 +625,11 @@ def timetable_all(db: Session = Depends(get_db), _=Depends(get_admin)):
             "date": str(e.entry_date) if e.entry_date else None,
             "day": e.day, "time": getattr(e,"time_text",None),
             "type": getattr(e,"entry_type",None) or "chapter",
-            "teacher_name": tname, "teacher_id": tpid, "teacher_has_photo": tphoto
+            "teacher_name": tname, "teacher_id": tpid, "teacher_has_photo": tphoto,
+            "completed": bool(e.completed), "has_lecture": (e.id in lec_entry_ids),
+            "topic_covered": e.topic_covered or "", "start_time": e.start_time or "",
+            "end_time": e.end_time or "", "homework": e.homework or "",
+            "remarks": e.remarks or "",
         })
     return result
 
@@ -734,6 +742,74 @@ def studio_report_delete(rid: int, db: Session = Depends(get_db), _=Depends(get_
     db.delete(r)
     db.commit()
     return {"ok": True, "message": "Report removed"}
+
+# ===== v99: ADMIN CLASS-REPORT BACKFILL (past classes ka academic report + notes) =====
+@router.post("/class-report-backfill")
+def class_report_backfill(payload: dict = Body(...), db: Session = Depends(get_db),
+                          admin=Depends(get_admin)):
+    """Purani classes (batch start se aaj tak) ka class report studio manager /
+    admin upload karta hai — entry completed mark hoti hai aur summary + class
+    notes (PDF) students ke Lectures feed me chale jate hain. Current date se
+    aage ki daily classes ka report teacher khud karta hai (teacher flow alag).
+    Dobara submit karne pe SAME lecture update hota hai — duplicate nahi banta."""
+    from models import TimetableEntry, TeacherProfile, Lecture, Material
+    try:
+        entry_id = int(payload.get("entry_id") or 0)
+    except Exception:
+        entry_id = 0
+    if not entry_id:
+        raise HTTPException(400, "entry_id is required")
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == entry_id).first()
+    if not e:
+        raise HTTPException(404, "Timetable entry not found")
+    topic = (payload.get("topic_covered") or "").strip()[:300]
+    summary = (payload.get("summary") or "").strip()
+    homework = (payload.get("homework") or "").strip()
+    pdf_b64 = (payload.get("pdf_b64") or "").strip() or None
+    pdf_name = ((payload.get("pdf_filename") or "notes.pdf").strip()[:255])
+    if not topic and not summary and not pdf_b64:
+        raise HTTPException(400, "Add a topic, summary or the class notes PDF")
+
+    # 1) class completed mark karo (teacher ke class report jaisa hi)
+    e.completed = True
+    e.completed_at = datetime.now()
+    e.topic_covered = topic or e.chapter or None
+    e.start_time = (payload.get("start_time") or "").strip()[:20] or None
+    e.end_time = (payload.get("end_time") or "").strip()[:20] or None
+    e.homework = homework or None
+    e.remarks = (payload.get("remarks") or "").strip() or None
+
+    # 2) student-facing lecture — pehle se ho to update, warna naya
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == e.teacher_id).first()
+    tname = (tp.user.name if tp and tp.user else "") or "Admin"
+    lec = db.query(Lecture).filter(Lecture.timetable_entry_id == entry_id,
+                                   Lecture.is_active == True).first()
+    created = False
+    if not lec:
+        lec = Lecture(teacher_id=e.teacher_id, teacher_name=tname,
+                      subject=e.subject or "", class_level=(e.class_name or None),
+                      chapter=(e.chapter or None), part=(e.part or None),
+                      title=(e.chapter or "Lecture") + ((" – " + e.part) if e.part else ""),
+                      timetable_entry_id=entry_id, lecture_date=e.entry_date,
+                      is_active=True)
+        db.add(lec); db.flush()
+        created = True
+    if summary:
+        lec.summary = summary
+    if homework:
+        lec.homework = homework
+    if pdf_b64:
+        lec.pdf_b64 = pdf_b64
+        lec.pdf_filename = pdf_name
+        # Material mirror — students ko Study Material me bhi mil jaye
+        db.add(Material(teacher_id=e.teacher_id, teacher_name=tname,
+                        subject=e.subject or "", class_name=(e.class_name or None),
+                        chapter=(e.chapter or None), part=(e.part or None),
+                        material_type="notes", title=(lec.title or e.subject or "Class Notes"),
+                        filename=pdf_name, content_b64=pdf_b64.split(",")[-1]))
+    db.commit()
+    return {"ok": True, "lecture_id": lec.id, "created": created,
+            "message": ("Class report uploaded" if created else "Class report updated")}
 
 # ===== ADMIN: PDF TIMETABLE UPLOAD (all subjects) =====
 @router.post("/timetable-pdf")
