@@ -2990,15 +2990,30 @@ let countdownTimer = null;
 // ========================================================
 //  API HELPER
 // ========================================================
+// v113: in-memory GET cache (30s) — section switches network ke bina instant khulte hain.
+// Koi bhi successful POST/PATCH/DELETE poora cache clear kar deta hai, to data kabhi
+// stale nahi rehta. Login/logout pe bhi clear hota hai.
+const _apiCache={};
+const _API_TTL=30000;
+const _API_NOCACHE=/notifications|\/live|heartbeat|\/photo|\/image|\/voice|\/file|\/download|\/pdf|\/content/i;
+function _apiBust(){ for(const k in _apiCache) delete _apiCache[k]; }
 async function api(path, method='GET', body=null) {
   const opts = { method, headers: { 'Content-Type':'application/json' } };
   if (TOKEN) opts.headers['Authorization'] = 'Bearer ' + TOKEN;
   if (body) opts.body = JSON.stringify(body);
-  // network fail (Failed to fetch) pe 2 baar aur retry — backend cold-start/restart sambhal jaata hai
+  const _ck=method+' '+path;
+  if(method==='GET'&&!_API_NOCACHE.test(path)){
+    const hit=_apiCache[_ck];
+    if(hit&&(Date.now()-hit.t)<_API_TTL) return hit.d;
+  }
+  // network fail (Failed to fetch) pe 2 baar aur retry — backend cold-start/restart sambhal jaata hai.
+  // v113: badi bodies (PDF base64 uploads) ko retry MAT karo — server pehli baar me save kar
+  // chuka ho sakta hai; dobara bhejne se duplicate banta hai aur screen "Saving..." pe atakti thi.
+  const _tries=(opts.body&&opts.body.length>524288)?1:3;
   let res=null;
-  for(let attempt=0; attempt<3; attempt++){
+  for(let attempt=0; attempt<_tries; attempt++){
     try{ res=await fetch(API+path, opts); break; }
-    catch(e){ res=null; if(attempt<2) await new Promise(r=>setTimeout(r, attempt===0?2000:5000)); }
+    catch(e){ res=null; if(attempt<_tries-1) await new Promise(r=>setTimeout(r, attempt===0?2000:5000)); }
   }
   if(!res) throw new Error('Could not reach the server — please check your internet connection and try again in 30–60 seconds (the backend may still be starting up).');
   let data;
@@ -3007,13 +3022,31 @@ async function api(path, method='GET', body=null) {
  const msg = (data && data.detail) ? data.detail : ('Error ' + res.status);
  const err = new Error(msg); err.status = res.status; throw err;
   }
+  if(method==='GET'){
+    if(!_API_NOCACHE.test(path)){ try{ if(JSON.stringify(data).length<1572864) _apiCache[_ck]={t:Date.now(),d:data}; }catch(e){} }
+  } else _apiBust();
   return data;
+}
+// v113: bade JSON uploads (class notes PDF) live progress ke saath — screen kabhi
+// "Saving..." pe dead nahi dikhti; percent chalta rehta hai.
+function _xhrJson(url,payload,onProgress){
+  return new Promise((resolve,reject)=>{
+    const xhr=new XMLHttpRequest(); xhr.open('POST',API+url);
+    if(TOKEN) xhr.setRequestHeader('Authorization','Bearer '+TOKEN);
+    xhr.setRequestHeader('Content-Type','application/json');
+    if(xhr.upload) xhr.upload.onprogress=e=>{ if(e.lengthComputable&&onProgress) onProgress(Math.round(e.loaded/e.total*100)); };
+    xhr.onload=()=>{ let j=null; try{ j=JSON.parse(xhr.responseText); }catch(e){}
+      if(xhr.status>=200&&xhr.status<300){ _apiBust(); resolve(j||{}); }
+      else{ const er=new Error((j&&j.detail)||('Error '+xhr.status)); er.status=xhr.status; reject(er); } };
+    xhr.onerror=()=>reject(new Error('Could not reach the server — with a large file the upload may still have completed, so please check once before trying again.'));
+    xhr.send(JSON.stringify(payload));
+  });
 }
 
 // ========================================================
 //  NAVIGATION
 // ========================================================
-function goHome(){ TOKEN=null;ROLE=null; stopCountdown(); stopStudentHeartbeat(); stopAdminLivePoll(); stopNotifPolling(); var np=document.getElementById('notif-pop'); if(np)np.remove(); document.querySelectorAll('.app').forEach(a=>a.classList.remove('active')); document.getElementById('login-screen').classList.remove('active'); document.getElementById('subject-screen').style.display='none'; var tss=document.getElementById('t-subject-screen'); if(tss)tss.style.display='none'; document.getElementById('landing').style.display='flex'; }
+function goHome(){ _apiBust(); TOKEN=null;ROLE=null; stopCountdown(); stopStudentHeartbeat(); stopAdminLivePoll(); stopNotifPolling(); var np=document.getElementById('notif-pop'); if(np)np.remove(); document.querySelectorAll('.app').forEach(a=>a.classList.remove('active')); document.getElementById('login-screen').classList.remove('active'); document.getElementById('subject-screen').style.display='none'; var tss=document.getElementById('t-subject-screen'); if(tss)tss.style.display='none'; document.getElementById('landing').style.display='flex'; }
 function goLogin(portal){
   CURRENT_PORTAL=portal;
   document.getElementById('landing').style.display='none';
@@ -3055,7 +3088,7 @@ async function studentDirectLogin(){
   const pass=document.getElementById('sc-pass').value;
   try{
  const data=await api('/api/auth/login','POST',{user_id:uid,password:pass});
- TOKEN=data.access_token; ROLE=data.role; NAME=data.name;
+ _apiBust(); TOKEN=data.access_token; ROLE=data.role; NAME=data.name;
  document.getElementById('login-screen').classList.remove('active');
  openStudent();
   }catch(e){ toast(e.message,true); }
@@ -3069,7 +3102,7 @@ async function doLogin(){
   try{
  const data=await api('/api/auth/login','POST',{user_id:uid,password:pass});
  if(data.role!==CURRENT_PORTAL){ toast(`This is the ${CURRENT_PORTAL} login, but this account belongs to a ${data.role}!`,true); btn.disabled=false; btn.textContent='Login'; return; }
- TOKEN=data.access_token; ROLE=data.role; NAME=data.name;
+ _apiBust(); TOKEN=data.access_token; ROLE=data.role; NAME=data.name;
  document.getElementById('login-screen').classList.remove('active');
  if(ROLE==='teacher') openTeacher();
  else if(ROLE==='admin') openAdmin();
@@ -3936,13 +3969,13 @@ async function submitClassReport(id){
     // 2) lecture report -> summary + class notes, auto-linked to this class
     let pdf_b64=null;
     if(_lecFiles.pdf) pdf_b64=await _fileB64(_lecFiles.pdf);
-    await api('/api/teacher/lecture','POST',{
+    await _xhrJson('/api/teacher/lecture',{
       subject:c.subject, chapter:c.chapter||null, part:c.part||null,
       title:(c.chapter||'Lecture')+(c.part?(' \u2013 '+c.part):''),
       lecture_date:c.date||null, timetable_entry_id:id,
       homework:val('cr-hw')||null,
       pdf_b64, pdf_filename:_lecFiles.pdf?_lecFiles.pdf.name:null,
-      questions:[]});
+      questions:[]},pc=>{ btn.textContent='Uploading… '+pc+'%'; });
     toast('Class marked Done. Students can now see this report.');
     closeModal();
     const active=document.querySelector('#teacher-app .page.active');
@@ -5584,7 +5617,7 @@ async function submitLecture(){
       homework:val('lec-hw')||null,
       pdf_b64, pdf_filename:_lecFiles.pdf?_lecFiles.pdf.name:null,
       questions:[]};
-    await api('/api/teacher/lecture','POST',payload);
+    await _xhrJson('/api/teacher/lecture',payload,pc=>{ if(btn) btn.textContent='Uploading… '+pc+'%'; });
     closeModal(); toast('Lecture report published! Students are notified.');
     const active=document.querySelector('#teacher-app .page.active');
     if(active&&active.id==='t-page-timetable') loadTTimetable();
@@ -13942,7 +13975,7 @@ async function submitClassReportUpload(id){
         start_time:start, end_time:end,
         remarks:(document.getElementById('cru-remarks').value||'').trim()};
       if(window._crFile){ payload.pdf_b64=await _fileB64(window._crFile); payload.pdf_filename=window._crFile.name; }
-      const r=await api('/api/admin/class-report-backfill','POST',payload);
+      const r=await _xhrJson('/api/admin/class-report-backfill',payload,pc=>{ if(btn) btn.textContent='Uploading… '+pc+'%'; });
       window._crUploaded=window._crUploaded||{}; window._crUploaded[id]=true;
       msgs.push(r.message||'Class report uploaded');
     }
@@ -14153,7 +14186,7 @@ async function mvsSsoFromHash(){
     var d=await api('/api/auth/sso-lookup','POST',{token:window._ssoToken,phone:phone});
     if(d.found){
       var data=await api('/api/auth/login','POST',{user_id:d.user_id,password:d.password});
-      TOKEN=data.access_token; ROLE=data.role; NAME=data.name;
+      _apiBust(); TOKEN=data.access_token; ROLE=data.role; NAME=data.name;
       document.getElementById('landing').style.display='none';
       document.getElementById('login-screen').classList.remove('active');
       _ssoOverlay(false);
@@ -14212,7 +14245,7 @@ async function ssoRegister(batch,btn){
   if(btn){ btn.classList.add('picked'); btn.innerHTML='<span class="bt-name">Setting up your account\u2026</span>'; }
   try{
     const r=await api('/api/auth/sso-register','POST',{token:window._ssoToken||'',phone:(window._ssoProfile||{}).phone||'',batch_name:batch});
-    TOKEN=r.access_token; ROLE='student'; NAME=r.name;
+    _apiBust(); TOKEN=r.access_token; ROLE='student'; NAME=r.name;
     closeModal();
     document.getElementById('login-screen').classList.remove('active');
     openStudent();
