@@ -3707,7 +3707,8 @@ async function _tAttModeInit(){
 function _tAttApplyNav(){
   document.querySelectorAll('#teacher-app .nav-item').forEach(n=>{
     const oc=n.getAttribute('onclick')||'';
-    if(oc.indexOf("tPage('attendance'")>=0||oc.indexOf("tPage('payout'")>=0) n.style.display=window._tAttOff?'none':'';
+    // v105: payout ab estimated-% view ke saath DIKHTA hai — sirf attendance hide hota hai
+    if(oc.indexOf("tPage('attendance'")>=0) n.style.display=window._tAttOff?'none':'';
   });
 }
 async function renderTTargetOnly(el){
@@ -3720,13 +3721,26 @@ async function renderTTargetOnly(el){
     box.innerHTML=`<div class="myt-card">
       <div style="font-size:.66rem;font-weight:800;letter-spacing:.07em;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">My Daily Target — set by admin</div>
       <div class="myt-row"><span class="myt-chip gold">TARGET ${req}h / DAY</span>${p.label?`<span class="myt-chip">${esc(p.label)}</span>`:''}</div>
-      <div class="myt-note" style="margin-top:10px">Punch in/out is turned off for you on this portal — your attendance is managed on the other app. Payout, appointment letter and earnings slips are not shown here; only your daily target is.</div>
+      <div class="myt-note" style="margin-top:10px">Punch in/out is turned off for you on this portal — your attendance is managed on the other app. Your estimated earnings (% of salary, never amounts) are on the Payout page.</div>
+      <div style="margin-top:12px"><button class="btn btn-primary btn-sm" onclick="tPage('payout')">View Estimated Earnings</button></div>
     </div>`;
   }catch(e){ const box=document.getElementById('tto-body'); if(box) box.innerHTML=''; }
 }
+// ===== v105: target-only teacher ka estimated payout page (% only — amounts kabhi nahi) =====
+async function renderTEstPayout(el){
+  if(!el) return;
+  window._tEstMonth=window._tEstMonth||curMonth();
+  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>My Estimated Earnings</h2><p>Your payout is settled on the other app against your daily target — shown here only as an estimated % of your salary, never as amounts.</p></div><input type="month" class="form-control" style="width:auto;padding:7px 12px" value="${window._tEstMonth}" onchange="window._tEstMonth=this.value;renderTEstPayout(document.getElementById('t-payout-content'))"></div>
+  <div id="tep-body"><div class="spinner"></div></div>`;
+  try{
+    const d=await api('/api/teacher/earnings?month='+encodeURIComponent(window._tEstMonth));
+    const box=document.getElementById('tep-body'); if(!box) return;
+    box.innerHTML=_earnTargetOnlyHTML(d)+_activityStripHTML(d);
+  }catch(e){ const box=document.getElementById('tep-body'); if(box) box.innerHTML=errHtml(e); }
+}
 function tPage(page,el){
   navPush('teacher-app',page);
-  if(window._tAttOff&&(page==='attendance'||page==='payout')){
+  if(window._tAttOff&&page==='attendance'){
     toast('Punch attendance is turned off for you on this portal — only your daily target shows here.');
     page='dashboard'; el=null;
   }
@@ -5396,8 +5410,8 @@ async function examPdfPremium(id,mode,medium){
           h+='<div class="sol"><div class="sol-l">'+(medium==='hi'?'\u0909\u0924\u094d\u0924\u0930':'Answer')+'</div><div class="sol-t"><b>('+String.fromCharCode(65+ci)+')</b> '+_fmtRich(ansO)+(ansBoth?' / '+_fmtRich(ansBoth):'')+'</div>';
           const ex0=q.explanation||q.expl||'', exH=q.explanation_hi||q.expl_hi||'';
           if((ex0||'').trim()||(exH||'').trim()){
-            if(medium==='hi'&&(exH||'').trim()) h+='<div class="sol-t" style="margin-top:4px">'+escH(exH)+'</div>';
-            else{ if((ex0||'').trim())h+='<div class="sol-t" style="margin-top:4px">'+escH(ex0)+'</div>'; if(medium==='both'&&(exH||'').trim())h+='<div class="q-hi">'+escH(exH)+'</div>'; }
+            if(medium==='hi'&&(exH||'').trim()) h+='<div class="sol-t" style="margin-top:4px">'+_fmtRich(exH)+'</div>';
+            else{ if((ex0||'').trim())h+='<div class="sol-t" style="margin-top:4px">'+_fmtRich(ex0)+'</div>'; if(medium==='both'&&(exH||'').trim())h+='<div class="q-hi">'+_fmtRich(exH)+'</div>'; }
           }
           h+='</div>';
         }
@@ -6015,7 +6029,7 @@ function renderExamQs(){
       const eval_=isHi?(q.expl_hi||''):(q.expl||'');
       const ebind=isHi?`_examQs[${i}].expl_hi=this.value`:`_examQs[${i}].expl=this.value`;
       const eId=`exe-${i}`;
-      const expl=`<div class="ex-sec ex-sec-a"><div class="ex-sec-lbl">Explanation${isHi?' \u00b7 Hindi':''}</div>${_rtBar(eId)}<textarea id="${eId}" class="form-control" rows="2" placeholder="${isHi?'\u0938\u0939\u0940 \u0909\u0924\u094d\u0924\u0930 \u0915\u0940 \u0935\u094d\u092f\u093e\u0916\u094d\u092f\u093e (\u0935\u0948\u0915\u0932\u094d\u092a\u093f\u0915)':'Why is this the correct answer? Students see this after submitting.'}" onfocus="_lastField=this" oninput="${ebind}">${esc(eval_)}</textarea></div>`;
+      const expl=`<div class="ex-sec ex-sec-a"><div class="ex-sec-lbl">Explanation${isHi?' \u00b7 Hindi':''}</div>${_rtBar(eId)}<textarea id="${eId}" class="form-control" rows="2" placeholder="${isHi?'\u0938\u0939\u0940 \u0909\u0924\u094d\u0924\u0930 \u0915\u0940 \u0935\u094d\u092f\u093e\u0916\u094d\u092f\u093e (\u0935\u0948\u0915\u0932\u094d\u092a\u093f\u0915)':'Why is this the correct answer? Students see this after submitting.'}" onfocus="_lastField=this" oninput="${ebind};examPrev(this,'pv-e-${i}')">${esc(eval_)}</textarea><div class="ex-prev" id="pv-e-${i}"></div></div>`;
       mid=`<div class="ex-sec ex-sec-o"><div class="ex-sec-lbl">Options${isHi?' \u00b7 Hindi':''}</div><div class="ex-opts">${opts}</div>${autoHint}${marks}</div>${expl}`;
     } else {
       const aval=isHi?(q.model_hi||''):(q.model||'');
@@ -6031,6 +6045,7 @@ function renderExamQs(){
     const isHi=(_examMedium==='Bilingual')&&q._tab==='hi';
     const pq=document.getElementById('pv-q-'+i); if(pq){pq.innerHTML=_fmtRich(isHi?(q.q_hi||''):(q.q||''));renderMath(pq);}
     const pa=document.getElementById('pv-a-'+i); if(pa){pa.innerHTML=_fmtRich(isHi?(q.model_hi||''):(q.model||''));renderMath(pa);}
+    const pe=document.getElementById('pv-e-'+i); if(pe){pe.innerHTML=_fmtRich(isHi?(q.expl_hi||''):(q.expl||''));renderMath(pe);}
   });
   // Header ke "Translate All" pe kitne question abhi Hindi me baaki hain
   const trAll=document.getElementById('ex-tr-all');
@@ -12410,7 +12425,7 @@ async function openExamResult(id){
         const ok=!!it.is_correct;
         const your=(it.your_answer===null||it.your_answer===undefined||it.your_answer==='')?'Not answered':it.your_answer;
         const ex_=(biling&&it.explanation_hi)?(it.explanation||'')+'\n'+it.explanation_hi:(it.explanation||'');
-        return `<div class="rs-q ${ok?'rs-ok':'rs-bad'}"><div class="rs-qhead"><div class="rs-qtext"><b>Q${it.q_no}.</b> ${_fmtRich(it.question)}${(biling&&it.question_hi)?`<div class="rs-qtext-hi">${_fmtRich(it.question_hi)}</div>`:''}</div><div class="rs-marks">${it.marks}/${it.max}</div></div><div class="rs-ans-row ${ok?'ok':'bad'}"><span class="rs-ans-ic">${ok?ic('check'):'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>'}</span><span><b>Your answer:</b> ${esc(String(your))}</span></div>${ok?'':`<div class="rs-ans-row ok"><span class="rs-ans-ic">${ic('check')}</span><span><b>Correct answer:</b> ${esc(String(it.correct_answer||''))}</span></div>`}${ex_?`<div class="rs-expl"><b>Explanation:</b> ${_fmtRich(ex_)}</div>`:''}</div>`;
+        return `<div class="rs-q ${ok?'rs-ok':'rs-bad'}"><div class="rs-qhead"><div class="rs-qtext"><b>Q${it.q_no}.</b> ${_fmtRich(it.question)}${(biling&&it.question_hi)?`<div class="rs-qtext-hi">${_fmtRich(it.question_hi)}</div>`:''}</div><div class="rs-marks">${it.marks}/${it.max}</div></div><div class="rs-ans-row ${ok?'ok':'bad'}"><span class="rs-ans-ic">${ok?ic('check'):'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>'}</span><span><b>Your answer:</b> ${_fmtRich(String(your))}</span></div>${ok?'':`<div class="rs-ans-row ok"><span class="rs-ans-ic">${ic('check')}</span><span><b>Correct answer:</b> ${_fmtRich(String(it.correct_answer||''))}</span></div>`}${ex_?`<div class="rs-expl"><b>Explanation:</b> ${_fmtRich(ex_)}</div>`:''}</div>`;
       }
       return `<div class="rs-q"><div class="rs-qhead"><div class="rs-qtext"><b>Q${it.q_no}.</b> ${_fmtRich(it.question)}${(biling&&it.question_hi)?`<div class="rs-qtext-hi">${_fmtRich(it.question_hi)}</div>`:''}</div><div class="rs-marks">${it.marks}/${it.max}</div></div>${it.remark?`<div class="rs-remark">${esc(it.remark)}</div>`:''}</div>`;
     }).join('');
@@ -12506,14 +12521,14 @@ async function _solView(id,med){
       let ans='';
       if(r.test_type==='mcq'){
         const aMain=med==='hi'?(o.a_hi||o.a_en):o.a_en;
-        ans=`<div class="rs-ans-row ok"><span class="rs-ans-ic">${ic('check')}</span><span><b>Correct answer:</b> ${esc(aMain||'—')}</span></div>`;
+        ans=`<div class="rs-ans-row ok"><span class="rs-ans-ic">${ic('check')}</span><span><b>Correct answer:</b> ${_fmtRich(aMain||'—')}</span></div>`;
         const xMain=med==='hi'?(o.x_hi||o.x_en):o.x_en;
-        if(xMain)ans+=`<div class="rs-expl"><b>Explanation:</b> ${esc(xMain)}</div>`;
-        if(med==='both'&&o.x_hi)ans+=`<div class="rs-expl">${esc(o.x_hi)}</div>`;
+        if(xMain)ans+=`<div class="rs-expl"><b>Explanation:</b> ${_fmtRich(xMain)}</div>`;
+        if(med==='both'&&o.x_hi)ans+=`<div class="rs-expl">${_fmtRich(o.x_hi)}</div>`;
       } else {
         const aMain=med==='hi'?(o.a_hi||o.a_en):o.a_en;
-        if(aMain)ans=`<div class="rs-expl"><b>Model answer:</b> ${esc(aMain)}</div>`+(med==='both'&&o.a_hi?`<div class="rs-expl">${esc(o.a_hi)}</div>`:'');
-        if(o.rmk)ans+=`<div class="rs-remark">${esc(o.rmk)}</div>`;
+        if(aMain)ans=`<div class="rs-expl"><b>Model answer:</b> ${_fmtRich(aMain)}</div>`+(med==='both'&&o.a_hi?`<div class="rs-expl">${_fmtRich(o.a_hi)}</div>`:'');
+        if(o.rmk)ans+=`<div class="rs-remark">${_fmtRich(o.rmk)}</div>`;
       }
       return `<div class="rs-q"><div class="rs-qhead"><div class="rs-qtext"><b>Q${o.q_no}.</b> ${_fmtRich(qMain)}${qHi}</div><div class="rs-marks">${o.max} marks</div></div>${ans}</div>`;
     }).join('');
@@ -14088,8 +14103,22 @@ async function renderPunchCard(wrapId){
     wrap.innerHTML=`<div class="myt-card" style="margin-bottom:18px">
       <div style="font-size:.66rem;font-weight:800;letter-spacing:.07em;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">My Daily Target — set by admin</div>
       <div class="myt-row"><span class="myt-chip gold">TARGET ${d.required_hours||8}h / DAY</span>${d.policy.label?`<span class="myt-chip">${esc(d.policy.label)}</span>`:''}</div>
-      <div class="myt-note" style="margin-top:10px">Punch in/out is turned off for you on this portal — your attendance is managed on the other app. Only your daily target shows here.</div>
+      <div class="myt-note" style="margin-top:10px">Punch in/out is turned off for you on this portal — your attendance is managed on the other app.</div>
+      <div id="myt-est-${wrapId}" style="margin-top:10px"></div>
     </div>`;
+    // v105: card ke neeche is mahine ka estimated % + payout page ka rasta
+    try{
+      const ed=await api('/api/teacher/earnings?month='+curMonth());
+      const est=document.getElementById('myt-est-'+wrapId);
+      if(est&&ed&&ed.target_only){
+        const sp=(ed.earnings&&ed.earnings.salary_pct!=null)?ed.earnings.salary_pct:0;
+        const spc=sp>=85?'#15803d':sp>=65?'#b45309':'#b91c1c';
+        est.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;border-top:1px dashed var(--border);padding-top:10px">
+          <div style="font-size:.8rem;font-weight:700">This month's estimated earnings: <b style="color:${spc}">est. ${sp}%</b> of salary</div>
+          <button class="btn btn-primary btn-sm" onclick="tPage('payout')">View Estimated Earnings</button>
+        </div>`;
+      }
+    }catch(e){}
     return;
   }
   const dateLbl=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short'});
@@ -14813,7 +14842,7 @@ function _payStructureHTML(d,editable){
 let _payoutUnlocked=false, _payGate=null;
 async function payoutGate(){
   const el=document.getElementById('t-payout-content');
-  if(window._tAttOff){ renderTTargetOnly(el); return; }
+  if(window._tAttOff){ renderTEstPayout(el); return; }
   if(_payoutUnlocked){ loadTPayout(); return; }
   el.innerHTML=`<div class="sm-head"><h2>Payout</h2><p>Work-based earnings — appointment-letter rule, auto-calculated.</p></div>
    <div class="card"><div class="card-body" style="text-align:center;padding:46px 20px">
