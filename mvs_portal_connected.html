@@ -6146,19 +6146,84 @@ async function _autoFixField(id){
     try{ healed=(spFormatMatch(healed,null)||spSmartFormat(healed)); }catch(e){}
   }
   healed=healed.replace(/[ \t]*\n?[ \t]*(?:^|\n)[ \t]*(?:\*\*)?\s*(?:or|OR|Or|oR)\s*(?:\*\*)?[ \t]*(?=\n|$)/g,'\n\nOR\n').replace(/\n{3,}/g,'\n\n');
-  let aiUsed=false;
-  if(sessionStorage.getItem('mvs_fmtai')!=='0'){
+  let aiUsed=false, aiTried=false;
+  const _aiHit=async(ep,flag)=>{
+    if(sessionStorage.getItem(flag)==='0') return null;
+    aiTried=true;
     try{
-      const r=await Promise.race([api('/api/teacher/format-text','POST',{text:healed}),
+      const r=await Promise.race([api(ep,'POST',{text:healed}),
         new Promise((_,rj)=>setTimeout(()=>rj(new Error('timeout')),25000))]);
-      if(r&&r.text&&String(r.text).trim()&&String(r.text)!==healed){ healed=String(r.text); aiUsed=true; }
-      else if(!(r&&r.text)) sessionStorage.setItem('mvs_fmtai','0');
-    }catch(e){ if(/503|unavailable|AI|401|403|timeout/i.test(String(e&&e.message||e))) sessionStorage.setItem('mvs_fmtai','0'); }
-  }
+      if(r&&r.text&&String(r.text).trim()) return String(r.text);
+      sessionStorage.setItem(flag,'0'); return null;
+    }catch(e){ if((e&&e.status)||/503|unavailable|AI|401|403|timeout|404/i.test(String(e&&e.message||e))) sessionStorage.setItem(flag,'0'); return null; }
+  };
+  // v117: pehle naya direct AI endpoint (current Gemini models), phir purana grading wala, phir local heal hi kaafi
+  const ai1=await _aiHit('/api/teacher/format-text-ai','mvs_fmtai');
+  if(ai1&&ai1!==healed){ healed=ai1; aiUsed=true; }
+  else{ const ai2=await _aiHit('/api/teacher/format-text','mvs_fmtai2');
+    if(ai2&&ai2!==healed){ healed=ai2; aiUsed=true; } }
   if(healed===before){ toast('Already well formatted — nothing to change.'); return; }
   t.value=healed; t.dispatchEvent(new Event('input',{bubbles:true}));
-  toast(aiUsed?'Formatted with AI assist — review the preview.':'Formatting fixed — review the preview below.');
+  toast(aiUsed?'Formatted with AI assist — review the preview.':(aiTried?'Formatting fixed (AI offline — local repair applied).':'Formatting fixed — review the preview below.'));
 }
+// ---- v118: automatic formatting — paste karte hi heal; bikhra hua maths paste ho to AI bhi auto.
+// Kisi button ki zaroorat nahi: question/option/explanation/model-answer — sab boxes covered
+// (wo sab onfocus="_lastField" rakhte hain). Local heal hamesha silent; AI sirf fragmented
+// formula pattern pe, quota bachane ke liye. fx Fix manual poora chain ab bhi available hai.
+function _needsAIFrag(t){
+  const s0=String(t||'');
+  if(!/\$|\\int|∫/.test(s0)) return false;
+  const lines=s0.split('\n'); let frag=0;
+  for(const ln of lines){ const s=ln.trim();
+    if(!s) continue;
+    if(/^(\$|\\\(|\\\[)?\s*(\\int|\\sum|\\prod|\\lim|∫|∑|Σ|dx|dy|dt|dθ)\s*(\$|\\\)|\\\])?$/.test(s)) frag++;
+    else if(/\$/.test(s) && s.length<=20) frag++;
+    else if(/^\$?\s*[A-Za-z]\s*\$?$/.test(s)) frag++;
+  }
+  if(/\$\s*\n\s*\$/.test(s0)) frag+=2;
+  return frag>=2;
+}
+const _autoFmtBusy={};
+async function _autoFmtField(t, viaPaste){
+  if(!t||!t.id||_autoFmtBusy[t.id]) return;
+  const before=t.value||'';
+  if(!before.trim()) return;
+  let healed=_mathHeal(before);
+  if(!/\$|\\[a-zA-Z]+|[_^][{0-9A-Za-z]|[\u221A\u222B\u03C0\u03B8\u2264\u2265\u00D7\u2192]/.test(healed)){
+    try{ const sf=(spFormatMatch(healed,null)||spSmartFormat(healed)); if(sf) healed=sf; }catch(e){}
+  }
+  healed=healed.replace(/[ \t]*\n?[ \t]*(?:^|\n)[ \t]*(?:\*\*)?\s*(?:or|OR|Or|oR)\s*(?:\*\*)?[ \t]*(?=\n|$)/g,'\n\nOR\n').replace(/\n{3,}/g,'\n\n');
+  let aiUsed=false;
+  if(viaPaste && _needsAIFrag(healed) && sessionStorage.getItem('mvs_fmtai')!=='0'){
+    _autoFmtBusy[t.id]=1;
+    try{
+      const r=await Promise.race([api('/api/teacher/format-text-ai','POST',{text:healed}),
+        new Promise((_,rj)=>setTimeout(()=>rj(new Error('timeout')),25000))]);
+      if(r&&r.text&&String(r.text).trim()){ healed=String(r.text); aiUsed=true; }
+      else sessionStorage.setItem('mvs_fmtai','0');
+    }catch(e){ if((e&&e.status)||/timeout|503|404|unavailable/i.test(String(e&&e.message||e))) sessionStorage.setItem('mvs_fmtai','0'); }
+    finally{ delete _autoFmtBusy[t.id]; }
+  }
+  if(healed!==before){
+    t.value=healed;
+    t.dispatchEvent(new Event('input',{bubbles:true}));
+    if(aiUsed) toast('Auto-formatted with AI — review the preview.');
+  }
+}
+document.addEventListener('paste',e=>{
+  const t=e.target;
+  if(!t||(t.tagName!=='TEXTAREA'&&t.tagName!=='INPUT')) return;
+  const of=t.getAttribute&&t.getAttribute('onfocus');
+  if(!(of&&of.indexOf('_lastField')>=0)) return;
+  setTimeout(()=>_autoFmtField(t,true),60);
+},true);
+document.addEventListener('focusout',e=>{
+  const t=e.target;
+  if(!t||(t.tagName!=='TEXTAREA'&&t.tagName!=='INPUT')) return;
+  const of=t.getAttribute&&t.getAttribute('onfocus');
+  if(!(of&&of.indexOf('_lastField')>=0)) return;
+  _autoFmtField(t,false);
+},true);
 // ---- ∑ Maths palette: ready-made LaTeX, cursor pe insert (koi LaTeX seekhna na pade) ----
 const _TEXPAL=[
  ['Basics',[['a/b','\\frac{a}{b}','Fraction'],['x²','x^{2}','Power / square'],['xⁿ','x^{n}','Any power'],['xₙ','x_{n}','Subscript'],['√x','\\sqrt{x}','Square root'],['ⁿ√x','\\sqrt[n]{x}','nth root'],['°','^{\\circ}','Degree'],['′','^{\\prime}','Prime'],['″','^{\\prime\\prime}','Double prime'],['±','\\pm','Plus-minus'],['×','\\times','Multiply'],['÷','\\div','Divide'],['·','\\cdot','Dot'],['≠','\\neq','Not equal'],['≤','\\leq','Less or equal'],['≥','\\geq','Greater or equal'],['≈','\\approx','Approximately'],['∞','\\infty','Infinity'],['|x|','\\left|x\\right|','Modulus'],['%','\\%','Percent']]],
@@ -6184,15 +6249,24 @@ function _texPalOpen(id){
     }
     h+='</div>';
   }
-  h+='<div class="txp-note">Matrices, determinants, fractions, integrals and vectors render automatically with perfect formatting — you never need to write LaTeX by hand. To repair text pasted from a PDF, click <b>fx Fix</b> on that box.</div>';
+  h+='<div class="txp-note">Click tiles to insert at the cursor — the palette stays open so you can combine several in one go. Select text first, then click a fraction or root tile to wrap the selection. To repair text pasted from a PDF, click <b>fx Fix</b> on that box.</div>';
   showModal('Maths & Symbols',h,'');
 }
-function _texPalIns(fid,si){ closeModal(); _rtIns(fid,'$'+_TEXPAL_SNIPS[si]+'$'); }
+function _texPalIns(fid,si){ _rtIns(fid,'$'+_TEXPAL_SNIPS[si]+'$'); } // v117: palette khuli rahe — ek session me kai symbols insert karo
 function _rtIns(id,snip){
   const t=document.getElementById(id); if(!t) return;
   const s=(t.selectionStart!=null)?t.selectionStart:t.value.length, e=(t.selectionEnd!=null)?t.selectionEnd:s;
-  t.value=t.value.slice(0,s)+snip+t.value.slice(e);
-  const p=s+snip.length; t.selectionStart=t.selectionEnd=p; t.focus();
+  const sel=t.value.slice(s,e);
+  let ins=snip, cur=-1;
+  // v117: text select karke fraction/root/vector tile dabao to selection pehli {} me wrap ho
+  if(sel && /^\$(\\(?:d?frac|sqrt|text|boxed|vec|hat|overline|underline|bar|ce|binom|mathbb|mathbf|mathrm))/.test(snip)){
+    ins=snip.replace(/\{[^{}]*\}/,'{'+sel+'}');
+    // frac/binom: doosra (denominator) placeholder khaali karo + cursor wahi rakho
+    if(/^\$\\(?:d?frac|binom)/.test(snip)) ins=ins.replace(/\{[^{}]*\}(?![^{}]*\{)/,'{}');
+    const empty=ins.indexOf('{}'); if(empty>=0) cur=empty+1;
+  }
+  t.value=t.value.slice(0,s)+ins+t.value.slice(e);
+  const p=(cur>=0)?s+cur:s+ins.length; t.selectionStart=t.selectionEnd=p; t.focus();
   t.dispatchEvent(new Event('input',{bubbles:true}));
 }
 function _fmtRich(t){

@@ -2466,6 +2466,88 @@ def format_text(payload: dict = Body(...), db: Session = Depends(get_db), curren
         raise HTTPException(503, "AI formatting is unavailable. Check GEMINI_API_KEY.")
     return {"text": out}
 
+@router.post("/format-text-ai")
+def format_text_ai(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """v117: direct Gemini formatting endpoint with current model names.
+
+    The legacy /format-text route goes through grading.py, whose pinned model
+    name may be retired by Google. This endpoint calls the Gemini REST API
+    directly with a fallback model chain and the same GEMINI_API_KEY, so AI
+    formatting keeps working without touching grading.py.
+    """
+    import os
+    import urllib.request
+    import urllib.error
+
+    text = str((payload or {}).get("text") or "").strip()
+    if not text:
+        raise HTTPException(400, "No text provided")
+    if len(text) > 8000:
+        raise HTTPException(400, "Text too long (max 8000 characters)")
+
+    api_key = (os.environ.get("GEMINI_API_KEY") or "").strip()
+    if not api_key:
+        raise HTTPException(503, "GEMINI_API_KEY is not set on the server")
+
+    prompt = (
+        "You are a maths and science formatting engine for an exam portal. "
+        "Rewrite the teacher's raw text as clean, display-ready content.\n"
+        "RULES:\n"
+        "1. Convert every mathematical expression into LaTeX wrapped in single $...$ (use $$...$$ only for a full-line display equation).\n"
+        "2. Fractions use \\frac{num}{den}; roots use \\sqrt{...}; powers use ^{...}; subscripts use _{...}; integrals use \\int.\n"
+        "3. Matrices and determinants use \\begin{bmatrix} ... \\end{bmatrix} (pmatrix/vmatrix if the source implies them).\n"
+        "4. Units are upright, e.g. $\\text{cm}^{3}$ or $\\text{m}^{2}$.\n"
+        "5. If the pieces of one formula are scattered across separate lines (integral sign, denominator, numerator), reassemble them into ONE correct LaTeX expression in the intended order.\n"
+        "6. Put 'Step 1:', 'Step 2:', 'Formula:', 'Substitute:', 'Answer:', 'Therefore', '(i)', '(ii)' etc. on their own lines.\n"
+        "7. NEVER change the meaning, the numbers, the language (keep Hindi as Hindi, English as English), or option labels (A) (B) (C) (D). Only fix structure and maths.\n"
+        "8. Preserve existing markdown (**bold**, __underline__) and standalone OR lines.\n"
+        "9. Output ONLY the rewritten text. No preamble, no code fences, no explanation.\n\n"
+        "RAW TEXT:\n"
+        + text
+    )
+    body = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        # v118: temperature/top_p/top_k are deprecated on Gemini 3.x models — omit them
+        "generationConfig": {"maxOutputTokens": 4096},
+    }
+    # v118: current model chain (gemini-2.0-flash was shut down by Google in Jun 2026).
+    # Busy/quota (429) or retired (404) -> automatically tries the next model.
+    # Ops override: set GEMINI_MODELS="model-a,model-b" to pin your own chain.
+    models_env = (os.environ.get("GEMINI_MODELS") or "").strip()
+    if models_env:
+        models = [m.strip() for m in models_env.split(",") if m.strip()]
+    else:
+        models = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-3.5-flash-lite"]
+    last_err = "no response"
+    for model in models:
+        url = "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}".format(model, api_key)
+        req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"),
+                                     headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read().decode("utf-8", "ignore"))
+            parts = ((data.get("candidates") or [{}])[0].get("content") or {}).get("parts") or []
+            out = "".join(str(p.get("text") or "") for p in parts).strip()
+            out = re.sub(r"^```[a-zA-Z]*\s*|\s*```$", "", out).strip()
+            if not out:
+                last_err = "empty response"
+                continue
+            return {"text": out, "model": model}
+        except urllib.error.HTTPError as e:
+            detail = ""
+            try:
+                detail = e.read().decode("utf-8", "ignore")[:400]
+            except Exception:
+                pass
+            if e.code == 403 or (e.code == 400 and "API key" in detail):
+                raise HTTPException(503, "GEMINI_API_KEY is invalid or blocked by Google")
+            last_err = "{} HTTP {}".format(model, e.code)
+            continue  # 404/429 etc -> try the next model
+        except Exception as e:
+            last_err = "{} {}".format(model, type(e).__name__)
+            continue
+    raise HTTPException(503, "AI formatting failed ({})".format(last_err))
+
 @router.post("/parse-exam-docx")
 async def parse_exam_docx(file: UploadFile = File(...), test_type: str = Form("subjective"),
                           db: Session = Depends(get_db), current_user=Depends(get_teacher)):
