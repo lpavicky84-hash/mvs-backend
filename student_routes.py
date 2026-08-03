@@ -755,6 +755,22 @@ def student_subject_modes(db: Session = Depends(get_db), current_user=Depends(ge
     return {"live": live, "recorded": rec}
 
 
+def _report_duration_min(e):
+    """v114: teacher ke class report ke actual start/end se class ki asli lambai
+    (minutes). Parse na ho ya range ajeeb ho to None — frontend phir sirf 'Done'
+    dikhata hai, duration chip nahi."""
+    try:
+        from teacher_routes import _parse_hhmm
+        a = _parse_hhmm(getattr(e, "start_time", None))
+        b = _parse_hhmm(getattr(e, "end_time", None))
+        if a is None or b is None:
+            return None
+        d = b - a
+        return d if 0 < d <= 720 else None
+    except Exception:
+        return None
+
+
 @router.get("/timetable-plan")
 def timetable_plan(db: Session = Depends(get_db), current_user=Depends(get_student)):
     sp = get_student_profile(current_user, db)
@@ -815,6 +831,11 @@ def timetable_plan(db: Session = Depends(get_db), current_user=Depends(get_stude
             "has_notes": bool(lec and lec.pdf_b64),
             "has_dpp": bool(lec and lec.dpp_b64),
             "class_done": bool(e.completed or lec),
+            # v114: report ke asli start/end + duration — student dashboard ab
+            # auto 90-min Done nahi dikhata; report aane par Done + asli minutes.
+            "start_time": (e.start_time if e.completed else None),
+            "end_time": (e.end_time if e.completed else None),
+            "duration_min": (_report_duration_min(e) if e.completed else None),
             "verif_status": verif_status, "cooling": cooling,
         })
     return result
