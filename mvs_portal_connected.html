@@ -766,6 +766,14 @@
   .rt-bar button{width:30px;height:28px;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:7px;font-size:.82rem;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;transition:all .13s}
   .rt-bar button:hover{border-color:#c9a227;color:#8a6d10;background:rgba(184,148,31,.09)}
   .rt-bar button.rt-or-btn{width:auto;padding:0 11px;font-weight:800;font-size:.72rem;letter-spacing:.05em}
+  .rt-bar button.rt-math-btn{width:auto;padding:0 9px;font-weight:800}
+  .rt-bar button.rt-fix-btn{width:auto;padding:0 9px;font-weight:800;font-size:.7rem;color:#a1741a;border-color:#f0e6c8}
+  .dark .rt-bar button.rt-fix-btn{color:#c4b5fd;border-color:rgba(161,116,26,.4)}
+  .txp-cat{margin:13px 0 5px;font-size:.68rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted)}
+  .txp-grid{display:flex;flex-wrap:wrap;gap:7px}
+  .txp-grid button{min-width:40px;height:36px;padding:0 10px;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:9px;font-size:1rem;cursor:pointer;transition:.13s;font-family:inherit}
+  .txp-grid button:hover{border-color:#c9a227;color:#8a6d10;transform:translateY(-1px);box-shadow:0 3px 8px -3px rgba(184,148,31,.4)}
+  .txp-note{margin-top:13px;font-size:.74rem;color:var(--text-muted);line-height:1.55}
   .rt-or{display:flex;align-items:center;gap:14px;font-weight:800;letter-spacing:.16em;margin:7px 0;color:var(--text-muted);font-size:.85em}
   .rt-or::before,.rt-or::after{content:'';flex:1;height:1px;background:var(--border)}
   .pl-qtext-wrap{flex:1;min-width:0}
@@ -3009,7 +3017,7 @@ let countdownTimer = null;
 // stale nahi rehta. Login/logout pe bhi clear hota hai.
 const _apiCache={};
 const _API_TTL=30000;
-const _API_NOCACHE=/notifications|\/live|heartbeat|\/photo|\/image|\/voice|\/file|\/download|\/pdf|\/content/i;
+const _API_NOCACHE=/notifications|\/live|heartbeat|\/photo|\/image|\/voice|\/file|\/download|\/pdf|\/content|\/badge/i;
 function _apiBust(){ for(const k in _apiCache) delete _apiCache[k]; }
 async function api(path, method='GET', body=null) {
   const opts = { method, headers: { 'Content-Type':'application/json' } };
@@ -3283,6 +3291,7 @@ async function pollNotifs(role){
   const prev=_lastUnread[role]||0;
   if(unread.length>prev){ showNotifPop(role,unread); }
   _lastUnread[role]=unread.length;
+  if(role==='admin') _avtBadgePoll();   // v115: Task Manager badge bhi saath refresh
 }
 function _sessionExpired(){
   if(window._sessDead) return; window._sessDead=true;
@@ -6026,6 +6035,166 @@ function _fmtTable(rows){
   const trs=body.map(r=>'<tr>'+r.concat(Array(ncol).fill('')).slice(0,ncol).map(c=>cell(c,'td')).join('')+'</tr>').join('');
   return '<div class="rt-tw"><table class="rt-t"><thead><tr>'+th+'</tr></thead><tbody>'+trs+'</tbody></table></div>';
 }
+// ===== v116: bulletproof math healing — OCR/typed galtiyon ka universal repair
+// pass. _fmtRich ke stash phase se PEHLE chalta hai (render-time), isliye DPP,
+// tests, Mission 75, doubts — har view me PURANA stored content bhi khud theek
+// hokar dikhta hai (DB touch nahi hota). exam_pdf.py ka _math_heal isi ka mirror hai.
+function _fracWordy(zone){
+  return String(zone).replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g,(m,a,b)=>{
+    const w=x=>{ const t=x.trim();
+      return (/[A-Za-z\u0900-\u097F]{2,}\s+[A-Za-z\u0900-\u097F]{2,}/.test(t)&&!/^\\text/.test(t))?'\\text{'+t+'}':x; };
+    return '\\frac{'+w(a)+'}{'+w(b)+'}';
+  });
+}
+function _braceBalance(z){
+  const o=(z.match(/\{/g)||[]).length, c=(z.match(/\}/g)||[]).length;
+  return o>c? z+'}'.repeat(o-c) : z;
+}
+function _healMathZone(z){
+  let s=String(z||'');
+  // broken frac: opening brace gayab — "=A}/{B" -> \frac{A}{B}
+  s=s.replace(/([^\s={}][^{}=\n]{0,80}?)\}\s*\/\s*\{([^{}\n]+)\}/g,(m,a,b)=>'\\frac{'+a.trim()+'}{'+b.trim()+'}');
+  // sqrt bina braces: \sqrt 2 / \sqrt2 -> \sqrt{2}
+  s=s.replace(/\\sqrt\s+([A-Za-z0-9.]+)/g,'\\sqrt{$1}');
+  s=s.replace(/\\sqrt([0-9A-Za-z])(?![A-Za-z{])/g,'\\sqrt{$1}');
+  // 2ex -> 2e^{x} (e ke turant baad single letter = exponent)
+  s=s.replace(/(?<![A-Za-z\\])e([a-z])(?![A-Za-z])/g,'e^{$1}');
+  // units: cm3 / cm_3 / 192cm_2 / \text{cm}_2 -> \text{cm}^{3}
+  s=s.replace(/\\text\{(cm|mm|km|dm|m|kg|g|mg|ml|mol)\}\s*_\s*\{?([23])\}?/g,'\\text{$1}^{$2}');
+  s=s.replace(/(?<=[0-9)])\s?(cm|mm|km|dm|kg|mg|ml|mol)\s*_\s*\{?([23])\}?/g,'\\text{$1}^{$2}');
+  s=s.replace(/\b(cm|mm|km|dm|kg|mg|ml|mol)\s*_\s*\{?([23])\}?/g,'\\text{$1}^{$2}');
+  s=s.replace(/(?<=[0-9)])\s?(cm|mm|km|dm|kg|mg|ml|mol)([23])(?![0-9A-Za-z])/g,'\\text{$1}^{$2}');
+  s=s.replace(/\b(cm|mm|km|dm|kg|mg|ml|mol)([23])(?![0-9A-Za-z])/g,'\\text{$1}^{$2}');
+  s=s.replace(/(?<=[0-9)])\s?m\s*_\s*\{?([23])\}?/g,'\\text{m}^{$1}');
+  s=s.replace(/(?<=[0-9)])\s?m([23])(?![0-9A-Za-z])/g,' \\text{m}^{$1}');
+  s=s.replace(/(?<=[0-9)])\s?(cm|mm|km|dm|kg|mg|ml|mol)\^\{?([23])\}?/g,'\\text{$1}^{$2}');
+  s=s.replace(/\b(cm|mm|km|dm|kg|mg|ml|mol)\^\{?([23])\}?/g,'\\text{$1}^{$2}');
+  // _texFix repairs promote — first-try render hi succeed kare
+  s=s.replace(/\\text\s*([^\s{][^}]*)/g,'\\text{$1}');
+  s=s.replace(/\\(mathrm|mathbf|mathit)\s*([^\s{])/g,'\\mathrm{$2}');
+  s=s.replace(/\^\{\}/g,'').replace(/_\{\}/g,'');
+  s=s.replace(/[_^]\s*(?=\s|$)/g,'');
+  s=s.replace(/\\cir(?!c|[a-zA-Z])/g,'^\\circ');
+  s=s.replace(/\\left\s*(?=[^([{|$])/g,'').replace(/\\right\s*(?=[^)\]}|$])/g,'');
+  s=_fracWordy(s);
+  return _braceBalance(s);
+}
+function _healPlainLine(ln){
+  if(/\\begin\{|\\end\{|\\hline/.test(ln)) return ln;
+  let s=ln;
+  const hasEq=/=/.test(s), hasHi=/[\u0900-\u097F]/.test(s);
+  // broken frac bina $ ke: "=A}/{B" -> $\frac{A}{B}$ (wordy args \text)
+  if(hasEq) s=s.replace(/(=)\s*([^{}=\n]{2,80}?)\}\s*\/\s*\{([^{}\n]{1,80}?)\}/g,(m,e,a,b)=>{
+    const w=x=>{ const t=x.trim(); return /[A-Za-z]{2,}\s+[A-Za-z]{2,}/.test(t)?'\\text{'+t+'}':t; };
+    return e+' $\\frac{'+w(a)+'}{'+w(b)+'}$';
+  });
+  // ascii sqrt(2) -> $\sqrt{2}$
+  s=s.replace(/\bsqrt\s*\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g,(m,g)=>'$\\sqrt{'+g+'}$');
+  // units: cm3 / cm_3 / 192cm2 -> $\text{cm}^{3}$
+  s=s.replace(/(?<=[0-9)])\s?(cm|mm|km|dm|kg|mg|ml|mol)\s*_\s*\{?([23])\}?/g,' $\\text{$1}^{$2}$');
+  s=s.replace(/\b(cm|mm|km|dm|kg|mg|ml|mol)\s*_\s*\{?([23])\}?/g,' $\\text{$1}^{$2}$');
+  s=s.replace(/(?<=[0-9)])\s?(cm|mm|km|dm|kg|mg|ml|mol)([23])(?![0-9A-Za-z])/g,' $\\text{$1}^{$2}$');
+  s=s.replace(/\b(cm|mm|km|dm|kg|mg|ml|mol)([23])(?![0-9A-Za-z])/g,' $\\text{$1}^{$2}$');
+  s=s.replace(/(?<=[0-9)])\s?m\s*_\s*\{?([23])\}?/g,' $\\text{m}^{$1}$');
+  s=s.replace(/(?<=[0-9)])\s?m([23])(?![0-9A-Za-z])/g,' $\\text{m}^{$1}$');
+  // equation line me variable ka square/cube: "= a3" -> $a^{3}$ (Hindi lines skip)
+  if(hasEq&&!hasHi) s=s.replace(/(?<![A-Za-z\\])([a-z])([23])(?=[\s,.=):;}]|$)/g,'$$$1^{$2}$$');
+  return s;
+}
+const _ZONE_RE=/(\$\$[^$\n]*\$\$|\$[^$\n]+\$|\\\([^()\n]*\\\)|\\\[[^\]\n]*\\\])/g;
+const _ZONE_FULL=/^(\$\$[^$\n]*\$\$|\$[^$\n]+\$|\\\([^()\n]*\\\)|\\\[[^\]\n]*\\\])$/;
+function _mathHeal(t){
+  return String(t==null?'':t).split('\n').map(ln=>{
+    if(!ln.trim()) return ln;
+    const parts=ln.split(_ZONE_RE);
+    for(let i=0;i<parts.length;i++){
+      const p=parts[i];
+      if(!p) continue;
+      if(_ZONE_FULL.test(p)){
+        if(p.startsWith('$$')) parts[i]='$$'+_healMathZone(p.slice(2,-2))+'$$';
+        else if(p.startsWith('\\(')) parts[i]='\\('+_healMathZone(p.slice(2,-2))+'\\)';
+        else if(p.startsWith('\\[')) parts[i]='\\['+_healMathZone(p.slice(2,-2))+'\\]';
+        else parts[i]='$'+_healMathZone(p.slice(1,-1))+'$';
+      } else parts[i]=_healPlainLine(p);
+    }
+    return parts.join('');
+  }).join('\n');
+}
+// _structHeal: lambi run-on lines me mid-line segment starters (Step 2:, Formula:,
+// Substitute..., Answer:, Therefore, (i) ...) ko apni line pe lao — model answers
+// premium structured blocks ban jaate hain. Stash ke BAAD chalta hai (math safe).
+const _STOK='(?:Step\\s+\\d+\\s*:|\u091A\u0930\u0923\\s*\\d+\\s*:|Formula[^:\\n]{0,24}:|Substitute[^:\\n]{0,30}:|Final\\s+Answer\\s*:|Answer\\s*:|Note\\s*:|Case\\s+\\d+\\s*:|\u0938\u0942\u0924\u094D\u0930\\s*:|Given[^:\\n]{0,20}:|To\\s+find[^:\\n]{0,24}:)';
+const _STOK_RE=new RegExp('(?<=\\S)\\s+('+_STOK+')','g');
+const _SPROSE_RE=new RegExp('(?<=[.}:$\u0002])\\s+(Therefore|Hence\\b|Thus\\b|Now,|\u0905\u0924\u0903|\u0905\u0924:)','g');
+const _SROMAN_RE=new RegExp('(?<=[.}:$\u0002])\\s+(\\((?:i{1,3}|iv|v)\\))(?=\\s|[A-Z0-9\u0001$\\\\(])','g');
+function _structHeal(s){
+  return String(s||'').split('\n').map(ln=>{
+    if(ln.length<60) return ln;
+    if(/\\begin\{|\\hline/.test(ln)) return ln;
+    return ln.replace(_STOK_RE,'\n$1').replace(_SPROSE_RE,'\n$1').replace(_SROMAN_RE,'\n$1');
+  }).join('\n');
+}
+// ---- fx Fix: field ke text ko heal + (plain ho to) structure + best-effort AI ----
+async function _autoFixField(id){
+  const t=(id&&document.getElementById(id))||_lastField;
+  if(!t){ toast('Click inside a question or answer box first, then use fx Fix.',true); return; }
+  if(!(t.value||'').trim()){ toast('Nothing to fix in this box.',true); return; }
+  const before=t.value;
+  let healed=_mathHeal(before);
+  // poori tarah plain text ho (koi LaTeX/symbol nahi) to purana smart structure bhi lagao
+  if(!/\$|\\[a-zA-Z]+|[_^][{0-9A-Za-z]|[\u221A\u222B\u03C0\u03B8\u2264\u2265\u00D7\u2192]/.test(healed)){
+    try{ healed=(spFormatMatch(healed,null)||spSmartFormat(healed)); }catch(e){}
+  }
+  healed=healed.replace(/[ \t]*\n?[ \t]*(?:^|\n)[ \t]*(?:\*\*)?\s*(?:or|OR|Or|oR)\s*(?:\*\*)?[ \t]*(?=\n|$)/g,'\n\nOR\n').replace(/\n{3,}/g,'\n\n');
+  let aiUsed=false;
+  if(sessionStorage.getItem('mvs_fmtai')!=='0'){
+    try{
+      const r=await Promise.race([api('/api/teacher/format-text','POST',{text:healed}),
+        new Promise((_,rj)=>setTimeout(()=>rj(new Error('timeout')),25000))]);
+      if(r&&r.text&&String(r.text).trim()&&String(r.text)!==healed){ healed=String(r.text); aiUsed=true; }
+      else if(!(r&&r.text)) sessionStorage.setItem('mvs_fmtai','0');
+    }catch(e){ if(/503|unavailable|AI|401|403|timeout/i.test(String(e&&e.message||e))) sessionStorage.setItem('mvs_fmtai','0'); }
+  }
+  if(healed===before){ toast('Already well formatted — nothing to change.'); return; }
+  t.value=healed; t.dispatchEvent(new Event('input',{bubbles:true}));
+  toast(aiUsed?'Formatted with AI assist — review the preview.':'Formatting fixed — review the preview below.');
+}
+// ---- ∑ Maths palette: ready-made LaTeX, cursor pe insert (koi LaTeX seekhna na pade) ----
+const _TEXPAL=[
+ ['Basics',[['a/b','\\frac{a}{b}','Fraction'],['x²','x^{2}','Power / square'],['xⁿ','x^{n}','Any power'],['xₙ','x_{n}','Subscript'],['√x','\\sqrt{x}','Square root'],['ⁿ√x','\\sqrt[n]{x}','nth root'],['°','^{\\circ}','Degree'],['′','^{\\prime}','Prime'],['″','^{\\prime\\prime}','Double prime'],['±','\\pm','Plus-minus'],['×','\\times','Multiply'],['÷','\\div','Divide'],['·','\\cdot','Dot'],['≠','\\neq','Not equal'],['≤','\\leq','Less or equal'],['≥','\\geq','Greater or equal'],['≈','\\approx','Approximately'],['∞','\\infty','Infinity'],['|x|','\\left|x\\right|','Modulus'],['%','\\%','Percent']]],
+ ['Calculus',[['∫','\\int','Integral'],['∫ₐᵇ','\\int_{a}^{b}','Definite integral'],['Σ','\\sum_{i=1}^{n}','Summation'],['Π','\\prod','Product'],['lim','\\lim_{x\\to 0}','Limit'],['dy/dx','\\frac{dy}{dx}','Derivative'],['d/dx','\\frac{d}{dx}','Differentiate with respect to x'],['∂','\\partial','Partial derivative'],['dx','\\,dx','dx'],['log','\\log','Logarithm'],['ln','\\ln','Natural log'],['eˣ','e^{x}','e to the power x']]],
+ ['Trigonometry',[['sin','\\sin','sine'],['cos','\\cos','cosine'],['tan','\\tan','tangent'],['cosec','\\cosec','cosecant'],['sec','\\sec','secant'],['cot','\\cot','cotangent'],['sin⁻¹','\\sin^{-1}','Inverse sine'],['cos⁻¹','\\cos^{-1}','Inverse cosine'],['tan⁻¹','\\tan^{-1}','Inverse tangent'],['θ','\\theta','theta'],['α','\\alpha','alpha'],['β','\\beta','beta'],['π','\\pi','pi']]],
+ ['Greek letters',[['γ','\\gamma','gamma'],['δ','\\delta','delta'],['ε','\\epsilon','epsilon'],['ζ','\\zeta','zeta'],['η','\\eta','eta'],['λ','\\lambda','lambda'],['μ','\\mu','mu'],['ν','\\nu','nu'],['ξ','\\xi','xi'],['ρ','\\rho','rho'],['σ','\\sigma','sigma'],['τ','\\tau','tau'],['φ','\\phi','phi'],['χ','\\chi','chi'],['ψ','\\psi','psi'],['ω','\\omega','omega'],['Δ','\\Delta','Delta (capital)'],['Σ','\\Sigma','Sigma (capital)'],['Ω','\\Omega','Omega (capital)'],['Φ','\\Phi','Phi (capital)'],['Λ','\\Lambda','Lambda (capital)'],['Γ','\\Gamma','Gamma (capital)']]],
+ ['Vectors & 3D',[['a⃗','\\vec{a}','Vector'],['AB⃗','\\vec{AB}','Directed line segment'],['î','\\hat{i}','Unit vector i'],['ĵ','\\hat{j}','Unit vector j'],['k̂','\\hat{k}','Unit vector k'],['|a⃗|','\\left|\\vec{a}\\right|','Magnitude'],['a·b','\\vec{a}\\cdot\\vec{b}','Dot product'],['a×b','\\vec{a}\\times\\vec{b}','Cross product'],['λ','\\lambda','Scalar lambda'],['(x,y,z)','\\left(x,y,z\\right)','Point / coordinates'],['3D line','\\frac{x-x_{1}}{a}=\\frac{y-y_{1}}{b}=\\frac{z-z_{1}}{c}','Straight line in 3D'],['plane','a\\left(x-x_{1}\\right)+b\\left(y-y_{1}\\right)+c\\left(z-z_{1}\\right)=0','Plane equation'],['l,m,n','l^{2}+m^{2}+n^{2}=1','Direction cosines']]],
+ ['Matrix & Determinant',[['[2×2]','\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}','2×2 matrix'],['[3×3]','\\begin{bmatrix} a & b & c \\\\ d & e & f \\\\ g & h & i \\end{bmatrix}','3×3 matrix'],['|2×2|','\\begin{vmatrix} a & b \\\\ c & d \\end{vmatrix}','Determinant 2×2'],['|3×3|','\\begin{vmatrix} a & b & c \\\\ d & e & f \\\\ g & h & i \\end{vmatrix}','Determinant 3×3'],['A⁻¹','A^{-1}','Inverse of A'],['Aᵀ','A^{T}','Transpose of A'],['adj A','\\text{adj}\\,A','Adjoint of A'],['|A|','\\left|A\\right|','Determinant of A'],['f(x)={','\\begin{cases} x, & x\\geq 0 \\\\ -x, & x<0 \\end{cases}','Piecewise / modulus function'],['C(n,r)','\\binom{n}{r}','Binomial coefficient']]],
+ ['Sets & Probability',[['∈','\\in','belongs to'],['∉','\\notin','does not belong'],['⊂','\\subset','subset'],['∪','\\cup','union'],['∩','\\cap','intersection'],['∅','\\phi','empty set'],['∀','\\forall','for all'],['∃','\\exists','there exists'],['⇒','\\Rightarrow','implies'],['⇔','\\Leftrightarrow','if and only if'],['→','\\to','maps to'],['∴','\\therefore','therefore'],['∵','\\because','because'],['ℝ','\\mathbb{R}','Real numbers'],['ℕ','\\mathbb{N}','Natural numbers'],['ℤ','\\mathbb{Z}','Integers'],['ℚ','\\mathbb{Q}','Rationals'],['P(A)','P\\left(A\\right)','Probability of A'],['P(A|B)','P\\left(A|B\\right)','Conditional probability'],['A′','A^{\\prime}','Complement of A']]],
+ ['Chemistry',[['H₂O','\\ce{H2O}','Chemical formula'],['reaction','\\ce{2H2 + O2 -> 2H2O}','Chemical reaction'],['equilibrium','\\ce{A <=> B}','Reversible reaction'],['ce{ }','\\ce{ }','Blank formula template']]]
+];
+let _TEXPAL_SNIPS=[];
+function _texPalOpen(id){
+  const fid=id||(_lastField&&_lastField.id)||null;
+  if(!fid||!document.getElementById(fid)){ toast('Click inside a question or answer box first, then open the maths tools.',true); return; }
+  _TEXPAL_SNIPS=[];
+  let h='<div style="font-size:.78rem;color:var(--text-muted);margin-bottom:4px;line-height:1.55">Tap any symbol to insert it at the cursor as ready-made maths — then just replace the letters with your own values. The preview below the box updates instantly.</div>';
+  for(const [cat,items] of _TEXPAL){
+    h+='<div class="txp-cat">'+cat+'</div><div class="txp-grid">';
+    for(const [lb,ins,tip] of items){
+      const si=_TEXPAL_SNIPS.length; _TEXPAL_SNIPS.push(ins);
+      h+='<button type="button" title="'+esc(tip||ins)+'" onclick="_texPalIns(\''+fid+'\','+si+')">'+lb+'</button>';
+    }
+    h+='</div>';
+  }
+  h+='<div class="txp-note">Matrices, determinants, fractions, integrals and vectors render automatically with perfect formatting — you never need to write LaTeX by hand. To repair text pasted from a PDF, click <b>fx Fix</b> on that box.</div>';
+  showModal('Maths & Symbols',h,'');
+}
+function _texPalIns(fid,si){ closeModal(); _rtIns(fid,'$'+_TEXPAL_SNIPS[si]+'$'); }
+function _rtIns(id,snip){
+  const t=document.getElementById(id); if(!t) return;
+  const s=(t.selectionStart!=null)?t.selectionStart:t.value.length, e=(t.selectionEnd!=null)?t.selectionEnd:s;
+  t.value=t.value.slice(0,s)+snip+t.value.slice(e);
+  const p=s+snip.length; t.selectionStart=t.selectionEnd=p; t.focus();
+  t.dispatchEvent(new Event('input',{bubbles:true}));
+}
 function _fmtRich(t){
   let s=String(t==null?'':t).replace(/\r\n?/g,'\n');
   // mobile/AI paste cleanup: thin/narrow spaces (KaTeX me black box ban jaate hain) -> normal space,
@@ -6033,6 +6202,7 @@ function _fmtRich(t){
   s=s.replace(/[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g,' ')
      .replace(/[\u200B\u200C\u200D\uFEFF]/g,'')
      .replace(/[\u2028\u2029\u0085]/g,'\n');
+  s=_mathHeal(s);  // v116: render-time repair (purana content bhi auto-theek)
   // ---- 1) math stash (placeholders) — escape se PEHLE ----
   const M=[];
   const stash=(tex,disp)=>{ M.push({tex:_uniTex(tex),disp:!!disp}); return '\u0001'+(M.length-1)+'\u0002'; };
@@ -6056,6 +6226,9 @@ function _fmtRich(t){
     if(!gg) return ' ';
     // structural LaTeX (table/boxed/colorbox) kabhi plain sentence nahi hota
     if(/\\begin\{|\\end\{|\\hline|\\boxed|\\colorbox|\\fcolorbox/.test(gg)) return stash(gg, /\\begin\{/.test(gg));
+    // v116: structural command (frac/sqrt/text/binom/integral...) ho to ye math hi
+    // hai — wordy \text args wala healed frac sentence-guard me na phanse
+    if(/\\(frac|dfrac|tfrac|cfrac|sqrt|text\s*\{|binom|ce\{|boxed|int|sum|prod|lim|vec|hat|overline|underline|mathbb|overbrace|underbrace)\b/.test(gg)) return stash(gg,false);
     const stripped=gg.replace(/\\[a-zA-Z]+\{([^{}]*)\}/g,'$1').replace(/\\[a-zA-Z]+/g,' ');
     const words=(stripped.match(/[\p{L}\p{M}]{2,}/gu)||[]).length;
     const specials=(gg.match(/[_^\\=<>|]/g)||[]).length;
@@ -6065,12 +6238,12 @@ function _fmtRich(t){
   // bare math fragments (bina $ ke): 0^\circ, x^2, T^{2}
   s=s.replace(/([0-9A-Za-z)\u0900-\u097F])\s*\^\s*(\\[A-Za-z]+|\{[^{}\n]*\}|[A-Za-z0-9.]+)/g,(m,b,e)=>stash(b+'^{'+e+'}',false));
   // lone LaTeX commands bina $ ke
-  s=s.replace(/\\(frac|dfrac|tfrac)\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g,(m)=>stash(m,false));
-  s=s.replace(/\\(sqrt)\s*\{([^{}]*)\}/g,(m)=>stash(m,false));
-  s=s.replace(/\\text\s*\{([^{}]*)\}/g,(m)=>stash(m,false));
+  s=s.replace(/\\(frac|dfrac|tfrac)\s*\{((?:[^{}]|\{[^{}]*\})*)\}\s*\{((?:[^{}]|\{[^{}]*\})*)\}/g,(m)=>stash(m,false));
+  s=s.replace(/\\(sqrt)\s*\{((?:[^{}]|\{[^{}]*\})*)\}/g,(m)=>stash(m,false));
+  s=s.replace(/\\text\s*\{((?:[^{}]|\{[^{}]*\})*)\}/g,(m)=>stash(m,false));
   s=s.replace(/\\(times|div|cdot|circ|pm|mp|approx|neq|leq|le|geq|ge|implies|Rightarrow|rightarrow|infty|alpha|beta|gamma|delta|eta|theta|lambda|mu|pi|sigma|phi|omega|degree|therefore|because|%)(?![a-zA-Z])/g,(m)=>stash(m,false));
-  s=s.replace(/\\(ce|boxed|mathbb|mathbf|mathrm|vec|hat|overline|bar|dot|ddot|tilde)\s*\{([^{}]*)\}/g,(m)=>stash(m,false));
-  s=s.replace(/\\(binom)\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g,(m)=>stash(m,false));
+  s=s.replace(/\\(ce|boxed|mathbb|mathbf|mathrm|vec|hat|overline|bar|dot|ddot|tilde)\s*\{((?:[^{}]|\{[^{}]*\})*)\}/g,(m)=>stash(m,false));
+  s=s.replace(/\\(binom)\s*\{((?:[^{}]|\{[^{}]*\})*)\}\s*\{((?:[^{}]|\{[^{}]*\})*)\}/g,(m)=>stash(m,false));
   s=s.replace(/\\(lim|int|sum|prod)(?:_\{[^{}]*\})?(?:\^\{[^{}]*\})?(?![a-zA-Z])/g,(m)=>stash(m,false));
   // v108 paste junk: odd backtick / leftover $$ / lone $ / code-wrapped decoration
   s=s.split('\n').map(ln=>{
@@ -6081,6 +6254,7 @@ function _fmtRich(t){
   s=s.replace(/\${2,}/g,' ').replace(/(^|\s)\$(?=\s|$)/gm,'$1').replace(/`[ _\-—=.]{2,}`/g,' ');
   // v108: bina-delimiter plain-text math/chem segments (Unicode paste) bhi stash karo
   s=_stashPlain(s, stash);
+  s=_structHeal(s);  // v116: mid-line Step/Formula/Answer tokens apni line pe
   // ---- 2) HTML escape ----
   s=esc(s);
   // ---- 3) OR marker (purana behavior) ----
@@ -6191,6 +6365,8 @@ function _rtBar(id, qi){
     +`<button type="button" title="Italic" onclick="_rtApply('${id}','italic')"><i>I</i></button>`
     +`<button type="button" title="Underline" onclick="_rtApply('${id}','underline')"><u>U</u></button>`
     +`<button type="button" class="rt-or-btn" title="Insert a centred OR separator for an alternative question" onclick="${orClick}">OR</button>`
+    +`<button type="button" class="rt-math-btn" title="Maths symbols, matrices, determinants, vectors — ready-made LaTeX inserted at the cursor" onclick="_texPalOpen('${id}')">&sum;</button>`
+    +`<button type="button" class="rt-fix-btn" title="Auto-fix maths formatting in this box (fractions, powers, roots, units, broken LaTeX)" onclick="_autoFixField('${id}')">fx Fix</button>`
     +`</div>`;
 }
 function _syncImgSec(i){ const el=document.getElementById('ex-imgsec-'+i); if(el) el.innerHTML=_qImgSection(i); }
@@ -6270,7 +6446,7 @@ async function openCreateExam(type,editData){
   }catch(e){}
   const subOpts=subs.length?subs.map(s=>`<option>${esc(s)}</option>`).join(''):'<option>General</option>';
   const tl=type==='mcq'?'MCQ':'Mission 75';
-  const tools=`<div class="ex-tools"><span class="ex-tools-lbl">Maths & Chemistry:</span><button type="button" onclick="insertTexKey('frac')">a&frasl;b</button><button type="button" onclick="insertTexKey('pow')">x&sup2;</button><button type="button" onclick="insertTexKey('sub')">x&#8345;</button><button type="button" onclick="insertTexKey('sqrt')">&radic;</button><button type="button" onclick="insertTexKey('pi')">&pi;</button><button type="button" onclick="insertTexKey('theta')">&theta;</button><button type="button" onclick="insertTexKey('delta')">&Delta;</button><button type="button" onclick="insertTexKey('times')">&times;</button><button type="button" onclick="insertTexKey('deg')">&deg;</button><button type="button" onclick="insertTexKey('intg')">&int;</button><button type="button" onclick="insertTexKey('sum')">&Sigma;</button><button type="button" class="chem" onclick="insertTexKey('rxn')">Reaction</button><button type="button" class="chem" onclick="insertTexKey('chem')">Formula</button><button type="button" class="ai" onclick="autoFormatField()" title="Format the text automatically">Auto-format</button><button type="button" class="ai" id="ex-tr-all" onclick="examTranslateAll(this)" title="Translate every question to Hindi">Translate All to Hindi</button></div>`;
+  const tools=`<div class="ex-tools"><span class="ex-tools-lbl">Maths & Chemistry:</span><button type="button" onclick="insertTexKey('frac')">a&frasl;b</button><button type="button" onclick="insertTexKey('pow')">x&sup2;</button><button type="button" onclick="insertTexKey('sub')">x&#8345;</button><button type="button" onclick="insertTexKey('sqrt')">&radic;</button><button type="button" onclick="insertTexKey('pi')">&pi;</button><button type="button" onclick="insertTexKey('theta')">&theta;</button><button type="button" onclick="insertTexKey('delta')">&Delta;</button><button type="button" onclick="insertTexKey('times')">&times;</button><button type="button" onclick="insertTexKey('deg')">&deg;</button><button type="button" onclick="insertTexKey('intg')">&int;</button><button type="button" onclick="insertTexKey('sum')">&Sigma;</button><button type="button" class="chem" onclick="insertTexKey('rxn')">Reaction</button><button type="button" class="chem" onclick="insertTexKey('chem')">Formula</button><button type="button" onclick="_texPalOpen()" title="Matrices, determinants, vectors, definite integrals & more ready-made maths">∑ More</button><button type="button" class="ai" onclick="_autoFixField()" title="Fix maths & formatting in the selected box (fractions, powers, roots, units, broken LaTeX)">Auto-format</button><button type="button" class="ai" id="ex-tr-all" onclick="examTranslateAll(this)" title="Translate every question to Hindi">Translate All to Hindi</button></div>`;
   const note=type==='subjective'
     ?'<div class="alert alert-info">Students upload a photo of their handwritten answers. You grade each answer manually from Results — award marks + remarks per question (your model answers stay visible to you while checking). Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{2H2 + O2 -> 2H2O}$</code> &mdash; they render automatically.</div>'
     :'<div class="alert alert-info">Students select an option. Auto-graded instantly. Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{...}$</code>.</div>';
@@ -7405,21 +7581,7 @@ document.addEventListener('paste',function(e){
   put(text,'Pasted & formatted successfully.');
 },true);
 
-async function autoFormatField(){
-  const t=_lastField; if(!t){ toast('Click inside a question or answer box first, then Auto-format.',true); return; }
-  if(!(t.value||'').trim()){ toast('Nothing to format in this box.',true); return; }
-  if(t.value.indexOf('\\begin{array}')>=0){ toast('Already formatted — nothing to change.'); return; }
-  // LaTeX/AI paste pehle se structured hai — Auto-format se bigad jaata hai, skip
-  if(/\$|\\frac|\\sqrt|\\text\s*\{|\\\[|\\\(|\^\{|_\{|\\implies|\\times|\\circ/.test(t.value)){ toast('This content is already LaTeX-formatted — no auto-format needed; the preview will render correctly.'); return; }
-  let after=spFormatMatch(t.value,null)||spSmartFormat(t.value);
-  // Alternative-question wala akela "or" -> apni line pe seedha "OR"
-  // (preview aur PDF dono me center + bold render hota hai)
-  after=after.replace(/[ \t]*\n?[ \t]*(?:^|\n)[ \t]*(?:\*\*)?\s*(?:or|OR|Or|oR)\s*(?:\*\*)?[ \t]*(?=\n|$)/g,'\n\nOR\n');
-  after=after.replace(/\n{3,}/g,'\n\n');
-  if(after===t.value){ toast('Already looks formatted — nothing to change.'); return; }
-  t.value=after; t.dispatchEvent(new Event('input',{bubbles:true}));
-  toast('Formatted instantly.');
-}
+async function autoFormatField(){ return _autoFixField(); }
 async function ocrFillQuestion(inp,i){
   const f=inp.files[0]; inp.value=''; if(!f) return;
   if(f.size>15*1024*1024){ toast('Image too large (max 15MB)',true); return; }
@@ -8289,6 +8451,9 @@ async function loadVTBanner(){
   const el=document.getElementById('t-vt-banner'); if(!el) return;
   try{
     const d=await api('/api/teacher/video-tasks/my');
+    // v115: My Tasks ka sidebar badge bhi dashboard pe hi refresh ho
+    const _actN=(d.tasks||[]).filter(t=>t.status==='assigned').length;
+    const _tb=document.getElementById('t-vt-badge'); if(_tb){ _tb.style.display=_actN?'inline-block':'none'; _tb.textContent=_actN; }
     const nxt=d.next_deadline;
     if(!nxt){ el.style.display='none'; el.innerHTML=''; return; }
     el.style.display='block';
@@ -8420,7 +8585,7 @@ function _vtSpecialT(sp){
       :(t.kind==='rapid_revision'
         ?`Rapid revision video for every chapter — paste each chapter's link`
         :`One-shot video for every chapter — paste each chapter's link`);
-    const head=`<div class="vt-os-h" onclick="this.parentElement.classList.toggle('open')">
+    const head=`<div class="vt-os-h" style="background:linear-gradient(135deg,${_vtPjCol(t.id)[0]},${_vtPjCol(t.id)[1]})" onclick="this.parentElement.classList.toggle('open')">
       <div><h4><span class="vt-os-kind ${t.kind}">${_vtKindLbl(t)}</span>${esc(t.subject||t.title)}</h4>
       <div class="os-sub">${subTxt} · ${t.kind==='project'?'Final deadline':'Deadline'}: <b>${esc(t.deadline_nice||'—')}</b>${t.total?'': ' · items will auto-fill shortly'}</div>
       ${_vtOsWeek(t)}</div>
@@ -8428,7 +8593,7 @@ function _vtSpecialT(sp){
       ${_vtOsProg(t)}</div>`;
     const body=t.total?`<div>${t.chapters.map(c=>_vtChRow(t,c)).join('')}</div>`
       :`<div style="font-size:.78rem;color:var(--text-muted);padding:8px 4px">This subject's chapters are not in the syllabus manager / timetable yet — the list will appear here automatically once they are uploaded.</div>`;
-    return `<div class="vt-os" id="vt-os-${t.id}">${head}<div class="vt-os-b">${body}</div></div>`;
+    return `<div class="vt-os" id="vt-os-${t.id}" style="border-color:${_vtPjCol(t.id)[1]}55">${head}<div class="vt-os-b">${body}</div></div>`;
   }).join('');
 }
 function tvtChEdit(tid,cid){
@@ -8453,6 +8618,17 @@ async function tvtChapterSave(tid,cid){
     toast(!link?'Link removed.':(r.completed?'All items completed — great work!':`Saved — ${r.done}/${r.total} done.`));
     loadTVTasks();
   }catch(e){ toast(e.message||'Could not save'); }
+}
+// v115: Task Manager sidebar badge — page khole bina bhi naya proposal /
+// review-pending submission ka count dikhe. Halka endpoint; login/dashboard
+// load + notification poll (25s) pe auto-refresh hota hai.
+async function _avtBadgePoll(){
+  try{
+    const b=await api('/api/admin/video-tasks/badge');
+    const badge=document.getElementById('a-vt-badge'); if(!badge) return;
+    const n=(b&&b.count)||0;
+    badge.style.display=n?'inline-block':'none'; badge.textContent=n;
+  }catch(e){}
 }
 async function loadAVTasks(){
   const el=document.getElementById('a-vtasks-content');
@@ -8648,12 +8824,17 @@ function _avtSpecBody(){
 }
 function avtSpecProjSet(p){ _avtSpecProj=p||''; avtSpecRefresh(); }
 function avtSpecTypeSet(k){ _avtSpecTab=k||''; _avtSpecProj=''; avtSpecRefresh(); }
+// v115: har project ka apna premium colour — pehle sab cards ek hi brown the,
+// 2-3 projects saath me pehchan mushkil. Deep jewel tones (theme ke saath
+// premium), id-based stable — admin aur teacher dono portal pe same colour.
+const _VT_PJCOL=[['#3a2c07','#6b4f0c'],['#053f3c','#0f6f6a'],['#16294d','#2c4d86'],['#4a1c0b','#8a3a17'],['#33124e','#5b2a86'],['#0d3320','#1e6b41'],['#471021','#8a1f42'],['#082f45','#0f5a82']];
+function _vtPjCol(id){ return _VT_PJCOL[(Math.abs(+id)||0)%_VT_PJCOL.length]; }
 function _avtSpecCard(t){
   const rows=(t.chapters||[]).map(c=> c.link
     ? `<div class="vt-chr done${c.changed?' vt-changed':''}"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">${esc(c.submitted_at||'')}</span>${c.changed?`<span class="vt-chg">Link updated${c.changed_at?' · '+esc(c.changed_at):''}</span>`:''}${_avtChSel(t,c)}<a class="lk" href="${esc(c.link)}" target="_blank" rel="noopener">${ic('play')} Open video</a></div>`
     : `<div class="vt-chr${c.changed?' vt-changed':''}"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">pending</span>${c.changed?`<span class="vt-chg">Link removed${c.changed_at?' · '+esc(c.changed_at):''}</span>`:''}</div>`).join('');
-  return `<div class="vt-os" id="avt-os-${t.id}">
-    <div class="vt-os-h" onclick="avtSpecOpen(${t.id})">
+  return `<div class="vt-os" id="avt-os-${t.id}" style="border-color:${_vtPjCol(t.id)[1]}55">
+    <div class="vt-os-h" style="background:linear-gradient(135deg,${_vtPjCol(t.id)[0]},${_vtPjCol(t.id)[1]})" onclick="avtSpecOpen(${t.id})">
       <div><h4><span class="vt-os-kind ${t.kind}">${_vtKindLbl(t)}</span>${esc(t.subject||t.title)} ${t.is_new?`<span class="vt-new" id="avt-new-${t.id}">NEW</span>`:''}</h4>
       <div class="os-sub">${esc(t.teacher)} · ${t.kind==='project'?'Final deadline':'Deadline'}: <b>${esc(t.deadline_nice||'—')}</b>${t.last_link_at?' · Last update: '+esc(t.last_link_at):''}</div>
       ${_vtOsWeek(t)}</div>
@@ -9191,6 +9372,8 @@ async function loadADashboard(){
    window._mtNew=_matNewIds('admin',(t.subjects||[]).flatMap(s=>s.chapters.flatMap(c=>c.items)));
    _matBadge('admin');
  }).catch(()=>{});
+ // v115: Task Manager badge bhi dashboard load pe hi set ho (click ka wait nahi)
+ _avtBadgePoll();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 

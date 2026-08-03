@@ -220,6 +220,134 @@ def _write_rich(pdf, raw, LM, EPW, size, line_h, base_bold=False, color=(22, 26,
     return True
 
 
+
+# ------------------------------------------------------ v116 math heal (JS mirror)
+# Portal ke mvs_portal_connected.html ka _mathHeal isi ka JS mirror hai — dono ko
+# saath me badalna. Render-time repair: OCR/typed galtiyan (toota frac, cm3, 2ex,
+# bina-brace sqrt, unbalanced braces) PDF banne se PEHLE theek ho jaati hain,
+# isliye purana stored content bhi premium dikhta hai (DB touch nahi hota).
+_FRAC_WORDY_RE = re.compile(r"\\frac\{([^{}]*)\}\{([^{}]*)\}")
+
+
+def _frac_wordy(zone):
+    def rep(m):
+        def w(x):
+            t = x.strip()
+            if re.search(r"[A-Za-z\u0900-\u097f]{2,}\s+[A-Za-z\u0900-\u097f]{2,}", t) \
+                    and not t.startswith("\\text"):
+                return "\\text{%s}" % t
+            return x
+        return "\\frac{%s}{%s}" % (w(m.group(1)), w(m.group(2)))
+    return _FRAC_WORDY_RE.sub(rep, zone)
+
+
+def _heal_math_zone(z):
+    s = z
+    # broken frac: opening brace gayab — "=A}/{B" -> \frac{A}{B}
+    s = re.sub(r"([^\s={}][^{}=\n]{0,80}?)\}\s*/\s*\{([^{}\n]+)\}",
+               lambda m: "\\frac{%s}{%s}" % (m.group(1).strip(), m.group(2).strip()), s)
+    # sqrt bina braces
+    s = re.sub(r"\\sqrt\s+([A-Za-z0-9.]+)", r"\\sqrt{\1}", s)
+    s = re.sub(r"\\sqrt([0-9A-Za-z])(?![A-Za-z{])", r"\\sqrt{\1}", s)
+    # 2ex -> 2e^{x}
+    s = re.sub(r"(?<![A-Za-z\\])e([a-z])(?![A-Za-z])", r"e^{\1}", s)
+    # units: cm3 / cm_3 / 192cm_2 -> \text{cm}^{3}
+    s = re.sub(r"\\text\{(cm|mm|km|dm|m|kg|g|mg|ml|mol)\}\s*_\s*\{?([23])\}?",
+               r"\\text{\1}^{\2}", s)
+    s = re.sub(r"(?<=[0-9)])\s?(cm|mm|km|dm|kg|mg|ml|mol)\s*_\s*\{?([23])\}?",
+               r"\\text{\1}^{\2}", s)
+    s = re.sub(r"\b(cm|mm|km|dm|kg|mg|ml|mol)\s*_\s*\{?([23])\}?",
+               r"\\text{\1}^{\2}", s)
+    s = re.sub(r"(?<=[0-9)])\s?(cm|mm|km|dm|kg|mg|ml|mol)([23])(?![0-9A-Za-z])",
+               r"\\text{\1}^{\2}", s)
+    s = re.sub(r"\b(cm|mm|km|dm|kg|mg|ml|mol)([23])(?![0-9A-Za-z])",
+               r"\\text{\1}^{\2}", s)
+    s = re.sub(r"(?<=[0-9)])\s?m\s*_\s*\{?([23])\}?", r"\\text{m}^{\1}", s)
+    s = re.sub(r"(?<=[0-9)])\s?m([23])(?![0-9A-Za-z])", r" \\text{m}^{\1}", s)
+    s = re.sub(r"(?<=[0-9)])\s?(cm|mm|km|dm|kg|mg|ml|mol)\^\{?([23])\}?",
+               r"\\text{\1}^{\2}", s)
+    s = re.sub(r"\b(cm|mm|km|dm|kg|mg|ml|mol)\^\{?([23])\}?",
+               r"\\text{\1}^{\2}", s)
+    # common typed-LaTeX repairs (portal _texFix ke saath parity)
+    s = re.sub(r"\\text\s*([^\s{][^}]*)", r"\\text{\1}", s)
+    s = re.sub(r"\\(mathrm|mathbf|mathit)\s*([^\s{])", r"\\mathrm{\2}", s)
+    s = s.replace("^{}", "").replace("_{}", "")
+    s = re.sub(r"[_^]\s*(?=\s|$)", "", s)
+    s = re.sub(r"\\cir(?!c|[a-zA-Z])", r"^\\circ", s)
+    s = re.sub(r"\\left\s*(?=[^([{|$])", "", s)
+    s = re.sub(r"\\right\s*(?=[^)\]}|$])", "", s)
+    s = _frac_wordy(s)
+    opens, closes = s.count("{"), s.count("}")
+    if opens > closes:
+        s += "}" * (opens - closes)
+    return s
+
+
+def _heal_plain_line(ln):
+    if re.search(r"\\begin\{|\\end\{|\\hline", ln):
+        return ln
+    s = ln
+    has_eq = "=" in s
+    has_hi = bool(re.search(r"[\u0900-\u097f]", s))
+    # broken frac bina $ ke: "=A}/{B" -> $\frac{A}{B}$ (wordy args \text)
+    if has_eq:
+        def _bf(m):
+            def w(x):
+                t = x.strip()
+                return ("\\text{%s}" % t) if re.search(r"[A-Za-z]{2,}\s+[A-Za-z]{2,}", t) else t
+            return "%s $\\frac{%s}{%s}$" % (m.group(1), w(m.group(2)), w(m.group(3)))
+        s = re.sub(r"(=)\s*([^{}=\n]{2,80}?)\}\s*/\s*\{([^{}\n]{1,80}?)\}", _bf, s)
+    # ascii sqrt(2) -> $\sqrt{2}$
+    s = re.sub(r"\bsqrt\s*\(([^()]*(?:\([^()]*\)[^()]*)*)\)", r"$\\sqrt{\1}$", s)
+    # units: cm3 / cm_3 / 192cm2 -> $\text{cm}^{3}$
+    s = re.sub(r"(?<=[0-9)])\s?(cm|mm|km|dm|kg|mg|ml|mol)\s*_\s*\{?([23])\}?",
+               r" $\\text{\1}^{\2}$", s)
+    s = re.sub(r"\b(cm|mm|km|dm|kg|mg|ml|mol)\s*_\s*\{?([23])\}?",
+               r" $\\text{\1}^{\2}$", s)
+    s = re.sub(r"(?<=[0-9)])\s?(cm|mm|km|dm|kg|mg|ml|mol)([23])(?![0-9A-Za-z])",
+               r" $\\text{\1}^{\2}$", s)
+    s = re.sub(r"\b(cm|mm|km|dm|kg|mg|ml|mol)([23])(?![0-9A-Za-z])",
+               r" $\\text{\1}^{\2}$", s)
+    s = re.sub(r"(?<=[0-9)])\s?m\s*_\s*\{?([23])\}?", r" $\\text{m}^{\1}$", s)
+    s = re.sub(r"(?<=[0-9)])\s?m([23])(?![0-9A-Za-z])", r" $\\text{m}^{\1}$", s)
+    # equation line me variable ka square/cube: "= a3" -> $a^{3}$ (Hindi lines skip)
+    if has_eq and not has_hi:
+        s = re.sub(r"(?<![A-Za-z\\])([a-z])([23])(?=[\s,.=):;}]|$)",
+                   r"$\1^{\2}$", s)
+    return s
+
+
+_ZONE_RE = re.compile(r"(\$\$[^$\n]*\$\$|\$[^$\n]+\$|\\\([^()\n]*\\\)|\\\[[^\]\n]*\\\])")
+_ZONE_FULL = re.compile(r"^(?:\$\$[^$\n]*\$\$|\$[^$\n]+\$|\\\([^()\n]*\\\)|\\\[[^\]\n]*\\\])$")
+
+
+def _math_heal(t):
+    """v116: OCR/typed math galtiyan repair — _blocks se PEHLE, taaki purana
+    stored content bhi PDF me theek render ho. Idempotent: achha LaTeX untouched."""
+    out = []
+    for ln in (t or "").split("\n"):
+        if not ln.strip():
+            out.append(ln)
+            continue
+        parts = _ZONE_RE.split(ln)
+        for i, p in enumerate(parts):
+            if not p:
+                continue
+            if _ZONE_FULL.match(p):
+                if p.startswith("$$"):
+                    parts[i] = "$$" + _heal_math_zone(p[2:-2]) + "$$"
+                elif p.startswith("\\("):
+                    parts[i] = "\\(" + _heal_math_zone(p[2:-2]) + "\\)"
+                elif p.startswith("\\["):
+                    parts[i] = "\\[" + _heal_math_zone(p[2:-2]) + "\\]"
+                else:
+                    parts[i] = "$" + _heal_math_zone(p[1:-1]) + "$"
+            else:
+                parts[i] = _heal_plain_line(p)
+        out.append("".join(parts))
+    return "\n".join(out)
+
+
 def _clean(text):
     t = text or ""
     t = re.sub(r"\\ce\{([^{}]*)\}", r"\1", t)
@@ -241,6 +369,7 @@ _HEADINGS = [
     "To Find:", "Formula:", "Formula used:", "Substitute the values:",
     "Rearranging the formula to find acceleration:", "Rearranging:",
     "Concept Check:", "Note:", "Therefore:", "Hence:", "Conclusion:",
+    "Answer:", "Thus:", "Substitute:",
     "The Smart Strategy (Law of Conservation of Energy):", "The Smart Strategy:",
     "According to Newton's Second Law of Motion:",
 ]
@@ -373,6 +502,7 @@ def _both_opts(en_list, hi_list):
 
 
 def _blocks(text):
+    text = _math_heal(text)  # v116: OCR/typed math repair (render-time, DB untouched)
     blocks = []
     for ln in _presplit(text):
         if _is_or_line(ln):
