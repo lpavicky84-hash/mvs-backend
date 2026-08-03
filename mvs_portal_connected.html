@@ -9,8 +9,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Great+Vibes&display=swap" rel="stylesheet">
-<style>:root{--primary:#b8941f;--primary-dark:#9a7b16;--primary-50:#f7f0d8;--secondary:#b8941f;--accent:#b8941f;--success:#059669;--warning:#d97706;--danger:#dc2626;--bg:#f4f1e8;--card:#fffdf6;--bg-card:#fffdf6;--text:#2e2716;--text-muted:#8a7c55;--border:#e7dfc6;--sidebar:#f9f4e6;--sidebar-text:#5d4f27;--shadow:0 1px 2px rgba(90,70,15,.06),0 1px 3px rgba(90,70,15,.05);--shadow-lg:0 12px 32px -10px rgba(90,70,15,.18);--glass-bg:rgba(255,253,246,.72);--glass-brd:rgba(231,223,198,.6)}
-  .dark{--bg:#0b1524;--card:#111f36;--bg-card:#111f36;--text:#eaf0fb;--text-muted:#93a6c4;--border:#22334f;--sidebar:#081120;--primary:#e2b458;--primary-dark:#c99e45;--primary-50:rgba(226,180,88,.13);--secondary:#e2b458;--accent:#e2b458;--glass-bg:rgba(13,23,40,.78);--glass-brd:rgba(255,255,255,.07);--shadow:0 1px 2px rgba(0,0,0,.45),0 1px 3px rgba(0,0,0,.35);--shadow-lg:0 18px 44px -14px rgba(0,0,0,.65)}
+<style>:root{--panel:#fffdf7;--primary:#b8941f;--primary-dark:#9a7b16;--primary-50:#f7f0d8;--secondary:#b8941f;--accent:#b8941f;--success:#059669;--warning:#d97706;--danger:#dc2626;--bg:#f4f1e8;--card:#fffdf6;--bg-card:#fffdf6;--text:#2e2716;--text-muted:#8a7c55;--border:#e7dfc6;--sidebar:#f9f4e6;--sidebar-text:#5d4f27;--shadow:0 1px 2px rgba(90,70,15,.06),0 1px 3px rgba(90,70,15,.05);--shadow-lg:0 12px 32px -10px rgba(90,70,15,.18);--glass-bg:rgba(255,253,246,.72);--glass-brd:rgba(231,223,198,.6)}
+  .dark{--panel:#0f1c31;--bg:#0b1524;--card:#111f36;--bg-card:#111f36;--text:#eaf0fb;--text-muted:#93a6c4;--border:#22334f;--sidebar:#081120;--primary:#e2b458;--primary-dark:#c99e45;--primary-50:rgba(226,180,88,.13);--secondary:#e2b458;--accent:#e2b458;--glass-bg:rgba(13,23,40,.78);--glass-brd:rgba(255,255,255,.07);--shadow:0 1px 2px rgba(0,0,0,.45),0 1px 3px rgba(0,0,0,.35);--shadow-lg:0 18px 44px -14px rgba(0,0,0,.65)}
   h1,h2,h3,h4{letter-spacing:-.011em}
   *{margin:0;padding:0;box-sizing:border-box}
   body{font-family:'Plus Jakarta Sans','Noto Sans Devanagari','Segoe UI',sans-serif;background:var(--bg);color:var(--text);transition:.3s;-webkit-font-smoothing:antialiased}
@@ -2340,27 +2340,36 @@ body.dark .al-sig{color:hsl(45 90% 60%)}
 @media(max-width:1100px){.att-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:760px){.att-grid{grid-template-columns:1fr}}
 /* ===== v76 smart work timings ===== */
-.wt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(330px,100%),1fr));gap:14px}
-.wt-card{border:1.5px solid var(--border);border-radius:16px;padding:14px 16px;background:var(--card-bg,#fff);transition:border-color .2s}
-.wt-card:hover{border-color:rgba(184,148,31,.45)}
-.wt-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-.wt-av{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.85rem;background:linear-gradient(135deg,#b8941f,#d4af37);color:#fff;flex-shrink:0}
-.wt-name{font-weight:800;font-size:.92rem;line-height:1.2}
+.wt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(330px,100%),1fr));gap:16px}
+.wt-card{border:1.5px solid var(--border);border-radius:18px;padding:16px 18px;background:var(--card);box-shadow:var(--shadow);transition:border-color .22s,box-shadow .22s,transform .22s}
+.wt-card:hover{border-color:rgba(184,148,31,.55);box-shadow:0 14px 30px -14px rgba(90,70,15,.3);transform:translateY(-2px)}
+.wt-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.wt-av{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.85rem;background:linear-gradient(135deg,#b8941f,#d4af37);color:#fff;flex-shrink:0;border:1.5px solid rgba(255,255,255,.55);box-shadow:0 4px 10px -4px rgba(184,148,31,.55)}
+.wt-name{font-weight:800;font-size:.94rem;line-height:1.2}
 .wt-sub{font-size:.7rem;color:var(--text-muted);font-weight:600}
 .wt-chip{margin-left:auto;font-size:.6rem;font-weight:800;padding:3px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em;flex-shrink:0}
 .wt-chip.set{background:rgba(22,163,74,.13);color:#15803d}
 .wt-chip.def{background:rgba(100,116,139,.13);color:#64748b}
-.wt-now{font-size:.74rem;color:var(--text-muted);font-weight:600;background:var(--bg);border:1px dashed var(--border);border-radius:9px;padding:6px 10px;margin-bottom:10px}
-.wt-now b{color:var(--text)}
+.wt-now{font-size:.74rem;color:#7a5b12;font-weight:600;background:linear-gradient(135deg,rgba(212,175,55,.15),rgba(184,148,31,.07));border:1px solid rgba(184,148,31,.28);border-radius:10px;padding:7px 11px;margin-bottom:12px}
+.wt-now b{color:#6b4e0a}
+.dark .wt-now{color:#e7c96a;background:rgba(226,180,88,.09);border-color:rgba(226,180,88,.3)}
+.dark .wt-now b{color:#f0d68a}
 .wt-form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .wt-form>div{min-width:0}
-.wt-form .input{width:100%;min-width:0;max-width:100%;box-sizing:border-box}
-.wt-form select.input{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}
+.wt-form .input{width:100%;min-width:0;max-width:100%;box-sizing:border-box;padding:9px 12px;border-radius:11px;border:1.5px solid #e2d9c4;background:#fffdf7;font-size:.84rem;font-weight:600;font-family:inherit;color:var(--text);transition:border-color .18s,box-shadow .18s,background-color .18s}
+.wt-form .input:hover{border-color:rgba(184,148,31,.6)}
+.wt-form .input:focus{outline:none;border-color:#b8941f;box-shadow:0 0 0 3px rgba(184,148,31,.16);background-color:#fff}
+.wt-form select.input{appearance:none;-webkit-appearance:none;cursor:pointer;text-overflow:ellipsis;white-space:nowrap;overflow:hidden;padding-right:38px;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23b8941f' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat:no-repeat;background-position:right 12px center;background-size:13px}
+.dark .wt-form .input{background-color:#0f1c31;border-color:#2a3c5e;color:var(--text)}
+.dark .wt-form .input:hover{border-color:rgba(226,180,88,.55)}
+.dark .wt-form .input:focus{border-color:#e2b458;background-color:#0d1a2e;box-shadow:0 0 0 3px rgba(226,180,88,.18)}
 .wt-form .full{grid-column:1/-1}
-.wt-lbl{font-size:.62rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:block}
-.wt-req{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.72rem;font-weight:700;color:var(--text-muted);margin-top:10px}
+.wt-lbl{font-size:.62rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;display:block}
+.wt-req{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.72rem;font-weight:700;color:var(--text-muted);margin-top:12px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:7px 11px}
 .wt-req b{color:#b45309}
-.wt-save{margin-top:10px;width:100%}
+.wt-save{margin-top:12px;width:100%;border-radius:11px;padding:10px 13px;font-weight:800;letter-spacing:.02em}
 .wt-prog{height:9px;border-radius:999px;background:var(--bg);border:1px solid var(--border);overflow:hidden;margin-top:10px}
 .wt-prog>div{height:100%;border-radius:999px;background:linear-gradient(90deg,#d97706,#16a34a);transition:width .45s ease}
 .wt-prog>div.done{background:linear-gradient(90deg,#16a34a,#059669)}
@@ -3922,7 +3931,8 @@ async function loadTRankBoard(){
       const isMe=me&&r.teacher_id===me.teacher_id;
       const bars=_TRK_METRICS.map(m=>{
         const v=(r.metrics||{})[m[0]]||0, pct=Math.round(v/maxM[m[0]]*100);
-        return `<div class="trk-mrow"><span class="trk-mlbl">${m[1]}</span><div class="trk-mtrack"><div class="trk-mfill" style="width:${pct}%;background:${m[2]}"></div></div><b class="trk-mval">${v}</b></div>`;
+        const mlbl=(m[0]==='attendance'&&r.attendance_source==='reports')?'Attendance (Class Reports)':m[1];
+        return `<div class="trk-mrow"><span class="trk-mlbl">${mlbl}</span><div class="trk-mtrack"><div class="trk-mfill" style="width:${pct}%;background:${m[2]}"></div></div><b class="trk-mval">${v}</b></div>`;
       }).join('');
       return `<div class="card trk-card trk-click ${isMe?'trk-me-card':''}" onclick="trkCompare(${r.teacher_id})"><div class="card-body">
         <div class="trk-head"><div style="position:relative">${av(r,46)}<span class="trk-medal sm" style="background:${medal[r.rank-1]||'#8a7c55'}">${r.rank}</span></div>
@@ -8664,7 +8674,8 @@ async function loadATeacherRanks(days){
     const board=rows.map(r=>{
       const bars=_TRK_METRICS.map(m=>{
         const v=(r.metrics||{})[m[0]]||0, pct=Math.round(v/maxM[m[0]]*100);
-        return `<div class="trk-mrow"><span class="trk-mlbl">${m[1]}</span><div class="trk-mtrack"><div class="trk-mfill" style="width:${pct}%;background:${m[2]}"></div></div><b class="trk-mval">${v}</b></div>`;
+        const mlbl=(m[0]==='attendance'&&r.attendance_source==='reports')?'Attendance (Class Reports)':m[1];
+        return `<div class="trk-mrow"><span class="trk-mlbl">${mlbl}</span><div class="trk-mtrack"><div class="trk-mfill" style="width:${pct}%;background:${m[2]}"></div></div><b class="trk-mval">${v}</b></div>`;
       }).join('');
       return `<div class="card trk-card"><div class="card-body">
         <div class="trk-head"><div style="position:relative">${av(r,46)}<span class="trk-medal sm" style="background:${medal[r.rank-1]||'#8a7c55'}">${r.rank}</span></div>
@@ -14757,6 +14768,32 @@ function _activityStripHTML(d){
   </div></div>`;
 }
 
+// ---------- v104: target-only teacher — estimated % view (amounts never shown) ----------
+function _earnTargetOnlyHTML(d){
+  const e=d.earnings, tg=(d.policy_target&&d.policy_target.label)||'set by admin';
+  const sp=(e.salary_pct!=null?e.salary_pct:e.perf_score);
+  const ded=e.est_deductions||[], dt=e.est_ded_total||0;
+  const dedRows=ded.length?ded.map(x=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:.8rem"><span style="color:var(--text)">${esc(x.label)}</span><b style="color:#b91c1c;white-space:nowrap">\u2212${x.pct}%</b></div>`).join('')
+    :`<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;background:rgba(22,163,74,.08);border:1px solid rgba(22,163,74,.3);color:#15803d;font-size:.8rem;font-weight:700">${ic('check')} No rule issues this month — the full 100% is estimated.</div>`;
+  return `<div class="po-hero" style="display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap">
+   <div>
+    <div style="font-size:.72rem;opacity:.62;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">Estimated Share \u00B7 ${esc(d.month_label)}</div>
+    <div style="font-size:2.2rem;font-weight:900;line-height:1.05">est. ${sp}%</div>
+    <div style="font-size:.74rem;opacity:.62;margin-top:6px">of the monthly salary — amounts are never shown for target-only teachers</div>
+    <div style="font-size:.74rem;margin-top:8px;display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:9px;background:rgba(52,211,153,.14);border:1px solid rgba(52,211,153,.4)">${ic('check')} Assigned target ${esc(tg)} — fully met this month</div>
+   </div>
+   <div style="text-align:center;min-width:130px">
+    <div style="font-size:2rem;font-weight:900;color:${dt>0?'#f87171':'#34d399'}">${dt>0?'\u2212'+dt+'%':'0%'}</div>
+    <div style="font-size:.68rem;opacity:.62;text-transform:uppercase;letter-spacing:.08em;margin-bottom:7px">Est. Deductions</div>
+    <div style="height:7px;width:150px;margin:0 auto;border-radius:6px;background:rgba(255,255,255,.14);overflow:hidden"><div style="height:100%;width:${Math.max(0,Math.min(100-sp,100))}%;background:${dt>0?'#f87171':'#34d399'};border-radius:6px"></div></div>
+   </div>
+  </div>
+  <div class="card" style="margin-top:18px"><div class="card-header"><h3>${ic('wallet')} Estimated Deductions — same rules as every teacher</h3></div><div class="card-body">
+   <div style="font-size:.74rem;color:var(--text-muted);margin-bottom:8px">Estimated from portal activity (classes, notes, DPP, tests, doubts, tasks, leave). The payout itself is settled on the other app against the assigned target.</div>
+   ${dedRows}
+  </div></div>`;
+}
+
 function _payStructureHTML(d,editable){
   const pay=d.pay, tg=d.targets, t=d.teacher;
   const row=(l,v)=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:.8rem"><span style="color:var(--text-muted)">${l}</span><b>${v}</b></div>`;
@@ -15206,9 +15243,10 @@ async function aEarnFetch(){
     _aEarnData=d;
     const _st=(icn,val,lbl)=>`<div class="ae-stat"><div class="ae-stat-ic">${ic(icn)}</div><div><div class="ae-stat-v">${val}</div><div class="ae-stat-l">${lbl}</div></div></div>`;
     // v89: decided monthly salary ka total (max potential sum) — monthly kitna ja sakta hai
-    const totSal=d.teachers.reduce((a,x)=>a+((x.earnings&&x.earnings.max_potential)||0),0);
+    const totSal=d.teachers.reduce((a,x)=>a+(x.target_only?0:((x.earnings&&x.earnings.max_potential)||0)),0);
     if(stats) stats.innerHTML=_st('users',d.teachers.length,'Teachers')+_st('trophy',_inr(totSal),'Monthly Salary (Total)')+_st('wallet',_inr(d.total_net),'Total Net Payable')+_st('chart',d.avg_perf+'%','Average Performance')+_st('calendar',esc(fmtMonthLabel(d.month)),'Pay Month');
     body.innerHTML=(d.total_net===0?`<div class="alert alert-info" style="margin-bottom:14px">The month has just begun — earnings build here automatically as teacher activity is recorded on the portal. There is no activity yet, so all figures show ₹0 (never demo numbers).</div>`:'')
+     +((d.target_only_count||0)>0?`<div class="alert alert-info" style="margin-bottom:14px">${d.target_only_count} target-only teacher${d.target_only_count>1?'s':''}: payout runs on the assigned target via the other app — shown here only as an <b>estimated % of salary</b>, never as amounts.</div>`:'')
      +`<div class="ae-grid">${d.teachers.map(x=>{
        const e=x.earnings, pc=_pfCol(e.perf_score);
        const incent=e.gross_earned-e.class_earned;
@@ -15217,6 +15255,36 @@ async function aEarnFetch(){
        const lchip=ltr.accepted
         ?`<span title="Appointment letter digitally signed${ltr.signed_at?' on '+esc(ltr.signed_at):''}${ltr.signature_name?' as '+esc(ltr.signature_name):''}" style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-weight:800;font-size:.6rem;letter-spacing:.04em;color:#047857;background:#04785714;border:1px solid #04785733">${ic('check')} LETTER SIGNED</span>`
         :`<span title="Appointment letter not signed yet" style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-weight:800;font-size:.6rem;letter-spacing:.04em;color:#b45309;background:#b4530914;border:1px solid #b4530933">${ic('clock')} LETTER PENDING</span>`;
+       // v104: target-only teacher — payment amounts kabhi nahi; target + estimated % only
+       if(x.target_only){
+         const sp=(e.salary_pct!=null?e.salary_pct:e.perf_score);
+         const spc=sp>=85?'#15803d':sp>=65?'#b45309':'#b91c1c';
+         const dedT=e.est_ded_total||0, dedN=(e.est_deductions||[]).length;
+         const tl=(x.policy_target&&x.policy_target.label)||'set by admin';
+         return `<div class="card ae-tcard" style="border:1.5px solid rgba(184,148,31,.45)"><div class="card-body" style="padding:16px 18px">
+          <div style="display:flex;align-items:center;gap:12px">
+           <div class="ae-ava" id="aephot-${x.teacher.id}">${esc(initials(x.teacher.name))}</div>
+           <div style="flex:1;min-width:0">
+            <div style="font-weight:800;font-size:.98rem">${esc(x.teacher.name)}</div>
+            <div style="font-size:.7rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(x.teacher.employee_code)} \u00B7 ${(x.teacher.subjects||[]).slice(0,2).map(esc).join(', ')||'\u2014'}</div>
+           </div>
+           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+            <span title="Estimated share of the monthly salary — amounts are never shown for target-only teachers" style="display:inline-block;min-width:52px;text-align:center;padding:4px 10px;border-radius:20px;font-weight:800;font-size:.8rem;color:${spc};background:${spc}18">est. ${sp}%</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-weight:800;font-size:.6rem;letter-spacing:.04em;color:#b91c1c;background:#b91c1c14;border:1px solid #b91c1c33">TARGET ONLY</span>
+           </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:7px;margin:11px 0 3px;padding:7px 11px;border-radius:10px;background:linear-gradient(135deg,rgba(22,163,74,.1),rgba(22,163,74,.04));border:1px solid rgba(22,163,74,.3);font-size:.74rem;font-weight:700;color:#15803d">${ic('check')} Assigned target ${esc(tl)} — fully met this month</div>
+          <div class="ae-mini">
+           <div><b style="color:${spc}">est. ${sp}%</b><span>Of Salary</span></div>
+           <div><b style="color:${dedT>0?'#b91c1c':'#15803d'}">${dedT>0?'\u2212'+dedT+'%':'0%'}</b><span>Est. Deductions${dedN?' ('+dedN+')':''}</span></div>
+           <div><b>${esc(tl)}</b><span>Target · Fully Met</span></div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+           <button class="btn btn-ghost btn-sm" onclick="openEarnDetail(${x.teacher.id})">View</button>
+           <button class="btn btn-primary btn-sm" onclick="openPayConfig(${x.teacher.id})">${ic('edit')} Pay Structure</button>
+          </div>
+         </div></div>`;
+       }
        return `<div class="card ae-tcard"><div class="card-body" style="padding:16px 18px">
         <div style="display:flex;align-items:center;gap:12px">
          <div class="ae-ava" id="aephot-${x.teacher.id}">${esc(initials(x.teacher.name))}</div>
@@ -15250,6 +15318,13 @@ function _aEarnRow(tid){ return (_aEarnData&&_aEarnData.teachers||[]).find(x=>x.
 function openEarnDetail(tid){
   const x=_aEarnRow(tid); if(!x){ toast('Load the list first.',true); return; }
   const e=x.earnings, a=x.activity;
+  if(x.target_only){
+    showModal('Estimated Earnings \u00B7 '+x.teacher.name+' ('+fmtMonthLabel(x.month)+')',
+     _earnTargetOnlyHTML(x)+_activityStripHTML(x),
+     `<button class="btn btn-primary" onclick="openPayConfig(${tid})">${ic('edit')} Pay Structure</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+    return;
+  }
   showModal('Earnings — '+x.teacher.name+' ('+fmtMonthLabel(x.month)+')',
    _earnHeroHTML(x)+'<div style="margin-top:4px">'+_earnComponentsHTML(x)+'</div>'+_activityStripHTML(x),
    `<button class="btn btn-primary" onclick="openPayConfig(${tid})">${ic('edit')} Pay Structure</button>
@@ -16135,7 +16210,7 @@ body.dark .po-pill.red{color:#f87171}
 .vt-os-kind{display:inline-block;font-size:.58rem;font-weight:800;letter-spacing:.09em;padding:3px 9px;border-radius:999px;margin-right:9px;vertical-align:2px;
   background:rgba(255,233,168,.16);border:1px solid rgba(255,233,168,.4);color:#ffe9a8}
 /* v77 — premium dropdowns (work timings, filters, assign-work forms) */
-.wt-form select.input,.vtm-sel,#modal select.input,.vt-form select.input{
+.vtm-sel,#modal select.input,.vt-form select.input{
   appearance:none;-webkit-appearance:none;cursor:pointer;
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a3831f' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
   background-repeat:no-repeat;background-position:right 12px center;background-size:12px;
@@ -16143,8 +16218,8 @@ body.dark .po-pill.red{color:#f87171}
   background-color:var(--panel);color:var(--text);font-weight:700;
   box-shadow:0 2px 8px -5px rgba(90,66,10,.25);
   transition:border-color .18s,box-shadow .18s}
-.wt-form select.input:hover,.vtm-sel:hover,#modal select.input:hover,.vt-form select.input:hover{border-color:rgba(184,148,31,.65)}
-.wt-form select.input:focus,.vtm-sel:focus,#modal select.input:focus,.vt-form select.input:focus{
+.vtm-sel:hover,#modal select.input:hover,.vt-form select.input:hover{border-color:rgba(184,148,31,.65)}
+.vtm-sel:focus,#modal select.input:focus,.vt-form select.input:focus{
   border-color:#b8941f;outline:none;box-shadow:0 0 0 3px rgba(184,148,31,.16)}
 @media(max-width:640px){
   .vt-grid{grid-template-columns:1fr}

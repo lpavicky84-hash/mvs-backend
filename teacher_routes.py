@@ -4014,6 +4014,76 @@ def earnings_payload(db, tp, month):
     e["leave_per_day"] = round(per_day_sal)
     e["leave_deduction"] = lv_ded
     e["net_payable"] = max(0, e["gross_earned"] - lv_ded)
+    # ---- v104: target-only teachers (Attendance System = Disabled) ----
+    # Inka punch nahi hota, isliye assigned hours-target har mahine FULLY MET maana
+    # jaata hai. Payout amounts kabhi display nahi hote — sirf ESTIMATED % of salary:
+    # base 100% minus common deduction rules (same as every teacher) ka estimated cut.
+    pol = _policy_dict(db, tp.id)
+    target_only = bool(pol.get("disabled"))
+    if target_only:
+        mx = e["max_potential"] or 0
+        pcts = e["pcts"]
+
+        def _share(amt):
+            return (float(amt) / mx * 100.0) if mx else 0.0
+
+        ded = []
+
+        def _add(pct, label):
+            pct = round(pct, 1)
+            if pct >= 0.5:
+                ded.append({"pct": pct, "label": label})
+
+        sched, cond = act["classes_scheduled"], act["classes_conducted"]
+        if sched > 0:
+            miss = sched - cond
+            if miss > 0:
+                _add((1 - pcts["class"]) * _share(pay["class_retainer"]),
+                     "%d scheduled class%s not conducted" % (miss, "es" if miss != 1 else ""))
+            if act["late_classes"] > 0:
+                _add((1 - pcts["quality"]) * _share(pay["class_quality"]),
+                     "%d late start%s (15-min grace crossed)"
+                     % (act["late_classes"], "s" if act["late_classes"] != 1 else ""))
+        if cond > 0:
+            if act["notes_uploaded"] < cond:
+                _add((1 - pcts["notes"]) * _share(pay["notes_dpp"] * 0.40),
+                     "class notes missing on %d conducted class%s"
+                     % (cond - act["notes_uploaded"], "es" if cond - act["notes_uploaded"] != 1 else ""))
+            pend = len(act.get("dpp_pending") or [])
+            if pend > 0:
+                _add((1 - pcts["dpp"]) * _share(pay["notes_dpp"] * 0.40),
+                     "DPP pending on %d chapter%s" % (pend, "s" if pend != 1 else ""))
+        if targets["tests_target"] > 0 and act["tests_created"] < targets["tests_target"]:
+            _add((1 - pcts["tests"]) * _share(pay["notes_dpp"] * 0.20),
+                 "weekly tests short (%d/%d)" % (act["tests_created"], targets["tests_target"]))
+        if act["doubts_assigned"] > act["doubts_resolved"]:
+            _add((1 - pcts["doubt"]) * _share(pay["doubt_resolution"]),
+                 "%d doubt%s unresolved" % (act["doubts_assigned"] - act["doubts_resolved"],
+                                            "s" if act["doubts_assigned"] - act["doubts_resolved"] != 1 else ""))
+        if act["tasks_assigned"] > act["tasks_on_time"]:
+            _add((1 - pcts["task"]) * _share(pay["project_delivery"] * 0.50),
+                 "%d task%s not delivered on time" % (act["tasks_assigned"] - act["tasks_on_time"],
+                                                      "s" if act["tasks_assigned"] - act["tasks_on_time"] != 1 else ""))
+        if pcts["content"] < 1:
+            _add((1 - pcts["content"]) * _share(pay["project_delivery"] * 0.50),
+                 "monthly content targets short (videos %d/%d, live %d/%d, shorts %d/%d, tests %d/%d)"
+                 % (act["videos_made"], targets["videos_target"],
+                    act["live_sessions"], targets["live_target"],
+                    act["shorts_made"], targets["shorts_target"],
+                    act["tests_created"], targets["tests_target"]))
+        if lv_ded > 0:
+            _add((float(lv_ded) / mx * 100.0) if mx else 0.0,
+                 "%s unpaid-leave day%s" % (e["leave_unpaid_days"],
+                                            "s" if e["leave_unpaid_days"] != 1 else ""))
+        ded.sort(key=lambda x: -x["pct"])
+        e["salary_pct"] = round(e["net_payable"] / mx * 100.0, 1) if mx else 0.0
+        e["est_deductions"] = ded[:8]
+        e["est_ded_total"] = round(sum(x["pct"] for x in ded), 1)
+        hrs = _policy_required(pol)
+        tlabel = ("min %gh/day" % hrs) if pol.get("mode") == "flexible" else ("%gh/day" % hrs)
+        pol_target = {"label": tlabel, "hours": hrs, "mode": pol.get("mode")}
+    else:
+        pol_target = None
     name = tp.user.name if tp.user else "Teacher"
     subs = tp.subjects or []
     now = _ist_now()
@@ -4041,6 +4111,7 @@ def earnings_payload(db, tp, month):
             "ifsc": (cfg.ifsc or "").strip(),
         },
         "pay": pay, "targets": targets, "activity": act, "earnings": e,
+        "target_only": target_only, "policy_target": pol_target,
         "letter": {"ref": "MVS/APT/%d/%03d" % (now.year, tp.id),
                    "date": now.strftime("%d %B %Y"),
                    "configured": cfg.id is not None,
@@ -4943,6 +5014,11 @@ TEACHER_RANK_WEIGHTS = {
 
 def _teacher_rank_rows(db, days=90):
     since = datetime.utcnow() - timedelta(days=days)
+    # v104: attendance-disabled (target-only) teachers ka punch in/out nahi hota —
+    # unki present days unke class reports (lecture dates) se count hoti hain.
+    from models import TeacherWorkPolicy
+    disabled_ids = {r.teacher_id for r in db.query(TeacherWorkPolicy).filter(
+        TeacherWorkPolicy.disabled == True).all()}
     rows = []
     for tp in db.query(TeacherProfile).all():
         u = db.query(User).filter(User.id == tp.user_id).first()
@@ -4959,15 +5035,24 @@ def _teacher_rank_rows(db, days=90):
                                           Material.created_at >= since).count()
         lectures = db.query(Lecture).filter(Lecture.teacher_id == tp.id,
                                             Lecture.lecture_date >= since.date()).count()
-        att_rows = db.query(TeacherAttendance).filter(
-            TeacherAttendance.teacher_id == tp.id,
-            TeacherAttendance.att_date >= since.date()).all()
-        present = len({a.att_date for a in att_rows if a.punch_in})
+        if tp.id in disabled_ids:
+            present = len({l.lecture_date for l in db.query(Lecture).filter(
+                Lecture.teacher_id == tp.id, Lecture.is_active == True,
+                Lecture.lecture_date != None,
+                Lecture.lecture_date >= since.date()).all()})
+            att_src = "reports"
+        else:
+            att_rows = db.query(TeacherAttendance).filter(
+                TeacherAttendance.teacher_id == tp.id,
+                TeacherAttendance.att_date >= since.date()).all()
+            present = len({a.att_date for a in att_rows if a.punch_in})
+            att_src = "punch"
         attendance_pct = round(present / days * 100, 1)
         rows.append({
             "teacher_id": tp.id, "name": u.name or "", "user_id": u.user_id or "",
             "photo": getattr(u, "photo_b64", None) or "",
             "subjects": tp.subjects or [], "batch": tp.batch or "",
+            "attendance_source": att_src,
             "metrics": {"tests": tests, "dpps": dpps, "doubts": doubts,
                         "notes": notes, "lectures": lectures,
                         "attendance": attendance_pct},

@@ -3431,9 +3431,13 @@ def admin_earnings(month: str = "", db: Session = Depends(get_db), _=Depends(get
     for tp in db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all():
         out.append(earnings_payload(db, tp, month))
     out.sort(key=lambda x: x["teacher"]["name"])
-    total = sum(x["earnings"]["net_payable"] for x in out)
+    # v104: target-only teachers ka payment amount nahi dikhata — sirf estimated %.
+    # Unke amounts ₹ totals ka hissa nahi hote.
+    total = sum(x["earnings"]["net_payable"] for x in out if not x.get("target_only"))
+    tonly = sum(1 for x in out if x.get("target_only"))
     avg = round(sum(x["earnings"]["perf_score"] for x in out) / len(out)) if out else 0
-    return {"month": month, "teachers": out, "total_net": total, "avg_perf": avg}
+    return {"month": month, "teachers": out, "total_net": total, "avg_perf": avg,
+            "target_only_count": tonly}
 
 
 @router.get("/earnings/teacher/{tid}")
