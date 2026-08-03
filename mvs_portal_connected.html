@@ -3655,6 +3655,7 @@ function enterTeacherApp(){
   document.getElementById('t-name').textContent=NAME+_tSuffix;
   document.getElementById('t-avatar').textContent=initials(NAME);
   loadTopAvatar('teacher');
+  window._tAttOff=false; _tAttModeInit();
   document.querySelectorAll('#teacher-app .nav-item').forEach(n=>n.classList.remove('active'));
   document.querySelector('#teacher-app .nav-item').classList.add('active');
   tPage('dashboard',null);
@@ -3688,8 +3689,38 @@ async function saveTeacherSubjects(){
   catch(e){ toast(e.message,true); }
   btn.disabled=false; btn.textContent='Save & Continue →';
 }
+// ===== v101: TARGET-ONLY MODE (attendance disabled — punch on the other app) =====
+async function _tAttModeInit(){
+  try{ const wp=await api('/api/teacher/work-policy'); window._tAttOff=!!((wp&&wp.policy)||{}).disabled; }
+  catch(e){ window._tAttOff=false; }
+  _tAttApplyNav();
+}
+function _tAttApplyNav(){
+  document.querySelectorAll('#teacher-app .nav-item').forEach(n=>{
+    const oc=n.getAttribute('onclick')||'';
+    if(oc.indexOf("tPage('attendance'")>=0||oc.indexOf("tPage('payout'")>=0) n.style.display=window._tAttOff?'none':'';
+  });
+}
+async function renderTTargetOnly(el){
+  if(!el) return;
+  el.innerHTML=`<div class="sm-head"><h2>My Daily Target</h2><p>Your attendance is managed on the other app — this portal only shows your daily target.</p></div><div id="tto-body"><div class="spinner"></div></div>`;
+  try{
+    const wp=await api('/api/teacher/work-policy'); const p=(wp&&wp.policy)||{};
+    const req=p.required||8;
+    const box=document.getElementById('tto-body'); if(!box) return;
+    box.innerHTML=`<div class="myt-card">
+      <div style="font-size:.66rem;font-weight:800;letter-spacing:.07em;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">My Daily Target — set by admin</div>
+      <div class="myt-row"><span class="myt-chip gold">TARGET ${req}h / DAY</span>${p.label?`<span class="myt-chip">${esc(p.label)}</span>`:''}</div>
+      <div class="myt-note" style="margin-top:10px">Punch in/out is turned off for you on this portal — your attendance is managed on the other app. Payout, appointment letter and earnings slips are not shown here; only your daily target is.</div>
+    </div>`;
+  }catch(e){ const box=document.getElementById('tto-body'); if(box) box.innerHTML=''; }
+}
 function tPage(page,el){
   navPush('teacher-app',page);
+  if(window._tAttOff&&(page==='attendance'||page==='payout')){
+    toast('Punch attendance is turned off for you on this portal — only your daily target shows here.');
+    page='dashboard'; el=null;
+  }
   if(page!=='payout') _payoutUnlocked=false;  // v89: payout se bahar nikalte hi re-lock
   document.querySelectorAll('#teacher-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('t-page-'+page).classList.add('active');
@@ -3797,10 +3828,10 @@ function openClassReport(id){
      <div class="cr-sec">2. Lecture Report <span class="cr-sec-sub">students see this in their Lectures feed</span></div>
      <label class="ex-lbl">Lecture Summary <span class="req">*</span></label>
      <textarea class="form-control" id="lec-summary" rows="2" placeholder="What was taught in this lecture?"></textarea>
-     <div><label class="ex-lbl">Class Notes <span class="req">*</span></label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-pdf').click()">${ic('upload')} <span id="lec-pdf-name">Upload Class Notes (PDF)</span></button><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
+     <div><label class="ex-lbl">Class Notes <span class="req">*</span></label><div class="dz" id="dz-lec-pdf" onclick="document.getElementById('lec-pdf').click()"><span class="dz-ic">${ic('upload')}</span><span class="dz-t" id="lec-pdf-name">Drag &amp; drop the class notes PDF here</span><span class="dz-s">or click to browse \u00b7 PDF only, max 20 MB</span></div><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
      <div id="cr-status"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-success" id="cr-btn" onclick="submitClassReport(${id})">Submit &amp; Mark Done</button>`);
-  crDelayHint();
+  crDelayHint(); _dzInit('lec-pdf');
 }
 function crDelayHint(){
   const box=document.getElementById('cr-delay'); if(!box) return;
@@ -5445,16 +5476,23 @@ async function openLectureForm(prefill){
     <textarea class="form-control" id="lec-summary" rows="2" placeholder="What was taught in this lecture?"></textarea>
     <label class="ex-lbl">Homework</label>
     <textarea class="form-control" id="lec-hw" rows="2" placeholder="Homework / practice for students"></textarea>
-    <div><label class="ex-lbl">Class Notes <span class="req">*</span></label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('lec-pdf').click()">${ic('upload')} <span id="lec-pdf-name">Upload Class Notes (PDF)</span></button><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
+    <div><label class="ex-lbl">Class Notes <span class="req">*</span></label><div class="dz" id="dz-lec-pdf" onclick="document.getElementById('lec-pdf').click()"><span class="dz-ic">${ic('upload')}</span><span class="dz-t" id="lec-pdf-name">Drag &amp; drop the class notes PDF here</span><span class="dz-s">or click to browse \u00b7 PDF only, max 20 MB</span></div><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
   `;
   showModal('New Lecture Report',body,`<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="lec-save" onclick="submitLecture()">Publish Report</button>`);
+  _dzInit('lec-pdf');
 }
 
 function _lecPickFile(inp,kind){
   const f=inp.files[0]; if(!f) return;
   if(f.size>20*1024*1024){ toast('PDF too large (max 20MB)',true); inp.value=''; return; }
+  _lecSetFile(f,kind);
+}
+function _lecSetFile(f,kind){
+  if(!f) return;
+  if(f.size>20*1024*1024){ toast('PDF too large (max 20MB)',true); return; }
   _lecFiles[kind]=f;
   const n=document.getElementById('lec-'+kind+'-name'); if(n) n.textContent=f.name;
+  const z=document.getElementById('dz-lec-'+kind); if(z) z.classList.add('has-file');
 }
 
 
@@ -13319,7 +13357,7 @@ function renderStudentNode(item, st, tmap, opts, ongoing){
   if(item.kind==='event'){
     const e=item.data; const isT=_isTest(e.chapter);
     const lbl=st==='current'?'Live':st==='done'?'Done':st==='progress'?'In Progress':'Upcoming';
-    const edel=`${opts.onEditAny?`<button class="btn btn-ghost btn-sm stl-act" onclick="${opts.onEditAny}(${e.id})">${ic('edit')}</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${e.id})">${ic('trash')}</button>`:''}${opts.onReport?_srChipHTML(e.id)+_crChipHTML(e.id):''}`;
+    const edel=`${opts.onEditAny?`<button class="btn btn-ghost btn-sm stl-act" onclick="${opts.onEditAny}(${e.id})">${ic('edit')}</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${e.id})">${ic('trash')}</button>`:''}${opts.onReport?_crChipHTML(e.id):''}`;
     return `<div class="stl-node ${st}${ongoing?' ongoing':''}">${dot}<div class="stl-card event ${isT?'test':''}${ongoing?' ongoing':''}"><div class="stl-chead"><div class="stl-cname">${esc(e.chapter)}</div><div class="stl-cmeta">${e.date?`<span class="stl-date">${fmtNice(e.date)}${e.day?' · '+esc(e.day):''}</span>`:''}<span class="stl-badge ${st}">${lbl}</span>${edel}</div></div></div></div>`;
   }
   const parts=item.parts, open=(st==='current'||ongoing), id='stl-'+Math.random().toString(36).slice(2,8);
@@ -13333,7 +13371,7 @@ function renderStudentNode(item, st, tmap, opts, ongoing){
       else if(p.cooling){ verifyBtn=`<button class="btn btn-ghost btn-sm stl-act" disabled title="Too many wrong tries \u2014 try again shortly">Try later</button>`; }
       else{ verifyBtn=`<button class="btn btn-success btn-sm stl-act" onclick="markLectureDone(${p.lecture_id})">Mark Done</button>`; }
     }
-    const acts=_hasAct?`${opts.onEditAny?`<button class="btn btn-ghost btn-sm stl-act" onclick="${opts.onEditAny}(${p.id})">${ic('edit')}</button>`:''}${opts.onEdit?`<button class="btn btn-ghost btn-sm stl-act" onclick="openEditTopic(${p.id},'${encodeURIComponent(p.part||'')}')">${ic('edit')}</button>`:''}${opts.onComplete&&!p.completed?`<button class="btn btn-success btn-sm stl-act" onclick="${opts.onComplete}(${p.id})">Class Report</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${p.id})">${ic('trash')}</button>`:''}${opts.onReport?_srChipHTML(p.id)+_crChipHTML(p.id):''}`:verifyBtn;
+    const acts=_hasAct?`${opts.onEditAny?`<button class="btn btn-ghost btn-sm stl-act" onclick="${opts.onEditAny}(${p.id})">${ic('edit')}</button>`:''}${opts.onEdit?`<button class="btn btn-ghost btn-sm stl-act" onclick="openEditTopic(${p.id},'${encodeURIComponent(p.part||'')}')">${ic('edit')}</button>`:''}${opts.onComplete&&!p.completed?`<button class="btn btn-success btn-sm stl-act" onclick="${opts.onComplete}(${p.id})">Class Report</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${p.id})">${ic('trash')}</button>`:''}${opts.onReport?_crChipHTML(p.id):''}`:verifyBtn;
     return `<div class="stl-part"><span class="stl-pdot ${pst}">${pst==='done'?'✓':''}</span><div class="stl-pname">${esc(p.part||'Full chapter')}</div><div class="stl-pright"><div class="stl-ptime">${p.date?fmtNice(p.date)+(p.day?' · '+esc(p.day):''):''}${p.time?'<br>'+esc(p.time):''}</div><span class="stl-pbadge ${pst}">${plbl}</span>${acts}</div></div>`; }).join('');
   const stlbl=st==='done'?'DONE':(ongoing?'ONGOING CHAPTER':(st==='progress'?'IN PROGRESS':(st==='current'?'ONGOING CHAPTER':'UPCOMING')));
   return `<div class="stl-node ${st}${ongoing?' ongoing':''}">${dot}<div class="stl-card chapter ${open?'open':''}${ongoing?' ongoing':''}" id="${id}"><div class="stl-chead" onclick="document.getElementById('${id}').classList.toggle('open')"><div class="stl-cname"><span class="stl-arrow">${open?'▾':'›'}</span>${esc(item.chapter)}</div><div class="stl-cmeta"><span class="stl-badge ${ongoing?'ongoing':st}">${stlbl}</span><span class="cnt-badge dark">${parts.length} part${parts.length>1?'s':''}</span></div></div><div class="stl-parts">${partsHtml}</div></div></div>`;
@@ -13389,10 +13427,10 @@ function wkDayDetail(day){
   const rows=list.map(x=>{
     const tmap=(opts.tipTeacherMap||{})[x.subject]||{};
     const stb=x.st==='current'?'<span class="wkc-status live">Live</span>':x.st==='done'?'<span class="wkc-status done">Completed</span>':'<span class="wkc-status up">Upcoming</span>';
-    return `<div class="wkc-row"><div class="wkc-time">${esc(x.time||'\u2014')}<span>90min</span></div><div class="wkc-main"><div class="wkc-sub">${esc(x.subject)}</div>${x.chapter?`<div class="wkc-teacher">${esc(x.chapter)}${x.part?' \u2014 '+esc(x.part):''}</div>`:''}${tmap.name?`<div class="wkc-teacher">${esc(tmap.name)}</div>`:''}</div><div class="wkc-right">${stb}${opts.onReport&&x.id?_srChipHTML(x.id)+_crChipHTML(x.id):''}</div></div>`;
+    return `<div class="wkc-row"><div class="wkc-time">${esc(x.time||'\u2014')}<span>90min</span></div><div class="wkc-main"><div class="wkc-sub">${esc(x.subject)}</div>${x.chapter?`<div class="wkc-teacher">${esc(x.chapter)}${x.part?' \u2014 '+esc(x.part):''}</div>`:''}${tmap.name?`<div class="wkc-teacher">${esc(tmap.name)}</div>`:''}</div><div class="wkc-right">${stb}${opts.onReport&&x.id?_crChipHTML(x.id):''}</div></div>`;
   }).join('');
   showModal(`${day} \u2014 ${list.length} class${list.length>1?'es':''}`,
-    (opts.onReport?`<div style="font-size:.72rem;color:var(--text-muted);margin-bottom:10px"><b>Report</b> = studio note (recording, setup, issues) &nbsp;\u00b7&nbsp; <b>Class Report</b> = class report + notes for students.</div>`:'')+(rows||'<div class="empty-state"><p>No classes this day.</p></div>'),'');
+    (opts.onReport?`<div style="font-size:.72rem;color:var(--text-muted);margin-bottom:10px"><b>Class Report</b> = class report + notes for students (studio note inside) &nbsp;\u00b7&nbsp; <b>Done</b> = report already submitted.</div>`:'')+(rows||'<div class="empty-state"><p>No classes this day.</p></div>'),'');
 }
 // ===== v97: STUDIO REPORTS (admin — per timetable class) =====
 function _srChipHTML(id){
@@ -13423,25 +13461,33 @@ function openStudioReport(id){
     </div></div>
     <div class="form-group"><label>Report Notes</label><textarea class="form-control" id="sr-notes" rows="3" maxlength="4000" placeholder="Recording status, studio setup, delays, issues, follow-ups needed...">${esc((r&&r.notes)||'')}</textarea></div>
     <div class="form-group"><label>Class Notes (PDF, optional)</label>
-      <button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('sr-file').click()">${ic('upload')} <span id="sr-file-name">${(r&&r.has_notes_file)?'Replace Class Notes':'Upload Class Notes'}</span></button>
+      <div class="dz" id="dz-sr-file" onclick="document.getElementById('sr-file').click()"><span class="dz-ic">${ic('upload')}</span><span class="dz-t" id="sr-file-name">${(r&&r.has_notes_file)?'Drop a new PDF here to replace the notes':'Drag &amp; drop the class notes PDF here'}</span><span class="dz-s">or click to browse \u00b7 PDF only, max 20 MB</span></div>
       <input type="file" id="sr-file" accept="application/pdf" style="display:none" onchange="_srPickFile(this)">
       ${fileRow}
     </div>
     <div class="form-group"><label>Reported By</label><input class="form-control" id="sr-reporter" maxlength="160" value="${esc((r&&r.reporter)||NAME||'')}" placeholder="Your name"></div>
     ${r?`<div style="font-size:.7rem;color:var(--text-muted)">Last updated: ${esc(r.updated_at||'')}</div>`:''}`,
    `${r?`<button class="btn btn-danger" onclick="deleteStudioReport(${id},${r.id})">${ic('trash')} Remove</button>`:''}<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitStudioReport(${id})">${ic('check')} ${r?'Update Report':'Submit Report'}</button>`);
+  _dzInit('sr-file');
 }
 function _srPickFile(inp){
   const f=inp.files[0]; if(!f) return;
   if(f.size>20*1024*1024){ toast('PDF too large (max 20MB)',true); inp.value=''; return; }
+  _srSetFile(f);
+}
+function _srSetFile(f){
+  if(!f) return;
+  if(f.size>20*1024*1024){ toast('PDF too large (max 20MB)',true); return; }
   window._srFile=f; window._srRemove=false;
   const n=document.getElementById('sr-file-name'); if(n) n.textContent=f.name;
   const row=document.getElementById('sr-file-row'); if(row) row.style.display='none';
+  const z=document.getElementById('dz-sr-file'); if(z) z.classList.add('has-file');
 }
 function _srRemoveFile(){
   window._srRemove=true; window._srFile=null;
   const row=document.getElementById('sr-file-row'); if(row) row.style.display='none';
-  const n=document.getElementById('sr-file-name'); if(n) n.textContent='Upload Class Notes';
+  const n=document.getElementById('sr-file-name'); if(n) n.textContent='Drag & drop the class notes PDF here';
+  const z=document.getElementById('dz-sr-file'); if(z) z.classList.remove('has-file');
 }
 async function dlStudioNotes(rid){
   try{
@@ -13472,16 +13518,38 @@ async function deleteStudioReport(entryId,rid){
   if(!confirm('Remove this studio report?')) return;
   try{ await api('/api/admin/studio-reports/'+rid,'DELETE'); if(window._srReports) delete window._srReports[entryId]; closeModal(); toast('Report removed.'); aRenderTT(); }catch(e){ toast(e.message||'Could not remove the report',true); }
 }
+// ===== v100: drag & drop PDF upload zones (teacher + admin panels) =====
+function _dzInit(inputId){
+  const z=document.getElementById('dz-'+inputId);
+  if(!z||z._dzWired) return;
+  z._dzWired=true;
+  ['dragover','dragenter'].forEach(ev=>z.addEventListener(ev,e=>{ e.preventDefault(); e.stopPropagation(); z.classList.add('over'); }));
+  z.addEventListener('dragleave',e=>{ if(!z.contains(e.relatedTarget)) z.classList.remove('over'); });
+  z.addEventListener('dragend',()=>z.classList.remove('over'));
+  z.addEventListener('drop',e=>{
+    e.preventDefault(); e.stopPropagation(); z.classList.remove('over');
+    const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
+    if(!f) return;
+    if(!(f.type==='application/pdf'||/\.pdf$/i.test(f.name||''))){ toast('Only PDF files can be uploaded here.',true); return; }
+    if(inputId==='lec-pdf') _lecSetFile(f,'pdf');
+    else if(inputId==='sr-file') _srSetFile(f);
+    else if(inputId==='cru-file') _cruSetFile(f);
+  });
+}
 // ===== v99: ADMIN CLASS-REPORT UPLOAD (past classes ka report + notes backfill) =====
 function _crChipHTML(id){
+  // v101: ONE report chip per class — Done once the teacher (or a backfill) has submitted
   const up=(window._crUploaded||{})[id];
-  return up?`<span class="tl-report done" onclick="event.stopPropagation();openClassReportUpload(${id})" title="Class report uploaded \u2014 click to view / update">${ic('check')} Uploaded</span>`
+  return up?`<span class="tl-report done" onclick="event.stopPropagation();openClassReportUpload(${id})" title="Class report submitted \u2014 click to view / update">${ic('check')} Done</span>`
           :`<span class="tl-report" onclick="event.stopPropagation();openClassReportUpload(${id})" title="Upload this class's report + notes for students">${ic('upload')} Class Report</span>`;
 }
 function openClassReportUpload(id){
   const e=(_attEntries||[]).find(x=>x.id===id);
   if(!e){ toast('Entry not found. Please refresh the page.',true); return; }
   const up=(window._crUploaded||{})[id];
+  const sr=(window._srReports||{})[id];
+  const srSt=(sr&&sr.status)||'held';
+  const srOpt=(v,l,d)=>`<label class="sr-opt ${srSt===v?'on':''}"><input type="radio" name="cru-sr-status" value="${v}" ${srSt===v?'checked':''} onchange="document.querySelectorAll('#modal-body .sr-opt').forEach(o=>o.classList.remove('on'));this.closest('.sr-opt').classList.add('on')"><span class="sr-dot ${v}"></span><span style="min-width:0"><span class="sr-t">${l}</span><br><span class="sr-d">${d}</span></span></label>`;
   window._crFile=null;
   showModal('Class Report Upload',
    `<div class="alert alert-info" style="margin-bottom:12px"><b>${esc(e.subject||'')}</b> \u00b7 ${esc(e.class_name||'')}<br>${esc(e.chapter||'')}${e.part?' \u2014 '+esc(e.part):''}<br><span style="font-size:.72rem;color:var(--text-muted)">${e.date?fmtNice(e.date):''}${e.day?' \u00b7 '+esc(e.day):''}${e.time?' \u00b7 Scheduled '+esc(e.time):''}${e.teacher_name?' \u00b7 '+esc(e.teacher_name):''}</span></div>
@@ -13499,34 +13567,67 @@ function openClassReportUpload(id){
     <div class="cr-sec">2. For Students <span class="cr-sec-sub">appears in the Lectures feed</span></div>
     <label class="ex-lbl">Lecture Summary</label>
     <textarea class="form-control" id="cru-summary" rows="2" placeholder="What was taught in this class?"></textarea>
-    <div><label class="ex-lbl">Class Notes (PDF)</label><button type="button" class="btn btn-ghost btn-sm" style="width:100%" onclick="document.getElementById('cru-file').click()">${ic('upload')} <span id="cru-file-name">Upload Class Notes</span></button><input type="file" id="cru-file" accept="application/pdf" style="display:none" onchange="_cruPickFile(this)"></div>
+    <div><label class="ex-lbl">Class Notes (PDF)</label><div class="dz" id="dz-cru-file" onclick="document.getElementById('cru-file').click()"><span class="dz-ic">${ic('upload')}</span><span class="dz-t" id="cru-file-name">Drag &amp; drop the class notes PDF here</span><span class="dz-s">or click to browse \u00b7 PDF only, max 20 MB</span></div><input type="file" id="cru-file" accept="application/pdf" style="display:none" onchange="_cruPickFile(this)"></div>
+    <div class="cr-sec">3. Studio Note <span class="cr-sec-sub">optional \u2014 internal: recording, setup, issues</span></div>
+    <div class="sr-opts" style="margin-bottom:10px">
+      ${srOpt('held','Class Held','The class happened as planned')}
+      ${srOpt('issues','Held with Issues','Problems \u2014 recording, setup, delay...')}
+      ${srOpt('cancelled','Cancelled / Not Held','The class could not take place')}
+    </div>
+    <textarea class="form-control" id="cru-srnotes" rows="2" maxlength="4000" placeholder="Recording status, studio setup, delays, issues, follow-ups needed...">${esc((sr&&sr.notes)||'')}</textarea>
+    <div style="margin-top:8px"><label class="ex-lbl">Reported By</label><input class="form-control" id="cru-srreporter" maxlength="160" value="${esc((sr&&sr.reporter)||NAME||'')}" placeholder="Your name"></div>
     ${up?`<div style="font-size:.72rem;color:var(--text-muted);margin-top:8px">Already uploaded \u2014 submitting updates the existing report. Uploading a new PDF replaces the notes.</div>`:''}`,
    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="cru-btn" onclick="submitClassReportUpload(${id})">${ic('check')} ${up?'Update Report':'Upload Report'}</button>`);
+  _dzInit('cru-file');
 }
 function _cruPickFile(inp){
   const f=inp.files[0]; if(!f) return;
   if(f.size>20*1024*1024){ toast('PDF too large (max 20MB)',true); inp.value=''; return; }
+  _cruSetFile(f);
+}
+function _cruSetFile(f){
+  if(!f) return;
+  if(f.size>20*1024*1024){ toast('PDF too large (max 20MB)',true); return; }
   window._crFile=f;
   const n=document.getElementById('cru-file-name'); if(n) n.textContent=f.name;
+  const z=document.getElementById('dz-cru-file'); if(z) z.classList.add('has-file');
 }
 async function submitClassReportUpload(id){
+  // v101: one modal — academic report (students) + optional studio note (internal)
   const topic=(document.getElementById('cru-topic').value||'').trim();
   const summary=(document.getElementById('cru-summary').value||'').trim();
-  if(!topic&&!summary&&!window._crFile){ toast('Add a topic, summary or the class notes PDF.',true); return; }
-  const btn=document.getElementById('cru-btn'); if(btn){ btn.disabled=true; btn.textContent='Uploading...'; }
-  const payload={entry_id:id, topic_covered:topic,
-    homework:(document.getElementById('cru-hw').value||'').trim(),
-    start_time:(document.getElementById('cru-start').value||'').trim(),
-    end_time:(document.getElementById('cru-end').value||'').trim(),
-    remarks:(document.getElementById('cru-remarks').value||'').trim(),
-    summary:summary};
+  const start=(document.getElementById('cru-start').value||'').trim();
+  const end=(document.getElementById('cru-end').value||'').trim();
+  const srStatus=((document.querySelector('input[name="cru-sr-status"]:checked')||{}).value)||'held';
+  const srNotes=(document.getElementById('cru-srnotes').value||'').trim();
+  const srReporter=(document.getElementById('cru-srreporter').value||'').trim();
+  const hasAcademic=!!(topic||summary||window._crFile);
+  const hadStudio=!!((window._srReports||{})[id]);
+  const hasStudio=hadStudio||srStatus!=='held'||!!srNotes;
+  if(!hasAcademic&&!hasStudio){ toast('Add a topic, summary, notes PDF or a studio note.',true); return; }
+  if(hasStudio&&srStatus!=='held'&&!srNotes&&!hadStudio){ toast('Please add a short note about the issue / cancellation.',true); return; }
+  const btn=document.getElementById('cru-btn'); if(btn){ btn.disabled=true; btn.textContent='Saving...'; }
   try{
-    if(window._crFile){ payload.pdf_b64=await _fileB64(window._crFile); payload.pdf_filename=window._crFile.name; }
-    const r=await api('/api/admin/class-report-backfill','POST',payload);
-    window._crUploaded=window._crUploaded||{}; window._crUploaded[id]=true;
+    const msgs=[];
+    if(hasAcademic){
+      const payload={entry_id:id, topic_covered:topic,
+        homework:(document.getElementById('cru-hw').value||'').trim(),
+        start_time:start, end_time:end,
+        remarks:(document.getElementById('cru-remarks').value||'').trim(),
+        summary:summary};
+      if(window._crFile){ payload.pdf_b64=await _fileB64(window._crFile); payload.pdf_filename=window._crFile.name; }
+      const r=await api('/api/admin/class-report-backfill','POST',payload);
+      window._crUploaded=window._crUploaded||{}; window._crUploaded[id]=true;
+      msgs.push(r.message||'Class report uploaded');
+    }
+    if(hasStudio){
+      const r2=await api('/api/admin/studio-reports','POST',{entry_id:id, status:srStatus, notes:srNotes, reporter:srReporter, start_time:start, end_time:end});
+      if(r2&&r2.report){ window._srReports=window._srReports||{}; window._srReports[id]=r2.report; }
+      msgs.push('Studio note saved');
+    }
     window._crFile=null;
-    closeModal(); toast(r.message||'Class report uploaded.'); aRenderTT();
-  }catch(e2){ toast(e2.message||'Could not upload the report',true); if(btn){ btn.disabled=false; btn.textContent='Upload Report'; } }
+    closeModal(); toast(msgs.join(' \u00b7 ')||'Saved.'); aRenderTT();
+  }catch(e2){ toast(e2.message||'Could not save',true); if(btn){ btn.disabled=false; btn.textContent='Upload Report'; } }
 }
 function genPassword(){ const c='abcdefghjkmnpqrstuvwxyz23456789'; let p=''; for(let i=0;i<6;i++)p+=c[Math.floor(Math.random()*c.length)]; return p; }
 function showCredentials(role,name,uid,pass){
@@ -13960,15 +14061,26 @@ function _fmtClock(d){
   return p(h)+':'+p(d.getMinutes())+':'+p(d.getSeconds())+' '+am;
 }
 function _pwTick(){
-  const el=document.getElementById('pw-clock');
-  if(!el){ clearInterval(_pwInt); _pwInt=null; return; }
-  try{ el.textContent=_fmtClock(new Date()); }catch(e){}
+  // v102: dashboard + attendance dono punch cards DOM me saath rehte hain (duplicate
+  // id="pw-clock") — getElementById sirf pehla update karta tha, doosra card ka clock
+  // khaali reh jaata tha. Ab class se SAB clocks tick hote hain.
+  const els=document.querySelectorAll('.pw-clock');
+  if(!els.length){ clearInterval(_pwInt); _pwInt=null; return; }
+  try{ const t=_fmtClock(new Date()); els.forEach(el=>{ el.textContent=t; }); }catch(e){}
 }
 async function renderPunchCard(wrapId){
   const wrap=document.getElementById(wrapId); if(!wrap) return;
   let d;
   try{ d=await api('/api/teacher/attendance/today'); }
   catch(e){ wrap.innerHTML=''; return; }
+  if(d.policy&&d.policy.disabled){
+    wrap.innerHTML=`<div class="myt-card" style="margin-bottom:18px">
+      <div style="font-size:.66rem;font-weight:800;letter-spacing:.07em;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">My Daily Target — set by admin</div>
+      <div class="myt-row"><span class="myt-chip gold">TARGET ${d.required_hours||8}h / DAY</span>${d.policy.label?`<span class="myt-chip">${esc(d.policy.label)}</span>`:''}</div>
+      <div class="myt-note" style="margin-top:10px">Punch in/out is turned off for you on this portal — your attendance is managed on the other app. Only your daily target shows here.</div>
+    </div>`;
+    return;
+  }
   const dateLbl=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short'});
   let statusHtml='', btnHtml='';
   if(!d.punch_in){
@@ -14137,6 +14249,7 @@ async function doPunch(kind,confirm){
 let _tAttMonth='';
 async function loadTAttendance(){
   const el=document.getElementById('t-attendance-content');
+  if(window._tAttOff){ renderTTargetOnly(el); return; }
   _tAttMonth=_tAttMonth||curMonth();
   el.innerHTML=`<div class="sm-head"><h2>My Attendance</h2><p>Punch in / punch out daily. Your counted hours = punch gap <b>minus lunch break</b> (full time). Leaving before your assigned hours still marks you <b>Present (Short)</b>. Please take prior approval for any leave.</p></div>
     <div id="ta-timing"></div>
@@ -14663,6 +14776,7 @@ function _payStructureHTML(d,editable){
 let _payoutUnlocked=false, _payGate=null;
 async function payoutGate(){
   const el=document.getElementById('t-payout-content');
+  if(window._tAttOff){ renderTTargetOnly(el); return; }
   if(_payoutUnlocked){ loadTPayout(); return; }
   el.innerHTML=`<div class="sm-head"><h2>Payout</h2><p>Work-based earnings — appointment-letter rule, auto-calculated.</p></div>
    <div class="card"><div class="card-body" style="text-align:center;padding:46px 20px">
@@ -14846,16 +14960,19 @@ async function aWtFetch(){
     const rows=d.teachers||[];
     if(!rows.length){ box.innerHTML='<div class="empty-state"><p>No active teachers found.</p></div>'; return; }
     window._wtRows=rows;
-    box.innerHTML=`<div class="alert alert-info" style="font-size:.78rem;margin-bottom:14px">Set each teacher's timing once — reports, short-day marking and extra hours all follow it automatically. <b>Full Time</b> skips the lunch break from counted hours; <b>Part Time</b> has no break. <b>Flexible</b> = minimum 1 hour, no fixed schedule. Extra hours are shown in reports but <b>never add payout</b>.</div>
+    box.innerHTML=`<div class="alert alert-info" style="font-size:.78rem;margin-bottom:14px">Set each teacher's timing once — reports, short-day marking and extra hours all follow it automatically. <b>Full Time</b> skips the lunch break from counted hours; <b>Part Time</b> has no break. <b>Flexible</b> = minimum 1 hour, no fixed schedule. Extra hours are shown in reports but <b>never add payout</b>. Set <b>Attendance System = Disabled</b> for teachers who punch on the other app — they only see their daily target here (no punch, payout, appointment letter or slip).</div>
       <div class="wt-grid">${rows.map((t,i)=>{
         const p=t.policy||{};
         const set=p.configured;
         return `<div class="wt-card" id="wt-card-${i}">
           <div class="wt-head"><div class="wt-av">${esc(initials(t.name||'T'))}</div>
             <div style="min-width:0"><div class="wt-name">${esc(t.name)}</div><div class="wt-sub">${esc((t.subjects||[]).slice(0,2).join(' · ')||'—')}</div></div>
-            <span class="wt-chip ${set?'set':'def'}">${set?'SET':'DEFAULT'}</span></div>
-          <div class="wt-now">Current: <b>${esc(p.label||'—')}</b>${p.break_minutes?` · lunch break <b>${p.break_minutes}m</b> skipped`:''} · target <b>${p.required}h/day</b></div>
+            <span class="wt-chip ${set?'set':'def'}">${set?'SET':'DEFAULT'}</span>${p.disabled?'<span class="wt-chip" style="background:#fee2e2;color:#b91c1c">NO PUNCH</span>':''}</div>
+          <div class="wt-now">Current: <b>${esc(p.label||'—')}</b>${p.break_minutes?` · lunch break <b>${p.break_minutes}m</b> skipped`:''} · target <b>${p.required}h/day</b>${p.disabled?' · <b style="color:#b91c1c">TARGET ONLY</b>':''}</div>
           <div class="wt-form">
+            <div class="full"><span class="wt-lbl">Attendance System</span><select class="input" id="wt-off-${i}">
+              <option value="0"${!p.disabled?' selected':''}>Enabled — punch in/out on this portal</option>
+              <option value="1"${p.disabled?' selected':''}>Disabled — target only (punch managed on other app)</option></select></div>
             <div class="full"><span class="wt-lbl">Work Type</span><select class="input" id="wt-type-${i}" onchange="wtTypeChange(${i})">
               <option value="full_time"${p.work_type==='full_time'?' selected':''}>Full Time — lunch break skipped</option>
               <option value="part_time"${p.work_type==='part_time'?' selected':''}>Part Time — no break</option></select></div>
@@ -14905,7 +15022,8 @@ async function wtSave(tid,i){
   const gv=id=>{ const el=document.getElementById(id); return el?el.value:''; };
   const payload={teacher_id:tid, work_type:gv('wt-type-'+i)||'full_time', mode:gv('wt-mode-'+i)||'hours',
     entry_time:gv('wt-en-'+i), exit_time:gv('wt-ex-'+i),
-    required_hours:parseFloat(gv('wt-rh-'+i))||0, break_minutes:parseInt(gv('wt-br-'+i))||0};
+    required_hours:parseFloat(gv('wt-rh-'+i))||0, break_minutes:parseInt(gv('wt-br-'+i))||0,
+    disabled:(gv('wt-off-'+i)==='1')};
   const btn=document.querySelector('#wt-card-'+i+' .wt-save');
   if(btn){ btn.disabled=true; btn.textContent='Saving...'; }
   try{
@@ -15002,7 +15120,7 @@ async function aAttFetch(){
       const nShort=(d.teachers||[]).filter(t=>t.status==='short').length;
       sum.innerHTML=`<span class="po-pill green">PRESENT ${d.present} / ${d.total}</span>${nLeave?`<span class="po-pill blue">ON LEAVE ${nLeave}</span>`:''}${nShort?`<span class="po-pill amber">PRESENT (SHORT) ${nShort}</span>`:''}<span class="po-pill slate">${esc(d.day).toUpperCase()}, ${esc(fmtNice(d.date)).toUpperCase()}</span>`;
       if(!d.teachers.length){ body.innerHTML='<div class="empty-state"><p>No active teachers found.</p></div>'; return; }
-      const pill=t=>t.status==='working'?'<span class="po-pill green">ON DUTY</span>':t.status==='done'?'<span class="po-pill gold">DAY COMPLETE</span>':t.status==='leave'?'<span class="po-pill blue">ON LEAVE</span>':t.status==='short'?'<span class="po-pill amber">PRESENT · SHORT</span>':'<span class="po-pill red">NOT PUNCHED</span>';
+      const pill=t=>t.status==='offsite'?'<span class="po-pill slate">TARGET ONLY</span>':t.status==='working'?'<span class="po-pill green">ON DUTY</span>':t.status==='done'?'<span class="po-pill gold">DAY COMPLETE</span>':t.status==='leave'?'<span class="po-pill blue">ON LEAVE</span>':t.status==='short'?'<span class="po-pill amber">PRESENT · SHORT</span>':'<span class="po-pill red">NOT PUNCHED</span>';
       window._aAttRows={}; d.teachers.forEach(t=>window._aAttRows[t.teacher_id]=t);
       const _chip=(dist,office)=>dist==null?'':(dist===0&&office)?` <span style="font-size:.62rem;font-weight:800;color:#059669" title="Office WiFi/PC se punch (network verified)">(WiFi)</span>`:` <span style="font-size:.62rem;font-weight:800;color:${dist<=50?'#059669':'#d97706'}" title="Office se punch distance">(${dist}m)</span>`;
       const _hrs=t=>{
@@ -15020,7 +15138,7 @@ async function aAttFetch(){
       sum.innerHTML=`<span class="po-pill slate">${esc(fmtMonthLabel(d.month)).toUpperCase()}</span><span class="po-pill gold">ELAPSED ${d.elapsed_days||0} DAYS</span><span class="po-pill green">SHORT DAYS COUNT AS PRESENT</span>`;
       if(!d.teachers.length){ body.innerHTML='<div class="empty-state"><p>No active teachers found.</p></div>'; return; }
       body.innerHTML=`<div style="overflow-x:auto"><table class="att-table"><thead><tr><th>Teacher</th><th>Work Timing</th><th>Present</th><th>Short</th><th>Leave</th><th>AB</th><th>Counted Hours</th><th>Extra Hours</th><th></th></tr></thead><tbody>${
-        d.teachers.map(t=>`<tr><td style="font-weight:600">${esc(t.name)}</td><td><span class="att-pol">${esc(t.policy_label||'—')}</span></td><td><b style="color:#059669">${t.present_days}</b><span class="att-brk"> (full ${t.full_days||0})</span></td><td><b style="color:#b45309">${t.short_days||0}</b></td><td><b style="color:#1d4ed8">${t.leave_days||0}</b></td><td><b style="color:#b91c1c">${t.absent_days||0}</b></td><td><span class="att-net">${t.total_hours} h</span></td><td>${t.extra_hours>0?`<b style="color:#2563eb">+${t.extra_hours} h</b><div class="att-brk">no extra payout</div>`:'—'}</td><td><button class="btn btn-ghost btn-sm" onclick="openTeacherAttDetail(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">History</button></td></tr>`).join('')
+        d.teachers.map(t=>`<tr><td style="font-weight:600">${esc(t.name)}</td><td><span class="att-pol">${esc(t.policy_label||'—')}</span></td><td><b style="color:#059669">${t.present_days}</b><span class="att-brk"> (full ${t.full_days||0})</span></td><td><b style="color:#b45309">${t.short_days||0}</b></td><td><b style="color:#1d4ed8">${t.leave_days||0}</b></td><td>${t.disabled?'<span class="po-pill slate">TARGET ONLY</span>':`<b style="color:#b91c1c">${t.absent_days||0}</b>`}</td><td><span class="att-net">${t.total_hours} h</span></td><td>${t.extra_hours>0?`<b style="color:#2563eb">+${t.extra_hours} h</b><div class="att-brk">no extra payout</div>`:'—'}</td><td><button class="btn btn-ghost btn-sm" onclick="openTeacherAttDetail(${t.teacher_id},'${esc((t.name||'').replace(/'/g,''))}')">History</button></td></tr>`).join('')
       }</tbody></table></div>`;
     }
   }catch(e){ body.innerHTML=errHtml(e); }
@@ -16839,6 +16957,14 @@ body.dark .po-pill.red{color:#f87171}
 .sr-file-nm{flex:1;min-width:0;font-size:.78rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sr-file-x{border:none;background:none;color:var(--text-muted);cursor:pointer;font-size:.82rem;padding:2px 6px;border-radius:6px;flex:none}
 .sr-file-x:hover{background:rgba(220,38,38,.1);color:#dc2626}
+.dz{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:15px 12px;border:1.5px dashed var(--border);border-radius:12px;background:var(--card-bg,#fff);cursor:pointer;text-align:center;transition:border-color .15s,background .15s}
+.dz:hover{border-color:#c9a227;background:#fffdf5}
+.dz.over{border-color:#c9a227;background:#fdf6dd}
+.dz.has-file{border-style:solid;border-color:#2f9e44;background:#f2fbf4}
+.dz-ic{color:#8a6d10;display:inline-flex}
+.dz-ic svg{width:18px;height:18px}
+.dz-t{font-size:.8rem;font-weight:700;color:var(--text);word-break:break-word}
+.dz-s{font-size:.68rem;color:var(--text-muted)}
 .att-grid>.card .card-body{flex:1}
 .att-grid #ta-punch-wrap{display:flex}
 .att-grid #ta-punch-wrap .pw-shell{flex:1;margin-bottom:0 !important;display:flex;flex-direction:column}

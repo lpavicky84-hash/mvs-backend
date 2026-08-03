@@ -2982,7 +2982,10 @@ def admin_attendance_day(day: str = "", db: Session = Depends(get_db), _=Depends
             status = "working"
         elif lv:
             status = "leave"
+        elif pol.get("disabled"):
+            status = "offsite"        # v101: attendance disabled — target only, na present na absent
         out.append({"teacher_id": tp.id, "name": tp.user.name if tp.user else "",
+                    "disabled": bool(pol.get("disabled")),
                     "punch_in": _fmt_t(a.punch_in) if a else None,
                     "punch_out": _fmt_t(a.punch_out) if a else None,
                     "in_dist": a.in_dist if a else None, "out_dist": a.out_dist if a else None,
@@ -3032,8 +3035,9 @@ def admin_attendance_month(month: str = "", db: Session = Depends(get_db), _=Dep
         lvmap = _leave_days_map(db, tp.id, start, end)
         leave_days = round(sum(lvmap.values()), 1)
         leave_elapsed = round(sum(v for d, v in lvmap.items() if d <= today), 1)
-        absent = max(0, round(elapsed - present - leave_elapsed))
+        absent = 0 if pol.get("disabled") else max(0, round(elapsed - present - leave_elapsed))
         out.append({"teacher_id": tp.id, "name": tp.user.name if tp.user else "",
+                    "disabled": bool(pol.get("disabled")),
                     "present_days": present, "full_days": full, "short_days": short,
                     "leave_days": leave_days, "absent_days": absent,
                     "total_hours": net, "extra_hours": extra, "required_hours": req,
@@ -3202,6 +3206,7 @@ def admin_set_work_policy(payload: dict = Body(...), db: Session = Depends(get_d
     else:                                        # flexible — sirf minimum 1h
         req_h = MIN_PRESENT_HOURS
         entry, exit_ = "", ""
+    disabled = bool(payload.get("disabled"))      # v101: attendance off — target only
     p = db.query(TeacherWorkPolicy).filter(TeacherWorkPolicy.teacher_id == tp.id).first()
     if not p:
         p = TeacherWorkPolicy(teacher_id=tp.id)
@@ -3210,10 +3215,14 @@ def admin_set_work_policy(payload: dict = Body(...), db: Session = Depends(get_d
     p.required_hours = req_h
     p.entry_time, p.exit_time = entry, exit_
     p.break_minutes = brk
+    p.disabled = disabled
     p.updated_at = _ist_now()
     db.commit()
     pol = _policy_from_row(p, tp.id)
-    return {"message": "Work timing saved for %s — %s" % (tp.user.name if tp.user else "teacher", _policy_label(pol)),
+    msg = "Work timing saved for %s — %s" % (tp.user.name if tp.user else "teacher", _policy_label(pol))
+    if disabled:
+        msg += " · attendance disabled (target only)"
+    return {"message": msg,
             "teacher_id": tp.id,
             "policy": {**pol, "required": _policy_required(pol), "label": _policy_label(pol)}}
 

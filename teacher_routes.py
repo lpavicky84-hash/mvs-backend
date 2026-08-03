@@ -3391,7 +3391,8 @@ def _default_policy(teacher_id=None):
     return {"teacher_id": teacher_id, "configured": False,
             "work_type": "full_time", "mode": "hours",
             "required_hours": DEFAULT_REQUIRED_HOURS,
-            "entry_time": "", "exit_time": "", "break_minutes": 0}
+            "entry_time": "", "exit_time": "", "break_minutes": 0,
+            "disabled": False}
 
 def _parse_hhmm24(s):
     """'09:30' (24h policy time) -> minutes since midnight. Invalid -> None.
@@ -3415,7 +3416,8 @@ def _policy_from_row(p, teacher_id):
                   "mode": p.mode if p.mode in POLICY_MODES else "hours",
                   "required_hours": float(p.required_hours or DEFAULT_REQUIRED_HOURS),
                   "entry_time": p.entry_time or "", "exit_time": p.exit_time or "",
-                  "break_minutes": int(p.break_minutes or 0)})
+                  "break_minutes": int(p.break_minutes or 0),
+                  "disabled": bool(getattr(p, "disabled", False))})
     if d["work_type"] != "full_time":
         d["break_minutes"] = 0          # lunch break sirf full-time me count hota hai
     return d
@@ -4355,6 +4357,8 @@ def teacher_geofence_status(db: Session = Depends(get_db), current_user=Depends(
 def punch_in(request: Request, payload: dict = Body(default={}), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
     from models import TeacherAttendance
+    if _policy_dict(db, tp.id).get("disabled"):
+        raise HTTPException(status_code=403, detail="Punch attendance is disabled for you on this portal — target-only mode")
     _ensure_geofence(db)
     office, dist = _geofence_check(db, payload.get("lat"), payload.get("lng"), payload.get("accuracy"), _client_ip(request))
     now = _ist_now(); today = now.date()
@@ -4383,6 +4387,8 @@ def punch_in(request: Request, payload: dict = Body(default={}), db: Session = D
 def punch_out(request: Request, payload: dict = Body(default={}), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
     from models import TeacherAttendance
+    if _policy_dict(db, tp.id).get("disabled"):
+        raise HTTPException(status_code=403, detail="Punch attendance is disabled for you on this portal — target-only mode")
     _ensure_geofence(db)
     office, dist = _geofence_check(db, payload.get("lat"), payload.get("lng"), payload.get("accuracy"), _client_ip(request))
     now = _ist_now(); today = now.date()

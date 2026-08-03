@@ -120,6 +120,8 @@ def ensure_columns():
         "ALTER TABLE studio_reports ADD COLUMN notes_file_b64 LONGTEXT",
         "ALTER TABLE studio_reports ADD COLUMN notes_file_name VARCHAR(255)",
         "ALTER TABLE studio_reports ADD COLUMN notes_file_mime VARCHAR(100)",
+        # v101: per-teacher attendance disable (target-only mode)
+        "ALTER TABLE teacher_work_policies ADD COLUMN disabled BOOLEAN DEFAULT 0",
     ]
     for s in stmts:
         try:

@@ -1086,6 +1086,396 @@ def _words_fallback(pdf_pages):
     return [(n, "\n".join(a), "\n".join(b)) for n, a, b in out_rows if a or b]
 
 
+# ---------------------------------------------------------------------------
+# v102: post-parse reconciliation — the table extraction of some NIOS sheets
+# drops lessons (marker lands in the module-name cell, a heading wraps over
+# the lesson, columns glue together). These helpers rebuild the damage from
+# the plain page text and make the expected-count reading just as tolerant.
+# ---------------------------------------------------------------------------
+
+# a title that ends like this was cut off mid-sentence by the cell split
+UNFINISHED_RE = re.compile(
+    r"(?:\b(?:and|&|of|the|for|in|to|on|with|its|their|from|by|a|an|or)\s*$|[,\-\u2013:/(]$)", re.I)
+
+LESSON_ANY_RE = re.compile(
+    r"\b(?:L|Lesson)\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212\.:]\s*\d{1,2}(?![\d])", re.I)
+
+
+def _lesson_marker_re(n, letter=""):
+    # 'L-4' must not match inside 'L-42' or the option tags 'L-4A'
+    if letter:
+        return re.compile(
+            r"\b(?:L|Lesson)\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212\.:]\s*%d\s*%s(?![\dAB])" % (n, letter), re.I)
+    return re.compile(
+        r"\b(?:L|Lesson)\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212\.:]\s*%d(?![\dAB])" % n, re.I)
+
+
+def _find_lesson_in_text(lines, n, mod_name="", letter=""):
+    """
+    Locate lesson n in the raw page lines and rebuild its title, joining
+    wrapped continuation lines ("Chemical Reaction" + "and Equations") and
+    cutting the other column's lesson off the same line. Leading words that
+    really belong to a wrapped module name ("Things" in "Moving Things") are
+    dropped from continuations.
+    """
+    pat = _lesson_marker_re(n, letter)
+    mod_words = set(_norm(mod_name).split())
+    for i, line in enumerate(lines):
+        m = pat.search(line)
+        if not m:
+            continue
+        tail = line[m.end():]
+        nm = LESSON_ANY_RE.search(tail)
+        if nm:
+            tail = tail[:nm.start()]
+        title = tail.strip()
+        joined_cont = False
+        for j in range(i + 1, min(i + 3, len(lines))):
+            cont = lines[j].strip()
+            if not cont:
+                break
+            nm2 = LESSON_ANY_RE.search(cont)
+            if nm2:
+                cont = cont[:nm2.start()].strip()
+            if not cont or len(cont) > 55:
+                break
+            if MODULE_START_RE.match(cont) or HEADER_CELL_RE.search(cont):
+                break
+            words = cont.split()
+            while words and words[0].strip(".,:;-()").lower() in mod_words:
+                words = words[1:]
+            cont = " ".join(words).strip()
+            if not cont:
+                break
+            if UNFINISHED_RE.search(title) or re.match(
+                    r"^(?:and|&|of|the|for|in|to|on|with)\b", cont, re.I) or cont[0].islower():
+                title = (title + " " + cont).strip()
+                joined_cont = True
+                if not UNFINISHED_RE.search(title):
+                    break
+            else:
+                break
+        t = _title_from_chunk(title)
+        if len(t) >= 3:
+            return i, t, joined_cont
+    return None
+
+
+def _module_by_context(lines, idx, modules):
+    """The module heading printed nearest above a lesson tells its home -
+    headings are often glued to lesson text, so cut at the first marker."""
+    names = [(m, _norm(m["module"])) for m in modules]
+    best, best_score = None, 0.0
+    for j in range(idx, max(-1, idx - 16), -1):
+        line = lines[j].strip()
+        if not line:
+            continue
+        if not (MODULE_START_RE.match(line) or re.search(r"module", line, re.I)):
+            continue
+        cut = LESSON_ANY_RE.search(line)
+        head = line[:cut.start()] if cut else line
+        nl = _norm(head)
+        if not nl and cut and j + 1 < len(lines):
+            # the module name wrapped onto the next line ("Module- IV" / "Energy ...")
+            nxt = lines[j + 1].strip()
+            c2 = LESSON_ANY_RE.search(nxt)
+            frag = nxt[:c2.start()] if c2 else nxt
+            nl = _norm(head + " " + " ".join(frag.split()[:4]))
+        if not nl:
+            continue
+        for m, nm in names:
+            if not nm:
+                continue
+            score = difflib.SequenceMatcher(None, nl, nm).ratio()
+            if nm in nl or nl in nm:
+                score = max(score, 0.8)
+            if score > best_score:
+                best, best_score = m, score
+        if best_score >= 0.45:
+            return best
+    return best if best_score >= 0.45 else None
+
+
+def _lsort_key(l):
+    mm = LESSON_NO_RE.match(str(l["no"]))
+    return (int(mm.group(1)), mm.group(2)) if mm else (999, "")
+
+
+LESSON_IN_NAME_RE = re.compile(
+    r"\b(?:L|Lesson)\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212\.:]\s*\d{1,2}\s*[AB]?(?![\d])", re.I)
+
+
+def _fix_module_names(modules):
+    """
+    A lesson marker that landed inside the module-name cell leaves names like
+    'Moving L.9 Things'; a nameless fragment row ('4', '18') is really the
+    tail of the previous module - merge it back.
+    """
+    out = []
+    for m in modules:
+        name = LESSON_IN_NAME_RE.sub(" ", m["module"])
+        name = re.sub(r"\s+", " ", name).strip(" -\u2013:.")
+        m["module"] = name
+        if not re.search(r"[A-Za-z\u0900-\u097F]", name):
+            if out:
+                prev = out[-1]
+                if not prev["weightage"] and m["weightage"]:
+                    prev["weightage"] = m["weightage"]
+                prev["lessons"].extend(m["lessons"])
+                prev["lessons"].sort(key=_lsort_key)
+                continue
+            m["module"] = "Module"
+        out.append(m)
+    return out
+
+
+def _rename_from_text(modules, joined):
+    """
+    Some sheets list units under the module and the cell read glues them all
+    into the name ('Home Science Unit -1 ... Unit -2'). The clean name sits on
+    a 'Module-k <name>' line in the page text - match it by name overlap or by
+    the lessons printed right after it.
+    """
+    lines = joined.split("\n")
+    head_re = re.compile(r"^\s*module\s*[\-\u2013]?\s*(?:[IVXLC]+|\d{1,2})\b[\.\):\-\u2013]?\s*(.+)", re.I)
+    heads = []
+    for i, line in enumerate(lines):
+        hm = head_re.match(line.strip())
+        if not hm:
+            continue
+        cand = hm.group(1).strip()
+        cut = LESSON_ANY_RE.search(cand)
+        if cut:
+            cand = cand[:cut.start()].strip()
+        cand = cand.strip(" -\u2013:.")
+        if 3 <= len(cand) <= 60 and _norm(cand):
+            heads.append((i, cand))
+    if not heads:
+        return
+    for m in modules:
+        name = m["module"]
+        if len(name) <= 45 or not re.search(r"\bunit\s*[\-\u2013]?\s*\d", name, re.I):
+            continue
+        nn = _norm(name)
+        nums = []
+        for l in m["lessons"]:
+            mm = LESSON_NO_RE.match(str(l["no"]))
+            if mm:
+                nums.append(int(mm.group(1)))
+        best, best_score = None, 0
+        for idx, cand in heads:
+            nc = _norm(cand)
+            score = 0
+            if " ".join(nc.split()[:2]) and " ".join(nc.split()[:2]) in nn:
+                score += 100
+            if nums:
+                window = "\n".join(lines[idx:idx + 20])
+                score += sum(1 for n in nums if _lesson_marker_re(n).search(window))
+            if score > best_score:
+                best, best_score = cand, score
+        need = 100 if not nums else max(2, (len(nums) + 1) // 2)
+        if best and best_score >= need:
+            m["module"] = best
+
+
+def _suffix_polluted(nt, t, others):
+    """The words a repair adds must not already live inside another lesson's
+    title - in glued two-column lines the neighbour column's wrapped title
+    bleeds in without any marker to cut at ('Status and Role' + 'Association
+    and Institution' from L-5's title)."""
+    nw, tw = nt.lower().split(), t.lower().split()
+    k = 0
+    while k < min(len(nw), len(tw)) and nw[k] == tw[k]:
+        k += 1
+    grams = [" ".join(nw[g:g + 2]) for g in range(k, len(nw) - 1)]
+    if not grams:
+        return False
+    for o in others:
+        ol = o.lower()
+        if any(g in ol for g in grams):
+            return True
+    return False
+
+
+def _repair_titles(modules, joined):
+    """
+    Re-read titles the cell split truncated. Two shapes:
+      cut mid-sentence   'Cooperation, Competition and'
+      cut but looks whole 'Indian Social' (the page text carries the full title)
+    The page-text title wins when it keeps the cell title as a prefix and adds
+    words; single glued words ('HumanWants') never replace a readable title.
+    """
+    lines = joined.split("\n")
+    all_titles = [str(l["title"] or "") for m in modules for l in m["lessons"]]
+    for m in modules:
+        for l in m["lessons"]:
+            t = str(l["title"] or "").strip()
+            mm = LESSON_NO_RE.match(str(l["no"]))
+            if not mm or not t:
+                continue
+            strict = bool(UNFINISHED_RE.search(t) or len(t) >= 86)
+            hit = _find_lesson_in_text(lines, int(mm.group(1)), m["module"], mm.group(2) or "")
+            if not hit:
+                continue
+            nt = hit[1]
+            if not (len(t) < len(nt) <= 130):
+                continue
+            if not nt.lower().startswith(t[:12].lower()):
+                continue
+            if strict:
+                l["title"] = nt
+            elif not hit[2] and len(nt.split()) > len(t.split()) and not _suffix_polluted(
+                    nt, t, [o for o in all_titles if o != t]):
+                # same-line titles only: a wrapped continuation from a glued
+                # two-column line can smuggle the neighbour column's words in
+                l["title"] = nt
+
+
+def _reconcile_missing(modules, joined, expected):
+    """
+    Every lesson number between the smallest and the largest must exist once.
+    Recover the ones the table extraction dropped, put them in the module the
+    page context points to, and tag TMA/PE so the counts match what the PDF
+    states in its header.
+    """
+    seen = {}
+    for m in modules:
+        for l in m["lessons"]:
+            mm = LESSON_NO_RE.match(str(l["no"]))
+            if mm:
+                seen.setdefault(int(mm.group(1)), m)
+    if not seen:
+        return []
+    lo, hi = min(seen), max(seen)
+    tot = expected.get("total")
+    if tot and hi < tot and tot - hi <= 8:
+        hi = tot
+    missing = [n for n in range(lo, hi + 1) if n not in seen]
+    if not missing or len(missing) > 10:
+        return []
+    lines = joined.split("\n")
+    tma_want, pe_want = expected.get("tma"), expected.get("pe")
+    tma_got = sum(1 for m in modules for l in m["lessons"] if l["kind"] == "TMA")
+    pe_got = sum(1 for m in modules for l in m["lessons"] if l["kind"] == "PE")
+    recovered = []
+    for n in missing:
+        probe = _find_lesson_in_text(lines, n)
+        if not probe:
+            continue
+        idx = probe[0]
+        mod = _module_by_context(lines, idx, modules) or seen.get(n - 1) or seen.get(n + 1)
+        if mod is None:
+            continue
+        hit = _find_lesson_in_text(lines, n, mod["module"])
+        if not hit:
+            continue
+        title = hit[1]
+        if tma_want is not None and tma_got < tma_want:
+            kind = "TMA"
+        elif pe_want is not None and pe_got < pe_want:
+            kind = "PE"
+        else:
+            kind = "TMA" if tma_want is None else "PE"
+        if kind == "TMA":
+            tma_got += 1
+        else:
+            pe_got += 1
+        mod["lessons"].append({"no": "L-%d" % n, "title": title, "kind": kind})
+        mod["lessons"].sort(key=_lsort_key)
+        seen[n] = mod
+        recovered.append(n)
+    return recovered
+
+
+def _compute_expected(joined, hdr_counts):
+    """
+    Read the lesson totals the PDF states (they verify the chapter tags).
+    NIOS prints these in many styles:
+      'Total no. of Lessons - 32'          grand total
+      'Total Lessons (32)'                 grand total
+      'Lessons- 24'                        glued grand total (no-space fonts)
+      'Total No. of Lesson (12)' / '(16)'  one per column (213 style)
+      '(No. of lessons 13) (No. of lessons 19)'  column counts
+    """
+    totals, splits = [], []
+    for m in re.finditer(r"(total\s*)?no\.?\s*of\s*lessons?\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212:=]?\s*(\d{1,3})",
+                         joined, re.I):
+        (totals if m.group(1) else splits).append(int(m.group(2)))
+    if not totals:
+        m = re.search(r"total\s+lessons?\s*[\(\:\-]?\s*(\d{1,3})", joined, re.I)
+        if m:
+            totals.append(int(m.group(1)))
+    expected = {}
+    if totals:
+        expected["total"] = totals[0]
+    if len(splits) >= 2:
+        expected["tma"] = splits[0]
+        expected["pe"] = splits[1]
+    if hdr_counts.get("tma") is not None:
+        expected["tma"] = hdr_counts["tma"]
+    if hdr_counts.get("pe") is not None:
+        expected["pe"] = hdr_counts["pe"]
+    if "total" not in expected:
+        m = re.search(r"total\s*no\.?\s*of\s*lessons?\s*[=:\-\u2013]?\s*(\d{1,3})", joined, re.I)
+        if not m:
+            m = re.search(r"\u0915\u0941\s*\u0932\s*\u092a\u093e\u0920\s*[=:\-\u2013]?\s*(\d{1,3})", joined)
+        if m:
+            expected["total"] = int(m.group(1))
+    if "tma" not in expected or "pe" not in expected:
+        dev = [int(x) for x in re.findall(
+            r"\u092a\u093e\u0920\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212]\s*(\d{1,3})", joined)]
+        if len(dev) >= 2:
+            expected.setdefault("tma", dev[0])
+            expected.setdefault("pe", dev[1])
+    # v102 rule A: 'Total No. of Lesson (12)' + '(16)' are the two columns.
+    # Text extraction does not always keep the visual column order, so assign
+    # each count by the heading nearest above it (TMA/40% vs Public/60%).
+    col_ms = list(re.finditer(
+        r"total\s+no\.?\s*of\s*lessons?\s*\(\s*(\d{1,3})\s*\)", joined, re.I))
+    if len(col_ms) >= 2:
+        tma_c, pe_c = None, None
+        for cm in col_ms:
+            ctx = joined[max(0, cm.start() - 260):cm.start()].lower()
+            tma_at = max(ctx.rfind("tma"), ctx.rfind("40%"))
+            pe_at = max(ctx.rfind("public"), ctx.rfind("term end"), ctx.rfind("termend"), ctx.rfind("60%"))
+            val = int(cm.group(1))
+            if tma_at >= 0 and tma_at > pe_at:
+                tma_c = val if tma_c is None else tma_c
+            elif pe_at >= 0:
+                pe_c = val if pe_c is None else pe_c
+        if tma_c is None and pe_c is None:
+            tma_c, pe_c = int(col_ms[0].group(1)), int(col_ms[1].group(1))
+        elif tma_c is None:
+            tma_c = next((int(cm.group(1)) for cm in col_ms if int(cm.group(1)) != pe_c), None)
+        elif pe_c is None:
+            pe_c = next((int(cm.group(1)) for cm in col_ms if int(cm.group(1)) != tma_c), None)
+        vals = [int(cm.group(1)) for cm in col_ms]
+        if tma_c is not None:
+            expected["tma"] = tma_c
+        if pe_c is not None:
+            expected["pe"] = pe_c
+        if expected.get("total") in (None, tma_c, pe_c) and tma_c is not None and pe_c is not None:
+            expected["total"] = tma_c + pe_c
+    # v102 rule B: glued grand total 'Lessons- 24' (no-space fonts)
+    g = [int(x) for x in re.findall(r"\blessons?\s*[\-\u2013]\s*(\d{1,3})", joined, re.I)]
+    g = [x for x in g if 5 <= x <= 60 and x != expected.get("tma") and x != expected.get("pe")]
+    if g:
+        cand = max(g)
+        cur = expected.get("total")
+        if cur is None or (cand > cur and cand >= cur + (expected.get("tma") or 0)):
+            expected["total"] = cand
+    # v102 rule C: backfill a missing column count from the other two
+    if expected.get("total") and expected.get("tma") and not expected.get("pe"):
+        pe = expected["total"] - expected["tma"]
+        if pe > 0:
+            expected["pe"] = pe
+    if expected.get("total") and expected.get("pe") and not expected.get("tma"):
+        tma = expected["total"] - expected["pe"]
+        if tma > 0:
+            expected["tma"] = tma
+    return expected
+
+
 def parse_syllabus_pdf(data: bytes):
     """
     Parse a NIOS syllabus PDF.
@@ -1262,6 +1652,16 @@ def parse_syllabus_pdf(data: bytes):
         m["lessons"] = kept
     modules = [m for m in modules if m["lessons"] or m.get("optional_group")]
 
+    # v102: repair what the table layout damaged before the counts are checked
+    modules = _fix_module_names(modules)
+    _rename_from_text(modules, joined)
+    _repair_titles(modules, joined)
+    pre_expected = _compute_expected(joined, hdr_counts)
+    recovered = _reconcile_missing(modules, joined, pre_expected)
+    if recovered:
+        warnings.append("The table layout had dropped %d lesson(s); recovered from the page text: %s."
+                        % (len(recovered), ", ".join("L-%d" % n for n in recovered)))
+
     all_lessons = [l for m in modules for l in m["lessons"]]
     pe = len([l for l in all_lessons if l["kind"] == "PE"])
     tma = len([l for l in all_lessons if l["kind"] == "TMA"])
@@ -1285,59 +1685,23 @@ def parse_syllabus_pdf(data: bytes):
                 "error": "The bifurcation table was found but no lessons could be read from it. "
                          "The lesson format in this PDF is not recognised. Send the PDF to support so it can be added."}
 
-    totals, splits = [], []
-    for m in re.finditer(r"(total\s*)?no\.?\s*of\s*lessons?\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212:=]?\s*(\d{1,3})",
-                         joined, re.I):
-        (totals if m.group(1) else splits).append(int(m.group(2)))
-    # "Total Lessons (32)" style lines
-    if not totals:
-        m = re.search(r"total\s+lessons?\s*[\(\:\-]?\s*(\d{1,3})", joined, re.I)
-        if m:
-            totals.append(int(m.group(1)))
+    expected = _compute_expected(joined, hdr_counts)
     # an OR pair counts once in the NIOS totals (the student sits one option)
     eff_total, eff_tma, eff_pe = _effective_counts(modules)
     # only an under-read is a real problem: extra entries are the OR variants,
     # which the admin can see and trim in the chapter list
-    if totals and eff_total < totals[0]:
+    if expected.get("total") and eff_total < expected["total"]:
         warnings.append("The PDF says %d lessons in total but %d were read. Please check the chapter list below."
-                        % (totals[0], eff_total))
-    if len(splits) >= 2:
-        if eff_tma < splits[0]:
-            warnings.append("The PDF lists %d TMA lessons but %d were read." % (splits[0], eff_tma))
-        if splits[1] > eff_pe:
-            warnings.append("The PDF lists %d Public Examination lessons but %d were read." % (splits[1], eff_pe))
+                        % (expected["total"], eff_total))
+    if expected.get("tma") and eff_tma < expected["tma"]:
+        warnings.append("The PDF lists %d TMA lessons but %d were read." % (expected["tma"], eff_tma))
+    if expected.get("pe") and eff_pe < expected["pe"]:
+        warnings.append("The PDF lists %d Public Examination lessons but %d were read." % (expected["pe"], eff_pe))
 
     paper = round(sum(m["weightage"] for m in modules), 2)
     if paper and paper not in (30, 40, 60, 70, 80, 85, 100):
         warnings.append("Module marks add up to %s. NIOS question papers are usually 30, 40, 60, 70, 80, 85 or 100 marks. Please verify." % paper)
 
-    expected = {}
-    if totals:
-        expected["total"] = totals[0]
-    if len(splits) >= 2:
-        expected["tma"] = splits[0]
-        expected["pe"] = splits[1]
-    # header cells of the bifurcation table are the most reliable source
-    if hdr_counts.get("tma") is not None:
-        expected["tma"] = hdr_counts["tma"]
-    if hdr_counts.get("pe") is not None:
-        expected["pe"] = hdr_counts["pe"]
-    if "total" not in expected:
-        m = re.search(r"total\s*no\.?\s*of\s*lessons?\s*[=:\-\u2013]?\s*(\d{1,3})", joined, re.I)
-        if not m:
-            # कुल पाठ : 25
-            m = re.search(r"\u0915\u0941\s*\u0932\s*\u092a\u093e\u0920\s*[=:\-\u2013]?\s*(\d{1,3})", joined)
-        if m:
-            expected["total"] = int(m.group(1))
-    if "tma" not in expected or "pe" not in expected:
-        # the column counts print as  पाठ - 9   and   पाठ – 16  with a dash.
-        # the grand total uses a colon (कुल पाठ : 25) so a dash only match keeps
-        # the two apart even when the font mangles कुल into "कु ल".
-        dev = [int(x) for x in re.findall(
-            r"\u092a\u093e\u0920\s*[\-\u2010\u2011\u2012\u2013\u2014\u2212]\s*(\d{1,3})", joined)]
-        if len(dev) >= 2:
-            expected["tma"] = dev[0]
-            expected["pe"] = dev[1]
     if not expected:
         warnings.append("The lesson count line could not be read from this PDF. "
                         "Enter the totals printed on it manually so the chapter tags can be verified.")

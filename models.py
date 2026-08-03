@@ -885,6 +885,7 @@ class TeacherWorkPolicy(Base):
     entry_time     = Column(String(5), default="")             # "09:30" (fixed mode)
     exit_time      = Column(String(5), default="")             # "18:30" (fixed mode)
     break_minutes  = Column(Integer, default=0)                # lunch break (full_time only)
+    disabled       = Column(Boolean, default=False)            # v101: attendance off — target only (punch doosre app pe)
     updated_at     = Column(DateTime, nullable=True)
 
     teacher = relationship("TeacherProfile")
