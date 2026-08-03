@@ -665,7 +665,7 @@
   .katex{font-size:1.04em}.ex-prev .katex,.pl-qtext .katex{font-size:1em}
   .rt-h{font-weight:800;font-size:1.02em;margin:8px 0 3px;color:var(--text)}
   .rt-h1{font-size:1.14em}.rt-h2{font-size:1.08em}
-  .rt-ul,.rt-ol{margin:4px 0 6px;padding-left:20px}
+  .rt-ul,.rt-ol{margin:3px 0 5px;padding-left:20px}
   .rt-ul li,.rt-ol li{margin:2px 0;line-height:1.5}
   .rt-tw{overflow-x:auto;margin:6px 0;max-width:100%}
   .rt-t{border-collapse:collapse;font-size:.88em;min-width:40%}
@@ -788,9 +788,9 @@
   .sd-empty{font-size:.82rem;color:var(--text-muted)}
   .gm-total{margin:10px 0 12px;font-size:.9rem;text-align:right;color:var(--text-muted)}
   .gm-total b{color:var(--text);font-size:1rem}
-  .math-block{display:block;margin:10px 0;overflow-x:auto;max-width:100%;font-size:1.08em}
+  .math-block{display:block;margin:6px 0;overflow-x:auto;max-width:100%;font-size:1.08em}
   .math-block .katex-display{margin:0}
-  .rs-qtext .math-block,.exp-qt .math-block,.pl-qtext .math-block{margin:8px 0 4px}
+  .rs-qtext .math-block,.exp-qt .math-block,.pl-qtext .math-block{margin:5px 0 3px}
   /* question paper view: options apni line pe + newlines preserve */
   .exp-qt{white-space:pre-wrap;line-height:1.55}
   .exp-opts{margin-top:8px;display:flex;flex-direction:column;gap:4px}
@@ -3906,8 +3906,6 @@ function openClassReport(id){
      <textarea class="form-control" id="cr-remarks" rows="2" placeholder="Anything the admin should know">${esc(c.remarks||'')}</textarea>
 
      <div class="cr-sec">2. Lecture Report <span class="cr-sec-sub">students see this in their Lectures feed</span></div>
-     <label class="ex-lbl">Lecture Summary <span class="req">*</span></label>
-     <textarea class="form-control" id="lec-summary" rows="2" placeholder="What was taught in this lecture?"></textarea>
      <div><label class="ex-lbl">Class Notes <span class="req">*</span></label><div class="dz" id="dz-lec-pdf" onclick="document.getElementById('lec-pdf').click()"><span class="dz-ic">${ic('upload')}</span><span class="dz-t" id="lec-pdf-name">Drag &amp; drop the class notes PDF here</span><span class="dz-s">or click to browse \u00b7 PDF only \u2014 large files auto-compress</span></div><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
      <div id="cr-status"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-success" id="cr-btn" onclick="submitClassReport(${id})">Submit &amp; Mark Done</button>`);
@@ -3928,8 +3926,7 @@ function _calcDelay(sched,actual){
   return b-a;
 }
 async function submitClassReport(id){
-  // required uploads + summary (v98: no verification question, no DPP here)
-  if(!val('lec-summary').trim()){ toast('Please write the lecture summary.',true); return; }
+  // required uploads (v98: no verification question, no DPP here)
   if(!_lecFiles.pdf){ toast('Notes PDF is required.',true); return; }
   const c=((window._tClasses||[]).concat(typeof _ttEntries!=='undefined'?_ttEntries:[])).find(x=>x.id===id)||{};
   const btn=document.getElementById('cr-btn'); btn.disabled=true; btn.textContent='Submitting...';
@@ -3943,7 +3940,7 @@ async function submitClassReport(id){
       subject:c.subject, chapter:c.chapter||null, part:c.part||null,
       title:(c.chapter||'Lecture')+(c.part?(' \u2013 '+c.part):''),
       lecture_date:c.date||null, timetable_entry_id:id,
-      summary:val('lec-summary')||null, homework:val('cr-hw')||null,
+      homework:val('cr-hw')||null,
       pdf_b64, pdf_filename:_lecFiles.pdf?_lecFiles.pdf.name:null,
       questions:[]});
     toast('Class marked Done. Students can now see this report.');
@@ -5340,7 +5337,8 @@ function buildPdfDoc(ex,body,withSol,isM,lang,logo){
   +'.meta b{font-size:12.5px;color:#4a3c12}'
   +'.ins{font-size:11px;background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:8px 12px;margin-bottom:14px}'
   +'.q-or,.q-t .rt-or,.q-hi .rt-or{display:block;text-align:center;font-weight:800;letter-spacing:.14em;margin:7px 0;color:#6b5d33;font-size:11.5px}'
-  +'.math-block{display:block;margin:8px 0;overflow-x:auto;max-width:100%;font-size:1.08em}.math-block .katex-display{margin:0}.rt-m{font-size:1.07em}'
+  +'.math-block{display:block;margin:5px 0;overflow-x:auto;max-width:100%;font-size:1.08em}.math-block .katex-display{margin:0}.rt-m{font-size:1.07em}'
+  +'.rt-ul,.rt-ol{margin:3px 0 5px;padding-left:20px}.rt-ul li,.rt-ol li{margin:1px 0;line-height:1.45}.rt-h{font-weight:800;font-size:1.02em;margin:6px 0 3px}.rt-bq{border-left:3px solid #b8941f;padding:2px 10px;margin:4px 0;color:#6b5d33}.rt-tw{overflow-x:auto;margin:6px 0;max-width:100%}.rt-t{border-collapse:collapse;font-size:.88em}.rt-t th,.rt-t td{border:1px solid #e8e3d3;padding:4px 9px;text-align:left}.rt-t th{background:#f4f1e8}'
   +'.q-t b,.q-hi b,.sol-t b{font-weight:800}.q-t u,.q-hi u,.sol-t u{text-decoration:underline}'
   +'.q{border:1px solid #e6ebf4;border-left:4px solid #b8941f;border-radius:10px;padding:11px 13px;margin-bottom:10px;page-break-inside:avoid;background:#fff}'
   +'.q-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;border-bottom:1px dashed #e8e3d3;padding-bottom:5px}'
@@ -5553,8 +5551,6 @@ async function openLectureForm(prefill){
       <div><label class="ex-lbl">Lecture Date</label><input class="form-control" type="date" id="lec-date" value="${today}"></div>
     </div>
     <div><label class="ex-lbl">Link to Timetable Class (optional)</label><select class="form-control" id="lec-tt">${ttOpts}</select></div>
-    <label class="ex-lbl" style="margin-top:10px">Lecture Summary <span class="req">*</span></label>
-    <textarea class="form-control" id="lec-summary" rows="2" placeholder="What was taught in this lecture?"></textarea>
     <label class="ex-lbl">Homework</label>
     <textarea class="form-control" id="lec-hw" rows="2" placeholder="Homework / practice for students"></textarea>
     <div><label class="ex-lbl">Class Notes <span class="req">*</span></label><div class="dz" id="dz-lec-pdf" onclick="document.getElementById('lec-pdf').click()"><span class="dz-ic">${ic('upload')}</span><span class="dz-t" id="lec-pdf-name">Drag &amp; drop the class notes PDF here</span><span class="dz-s">or click to browse \u00b7 PDF only \u2014 large files auto-compress</span></div><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
@@ -5577,7 +5573,6 @@ function _lecSetFile(f,kind){
 
 async function submitLecture(){
   const subject=val('lec-sub'); if(!subject){ toast('Select a subject',true); return; }
-  if(!val('lec-summary').trim()){ toast('Please write the lecture summary.',true); return; }
   if(!_lecFiles.pdf){ toast('Notes PDF is required.',true); return; }
   const btn=document.getElementById('lec-save'); if(btn){ btn.disabled=true; btn.textContent='Publishing...'; }
   try{
@@ -5586,7 +5581,7 @@ async function submitLecture(){
     const payload={subject, class_level:val('lec-cls')||null, chapter:val('lec-ch')||null, part:val('lec-part')||null,
       title:val('lec-title')||null, lecture_date:val('lec-date')||null,
       timetable_entry_id:(document.getElementById('lec-tt').value||null),
-      summary:val('lec-summary')||null, homework:val('lec-hw')||null,
+      homework:val('lec-hw')||null,
       pdf_b64, pdf_filename:_lecFiles.pdf?_lecFiles.pdf.name:null,
       questions:[]};
     await api('/api/teacher/lecture','POST',payload);
@@ -6012,7 +6007,7 @@ function _fmtRich(t){
     const ul=ln.match(/^\s*(?:[-–•*○◦▪·])\s+(.+)$/);
     if(ul){ if(list!=='ul'){ closeList(); out.push('<ul class="rt-ul">'); list='ul'; } out.push('<li>'+ul[1]+'</li>'); continue; }
     const ol=ln.match(/^\s*(\d+)[.)]\s+(.+)$/);
-    if(ol){ if(list!=='ol'){ closeList(); out.push('<ol class="rt-ol">'); list='ol'; } out.push('<li>'+ol[2]+'</li>'); continue; }
+    if(ol){ if(list!=='ol'){ closeList(); const on=+ol[1]; out.push('<ol class="rt-ol"'+(on>1?' start="'+on+'"':'')+'>'); list='ol'; } out.push('<li>'+ol[2]+'</li>'); continue; }
     const bq=ln.match(/^\s*&gt;\s?(.*)$/);
     if(bq){ closeList(); out.push('<div class="rt-bq">'+bq[1]+'</div>'); continue; }
     if(/^\s*(?:[-–—=_*•·─]{3,}|\.{4,})\s*$/.test(ln)){ closeList(); continue; }
@@ -6020,7 +6015,33 @@ function _fmtRich(t){
     out.push(ln);
   }
   closeList();
-  s=out.join('\n');
+  // v110 premium spacing: block elements (display math, lists, headings, tables,
+  // quotes, OR) carry their own margins — ChatGPT/Claude paste keeps blank lines
+  // around them which render as 40-60px gaps in pre-wrap containers. Drop blanks
+  // touching a block; keep genuine text-to-text paragraph breaks.
+  {
+    const _isDispLn=x=>{ const m=x.match(/^\u0001(\d+)\u0002$/); return !!(m&&M[+m[1]]&&M[+m[1]].disp); };
+    const _isBlkLn=x=>_isDispLn(x)||/^<\/?(?:ol|ul|li|div|table|thead|tbody|tr|td|th|span)\b/.test(x);
+    const cl=[];
+    for(let i=0;i<out.length;i++){
+      const x=out[i];
+      if(x.trim()===''){
+        const pp=cl.length?cl[cl.length-1]:null, nn=out[i+1];
+        if(!pp||nn==null||nn.trim()==='') continue;
+        if(_isBlkLn(pp)||_isBlkLn(nn)) continue;
+      }
+      cl.push(x);
+    }
+    // smart join: block-level pieces break visually on their own — a \n touching
+    // a block renders as an extra empty line in pre-wrap containers (the big gaps).
+    // Text-to-text lines keep their \n (single line breaks stay intact).
+    let sj='';
+    for(let i=0;i<cl.length;i++){
+      if(i) sj+=(_isBlkLn(cl[i-1])||_isBlkLn(cl[i]))?'':'\n';
+      sj+=cl[i];
+    }
+    s=sj;
+  }
   // ---- 5) inline markdown ----
   s=s.replace(/\*\*([^\n*]+?)\*\*/g,'<b>$1</b>');
   s=s.replace(/__([^\n_]+?)__/g,'<u>$1</u>');
@@ -13859,8 +13880,6 @@ function openClassReportUpload(id){
     <label class="ex-lbl">Remarks (optional)</label>
     <textarea class="form-control" id="cru-remarks" rows="2" placeholder="Anything worth noting">${esc(e.remarks||'')}</textarea>
     <div class="cr-sec">2. For Students <span class="cr-sec-sub">appears in the Lectures feed</span></div>
-    <label class="ex-lbl">Lecture Summary</label>
-    <textarea class="form-control" id="cru-summary" rows="2" placeholder="What was taught in this class?"></textarea>
     <div><label class="ex-lbl">Class Notes (PDF)</label><div class="dz" id="dz-cru-file" onclick="document.getElementById('cru-file').click()"><span class="dz-ic">${ic('upload')}</span><span class="dz-t" id="cru-file-name">Drag &amp; drop the class notes PDF here</span><span class="dz-s">or click to browse \u00b7 PDF only \u2014 large files auto-compress</span></div><input type="file" id="cru-file" accept="application/pdf" style="display:none" onchange="_cruPickFile(this)"></div>
     <div class="cr-sec">3. Studio Note <span class="cr-sec-sub">optional \u2014 internal: recording, setup, issues</span></div>
     <div class="sr-opts" style="margin-bottom:10px">
@@ -13887,16 +13906,15 @@ function _cruSetFile(f){
 async function submitClassReportUpload(id){
   // v101: one modal — academic report (students) + optional studio note (internal)
   const topic=(document.getElementById('cru-topic').value||'').trim();
-  const summary=(document.getElementById('cru-summary').value||'').trim();
   const start=(document.getElementById('cru-start').value||'').trim();
   const end=(document.getElementById('cru-end').value||'').trim();
   const srStatus=((document.querySelector('input[name="cru-sr-status"]:checked')||{}).value)||'held';
   const srNotes=(document.getElementById('cru-srnotes').value||'').trim();
   const srReporter=(document.getElementById('cru-srreporter').value||'').trim();
-  const hasAcademic=!!(topic||summary||window._crFile);
+  const hasAcademic=!!(topic||window._crFile);
   const hadStudio=!!((window._srReports||{})[id]);
   const hasStudio=hadStudio||srStatus!=='held'||!!srNotes;
-  if(!hasAcademic&&!hasStudio){ toast('Add a topic, summary, notes PDF or a studio note.',true); return; }
+  if(!hasAcademic&&!hasStudio){ toast('Add a topic, notes PDF or a studio note.',true); return; }
   if(hasStudio&&srStatus!=='held'&&!srNotes&&!hadStudio){ toast('Please add a short note about the issue / cancellation.',true); return; }
   const btn=document.getElementById('cru-btn'); if(btn){ btn.disabled=true; btn.textContent='Saving...'; }
   try{
@@ -13905,8 +13923,7 @@ async function submitClassReportUpload(id){
       const payload={entry_id:id, topic_covered:topic,
         homework:(document.getElementById('cru-hw').value||'').trim(),
         start_time:start, end_time:end,
-        remarks:(document.getElementById('cru-remarks').value||'').trim(),
-        summary:summary};
+        remarks:(document.getElementById('cru-remarks').value||'').trim()};
       if(window._crFile){ payload.pdf_b64=await _fileB64(window._crFile); payload.pdf_filename=window._crFile.name; }
       const r=await api('/api/admin/class-report-backfill','POST',payload);
       window._crUploaded=window._crUploaded||{}; window._crUploaded[id]=true;

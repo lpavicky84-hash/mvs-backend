@@ -122,6 +122,12 @@ def ensure_columns():
         "ALTER TABLE studio_reports ADD COLUMN notes_file_mime VARCHAR(100)",
         # v101: per-teacher attendance disable (target-only mode)
         "ALTER TABLE teacher_work_policies ADD COLUMN disabled BOOLEAN DEFAULT 0",
+        # v111: permanent fix for class-report upload 500s — lectures.class_level was
+        # VARCHAR(5), so any non-digit class name ('Class 10' = 8 chars) made MySQL
+        # strict mode reject the whole save (error 1406 -> bare 500 -> browser showed
+        # "Could not reach the server"). Widened so no class value can ever overflow;
+        # the endpoints still normalise to the canonical '10'/'12' before saving.
+        "ALTER TABLE lectures MODIFY COLUMN class_level VARCHAR(20)",
     ]
     for s in stmts:
         try:
