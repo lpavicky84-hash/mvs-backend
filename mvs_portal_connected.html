@@ -676,7 +676,7 @@
   .rt-hr{border:none;border-top:1px solid var(--border);margin:8px 0}
   .rt-code{background:var(--bg,#f4f1e8);border:1px solid var(--border);border-radius:5px;padding:0 5px;font-family:monospace;font-size:.88em}
   .dark .rt-code{background:#111a2e}
-  .rt-m{display:inline-block;vertical-align:middle;max-width:100%;overflow-x:auto}
+  .rt-m{display:inline-block;vertical-align:middle;max-width:100%;overflow-x:auto;font-size:1.07em}
   .rt-msrc{font-family:monospace;font-size:.9em;color:var(--text-muted)}
   .ex-import{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
   .ex-import-hint{font-size:.74rem;color:var(--text-muted)}
@@ -788,7 +788,7 @@
   .sd-empty{font-size:.82rem;color:var(--text-muted)}
   .gm-total{margin:10px 0 12px;font-size:.9rem;text-align:right;color:var(--text-muted)}
   .gm-total b{color:var(--text);font-size:1rem}
-  .math-block{display:block;margin:10px 0;overflow-x:auto;max-width:100%}
+  .math-block{display:block;margin:10px 0;overflow-x:auto;max-width:100%;font-size:1.08em}
   .math-block .katex-display{margin:0}
   .rs-qtext .math-block,.exp-qt .math-block,.pl-qtext .math-block{margin:8px 0 4px}
   /* question paper view: options apni line pe + newlines preserve */
@@ -2865,7 +2865,8 @@ async function compressPdf(file,statusCb,target){
   const pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
   let last=null;
   const tries=[[1.5,0.7],[1.2,0.6],[1.0,0.52],[0.85,0.45],[0.7,0.4]];
-  for(const [scale,q] of tries){
+  for(let ti=0;ti<tries.length;ti++){
+    const [scale,q]=tries[ti];
     const {jsPDF}=window.jspdf; let doc=null;
     for(let p=1;p<=pdf.numPages;p++){
       const page=await pdf.getPage(p);
@@ -2877,7 +2878,7 @@ async function compressPdf(file,statusCb,target){
       if(p===1) doc=new jsPDF({orientation:w>h?'l':'p',unit:'px',format:[w,h]});
       else doc.addPage([w,h], w>h?'l':'p');
       doc.addImage(img,'JPEG',0,0,w,h);
-      statusCb&&statusCb(`Compressing the PDF... (page ${p}/${pdf.numPages})`);
+      statusCb&&statusCb(`Compressing the PDF... (page ${p}/${pdf.numPages}, pass ${ti+1})`);
     }
     const blob=doc.output('blob'); last=blob;
     if(blob.size<=TARGET) return new File([blob],(file.name||'file.pdf'),{type:'application/pdf'});
@@ -2900,6 +2901,57 @@ async function smartCompress(file,statusCb){
     catch(e){ return {file, ok:false}; }
   }
   return {file, ok:file.size<=MAXB};
+}
+// ---------- v107: smart PDF pick — auto-compress with live % progress in the dropzone ----------
+function _dzProgEl(dzId){
+  const z=document.getElementById(dzId); if(!z) return null;
+  let p=document.getElementById(dzId+'-prog');
+  if(!p){
+    p=document.createElement('div'); p.className='dz-prog'; p.id=dzId+'-prog';
+    p.innerHTML='<div class="dz-prog-bar"><span></span></div><div class="dz-prog-t">Preparing\u2026</div>';
+    z.appendChild(p);
+  }
+  p.style.display='block'; return p;
+}
+function _dzProgSet(dzId,pct,msg){
+  const p=document.getElementById(dzId+'-prog')||_dzProgEl(dzId); if(!p) return;
+  const bar=p.querySelector('.dz-prog-bar span'); if(bar) bar.style.width=Math.max(3,Math.min(100,pct||3))+'%';
+  const t=p.querySelector('.dz-prog-t'); if(t) t.textContent=msg||('Compressing the PDF\u2026 '+Math.round(pct||0)+'%');
+}
+function _dzProgDone(dzId,msg){
+  const p=document.getElementById(dzId+'-prog'); if(!p) return;
+  const bar=p.querySelector('.dz-prog-bar span'); if(bar) bar.style.width='100%';
+  const t=p.querySelector('.dz-prog-t'); if(t) t.textContent=msg||'Done';
+  setTimeout(()=>{ p.style.display='none'; const b2=p.querySelector('.dz-prog-bar span'); if(b2)b2.style.width='0'; },1200);
+}
+function _fmtMB(x){ const v=(x||0)/1048576; return (v>=10?Math.round(v):Math.round(v*10)/10)+'MB'; }
+// Teacher picks a big PDF -> never an error: compress automatically, show % progress, then accept.
+async function _smartPdfPick(f,dzId,onDone){
+  if(!f) return;
+  if(!(f.type==='application/pdf'||/\.pdf$/i.test(f.name||''))){ toast('Only PDF files can be uploaded here.',true); return; }
+  if(f.size<=MAXB){ onDone(f); return; }
+  const orig=f.size;
+  _dzProgSet(dzId,3,'Large PDF ('+_fmtMB(orig)+') \u2014 compressing automatically\u2026');
+  try{
+    const r=await smartCompress(f,(m)=>{
+      const mm=/page (\d+)\/(\d+)(?:, pass (\d+))?/.exec(m||'');
+      if(mm){
+        const pct=Math.round(+mm[1]/+mm[2]*100);
+        _dzProgSet(dzId,pct,'Compressing the PDF\u2026 '+pct+'%'+(+mm[3]>1?' (pass '+mm[3]+')':''));
+      }
+    });
+    if(!r.ok||!r.file||r.file.size>MAXB){
+      _dzProgDone(dzId,'Still too large');
+      toast('This PDF is still too large even after compression. Please try a shorter or clearer scan.',true);
+      return;
+    }
+    _dzProgDone(dzId,'Compressed: '+_fmtMB(orig)+' \u2192 '+_fmtMB(r.file.size));
+    toast('Large PDF compressed automatically ('+_fmtMB(orig)+' \u2192 '+_fmtMB(r.file.size)+').');
+    onDone(r.file);
+  }catch(e){
+    _dzProgDone(dzId,'Could not compress');
+    toast('Could not process this PDF. Please try another file.',true);
+  }
 }
 const NAV_ICON={'task manager':'play','my tasks':'target','result card':'trophy','teacher ranking':'trophy','predicted results':'chart','syllabus tracker':'clipboard','syllabus manager':'book','tests tracker':'clipboard','dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book','classes material':'folder','attendance':'clock','teacher attendance':'clock','payout':'wallet','payouts':'wallet','my attendance':'clock','my payout':'wallet','study material':'book','teacher reports':'chart','class compliance':'shield','live users':'user','admin users':'shield','send notice':'megaphone'};
 function injectNavIcons(){
@@ -3489,7 +3541,7 @@ async function cmpDrop(key,e){
   e.preventDefault(); e.currentTarget.classList.remove('dragging');
   const dt=e.dataTransfer;
   const f=dt&&dt.files&&dt.files[0];
-  if(f&&f.size>0){ if(cmpSetFile(key,f)) toast('File added: '+f.name); return; }
+  if(f&&f.size>0){ if(await cmpSetFile(key,f)) toast('File added: '+f.name); return; }
   // webpage se drag: sirf URL milta hai — image ko khud fetch karne ki koshish
   let uri=''; try{ uri=dt.getData('text/uri-list')||dt.getData('text/plain')||''; }catch(err){}
   uri=(uri.split('\n')[0]||'').trim();
@@ -3502,7 +3554,7 @@ async function cmpDrop(key,e){
       const b=await r.blob();
       if(!b.size||!(b.type||'').startsWith('image/')) throw 0;
       const name=(uri.split('/').pop()||'image').split('?')[0].slice(0,80)||'image.jpg';
-      if(cmpSetFile(key,new File([b],name,{type:b.type}))) toast('Image added: '+name);
+      if(await cmpSetFile(key,new File([b],name,{type:b.type}))) toast('Image added: '+name);
       return;
     }catch(err){}
   }
@@ -3511,13 +3563,18 @@ async function cmpDrop(key,e){
 function cmpMenu(key,e){ e.stopPropagation(); document.querySelectorAll('.cmp-menu.open').forEach(m=>{ if(m.id!=='cmpm-'+key) m.classList.remove('open'); }); document.getElementById('cmpm-'+key).classList.toggle('open'); }
 document.addEventListener('click',()=>document.querySelectorAll('.cmp-menu.open').forEach(m=>m.classList.remove('open')));
 function cmpPick(key,cam){ document.getElementById((cam?'cmpcam-':'cmpf-')+key).click(); }
-function cmpFileSel(key,cam){
+async function cmpFileSel(key,cam){
   const inp=document.getElementById((cam?'cmpcam-':'cmpf-')+key);
-  if(inp.files&&inp.files.length){ cmpSetFile(key,inp.files[0]); inp.value=''; }
+  if(inp.files&&inp.files.length){ await cmpSetFile(key,inp.files[0]); inp.value=''; }
 }
-function cmpSetFile(key,f){
+async function cmpSetFile(key,f){
   if(!f||f.size===0){ toast('This file is empty or could not be read. Please save it to your device first, then upload.',true); return false; }
-  if(f.size>20*1024*1024&&!(f.type||'').startsWith('image/')){ toast('File is larger than 20MB.',true); return false; }
+  if(f.size>MAXB){
+    toast('Large file \u2014 compressing automatically\u2026');
+    try{ const r=await smartCompress(f,m=>toast(m)); f=(r&&r.ok&&r.file)?r.file:null; }catch(e){ f=null; }
+    if(!f){ toast('The file is still too large after compression. Please try a smaller file.',true); return false; }
+    toast('Compressed. File added.');
+  }
   if(!_cmpState[key]) _cmpState[key]={file:null,voice:null};
   _cmpState[key].file=f; cmpChips(key); return true;
 }
@@ -3851,7 +3908,7 @@ function openClassReport(id){
      <div class="cr-sec">2. Lecture Report <span class="cr-sec-sub">students see this in their Lectures feed</span></div>
      <label class="ex-lbl">Lecture Summary <span class="req">*</span></label>
      <textarea class="form-control" id="lec-summary" rows="2" placeholder="What was taught in this lecture?"></textarea>
-     <div><label class="ex-lbl">Class Notes <span class="req">*</span></label><div class="dz" id="dz-lec-pdf" onclick="document.getElementById('lec-pdf').click()"><span class="dz-ic">${ic('upload')}</span><span class="dz-t" id="lec-pdf-name">Drag &amp; drop the class notes PDF here</span><span class="dz-s">or click to browse \u00b7 PDF only, max 20 MB</span></div><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
+     <div><label class="ex-lbl">Class Notes <span class="req">*</span></label><div class="dz" id="dz-lec-pdf" onclick="document.getElementById('lec-pdf').click()"><span class="dz-ic">${ic('upload')}</span><span class="dz-t" id="lec-pdf-name">Drag &amp; drop the class notes PDF here</span><span class="dz-s">or click to browse \u00b7 PDF only \u2014 large files auto-compress</span></div><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
      <div id="cr-status"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-success" id="cr-btn" onclick="submitClassReport(${id})">Submit &amp; Mark Done</button>`);
   crDelayHint(); _dzInit('lec-pdf');
@@ -5283,7 +5340,7 @@ function buildPdfDoc(ex,body,withSol,isM,lang,logo){
   +'.meta b{font-size:12.5px;color:#4a3c12}'
   +'.ins{font-size:11px;background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:8px 12px;margin-bottom:14px}'
   +'.q-or,.q-t .rt-or,.q-hi .rt-or{display:block;text-align:center;font-weight:800;letter-spacing:.14em;margin:7px 0;color:#6b5d33;font-size:11.5px}'
-  +'.math-block{display:block;margin:8px 0;overflow-x:auto;max-width:100%}.math-block .katex-display{margin:0}'
+  +'.math-block{display:block;margin:8px 0;overflow-x:auto;max-width:100%;font-size:1.08em}.math-block .katex-display{margin:0}.rt-m{font-size:1.07em}'
   +'.q-t b,.q-hi b,.sol-t b{font-weight:800}.q-t u,.q-hi u,.sol-t u{text-decoration:underline}'
   +'.q{border:1px solid #e6ebf4;border-left:4px solid #b8941f;border-radius:10px;padding:11px 13px;margin-bottom:10px;page-break-inside:avoid;background:#fff}'
   +'.q-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;border-bottom:1px dashed #e8e3d3;padding-bottom:5px}'
@@ -5500,7 +5557,7 @@ async function openLectureForm(prefill){
     <textarea class="form-control" id="lec-summary" rows="2" placeholder="What was taught in this lecture?"></textarea>
     <label class="ex-lbl">Homework</label>
     <textarea class="form-control" id="lec-hw" rows="2" placeholder="Homework / practice for students"></textarea>
-    <div><label class="ex-lbl">Class Notes <span class="req">*</span></label><div class="dz" id="dz-lec-pdf" onclick="document.getElementById('lec-pdf').click()"><span class="dz-ic">${ic('upload')}</span><span class="dz-t" id="lec-pdf-name">Drag &amp; drop the class notes PDF here</span><span class="dz-s">or click to browse \u00b7 PDF only, max 20 MB</span></div><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
+    <div><label class="ex-lbl">Class Notes <span class="req">*</span></label><div class="dz" id="dz-lec-pdf" onclick="document.getElementById('lec-pdf').click()"><span class="dz-ic">${ic('upload')}</span><span class="dz-t" id="lec-pdf-name">Drag &amp; drop the class notes PDF here</span><span class="dz-s">or click to browse \u00b7 PDF only \u2014 large files auto-compress</span></div><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
   `;
   showModal('New Lecture Report',body,`<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="lec-save" onclick="submitLecture()">Publish Report</button>`);
   _dzInit('lec-pdf');
@@ -5508,12 +5565,10 @@ async function openLectureForm(prefill){
 
 function _lecPickFile(inp,kind){
   const f=inp.files[0]; if(!f) return;
-  if(f.size>20*1024*1024){ toast('PDF too large (max 20MB)',true); inp.value=''; return; }
-  _lecSetFile(f,kind);
+  _smartPdfPick(f,'dz-lec-pdf',cf=>_lecSetFile(cf,kind));
 }
 function _lecSetFile(f,kind){
   if(!f) return;
-  if(f.size>20*1024*1024){ toast('PDF too large (max 20MB)',true); return; }
   _lecFiles[kind]=f;
   const n=document.getElementById('lec-'+kind+'-name'); if(n) n.textContent=f.name;
   const z=document.getElementById('dz-lec-'+kind); if(z) z.classList.add('has-file');
@@ -5645,6 +5700,187 @@ function _texPlain(t){
   s=s.replace(/\\[a-zA-Z]+/g,'').replace(/[{}]/g,'');
   return s.trim();
 }
+// ===== v108: universal paste formatter — ChatGPT/Gemini/Claude se copy kiya hua
+// math (Unicode ² θ √ × →), chemistry equations, physics numericals — sab
+// automatically proper LaTeX/KaTeX ban jaata hai. Ek hi system: question, model
+// answer, explanation, options, MCQ test, Mission 75, DPP aur PDFs — sab yahi use karte hain.
+const _UNI_SUP={'⁰':'0','¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9','ⁿ':'n','⁺':'+','⁻':'-','ˣ':'x'};
+const _UNI_SUB={'₀':'0','₁':'1','₂':'2','₃':'3','₄':'4','₅':'5','₆':'6','₇':'7','₈':'8','₉':'9','₊':'+','₋':'-','ₓ':'x'};
+const _UNI_GR={'α':'alpha','β':'beta','γ':'gamma','δ':'delta','ε':'epsilon','ζ':'zeta','η':'eta','θ':'theta','ι':'iota','κ':'kappa','λ':'lambda','μ':'mu','ν':'nu','ξ':'xi','π':'pi','ρ':'rho','σ':'sigma','τ':'tau','υ':'upsilon','φ':'phi','χ':'chi','ψ':'psi','ω':'omega','Δ':'Delta','Σ':'Sigma','Π':'Pi','Ω':'Omega','Φ':'Phi','Λ':'Lambda','Θ':'Theta','Ψ':'Psi','Γ':'Gamma','Ξ':'Xi'};
+const _UNI_OP={'×':'\\times','÷':'\\div','±':'\\pm','∓':'\\mp','≠':'\\neq','≤':'\\leq','≥':'\\geq','≈':'\\approx','∞':'\\infty','∝':'\\propto','∫':'\\int','∑':'\\sum','∏':'\\prod','∂':'\\partial','∇':'\\nabla','∈':'\\in','∉':'\\notin','⊂':'\\subset','∪':'\\cup','∩':'\\cap','∀':'\\forall','∃':'\\exists','∠':'\\angle','⊥':'\\perp','∥':'\\parallel','≅':'\\cong','∼':'\\sim','△':'\\triangle','∴':'\\therefore','∵':'\\because','·':'\\cdot','∘':'\\circ','†':'\\dagger','−':'-'};
+const _UNI_AR={'→':'\\to','⟶':'\\longrightarrow','←':'\\leftarrow','⟵':'\\longleftarrow','↔':'\\leftrightarrow','⇒':'\\Rightarrow','⇐':'\\Leftarrow','⇔':'\\Leftrightarrow','↑':'\\uparrow','↓':'\\downarrow','↦':'\\mapsto','⇌':'\\rightleftharpoons','⇋':'\\rightleftharpoons'};
+function _uniTex(t){
+  let s=String(t||'');
+  // \ce{...} mhchem blocks protect (H2O plain digits hi chahiye)
+  const CE=[];
+  s=s.replace(/\\ce\{[^{}]*\}/g,m=>{CE.push(m);return '\u0003'+(CE.length-1)+'\u0004';});
+  s=s.replace(/[−‐‑‒]/g,'-');
+  s=s.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ⁺⁻ˣ]+/g,m=>'^{'+m.split('').map(c=>_UNI_SUP[c]||c).join('')+'}');
+  s=s.replace(/[₀₁₂₃₄₅₆₇₈₉₊₋ₓ]+/g,m=>'_{'+m.split('').map(c=>_UNI_SUB[c]||c).join('')+'}');
+  const _sp=(v,str,off)=>{const nx=str[off+1];return (nx&&/[A-Za-z]/.test(nx))?v+' ':v;};
+  s=s.replace(/[α-ωΑ-Ω]/g,(c,off,str)=>_UNI_GR[c]?_sp('\\'+_UNI_GR[c],str,off):c);
+  s=s.replace(/[→⟶←⟵↔⇒⇐⇔↑↓↦⇌⇋]/g,(c,off,str)=>_sp(_UNI_AR[c]||c,str,off));
+  s=s.replace(/[×÷±∓≠≤≥≈∞∝∫∑∏∂∇∈∉⊂∪∩∀∃∠⊥∥≅∼△∴∵·∘†]/g,(c,off,str)=>_sp(_UNI_OP[c]||c,str,off));
+  s=s.replace(/″/g,(m,off,str)=>_sp('^{\\prime\\prime}',str,off)).replace(/′/g,(m,off,str)=>_sp('^\\prime',str,off));
+  s=s.replace(/([0-9A-Za-z)\}])\s*[°º˚]/g,(m,b,off,str)=>b+'^\\circ'+((str[off+m.length]&&/[A-Za-z]/.test(str[off+m.length]))?' ':'')).replace(/[°º˚]/g,(m,off,str)=>_sp('^\\circ',str,off));
+  s=s.replace(/√\s*\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g,'\\sqrt{$1}');
+  s=s.replace(/√\s*\[([^\[\]]*)\]\s*\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g,'\\sqrt[$1]{$2}');
+  s=s.replace(/√\s*([0-9A-Za-z.]+)/g,'\\sqrt{$1}');
+  // existing LaTeX commands ko tode bina digit/frac fixes
+  const parts=s.split(/(\\[a-zA-Z]+)/);
+  for(let i=0;i<parts.length;i++){
+    if(parts[i].startsWith('\\')) continue;
+    let p=parts[i];
+    p=p.replace(/\bd\s*\/\s*d([a-zA-Z])\b/g,'\\frac{d}{d$1}');
+    p=p.replace(/\bd([a-zA-Z])\s*\/\s*d([a-zA-Z])\b/g,'\\frac{d$1}{d$2}');
+    p=p.replace(/\(([^()]*)\)\s*\/\s*\(([^()]*)\)/g,'\\frac{$1}{$2}');
+    p=p.replace(/\(([^()]*)\)\s*\/\s*(\d{1,6})(?![\d\/])/g,'\\frac{$1}{$2}');
+    p=p.replace(/(?<![\d\/{}\\])(\d{1,6})\s*\/\s*\(([^()]*)\)/g,'\\frac{$1}{$2}');
+    p=p.replace(/(?<![\d\/{}\\])(\d{1,6})\s*\/\s*(\d{1,6})(?![\d\/])/g,'\\frac{$1}{$2}');
+    p=p.replace(/\)(\d{1,2})(?![\d.])/g,')^{$1}');
+    p=p.replace(/(?<=[A-Z][a-z])(\d{1,2})(?![\d.])/g,'_{$1}');
+    p=p.replace(/(?<=[a-z])(\d{1,2})(?![\d.])/g,'^{$1}');
+    p=p.replace(/(?<=[A-Z])(\d{1,2})(?![\d.])/g,'_{$1}');
+    p=p.replace(/\s->\s/g,' \\to ');
+    parts[i]=p;
+  }
+  s=parts.join('');
+  // bare function names → commands ("using" ke andar ka "sin" NAHI)
+  s=s.replace(/(?<![\\A-Za-z])(cosec|sinh|cosh|tanh|sin|cos|tan|cot|sec|csc|log|ln|lim|max|min|arg|deg|det|dim|gcd|hom|ker|sup|inf|exp|mod)(?![A-Za-z])/g,'\\$1');
+  s=s.replace(/(?<!\\)%/g,'\\%');
+  if(!/\\begin\{/.test(s)) s=s.replace(/(?<!\\)&/g,'\\&').replace(/(?<!\\)#/g,'\\#');
+  s=s.replace(/\u0003(\d+)\u0004/g,(m,i)=>CE[+i]);
+  return s;
+}
+// ---- chemistry: mhchem \ce{} detection ----
+const _EL1=new Set('H B C N O F P S K V Y I W U'.split(' '));
+const _EL2=new Set('He Li Be Ne Na Mg Al Si Cl Ar Ca Sc Ti Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te Xe Cs Ba La Ce Pr Nd Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa'.split(' '));
+function _isChemTok(tok){
+  const m=String(tok).match(/^(\d+)?([A-Za-z0-9()]+?)(\^?\d*[+-]|\^\d+|\(\d+[+-]\))?$/);
+  if(!m) return false;
+  const core=(m[2]||'').replace(/\([A-Za-z0-9]+\)\d*/g,'');
+  if(!core) return false;
+  const gr=core.match(/[A-Z][a-z]?\d*/g);
+  if(!gr||gr.join('')!==core) return false;
+  if(!gr.every(g=>{const e=g.match(/^[A-Z][a-z]?/)[0];return e.length===1?_EL1.has(e):_EL2.has(e);})) return false;
+  return gr.length>=2||/\d/.test(core)||!!m[1];
+}
+function _chemAsc(m){
+  return String(m).replace(/[→⟶]/g,'->').replace(/[←⟵]/g,'<-').replace(/[⇌⇋]/g,'<=>').replace(/[−‐‑‒]/g,'-').replace(/\s+/g,' ').trim();
+}
+const _WTOK='(?<![A-Za-z0-9])(?!(?:cosec|sinh|cosh|tanh|sin|cos|tan|cot|sec|csc|log|ln|lim|max|min|mod|arg|deg|det|exp)\\b)(?!(?:[A-Z][a-z]?\\d*){2,}(?![A-Za-z0-9]))(?:[a-zA-Z]{2,}(?![A-Za-z0-9])|[\\u0900-\\u097F]+)';
+function _peelWordy(t){
+  const orig=t;
+  let lead='',trail='';
+  const m1=t.match(new RegExp('^((?:\\s*'+_WTOK+'[ ,;:.\'"]*)+)(?=\\S)'));
+  if(m1){ lead=m1[1]; t=t.slice(lead.length); }
+  const m2=t.match(new RegExp('((?:[ ,;:.\'"]*'+_WTOK+'[ ,;:.\'"]*)+)$'));
+  if(m2){ trail=m2[1]; t=t.slice(0,t.length-trail.length); }
+  if(!t||!t.trim()) return {lead:'',trail:'',t:orig};
+  return {lead,trail,t};
+}
+function _chemPiece(b, stash){
+  const t=b.trim();
+  if(!t) return b;
+  const tt=t.replace(/(^|\s)[_\-—–=*•·─.]{3,}(?=\s|$)/g,'$1').trim();
+  if(!tt) return '';
+  const i0=b.indexOf(t);
+  const wrap=(core)=>'\\ce{'+core+'}';
+  if(!/\s/.test(tt)){
+    const c=tt.replace(/[+,.;:!?]+$/g,'');
+    if(_isChemTok(c)&&/[A-Z][a-z]?\d/.test(c)) return b.slice(0,i0)+stash(wrap(c),false)+b.slice(i0+t.length);
+    return null;
+  }
+  const hasArrow=/(->|→|⟶|⇌|⇋|<=>|<-)/.test(tt);
+  const hasEq=/(^|\s)=(\s|$)/.test(tt);
+  if(!hasArrow&&!hasEq) return null;
+  const toks=tt.split(/\s+/).filter(Boolean);
+  let elemStrong=0, bad=0;
+  for(const tk0 of toks){
+    const c=tk0.replace(/^[+]+|[+,.;:!?]+$/g,'');
+    if(!c) continue;
+    if(/^(->|→|⟶|⇌|⇋|<=>|<-|=)$/.test(c)) continue;
+    if(/^\((s|l|g|aq)\)$/.test(c)) continue;
+    if(/^\d+$/.test(c)) continue;
+    if(_isChemTok(c)){ if(/[A-Z][a-z]?\d/.test(c)) elemStrong++; continue; }
+    bad++;
+  }
+  if(bad>0) return null;
+  if(hasArrow?elemStrong<1:elemStrong<2) return null;
+  return b.slice(0,i0)+stash(wrap(_chemAsc(tt).replace(/\s=\s/g,' -> ')),false)+b.slice(i0+t.length);
+}
+function _tryChem(seg, stash){
+  if(!/(->|→|⟶|⇌|⇋|<=>|<-|=)/.test(seg)) return null;
+  if(/[θπ√∫∑∂∇∈∪∩∠⊥△±≤≥≠∞%\\]/.test(seg)) return null;
+  const pw=_peelWordy(seg); const t=pw.t;
+  if(!t||!/(->|→|⟶|⇌|⇋|<=>|<-|=)/.test(t)) return null;
+  // "2H2 + O2 -> 2H2O and CaCO3 + 2HCl -> ..." — wordy connectors ke dono taraf chem ho sakta hai
+  const re=new RegExp('((?:\\s*'+_WTOK+'\\s*)+)');
+  const bits=t.split(re);
+  let out='', anyChem=false;
+  for(let i=0;i<bits.length;i++){
+    const b=bits[i];
+    if(!b) continue;
+    if(i%2===1){ out+=b; continue; }
+    const c=_chemPiece(b, stash);
+    if(c==null) return null;
+    anyChem=true; out+=c;
+  }
+  if(!anyChem) return null;
+  return pw.lead+out+pw.trail;
+}
+// ---- plain-text math segments (bina $ delimiters) ----
+const _MSIG=/[θπαβγδεζηικλμνξρστυφχψωΔΣΠΩΦΛΘΨΓΞ²³¹⁰⁴⁵⁶⁷⁸⁹ⁿ⁺⁻₀₁₂₃₄₅₆₇₈₉₊₋√×÷±∓≠≤≥≈∞∝∫∑∏∂∇∈∉⊂∪∩∀∃∠⊥∥≅∼△∴∵°º˚=<>→←↔⇒⇐⇔⇌⇋⟶⟵↑↓↦−′″]|[A-Za-z0-9)][\^_][A-Za-z0-9({\\]|\\[a-zA-Z]/;
+const _MCHAR=/^[0-9A-Za-z(),.\-+*\/^=<>|%±×÷√°º²³¹⁰⁴⁵⁶⁷⁸⁹ⁿ⁺⁻₊₋₀₁₂₃₄₅₆₇₈₉αβγδεζηθικλμνξπρστυφχψωΔΣΠΩΦΛΘΨΓΞ≤≥≠≈∞∝∫∑∏∂∇∈∉⊂∪∩∀∃∠⊥∥≅∼△∴∵→←↔⇒⇐⇔⇌⇋⟶⟵↑↓↦_!?:{}\[\]\\;'−‐‑‒–—′″⁄]+$/;
+const _MFUNC=new Set(['cosec','sinh','cosh','tanh','sin','cos','tan','cot','sec','csc','log','ln','lim','max','min','mod','arg','deg','det','exp']);
+function _stashMathSegs(seg, stash){
+  const pw=_peelWordy(seg);
+  const t=pw.t;
+  if(!t||!t.trim()) return seg;
+  const tt=t.trim();
+  // akela chem formula token (CO2, H2SO4, Ca(OH)2)
+  if(/^[A-Za-z0-9()+^.-]+$/.test(tt)&&_isChemTok(tt)&&/[A-Z][a-z]?\d/.test(tt)&&!/[\^_\/=]/.test(tt)) return pw.lead+stash('\\ce{'+tt+'}',false)+pw.trail;
+  const toks=t.split(/\s+/).filter(Boolean);
+  let res=pw.lead, run=[];
+  const sp=()=>{ if(res&&!/\s$/.test(res)) res+=' '; };
+  const flush=()=>{
+    if(!run.length) return;
+    let r=run.join(' '); run=[];
+    r=r.replace(/^(?:Q\.?\s*)?\d{1,2}[.)]\s+(?=\S)/,'');
+    const l=(r.match(/^[,.;:!?\s]+/)||[''])[0]; r=r.slice(l.length);
+    const q=(r.match(/[,.;:!?\s]+$/)||[''])[0]; if(q) r=r.slice(0,-q.length);
+    if(r&&!_MSIG.test(r)&&/^[A-Za-z0-9()+^.-]+$/.test(r)&&_isChemTok(r)&&/[A-Z][a-z]?\d/.test(r)){ sp(); res+=l+stash('\\ce{'+r+'}',false)+q; return; }
+    const ok=r&&_MSIG.test(r)&&!/^[0-9.,]+$/.test(r)&&!/^[=<>+\-*\/.,;:]+$/.test(r);
+    sp(); res+=l+(ok?stash(r,false):r)+q;
+  };
+  for(const tk of toks){
+    const base=tk.replace(/[.,;:!?]+$/,'');
+    const w=(/^[A-Za-z]{2,}$/.test(base)&&!_MFUNC.has(base.toLowerCase())&&!/^d[a-zA-Z]$/.test(base)&&!_isChemTok(base))||/[\u0900-\u097F]/.test(tk);
+    if(/^[_\-—–=*•·─.]{3,}$/.test(tk)) continue;
+    if(!w&&_MCHAR.test(tk)) run.push(tk);
+    else{ flush(); sp(); res+=tk; }
+  }
+  flush();
+  return res+pw.trail;
+}
+function _stashPlain(s, stash){
+  const parts=String(s).split(/(\u0001\d+\u0002)/);
+  for(let i=0;i<parts.length;i++){
+    const part=parts[i];
+    if(!part||/^\u0001\d+\u0002$/.test(part)) continue;
+    if(!(_MSIG.test(part)||/(->|→|⟶|⇌|⇋)/.test(part)||/[A-Z][a-z]?\d/.test(part))) continue;
+    const c=_tryChem(part, stash);
+    parts[i]=(c!=null)?c:_stashMathSegs(part, stash);
+  }
+  return parts.join('');
+}
+// _ceTex: mhchem na load ho to bhi chem equation decent render ho (fallback)
+function _ceTex(c){
+  return String(c).replace(/<=>/g,' \\rightleftharpoons ').replace(/->/g,' \\to ').replace(/<-/g,' \\leftarrow ')
+    .replace(/([A-Z][a-z]?)(\d+)/g,'$1_{$2}')
+    .replace(/\((s|l|g|aq)\)/g,'\\text{($1)}')
+    .replace(/\s+/g,' ').trim();
+}
 // _kRender: render karo; fail -> sanitize retry; phir fail -> clean plain text
 function _kRender(el,tex,disp,raw){
   if(window.katex&&window.katex.render){
@@ -5656,15 +5892,25 @@ function _kRender(el,tex,disp,raw){
 function _fmtMath(tex,disp){
   const t=String(tex||'').trim();
   if(!t) return '';
+  // v108 premium sizing: inline fractions/roots/integrals textstyle me bahut
+  // chhote lagte hain — displaystyle upgrade (structured blocks chhod ke)
+  let tx=t;
+  if(!disp&&!/\\begin\{|\\displaystyle/.test(t)&&t.length<=110&&/\\(frac|dfrac|tfrac|sqrt|int|sum|prod|lim|binom|overline|underbrace|overbrace)\b/.test(t)) tx='\\displaystyle '+t;
   if(window.katex&&window.katex.renderToString){
     try{
-      const h=katex.renderToString(t,{displayMode:!!disp,throwOnError:true,strict:'ignore',output:'html'});
+      const h=katex.renderToString(tx,{displayMode:!!disp,throwOnError:true,strict:'ignore',output:'html'});
       return disp?'<div class="math-block">'+h+'</div>':'<span class="rt-m">'+h+'</span>';
     }catch(e){}
     try{
-      const h2=katex.renderToString(_texFix(t),{displayMode:!!disp,throwOnError:true,strict:'ignore',output:'html'});
+      const h2=katex.renderToString(_texFix(tx),{displayMode:!!disp,throwOnError:true,strict:'ignore',output:'html'});
       return disp?'<div class="math-block">'+h2+'</div>':'<span class="rt-m">'+h2+'</span>';
     }catch(e){}
+    if(/\\ce\{[^{}]*\}/.test(tx)){
+      try{
+        const h3=katex.renderToString(tx.replace(/\\ce\{([^{}]*)\}/g,(m,c)=>_ceTex(c)),{displayMode:!!disp,throwOnError:true,strict:'ignore',output:'html'});
+        return disp?'<div class="math-block">'+h3+'</div>':'<span class="rt-m">'+h3+'</span>';
+      }catch(e){}
+    }
   }
   const plain=_texPlain(t)||t;
   return disp?'<div class="math-block rt-msrc">'+esc(plain)+'</div>':'<span class="rt-m rt-msrc">'+esc(plain)+'</span>';
@@ -5694,7 +5940,7 @@ function _fmtRich(t){
      .replace(/[\u2028\u2029\u0085]/g,'\n');
   // ---- 1) math stash (placeholders) — escape se PEHLE ----
   const M=[];
-  const stash=(tex,disp)=>{ M.push({tex,disp:!!disp}); return '\u0001'+(M.length-1)+'\u0002'; };
+  const stash=(tex,disp)=>{ M.push({tex:_uniTex(tex),disp:!!disp}); return '\u0001'+(M.length-1)+'\u0002'; };
   s=s.replace(/\$\$([\s\S]+?)\$\$/g,(m,g)=>stash(g,true));
   s=s.replace(/\\\[([\s\S]+?)\\\]/g,(m,g)=>stash(g,true));
   s=s.replace(/\\\(([\s\S]+?)\\\)/g,(m,g)=>stash(g,false));
@@ -5728,6 +5974,18 @@ function _fmtRich(t){
   s=s.replace(/\\(sqrt)\s*\{([^{}]*)\}/g,(m)=>stash(m,false));
   s=s.replace(/\\text\s*\{([^{}]*)\}/g,(m)=>stash(m,false));
   s=s.replace(/\\(times|div|cdot|circ|pm|mp|approx|neq|leq|le|geq|ge|implies|Rightarrow|rightarrow|infty|alpha|beta|gamma|delta|eta|theta|lambda|mu|pi|sigma|phi|omega|degree|therefore|because|%)(?![a-zA-Z])/g,(m)=>stash(m,false));
+  s=s.replace(/\\(ce|boxed|mathbb|mathbf|mathrm|vec|hat|overline|bar|dot|ddot|tilde)\s*\{([^{}]*)\}/g,(m)=>stash(m,false));
+  s=s.replace(/\\(binom)\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g,(m)=>stash(m,false));
+  s=s.replace(/\\(lim|int|sum|prod)(?:_\{[^{}]*\})?(?:\^\{[^{}]*\})?(?![a-zA-Z])/g,(m)=>stash(m,false));
+  // v108 paste junk: odd backtick / leftover $$ / lone $ / code-wrapped decoration
+  s=s.split('\n').map(ln=>{
+    const n=(ln.match(/`/g)||[]).length;
+    if(n%2===1){ const li=ln.lastIndexOf('`'); ln=ln.slice(0,li)+ln.slice(li+1); }
+    return ln;
+  }).join('\n');
+  s=s.replace(/\${2,}/g,' ').replace(/(^|\s)\$(?=\s|$)/gm,'$1').replace(/`[ _\-—=.]{2,}`/g,' ');
+  // v108: bina-delimiter plain-text math/chem segments (Unicode paste) bhi stash karo
+  s=_stashPlain(s, stash);
   // ---- 2) HTML escape ----
   s=esc(s);
   // ---- 3) OR marker (purana behavior) ----
@@ -5757,7 +6015,7 @@ function _fmtRich(t){
     if(ol){ if(list!=='ol'){ closeList(); out.push('<ol class="rt-ol">'); list='ol'; } out.push('<li>'+ol[2]+'</li>'); continue; }
     const bq=ln.match(/^\s*&gt;\s?(.*)$/);
     if(bq){ closeList(); out.push('<div class="rt-bq">'+bq[1]+'</div>'); continue; }
-    if(/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(ln)){ closeList(); out.push('<hr class="rt-hr">'); continue; }
+    if(/^\s*(?:[-–—=_*•·─]{3,}|\.{4,})\s*$/.test(ln)){ closeList(); continue; }
     closeList();
     out.push(ln);
   }
@@ -5773,6 +6031,7 @@ function _fmtRich(t){
   s=s.replace(/\u0001(\d+)\u0002/g,(m,i)=>{
     const it=M[+i]; return it?_fmtMath(it.tex,it.disp):'';
   });
+  s=s.replace(/[\u0001\u0002]/g,'');
   return s;
 }
 function _rtField(id){ const t=document.getElementById(id); if(!t){ toast('Click inside the box first, then use the formatting tools.',true); return null; } return t; }
@@ -11811,7 +12070,7 @@ async function openDppRemarks(pid){
 }
 function openSubmitAnswer(parentId,title){
   showModal(' Answer Submit',
- `<div class="alert alert-info"><strong>${esc(title)}</strong><br>Upload your solved PDF (max 20MB). The teacher is notified as soon as you submit.</div><div class="form-group"><label>Answer PDF</label>${fileDropHTML('sub-file','sub-label','.pdf,image/*')}</div><div id="sub-status"></div>`,
+ `<div class="alert alert-info"><strong>${esc(title)}</strong><br>Upload your solved PDF \u2014 large files are compressed automatically. The teacher is notified as soon as you submit.</div><div class="form-group"><label>Answer PDF</label>${fileDropHTML('sub-file','sub-label','.pdf,image/*')}</div><div id="sub-status"></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-success" id="sub-btn" onclick="submitAnswerFile(${parentId})">Submit</button>`);
 }
 async function submitAnswerFile(parentId){
@@ -12368,7 +12627,11 @@ async function _plSubmit(id){
     body={mcq_answers:ans};
   } else {
     if(!window._examFile){ toast('Please upload your handwritten answer sheet',true); return; }
-    if(window._examFile.size>20*1024*1024){ toast('File too large (max 20MB)',true); return; }
+    if(window._examFile.size>MAXB){
+      toast('Large file \u2014 compressing automatically\u2026');
+      try{ const _r=await smartCompress(window._examFile,m=>toast(m)); if(_r&&_r.ok&&_r.file) window._examFile=_r.file; }catch(e){}
+      if(window._examFile.size>MAXB){ toast('The file is still too large after compression. Please upload a smaller scan or photo.',true); return; }
+    }
     const b64=await _fileB64(window._examFile);
     body={answer_image_b64:b64, mime_type:window._examFile.type||'image/jpeg'};
   }
@@ -12630,7 +12893,7 @@ function sdoBindPaste(){
     if(items){ for(const it of items){ if(it.kind==='file'){ f=it.getAsFile(); if(f) break; } } }
     if(!f&&e.clipboardData&&e.clipboardData.files&&e.clipboardData.files.length) f=e.clipboardData.files[0];
     if(!f) return;
-    cmpSetFile(key,new File([f], (f.name&&f.name!=='image.png')?f.name:('pasted_'+Date.now()+'.png'),{type:f.type}));
+    cmpSetFile(key,new File([f], (f.name&&f.name!=='image.png')?f.name:('pasted_'+Date.now()+'.png'),{type:f.type})).then(ok=>{ if(ok) cmpChips(key); });
     toast('File pasted from clipboard.');
     e.preventDefault();
   },true);
@@ -12676,7 +12939,14 @@ async function submitDoubt(){
         else if(_r&&!_r.ok){ toast('The image is still too large after compression.',true); btn.disabled=false; btn.textContent='Submit Doubt'; return; }
       }catch(e){}
     }
-    if(f.size>20*1024*1024){ toast('Attachment is larger than 20MB.',true); btn.disabled=false; btn.textContent='Submit Doubt'; return; }
+    if(f.size>MAXB){
+      toast('Large attachment \u2014 compressing automatically\u2026');
+      try{
+        const _r2=await Promise.race([smartCompress(f,m=>toast(m)),new Promise(r=>setTimeout(()=>r(null),45000))]);
+        if(_r2&&_r2.ok&&_r2.file) f=_r2.file;
+      }catch(e){}
+    }
+    if(f.size>MAXB){ toast('The attachment is still too large after compression. Please try a smaller file.',true); btn.disabled=false; btn.textContent='Submit Doubt'; return; }
     fd.append('file',f);
   }
   if(st.voice) fd.append('voice',st.voice,'voice.webm');
@@ -13487,7 +13757,7 @@ function openStudioReport(id){
     </div></div>
     <div class="form-group"><label>Report Notes</label><textarea class="form-control" id="sr-notes" rows="3" maxlength="4000" placeholder="Recording status, studio setup, delays, issues, follow-ups needed...">${esc((r&&r.notes)||'')}</textarea></div>
     <div class="form-group"><label>Class Notes (PDF, optional)</label>
-      <div class="dz" id="dz-sr-file" onclick="document.getElementById('sr-file').click()"><span class="dz-ic">${ic('upload')}</span><span class="dz-t" id="sr-file-name">${(r&&r.has_notes_file)?'Drop a new PDF here to replace the notes':'Drag &amp; drop the class notes PDF here'}</span><span class="dz-s">or click to browse \u00b7 PDF only, max 20 MB</span></div>
+      <div class="dz" id="dz-sr-file" onclick="document.getElementById('sr-file').click()"><span class="dz-ic">${ic('upload')}</span><span class="dz-t" id="sr-file-name">${(r&&r.has_notes_file)?'Drop a new PDF here to replace the notes':'Drag &amp; drop the class notes PDF here'}</span><span class="dz-s">or click to browse \u00b7 PDF only \u2014 large files auto-compress</span></div>
       <input type="file" id="sr-file" accept="application/pdf" style="display:none" onchange="_srPickFile(this)">
       ${fileRow}
     </div>
@@ -13498,12 +13768,10 @@ function openStudioReport(id){
 }
 function _srPickFile(inp){
   const f=inp.files[0]; if(!f) return;
-  if(f.size>20*1024*1024){ toast('PDF too large (max 20MB)',true); inp.value=''; return; }
-  _srSetFile(f);
+  _smartPdfPick(f,'dz-sr-file',cf=>_srSetFile(cf));
 }
 function _srSetFile(f){
   if(!f) return;
-  if(f.size>20*1024*1024){ toast('PDF too large (max 20MB)',true); return; }
   window._srFile=f; window._srRemove=false;
   const n=document.getElementById('sr-file-name'); if(n) n.textContent=f.name;
   const row=document.getElementById('sr-file-row'); if(row) row.style.display='none';
@@ -13557,9 +13825,9 @@ function _dzInit(inputId){
     const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
     if(!f) return;
     if(!(f.type==='application/pdf'||/\.pdf$/i.test(f.name||''))){ toast('Only PDF files can be uploaded here.',true); return; }
-    if(inputId==='lec-pdf') _lecSetFile(f,'pdf');
-    else if(inputId==='sr-file') _srSetFile(f);
-    else if(inputId==='cru-file') _cruSetFile(f);
+    if(inputId==='lec-pdf') _smartPdfPick(f,'dz-lec-pdf',cf=>_lecSetFile(cf,'pdf'));
+    else if(inputId==='sr-file') _smartPdfPick(f,'dz-sr-file',cf=>_srSetFile(cf));
+    else if(inputId==='cru-file') _smartPdfPick(f,'dz-cru-file',cf=>_cruSetFile(cf));
   });
 }
 // ===== v99: ADMIN CLASS-REPORT UPLOAD (past classes ka report + notes backfill) =====
@@ -13593,7 +13861,7 @@ function openClassReportUpload(id){
     <div class="cr-sec">2. For Students <span class="cr-sec-sub">appears in the Lectures feed</span></div>
     <label class="ex-lbl">Lecture Summary</label>
     <textarea class="form-control" id="cru-summary" rows="2" placeholder="What was taught in this class?"></textarea>
-    <div><label class="ex-lbl">Class Notes (PDF)</label><div class="dz" id="dz-cru-file" onclick="document.getElementById('cru-file').click()"><span class="dz-ic">${ic('upload')}</span><span class="dz-t" id="cru-file-name">Drag &amp; drop the class notes PDF here</span><span class="dz-s">or click to browse \u00b7 PDF only, max 20 MB</span></div><input type="file" id="cru-file" accept="application/pdf" style="display:none" onchange="_cruPickFile(this)"></div>
+    <div><label class="ex-lbl">Class Notes (PDF)</label><div class="dz" id="dz-cru-file" onclick="document.getElementById('cru-file').click()"><span class="dz-ic">${ic('upload')}</span><span class="dz-t" id="cru-file-name">Drag &amp; drop the class notes PDF here</span><span class="dz-s">or click to browse \u00b7 PDF only \u2014 large files auto-compress</span></div><input type="file" id="cru-file" accept="application/pdf" style="display:none" onchange="_cruPickFile(this)"></div>
     <div class="cr-sec">3. Studio Note <span class="cr-sec-sub">optional \u2014 internal: recording, setup, issues</span></div>
     <div class="sr-opts" style="margin-bottom:10px">
       ${srOpt('held','Class Held','The class happened as planned')}
@@ -13608,12 +13876,10 @@ function openClassReportUpload(id){
 }
 function _cruPickFile(inp){
   const f=inp.files[0]; if(!f) return;
-  if(f.size>20*1024*1024){ toast('PDF too large (max 20MB)',true); inp.value=''; return; }
-  _cruSetFile(f);
+  _smartPdfPick(f,'dz-cru-file',cf=>_cruSetFile(cf));
 }
 function _cruSetFile(f){
   if(!f) return;
-  if(f.size>20*1024*1024){ toast('PDF too large (max 20MB)',true); return; }
   window._crFile=f;
   const n=document.getElementById('cru-file-name'); if(n) n.textContent=f.name;
   const z=document.getElementById('dz-cru-file'); if(z) z.classList.add('has-file');
@@ -17062,6 +17328,10 @@ body.dark .po-pill.red{color:#f87171}
 .sr-file-x{border:none;background:none;color:var(--text-muted);cursor:pointer;font-size:.82rem;padding:2px 6px;border-radius:6px;flex:none}
 .sr-file-x:hover{background:rgba(220,38,38,.1);color:#dc2626}
 .dz{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:15px 12px;border:1.5px dashed var(--border);border-radius:12px;background:var(--card-bg,#fff);cursor:pointer;text-align:center;transition:border-color .15s,background .15s}
+.dz-prog{width:100%;margin-top:8px}
+.dz-prog-bar{height:6px;border-radius:99px;background:rgba(127,127,127,.18);overflow:hidden}
+.dz-prog-bar span{display:block;height:100%;width:0;background:linear-gradient(90deg,#b8941f,#d4af37);border-radius:99px;transition:width .25s}
+.dz-prog-t{font-size:.68rem;font-weight:700;color:var(--muted,#7a7466);margin-top:4px;text-align:center}
 .dz:hover{border-color:#c9a227;background:#fffdf5}
 .dz.over{border-color:#c9a227;background:#fdf6dd}
 .dz.has-file{border-style:solid;border-color:#2f9e44;background:#f2fbf4}

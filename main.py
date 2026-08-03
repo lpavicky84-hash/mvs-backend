@@ -178,6 +178,24 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+# ===== GLOBAL ERROR SAFETY NET =====
+# Unhandled exceptions must still return a JSON response from INSIDE the CORS
+# middleware. Without this, a crashed request answers with a bare proxy/uvicorn
+# 500 page (no Access-Control-Allow-Origin header), the browser blocks it, and
+# the portal shows a misleading "Could not reach the server" network error even
+# though the server is up. This handler converts every crash into a readable
+# JSON error so the real message always reaches the user.
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request, exc):
+    import traceback
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Something went wrong on the server — please try again in a moment. If it keeps happening, contact support."},
+    )
+
 # ===== CORS =====
 # allow_credentials must be False when using "*" so that local HTML files
 # (file:// origin = "null") and any browser can connect without CORS errors.

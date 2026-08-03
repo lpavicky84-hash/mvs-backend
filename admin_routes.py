@@ -745,7 +745,7 @@ def studio_report_delete(rid: int, db: Session = Depends(get_db), _=Depends(get_
 
 # ===== v99: ADMIN CLASS-REPORT BACKFILL (past classes ka academic report + notes) =====
 @router.post("/class-report-backfill")
-def class_report_backfill(payload: dict = Body(...), db: Session = Depends(get_db),
+async def class_report_backfill(payload: dict = Body(...), db: Session = Depends(get_db),
                           admin=Depends(get_admin)):
     """Purani classes (batch start se aaj tak) ka class report studio manager /
     admin upload karta hai — entry completed mark hoti hai aur summary + class
@@ -801,13 +801,27 @@ def class_report_backfill(payload: dict = Body(...), db: Session = Depends(get_d
     if pdf_b64:
         lec.pdf_b64 = pdf_b64
         lec.pdf_filename = pdf_name
-        # Material mirror — students ko Study Material me bhi mil jaye
-        db.add(Material(teacher_id=e.teacher_id, teacher_name=tname,
-                        subject=e.subject or "", class_name=(e.class_name or None),
-                        chapter=(e.chapter or None), part=(e.part or None),
-                        material_type="notes", title=(lec.title or e.subject or "Class Notes"),
-                        filename=pdf_name, content_b64=pdf_b64.split(",")[-1]))
-    db.commit()
+    # Main save — a DB failure here must come back as a readable JSON error,
+    # never a bare 500 (the global handler in main.py keeps CORS headers on).
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, "Could not save the class report — the PDF may be too large for the database. Please try a shorter or compressed PDF.")
+    # Material mirror — best-effort. The lecture feed already works once the
+    # commit above succeeded, so a mirror problem must never fail the upload.
+    # tp.id (not e.teacher_id) keeps the FK valid even for old entries whose
+    # teacher profile no longer exists.
+    if pdf_b64:
+        try:
+            db.add(Material(teacher_id=(tp.id if tp else None), teacher_name=tname,
+                            subject=e.subject or "", class_name=(e.class_name or None),
+                            chapter=(e.chapter or None), part=(e.part or None),
+                            material_type="notes", title=(lec.title or e.subject or "Class Notes"),
+                            filename=pdf_name, content_b64=pdf_b64.split(",")[-1]))
+            db.commit()
+        except Exception:
+            db.rollback()
     return {"ok": True, "lecture_id": lec.id, "created": created,
             "message": ("Class report uploaded" if created else "Class report updated")}
 
