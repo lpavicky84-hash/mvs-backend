@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- MVS Portal v119 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -774,6 +775,8 @@
   .txp-grid button{min-width:40px;height:36px;padding:0 10px;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:9px;font-size:1rem;cursor:pointer;transition:.13s;font-family:inherit}
   .txp-grid button:hover{border-color:#c9a227;color:#8a6d10;transform:translateY(-1px);box-shadow:0 3px 8px -3px rgba(184,148,31,.4)}
   .txp-note{margin-top:13px;font-size:.74rem;color:var(--text-muted);line-height:1.55}
+  .ai-busy{box-shadow:0 0 0 2px rgba(212,175,55,.55)!important;animation:aipulse 1.1s ease-in-out infinite}
+  @keyframes aipulse{50%{box-shadow:0 0 0 5px rgba(212,175,55,.18)!important}}
   .rt-or{display:flex;align-items:center;gap:14px;font-weight:800;letter-spacing:.16em;margin:7px 0;color:var(--text-muted);font-size:.85em}
   .rt-or::before,.rt-or::after{content:'';flex:1;height:1px;background:var(--border)}
   .pl-qtext-wrap{flex:1;min-width:0}
@@ -6158,10 +6161,15 @@ async function _autoFixField(id){
     }catch(e){ if((e&&e.status)||/503|unavailable|AI|401|403|timeout|404/i.test(String(e&&e.message||e))) sessionStorage.setItem(flag,'0'); return null; }
   };
   // v117: pehle naya direct AI endpoint (current Gemini models), phir purana grading wala, phir local heal hi kaafi
-  const ai1=await _aiHit('/api/teacher/format-text-ai','mvs_fmtai');
-  if(ai1&&ai1!==healed){ healed=ai1; aiUsed=true; }
-  else{ const ai2=await _aiHit('/api/teacher/format-text','mvs_fmtai2');
-    if(ai2&&ai2!==healed){ healed=ai2; aiUsed=true; } }
+  const _aiWillTry = sessionStorage.getItem('mvs_fmtai')!=='0' || sessionStorage.getItem('mvs_fmtai2')!=='0';
+  if(_aiWillTry){ t.classList.add('ai-busy'); toast('Formatting with AI\u2026'); } // v119: dabate hi feedback — wait feel na ho
+  let ai1=null;
+  try{
+    ai1=await _aiHit('/api/teacher/format-text-ai','mvs_fmtai');
+    if(ai1&&ai1!==healed){ healed=ai1; aiUsed=true; }
+    else{ const ai2=await _aiHit('/api/teacher/format-text','mvs_fmtai2');
+      if(ai2&&ai2!==healed){ healed=ai2; aiUsed=true; } }
+  }finally{ t.classList.remove('ai-busy'); }
   if(healed===before){ toast('Already well formatted — nothing to change.'); return; }
   t.value=healed; t.dispatchEvent(new Event('input',{bubbles:true}));
   toast(aiUsed?'Formatted with AI assist — review the preview.':(aiTried?'Formatting fixed (AI offline — local repair applied).':'Formatting fixed — review the preview below.'));
@@ -6196,13 +6204,14 @@ async function _autoFmtField(t, viaPaste){
   let aiUsed=false;
   if(viaPaste && _needsAIFrag(healed) && sessionStorage.getItem('mvs_fmtai')!=='0'){
     _autoFmtBusy[t.id]=1;
+    t.classList.add('ai-busy'); // v119: paste hote hi gold glow — AI chal raha hai, instant feedback
     try{
       const r=await Promise.race([api('/api/teacher/format-text-ai','POST',{text:healed}),
         new Promise((_,rj)=>setTimeout(()=>rj(new Error('timeout')),25000))]);
       if(r&&r.text&&String(r.text).trim()){ healed=String(r.text); aiUsed=true; }
       else sessionStorage.setItem('mvs_fmtai','0');
     }catch(e){ if((e&&e.status)||/timeout|503|404|unavailable/i.test(String(e&&e.message||e))) sessionStorage.setItem('mvs_fmtai','0'); }
-    finally{ delete _autoFmtBusy[t.id]; }
+    finally{ delete _autoFmtBusy[t.id]; t.classList.remove('ai-busy'); }
   }
   if(healed!==before){
     t.value=healed;
