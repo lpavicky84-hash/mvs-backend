@@ -7668,7 +7668,21 @@ function dbtRespHTML(r){
   const tag=r.role==='admin'?'MVS Foundation':(r.role==='student'?'Student':'Teacher');
   const ini=esc(initials(r.author_name||(r.role==='admin'?'MVS':'?')));
   const when=r.created_at?new Date(r.created_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
-  return `<div class="dbt-resp ${cls}"><div class="dbt-resp-ava">${ini}</div><div class="dbt-resp-b"><div class="dbt-resp-h"><span class="dbt-resp-n">${esc(r.author_name||tag)}</span><span class="dbt-resp-tag">${tag}</span>${r.mine?'<span style="font-size:.62rem;color:var(--text-muted);font-weight:700">(You)</span>':''}</div><div class="dbt-resp-t">${_fmtRich(r.body||'')}</div>${when?`<div class="dbt-resp-w">${when}</div>`:''}</div></div>`;
+  // v112: admin ka reply official MVS logo tile ke saath; teacher ka reply uski
+  // real profile photo ke saath (photo na ho to initials hi rehte hain)
+  const ava=r.role==='admin'
+    ? `<div class="dbt-resp-ava mvs-ava">M</div>`
+    : (r.role==='teacher'&&r.author_tid
+      ? `<div class="dbt-resp-ava dbt-resp-photo" id="dbtrava-${r.id}" data-tid="${r.author_tid}">${ini}</div>`
+      : `<div class="dbt-resp-ava">${ini}</div>`);
+  return `<div class="dbt-resp ${cls}">${ava}<div class="dbt-resp-b"><div class="dbt-resp-h"><span class="dbt-resp-n">${esc(r.author_name||tag)}</span><span class="dbt-resp-tag">${tag}</span>${r.mine?'<span style="font-size:.62rem;color:var(--text-muted);font-weight:700">(You)</span>':''}</div><div class="dbt-resp-t">${_fmtRich(r.body||'')}</div>${when?`<div class="dbt-resp-w">${when}</div>`:''}</div></div>`;
+}
+// v112: thread avatars me teacher photos load karo (viewer role ke hisaab se endpoint)
+function _dbtLoadAvas(role){
+  const base=role==='teacher'?'/api/teacher/teacher/':(role==='student'?'/api/student/teacher/':'/api/admin/teacher/');
+  document.querySelectorAll('.dbt-resp-photo[data-tid]').forEach(el=>{
+    _loadPhotoInto(el.id, base+el.getAttribute('data-tid')+'/photo');
+  });
 }
 function dbtThreadHTML(d){
   const rs=d.responses||[]; if(!rs.length) return '';
@@ -7725,7 +7739,7 @@ function tRenderDoubts(){
   if(_tdSub===null){
     // ---- SUBJECT CARDS VIEW ----
     html+=toppersHTML(doubts,'ttop',false);
-    const bySub={}; doubts.forEach(d=>{ const k=d.subject||'Other'; (bySub[k]=bySub[k]||{total:0,pending:0}); bySub[k].total++; if(d.status!=='resolved'&&!d.assigned_away) bySub[k].pending++; });
+    const bySub={}; doubts.forEach(d=>{ const k=d.subject||'Other'; (bySub[k]=bySub[k]||{total:0,pending:0}); bySub[k].total++; if((d.status!=='resolved'||d.needs_attention)&&!d.assigned_away) bySub[k].pending++; });
     const subs=Object.keys(bySub).sort();
     if(!subs.length) html+=`<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>No doubts yet.</p></div></div></div>`;
     else html+=`<div class="xm-grid">`+subs.map(sub=>{
@@ -7737,7 +7751,7 @@ function tRenderDoubts(){
   // ---- SUBJECT DRILL VIEW (sectioned: Pending upar, Resolved neeche, Reassigned alag) ----
   const list=doubts.filter(d=>(d.subject||'Other')===_tdSub);
   const away=list.filter(d=>d.assigned_away);
-  const pend=list.filter(d=>d.status!=='resolved'&&!d.assigned_away), done=list.filter(d=>d.status==='resolved'&&!d.assigned_away);
+  const pend=list.filter(d=>(d.status!=='resolved'||d.needs_attention)&&!d.assigned_away), done=list.filter(d=>d.status==='resolved'&&!d.assigned_away&&!d.needs_attention);
   html+=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="_tdSub=null;tRenderDoubts()">\u2190 All Subjects</button><h3 style="margin:0">${esc(_tdSub)} <span style="color:var(--text-muted);font-weight:600;font-size:.85rem">(${list.length})</span></h3></div><div class="hide-scroll doubt-drill">`;
   const mediaOf=d=>`${d.has_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/voice')">${ic('play')} Voice Note</button>`:''}${d.has_image?doubtAttachHtml('teacher',d.id,d.attach_mime,d.attach_name,false):''}`;
   const headOf=(d,pill)=>`<div class="dbt-head"><div style="min-width:0"><div class="dbt-name">${esc(d.student_name||'Student')}</div><div class="dbt-meta">${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}${d.created_at?' \u00b7 '+esc(d.created_at):''}</div></div><div class="dbt-badges">${pill}</div></div>`;
@@ -7746,7 +7760,7 @@ function tRenderDoubts(){
     rows+=`<div class="dbt-sec">Pending (${pend.length})</div>`;
     rows+=pend.map(d=>{
       const media=mediaOf(d);
-      return `<div class="dbt-card pend">${headOf(d,'<span class="dbt-pill open">Pending</span>')}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${dbtThreadHTML(d)}<div style="margin-top:12px">${composerHTML('ta'+d.id,'Write your answer\u2026 or send a voice note / file','resolveDoubt('+d.id+')','Resolve')}</div>${dbtReplyRow('teacher',d.id,'Or add a note for the student...')}${tAssignRow(d)}</div>`;
+      return `<div class="dbt-card pend">${headOf(d,(d.needs_attention&&d.status==='resolved')?'<span class="dbt-pill open">New Follow-up</span>':'<span class="dbt-pill open">Pending</span>')}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${dbtThreadHTML(d)}<div style="margin-top:12px">${composerHTML('ta'+d.id,'Write your answer\u2026 or send a voice note / file','resolveDoubt('+d.id+')','Resolve')}</div>${dbtReplyRow('teacher',d.id,'Or add a note for the student...')}${tAssignRow(d)}</div>`;
     }).join('');
   }
   if(done.length){
@@ -7768,6 +7782,7 @@ function tRenderDoubts(){
   html+=(rows||`<div class="empty-state"><p>No doubts in this subject.</p></div>`)+`</div>`;
   el.innerHTML=html;
   loadDoubtThumbs(el);   // v69 — image attachments ke inline previews
+  _dbtLoadAvas('teacher');   // v112 — thread me teacher photos
   // KaTeX math render ($..$) — DPP questions ke formulas sahi dikhenge
   list.forEach(d=>{
     const q=document.getElementById(`tdq-${d.id}`); if(q) renderMath(q);
@@ -10028,7 +10043,7 @@ function aRenderDoubts(){
   const el=document.getElementById('a-doubts-content');
   const all=window._aDoubts||[];
   // nav badge
-  const pendAll=all.filter(d=>d.status==='pending').length;
+  const pendAll=all.filter(d=>d.status==='pending'||d.needs_attention).length;
   const bd=document.getElementById('a-doubt-badge'); if(bd){ bd.textContent=pendAll; bd.style.display=pendAll>0?'':'none'; }
   if(!_adSub){
     // ---- DEFAULT: toppers (collapsed) + subject cards ----
@@ -10037,9 +10052,9 @@ function aRenderDoubts(){
   }
   // ---- DRILL: ek subject ke doubts ----
   let list=all.filter(d=>d.subject===_adSub);
-  const pending=list.filter(d=>d.status==='pending').length, resolved=list.filter(d=>d.status==='resolved').length, total=list.length;
-  if(_aDoubtFilter==='pending') list=list.filter(d=>d.status==='pending');
-  else if(_aDoubtFilter==='resolved') list=list.filter(d=>d.status==='resolved');
+  const pending=list.filter(d=>d.status==='pending'||d.needs_attention).length, resolved=list.filter(d=>d.status==='resolved'&&!d.needs_attention).length, total=list.length;
+  if(_aDoubtFilter==='pending') list=list.filter(d=>d.status==='pending'||d.needs_attention);
+  else if(_aDoubtFilter==='resolved') list=list.filter(d=>d.status==='resolved'&&!d.needs_attention);
   const fbtn=(f,label)=>`<button class="btn btn-sm ${_aDoubtFilter===f?'btn-primary':'btn-ghost'}" onclick="aDoubtFilter('${f}')">${label}</button>`;
   const cards=list.length?list.map(d=>{
     const when=d.created_at?new Date(d.created_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
@@ -10053,13 +10068,14 @@ function aRenderDoubts(){
       : `<div class="bubble-pending">${d.assigned_to_admin?'Awaiting an official reply from MVS Foundation...':'Awaiting teacher\'s reply...'}</div>`;
     const reassignNote=d.assigned_by_name?`<div style="margin-top:3px;font-size:.72rem;color:#4f46e5;font-weight:700">Reassigned by ${esc(d.assigned_by_name)} \u2192 now with ${esc(owner)}</div>`:'';
     const adminReply=`<div style="display:flex;align-items:center;gap:9px;margin-top:12px;background:linear-gradient(135deg,rgba(201,162,39,.1),rgba(201,162,39,.03));border:1px solid rgba(201,162,39,.4);border-radius:12px;padding:9px 12px"><div class="mvs-logo" style="width:30px;height:30px;font-size:.8rem">M</div><input class="form-control" style="flex:1;min-width:0" id="dbtr-admin-${d.id}" placeholder="Reply as MVS Foundation${d.status==='resolved'?'':''} — posting on a pending doubt resolves it" onkeydown="if(event.key==='Enter')dbtRespond('admin',${d.id},'dbtr-admin-${d.id}')"><button class="btn btn-primary btn-sm" onclick="dbtRespond('admin',${d.id},'dbtr-admin-${d.id}')">Post</button></div>`;
-    return `<div class="dcard"${d.assigned_to_admin?' style="border-color:rgba(201,162,39,.6);box-shadow:0 0 0 3px rgba(201,162,39,.12)"':''}><div class="dcard-head"><div class="dcard-who"><b>${esc(d.student_name)}</b>${d.student_phone?' \u00b7 '+esc(d.student_phone):''} asked <b>${esc(d.teacher_name)}</b><div style="margin-top:3px">${esc(d.subject||'')}${d.topic?' \u00b7 '+esc(d.topic):''} \u00b7 ${esc(when)}</div>${reassignNote}</div><div style="display:flex;align-items:center;gap:8px">${d.assigned_to_admin?'<span class="tag" style="background:linear-gradient(135deg,#c9a227,#a8841a);color:#241a05">With MVS Foundation</span>':''}<span class="tag ${d.status==='resolved'?'tag-done':'tag-pending'}">${d.status==='resolved'?'Resolved':'Pending'}</span><button class="btn btn-danger btn-sm" title="Delete this doubt (removed from student and teacher portals)" onclick="aDelDoubt(${d.id})">${ic('trash')}</button></div></div>
+    return `<div class="dcard"${d.assigned_to_admin?' style="border-color:rgba(201,162,39,.6);box-shadow:0 0 0 3px rgba(201,162,39,.12)"':''}><div class="dcard-head"><div class="dcard-who"><b>${esc(d.student_name)}</b>${d.student_phone?' \u00b7 '+esc(d.student_phone):''} asked <b>${esc(d.teacher_name)}</b><div style="margin-top:3px">${esc(d.subject||'')}${d.topic?' \u00b7 '+esc(d.topic):''} \u00b7 ${esc(when)}</div>${reassignNote}</div><div style="display:flex;align-items:center;gap:8px">${d.assigned_to_admin?'<span class="tag" style="background:linear-gradient(135deg,#c9a227,#a8841a);color:#241a05">With MVS Foundation</span>':''}${d.needs_attention&&d.status==='resolved'?'<span class="tag tag-pending">New Follow-up</span>':('<span class="tag '+(d.status==='resolved'?'tag-done':'tag-pending')+'">'+(d.status==='resolved'?'Resolved':'Pending')+'</span>')}<button class="btn btn-danger btn-sm" title="Delete this doubt (removed from student and teacher portals)" onclick="aDelDoubt(${d.id})">${ic('trash')}</button></div></div>
       <div class="chat-thread"><div class="bubble bubble-q"><div class="who">${esc(d.student_name)} (Student)</div>${esc(d.question||'')}${qvoice}${qfile}${qimg}</div>${ans}</div>${dbtThreadHTML(d)}${adminReply}</div>`;
   }).join(''):`<div class="empty-state"><p>No doubts in this view.</p></div>`;
   el.innerHTML=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="adPickSub('')">\u2190 All Subjects</button><h3 style="margin:0;font-size:1.2rem">${esc(_adSub)}</h3></div>
     <div class="dfilter">${fbtn('all','All ('+total+')')}${fbtn('pending','Pending ('+pending+')')}${fbtn('resolved','Resolved ('+resolved+')')}</div>
     <div class="hide-scroll doubt-drill">${cards}</div>`;
   list.forEach(d=>{ if(d.has_image&&(d.attach_mime||'image/jpeg').startsWith('image/')) loadImgInto2('adimg-'+d.id,'/api/admin/doubt/'+d.id+'/image'); });
+  _dbtLoadAvas('admin');   // v112 — thread me teacher photos
 }
 function loadImgInto2(elId,url){
   fetch(API+url,{headers:{Authorization:'Bearer '+TOKEN}}).then(r=>r.ok?r.blob():null).then(b=>{ if(b){ const el=document.getElementById(elId); if(el){ el._blobUrl=URL.createObjectURL(b); el._dlName=_dlName(el.getAttribute('data-name'),b.type); el.src=el._blobUrl; } } }).catch(()=>{});
@@ -12897,6 +12913,7 @@ async function loadSDoubts(){
       const a=document.getElementById(`dbta-${d.id}`); if(a) renderMath(a);
       if(d.has_teacher_photo) _loadPhotoInto(`dbtava-${d.id}`,`/api/student/teacher/${d.teacher_id}/photo`);
     });
+    _dbtLoadAvas('student');   // v112 — thread me teacher photos
     sdoBindPaste();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
@@ -17219,6 +17236,8 @@ body.dark .po-pill.red{color:#f87171}
 .dbt-resp-ava{width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.72rem;color:#fff;background:linear-gradient(135deg,#334155,#0f172a)}
 .dbt-resp.stu .dbt-resp-ava{background:linear-gradient(135deg,#1d4ed8,#1e3a8a)}
 .dbt-resp.adm .dbt-resp-ava{background:linear-gradient(135deg,#c9a227,#8a6d10);color:#241a05;position:relative}
+.dbt-resp-ava.mvs-ava{border-radius:10px;background:linear-gradient(135deg,#c9a227,#8a6d10);color:#241a05;font-weight:900;font-size:.85rem;box-shadow:0 2px 8px rgba(138,109,16,.35)}
+.dbt-resp-ava.dbt-resp-photo{background-size:cover;background-position:center}
 .dbt-resp-b{min-width:0;flex:1;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:8px 12px}
 .dbt-resp.adm .dbt-resp-b{background:linear-gradient(135deg,rgba(201,162,39,.1),rgba(201,162,39,.04));border-color:rgba(201,162,39,.45)}
 .dbt-resp-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px}

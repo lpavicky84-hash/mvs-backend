@@ -744,6 +744,20 @@ def studio_report_delete(rid: int, db: Session = Depends(get_db), _=Depends(get_
     return {"ok": True, "message": "Report removed"}
 
 # ===== v99: ADMIN CLASS-REPORT BACKFILL (past classes ka academic report + notes) =====
+def _lec_cls5(x):
+    """lectures.class_level is VARCHAR(5) (meant for '10' / '12'). Timetable
+    class_name can be 'Class 10' (8 chars) — inserting it raw makes MySQL strict
+    mode reject the whole class report (error 1406, "Data too long"). Normalize:
+    first digit run wins ('Class 10' -> '10'); no digits -> raw, truncated;
+    empty -> None. Result can never exceed 5 chars."""
+    import re as _re
+    raw = str(x or "").strip()
+    if not raw:
+        return None
+    m = _re.search(r"\d+", raw)
+    return (m.group(0) if m else raw)[:5]
+
+
 @router.post("/class-report-backfill")
 async def class_report_backfill(payload: dict = Body(...), db: Session = Depends(get_db),
                           admin=Depends(get_admin)):
@@ -766,7 +780,7 @@ async def class_report_backfill(payload: dict = Body(...), db: Session = Depends
     summary = (payload.get("summary") or "").strip()
     homework = (payload.get("homework") or "").strip()
     pdf_b64 = (payload.get("pdf_b64") or "").strip() or None
-    pdf_name = ((payload.get("pdf_filename") or "notes.pdf").strip()[:255])
+    pdf_name = ((payload.get("pdf_filename") or "notes.pdf").strip()[:200])  # Lecture.pdf_filename / Material.filename are VARCHAR(200)
     if not topic and not summary and not pdf_b64:
         raise HTTPException(400, "Add a topic, summary or the class notes PDF")
 
@@ -787,9 +801,9 @@ async def class_report_backfill(payload: dict = Body(...), db: Session = Depends
     created = False
     if not lec:
         lec = Lecture(teacher_id=e.teacher_id, teacher_name=tname,
-                      subject=e.subject or "", class_level=(e.class_name or None),
+                      subject=e.subject or "", class_level=_lec_cls5(e.class_name),
                       chapter=(e.chapter or None), part=(e.part or None),
-                      title=(e.chapter or "Lecture") + ((" – " + e.part) if e.part else ""),
+                      title=((e.chapter or "Lecture") + ((" – " + e.part) if e.part else ""))[:240],
                       timetable_entry_id=entry_id, lecture_date=e.entry_date,
                       is_active=True)
         db.add(lec); db.flush()
@@ -807,7 +821,7 @@ async def class_report_backfill(payload: dict = Body(...), db: Session = Depends
         db.commit()
     except Exception:
         db.rollback()
-        raise HTTPException(500, "Could not save the class report — the PDF may be too large for the database. Please try a shorter or compressed PDF.")
+        raise HTTPException(500, "Could not save the class report right now — please try again. If it keeps failing, contact support.")
     # Material mirror — best-effort. The lecture feed already works once the
     # commit above succeeded, so a mirror problem must never fail the upload.
     # tp.id (not e.teacher_id) keeps the FK valid even for old entries whose
@@ -817,7 +831,7 @@ async def class_report_backfill(payload: dict = Body(...), db: Session = Depends
             db.add(Material(teacher_id=(tp.id if tp else None), teacher_name=tname,
                             subject=e.subject or "", class_name=(e.class_name or None),
                             chapter=(e.chapter or None), part=(e.part or None),
-                            material_type="notes", title=(lec.title or e.subject or "Class Notes"),
+                            material_type="notes", title=(lec.title or e.subject or "Class Notes")[:200],
                             filename=pdf_name, content_b64=pdf_b64.split(",")[-1]))
             db.commit()
         except Exception:
@@ -1849,6 +1863,7 @@ def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depend
             "assigned_by_name": getattr(d, "assigned_by_name", None),
             "owner_name": ("MVS Foundation" if getattr(d, "assigned_to_admin", False)
                            else (tp.user.name if tp and tp.user else "Unassigned")),
+            "needs_attention": _doubt_needs_attention(db, d.id),
             "responses": _admin_doubt_resps(db, d.id),
         })
     return out
@@ -1861,8 +1876,16 @@ def _admin_doubt_resps(db, did):
               .order_by(DoubtResponse.created_at.asc(), DoubtResponse.id.asc()).all()):
         out.append({"id": r.id, "role": r.role, "author_name": r.author_name,
                     "body": r.body, "mine": (r.role == "admin"),
+                    "author_tid": (r.author_teacher_id if r.role == "teacher" else None),
                     "created_at": r.created_at.isoformat() if r.created_at else None})
     return out
+
+def _doubt_needs_attention(db, did):
+    """v112: thread ka last message student ka -> follow-up = naya doubt (badge me count)."""
+    from models import DoubtResponse
+    r = (db.query(DoubtResponse).filter(DoubtResponse.doubt_id == did)
+         .order_by(DoubtResponse.created_at.desc(), DoubtResponse.id.desc()).first())
+    return bool(r and r.role == "student")
 
 @router.post("/doubts/{did}/respond")
 def admin_doubt_respond(did: int, payload: dict, db: Session = Depends(get_db),
@@ -2291,6 +2314,9 @@ def admin_doubts_overview(db: Session = Depends(get_db), _=Depends(get_admin)):
         resolved = (getattr(d.status, "value", str(d.status)) == "resolved")
         if resolved:
             c["resolved"] += 1
+            # v112: student ka naya follow-up -> phir se attention maangta hai
+            if _doubt_needs_attention(db, d.id):
+                c["pending"] += 1
         else:
             c["pending"] += 1
             if d.created_at:

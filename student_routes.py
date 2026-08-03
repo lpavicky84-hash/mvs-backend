@@ -536,6 +536,7 @@ def my_doubts(db: Session = Depends(get_db), current_user=Depends(get_student)):
                       .order_by(DoubtResponse.created_at.asc(), DoubtResponse.id.asc()).all()):
                 resps.append({"id": r.id, "role": r.role, "author_name": r.author_name,
                               "body": r.body, "mine": (r.role == "student"),
+                              "author_tid": (r.author_teacher_id if r.role == "teacher" else None),
                               "created_at": r.created_at.isoformat() if r.created_at else None})
         except Exception:
             pass

@@ -293,8 +293,17 @@ def _doubt_resp_json(db, did, my_role, my_teacher_id=None):
         mine = (r.role == my_role) and (my_role != "teacher" or (my_teacher_id is not None and r.author_teacher_id == my_teacher_id))
         out.append({"id": r.id, "role": r.role, "author_name": r.author_name,
                     "body": r.body, "mine": bool(mine),
+                    "author_tid": (r.author_teacher_id if r.role == "teacher" else None),
                     "created_at": r.created_at.isoformat() if r.created_at else None})
     return out
+
+def _doubt_needs_attention(db, did):
+    """v112: thread me sabse latest message student ka hai -> doubt phir se open
+    demand hai (follow-up = naya doubt). Owner ke badge/count me jata hai."""
+    from models import DoubtResponse
+    r = (db.query(DoubtResponse).filter(DoubtResponse.doubt_id == did)
+         .order_by(DoubtResponse.created_at.desc(), DoubtResponse.id.desc()).first())
+    return bool(r and r.role == "student")
 
 def _doubt_owner_name(db, d):
     """v93: ab ye doubt kiski responsibility hai — uska display naam."""
@@ -334,6 +343,7 @@ def get_doubts(
                     "created_at": str(d.created_at)[:16],
                     "assigned_away": is_away,
                     "assigned_to_name": (_doubt_owner_name(db, d) if is_away else None),
+                    "needs_attention": _doubt_needs_attention(db, d.id),
                     "responses": _doubt_resp_json(db, d.id, "teacher", tp.id)})
     return out
 
@@ -1703,6 +1713,16 @@ def teacher_my_photo(db: Session = Depends(get_db), current_user=Depends(get_tea
         raise HTTPException(status_code=404, detail="No photo")
     return Response(content=base64.b64decode(tp.photo_b64), media_type="image/jpeg")
 
+@router.get("/teacher/{tid}/photo")
+def teacher_peer_photo(tid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """v112: doubt thread avatar — kisi bhi teacher ki photo (fallback initials)."""
+    import base64
+    from fastapi import Response
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp or not tp.photo_b64:
+        raise HTTPException(status_code=404, detail="No photo")
+    return Response(content=base64.b64decode(tp.photo_b64), media_type="image/jpeg")
+
 @router.get("/student/{sid}/photo")
 def teacher_student_photo(sid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     import base64
@@ -1969,7 +1989,11 @@ def teacher_doubt_stats(db: Session = Depends(get_db), current_user=Depends(get_
     ds = db.query(Doubt).filter(Doubt.teacher_id == tp.id).all()
     # v93: admin ko assigned doubts meri pending/responsibility se bahar
     ds = [d for d in ds if not getattr(d, "assigned_to_admin", False)]
+    # v112: resolved doubt pe naya student follow-up bhi pending attention hai
     pending = sum(1 for d in ds if (d.status.value if hasattr(d.status, "value") else d.status) == "pending")
+    pending += sum(1 for d in ds
+                   if (d.status.value if hasattr(d.status, "value") else d.status) == "resolved"
+                   and _doubt_needs_attention(db, d.id))
     resolved_list = [d for d in ds if (d.status.value if hasattr(d.status, "value") else d.status) == "resolved" and d.resolved_at and d.created_at]
     resolved = sum(1 for d in ds if (d.status.value if hasattr(d.status, "value") else d.status) == "resolved")
     avg_min = None
@@ -2619,6 +2643,20 @@ def teacher_tt_entries_lite(db: Session = Depends(get_db), current_user=Depends(
     return out
 
 
+def _lec_cls5(x):
+    """lectures.class_level is VARCHAR(5) (meant for '10' / '12'). Timetable
+    class_name can be 'Class 10' (8 chars) — inserting it raw makes MySQL strict
+    mode reject the whole class report (error 1406, "Data too long"). Normalize:
+    first digit run wins ('Class 10' -> '10'); no digits -> raw, truncated;
+    empty -> None. Result can never exceed 5 chars."""
+    import re as _re
+    raw = str(x or "").strip()
+    if not raw:
+        return None
+    m = _re.search(r"\d+", raw)
+    return (m.group(0) if m else raw)[:5]
+
+
 @router.post("/lecture")
 async def create_lecture(payload: dict = Body(...), background_tasks: BackgroundTasks = None,
                          db: Session = Depends(get_db), current_user=Depends(get_teacher)):
@@ -2634,7 +2672,7 @@ async def create_lecture(payload: dict = Body(...), background_tasks: Background
 
     lec = Lecture(
         teacher_id=tp.id, teacher_name=(current_user.name or ""),
-        subject=subject, class_level=(payload.get("class_level") or None),
+        subject=subject, class_level=_lec_cls5(payload.get("class_level")),
         chapter=(payload.get("chapter") or None), part=(payload.get("part") or None),
         title=(payload.get("title") or (subject + " Lecture")),
         timetable_entry_id=(payload.get("timetable_entry_id") or None),
