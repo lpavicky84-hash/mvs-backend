@@ -1790,18 +1790,26 @@ def admin_bulk_phone(payload: dict, db: Session = Depends(get_db), _=Depends(get
             "message": f"{created} students add hue, {skipped} skip (duplicate/galat)."}
 
 def _normalize_batch(text):
-    """Bullet-proof: lamba batch naam ko canonical short naam mein badlo."""
+    """Bullet-proof: lamba sales batch naam ko canonical short naam mein badlo.
+    Ye naam STUDENT_BATCHES (onboarding) ke keys se EXACTLY match karte hain, taaki
+    import aur student onboarding dono ek hi batch naam use karein."""
     if not text:
         return None
     t = str(text).lower()
+    if "lakshya" in t and "science" in t:
+        return "Lakshya Science"
+    if "lakshya" in t and "commerce" in t:
+        return "Lakshya Commerce"
+    if "lakshya" in t and ("arts" in t or "art " in t):
+        return "Lakshya Arts"
     if "science" in t:
-        return "Lakshya (Science)"
+        return "Lakshya Science"
     if "commerce" in t:
-        return "Lakshya (Commerce)"
+        return "Lakshya Commerce"
     if "arts" in t:
-        return "Lakshya (Arts)"
+        return "Lakshya Arts"
     if "udaan" in t or "class 10" in t or "10th" in t:
-        return "Udaan Class 10th"
+        return "Udaan Class 10"
     s = str(text).strip()
     return s[:60] if s else None
 
@@ -3096,6 +3104,74 @@ def whatsapp_test(payload: dict, db: Session = Depends(get_db), _=Depends(get_ad
     ok, detail = W.send(phone, text=W.build_message(name, batch, phone), name=name, batch=batch)
     return {"ok": ok, "detail": detail[:300],
             "params_sent": W.build_params(name, batch, phone)}
+
+@router.get("/whatsapp/config")
+def whatsapp_get_config(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Combirds/WhatsApp config (portal me set kiya hua) — API key masked."""
+    from models import AppSetting
+    keys = ["wa_api_url", "wa_api_key", "wa_format", "wa_welcome",
+            "wa_announce", "wa_lang", "wa_link", "wa_sender"]
+    rows = {r.key: (r.value or "") for r in
+            db.query(AppSetting).filter(AppSetting.key.in_(keys)).all()}
+    key = rows.pop("wa_api_key", "")
+    rows["wa_api_key_set"] = bool(key)
+    rows["wa_api_key_masked"] = (("\u2022" * max(0, len(key) - 4) + key[-4:]) if key else "")
+    return rows
+
+
+@router.post("/whatsapp/config")
+def whatsapp_set_config(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import AppSetting
+    allowed = ["wa_api_url", "wa_api_key", "wa_format", "wa_welcome",
+               "wa_announce", "wa_lang", "wa_link", "wa_sender"]
+    for k in allowed:
+        if k not in (payload or {}):
+            continue
+        v = (payload.get(k) or "").strip()
+        if k == "wa_api_key" and not v:
+            continue   # blank -> purani key ko preserve karo
+        row = db.query(AppSetting).filter(AppSetting.key == k).first()
+        if not row:
+            db.add(AppSetting(key=k, value=v))
+        else:
+            row.value = v
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/whatsapp/announce")
+def whatsapp_announce(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Announcement (Template 2) — custom message sabhi/selected MVS App students ko."""
+    import whatsapp as W
+    from models import StudentProfile as _SP
+    if not W.is_configured():
+        raise HTTPException(status_code=503,
+                            detail="WhatsApp not configured: " + ", ".join(W.missing()))
+    msg = (payload.get("message") or "").strip().replace("\n", " ").replace("\r", " ")
+    if not msg:
+        raise HTTPException(status_code=400, detail="Message is required")
+    q = db.query(_SP).filter(_SP.phone.isnot(None),
+                             ((_SP.source == "mvs_app") | (_SP.source.is_(None))))
+    batch = (payload.get("batch") or "").strip()
+    if batch:
+        q = q.filter(_SP.batch_name == batch)
+    ids = payload.get("profile_ids")
+    if ids:
+        q = q.filter(_SP.id.in_(ids))
+    students = q.limit(int(payload.get("limit") or 500)).all()
+    sent, failed = 0, []
+    for sp in students:
+        if (getattr(sp, "source", None) or "mvs_app") == "mvs_portal":
+            continue
+        name = sp.user.name if sp.user else "Student"
+        ok, detail = W.send_announce(sp.phone, name, msg)
+        if ok:
+            sent += 1
+        else:
+            failed.append({"name": name, "phone": sp.phone, "error": detail[:120]})
+    return {"sent": sent, "failed": len(failed), "errors": failed[:25],
+            "message": f"{sent} sent, {len(failed)} failed."}
+
 
 # ==================================================================
 #  SESSION DEADLINES (batch / subject wise)

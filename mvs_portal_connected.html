@@ -1583,6 +1583,11 @@ canvas{max-width:100%}
 .xm-title{font-weight:800;font-size:1.02rem;margin-bottom:7px;overflow-wrap:anywhere}
 .xm-chips{display:flex;gap:6px;flex-wrap:wrap}
 .xm-chip{font-size:.68rem;font-weight:700;padding:3px 9px;border-radius:99px;background:var(--primary-50);color:var(--primary);white-space:nowrap}
+.wa-sec{border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:12px}
+.wa-sec>summary{cursor:pointer;font-size:.9rem;list-style:none;display:flex;align-items:center;gap:8px}
+.wa-sec>summary::-webkit-details-marker{display:none}
+.wa-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+@media(max-width:640px){.wa-grid{grid-template-columns:1fr}}
 .xm-chip-hl{background:var(--accent);color:#fff}
 .xm-chip-hl2{background:linear-gradient(135deg,rgba(184,148,31,.16),rgba(201,162,39,.1));color:#8a6d10;border:1px solid rgba(184,148,31,.45);box-shadow:0 2px 8px -3px rgba(184,148,31,.35);display:inline-flex;align-items:center;gap:4px}
 .dark .xm-chip-hl2{background:rgba(226,180,88,.15);color:#e8c476;border-color:rgba(226,180,88,.4)}
@@ -10525,41 +10530,64 @@ async function runPortalSync(){
 }
 // ============ WHATSAPP WELCOME ============
 async function openWhatsApp(){
-  showModal('WhatsApp \u2014 Welcome Message','<div class="spinner"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  showModal('WhatsApp (Combirds)','<div class="spinner"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
   try{
-    const st=await api('/api/admin/whatsapp/status');
+    const [st,cf]=await Promise.all([api('/api/admin/whatsapp/status'),api('/api/admin/whatsapp/config').catch(()=>({}))]);
     window._waSt=st;
     const body=document.getElementById('modal-body');
-    if(!st.configured){
-      body.innerHTML=`<div class="alert alert-warning"><b>WhatsApp (AiSensy) is not configured.</b><br>Set the following in the CRM service's Variables on Railway:<br><br>
-        <code>WHATSAPP_PROVIDER</code> = <code>aisensy</code><br>
-        <code>AISENSY_API_KEY</code> = AiSensy dashboard \u2192 Manage \u2192 API Key<br>
-        <code>AISENSY_CAMPAIGN</code> = live API campaign ka exact naam<br>
-        <code>WHATSAPP_PARAMS</code> = <code>name,batch,phone</code><br>
-        <code>CRM_PUBLIC_URL</code> = student portal ka link<br><br>
-        <b>Missing:</b> ${esc((st.missing||[]).join(', ')||'\u2014')}</div>`;
-      return;
-    }
-    const isAi=st.provider==='aisensy';
-    body.innerHTML=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-        <span class="xm-chip xm-chip-hl">Pending \u00b7 ${st.pending}</span>
-        <span class="xm-chip">Already sent \u00b7 ${st.sent}</span>
-        <span class="xm-chip">MVS App students only</span>
-        ${isAi?`<span class="xm-chip">AiSensy \u00b7 ${esc(st.campaign||'')}</span>`:''}</div>
-      <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:10px">Welcome messages are not sent to MVS Portal students (they have their own Class Manager flow).</p>
-      ${isAi?`<div class="alert alert-info" style="font-size:.78rem">The message text lives in the <b>AiSensy approved template</b>. From here we only send its variables \u2014 order: <b>${esc((st.params||[]).join(' \u2192 '))}</b><br>Example: <b>${esc((st.sample_params||[]).join('  |  '))}</b></div>
-        <div class="form-group" style="margin-top:12px"><label>Send a test message (your number)</label><div style="display:flex;gap:8px"><input class="form-control" id="wa-test" placeholder="10-digit number"><button class="btn btn-ghost btn-sm" onclick="waTest()">Send Test</button></div></div>`
-      :`<div class="form-group"><label>Message</label><textarea class="form-control" id="wa-tpl" rows="10" style="font-size:.8rem;font-family:inherit">${esc(st.template)}</textarea></div>
-        <div class="form-group"><label style="font-size:.75rem">Preview</label><div class="card" style="padding:12px;white-space:pre-wrap;font-size:.8rem;background:var(--bg)" id="wa-prev">${esc(st.sample)}</div></div>`}
-      <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;margin:10px 0"><input type="checkbox" id="wa-resend"> Resend to students who already got it</label>
-      <div id="wa-out"></div>`;
-    document.getElementById('modal-footer').innerHTML=`<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-success" id="wa-btn" onclick="sendWhatsAppWelcome()">${ic('megaphone')} Send to ${st.pending} pending</button>`;
-    const tplEl=document.getElementById('wa-tpl');
-    if(tplEl) tplEl.addEventListener('input',e=>{
-      const t=e.target.value.replace(/{name}/g,'Rahul Sharma').replace(/{batch}/g,'Lakshya Science').replace(/{phone}/g,'9876543210').replace(/{link}/g,window._waSt.link);
-      document.getElementById('wa-prev').textContent=t;
-    });
+    const cfgForm=`<details class="wa-sec" ${st.configured?'':'open'}><summary><b>Combirds Settings</b> ${st.configured?'<span class="xm-chip" style="background:rgba(16,185,129,.15);color:#059669">Configured</span>':'<span class="xm-chip" style="background:rgba(220,38,38,.12);color:#dc2626">Not set</span>'}</summary>
+      <div class="wa-grid">
+        <div class="form-group"><label>Send API endpoint (Combirds)</label><input class="form-control" id="wc-url" value="${esc(cf.wa_api_url||'')}" placeholder="https://api.combirds.com/..."></div>
+        <div class="form-group"><label>API Key ${cf.wa_api_key_set?'<span style="color:#059669;font-size:.72rem">(saved '+esc(cf.wa_api_key_masked||'')+' — blank = keep)</span>':''}</label><input class="form-control" id="wc-key" placeholder="paste API key"></div>
+        <div class="form-group"><label>Payload format</label><select class="form-control" id="wc-fmt"><option value="campaign" ${(cf.wa_format||'campaign')==='campaign'?'selected':''}>campaign (AiSensy/Interakt/Combirds style)</option><option value="meta" ${cf.wa_format==='meta'?'selected':''}>meta (Cloud API style)</option></select></div>
+        <div class="form-group"><label>Welcome template name</label><input class="form-control" id="wc-welcome" value="${esc(cf.wa_welcome||'')}" placeholder="approved welcome template"></div>
+        <div class="form-group"><label>Announcement template name</label><input class="form-control" id="wc-announce" value="${esc(cf.wa_announce||'')}" placeholder="approved announcement template"></div>
+        <div class="form-group"><label>Language code</label><input class="form-control" id="wc-lang" value="${esc(cf.wa_lang||'en')}" placeholder="en"></div>
+        <div class="form-group"><label>Portal link</label><input class="form-control" id="wc-link" value="${esc(cf.wa_link||'https://app.mvsfoundation.in')}"></div>
+        <div class="form-group"><label>Sender/Channel id (optional)</label><input class="form-control" id="wc-sender" value="${esc(cf.wa_sender||'')}" placeholder="only if Combirds needs it"></div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="waSaveConfig()">Save settings</button>
+      <div style="display:flex;gap:8px;margin-top:10px"><input class="form-control" id="wa-test" placeholder="Test: your 10-digit number" style="max-width:220px"><button class="btn btn-ghost btn-sm" onclick="waTest()">Send Test</button></div>
+      <div id="wa-cfg-out" style="margin-top:8px"></div></details>`;
+
+    const welcomeSec=st.configured?`<details class="wa-sec" open><summary><b>Welcome — send to MVS App students</b></summary>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">
+        <span class="xm-chip xm-chip-hl">Pending \u00b7 ${st.pending}</span><span class="xm-chip">Already sent \u00b7 ${st.sent}</span></div>
+      <p style="font-size:.78rem;color:var(--text-muted)">Message text aapke approved welcome template me hai — yahan se sirf variables (name, batch) jaate hain. Portal students ko welcome nahi jaata.</p>
+      <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;margin:8px 0"><input type="checkbox" id="wa-resend"> Resend to students who already got it</label>
+      <button class="btn btn-success btn-sm" id="wa-btn" onclick="sendWhatsAppWelcome()">${ic('megaphone')} Send welcome to ${st.pending} pending</button>
+      <div id="wa-out" style="margin-top:8px"></div></details>`:'';
+
+    const announceSec=st.configured?`<details class="wa-sec"><summary><b>Announcement — custom message (Template 2)</b></summary>
+      <p style="font-size:.78rem;color:var(--text-muted)">Apna message likho — sabhi (ya batch-wise) MVS App students ko jaayega. Ek line ka block (newline nahi).</p>
+      <div class="form-group"><label>Batch (optional — blank = all)</label><input class="form-control" id="wa-an-batch" placeholder="e.g. Lakshya Science"></div>
+      <div class="form-group"><label>Message</label><textarea class="form-control" id="wa-an-msg" rows="3" placeholder="e.g. Kal 6 PM par Physics ki special class hogi"></textarea></div>
+      <button class="btn btn-primary btn-sm" onclick="waAnnounce()">${ic('send')} Send announcement</button>
+      <div id="wa-an-out" style="margin-top:8px"></div></details>`:'';
+
+    body.innerHTML=cfgForm+welcomeSec+announceSec;
+    document.getElementById('modal-footer').innerHTML=`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`;
   }catch(e){ document.getElementById('modal-body').innerHTML=errHtml(e); }
+}
+async function waSaveConfig(){
+  const out=document.getElementById('wa-cfg-out'); out.innerHTML='<div class="spinner"></div>';
+  const body={wa_api_url:val('wc-url'),wa_format:val('wc-fmt'),wa_welcome:val('wc-welcome'),
+    wa_announce:val('wc-announce'),wa_lang:val('wc-lang'),wa_link:val('wc-link'),wa_sender:val('wc-sender')};
+  const key=val('wc-key').trim(); if(key) body.wa_api_key=key;
+  try{ await api('/api/admin/whatsapp/config','POST',body); out.innerHTML='<div class="alert alert-success">Settings saved.</div>'; toast('WhatsApp settings saved.'); setTimeout(openWhatsApp,600); }
+  catch(e){ out.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
+}
+async function waAnnounce(){
+  const msg=document.getElementById('wa-an-msg').value.trim();
+  if(!msg){ toast('Message likho',true); return; }
+  if(!confirm('Send this announcement to MVS App students?')) return;
+  const out=document.getElementById('wa-an-out'); out.innerHTML='<div class="spinner"></div>';
+  try{
+    const r=await api('/api/admin/whatsapp/announce','POST',{message:msg,batch:val('wa-an-batch').trim(),limit:500});
+    const errs=(r.errors||[]).map(x=>`<div class="topper-row"><div class="topper-name">${esc(x.name)}<div class="topper-sub">${esc(x.phone)} \u2014 ${esc(x.error)}</div></div></div>`).join('');
+    out.innerHTML=`<div class="alert ${r.failed?'alert-warning':'alert-success'}"><b>${r.sent}</b> sent \u00b7 <b>${r.failed}</b> failed</div>${errs?`<div class="hide-scroll" style="max-height:26vh">${errs}</div>`:''}`;
+    toast(r.message);
+  }catch(e){ out.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
 }
 async function waTest(){
   const ph=val('wa-test').replace(/\D/g,'');
@@ -14909,7 +14937,7 @@ function showCredentials(role,name,uid,pass){
 // ===== EXCEL BULK UPLOAD (Students) =====
 function openExcelUpload(){
   showModal('App Sales Sheet Upload',
- `<div class="alert alert-info">Upload the Excel/CSV downloaded from your app's (Appx) <strong>Sales</strong> section here. The system automatically extracts the <strong>Name</strong>, <strong>Phone No.</strong> and <strong>Item (Batch)</strong> details and creates students — each student logs in with their phone and sees their batch.</div><div class="form-group"><label>Sales File (.xlsx / .csv)</label><input type="file" class="form-control" id="excel-file" accept=".xlsx,.xls,.csv" onchange="previewExcel()"></div><div id="excel-preview"></div><div id="excel-status"></div>`,
+ `<div class="alert alert-info">Upload the Excel/CSV downloaded from your app's (Appx) <strong>Sales</strong> section here. The system automatically extracts the <strong>Name</strong>, <strong>Phone No.</strong> and <strong>Item (Batch)</strong> details and creates students — each student logs in with their phone and sees their batch.</div><div class="form-group"><label>Sales File (.xlsx / .csv)</label><input type="file" class="form-control" id="excel-file" accept=".xlsx,.xls,.csv" onchange="previewExcel()"></div><div id="excel-preview"></div><label style="display:flex;align-items:center;gap:8px;font-size:.82rem;margin:6px 0"><input type="checkbox" id="excel-wa"> Import ke baad naye students ko WhatsApp welcome bhejo</label><div id="excel-status"></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="excel-btn" onclick="processExcel()">Import Students</button>`);
 }
 function _pickCol(row,names){
@@ -14989,6 +15017,13 @@ async function processExcel(){
       ${skipped>0?`<strong>${skipped}</strong> invalid phone skipped`:''}</div>
       ${dups.length?`<div style="font-size:.75rem;font-weight:800;color:var(--text-muted);margin:12px 0 6px">MVS PORTAL DUPLICATES \u2014 VERIFY THESE (${dups.length})</div><div class="hide-scroll" style="max-height:250px">${dupRows}</div>`:''}`;
     toast(`${created} new, ${updated} refreshed, ${dups.length} portal duplicates skipped`);
+    if(created>0 && (document.getElementById('excel-wa')||{}).checked){
+      try{
+        status.innerHTML+=`<div id="excel-wa-out" style="margin-top:10px"><div class="spinner"></div> Sending WhatsApp welcome...</div>`;
+        const wr=await api('/api/admin/whatsapp/send-welcome','POST',{all_pending:true,limit:1000});
+        const o=document.getElementById('excel-wa-out'); if(o) o.innerHTML=`<div class="alert ${wr.failed?'alert-warning':'alert-success'}">WhatsApp: <b>${wr.sent}</b> sent \u00b7 <b>${wr.failed}</b> failed</div>`;
+      }catch(we){ const o=document.getElementById('excel-wa-out'); if(o) o.innerHTML=`<div class="alert alert-warning">WhatsApp send skipped: ${esc(we.message)}</div>`; }
+    }
     btn.textContent='Done'; btn.disabled=false; btn.setAttribute('onclick','closeModal()');
     loadAStudents();
   }catch(e){ status.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; toast('Error: '+e.message,true); btn.disabled=false; btn.textContent='Import Students'; }
