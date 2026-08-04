@@ -2091,7 +2091,7 @@ _EVENT_RX = re.compile(
     r"|\bhow\s+to\b|\bscore\s*\d+|\bsolutions?\b|\bdiscussion\b|\bpractice\b"
     r"|\bholiday\b|\bptm\b|\bsession\b|\banswers?\s+key\b|\bsample\s+paper\b)",
     re.I)
-_CHAPTER_START_RX = re.compile(r"^\s*(chapter|lesson|module|unit|ch\.?|lec(?:ture)?\.?)\s*\d", re.I)
+_CHAPTER_START_RX = re.compile(r"^\s*(chapter|lesson|module|unit|ch\.?|lec(?:ture)?\.?)\s*[-–:.]?\s*\d", re.I)
 
 def _looks_like_event(text):
     """True jab row kisi book chapter ki jagah ek activity/event ho (test, doubt class...).

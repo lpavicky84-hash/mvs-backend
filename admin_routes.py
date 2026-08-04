@@ -845,6 +845,156 @@ async def class_report_backfill(payload: dict = Body(...), db: Session = Depends
     return {"ok": True, "lecture_id": lec.id, "created": created,
             "message": ("Class report uploaded" if created else "Class report updated")}
 
+# ===== v125: BULLETPROOF FALLBACK TIMETABLE PARSER =====
+# tt_parser 0 rows de (ya module hi na ho) to bhi upload kabhi fail nahi hona
+# chahiye — ye generic parser kisi bhi Date/Day/Time/Chapter/Part table PDF ko
+# samajhta hai: bordered/borderless tables, wrapped cells, page-break continuations,
+# har common date format (11-Aug-2026, 11/08/2026, 2026-08-11, 5 Jan 2026...).
+_TT_MONTHS = {m.lower(): i + 1 for i, m in enumerate(
+    ["January", "February", "March", "April", "May", "June", "July",
+     "August", "September", "October", "November", "December"])}
+_TT_MONTHS.update({m[:3]: v for m, v in list(_TT_MONTHS.items())})
+_TT_DATE_RX = re.compile(r"^\s*(\d{1,2})\s*[/\-.]\s*([A-Za-z]{3,9}|\d{1,2})\s*[/\-.]\s*(\d{4})\s*$")
+_TT_DATE_SPC_RX = re.compile(r"^\s*(\d{1,2})\s+([A-Za-z]{3,9})\s*,?\s*(\d{4})\s*$")
+_TT_ISO_RX = re.compile(r"^\s*(\d{4})-(\d{1,2})-(\d{1,2})\s*$")
+
+def _tt_flex_date(s):
+    """'11-Aug-2026' | '11/08/2026' | '2026-08-11' | '5 Jan 2026' -> date | None.
+    Numeric format hamesha DD/MM/YYYY maana jata hai (Indian convention)."""
+    s = (s or "").strip()
+    if not s:
+        return None
+    m = _TT_ISO_RX.match(s)
+    try:
+        if m:
+            return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        m = _TT_DATE_RX.match(s) or _TT_DATE_SPC_RX.match(s)
+        if not m:
+            return None
+        d, mon, y = int(m.group(1)), m.group(2), int(m.group(3))
+        mo = int(mon) if mon.isdigit() else _TT_MONTHS.get(mon.strip().lower())
+        if not mo:
+            return None
+        return date(y, mo, d)
+    except Exception:
+        return None
+
+def _tt_clean_cell(s):
+    """Wrapped table cell -> single clean line. 'Cultural (1757-\\n1857)' -> '(1757-1857)'."""
+    s = (s or "").replace("\r", "\n")
+    s = re.sub(r"-\n", "-", s)           # hyphen pe toota hua word/number jodo
+    s = re.sub(r"\s*\n\s*", " ", s)      # wrapped lines -> space
+    return re.sub(r"\s{2,}", " ", s).strip()
+
+def _tt_col_map(header_cells):
+    """Header row se column indexes: date/day/time/chapter/part. None agar header nahi."""
+    m = {}
+    for idx, c in enumerate(header_cells or []):
+        k = re.sub(r"\s+", " ", (c or "").strip().lower())
+        k2 = k.replace(" ", "")
+        if not k:
+            continue
+        if k.startswith("date") or k2 == "dt":
+            m.setdefault("date", idx)
+        elif k.startswith("day"):
+            m.setdefault("day", idx)
+        elif k.startswith("time") or k2 == "slot":
+            m.setdefault("time", idx)
+        elif "chapter" in k or "topic" in k or "lesson" in k or "unit" in k:
+            m.setdefault("chapter", idx)
+        elif k.startswith("part"):
+            m.setdefault("part", idx)
+    return m if ("date" in m and "chapter" in m) else None
+
+def _detect_tt_subject(text):
+    """PDF ke text se subject dhundho (registry se verify karke). Mila to raw naam, warna None."""
+    if _SR is None:
+        return None
+    for ln in (text or "").split("\n")[:25]:
+        s = re.sub(r"^subject\s*[:\-]\s*", "", ln.strip(), flags=re.I).strip()
+        s = re.sub(r"\s*\(\d{3}\)\s*$", "", s).strip()   # "Social Science (213)" -> "Social Science"
+        if not s or len(s) > 60:
+            continue
+        try:
+            if _SR.canon_subject(s, "10") or _SR.canon_subject(s, "12"):
+                return s
+        except Exception:
+            pass
+    return None
+
+def _fallback_parse_timetable_pdf(raw, force_subject=None, class_name="Class 12"):
+    """Generic timetable table parser — tt_parser ka safety net.
+    Row shape bilkul tt_parser jaisi: {subject, chapter, part, date, day, time, type}."""
+    import io as _io
+    import pdfplumber
+    rows = []
+    colmap = None
+    subj_detected = None
+    with pdfplumber.open(_io.BytesIO(raw)) as pdf:
+        for page in pdf.pages:
+            tables = page.extract_tables() or []
+            if not tables:  # borderless table — text-position strategy
+                try:
+                    tables = page.extract_tables(
+                        {"vertical_strategy": "text", "horizontal_strategy": "text"}) or []
+                except Exception:
+                    tables = []
+            for tbl in tables:
+                if not tbl:
+                    continue
+                start = 0
+                maybe = _tt_col_map(tbl[0])
+                if maybe:
+                    colmap = maybe
+                    start = 1
+                elif colmap is None:
+                    # headerless table: first data row se layout infer karo
+                    # (Date, Day, Time, Chapter, Part) — date col 0 me parse hona chahiye
+                    first = [_tt_clean_cell(c) for c in (tbl[0] or [])]
+                    if len(first) >= 4 and _tt_flex_date(first[0]):
+                        colmap = {"date": 0, "day": 1, "time": 2, "chapter": 3}
+                        if len(first) >= 5:
+                            colmap["part"] = 4
+                        start = 0
+                    else:
+                        continue
+                for r in tbl[start:]:
+                    cells = [_tt_clean_cell(c) for c in (r or [])]
+                    if not any(cells):
+                        continue
+                    def _g(key, _cells=cells):
+                        i = colmap.get(key)
+                        return _cells[i] if (i is not None and i < len(_cells)) else ""
+                    d = _tt_flex_date(_g("date"))
+                    ch = _g("chapter")
+                    if not d:
+                        # page-break pe toota hua wrapped chapter — pichli row me jodo
+                        if ch and rows and not _g("day") and not _g("time") and not _g("part"):
+                            rows[-1]["chapter"] = (rows[-1]["chapter"] + " " + ch).strip()
+                        continue
+                    if not ch:
+                        continue
+                    rows.append({
+                        "subject": force_subject or subj_detected or "",
+                        "chapter": ch,
+                        "part": _g("part") or None,
+                        "date": d.isoformat(),
+                        "day": (_g("day") or "").strip().title() or None,
+                        "time": ((_g("time") or "").upper()
+                                 .replace("A.M.", "AM").replace("P.M.", "PM")) or None,
+                        "type": "chapter",
+                    })
+            if not force_subject and not subj_detected:
+                try:
+                    subj_detected = _detect_tt_subject(page.extract_text() or "")
+                except Exception:
+                    pass
+    final_subj = force_subject or subj_detected
+    if final_subj:
+        for r in rows:
+            r["subject"] = final_subj
+    return rows
+
 # ===== ADMIN: PDF TIMETABLE UPLOAD (all subjects) =====
 @router.post("/timetable-pdf")
 async def admin_upload_timetable_pdf(
@@ -858,14 +1008,29 @@ async def admin_upload_timetable_pdf(
     _=Depends(get_admin)
 ):
     from models import TimetableEntry
-    import tt_parser
     raw = await file.read()
+    # v125: pehle tt_parser; 0 rows ya koi bhi error pe apna generic fallback parser.
+    # Upload kabhi bhi parser-limitation ki wajah se fail nahi hona chahiye.
+    rows = []
+    _errs = []
     try:
-        rows = tt_parser.parse_pdf(raw, force_subject=(subject.strip() or None))
+        import tt_parser
+        rows = tt_parser.parse_pdf(raw, force_subject=(subject.strip() or None)) or []
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"PDF parse error: {e}")
+        _errs.append(str(e)[:120])
     if not rows:
-        raise HTTPException(status_code=400, detail="No valid row found in the PDF.")
+        try:
+            rows = _fallback_parse_timetable_pdf(
+                raw, force_subject=(subject.strip() or None), class_name=class_name) or []
+        except Exception as e:
+            _errs.append(str(e)[:120])
+    if not rows:
+        raise HTTPException(status_code=400,
+            detail="No valid row found in the PDF — it should have a Date / Day / Time / Chapter table."
+                   + (f" ({'; '.join(_errs)})" if _errs else ""))
+    if not any((r.get("subject") or "").strip() for r in rows):
+        raise HTTPException(status_code=400,
+            detail="Subject could not be detected from this PDF — please choose it in the Subject dropdown and upload again.")
     # Subject naam canonical karo (PHYSICS/Physics/Data Entry Op (229) -> official NIOS naam)
     if _SR is not None:
         for r in rows:
