@@ -3352,7 +3352,10 @@ async function openTeacherNotify(){
   try{ tg=await api('/api/teacher/notify-targets'); }catch(e){}
   window._tnTargets=tg;
   const opts=[`<option value="">All My Students (${tg.all_count})</option>`]
-    .concat((tg.subjects||[]).map(s=>`<option value="${esc(s.name)}">${esc(s.name)} (${s.count})</option>`)).join('');
+    .concat((tg.subjects||[]).map(s=>{
+      const clsTxt=(s.class&&s.class!=='?')?` (Class ${s.class})`:'';
+      return `<option value="${esc(s.key||s.name)}">${esc(s.name)}${clsTxt} (${s.count})</option>`;
+    })).join('');
   showModal(' Notify Students',
  `<div class="form-group"><label>Send To</label><select class="form-control" id="tn-target" onchange="tnScope()">${opts}</select></div><div class="ntf-scope" id="tn-scope"></div><div class="form-group"><label>Title</label><input class="form-control" id="tn-title" placeholder="e.g. Today's class timing"></div><div class="form-group"><label>Message</label><textarea class="form-control" id="tn-msg" rows="4" placeholder="Write your message..."></textarea></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitTeacherNotify()">Send</button>`);
@@ -3363,7 +3366,7 @@ function tnScope(){
   const t=document.getElementById('tn-target'); const box=document.getElementById('tn-scope');
   if(!t||!box) return;
   const v=t.value; let label='All My Students', n=tg.all_count;
-  if(v){ const s=(tg.subjects||[]).find(x=>x.name===v); label=v+' Students'; n=s?s.count:0; }
+  if(v){ const s=(tg.subjects||[]).find(x=>(x.key||x.name)===v); if(s){ const clsTxt=(s.class&&s.class!=='?')?' (Class '+s.class+')':''; label=s.name+clsTxt+' Students'; n=s.count; } else { label=v+' Students'; n=0; } }
   box.innerHTML=`<div class="ns-n">${n}</div><div class="ns-t"><b>${esc(label)}</b><br>This notification will reach ${n} student${n===1?'':'s'}.</div>`;
 }
 async function submitTeacherNotify(){
@@ -8776,7 +8779,7 @@ async function openTVTPropose(){
       <div class="form-group"><label>Video Type</label><select id="tvt-p-type" class="input">${_vtTypeOptsHtml(types,'','','— Select type —')}</select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Channel (optional)</label><select id="tvt-p-channel" class="input">${chOpts}</select></div>
       <div class="form-group vt-thumb-box" style="grid-column:1/-1"><label>Reference Thumbnail (optional)</label>
-        <div class="vt-file"><label class="vt-file-btn" for="tvt-p-thumb">${ic('image')} Upload Image</label>
+        <div class="vt-file vt-drop" ondragover="_vtDropOver(event,this)" ondragleave="_vtDropLeave(event,this)" ondrop="_vtDropFile(event,this)"><label class="vt-file-btn" for="tvt-p-thumb">${ic('image')} Upload Image</label><span class="vt-drop-hint">or drag &amp; drop an image here</span>
           <span class="vt-file-name" id="vt-thumb-name">No file chosen</span></div>
         <input id="tvt-p-thumb" type="file" accept="image/*" style="display:none" onchange="vtThumbPreview(this)">
         <div id="vt-thumb-prev" style="margin-top:8px"></div>
@@ -8879,10 +8882,19 @@ function _vtPill(t,blink,who){
   return `<span class="vt-pill ${cls}${bl}${who?' lnk':''}"${oc}>${lbl}</span>${extra}`;
 }
 function vtThumbPreview(input){
-  // v131: ye function pehle define hi nahi tha — isliye thumbnail upload kaam
-  // nahi kar raha tha. Ab har image type handle: canvas se JPEG compress, bada
-  // ho to aur compress, decode na ho (HEIC etc.) to raw base64 fallback.
-  const file=input&&input.files&&input.files[0]; if(!file) return;
+  const file=input&&input.files&&input.files[0];
+  if(file) _vtThumbFile(file);
+}
+function _vtDropOver(e,el){ e.preventDefault(); e.stopPropagation(); if(el) el.classList.add('drag'); }
+function _vtDropLeave(e,el){ e.preventDefault(); e.stopPropagation(); if(el) el.classList.remove('drag'); }
+function _vtDropFile(e,el){
+  e.preventDefault(); e.stopPropagation(); if(el) el.classList.remove('drag');
+  const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
+  if(f) _vtThumbFile(f);
+}
+function _vtThumbFile(file){
+  // v137: ye core ab file seedhe leta hai — click-browse aur drag-drop dono isi ko call karte hain.
+  if(!file) return;
   const nameEl=document.getElementById('vt-thumb-name');
   const prev=document.getElementById('vt-thumb-prev');
   const setName=(t)=>{ if(nameEl) nameEl.textContent=t; };
@@ -8913,7 +8925,7 @@ function vtThumbPreview(input){
         else fail('Image too large — please use a smaller one');
       }
     };
-    img.onerror=()=>{   // browser decode fail (e.g. HEIC): raw base64 if small enough
+    img.onerror=()=>{
       if(String(dataUrl).length<1800000){ window._vtThumbB64=dataUrl; setPrev(dataUrl); setName((file.name||'thumbnail')+' \u2713 (original)'); }
       else fail('This format could not be previewed — try a JPG or PNG');
     };
@@ -9331,7 +9343,7 @@ async function openVTEdit(id,ev){
       <div class="form-group"><label>Streaming</label><select id="vt-e-stream" class="input" onchange="_vtFilterTypes('vt-e-stream','vt-e-type',_vtTypes)"><option value="">— Not set —</option><option value="recorded" ${t.streaming==='recorded'?'selected':''}>Recorded</option><option value="live" ${t.streaming==='live'?'selected':''}>Live</option></select></div>
       <div class="form-group"><label>Video Type</label><select id="vt-e-type" class="input">${_vtTypeOptsHtml(_vtTypes,t.streaming||'',t.video_type||'','— No type —')}</select></div>
       <div class="form-group vt-thumb-box" style="grid-column:1/-1"><label>Thumbnail (changes only if you provide a new one)</label>
-        <div class="vt-file"><label class="vt-file-btn" for="vt-e-thumb">${ic('image')} Upload Image</label>
+        <div class="vt-file vt-drop" ondragover="_vtDropOver(event,this)" ondragleave="_vtDropLeave(event,this)" ondrop="_vtDropFile(event,this)"><label class="vt-file-btn" for="vt-e-thumb">${ic('image')} Upload Image</label><span class="vt-drop-hint">or drag &amp; drop an image here</span>
           <span class="vt-file-name" id="vt-thumb-name">No file chosen</span></div>
         <input id="vt-e-thumb" type="file" accept="image/*" style="display:none" onchange="vtThumbPreview(this)">
         <div class="vt-hint">or paste a drive link below</div>
@@ -9423,7 +9435,7 @@ async function openVTAssign(proposalId){
       <div class="form-group" style="grid-column:1/-1"><label>Video Title</label><input id="vt-f-title" class="input" placeholder="e.g. Thermodynamics Part 1 — Full Concept" value="${pre?esc(pre.title):''}"></div>
       <div class="form-group" style="grid-column:1/-1"><label>Deadline</label><input id="vt-f-deadline" type="datetime-local" class="input" value="${dlVal}"></div>
       <div class="form-group vt-thumb-box" style="grid-column:1/-1"><label>Thumbnail</label>
-        <div class="vt-file"><label class="vt-file-btn" for="vt-f-thumb">${ic('image')} Upload Image</label>
+        <div class="vt-file vt-drop" ondragover="_vtDropOver(event,this)" ondragleave="_vtDropLeave(event,this)" ondrop="_vtDropFile(event,this)"><label class="vt-file-btn" for="vt-f-thumb">${ic('image')} Upload Image</label><span class="vt-drop-hint">or drag &amp; drop an image here</span>
           <span class="vt-file-name" id="vt-thumb-name">No file chosen</span></div>
         <input id="vt-f-thumb" type="file" accept="image/*" style="display:none" onchange="vtThumbPreview(this)">
         <div class="vt-hint">or paste a drive link below (photos are auto-compressed)</div>
@@ -17308,6 +17320,11 @@ async function ocrFillQuestion_v1(inp,i){
 .vt-form textarea.input{resize:vertical;min-height:66px;line-height:1.45}
 .vt-form input[type="datetime-local"].input{font-variant-numeric:tabular-nums}
 .vt-file{display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+.vt-drop{border:1.5px dashed var(--border);border-radius:12px;padding:12px;transition:all .15s;background:rgba(0,0,0,.015)}
+.dark .vt-drop{background:rgba(255,255,255,.02)}
+.vt-drop.drag{border-color:var(--primary);background:rgba(184,148,31,.12)}
+.vt-drop.drag .vt-drop-hint{color:var(--primary)}
+.vt-drop-hint{font-size:.74rem;color:var(--text-muted);font-weight:600}
 .vt-file-btn{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:11px;cursor:pointer;
   border:1.5px dashed #c9a227;background:rgba(201,162,39,.07);color:#8a6d10;font-weight:800;font-size:.76rem;transition:.15s}
 .vt-file-btn:hover{background:rgba(201,162,39,.15)}

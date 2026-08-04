@@ -869,6 +869,31 @@ def _students_for_subject(db, subject):
             out.append(sp)
     return out
 
+
+def _students_for_subject_class(db, subject, cls):
+    """Class-AWARE match: subject NAME + CLASS dono. Isse Mathematics(10) aur
+    Mathematics(12), Data Entry Operations(10/12), Economics, Painting etc. kabhi
+    merge nahi hote. cls = '10' / '12' (blank ho to sirf naam se — legacy)."""
+    from models import User, StudentProfile
+    cls = str(cls or "").strip()
+    out = []
+    rows = (db.query(StudentProfile).join(User, StudentProfile.user_id == User.id)
+            .filter(User.is_active == True, User.role == "student").all())
+    for sp in rows:
+        scls = str(getattr(sp, "class_level", "") or "").strip()
+        if cls and scls != cls:
+            continue
+        if not sp.subjects:
+            continue
+        if _SR is not None:
+            tkey = _SR.canon_key(subject, scls)
+            hit = any(_SR.canon_key(x, scls) == tkey for x in sp.subjects)
+        else:
+            hit = _subj_key(subject) in {_subj_key(x) for x in sp.subjects}
+        if hit:
+            out.append(sp)
+    return out
+
 def _my_students(db, tp):
     """v93: teacher ke kisi bhi subject wale students (union)."""
     mine = {_norm_sub(s) for s in _teacher_subjects(tp)}
@@ -886,18 +911,43 @@ def _my_students(db, tp):
 
 @router.get("/notify-targets")
 def teacher_notify_targets(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
-    """v93: notify modal — subject-wise student counts + all-my-students count."""
-    from models import User
+    """Notify modal — subject targets SPLIT BY CLASS (student-counts jaisa). Same-name
+    subjects (Mathematics 10/12, Data Entry Operations, Economics ...) alag alag rows,
+    composite key 'subject|class' se — kabhi merge nahi hote."""
+    from models import User, StudentProfile
     tp = get_teacher_profile(current_user, db)
+    subs = tp.subjects or []
+    students = (db.query(StudentProfile).join(User, StudentProfile.user_id == User.id)
+                .filter(User.is_active == True, User.role == "student").all())
     subjects = []
-    for s in _teacher_subjects(tp):
-        subjects.append({"name": s, "count": len(_students_for_subject(db, s))})
-    mine = _my_students(db, tp)
-    if mine is None:
-        all_count = db.query(User).filter(User.is_active == True, User.role == "student").count()
-    else:
-        all_count = len(mine)
-    return {"subjects": subjects, "all_count": all_count, "scoped": mine is not None}
+    seen_sk = set()
+    all_ids = set()
+    for s in subs:
+        sk = _subj_key(s)
+        if sk in seen_sk:
+            continue
+        seen_sk.add(sk)
+        per_cls = {}
+        for sp in students:
+            if not sp.subjects:
+                continue
+            cls = str(getattr(sp, "class_level", "") or "").strip() or "?"
+            if _SR is not None:
+                tkey = _SR.canon_key(s, cls)
+                hit = any(_SR.canon_key(x, cls) == tkey for x in sp.subjects)
+            else:
+                hit = sk in {_subj_key(x) for x in sp.subjects}
+            if not hit:
+                continue
+            per_cls.setdefault(cls, []).append(sp.id)
+        for cls in sorted(per_cls):
+            disp = _SR.canon_display(s, cls) if _SR else s
+            ids = per_cls[cls]
+            all_ids.update(ids)
+            subjects.append({"key": "%s|%s" % (s, cls), "name": disp,
+                             "class": cls, "count": len(ids)})
+    subjects.sort(key=lambda x: (-x["count"], (x["name"] or ""), x["class"]))
+    return {"subjects": subjects, "all_count": len(all_ids), "scoped": bool(subs)}
 
 @router.post("/notify")
 def teacher_notify(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
@@ -910,17 +960,29 @@ def teacher_notify(payload: dict, db: Session = Depends(get_db), current_user=De
     if not title or not message:
         raise HTTPException(status_code=400, detail="Title and message are required")
     if subject:
-        sps = _students_for_subject(db, subject)
-        label = subject
+        if "|" in subject:
+            _nm, _cls = subject.split("|", 1)
+            _nm, _cls = _nm.strip(), _cls.strip()
+            sps = _students_for_subject_class(db, _nm, _cls)
+            label = (_SR.canon_display(_nm, _cls) if _SR is not None else _nm) + \
+                    (" (Class %s)" % _cls if _cls and _cls != "?" else "")
+        else:
+            sps = _students_for_subject(db, subject)   # legacy name-only
+            label = subject
     else:
-        mine = _my_students(db, tp)
-        if mine is None:
+        # All My Students — teacher ke (subject+class) combos ka class-aware union
+        seen, sps = set(), []
+        for s in (tp.subjects or []):
+            for cl in ("10", "12"):
+                for sp in _students_for_subject_class(db, s, cl):
+                    if sp.id not in seen:
+                        seen.add(sp.id); sps.append(sp)
+        if sps:
+            label = "All My Students"
+        else:
             sps = db.query(StudentProfile).join(User, StudentProfile.user_id == User.id).filter(
                 User.is_active == True, User.role == "student").all()
             label = "All Students"
-        else:
-            sps = mine
-            label = "All My Students"
     batch = uuid.uuid4().hex[:24]
     sender = "👨‍🏫 " + current_user.name
     sent = 0
