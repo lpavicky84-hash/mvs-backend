@@ -5116,6 +5116,7 @@ function _tDppCardHTML(pk){
         <button class="btn btn-ghost btn-sm" title="Ranking of students by earliest submission" onclick="openDppRanking(${pk.id},'teacher')">${ic('chart')} Ranking${(pk.submitted||0)>0?` (${pk.submitted})`:''}</button>
         <button class="btn btn-ghost btn-sm" onclick="dppLangPick(${pk.id},'download')">${ic('download')} Download</button>
         <button class="btn btn-ghost btn-sm" onclick="openDppResults(${pk.id})">${ic('users')} Submissions (${pk.submitted||0})</button>
+        ${pk.source==='created'?`<button class="btn btn-ghost btn-sm" onclick="openEditDpp(${pk.id})">${ic('edit')} Edit</button>`:''}
         <button class="btn btn-danger btn-sm" onclick="dppDelete(${pk.id},'${esc(pk.title).replace(/'/g,'')}')">${ic('trash')} Delete</button>
       </div></div>
     </div>
@@ -5358,6 +5359,7 @@ function _dppFillParts(){
 }
 async function openCreateDpp(){
   window._dppMode='pending';
+  window._dppEditId=null; window._dppEditMeta=null;   // fresh create, not an edit
   window._dppCk='dpp-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);  // idempotency key (retry pe duplicate na bane)
   await _dppTtData();
   await openCreateExam('subjective');
@@ -5380,6 +5382,49 @@ async function openCreateDpp(){
   if(sub) sub.addEventListener('change',()=>_dppFillChapters(true));
   _dppFillChapters(true);
   // DPP mode me test-wala class select chhupao (chapter row me apna class select hai)
+  const _ctw=document.getElementById('ex-cls-test-wrap'); if(_ctw) _ctw.style.display='none';
+}
+async function openEditDpp(id){
+  let d;
+  try{ d=await api('/api/teacher/dpp-packs/'+id+'/questions'); }
+  catch(e){ toast(e.message||'Could not open this DPP for editing',true); return; }
+  if((d.source||'created')!=='created'){ toast('Uploaded DPPs can\'t be edited here. Delete it and upload the corrected PDFs.',true); return; }
+  window._dppMode='pending';
+  window._dppCk='';                 // edit is not a create — no idempotency key
+  window._dppEditId=id;
+  window._dppEditMeta={subject:d.subject||'',class_name:d.class_name||'',chapter:d.chapter||'',part:d.part||'',medium:d.medium||'English'};
+  await _dppTtData();
+  await openCreateExam('subjective');
+  // same DPP reconfiguration as Create
+  const dur=document.getElementById('ex-dur'); if(dur) dur.closest('.form-group').style.display='none';
+  const sch=document.getElementById('ex-sched'); if(sch) sch.closest('.form-group').style.display='none';
+  const chIn=document.getElementById('ex-ch');
+  if(chIn){
+    chIn.closest('.form-group').innerHTML=`<label>Chapter &amp; Part <span style="font-weight:400;color:var(--accent)">(from your timetable)</span></label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><select class="form-control" id="ex-cls-sel" style="flex:0 0 132px" title="Class" onchange="_dppFillChapters(false)"></select>
+      <select class="form-control" id="ex-ch-sel" style="flex:1;min-width:160px" onchange="_dppFillParts()"></select>
+      <select class="form-control" id="ex-part-sel" style="flex:1;min-width:140px"></select></div>`;
+  }
+  const sb=document.querySelector('#modal .btn.btn-primary[onclick^="submitExam"]');
+  if(sb) sb.textContent='Save Changes — Update DPP';
+  const mt=document.getElementById('modal-title'); if(mt) mt.textContent='Edit DPP';
+  const _sub=document.getElementById('ex-sub');
+  if(_sub) _sub.addEventListener('change',()=>_dppFillChapters(true));
+  // ---- prefill from the existing DPP ----
+  if(_sub && d.subject){ if(![..._sub.options].some(o=>o.text===d.subject)){ const op=document.createElement('option'); op.text=d.subject; _sub.add(op); } _sub.value=d.subject; }
+  _dppFillChapters(false);
+  const cs=document.getElementById('ex-cls-sel');
+  if(cs && d.class_name){ if(![...cs.options].some(o=>o.text===d.class_name)){ const op=document.createElement('option'); op.text=d.class_name; cs.add(op); } cs.value=d.class_name; _dppFillChapters(false); }
+  const chs=document.getElementById('ex-ch-sel');
+  if(chs && d.chapter){ if(![...chs.options].some(o=>o.text===d.chapter)){ const op=document.createElement('option'); op.text=d.chapter; chs.add(op); } chs.value=d.chapter; _dppFillParts(); }
+  const ps=document.getElementById('ex-part-sel');
+  if(ps && d.part){ if(![...ps.options].some(o=>o.text===d.part)){ const op=document.createElement('option'); op.text=d.part; ps.add(op); } ps.value=d.part; }
+  const tIn=document.getElementById('ex-title'); if(tIn) tIn.value=d.title||'';
+  const med=document.getElementById('ex-medium'); if(med && d.medium){ med.value=d.medium; _examMedium=d.medium; }
+  const mapped=(d.questions||[]).map(q=>({ q:q.q||'', q_hi:q.q_hi||'', model:q.model||'', model_hi:q.model_hi||'',
+    marks:1, image_b64:q.image||null, alt_image_b64:q.alt_image||null, model_answer_image:q.model_image||null,
+    _ipart:'a', _tab:'en', qtype:'general' }));
+  if(mapped.length){ _examQs=mapped; renderExamQs(); }
   const _ctw=document.getElementById('ex-cls-test-wrap'); if(_ctw) _ctw.style.display='none';
 }
 // ---------- UPLOAD DPP (2 PDFs mandatory) ----------
@@ -5774,7 +5819,7 @@ async function loadTTests(){
                 ${e.subject?`<span class="tx-pill nv">${esc(e.subject)}</span>`:''}
                 ${e.class_name?`<span class="tx-pill s" style="border-color:rgba(4,120,87,.4);color:#047857">${esc(e.class_name)}</span>`:`<span class="tx-pill s">All Classes</span>`}
                 ${spCleanCh(e.chapter)?`<span class="tx-pill s">${esc(spCleanCh(e.chapter))}</span>`:''}
-                <span class="tx-pill s inf">${ic('clipboard')} <b>${e.questions}</b> Qs</span><span class="tx-pill s inf">${ic('chart')} <b>${e.total_marks}</b> marks</span><span class="tx-pill s inf">${ic('clock')} <b>${e.duration_min}</b> min</span>${_schT?`<span class="tx-pill s inf">${ic('calendar')} ${_schTF}</span>`:''}
+                <span class="tx-pill s inf">${ic('clipboard')} <b>${e.questions}</b> Qs</span><span class="tx-pill s inf">${ic('chart')} <b>${e.total_marks}</b> marks</span><span class="tx-pill s inf">${ic('clock')} ${e.duration_min?('<b>'+e.duration_min+'</b> min'):'No time limit'}</span>${_schT?`<span class="tx-pill s inf">${ic('calendar')} ${_schTF}</span>`:''}
               </div>
               <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">${subBar}</div>
             </div>
@@ -6708,7 +6753,7 @@ async function openCreateExam(type,editData){
     ?'<div class="alert alert-info">Students upload a photo of their handwritten answers. You grade each answer manually from Results — award marks + remarks per question (your model answers stay visible to you while checking). Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{2H2 + O2 -> 2H2O}$</code> &mdash; they render automatically.</div>'
     :'<div class="alert alert-info">Students select an option. Auto-graded instantly. Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{...}$</code>.</div>';
   showModal(editData?('Edit '+tl+' Test'):('Create '+tl+' Test'),
-    (editData&&editData.attempts>0?'<div class="alert alert-info">This test is live — <b>'+editData.attempts+' submission(s)</b> have already been received. You may add new questions; previous submissions and their marks will remain safe.</div>':'')+`<div style="display:flex;gap:12px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:160px"><label>Subject</label><select class="form-control" id="ex-sub">${subOpts}</select></div><div class="form-group" style="width:128px" id="ex-cls-test-wrap"><label>Class</label><select class="form-control" id="ex-cls-test" title="Sirf is class ke students ko test dikhega"></select></div><div class="form-group" style="width:110px"><label>Duration (min)</label><input type="number" class="form-control" id="ex-dur" value="60"></div><div class="form-group" style="width:140px"><label>Medium</label><select class="form-control" id="ex-medium" onchange="examMediumChange()"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div><div class="form-group" style="min-width:210px;flex:1"><label>Schedule (optional)</label><input type="datetime-local" class="form-control" id="ex-sched" title="Students can start only after this date & time"></div></div>`
+    (editData&&editData.attempts>0?'<div class="alert alert-info">This test is live — <b>'+editData.attempts+' submission(s)</b> have already been received. You may add new questions; previous submissions and their marks will remain safe.</div>':'')+`<div style="display:flex;gap:12px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:160px"><label>Subject</label><select class="form-control" id="ex-sub">${subOpts}</select></div><div class="form-group" style="width:128px" id="ex-cls-test-wrap"><label>Class</label><select class="form-control" id="ex-cls-test" title="Sirf is class ke students ko test dikhega"></select></div><div class="form-group" style="width:150px"><label>Duration (min)</label><input type="number" min="0" class="form-control" id="ex-dur" placeholder="No limit" title="Blank ya 0 = koi time limit nahi. Student jab chahe test kar sakta hai; Start dabane ke baad usko complete karna hoga."></div><div class="form-group" style="width:140px"><label>Medium</label><select class="form-control" id="ex-medium" onchange="examMediumChange()"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div><div class="form-group" style="min-width:210px;flex:1"><label>Schedule (optional)</label><input type="datetime-local" class="form-control" id="ex-sched" title="Students can start only after this date & time"></div></div>`
     +`<div class="form-group"><label>${window._dppMode?'DPP Title':'Test Title'}</label><input class="form-control" id="ex-title" placeholder="e.g. Physics Chapter Test - Electric Charges"></div>`
     +`<div class="form-group"><label>Chapter (optional)</label><input class="form-control" id="ex-ch" placeholder="e.g. Electric Charges"></div>`
     +`<div class="ex-prog" id="ex-prog"><div class="ex-prog-top"><span class="ex-prog-label" id="ex-prog-label">Uploading\u2026</span><span class="ex-prog-pct" id="ex-prog-pct">0%</span></div><div class="ex-prog-track"><div class="ex-prog-fill" id="ex-prog-fill"></div></div></div>`
@@ -6730,7 +6775,7 @@ async function openCreateExam(type,editData){
     }
     document.getElementById('ex-title').value=ex.title||'';
     document.getElementById('ex-ch').value=spCleanCh(ex.chapter||'');
-    document.getElementById('ex-dur').value=ex.duration_min||60;
+    document.getElementById('ex-dur').value=ex.duration_min||'';
     const med=ex.medium||'English';
     document.getElementById('ex-medium').value=med; _examMedium=med;
     const sch=spSchedOf(ex); if(sch)document.getElementById('ex-sched').value=spSchedLocal(sch);
@@ -7157,7 +7202,7 @@ async function examEdit(id){
     showModal('Edit Test',
       `<div class="form-group"><label>Title</label><input class="form-control" id="ee-title" value="${esc(ex.title||'')}"></div>`
       +`<div class="form-group"><label>Chapter</label><input class="form-control" id="ee-ch" value="${esc(spCleanCh(ex.chapter||''))}"></div>`
-      +`<div style="display:flex;gap:12px;flex-wrap:wrap"><div class="form-group" style="width:130px"><label>Duration (min)</label><input type="number" class="form-control" id="ee-dur" value="${ex.duration_min||60}"></div>`
+      +`<div style="display:flex;gap:12px;flex-wrap:wrap"><div class="form-group" style="width:150px"><label>Duration (min)</label><input type="number" min="0" class="form-control" id="ee-dur" value="${ex.duration_min||''}" placeholder="No limit"></div>`
       +`<div class="form-group" style="flex:1;min-width:210px"><label>Schedule (students start only after this)</label><input type="datetime-local" class="form-control" id="ee-sched" value="${sch?spSchedLocal(sch):''}"></div></div>`
       +`<div class="alert alert-info">A scheduled test appears to students with a countdown — it can only be started after the scheduled time. Leave the time empty to keep the test always open.</div>`,
       `<button class="btn btn-primary" onclick="examEditSave(${id})">Save Changes</button>`);
@@ -7166,7 +7211,7 @@ async function examEdit(id){
 async function examEditSave(id){
   const sch=(val('ee-sched')||'').trim();
   const chRaw=(val('ee-ch')||'').trim();
-  const body={title:val('ee-title'),chapter:(sch?(chRaw+' \u27E6S:'+sch+'\u27E7'):chRaw),duration_min:parseInt(val('ee-dur'))||60,scheduled_at:sch||null};
+  const body={title:val('ee-title'),chapter:(sch?(chRaw+' \u27E6S:'+sch+'\u27E7'):chRaw),duration_min:(parseInt(val('ee-dur'))||0),scheduled_at:sch||null};
   try{
     await api('/api/teacher/exam/'+id,'PATCH',body);
     closeModal(); toast('Test updated successfully.'); loadTTests();
@@ -7321,7 +7366,7 @@ function _renderATests(){
   const st=_stat(selList);
   const _testRow=e=>{
     const sch=spSchedOf(e);
-    return `<div class="today-row"><div><div class="tr-sub">${esc(e.title||'')}</div><div class="tr-topic">${esc(e.teacher_name||'')}${spCleanCh(e.chapter)?' \u00b7 '+esc(spCleanCh(e.chapter)):''} \u00b7 ${e.questions||0} Qs \u00b7 ${e.total_marks||0} marks \u00b7 ${e.duration_min||0} min${sch?' \u00b7 '+spSchedFmt(sch):''}</div></div><div class="tmeta"><span class="tstatus">${e.attempts||0} submitted</span><span class="tstatus ${(e.graded||0)>0?'done':''}">${e.graded||0} evaluated</span><span class="tstatus" style="color:#b45309">${Math.max(0,(e.attempts||0)-(e.graded||0))} pending</span>${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'admin')">${ic('chart')} Ranking</button>`:''}</div></div>`;
+    return `<div class="today-row"><div><div class="tr-sub">${esc(e.title||'')}</div><div class="tr-topic">${esc(e.teacher_name||'')}${spCleanCh(e.chapter)?' \u00b7 '+esc(spCleanCh(e.chapter)):''} \u00b7 ${e.questions||0} Qs \u00b7 ${e.total_marks||0} marks \u00b7 ${e.duration_min?e.duration_min+' min':'No time limit'}${sch?' \u00b7 '+spSchedFmt(sch):''}</div></div><div class="tmeta"><span class="tstatus">${e.attempts||0} submitted</span><span class="tstatus ${(e.graded||0)>0?'done':''}">${e.graded||0} evaluated</span><span class="tstatus" style="color:#b45309">${Math.max(0,(e.attempts||0)-(e.graded||0))} pending</span>${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'admin')">${ic('chart')} Ranking</button>`:''}</div></div>`;
   };
   const _sec=(sub,list)=>`<div class="card"><div class="card-header"><h3>${esc(sub)}</h3><span class="tx-pill nv">${list.length} test${list.length>1?'s':''}</span></div><div class="card-body">${list.map(_testRow).join('')}</div></div>`;
   el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests Tracker</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Subject-wise all tests · live submission tracking</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-danger btn-sm" onclick="orphanCleanup()">${ic('trash')} Clean Old Data</button><button class="btn btn-ghost btn-sm" onclick="loadATests()">${ic('refresh')} Refresh</button></div></div>`
@@ -7948,24 +7993,30 @@ async function submitExam(){
     for(let i=0;i<_examQs.length;i++){ const q=_examQs[i];
       if(!(q.q||'').trim()&&!q.image_b64){ toast('Question '+(i+1)+': please fill the question',true); return; }
       if(!(q.model||'').trim()&&!q.model_answer_image){ toast('Question '+(i+1)+': model answer MANDATORY hai — answer bharo',true); return; } }
-    const payload={ subject:val('ex-sub'), class_name:(val('ex-cls-sel')||''),
-      chapter:(val('ex-ch-sel')!==undefined?val('ex-ch-sel'):val('ex-ch')), part:(val('ex-part-sel')||''),
-      title, medium:_examMedium||'English', client_key:(window._dppCk||''),
+    const _em=window._dppEditMeta||{};
+    const payload={ subject:(val('ex-sub')||_em.subject||''), class_name:((val('ex-cls-sel')||_em.class_name)||''),
+      chapter:((val('ex-ch-sel')!==undefined&&val('ex-ch-sel')!=='')?val('ex-ch-sel'):(val('ex-ch')||_em.chapter||'')), part:((val('ex-part-sel')||_em.part)||''),
+      title, medium:_examMedium||_em.medium||'English', client_key:(window._dppCk||''),
       questions:_examQs.map(q=>({ q:q.q||'', q_hi:q.q_hi||'', model:q.model||'', model_hi:q.model_hi||'',
         image:q.image_b64||null, alt_image:q.alt_image_b64||null, model_image:q.model_answer_image||null })) };
+    const _dppEid=window._dppEditId;
     // Network error pe EK baar auto-retry (backend cold-start) — duplicate nahi banega
-    // (client_key + server-side 90s dedupe). Form data modal me safe rehta hai.
+    // (client_key + server-side 90s dedupe). Edit PATCH idempotent hai. Form data modal me safe.
     let res=null, err=null;
-    try{ res=await api('/api/teacher/dpp-packs/create','POST',payload); }
+    const _dppApi=()=> _dppEid
+      ? api('/api/teacher/dpp-packs/'+_dppEid,'PATCH',payload)
+      : api('/api/teacher/dpp-packs/create','POST',payload);
+    try{ res=await _dppApi(); }
     catch(e1){
       err=e1;
       toast('Server tak nahi pahunch pa rahe — 4 sec me dobara try…',true);
       await new Promise(r=>setTimeout(r,4000));
-      try{ res=await api('/api/teacher/dpp-packs/create','POST',payload); err=null; }catch(e2){ err=e2; }
+      try{ res=await _dppApi(); err=null; }catch(e2){ err=e2; }
     }
-    if(err||!res){ toast((err&&err.message)||'Create failed',true); return; }
-    window._dppMode=false; closeModal();
-    toast(res.duplicate?'DPP pehle hi ban gaya tha — card me dikhega.':'DPP created — ab card pe "Download PDF" ya "View" dabao. PDF click pe hi banti hai, timeout nahi hoga.');
+    if(err||!res){ toast((err&&err.message)||(_dppEid?'Update failed':'Create failed'),true); return; }
+    window._dppMode=false; window._dppEditId=null; window._dppEditMeta=null; closeModal();
+    toast(_dppEid?'DPP updated — the PDFs will rebuild on the next view or download.'
+      :(res.duplicate?'DPP pehle hi ban gaya tha — card me dikhega.':'DPP created — ab card pe "Download PDF" ya "View" dabao. PDF click pe hi banti hai, timeout nahi hoga.'));
     await loadTDpp(); return;
   }
   const title=val('ex-title'); if(!title){ toast('Enter a test title',true); return; }
@@ -7990,7 +8041,7 @@ async function submitExam(){
             model_answer_hi:biling?((q.model_hi||'').trim()||null):null};
   });
   const _sched=(val('ex-sched')||'').trim(); const _chRaw=(val('ex-ch')||'').trim();
-  const body={subject:val('ex-sub'),class_name:(val('ex-cls-test')||''),title:title,chapter:(_sched?(_chRaw+' \u27E6S:'+_sched+'\u27E7'):_chRaw),test_type:_examType,medium:_examMedium,duration_min:parseInt(val('ex-dur'))||60,scheduled_at:_sched||null,questions:questions};
+  const body={subject:val('ex-sub'),class_name:(val('ex-cls-test')||''),title:title,chapter:(_sched?(_chRaw+' \u27E6S:'+_sched+'\u27E7'):_chRaw),test_type:_examType,medium:_examMedium,duration_min:(parseInt(val('ex-dur'))||0),scheduled_at:_sched||null,questions:questions};
   try{
     const _editId=window._editExamId;
     if(_editId){ await api('/api/teacher/exam/'+_editId,'PATCH',body); }
@@ -12888,7 +12939,7 @@ function examCardHTML(e){
           ${e.subject?`<span class="tx-pill nv inf"><b>${esc(e.subject)}</b></span>`:''}
           ${e.class_name?`<span class="tx-pill s" style="border-color:rgba(4,120,87,.4);color:#047857">${esc(e.class_name)}</span>`:''}
           ${spCleanCh(e.chapter)?`<span class="tx-pill s">${esc(spCleanCh(e.chapter))}</span>`:''}
-          <span class="tx-pill s inf">${ic('clipboard')} <b>${e.questions}</b> Qs</span><span class="tx-pill s inf">${ic('chart')} <b>${e.total_marks}</b> marks</span><span class="tx-pill s inf">${ic('clock')} <b>${e.duration_min}</b> min</span>${_sch?`<span class="tx-pill s inf">${ic('calendar')} ${spSchedFmt(_sch)}</span>`:''}
+          <span class="tx-pill s inf">${ic('clipboard')} <b>${e.questions}</b> Qs</span><span class="tx-pill s inf">${ic('chart')} <b>${e.total_marks}</b> marks</span><span class="tx-pill s inf">${ic('clock')} ${e.duration_min?('<b>'+e.duration_min+'</b> min'):'No time limit'}</span>${_sch?`<span class="tx-pill s inf">${ic('calendar')} ${spSchedFmt(_sch)}</span>`:''}
         </div>
       </div>
       ${right}

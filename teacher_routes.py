@@ -1457,6 +1457,54 @@ def teacher_dpp_create(data: dict, db: Session = Depends(get_db), current_user=D
     return {"ok": True, "pack": _dpp_pack_out(db, pk, False)}
 
 
+@router.patch("/dpp-packs/{pack_id}")
+def teacher_dpp_update(pack_id: int, data: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Editor se bana DPP (source='created') edit karo — title/subject/chapter/part/
+    medium/class update + questions poora replace. Uploaded (PDF) DPP builder me edit
+    nahi hote. Har question ka model answer yahan bhi MANDATORY (create jaisa)."""
+    from models import DppPack
+    tp = get_teacher_profile(current_user, db)
+    pk = db.query(DppPack).filter(DppPack.id == pack_id, DppPack.teacher_id == tp.id).first()
+    if not pk:
+        raise HTTPException(status_code=404, detail="DPP not found")
+    if (pk.source or "created") != "created":
+        raise HTTPException(status_code=400, detail="Uploaded DPPs can't be edited here — delete and upload again.")
+    questions = data.get("questions") or []
+    if not questions:
+        raise HTTPException(status_code=400, detail="Add at least one question")
+    for i, q in enumerate(questions, 1):
+        if not (q.get("q") or "").strip() and not q.get("image"):
+            raise HTTPException(status_code=400, detail=f"Question {i} is empty")
+        if not (q.get("model") or "").strip() and not q.get("model_image"):
+            raise HTTPException(status_code=400,
+                                detail=f"Answer mandatory: Question {i} ka model answer bharo")
+    subject = (data.get("subject") or pk.subject or "").strip()
+    if _SR is not None and subject:
+        subject = _SR.canon_display(subject, data.get("class_name") or pk.class_name)
+    if subject:
+        pk.subject = subject
+    if data.get("class_name") is not None:
+        pk.class_name = (data.get("class_name") or "").strip()
+    if data.get("chapter") is not None:
+        pk.chapter = (data.get("chapter") or "").strip()
+    if data.get("part") is not None:
+        pk.part = (data.get("part") or "").strip()
+    if (data.get("title") or "").strip():
+        pk.title = (data.get("title") or "").strip()
+    if (data.get("medium") or "").strip():
+        pk.medium = (data.get("medium") or "").strip()
+    pk.questions = questions
+    # Stored PDFs are stale after an edit — clear so they rebuild lazily on next view/download.
+    for _attr in ("q_pdf", "s_pdf", "q_pdf_hi", "s_pdf_hi"):
+        if hasattr(pk, _attr):
+            try:
+                setattr(pk, _attr, None)
+            except Exception:
+                pass
+    db.add(pk); db.commit(); db.refresh(pk)
+    return {"ok": True, "pack": _dpp_pack_out(db, pk, False)}
+
+
 @router.post("/dpp-packs/upload")
 async def teacher_dpp_upload(subject: str = Form(...), chapter: str = Form(""), part: str = Form(""),
                              title: str = Form(""), medium: str = Form("English"),
@@ -2212,6 +2260,16 @@ def _exam_parse_dt(v):
             continue
     return None
 
+def _parse_dur(v):
+    """Test duration ko normalize: 0 / blank / invalid -> None (no time limit);
+    positive int -> wahi. None matlab student jab chahe kar sakta hai, koi countdown nahi."""
+    try:
+        n = int(v)
+    except Exception:
+        return None
+    return n if n > 0 else None
+
+
 @router.post("/exam")
 def create_exam(payload: dict = Body(...), background_tasks: BackgroundTasks = None, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     _ensure_exam_columns(db)
@@ -2229,7 +2287,7 @@ def create_exam(payload: dict = Body(...), background_tasks: BackgroundTasks = N
               chapter=payload.get("chapter"), test_type=ttype,
               class_name=(payload.get("class_name") or "").strip(),
               medium=payload.get("medium", "English"),
-              total_marks=total, duration_min=int(payload.get("duration_min", 60) or 60),
+              total_marks=total, duration_min=_parse_dur(payload.get("duration_min")),
               scheduled_at=_exam_parse_dt(payload.get("scheduled_at")))
     db.add(ex); db.flush()
     for i, q in enumerate(qs, start=1):
@@ -5145,10 +5203,7 @@ def update_exam(exam_id: int, payload: dict = Body(...), db: Session = Depends(g
     if payload.get("class_name") is not None:
         ex.class_name = (payload.get("class_name") or "").strip()
     if payload.get("duration_min") is not None:
-        try:
-            ex.duration_min = int(payload.get("duration_min") or 60)
-        except Exception:
-            pass
+        ex.duration_min = _parse_dur(payload.get("duration_min"))
     if "scheduled_at" in payload:
         ex.scheduled_at = _exam_parse_dt(payload.get("scheduled_at"))
     qs = payload.get("questions")
