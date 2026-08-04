@@ -2026,29 +2026,87 @@ def _vt_parse_dt(s):
     return None
 
 
-def _vt_views_stats(db, teacher_id=None):
-    """Totals + per-video + per-teacher + highest, sirf un tasks pe jinpe YouTube link hai."""
-    q = db.query(VideoTask)
-    if teacher_id:
-        q = q.filter(VideoTask.teacher_id == teacher_id)
-    tasks = q.all()
-    vids = [t for t in tasks if (t.youtube_url or "")]
-    pending = len([t for t in tasks
-                   if t.status in ("assigned", "submitted") and not (t.youtube_url or "")])
-    tp_ids = list({t.teacher_id for t in vids if t.teacher_id})
+def _views_at(db, task_id, before_dt):
+    """Given time se pehle (ya us waqt) ka latest snapshot views. None agar koi nahi."""
+    from models import VideoViewSnapshot
+    if not before_dt:
+        return None
+    r = (db.query(VideoViewSnapshot)
+         .filter(VideoViewSnapshot.task_id == task_id,
+                 VideoViewSnapshot.captured_at <= before_dt)
+         .order_by(VideoViewSnapshot.captured_at.desc()).first())
+    return int(r.views) if r else None
+
+
+def _vt_period_bounds(range_key, frm, to):
+    """(start, end) datetimes. range_key: today | 7d | month | custom | all."""
+    now = datetime.utcnow()
+    rk = (range_key or "").strip().lower()
+    if rk == "today":
+        return now.replace(hour=0, minute=0, second=0, microsecond=0), None
+    if rk in ("7d", "week", "last7"):
+        return now - timedelta(days=7), None
+    if rk in ("month", "30d", "last30"):
+        return now - timedelta(days=30), None
+    if rk == "custom":
+        return _vt_parse_dt(frm), _vt_parse_dt(to)
+    return None, None   # all-time
+
+
+def _vt_task_period_views(db, t, period_start, period_end):
+    """Is video ke period me views: (end ya current) - (period_start pe baseline).
+    Baseline na mile (tracking period ke andar shuru hui) to 0 -> saare views period ke."""
+    cur = int(t.yt_views or 0)
+    if period_end:
+        e = _views_at(db, t.id, period_end)
+        if e is not None:
+            cur = e
+    if period_start:
+        b = _views_at(db, t.id, period_start)
+        base = b if b is not None else 0
+        return max(0, cur - base)
+    return cur
+
+
+def _vt_views_stats(db, teacher_id=None, period_start=None, period_end=None):
+    """Totals + per-video (+thumb) + per-teacher + highest + all-teacher leaderboard.
+    period_start/end diye ho to views = us period me GAINED (snapshot delta)."""
+    vids_all = [t for t in db.query(VideoTask).all() if (t.youtube_url or "")]
+    tp_ids = list({t.teacher_id for t in vids_all if t.teacher_id})
     tmap = {}
     if tp_ids:
         for tp in db.query(TeacherProfile).filter(TeacherProfile.id.in_(tp_ids)).all():
             u = db.query(User).filter(User.id == tp.user_id).first()
             tmap[tp.id] = (u.name if u else ("Teacher #%d" % tp.id))
+
+    def _vv(t):
+        return _vt_task_period_views(db, t, period_start, period_end)
+
+    # all-teacher leaderboard (comparison bar/pie) — hamesha
+    lb = {}
+    for t in vids_all:
+        nm = tmap.get(t.teacher_id, "\u2014")
+        lb[nm] = lb.get(nm, 0) + _vv(t)
+    leaderboard = sorted(({"name": k, "views": v} for k, v in lb.items()),
+                         key=lambda x: -x["views"])
+
+    # scoped (teacher's own, ya admin=all)
+    scoped_tasks = db.query(VideoTask)
+    if teacher_id:
+        scoped_tasks = scoped_tasks.filter(VideoTask.teacher_id == teacher_id)
+    scoped_tasks = scoped_tasks.all()
+    vids = [t for t in scoped_tasks if (t.youtube_url or "")]
+    pending = len([t for t in scoped_tasks
+                   if t.status in ("assigned", "submitted") and not (t.youtube_url or "")])
     per_video, per_teacher, total_views, highest = [], {}, 0, None
     for t in vids:
-        v = int(t.yt_views or 0)
+        v = _vv(t)
         total_views += v
         nm = tmap.get(t.teacher_id, "\u2014")
         per_teacher[nm] = per_teacher.get(nm, 0) + v
         item = {"id": t.id, "title": t.title or "", "teacher": nm, "views": v,
                 "url": t.youtube_url or "",
+                "thumb": (t.thumbnail_b64 or t.thumbnail_link or ""),
                 "at": t.yt_views_at.strftime("%d %b, %I:%M %p") if t.yt_views_at else ""}
         per_video.append(item)
         if highest is None or v > highest["views"]:
@@ -2057,7 +2115,8 @@ def _vt_views_stats(db, teacher_id=None):
     by_teacher = sorted(({"name": k, "views": v} for k, v in per_teacher.items()),
                         key=lambda x: -x["views"])
     return {"uploaded": len(vids), "pending": pending, "total_views": total_views,
-            "highest": highest, "per_video": per_video, "by_teacher": by_teacher}
+            "highest": highest, "per_video": per_video,
+            "by_teacher": by_teacher, "leaderboard": leaderboard}
 
 
 def _vt_video_series(db, task_id, dt_from=None, dt_to=None):
@@ -2142,20 +2201,26 @@ def vt_refresh_views(db: Session = Depends(get_db), _=Depends(get_admin)):
 
 
 @router.get("/admin/video-views", dependencies=[Depends(_admin_section_guard)])
-def vt_admin_views(video_id: int = 0, frm: str = "", to: str = "",
+def vt_admin_views(video_id: int = 0, range: str = "", frm: str = "", to: str = "",
                    db: Session = Depends(get_db), _=Depends(get_admin)):
-    st = _vt_views_stats(db)
+    ps, pe = _vt_period_bounds(range, frm, to)
+    st = _vt_views_stats(db, period_start=ps, period_end=pe)
     st["youtube_key_set"] = bool(_yt_get_key(db))
+    st["range"] = range or "all"
     if video_id:
         st["series"] = _vt_video_series(db, video_id, _vt_parse_dt(frm), _vt_parse_dt(to))
     return st
 
 
 @router.get("/teacher/video-views")
-def vt_teacher_views(video_id: int = 0, frm: str = "", to: str = "",
+def vt_teacher_views(video_id: int = 0, range: str = "", frm: str = "", to: str = "",
                      db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = _get_tp(current_user, db)
-    st = _vt_views_stats(db, teacher_id=tp.id)
+    ps, pe = _vt_period_bounds(range, frm, to)
+    st = _vt_views_stats(db, teacher_id=tp.id, period_start=ps, period_end=pe)
+    st["me"] = (db.query(User).filter(User.id == tp.user_id).first().name
+                if db.query(User).filter(User.id == tp.user_id).first() else "")
+    st["range"] = range or "all"
     if video_id:
         st["series"] = _vt_video_series(db, video_id, _vt_parse_dt(frm), _vt_parse_dt(to))
     return st
