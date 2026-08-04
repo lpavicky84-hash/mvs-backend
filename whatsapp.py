@@ -38,6 +38,7 @@ _ENV = {
     "wa_format":   "WA_FORMAT",
     "wa_welcome":  "WA_WELCOME",
     "wa_announce": "WA_ANNOUNCE",
+    "wa_welcome_msg": "WA_WELCOME_MSG",
     "wa_lang":     "WA_LANG",
     "wa_link":     "WA_LINK",
     "wa_sender":   "WA_SENDER",
@@ -77,10 +78,11 @@ def cfg():
         "campaign": _val("wa_welcome"),          # welcome template/campaign name
         "template": _val("wa_welcome"),          # (alias — admin_routes cfg() me dono padha jaata)
         "announce": _val("wa_announce"),
+        "welcome_msg": _val("wa_welcome_msg"),   # welcome ka message text (variable {{2}} me jata hai)
         "lang":     _val("wa_lang", "en"),
         "link":     _val("wa_link", PORTAL_LINK_DEFAULT),
         "sender":   _val("wa_sender"),
-        "params":   ["name", "batch"],           # welcome template variables order
+        "params":   ["name", "message"],         # welcome template variables: {{1}}=name, {{2}}=message
     }
 
 
@@ -117,27 +119,40 @@ def _phone_intl(p, plus=False):
 
 
 # ---- message / params builders (preview + send) ---------------------------
+def _resolve(text, name, batch, link):
+    """{name}/{batch}/{link} tokens replace + newline/tab hata (WhatsApp variable rule)."""
+    t = str(text or "")
+    t = (t.replace("{name}", str(name or ""))
+          .replace("{batch}", str(batch or ""))
+          .replace("{link}", str(link or "")))
+    t = t.replace("\n", " ").replace("\r", " ").replace("\t", " ")
+    while "     " in t:            # 4+ consecutive spaces not allowed
+        t = t.replace("     ", " ")
+    return t.strip()
+
+
+def _welcome_body(name, batch, link):
+    from_cfg = cfg().get("welcome_msg")
+    if from_cfg:
+        return _resolve(from_cfg, name, batch, link)
+    # default agar admin ne message set nahi kiya
+    return _resolve("welcome to {batch} batch. Your Class Manager is now active — "
+                    "login with your registered mobile at {link}", name, batch or "your", link)
+
+
 def build_params(name, batch, phone, message=None):
-    """Template variables. Welcome: [name, batch]. Announce: [name, message]."""
+    """Template variables. Welcome: [name, welcome_message]. Announce: [name, message].
+    Welcome ka message text portal se editable hai (variable {{2}} me jata hai)."""
+    c = cfg()
     if message is not None:
-        return [str(name or "Student"), str(message or "")]
-    return [str(name or "Student"), str(batch or "")]
+        return [str(name or "Student"), _resolve(message, name, batch, c["link"])]
+    return [str(name or "Student"), _welcome_body(name, batch, c["link"])]
 
 
 def build_message(name, batch, phone, template=None, message=None):
-    """Preview text (portal me dikhane ke liye). Actual send template-based hota hai."""
-    link = cfg()["link"]
-    nm = name or "Student"
-    if message:
-        return (f"Hi {nm}, an update from MVS Foundation: {message} "
-                f"For any help, open your Class Manager and use the Support section. "
-                f"Open: {link} — Team MVS Foundation")
-    bt = batch or "your"
-    return (f"Hi {nm}, welcome to MVS Foundation's {bt} batch. Your Class Manager is now "
-            f"active — Notes, PPT, DPP submissions, Test Series, Doubts and Time Table are "
-            f"all in one place. Login with your registered mobile number at {link}. "
-            f"Note: replies to this number are not monitored — for any help use the Support "
-            f"section inside your Class Manager. — Team MVS Foundation")
+    """Preview text — jaisa template render hoga (Hi {{1}}, {{2}})."""
+    p = build_params(name, batch, phone, message=message)
+    return "Hi " + p[0] + ", " + p[1]
 
 
 # ---- the send -------------------------------------------------------------

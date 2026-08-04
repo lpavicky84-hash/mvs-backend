@@ -10546,6 +10546,10 @@ async function openWhatsApp(){
         <div class="form-group"><label>Portal link</label><input class="form-control" id="wc-link" value="${esc(cf.wa_link||'https://app.mvsfoundation.in')}"></div>
         <div class="form-group"><label>Sender/Channel id (optional)</label><input class="form-control" id="wc-sender" value="${esc(cf.wa_sender||'')}" placeholder="only if Combirds needs it"></div>
       </div>
+      <div class="form-group"><label>Welcome message (goes into template variable {{2}})</label>
+        <textarea class="form-control" id="wc-welcomemsg" rows="3" placeholder="e.g. welcome to {batch} batch! Aapka Class Manager active hai. Login {link} par karein.">${esc(cf.wa_welcome_msg||'')}</textarea>
+        <div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">Tip: <b>{name}</b>, <b>{batch}</b>, <b>{link}</b> likho — har student ke hisaab se apne aap bhar jaayega. Ek line ka block rakho (newline nahi). Ye message change karoge to sabko naya hi jaayega — template dobara nahi banana padega.</div>
+      </div>
       <button class="btn btn-primary btn-sm" onclick="waSaveConfig()">Save settings</button>
       <div style="display:flex;gap:8px;margin-top:10px"><input class="form-control" id="wa-test" placeholder="Test: your 10-digit number" style="max-width:220px"><button class="btn btn-ghost btn-sm" onclick="waTest()">Send Test</button></div>
       <div id="wa-cfg-out" style="margin-top:8px"></div></details>`;
@@ -10553,7 +10557,7 @@ async function openWhatsApp(){
     const welcomeSec=st.configured?`<details class="wa-sec" open><summary><b>Welcome — send to MVS App students</b></summary>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">
         <span class="xm-chip xm-chip-hl">Pending \u00b7 ${st.pending}</span><span class="xm-chip">Already sent \u00b7 ${st.sent}</span></div>
-      <p style="font-size:.78rem;color:var(--text-muted)">Message text aapke approved welcome template me hai — yahan se sirf variables (name, batch) jaate hain. Portal students ko welcome nahi jaata.</p>
+      <p style="font-size:.78rem;color:var(--text-muted)">Template ke variables: {{1}} = student ka naam, {{2}} = upar Settings me likha "Welcome message". Message change karna ho to Settings me badlo — sabko naya jaayega. Portal students ko welcome nahi jaata.</p>
       <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;margin:8px 0"><input type="checkbox" id="wa-resend"> Resend to students who already got it</label>
       <button class="btn btn-success btn-sm" id="wa-btn" onclick="sendWhatsAppWelcome()">${ic('megaphone')} Send welcome to ${st.pending} pending</button>
       <div id="wa-out" style="margin-top:8px"></div></details>`:'';
@@ -10572,7 +10576,7 @@ async function openWhatsApp(){
 async function waSaveConfig(){
   const out=document.getElementById('wa-cfg-out'); out.innerHTML='<div class="spinner"></div>';
   const body={wa_api_url:val('wc-url'),wa_format:val('wc-fmt'),wa_welcome:val('wc-welcome'),
-    wa_announce:val('wc-announce'),wa_lang:val('wc-lang'),wa_link:val('wc-link'),wa_sender:val('wc-sender')};
+    wa_announce:val('wc-announce'),wa_welcome_msg:val('wc-welcomemsg'),wa_lang:val('wc-lang'),wa_link:val('wc-link'),wa_sender:val('wc-sender')};
   const key=val('wc-key').trim(); if(key) body.wa_api_key=key;
   try{ await api('/api/admin/whatsapp/config','POST',body); out.innerHTML='<div class="alert alert-success">Settings saved.</div>'; toast('WhatsApp settings saved.'); setTimeout(openWhatsApp,600); }
   catch(e){ out.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
