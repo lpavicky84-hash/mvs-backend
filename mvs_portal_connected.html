@@ -4073,9 +4073,12 @@ async function loadTRankBoard(){
     const rows=_trkBoard.map(r=>{
       const isMe=me&&r.teacher_id===me.teacher_id;
       const bars=_TRK_METRICS.map(m=>{
-        const v=(r.metrics||{})[m[0]]||0, pct=Math.round(v/maxM[m[0]]*100);
-        const mlbl=(m[0]==='attendance'&&r.attendance_source==='reports')?'Attendance (Class Reports)':m[1];
-        return `<div class="trk-mrow"><span class="trk-mlbl">${mlbl}</span><div class="trk-mtrack"><div class="trk-mfill" style="width:${pct}%;background:${m[2]}"></div></div><b class="trk-mval">${v}</b></div>`;
+        const v=(r.metrics||{})[m[0]]||0;
+        const isPct=m[3]==='pct';
+        const fill=isPct?Math.max(0,Math.min(100,Math.round(v))):Math.round(v/maxM[m[0]]*100);
+        const shown=isPct?(Math.round(v)+'%'):v;
+        const mlbl=(m[0]==='attendance'&&r.attendance_source==='reports')?'Present Days (from reports)':m[1];
+        return `<div class="trk-mrow"><span class="trk-mlbl">${mlbl}</span><div class="trk-mtrack"><div class="trk-mfill" style="width:${fill}%;background:${m[2]}"></div></div><b class="trk-mval">${shown}</b></div>`;
       }).join('');
       return `<div class="card trk-card trk-click ${isMe?'trk-me-card':''}" onclick="trkCompare(${r.teacher_id})"><div class="card-body">
         <div class="trk-head"><div style="position:relative">${av(r,46)}<span class="trk-medal sm" style="background:${medal[r.rank-1]||'#8a7c55'}">${r.rank}</span></div>
@@ -4087,7 +4090,7 @@ async function loadTRankBoard(){
     wrap.innerHTML=`<div class="card" style="margin-bottom:14px;border:1.5px solid rgba(184,148,31,.3)"><div class="card-body" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <div style="font-size:1.8rem">&#127942;</div>
       <div style="flex:1;min-width:220px"><h3 style="margin:0 0 3px">Teacher Ranking</h3>
-      <p style="margin:0;font-size:.8rem;color:var(--text-muted)">Composite score — tests, DPPs, doubts, class notes, lectures and attendance (last ${d.days||90} days). Tap any teacher to compare.</p></div></div></div>
+      <p style="margin:0;font-size:.8rem;color:var(--text-muted)">Performance = DPP &amp; test chapter coverage, on-time classes, present days, doubts resolved, and on-time tasks (last ${d.days||90} days). No doubts came in? That part stays full. Tap any teacher to compare.</p></div></div></div>
       ${podHtml}${meHtml}${list}`;
     wrap.innerHTML+=_vtTaskRankHTML(d.task_ranking||[], me?me.teacher_id:0);
   }catch(e){ wrap.innerHTML=''; }
@@ -4110,28 +4113,24 @@ function trkCompare(tid){
   const diff=Math.round((other.score-me.score)*10)/10;
   const ahead=diff>0;
   const mm=(me.metrics||{}), om=(other.metrics||{});
-  const MET=[['tests','tests'],['dpps','DPPs'],['doubts','doubts resolved'],['notes','class notes'],['lectures','lectures'],['attendance','attendance days']];
-  const gaps=MET.map(([k,lbl])=>({k,lbl,ov:(om[k]||0),mv:(mm[k]||0)}));
+  const MET=[['dpp_cov','DPP coverage','pct'],['test_cov','test coverage','pct'],['lectures','on-time classes','pct'],['doubts','doubts resolved','pct'],['attendance','present days','count'],['tasks','on-time tasks','pct']];
+  const gaps=MET.map(([k,lbl,ty])=>({k,lbl,ty,ov:(om[k]||0),mv:(mm[k]||0)}));
   gaps.forEach(g=>g.gap=g.ov-g.mv);
+  const _sfx=g=>g.ty==='pct'?'%':'';
   const gapRows=gaps.map(g=>{
     const max=Math.max(1,g.ov,g.mv);
     return `<div class="trk-cmp-row"><span class="trk-cmp-lbl">${g.lbl[0].toUpperCase()+g.lbl.slice(1)}</span>
       <div class="trk-cmp-bars"><div class="trk-cmp-bar them" style="width:${Math.round(g.ov/max*100)}%"></div><div class="trk-cmp-bar me" style="width:${Math.round(g.mv/max*100)}%"></div></div>
-      <span class="trk-cmp-val">${g.ov} vs ${g.mv}</span></div>`;
+      <span class="trk-cmp-val">${g.ov}${_sfx(g)} vs ${g.mv}${_sfx(g)}</span></div>`;
   }).join('');
   let suggest='';
   if(ahead){
-    const steps=gaps.filter(g=>g.gap>0).map(g=>{
-      const n=g.gap;
-      const lbl={tests:'test',dpps:'DPP',doubts:'doubt',notes:'class note',lectures:'lecture',attendance:'punch-in day'}[g.k];
-      const many={tests:'tests',dpps:'DPPs',doubts:'doubts',notes:'class notes',lectures:'lectures',attendance:'punch-in days'}[g.k];
-      const verb={tests:'Create',dpps:'Upload',doubts:'Resolve',notes:'Upload',lectures:'Complete',attendance:'Add'}[g.k];
-      return `<li>${verb} <b>${n}</b> more ${n===1?lbl:many}</li>`;
-    }).join('');
+    const TIP={dpp_cov:'Give a DPP in more of your syllabus chapters',test_cov:'Set a test in more of your chapters',lectures:'Complete your classes on their scheduled day',doubts:'Resolve any pending student doubts',attendance:'Mark present on more working days',tasks:'Deliver production tasks on time (propose your own for a bonus)'};
+    const steps=gaps.filter(g=>g.gap>0).sort((a,b)=>b.gap-a.gap).slice(0,4).map(g=>`<li>${TIP[g.k]||g.lbl} — you're ${Math.round(g.gap)}${_sfx(g)} behind</li>`).join('');
     suggest=`<div class="trk-sugg"><b>&#128161; How to reach Rank #${other.rank}:</b><ul>${steps||'<li>You are already level on activity — consistency will tip the score.</li>'}</ul>
-      <div class="trk-sugg-note">Match these and your score can climb to about <b>${other.score}</b> — right at Rank #${other.rank}.</div></div>`;
+      <div class="trk-sugg-note">Close these and your score can climb to about <b>${other.score}</b> — right at Rank #${other.rank}.</div></div>`;
   }else{
-    suggest=`<div class="trk-sugg"><b>&#127881; You are ahead!</b><div class="trk-sugg-note">You lead ${esc(other.name)} by <b>${Math.abs(diff)} points</b>. Keep your tests, DPPs and attendance steady to hold the position.</div></div>`;
+    suggest=`<div class="trk-sugg"><b>&#127881; You are ahead!</b><div class="trk-sugg-note">You lead ${esc(other.name)} by <b>${Math.abs(diff)} points</b>. Keep your coverage, on-time classes and attendance steady to hold the position.</div></div>`;
   }
   showModal(`${esc(other.name)} — Rank #${other.rank}`,
     `<div class="trk-cmp-head"><div class="trk-cmp-cell"><div class="trk-cmp-score">${me.score}</div><div class="trk-cmp-who">You &middot; Rank #${me.rank}</div></div>
@@ -9546,7 +9545,7 @@ async function vtAddType(){
 }
 
 /* ---------- teacher ranking board (admin) ---------- */
-const _TRK_METRICS=[['tests','Tests Given','#b8941f'],['dpps','DPPs Given','#0891b2'],['doubts','Doubts Resolved','#059669'],['notes','Class Notes','#d97706'],['lectures','Lectures Taken','#a1741a'],['attendance','Attendance Days','#dc2626']];
+const _TRK_METRICS=[['dpp_cov','DPP Coverage','#0891b2','pct'],['test_cov','Test Coverage','#7c3aed','pct'],['lectures','Classes On-time','#a1741a','pct'],['doubts','Doubts Resolved','#059669','pct'],['attendance','Present Days','#dc2626','count'],['tasks','Tasks On-time','#b8941f','pct']];
 async function loadATeacherRanks(days){
   const el=document.getElementById('a-tranks-content');
   softSpin(el);
@@ -9576,9 +9575,12 @@ async function loadATeacherRanks(days){
     // full board
     const board=rows.map(r=>{
       const bars=_TRK_METRICS.map(m=>{
-        const v=(r.metrics||{})[m[0]]||0, pct=Math.round(v/maxM[m[0]]*100);
-        const mlbl=(m[0]==='attendance'&&r.attendance_source==='reports')?'Attendance (Class Reports)':m[1];
-        return `<div class="trk-mrow"><span class="trk-mlbl">${mlbl}</span><div class="trk-mtrack"><div class="trk-mfill" style="width:${pct}%;background:${m[2]}"></div></div><b class="trk-mval">${v}</b></div>`;
+        const v=(r.metrics||{})[m[0]]||0;
+        const isPct=m[3]==='pct';
+        const fill=isPct?Math.max(0,Math.min(100,Math.round(v))):Math.round(v/maxM[m[0]]*100);
+        const shown=isPct?(Math.round(v)+'%'):v;
+        const mlbl=(m[0]==='attendance'&&r.attendance_source==='reports')?'Present Days (from reports)':m[1];
+        return `<div class="trk-mrow"><span class="trk-mlbl">${mlbl}</span><div class="trk-mtrack"><div class="trk-mfill" style="width:${fill}%;background:${m[2]}"></div></div><b class="trk-mval">${shown}</b></div>`;
       }).join('');
       return `<div class="card trk-card"><div class="card-body">
         <div class="trk-head"><div style="position:relative">${av(r,46)}<span class="trk-medal sm" style="background:${medal[r.rank-1]||'#8a7c55'}">${r.rank}</span></div>
@@ -9589,7 +9591,7 @@ async function loadATeacherRanks(days){
     el.innerHTML=`<div class="card" style="margin-bottom:16px"><div class="card-body" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <div style="font-size:1.8rem">&#127942;</div>
       <div style="flex:1;min-width:220px"><h3 style="margin:0 0 3px">Teacher Ranking Board</h3>
-      <p style="margin:0;font-size:.8rem;color:var(--text-muted)">Composite score based on reports, DPPs, class notes, doubts, lectures and attendance (last ${days} days).</p></div>
+      <p style="margin:0;font-size:.8rem;color:var(--text-muted)">Quality score — DPP &amp; test chapter coverage, on-time classes, present days, doubts resolved (only unresolved hurt), and on-time production tasks (last ${days} days).</p></div>
       <div class="perf-tabs" style="margin:0">
         <div class="perf-tab${days===30?' active':''}" onclick="loadATeacherRanks(30)">30d</div>
         <div class="perf-tab${days===90?' active':''}" onclick="loadATeacherRanks(90)">90d</div>

@@ -5276,35 +5276,198 @@ def attempt_marking(attempt_id: int, db: Session = Depends(get_db), current_user
 # teacher's rank. Scores are normalised against the best teacher in each
 # metric so the board stays meaningful as activity grows.
 
+# ---------------------------------------------------------------------------
+# TEACHER RANKING v2 — quality/target based (NOT "counting against the best")
+# ---------------------------------------------------------------------------
+# Owner ki soch (kyun redesign):
+#  - DPP: jitne chapters teacher ke syllabus me hain, un sab me 1-1 DPP dena
+#    zaroori — score = coverage %. 8 chapter wala 8 DPP = 100%, 18 wala 18 = 100%.
+#  - Test: same coverage soch (kitne chapters me test diya).
+#  - Class/Lecture: on-time class = full, delayed = aadha. Sirf count nahi.
+#  - Attendance: PRESENT DAYS se (hours se nahi — har teacher ke hours alag).
+#  - Doubts: koi doubt aaya hi nahi to FULL. Sirf UNRESOLVED doubt se kam hota
+#    hai; resolve karte hi wapas full. (Teacher ko lagta tha "doubt aaya nahi
+#    to score kyun kam" — ye us ko theek karta hai.)
+#  - Tasks/Projects (production team): on-time delivery = up, delayed = down;
+#    teacher khud task propose kare aur approve ho to bonus (self-drive).
+# Har part apne aap me 0-100 hai (absolute), best ke against normalise NAHI hota.
+
 TEACHER_RANK_WEIGHTS = {
-    "tests": 0.20, "dpps": 0.20, "doubts": 0.15,
-    "notes": 0.10, "lectures": 0.20, "attendance": 0.15,
+    "dpp": 0.25, "test": 0.15, "lectures": 0.20,
+    "attendance": 0.10, "doubts": 0.15, "tasks": 0.15,
 }
+
+
+def _tr_doubt(received, unresolved):
+    """No doubts -> full. Sirf unresolved se ghatta hai; resolve pe wapas full."""
+    if received <= 0:
+        return 100.0
+    return round(max(0, received - unresolved) / received * 100, 1)
+
+
+def _tr_ontime(ontime, delayed):
+    """Jo classes hui: on-time full, delayed aadha. Kuch nahi hui -> neutral full."""
+    done = ontime + delayed
+    if done <= 0:
+        return 100.0
+    return round((ontime * 1.0 + delayed * 0.5) / done * 100, 1)
+
+
+def _tr_present(present_days, window_days):
+    """Present DAYS ke hisaab se (hours se nahi). ~5 working days/week expected."""
+    expected = max(1, round(window_days * 5 / 7))
+    return round(min(present_days, expected) / expected * 100, 1)
+
+
+def _tr_task(ontime, delayed, proposed_ok):
+    """On-time delivery rate + self-proposed & approved tasks ka bonus."""
+    done = ontime + delayed
+    base = (ontime / done * 100) if done > 0 else 100.0
+    bonus = min(proposed_ok * 5, 20)
+    return round(min(base + bonus, 100), 1)
+
+
+def _tr_coverage(covered, total):
+    """chapters_with_content / total_PE_chapters. total 0 (syllabus na mile) -> None."""
+    if total <= 0:
+        return None
+    return round(min(covered, total) / total * 100, 1)
+
+
+def _tr_score(parts):
+    """parts: 0-100 per key; None -> neutral (100) taaki unmapped category kisi
+    teacher ko zero na kare (jaise doubt/attendance na ho)."""
+    tot = 0.0
+    for k, w in TEACHER_RANK_WEIGHTS.items():
+        v = parts.get(k)
+        tot += (100.0 if v is None else v) * (w * 100)
+    return round(tot / 100.0, 1)
+
+
+def _tr_teacher_pe_and_coverage(db, tp, since):
+    """(total_PE_chapters, dpp_covered, test_covered) — teacher ke subjects ke
+    verified syllabus PE chapters vs jinme DPP/Test diya. Sab defensive."""
+    # teacher ke (subject, class) jode
+    pairs = []
+    for sc in (getattr(tp, "subject_classes", None) or []):
+        try:
+            s = (sc.get("subject") or "").strip()
+            c = (sc.get("class") or sc.get("class_name") or "").strip()
+            if s:
+                pairs.append((s, c))
+        except Exception:
+            continue
+    if not pairs:
+        for s in (tp.subjects or []):
+            if str(s).strip():
+                pairs.append((str(s).strip(), ""))
+    total_pe = 0
+    try:
+        import syllabus_routes as _sr
+        import syllabus_data as _sd
+        _sr._ensure_syllabus(db)
+        seen_subj = set()
+        for s, c in pairs:
+            key = s.strip().lower()
+            if key in seen_subj:
+                continue
+            cands = []
+            cl = _sr.class_level_from_name(c) if c else None
+            cands = [cl] if cl else ["12", "10"]
+            for cc in cands:
+                try:
+                    code = _sr.subject_code_for_name(db, cc, s)
+                    subj = _sr.get_subject(db, cc, code) if code else None
+                except Exception:
+                    subj = None
+                if subj and subj.get("status") == "ready":
+                    try:
+                        pe = [r for r in _sd.flatten(subj) if r.get("kind") == "PE"]
+                        total_pe += len(pe)
+                        seen_subj.add(key)
+                    except Exception:
+                        pass
+                    break
+    except Exception:
+        total_pe = 0
+    # distinct chapters jinme DPP diya (DppPack.chapter + purana DPP.reference)
+    dpp_ch = set()
+    try:
+        from models import DppPack
+        for pk in db.query(DppPack).filter(DppPack.teacher_id == tp.id,
+                                           DppPack.created_at >= since).all():
+            ch = (pk.chapter or "").strip().lower()
+            if ch:
+                dpp_ch.add(((pk.subject or "").strip().lower(), ch))
+    except Exception:
+        pass
+    try:
+        for d in db.query(DPP).filter(DPP.teacher_id == tp.id, DPP.is_active == True,
+                                      DPP.created_at >= since).all():
+            ref = (d.reference or "").strip().lower()
+            if ref:
+                dpp_ch.add(((d.subject or "").strip().lower(), ref))
+    except Exception:
+        pass
+    # distinct chapters jinme Test/Exam diya
+    test_ch = set()
+    try:
+        for ex in db.query(Exam).filter(Exam.teacher_id == tp.id,
+                                        Exam.created_at >= since).all():
+            ch = (getattr(ex, "chapter", "") or "").strip().lower()
+            # "... \u27E6S:...\u27E7" schedule tag hata do
+            ch = re.sub(r"\s*\u27e6s:[^\u27e7]*\u27e7\s*", "", ch).strip()
+            if ch:
+                test_ch.add(((ex.subject or "").strip().lower(), ch))
+    except Exception:
+        pass
+    return total_pe, len(dpp_ch), len(test_ch)
 
 
 def _teacher_rank_rows(db, days=90):
     since = datetime.utcnow() - timedelta(days=days)
-    # v104: attendance-disabled (target-only) teachers ka punch in/out nahi hota —
-    # unki present days unke class reports (lecture dates) se count hoti hain.
     from models import TeacherWorkPolicy
     disabled_ids = {r.teacher_id for r in db.query(TeacherWorkPolicy).filter(
         TeacherWorkPolicy.disabled == True).all()}
+    try:
+        from models import VideoTask
+    except Exception:
+        VideoTask = None
     rows = []
     for tp in db.query(TeacherProfile).all():
         u = db.query(User).filter(User.id == tp.user_id).first()
         if not u:
             continue
-        tests = db.query(Test).filter(Test.teacher_id == tp.id,
-                                      Test.created_at >= since).count()
-        dpps = db.query(DPP).filter(DPP.teacher_id == tp.id, DPP.is_active == True,
-                                    DPP.created_at >= since).count()
-        doubts = db.query(Doubt).filter(Doubt.teacher_id == tp.id,
-                                        Doubt.status == DoubtStatus.resolved,
-                                        Doubt.resolved_at >= since).count()
-        notes = db.query(Material).filter(Material.teacher_id == tp.id,
-                                          Material.created_at >= since).count()
-        lectures = db.query(Lecture).filter(Lecture.teacher_id == tp.id,
-                                            Lecture.lecture_date >= since.date()).count()
+
+        # ---- DPP / Test coverage (syllabus PE chapters) ----
+        total_pe, dpp_cov_n, test_cov_n = _tr_teacher_pe_and_coverage(db, tp, since)
+        dpp_cov = _tr_coverage(dpp_cov_n, total_pe)
+        test_cov = _tr_coverage(test_cov_n, total_pe)
+
+        # ---- Lectures: on-time vs delayed (timetable ke against) ----
+        ontime = delayed = 0
+        try:
+            from models import TimetableEntry
+            lecs = db.query(Lecture).filter(Lecture.teacher_id == tp.id,
+                                            Lecture.lecture_date >= since.date()).all()
+            for l in lecs:
+                te = None
+                if getattr(l, "timetable_entry_id", None):
+                    te = db.query(TimetableEntry).filter(
+                        TimetableEntry.id == l.timetable_entry_id).first()
+                if te and te.entry_date:
+                    cd = l.lecture_date or (te.completed_at.date() if te.completed_at else None)
+                    if cd and cd > te.entry_date:
+                        delayed += 1
+                    else:
+                        ontime += 1
+                else:
+                    ontime += 1   # koi scheduled date nahi -> done maana (on-time)
+        except Exception:
+            pass
+        lec_score = _tr_ontime(ontime, delayed)
+
+        # ---- Attendance: present DAYS ----
         if tp.id in disabled_ids:
             present = len({l.lecture_date for l in db.query(Lecture).filter(
                 Lecture.teacher_id == tp.id, Lecture.is_active == True,
@@ -5317,24 +5480,58 @@ def _teacher_rank_rows(db, days=90):
                 TeacherAttendance.att_date >= since.date()).all()
             present = len({a.att_date for a in att_rows if a.punch_in})
             att_src = "punch"
-        attendance_pct = round(present / days * 100, 1)
+        att_score = _tr_present(present, days)
+
+        # ---- Doubts: inverted (no doubts -> full; only unresolved hurt) ----
+        received = db.query(Doubt).filter(Doubt.teacher_id == tp.id,
+                                          Doubt.created_at >= since).count()
+        unresolved = db.query(Doubt).filter(Doubt.teacher_id == tp.id,
+                                            Doubt.status == DoubtStatus.pending,
+                                            Doubt.created_at >= since).count()
+        doubt_score = _tr_doubt(received, unresolved)
+
+        # ---- Tasks / projects (production): on-time + proposal bonus ----
+        t_ontime = t_delayed = t_proposed_ok = 0
+        if VideoTask is not None:
+            try:
+                tasks = db.query(VideoTask).filter(VideoTask.teacher_id == tp.id).all()
+                for t in tasks:
+                    if t.submitted_at and t.on_time is True:
+                        t_ontime += 1
+                    elif t.submitted_at and t.on_time is False:
+                        t_delayed += 1
+                    if (t.proposal_ok == "approved") and \
+                       (str(t.proposed_by or "").lower() not in ("admin", "system", "")):
+                        t_proposed_ok += 1
+            except Exception:
+                pass
+        task_score = _tr_task(t_ontime, t_delayed, t_proposed_ok)
+
+        parts = {"dpp": dpp_cov, "test": test_cov, "lectures": lec_score,
+                 "attendance": att_score, "doubts": doubt_score, "tasks": task_score}
         rows.append({
             "teacher_id": tp.id, "name": u.name or "", "user_id": u.user_id or "",
             "photo": getattr(u, "photo_b64", None) or "",
             "subjects": tp.subjects or [], "batch": tp.batch or "",
             "attendance_source": att_src,
-            "metrics": {"tests": tests, "dpps": dpps, "doubts": doubts,
-                        "notes": notes, "lectures": lectures,
-                        "attendance": attendance_pct},
+            "score": _tr_score(parts),
+            # display metrics (already 0-100 % except present-days which is a count)
+            "metrics": {
+                "dpp_cov": (dpp_cov if dpp_cov is not None else 0),
+                "test_cov": (test_cov if test_cov is not None else 0),
+                "lectures": lec_score, "attendance": present,
+                "doubts": doubt_score, "tasks": task_score,
+            },
+            "detail": {
+                "dpp_covered": dpp_cov_n, "test_covered": test_cov_n,
+                "chapters_total": total_pe, "coverage_mapped": total_pe > 0,
+                "lectures_ontime": ontime, "lectures_delayed": delayed,
+                "present_days": present,
+                "doubts_received": received, "doubts_unresolved": unresolved,
+                "tasks_ontime": t_ontime, "tasks_delayed": t_delayed,
+                "tasks_proposed_ok": t_proposed_ok,
+            },
         })
-    # normalise each metric against the best teacher, then weight into 0-100
-    for key, w in TEACHER_RANK_WEIGHTS.items():
-        top = max((r["metrics"][key] for r in rows), default=0) or 0
-        for r in rows:
-            r.setdefault("_parts", {})[key] = (r["metrics"][key] / top * 100) if top else 0.0
-    for r in rows:
-        r["score"] = round(sum(r["_parts"][k] * w for k, w in TEACHER_RANK_WEIGHTS.items()), 1)
-        r.pop("_parts", None)
     rows.sort(key=lambda r: (-r["score"], r["name"].lower()))
     for i, r in enumerate(rows, 1):
         r["rank"] = i
