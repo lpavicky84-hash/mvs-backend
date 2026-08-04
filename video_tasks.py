@@ -2249,3 +2249,105 @@ def vt_teacher_views(video_id: int = 0, range: str = "", frm: str = "", to: str 
     if video_id:
         st["series"] = _vt_video_series(db, video_id, _vt_parse_dt(frm), _vt_parse_dt(to))
     return st
+
+
+# =============================================================
+# TEACHER MONTHLY TARGETS vs VIDEO ASSIGNMENTS (production manager view)
+# =============================================================
+def _vt_targets_for(db, tp, dt0, dt1):
+    """Ek teacher ke targets (pay config) + is mahine ke video assignments
+    (assigned/done/pending) + per-subject. KOI AMOUNT nahi — sirf targets/counts."""
+    from teacher_routes import get_pay_config
+    from models import User as _U
+    _DEF = {"tests": "Weekly Tests", "videos": "Videos (One Shot/Revision)",
+            "live": "YouTube Live", "shorts": "Shorts"}
+    u = db.query(_U).filter(_U.id == tp.user_id).first()
+    try:
+        cfg = get_pay_config(db, tp.id)
+    except Exception:
+        cfg = None
+    labels = (getattr(cfg, "target_labels", None) or {}) if cfg else {}
+
+    def _lab(k):
+        return (str(labels.get(k) or "").strip() or _DEF[k])
+
+    tgt = {k: int(getattr(cfg, k + "_target", 0) or 0) for k in ("tests", "videos", "live", "shorts")} \
+        if cfg else {"tests": 0, "videos": 0, "live": 0, "shorts": 0}
+
+    tasks = db.query(VideoTask).filter(
+        VideoTask.teacher_id == tp.id,
+        VideoTask.created_at >= dt0, VideoTask.created_at < dt1,
+        VideoTask.proposal_ok != "pending",
+        VideoTask.status != "rejected").all()
+
+    cats = {"videos": {"assigned": 0, "done": 0},
+            "shorts": {"assigned": 0, "done": 0},
+            "live":   {"assigned": 0, "done": 0}}
+    bysub = {}
+    for t in tasks:
+        vt = (t.video_type or "").lower()
+        if "short" in vt:
+            cat = "shorts"
+        elif "live" in vt or (getattr(t, "streaming", "") or "") == "live":
+            cat = "live"
+        else:
+            cat = "videos"
+        cats[cat]["assigned"] += 1
+        done = bool(t.submitted_at) or t.status == "uploaded"
+        if done:
+            cats[cat]["done"] += 1
+        sub = t.subject or "General"
+        bysub.setdefault(sub, {"assigned": 0, "done": 0})
+        bysub[sub]["assigned"] += 1
+        if done:
+            bysub[sub]["done"] += 1
+
+    rows = []
+    for k in ("videos", "shorts", "live", "tests"):
+        c = cats.get(k, {"assigned": 0, "done": 0})
+        rows.append({"key": k, "label": _lab(k), "target": tgt[k],
+                     "assigned": c["assigned"], "done": c["done"],
+                     "pending": max(0, c["assigned"] - c["done"])})
+    for c in (getattr(cfg, "custom_targets", None) or [] if cfg else []):
+        if isinstance(c, dict) and str(c.get("name") or "").strip():
+            rows.append({"key": "custom", "label": str(c.get("name"))[:60],
+                         "target": int(c.get("count") or 0),
+                         "assigned": 0, "done": 0, "pending": 0, "custom": True})
+
+    subs = getattr(tp, "subjects", None) or []
+    return {
+        "teacher_id": tp.id, "name": (u.name if u else "Teacher #%d" % tp.id),
+        "subjects": subs, "multi": len(subs) > 1, "rows": rows, "has_tasks": bool(tasks),
+        "by_subject": [{"subject": s, "assigned": v["assigned"], "done": v["done"],
+                        "pending": max(0, v["assigned"] - v["done"]),
+                        "target": tgt["videos"]}
+                       for s, v in sorted(bysub.items())],
+    }
+
+
+@router.get("/admin/teacher-targets", dependencies=[Depends(_admin_section_guard)])
+def vt_teacher_targets(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Sabhi teachers ke monthly targets + assignments (production manager view). Koi amount nahi."""
+    from teacher_routes import _month_range
+    start, end = _month_range(month)
+    dt0 = datetime(start.year, start.month, start.day)
+    dt1 = datetime(end.year, end.month, end.day)
+    out = []
+    for tp in db.query(TeacherProfile).all():
+        row = _vt_targets_for(db, tp, dt0, dt1)
+        if any(r["target"] > 0 for r in row["rows"]) or row["has_tasks"]:
+            out.append(row)
+    out.sort(key=lambda x: x["name"].lower())
+    return {"month": "%04d-%02d" % (start.year, start.month), "teachers": out}
+
+
+@router.get("/teacher/my-targets")
+def vt_my_targets(month: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Teacher apne monthly targets + progress dekhe (My Tasks me). Koi amount nahi."""
+    from teacher_routes import _month_range
+    tp = _get_tp(current_user, db)
+    start, end = _month_range(month)
+    dt0 = datetime(start.year, start.month, start.day)
+    dt1 = datetime(end.year, end.month, end.day)
+    row = _vt_targets_for(db, tp, dt0, dt1)
+    return {"month": "%04d-%02d" % (start.year, start.month), "me": row}
