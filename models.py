@@ -450,6 +450,11 @@ class VideoTask(Base):
     weekly_quota   = Column(Integer, default=0)           # project/one-shot: har week kitni videos chahiye
     weekly_day     = Column(String(12), default="")       # weekly deadline ka din — monday..sunday
     item_source    = Column(String(12), default="")       # project items kahan se: custom | syllabus
+    streaming      = Column(String(20), default="")       # '' | recorded | live
+    youtube_url    = Column(String(600), default="")      # published YouTube link (manager posts)
+    yt_video_id    = Column(String(40), default="")       # extracted video id
+    yt_views       = Column(Integer, nullable=True)       # last fetched view count
+    yt_views_at    = Column(DateTime, nullable=True)      # last fetch time
     created_at     = Column(DateTime, default=func.now())
     updated_at     = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -467,6 +472,17 @@ class VideoTaskChapter(Base):
     submitted_at = Column(DateTime, nullable=True)
     edit_status  = Column(String(20), default="")         # production: editing_soon / editing_done / uploaded
     changed_at   = Column(DateTime, nullable=True)        # v91: link add/update/remove kab hua (admin blink)
+
+
+class VideoViewSnapshot(Base):
+    """Real-time YouTube views ka history — har refresh pe ek row, taaki
+    date/time-wise graph aur growth dikhaya ja sake."""
+    __tablename__ = "video_view_snapshots"
+
+    id          = Column(Integer, primary_key=True)
+    task_id     = Column(Integer, ForeignKey("video_tasks.id"), index=True)
+    views       = Column(Integer, default=0)
+    captured_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
 class DppEvent(Base):

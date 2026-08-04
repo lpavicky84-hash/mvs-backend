@@ -68,6 +68,11 @@ def _ensure_special_columns():
         "ALTER TABLE video_tasks ADD COLUMN weekly_quota INTEGER DEFAULT 0",
         "ALTER TABLE video_tasks ADD COLUMN weekly_day VARCHAR(12) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN item_source VARCHAR(12) DEFAULT ''",
+        "ALTER TABLE video_tasks ADD COLUMN streaming VARCHAR(20) DEFAULT ''",
+        "ALTER TABLE video_tasks ADD COLUMN youtube_url VARCHAR(600) DEFAULT ''",
+        "ALTER TABLE video_tasks ADD COLUMN yt_video_id VARCHAR(40) DEFAULT ''",
+        "ALTER TABLE video_tasks ADD COLUMN yt_views INTEGER NULL",
+        "ALTER TABLE video_tasks ADD COLUMN yt_views_at DATETIME NULL",
         "ALTER TABLE video_task_chapters ADD COLUMN edit_status VARCHAR(20) DEFAULT ''",
         "ALTER TABLE video_task_chapters ADD COLUMN changed_at DATETIME NULL",
     ]
@@ -449,24 +454,28 @@ def _dedupe_special(db, teacher_id, kind):
     """Same teacher+kind+subject ke duplicate tasks self-heal merge (kahin purana
     bug ya double-create ho to bhi): sabse purana task rakho, baaki ke chapters
     move karke (link wale preserve) task delete. History bhi merge hoti hai."""
+    def _nk(x):
+        # v115: double-space / NBSP variants UI me same dikhte hain par DB me alag
+        # group ban jaate the (duplicate cards ka jad kaaran) — normalize karo.
+        return re.sub(r"\s+", " ", (x or "")).strip().lower()
     tasks = (db.query(VideoTask)
              .filter(VideoTask.teacher_id == teacher_id, VideoTask.kind == kind)
              .order_by(VideoTask.created_at.asc(), VideoTask.id.asc()).all())
     groups = {}
     for t in tasks:
-        groups.setdefault((t.subject or "").strip().lower(), []).append(t)
+        groups.setdefault(_nk(t.subject), []).append(t)
     changed = False
     for _k, grp in groups.items():
         if len(grp) < 2:
             continue
         keep = grp[0]
-        existing = { (c.title or "").strip().lower(): c for c in
+        existing = { _nk(c.title): c for c in
                      db.query(VideoTaskChapter)
                      .filter(VideoTaskChapter.task_id == keep.id).all() }
         for extra in grp[1:]:
             for c in (db.query(VideoTaskChapter)
                       .filter(VideoTaskChapter.task_id == extra.id).all()):
-                key = (c.title or "").strip().lower()
+                key = _nk(c.title)
                 tgt = existing.get(key)
                 if tgt is None:
                     c.task_id = keep.id
@@ -536,6 +545,16 @@ def _ensure_special_teacher(db, tp):
     changed = _ensure_kind_parity(db, tp)
     subs = _teacher_subject_list(db, tp)
     if not subs:
+        # v115: subjects empty ho tab bhi duplicate-merge chalao — warna pehle bane
+        # duplicate special tasks (subject baad me hatne par) kabhi heal nahi hote.
+        try:
+            if _dedupe_special(db, tp.id, "one_shot"):
+                changed = True
+            if _dedupe_special(db, tp.id, "rapid_revision"):
+                changed = True
+        except Exception:
+            db.rollback()
+            changed = False
         if changed:
             try:
                 db.commit()
@@ -799,6 +818,11 @@ def _task_out(db, t, with_thumb=True):
         "weekly_quota": getattr(t, "weekly_quota", 0) or 0,
         "weekly_day": getattr(t, "weekly_day", "") or "",
         "item_source": getattr(t, "item_source", "") or "",
+        "streaming": getattr(t, "streaming", "") or "",
+        "youtube_url": getattr(t, "youtube_url", "") or "",
+        "yt_video_id": getattr(t, "yt_video_id", "") or "",
+        "yt_views": (t.yt_views if getattr(t, "yt_views", None) is not None else None),
+        "yt_views_at": t.yt_views_at.strftime("%d %b %Y, %I:%M %p") if getattr(t, "yt_views_at", None) else "",
         "created_at": t.created_at.strftime("%d %b %Y") if t.created_at else "",
         "history": _hist_out(t),
     }
@@ -922,6 +946,14 @@ def vt_add_type(payload: dict = Body(...), db: Session = Depends(get_db), _=Depe
     return {"ok": True, "id": c.id, "name": c.name}
 
 
+@router.get("/teacher/video-channels")
+def vt_teacher_channels(db: Session = Depends(get_db), _=Depends(get_teacher)):
+    _seed_channels(db)
+    rows = (db.query(VideoChannel).filter(VideoChannel.active == True)
+            .order_by(VideoChannel.id.asc()).all())
+    return {"channels": [{"id": c.id, "name": c.name} for c in rows]}
+
+
 @router.get("/teacher/video-types")
 def vt_teacher_types(db: Session = Depends(get_db), _=Depends(get_teacher)):
     _seed_types(db)
@@ -960,6 +992,7 @@ def vt_assign(payload: dict = Body(...), db: Session = Depends(get_db), _=Depend
             thumbnail_link=(payload.get("thumbnail_link") or "").strip(),
             reference=(payload.get("reference") or "").strip(),
             remarks=(payload.get("remarks") or "").strip(),
+            streaming=(payload.get("streaming") or "").strip(),
             deadline=dl, status="assigned", proposed_by="admin", proposal_ok="approved",
         )
         db.add(t)
@@ -1004,6 +1037,21 @@ def vt_admin_list(teacher_id: int = 0, status: str = "", channel_id: int = 0,
              .order_by(VideoTask.created_at.desc()).all())
     return {"tasks": [_task_out(db, t) for t in tasks],
             "proposals": [_task_out(db, t) for t in props]}
+
+
+@router.get("/admin/video-tasks/badge", dependencies=[Depends(_admin_section_guard)])
+def vt_admin_badge(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """v115: halka sidebar badge count — Task Manager page khole bina bhi naya
+    proposal ya review-pending submission ka indicator dikhe (dashboard load +
+    notification poll pe refresh hota hai)."""
+    checking = (db.query(VideoTask)
+                .filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL,
+                        VideoTask.status == "submitted",
+                        VideoTask.reviewed.isnot(True))
+                .count())
+    proposals = db.query(VideoTask).filter(VideoTask.proposal_ok == "pending").count()
+    return {"checking": checking, "proposals": proposals,
+            "count": checking + proposals}
 
 
 @router.get("/admin/video-tasks/stats", dependencies=[Depends(_admin_section_guard)])
@@ -1202,6 +1250,11 @@ def vt_edit(task_id: int, payload: dict = Body(...),
         if vt2 != (t.video_type or ""):
             changes.append("type")
             t.video_type = vt2
+    if payload.get("streaming") is not None:
+        st2 = (payload.get("streaming") or "").strip()
+        if st2 != (getattr(t, "streaming", "") or ""):
+            changes.append("streaming")
+            t.streaming = st2
     if payload.get("channel_id") is not None:
         ch = None
         cid = payload.get("channel_id")
@@ -1495,6 +1548,34 @@ def _special_payload(db, kind):
     tasks = (db.query(VideoTask).filter(VideoTask.kind == kind)
              .order_by(VideoTask.created_at.asc()).all())
     outs = [_special_out(db, t) for t in tasks]
+    # v115: read-side guarantee — same teacher + same (normalized) subject ke
+    # duplicate cards UI me kabhi na dikhen. DB self-heal _dedupe_special karta
+    # hai; ye sirf display merge hai (kuch write nahi hota).
+    def _nk(x):
+        return re.sub(r"\s+", " ", (x or "")).strip().lower()
+    seen, merged = {}, []
+    for o in outs:
+        key = (o.get("teacher_id"), _nk(o.get("subject") or o.get("title")))
+        tgt = seen.get(key)
+        if tgt is None:
+            seen[key] = o
+            merged.append(o)
+            continue
+        have = {_nk(c.get("title")): c for c in tgt.get("chapters", [])}
+        for c in (o.get("chapters") or []):
+            ck = _nk(c.get("title"))
+            if ck not in have:
+                tgt["chapters"].append(c)
+                have[ck] = c
+            elif (c.get("link") or "").strip() and not (have[ck].get("link") or "").strip():
+                have[ck].update(c)
+        tgt["done"] = sum(1 for c in tgt["chapters"] if (c.get("link") or "").strip())
+        tgt["total"] = len(tgt["chapters"])
+        tgt["pct"] = round(100 * tgt["done"] / tgt["total"]) if tgt["total"] else 0
+        tgt["is_new"] = bool(tgt.get("is_new") or o.get("is_new"))
+        if (o.get("last_link_at") or "") > (tgt.get("last_link_at") or ""):
+            tgt["last_link_at"] = o["last_link_at"]
+    outs = merged
     # NEW wale pehle, phir zyada progress wale
     outs.sort(key=lambda o: (not o["is_new"], -o["pct"], o["teacher"]))
     new_count = sum(1 for o in outs if o["is_new"])
@@ -1629,11 +1710,28 @@ def vt_propose(payload: dict = Body(...), db: Session = Depends(get_db),
     cid = payload.get("channel_id")
     if cid:
         ch = db.query(VideoChannel).filter(VideoChannel.id == int(cid)).first()
+    # Task ya Project propose + scope (complete chapter / N videos) -> readable remark
+    ptype = (payload.get("propose_type") or "task").strip().lower()
+    scope = (payload.get("project_scope") or "").strip().lower()
+    vcount = str(payload.get("video_count") or "").strip()
+    if ptype == "project":
+        if scope == "chapter":
+            req = "Requested: PROJECT — complete chapter (from timetable)"
+        elif scope == "videos":
+            req = "Requested: PROJECT — %s videos" % (vcount or "4-5")
+        else:
+            req = "Requested: PROJECT"
+    else:
+        req = "Requested: TASK — single video"
     t = VideoTask(teacher_id=tp.id, title=title,
                   channel_id=ch.id if ch else None,
                   channel_name=ch.name if ch else "",
                   video_type=(payload.get("video_type") or "").strip(),
+                  thumbnail_b64=_checked_b64(payload),
+                  thumbnail_link=(payload.get("thumbnail_link") or "").strip(),
+                  streaming=(payload.get("streaming") or "").strip(),
                   reference=(payload.get("reference") or "").strip(),
+                  remarks=req,
                   status="proposal", proposed_by="teacher", proposal_ok="pending")
     db.add(t)
     _hist_add(t, "proposal", "Proposed by teacher")
@@ -1801,3 +1899,216 @@ def vt_admin_chapter_status(payload: dict = Body(...), db: Session = Depends(get
     _hist_add(t, "progress", '"%s" production status: %s → %s' % (row.title, old_lbl, lbl))
     db.commit()
     return {"ok": True, "chapter_id": cid, "status": status, "changed": True}
+
+
+# =============================================================
+# REAL-TIME YOUTUBE VIEWS — link post + fetch + stats + graphs
+# =============================================================
+import urllib.request as _urlreq
+import urllib.parse as _urlparse
+
+_YT_ID_RX = re.compile(
+    r"(?:youtu\.be/|youtube\.com/(?:watch\?(?:.*&)?v=|embed/|shorts/|live/|v/))([A-Za-z0-9_-]{11})")
+
+
+def _yt_extract_id(url):
+    """YouTube URL (watch / youtu.be / shorts / embed / live) se 11-char video id."""
+    u = (url or "").strip()
+    if not u:
+        return ""
+    m = _YT_ID_RX.search(u)
+    if m:
+        return m.group(1)
+    if re.fullmatch(r"[A-Za-z0-9_-]{11}", u):
+        return u
+    try:
+        q = _urlparse.urlparse(u)
+        vid = _urlparse.parse_qs(q.query).get("v", [""])[0]
+        if re.fullmatch(r"[A-Za-z0-9_-]{11}", vid or ""):
+            return vid
+    except Exception:
+        pass
+    return ""
+
+
+def _yt_get_key(db):
+    from models import AppSetting
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == "youtube_api_key").first()
+        return (row.value or "").strip() if row else ""
+    except Exception:
+        return ""
+
+
+def _yt_fetch_views(video_ids, key):
+    """YouTube Data API v3 videos.list(part=statistics) -> {id: views}. Batched 50.
+    Poora guarded: key na ho / network fail -> {} (kabhi crash nahi)."""
+    out = {}
+    ids = [i for i in (video_ids or []) if i]
+    if not ids or not key:
+        return out
+    for i in range(0, len(ids), 50):
+        chunk = ids[i:i + 50]
+        url = ("https://www.googleapis.com/youtube/v3/videos?part=statistics&id="
+               + ",".join(chunk) + "&key=" + _urlparse.quote(key))
+        try:
+            req = _urlreq.Request(url, headers={"Accept": "application/json"})
+            with _urlreq.urlopen(req, timeout=12) as r:
+                data = json.loads(r.read().decode("utf-8"))
+            for item in (data.get("items") or []):
+                vid = item.get("id")
+                vc = ((item.get("statistics") or {}).get("viewCount"))
+                if vid is not None and vc is not None:
+                    try:
+                        out[vid] = int(vc)
+                    except Exception:
+                        pass
+        except Exception:
+            continue
+    return out
+
+
+def _vt_parse_dt(s):
+    if not s:
+        return None
+    for f in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s, f)
+        except Exception:
+            pass
+    return None
+
+
+def _vt_views_stats(db, teacher_id=None):
+    """Totals + per-video + per-teacher + highest, sirf un tasks pe jinpe YouTube link hai."""
+    q = db.query(VideoTask)
+    if teacher_id:
+        q = q.filter(VideoTask.teacher_id == teacher_id)
+    tasks = q.all()
+    vids = [t for t in tasks if (t.youtube_url or "")]
+    pending = len([t for t in tasks
+                   if t.status in ("assigned", "submitted") and not (t.youtube_url or "")])
+    tp_ids = list({t.teacher_id for t in vids if t.teacher_id})
+    tmap = {}
+    if tp_ids:
+        for tp in db.query(TeacherProfile).filter(TeacherProfile.id.in_(tp_ids)).all():
+            u = db.query(User).filter(User.id == tp.user_id).first()
+            tmap[tp.id] = (u.name if u else ("Teacher #%d" % tp.id))
+    per_video, per_teacher, total_views, highest = [], {}, 0, None
+    for t in vids:
+        v = int(t.yt_views or 0)
+        total_views += v
+        nm = tmap.get(t.teacher_id, "\u2014")
+        per_teacher[nm] = per_teacher.get(nm, 0) + v
+        item = {"id": t.id, "title": t.title or "", "teacher": nm, "views": v,
+                "url": t.youtube_url or "",
+                "at": t.yt_views_at.strftime("%d %b, %I:%M %p") if t.yt_views_at else ""}
+        per_video.append(item)
+        if highest is None or v > highest["views"]:
+            highest = item
+    per_video.sort(key=lambda x: -x["views"])
+    by_teacher = sorted(({"name": k, "views": v} for k, v in per_teacher.items()),
+                        key=lambda x: -x["views"])
+    return {"uploaded": len(vids), "pending": pending, "total_views": total_views,
+            "highest": highest, "per_video": per_video, "by_teacher": by_teacher}
+
+
+def _vt_video_series(db, task_id, dt_from=None, dt_to=None):
+    from models import VideoViewSnapshot
+    q = db.query(VideoViewSnapshot).filter(VideoViewSnapshot.task_id == task_id)
+    if dt_from:
+        q = q.filter(VideoViewSnapshot.captured_at >= dt_from)
+    if dt_to:
+        q = q.filter(VideoViewSnapshot.captured_at <= dt_to)
+    rows = q.order_by(VideoViewSnapshot.captured_at.asc()).all()
+    return [{"at": r.captured_at.strftime("%Y-%m-%d %H:%M"), "views": int(r.views or 0)}
+            for r in rows]
+
+
+@router.get("/admin/settings/youtube-key", dependencies=[Depends(_admin_section_guard)])
+def vt_get_yt_key(db: Session = Depends(get_db), _=Depends(get_admin)):
+    k = _yt_get_key(db)
+    masked = ("\u2022" * max(0, len(k) - 4) + k[-4:]) if k else ""
+    return {"set": bool(k), "masked": masked}
+
+
+@router.post("/admin/settings/youtube-key", dependencies=[Depends(_admin_section_guard)])
+def vt_set_yt_key(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import AppSetting
+    key = (payload.get("key") or "").strip()
+    row = db.query(AppSetting).filter(AppSetting.key == "youtube_api_key").first()
+    if not row:
+        db.add(AppSetting(key="youtube_api_key", value=key))
+    else:
+        row.value = key
+    db.commit()
+    return {"ok": True, "set": bool(key)}
+
+
+@router.post("/admin/video-tasks/{task_id}/youtube-link", dependencies=[Depends(_admin_section_guard)])
+def vt_post_youtube_link(task_id: int, payload: dict = Body(...),
+                         db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import VideoViewSnapshot
+    t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
+    if not t:
+        raise HTTPException(404, "Task not found")
+    url = (payload.get("youtube_url") or "").strip()
+    if not url:
+        t.youtube_url = ""; t.yt_video_id = ""; t.yt_views = None; t.yt_views_at = None
+        db.commit()
+        return {"ok": True, "cleared": True}
+    vid = _yt_extract_id(url)
+    if not vid:
+        raise HTTPException(400, "Could not read a YouTube video id from that link")
+    t.youtube_url = url
+    t.yt_video_id = vid
+    if t.status != "uploaded":
+        t.status = "uploaded"
+        _hist_add(t, "uploaded", "YouTube link posted")
+    got = _yt_fetch_views([vid], _yt_get_key(db))
+    if vid in got:
+        t.yt_views = got[vid]; t.yt_views_at = datetime.utcnow()
+        db.add(VideoViewSnapshot(task_id=t.id, views=got[vid]))
+    db.commit()
+    return {"ok": True, "video_id": vid, "views": t.yt_views}
+
+
+@router.post("/admin/video-tasks/refresh-views", dependencies=[Depends(_admin_section_guard)])
+def vt_refresh_views(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import VideoViewSnapshot
+    key = _yt_get_key(db)
+    if not key:
+        raise HTTPException(400, "Add a YouTube API key first (in Task Manager settings).")
+    tasks = db.query(VideoTask).filter(VideoTask.yt_video_id != "",
+                                       VideoTask.yt_video_id != None).all()
+    idmap = {}
+    for t in tasks:
+        idmap.setdefault(t.yt_video_id, []).append(t)
+    got = _yt_fetch_views(list(idmap.keys()), key)
+    now = datetime.utcnow(); n = 0
+    for vid, views in got.items():
+        for t in idmap.get(vid, []):
+            t.yt_views = views; t.yt_views_at = now
+            db.add(VideoViewSnapshot(task_id=t.id, views=views)); n += 1
+    db.commit()
+    return {"ok": True, "updated": n, "fetched": len(got), "total": len(idmap)}
+
+
+@router.get("/admin/video-views", dependencies=[Depends(_admin_section_guard)])
+def vt_admin_views(video_id: int = 0, frm: str = "", to: str = "",
+                   db: Session = Depends(get_db), _=Depends(get_admin)):
+    st = _vt_views_stats(db)
+    st["youtube_key_set"] = bool(_yt_get_key(db))
+    if video_id:
+        st["series"] = _vt_video_series(db, video_id, _vt_parse_dt(frm), _vt_parse_dt(to))
+    return st
+
+
+@router.get("/teacher/video-views")
+def vt_teacher_views(video_id: int = 0, frm: str = "", to: str = "",
+                     db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    tp = _get_tp(current_user, db)
+    st = _vt_views_stats(db, teacher_id=tp.id)
+    if video_id:
+        st["series"] = _vt_video_series(db, video_id, _vt_parse_dt(frm), _vt_parse_dt(to))
+    return st
