@@ -2367,6 +2367,11 @@ body.dark .al-sig{color:hsl(45 90% 60%)}
 .pw-punchbtn.out{background:linear-gradient(135deg,hsl(41 42% 26%),hsl(43 42% 15%))}
 .pw-punchbtn:disabled{opacity:.55;cursor:not-allowed;animation:none}
 .pw-cap{font-size:.75rem;color:var(--text-muted);margin-top:12px}
+.pw-rankwrap{margin-top:12px}
+.pw-rankbtn{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:12px;padding:11px 14px;cursor:pointer;font-size:.82rem;font-weight:700;transition:background .15s}
+.pw-rankbtn:hover{background:rgba(255,255,255,.18)}
+.pw-rankbtn .pw-rank-l{display:flex;align-items:center;gap:7px;opacity:.9}
+.pw-rankbtn .pw-rank-r b{font-size:1rem}
 .pw-mini{display:flex;gap:10px;justify-content:center;margin-top:16px;flex-wrap:wrap}
 .pw-mini .m{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:8px 14px;min-width:96px}
 .pw-mini .m .l{font-size:.64rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);font-weight:700}
@@ -3933,7 +3938,7 @@ function statusTag(s){ const m={Completed:'tag-done',Pending:'tag-pending',Misse
 function tClassRow(c){
   const topic=c.completed?(c.topic_covered||c.chapter||'—'):(c.chapter||'—');
   const btn=c.completed?'<span style="color:var(--success);font-size:.8rem;font-weight:600">Done ✓</span>':`<button class="btn btn-success btn-sm" onclick="openClassReport(${c.id})">Mark Completed</button>`;
-  return `<tr><td><strong>${esc(c.subject)}</strong></td><td>${esc(c.class_name||'—')}</td><td>${esc(c.time||'—')}</td><td>${esc(topic)}</td><td>${statusTag(c.live_status)}</td><td style="text-align:right">${btn}</td></tr>`;
+  return `<tr><td><strong>${esc(c.subject)}</strong></td><td>${esc(c.class_name||'—')}</td><td>${esc(c.time||'—')}</td><td>${esc(topic)}</td><td>${c.completed?'<span class="tag tag-done">Completed</span>':statusTag(c.live_status)}</td><td style="text-align:right">${btn}</td></tr>`;
 }
 async function _renderTodayClasses(targetId){
   const el=document.getElementById(targetId||'t-today-inner');
@@ -4166,7 +4171,7 @@ async function loadTeacherToday(wrapId){
  } else if(over){
  let _b='';
  if(!e.completed) _b+=`<button class="btn btn-success btn-sm" onclick="openClassReport(${e.id})"> Submit Report</button>`;
- if(!e.notes) _b+=`<button class="btn btn-primary btn-sm" onclick="openUploadHub({type:'notes',chapter:decodeURIComponent('${ch}'),subject:decodeURIComponent('${sub}'),class_name:decodeURIComponent('${cln}')})"> Upload Notes</button><button class="btn btn-ghost btn-sm" onclick="openUploadHub({type:'dpp',chapter:decodeURIComponent('${ch}'),subject:decodeURIComponent('${sub}'),class_name:decodeURIComponent('${cln}')})"> DPP</button>`;
+ if(!e.notes) _b+=`<button class="btn btn-primary btn-sm" onclick="openUploadHub({type:'notes',chapter:decodeURIComponent('${ch}'),subject:decodeURIComponent('${sub}'),class_name:decodeURIComponent('${cln}')})"> Upload Notes</button>`;
  _b+=`<span class="tstatus" style="background:rgba(245,158,11,.15);color:var(--warning)">${!e.completed?'Report Pending':'Material Pending'}</span>`;
  right=_b;
  } else {
@@ -4910,11 +4915,10 @@ async function _renderMaterialTree(wrapId, endpoint, apiBase, keepSub){
     // v114: page pe har fresh entry me pehle subject CARDS; sirf delete-refresh
     // (_mtReload) par khula subject bana rehta hai (wo delete ho gaya ho to cards).
     if(!keepSub||!_mtData.find(s=>s.subject===_mtSub)) _mtSub=null;
-    // v114: admin ke liye naye notes/dpp uploads ka tracking (nav badge + NEW blink)
-    if(apiBase.indexOf('admin')>=0){
-      window._mtNew=_matNewIds('admin', _mtData.flatMap(s=>s.chapters.flatMap(c=>c.items)));
-      _matBadge('admin');
-    } else window._mtNew=new Set();
+    // v130: naye notes/dpp uploads ka NEW blink ab teacher ko bhi (pehle sirf admin).
+    const _mtRole=apiBase.indexOf('admin')>=0?'admin':'teacher';
+    window._mtNew=_matNewIds(_mtRole, _mtData.flatMap(s=>s.chapters.flatMap(c=>c.items)));
+    _matBadge(_mtRole);
     _mtPaint(wrapId);
   }catch(e){ wrap.innerHTML=errHtml(e); }
 }
@@ -4942,7 +4946,7 @@ function deleteMatCategory(who,cat){
     return k===label;
   });
   if(!items.length){ toast('Nothing to delete here.',true); return; }
-  window._mtDelIds=items.map(i=>i.id);
+  window._mtDelIds=items.map(i=>i.id).filter(id=>id!=null);
   showModal('Delete All Files',
    `<div class="alert alert-danger">All <b>${items.length}</b> file${items.length>1?'s':''} under <b>${esc(label)}</b> in <b>${esc(sub.subject)}</b> will be permanently removed for everyone. This cannot be undone.</div>
     <div class="form-group"><label>Type DELETE to confirm</label><input class="form-control" id="mdelall-in" placeholder="DELETE" autocomplete="off"></div>`,
@@ -4986,21 +4990,21 @@ function _matRowSeen(role,tr,id){
   if(!tr||!tr.classList.contains('mt-row-new')) return;
   tr.classList.remove('mt-row-new');
   const t=tr.querySelector('.mt-new-tag'); if(t) t.remove();
-  const s=(role==='admin'?window._mtNew:window._sMatNew); if(s) s.delete(id);
+  const s=(role==='student'?window._sMatNew:window._mtNew); if(s) s.delete(id);
   _matMarkSeen(role,[id]);
   _matBadge(role);
 }
 // smart shortcut: ek click me saare naye uploads "read" — saari blinks/badges saaf
 function _matAllRead(role){
-  if(role==='admin'){
-    _matMarkSeen('admin',(_mtData||[]).flatMap(s=>s.chapters.flatMap(c=>c.items)).map(i=>i.id));
+  if(role==='admin'||role==='teacher'){
+    _matMarkSeen(role,(_mtData||[]).flatMap(s=>s.chapters.flatMap(c=>c.items)).map(i=>i.id));
     if(window._mtNew) window._mtNew.clear();
   }else{
     _matMarkSeen('student',(window._sMats||[]).map(m=>m.id));
     if(window._sMatNew) window._sMatNew.clear();
   }
   _matBadge(role);
-  const sel=role==='admin'?'#a-mat-tree':'#s-materials-content';
+  const sel=role==='admin'?'#a-mat-tree':(role==='teacher'?'#t-mat-tree':'#s-materials-content');
   document.querySelectorAll(sel+' .mt-row-new').forEach(tr=>tr.classList.remove('mt-row-new'));
   document.querySelectorAll(sel+' .mt-new-tag, '+sel+' .sm-new-pill, '+sel+' .mt-new-head').forEach(x=>x.remove());
 }
@@ -5008,6 +5012,7 @@ function _mtPick(wrapId,sub){ _mtSub=decodeURIComponent(sub); _mtPaint(wrapId); 
 function _mtBack(wrapId){ _mtSub=null; _mtPaint(wrapId); }
 function _mtToggle(el){ const c=el.closest('.mat-cat'); c.classList.toggle('closed'); }
 const _MT_CAT={notes:{label:'Class Notes',icon:'book',badge:'sc-indigo'},dpp:{label:'DPP',icon:'clipboard',badge:'sc-green'},test:{label:'Tests',icon:'edit',badge:'sc-purple'}};
+function _chapNum(s){ const m=String(s||'').match(/(\d+)/); return m?parseInt(m[1],10):-1; }
 function _mtPaint(wrapId){
   const wrap=document.getElementById(wrapId); if(!wrap||!_mtData) return;
   // ---- subject cards (same look as the student portal)
@@ -5026,7 +5031,8 @@ function _mtPaint(wrapId){
       return `<div class="sm-card" onclick="_mtPick('${wrapId}','${encodeURIComponent(s.subject)}')">${nNew?`<span class="sm-new-pill">${nNew} NEW</span>`:''}<div class="sm-icon">${ic('book')}</div><div class="sm-body"><div class="sm-title">${esc(s.subject)}</div><div class="sm-badges">${b||'<span class="sm-badge">No files</span>'}</div><div class="ms-meta">${v} views \u00b7 ${d} downloads</div></div><span class="sm-arrow">\u203a</span></div>`;
     }).join('');
     const newN=((window._mtNew&&window._mtNew.size)||0);
-    wrap.innerHTML=`${(newN&&_mtBase.indexOf('admin')>=0)?`<div class="sm-head" style="display:flex;align-items:center"><span class="mt-new-head">${newN} new upload${newN>1?'s':''} since your last visit <button class="mt-new-clear" onclick="_matAllRead('admin')">Mark all read</button></span></div>`:''}<div class="sm-grid">${cards}</div>`;
+    const _mtRole=_mtBase.indexOf('admin')>=0?'admin':'teacher';
+    wrap.innerHTML=`${newN?`<div class="sm-head" style="display:flex;align-items:center"><span class="mt-new-head">${newN} new upload${newN>1?'s':''} since your last visit <button class="mt-new-clear" onclick="_matAllRead('${_mtRole}')">Mark all read</button></span></div>`:''}<div class="sm-grid">${cards}</div>`;
     return;
   }
   // ---- one subject: a separate collapsible table per category
@@ -5040,17 +5046,27 @@ function _mtPaint(wrapId){
   let html=`<div class="sm-head" style="display:flex;align-items:center;gap:14px"><button class="btn btn-ghost btn-sm" onclick="_mtBack('${wrapId}')">\u2190 Back</button><div><h2 style="margin:0;font-size:1.4rem">${esc(sub.subject)}</h2><p style="margin:0">Class Notes, DPP &amp; other material</p></div></div><div class="card"><div class="card-body">`;
   keys.forEach(cat=>{
     const meta=Object.values(_MT_CAT).find(m=>m.label===cat)||{icon:'folder',badge:'sc-amber'};
-    const rows=byCat[cat].map(i=>{
+    const rows=byCat[cat].slice().sort((a,b)=>{
+      const na=_chapNum(a.chapter), nb=_chapNum(b.chapter);
+      if(nb!==na) return nb-na;                                   // chapter number DESCENDING
+      return String(a.part||'').localeCompare(String(b.part||''));
+    }).map(i=>{
       const fname=(i.filename||((i.title||cat)+'.pdf')).replace(/'/g,'');
-      const isNew=window._mtNew&&window._mtNew.has(i.id);
+      const isNew=window._mtNew&&i.id!=null&&window._mtNew.has(i.id);
+      const isDpp=i.dpp_pack_id!=null;
+      const eng=isDpp
+        ? `<td><span class="mt-eng" style="cursor:default">${ic('users')} ${i.views}</span></td><td><span class="mt-eng" style="cursor:default">${ic('download')} ${i.downloads}</span></td>`
+        : `<td><button class="mt-eng" title="Students who viewed" onclick="openMatAudience(${i.id},'view')">${ic('users')} ${i.views}</button></td><td><button class="mt-eng" title="Students who downloaded" onclick="openMatAudience(${i.id},'download')">${ic('download')} ${i.downloads}</button></td>`;
+      const acts=isDpp
+        ? `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();dppLangPick(${i.dpp_pack_id},'download')">${ic('download')} Download</button>`
+        : `<button class="btn btn-primary btn-sm" onclick="downloadMaterial('${who}',${i.id},'${esc(fname)}')">${ic('download')} Download</button><button class="btn btn-danger btn-sm" title="Delete this file permanently" onclick="deleteMaterial('${who}',${i.id},'${encodeURIComponent(i.filename||i.title||'')}')">${ic('trash')}</button>`;
       return `<tr class="${isNew?'mt-row-new':''}" onclick="_matRowSeen('${who}',this,${i.id})">
-      <td class="mat-ch">${esc(i.chapter||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}</td>
+      <td class="mat-ch">${esc(i.chapter||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}${isDpp?'<span class="mt-new-tag" style="background:#0891b2">DPP</span>':''}</td>
       <td>${i.part?esc(i.part):'<span class="mt-dim">Whole chapter</span>'}</td>
       <td><div class="mat-file">${ic('book')}${esc(i.filename||i.title||'')}</div></td>
       <td class="mt-dim">${esc(i.date)}</td>
-      <td><button class="mt-eng" title="Students who viewed" onclick="openMatAudience(${i.id},'view')">${ic('users')} ${i.views}</button></td>
-      <td><button class="mt-eng" title="Students who downloaded" onclick="openMatAudience(${i.id},'download')">${ic('download')} ${i.downloads}</button></td>
-      <td class="mat-dl-cell"><div class="mat-acts"><button class="btn btn-primary btn-sm" onclick="downloadMaterial('${who}',${i.id},'${esc(fname)}')">${ic('download')} Download</button><button class="btn btn-danger btn-sm" title="Delete this file permanently" onclick="deleteMaterial('${who}',${i.id},'${encodeURIComponent(i.filename||i.title||'')}')">${ic('trash')}</button></div></td>
+      ${eng}
+      <td class="mat-dl-cell"><div class="mat-acts">${acts}</div></td>
     </tr>`;}).join('');
     html+=`<div class="mat-cat"><div class="mat-cat-head" onclick="_mtToggle(this)"><div class="mc-badge ${meta.badge}">${ic(meta.icon)}</div>${esc(cat)}<span class="mc-count">${byCat[cat].length} file${byCat[cat].length>1?'s':''}</span><button class="btn btn-danger btn-sm mc-del" title="Delete every file in this category" onclick="event.stopPropagation();deleteMatCategory('${who}','${encodeURIComponent(cat)}')">${ic('trash')} Delete All</button><span class="mc-chev">\u203a</span></div><div class="mat-twrap"><table class="mat-table"><thead><tr><th>Chapter</th><th>Class / Part</th><th>File</th><th>Uploaded</th><th>Views</th><th>Downloads</th><th style="text-align:right">Actions</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   });
@@ -15039,6 +15055,16 @@ function _pwTick(){
   if(!els.length){ clearInterval(_pwInt); _pwInt=null; return; }
   try{ const t=_fmtClock(new Date()); els.forEach(el=>{ el.textContent=t; }); }catch(e){}
 }
+async function _fillPunchRank(wrapId){
+  const box=document.getElementById('pw-rank-'+wrapId); if(!box) return;
+  try{
+    const d=await api('/api/teacher/my-rank');
+    const me=d.me; if(!me){ box.innerHTML=''; return; }
+    box.innerHTML=`<button class="pw-rankbtn" onclick="tPage('performance')" title="Open your performance page">
+      <span class="pw-rank-l">${ic('chart')} Your Rank</span>
+      <span class="pw-rank-r"><b>#${me.rank}</b> of ${(d.results||[]).length} \u00b7 ${me.score}/100 \u203a</span></button>`;
+  }catch(e){ box.innerHTML=''; }
+}
 async function renderPunchCard(wrapId){
   const wrap=document.getElementById(wrapId); if(!wrap) return;
   let d;
@@ -15092,9 +15118,11 @@ async function renderPunchCard(wrapId){
       ${d.punch_in&&d.required_hours?`<div class="wt-prog" style="margin:10px 0 2px"><div class="${(d.net_hours||0)>=d.required_hours?'done':''}" style="width:${Math.min(100,Math.round((d.net_hours||0)/d.required_hours*100))}%"></div></div>
       <div style="display:flex;justify-content:space-between;font-size:.68rem;font-weight:700;color:rgba(255,255,255,.75)"><span>${(d.net_hours||0)} of ${d.required_hours}h counted${d.policy&&d.policy.break_minutes?` (break ${d.policy.break_minutes}m skipped)`:''}</span>${d.extra_hours>0?`<span style="color:#93c5fd">+${d.extra_hours}h extra — no extra payout</span>`:`<span>${Math.min(100,Math.round((d.net_hours||0)/d.required_hours*100))}%</span>`}</div>`:''}
       <div id="geo-note"></div>
+      <div id="pw-rank-${wrapId}" class="pw-rankwrap"></div>
       <div class="pw-cap">Time is captured automatically in IST. The admin sees your attendance in real time.</div>
     </div></div>`;
   _pwTick();
+  _fillPunchRank(wrapId);
   if(!_pwInt) _pwInt=setInterval(_pwTick,1000);
   if(!window._geoState.checked) _loadGeofence(); else _geoNote();
 }

@@ -3198,6 +3198,40 @@ def _material_tree(db, subjects=None):
             "date": str(m.created_at)[:10] if m.created_at else "",
             "views": len(views.get(m.id, ())), "downloads": len(downloads.get(m.id, ())),
         })
+    # v130: editor se bane DPP (DppPack, source='created') bhi Classes Material tree
+    # me dikhein taaki wahin se download ho. Poora block guarded — koi error aaye to
+    # normal material tree waisa hi rehta hai.
+    try:
+        from models import DppPack
+        _dpacks = db.query(DppPack).filter(DppPack.source == "created").order_by(
+            DppPack.created_at.desc()).all()
+        if subjects is not None:
+            _allowed = set()
+            try:
+                _allowed |= {_subj_norm(k) for k in _subj_scope_for(db, Material, subjects).keys()}
+            except Exception:
+                pass
+            _allowed |= {_subj_norm(x) for x in (subjects or [])}
+            _dpacks = [pk for pk in _dpacks
+                       if _subj_norm(pk.subject) in _allowed or _subj_norm(_cn(pk.subject)) in _allowed]
+        for pk in _dpacks:
+            nm = _cn(pk.subject)
+            cd = _fixed_cls.get(nm) or _cls_d(getattr(pk, "class_name", ""))
+            label = _disp(nm, cd)
+            sub = tree.setdefault(label, {"subject": label, "chapters": {}})
+            ch = sub["chapters"].setdefault(pk.chapter or "General",
+                                            {"chapter": pk.chapter or "General", "items": []})
+            ch["items"].append({
+                "id": None, "dpp_pack_id": pk.id, "part": pk.part or "",
+                "type": "dpp", "category": "", "title": pk.title or "",
+                "filename": (pk.title or "DPP") + ".pdf", "teacher_name": "",
+                "class_name": getattr(pk, "class_name", "") or "",
+                "date": str(pk.created_at)[:10] if pk.created_at else "",
+                "views": int(getattr(pk, "views", 0) or 0),
+                "downloads": int(getattr(pk, "downloads", 0) or 0),
+            })
+    except Exception:
+        pass
     out = []
     for s in tree.values():
         chapters = []
