@@ -482,7 +482,7 @@ class VideoViewSnapshot(Base):
     id          = Column(Integer, primary_key=True)
     task_id     = Column(Integer, ForeignKey("video_tasks.id"), index=True)
     views       = Column(Integer, default=0)
-    captured_at = Column(DateTime, default=datetime.utcnow, index=True)
+    captured_at = Column(DateTime, default=func.now(), index=True)
 
 
 class DppEvent(Base):
