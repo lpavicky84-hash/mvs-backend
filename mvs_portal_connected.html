@@ -4073,10 +4073,12 @@ async function loadTRankBoard(){
     const rows=_trkBoard.map(r=>{
       const isMe=me&&r.teacher_id===me.teacher_id;
       const bars=_TRK_METRICS.map(m=>{
-        const v=(r.metrics||{})[m[0]]||0;
+        const raw=(r.metrics||{})[m[0]];
         const isPct=m[3]==='pct';
-        const fill=isPct?Math.max(0,Math.min(100,Math.round(v))):Math.round(v/maxM[m[0]]*100);
-        const shown=isPct?(Math.round(v)+'%'):v;
+        const na=(raw===null||raw===undefined);
+        const v=na?0:raw;
+        const fill=na?0:(isPct?Math.max(0,Math.min(100,Math.round(v))):Math.round(v/maxM[m[0]]*100));
+        const shown=na?'N/A':(isPct?(Math.round(v)+'%'):v);
         const mlbl=(m[0]==='attendance'&&r.attendance_source==='reports')?'Present Days (from reports)':m[1];
         return `<div class="trk-mrow"><span class="trk-mlbl">${mlbl}</span><div class="trk-mtrack"><div class="trk-mfill" style="width:${fill}%;background:${m[2]}"></div></div><b class="trk-mval">${shown}</b></div>`;
       }).join('');
@@ -9575,10 +9577,12 @@ async function loadATeacherRanks(days){
     // full board
     const board=rows.map(r=>{
       const bars=_TRK_METRICS.map(m=>{
-        const v=(r.metrics||{})[m[0]]||0;
+        const raw=(r.metrics||{})[m[0]];
         const isPct=m[3]==='pct';
-        const fill=isPct?Math.max(0,Math.min(100,Math.round(v))):Math.round(v/maxM[m[0]]*100);
-        const shown=isPct?(Math.round(v)+'%'):v;
+        const na=(raw===null||raw===undefined);
+        const v=na?0:raw;
+        const fill=na?0:(isPct?Math.max(0,Math.min(100,Math.round(v))):Math.round(v/maxM[m[0]]*100));
+        const shown=na?'N/A':(isPct?(Math.round(v)+'%'):v);
         const mlbl=(m[0]==='attendance'&&r.attendance_source==='reports')?'Present Days (from reports)':m[1];
         return `<div class="trk-mrow"><span class="trk-mlbl">${mlbl}</span><div class="trk-mtrack"><div class="trk-mfill" style="width:${fill}%;background:${m[2]}"></div></div><b class="trk-mval">${shown}</b></div>`;
       }).join('');

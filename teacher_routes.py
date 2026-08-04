@@ -5298,18 +5298,20 @@ TEACHER_RANK_WEIGHTS = {
 }
 
 
-def _tr_doubt(received, unresolved):
-    """No doubts -> full. Sirf unresolved se ghatta hai; resolve pe wapas full."""
-    if received <= 0:
-        return 100.0
-    return round(max(0, received - unresolved) / received * 100, 1)
+def _tr_doubt(received, pending):
+    """PENALTY-ONLY: sirf pending (unresolved) doubts ghatate hain. Koi pending
+    nahi (ya doubt aaya hi nahi) -> None = score me count nahi (display 'All clear')."""
+    if pending <= 0 or received <= 0:
+        return None
+    return round(max(0, received - pending) / received * 100, 1)
 
 
-def _tr_ontime(ontime, delayed):
-    """Jo classes hui: on-time full, delayed aadha. Kuch nahi hui -> neutral full."""
+def _tr_lectures(ontime, delayed):
+    """SIRF scheduled + reported classes: on-time full, delayed aadha. Koi reported
+    scheduled class nahi -> None (N/A). Recorded/bina-report class 100% nahi banti."""
     done = ontime + delayed
     if done <= 0:
-        return 100.0
+        return None
     return round((ontime * 1.0 + delayed * 0.5) / done * 100, 1)
 
 
@@ -5319,29 +5321,35 @@ def _tr_present(present_days, window_days):
     return round(min(present_days, expected) / expected * 100, 1)
 
 
-def _tr_task(ontime, delayed, proposed_ok):
-    """On-time delivery rate + self-proposed & approved tasks ka bonus."""
+def _tr_task(ontime, delayed, proposed_ok, assigned):
+    """Koi task assign hi nahi -> None (N/A). Warna on-time rate + self-proposed bonus."""
+    if assigned <= 0:
+        return None
     done = ontime + delayed
-    base = (ontime / done * 100) if done > 0 else 100.0
+    base = (ontime / done * 100) if done > 0 else 0.0
     bonus = min(proposed_ok * 5, 20)
     return round(min(base + bonus, 100), 1)
 
 
 def _tr_coverage(covered, total):
-    """chapters_with_content / total_PE_chapters. total 0 (syllabus na mile) -> None."""
-    if total <= 0:
-        return None
-    return round(min(covered, total) / total * 100, 1)
+    """chapters_with_content / total_PE_chapters. 0 diya -> 0% (kabhi free 100 nahi).
+    Syllabus mapped nahi (total 0) -> count-based: ~8 chapters full credit."""
+    denom = total if total > 0 else 8
+    return round(min(covered, denom) / denom * 100, 1)
 
 
 def _tr_score(parts):
-    """parts: 0-100 per key; None -> neutral (100) taaki unmapped category kisi
-    teacher ko zero na kare (jaise doubt/attendance na ho)."""
-    tot = 0.0
+    """None (N/A) categories EXCLUDE + baaki weights renormalise. DPP/test/attendance
+    hamesha count (0 bhi) isliye score kabhi undefined nahi. Kuch na karne pe score
+    apne aap kam ho jaata hai — koi free 100 nahi."""
+    acc = tot = 0.0
     for k, w in TEACHER_RANK_WEIGHTS.items():
         v = parts.get(k)
-        tot += (100.0 if v is None else v) * (w * 100)
-    return round(tot / 100.0, 1)
+        if v is None:
+            continue
+        acc += v * (w * 100)
+        tot += (w * 100)
+    return round(acc / tot, 1) if tot > 0 else 0.0
 
 
 def _tr_teacher_pe_and_coverage(db, tp, since):
@@ -5444,7 +5452,7 @@ def _teacher_rank_rows(db, days=90):
         dpp_cov = _tr_coverage(dpp_cov_n, total_pe)
         test_cov = _tr_coverage(test_cov_n, total_pe)
 
-        # ---- Lectures: on-time vs delayed (timetable ke against) ----
+        # ---- Lectures: SIRF scheduled+reported classes ka on-time (timetable link) ----
         ontime = delayed = 0
         try:
             from models import TimetableEntry
@@ -5455,17 +5463,16 @@ def _teacher_rank_rows(db, days=90):
                 if getattr(l, "timetable_entry_id", None):
                     te = db.query(TimetableEntry).filter(
                         TimetableEntry.id == l.timetable_entry_id).first()
-                if te and te.entry_date:
-                    cd = l.lecture_date or (te.completed_at.date() if te.completed_at else None)
-                    if cd and cd > te.entry_date:
-                        delayed += 1
-                    else:
-                        ontime += 1
+                if not te or not te.entry_date:
+                    continue   # bina schedule-link wali class on-time me count NAHI hoti
+                cd = l.lecture_date or (te.completed_at.date() if te.completed_at else None)
+                if cd and cd > te.entry_date:
+                    delayed += 1
                 else:
-                    ontime += 1   # koi scheduled date nahi -> done maana (on-time)
+                    ontime += 1
         except Exception:
             pass
-        lec_score = _tr_ontime(ontime, delayed)
+        lec_score = _tr_lectures(ontime, delayed)   # None if no scheduled+reported class
 
         # ---- Attendance: present DAYS ----
         if tp.id in disabled_ids:
@@ -5482,20 +5489,23 @@ def _teacher_rank_rows(db, days=90):
             att_src = "punch"
         att_score = _tr_present(present, days)
 
-        # ---- Doubts: inverted (no doubts -> full; only unresolved hurt) ----
+        # ---- Doubts: PENALTY-ONLY (sirf pending ghatate hain; koi doubt/pending nahi -> N/A) ----
         received = db.query(Doubt).filter(Doubt.teacher_id == tp.id,
                                           Doubt.created_at >= since).count()
-        unresolved = db.query(Doubt).filter(Doubt.teacher_id == tp.id,
-                                            Doubt.status == DoubtStatus.pending,
-                                            Doubt.created_at >= since).count()
-        doubt_score = _tr_doubt(received, unresolved)
+        pending = db.query(Doubt).filter(Doubt.teacher_id == tp.id,
+                                         Doubt.status == DoubtStatus.pending,
+                                         Doubt.created_at >= since).count()
+        doubt_score = _tr_doubt(received, pending)          # None when nothing pending
+        doubt_display = 100 if pending <= 0 else (doubt_score if doubt_score is not None else 0)
 
-        # ---- Tasks / projects (production): on-time + proposal bonus ----
-        t_ontime = t_delayed = t_proposed_ok = 0
+        # ---- Tasks / projects (production): on-time + proposal bonus; none assigned -> N/A ----
+        t_ontime = t_delayed = t_proposed_ok = t_assigned = 0
         if VideoTask is not None:
             try:
                 tasks = db.query(VideoTask).filter(VideoTask.teacher_id == tp.id).all()
                 for t in tasks:
+                    if (t.proposal_ok or "") != "pending":
+                        t_assigned += 1
                     if t.submitted_at and t.on_time is True:
                         t_ontime += 1
                     elif t.submitted_at and t.on_time is False:
@@ -5505,7 +5515,7 @@ def _teacher_rank_rows(db, days=90):
                         t_proposed_ok += 1
             except Exception:
                 pass
-        task_score = _tr_task(t_ontime, t_delayed, t_proposed_ok)
+        task_score = _tr_task(t_ontime, t_delayed, t_proposed_ok, t_assigned)
 
         parts = {"dpp": dpp_cov, "test": test_cov, "lectures": lec_score,
                  "attendance": att_score, "doubts": doubt_score, "tasks": task_score}
@@ -5515,21 +5525,20 @@ def _teacher_rank_rows(db, days=90):
             "subjects": tp.subjects or [], "batch": tp.batch or "",
             "attendance_source": att_src,
             "score": _tr_score(parts),
-            # display metrics (already 0-100 % except present-days which is a count)
+            # display metrics: % (0-100) except present-days (count). None -> UI shows "—".
             "metrics": {
-                "dpp_cov": (dpp_cov if dpp_cov is not None else 0),
-                "test_cov": (test_cov if test_cov is not None else 0),
+                "dpp_cov": dpp_cov, "test_cov": test_cov,
                 "lectures": lec_score, "attendance": present,
-                "doubts": doubt_score, "tasks": task_score,
+                "doubts": doubt_display, "tasks": task_score,
             },
             "detail": {
                 "dpp_covered": dpp_cov_n, "test_covered": test_cov_n,
                 "chapters_total": total_pe, "coverage_mapped": total_pe > 0,
                 "lectures_ontime": ontime, "lectures_delayed": delayed,
                 "present_days": present,
-                "doubts_received": received, "doubts_unresolved": unresolved,
+                "doubts_received": received, "doubts_pending": pending,
                 "tasks_ontime": t_ontime, "tasks_delayed": t_delayed,
-                "tasks_proposed_ok": t_proposed_ok,
+                "tasks_assigned": t_assigned, "tasks_proposed_ok": t_proposed_ok,
             },
         })
     rows.sort(key=lambda r: (-r["score"], r["name"].lower()))
