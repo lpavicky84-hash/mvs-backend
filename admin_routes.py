@@ -854,28 +854,46 @@ _TT_MONTHS = {m.lower(): i + 1 for i, m in enumerate(
     ["January", "February", "March", "April", "May", "June", "July",
      "August", "September", "October", "November", "December"])}
 _TT_MONTHS.update({m[:3]: v for m, v in list(_TT_MONTHS.items())})
-_TT_DATE_RX = re.compile(r"^\s*(\d{1,2})\s*[/\-.]\s*([A-Za-z]{3,9}|\d{1,2})\s*[/\-.]\s*(\d{4})\s*$")
-_TT_DATE_SPC_RX = re.compile(r"^\s*(\d{1,2})\s+([A-Za-z]{3,9})\s*,?\s*(\d{4})\s*$")
-_TT_ISO_RX = re.compile(r"^\s*(\d{4})-(\d{1,2})-(\d{1,2})\s*$")
+# Common informal abbreviations people actually type in Indian timetables.
+_TT_MONTHS.update({"sept": 9})
+_TT_DATE_RX = re.compile(r"(\d{1,2})\s*[/\-.]\s*([A-Za-z]{3,9}|\d{1,2})\s*[/\-.]\s*(\d{2,4})")
+_TT_DATE_SPC_RX = re.compile(r"(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,9})\.?\s*,?\s*(\d{2,4})")
+_TT_ISO_RX = re.compile(r"(\d{4})-(\d{1,2})-(\d{1,2})")
+
+def _tt_norm_year(y):
+    """2-digit year -> 20xx (Indian timetables); 4-digit stays as-is."""
+    y = int(y)
+    return y + 2000 if y < 100 else y
+
+def _tt_build_date(d, mon, y):
+    """(day, month-token, year) -> date | None. month-token digit ya naam dono chalte hain."""
+    try:
+        d = int(d)
+        if isinstance(mon, str) and not mon.isdigit():
+            mo = _TT_MONTHS.get(mon.strip().strip(".").lower())
+        else:
+            mo = int(mon)
+        if not mo:
+            return None
+        return date(_tt_norm_year(y), mo, d)
+    except Exception:
+        return None
 
 def _tt_flex_date(s):
-    """'11-Aug-2026' | '11/08/2026' | '2026-08-11' | '5 Jan 2026' -> date | None.
-    Numeric format hamesha DD/MM/YYYY maana jata hai (Indian convention)."""
+    """'11-Aug-2026' | '11/08/2026' | '2026-08-11' | '5 Jan 2026' | '11-Sept-26'
+    -> date | None. Cell me thoda extra text (jaise 'Date: 11-Aug-2026 (Tue)')
+    ho to bhi date nikal leta hai. Numeric format hamesha DD/MM/YYYY (Indian)."""
     s = (s or "").strip()
     if not s:
         return None
-    m = _TT_ISO_RX.match(s)
     try:
+        m = _TT_ISO_RX.search(s)
         if m:
             return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-        m = _TT_DATE_RX.match(s) or _TT_DATE_SPC_RX.match(s)
+        m = _TT_DATE_RX.search(s) or _TT_DATE_SPC_RX.search(s)
         if not m:
             return None
-        d, mon, y = int(m.group(1)), m.group(2), int(m.group(3))
-        mo = int(mon) if mon.isdigit() else _TT_MONTHS.get(mon.strip().lower())
-        if not mo:
-            return None
-        return date(y, mo, d)
+        return _tt_build_date(m.group(1), m.group(2), m.group(3))
     except Exception:
         return None
 
@@ -927,18 +945,31 @@ def _fallback_parse_timetable_pdf(raw, force_subject=None, class_name="Class 12"
     Row shape bilkul tt_parser jaisi: {subject, chapter, part, date, day, time, type}."""
     import io as _io
     import pdfplumber
+    # Event detector (tests, doubt classes, PYQ/revision slots) — taaki direct
+    # save (preview ke bina) pe bhi ye rows chapter na ban jayein aur progress
+    # counting me na aayein. Module na mile to sab "chapter" — kabhi crash nahi.
+    try:
+        from syllabus_routes import _looks_like_event as _tt_is_event
+    except Exception:
+        def _tt_is_event(_t):
+            return False
     rows = []
     colmap = None
     subj_detected = None
     with pdfplumber.open(_io.BytesIO(raw)) as pdf:
         for page in pdf.pages:
-            tables = page.extract_tables() or []
-            if not tables:  # borderless table — text-position strategy
-                try:
-                    tables = page.extract_tables(
-                        {"vertical_strategy": "text", "horizontal_strategy": "text"}) or []
-                except Exception:
-                    tables = []
+            # Ek kharab/tedhi page kabhi poore parse ko na girae — har page apne
+            # try/except me. Baaki pages ki rows tab bhi mil jayengi.
+            try:
+                tables = page.extract_tables() or []
+                if not tables:  # borderless table — text-position strategy
+                    try:
+                        tables = page.extract_tables(
+                            {"vertical_strategy": "text", "horizontal_strategy": "text"}) or []
+                    except Exception:
+                        tables = []
+            except Exception:
+                tables = []
             for tbl in tables:
                 if not tbl:
                     continue
@@ -982,7 +1013,7 @@ def _fallback_parse_timetable_pdf(raw, force_subject=None, class_name="Class 12"
                         "day": (_g("day") or "").strip().title() or None,
                         "time": ((_g("time") or "").upper()
                                  .replace("A.M.", "AM").replace("P.M.", "PM")) or None,
-                        "type": "chapter",
+                        "type": ("event" if _tt_is_event(ch) else "chapter"),
                     })
             if not force_subject and not subj_detected:
                 try:
