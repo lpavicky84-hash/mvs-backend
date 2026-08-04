@@ -2200,6 +2200,31 @@ def vt_refresh_views(db: Session = Depends(get_db), _=Depends(get_admin)):
     return {"ok": True, "updated": n, "fetched": len(got), "total": len(idmap)}
 
 
+@router.post("/teacher/video-tasks/refresh-views")
+def vt_teacher_refresh_views(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Teacher apni videos ke live views khud refresh kar sake (admin ki stored key se).
+    Har refresh ek snapshot add karta hai -> timeline graph banta hai."""
+    from models import VideoViewSnapshot
+    tp = _get_tp(current_user, db)
+    key = _yt_get_key(db)
+    if not key:
+        raise HTTPException(400, "YouTube API key abhi admin ne set nahi ki hai.")
+    tasks = db.query(VideoTask).filter(VideoTask.teacher_id == tp.id,
+                                       VideoTask.yt_video_id != "",
+                                       VideoTask.yt_video_id != None).all()
+    idmap = {}
+    for t in tasks:
+        idmap.setdefault(t.yt_video_id, []).append(t)
+    got = _yt_fetch_views(list(idmap.keys()), key)
+    now = datetime.utcnow(); n = 0
+    for vid, views in got.items():
+        for t in idmap.get(vid, []):
+            t.yt_views = views; t.yt_views_at = now
+            db.add(VideoViewSnapshot(task_id=t.id, views=views)); n += 1
+    db.commit()
+    return {"ok": True, "updated": n, "total": len(idmap)}
+
+
 @router.get("/admin/video-views", dependencies=[Depends(_admin_section_guard)])
 def vt_admin_views(video_id: int = 0, range: str = "", frm: str = "", to: str = "",
                    db: Session = Depends(get_db), _=Depends(get_admin)):

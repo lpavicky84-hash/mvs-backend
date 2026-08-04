@@ -9693,7 +9693,7 @@ async function renderVideoViews(wrapId, base, isAdmin, rangeKey, frm, to){
     const presetSel=`<select id="${wrapId}-range" class="vv-din" onchange="_vvRangeChange('${wrapId}','${base}',${!!isAdmin})">
       ${['all','today','7d','month','custom'].map(k=>`<option value="${k}" ${rangeKey===k?'selected':''}>${RL[k]}</option>`).join('')}</select>`;
     const custom=(rangeKey==='custom')?`<span class="vv-fl">From</span><input type="date" id="${wrapId}-frm" class="vv-din" value="${frm||''}"><span class="vv-fl">To</span><input type="date" id="${wrapId}-to" class="vv-din" value="${to||''}"><button class="btn btn-ghost btn-sm" onclick="renderVideoViews('${wrapId}','${base}',${!!isAdmin},'custom',val('${wrapId}-frm'),val('${wrapId}-to'))">Apply</button>`:'';
-    const refresh=isAdmin?`<button class="btn btn-primary btn-sm" onclick="vvRefresh('${base}','${wrapId}')">${ic('refresh')} Refresh live views</button>`:'';
+    const refresh=`<button class="btn btn-primary btn-sm" onclick="vvRefresh('${base}','${wrapId}')">${ic('refresh')} Refresh live views</button>`;
     const viewsLbl=(rangeKey==='all')?'Total views':('Views · '+periodLbl);
     const tiles=`<div class="vv-tiles">
       <div class="vv-tile"><div class="vv-t-n">${_vvFmt(d.total_views)}</div><div class="vv-t-l">${esc(viewsLbl)}</div></div>
@@ -9703,9 +9703,11 @@ async function renderVideoViews(wrapId, base, isAdmin, rangeKey, frm, to){
     const comp=d.leaderboard||d.by_teacher||[];
     const bar=`<div class="vv-panel"><div class="vv-panel-h">Views by teacher${rangeKey!=='all'?' · '+esc(periodLbl):''}</div>${_svgBars(comp,d.me)}</div>`;
     const pie=(comp.length>1)?`<div class="vv-panel"><div class="vv-panel-h">Share of views (all teachers)</div>${_svgPie(comp)}</div>`:'';
+    window._vvMeta={};
     const vids=(d.per_video||[]).slice(0,30).map(v=>{
+      window._vvMeta[v.id]={thumb:v.thumb||'',title:v.title||'',url:v.url||'',views:v.views||0,at:v.at||''};
       const thumb=v.thumb?`<img class="vv-v-thumb" src="${esc(v.thumb)}" alt="">`:`<span class="vv-v-play">${ic('play')}</span>`;
-      return `<div class="vv-vrow" onclick="_vvSeries('${base}',${v.id},'${wrapId}-series',this)" data-thumb="${esc(v.thumb||'')}" data-title="${esc(v.title||'')}" data-url="${esc(v.url||'')}">
+      return `<div class="vv-vrow" onclick="_vvSeries('${base}',${v.id},'${wrapId}-series')">
       ${thumb}
       <div class="vv-v-main"><div class="vv-v-t">${esc(v.title||'Video')}</div><div class="vv-v-s">${esc(v.teacher||'')}${v.at?' · '+esc(v.at):''}</div></div>
       <b class="vv-v-views">${_vvFmt(v.views)}</b>${v.url?`<a class="vv-v-open" href="${esc(v.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open</a>`:''}</div>`;
@@ -9718,17 +9720,20 @@ function _vvRangeChange(wrapId,base,isAdmin){
   const rk=(document.getElementById(wrapId+'-range')||{}).value||'all';
   renderVideoViews(wrapId,base,isAdmin,rk);
 }
-async function _vvSeries(base, videoId, boxId, rowEl){
+async function _vvSeries(base, videoId, boxId){
   const box=document.getElementById(boxId); if(!box) return;
-  const thumb=rowEl?rowEl.getAttribute('data-thumb'):'';
-  const title=rowEl?rowEl.getAttribute('data-title'):'';
-  const vurl=rowEl?rowEl.getAttribute('data-url'):'';
-  const head=`<div class="vv-vidhead">${thumb?`<img src="${esc(thumb)}" class="vv-vidhead-thumb" alt="">`:`<span class="vv-v-play" style="width:54px;height:54px;flex:0 0 54px">${ic('play')}</span>`}<div><div class="vv-vidhead-t">${esc(title||'Video')}</div>${vurl?`<a href="${esc(vurl)}" target="_blank" rel="noopener" class="vv-v-open">${ic('play')} Open on YouTube</a>`:''}</div></div>`;
+  const m=(window._vvMeta||{})[videoId]||{};
+  const thumb=m.thumb||'', title=m.title||'Video', vurl=m.url||'';
+  const head=`<div class="vv-vidhead">${thumb?`<img src="${esc(thumb)}" class="vv-vidhead-thumb" alt="">`:`<span class="vv-v-play" style="width:54px;height:54px;flex:0 0 54px">${ic('play')}</span>`}
+    <div style="flex:1"><div class="vv-vidhead-t">${esc(title)}</div>
+      <div style="font-size:1.3rem;font-weight:800;color:var(--primary);margin:2px 0">${_vvFmt(m.views||0)} <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">views${m.at?' · '+esc(m.at):''}</span></div>
+      ${vurl?`<a href="${esc(vurl)}" target="_blank" rel="noopener" class="vv-v-open">${ic('play')} Open on YouTube</a>`:''}</div></div>`;
   box.innerHTML=head+'<div class="spinner"></div>';
+  try{ box.scrollIntoView({behavior:'smooth',block:'nearest'}); }catch(e){}
   try{
     const d=await api(base+'/video-views?video_id='+videoId);
     const s=d.series||[];
-    if(s.length<2){ box.innerHTML=head+'<div class="vv-empty">Not enough history yet — the timeline builds up each time you refresh views.</div>'; return; }
+    if(s.length<2){ box.innerHTML=head+'<div class="vv-empty">Views timeline yahan banega — "Refresh live views" do-teen baar chalao (thodi der ke antaral pe), phir graph aa jayega.</div>'; return; }
     const max=Math.max(1,...s.map(p=>p.views)),min=Math.min(...s.map(p=>p.views));
     const W=520,H=120,pad=8; const n=s.length;
     const xs=i=>pad+i*(W-2*pad)/(n-1), ys=v=>H-pad-((v-min)/Math.max(1,max-min))*(H-2*pad);
@@ -9739,9 +9744,11 @@ async function _vvSeries(base, videoId, boxId, rowEl){
   }catch(e){ box.innerHTML=head+errHtml(e); }
 }
 async function vvRefresh(base, wrapId){
-  try{ const r=await api('/api/admin/video-tasks/refresh-views','POST',{}); toast('Updated '+r.updated+' videos from YouTube.'); }
+  const ep=(base==='/api/admin')?'/api/admin/video-tasks/refresh-views':'/api/teacher/video-tasks/refresh-views';
+  try{ const r=await api(ep,'POST',{}); toast('Updated '+(r.updated||0)+' videos from YouTube.'); }
   catch(e){ toast(e.message||'Refresh failed',true); }
-  renderVideoViews(wrapId, base, true, val(wrapId+'-frm'), val(wrapId+'-to'));
+  const rk=(document.getElementById(wrapId+'-range')||{}).value||'all';
+  renderVideoViews(wrapId, base, base==='/api/admin', rk);
 }
 function openVvKey(){
   showModal('YouTube Data API Key',`
