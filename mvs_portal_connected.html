@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- MVS Portal v124 -->
+<!-- MVS Portal v126 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -665,6 +665,12 @@
   .ex-sec-a{background:rgba(16,185,129,.07);border-color:rgba(16,185,129,.28)}
   .ex-sec-o{background:rgba(245,158,11,.07);border-color:rgba(245,158,11,.30)}
   .ex-sec-lbl{font-size:.74rem;font-weight:800;letter-spacing:.03em;margin-bottom:7px;text-transform:uppercase}
+  .ex-sp{border:1px dashed rgba(59,130,246,.45);background:rgba(59,130,246,.06);border-radius:10px;padding:11px 12px;margin-bottom:10px}
+  .ex-sp-lbl{font-size:.74rem;font-weight:800;letter-spacing:.02em;margin-bottom:7px;text-transform:uppercase;color:#2563eb}
+  .ex-sp textarea{margin-bottom:8px}
+  .ex-sp-btn{width:100%}
+  .dark .ex-sp{background:rgba(59,130,246,.10);border-color:rgba(96,165,250,.45)}
+  .dark .ex-sp-lbl{color:#93c5fd}
   .ex-sec-q .ex-sec-lbl{color:#a1741a}.ex-sec-a .ex-sec-lbl{color:#059669}.ex-sec-o .ex-sec-lbl{color:#d97706}
   .ex-sec-sub{font-weight:600;text-transform:none;letter-spacing:0;color:var(--text-muted);font-size:.72rem;margin-left:6px}
   .ex-auto-hint{font-size:.78rem;color:#a1741a;background:rgba(161,116,26,.09);border-radius:7px;padding:5px 9px;margin-top:7px;font-weight:600}
@@ -6162,6 +6168,99 @@ function _structHeal(s){
     return ln.replace(_STOK_RE,'\n$1').replace(_SPROSE_RE,'\n$1').replace(_SROMAN_RE,'\n$1');
   }).join('\n');
 }
+// ---- Offline formatter (koi AI nahi): math heal + (real LaTeX na ho to) smart format ----
+// Yahi ek jagah offline formatting decide hoti hai — smart-paste aur guards dono isi
+// niyam pe chalte hain: sirf tabhi skip karo jab pehle se asli $..$ ya \command ho.
+function _offlineFmt(s){
+  let h=_mathHeal(String(s==null?'':s));
+  if(!/\$|\\[a-zA-Z]+/.test(h)){
+    try{ const sf=(spFormatMatch(h,null)||spSmartFormat(h)); if(sf) h=sf; }catch(e){}
+  }
+  return h;
+}
+// ---- MCQ Smart Paste: ek block (question + saare options + optional answer) ko todo ----
+function _mcqLabelType(l, hasRoman){
+  l=String(l).toLowerCase();
+  if(/^\d{1,2}$/.test(l)) return 'num';
+  if(/^(i|ii|iii|iv|v|vi|vii|viii|ix|x)$/.test(l)) return (hasRoman||l.length>1)?'roman':'alpha';
+  return 'alpha';
+}
+function _parseMCQBlock(raw){
+  const text=String(raw==null?'':raw).replace(/\r/g,'');
+  const rawLines=text.split('\n');
+  const OPT=/^\s*[\(\[]?\s*([A-Za-z]|\d{1,2}|(?:i{1,3}|iv|v|vi{0,3}|ix|x))\s*[\)\].:\-]\s+(.*\S)?\s*$/;
+  const ANS=/^\s*(?:\**\s*)?(?:answer|ans|correct(?:\s*answer|\s*option)?|\u0909\u0924\u094d\u0924\u0930|\u0938\u0939\u0940)\s*(?:option)?\s*[:\-=]?\s*[\(\[]?\s*([A-Za-z]|\d{1,2}|(?:i{1,3}|iv|v))\b/i;
+  const QNUM=/^\s*(?:Q(?:uestion)?\s*[\.\)]?\s*)?\d{0,3}\s*[\.\)]\s+/i;
+  let answerToken=null;
+  const cand=[]; const pre=[]; let started=false;
+  for(let idx=0; idx<rawLines.length; idx++){
+    const ln=rawLines[idx];
+    if(!ln.trim()) continue;
+    const am=ln.match(ANS), om=ln.match(OPT);
+    if(am && !om){ answerToken=am[1]; continue; }
+    if(om){
+      let body=(om[2]||'').trim(); let correctInline=false;
+      if(/[\u2713\u2714\u2611]|\(\s*correct\s*\)|\[\s*ans(?:wer)?\s*\]/i.test(body) || /\*\s*$/.test(body)){
+        correctInline=true;
+        body=body.replace(/[\u2713\u2714\u2611]/g,'').replace(/\(\s*correct\s*\)/ig,'').replace(/\[\s*ans(?:wer)?\s*\]/ig,'').replace(/\*+\s*$/,'').trim();
+      }
+      cand.push({label:String(om[1]), text:body, correctInline, endsQ:/\?\s*$/.test(body)});
+      started=true; continue;
+    }
+    if(!started){ pre.push(ln); }
+    else if(cand.length){ cand[cand.length-1].text=(cand[cand.length-1].text+' '+ln.trim()).trim(); }
+    else pre.push(ln);
+  }
+  if(cand.length<2) return null;
+  const hasRoman=cand.some(c=>/^(ii|iii|iv|vi|vii|viii|ix)$/i.test(c.label));
+  const winning=_mcqLabelType(cand[cand.length-1].label, hasRoman);
+  const opts=[], extraQ=[];
+  for(const c of cand){
+    const ty=_mcqLabelType(c.label, hasRoman);
+    if(ty===winning && !(opts.length===0 && c.endsQ && ty!==winning)) opts.push(c);
+    else extraQ.push(c.label+') '+c.text);
+  }
+  if(opts.length<2) return null;
+  let q=(pre.join('\n').trim()+(extraQ.length?('\n'+extraQ.join('\n')):'')).trim().replace(QNUM,'').trim();
+  const optTexts=opts.map(o=>o.text);
+  let correct=null;
+  const inlineIdx=opts.findIndex(o=>o.correctInline);
+  if(inlineIdx>=0) correct=inlineIdx;
+  else if(answerToken){
+    const tok=String(answerToken).trim().toLowerCase();
+    let li=opts.findIndex(o=>o.label.toLowerCase()===tok);
+    if(li<0){
+      const order=['a','b','c','d','e','f'], rom=['i','ii','iii','iv','v','vi'];
+      if(order.includes(tok)) li=order.indexOf(tok);
+      else if(rom.includes(tok)) li=rom.indexOf(tok);
+      else if(/^\d+$/.test(tok)) li=parseInt(tok,10)-1;
+    }
+    if(li>=0 && li<optTexts.length) correct=li;
+  }
+  return {q, opts:optTexts, correct};
+}
+function _mcqSmartPasteBox(i){
+  return `<div class="ex-sp"><div class="ex-sp-lbl">Smart Paste \\u2014 paste the whole question with its options, we split it for you</div>`
+    +`<textarea id="mcq-sp-${i}" class="form-control" rows="4" placeholder="Paste question + all options together, e.g.&#10;What is the SI unit of force?&#10;A) Newton   B) Joule   C) Watt   D) Pascal&#10;Answer: A" onpaste="setTimeout(function(){mcqSmartPasteApply(${i},true)},50)"></textarea>`
+    +`<button type="button" class="btn btn-primary btn-sm ex-sp-btn" onclick="mcqSmartPasteApply(${i})">Split into question &amp; options</button></div>`;
+}
+function mcqSmartPasteApply(i, silentIfEmpty){
+  const ta=document.getElementById('mcq-sp-'+i);
+  const raw=ta?ta.value:'';
+  if(!raw||!raw.trim()){ if(!silentIfEmpty) toast('Paste the full question with its options first.',true); return; }
+  const r=_parseMCQBlock(raw);
+  if(!r||!r.opts||r.opts.length<2){ toast('Could not detect the options. Put each option on its own line like A) \\u2026 B) \\u2026 C) \\u2026',true); return; }
+  const q=_examQs[i]; if(!q) return;
+  q.q=_offlineFmt(r.q||'');
+  q.opts=r.opts.map(o=>_offlineFmt(o));
+  q.opts_hi=q.opts.map(()=> '');
+  if(typeof r.correct==='number' && r.correct>=0 && r.correct<q.opts.length) q.correct=r.correct;
+  else if((q.correct||0)>=q.opts.length) q.correct=0;
+  renderExamQs();
+  toast(r.correct==null
+    ? ('Split done \\u2014 '+r.opts.length+' options filled. Now tap the circle next to the correct one.')
+    : ('Split done \\u2014 '+r.opts.length+' options filled; correct answer set to '+String.fromCharCode(65+r.correct)+'.'));
+}
 // ---- fx Fix: field ke text ko heal + (plain ho to) structure + best-effort AI ----
 async function _autoFixField(id){
   const t=(id&&document.getElementById(id))||_lastField;
@@ -6170,7 +6269,7 @@ async function _autoFixField(id){
   const before=t.value;
   let healed=_mathHeal(before);
   // poori tarah plain text ho (koi LaTeX/symbol nahi) to purana smart structure bhi lagao
-  if(!/\$|\\[a-zA-Z]+|[_^][{0-9A-Za-z]|[\u221A\u222B\u03C0\u03B8\u2264\u2265\u00D7\u2192]/.test(healed)){
+  if(!/\$|\\[a-zA-Z]+/.test(healed)){
     try{ healed=(spFormatMatch(healed,null)||spSmartFormat(healed)); }catch(e){}
   }
   healed=healed.replace(/[ \t]*\n?[ \t]*(?:^|\n)[ \t]*(?:\*\*)?\s*(?:or|OR|Or|oR)\s*(?:\*\*)?[ \t]*(?=\n|$)/g,'\n\nOR\n').replace(/\n{3,}/g,'\n\n');
@@ -6252,7 +6351,7 @@ async function _autoFmtField(t, viaPaste){
   const before=t.value||'';
   if(!before.trim()) return;
   let healed=_mathHeal(before);
-  if(!/\$|\\[a-zA-Z]+|[_^][{0-9A-Za-z]|[\u221A\u222B\u03C0\u03B8\u2264\u2265\u00D7\u2192]/.test(healed)){
+  if(!/\$|\\[a-zA-Z]+/.test(healed)){
     try{ const sf=(spFormatMatch(healed,null)||spSmartFormat(healed)); if(sf) healed=sf; }catch(e){}
   }
   healed=healed.replace(/[ \t]*\n?[ \t]*(?:^|\n)[ \t]*(?:\*\*)?\s*(?:or|OR|Or|oR)\s*(?:\*\*)?[ \t]*(?=\n|$)/g,'\n\nOR\n').replace(/\n{3,}/g,'\n\n');
@@ -6725,6 +6824,7 @@ function renderExamQs(){
       :'Translate this question to Hindi');
     const tabs=biling?`<div class="ex-lang-tabs"><button type="button" class="ex-lang-tab ${q._tab!=='hi'?'active':''}" onclick="setExamTab(${i},'en')">English</button><button type="button" class="ex-lang-tab ${q._tab==='hi'?'active':''}" onclick="setExamTab(${i},'hi')">\u0939\u093f\u0902\u0926\u0940</button><button type="button" class="ex-lang-tab ex-tr tr-${_ts}" title="${_tsTitle}" onclick="examTranslate(${i},this)">${_tsLbl}</button></div>`:'';
     const autoHint='';
+    const sp=(_examType==='mcq'&&!isHi)?_mcqSmartPasteBox(i):'';
     const qval=isHi?(q.q_hi||''):(q.q||'');
     const qbind=isHi?`_examQs[${i}].q_hi=this.value`:`_examQs[${i}].q=this.value`;
     const qImg=isHi?'':`<div id="ex-imgsec-${i}">${_qImgSection(i)}</div>`;
@@ -6753,7 +6853,7 @@ function renderExamQs(){
       const aId=`exa-${i}`;
       mid=`<div class="ex-sec ex-sec-a"><div class="ex-sec-lbl">Model Answer${isHi?' \u00b7 Hindi':''}</div>${_rtBar(aId)}<textarea id="${aId}" class="form-control" rows="2" placeholder="${isHi?'\u0906\u0926\u0930\u094d\u0936 \u0909\u0924\u094d\u0924\u0930 \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902 (\u0935\u093f\u0915\u0932\u094d\u092a\u093f\u0915)':'Type the ideal/model answer here'}" onfocus="_lastField=this" oninput="${abind};examPrev(this,'pv-a-${i}')">${esc(aval)}</textarea><div class="ex-prev" id="pv-a-${i}"></div>${autoHint}${aImg}${marks}</div>`;
     }
-    return `<div class="ex-qcard">${head}${tabs}${qsec}${mid}</div>`;
+    return `<div class="ex-qcard">${head}${tabs}${sp}${qsec}${mid}</div>`;
   }).join('');
   _examQs.forEach((q,i)=>{
     const isHi=(_examMedium==='Bilingual')&&q._tab==='hi';
