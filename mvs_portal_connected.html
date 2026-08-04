@@ -665,9 +665,9 @@
   .ex-sec-a{background:rgba(16,185,129,.07);border-color:rgba(16,185,129,.28)}
   .ex-sec-o{background:rgba(245,158,11,.07);border-color:rgba(245,158,11,.30)}
   .ex-sec-lbl{font-size:.74rem;font-weight:800;letter-spacing:.03em;margin-bottom:7px;text-transform:uppercase}
-  .ex-sp{border:1px dashed rgba(59,130,246,.45);background:rgba(59,130,246,.06);border-radius:10px;padding:11px 12px;margin-bottom:10px}
-  .ex-sp-lbl{font-size:.74rem;font-weight:800;letter-spacing:.02em;margin-bottom:7px;text-transform:uppercase;color:#2563eb}
-  .ex-sp textarea{margin-bottom:8px}
+  .ex-sp{border:1px dashed rgba(59,130,246,.45);background:rgba(59,130,246,.06);border-radius:9px;padding:8px 10px;margin-bottom:9px}
+  .ex-sp-lbl{font-size:.68rem;font-weight:700;letter-spacing:.01em;margin-bottom:5px;color:#2563eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ex-sp .ex-sp-ta{margin-bottom:6px;min-height:56px;font-size:.85rem}
   .ex-sp-btn{width:100%}
   .dark .ex-sp{background:rgba(59,130,246,.10);border-color:rgba(96,165,250,.45)}
   .dark .ex-sp-lbl{color:#93c5fd}
@@ -6240,8 +6240,8 @@ function _parseMCQBlock(raw){
   return {q, opts:optTexts, correct};
 }
 function _mcqSmartPasteBox(i){
-  return `<div class="ex-sp"><div class="ex-sp-lbl">Smart Paste \\u2014 paste the whole question with its options, we split it for you</div>`
-    +`<textarea id="mcq-sp-${i}" class="form-control" rows="4" placeholder="Paste question + all options together, e.g.&#10;What is the SI unit of force?&#10;A) Newton   B) Joule   C) Watt   D) Pascal&#10;Answer: A" onpaste="setTimeout(function(){mcqSmartPasteApply(${i},true)},50)"></textarea>`
+  return `<div class="ex-sp"><div class="ex-sp-lbl">Smart Paste: paste the question with its options, we split it</div>`
+    +`<textarea id="mcq-sp-${i}" class="form-control ex-sp-ta" rows="3" placeholder="Paste question + all options, e.g. A) ... B) ... C) ... Answer: A" onpaste="setTimeout(function(){mcqSmartPasteApply(${i},true)},50)"></textarea>`
     +`<button type="button" class="btn btn-primary btn-sm ex-sp-btn" onclick="mcqSmartPasteApply(${i})">Split into question &amp; options</button></div>`;
 }
 function mcqSmartPasteApply(i, silentIfEmpty){
@@ -6249,7 +6249,7 @@ function mcqSmartPasteApply(i, silentIfEmpty){
   const raw=ta?ta.value:'';
   if(!raw||!raw.trim()){ if(!silentIfEmpty) toast('Paste the full question with its options first.',true); return; }
   const r=_parseMCQBlock(raw);
-  if(!r||!r.opts||r.opts.length<2){ toast('Could not detect the options. Put each option on its own line like A) \\u2026 B) \\u2026 C) \\u2026',true); return; }
+  if(!r||!r.opts||r.opts.length<2){ toast('Could not detect the options. Put each option on its own line, like A) then B) then C).',true); return; }
   const q=_examQs[i]; if(!q) return;
   q.q=_offlineFmt(r.q||'');
   q.opts=r.opts.map(o=>_offlineFmt(o));
@@ -6258,8 +6258,8 @@ function mcqSmartPasteApply(i, silentIfEmpty){
   else if((q.correct||0)>=q.opts.length) q.correct=0;
   renderExamQs();
   toast(r.correct==null
-    ? ('Split done \\u2014 '+r.opts.length+' options filled. Now tap the circle next to the correct one.')
-    : ('Split done \\u2014 '+r.opts.length+' options filled; correct answer set to '+String.fromCharCode(65+r.correct)+'.'));
+    ? ('Split done. '+r.opts.length+' options filled. Now tap the circle next to the correct one.')
+    : ('Split done. '+r.opts.length+' options filled; correct answer set to '+String.fromCharCode(65+r.correct)+'.'));
 }
 // ---- fx Fix: field ke text ko heal + (plain ho to) structure + best-effort AI ----
 async function _autoFixField(id){
