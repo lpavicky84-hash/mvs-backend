@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- MVS Portal v121 -->
+<!-- MVS Portal v122 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -364,6 +364,9 @@
   .mode-btn{border:none;background:transparent;color:var(--text-muted);font-weight:700;font-size:.74rem;padding:5px 12px;border-radius:7px;cursor:pointer;transition:.15s}
   .mode-btn.on.live{background:#16a34a;color:#fff}
   .mode-btn.on.rec{background:#a1741a;color:#fff}
+  .mode-btn.on.ai{background:#7c3aed;color:#fff}
+  .mode-btn.on.off{background:#475569;color:#fff}
+  .mode-btn:disabled{opacity:.5;cursor:not-allowed}
   .tst-eng{display:flex;gap:6px;margin-right:6px}
   .dp-row{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--border);flex-wrap:wrap}
   .dp-row:last-child{border-bottom:none}
@@ -6129,7 +6132,7 @@ function _mathHeal(t){
 // _structHeal: lambi run-on lines me mid-line segment starters (Step 2:, Formula:,
 // Substitute..., Answer:, Therefore, (i) ...) ko apni line pe lao — model answers
 // premium structured blocks ban jaate hain. Stash ke BAAD chalta hai (math safe).
-const _STOK='(?:Step\\s+\\d+\\s*:|\u091A\u0930\u0923\\s*\\d+\\s*:|Formula[^:\\n]{0,24}:|Substitute[^:\\n]{0,30}:|Final\\s+Answer\\s*:|Answer\\s*:|Note\\s*:|Case\\s+\\d+\\s*:|\u0938\u0942\u0924\u094D\u0930\\s*:|Given[^:\\n]{0,20}:|To\\s+find[^:\\n]{0,24}:|Rewrite[^:\\n]{0,24}:)';
+const _STOK='(?:Step\\s+\\d+\\s*:|\u091A\u0930\u0923\\s*\\d+\\s*:|Formula[^:\\n]{0,24}:|Substitute[^:\\n]{0,30}:|Final\\s+Answer\\s*:|(?<!Final\\s)Answer\\s*:|Note\\s*:|Case\\s+\\d+\\s*:|\u0938\u0942\u0924\u094D\u0930\\s*:|Given[^:\\n]{0,20}:|To\\s+find[^:\\n]{0,24}:|Rewrite[^:\\n]{0,24}:)';
 const _STOK_RE=new RegExp('(?<=\\S)\\s+('+_STOK+')','g');
 const _SPROSE_RE=new RegExp('(?<=[.}:$\u0002])\\s+(Therefore|Hence\\b|Thus\\b|Now,|Given,|Let,|Then,|Substituting,|Using the formula,|we get,|or,|\u0905\u0924\u0903|\u0905\u0924:)','g');
 const _SROMAN_RE=new RegExp('(?<=[.}:$\u0002])\\s+(\\((?:i{1,3}|iv|v)\\))(?=\\s|[A-Z0-9\u0001$\\\\(])','g');
@@ -6153,6 +6156,8 @@ async function _autoFixField(id){
   }
   healed=healed.replace(/[ \t]*\n?[ \t]*(?:^|\n)[ \t]*(?:\*\*)?\s*(?:or|OR|Or|oR)\s*(?:\*\*)?[ \t]*(?=\n|$)/g,'\n\nOR\n').replace(/\n{3,}/g,'\n\n');
   let aiUsed=false, aiTried=false;
+  await _loadAiFmtCfg();                      // v122: Admin ka subject-wise AI toggle
+  const _aiSubj=_aiOnFor(_curExSubject());    // true=AI, false=offline only, null=config unavailable (legacy)
   const _aiHit=async(ep,flag)=>{
     if(sessionStorage.getItem(flag)==='0') return null;
     aiTried=true;
@@ -6164,18 +6169,20 @@ async function _autoFixField(id){
     }catch(e){ if((e&&e.status)||/503|unavailable|AI|401|403|timeout|404/i.test(String(e&&e.message||e))) sessionStorage.setItem(flag,'0'); return null; }
   };
   // v117: pehle naya direct AI endpoint (current Gemini models), phir purana grading wala, phir local heal hi kaafi
-  const _aiWillTry = sessionStorage.getItem('mvs_fmtai')!=='0' || sessionStorage.getItem('mvs_fmtai2')!=='0';
+  const _aiWillTry = _aiSubj!==false && (sessionStorage.getItem('mvs_fmtai')!=='0' || sessionStorage.getItem('mvs_fmtai2')!=='0');
   if(_aiWillTry){ t.classList.add('ai-busy'); toast('Formatting with AI\u2026'); } // v119: dabate hi feedback — wait feel na ho
   let ai1=null;
+  if(_aiSubj!==false){ // v122: offline subject pe AI bilkul skip
   try{
     ai1=await _aiHit('/api/teacher/format-text-ai','mvs_fmtai');
     if(ai1&&ai1!==healed){ healed=ai1; aiUsed=true; }
     else{ const ai2=await _aiHit('/api/teacher/format-text','mvs_fmtai2');
       if(ai2&&ai2!==healed){ healed=ai2; aiUsed=true; } }
   }finally{ t.classList.remove('ai-busy'); }
-  if(healed===before){ toast('Already well formatted — nothing to change.'); return; }
+  }
+  if(healed===before){ toast(_aiSubj===false?'Already well formatted — nothing to change. (Offline formatting is active for this subject.)':'Already well formatted — nothing to change.'); return; }
   t.value=healed; t.dispatchEvent(new Event('input',{bubbles:true}));
-  toast(aiUsed?'Formatted with AI assist — review the preview.':(aiTried?'Formatting fixed (AI offline — local repair applied).':'Formatting fixed — review the preview below.'));
+  toast(aiUsed?'Formatted with AI assist — review the preview.':(_aiSubj===false?'Formatting fixed — offline mode is active for this subject (Admin \u2192 Subjects \u2192 AI Formatting).':(aiTried?'Formatting fixed (AI offline — local repair applied).':'Formatting fixed — review the preview below.')));
 }
 // ---- v118: automatic formatting — paste karte hi heal; bikhra hua maths paste ho to AI bhi auto.
 // Kisi button ki zaroorat nahi: question/option/explanation/model-answer — sab boxes covered
@@ -6194,6 +6201,32 @@ function _needsAIFrag(t){
   if(/\$\s*\n\s*\$/.test(s0)) frag+=2;
   return frag>=2;
 }
+// ---- v122: subject-wise AI formatting config (Admin → Subjects se control hota hai) ----
+let _aiFmtCfg=null, _aiFmtCfgAt=0;
+async function _loadAiFmtCfg(force){
+  const now=Date.now();
+  if(!force&&_aiFmtCfgAt&&now-_aiFmtCfgAt<60000) return _aiFmtCfg; // 60s cache (success ya fail dono)
+  try{
+    const r=await api('/api/teacher/ai-format-config');
+    if(!r||typeof r!=='object'||Array.isArray(r)||typeof r.ai_available==='undefined') throw new Error('bad cfg'); // purana backend/ajeeb response -> legacy fallback
+    _aiFmtCfg={all:!!r.all,subjects:r.subjects||[],aiAvailable:!!r.ai_available};
+  }catch(e){ _aiFmtCfg=null; }
+  _aiFmtCfgAt=Date.now();
+  return _aiFmtCfg;
+}
+function _curExSubject(){
+  const el=document.getElementById('ex-sub');
+  return el?String(el.value||''):'';
+}
+function _aiOnFor(subj){
+  // true = is subject ka total formatting AI se; false = offline only; null = config nahi mili (legacy fallback)
+  const c=_aiFmtCfg;
+  if(!c) return null;
+  if(!c.aiAvailable) return false;
+  if(c.all) return true;
+  const s=String(subj||'').trim().toLowerCase();
+  return s?c.subjects.some(x=>String(x).toLowerCase()===s):false;
+}
 const _autoFmtBusy={};
 async function _autoFmtField(t, viaPaste){
   if(!t||!t.id||_autoFmtBusy[t.id]) return;
@@ -6205,7 +6238,10 @@ async function _autoFmtField(t, viaPaste){
   }
   healed=healed.replace(/[ \t]*\n?[ \t]*(?:^|\n)[ \t]*(?:\*\*)?\s*(?:or|OR|Or|oR)\s*(?:\*\*)?[ \t]*(?=\n|$)/g,'\n\nOR\n').replace(/\n{3,}/g,'\n\n');
   let aiUsed=false;
-  if(viaPaste && _needsAIFrag(healed) && sessionStorage.getItem('mvs_fmtai')!=='0'){
+  await _loadAiFmtCfg();                       // v122: Admin ka subject-wise AI toggle
+  const _aiSubj=_aiOnFor(_curExSubject());
+  const _aiWanted = _aiSubj===true ? !!viaPaste : (_aiSubj===null ? (viaPaste && _needsAIFrag(healed)) : false);
+  if(_aiWanted && sessionStorage.getItem('mvs_fmtai')!=='0'){
     _autoFmtBusy[t.id]=1;
     t.classList.add('ai-busy'); // v119: paste hote hi gold glow — AI chal raha hai, instant feedback
     try{
@@ -6298,7 +6334,14 @@ function _fmtRich(t){
   // table/structural math blocks (match-the-following, difference tables, \boxed) —
   // inke $ delimiters ko niche wala stray-$ cleanup kha jata tha aur word-heuristic
   // inhe sentence samajh leti thi, isliye PEHLE pakad ke math stash karo ([^$] newline bhi match karta hai)
-  s=s.replace(/\$([^$]*\\(?:begin|end|hline|boxed|colorbox|fcolorbox)\b[^$]*)\$/g,(m,g)=>stash(g,/\\begin\{/.test(g)));
+  // v120: bada calculus math (integral/sum/lambi frac) inline na rahe — centered display block
+  // v122: \boxed final-answer bhi hamesha display
+  const _promoteDisp=(gg)=>{
+    if(/\\boxed\s*\{/.test(gg)&&gg.length>=8) return true;
+    if(/\\(?:int|sum|prod|lim)(?![a-zA-Z])/.test(gg)&&gg.replace(/\\(?:int|sum|prod|lim)(?![a-zA-Z])/g,'').replace(/[_{}^$\\\s]/g,'').length>=3&&(gg.length>=18||/=|\\[dt]?frac/.test(gg))) return true;
+    return gg.length>=30&&/\\[dt]?frac/.test(gg);
+  };
+  s=s.replace(/\$([^$]*\\(?:begin|end|hline|boxed|colorbox|fcolorbox)\b[^$]*)\$/g,(m,g)=>stash(g,/\\begin\{/.test(g)||_promoteDisp(g)));
   // stray $ cleanup: line me odd $ ho to AAKHIRI wala hatao (pair-shift se text math ban jaata tha)
   s=s.split('\n').map(ln=>{
     if(!ln.includes('$')) return ln;
@@ -6307,16 +6350,11 @@ function _fmtRich(t){
     return ln;
   }).join('\n');
   // inline $...$ — poora sentence wrap ho to text hi rakho (math mode spaces kha jaata hai)
-  // v120: bada calculus math (integral/sum/lambi frac) inline na rahe — centered display block
-  const _promoteDisp=(gg)=>{
-    if(/\\(?:int|sum|prod|lim)(?![a-zA-Z])/.test(gg)&&gg.replace(/\\(?:int|sum|prod|lim)(?![a-zA-Z])/g,'').replace(/[_{}^$\\\s]/g,'').length>=3&&(gg.length>=18||/=|\\[dt]?frac/.test(gg))) return true;
-    return gg.length>=30&&/\\[dt]?frac/.test(gg);
-  };
   s=s.replace(/\$([^\n$]+?)\$/g,(m,g)=>{
     const gg=g.trim();
     if(!gg) return ' ';
     // structural LaTeX (table/boxed/colorbox) kabhi plain sentence nahi hota
-    if(/\\begin\{|\\end\{|\\hline|\\boxed|\\colorbox|\\fcolorbox/.test(gg)) return stash(gg, /\\begin\{/.test(gg));
+    if(/\\begin\{|\\end\{|\\hline|\\boxed|\\colorbox|\\fcolorbox/.test(gg)) return stash(gg, /\\begin\{/.test(gg)||_promoteDisp(gg));
     // v116: structural command (frac/sqrt/text/binom/integral...) ho to ye math hi
     // hai — wordy \text args wala healed frac sentence-guard me na phanse
     if(/\\(frac|dfrac|tfrac|cfrac|sqrt|text\s*\{|binom|ce\{|boxed|int|sum|prod|lim|vec|hat|overline|underline|mathbb|overbrace|underbrace)\b/.test(gg)) return stash(gg,_promoteDisp(gg));
@@ -6524,6 +6562,7 @@ function examImgRemove(i,ev){ if(ev)ev.stopPropagation(); _examQs[i].image_b64=n
 async function openCreateExam(type,editData){
   window._dppMode=(window._dppMode==='pending');
   _examType=type; _examQs=[]; _lastField=null; _examMedium='English';
+  _loadAiFmtCfg(true); // v122: subject-wise AI config prefetch — paste karte tak ready rahe
   window._editExamId=editData?editData.id:null;
   let subs=[];
   try{ const es=await api('/api/teacher/my-timetable'); window._dppTt=es; subs=[...new Set(es.filter(e=>e.subject).map(e=>e.subject))]; }catch(e){}
@@ -10821,15 +10860,36 @@ async function loadASubjects(){
   const el=document.getElementById('a-subjects-content');
   try{
  const data=await api('/api/admin/subjects');
+ let _cfg={all:false,subjects:[],ai_available:false};
+ try{ _cfg=await api('/api/admin/ai-format-config'); }catch(_e){}
+ window._aiFmtCfg={all:!!_cfg.all,subjects:_cfg.subjects||[],aiAvailable:!!_cfg.ai_available};
+ const aiCfg=window._aiFmtCfg;
+ const aiOnFor=(nm)=>aiCfg.all||(aiCfg.subjects||[]).some(x=>String(x).toLowerCase()===String(nm||'').toLowerCase());
  function block(cls,title){
  const list=data[cls]||[];
- let rows=list.map(s=>{const rec=(s.mode||'live')==='recorded';
-   return `<div class="subj-row"><div class="subj-info"><div class="subj-nm">${esc(s.name)} ${s.code?'<span class="mt-dim">('+esc(s.code)+')</span>':''}</div><div class="mode-toggle"><button class="mode-btn ${!rec?'on live':''}" onclick="setSubjMode(${s.id},'live')">Live</button><button class="mode-btn ${rec?'on rec':''}" onclick="setSubjMode(${s.id},'recorded')">Recorded</button></div></div><button class="btn btn-danger btn-sm" onclick="deleteSubject(${s.id})">${ic('trash')}</button></div>`;}).join('');
+ let rows=list.map(s=>{const rec=(s.mode||'live')==='recorded';const aiOn=aiOnFor(s.name);const dis=aiCfg.all?'disabled':'';
+   return `<div class="subj-row"><div class="subj-info"><div class="subj-nm">${esc(s.name)} ${s.code?'<span class="mt-dim">('+esc(s.code)+')</span>':''}</div><div class="mode-toggle"><button class="mode-btn ${!rec?'on live':''}" onclick="setSubjMode(${s.id},'live')">Live</button><button class="mode-btn ${rec?'on rec':''}" onclick="setSubjMode(${s.id},'recorded')">Recorded</button></div> <div class="mode-toggle" title="Formatting engine for questions and model answers in this subject"><button class="mode-btn ${aiOn?'on ai':''}" ${dis} onclick="setSubjAi('${encodeURIComponent(s.name)}',true)">AI</button><button class="mode-btn ${!aiOn?'on off':''}" ${dis} onclick="setSubjAi('${encodeURIComponent(s.name)}',false)">Offline</button></div></div><button class="btn btn-danger btn-sm" onclick="deleteSubject(${s.id})">${ic('trash')}</button></div>`;}).join('');
  if(list.length===0) rows='<p style="color:var(--text-muted);font-size:.85rem">No subjects</p>';
  return `<div class="card"><div class="card-header"><h3>${title}</h3><button class="btn btn-primary btn-sm" onclick="openAddSubject('${cls}')">+ Add</button></div><div class="card-body">${rows}</div></div>`;
  }
- el.innerHTML=`<div class="alert alert-info"><strong>Live</strong> subjects run on a timetable you upload. <strong>Recorded</strong> subjects have no timetable \u2014 students who pick them see a "Watch in the Manish Verma Classes App" card instead of an empty timetable.</div><div class="grid-2">${block('10','Class 10 Subjects')}${block('12','Class 12 Subjects')}</div>`;
+ const aiCard=`<div class="card" style="margin-bottom:14px"><div class="card-body"><div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:250px"><div style="font-weight:800;font-size:.95rem;color:var(--text);margin-bottom:4px">AI Formatting \u2014 Questions &amp; Model Answers</div><div style="font-size:.78rem;color:var(--text-muted);line-height:1.55">When active, every question and model answer entered in the exam builder is fully formatted by AI. When offline, the built-in offline formatter is used \u2014 ideal for subjects that already format cleanly.</div>${aiCfg.aiAvailable?'':'<div style="font-size:.76rem;color:#b91c1c;margin-top:6px;font-weight:700">AI is not configured on the server \u2014 offline formatting will be used regardless of this setting.</div>'}</div><div class="mode-toggle"><button class="mode-btn ${aiCfg.all?'on ai':''}" onclick="setAiAll(true)">AI Active \u2014 All Subjects</button><button class="mode-btn ${!aiCfg.all?'on off':''}" onclick="setAiAll(false)">Subject-wise</button></div></div></div></div>`;
+ el.innerHTML=aiCard+`<div class="alert alert-info"><strong>Live</strong> subjects run on a timetable you upload. <strong>Recorded</strong> subjects have no timetable \u2014 students who pick them see a "Watch in the Manish Verma Classes App" card instead of an empty timetable.</div><div class="grid-2">${block('10','Class 10 Subjects')}${block('12','Class 12 Subjects')}</div>`;
   }catch(e){ el.innerHTML=errHtml(e); }
+}
+async function setSubjAi(nm,on){
+  const name=decodeURIComponent(nm);
+  const cfg=window._aiFmtCfg||{all:false,subjects:[]};
+  const subs=(cfg.subjects||[]).slice();
+  const i=subs.findIndex(x=>String(x).toLowerCase()===name.toLowerCase());
+  if(on&&i<0) subs.push(name);
+  if(!on&&i>=0) subs.splice(i,1);
+  try{ const r=await api('/api/admin/ai-format-config','POST',{all:!!cfg.all,subjects:subs}); toast(r.message||'AI formatting updated.'); loadASubjects(); }
+  catch(e){ toast(e.message,true); }
+}
+async function setAiAll(on){
+  const cfg=window._aiFmtCfg||{all:false,subjects:[]};
+  try{ const r=await api('/api/admin/ai-format-config','POST',{all:!!on,subjects:cfg.subjects||[]}); toast(r.message||(on?'AI formatting is active for all subjects.':'AI formatting is now subject-wise.')); loadASubjects(); }
+  catch(e){ toast(e.message,true); }
 }
 async function deleteSubject(id){
   try{ await api('/api/admin/subjects/'+id,'DELETE'); toast('Subject deleted. '); loadASubjects(); }catch(e){ toast(e.message,true); }

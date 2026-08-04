@@ -48,6 +48,7 @@ ADMIN_SECTION_MAP = {
     "dpp-rankings": "tranks",
     "class-compliance": "compliance",
     "attendance": "attendance", "leaves": "attendance", "office-location": "attendance", "session-deadlines": "attendance",
+    "ai-format-config": "subjects",
     "student": "students", "students": "students", "students-list": "students",
     "student-counts": "students", "reset-password": "students",
     "subjects": "subjects",
@@ -3819,6 +3820,64 @@ def admin_set_office(payload: dict = Body(...), db: Session = Depends(get_db), _
     if clean_ips:
         msg += f". PC punching from office WiFi ({len(clean_ips)} IP) works without GPS"
     return {"message": msg}
+
+# ===== AI FORMATTING CONFIG (v122: subject-wise / all-subjects AI toggle) =====
+_AI_FMT_KEY = "ai_format_cfg"
+
+def _ai_fmt_cfg(db: Session) -> dict:
+    """AppSetting se AI formatting config padho — {'all': bool, 'subjects': [names]}."""
+    from models import AppSetting
+    import json as _json
+    cfg = {"all": False, "subjects": []}
+    row = db.query(AppSetting).filter(AppSetting.key == _AI_FMT_KEY).first()
+    if row and row.value:
+        try:
+            data = _json.loads(row.value)
+            cfg["all"] = bool(data.get("all"))
+            subs = data.get("subjects") or []
+            if isinstance(subs, list):
+                cfg["subjects"] = sorted({str(s).strip()[:80] for s in subs if str(s).strip()})
+        except Exception:
+            pass
+    return cfg
+
+@router.get("/ai-format-config")
+def admin_get_ai_format(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """AI formatting config — admin Subjects screen ke toggle ke liye."""
+    import os as _os
+    cfg = _ai_fmt_cfg(db)
+    cfg["ai_available"] = bool((_os.environ.get("GEMINI_API_KEY") or "").strip())
+    return cfg
+
+@router.post("/ai-format-config")
+def admin_set_ai_format(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """AI formatting config save karo. Body: {'all': bool, 'subjects': [name, ...]}"""
+    from models import AppSetting
+    import json as _json
+    subs = payload.get("subjects") or []
+    if not isinstance(subs, list):
+        raise HTTPException(status_code=400, detail="subjects list bhejo")
+    _seen = {}
+    for s in subs:
+        n = str(s).strip()[:80]
+        if n and n.lower() not in _seen:
+            _seen[n.lower()] = n
+    clean = sorted(_seen.values())
+    cfg = {"all": bool(payload.get("all")), "subjects": clean}
+    row = db.query(AppSetting).filter(AppSetting.key == _AI_FMT_KEY).first()
+    blob = _json.dumps(cfg, ensure_ascii=False)
+    if row:
+        row.value = blob
+    else:
+        db.add(AppSetting(key=_AI_FMT_KEY, value=blob))
+    db.commit()
+    if cfg["all"]:
+        msg = "AI formatting is now ACTIVE for all subjects"
+    elif clean:
+        msg = f"AI formatting is ACTIVE for {len(clean)} subject(s): {', '.join(clean)}"
+    else:
+        msg = "AI formatting is OFF - offline formatting will be used everywhere"
+    return {"message": msg, **cfg}
 
 # ===== SALARY BULK SETUP (sabhi teachers, sirf gross - baaki sab auto) =====
 @router.get("/contracts-overview")

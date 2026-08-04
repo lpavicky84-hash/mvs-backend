@@ -2448,6 +2448,26 @@ def grade_attempt_now(attempt_id: int, db: Session = Depends(get_db), current_us
 
 
 # ===================== AI AUTO-MAGIC ENDPOINTS (Phase 2) =====================
+@router.get("/ai-format-config")
+def teacher_ai_format_config(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """v122: teacher exam-builder ke liye AI formatting config (read-only).
+    Admin Subjects screen se set hota hai — {'all': bool, 'subjects': [names]}."""
+    from models import AppSetting
+    import json as _json
+    cfg = {"all": False, "subjects": []}
+    row = db.query(AppSetting).filter(AppSetting.key == "ai_format_cfg").first()
+    if row and row.value:
+        try:
+            data = _json.loads(row.value)
+            cfg["all"] = bool(data.get("all"))
+            subs = data.get("subjects") or []
+            if isinstance(subs, list):
+                cfg["subjects"] = sorted({str(s).strip()[:80] for s in subs if str(s).strip()})
+        except Exception:
+            pass
+    cfg["ai_available"] = bool((_os.environ.get("GEMINI_API_KEY") or "").strip())
+    return cfg
+
 @router.post("/ocr-question")
 def ocr_question(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     img = payload.get("image_b64") or ""
