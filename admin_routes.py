@@ -3773,10 +3773,11 @@ def admin_set_office(payload: dict = Body(...), db: Session = Depends(get_db), _
         db.commit()
         return {"message": "Geofence turned off - punching is now allowed from anywhere"}
     # office WiFi/broadband IPs (optional) — in se aaye punch GPS ke bina allowed
+    # v121: IP count limit hata di (19+ office WiFis) — sirf format validate hota hai
     import re as _re
     raw_ips = payload.get("ips") or []
-    if not isinstance(raw_ips, list) or len(raw_ips) > 10:
-        raise HTTPException(status_code=400, detail="You can add at most 10 WiFi IPs")
+    if not isinstance(raw_ips, list):
+        raise HTTPException(status_code=400, detail="WiFi IPs list bhejo")
     clean_ips = []
     for ip in raw_ips:
         ip = str(ip).strip()

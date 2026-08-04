@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- MVS Portal v120 -->
+<!-- MVS Portal v121 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -16186,10 +16186,20 @@ async function openOfficeLocation(){
 }
 function _olRenderIps(){
   const el=document.getElementById('ol-ip-list'); if(!el) return;
-  el.innerHTML=window._olIps.length
-    ? window._olIps.map((ip,i)=>`<div class="pc-task"><div class="t"><div class="tt">${esc(ip)}</div><div class="td">Office WiFi — punching on this network works without GPS</div></div>
-      <button class="btn btn-ghost btn-sm" onclick="olDelIp(${i})">Remove</button></div>`).join('')
-    : '<div style="font-size:.76rem;color:var(--text-muted);margin-bottom:8px">No WiFi IPs yet — punching from PC/4G will ask for GPS location.</div>';
+  const ips=window._olIps;
+  if(!ips.length){
+    el.innerHTML='<div style="font-size:.76rem;color:var(--text-muted);margin-bottom:8px">No WiFi IPs yet — punching from PC/4G will ask for GPS location.</div>';
+  } else {
+    const rows=ips.map((ip,i)=>`<div class="pc-task"><div class="t"><div class="tt">${esc(ip)}</div><div class="td">Office WiFi — punching on this network works without GPS</div></div>
+      <button class="btn btn-ghost btn-sm" onclick="olDelIp(${i})">Remove</button></div>`).join('');
+    // v121: 5 se zyada IPs ho to scroll-box (5 rows dikhte hain) + Hide/Show toggle
+    el.innerHTML=ips.length>5
+      ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+          <div style="font-size:.74rem;color:var(--text-muted)"><b>${ips.length}</b> WiFi IPs — scroll to see all</div>
+          <button class="btn btn-ghost btn-sm" style="padding:3px 10px;font-size:.72rem" id="ol-ip-toggle" onclick="olToggleIps()">Hide list</button></div>
+        <div id="ol-ip-scroll" style="max-height:332px;overflow-y:auto;padding-right:2px">${rows}</div>`
+      : rows;
+  }
   const un=document.getElementById('ol-unknown');
   if(un){
     const list=(window._olUnknown||[]).filter(x=>!window._olIps.includes(x.ip));
@@ -16211,12 +16221,19 @@ async function olAddMyIp(){
     const ip=String(d.ip||'').trim();
     if(!ip){ if(n) n.innerHTML='<div class="alert alert-danger" style="font-size:.8rem;margin-bottom:0">Could not detect the IP.</div>'; return; }
     if(window._olIps.includes(ip)){ if(n) n.innerHTML=`<div class="alert alert-info" style="font-size:.8rem;margin-bottom:0">IP ${esc(ip)} is already on the list.</div>`; return; }
-    if(window._olIps.length>=10){ if(n) n.innerHTML='<div class="alert alert-danger" style="font-size:.8rem;margin-bottom:0">Max 10 IPs.</div>'; return; }
     window._olIps.push(ip); _olRenderIps();
     if(n) n.innerHTML=`<div class="alert alert-success" style="font-size:.8rem;margin-bottom:0">This PC's IP <b>${esc(ip)}</b> added — don't forget to Save.</div>`;
   }catch(e){ if(n) n.innerHTML=`<div class="alert alert-danger" style="font-size:.8rem;margin-bottom:0">${esc(e.message)}</div>`; }
 }
 function olDelIp(i){ window._olIps.splice(i,1); _olRenderIps(); }
+// v121: IP list collapse/expand (5+ IPs pe)
+function olToggleIps(){
+  const sc=document.getElementById('ol-ip-scroll'), t=document.getElementById('ol-ip-toggle');
+  if(!sc||!t) return;
+  const hid=sc.style.display==='none';
+  sc.style.display=hid?'':'none';
+  t.textContent=hid?'Hide list':`Show list (${window._olIps.length})`;
+}
 function _olRenderList(){
   const el=document.getElementById('ol-list'); if(!el) return;
   if(!window._olOffices.length){ el.innerHTML='<div class="alert alert-warning" style="font-size:.82rem">No branches yet — <b>geofence is OFF</b>; teachers can punch from anywhere (including home).</div>'; return; }
