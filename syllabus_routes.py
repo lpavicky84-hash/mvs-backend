@@ -2081,20 +2081,52 @@ def chapters_resolve(request: Request, payload: dict = Body(...), db: Session = 
 # Timetable helper - imported by admin_routes.py and teacher_routes.py
 # ---------------------------------------------------------------------------
 
+# v124: timetable me tests, doubt classes, PYQ marathons jaise rows chapters nahi
+# hote — inko syllabus se match karna bekaar hai (hamesha red reject deta tha aur
+# "Remove unmatched" se delete hone ka dar rehta tha). Pehle detect karke event banao.
+_EVENT_RX = re.compile(
+    r"(\bpyqs?\b|\bdpps?\b|\bmock\b|\bmarathon\b|\borientation\b|\bmotivation(?:al)?\b"
+    r"|\bcounsell?ing\b|\bseminar\b|\bwebinar\b|\bworkshop\b|\bbootcamp\b|\bcrash\s*course\b"
+    r"|\bdoubts?\b|\btests?\b|\bquiz(?:zes)?\b|\bseries\b|\brevision\b|\bstrategy\b"
+    r"|\bhow\s+to\b|\bscore\s*\d+|\bsolutions?\b|\bdiscussion\b|\bpractice\b"
+    r"|\bholiday\b|\bptm\b|\bsession\b|\banswers?\s+key\b|\bsample\s+paper\b)",
+    re.I)
+_CHAPTER_START_RX = re.compile(r"^\s*(chapter|lesson|module|unit|ch\.?|lec(?:ture)?\.?)\s*\d", re.I)
+
+def _looks_like_event(text):
+    """True jab row kisi book chapter ki jagah ek activity/event ho (test, doubt class...).
+    'Chapter 5 ...' jaisi numbered heading ko kabhi event nahi maante — wo asli chapter hai."""
+    t = (text or "").strip()
+    if not t:
+        return False
+    if _CHAPTER_START_RX.match(t):
+        return False
+    return bool(_EVENT_RX.search(t))
+
+def _tag_event_row(r, note):
+    r["type"] = "event"
+    r["match_action"] = "event"
+    r["match_kind"] = "event"
+    r["match_note"] = note
+    r["match_candidates"] = []
+    return r
+
 def annotate_timetable_rows(db, class_name, rows):
     """
     Tag every parsed timetable row with a chapter match result.
 
     Adds to each row:
-        match_action   accept | review | reject | no_master
+        match_action   accept | review | reject | no_master | event
         match_no       canonical lesson number when accepted
         match_title    canonical chapter title when accepted
-        match_kind     PE or TMA
+        match_kind     PE or TMA (or "event")
         match_note     reason shown to the admin
 
     Nothing is blocked here. The admin sees the tags in the preview screen and
     decides. This is what stops grammar sub-topics and revision slots from
-    silently becoming chapters.
+    silently becoming chapters. v124: event-like rows (tests, doubt classes,
+    PYQ / revision / strategy sessions) are tagged "event" up front so they
+    never get a red reject badge and are never dropped by "Remove unmatched".
     """
     try:
         _ensure_syllabus(db)
@@ -2104,6 +2136,13 @@ def annotate_timetable_rows(db, class_name, rows):
     cache = {}
     for r in rows:
         try:
+            # Parser ne khud event bola ya naam activity jaisa hai -> chapter matching skip
+            if (r.get("type") or "").strip().lower() == "event":
+                _tag_event_row(r, "Event / activity — saved as typed, not matched against the syllabus.")
+                continue
+            if _looks_like_event(r.get("chapter")):
+                _tag_event_row(r, "Looks like an event / activity, not a book chapter — saved as typed.")
+                continue
             name = (r.get("subject") or "").strip()
             if name not in cache:
                 c = subject_code_for_name(db, cl, name) if cl else None

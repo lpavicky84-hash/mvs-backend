@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- MVS Portal v123 -->
+<!-- MVS Portal v124 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -639,7 +639,8 @@
   .ex-qhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
   .ex-qcard textarea{margin-bottom:8px}
   .ex-opts{display:flex;flex-direction:column;gap:7px;margin:4px 0 10px}
-  .ex-opt{display:flex;align-items:center;gap:9px}
+  .ex-opt{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .ex-prev-o{flex-basis:100%;margin:0 0 2px 27px}
   .ex-opt input[type=radio]{width:18px;height:18px;flex-shrink:0;accent-color:var(--primary)}
   .ex-opt .form-control{margin:0}
   .ex-marks{display:flex;align-items:center;gap:10px}.ex-marks label{font-size:.8rem;font-weight:600;color:var(--text-muted)}
@@ -3384,7 +3385,7 @@ async function pdfSubjOptions(selId,cls){
 }
 function openAdminPdf(){
   showModal(' PDF Upload — All Subjects',
- `<div class="alert alert-info"><strong>One PDF for all subjects</strong> — the subject of each page is detected automatically.<div style="margin-top:6px"><a href="javascript:downloadDemoTT()" style="font-weight:700;color:var(--primary)">Download the demo format (All Subjects, Word) — build your timetable in this format for a perfect parse</a></div></div><div class="form-group"><label>Class</label>${classSelect('apdf-class')}</div><div class="form-group"><label>Subject</label><select class="form-control" id="apdf-subject"><option value="">\u2728 Auto-detect (PDF ke title se)</option></select></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('apdf-file').click()" ondragover="fdOver(event,this)" ondragleave="fdLeave(event,this)" ondrop="fdDrop(event,this,'apdf-file','apdf-label')"><div class="fd-icon"></div><div id="apdf-label" style="font-size:.85rem">Click to choose a PDF, or drag and drop it here</div><input type="file" id="apdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('apdf-label').textContent=this.files[0]?.name||''"></div></div><div id="apdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="apdf-replace"> Replace existing entries for the same subject</label></div><div id="apdf-status"></div>`,
+ `<div class="alert alert-info"><strong>One PDF for all subjects</strong> — the subject of each page is detected automatically.<div style="margin-top:6px"><a href="javascript:downloadDemoTT()" style="font-weight:700;color:var(--primary)">Download the demo format (All Subjects, Word) — build your timetable in this format for a perfect parse</a></div></div><div class="form-group"><label>Class</label>${classSelect('apdf-class')}</div><div class="form-group"><label>Subject</label><select class="form-control" id="apdf-subject"><option value="">\u2728 Auto-detect (PDF ke title se)</option></select></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('apdf-file').click()" ondragover="fdOver(event,this)" ondragleave="fdLeave(event,this)" ondrop="fdDrop(event,this,'apdf-file','apdf-label')"><div class="fd-icon"></div><div id="apdf-label" style="font-size:.85rem">Click to choose a PDF, or drag and drop it here</div><input type="file" id="apdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('apdf-label').textContent=this.files[0]?.name||''"></div></div><div id="apdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="apdf-replace"> Replace existing entries for the same subject</label></div><div class="form-group" id="apdf-fd-wrap" style="display:none;margin-top:-6px"><label>Change only from this date onwards (optional)</label><input type="date" class="form-control" id="apdf-from"><div style="font-size:.75rem;color:var(--text-muted);margin-top:4px">Classes before this date stay exactly as they are — only entries from this date onwards are replaced by the new PDF.</div></div><div id="apdf-status"></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="apdf-btn" onclick="uploadAdminPdf()">Upload & Parse</button>`);
   const clsSel=document.getElementById('apdf-class');
   const cls=()=>String((clsSel&&clsSel.value)||'').replace(/\D/g,'')||'12';
@@ -3392,6 +3393,9 @@ function openAdminPdf(){
   if(clsSel) clsSel.addEventListener('change',()=>{ pdfSubjOptions('apdf-subject',cls()); const _w=document.getElementById('apdf-warn'); if(_w) _w.innerHTML=''; });
   const subSel=document.getElementById('apdf-subject');
   if(subSel) subSel.addEventListener('change',()=>pdfReplaceWarn(subSel.value,(typeof _attEntries!=='undefined'?_attEntries:[]),'apdf-warn','apdf-replace',cls()));
+  // v124: partial replace — date picker sirf tab dikhao jab Replace on ho
+  const repCb=document.getElementById('apdf-replace');
+  if(repCb) repCb.addEventListener('change',()=>{ const w=document.getElementById('apdf-fd-wrap'); if(w) w.style.display=repCb.checked?'':'none'; });
 }
 async function uploadAdminPdf(){
   const fi=document.getElementById('apdf-file');
@@ -3401,13 +3405,16 @@ async function uploadAdminPdf(){
   const fd=new FormData();
   fd.append('file',fi.files[0]); fd.append('class_name',val('apdf-class'));
   fd.append('subject',val('apdf-subject')||''); fd.append('replace',document.getElementById('apdf-replace').checked?'true':'false');
+  // v124: partial replace — date chuni ho to backend ko bhejo (sirf us date se aage badlega)
+  const _fd=(document.getElementById('apdf-replace').checked)?(val('apdf-from')||''):'';
+  if(_fd) fd.append('from_date',_fd);
   fd.append('preview','true');
   try{
  const r=await fetch(API+'/api/admin/timetable-pdf',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
  const d=await r.json(); if(!r.ok) throw new Error(d.detail||'Error');
  const _cls=val('apdf-class'), _rep=document.getElementById('apdf-replace')&&document.getElementById('apdf-replace').checked;
  closeModal();
- openPdfPreview(d.preview||[],{isAdmin:true,class_name:_cls,replace:_rep});
+ openPdfPreview(d.preview||[],{isAdmin:true,class_name:_cls,replace:_rep,from_date:_fd,skipped_before:(d.skipped_before_date||0)});
  return;
   }catch(e){ st.innerHTML=`<div class="alert alert-danger"> ${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Upload & Parse'; }
 }
@@ -6560,6 +6567,15 @@ function examPrev(inp,prevId){
   if(p.querySelector('.rt-msrc')&&!window.katex){ const n=+(p.dataset.kx||0)+1; p.dataset.kx=n; if(n<10) setTimeout(()=>examPrev(inp,prevId),600); }
   else p.dataset.kx='0';
 }
+// v124: option boxes ka live rendered preview — question/answer jaisa hi.
+// Sirf tab dikhao jab maths/symbol signals hon; plain text options pe extra box nahi.
+function examOptPrev(inp,prevId){
+  const p=document.getElementById(prevId); if(!p) return;
+  const v=(inp&&inp.value)||'';
+  if(!/[$\\]|[_^][{0-9A-Za-z]|[°′″±×÷√∫πθ≤≥≠≈∞→∠∴∵½⅓¼¾]|[α-ωΑ-Ω]|\b(?:frac|sqrt|theta|alpha|beta|gamma|delta|lambda|pi|circ|times|div|pm|leq|geq|neq|infty|angle|triangle|therefore|prime)\b/i.test(v)){ p.style.display='none'; p.innerHTML=''; return; }
+  p.style.display='';
+  examPrev(inp,prevId);
+}
 function _setExamImg(i,d){ _examQs[i].image_b64=d; renderExamQs(); }
 async function _examReadImg(f){
   // Phone photos 5-10MB raw hote hain — compress karke JPEG dataURL (~200-400KB)
@@ -6719,9 +6735,9 @@ function renderExamQs(){
       let opts;
       if(isHi){
         const oh=q.opts_hi||['','','',''];
-        opts=oh.map((o,j)=>`<div class="ex-opt"><span class="ex-opt-letter">${String.fromCharCode(65+j)}</span><input class="form-control" placeholder="\u0935\u093f\u0915\u0932\u094d\u092a ${j+1} (\u0939\u093f\u0902\u0926\u0940)" value="${esc(o||'')}" onfocus="_lastField=this" oninput="_examQs[${i}].opts_hi[${j}]=this.value"></div>`).join('');
+        opts=oh.map((o,j)=>`<div class="ex-opt"><span class="ex-opt-letter">${String.fromCharCode(65+j)}</span><input class="form-control" id="oxh-${i}-${j}" placeholder="\u0935\u093f\u0915\u0932\u094d\u092a ${j+1} (\u0939\u093f\u0902\u0926\u0940)" value="${esc(o||'')}" onfocus="_lastField=this" oninput="_examQs[${i}].opts_hi[${j}]=this.value;examOptPrev(this,'pv-oh-${i}-${j}')"><div class="ex-prev ex-prev-o" id="pv-oh-${i}-${j}" style="display:none"></div></div>`).join('');
       } else {
-        opts=q.opts.map((o,j)=>`<div class="ex-opt"><input type="radio" name="exc-${i}" ${q.correct===j?'checked':''} onclick="_examQs[${i}].correct=${j}" title="Mark as the correct answer"><input class="form-control" placeholder="Option ${j+1}" value="${esc(o)}" onfocus="_lastField=this" oninput="_examQs[${i}].opts[${j}]=this.value"></div>`).join('');
+        opts=q.opts.map((o,j)=>`<div class="ex-opt"><input type="radio" name="exc-${i}" ${q.correct===j?'checked':''} onclick="_examQs[${i}].correct=${j}" title="Mark as the correct answer"><input class="form-control" id="exo-${i}-${j}" placeholder="Option ${j+1}" value="${esc(o)}" onfocus="_lastField=this" oninput="_examQs[${i}].opts[${j}]=this.value;examOptPrev(this,'pv-o-${i}-${j}')"><div class="ex-prev ex-prev-o" id="pv-o-${i}-${j}" style="display:none"></div></div>`).join('');
       }
       const marks=isHi?'':`<div class="ex-marks"><label>Marks</label><input type="number" class="form-control" style="width:80px" value="${q.marks}" oninput="_examQs[${i}].marks=this.value"></div>`;
       const eval_=isHi?(q.expl_hi||''):(q.expl||'');
@@ -6744,6 +6760,9 @@ function renderExamQs(){
     const pq=document.getElementById('pv-q-'+i); if(pq){pq.innerHTML=_fmtRich(isHi?(q.q_hi||''):(q.q||''));renderMath(pq);}
     const pa=document.getElementById('pv-a-'+i); if(pa){pa.innerHTML=_fmtRich(isHi?(q.model_hi||''):(q.model||''));renderMath(pa);}
     const pe=document.getElementById('pv-e-'+i); if(pe){pe.innerHTML=_fmtRich(isHi?(q.expl_hi||''):(q.expl||''));renderMath(pe);}
+    // v124: khuli hui options ke previews bhi bharo (edit mode / re-render pe)
+    const _ol=isHi?(q.opts_hi||[]):(q.opts||[]);
+    _ol.forEach((ov,j)=>{ const ip=document.getElementById((isHi?'oxh-':'exo-')+i+'-'+j); if(ip) examOptPrev(ip,(isHi?'pv-oh-':'pv-o-')+i+'-'+j); });
   });
   // Header ke "Translate All" pe kitne question abhi Hindi me baaki hain
   const trAll=document.getElementById('ex-tr-all');
@@ -14761,7 +14780,8 @@ window._pdfPreview=null;
 function openPdfPreview(rows,opts){
   window._pdfPreview={rows:(rows||[]).map(r=>({subject:r.subject||'',chapter:r.chapter||'',part:r.part||'',date:r.date||'',day:r.day||'',time:r.time||'',type:r.type||'chapter',_grammar:(r.type||'chapter')!=='event'&&_isNonBookChapter(r.chapter),match_action:r.match_action||'',match_no:r.match_no||'',match_title:r.match_title||'',match_kind:r.match_kind||'',match_note:r.match_note||'',match_score:r.match_score,match_candidates:r.match_candidates||[]})),
     isAdmin:!!(opts&&opts.isAdmin), class_name:(opts&&opts.class_name)||'Class 12',
-    replace:(opts&&opts.replace)?'true':'false'};
+    replace:(opts&&opts.replace)?'true':'false',
+    from_date:(opts&&opts.from_date)||'', skipped_before:+(opts&&opts.skipped_before)||0};
   showModal('Check Chapters \u2014 Preview',
    '<div id="pvw-head"></div><div class="pvw-list" id="pvw-list"></div>',
    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="pvw-btn" onclick="commitPdfPreview()">Final Upload</button>');
@@ -14774,7 +14794,9 @@ function renderPdfPreview(){
   const subs=[...new Set(P.rows.map(r=>r.subject).filter(Boolean))];
   const chaps=new Set(P.rows.filter(r=>r.type!=='event'&&!_isNonBookChapter(r.chapter)).map(r=>r.subject+'|'+(r.chapter||'').toLowerCase()));
   const gcount=new Set(P.rows.filter(r=>r.type!=='event'&&_isNonBookChapter(r.chapter)).map(r=>r.subject+'|'+(r.chapter||'').toLowerCase()));
-  head.innerHTML=`<div class="alert alert-info" style="margin-bottom:8px"><strong>${P.rows.length} entries \u00b7 ${chaps.size} chapters</strong>${gcount.size?` <span style="color:#b07f1e">+ ${gcount.size} grammar</span>`:''} \u00b7 ${esc(P.class_name)}${subs.length?` \u00b7 ${esc(subs.join(', '))}`:''}<br><span style="font-size:.8rem">Nothing is saved yet. Use the <b>Chapter/Grammar</b> toggle to mark entries (grammar is not counted), <b>Split</b> to separate merged entries, and delete to remove extras \u2014 then tap <b>Final Upload</b>.</span></div>` + _sylSummary(P.rows);
+  head.innerHTML=`<div class="alert alert-info" style="margin-bottom:8px"><strong>${P.rows.length} entries \u00b7 ${chaps.size} chapters</strong>${gcount.size?` <span style="color:#b07f1e">+ ${gcount.size} grammar</span>`:''} \u00b7 ${esc(P.class_name)}${subs.length?` \u00b7 ${esc(subs.join(', '))}`:''}<br><span style="font-size:.8rem">Nothing is saved yet. Use the <b>Chapter/Grammar</b> toggle to mark entries (grammar is not counted), <b>Split</b> to separate merged entries, and delete to remove extras \u2014 then tap <b>Final Upload</b>.</span></div>`
+   + ((P.from_date&&P.replace==='true')?`<div class="alert alert-warning" style="margin-bottom:8px"><strong>Partial replace active:</strong> entries from <b>${esc(fmtNice(P.from_date))}</b> onwards will be replaced \u2014 everything before that date stays exactly as it is.${P.skipped_before?` ${P.skipped_before} PDF row${P.skipped_before===1?'':'s'} before that date ${P.skipped_before===1?'was':'were'} left out.`:''}</div>`:'')
+   + _sylSummary(P.rows);
   const b=document.getElementById('pvw-btn');
   if(!P.rows.length){ list.innerHTML='<div class="ws-empty"><p>All rows have been deleted.</p></div>'; if(b) b.disabled=true; return; }
   if(b) b.disabled=false;
@@ -14824,7 +14846,7 @@ async function commitPdfPreview(){
   if(!P.rows.length){ toast('No rows left.',true); return; }
   const btn=document.getElementById('pvw-btn'); btn.disabled=true; btn.textContent='Uploading...';
   try{
-    const r=await api((P.isAdmin?'/api/admin/':'/api/teacher/')+'timetable-pdf-commit','POST',{rows:P.rows,class_name:P.class_name,replace:P.replace});
+    const r=await api((P.isAdmin?'/api/admin/':'/api/teacher/')+'timetable-pdf-commit','POST',{rows:P.rows,class_name:P.class_name,replace:P.replace,from_date:(P.from_date||'')});
     const isA=P.isAdmin; window._pdfPreview=null; closeModal();
     toast(r.added+' entries uploaded! ');
     if(isA) loadATimetable(); else loadTTimetable();
@@ -17707,6 +17729,7 @@ body.dark .po-pill.red{color:#f87171}
 .pvw-match.rv{color:#a16207}
 .pvw-match.no{color:#b91c1c}
 .pvw-match.nm{color:#8a7c55}
+.pvw-match.ev{color:#3730a3}
 @media(max-width:760px){
   .syl-grid{grid-template-columns:1fr}
   .syl-scroll{max-height:none}
@@ -20759,20 +20782,22 @@ function _sylBadge(r){
     +' ['+esc(r.match_kind||'')+']</span>';
   if(a==='review') return '<span class="pvw-match rv">Close to '+esc(r.match_no||'')+' '+esc(r.match_title||'')
     +' &mdash; please confirm</span>';
+  if(a==='event') return '<span class="pvw-match ev">Event / activity &mdash; saved as typed, not counted as a syllabus chapter</span>';
   if(a==='reject') return '<span class="pvw-match no">Not in the verified syllabus'
     +(r.match_candidates&&r.match_candidates.length?' &mdash; did you mean '+esc(r.match_candidates[0])+'?':'')+'</span>';
   return '<span class="pvw-match nm">Syllabus not verified for this subject</span>';
 }
 
 function _sylSummary(rows){
-  var a=0,rv=0,no=0,nm=0;
+  var a=0,rv=0,no=0,nm=0,ev=0;
   rows.forEach(function(r){
     if(r.match_action==='accept')a++; else if(r.match_action==='review')rv++;
     else if(r.match_action==='reject')no++; else if(r.match_action==='no_master')nm++;
+    else if(r.match_action==='event')ev++;
   });
-  if(!a&&!rv&&!no&&!nm) return '';
+  if(!a&&!rv&&!no&&!nm&&!ev) return '';
   var h='<div class="alert alert-info" style="margin-bottom:8px"><strong>Syllabus check:</strong> '
-   +a+' matched, '+rv+' need confirmation, '+no+' not in syllabus'+(nm?', '+nm+' subject not verified':'')+'.';
+   +a+' matched, '+rv+' need confirmation, '+no+' not in syllabus'+(ev?', '+ev+' event'+(ev===1?'':'s'):'')+(nm?', '+nm+' subject not verified':'')+'.';
   if(no) h+=' <button class="btn btn-danger btn-sm" style="margin-left:8px" onclick="pvwDropRejected()">Remove the '+no+' unmatched rows</button>';
   return h+'</div>';
 }

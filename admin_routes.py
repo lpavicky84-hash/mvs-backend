@@ -853,6 +853,7 @@ async def admin_upload_timetable_pdf(
     subject: str = Form(""),
     replace: str = Form("false"),
     preview: str = Form("false"),
+    from_date: str = Form(""),
     db: Session = Depends(get_db),
     _=Depends(get_admin)
 ):
@@ -869,6 +870,30 @@ async def admin_upload_timetable_pdf(
     if _SR is not None:
         for r in rows:
             r["subject"] = _SR.canon_display(r.get("subject"), class_name)
+    # v124: partial replace — from_date mila to sirf us date se AAGE ki rows lo;
+    # us se pahle ka timetable bilkul as-is rehta hai (na delete, na insert).
+    from_dt = None
+    if (from_date or "").strip():
+        try:
+            from_dt = datetime.strptime(from_date.strip(), "%Y-%m-%d").date()
+        except Exception:
+            raise HTTPException(status_code=400, detail="from_date must be in YYYY-MM-DD format.")
+    skipped_before = 0
+    if from_dt:
+        _kept = []
+        for r in rows:
+            try:
+                _rd = datetime.strptime(r.get("date") or "", "%Y-%m-%d").date()
+            except Exception:
+                _rd = None
+            if _rd is not None and _rd >= from_dt:
+                _kept.append(r)
+            else:
+                skipped_before += 1
+        rows = _kept
+        if not rows:
+            raise HTTPException(status_code=400,
+                detail=f"No classes on or after {from_dt.isoformat()} were found in this PDF — nothing was changed.")
     subjects_found = sorted(set(r["subject"] for r in rows))
     # preview mode: sirf parsed rows dikhao, DB me kuch save mat karo
     if preview.lower() == "true":
@@ -877,13 +902,19 @@ async def admin_upload_timetable_pdf(
             rows = syllabus_routes.annotate_timetable_rows(db, class_name, rows)
         except Exception:
             pass
-        return {"added": 0, "subjects": subjects_found, "preview": rows}
+        return {"added": 0, "subjects": subjects_found, "preview": rows,
+                "from_date": (from_dt.isoformat() if from_dt else ""),
+                "skipped_before_date": skipped_before}
     # replace sirf SAME CLASS ki entries hatao — dusri class ka same-name subject alag timetable hai
     if replace.lower() == "true":
-        db.query(TimetableEntry).filter(
+        _delq = db.query(TimetableEntry).filter(
             TimetableEntry.subject.in_(subjects_found),
             TimetableEntry.class_name == class_name
-        ).delete(synchronize_session=False)
+        )
+        if from_dt:
+            # entry_date NULL ya from_dt se pahle wali entries haath hi nahi lagti
+            _delq = _delq.filter(TimetableEntry.entry_date >= from_dt)
+        _delq.delete(synchronize_session=False)
     added = 0
     for r in rows:
         edate = None
@@ -896,7 +927,9 @@ async def admin_upload_timetable_pdf(
         ))
         added += 1
     db.commit()
-    return {"added": added, "subjects": subjects_found}
+    return {"added": added, "subjects": subjects_found,
+            "from_date": (from_dt.isoformat() if from_dt else ""),
+            "skipped_before_date": skipped_before}
 
 # ===== ADMIN: TIMETABLE PDF COMMIT (preview me edit/delete/split ke baad final save) =====
 @router.post("/timetable-pdf-commit")
@@ -905,6 +938,14 @@ def admin_timetable_pdf_commit(payload: dict, db: Session = Depends(get_db), _=D
     rows = payload.get("rows") or []
     class_name = (payload.get("class_name") or "Class 12").strip()
     replace = str(payload.get("replace") or "false")
+    # v124: partial replace — from_date se pahle ki purani entries as-is rakho
+    from_dt = None
+    _fd = (payload.get("from_date") or "").strip()
+    if _fd:
+        try:
+            from_dt = datetime.strptime(_fd, "%Y-%m-%d").date()
+        except Exception:
+            raise HTTPException(status_code=400, detail="from_date must be in YYYY-MM-DD format.")
     clean = []
     for r in rows:
         sub = (r.get("subject") or "").strip()
@@ -914,6 +955,18 @@ def admin_timetable_pdf_commit(payload: dict, db: Session = Depends(get_db), _=D
         clean.append({"subject": sub, "chapter": ch, "part": (r.get("part") or "").strip() or None,
                       "date": r.get("date") or "", "day": (r.get("day") or "").strip(),
                       "time": (r.get("time") or "").strip(), "type": r.get("type") or "chapter"})
+    if from_dt:
+        # from_date se pahle ki rows commit hi mat karo — wo purani entries ke saath
+        # pahle se safe hain (double-safety, preview pehle hi filter kar chuka hota hai)
+        _kept = []
+        for r in clean:
+            try:
+                _rd = datetime.strptime(r["date"], "%Y-%m-%d").date()
+            except Exception:
+                _rd = None
+            if _rd is not None and _rd >= from_dt:
+                _kept.append(r)
+        clean = _kept
     if not clean:
         raise HTTPException(status_code=400, detail="No valid rows left — keep at least 1 chapter.")
     if _SR is not None:
@@ -921,10 +974,13 @@ def admin_timetable_pdf_commit(payload: dict, db: Session = Depends(get_db), _=D
             r["subject"] = _SR.canon_display(r.get("subject"), class_name)
     subjects_found = sorted(set(r["subject"] for r in clean))
     if replace.lower() == "true":
-        db.query(TimetableEntry).filter(
+        _delq = db.query(TimetableEntry).filter(
             TimetableEntry.subject.in_(subjects_found),
             TimetableEntry.class_name == class_name
-        ).delete(synchronize_session=False)
+        )
+        if from_dt:
+            _delq = _delq.filter(TimetableEntry.entry_date >= from_dt)
+        _delq.delete(synchronize_session=False)
     added = 0
     for r in clean:
         edate = None
@@ -937,7 +993,8 @@ def admin_timetable_pdf_commit(payload: dict, db: Session = Depends(get_db), _=D
         ))
         added += 1
     db.commit()
-    return {"added": added, "subjects": subjects_found}
+    return {"added": added, "subjects": subjects_found,
+            "from_date": (from_dt.isoformat() if from_dt else "")}
 
 # ===== ADMIN: SEND NOTIFICATION (target teachers/students/all) =====
 @router.get("/notify-targets")
