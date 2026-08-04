@@ -888,9 +888,19 @@ def student_materials_v2(db: Session = Depends(get_db), current_user=Depends(get
     ).order_by(Material.subject, Material.chapter, Material.created_at.desc()).all()
     # Same-naam subject (Class 10 & 12) ho to sirf apni class ka material dikhe
     # (material pe class tag nahi hai to sabko dikhta hai — backward compatible)
+    # v123: single-class subject (Social Science=10) ka purana galat-tagged material
+    # bhi sahi students ko dikhe — effective class = official class (read-time heal).
+    from teacher_routes import _subj_class_digits as _scd
+    _fxcache = {}
     out = []
     for m in ms:
-        mc = _class_digits(getattr(m, "class_name", ""))
+        _nm = _subj_norm(m.subject)
+        if _nm not in _fxcache:
+            try:
+                _fxcache[_nm] = _scd(db, m.subject)
+            except Exception:
+                _fxcache[_nm] = None
+        mc = _fxcache[_nm] or _class_digits(getattr(m, "class_name", ""))
         if my_cls and mc and mc != my_cls:
             continue
         out.append({"id": m.id, "subject": m.subject, "chapter": m.chapter, "type": m.material_type,

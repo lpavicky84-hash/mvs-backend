@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- MVS Portal v122 -->
+<!-- MVS Portal v123 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -4017,7 +4017,7 @@ async function loadTDashboard(){
   try{
  const d=await api('/api/teacher/dashboard');
  document.getElementById('t-subjects').textContent='Teacher';
- el.innerHTML=`${greetingCard(NAME,_tSuffix)}<div id="t-punch-wrap"></div><div class="stats-grid">${statCard('Classes Done',d.total_done,'check','green')}${statCard('Pending',d.total_pending,'clipboard','amber')}${statCard('DPPs',d.total_dpps,'clipboard','indigo',"navTo('teacher-app','dpp')")}${statCard('Tests',d.total_tests,'edit','teal',"navTo('teacher-app','tests')")}${statCard('Unresolved Doubts',d.unresolved_doubts,'help','red',"navTo('teacher-app','doubts')")}</div><div class="card"><div class="card-header"><h3> Today's Classes</h3></div><div class="card-body"><div id="t-today-wrap"><div class="spinner"></div></div></div></div>`;
+ el.innerHTML=`${greetingCard(NAME,_tSuffix)}<div class="card"><div class="card-header"><h3> Today's Classes</h3></div><div class="card-body"><div id="t-today-wrap"><div class="spinner"></div></div></div></div><div id="t-punch-wrap"></div><div class="stats-grid">${statCard('Classes Done',d.total_done,'check','green')}${statCard('Pending',d.total_pending,'clipboard','amber')}${statCard('DPPs',d.total_dpps,'clipboard','indigo',"navTo('teacher-app','dpp')")}${statCard('Tests',d.total_tests,'edit','teal',"navTo('teacher-app','tests')")}${statCard('Unresolved Doubts',d.unresolved_doubts,'help','red',"navTo('teacher-app','doubts')")}</div>`;
  const badge=document.getElementById('t-doubt-badge');
  if(d.unresolved_doubts>0){ badge.style.display='inline-block'; badge.textContent=d.unresolved_doubts; } else badge.style.display='none';
  renderPunchCard('t-punch-wrap');
@@ -4132,6 +4132,7 @@ async function loadTeacherToday(wrapId){
   const wrap=document.getElementById(wrapId||'t-today-wrap'); if(!wrap) return;
   try{
  const cls=await api('/api/teacher/today-classes');
+ window._tClasses=cls; // v123: Submit Report modal (openClassReport) isi list se class prefill karta hai
  if(cls.length===0){ wrap.innerHTML='<div class="empty-state"><div class="empty-icon"></div><p>No classes today.</p></div>'; return; }
  const now=new Date();
  wrap.innerHTML=cls.map(e=>{
@@ -4139,17 +4140,21 @@ async function loadTeacherToday(wrapId){
  const over=dt && now>new Date(dt.getTime()+0);
  const isEvent=e.type==='event';
  const bareTopic=!isEvent && /^part\s*\d+$/i.test((e.part||'').trim());
- const ch=encodeURIComponent(e.chapter||''); const sub=encodeURIComponent(e.subject);
+ const ch=encodeURIComponent(e.chapter||''); const sub=encodeURIComponent(e.subject); const cln=encodeURIComponent(e.class_name||'');
  // status / actions
  let right='';
  if(bareTopic){
  right=`<span class="tstatus" style="background:rgba(239,68,68,.15);color:var(--danger)"> Topic Pending</span><button class="btn btn-ghost btn-sm" onclick="openEditTopic(${e.id},'${encodeURIComponent(e.part||'')}')"> Add Topic</button>`;
  } else if(isEvent){
  right=`<span class="tchip">${esc(e.time||'')}</span>`;
- } else if(e.notes){
+ } else if(e.notes && e.completed){
  right=`<span class="tstatus done"> Lecture Done · Material Done</span>`;
  } else if(over){
- right=`<button class="btn btn-primary btn-sm" onclick="openUploadHub({type:'notes',chapter:decodeURIComponent('${ch}'),subject:decodeURIComponent('${sub}')})"> Upload Notes</button><button class="btn btn-ghost btn-sm" onclick="openUploadHub({type:'dpp',chapter:decodeURIComponent('${ch}'),subject:decodeURIComponent('${sub}')})"> DPP</button><span class="tstatus" style="background:rgba(245,158,11,.15);color:var(--warning)">Material Pending</span>`;
+ let _b='';
+ if(!e.completed) _b+=`<button class="btn btn-success btn-sm" onclick="openClassReport(${e.id})"> Submit Report</button>`;
+ if(!e.notes) _b+=`<button class="btn btn-primary btn-sm" onclick="openUploadHub({type:'notes',chapter:decodeURIComponent('${ch}'),subject:decodeURIComponent('${sub}'),class_name:decodeURIComponent('${cln}')})"> Upload Notes</button><button class="btn btn-ghost btn-sm" onclick="openUploadHub({type:'dpp',chapter:decodeURIComponent('${ch}'),subject:decodeURIComponent('${sub}'),class_name:decodeURIComponent('${cln}')})"> DPP</button>`;
+ _b+=`<span class="tstatus" style="background:rgba(245,158,11,.15);color:var(--warning)">${!e.completed?'Report Pending':'Material Pending'}</span>`;
+ right=_b;
  } else {
  right=`<span class="tstatus upcoming">Upcoming</span>`;
  }
@@ -4777,9 +4782,10 @@ async function openUploadHub(prefill){
   prefill=prefill||{};
   try{
     const es=await api('/api/teacher/my-timetable');
-    _uhMap={};
-    es.forEach(e=>{ if(e.type!=='event'&&e.chapter){ (_uhMap[e.subject]=_uhMap[e.subject]||[]); if(!_uhMap[e.subject].includes(e.chapter)) _uhMap[e.subject].push(e.chapter); } });
-  }catch(e){ _uhMap={}; }
+    _uhMap={}; window._uhClsMap={};
+    es.forEach(e=>{ if(e.type!=='event'&&e.chapter){ (_uhMap[e.subject]=_uhMap[e.subject]||[]); if(!_uhMap[e.subject].includes(e.chapter)) _uhMap[e.subject].push(e.chapter); }
+      const _cd=((String(e.class_name||'').match(/\d+/)||[''])[0]); if(_cd){ (window._uhClsMap[e.subject]=window._uhClsMap[e.subject]||[]); if(!window._uhClsMap[e.subject].includes(_cd)) window._uhClsMap[e.subject].push(_cd); } });
+  }catch(e){ _uhMap={}; window._uhClsMap={}; }
   let subs=Object.keys(_uhMap);
   if(!subs.length&&prefill.subject) subs=[prefill.subject];
   if(!subs.length) subs=['General'];
@@ -4792,6 +4798,7 @@ async function openUploadHub(prefill){
        <div><label class="ex-lbl">Type</label><select class="form-control" id="uh-type" onchange="uhTypeChange()">${typeOpts}</select></div>
        <div><label class="ex-lbl">Subject</label><select class="form-control" id="uh-sub" onchange="uhFillCh()">${subOpts}</select></div>
      </div>
+     <div style="max-width:240px"><label class="ex-lbl">Class</label><select class="form-control" id="uh-cls"><option value="">Auto (from subject)</option><option value="10" ${prefill&&String(prefill.class_name||'').includes('10')?'selected':''}>Class 10</option><option value="12" ${prefill&&String(prefill.class_name||'').includes('12')?'selected':''}>Class 12</option></select></div>
      <div id="uh-cat-wrap" style="display:none"><label class="ex-lbl">Category</label><input class="form-control" id="uh-cat" placeholder="e.g. Formula Sheet / PYQ / Reference"></div>
      <div class="ex-grid2">
        <div><label class="ex-lbl">Chapter</label><input class="form-control" id="uh-ch" list="uh-ch-list" placeholder="Chapter (optional)" value="${esc(prefill.chapter||'')}"><datalist id="uh-ch-list"></datalist></div>
@@ -4806,6 +4813,11 @@ async function openUploadHub(prefill){
 function uhFillCh(){
   const sub=val('uh-sub'); const dl=document.getElementById('uh-ch-list'); if(!dl) return;
   dl.innerHTML=(_uhMap[sub]||[]).map(c=>`<option value="${esc(c)}">`).join('');
+  // v123: subject ki timetable sirf ek class ki ho to Class auto-select (dual-class pe teacher chune)
+  const cs=document.getElementById('uh-cls');
+  if(cs){ const cl=(window._uhClsMap||{})[sub]||[];
+    if(cl.length===1) cs.value=cl[0];
+    else if(cl.length&&cs.value&&!cl.includes(cs.value)) cs.value=''; }
 }
 function uhTypeChange(){
   const t=UPLOAD_TYPES[val('uh-type')]||{mt:'notes'};
@@ -4826,7 +4838,7 @@ async function submitUploadHub(){
   fd.append('file',f); fd.append('subject',val('uh-sub')); fd.append('chapter',val('uh-ch'));
   fd.append('material_type',t.mt); fd.append('title',val('uh-title'));
   fd.append('category',t.mt==='other'?val('uh-cat'):'');
-  fd.append('class_name','Class 12');
+  const _uhClsV=val('uh-cls'); if(_uhClsV) fd.append('class_name','Class '+_uhClsV); // v123: blank -> backend subject ke official class se resolve karega
   if(t.mt==='test') fd.append('duration_min',val('uh-dur')||60);
   try{
     await new Promise((resolve,reject)=>{
@@ -10821,7 +10833,7 @@ async function submitTTDelete(){
 }
 function openAdminMaterial(){
   showModal('Upload Material (Admin)',
- `<div class="alert alert-info">The admin can upload any material directly. Students of that subject will be notified.</div><div class="form-group"><label>Subject</label><input class="form-control" id="am-sub" placeholder="e.g. Physics"></div><div class="form-group"><label>Type</label><select class="form-control" id="am-type" onchange="amToggle()"><option value="notes">Class Notes</option><option value="dpp">DPP</option><option value="test">Test</option><option value="pyq">Solved PYQs</option><option value="other">Other (category)</option></select></div><div class="form-group" id="am-cat-wrap" style="display:none"><label>Category</label><input class="form-control" id="am-cat" placeholder="e.g. Formula Sheet / PYQ"></div><div class="form-group" id="am-dur-wrap" style="display:none"><label>Test Duration (min)</label><input type="number" class="form-control" id="am-dur" value="60"></div><div class="form-group"><label>Chapter</label><input class="form-control" id="am-ch" placeholder="e.g. Laws of Motion"></div><div class="form-group"><label>Title</label><input class="form-control" id="am-title" placeholder="Title"></div><div class="form-group"><label>PDF File</label>${fileDropHTML('am-file','am-label')}</div><div id="am-status"></div>`,
+ `<div class="alert alert-info">The admin can upload any material directly. Students of that subject will be notified.</div><div class="form-group"><label>Subject</label><input class="form-control" id="am-sub" placeholder="e.g. Physics"></div><div class="form-group"><label>Type</label><select class="form-control" id="am-type" onchange="amToggle()"><option value="notes">Class Notes</option><option value="dpp">DPP</option><option value="test">Test</option><option value="pyq">Solved PYQs</option><option value="other">Other (category)</option></select></div><div class="form-group" id="am-cat-wrap" style="display:none"><label>Category</label><input class="form-control" id="am-cat" placeholder="e.g. Formula Sheet / PYQ"></div><div class="form-group" id="am-dur-wrap" style="display:none"><label>Test Duration (min)</label><input type="number" class="form-control" id="am-dur" value="60"></div><div class="form-group"><label>Class</label><select class="form-control" id="am-cls"><option value="">Auto (from subject)</option><option value="10">Class 10</option><option value="12">Class 12</option></select></div><div class="form-group"><label>Chapter</label><input class="form-control" id="am-ch" placeholder="e.g. Laws of Motion"></div><div class="form-group"><label>Title</label><input class="form-control" id="am-title" placeholder="Title"></div><div class="form-group"><label>PDF File</label>${fileDropHTML('am-file','am-label')}</div><div id="am-status"></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="am-btn" onclick="submitAdminMaterial()">Upload</button>`);
 }
 function amToggle(){
@@ -10841,7 +10853,7 @@ async function submitAdminMaterial(){
   fd.append('chapter',val('am-ch'));
   const _amt=val('am-type');
   fd.append('material_type',_amt==='pyq'?'other':_amt);
-  fd.append('title',val('am-title')); fd.append('category',_amt==='pyq'?'PYQ':val('am-cat')); fd.append('class_name','Class 12');
+  fd.append('title',val('am-title')); fd.append('category',_amt==='pyq'?'PYQ':val('am-cat')); const _amClsV=val('am-cls'); if(_amClsV) fd.append('class_name','Class '+_amClsV);
   if(val('am-type')==='test') fd.append('duration_min',val('am-dur')||'60');
   try{
  const r=await fetch(API+'/api/admin/material',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});

@@ -797,12 +797,17 @@ async def class_report_backfill(payload: dict = Body(...), db: Session = Depends
     # 2) student-facing lecture — pehle se ho to update, warna naya
     tp = db.query(TeacherProfile).filter(TeacherProfile.id == e.teacher_id).first()
     tname = (tp.user.name if tp and tp.user else "") or "Admin"
+    # v123: single-class subject (Social Science=10) pe official class force karo —
+    # entry pe galat class likhi ho to bhi material/lecture sahi class tag paaye
+    from teacher_routes import _subj_class_digits as _scd
+    _fx = _scd(db, e.subject)
+    eff_cls = ("Class " + _fx) if _fx else (e.class_name or "")
     lec = db.query(Lecture).filter(Lecture.timetable_entry_id == entry_id,
                                    Lecture.is_active == True).first()
     created = False
     if not lec:
         lec = Lecture(teacher_id=e.teacher_id, teacher_name=tname,
-                      subject=e.subject or "", class_level=_lec_cls5(e.class_name),
+                      subject=e.subject or "", class_level=_lec_cls5(eff_cls),
                       chapter=(e.chapter or None), part=(e.part or None),
                       title=((e.chapter or "Lecture") + ((" – " + e.part) if e.part else ""))[:240],
                       timetable_entry_id=entry_id, lecture_date=e.entry_date,
@@ -830,7 +835,7 @@ async def class_report_backfill(payload: dict = Body(...), db: Session = Depends
     if pdf_b64:
         try:
             db.add(Material(teacher_id=(tp.id if tp else None), teacher_name=tname,
-                            subject=e.subject or "", class_name=(e.class_name or None),
+                            subject=e.subject or "", class_name=(eff_cls or None),
                             chapter=(e.chapter or None), part=(e.part or None),
                             material_type="notes", title=(lec.title or e.subject or "Class Notes")[:200],
                             filename=pdf_name, content_b64=pdf_b64.split(",")[-1]))
@@ -982,6 +987,14 @@ async def admin_upload_material(
         raise HTTPException(status_code=400, detail="File is larger than 20MB")
     if _SR is not None:
         subject = _SR.canon_display(subject.strip(), class_name)
+    # v123: single-class subject pe official class force (Social Science=10 etc.) —
+    # frontend se galat/hardcoded class aaye to bhi split nahi hoga
+    from teacher_routes import _subj_class_digits as _scd
+    _cls_fixed = _scd(db, subject.strip())
+    if _cls_fixed:
+        class_name = "Class " + _cls_fixed
+    elif not class_name.strip():
+        class_name = "Class 12"
     m = Material(
         teacher_id=None, teacher_name="Admin", subject=subject.strip(),
         class_name=class_name.strip(), chapter=chapter.strip(),

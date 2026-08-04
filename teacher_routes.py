@@ -596,6 +596,42 @@ def _subj_scope_for(db, model, subjects):
         pass
     return scope
 
+def _subj_class_digits(db, subject):
+    """Subject ka official class '10'/'12' — admin ke AvailableSubject se pehle,
+    phir NIOS registry fallback. Subject DONO classes me ho (English/Hindi/DEO)
+    ya pata na chale -> None (tab caller jo class di hai use rakhe).
+    v123: isi se 'Social Science (Class 12)' jaisi phantom splitting rukti hai —
+    Social Science 10th-only subject hai, uska material kabhi 12 tag nahi hoga."""
+    norm = _subj_norm(subject)
+    if not norm:
+        return None
+    classes = set()
+    try:
+        from models import AvailableSubject
+        for r in db.query(AvailableSubject).filter(AvailableSubject.is_active == True).all():
+            if _subj_norm(r.name) == norm:
+                c = str(r.class_level or "").strip()
+                if c in ("10", "12"):
+                    classes.add(c)
+    except Exception:
+        pass
+    if len(classes) == 1:
+        return next(iter(classes))
+    if len(classes) > 1:
+        return None                      # admin ne dono classes me rakha hai — dual-class
+    if _SR is not None:
+        try:
+            in10 = _SR.canon_subject(subject, "10")
+            in12 = _SR.canon_subject(subject, "12")
+            if in10 and not in12:
+                return "10"
+            if in12 and not in10:
+                return "12"
+        except Exception:
+            pass
+    return None
+
+
 def _serialize_tt(e, canon=None):
     return {
         "id": e.id, "subject": canon or e.subject, "class_name": e.class_name,
@@ -971,6 +1007,14 @@ async def upload_material(
     b64 = base64.b64encode(raw).decode("ascii")
     if _SR is not None:
         subject = _SR.canon_display(subject.strip(), class_name)
+    # v123: class hamesha subject ke official class se resolve karo — single-class
+    # subject (Social Science=10, Physics=12) pe galat/hardcoded class kabhi save
+    # na ho. Dual-class subject (English/Hindi/DEO) me jo class aayi hai use rakho.
+    _cls_fixed = _subj_class_digits(db, subject.strip())
+    if _cls_fixed:
+        class_name = "Class " + _cls_fixed
+    elif not class_name.strip():
+        class_name = "Class 12"   # legacy default (unknown/dual-class, kuch nahi bheja)
     m = Material(
         teacher_id=tp.id, teacher_name=current_user.name, subject=subject.strip(),
         class_name=class_name.strip(), chapter=chapter.strip(),
@@ -2772,9 +2816,25 @@ async def create_lecture(payload: dict = Body(...), background_tasks: Background
     qs = payload.get("questions") or []
     valid_qs = [q for q in qs if (q.get("question") or "").strip() and (q.get("qtype") in _LQ_TYPES)]
 
+    # v123: class resolution — single-class subject pe hamesha official class;
+    # warna payload ka class; warna linked timetable entry ka class_name.
+    _cls_fixed = _subj_class_digits(db, subject)
+    if _cls_fixed:
+        _eff_cls = "Class " + _cls_fixed
+    else:
+        _eff_cls = (payload.get("class_level") or "").strip()
+        if not _eff_cls and payload.get("timetable_entry_id"):
+            try:
+                from models import TimetableEntry as _TTE
+                _te = db.query(_TTE).filter(_TTE.id == int(payload.get("timetable_entry_id"))).first()
+                if _te:
+                    _eff_cls = (_te.class_name or "").strip()
+            except Exception:
+                pass
+
     lec = Lecture(
         teacher_id=tp.id, teacher_name=(current_user.name or ""),
-        subject=subject, class_level=_lec_cls5(payload.get("class_level")),
+        subject=subject, class_level=_lec_cls5(_eff_cls),
         chapter=(payload.get("chapter") or None), part=(payload.get("part") or None),
         title=(payload.get("title") or (subject + " Lecture")),
         timetable_entry_id=(payload.get("timetable_entry_id") or None),
@@ -2801,7 +2861,7 @@ async def create_lecture(payload: dict = Body(...), background_tasks: Background
         raw = b64.split(",")[-1]
         db.add(Material(
             teacher_id=tp.id, teacher_name=(current_user.name or ""),
-            subject=subject, class_name=(payload.get("class_level") or None),
+            subject=subject, class_name=(_eff_cls or None),
             chapter=(payload.get("chapter") or None), part=(payload.get("part") or None),
             material_type=kind, title=(lec.title or subject),
             filename=(fname or ("%s.pdf" % kind)), content_b64=raw))
@@ -3039,11 +3099,26 @@ def _material_tree(db, subjects=None):
             _canon = {}
     def _cn(s):
         return _canon.get(_subj_norm(s), s or "General")
-    # Same-naam subjects (e.g. Data Entry Operations) Class 10 & 12 dono me ho to
-    # tree me alag-alag node banao: "Subject (Class 10)" / "Subject (Class 12)".
+    # v123: single-class subject (Social Science=10, Physics=12) ke purane
+    # galat/blank-tagged materials bhi EK hi card me merge ho jaate hain —
+    # effective class hamesha official class. Class-split sirf dual-class
+    # subjects (English/Hindi/DEO — dono classes me hote hain) ke liye rehta hai.
+    _fixed_cls = {}
+    for m in mats:
+        nm = _cn(m.subject)
+        if nm not in _fixed_cls:
+            try:
+                _fixed_cls[nm] = _subj_class_digits(db, m.subject)
+            except Exception:
+                _fixed_cls[nm] = None
+    def _ecd(m):
+        fx = _fixed_cls.get(_cn(m.subject))
+        return fx if fx else _cls_d(getattr(m, "class_name", ""))
+    # Same-naam subjects (e.g. English / Data Entry Operations) Class 10 & 12 dono
+    # me ho to tree me alag-alag node banao: "Subject (Class 10)" / "Subject (Class 12)".
     raw = {}
     for m in mats:
-        cd = _cls_d(getattr(m, "class_name", ""))
+        cd = _ecd(m)
         raw.setdefault(_cn(m.subject), set()).add(cd)
     def _disp(sub, cd):
         cls_set = raw.get(sub) or set()
@@ -3053,7 +3128,7 @@ def _material_tree(db, subjects=None):
         return sub
     tree = {}
     for m in mats:
-        cd = _cls_d(getattr(m, "class_name", ""))
+        cd = _ecd(m)
         label = _disp(_cn(m.subject), cd)
         sub = tree.setdefault(label, {"subject": label, "chapters": {}})
         ch = sub["chapters"].setdefault(m.chapter or "General", {"chapter": m.chapter or "General", "items": []})
