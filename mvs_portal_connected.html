@@ -8754,16 +8754,17 @@ async function openTVTPropose(){
   let chans=window._vtChansT;
   if(!chans){ try{ chans=((await api('/api/teacher/video-channels')).channels)||[]; window._vtChansT=chans; }catch(e){ chans=[]; } }
   window._vtThumbB64=null;
+  window._tvtPKind='task';
   const chOpts=`<option value="">— No channel —</option>`+chans.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   showModal('Propose a Video / Project',`
     <div class="form-grid vt-form">
-      <div class="form-group" style="grid-column:1/-1"><label>What are you proposing?</label>
-        <select id="tvt-p-ptype" class="input" onchange="tvtPScopeToggle()">
-          <option value="task">Single Video (Task)</option>
-          <option value="project">Project (multiple videos)</option>
-        </select></div>
+      <div class="form-group" style="grid-column:1/-1">
+        <div class="vtaw-tabs">
+          <button type="button" class="vtaw-tab on" id="tvtp-t-task" onclick="tvtPKind('task')">${ic('play')} Single Video</button>
+          <button type="button" class="vtaw-tab" id="tvtp-t-proj" onclick="tvtPKind('project')">${ic('clipboard')} Project</button>
+        </div></div>
       <div class="form-group" id="tvt-p-scope-wrap" style="grid-column:1/-1;display:none"><label>Project scope</label>
-        <select id="tvt-p-scope" class="input" onchange="tvtPScopeToggle()">
+        <select id="tvt-p-scope" class="input" onchange="document.getElementById('tvt-p-count-wrap').style.display=(this.value==='videos')?'block':'none'">
           <option value="chapter">Complete chapter (from my timetable)</option>
           <option value="videos">A set of videos</option>
         </select>
@@ -8771,8 +8772,8 @@ async function openTVTPropose(){
           <input id="tvt-p-count" class="input" type="number" min="2" max="30" value="5" placeholder="e.g. 5"></div>
       </div>
       <div class="form-group" style="grid-column:1/-1"><label>Title</label><input id="tvt-p-title" class="input" placeholder="e.g. Probability Short Tricks — NIOS Special"></div>
-      <div class="form-group"><label>Video Type</label><select id="tvt-p-type" class="input">${types.map(t=>`<option value="${esc(t.name)}">${esc(t.name)}</option>`).join('')}</select></div>
-      <div class="form-group"><label>Streaming</label><select id="tvt-p-stream" class="input"><option value="">— Select —</option><option value="recorded">Recorded</option><option value="live">Live</option></select></div>
+      <div class="form-group"><label>Streaming</label><select id="tvt-p-stream" class="input" onchange="_vtFilterTypes('tvt-p-stream','tvt-p-type',window._vtTypesT)"><option value="">— Select —</option><option value="recorded">Recorded</option><option value="live">Live</option></select></div>
+      <div class="form-group"><label>Video Type</label><select id="tvt-p-type" class="input">${_vtTypeOptsHtml(types,'','','— Select type —')}</select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Channel (optional)</label><select id="tvt-p-channel" class="input">${chOpts}</select></div>
       <div class="form-group vt-thumb-box" style="grid-column:1/-1"><label>Reference Thumbnail (optional)</label>
         <div class="vt-file"><label class="vt-file-btn" for="tvt-p-thumb">${ic('image')} Upload Image</label>
@@ -8791,15 +8792,18 @@ function _tvtVvToggle(){
   const ch=document.getElementById('t-vv-chev'); if(ch) ch.style.transform=open?'rotate(180deg)':'';
   if(open) renderVideoViews('t-vv-wrap','/api/teacher',false);
 }
-function tvtPScopeToggle(){
-  const isProj=(val('tvt-p-ptype')==='project');
-  const sw=document.getElementById('tvt-p-scope-wrap'); if(sw) sw.style.display=isProj?'block':'none';
-  const cw=document.getElementById('tvt-p-count-wrap'); if(cw) cw.style.display=(isProj&&val('tvt-p-scope')==='videos')?'block':'none';
+function tvtPKind(k){
+  window._tvtPKind=k;
+  const tk=document.getElementById('tvtp-t-task'), pj=document.getElementById('tvtp-t-proj');
+  if(tk) tk.classList.toggle('on',k==='task');
+  if(pj) pj.classList.toggle('on',k==='project');
+  const sw=document.getElementById('tvt-p-scope-wrap'); if(sw) sw.style.display=(k==='project')?'block':'none';
+  const cw=document.getElementById('tvt-p-count-wrap'); if(cw) cw.style.display=(k==='project'&&val('tvt-p-scope')==='videos')?'block':'none';
 }
 async function tvtProposeSave(){
   const title=document.getElementById('tvt-p-title').value.trim();
   if(!title){ toast('Please enter a video title'); return; }
-  const ptype=val('tvt-p-ptype')||'task';
+  const ptype=window._tvtPKind||'task';
   const body={ title, propose_type:ptype,
     video_type:(document.getElementById('tvt-p-type')||{}).value||'',
     streaming:val('tvt-p-stream')||'',
@@ -8851,6 +8855,17 @@ async function loadVTBanner(){
 
 /* ================= VIDEO TASK MANAGER (admin) ================= */
 let _vtTeachers=[], _vtChannels=[], _vtTypes=[], _vtF={teacher_id:0,status:'',channel_id:0,video_type:''}, _vtTimer=null;
+// v134: video type ko streaming (live/recorded/both) ke hisaab se filter karo
+function _vtScopeOk(t,stream){ const sc=(t&&t.streaming_scope)||'both'; return !stream||sc==='both'||sc===stream; }
+function _vtTypeOptsHtml(types,streamVal,selectedName,placeholder){
+  return `<option value="">${placeholder||'— Select type —'}</option>`+
+    (types||[]).filter(t=>_vtScopeOk(t,streamVal)).map(c=>`<option value="${esc(c.name)}" ${selectedName===c.name?'selected':''}>${esc(c.name)}</option>`).join('');
+}
+function _vtFilterTypes(streamSelId,typeSelId,types){
+  const s=(document.getElementById(streamSelId)||{}).value||'';
+  const ts=document.getElementById(typeSelId); if(!ts) return;
+  ts.innerHTML=_vtTypeOptsHtml(types,s,ts.value);
+}
 const VT_LBL={assigned:'Assigned',submitted:'Submitted',approved:'Approved',editing_soon:'Editing Soon',editing_done:'Editing Done',uploaded:'Uploaded',rejected:'Rejected',proposal:'Pending Approval'};
 function _vtQs(){ const f=_vtF,q=[]; if(f.teacher_id)q.push('teacher_id='+f.teacher_id); if(f.status)q.push('status='+f.status); if(f.channel_id)q.push('channel_id='+f.channel_id); if(f.video_type)q.push('video_type='+encodeURIComponent(f.video_type)); return q.length?'?'+q.join('&'):''; }
 function _vtPill(t,blink,who){
@@ -9313,8 +9328,8 @@ async function openVTEdit(id,ev){
       ${special?`<div class="form-group"><label>Weekly target (videos / week)</label><input id="vt-e-quota" type="number" min="0" max="50" class="input" value="${t.weekly_quota||0}"></div>
       <div class="form-group"><label>Weekly deadline day</label><select id="vt-e-day" class="input"><option value="">— Not set —</option>${VTP_DAYS.map(d=>`<option value="${d}" ${t.weekly_day===d?'selected':''}>${VTP_DLBL[d]}</option>`).join('')}</select></div>`:''}
       ${special?'':`<div class="form-group"><label>YouTube Channel</label><select id="vt-e-channel" class="input"><option value="">— No channel —</option>${cOpts}</select></div>
-      <div class="form-group"><label>Video Type</label><select id="vt-e-type" class="input"><option value="">— No type —</option>${tyOpts}</select></div>
-      <div class="form-group"><label>Streaming</label><select id="vt-e-stream" class="input"><option value="">— Not set —</option><option value="recorded" ${t.streaming==='recorded'?'selected':''}>Recorded</option><option value="live" ${t.streaming==='live'?'selected':''}>Live</option></select></div>
+      <div class="form-group"><label>Streaming</label><select id="vt-e-stream" class="input" onchange="_vtFilterTypes('vt-e-stream','vt-e-type',_vtTypes)"><option value="">— Not set —</option><option value="recorded" ${t.streaming==='recorded'?'selected':''}>Recorded</option><option value="live" ${t.streaming==='live'?'selected':''}>Live</option></select></div>
+      <div class="form-group"><label>Video Type</label><select id="vt-e-type" class="input">${_vtTypeOptsHtml(_vtTypes,t.streaming||'',t.video_type||'','— No type —')}</select></div>
       <div class="form-group vt-thumb-box" style="grid-column:1/-1"><label>Thumbnail (changes only if you provide a new one)</label>
         <div class="vt-file"><label class="vt-file-btn" for="vt-e-thumb">${ic('image')} Upload Image</label>
           <span class="vt-file-name" id="vt-thumb-name">No file chosen</span></div>
@@ -9399,12 +9414,12 @@ async function openVTAssign(proposalId){
   const cOpts=_vtChannels.map(c=>`<option value="${c.id}" ${pre&&pre.channel_id===c.id?'selected':''}>${esc(c.name)}</option>`).join('');
   const dl=new Date(Date.now()+48*3600*1000); dl.setMinutes(0);
   const dlVal=`${dl.getFullYear()}-${String(dl.getMonth()+1).padStart(2,'0')}-${String(dl.getDate()).padStart(2,'0')}T${String(dl.getHours()).padStart(2,'0')}:00`;
-  const tyOpts=_vtTypes.map(c=>`<option value="${esc(c.name)}" ${pre&&pre.video_type===c.name?'selected':''}>${esc(c.name)}</option>`).join('');
+  const preStream=(pre&&pre.streaming)||'';
   const taskForm=`<div class="form-grid vt-form">
       <div class="form-group"><label>Teacher</label><select id="vt-f-teacher" class="input">${tOpts}</select></div>
       <div class="form-group"><label>YouTube Channel</label><select id="vt-f-channel" class="input"><option value="">— Select channel —</option>${cOpts}</select></div>
-      <div class="form-group" style="grid-column:1/-1"><label>Video Type</label><select id="vt-f-type" class="input"><option value="">— Select type —</option>${tyOpts}</select></div>
-      <div class="form-group" style="grid-column:1/-1"><label>Streaming</label><select id="vt-f-stream" class="input"><option value="">— Not set —</option><option value="recorded">Recorded</option><option value="live">Live</option></select></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Streaming</label><select id="vt-f-stream" class="input" onchange="_vtFilterTypes('vt-f-stream','vt-f-type',_vtTypes)"><option value="" ${preStream?'':'selected'}>— Not set —</option><option value="recorded" ${preStream==='recorded'?'selected':''}>Recorded</option><option value="live" ${preStream==='live'?'selected':''}>Live</option></select></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Video Type</label><select id="vt-f-type" class="input">${_vtTypeOptsHtml(_vtTypes,preStream,pre?pre.video_type:'')}</select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Video Title</label><input id="vt-f-title" class="input" placeholder="e.g. Thermodynamics Part 1 — Full Concept" value="${pre?esc(pre.title):''}"></div>
       <div class="form-group" style="grid-column:1/-1"><label>Deadline</label><input id="vt-f-deadline" type="datetime-local" class="input" value="${dlVal}"></div>
       <div class="form-group vt-thumb-box" style="grid-column:1/-1"><label>Thumbnail</label>
@@ -9764,18 +9779,34 @@ async function vtAddChannel(){
   catch(e){ toast(e.message||'Could not add'); }
 }
 function openVTTypes(){
-  const rows=_vtTypes.map(c=>`<div class="vt-rank-row"><span class="sbb-av">${ic('play')}</span><div class="sbb-main"><div class="sbb-nm">${esc(c.name)}</div></div></div>`).join('');
+  const scLbl={both:'Both',live:'Live only',recorded:'Recorded only'};
+  const rows=_vtTypes.map(c=>{
+    const sc=c.streaming_scope||'both';
+    return `<div class="vt-rank-row"><span class="sbb-av">${ic('play')}</span><div class="sbb-main"><div class="sbb-nm">${esc(c.name)}</div><div style="font-size:.7rem;color:var(--text-muted)">Available in: ${scLbl[sc]}</div></div>
+      <select class="input" style="width:150px;font-size:.8rem" onchange="vtSetTypeScope(${c.id},this.value)">
+        <option value="both" ${sc==='both'?'selected':''}>Both</option>
+        <option value="recorded" ${sc==='recorded'?'selected':''}>Recorded only</option>
+        <option value="live" ${sc==='live'?'selected':''}>Live only</option></select></div>`;
+  }).join('');
   showModal('Video Types',`
-    <p style="font-size:.78rem;color:var(--text-muted);margin-bottom:10px">These types appear in the type dropdown while assigning a task and in the teacher's proposal form (e.g. Short Video, Long Video, One Shot Video, Strategy Video).</p>
-    <div style="max-height:280px;overflow-y:auto;margin-bottom:12px">${rows}</div>
-    <div style="display:flex;gap:8px"><input id="vt-ty-new" class="input" placeholder="New type name" style="flex:1"><button class="btn btn-primary btn-sm" onclick="vtAddType()">${ic('plus')} Add</button></div>`,
+    <p style="font-size:.78rem;color:var(--text-muted);margin-bottom:10px">These types appear in the type dropdown while assigning a task and in the teacher's proposal form. "Available in" decides which Streaming (Live / Recorded) shows this type — e.g. tag Short Video as <b>Recorded only</b> so it never appears for Live.</p>
+    <div style="max-height:300px;overflow-y:auto;margin-bottom:12px">${rows}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="vt-ty-new" class="input" placeholder="New type name" style="flex:1;min-width:150px">
+      <select id="vt-ty-scope" class="input" style="width:150px"><option value="both">Both</option><option value="recorded">Recorded only</option><option value="live">Live only</option></select>
+      <button class="btn btn-primary btn-sm" onclick="vtAddType()">${ic('plus')} Add</button></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
 }
 async function vtAddType(){
   const name=document.getElementById('vt-ty-new').value.trim();
   if(!name){ toast('Enter a type name'); return; }
-  try{ await api('/api/admin/video-types','POST',{name}); window._vtTypesT=null; closeModal(); toast('Type added.'); loadAVTasks(); setTimeout(openVTTypes,400); }
+  const streaming_scope=(document.getElementById('vt-ty-scope')||{}).value||'both';
+  try{ await api('/api/admin/video-types','POST',{name,streaming_scope}); window._vtTypesT=null; closeModal(); toast('Type added.'); loadAVTasks(); setTimeout(openVTTypes,400); }
   catch(e){ toast(e.message||'Could not add'); }
+}
+async function vtSetTypeScope(id,scope){
+  try{ await api('/api/admin/video-types/'+id,'POST',{streaming_scope:scope}); window._vtTypesT=null;
+    const t=(_vtTypes||[]).find(x=>x.id===id); if(t) t.streaming_scope=scope; toast('Updated.'); }
+  catch(e){ toast(e.message||'Could not update',true); }
 }
 
 /* ---------- teacher ranking board (admin) ---------- */

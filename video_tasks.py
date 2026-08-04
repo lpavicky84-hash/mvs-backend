@@ -56,6 +56,19 @@ def _ensure_vtype_column():
 _ensure_vtype_column()
 
 
+def _ensure_vtype_scope_column():
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE video_types ADD COLUMN streaming_scope VARCHAR(12) DEFAULT 'both'"))
+            conn.commit()
+        print("[video_tasks] video_types.streaming_scope added")
+    except Exception:
+        pass
+
+
+_ensure_vtype_scope_column()
+
+
 def _ensure_special_columns():
     """v71 columns (kind/subject/status_history/last_link_at/admin_seen_at) +
     video_task_chapters table — purane deploys pe best-effort self-heal."""
@@ -749,8 +762,22 @@ def _seed_channels(db):
 def _seed_types(db):
     if db.query(VideoType).count() == 0:
         for i, n in enumerate(DEFAULT_TYPES):
-            db.add(VideoType(name=n, sort=i))
+            sc = "recorded" if n == "Short Video" else "both"
+            db.add(VideoType(name=n, sort=i, streaming_scope=sc))
         db.commit()
+    # Purane installs: Short Video ko EK baar 'recorded' tag karo (Live me na dikhe).
+    # Flag se — taaki admin baad me badle to dobara override na ho.
+    try:
+        from models import AppSetting
+        flag = db.query(AppSetting).filter(AppSetting.key == "vt_sv_scoped").first()
+        if not flag:
+            sv = db.query(VideoType).filter(VideoType.name == "Short Video").first()
+            if sv and (getattr(sv, "streaming_scope", "both") or "both") == "both":
+                sv.streaming_scope = "recorded"
+            db.add(AppSetting(key="vt_sv_scoped", value="1"))
+            db.commit()
+    except Exception:
+        db.rollback()
 
 
 def _vt_sweep(db):
@@ -928,7 +955,8 @@ def vt_add_channel(payload: dict = Body(...), db: Session = Depends(get_db), _=D
 def vt_list_types(db: Session = Depends(get_db), _=Depends(get_admin)):
     _seed_types(db)
     rows = db.query(VideoType).order_by(VideoType.sort.asc(), VideoType.id.asc()).all()
-    return {"types": [{"id": c.id, "name": c.name, "active": bool(c.active)} for c in rows]}
+    return {"types": [{"id": c.id, "name": c.name, "active": bool(c.active),
+                       "streaming_scope": getattr(c, "streaming_scope", "both") or "both"} for c in rows]}
 
 
 @router.post("/admin/video-types", dependencies=[Depends(_admin_section_guard)])
@@ -940,10 +968,28 @@ def vt_add_type(payload: dict = Body(...), db: Session = Depends(get_db), _=Depe
     if db.query(VideoType).filter(VideoType.name == name).first():
         raise HTTPException(400, "This type already exists")
     mx = db.query(VideoType).order_by(VideoType.sort.desc()).first()
-    c = VideoType(name=name, sort=(mx.sort + 1) if mx else 0)
+    scope = (payload.get("streaming_scope") or "both").strip().lower()
+    if scope not in ("both", "live", "recorded"):
+        scope = "both"
+    c = VideoType(name=name, sort=(mx.sort + 1) if mx else 0, streaming_scope=scope)
     db.add(c)
     db.commit()
-    return {"ok": True, "id": c.id, "name": c.name}
+    return {"ok": True, "id": c.id, "name": c.name, "streaming_scope": scope}
+
+
+@router.post("/admin/video-types/{type_id}", dependencies=[Depends(_admin_section_guard)])
+def vt_update_type(type_id: int, payload: dict = Body(...),
+                   db: Session = Depends(get_db), _=Depends(get_admin)):
+    c = db.query(VideoType).filter(VideoType.id == type_id).first()
+    if not c:
+        raise HTTPException(404, "Type not found")
+    if payload.get("streaming_scope") is not None:
+        sc = (payload.get("streaming_scope") or "both").strip().lower()
+        c.streaming_scope = sc if sc in ("both", "live", "recorded") else "both"
+    if payload.get("active") is not None:
+        c.active = bool(payload.get("active"))
+    db.commit()
+    return {"ok": True, "id": c.id, "streaming_scope": getattr(c, "streaming_scope", "both")}
 
 
 @router.get("/teacher/video-channels")
@@ -959,7 +1005,8 @@ def vt_teacher_types(db: Session = Depends(get_db), _=Depends(get_teacher)):
     _seed_types(db)
     rows = (db.query(VideoType).filter(VideoType.active == True)
             .order_by(VideoType.sort.asc(), VideoType.id.asc()).all())
-    return {"types": [{"id": c.id, "name": c.name} for c in rows]}
+    return {"types": [{"id": c.id, "name": c.name,
+                       "streaming_scope": getattr(c, "streaming_scope", "both") or "both"} for c in rows]}
 
 
 # =============================================================

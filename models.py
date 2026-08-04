@@ -411,6 +411,7 @@ class VideoType(Base):
     name       = Column(String(120), unique=True)
     active     = Column(Boolean, default=True)
     sort       = Column(Integer, default=0)
+    streaming_scope = Column(String(12), default="both")   # both | live | recorded
     created_at = Column(DateTime, default=func.now())
 
 
