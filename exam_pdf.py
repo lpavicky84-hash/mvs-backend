@@ -29,6 +29,53 @@ def _font_path():
     return "NotoSansDevanagari-Static.ttf"
 
 
+_HAS_DVS = False  # v120: DejaVu Sans (math glyphs) available ya nahi
+
+
+def _dvs_path(bold=False):
+    """DejaVu Sans - isme ∫, Σ, π, ², ≤ jaise math glyphs hote hain (Noto
+    Devanagari me nahi hote). Equation blocks isi se render hote hain jab
+    available ho; na ho to purana Noto+ASCII fallback chalta rehta hai."""
+    name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+    here = os.path.dirname(os.path.abspath(__file__))
+    for p in [os.path.join(here, "fonts", name), os.path.join(here, name),
+              os.path.join(os.getcwd(), "fonts", name), os.path.join(os.getcwd(), name),
+              "fonts/%s" % name, name]:
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def _register_dvs(pdf):
+    """DejaVu ko 'DVS' family ke roop me register karo; success flag module-global."""
+    global _HAS_DVS
+    p = _dvs_path()
+    _HAS_DVS = bool(p)
+    if _HAS_DVS:
+        pdf.add_font("DVS", "", p)
+        pdf.add_font("DVS", "B", _dvs_path(bold=True) or p)
+
+
+def _dvs_ok_for(*texts):
+    """Equation text me Devanagari nahi + DVS registered -> math font use karo."""
+    if not _HAS_DVS:
+        return False
+    return not any(re.search(r"[\u0900-\u097F]", t or "") for t in texts)
+
+def _para_font(pdf, raw, c, size, bold):
+    """Bullet/para fallback ke liye: English/math text DejaVu se (math glyphs
+    milte hain), Devanagari ya font na ho to Noto+_fx fallback. Text lautata hai."""
+    if _dvs_ok_for(raw or c):
+        try:
+            pdf.set_font("DVS", "B" if bold else "", size)
+            return _clean(_strip_rich(raw or ""), fx=False)
+        except Exception:
+            pass
+    _style_font(pdf, "", size, base_bold=bold)
+    return c
+
+
+
 def _font_path_bold():
     """Bold static instance (wght=700) of the same Devanagari font. Optional -
     if not deployed, the caller falls back to registering the regular file as
@@ -69,6 +116,24 @@ _TEX_MAP = [
     (r"\\Rightarrow", "\u21d2"), (r"\\leftarrow", "\u2190"),
     (r"\\geq", "\u2265"), (r"\\leq", "\u2264"), (r"\\neq", "\u2260"),
     (r"\\approx", "\u2248"), (r"\\sum", "\u03a3"), (r"\\sqrt", "\u221a"),
+    # v120: calculus / science operators (word-functions stay ASCII, symbols unicode)
+    (r"\\iint(?![a-zA-Z])", "\u222c"), (r"\\iiint(?![a-zA-Z])", "\u222d"),
+    (r"\\oint(?![a-zA-Z])", "\u222e"), (r"\\int(?![a-zA-Z])", "\u222b"),
+    (r"\\prod(?![a-zA-Z])", "\u220f"), (r"\\partial(?![a-zA-Z])", "\u2202"),
+    (r"\\nabla(?![a-zA-Z])", "\u2207"),
+    (r"\\log(?![a-zA-Z])", "log"), (r"\\ln(?![a-zA-Z])", "ln"),
+    (r"\\sin(?![a-zA-Z])", "sin"), (r"\\cos(?![a-zA-Z])", "cos"),
+    (r"\\tan(?![a-zA-Z])", "tan"), (r"\\cosec(?![a-zA-Z])", "cosec"),
+    (r"\\sec(?![a-zA-Z])", "sec"), (r"\\cot(?![a-zA-Z])", "cot"),
+    (r"\\lim(?![a-zA-Z])", "lim"),
+    (r"\\therefore(?![a-zA-Z])", "\u2234"), (r"\\because(?![a-zA-Z])", "\u2235"),
+    (r"\\in(?![a-zA-Z])", "\u2208"), (r"\\cup(?![a-zA-Z])", "\u222a"),
+    (r"\\cap(?![a-zA-Z])", "\u2229"), (r"\\subseteq(?![a-zA-Z])", "\u2286"),
+    (r"\\subset(?![a-zA-Z])", "\u2282"),
+    (r"\\ldots|\\cdots|\\dots", "\u2026"), (r"\\prime(?![a-zA-Z])", "\u2032"),
+    (r"\\epsilon(?![a-zA-Z])", "\u03b5"), (r"\\varepsilon(?![a-zA-Z])", "\u03b5"),
+    (r"\\Sigma", "\u03a3"), (r"\\Gamma", "\u0393"), (r"\\Phi", "\u03a6"),
+    (r"\\Lambda", "\u039b"),
 ]
 _SUP = {"0": "\u2070", "1": "\u00b9", "2": "\u00b2", "3": "\u00b3", "4": "\u2074",
         "5": "\u2075", "6": "\u2076", "7": "\u2077", "8": "\u2078", "9": "\u2079",
@@ -115,6 +180,13 @@ _MISSING_FIX = {
     # operators / relations / arrows
     "√": "sqrt", "∞": "infinity", "≈": "~=", "≠": "!=",
     "≤": "<=", "≥": ">=", "±": "+/-", "∓": "-/+",
+    # v120 safety (Noto fallback path me glyph na mile to readable ASCII)
+    "∫": "integral", "∬": "integral", "∭": "integral",
+    "∮": "integral", "∏": "product", "∂": "d", "∇": "del",
+    "∴": "therefore", "∵": "because", "∈": "in",
+    "∪": "union", "∩": "intersection", "⊂": "subset",
+    "⊆": "subseteq", "…": "...", "′": "'",
+    "⃗": "", "̂": "", "î": "i", "ĵ": "j",
     "→": "->", "←": "<-", "⇒": "=>",
     # check marks -> simple text marker
     "✓": "[OK]", "✔": "[OK]",
@@ -348,19 +420,48 @@ def _math_heal(t):
     return "\n".join(out)
 
 
-def _clean(text):
+_FRAC_NEST_RE = re.compile(r"\\[dt]?frac\{((?:[^{}]|\{[^{}]*\})*)\}\{((?:[^{}]|\{[^{}]*\})*)\}")
+_MAT_ENV_RE = re.compile(r"\\begin\{(bmatrix|pmatrix|matrix|vmatrix)\}([\s\S]*?)\\end\{\1\}")
+
+
+def _mat_flat(m):
+    """Matrix/determinant ko ek line me: [a, b; c, d] (vmatrix -> |a, b; c, d|)."""
+    rows = [r.strip() for r in m.group(2).split(r"\\") if r.strip()]
+    body = "; ".join(", ".join(c.strip() for c in r.split("&")) for r in rows)
+    op, cl = {"bmatrix": ("[", "]"), "pmatrix": ("(", ")"),
+              "matrix": ("[", "]"), "vmatrix": ("|", "|")}[m.group(1)]
+    return op + " " + body + " " + cl
+
+
+def _clean(text, fx=True):
     t = text or ""
     t = re.sub(r"\\ce\{([^{}]*)\}", r"\1", t)
+    t = re.sub(r"\\boxed\{((?:[^{}]|\{[^{}]*\})*)\}", r"\1", t)
     t = re.sub(r"\\(text|mathrm|mathbf|bf|textbf|textit|mathit)\{([^{}]*)\}", r"\2", t)
-    t = re.sub(r"\\frac\{([^{}]*)\}\{([^{}]*)\}", r"(\1)/(\2)", t)
+    t = re.sub(r"\\binom\{((?:[^{}]|\{[^{}]*\})*)\}\{((?:[^{}]|\{[^{}]*\})*)\}", r"C(\1, \2)", t)
+    t = _MAT_ENV_RE.sub(_mat_flat, t)
+    # \\left( \\right) jaise stretchy delimiters -> plain bracket ('.' wala delimiter gayab)
+    t = re.sub(r"\\(left|right)\s*(\\?[|(){}\[\].])",
+               lambda m: "" if m.group(2) in (".", "\\.") else m.group(2), t)
+    t = re.sub(r"\\(left|right)(?![a-zA-Z])", "", t)
+    # nested frac bhi handle — stable hone tak (innermost pehle)
+    for _ in range(4):
+        nt = _FRAC_NEST_RE.sub(r"(\1)/(\2)", t)
+        if nt == t:
+            break
+        t = nt
     t = re.sub(r"\\sqrt\{([^{}]*)\}", "\u221a(\\1)", t)
+    t = re.sub(r"\\hat\{i\}", "\u00ee", t)
+    t = re.sub(r"\\hat\{j\}", "\u0135", t)
+    t = re.sub(r"\\hat\{([^{}])\}", r"\1" + "\u0302", t)
+    t = re.sub(r"\\vec\{([^{}]*)\}", r"\1" + "\u20d7", t)
     for pat, rep in _TEX_MAP:
         t = re.sub(pat, rep, t)
     t = _supsub(t)
     t = t.replace("\\\\", "\n").replace("$", "")
     t = re.sub(r"\\[,;:! ]", " ", t)
     t = re.sub(r"[ \t]{2,}", " ", t)
-    return _fx(t).strip()
+    return (_fx(t) if fx else t).strip()
 
 
 # ------------------------------------------------------ structure the run-on text
@@ -370,6 +471,8 @@ _HEADINGS = [
     "Rearranging the formula to find acceleration:", "Rearranging:",
     "Concept Check:", "Note:", "Therefore:", "Hence:", "Conclusion:",
     "Answer:", "Thus:", "Substitute:",
+    "Given,", "Let,", "Then,", "Substituting,", "Using the formula,",
+    "We get:", "we get:", "we get,", "or,", "Rewrite the integrand:",
     "The Smart Strategy (Law of Conservation of Energy):", "The Smart Strategy:",
     "According to Newton's Second Law of Motion:",
 ]
@@ -408,6 +511,12 @@ def _looks_runon(line):
     # stripping the math also hides the glue point
     if _MATH_GLUE_RE.search(line):
         return True
+    # v120: display math ($$..$$) ke saath prose glued ho to bhi split chahiye -
+    # textbook layout me equation ko apni centered line milti hai
+    if "$$" in line:
+        prose = re.sub(r"\$\$[^$]*\$\$", " ", line)
+        if re.search(r"[A-Za-z0-9\u0900-\u097F]", prose):
+            return True
     probe = _strip_math(line)
     if _RUNON_RE.search(probe):
         return True
@@ -423,10 +532,17 @@ def _heuristic_split(line):
     """Best-effort splitter for a still-run-on line (legacy data, or AI output that
     didn't fully follow the line-break instructions). Not applied to lines that
     already look clean, so it can no longer mangle properly formatted text."""
-    parts = re.split(r"(\$[^$]*\$)", line)
+    parts = re.split(r"(\$\$[^$]*\$\$|\$[^$]*\$)", line)
     out = []
     for i, seg in enumerate(parts):
         if i % 2 == 1:
+            if seg.startswith("$$"):
+                # v120: display math hamesha apni line pe - dono taraf break
+                if out and not "".join(out[-1:]).endswith("\n"):
+                    out.append("\n")
+                out.append(seg)
+                out.append("\n")
+                continue
             out.append(seg)
             # $math$ glued straight onto a Capitalised / Devanagari word
             # ("$...t^2$Substitute", "$...$दिए") -> break after the math
@@ -520,6 +636,10 @@ def _blocks(text):
             blocks.append(("head", c, ln))
         elif re.match(r"^[\-\u2022\u25e6]\s+", ln):
             blocks.append(("bullet", re.sub(r"^[\-\u2022\u25e6]\s+", "", c), ln))
+        elif (low.startswith("$$") and low.rstrip().endswith("$$")) or \
+                (low.startswith("\\[") and low.rstrip().endswith("\\]")):
+            # v120: display-math line - lambi ho to bhi centered equation block
+            blocks.append(("eq", c, ln))
         elif "=" in c and len(c) < 46 and not c.rstrip().endswith(":") \
                 and not re.search(r"[A-Za-z]{4,}|[\u0900-\u097F]{3,}", c.split("=")[0]):
             blocks.append(("eq", c, ln))
@@ -738,6 +858,7 @@ def build_exam_pdf(ex, questions, medium="english"):
     pdf.set_auto_page_break(True, margin=18)
     pdf.add_font("Noto", "", FONT)
     pdf.add_font("Noto", "B", _font_path_bold() or FONT)
+    _register_dvs(pdf)
     # Devanagari font me alag italic file nahi hoti - regular/bold hi register
     # kar dete hain taaki *italic* markup pe PDF crash na kare
     try:
@@ -902,23 +1023,26 @@ def build_exam_pdf(ex, questions, medium="english"):
     return bytes(pdf.output())
 
 
-_FRAC_RE = re.compile(r"\\frac\{([^{}]*)\}\{([^{}]*)\}")
-
-
-def _split_frac(raw):
-    """If raw (pre-clean) text contains a \\frac{num}{den}, return the cleaned
-    (prefix, numerator, denominator, suffix) so it can be drawn as a real stacked
-    fraction. Returns None if there's no \\frac to render."""
+def _split_frac(raw, fx=True):
+    """Agar raw (pre-clean) text me THEEK EK \\[dt]frac{num}{den} hai to cleaned
+    (prefix, numerator, denominator, suffix) return karo taaki use asli stacked
+    fraction ki tarah draw kiya ja sake. Zero ya ek se zyada frac (ya nested frac
+    andar) ho to None - tab poori line _clean se flat (a)/(b) me render hoti hai,
+    jo zyada consistent lagti hai."""
     if not raw:
         return None
-    m = _FRAC_RE.search(raw)
-    if not m:
+    ms = list(_FRAC_NEST_RE.finditer(raw))
+    if len(ms) != 1:
+        return None
+    m = ms[0]
+    if "\\frac" in m.group(1) or "\\frac" in m.group(2):
         return None
     pre, post = raw[:m.start()], raw[m.end():]
-    return _clean(pre), _clean(m.group(1)), _clean(m.group(2)), _clean(post)
+    return (_clean(pre, fx=fx), _clean(m.group(1), fx=fx),
+            _clean(m.group(2), fx=fx), _clean(post, fx=fx))
 
 
-def _render_fraction(pdf, frac, LM, EPW, color):
+def _render_fraction(pdf, frac, LM, EPW, color, font="Noto"):
     """Draw prefix, a numerator/line/denominator stack, then suffix - a real
     vertical fraction like a textbook, instead of flattened '(a)/(b)' text."""
     # the stack is drawn with absolute coordinates in several pieces, so it must
@@ -926,10 +1050,21 @@ def _render_fraction(pdf, frac, LM, EPW, color):
     if pdf.get_y() + 17 > pdf.h - 18:
         pdf.add_page()
     pre, num, den, post = frac
-    pdf.set_font("Noto", size=11)
+    # v120: bahut wide fraction ho to font shrink karke margin ke andar rakho
+    sh = 1.0
+    for _try in range(5):
+        pdf.set_font(font, size=13 * sh)
+        _pw = pdf.get_string_width(pre) if pre.strip() else 0
+        _qw = pdf.get_string_width(post) if post.strip() else 0
+        pdf.set_font(font, size=11 * sh)
+        _sw = max(pdf.get_string_width(num), pdf.get_string_width(den)) + 5.5
+        if _pw + _sw + _qw <= EPW - 4:
+            break
+        sh *= 0.88
+    pdf.set_font(font, size=11 * sh)
     num_w, den_w = pdf.get_string_width(num), pdf.get_string_width(den)
     frac_w = max(num_w, den_w) + 5.5
-    pdf.set_font("Noto", size=13)
+    pdf.set_font(font, size=13 * sh)
     pre_w = pdf.get_string_width(pre) if pre.strip() else 0
     post_w = pdf.get_string_width(post) if post.strip() else 0
     total_w = pre_w + frac_w + post_w
@@ -938,10 +1073,10 @@ def _render_fraction(pdf, frac, LM, EPW, color):
     pdf.set_text_color(*color)
     if pre.strip():
         pdf.set_xy(x0, y0 + 3.6)
-        pdf.set_font("Noto", size=13)
+        pdf.set_font(font, size=13 * sh)
         pdf.cell(pre_w, 6.5, pre, align="L")
     fx = x0 + pre_w
-    pdf.set_font("Noto", size=11)
+    pdf.set_font(font, size=11 * sh)
     pdf.set_xy(fx, y0)
     pdf.cell(frac_w, 5.5, num, align="C")
     pdf.set_draw_color(*color)
@@ -951,7 +1086,7 @@ def _render_fraction(pdf, frac, LM, EPW, color):
     pdf.cell(frac_w, 5.5, den, align="C")
     if post.strip():
         pdf.set_xy(fx + frac_w, y0 + 3.6)
-        pdf.set_font("Noto", size=13)
+        pdf.set_font(font, size=13 * sh)
         pdf.cell(post_w, 6.5, post, align="L")
     pdf.set_xy(LM, y0 + 13.8)
     pdf.set_text_color(20, 22, 28)
@@ -1023,18 +1158,33 @@ def _render_block(pdf, kind, c, LM, EPW, is_q, raw=None, scale=1.0):
     elif kind == "eq":
         # clean, no background fill - a real stacked fraction when \frac is present,
         # otherwise plain centered equation text
-        frac = _split_frac(raw)
+        # v120: DejaVu (math glyphs) se render jab possible ho - ∫, ², log, brackets
+        use_dvs = _dvs_ok_for(raw or c)
+        fnt = "DVS" if use_dvs else "Noto"
+        frac = _split_frac(raw, fx=not use_dvs)
         color = NAVY if is_q else NAVY2
         if frac:
             pdf.ln(0.8)
-            _render_fraction(pdf, frac, LM, EPW, color)
+            _render_fraction(pdf, frac, LM, EPW, color, font=fnt)
         else:
+            txt = _clean(_strip_rich(raw or ""), fx=not use_dvs) if use_dvs else c
             pdf.ln(1.6)
-            pdf.set_font("Noto", size=_S(13.5))
+            try:
+                pdf.set_font(fnt, size=_S(13.5))
+            except Exception:
+                fnt, use_dvs = "Noto", False
+                pdf.set_font(fnt, size=_S(13.5))
+                txt = c
             pdf.set_text_color(*color)
             pdf.set_x(LM)
-            pdf.cell(EPW, _S(8.5), c, align="C")
-            pdf.ln(10)
+            if pdf.get_string_width(txt) <= EPW - 4:
+                pdf.cell(EPW, _S(8.5), txt, align="C")
+                pdf.ln(10)
+            else:
+                # v120: lambi equation margin me wrap (centered)
+                pdf.multi_cell(EPW, _S(7.5), txt, align="C",
+                               new_x="LMARGIN", new_y="NEXT")
+                pdf.ln(3)
             pdf.set_text_color(20, 22, 28)
     elif kind == "bullet":
         pdf.set_x(LM + 4)
@@ -1044,17 +1194,17 @@ def _render_block(pdf, kind, c, LM, EPW, is_q, raw=None, scale=1.0):
         pdf.set_text_color(28, 32, 40)
         if not _write_rich(pdf, raw, LM + 9, EPW - 9, _S(11.5), _S(6.8),
                            base_bold=is_q, color=(28, 32, 40)):
-            _style_font(pdf, "", _S(11.5), base_bold=is_q)
-            pdf.multi_cell(EPW - 9, _S(6.8), c, new_x="LMARGIN", new_y="NEXT")
+            ctxt = _para_font(pdf, raw, c, _S(11.5), is_q)
+            pdf.multi_cell(EPW - 9, _S(6.8), ctxt, new_x="LMARGIN", new_y="NEXT")
         pdf.ln(0.4)
     else:
         # Question text bold rehta hai (exam paper style), answer normal weight
         if not _write_rich(pdf, raw, LM, EPW, _S(11.5), _S(6.8),
                            base_bold=is_q, color=(22, 26, 34)):
             pdf.set_x(LM)
-            _style_font(pdf, "", _S(11.5), base_bold=is_q)
+            ctxt = _para_font(pdf, raw, c, _S(11.5), is_q)
             pdf.set_text_color(22, 26, 34)
-            pdf.multi_cell(EPW, _S(6.8), c, new_x="LMARGIN", new_y="NEXT")
+            pdf.multi_cell(EPW, _S(6.8), ctxt, new_x="LMARGIN", new_y="NEXT")
         pdf.ln(0.4)
 
 
@@ -1181,6 +1331,7 @@ def _stamp_pdf(data, label_big, label_small, per_q=None):
     ov.set_auto_page_break(False)
     ov.add_font("Noto", "", _font_path())
     ov.add_font("Noto", "B", _font_path_bold() or _font_path())
+    _register_dvs(ov)
     RED = (200, 32, 40)
     for pi, p in enumerate(reader.pages):
         w_mm = float(p.mediabox.width) * 25.4 / 72.0
@@ -1357,6 +1508,7 @@ def build_dpp_pdf(ex, questions, medium="english", kind="q"):
     pdf.set_auto_page_break(True, margin=18)
     pdf.add_font("Noto", "", FONT)
     pdf.add_font("Noto", "B", _font_path_bold() or FONT)
+    _register_dvs(pdf)
     try:
         pdf.add_font("Noto", "I", FONT)
         pdf.add_font("Noto", "BI", _font_path_bold() or FONT)

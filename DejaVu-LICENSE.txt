@@ -1,0 +1,8 @@
+DejaVu Fonts — Bitstream Vera License
+Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved.
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+the fonts accompanying this license ("Fonts") and associated documentation files,
+to use, reproduce, and distribute the Fonts (including modified versions),
+provided that the above copyright notice and this permission notice are included
+in all copies, and that the Fonts' names are not used to endorse derived products.
+THE FONTS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.

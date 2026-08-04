@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- MVS Portal v119 -->
+<!-- MVS Portal v120 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -6085,6 +6085,9 @@ function _healMathZone(z){
 function _healPlainLine(ln){
   if(/\\begin\{|\\end\{|\\hline/.test(ln)) return ln;
   let s=ln;
+  // v120: PDF-paste column separators (heavy bars / repeated ascii pipes) -> line break
+  s=s.replace(/[ ]*[\u2758\u2759\u275A\u2502\u2503\u258D]+[ ]*/g,'\n');
+  if((s.match(/ \| /g)||[]).length>=2) s=s.replace(/ +\| +/g,'\n');
   const hasEq=/=/.test(s), hasHi=/[\u0900-\u097F]/.test(s);
   // broken frac bina $ ke: "=A}/{B" -> $\frac{A}{B}$ (wordy args \text)
   if(hasEq) s=s.replace(/(=)\s*([^{}=\n]{2,80}?)\}\s*\/\s*\{([^{}\n]{1,80}?)\}/g,(m,e,a,b)=>{
@@ -6126,9 +6129,9 @@ function _mathHeal(t){
 // _structHeal: lambi run-on lines me mid-line segment starters (Step 2:, Formula:,
 // Substitute..., Answer:, Therefore, (i) ...) ko apni line pe lao — model answers
 // premium structured blocks ban jaate hain. Stash ke BAAD chalta hai (math safe).
-const _STOK='(?:Step\\s+\\d+\\s*:|\u091A\u0930\u0923\\s*\\d+\\s*:|Formula[^:\\n]{0,24}:|Substitute[^:\\n]{0,30}:|Final\\s+Answer\\s*:|Answer\\s*:|Note\\s*:|Case\\s+\\d+\\s*:|\u0938\u0942\u0924\u094D\u0930\\s*:|Given[^:\\n]{0,20}:|To\\s+find[^:\\n]{0,24}:)';
+const _STOK='(?:Step\\s+\\d+\\s*:|\u091A\u0930\u0923\\s*\\d+\\s*:|Formula[^:\\n]{0,24}:|Substitute[^:\\n]{0,30}:|Final\\s+Answer\\s*:|Answer\\s*:|Note\\s*:|Case\\s+\\d+\\s*:|\u0938\u0942\u0924\u094D\u0930\\s*:|Given[^:\\n]{0,20}:|To\\s+find[^:\\n]{0,24}:|Rewrite[^:\\n]{0,24}:)';
 const _STOK_RE=new RegExp('(?<=\\S)\\s+('+_STOK+')','g');
-const _SPROSE_RE=new RegExp('(?<=[.}:$\u0002])\\s+(Therefore|Hence\\b|Thus\\b|Now,|\u0905\u0924\u0903|\u0905\u0924:)','g');
+const _SPROSE_RE=new RegExp('(?<=[.}:$\u0002])\\s+(Therefore|Hence\\b|Thus\\b|Now,|Given,|Let,|Then,|Substituting,|Using the formula,|we get,|or,|\u0905\u0924\u0903|\u0905\u0924:)','g');
 const _SROMAN_RE=new RegExp('(?<=[.}:$\u0002])\\s+(\\((?:i{1,3}|iv|v)\\))(?=\\s|[A-Z0-9\u0001$\\\\(])','g');
 function _structHeal(s){
   return String(s||'').split('\n').map(ln=>{
@@ -6304,6 +6307,11 @@ function _fmtRich(t){
     return ln;
   }).join('\n');
   // inline $...$ — poora sentence wrap ho to text hi rakho (math mode spaces kha jaata hai)
+  // v120: bada calculus math (integral/sum/lambi frac) inline na rahe — centered display block
+  const _promoteDisp=(gg)=>{
+    if(/\\(?:int|sum|prod|lim)(?![a-zA-Z])/.test(gg)&&gg.replace(/\\(?:int|sum|prod|lim)(?![a-zA-Z])/g,'').replace(/[_{}^$\\\s]/g,'').length>=3&&(gg.length>=18||/=|\\[dt]?frac/.test(gg))) return true;
+    return gg.length>=30&&/\\[dt]?frac/.test(gg);
+  };
   s=s.replace(/\$([^\n$]+?)\$/g,(m,g)=>{
     const gg=g.trim();
     if(!gg) return ' ';
@@ -6311,12 +6319,12 @@ function _fmtRich(t){
     if(/\\begin\{|\\end\{|\\hline|\\boxed|\\colorbox|\\fcolorbox/.test(gg)) return stash(gg, /\\begin\{/.test(gg));
     // v116: structural command (frac/sqrt/text/binom/integral...) ho to ye math hi
     // hai — wordy \text args wala healed frac sentence-guard me na phanse
-    if(/\\(frac|dfrac|tfrac|cfrac|sqrt|text\s*\{|binom|ce\{|boxed|int|sum|prod|lim|vec|hat|overline|underline|mathbb|overbrace|underbrace)\b/.test(gg)) return stash(gg,false);
+    if(/\\(frac|dfrac|tfrac|cfrac|sqrt|text\s*\{|binom|ce\{|boxed|int|sum|prod|lim|vec|hat|overline|underline|mathbb|overbrace|underbrace)\b/.test(gg)) return stash(gg,_promoteDisp(gg));
     const stripped=gg.replace(/\\[a-zA-Z]+\{([^{}]*)\}/g,'$1').replace(/\\[a-zA-Z]+/g,' ');
     const words=(stripped.match(/[\p{L}\p{M}]{2,}/gu)||[]).length;
     const specials=(gg.match(/[_^\\=<>|]/g)||[]).length;
     if(words>=6||(words>=5&&specials===0)) return gg;
-    return stash(gg,false);
+    return stash(gg,_promoteDisp(gg));
   });
   // bare math fragments (bina $ ke): 0^\circ, x^2, T^{2}
   s=s.replace(/([0-9A-Za-z)\u0900-\u097F])\s*\^\s*(\\[A-Za-z]+|\{[^{}\n]*\}|[A-Za-z0-9.]+)/g,(m,b,e)=>stash(b+'^{'+e+'}',false));
