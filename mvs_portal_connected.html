@@ -8816,7 +8816,7 @@ function _ttTeacherCard(t,showName){
       <div class="tt-chips">${r.assigned?`<span class="tt-chip">assigned ${r.assigned}</span>`:''}${r.pending?`<span class="tt-chip pend">pending ${r.pending}</span>`:''}${met?`<span class="tt-chip ok">${ic('check')} done</span>`:''}</div>
     </div>`;
   }).join('');
-  const subChips=(t.subjects||[]).map(s=>`<span class="tt-sub">${esc(s)}</span>`).join('');
+  const subChips=[...new Set(t.subjects||[])].map(s=>`<span class="tt-sub">${esc(s)}</span>`).join('');
   const bysub=(t.multi&&(t.by_subject||[]).length)?`<details class="tt-bysub"><summary>${ic('folder')} By subject (${t.by_subject.length}) — Videos target per subject</summary>
     <div class="tt-subwrap">${t.by_subject.map(b=>{const met=b.target>0&&b.done>=b.target;return `<div class="tt-srow"><span class="tt-slbl">${esc(b.subject)}</span>${_ttBar(b.done,b.target)}<b class="tt-num ${met?'ok':''}">${b.done}/${b.target||'—'}</b>${b.pending?`<span class="tt-chip pend">pending ${b.pending}</span>`:''}${b.assigned?`<span class="tt-chip">assigned ${b.assigned}</span>`:''}</div>`;}).join('')}</div></details>`:'';
   return `<div class="tt-card">${showName?`<div class="tt-head"><div class="tt-name">${esc(t.name)}</div><div class="tt-subs">${subChips}</div></div>`:(subChips?`<div class="tt-subs" style="margin-bottom:10px">${subChips}</div>`:'')}<div class="tt-rows">${rows}</div>${bysub}</div>`;
@@ -9844,7 +9844,7 @@ async function renderTeacherTargets(wrapId){
           <div class="tt-chips">${r.assigned?`<span class="tt-chip">assigned ${r.assigned}</span>`:''}${r.pending?`<span class="tt-chip pend">pending ${r.pending}</span>`:''}${met?`<span class="tt-chip ok">${ic('check')} done</span>`:''}</div>
         </div>`;
       }).join('');
-      const subChips=(t.subjects||[]).map(s=>`<span class="tt-sub">${esc(s)}</span>`).join('');
+      const subChips=[...new Set(t.subjects||[])].map(s=>`<span class="tt-sub">${esc(s)}</span>`).join('');
       const bysub=(t.multi&&(t.by_subject||[]).length)?`<details class="tt-bysub"><summary>${ic('folder')} By subject (${t.by_subject.length}) — Videos target per subject</summary>
         <div class="tt-subwrap">${t.by_subject.map(b=>{const met=b.target>0&&b.done>=b.target;return `<div class="tt-srow"><span class="tt-slbl">${esc(b.subject)}</span>${_ttBar(b.done,b.target)}<b class="tt-num ${met?'ok':''}">${b.done}/${b.target||'—'}</b>${b.pending?`<span class="tt-chip pend">pending ${b.pending}</span>`:''}${b.assigned?`<span class="tt-chip">assigned ${b.assigned}</span>`:''}</div>`;}).join('')}</div></details>`:'';
       return `<div class="tt-card">
@@ -17369,34 +17369,38 @@ async function ocrFillQuestion_v1(inp,i){
 .vv-line{width:100%;height:auto}
 .vv-series{margin-top:4px}
 .vv-empty{font-size:.82rem;color:var(--text-muted);padding:10px 2px}
-.tt-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:12px}
-.tt-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)}
-.tt-name{font-weight:800;font-size:1rem}
-.tt-subs{display:flex;gap:5px;flex-wrap:wrap}
-.tt-sub{font-size:.66rem;font-weight:700;background:rgba(184,148,31,.12);color:#8a6d10;padding:2px 8px;border-radius:999px}
-.dark .tt-sub{color:#e3b341;background:rgba(184,148,31,.2)}
-.tt-rows{display:flex;flex-direction:column;gap:9px}
-.tt-row{display:grid;grid-template-columns:1.4fr 1.6fr auto;gap:10px;align-items:center}
-@media(max-width:640px){.tt-row{grid-template-columns:1fr;gap:4px}}
-.tt-lbl{font-size:.82rem;font-weight:700}
-.tt-cust{font-size:.58rem;font-weight:800;background:rgba(124,58,237,.14);color:#7c3aed;padding:1px 6px;border-radius:6px;margin-left:6px;vertical-align:middle}
-.tt-mid{display:flex;align-items:center;gap:8px}
-.tt-bar{flex:1;height:12px;background:rgba(0,0,0,.06);border-radius:7px;overflow:hidden;min-width:80px}
+.tt-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px 18px 16px 20px;margin-bottom:14px;box-shadow:0 3px 14px rgba(0,0,0,.05);position:relative;overflow:hidden}
+.dark .tt-card{box-shadow:0 3px 14px rgba(0,0,0,.25)}
+.tt-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,#c9a227,#0891b2)}
+.tt-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;padding-bottom:11px;border-bottom:2px solid var(--border)}
+.tt-name{font-weight:900;font-size:1.08rem;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
+.tt-name::before{content:'';width:9px;height:9px;border-radius:50%;background:linear-gradient(135deg,#c9a227,#0891b2);box-shadow:0 0 0 3px rgba(201,162,39,.16)}
+.tt-subs{display:flex;gap:6px;flex-wrap:wrap}
+.tt-sub{font-size:.72rem;font-weight:800;background:linear-gradient(135deg,#c9a227,#9a7d15);color:#fff;padding:4px 12px;border-radius:999px;box-shadow:0 2px 7px rgba(184,148,31,.32);letter-spacing:.015em;white-space:nowrap}
+.tt-rows{display:flex;flex-direction:column;gap:11px}
+.tt-row{display:grid;grid-template-columns:1.35fr 1.65fr auto;gap:12px;align-items:center}
+@media(max-width:640px){.tt-row{grid-template-columns:1fr;gap:5px}}
+.tt-lbl{font-size:.84rem;font-weight:800;color:var(--text)}
+.tt-cust{font-size:.58rem;font-weight:800;background:rgba(124,58,237,.14);color:#7c3aed;padding:1px 7px;border-radius:6px;margin-left:6px;vertical-align:middle;text-transform:uppercase;letter-spacing:.04em}
+.tt-mid{display:flex;align-items:center;gap:10px}
+.tt-bar{flex:1;height:14px;background:rgba(0,0,0,.055);border-radius:8px;overflow:hidden;min-width:90px;box-shadow:inset 0 1px 2px rgba(0,0,0,.06)}
 .dark .tt-bar{background:rgba(255,255,255,.08)}
-.tt-fill{display:block;height:100%;background:linear-gradient(90deg,#0891b2,#2563eb);border-radius:7px;transition:width .3s}
-.tt-fill.ok{background:linear-gradient(90deg,#059669,#10b981)}
-.tt-num{font-size:.8rem;font-weight:800;white-space:nowrap;color:var(--text-muted)}
+.tt-fill{display:block;height:100%;background:linear-gradient(90deg,#0891b2,#2563eb);border-radius:8px;transition:width .5s cubic-bezier(.4,0,.2,1);box-shadow:0 1px 4px rgba(37,99,235,.35)}
+.tt-fill.ok{background:linear-gradient(90deg,#059669,#10b981);box-shadow:0 1px 6px rgba(16,185,129,.45)}
+.tt-num{font-size:.85rem;font-weight:900;white-space:nowrap;color:var(--text-muted);min-width:44px;text-align:right}
 .tt-num.ok{color:#059669}
-.tt-chips{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
-.tt-chip{font-size:.66rem;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(37,99,235,.12);color:#2563eb;white-space:nowrap}
-.tt-chip.pend{background:rgba(217,119,6,.14);color:#b45309}
-.tt-chip.ok{background:rgba(16,185,129,.15);color:#059669}
-.tt-bysub{margin-top:10px;border-top:1px dashed var(--border);padding-top:8px}
-.tt-bysub>summary{cursor:pointer;font-size:.76rem;font-weight:800;color:var(--primary);list-style:none;display:flex;align-items:center;gap:6px}
+.tt-chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.tt-chip{font-size:.68rem;font-weight:800;padding:3px 10px;border-radius:999px;background:rgba(37,99,235,.12);color:#2563eb;white-space:nowrap;display:inline-flex;align-items:center;gap:3px}
+.tt-chip.pend{background:rgba(217,119,6,.15);color:#b45309}
+.tt-chip.ok{background:rgba(16,185,129,.16);color:#059669}
+.tt-bysub{margin-top:14px;border-top:1px dashed var(--border);padding-top:12px}
+.tt-bysub>summary{cursor:pointer;font-size:.78rem;font-weight:800;color:#fff;list-style:none;display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#0891b2,#2563eb);padding:7px 14px;border-radius:10px;box-shadow:0 2px 8px rgba(37,99,235,.28)}
 .tt-bysub>summary::-webkit-details-marker{display:none}
-.tt-subwrap{margin-top:8px;display:flex;flex-direction:column;gap:7px}
-.tt-srow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.tt-slbl{font-size:.78rem;font-weight:700;flex:0 0 130px}
+.tt-bysub[open]>summary{margin-bottom:12px}
+.tt-subwrap{display:flex;flex-direction:column;gap:9px;padding:12px 14px;background:rgba(8,145,178,.05);border-radius:12px;border:1px solid rgba(8,145,178,.12)}
+.dark .tt-subwrap{background:rgba(8,145,178,.08)}
+.tt-srow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tt-slbl{font-size:.8rem;font-weight:800;flex:0 0 150px;color:var(--text)}
 @media(max-width:640px){.tt-slbl{flex:1 1 100%}}
 .vt-yt-views a{color:var(--primary);font-weight:700}
 .vt-hero{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:18px 20px;border-radius:16px;
