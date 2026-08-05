@@ -104,6 +104,10 @@
   .card-header h3{font-size:1rem;font-weight:700}.card-body{padding:24px}
   .stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(186px,100%),1fr));gap:16px;margin-bottom:22px}
   .stat-card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:22px;position:relative;box-shadow:var(--shadow);transition:transform .18s ease,box-shadow .18s ease;overflow:hidden}.stat-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--acc,#6b550b);opacity:0;transition:.2s}.stat-card:hover::before{opacity:1}
+  .stat-card.stat-blink{border-color:#dc2626;animation:statBlink 1.15s ease-in-out infinite}
+  .stat-card.stat-blink .sc-num{color:#dc2626}
+  .stat-card.stat-blink .sc-badge{background:rgba(220,38,38,.14)!important;color:#dc2626!important}
+  @keyframes statBlink{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.45)}50%{box-shadow:0 0 0 6px rgba(220,38,38,0)}}
   .stat-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
   .stat-card.clickable{cursor:pointer}
   .sc-row{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
@@ -2850,8 +2854,9 @@ const ICONS={
   link2:_S+'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
 };
 function ic(k){ return ICONS[k]||''; }
-function statCard(label,num,iconKey,accent,nav){
-  return `<div class="stat-card stat-${accent}${nav?' clickable':''}"${nav?` onclick="${nav}"`:''}><div class="sc-badge sc-${accent}">${ic(iconKey)}</div><div class="sc-label">${label}</div><div class="sc-num">${num}</div></div>`;
+function statCard(label,num,iconKey,accent,nav,blink){
+  const bl=(blink&&Number(num)>0)?' stat-blink':'';
+  return `<div class="stat-card stat-${accent}${nav?' clickable':''}${bl}"${nav?` onclick="${nav}"`:''}><div class="sc-badge sc-${accent}">${ic(iconKey)}</div><div class="sc-label">${label}</div><div class="sc-num">${num}</div></div>`;
 }
 function _setPage(p){ _curPage=p; if(TOKEN) _pingNow(); }
 /* browser back/forward support: portal pages become history entries */
@@ -4043,7 +4048,7 @@ async function loadTDashboard(){
   try{
  const d=await api('/api/teacher/dashboard');
  document.getElementById('t-subjects').textContent='Teacher';
- el.innerHTML=`${greetingCard(NAME,_tSuffix)}<div class="card"><div class="card-header"><h3> Today's Classes</h3></div><div class="card-body"><div id="t-today-wrap"><div class="spinner"></div></div></div></div><div id="t-punch-wrap"></div><div class="stats-grid">${statCard('Classes Done',d.total_done,'check','green')}${statCard('Pending',d.total_pending,'clipboard','amber')}${statCard('DPPs',d.total_dpps,'clipboard','indigo',"navTo('teacher-app','dpp')")}${statCard('Tests',d.total_tests,'edit','teal',"navTo('teacher-app','tests')")}${statCard('Unresolved Doubts',d.unresolved_doubts,'help','red',"navTo('teacher-app','doubts')")}</div>`;
+ el.innerHTML=`${greetingCard(NAME,_tSuffix)}<div class="card"><div class="card-header"><h3> Today's Classes</h3></div><div class="card-body"><div id="t-today-wrap"><div class="spinner"></div></div></div></div><div id="t-punch-wrap"></div><div class="stats-grid">${statCard('Classes Done',d.total_done,'check','green')}${statCard('Pending',d.total_pending,'clipboard','amber')}${statCard('DPPs',d.total_dpps,'clipboard','indigo',"navTo('teacher-app','dpp')")}${statCard('Tests',d.total_tests,'edit','teal',"navTo('teacher-app','tests')")}${statCard('Unresolved Doubts',d.unresolved_doubts,'help','red',"navTo('teacher-app','doubts')",true)}</div>`;
  const badge=document.getElementById('t-doubt-badge');
  if(d.unresolved_doubts>0){ badge.style.display='inline-block'; badge.textContent=d.unresolved_doubts; } else badge.style.display='none';
  renderPunchCard('t-punch-wrap');
@@ -10073,7 +10078,7 @@ async function loadADashboard(){
   const el=document.getElementById('a-dashboard-content');
   try{
  const d=await api('/api/admin/dashboard');
- el.innerHTML=`<div class="stats-grid">${statCard('Teachers',d.total_teachers,'users','indigo',"navTo('admin-app','teachers')")}${statCard('Students',d.total_students,'user','teal',"navTo('admin-app','students')")}${statCard('Classes Done',d.total_classes_done,'check','green')}${statCard('Pending',d.total_pending,'clipboard','amber')}${statCard('Pending Approvals',d.pending_reschedules,'refresh','purple',"navTo('admin-app','approvals')")}${statCard('Unresolved Doubts',d.unresolved_doubts,'help','red')}</div>
+ el.innerHTML=`<div class="stats-grid">${statCard('Teachers',d.total_teachers,'users','indigo',"navTo('admin-app','teachers')")}${statCard('Students',d.total_students,'user','teal',"navTo('admin-app','students')")}${statCard('Classes Done',d.total_classes_done,'check','green')}${statCard('Pending',d.total_pending,'clipboard','amber')}${statCard('Pending Approvals',d.pending_reschedules,'refresh','purple',"navTo('admin-app','approvals')",true)}${statCard('Unresolved Doubts',d.unresolved_doubts,'help','red',"navTo('admin-app','doubts')",true)}</div>
  <div class="card glass-soft"><div class="card-header"><h3>System Health — Teacher Activity</h3><div class="legend"><span><i style="background:#059669"></i>High</span><span><i style="background:#d97706"></i>Medium</span><span><i style="background:#a2946d"></i>Low</span></div></div><div class="card-body"><div class="mat-twrap"><div id="a-health-wrap"><div class="spinner"></div></div></div></div></div>
  <div class="card"><div class="card-header"><h3>Quick Actions</h3></div><div class="card-body">${d.pending_reschedules>0?`<div class="alert alert-danger">${d.pending_reschedules} reschedule requests pending — <span style="cursor:pointer;text-decoration:underline" onclick="navTo('admin-app','approvals')">Review</span></div>`:`<div class="alert alert-success">No pending approvals</div>`}
  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px"><button class="btn btn-primary btn-sm" onclick="openAddTeacher()">${ic('users')} Teacher Add</button><button class="btn btn-primary btn-sm" onclick="openAddStudent()">${ic('user')} Student Add</button><button class="btn btn-success btn-sm" onclick="openBulkPhone()">${ic('users')} Add by Phone</button></div></div></div>`;

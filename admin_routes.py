@@ -101,7 +101,19 @@ def admin_dashboard(db: Session = Depends(get_db), _=Depends(get_admin)):
     total_done      = db.query(ClassEntry).filter(ClassEntry.status == ClassStatus.done).count()
     total_pending   = db.query(ClassEntry).filter(ClassEntry.status == ClassStatus.pending).count()
     pending_rs      = db.query(RescheduleRequest).filter(RescheduleRequest.status == RescheduleStatus.pending).count()
-    unresolved      = db.query(Doubt).filter(Doubt.status == DoubtStatus.pending).count()
+    # unresolved = jo resolved nahi, PLUS resolved par jinpe naya follow-up aaya (attention chahiye)
+    # — bilkul subject-wise doubts section jaise, taaki dashboard aur section match karein.
+    unresolved = 0
+    for d in db.query(Doubt).all():
+        is_resolved = (getattr(d.status, "value", str(d.status)) == "resolved")
+        if not is_resolved:
+            unresolved += 1
+        else:
+            try:
+                if _doubt_needs_attention(db, d.id):
+                    unresolved += 1
+            except Exception:
+                pass
 
     return AdminDashboard(
         total_teachers=total_teachers, total_students=total_students,

@@ -69,7 +69,18 @@ def teacher_dashboard(db: Session = Depends(get_db), current_user=Depends(get_te
 
     total_dpps  = db.query(DPP).filter(DPP.teacher_id == tp.id).count()
     total_tests = db.query(Test).filter(Test.teacher_id == tp.id).count()
-    unresolved  = db.query(Doubt).filter(Doubt.teacher_id == tp.id, Doubt.status == DoubtStatus.pending).count()
+    # unresolved = not-resolved PLUS resolved-but-new-follow-up (thread ka last msg student ka)
+    from models import DoubtResponse as _DR
+    unresolved = 0
+    for d in db.query(Doubt).filter(Doubt.teacher_id == tp.id).all():
+        is_resolved = (getattr(d.status, "value", str(d.status)) == "resolved")
+        if not is_resolved:
+            unresolved += 1
+        else:
+            r = (db.query(_DR).filter(_DR.doubt_id == d.id)
+                 .order_by(_DR.created_at.desc(), _DR.id.desc()).first())
+            if r and r.role == "student":
+                unresolved += 1
 
     return TeacherDashboard(
         total_done=total_done, total_pending=total_pending,
