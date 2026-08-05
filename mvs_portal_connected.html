@@ -6592,15 +6592,22 @@ function _rtIns(id,snip){
 // cell ka math alag KaTeX se (ek cell fail ho to poori table nahi tootti).
 function _cellHtml(c){
   c=String(c==null?'':c).replace(/\\hline/g,'').trim();
-  c=c.replace(/^#?[0-9a-fA-F]{6}\b\s*/,'').trim();     // stray color-hex leftover
   if(!c||c==='\\') return '';
   const parts=[];
   // $...$ math -> KaTeX (guarded)
   c=c.replace(/\$([^$]+)\$/g,(m,g)=>{ let r; try{ r=_fmtMath(g,false); }catch(e){ r=esc(g); } parts.push(r); return '\u0005'+(parts.length-1)+'\u0006'; });
-  // \textbf{..} / \bf -> bold marker; \text{..} -> plain
-  c=c.replace(/\\textbf\s*\{([^{}]*)\}/g,'\u0005B\u0006$1\u0005E\u0006').replace(/\\text(?:rm|bf)?\s*\{([^{}]*)\}/g,'$1');
-  // koi $ math nahi par bare LaTeX/superscript ho -> poore cell ko KaTeX (guarded)
-  if(!parts.length && /[\\^_]/.test(c) && !/[<>]/.test(c)){
+  // wrappers ko INNERMOST-first unwrap (colorbox/text/textbf ki nesting: \colorbox{c}{\text{\textbf{X}}})
+  for(let k=0;k<8;k++){
+    const before=c;
+    c=c.replace(/\\(?:textbf|mathbf)\s*\{([^{}]*)\}/g,'\u0005B\u0006$1\u0005E\u0006')
+       .replace(/\\(?:text|textrm|mathrm)\s*\{([^{}]*)\}/g,'$1')
+       .replace(/\\colorbox\s*\{[^{}]*\}\s*\{([^{}]*)\}/g,'$1')
+       .replace(/\\fcolorbox\s*\{[^{}]*\}\s*\{[^{}]*\}\s*\{([^{}]*)\}/g,'$1');
+    if(c===before) break;
+  }
+  c=c.replace(/^#?[0-9a-fA-F]{6}\b\s*/,'').trim();     // stray color-hex leftover
+  // koi $ math/bold nahi par bare LaTeX/superscript ho -> poore cell ko KaTeX (guarded)
+  if(!parts.length && !/[\u0005\u0006]/.test(c) && /[\\^_]/.test(c) && !/[<>]/.test(c)){
     try{ const r=_fmtMath(c,false); if(r) return r; }catch(e){}
   }
   let out=esc(c)
