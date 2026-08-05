@@ -5264,19 +5264,41 @@ function _dppHub(pid,kind,goFn,cacheName){
 // View/Download hub step HATA DIYA — Download click pe seedha medium puchho, phir turant download
 function sDppHub(pid,kind){ const pk=(window._sDppPacks||window._sMatDppPacks||[]).find(x=>x.id===pid)||{}; _dppHubHTML(pid,kind,'download',pk.source==='created'?1:0,'sDppGo'); }
 function tDppHub(pid,kind){ const pk=(window._dppPacks||[]).find(x=>x.id===pid)||{}; _dppHubHTML(pid,kind,'download',pk.source==='created'?1:0,'dppPdfGo'); }
+// Bulletproof PDF fetch: 4 tak retry, har attempt pe 2 min timeout (AbortController),
+// empty/partial file reject. Slow Railway pe connection toot-toot ke bhi eventually mil jaati hai.
+async function _dlPdfBlob(url){
+  let lastErr;
+  for(let attempt=0; attempt<4; attempt++){
+    const ctrl=new AbortController();
+    const to=setTimeout(()=>ctrl.abort(), 120000);
+    try{
+      const r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}, signal:ctrl.signal});
+      clearTimeout(to);
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const bl=await r.blob();
+      if(!bl || bl.size<200) throw new Error('empty');
+      return bl;
+    }catch(e){
+      clearTimeout(to); lastErr=e;
+      if(attempt<3){
+        if(attempt===0) toast('PDF aa rahi hai — server thoda slow hai, ho jaayega…');
+        await new Promise(r=>setTimeout(r, 2500*(attempt+1)));
+      }
+    }
+  }
+  throw lastErr||new Error('download failed');
+}
 // student PDF fetch (view ya download) — medium ke saath
-async function sDppGo(pid,action,kind,med,_retry){
+async function sDppGo(pid,action,kind,med){
   try{
-    const r=await fetch(API+`/api/student/dpp-packs/${pid}/file?kind=${kind}&med=${med||''}`,{headers:{Authorization:'Bearer '+TOKEN}});
-    if(!r.ok) throw new Error('nf');
-    const bl=await r.blob(); const u=URL.createObjectURL(bl);
+    const bl=await _dlPdfBlob(API+`/api/student/dpp-packs/${pid}/file?kind=${kind}&med=${med||''}`);
+    const u=URL.createObjectURL(bl);
     const fname=(kind==='s'?'DPP-solutions':'DPP-questions')+'-'+(med||'paper')+'.pdf';
     if(action==='view') pdfViewerModal(u,(kind==='s'?'Solutions':'Questions')+(med==='hindi'?' — हिंदी':(med==='both'?' — English + हिंदी':' — English')),fname);
-    else{ const a=document.createElement('a'); a.href=u; a.download=fname; document.body.appendChild(a); a.click(); a.remove(); _dppTrack(pid,'download'); }
+    else{ const a=document.createElement('a'); a.href=u; a.download=fname; document.body.appendChild(a); a.click(); a.remove(); _dppTrack(pid,'download'); toast('Downloaded.'); }
     setTimeout(()=>URL.revokeObjectURL(u),300000);
   }catch(e){
-    if(!_retry){ toast('Server slow hai — 3 sec me dobara…',true); await new Promise(r=>setTimeout(r,3000)); return sDppGo(pid,action,kind,med,true); }
-    toast('PDF abhi nahi khul pa rahi — thodi der baad try karo.',true);
+    toast('PDF abhi nahi aa paayi — server busy hai. 1 min baad dobara try karo.',true);
   }
 }
 function pdfViewerModal(u,title,fname){
@@ -5285,22 +5307,20 @@ function pdfViewerModal(u,title,fname){
   { const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.add('cx'); }
   _pdfView(document.getElementById('pvm-view'), u, {title:title||'PDF', downloadName:fname||'document.pdf', src:u});
 }
-async function dppPdfGo(pid,action,kind,med,_retry){
+async function dppPdfGo(pid,action,kind,med){
+  toast('PDF '+(med==='hindi'?'(Hindi ':'(English ')+(kind==='s'?'solutions)':'questions)')+' aa rahi hai…');
   try{
-    toast('PDF ban rahi hai ('+(med==='hindi'?'Hindi':'English')+' '+(kind==='s'?'solutions':'questions')+') — pehli baar thoda time…');
-    const r=await fetch(API+`/api/teacher/dpp-packs/${pid}/pdf?kind=${kind}&medium=${med||''}`,{headers:{Authorization:'Bearer '+TOKEN}});
-    if(!r.ok) throw new Error('nf');
-    const bl=await r.blob(); const u=URL.createObjectURL(bl);
+    const bl=await _dlPdfBlob(API+`/api/teacher/dpp-packs/${pid}/pdf?kind=${kind}&medium=${med||''}`);
+    const u=URL.createObjectURL(bl);
     const fname=(kind==='s'?'DPP-solutions':'DPP-questions')+'-'+(med||'english')+'.pdf';
     if(action==='view'){
       pdfViewerModal(u,(kind==='s'?'Solutions':'Questions')+' — '+(med==='hindi'?'हिंदी':'English'),fname);
     }else{
-      const a=document.createElement('a'); a.href=u; a.download=fname; document.body.appendChild(a); a.click(); a.remove();
+      const a=document.createElement('a'); a.href=u; a.download=fname; document.body.appendChild(a); a.click(); a.remove(); toast('Downloaded.');
     }
     setTimeout(()=>URL.revokeObjectURL(u),300000);
   }catch(e){
-    if(!_retry){ toast('Server slow hai — 4 sec me dobara try…',true); await new Promise(r=>setTimeout(r,4000)); return dppPdfGo(pid,action,kind,med,true); }
-    toast('PDF abhi nahi ban pa rahi — thodi der baad try karo.',true);
+    toast('PDF abhi nahi aa paayi — server busy hai. 1 min baad dobara try karo.',true);
   }
 }
 // ---------- submissions (results) — Checking / Checked + Remarks (no marks) ----------
