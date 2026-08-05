@@ -88,6 +88,8 @@ def _ensure_special_columns():
         "ALTER TABLE video_tasks ADD COLUMN yt_views_at DATETIME NULL",
         "ALTER TABLE video_task_chapters ADD COLUMN edit_status VARCHAR(20) DEFAULT ''",
         "ALTER TABLE video_task_chapters ADD COLUMN changed_at DATETIME NULL",
+        "ALTER TABLE video_task_chapters ADD COLUMN vintage VARCHAR(10) DEFAULT ''",
+        "ALTER TABLE video_tasks ADD COLUMN vintage VARCHAR(10) DEFAULT ''",
     ]
     for ddl in alters:
         try:
@@ -871,6 +873,7 @@ def _special_out(db, t):
         "id": c.id, "title": c.title, "link": c.link or "",
         "submitted_at": c.submitted_at.strftime("%d %b %Y, %I:%M %p") if c.submitted_at else "",
         "edit_status": _ch_status(c),
+        "vintage": (getattr(c, "vintage", "") or ""),
         "changed": bool(getattr(c, "changed_at", None) and (not asa or c.changed_at > asa)),
         "changed_at": c.changed_at.strftime("%d %b %Y, %I:%M %p") if getattr(c, "changed_at", None) else "",
     } for c in chs]
@@ -2280,11 +2283,34 @@ def _vt_targets_for(db, tp, dt0, dt1):
         VideoTask.proposal_ok != "pending",
         VideoTask.status != "rejected").all()
 
-    cats = {"videos": {"assigned": 0, "done": 0},
-            "shorts": {"assigned": 0, "done": 0},
-            "live":   {"assigned": 0, "done": 0}}
+    cats = {"videos": {"assigned": 0, "done": 0, "verify": 0},
+            "shorts": {"assigned": 0, "done": 0, "verify": 0},
+            "live":   {"assigned": 0, "done": 0, "verify": 0}}
     bysub = {}
     for t in tasks:
+        kind = (t.kind or "normal")
+        sub = t.subject or "General"
+        if kind in ("one_shot", "rapid_revision", "project"):
+            chs = db.query(VideoTaskChapter).filter(VideoTaskChapter.task_id == t.id).all()
+            if not chs:
+                cats["videos"]["assigned"] += 1
+                bysub.setdefault(sub, {"assigned": 0, "done": 0})
+                bysub[sub]["assigned"] += 1
+                continue
+            for ch in chs:
+                cats["videos"]["assigned"] += 1
+                has_link = bool((ch.link or "").strip()) or bool(ch.submitted_at)
+                vint = (getattr(ch, "vintage", "") or "")
+                done = has_link and vint == "new"      # sirf NEW verified video count hoti hai
+                if done:
+                    cats["videos"]["done"] += 1
+                elif has_link and vint == "":
+                    cats["videos"]["verify"] += 1       # link hai par admin ne verify nahi kiya
+                bysub.setdefault(sub, {"assigned": 0, "done": 0})
+                bysub[sub]["assigned"] += 1
+                if done:
+                    bysub[sub]["done"] += 1
+            continue
         vt = (t.video_type or "").lower()
         if "short" in vt:
             cat = "shorts"
@@ -2293,20 +2319,22 @@ def _vt_targets_for(db, tp, dt0, dt1):
         else:
             cat = "videos"
         cats[cat]["assigned"] += 1
-        done = bool(t.submitted_at) or t.status == "uploaded"
+        has_link = bool(t.submitted_at) or t.status == "uploaded"
+        done = has_link            # normal videos: submit = done (New/Old check One Shot/Revision pe)
         if done:
             cats[cat]["done"] += 1
-        sub = t.subject or "General"
-        bysub.setdefault(sub, {"assigned": 0, "done": 0})
-        bysub[sub]["assigned"] += 1
-        if done:
-            bysub[sub]["done"] += 1
+        if cat == "videos":
+            bysub.setdefault(sub, {"assigned": 0, "done": 0})
+            bysub[sub]["assigned"] += 1
+            if done:
+                bysub[sub]["done"] += 1
 
     rows = []
     for k in ("videos", "shorts", "live", "tests"):
-        c = cats.get(k, {"assigned": 0, "done": 0})
+        c = cats.get(k, {"assigned": 0, "done": 0, "verify": 0})
         rows.append({"key": k, "label": _lab(k), "target": tgt[k],
                      "assigned": c["assigned"], "done": c["done"],
+                     "verify": c.get("verify", 0),
                      "pending": max(0, c["assigned"] - c["done"])})
     for c in (getattr(cfg, "custom_targets", None) or [] if cfg else []):
         if isinstance(c, dict) and str(c.get("name") or "").strip():
@@ -2351,3 +2379,33 @@ def vt_my_targets(month: str = "", db: Session = Depends(get_db), current_user=D
     dt1 = datetime(end.year, end.month, end.day)
     row = _vt_targets_for(db, tp, dt0, dt1)
     return {"month": "%04d-%02d" % (start.year, start.month), "me": row}
+
+
+# =============================================================
+# NEW / OLD video verification (target integrity)
+# =============================================================
+@router.post("/admin/video-chapters/{cid}/vintage", dependencies=[Depends(_admin_section_guard)])
+def vt_set_chapter_vintage(cid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin ek chapter ki video ko NEW ya OLD mark kare. Sirf NEW target me count hoti hai."""
+    v = (payload or {}).get("vintage", "")
+    if v not in ("new", "old", ""):
+        raise HTTPException(status_code=400, detail="vintage new/old hona chahiye")
+    ch = db.query(VideoTaskChapter).filter(VideoTaskChapter.id == cid).first()
+    if not ch:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+    ch.vintage = v
+    db.commit()
+    return {"ok": True, "id": cid, "vintage": v}
+
+
+@router.post("/admin/video-tasks/{tid}/vintage", dependencies=[Depends(_admin_section_guard)])
+def vt_set_task_vintage(tid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    v = (payload or {}).get("vintage", "")
+    if v not in ("new", "old", ""):
+        raise HTTPException(status_code=400, detail="vintage new/old hona chahiye")
+    t = db.query(VideoTask).filter(VideoTask.id == tid).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Task not found")
+    t.vintage = v
+    db.commit()
+    return {"ok": True, "id": tid, "vintage": v}

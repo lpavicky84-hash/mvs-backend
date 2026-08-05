@@ -436,6 +436,7 @@ class VideoTask(Base):
     proposed_by    = Column(String(10), default="admin")  # admin | teacher
     proposal_ok    = Column(String(10), default="")       # pending | approved | rejected
     submitted_link = Column(String(600), default="")
+    vintage        = Column(String(10), default="")       # "" unverified | new | old (admin verifies)
     submitted_at   = Column(DateTime, nullable=True)
     on_time        = Column(Boolean, nullable=True)       # submit ke waqt set
     reviewed       = Column(Boolean, default=False)       # admin check = checking blink off
@@ -473,6 +474,7 @@ class VideoTaskChapter(Base):
     submitted_at = Column(DateTime, nullable=True)
     edit_status  = Column(String(20), default="")         # production: editing_soon / editing_done / uploaded
     changed_at   = Column(DateTime, nullable=True)        # v91: link add/update/remove kab hua (admin blink)
+    vintage      = Column(String(10), default="")         # "" unverified | new | old (admin verifies)
 
 
 class VideoViewSnapshot(Base):

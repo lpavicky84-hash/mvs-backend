@@ -8813,7 +8813,7 @@ function _ttTeacherCard(t,showName){
     return `<div class="tt-row">
       <div class="tt-lbl">${esc(r.label)}${r.custom?'<span class="tt-cust">extra</span>':''}</div>
       <div class="tt-mid">${_ttBar(r.done,r.target)}<b class="tt-num ${met?'ok':''}">${r.done}/${r.target||'—'}</b></div>
-      <div class="tt-chips">${r.assigned?`<span class="tt-chip">assigned ${r.assigned}</span>`:''}${r.pending?`<span class="tt-chip pend">pending ${r.pending}</span>`:''}${met?`<span class="tt-chip ok">${ic('check')} done</span>`:''}</div>
+      <div class="tt-chips">${r.assigned?`<span class="tt-chip">assigned ${r.assigned}</span>`:''}${r.pending?`<span class="tt-chip pend">pending ${r.pending}</span>`:""}${r.verify?`<span class="tt-chip verify">verify ${r.verify}</span>`:""}${met?`<span class="tt-chip ok">${ic('check')} done</span>`:''}</div>
     </div>`;
   }).join('');
   const subChips=[...new Set(t.subjects||[])].map(s=>`<span class="tt-sub">${esc(s)}</span>`).join('');
@@ -9048,6 +9048,26 @@ async function avtChStatus(tid,cid,st){
     if(sel){ const s2=_CHST[st]; if(s2){ sel.style.color=s2[1]; sel.style.borderColor=s2[1]+'59'; sel.style.backgroundColor=s2[1]+'14'; } }
     toast('Production status updated — '+(_CHST[st]?_CHST[st][0]:st));
   }catch(e){ toast(e.message||'Could not update the status'); }
+}
+function _avtVinSel(t,c){
+  if(!c.link) return '';
+  const v=c.vintage||'';
+  const cls=v==='new'?'vt-vin-new':(v==='old'?'vt-vin-old':'vt-vin-blink');
+  return `<select class="vt-vin-sel ${cls}" data-cid="${c.id}" title="Is this a NEW video (made this month) or an OLD one? Only NEW counts toward the target." onclick="event.stopPropagation()" onchange="avtChVintage(${t.id},${c.id},this.value)">
+    <option value="" ${v===''?'selected':''} disabled>New / Old?</option>
+    <option value="new" ${v==='new'?'selected':''}>New video</option>
+    <option value="old" ${v==='old'?'selected':''}>Old video</option></select>`;
+}
+async function avtChVintage(tid,cid,v){
+  if(!v) return;
+  try{
+    await api('/api/admin/video-chapters/'+cid+'/vintage','POST',{vintage:v});
+    const t=(window._avtMap||{})[tid]; const c=t&&(t.chapters||[]).find(x=>x.id===cid);
+    if(c) c.vintage=v;
+    const sel=document.querySelector(`#avt-os-${tid} .vt-vin-sel[data-cid="${cid}"]`);
+    if(sel){ sel.classList.remove('vt-vin-blink','vt-vin-new','vt-vin-old'); sel.classList.add(v==='new'?'vt-vin-new':'vt-vin-old'); }
+    toast(v==='new'?'Marked NEW — counts toward this month\'s target':'Marked OLD — not counted this month');
+  }catch(e){ toast(e.message||'Could not update'); }
 }
 function _vtChRow(t,c){
   if(c.link) return `<div class="vt-chr done" id="vt-chr-${t.id}-${c.id}"><span class="dot"></span><span class="nm">${esc(c.title)}</span>
@@ -9321,7 +9341,7 @@ const _VT_PJCOL=[['#3a2c07','#6b4f0c'],['#053f3c','#0f6f6a'],['#16294d','#2c4d86
 function _vtPjCol(id){ return _VT_PJCOL[(Math.abs(+id)||0)%_VT_PJCOL.length]; }
 function _avtSpecCard(t){
   const rows=(t.chapters||[]).map(c=> c.link
-    ? `<div class="vt-chr done${c.changed?' vt-changed':''}"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">${esc(c.submitted_at||'')}</span>${c.changed?`<span class="vt-chg">Link updated${c.changed_at?' · '+esc(c.changed_at):''}</span>`:''}${_avtChSel(t,c)}<a class="lk" href="${esc(c.link)}" target="_blank" rel="noopener">${ic('play')} Open video</a></div>`
+    ? `<div class="vt-chr done${c.changed?' vt-changed':''}"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">${esc(c.submitted_at||'')}</span>${c.changed?`<span class="vt-chg">Link updated${c.changed_at?' · '+esc(c.changed_at):''}</span>`:''}${_avtChSel(t,c)}${_avtVinSel(t,c)}<a class="lk" href="${esc(c.link)}" target="_blank" rel="noopener">${ic('play')} Open video</a></div>`
     : `<div class="vt-chr${c.changed?' vt-changed':''}"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">pending</span>${c.changed?`<span class="vt-chg">Link removed${c.changed_at?' · '+esc(c.changed_at):''}</span>`:''}</div>`).join('');
   return `<div class="vt-os" id="avt-os-${t.id}" style="border-color:${_vtPjCol(t.id)[1]}55">
     <div class="vt-os-h" style="background:linear-gradient(135deg,${_vtPjCol(t.id)[0]},${_vtPjCol(t.id)[1]})" onclick="avtSpecOpen(${t.id})">
@@ -9841,7 +9861,7 @@ async function renderTeacherTargets(wrapId){
         return `<div class="tt-row">
           <div class="tt-lbl">${esc(r.label)}${r.custom?'<span class="tt-cust">extra</span>':''}</div>
           <div class="tt-mid">${_ttBar(r.done,r.target)}<b class="tt-num ${met?'ok':''}">${r.done}/${r.target||'—'}</b></div>
-          <div class="tt-chips">${r.assigned?`<span class="tt-chip">assigned ${r.assigned}</span>`:''}${r.pending?`<span class="tt-chip pend">pending ${r.pending}</span>`:''}${met?`<span class="tt-chip ok">${ic('check')} done</span>`:''}</div>
+          <div class="tt-chips">${r.assigned?`<span class="tt-chip">assigned ${r.assigned}</span>`:''}${r.pending?`<span class="tt-chip pend">pending ${r.pending}</span>`:""}${r.verify?`<span class="tt-chip verify">verify ${r.verify}</span>`:""}${met?`<span class="tt-chip ok">${ic('check')} done</span>`:''}</div>
         </div>`;
       }).join('');
       const subChips=[...new Set(t.subjects||[])].map(s=>`<span class="tt-sub">${esc(s)}</span>`).join('');
@@ -14400,6 +14420,16 @@ function renderWeeklyView(list){
 function item_label(ch,part){ return part?ch+' — '+part:ch; }
 // ===== DEDICATED STUDENT TIMETABLE (design match) =====
 function _partDone(p){ return p.completed||_statusOf([p.date])==='done'; }
+function _partStatus(p){
+  // Part ka status DATE + TIME dono se (badge: Live/Soon/Done). Manual complete -> done.
+  if(p.completed) return 'done';
+  const dt=(typeof parseClassDT==='function')?parseClassDT(p.date,p.time):null;
+  if(!dt) return _statusOf([p.date]);          // time na ho to purana date-based fallback
+  const now=new Date(), end=new Date(dt.getTime()+90*60000);  // class 90 min tak Live
+  if(now>end) return 'done';
+  if(now>=dt) return 'current';
+  return 'upcoming';
+}
 function photoZoom(url, name){
   // Kisi bhi portal pe teacher photo pe click -> full zoom lightbox
   if(!url) return;
@@ -14740,7 +14770,7 @@ function renderStudentNode(item, st, tmap, opts, ongoing){
   }
   const parts=item.parts, open=(st==='current'||ongoing), id='stl-'+Math.random().toString(36).slice(2,8);
   const _hasAct=opts.onEdit||opts.onEditAny||opts.onDelete||opts.onComplete||opts.onLecture;
-  const partsHtml=parts.map(p=>{ const pst=_partDone(p)?'done':_statusOf([p.date]); const plbl=pst==='done'?'Done':pst==='current'?'Live':'Soon';
+  const partsHtml=parts.map(p=>{ const pst=_partStatus(p); const plbl=pst==='done'?'Done':pst==='current'?'Live':'Soon';
     // student verification button: only when a teacher has linked a lecture (with a
     // verification question) to this timetable entry. Replaces the old plain Mark Done.
     let verifyBtn='';
@@ -17393,6 +17423,7 @@ async function ocrFillQuestion_v1(inp,i){
 .tt-chip{font-size:.68rem;font-weight:800;padding:3px 10px;border-radius:999px;background:rgba(37,99,235,.12);color:#2563eb;white-space:nowrap;display:inline-flex;align-items:center;gap:3px}
 .tt-chip.pend{background:rgba(217,119,6,.15);color:#b45309}
 .tt-chip.ok{background:rgba(16,185,129,.16);color:#059669}
+.tt-chip.verify{background:rgba(217,119,6,.15);color:#b45309;animation:vinBlink 1s ease-in-out infinite}
 .tt-bysub{margin-top:14px;border-top:1px dashed var(--border);padding-top:12px}
 .tt-bysub>summary{cursor:pointer;font-size:.78rem;font-weight:800;color:#fff;list-style:none;display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#0891b2,#2563eb);padding:7px 14px;border-radius:10px;box-shadow:0 2px 8px rgba(37,99,235,.28)}
 .tt-bysub>summary::-webkit-details-marker{display:none}
@@ -17701,6 +17732,11 @@ body.dark .po-pill.red{color:#f87171}
 .vt-chst{font-size:.6rem;font-weight:800;padding:2px 9px;border-radius:999px;border:1.2px solid;
   text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;flex-shrink:0}
 /* v77 — premium status dropdown */
+.vt-vin-sel{appearance:none;-webkit-appearance:none;font-size:.62rem;font-weight:800;letter-spacing:.03em;padding:3px 9px;border-radius:7px;border:1.5px solid;cursor:pointer;margin-left:4px}
+.vt-vin-new{color:#059669;border-color:#05966988;background:rgba(16,185,129,.12)}
+.vt-vin-old{color:#6b7280;border-color:#9ca3af88;background:rgba(107,114,128,.1)}
+.vt-vin-blink{color:#b45309;border-color:#d97706;background:rgba(217,119,6,.14);animation:vinBlink 1s ease-in-out infinite}
+@keyframes vinBlink{0%,100%{box-shadow:0 0 0 0 rgba(217,119,6,.5);opacity:1}50%{box-shadow:0 0 0 5px rgba(217,119,6,0);opacity:.6}}
 .vt-chst-sel{appearance:none;-webkit-appearance:none;font-size:.62rem;font-weight:800;letter-spacing:.04em;
   text-transform:uppercase;padding:4px 26px 4px 12px;border-radius:999px;cursor:pointer;
   border:1.5px solid;flex-shrink:0;box-shadow:0 2px 8px -3px rgba(15,23,42,.22);
