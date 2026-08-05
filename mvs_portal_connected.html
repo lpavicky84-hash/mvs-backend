@@ -1022,12 +1022,13 @@
   .sh-noans{font-size:.78rem;color:#b45309;font-style:italic}
   .sh-meta{font-size:.68rem;color:var(--text-muted);margin-top:6px}
   .q-table-wrap{overflow-x:auto;margin:10px 0;-webkit-overflow-scrolling:touch}
-  .q-table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--card);border-radius:10px;overflow:hidden;border:1px solid var(--border)}
-  .q-table th,.q-table td{border:1px solid var(--border);padding:9px 12px;text-align:left;vertical-align:top;line-height:1.45}
+  .q-table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--card);border-radius:10px;overflow:hidden;border:1px solid var(--border);table-layout:fixed}
+  .q-table th,.q-table td{border:1px solid var(--border);padding:9px 12px;text-align:left;vertical-align:top;line-height:1.45;word-break:break-word;overflow-wrap:anywhere}
   .q-table th{background:rgba(90,70,15,.08);font-weight:800;color:#3f2f0b}
   .dark .q-table th{background:rgba(201,162,39,.14);color:#e8d9a8}
   .q-table tr:nth-child(even) td{background:rgba(0,0,0,.02)}
   .dark .q-table tr:nth-child(even) td{background:rgba(255,255,255,.03)}
+  @media(max-width:600px){ .q-table{font-size:.82rem} .q-table th,.q-table td{padding:7px 9px} }
   .dbt-meta{font-size:.74rem;color:#8a7a4e;margin-top:3px}
   .dbt-badges{display:flex;gap:6px;align-items:center;flex-shrink:0}
   .dbt-pill{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:99px;font-size:.68rem;font-weight:800;letter-spacing:.4px;white-space:nowrap}
@@ -6627,11 +6628,18 @@ function _arrayToHtmlTable(body){
     .replace(/\\(?:rule|kern)\s*\{[^{}]*\}/g,'');
   const rows=b.split(/\\\\/).map(r=>r.trim()).filter(r=>r.length && r!=='\\');
   if(!rows.length) return '';
-  let html='<div class="q-table-wrap"><table class="q-table">';
-  rows.forEach((r,ri)=>{
-    const cells=_splitCells(r);
+  const grid=rows.map(r=>_splitCells(r).map(c=>_cellHtml(c)));
+  const ncol=grid.reduce((m,r)=>Math.max(m,r.length),0);
+  grid.forEach(r=>{ while(r.length<ncol) r.push(''); });
+  // saari rows me jo column poora khaali ho (match-the-following ka beech wala spacer)
+  // use hata do — 2-column match 2-column hi dikhe, 3 nahi.
+  const keep=[];
+  for(let ci=0;ci<ncol;ci++){ if(grid.some(r=>String(r[ci]||'').replace(/<[^>]*>/g,'').trim()!=='')) keep.push(ci); }
+  const use=keep.length?keep:grid[0].map((_,i)=>i);
+  let html='<div class="q-table-wrap"><table class="q-table" data-cols="'+use.length+'">';
+  grid.forEach((r,ri)=>{
     const tag=(ri===0)?'th':'td';
-    html+='<tr>'+cells.map(c=>`<${tag}>${_cellHtml(c)}</${tag}>`).join('')+'</tr>';
+    html+='<tr>'+use.map(ci=>`<${tag}>${r[ci]||''}</${tag}>`).join('')+'</tr>';
   });
   html+='</table></div>';
   return html;
