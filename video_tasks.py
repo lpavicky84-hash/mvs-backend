@@ -1406,6 +1406,13 @@ def vt_delete(task_id: int, db: Session = Depends(get_db), _=Depends(get_admin))
     title = t.title or "Video task"
     db.query(VideoTaskChapter).filter(VideoTaskChapter.task_id == t.id).delete(
         synchronize_session=False)
+    # v150: view snapshots (YouTube views history) bhi hatao — warna FK constraint
+    # (video_view_snapshots.task_id -> video_tasks.id) delete ko block karti hai.
+    try:
+        from models import VideoViewSnapshot as _VVS
+        db.query(_VVS).filter(_VVS.task_id == t.id).delete(synchronize_session=False)
+    except Exception:
+        pass
     tp = _teacher_profile(db, t.teacher_id)
     db.delete(t)
     if tp and tp.user_id:
