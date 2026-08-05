@@ -1498,6 +1498,7 @@ def teacher_dpp_pdf(pack_id: int, kind: str = "q", medium: str = "",
             blob = (pk.q_pdf if kind == "q" else pk.s_pdf)
     else:
         blob = (pk.q_pdf if kind == "q" else pk.s_pdf)
+    blob = _dpp_shrink(db, pk, kind, blob)
     if not blob:
         raise HTTPException(status_code=404, detail="File not available")
     med = ("both" if (medium or "").lower().startswith("bo") else ("hindi" if (medium or "").lower().startswith("hin") else "english"))
@@ -1602,6 +1603,51 @@ def teacher_dpp_update(pack_id: int, data: dict = Body(...), db: Session = Depen
     return {"ok": True, "pack": _dpp_pack_out(db, pk, False)}
 
 
+def _compress_pdf(pdf_bytes):
+    """Uploaded PDF ko chhota karo (lossless optimize) — download fast + server load kam,
+    quality bilkul same. fitz (PyMuPDF) na ho ya fail ho to file as-is (kabhi crash nahi)."""
+    try:
+        if not pdf_bytes or len(pdf_bytes) < 60000:   # chhoti file ko chhedne ki zaroorat nahi
+            return pdf_bytes
+        import fitz
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        out = doc.tobytes(garbage=4, deflate=True, deflate_images=True,
+                          deflate_fonts=True, clean=True)
+        doc.close()
+        if out and 0 < len(out) < len(pdf_bytes):
+            return out
+    except Exception:
+        pass
+    return pdf_bytes
+
+
+def _dpp_shrink(db, pk, kind, blob):
+    """Uploaded pack ka BADA PDF ek baar compress karke DB me chhota save + wahi serve.
+    Guarded: chhoti (<500KB) file ko chhodo; >8% shrink pe hi save. Fail ho to as-is —
+    download kabhi nahi tootega. Purane bade DPPs isse next open pe hi chhote ho jaate hain."""
+    try:
+        if not blob or (getattr(pk, "source", "") == "created"):
+            return blob
+        raw = base64.b64decode(blob)
+        if len(raw) < 500000:
+            return blob
+        smaller = _compress_pdf(raw)
+        if smaller and len(smaller) < len(raw) * 0.92:
+            nb = base64.b64encode(smaller).decode()
+            if kind == "s":
+                pk.s_pdf = nb
+            else:
+                pk.q_pdf = nb
+            db.commit()
+            return nb
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    return blob
+
+
 @router.post("/dpp-packs/upload")
 async def teacher_dpp_upload(subject: str = Form(...), chapter: str = Form(""), part: str = Form(""),
                              title: str = Form(""), medium: str = Form("English"),
@@ -1614,6 +1660,7 @@ async def teacher_dpp_upload(subject: str = Form(...), chapter: str = Form(""), 
     qd = await q_pdf.read(); sd = await s_pdf.read()
     if not qd or not sd:
         raise HTTPException(status_code=400, detail="Questions aur Solutions dono PDF upload karna zaroori hai")
+    qd = _compress_pdf(qd); sd = _compress_pdf(sd)   # upload pe hi compress -> download fast
     if _SR is not None:
         subject = _SR.canon_display(subject.strip(), class_name)
     pk = DppPack(teacher_id=tp.id, subject=subject.strip(), class_name=class_name.strip(),

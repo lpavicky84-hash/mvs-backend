@@ -2346,6 +2346,11 @@ def student_dpp_file(pack_id: int, kind: str = "q", med: str = "", db: Session =
             blob = None
     if not blob:
         blob = pk.s_pdf if kind == "s" else pk.q_pdf
+    try:
+        import teacher_routes as _TR2
+        blob = _TR2._dpp_shrink(db, pk, kind, blob)
+    except Exception:
+        pass
     if not blob:
         raise HTTPException(status_code=404, detail="File not available")
     fname = (pk.title or "DPP").replace("/", "-") + ("-solutions.pdf" if kind == "s" else "-questions.pdf")
