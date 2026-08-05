@@ -2858,6 +2858,76 @@ def format_text_ai(payload: dict = Body(...), db: Session = Depends(get_db), cur
             continue
     raise HTTPException(503, "AI formatting failed ({})".format(last_err))
 
+
+@router.post("/ocr-question-ai")
+def ocr_question_ai(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """v163: screenshot -> Gemini VISION se EXACT question text (clean LaTeX). PYQ
+    integral/fraction jaise cases me copy-paste tootta hai; screenshot bulletproof hai.
+    Direct Gemini call (grading.py bypass) + model fallback chain."""
+    import os, urllib.request, urllib.error
+    img = str((payload or {}).get("image_b64") or "")
+    mime = str((payload or {}).get("mime_type") or "image/jpeg")
+    if not img:
+        raise HTTPException(400, "No image provided")
+    if img.startswith("data:"):
+        c = img.find(",")
+        if c >= 0:
+            head = img[:c]
+            img = img[c + 1:]
+            m = re.search(r"data:([^;]+)", head)
+            if m:
+                mime = m.group(1)
+    api_key = (os.environ.get("GEMINI_API_KEY") or "").strip()
+    if not api_key:
+        raise HTTPException(503, "GEMINI_API_KEY is not set on the server")
+    prompt = (
+        "You are reading a question from a screenshot for a school exam portal. "
+        "Output the EXACT question shown, with EVERY mathematical expression in clean LaTeX wrapped in $...$.\n"
+        "RULES:\n"
+        "1. Reproduce fractions and roots EXACTLY as displayed. A fraction stays a fraction: e.g. the integral of 1 over root(16 - x^2) is $\\\\int \\\\frac{dx}{\\\\sqrt{16-x^{2}}}$ (NEVER flatten it to $\\\\int(16-x^2)dx$).\n"
+        "2. \\\\frac{num}{den} for fractions, \\\\sqrt{...} / \\\\sqrt[n]{...} for roots, ^{...} powers, _{...} subscripts, \\\\int / \\\\sum / \\\\lim, \\\\ce{...} for chemistry.\n"
+        "3. Keep the exact numbers, symbols, language (Hindi stays Hindi), and option labels (A)(B)(C)(D) — put each option on its own line.\n"
+        "4. If it is a match-the-following / difference table, output it as $\\\\begin{array}{l|l}\\\\hline Header-1 & Header-2 \\\\\\\\ \\\\hline a & b \\\\\\\\ \\\\hline \\\\end{array}$.\n"
+        "5. Output ONLY the question text — no preamble, no explanation, no code fences."
+    )
+    body = {
+        "contents": [{"parts": [{"text": prompt},
+                                 {"inline_data": {"mime_type": mime, "data": img}}]}],
+        "generationConfig": {"maxOutputTokens": 4096},
+    }
+    models_env = (os.environ.get("GEMINI_MODELS") or "").strip()
+    models = [m.strip() for m in models_env.split(",") if m.strip()] if models_env else \
+        ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-3.5-flash-lite"]
+    last_err = "no response"
+    for model in models:
+        url = "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}".format(model, api_key)
+        req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"),
+                                     headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=40) as resp:
+                data = json.loads(resp.read().decode("utf-8", "ignore"))
+            parts = ((data.get("candidates") or [{}])[0].get("content") or {}).get("parts") or []
+            out = "".join(str(p.get("text") or "") for p in parts).strip()
+            out = re.sub(r"^```[a-zA-Z]*\s*|\s*```$", "", out).strip()
+            if not out:
+                last_err = "empty response"
+                continue
+            return {"text": out, "model": model}
+        except urllib.error.HTTPError as e:
+            detail = ""
+            try:
+                detail = e.read().decode("utf-8", "ignore")[:400]
+            except Exception:
+                pass
+            if e.code == 403 or (e.code == 400 and "API key" in detail):
+                raise HTTPException(503, "GEMINI_API_KEY is invalid or blocked by Google")
+            last_err = "{} HTTP {}".format(model, e.code)
+            continue
+        except Exception as e:
+            last_err = "{} {}".format(model, type(e).__name__)
+            continue
+    raise HTTPException(503, "AI could not read the screenshot ({})".format(last_err))
+
 @router.post("/parse-exam-docx")
 async def parse_exam_docx(file: UploadFile = File(...), test_type: str = Form("subjective"),
                           db: Session = Depends(get_db), current_user=Depends(get_teacher)):

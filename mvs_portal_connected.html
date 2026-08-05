@@ -7034,7 +7034,7 @@ function renderExamQs(){
   const biling=(_examMedium==='Bilingual');
   el.innerHTML=_examQs.map((q,i)=>{
     const isHi=biling&&q._tab==='hi';
-    const head=`<div class="ex-qhead"><span class="ex-qnum">Question ${i+1}</span><div class="ex-qhead-actions"><button type="button" class="btn btn-sm ex-ocr" title="Attach a screenshot of the question" onclick="document.getElementById('ex-ocrf-${i}').click()">Add Screenshot</button><input type="file" id="ex-ocrf-${i}" accept="image/*" style="display:none" onchange="ocrFillQuestion(this,${i})">${_examQs.length>1?`<button class="btn btn-danger btn-sm" onclick="removeExamQ(${i})">${ic('trash')}</button>`:''}</div></div>`;
+    const head=`<div class="ex-qhead"><span class="ex-qnum">Question ${i+1}</span><div class="ex-qhead-actions"><button type="button" class="btn btn-sm ex-ocr" title="Upload a screenshot of the question — AI reads it into text (best for PYQ integrals/fractions where copy-paste breaks)" onclick="document.getElementById('ex-ocrf-${i}').click()">Screenshot to Text</button><input type="file" id="ex-ocrf-${i}" accept="image/*" style="display:none" onchange="ocrFillQuestion(this,${i})">${_examQs.length>1?`<button class="btn btn-danger btn-sm" onclick="removeExamQ(${i})">${ic('trash')}</button>`:''}</div></div>`;
     const _ts=_qTransState(q);
     const _tsLbl=_ts==='done'?'Hindi Added':(_ts==='part'?'Finish Hindi':'Translate to Hindi');
     const _tsTitle=_ts==='done'?'Hindi is filled for this question. Click to translate anything still empty.'
@@ -8065,8 +8065,23 @@ async function ocrFillQuestion(inp,i){
   const f=inp.files[0]; inp.value=''; if(!f) return;
   if(f.size>15*1024*1024){ toast('Image too large (max 15MB)',true); return; }
   const b64=await _examReadImg(f);
-  _setExamImg(i,b64);
-  toast('Screenshot attached to Question '+(i+1)+'.');
+  const ta=document.getElementById('exq-'+i);
+  toast('Reading the screenshot with AI\u2026');
+  if(ta) ta.classList.add('ai-busy');
+  try{
+    const r=await Promise.race([
+      api('/api/teacher/ocr-question-ai','POST',{image_b64:b64, mime_type:(f.type||'image/jpeg')}),
+      new Promise((_,rj)=>setTimeout(()=>rj(new Error('timeout')),45000))
+    ]);
+    if(r&&r.text&&String(r.text).trim()&&ta){
+      ta.value=String(r.text).trim();
+      ta.dispatchEvent(new Event('input',{bubbles:true}));
+      toast('Question read from the screenshot — review the preview below.');
+    }else throw new Error('empty');
+  }catch(e){
+    _setExamImg(i,b64);   // AI fail/off -> figure ki tarah attach (fallback)
+    toast('Could not read it as text — attached as an image instead. Check GEMINI_API_KEY or try a clearer/tighter crop.',true);
+  }finally{ if(ta) ta.classList.remove('ai-busy'); }
 }
 // ---- import progress bar helpers ----
 let _exProgTimer=null;
