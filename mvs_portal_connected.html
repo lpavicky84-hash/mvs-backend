@@ -6537,6 +6537,14 @@ document.addEventListener('paste',e=>{
   if(!t||(t.tagName!=='TEXTAREA'&&t.tagName!=='INPUT')) return;
   const of=t.getAttribute&&t.getAttribute('onfocus');
   if(!(of&&of.indexOf('_lastField')>=0)) return;
+  // clipboard me image ho -> seedha AI OCR (PYQ screenshot paste karo, koi button nahi)
+  const items=(e.clipboardData&&e.clipboardData.items)||[];
+  for(let k=0;k<items.length;k++){
+    if(items[k].type&&items[k].type.indexOf('image')===0){
+      const f=items[k].getAsFile();
+      if(f){ e.preventDefault(); if(t.id) _ocrTo(t.id, f, null); else toast('Click inside the box first, then paste the screenshot.',true); return; }
+    }
+  }
   setTimeout(()=>_autoFmtField(t,true),60);
 },true);
 document.addEventListener('focusout',e=>{
@@ -7069,7 +7077,7 @@ function renderExamQs(){
       const aImg=isHi?'':(_ansImgZone(i)+`<input type="file" id="ex-aimgf-${i}" accept="image/*" style="display:none" onchange="examAnsImgFile(this,${i})">`);
       const marks=isHi||window._dppMode?'':`<div class="ex-marks"><label>Max Marks</label><input type="number" class="form-control" style="width:80px" value="${q.marks}" oninput="_examQs[${i}].marks=this.value"></div>`;
       const aId=`exa-${i}`;
-      mid=`<div class="ex-sec ex-sec-a"><div class="ex-sec-lbl">Model Answer${isHi?' \u00b7 Hindi':''}</div>${_rtBar(aId)}<textarea id="${aId}" class="form-control" rows="2" placeholder="${isHi?'\u0906\u0926\u0930\u094d\u0936 \u0909\u0924\u094d\u0924\u0930 \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902 (\u0935\u093f\u0915\u0932\u094d\u092a\u093f\u0915)':'Type the ideal/model answer here'}" onfocus="_lastField=this" oninput="${abind};examPrev(this,'pv-a-${i}')">${esc(aval)}</textarea><div class="ex-prev" id="pv-a-${i}"></div>${autoHint}${aImg}${marks}</div>`;
+      mid=`<div class="ex-sec ex-sec-a"><div class="ex-sec-lbl">Model Answer${isHi?' \u00b7 Hindi':''}</div>${_rtBar(aId)}${isHi?'':`<div style="margin:2px 0 6px"><button type="button" class="btn btn-sm ex-ocr" title="Upload/paste a screenshot of the answer — AI reads it into text" onclick="document.getElementById('ex-aocrf-${i}').click()">Screenshot to Text</button><input type="file" id="ex-aocrf-${i}" accept="image/*" style="display:none" onchange="ocrFillAnswer(this,${i})"></div>`}<textarea id="${aId}" class="form-control" rows="2" placeholder="${isHi?'\u0906\u0926\u0930\u094d\u0936 \u0909\u0924\u094d\u0924\u0930 \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902 (\u0935\u093f\u0915\u0932\u094d\u092a\u093f\u0915)':'Type the ideal/model answer here'}" onfocus="_lastField=this" oninput="${abind};examPrev(this,'pv-a-${i}')">${esc(aval)}</textarea><div class="ex-prev" id="pv-a-${i}"></div>${autoHint}${aImg}${marks}</div>`;
     }
     return `<div class="ex-qcard">${head}${tabs}${sp}${qsec}${mid}</div>`;
   }).join('');
@@ -8061,28 +8069,30 @@ document.addEventListener('paste',function(e){
 },true);
 
 async function autoFormatField(){ return _autoFixField(); }
-async function ocrFillQuestion(inp,i){
-  const f=inp.files[0]; inp.value=''; if(!f) return;
-  if(f.size>15*1024*1024){ toast('Image too large (max 15MB)',true); return; }
-  const b64=await _examReadImg(f);
-  const ta=document.getElementById('exq-'+i);
-  toast('Reading the screenshot with AI\u2026');
-  if(ta) ta.classList.add('ai-busy');
+async function _ocrTo(fid, file, imgIdx){
+  if(!file) return;
+  if(file.size>15*1024*1024){ toast('Image too large (max 15MB)',true); return; }
+  const ta=document.getElementById(fid); if(!ta) return;
+  const b64=await _examReadImg(file);
+  toast('Reading the screenshot with AI\u2026'); ta.classList.add('ai-busy');
   try{
     const r=await Promise.race([
-      api('/api/teacher/ocr-question-ai','POST',{image_b64:b64, mime_type:(f.type||'image/jpeg')}),
+      api('/api/teacher/ocr-question-ai','POST',{image_b64:b64, mime_type:(file.type||'image/jpeg')}),
       new Promise((_,rj)=>setTimeout(()=>rj(new Error('timeout')),45000))
     ]);
-    if(r&&r.text&&String(r.text).trim()&&ta){
-      ta.value=String(r.text).trim();
+    if(r&&r.text&&String(r.text).trim()){
+      const cur=(ta.value||'').trim();
+      ta.value = cur ? (cur+'\n'+String(r.text).trim()) : String(r.text).trim();
       ta.dispatchEvent(new Event('input',{bubbles:true}));
-      toast('Question read from the screenshot — review the preview below.');
-    }else throw new Error('empty');
+      toast('Read from the screenshot \u2014 review the preview below.');
+    } else throw new Error('empty');
   }catch(e){
-    _setExamImg(i,b64);   // AI fail/off -> figure ki tarah attach (fallback)
-    toast('Could not read it as text — attached as an image instead. Check GEMINI_API_KEY or try a clearer/tighter crop.',true);
-  }finally{ if(ta) ta.classList.remove('ai-busy'); }
+    if(imgIdx!=null){ _setExamImg(imgIdx,b64); toast('Could not read as text \u2014 attached as an image instead. Check GEMINI_API_KEY or try a clearer crop.',true); }
+    else toast('Could not read as text. Check GEMINI_API_KEY or try a clearer/tighter crop.',true);
+  }finally{ ta.classList.remove('ai-busy'); }
 }
+async function ocrFillQuestion(inp,i){ const f=inp.files[0]; inp.value=''; await _ocrTo('exq-'+i, f, i); }
+async function ocrFillAnswer(inp,i){ const f=inp.files[0]; inp.value=''; await _ocrTo('exa-'+i, f, null); }
 // ---- import progress bar helpers ----
 let _exProgTimer=null;
 function _exProgShow(){ const p=document.getElementById('ex-prog'); if(!p) return; p.classList.add('on'); p.classList.remove('ai'); _exProgSet('Uploading\u2026',0); }
