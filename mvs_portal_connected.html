@@ -3045,7 +3045,7 @@ let countdownTimer = null;
 // stale nahi rehta. Login/logout pe bhi clear hota hai.
 const _apiCache={};
 const _API_TTL=30000;
-const _API_NOCACHE=/notifications|\/live|heartbeat|\/photo|\/image|\/voice|\/file|\/download|\/pdf|\/content|\/badge/i;
+const _API_NOCACHE=/notifications|\/live|heartbeat|\/photo|\/image|\/voice|\/file|\/download|\/pdf|\/content|\/badge|\/doubt/i;
 function _apiBust(){ for(const k in _apiCache) delete _apiCache[k]; }
 async function api(path, method='GET', body=null) {
   const opts = { method, headers: { 'Content-Type':'application/json' } };
@@ -5026,6 +5026,7 @@ function _mtBack(wrapId){ _mtSub=null; _mtPaint(wrapId); }
 function _mtToggle(el){ const c=el.closest('.mat-cat'); c.classList.toggle('closed'); }
 const _MT_CAT={notes:{label:'Class Notes',icon:'book',badge:'sc-indigo'},dpp:{label:'DPP',icon:'clipboard',badge:'sc-green'},test:{label:'Tests',icon:'edit',badge:'sc-purple'}};
 function _chapNum(s){ const m=String(s||'').match(/(\d+)/); return m?parseInt(m[1],10):-1; }
+function _partNum(s){ const m=String(s||'').match(/(\d+)/); return m?parseInt(m[1],10):-1; }
 function _mtPaint(wrapId){
   const wrap=document.getElementById(wrapId); if(!wrap||!_mtData) return;
   // ---- subject cards (same look as the student portal)
@@ -5060,9 +5061,14 @@ function _mtPaint(wrapId){
   keys.forEach(cat=>{
     const meta=Object.values(_MT_CAT).find(m=>m.label===cat)||{icon:'folder',badge:'sc-amber'};
     const rows=byCat[cat].slice().sort((a,b)=>{
+      const an=(window._mtNew&&a.id!=null&&window._mtNew.has(a.id))?1:0;
+      const bn=(window._mtNew&&b.id!=null&&window._mtNew.has(b.id))?1:0;
+      if(an!==bn) return bn-an;                                   // NEW (unopened) sabse upar
       const na=_chapNum(a.chapter), nb=_chapNum(b.chapter);
       if(nb!==na) return nb-na;                                   // chapter number DESCENDING
-      return String(a.part||'').localeCompare(String(b.part||''));
+      const pa=_partNum(a.part), pb=_partNum(b.part);
+      if(pb!==pa) return pb-pa;                                   // part number DESCENDING
+      return String(b.part||'').localeCompare(String(a.part||'')); // fallback: part desc
     }).map(i=>{
       const fname=(i.filename||((i.title||cat)+'.pdf')).replace(/'/g,'');
       const isNew=window._mtNew&&i.id!=null&&window._mtNew.has(i.id);
@@ -8364,7 +8370,8 @@ function tRenderDoubts(){
     rows+=`<div class="dbt-sec">Pending (${pend.length})</div>`;
     rows+=pend.map(d=>{
       const media=mediaOf(d);
-      return `<div class="dbt-card pend">${headOf(d,(d.needs_attention&&d.status==='resolved')?'<span class="dbt-pill open">New Follow-up</span>':'<span class="dbt-pill open">Pending</span>')}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${dbtThreadHTML(d)}<div style="margin-top:12px">${composerHTML('ta'+d.id,'Write your answer\u2026 or send a voice note / file','resolveDoubt('+d.id+')','Resolve')}</div>${dbtReplyRow('teacher',d.id,'Or add a note for the student...')}${tAssignRow(d)}</div>`;
+      const amedia=`${d.has_answer_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/answer-voice')">${ic('play')} Your Voice Answer</button>`:''}${d.has_answer_file?doubtAttachHtml('teacher',d.id,d.answer_attach_mime,d.answer_attach_name,true):''}`;
+      return `<div class="dbt-card pend">${headOf(d,(d.needs_attention&&d.status==='resolved')?'<span class="dbt-pill open">New Follow-up</span>':'<span class="dbt-pill open">Pending</span>')}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> <span id="tda-${d.id}">${_fmtRich(d.answer)}</span></div>`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}${dbtThreadHTML(d)}<div style="margin-top:12px">${composerHTML('ta'+d.id,'Write your answer\u2026 or send a voice note / file','resolveDoubt('+d.id+')','Resolve')}</div>${dbtReplyRow('teacher',d.id,'Or add a note for the student...')}${tAssignRow(d)}</div>`;
     }).join('');
   }
   if(done.length){
