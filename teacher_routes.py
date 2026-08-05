@@ -2796,7 +2796,8 @@ def format_text_ai(payload: dict = Body(...), db: Session = Depends(get_db), cur
         raise HTTPException(503, "GEMINI_API_KEY is not set on the server")
 
     prompt = (
-        "You are a maths and science formatting engine for an exam portal. "
+        "You are a formatting engine for a school exam portal covering ALL subjects "
+        "(Physics, Chemistry, Biology, Maths, Social Science, English, Accountancy, etc.). "
         "Rewrite the teacher's raw text as clean, display-ready content.\n"
         "RULES:\n"
         "1. Convert every mathematical expression into LaTeX wrapped in single $...$ (use $$...$$ only for a full-line display equation).\n"
@@ -2804,10 +2805,13 @@ def format_text_ai(payload: dict = Body(...), db: Session = Depends(get_db), cur
         "3. Matrices and determinants use \\begin{bmatrix} ... \\end{bmatrix} (pmatrix/vmatrix if the source implies them).\n"
         "4. Units are upright, e.g. $\\text{cm}^{3}$ or $\\text{m}^{2}$.\n"
         "5. If the pieces of one formula are scattered across separate lines (integral sign, denominator, numerator), reassemble them into ONE correct LaTeX expression in the intended order.\n"
-        "6. Put 'Step 1:', 'Step 2:', 'Formula:', 'Substitute:', 'Answer:', 'Therefore', '(i)', '(ii)' etc. on their own lines.\n"
-        "7. NEVER change the meaning, the numbers, the language (keep Hindi as Hindi, English as English), or option labels (A) (B) (C) (D). Only fix structure and maths.\n"
-        "8. Preserve existing markdown (**bold**, __underline__) and standalone OR lines.\n"
-        "9. Output ONLY the rewritten text. No preamble, no code fences, no explanation.\n\n"
+        "6. Chemistry: use \\\\ce{...} (mhchem) for formulae/equations, e.g. $\\\\ce{2H2 + O2 -> 2H2O}$; keep states (s)(l)(g)(aq).\n"
+        "7. TABLES (Match the following / Differentiate between / Compare / any 2-3 column table): output ONE block as $\\\\begin{array}{l|l}\\\\hline \\\\colorbox{#dce8f8}{\\\\text{\\\\textbf{Header-1}}} & \\\\colorbox{#dce8f8}{\\\\text{\\\\textbf{Header-2}}} \\\\\\\\ \\\\hline cell & cell \\\\\\\\ \\\\hline ... \\\\end{array}$ — one column per group, one row per item. Do NOT add an empty spacer column.\n"
+        "8. STRUCTURED ANSWERS (several named items/types/features, e.g. the five kingdoms, differences, points): put EACH item on its OWN line as a bullet starting with '- ' and bold the key term, e.g. '- **Monera:** Prokaryotic, unicellular ...'.\n"
+        "9. Put 'Step 1:', 'Step 2:', 'Formula:', 'Substitute:', 'Answer:', 'Therefore', '(i)', '(ii)' etc. on their own lines.\n"
+        "10. NEVER change the meaning, numbers, language (keep Hindi as Hindi, English as English), or option labels (A)(B)(C)(D). Only fix structure and formatting.\n"
+        "11. Preserve existing markdown (**bold**, __underline__) and standalone OR lines.\n"
+        "12. Output ONLY the rewritten text. No preamble, no code fences, no explanation.\n\n"
         "RAW TEXT:\n"
         + text
     )

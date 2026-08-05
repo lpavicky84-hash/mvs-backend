@@ -6460,6 +6460,10 @@ async function _autoFixField(id){
 // formula pattern pe, quota bachane ke liye. fx Fix manual poora chain ab bhi available hai.
 function _needsAIFrag(t){
   const s0=String(t||'');
+  // tables / match-the-following / differentiate / compare -> heuristic tootti hai, AI lagao
+  if(/\\begin\s*\{array\}|\\begin\s*\{tabular\}/.test(s0)) return true;
+  if(/\b(match the following|match the column|differentiate between|distinguish between|compare and contrast)\b/i.test(s0)) return true;
+  if(/(?:^|\n)[^\n]*&[^\n]*&/.test(s0)) return true;   // multi-& row = tabular paste
   if(!/\$|\\int|∫/.test(s0)) return false;
   const lines=s0.split('\n'); let frag=0;
   for(const ln of lines){ const s=ln.trim();
