@@ -2105,6 +2105,16 @@ def admin_notifications(db: Session = Depends(get_db), current_user=Depends(get_
              "is_read": n.is_read,
              "created_at": n.created_at.isoformat() if n.created_at else None} for n in notifs]
 
+@router.patch("/notifications/read-all")
+def admin_notif_read_all(db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Panel/bell view karte hi sab notifications ek saath read — badge/blink clear."""
+    db.query(Notification).filter(Notification.user_id == current_user.id,
+                                  Notification.is_read == False).update(
+        {"is_read": True, "read_at": datetime.now()}, synchronize_session=False)
+    db.commit()
+    return {"ok": True}
+
+
 @router.patch("/notifications/{notif_id}/read")
 def admin_notif_read(notif_id: int, db: Session = Depends(get_db), current_user=Depends(get_admin)):
     n = db.query(Notification).filter(

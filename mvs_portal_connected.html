@@ -1420,8 +1420,13 @@
   @keyframes wave{0%,60%,100%{transform:rotate(0)}10%,30%{transform:rotate(14deg)}20%{transform:rotate(-8deg)}40%{transform:rotate(-4deg)}}
   .bell-wrap{position:relative}
   .notif-badge{position:absolute;top:-4px;right:-4px;min-width:17px;height:17px;border-radius:99px;background:var(--danger);color:#fff;font-size:.62rem;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px;border:2px solid var(--card)}
+  .bell-wrap.has-unread{animation:bellRing 1.5s ease-in-out infinite;transform-origin:50% 0}
+  @keyframes bellRing{0%,55%,100%{transform:rotate(0)}60%{transform:rotate(-13deg)}68%{transform:rotate(11deg)}76%{transform:rotate(-8deg)}84%{transform:rotate(5deg)}92%{transform:rotate(-2deg)}}
+  .bell-wrap.has-unread .notif-badge{animation:badgePulse 1.1s ease-in-out infinite}
+  @keyframes badgePulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.6)}50%{box-shadow:0 0 0 5px rgba(220,38,38,0)}}
   .notif-item{padding:14px;border:1px solid var(--border);border-radius:12px;margin-bottom:10px;background:var(--bg);transition:.2s}
-  .notif-item.unread{border-left:4px solid var(--primary);background:rgba(90,70,15,.05)}
+  .notif-item.unread{border-left:4px solid var(--primary);background:rgba(90,70,15,.05);animation:niBlink 1.1s ease-in-out 3}
+  @keyframes niBlink{0%,100%{background:rgba(90,70,15,.05)}50%{background:rgba(201,162,39,.22)}}
   .notif-item .ni-title{font-weight:700;font-size:.88rem;margin-bottom:3px}
   .notif-item .ni-msg{font-size:.82rem;color:var(--text-muted);line-height:1.5}
   .notif-item .ni-time{font-size:.7rem;color:var(--text-muted);margin-top:6px}
@@ -3186,6 +3191,7 @@ async function refreshNotifBadge(role){
   const unread=list.filter(n=>!n.is_read).length;
   const badge=document.getElementById((role==='teacher'?'t':role==='admin'?'a':'s')+'-notif-badge');
   if(badge){ badge.style.display=unread?'flex':'none'; badge.textContent=unread; }
+  _setBellUnread(role,unread>0);
   return list;
 }
 // ===== LIVE PRESENCE + HEARTBEAT + ADMIN BELL =====
@@ -3289,8 +3295,24 @@ async function openNotifPanel(role){
     const inner=`<div class="ni-title">${esc(n.title)}${hint}</div><div class="ni-msg">${esc(n.message)}</div><div class="ni-time"> ${fmtNice(n.created_at)}</div>`;
     return `<div class="notif-item ${n.is_read?'':'unread'}"${clickable?` data-go="1" style="cursor:pointer" onclick="${click}"`:' '} title="${hasLink?'Tap to open the link':'Tap to open this section'}">${av?`<div class="notif-row">${av}<div style="min-width:0;flex:1">${inner}</div></div>`:inner}</div>`;
   }).join(''):'<div class="empty-state"><div class="empty-icon"></div><p>No notifications yet</p></div>';
-  showModal(' Notifications',html,list.some(n=>!n.is_read)?`<button class="btn btn-primary" onclick="markAllRead('${role}')">Mark All Read</button>`:`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+  showModal(' Notifications',html,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
   _notifImgs(document.getElementById('modal-body'));
+  // SMART: panel khulte hi sab read -> badge/count clear, bell blink band, dobara na dikhe
+  // jab tak koi naya notification na aaye. (Items is view me highlighted rehte hain jisse
+  // pata chale kaunse naye the.)
+  if(list.some(n=>!n.is_read)){
+    api(notifEp(role,'/notifications/read-all'),'PATCH').catch(()=>{});
+    list.forEach(n=>n.is_read=true);
+    _lastUnread[role]=0;
+    const b=document.getElementById((role==='teacher'?'t':role==='admin'?'a':'s')+'-notif-badge');
+    if(b) b.style.display='none';
+    _setBellUnread(role,false);
+    const np=document.getElementById('notif-pop'); if(np) np.remove();
+  }
+}
+function _setBellUnread(role,on){
+  const b=document.getElementById((role==='teacher'?'t':role==='admin'?'a':'s')+'-notif-badge');
+  const w=b&&b.closest('.bell-wrap'); if(w) w.classList.toggle('has-unread',!!on);
 }
 async function notifLinkOpen(role,id,encLink){
   try{ await api(notifEp(role,'/notifications/'+id+'/read'),'PATCH'); }catch(e){}
@@ -3328,6 +3350,7 @@ async function pollNotifs(role){
   const unread=list.filter(n=>!n.is_read);
   const badge=document.getElementById((role==='teacher'?'t':role==='admin'?'a':'s')+'-notif-badge');
   if(badge){ badge.style.display=unread.length?'flex':'none'; badge.textContent=unread.length; }
+  _setBellUnread(role,unread.length>0);
   const prev=_lastUnread[role]||0;
   if(unread.length>prev){ showNotifPop(role,unread); }
   _lastUnread[role]=unread.length;

@@ -633,6 +633,16 @@ def get_notifications(db: Session = Depends(get_db), current_user=Depends(get_st
         Notification.user_id == current_user.id
     ).order_by(Notification.created_at.desc()).limit(20).all()
 
+@router.patch("/notifications/read-all")
+def mark_all_read(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Panel/bell view karte hi sab notifications ek saath read — badge/blink clear."""
+    db.query(Notification).filter(Notification.user_id == current_user.id,
+                                  Notification.is_read == False).update(
+        {"is_read": True, "read_at": datetime.now()}, synchronize_session=False)
+    db.commit()
+    return {"ok": True}
+
+
 @router.patch("/notifications/{notif_id}/read")
 def mark_read(notif_id: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
     n = db.query(Notification).filter(Notification.id == notif_id, Notification.user_id == current_user.id).first()
