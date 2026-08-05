@@ -8289,7 +8289,7 @@ function dbtRespHTML(r){
   const cls=r.role==='admin'?'adm':(r.role==='student'?'stu':'tch');
   const tag=r.role==='admin'?'MVS Foundation':(r.role==='student'?'Student':'Teacher');
   const ini=esc(initials(r.author_name||(r.role==='admin'?'MVS':'?')));
-  const when=r.created_at?new Date(r.created_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+  const when=r.created_at?new Date(r.created_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kolkata'}):'';
   // v112: admin ka reply official MVS logo tile ke saath; teacher ka reply uski
   // real profile photo ke saath (photo na ho to initials hi rehte hain)
   const ava=r.role==='admin'
@@ -8400,7 +8400,7 @@ function tRenderDoubts(){
     rows+=pend.map(d=>{
       const media=mediaOf(d);
       const amedia=`${d.has_answer_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/answer-voice')">${ic('play')} Your Voice Answer</button>`:''}${d.has_answer_file?doubtAttachHtml('teacher',d.id,d.answer_attach_mime,d.answer_attach_name,true):''}`;
-      return `<div class="dbt-card pend">${headOf(d,(d.needs_attention&&d.status==='resolved')?'<span class="dbt-pill open">New Follow-up</span>':'<span class="dbt-pill open">Pending</span>')}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> <span id="tda-${d.id}">${_fmtRich(d.answer)}</span></div>`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}${dbtThreadHTML(d)}<div style="margin-top:12px">${composerHTML('ta'+d.id,'Write your answer\u2026 or send a voice note / file','resolveDoubt('+d.id+')','Resolve')}</div>${dbtReplyRow('teacher',d.id,'Or add a note for the student...')}${tAssignRow(d)}</div>`;
+      return `<div class="dbt-card pend">${headOf(d,(d.needs_attention&&d.status==='resolved')?'<span class="dbt-pill open">New Follow-up</span>':'<span class="dbt-pill open">Pending</span>')}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> <span id="tda-${d.id}">${_fmtRich(d.answer)}</span></div>`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}${dbtThreadHTML(d)}<div style="margin-top:12px">${composerHTML('ta'+d.id,'Write your answer\u2026 or send a voice note / file','resolveDoubt('+d.id+')','Resolve')}</div>${tAssignRow(d)}</div>`;
     }).join('');
   }
   if(done.length){
@@ -8408,7 +8408,7 @@ function tRenderDoubts(){
     rows+=done.map(d=>{
       const media=mediaOf(d);
       const amedia=`${d.has_answer_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/answer-voice')">${ic('play')} Your Voice Answer</button>`:''}${d.has_answer_file?doubtAttachHtml('teacher',d.id,d.answer_attach_mime,d.answer_attach_name,true):''}`;
-      return `<div class="dbt-card res">${headOf(d,'<span class="dbt-pill res">\u2713 Resolved</span>')}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> <span id="tda-${d.id}">${_fmtRich(d.answer)}</span></div>`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}${dbtThreadHTML(d)}${dbtReplyRow('teacher',d.id,'Write a follow-up reply...')}<div style="margin-top:10px"><button class="btn btn-danger btn-sm" title="Delete your response — the doubt moves back to Pending" onclick="tDelDoubtAnswer(${d.id})">${ic('trash')} Delete Response</button></div></div>`;
+      return `<div class="dbt-card res">${headOf(d,'<span class="dbt-pill res">\u2713 Resolved</span>')}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> <span id="tda-${d.id}">${_fmtRich(d.answer)}</span></div>`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}${dbtThreadHTML(d)}<div style="margin-top:10px"><button class="btn btn-danger btn-sm" title="Delete your response — the doubt moves back to Pending" onclick="tDelDoubtAnswer(${d.id})">${ic('trash')} Delete Response</button></div></div>`;
     }).join('');
   }
   if(away.length){

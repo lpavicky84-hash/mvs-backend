@@ -305,7 +305,7 @@ def _doubt_resp_json(db, did, my_role, my_teacher_id=None):
         out.append({"id": r.id, "role": r.role, "author_name": r.author_name,
                     "body": r.body, "mine": bool(mine),
                     "author_tid": (r.author_teacher_id if r.role == "teacher" else None),
-                    "created_at": r.created_at.isoformat() if r.created_at else None})
+                    "created_at": (r.created_at.isoformat() + "Z") if r.created_at else None})
     return out
 
 def _doubt_needs_attention(db, did):
