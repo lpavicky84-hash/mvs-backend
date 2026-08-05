@@ -2168,11 +2168,9 @@ def _admin_doubt_resps(db, did):
     return out
 
 def _doubt_needs_attention(db, did):
-    """v112: thread ka last message student ka -> follow-up = naya doubt (badge me count)."""
-    from models import DoubtResponse
-    r = (db.query(DoubtResponse).filter(DoubtResponse.doubt_id == did)
-         .order_by(DoubtResponse.created_at.desc(), DoubtResponse.id.desc()).first())
-    return bool(r and r.role == "student")
+    """FOLLOW-UP SYSTEM HATA DIYA: resolved doubt ab kabhi reopen nahi hota (student
+    dobara poochhega to naya doubt banega)."""
+    return False
 
 @router.post("/doubts/{did}/respond")
 def admin_doubt_respond(did: int, payload: dict, db: Session = Depends(get_db),

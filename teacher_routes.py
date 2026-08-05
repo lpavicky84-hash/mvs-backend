@@ -309,12 +309,10 @@ def _doubt_resp_json(db, did, my_role, my_teacher_id=None):
     return out
 
 def _doubt_needs_attention(db, did):
-    """v112: thread me sabse latest message student ka hai -> doubt phir se open
-    demand hai (follow-up = naya doubt). Owner ke badge/count me jata hai."""
-    from models import DoubtResponse
-    r = (db.query(DoubtResponse).filter(DoubtResponse.doubt_id == did)
-         .order_by(DoubtResponse.created_at.desc(), DoubtResponse.id.desc()).first())
-    return bool(r and r.role == "student")
+    """FOLLOW-UP SYSTEM HATA DIYA: resolved doubt ab kabhi reopen nahi hota. Student
+    dobara poochhna chahe to naya doubt banata hai. (Pehle student ka last message hone
+    par 'New Follow-up' aata tha — ab nahi.)"""
+    return False
 
 def _doubt_owner_name(db, d):
     """v93: ab ye doubt kiski responsibility hai — uska display naam."""
@@ -345,7 +343,8 @@ def get_doubts(
     for d in rows:
         sname = d.student.user.name if d.student and d.student.user else "Student"
         is_away = (d.teacher_id != tp.id) or bool(getattr(d, "assigned_to_admin", False))
-        out.append({"id": d.id, "student_name": sname, "subject": d.subject, "topic": d.topic,
+        out.append({"id": d.id, "student_name": sname, "student_id": d.student_id,
+                    "subject": d.subject, "topic": d.topic,
                     "question": d.question, "has_image": bool(d.image_b64),
                     "attach_mime": d.attach_mime, "attach_name": d.attach_name,
                     "has_voice": bool(d.audio_b64), "has_answer_voice": bool(d.answer_audio_b64),
@@ -378,6 +377,31 @@ def teacher_doubt_respond(doubt_id: int, payload: dict, db: Session = Depends(ge
                f"{current_user.name} added a reply on your {d.subject or ''} doubt: {body[:120]}", "doubt")
     db.commit()
     return {"message": "Reply added", "responses": _doubt_resp_json(db, d.id, "teacher", tp.id)}
+
+
+@router.get("/student-doubts")
+def teacher_student_doubts(student_id: int, db: Session = Depends(get_db),
+                           current_user=Depends(get_teacher)):
+    """Ek student ke SAARE doubts (history) — teacher name pe click kare to dikhe.
+    Kuch na ho to khaali list. Naye pehle."""
+    from models import StudentProfile
+    tp = get_teacher_profile(current_user, db)
+    sp = db.query(StudentProfile).filter(StudentProfile.id == student_id).first()
+    name = (sp.user.name if sp and sp.user else "Student")
+    ds = (db.query(Doubt).filter(Doubt.student_id == student_id)
+          .order_by(Doubt.created_at.desc()).all())
+    out = []
+    for d in ds:
+        st = d.status.value if hasattr(d.status, "value") else d.status
+        owner = _doubt_owner_name(db, d)
+        out.append({"id": d.id, "subject": d.subject, "topic": d.topic,
+                    "question": d.question or "", "answer": d.answer or "",
+                    "status": st, "owner": owner,
+                    "mine": (d.teacher_id == tp.id),
+                    "created_at": str(d.created_at)[:16] if d.created_at else "",
+                    "has_answer": bool(d.answer)})
+    return {"student_id": student_id, "name": name, "total": len(out), "doubts": out}
+
 
 @router.get("/doubts-assign-targets")
 def doubt_assign_targets(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
