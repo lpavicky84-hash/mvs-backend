@@ -1021,6 +1021,13 @@
   .dark .sh-a{color:#6ee7b7;background:rgba(5,150,105,.14)}
   .sh-noans{font-size:.78rem;color:#b45309;font-style:italic}
   .sh-meta{font-size:.68rem;color:var(--text-muted);margin-top:6px}
+  .q-table-wrap{overflow-x:auto;margin:10px 0;-webkit-overflow-scrolling:touch}
+  .q-table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--card);border-radius:10px;overflow:hidden;border:1px solid var(--border)}
+  .q-table th,.q-table td{border:1px solid var(--border);padding:9px 12px;text-align:left;vertical-align:top;line-height:1.45}
+  .q-table th{background:rgba(90,70,15,.08);font-weight:800;color:#3f2f0b}
+  .dark .q-table th{background:rgba(201,162,39,.14);color:#e8d9a8}
+  .q-table tr:nth-child(even) td{background:rgba(0,0,0,.02)}
+  .dark .q-table tr:nth-child(even) td{background:rgba(255,255,255,.03)}
   .dbt-meta{font-size:.74rem;color:#8a7a4e;margin-top:3px}
   .dbt-badges{display:flex;gap:6px;align-items:center;flex-shrink:0}
   .dbt-pill{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:99px;font-size:.68rem;font-weight:800;letter-spacing:.4px;white-space:nowrap}
@@ -6579,6 +6586,49 @@ function _rtIns(id,snip){
   const p=(cur>=0)?s+cur:s+ins.length; t.selectionStart=t.selectionEnd=p; t.focus();
   t.dispatchEvent(new Event('input',{bubbles:true}));
 }
+// v160: LaTeX array/tabular (match-the-following / difference tables) ko robust HTML
+// table me badalta hai. KaTeX arrays color (\cellcolor/\rowcolor) aur complex content pe
+// toot jaate the (raw/mangled dikhta tha). HTML table hamesha saaf render hota hai + har
+// cell ka math alag KaTeX se (ek cell fail ho to poori table nahi tootti).
+function _cellHtml(c){
+  c=String(c==null?'':c).replace(/\\hline/g,'').trim();
+  c=c.replace(/^#?[0-9a-fA-F]{6}\b\s*/,'').trim();     // stray color-hex leftover
+  if(!c||c==='\\') return '';
+  const parts=[];
+  // $...$ math -> KaTeX (guarded)
+  c=c.replace(/\$([^$]+)\$/g,(m,g)=>{ let r; try{ r=_fmtMath(g,false); }catch(e){ r=esc(g); } parts.push(r); return '\u0005'+(parts.length-1)+'\u0006'; });
+  // \textbf{..} / \bf -> bold marker; \text{..} -> plain
+  c=c.replace(/\\textbf\s*\{([^{}]*)\}/g,'\u0005B\u0006$1\u0005E\u0006').replace(/\\text(?:rm|bf)?\s*\{([^{}]*)\}/g,'$1');
+  // koi $ math nahi par bare LaTeX/superscript ho -> poore cell ko KaTeX (guarded)
+  if(!parts.length && /[\\^_]/.test(c) && !/[<>]/.test(c)){
+    try{ const r=_fmtMath(c,false); if(r) return r; }catch(e){}
+  }
+  let out=esc(c)
+    .replace(/\u0005(\d+)\u0006/g,(m,i)=>parts[+i]||'')
+    .replace(/\u0005B\u0006/g,'<b>').replace(/\u0005E\u0006/g,'</b>');
+  return out;
+}
+function _splitCells(row){
+  return row.split(/(?<!\\)&/).map(c=>c.replace(/\\&/g,'&'));
+}
+function _arrayToHtmlTable(body){
+  let b=String(body==null?'':body)
+    .replace(/\\hline/g,'')
+    .replace(/\\rowcolors?\s*(\[[^\]]*\])?\s*(?:\{[^{}]*\}){1,3}/g,'')
+    .replace(/\\(?:rowcolor|cellcolor|columncolor)\s*(\[[^\]]*\])?\s*\{[^{}]*\}/g,'')
+    .replace(/\\arrayrulecolor\s*\{[^{}]*\}/g,'')
+    .replace(/\\(?:rule|kern)\s*\{[^{}]*\}/g,'');
+  const rows=b.split(/\\\\/).map(r=>r.trim()).filter(r=>r.length && r!=='\\');
+  if(!rows.length) return '';
+  let html='<div class="q-table-wrap"><table class="q-table">';
+  rows.forEach((r,ri)=>{
+    const cells=_splitCells(r);
+    const tag=(ri===0)?'th':'td';
+    html+='<tr>'+cells.map(c=>`<${tag}>${_cellHtml(c)}</${tag}>`).join('')+'</tr>';
+  });
+  html+='</table></div>';
+  return html;
+}
 function _fmtRich(t){
   let s=String(t==null?'':t).replace(/\r\n?/g,'\n');
   // mobile/AI paste cleanup: thin/narrow spaces (KaTeX me black box ban jaate hain) -> normal space,
@@ -6590,6 +6640,11 @@ function _fmtRich(t){
   // ---- 1) math stash (placeholders) — escape se PEHLE ----
   const M=[];
   const stash=(tex,disp)=>{ M.push({tex:_uniTex(tex),disp:!!disp}); return '\u0001'+(M.length-1)+'\u0002'; };
+  const stashHtml=(h)=>{ M.push({html:h,disp:true}); return '\u0001'+(M.length-1)+'\u0002'; };
+  // v160: LaTeX array/tabular (match / difference tables) -> robust HTML table, KaTeX se
+  // PEHLE (color \cellcolor/\rowcolor aur complex content pe KaTeX toot ke raw/mangled
+  // dikhata tha). Sirf array wale content pe asar; baaki sab bilkul same.
+  s=s.replace(/\$?\s*\\begin\s*\{array\}[ \t]*(?:\{[^{}]*\})?([\s\S]*?)\\end\s*\{array\}[ \t]*\$?/g,function(m,body){ try{ const h=_arrayToHtmlTable(body); return h?stashHtml(h):m; }catch(e){ return m; } });
   s=s.replace(/\$\$([\s\S]+?)\$\$/g,(m,g)=>stash(g,true));
   s=s.replace(/\\\[([\s\S]+?)\\\]/g,(m,g)=>stash(g,true));
   s=s.replace(/\\\(([\s\S]+?)\\\)/g,(m,g)=>stash(g,false));
@@ -6715,7 +6770,7 @@ function _fmtRich(t){
   s=s.replace(/`([^`\n]+?)`/g,'<code class="rt-code">$1</code>');
   // ---- 6) math placeholders wapas (rendered) ----
   s=s.replace(/\u0001(\d+)\u0002/g,(m,i)=>{
-    const it=M[+i]; return it?_fmtMath(it.tex,it.disp):'';
+    const it=M[+i]; return it?(it.html!=null?it.html:_fmtMath(it.tex,it.disp)):'';
   });
   s=s.replace(/[\u0001\u0002]/g,'');
   return s;
