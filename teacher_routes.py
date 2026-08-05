@@ -1715,12 +1715,16 @@ def teacher_dpp_answer_file(answer_id: int, db: Session = Depends(get_db), curre
 def delete_dpp_pack(pack_id: int, db: Session = Depends(get_db), user=Depends(get_teacher)):
     """Teacher apni banaayi/upload ki gayi DPP delete kar sake — saari
     submissions bhi saath hat jati hain."""
-    from models import DppPack, DppAnswer
+    from models import DppPack, DppAnswer, DppEvent, DppChunk
     tp = db.query(TeacherProfile).filter(TeacherProfile.user_id == user.id).first()
     pk = db.query(DppPack).get(pack_id)
     if not pk or not tp or pk.teacher_id != tp.id:
         raise HTTPException(status_code=404, detail="DPP not found")
-    db.query(DppAnswer).filter(DppAnswer.pack_id == pack_id).delete()
+    # v155: saare child rows pehle hatao warna FK constraint (dpp_events/dpp_chunks
+    # /dpp_answers -> dpp_packs) delete ko block karti hai.
+    db.query(DppAnswer).filter(DppAnswer.pack_id == pack_id).delete(synchronize_session=False)
+    db.query(DppEvent).filter(DppEvent.pack_id == pack_id).delete(synchronize_session=False)
+    db.query(DppChunk).filter(DppChunk.pack_id == pack_id).delete(synchronize_session=False)
     db.delete(pk)
     db.commit()
     return {"message": "DPP deleted"}
