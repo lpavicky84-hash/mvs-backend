@@ -2597,6 +2597,32 @@ def exam_audience(exam_id: int, db: Session = Depends(get_db), current_user=Depe
                          "subject": ex.subject, "chapter": ex.chapter, "part": None},
             "viewers": viewers, "downloaders": downloaders}
 
+@router.post("/exam/{exam_id}/reset-attempts")
+def exam_reset_attempts(exam_id: int, payload: dict = Body(default={}),
+                        db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Is test ke attempts clear karo taaki students dobara de sakein. `only_broken=True`
+    ho to sirf wo MCQ attempts hatao jinke answers empty the (purane bug ke shikaar)."""
+    _ensure_exam_columns(db)
+    tp = get_teacher_profile(current_user, db)
+    ex = db.query(Exam).filter(Exam.id == exam_id, Exam.teacher_id == tp.id).first()
+    if not ex:
+        raise HTTPException(404, "Exam not found")
+    only_broken = bool((payload or {}).get("only_broken"))
+    atts = db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id).all()
+    removed = 0
+    for a in atts:
+        if only_broken:
+            ma = a.mcq_answers or {}
+            has_ans = any(v not in (None, "", []) for v in ma.values())
+            if has_ans:
+                continue
+        db.query(ExamResult).filter(ExamResult.attempt_id == a.id).delete(synchronize_session=False)
+        db.delete(a)
+        removed += 1
+    db.commit()
+    return {"ok": True, "removed": removed}
+
+
 @router.get("/exam/{exam_id}/attempts")
 def exam_attempts(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import StudentProfile

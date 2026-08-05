@@ -8181,8 +8181,17 @@ async function viewExamAttempts(id){
           <div class="sd-box" id="sd-${a.attempt_id}" style="display:none">${det?`<div class="sd-grid">${det}</div>${acts}`:'<div class="sd-empty">No extra details are saved for this student yet.</div>'}</div>
         </div><div class="tmeta"><span class="tstatus ${a.status==='graded'?'done':''}">${a.status==='grading'?'pending evaluation':esc(a.status)}</span>${dl}${btns}</div></div>`;
     }).join(''):'<div class="empty-state"><p>No submissions yet.</p></div>';
-    showModal('Results \u2014 '+esc(d.exam.title), rows);
+    const resetBar=d.attempts.length?`<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn btn-danger btn-sm" onclick="examResetAttempts(${id})">${ic('refresh')} Allow Re-take (clear attempts)</button></div>`:'';
+    showModal('Results \u2014 '+esc(d.exam.title), resetBar+rows);
   }catch(e){ toast(e.message,true); }
+}
+async function examResetAttempts(id){
+  if(!confirm('Is test ke SAARE attempts clear kar dein?\n\nJin students ke marks purane bug ki wajah se 0 aaye the, wo dobara test de sakenge. Ye action undo nahi hoga (purane submissions hat jayenge).')) return;
+  try{
+    const r=await api('/api/teacher/exam/'+id+'/reset-attempts','POST',{});
+    toast((r.removed||0)+' attempt(s) cleared. Students ab dobara de sakte hain.');
+    viewExamAttempts(id);
+  }catch(e){ toast(e.message||'Could not reset',true); }
 }
 function _toggleStuDet(id){
   const b=document.getElementById('sd-'+id); if(!b) return;
@@ -13761,8 +13770,9 @@ async function _plRender(id){
 function _plPal(){
   const ex=window._curExam; if(!ex||ex.test_type!=='mcq')return;
   ex.questions.forEach(q=>{
-    const pn=document.getElementById('plpn-'+q.q_no); if(!pn)return;
     const s=document.querySelector('input[name="pl-'+q.q_no+'"]:checked');
+    if(s)_plAns[q.q_no]=s.value;   // har selection turant _plAns me save (review page pe DOM chala jaata hai)
+    const pn=document.getElementById('plpn-'+q.q_no); if(!pn)return;
     pn.classList.toggle('done',!!s);
   });
 }
@@ -13787,7 +13797,7 @@ function _plReview(id){
   const isM=ex.test_type==='mcq';
   _plRev={};
   ex.questions.forEach(q=>{
-    if(isM){ const s=document.querySelector('input[name="pl-'+q.q_no+'"]:checked'); _plRev[q.q_no]=!!s; }
+    if(isM){ const s=document.querySelector('input[name="pl-'+q.q_no+'"]:checked'); _plRev[q.q_no]=!!s; if(s)_plAns[q.q_no]=s.value; }
     else _plRev[q.q_no]=true;
   });
   const el=document.getElementById('s-tests-content');
@@ -13823,7 +13833,7 @@ async function _plSubmit(id){
   ex.questions.forEach(q=>{ (_plRev[q.q_no]?attempted:skipped).push(q.q_no); });
   if(ex.test_type==='mcq'){
     const ans={};
-    for(const q of ex.questions){ const sel=document.querySelector('input[name="pl-'+q.q_no+'"]:checked'); if(sel)ans[q.q_no]=sel.value; }
+    for(const q of ex.questions){ const sel=document.querySelector('input[name="pl-'+q.q_no+'"]:checked'); const v=(sel?sel.value:_plAns[q.q_no]); if(v!=null&&v!=='')ans[q.q_no]=v; }
     body={mcq_answers:ans};
   } else {
     if(!window._examFile){ toast('Please upload your handwritten answer sheet',true); return; }
