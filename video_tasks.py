@@ -1799,6 +1799,8 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
             .filter(VideoTask.teacher_id == tp.id,
                     VideoTask.kind.in_(["one_shot", "rapid_revision", "project"]))
             .order_by(VideoTask.kind.asc(), VideoTask.subject.asc()).all())
+    # legacy "All Subjects"/empty-subject card kabhi na dikhe — sirf subject-wise cards
+    spts = [t for t in spts if (t.subject or "").strip().lower() not in ("", "all subjects")]
     special_all = [_special_out(db, t) for t in spts]
     # Bulletproof display dedup: DB me duplicate ho (alag spelling/spacing/id) to bhi
     # teacher ko (kind + class-aware subject) ke hisaab se SIRF EK card dikhe —

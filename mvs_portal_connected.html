@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- MVS Portal v190 -->
+<!-- MVS Portal v191 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -8956,7 +8956,7 @@ async function loadTVTasks(){
     el.innerHTML=`${hero}${statCards}${mtHtml}${masterCards}
       <div class="vtm-actions" style="display:flex;gap:10px;margin:0 0 16px;flex-wrap:wrap;align-items:center">
         <button class="btn btn-primary" onclick="openTVTPropose()">${ic('plus')} Propose a Video</button>
-        <button class="btn btn-gold" onclick="openTVTUrgent()">${ic('alert')} Urgent Video</button>
+        <button class="btn vt-urgent-btn" onclick="openTVTUrgent()">${ic('alert')} Urgent Video</button>
         <span style="font-size:.74rem;color:var(--text-muted)">Have a video idea? Propose it. Something urgent? Submit it directly — no approval needed.</span>
       </div>
       ${urgentT.length?`<div class="vtm-sec-cap" style="border-left-color:#dc2626">Urgent Videos · submitted directly to production</div>
@@ -9998,9 +9998,19 @@ function _vtPrefillProject(pre){
     const conn=document.getElementById('vtp-connect');
     if(conn){ conn.value=isVideos?'no':'yes'; try{ vtpConnectToggle(); }catch(e){} }
     if(isVideos){
-      const m=rem.match(/(\d+)\s*videos/i); const n=m?Math.max(1,Math.min(20,+m[1])):3;
-      const have=document.querySelectorAll('#vtp-items .vtp-item').length;
-      for(let k=have;k<n;k++) vtpItemAdd();
+      // teacher ke daale hue titles remarks se nikaalo: "1. nios" / "2) cbse" ...
+      const titles=[];
+      rem.split('\n').forEach(line=>{
+        const mm=line.match(/^\s*\d+[\.\)]\s*(.+?)\s*$/);
+        if(mm&&mm[1]&&mm[1].trim()) titles.push(mm[1].trim());
+      });
+      const items=document.getElementById('vtp-items');
+      if(items) items.innerHTML='';
+      if(titles.length){ titles.forEach(tt=>vtpItemAdd(tt)); }
+      else{
+        const m=rem.match(/(\d+)\s*videos/i); const n=m?Math.max(1,Math.min(20,+m[1])):3;
+        for(let k=0;k<n;k++) vtpItemAdd();
+      }
     }
     const rmk=document.getElementById('vtp-remarks'); if(rmk&&!rmk.value&&pre.reference) rmk.value=pre.reference;
   },250);
@@ -17966,6 +17976,11 @@ async function ocrFillQuestion_v1(inp,i){
   color:#8a4b09;background:linear-gradient(135deg,rgba(224,138,30,.16),rgba(180,83,9,.08));
   border:1px solid rgba(180,83,9,.28);box-shadow:0 2px 9px rgba(180,83,9,.1)}
 .vt-resh-head svg{width:16px;height:16px;flex-shrink:0;color:#c2740f}
+.vt-urgent-btn{background:linear-gradient(135deg,#dc2626,#a3160f);color:#fff;border:none;font-weight:800;
+  box-shadow:0 3px 14px rgba(220,38,38,.32);animation:vtUrgPulse 2.2s ease-in-out infinite}
+.vt-urgent-btn:hover{filter:brightness(1.07)}
+.vt-urgent-btn svg{color:#fff}
+@keyframes vtUrgPulse{0%,100%{box-shadow:0 3px 14px rgba(220,38,38,.28)}50%{box-shadow:0 3px 20px rgba(220,38,38,.5)}}
 .dark .vt-resh-head{color:#f5b45e;background:linear-gradient(135deg,rgba(224,138,30,.2),rgba(180,83,9,.1));border-color:rgba(224,138,30,.32)}
 .dark .vt-resh-head svg{color:#f5b45e}
 .vt-pill.proposal{background:rgba(100,116,139,.12);color:#475569;border:1px solid rgba(100,116,139,.35)}
