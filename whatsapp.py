@@ -82,7 +82,7 @@ def cfg():
         "lang":     _val("wa_lang", "en"),
         "link":     _val("wa_link", PORTAL_LINK_DEFAULT),
         "sender":   _val("wa_sender"),
-        "params":   ["name", "message"],         # welcome template variables: {{1}}=name, {{2}}=message
+        "params":   ["name", "message", "phone"],  # {{1}}=name, {{2}}=message+link, {{3}}=registered mobile
     }
 
 
@@ -141,18 +141,29 @@ def _welcome_body(name, batch, link):
 
 
 def build_params(name, batch, phone, message=None):
-    """Template variables. Welcome: [name, welcome_message]. Announce: [name, message].
-    Welcome ka message text portal se editable hai (variable {{2}} me jata hai)."""
+    """Template variables (3):
+      {{1}} = student ka naam
+      {{2}} = message (admin ka likha) + Class Manager link
+      {{3}} = student ka registered mobile number
+    Welcome ka message text portal se editable hai."""
     c = cfg()
+    link = c["link"] or ""
     if message is not None:
-        return [str(name or "Student"), _resolve(message, name, batch, c["link"])]
-    return [str(name or "Student"), _welcome_body(name, batch, c["link"])]
+        body = _resolve(message, name, batch, link)
+    else:
+        body = _welcome_body(name, batch, link)
+    # {{2}} ke saath Class Manager link (agar message me pehle se na ho to jod do)
+    if link and link not in body:
+        body = (body.rstrip() + " " + link).strip()
+    ph = _phone_intl(phone, plus=True) or str(phone or "").strip()
+    return [str(name or "Student"), body, ph]
 
 
 def build_message(name, batch, phone, template=None, message=None):
-    """Preview text — jaisa template render hoga (Hi {{1}}, {{2}})."""
+    """Preview text — jaisa template render hoga (Hi {{1}}, {{2}} ... mobile: {{3}})."""
     p = build_params(name, batch, phone, message=message)
-    return "Hi " + p[0] + ", " + p[1]
+    ph = p[2] if len(p) > 2 else ""
+    return "Hi " + p[0] + ",\n\n" + p[1] + "\n\nYour registered mobile number: " + ph
 
 
 # ---- the send -------------------------------------------------------------
