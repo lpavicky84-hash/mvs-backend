@@ -9341,7 +9341,7 @@ async function loadAVTasks(){
       api('/api/admin/video-channels'),
       api('/api/admin/teachers'),
       api('/api/admin/video-types'),
-      api('/api/admin/video-tasks'+_vtQs()),
+      api('/api/admin/video-tasks'),
       api('/api/admin/video-tasks/special?kind=all').catch(()=>null)]);
     _vtChannels=ch.channels||[];
     _vtTypes=ty.types||[];
@@ -9377,7 +9377,7 @@ async function loadAVTasks(){
       const editTaskBtn=`<button class="btn btn-ghost btn-sm" onclick="openVTEdit(${t.id})" title="Edit title, deadline, type, channel, thumbnail">${ic('edit')} Edit</button>`;
       const delTaskBtn=`<button class="btn btn-ghost btn-sm vt-del" onclick="vtDeleteTask(${t.id})" title="Delete this task permanently">${ic('trash')} Delete</button>`;
       const ytBtn=`<button class="btn btn-ghost btn-sm" onclick="openVtYtLink(${t.id},'${esc(t.youtube_url||'').replace(/'/g,'')}')" title="Post the published YouTube link">${ic('play')} ${t.youtube_url?'Edit YT Link':'Post YT Link'}</button>`;
-      return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-done="${t.submitted_at?1:0}" data-pending="${t.status==='assigned'?1:0}" data-delayed="${t.submitted_at&&!t.on_time?1:0}">${_vtThumb(t,'a')}<div class="vt-body">
+      return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-done="${t.submitted_at?1:0}" data-pending="${t.status==='assigned'?1:0}" data-delayed="${t.submitted_at&&!t.on_time?1:0}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
         <div class="vt-title">${esc(t.title)}${t.status==='submitted'?`<span class="vt-newsub">${ic('bell')} NEW · ${esc(t.teacher)}</span>`:''}</div>
         <div class="vt-chips"><span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}</div>
         <div class="vt-meta">
@@ -9434,10 +9434,12 @@ async function loadAVTasks(){
       ${showProj?_avtSpecHtml():''}
       ${showTasks?propHtml:''}
       ${showTasks?`<div class="vt-filters">
-        ${ic('filter')} <select onchange="_vtF.teacher_id=+this.value;loadAVTasks()">${tOpt}</select>
-        <select onchange="_vtF.channel_id=+this.value;loadAVTasks()">${cOpt}</select>
-        <select onchange="_vtF.video_type=this.value;loadAVTasks()">${tyOpt}</select>
-        <select onchange="_vtF.status=this.value;loadAVTasks()">${sOpt}</select>
+        <span class="vt-filt-lbl">${ic('filter')} Filter</span>
+        <select class="vt-filt-sel" onchange="_vtF.teacher_id=+this.value;_vtClientFilter()">${tOpt}</select>
+        <select class="vt-filt-sel" onchange="_vtF.channel_id=+this.value;_vtClientFilter()">${cOpt}</select>
+        <select class="vt-filt-sel" onchange="_vtF.video_type=this.value;_vtClientFilter()">${tyOpt}</select>
+        <select class="vt-filt-sel" onchange="_vtF.status=this.value;_vtClientFilter()">${sOpt}</select>
+        <button class="vt-filt-clear" onclick="_vtClearFilters()" title="Clear all filters">× Clear</button>
         <div style="flex:1"></div>
         <button class="btn btn-gold btn-sm" onclick="vtDownloadReport()">${ic('download')} Download Report</button>
       </div>
@@ -9451,6 +9453,7 @@ async function loadAVTasks(){
       let s=+sp.dataset.secs; if(isNaN(s)) return; s--; sp.dataset.secs=s;
       sp.innerHTML=_vtCdText(s); sp.className=s<0?'vt-over':''; }); };
     tick(); _vtTimer=setInterval(tick,1000);
+    if(_vtF.teacher_id||_vtF.channel_id||_vtF.video_type||_vtF.status||window._vtBucket) _vtClientFilter();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function _vtCdText(s){
@@ -10046,15 +10049,27 @@ function _avtRankToggle(){
 }
 function _vtBucketFilter(bucket){
   window._vtBucket=(window._vtBucket===bucket)?null:bucket;
-  const b=window._vtBucket;
+  _vtClientFilter();
+}
+function _vtClientFilter(){
+  const f=_vtF, b=window._vtBucket;
   document.querySelectorAll('.vt-stat[data-bucket]').forEach(c=>c.classList.toggle('vt-stat-on', !!b && c.dataset.bucket===b));
   document.querySelectorAll('.vt-grid > .vt-card').forEach(c=>{
     let show=true;
-    if(b==='done') show=c.dataset.done==='1';
-    else if(b==='pending') show=c.dataset.pending==='1';
-    else if(b==='delayed') show=c.dataset.delayed==='1';
+    if(f.teacher_id && c.dataset.tid!=String(f.teacher_id)) show=false;
+    if(show && f.channel_id && c.dataset.cid!=String(f.channel_id)) show=false;
+    if(show && f.video_type && c.dataset.vt!==f.video_type) show=false;
+    if(show && f.status && c.dataset.vstatus!==f.status) show=false;
+    if(show && b==='done') show=c.dataset.done==='1';
+    else if(show && b==='pending') show=c.dataset.pending==='1';
+    else if(show && b==='delayed') show=c.dataset.delayed==='1';
     c.style.display=show?'':'none';
   });
+}
+function _vtClearFilters(){
+  _vtF.teacher_id=0; _vtF.channel_id=0; _vtF.video_type=''; _vtF.status=''; window._vtBucket=null;
+  document.querySelectorAll('.vt-filt-sel').forEach(s=>{ s.selectedIndex=0; });
+  _vtClientFilter();
 }
 function _avtTgToggle(){
   const b=document.getElementById('a-tg-body'); if(!b) return;
@@ -17679,8 +17694,20 @@ async function ocrFillQuestion_v1(inp,i){
 .vt-stat .vs-ic svg{width:20px;height:20px}
 .vt-stat .vs-n{font-size:1.35rem;font-weight:800;line-height:1.1}
 .vt-stat .vs-l{font-size:.68rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em}
-.vt-filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;padding:12px 14px;
-  border-radius:14px;border:1px solid var(--border);background:var(--card-bg)}
+.vt-filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;padding:14px 16px;
+  border-radius:16px;border:1.5px solid var(--border);background:linear-gradient(180deg,var(--card),var(--card-bg));box-shadow:var(--shadow)}
+.vt-filt-lbl{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--primary)}
+.vt-filt-lbl svg{width:15px;height:15px}
+.vt-filt-sel{appearance:none;-webkit-appearance:none;padding:9px 30px 9px 14px;border-radius:999px;border:1.5px solid rgba(184,148,31,.4);
+  background:rgba(184,148,31,.08) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23b8941f' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>") no-repeat right 12px center;
+  color:var(--text);font-size:.8rem;font-weight:700;font-family:inherit;cursor:pointer;transition:.15s;max-width:220px}
+.vt-filt-sel:hover{border-color:var(--primary);background-color:rgba(184,148,31,.14)}
+.vt-filt-sel:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(184,148,31,.18)}
+.dark .vt-filt-sel{background-color:rgba(201,162,39,.12)}
+.vt-filt-clear{display:inline-flex;align-items:center;gap:5px;padding:9px 14px;border-radius:999px;border:1.5px solid rgba(220,38,38,.35);
+  background:rgba(220,38,38,.06);color:#dc2626;font-size:.76rem;font-weight:800;cursor:pointer;transition:.15s}
+.vt-filt-clear:hover{background:rgba(220,38,38,.13);border-color:#dc2626}
+.vt-filt-clear svg{width:13px;height:13px}
 .vt-filters select{padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg);
   color:var(--text);font-size:.8rem;font-weight:600;font-family:inherit;max-width:210px}
 .vt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(330px,100%),1fr));gap:14px}
