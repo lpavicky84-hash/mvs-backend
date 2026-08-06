@@ -1103,7 +1103,12 @@ def vt_admin_badge(db: Session = Depends(get_db), _=Depends(get_admin)):
                         VideoTask.reviewed.isnot(True))
                 .count())
     proposals = db.query(VideoTask).filter(VideoTask.proposal_ok == "pending").count()
+    urgent = (db.query(VideoTask)
+              .filter(VideoTask.kind == "urgent",
+                      VideoTask.status != "uploaded")
+              .count())
     return {"checking": checking, "proposals": proposals,
+            "urgent": urgent,
             "count": checking + proposals}
 
 
