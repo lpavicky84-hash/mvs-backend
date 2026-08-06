@@ -122,7 +122,7 @@ DEFAULT_CHANNELS = [
 
 DEFAULT_TYPES = ["Short Video", "Long Video", "One Shot Video", "Strategy Video"]
 
-REVIEW_ACTIONS = ("approved", "editing_soon", "editing_done", "uploaded", "rejected")
+REVIEW_ACTIONS = ("approved", "editing_soon", "editing_done", "uploaded", "rejected", "reshoot")
 
 # Chapter-level production status (admin/production team set karti hai):
 # link lagte hi chapter "editing_soon" (editing karwani hai) — phir admin
@@ -1189,11 +1189,11 @@ def vt_review(task_id: int, payload: dict = Body(...),
     tp = _teacher_profile(db, t.teacher_id)
     uid = tp.user_id if tp else None
 
-    if action == "rejected":
+    if action in ("rejected", "reshoot"):
         ndl = _parse_deadline(payload.get("new_deadline"))
         if not ndl:
-            raise HTTPException(400, "A new deadline is required when rejecting")
-        t.status = "assigned"
+            raise HTTPException(400, "A new deadline is required")
+        t.status = action            # "reshoot" / "rejected" — filter me track hota hai
         t.reject_count = (t.reject_count or 0) + 1
         t.reviewed = True
         t.review_remarks = remarks
@@ -1203,14 +1203,16 @@ def vt_review(task_id: int, payload: dict = Body(...),
         t.deadline = ndl
         t.warned_24h = False
         t.warned_overdue = False
-        _hist_add(t, "rejected", ("Sent back for reshoot" + (f": {remarks}" if remarks else "")
-                                  + " — new deadline: " + ndl.strftime("%d %b %Y, %I:%M %p")))
+        _word = "Reshoot" if action == "reshoot" else "Rejected"
+        _hist_add(t, action, ("%s — sent back for re-submission" % _word)
+                  + (f": {remarks}" if remarks else "")
+                  + " — new deadline: " + ndl.strftime("%d %b %Y, %I:%M %p"))
         if uid:
-            _vt_notify(db, uid, "↩️ Video Task Sent Back for Reshoot",
-                       f'Your submission for "{t.title}" was rejected'
+            _vt_notify(db, uid, f"↩️ Video Task Sent Back — {_word}",
+                       f'Your submission for "{t.title}" needs a {_word.lower()}'
                        + (f': {remarks}' if remarks else '.')
                        + f' New deadline: {ndl.strftime("%d %b %Y, %I:%M %p")}. '
-                       f'Please reshoot and submit again from My Tasks.')
+                       f'Please submit again from My Tasks.')
     else:
         t.status = action
         t.reviewed = True
@@ -1894,7 +1896,7 @@ def vt_submit(task_id: int, payload: dict = Body(...), db: Session = Depends(get
         raise HTTPException(404, "Task not found")
     if (getattr(t, "kind", "normal") or "normal") != "normal":
         raise HTTPException(400, "For One Shot / Rapid Revision tasks, paste the link next to each chapter")
-    if t.status != "assigned":
+    if t.status not in ("assigned", "reshoot", "rejected"):
         raise HTTPException(400, "This task is not open for submission")
     link = (payload.get("link") or "").strip()
     if not link:

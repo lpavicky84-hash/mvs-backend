@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- MVS Portal v185 -->
+<!-- MVS Portal v187 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -8846,7 +8846,7 @@ async function loadTVTasks(){
     const tasks=d.tasks||[];
     window._tvtMap={}; tasks.forEach(t=>window._tvtMap[t.id]=t);
     (d.special||[]).forEach(t=>window._tvtMap[t.id]=t);
-    const active=tasks.filter(t=>t.status==='assigned');
+    const active=tasks.filter(t=>t.status==='assigned'||t.status==='reshoot'||t.status==='rejected');
     const badge=document.getElementById('t-vt-badge');
     if(badge){ badge.style.display=active.length?'inline-block':'none'; badge.textContent=active.length; }
     const nxt=d.next_deadline;
@@ -8872,33 +8872,37 @@ async function loadTVTasks(){
         ?(t.on_time===true?`<span class="vt-up-ok">${ic('check')} Uploaded on time</span>`
          :t.on_time===false?`<span class="vt-up-late">${ic('alert')} Upload delayed vs the deadline</span>`:'')
         :`<span class="vt-up-wait">${ic('clock')} Awaiting upload — publish before the deadline</span>`):'';
-      const subBox=(t.status==='assigned')?`
+      const _open=(t.status==='assigned'||t.status==='reshoot'||t.status==='rejected');
+      const _sbHead=(t.status==='reshoot')?`<div class="vt-resh-head">${ic('refresh')} Reshoot needed${t.review_remarks?` — ${esc(t.review_remarks)}`:''}</div>`
+        :(t.status==='rejected')?`<div class="vt-resh-head" style="background:rgba(220,38,38,.1);color:#b91c1c;border-color:rgba(220,38,38,.35)">${ic('alert')} Rejected${t.review_remarks?` — ${esc(t.review_remarks)}`:''}</div>`:'';
+      const subBox=_open?`
         <div class="vt-subm">
-          <div class="vs-h">${ic('link')} Submit your recorded video</div>
+          ${_sbHead}
+          <div class="vs-h">${ic('link')} ${t.status==='assigned'?'Submit your recorded video':'Submit your video again'}</div>
           <div class="vt-subm-row"><input id="tvt-link-${t.id}" class="input" placeholder="https://drive.google.com/file/d/...">
-          <button class="btn btn-primary btn-sm" onclick="tvtSubmit(${t.id})">${ic('send')} Submit Video</button></div>
+          <button class="btn btn-primary btn-sm" onclick="tvtSubmit(${t.id})">${ic('send')} ${t.status==='assigned'?'Submit Video':'Re-submit Video'}</button></div>
           <div class="vt-subm-note">Upload the video to the MVS drive folder first, then paste its shareable link here. Submit before the deadline for on-time credit.</div>
         </div>`:'';
-      const doneBox=(t.submitted_link&&t.status!=='assigned')?`
+      const doneBox=(t.submitted_link&&!_open)?`
         <div class="vt-subm done">
           <div class="vs-h">${ic('check')} Video submitted ${t.on_time===true?'— on time':(t.on_time===false?'— delayed':'')}</div>
           <div class="vt-done-link"><a href="${esc(t.submitted_link)}" target="_blank" rel="noopener">${ic('play')} Watch submitted video</a>${t.submitted_at?`<span style="color:var(--text-muted);font-weight:600">· ${esc(t.submitted_at)}</span>`:''}</div>
         </div>`:'';
       const reviewNote=(t.status==='submitted')?`<span class="vt-pill submitted blink">${ic('clock')} Under Review — Checking</span>`:'';
-      const rejNote=(t.reject_count>0&&t.status==='assigned')
-        ?`<div class="vt-meta" style="color:#b91c1c">Sent back for reshoot${t.review_remarks?`: ${esc(t.review_remarks)}`:''} — new deadline above. Reshoot #${t.reject_count}</div>`:'';
+      const rejNote='';
       const propNote=(t.proposal_ok==='pending')?`<span class="vt-pill proposal">Pending Approval</span>`:'';
       return `<div class="vt-card st-${t.status}">${_vtThumb(t,'t')}<div class="vt-body">
         <div class="vt-chips">${propNote}${t.kind==='urgent'?`<span class="vt-pill" style="background:rgba(220,38,38,.15);color:#dc2626;font-weight:800">${ic('alert')} URGENT</span>`:''}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
         <div class="vt-title">${esc(t.title)}</div>
         <div class="vt-meta">
           ${t.deadline_nice?`<span class="${dlBlink}">${ic('clock')} ${dlLbl}: <b>${esc(t.deadline_nice)}</b></span>`:''}
-          ${t.status==='assigned'&&t.seconds_left!=null?`<span data-tvt-cd="${t.id}" data-secs="${t.seconds_left}" style="font-weight:800"></span>`:''}
+          ${_open&&t.seconds_left!=null?`<span data-tvt-cd="${t.id}" data-secs="${t.seconds_left}" style="font-weight:800"></span>`:''}
           ${t.reference?`<span>Reference: ${esc(t.reference)}</span>`:''}
           ${t.remarks?`<span>Manager remarks: ${esc(t.remarks)}</span>`:''}
           ${t.submitted_at?`<span>${ic('check')} Submitted: ${esc(t.submitted_at)}${isU?'':` — <b>${t.on_time?'on time':'delayed'}</b>`}</span>`:''}
           ${upTxt?`<span>${upTxt}</span>`:''}
-          ${t.status!=='assigned'&&t.review_remarks?`<span>Review remarks: ${esc(t.review_remarks)}</span>`:''}
+          ${!_open&&t.review_remarks?`<span>Review remarks: ${esc(t.review_remarks)}</span>`:''}
+          ${t.reject_count>0?`<span style="color:var(--text-muted);font-weight:700">Reshoot/Rejection count: ${t.reject_count}</span>`:''}
         </div>
         ${rejNote}${subBox}${doneBox}
       </div></div>`;
@@ -9150,11 +9154,11 @@ function _vtFilterTypes(streamSelId,typeSelId,types){
   const ts=document.getElementById(typeSelId); if(!ts) return;
   ts.innerHTML=_vtTypeOptsHtml(types,s,ts.value);
 }
-const VT_LBL={assigned:'Assigned',submitted:'Submitted',approved:'Approved',editing_soon:'Editing Soon',editing_done:'Editing Done',uploaded:'Uploaded',rejected:'Rejected',proposal:'Pending Approval'};
+const VT_LBL={assigned:'Assigned',submitted:'Submitted',approved:'Approved',editing_soon:'Editing Soon',editing_done:'Editing Done',uploaded:'Uploaded',reshoot:'Reshoot',rejected:'Rejected',proposal:'Pending Approval'};
 function _vtQs(){ const f=_vtF,q=[]; if(f.teacher_id)q.push('teacher_id='+f.teacher_id); if(f.status)q.push('status='+f.status); if(f.channel_id)q.push('channel_id='+f.channel_id); if(f.video_type)q.push('video_type='+encodeURIComponent(f.video_type)); return q.length?'?'+q.join('&'):''; }
 function _vtPill(t,blink,who){
   let cls=t.status, lbl=VT_LBL[t.status]||t.status;
-  if(t.status==='assigned'&&t.overdue){ cls='delayed'; lbl='Overdue'; }
+  if((t.status==='assigned'||t.status==='reshoot'||t.status==='rejected')&&t.overdue){ cls='delayed'; lbl='Overdue'; }
   // teacher side: upload hone tak status blink karta rahe
   const bl=(blink&&t.status!=='uploaded'&&t.proposal_ok!=='pending')?' blink':'';
   let extra='';
@@ -9398,7 +9402,7 @@ function _avtCard(t){
       const delTaskBtn=`<button class="btn btn-ghost btn-sm vt-del" onclick="vtDeleteTask(${t.id})" title="Delete this task permanently">${ic('trash')} Delete</button>`;
       const ytBtn=`<button class="btn btn-ghost btn-sm" onclick="openVtYtLink(${t.id},'${esc(t.youtube_url||'').replace(/'/g,'')}')" title="Post the published YouTube link">${ic('play')} ${t.youtube_url?'Edit YT Link':'Post YT Link'}</button>`;
       const histBtn=`<button class="btn btn-ghost btn-sm" onclick="vtStatusOpen(${t.id},'a',event)" title="See the full status timeline">${ic('history')} Timeline</button>`;
-      return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-done="${t.submitted_at?1:0}" data-pending="${t.status==='assigned'?1:0}" data-delayed="${t.submitted_at&&!t.on_time?1:0}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
+      return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-done="${t.submitted_at?1:0}" data-pending="${(t.status==='assigned'||t.status==='reshoot'||t.status==='rejected')?1:0}" data-delayed="${t.submitted_at&&!t.on_time?1:0}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
         <div class="vt-title">${esc(t.title)}${t.status==='submitted'?`<span class="vt-newsub">${ic('bell')} NEW · ${esc(t.teacher)}</span>`:''}</div>
         <div class="vt-chips"><span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}</div>
         <div class="vt-meta">
@@ -9503,7 +9507,7 @@ async function loadAVTasks(fromCache){
     const tOpt=`<option value="0">All Teachers</option>`+_vtTeachers.map(t=>`<option value="${t.pid}" ${_vtF.teacher_id==t.pid?'selected':''}>${esc(t.name)}</option>`).join('');
     const cOpt=`<option value="0">All Channels</option>`+_vtChannels.map(c=>`<option value="${c.id}" ${_vtF.channel_id==c.id?'selected':''}>${esc(c.name)}</option>`).join('');
     const tyOpt=`<option value="">All Types</option>`+_vtTypes.map(c=>`<option value="${esc(c.name)}" ${_vtF.video_type===c.name?'selected':''}>${esc(c.name)}</option>`).join('');
-    const sOpt=['<option value="">All Status</option>','assigned','submitted','approved','editing_soon','editing_done','uploaded'].map(v=>v==='<option value="">All Status</option>'?v:`<option value="${v}" ${_vtF.status===v?'selected':''}>${VT_LBL[v]}</option>`).join('');
+    const sOpt=['<option value="">All Status</option>','assigned','submitted','approved','editing_soon','editing_done','uploaded','reshoot','rejected'].map(v=>v==='<option value="">All Status</option>'?v:`<option value="${v}" ${_vtF.status===v?'selected':''}>${VT_LBL[v]}</option>`).join('');
     const propHtml=(list.proposals||[]).length?`<div class="card vt-approve-card" style="margin-bottom:16px;border:2px solid rgba(220,38,38,.5)"><div class="card-header"><h3>${ic('help')} Video Proposals — Approval Needed</h3><span class="xm-chip vt-approve-chip">${list.proposals.length} pending</span></div><div class="card-body"><div class="vt-grid">${list.proposals.map(t=>`
       <div class="vt-card vt-prop-blink"><div class="vt-body">
         <div class="vt-chips"><span class="vt-pill proposal">Proposal</span>${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill assigned">${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}</div>
@@ -10034,10 +10038,11 @@ async function openVTReview(id){
     <div class="vt-form"><div class="form-group"><label>Set Status</label>
       <div style="display:flex;gap:7px;flex-wrap:wrap" id="vt-rv-actions">
         ${['approved','editing_soon','editing_done','uploaded'].map(a=>`<button class="btn btn-ghost btn-sm" data-act="${a}" onclick="vtRvPick(this)">${VT_LBL[a]}</button>`).join('')}
+        <button class="btn btn-ghost btn-sm" data-act="reshoot" style="border-color:rgba(180,83,9,.5);color:#b45309" onclick="vtRvPick(this)">Reshoot</button>
         <button class="btn btn-ghost btn-sm" data-act="rejected" style="border-color:rgba(220,38,38,.5);color:#b91c1c" onclick="vtRvPick(this)">Rejected</button>
       </div></div>
-    <div class="form-group"><label>Remarks (reason — required for rejection)</label><textarea id="vt-rv-remarks" class="input" rows="2" placeholder="e.g. Audio not clear in the middle section..."></textarea></div>
-    <div class="form-group" id="vt-rv-ndl" style="display:none"><label>New Deadline (for reshoot)</label><input id="vt-rv-deadline" type="datetime-local" class="input" value="${ndVal}"></div></div>`,
+    <div class="form-group"><label>Remarks (reason — required for reshoot / rejection)</label><textarea id="vt-rv-remarks" class="input" rows="2" placeholder="e.g. Audio not clear in the middle section..."></textarea></div>
+    <div class="form-group" id="vt-rv-ndl" style="display:none"><label>New Deadline (required for reshoot / rejection)</label><input id="vt-rv-deadline" type="datetime-local" class="input" value="${ndVal}"></div></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="vtReviewSave(${t.id})">${ic('check')} Save Status</button>`);
   window._vtRvAct=null;
 }
@@ -10045,17 +10050,17 @@ function vtRvPick(btn){
   document.querySelectorAll('#vt-rv-actions .btn').forEach(b=>{ b.classList.remove('btn-primary'); b.classList.add('btn-ghost'); });
   btn.classList.remove('btn-ghost'); btn.classList.add('btn-primary');
   window._vtRvAct=btn.dataset.act;
-  document.getElementById('vt-rv-ndl').style.display=(window._vtRvAct==='rejected')?'block':'none';
+  document.getElementById('vt-rv-ndl').style.display=(window._vtRvAct==='rejected'||window._vtRvAct==='reshoot')?'block':'none';
 }
 async function vtReviewSave(id){
   const act=window._vtRvAct;
   if(!act){ toast('Please pick a status first'); return; }
   const remarks=document.getElementById('vt-rv-remarks').value.trim();
   const payload={action:act,remarks};
-  if(act==='rejected'){
+  if(act==='rejected'||act==='reshoot'){
     const ndl=document.getElementById('vt-rv-deadline').value;
-    if(!ndl){ toast('A new deadline is required for a reshoot'); return; }
-    if(!remarks){ toast('Please mention the rejection reason'); return; }
+    if(!ndl){ toast('A new deadline is required'); return; }
+    if(!remarks){ toast('Please mention the reason'); return; }
     payload.new_deadline=ndl;
   }
   try{ await api(`/api/admin/video-tasks/${id}/review`,'POST',payload);
@@ -17932,6 +17937,10 @@ async function ocrFillQuestion_v1(inp,i){
 .vt-pill.editing_soon,.vt-pill.editing_done{background:rgba(124,58,237,.12);color:#6d28d9;border:1px solid rgba(124,58,237,.35)}
 .vt-pill.uploaded{background:rgba(5,150,105,.14);color:#065f46;border:1px solid rgba(5,150,105,.4)}
 .vt-pill.rejected{background:rgba(220,38,38,.1);color:#b91c1c;border:1px solid rgba(220,38,38,.35)}
+.vt-pill.reshoot{background:rgba(180,83,9,.12);color:#b45309;border:1px solid rgba(180,83,9,.4)}
+.vt-resh-head{display:flex;align-items:center;gap:7px;margin:-2px 0 10px;padding:8px 11px;border-radius:10px;font-size:.78rem;font-weight:700;
+  background:rgba(180,83,9,.1);color:#b45309;border:1px solid rgba(180,83,9,.3)}
+.vt-resh-head svg{width:15px;height:15px;flex-shrink:0}
 .vt-pill.proposal{background:rgba(100,116,139,.12);color:#475569;border:1px solid rgba(100,116,139,.35)}
 .vt-pill.ontime{background:rgba(16,185,129,.12);color:#047857;border:1px solid rgba(16,185,129,.35)}
 .vt-pill.delayed{background:rgba(220,38,38,.1);color:#b91c1c;border:1px solid rgba(220,38,38,.35)}
