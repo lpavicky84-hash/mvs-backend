@@ -354,39 +354,46 @@ def toggle_teacher(user_id: int, db: Session = Depends(get_db), _=Depends(get_ad
 # ===== STUDENT MANAGEMENT =====
 @router.get("/students")
 def get_all_students(db: Session = Depends(get_db), _=Depends(get_admin)):
-    students = db.query(User).filter(User.role == UserRole.student).all()
+    from sqlalchemy.orm import defer, joinedload
+    # photo blob (bada base64) list me load NAHI karte -> RAM + speed. has_photo alag halki query se.
+    profiles = (db.query(StudentProfile)
+                .options(defer(StudentProfile.photo_b64), joinedload(StudentProfile.user))
+                .all())
+    photo_ids = {r[0] for r in db.query(StudentProfile.id)
+                 .filter(StudentProfile.photo_b64.isnot(None)).all()}
     # counts EK-EK query me nahi — 2 GROUP BY queries se (warna 2000 students = 4000 queries)
     dpp_counts = dict(db.query(DPPSubmission.student_id, func.count(DPPSubmission.id))
                       .group_by(DPPSubmission.student_id).all())
     test_counts = dict(db.query(TestSubmission.student_id, func.count(TestSubmission.id))
                        .group_by(TestSubmission.student_id).all())
     result = []
-    for s in students:
-        sp = s.student_profile
-        if sp:
-            result.append({
-                "id": s.id,
-                "profile_id": sp.id,
-                "name": s.name,
-                "user_id": s.user_id,
-                "phone": sp.phone,
-                "email": sp.email,
-                "batch": sp.batch_name or (sp.batch.value if hasattr(sp.batch,"value") else sp.batch),
-                "batch_name": sp.batch_name,
-                "class_level": sp.class_level,
-                "has_photo": bool(sp.photo_b64),
-                "subjects": (_SR.canon_list(sp.subjects, sp.class_level) if _SR else sp.subjects),
-                "class_name": sp.class_name,
-                "is_verified": sp.is_verified,
-                "source": getattr(sp, "source", None) or "mvs_app",
-                "medium": getattr(sp, "medium", None),
-                "exam_session": getattr(sp, "exam_session", None),
-                "exam_stream": getattr(sp, "exam_stream", None),
-                "nios_ref": getattr(sp, "nios_ref", None),
-                "is_active": s.is_active,
-                "dpp_submitted": dpp_counts.get(sp.id, 0),
-                "tests_attempted": test_counts.get(sp.id, 0),
-            })
+    for sp in profiles:
+        s = sp.user
+        if not s or s.role != UserRole.student:
+            continue
+        result.append({
+            "id": s.id,
+            "profile_id": sp.id,
+            "name": s.name,
+            "user_id": s.user_id,
+            "phone": sp.phone,
+            "email": sp.email,
+            "batch": sp.batch_name or (sp.batch.value if hasattr(sp.batch,"value") else sp.batch),
+            "batch_name": sp.batch_name,
+            "class_level": sp.class_level,
+            "has_photo": sp.id in photo_ids,
+            "subjects": (_SR.canon_list(sp.subjects, sp.class_level) if _SR else sp.subjects),
+            "class_name": sp.class_name,
+            "is_verified": sp.is_verified,
+            "source": getattr(sp, "source", None) or "mvs_app",
+            "medium": getattr(sp, "medium", None),
+            "exam_session": getattr(sp, "exam_session", None),
+            "exam_stream": getattr(sp, "exam_stream", None),
+            "nios_ref": getattr(sp, "nios_ref", None),
+            "is_active": s.is_active,
+            "dpp_submitted": dpp_counts.get(sp.id, 0),
+            "tests_attempted": test_counts.get(sp.id, 0),
+        })
     return result
 
 @router.post("/students/add")

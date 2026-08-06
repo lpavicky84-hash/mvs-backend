@@ -223,6 +223,10 @@ else:
         allow_headers=["*"],
     )
 
+# ===== GZIP: responses compress karo (HTML/JSON ~70-80% chhoti -> egress bill + speed) =====
+from fastapi.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=500)
+
 # ===== ROUTERS =====
 app.include_router(auth_routes.router)
 app.include_router(teacher_routes.router)

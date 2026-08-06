@@ -2,7 +2,7 @@ import base64
 import json
 import re
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, BackgroundTasks, Request, Response
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 from sqlalchemy import func, extract
 from datetime import datetime, date, timedelta
 from typing import List, Optional
@@ -263,7 +263,7 @@ def upload_dpp(req: DPPCreate, db: Session = Depends(get_db), current_user=Depen
     # Notify students of this subject — har change ka update students tak pahunchna chahiye
     try:
         from models import StudentProfile
-        for sp in db.query(StudentProfile).all():
+        for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all():
             if sp.subjects and (dpp.subject or "").strip() in sp.subjects and sp.user:
                 notify(db, sp.user.id,
                        f"📝 New DPP: {(dpp.subject or '').strip()}",
@@ -291,7 +291,7 @@ def create_test(req: TestCreate, db: Session = Depends(get_db), current_user=Dep
     try:
         from models import StudentProfile
         when = f"{test.test_date} {test.test_time or ''}".strip()
-        for sp in db.query(StudentProfile).all():
+        for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all():
             if sp.subjects and (test.subject or "").strip() in sp.subjects and sp.user:
                 notify(db, sp.user.id,
                        f"🧪 New Test Scheduled: {(test.subject or '').strip()}",
@@ -1215,7 +1215,7 @@ async def upload_material(
     try:
         from models import StudentProfile
         label = {"notes": "Class Notes", "dpp": "DPP", "test": "Test"}.get(m.material_type, (m.category or "Material"))
-        sps = db.query(StudentProfile).all()
+        sps = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all()
         _nk = _subj_norm(subject.strip())
         for sp in sps:
             if sp.subjects and _nk in {_subj_norm(x) for x in sp.subjects} and sp.user:
@@ -1933,7 +1933,7 @@ def teacher_student_counts(db: Session = Depends(get_db), current_user=Depends(g
     from models import StudentProfile, AvailableSubject
     tp = get_teacher_profile(current_user, db)
     subs = tp.subjects or []
-    students = db.query(StudentProfile).all()
+    students = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all()
     # (subject_key, class_level) -> NIOS subject code
     code_map = {}
     for a in db.query(AvailableSubject).all():
@@ -1987,7 +1987,7 @@ def teacher_dpp_results(db: Session = Depends(get_db), current_user=Depends(get_
         Material.parent_id.in_(ids)).all() if ids else []
     # how many students should be doing each DPP (same subject)
     roster = {}
-    for sp in db.query(StudentProfile).all():
+    for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all():
         for s in (sp.subjects or []):
             roster[s] = roster.get(s, 0) + 1
     views, downloads = {}, {}
@@ -2102,7 +2102,7 @@ def teacher_my_students_list(q: str = "", subject: str = "", cls: str = "", db: 
     want_cls = (cls or "").strip()
     ql = " ".join((q or "").split()).strip().lower()
     q_tokens = [t for t in ql.split(" ") if t]
-    rows = db.query(StudentProfile).all()
+    rows = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all()
     out = []
     for sp in rows:
         ssubs = sp.subjects or []
@@ -2268,7 +2268,7 @@ def _notify_class_done(subject, chapter, part, teacher_name, dpp_given):
                % (teacher_name, subject, (" (" + topic + ")") if topic else "", subject,
                   ("\u2022 DPP: download it from the DPP Submit page, solve it and upload it back\n"
                    if dpp_given else "")))
-        for sp in db.query(StudentProfile).all():
+        for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all():
             if subject in (sp.subjects or []) and sp.user:
                 notify(db, sp.user.id, "\U0001F4DA %s class complete" % subject, msg, "class")
         db.commit()
@@ -2422,7 +2422,7 @@ def teacher_student_engagement(db: Session = Depends(get_db), current_user=Depen
         return []
     # students who have any of the teacher's subjects
     students = []
-    for sp in db.query(StudentProfile).all():
+    for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all():
         if set(sp.subjects or []) & set(subs):
             students.append(sp)
     # teacher material ids
@@ -3300,7 +3300,7 @@ def _notify_lecture_students(subject, title, teacher_name):
     from database import SessionLocal
     db = SessionLocal()
     try:
-        studs = db.query(StudentProfile).all()
+        studs = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all()
         for sp in studs:
             if subject in (sp.subjects or []) and sp.user:
                 notify(db, sp.user.id, "\U0001F4DA New Lecture: %s" % subject,
@@ -3845,7 +3845,7 @@ def _students_of_subject(db, subject):
     from models import StudentProfile
     nk = (_SR.canon_norm(subject) if _SR else subject)
     out = []
-    for sp in db.query(StudentProfile).all():
+    for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all():
         try:
             subs = sp.subjects or []
         except Exception:
