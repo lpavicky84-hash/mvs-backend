@@ -9358,12 +9358,12 @@ async function loadAVTasks(){
     const cOpt=`<option value="0">All Channels</option>`+_vtChannels.map(c=>`<option value="${c.id}" ${_vtF.channel_id==c.id?'selected':''}>${esc(c.name)}</option>`).join('');
     const tyOpt=`<option value="">All Types</option>`+_vtTypes.map(c=>`<option value="${esc(c.name)}" ${_vtF.video_type===c.name?'selected':''}>${esc(c.name)}</option>`).join('');
     const sOpt=['<option value="">All Status</option>','assigned','submitted','approved','editing_soon','editing_done','uploaded'].map(v=>v==='<option value="">All Status</option>'?v:`<option value="${v}" ${_vtF.status===v?'selected':''}>${VT_LBL[v]}</option>`).join('');
-    const propHtml=(list.proposals||[]).length?`<div class="card" style="margin-bottom:16px;border:1.5px solid rgba(217,119,6,.45)"><div class="card-header"><h3>${ic('help')} Video Proposals — Approval Needed</h3><span class="xm-chip">${list.proposals.length}</span></div><div class="card-body"><div class="vt-grid">${list.proposals.map(t=>`
-      <div class="vt-card"><div class="vt-body">
+    const propHtml=(list.proposals||[]).length?`<div class="card vt-approve-card" style="margin-bottom:16px;border:2px solid rgba(220,38,38,.5)"><div class="card-header"><h3>${ic('help')} Video Proposals — Approval Needed</h3><span class="xm-chip vt-approve-chip">${list.proposals.length} pending</span></div><div class="card-body"><div class="vt-grid">${list.proposals.map(t=>`
+      <div class="vt-card vt-prop-blink"><div class="vt-body">
         <div class="vt-chips"><span class="vt-pill proposal">Proposal</span>${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill assigned">${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}</div>
         <div class="vt-title">${esc(t.title)}</div>
         ${t.remarks?`<div class="vt-req">${esc(t.remarks)}</div>`:''}
-        <div class="vt-meta"><span class="vt-proposer">${ic('user')} ${esc(t.teacher)}</span><span class="vt-prop-when">proposed \u00b7 ${esc(t.created_at)}</span>${t.reference?`<span class="vt-prop-note">Note: ${esc(t.reference)}</span>`:''}</div>
+        <div class="vt-meta"><span class="vt-proposer">${ic('user')} ${esc(t.teacher)}</span><span class="vt-prop-when vt-prop-when-blink">proposed \u00b7 ${esc(t.created_at)}</span>${t.reference?`<span class="vt-prop-note">Note: ${esc(t.reference)}</span>`:''}</div>
         <div class="vt-foot"><button class="btn btn-primary btn-sm" onclick="openVTAssign(${t.id})">${ic('check')} Approve & Assign</button><button class="btn btn-ghost btn-sm" onclick="vtRejectProposal(${t.id})">Decline</button></div>
       </div></div>`).join('')}</div></div></div>`:'';
     const rankRows=(stats.by_teacher||[]);
@@ -17718,8 +17718,14 @@ async function ocrFillQuestion_v1(inp,i){
 .dark .vt-prop-note{background:rgba(255,255,255,.05)}
 .vt-foot{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto;padding-top:6px}
 .vt-checking{animation:vtBlink 1.4s ease-in-out infinite}
-.vt-sub-blink{animation:vtCardBlink 1.3s ease-in-out infinite}
-@keyframes vtCardBlink{0%,100%{box-shadow:0 0 0 0 rgba(217,119,6,.5)}50%{box-shadow:0 0 0 4px rgba(217,119,6,0)}}
+.vt-sub-blink{animation:vtCardBlink 1s ease-in-out infinite;border-color:#d97706!important}
+@keyframes vtCardBlink{0%,100%{box-shadow:0 0 0 0 rgba(217,119,6,.6);border-color:#d97706}50%{box-shadow:0 0 0 7px rgba(217,119,6,.03);border-color:#f59e0b}}
+.vt-prop-blink{animation:vtPropBlink 1s ease-in-out infinite;border-color:#dc2626!important}
+@keyframes vtPropBlink{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.55);border-color:#dc2626}50%{box-shadow:0 0 0 7px rgba(220,38,38,.03);border-color:#ef4444}}
+.vt-prop-when-blink{color:#dc2626!important;font-weight:800;animation:vtBlink 1s ease-in-out infinite}
+.vt-approve-card{animation:vtApproveGlow 1.3s ease-in-out infinite}
+@keyframes vtApproveGlow{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.28)}50%{box-shadow:0 0 0 4px rgba(220,38,38,0)}}
+.vt-approve-chip{background:#dc2626!important;color:#fff!important;animation:vtBlink 1s ease-in-out infinite}
 .vt-newsub{display:inline-flex;align-items:center;gap:4px;margin-left:8px;font-size:.6rem;font-weight:800;color:#b45309;background:rgba(217,119,6,.14);border:1px solid rgba(217,119,6,.4);border-radius:20px;padding:2px 8px;vertical-align:middle;animation:vtBlink 1.3s ease-in-out infinite}
 @keyframes vtBlink{0%,100%{box-shadow:0 0 0 0 rgba(217,119,6,.0);filter:brightness(1)}50%{box-shadow:0 0 0 5px rgba(217,119,6,.18);filter:brightness(1.18)}}
 .vt-count{display:flex;gap:6px;align-items:center}
