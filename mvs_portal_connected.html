@@ -8946,6 +8946,7 @@ async function loadTVTasks(){
       ${showTasks?`<div class="vtm-sec-cap">Tasks · Single video assignments</div>
       <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="openTVTPropose()">${ic('plus')} Propose a Video</button>
+        <button class="btn btn-gold" onclick="openTVTUrgent()">${ic('alert')} Urgent Video</button>
         <span style="font-size:.74rem;color:var(--text-muted);align-self:center">Have a video idea? Propose it — once approved, a thumbnail & deadline will be assigned.</span>
       </div>
       ${fTasks.length?`<div class="vt-grid">${fTasks.map(card).join('')}</div>`
@@ -9055,8 +9056,38 @@ async function tvtProposeSave(){
     window._vtThumbB64=null; closeModal(); toast('Proposal sent for approval.'); loadTVTasks();
   }catch(e){ toast(e.message||'Could not send'); }
 }
-async function tvtSubmit(id){
-  const link=document.getElementById('tvt-link-'+id).value.trim();
+async function openTVTUrgent(){
+  let types=window._vtTypesT;
+  if(!types){ try{ types=((await api('/api/teacher/video-types')).types)||[]; window._vtTypesT=types; }catch(e){ types=[]; } }
+  let chans=window._vtChansT;
+  if(!chans){ try{ chans=((await api('/api/teacher/video-channels')).channels)||[]; window._vtChansT=chans; }catch(e){ chans=[]; } }
+  const chOpts=`<option value="">— No channel —</option>`+chans.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  const dl=new Date(Date.now()+24*3600*1000); dl.setMinutes(0);
+  const dlVal=`${dl.getFullYear()}-${String(dl.getMonth()+1).padStart(2,'0')}-${String(dl.getDate()).padStart(2,'0')}T${String(dl.getHours()).padStart(2,'0')}:00`;
+  showModal('Urgent Video',`
+    <div class="form-grid vt-form">
+      <div class="form-group" style="grid-column:1/-1"><label>Video Title</label><input id="tvt-u-title" class="input" placeholder="e.g. Breaking — NIOS Exam Date Out"></div>
+      <div class="form-group"><label>Streaming</label><select id="tvt-u-stream" class="input" onchange="_vtFilterTypes('tvt-u-stream','tvt-u-type',window._vtTypesT)"><option value="">— Select —</option><option value="recorded">Recorded</option><option value="live">Live</option></select></div>
+      <div class="form-group"><label>Video Type</label><select id="tvt-u-type" class="input">${_vtTypeOptsHtml(types,'','','— Select type —')}</select></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Channel (optional)</label><select id="tvt-u-channel" class="input">${chOpts}</select></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Submit Video Link</label><input id="tvt-u-link" class="input" placeholder="https://drive.google.com/... (your shot video)"></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Upload by (deadline)</label><input id="tvt-u-deadline" type="datetime-local" class="input" value="${dlVal}"></div>
+    </div>
+    <p style="font-size:.74rem;color:var(--text-muted)">No approval needed — this goes straight to the production manager's Urgent Videos. On-time is based on the upload happening by your deadline.</p>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="tvtUrgentSave()">${ic('send')} Submit Urgent Video</button>`);
+}
+async function tvtUrgentSave(){
+  const val=id=>(document.getElementById(id)||{}).value||'';
+  const title=val('tvt-u-title').trim();
+  if(!title){ toast('Please enter a video title'); return; }
+  const body={ title, link:val('tvt-u-link').trim(), channel_id:val('tvt-u-channel')||'',
+    video_type:val('tvt-u-type'), streaming:val('tvt-u-stream'), deadline:val('tvt-u-deadline') };
+  try{
+    await api('/api/teacher/video-tasks/urgent','POST',body);
+    closeModal(); toast('Urgent video submitted.'); loadTVTasks();
+  }catch(e){ toast(e.message||'Could not submit'); }
+}
+async function tvtSubmit(id){  const link=document.getElementById('tvt-link-'+id).value.trim();
   if(!link){ toast('Please paste the video drive link'); return; }
   try{
     const r=await api(`/api/teacher/video-tasks/${id}/submit`,'POST',{link});
@@ -9331,6 +9362,33 @@ async function _avtBadgePoll(){
     badge.style.display=n?'inline-block':'none'; badge.textContent=n;
   }catch(e){}
 }
+function _avtCard(t){
+      const reviewBtn=(t.status==='submitted')
+        ?`<button class="btn btn-primary btn-sm ${t.reviewed?'':'vt-checking'}" onclick="openVTReview(${t.id})">${ic('check')} ${t.reviewed?'Review Again':'Checking — Review'}</button>`:'';
+      const editBtn=(['approved','editing_soon','editing_done'].includes(t.status))
+        ?`<button class="btn btn-ghost btn-sm" onclick="openVTReview(${t.id})">${ic('edit')} Update Status</button>`:'';
+      const notifyBtn=(t.submitted_link)
+        ?`<button class="btn btn-gold btn-sm" onclick="vtNotifyStudents(${t.id})" title="Send this video link to all students">${ic('send')} Send to Students</button>`:'';
+      const editTaskBtn=`<button class="btn btn-ghost btn-sm" onclick="openVTEdit(${t.id})" title="Edit title, deadline, type, channel, thumbnail">${ic('edit')} Edit</button>`;
+      const delTaskBtn=`<button class="btn btn-ghost btn-sm vt-del" onclick="vtDeleteTask(${t.id})" title="Delete this task permanently">${ic('trash')} Delete</button>`;
+      const ytBtn=`<button class="btn btn-ghost btn-sm" onclick="openVtYtLink(${t.id},'${esc(t.youtube_url||'').replace(/'/g,'')}')" title="Post the published YouTube link">${ic('play')} ${t.youtube_url?'Edit YT Link':'Post YT Link'}</button>`;
+      return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-done="${t.submitted_at?1:0}" data-pending="${t.status==='assigned'?1:0}" data-delayed="${t.submitted_at&&!t.on_time?1:0}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
+        <div class="vt-title">${esc(t.title)}${t.status==='submitted'?`<span class="vt-newsub">${ic('bell')} NEW · ${esc(t.teacher)}</span>`:''}</div>
+        <div class="vt-chips"><span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}</div>
+        <div class="vt-meta">
+          <span>${ic('clock')} Deadline: <b>${esc(t.deadline_nice)}</b>${t.status==='assigned'&&t.seconds_left!=null?` · <span data-vt-cd="${t.id}" data-secs="${t.seconds_left}"></span>`:''}</span>
+          ${t.submitted_at?`<span>${ic('check')} Submitted: <b>${esc(t.submitted_at)}</b> ${t.on_time===true?'(on time)':(t.on_time===false?'(delayed)':'')}</span>`:''}
+          ${t.youtube_url?`<span class="vt-yt-views">${ic('play')} Live views: <b>${t.yt_views!=null?(+t.yt_views).toLocaleString():'—'}</b>${t.yt_views_at?' · '+esc(t.yt_views_at):''} · <a href="${esc(t.youtube_url)}" target="_blank" rel="noopener">Open on YouTube</a></span>`:''}
+          ${t.reference?`<span>Reference: ${esc(t.reference)}</span>`:''}
+          ${t.remarks?`<span>Remarks: ${esc(t.remarks)}</span>`:''}
+          ${t.review_remarks?`<span>Review: ${esc(t.review_remarks)}${t.reject_count?` · Reshoot #${t.reject_count}`:''}</span>`:''}
+        </div>
+        <div class="vt-foot">
+          ${t.submitted_link?`<a class="btn btn-ghost btn-sm" href="${esc(t.submitted_link)}" target="_blank" rel="noopener">${ic('link')} Open Video</a>`:''}
+          ${reviewBtn}${editBtn}${editTaskBtn}${ytBtn}${notifyBtn}${delTaskBtn}
+        </div></div></div>`;
+}
+
 async function loadAVTasks(fromCache){
   const el=document.getElementById('a-vtasks-content');
   softSpin(el);
@@ -9373,32 +9431,9 @@ async function loadAVTasks(fromCache){
         <div class="vt-foot"><button class="btn btn-primary btn-sm" onclick="openVTAssign(${t.id})">${ic('check')} Approve & Assign</button><button class="btn btn-ghost btn-sm" onclick="vtRejectProposal(${t.id})">Decline</button></div>
       </div></div>`).join('')}</div></div></div>`:'';
     const rankRows=(stats.by_teacher||[]);
-    const taskCards=(list.tasks||[]).map(t=>{
-      const reviewBtn=(t.status==='submitted')
-        ?`<button class="btn btn-primary btn-sm ${t.reviewed?'':'vt-checking'}" onclick="openVTReview(${t.id})">${ic('check')} ${t.reviewed?'Review Again':'Checking — Review'}</button>`:'';
-      const editBtn=(['approved','editing_soon','editing_done'].includes(t.status))
-        ?`<button class="btn btn-ghost btn-sm" onclick="openVTReview(${t.id})">${ic('edit')} Update Status</button>`:'';
-      const notifyBtn=(t.submitted_link)
-        ?`<button class="btn btn-gold btn-sm" onclick="vtNotifyStudents(${t.id})" title="Send this video link to all students">${ic('send')} Send to Students</button>`:'';
-      const editTaskBtn=`<button class="btn btn-ghost btn-sm" onclick="openVTEdit(${t.id})" title="Edit title, deadline, type, channel, thumbnail">${ic('edit')} Edit</button>`;
-      const delTaskBtn=`<button class="btn btn-ghost btn-sm vt-del" onclick="vtDeleteTask(${t.id})" title="Delete this task permanently">${ic('trash')} Delete</button>`;
-      const ytBtn=`<button class="btn btn-ghost btn-sm" onclick="openVtYtLink(${t.id},'${esc(t.youtube_url||'').replace(/'/g,'')}')" title="Post the published YouTube link">${ic('play')} ${t.youtube_url?'Edit YT Link':'Post YT Link'}</button>`;
-      return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-done="${t.submitted_at?1:0}" data-pending="${t.status==='assigned'?1:0}" data-delayed="${t.submitted_at&&!t.on_time?1:0}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
-        <div class="vt-title">${esc(t.title)}${t.status==='submitted'?`<span class="vt-newsub">${ic('bell')} NEW · ${esc(t.teacher)}</span>`:''}</div>
-        <div class="vt-chips"><span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}</div>
-        <div class="vt-meta">
-          <span>${ic('clock')} Deadline: <b>${esc(t.deadline_nice)}</b>${t.status==='assigned'&&t.seconds_left!=null?` · <span data-vt-cd="${t.id}" data-secs="${t.seconds_left}"></span>`:''}</span>
-          ${t.submitted_at?`<span>${ic('check')} Submitted: <b>${esc(t.submitted_at)}</b> ${t.on_time?'(on time)':'(delayed)'}</span>`:''}
-          ${t.youtube_url?`<span class="vt-yt-views">${ic('play')} Live views: <b>${t.yt_views!=null?(+t.yt_views).toLocaleString():'—'}</b>${t.yt_views_at?' · '+esc(t.yt_views_at):''} · <a href="${esc(t.youtube_url)}" target="_blank" rel="noopener">Open on YouTube</a></span>`:''}
-          ${t.reference?`<span>Reference: ${esc(t.reference)}</span>`:''}
-          ${t.remarks?`<span>Remarks: ${esc(t.remarks)}</span>`:''}
-          ${t.review_remarks?`<span>Review: ${esc(t.review_remarks)}${t.reject_count?` · Reshoot #${t.reject_count}`:''}</span>`:''}
-        </div>
-        <div class="vt-foot">
-          ${t.submitted_link?`<a class="btn btn-ghost btn-sm" href="${esc(t.submitted_link)}" target="_blank" rel="noopener">${ic('link')} Open Video</a>`:''}
-          ${reviewBtn}${editBtn}${editTaskBtn}${ytBtn}${notifyBtn}${delTaskBtn}
-        </div></div></div>`;
-    }).join('');
+    const taskCards=(list.tasks||[]).map(_avtCard).join('');
+    const urgentCards=(list.urgent||[]).map(_avtCard).join('');
+    const urgentHtml=(list.urgent||[]).length?`<div class="card vt-urgent-card" style="margin-bottom:16px;border:2px solid rgba(220,38,38,.5)"><div class="card-header"><h3>${ic('alert')} Urgent Videos</h3><span class="xm-chip vt-urgent-chip">${(list.urgent||[]).length}</span></div><div class="card-body"><div class="vt-grid">${urgentCards}</div></div></div>`:'';
     // ---- v73: master Task/Project cards + view toggle ----
     const _spt=_avtSpecTotals();
     const spAll=(window._avtSpec&&window._avtSpec.one_shot)?['one_shot','rapid_revision','project'].reduce((n,k)=>n+(((window._avtSpec[k]||{}).tasks)||[]).length,0):0;
@@ -9438,6 +9473,7 @@ async function loadAVTasks(fromCache){
       ${masterCards}
       ${showTasks&&(stats.by_type&&Object.keys(stats.by_type).length)?`<div class="card" style="margin-bottom:16px"><div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px"><span style="font-size:.68rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">${ic('chart')} Type-wise tasks</span>${Object.entries(stats.by_type).map(([k,v])=>`<span class="vt-type">${esc(k)} · ${v}</span>`).join('')}</div></div>`:''}
       ${showProj?_avtSpecHtml():''}
+      ${showTasks?urgentHtml:''}
       ${showTasks?propHtml:''}
       ${showTasks?`<div class="vt-filters">
         <span class="vt-filt-lbl">${ic('filter')} Filter</span>
@@ -9910,7 +9946,7 @@ async function openVTReview(id){
     <div class="sdet-grid" style="grid-template-columns:1fr 1fr;margin-bottom:12px">
       <div class="sdet-row"><span>Teacher</span><b>${esc(t.teacher)}</b></div>
       <div class="sdet-row"><span>Deadline</span><b>${esc(t.deadline_nice)}</b></div>
-      ${t.submitted_at?`<div class="sdet-row"><span>Submitted</span><b>${esc(t.submitted_at)} ${t.on_time?'(on time)':'(delayed)'}</b></div>`:''}
+      ${t.submitted_at?`<div class="sdet-row"><span>Submitted</span><b>${esc(t.submitted_at)} ${t.on_time===true?'(on time)':(t.on_time===false?'(delayed)':'')}</b></div>`:''}
       ${t.submitted_link?`<div class="sdet-row"><span>Video</span><b><a href="${esc(t.submitted_link)}" target="_blank" rel="noopener" style="color:var(--primary)">Open drive link</a></b></div>`:''}
     </div>
     <div class="vt-form"><div class="form-group"><label>Set Status</label>
@@ -17829,6 +17865,8 @@ async function ocrFillQuestion_v1(inp,i){
 .vt-approve-card{animation:vtApproveGlow 1.3s ease-in-out infinite}
 @keyframes vtApproveGlow{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.28)}50%{box-shadow:0 0 0 4px rgba(220,38,38,0)}}
 .vt-approve-chip{background:#dc2626!important;color:#fff!important;animation:vtBlink 1s ease-in-out infinite}
+.vt-urgent-card{animation:vtApproveGlow 1.4s ease-in-out infinite}
+.vt-urgent-chip{background:#dc2626!important;color:#fff!important}
 .vt-newsub{display:inline-flex;align-items:center;gap:4px;margin-left:8px;font-size:.6rem;font-weight:800;color:#b45309;background:rgba(217,119,6,.14);border:1px solid rgba(217,119,6,.4);border-radius:20px;padding:2px 8px;vertical-align:middle;animation:vtBlink 1.3s ease-in-out infinite}
 @keyframes vtBlink{0%,100%{box-shadow:0 0 0 0 rgba(217,119,6,.0);filter:brightness(1)}50%{box-shadow:0 0 0 5px rgba(217,119,6,.18);filter:brightness(1.18)}}
 .vt-count{display:flex;gap:6px;align-items:center}

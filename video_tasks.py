@@ -1085,8 +1085,11 @@ def vt_admin_list(teacher_id: int = 0, status: str = "", channel_id: int = 0,
     tasks = q.order_by(VideoTask.created_at.desc()).all()
     props = (db.query(VideoTask).filter(VideoTask.proposal_ok == "pending")
              .order_by(VideoTask.created_at.desc()).all())
+    urgent = (db.query(VideoTask).filter(VideoTask.kind == "urgent")
+              .order_by(VideoTask.created_at.desc()).all())
     return {"tasks": [_task_out(db, t) for t in tasks],
-            "proposals": [_task_out(db, t) for t in props]}
+            "proposals": [_task_out(db, t) for t in props],
+            "urgent": [_task_out(db, t) for t in urgent]}
 
 
 @router.get("/admin/video-tasks/badge", dependencies=[Depends(_admin_section_guard)])
@@ -1173,6 +1176,9 @@ def vt_review(task_id: int, payload: dict = Body(...),
         t.status = action
         t.reviewed = True
         t.review_remarks = remarks
+        # Urgent video: on-time = teacher ki di hui deadline tak UPLOAD hua ya nahi
+        if action == "uploaded" and (getattr(t, "kind", "") or "") == "urgent" and t.deadline:
+            t.on_time = (datetime.now() <= t.deadline)
         label = {"approved": "Approved", "editing_soon": "Editing Soon",
                  "editing_done": "Editing Done", "uploaded": "Uploaded"}[action]
         _hist_add(t, action, remarks)
@@ -1798,6 +1804,41 @@ def vt_propose(payload: dict = Body(...), db: Session = Depends(get_db),
         _vt_notify(db, a.id, "🎬 New Video Proposal",
                    f'{(uname.name if uname else "A teacher")} proposed a video: "{title}". '
                    f'Review it in Task Manager to assign a thumbnail and deadline.')
+    db.commit()
+    return {"ok": True, "id": t.id}
+
+
+@router.post("/teacher/video-tasks/urgent")
+def vt_urgent(payload: dict = Body(...), db: Session = Depends(get_db),
+              current_user=Depends(get_teacher)):
+    """Urgent video: teacher seedha title + channel + video link + upload deadline daalta hai.
+    Koi approval nahi — turant submitted. Production manager ka flow same (approve/status/YT link).
+    on-time = teacher ki di hui deadline tak UPLOAD hua ya nahi (upload pe compute hota hai)."""
+    tp = _get_tp(current_user, db)
+    title = (payload.get("title") or "").strip()
+    if not title:
+        raise HTTPException(400, "A video title is required")
+    link = (payload.get("link") or payload.get("submitted_link") or "").strip()
+    cid = payload.get("channel_id")
+    ch = db.query(VideoChannel).filter(VideoChannel.id == int(cid)).first() if cid else None
+    dl = _parse_deadline(payload.get("deadline"))
+    now = datetime.now()
+    t = VideoTask(teacher_id=tp.id, title=title, kind="urgent",
+                  channel_id=ch.id if ch else None, channel_name=ch.name if ch else "",
+                  video_type=(payload.get("video_type") or "").strip(),
+                  streaming=(payload.get("streaming") or "").strip(),
+                  deadline=dl,
+                  submitted_link=link, submitted_at=(now if link else None),
+                  status=("submitted" if link else "assigned"),
+                  proposed_by="teacher", proposal_ok="approved", reviewed=False)
+    db.add(t)
+    _hist_add(t, "urgent", "Urgent video submitted by teacher")
+    uname = db.query(User).filter(User.id == tp.user_id).first()
+    admins = db.query(User).filter(User.role == "admin", User.is_active == True).all()
+    for a in admins:
+        _vt_notify(db, a.id, "\U0001F6A8 Urgent Video Submitted",
+                   f'{(uname.name if uname else "A teacher")} submitted an URGENT video: "{title}". '
+                   f'Review it in Task Manager \u2192 Urgent Videos.')
     db.commit()
     return {"ok": True, "id": t.id}
 
