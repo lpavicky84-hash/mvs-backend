@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- MVS Portal v195 -->
+<!-- MVS Portal v196 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -15583,6 +15583,8 @@ function _parseSalesRows(rows){
 }
 async function previewExcel(){
   const fi=document.getElementById('excel-file'); const pv=document.getElementById('excel-preview');
+  window._excelParsed=null;   // nayi file -> purana count/breakdown reset
+  const _st=document.getElementById('excel-status'); if(_st) _st.innerHTML='';
   if(!fi.files.length){ pv.innerHTML=''; return; }
   try{
     const data=await fi.files[0].arrayBuffer();
@@ -15616,8 +15618,9 @@ async function processExcel(){
   const btn=document.getElementById('excel-btn'); btn.disabled=true; btn.textContent='Importing...';
   const status=document.getElementById('excel-status');
   try{
-    let parsed=window._excelParsed;
-    if(!parsed){ const data=await fi.files[0].arrayBuffer(); const wb=XLSX.read(data,{type:'array'}); parsed=_parseSalesRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]])); }
+    // hamesha CURRENT file se parse karo — purani file ka stale cache use na ho
+    const data=await fi.files[0].arrayBuffer(); const wb=XLSX.read(data,{type:'array'});
+    let parsed=_parseSalesRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]));
     if(!parsed.length){ toast('No valid students found.',true); btn.disabled=false; btn.textContent='Import Students'; return; }
     // remove duplicate phone numbers WITHIN the sheet (keep latest occurrence)
     const map=new Map();
