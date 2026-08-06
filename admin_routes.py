@@ -98,8 +98,18 @@ def notify(db, user_id: int, title: str, message: str, notif_type: str):
 def admin_dashboard(db: Session = Depends(get_db), _=Depends(get_admin)):
     total_teachers  = db.query(User).filter(User.role == UserRole.teacher).count()
     total_students  = db.query(User).filter(User.role == UserRole.student).count()
-    total_done      = db.query(ClassEntry).filter(ClassEntry.status == ClassStatus.done).count()
-    total_pending   = db.query(ClassEntry).filter(ClassEntry.status == ClassStatus.pending).count()
+    # Classes done = teachers dwara submit ki gayi LECTURES (ClassEntry purana system tha,
+    # ab teachers timetable se lecture report daalte hain). Pending = timetable ke chapter
+    # entries jinka din aa chuka par abhi tak lecture nahi aaya.
+    from models import Lecture, TimetableEntry
+    total_done = db.query(Lecture).count()
+    _today = date.today()
+    _done_tt = set(x[0] for x in db.query(Lecture.timetable_entry_id).filter(
+        Lecture.timetable_entry_id.isnot(None)).all())
+    total_pending = 0
+    for _e in db.query(TimetableEntry).filter(TimetableEntry.entry_type == "chapter").all():
+        if _e.entry_date and _e.entry_date <= _today and _e.id not in _done_tt:
+            total_pending += 1
     pending_rs      = db.query(RescheduleRequest).filter(RescheduleRequest.status == RescheduleStatus.pending).count()
     # unresolved = jo resolved nahi, PLUS resolved par jinpe naya follow-up aaya (attention chahiye)
     # — bilkul subject-wise doubts section jaise, taaki dashboard aur section match karein.
@@ -378,11 +388,9 @@ def teacher_activity(db: Session = Depends(get_db), _=Depends(get_admin)):
     for tp in teachers:
         user = tp.user
         for subject in (tp.subjects or []):
-            done = db.query(ClassEntry).filter(
-                ClassEntry.teacher_id == tp.id,
-                ClassEntry.subject == subject,
-                ClassEntry.status == ClassStatus.done
-            ).count()
+            from models import Lecture as _Lec
+            done = db.query(_Lec).filter(
+                _Lec.teacher_id == tp.id, _Lec.subject == subject).count()
             pending = db.query(ClassEntry).filter(
                 ClassEntry.teacher_id == tp.id,
                 ClassEntry.subject == subject,

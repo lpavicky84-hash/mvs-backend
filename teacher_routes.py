@@ -54,12 +54,16 @@ def teacher_dashboard(db: Session = Depends(get_db), current_user=Depends(get_te
 
     q = db.query(ClassEntry).filter(ClassEntry.teacher_id == tp.id)
 
-    total_done      = q.filter(ClassEntry.status == ClassStatus.done).count()
+    # Classes done = teacher ki submit ki gayi LECTURES (naya system). Pending/rescheduled
+    # abhi ClassEntry se (agar use ho); warna 0.
+    from models import Lecture as _Lec
+    _lq = db.query(_Lec).filter(_Lec.teacher_id == tp.id)
+    total_done      = _lq.count()
     total_pending   = q.filter(ClassEntry.status == ClassStatus.pending).count()
     total_rescheduled = q.filter(ClassEntry.status == ClassStatus.rescheduled).count()
-    monthly_done    = q.filter(ClassEntry.status == ClassStatus.done, ClassEntry.scheduled_date >= month_start).count()
+    monthly_done    = _lq.filter(_Lec.lecture_date >= month_start).count()
     monthly_pending = q.filter(ClassEntry.status == ClassStatus.pending, ClassEntry.scheduled_date >= month_start).count()
-    weekly_done     = q.filter(ClassEntry.status == ClassStatus.done, ClassEntry.scheduled_date >= week_start).count()
+    weekly_done     = _lq.filter(_Lec.lecture_date >= week_start).count()
 
     # Reset monthly reschedule counter if new month
     if tp.reschedule_reset_month != now.month:
