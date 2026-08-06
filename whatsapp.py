@@ -31,6 +31,15 @@ import urllib.parse
 
 PORTAL_LINK_DEFAULT = "https://app.mvsfoundation.in"
 
+# 5-variable welcome template ke default texts (image 2 wala) — portal se editable.
+DEFAULT_INTRO = ("To access your Notes, DPPs, Doubt Support, Tests, Teacher Interaction, "
+                 "and other study resources, please log in to the Class Manager Portal "
+                 "today by clicking the link below:")
+DEFAULT_LOGIN = "*Login Class Manager:\n{link}"
+DEFAULT_NOTE = ("Note: Your Live & Recorded Classes will continue to be available on the "
+                "Manish Verma Classes App, just as before. Please log in to the Class Manager "
+                "Portal today to enjoy all the additional learning features.")
+
 # ---- config resolution: app_settings (DB) > env var > default -------------
 _ENV = {
     "wa_api_url":  "WA_API_URL",
@@ -39,6 +48,8 @@ _ENV = {
     "wa_welcome":  "WA_WELCOME",
     "wa_announce": "WA_ANNOUNCE",
     "wa_welcome_msg": "WA_WELCOME_MSG",
+    "wa_login":    "WA_LOGIN",
+    "wa_note":     "WA_NOTE",
     "wa_lang":     "WA_LANG",
     "wa_link":     "WA_LINK",
     "wa_sender":   "WA_SENDER",
@@ -78,11 +89,14 @@ def cfg():
         "campaign": _val("wa_welcome"),          # welcome template/campaign name
         "template": _val("wa_welcome"),          # (alias — admin_routes cfg() me dono padha jaata)
         "announce": _val("wa_announce"),
-        "welcome_msg": _val("wa_welcome_msg"),   # welcome ka message text (variable {{2}} me jata hai)
+        "welcome_msg": _val("wa_welcome_msg"),   # {{2}} intro (blank = default)
+        "intro":    _val("wa_welcome_msg") or DEFAULT_INTRO,   # {{2}}
+        "login":    _val("wa_login") or DEFAULT_LOGIN,         # {{3}} login + link
+        "note":     _val("wa_note") or DEFAULT_NOTE,           # {{5}} note
         "lang":     _val("wa_lang", "en"),
         "link":     _val("wa_link", PORTAL_LINK_DEFAULT),
         "sender":   _val("wa_sender"),
-        "params":   ["name", "message", "phone"],  # {{1}}=name, {{2}}=message+link, {{3}}=registered mobile
+        "params":   ["name", "intro", "login", "phone", "note"],  # {{1}}..{{5}}
     }
 
 
@@ -120,14 +134,18 @@ def _phone_intl(p, plus=False):
 
 # ---- message / params builders (preview + send) ---------------------------
 def _resolve(text, name, batch, link):
-    """{name}/{batch}/{link} tokens replace + newline/tab hata (WhatsApp variable rule)."""
+    """{name}/{batch}/{link} tokens replace. NEWLINE allowed (admin jahan Enter
+    dabayega wahan line-break aayega); sirf tab aur 4+ consecutive spaces hatao,
+    aur 3+ blank lines ko max 2 tak."""
     t = str(text or "")
     t = (t.replace("{name}", str(name or ""))
           .replace("{batch}", str(batch or ""))
           .replace("{link}", str(link or "")))
-    t = t.replace("\n", " ").replace("\r", " ").replace("\t", " ")
+    t = t.replace("\r\n", "\n").replace("\r", "\n").replace("\t", " ")
     while "     " in t:            # 4+ consecutive spaces not allowed
         t = t.replace("     ", " ")
+    while "\n\n\n" in t:           # 3+ blank lines -> 2
+        t = t.replace("\n\n\n", "\n\n")
     return t.strip()
 
 
@@ -141,29 +159,27 @@ def _welcome_body(name, batch, link):
 
 
 def build_params(name, batch, phone, message=None):
-    """Template variables (3):
+    """5-variable welcome template:
       {{1}} = student ka naam
-      {{2}} = message (admin ka likha) + Class Manager link
-      {{3}} = student ka registered mobile number
-    Welcome ka message text portal se editable hai."""
+      {{2}} = intro (welcome message — admin editable; announce me custom message)
+      {{3}} = *Login Class Manager: + link
+      {{4}} = student ka registered mobile
+      {{5}} = note (extra info)"""
     c = cfg()
     link = c["link"] or ""
-    if message is not None:
-        body = _resolve(message, name, batch, link)
-    else:
-        body = _welcome_body(name, batch, link)
-    # {{2}} ke saath Class Manager link (agar message me pehle se na ho to jod do)
-    if link and link not in body:
-        body = (body.rstrip() + " " + link).strip()
+    intro = _resolve(message if message is not None else c["intro"], name, batch, link)
+    login = _resolve(c["login"], name, batch, link)
+    note = _resolve(c["note"], name, batch, link)
     ph = _phone_intl(phone, plus=True) or str(phone or "").strip()
-    return [str(name or "Student"), body, ph]
+    return [str(name or "Student"), intro, login, ph, note]
 
 
 def build_message(name, batch, phone, template=None, message=None):
-    """Preview text — jaisa template render hoga (Hi {{1}}, {{2}} ... mobile: {{3}})."""
+    """Preview text — jaisa template render hoga (5 variables)."""
     p = build_params(name, batch, phone, message=message)
-    ph = p[2] if len(p) > 2 else ""
-    return "Hi " + p[0] + ",\n\n" + p[1] + "\n\nYour registered mobile number: " + ph
+    return ("Hi " + p[0] + ",\n\n" + p[1] + "\n\n" + p[2]
+            + "\n\nYour registered mobile number: " + p[3]
+            + "\n\n" + p[4])
 
 
 # ---- the send -------------------------------------------------------------

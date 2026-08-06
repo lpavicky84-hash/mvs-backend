@@ -3145,7 +3145,8 @@ def whatsapp_get_config(db: Session = Depends(get_db), _=Depends(get_admin)):
     """Combirds/WhatsApp config (portal me set kiya hua) — API key masked."""
     from models import AppSetting
     keys = ["wa_api_url", "wa_api_key", "wa_format", "wa_welcome",
-            "wa_announce", "wa_welcome_msg", "wa_lang", "wa_link", "wa_sender"]
+            "wa_announce", "wa_welcome_msg", "wa_login", "wa_note",
+            "wa_lang", "wa_link", "wa_sender"]
     rows = {r.key: (r.value or "") for r in
             db.query(AppSetting).filter(AppSetting.key.in_(keys)).all()}
     key = rows.pop("wa_api_key", "")
@@ -3158,7 +3159,8 @@ def whatsapp_get_config(db: Session = Depends(get_db), _=Depends(get_admin)):
 def whatsapp_set_config(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import AppSetting
     allowed = ["wa_api_url", "wa_api_key", "wa_format", "wa_welcome",
-               "wa_announce", "wa_welcome_msg", "wa_lang", "wa_link", "wa_sender"]
+               "wa_announce", "wa_welcome_msg", "wa_login", "wa_note",
+               "wa_lang", "wa_link", "wa_sender"]
     for k in allowed:
         if k not in (payload or {}):
             continue
