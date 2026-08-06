@@ -9714,7 +9714,24 @@ async function openVTAssign(proposalId){
       <div class="form-group" style="grid-column:1/-1"><label>Reference / Brief (optional)</label><textarea id="vt-f-ref" class="input" rows="2" placeholder="Points to cover, sample video link, style notes...">${pre?esc(pre.reference||''):''}</textarea></div>
       <div class="form-group" style="grid-column:1/-1"><label>Remarks for Teacher (optional)</label><textarea id="vt-f-remarks" class="input" rows="2" placeholder="Any instructions..."></textarea></div>
     </div>`;
-  if(pre){ // proposal approve hamesha single task hota hai — tabs nahi
+  if(pre){
+    const isProj = /project/i.test(pre.remarks||'') || pre.kind==='project';
+    if(isProj){
+      // Teacher ne PROJECT propose kiya -> production manager ko PROJECT form khule (task nahi),
+      // teacher ki selections (scope/count/title/teacher) apne aap pre-fill.
+      showModal('Approve Project Proposal',`
+        <div class="vtaw-tabs">
+          <button class="vtaw-tab" id="vtaw-t-task" onclick="vtAwTab('task')">${ic('play')} Single Video</button>
+          <button class="vtaw-tab on" id="vtaw-t-proj" onclick="vtAwTab('proj')">${ic('clipboard')} Project</button>
+        </div>
+        <div id="vtaw-b-task" style="display:none">${taskForm}</div>
+        <div id="vtaw-b-proj">${_vtProjectForm()}</div>`,
+        `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="vtaw-save" onclick="vtAwSaveProposal(${proposalId||0})">${ic('check')} Approve &amp; Assign Project</button>`);
+      window._vtAwTab='proj';
+      vtpLoadSubjects();
+      _vtPrefillProject(pre);
+      return;
+    }
     showModal('Approve Proposal & Assign',taskForm,
       `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="vtAssignSave(${proposalId||0})">${ic('check')} Approve & Assign</button>`);
     return;
@@ -9825,7 +9842,24 @@ function vtpItemAdd(v){
   d.innerHTML=`<input class="input vtp-itm" placeholder="e.g. Ray Optics — full project video" value="${esc(v||'')}"><button type="button" onclick="this.parentElement.remove()">×</button>`;
   w.appendChild(d);
 }
-async function vtProjectSave(){
+function vtAwSaveProposal(pid){ (window._vtAwTab==='proj')?vtProjectSave(pid):vtAssignSave(pid); }
+function _vtPrefillProject(pre){
+  setTimeout(()=>{
+    const t=document.getElementById('vtp-title'); if(t&&pre.title) t.value=pre.title;
+    const tc=document.getElementById('vtp-teacher'); if(tc&&pre.teacher_id) tc.value=String(pre.teacher_id);
+    const rem=(pre.remarks||'');
+    const isVideos=/videos/i.test(rem)&&!/complete chapter/i.test(rem);
+    const conn=document.getElementById('vtp-connect');
+    if(conn){ conn.value=isVideos?'no':'yes'; try{ vtpConnectToggle(); }catch(e){} }
+    if(isVideos){
+      const m=rem.match(/(\d+)\s*videos/i); const n=m?Math.max(1,Math.min(20,+m[1])):3;
+      const have=document.querySelectorAll('#vtp-items .vtp-item').length;
+      for(let k=have;k<n;k++) vtpItemAdd();
+    }
+    const rmk=document.getElementById('vtp-remarks'); if(rmk&&!rmk.value&&pre.reference) rmk.value=pre.reference;
+  },250);
+}
+async function vtProjectSave(proposalId){
   const gv=id=>(document.getElementById(id)||{}).value||'';
   const connect=((document.getElementById('vtp-connect')||{}).value==='yes');
   const items=connect?[]:[...document.querySelectorAll('#vtp-items .vtp-itm')].map(i=>i.value.trim()).filter(Boolean);
@@ -9839,6 +9873,7 @@ async function vtProjectSave(){
   if(!payload.deadline){ toast('Please set the final deadline'); return; }
   try{
     const r=await api('/api/admin/video-tasks/project','POST',payload);
+    if(proposalId){ try{ await api(`/api/admin/video-tasks/${proposalId}/reject-proposal`,'POST',{}); }catch(e){} }
     closeModal(); toast(`Project assigned — ${r.teacher} (${r.total} videos)`);
     loadAVTasks();
   }catch(e){ toast(e.message||'Could not assign project'); }
