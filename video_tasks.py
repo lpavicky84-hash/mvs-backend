@@ -1835,7 +1835,13 @@ def vt_propose(payload: dict = Body(...), db: Session = Depends(get_db),
         if scope == "chapter":
             req = "Requested: PROJECT — complete chapter (from timetable)"
         elif scope == "videos":
-            req = "Requested: PROJECT — %s videos" % (vcount or "4-5")
+            items = payload.get("video_items") or []
+            items = [str(x).strip() for x in items if str(x or "").strip()]
+            if items:
+                req = ("Requested: PROJECT — set of %d videos:\n" % len(items)
+                       + "\n".join("%d. %s" % (i + 1, v) for i, v in enumerate(items)))
+            else:
+                req = "Requested: PROJECT — %s videos" % (vcount or "4-5")
         else:
             req = "Requested: PROJECT"
     else:

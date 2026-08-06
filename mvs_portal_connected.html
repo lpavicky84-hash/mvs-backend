@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- MVS Portal v187 -->
+<!-- MVS Portal v190 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -8992,12 +8992,15 @@ async function openTVTPropose(){
           <button type="button" class="vtaw-tab" id="tvtp-t-proj" onclick="tvtPKind('project')">${ic('clipboard')} Project</button>
         </div></div>
       <div class="form-group" id="tvt-p-scope-wrap" style="grid-column:1/-1;display:none"><label>Project scope</label>
-        <select id="tvt-p-scope" class="input" onchange="document.getElementById('tvt-p-count-wrap').style.display=(this.value==='videos')?'block':'none'">
-          <option value="chapter">Complete chapter (from my timetable)</option>
-          <option value="videos">A set of videos</option>
+        <select id="tvt-p-scope" class="input" onchange="tvtScopeToggle()">
+          <option value="chapter">Complete chapter — from my timetable (manager assigns the videos)</option>
+          <option value="videos">A set of videos — I'll enter the titles myself</option>
         </select>
-        <div id="tvt-p-count-wrap" style="display:none;margin-top:8px"><label>How many videos?</label>
-          <input id="tvt-p-count" class="input" type="number" min="2" max="30" value="5" placeholder="e.g. 5"></div>
+        <div id="tvt-p-items-wrap" style="display:none;margin-top:10px">
+          <label>Videos / Deliverables — one row per video</label>
+          <div id="tvt-p-items"></div>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="tvtPItemAdd()" style="margin-top:4px">${ic('plus')} Add video</button>
+        </div>
       </div>
       <div class="form-group" style="grid-column:1/-1"><label>Title</label><input id="tvt-p-title" class="input" placeholder="e.g. Probability Short Tricks — NIOS Special"></div>
       <div class="form-group"><label>Streaming</label><select id="tvt-p-stream" class="input" onchange="_vtFilterTypes('tvt-p-stream','tvt-p-type',window._vtTypesT)"><option value="">— Select —</option><option value="recorded">Recorded</option><option value="live">Live</option></select></div>
@@ -9013,6 +9016,19 @@ async function openTVTPropose(){
     </div>
     <p style="font-size:.74rem;color:var(--text-muted)">Your proposal goes to the production manager. Once approved, you will get the thumbnail and deadline here.</p>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="tvtProposeSave()">${ic('send')} Send for Approval</button>`);
+}
+function tvtScopeToggle(){
+  const sc=(document.getElementById('tvt-p-scope')||{}).value;
+  const w=document.getElementById('tvt-p-items-wrap'); if(!w) return;
+  const show=(sc==='videos'); w.style.display=show?'block':'none';
+  const items=document.getElementById('tvt-p-items');
+  if(show && items && !items.children.length){ tvtPItemAdd();tvtPItemAdd();tvtPItemAdd(); }
+}
+function tvtPItemAdd(v){
+  const w=document.getElementById('tvt-p-items'); if(!w) return;
+  const d=document.createElement('div'); d.className='vtp-item';
+  d.innerHTML=`<input class="input tvt-p-itm" placeholder="e.g. Ray Optics — full project video" value="${esc(v||'')}"><button type="button" onclick="this.parentElement.remove()">×</button>`;
+  w.appendChild(d);
 }
 function _tvtVvToggle(){
   const b=document.getElementById('t-vv-body'); if(!b) return;
@@ -9056,7 +9072,7 @@ function tvtPKind(k){
   if(tk) tk.classList.toggle('on',k==='task');
   if(pj) pj.classList.toggle('on',k==='project');
   const sw=document.getElementById('tvt-p-scope-wrap'); if(sw) sw.style.display=(k==='project')?'block':'none';
-  const cw=document.getElementById('tvt-p-count-wrap'); if(cw) cw.style.display=(k==='project'&&val('tvt-p-scope')==='videos')?'block':'none';
+  if(k==='project') tvtScopeToggle();
 }
 async function tvtProposeSave(){
   const title=document.getElementById('tvt-p-title').value.trim();
@@ -9068,7 +9084,15 @@ async function tvtProposeSave(){
     channel_id:val('tvt-p-channel')||'',
     reference:document.getElementById('tvt-p-ref').value.trim(),
     thumbnail_b64:window._vtThumbB64||null };
-  if(ptype==='project'){ body.project_scope=val('tvt-p-scope')||'chapter'; if(body.project_scope==='videos') body.video_count=val('tvt-p-count')||'5'; }
+  if(ptype==='project'){
+    body.project_scope=val('tvt-p-scope')||'chapter';
+    if(body.project_scope==='videos'){
+      const items=[...document.querySelectorAll('#tvt-p-items .tvt-p-itm')].map(i=>i.value.trim()).filter(Boolean);
+      if(!items.length){ toast('Add at least one video title'); return; }
+      body.video_items=items;
+      body.video_count=String(items.length);
+    }
+  }
   try{
     await api('/api/teacher/video-tasks/propose','POST',body);
     window._vtThumbB64=null; closeModal(); toast('Proposal sent for approval.'); loadTVTasks();
@@ -17925,7 +17949,7 @@ async function ocrFillQuestion_v1(inp,i){
 .vt-thumb .vt-status{position:absolute;top:10px;right:10px}
 .vt-body{padding:13px 15px;display:flex;flex-direction:column;gap:8px;flex:1}
 .vt-title{font-weight:800;font-size:.92rem;line-height:1.35}
-.vt-req{margin-top:6px;font-size:.74rem;font-weight:800;color:#b45309;background:rgba(217,119,6,.10);border-radius:8px;padding:4px 9px;display:inline-block}
+.vt-req{margin-top:6px;font-size:.74rem;font-weight:800;color:#b45309;background:rgba(217,119,6,.10);border-radius:8px;padding:4px 9px;display:inline-block;white-space:pre-line}
 .dark .vt-req{color:#fbbf24;background:rgba(217,119,6,.16)}
 .vt-chips{display:flex;gap:6px;flex-wrap:wrap}
 .vt-pill{display:inline-flex;align-items:center;gap:4px;font-size:.64rem;font-weight:800;padding:3px 10px;
@@ -17937,10 +17961,13 @@ async function ocrFillQuestion_v1(inp,i){
 .vt-pill.editing_soon,.vt-pill.editing_done{background:rgba(124,58,237,.12);color:#6d28d9;border:1px solid rgba(124,58,237,.35)}
 .vt-pill.uploaded{background:rgba(5,150,105,.14);color:#065f46;border:1px solid rgba(5,150,105,.4)}
 .vt-pill.rejected{background:rgba(220,38,38,.1);color:#b91c1c;border:1px solid rgba(220,38,38,.35)}
-.vt-pill.reshoot{background:rgba(180,83,9,.12);color:#b45309;border:1px solid rgba(180,83,9,.4)}
-.vt-resh-head{display:flex;align-items:center;gap:7px;margin:-2px 0 10px;padding:8px 11px;border-radius:10px;font-size:.78rem;font-weight:700;
-  background:rgba(180,83,9,.1);color:#b45309;border:1px solid rgba(180,83,9,.3)}
-.vt-resh-head svg{width:15px;height:15px;flex-shrink:0}
+.vt-pill.reshoot{background:linear-gradient(135deg,rgba(224,138,30,.16),rgba(180,83,9,.1));color:#b45309;border:1px solid rgba(180,83,9,.4)}
+.vt-resh-head{display:flex;align-items:center;gap:8px;margin:-2px 0 12px;padding:10px 13px;border-radius:12px;font-size:.8rem;font-weight:700;
+  color:#8a4b09;background:linear-gradient(135deg,rgba(224,138,30,.16),rgba(180,83,9,.08));
+  border:1px solid rgba(180,83,9,.28);box-shadow:0 2px 9px rgba(180,83,9,.1)}
+.vt-resh-head svg{width:16px;height:16px;flex-shrink:0;color:#c2740f}
+.dark .vt-resh-head{color:#f5b45e;background:linear-gradient(135deg,rgba(224,138,30,.2),rgba(180,83,9,.1));border-color:rgba(224,138,30,.32)}
+.dark .vt-resh-head svg{color:#f5b45e}
 .vt-pill.proposal{background:rgba(100,116,139,.12);color:#475569;border:1px solid rgba(100,116,139,.35)}
 .vt-pill.ontime{background:rgba(16,185,129,.12);color:#047857;border:1px solid rgba(16,185,129,.35)}
 .vt-pill.delayed{background:rgba(220,38,38,.1);color:#b91c1c;border:1px solid rgba(220,38,38,.35)}
@@ -18187,6 +18214,7 @@ body.dark .po-pill.red{color:#f87171}
 .vt-thumb .vt-status .vt-pill.editing_soon{background:#7c3aed;color:#fff;border-color:#6d28d9}
 .vt-thumb .vt-status .vt-pill.editing_done{background:#2563eb;color:#fff;border-color:#1d4ed8}
 .vt-thumb .vt-status .vt-pill.rejected,.vt-thumb .vt-status .vt-pill.delayed{background:#dc2626;color:#fff;border-color:#b91c1c}
+.vt-thumb .vt-status .vt-pill.reshoot{background:linear-gradient(135deg,#e08a1e,#b45309);color:#fff;border-color:#92400e}
 .vt-thumb .vt-status .vt-pill.assigned{background:#0891b2;color:#fff;border-color:#0e7490}
 .vt-thumb .vt-status .vt-pill.ontime{background:#059669;color:#fff;border-color:#047857}
 .vt-thumb .vt-status .vt-pill.proposal{background:#9333ea;color:#fff;border-color:#7e22ce}
