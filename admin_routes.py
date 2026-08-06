@@ -1841,12 +1841,57 @@ def _normalize_batch(text):
     return s[:60] if s else None
 
 # ===== ADMIN: BULK IMPORT FROM APP SALES SHEET (name + phone + batch) =====
+_PORTAL_MAP_CACHE = {"at": 0.0, "map": None}
+
+
+def _portal_phone_map():
+    """Sabhi unlocked MVS-Portal students ka phone->info map. 120s cache — isse
+    ek import ke saare batches milke portal ko sirf 1 baar hit karte hain."""
+    import time as _time
+    now = _time.time()
+    if _PORTAL_MAP_CACHE["map"] is not None and (now - _PORTAL_MAP_CACHE["at"]) < 120:
+        return _PORTAL_MAP_CACHE["map"]
+    m = {}
+    try:
+        from ext_materials import portal_unlocked_students
+        for st in (portal_unlocked_students() or []):
+            ph = "".join(c for c in str(st.get("phone", "")) if c.isdigit())[-10:]
+            if len(ph) == 10:
+                m[ph] = st
+    except Exception:
+        m = {}
+    _PORTAL_MAP_CACHE["map"] = m
+    _PORTAL_MAP_CACHE["at"] = now
+    return m
+
+
 @router.post("/students/bulk-import")
 def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
-    """Frontend Appx sales sheet parse karke {students:[{name,phone,batch}]} bhejega."""
+    """Frontend Appx sales sheet parse karke {students:[{name,phone,batch}]} bhejega.
+    FAST: portal students EK BAAR fetch, user_id max+counter se (i=1 scan nahi),
+    collision pe savepoint-retry (batch kabhi fail na ho)."""
+    from sqlalchemy.exc import IntegrityError
     rows = payload.get("students", []) or []
     created, updated, skipped = 0, 0, 0
-    duplicates = []   # MVS Portal se aaye students jinka phone sheet me bhi hai — verify karne ke liye
+    duplicates = []
+
+    # 1) sabhi unlocked MVS-Portal students (cached — poore import me 1 baar)
+    portal_map = _portal_phone_map()
+
+    # 2) next MVSS id -> max EK BAAR, phir sirf counter (no per-row scan)
+    _mx = (db.query(User.user_id).filter(User.user_id.like("MVSS%"))
+           .order_by(User.user_id.desc()).first())
+    _ctr = [1]
+    if _mx and _mx[0]:
+        _m = re.match(r"MVSS(\d+)", _mx[0])
+        if _m:
+            _ctr[0] = int(_m.group(1)) + 1
+
+    def _next_uid():
+        c = "MVSS%04d" % _ctr[0]
+        _ctr[0] += 1
+        return c
+
     for r in rows:
         phone = "".join(ch for ch in str(r.get("phone", "")) if ch.isdigit())
         if len(phone) < 10:
@@ -1855,26 +1900,23 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
         name = (r.get("name") or "").strip() or ("Student " + phone[-4:])
         batch = _normalize_batch(r.get("batch"))
         email = (r.get("email") or "").strip() or None
+
         existing = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
         if existing:
             src = getattr(existing, "source", None) or "mvs_app"
-            if src != "mvs_portal":
-                # PRIORITY: kahin yeh student MVS Portal par to nahi? -> transfer
+            if src != "mvs_portal" and phone in portal_map:
+                src = "mvs_portal"
                 try:
-                    if _sync_one_from_portal(existing, db):
-                        src = "mvs_portal"
+                    existing.source = "mvs_portal"
                 except Exception:
                     pass
             if src == "mvs_portal":
-                # DUPLICATE: MVS Portal wala student hi rahega — dubara add NAHI hoga
-                duplicates.append({"phone": phone,
-                                   "sheet_name": name,
+                duplicates.append({"phone": phone, "sheet_name": name,
                                    "existing_name": existing.user.name if existing.user else "",
                                    "existing_user_id": existing.user.user_id if existing.user else "",
                                    "existing_batch": existing.batch_name or "",
                                    "source": "mvs_portal"})
                 continue
-            # MVS APP wala pehle se hai -> refresh (same as before)
             if batch:
                 existing.batch_name = batch
             if email:
@@ -1883,31 +1925,39 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
                 existing.user.name = name
             updated += 1
             continue
-        # naya student — pehle dekho MVS Portal ka to nahi (priority rule)
+
+        # naya student — portal_map se check (koi external call nahi)
         psrc, psubs, pmed, pcls = "mvs_app", [], None, None
         _st_exam = None
-        try:
-            from ext_materials import portal_fetch_student
-            st = portal_fetch_student(phone)
-            if st and st.get("unlocked"):
-                psrc = "mvs_portal"
-                psubs = st.get("subjects") or []
-                pmed = st.get("medium")
-                pcls = st.get("class_level")
-                if st.get("name"):
-                    name = st["name"]
-                _st_exam = dict(st)  # exam info niche profile banne ke baad apply hogi
-        except Exception:
-            pass
-        i = 1
-        while True:
-            cand = f"MVSS{i:04d}"
-            if not db.query(User).filter(User.user_id == cand).first():
+        st = portal_map.get(phone)
+        if st and st.get("unlocked"):
+            psrc = "mvs_portal"
+            psubs = st.get("subjects") or []
+            pmed = st.get("medium")
+            pcls = st.get("class_level")
+            if st.get("name"):
+                name = st["name"]
+            _st_exam = dict(st)
+
+        # collision-safe insert (savepoint retry) — koi bhi dup id/phone batch ko na todhe
+        u = None
+        for _try in range(6):
+            cand = _next_uid()
+            sp = db.begin_nested()
+            try:
+                u = User(name=name, user_id=cand, password=hash_password(phone),
+                         role=UserRole.student, is_active=True)
+                db.add(u)
+                db.flush()
+                sp.commit()
                 break
-            i += 1
-        u = User(name=name, user_id=cand, password=hash_password(phone),
-                 role=UserRole.student, is_active=True)
-        db.add(u); db.flush()
+            except IntegrityError:
+                sp.rollback()
+                u = None
+        if u is None:
+            skipped += 1
+            continue
+
         _nsp = StudentProfile(user_id=u.id, phone=phone, subjects=psubs, class_name="",
                               batch_name=batch, email=email, is_verified=True,
                               plain_password=phone, source=psrc,
@@ -1920,11 +1970,12 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
                 pass
         if psrc == "mvs_portal":
             duplicates.append({"phone": phone, "sheet_name": name,
-                               "existing_name": name, "existing_user_id": cand,
+                               "existing_name": name, "existing_user_id": u.user_id,
                                "existing_batch": batch or "", "source": "mvs_portal",
                                "note": "Sheet me tha, par MVS Portal par mila -> MVS Portal me add kiya"})
         else:
             created += 1
+
     db.commit()
     return {"created": created, "updated": updated, "skipped": skipped,
             "duplicates": duplicates,

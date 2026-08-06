@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- MVS Portal v193 -->
+<!-- MVS Portal v194 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1616,6 +1616,8 @@ canvas{max-width:100%}
 .wa-sec>summary{cursor:pointer;font-size:.9rem;list-style:none;display:flex;align-items:center;gap:8px}
 .wa-sec>summary::-webkit-details-marker{display:none}
 .wa-grid{display:grid;grid-template-columns:1fr;gap:12px;margin:12px 0}
+.wa-grid>*{min-width:0}
+.wa-sec .form-control,.wa-sec input,.wa-sec select,.wa-sec textarea{width:100%;max-width:100%;box-sizing:border-box}
 .xm-chip-hl{background:var(--accent);color:#fff}
 .xm-chip-hl2{background:linear-gradient(135deg,rgba(184,148,31,.16),rgba(201,162,39,.1));color:#8a6d10;border:1px solid rgba(184,148,31,.45);box-shadow:0 2px 8px -3px rgba(184,148,31,.35);display:inline-flex;align-items:center;gap:4px}
 .dark .xm-chip-hl2{background:rgba(226,180,88,.15);color:#e8c476;border-color:rgba(226,180,88,.4)}
@@ -15606,7 +15608,7 @@ async function processExcel(){
     // progress UI (batch-wise)
     document.getElementById('excel-preview').innerHTML='';
     status.innerHTML=`<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill" id="imp-fill"></div></div><div class="prog-text" id="imp-text">0% — taiyaari...</div></div>`;
-    const batchSize=40; let created=0, updated=0, skipped=0, done=0, dups=[];
+    const batchSize=100; let created=0, updated=0, skipped=0, done=0, dups=[];
     for(let i=0;i<deduped.length;i+=batchSize){
       const batch=deduped.slice(i,i+batchSize);
       const r=await api('/api/admin/students/bulk-import','POST',{students:batch});
