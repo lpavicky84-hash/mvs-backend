@@ -9331,18 +9331,24 @@ async function _avtBadgePoll(){
     badge.style.display=n?'inline-block':'none'; badge.textContent=n;
   }catch(e){}
 }
-async function loadAVTasks(){
+async function loadAVTasks(fromCache){
   const el=document.getElementById('a-vtasks-content');
   softSpin(el);
   if(_vtTimer){ clearInterval(_vtTimer); _vtTimer=null; }
   try{
-    const [stats,ch,ts,ty,list,spec]=await Promise.all([
+    let stats,ch,ts,ty,list,spec;
+    if(fromCache && window._avtCache){
+      ({stats,ch,ts,ty,list,spec}=window._avtCache);
+    }else{
+      [stats,ch,ts,ty,list,spec]=await Promise.all([
       api('/api/admin/video-tasks/stats'),
       api('/api/admin/video-channels'),
       api('/api/admin/teachers'),
       api('/api/admin/video-types'),
       api('/api/admin/video-tasks'),
       api('/api/admin/video-tasks/special?kind=all').catch(()=>null)]);
+      window._avtCache={stats,ch,ts,ty,list,spec};
+    }
     _vtChannels=ch.channels||[];
     _vtTypes=ty.types||[];
     window._avtMap={}; (list.tasks||[]).forEach(t=>window._avtMap[t.id]=t); (list.proposals||[]).forEach(t=>window._avtMap[t.id]=t);
@@ -9409,7 +9415,7 @@ async function loadAVTasks(){
         <div class="vtm-go">${ic('chev-down')}</div></div>
       <div class="vtm-card ${_avtView==='projects'?'on':''}" onclick="avtView('projects')">
         <div class="vtm-ic">${ic('folder')}</div>
-        <div class="vtm-main"><div class="vtm-n">${_spt.osD+_spt.rrD+_spt.prD}<span> / ${_spt.osT+_spt.rrT+_spt.prT} videos done</span>${spNewN?` <span class="vt-new">NEW ${spNewN}</span>`:''}</div>
+        <div class="vtm-main"><div class="vtm-n">${_spt.osD+_spt.rrD+_spt.prD}<span> / ${_spt.osT+_spt.rrT+_spt.prT} videos done</span>${spNewN?` <span class="vt-new vt-new-clk" onclick="event.stopPropagation();_vtShowNewProjects()" title="Show only NEW projects">NEW ${spNewN}</span>`:''}</div>
           <div class="vtm-l">Projects</div>
           <div class="vtm-s">One Shot · Rapid Revision · Projects · ${spAll} cards</div></div>
         <div class="vtm-go">${ic('chev-down')}</div></div></div>`;
@@ -9424,7 +9430,7 @@ async function loadAVTasks(){
       <div class="vt-cards">
         ${_isProj
           ? `${stat('Total Videos',_pT,'#8a6d10','clipboard')}${stat('Completed',_pD,'#059669','check')}${stat('Pending',Math.max(0,_pT-_pD),'#0891b2','clock')}${stat('New',spNewN||0,'#dc2626','bell')}`
-          : `${stat('Total Assigned',stats.total,'#8a6d10','clipboard','all')}${stat('Completed',stats.done,'#059669','check','done')}${stat('Pending',stats.pending,'#0891b2','clock','pending')}${(function(){const n=(list.tasks||[]).filter(t=>t.status==='submitted').length;return `<div class="vt-stat vt-stat-click${n>0?' vt-ap-blink':''}" onclick="_vtStatusFilter('submitted')" title="Videos submitted by teachers, waiting for your approval"><div class="vs-ic" style="background:rgba(220,38,38,.12);color:#dc2626">${ic('bell')}</div><div><div class="vs-n" style="color:#dc2626">${n}</div><div class="vs-l">Approval Pending</div></div></div>`;})()}${stat('Delayed',stats.delayed,'#dc2626','alert','delayed')}`
+          : `${stat('Total Assigned',stats.total,'#8a6d10','clipboard','all')}${stat('Completed',stats.done,'#059669','check','done')}${stat('Pending',stats.pending,'#0891b2','clock','pending')}${(function(){const n=(list.tasks||[]).filter(t=>t.status==='submitted').length;return `<div class="vt-stat vt-stat-click${n>0?' vt-ap-blink':''}" data-ap="submitted" onclick="_vtStatusFilter('submitted')" title="Videos submitted by teachers, waiting for your approval"><div class="vs-ic" style="background:rgba(220,38,38,.12);color:#dc2626">${ic('bell')}</div><div><div class="vs-n" style="color:#dc2626">${n}</div><div class="vs-l">Approval Pending</div></div></div>`;})()}${stat('Delayed',stats.delayed,'#dc2626','alert','delayed')}`
         }
         ${stats.top?`<div class="vt-stat" style="border-color:rgba(16,185,129,.5)"><div class="vs-ic" style="background:rgba(16,185,129,.12);color:#047857">${ic('star')}</div><div><div style="font-size:.8rem;font-weight:800;color:#047857">${esc(stats.top.name)}</div><div class="vs-l">Top — ${stats.top.rate}% on time</div></div></div>`:''}
         ${stats.most_delayed?`<div class="vt-stat" style="border-color:rgba(220,38,38,.45)"><div class="vs-ic" style="background:rgba(220,38,38,.1);color:#b91c1c">${ic('alert')}</div><div><div style="font-size:.8rem;font-weight:800;color:#b91c1c">${esc(stats.most_delayed.name)}</div><div class="vs-l">Most delayed — ${stats.most_delayed.delayed}</div></div></div>`:''}
@@ -9454,6 +9460,7 @@ async function loadAVTasks(){
       sp.innerHTML=_vtCdText(s); sp.className=s<0?'vt-over':''; }); };
     tick(); _vtTimer=setInterval(tick,1000);
     if(_vtF.teacher_id||_vtF.channel_id||_vtF.video_type||_vtF.status||window._vtBucket) _vtClientFilter();
+    if(window._vtPjNewWant){ window._vtPjNewWant=0; _vtProjNewFilter(); }
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function _vtCdText(s){
@@ -9464,7 +9471,7 @@ function _vtCdText(s){
 }
 // ---- admin: One Shot / Rapid Revision / Projects monitor ----
 let _avtSpecTab='', _avtSpecSub='', _avtSpecCls='', _avtSpecProj='', _avtSpecOpen=false, _avtView='';
-function avtView(v){ _avtView=(_avtView===v?'':v); if(_avtView==='projects') _avtSpecOpen=true; loadAVTasks(); }
+function avtView(v){ _avtView=(_avtView===v?'':v); if(_avtView==='projects') _avtSpecOpen=true; loadAVTasks(true); }
 function _avtSpecTotals(){
   const sp=window._avtSpec; if(!sp||!sp.one_shot) return {osN:0,osD:0,osT:0,rrN:0,rrD:0,rrT:0,prN:0,prD:0,prT:0};
   const agg=p=>{let d=0,t=0;((p||{}).tasks||[]).forEach(x=>{d+=x.done||0;t+=x.total||0});return [d,t];};
@@ -9476,7 +9483,7 @@ function _avtSpecHtml(){
   const t=_avtSpecTotals(), newN=t.osN+t.rrN+t.prN;
   return `<div class="card" style="margin-bottom:16px;border:1.5px solid ${newN?'rgba(220,38,38,.5)':'rgba(184,148,31,.4)'}">
     <div class="card-header" style="cursor:pointer;user-select:none" onclick="avtSpecToggle()">
-      <h3>${ic('folder')} One Shot · Rapid Revision · Projects ${newN?`<span class="vt-new vt-new-clk" id="avt-spec-new" onclick="_vtProjNewFilter()" title="Show only NEW projects — tap to filter">NEW ${newN}</span>`:''}</h3>
+      <h3>${ic('folder')} One Shot · Rapid Revision · Projects ${newN?`<span class="vt-new vt-new-clk" id="avt-spec-new" onclick="event.stopPropagation();_vtShowNewProjects()" title="Show only NEW projects — tap to filter">NEW ${newN}</span>`:''}</h3>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <span class="vt-type">One Shot · ${t.osD}/${t.osT} chapters</span>
         <span class="vt-type">Rapid · ${t.rrD}/${t.rrT} chapters</span>
@@ -10049,11 +10056,20 @@ function _avtRankToggle(){
 }
 function _vtBucketFilter(bucket){
   window._vtBucket=(window._vtBucket===bucket)?null:bucket;
+  if(window._vtBucket){ _vtF.status=''; const sels=document.querySelectorAll('.vt-filt-sel'); const s=sels[sels.length-1]; if(s) s.value=''; }
+  _vtClientFilter();
+}
+function _vtStatusFilter(status){
+  _vtF.status=(_vtF.status===status)?'':status;
+  if(_vtF.status){ window._vtBucket=null; }
+  const sels=document.querySelectorAll('.vt-filt-sel'); const sSel=sels[sels.length-1];
+  if(sSel) sSel.value=_vtF.status;
   _vtClientFilter();
 }
 function _vtClientFilter(){
   const f=_vtF, b=window._vtBucket;
   document.querySelectorAll('.vt-stat[data-bucket]').forEach(c=>c.classList.toggle('vt-stat-on', !!b && c.dataset.bucket===b));
+  document.querySelectorAll('.vt-stat[data-ap]').forEach(c=>c.classList.toggle('vt-stat-on', f.status==='submitted' && !b));
   document.querySelectorAll('.vt-grid > .vt-card').forEach(c=>{
     let show=true;
     if(f.teacher_id && c.dataset.tid!=String(f.teacher_id)) show=false;
@@ -10071,7 +10087,7 @@ function _vtClearFilters(){
   document.querySelectorAll('.vt-filt-sel').forEach(s=>{ s.selectedIndex=0; });
   _vtClientFilter();
 }
-function _vtStatusFilter(status){
+function _vtStatusFilter_DEAD(status){
   _vtF.status=(_vtF.status===status)?'':status;
   window._vtBucket=null;
   const sels=document.querySelectorAll('.vt-filt-sel'); const sSel=sels[sels.length-1];
@@ -10083,6 +10099,12 @@ function _vtProjNewFilter(){
   window._vtPjNew=!window._vtPjNew;
   document.querySelectorAll('#avt-spec-new').forEach(b=>b.classList.toggle('vt-new-on', !!window._vtPjNew));
   document.querySelectorAll('.vt-os').forEach(c=>{ c.style.display=(window._vtPjNew && c.dataset.pnew!=='1')?'none':''; });
+}
+function _vtShowNewProjects(){
+  _avtView='projects'; _avtSpecOpen=true;
+  window._vtPjNew=false;          // post-render pe toggle -> ON
+  window._vtPjNewWant=1;
+  loadAVTasks(true);
 }
 function _avtTgToggle(){
   const b=document.getElementById('a-tg-body'); if(!b) return;
