@@ -1845,8 +1845,9 @@ _PORTAL_MAP_CACHE = {"at": 0.0, "map": None}
 
 
 def _portal_phone_map():
-    """Sabhi unlocked MVS-Portal students ka phone->info map. 120s cache — isse
-    ek import ke saare batches milke portal ko sirf 1 baar hit karte hain."""
+    """Sabhi unlocked MVS-Portal students ka phone->RAW item map. 120s cache.
+    unlocked-students list me hona hi = matched (import inline normalize karta hai:
+    subjects clean + class/medium + exam)."""
     import time as _time
     now = _time.time()
     if _PORTAL_MAP_CACHE["map"] is not None and (now - _PORTAL_MAP_CACHE["at"]) < 120:
@@ -1903,20 +1904,33 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
 
         existing = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
         if existing:
-            src = getattr(existing, "source", None) or "mvs_app"
-            if src != "mvs_portal" and phone in portal_map:
-                src = "mvs_portal"
+            _pst = portal_map.get(phone)
+            if _pst:
+                # MVS Portal par match -> mvs_portal tag + subjects/class/medium/exam auto-fetch
+                existing.source = "mvs_portal"
+                _pc = str(_pst.get("class_level") or _pst.get("class") or "")
+                if _pc:
+                    existing.class_level = _pc
+                if _pst.get("medium"):
+                    existing.medium = _pst["medium"]
+                _rw = _pst.get("subjects") or []
+                _es = []
+                for _x in _rw:
+                    _nm = (_x.get("name") if isinstance(_x, dict) else str(_x)) or ""
+                    _nm = _nm.split("(")[0].strip()
+                    if _nm:
+                        _es.append(_nm)
+                if _es:
+                    existing.subjects = (_SR.canon_list(_es, existing.class_level) if _SR else _es)
                 try:
-                    existing.source = "mvs_portal"
+                    _apply_portal_exam_info(existing, _pst, db)
                 except Exception:
                     pass
-            if src == "mvs_portal":
                 duplicates.append({"phone": phone, "sheet_name": name,
                                    "existing_name": existing.user.name if existing.user else "",
                                    "existing_user_id": existing.user.user_id if existing.user else "",
                                    "existing_batch": existing.batch_name or "",
                                    "source": "mvs_portal"})
-                continue
             if batch:
                 existing.batch_name = batch
             if email:
@@ -1930,11 +1944,18 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
         psrc, psubs, pmed, pcls = "mvs_app", [], None, None
         _st_exam = None
         st = portal_map.get(phone)
-        if st and st.get("unlocked"):
+        if st:  # unlocked-students endpoint -> ye sab MVS Portal ke UNLOCKED students hain
             psrc = "mvs_portal"
-            psubs = st.get("subjects") or []
-            pmed = st.get("medium")
-            pcls = st.get("class_level")
+            pcls = str(st.get("class_level") or st.get("class") or "") or None
+            pmed = st.get("medium") or None
+            _raw = st.get("subjects") or []
+            _subs = []
+            for _x in _raw:
+                _nm = (_x.get("name") if isinstance(_x, dict) else str(_x)) or ""
+                _nm = _nm.split("(")[0].strip()
+                if _nm:
+                    _subs.append(_nm)
+            psubs = (_SR.canon_list(_subs, pcls) if (_SR and _subs) else _subs)
             if st.get("name"):
                 name = st["name"]
             _st_exam = dict(st)
