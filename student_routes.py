@@ -413,9 +413,19 @@ def submit_test(req: TestSubmissionCreate, db: Session = Depends(get_db), curren
     return sub
 
 # ===== DOUBTS =====
+def _norm_subj(s):
+    return (s or "").strip().lower()
+
+
 def _teacher_for_subject(db, subject):
+    want = _norm_subj(subject)
+    if not want:
+        return None
     for tp in db.query(TeacherProfile).all():
-        if tp.subjects and subject in tp.subjects:
+        subs = tp.subjects or []
+        if isinstance(subs, str):
+            subs = [p for chunk in subs.split(",") for p in chunk.split("|")]
+        if want in {_norm_subj(x) for x in subs}:
             return tp
     return None
 

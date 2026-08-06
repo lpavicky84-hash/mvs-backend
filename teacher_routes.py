@@ -325,6 +325,17 @@ def _doubt_owner_name(db, d):
     tp = db.query(TeacherProfile).filter(TeacherProfile.id == d.teacher_id).first() if d.teacher_id else None
     return (tp.user.name if tp and tp.user else "Unassigned")
 
+def _norm_subj(s):
+    return (s or "").strip().lower()
+
+
+def _teacher_teaches(tp, subject):
+    subs = getattr(tp, "subjects", None) or []
+    if isinstance(subs, str):
+        subs = [p for chunk in subs.split(",") for p in chunk.split("|")]
+    return _norm_subj(subject) in {_norm_subj(x) for x in subs}
+
+
 @router.get("/doubts")
 def get_doubts(
     status: Optional[str] = None,
@@ -332,6 +343,17 @@ def get_doubts(
     current_user=Depends(get_teacher)
 ):
     tp = get_teacher_profile(current_user, db)
+    # Unassigned doubts (creation ke waqt koi teacher match nahi hua) — agar is
+    # teacher ke subject ke hain to claim kar lo taaki panel pe dikhein aur
+    # answer/respond/resolve (jo teacher_id se filter karte hain) chal sakein.
+    _claimed = False
+    for d in db.query(Doubt).filter(Doubt.teacher_id == None,
+                                    Doubt.assigned_to_admin == False).all():
+        if _teacher_teaches(tp, d.subject):
+            d.teacher_id = tp.id
+            _claimed = True
+    if _claimed:
+        db.commit()
     own = db.query(Doubt).filter(Doubt.teacher_id == tp.id).all()
     away = (db.query(Doubt).filter(Doubt.assigned_by_teacher_id == tp.id, Doubt.teacher_id != tp.id).all())
     rows, seen = [], set()
@@ -625,6 +647,34 @@ def _subj_canon(s):
 def _subj_eq(a, b):
     na, nb = _subj_norm(a), _subj_norm(b)
     return bool(na) and na == nb
+
+
+def _tt_entry_key(subject, cls):
+    """Class-AWARE identity key (canon code+class). Isse Economics 10 aur
+    Economics 12 kabhi ek nahi maane jaate."""
+    if _SR is not None:
+        try:
+            return _SR.canon_key(subject, cls)
+        except Exception:
+            pass
+    import re as _re
+    c = _re.sub(r"[^0-9]", "", str(cls or ""))
+    return _subj_norm(subject) + "|" + c
+
+
+def _teacher_classkeys(tp):
+    """(class-aware keys ka set, subject_classes hai ya nahi). subject_classes se
+    banta hai (subject+class dono). Na ho to legacy — caller class filter skip kare."""
+    keys = set()
+    for sc in (getattr(tp, "subject_classes", None) or []):
+        try:
+            nm = (sc.get("subject") or "").strip()
+            cl = str(sc.get("class") or "").strip()
+        except Exception:
+            continue
+        if nm:
+            keys.add(_tt_entry_key(nm, cl))
+    return keys, bool(keys)
 
 def _subj_scope_for(db, model, subjects):
     """Assigned subjects + DB me stored unke variants (e.g. 'X (229)') ka map:
@@ -1248,6 +1298,9 @@ def my_timetable(db: Session = Depends(get_db), current_user=Depends(get_teacher
     es = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(list(scope)),
         or_(TimetableEntry.status==None, TimetableEntry.status!='pending')).order_by(
         TimetableEntry.subject, TimetableEntry.entry_date).all()
+    _ck, _has = _teacher_classkeys(tp)
+    if _has:
+        es = [e for e in es if (not str(e.class_name or '').strip()) or _tt_entry_key(e.subject, e.class_name) in _ck]
     return [_serialize_tt(e, scope.get(e.subject)) for e in es]
 
 # ===== TEACHER: TODAY'S CLASSES with material status =====
@@ -1264,6 +1317,9 @@ def today_classes(db: Session = Depends(get_db), current_user=Depends(get_teache
     es = db.query(TimetableEntry).filter(
         TimetableEntry.subject.in_(list(scope)), TimetableEntry.entry_date == today,
         or_(TimetableEntry.status==None, TimetableEntry.status!='pending')).all()
+    _ck, _has = _teacher_classkeys(tp)
+    if _has:
+        es = [e for e in es if (not str(e.class_name or '').strip()) or _tt_entry_key(e.subject, e.class_name) in _ck]
     mats = db.query(Material).filter(Material.subject.in_(list(_subj_scope_for(db, Material, subs)))).all()
     out = []
     for e in es:

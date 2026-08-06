@@ -477,8 +477,17 @@ def _dedupe_special(db, teacher_id, kind):
     bug ya double-create ho to bhi): sabse purana task rakho, baaki ke chapters
     move karke (link wale preserve) task delete. History bhi merge hoti hai."""
     def _nk(x):
-        # v115: double-space / NBSP variants UI me same dikhte hain par DB me alag
-        # group ban jaate the (duplicate cards ka jad kaaran) — normalize karo.
+        # v183: class-AWARE identity — "Mathematics 10" ke naam-variants (Maths 10,
+        # Mathematics · Class 10, code-suffix) sab ek group; par Mathematics 10 aur
+        # Mathematics 12 hamesha ALAG. Isse teacher panel pe duplicate cards khatam.
+        base, cls = _display_base_cls(x)
+        try:
+            from subjects_registry import canon_key
+            k = canon_key(base, cls or None)
+            if k:
+                return k
+        except Exception:
+            pass
         return re.sub(r"\s+", " ", (x or "")).strip().lower()
     tasks = (db.query(VideoTask)
              .filter(VideoTask.teacher_id == teacher_id, VideoTask.kind == kind)
