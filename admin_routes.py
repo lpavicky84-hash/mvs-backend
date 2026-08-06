@@ -1981,6 +1981,38 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
             "duplicates": duplicates,
             "message": f"{created} new students, {updated} updated, {skipped} skipped (invalid phone), {len(duplicates)} duplicate(s) already on MVS Portal."}
 
+
+@router.post("/students/bulk-analyze")
+def admin_bulk_analyze(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Import se PEHLE ka breakdown (kuch add nahi hota):
+      total        = sheet me unique valid phones
+      already_cm   = jo pehle se Class Manager par hain (DUPLICATE — dubara add NAHI honge)
+      on_portal    = baaki me se jo MVS Portal par match hue (unlock/pending)
+      new_app      = baaki (naye MVS App students jo add honge)
+      will_import  = on_portal + new_app  (already_cm skip)"""
+    phones = set()
+    for r in (payload.get("students") or []):
+        ph = "".join(c for c in str(r.get("phone", "")) if c.isdigit())[-10:]
+        if len(ph) == 10:
+            phones.add(ph)
+    total = len(phones)
+    if not phones:
+        return {"total": 0, "already_cm": 0, "on_portal": 0, "new_app": 0, "will_import": 0}
+    plist = list(phones)
+    existing = set()
+    for i in range(0, len(plist), 500):
+        for (p,) in db.query(StudentProfile.phone).filter(
+                StudentProfile.phone.in_(plist[i:i + 500])).all():
+            if p:
+                existing.add(p)
+    already_cm = len(phones & existing)
+    remaining = phones - existing
+    pmap = _portal_phone_map()
+    on_portal = sum(1 for p in remaining if p in pmap)
+    new_app = len(remaining) - on_portal
+    return {"total": total, "already_cm": already_cm, "on_portal": on_portal,
+            "new_app": new_app, "will_import": on_portal + new_app}
+
 # ===== ADMIN: EDIT + DELETE TEACHER / STUDENT =====
 from sqlalchemy import text as _sqltext
 

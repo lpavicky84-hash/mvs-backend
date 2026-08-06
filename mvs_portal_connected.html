@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- MVS Portal v194 -->
+<!-- MVS Portal v195 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1618,6 +1618,12 @@ canvas{max-width:100%}
 .wa-grid{display:grid;grid-template-columns:1fr;gap:12px;margin:12px 0}
 .wa-grid>*{min-width:0}
 .wa-sec .form-control,.wa-sec input,.wa-sec select,.wa-sec textarea{width:100%;max-width:100%;box-sizing:border-box}
+.imp-bd{border:1px solid var(--border);border-radius:12px;overflow:hidden;font-size:.84rem}
+.imp-bd-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 13px;border-bottom:1px solid var(--border)}
+.imp-bd-row:last-child{border-bottom:none}
+.imp-bd-row b{font-weight:800;font-size:.95rem}
+.imp-bd-tot{background:rgba(184,148,31,.1);font-weight:800}
+.imp-bd-tot b{color:#8a6d10}
 .xm-chip-hl{background:var(--accent);color:#fff}
 .xm-chip-hl2{background:linear-gradient(135deg,rgba(184,148,31,.16),rgba(201,162,39,.1));color:#8a6d10;border:1px solid rgba(184,148,31,.45);box-shadow:0 2px 8px -3px rgba(184,148,31,.35);display:inline-flex;align-items:center;gap:4px}
 .dark .xm-chip-hl2{background:rgba(226,180,88,.15);color:#e8c476;border-color:rgba(226,180,88,.4)}
@@ -15588,7 +15594,20 @@ async function previewExcel(){
     const uniq=new Map(); parsed.forEach(p=>uniq.set(p.phone,p));
     const dup=parsed.length-uniq.size;
     const sample=[...uniq.values()].slice(0,3).map(p=>`<div class="slist-row"><div class="slist-info"><div class="slist-name">${esc(p.name||'—')}</div><div class="slist-meta">${esc(p.phone)} · ${esc(p.batch||'No batch')}</div></div></div>`).join('');
-    pv.innerHTML=`<div class="alert alert-success"><strong>${uniq.size}</strong> unique students mile${dup>0?` (${dup} duplicate in the sheet — auto-removed)`:''}. First 3 shown below:</div>${sample}`;
+    pv.innerHTML=`<div class="alert alert-success"><strong>${uniq.size}</strong> unique students mile${dup>0?` (${dup} duplicate in the sheet — auto-removed)`:''}.</div>
+      <div id="excel-breakdown" style="margin:10px 0"><div class="spinner" style="width:20px;height:20px"></div> Checking who is new / already added…</div>${sample}`;
+    // pre-import breakdown (kuch add nahi hota — sirf ginti)
+    try{
+      const a=await api('/api/admin/students/bulk-analyze','POST',{students:[...uniq.values()]});
+      const bd=document.getElementById('excel-breakdown');
+      if(bd) bd.innerHTML=`<div class="imp-bd">
+        <div class="imp-bd-row"><span>Total in sheet</span><b>${a.total}</b></div>
+        <div class="imp-bd-row"><span style="color:#059669">New → MVS App (will add)</span><b style="color:#059669">${a.new_app}</b></div>
+        <div class="imp-bd-row"><span style="color:#0891b2">Matched with MVS Portal (will add)</span><b style="color:#0891b2">${a.on_portal}</b></div>
+        <div class="imp-bd-row"><span style="color:#b07f1e">Already on Class Manager (duplicate — SKIP)</span><b style="color:#b07f1e">${a.already_cm}</b></div>
+        <div class="imp-bd-row imp-bd-tot"><span>Will import (duplicates hate ke)</span><b>${a.will_import}</b></div>
+      </div>`;
+    }catch(e){ const bd=document.getElementById('excel-breakdown'); if(bd) bd.innerHTML=`<div style="font-size:.75rem;color:var(--text-muted)">Breakdown check skip (${esc(e.message)}). Import phir bhi chalega.</div>`; }
   }catch(e){ pv.innerHTML=`<div class="alert alert-danger">File padhne mein error: ${esc(e.message)}</div>`; }
 }
 async function processExcel(){
@@ -15618,7 +15637,7 @@ async function processExcel(){
       if(f) f.style.width=pct+'%'; if(t) t.textContent=`${pct}% — ${done}/${deduped.length} students`;
     }
     const dupRows=dups.map(d=>`<div class="topper-row"><div style="flex:1;min-width:0"><b>${esc(d.existing_name||d.sheet_name)}</b> <span class="topper-sub">${esc(d.phone)} \u00b7 ${esc(d.existing_user_id||'')} \u00b7 batch: ${esc(d.existing_batch||'\u2014')}</span>${d.sheet_name&&d.sheet_name!==d.existing_name?`<div class="topper-sub">Sheet name: ${esc(d.sheet_name)}</div>`:''}</div><span class="xm-chip" style="background:rgba(201,150,46,.16);color:#b07f1e">MVS PORTAL</span></div>`).join('');
-    status.innerHTML=`<div class="alert alert-success"><strong>Import complete!</strong><br>
+    status.innerHTML=`<div class="alert alert-success"><strong>Import complete!</strong> — total <strong>${deduped.length}</strong> unique students processed<br>
       <strong>${created}</strong> new students added (MVS App)<br>
       <strong>${updated}</strong> already existed as MVS App (batch refreshed)<br>
       ${dups.length?`<strong style="color:#b07f1e">${dups.length}</strong> duplicate(s) already exist from <strong>MVS Portal</strong> — <strong>not added again</strong>, verify below<br>`:''}
