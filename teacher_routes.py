@@ -30,6 +30,32 @@ from schemas import (
 
 router = APIRouter(prefix="/api/teacher", tags=["Teacher"])
 
+
+# ---- per-teacher "can see students" access control (app_settings, no migration) ----
+STUDENTS_ACCESS_KEY = "teacher_students_ids"
+
+
+def _students_allowed_ids(db):
+    """Set of teacher PROFILE ids jinhe 'My Students' + phone dikhana allowed hai."""
+    try:
+        from models import AppSetting
+        row = db.query(AppSetting).filter(AppSetting.key == STUDENTS_ACCESS_KEY).first()
+        if not row or not row.value:
+            return set()
+        return {int(x) for x in str(row.value).replace(",", " ").split() if x.strip().isdigit()}
+    except Exception:
+        return set()
+
+
+def _teacher_sees_students(tp, db):
+    """True agar is teacher ko students ki full details (My Students + phone) dikhana allowed hai.
+    Default: OFF (admin panel se per-teacher enable hota hai)."""
+    try:
+        return bool(tp) and tp.id in _students_allowed_ids(db)
+    except Exception:
+        return False
+
+
 def get_teacher_profile(user, db):
     profile = db.query(TeacherProfile).filter(TeacherProfile.user_id == user.id).first()
     if not profile:
@@ -1260,6 +1286,7 @@ def teacher_profile(db: Session = Depends(get_db), current_user=Depends(get_teac
         "phone": tp.phone,
         "batch": tp.batch,
         "has_photo": bool(tp.photo_b64),
+        "can_see_students": _teacher_sees_students(tp, db),
         "needs_subjects": len(sc) == 0
     }
 
@@ -1441,6 +1468,7 @@ def teacher_dpp_packs(db: Session = Depends(get_db), current_user=Depends(get_te
 def teacher_dpp_ranking(pack_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import DppPack, DppAnswer, StudentProfile, User
     tp = get_teacher_profile(current_user, db)
+    _see = _teacher_sees_students(tp, db)
     pk = db.query(DppPack).filter(DppPack.id == pack_id, DppPack.teacher_id == tp.id).first()
     if not pk:
         raise HTTPException(404, "DPP pack not found")
@@ -1463,7 +1491,7 @@ def teacher_dpp_ranking(pack_id: int, db: Session = Depends(get_db), current_use
                     "remarks": a.remarks or "",
                     "filename": a.filename or "",
                     "class_name": (srow.class_name if srow else "") or "",
-                    "phone": (srow.phone if srow else "") or ""})
+                    "phone": (((srow.phone if srow else "") or "") if _see else "")})
     return {"pack": {"id": pk.id, "title": pk.title or "DPP", "subject": pk.subject or "",
                      "chapter": pk.chapter or "", "part": pk.part or "",
                      "class_name": getattr(pk, "class_name", "") or ""},
@@ -2058,6 +2086,8 @@ def _subj_key(name):
 def teacher_my_students_list(q: str = "", subject: str = "", cls: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import StudentProfile
     tp = get_teacher_profile(current_user, db)
+    if not _teacher_sees_students(tp, db):
+        return []   # is teacher ke liye "My Students" access admin ne band kiya hai
     subs = tp.subjects or []
     # Class-aware canonical keys: 'PHYSICS'(Cl-12 student) aur teacher ka 'Physics'
     # dono ka key 'c312' — koi bhi case/alias/class-variant miss nahi hoga.
@@ -2386,6 +2416,7 @@ def teacher_student_engagement(db: Session = Depends(get_db), current_user=Depen
     from models import Material, MaterialView, StudentProfile
     from sqlalchemy import func as _f, or_
     tp = get_teacher_profile(current_user, db)
+    _see = _teacher_sees_students(tp, db)
     subs = tp.subjects or []
     if not subs:
         return []
@@ -2412,7 +2443,7 @@ def teacher_student_engagement(db: Session = Depends(get_db), current_user=Depen
         last_act = db.query(MaterialView).filter(MaterialView.student_id == sp.id).order_by(MaterialView.created_at.desc()).first()
         out.append({
             "name": (sp.user.name if sp.user else "Student"),
-            "phone": sp.phone, "subjects": sp.subjects or [],
+            "phone": (sp.phone if _see else ""), "subjects": sp.subjects or [],
             "class_level": sp.class_level,
             "dpp_completed": dpp_done, "tests_completed": test_done,
             "material_downloads": downloads,
@@ -2664,6 +2695,7 @@ def exam_reset_attempts(exam_id: int, payload: dict = Body(default={}),
     ho to sirf wo MCQ attempts hatao jinke answers empty the (purane bug ke shikaar)."""
     _ensure_exam_columns(db)
     tp = get_teacher_profile(current_user, db)
+    _see = _teacher_sees_students(tp, db)
     ex = db.query(Exam).filter(Exam.id == exam_id, Exam.teacher_id == tp.id).first()
     if not ex:
         raise HTTPException(404, "Exam not found")
@@ -2688,6 +2720,7 @@ def exam_attempts(exam_id: int, db: Session = Depends(get_db), current_user=Depe
     from models import StudentProfile
     _ensure_exam_columns(db)
     tp = get_teacher_profile(current_user, db)
+    _see = _teacher_sees_students(tp, db)
     ex = db.query(Exam).filter(Exam.id == exam_id, Exam.teacher_id == tp.id).first()
     if not ex:
         raise HTTPException(404, "Exam not found")
@@ -2707,7 +2740,7 @@ def exam_attempts(exam_id: int, db: Session = Depends(get_db), current_user=Depe
                         for rr in db.query(ExamResult)
                                     .filter(ExamResult.attempt_id == a.id)
                                     .order_by(ExamResult.q_no).all()],
-            "phone": (_sp.phone if _sp else None),
+            "phone": ((_sp.phone if _sp else None) if _see else None),
             "student_code": (_su.user_id if _su else None),
             "batch": (_sp.batch_name if _sp else None),
             "class_level": (_sp.class_level if _sp else None),
@@ -5546,6 +5579,7 @@ def update_exam(exam_id: int, payload: dict = Body(...), db: Session = Depends(g
     only when a non-empty "questions" list is sent."""
     _ensure_exam_columns(db)
     tp = get_teacher_profile(current_user, db)
+    _see = _teacher_sees_students(tp, db)
     ex = db.query(Exam).filter(Exam.id == exam_id, Exam.teacher_id == tp.id).first()
     if not ex:
         raise HTTPException(404, "Test not found")
@@ -5596,6 +5630,7 @@ def delete_exam(exam_id: int, db: Session = Depends(get_db), current_user=Depend
     """Soft-delete a test (keeps attempts/marks, hides it everywhere)."""
     _ensure_exam_columns(db)
     tp = get_teacher_profile(current_user, db)
+    _see = _teacher_sees_students(tp, db)
     ex = db.query(Exam).filter(Exam.id == exam_id, Exam.teacher_id == tp.id).first()
     if not ex:
         raise HTTPException(404, "Test not found")

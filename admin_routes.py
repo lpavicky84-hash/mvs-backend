@@ -272,9 +272,39 @@ def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
                 "total_classes_done": classes_done,
                 "monthly_classes_done": monthly_done,
                 "reschedule_this_month": profile.reschedule_count_this_month,
-                "reschedule_limit": 2
+                "reschedule_limit": 2,
+                "can_see_students": profile.id in _students_allowed_ids(db),
             })
     return result
+
+
+def _students_allowed_ids(db):
+    """teacher profile ids jinhe 'My Students' + phone dikhana allowed hai (app_settings)."""
+    from models import AppSetting
+    row = db.query(AppSetting).filter(AppSetting.key == "teacher_students_ids").first()
+    if not row or not row.value:
+        return set()
+    return {int(x) for x in str(row.value).replace(",", " ").split() if x.strip().isdigit()}
+
+
+@router.post("/teachers/{tid}/students-access")
+def set_teacher_students_access(tid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Per-teacher 'My Students' access on/off. tid = teacher PROFILE id."""
+    from models import AppSetting
+    allowed = bool((payload or {}).get("allowed"))
+    ids = _students_allowed_ids(db)
+    if allowed:
+        ids.add(int(tid))
+    else:
+        ids.discard(int(tid))
+    val = ",".join(str(i) for i in sorted(ids))
+    row = db.query(AppSetting).filter(AppSetting.key == "teacher_students_ids").first()
+    if row:
+        row.value = val
+    else:
+        db.add(AppSetting(key="teacher_students_ids", value=val))
+    db.commit()
+    return {"ok": True, "allowed": allowed, "ids": sorted(ids)}
 
 @router.post("/teachers/add")
 def add_teacher(req: RegisterRequest, db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -3114,44 +3144,58 @@ def _sync_one_from_portal(sp, db):
 
 @router.post("/students/sync-portal")
 def sync_students_with_portal(payload: dict = None, db: Session = Depends(get_db), _=Depends(get_admin)):
-    """Sabhi MVS App students ko MVS Portal par check karke transfer karo."""
+    """MVS App students ko MVS Portal par check karke transfer — FAST (bulk map,
+    koi per-student external call nahi) + batch-wise (progress). Cursor: after_id."""
     from models import StudentProfile as _SP
     from ext_materials import _cfg
     url, key = _cfg()
     if not url or not key:
         raise HTTPException(status_code=503, detail="MVS Portal connection is not configured")
-    limit = int((payload or {}).get("limit") or 400)
-    app_students = db.query(_SP).filter(
-        (_SP.source == "mvs_app") | (_SP.source.is_(None))).limit(limit).all()
-    moved = []
-    for sp in app_students:
-        try:
-            if _sync_one_from_portal(sp, db):
-                moved.append({"name": sp.user.name if sp.user else "", "phone": sp.phone,
-                              "user_id": sp.user.user_id if sp.user else ""})
-        except Exception:
+    payload = payload or {}
+    after_id = int(payload.get("after_id") or 0)
+    limit = int(payload.get("limit") or 300)
+    pmap = _portal_phone_map()   # bulk, cached — poore sync me portal sirf 1 baar hit
+
+    def _clean_subs(st):
+        out = []
+        for x in (st.get("subjects") or []):
+            nm = (x.get("name") if isinstance(x, dict) else str(x)) or ""
+            nm = nm.split("(")[0].strip()
+            if nm:
+                out.append(nm)
+        return out
+
+    base = db.query(_SP).filter(
+        (_SP.source == "mvs_app") | (_SP.source.is_(None)), _SP.phone.isnot(None))
+    total = base.count() if after_id == 0 else None
+    chunk = base.filter(_SP.id > after_id).order_by(_SP.id).limit(limit).all()
+    moved, last_id = [], after_id
+    for sp in chunk:
+        last_id = sp.id
+        ph = "".join(c for c in str(sp.phone or "") if c.isdigit())[-10:]
+        st = pmap.get(ph)
+        if not st:
             continue
-    # existing MVS Portal students: class manager se exam info REFRESH karo
-    # (galat auto-guess stream/session repair ho jata hai; empty kabhi overwrite nahi)
-    refreshed = 0
-    portal_students = db.query(_SP).filter(
-        _SP.source == "mvs_portal", _SP.phone.isnot(None)).limit(limit).all()
-    for sp in portal_students:
+        sp.source = "mvs_portal"          # portal top-priority
+        _pc = str(st.get("class_level") or st.get("class") or "")
+        if _pc:
+            sp.class_level = _pc
+        if st.get("medium"):
+            sp.medium = st["medium"]
+        _es = _clean_subs(st)
+        if _es:
+            sp.subjects = _SR.canon_list(_es, sp.class_level) if _SR else _es
+        if st.get("name") and sp.user and (not sp.user.name or sp.user.name.startswith("Student ")):
+            sp.user.name = st["name"]
         try:
-            from ext_materials import portal_fetch_student
-            st = portal_fetch_student(sp.phone)
-            if st and st.get("unlocked"):
-                before = (sp.exam_session, sp.exam_stream, sp.nios_ref)
-                _apply_portal_exam_info(sp, st, db)
-                if (sp.exam_session, sp.exam_stream, sp.nios_ref) != before:
-                    refreshed += 1
+            _apply_portal_exam_info(sp, st, db)
         except Exception:
-            continue
+            pass
+        moved.append({"name": sp.user.name if sp.user else "", "phone": sp.phone,
+                      "user_id": sp.user.user_id if sp.user else ""})
     db.commit()
-    return {"checked": len(app_students), "moved": len(moved), "students": moved[:200],
-            "exam_refreshed": refreshed,
-            "message": f"{len(moved)} student(s) moved from MVS App to MVS Portal. "
-                       f"{refreshed} portal student(s) exam info refreshed."}
+    return {"checked": len(chunk), "moved": len(moved), "students": moved[:200],
+            "last_id": last_id, "has_more": len(chunk) == limit, "total": total}
 
 
 # ==================================================================
