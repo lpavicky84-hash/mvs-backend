@@ -349,14 +349,29 @@ def _legacy_subject_names(nm, cl, display):
     return [c for c in cands if c]
 
 
+def _subj_ident(name, cls):
+    """Class-AWARE, alias-robust identity for special-task subjects.
+    Registry code mile -> 'c<code>'; warna alias-expand+squash+class-digits.
+    'Maths 10'=='Mathematics 10'; Mathematics 10 != Mathematics 12."""
+    base = re.sub(r"(?i)\bclass\b", " ", str(name or ""))
+    c = re.sub(r"[^0-9]", "", str(cls or ""))
+    try:
+        from subjects_registry import canon_subject, squash, _expand_words
+        r = canon_subject(base, cls or None)
+        if r and r.get("code"):
+            return "c" + r["code"]
+        return squash(_expand_words(base)) + "|" + c
+    except Exception:
+        return re.sub(r"[^a-z0-9]", "", base.lower()) + "|" + c
+
+
 def _special_subject_names(db, tp, subs):
-    """[(raw, cls, STABLE display)] — same subject alag classes me ho to bhi
-    'Physics 12' / 'Physics 10' hamesha alag-alag aur kabhi nahi badalte."""
     out, seen = [], set()
     for nm, cl in subs:
         dn = _stable_subject_display(nm, cl)
-        if dn and dn.lower() not in seen:
-            seen.add(dn.lower())
+        ident = _subj_ident(nm, cl)
+        if dn and ident not in seen:
+            seen.add(ident)
             out.append((nm, cl, dn))
     return out
 
@@ -477,18 +492,11 @@ def _dedupe_special(db, teacher_id, kind):
     bug ya double-create ho to bhi): sabse purana task rakho, baaki ke chapters
     move karke (link wale preserve) task delete. History bhi merge hoti hai."""
     def _nk(x):
-        # v183: class-AWARE identity — "Mathematics 10" ke naam-variants (Maths 10,
-        # Mathematics · Class 10, code-suffix) sab ek group; par Mathematics 10 aur
-        # Mathematics 12 hamesha ALAG. Isse teacher panel pe duplicate cards khatam.
-        base, cls = _display_base_cls(x)
-        try:
-            from subjects_registry import canon_key
-            k = canon_key(base, cls or None)
-            if k:
-                return k
-        except Exception:
-            pass
-        return re.sub(r"\s+", " ", (x or "")).strip().lower()
+        # v186: shared class-aware alias-robust identity (Maths 10 == Mathematics 10;
+        # Mathematics 10 != Mathematics 12). Duplicate cards permanent khatam.
+        return _subj_ident(*_display_base_cls(x))
+    def _tk(s):
+        return re.sub(r"\s+", " ", (s or "")).strip().lower()
     tasks = (db.query(VideoTask)
              .filter(VideoTask.teacher_id == teacher_id, VideoTask.kind == kind)
              .order_by(VideoTask.created_at.asc(), VideoTask.id.asc()).all())
@@ -500,13 +508,13 @@ def _dedupe_special(db, teacher_id, kind):
         if len(grp) < 2:
             continue
         keep = grp[0]
-        existing = { _nk(c.title): c for c in
+        existing = { _tk(c.title): c for c in
                      db.query(VideoTaskChapter)
                      .filter(VideoTaskChapter.task_id == keep.id).all() }
         for extra in grp[1:]:
             for c in (db.query(VideoTaskChapter)
                       .filter(VideoTaskChapter.task_id == extra.id).all()):
-                key = _nk(c.title)
+                key = _tk(c.title)
                 tgt = existing.get(key)
                 if tgt is None:
                     c.task_id = keep.id
@@ -527,6 +535,16 @@ def _dedupe_special(db, teacher_id, kind):
             db.delete(extra)
             _hist_add(keep, "edited", "Duplicate task merged automatically")
             changed = True
+        # merged card ka naam canonical stable display pe le aao
+        try:
+            _b, _c = _display_base_cls(keep.subject)
+            _disp = _stable_subject_display(_b, _c)
+            if _disp and _disp != keep.subject:
+                keep.subject = _disp
+                keep.title = ("One Shot — %s (All Chapters)" if kind == "one_shot"
+                              else "Rapid Revision — %s (All Chapters)") % _disp
+        except Exception:
+            pass
     return changed
 
 
