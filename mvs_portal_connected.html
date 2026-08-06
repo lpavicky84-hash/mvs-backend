@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- MVS Portal v192 -->
+<!-- MVS Portal v193 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1615,8 +1615,7 @@ canvas{max-width:100%}
 .wa-sec{border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:12px}
 .wa-sec>summary{cursor:pointer;font-size:.9rem;list-style:none;display:flex;align-items:center;gap:8px}
 .wa-sec>summary::-webkit-details-marker{display:none}
-.wa-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
-@media(max-width:640px){.wa-grid{grid-template-columns:1fr}}
+.wa-grid{display:grid;grid-template-columns:1fr;gap:12px;margin:12px 0}
 .xm-chip-hl{background:var(--accent);color:#fff}
 .xm-chip-hl2{background:linear-gradient(135deg,rgba(184,148,31,.16),rgba(201,162,39,.1));color:#8a6d10;border:1px solid rgba(184,148,31,.45);box-shadow:0 2px 8px -3px rgba(184,148,31,.35);display:inline-flex;align-items:center;gap:4px}
 .dark .xm-chip-hl2{background:rgba(226,180,88,.15);color:#e8c476;border-color:rgba(226,180,88,.4)}
@@ -11111,7 +11110,7 @@ async function openWhatsApp(){
 
     const welcomeSec=st.configured?`<details class="wa-sec" open><summary><b>Welcome — send to MVS App students</b></summary>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">
-        <span class="xm-chip xm-chip-hl">Pending \u00b7 ${st.pending}</span><span class="xm-chip">Already sent \u00b7 ${st.sent}</span></div>
+        <button class="xm-chip xm-chip-hl" style="cursor:pointer;border:none" onclick="openWhatsAppPending()">Pending \u00b7 ${st.pending} \u25b8</button><span class="xm-chip">Already sent \u00b7 ${st.sent}</span></div>
       <p style="font-size:.78rem;color:var(--text-muted)">Template ke variables: {{1}} = student ka naam, {{2}} = upar Settings me likha "Welcome message". Message change karna ho to Settings me badlo — sabko naya jaayega. Portal students ko welcome nahi jaata.</p>
       <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;margin:8px 0"><input type="checkbox" id="wa-resend"> Resend to students who already got it</label>
       <button class="btn btn-success btn-sm" id="wa-btn" onclick="sendWhatsAppWelcome()">${ic('megaphone')} Send welcome to ${st.pending} pending</button>
@@ -11127,6 +11126,37 @@ async function openWhatsApp(){
     body.innerHTML=cfgForm+welcomeSec+announceSec;
     document.getElementById('modal-footer').innerHTML=`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`;
   }catch(e){ document.getElementById('modal-body').innerHTML=errHtml(e); }
+}
+async function sendStudentWhatsApp(sid,name,btn){
+  if(btn){ btn.disabled=true; btn.dataset._t=btn.innerHTML; btn.innerHTML='Sending…'; }
+  try{
+    const r=await api('/api/admin/whatsapp/send-welcome','POST',{profile_ids:[sid],resend:true});
+    if(r&&r.sent>0){ toast('WhatsApp sent to '+(name||'student')+'.'); if(btn){ btn.innerHTML='Sent'; btn.classList.add('btn-success'); } }
+    else{ const err=(r&&r.errors&&r.errors[0]&&r.errors[0].error)||'Could not send. Check WhatsApp settings.'; toast(err,true); if(btn){ btn.disabled=false; btn.innerHTML=btn.dataset._t; } }
+  }catch(e){ toast(e.message||'Could not send',true); if(btn){ btn.disabled=false; btn.innerHTML=btn.dataset._t; } }
+}
+async function openWhatsAppPending(){
+  showModal('Pending WhatsApp',`<div class="spinner"></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+  try{
+    const list=await api('/api/admin/whatsapp/pending');
+    const b=document.getElementById('modal-body');
+    if(!list.length){ b.innerHTML='<div class="alert alert-success">No pending students — sabko welcome ja chuka hai.</div>'; return; }
+    b.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <span style="font-size:.82rem;color:var(--text-muted)"><b>${list.length}</b> student(s) jinhe abhi welcome nahi gaya</span>
+        <button class="btn btn-success btn-sm" onclick="_waSendAllPending(this)">${ic('megaphone')} Send to all ${list.length}</button>
+      </div>
+      <div style="max-height:60vh;overflow:auto">${list.map(x=>`<div class="stu-row" style="cursor:default">
+        <div class="stu-info"><div class="stu-name">${esc(x.name)}</div><div class="stu-meta">${esc(x.phone||'no phone')} \u00b7 ${esc(x.batch||'no batch')}</div></div>
+        <div class="stu-act"><button class="btn btn-ghost btn-sm" onclick="sendStudentWhatsApp(${x.profile_id},'${esc((x.name||'').replace(/'/g,''))}',this)">${ic('megaphone')} Send</button></div>
+      </div>`).join('')}</div>`;
+  }catch(e){ document.getElementById('modal-body').innerHTML=errHtml(e); }
+}
+async function _waSendAllPending(btn){
+  if(btn){ btn.disabled=true; btn.innerHTML='Sending…'; }
+  try{
+    const r=await api('/api/admin/whatsapp/send-welcome','POST',{all_pending:true});
+    toast((r&&r.message)||'Done.'); closeModal(); if(typeof openWhatsApp==='function') openWhatsApp();
+  }catch(e){ toast(e.message||'Could not send',true); if(btn){ btn.disabled=false; btn.innerHTML='Send to all'; } }
 }
 async function waSaveConfig(){
   const out=document.getElementById('wa-cfg-out'); out.innerHTML='<div class="spinner"></div>';
@@ -11440,7 +11470,7 @@ function openStudentProfile(sid){
     `<div class="prof-head" style="padding-bottom:16px;margin-bottom:16px"><div class="prof-photo" id="spp-${sid}">${esc(initials(s.name||'S'))}</div><div class="prof-id"><h2 style="font-size:1.2rem">${esc(s.name)}</h2><span class="chip" style="margin-top:6px">${esc(s.batch||'Student')}</span></div></div>
      <div class="prof-grid">${rows.map(([k,v])=>`<div class="prof-cell"><div class="prof-k">${k}</div><div class="prof-v">${esc(v)}</div></div>`).join('')}</div>
      <div class="prof-cell" style="margin-top:14px"><div class="prof-k">Subjects</div><div class="slist-chips" style="margin-top:6px">${subs}</div></div>`,
-    `<button class="btn btn-danger" onclick="closeModal();deleteStudent(${sid},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')} Delete</button><button class="btn btn-primary" onclick='closeModal();openEditStudent(${sid},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,medium:s.medium||'',subjects:s.subjects||[],exam_session:s.exam_session||'',nios_ref:s.nios_ref||''}).replace(/"/g,"&quot;").replace(/'/g,"&#39;")})'>${ic('edit')} Edit</button>`);
+    `<button class="btn btn-ghost" onclick="sendStudentWhatsApp(${sid},'${esc((s.name||'').replace(/'/g,''))}',this)">${ic('megaphone')} WhatsApp</button><button class="btn btn-danger" onclick="closeModal();deleteStudent(${sid},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')} Delete</button><button class="btn btn-primary" onclick='closeModal();openEditStudent(${sid},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,medium:s.medium||'',subjects:s.subjects||[],exam_session:s.exam_session||'',nios_ref:s.nios_ref||''}).replace(/"/g,"&quot;").replace(/'/g,"&#39;")})'>${ic('edit')} Edit</button>`);
   if(s.has_photo) loadImgInto('spp-'+sid,'/api/admin/student/'+sid+'/photo');
 }
 async function openAddStudent(){

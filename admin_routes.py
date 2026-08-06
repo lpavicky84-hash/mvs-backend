@@ -3058,7 +3058,6 @@ def whatsapp_status(db: Session = Depends(get_db), _=Depends(get_admin)):
     import whatsapp as W
     from models import StudentProfile as _SP
     pend = db.query(_SP).filter(
-        ((_SP.source == "mvs_app") | (_SP.source.is_(None))),
         _SP.welcome_sent_at.is_(None), _SP.phone.isnot(None)).count()
     sent = db.query(_SP).filter(_SP.welcome_sent_at.isnot(None)).count()
     c = W.cfg()
@@ -3074,7 +3073,6 @@ def whatsapp_pending(db: Session = Depends(get_db), _=Depends(get_admin)):
     """MVS App students jinhe abhi welcome message nahi gaya."""
     from models import StudentProfile as _SP
     rows = db.query(_SP).filter(
-        ((_SP.source == "mvs_app") | (_SP.source.is_(None))),
         _SP.welcome_sent_at.is_(None), _SP.phone.isnot(None)).all()
     return [{"profile_id": x.id, "name": x.user.name if x.user else "Student",
              "phone": x.phone, "batch": x.batch_name or ""} for x in rows]
@@ -3097,7 +3095,6 @@ def whatsapp_send_welcome(payload: dict, db: Session = Depends(get_db), _=Depend
 
     q = db.query(_SP).filter(_SP.phone.isnot(None))
     if payload.get("all_pending"):
-        q = q.filter(((_SP.source == "mvs_app") | (_SP.source.is_(None))))
         if not resend:
             q = q.filter(_SP.welcome_sent_at.is_(None))
     else:
@@ -3109,9 +3106,7 @@ def whatsapp_send_welcome(payload: dict, db: Session = Depends(get_db), _=Depend
 
     sent, failed = 0, []
     for sp in students:
-        # MVS Portal students ko welcome nahi bhejte (unka apna flow hai)
-        if (getattr(sp, "source", None) or "mvs_app") == "mvs_portal":
-            continue
+        # Admin ne jise chuna (ya jo pending hai) usko bhejo — source koi bhi ho.
         name = sp.user.name if sp.user else "Student"
         msg = W.build_message(name, sp.batch_name or "", sp.phone, template)
         ok, detail = W.send(sp.phone, text=msg, name=name, batch=sp.batch_name or "")
