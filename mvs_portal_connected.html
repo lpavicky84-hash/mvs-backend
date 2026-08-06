@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- MVS Portal v182 -->
+<!-- MVS Portal v183 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -2876,6 +2876,7 @@ const ICONS={
   target:_S+'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
   'chev-down':_S+'<polyline points="6 9 12 15 18 9"/></svg>',
   history:_S+'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+  alert:_S+'<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
   link2:_S+'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
 };
 function ic(k){ return ICONS[k]||''; }
@@ -8682,7 +8683,6 @@ async function fetchAdminMe(){
 function adminAllowed(page){
   const me=window._adminMe;
   if(!me||me.full_access) return true;
-  if(page==='urgent') page='vtasks';
   return (me.sections||[]).includes(page);
 }
 function applyAdminAccess(){
@@ -11968,7 +11968,7 @@ async function doResetData(){
 const ADMIN_SECTIONS=[
   ['dashboard','Dashboard'],['approvals','Approvals'],['live','Live Users'],['timetable','Time Table'],
   ['qbank','Study Material'],['material','Classes Material'],['doubts','Doubts'],['tests','Tests Tracker'],
-  ['vtasks','Task Manager'],['teachers','Teachers'],['reports','Teacher Reports'],['tranks','Teacher Ranking'],
+  ['vtasks','Task Manager'],['urgent','Urgent Videos'],['teachers','Teachers'],['reports','Teacher Reports'],['tranks','Teacher Ranking'],
   ['compliance','Class Compliance'],['attendance','Attendance'],['payouts','Payouts'],['students','Students'],
   ['notify','Send Notice'],['subjects','Subjects'],['syllabus','Syllabus Manager'],['admins','Admin Users']
 ];
@@ -11993,7 +11993,7 @@ function sddHTML(key,full,sel,editId){
   return `<div class="sdd${open?' open':''}" id="sdd-${key}">
     <div class="sdd-trig" onclick="sddToggle('${key}',event)"><span class="tt">${_sddLabel(full,sel)}</span>${!full&&sel.size>1?`<span class="sdd-count">${sel.size} sections</span>`:''}<span class="sdd-chev">\u25BC</span></div>
     <div class="sdd-panel">
-      <div class="sdd-row full" onclick="sddFull('${key}',event${eid})"><span class="sdd-cb${full?' on':''}">${full?'\u2713':''}</span><span>Full Access — Everything</span><span class="sdd-hint">all 20 sections</span></div>
+      <div class="sdd-row full" onclick="sddFull('${key}',event${eid})"><span class="sdd-cb${full?' on':''}">${full?'\u2713':''}</span><span>Full Access — Everything</span><span class="sdd-hint">all ${ADMIN_SECTIONS.length} sections</span></div>
       ${rows}
     </div></div>`;
 }

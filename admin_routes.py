@@ -60,6 +60,11 @@ ADMIN_SECTION_MAP = {
     "video-channels": "vtasks", "video-types": "vtasks", "video-tasks": "vtasks",
 }
 
+# Kuch sections ke endpoints ek se zyada section-permission se khulte hain.
+# Urgent Videos page bhi wahi /api/admin/video-tasks endpoints use karta hai jo
+# Task Manager karta hai — isliye 'urgent' section wale admin ko bhi allow karo.
+ADMIN_SECTION_ALIASES = {"vtasks": {"vtasks", "urgent"}}
+
 
 def admin_allowed_sections(user):
     """None = full access; otherwise set of allowed section keys."""
@@ -82,8 +87,10 @@ def admin_section_guard(request: Request, current_user=Depends(get_admin)):
     parts = path.split("/")
     first = parts[3] if len(parts) > 3 else ""
     sec = ADMIN_SECTION_MAP.get(first)
-    if sec is not None and sec not in allowed:
-        raise HTTPException(status_code=403, detail="You do not have access to this section.")
+    if sec is not None:
+        acceptable = ADMIN_SECTION_ALIASES.get(sec, {sec})
+        if allowed.isdisjoint(acceptable):
+            raise HTTPException(status_code=403, detail="You do not have access to this section.")
     return current_user
 
 
