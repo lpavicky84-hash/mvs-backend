@@ -1799,7 +1799,19 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
             .filter(VideoTask.teacher_id == tp.id,
                     VideoTask.kind.in_(["one_shot", "rapid_revision", "project"]))
             .order_by(VideoTask.kind.asc(), VideoTask.subject.asc()).all())
-    special = [_special_out(db, t) for t in spts]
+    special_all = [_special_out(db, t) for t in spts]
+    # Bulletproof display dedup: DB me duplicate ho (alag spelling/spacing/id) to bhi
+    # teacher ko (kind + class-aware subject) ke hisaab se SIRF EK card dikhe —
+    # sabse zyada progress (done chapters) wala. DB merge alag se _ensure_special_teacher me.
+    _seen = {}
+    for so in special_all:
+        _b, _c = _display_base_cls(so.get("subject") or "")
+        key = (so.get("kind"), _subj_ident(_b, _c))
+        cur = _seen.get(key)
+        if cur is None or (so.get("done", 0) > cur.get("done", 0)):
+            _seen[key] = so
+    special = sorted(_seen.values(),
+                     key=lambda s: (s.get("kind") or "", s.get("subject") or ""))
     return {"tasks": out, "stats": stats, "special": special,
             "next_deadline": (_task_out(db, nxt) if nxt else None)}
 
