@@ -9424,7 +9424,7 @@ async function loadAVTasks(){
       <div class="vt-cards">
         ${_isProj
           ? `${stat('Total Videos',_pT,'#8a6d10','clipboard')}${stat('Completed',_pD,'#059669','check')}${stat('Pending',Math.max(0,_pT-_pD),'#0891b2','clock')}${stat('New',spNewN||0,'#dc2626','bell')}`
-          : `${stat('Total Assigned',stats.total,'#8a6d10','clipboard','all')}${stat('Completed',stats.done,'#059669','check','done')}${stat('Pending',stats.pending,'#0891b2','clock','pending')}${stat('Delayed',stats.delayed,'#dc2626','alert','delayed')}`
+          : `${stat('Total Assigned',stats.total,'#8a6d10','clipboard','all')}${stat('Completed',stats.done,'#059669','check','done')}${stat('Pending',stats.pending,'#0891b2','clock','pending')}${(function(){const n=(list.tasks||[]).filter(t=>t.status==='submitted').length;return `<div class="vt-stat vt-stat-click${n>0?' vt-ap-blink':''}" onclick="_vtStatusFilter('submitted')" title="Videos submitted by teachers, waiting for your approval"><div class="vs-ic" style="background:rgba(220,38,38,.12);color:#dc2626">${ic('bell')}</div><div><div class="vs-n" style="color:#dc2626">${n}</div><div class="vs-l">Approval Pending</div></div></div>`;})()}${stat('Delayed',stats.delayed,'#dc2626','alert','delayed')}`
         }
         ${stats.top?`<div class="vt-stat" style="border-color:rgba(16,185,129,.5)"><div class="vs-ic" style="background:rgba(16,185,129,.12);color:#047857">${ic('star')}</div><div><div style="font-size:.8rem;font-weight:800;color:#047857">${esc(stats.top.name)}</div><div class="vs-l">Top — ${stats.top.rate}% on time</div></div></div>`:''}
         ${stats.most_delayed?`<div class="vt-stat" style="border-color:rgba(220,38,38,.45)"><div class="vs-ic" style="background:rgba(220,38,38,.1);color:#b91c1c">${ic('alert')}</div><div><div style="font-size:.8rem;font-weight:800;color:#b91c1c">${esc(stats.most_delayed.name)}</div><div class="vs-l">Most delayed — ${stats.most_delayed.delayed}</div></div></div>`:''}
@@ -9476,7 +9476,7 @@ function _avtSpecHtml(){
   const t=_avtSpecTotals(), newN=t.osN+t.rrN+t.prN;
   return `<div class="card" style="margin-bottom:16px;border:1.5px solid ${newN?'rgba(220,38,38,.5)':'rgba(184,148,31,.4)'}">
     <div class="card-header" style="cursor:pointer;user-select:none" onclick="avtSpecToggle()">
-      <h3>${ic('folder')} One Shot · Rapid Revision · Projects ${newN?`<span class="vt-new" id="avt-spec-new">NEW ${newN}</span>`:''}</h3>
+      <h3>${ic('folder')} One Shot · Rapid Revision · Projects ${newN?`<span class="vt-new vt-new-clk" id="avt-spec-new" onclick="_vtProjNewFilter()" title="Show only NEW projects — tap to filter">NEW ${newN}</span>`:''}</h3>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <span class="vt-type">One Shot · ${t.osD}/${t.osT} chapters</span>
         <span class="vt-type">Rapid · ${t.rrD}/${t.rrT} chapters</span>
@@ -9548,7 +9548,7 @@ function _avtSpecCard(t){
   const rows=(t.chapters||[]).map(c=> c.link
     ? `<div class="vt-chr done${c.changed?' vt-changed':''}"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">${esc(c.submitted_at||'')}</span>${c.changed?`<span class="vt-chg">Link updated${c.changed_at?' · '+esc(c.changed_at):''}</span>`:''}${_avtChSel(t,c)}${_avtVinSel(t,c)}<a class="lk" href="${esc(c.link)}" target="_blank" rel="noopener">${ic('play')} Open video</a></div>`
     : `<div class="vt-chr${c.changed?' vt-changed':''}"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">pending</span>${c.changed?`<span class="vt-chg">Link removed${c.changed_at?' · '+esc(c.changed_at):''}</span>`:''}</div>`).join('');
-  return `<div class="vt-os" id="avt-os-${t.id}" style="border-color:${_vtPjCol(t.id)[1]}55">
+  return `<div class="vt-os" id="avt-os-${t.id}" data-pnew="${t.is_new?1:0}" style="border-color:${_vtPjCol(t.id)[1]}55">
     <div class="vt-os-h" style="background:linear-gradient(135deg,${_vtPjCol(t.id)[0]},${_vtPjCol(t.id)[1]})" onclick="avtSpecOpen(${t.id})">
       <div><h4><span class="vt-os-kind ${t.kind}">${_vtKindLbl(t)}</span>${esc(t.subject||t.title)} ${t.is_new?`<span class="vt-new" id="avt-new-${t.id}">NEW</span>`:''}</h4>
       <div class="os-sub">${esc(t.teacher)} · ${t.kind==='project'?'Final deadline':'Deadline'}: <b>${esc(t.deadline_nice||'—')}</b>${t.last_link_at?' · Last update: '+esc(t.last_link_at):''}</div>
@@ -10070,6 +10070,19 @@ function _vtClearFilters(){
   _vtF.teacher_id=0; _vtF.channel_id=0; _vtF.video_type=''; _vtF.status=''; window._vtBucket=null;
   document.querySelectorAll('.vt-filt-sel').forEach(s=>{ s.selectedIndex=0; });
   _vtClientFilter();
+}
+function _vtStatusFilter(status){
+  _vtF.status=(_vtF.status===status)?'':status;
+  window._vtBucket=null;
+  const sels=document.querySelectorAll('.vt-filt-sel'); const sSel=sels[sels.length-1];
+  if(sSel) sSel.value=_vtF.status;
+  document.querySelectorAll('.vt-stat.vt-ap-blink,.vt-stat[data-ap]').forEach(c=>c.classList.toggle('vt-stat-on', _vtF.status==='submitted'));
+  _vtClientFilter();
+}
+function _vtProjNewFilter(){
+  window._vtPjNew=!window._vtPjNew;
+  document.querySelectorAll('#avt-spec-new').forEach(b=>b.classList.toggle('vt-new-on', !!window._vtPjNew));
+  document.querySelectorAll('.vt-os').forEach(c=>{ c.style.display=(window._vtPjNew && c.dataset.pnew!=='1')?'none':''; });
 }
 function _avtTgToggle(){
   const b=document.getElementById('a-tg-body'); if(!b) return;
@@ -17687,6 +17700,12 @@ async function ocrFillQuestion_v1(inp,i){
 .vt-stat-click{cursor:pointer;transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease}
 .vt-stat-click:hover{border-color:var(--primary);transform:translateY(-1px)}
 .vt-stat-on{border-color:var(--primary)!important;box-shadow:0 0 0 2px rgba(184,148,31,.28)}
+.vt-ap-blink{border-color:#dc2626!important;animation:vtApBlink 1s ease-in-out infinite}
+@keyframes vtApBlink{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.5)}50%{box-shadow:0 0 0 6px rgba(220,38,38,0)}}
+.vt-ap-blink .vs-ic{animation:vtBlink 1s ease-in-out infinite}
+.vt-new-clk{cursor:pointer;transition:.15s}
+.vt-new-clk:hover{filter:brightness(1.08)}
+.vt-new-on{outline:2px solid #dc2626;outline-offset:1px}
 .vt-stat{padding:14px 16px;border-radius:14px;border:1.5px solid var(--border);background:var(--card-bg);
   display:flex;align-items:center;gap:12px;transition:.18s}
 .vt-stat:hover{transform:translateY(-2px);box-shadow:0 6px 16px -8px rgba(0,0,0,.25)}
