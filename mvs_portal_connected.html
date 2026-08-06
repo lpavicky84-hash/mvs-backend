@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- MVS Portal v199 -->
+<!-- MVS Portal v200 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -11190,9 +11190,14 @@ async function openWhatsAppPending(){
 }
 async function _waSendAllPending(btn){
   if(btn){ btn.disabled=true; btn.innerHTML='Sending…'; }
+  let afterId=0,sent=0,failed=0,more=true;
   try{
-    const r=await api('/api/admin/whatsapp/send-welcome','POST',{all_pending:true});
-    toast((r&&r.message)||'Done.'); closeModal(); if(typeof openWhatsApp==='function') openWhatsApp();
+    while(more){
+      const r=await api('/api/admin/whatsapp/send-welcome','POST',{all_pending:true,after_id:afterId,limit:50});
+      sent+=r.sent||0; failed+=r.failed||0; afterId=r.last_id||afterId; more=!!r.has_more;
+      if(btn) btn.innerHTML='Sending… '+sent;
+    }
+    toast(sent+' sent, '+failed+' failed'); closeModal(); if(typeof openWhatsApp==='function') openWhatsApp();
   }catch(e){ toast(e.message||'Could not send',true); if(btn){ btn.disabled=false; btn.innerHTML='Send to all'; } }
 }
 async function waSaveConfig(){
@@ -11226,16 +11231,30 @@ async function waTest(){
 }
 async function sendWhatsAppWelcome(){
   const btn=document.getElementById('wa-btn'); btn.disabled=true; btn.textContent='Sending\u2026';
-  const out=document.getElementById('wa-out'); out.innerHTML='<div class="spinner"></div>';
+  const out=document.getElementById('wa-out');
+  out.innerHTML=`<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill" id="wa-fill"></div></div><div class="prog-text" id="wa-text">Starting\u2026</div></div>`;
+  const tplEl=document.getElementById('wa-tpl');
+  const resend=document.getElementById('wa-resend').checked;
+  let afterId=0,total=0,sent=0,failed=0,errs=[],more=true;
   try{
-    const tplEl=document.getElementById('wa-tpl');
-    const r=await api('/api/admin/whatsapp/send-welcome','POST',{
-      all_pending:true, resend:document.getElementById('wa-resend').checked,
-      template:(tplEl?tplEl.value:''), limit:500});
-    const errs=(r.errors||[]).map(x=>`<div class="topper-row"><div class="topper-name">${esc(x.name)}<div class="topper-sub">${esc(x.phone)} \u2014 ${esc(x.error)}</div></div></div>`).join('');
-    out.innerHTML=`<div class="alert ${r.failed?'alert-warning':'alert-success'}"><b>${r.sent}</b> sent \u00b7 <b>${r.failed}</b> failed</div>${errs?`<div class="hide-scroll" style="max-height:30vh">${errs}</div>`:''}`;
-    toast(r.message);
-  }catch(e){ out.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
+    while(more){
+      const r=await api('/api/admin/whatsapp/send-welcome','POST',{
+        all_pending:true, resend, template:(tplEl?tplEl.value:''),
+        after_id:afterId, limit:50});
+      if(r.total!=null) total=r.total;
+      sent+=r.sent||0; failed+=r.failed||0; afterId=r.last_id||afterId; more=!!r.has_more;
+      errs=errs.concat(r.errors||[]);
+      const proc=sent+failed;
+      const pct=total?Math.min(100,Math.round(proc/total*100)):(more?60:100);
+      const f=document.getElementById('wa-fill'), t=document.getElementById('wa-text');
+      if(f) f.style.width=pct+'%';
+      if(t) t.textContent=`${pct}% \u2014 ${sent} sent \u00b7 ${failed} failed${total?` (of ${total})`:''}`;
+    }
+    const errHtml=errs.slice(0,30).map(x=>`<div class="topper-row"><div class="topper-name">${esc(x.name)}<div class="topper-sub">${esc(x.phone)} \u2014 ${esc(x.error)}</div></div></div>`).join('');
+    out.innerHTML=`<div class="alert ${failed?'alert-warning':'alert-success'}"><b>${sent}</b> sent \u00b7 <b>${failed}</b> failed</div>${errHtml?`<div class="hide-scroll" style="max-height:30vh">${errHtml}</div>`:''}`;
+    toast(`${sent} sent, ${failed} failed`);
+    if(window._waSt) openWhatsApp();
+  }catch(e){ out.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div><div style="font-size:.75rem;color:var(--text-muted);margin-top:6px">Jitne abhi tak gaye wo save ho gaye — dobara "Send again" karo, baaki ko chala jayega.</div>`; }
   btn.disabled=false; btn.textContent='Send again';
 }
 // ============ SESSION DEADLINES (admin) ============
@@ -15680,8 +15699,13 @@ async function processExcel(){
     if(created>0 && (document.getElementById('excel-wa')||{}).checked){
       try{
         status.innerHTML+=`<div id="excel-wa-out" style="margin-top:10px"><div class="spinner"></div> Sending WhatsApp welcome...</div>`;
-        const wr=await api('/api/admin/whatsapp/send-welcome','POST',{all_pending:true,limit:1000});
-        const o=document.getElementById('excel-wa-out'); if(o) o.innerHTML=`<div class="alert ${wr.failed?'alert-warning':'alert-success'}">WhatsApp: <b>${wr.sent}</b> sent \u00b7 <b>${wr.failed}</b> failed</div>`;
+        let afterId=0,waSent=0,waFailed=0,more=true;
+        while(more){
+          const wr=await api('/api/admin/whatsapp/send-welcome','POST',{all_pending:true,after_id:afterId,limit:50});
+          waSent+=wr.sent||0; waFailed+=wr.failed||0; afterId=wr.last_id||afterId; more=!!wr.has_more;
+          const o=document.getElementById('excel-wa-out'); if(o) o.innerHTML=`<div class="spinner" style="width:16px;height:16px"></div> WhatsApp: ${waSent} sent...`;
+        }
+        const o=document.getElementById('excel-wa-out'); if(o) o.innerHTML=`<div class="alert ${waFailed?'alert-warning':'alert-success'}">WhatsApp: <b>${waSent}</b> sent \u00b7 <b>${waFailed}</b> failed</div>`;
       }catch(we){ const o=document.getElementById('excel-wa-out'); if(o) o.innerHTML=`<div class="alert alert-warning">WhatsApp send skipped: ${esc(we.message)}</div>`; }
     }
     btn.textContent='Done'; btn.disabled=false; btn.setAttribute('onclick','closeModal()');

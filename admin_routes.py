@@ -355,12 +355,15 @@ def toggle_teacher(user_id: int, db: Session = Depends(get_db), _=Depends(get_ad
 @router.get("/students")
 def get_all_students(db: Session = Depends(get_db), _=Depends(get_admin)):
     students = db.query(User).filter(User.role == UserRole.student).all()
+    # counts EK-EK query me nahi — 2 GROUP BY queries se (warna 2000 students = 4000 queries)
+    dpp_counts = dict(db.query(DPPSubmission.student_id, func.count(DPPSubmission.id))
+                      .group_by(DPPSubmission.student_id).all())
+    test_counts = dict(db.query(TestSubmission.student_id, func.count(TestSubmission.id))
+                       .group_by(TestSubmission.student_id).all())
     result = []
     for s in students:
         sp = s.student_profile
         if sp:
-            dpp_submitted  = db.query(DPPSubmission).filter(DPPSubmission.student_id == sp.id).count()
-            test_attempted = db.query(TestSubmission).filter(TestSubmission.student_id == sp.id).count()
             result.append({
                 "id": s.id,
                 "profile_id": sp.id,
@@ -381,8 +384,8 @@ def get_all_students(db: Session = Depends(get_db), _=Depends(get_admin)):
                 "exam_stream": getattr(sp, "exam_stream", None),
                 "nios_ref": getattr(sp, "nios_ref", None),
                 "is_active": s.is_active,
-                "dpp_submitted": dpp_submitted,
-                "tests_attempted": test_attempted,
+                "dpp_submitted": dpp_counts.get(sp.id, 0),
+                "tests_attempted": test_counts.get(sp.id, 0),
             })
     return result
 
@@ -3240,20 +3243,27 @@ def whatsapp_send_welcome(payload: dict, db: Session = Depends(get_db), _=Depend
     payload = payload or {}
     template = (payload.get("template") or "").strip() or None
     resend = bool(payload.get("resend"))
+    after_id = int(payload.get("after_id") or 0)
+    limit = int(payload.get("limit") or 50)   # chhota batch -> koi timeout nahi
 
-    q = db.query(_SP).filter(_SP.phone.isnot(None))
+    total = None
     if payload.get("all_pending"):
+        q = db.query(_SP).filter(_SP.phone.isnot(None))
         if not resend:
             q = q.filter(_SP.welcome_sent_at.is_(None))
+        if after_id == 0:
+            total = q.count()
+        students = q.filter(_SP.id > after_id).order_by(_SP.id).limit(limit).all()
     else:
         ids = payload.get("profile_ids") or []
         if not ids:
             raise HTTPException(status_code=400, detail="No students selected")
-        q = q.filter(_SP.id.in_(ids))
-    students = q.limit(int(payload.get("limit") or 200)).all()
+        students = (db.query(_SP).filter(_SP.phone.isnot(None), _SP.id.in_(ids))
+                    .order_by(_SP.id).limit(limit).all())
 
-    sent, failed = 0, []
+    sent, failed, last_id = 0, [], after_id
     for sp in students:
+        last_id = sp.id
         # Admin ne jise chuna (ya jo pending hai) usko bhejo — source koi bhi ho.
         name = sp.user.name if sp.user else "Student"
         msg = W.build_message(name, sp.batch_name or "", sp.phone, template)
@@ -3265,6 +3275,7 @@ def whatsapp_send_welcome(payload: dict, db: Session = Depends(get_db), _=Depend
             failed.append({"name": name, "phone": sp.phone, "error": detail[:120]})
     db.commit()
     return {"sent": sent, "failed": len(failed), "errors": failed[:25],
+            "last_id": last_id, "has_more": len(students) == limit, "total": total,
             "message": f"{sent} message(s) sent, {len(failed)} failed."}
 
 @router.post("/whatsapp/test")
