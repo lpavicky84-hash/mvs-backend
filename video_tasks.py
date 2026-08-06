@@ -1842,7 +1842,7 @@ def vt_urgent(payload: dict = Body(...), db: Session = Depends(get_db),
                   streaming=(payload.get("streaming") or "").strip(),
                   deadline=dl,
                   submitted_link=link, submitted_at=(now if link else None),
-                  on_time=((dl is None or now <= dl) if link else None),
+                  on_time=None,
                   status=("submitted" if link else "assigned"),
                   proposed_by="teacher", proposal_ok="approved", reviewed=False)
     db.add(t)
@@ -2235,6 +2235,8 @@ def vt_post_youtube_link(task_id: int, payload: dict = Body(...),
     t.yt_video_id = vid
     if t.status != "uploaded":
         t.status = "uploaded"
+        if (getattr(t, "kind", "") or "") == "urgent" and t.deadline:
+            t.on_time = (_now_ist() <= t.deadline)
         _hist_add(t, "uploaded", "YouTube link posted")
     got = _yt_fetch_views([vid], _yt_get_key(db))
     if vid in got:
