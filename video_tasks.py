@@ -161,6 +161,13 @@ ONE_SHOT_DEADLINE = "2026-09-10T23:59"     # saare One Shot chapters ki deadline
 RAPID_REVISION_DEADLINE = "2026-09-30T23:59"  # Rapid Revision (per subject) deadline
 
 # normal task filter (special One Shot / Rapid Revision tasks lists/stats se bahar)
+def _now_ist():
+    # Railway server UTC pe chalta hai; portal IST me dikhana/compute karna hai.
+    # Deadlines user-entered (IST-naive) hain — isliye "now" bhi IST-naive rakhte hain
+    # taaki submitted-time display, on-time credit aur countdown sab consistent rahein.
+    return datetime.utcnow() + timedelta(hours=5, minutes=30)
+
+
 NOT_SPECIAL = or_(VideoTask.kind == None, VideoTask.kind == "", VideoTask.kind == "normal")
 
 
@@ -174,7 +181,7 @@ def _hist(t):
 
 def _hist_add(t, status, note=""):
     h = _hist(t)
-    h.append({"s": status, "at": datetime.now().strftime("%Y-%m-%dT%H:%M"),
+    h.append({"s": status, "at": _now_ist().strftime("%Y-%m-%dT%H:%M"),
               "note": (note or "")[:300]})
     t.status_history = json.dumps(h)
 
@@ -191,7 +198,7 @@ def _hist_out(t):
             raw.append({"s": "submitted", "at": t.submitted_at.strftime("%Y-%m-%dT%H:%M"),
                         "note": "Video link submitted" + (" — on time" if t.on_time else (" — delayed" if t.on_time is False else ""))})
         if t.reviewed and t.status not in ("assigned", "submitted"):
-            raw.append({"s": t.status, "at": (t.updated_at or t.created_at or datetime.now()).strftime("%Y-%m-%dT%H:%M"),
+            raw.append({"s": t.status, "at": (t.updated_at or t.created_at or _now_ist()).strftime("%Y-%m-%dT%H:%M"),
                         "note": (t.review_remarks or "")[:300]})
     out = []
     for e in raw:
@@ -792,7 +799,7 @@ def _vt_sweep(db):
 
 
 def _vt_sweep_inner(db):
-    now = datetime.now()
+    now = _now_ist()
     acts = db.query(VideoTask).filter(VideoTask.status == "assigned").all()
     changed = False
     for t in acts:
@@ -820,7 +827,7 @@ def _vt_sweep_inner(db):
 
 
 def _task_out(db, t, with_thumb=True):
-    now = datetime.now()
+    now = _now_ist()
     secs_left = int((t.deadline - now).total_seconds()) if t.deadline else None
     out = {
         "id": t.id, "title": t.title, "teacher_id": t.teacher_id,
@@ -1118,7 +1125,7 @@ def vt_admin_stats(db: Session = Depends(get_db), _=Depends(get_admin)):
     _vt_sweep(db)
     tasks = (db.query(VideoTask)
              .filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL).all())
-    now = datetime.now()
+    now = _now_ist()
     total = len(tasks)
     done = sum(1 for t in tasks if t.submitted_at)
     pending = sum(1 for t in tasks if t.status == "assigned")
@@ -1183,7 +1190,7 @@ def vt_review(task_id: int, payload: dict = Body(...),
         t.review_remarks = remarks
         # Urgent video: on-time = teacher ki di hui deadline tak UPLOAD hua ya nahi
         if action == "uploaded" and (getattr(t, "kind", "") or "") == "urgent" and t.deadline:
-            t.on_time = (datetime.now() <= t.deadline)
+            t.on_time = (_now_ist() <= t.deadline)
         label = {"approved": "Approved", "editing_soon": "Editing Soon",
                  "editing_done": "Editing Done", "uploaded": "Uploaded"}[action]
         _hist_add(t, action, remarks)
@@ -1675,7 +1682,7 @@ def vt_admin_seen(task_id: int, db: Session = Depends(get_db), _=Depends(get_adm
     t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
     if not t:
         raise HTTPException(404, "Task not found")
-    t.admin_seen_at = datetime.now()
+    t.admin_seen_at = _now_ist()
     db.commit()
     return {"ok": True}
 
@@ -1732,7 +1739,8 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
     tp = _get_tp(current_user, db)
     _ensure_special_teacher(db, tp)
     tasks = (db.query(VideoTask)
-             .filter(VideoTask.teacher_id == tp.id, NOT_SPECIAL)
+             .filter(VideoTask.teacher_id == tp.id,
+                     or_(NOT_SPECIAL, VideoTask.kind == "urgent"))
              .order_by(VideoTask.created_at.desc()).all())
     active = [t for t in tasks if t.status == "assigned" and t.proposal_ok != "pending"]
     active.sort(key=lambda t: t.deadline or datetime.max)
@@ -1740,7 +1748,7 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
     out = [_task_out(db, t) for t in active + rest]
     nxt = active[0] if active else None
     # teacher ke apne stats: kitni upload hui, pending, on-time, delayed + is mahine type-wise
-    now = datetime.now()
+    now = _now_ist()
     real = [t for t in tasks if t.proposal_ok != "pending"]
     subs = [t for t in real if t.submitted_at]
     month_type = {}
@@ -1827,13 +1835,14 @@ def vt_urgent(payload: dict = Body(...), db: Session = Depends(get_db),
     cid = payload.get("channel_id")
     ch = db.query(VideoChannel).filter(VideoChannel.id == int(cid)).first() if cid else None
     dl = _parse_deadline(payload.get("deadline"))
-    now = datetime.now()
+    now = _now_ist()
     t = VideoTask(teacher_id=tp.id, title=title, kind="urgent",
                   channel_id=ch.id if ch else None, channel_name=ch.name if ch else "",
                   video_type=(payload.get("video_type") or "").strip(),
                   streaming=(payload.get("streaming") or "").strip(),
                   deadline=dl,
                   submitted_link=link, submitted_at=(now if link else None),
+                  on_time=((dl is None or now <= dl) if link else None),
                   status=("submitted" if link else "assigned"),
                   proposed_by="teacher", proposal_ok="approved", reviewed=False)
     db.add(t)
@@ -1863,7 +1872,7 @@ def vt_submit(task_id: int, payload: dict = Body(...), db: Session = Depends(get
     link = (payload.get("link") or "").strip()
     if not link:
         raise HTTPException(400, "Please paste the drive link of your video")
-    now = datetime.now()
+    now = _now_ist()
     t.submitted_link = link
     t.submitted_at = now
     t.status = "submitted"
@@ -1907,7 +1916,7 @@ def vt_chapter_link(task_id: int, payload: dict = Body(...), db: Session = Depen
     if not row:
         raise HTTPException(404, "Chapter not found in this task")
     link = (payload.get("link") or "").strip()
-    now = datetime.now()
+    now = _now_ist()
     had_link = bool((row.link or "").strip())
     # v91: blank link = REMOVE karna allowed hai (galat/test link hatane ke liye);
     # existing link pe naya link = UPDATE bhi allowed hai.

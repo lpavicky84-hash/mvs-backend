@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- MVS Portal v179 -->
+<!-- MVS Portal v180 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -8882,7 +8882,7 @@ async function loadTVTasks(){
         ?`<div class="vt-meta" style="color:#b91c1c">Sent back for reshoot${t.review_remarks?`: ${esc(t.review_remarks)}`:''} — new deadline above. Reshoot #${t.reject_count}</div>`:'';
       const propNote=(t.proposal_ok==='pending')?`<span class="vt-pill proposal">Pending Approval</span>`:'';
       return `<div class="vt-card st-${t.status}">${_vtThumb(t,'t')}<div class="vt-body">
-        <div class="vt-chips">${propNote}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
+        <div class="vt-chips">${propNote}${t.kind==='urgent'?`<span class="vt-pill" style="background:rgba(220,38,38,.15);color:#dc2626;font-weight:800">${ic('alert')} URGENT</span>`:''}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
         <div class="vt-title">${esc(t.title)}</div>
         <div class="vt-meta">
           ${t.deadline_nice?`<span>${ic('clock')} Deadline: <b>${esc(t.deadline_nice)}</b></span>`:''}
@@ -8904,7 +8904,9 @@ async function loadTVTasks(){
     const fSpec=spec.filter(t=>(!_tvtSpecSub||t.subject===_tvtSpecSub)&&(!_tvtSpecKind||t.kind===_tvtSpecKind)&&(!_tvtSpecCls||t.cls===_tvtSpecCls));
     const subjSpec=spec.filter(t=>(!_tvtSpecSub||t.subject===_tvtSpecSub)&&(!_tvtSpecCls||t.cls===_tvtSpecCls));
     let spD=0,spT=0; subjSpec.forEach(t=>{spD+=t.done||0;spT+=t.total||0});
-    const fTasks=_tvtSpecSub?tasks.filter(t=>!t.subject||t.subject===_tvtSpecSub):tasks;
+    const urgentT=tasks.filter(t=>t.kind==='urgent');
+    const normalT=tasks.filter(t=>t.kind!=='urgent');
+    const fTasks=_tvtSpecSub?normalT.filter(t=>!t.subject||t.subject===_tvtSpecSub):normalT;
     // v91: jab tak teacher ek card pe click na kare, neeche ka data hidden rahe —
     // dono cards halki blink ke saath "click here" signal dete hain.
     const showTasks=(_tvtView==='tasks'), showProj=(_tvtView==='projects');
@@ -8945,6 +8947,8 @@ async function loadTVTasks(){
         <button class="btn btn-gold" onclick="openTVTUrgent()">${ic('alert')} Urgent Video</button>
         <span style="font-size:.74rem;color:var(--text-muted)">Have a video idea? Propose it. Something urgent? Submit it directly — no approval needed.</span>
       </div>
+      ${urgentT.length?`<div class="vtm-sec-cap" style="border-left-color:#dc2626">Urgent Videos · submitted directly to production</div>
+      <div class="vt-grid" style="margin-bottom:18px">${urgentT.map(card).join('')}</div>`:''}
       <div class="card vv-card" style="margin-bottom:16px"><div class="card-header" style="cursor:pointer;user-select:none" onclick="_tvtVvToggle()"><h3>${ic('chart')} My Video Performance <span style="font-size:.7rem;font-weight:600;color:var(--text-muted)">— real-time YouTube views</span></h3><span class="vt-os-chev" id="t-vv-chev">${ic('chev-down')}</span></div><div class="card-body" id="t-vv-body" style="display:none"><div id="t-vv-wrap"></div></div></div>
       <div class="card vv-card" style="margin-bottom:16px"><div class="card-header" style="cursor:pointer;user-select:none" onclick="_tvtTgToggle()"><h3>${ic('clipboard')} My Monthly Targets <span style="font-size:.7rem;font-weight:600;color:var(--text-muted)">— my progress this month</span></h3><span class="vt-os-chev" id="t-tg-chev">${ic('chev-down')}</span></div><div class="card-body" id="t-tg-body" style="display:none"><div id="t-tg-wrap"></div></div></div>
       ${filterBar}
@@ -9146,7 +9150,7 @@ function _vtPill(t,blink,who){
   // teacher side: upload hone tak status blink karta rahe
   const bl=(blink&&t.status!=='uploaded'&&t.proposal_ok!=='pending')?' blink':'';
   let extra='';
-  if(t.status==='submitted') extra=` <span class="vt-pill ${t.on_time?'ontime':'delayed'}${bl}">${t.on_time?'On Time':'Delayed'}</span>`;
+  if(t.status==='submitted'&&t.on_time!=null) extra=` <span class="vt-pill ${t.on_time?'ontime':'delayed'}${bl}">${t.on_time?'On Time':'Delayed'}</span>`;
   const oc=who?` onclick="vtStatusOpen(${t.id},'${who}',event)" title="Tap for full status history"`:''; 
   return `<span class="vt-pill ${cls}${bl}${who?' lnk':''}"${oc}>${lbl}</span>${extra}`;
 }
