@@ -291,6 +291,20 @@ def _serve_app_js():
         return FileResponse(_APP_JS_FILE, media_type="application/javascript")
     return JSONResponse(status_code=404, content={"detail": "mvs_app.js not found"})
 
+
+# ===== R2 TEST (temporary — verify karne ke baad hata denge) =====
+@app.get("/r2-test")
+def _r2_test():
+    try:
+        import r2_storage as R2
+        if not R2.is_configured():
+            return {"ok": False, "detail": "R2 env vars set nahi hain (R2_ACCOUNT_ID/ACCESS_KEY/SECRET/BUCKET)."}
+        url = R2.upload_bytes("test/hello.txt", b"MVS Class Manager -> R2 working!", "text/plain")
+        return {"ok": True, "url": url,
+                "message": "R2 upload OK. Upar wali 'url' browser me kholo -> text dikhna chahiye."}
+    except Exception as e:
+        return {"ok": False, "detail": str(e)[:400]}
+
 @app.get("/")
 def root():
     if os.path.exists(_PORTAL_FILE):
