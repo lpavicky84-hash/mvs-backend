@@ -192,11 +192,20 @@ app = FastAPI(
 # though the server is up. This handler converts every crash into a readable
 # JSON error so the real message always reaches the user.
 from fastapi.responses import JSONResponse
+import logging as _logging
+
+# Per-request access logs (har ping/200 OK) band -> Railway ka 500 logs/sec flood + CPU kam.
+_logging.getLogger("uvicorn.access").setLevel(_logging.WARNING)
+_mvs_log = _logging.getLogger("mvs")
 
 @app.exception_handler(Exception)
 async def _unhandled_exception_handler(request, exc):
-    import traceback
-    traceback.print_exc()
+    # EK concise line — poora 30-line traceback NAHI (warna pool-timeout pe log flood ho jaata hai).
+    try:
+        _mvs_log.error("ReqError %s %s -> %s: %s", request.method,
+                       request.url.path, type(exc).__name__, str(exc)[:200])
+    except Exception:
+        pass
     return JSONResponse(
         status_code=500,
         content={"detail": "Something went wrong on the server — please try again in a moment. If it keeps happening, contact support."},
