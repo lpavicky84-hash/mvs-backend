@@ -1320,7 +1320,7 @@ async def admin_upload_material(
         class_name=class_name.strip(), chapter=chapter.strip(),
         material_type=material_type.strip(), title=(title.strip() or file.filename),
         category=(category.strip() or None), filename=file.filename,
-        content_b64=base64.b64encode(raw).decode("ascii"),
+        content_b64=__import__("r2_storage").store_file_value(__import__("r2_storage").new_key("materials", file.filename), raw, file.content_type or "application/pdf"),
         duration_min=(duration_min or None)
     )
     db.add(m); db.commit(); db.refresh(m)
@@ -1344,8 +1344,7 @@ def admin_download(mid: int, db: Session = Depends(get_db), _=Depends(get_admin)
     from models import Material
     m = db.query(Material).filter(Material.id == mid).first()
     if not m: raise HTTPException(status_code=404, detail="Not found")
-    return Response(content=base64.b64decode(m.content_b64), media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="{m.filename or "file.pdf"}"'})
+    return __import__("r2_storage").file_response(m.content_b64, "application/pdf", m.filename or "file.pdf", True)
 
 @router.get("/pending-materials")
 def admin_pending_materials(db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -1732,11 +1731,8 @@ def admin_clear_tt(class_level: str = "", db: Session = Depends(get_db), _=Depen
 
 # ===== PHOTOS + STUDENT LIST + BULK-BY-PHONE =====
 def _img_response(b64):
-    import base64
-    from fastapi import Response
-    if not b64:
-        raise HTTPException(status_code=404, detail="No photo")
-    return Response(content=base64.b64decode(b64), media_type="image/jpeg")
+    import r2_storage as R2
+    return R2.photo_response(b64)
 
 @router.post("/teacher/{tid}/photo")
 async def admin_upload_teacher_photo(tid: int, file: UploadFile = File(...), db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -1748,7 +1744,8 @@ async def admin_upload_teacher_photo(tid: int, file: UploadFile = File(...), db:
     raw = await file.read()
     if len(raw) > 5 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Photo is larger than 5MB")
-    tp.photo_b64 = base64.b64encode(raw).decode("ascii")
+    import r2_storage as R2
+    tp.photo_b64 = R2.store_photo_value("photos/teacher/%d.jpg" % tid, raw, file.content_type)
     db.commit()
     return {"message": "Photo uploaded!"}
 
@@ -2453,7 +2450,7 @@ async def admin_upload_questionbank(
         # NO compression — stored as-is. Cap to keep MySQL packet safe.
         if len(raw) > 30 * 1024 * 1024:
             raise HTTPException(status_code=400, detail="File is larger than 30MB. Please use the link option for very large files.")
-        content_b64 = base64.b64encode(raw).decode("ascii")
+        content_b64 = __import__("r2_storage").store_file_value(__import__("r2_storage").new_key("materials", file.filename), raw, file.content_type or "application/pdf")
         fname = file.filename
     elif not link:
         raise HTTPException(status_code=400, detail="Provide a PDF file or a link.")

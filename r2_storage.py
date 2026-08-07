@@ -77,3 +77,69 @@ def delete_key(key):
         return True
     except Exception:
         return False
+
+
+def store_photo_value(key, raw, content_type="image/jpeg"):
+    """Photo ko R2 par upload karke URL return karo (photo_b64 field me yehi URL
+    save hoga). R2 na ho ya fail ho -> base64 string (purana tarika, fallback)."""
+    import base64 as _b64
+    if is_configured():
+        try:
+            return upload_bytes(key, raw, content_type or "image/jpeg")
+        except Exception:
+            pass
+    return _b64.b64encode(raw).decode("ascii")
+
+
+def photo_response(value):
+    """photo_b64 field ka value -> image response. 'http' se shuru (R2 URL) ho to
+    R2 par redirect (free egress), warna base64 decode karke serve."""
+    from fastapi import HTTPException
+    if not value:
+        raise HTTPException(status_code=404, detail="No photo")
+    if isinstance(value, str) and value.startswith("http"):
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=value, status_code=302)
+    import base64 as _b64
+    from fastapi import Response
+    return Response(content=_b64.b64decode(value), media_type="image/jpeg")
+
+
+def new_key(prefix, filename=""):
+    """Unique R2 key banao, e.g. 'materials/ab12cd34ef56.pdf'."""
+    import uuid
+    ext = ""
+    if filename and "." in str(filename):
+        ext = "." + str(filename).rsplit(".", 1)[-1].lower()[:8]
+    return "%s/%s%s" % (str(prefix).strip("/"), uuid.uuid4().hex[:16], ext)
+
+
+def store_file_value(key, raw, content_type="application/octet-stream"):
+    """File R2 par upload -> URL return (DB field me yehi save hoga). R2 na ho/fail
+    ho -> base64 string (purana tarika, fallback)."""
+    import base64 as _b64
+    if is_configured():
+        try:
+            return upload_bytes(key, raw, content_type or "application/octet-stream")
+        except Exception:
+            pass
+    return _b64.b64encode(raw).decode("ascii")
+
+
+def file_response(value, media_type="application/octet-stream", filename=None, download=True):
+    """DB field ka value -> file response. R2 URL ho to redirect (free egress),
+    warna base64 decode karke serve (Content-Disposition ke saath)."""
+    from fastapi import HTTPException
+    if not value:
+        raise HTTPException(status_code=404, detail="Not found")
+    if isinstance(value, str) and value.startswith("http"):
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=value, status_code=302)
+    import base64 as _b64
+    from fastapi import Response
+    v = value.split(",")[-1] if isinstance(value, str) else value
+    headers = {}
+    if filename:
+        disp = "attachment" if download else "inline"
+        headers["Content-Disposition"] = '%s; filename="%s"' % (disp, filename)
+    return Response(content=_b64.b64decode(v), media_type=media_type, headers=headers)

@@ -1259,9 +1259,7 @@ def teacher_download(mid: int, db: Session = Depends(get_db), current_user=Depen
     from models import Material
     m = db.query(Material).filter(Material.id == mid).first()
     if not m: raise HTTPException(status_code=404, detail="Not found")
-    data = base64.b64decode(m.content_b64)
-    return Response(content=data, media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="{m.filename or "file.pdf"}"'})
+    return __import__("r2_storage").file_response(m.content_b64, "application/pdf", m.filename or "file.pdf", True)
 
 @router.delete("/material/{mid}")
 def delete_material(mid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
@@ -2049,7 +2047,7 @@ def teacher_my_photo(db: Session = Depends(get_db), current_user=Depends(get_tea
     tp = get_teacher_profile(current_user, db)
     if not tp.photo_b64:
         raise HTTPException(status_code=404, detail="No photo")
-    return Response(content=base64.b64decode(tp.photo_b64), media_type="image/jpeg")
+    return __import__("r2_storage").photo_response(tp.photo_b64)
 
 @router.get("/teacher/{tid}/photo")
 def teacher_peer_photo(tid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
@@ -2059,7 +2057,7 @@ def teacher_peer_photo(tid: int, db: Session = Depends(get_db), current_user=Dep
     tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
     if not tp or not tp.photo_b64:
         raise HTTPException(status_code=404, detail="No photo")
-    return Response(content=base64.b64decode(tp.photo_b64), media_type="image/jpeg")
+    return __import__("r2_storage").photo_response(tp.photo_b64)
 
 @router.get("/student/{sid}/photo")
 def teacher_student_photo(sid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
@@ -2069,7 +2067,7 @@ def teacher_student_photo(sid: int, db: Session = Depends(get_db), current_user=
     sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
     if not sp or not sp.photo_b64:
         raise HTTPException(status_code=404, detail="No photo")
-    return Response(content=base64.b64decode(sp.photo_b64), media_type="image/jpeg")
+    return __import__("r2_storage").photo_response(sp.photo_b64)
 
 def _subj_key(name):
     """Subject naam ko compare karne layak banata hai: extra space, case aur

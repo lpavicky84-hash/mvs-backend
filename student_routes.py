@@ -893,8 +893,7 @@ def student_material_view(mid: int, db: Session = Depends(get_db), current_user=
         raise HTTPException(status_code=404, detail="Not found")
     sp = get_student_profile(current_user, db)
     _log_material(db, mid, sp.id, "view")
-    return Response(content=base64.b64decode(m.content_b64), media_type="application/pdf",
-                    headers={"Content-Disposition": f'inline; filename="{m.filename or "file.pdf"}"'})
+    return __import__("r2_storage").file_response(m.content_b64, "application/pdf", m.filename or "file.pdf", False)
 
 @router.get("/materials-v2")
 def student_materials_v2(db: Session = Depends(get_db), current_user=Depends(get_student)):
@@ -938,9 +937,7 @@ def student_download(mid: int, db: Session = Depends(get_db), current_user=Depen
     if not m: raise HTTPException(status_code=404, detail="Not found")
     sp = get_student_profile(current_user, db)
     _log_material(db, mid, sp.id, "download")
-    data = base64.b64decode(m.content_b64)
-    return Response(content=data, media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="{m.filename or "file.pdf"}"'})
+    return __import__("r2_storage").file_response(m.content_b64, "application/pdf", m.filename or "file.pdf", True)
 
 # ===== STUDENT: DPP / TEST LIST (download + submit) =====
 def _my_submission(db, sp, parent_id):
@@ -1005,7 +1002,7 @@ async def submit_answer(
         teacher_id=parent.teacher_id, teacher_name=parent.teacher_name,
         subject=parent.subject, chapter=parent.chapter,
         material_type="answer", title=f"{current_user.name} - {parent.title}",
-        filename=file.filename, content_b64=base64.b64encode(raw).decode("ascii"),
+        filename=file.filename, content_b64=__import__("r2_storage").store_file_value(__import__("r2_storage").new_key("answers", file.filename), raw, "application/pdf"),
         parent_id=parent_id, student_id=sp.id, student_name=current_user.name
     )
     db.add(m); db.commit(); db.refresh(m)
