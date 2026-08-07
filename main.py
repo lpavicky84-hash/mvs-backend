@@ -328,6 +328,50 @@ def _r2_migrate_batch(key: str = "", kind: str = "", after_id: int = 0, limit: i
         db.close()
 
 
+@app.get("/r2-rewrite")
+def _r2_rewrite(key: str = "", old: str = "", new: str = ""):
+    """Stored R2 URLs ka host badlo (r2.dev -> cdn.mvsfoundation.in). Sirf string
+    swap, koi file dobara upload nahi. Fast bulk UPDATE."""
+    if not _r2_mig_secret() or key != _r2_mig_secret():
+        return JSONResponse(status_code=403, content={"error": "bad key"})
+    old = (old or "").strip().rstrip("/")
+    new = (new or "").strip().rstrip("/")
+    if not old or not new or not old.startswith("http") or not new.startswith("http"):
+        return JSONResponse(status_code=400, content={"error": "old aur new dono full https URL do"})
+    from database import SessionLocal
+    from sqlalchemy import func, update
+    db = SessionLocal()
+    try:
+        from models import (StudentProfile, TeacherProfile, Material, StudioReport,
+                            Lecture, VideoTask, Doubt, DppAnswer)
+        targets = [
+            (StudentProfile, "photo_b64"), (TeacherProfile, "photo_b64"),
+            (Material, "content_b64"), (StudioReport, "notes_file_b64"),
+            (Lecture, "pdf_b64"), (Lecture, "dpp_b64"), (VideoTask, "thumbnail_b64"),
+            (Doubt, "image_b64"), (Doubt, "audio_b64"),
+            (Doubt, "answer_audio_b64"), (Doubt, "answer_attach_b64"),
+            (DppAnswer, "answer_b64"),
+        ]
+        out = {}
+        total = 0
+        for Model, field in targets:
+            col = getattr(Model, field)
+            try:
+                r = db.execute(update(Model).where(col.like(old + "%"))
+                               .values({field: func.replace(col, old, new)}))
+                out["%s.%s" % (Model.__name__, field)] = r.rowcount
+                total += r.rowcount or 0
+            except Exception as e:
+                out["%s.%s" % (Model.__name__, field)] = "err: " + str(e)[:80]
+        db.commit()
+        return {"ok": True, "total_rewritten": total, "detail": out, "old": old, "new": new}
+    except Exception as e:
+        db.rollback()
+        return JSONResponse(status_code=500, content={"error": str(e)[:300]})
+    finally:
+        db.close()
+
+
 @app.get("/r2-count")
 def _r2_count(key: str = ""):
     if not _r2_mig_secret() or key != _r2_mig_secret():
