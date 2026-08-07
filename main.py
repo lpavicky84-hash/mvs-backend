@@ -211,6 +211,31 @@ async def _unhandled_exception_handler(request, exc):
         content={"detail": "Something went wrong on the server — please try again in a moment. If it keeps happening, contact support."},
     )
 
+# ===== DB POOL HEALTH: pre-ping on checkout (database.py ke bina bhi kaam karta hai) =====
+# Railway MySQL idle connections drop kar deta hai. Bina pre-ping, pool DEAD
+# connections serve karta hai -> query hang -> "QueuePool limit reached, timeout"
+# -> login/ping tak fail. Har checkout par SELECT 1: dead connection discard karke
+# fresh deta hai -> pool hamesha healthy. (= pool_pre_ping=True ka effect.)
+try:
+    from sqlalchemy import event as _sa_event, exc as _sa_exc
+    from database import engine as _db_engine
+
+    @_sa_event.listens_for(_db_engine, "checkout")
+    def _mvs_pool_checkout_ping(dbapi_conn, conn_record, conn_proxy):
+        try:
+            cur = dbapi_conn.cursor()
+            cur.execute("SELECT 1")
+            cur.close()
+        except Exception:
+            # dead connection -> pool ko batao discard karke naya banaye
+            raise _sa_exc.DisconnectionError("stale DB connection - reconnecting")
+    _mvs_log.warning("DB pool pre-ping (checkout) enabled")
+except Exception as _e:
+    try:
+        _mvs_log.error("pool pre-ping setup failed: %s", _e)
+    except Exception:
+        pass
+
 # ===== CORS =====
 # allow_credentials must be False when using "*" so that local HTML files
 # (file:// origin = "null") and any browser can connect without CORS errors.
