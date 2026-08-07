@@ -8762,7 +8762,12 @@ async function warnTeacher(id,name){
   catch(e){ toast(e.message,true); }
 }
 let _luTab='live';
-function luTab(t){ _luTab=t; if(window._lastLive) _paintLive(window._lastLive); else loadALive(); }
+async function luTab(t){ _luTab=t;
+  if(t==='offline'||t==='never'){
+    try{ const f=await api('/api/admin/live-users?full=1'); window._luFull={offline:f.offline||[],never:f.never||[]}; if(window._lastLive&&f.counts) window._lastLive.counts=f.counts; }catch(e){}
+  }
+  if(window._lastLive) _paintLive(window._lastLive); else loadALive();
+}
 async function loadALive(){
   const el=document.getElementById('a-live-content');
   if(!el.dataset.painted) softSpin(el);
@@ -8784,12 +8789,12 @@ function _luSection(title,list,tab,emptyMsg){
 function _paintLive(d){
   const el=document.getElementById('a-live-content'); if(!el) return;
   const c=d.counts||{};
-  const list=(d[_luTab]||[]);
+  const list=(_luTab==='live')?(d.live||[]):((window._luFull&&window._luFull[_luTab])||[]);
   const students=list.filter(u=>u.role==='student');
   const teachers=list.filter(u=>u.role==='teacher');
   const admins=list.filter(u=>u.role==='admin');
   const cards=`<div class="stats-grid">${statCard('Online Now',c.live||0,'user','green')}${statCard('Students Live',c.students_live||0,'users','indigo')}${statCard('Teachers Live',c.teachers_live||0,'user','teal')}${statCard('Admins Live',c.admins_live||0,'shield','amber')}${statCard('Never Logged In',c.never||0,'shield','amber',"luTab('never')")}</div>`;
-  const tabs=`<div class="tt-tabs"><button class="tt-tab ${_luTab==='live'?'active':''}" onclick="luTab('live')">Online (${(d.live||[]).length})</button><button class="tt-tab ${_luTab==='offline'?'active':''}" onclick="luTab('offline')">Recent (${(d.offline||[]).length})</button><button class="tt-tab ${_luTab==='never'?'active':''}" onclick="luTab('never')">Never Logged In (${(d.never||[]).length})</button></div>`;
+  const tabs=`<div class="tt-tabs"><button class="tt-tab ${_luTab==='live'?'active':''}" onclick="luTab('live')">Online (${c.live||0})</button><button class="tt-tab ${_luTab==='offline'?'active':''}" onclick="luTab('offline')">Recent (${c.offline||0})</button><button class="tt-tab ${_luTab==='never'?'active':''}" onclick="luTab('never')">Never Logged In (${c.never||0})</button></div>`;
   const em={live:['No admins online right now.','No teachers online right now.','No students online right now.'],
             offline:['No recent admin sessions.','No recent teacher sessions.','No recent student sessions.'],
             never:['\u2705 All admins have logged in.','\u2705 All teachers have logged in.','\u2705 All students have logged in.']}[_luTab];

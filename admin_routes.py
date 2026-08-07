@@ -2561,11 +2561,10 @@ LIVE_WINDOW_MIN = 3
 
 
 @router.get("/live-users")
-def admin_live_users(db: Session = Depends(get_db), _=Depends(get_admin)):
-    """Who is online right now (students AND teachers), which section they are on,
-    how many times each person has logged in, plus who has never logged in - so
-    the admin can call the inactive ones. FAST: GROUP BY + sirf phone column
-    (saari sessions/photos load nahi -> connection jaldi release, RAM kam)."""
+def admin_live_users(full: int = 0, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Who is online right now + counts. FAST: GROUP BY + sirf phone column.
+    Auto-refresh (har 15s) sirf LIVE list + counts laata hai; poori never/offline
+    list sirf tab click par (full=1) -> egress + memory churn kam."""
     from models import UserSession, User, UserRole, StudentProfile, TeacherProfile
     now = datetime.now()
     cutoff = now - timedelta(minutes=LIVE_WINDOW_MIN)
@@ -2583,7 +2582,7 @@ def admin_live_users(db: Session = Depends(get_db), _=Depends(get_admin)):
 
     users = db.query(User).filter(User.role.in_([UserRole.student, UserRole.teacher, UserRole.admin])).all()
 
-    # phones — sirf phone column (PHOTO blob load nahi -> RAM + speed)
+    # phones — sirf phone column (PHOTO blob load nahi)
     phones = {}
     for uid, ph in db.query(StudentProfile.user_id, StudentProfile.phone).all():
         phones[uid] = ph
@@ -2591,13 +2590,16 @@ def admin_live_users(db: Session = Depends(get_db), _=Depends(get_admin)):
         phones.setdefault(uid, ph)
 
     live, offline, never = [], [], []
+    n_never = n_offline = 0
     for u in users:
         role = getattr(u.role, "value", str(u.role))
         d = by_user.get(u.id)
         base = {"user_id": u.id, "name": u.name, "code": u.user_id, "role": role,
                 "phone": phones.get(u.id) or "", "logins": (d["count"] if d else 0)}
         if not d or not d["last"]:
-            never.append(base)
+            n_never += 1
+            if full:
+                never.append(base)
             continue
         base["last_seen"] = str(d["last"])[:16]
         base["last_seen_min"] = int((now - d["last"]).total_seconds() // 60)
@@ -2607,16 +2609,19 @@ def admin_live_users(db: Session = Depends(get_db), _=Depends(get_admin)):
             base["duration_min"] = max(0, int((now - (s.started_at or s.last_seen)).total_seconds() // 60))
             live.append(base)
         else:
-            offline.append(base)
+            n_offline += 1
+            if full:
+                offline.append(base)
 
     live.sort(key=lambda x: -x["duration_min"])
-    offline.sort(key=lambda x: x["last_seen_min"])
-    never.sort(key=lambda x: x["name"])
-    return {"live": live, "offline": offline, "never": never,
-            "counts": {"live": len(live), "students_live": sum(1 for x in live if x["role"] == "student"),
-                       "teachers_live": sum(1 for x in live if x["role"] == "teacher"),
-                       "admins_live": sum(1 for x in live if x["role"] == "admin"),
-                       "never": len(never)}}
+    counts = {"live": len(live), "students_live": sum(1 for x in live if x["role"] == "student"),
+              "teachers_live": sum(1 for x in live if x["role"] == "teacher"),
+              "admins_live": sum(1 for x in live if x["role"] == "admin"),
+              "never": n_never, "offline": n_offline}
+    if full:
+        offline.sort(key=lambda x: x["last_seen_min"])
+        never.sort(key=lambda x: x["name"])
+    return {"live": live, "offline": offline, "never": never, "counts": counts}
 
 
 @router.get("/user/{user_id}/sessions")
