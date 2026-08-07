@@ -1522,7 +1522,8 @@ def _rank_rows(db):
     from models import StudentProfile, User
     cfg = _cfg(db)
     rows = []
-    profiles = db.query(StudentProfile).all()
+    from sqlalchemy.orm import defer as _defer
+    profiles = db.query(StudentProfile).options(_defer(StudentProfile.photo_b64)).all()
     users = {u.id: u for u in db.query(User).all()}
     for sp in profiles:
         cl, codes, _un = _student_codes(db, sp)
@@ -1592,7 +1593,9 @@ def syl_teacher_ranks(db: Session = Depends(get_db), user=Depends(get_teacher)):
     tsubs = {str(x).strip().lower() for x in (tp.subjects or []) if str(x).strip()} if tp else set()
     mine_ids = set()
     if tsubs:
-        for s in db.query(StudentProfile).all():
+        from sqlalchemy.orm import load_only as _lo
+        for s in db.query(StudentProfile).options(
+                _lo(StudentProfile.id, StudentProfile.subjects)).all():
             ss = {str(x).strip().lower() for x in (s.subjects or []) if str(x).strip()}
             if tsubs & ss:
                 mine_ids.add(s.id)

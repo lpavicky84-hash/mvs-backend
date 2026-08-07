@@ -138,6 +138,50 @@ def ensure_columns():
             pass  # column already exists — safe to ignore
 ensure_columns()
 
+# ===== PERFORMANCE INDEXES (scale ke liye — 4500 se lakhs students) =====
+# Hot filter/join columns pe indexes. Bina index ke MySQL poora table scan karta hai
+# (4500 pe theek, par lakhs pe bahut slow). Index lookups table bade hone par bhi fast
+# rehte hain — isliye students badhne / bulk upload / zyada live users pe performance
+# girti nahi. ensure_columns wale hi safe pattern me: index pehle se ho to MySQL error
+# deta hai jo yahan silently ignore ho jaata hai (idempotent).
+def ensure_indexes():
+    idx = [
+        # Students — list filters + counts + portal sync ke hot columns
+        "CREATE INDEX ix_sp_class_level ON student_profiles (class_level)",
+        "CREATE INDEX ix_sp_source ON student_profiles (source)",
+        "CREATE INDEX ix_sp_exam_session ON student_profiles (exam_session)",
+        "CREATE INDEX ix_sp_medium ON student_profiles (medium)",
+        "CREATE INDEX ix_sp_batch_name ON student_profiles (batch_name)",
+        "CREATE INDEX ix_sp_last_seen ON student_profiles (last_seen)",
+        "CREATE INDEX ix_sp_nios_ref ON student_profiles (nios_ref)",
+        "CREATE INDEX ix_sp_src_cls ON student_profiles (source, class_level)",
+        # Doubts — teacher/admin dashboards, status filters, sorting
+        "CREATE INDEX ix_doubt_teacher ON doubts (teacher_id)",
+        "CREATE INDEX ix_doubt_student ON doubts (student_id)",
+        "CREATE INDEX ix_doubt_status ON doubts (status)",
+        "CREATE INDEX ix_doubt_subject ON doubts (subject)",
+        "CREATE INDEX ix_doubt_created ON doubts (created_at)",
+        # Video tasks — Task Manager lists, proposals, per-teacher
+        "CREATE INDEX ix_vt_teacher ON video_tasks (teacher_id)",
+        "CREATE INDEX ix_vt_status ON video_tasks (status)",
+        "CREATE INDEX ix_vt_proposal_ok ON video_tasks (proposal_ok)",
+        "CREATE INDEX ix_vt_kind ON video_tasks (kind)",
+        "CREATE INDEX ix_vt_created ON video_tasks (created_at)",
+        # Lectures / materials — teacher reports + study material lookups
+        "CREATE INDEX ix_lecture_created ON lectures (created_at)",
+        "CREATE INDEX ix_material_teacher ON materials (teacher_id)",
+        "CREATE INDEX ix_material_subject ON materials (subject)",
+        "CREATE INDEX ix_material_type ON materials (material_type)",
+    ]
+    for s in idx:
+        try:
+            with engine.connect() as conn:
+                conn.execute(text(s))
+                conn.commit()
+        except Exception:
+            pass  # index already exists (ya column mismatch) — safe to ignore
+ensure_indexes()
+
 # ===== SEED AVAILABLE SUBJECTS (NIOS lists) — only if table empty =====
 def seed_subjects():
     from database import SessionLocal

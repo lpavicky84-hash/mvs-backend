@@ -121,7 +121,8 @@ def admin_dashboard(db: Session = Depends(get_db), _=Depends(get_admin)):
     # unresolved = jo resolved nahi, PLUS resolved par jinpe naya follow-up aaya (attention chahiye)
     # — bilkul subject-wise doubts section jaise, taaki dashboard aur section match karein.
     unresolved = 0
-    for d in db.query(Doubt).all():
+    from sqlalchemy.orm import load_only as _lo
+    for d in db.query(Doubt).options(_lo(Doubt.id, Doubt.status)).all():
         is_resolved = (getattr(d.status, "value", str(d.status)) == "resolved")
         if not is_resolved:
             unresolved += 1
@@ -1493,7 +1494,10 @@ def admin_student_counts(db: Session = Depends(get_db), _=Depends(get_admin)):
         t = _re.sub(r"\((?:class\s*)?\d+(?:th)?\)", " ", t, flags=_re.I)
         t = _re.sub(r"[^a-z0-9]+", " ", t.lower())
         return " ".join(t.split()).strip()
-    students = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all()
+    from sqlalchemy.orm import load_only
+    # sirf 2 columns load karo (poori row nahi) — lakhs students pe memory bahut kam
+    students = db.query(StudentProfile).options(
+        load_only(StudentProfile.class_level, StudentProfile.subjects)).all()
     code_map, class_map = {}, {}
     for a in db.query(AvailableSubject).all():
         code_map[(_sk(a.name), str(a.class_level or "").strip())] = a.code
@@ -1905,6 +1909,7 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
     FAST: portal students EK BAAR fetch, user_id max+counter se (i=1 scan nahi),
     collision pe savepoint-retry (batch kabhi fail na ho)."""
     from sqlalchemy.exc import IntegrityError
+    from ext_materials import pick_medium
     rows = payload.get("students", []) or []
     created, updated, skipped = 0, 0, 0
     duplicates = []
@@ -1944,8 +1949,9 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
                 _pc = str(_pst.get("class_level") or _pst.get("class") or "")
                 if _pc:
                     existing.class_level = _pc
-                if _pst.get("medium"):
-                    existing.medium = _pst["medium"]
+                _pmed = pick_medium(_pst)
+                if _pmed:
+                    existing.medium = _pmed
                 _rw = _pst.get("subjects") or []
                 _es = []
                 for _x in _rw:
@@ -1980,7 +1986,7 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
         if st:  # unlocked-students endpoint -> ye sab MVS Portal ke UNLOCKED students hain
             psrc = "mvs_portal"
             pcls = str(st.get("class_level") or st.get("class") or "") or None
-            pmed = st.get("medium") or None
+            pmed = pick_medium(st) or None
             _raw = st.get("subjects") or []
             _subs = []
             for _x in _raw:
@@ -2159,7 +2165,11 @@ def edit_student(sid: int, payload: dict, db: Session = Depends(get_db), _=Depen
         sp.batch_name = (payload.get("batch_name") or "").strip() or None
     if "medium" in payload:
         m = (payload.get("medium") or "").strip()
-        sp.medium = m if m in ("Hindi", "English") else None
+        # Sirf valid value aane par set karo. Blank/unknown aaye to medium ko
+        # chhedo mat — warna edit-save galti se medium uda deta hai, aur bina
+        # medium ke student ko sahi language ka study material nahi milta.
+        if m in ("Hindi", "English", "Both"):
+            sp.medium = m
     if "class_level" in payload:
         sp.class_level = (payload.get("class_level") or "").strip() or None
     if "subjects" in payload and isinstance(payload["subjects"], list):
@@ -2757,8 +2767,12 @@ def admin_doubts_overview(db: Session = Depends(get_db), _=Depends(get_admin)):
     how many are resolved, how many are still pending - and how long the oldest
     pending one has been waiting."""
     from models import Doubt, DoubtStatus, TeacherProfile
+    from sqlalchemy.orm import load_only as _lo
     now = datetime.now()
-    ds = db.query(Doubt).all()
+    # Sirf grouping ke columns load karo — image/audio/attachment base64 (har doubt me
+    # 4 blobs) load karne ki zaroorat nahi. Ye poori list par bahut RAM bachata hai.
+    ds = db.query(Doubt).options(_lo(Doubt.id, Doubt.subject, Doubt.status,
+                                     Doubt.created_at)).all()
     # Subject naam ko canonical karo — "PHYSICS"/"Physics"/"MATHEMATICS" ek hi card
     # banenge (case/spelling variant kabhi 2 subject nahi banega). Ek class 12 me
     # 2 Physics / 2 Maths ka bug yahi se aata tha.
@@ -3174,7 +3188,7 @@ def sync_students_with_portal(payload: dict = None, db: Session = Depends(get_db
     """MVS App students ko MVS Portal par check karke transfer — FAST (bulk map,
     koi per-student external call nahi) + batch-wise (progress). Cursor: after_id."""
     from models import StudentProfile as _SP
-    from ext_materials import _cfg
+    from ext_materials import _cfg, pick_medium
     url, key = _cfg()
     if not url or not key:
         raise HTTPException(status_code=503, detail="MVS Portal connection is not configured")
@@ -3207,8 +3221,9 @@ def sync_students_with_portal(payload: dict = None, db: Session = Depends(get_db
         _pc = str(st.get("class_level") or st.get("class") or "")
         if _pc:
             sp.class_level = _pc
-        if st.get("medium"):
-            sp.medium = st["medium"]
+        _pmed = pick_medium(st)
+        if _pmed:
+            sp.medium = _pmed
         _es = _clean_subs(st)
         if _es:
             sp.subjects = _SR.canon_list(_es, sp.class_level) if _SR else _es
@@ -3222,6 +3237,59 @@ def sync_students_with_portal(payload: dict = None, db: Session = Depends(get_db
                       "user_id": sp.user.user_id if sp.user else ""})
     db.commit()
     return {"checked": len(chunk), "moved": len(moved), "students": moved[:200],
+            "last_id": last_id, "has_more": len(chunk) == limit, "total": total}
+
+
+@router.post("/students/backfill-medium")
+def backfill_medium_from_portal(payload: dict = None, db: Session = Depends(get_db),
+                                _=Depends(get_admin)):
+    """Jin students ka MEDIUM khaali hai (chahe pehle se mvs_portal tagged ho — jinhe
+    normal Sync skip kar deta hai) unka medium MVS Portal se bharo. Pehle bulk map se
+    (fast, 1 external call), na mile to per-student single fetch (deep) se. Cursor: after_id.
+    Sirf medium set hota hai — baaki fields chhedte nahi."""
+    from models import StudentProfile as _SP
+    from ext_materials import _cfg, pick_medium, portal_fetch_student
+    url, key = _cfg()
+    if not url or not key:
+        raise HTTPException(status_code=503, detail="MVS Portal connection is not configured")
+    payload = payload or {}
+    after_id = int(payload.get("after_id") or 0)
+    limit = int(payload.get("limit") or 40)
+    deep = payload.get("deep", True)   # True = bulk map miss pe single fetch bhi karo
+    pmap = _portal_phone_map()         # cached — poore run me portal 1 baar (deep miss chhod ke)
+
+    empty = (_SP.medium.is_(None)) | (_SP.medium == "")
+    base = db.query(_SP).filter(empty, _SP.phone.isnot(None))
+    total = base.count() if after_id == 0 else None
+    chunk = base.filter(_SP.id > after_id).order_by(_SP.id).limit(limit).all()
+    filled, rows, last_id = 0, [], after_id
+    not_found, no_medium = 0, 0   # diagnostic: portal pe mila hi nahi / mila par medium khaali
+    for sp in chunk:
+        last_id = sp.id
+        ph = "".join(c for c in str(sp.phone or "") if c.isdigit())[-10:]
+        portal_st = pmap.get(ph)
+        found = bool(portal_st)
+        med = pick_medium(portal_st or {})
+        if not med and deep:
+            try:
+                st = portal_fetch_student(sp.phone)
+                if st:
+                    found = True
+                    med = st.get("medium") or ""
+            except Exception:
+                med = ""
+        if med:
+            sp.medium = med
+            filled += 1
+            rows.append({"name": sp.user.name if sp.user else "", "phone": sp.phone,
+                         "user_id": sp.user.user_id if sp.user else "", "medium": med})
+        elif not found:
+            not_found += 1
+        else:
+            no_medium += 1
+    db.commit()
+    return {"checked": len(chunk), "filled": filled, "students": rows[:200],
+            "not_found": not_found, "no_medium": no_medium,
             "last_id": last_id, "has_more": len(chunk) == limit, "total": total}
 
 

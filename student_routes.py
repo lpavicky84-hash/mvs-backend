@@ -1824,7 +1824,9 @@ def _student_xp_map(db):
 def _compute_ranks(db, sp):
     """Real batch + overall ranks across all students, by XP."""
     xp_map = _student_xp_map(db)
-    all_students = db.query(StudentProfile).all()
+    from sqlalchemy.orm import load_only as _lo
+    all_students = db.query(StudentProfile).options(
+        _lo(StudentProfile.id, StudentProfile.batch_name)).all()
     # ensure every student has an xp entry (default 0)
     scored = []
     for s in all_students:
