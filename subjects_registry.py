@@ -57,7 +57,7 @@ _WORD_ALIAS = [
     (r"\bacc\b", "accountancy"),
     (r"\beng\b", "english"),
     (r"\bchem\b", "chemistry"),
-    (r"\bphy\b", "physics"),
+    (r"\bphys?\b", "physics"),
     (r"\bmaths\b", "mathematics"),
     (r"\bbio\b", "biology"),
     (r"\beco\b", "economics"),
@@ -65,6 +65,12 @@ _WORD_ALIAS = [
     (r"\bhin\b", "hindi"),
     (r"\bsst\b|\bsocial\b", "social science"),
 ]
+
+def _strip_lead_enum(s):
+    """Leading list-numbering hatao: '1. English' -> 'English', '2) Physics' -> 'Physics',
+    '3 - Home Science' -> 'Home Science'. (Multi-subject garbage like
+    '2. PHYSICS 3. CHEMISTRY...' as-is rehta hai — galat merge se better.)"""
+    return re.sub(r"^\s*\d{1,2}\s*[.):\-]\s+", "", str(s or "")).strip()
 
 def squash(s):
     """Case/space/punctuation-free compare key: 'HOME SCIENCE' == 'Home Science'."""
@@ -110,7 +116,7 @@ def canon_subject(name, cls=None):
     cls = _cls_digits(cls)
     if cls not in ("10", "12"):
         cls = None
-    raw = str(name or "").strip()
+    raw = _strip_lead_enum(str(name or "").strip())
     if not raw:
         return None
     # 1) explicit code = final truth
@@ -151,6 +157,14 @@ def canon_subject(name, cls=None):
             codes = {h[0] for h in pref}
             return {"name": pref[0][1], "code": (pref[0][0] if len(codes) == 1 else None),
                     "ambiguous": len(codes) > 1}
+    # 4.5) plural tolerance: 'Mass Communications' == 'Mass Communication'
+    if base and len(base) >= 5 and base.endswith("s"):
+        sing = base[:-1]
+        hits = [(cd, nm) for cd, nm in cands if squash(nm) == sing]
+        if hits:
+            codes = {h[0] for h in hits}
+            return {"name": hits[0][1], "code": (hits[0][0] if len(codes) == 1 else None),
+                    "ambiguous": len(codes) > 1}
     return None
 
 def canon_display(name, cls=None):
@@ -186,6 +200,7 @@ def canon_key(name, cls=None):
     return "u%s:%s" % (cls_d or "", sq)
 
 def raw_clean(name):
+    name = _strip_lead_enum(name)
     t = re.sub(r"\s*[\(\[][^\)\]]*\d+[^\)\]]*[\)\]]\s*$", "", str(name or ""))
     t = re.sub(r"\s*[-–—_/]\s*\d{2,}\s*$", "", t)
     return re.sub(r"\s+", " ", t).strip()

@@ -18,7 +18,7 @@ from models import (
     User, TeacherProfile, StudentProfile, ClassEntry, ClassStatus,
     RescheduleRequest, RescheduleStatus, Doubt, DoubtStatus,
     DPP, Test, TestSubmission, DPPSubmission, Notification, UserRole,
-    Exam, ExamQuestion, ExamAttempt
+    Exam, ExamQuestion, ExamAttempt, ist_iso
 )
 from schemas import (
     RescheduleReview, RescheduleOut, UserOut, AdminDashboard,
@@ -2295,7 +2295,7 @@ def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depend
             "student_name": (sp.user.name if sp and sp.user else "Unknown student"),
             "student_phone": (sp.phone if sp else None),
             "teacher_name": (tp.user.name if tp and tp.user else "Unassigned"),
-            "subject": d.subject,
+            "subject": (_SR.canon_display(d.subject) if _SR else d.subject),
             "topic": d.topic,
             "question": d.question,
             "has_image": bool(d.image_b64),
@@ -2305,8 +2305,8 @@ def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depend
             "answer": d.answer,
             "answer_image_link": d.answer_image_link,
             "status": d.status.value if hasattr(d.status, "value") else d.status,
-            "created_at": d.created_at.isoformat() if d.created_at else None,
-            "resolved_at": d.resolved_at.isoformat() if d.resolved_at else None,
+            "created_at": ist_iso(d.created_at),
+            "resolved_at": ist_iso(d.resolved_at),
             # v93: thread + reassignment context
             "assigned_to_admin": bool(getattr(d, "assigned_to_admin", False)),
             "assigned_by_name": getattr(d, "assigned_by_name", None),
@@ -2326,7 +2326,7 @@ def _admin_doubt_resps(db, did):
         out.append({"id": r.id, "role": r.role, "author_name": r.author_name,
                     "body": r.body, "mine": (r.role == "admin"),
                     "author_tid": (r.author_teacher_id if r.role == "teacher" else None),
-                    "created_at": r.created_at.isoformat() if r.created_at else None})
+                    "created_at": ist_iso(r.created_at)})
     return out
 
 def _doubt_needs_attention(db, did):
@@ -2759,13 +2759,24 @@ def admin_doubts_overview(db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import Doubt, DoubtStatus, TeacherProfile
     now = datetime.now()
     ds = db.query(Doubt).all()
+    # Subject naam ko canonical karo — "PHYSICS"/"Physics"/"MATHEMATICS" ek hi card
+    # banenge (case/spelling variant kabhi 2 subject nahi banega). Ek class 12 me
+    # 2 Physics / 2 Maths ka bug yahi se aata tha.
+    def _cs(s):
+        s = (s or "").strip() or "General"
+        if _SR:
+            try:
+                return _SR.canon_display(s) or s
+            except Exception:
+                return s
+        return s
     tmap = {}
     for tp in db.query(TeacherProfile).all():
         for s in (tp.subjects or []):
-            tmap.setdefault(s, tp.user.name if tp.user else "")
+            tmap.setdefault(_cs(s), tp.user.name if tp.user else "")
     by = {}
     for d in ds:
-        sub = d.subject or "General"
+        sub = _cs(d.subject)
         c = by.setdefault(sub, {"subject": sub, "teacher": tmap.get(sub, ""),
                                 "total": 0, "resolved": 0, "pending": 0,
                                 "oldest_pending_min": None})

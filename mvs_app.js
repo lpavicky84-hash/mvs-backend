@@ -990,6 +990,20 @@ function startDoubtBadge(role){
 }
 function toast(msg,err=false){ const t=document.getElementById('toast'); t.className=err?'error':''; document.getElementById('toast-msg').textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3500); }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+// Doubt/thread time — backend ab IST offset (+05:30) ke saath ISO bhejta hai.
+// Yahan hamesha Asia/Kolkata me hi dikhao taaki browser timezone koi bhi ho, IST rahe.
+// (Purane bina-offset strings ko UTC maankar convert — safety fallback.)
+function fmtDT(s){
+  if(!s) return '';
+  let v=String(s);
+  // agar naive "YYYY-MM-DD HH:MM" (na T, na offset, na Z) mila to UTC maano
+  if(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(v) && !/[+\-]\d{2}:?\d{2}$|Z$/.test(v)){
+    v=v.replace(' ','T')+'Z';
+  }
+  const d=new Date(v);
+  if(isNaN(d)) return esc(String(s));
+  return d.toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'});
+}
 function initials(name){ const p=(name||'U').trim().split(' '); return ((p[0]||'')[0]||'')+((p[1]||'')[0]||''); }
 
 // Modal helpers
@@ -5619,7 +5633,7 @@ function dbtRespHTML(r){
   const cls=r.role==='admin'?'adm':(r.role==='student'?'stu':'tch');
   const tag=r.role==='admin'?'MVS Foundation':(r.role==='student'?'Student':'Teacher');
   const ini=esc(initials(r.author_name||(r.role==='admin'?'MVS':'?')));
-  const when=r.created_at?new Date(r.created_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kolkata'}):'';
+  const when=r.created_at?fmtDT(r.created_at):'';
   // v112: admin ka reply official MVS logo tile ke saath; teacher ka reply uski
   // real profile photo ke saath (photo na ho to initials hi rehte hain)
   const ava=r.role==='admin'
@@ -5657,7 +5671,7 @@ async function openStudentDoubts(sid,encName){
         <div class="sh-head"><span class="sh-sub">${esc(x.subject||'General')}${x.topic?' \u00b7 '+esc(x.topic):''}</span><span class="dbt-pill ${x.status==='resolved'?'res':'open'}" style="font-size:.62rem">${x.status==='resolved'?'\u2713 Resolved':'Pending'}</span></div>
         <div class="sh-q">${_fmtRich(x.question||'')}</div>
         ${x.answer?`<div class="sh-a"><b>Answer:</b> ${_fmtRich(x.answer)}</div>`:'<div class="sh-noans">Not answered yet</div>'}
-        <div class="sh-meta">${esc(x.created_at||'')}${x.owner?' \u00b7 '+esc(x.owner):''}${x.mine?' \u00b7 <b>you</b>':''}</div>
+        <div class="sh-meta">${esc(fmtDT(x.created_at))}${x.owner?' \u00b7 '+esc(x.owner):''}${x.mine?' \u00b7 <b>you</b>':''}</div>
       </div>`).join('');
   }catch(e){ document.getElementById('modal-body').innerHTML=errHtml(e); }
 }
@@ -5723,7 +5737,7 @@ function tRenderDoubts(){
   const pend=list.filter(d=>(d.status!=='resolved'||d.needs_attention)&&!d.assigned_away), done=list.filter(d=>d.status==='resolved'&&!d.assigned_away&&!d.needs_attention);
   html+=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="_tdSub=null;tRenderDoubts()">\u2190 All Subjects</button><h3 style="margin:0">${esc(_tdSub)} <span style="color:var(--text-muted);font-weight:600;font-size:.85rem">(${list.length})</span></h3></div><div class="hide-scroll doubt-drill">`;
   const mediaOf=d=>`${d.has_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/voice')">${ic('play')} Voice Note</button>`:''}${d.has_image?doubtAttachHtml('teacher',d.id,d.attach_mime,d.attach_name,false):''}`;
-  const headOf=(d,pill)=>`<div class="dbt-head"><div style="min-width:0"><div class="dbt-name dbt-name-link" title="View all doubts by this student" onclick="event.stopPropagation();openStudentDoubts(${d.student_id||0},'${encodeURIComponent(d.student_name||'Student')}')">${esc(d.student_name||'Student')}</div><div class="dbt-meta">${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}${d.created_at?' \u00b7 '+esc(d.created_at):''}</div></div><div class="dbt-badges">${pill}</div></div>`;
+  const headOf=(d,pill)=>`<div class="dbt-head"><div style="min-width:0"><div class="dbt-name dbt-name-link" title="View all doubts by this student" onclick="event.stopPropagation();openStudentDoubts(${d.student_id||0},'${encodeURIComponent(d.student_name||'Student')}')">${esc(d.student_name||'Student')}</div><div class="dbt-meta">${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}${d.created_at?' \u00b7 '+esc(fmtDT(d.created_at)):''}</div></div><div class="dbt-badges">${pill}</div></div>`;
   let rows='';
   if(pend.length){
     rows+=`<div class="dbt-sec">Pending (${pend.length})</div>`;
@@ -8177,7 +8191,7 @@ async function submitBulkPhone(){
   }catch(e){ document.getElementById('bp-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Add Students'; }
 }
 let _aStu=[]; let _aCounts={total:0,subjects:[]}; let _stuFilter=''; let _stuClass=''; let _stuSearch=''; let _stuPage=1; let _stuSize=10;
-let _stuSess=''; let _stuMed='';   // master filters: Exam Session + Medium
+let _stuSess=''; let _stuMed=''; let _stuBatch='';   // master filters: Exam Session + Medium + Batch
 async function loadAStudents(){
   const el=document.getElementById('a-students-content');
   try{
@@ -8188,7 +8202,7 @@ async function loadAStudents(){
  ]);
  _aStu=ss; _aCounts={total:counts.total_students||ss.length,subjects:counts.subjects||[]};
  window._aPortalOv=ov;
- _stuFilter=''; _stuSearch=''; _stuPage=1; _stuSess=''; _stuMed='';
+ _stuFilter=''; _stuSearch=''; _stuPage=1; _stuSess=''; _stuMed=''; _stuBatch='';
  aRenderStudents();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
@@ -8601,12 +8615,25 @@ function aStuClass(c){ _stuClass=c; _stuFilter=''; _stuPage=1; aRenderStudents()
 // Subject filter class-aware hai: value "English||10" — same-name subjects
 // (Class 10 English vs Class 12 English) kabhi merge nahi honge
 function _stuFParts(){ const v=_stuFilter||''; const i=v.lastIndexOf('||'); if(i<0) return {sub:v,cls:''}; return {sub:v.slice(0,i),cls:v.slice(i+2)}; }
+// Batch master filter — session+medium+class lagakar per-batch student counts.
+// '__none__' = jinke paas koi batch nahi. Isse dikhta hai kis batch me kitne students.
+function _aStuBatchCounts(){
+  let list=_aStu;
+  if(_stuSess) list=list.filter(s=>(s.exam_session||'')===_stuSess);
+  if(_stuMed) list=list.filter(s=>(s.medium||'')===_stuMed);
+  if(_stuClass) list=list.filter(s=>String(s.class_level||'')===_stuClass);
+  const m={};
+  list.forEach(s=>{ const b=(s.batch||'').trim(); const k=b||'__none__';
+    if(!m[k]) m[k]={batch:k, label:(b||'No batch'), count:0}; m[k].count++; });
+  return Object.values(m).sort((a,b)=>b.count-a.count||String(a.label).localeCompare(String(b.label)));
+}
 function _stuFiltered(){
   let list=_aStu;
   if(_stuSrcFilter) list=list.filter(s=>(s.source||'mvs_app')===_stuSrcFilter);
   if(_stuSess) list=list.filter(s=>(s.exam_session||'')===_stuSess);
   if(_stuMed) list=list.filter(s=>(s.medium||'')===_stuMed);
   if(_stuClass) list=list.filter(s=>String(s.class_level||'')===_stuClass);
+  if(_stuBatch){ list=(_stuBatch==='__none__')?list.filter(s=>!(s.batch||'').trim()):list.filter(s=>(s.batch||'').trim()===_stuBatch); }
   if(_stuFilter){ const fp=_stuFParts();
     list=list.filter(s=>(s.subjects||[]).some(x=>x.toLowerCase()===fp.sub.toLowerCase())&&(!fp.cls||String(s.class_level||'')===fp.cls)); }
   if(_stuSearch){ const q=_stuSearch.toLowerCase(); list=list.filter(s=>(s.name||'').toLowerCase().includes(q)||(s.phone||'').includes(q)||(s.user_id||'').toLowerCase().includes(q)||(s.email||'').toLowerCase().includes(q)); }
@@ -8619,9 +8646,15 @@ function aRenderStudents(){
   const classes=[...new Set(_aStu.map(s=>String(s.class_level||'')).filter(Boolean))].sort();
   const sessions=[...new Set(_aStu.map(s=>s.exam_session).filter(Boolean))];
   const subsForClass=subsAll.filter(c=>!_stuClass||String(c['class']||c.class_level||'')===_stuClass);
+  const batchCounts=_aStuBatchCounts();
   const _fp=_stuFParts();
   // Count bhi subject+class dono se — sirf naam se dhoondne pe doosri class ka count aa jata tha
   const selCount=_stuFilter?((subsAll.find(c=>c.subject===_fp.sub&&String(c['class']||c.class_level||'')===_fp.cls)||{}).count??_stuFiltered().length):_stuFiltered().length;
+  // Subject filter TABHI usable jab class chuni ho — warna dono class ke saare subjects
+  // ek saath dikhte the (bahut lambi list). Class chuno -> us class ke saaf subjects.
+  const subjSelect=_stuClass
+    ? `<select class="fbar-sel" style="min-width:250px" onchange="aStuSetFilter(this.value)"><option value="">All Subjects</option>${subsForClass.map(c=>{const cv=c.subject+'||'+String(c['class']||c.class_level||'');return `<option value="${esc(cv)}"${_stuFilter===cv?' selected':''}>${esc(c.subject)} \u00b7 ${c.count}</option>`;}).join('')}</select>`
+    : `<select class="fbar-sel" style="min-width:250px" disabled title="Pehle class chuno"><option>Select class first</option></select>`;
   const cards=[`<div class="fbar fbar-wide">
       <div class="fbar-l">${ic('calendar')}<span>Session</span></div>
       <select class="fbar-sel" onchange="aStuSess(this.value)"><option value="">All Sessions</option>${sessions.map(x=>`<option value="${esc(x)}"${_stuSess===x?' selected':''}>${esc(_sylSessName(x))}</option>`).join('')}</select>
@@ -8629,10 +8662,12 @@ function aRenderStudents(){
       <select class="fbar-sel" onchange="aStuMed(this.value)"><option value="">All Mediums</option>${['Hindi','English'].map(x=>`<option${_stuMed===x?' selected':''}>${x}</option>`).join('')}</select>
       <div class="fbar-l">${ic('user')}<span>Class</span></div>
       <select class="fbar-sel" onchange="aStuClass(this.value)"><option value="">All Classes</option>${classes.map(c=>`<option value="${esc(c)}"${_stuClass===c?' selected':''}>Class ${esc(c)}</option>`).join('')}</select>
+      <div class="fbar-l">${ic('users')}<span>Batch</span></div>
+      <select class="fbar-sel" style="min-width:200px" onchange="aStuBatch(this.value)"><option value="">All Batches</option>${batchCounts.map(b=>`<option value="${esc(b.batch)}"${_stuBatch===b.batch?' selected':''}>${esc(b.label)} \u00b7 ${b.count}</option>`).join('')}</select>
       <div class="fbar-l">${ic('book')}<span>Subject</span></div>
-      <select class="fbar-sel" style="min-width:250px" onchange="aStuSetFilter(this.value)"><option value="">All Subjects</option>${subsForClass.map(c=>{const cv=c.subject+'||'+String(c['class']||c.class_level||'');return `<option value="${esc(cv)}"${_stuFilter===cv?' selected':''}>${esc(c.subject)}${(c['class']||c.class_level)?` \u00b7 Class ${esc(String(c['class']||c.class_level))}`:''} \u00b7 ${c.count}</option>`;}).join('')}</select>
+      ${subjSelect}
       <div class="fbar-res"><b>${selCount||0}</b> ${_stuFilter?esc(_fp.sub):'students'}</div>
-      ${(_stuFilter||_stuClass||_stuSess||_stuMed)?`<button class="fchip fchip-clear" onclick="aStuSess('');aStuMed('');aStuClass('');aStuSetFilter('')">${ic('trash')} Clear</button>`:''}
+      ${(_stuFilter||_stuClass||_stuSess||_stuMed||_stuBatch)?`<button class="fchip fchip-clear" onclick="aStuSess('');aStuMed('');aStuBatch('');aStuClass('');aStuSetFilter('')">${ic('trash')} Clear</button>`:''}
     </div>`]
   const filtered=_stuFiltered();
   const totalPages=Math.max(1,Math.ceil(filtered.length/_stuSize));
@@ -8662,6 +8697,7 @@ function aRenderStudents(){
 function aStuSetFilter(sub){ _stuFilter=sub; _stuPage=1; aRenderStudents(); }
 function aStuSess(v){ _stuSess=v; _stuPage=1; aRenderStudents(); }
 function aStuMed(v){ _stuMed=v; _stuPage=1; aRenderStudents(); }
+function aStuBatch(v){ _stuBatch=v; _stuPage=1; aRenderStudents(); }
 function aStuSearch(q,inp){
   // Poora page re-render hota hai to search input ka DOM node badal jata tha
   // aur cursor gayab ho jata - isliye caret yaad rakh ke wapas focus dete hain
@@ -8796,7 +8832,7 @@ function aRenderDoubts(){
   else if(_aDoubtFilter==='resolved') list=list.filter(d=>d.status==='resolved'&&!d.needs_attention);
   const fbtn=(f,label)=>`<button class="btn btn-sm ${_aDoubtFilter===f?'btn-primary':'btn-ghost'}" onclick="aDoubtFilter('${f}')">${label}</button>`;
   const cards=list.length?list.map(d=>{
-    const when=d.created_at?new Date(d.created_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+    const when=d.created_at?fmtDT(d.created_at):'';
     const qimg=d.has_image&&(d.attach_mime||'image/jpeg').startsWith('image/')?`<img class="doubt-thumb" id="adimg-${d.id}" data-name="${esc(d.attach_name||'')}" alt="doubt attachment" onclick="openImageViewer(this)">`:'';
     const qfile=d.has_image&&!(d.attach_mime||'image/jpeg').startsWith('image/')?`<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="viewDoubtFile('admin',${d.id},'${esc(d.attach_mime||'')}')">${ic('folder')} ${esc(d.attach_name||'Attachment')}</button>`:'';
     const qvoice=d.has_voice?`<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="playDoubtVoice(this,'/api/admin/doubt/${d.id}/voice')">${ic('play')} Voice Note</button>`:'';
@@ -11685,7 +11721,7 @@ async function loadSDoubts(){
         ? `<div style="min-width:0"><div style="font-weight:800;font-size:.86rem;color:#8a6d10">${esc(d.teacher_name||'MVS Foundation')}</div><div style="font-size:.66rem;font-weight:800;color:#a8841a;letter-spacing:.06em">OFFICIAL RESPONSE</div></div>`
         : `<div style="min-width:0"><div style="font-weight:800;font-size:.86rem;color:#166534">${esc(d.teacher_name||'Teacher')}</div><div style="font-size:.66rem;font-weight:700;color:#4d7c5f;letter-spacing:.04em">TEACHER'S REPLY</div></div>`;
       const ansBlock=d.answer?`<div class="dbt-a"${d.official?' style="border-color:rgba(201,162,39,.55);background:linear-gradient(135deg,rgba(201,162,39,.08),rgba(201,162,39,.02))"':''}><div class="dbt-a-head">${tAva}${ansHead}</div><div id="dbta-${d.id}">${_fmtRich(d.answer)}</div></div>`:'';
-      return `<div class="dbt-card ${d.status==='resolved'?'res':'pend'}"><div class="dbt-head"><div style="min-width:0"><div class="dbt-name">${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}</div><div class="dbt-meta">${esc(d.created_at||'')}${d.official?' \u00b7 with <b>MVS Foundation</b>':''}</div></div><div class="dbt-badges"><span class="dbt-pill ${d.status==='resolved'?'res':'open'}">${d.status==='resolved'?'\u2713 Resolved':'Pending'}</span></div></div><div class="dbt-q" id="dbtq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${ansBlock}${ansv?`<div class="dbt-media">${ansv}</div>`:''}${dbtThreadHTML(d)}${d.status==='resolved'?'<div class="dbt-reask">Is topic par aur samajhna hai? Upar "Ask a Doubt" se ek naya doubt poochho.</div>':''}</div>`;
+      return `<div class="dbt-card ${d.status==='resolved'?'res':'pend'}"><div class="dbt-head"><div style="min-width:0"><div class="dbt-name">${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}</div><div class="dbt-meta">${esc(fmtDT(d.created_at))}${d.official?' \u00b7 with <b>MVS Foundation</b>':''}</div></div><div class="dbt-badges"><span class="dbt-pill ${d.status==='resolved'?'res':'open'}">${d.status==='resolved'?'\u2713 Resolved':'Pending'}</span></div></div><div class="dbt-q" id="dbtq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${ansBlock}${ansv?`<div class="dbt-media">${ansv}</div>`:''}${dbtThreadHTML(d)}${d.status==='resolved'?'<div class="dbt-reask">Is topic par aur samajhna hai? Upar "Ask a Doubt" se ek naya doubt poochho.</div>':''}</div>`;
     }).join('');
     html+=`</div></div></div>`;
     el.innerHTML=html;

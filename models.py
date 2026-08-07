@@ -11,6 +11,29 @@ except Exception:
     _B64TEXT = Text()
 from database import Base
 import enum
+from datetime import timezone as _tz, timedelta as _td
+
+# =============================================
+# IST TIME HELPER (single source of truth)
+# Railway ka server + MySQL dono UTC me chalte hain. DB me jo naive datetime
+# store hote hain (func.now / datetime.now / datetime.utcnow) woh sab UTC hain.
+# Frontend ko bhejte waqt inhe IST (+05:30) offset ke saath ISO string banao —
+# taaki "5 baje ka doubt 11 baje" wala bug na aaye. Offset explicitly string me
+# hota hai isliye browser ki timezone koi bhi ho, display sahi IST hi rahega.
+# =============================================
+IST = _tz(_td(hours=5, minutes=30))
+
+def ist_iso(dt):
+    """Naive/UTC datetime -> IST offset ISO string ('...T13:54:00+05:30').
+    None aaye to None. Pehle se tz-aware ho to bhi IST me convert karta hai."""
+    if not dt:
+        return None
+    try:
+        if getattr(dt, "tzinfo", None) is None:
+            dt = dt.replace(tzinfo=_tz.utc)
+        return dt.astimezone(IST).isoformat()
+    except Exception:
+        return None
 
 # ===== ENUMS =====
 class UserRole(str, enum.Enum):

@@ -15,7 +15,7 @@ from models import (
     RescheduleRequest, RescheduleStatus, DPP, Test, Doubt,
     DoubtStatus, Timetable, Notification, TestStatus,
     Exam, ExamQuestion, ExamAttempt, ExamResult,
-    Material, Lecture, TeacherAttendance
+    Material, Lecture, TeacherAttendance, ist_iso
 )
 from security import get_admin
 from schemas import (
@@ -335,7 +335,7 @@ def _doubt_resp_json(db, did, my_role, my_teacher_id=None):
         out.append({"id": r.id, "role": r.role, "author_name": r.author_name,
                     "body": r.body, "mine": bool(mine),
                     "author_tid": (r.author_teacher_id if r.role == "teacher" else None),
-                    "created_at": (r.created_at.isoformat() + "Z") if r.created_at else None})
+                    "created_at": ist_iso(r.created_at)})
     return out
 
 def _doubt_needs_attention(db, did):
@@ -396,13 +396,13 @@ def get_doubts(
         sname = d.student.user.name if d.student and d.student.user else "Student"
         is_away = (d.teacher_id != tp.id) or bool(getattr(d, "assigned_to_admin", False))
         out.append({"id": d.id, "student_name": sname, "student_id": d.student_id,
-                    "subject": d.subject, "topic": d.topic,
+                    "subject": _subj_canon(d.subject), "topic": d.topic,
                     "question": d.question, "has_image": bool(d.image_b64),
                     "attach_mime": d.attach_mime, "attach_name": d.attach_name,
                     "has_voice": bool(d.audio_b64), "has_answer_voice": bool(d.answer_audio_b64),
                     "has_answer_file": bool(d.answer_attach_b64), "answer_attach_mime": d.answer_attach_mime,
                     "answer": d.answer, "status": d.status.value if hasattr(d.status, "value") else d.status,
-                    "created_at": str(d.created_at)[:16],
+                    "created_at": ist_iso(d.created_at),
                     "assigned_away": is_away,
                     "assigned_to_name": (_doubt_owner_name(db, d) if is_away else None),
                     "needs_attention": _doubt_needs_attention(db, d.id),

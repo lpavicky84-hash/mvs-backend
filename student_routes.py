@@ -12,7 +12,7 @@ from models import (
     User, StudentProfile, TeacherProfile, ClassEntry, ClassStatus,
     DPP, DPPSubmission, Test, TestSubmission, TestStatus,
     SubmissionStatus, Doubt, DoubtStatus, Notification, Timetable
-    , Exam, ExamQuestion, ExamAttempt, ExamResult
+    , Exam, ExamQuestion, ExamAttempt, ExamResult, ist_iso
 )
 from schemas import (
     DPPSubmissionCreate, DPPSubmissionOut,
@@ -540,14 +540,14 @@ def my_doubts(db: Session = Depends(get_db), current_user=Depends(get_student)):
                 resps.append({"id": r.id, "role": r.role, "author_name": r.author_name,
                               "body": r.body, "mine": (r.role == "student"),
                               "author_tid": (r.author_teacher_id if r.role == "teacher" else None),
-                              "created_at": r.created_at.isoformat() if r.created_at else None})
+                              "created_at": ist_iso(r.created_at)})
         except Exception:
             pass
         official = bool(getattr(d, "assigned_to_admin", False))
-        out.append({"id": d.id, "subject": d.subject, "topic": d.topic, "question": d.question,
+        out.append({"id": d.id, "subject": _subj_canon(d.subject), "topic": d.topic, "question": d.question,
                     "answer": d.answer, "answer_image_link": d.answer_image_link,
                     "status": d.status.value if hasattr(d.status, "value") else d.status,
-                    "created_at": str(d.created_at)[:16],
+                    "created_at": ist_iso(d.created_at),
                     "teacher_id": d.teacher_id,
                     "teacher_name": ("MVS Foundation" if official else tname),
                     "has_teacher_photo": (False if official else tph),
