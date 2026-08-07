@@ -1231,7 +1231,7 @@ async def upload_material(
 def teacher_materials(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import Material
     tp = get_teacher_profile(current_user, db)
-    ms = db.query(Material).filter(Material.teacher_id == tp.id,
+    ms = db.query(Material).options(defer(Material.content_b64)).filter(Material.teacher_id == tp.id,
                                    Material.material_type != "answer").order_by(Material.created_at.desc()).all()
     return [{"id": m.id, "subject": m.subject, "chapter": m.chapter, "type": m.material_type,
              "title": m.title, "filename": m.filename, "duration_min": m.duration_min,
@@ -1244,7 +1244,7 @@ def chapter_status(subject: str, db: Session = Depends(get_db), current_user=Dep
     chapters = [r[0] for r in db.query(TimetableEntry.chapter).filter(
         TimetableEntry.subject == subject,
         TimetableEntry.entry_type == "chapter").distinct().all() if r[0]]
-    mats = db.query(Material).filter(Material.subject == subject).all()
+    mats = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject == subject).all()
     out = []
     for ch in chapters:
         notes = any(m.chapter == ch and m.material_type == "notes" for m in mats)
@@ -1257,7 +1257,7 @@ def teacher_download(mid: int, db: Session = Depends(get_db), current_user=Depen
     import base64
     from fastapi import Response
     from models import Material
-    m = db.query(Material).filter(Material.id == mid).first()
+    m = db.query(Material).options(defer(Material.content_b64)).filter(Material.id == mid).first()
     if not m: raise HTTPException(status_code=404, detail="Not found")
     return __import__("r2_storage").file_response(m.content_b64, "application/pdf", m.filename or "file.pdf", True)
 
@@ -1265,7 +1265,7 @@ def teacher_download(mid: int, db: Session = Depends(get_db), current_user=Depen
 def delete_material(mid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import Material
     tp = get_teacher_profile(current_user, db)
-    m = db.query(Material).filter(Material.id == mid, Material.teacher_id == tp.id).first()
+    m = db.query(Material).options(defer(Material.content_b64)).filter(Material.id == mid, Material.teacher_id == tp.id).first()
     if not m: raise HTTPException(status_code=404, detail="Not found")
     db.delete(m); db.commit()
     return {"message": "Deleted"}
@@ -1345,7 +1345,7 @@ def today_classes(db: Session = Depends(get_db), current_user=Depends(get_teache
     _ck, _has = _teacher_classkeys(tp)
     if _has:
         es = [e for e in es if (not str(e.class_name or '').strip()) or _tt_entry_key(e.subject, e.class_name) in _ck]
-    mats = db.query(Material).filter(Material.subject.in_(list(_subj_scope_for(db, Material, subs)))).all()
+    mats = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(list(_subj_scope_for(db, Material, subs)))).all()
     out = []
     for e in es:
         notes = any(m.chapter == e.chapter and _subj_eq(m.subject, e.subject) and m.material_type == "notes" for m in mats)
@@ -1976,11 +1976,11 @@ def teacher_dpp_results(db: Session = Depends(get_db), current_user=Depends(get_
     from models import Material, MaterialView, StudentProfile
     tp = get_teacher_profile(current_user, db)
     subs = tp.subjects or []
-    dpps = db.query(Material).filter(
+    dpps = db.query(Material).options(defer(Material.content_b64)).filter(
         Material.material_type == "dpp",
         Material.subject.in_(subs)).order_by(Material.created_at.desc()).all() if subs else []
     ids = [m.id for m in dpps]
-    answers = db.query(Material).filter(
+    answers = db.query(Material).options(defer(Material.content_b64)).filter(
         Material.material_type == "answer",
         Material.parent_id.in_(ids)).all() if ids else []
     # how many students should be doing each DPP (same subject)
@@ -2017,7 +2017,7 @@ def teacher_dpp_results(db: Session = Depends(get_db), current_user=Depends(get_
 @router.get("/submissions")
 def teacher_submissions(parent_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import Material
-    subs = db.query(Material).filter(Material.material_type == "answer",
+    subs = db.query(Material).options(defer(Material.content_b64)).filter(Material.material_type == "answer",
                                      Material.parent_id == parent_id).order_by(Material.created_at.desc()).all()
     return [{"id": m.id, "student_name": m.student_name, "marks": m.marks,
              "date": str(m.created_at)[:16]} for m in subs]
@@ -2025,7 +2025,7 @@ def teacher_submissions(parent_id: int, db: Session = Depends(get_db), current_u
 @router.post("/submission/{sid}/marks")
 def set_marks(sid: int, payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import Material, StudentProfile, Notification
-    m = db.query(Material).filter(Material.id == sid, Material.material_type == "answer").first()
+    m = db.query(Material).options(defer(Material.content_b64)).filter(Material.id == sid, Material.material_type == "answer").first()
     if not m:
         raise HTTPException(status_code=404, detail="Submission not found")
     m.marks = str(payload.get("marks", "")).strip()
@@ -2289,7 +2289,7 @@ def teacher_compliance(db: Session = Depends(get_db), current_user=Depends(get_t
         TimetableEntry.entry_type == "chapter").all() if subs else []
     due = [c for c in classes if c.entry_date and c.entry_date <= today]
     completed = [c for c in due if getattr(c, "completed", False)]
-    mats = db.query(Material).filter(Material.subject.in_(subs)).all() if subs else []
+    mats = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs)).all() if subs else []
     dpp_count = sum(1 for m in mats if m.material_type == "dpp")
     notes_count = sum(1 for m in mats if m.material_type == "notes")
     test_count = sum(1 for m in mats if m.material_type == "test")
@@ -2351,7 +2351,7 @@ def teacher_performance(db: Session = Depends(get_db), current_user=Depends(get_
         or_(TimetableEntry.status == None, TimetableEntry.status != "pending"),
         TimetableEntry.entry_type == "chapter").all() if subs else []
     completed = [c for c in classes if getattr(c, "completed", False)]
-    mats = db.query(Material).filter(Material.subject.in_(subs)).all() if subs else []
+    mats = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs)).all() if subs else []
     dpp_count = sum(1 for m in mats if m.material_type == "dpp")
     notes_count = sum(1 for m in mats if m.material_type in ("notes", "other"))
     test_count = sum(1 for m in mats if m.material_type == "test")
@@ -2393,7 +2393,7 @@ def teacher_material_analytics(db: Session = Depends(get_db), current_user=Depen
     from sqlalchemy import func as _f
     tp = get_teacher_profile(current_user, db)
     subs = tp.subjects or []
-    mats = db.query(Material).filter(Material.subject.in_(subs),
+    mats = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs),
         Material.material_type.in_(["notes", "dpp", "test", "other"])).order_by(Material.created_at.desc()).all() if subs else []
     out = []
     for m in mats:
@@ -2424,14 +2424,14 @@ def teacher_student_engagement(db: Session = Depends(get_db), current_user=Depen
         if set(sp.subjects or []) & set(subs):
             students.append(sp)
     # teacher material ids
-    mat_ids = [m.id for m in db.query(Material).filter(Material.subject.in_(subs)).all()]
+    mat_ids = [m.id for m in db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs)).all()]
     out = []
     for sp in students:
-        answers = db.query(Material).filter(Material.material_type == "answer", Material.student_id == sp.id).all()
+        answers = db.query(Material).options(defer(Material.content_b64)).filter(Material.material_type == "answer", Material.student_id == sp.id).all()
         pids = [a.parent_id for a in answers if a.parent_id]
         ptypes = {}
         if pids:
-            for pm in db.query(Material).filter(Material.id.in_(pids)).all():
+            for pm in db.query(Material).options(defer(Material.content_b64)).filter(Material.id.in_(pids)).all():
                 ptypes[pm.id] = pm.material_type
         dpp_done = sum(1 for a in answers if ptypes.get(a.parent_id) == "dpp")
         test_done = sum(1 for a in answers if ptypes.get(a.parent_id) == "test")
@@ -3315,7 +3315,7 @@ def _notify_lecture_students(subject, title, teacher_name):
 def teacher_lectures(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
     from models import LectureVerification
-    lecs = db.query(Lecture).filter(Lecture.teacher_id == tp.id).order_by(Lecture.created_at.desc()).all()
+    lecs = db.query(Lecture).options(defer(Lecture.pdf_b64), defer(Lecture.dpp_b64)).filter(Lecture.teacher_id == tp.id).order_by(Lecture.created_at.desc()).all()
     out = []
     for l in lecs:
         nq = db.query(LectureQuestion).filter(LectureQuestion.lecture_id == l.id).count()
@@ -3332,7 +3332,7 @@ def teacher_lectures(db: Session = Depends(get_db), current_user=Depends(get_tea
 @router.delete("/lecture/{lecture_id}")
 def delete_lecture(lecture_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
-    lec = db.query(Lecture).filter(Lecture.id == lecture_id, Lecture.teacher_id == tp.id).first()
+    lec = db.query(Lecture).options(defer(Lecture.pdf_b64), defer(Lecture.dpp_b64)).filter(Lecture.id == lecture_id, Lecture.teacher_id == tp.id).first()
     if not lec:
         raise HTTPException(404, "Lecture not found")
     lec.is_active = False
@@ -3480,7 +3480,7 @@ def teacher_class_reports(db: Session = Depends(get_db), current_user=Depends(ge
 
 def _material_tree(db, subjects=None):
     from models import Material, MaterialView, StudentProfile
-    q = db.query(Material).filter(Material.material_type != "answer")
+    q = db.query(Material).options(defer(Material.content_b64)).filter(Material.material_type != "answer")
     if subjects is not None:
         if not subjects:
             return []
@@ -3596,7 +3596,7 @@ def _material_tree(db, subjects=None):
 def _material_audience(db, material_id):
     """Who viewed / downloaded this material."""
     from models import Material, MaterialView, StudentProfile, User
-    m = db.query(Material).filter(Material.id == material_id).first()
+    m = db.query(Material).options(defer(Material.content_b64)).filter(Material.id == material_id).first()
     if not m:
         raise HTTPException(404, "Material not found")
     rows = db.query(MaterialView).filter(MaterialView.material_id == material_id).all()
@@ -4308,7 +4308,7 @@ def compute_performance(db, teacher_id: int, month: str):
                 done = db.query(Doubt).filter(Doubt.teacher_id == teacher_id,
                         Doubt.resolved_at >= start, Doubt.resolved_at < end).count()
             elif t.key == "content":
-                done = db.query(Material).filter(Material.teacher_id == teacher_id,
+                done = db.query(Material).options(defer(Material.content_b64)).filter(Material.teacher_id == teacher_id,
                         Material.created_at >= start, Material.created_at < end).count()
             pending = max(0, target - done) if target else 0
         else:  # manual - approved + done_date is month me ho tabhi count (rule 2/3)
@@ -4543,7 +4543,7 @@ def _month_activity(db, tp, month):
     conducted = len(done)
     late = sum(1 for e in done if _delay_band(_delay_of(e)) == "late")
 
-    mats = db.query(Material).filter(
+    mats = db.query(Material).options(defer(Material.content_b64)).filter(
         Material.teacher_id == tp.id,
         Material.created_at >= dt0, Material.created_at < dt1).all()
     notes = sum(1 for x in mats if (x.material_type or "") == "notes")
@@ -4598,7 +4598,7 @@ def _month_activity(db, tp, month):
         if x.dpp_type == _DPPType.chapterwise or str(x.dpp_type) in ("chapterwise", "DPPType.chapterwise"):
             if _norm(x.reference):
                 chap_refs.append((_norm(x.subject), _norm(x.reference)))
-    for x in db.query(Material).filter(Material.teacher_id == tp.id,
+    for x in db.query(Material).options(defer(Material.content_b64)).filter(Material.teacher_id == tp.id,
                                        Material.material_type == "dpp",
                                        Material.chapter != None).all():
         if _norm(x.chapter):
@@ -5841,7 +5841,7 @@ def _teacher_rank_rows(db, days=90):
         ontime = delayed = 0
         try:
             from models import TimetableEntry
-            lecs = db.query(Lecture).filter(Lecture.teacher_id == tp.id,
+            lecs = db.query(Lecture).options(defer(Lecture.pdf_b64), defer(Lecture.dpp_b64)).filter(Lecture.teacher_id == tp.id,
                                             Lecture.lecture_date >= since.date()).all()
             for l in lecs:
                 te = None
@@ -5861,7 +5861,7 @@ def _teacher_rank_rows(db, days=90):
 
         # ---- Attendance: present DAYS ----
         if tp.id in disabled_ids:
-            present = len({l.lecture_date for l in db.query(Lecture).filter(
+            present = len({l.lecture_date for l in db.query(Lecture).options(defer(Lecture.pdf_b64), defer(Lecture.dpp_b64)).filter(
                 Lecture.teacher_id == tp.id, Lecture.is_active == True,
                 Lecture.lecture_date != None,
                 Lecture.lecture_date >= since.date()).all()})

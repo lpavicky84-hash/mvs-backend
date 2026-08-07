@@ -109,7 +109,7 @@ def admin_dashboard(db: Session = Depends(get_db), _=Depends(get_admin)):
     # ab teachers timetable se lecture report daalte hain). Pending = timetable ke chapter
     # entries jinka din aa chuka par abhi tak lecture nahi aaya.
     from models import Lecture, TimetableEntry
-    total_done = db.query(Lecture).count()
+    total_done = db.query(Lecture).options(defer(Lecture.pdf_b64), defer(Lecture.dpp_b64)).count()
     _today = date.today()
     _done_tt = set(x[0] for x in db.query(Lecture.timetable_entry_id).filter(
         Lecture.timetable_entry_id.isnot(None)).all())
@@ -869,7 +869,7 @@ async def class_report_backfill(payload: dict = Body(...), db: Session = Depends
     from teacher_routes import _subj_class_digits as _scd
     _fx = _scd(db, e.subject)
     eff_cls = ("Class " + _fx) if _fx else (e.class_name or "")
-    lec = db.query(Lecture).filter(Lecture.timetable_entry_id == entry_id,
+    lec = db.query(Lecture).options(defer(Lecture.pdf_b64), defer(Lecture.dpp_b64)).filter(Lecture.timetable_entry_id == entry_id,
                                    Lecture.is_active == True).first()
     created = False
     if not lec:
@@ -1342,7 +1342,7 @@ def admin_download(mid: int, db: Session = Depends(get_db), _=Depends(get_admin)
     import base64
     from fastapi import Response
     from models import Material
-    m = db.query(Material).filter(Material.id == mid).first()
+    m = db.query(Material).options(defer(Material.content_b64)).filter(Material.id == mid).first()
     if not m: raise HTTPException(status_code=404, detail="Not found")
     return __import__("r2_storage").file_response(m.content_b64, "application/pdf", m.filename or "file.pdf", True)
 
@@ -1352,7 +1352,7 @@ def admin_pending_materials(db: Session = Depends(get_db), _=Depends(get_admin))
     from models import TimetableEntry, Material
     chapters = db.query(TimetableEntry.subject, TimetableEntry.chapter, TimetableEntry.teacher_id).filter(
         TimetableEntry.entry_type == "chapter").distinct().all()
-    mats = db.query(Material).all()
+    mats = db.query(Material).options(defer(Material.content_b64)).all()
     out = []
     for subj, ch, tid in chapters:
         if not ch: continue
@@ -2478,7 +2478,7 @@ async def admin_upload_questionbank(
 @router.get("/questionbank")
 def admin_list_questionbank(db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import Material
-    ms = db.query(Material).filter(Material.is_global == True).order_by(Material.created_at.desc()).all()
+    ms = db.query(Material).options(defer(Material.content_b64)).filter(Material.is_global == True).order_by(Material.created_at.desc()).all()
     return [{"id": m.id, "title": m.title, "category": m.category, "medium": m.medium,
              "subject": m.subject, "has_file": bool(m.content_b64), "external_link": m.external_link,
              "filename": m.filename, "date": str(m.created_at)[:10]} for m in ms]
@@ -2486,7 +2486,7 @@ def admin_list_questionbank(db: Session = Depends(get_db), _=Depends(get_admin))
 @router.patch("/material/{mid}/approval")
 def admin_material_approval(mid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import Material
-    m = db.query(Material).filter(Material.id == mid).first()
+    m = db.query(Material).options(defer(Material.content_b64)).filter(Material.id == mid).first()
     if not m:
         raise HTTPException(status_code=404, detail="Material not found")
     st = (payload.get("status") or "").strip()
@@ -2499,7 +2499,7 @@ def admin_material_approval(mid: int, payload: dict, db: Session = Depends(get_d
 @router.delete("/material/{mid}")
 def admin_delete_material(mid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import Material
-    m = db.query(Material).filter(Material.id == mid).first()
+    m = db.query(Material).options(defer(Material.content_b64)).filter(Material.id == mid).first()
     if not m:
         raise HTTPException(status_code=404, detail="Material not found")
     db.delete(m); db.commit()

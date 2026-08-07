@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, BackgroundTasks, Response
 import base64
 import re
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 from datetime import datetime, date, timedelta
 from typing import List, Optional
 
@@ -55,12 +55,12 @@ def student_dashboard(db: Session = Depends(get_db), current_user=Depends(get_st
     sp = get_student_profile(current_user, db)
 
     from models import Material
-    dpps_total    = db.query(Material).filter(Material.subject.in_(sp.subjects or []), Material.material_type == "dpp").count()
-    _answers = db.query(Material).filter(Material.student_id == sp.id, Material.material_type == "answer").all()
+    dpps_total    = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(sp.subjects or []), Material.material_type == "dpp").count()
+    _answers = db.query(Material).options(defer(Material.content_b64)).filter(Material.student_id == sp.id, Material.material_type == "answer").all()
     _pids = [a.parent_id for a in _answers if a.parent_id]
     _pt = {}
     if _pids:
-        for pm in db.query(Material).filter(Material.id.in_(_pids)).all():
+        for pm in db.query(Material).options(defer(Material.content_b64)).filter(Material.id.in_(_pids)).all():
             _pt[pm.id] = pm.material_type
     dpps_submitted = sum(1 for a in _answers if _pt.get(a.parent_id) == "dpp")
     tests_attempted = sum(1 for a in _answers if _pt.get(a.parent_id) == "test")
@@ -93,14 +93,14 @@ def student_workspace(db: Session = Depends(get_db), current_user=Depends(get_st
     today = date.today()
 
     # ---- my answer submissions -> which parents are done
-    answers = db.query(Material).filter(
+    answers = db.query(Material).options(defer(Material.content_b64)).filter(
         Material.student_id == sp.id, Material.material_type == "answer").all()
     done_parents = set(a.parent_id for a in answers if a.parent_id)
 
     # ---- DPPs & tests (Material-based) for my subjects
-    dpps = db.query(Material).filter(
+    dpps = db.query(Material).options(defer(Material.content_b64)).filter(
         Material.subject.in_(subs), Material.material_type == "dpp").all() if subs else []
-    tests = db.query(Material).filter(
+    tests = db.query(Material).options(defer(Material.content_b64)).filter(
         Material.subject.in_(subs), Material.material_type == "test").all() if subs else []
     pending_dpps = [m for m in dpps if m.id not in done_parents]
     pending_tests = [m for m in tests if m.id not in done_parents]
@@ -120,7 +120,7 @@ def student_workspace(db: Session = Depends(get_db), current_user=Depends(get_st
         pass
 
     # ---- notes / materials read tracking
-    notes = db.query(Material).filter(
+    notes = db.query(Material).options(defer(Material.content_b64)).filter(
         Material.subject.in_(subs), Material.material_type == "notes").all() if subs else []
     viewed_ids = set()
     try:
@@ -170,7 +170,7 @@ def student_workspace(db: Session = Depends(get_db), current_user=Depends(get_st
         recent_views = db.query(MaterialView).filter(
             MaterialView.student_id == sp.id).order_by(MaterialView.created_at.desc()).limit(8).all()
         mids = [v.material_id for v in recent_views]
-        mmap = {m.id: m for m in db.query(Material).filter(Material.id.in_(mids)).all()} if mids else {}
+        mmap = {m.id: m for m in db.query(Material).options(defer(Material.content_b64)).filter(Material.id.in_(mids)).all()} if mids else {}
         for v in recent_views:
             m = mmap.get(v.material_id)
             if not m:
@@ -610,14 +610,14 @@ def get_progress(
 
     from models import Material
     _start_dt = datetime.combine(start, datetime.min.time())
-    _answers = db.query(Material).filter(
+    _answers = db.query(Material).options(defer(Material.content_b64)).filter(
         Material.student_id == sp.id, Material.material_type == "answer",
         Material.created_at >= _start_dt
     ).all()
     _pids = [a.parent_id for a in _answers if a.parent_id]
     _pt = {}
     if _pids:
-        for pm in db.query(Material).filter(Material.id.in_(_pids)).all():
+        for pm in db.query(Material).options(defer(Material.content_b64)).filter(Material.id.in_(_pids)).all():
             _pt[pm.id] = pm.material_type
     dpps_submitted = sum(1 for a in _answers if _pt.get(a.parent_id) == "dpp")
     tests_attempted = sum(1 for a in _answers if _pt.get(a.parent_id) == "test")
@@ -812,7 +812,7 @@ def timetable_plan(db: Session = Depends(get_db), current_user=Depends(get_stude
     if _my_cls:
         es = [e for e in es if (not _cls_norm(e.class_name)) or _cls_norm(e.class_name) == _my_cls]
     # lectures linked to timetable entries (for the "Mark Done" verification)
-    lecs = db.query(Lecture).filter(
+    lecs = db.query(Lecture).options(defer(Lecture.pdf_b64), defer(Lecture.dpp_b64)).filter(
         Lecture.is_active == True, Lecture.subject.in_(sp.subjects or []),
         Lecture.timetable_entry_id != None).all() if (sp.subjects or []) else []
     lec_by_tt = {}
@@ -864,7 +864,7 @@ def timetable_plan(db: Session = Depends(get_db), current_user=Depends(get_stude
 @router.get("/question-bank")
 def student_question_bank(db: Session = Depends(get_db), current_user=Depends(get_student)):
     from models import Material
-    ms = db.query(Material).filter(Material.is_global == True).order_by(Material.created_at.desc()).all()
+    ms = db.query(Material).options(defer(Material.content_b64)).filter(Material.is_global == True).order_by(Material.created_at.desc()).all()
     return [{"id": m.id, "title": m.title, "category": m.category, "medium": m.medium or "English",
              "subject": m.subject, "has_file": bool(m.content_b64), "external_link": m.external_link,
              "filename": m.filename, "date": str(m.created_at)[:10]} for m in ms]
@@ -888,7 +888,7 @@ def student_material_view(mid: int, db: Session = Depends(get_db), current_user=
     import base64
     from fastapi import Response
     from models import Material
-    m = db.query(Material).filter(Material.id == mid).first()
+    m = db.query(Material).options(defer(Material.content_b64)).filter(Material.id == mid).first()
     if not m or not m.content_b64:
         raise HTTPException(status_code=404, detail="Not found")
     sp = get_student_profile(current_user, db)
@@ -901,7 +901,7 @@ def student_materials_v2(db: Session = Depends(get_db), current_user=Depends(get
     sp = get_student_profile(current_user, db)
     subs = sp.subjects or []
     my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
-    ms = db.query(Material).filter(
+    ms = db.query(Material).options(defer(Material.content_b64)).filter(
         Material.subject.in_(list(_subj_scope_for(db, Material, subs))),
         Material.material_type.in_(["notes", "dpp", "other"])
     ).order_by(Material.subject, Material.chapter, Material.created_at.desc()).all()
@@ -933,7 +933,7 @@ def student_download(mid: int, db: Session = Depends(get_db), current_user=Depen
     import base64
     from fastapi import Response
     from models import Material
-    m = db.query(Material).filter(Material.id == mid).first()
+    m = db.query(Material).options(defer(Material.content_b64)).filter(Material.id == mid).first()
     if not m: raise HTTPException(status_code=404, detail="Not found")
     sp = get_student_profile(current_user, db)
     _log_material(db, mid, sp.id, "download")
@@ -942,7 +942,7 @@ def student_download(mid: int, db: Session = Depends(get_db), current_user=Depen
 # ===== STUDENT: DPP / TEST LIST (download + submit) =====
 def _my_submission(db, sp, parent_id):
     from models import Material
-    return db.query(Material).filter(
+    return db.query(Material).options(defer(Material.content_b64)).filter(
         Material.material_type == "answer", Material.parent_id == parent_id,
         Material.student_id == sp.id).first()
 
@@ -951,7 +951,7 @@ def student_dpp_list(db: Session = Depends(get_db), current_user=Depends(get_stu
     from models import Material
     sp = get_student_profile(current_user, db)
     subs = sp.subjects or []
-    ms = db.query(Material).filter(Material.subject.in_(subs),
+    ms = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs),
                                    Material.material_type == "dpp").order_by(Material.created_at.desc()).all()
     out = []
     for m in ms:
@@ -966,7 +966,7 @@ def student_tests_list(db: Session = Depends(get_db), current_user=Depends(get_s
     from models import Material
     sp = get_student_profile(current_user, db)
     subs = sp.subjects or []
-    ms = db.query(Material).filter(Material.subject.in_(subs),
+    ms = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs),
                                    Material.material_type == "test").order_by(Material.created_at.desc()).all()
     out = []
     for m in ms:
@@ -988,7 +988,7 @@ async def submit_answer(
     import base64
     from models import Material
     sp = get_student_profile(current_user, db)
-    parent = db.query(Material).filter(Material.id == parent_id).first()
+    parent = db.query(Material).options(defer(Material.content_b64)).filter(Material.id == parent_id).first()
     if not parent:
         raise HTTPException(status_code=404, detail="Item not found")
     raw = await file.read()
@@ -1584,7 +1584,7 @@ def _recompute_badges(db, student_id, st):
     vcount = db.query(LectureVerification).filter(
         LectureVerification.student_id == student_id, LectureVerification.status == "verified").count()
     from models import Material
-    dpp_count = db.query(Material).filter(Material.student_id == student_id,
+    dpp_count = db.query(Material).options(defer(Material.content_b64)).filter(Material.student_id == student_id,
                                           Material.material_type == "answer").count()
     test_count = db.query(ExamAttempt).filter(ExamAttempt.student_id == student_id).count()
     checks = {
@@ -1647,7 +1647,7 @@ def student_lectures(db: Session = Depends(get_db), current_user=Depends(get_stu
     """Lectures for the student's subjects with their verification state."""
     sp = get_student_profile(current_user, db)
     subs = sp.subjects or []
-    lecs = db.query(Lecture).filter(
+    lecs = db.query(Lecture).options(defer(Lecture.pdf_b64), defer(Lecture.dpp_b64)).filter(
         Lecture.is_active == True, Lecture.subject.in_(subs)).order_by(
         Lecture.created_at.desc()).all() if subs else []
     out = []
@@ -1675,7 +1675,7 @@ def get_verification_question(lecture_id: int, db: Session = Depends(get_db),
     """Return a RANDOM verification question (without the answer) for the popup."""
     import random
     sp = get_student_profile(current_user, db)
-    lec = db.query(Lecture).filter(Lecture.id == lecture_id, Lecture.is_active == True).first()
+    lec = db.query(Lecture).options(defer(Lecture.pdf_b64), defer(Lecture.dpp_b64)).filter(Lecture.id == lecture_id, Lecture.is_active == True).first()
     if not lec:
         raise HTTPException(404, "Lecture not found")
     if lec.subject not in (sp.subjects or []):
@@ -1700,7 +1700,7 @@ def student_lecture_file(lecture_id: int, kind: str = "pdf", db: Session = Depen
                          current_user=Depends(get_student)):
     """Download a lecture's notes PDF or DPP PDF."""
     sp = get_student_profile(current_user, db)
-    lec = db.query(Lecture).filter(Lecture.id == lecture_id, Lecture.is_active == True).first()
+    lec = db.query(Lecture).options(defer(Lecture.pdf_b64), defer(Lecture.dpp_b64)).filter(Lecture.id == lecture_id, Lecture.is_active == True).first()
     if not lec:
         raise HTTPException(404, "Lecture not found")
     if lec.subject not in (sp.subjects or []):
@@ -1746,7 +1746,7 @@ def verify_lecture(lecture_id: int, payload: dict = Body(...),
     XP, update streak/badges. On wrong: increment attempts, apply cooldown when
     exhausted. Correctness is computed server-side - the client cannot fake it."""
     sp = get_student_profile(current_user, db)
-    lec = db.query(Lecture).filter(Lecture.id == lecture_id, Lecture.is_active == True).first()
+    lec = db.query(Lecture).options(defer(Lecture.pdf_b64), defer(Lecture.dpp_b64)).filter(Lecture.id == lecture_id, Lecture.is_active == True).first()
     if not lec:
         raise HTTPException(404, "Lecture not found")
     if lec.subject not in (sp.subjects or []):
@@ -1798,7 +1798,7 @@ def mark_lecture_done(lecture_id: int, db: Session = Depends(get_db),
     """v98: verification questions removed — the student directly marks the
     lecture done. Idempotent: the lecture XP is awarded exactly once."""
     sp = get_student_profile(current_user, db)
-    lec = db.query(Lecture).filter(Lecture.id == lecture_id, Lecture.is_active == True).first()
+    lec = db.query(Lecture).options(defer(Lecture.pdf_b64), defer(Lecture.dpp_b64)).filter(Lecture.id == lecture_id, Lecture.is_active == True).first()
     if not lec:
         raise HTTPException(404, "Lecture not found")
     if lec.subject not in (sp.subjects or []):
@@ -2421,7 +2421,7 @@ def student_performance(db: Session = Depends(get_db), current_user=Depends(get_
     st = _get_stats(db, sp.id)
 
     # ---- lectures & verification
-    lecs = db.query(Lecture).filter(Lecture.is_active == True, Lecture.subject.in_(subs)).all() if subs else []
+    lecs = db.query(Lecture).options(defer(Lecture.pdf_b64), defer(Lecture.dpp_b64)).filter(Lecture.is_active == True, Lecture.subject.in_(subs)).all() if subs else []
     lec_ids = [l.id for l in lecs]
     my_verifs = db.query(LectureVerification).filter(
         LectureVerification.student_id == sp.id).all()
@@ -2430,10 +2430,10 @@ def student_performance(db: Session = Depends(get_db), current_user=Depends(get_
     lectures_verified = sum(1 for lid in lec_ids if lid in verified_ids)
 
     # ---- DPP & tests (real)
-    answers = db.query(Material).filter(
+    answers = db.query(Material).options(defer(Material.content_b64)).filter(
         Material.student_id == sp.id, Material.material_type == "answer").all()
     done_parents = set(a.parent_id for a in answers if a.parent_id)
-    dpps = db.query(Material).filter(Material.subject.in_(subs), Material.material_type == "dpp").all() if subs else []
+    dpps = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs), Material.material_type == "dpp").all() if subs else []
     dpp_total = len(dpps); dpp_done = sum(1 for m in dpps if m.id in done_parents)
     # new DPP packs (v42+) bhi count karo — warna stats 0/0 dikhta hai
     try:
@@ -2475,7 +2475,7 @@ def student_performance(db: Session = Depends(get_db), current_user=Depends(get_
             viewed.add(v.material_id)
     except Exception:
         pass
-    notes = db.query(Material).filter(Material.subject.in_(subs), Material.material_type == "notes").all() if subs else []
+    notes = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs), Material.material_type == "notes").all() if subs else []
     learn = notes + dpps
     read_pct = round(len([m for m in learn if m.id in viewed]) * 100 / len(learn)) if learn else 0
 
