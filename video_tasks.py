@@ -1627,6 +1627,32 @@ def vt_create_project(payload: dict = Body(...),
                    % (title, len(items),
                       ("Weekly target: " + " · ".join(wk) + ". " if wk else ""),
                       final_dl.strftime("%d %b %Y, %I:%M %p")))
+    # Agar ye kisi teacher-proposal se approve hua hai -> us proposal ko yahin
+    # positively close karo. Pehle frontend galti se reject-proposal call karta tha
+    # jisse proposal card REJECTED dikhta tha aur teacher ko "Not Approved" notification
+    # jaata tha. Ab project ban gaya, isliye original proposal row hata do (queue +
+    # task list dono se) taaki koi leftover/rejected card na bache.
+    try:
+        prop_id = int(payload.get("proposal_id") or 0)
+    except Exception:
+        prop_id = 0
+    if prop_id:
+        prop = db.query(VideoTask).filter(VideoTask.id == prop_id,
+                                          VideoTask.proposal_ok == "pending").first()
+        if prop and prop.id != t.id:
+            ptp = _teacher_profile(db, prop.teacher_id)
+            if ptp and ptp.user_id and ptp.user_id != tp.user_id:
+                _vt_notify(db, ptp.user_id, "Video Proposal Approved",
+                           'Your proposal "%s" has been approved and assigned as a project.'
+                           % (prop.title or "Video"))
+            db.query(VideoTaskChapter).filter(
+                VideoTaskChapter.task_id == prop.id).delete(synchronize_session=False)
+            try:
+                from models import VideoViewSnapshot as _VVS
+                db.query(_VVS).filter(_VVS.task_id == prop.id).delete(synchronize_session=False)
+            except Exception:
+                pass
+            db.delete(prop)
     db.commit()
     return {"ok": True, "id": t.id, "teacher": _teacher_name(db, tp.id),
             "total": len(items)}

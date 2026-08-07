@@ -7212,13 +7212,13 @@ async function vtProjectSave(proposalId){
     teacher_id:+gv('vtp-teacher')||0,title:gv('vtp-title').trim(),connect,items,
     chapter_scope:connect?(gv('vtp-scope')||'pe'):'',
     weekly_quota:+gv('vtp-quota')||0,weekly_day:gv('vtp-day'),
-    deadline:gv('vtp-deadline'),remarks:gv('vtp-remarks').trim()};
+    deadline:gv('vtp-deadline'),remarks:gv('vtp-remarks').trim(),
+    proposal_id:proposalId||0};
   if(!payload.subject&&!payload.teacher_id){ toast('Select a subject, or choose a teacher manually'); return; }
   if(!connect&&!items.length){ toast('Enter at least 1 video name'); return; }
   if(!payload.deadline){ toast('Please set the final deadline'); return; }
   try{
     const r=await api('/api/admin/video-tasks/project','POST',payload);
-    if(proposalId){ try{ await api(`/api/admin/video-tasks/${proposalId}/reject-proposal`,'POST',{}); }catch(e){} }
     closeModal(); toast(`Project assigned — ${r.teacher} (${r.total} videos)`);
     loadAVTasks();
   }catch(e){ toast(e.message||'Could not assign project'); }
@@ -8287,7 +8287,38 @@ async function runPortalSync(){
   }catch(e){ out.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
   btn.disabled=false; btn.textContent='Start Sync';
 }
-// ============ WHATSAPP WELCOME ============
+// ============ FIX MEDIUM (backfill from MVS Portal) ============
+function openMediumFix(){
+  showModal('Fix Medium from MVS Portal',
+    `<p style="font-size:.83rem;color:var(--text-muted);margin-bottom:12px">Jin students ka <b>Medium khaali</b> hai, unka medium MVS Portal se bhar diya jaayega. Ye un students ko bhi theek karta hai jo pehle se MVS Portal category me hain (normal Sync unhe skip kar deta hai). Sirf medium set hota hai — baaki koi field nahi badalti.</p>
+     <div class="alert alert-info" style="font-size:.8rem">Medium galat/khaali hone par student ko sahi language ka study material nahi milta — isliye ye zaroori hai.</div>
+     <div id="mfx-out" style="margin-top:12px"></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" id="mfx-btn" onclick="runMediumFix()">Start</button>`);
+}
+async function runMediumFix(){
+  const btn=document.getElementById('mfx-btn'); btn.disabled=true; btn.textContent='Fixing\u2026';
+  const out=document.getElementById('mfx-out');
+  out.innerHTML=`<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill" id="mfx-fill"></div></div><div class="prog-text" id="mfx-text">Starting\u2026</div></div>`;
+  let afterId=0, total=0, done=0, filled=0, notFound=0, noMed=0, rows=[], more=true;
+  try{
+    while(more){
+      const r=await api('/api/admin/students/backfill-medium','POST',{after_id:afterId,limit:40,deep:true});
+      if(r.total!=null) total=r.total;
+      done+=r.checked||0; filled+=r.filled||0; notFound+=r.not_found||0; noMed+=r.no_medium||0;
+      afterId=r.last_id||afterId; more=!!r.has_more;
+      rows=rows.concat(r.students||[]);
+      const pct=total?Math.min(100,Math.round(done/total*100)):(more?60:100);
+      const f=document.getElementById('mfx-fill'), t=document.getElementById('mfx-text');
+      if(f) f.style.width=pct+'%';
+      if(t) t.textContent=`${pct}% \u2014 ${done}${total?'/'+total:''} checked \u00b7 ${filled} medium set`;
+    }
+    const list=rows.slice(0,200).map((x,i)=>`<div class="topper-row"><div class="rank-b">${i+1}</div><div class="topper-name">${esc(x.name||'Student')}<div class="topper-sub">${esc(x.phone||'')} \u00b7 ${esc(x.user_id||'')}</div></div><span class="xm-chip" style="background:rgba(16,185,129,.15);color:#059669">${esc(x.medium||'')}</span></div>`).join('');
+    const diag=(notFound||noMed)?`<div class="alert alert-info" style="font-size:.8rem;margin-top:8px">Baaki khaali reh gaye: <b>${notFound}</b> portal par mile nahi (phone match nahi), <b>${noMed}</b> portal par mile par unka medium wahan bhi khaali hai. ${noMed?'Jinme portal par bhi medium khaali hai, unhe portal team se bharwana padega ya app me manually set karna hoga.':''}</div>`:'';
+    out.innerHTML=`<div class="alert alert-success"><b>${filled}</b> student(s) ka medium set hua (${done} checked).</div>${diag}${list?`<div class="hide-scroll" style="max-height:40vh;margin-top:10px">${list}</div>`:''}`;
+    toast(`${filled} medium set from Portal`); loadAStudents();
+  }catch(e){ out.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
+  btn.disabled=false; btn.textContent='Start';
+}
 async function openWhatsApp(){
   showModal('WhatsApp (Combirds)','<div class="spinner"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
   try{
@@ -8575,6 +8606,12 @@ async function ensureSubjects(){
   try{ window._allSubjects=await api('/api/admin/subjects'); }
   catch(e){ window._allSubjects=window._allSubjects||{'10':[],'12':[]}; }
 }
+// Subject add/delete/mode ke baad cache tod do — warna student-edit ka Subjects
+// dropdown purani (cached) list dikhata rehta hai aur naya subject nahi aata.
+async function invalidateSubjects(){
+  window._allSubjects=null;
+  try{ await ensureSubjects(); }catch(e){}
+}
 function subjectDropdown(wrapId,cls,selected){
   const subs=((window._allSubjects||{})[cls]||[]);
   if(!subs.length) return '<span style="color:var(--text-muted);font-size:.82rem">No subjects found for this class. Add them in Settings \u2192 Subjects.</span>';
@@ -8684,7 +8721,7 @@ function aRenderStudents(){
       <div class="seg">${segB('','All Students',ov.total)}${segB('mvs_portal','MVS Portal',ov.mvs_portal)}${segB('mvs_app','MVS App',ov.mvs_app)}</div>
       <button class="pp-btn" onclick="openPortalPending()">${ic('bell')} Portal Pending<span class="pp-n">${ov.portal_reachable?ov.pending_count:'?'}</span></button>
     </div>`:'';
-  el.innerHTML=`<div class="card-header" style="padding:0 4px 12px;border:none"><h3 style="font-size:1.3rem">Students</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-success btn-sm" onclick="openBulkPhone()">${ic('users')} Add by Phone</button><button class="btn btn-ghost btn-sm" onclick="openExcelUpload()">${ic('upload')} Excel Upload</button><button class="btn btn-primary btn-sm" onclick="openAddStudent()">${ic('user')} Add Student</button><button class="btn btn-success btn-sm" onclick="openWhatsApp()">${ic('megaphone')} WhatsApp</button><button class="btn btn-ghost btn-sm" onclick="openPortalSync()">${ic('refresh')} Sync Portal</button><button class="btn btn-ghost btn-sm" onclick="openSsoCheck()">${ic('shield')} Portal Check</button><button class="btn btn-danger btn-sm" onclick="openDeleteAllStudents()">${ic('trash')} Delete All</button></div></div>${srcChips}
+  el.innerHTML=`<div class="card-header" style="padding:0 4px 12px;border:none"><h3 style="font-size:1.3rem">Students</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-success btn-sm" onclick="openBulkPhone()">${ic('users')} Add by Phone</button><button class="btn btn-ghost btn-sm" onclick="openExcelUpload()">${ic('upload')} Excel Upload</button><button class="btn btn-primary btn-sm" onclick="openAddStudent()">${ic('user')} Add Student</button><button class="btn btn-success btn-sm" onclick="openWhatsApp()">${ic('megaphone')} WhatsApp</button><button class="btn btn-ghost btn-sm" onclick="openPortalSync()">${ic('refresh')} Sync Portal</button><button class="btn btn-ghost btn-sm" onclick="openMediumFix()">${ic('book')} Fix Medium</button><button class="btn btn-ghost btn-sm" onclick="openSsoCheck()">${ic('shield')} Portal Check</button><button class="btn btn-danger btn-sm" onclick="openDeleteAllStudents()">${ic('trash')} Delete All</button></div></div>${srcChips}
     ${cards.join('')}
     <div class="card"><div class="card-body">
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"><input id="a-stu-q" class="form-control" style="flex:1;min-width:180px" placeholder="Search name, phone, ID, email..." value="${esc(_stuSearch)}" oninput="aStuSearch(this.value,this)"><select class="form-control" style="width:auto" onchange="aStuSize(this.value)">${[10,25,50,100].map(n=>`<option value="${n}"${_stuSize===n?' selected':''}>${n} / page</option>`).join('')}</select></div>
@@ -9210,7 +9247,7 @@ async function submitAdminMaterial(){
 }
 function aSetSubj(s){ _attActiveSub=decodeURIComponent(s); renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',onEditAny:'adminEditTT',onClassFilter:'aClassFilter',activeClass:_attClass,emptyMsg:'No entries',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers',onReport:true}); }
 async function setSubjMode(id,mode){
-  try{ const r=await api('/api/admin/subjects/'+id+'/mode','POST',{mode}); toast(r.message); loadASubjects(); }
+  try{ const r=await api('/api/admin/subjects/'+id+'/mode','POST',{mode}); await invalidateSubjects(); toast(r.message); loadASubjects(); }
   catch(e){ toast(e.message,true); }
 }
 async function loadASubjects(){
@@ -9249,7 +9286,7 @@ async function setAiAll(on){
   catch(e){ toast(e.message,true); }
 }
 async function deleteSubject(id){
-  try{ await api('/api/admin/subjects/'+id,'DELETE'); toast('Subject deleted. '); loadASubjects(); }catch(e){ toast(e.message,true); }
+  try{ await api('/api/admin/subjects/'+id,'DELETE'); await invalidateSubjects(); toast('Subject deleted. '); loadASubjects(); }catch(e){ toast(e.message,true); }
 }
 function openAddSubject(cls){
   showModal(' Subject Add (Class '+cls+')',
@@ -9258,7 +9295,7 @@ function openAddSubject(cls){
 }
 async function submitAddSubject(cls){
   const name=val('ns-name'); if(!name){ toast('Please enter a subject name.',true); return; }
-  try{ await api(`/api/admin/subjects?class_level=${cls}&name=${encodeURIComponent(name)}&code=${encodeURIComponent(val('ns-code'))}`,'POST'); closeModal(); toast('Subject added. '); loadASubjects(); }catch(e){ toast(e.message,true); }
+  try{ await api(`/api/admin/subjects?class_level=${cls}&name=${encodeURIComponent(name)}&code=${encodeURIComponent(val('ns-code'))}`,'POST'); await invalidateSubjects(); closeModal(); toast('Subject added. '); loadASubjects(); }catch(e){ toast(e.message,true); }
 }
 
 const RESET_CATS=[
