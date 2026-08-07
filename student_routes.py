@@ -1057,7 +1057,7 @@ def student_my_photo(db: Session = Depends(get_db), current_user=Depends(get_stu
     sp = get_student_profile(current_user, db)
     if not sp.photo_b64:
         raise HTTPException(status_code=404, detail="No photo")
-    return Response(content=base64.b64decode(sp.photo_b64), media_type="image/jpeg")
+    return __import__("r2_storage").photo_response(sp.photo_b64)
 
 @router.get("/has-photo")
 def student_has_photo(db: Session = Depends(get_db), current_user=Depends(get_student)):
@@ -1092,7 +1092,7 @@ def student_teacher_photo(tid: int, db: Session = Depends(get_db), current_user=
     tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
     if not tp or not tp.photo_b64:
         raise HTTPException(status_code=404, detail="No photo")
-    return Response(content=base64.b64decode(tp.photo_b64), media_type="image/jpeg")
+    return __import__("r2_storage").photo_response(tp.photo_b64)
 
 # ===== LIVE PRESENCE: student heartbeat =====
 @router.post("/ping")
