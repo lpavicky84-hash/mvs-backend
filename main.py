@@ -328,6 +328,45 @@ def _r2_migrate_batch(key: str = "", kind: str = "", after_id: int = 0, limit: i
         db.close()
 
 
+@app.get("/r2-count")
+def _r2_count(key: str = ""):
+    if not _r2_mig_secret() or key != _r2_mig_secret():
+        return JSONResponse(status_code=403, content={"error": "bad key — R2 Account ID daalo"})
+    from database import SessionLocal
+    from sqlalchemy import func, case
+    db = SessionLocal()
+    try:
+        from models import StudentProfile, TeacherProfile, Material
+
+        def ph(Model, col):
+            b = db.query(func.count()).select_from(Model).filter(col.isnot(None), ~col.like("http%")).scalar() or 0
+            r = db.query(func.count()).select_from(Model).filter(col.like("http%")).scalar() or 0
+            return {"in_db_base64": int(b), "on_r2": int(r), "total": int(b) + int(r)}
+
+        rows = db.query(
+            Material.material_type,
+            func.count().label("total"),
+            func.sum(case((Material.content_b64.like("http%"), 1), else_=0)).label("on_r2"),
+            func.sum(case((Material.content_b64.isnot(None) & ~Material.content_b64.like("http%"), 1), else_=0)).label("b64"),
+        ).group_by(Material.material_type).all()
+        LABEL = {"notes": "Class Notes", "dpp": "DPP", "test": "Tests",
+                 "answer": "Student Answers", "other": "Question Bank / Study Material"}
+        materials = []
+        for mt, total, on_r2, b64 in rows:
+            materials.append({"type": mt or "unknown", "label": LABEL.get(mt, mt or "unknown"),
+                              "total": int(total or 0), "in_db_base64": int(b64 or 0), "on_r2": int(on_r2 or 0)})
+        return {
+            "student_photos": ph(StudentProfile, StudentProfile.photo_b64),
+            "teacher_photos": ph(TeacherProfile, TeacherProfile.photo_b64),
+            "materials_by_type": materials,
+            "note": "in_db_base64 = abhi DB me (migrate hona baaki). on_r2 = R2 par ho gaye. Migration ke baad in_db_base64=0 aur on_r2 me sab.",
+        }
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)[:300]})
+    finally:
+        db.close()
+
+
 @app.get("/r2-migrate")
 def _r2_migrate_page():
     html = """<!doctype html><html><head><meta charset=utf-8><title>R2 Migration</title>
