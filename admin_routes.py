@@ -7,7 +7,7 @@ except Exception:
     _SR = None
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, Request
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 from sqlalchemy import func
 from datetime import datetime, date, timedelta
 from typing import List, Optional
@@ -182,7 +182,7 @@ def review_reschedule(
                    "reschedule_approved")
 
         # Notify all students of affected class (filter in Python — works on all DBs)
-        all_students = db.query(StudentProfile).all()
+        all_students = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all()
         students = [sp for sp in all_students if sp.subjects and class_entry.subject in sp.subjects]
         for sp in students:
             if sp.user:
@@ -1327,7 +1327,7 @@ async def admin_upload_material(
     # notify students of subject
     try:
         label = {"notes": "Class Notes", "dpp": "DPP", "test": "Test"}.get(material_type.strip(), (category.strip() or "Material"))
-        for sp in db.query(StudentProfile).all():
+        for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all():
             if sp.subjects and subject.strip() in sp.subjects and sp.user:
                 n = Notification(user_id=sp.user.id, title=f"📚 New {label}: {subject.strip()}",
                                  message=f"Admin uploaded {label} for {subject.strip()}.", notif_type="new_material")
@@ -1421,7 +1421,7 @@ def approve_class(eid: int, db: Session = Depends(get_db), _=Depends(get_admin))
                                 message=msg, notif_type="class_approved"))
     # notify students of that subject
     _nk = (_SR.canon_norm(e.subject) if _SR else e.subject)
-    for sp in db.query(StudentProfile).all():
+    for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all():
         if sp.subjects and _nk in {(_SR.canon_norm(x) if _SR else x) for x in sp.subjects} and sp.user:
             db.add(Notification(user_id=sp.user.id, title=f"New Class: {e.subject}",
                                 message=f"An extra class was added for {e.subject} ({e.entry_date} {e.time_text or ''}). See the time table.",
@@ -1499,7 +1499,7 @@ def admin_student_counts(db: Session = Depends(get_db), _=Depends(get_admin)):
         t = _re.sub(r"\((?:class\s*)?\d+(?:th)?\)", " ", t, flags=_re.I)
         t = _re.sub(r"[^a-z0-9]+", " ", t.lower())
         return " ".join(t.split()).strip()
-    students = db.query(StudentProfile).all()
+    students = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all()
     code_map, class_map = {}, {}
     for a in db.query(AvailableSubject).all():
         code_map[(_sk(a.name), str(a.class_level or "").strip())] = a.code
@@ -1786,7 +1786,8 @@ def admin_students_list(q: str = "", subject: str = "", cls: str = "", session: 
         t = _re.sub(r"\((?:class\s*)?\d+(?:th)?\)", " ", t, flags=_re.I)
         t = _re.sub(r"[^a-z0-9]+", " ", t.lower())
         return " ".join(t.split()).strip()
-    rows = db.query(StudentProfile).all()
+    rows = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all()
+    _photo_ids = {r[0] for r in db.query(StudentProfile.id).filter(StudentProfile.photo_b64.isnot(None)).all()}
     ql = q.strip().lower()
     want = _sk(subject) if subject else ""
     want_cls = (cls or "").strip()
@@ -1808,7 +1809,7 @@ def admin_students_list(q: str = "", subject: str = "", cls: str = "", session: 
             continue
         disp_subs = _SR.canon_list(ssubs, sp.class_level) if _SR else ssubs
         out.append({"id": sp.id, "name": nm, "phone": sp.phone, "class": sp.class_level,
-                    "subjects": disp_subs, "all_subjects": disp_subs, "has_photo": bool(sp.photo_b64),
+                    "subjects": disp_subs, "all_subjects": disp_subs, "has_photo": (sp.id in _photo_ids),
                     "batch": sp.batch_name, "medium": sp.medium, "email": sp.email,
                     "class_name": sp.class_name, "nios_ref": sp.nios_ref,
                     "exam_session": sp.exam_session, "exam_stream": sp.exam_stream,
@@ -2466,7 +2467,7 @@ async def admin_upload_questionbank(
     db.add(m); db.commit(); db.refresh(m)
     # notify ALL students
     try:
-        for sp in db.query(StudentProfile).all():
+        for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all():
             if sp.user:
                 db.add(Notification(user_id=sp.user.id,
                     title=f"📘 New {category.strip() or 'Question Bank'} ({medium.strip()})",
