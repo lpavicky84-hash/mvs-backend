@@ -1048,7 +1048,8 @@ async def student_set_photo(file: UploadFile = File(...), db: Session = Depends(
     raw = await file.read()
     if len(raw) > 5 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Photo is larger than 5MB")
-    sp.photo_b64 = base64.b64encode(raw).decode("ascii")
+    import r2_storage as R2
+    sp.photo_b64 = R2.store_photo_value("photos/student/%d.jpg" % sp.id, raw, file.content_type)
     db.commit()
     return {"message": "Profile photo set!"}
 
@@ -1543,10 +1544,21 @@ _BADGES = [
 
 def _get_stats(db, student_id):
     st = db.query(StudentStats).filter(StudentStats.student_id == student_id).first()
-    if not st:
+    if st:
+        return st
+    # race-safe create: do request ek saath aayein to duplicate na ho.
+    # savepoint me try -> IntegrityError (doosri request ne bana diya) -> re-query.
+    from sqlalchemy.exc import IntegrityError
+    sp = db.begin_nested()
+    try:
         st = StudentStats(student_id=student_id, xp=0, streak=0, best_streak=0, badges=[])
-        db.add(st); db.flush()
-    return st
+        db.add(st)
+        db.flush()
+        sp.commit()
+        return st
+    except IntegrityError:
+        sp.rollback()
+        return db.query(StudentStats).filter(StudentStats.student_id == student_id).first()
 
 
 def _touch_streak(st):
