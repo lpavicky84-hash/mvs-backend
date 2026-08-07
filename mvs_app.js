@@ -6191,6 +6191,10 @@ async function openTVTPropose(){
           <button type="button" class="btn btn-ghost btn-sm" onclick="tvtPItemAdd()" style="margin-top:4px">${ic('plus')} Add video</button>
         </div>
       </div>
+      <div class="form-group" id="tvt-p-subj-wrap" style="grid-column:1/-1;display:none"><label>Subject &amp; Class (project ke liye)</label>
+        <select id="tvt-p-subject" class="input"><option value="">— Apna subject chuno —</option></select>
+        <div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">Konse subject/class ke liye project hai — taaki manager ko timetable ke sahi chapters milein.</div>
+      </div>
       <div class="form-group" style="grid-column:1/-1"><label>Title</label><input id="tvt-p-title" class="input" placeholder="e.g. Probability Short Tricks — NIOS Special"></div>
       <div class="form-group"><label>Streaming</label><select id="tvt-p-stream" class="input" onchange="_vtFilterTypes('tvt-p-stream','tvt-p-type',window._vtTypesT)"><option value="">— Select —</option><option value="recorded">Recorded</option><option value="live">Live</option></select></div>
       <div class="form-group"><label>Video Type</label><select id="tvt-p-type" class="input">${_vtTypeOptsHtml(types,'','','— Select type —')}</select></div>
@@ -6205,6 +6209,14 @@ async function openTVTPropose(){
     </div>
     <p style="font-size:.74rem;color:var(--text-muted)">Your proposal goes to the production manager. Once approved, you will get the thumbnail and deadline here.</p>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="tvtProposeSave()">${ic('send')} Send for Approval</button>`);
+  tvtLoadMySubjects();
+}
+async function tvtLoadMySubjects(){
+  const sel=document.getElementById('tvt-p-subject'); if(!sel) return;
+  let sc=window._tvtMySubjClasses;
+  if(!sc){ try{ const p=await api('/api/teacher/profile'); sc=p.subject_classes||[]; window._tvtMySubjClasses=sc; }catch(e){ sc=[]; } }
+  if(!sc.length){ sel.innerHTML='<option value="">— Koi subject set nahi —</option>'; return; }
+  sel.innerHTML='<option value="">— Apna subject chuno —</option>'+sc.map(x=>{const s=(x.subject||'').trim(),c=(x.class||x.class_level||'').trim();return `<option value="${esc(s)}||${esc(c)}">${esc(s)}${c?' \u00b7 Class '+esc(c):''}</option>`;}).join('');
 }
 function tvtScopeToggle(){
   const sc=(document.getElementById('tvt-p-scope')||{}).value;
@@ -6261,6 +6273,7 @@ function tvtPKind(k){
   if(tk) tk.classList.toggle('on',k==='task');
   if(pj) pj.classList.toggle('on',k==='project');
   const sw=document.getElementById('tvt-p-scope-wrap'); if(sw) sw.style.display=(k==='project')?'block':'none';
+  const subw=document.getElementById('tvt-p-subj-wrap'); if(subw) subw.style.display=(k==='project')?'block':'none';
   if(k==='project') tvtScopeToggle();
 }
 async function tvtProposeSave(){
@@ -6275,6 +6288,9 @@ async function tvtProposeSave(){
     thumbnail_b64:window._vtThumbB64||null };
   if(ptype==='project'){
     body.project_scope=val('tvt-p-scope')||'chapter';
+    const sv=val('tvt-p-subject')||'';
+    if(sv){ const i=sv.indexOf('||'); body.subject=(i<0?sv:sv.slice(0,i)).trim(); body.class_level=(i<0?'':sv.slice(i+2)).trim(); }
+    if(body.project_scope==='chapter' && !body.subject){ toast('Project ke liye apna subject aur class chuno'); return; }
     if(body.project_scope==='videos'){
       const items=[...document.querySelectorAll('#tvt-p-items .tvt-p-itm')].map(i=>i.value.trim()).filter(Boolean);
       if(!items.length){ toast('Add at least one video title'); return; }
@@ -7182,6 +7198,17 @@ function _vtPrefillProject(pre){
   setTimeout(()=>{
     const t=document.getElementById('vtp-title'); if(t&&pre.title) t.value=pre.title;
     const tc=document.getElementById('vtp-teacher'); if(tc&&pre.teacher_id) tc.value=String(pre.teacher_id);
+    // teacher ne jo subject/class chuna tha (pre.subject = "Physics 12") -> yahan auto-select
+    if(pre.subject){
+      const m=String(pre.subject).match(/^(.*?)\s+(10|12)$/);
+      const sName=(m?m[1]:pre.subject).trim(), sCls=m?m[2]:'';
+      const setSub=()=>{ const ss=document.getElementById('vtp-subject'), sc=document.getElementById('vtp-class');
+        if(!ss||ss.options.length<=1) return false;
+        const opt=[...ss.options].find(o=>(o.value||'').toLowerCase()===sName.toLowerCase());
+        if(opt){ ss.value=opt.value; if(sc&&sCls) sc.value=sCls; try{ vtpSubjectChange(); }catch(e){} return true; }
+        return false; };
+      if(!setSub()){ setTimeout(setSub,500); }
+    }
     const rem=(pre.remarks||'');
     const isVideos=/videos/i.test(rem)&&!/complete chapter/i.test(rem);
     const conn=document.getElementById('vtp-connect');

@@ -1859,6 +1859,14 @@ def vt_propose(payload: dict = Body(...), db: Session = Depends(get_db),
     ptype = (payload.get("propose_type") or "task").strip().lower()
     scope = (payload.get("project_scope") or "").strip().lower()
     vcount = str(payload.get("video_count") or "").strip()
+    # teacher ne konse subject/class ke liye project maanga — admin approve modal me
+    # auto pre-fill hoga (aur timetable se sahi chapters aayenge)
+    psub = (payload.get("subject") or "").strip()
+    pcls = (payload.get("class_level") or "").strip()
+    if pcls not in ("10", "12"):
+        pcls = ""
+    subj_store = (("%s %s" % (psub, pcls)).strip() if pcls else psub) if psub else ""
+    subj_label = (("%s · Class %s" % (psub, pcls)) if pcls else psub) if psub else ""
     if ptype == "project":
         if scope == "chapter":
             req = "Requested: PROJECT — complete chapter (from timetable)"
@@ -1872,6 +1880,8 @@ def vt_propose(payload: dict = Body(...), db: Session = Depends(get_db),
                 req = "Requested: PROJECT — %s videos" % (vcount or "4-5")
         else:
             req = "Requested: PROJECT"
+        if subj_label:
+            req += "\nSubject: " + subj_label
     else:
         req = "Requested: TASK — single video"
     t = VideoTask(teacher_id=tp.id, title=title,
@@ -1882,7 +1892,7 @@ def vt_propose(payload: dict = Body(...), db: Session = Depends(get_db),
                   thumbnail_link=(payload.get("thumbnail_link") or "").strip(),
                   streaming=(payload.get("streaming") or "").strip(),
                   reference=(payload.get("reference") or "").strip(),
-                  remarks=req,
+                  remarks=req, subject=subj_store,
                   status="proposal", proposed_by="teacher", proposal_ok="pending")
     db.add(t)
     _hist_add(t, "proposal", "Proposed by teacher")
