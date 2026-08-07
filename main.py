@@ -305,6 +305,69 @@ def _r2_test():
     except Exception as e:
         return {"ok": False, "detail": str(e)[:400]}
 
+
+# ===== R2 BULK MIGRATION (one-time — purane base64 -> R2) =====
+def _r2_mig_secret():
+    return (os.getenv("R2_ACCOUNT_ID") or "").strip()
+
+
+@app.get("/r2-migrate-batch")
+def _r2_migrate_batch(key: str = "", kind: str = "", after_id: int = 0, limit: int = 10):
+    if not _r2_mig_secret() or key != _r2_mig_secret():
+        return JSONResponse(status_code=403, content={"error": "bad key"})
+    from database import SessionLocal
+    import r2_migrate
+    db = SessionLocal()
+    try:
+        # materials bade hote hain -> chhota batch (RAM safe)
+        lim = min(int(limit or 10), 5 if kind == "materials" else 25)
+        return r2_migrate.migrate_batch(db, kind, int(after_id or 0), lim)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)[:300]})
+    finally:
+        db.close()
+
+
+@app.get("/r2-migrate")
+def _r2_migrate_page():
+    html = """<!doctype html><html><head><meta charset=utf-8><title>R2 Migration</title>
+<style>body{font-family:system-ui;background:#0b0b0b;color:#ddd;padding:20px;max-width:820px;margin:auto}
+h2{color:#e8b84b}.bar{height:14px;background:#222;border-radius:8px;overflow:hidden;margin:8px 0}
+.fill{height:100%;background:linear-gradient(90deg,#b8941f,#e8b84b);width:0}
+pre{background:#111;padding:12px;border-radius:8px;max-height:60vh;overflow:auto;font-size:12px;white-space:pre-wrap}
+input{padding:8px;border-radius:6px;border:1px solid #333;background:#161616;color:#ddd;width:340px}
+button{padding:9px 16px;border-radius:8px;border:none;background:#b8941f;color:#111;font-weight:800;cursor:pointer}</style></head>
+<body><h2>R2 Bulk Migration (purane files -> R2)</h2>
+<p>Apna <b>R2 Account ID</b> daal ke Start dabao. Page khula rehne do — apne aap
+sab shift karega. Beech me ruk jaye to dobara Start (jaha se chhoda wahi se aage).</p>
+<input id=k placeholder="R2 Account ID (secret)"> <button onclick="startMig()">Start</button>
+<div class=bar><div class=fill id=f></div></div>
+<pre id=log></pre>
+<script>
+const kinds=[['photos_student',20],['photos_teacher',20],['materials',5]];
+let ki=0,afterId=0,totalMig=0,running=false;
+const log=m=>{const l=document.getElementById('log');l.textContent+=m+"\\n";l.scrollTop=l.scrollHeight;};
+function startMig(){ if(running)return; running=true; ki=0; afterId=0; totalMig=0;
+  document.getElementById('log').textContent=''; log('Starting...'); run(); }
+async function run(){
+  if(ki>=kinds.length){ log('\\n\u2705 ALL DONE. Total migrated: '+totalMig); document.getElementById('f').style.width='100%'; running=false; return; }
+  const key=document.getElementById('k').value.trim();
+  const [kind,limit]=kinds[ki];
+  try{
+    const r=await fetch(`/r2-migrate-batch?key=${encodeURIComponent(key)}&kind=${kind}&after_id=${afterId}&limit=${limit}`);
+    const d=await r.json();
+    if(d.error){ log('ERROR: '+d.error+' (key sahi hai?)'); running=false; return; }
+    totalMig+=d.migrated||0;
+    log(`${kind}: +${d.migrated} moved, ${d.skipped} skip  (id>${afterId})${d.total!=null?'  total~'+d.total:''}`);
+    if(d.has_more){ afterId=d.last_id; }
+    else { log('--- '+kind+' DONE ---'); ki++; afterId=0; }
+    setTimeout(run, 250);
+  }catch(e){ log('network error, retry 3s...'); setTimeout(run,3000); }
+}
+</script></body></html>"""
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(content=html)
+
 @app.get("/")
 def root():
     if os.path.exists(_PORTAL_FILE):

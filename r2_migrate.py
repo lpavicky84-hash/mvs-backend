@@ -1,0 +1,53 @@
+"""One-time bulk migration: purane base64 photos/materials -> R2.
+
+Sirf un rows ko chhuta hai jinme base64 hai (jo 'http' se shuru NAHI hote).
+Upload fail ho to base64 waise ka waisa rehta hai (data loss nahi). Batch + cursor.
+"""
+import base64
+
+
+def _spec(kind):
+    from models import StudentProfile, TeacherProfile, Material
+    if kind == "photos_student":
+        return StudentProfile, "photo_b64", "photos/student", "image/jpeg", ".jpg"
+    if kind == "photos_teacher":
+        return TeacherProfile, "photo_b64", "photos/teacher", "image/jpeg", ".jpg"
+    if kind == "materials":
+        return Material, "content_b64", "materials", "application/pdf", ".pdf"
+    return None
+
+
+def migrate_batch(db, kind, after_id=0, limit=10):
+    import r2_storage as R2
+    if not R2.is_configured():
+        return {"error": "R2 not configured"}
+    spec = _spec(kind)
+    if not spec:
+        return {"error": "bad kind"}
+    Model, field, prefix, ctype, ext = spec
+    col = getattr(Model, field)
+
+    base_q = db.query(Model).filter(col.isnot(None), ~col.like("http%"))
+    total = base_q.count() if after_id == 0 else None
+    rows = base_q.filter(Model.id > after_id).order_by(Model.id).limit(limit).all()
+
+    migrated = skipped = 0
+    last_id = after_id
+    for r in rows:
+        last_id = r.id
+        val = getattr(r, field)
+        if not val or (isinstance(val, str) and val.startswith("http")):
+            skipped += 1
+            continue
+        try:
+            raw = base64.b64decode(val.split(",")[-1])
+            fn = getattr(r, "filename", None) or ("file" + ext)
+            url = R2.upload_bytes(R2.new_key(prefix, fn), raw, ctype)
+            setattr(r, field, url)
+            migrated += 1
+        except Exception:
+            skipped += 1  # base64 waise ka waisa reh gaya
+    db.commit()
+    return {"kind": kind, "checked": len(rows), "migrated": migrated,
+            "skipped": skipped, "last_id": last_id,
+            "has_more": len(rows) == limit, "total": total}
