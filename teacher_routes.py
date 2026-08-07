@@ -4968,7 +4968,10 @@ def _office_ips(db):
     try:
         row = db.query(AppSetting).filter(AppSetting.key == "office_ips").first()
         data = _json.loads(row.value) if row and row.value else []
-        return [str(ip).strip() for ip in data if str(ip).strip()][:10] if isinstance(data, list) else []
+        # v121: IP count limit hata di (19+ office WiFis). Reader ka [:10] cap bug tha —
+        # 10 se aage waale IPs padhe hi nahi jaate the, isliye naya IP save karne par bhi
+        # recognize nahi hota tha aur wapas "New IPs" me aa jaata tha. Ab poori list padho.
+        return [str(ip).strip() for ip in data if str(ip).strip()] if isinstance(data, list) else []
     except Exception:
         return []
 
