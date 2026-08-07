@@ -463,7 +463,7 @@ async def ask_doubt(
         if raw:
             if len(raw) > 20 * 1024 * 1024:
                 raise HTTPException(status_code=400, detail="Attachment is larger than 20MB")
-            img_b64 = base64.b64encode(raw).decode("ascii")
+            img_b64 = __import__("r2_storage").store_file_value(__import__("r2_storage").new_key("doubt-img", file.filename or "img"), raw, file.content_type or "image/jpeg")
             attach_mime = file.content_type or "application/octet-stream"
             attach_name = (file.filename or "attachment")[:250]
     audio_b64 = None
@@ -472,7 +472,7 @@ async def ask_doubt(
         if vraw:
             if len(vraw) > 10 * 1024 * 1024:
                 raise HTTPException(status_code=400, detail="Voice note is larger than 10MB")
-            audio_b64 = base64.b64encode(vraw).decode("ascii")
+            audio_b64 = __import__("r2_storage").store_file_value(__import__("r2_storage").new_key("doubt-audio", "voice.webm"), vraw, "audio/webm")
     doubt = Doubt(student_id=sp.id, teacher_id=(tp.id if tp else None),
                   subject=subject.strip(), topic=topic.strip(), question=question.strip(),
                   image_b64=img_b64, attach_mime=attach_mime, attach_name=attach_name,
@@ -486,14 +486,7 @@ async def ask_doubt(
     return {"id": doubt.id, "message": "Doubt sent!" + (f" Teacher: {tp.user.name}" if tp and tp.user else "")}
 
 def _doubt_media(b64, mime, name):
-    import base64
-    from fastapi import Response
-    if not b64:
-        raise HTTPException(status_code=404, detail="Not found")
-    safe = (name or "file").replace('"', "")
-    return Response(content=base64.b64decode(b64),
-                    media_type=mime or "application/octet-stream",
-                    headers={"Content-Disposition": f'inline; filename="{safe}"'})
+    return __import__("r2_storage").file_response(b64, mime or "application/octet-stream", (name or "file").replace(chr(34), ""), False)
 
 def _own_doubt(did, db, current_user):
     sp = get_student_profile(current_user, db)
@@ -1438,7 +1431,7 @@ def student_submit_exam(exam_id: int, payload: dict = Body(...), background_task
     img = payload.get("answer_image_b64") or ""
     if not img:
         raise HTTPException(400, "Please upload your handwritten answer sheet")
-    att.answer_image_b64 = img
+    att.answer_image_b64 = __import__("r2_storage").normalize(img, "exam-answers", "image/jpeg")
     att.status = "grading"   # shown to the student as "with teacher for checking"
     db.commit()
     return {"status": "grading", "message": _exam_thankyou(teacher), "teacher_name": teacher,

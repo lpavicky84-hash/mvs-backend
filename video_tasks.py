@@ -1248,7 +1248,7 @@ def vt_approve_proposal(task_id: int, payload: dict = Body(...),
     try:
         b64 = _checked_b64(payload)
         if b64:
-            t.thumbnail_b64 = b64
+            t.thumbnail_b64 = __import__("r2_storage").normalize(b64, "thumbnails", "image/jpeg")
         if payload.get("thumbnail_link"):
             t.thumbnail_link = payload["thumbnail_link"].strip()
         if payload.get("reference"):
@@ -1422,7 +1422,7 @@ def vt_edit(task_id: int, payload: dict = Body(...),
     try:
         b64 = _checked_b64(payload)
         if b64:
-            t.thumbnail_b64 = b64
+            t.thumbnail_b64 = __import__("r2_storage").normalize(b64, "thumbnails", "image/jpeg")
             changes.append("thumbnail")
     except HTTPException:
         raise

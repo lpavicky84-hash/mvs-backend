@@ -143,3 +143,31 @@ def file_response(value, media_type="application/octet-stream", filename=None, d
         disp = "attachment" if download else "inline"
         headers["Content-Disposition"] = '%s; filename="%s"' % (disp, filename)
     return Response(content=_b64.b64decode(v), media_type=media_type, headers=headers)
+
+
+def normalize(value, prefix, content_type="application/octet-stream"):
+    """Store-time helper: base64/dataURL -> R2 par upload -> URL return.
+    Agar pehle se http URL hai -> waise hi. None/empty -> waise hi.
+    R2 na ho ya fail -> base64 waise ka waisa (data loss nahi)."""
+    if not value or not isinstance(value, str):
+        return value
+    if value.startswith("http"):
+        return value
+    if not is_configured():
+        return value
+    try:
+        import base64 as _b64
+        raw = _b64.b64decode(value.split(",")[-1])
+    except Exception:
+        return value
+    ct = (content_type or "").lower()
+    ext = ".bin"
+    if "pdf" in ct: ext = ".pdf"
+    elif "png" in ct: ext = ".png"
+    elif "webm" in ct or "ogg" in ct: ext = ".webm"
+    elif "mp3" in ct or "mpeg" in ct: ext = ".mp3"
+    elif "jpeg" in ct or "jpg" in ct or "image" in ct: ext = ".jpg"
+    try:
+        return upload_bytes(new_key(prefix, "f" + ext), raw, content_type or "application/octet-stream")
+    except Exception:
+        return value

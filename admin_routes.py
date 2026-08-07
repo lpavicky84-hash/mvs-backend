@@ -772,7 +772,7 @@ def studio_report_upsert(payload: dict = Body(...), db: Session = Depends(get_db
     r.end_time = (payload.get("end_time") or "").strip()[:20]
     fb64 = (payload.get("notes_file_b64") or "").strip()
     if fb64:
-        r.notes_file_b64 = fb64
+        r.notes_file_b64 = __import__("r2_storage").normalize(fb64, "notes", (payload.get("notes_file_mime") or "application/pdf"))
         r.notes_file_name = ((payload.get("notes_file_name") or "notes.pdf").strip()[:255])
         r.notes_file_mime = ((payload.get("notes_file_mime") or "application/pdf").strip()[:100])
     elif payload.get("remove_notes_file"):
@@ -792,14 +792,9 @@ def studio_report_file(rid: int, db: Session = Depends(get_db), _=Depends(get_ad
     r = db.query(StudioReport).filter(StudioReport.id == rid).first()
     if not r or not r.notes_file_b64:
         raise HTTPException(404, "File not available")
-    try:
-        data = _b64.b64decode(r.notes_file_b64.split(",")[-1])
-    except Exception:
-        raise HTTPException(400, "Bad file")
-    fname = r.notes_file_name or "notes.pdf"
-    mime = r.notes_file_mime or "application/pdf"
-    return Response(content=data, media_type=mime,
-                    headers={"Content-Disposition": 'attachment; filename="%s"' % fname})
+    return __import__("r2_storage").file_response(
+        r.notes_file_b64, r.notes_file_mime or "application/pdf",
+        r.notes_file_name or "notes.pdf", True)
 
 @router.delete("/studio-reports/{rid}")
 def studio_report_delete(rid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -886,7 +881,7 @@ async def class_report_backfill(payload: dict = Body(...), db: Session = Depends
     if homework:
         lec.homework = homework
     if pdf_b64:
-        lec.pdf_b64 = pdf_b64
+        lec.pdf_b64 = __import__("r2_storage").normalize(pdf_b64, "lectures", "application/pdf")
         lec.pdf_filename = pdf_name
     # Main save — a DB failure here must come back as a readable JSON error,
     # never a bare 500 (the global handler in main.py keeps CORS headers on).
@@ -2393,9 +2388,7 @@ def admin_doubt_image(did: int, db: Session = Depends(get_db), _=Depends(get_adm
     d = db.query(Doubt).filter(Doubt.id == did).first()
     if not d or not d.image_b64:
         return _img_response(None)
-    return Response(content=base64.b64decode(d.image_b64),
-                    media_type=(d.attach_mime or "image/jpeg"),
-                    headers={"Content-Disposition": f'inline; filename="{(d.attach_name or "file").replace(chr(34), "")}"'})
+    return __import__("r2_storage").file_response(d.image_b64, d.attach_mime or "image/jpeg", (d.attach_name or "file").replace(chr(34), ""), False)
 
 @router.get("/doubt/{did}/voice")
 def admin_doubt_voice(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -2405,7 +2398,7 @@ def admin_doubt_voice(did: int, db: Session = Depends(get_db), _=Depends(get_adm
     d = db.query(Doubt).filter(Doubt.id == did).first()
     if not d or not d.audio_b64:
         raise HTTPException(status_code=404, detail="Not found")
-    return Response(content=base64.b64decode(d.audio_b64), media_type="audio/webm")
+    return __import__("r2_storage").file_response(d.audio_b64, "audio/webm")
 
 @router.get("/doubt/{did}/answer-file")
 def admin_doubt_answer_file(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -2415,8 +2408,7 @@ def admin_doubt_answer_file(did: int, db: Session = Depends(get_db), _=Depends(g
     d = db.query(Doubt).filter(Doubt.id == did).first()
     if not d or not d.answer_attach_b64:
         raise HTTPException(status_code=404, detail="Not found")
-    return Response(content=base64.b64decode(d.answer_attach_b64),
-                    media_type=d.answer_attach_mime or "application/octet-stream")
+    return __import__("r2_storage").file_response(d.answer_attach_b64, d.answer_attach_mime or "application/octet-stream")
 
 @router.get("/doubt/{did}/answer-voice")
 def admin_doubt_answer_voice(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -2426,7 +2418,7 @@ def admin_doubt_answer_voice(did: int, db: Session = Depends(get_db), _=Depends(
     d = db.query(Doubt).filter(Doubt.id == did).first()
     if not d or not d.answer_audio_b64:
         raise HTTPException(status_code=404, detail="Not found")
-    return Response(content=base64.b64decode(d.answer_audio_b64), media_type="audio/webm")
+    return __import__("r2_storage").file_response(d.answer_audio_b64, "audio/webm")
 
 # ===== ADMIN: QUESTION BANK (global materials, Hindi/English, no-compress or link) =====
 @router.post("/questionbank")

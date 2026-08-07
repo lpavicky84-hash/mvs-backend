@@ -524,14 +524,7 @@ def teacher_doubt_assign(doubt_id: int, payload: dict, db: Session = Depends(get
     return {"message": f"Doubt assigned to {target_name}", "assigned_to": target_name}
 
 def _t_doubt_media(b64, mime, name):
-    import base64
-    from fastapi import Response
-    if not b64:
-        raise HTTPException(status_code=404, detail="Not found")
-    safe = (name or "file").replace('"', "")
-    return Response(content=base64.b64decode(b64),
-                    media_type=mime or "application/octet-stream",
-                    headers={"Content-Disposition": f'inline; filename="{safe}"'})
+    return __import__("r2_storage").file_response(b64, mime or "application/octet-stream", (name or "file").replace(chr(34), ""), False)
 
 def _t_own_doubt(did, db, current_user):
     tp = get_teacher_profile(current_user, db)
@@ -592,9 +585,9 @@ def resolve_doubt(
     doubt.answer = req.answer
     doubt.answer_image_link = req.answer_image_link
     if req.answer_audio_b64:
-        doubt.answer_audio_b64 = req.answer_audio_b64
+        doubt.answer_audio_b64 = __import__("r2_storage").normalize(req.answer_audio_b64, "doubt-audio", "audio/webm")
     if req.answer_attach_b64:
-        doubt.answer_attach_b64 = req.answer_attach_b64
+        doubt.answer_attach_b64 = __import__("r2_storage").normalize(req.answer_attach_b64, "doubt-attach", (getattr(req, "answer_attach_mime", None) or "application/octet-stream"))
         doubt.answer_attach_mime = req.answer_attach_mime or "application/octet-stream"
         doubt.answer_attach_name = (req.answer_attach_name or "attachment")[:250]
     doubt.status = DoubtStatus.resolved
@@ -1849,9 +1842,7 @@ def teacher_dpp_answer_file(answer_id: int, db: Session = Depends(get_db), curre
     a = db.query(DppAnswer).filter(DppAnswer.id == answer_id).first()
     if not a or not a.answer_b64:
         raise HTTPException(status_code=404, detail="File not found")
-    data = base64.b64decode(a.answer_b64)
-    return Response(content=data, media_type="application/pdf",
-                    headers={"Content-Disposition": 'attachment; filename="%s"' % (a.filename or "dpp-answer.pdf")})
+    return __import__("r2_storage").file_response(a.answer_b64, "application/pdf", a.filename or "dpp-answer.pdf", True)
 
 
 @router.delete("/dpp-packs/{pack_id}")

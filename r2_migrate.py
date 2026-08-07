@@ -14,6 +14,45 @@ def _spec(kind):
         return TeacherProfile, "photo_b64", "photos/teacher", "image/jpeg", ".jpg"
     if kind == "materials":
         return Material, "content_b64", "materials", "application/pdf", ".pdf"
+    # ---- extra fields (Phase 2d) ----
+    try:
+        from models import StudioReport
+        if kind == "notes":
+            return StudioReport, "notes_file_b64", "notes", "application/pdf", ".pdf"
+    except Exception:
+        pass
+    try:
+        from models import Lecture
+        if kind == "lecture_pdf":
+            return Lecture, "pdf_b64", "lectures", "application/pdf", ".pdf"
+        if kind == "lecture_dpp":
+            return Lecture, "dpp_b64", "lectures", "application/pdf", ".pdf"
+    except Exception:
+        pass
+    try:
+        from models import VideoTask
+        if kind == "thumbnails":
+            return VideoTask, "thumbnail_b64", "thumbnails", "image/jpeg", ".jpg"
+    except Exception:
+        pass
+    try:
+        from models import Doubt
+        if kind == "doubt_img":
+            return Doubt, "image_b64", "doubt-img", "image/jpeg", ".jpg"
+        if kind == "doubt_audio":
+            return Doubt, "audio_b64", "doubt-audio", "audio/webm", ".webm"
+        if kind == "doubt_ans_audio":
+            return Doubt, "answer_audio_b64", "doubt-audio", "audio/webm", ".webm"
+        if kind == "doubt_ans_file":
+            return Doubt, "answer_attach_b64", "doubt-attach", "application/octet-stream", ".bin"
+    except Exception:
+        pass
+    try:
+        from models import DppAnswer
+        if kind == "dpp_answers":
+            return DppAnswer, "answer_b64", "dpp-answers", "application/pdf", ".pdf"
+    except Exception:
+        pass
     return None
 
 
