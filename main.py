@@ -280,6 +280,17 @@ from fastapi.responses import FileResponse
 _PORTAL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "mvs_portal_connected.html")
 
+# Portal ka bada JS ab alag file me (browser ise CACHE karta hai -> refresh par
+# 304, re-download nahi -> egress bahut kam + fast). FileResponse ETag/Last-Modified
+# khud set karta hai, isliye update karne par browser naya le lega.
+_APP_JS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mvs_app.js")
+
+@app.get("/mvs_app.js")
+def _serve_app_js():
+    if os.path.exists(_APP_JS_FILE):
+        return FileResponse(_APP_JS_FILE, media_type="application/javascript")
+    return JSONResponse(status_code=404, content={"detail": "mvs_app.js not found"})
+
 @app.get("/")
 def root():
     if os.path.exists(_PORTAL_FILE):
