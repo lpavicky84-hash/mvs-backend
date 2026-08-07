@@ -2563,27 +2563,31 @@ LIVE_WINDOW_MIN = 3
 def admin_live_users(db: Session = Depends(get_db), _=Depends(get_admin)):
     """Who is online right now (students AND teachers), which section they are on,
     how many times each person has logged in, plus who has never logged in - so
-    the admin can call the inactive ones."""
+    the admin can call the inactive ones. FAST: GROUP BY + sirf phone column
+    (saari sessions/photos load nahi -> connection jaldi release, RAM kam)."""
     from models import UserSession, User, UserRole, StudentProfile, TeacherProfile
     now = datetime.now()
     cutoff = now - timedelta(minutes=LIVE_WINDOW_MIN)
-    sessions = db.query(UserSession).all()
 
-    by_user = {}
-    for s in sessions:
-        d = by_user.setdefault(s.user_id, {"count": 0, "last": None, "live": None})
-        d["count"] += 1
-        if not d["last"] or (s.last_seen and s.last_seen > d["last"]):
-            d["last"] = s.last_seen
-        if s.last_seen and s.last_seen >= cutoff:
+    # login count + last_seen per user — GROUP BY (saari session rows load NAHI)
+    agg = (db.query(UserSession.user_id, func.count(UserSession.id), func.max(UserSession.last_seen))
+           .group_by(UserSession.user_id).all())
+    by_user = {uid: {"count": c, "last": last, "live": None} for uid, c, last in agg}
+
+    # sirf RECENT (live) sessions ka detail (chhota set — poori table nahi)
+    for s in db.query(UserSession).filter(UserSession.last_seen >= cutoff).all():
+        d = by_user.get(s.user_id)
+        if d and (d["live"] is None or (s.last_seen and s.last_seen > (d["live"].last_seen or cutoff))):
             d["live"] = s
 
     users = db.query(User).filter(User.role.in_([UserRole.student, UserRole.teacher, UserRole.admin])).all()
+
+    # phones — sirf phone column (PHOTO blob load nahi -> RAM + speed)
     phones = {}
-    for sp in db.query(StudentProfile).all():
-        phones[sp.user_id] = sp.phone
-    for tp in db.query(TeacherProfile).all():
-        phones.setdefault(tp.user_id, getattr(tp, "phone", None))
+    for uid, ph in db.query(StudentProfile.user_id, StudentProfile.phone).all():
+        phones[uid] = ph
+    for uid, ph in db.query(TeacherProfile.user_id, TeacherProfile.phone).all():
+        phones.setdefault(uid, ph)
 
     live, offline, never = [], [], []
     for u in users:
