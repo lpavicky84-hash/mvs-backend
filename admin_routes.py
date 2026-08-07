@@ -2864,7 +2864,8 @@ def admin_letter_remarks(db: Session = Depends(get_db), _=Depends(get_admin)):
     rows = (db.query(TeacherProfile, User)
               .join(User, TeacherProfile.user_id == User.id)
               .filter(TeacherProfile.letter_remark_status == "pending")
-              .order_by(TeacherProfile.letter_remark_at.desc().nullslast())
+              .order_by(TeacherProfile.letter_remark_at.is_(None),
+                        TeacherProfile.letter_remark_at.desc())
               .all())
     out = []
     for tp, u in rows:
