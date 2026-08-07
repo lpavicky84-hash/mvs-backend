@@ -434,7 +434,7 @@ def teacher_for_subject(subject: str, db: Session = Depends(get_db), current_use
     tp = _teacher_for_subject(db, subject)
     if not tp or not tp.user:
         return {"found": False, "teacher_name": None, "teacher_id": None}
-    return {"found": True, "teacher_name": tp.user.name, "teacher_user_id": tp.user.user_id, "teacher_id": tp.id}
+    return {"found": True, "teacher_name": tp.user.name, "teacher_user_id": tp.user.user_id, "teacher_id": tp.id, "has_photo": bool(tp.photo_b64)}
 
 @router.post("/doubts")
 async def ask_doubt(

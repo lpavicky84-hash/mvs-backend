@@ -11731,6 +11731,7 @@ async function sdoFetchTeacher(){
       document.getElementById('sdo-tsub').textContent=t.teacher_user_id+' \u00b7 '+sub;
       document.getElementById('sdo-tavatar').textContent=(t.teacher_name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
       document.getElementById('sdo-tid').value=t.teacher_id;
+      if(t.has_photo){ try{ const pr=await fetch(API+'/api/student/teacher/'+t.teacher_id+'/photo',{headers:{Authorization:'Bearer '+TOKEN}}); if(pr.ok){ const pu=URL.createObjectURL(await pr.blob()); const av=document.getElementById('sdo-tavatar'); av.textContent=''; av.style.backgroundImage='url('+pu+')'; av.style.backgroundSize='cover'; av.style.backgroundPosition='center'; } }catch(e){} }
     }else{
       document.getElementById('sdo-tname').textContent='No teacher assigned yet';
       document.getElementById('sdo-tsub').textContent='Admin will assign your doubt';

@@ -2375,6 +2375,12 @@ def admin_delete_doubt(did: int, db: Session = Depends(get_db), _=Depends(get_ad
     d = db.query(Doubt).get(did)
     if not d:
         raise HTTPException(status_code=404, detail="Doubt not found")
+    # pehle iske replies (DoubtResponse) hatao, warna foreign-key error
+    try:
+        from models import DoubtResponse
+        db.query(DoubtResponse).filter(DoubtResponse.doubt_id == did).delete(synchronize_session=False)
+    except Exception:
+        pass
     db.delete(d)
     db.commit()
     return {"message": "Doubt deleted"}
