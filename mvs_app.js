@@ -282,7 +282,7 @@ function _xhrJson(url,payload,onProgress){
 // ========================================================
 //  NAVIGATION
 // ========================================================
-function goHome(){ _apiBust(); TOKEN=null;ROLE=null; stopCountdown(); stopStudentHeartbeat(); stopAdminLivePoll(); stopNotifPolling(); var np=document.getElementById('notif-pop'); if(np)np.remove(); document.querySelectorAll('.app').forEach(a=>a.classList.remove('active')); document.getElementById('login-screen').classList.remove('active'); document.getElementById('subject-screen').style.display='none'; var tss=document.getElementById('t-subject-screen'); if(tss)tss.style.display='none'; document.getElementById('landing').style.display='flex'; }
+function goHome(){ _apiBust(); _clearSession(); TOKEN=null;ROLE=null; stopCountdown(); stopStudentHeartbeat(); stopAdminLivePoll(); stopNotifPolling(); var np=document.getElementById('notif-pop'); if(np)np.remove(); document.querySelectorAll('.app').forEach(a=>a.classList.remove('active')); document.getElementById('login-screen').classList.remove('active'); document.getElementById('subject-screen').style.display='none'; var tss=document.getElementById('t-subject-screen'); if(tss)tss.style.display='none'; document.getElementById('landing').style.display='flex'; }
 function goLogin(portal){
   CURRENT_PORTAL=portal;
   document.getElementById('landing').style.display='none';
@@ -302,6 +302,34 @@ function goLogin(portal){
   }
 }
 function logout(){ goHome(); }
+// ===== SESSION PERSIST — refresh karne par logout na ho, wahi page par wapas aao =====
+function _saveSession(){
+  try{ if(TOKEN&&ROLE) localStorage.setItem('mvs_sess', JSON.stringify({t:TOKEN,r:ROLE,n:NAME||''})); }catch(e){}
+}
+function _clearSession(){ try{ localStorage.removeItem('mvs_sess'); }catch(e){} }
+async function _restoreSession(){
+  let s=null; try{ s=JSON.parse(localStorage.getItem('mvs_sess')||'null'); }catch(e){}
+  if(!s||!s.t||!s.r) return false;
+  TOKEN=s.t; ROLE=s.r; NAME=s.n||'';
+  try{
+    const ep=ROLE==='teacher'?'/api/teacher/profile':(ROLE==='student'?'/api/student/profile':'/api/admin/me');
+    await api(ep);            // token abhi valid hai? (expire ho gaya to catch me login)
+  }catch(e){ TOKEN=null; ROLE=null; _clearSession(); return false; }
+  try{ document.getElementById('landing').style.display='none'; }catch(e){}
+  try{ const ls=document.getElementById('login-screen'); if(ls) ls.classList.remove('active'); }catch(e){}
+  try{
+    if(ROLE==='teacher') await openTeacher();
+    else if(ROLE==='admin') await openAdmin();
+    else await openStudent();
+  }catch(e){}
+  // refresh par history.state bacha rehta hai -> wahi page par wapas le jao (dashboard nahi)
+  try{ const st=history.state; if(st&&st.mvs&&st.app&&st.pg) navTo(st.app,st.pg); }catch(e){}
+  return true;
+}
+window.addEventListener('DOMContentLoaded', function(){
+  if(/^#sso=/.test(location.hash||'')) return;   // SSO hash ho to wo flow handle karega
+  try{ _restoreSession(); }catch(e){}
+});
 
 // Student onboarding: fetch by phone
 async function fetchStudent(){
@@ -1023,6 +1051,7 @@ function stopCountdown(){ if(countdownTimer){clearInterval(countdownTimer);count
 // ========================================================
 let _tGender='', _tSuffix='';
 async function openTeacher(){
+  try{_saveSession();}catch(e){}
   try{
  const p=await api('/api/teacher/profile');
  _tGender=p.gender||''; _tSuffix=_tGender==='male'?' Sir':_tGender==='female'?' Ma\'am':'';
@@ -5685,7 +5714,8 @@ function gradeManual(attId,examId){
   const vd=att.verdict||'Good';
   const vOpt=v=>`<option${vd===v?' selected':''}>${v}</option>`;
   showModal((hasSaved?'Edit Marks \u2014 ':'Grade Manually \u2014 ')+esc(att.student_name||'Student'),
-    savedNote+ansBlock+`<div class="gm-list">${rows}</div>`
+    `<button class="btn btn-ghost btn-sm" onclick="viewExamAttempts(${examId})" style="margin-bottom:12px">${ic('back')} Back to Results</button>`
+    +savedNote+ansBlock+`<div class="gm-list">${rows}</div>`
     +`<div class="form-group" style="margin-top:14px"><label>Overall feedback (shown to student)</label><textarea id="gm-fb" class="form-control" rows="2" placeholder="e.g. Good attempt. Work on diagrams.">${esc(att.feedback||'')}</textarea></div>`
     +`<div class="form-group"><label>Verdict</label><select id="gm-verdict" class="form-control">${vOpt('Excellent')}${vOpt('Good')}${vOpt('Needs Improvement')}</select></div>`
     +`<div class="gm-total" id="gm-total"></div>`
@@ -6048,6 +6078,7 @@ function applyAdminAccess(){
   });
 }
 function openAdmin(){
+  try{_saveSession();}catch(e){}
   document.getElementById('admin-app').classList.add('active');
   try{ initAdminDppTracker(); initNavCollapse(); initNavAccordion(); }catch(e){}   // nav item + page + collapse + accordion ready
   document.getElementById('a-name').textContent=NAME;
@@ -9652,6 +9683,7 @@ const STUDENT_BATCHES=[
   {name:'Safalta Batch',cls:'12'},{name:'Jeet Batch',cls:'10'}
 ];
 async function openStudent(){
+  try{_saveSession();}catch(e){}
   // batch mode sabse pehle — taaki sidebar/pages sahi dikhein
   api('/api/student/profile').then(p=>{
     window._sBatch=p.batch_name||p.batch||'';
