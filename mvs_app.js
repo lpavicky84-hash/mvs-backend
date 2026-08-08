@@ -796,6 +796,18 @@ async function submitEditTopic(id){
   }catch(e){ toast(e.message,true); }
 }
 // ===== CLASS DATETIME + COUNTDOWN =====
+// ===== IST TIME HELPERS (permanent fix) =====
+// Portal ka calendar IST me chalta hai. Browser ki TZ galat ho ya UTC ho to bhi 'aaj'
+// ka din IST me hi nikle — warna 12:00-5:30 AM IST window me aaj ka din pichhla dikhta
+// tha (yahi baar-baar aane wala time bug tha). Ye helpers Asia/Kolkata force karte hain.
+function istNow(){
+  try{ return new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Kolkata'})); }
+  catch(e){ return new Date(); }
+}
+function istDateKey(d){
+  var x=(d!=null)?new Date(d):istNow();
+  return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
+}
 function parseClassDT(dateStr,timeStr){
   if(!dateStr) return null;
   const d=new Date(dateStr); if(isNaN(d)) return null;
@@ -1266,7 +1278,7 @@ async function _renderTodayClasses(targetId){
   try{
     const [all,comp]=await Promise.all([api('/api/teacher/my-classes'),api('/api/teacher/compliance')]);
     window._tClasses=all; const st=comp.stats;
-    const todayStr=new Date().toLocaleDateString('en-CA');
+    const todayStr=istDateKey();
     const cls=all.filter(c=>c.date===todayStr);
     // cards ab list ke SAME data se (pehle compliance.stats se alag count aata tha)
     const _tN=cls.length, _cN=cls.filter(c=>c.completed).length, _pN=cls.filter(c=>!c.completed).length;
@@ -1479,7 +1491,7 @@ async function loadTeacherToday(wrapId){
  const cls=await api('/api/teacher/today-classes');
  window._tClasses=cls; // v123: Submit Report modal (openClassReport) isi list se class prefill karta hai
  if(cls.length===0){ wrap.innerHTML='<div class="empty-state"><div class="empty-icon"></div><p>No classes today.</p></div>'; return; }
- const now=new Date();
+ const now=istNow();
  wrap.innerHTML=cls.map(e=>{
  const dt=parseClassDT(e.date,e.time);
  const over=dt && now>new Date(dt.getTime()+0);
@@ -10298,8 +10310,8 @@ async function _renderTodayClassesStudent(){
 function _tcPaint(){
   const wrap=document.getElementById('s-today-wrap'); if(!wrap) return;
   const plan=window._tcPlan||[];
-  const todayStr=new Date().toLocaleDateString('en-CA');
-  const tmr=new Date(); tmr.setDate(tmr.getDate()+1);
+  const todayStr=istDateKey();
+  const tmr=istNow(); tmr.setDate(tmr.getDate()+1);
   const tmrStr=tmr.toLocaleDateString('en-CA');
   const selDate=_tcMode==='today'?todayStr:_tcMode==='tomorrow'?tmrStr:(_tcDate||todayStr);
   const selD=new Date(selDate+'T00:00:00');
@@ -12775,7 +12787,7 @@ function renderStudentTimetable(entries, containerId, opts={}){
   const _tab=opts.onTab||'sSetSubj';
   const _clsVal=opts.activeClass||'';
   // ---- ONGOING shortcut chip: kya chal raha hai + click to jump ----
-  const _tdN=new Date(); const _tdK=_tdN.getFullYear()+'-'+String(_tdN.getMonth()+1).padStart(2,'0')+'-'+String(_tdN.getDate()).padStart(2,'0');
+  const _tdN=istNow(); const _tdK=_tdN.getFullYear()+'-'+String(_tdN.getMonth()+1).padStart(2,'0')+'-'+String(_tdN.getDate()).padStart(2,'0');
   const _liveOf=list=>{
     const _isToday=it=> it.kind==='event'?(it.data.date===_tdK):it.parts.some(p=>p.date===_tdK);
     for(const it of list){ const ds=it.kind==='event'?[it.data.date]:it.parts.map(p=>p.date); if(_statusOf(ds)==='current'&&_isToday(it)) return {name:(it.kind==='event'?it.data.chapter:it.chapter),today:true}; }
@@ -12824,7 +12836,7 @@ function renderStudentTimetable(entries, containerId, opts={}){
   if(_ttView==='weekly'){
     // ---- Weekly Overview hero: is week ki classes subject-wise + doubts + tests ----
     const _isoW=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-    const _wd0=new Date(); _wd0.setHours(0,0,0,0);
+    const _wd0=istNow(); _wd0.setHours(0,0,0,0);
     const _dow=(_wd0.getDay()+6)%7;
     const _ws=new Date(_wd0); _ws.setDate(_wd0.getDate()-_dow);
     const _we=new Date(_ws); _we.setDate(_ws.getDate()+6);
@@ -12946,7 +12958,7 @@ function renderStudentChapters(list, subject, opts){
   // ONGOING = sirf EK chapter (jahan teacher abhi hai). Baaki overlapping chapters
   // "In Progress" dikhte hain — do jagah CURRENT wala confusion khatam.
   let cur=-1;
-  const _cd=new Date(); const _cdK=_cd.getFullYear()+'-'+String(_cd.getMonth()+1).padStart(2,'0')+'-'+String(_cd.getDate()).padStart(2,'0');
+  const _cd=istNow(); const _cdK=_cd.getFullYear()+'-'+String(_cd.getMonth()+1).padStart(2,'0')+'-'+String(_cd.getDate()).padStart(2,'0');
   const _hasToday=it=> it.kind==='event' ? (it.data.date===_cdK) : it.parts.some(p=>p.date===_cdK);
   // 1) AAJ jiska din hai — chahe test/DPP/doubt event ho ya chapter part — wahi ONGOING
   for(let i=0;i<sts.length;i++){ if(sts[i]==='current' && _hasToday(list[i])){ cur=i; break; } }
@@ -13022,7 +13034,7 @@ function renderStudentWeekly(tl, subjects, opts){
   const byDay={};
   const _seenSlot=new Set();
   // WEEK FILTER: sirf is week (Mon..Sun) ki classes — purani/aane wali weeks ki nahi
-  const _tzW0=new Date(); _tzW0.setHours(0,0,0,0);
+  const _tzW0=istNow(); _tzW0.setHours(0,0,0,0);
   const _dowW0=(_tzW0.getDay()+6)%7; const _monW0=new Date(_tzW0); _monW0.setDate(_tzW0.getDate()-_dowW0);
   const _sunW0=new Date(_monW0); _sunW0.setDate(_monW0.getDate()+6);
   const _wsKW=_monW0.toLocaleDateString('en-CA'), _weKW=_sunW0.toLocaleDateString('en-CA');
@@ -13036,7 +13048,7 @@ function renderStudentWeekly(tl, subjects, opts){
   // Har subject/day ka CURRENT slot dikhta hai: sabse pehli aane wali (upcoming)
   // class ka time; koi upcoming na ho to sabse recent past ka. Isse slot change
   // (e.g. 10:00 -> 9:30) hote hi weekly view naya time dikhata hai.
-  const _tz=new Date(); _tz.setHours(0,0,0,0);
+  const _tz=istNow(); _tz.setHours(0,0,0,0);
   const _dowW=(_tz.getDay()+6)%7; const _monW=new Date(_tz); _monW.setDate(_tz.getDate()-_dowW);
   const _dayDate={}; days.forEach((d,i)=>{ const dd=new Date(_monW); dd.setDate(_monW.getDate()+i); _dayDate[d]=dd; });
   const _fdD=x=>x.toLocaleDateString('en-GB',{day:'numeric',month:'short'});

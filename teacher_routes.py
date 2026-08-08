@@ -15,7 +15,7 @@ from models import (
     RescheduleRequest, RescheduleStatus, DPP, Test, Doubt,
     DoubtStatus, Timetable, Notification, TestStatus,
     Exam, ExamQuestion, ExamAttempt, ExamResult,
-    Material, Lecture, TeacherAttendance, ist_iso
+    Material, Lecture, TeacherAttendance, ist_iso, ist_now, ist_today
 )
 
 def _r2img(v):
@@ -82,9 +82,9 @@ def notify(db, user_id: int, title: str, message: str, notif_type: str,
 @router.get("/dashboard", response_model=TeacherDashboard)
 def teacher_dashboard(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
-    now = datetime.now()
+    now = ist_now()
     month_start = date(now.year, now.month, 1)
-    week_start  = date.today() - timedelta(days=date.today().weekday())
+    week_start  = ist_today() - timedelta(days=ist_today().weekday())
 
     q = db.query(ClassEntry).filter(ClassEntry.teacher_id == tp.id)
 
@@ -179,7 +179,7 @@ def get_today_classes(db: Session = Depends(get_db), current_user=Depends(get_te
     tp = get_teacher_profile(current_user, db)
     return db.query(ClassEntry).filter(
         ClassEntry.teacher_id == tp.id,
-        ClassEntry.scheduled_date == date.today()
+        ClassEntry.scheduled_date == ist_today()
     ).order_by(ClassEntry.scheduled_time).all()
 
 @router.patch("/classes/{class_id}/upload", response_model=ClassEntryOut)
@@ -207,7 +207,7 @@ def upload_class_pdf(
 @router.post("/reschedule", response_model=RescheduleOut)
 def request_reschedule(req: RescheduleCreate, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
-    now = datetime.now()
+    now = ist_now()
 
     # Reset if new month
     if tp.reschedule_reset_month != now.month:
@@ -1342,7 +1342,7 @@ def today_classes(db: Session = Depends(get_db), current_user=Depends(get_teache
     subs = tp.subjects or []
     if not subs:
         return []
-    today = date.today()
+    today = ist_today()
     from sqlalchemy import or_
     scope = _subj_scope_for(db, TimetableEntry, subs)
     es = db.query(TimetableEntry).filter(
@@ -2165,7 +2165,7 @@ def _class_status(e):
     """Upcoming | Live | Completed | Missed based on date/time + completed flag."""
     if getattr(e, "completed", False):
         return "Completed"
-    today = date.today()
+    today = ist_today()
     if e.entry_date is None:
         return "Upcoming"
     if e.entry_date < today:
@@ -2185,7 +2185,7 @@ def teacher_my_classes(scope: str = "all", db: Session = Depends(get_db), curren
     q = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(subs),
         or_(TimetableEntry.status == None, TimetableEntry.status != "pending"))
     if scope == "today":
-        q = q.filter(TimetableEntry.entry_date == date.today())
+        q = q.filter(TimetableEntry.entry_date == ist_today())
     es = q.order_by(TimetableEntry.entry_date, TimetableEntry.time_text).all()
     out = []
     for e in es:
@@ -2230,7 +2230,7 @@ def _maybe_warn_late(db, tp, entry):
         d = _delay_of(entry)
         if _delay_band(d) not in ("minor", "late"):
             return
-        today = date.today()
+        today = ist_today()
         month_start = date(today.year, today.month, 1)
         rows = db.query(TimetableEntry).filter(
             TimetableEntry.teacher_id == tp.id,
@@ -2287,7 +2287,7 @@ def teacher_compliance(db: Session = Depends(get_db), current_user=Depends(get_t
     tp = get_teacher_profile(current_user, db)
     subs = tp.subjects or []
     subj_count = max(1, len(subs))
-    today = date.today()
+    today = ist_today()
     month_start = date(today.year, today.month, 1)
     classes = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(subs),
         or_(TimetableEntry.status == None, TimetableEntry.status != "pending"),
@@ -2362,7 +2362,7 @@ def teacher_performance(db: Session = Depends(get_db), current_user=Depends(get_
     test_count = sum(1 for m in mats if m.material_type == "test")
     # monthly completed (last 6 months)
     from collections import OrderedDict
-    today = date.today()
+    today = ist_today()
     months = OrderedDict()
     for i in range(5, -1, -1):
         y = today.year; mo = today.month - i
@@ -3443,7 +3443,7 @@ def _report_rows(db, subjects, teacher_map=None):
 
 
 def _report_summary(rows):
-    today = date.today()
+    today = ist_today()
     week_start = today - timedelta(days=today.weekday())
     month_start = date(today.year, today.month, 1)
     by_subject = {}
@@ -3661,7 +3661,7 @@ def _default_end():
             return _dt2.strptime(raw, "%Y-%m-%d").date()
         except Exception:
             pass
-    today = _date.today()
+    today = ist_today()
     end = _date(today.year, 9, 10)          # fallback: 10 September
     if end < today:
         end = _date(today.year + 1, 9, 10)

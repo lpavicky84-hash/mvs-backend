@@ -11,7 +11,7 @@ except Exception:
     _B64TEXT = Text()
 from database import Base
 import enum
-from datetime import timezone as _tz, timedelta as _td
+from datetime import datetime as _dt, timezone as _tz, timedelta as _td
 
 # =============================================
 # IST TIME HELPER (single source of truth)
@@ -34,6 +34,17 @@ def ist_iso(dt):
         return dt.astimezone(IST).isoformat()
     except Exception:
         return None
+
+def ist_now():
+    """Abhi ka time IST me, as a NAIVE datetime (server UTC ho ya kuch bhi).
+    Calendar/boundary logic (today, month_start, week_start, test live time) ke liye
+    isko use karo — kabhi date.today()/datetime.now() nahi (wo UTC deta hai Railway par,
+    isliye 00:00-05:30 IST window me 'aaj' pichhla din dikhata tha)."""
+    return _dt.now(_tz.utc).astimezone(IST).replace(tzinfo=None)
+
+def ist_today():
+    """Aaj ki IST date (calendar). date.today() ki jagah har jagah yahi use hota hai."""
+    return ist_now().date()
 
 # ===== ENUMS =====
 class UserRole(str, enum.Enum):

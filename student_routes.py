@@ -12,7 +12,7 @@ from models import (
     User, StudentProfile, TeacherProfile, ClassEntry, ClassStatus,
     DPP, DPPSubmission, Test, TestSubmission, TestStatus,
     SubmissionStatus, Doubt, DoubtStatus, Notification, Timetable
-    , Exam, ExamQuestion, ExamAttempt, ExamResult, ist_iso
+    , Exam, ExamQuestion, ExamAttempt, ExamResult, ist_iso, ist_now, ist_today
 )
 from schemas import (
     DPPSubmissionCreate, DPPSubmissionOut,
@@ -90,7 +90,7 @@ def student_workspace(db: Session = Depends(get_db), current_user=Depends(get_st
     from models import Material, MaterialView, TimetableEntry
     sp = get_student_profile(current_user, db)
     subs = sp.subjects or []
-    today = date.today()
+    today = ist_today()
 
     # ---- my answer submissions -> which parents are done
     answers = db.query(Material).options(defer(Material.content_b64)).filter(
@@ -252,7 +252,7 @@ def today_classes(db: Session = Depends(get_db), current_user=Depends(get_studen
     sp = get_student_profile(current_user, db)
     classes = db.query(ClassEntry).filter(
         ClassEntry.subject.in_(sp.subjects or []),
-        ClassEntry.scheduled_date == date.today()
+        ClassEntry.scheduled_date == ist_today()
     ).order_by(ClassEntry.scheduled_time).all()
     result = []
     for c in classes:
@@ -348,7 +348,7 @@ def get_student_tests(db: Session = Depends(get_db), current_user=Depends(get_st
     ).order_by(Test.test_date.desc()).all()
 
     submitted_test_ids = {s.test_id for s in db.query(TestSubmission).filter(TestSubmission.student_id == sp.id).all()}
-    now = datetime.now()
+    now = ist_now()
     result = []
     for t in tests:
         test_deadline = datetime.combine(t.test_date, t.test_time)
@@ -378,7 +378,7 @@ def submit_test(req: TestSubmissionCreate, db: Session = Depends(get_db), curren
     if not test:
         raise HTTPException(status_code=404, detail="Test not found")
 
-    now = datetime.now()
+    now = ist_now()
     test_end = datetime.combine(test.test_date, test.test_time) + timedelta(minutes=test.duration_mins)
     submission_deadline = datetime.combine(test.test_date, test.test_time) + timedelta(hours=6)
 
@@ -591,7 +591,7 @@ def get_progress(
     current_user=Depends(get_student)
 ):
     sp = get_student_profile(current_user, db)
-    now = date.today()
+    now = ist_today()
 
     if period == "weekly":
         start = now - timedelta(days=now.weekday())
@@ -1563,7 +1563,7 @@ def _get_stats(db, student_id):
 
 def _touch_streak(st):
     """Update the consecutive-day streak based on today vs last active day."""
-    today = date.today()
+    today = ist_today()
     if st.last_active_day == today:
         return
     if st.last_active_day == today - timedelta(days=1):
@@ -1578,7 +1578,7 @@ def _award_xp(db, student_id, amount, kind, text):
     st = _get_stats(db, student_id)
     st.xp = (st.xp or 0) + amount
     _touch_streak(st)
-    db.add(ActivityLog(student_id=student_id, kind=kind, text=text, xp=amount, day=date.today()))
+    db.add(ActivityLog(student_id=student_id, kind=kind, text=text, xp=amount, day=ist_today()))
     _recompute_badges(db, student_id, st)
 
 
@@ -2461,7 +2461,7 @@ def student_performance(db: Session = Depends(get_db), current_user=Depends(get_
     from models import Material, MaterialView, TimetableEntry
     sp = get_student_profile(current_user, db)
     subs = sp.subjects or []
-    today = date.today()
+    today = ist_today()
     st = _get_stats(db, sp.id)
 
     # ---- lectures & verification

@@ -18,7 +18,7 @@ from models import (
     User, TeacherProfile, StudentProfile, ClassEntry, ClassStatus,
     RescheduleRequest, RescheduleStatus, Doubt, DoubtStatus,
     DPP, Test, TestSubmission, DPPSubmission, Notification, UserRole,
-    Exam, ExamQuestion, ExamAttempt, ist_iso
+    Exam, ExamQuestion, ExamAttempt, ist_iso, ist_now, ist_today
 )
 from schemas import (
     RescheduleReview, RescheduleOut, UserOut, AdminDashboard,
@@ -110,7 +110,7 @@ def admin_dashboard(db: Session = Depends(get_db), _=Depends(get_admin)):
     # entries jinka din aa chuka par abhi tak lecture nahi aaya.
     from models import Lecture, TimetableEntry
     total_done = db.query(Lecture).options(defer(Lecture.pdf_b64), defer(Lecture.dpp_b64)).count()
-    _today = date.today()
+    _today = ist_today()
     _done_tt = set(x[0] for x in db.query(Lecture.timetable_entry_id).filter(
         Lecture.timetable_entry_id.isnot(None)).all())
     total_pending = 0
@@ -245,9 +245,9 @@ def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
     result = []
     for t in teachers:
         profile = t.teacher_profile
-        now = datetime.now()
+        now = ist_now()
         month_start = date(now.year, now.month, 1)
-        week_start = date.today() - timedelta(days=date.today().weekday())
+        week_start = ist_today() - timedelta(days=ist_today().weekday())
 
         if profile:
             classes_done = db.query(ClassEntry).filter(
@@ -430,7 +430,7 @@ def add_student(req: RegisterRequest, db: Session = Depends(get_db), _=Depends(g
 def teacher_activity(db: Session = Depends(get_db), _=Depends(get_admin)):
     """Complete activity of all teachers"""
     teachers = db.query(TeacherProfile).all()
-    now = datetime.now()
+    now = ist_now()
     month_start = date(now.year, now.month, 1)
     result = []
     for tp in teachers:
@@ -2880,7 +2880,7 @@ def admin_class_compliance(db: Session = Depends(get_db), _=Depends(get_admin)):
     repeat offenders are obvious."""
     from teacher_routes import _delay_of, _delay_band, _duration_of
     from models import TimetableEntry, TeacherProfile
-    today = date.today()
+    today = ist_today()
     month_start = date(today.year, today.month, 1)
 
     tmap = {}
