@@ -9238,7 +9238,7 @@ function _extRenderSubject(){
     }
     const rows=items.map(m=>{
       const isLink=(m.kind==='link'&&m.link);
-      return `<div class="xm-row"><div style="flex:1;min-width:0"><div class="xm-row-t">${esc(m.title||'Untitled')}</div><div class="xm-row-m">${m.medium?`<span class="qb-medium ${(m.medium||'').toLowerCase()==='hindi'?'hindi':''}">${esc(m.medium)}</span>`:''}${m.class_level?`<span>Class ${esc(String(m.class_level))}</span>`:''}${m.session?`<span>${esc(m.session)}</span>`:''}<span>${isLink?'Link':'PDF'}</span></div></div><button class="btn btn-primary btn-sm" onclick="openExtMaterial('${esc(String(m.id))}',${isLink?`'${esc(m.link)}'`:'null'},'${esc((m.filename||m.title||'material').replace(/'/g,''))}')">${ic(isLink?'play':'download')} ${isLink?'Open':'Download'}</button></div>`;
+      return `<div class="xm-row"><div style="flex:1;min-width:0"><div class="xm-row-t">${esc(m.title||'Untitled')}</div><div class="xm-row-m">${m.medium?`<span class="qb-medium ${(m.medium||'').toLowerCase()==='hindi'?'hindi':''}">${esc(m.medium)}</span>`:''}${m.class_level?`<span>Class ${esc(String(m.class_level))}</span>`:''}${m.session?`<span>${esc(m.session)}</span>`:''}<span>${isLink?'Link':'PDF'}</span></div></div><button class="btn btn-primary btn-sm" onclick="openExtMaterial('${esc(String(m.id))}',${isLink?`'${esc(m.link)}'`:'null'},'${esc((m.filename||m.title||'material').replace(/'/g,''))}')">${ic('download')} Download</button></div>`;
     }).join('');
     body+=`<div class="xm-sec"><div class="xm-sec-h"><div class="xm-sec-ic">${_xmCatIc(c)}</div><h3>${esc(_xmCatName(c))}</h3><span class="xm-count">${items.length} ${items.length===1?'file':'files'}</span></div>${chipsHtml}${rows}</div>`;
   });
@@ -10354,29 +10354,33 @@ function openSubjectMaterials(encSub){
   // ek baar CSS inject — card rows (table nahi, isliye phone par overflow/side-scroll nahi)
   if(!document.getElementById('mat-item-css')){
     var mst=document.createElement('style'); mst.id='mat-item-css';
-    mst.textContent='.mat-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;border-bottom:1px solid var(--border)}'
+    mst.textContent='.mat-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border)}'
       +'.mat-item:last-child{border-bottom:none}'
       +'.mat-item-info{flex:1;min-width:0}'
-      +'.mat-item-title{font-weight:700;font-size:.92rem;word-break:break-word;line-height:1.35}'
-      +'.mat-item-sub{font-size:.74rem;color:var(--text-muted);margin-top:3px;word-break:break-word}'
-      +'.mat-open{flex:none;white-space:nowrap}'
-      +'@media(max-width:560px){ .mat-item{flex-wrap:wrap} .mat-open{width:100%;justify-content:center;margin-top:8px} }';
+      +'.mat-item-title{font-weight:700;font-size:.9rem;word-break:break-word;line-height:1.35}'
+      +'.mat-item-sub{font-size:.72rem;color:var(--text-muted);margin-top:2px;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}'
+      +'.mat-open{flex:none;white-space:nowrap;padding:7px 15px}'
+      // ~5 items dikhein, uske baad box ke ANDAR scroll (page endless nahi) + scrollbar dikhe
+      +'.mat-scroll{max-height:340px;overflow-y:auto;-webkit-overflow-scrolling:touch}'
+      +'.mat-scroll::-webkit-scrollbar{width:8px}'
+      +'.mat-scroll::-webkit-scrollbar-thumb{background:var(--accent);border-radius:99px}'
+      +'.mat-scroll::-webkit-scrollbar-track{background:rgba(0,0,0,.05);border-radius:99px}';
     document.head.appendChild(mst);
   }
   let html=`<div class="sm-head" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="loadSMaterials()">← Back</button><div><h2 style="margin:0;font-size:1.4rem">${esc(sub)}</h2><p style="margin:0">Class Notes, DPP &amp; Tests</p></div></div><div class="card"><div class="card-body">`;
   Object.keys(byCat).forEach(cat=>{
     const meta=catMeta[cat]||{icon:'folder',badge:'sc-amber'};
     const items=byCat[cat];
-    html+=`<div class="mat-cat"><div class="mat-cat-head"><div class="mc-badge ${meta.badge}">${ic(meta.icon)}</div>${esc(cat)}<span class="mc-count">${items.length} file${items.length>1?'s':''}</span></div>`;
+    html+=`<div class="mat-cat"><div class="mat-cat-head"><div class="mc-badge ${meta.badge}">${ic(meta.icon)}</div>${esc(cat)}<span class="mc-count">${items.length} file${items.length>1?'s':''}</span></div><div class="mat-scroll">`;
     items.forEach(m=>{ const fname=m.filename||((m.title||cat)+'.pdf'); const isNew=window._sMatNew&&window._sMatNew.has(m.id); const _sub=[m.part?esc(m.part):'', (m.title&&m.title!==m.chapter)?esc(m.title):''].filter(Boolean).join(' \u00b7 ');
-      html+=`<div class="mat-item ${isNew?'mt-row-new':''}" onclick="_matRowSeen('student',this,${m.id})"><div class="mat-item-info"><div class="mat-item-title">${esc(m.chapter||m.title||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}</div>${_sub?`<div class="mat-item-sub">${_sub}</div>`:''}</div><button class="btn btn-primary btn-sm mat-open" onclick="event.stopPropagation();downloadMaterial('student',${m.id},'${esc(fname).replace(/'/g,'')}')">${ic('play')} Open</button></div>`; });
+      html+=`<div class="mat-item ${isNew?'mt-row-new':''}" onclick="_matRowSeen('student',this,${m.id})"><div class="mat-item-info"><div class="mat-item-title">${esc(m.chapter||m.title||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}</div>${_sub?`<div class="mat-item-sub">${_sub}</div>`:''}</div><button class="btn btn-primary btn-sm mat-open" onclick="event.stopPropagation();downloadMaterial('student',${m.id},'${esc(fname).replace(/'/g,'')}')">${ic('download')} Download</button></div>`; });
     html+=`</div>`;
   });
   // DPP packs — part-wise alag cards
   const packs=(window._sMatDppPacks||[]).filter(p=>(p.subject||'')===sub);
   if(packs.length){
-    html+=`<div class="mat-cat"><div class="mat-cat-head"><div class="mc-badge sc-green">${ic('clipboard')}</div>DPP (Practice Papers)<span class="mc-count">${packs.length} DPP${packs.length>1?'s':''}</span></div>`;
-    packs.forEach(p=>{ html+=`<div class="mat-item"><div class="mat-item-info"><div class="mat-item-title">${esc(p.title||'DPP')}</div><div class="mat-item-sub">${esc(p.chapter||'—')} · ${p.part?esc(p.part):'<b>Whole Chapter</b>'} · ${esc(p.medium||'English')}</div></div><button class="btn btn-primary btn-sm mat-open" title="Open this DPP PDF" onclick="sDppHub(${p.id},'q')">${ic('play')} Open</button></div>`; });
+    html+=`<div class="mat-cat"><div class="mat-cat-head"><div class="mc-badge sc-green">${ic('clipboard')}</div>DPP (Practice Papers)<span class="mc-count">${packs.length} DPP${packs.length>1?'s':''}</span></div><div class="mat-scroll">`;
+    packs.forEach(p=>{ html+=`<div class="mat-item"><div class="mat-item-info"><div class="mat-item-title">${esc(p.title||'DPP')}</div><div class="mat-item-sub">${esc(p.chapter||'—')} · ${p.part?esc(p.part):'<b>Whole Chapter</b>'} · ${esc(p.medium||'English')}</div></div><button class="btn btn-primary btn-sm mat-open" title="Download this DPP PDF" onclick="sDppHub(${p.id},'q')">${ic('download')} Download</button></div>`; });
     html+=`</div>`;
   }
   html+=`</div></div>`;
@@ -12230,12 +12234,12 @@ async function loadSProgress(){
     const d=await api('/api/student/performance');
     const snap=`<div class="card"><div class="card-header"><h3>Study Snapshot</h3></div><div class="card-body">
       <div class="ovv-grid">
-        <div class="ovv-cell"><div class="ovv-num">${d.lectures.verified}/${d.lectures.total}</div><div class="ovv-lbl">Lectures Verified</div></div>
+        <div class="ovv-cell"><div class="ovv-num">${d.lectures.verified}/${d.lectures.total}</div><div class="ovv-lbl">Chapters Done</div></div>
         ${sMode()==='live'?`<div class="ovv-cell"><div class="ovv-num">${d.dpp.done}/${d.dpp.total}</div><div class="ovv-lbl">DPP Done</div></div>`:''}
         <div class="ovv-cell"><div class="ovv-num">${d.tests.done}/${d.tests.total}</div><div class="ovv-lbl">Tests Attempted</div></div>
         <div class="ovv-cell"><div class="ovv-num">${d.tests.avg_score}%</div><div class="ovv-lbl">Avg Test Score</div></div>
       </div>
-      <div style="margin-top:12px;font-size:.76rem;color:var(--text-muted)">Lecture verify = <b>+20 XP</b> &middot; DPP submit = <b>+15 XP</b> &middot; Test attempt = <b>+25 XP</b> — yahi XP aapki batch ranking banata hai.</div>
+      <div style="margin-top:12px;font-size:.76rem;color:var(--text-muted)">Chapter done (Syllabus Tracker) = <b>+20 XP</b> &middot; DPP submit = <b>+15 XP</b> &middot; Test attempt = <b>+25 XP</b> — yahi XP aapki batch ranking banata hai.</div>
     </div></div>`;
 
     el.innerHTML=(rankSec||'')+(sylSec||'')+snap;
@@ -13202,13 +13206,21 @@ function initResponsiveCss(){
     '  .today-row{flex-wrap:wrap}',
     '  .tmeta{flex-wrap:wrap;width:100%;justify-content:flex-start;margin-top:6px;gap:6px}',
     '  .dpp-btns,.dpp-foot,.dpp-chips,.dpp-track{flex-wrap:wrap}',
-    '  .sm-head,.card-header,.tx-head{flex-wrap:wrap;gap:8px}',
+    '  .sm-head,.card-header,.tx-head,.pl-band,.pl-head-r,.fbar,.filters{flex-wrap:wrap;gap:8px}',
     '  .tc-row{flex-wrap:wrap}',
-    '  .tx-stats{grid-template-columns:repeat(2,1fr) !important}',
+    '  .tx-stats,.mstat-grid,.ovv-grid{grid-template-columns:repeat(2,1fr) !important}',
     '  .dps-grid{grid-template-columns:1fr !important}',
     '  .rs-score-card,.gm-qin{flex-wrap:wrap}',
     '  .topbar{padding:11px 13px}',
+    '  .topbar h2{font-size:1.05rem}',
+    '  .card-body{padding:15px}',
+    '  .mat-scroll{max-height:min(56vh,320px)}',
+    '  .btn{white-space:normal}',
     '  .main .page,.card-body{overflow-wrap:break-word}',
+    '}',
+    '@media(max-width:400px){',
+    '  .tx-stats,.mstat-grid,.ovv-grid{grid-template-columns:1fr !important}',
+    '  .today-tabs,.perf-tabs{flex-wrap:wrap}',
     '}'
   ].join('\n');
   document.head.appendChild(st);

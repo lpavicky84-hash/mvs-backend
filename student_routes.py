@@ -1821,9 +1821,41 @@ def mark_lecture_done(lecture_id: int, db: Session = Depends(get_db),
 #  ACADEMIC PERFORMANCE DASHBOARD (analytics + leaderboard)
 # ============================================================
 def _student_xp_map(db):
-    """XP for every student (from StudentStats), used for global ranking."""
-    rows = db.query(StudentStats).all()
-    return {r.student_id: (r.xp or 0) for r in rows}
+    """Har student ki XP — SYLLABUS TRACKER based:
+    syllabus me 'done' kiye chapters x 20 + DPP submit x 15 + test attempt x 25.
+    (Purana lecture-verify feature hat gaya — uske points nahi milte. Ranking isi se banti hai.)"""
+    import json
+    from sqlalchemy import text as _t, func as _func
+    from models import DppAnswer, ExamAttempt
+    xp = {}
+    # 1. Syllabus tracker me mark-done kiye chapters (chapter_plans.done JSON array) x 20
+    try:
+        for sid, done_json in db.execute(_t("SELECT student_id, done FROM chapter_plans")):
+            if sid is None:
+                continue
+            try:
+                n = len(json.loads(done_json) if done_json else [])
+            except Exception:
+                n = 0
+            if n:
+                xp[sid] = xp.get(sid, 0) + n * _XP_LECTURE
+    except Exception:
+        pass
+    # 2. DPP submissions x 15
+    try:
+        for sid, c in db.query(DppAnswer.student_id, _func.count(DppAnswer.id)).group_by(DppAnswer.student_id).all():
+            if sid is not None:
+                xp[sid] = xp.get(sid, 0) + int(c or 0) * _XP_DPP
+    except Exception:
+        pass
+    # 3. Test attempts x 25
+    try:
+        for sid, c in db.query(ExamAttempt.student_id, _func.count(ExamAttempt.id)).group_by(ExamAttempt.student_id).all():
+            if sid is not None:
+                xp[sid] = xp.get(sid, 0) + int(c or 0) * _XP_TEST
+    except Exception:
+        pass
+    return xp
 
 
 def _compute_ranks(db, sp):
@@ -2429,6 +2461,21 @@ def student_performance(db: Session = Depends(get_db), current_user=Depends(get_
     verified_ids = set(v.lecture_id for v in my_verifs if v.status == "verified")
     lectures_total = len(lecs)
     lectures_verified = sum(1 for lid in lec_ids if lid in verified_ids)
+    # OVERRIDE: lecture-verify feature hat gaya -> ab "Chapters Done" syllabus tracker ke
+    # mark-done chapters se aati hai (yehi XP/ranking bhi banati hai).
+    try:
+        import json as _json2
+        from sqlalchemy import text as _t2
+        _cd = 0; _ct = 0
+        for _dn, _sel in db.execute(_t2("SELECT done, selected FROM chapter_plans WHERE student_id=:sid"), {"sid": sp.id}):
+            try: _cd += len(_json2.loads(_dn) if _dn else [])
+            except Exception: pass
+            try: _ct += len(_json2.loads(_sel) if _sel else [])
+            except Exception: pass
+        lectures_verified = _cd
+        lectures_total = _ct if _ct else lectures_total
+    except Exception:
+        pass
 
     # ---- DPP & tests (real)
     answers = db.query(Material).options(defer(Material.content_b64)).filter(
