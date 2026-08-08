@@ -10351,20 +10351,33 @@ function openSubjectMaterials(encSub){
   const catMeta={'Class Notes':{icon:'book',badge:'sc-indigo'},'DPP':{icon:'clipboard',badge:'sc-green'},'Tests':{icon:'edit',badge:'sc-purple'}};
   const byCat={};
   mats.forEach(m=>{ const cat=m.type==='notes'?'Class Notes':m.type==='dpp'?'DPP':m.type==='test'?'Tests':(m.category||'Other Material'); (byCat[cat]=byCat[cat]||[]).push(m); });
-  let html=`<div class="sm-head" style="display:flex;align-items:center;gap:14px"><button class="btn btn-ghost btn-sm" onclick="loadSMaterials()">← Back</button><div><h2 style="margin:0;font-size:1.4rem">${esc(sub)}</h2><p style="margin:0">Class Notes, DPP &amp; Tests</p></div></div><div class="card"><div class="card-body">`;
+  // ek baar CSS inject — card rows (table nahi, isliye phone par overflow/side-scroll nahi)
+  if(!document.getElementById('mat-item-css')){
+    var mst=document.createElement('style'); mst.id='mat-item-css';
+    mst.textContent='.mat-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;border-bottom:1px solid var(--border)}'
+      +'.mat-item:last-child{border-bottom:none}'
+      +'.mat-item-info{flex:1;min-width:0}'
+      +'.mat-item-title{font-weight:700;font-size:.92rem;word-break:break-word;line-height:1.35}'
+      +'.mat-item-sub{font-size:.74rem;color:var(--text-muted);margin-top:3px;word-break:break-word}'
+      +'.mat-open{flex:none;white-space:nowrap}'
+      +'@media(max-width:560px){ .mat-item{flex-wrap:wrap} .mat-open{width:100%;justify-content:center;margin-top:8px} }';
+    document.head.appendChild(mst);
+  }
+  let html=`<div class="sm-head" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="loadSMaterials()">← Back</button><div><h2 style="margin:0;font-size:1.4rem">${esc(sub)}</h2><p style="margin:0">Class Notes, DPP &amp; Tests</p></div></div><div class="card"><div class="card-body">`;
   Object.keys(byCat).forEach(cat=>{
     const meta=catMeta[cat]||{icon:'folder',badge:'sc-amber'};
     const items=byCat[cat];
-    html+=`<div class="mat-cat"><div class="mat-cat-head"><div class="mc-badge ${meta.badge}">${ic(meta.icon)}</div>${esc(cat)}<span class="mc-count">${items.length} file${items.length>1?'s':''}</span></div><div class="mat-twrap"><table class="mat-table mat-2col"><thead><tr><th>Chapter / Title</th><th style="text-align:right">Download</th></tr></thead><tbody>`;
-    items.forEach(m=>{ const fname=m.filename||((m.title||cat)+'.pdf'); const isNew=window._sMatNew&&window._sMatNew.has(m.id); const _sub=[m.part?esc(m.part):'', (m.title&&m.title!==m.chapter)?esc(m.title):''].filter(Boolean).join(' \u00b7 '); html+=`<tr class="${isNew?'mt-row-new':''}" onclick="_matRowSeen('student',this,${m.id})"><td class="mat-ch">${esc(m.chapter||m.title||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}${_sub?`<div class="mt-sub" style="font-size:.72rem;color:var(--text-muted);margin-top:2px">${_sub}</div>`:''}</td><td class="mat-dl-cell"><button class="btn btn-primary btn-sm" onclick="downloadMaterial('student',${m.id},'${esc(fname).replace(/'/g,'')}')">${ic('download')} Download</button></td></tr>`; });
-    html+=`</tbody></table></div></div>`;
+    html+=`<div class="mat-cat"><div class="mat-cat-head"><div class="mc-badge ${meta.badge}">${ic(meta.icon)}</div>${esc(cat)}<span class="mc-count">${items.length} file${items.length>1?'s':''}</span></div>`;
+    items.forEach(m=>{ const fname=m.filename||((m.title||cat)+'.pdf'); const isNew=window._sMatNew&&window._sMatNew.has(m.id); const _sub=[m.part?esc(m.part):'', (m.title&&m.title!==m.chapter)?esc(m.title):''].filter(Boolean).join(' \u00b7 ');
+      html+=`<div class="mat-item ${isNew?'mt-row-new':''}" onclick="_matRowSeen('student',this,${m.id})"><div class="mat-item-info"><div class="mat-item-title">${esc(m.chapter||m.title||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}</div>${_sub?`<div class="mat-item-sub">${_sub}</div>`:''}</div><button class="btn btn-primary btn-sm mat-open" onclick="event.stopPropagation();downloadMaterial('student',${m.id},'${esc(fname).replace(/'/g,'')}')">${ic('play')} Open</button></div>`; });
+    html+=`</div>`;
   });
-  // DPP section ke packs — part-wise alag rows, whole-chapter ki 1 row
+  // DPP packs — part-wise alag cards
   const packs=(window._sMatDppPacks||[]).filter(p=>(p.subject||'')===sub);
   if(packs.length){
-    html+=`<div class="mat-cat"><div class="mat-cat-head"><div class="mc-badge sc-green">${ic('clipboard')}</div>DPP (Practice Papers)<span class="mc-count">${packs.length} DPP${packs.length>1?'s':''}</span></div><div class="mat-twrap"><table class="mat-table mat-2col"><thead><tr><th>DPP</th><th style="text-align:right">Download</th></tr></thead><tbody>`;
-    packs.forEach(p=>{ html+=`<tr><td class="mat-ch">${esc(p.title||'DPP')}<div class="mt-sub" style="font-size:.72rem;color:var(--text-muted);margin-top:2px">${esc(p.chapter||'—')} · ${p.part?esc(p.part):'<b>Whole Chapter</b>'} · ${esc(p.medium||'English')}</div></td><td class="mat-dl-cell"><button class="btn btn-primary btn-sm" title="Download this DPP PDF" onclick="sDppHub(${p.id},'q')">${ic('download')} Download</button></td></tr>`; });
-    html+=`</tbody></table></div></div>`;
+    html+=`<div class="mat-cat"><div class="mat-cat-head"><div class="mc-badge sc-green">${ic('clipboard')}</div>DPP (Practice Papers)<span class="mc-count">${packs.length} DPP${packs.length>1?'s':''}</span></div>`;
+    packs.forEach(p=>{ html+=`<div class="mat-item"><div class="mat-item-info"><div class="mat-item-title">${esc(p.title||'DPP')}</div><div class="mat-item-sub">${esc(p.chapter||'—')} · ${p.part?esc(p.part):'<b>Whole Chapter</b>'} · ${esc(p.medium||'English')}</div></div><button class="btn btn-primary btn-sm mat-open" title="Open this DPP PDF" onclick="sDppHub(${p.id},'q')">${ic('play')} Open</button></div>`; });
+    html+=`</div>`;
   }
   html+=`</div></div>`;
   el.innerHTML=html;
@@ -13171,9 +13184,35 @@ async function processExcel(){
   }catch(e){ status.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; toast('Error: '+e.message,true); btn.disabled=false; btn.textContent='Import Students'; }
 }
 try{injectNavIcons();injectTopbarIcons();}catch(e){}
+try{initResponsiveCss();}catch(e){}
 try{initNavCollapse();}catch(e){}
 try{initAdminDppTracker();}catch(e){}
 try{initNavAccordion();}catch(e){}
+function initResponsiveCss(){
+  if(document.getElementById('mvs-responsive-css')) return;
+  var st=document.createElement('style'); st.id='mvs-responsive-css';
+  st.textContent=[
+    'html,body{max-width:100%;overflow-x:hidden}',
+    'img,video,canvas,iframe{max-width:100%}',
+    '.table-wrap,.mat-twrap,.tx-twrap,.tbl-wrap{overflow-x:auto !important;-webkit-overflow-scrolling:touch;max-width:100%}',
+    '.table-wrap::-webkit-scrollbar,.mat-twrap::-webkit-scrollbar,.tx-twrap::-webkit-scrollbar{height:7px}',
+    '.table-wrap::-webkit-scrollbar-thumb,.mat-twrap::-webkit-scrollbar-thumb,.tx-twrap::-webkit-scrollbar-thumb{background:var(--accent);border-radius:99px}',
+    '.table-wrap::-webkit-scrollbar-track,.mat-twrap::-webkit-scrollbar-track{background:rgba(0,0,0,.06)}',
+    '@media(max-width:640px){',
+    '  .today-row{flex-wrap:wrap}',
+    '  .tmeta{flex-wrap:wrap;width:100%;justify-content:flex-start;margin-top:6px;gap:6px}',
+    '  .dpp-btns,.dpp-foot,.dpp-chips,.dpp-track{flex-wrap:wrap}',
+    '  .sm-head,.card-header,.tx-head{flex-wrap:wrap;gap:8px}',
+    '  .tc-row{flex-wrap:wrap}',
+    '  .tx-stats{grid-template-columns:repeat(2,1fr) !important}',
+    '  .dps-grid{grid-template-columns:1fr !important}',
+    '  .rs-score-card,.gm-qin{flex-wrap:wrap}',
+    '  .topbar{padding:11px 13px}',
+    '  .main .page,.card-body{overflow-wrap:break-word}',
+    '}'
+  ].join('\n');
+  document.head.appendChild(st);
+}
 function initNavCollapse(){
   // Collapsible sidebar — admin/teacher/student sabhi portals. HTML/CSS file chhue bina yahin
   // se style inject + har topbar me ek toggle button. State localStorage me yaad rehta hai.
