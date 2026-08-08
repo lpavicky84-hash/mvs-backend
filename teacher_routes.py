@@ -1593,9 +1593,8 @@ def teacher_dpp_pdf(pack_id: int, kind: str = "q", medium: str = "",
     med = ("both" if (medium or "").lower().startswith("bo") else ("hindi" if (medium or "").lower().startswith("hin") else "english"))
     fname = (pk.title or "DPP").replace("/", "-") + \
         ("-solutions" if kind == "s" else "-questions") + "-" + med + ".pdf"
-    import base64 as _b64
-    return Response(content=_b64.b64decode(blob), media_type="application/pdf",
-                    headers={"Content-Disposition": 'inline; filename="%s"' % fname})
+    # R2 URL ho to redirect, base64 ho to decode (dono safe)
+    return __import__("r2_storage").file_response(blob, "application/pdf", fname, False)
 
 
 @router.post("/dpp-packs/create")
@@ -1715,7 +1714,8 @@ def _dpp_shrink(db, pk, kind, blob):
     Guarded: chhoti (<500KB) file ko chhodo; >8% shrink pe hi save. Fail ho to as-is —
     download kabhi nahi tootega. Purane bade DPPs isse next open pe hi chhote ho jaate hain."""
     try:
-        if not blob or (getattr(pk, "source", "") == "created"):
+        if not blob or (isinstance(blob, str) and blob.startswith("http")) \
+                or (getattr(pk, "source", "") == "created"):
             return blob
         raw = base64.b64decode(blob)
         if len(raw) < 500000:

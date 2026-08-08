@@ -53,6 +53,25 @@ def _spec(kind):
             return DppAnswer, "answer_b64", "dpp-answers", "application/pdf", ".pdf"
     except Exception:
         pass
+    # ---- Phase 3: exam question figures + DPP generated PDFs (Railway -> R2) ----
+    try:
+        from models import ExamQuestion
+        if kind == "exam_q_img":
+            return ExamQuestion, "image_b64", "exam-q", "image/jpeg", ".jpg"
+        if kind == "exam_q_ans_img":
+            return ExamQuestion, "model_answer_image", "exam-q", "image/jpeg", ".jpg"
+        if kind == "exam_q_alt_img":
+            return ExamQuestion, "alt_image_b64", "exam-q", "image/jpeg", ".jpg"
+    except Exception:
+        pass
+    try:
+        from models import DppPack
+        if kind == "dpp_q_pdf":
+            return DppPack, "q_pdf", "dpp-pdf", "application/pdf", ".pdf"
+        if kind == "dpp_s_pdf":
+            return DppPack, "s_pdf", "dpp-pdf", "application/pdf", ".pdf"
+    except Exception:
+        pass
     return None
 
 

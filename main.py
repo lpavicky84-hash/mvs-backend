@@ -474,7 +474,9 @@ sab shift karega. Beech me ruk jaye to dobara Start (jaha se chhoda wahi se aage
 const kinds=[['photos_student',20],['photos_teacher',20],['materials',5],
              ['notes',5],['lecture_pdf',5],['lecture_dpp',5],['thumbnails',15],
              ['doubt_img',15],['doubt_audio',10],['doubt_ans_audio',10],
-             ['doubt_ans_file',10],['dpp_answers',5]];
+             ['doubt_ans_file',10],['dpp_answers',5],
+             ['exam_q_img',10],['exam_q_ans_img',10],['exam_q_alt_img',10],
+             ['dpp_q_pdf',5],['dpp_s_pdf',5]];
 let ki=0,afterId=0,totalMig=0,running=false;
 const log=m=>{const l=document.getElementById('log');l.textContent+=m+"\\n";l.scrollTop=l.scrollHeight;};
 function startMig(){ if(running)return; running=true; ki=0; afterId=0; totalMig=0;

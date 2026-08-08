@@ -686,9 +686,18 @@ def _img(pdf, b64str):
         return
     try:
         raw = b64str
-        if raw.startswith("data:") and "," in raw:
-            raw = raw.split(",", 1)[1]
-        data = base64.b64decode(raw)
+        # R2 migration ke baad figure ek URL ho sakta hai (base64 nahi) — usse fetch karo
+        if isinstance(raw, str) and raw.startswith("http"):
+            try:
+                import urllib.request
+                with urllib.request.urlopen(raw, timeout=15) as _r:
+                    data = _r.read()
+            except Exception:
+                return  # fetch fail -> figure skip (PDF crash nahi hoga)
+        else:
+            if raw.startswith("data:") and "," in raw:
+                raw = raw.split(",", 1)[1]
+            data = base64.b64decode(raw)
         pdf.ln(1)
         x = pdf.get_x()
         pdf.image(io.BytesIO(data), w=min(85, pdf.epw * 0.55))
