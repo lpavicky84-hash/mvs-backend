@@ -1052,7 +1052,7 @@ function stopCountdown(){ if(countdownTimer){clearInterval(countdownTimer);count
 let _tGender='', _tSuffix='';
 async function openTeacher(){
   try{_saveSession();}catch(e){}
-  try{initNavAccordion();}catch(e){} try{initNavCollapse();}catch(e){}
+  try{initNavAccordion();}catch(e){} try{initNavCollapse();}catch(e){} [400,1200].forEach(function(d){ setTimeout(function(){ try{ document.querySelectorAll(".app .sidebar-nav").forEach(function(nav){ if(typeof _accGroupClose==="function") _accGroupClose(nav,false); }); }catch(e){} }, d); });
   try{
  const p=await api('/api/teacher/profile');
  _tGender=p.gender||''; _tSuffix=_tGender==='male'?' Sir':_tGender==='female'?' Ma\'am':'';
@@ -8503,19 +8503,35 @@ async function submitBulkPhone(){
 }
 let _aStu=[]; let _aCounts={total:0,subjects:[]}; let _stuFilter=''; let _stuClass=''; let _stuSearch=''; let _stuPage=1; let _stuSize=10;
 let _stuSess=''; let _stuMed=''; let _stuBatch='';   // master filters: Exam Session + Medium + Batch
+let _aStuPageRows=[]; let _aStuTotal=0;
+let _aStuFC={total:0,batches:[],classes:[],sessions:[],subjects:[]};
 async function loadAStudents(){
   const el=document.getElementById('a-students-content');
   try{
- const [ss,counts,ov]=await Promise.all([
-   api('/api/admin/students'),
-   api('/api/admin/student-counts').catch(()=>({total_students:0,subjects:[]})),
-   api('/api/admin/portal-overview').catch(()=>null)
- ]);
- _aStu=ss; _aCounts={total:counts.total_students||ss.length,subjects:counts.subjects||[]};
- window._aPortalOv=ov;
- _stuFilter=''; _stuSearch=''; _stuPage=1; _stuSess=''; _stuMed=''; _stuBatch='';
- aRenderStudents();
+    _stuFilter='';_stuSearch='';_stuPage=1;_stuSess='';_stuMed='';_stuBatch='';_stuClass='';_stuSrcFilter='';
+    window._aPortalOv=await api('/api/admin/portal-overview').catch(()=>null);
+    await _stuReloadCounts();
+    await _stuReload();
   }catch(e){ el.innerHTML=errHtml(e); }
+}
+function _stuQP(){
+  return 'q='+encodeURIComponent(_stuSearch||'')+'&source='+encodeURIComponent(_stuSrcFilter||'')
+    +'&cls='+encodeURIComponent(_stuClass||'')+'&session='+encodeURIComponent(_stuSess||'')
+    +'&medium='+encodeURIComponent(_stuMed||'')+'&batch='+encodeURIComponent(_stuBatch||'')
+    +'&subject='+encodeURIComponent(_stuFilter?_stuFParts().sub:'')
+    +'&page='+_stuPage+'&page_size='+_stuSize;
+}
+async function _stuReload(){
+  try{ const d=await api('/api/admin/students-paged?'+_stuQP()); _aStuPageRows=d.students||[]; _aStuTotal=d.total||0; }
+  catch(e){ _aStuPageRows=[]; _aStuTotal=0; }
+  _aStu=_aStuPageRows;  // current page — openStudentProfile jaise purane references isi par kaam karein
+  aRenderStudents();
+}
+async function _stuReloadCounts(){
+  try{ _aStuFC=await api('/api/admin/student-filter-counts?source='+encodeURIComponent(_stuSrcFilter||'')
+      +'&session='+encodeURIComponent(_stuSess||'')+'&medium='+encodeURIComponent(_stuMed||'')
+      +'&cls='+encodeURIComponent(_stuClass||'')); }
+  catch(e){ _aStuFC={total:0,batches:[],classes:[],sessions:[],subjects:[]}; }
 }
 function _aStuCounts(){
   // Session + Medium filter lagakar per-subject counts — "April 2027 me Physics kitne?"
@@ -8959,8 +8975,8 @@ function pickedSubjects(wrapId){
   return [...document.querySelectorAll('#'+wrapId+' input[type=checkbox]:checked')].map(x=>x.value);
 }
 let _stuSrcFilter='';
-function aStuSrcFilter(src){ _stuSrcFilter=src; _stuPage=1; aRenderStudents(); }
-function aStuClass(c){ _stuClass=c; _stuFilter=''; _stuPage=1; aRenderStudents(); }
+function aStuSrcFilter(src){ _stuSrcFilter=src; _stuPage=1; _stuReloadCounts().then(_stuReload); }
+function aStuClass(c){ _stuClass=c; _stuFilter=''; _stuPage=1; _stuReloadCounts().then(_stuReload); }
 // Subject filter class-aware hai: value "English||10" — same-name subjects
 // (Class 10 English vs Class 12 English) kabhi merge nahi honge
 function _stuFParts(){ const v=_stuFilter||''; const i=v.lastIndexOf('||'); if(i<0) return {sub:v,cls:''}; return {sub:v.slice(0,i),cls:v.slice(i+2)}; }
@@ -8991,16 +9007,14 @@ function _stuFiltered(){
 }
 function aRenderStudents(){
   const el=document.getElementById('a-students-content');
-  // ---- MASTER FILTER: session + medium + class + subject (counts live-update) ----
-  const subsAll=_aStuCounts();
-  const _srcBase=_stuSrcFilter?_aStu.filter(s=>(s.source||'mvs_app')===_stuSrcFilter):_aStu;
-  const classes=[...new Set(_srcBase.map(s=>String(s.class_level||'')).filter(Boolean))].sort();
-  const sessions=[...new Set(_srcBase.map(s=>s.exam_session).filter(Boolean))];
+  // ---- MASTER FILTER counts server se aate hain (_aStuFC) — 1 lakh par bhi turant ----
+  const subsAll=_aStuFC.subjects||[];
+  const classes=_aStuFC.classes||[];
+  const sessions=_aStuFC.sessions||[];
   const subsForClass=subsAll.filter(c=>!_stuClass||String(c['class']||c.class_level||'')===_stuClass);
-  const batchCounts=_aStuBatchCounts();
+  const batchCounts=_aStuFC.batches||[];
   const _fp=_stuFParts();
-  // Count bhi subject+class dono se — sirf naam se dhoondne pe doosri class ka count aa jata tha
-  const selCount=_stuFilter?((subsAll.find(c=>c.subject===_fp.sub&&String(c['class']||c.class_level||'')===_fp.cls)||{}).count??_stuFiltered().length):_stuFiltered().length;
+  const selCount=_aStuTotal;
   // Subject filter TABHI usable jab class chuni ho — warna dono class ke saare subjects
   // ek saath dikhte the (bahut lambi list). Class chuno -> us class ke saaf subjects.
   const subjSelect=_stuClass
@@ -9020,11 +9034,9 @@ function aRenderStudents(){
       <div class="fbar-res"><b>${selCount||0}</b> ${_stuFilter?esc(_fp.sub):'students'}</div>
       ${(_stuFilter||_stuClass||_stuSess||_stuMed||_stuBatch)?`<button class="fchip fchip-clear" onclick="aStuSess('');aStuMed('');aStuBatch('');aStuClass('');aStuSetFilter('')">${ic('trash')} Clear</button>`:''}
     </div>`]
-  const filtered=_stuFiltered();
-  const totalPages=Math.max(1,Math.ceil(filtered.length/_stuSize));
-  if(_stuPage>totalPages) _stuPage=totalPages;
+  const totalPages=Math.max(1,Math.ceil(_aStuTotal/_stuSize));
   const start=(_stuPage-1)*_stuSize;
-  const page=filtered.slice(start,start+_stuSize);
+  const page=_aStuPageRows;
   const rows=page.length?page.map(s=>{
     const subs=(s.subjects||[]).slice(0,4).map(x=>`<span class="chip">${esc(x)}</span>`).join('');
     return `<div class="stu-row" onclick="openStudentProfile(${s.profile_id})"><div class="stu-photo" id="sphoto-${s.profile_id}" onclick="event.stopPropagation();viewPhoto('sphoto-${s.profile_id}','${esc((s.name||'').replace(/'/g,''))}',0)">${esc(initials(s.name||'S'))}</div><div class="stu-info"><div class="stu-name">${esc(s.name)}</div><div class="stu-meta">${esc(s.user_id)} · ${esc(s.phone||'no phone')} · ${esc(s.batch||'no batch')} · <span class="xm-chip" style="font-size:.6rem;padding:2px 7px;${s.source==='mvs_portal'?'background:rgba(201,150,46,.16);color:#b07f1e':''}">${s.source==='mvs_portal'?'MVS PORTAL':'MVS APP'}</span></div><div class="slist-chips" style="margin-top:4px">${subs}</div></div><div class="stu-act" onclick="event.stopPropagation()"><button class="btn btn-ghost btn-sm" onclick='openEditStudent(${s.profile_id},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,medium:s.medium||'',subjects:s.subjects||[],exam_session:s.exam_session||'',nios_ref:s.nios_ref||''}).replace(/'/g,"&#39;")})'>${ic('edit')}</button><button class="btn btn-danger btn-sm" onclick="deleteStudent(${s.profile_id},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
@@ -9041,28 +9053,21 @@ function aRenderStudents(){
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"><input id="a-stu-q" class="form-control" style="flex:1;min-width:180px" placeholder="Search name, phone, ID, email..." value="${esc(_stuSearch)}" oninput="aStuSearch(this.value,this)"><select class="form-control" style="width:auto" onchange="aStuSize(this.value)">${[10,25,50,100].map(n=>`<option value="${n}"${_stuSize===n?' selected':''}>${n} / page</option>`).join('')}</select></div>
       ${_stuFilter?`<div style="margin-bottom:12px"><span class="tag tag-active">Filter: ${esc(_stuFParts().sub)}${_stuFParts().cls?` \u00b7 Class ${esc(_stuFParts().cls)}`:''} <span style="cursor:pointer;margin-left:6px" onclick="aStuSetFilter('')">✕</span></span></div>`:''}
       ${rows}
-      <div class="pager"><div class="pager-info">Showing ${filtered.length?start+1:0}–${Math.min(start+_stuSize,filtered.length)} of ${filtered.length}</div><div style="display:flex;gap:8px;align-items:center"><button class="btn btn-ghost btn-sm" ${_stuPage<=1?'disabled':''} onclick="aStuPage(${_stuPage-1})">Prev</button><span class="pager-info">Page ${_stuPage} / ${totalPages}</span><button class="btn btn-ghost btn-sm" ${_stuPage>=totalPages?'disabled':''} onclick="aStuPage(${_stuPage+1})">Next</button></div></div>
+      <div class="pager"><div class="pager-info">Showing ${_aStuTotal?start+1:0}–${Math.min(start+_stuSize,_aStuTotal)} of ${_aStuTotal}</div><div style="display:flex;gap:8px;align-items:center"><button class="btn btn-ghost btn-sm" ${_stuPage<=1?'disabled':''} onclick="aStuPage(${_stuPage-1})">Prev</button><span class="pager-info">Page ${_stuPage} / ${totalPages}</span><button class="btn btn-ghost btn-sm" ${_stuPage>=totalPages?'disabled':''} onclick="aStuPage(${_stuPage+1})">Next</button></div></div>
     </div></div>`;
   page.forEach(s=>{ if(s.has_photo) loadImgInto('sphoto-'+s.profile_id,'/api/admin/student/'+s.profile_id+'/photo'); });
 }
-function aStuSetFilter(sub){ _stuFilter=sub; _stuPage=1; aRenderStudents(); }
-function aStuSess(v){ _stuSess=v; _stuPage=1; aRenderStudents(); }
-function aStuMed(v){ _stuMed=v; _stuPage=1; aRenderStudents(); }
-function aStuBatch(v){ _stuBatch=v; _stuPage=1; aRenderStudents(); }
+function aStuSetFilter(sub){ _stuFilter=sub; _stuPage=1; _stuReload(); }
+function aStuSess(v){ _stuSess=v; _stuPage=1; _stuReloadCounts().then(_stuReload); }
+function aStuMed(v){ _stuMed=v; _stuPage=1; _stuReloadCounts().then(_stuReload); }
+function aStuBatch(v){ _stuBatch=v; _stuPage=1; _stuReload(); }
 function aStuSearch(q,inp){
-  // Poora page re-render hota hai to search input ka DOM node badal jata tha
-  // aur cursor gayab ho jata - isliye caret yaad rakh ke wapas focus dete hain
-  const pos=inp?(inp.selectionStart||String(q||'').length):null;
   _stuSearch=q; _stuPage=1;
-  aRenderStudents();
-  const el=document.getElementById('a-stu-q');
-  if(el){
-    el.focus();
-    if(pos!=null){ try{ el.setSelectionRange(pos,pos); }catch(e){} }
-  }
+  clearTimeout(window._stuSearchT);
+  window._stuSearchT=setTimeout(function(){ _stuReload(); var b=document.getElementById('a-stu-q'); if(b&&inp){ b.focus(); if(b.value.length){ try{b.setSelectionRange(b.value.length,b.value.length);}catch(e){} } } },350);
 }
-function aStuSize(n){ _stuSize=parseInt(n); _stuPage=1; aRenderStudents(); }
-function aStuPage(p){ _stuPage=p; aRenderStudents(); }
+function aStuSize(n){ _stuSize=parseInt(n); _stuPage=1; _stuReload(); }
+function aStuPage(p){ _stuPage=p; _stuReload(); }
 function openStudentProfile(sid){
   const s=_aStu.find(x=>x.profile_id===sid); if(!s) return;
   const subs=(s.subjects||[]).map(x=>`<span class="chip">${esc(x)}</span>`).join('')||'<span style="color:var(--text-muted)">None</span>';
@@ -9780,7 +9785,7 @@ const STUDENT_BATCHES=[
 ];
 async function openStudent(){
   try{_saveSession();}catch(e){}
-  try{initNavAccordion();}catch(e){} try{initNavCollapse();}catch(e){}
+  try{initNavAccordion();}catch(e){} try{initNavCollapse();}catch(e){} [400,1200].forEach(function(d){ setTimeout(function(){ try{ document.querySelectorAll(".app .sidebar-nav").forEach(function(nav){ if(typeof _accGroupClose==="function") _accGroupClose(nav,false); }); }catch(e){} }, d); });
   // batch mode sabse pehle — taaki sidebar/pages sahi dikhein
   api('/api/student/profile').then(p=>{
     window._sBatch=p.batch_name||p.batch||'';
@@ -13395,6 +13400,17 @@ function initNavCollapse(){
       im.onerror=function(){};
       im.src=(typeof API!=='undefined'?API:'')+'/api/student/logo';
     }
+    // Admin ke bottom profile ("AH") me bhi MVS logo — teacher/student ke asli photo ko na chhede
+    if(app.id==='admin-app'){
+      var bav=app.querySelector('.sidebar-bottom .avatar, .sidebar-bottom .user-avatar, .sidebar-user .avatar, .sidebar-bottom .stu-photo');
+      if(bav && !bav.querySelector('img') && !bav.dataset.logoTried){
+        bav.dataset.logoTried='1';
+        var bim=new Image(); bim.alt='MVS';
+        bim.onload=function(){ bav.textContent=''; bav.style.background='#fff'; bav.style.overflow='hidden'; bim.style.cssText='width:100%;height:100%;object-fit:contain;border-radius:inherit;display:block'; bav.appendChild(bim); };
+        bim.onerror=function(){};
+        bim.src=(typeof API!=='undefined'?API:'')+'/api/student/logo';
+      }
+    }
   });
 }
 // ===== SECTION ACCORDION — sidebar me sirf category headers (HOME/MATERIALS/WORK/PROGRESS)
@@ -13422,8 +13438,11 @@ function initNavAccordion(){
   document.querySelectorAll('.app .sidebar-nav').forEach(function(nav){
     _accGroupClose(nav, true);
     if(!nav._accObs){
-      nav._accObs=new MutationObserver(function(){ _accGroupClose(nav, false); });
-      nav._accObs.observe(nav, {childList:true});
+      nav._accObs=new MutationObserver(function(){
+        if(nav._accT) return;
+        nav._accT=setTimeout(function(){ nav._accT=null; _accGroupClose(nav, false); }, 80);
+      });
+      nav._accObs.observe(nav, {childList:true, subtree:true});
     }
   });
 }

@@ -1863,6 +1863,14 @@ def admin_students_list(q: str = "", subject: str = "", cls: str = "", session: 
         return " ".join(t.split()).strip()
     rows = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all()
     _photo_ids = {r[0] for r in db.query(StudentProfile.id).filter(StudentProfile.photo_b64.isnot(None)).all()}
+    # user_id (MVSS...) ek hi query me — warna har student par alag query (N+1) chalti thi (slow + RAM)
+    from models import User as _User
+    _uid_map = {}
+    try:
+        for _pid, _ucode in db.query(StudentProfile.id, _User.user_id).join(_User, StudentProfile.user_id == _User.id):
+            _uid_map[_pid] = _ucode
+    except Exception:
+        _uid_map = {}
     ql = q.strip().lower()
     want = _sk(subject) if subject else ""
     want_cls = (cls or "").strip()
@@ -1891,9 +1899,111 @@ def admin_students_list(q: str = "", subject: str = "", cls: str = "", session: 
                     "goal": (sp.goal_custom if sp.goal == "other" else sp.goal),
                     "last_seen": sp.last_seen.strftime("%d %b %Y, %I:%M %p") if sp.last_seen else None,
                     "is_verified": bool(sp.is_verified),
-                    "user_id": sp.user.user_id if sp.user else None})
+                    "user_id": _uid_map.get(sp.id)})
     out.sort(key=lambda x: x["name"].lower())
     return {"total": len(out), "students": out}
+
+
+@router.get("/students-paged")
+def admin_students_paged(q: str = "", subject: str = "", cls: str = "", session: str = "",
+                         medium: str = "", source: str = "", batch: str = "",
+                         page: int = 1, page_size: int = 25,
+                         db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Scale-ready: sirf ek PAGE ke students laata hai (poora data kabhi load nahi hoga).
+    Filter/search/sort sab server par — 1 lakh+ students par bhi turant."""
+    from models import StudentProfile, User
+    from sqlalchemy import or_
+    import json as _json
+    page = max(1, int(page or 1)); page_size = min(200, max(5, int(page_size or 25)))
+    cols = db.query(
+        StudentProfile.id, User.name, StudentProfile.phone, StudentProfile.class_level,
+        StudentProfile.subjects, StudentProfile.batch_name, StudentProfile.medium,
+        StudentProfile.email, StudentProfile.class_name, StudentProfile.nios_ref,
+        StudentProfile.exam_session, StudentProfile.exam_stream, StudentProfile.goal,
+        StudentProfile.goal_custom, StudentProfile.last_seen, StudentProfile.is_verified,
+        User.user_id, StudentProfile.source, (StudentProfile.photo_b64.isnot(None)).label("hp")
+    ).join(User, StudentProfile.user_id == User.id)
+    if source: cols = cols.filter(StudentProfile.source == source)
+    if cls: cols = cols.filter(StudentProfile.class_level == str(cls))
+    if session: cols = cols.filter(StudentProfile.exam_session == session)
+    if medium: cols = cols.filter(StudentProfile.medium == medium)
+    if batch:
+        if batch == "__none__":
+            cols = cols.filter(or_(StudentProfile.batch_name.is_(None), StudentProfile.batch_name == ""))
+        else:
+            cols = cols.filter(StudentProfile.batch_name == batch)
+    if q:
+        ql = "%" + q.strip() + "%"
+        cols = cols.filter(or_(User.name.ilike(ql), StudentProfile.phone.ilike(ql),
+                               User.user_id.ilike(ql), StudentProfile.email.ilike(ql),
+                               StudentProfile.nios_ref.ilike(ql)))
+    if subject:
+        sub = subject.split("|")[0].strip()
+        try:
+            cols = cols.filter(func.json_contains(StudentProfile.subjects, _json.dumps(sub)))
+        except Exception:
+            pass
+    total = cols.count()
+    rows = cols.order_by(User.name).offset((page - 1) * page_size).limit(page_size).all()
+    students = []
+    for r in rows:
+        ssubs = r.subjects or []
+        disp = _SR.canon_list(ssubs, r.class_level) if _SR else ssubs
+        students.append({"id": r.id, "profile_id": r.id, "name": r.name or "", "phone": r.phone,
+                         "class": r.class_level, "class_level": r.class_level,
+                         "subjects": disp, "all_subjects": disp, "has_photo": bool(r.hp),
+                         "batch": r.batch_name, "batch_name": r.batch_name, "medium": r.medium,
+                         "email": r.email, "class_name": r.class_name, "nios_ref": r.nios_ref,
+                         "exam_session": r.exam_session, "exam_stream": r.exam_stream,
+                         "source": r.source or "mvs_app",
+                         "goal": (r.goal_custom if r.goal == "other" else r.goal),
+                         "last_seen": r.last_seen.strftime("%d %b %Y, %I:%M %p") if r.last_seen else None,
+                         "is_verified": bool(r.is_verified), "user_id": r.user_id})
+    return {"students": students, "total": total, "page": page, "page_size": page_size}
+
+
+_SFC_CACHE = {}
+@router.get("/student-filter-counts")
+def student_filter_counts(source: str = "", session: str = "", medium: str = "", cls: str = "",
+                          db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Filter dropdowns ke counts (batch/subject/class/session) — aggregate queries, tab ke
+    hisaab se. 30s cache taaki baar-baar heavy scan na ho."""
+    import time as _time
+    ckey = "%s|%s|%s|%s" % (source, session, medium, cls)
+    hit = _SFC_CACHE.get(ckey)
+    if hit and (_time.time() - hit[0] < 30):
+        return hit[1]
+    from models import StudentProfile
+    base = db.query(StudentProfile)
+    if source: base = base.filter(StudentProfile.source == source)
+    if session: base = base.filter(StudentProfile.exam_session == session)
+    if medium: base = base.filter(StudentProfile.medium == medium)
+    if cls: base = base.filter(StudentProfile.class_level == str(cls))
+    total = base.count()
+    batches = []
+    for bn, c in base.with_entities(StudentProfile.batch_name, func.count(StudentProfile.id)).group_by(StudentProfile.batch_name).all():
+        batches.append({"batch": bn or "__none__", "label": bn or "No batch", "count": int(c or 0)})
+    batches.sort(key=lambda x: (-x["count"], x["label"].lower()))
+    classes = sorted([c for (c,) in base.with_entities(StudentProfile.class_level).distinct().all() if c])
+    sessions = [s for (s,) in base.with_entities(StudentProfile.exam_session).distinct().all() if s]
+    # subject counts — sirf subjects+class column load karke Python me gino (light)
+    subj = {}
+    for ssubs, clv in base.with_entities(StudentProfile.subjects, StudentProfile.class_level):
+        clv = str(clv or "")
+        disp = _SR.canon_list(ssubs or [], clv) if _SR else (ssubs or [])
+        seen = set()
+        for x in disp:
+            k = str(x) + "|" + clv
+            if k in seen:
+                continue
+            seen.add(k)
+            if k not in subj:
+                subj[k] = {"subject": str(x), "class": clv, "count": 0}
+            subj[k]["count"] += 1
+    subjects = sorted(subj.values(), key=lambda a: (-a["count"], str(a["subject"]).lower()))
+    res = {"total": total, "batches": batches, "classes": classes, "sessions": sessions, "subjects": subjects}
+    _SFC_CACHE[ckey] = (_time.time(), res)
+    return res
 
 @router.post("/students/bulk-phone")
 def admin_bulk_phone(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
