@@ -469,6 +469,8 @@ class VideoTask(Base):
     warned_overdue = Column(Boolean, default=False)
     kind           = Column(String(20), default="normal") # normal | one_shot | rapid_revision | project
     subject        = Column(String(160), default="")      # special/project task ka subject (class ke saath — "Physics 12")
+    collab_teacher_ids = Column(Text, default="")         # JSON list of ADDITIONAL teacher ids (collab task)
+    collab_verified    = Column(Text, default="")         # JSON {teacher_id: true} — production manager per-teacher verify
     status_history = Column(Text, default="")             # JSON [{s, at, note}] — status timeline
     last_link_at   = Column(DateTime, nullable=True)      # special task me aakhri chapter link kab aaya
     admin_seen_at  = Column(DateTime, nullable=True)      # admin ne special update kab dekha (NEW blink)

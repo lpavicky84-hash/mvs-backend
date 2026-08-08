@@ -7262,9 +7262,15 @@ async function openVTAssign(proposalId){
   const preStream=(pre&&pre.streaming)||'';
   const taskForm=`<div class="form-grid vt-form">
       <div class="form-group"><label>Teacher</label><select id="vt-f-teacher" class="input">${tOpts}</select></div>
-      <div class="form-group" style="grid-column:1/-1"><label>Collaborate with (optional)</label>
-        <div style="font-size:.72rem;color:var(--text-muted);margin:-2px 0 6px">Selected teachers ko bhi yahi task unke portal par dikhega. Production manager sabko alag verify karega.</div>
-        <div id="vt-f-collab" style="display:flex;flex-wrap:wrap;gap:8px;max-height:130px;overflow:auto;padding:8px;border:1px solid var(--border);border-radius:10px">${_vtTeachers.map(t=>`<label style="display:flex;align-items:center;gap:6px;font-size:.84rem;background:var(--primary-50);padding:5px 11px;border-radius:8px;cursor:pointer"><input type="checkbox" class="vt-collab-cb" value="${t.pid}"> ${esc(t.name)}</label>`).join('')}</div></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Collaborate with others?</label>
+        <select id="vt-f-collab-on" class="input" onchange="var w=document.getElementById('vt-f-collab-wrap');if(w)w.style.display=this.value==='yes'?'block':'none'">
+          <option value="no" selected>No — single teacher</option>
+          <option value="yes">Yes — multiple teachers collaborate</option>
+        </select>
+        <div id="vt-f-collab-wrap" style="display:none;margin-top:8px">
+          <div style="font-size:.72rem;color:var(--text-muted);margin:0 0 6px">Selected teachers ko bhi yahi task unke portal par dikhega. Production manager sabko alag verify karega.</div>
+          <div id="vt-f-collab" style="display:flex;flex-wrap:wrap;gap:8px;max-height:130px;overflow:auto;padding:8px;border:1px solid var(--border);border-radius:10px">${_vtTeachers.map(t=>`<label style="display:flex;align-items:center;gap:6px;font-size:.84rem;background:var(--primary-50);padding:5px 11px;border-radius:8px;cursor:pointer"><input type="checkbox" class="vt-collab-cb" value="${t.pid}"> ${esc(t.name)}</label>`).join('')}</div>
+        </div></div>
       <div class="form-group"><label>YouTube Channel</label><select id="vt-f-channel" class="input"><option value="">— Select channel —</option>${cOpts}</select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Streaming</label><select id="vt-f-stream" class="input" onchange="_vtFilterTypes('vt-f-stream','vt-f-type',_vtTypes)"><option value="" ${preStream?'':'selected'}>— Not set —</option><option value="recorded" ${preStream==='recorded'?'selected':''}>Recorded</option><option value="live" ${preStream==='live'?'selected':''}>Live</option></select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Video Type</label><select id="vt-f-type" class="input">${_vtTypeOptsHtml(_vtTypes,preStream,pre?pre.video_type:'')}</select></div>
@@ -7335,9 +7341,15 @@ function _vtProjectForm(){
       <div class="form-group" style="grid-column:1/-1"><label>Teacher</label>
         <div id="vtp-autot" class="vtp-auto">Select a subject — the teacher will be fetched automatically, or choose manually below</div>
         <select id="vtp-teacher" class="input" style="margin-top:7px">${tOpts}</select></div>
-      <div class="form-group" style="grid-column:1/-1"><label>Collaborate with (optional)</label>
-        <div style="font-size:.72rem;color:var(--text-muted);margin:-2px 0 6px">Selected teachers ko bhi ye project unke portal par dikhega. Production manager sabko alag verify karega.</div>
-        <div id="vtp-collab" style="display:flex;flex-wrap:wrap;gap:8px;max-height:130px;overflow:auto;padding:8px;border:1px solid var(--border);border-radius:10px">${_vtTeachers.map(t=>`<label style="display:flex;align-items:center;gap:6px;font-size:.84rem;background:var(--primary-50);padding:5px 11px;border-radius:8px;cursor:pointer"><input type="checkbox" class="vtp-collab-cb" value="${t.pid}"> ${esc(t.name)}</label>`).join('')}</div></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Collaborate with others?</label>
+        <select id="vtp-collab-on" class="input" onchange="var w=document.getElementById('vtp-collab-wrap');if(w)w.style.display=this.value==='yes'?'block':'none'">
+          <option value="no" selected>No — single teacher</option>
+          <option value="yes">Yes — multiple teachers collaborate</option>
+        </select>
+        <div id="vtp-collab-wrap" style="display:none;margin-top:8px">
+          <div style="font-size:.72rem;color:var(--text-muted);margin:0 0 6px">Selected teachers ko bhi ye project unke portal par dikhega. Production manager sabko alag verify karega.</div>
+          <div id="vtp-collab" style="display:flex;flex-wrap:wrap;gap:8px;max-height:130px;overflow:auto;padding:8px;border:1px solid var(--border);border-radius:10px">${_vtTeachers.map(t=>`<label style="display:flex;align-items:center;gap:6px;font-size:.84rem;background:var(--primary-50);padding:5px 11px;border-radius:8px;cursor:pointer"><input type="checkbox" class="vtp-collab-cb" value="${t.pid}"> ${esc(t.name)}</label>`).join('')}</div>
+        </div></div>
       <div class="form-group" style="grid-column:1/-1"><label>Project Title (optional)</label><input id="vtp-title" class="input" placeholder="Auto: Project — {Subject}"></div>
       <div class="form-group" style="grid-column:1/-1"><label>Connect to timetable / syllabus chapters</label>
         <select id="vtp-connect" class="input" onchange="vtpConnectToggle()">
@@ -7456,7 +7468,7 @@ async function vtProjectSave(proposalId){
   const items=connect?[]:[...document.querySelectorAll('#vtp-items .vtp-itm')].map(i=>i.value.trim()).filter(Boolean);
   const payload={subject:gv('vtp-subject').trim(),class_level:gv('vtp-class'),
     teacher_id:+gv('vtp-teacher')||0,title:gv('vtp-title').trim(),connect,items,
-    collab_teacher_ids:[].slice.call(document.querySelectorAll('.vtp-collab-cb:checked')).map(c=>+c.value).filter(Boolean),
+    collab_teacher_ids:((document.getElementById('vtp-collab-on')||{}).value==='yes')?[].slice.call(document.querySelectorAll('.vtp-collab-cb:checked')).map(c=>+c.value).filter(Boolean):[],
     chapter_scope:connect?(gv('vtp-scope')||'pe'):'',
     weekly_quota:+gv('vtp-quota')||0,weekly_day:gv('vtp-day'),
     deadline:gv('vtp-deadline'),remarks:gv('vtp-remarks').trim(),
@@ -7472,7 +7484,8 @@ async function vtProjectSave(proposalId){
 }
 async function vtAssignSave(proposalId){
   const teacher_id=+document.getElementById('vt-f-teacher').value;
-  const collab_teacher_ids=[].slice.call(document.querySelectorAll('.vt-collab-cb:checked')).map(c=>+c.value).filter(id=>id&&id!==teacher_id);
+  const collabOn=(document.getElementById('vt-f-collab-on')||{}).value==='yes';
+  const collab_teacher_ids=collabOn?[].slice.call(document.querySelectorAll('.vt-collab-cb:checked')).map(c=>+c.value).filter(id=>id&&id!==teacher_id):[];
   const title=document.getElementById('vt-f-title').value.trim();
   const channel_id=+document.getElementById('vt-f-channel').value||null;
   const deadline=document.getElementById('vt-f-deadline').value;

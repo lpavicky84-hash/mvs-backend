@@ -1123,9 +1123,11 @@ def vt_assign(payload: dict = Body(...), db: Session = Depends(get_db), _=Depend
             reference=(payload.get("reference") or "").strip(),
             remarks=(payload.get("remarks") or "").strip(),
             streaming=(payload.get("streaming") or "").strip(),
-            collab_teacher_ids=(_json_c.dumps(_collab) if _collab else ""),
             deadline=dl, status="assigned", proposed_by="admin", proposal_ok="approved",
         )
+        if _collab:
+            try: t.collab_teacher_ids = _json_c.dumps(_collab)
+            except Exception: pass   # column abhi models me na ho to bhi crash na ho
         db.add(t)
         _hist_add(t, "assigned", "Deadline: %s" % dl.strftime("%d %b %Y, %I:%M %p"))
         # primary + collab sabko notify
@@ -1696,9 +1698,11 @@ def vt_create_project(payload: dict = Body(...),
                   proposal_ok="approved", deadline=final_dl,
                   remarks=(payload.get("remarks") or "").strip(),
                   reference=(payload.get("reference") or "").strip(),
-                  collab_teacher_ids=(_json_cp.dumps(_collab_p) if _collab_p else ""),
                   weekly_quota=weekly_quota, weekly_day=weekly_day,
                   item_source=item_source)
+    if _collab_p:
+        try: t.collab_teacher_ids = _json_cp.dumps(_collab_p)
+        except Exception: pass
     db.add(t)
     db.flush()
     if items:
@@ -1889,13 +1893,19 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
     _vt_sweep(db)
     tp = _get_tp(current_user, db)
     _ensure_special_teacher(db, tp)
-    tasks = (db.query(VideoTask)
-             .filter(or_(VideoTask.teacher_id == tp.id,
-                         VideoTask.collab_teacher_ids.like('%' + str(tp.id) + '%')),
-                     or_(NOT_SPECIAL, VideoTask.kind == "urgent"))
-             .order_by(VideoTask.created_at.desc()).all())
-    # LIKE se false-positive (e.g. 5 vs 15) hata do — precise membership
-    tasks = [t for t in tasks if tp.id in _collab_all_ids(t)]
+    try:
+        tasks = (db.query(VideoTask)
+                 .filter(or_(VideoTask.teacher_id == tp.id,
+                             VideoTask.collab_teacher_ids.like('%' + str(tp.id) + '%')),
+                         or_(NOT_SPECIAL, VideoTask.kind == "urgent"))
+                 .order_by(VideoTask.created_at.desc()).all())
+        tasks = [t for t in tasks if tp.id in _collab_all_ids(t)]
+    except Exception:
+        # models me collab column abhi na ho to sirf primary teacher ke tasks
+        tasks = (db.query(VideoTask)
+                 .filter(VideoTask.teacher_id == tp.id,
+                         or_(NOT_SPECIAL, VideoTask.kind == "urgent"))
+                 .order_by(VideoTask.created_at.desc()).all())
     active = [t for t in tasks if t.status == "assigned" and t.proposal_ok != "pending"]
     active.sort(key=lambda t: t.deadline or datetime.max)
     rest = [t for t in tasks if t not in active]
@@ -1920,12 +1930,18 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
         "month_types": month_type,
     }
     # special tasks (One Shot per subject + Rapid Revision) — chapters ke saath
-    spts = (db.query(VideoTask)
-            .filter(or_(VideoTask.teacher_id == tp.id,
-                        VideoTask.collab_teacher_ids.like('%' + str(tp.id) + '%')),
-                    VideoTask.kind.in_(["one_shot", "rapid_revision", "project"]))
-            .order_by(VideoTask.kind.asc(), VideoTask.subject.asc()).all())
-    spts = [t for t in spts if tp.id in _collab_all_ids(t)]
+    try:
+        spts = (db.query(VideoTask)
+                .filter(or_(VideoTask.teacher_id == tp.id,
+                            VideoTask.collab_teacher_ids.like('%' + str(tp.id) + '%')),
+                        VideoTask.kind.in_(["one_shot", "rapid_revision", "project"]))
+                .order_by(VideoTask.kind.asc(), VideoTask.subject.asc()).all())
+        spts = [t for t in spts if tp.id in _collab_all_ids(t)]
+    except Exception:
+        spts = (db.query(VideoTask)
+                .filter(VideoTask.teacher_id == tp.id,
+                        VideoTask.kind.in_(["one_shot", "rapid_revision", "project"]))
+                .order_by(VideoTask.kind.asc(), VideoTask.subject.asc()).all())
     # legacy "All Subjects"/empty-subject card kabhi na dikhe — sirf subject-wise cards
     spts = [t for t in spts if (t.subject or "").strip().lower() not in ("", "all subjects")]
     special_all = [_special_out(db, t) for t in spts]
