@@ -145,10 +145,12 @@ def file_response(value, media_type="application/octet-stream", filename=None, d
     return Response(content=_b64.b64decode(v), media_type=media_type, headers=headers)
 
 
-def proxy_response(value, media_type="application/octet-stream", filename=None, download=True):
+def proxy_response(value, media_type="application/octet-stream", filename=None, download=True, sniff=False):
     """Inline viewer / same-origin ke liye: R2 URL ho to server-side fetch karke bytes
     STREAM karo (cross-origin fetch/CORS ki dikkat nahi aayegi, aur URL pe b64decode crash
-    bhi nahi). Base64 ho to decode. Fetch fail ho to redirect fallback. Empty -> 404."""
+    bhi nahi). Base64 ho to decode. Fetch fail ho to redirect fallback. Empty -> 404.
+    sniff=True -> content-type file ke ASAL magic bytes se pakdo (migration ne galat label
+    diya ho to bhi sahi type se serve ho, e.g. PDF ko image/jpeg bana diya tha)."""
     from fastapi import HTTPException, Response
     if not value:
         raise HTTPException(status_code=404, detail="Not found")
@@ -177,6 +179,13 @@ def proxy_response(value, media_type="application/octet-stream", filename=None, 
             data = _b64.b64decode(v)
         except Exception:
             raise HTTPException(status_code=400, detail="File could not be read")
+    # magic bytes se ASAL type pakdo (galat label theek karne ke liye)
+    if sniff and data:
+        if data[:4] == b"%PDF": media_type = "application/pdf"
+        elif data[:3] == b"\xff\xd8\xff": media_type = "image/jpeg"
+        elif data[:8].startswith(b"\x89PNG"): media_type = "image/png"
+        elif data[:4] == b"RIFF" and b"WEBP" in data[:16]: media_type = "image/webp"
+        elif data[:6] in (b"GIF87a", b"GIF89a"): media_type = "image/gif"
     headers = {}
     if filename:
         disp = "attachment" if download else "inline"

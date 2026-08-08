@@ -1260,7 +1260,7 @@ def teacher_download(mid: int, db: Session = Depends(get_db), current_user=Depen
     from models import Material
     m = db.query(Material).options(defer(Material.content_b64)).filter(Material.id == mid).first()
     if not m: raise HTTPException(status_code=404, detail="Not found")
-    return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", m.filename or "file.pdf", True)
+    return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", m.filename or "file.pdf", True, sniff=True)
 
 @router.delete("/material/{mid}")
 def delete_material(mid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
@@ -3097,11 +3097,10 @@ def attempt_answer_image(attempt_id: int, db: Session = Depends(get_db), current
     # R2 URL ho to redirect (naye uploads normalize se URL hote hain; migration ke baad
     # purane bhi URL) — warna neeche base64 decode toot jaata.
     if str(att.answer_image_b64).startswith("http"):
-        # R2 URL ho to server-side stream (teacher ka fetch()+blob same-origin rahe, CORS na
-        # aaye) — warna sheet corrupt/empty download hoti thi. Content-type URL se pakdo.
-        _u = str(att.answer_image_b64).lower()
-        _ct = "application/pdf" if _u.split("?")[0].endswith(".pdf") else "image/jpeg"
-        return __import__("r2_storage").file_response(att.answer_image_b64, _ct, None, False)
+        # migration ne sabko .jpg/image/jpeg bana diya tha, chahe student ne PDF upload kiya ho —
+        # isi wajah se PDF sheets "damaged/broken" aati thi. sniff=True -> file ke ASAL magic
+        # bytes se sahi content-type (PDF/JPEG/PNG) se serve karo (same-origin stream, no CORS).
+        return __import__("r2_storage").proxy_response(att.answer_image_b64, "application/octet-stream", None, False, sniff=True)
     # Students upload a photo OR a PDF. Pehle hamesha image/jpeg bheja jaata tha
     # aur decode fail hone par unhandled 500 aata tha - browser use CORS ke bina
     # block kar deta tha, isliye portal par "Failed to fetch" dikhta tha.

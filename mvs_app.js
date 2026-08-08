@@ -5505,9 +5505,23 @@ async function importExamPdf(inp){
 }
 function downloadStudentAnswer(attId,name){
   try{ api('/api/teacher/attempt/'+attId+'/marking','POST',{}).catch(()=>{}); }catch(e){}
-  // Browser seedha R2 se le (redirect follow) — ?t= se auth, na CORS na corrupt file.
-  const url=API+'/api/teacher/attempt/'+attId+'/answer?t='+encodeURIComponent(TOKEN);
-  window.open(url,'_blank','noopener');
+  toast('Fetching the answer sheet\u2026');
+  fetch(API+'/api/teacher/attempt/'+attId+'/answer',{headers:{Authorization:'Bearer '+TOKEN}}).then(async r=>{
+    if(!r.ok){ toast('No answer sheet available for this student.',true); return; }
+    const ct=(r.headers.get('content-type')||'').toLowerCase();
+    const b=await r.blob();
+    if(!b||!b.size){ toast('The answer sheet file is empty. Ask the student to upload it again.',true); return; }
+    // ASAL type se sahi extension — PDF ho to .pdf (warna .jpg naam se PDF corrupt lagta tha)
+    const ext=ct.indexOf('pdf')>=0?'pdf':(ct.indexOf('png')>=0?'png':(ct.indexOf('webp')>=0?'webp':'jpg'));
+    const u=URL.createObjectURL(b);
+    const a=document.createElement('a'); a.href=u; a.download='answer-'+(name||'student')+'.'+ext;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(u),4000);
+    toast('Answer sheet downloaded.');
+  }).catch(e=>{
+    toast('Could not download right now. Opening in a new tab instead.',true);
+    try{ window.open(API+'/api/teacher/attempt/'+attId+'/answer?t='+encodeURIComponent(TOKEN),'_blank','noopener'); }catch(e2){}
+  });
 }
 async function submitExam(){
   // ---- DPP mode: editor se DPP banao (answers already mandatory) ----
@@ -5626,18 +5640,24 @@ function _toggleStuDet(id){
   b.style.display=open?'block':'none';
   const c=document.getElementById('sdc-'+id); if(c) c.classList.toggle('on',open);
 }
-function loadAnsImg(attId,imgId){
-  // Browser seedha R2 se le (img ko CORS nahi chahiye, redirect follow karta hai). ?t= se auth.
-  const url=API+'/api/teacher/attempt/'+attId+'/answer?t='+encodeURIComponent(TOKEN);
+async function loadAnsImg(attId,imgId){
   const wrap=document.getElementById(imgId+'-wrap');
   const el=document.getElementById(imgId);
-  if(!el){ if(wrap) wrap.innerHTML='<div class="gm-noimg">No answer sheet uploaded (this may be an MCQ test).</div>'; return; }
-  el.onerror=function(){
-    // image load fail -> shayad PDF sheet, ya file kharab -> iframe + open link
-    if(wrap) wrap.innerHTML='<iframe class="gm-pdf" src="'+url+'"></iframe>'
-      +'<div style="margin-top:8px"><a class="btn btn-ghost btn-sm" href="'+url+'" target="_blank" rel="noopener">Open the answer sheet in a new tab</a></div>';
-  };
-  el.src=url; el.style.display='block';
+  try{
+    // serve ab ASAL type se bhejta hai (PDF/JPEG/PNG) — content-type dekh ke sahi dikhao
+    const r=await fetch(API+'/api/teacher/attempt/'+attId+'/answer',{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok){ if(wrap) wrap.innerHTML='<div class="gm-noimg">No answer sheet uploaded (this may be an MCQ test).</div>'; return; }
+    const ct=(r.headers.get('content-type')||'').toLowerCase();
+    const b=await r.blob(); const u=URL.createObjectURL(b);
+    if(ct.indexOf('pdf')>=0){
+      if(wrap) wrap.innerHTML='<iframe class="gm-pdf" src="'+u+'" style="width:100%;height:70vh;border:1px solid var(--border);border-radius:10px"></iframe>'
+        +'<div style="margin-top:8px"><a class="btn btn-ghost btn-sm" href="'+u+'" target="_blank" rel="noopener">Open the answer sheet in a new tab</a></div>';
+      return;
+    }
+    if(el){ el.src=u; el.style.display='block'; }
+  }catch(e){
+    if(wrap) wrap.innerHTML='<div class="gm-noimg">The answer sheet could not be loaded. Please try again.</div>';
+  }
 }
 function gradeManual(attId,examId){
   const d=window._examAttData; if(!d){ toast('Please reopen Results and try again.',true); return; }

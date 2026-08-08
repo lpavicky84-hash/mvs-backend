@@ -886,7 +886,7 @@ def student_material_view(mid: int, db: Session = Depends(get_db), current_user=
         raise HTTPException(status_code=404, detail="Not found")
     sp = get_student_profile(current_user, db)
     _log_material(db, mid, sp.id, "view")
-    return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", m.filename or "file.pdf", False)
+    return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", m.filename or "file.pdf", False, sniff=True)
 
 @router.get("/materials-v2")
 def student_materials_v2(db: Session = Depends(get_db), current_user=Depends(get_student)):
@@ -931,7 +931,7 @@ def student_download(mid: int, db: Session = Depends(get_db), current_user=Depen
     if not m: raise HTTPException(status_code=404, detail="Not found")
     sp = get_student_profile(current_user, db)
     _log_material(db, mid, sp.id, "download")
-    return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", m.filename or "file.pdf", True)
+    return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", m.filename or "file.pdf", True, sniff=True)
 
 # ===== STUDENT: DPP / TEST LIST (download + submit) =====
 def _my_submission(db, sp, parent_id):
