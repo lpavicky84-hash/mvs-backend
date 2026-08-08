@@ -1494,14 +1494,20 @@ async function loadTeacherToday(wrapId){
  right=`<span class="tchip">${esc(e.time||'')}</span>`;
  } else if(e.notes && e.completed){
  right=`<span class="tstatus done"> Lecture Done · Material Done</span>`;
- } else if(over){
+ } else {
+ // Submit Report (Mark Done) + Upload Notes ab hamesha dikhte hain jab tak class complete
+ // na ho — Time Table section jaisa. Pehle sirf slot ka time nikalne ke baad (over) dikhte
+ // the, isliye class se pehle button gayab rehta tha aur teacher ko Time Table me jaana
+ // padta tha. Upcoming ab sirf ek chhoti chip hai — button ko block nahi karti.
  let _b='';
  if(!e.completed) _b+=`<button class="btn btn-success btn-sm" onclick="openClassReport(${e.id})"> Submit Report</button>`;
  if(!e.notes) _b+=`<button class="btn btn-primary btn-sm" onclick="openUploadHub({type:'notes',chapter:decodeURIComponent('${ch}'),subject:decodeURIComponent('${sub}'),class_name:decodeURIComponent('${cln}')})"> Upload Notes</button>`;
+ if(over){
  _b+=`<span class="tstatus" style="background:rgba(245,158,11,.15);color:var(--warning)">${!e.completed?'Report Pending':'Material Pending'}</span>`;
- right=_b;
  } else {
- right=`<span class="tstatus upcoming">Upcoming</span>`;
+ _b+=`<span class="tstatus upcoming">Upcoming</span>`;
+ }
+ right=_b;
  }
  const redStyle=bareTopic?'border-color:var(--danger);background:rgba(239,68,68,.04)':'';
  return `<div class="today-row" style="${redStyle}"><div><div class="tr-sub">${isEvent?'':''} ${esc(e.subject)}</div><div class="tr-topic">${esc(e.part||e.chapter||'')}</div></div><div class="tmeta">${e.date?`<span class="tchip date"> ${fmtNice(e.date)}</span>`:''}${e.day?`<span class="tchip">${esc(e.day)}</span>`:''}${e.time?`<span class="tchip"> ${esc(e.time)}</span>`:''}${right}</div></div>`;
@@ -12980,10 +12986,39 @@ function renderStudentNode(item, st, tmap, opts, ongoing){
   const stlbl=st==='done'?'DONE':(ongoing?'ONGOING CHAPTER':(st==='progress'?'IN PROGRESS':(st==='current'?'ONGOING CHAPTER':'UPCOMING')));
   return `<div class="stl-node ${st}${ongoing?' ongoing':''}">${dot}<div class="stl-card chapter ${open?'open':''}${ongoing?' ongoing':''}" id="${id}"><div class="stl-chead" onclick="document.getElementById('${id}').classList.toggle('open')"><div class="stl-cname"><span class="stl-arrow">${open?'▾':'›'}</span>${esc(item.chapter)}</div><div class="stl-cmeta"><span class="stl-badge ${ongoing?'ongoing':st}">${stlbl}</span><span class="cnt-badge dark">${parts.length} part${parts.length>1?'s':''}</span></div></div><div class="stl-parts">${partsHtml}</div></div></div>`;
 }
+// Premium: aaj wali day-card blink/glow karti hai + 'Today' chip blink — teeno panel
+// (teacher/student/admin) me, kyunki weekly view yahi shared function render karta hai.
+// CSS yahin se inject hoti hai (mvs_portal_connected.html chheda nahi jaata).
+function _ensureWkTodayCss(){
+  if(document.getElementById('wk-today-css')) return;
+  var st=document.createElement('style'); st.id='wk-today-css';
+  st.textContent=
+    '@keyframes mvsTodayGlow{0%,100%{box-shadow:0 0 0 0 rgba(184,148,31,0)}50%{box-shadow:0 0 0 5px rgba(184,148,31,.20)}}'+
+    '@keyframes mvsTodayChip{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.94)}}'+
+    '.wk-day-card.today{border-color:rgba(184,148,31,.8)!important;animation:mvsTodayGlow 1.6s ease-in-out infinite}'+
+    '.wk-day-card.today:hover{box-shadow:0 0 0 5px rgba(184,148,31,.28)}'+
+    '.wk-today-chip{animation:mvsTodayChip 1.1s ease-in-out infinite}'+
+    '@media (prefers-reduced-motion:reduce){.wk-day-card.today,.wk-today-chip{animation:none}}';
+  document.head.appendChild(st);
+}
 function renderStudentWeekly(tl, subjects, opts){
+  _ensureWkTodayCss();
   const days=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
   const subProg={};
   subjects.forEach(s=>{ let tp=0,dp=0; tl[s].forEach(it=>{ if(it.kind==='chapter') it.parts.forEach(p=>{tp++; if(_partDone(p))dp++;}); else {tp++; if(_partDone(it.data))dp++;} }); subProg[s]={done:dp,total:tp,pct:tp?Math.round(dp/tp*100):0}; });
+  // Per-subject CHRONOLOGICAL sequence — har class ko uska running number (1-based) deta hai.
+  // Isse weekly view me har row apni jagah dikhata hai (pehli class 1/42, agli 2/42 ...),
+  // na ki har row par same subject-total (26/42). Progress bar bhi is position se badhta hai.
+  const _wkTmin=t=>{ const m=/(\d+):(\d+)\s*(am|pm)/i.exec(t||''); if(!m) return 9999; let h=+m[1]%12; if(/pm/i.test(m[3]))h+=12; return h*60+(+m[2]); };
+  const subSeq={}, subTot={};
+  subjects.forEach(s=>{
+    const seq=[];
+    tl[s].forEach(it=>{ if(it.kind==='chapter') it.parts.forEach(p=>{ seq.push({id:p.id,date:p.date||'',time:p.time||''}); });
+                        else { seq.push({id:it.data.id,date:it.data.date||'',time:it.data.time||''}); } });
+    seq.sort((a,b)=> (a.date<b.date?-1:a.date>b.date?1:0) || (_wkTmin(a.time)-_wkTmin(b.time)) || ((a.id||0)-(b.id||0)) );
+    const m={}; seq.forEach((x,i)=>{ if(x.id!=null) m[x.id]=i+1; });
+    subSeq[s]=m; subTot[s]=seq.length;
+  });
   const byDay={};
   const _seenSlot=new Set();
   // WEEK FILTER: sirf is week (Mon..Sun) ki classes — purani/aane wali weeks ki nahi
@@ -13013,14 +13048,27 @@ function renderStudentWeekly(tl, subjects, opts){
     const list=byDay[d].slice().sort((a,b)=>_tmin(a.time)-_tmin(b.time));
     const rows=list.map(x=>{
       const tmap=(opts.tipTeacherMap||{})[x.subject]||opts.tipTeacher||{}, pr=subProg[x.subject]||{done:0,total:0,pct:0};
+      // Is class ka running number (uski chronological position). Na mile to done-count fallback.
+      const _tot=subTot[x.subject]||pr.total||0;
+      const _pos=((subSeq[x.subject]||{})[x.id])||pr.done||0;
+      const _rpct=_tot?Math.round(_pos/_tot*100):0;
       const tav=tmap.name?(tmap.url?`<span class="wkc-tav" style="background-image:url(${tmap.url});cursor:zoom-in" onclick="photoZoom('${tmap.url}','${esc((tmap.name||'').replace(/'/g,''))}')" title="Click to view photo"></span>`:`<span class="wkc-tav">${esc(initials(tmap.name))}</span>`):'';
       const stb=x.st==='current'?`<span class="wkc-status live">Live</span>`:x.st==='done'?`<span class="wkc-status done">Completed</span>`:`<span class="wkc-status up">Upcoming</span>`;
-      return `<div class="wkc-row"><div class="wkc-time">${esc(x.time||'—')}<span>90min</span>${x.date?`<span class="wkc-date">${esc(fmtNice(x.date))}</span>`:''}</div><div class="wkc-main"><div class="wkc-sub">${esc(x.subject)} <span class="wkc-cls">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span></div>${tmap.name?`<div class="wkc-teacher">${tav}${esc(tmap.name)}</div>`:''}<div class="wkc-bar"><div class="wkc-fill" style="width:${pr.pct}%"></div></div><div class="wkc-cnt">${pr.done}/${pr.total} classes</div></div><div class="wkc-right">${stb}<div class="wkc-pct">${pr.pct}%</div></div></div>`;
+      return `<div class="wkc-row"><div class="wkc-time">${esc(x.time||'—')}<span>90min</span>${x.date?`<span class="wkc-date">${esc(fmtNice(x.date))}</span>`:''}</div><div class="wkc-main"><div class="wkc-sub">${esc(x.subject)} <span class="wkc-cls">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span></div>${tmap.name?`<div class="wkc-teacher">${tav}${esc(tmap.name)}</div>`:''}<div class="wkc-bar"><div class="wkc-fill" style="width:${_rpct}%"></div></div><div class="wkc-cnt">${_pos}/${_tot} classes</div></div><div class="wkc-right">${stb}<div class="wkc-pct">${_rpct}%</div></div></div>`;
     }).join('');
     const n=list.length;
     const _isTodayW=byDay[d].some(x=>x.date===_todayKW);
     return `<div class="card wk-day-card ${_isTodayW?'today':''} wk-click" onclick="wkDayDetail('${d}')" title="Click to view ${d}'s classes"><div class="wk-day-head"><span>${esc(d)} <span class="wk-day-date">&middot; ${_fdD(_dayDate[d])}</span>${_isTodayW?'<span class="wk-today-chip">Today</span>':''}</span><span class="wk-day-cnt">${n} class${n>1?'es':''}</span></div><div class="wk-day-body">${rows}</div></div>`;
   }).join('');
+  // Today ki class card ko halke se view me le aao (block:'nearest' — agar pehle se
+  // dikh rahi hai to hilti nahi). Isse today par 'direct chala jaata hai'.
+  if(cols && cols.indexOf('wk-day-card')>=0){
+    var _wkFn=(window.requestAnimationFrame||function(f){setTimeout(f,0);});
+    _wkFn(function(){ try{ var _cs=document.querySelectorAll('.wk-day-card.today'),_tc=null;
+      for(var _i=0;_i<_cs.length;_i++){ if(_cs[_i].offsetParent){ _tc=_cs[_i]; break; } }
+      if(!_tc&&_cs.length) _tc=_cs[0];
+      if(_tc&&_tc.scrollIntoView) _tc.scrollIntoView({behavior:'smooth',block:'nearest'}); }catch(e){} });
+  }
   return cols||'<div class="empty-state"><p>No weekly schedule yet.</p></div>';
 }
 function wkDayDetail(day){

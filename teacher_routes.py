@@ -105,8 +105,13 @@ def teacher_dashboard(db: Session = Depends(get_db), current_user=Depends(get_te
         tp.reschedule_reset_month = now.month
         db.commit()
 
-    total_dpps  = db.query(DPP).filter(DPP.teacher_id == tp.id).count()
-    total_tests = db.query(Test).filter(Test.teacher_id == tp.id).count()
+    # DPPs card = actual DPPs teacher ne banaye/upload kiye (DppPack table — jo DPP page
+    # dikhata hai). Purana legacy `dpps` table khaali rehta hai, isliye card 0 dikhata tha.
+    from models import DppPack as _DppPack
+    total_dpps  = db.query(_DppPack).filter(_DppPack.teacher_id == tp.id).count()
+    # Tests card = actual tests (Exam table — Objective + Mission 75, jo Tests page dikhata hai).
+    # Purana legacy `tests` table khaali rehta tha, isliye card 0 dikhata tha.
+    total_tests = db.query(Exam).filter(Exam.teacher_id == tp.id, Exam.is_active == True).count()
     # unresolved = not-resolved PLUS resolved-but-new-follow-up (thread ka last msg student ka)
     from models import DoubtResponse as _DR
     unresolved = 0
