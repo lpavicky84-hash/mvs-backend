@@ -1566,6 +1566,11 @@ def admin_exam_ranking(exam_id: int, db: Session = Depends(get_db), _=Depends(ge
 def admin_student_counts(db: Session = Depends(get_db), _=Depends(get_admin)):
     """Subject counts SPLIT BY CLASS LEVEL — same-name subjects (English 202 vs
     English 302, Hindi, Data Entry Operations) alag alag cards me dikhte hain."""
+    import time as _time
+    _scc = globals().setdefault("_SCNT_CACHE", {})
+    _h = _scc.get("c")
+    if _h and (_time.time() - _h[0] < 30):
+        return _h[1]
     from models import StudentProfile, AvailableSubject
     import re as _re
     def _sk(name):
@@ -3157,17 +3162,24 @@ def admin_reset_password(payload: dict, db: Session = Depends(get_db), current_u
 @router.get("/portal-overview")
 def portal_overview(db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import StudentProfile as _SP
-    profs = db.query(_SP).all()
-    total = len(profs)
-    portal = sum(1 for x in profs if (getattr(x, "source", None) or "mvs_app") == "mvs_portal")
+    import time as _time
+    # 30s cache — students + dashboard dono is par depend karte hain
+    _oc = globals().setdefault("_POV_CACHE", {})
+    _hit = _oc.get("ov")
+    if _hit and (_time.time() - _hit[0] < 30):
+        return _hit[1]
+    # COUNT queries — saare profiles load NAHI karta (1 lakh par bhi turant, RAM spike nahi)
+    total = db.query(func.count(_SP.id)).scalar() or 0
+    portal = db.query(func.count(_SP.id)).filter(_SP.source == "mvs_portal").scalar() or 0
     app = total - portal
-    existing_phones = {x.phone for x in profs if x.phone}
     pending, portal_reachable = [], False
     try:
         from ext_materials import portal_unlocked_students
         lst = portal_unlocked_students()
         if lst is not None:
             portal_reachable = True
+            # sirf phone column laao (light) — full profiles nahi
+            existing_phones = {p for (p,) in db.query(_SP.phone).filter(_SP.phone.isnot(None))}
             for st in lst:
                 ph = "".join(ch for ch in str(st.get("phone", "")) if ch.isdigit())[-10:]
                 if len(ph) == 10 and ph not in existing_phones:
@@ -3176,9 +3188,11 @@ def portal_overview(db: Session = Depends(get_db), _=Depends(get_admin)):
                                     "session": st.get("session") or ""})
     except Exception:
         pass
-    return {"total": total, "mvs_portal": portal, "mvs_app": app,
-            "portal_reachable": portal_reachable,
-            "pending_count": len(pending), "pending": pending[:300]}
+    res = {"total": total, "mvs_portal": portal, "mvs_app": app,
+           "portal_reachable": portal_reachable,
+           "pending_count": len(pending), "pending": pending[:300]}
+    _oc["ov"] = (_time.time(), res)
+    return res
 
 
 # ------------------------------------------------------------------
@@ -4286,9 +4300,15 @@ def admin_teacher_payout(tid: int, month: str = "", db: Session = Depends(get_db
 def admin_earnings(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
     """Saare active teachers ka earnings overview (appointment-letter model)."""
     from teacher_routes import earnings_payload, _ist_now
+    import time as _time
     month = (month or "").strip() or _ist_now().strftime("%Y-%m")
     if not re.match(r"^\d{4}-\d{2}$", month):
         raise HTTPException(status_code=400, detail="Invalid month (use YYYY-MM).")
+    # 60s cache — earnings heavy calc hai (har teacher par portal activity), repeat load instant
+    _ec = globals().setdefault("_EARN_CACHE", {})
+    _hit = _ec.get(month)
+    if _hit and (_time.time() - _hit[0] < 60):
+        return _hit[1]
     out = []
     for tp in db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all():
         out.append(earnings_payload(db, tp, month))
@@ -4298,8 +4318,10 @@ def admin_earnings(month: str = "", db: Session = Depends(get_db), _=Depends(get
     total = sum(x["earnings"]["net_payable"] for x in out if not x.get("target_only"))
     tonly = sum(1 for x in out if x.get("target_only"))
     avg = round(sum(x["earnings"]["perf_score"] for x in out) / len(out)) if out else 0
-    return {"month": month, "teachers": out, "total_net": total, "avg_perf": avg,
-            "target_only_count": tonly}
+    res = {"month": month, "teachers": out, "total_net": total, "avg_perf": avg,
+           "target_only_count": tonly}
+    _ec[month] = (_time.time(), res)
+    return res
 
 
 @router.get("/earnings/teacher/{tid}")

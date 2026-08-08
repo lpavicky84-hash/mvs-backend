@@ -13298,6 +13298,8 @@ function initResponsiveCss(){
   var st=document.createElement('style'); st.id='mvs-responsive-css';
   st.textContent=[
     'html,body{max-width:100%;overflow-x:hidden}',
+    '.ae-ava{background-size:cover !important;background-position:center !important}',
+    '.ae-ava.has-photo{color:transparent !important}',
     '.cb-box{margin-top:8px;padding:10px 12px;background:var(--primary-50);border-radius:12px}',
     '.cb-head{font-size:.72rem;font-weight:800;letter-spacing:.4px;color:var(--text-muted);margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
     '.cb-pill{font-size:.64rem;font-weight:800;padding:3px 10px;border-radius:99px}',
