@@ -988,20 +988,82 @@ def _tt_col_map(header_cells):
     return m if ("date" in m and "chapter" in m) else None
 
 def _detect_tt_subject(text):
-    """PDF ke text se subject dhundho (registry se verify karke). Mila to raw naam, warna None."""
+    """PDF ke text se subject dhundho (registry se verify karke). Mila to raw naam, warna None.
+    Poori line match karne ke saath-saath line ke andar ke word-groups bhi test karta hai —
+    taaki 'CLASS 12 ENGLISH - TEACHING TIMETABLE' / 'ENGLISH DEPARTMENT' jaisi header se bhi
+    subject (English) pakad me aaye."""
     if _SR is None:
         return None
+    def _ok(s):
+        try:
+            return bool(_SR.canon_subject(s, "10") or _SR.canon_subject(s, "12"))
+        except Exception:
+            return False
     for ln in (text or "").split("\n")[:25]:
         s = re.sub(r"^subject\s*[:\-]\s*", "", ln.strip(), flags=re.I).strip()
         s = re.sub(r"\s*\(\d{3}\)\s*$", "", s).strip()   # "Social Science (213)" -> "Social Science"
-        if not s or len(s) > 60:
-            continue
-        try:
-            if _SR.canon_subject(s, "10") or _SR.canon_subject(s, "12"):
-                return s
-        except Exception:
-            pass
+        if s and len(s) <= 60 and _ok(s):
+            return s
+        # line ke andar word-groups (1-4 words) test karo — header me extra words hote hain
+        words = re.findall(r"[A-Za-z][A-Za-z&]+", ln)
+        low_skip = {"class", "teaching", "timetable", "time", "table", "department",
+                    "mvs", "foundation", "date", "day", "chapter", "topic", "part",
+                    "schedule", "session", "the", "and", "for", "monday", "tuesday",
+                    "wednesday", "thursday", "friday", "saturday", "sunday", "pm", "am"}
+        n = len(words)
+        for i in range(n):
+            if words[i].lower() in low_skip:
+                continue
+            for j in range(i + 1, min(i + 4, n) + 1):
+                phrase = " ".join(words[i:j])
+                if 3 <= len(phrase) <= 40 and _ok(phrase):
+                    return phrase
     return None
+
+_TT_WEEKDAYS = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
+_TT_TIME_RX = re.compile(r"^\d{1,2}[:.]\d{2}$")
+
+def _tt_text_line_parse(text, force_subject=None, is_event=None):
+    """Har line se DATE [DAY] [TIME] TOPIC nikalo — table columns pe bilkul depend nahi.
+    Misaligned/column-shift tables (jaise English timetable, jahan aadhi rows skip ho rahi
+    thi) me bhi ye SAARI rows sahi nikaalta hai. Line jo date se shuru na ho -> skip
+    (header/footer/holiday-note apne aap chhoot jaate hain)."""
+    if is_event is None:
+        def is_event(_t):
+            return False
+    rows = []
+    for ln in (text or "").split("\n"):
+        ln = " ".join((ln or "").split())
+        if not ln:
+            continue
+        parts = ln.split(" ")
+        d = _tt_flex_date(parts[0]) if parts else None
+        if not d:
+            continue
+        rest = parts[1:]
+        day = ""
+        if rest and rest[0].strip(",.").lower() in _TT_WEEKDAYS:
+            day = rest.pop(0).strip(",.")
+        tm = ""
+        if rest and _TT_TIME_RX.match(rest[0].replace(".", ":")):
+            tm = rest.pop(0).replace(".", ":")
+            if rest and rest[0].upper().rstrip(".") in ("AM", "PM"):
+                tm += " " + rest.pop(0).upper().rstrip(".")
+        elif rest and re.match(r"^\d{1,2}[:.]\d{2}\s*(?:am|pm|AM|PM)$", rest[0]):
+            tm = rest.pop(0).upper().replace(".", ":")
+        topic = " ".join(rest).strip(" -|\t")
+        if not topic or len(topic) < 2 or _tt_flex_date(topic):
+            continue
+        rows.append({
+            "subject": force_subject or "",
+            "chapter": topic,
+            "part": None,
+            "date": d.isoformat(),
+            "day": (day.title() or None),
+            "time": (tm.upper() or None),
+            "type": ("event" if is_event(topic) else "chapter"),
+        })
+    return rows
 
 def _fallback_parse_timetable_pdf(raw, force_subject=None, class_name="Class 12"):
     """Generic timetable table parser — tt_parser ka safety net.
@@ -1019,6 +1081,7 @@ def _fallback_parse_timetable_pdf(raw, force_subject=None, class_name="Class 12"
     rows = []
     colmap = None
     subj_detected = None
+    _full_text = []
     with pdfplumber.open(_io.BytesIO(raw)) as pdf:
         for page in pdf.pages:
             # Ek kharab/tedhi page kabhi poore parse ko na girae — har page apne
@@ -1083,6 +1146,19 @@ def _fallback_parse_timetable_pdf(raw, force_subject=None, class_name="Class 12"
                     subj_detected = _detect_tt_subject(page.extract_text() or "")
                 except Exception:
                     pass
+            try:
+                _full_text.append(page.extract_text() or "")
+            except Exception:
+                pass
+    # Column-shift/misaligned table safety net: text-line parser se saari rows nikaalo.
+    # Jo tareeka ZYADA rows de wahi lo — isse aadhi rows skip hone wali dikkat khatam.
+    try:
+        _tl_rows = _tt_text_line_parse("\n".join(_full_text),
+                                       force_subject=force_subject, is_event=_tt_is_event)
+    except Exception:
+        _tl_rows = []
+    if len(_tl_rows) > len(rows):
+        rows = _tl_rows
     final_subj = force_subject or subj_detected
     if final_subj:
         for r in rows:
@@ -1112,12 +1188,15 @@ async def admin_upload_timetable_pdf(
         rows = tt_parser.parse_pdf(raw, force_subject=(subject.strip() or None)) or []
     except Exception as e:
         _errs.append(str(e)[:120])
-    if not rows:
-        try:
-            rows = _fallback_parse_timetable_pdf(
-                raw, force_subject=(subject.strip() or None), class_name=class_name) or []
-        except Exception as e:
-            _errs.append(str(e)[:120])
+    # Bulletproof: fallback HAMESHA chalao. tt_parser 0 ya PARTIAL (column-shift se aadhi
+    # rows) de sakta hai — isliye jo tareeka zyada rows de wahi lo.
+    try:
+        _fb = _fallback_parse_timetable_pdf(
+            raw, force_subject=(subject.strip() or None), class_name=class_name) or []
+        if len(_fb) > len(rows):
+            rows = _fb
+    except Exception as e:
+        _errs.append(str(e)[:120])
     if not rows:
         raise HTTPException(status_code=400,
             detail="No valid row found in the PDF — it should have a Date / Day / Time / Chapter table."
