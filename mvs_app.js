@@ -1008,7 +1008,12 @@ function initials(name){ const p=(name||'U').trim().split(' '); return ((p[0]||'
 
 // Modal helpers
 function showModal(title,bodyHtml,footerHtml){ const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.remove('cx','modal-fs'); const _cs=document.querySelector('.cx-sub'); if(_cs)_cs.remove(); document.getElementById('modal-title').textContent=title; document.getElementById('modal-body').innerHTML=bodyHtml; document.getElementById('modal-footer').innerHTML=footerHtml||''; document.getElementById('modal').classList.add('open'); }
-function closeModal(){ document.getElementById('modal').classList.remove('open');
+function closeModal(){
+  // AUTO-DRAFT: band hone se PEHLE draft save karo (galti se X dabe ya hang ho to bhi
+  // questions safe) + timer band karo. Reopen par "Continue" milega.
+  try{ if(document.getElementById('ex-qs')) _saveQDraft(); }catch(e){}
+  try{ if(window._qDraftTimer){ clearInterval(window._qDraftTimer); window._qDraftTimer=null; } }catch(e){}
+  document.getElementById('modal').classList.remove('open');
   if(window._afterModalCb){ var cb=window._afterModalCb; window._afterModalCb=null; setTimeout(cb,240); } }
 
 function stopCountdown(){ if(countdownTimer){clearInterval(countdownTimer);countdownTimer=null;} }
@@ -4114,7 +4119,7 @@ async function openCreateExam(type,editData){
   }catch(e){}
   const subOpts=subs.length?subs.map(s=>`<option>${esc(s)}</option>`).join(''):'<option>General</option>';
   const tl=type==='mcq'?'MCQ':'Mission 75';
-  const tools=`<div class="ex-tools"><span class="ex-tools-lbl">Maths & Chemistry:</span><button type="button" onclick="insertTexKey('frac')">a&frasl;b</button><button type="button" onclick="insertTexKey('pow')">x&sup2;</button><button type="button" onclick="insertTexKey('sub')">x&#8345;</button><button type="button" onclick="insertTexKey('sqrt')">&radic;</button><button type="button" onclick="insertTexKey('pi')">&pi;</button><button type="button" onclick="insertTexKey('theta')">&theta;</button><button type="button" onclick="insertTexKey('delta')">&Delta;</button><button type="button" onclick="insertTexKey('times')">&times;</button><button type="button" onclick="insertTexKey('deg')">&deg;</button><button type="button" onclick="insertTexKey('intg')">&int;</button><button type="button" onclick="insertTexKey('sum')">&Sigma;</button><button type="button" class="chem" onclick="insertTexKey('rxn')">Reaction</button><button type="button" class="chem" onclick="insertTexKey('chem')">Formula</button><button type="button" onclick="_texPalOpen()" title="Matrices, determinants, vectors, definite integrals & more ready-made maths">∑ More</button><button type="button" class="ai" onclick="_autoFixField()" title="Fix maths & formatting in the selected box (fractions, powers, roots, units, broken LaTeX)">Auto-format</button><button type="button" class="ai" id="ex-tr-all" onclick="examTranslateAll(this)" title="Translate every question to Hindi">Translate All to Hindi</button></div>`;
+  const tools=`<div class="ex-tools"><span class="ex-tools-lbl">Maths & Chemistry:</span><button type="button" onclick="insertTexKey('frac')">a&frasl;b</button><button type="button" onclick="insertTexKey('pow')">x&sup2;</button><button type="button" onclick="insertTexKey('sub')">x&#8345;</button><button type="button" onclick="insertTexKey('sqrt')">&radic;</button><button type="button" onclick="insertTexKey('pi')">&pi;</button><button type="button" onclick="insertTexKey('theta')">&theta;</button><button type="button" onclick="insertTexKey('delta')">&Delta;</button><button type="button" onclick="insertTexKey('times')">&times;</button><button type="button" onclick="insertTexKey('deg')">&deg;</button><button type="button" onclick="insertTexKey('intg')">&int;</button><button type="button" onclick="insertTexKey('sum')">&Sigma;</button><button type="button" class="chem" onclick="insertTexKey('rxn')">Reaction</button><button type="button" class="chem" onclick="insertTexKey('chem')">Formula</button><button type="button" onclick="_texPalOpen()" title="Matrices, determinants, vectors, definite integrals & more ready-made maths">∑ More</button><button type="button" class="ai" onclick="_autoFixField()" title="Fix maths & formatting in the selected box (fractions, powers, roots, units, broken LaTeX)">Auto-format</button><button type="button" class="ai" id="ex-tr-all" onclick="examTranslateAll(this)" title="Translate every question to Hindi">Translate All to Hindi</button><button type="button" class="ex-reset" onclick="_resetAllQ()" title="Saare questions hata ke naya shuru karo" style="background:#fdecec;color:#c0392b;border:1px solid #f5c6cb">Reset all questions</button></div>`;
   const note=type==='subjective'
     ?'<div class="alert alert-info">Students upload a photo of their handwritten answers. You grade each answer manually from Results — award marks + remarks per question (your model answers stay visible to you while checking). Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{2H2 + O2 -> 2H2O}$</code> &mdash; they render automatically.</div>'
     :'<div class="alert alert-info">Students select an option. Auto-graded instantly. Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{...}$</code>.</div>';
@@ -4132,6 +4137,9 @@ async function openCreateExam(type,editData){
   if(_subEl) _subEl.addEventListener('change',()=>_examFillTestCls(true));
   _examFillTestCls(true);
   addExamQ();
+  // AUTO-DRAFT: har 2.5s me draft save (hang/close pe questions na udein). Edit pe nahi.
+  try{ if(window._qDraftTimer) clearInterval(window._qDraftTimer); }catch(e){}
+  window._qDraftTimer=setInterval(_saveQDraft,2500);
   if(editData){
     const ex=editData.ex||{};
     const sel=document.getElementById('ex-sub');
@@ -4150,6 +4158,8 @@ async function openCreateExam(type,editData){
       if(cs){ if(![...cs.options].some(o=>o.text===ex.class_name)){ const op=document.createElement('option'); op.text=ex.class_name; cs.add(op); } cs.value=ex.class_name; } }
     const mapped=_examFormQs(editData.questions||[],_examType==='mcq');
     if(mapped.length){ _examQs=mapped; renderExamQs(); }
+  } else {
+    _maybeShowQDraft();   // pichla adhoora draft mila to "Continue" ka option dikhao
   }
 }
 function _examFillTestCls(auto){
@@ -4221,6 +4231,65 @@ function _qTransState(q){
   pairs.forEach(([en,hi])=>{ if(_hasTxt(en)){ need++; if(_hasTxt(hi)) have++; } });
   if(!need||!have) return have?'part':'none';
   return have>=need?'done':'part';
+}
+// ===== AUTO-DRAFT: DPP / Test / Mission 75 / Objective — panel hang ya galti se close
+// hone par bhi questions na udein. Sab openCreateExam + _examQs use karte hain, isliye ek
+// hi jagah. localStorage me draft, reopen par "Continue" ka option. Submit hone par clear. =====
+function _qDraftKey(){ return 'mvs_qdraft_'+(window._dppMode?'dpp':'test')+'_'+(_examType||'x'); }
+function _qCount(qs){
+  return (qs||[]).filter(function(q){ return q && ((q.q||'').trim()||(q.model||'').trim()||q.image_b64
+    ||q.model_answer_image||(q.opts||[]).some(function(o){return (o||'').trim();})||(q.expl||'').trim()); }).length;
+}
+function _saveQDraft(){
+  try{
+    if(window._editExamId||window._dppEditId) return;              // edit mode -> draft nahi
+    if(!document.getElementById('ex-qs')) return;                  // panel band -> skip
+    if(_qCount(_examQs)<1) return;                                 // koi content nahi -> skip
+    var form={sub:val('ex-sub'),cls:val('ex-cls-test'),dur:val('ex-dur'),medium:val('ex-medium'),
+              sched:val('ex-sched'),title:val('ex-title'),ch:val('ex-ch')};
+    try{ localStorage.setItem(_qDraftKey(),JSON.stringify({ts:Date.now(),dpp:!!window._dppMode,type:_examType,qs:_examQs,form:form})); }
+    catch(e){
+      // quota (bade images) -> images hata ke text/structure bacha lo (kam se kam mehnat na jaye)
+      var light=(_examQs||[]).map(function(q){var c=Object.assign({},q);delete c.image_b64;delete c.alt_image_b64;delete c.model_answer_image;return c;});
+      try{ localStorage.setItem(_qDraftKey(),JSON.stringify({ts:Date.now(),dpp:!!window._dppMode,type:_examType,qs:light,form:form,noimg:true})); }catch(e2){}
+    }
+  }catch(e){}
+}
+function _clearQDraft(){ try{ localStorage.removeItem(_qDraftKey()); }catch(e){} }
+function _restoreQDraft(dr){
+  try{
+    _examQs=(dr.qs&&dr.qs.length)?dr.qs:[]; if(!_examQs.length) addExamQ();
+    var f=dr.form||{};
+    var set=function(id,v){ var el=document.getElementById(id); if(el&&v!=null) el.value=v; };
+    if(f.sub){ var s=document.getElementById('ex-sub'); if(s){ if(![].slice.call(s.options).some(function(o){return o.text===f.sub;})){ var op=document.createElement('option'); op.text=f.sub; s.add(op);} s.value=f.sub; } }
+    set('ex-title',f.title); set('ex-ch',f.ch); set('ex-dur',f.dur); set('ex-sched',f.sched);
+    if(f.medium){ set('ex-medium',f.medium); _examMedium=f.medium; }
+    try{ _examFillTestCls(false); }catch(e){}
+    if(f.cls){ var c=document.getElementById('ex-cls-test'); if(c){ if(![].slice.call(c.options).some(function(o){return o.text===f.cls;})){ var op2=document.createElement('option'); op2.text=f.cls; c.add(op2);} c.value=f.cls; } }
+    renderExamQs();
+    var b=document.getElementById('qdraft-banner'); if(b) b.remove();
+    toast('Pichla draft restore ho gaya \\u2014 '+_qCount(_examQs)+' question(s)');
+  }catch(e){}
+}
+function _resetAllQ(){
+  if(!confirm('Saare questions hata ke naya shuru karein? Ye wapas nahi milega.')) return;
+  _examQs=[]; addExamQ(); renderExamQs(); _clearQDraft();
+  var b=document.getElementById('qdraft-banner'); if(b) b.remove();
+}
+function _maybeShowQDraft(){
+  try{
+    var raw=localStorage.getItem(_qDraftKey()); if(!raw) return;
+    var dr=JSON.parse(raw); var n=_qCount(dr.qs); if(n<1) return;
+    var cont=document.getElementById('ex-qs'); if(!cont) return;
+    var when=new Date(dr.ts||Date.now()).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',hour12:true});
+    var bn=document.createElement('div'); bn.id='qdraft-banner'; bn.className='alert alert-info';
+    bn.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px';
+    bn.innerHTML='<span>Aapka pichla adhoora '+(window._dppMode?'DPP':'test')+' mila \\u2014 <b>'+n+' question(s)</b> ('+esc(when)+')'+(dr.noimg?' <small>(images restore nahi honge)</small>':'')+'</span>'
+      +'<span style="display:flex;gap:8px;flex:none"><button class="btn btn-primary btn-sm" id="qdraft-cont">Continue</button><button class="btn btn-ghost btn-sm" id="qdraft-new">Naya shuru karo</button></span>';
+    cont.parentNode.insertBefore(bn,cont);
+    document.getElementById('qdraft-cont').onclick=function(){ _restoreQDraft(dr); };
+    document.getElementById('qdraft-new').onclick=function(){ _clearQDraft(); bn.remove(); };
+  }catch(e){}
 }
 function renderExamQs(){
   const el=document.getElementById('ex-qs'); if(!el) return;
@@ -5397,6 +5466,7 @@ async function submitExam(){
       try{ res=await _dppApi(); err=null; }catch(e2){ err=e2; }
     }
     if(err||!res){ toast((err&&err.message)||(_dppEid?'Update failed':'Create failed'),true); return; }
+    _clearQDraft(); _examQs=[];   // safal submit -> draft clear (closeModal ka save skip)
     window._dppMode=false; window._dppEditId=null; window._dppEditMeta=null; closeModal();
     toast(_dppEid?'DPP updated — the PDFs will rebuild on the next view or download.'
       :(res.duplicate?'DPP pehle hi ban gaya tha — card me dikhega.':'DPP created — ab card pe "Download PDF" ya "View" dabao. PDF click pe hi banti hai, timeout nahi hoga.'));
@@ -5430,6 +5500,7 @@ async function submitExam(){
     if(_editId){ await api('/api/teacher/exam/'+_editId,'PATCH',body); }
     else{ await api('/api/teacher/exam','POST',body); }
     window._editExamId=null;
+    _clearQDraft(); _examQs=[];   // safal submit -> draft clear (closeModal ka save skip)
     closeModal();
     toast(_editId?'Test updated successfully!':(biling?'Test created! Any blank Hindi fields are being auto-filled now.':'Test created successfully!'));
     loadTTests();
