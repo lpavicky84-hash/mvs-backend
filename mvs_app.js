@@ -8517,6 +8517,7 @@ async function loadAStudents(){
 function _aStuCounts(){
   // Session + Medium filter lagakar per-subject counts — "April 2027 me Physics kitne?"
   let list=_aStu;
+  if(_stuSrcFilter) list=list.filter(s=>(s.source||'mvs_app')===_stuSrcFilter);
   if(_stuSess) list=list.filter(s=>(s.exam_session||'')===_stuSess);
   if(_stuMed) list=list.filter(s=>(s.medium||'')===_stuMed);
   const m={};
@@ -8964,6 +8965,7 @@ function _stuFParts(){ const v=_stuFilter||''; const i=v.lastIndexOf('||'); if(i
 // '__none__' = jinke paas koi batch nahi. Isse dikhta hai kis batch me kitne students.
 function _aStuBatchCounts(){
   let list=_aStu;
+  if(_stuSrcFilter) list=list.filter(s=>(s.source||'mvs_app')===_stuSrcFilter);
   if(_stuSess) list=list.filter(s=>(s.exam_session||'')===_stuSess);
   if(_stuMed) list=list.filter(s=>(s.medium||'')===_stuMed);
   if(_stuClass) list=list.filter(s=>String(s.class_level||'')===_stuClass);
@@ -8988,8 +8990,9 @@ function aRenderStudents(){
   const el=document.getElementById('a-students-content');
   // ---- MASTER FILTER: session + medium + class + subject (counts live-update) ----
   const subsAll=_aStuCounts();
-  const classes=[...new Set(_aStu.map(s=>String(s.class_level||'')).filter(Boolean))].sort();
-  const sessions=[...new Set(_aStu.map(s=>s.exam_session).filter(Boolean))];
+  const _srcBase=_stuSrcFilter?_aStu.filter(s=>(s.source||'mvs_app')===_stuSrcFilter):_aStu;
+  const classes=[...new Set(_srcBase.map(s=>String(s.class_level||'')).filter(Boolean))].sort();
+  const sessions=[...new Set(_srcBase.map(s=>s.exam_session).filter(Boolean))];
   const subsForClass=subsAll.filter(c=>!_stuClass||String(c['class']||c.class_level||'')===_stuClass);
   const batchCounts=_aStuBatchCounts();
   const _fp=_stuFParts();
@@ -13281,6 +13284,7 @@ try{initResponsiveCss();}catch(e){}
 try{initNavCollapse();}catch(e){}
 try{initAdminDppTracker();}catch(e){}
 try{initNavAccordion();}catch(e){}
+setTimeout(function(){ try{initNavAccordion();}catch(e){} },500);
 function initResponsiveCss(){
   if(document.getElementById('mvs-responsive-css')) return;
   var st=document.createElement('style'); st.id='mvs-responsive-css';
@@ -13413,25 +13417,29 @@ function initNavAccordion(){
     document.head.appendChild(st);
   }
   document.querySelectorAll('.app .sidebar-nav').forEach(function(nav){
-    var secs=[].slice.call(nav.querySelectorAll('.nav-section'));
-    secs.forEach(function(sec){
-      // items HAR BAAR re-group karo (nav badla/naye item aaye to bhi sahi) — agle
-      // nav-section tak ke saare nav-item is section ke andar aate hain
-      var items=[], n=sec.nextElementSibling;
-      while(n && !n.classList.contains('nav-section')){ if(n.classList.contains('nav-item')) items.push(n); n=n.nextElementSibling; }
-      sec._items=items;
-      if(!sec.querySelector('.nav-sec-ic')){
-        var _lbl=(sec.textContent||'').trim().toLowerCase();
-        var _SIC={main:'grid',home:'grid',overview:'grid',content:'folder',materials:'folder',material:'folder',work:'clipboard',progress:'chart',account:'user',academics:'book',production:'play',teachers:'users','leads & support':'help',system:'shield',sales:'chart'};
-        var icw=document.createElement('span'); icw.className='nav-sec-ic'; try{ icw.innerHTML=ic(_SIC[_lbl]||'folder'); }catch(e){}
-        sec.insertBefore(icw, sec.firstChild);
-      }
-      if(!sec.querySelector('.nav-sec-chev')){ var ch=document.createElement('span'); ch.className='nav-sec-chev'; ch.textContent='\u25be'; sec.appendChild(ch); }
-      if(!sec._accClick){ sec._accClick=true; sec.addEventListener('click',function(){ _setNavSec(sec, !sec._open); }); }
-    });
-    // DEFAULT: SAARE sections BAND — sirf click karne par khulte hain (koi auto-open nahi)
-    secs.forEach(function(sec){ _setNavSec(sec,false); });
+    _accGroupClose(nav, true);
+    if(!nav._accObs){
+      nav._accObs=new MutationObserver(function(){ _accGroupClose(nav, false); });
+      nav._accObs.observe(nav, {childList:true});
+    }
   });
+}
+function _accGroupClose(nav, forceAll){
+  var secs=[].slice.call(nav.querySelectorAll('.nav-section'));
+  secs.forEach(function(sec){
+    var items=[], n=sec.nextElementSibling;
+    while(n && !n.classList.contains('nav-section')){ if(n.classList.contains('nav-item')) items.push(n); n=n.nextElementSibling; }
+    sec._items=items;
+    if(!sec.querySelector('.nav-sec-ic')){
+      var _lbl=(sec.textContent||'').trim().toLowerCase();
+      var _SIC={main:'grid',home:'grid',overview:'grid',content:'folder',materials:'folder',material:'folder',work:'clipboard',progress:'chart',account:'user',academics:'book',production:'play',teachers:'users','leads & support':'help',system:'shield',sales:'chart'};
+      var icw=document.createElement('span'); icw.className='nav-sec-ic'; try{ icw.innerHTML=ic(_SIC[_lbl]||'folder'); }catch(e){}
+      sec.insertBefore(icw, sec.firstChild);
+    }
+    if(!sec.querySelector('.nav-sec-chev')){ var ch=document.createElement('span'); ch.className='nav-sec-chev'; ch.textContent='\u25be'; sec.appendChild(ch); }
+    if(!sec._accClick){ sec._accClick=true; sec.addEventListener('click',function(){ _setNavSec(sec, !sec._open); }); }
+  });
+  secs.forEach(function(sec){ if(forceAll || !sec._open) _setNavSec(sec,false); });
 }
 function _secOf(secs,item){ for(var i=0;i<secs.length;i++){ if((secs[i]._items||[]).indexOf(item)>=0) return secs[i]; } return null; }
 function _setNavSec(sec,open){
