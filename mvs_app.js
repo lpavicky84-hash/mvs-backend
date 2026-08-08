@@ -6844,20 +6844,25 @@ function _avtCard(t){
 }
 function _vtCollabHtml(t){
   if(!t||!t.is_collab) return '';
-  const chips=(t.collab_teachers||[]).map(c=>
-    c.verified
-      ? `<span class="vt-pill" style="background:rgba(22,163,74,.15);color:#16a34a">${ic('check')} ${esc(c.name)} · Approved</span>`
-      : `<button class="btn btn-ghost btn-sm" style="padding:3px 10px" onclick="vtVerifyTeacher(${t.id},${c.id},'${esc(String(c.name)).replace(/'/g,'')}')">${ic('check')} Verify ${esc(c.name)}</button>`
-  ).join(' ');
+  const rows=(t.collab_teachers||[]).map(c=>{
+    const nm=String(c.name||'Teacher');
+    const init=(nm.trim().split(/\s+/).map(w=>(w||'')[0]||'').slice(0,2).join('')||'T').toUpperCase();
+    const safe=esc(nm).replace(/'/g,'');
+    const right=c.verified
+      ? `<span class="cb-ok" onclick="vtVerifyTeacher(${t.id},${c.id},'${safe}',false)" title="Tap to remove approval">Approved</span>`
+      : `<button class="cb-verify" onclick="vtVerifyTeacher(${t.id},${c.id},'${safe}',true)">Verify</button>`;
+    return `<div class="cb-row"><div class="cb-av">${esc(init)}</div><div class="cb-nm">${esc(nm)}</div>${right}</div>`;
+  }).join('');
   const overall=t.collab_all_verified
-    ? `<span class="vt-pill" style="background:rgba(22,163,74,.15);color:#16a34a;margin-left:6px">All Approved</span>`
-    : `<span class="vt-pill" style="background:rgba(220,38,38,.12);color:#dc2626;margin-left:6px">Not completed — verify pending</span>`;
-  return `<div style="margin-top:8px;padding:9px 11px;background:var(--primary-50);border-radius:10px"><div style="font-size:.72rem;font-weight:700;color:var(--text-muted);margin-bottom:7px">COLLAB TEACHERS ${overall}</div><div style="display:flex;flex-wrap:wrap;gap:7px">${chips}</div></div>`;
+    ? `<span class="cb-pill ok">All Approved</span>`
+    : `<span class="cb-pill bad">Verify pending</span>`;
+  return `<div class="cb-box"><div class="cb-head">COLLAB TEACHERS ${overall}</div>${rows}</div>`;
 }
-async function vtVerifyTeacher(taskId,teacherId,name){
+async function vtVerifyTeacher(taskId,teacherId,name,verified){
+  const v=verified!==false;
   try{
-    const r=await api('/api/admin/video-tasks/'+taskId+'/verify-teacher','POST',{teacher_id:teacherId,verified:true});
-    toast((name||'Teacher')+(r.all_verified?' verified — all approved!':' verified.'));
+    const r=await api('/api/admin/video-tasks/'+taskId+'/verify-teacher','POST',{teacher_id:teacherId,verified:v});
+    toast((name||'Teacher')+(!v?' — approval removed.':(r.all_verified?' verified. All approved!':' verified.')));
     if(typeof loadAVTasks==='function') loadAVTasks();
   }catch(e){ toast(e.message||'Could not verify',true); }
 }
@@ -13263,6 +13268,18 @@ function initResponsiveCss(){
   var st=document.createElement('style'); st.id='mvs-responsive-css';
   st.textContent=[
     'html,body{max-width:100%;overflow-x:hidden}',
+    '.cb-box{margin-top:8px;padding:11px 12px;background:var(--primary-50);border-radius:12px}',
+    '.cb-head{font-size:.72rem;font-weight:800;letter-spacing:.5px;color:var(--text-muted);margin-bottom:9px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
+    '.cb-pill{font-size:.64rem;font-weight:800;padding:3px 9px;border-radius:99px}',
+    '.cb-pill.ok{background:rgba(22,163,74,.15);color:#16a34a}',
+    '.cb-pill.bad{background:rgba(220,38,38,.12);color:#dc2626}',
+    '.cb-row{display:flex;align-items:center;gap:10px;padding:7px 9px;background:var(--card-bg,#fff);border-radius:10px;margin-bottom:7px}',
+    '.cb-row:last-child{margin-bottom:0}',
+    '.cb-av{width:32px;height:32px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.76rem;flex:none}',
+    '.cb-nm{flex:1;font-weight:600;font-size:.9rem;min-width:0;word-break:break-word}',
+    '.cb-verify{flex:none;border:1.5px solid var(--accent);color:var(--accent);background:none;padding:6px 16px;border-radius:8px;font-weight:700;font-size:.82rem;cursor:pointer;transition:.15s}',
+    '.cb-verify:hover{background:var(--accent);color:#fff}',
+    '.cb-ok{flex:none;background:rgba(22,163,74,.15);color:#16a34a;padding:6px 14px;border-radius:8px;font-weight:800;font-size:.8rem;cursor:pointer}',
     '.ms-box{border:1px solid var(--border);border-radius:10px;padding:11px 14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--input-bg,#fff)}',
     '.ms-box .ms-ph{color:var(--text-muted)}',
     '.ms-arw{opacity:.6;flex:none}',
