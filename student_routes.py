@@ -6,7 +6,7 @@ from datetime import datetime, date, timedelta
 from typing import List, Optional
 
 from database import get_db
-from security import get_student
+from security import get_student, get_current_user
 import grading
 from models import (
     User, StudentProfile, TeacherProfile, ClassEntry, ClassStatus,
