@@ -17,6 +17,14 @@ from models import (
     Exam, ExamQuestion, ExamAttempt, ExamResult,
     Material, Lecture, TeacherAttendance, ist_iso
 )
+
+def _r2img(v):
+    """Exam figure base64 -> R2 URL (naye uploads auto R2 par). Pehle se URL/khaali ho
+    to waise ka waisa. R2 na ho to base64 fallback (kabhi na toote)."""
+    try:
+        return __import__("r2_storage").normalize(v, "exam-q", "image/jpeg") if v else v
+    except Exception:
+        return v
 from security import get_admin
 from schemas import (
     ClassEntryCreate, ClassEntryUpdate, ClassEntryOut,
@@ -1184,7 +1192,7 @@ async def upload_material(
     raw = await file.read()
     if len(raw) > 20 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File is larger than 20MB. Please use a smaller PDF.")
-    b64 = base64.b64encode(raw).decode("ascii")
+    b64 = __import__("r2_storage").store_file_value(__import__("r2_storage").new_key("materials", (file.filename or "file.pdf")), raw, (file.content_type or "application/pdf"))
     if _SR is not None:
         subject = _SR.canon_display(subject.strip(), class_name)
     # v123: class hamesha subject ke official class se resolve karo — single-class
@@ -1544,13 +1552,13 @@ def _dpp_build_pdf(db, pk, kind="q", med=None):
     qobjs = []
     for i, q in enumerate(pk.questions or [], 1):
         base = dict(q_no=i, question_text=q.get("q"), max_marks=q.get("marks"),
-                    options=None, correct_option=None, image_b64=q.get("image"),
-                    alt_image_b64=q.get("alt_image"), question_text_hi=q.get("q_hi"),
+                    options=None, correct_option=None, image_b64=_r2img(q.get("image")),
+                    alt_image_b64=_r2img(q.get("alt_image")), question_text_hi=q.get("q_hi"),
                     options_hi=None, explanation=None, explanation_hi=None)
         if kind == "s":
             qobjs.append(_NS(**base, model_answer=q.get("model"),
                              model_answer_hi=q.get("model_hi"),
-                             model_answer_image=q.get("model_image")))
+                             model_answer_image=_r2img(q.get("model_image"))))
         else:
             qobjs.append(_NS(**base, model_answer=None, model_answer_hi=None,
                              model_answer_image=None))
@@ -1756,7 +1764,7 @@ async def teacher_dpp_upload(subject: str = Form(...), chapter: str = Form(""), 
                  chapter=chapter.strip(), part=part.strip(),
                  title=(title.strip() or "DPP - " + (part.strip() or chapter.strip() or subject.strip())),
                  medium=medium, source="uploaded", questions=[],
-                 q_pdf=base64.b64encode(qd).decode(), s_pdf=base64.b64encode(sd).decode())
+                 q_pdf=__import__("r2_storage").store_file_value(__import__("r2_storage").new_key("dpp-pdf", "q.pdf"), qd, "application/pdf"), s_pdf=__import__("r2_storage").store_file_value(__import__("r2_storage").new_key("dpp-pdf", "s.pdf"), sd, "application/pdf"))
     db.add(pk); db.commit(); db.refresh(pk)
     return {"ok": True, "pack": _dpp_pack_out(db, pk, False)}
 
@@ -2537,12 +2545,12 @@ def create_exam(payload: dict = Body(...), background_tasks: BackgroundTasks = N
                model_answer=q.get("model_answer"),
                options=q.get("options") if ttype == "mcq" else None,
                correct_option=(str(co) if co not in (None, "") else None),
-               image_b64=q.get("image_b64"),
+               image_b64=_r2img(q.get("image_b64")),
                question_text_hi=(q.get("question_text_hi") or None),
                model_answer_hi=(q.get("model_answer_hi") or None),
                options_hi=(opts_hi if opts_hi else None),
-               model_answer_image=q.get("model_answer_image"),
-               alt_image_b64=q.get("alt_image_b64"),
+               model_answer_image=_r2img(q.get("model_answer_image")),
+               alt_image_b64=_r2img(q.get("alt_image_b64")),
                explanation=(q.get("explanation") or None),
                explanation_hi=(q.get("explanation_hi") or None)))
     db.commit()
@@ -3275,7 +3283,7 @@ async def create_lecture(payload: dict = Body(...), background_tasks: Background
         db.add(LectureQuestion(
             lecture_id=lec.id, qtype=q.get("qtype"),
             question=(q.get("question") or ""), question_hi=(q.get("question_hi") or None),
-            image_b64=(q.get("image_b64") or None),
+            image_b64=_r2img(q.get("image_b64")),
             options=(q.get("options") or None), options_hi=(q.get("options_hi") or None),
             option_images=(q.get("option_images") or None),
             correct=str(q.get("correct") if q.get("correct") is not None else ""),
@@ -5607,12 +5615,12 @@ def update_exam(exam_id: int, payload: dict = Body(...), db: Session = Depends(g
                    model_answer=q.get("model_answer"),
                    options=q.get("options") if ttype == "mcq" else None,
                    correct_option=(str(co) if co not in (None, "") else None),
-                   image_b64=q.get("image_b64"),
+                   image_b64=_r2img(q.get("image_b64")),
                    question_text_hi=(q.get("question_text_hi") or None),
                    model_answer_hi=(q.get("model_answer_hi") or None),
                    options_hi=(opts_hi if opts_hi else None),
-                   model_answer_image=q.get("model_answer_image"),
-                   alt_image_b64=q.get("alt_image_b64"),
+                   model_answer_image=_r2img(q.get("model_answer_image")),
+                   alt_image_b64=_r2img(q.get("alt_image_b64")),
                    explanation=(q.get("explanation") or None),
                    explanation_hi=(q.get("explanation_hi") or None)))
         ex.total_marks = total

@@ -2021,7 +2021,7 @@ async def student_dpp_submit(pack_id: int, file: UploadFile = File(...),
     for o in old:
         db.delete(o)
     a = DppAnswer(pack_id=pack_id, student_id=sp.id,
-                  answer_b64=base64.b64encode(data).decode(),
+                  answer_b64=__import__("r2_storage").store_file_value(__import__("r2_storage").new_key("dpp-answers", "answer.pdf"), data, "application/pdf"),
                   filename=file.filename or "dpp-answer.pdf", status="submitted")
     db.add(a); db.commit()
     return {"ok": True, "status": "submitted"}
@@ -2058,7 +2058,7 @@ async def student_dpp_stage(pack_id: int, file: UploadFile = File(...),
                       DppAnswer.status == "staged").all()):
         db.delete(o)
     a = DppAnswer(pack_id=pack_id, student_id=sp.id,
-                  answer_b64=base64.b64encode(data).decode(),
+                  answer_b64=__import__("r2_storage").store_file_value(__import__("r2_storage").new_key("dpp-answers", "answer.pdf"), data, "application/pdf"),
                   filename=file.filename or "dpp-answer.pdf", status="staged")
     db.add(a); db.commit()
     return {"ok": True, "answer_id": a.id, "size_kb": round(len(data) / 1024)}
@@ -2093,7 +2093,7 @@ def student_dpp_stage_json(pack_id: int, data: dict = Body(...),
                       DppAnswer.status == "staged").all()):
         db.delete(o)
     a = DppAnswer(pack_id=pack_id, student_id=sp.id,
-                  answer_b64=base64.b64encode(blob).decode(),
+                  answer_b64=__import__("r2_storage").store_file_value(__import__("r2_storage").new_key("dpp-answers", "answer.pdf"), blob, "application/pdf"),
                   filename=str((data or {}).get("filename") or "dpp-answer.pdf")[:240],
                   status="staged")
     db.add(a); db.commit()
@@ -2190,7 +2190,7 @@ def student_dpp_assemble(pack_id: int, data: dict = Body(...),
               .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id).all()):
         db.delete(o)
     a = DppAnswer(pack_id=pack_id, student_id=sp.id,
-                  answer_b64=base64.b64encode(blob).decode(),
+                  answer_b64=__import__("r2_storage").store_file_value(__import__("r2_storage").new_key("dpp-answers", "answer.pdf"), blob, "application/pdf"),
                   filename=fname, status="submitted")
     db.add(a)
     for r in rows:
