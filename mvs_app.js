@@ -13219,12 +13219,18 @@ function initNavAccordion(){
   if(!document.getElementById('navacc-css')){
     var st=document.createElement('style'); st.id='navacc-css';
     st.textContent=[
-      '.nav-section{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;transition:.15s}',
-      '.nav-section:hover{opacity:1;color:var(--accent)}',
-      '.nav-sec-chev{font-size:.8rem;opacity:.7;transition:transform .2s;margin-left:auto;padding-left:8px}',
-      '.nav-section.open .nav-sec-chev{transform:rotate(0deg)}',
-      // icon-collapse mode me accordion ignore — sab icons dikhein
-      '@media(min-width:900px){ .app.nav-collapsed .nav-item{display:flex !important} .app.nav-collapsed .nav-sec-chev{display:none} }'
+      // accordion category header — reference jaisa bada, styled, clickable row
+      '.sidebar-nav .nav-section{display:flex !important;align-items:center;gap:11px;padding:11px 14px !important;margin:3px 12px !important;font-size:.8rem !important;font-weight:800 !important;color:var(--sidebar-text) !important;opacity:1 !important;text-transform:uppercase;letter-spacing:.5px;border-radius:12px;cursor:pointer;user-select:none;transition:background .15s,color .15s}',
+      '.sidebar-nav .nav-section:hover{background:rgba(184,148,31,.10);color:var(--accent) !important}',
+      '.sidebar-nav .nav-section.open{color:var(--accent) !important}',
+      '.nav-sec-ic{display:inline-flex;width:20px;height:20px;flex:none;opacity:.85}',
+      '.nav-sec-ic svg{width:19px;height:19px}',
+      '.nav-sec-chev{margin-left:auto;font-size:.7rem;opacity:.6;transition:transform .25s}',
+      '.sidebar-nav .nav-section.open .nav-sec-chev{transform:rotate(180deg)}',
+      // sub-items thoda andar (hierarchy) + smooth
+      '.sidebar-nav .nav-item{margin-left:22px !important;margin-right:12px !important}',
+      // icon-collapse (chhoti sidebar) mode: accordion ignore, sab icons dikhein
+      '@media(min-width:900px){ .app.nav-collapsed .nav-item{display:flex !important;margin-left:10px !important} .app.nav-collapsed .nav-sec-chev,.app.nav-collapsed .nav-sec-ic{display:none} .app.nav-collapsed .nav-section{justify-content:center;font-size:0 !important} }'
     ].join('\n');
     document.head.appendChild(st);
   }
@@ -13236,6 +13242,12 @@ function initNavAccordion(){
       var items=[], n=sec.nextElementSibling;
       while(n && !n.classList.contains('nav-section')){ if(n.classList.contains('nav-item')) items.push(n); n=n.nextElementSibling; }
       sec._items=items;
+      if(!sec.querySelector('.nav-sec-ic')){
+        var _lbl=(sec.textContent||'').trim().toLowerCase();
+        var _SIC={main:'grid',home:'grid',overview:'grid',content:'folder',materials:'folder',material:'folder',work:'clipboard',progress:'chart',account:'user',academics:'book',production:'play',teachers:'users','leads & support':'help',system:'shield',sales:'chart'};
+        var icw=document.createElement('span'); icw.className='nav-sec-ic'; try{ icw.innerHTML=ic(_SIC[_lbl]||'folder'); }catch(e){}
+        sec.insertBefore(icw, sec.firstChild);
+      }
       if(!sec.querySelector('.nav-sec-chev')){ var ch=document.createElement('span'); ch.className='nav-sec-chev'; ch.textContent='\u25be'; sec.appendChild(ch); }
       sec.addEventListener('click',function(){ _setNavSec(sec, !sec._open); });
     });
@@ -13252,7 +13264,7 @@ function _secOf(secs,item){ for(var i=0;i<secs.length;i++){ if((secs[i]._items||
 function _setNavSec(sec,open){
   if(!sec) return; sec._open=open; sec.classList.toggle('open',open);
   (sec._items||[]).forEach(function(it){ it.style.display=open?'':'none'; });
-  var ch=sec.querySelector('.nav-sec-chev'); if(ch) ch.textContent=open?'\u25be':'\u25b8';
+  // chevron ki rotation CSS (.nav-section.open .nav-sec-chev) se hoti hai
 }
 function errHtml(e){ return `<div class="alert alert-danger"> ${esc(e.message)}<br><small>If this keeps happening, the backend may be asleep — refresh after 30–60 seconds.</small></div>`; }
 
