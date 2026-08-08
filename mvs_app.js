@@ -6273,7 +6273,7 @@ async function loadTVTasks(){
       const rejNote='';
       const propNote=(t.proposal_ok==='pending')?`<span class="vt-pill proposal">Pending Approval</span>`:'';
       return `<div class="vt-card st-${t.status}">${_vtThumb(t,'t')}<div class="vt-body">
-        <div class="vt-chips">${propNote}${t.is_collab?`<span class="vt-pill" style="background:rgba(37,99,235,.15);color:#2563eb;font-weight:800">${ic('users')} COLLAB</span>`:''}${t.kind==='urgent'?`<span class="vt-pill" style="background:rgba(220,38,38,.15);color:#dc2626;font-weight:800">${ic('alert')} URGENT</span>`:''}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
+        <div class="vt-chips">${propNote}${t.is_collab?`<span class="vt-pill vt-collab-blink" style="background:rgba(37,99,235,.15);color:#2563eb;font-weight:800">${ic('users')} COLLAB</span>`:''}${t.kind==='urgent'?`<span class="vt-pill" style="background:rgba(220,38,38,.15);color:#dc2626;font-weight:800">${ic('alert')} URGENT</span>`:''}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
         <div class="vt-title">${esc(t.title)}</div>
         ${t.is_collab?`<div style="font-size:.77rem;color:var(--text-muted);margin:3px 0 5px;display:flex;align-items:center;gap:5px">${ic('users')} Collab: ${(t.collab_teachers||[]).map(c=>esc(c.name)+(c.verified?' (Approved)':'')).join(', ')}</div>`:''}
         <div class="vt-meta">
@@ -6824,8 +6824,8 @@ function _avtCard(t){
       const delTaskBtn=`<button class="btn btn-ghost btn-sm vt-del" onclick="vtDeleteTask(${t.id})" title="Delete this task permanently">${ic('trash')} Delete</button>`;
       const ytBtn=`<button class="btn btn-ghost btn-sm" onclick="openVtYtLink(${t.id},'${esc(t.youtube_url||'').replace(/'/g,'')}')" title="Post the published YouTube link">${ic('play')} ${t.youtube_url?'Edit YT Link':'Post YT Link'}</button>`;
       const histBtn=`<button class="btn btn-ghost btn-sm" onclick="vtStatusOpen(${t.id},'a',event)" title="See the full status timeline">${ic('history')} Timeline</button>`;
-      return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-done="${t.submitted_at?1:0}" data-pending="${(t.status==='assigned'||t.status==='reshoot'||t.status==='rejected')?1:0}" data-delayed="${t.submitted_at&&!t.on_time?1:0}" data-collab="${t.is_collab?1:0}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
-        <div class="vt-title">${esc(t.title)}${t.is_collab?`<span class="vt-pill" style="background:rgba(37,99,235,.15);color:#2563eb;font-weight:800;margin-left:8px">${ic('users')} COLLAB</span>`:''}${t.status==='submitted'?`<span class="vt-newsub">${ic('bell')} NEW · ${esc(t.teacher)}</span>`:''}</div>
+      return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-done="${t.submitted_at?1:0}" data-pending="${(t.status==='assigned'||t.status==='reshoot'||t.status==='rejected')?1:0}" data-delayed="${t.submitted_at&&!t.on_time?1:0}" data-collab="${t.is_collab?1:0}" data-collabdone="${t.is_collab?(t.collab_all_verified?1:0):''}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
+        <div class="vt-title">${esc(t.title)}${t.is_collab?`<span class="vt-pill vt-collab-blink" style="background:rgba(37,99,235,.15);color:#2563eb;font-weight:800;margin-left:8px">${ic('users')} COLLAB</span>`:''}${t.status==='submitted'?`<span class="vt-newsub">${ic('bell')} NEW · ${esc(t.teacher)}</span>`:''}</div>
         <div class="vt-chips"><span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}</div>
         <div class="vt-meta">
           <span class="${dlBlink}">${ic('clock')} ${dlLbl}: <b>${esc(t.deadline_nice)}</b>${t.status==='assigned'&&t.seconds_left!=null?` · <span data-vt-cd="${t.id}" data-secs="${t.seconds_left}"></span>`:''}</span>
@@ -6844,19 +6844,20 @@ function _avtCard(t){
 }
 function _vtCollabHtml(t){
   if(!t||!t.is_collab) return '';
-  const rows=(t.collab_teachers||[]).map(c=>{
-    const nm=String(c.name||'Teacher');
-    const init=(nm.trim().split(/\s+/).map(w=>(w||'')[0]||'').slice(0,2).join('')||'T').toUpperCase();
-    const safe=esc(nm).replace(/'/g,'');
-    const right=c.verified
-      ? `<span class="cb-ok" onclick="vtVerifyTeacher(${t.id},${c.id},'${safe}',false)" title="Tap to remove approval">Approved</span>`
-      : `<button class="cb-verify" onclick="vtVerifyTeacher(${t.id},${c.id},'${safe}',true)">Verify</button>`;
-    return `<div class="cb-row"><div class="cb-av">${esc(init)}</div><div class="cb-nm">${esc(nm)}</div>${right}</div>`;
-  }).join('');
-  const overall=t.collab_all_verified
-    ? `<span class="cb-pill ok">All Approved</span>`
-    : `<span class="cb-pill bad">Verify pending</span>`;
-  return `<div class="cb-box"><div class="cb-head">COLLAB TEACHERS ${overall}</div>${rows}</div>`;
+  const all=t.collab_teachers||[];
+  const pending=all.filter(c=>!c.verified), done=all.filter(c=>c.verified);
+  const total=all.length, dn=done.length;
+  const pendChips=pending.map(c=>{ const safe=esc(String(c.name)).replace(/'/g,'');
+    return `<span class="cbc cbc-pend"><span class="cbc-nm">${esc(c.name)}</span><button class="cbc-btn" onclick="vtVerifyTeacher(${t.id},${c.id},'${safe}',true)">Verify</button></span>`; }).join('');
+  const doneChips=done.map(c=>{ const safe=esc(String(c.name)).replace(/'/g,'');
+    return `<span class="cbc cbc-ok" onclick="vtVerifyTeacher(${t.id},${c.id},'${safe}',false)" title="Tap to cancel this verification">${esc(c.name)} <span class="cbc-x">Approved &times;</span></span>`; }).join('');
+  const head = dn>=total
+    ? `<span class="cb-pill ok">All ${total} teachers verified</span>`
+    : `<span class="cb-pill bad">${dn}/${total} verified</span>`;
+  return `<div class="cb-box"><div class="cb-head">COLLAB TEACHERS ${head}</div>`
+    + (pending.length?`<div class="cb-sub">Tap to verify each teacher:</div><div class="cb-chips">${pendChips}</div>`:'')
+    + (done.length?`<div class="cb-sub"${pending.length?' style="margin-top:9px"':''}>Verified — tap to cancel:</div><div class="cb-chips">${doneChips}</div>`:'')
+    + `</div>`;
 }
 async function vtVerifyTeacher(taskId,teacherId,name,verified){
   const v=verified!==false;
@@ -7014,7 +7015,7 @@ async function loadAVTasks(fromCache){
         <select class="vt-filt-sel" onchange="_vtF.channel_id=+this.value;_vtClientFilter()">${cOpt}</select>
         <select class="vt-filt-sel" onchange="_vtF.video_type=this.value;_vtClientFilter()">${tyOpt}</select>
         <select class="vt-filt-sel" onchange="_vtF.status=this.value;_vtClientFilter()">${sOpt}</select>
-        <select class="vt-filt-sel" onchange="_vtF.collab=this.value;_vtClientFilter()"><option value="">All Videos</option><option value="1" ${_vtF.collab==='1'?'selected':''}>Collab only</option><option value="0" ${_vtF.collab==='0'?'selected':''}>Single only</option></select>
+        <select class="vt-filt-sel" onchange="_vtF.collab=this.value;_vtClientFilter()"><option value="">All Videos</option><option value="1" ${_vtF.collab==='1'?'selected':''}>Collab only</option><option value="pending" ${_vtF.collab==='pending'?'selected':''}>Collab \u2014 not completed</option><option value="0" ${_vtF.collab==='0'?'selected':''}>Single only</option></select>
         <button class="vt-filt-clear" onclick="_vtClearFilters()" title="Clear all filters">× Clear</button>
         <div style="flex:1"></div>
         <button class="btn btn-gold btn-sm" onclick="vtDownloadReport()">${ic('download')} Download Report</button>
@@ -7746,6 +7747,7 @@ function _vtClientFilter(){
     if(show && f.video_type && c.dataset.vt!==f.video_type) show=false;
     if(show && f.status && c.dataset.vstatus!==f.status) show=false;
     if(show && f.collab==='1' && c.dataset.collab!=='1') show=false;
+    if(show && f.collab==='pending' && !(c.dataset.collab==='1' && c.dataset.collabdone==='0')) show=false;
     if(show && f.collab==='0' && c.dataset.collab==='1') show=false;
     if(show && f.q){ show=(c.textContent||'').toLowerCase().includes(f.q); }
     if(show && b==='done') show=c.dataset.done==='1';
@@ -13268,18 +13270,21 @@ function initResponsiveCss(){
   var st=document.createElement('style'); st.id='mvs-responsive-css';
   st.textContent=[
     'html,body{max-width:100%;overflow-x:hidden}',
-    '.cb-box{margin-top:8px;padding:11px 12px;background:var(--primary-50);border-radius:12px}',
-    '.cb-head{font-size:.72rem;font-weight:800;letter-spacing:.5px;color:var(--text-muted);margin-bottom:9px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
-    '.cb-pill{font-size:.64rem;font-weight:800;padding:3px 9px;border-radius:99px}',
+    '.cb-box{margin-top:8px;padding:10px 12px;background:var(--primary-50);border-radius:12px}',
+    '.cb-head{font-size:.72rem;font-weight:800;letter-spacing:.4px;color:var(--text-muted);margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
+    '.cb-pill{font-size:.64rem;font-weight:800;padding:3px 10px;border-radius:99px}',
     '.cb-pill.ok{background:rgba(22,163,74,.15);color:#16a34a}',
     '.cb-pill.bad{background:rgba(220,38,38,.12);color:#dc2626}',
-    '.cb-row{display:flex;align-items:center;gap:10px;padding:7px 9px;background:var(--card-bg,#fff);border-radius:10px;margin-bottom:7px}',
-    '.cb-row:last-child{margin-bottom:0}',
-    '.cb-av{width:32px;height:32px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.76rem;flex:none}',
-    '.cb-nm{flex:1;font-weight:600;font-size:.9rem;min-width:0;word-break:break-word}',
-    '.cb-verify{flex:none;border:1.5px solid var(--accent);color:var(--accent);background:none;padding:6px 16px;border-radius:8px;font-weight:700;font-size:.82rem;cursor:pointer;transition:.15s}',
-    '.cb-verify:hover{background:var(--accent);color:#fff}',
-    '.cb-ok{flex:none;background:rgba(22,163,74,.15);color:#16a34a;padding:6px 14px;border-radius:8px;font-weight:800;font-size:.8rem;cursor:pointer}',
+    '.cb-sub{font-size:.67rem;color:var(--text-muted);margin-bottom:6px;font-weight:600}',
+    '.cb-chips{display:flex;flex-wrap:wrap;gap:7px}',
+    '.cbc{display:inline-flex;align-items:center;gap:8px;border-radius:99px;font-size:.82rem;font-weight:600}',
+    '.cbc-pend{background:var(--card-bg,#fff);border:1px solid var(--border);padding:4px 5px 4px 12px}',
+    '.cbc-btn{border:1.5px solid var(--accent);color:var(--accent);background:none;padding:3px 13px;border-radius:99px;font-weight:700;font-size:.76rem;cursor:pointer;transition:.15s}',
+    '.cbc-btn:hover{background:var(--accent);color:#fff}',
+    '.cbc-ok{background:rgba(22,163,74,.13);color:#16a34a;cursor:pointer;padding:6px 13px}',
+    '.cbc-x{font-weight:800;font-size:.7rem;opacity:.85}',
+    '@keyframes cbBlink{0%,100%{opacity:1}50%{opacity:.3}}',
+    '.vt-collab-blink{animation:cbBlink 1.05s ease-in-out infinite}',
     '.ms-box{border:1px solid var(--border);border-radius:10px;padding:11px 14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--input-bg,#fff)}',
     '.ms-box .ms-ph{color:var(--text-muted)}',
     '.ms-arw{opacity:.6;flex:none}',
