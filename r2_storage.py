@@ -196,9 +196,21 @@ def normalize(value, prefix, content_type="application/octet-stream"):
         return value
     try:
         import base64 as _b64
-        raw = _b64.b64decode(value.split(",")[-1])
+        s = value.split(",")[-1]
+        s = "".join(s.split())          # whitespace/newlines hatao
+        s += "=" * (-len(s) % 4)        # padding theek karo (warna decode toot/kharab)
+        raw = _b64.b64decode(s)
     except Exception:
         return value
+    if not raw or len(raw) < 8:
+        return value
+    ct = (content_type or "").lower()
+    # image/pdf ke liye magic bytes check — decode galat nikla to base64 hi rehne do (corrupt na ho)
+    if ("image" in ct or "pdf" in ct or "jpeg" in ct or "png" in ct):
+        _ok = (raw[:3] == b"\xff\xd8\xff" or raw[:8].startswith(b"\x89PNG") or raw[:4] == b"%PDF"
+               or raw[:4] == b"RIFF" or raw[:6] in (b"GIF87a", b"GIF89a") or raw[:2] == b"BM")
+        if not _ok:
+            return value
     ct = (content_type or "").lower()
     ext = ".bin"
     if "pdf" in ct: ext = ".pdf"

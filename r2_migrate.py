@@ -110,7 +110,19 @@ def migrate_batch(db, kind, after_id=0, limit=10):
             skipped += 1
             continue
         try:
-            raw = base64.b64decode(val.split(",")[-1])
+            import base64 as _b64
+            s = val.split(",")[-1]
+            s = "".join(s.split())
+            s += "=" * (-len(s) % 4)
+            raw = _b64.b64decode(s)
+            # image/pdf ho to magic check — galat decode par base64 hi rehne do (corrupt na ho)
+            _ct = (ctype or "").lower()
+            if raw and ("image" in _ct or "pdf" in _ct or "jpeg" in _ct or "png" in _ct):
+                _ok = (raw[:3] == b"\xff\xd8\xff" or raw[:8].startswith(b"\x89PNG") or raw[:4] == b"%PDF"
+                       or raw[:4] == b"RIFF" or raw[:6] in (b"GIF87a", b"GIF89a") or raw[:2] == b"BM")
+                if not _ok:
+                    skipped += 1
+                    continue
             fn = getattr(r, "filename", None) or ("file" + ext)
             url = R2.upload_bytes(R2.new_key(prefix, fn), raw, ctype)
             setattr(r, field, url)

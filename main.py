@@ -355,6 +355,56 @@ def _r2_mig_secret():
     return (os.getenv("R2_ACCOUNT_ID") or "").strip()
 
 
+@app.get("/r2-diag")
+def _r2_diag(key: str = "", url: str = "", attempt: int = 0):
+    """Ek R2 file ki asli bytes check karo — valid image/pdf hai, corrupt hai, HTML error
+    page hai, ya 404. Browser me kholo: /r2-diag?key=<R2_ACCOUNT_ID>&url=<r2 url>"""
+    if not _r2_mig_secret() or key != _r2_mig_secret():
+        return JSONResponse(status_code=403, content={"error": "bad key — R2 Account ID daalo"})
+    import urllib.request, urllib.error
+    val = url or ""
+    if attempt and not val:
+        from database import SessionLocal
+        from models import ExamAttempt
+        db = SessionLocal()
+        try:
+            a = db.query(ExamAttempt).filter(ExamAttempt.id == int(attempt)).first()
+            val = (getattr(a, "answer_image_b64", "") if a else "") or ""
+        finally:
+            db.close()
+    out = {"stored_is_url": isinstance(val, str) and val.startswith("http"),
+           "value_len": len(val or ""), "value_head": (val or "")[:80]}
+    if isinstance(val, str) and val.startswith("http"):
+        out["url"] = val
+        try:
+            req = urllib.request.Request(val, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122 Safari/537.36"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                head = r.read(512)
+                out["http_status"] = getattr(r, "status", None)
+                out["content_type"] = r.headers.get("Content-Type")
+                out["content_length_header"] = r.headers.get("Content-Length")
+            out["first_bytes_hex"] = head[:16].hex()
+            if head[:3] == b"\xff\xd8\xff":
+                out["verdict"] = "VALID JPEG — file theek hai (dikkat serve/CORS me thi)"
+            elif head[:8].startswith(b"\x89PNG"):
+                out["verdict"] = "VALID PNG — file theek hai"
+            elif head[:4] == b"%PDF":
+                out["verdict"] = "VALID PDF — file theek hai"
+            elif head.lstrip()[:1] == b"<":
+                out["verdict"] = "HTML PAGE mila (Cloudflare challenge/error) — file block ho rahi ya nahi mili"
+            else:
+                out["verdict"] = "CORRUPT/UNKNOWN — valid image/pdf ke magic bytes nahi (migration me kharab hui)"
+        except urllib.error.HTTPError as e:
+            out["http_status"] = e.code
+            out["verdict"] = "HTTP %s — file R2 par nahi mili / block (404 = object hi nahi hai)" % e.code
+        except Exception as e:
+            out["verdict"] = "FETCH FAILED"
+            out["error"] = str(e)[:200]
+    else:
+        out["verdict"] = "abhi bhi base64 (R2 par nahi gaya)" if val else "khaali/None"
+    return out
+
+
 @app.get("/r2-migrate-batch")
 def _r2_migrate_batch(key: str = "", kind: str = "", after_id: int = 0, limit: int = 10):
     if not _r2_mig_secret() or key != _r2_mig_secret():
