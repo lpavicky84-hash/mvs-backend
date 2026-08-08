@@ -6052,7 +6052,7 @@ function applyAdminAccess(){
 }
 function openAdmin(){
   document.getElementById('admin-app').classList.add('active');
-  try{ initAdminDppTracker(); initNavCollapse(); }catch(e){}   // nav item + page + collapse ready
+  try{ initAdminDppTracker(); initNavCollapse(); initNavAccordion(); }catch(e){}   // nav item + page + collapse + accordion ready
   document.getElementById('a-name').textContent=NAME;
   document.getElementById('a-avatar').textContent=initials(NAME);
   document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active'));
@@ -13142,6 +13142,7 @@ async function processExcel(){
 try{injectNavIcons();injectTopbarIcons();}catch(e){}
 try{initNavCollapse();}catch(e){}
 try{initAdminDppTracker();}catch(e){}
+try{initNavAccordion();}catch(e){}
 function initNavCollapse(){
   // Collapsible sidebar — admin/teacher/student sabhi portals. HTML/CSS file chhue bina yahin
   // se style inject + har topbar me ek toggle button. State localStorage me yaad rehta hai.
@@ -13181,6 +13182,48 @@ function initNavCollapse(){
       tb.insertBefore(b,tb.firstChild);
     }
   });
+}
+// ===== SECTION ACCORDION — sidebar me sirf category headers (HOME/MATERIALS/WORK/PROGRESS)
+// dikhein; unke items tabhi khulein jab category pe click ho. Kam clutter. Active page waali
+// category apne aap khuli rehti hai. =====
+function initNavAccordion(){
+  if(!document.getElementById('navacc-css')){
+    var st=document.createElement('style'); st.id='navacc-css';
+    st.textContent=[
+      '.nav-section{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;transition:.15s}',
+      '.nav-section:hover{opacity:1;color:var(--accent)}',
+      '.nav-sec-chev{font-size:.8rem;opacity:.7;transition:transform .2s;margin-left:auto;padding-left:8px}',
+      '.nav-section.open .nav-sec-chev{transform:rotate(0deg)}',
+      // icon-collapse mode me accordion ignore — sab icons dikhein
+      '@media(min-width:900px){ .app.nav-collapsed .nav-item{display:flex !important} .app.nav-collapsed .nav-sec-chev{display:none} }'
+    ].join('\n');
+    document.head.appendChild(st);
+  }
+  document.querySelectorAll('.app .sidebar-nav').forEach(function(nav){
+    if(nav._accDone) return; nav._accDone=true;
+    var secs=[].slice.call(nav.querySelectorAll('.nav-section'));
+    secs.forEach(function(sec){
+      // is section ke items = agle nav-section tak ke saare nav-item
+      var items=[], n=sec.nextElementSibling;
+      while(n && !n.classList.contains('nav-section')){ if(n.classList.contains('nav-item')) items.push(n); n=n.nextElementSibling; }
+      sec._items=items;
+      if(!sec.querySelector('.nav-sec-chev')){ var ch=document.createElement('span'); ch.className='nav-sec-chev'; ch.textContent='\u25be'; sec.appendChild(ch); }
+      sec.addEventListener('click',function(){ _setNavSec(sec, !sec._open); });
+    });
+    // default: sab band, sirf active item waali category khuli
+    secs.forEach(function(sec){ _setNavSec(sec,false); });
+    var act=nav.querySelector('.nav-item.active'); var openSec=act?_secOf(secs,act):null;
+    _setNavSec(openSec||secs[0], true);
+    // programmatic navigation (card se sPage etc.) pe active item ki category khol do
+    var obs=new MutationObserver(function(muts){ muts.forEach(function(m){ if(m.target.classList&&m.target.classList.contains('active')){ var s=_secOf(secs,m.target); if(s&&!s._open) _setNavSec(s,true); } }); });
+    nav.querySelectorAll('.nav-item').forEach(function(it){ obs.observe(it,{attributes:true,attributeFilter:['class']}); });
+  });
+}
+function _secOf(secs,item){ for(var i=0;i<secs.length;i++){ if((secs[i]._items||[]).indexOf(item)>=0) return secs[i]; } return null; }
+function _setNavSec(sec,open){
+  if(!sec) return; sec._open=open; sec.classList.toggle('open',open);
+  (sec._items||[]).forEach(function(it){ it.style.display=open?'':'none'; });
+  var ch=sec.querySelector('.nav-sec-chev'); if(ch) ch.textContent=open?'\u25be':'\u25b8';
 }
 function errHtml(e){ return `<div class="alert alert-danger"> ${esc(e.message)}<br><small>If this keeps happening, the backend may be asleep — refresh after 30–60 seconds.</small></div>`; }
 
