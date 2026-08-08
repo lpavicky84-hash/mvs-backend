@@ -4841,6 +4841,76 @@ function aTestSubPickIdx(i){
   aTestSubPick(subs[i]||'all');
 }
 
+// ===== ADMIN DPP TRACKER — Tests Tracker jaisa. Nav item + page JS se inject (HTML file
+// chhue bina). Data /api/admin/dpp-rankings se (subject, class, submissions sab isme hai). =====
+function initAdminDppTracker(){
+  var app=document.getElementById('admin-app'); if(!app) return;
+  var nav=app.querySelector('.sidebar-nav');
+  if(nav && !nav.querySelector('[onclick*="dpptracker"]')){
+    var items=[].slice.call(nav.querySelectorAll('.nav-item'));
+    var testsItem=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'tests'")>=0;})[0];
+    var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"aPage('dpptracker',this)");
+    d.innerHTML=ic('upload')+'<span>DPP Tracker</span>';
+    if(testsItem){ testsItem.parentNode.insertBefore(d, testsItem.nextSibling); } else { nav.appendChild(d); }
+  }
+  var main=app.querySelector('.main');
+  if(main && !document.getElementById('a-page-dpptracker')){
+    var pg=document.createElement('div'); pg.className='page'; pg.id='a-page-dpptracker';
+    pg.innerHTML='<div id="a-dpptracker-content"><div class="spinner"></div></div>';
+    main.appendChild(pg);
+  }
+}
+async function loadADppTracker(){
+  const el=document.getElementById('a-dpptracker-content'); if(!el) return;
+  softSpin(el);
+  try{
+    const d=await api('/api/admin/dpp-rankings');
+    window._aDppTrRows=(d&&d.packs)||(Array.isArray(d)?d:[]);
+    if(window._aDppTrSub===undefined) window._aDppTrSub='';
+    if(window._aDppTrClass===undefined) window._aDppTrClass='all';
+    _renderADppTracker();
+  }catch(e){ el.innerHTML=errHtml(e); }
+}
+function _dppTrFiltered(){
+  const all=window._aDppTrRows||[]; const cls=window._aDppTrClass||'all';
+  const cd=cn=>{const m=String(cn||'').match(/(10|12)/);return m?m[1]:'';};
+  return cls==='all'?all:all.filter(e=>{const dd=cd(e.class_name);return dd===''||dd===cls;});
+}
+function aDppTrClassPick(c){ window._aDppTrClass=c; window._aDppTrSub=''; _renderADppTracker(); }
+function aDppTrSubPick(s){ window._aDppTrSub=(window._aDppTrSub===s?'':s); _renderADppTracker(); }
+function aDppTrSubPickIdx(i){ const subs=[...new Set(_dppTrFiltered().map(e=>e.subject||'General'))].sort(); aDppTrSubPick(subs[i]||'all'); }
+function _renderADppTracker(){
+  const el=document.getElementById('a-dpptracker-content'); if(!el) return;
+  const cls=window._aDppTrClass||'all';
+  const rows=_dppTrFiltered();
+  const sel=window._aDppTrSub||'';
+  const bySub={}; rows.forEach(e=>{const s=e.subject||'General';(bySub[s]=bySub[s]||[]).push(e);});
+  const subs=Object.keys(bySub).sort();
+  const _stat=l=>({t:l.length,s:l.reduce((a,e)=>a+(e.submitted||0),0),c:l.reduce((a,e)=>a+(e.checked||0),0)});
+  const selList=sel===''?[]:(sel==='all'?rows:(bySub[sel]||[]));
+  const st=_stat(sel===''?rows:selList);
+  const _pend=e=>(e.pending!=null?e.pending:Math.max(0,(e.submitted||0)-(e.checked||0)));
+  const _row=e=>`<div class="today-row"><div><div class="tr-sub">${esc(e.title||'DPP')}</div><div class="tr-topic">${esc(e.teacher||'')}${e.chapter?' \u00b7 '+esc(e.chapter):''}${e.part?' \u00b7 Part: '+esc(e.part):''}${e.class_name?' \u00b7 '+esc(e.class_name):''}${e.created_at?' \u00b7 '+esc(e.created_at):''}</div></div><div class="tmeta"><span class="tstatus">${e.submitted||0} submitted</span><span class="tstatus ${(e.checked||0)>0?'done':''}">${e.checked||0} checked</span><span class="tstatus" style="color:#b45309">${_pend(e)} pending</span>${(e.submitted||0)>0?`<button class="btn btn-ghost btn-sm" title="DPP ranking" onclick="openDppRanking(${e.id},'admin')">${ic('chart')} Ranking</button>`:''}</div></div>`;
+  const _sec=(sub,list)=>`<div class="card"><div class="card-header"><h3>${esc(sub)}</h3><span class="tx-pill nv">${list.length} DPP${list.length>1?'s':''}</span></div><div class="card-body">${list.map(_row).join('')}</div></div>`;
+  const clsPill=(v,lbl)=>`<button class="btn ${cls===v?'btn-primary':'btn-ghost'} btn-sm" onclick="aDppTrClassPick('${v}')">${lbl}</button>`;
+  const totS=_stat(rows);
+  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">DPP Tracker</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Subject-wise all DPPs · live submission tracking</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="loadADppTracker()">${ic('refresh')} Refresh</button></div></div>`
+    +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 14px;align-items:center"><span style="font-size:.74rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Class</span>${clsPill('all','All Classes')}${clsPill('10','Class 10')}${clsPill('12','Class 12')}</div>`
+    +`<div class="tx-stats">`
+    +`<div class="tx-stat"><b style="color:#c2410c">${st.t}</b><span>Total DPPs</span></div>`
+    +`<div class="tx-stat"><b>${st.s}</b><span>Submissions</span></div>`
+    +`<div class="tx-stat"><b style="color:#b45309">${Math.max(0,st.s-st.c)}</b><span>Pending check</span></div>`
+    +`<div class="tx-stat"><b style="color:#047857">${st.c}</b><span>Checked</span></div></div>`
+    +(rows.length? `<div class="dps-grid">`
+      +`<div class="dps-card ${sel==='all'?'open':''}" onclick="aDppTrSubPick('all')"><div class="dps-name">All Subjects</div><div class="dps-count">${rows.length} DPP${rows.length===1?'':'s'} \u00b7 ${totS.s} submissions</div><div class="dps-tick">${sel==='all'?'\u25b2':'\u25bc'}</div></div>`
+      +subs.map((s,i)=>{const l=bySub[s];const ss=_stat(l);return `<div class="dps-card ${sel===s?'open':''}" onclick="aDppTrSubPickIdx(${i})"><div class="dps-name">${esc(s)}</div><div class="dps-count">${l.length} DPP${l.length>1?'s':''} \u00b7 ${ss.s} submission${ss.s===1?'':'s'}</div><div class="dps-tick">${sel===s?'\u25b2':'\u25bc'}</div></div>`;}).join('')
+      +`</div>`
+      +(sel===''
+        ? `<div class="card"><div class="card-body ws-empty"><p style="margin:0;color:var(--text-muted)">Select a subject above to see its DPPs.</p></div></div>`
+        : (sel==='all'? subs.map(sub=>_sec(sub,bySub[sub])).join('') : _sec(sel,selList)))
+      : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No DPPs${cls==='all'?'':' for Class '+cls}</b><p>DPPs from teachers will appear here, subject-wise.</p></div>`);
+}
+
 console.log('MVS Smart Paste build 2026-07-20 v5 + scheduling + premium PDF v2');
 const spUMAP={'∫':'\\int ','π':'\\pi ','θ':'\\theta ','Δ':'\\Delta ','δ':'\\delta ','λ':'\\lambda ','μ':'\\mu ','α':'\\alpha ','β':'\\beta ','γ':'\\gamma ','ω':'\\omega ','Σ':'\\sum ','σ':'\\sigma ','×':'\\times ','·':'\\cdot ','÷':'\\div ','±':'\\pm ','∞':'\\infty ','≈':'\\approx ','≠':'\\ne ','≤':'\\le ','≥':'\\ge ','→':'\\to ','←':'\\leftarrow ','−':'-','–':'-','η':'\\eta ','Ω':'\\Omega ','ε':'\\epsilon ','ρ':'\\rho ','ν':'\\nu ','°':'^\\circ '};
 const spSUP={'⁰':'0','¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9','ⁿ':'n','⁻':'-'};
@@ -5956,7 +6026,9 @@ async function fetchAdminMe(){
 function adminAllowed(page){
   const me=window._adminMe;
   if(!me||me.full_access) return true;
-  return (me.sections||[]).includes(page);
+  const secs=me.sections||[];
+  if(page==='dpptracker') return secs.includes('tests')||secs.includes('dpptracker');
+  return secs.includes(page);
 }
 function applyAdminAccess(){
   document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ n.style.display=''; });
@@ -5980,6 +6052,7 @@ function applyAdminAccess(){
 }
 function openAdmin(){
   document.getElementById('admin-app').classList.add('active');
+  try{ initAdminDppTracker(); initNavCollapse(); }catch(e){}   // nav item + page + collapse ready
   document.getElementById('a-name').textContent=NAME;
   document.getElementById('a-avatar').textContent=initials(NAME);
   document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active'));
@@ -6087,10 +6160,11 @@ function aPage(page,el){
   document.getElementById('a-page-'+page).classList.add('active');
   if(!el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) el=n; }); }
   if(el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',attendance:'Teacher Attendance',payouts:'Payouts'};
+  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',attendance:'Teacher Attendance',payouts:'Payouts'};
   _setPage(titles[page]||page);
-  document.getElementById('a-title').textContent=titles[page];
+  document.getElementById('a-title').textContent=titles[page]||page;
   if(page==='dashboard') loadADashboard();
+  else if(page==='dpptracker') loadADppTracker();
   else if(page==='vtasks') loadAVTasks();
   else if(page==='urgent') loadAUrgent();
   else if(page==='approvals') loadAApprovals();
@@ -13067,6 +13141,7 @@ async function processExcel(){
 }
 try{injectNavIcons();injectTopbarIcons();}catch(e){}
 try{initNavCollapse();}catch(e){}
+try{initAdminDppTracker();}catch(e){}
 function initNavCollapse(){
   // Collapsible sidebar — admin/teacher/student sabhi portals. HTML/CSS file chhue bina yahin
   // se style inject + har topbar me ek toggle button. State localStorage me yaad rehta hai.
@@ -13079,13 +13154,15 @@ function initNavCollapse(){
       '.navcol-btn:hover{background:var(--primary-50)}',
       '.dark .navcol-btn:hover{background:rgba(255,255,255,.08)}',
       '@media(min-width:900px){',
-      '  .app.nav-collapsed .sidebar{width:68px}',
-      '  .app.nav-collapsed .main{margin-left:68px;width:calc(100% - 68px)}',
+      '  .sidebar{transition:width .2s ease}',
+      '  .main{transition:margin-left .2s ease,width .2s ease}',
+      '  .app.nav-collapsed .sidebar{width:70px !important}',
+      '  .app.nav-collapsed .main{margin-left:70px !important;width:calc(100% - 70px) !important}',
       '  .app.nav-collapsed .sidebar-logo{justify-content:center;padding-left:0;padding-right:0;gap:0}',
       '  .app.nav-collapsed .sidebar-logo>div:not(.logo-icon){display:none}',
-      '  .app.nav-collapsed .nav-section{font-size:0;padding-top:12px;padding-bottom:4px}',
+      '  .app.nav-collapsed .nav-section{font-size:0 !important;padding-top:12px;padding-bottom:4px}',
       '  .app.nav-collapsed .nav-item{justify-content:center;gap:0;margin:2px 10px;padding-left:0;padding-right:0}',
-      '  .app.nav-collapsed .nav-item>span:not(.badge){display:none}',
+      '  .app.nav-collapsed .nav-item>span:not(.badge){display:none !important}',
       '  .app.nav-collapsed .nav-item .badge{right:6px;top:4px}',
       '  .app.nav-collapsed .sidebar-bottom .user-info{justify-content:center}',
       '  .app.nav-collapsed .sidebar-bottom .user-info>div:not(.avatar){display:none}',
