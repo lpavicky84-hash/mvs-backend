@@ -901,7 +901,7 @@ async def class_report_backfill(payload: dict = Body(...), db: Session = Depends
                             subject=e.subject or "", class_name=(eff_cls or None),
                             chapter=(e.chapter or None), part=(e.part or None),
                             material_type="notes", title=(lec.title or e.subject or "Class Notes")[:200],
-                            filename=pdf_name, content_b64=pdf_b64.split(",")[-1]))
+                            filename=pdf_name, content_b64=__import__("r2_storage").normalize(pdf_b64, "materials", "application/pdf")))
             db.commit()
         except Exception:
             db.rollback()
@@ -1419,7 +1419,7 @@ def admin_download(mid: int, db: Session = Depends(get_db), _=Depends(get_admin)
     from models import Material
     m = db.query(Material).options(defer(Material.content_b64)).filter(Material.id == mid).first()
     if not m: raise HTTPException(status_code=404, detail="Not found")
-    return __import__("r2_storage").file_response(m.content_b64, "application/pdf", m.filename or "file.pdf", True)
+    return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", m.filename or "file.pdf", True)
 
 @router.get("/pending-materials")
 def admin_pending_materials(db: Session = Depends(get_db), _=Depends(get_admin)):

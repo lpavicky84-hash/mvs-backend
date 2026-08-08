@@ -1208,7 +1208,7 @@ async def upload_material(
         class_name=class_name.strip(), chapter=chapter.strip(),
         material_type=material_type.strip(), title=(title.strip() or file.filename),
         category=(category.strip() or None),
-        filename=file.filename, content_b64=b64,
+        filename=file.filename, content_b64=__import__("r2_storage").normalize(b64, "materials", (getattr(file, "content_type", None) or "application/pdf")),
         duration_min=(duration_min or None)
     )
     db.add(m); db.commit(); db.refresh(m)
@@ -1260,7 +1260,7 @@ def teacher_download(mid: int, db: Session = Depends(get_db), current_user=Depen
     from models import Material
     m = db.query(Material).options(defer(Material.content_b64)).filter(Material.id == mid).first()
     if not m: raise HTTPException(status_code=404, detail="Not found")
-    return __import__("r2_storage").file_response(m.content_b64, "application/pdf", m.filename or "file.pdf", True)
+    return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", m.filename or "file.pdf", True)
 
 @router.delete("/material/{mid}")
 def delete_material(mid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
@@ -3097,7 +3097,11 @@ def attempt_answer_image(attempt_id: int, db: Session = Depends(get_db), current
     # R2 URL ho to redirect (naye uploads normalize se URL hote hain; migration ke baad
     # purane bhi URL) — warna neeche base64 decode toot jaata.
     if str(att.answer_image_b64).startswith("http"):
-        return __import__("r2_storage").file_response(att.answer_image_b64, "image/jpeg", None, False)
+        # R2 URL ho to server-side stream (teacher ka fetch()+blob same-origin rahe, CORS na
+        # aaye) — warna sheet corrupt/empty download hoti thi. Content-type URL se pakdo.
+        _u = str(att.answer_image_b64).lower()
+        _ct = "application/pdf" if _u.split("?")[0].endswith(".pdf") else "image/jpeg"
+        return __import__("r2_storage").proxy_response(att.answer_image_b64, _ct, None, False)
     # Students upload a photo OR a PDF. Pehle hamesha image/jpeg bheja jaata tha
     # aur decode fail hone par unhandled 500 aata tha - browser use CORS ke bina
     # block kar deta tha, isliye portal par "Failed to fetch" dikhta tha.
@@ -3269,13 +3273,13 @@ async def create_lecture(payload: dict = Body(...), background_tasks: Background
     def _mk(kind, b64, fname):
         if not b64:
             return
-        raw = b64.split(",")[-1]
+        stored = __import__("r2_storage").normalize(b64, "materials", "application/pdf")
         db.add(Material(
             teacher_id=tp.id, teacher_name=(current_user.name or ""),
             subject=subject, class_name=(_eff_cls or None),
             chapter=(payload.get("chapter") or None), part=(payload.get("part") or None),
             material_type=kind, title=(lec.title or subject),
-            filename=(fname or ("%s.pdf" % kind)), content_b64=raw))
+            filename=(fname or ("%s.pdf" % kind)), content_b64=stored))
     _mk("notes", payload.get("pdf_b64"), payload.get("pdf_filename"))
     _mk("dpp", payload.get("dpp_b64"), payload.get("dpp_filename"))
     db.flush()
