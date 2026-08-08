@@ -2063,9 +2063,8 @@ def vt_urgent(payload: dict = Body(...), db: Session = Depends(get_db),
 def vt_submit(task_id: int, payload: dict = Body(...), db: Session = Depends(get_db),
               current_user=Depends(get_teacher)):
     tp = _get_tp(current_user, db)
-    t = db.query(VideoTask).filter(VideoTask.id == task_id,
-                                   VideoTask.teacher_id == tp.id).first()
-    if not t:
+    t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
+    if not t or tp.id not in _collab_all_ids(t):
         raise HTTPException(404, "Task not found")
     if (getattr(t, "kind", "normal") or "normal") != "normal":
         raise HTTPException(400, "For One Shot / Rapid Revision tasks, paste the link next to each chapter")
@@ -2107,9 +2106,8 @@ def vt_chapter_link(task_id: int, payload: dict = Body(...), db: Session = Depen
     """One Shot / Rapid Revision special task — chapter/subject row pe video link.
     Approval NAHI chahiye; progress auto. 100% pe task complete + admin ko NEW blink."""
     tp = _get_tp(current_user, db)
-    t = db.query(VideoTask).filter(VideoTask.id == task_id,
-                                   VideoTask.teacher_id == tp.id).first()
-    if not t or (getattr(t, "kind", "") or "") not in ("one_shot", "rapid_revision", "project"):
+    t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
+    if not t or tp.id not in _collab_all_ids(t) or (getattr(t, "kind", "") or "") not in ("one_shot", "rapid_revision", "project"):
         raise HTTPException(404, "Special task not found")
     cid = int(payload.get("chapter_id") or 0)
     row = (db.query(VideoTaskChapter)

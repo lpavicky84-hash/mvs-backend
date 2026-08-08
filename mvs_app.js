@@ -6273,7 +6273,7 @@ async function loadTVTasks(){
       const rejNote='';
       const propNote=(t.proposal_ok==='pending')?`<span class="vt-pill proposal">Pending Approval</span>`:'';
       return `<div class="vt-card st-${t.status}">${_vtThumb(t,'t')}<div class="vt-body">
-        <div class="vt-chips">${propNote}${t.kind==='urgent'?`<span class="vt-pill" style="background:rgba(220,38,38,.15);color:#dc2626;font-weight:800">${ic('alert')} URGENT</span>`:''}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
+        <div class="vt-chips">${propNote}${t.is_collab?`<span class="vt-pill" style="background:rgba(37,99,235,.15);color:#2563eb;font-weight:800">${ic('users')} COLLAB</span>`:''}${t.kind==='urgent'?`<span class="vt-pill" style="background:rgba(220,38,38,.15);color:#dc2626;font-weight:800">${ic('alert')} URGENT</span>`:''}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
         <div class="vt-title">${esc(t.title)}</div>
         ${t.is_collab?`<div style="font-size:.77rem;color:var(--text-muted);margin:3px 0 5px;display:flex;align-items:center;gap:5px">${ic('users')} Collab: ${(t.collab_teachers||[]).map(c=>esc(c.name)+(c.verified?' (Approved)':'')).join(', ')}</div>`:''}
         <div class="vt-meta">
@@ -6564,7 +6564,7 @@ async function loadVTBanner(){
 }
 
 /* ================= VIDEO TASK MANAGER (admin) ================= */
-let _vtTeachers=[], _vtChannels=[], _vtTypes=[], _vtF={teacher_id:0,status:'',channel_id:0,video_type:'',q:''}, _vtTimer=null;
+let _vtTeachers=[], _vtChannels=[], _vtTypes=[], _vtF={teacher_id:0,status:'',channel_id:0,video_type:'',collab:'',q:''}, _vtTimer=null;
 // v134: video type ko streaming (live/recorded/both) ke hisaab se filter karo
 function _vtScopeOk(t,stream){ const sc=(t&&t.streaming_scope)||'both'; return !stream||sc==='both'||sc===stream; }
 function _vtTypeOptsHtml(types,streamVal,selectedName,placeholder){
@@ -6824,8 +6824,8 @@ function _avtCard(t){
       const delTaskBtn=`<button class="btn btn-ghost btn-sm vt-del" onclick="vtDeleteTask(${t.id})" title="Delete this task permanently">${ic('trash')} Delete</button>`;
       const ytBtn=`<button class="btn btn-ghost btn-sm" onclick="openVtYtLink(${t.id},'${esc(t.youtube_url||'').replace(/'/g,'')}')" title="Post the published YouTube link">${ic('play')} ${t.youtube_url?'Edit YT Link':'Post YT Link'}</button>`;
       const histBtn=`<button class="btn btn-ghost btn-sm" onclick="vtStatusOpen(${t.id},'a',event)" title="See the full status timeline">${ic('history')} Timeline</button>`;
-      return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-done="${t.submitted_at?1:0}" data-pending="${(t.status==='assigned'||t.status==='reshoot'||t.status==='rejected')?1:0}" data-delayed="${t.submitted_at&&!t.on_time?1:0}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
-        <div class="vt-title">${esc(t.title)}${t.status==='submitted'?`<span class="vt-newsub">${ic('bell')} NEW · ${esc(t.teacher)}</span>`:''}</div>
+      return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-done="${t.submitted_at?1:0}" data-pending="${(t.status==='assigned'||t.status==='reshoot'||t.status==='rejected')?1:0}" data-delayed="${t.submitted_at&&!t.on_time?1:0}" data-collab="${t.is_collab?1:0}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
+        <div class="vt-title">${esc(t.title)}${t.is_collab?`<span class="vt-pill" style="background:rgba(37,99,235,.15);color:#2563eb;font-weight:800;margin-left:8px">${ic('users')} COLLAB</span>`:''}${t.status==='submitted'?`<span class="vt-newsub">${ic('bell')} NEW · ${esc(t.teacher)}</span>`:''}</div>
         <div class="vt-chips"><span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}</div>
         <div class="vt-meta">
           <span class="${dlBlink}">${ic('clock')} ${dlLbl}: <b>${esc(t.deadline_nice)}</b>${t.status==='assigned'&&t.seconds_left!=null?` · <span data-vt-cd="${t.id}" data-secs="${t.seconds_left}"></span>`:''}</span>
@@ -7009,6 +7009,7 @@ async function loadAVTasks(fromCache){
         <select class="vt-filt-sel" onchange="_vtF.channel_id=+this.value;_vtClientFilter()">${cOpt}</select>
         <select class="vt-filt-sel" onchange="_vtF.video_type=this.value;_vtClientFilter()">${tyOpt}</select>
         <select class="vt-filt-sel" onchange="_vtF.status=this.value;_vtClientFilter()">${sOpt}</select>
+        <select class="vt-filt-sel" onchange="_vtF.collab=this.value;_vtClientFilter()"><option value="">All Videos</option><option value="1" ${_vtF.collab==='1'?'selected':''}>Collab only</option><option value="0" ${_vtF.collab==='0'?'selected':''}>Single only</option></select>
         <button class="vt-filt-clear" onclick="_vtClearFilters()" title="Clear all filters">× Clear</button>
         <div style="flex:1"></div>
         <button class="btn btn-gold btn-sm" onclick="vtDownloadReport()">${ic('download')} Download Report</button>
@@ -7739,6 +7740,8 @@ function _vtClientFilter(){
     if(show && f.channel_id && c.dataset.cid!=String(f.channel_id)) show=false;
     if(show && f.video_type && c.dataset.vt!==f.video_type) show=false;
     if(show && f.status && c.dataset.vstatus!==f.status) show=false;
+    if(show && f.collab==='1' && c.dataset.collab!=='1') show=false;
+    if(show && f.collab==='0' && c.dataset.collab==='1') show=false;
     if(show && f.q){ show=(c.textContent||'').toLowerCase().includes(f.q); }
     if(show && b==='done') show=c.dataset.done==='1';
     else if(show && b==='pending') show=c.dataset.pending==='1';
