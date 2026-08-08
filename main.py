@@ -396,6 +396,12 @@ def _r2_rewrite(key: str = "", old: str = "", new: str = ""):
             (Doubt, "answer_audio_b64"), (Doubt, "answer_attach_b64"),
             (DppAnswer, "answer_b64"),
         ]
+        try:
+            from models import ExamQuestion, DppPack
+            targets += [(ExamQuestion, "image_b64"), (ExamQuestion, "model_answer_image"),
+                        (ExamQuestion, "alt_image_b64"), (DppPack, "q_pdf"), (DppPack, "s_pdf")]
+        except Exception:
+            pass
         out = {}
         total = 0
         for Model, field in targets:
@@ -409,6 +415,75 @@ def _r2_rewrite(key: str = "", old: str = "", new: str = ""):
                 out["%s.%s" % (Model.__name__, field)] = "err: " + str(e)[:80]
         db.commit()
         return {"ok": True, "total_rewritten": total, "detail": out, "old": old, "new": new}
+    except Exception as e:
+        db.rollback()
+        return JSONResponse(status_code=500, content={"error": str(e)[:300]})
+    finally:
+        db.close()
+
+
+@app.get("/r2-normalize")
+def _r2_normalize(key: str = ""):
+    """Har stored R2 URL ka host -> mvsdatabase.com (R2_PUBLIC_URL) bana do, path same
+    rakhte hue. r2.dev / purane cdn / kisi bhi host waale URLs sab ek hi custom domain
+    par aa jaayenge. Self-driving: ek hi call me saare fields. Jo pehle se
+    mvsdatabase.com par hain unhe chhodta hai (idempotent). URL chhoti string hai isliye
+    base64 blobs load nahi hote."""
+    if not _r2_mig_secret() or key != _r2_mig_secret():
+        return JSONResponse(status_code=403, content={"error": "bad key"})
+    import r2_storage as R2
+    pub = ""
+    try:
+        pub = (R2._cfg().get("public_url") or "").rstrip("/")
+    except Exception:
+        pub = ""
+    if not pub or not pub.startswith("http"):
+        return JSONResponse(status_code=400, content={"error": "R2_PUBLIC_URL set nahi hai"})
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        from models import (StudentProfile, TeacherProfile, Material, StudioReport,
+                            Lecture, VideoTask, Doubt, DppAnswer)
+        targets = [
+            (StudentProfile, "photo_b64"), (TeacherProfile, "photo_b64"),
+            (Material, "content_b64"), (StudioReport, "notes_file_b64"),
+            (Lecture, "pdf_b64"), (Lecture, "dpp_b64"), (VideoTask, "thumbnail_b64"),
+            (Doubt, "image_b64"), (Doubt, "audio_b64"),
+            (Doubt, "answer_audio_b64"), (Doubt, "answer_attach_b64"),
+            (DppAnswer, "answer_b64"),
+        ]
+        try:
+            from models import ExamQuestion, DppPack
+            targets += [(ExamQuestion, "image_b64"), (ExamQuestion, "model_answer_image"),
+                        (ExamQuestion, "alt_image_b64"), (DppPack, "q_pdf"), (DppPack, "s_pdf")]
+        except Exception:
+            pass
+        out = {}
+        total = 0
+        for Model, field in targets:
+            col = getattr(Model, field)
+            changed = 0
+            try:
+                # sirf http URLs jo pehle se pub par NAHI hain — id + url load karo (chhoti)
+                rows = db.query(Model.id, col).filter(
+                    col.like("http%"), ~col.like(pub + "/%")).all()
+                for rid, val in rows:
+                    try:
+                        parts = str(val).split("/", 3)
+                        if len(parts) < 4 or not parts[3]:
+                            continue
+                        new_url = pub + "/" + parts[3]
+                        db.query(Model).filter(Model.id == rid).update(
+                            {field: new_url}, synchronize_session=False)
+                        changed += 1
+                    except Exception:
+                        pass
+                out["%s.%s" % (Model.__name__, field)] = changed
+                total += changed
+            except Exception as e:
+                out["%s.%s" % (Model.__name__, field)] = "err: " + str(e)[:60]
+        db.commit()
+        return {"ok": True, "total_normalized": total, "target_host": pub, "detail": out}
     except Exception as e:
         db.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)[:300]})
@@ -467,7 +542,7 @@ button{padding:9px 16px;border-radius:8px;border:none;background:#b8941f;color:#
 <body><h2>R2 Bulk Migration (purane files -> R2)</h2>
 <p>Apna <b>R2 Account ID</b> daal ke Start dabao. Page khula rehne do — apne aap
 sab shift karega. Beech me ruk jaye to dobara Start (jaha se chhoda wahi se aage).</p>
-<input id=k placeholder="R2 Account ID (secret)"> <button onclick="startMig()">Start</button>
+<input id=k placeholder="R2 Account ID (secret)"> <button onclick="startMig()">Start</button> <button onclick="fixUrls()" style="background:#2b6cb0;color:#fff">Fix URLs &rarr; mvsdatabase.com</button>
 <div class=bar><div class=fill id=f></div></div>
 <pre id=log></pre>
 <script>
@@ -481,6 +556,18 @@ let ki=0,afterId=0,totalMig=0,running=false;
 const log=m=>{const l=document.getElementById('log');l.textContent+=m+"\\n";l.scrollTop=l.scrollHeight;};
 function startMig(){ if(running)return; running=true; ki=0; afterId=0; totalMig=0;
   document.getElementById('log').textContent=''; log('Starting...'); run(); }
+async function fixUrls(){
+  const key=document.getElementById('k').value.trim();
+  if(!key){ log('Pehle R2 Account ID daalo, phir Fix URLs dabao.'); return; }
+  log('\\nFixing all URLs -> mvsdatabase.com ...');
+  try{
+    const r=await fetch(`/r2-normalize?key=${encodeURIComponent(key)}`);
+    const d=await r.json();
+    if(d.error){ log('ERROR: '+d.error+' (key sahi hai?)'); return; }
+    log('\\u2705 Done. Total URLs fixed: '+(d.total_normalized||0)+' -> '+(d.target_host||''));
+    for(const k in (d.detail||{})){ if(d.detail[k]) log('  '+k+': '+d.detail[k]); }
+  }catch(e){ log('ERROR: '+e); }
+}
 async function run(){
   if(ki>=kinds.length){ log('\\n\u2705 ALL DONE. Total migrated: '+totalMig); document.getElementById('f').style.width='100%'; running=false; return; }
   const key=document.getElementById('k').value.trim();
