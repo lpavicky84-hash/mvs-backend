@@ -1052,7 +1052,7 @@ function stopCountdown(){ if(countdownTimer){clearInterval(countdownTimer);count
 let _tGender='', _tSuffix='';
 async function openTeacher(){
   try{_saveSession();}catch(e){}
-  try{initNavAccordion();initNavCollapse();}catch(e){}
+  try{initNavAccordion();}catch(e){} try{initNavCollapse();}catch(e){}
   try{
  const p=await api('/api/teacher/profile');
  _tGender=p.gender||''; _tSuffix=_tGender==='male'?' Sir':_tGender==='female'?' Ma\'am':'';
@@ -6081,7 +6081,10 @@ function applyAdminAccess(){
 function openAdmin(){
   try{_saveSession();}catch(e){}
   document.getElementById('admin-app').classList.add('active');
-  try{ initAdminDppTracker(); initNavCollapse(); initNavAccordion(); }catch(e){}   // nav item + page + collapse + accordion ready
+  try{ initAdminDppTracker(); }catch(e){}
+  try{ initNavCollapse(); }catch(e){}
+  try{ initNavAccordion(); }catch(e){}   // ek fail ho to bhi accordion chale (sections band)
+  [400,1200].forEach(function(d){ setTimeout(function(){ try{ document.querySelectorAll('.app .sidebar-nav').forEach(function(nav){ if(typeof _accGroupClose==='function') _accGroupClose(nav,false); }); }catch(e){} }, d); });
   document.getElementById('a-name').textContent=NAME;
   document.getElementById('a-avatar').textContent=initials(NAME);
   document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active'));
@@ -9777,7 +9780,7 @@ const STUDENT_BATCHES=[
 ];
 async function openStudent(){
   try{_saveSession();}catch(e){}
-  try{initNavAccordion();initNavCollapse();}catch(e){}
+  try{initNavAccordion();}catch(e){} try{initNavCollapse();}catch(e){}
   // batch mode sabse pehle — taaki sidebar/pages sahi dikhein
   api('/api/student/profile').then(p=>{
     window._sBatch=p.batch_name||p.batch||'';
