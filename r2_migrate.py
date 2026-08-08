@@ -118,9 +118,13 @@ def migrate_batch(db, kind, after_id=0, limit=10):
             # image/pdf ho to magic check — galat decode par base64 hi rehne do (corrupt na ho)
             _ct = (ctype or "").lower()
             if raw and ("image" in _ct or "pdf" in _ct or "jpeg" in _ct or "png" in _ct):
-                _ok = (raw[:3] == b"\xff\xd8\xff" or raw[:8].startswith(b"\x89PNG") or raw[:4] == b"%PDF"
-                       or raw[:4] == b"RIFF" or raw[:6] in (b"GIF87a", b"GIF89a") or raw[:2] == b"BM")
-                if not _ok:
+                _head = raw[:1024]
+                _ok = (raw[:3] == b"\xff\xd8\xff" or raw[:8].startswith(b"\x89PNG") or b"%PDF" in _head
+                       or raw[:4] == b"RIFF" or raw[:6] in (b"GIF87a", b"GIF89a") or raw[:2] == b"BM"
+                       or raw[:4] in (b"II*\x00", b"MM\x00*") or b"ftyp" in raw[:40])
+                # magic na mile par bhi agar file substantial hai to migrate kar do
+                # (serve sniff se sahi content-type mil jaata hai) — sirf tiny/garbage skip
+                if not _ok and len(raw) < 300:
                     skipped += 1
                     continue
             fn = getattr(r, "filename", None) or ("file" + ext)

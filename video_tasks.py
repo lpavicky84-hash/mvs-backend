@@ -770,6 +770,12 @@ def _checked_b64(payload):
     if b64 and len(b64) > MAX_B64:
         raise HTTPException(400, "Thumbnail image is too large. Please paste a drive "
                                  "link instead, or choose a smaller image.")
+    if b64:
+        # seedha R2 par bhej do (base64 store na ho) — fail ho to base64 hi rahe
+        try:
+            return __import__("r2_storage").normalize(b64, "thumbnails", "image/jpeg")
+        except Exception:
+            return b64
     return b64
 
 

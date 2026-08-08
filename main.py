@@ -182,6 +182,57 @@ def ensure_indexes():
             pass  # index already exists (ya column mismatch) — safe to ignore
 ensure_indexes()
 
+# ===== AUTO R2 MIGRATION — background me khud chale (Start dabane ki zaroorat nahi) =====
+def _auto_migrate_loop():
+    import time
+    from database import SessionLocal
+    try:
+        import r2_migrate as RM
+        import r2_storage as R2S
+        if not R2S.is_configured():
+            return
+    except Exception:
+        return
+    kinds = ['photos_student', 'photos_teacher', 'materials', 'notes', 'lecture_pdf',
+             'lecture_dpp', 'thumbnails', 'doubt_img', 'doubt_ans_file', 'dpp_answers',
+             'exam_q_img', 'exam_q_ans_img', 'exam_q_alt_img', 'dpp_q_pdf', 'dpp_s_pdf',
+             'exam_ans_img', 'lecture_q_img']
+    time.sleep(25)  # app ko boot hone do
+    while True:
+        try:
+            for kind in kinds:
+                after_id = 0
+                for _ in range(3000):  # safety cap per kind
+                    db = SessionLocal()
+                    try:
+                        res = RM.migrate_batch(db, kind, after_id, 5)
+                        db.commit()
+                    except Exception:
+                        try: db.rollback()
+                        except Exception: pass
+                        res = None
+                    finally:
+                        db.close()
+                    if not res or res.get("error"):
+                        break
+                    if res.get("has_more"):
+                        after_id = res.get("last_id", after_id)
+                        time.sleep(2)   # gentle — DB/R2 par load na aaye
+                    else:
+                        break
+        except Exception:
+            pass
+        time.sleep(180)   # 3 min baad dobara check (naye base64 files migrate ho jaayein)
+
+def _start_auto_migrate():
+    import threading
+    try:
+        threading.Thread(target=_auto_migrate_loop, daemon=True).start()
+    except Exception:
+        pass
+
+_start_auto_migrate()
+
 # ===== SEED AVAILABLE SUBJECTS (NIOS lists) — only if table empty =====
 def seed_subjects():
     from database import SessionLocal

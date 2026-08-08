@@ -216,9 +216,11 @@ def normalize(value, prefix, content_type="application/octet-stream"):
     ct = (content_type or "").lower()
     # image/pdf ke liye magic bytes check — decode galat nikla to base64 hi rehne do (corrupt na ho)
     if ("image" in ct or "pdf" in ct or "jpeg" in ct or "png" in ct):
-        _ok = (raw[:3] == b"\xff\xd8\xff" or raw[:8].startswith(b"\x89PNG") or raw[:4] == b"%PDF"
-               or raw[:4] == b"RIFF" or raw[:6] in (b"GIF87a", b"GIF89a") or raw[:2] == b"BM")
-        if not _ok:
+        _head = raw[:1024]
+        _ok = (raw[:3] == b"\xff\xd8\xff" or raw[:8].startswith(b"\x89PNG") or b"%PDF" in _head
+               or raw[:4] == b"RIFF" or raw[:6] in (b"GIF87a", b"GIF89a") or raw[:2] == b"BM"
+               or raw[:4] in (b"II*\x00", b"MM\x00*") or b"ftyp" in raw[:40])
+        if not _ok and len(raw) < 300:
             return value
     ct = (content_type or "").lower()
     ext = ".bin"
