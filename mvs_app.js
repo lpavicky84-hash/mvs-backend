@@ -4119,7 +4119,7 @@ async function openCreateExam(type,editData){
   }catch(e){}
   const subOpts=subs.length?subs.map(s=>`<option>${esc(s)}</option>`).join(''):'<option>General</option>';
   const tl=type==='mcq'?'MCQ':'Mission 75';
-  const tools=`<div class="ex-tools"><span class="ex-tools-lbl">Maths & Chemistry:</span><button type="button" onclick="insertTexKey('frac')">a&frasl;b</button><button type="button" onclick="insertTexKey('pow')">x&sup2;</button><button type="button" onclick="insertTexKey('sub')">x&#8345;</button><button type="button" onclick="insertTexKey('sqrt')">&radic;</button><button type="button" onclick="insertTexKey('pi')">&pi;</button><button type="button" onclick="insertTexKey('theta')">&theta;</button><button type="button" onclick="insertTexKey('delta')">&Delta;</button><button type="button" onclick="insertTexKey('times')">&times;</button><button type="button" onclick="insertTexKey('deg')">&deg;</button><button type="button" onclick="insertTexKey('intg')">&int;</button><button type="button" onclick="insertTexKey('sum')">&Sigma;</button><button type="button" class="chem" onclick="insertTexKey('rxn')">Reaction</button><button type="button" class="chem" onclick="insertTexKey('chem')">Formula</button><button type="button" onclick="_texPalOpen()" title="Matrices, determinants, vectors, definite integrals & more ready-made maths">∑ More</button><button type="button" class="ai" onclick="_autoFixField()" title="Fix maths & formatting in the selected box (fractions, powers, roots, units, broken LaTeX)">Auto-format</button><button type="button" class="ai" id="ex-tr-all" onclick="examTranslateAll(this)" title="Translate every question to Hindi">Translate All to Hindi</button><button type="button" class="ex-reset" onclick="_resetAllQ()" title="Saare questions hata ke naya shuru karo" style="background:#fdecec;color:#c0392b;border:1px solid #f5c6cb">Reset all questions</button></div>`;
+  const tools=`<div class="ex-tools"><span class="ex-tools-lbl">Maths & Chemistry:</span><button type="button" onclick="insertTexKey('frac')">a&frasl;b</button><button type="button" onclick="insertTexKey('pow')">x&sup2;</button><button type="button" onclick="insertTexKey('sub')">x&#8345;</button><button type="button" onclick="insertTexKey('sqrt')">&radic;</button><button type="button" onclick="insertTexKey('pi')">&pi;</button><button type="button" onclick="insertTexKey('theta')">&theta;</button><button type="button" onclick="insertTexKey('delta')">&Delta;</button><button type="button" onclick="insertTexKey('times')">&times;</button><button type="button" onclick="insertTexKey('deg')">&deg;</button><button type="button" onclick="insertTexKey('intg')">&int;</button><button type="button" onclick="insertTexKey('sum')">&Sigma;</button><button type="button" class="chem" onclick="insertTexKey('rxn')">Reaction</button><button type="button" class="chem" onclick="insertTexKey('chem')">Formula</button><button type="button" onclick="_texPalOpen()" title="Matrices, determinants, vectors, definite integrals & more ready-made maths">∑ More</button><button type="button" class="ai" onclick="_autoFixField()" title="Fix maths & formatting in the selected box (fractions, powers, roots, units, broken LaTeX)">Auto-format</button><button type="button" class="ai" id="ex-tr-all" onclick="examTranslateAll(this)" title="Translate every question to Hindi">Translate All to Hindi</button><button type="button" class="ex-reset" onclick="_resetAllQ()" title="Remove all questions and start over" style="background:#fdecec;color:#c0392b;border:1px solid #f5c6cb">Reset all questions</button></div>`;
   const note=type==='subjective'
     ?'<div class="alert alert-info">Students upload a photo of their handwritten answers. You grade each answer manually from Results — award marks + remarks per question (your model answers stay visible to you while checking). Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{2H2 + O2 -> 2H2O}$</code> &mdash; they render automatically.</div>'
     :'<div class="alert alert-info">Students select an option. Auto-graded instantly. Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{...}$</code>.</div>';
@@ -4268,11 +4268,11 @@ function _restoreQDraft(dr){
     if(f.cls){ var c=document.getElementById('ex-cls-test'); if(c){ if(![].slice.call(c.options).some(function(o){return o.text===f.cls;})){ var op2=document.createElement('option'); op2.text=f.cls; c.add(op2);} c.value=f.cls; } }
     renderExamQs();
     var b=document.getElementById('qdraft-banner'); if(b) b.remove();
-    toast('Pichla draft restore ho gaya \\u2014 '+_qCount(_examQs)+' question(s)');
+    toast('Draft restored \u2014 '+_qCount(_examQs)+' question(s)');
   }catch(e){}
 }
 function _resetAllQ(){
-  if(!confirm('Saare questions hata ke naya shuru karein? Ye wapas nahi milega.')) return;
+  if(!confirm('Remove all questions and start over? This cannot be undone.')) return;
   _examQs=[]; addExamQ(); renderExamQs(); _clearQDraft();
   var b=document.getElementById('qdraft-banner'); if(b) b.remove();
 }
@@ -4283,9 +4283,12 @@ function _maybeShowQDraft(){
     var cont=document.getElementById('ex-qs'); if(!cont) return;
     var when=new Date(dr.ts||Date.now()).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',hour12:true});
     var bn=document.createElement('div'); bn.id='qdraft-banner'; bn.className='alert alert-info';
-    bn.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px';
-    bn.innerHTML='<span>Aapka pichla adhoora '+(window._dppMode?'DPP':'test')+' mila \\u2014 <b>'+n+' question(s)</b> ('+esc(when)+')'+(dr.noimg?' <small>(images restore nahi honge)</small>':'')+'</span>'
-      +'<span style="display:flex;gap:8px;flex:none"><button class="btn btn-primary btn-sm" id="qdraft-cont">Continue</button><button class="btn btn-ghost btn-sm" id="qdraft-new">Naya shuru karo</button></span>';
+    bn.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px';
+    bn.innerHTML='<div style="flex:1;min-width:200px;line-height:1.5">An unsaved '+(window._dppMode?'DPP':'test')+' draft was found &mdash; <b>'+n+' question'+(n>1?'s':'')+'</b> <span style="opacity:.75">('+esc(when)+')</span>'+(dr.noimg?'<br><small style="opacity:.75">Images will not be restored.</small>':'')+'</div>'
+      +'<span style="display:flex;gap:10px;flex:none">'
+      +'<button id="qdraft-cont" style="white-space:nowrap;background:#b8941f;color:#fff;border:none;padding:9px 20px;border-radius:9px;font-weight:700;font-size:.86rem;cursor:pointer">Continue</button>'
+      +'<button id="qdraft-new" style="white-space:nowrap;background:#fff;color:#5a4a20;border:1px solid #ddc98f;padding:9px 20px;border-radius:9px;font-weight:600;font-size:.86rem;cursor:pointer">Start fresh</button>'
+      +'</span>';
     cont.parentNode.insertBefore(bn,cont);
     document.getElementById('qdraft-cont').onclick=function(){ _restoreQDraft(dr); };
     document.getElementById('qdraft-new').onclick=function(){ _clearQDraft(); bn.remove(); };
@@ -6262,9 +6265,9 @@ async function openTVTPropose(){
           <button type="button" class="btn btn-ghost btn-sm" onclick="tvtPItemAdd()" style="margin-top:4px">${ic('plus')} Add video</button>
         </div>
       </div>
-      <div class="form-group" id="tvt-p-subj-wrap" style="grid-column:1/-1;display:none"><label>Subject &amp; Class (project ke liye)</label>
-        <select id="tvt-p-subject" class="input"><option value="">— Apna subject chuno —</option></select>
-        <div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">Konse subject/class ke liye project hai — taaki manager ko timetable ke sahi chapters milein.</div>
+      <div class="form-group" id="tvt-p-subj-wrap" style="grid-column:1/-1;display:none"><label>Subject &amp; Class (for the project)</label>
+        <select id="tvt-p-subject" class="input"><option value="">— Select your subject —</option></select>
+        <div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">Which subject and class this project is for, so the manager gets the correct chapters from your timetable.</div>
       </div>
       <div class="form-group" style="grid-column:1/-1"><label>Title</label><input id="tvt-p-title" class="input" placeholder="e.g. Probability Short Tricks — NIOS Special"></div>
       <div class="form-group"><label>Streaming</label><select id="tvt-p-stream" class="input" onchange="_vtFilterTypes('tvt-p-stream','tvt-p-type',window._vtTypesT)"><option value="">— Select —</option><option value="recorded">Recorded</option><option value="live">Live</option></select></div>
@@ -6286,8 +6289,8 @@ async function tvtLoadMySubjects(){
   const sel=document.getElementById('tvt-p-subject'); if(!sel) return;
   let sc=window._tvtMySubjClasses;
   if(!sc){ try{ const p=await api('/api/teacher/profile'); sc=p.subject_classes||[]; window._tvtMySubjClasses=sc; }catch(e){ sc=[]; } }
-  if(!sc.length){ sel.innerHTML='<option value="">— Koi subject set nahi —</option>'; return; }
-  sel.innerHTML='<option value="">— Apna subject chuno —</option>'+sc.map(x=>{const s=(x.subject||'').trim(),c=(x.class||x.class_level||'').trim();return `<option value="${esc(s)}||${esc(c)}">${esc(s)}${c?' \u00b7 Class '+esc(c):''}</option>`;}).join('');
+  if(!sc.length){ sel.innerHTML='<option value="">— No subjects set —</option>'; return; }
+  sel.innerHTML='<option value="">— Select your subject —</option>'+sc.map(x=>{const s=(x.subject||'').trim(),c=(x.class||x.class_level||'').trim();return `<option value="${esc(s)}||${esc(c)}">${esc(s)}${c?' \u00b7 Class '+esc(c):''}</option>`;}).join('');
 }
 function tvtScopeToggle(){
   const sc=(document.getElementById('tvt-p-scope')||{}).value;
@@ -6361,7 +6364,7 @@ async function tvtProposeSave(){
     body.project_scope=val('tvt-p-scope')||'chapter';
     const sv=val('tvt-p-subject')||'';
     if(sv){ const i=sv.indexOf('||'); body.subject=(i<0?sv:sv.slice(0,i)).trim(); body.class_level=(i<0?'':sv.slice(i+2)).trim(); }
-    if(body.project_scope==='chapter' && !body.subject){ toast('Project ke liye apna subject aur class chuno'); return; }
+    if(body.project_scope==='chapter' && !body.subject){ toast('Please select the subject and class for this project'); return; }
     if(body.project_scope==='videos'){
       const items=[...document.querySelectorAll('#tvt-p-items .tvt-p-itm')].map(i=>i.value.trim()).filter(Boolean);
       if(!items.length){ toast('Add at least one video title'); return; }
@@ -8789,7 +8792,7 @@ function aRenderStudents(){
   // ek saath dikhte the (bahut lambi list). Class chuno -> us class ke saaf subjects.
   const subjSelect=_stuClass
     ? `<select class="fbar-sel" style="min-width:250px" onchange="aStuSetFilter(this.value)"><option value="">All Subjects</option>${subsForClass.map(c=>{const cv=c.subject+'||'+String(c['class']||c.class_level||'');return `<option value="${esc(cv)}"${_stuFilter===cv?' selected':''}>${esc(c.subject)} \u00b7 ${c.count}</option>`;}).join('')}</select>`
-    : `<select class="fbar-sel" style="min-width:250px" disabled title="Pehle class chuno"><option>Select class first</option></select>`;
+    : `<select class="fbar-sel" style="min-width:250px" disabled title="Select a class first"><option>Select class first</option></select>`;
   const cards=[`<div class="fbar fbar-wide">
       <div class="fbar-l">${ic('calendar')}<span>Session</span></div>
       <select class="fbar-sel" onchange="aStuSess(this.value)"><option value="">All Sessions</option>${sessions.map(x=>`<option value="${esc(x)}"${_stuSess===x?' selected':''}>${esc(_sylSessName(x))}</option>`).join('')}</select>
