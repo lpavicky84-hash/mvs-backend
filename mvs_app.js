@@ -13179,17 +13179,19 @@ function initNavCollapse(){
   if(!document.getElementById('navcol-css')){
     var css=document.createElement('style'); css.id='navcol-css';
     css.textContent=[
-      '.navcol-btn{background:none;border:none;cursor:pointer;padding:8px;margin-right:4px;border-radius:9px;display:none;align-items:center;color:var(--text)}',
+      '.sidebar-logo{position:relative}',
+      '.navcol-btn{background:none;border:none;cursor:pointer;padding:7px;border-radius:9px;display:none;align-items:center;justify-content:center;color:var(--sidebar-text);opacity:.65;margin-left:auto;flex:none}',
       '@media(min-width:900px){.navcol-btn{display:inline-flex}}',
-      '.navcol-btn:hover{background:var(--primary-50)}',
+      '.navcol-btn:hover{background:rgba(184,148,31,.12);opacity:1}',
       '.dark .navcol-btn:hover{background:rgba(255,255,255,.08)}',
       '@media(min-width:900px){',
       '  .sidebar{transition:width .2s ease}',
       '  .main{transition:margin-left .2s ease,width .2s ease}',
       '  .app.nav-collapsed .sidebar{width:70px !important}',
       '  .app.nav-collapsed .main{margin-left:70px !important;width:calc(100% - 70px) !important}',
-      '  .app.nav-collapsed .sidebar-logo{justify-content:center;padding-left:0;padding-right:0;gap:0}',
+      '  .app.nav-collapsed .sidebar-logo{flex-direction:column;gap:8px;justify-content:center;align-items:center;padding:14px 0}',
       '  .app.nav-collapsed .sidebar-logo>div:not(.logo-icon){display:none}',
+      '  .app.nav-collapsed .navcol-btn{margin-left:0}',
       '  .app.nav-collapsed .nav-section{font-size:0 !important;padding-top:12px;padding-bottom:4px}',
       '  .app.nav-collapsed .nav-item{justify-content:center;gap:0;margin:2px 10px;padding-left:0;padding-right:0}',
       '  .app.nav-collapsed .nav-item>span:not(.badge){display:none !important}',
@@ -13203,12 +13205,22 @@ function initNavCollapse(){
   var collapsed=false; try{ collapsed=localStorage.getItem('mvs_nav_collapsed')==='1'; }catch(e){}
   document.querySelectorAll('.app').forEach(function(app){
     app.classList.toggle('nav-collapsed',collapsed);
-    var tb=app.querySelector('.topbar');
-    if(tb && !tb.querySelector('.navcol-btn')){
+    // collapse toggle ab SIDEBAR LOGO ke andar (topbar me nahi) — panel-collapse icon
+    var lg=app.querySelector('.sidebar-logo');
+    if(lg && !lg.querySelector('.navcol-btn')){
       var b=document.createElement('button'); b.type='button'; b.className='navcol-btn'; b.title='Collapse or expand the menu';
-      b.innerHTML='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>';
-      b.onclick=function(){ var c=app.classList.toggle('nav-collapsed'); try{ localStorage.setItem('mvs_nav_collapsed',c?'1':'0'); }catch(e){} };
-      tb.insertBefore(b,tb.firstChild);
+      b.innerHTML='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/><path d="M16 9l-2 3 2 3"/></svg>';
+      b.onclick=function(ev){ ev.stopPropagation(); var c=app.classList.toggle('nav-collapsed'); try{ localStorage.setItem('mvs_nav_collapsed',c?'1':'0'); }catch(e){} };
+      lg.appendChild(b);
+    }
+    // sidebar-logo me letter ki jagah MVS logo image (public /api/student/logo). Fail ho to letter.
+    var li=app.querySelector('.sidebar-logo .logo-icon');
+    if(li && !li.querySelector('img') && !li.dataset.logoTried){
+      li.dataset.logoTried='1';
+      var im=new Image(); im.alt='MVS';
+      im.onload=function(){ li.textContent=''; li.style.padding='0'; im.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block'; li.appendChild(im); };
+      im.onerror=function(){};
+      im.src=(typeof API!=='undefined'?API:'')+'/api/student/logo';
     }
   });
 }
@@ -13251,13 +13263,8 @@ function initNavAccordion(){
       if(!sec.querySelector('.nav-sec-chev')){ var ch=document.createElement('span'); ch.className='nav-sec-chev'; ch.textContent='\u25be'; sec.appendChild(ch); }
       sec.addEventListener('click',function(){ _setNavSec(sec, !sec._open); });
     });
-    // default: sab band, sirf active item waali category khuli
+    // DEFAULT: SAARE sections BAND — sirf click karne par khulte hain (koi auto-open nahi)
     secs.forEach(function(sec){ _setNavSec(sec,false); });
-    var act=nav.querySelector('.nav-item.active'); var openSec=act?_secOf(secs,act):null;
-    _setNavSec(openSec||secs[0], true);
-    // programmatic navigation (card se sPage etc.) pe active item ki category khol do
-    var obs=new MutationObserver(function(muts){ muts.forEach(function(m){ if(m.target.classList&&m.target.classList.contains('active')){ var s=_secOf(secs,m.target); if(s&&!s._open) _setNavSec(s,true); } }); });
-    nav.querySelectorAll('.nav-item').forEach(function(it){ obs.observe(it,{attributes:true,attributeFilter:['class']}); });
   });
 }
 function _secOf(secs,item){ for(var i=0;i<secs.length;i++){ if((secs[i]._items||[]).indexOf(item)>=0) return secs[i]; } return null; }
