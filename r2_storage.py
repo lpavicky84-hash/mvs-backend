@@ -155,9 +155,18 @@ def proxy_response(value, media_type="application/octet-stream", filename=None, 
     if isinstance(value, str) and value.startswith("http"):
         try:
             import urllib.request
-            req = urllib.request.Request(value, headers={"User-Agent": "mvs-proxy"})
+            req = urllib.request.Request(value, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
+                "Accept": "*/*",
+            })
             with urllib.request.urlopen(req, timeout=25) as r:
+                if getattr(r, "status", 200) not in (200, 206):
+                    raise Exception("bad status")
                 data = r.read()
+            # agar HTML challenge/error page mila (asli file nahi) -> redirect fallback
+            if data[:20].lstrip()[:1] in (b"<",) and b"PDF" not in data[:8] and data[:3] != b"\xff\xd8\xff":
+                from fastapi.responses import RedirectResponse
+                return RedirectResponse(url=value, status_code=302)
         except Exception:
             from fastapi.responses import RedirectResponse
             return RedirectResponse(url=value, status_code=302)

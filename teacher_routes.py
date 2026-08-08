@@ -3101,7 +3101,7 @@ def attempt_answer_image(attempt_id: int, db: Session = Depends(get_db), current
         # aaye) — warna sheet corrupt/empty download hoti thi. Content-type URL se pakdo.
         _u = str(att.answer_image_b64).lower()
         _ct = "application/pdf" if _u.split("?")[0].endswith(".pdf") else "image/jpeg"
-        return __import__("r2_storage").proxy_response(att.answer_image_b64, _ct, None, False)
+        return __import__("r2_storage").file_response(att.answer_image_b64, _ct, None, False)
     # Students upload a photo OR a PDF. Pehle hamesha image/jpeg bheja jaata tha
     # aur decode fail hone par unhandled 500 aata tha - browser use CORS ke bina
     # block kar deta tha, isliye portal par "Failed to fetch" dikhta tha.

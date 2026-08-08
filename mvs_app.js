@@ -1156,12 +1156,17 @@ function tPage(page,el){
 let _matEntries=[], _matActiveSub='';
 async function downloadMaterial(role,id,name){
   try{
- const r=await fetch(API+'/api/'+role+'/material/'+id+'/download',{headers:{Authorization:'Bearer '+TOKEN}});
- if(!r.ok) throw new Error('Download fail');
- const blob=await r.blob(); const url=URL.createObjectURL(blob);
- const a=document.createElement('a'); a.href=url; a.download=name||'file.pdf'; document.body.appendChild(a); a.click(); a.remove();
- setTimeout(()=>URL.revokeObjectURL(url),1000);
-  }catch(e){ toast('Download error',true); }
+    const r=await fetch(API+'/api/'+role+'/material/'+id+'/download',{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('Download fail');
+    const blob=await r.blob();
+    if(!blob||!blob.size) throw new Error('empty');
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=name||'file.pdf'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+  }catch(e){
+    // fallback: naye tab me kholo (?t= se auth)
+    try{ window.open(API+'/api/'+role+'/material/'+id+'/download?t='+encodeURIComponent(TOKEN),'_blank','noopener'); }catch(e2){ toast('Download error',true); }
+  }
 }
 function complianceCard(comp){
   const s=comp.score, col=comp.band==='green'?'#059669':comp.band==='yellow'?'#d97706':'#dc2626';
@@ -5498,32 +5503,11 @@ async function importExamPdf(inp){
   const f=inp.files[0]; inp.value=''; if(!f) return;
   await _importExamFile(f,'/api/teacher/parse-exam-pdf','PDF');
 }
-async function downloadStudentAnswer(attId,name){
+function downloadStudentAnswer(attId,name){
   try{ api('/api/teacher/attempt/'+attId+'/marking','POST',{}).catch(()=>{}); }catch(e){}
-  toast('Fetching the answer sheet\u2026');
-  try{
-    const r=await fetch(API+'/api/teacher/attempt/'+attId+'/answer',{headers:{Authorization:'Bearer '+TOKEN}});
-    if(!r.ok){
-      let msg='No answer sheet available for this student.';
-      try{ const j=await r.json(); if(j&&j.detail) msg=j.detail; }catch(e){}
-      toast(msg,true); return;
-    }
-    const ct=(r.headers.get('content-type')||'').toLowerCase();
-    const b=await r.blob();
-    if(!b||!b.size){ toast('The answer sheet file is empty. Ask the student to upload it again.',true); return; }
-    // PDF ho ya photo - extension response se hi lete hain, warna PDF .jpg
-    // ban ke corrupt download hota tha
-    const ext=ct.indexOf('pdf')>=0?'pdf':(ct.indexOf('png')>=0?'png':'jpg');
-    const u=URL.createObjectURL(b);
-    const a=document.createElement('a'); a.href=u; a.download='answer-'+(name||'student')+'.'+ext;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(()=>URL.revokeObjectURL(u),4000);
-    toast('Answer sheet downloaded.');
-  }catch(e){
-    // "Failed to fetch" = network/size problem, HTTP error nahi
-    toast('Could not download the sheet right now. Opening it in a new tab instead.',true);
-    try{ window.open(API+'/api/teacher/attempt/'+attId+'/answer?t='+TOKEN,'_blank'); }catch(e2){}
-  }
+  // Browser seedha R2 se le (redirect follow) — ?t= se auth, na CORS na corrupt file.
+  const url=API+'/api/teacher/attempt/'+attId+'/answer?t='+encodeURIComponent(TOKEN);
+  window.open(url,'_blank','noopener');
 }
 async function submitExam(){
   // ---- DPP mode: editor se DPP banao (answers already mandatory) ----
@@ -5642,25 +5626,18 @@ function _toggleStuDet(id){
   b.style.display=open?'block':'none';
   const c=document.getElementById('sdc-'+id); if(c) c.classList.toggle('on',open);
 }
-async function loadAnsImg(attId,imgId){
-  const wrap=()=>document.getElementById(imgId+'-wrap');
-  try{
-    const r=await fetch(API+'/api/teacher/attempt/'+attId+'/answer',{headers:{Authorization:'Bearer '+TOKEN}});
-    if(!r.ok){ const w=wrap(); if(w) w.innerHTML='<div class="gm-noimg">No answer sheet uploaded (this may be an MCQ test).</div>'; return; }
-    const ct=(r.headers.get('content-type')||'').toLowerCase();
-    const b=await r.blob(); const u=URL.createObjectURL(b);
-    if(ct.indexOf('pdf')>=0){
-      // PDF sheet <img> me kabhi nahi khulti thi - ab inline viewer + open link
-      const w=wrap();
-      if(w) w.innerHTML='<iframe class="gm-pdf" src="'+u+'"></iframe>'
-        +'<div style="margin-top:8px"><a class="btn btn-ghost btn-sm" href="'+u+'" target="_blank" rel="noopener">Open the sheet in a new tab</a></div>';
-      return;
-    }
-    const el=document.getElementById(imgId); if(el){ el.src=u; el.style.display='block'; }
-  }catch(e){
-    const w=wrap();
-    if(w) w.innerHTML='<div class="gm-noimg">The answer sheet could not be loaded. Please check your connection and try again.</div>';
-  }
+function loadAnsImg(attId,imgId){
+  // Browser seedha R2 se le (img ko CORS nahi chahiye, redirect follow karta hai). ?t= se auth.
+  const url=API+'/api/teacher/attempt/'+attId+'/answer?t='+encodeURIComponent(TOKEN);
+  const wrap=document.getElementById(imgId+'-wrap');
+  const el=document.getElementById(imgId);
+  if(!el){ if(wrap) wrap.innerHTML='<div class="gm-noimg">No answer sheet uploaded (this may be an MCQ test).</div>'; return; }
+  el.onerror=function(){
+    // image load fail -> shayad PDF sheet, ya file kharab -> iframe + open link
+    if(wrap) wrap.innerHTML='<iframe class="gm-pdf" src="'+url+'"></iframe>'
+      +'<div style="margin-top:8px"><a class="btn btn-ghost btn-sm" href="'+url+'" target="_blank" rel="noopener">Open the answer sheet in a new tab</a></div>';
+  };
+  el.src=url; el.style.display='block';
 }
 function gradeManual(attId,examId){
   const d=window._examAttData; if(!d){ toast('Please reopen Results and try again.',true); return; }
