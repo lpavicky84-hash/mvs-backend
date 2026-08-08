@@ -6275,7 +6275,7 @@ async function loadTVTasks(){
       return `<div class="vt-card st-${t.status}">${_vtThumb(t,'t')}<div class="vt-body">
         <div class="vt-chips">${propNote}${t.is_collab?`<span class="vt-pill vt-collab-blink" style="background:rgba(37,99,235,.15);color:#2563eb;font-weight:800">${ic('users')} COLLAB</span>`:''}${t.kind==='urgent'?`<span class="vt-pill" style="background:rgba(220,38,38,.15);color:#dc2626;font-weight:800">${ic('alert')} URGENT</span>`:''}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
         <div class="vt-title">${esc(t.title)}</div>
-        ${t.is_collab?`<div style="font-size:.77rem;color:var(--text-muted);margin:3px 0 5px;display:flex;align-items:center;gap:5px">${ic('users')} Collab: ${(t.collab_teachers||[]).map(c=>esc(c.name)+(c.verified?' (Approved)':'')).join(', ')}</div>`:''}
+        ${t.is_collab?`<div style="margin:4px 0 6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-size:.72rem;color:var(--text-muted);font-weight:700">COLLAB:</span>${_vtCollabChips(t)}</div>`:''}
         <div class="vt-meta">
           ${t.deadline_nice?`<span class="${dlBlink}">${ic('clock')} ${dlLbl}: <b>${esc(t.deadline_nice)}</b></span>`:''}
           ${_open&&t.seconds_left!=null?`<span data-tvt-cd="${t.id}" data-secs="${t.seconds_left}" style="font-weight:800"></span>`:''}
@@ -6672,6 +6672,7 @@ function vtStatusOpen(id,who,ev){
     <div class="vt-tl-a">${esc(h.at||'')}</div>${h.note?`<div class="vt-tl-n">${esc(h.note)}</div>`:''}</div>`).join('');
   showModal(`Status History — ${esc(t.title)}`,`
     <div style="margin-bottom:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">${_vtPill(t,false)}<span style="font-size:.72rem;color:var(--text-muted);font-weight:700">current status</span></div>
+    ${t.is_collab?`<div class="cb-box" style="margin:0 0 14px"><div class="cb-head">${ic('users')} COLLAB TASK ${t.collab_all_verified?'<span class="cb-pill ok">All verified</span>':'<span class="cb-pill bad">Verify pending</span>'}</div><div class="cb-chips">${(t.collab_teachers||[]).map(c=>`<span class="cbnm ${c.verified?'ok':''}">${esc(c.name)}${c.verified?' — Approved':''}</span>`).join('')}</div></div>`:''}
     <div class="vt-tl">${rows||'<div style="font-size:.8rem;color:var(--text-muted)">No history yet.</div>'}</div>`,
     `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
 }
@@ -6826,6 +6827,7 @@ function _avtCard(t){
       const histBtn=`<button class="btn btn-ghost btn-sm" onclick="vtStatusOpen(${t.id},'a',event)" title="See the full status timeline">${ic('history')} Timeline</button>`;
       return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-done="${t.submitted_at?1:0}" data-pending="${(t.status==='assigned'||t.status==='reshoot'||t.status==='rejected')?1:0}" data-delayed="${t.submitted_at&&!t.on_time?1:0}" data-collab="${t.is_collab?1:0}" data-collabdone="${t.is_collab?(t.collab_all_verified?1:0):''}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
         <div class="vt-title">${esc(t.title)}${t.is_collab?`<span class="vt-pill vt-collab-blink" style="background:rgba(37,99,235,.15);color:#2563eb;font-weight:800;margin-left:8px">${ic('users')} COLLAB</span>`:''}${t.status==='submitted'?`<span class="vt-newsub">${ic('bell')} NEW · ${esc(t.teacher)}</span>`:''}</div>
+        ${t.is_collab?`<div style="margin:5px 0 2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-size:.72rem;color:var(--text-muted);font-weight:700">COLLAB:</span>${_vtCollabChips(t)}</div>`:''}
         <div class="vt-chips"><span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}</div>
         <div class="vt-meta">
           <span class="${dlBlink}">${ic('clock')} ${dlLbl}: <b>${esc(t.deadline_nice)}</b>${t.status==='assigned'&&t.seconds_left!=null?` · <span data-vt-cd="${t.id}" data-secs="${t.seconds_left}"></span>`:''}</span>
@@ -6842,23 +6844,35 @@ function _avtCard(t){
           ${histBtn}${reviewBtn}${editBtn}${editTaskBtn}${ytBtn}${notifyBtn}${delTaskBtn}
         </div></div></div>`;
 }
+function _vtCollabChips(t){
+  if(!t||!t.is_collab) return '';
+  return (t.collab_teachers||[]).map(c=>`<span class="cbnm ${c.verified?'ok':''}">${esc(c.name)}</span>`).join('');
+}
 function _vtCollabHtml(t){
   if(!t||!t.is_collab) return '';
   const all=t.collab_teachers||[];
+  const submitted=!!t.submitted_at || ['submitted','uploaded','approved','editing_soon','editing_done'].indexOf(t.status)>=0;
+  if(!submitted){
+    // submission se pehle verify nahi — sirf naam + note
+    return `<div class="cb-box"><div class="cb-head">COLLAB TEACHERS</div><div class="cb-chips">${(all.map(c=>`<span class="cbnm">${esc(c.name)}</span>`).join(''))}</div><div class="cb-sub" style="margin-top:8px">Verification video submit hone ke baad milega.</div></div>`;
+  }
   const pending=all.filter(c=>!c.verified), done=all.filter(c=>c.verified);
   const total=all.length, dn=done.length;
   const pendChips=pending.map(c=>{ const safe=esc(String(c.name)).replace(/'/g,'');
     return `<span class="cbc cbc-pend"><span class="cbc-nm">${esc(c.name)}</span><button class="cbc-btn" onclick="vtVerifyTeacher(${t.id},${c.id},'${safe}',true)">Verify</button></span>`; }).join('');
   const doneChips=done.map(c=>{ const safe=esc(String(c.name)).replace(/'/g,'');
     return `<span class="cbc cbc-ok" onclick="vtVerifyTeacher(${t.id},${c.id},'${safe}',false)" title="Tap to cancel this verification">${esc(c.name)} <span class="cbc-x">Approved &times;</span></span>`; }).join('');
-  const head = dn>=total
-    ? `<span class="cb-pill ok">All ${total} teachers verified</span>`
-    : `<span class="cb-pill bad">${dn}/${total} verified</span>`;
+  const head = dn>=total ? `<span class="cb-pill ok">All ${total} teachers verified</span>` : `<span class="cb-pill bad">${dn}/${total} verified</span>`;
   return `<div class="cb-box"><div class="cb-head">COLLAB TEACHERS ${head}</div>`
     + (pending.length?`<div class="cb-sub">Tap to verify each teacher:</div><div class="cb-chips">${pendChips}</div>`:'')
     + (done.length?`<div class="cb-sub"${pending.length?' style="margin-top:9px"':''}>Verified — tap to cancel:</div><div class="cb-chips">${doneChips}</div>`:'')
     + `</div>`;
 }
+// multi-select dropdown ko bahar click karne par band karo
+document.addEventListener('click',function(e){
+  if(e.target.closest && (e.target.closest('.ms-box')||e.target.closest('.ms-panel'))) return;
+  document.querySelectorAll('.ms-panel').forEach(function(p){ p.style.display='none'; });
+});
 async function vtVerifyTeacher(taskId,teacherId,name,verified){
   const v=verified!==false;
   try{
@@ -13285,6 +13299,8 @@ function initResponsiveCss(){
     '.cbc-x{font-weight:800;font-size:.7rem;opacity:.85}',
     '@keyframes cbBlink{0%,100%{opacity:1}50%{opacity:.3}}',
     '.vt-collab-blink{animation:cbBlink 1.05s ease-in-out infinite}',
+    '.cbnm{display:inline-block;background:rgba(37,99,235,.13);color:#2563eb;font-weight:700;font-size:.74rem;padding:3px 11px;border-radius:99px}',
+    '.cbnm.ok{background:rgba(22,163,74,.15);color:#16a34a}',
     '.ms-box{border:1px solid var(--border);border-radius:10px;padding:11px 14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--input-bg,#fff)}',
     '.ms-box .ms-ph{color:var(--text-muted)}',
     '.ms-arw{opacity:.6;flex:none}',
