@@ -99,10 +99,13 @@ def photo_response(value):
         raise HTTPException(status_code=404, detail="No photo")
     if isinstance(value, str) and value.startswith("http"):
         from fastapi.responses import RedirectResponse
-        return RedirectResponse(url=value, status_code=302)
+        # browser 1 din cache kare — warna har render par 302 dobara hit hota tha (photo flood)
+        return RedirectResponse(url=value, status_code=302,
+                                headers={"Cache-Control": "public, max-age=86400"})
     import base64 as _b64
     from fastapi import Response
-    return Response(content=_b64.b64decode(value), media_type="image/jpeg")
+    return Response(content=_b64.b64decode(value), media_type="image/jpeg",
+                    headers={"Cache-Control": "public, max-age=86400"})
 
 
 def new_key(prefix, filename=""):

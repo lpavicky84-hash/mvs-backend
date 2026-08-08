@@ -818,14 +818,21 @@ def timetable_plan(db: Session = Depends(get_db), current_user=Depends(get_stude
                 LectureVerification.student_id == sp.id,
                 LectureVerification.lecture_id.in_(lec_ids)).all():
             my_verif[v.lecture_id] = v
+    # teacher naam ek hi query me (per-entry query = N+1 slow tha)
+    from models import TeacherProfile, User as _User
+    _tmap = {}
+    _tids = {e.teacher_id for e in es if e.teacher_id}
+    if _tids:
+        for _tid, _un in db.query(TeacherProfile.id, _User.name).join(_User, TeacherProfile.user_id == _User.id).filter(TeacherProfile.id.in_(_tids)):
+            _tmap[_tid] = _un or ""
+    # has_notes / has_dpp — SQL me isnot(None) check (deferred blob LOAD nahi hota, ye 490ms bacha)
+    _notes_ids, _dpp_ids = set(), set()
+    if lecs:
+        _notes_ids = {r[0] for r in db.query(Lecture.id).filter(Lecture.id.in_(lec_ids), Lecture.pdf_b64.isnot(None))}
+        _dpp_ids = {r[0] for r in db.query(Lecture.id).filter(Lecture.id.in_(lec_ids), Lecture.dpp_b64.isnot(None))}
     result = []
     for e in es:
-        tname = ""
-        if e.teacher_id:
-            from models import TeacherProfile
-            tp = db.query(TeacherProfile).filter(TeacherProfile.id == e.teacher_id).first()
-            if tp and tp.user:
-                tname = tp.user.name
+        tname = _tmap.get(e.teacher_id, "") if e.teacher_id else ""
         lec = lec_by_tt.get(e.id)
         verif_status = None
         cooling = False
@@ -841,8 +848,8 @@ def timetable_plan(db: Session = Depends(get_db), current_user=Depends(get_stude
             "type": getattr(e,"entry_type",None) or "chapter",
             "teacher_id": e.teacher_id, "teacher_name": tname,
             "lecture_id": (lec.id if lec else None),
-            "has_notes": bool(lec and lec.pdf_b64),
-            "has_dpp": bool(lec and lec.dpp_b64),
+            "has_notes": bool(lec and lec.id in _notes_ids),
+            "has_dpp": bool(lec and lec.id in _dpp_ids),
             "class_done": bool(e.completed or lec),
             # v114: report ke asli start/end + duration — student dashboard ab
             # auto 90-min Done nahi dikhata; report aane par Done + asli minutes.
@@ -2424,19 +2431,23 @@ def student_dpp_file(pack_id: int, kind: str = "q", med: str = "", db: Session =
 def student_batch_board(db: Session = Depends(get_db), current_user=Depends(get_student)):
     """Batch-wise XP leaderboard for the student's Progress page —
     podium top 3 + full ranked list (click -> comparison + suggestions)."""
+    import time as _time
+    from models import User as _User
     sp = get_student_profile(current_user, db)
-    xp_map = _student_xp_map(db)
+    # XP map ek hi query-set se banta hai (saare students) — 60s cache, har request par recompute nahi
+    _xc = globals().setdefault("_XPMAP_CACHE", {"t": 0.0, "m": {}})
+    if _time.time() - _xc["t"] > 60:
+        _xc["m"] = _student_xp_map(db); _xc["t"] = _time.time()
+    xp_map = _xc["m"]
     my_batch = sp.batch_name or ""
-    q = db.query(StudentProfile)
-    mates = (q.filter(StudentProfile.batch_name == my_batch).all()
-             if my_batch else q.all())
+    # sirf id + naam + has_photo (photo BLOB load nahi, user N+1 nahi)
+    q = db.query(StudentProfile.id, _User.name, (StudentProfile.photo_b64.isnot(None)).label("hp")).join(_User, StudentProfile.user_id == _User.id)
+    mates = (q.filter(StudentProfile.batch_name == my_batch).all() if my_batch else q.all())
     rows = []
-    for m in mates:
-        u = m.user
-        rows.append({"id": m.id, "name": (u.name if u else "") or "Student",
-                     "xp": int(xp_map.get(m.id, 0) or 0),
-                     "has_photo": bool(m.photo_b64),
-                     "me": m.id == sp.id})
+    for mid, mname, hp in mates:
+        rows.append({"id": mid, "name": (mname or "") or "Student",
+                     "xp": int(xp_map.get(mid, 0) or 0),
+                     "has_photo": bool(hp), "me": mid == sp.id})
     rows.sort(key=lambda r: (-r["xp"], r["name"].lower()))
     for i, r in enumerate(rows, 1):
         r["rank"] = i

@@ -2786,26 +2786,31 @@ def admin_live_users(full: int = 0, db: Session = Depends(get_db), _=Depends(get
         if d and (d["live"] is None or (s.last_seen and s.last_seen > (d["live"].last_seen or cutoff))):
             d["live"] = s
 
-    users = db.query(User).filter(User.role.in_([UserRole.student, UserRole.teacher, UserRole.admin])).all()
+    # sirf un users ko load karo jinke sessions hain (logged-in) — poore 1 lakh users NAHI
+    uids = list(by_user.keys())
+    users = db.query(User).filter(User.id.in_(uids)).all() if uids else []
 
-    # phones — sirf phone column (PHOTO blob load nahi)
+    # phones — sirf inhi users ke (poori student table nahi)
     phones = {}
-    for uid, ph in db.query(StudentProfile.user_id, StudentProfile.phone).all():
-        phones[uid] = ph
-    for uid, ph in db.query(TeacherProfile.user_id, TeacherProfile.phone).all():
-        phones.setdefault(uid, ph)
+    if uids:
+        for uid, ph in db.query(StudentProfile.user_id, StudentProfile.phone).filter(StudentProfile.user_id.in_(uids)):
+            phones[uid] = ph
+        for uid, ph in db.query(TeacherProfile.user_id, TeacherProfile.phone).filter(TeacherProfile.user_id.in_(uids)):
+            phones.setdefault(uid, ph)
+
+    # never-logged-in count = total users - jinke sessions hain (COUNT only, load nahi)
+    total_users = db.query(func.count(User.id)).filter(
+        User.role.in_([UserRole.student, UserRole.teacher, UserRole.admin])).scalar() or 0
 
     live, offline, never = [], [], []
-    n_never = n_offline = 0
+    n_never = max(0, total_users - len(uids))
+    n_offline = 0
     for u in users:
         role = getattr(u.role, "value", str(u.role))
         d = by_user.get(u.id)
         base = {"user_id": u.id, "name": u.name, "code": u.user_id, "role": role,
                 "phone": phones.get(u.id) or "", "logins": (d["count"] if d else 0)}
         if not d or not d["last"]:
-            n_never += 1
-            if full:
-                never.append(base)
             continue
         base["last_seen"] = str(d["last"])[:16]
         base["last_seen_min"] = int((now - d["last"]).total_seconds() // 60)

@@ -231,8 +231,41 @@ let countdownTimer = null;
 // stale nahi rehta. Login/logout pe bhi clear hota hai.
 const _apiCache={};
 const _API_TTL=30000;
-const _API_NOCACHE=/notifications|\/live|heartbeat|\/photo|\/image|\/voice|\/file|\/download|\/pdf|\/content|\/badge|\/doubt/i;
-function _apiBust(){ for(const k in _apiCache) delete _apiCache[k]; }
+const _API_NOCACHE=/notifications|heartbeat|\/photo|\/image|\/voice|\/file|\/download|\/pdf|\/content|\/badge/i;
+let _curLoader=null;        // current page ka loader — background refresh aane par isse re-render
+let _swrT=null;
+function _swrRerender(){ if(_swrT) return; _swrT=setTimeout(function(){ _swrT=null; try{ if(typeof _curLoader==='function') _curLoader(); }catch(e){} }, 140); }
+function _apiBust(){ for(const k in _apiCache){ if(_apiCache[k]) _apiCache[k].t=0; } }  // delete nahi — stale mark (SWR: turant stale + bg refresh)
+async function _apiRefreshBg(path,_ck){
+  try{
+    const opts={method:'GET',headers:{'Content-Type':'application/json'}};
+    if(TOKEN) opts.headers['Authorization']='Bearer '+TOKEN;
+    const res=await fetch(API+path,opts); if(!res.ok) return;
+    const d=await res.json();
+    try{ if(JSON.stringify(d).length<1572864){ _apiCache[_ck]={t:Date.now(),d:d}; _swrRerender(); } }catch(e){}
+  }catch(e){}
+}
+function _preloadAdmin(){
+  // Login ke baad SAARE sections ka data background me cache kar lo — taaki click karte hi
+  // 0ms me khule (api() cached turant deta hai, fresh bg me aa jaata hai).
+  try{
+    const m=(new Date()).toISOString().slice(0,7);
+    const urls=[
+      '/api/admin/dashboard','/api/admin/portal-overview','/api/admin/teachers',
+      '/api/admin/video-tasks','/api/admin/earnings?month='+m,
+      '/api/admin/doubts?status=pending','/api/admin/doubts-overview',
+      '/api/admin/timetable-all','/api/admin/materials-tree','/api/admin/live-users',
+      '/api/admin/student-filter-counts?source=&session=&medium=&cls=',
+      '/api/admin/students-paged?q=&source=&cls=&session=&medium=&batch=&subject=&page=1&page_size=10'
+    ];
+    let i=0;
+    (function next(){
+      if(i>=urls.length) return;
+      const u=urls[i++];
+      api(u).catch(function(){}).finally(function(){ setTimeout(next, 120); });
+    })();
+  }catch(e){}
+}
 async function api(path, method='GET', body=null) {
   const opts = { method, headers: { 'Content-Type':'application/json' } };
   if (TOKEN) opts.headers['Authorization'] = 'Bearer ' + TOKEN;
@@ -240,7 +273,11 @@ async function api(path, method='GET', body=null) {
   const _ck=method+' '+path;
   if(method==='GET'&&!_API_NOCACHE.test(path)){
     const hit=_apiCache[_ck];
-    if(hit&&(Date.now()-hit.t)<_API_TTL) return hit.d;
+    if(hit){
+      // stale ho to bhi TURANT cached do (0ms) — stale hone par background me refresh + re-render
+      if((Date.now()-hit.t)>=_API_TTL && !hit._bg){ hit._bg=1; _apiRefreshBg(path,_ck).finally(()=>{ if(_apiCache[_ck]) _apiCache[_ck]._bg=0; }); }
+      return hit.d;
+    }
   }
   // network fail (Failed to fetch) pe 2 baar aur retry — backend cold-start/restart sambhal jaata hai.
   // v113: badi bodies (PDF base64 uploads) ko retry MAT karo — server pehli baar me save kar
@@ -1164,6 +1201,10 @@ function tPage(page,el){
   _setPage(titles[page]||page);
   document.getElementById('t-title').textContent=titles[page];
   stopCountdown();
+  _curLoader=function(){ _tLoadPage(page); };
+  _tLoadPage(page);
+}
+function _tLoadPage(page){
   if(page==='dashboard') loadTDashboard();
   else if(page==='vtasks') loadTVTasks();
   else if(page==='today'){ _ttTab='today'; tPage('timetable'); return; }
@@ -6085,6 +6126,7 @@ function openAdmin(){
   try{ initNavCollapse(); }catch(e){}
   try{ initNavAccordion(); }catch(e){}   // ek fail ho to bhi accordion chale (sections band)
   [400,1200].forEach(function(d){ setTimeout(function(){ try{ document.querySelectorAll('.app .sidebar-nav').forEach(function(nav){ if(typeof _accGroupClose==='function') _accGroupClose(nav,false); }); }catch(e){} }, d); });
+  setTimeout(function(){ try{ _preloadAdmin(); }catch(e){} }, 800);
   document.getElementById('a-name').textContent=NAME;
   document.getElementById('a-avatar').textContent=initials(NAME);
   document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active'));
@@ -6195,6 +6237,10 @@ function aPage(page,el){
   const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',attendance:'Teacher Attendance',payouts:'Payouts'};
   _setPage(titles[page]||page);
   document.getElementById('a-title').textContent=titles[page]||page;
+  _curLoader=function(){ _aLoadPage(page); };
+  _aLoadPage(page);
+}
+function _aLoadPage(page){
   if(page==='dashboard') loadADashboard();
   else if(page==='dpptracker') loadADppTracker();
   else if(page==='vtasks') loadAVTasks();
@@ -8157,8 +8203,13 @@ async function loadACounts(){
 }
 
 window._photoUrls={};
+const _imgBlobCache={};   // photo URL -> blobURL (ek baar fetch, phir cache se — flood khatam)
 async function loadImgInto(elId,url){
-  try{ const r=await fetch(API+url,{headers:{Authorization:'Bearer '+TOKEN}}); if(r.ok){ const u=URL.createObjectURL(await r.blob()); window._photoUrls[elId]=u; const d=document.getElementById(elId); if(d){ d.style.backgroundImage=`url(${u})`; d.textContent=''; d.classList.add('has-photo'); } } }catch(e){}
+  try{
+    const cached=_imgBlobCache[url];
+    if(cached){ const d=document.getElementById(elId); if(d){ d.style.backgroundImage=`url(${cached})`; d.textContent=''; d.classList.add('has-photo'); } window._photoUrls[elId]=cached; return; }
+    const r=await fetch(API+url,{headers:{Authorization:'Bearer '+TOKEN}}); if(r.ok){ const u=URL.createObjectURL(await r.blob()); _imgBlobCache[url]=u; window._photoUrls[elId]=u; const d=document.getElementById(elId); if(d){ d.style.backgroundImage=`url(${u})`; d.textContent=''; d.classList.add('has-photo'); } }
+  }catch(e){}
 }
 // ---- photo preview lightbox ----
 function viewPhoto(elId,name,pid){
@@ -9925,6 +9976,10 @@ function sPage(page,el){
   _setPage(titles[page]||page);
   document.getElementById('s-title').textContent=titles[page];
   stopCountdown();
+  _curLoader=function(){ _sLoadPage(page); };
+  _sLoadPage(page);
+}
+function _sLoadPage(page){
   if(page==='dashboard') loadSDashboard();
   else if(page==='timetable') loadSTimetable();
   else if(page==='materials') loadSMaterials();
