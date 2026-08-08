@@ -7261,16 +7261,15 @@ async function openVTAssign(proposalId){
   const dlVal=`${dl.getFullYear()}-${String(dl.getMonth()+1).padStart(2,'0')}-${String(dl.getDate()).padStart(2,'0')}T${String(dl.getHours()).padStart(2,'0')}:00`;
   const preStream=(pre&&pre.streaming)||'';
   const taskForm=`<div class="form-grid vt-form">
-      <div class="form-group"><label>Teacher</label><select id="vt-f-teacher" class="input">${tOpts}</select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Collaborate with others?</label>
-        <select id="vt-f-collab-on" class="input" onchange="var w=document.getElementById('vt-f-collab-wrap');if(w)w.style.display=this.value==='yes'?'block':'none'">
+        <select id="vt-f-collab-on" class="input" onchange="_vtCollabMode('vtf',this.value)">
           <option value="no" selected>No — single teacher</option>
           <option value="yes">Yes — multiple teachers collaborate</option>
-        </select>
-        <div id="vt-f-collab-wrap" style="display:none;margin-top:8px">
-          <div style="font-size:.72rem;color:var(--text-muted);margin:0 0 6px">Selected teachers ko bhi yahi task unke portal par dikhega. Production manager sabko alag verify karega.</div>
-          <div id="vt-f-collab" style="display:flex;flex-wrap:wrap;gap:8px;max-height:130px;overflow:auto;padding:8px;border:1px solid var(--border);border-radius:10px">${_vtTeachers.map(t=>`<label style="display:flex;align-items:center;gap:6px;font-size:.84rem;background:var(--primary-50);padding:5px 11px;border-radius:8px;cursor:pointer"><input type="checkbox" class="vt-collab-cb" value="${t.pid}"> ${esc(t.name)}</label>`).join('')}</div>
-        </div></div>
+        </select></div>
+      <div class="form-group" id="vtf-teacher-single" style="grid-column:1/-1"><label>Teacher</label><select id="vt-f-teacher" class="input">${tOpts}</select></div>
+      <div class="form-group" id="vtf-teacher-multi" style="display:none;grid-column:1/-1"><label>Teachers (select multiple — pehla = primary, sab production manager se alag verify honge)</label>
+        <div class="ms-box" onclick="_msToggle('vtf')"><span id="vtf-ms-lbl" class="ms-ph">Select teachers…</span><span class="ms-arw">\u25be</span></div>
+        <div class="ms-panel" id="vtf-ms-panel">${_vtTeachers.map(t=>`<label><input type="checkbox" class="vtf-ms-cb" value="${t.pid}" onchange="_msUpd('vtf')"> ${esc(t.name)}</label>`).join('')}</div></div>
       <div class="form-group"><label>YouTube Channel</label><select id="vt-f-channel" class="input"><option value="">— Select channel —</option>${cOpts}</select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Streaming</label><select id="vt-f-stream" class="input" onchange="_vtFilterTypes('vt-f-stream','vt-f-type',_vtTypes)"><option value="" ${preStream?'':'selected'}>— Not set —</option><option value="recorded" ${preStream==='recorded'?'selected':''}>Recorded</option><option value="live" ${preStream==='live'?'selected':''}>Live</option></select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Video Type</label><select id="vt-f-type" class="input">${_vtTypeOptsHtml(_vtTypes,preStream,pre?pre.video_type:'')}</select></div>
@@ -7338,18 +7337,17 @@ function _vtProjectForm(){
   return `<div class="form-grid vt-form">
       <div class="form-group"><label>Subject</label><select id="vtp-subject" class="input" onchange="vtpSubjectChange()"><option value="">— Loading subjects… —</option></select></div>
       <div class="form-group"><label>Class</label><select id="vtp-class" class="input" onchange="vtpSubjectChange()"><option value="">— Auto from subject —</option><option value="10">Class 10</option><option value="12">Class 12</option></select></div>
-      <div class="form-group" style="grid-column:1/-1"><label>Teacher</label>
-        <div id="vtp-autot" class="vtp-auto">Select a subject — the teacher will be fetched automatically, or choose manually below</div>
-        <select id="vtp-teacher" class="input" style="margin-top:7px">${tOpts}</select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Collaborate with others?</label>
-        <select id="vtp-collab-on" class="input" onchange="var w=document.getElementById('vtp-collab-wrap');if(w)w.style.display=this.value==='yes'?'block':'none'">
+        <select id="vtp-collab-on" class="input" onchange="_vtCollabMode('vtp',this.value)">
           <option value="no" selected>No — single teacher</option>
           <option value="yes">Yes — multiple teachers collaborate</option>
-        </select>
-        <div id="vtp-collab-wrap" style="display:none;margin-top:8px">
-          <div style="font-size:.72rem;color:var(--text-muted);margin:0 0 6px">Selected teachers ko bhi ye project unke portal par dikhega. Production manager sabko alag verify karega.</div>
-          <div id="vtp-collab" style="display:flex;flex-wrap:wrap;gap:8px;max-height:130px;overflow:auto;padding:8px;border:1px solid var(--border);border-radius:10px">${_vtTeachers.map(t=>`<label style="display:flex;align-items:center;gap:6px;font-size:.84rem;background:var(--primary-50);padding:5px 11px;border-radius:8px;cursor:pointer"><input type="checkbox" class="vtp-collab-cb" value="${t.pid}"> ${esc(t.name)}</label>`).join('')}</div>
-        </div></div>
+        </select></div>
+      <div class="form-group" id="vtp-teacher-single" style="grid-column:1/-1"><label>Teacher</label>
+        <div id="vtp-autot" class="vtp-auto">Select a subject — the teacher will be fetched automatically, or choose manually below</div>
+        <select id="vtp-teacher" class="input" style="margin-top:7px">${tOpts}</select></div>
+      <div class="form-group" id="vtp-teacher-multi" style="display:none;grid-column:1/-1"><label>Teachers (select multiple — pehla = primary, sab alag verify honge)</label>
+        <div class="ms-box" onclick="_msToggle('vtp')"><span id="vtp-ms-lbl" class="ms-ph">Select teachers…</span><span class="ms-arw">\u25be</span></div>
+        <div class="ms-panel" id="vtp-ms-panel">${_vtTeachers.map(t=>`<label><input type="checkbox" class="vtp-ms-cb" value="${t.pid}" onchange="_msUpd('vtp')"> ${esc(t.name)}</label>`).join('')}</div></div>
       <div class="form-group" style="grid-column:1/-1"><label>Project Title (optional)</label><input id="vtp-title" class="input" placeholder="Auto: Project — {Subject}"></div>
       <div class="form-group" style="grid-column:1/-1"><label>Connect to timetable / syllabus chapters</label>
         <select id="vtp-connect" class="input" onchange="vtpConnectToggle()">
@@ -7464,11 +7462,14 @@ function _vtPrefillProject(pre){
 }
 async function vtProjectSave(proposalId){
   const gv=id=>(document.getElementById(id)||{}).value||'';
+  const collabOnP=(document.getElementById('vtp-collab-on')||{}).value==='yes';
+  let teacherIdP=+gv('vtp-teacher')||0, collabP=[];
+  if(collabOnP){ const ids=_msGet('vtp'); if(ids.length){ teacherIdP=ids[0]; collabP=ids.slice(1); } }
   const connect=((document.getElementById('vtp-connect')||{}).value==='yes');
   const items=connect?[]:[...document.querySelectorAll('#vtp-items .vtp-itm')].map(i=>i.value.trim()).filter(Boolean);
   const payload={subject:gv('vtp-subject').trim(),class_level:gv('vtp-class'),
-    teacher_id:+gv('vtp-teacher')||0,title:gv('vtp-title').trim(),connect,items,
-    collab_teacher_ids:((document.getElementById('vtp-collab-on')||{}).value==='yes')?[].slice.call(document.querySelectorAll('.vtp-collab-cb:checked')).map(c=>+c.value).filter(Boolean):[],
+    teacher_id:teacherIdP,title:gv('vtp-title').trim(),connect,items,
+    collab_teacher_ids:collabP,
     chapter_scope:connect?(gv('vtp-scope')||'pe'):'',
     weekly_quota:+gv('vtp-quota')||0,weekly_day:gv('vtp-day'),
     deadline:gv('vtp-deadline'),remarks:gv('vtp-remarks').trim(),
@@ -7482,10 +7483,30 @@ async function vtProjectSave(proposalId){
     loadAVTasks();
   }catch(e){ toast(e.message||'Could not assign project'); }
 }
+function _msToggle(pfx){ var p=document.getElementById(pfx+'-ms-panel'); if(p) p.style.display=(p.style.display==='block')?'none':'block'; }
+function _msUpd(pfx){
+  var cbs=[].slice.call(document.querySelectorAll('.'+pfx+'-ms-cb:checked'));
+  var lbl=document.getElementById(pfx+'-ms-lbl'); if(!lbl) return;
+  var names=cbs.map(function(c){ return (c.parentNode.textContent||'').trim(); });
+  lbl.textContent=names.length?names.join(', '):'Select teachers\u2026';
+  lbl.className=names.length?'':'ms-ph';
+}
+function _msGet(pfx){ return [].slice.call(document.querySelectorAll('.'+pfx+'-ms-cb:checked')).map(function(c){ return +c.value; }).filter(Boolean); }
+function _vtCollabMode(pfx,v){
+  var s=document.getElementById(pfx+'-teacher-single'), m=document.getElementById(pfx+'-teacher-multi');
+  if(s) s.style.display=(v==='yes')?'none':'';
+  if(m) m.style.display=(v==='yes')?'block':'none';
+}
 async function vtAssignSave(proposalId){
-  const teacher_id=+document.getElementById('vt-f-teacher').value;
   const collabOn=(document.getElementById('vt-f-collab-on')||{}).value==='yes';
-  const collab_teacher_ids=collabOn?[].slice.call(document.querySelectorAll('.vt-collab-cb:checked')).map(c=>+c.value).filter(id=>id&&id!==teacher_id):[];
+  let teacher_id, collab_teacher_ids=[];
+  if(collabOn){
+    const ids=_msGet('vtf');
+    if(ids.length<1){ toast('Select at least one teacher for the collab task'); return; }
+    teacher_id=ids[0]; collab_teacher_ids=ids.slice(1);
+  }else{
+    teacher_id=+document.getElementById('vt-f-teacher').value;
+  }
   const title=document.getElementById('vt-f-title').value.trim();
   const channel_id=+document.getElementById('vt-f-channel').value||null;
   const deadline=document.getElementById('vt-f-deadline').value;
@@ -13239,6 +13260,13 @@ function initResponsiveCss(){
   var st=document.createElement('style'); st.id='mvs-responsive-css';
   st.textContent=[
     'html,body{max-width:100%;overflow-x:hidden}',
+    '.ms-box{border:1px solid var(--border);border-radius:10px;padding:11px 14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--input-bg,#fff)}',
+    '.ms-box .ms-ph{color:var(--text-muted)}',
+    '.ms-arw{opacity:.6;flex:none}',
+    '.ms-panel{display:none;border:1px solid var(--border);border-radius:10px;margin-top:6px;max-height:210px;overflow:auto;background:var(--card-bg,#fff)}',
+    '.ms-panel label{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;font-size:.9rem;border-bottom:1px solid var(--border)}',
+    '.ms-panel label:last-child{border-bottom:none}',
+    '.ms-panel label:hover{background:var(--primary-50)}',
     'img,video,canvas,iframe{max-width:100%}',
     '.table-wrap,.mat-twrap,.tx-twrap,.tbl-wrap{overflow-x:auto !important;-webkit-overflow-scrolling:touch;max-width:100%}',
     '.table-wrap::-webkit-scrollbar,.mat-twrap::-webkit-scrollbar,.tx-twrap::-webkit-scrollbar{height:7px}',
