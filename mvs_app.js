@@ -1268,13 +1268,18 @@ async function _renderTodayClasses(targetId){
     window._tClasses=all; const st=comp.stats;
     const todayStr=new Date().toLocaleDateString('en-CA');
     const cls=all.filter(c=>c.date===todayStr);
-    const cards=`<div class="stats-grid">${statCard("Today's Classes",st.classes_today,'calendar','indigo')}${statCard('Completed',st.completed_today,'check','green')}${statCard('Pending',st.pending_today,'clipboard','amber')}${statCard('Missed',st.missed,'help','red')}</div>`;
+    // cards ab list ke SAME data se (pehle compliance.stats se alag count aata tha)
+    const _tN=cls.length, _cN=cls.filter(c=>c.completed).length, _pN=cls.filter(c=>!c.completed).length;
+    const _mN=all.filter(c=>!c.completed && c.date && c.date<todayStr).length;
+    const cards=`<div class="stats-grid">${statCard("Today's Classes",_tN,'calendar','indigo',"navTo('teacher-app','today')")}${statCard('Completed',_cN,'check','green',"navTo('teacher-app','today')")}${statCard('Pending',_pN,'clipboard','amber',"navTo('teacher-app','today')")}${statCard('Missed',_mN,'help','red',"ttSwitchTab('plan')",_mN>0)}</div>`;
     const rows=cls.length?cls.map(tClassRow).join(''):`<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">No classes scheduled today.</td></tr>`;
-    const done=all.filter(c=>c.completed).reverse().slice(0,12);
-    const doneList=done.length?done.map(c=>`<div class="qb-card"><div class="qb-info"><div class="qb-title">${esc(c.subject)} — ${esc(c.topic_covered||c.chapter||'')}</div><div class="qb-meta"><span class="tag tag-done">Completed</span><span>${esc(c.class_name||'')}</span><span>· ${esc(c.date||'')}</span>${c.homework?'<span>· HW: '+esc(c.homework)+'</span>':''}${c.dpp_given?'<span>· DPP ✓</span>':''}</div></div></div>`).join(''):'<div class="empty-state"><p>No completed reports yet.</p></div>';
-    el.innerHTML=`${cards}<div class="card"><div class="card-header"><h3>Today's Classes</h3></div><div class="card-body"><div class="table-wrap"><table><thead><tr><th>Subject</th><th>Batch</th><th>Time</th><th>Topic</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div></div><div class="card"><div class="card-header"><h3>Recently Completed</h3></div><div class="card-body">${doneList}</div></div>`;
+    const doneAll=all.filter(c=>c.completed).reverse();
+    const doneRows=doneAll.map(c=>`<div class="qb-card"><div class="qb-info"><div class="qb-title">${esc(c.subject)} — ${esc(c.topic_covered||c.chapter||'')}</div><div class="qb-meta"><span class="tag tag-done">Completed</span><span>${esc(c.class_name||'')}</span><span>\u00b7 ${esc(c.date||'')}</span>${c.homework?'<span>\u00b7 HW: '+esc(c.homework)+'</span>':''}${c.dpp_given?'<span>\u00b7 DPP</span>':''}</div></div></div>`).join('');
+    const doneCard=`<div class="card"><div class="card-header" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="_tToggleDone()"><h3 style="margin:0">Recently Completed (${doneAll.length})</h3><span id="t-done-chev" style="opacity:.6">\u25be</span></div><div class="card-body" id="t-done-body">${doneAll.length?`<div class="mat-scroll" style="max-height:330px;overflow:auto">${doneRows}</div>`:'<div class="empty-state"><p>No completed reports yet.</p></div>'}</div></div>`;
+    el.innerHTML=`${cards}<div class="card"><div class="card-header"><h3>Today's Classes</h3></div><div class="card-body"><div class="table-wrap"><table><thead><tr><th>Subject</th><th>Batch</th><th>Time</th><th>Topic</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div></div>${doneCard}`;
   }catch(e){ el.innerHTML=errHtml(e); }
 }
+function _tToggleDone(){ var b=document.getElementById('t-done-body'), c=document.getElementById('t-done-chev'); if(b){ var h=b.style.display==='none'; b.style.display=h?'':'none'; if(c) c.textContent=h?'\u25be':'\u25b8'; } }
 async function loadTCompletion(){
   const el=document.getElementById('t-completion-content');
   try{
@@ -1356,7 +1361,7 @@ async function loadTDashboard(){
   try{
  const d=await api('/api/teacher/dashboard');
  document.getElementById('t-subjects').textContent='Teacher';
- el.innerHTML=`${greetingCard(NAME,_tSuffix)}<div class="card"><div class="card-header"><h3> Today's Classes</h3></div><div class="card-body"><div id="t-today-wrap"><div class="spinner"></div></div></div></div><div id="t-punch-wrap"></div><div class="stats-grid">${statCard('Classes Done',d.total_done,'check','green')}${statCard('Pending',d.total_pending,'clipboard','amber')}${statCard('DPPs',d.total_dpps,'clipboard','indigo',"navTo('teacher-app','dpp')")}${statCard('Tests',d.total_tests,'edit','teal',"navTo('teacher-app','tests')")}${statCard('Unresolved Doubts',d.unresolved_doubts,'help','red',"navTo('teacher-app','doubts')",true)}</div>`;
+ el.innerHTML=`${greetingCard(NAME,_tSuffix)}<div class="card"><div class="card-header"><h3> Today's Classes</h3></div><div class="card-body"><div id="t-today-wrap"><div class="spinner"></div></div></div></div><div id="t-punch-wrap"></div><div class="stats-grid">${statCard('Classes Done',d.total_done,'check','green',"navTo('teacher-app','today')")}${statCard('Pending',d.total_pending,'clipboard','amber',"navTo('teacher-app','today')")}${statCard('DPPs',d.total_dpps,'clipboard','indigo',"navTo('teacher-app','dpp')")}${statCard('Tests',d.total_tests,'edit','teal',"navTo('teacher-app','tests')")}${statCard('Unresolved Doubts',d.unresolved_doubts,'help','red',"navTo('teacher-app','doubts')",true)}</div>`;
  const badge=document.getElementById('t-doubt-badge');
  if(d.unresolved_doubts>0){ badge.style.display='inline-block'; badge.textContent=d.unresolved_doubts; } else badge.style.display='none';
  renderPunchCard('t-punch-wrap');
@@ -13353,6 +13358,8 @@ function initResponsiveCss(){
   var st=document.createElement('style'); st.id='mvs-responsive-css';
   st.textContent=[
     'html,body{max-width:100%;overflow-x:hidden}',
+    '@keyframes statBlink{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.4)}50%{box-shadow:0 0 0 7px rgba(220,38,38,0)}}',
+    '.stat-blink{animation:statBlink 1.3s ease-in-out infinite;border-color:rgba(220,38,38,.5)!important}',
     '.ae-ava{background-size:cover !important;background-position:center !important}',
     '.ae-ava.has-photo{color:transparent !important}',
     '.cb-box{margin-top:8px;padding:10px 12px;background:var(--primary-50);border-radius:12px}',
