@@ -1483,6 +1483,8 @@ def student_answer_sheet(exam_id: int, db: Session = Depends(get_db), current_us
     ).order_by(ExamAttempt.submitted_at.desc()).first()
     if not att or not att.answer_image_b64:
         raise HTTPException(404, "No answer sheet found")
+    if str(att.answer_image_b64).startswith("http"):
+        return __import__("r2_storage").file_response(att.answer_image_b64, "image/jpeg", None, False)
     raw = att.answer_image_b64
     mime = "image/jpeg"
     if "," in raw and raw.startswith("data:"):
@@ -1725,6 +1727,8 @@ def lecture_question_image(qid: int, which: int = -1, db: Session = Depends(get_
         raw = q.image_b64
     if not raw:
         raise HTTPException(404, "No image")
+    if str(raw).startswith("http"):
+        return __import__("r2_storage").file_response(raw, "image/jpeg", None, False)
     try:
         data = base64.b64decode(raw.split(",")[-1])
     except Exception:

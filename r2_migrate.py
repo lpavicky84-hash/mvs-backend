@@ -72,6 +72,18 @@ def _spec(kind):
             return DppPack, "s_pdf", "dpp-pdf", "application/pdf", ".pdf"
     except Exception:
         pass
+    try:
+        from models import ExamAttempt
+        if kind == "exam_ans_img":
+            return ExamAttempt, "answer_image_b64", "exam-answers", "image/jpeg", ".jpg"
+    except Exception:
+        pass
+    try:
+        from models import LectureQuestion
+        if kind == "lecture_q_img":
+            return LectureQuestion, "image_b64", "lecture-q", "image/jpeg", ".jpg"
+    except Exception:
+        pass
     return None
 
 

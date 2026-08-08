@@ -397,9 +397,10 @@ def _r2_rewrite(key: str = "", old: str = "", new: str = ""):
             (DppAnswer, "answer_b64"),
         ]
         try:
-            from models import ExamQuestion, DppPack
+            from models import ExamQuestion, DppPack, ExamAttempt, LectureQuestion
             targets += [(ExamQuestion, "image_b64"), (ExamQuestion, "model_answer_image"),
-                        (ExamQuestion, "alt_image_b64"), (DppPack, "q_pdf"), (DppPack, "s_pdf")]
+                        (ExamQuestion, "alt_image_b64"), (DppPack, "q_pdf"), (DppPack, "s_pdf"),
+                        (ExamAttempt, "answer_image_b64"), (LectureQuestion, "image_b64")]
         except Exception:
             pass
         out = {}
@@ -453,9 +454,10 @@ def _r2_normalize(key: str = ""):
             (DppAnswer, "answer_b64"),
         ]
         try:
-            from models import ExamQuestion, DppPack
+            from models import ExamQuestion, DppPack, ExamAttempt, LectureQuestion
             targets += [(ExamQuestion, "image_b64"), (ExamQuestion, "model_answer_image"),
-                        (ExamQuestion, "alt_image_b64"), (DppPack, "q_pdf"), (DppPack, "s_pdf")]
+                        (ExamQuestion, "alt_image_b64"), (DppPack, "q_pdf"), (DppPack, "s_pdf"),
+                        (ExamAttempt, "answer_image_b64"), (LectureQuestion, "image_b64")]
         except Exception:
             pass
         out = {}
@@ -484,6 +486,39 @@ def _r2_normalize(key: str = ""):
                 out["%s.%s" % (Model.__name__, field)] = "err: " + str(e)[:60]
         db.commit()
         return {"ok": True, "total_normalized": total, "target_host": pub, "detail": out}
+    except Exception as e:
+        db.rollback()
+        return JSONResponse(status_code=500, content={"error": str(e)[:300]})
+    finally:
+        db.close()
+
+
+@app.get("/r2-cleanup-chunks")
+def _r2_cleanup_chunks(key: str = "", hours: int = 12):
+    """Adhoore/abandoned uploads ke orphan DPP chunks delete karo. Real upload minutes
+    me assemble ho jaata hai (aur tabhi chunks delete ho jaate hain) — jo 'hours' se
+    purane pade hain woh abandoned hain, dead weight. Ye base64 chunk data DB se hata
+    ke size + RAM kam karega. Safe: sirf purane chunks, in-flight uploads ko haath nahi."""
+    if not _r2_mig_secret() or key != _r2_mig_secret():
+        return JSONResponse(status_code=403, content={"error": "bad key"})
+    from database import SessionLocal
+    from datetime import datetime, timedelta
+    from sqlalchemy import func as _f
+    db = SessionLocal()
+    try:
+        from models import DppChunk
+        try:
+            hrs = max(1, int(hours or 12))
+        except Exception:
+            hrs = 12
+        cutoff = datetime.utcnow() - timedelta(hours=hrs)
+        before = db.query(_f.count(DppChunk.id)).scalar() or 0
+        deleted = db.query(DppChunk).filter(DppChunk.created_at < cutoff).delete(synchronize_session=False)
+        db.commit()
+        after = db.query(_f.count(DppChunk.id)).scalar() or 0
+        return {"ok": True, "deleted_chunks": int(deleted or 0),
+                "older_than_hours": hrs, "chunks_before": int(before),
+                "chunks_left": int(after)}
     except Exception as e:
         db.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)[:300]})
@@ -542,7 +577,7 @@ button{padding:9px 16px;border-radius:8px;border:none;background:#b8941f;color:#
 <body><h2>R2 Bulk Migration (purane files -> R2)</h2>
 <p>Apna <b>R2 Account ID</b> daal ke Start dabao. Page khula rehne do — apne aap
 sab shift karega. Beech me ruk jaye to dobara Start (jaha se chhoda wahi se aage).</p>
-<input id=k placeholder="R2 Account ID (secret)"> <button onclick="startMig()">Start</button> <button onclick="fixUrls()" style="background:#2b6cb0;color:#fff">Fix URLs &rarr; mvsdatabase.com</button>
+<input id=k placeholder="R2 Account ID (secret)"> <button onclick="startMig()">Start</button> <button onclick="fixUrls()" style="background:#2b6cb0;color:#fff">Fix URLs &rarr; mvsdatabase.com</button> <button onclick="cleanChunks()" style="background:#8a5a1f;color:#fff">Clean orphan chunks</button>
 <div class=bar><div class=fill id=f></div></div>
 <pre id=log></pre>
 <script>
@@ -551,7 +586,8 @@ const kinds=[['photos_student',20],['photos_teacher',20],['materials',5],
              ['doubt_img',15],['doubt_audio',10],['doubt_ans_audio',10],
              ['doubt_ans_file',10],['dpp_answers',5],
              ['exam_q_img',10],['exam_q_ans_img',10],['exam_q_alt_img',10],
-             ['dpp_q_pdf',5],['dpp_s_pdf',5]];
+             ['dpp_q_pdf',5],['dpp_s_pdf',5],
+             ['exam_ans_img',10],['lecture_q_img',10]];
 let ki=0,afterId=0,totalMig=0,running=false;
 const log=m=>{const l=document.getElementById('log');l.textContent+=m+"\\n";l.scrollTop=l.scrollHeight;};
 function startMig(){ if(running)return; running=true; ki=0; afterId=0; totalMig=0;
@@ -566,6 +602,17 @@ async function fixUrls(){
     if(d.error){ log('ERROR: '+d.error+' (key sahi hai?)'); return; }
     log('\\u2705 Done. Total URLs fixed: '+(d.total_normalized||0)+' -> '+(d.target_host||''));
     for(const k in (d.detail||{})){ if(d.detail[k]) log('  '+k+': '+d.detail[k]); }
+  }catch(e){ log('ERROR: '+e); }
+}
+async function cleanChunks(){
+  const key=document.getElementById('k').value.trim();
+  if(!key){ log('Pehle R2 Account ID daalo, phir Clean dabao.'); return; }
+  log('\\nCleaning orphan DPP chunks (12h+ purane)...');
+  try{
+    const r=await fetch(`/r2-cleanup-chunks?key=${encodeURIComponent(key)}&hours=12`);
+    const d=await r.json();
+    if(d.error){ log('ERROR: '+d.error+' (key sahi hai?)'); return; }
+    log('\\u2705 Deleted '+(d.deleted_chunks||0)+' orphan chunks. Left: '+(d.chunks_left||0));
   }catch(e){ log('ERROR: '+e); }
 }
 async function run(){

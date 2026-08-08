@@ -3085,6 +3085,10 @@ def attempt_answer_image(attempt_id: int, db: Session = Depends(get_db), current
         db.commit()
     if not att.answer_image_b64:
         raise HTTPException(404, "No answer sheet uploaded")
+    # R2 URL ho to redirect (naye uploads normalize se URL hote hain; migration ke baad
+    # purane bhi URL) — warna neeche base64 decode toot jaata.
+    if str(att.answer_image_b64).startswith("http"):
+        return __import__("r2_storage").file_response(att.answer_image_b64, "image/jpeg", None, False)
     # Students upload a photo OR a PDF. Pehle hamesha image/jpeg bheja jaata tha
     # aur decode fail hone par unhandled 500 aata tha - browser use CORS ke bina
     # block kar deta tha, isliye portal par "Failed to fetch" dikhta tha.
