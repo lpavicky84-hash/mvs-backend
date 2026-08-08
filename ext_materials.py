@@ -53,6 +53,50 @@ def _cfg():
     return url, key
 
 
+# MVS Portal medium alag-alag key/spelling se aa sakta hai — sab pakdo.
+MEDIUM_KEYS = ["medium", "Medium", "MEDIUM", "language", "Language", "med",
+               "medium_of_study", "study_medium", "medium_name", "mode_of_study",
+               "lang", "student_medium", "medium_of_instruction", "instruction_medium",
+               "medium_of_examination", "exam_medium", "course_medium", "mediumOfStudy",
+               "medium_type", "study_language", "preferred_medium"]
+
+def norm_medium(v):
+    """Kisi bhi form ka medium -> 'Hindi' / 'English' / 'Both'. Pehchaan na ho to
+    original trimmed value (khaali nahi karte). Blank -> ''."""
+    t = str(v or "").strip()
+    if not t:
+        return ""
+    low = t.lower()
+    if low.startswith("eng") or low == "en" or low == "e":
+        return "English"
+    if low.startswith("hin") or low == "hi" or low == "h":
+        return "Hindi"
+    if "both" in low or "bilingual" in low or "dual" in low or low.startswith("bi"):
+        return "Both"
+    return t   # unknown label — waise ka waisa rakho (khoना nahi)
+
+def pick_medium(st):
+    """Raw portal student dict se medium nikalo (case-insensitive multi-key)."""
+    if not isinstance(st, dict):
+        return ""
+    lower_map = {}
+    for k in st.keys():
+        try:
+            lower_map.setdefault(str(k).lower(), k)
+        except Exception:
+            pass
+    for k in MEDIUM_KEYS:
+        v = st.get(k)
+        if v and str(v).strip():
+            return norm_medium(v)
+        lk = lower_map.get(k.lower())
+        if lk is not None:
+            v = st.get(lk)
+            if v and str(v).strip():
+                return norm_medium(v)
+    return ""
+
+
 def _normalize(raw):
     """Accept slightly different field names from the Student Portal and
     normalize into the shape the frontend expects."""
@@ -345,7 +389,7 @@ def portal_fetch_student(phone):
         "name": (d.get("name") or "").strip() or None,
         "phone": str(d.get("phone") or phone),
         "class_level": str(d.get("class_level") or d.get("class") or "") or None,
-        "medium": (d.get("medium") or "").strip() or None,
+        "medium": pick_medium(d) or None,
         "session": (d.get("session") or "").strip(),
         "subjects": subs,
         "unlocked": _is_included(d),

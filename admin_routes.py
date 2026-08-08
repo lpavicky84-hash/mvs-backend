@@ -1909,7 +1909,14 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
     FAST: portal students EK BAAR fetch, user_id max+counter se (i=1 scan nahi),
     collision pe savepoint-retry (batch kabhi fail na ho)."""
     from sqlalchemy.exc import IntegrityError
-    from ext_materials import pick_medium
+    # Defensive: agar deployed ext_materials.py purani/out-of-sync ho (pick_medium na ho)
+    # to bhi bulk import crash na kare — fallback medium khaali chhodta hai (baad me
+    # "Fix Medium" se bhar sakte hain). Sahi ext_materials.py deploy karne par full kaam.
+    try:
+        from ext_materials import pick_medium
+    except Exception:
+        def pick_medium(st):
+            return ""
     rows = payload.get("students", []) or []
     created, updated, skipped = 0, 0, 0
     duplicates = []

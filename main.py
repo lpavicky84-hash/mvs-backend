@@ -565,6 +565,79 @@ def _r2_count(key: str = ""):
         db.close()
 
 
+@app.get("/r2-status")
+def _r2_status(key: str = ""):
+    """Verification: har blob field ke liye ginti — kitne abhi bhi base64 (DB me), kitne
+    mvsdatabase.com par, kitne kisi aur host par (r2.dev/purana cdn). base64=0 aur
+    other_host=0 -> sab migrate ho gaya aur sab custom domain par hai."""
+    if not _r2_mig_secret() or key != _r2_mig_secret():
+        return JSONResponse(status_code=403, content={"error": "bad key — R2 Account ID daalo"})
+    import r2_storage as R2
+    try:
+        pub = (R2._cfg().get("public_url") or "").rstrip("/")
+    except Exception:
+        pub = ""
+    from database import SessionLocal
+    from sqlalchemy import func
+    db = SessionLocal()
+    try:
+        from models import (StudentProfile, TeacherProfile, Material, StudioReport,
+                            Lecture, VideoTask, Doubt, DppAnswer)
+        fields = [
+            (StudentProfile, "photo_b64", "Student photos"),
+            (TeacherProfile, "photo_b64", "Teacher photos"),
+            (Material, "content_b64", "Study material / notes / QB"),
+            (StudioReport, "notes_file_b64", "Class notes"),
+            (Lecture, "pdf_b64", "Lecture PDF"), (Lecture, "dpp_b64", "Lecture DPP"),
+            (VideoTask, "thumbnail_b64", "Video thumbnails"),
+            (Doubt, "image_b64", "Doubt images"), (Doubt, "audio_b64", "Doubt audio"),
+            (Doubt, "answer_audio_b64", "Doubt answer audio"),
+            (Doubt, "answer_attach_b64", "Doubt answer files"),
+            (DppAnswer, "answer_b64", "DPP answers"),
+        ]
+        try:
+            from models import ExamQuestion, DppPack, ExamAttempt, LectureQuestion
+            fields += [
+                (ExamQuestion, "image_b64", "Exam question figures"),
+                (ExamQuestion, "model_answer_image", "Exam answer figures"),
+                (ExamQuestion, "alt_image_b64", "Exam OR-alt figures"),
+                (DppPack, "q_pdf", "DPP question PDFs"), (DppPack, "s_pdf", "DPP solution PDFs"),
+                (ExamAttempt, "answer_image_b64", "Exam answer sheets"),
+                (LectureQuestion, "image_b64", "Lecture quiz images"),
+            ]
+        except Exception:
+            pass
+        detail = []
+        t_b64 = t_ok = t_other = 0
+        for Model, field, label in fields:
+            col = getattr(Model, field)
+            try:
+                b64 = db.query(func.count()).select_from(Model).filter(
+                    col.isnot(None), ~col.like("http%")).scalar() or 0
+                http = db.query(func.count()).select_from(Model).filter(
+                    col.like("http%")).scalar() or 0
+                ok = 0
+                if pub:
+                    ok = db.query(func.count()).select_from(Model).filter(
+                        col.like(pub + "/%")).scalar() or 0
+                other = int(http) - int(ok)
+                if (b64 or http):
+                    detail.append({"item": label, "base64_left": int(b64),
+                                   "on_mvsdatabase": int(ok), "other_host": int(other)})
+                t_b64 += int(b64); t_ok += int(ok); t_other += int(other)
+            except Exception as e:
+                detail.append({"item": label, "error": str(e)[:60]})
+        return {"ok": True, "target_host": pub,
+                "totals": {"base64_left": t_b64, "on_mvsdatabase": t_ok, "other_host": t_other},
+                "all_good": (t_b64 == 0 and t_other == 0),
+                "detail": detail,
+                "note": "base64_left=0 aur other_host=0 -> sab migrate + sab mvsdatabase.com par."}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)[:300]})
+    finally:
+        db.close()
+
+
 @app.get("/r2-migrate")
 def _r2_migrate_page():
     html = """<!doctype html><html><head><meta charset=utf-8><title>R2 Migration</title>
@@ -577,7 +650,7 @@ button{padding:9px 16px;border-radius:8px;border:none;background:#b8941f;color:#
 <body><h2>R2 Bulk Migration (purane files -> R2)</h2>
 <p>Apna <b>R2 Account ID</b> daal ke Start dabao. Page khula rehne do — apne aap
 sab shift karega. Beech me ruk jaye to dobara Start (jaha se chhoda wahi se aage).</p>
-<input id=k placeholder="R2 Account ID (secret)"> <button onclick="startMig()">Start</button> <button onclick="fixUrls()" style="background:#2b6cb0;color:#fff">Fix URLs &rarr; mvsdatabase.com</button> <button onclick="cleanChunks()" style="background:#8a5a1f;color:#fff">Clean orphan chunks</button>
+<input id=k placeholder="R2 Account ID (secret)"> <button onclick="startMig()">Start</button> <button onclick="fixUrls()" style="background:#2b6cb0;color:#fff">Fix URLs &rarr; mvsdatabase.com</button> <button onclick="cleanChunks()" style="background:#8a5a1f;color:#fff">Clean orphan chunks</button> <button onclick="checkStatus()" style="background:#2f855a;color:#fff">Check status</button>
 <div class=bar><div class=fill id=f></div></div>
 <pre id=log></pre>
 <script>
@@ -613,6 +686,26 @@ async function cleanChunks(){
     const d=await r.json();
     if(d.error){ log('ERROR: '+d.error+' (key sahi hai?)'); return; }
     log('\\u2705 Deleted '+(d.deleted_chunks||0)+' orphan chunks. Left: '+(d.chunks_left||0));
+  }catch(e){ log('ERROR: '+e); }
+}
+async function checkStatus(){
+  const key=document.getElementById('k').value.trim();
+  if(!key){ log('Pehle R2 Account ID daalo, phir Check dabao.'); return; }
+  log('\\nChecking status...');
+  try{
+    const r=await fetch(`/r2-status?key=${encodeURIComponent(key)}`);
+    const d=await r.json();
+    if(d.error){ log('ERROR: '+d.error+' (key sahi hai?)'); return; }
+    const t=d.totals||{};
+    log('Target host: '+(d.target_host||'?'));
+    (d.detail||[]).forEach(x=>{
+      if(x.error){ log('  '+x.item+': err '+x.error); return; }
+      const flag=(x.base64_left===0&&x.other_host===0)?'\\u2705':'\\u26a0\\ufe0f';
+      log('  '+flag+' '+x.item+': base64='+x.base64_left+', mvsdatabase='+x.on_mvsdatabase+', other='+x.other_host);
+    });
+    log('\\nTOTAL -> base64 baaki: '+(t.base64_left||0)+' | mvsdatabase.com: '+(t.on_mvsdatabase||0)+' | doosre host: '+(t.other_host||0));
+    log(d.all_good ? '\\u2705 SAB THIK: sab migrate ho gaya aur sab mvsdatabase.com par hai.'
+                   : '\\u26a0\\ufe0f Abhi kuch baaki: base64 waale ke liye Start, doosre-host waale ke liye Fix URLs dabao.');
   }catch(e){ log('ERROR: '+e); }
 }
 async function run(){
