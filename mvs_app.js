@@ -1052,6 +1052,7 @@ function stopCountdown(){ if(countdownTimer){clearInterval(countdownTimer);count
 let _tGender='', _tSuffix='';
 async function openTeacher(){
   try{_saveSession();}catch(e){}
+  try{initNavAccordion();initNavCollapse();}catch(e){}
   try{
  const p=await api('/api/teacher/profile');
  _tGender=p.gender||''; _tSuffix=_tGender==='male'?' Sir':_tGender==='female'?' Ma\'am':'';
@@ -9684,6 +9685,7 @@ const STUDENT_BATCHES=[
 ];
 async function openStudent(){
   try{_saveSession();}catch(e){}
+  try{initNavAccordion();initNavCollapse();}catch(e){}
   // batch mode sabse pehle — taaki sidebar/pages sahi dikhein
   api('/api/student/profile').then(p=>{
     window._sBatch=p.batch_name||p.batch||'';
@@ -13218,7 +13220,7 @@ function initNavCollapse(){
     if(li && !li.querySelector('img') && !li.dataset.logoTried){
       li.dataset.logoTried='1';
       var im=new Image(); im.alt='MVS';
-      im.onload=function(){ li.textContent=''; li.style.padding='0'; im.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block'; li.appendChild(im); };
+      im.onload=function(){ li.textContent=''; li.style.padding='0'; li.style.background='#fff'; li.style.border='1px solid rgba(0,0,0,.08)'; li.style.overflow='hidden'; im.style.cssText='width:100%;height:100%;object-fit:contain;border-radius:inherit;display:block'; li.appendChild(im); };
       im.onerror=function(){};
       im.src=(typeof API!=='undefined'?API:'')+'/api/student/logo';
     }
@@ -13247,10 +13249,10 @@ function initNavAccordion(){
     document.head.appendChild(st);
   }
   document.querySelectorAll('.app .sidebar-nav').forEach(function(nav){
-    if(nav._accDone) return; nav._accDone=true;
     var secs=[].slice.call(nav.querySelectorAll('.nav-section'));
     secs.forEach(function(sec){
-      // is section ke items = agle nav-section tak ke saare nav-item
+      // items HAR BAAR re-group karo (nav badla/naye item aaye to bhi sahi) — agle
+      // nav-section tak ke saare nav-item is section ke andar aate hain
       var items=[], n=sec.nextElementSibling;
       while(n && !n.classList.contains('nav-section')){ if(n.classList.contains('nav-item')) items.push(n); n=n.nextElementSibling; }
       sec._items=items;
@@ -13261,7 +13263,7 @@ function initNavAccordion(){
         sec.insertBefore(icw, sec.firstChild);
       }
       if(!sec.querySelector('.nav-sec-chev')){ var ch=document.createElement('span'); ch.className='nav-sec-chev'; ch.textContent='\u25be'; sec.appendChild(ch); }
-      sec.addEventListener('click',function(){ _setNavSec(sec, !sec._open); });
+      if(!sec._accClick){ sec._accClick=true; sec.addEventListener('click',function(){ _setNavSec(sec, !sec._open); }); }
     });
     // DEFAULT: SAARE sections BAND — sirf click karne par khulte hain (koi auto-open nahi)
     secs.forEach(function(sec){ _setNavSec(sec,false); });
