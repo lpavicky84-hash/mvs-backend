@@ -90,6 +90,8 @@ def _ensure_special_columns():
         "ALTER TABLE video_task_chapters ADD COLUMN changed_at DATETIME NULL",
         "ALTER TABLE video_task_chapters ADD COLUMN vintage VARCHAR(10) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN vintage VARCHAR(10) DEFAULT ''",
+        "ALTER TABLE video_tasks ADD COLUMN collab_teacher_ids TEXT NULL",
+        "ALTER TABLE video_tasks ADD COLUMN collab_verified TEXT NULL",
     ]
     for ddl in alters:
         try:
@@ -853,6 +855,33 @@ def _vt_sweep_inner(db):
         db.commit()
 
 
+def _collab_extra_ids(t):
+    """Task ke ADDITIONAL (collab) teacher ids — primary ke alawa."""
+    import json as _j
+    try:
+        v = _j.loads(t.collab_teacher_ids) if getattr(t, "collab_teacher_ids", "") else []
+        return [int(x) for x in v if x]
+    except Exception:
+        return []
+
+
+def _collab_all_ids(t):
+    """Primary + collab teacher ids (unique, order preserved)."""
+    ids = [t.teacher_id] if t.teacher_id else []
+    for i in _collab_extra_ids(t):
+        if i not in ids:
+            ids.append(i)
+    return ids
+
+
+def _collab_vmap(t):
+    import json as _j
+    try:
+        return _j.loads(t.collab_verified) if getattr(t, "collab_verified", "") else {}
+    except Exception:
+        return {}
+
+
 def _task_out(db, t, with_thumb=True):
     now = _now_ist()
     secs_left = int((t.deadline - now).total_seconds()) if t.deadline else None
@@ -889,6 +918,13 @@ def _task_out(db, t, with_thumb=True):
         "created_at": t.created_at.strftime("%d %b %Y") if t.created_at else "",
         "history": _hist_out(t),
     }
+    # ---- collab (multi-teacher) info
+    _allids = _collab_all_ids(t)
+    _vmap = _collab_vmap(t)
+    out["is_collab"] = len(_allids) > 1
+    out["collab_teachers"] = [{"id": i, "name": _teacher_name(db, i),
+                               "verified": bool(_vmap.get(str(i)))} for i in _allids]
+    out["collab_all_verified"] = bool(_allids) and all(_vmap.get(str(i)) for i in _allids)
     if with_thumb:
         out["thumbnail_b64"] = t.thumbnail_b64 or ""
     return out
@@ -1066,6 +1102,16 @@ def vt_assign(payload: dict = Body(...), db: Session = Depends(get_db), _=Depend
     cid = payload.get("channel_id")
     if cid:
         ch = db.query(VideoChannel).filter(VideoChannel.id == int(cid)).first()
+    # collab teachers (primary ke alawa additional) — inko bhi wahi task dikhega
+    import json as _json_c
+    _collab = []
+    for x in (payload.get("collab_teacher_ids") or []):
+        try:
+            xi = int(x)
+            if xi and xi != tid and xi not in _collab:
+                _collab.append(xi)
+        except Exception:
+            pass
     try:
         t = VideoTask(
             teacher_id=tid, title=title,
@@ -1077,16 +1123,23 @@ def vt_assign(payload: dict = Body(...), db: Session = Depends(get_db), _=Depend
             reference=(payload.get("reference") or "").strip(),
             remarks=(payload.get("remarks") or "").strip(),
             streaming=(payload.get("streaming") or "").strip(),
+            collab_teacher_ids=(_json_c.dumps(_collab) if _collab else ""),
             deadline=dl, status="assigned", proposed_by="admin", proposal_ok="approved",
         )
         db.add(t)
         _hist_add(t, "assigned", "Deadline: %s" % dl.strftime("%d %b %Y, %I:%M %p"))
-        if tp.user_id:
-            _vt_notify(db, tp.user_id, "🎬 New Video Task Assigned",
-                       f'You have been assigned a new video task: "{title}"'
-                       + (f' for {ch.name}' if ch else '')
-                       + f'. Deadline: {dl.strftime("%d %b %Y, %I:%M %p")}. '
-                       f'Please check My Tasks for the thumbnail and details.')
+        # primary + collab sabko notify
+        _notify_ids = [tid] + _collab
+        _collab_note = (" (collab with %d more)" % len(_collab)) if _collab else ""
+        for _ntid in _notify_ids:
+            _ntp = _teacher_profile(db, _ntid)
+            if _ntp and _ntp.user_id:
+                _vt_notify(db, _ntp.user_id, "🎬 New Video Task Assigned",
+                           f'You have been assigned a new video task: "{title}"'
+                           + (f' for {ch.name}' if ch else '')
+                           + _collab_note
+                           + f'. Deadline: {dl.strftime("%d %b %Y, %I:%M %p")}. '
+                           f'Please check My Tasks for the thumbnail and details.')
         db.commit()
     except HTTPException:
         raise
@@ -1099,6 +1152,39 @@ def vt_assign(payload: dict = Body(...), db: Session = Depends(get_db), _=Depend
                                      "restart karwein: column apne aap upgrade ho jayega.)")
         raise HTTPException(400, f"Could not assign the task: {e}")
     return {"ok": True, "id": t.id}
+
+
+@router.post("/admin/video-tasks/{task_id}/verify-teacher", dependencies=[Depends(_admin_section_guard)])
+def vt_verify_teacher(task_id: int, payload: dict = Body(...),
+                      db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Production manager collab task me har teacher ko alag verify karta hai.
+    Sab verify -> task 'Approved'. Jo teacher task me hi nahi uska verify -> error
+    (Task not completed by them)."""
+    t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
+    if not t:
+        raise HTTPException(404, "Task not found")
+    tid = int(payload.get("teacher_id") or 0)
+    verified = payload.get("verified", True)
+    allids = _collab_all_ids(t)
+    if tid not in allids:
+        raise HTTPException(400, "Ye teacher is task me nahi hai — verify nahi kar sakte "
+                                 "(Task not completed by them).")
+    import json as _j
+    vmap = _collab_vmap(t)
+    if verified:
+        vmap[str(tid)] = True
+    else:
+        vmap.pop(str(tid), None)
+    t.collab_verified = _j.dumps(vmap)
+    all_ok = bool(allids) and all(vmap.get(str(i)) for i in allids)
+    _hist_add(t, "verify", "%s %s by production manager" % (
+        _teacher_name(db, tid), "verified" if verified else "verification removed"))
+    if all_ok:
+        _hist_add(t, "approved", "All collab teachers verified — Approved")
+    db.commit()
+    return {"ok": True, "all_verified": all_ok,
+            "collab_teachers": [{"id": i, "name": _teacher_name(db, i),
+                                 "verified": bool(vmap.get(str(i)))} for i in allids]}
 
 
 @router.get("/admin/video-tasks", dependencies=[Depends(_admin_section_guard)])
@@ -1596,11 +1682,21 @@ def vt_create_project(payload: dict = Body(...),
         if not items:
             raise HTTPException(400, "Add at least 1 video/item name "
                                      "(or turn on syllabus connect).")
+    import json as _json_cp
+    _collab_p = []
+    for x in (payload.get("collab_teacher_ids") or []):
+        try:
+            xi = int(x)
+            if xi and xi != tp.id and xi not in _collab_p:
+                _collab_p.append(xi)
+        except Exception:
+            pass
     t = VideoTask(teacher_id=tp.id, title=title, kind="project", subject=display,
                   video_type="Project", status="assigned", proposed_by="admin",
                   proposal_ok="approved", deadline=final_dl,
                   remarks=(payload.get("remarks") or "").strip(),
                   reference=(payload.get("reference") or "").strip(),
+                  collab_teacher_ids=(_json_cp.dumps(_collab_p) if _collab_p else ""),
                   weekly_quota=weekly_quota, weekly_day=weekly_day,
                   item_source=item_source)
     db.add(t)
@@ -1794,9 +1890,12 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
     tp = _get_tp(current_user, db)
     _ensure_special_teacher(db, tp)
     tasks = (db.query(VideoTask)
-             .filter(VideoTask.teacher_id == tp.id,
+             .filter(or_(VideoTask.teacher_id == tp.id,
+                         VideoTask.collab_teacher_ids.like('%' + str(tp.id) + '%')),
                      or_(NOT_SPECIAL, VideoTask.kind == "urgent"))
              .order_by(VideoTask.created_at.desc()).all())
+    # LIKE se false-positive (e.g. 5 vs 15) hata do — precise membership
+    tasks = [t for t in tasks if tp.id in _collab_all_ids(t)]
     active = [t for t in tasks if t.status == "assigned" and t.proposal_ok != "pending"]
     active.sort(key=lambda t: t.deadline or datetime.max)
     rest = [t for t in tasks if t not in active]
@@ -1822,9 +1921,11 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
     }
     # special tasks (One Shot per subject + Rapid Revision) — chapters ke saath
     spts = (db.query(VideoTask)
-            .filter(VideoTask.teacher_id == tp.id,
+            .filter(or_(VideoTask.teacher_id == tp.id,
+                        VideoTask.collab_teacher_ids.like('%' + str(tp.id) + '%')),
                     VideoTask.kind.in_(["one_shot", "rapid_revision", "project"]))
             .order_by(VideoTask.kind.asc(), VideoTask.subject.asc()).all())
+    spts = [t for t in spts if tp.id in _collab_all_ids(t)]
     # legacy "All Subjects"/empty-subject card kabhi na dikhe — sirf subject-wise cards
     spts = [t for t in spts if (t.subject or "").strip().lower() not in ("", "all subjects")]
     special_all = [_special_out(db, t) for t in spts]

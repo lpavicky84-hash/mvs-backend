@@ -6275,6 +6275,7 @@ async function loadTVTasks(){
       return `<div class="vt-card st-${t.status}">${_vtThumb(t,'t')}<div class="vt-body">
         <div class="vt-chips">${propNote}${t.kind==='urgent'?`<span class="vt-pill" style="background:rgba(220,38,38,.15);color:#dc2626;font-weight:800">${ic('alert')} URGENT</span>`:''}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
         <div class="vt-title">${esc(t.title)}</div>
+        ${t.is_collab?`<div style="font-size:.77rem;color:var(--text-muted);margin:3px 0 5px;display:flex;align-items:center;gap:5px">${ic('users')} Collab: ${(t.collab_teachers||[]).map(c=>esc(c.name)+(c.verified?' (Approved)':'')).join(', ')}</div>`:''}
         <div class="vt-meta">
           ${t.deadline_nice?`<span class="${dlBlink}">${ic('clock')} ${dlLbl}: <b>${esc(t.deadline_nice)}</b></span>`:''}
           ${_open&&t.seconds_left!=null?`<span data-tvt-cd="${t.id}" data-secs="${t.seconds_left}" style="font-weight:800"></span>`:''}
@@ -6835,10 +6836,30 @@ function _avtCard(t){
           ${t.remarks?`<span>Remarks: ${esc(t.remarks)}</span>`:''}
           ${t.review_remarks?`<span>Review: ${esc(t.review_remarks)}${t.reject_count?` · Reshoot #${t.reject_count}`:''}</span>`:''}
         </div>
+        ${_vtCollabHtml(t)}
         <div class="vt-foot">
           ${t.submitted_link?`<a class="btn btn-ghost btn-sm" href="${esc(t.submitted_link)}" target="_blank" rel="noopener">${ic('link')} Open Video</a>`:''}
           ${histBtn}${reviewBtn}${editBtn}${editTaskBtn}${ytBtn}${notifyBtn}${delTaskBtn}
         </div></div></div>`;
+}
+function _vtCollabHtml(t){
+  if(!t||!t.is_collab) return '';
+  const chips=(t.collab_teachers||[]).map(c=>
+    c.verified
+      ? `<span class="vt-pill" style="background:rgba(22,163,74,.15);color:#16a34a">${ic('check')} ${esc(c.name)} · Approved</span>`
+      : `<button class="btn btn-ghost btn-sm" style="padding:3px 10px" onclick="vtVerifyTeacher(${t.id},${c.id},'${esc(String(c.name)).replace(/'/g,'')}')">${ic('check')} Verify ${esc(c.name)}</button>`
+  ).join(' ');
+  const overall=t.collab_all_verified
+    ? `<span class="vt-pill" style="background:rgba(22,163,74,.15);color:#16a34a;margin-left:6px">All Approved</span>`
+    : `<span class="vt-pill" style="background:rgba(220,38,38,.12);color:#dc2626;margin-left:6px">Not completed — verify pending</span>`;
+  return `<div style="margin-top:8px;padding:9px 11px;background:var(--primary-50);border-radius:10px"><div style="font-size:.72rem;font-weight:700;color:var(--text-muted);margin-bottom:7px">COLLAB TEACHERS ${overall}</div><div style="display:flex;flex-wrap:wrap;gap:7px">${chips}</div></div>`;
+}
+async function vtVerifyTeacher(taskId,teacherId,name){
+  try{
+    const r=await api('/api/admin/video-tasks/'+taskId+'/verify-teacher','POST',{teacher_id:teacherId,verified:true});
+    toast((name||'Teacher')+(r.all_verified?' verified — all approved!':' verified.'));
+    if(typeof loadAVTasks==='function') loadAVTasks();
+  }catch(e){ toast(e.message||'Could not verify',true); }
 }
 
 let _urgF={teacher:'',channel:'',type:'',status:''};
@@ -7241,6 +7262,9 @@ async function openVTAssign(proposalId){
   const preStream=(pre&&pre.streaming)||'';
   const taskForm=`<div class="form-grid vt-form">
       <div class="form-group"><label>Teacher</label><select id="vt-f-teacher" class="input">${tOpts}</select></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Collaborate with (optional)</label>
+        <div style="font-size:.72rem;color:var(--text-muted);margin:-2px 0 6px">Selected teachers ko bhi yahi task unke portal par dikhega. Production manager sabko alag verify karega.</div>
+        <div id="vt-f-collab" style="display:flex;flex-wrap:wrap;gap:8px;max-height:130px;overflow:auto;padding:8px;border:1px solid var(--border);border-radius:10px">${_vtTeachers.map(t=>`<label style="display:flex;align-items:center;gap:6px;font-size:.84rem;background:var(--primary-50);padding:5px 11px;border-radius:8px;cursor:pointer"><input type="checkbox" class="vt-collab-cb" value="${t.pid}"> ${esc(t.name)}</label>`).join('')}</div></div>
       <div class="form-group"><label>YouTube Channel</label><select id="vt-f-channel" class="input"><option value="">— Select channel —</option>${cOpts}</select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Streaming</label><select id="vt-f-stream" class="input" onchange="_vtFilterTypes('vt-f-stream','vt-f-type',_vtTypes)"><option value="" ${preStream?'':'selected'}>— Not set —</option><option value="recorded" ${preStream==='recorded'?'selected':''}>Recorded</option><option value="live" ${preStream==='live'?'selected':''}>Live</option></select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Video Type</label><select id="vt-f-type" class="input">${_vtTypeOptsHtml(_vtTypes,preStream,pre?pre.video_type:'')}</select></div>
@@ -7311,6 +7335,9 @@ function _vtProjectForm(){
       <div class="form-group" style="grid-column:1/-1"><label>Teacher</label>
         <div id="vtp-autot" class="vtp-auto">Select a subject — the teacher will be fetched automatically, or choose manually below</div>
         <select id="vtp-teacher" class="input" style="margin-top:7px">${tOpts}</select></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Collaborate with (optional)</label>
+        <div style="font-size:.72rem;color:var(--text-muted);margin:-2px 0 6px">Selected teachers ko bhi ye project unke portal par dikhega. Production manager sabko alag verify karega.</div>
+        <div id="vtp-collab" style="display:flex;flex-wrap:wrap;gap:8px;max-height:130px;overflow:auto;padding:8px;border:1px solid var(--border);border-radius:10px">${_vtTeachers.map(t=>`<label style="display:flex;align-items:center;gap:6px;font-size:.84rem;background:var(--primary-50);padding:5px 11px;border-radius:8px;cursor:pointer"><input type="checkbox" class="vtp-collab-cb" value="${t.pid}"> ${esc(t.name)}</label>`).join('')}</div></div>
       <div class="form-group" style="grid-column:1/-1"><label>Project Title (optional)</label><input id="vtp-title" class="input" placeholder="Auto: Project — {Subject}"></div>
       <div class="form-group" style="grid-column:1/-1"><label>Connect to timetable / syllabus chapters</label>
         <select id="vtp-connect" class="input" onchange="vtpConnectToggle()">
@@ -7429,6 +7456,7 @@ async function vtProjectSave(proposalId){
   const items=connect?[]:[...document.querySelectorAll('#vtp-items .vtp-itm')].map(i=>i.value.trim()).filter(Boolean);
   const payload={subject:gv('vtp-subject').trim(),class_level:gv('vtp-class'),
     teacher_id:+gv('vtp-teacher')||0,title:gv('vtp-title').trim(),connect,items,
+    collab_teacher_ids:[].slice.call(document.querySelectorAll('.vtp-collab-cb:checked')).map(c=>+c.value).filter(Boolean),
     chapter_scope:connect?(gv('vtp-scope')||'pe'):'',
     weekly_quota:+gv('vtp-quota')||0,weekly_day:gv('vtp-day'),
     deadline:gv('vtp-deadline'),remarks:gv('vtp-remarks').trim(),
@@ -7444,12 +7472,13 @@ async function vtProjectSave(proposalId){
 }
 async function vtAssignSave(proposalId){
   const teacher_id=+document.getElementById('vt-f-teacher').value;
+  const collab_teacher_ids=[].slice.call(document.querySelectorAll('.vt-collab-cb:checked')).map(c=>+c.value).filter(id=>id&&id!==teacher_id);
   const title=document.getElementById('vt-f-title').value.trim();
   const channel_id=+document.getElementById('vt-f-channel').value||null;
   const deadline=document.getElementById('vt-f-deadline').value;
   if(!teacher_id||!title){ toast('Teacher and title are required'); return; }
   if(!deadline){ toast('Please set a deadline'); return; }
-  const payload={teacher_id,title,channel_id,deadline,
+  const payload={teacher_id,title,channel_id,deadline,collab_teacher_ids,
     video_type:(document.getElementById('vt-f-type')||{}).value||'',
     streaming:(document.getElementById('vt-f-stream')||{}).value||'',
     thumbnail_b64:window._vtThumbB64||null,
