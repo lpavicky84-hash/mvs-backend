@@ -4736,6 +4736,7 @@ def admin_exams(db: Session = Depends(get_db), _=Depends(get_admin)):
                                           ExamAttempt.status == "graded").count()
         out.append({"id": e.id, "title": e.title, "subject": e.subject, "chapter": e.chapter,
                     "teacher_name": e.teacher_name, "test_type": e.test_type, "medium": e.medium,
+                    "class_name": getattr(e, "class_name", "") or "",
                     "total_marks": e.total_marks, "duration_min": e.duration_min,
                     "questions": nq, "attempts": na, "graded": ng,
                     "scheduled_at": e.scheduled_at.isoformat() if getattr(e, "scheduled_at", None) else None,

@@ -2356,11 +2356,11 @@ async function loadTDpp(){
   try{
     const d=await api('/api/teacher/dpp-packs');
     window._dppPacks=d.packs||[];
-    window._tDppSub=window._tDppSub||'all';
+    if(window._tDppSub===undefined) window._tDppSub='';   // pehle sirf cards; koi auto-select nahi
     _renderTDpp();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
-function tDppSubPick(s){ window._tDppSub=s; _renderTDpp(); }
+function tDppSubPick(s){ window._tDppSub=(window._tDppSub===s?'':s); _renderTDpp(); }
 function tDppSubPickIdx(i){
   const subs=[...new Set((window._dppPacks||[]).map(pk=>pk.subject||'General'))].sort();
   tDppSubPick(subs[i]||'all');
@@ -2395,27 +2395,32 @@ function _tDppCardHTML(pk){
 function _renderTDpp(){
   const el=document.getElementById('t-dpp-content'); if(!el) return;
   const packs=window._dppPacks||[];
-  const sel=window._tDppSub||'all';
+  const sel=window._tDppSub||'';
   const bySub={};
   packs.forEach(pk=>{ const s=pk.subject||'General'; (bySub[s]=bySub[s]||[]).push(pk); });
   const subs=Object.keys(bySub).sort();
-  const list=sel==='all'?packs:(bySub[sel]||[]);
+  const list=sel===''?[]:(sel==='all'?packs:(bySub[sel]||[]));
   const totSub=l=>l.reduce((a,pk)=>a+(pk.submitted||0),0);
   const cards=list.map(_tDppCardHTML).join('');
-  el.innerHTML=`<div class="card" style="margin-bottom:16px;border:1.5px solid rgba(184,148,31,.3)"><div class="card-body" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+  const header=`<div class="card" style="margin-bottom:16px;border:1.5px solid rgba(184,148,31,.3)"><div class="card-body" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
     <div style="font-size:1.8rem">&#128221;</div>
     <div style="flex:1;min-width:220px"><h3 style="margin:0 0 3px">Daily Practice Problems</h3>
     <p style="margin:0;font-size:.78rem;color:var(--text-muted)">Connected to the timetable — pick a subject, chapter and part to create or upload a DPP. Students see questions instantly; solutions unlock after submission.</p></div>
     <button class="btn btn-primary btn-sm" onclick="openCreateDpp()">${ic('plus')} Create DPP</button>
     <button class="btn btn-ghost btn-sm" onclick="openUploadDpp()">${ic('upload')} Upload DPP</button>
-  </div></div>`
-  +(packs.length? `<div class="dps-grid" style="margin-bottom:16px">`
+  </div></div>`;
+  if(!packs.length){
+    el.innerHTML=header+`<div class="card"><div class="card-body ws-empty"><div class="big">&#128221;</div><p><b>No DPP yet</b></p><small>Use Create DPP (question editor) or Upload DPP (question + solution PDFs) — both are linked to the timetable chapter and part.</small></div></div>`;
+    return;
+  }
+  const grid=`<div class="dps-grid" style="margin-bottom:16px">`
     +`<div class="dps-card ${sel==='all'?'open':''}" onclick="tDppSubPick('all')"><div class="dps-name">All Subjects</div><div class="dps-count">${packs.length} DPP${packs.length===1?'':'s'} \u00b7 ${totSub(packs)} submissions</div><div class="dps-tick">${sel==='all'?'\u25b2':'\u25bc'}</div></div>`
     +subs.map((s,i)=>{const l=bySub[s];return `<div class="dps-card ${sel===s?'open':''}" onclick="tDppSubPickIdx(${i})"><div class="dps-name">${esc(s)}</div><div class="dps-count">${l.length} DPP${l.length>1?'s':''} \u00b7 ${totSub(l)} submission${totSub(l)===1?'':'s'}</div><div class="dps-tick">${sel===s?'\u25b2':'\u25bc'}</div></div>`;}).join('')
-    +`</div>`
-    +`<div style="font-size:.74rem;font-weight:800;color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase;margin:2px 0 10px">${sel==='all'?'All DPPs':esc(sel)+' \u00b7 '+list.length+' DPP'+(list.length===1?'':'s')}</div>`
-    :'')
-  +`${cards||'<div class="card"><div class="card-body ws-empty"><div class="big">&#128221;</div><p><b>No DPP yet</b></p><small>Use Create DPP (question editor) or Upload DPP (question + solution PDFs) — both are linked to the timetable chapter and part.</small></div></div>'}`;
+    +`</div>`;
+  const body=(sel==='')
+    ? `<div class="card"><div class="card-body ws-empty"><p style="margin:0;color:var(--text-muted)">Select a subject above to see its DPPs.</p></div></div>`
+    : `<div style="font-size:.74rem;font-weight:800;color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase;margin:2px 0 10px">${sel==='all'?'All DPPs':esc(sel)+' \u00b7 '+list.length+' DPP'+(list.length===1?'':'s')}</div>`+(cards||'<div class="card"><div class="card-body ws-empty"><p>No DPP in this subject.</p></div></div>');
+  el.innerHTML=header+grid+body;
 }
 async function dppDl(pid,kind){
   try{
@@ -4785,29 +4790,36 @@ async function loadATests(){
   try{
     const rows=await api('/api/admin/exams');
     window._aTestsRows=rows||[];
-    window._aTestSub=window._aTestSub||'all';
+    if(window._aTestSub===undefined) window._aTestSub='';   // pehle sirf cards; koi auto-select nahi
+    if(window._aTestClass===undefined) window._aTestClass='all';
     _renderATests();
   }catch(e){
     el.innerHTML=`<div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic('clipboard')}</div><p><b>The Tests Tracker needs one small backend endpoint</b></p><small>Once <code>GET /api/admin/exams</code> is added, all tests with submission tracking appear here, subject-wise.<br>Ready-made code: <b>mvs_backend_exam_update.py</b> — paste it at the end of admin_routes.py and redeploy.</small></div></div></div>`;
   }
 }
-function aTestSubPick(s){ window._aTestSub=s; _renderATests(); }
+function aTestSubPick(s){ window._aTestSub=(window._aTestSub===s?'':s); _renderATests(); }
 function _renderATests(){
   const el=document.getElementById('a-tests-content'); if(!el)return;
-  const rows=window._aTestsRows||[];
-  const sel=window._aTestSub||'all';
+  const allRows=window._aTestsRows||[];
+  const cls=window._aTestClass||'all';
+  const _cd=cn=>{ const m=String(cn||'').match(/(10|12)/); return m?m[1]:''; };   // "Class 10" -> "10"
+  // class filter: "" (sabhi classes waala test) har filter me dikhta hai
+  const rows=cls==='all'?allRows:allRows.filter(e=>{ const d=_cd(e.class_name); return d===''||d===cls; });
+  const sel=window._aTestSub||'';
   const bySub={};
   rows.forEach(e=>{ const s=e.subject||'General'; (bySub[s]=bySub[s]||[]).push(e); });
   const subs=Object.keys(bySub).sort();
   const _stat=l=>({t:l.length,s:l.reduce((a,e)=>a+(e.attempts||0),0),g:l.reduce((a,e)=>a+(e.graded||0),0)});
-  const selList=sel==='all'?rows:(bySub[sel]||[]);
-  const st=_stat(selList);
+  const selList=sel===''?[]:(sel==='all'?rows:(bySub[sel]||[]));
+  const st=_stat(sel===''?rows:selList);
   const _testRow=e=>{
     const sch=spSchedOf(e);
     return `<div class="today-row"><div><div class="tr-sub">${esc(e.title||'')}</div><div class="tr-topic">${esc(e.teacher_name||'')}${spCleanCh(e.chapter)?' \u00b7 '+esc(spCleanCh(e.chapter)):''} \u00b7 ${e.questions||0} Qs \u00b7 ${e.total_marks||0} marks \u00b7 ${e.duration_min?e.duration_min+' min':'No time limit'}${sch?' \u00b7 '+spSchedFmt(sch):''}</div></div><div class="tmeta"><span class="tstatus">${e.attempts||0} submitted</span><span class="tstatus ${(e.graded||0)>0?'done':''}">${e.graded||0} evaluated</span><span class="tstatus" style="color:#b45309">${Math.max(0,(e.attempts||0)-(e.graded||0))} pending</span>${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'admin')">${ic('chart')} Ranking</button>`:''}</div></div>`;
   };
   const _sec=(sub,list)=>`<div class="card"><div class="card-header"><h3>${esc(sub)}</h3><span class="tx-pill nv">${list.length} test${list.length>1?'s':''}</span></div><div class="card-body">${list.map(_testRow).join('')}</div></div>`;
+  const clsPill=(v,lbl)=>`<button class="btn ${cls===v?'btn-primary':'btn-ghost'} btn-sm" onclick="aTestClassPick('${v}')">${lbl}</button>`;
   el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests Tracker</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Subject-wise all tests · live submission tracking</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-danger btn-sm" onclick="orphanCleanup()">${ic('trash')} Clean Old Data</button><button class="btn btn-ghost btn-sm" onclick="loadATests()">${ic('refresh')} Refresh</button></div></div>`
+    +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 14px;align-items:center"><span style="font-size:.74rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Class</span>${clsPill('all','All Classes')}${clsPill('10','Class 10')}${clsPill('12','Class 12')}</div>`
     +`<div class="tx-stats">`
     +`<div class="tx-stat"><b style="color:#c2410c">${st.t}</b><span>Total tests</span></div>`
     +`<div class="tx-stat"><b>${st.s}</b><span>Submissions</span></div>`
@@ -4817,9 +4829,12 @@ function _renderATests(){
       +`<div class="dps-card ${sel==='all'?'open':''}" onclick="aTestSubPick('all')"><div class="dps-name">All Subjects</div><div class="dps-count">${rows.length} test${rows.length===1?'':'s'} \u00b7 ${_stat(rows).s} submissions</div><div class="dps-tick">${sel==='all'?'\u25b2':'\u25bc'}</div></div>`
       +subs.map((s,i)=>{const l=bySub[s];const ss=_stat(l);return `<div class="dps-card ${sel===s?'open':''}" onclick="aTestSubPickIdx(${i})"><div class="dps-name">${esc(s)}</div><div class="dps-count">${l.length} test${l.length>1?'s':''} \u00b7 ${ss.s} submission${ss.s===1?'':'s'}</div><div class="dps-tick">${sel===s?'\u25b2':'\u25bc'}</div></div>`;}).join('')
       +`</div>`
-      +(sel==='all'? subs.map(sub=>_sec(sub,bySub[sub])).join('') : _sec(sel,selList))
-      : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests yet</b><p>Tests from teachers will appear here, subject-wise.</p></div>`);
+      +(sel===''
+        ? `<div class="card"><div class="card-body ws-empty"><p style="margin:0;color:var(--text-muted)">Select a subject above to see its tests.</p></div></div>`
+        : (sel==='all'? subs.map(sub=>_sec(sub,bySub[sub])).join('') : _sec(sel,selList)))
+      : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests${cls==='all'?'':' for Class '+cls}</b><p>Tests from teachers will appear here, subject-wise.</p></div>`);
 }
+function aTestClassPick(c){ window._aTestClass=c; window._aTestSub=''; _renderATests(); }
 function aTestSubPickIdx(i){
   const rows=window._aTestsRows||[];
   const subs=[...new Set(rows.map(e=>e.subject||'General'))].sort();
@@ -10163,7 +10178,8 @@ async function loadSTimetable(){
  // scaffolding sirf pehli baar — revisit par sections apni jagah silently update hote hain (no blank flash)
  if(!document.getElementById('s-tline-wrap')) el.innerHTML=`<div id="s-rec-wrap"></div><div id="s-verify-wrap"></div><div id="s-tline-wrap"></div>`;
  _loadRecordedSubjects();
- _loadPendingVerifications();
+ /* verify-lectures "Lectures to Complete" list hata di — isse timetable neeche chala jaata
+    tha. Ab timetable seedha dikhta hai; lecture completion/XP Syllabus Tracker se hoti hai. */
  try{ const p=await api('/api/student/profile'); window._sBatch=p.batch_name||p.batch||'Lakshya'; window._sClass=p.class_level||'12'; }catch(e){ window._sBatch='Lakshya'; window._sClass='12'; }
  // build subject -> teacher photo map (progress marker)
  window._sttTeacherMap={};
@@ -10235,7 +10251,7 @@ function openSubjectMaterials(encSub){
     const meta=catMeta[cat]||{icon:'folder',badge:'sc-amber'};
     const items=byCat[cat];
     html+=`<div class="mat-cat"><div class="mat-cat-head"><div class="mc-badge ${meta.badge}">${ic(meta.icon)}</div>${esc(cat)}<span class="mc-count">${items.length} file${items.length>1?'s':''}</span></div><div class="mat-twrap"><table class="mat-table mat-2col"><thead><tr><th>Chapter / Title</th><th style="text-align:right">Download</th></tr></thead><tbody>`;
-    items.forEach(m=>{ const fname=m.filename||((m.title||cat)+'.pdf'); const isNew=window._sMatNew&&window._sMatNew.has(m.id); html+=`<tr class="${isNew?'mt-row-new':''}" onclick="_matRowSeen('student',this,${m.id})"><td class="mat-ch">${esc(m.chapter||m.title||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}</td><td class="mat-dl-cell"><button class="btn btn-primary btn-sm" onclick="downloadMaterial('student',${m.id},'${esc(fname).replace(/'/g,'')}')">${ic('download')} Download</button></td></tr>`; });
+    items.forEach(m=>{ const fname=m.filename||((m.title||cat)+'.pdf'); const isNew=window._sMatNew&&window._sMatNew.has(m.id); const _sub=[m.part?esc(m.part):'', (m.title&&m.title!==m.chapter)?esc(m.title):''].filter(Boolean).join(' \u00b7 '); html+=`<tr class="${isNew?'mt-row-new':''}" onclick="_matRowSeen('student',this,${m.id})"><td class="mat-ch">${esc(m.chapter||m.title||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}${_sub?`<div class="mt-sub" style="font-size:.72rem;color:var(--text-muted);margin-top:2px">${_sub}</div>`:''}</td><td class="mat-dl-cell"><button class="btn btn-primary btn-sm" onclick="downloadMaterial('student',${m.id},'${esc(fname).replace(/'/g,'')}')">${ic('download')} Download</button></td></tr>`; });
     html+=`</tbody></table></div></div>`;
   });
   // DPP section ke packs — part-wise alag rows, whole-chapter ki 1 row
@@ -10299,6 +10315,7 @@ function sDppCardToggle(pid,ev){
 function sDppSubject(i){
   const minimize=(window._sDppOpen===i);
   window._sDppOpen=minimize?-1:i;  // open card pe dobara click = minimize
+  window._sDppOpenSub=minimize?'':(((window._sDppGroups||[])[i]||{}).subject||'');  // back pe yaad rahe
   (window._sDppGroups||[]).forEach((g,j)=>{
     const card=document.getElementById(`dps-${j}`), sec=document.getElementById(`dps-sec-${j}`);
     const open=(!minimize&&j===i);
@@ -10332,10 +10349,13 @@ async function _loadSDppReal(){
       groups.forEach(g=>{ g.latestId=g.items[0].id; g.newPending=!g.items[0].submitted;
         g.done=g.items.filter(x=>x.submitted).length; });
       window._sDppGroups=groups;
-      // kaunsa subject khula rahe: open panel wala subject, warna nayi unsubmitted DPP wala, warna pehla
-      let openIdx=groups.findIndex(g=>g.newPending); if(openIdx<0) openIdx=0;
+      // Koi subject auto-select NAHI — pehle sirf cards dikhte hain. Card click karne par
+      // hi us subject ki DPP list khulti hai. Selected subject naam se yaad rehta hai, isliye
+      // DPP dekh ke back karne par 1st subject par reset nahi hota.
+      let openIdx=-1;
+      if(window._sDppOpenSub){ openIdx=groups.findIndex(g=>g.subject===window._sDppOpenSub); if(openIdx<0) window._sDppOpenSub=''; }
       const _op=window._sDppOpenPid||0;
-      if(_op){ const _gi=groups.findIndex(g=>g.items.some(x=>x.id===_op)); if(_gi>=0) openIdx=_gi; }
+      if(_op){ const _gi=groups.findIndex(g=>g.items.some(x=>x.id===_op)); if(_gi>=0){ openIdx=_gi; window._sDppOpenSub=groups[_gi].subject; } }
       window._sDppOpen=openIdx;
       // open panel ho to subject grid + baaki cards hide — sirf expanded DPP dikhti hai
       const openPid0=window._sDppOpenPid||0;
@@ -12673,7 +12693,7 @@ function renderStudentNode(item, st, tmap, opts, ongoing){
       else if(p.cooling){ verifyBtn=`<button class="btn btn-ghost btn-sm stl-act" disabled title="Too many wrong tries \u2014 try again shortly">Try later</button>`; }
       else{ verifyBtn=`<button class="btn btn-success btn-sm stl-act" onclick="markLectureDone(${p.lecture_id})">Mark Done</button>`; }
     }
-    const acts=_hasAct?`${opts.onEditAny?`<button class="btn btn-ghost btn-sm stl-act" onclick="${opts.onEditAny}(${p.id})">${ic('edit')}</button>`:''}${opts.onEdit?`<button class="btn btn-ghost btn-sm stl-act" onclick="openEditTopic(${p.id},'${encodeURIComponent(p.part||'')}')">${ic('edit')}</button>`:''}${opts.onComplete&&!p.completed?`<button class="btn btn-success btn-sm stl-act" onclick="${opts.onComplete}(${p.id})">Class Report</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${p.id})">${ic('trash')}</button>`:''}${opts.onReport?_crChipHTML(p.id):''}`:verifyBtn;
+    const acts=_hasAct?`${opts.onEditAny?`<button class="btn btn-ghost btn-sm stl-act" onclick="${opts.onEditAny}(${p.id})">${ic('edit')}</button>`:''}${opts.onEdit?`<button class="btn btn-ghost btn-sm stl-act" onclick="openEditTopic(${p.id},'${encodeURIComponent(p.part||'')}')">${ic('edit')}</button>`:''}${opts.onComplete&&!p.completed?`<button class="btn btn-success btn-sm stl-act" onclick="${opts.onComplete}(${p.id})">Class Report</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${p.id})">${ic('trash')}</button>`:''}${opts.onReport?_crChipHTML(p.id):''}`:'';
     return `<div class="stl-part"><span class="stl-pdot ${pst}">${pst==='done'?'✓':''}</span><div class="stl-pname">${esc(p.part||'Full chapter')}</div><div class="stl-pright"><div class="stl-ptime">${p.date?fmtNice(p.date)+(p.day?' · '+esc(p.day):''):''}${p.time?'<br>'+esc(p.time):''}</div><span class="stl-pbadge ${pst}">${plbl}</span>${acts}</div></div>`; }).join('');
   const stlbl=st==='done'?'DONE':(ongoing?'ONGOING CHAPTER':(st==='progress'?'IN PROGRESS':(st==='current'?'ONGOING CHAPTER':'UPCOMING')));
   return `<div class="stl-node ${st}${ongoing?' ongoing':''}">${dot}<div class="stl-card chapter ${open?'open':''}${ongoing?' ongoing':''}" id="${id}"><div class="stl-chead" onclick="document.getElementById('${id}').classList.toggle('open')"><div class="stl-cname"><span class="stl-arrow">${open?'▾':'›'}</span>${esc(item.chapter)}</div><div class="stl-cmeta"><span class="stl-badge ${ongoing?'ongoing':st}">${stlbl}</span><span class="cnt-badge dark">${parts.length} part${parts.length>1?'s':''}</span></div></div><div class="stl-parts">${partsHtml}</div></div></div>`;
@@ -13046,6 +13066,45 @@ async function processExcel(){
   }catch(e){ status.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; toast('Error: '+e.message,true); btn.disabled=false; btn.textContent='Import Students'; }
 }
 try{injectNavIcons();injectTopbarIcons();}catch(e){}
+try{initNavCollapse();}catch(e){}
+function initNavCollapse(){
+  // Collapsible sidebar — admin/teacher/student sabhi portals. HTML/CSS file chhue bina yahin
+  // se style inject + har topbar me ek toggle button. State localStorage me yaad rehta hai.
+  // Desktop (>=900px) par collapse; mobile par pehle se hamburger/off-canvas hai isliye chhoda.
+  if(!document.getElementById('navcol-css')){
+    var css=document.createElement('style'); css.id='navcol-css';
+    css.textContent=[
+      '.navcol-btn{background:none;border:none;cursor:pointer;padding:8px;margin-right:4px;border-radius:9px;display:none;align-items:center;color:var(--text)}',
+      '@media(min-width:900px){.navcol-btn{display:inline-flex}}',
+      '.navcol-btn:hover{background:var(--primary-50)}',
+      '.dark .navcol-btn:hover{background:rgba(255,255,255,.08)}',
+      '@media(min-width:900px){',
+      '  .app.nav-collapsed .sidebar{width:68px}',
+      '  .app.nav-collapsed .main{margin-left:68px;width:calc(100% - 68px)}',
+      '  .app.nav-collapsed .sidebar-logo{justify-content:center;padding-left:0;padding-right:0;gap:0}',
+      '  .app.nav-collapsed .sidebar-logo>div:not(.logo-icon){display:none}',
+      '  .app.nav-collapsed .nav-section{font-size:0;padding-top:12px;padding-bottom:4px}',
+      '  .app.nav-collapsed .nav-item{justify-content:center;gap:0;margin:2px 10px;padding-left:0;padding-right:0}',
+      '  .app.nav-collapsed .nav-item>span:not(.badge){display:none}',
+      '  .app.nav-collapsed .nav-item .badge{right:6px;top:4px}',
+      '  .app.nav-collapsed .sidebar-bottom .user-info{justify-content:center}',
+      '  .app.nav-collapsed .sidebar-bottom .user-info>div:not(.avatar){display:none}',
+      '}'
+    ].join('\n');
+    document.head.appendChild(css);
+  }
+  var collapsed=false; try{ collapsed=localStorage.getItem('mvs_nav_collapsed')==='1'; }catch(e){}
+  document.querySelectorAll('.app').forEach(function(app){
+    app.classList.toggle('nav-collapsed',collapsed);
+    var tb=app.querySelector('.topbar');
+    if(tb && !tb.querySelector('.navcol-btn')){
+      var b=document.createElement('button'); b.type='button'; b.className='navcol-btn'; b.title='Collapse or expand the menu';
+      b.innerHTML='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>';
+      b.onclick=function(){ var c=app.classList.toggle('nav-collapsed'); try{ localStorage.setItem('mvs_nav_collapsed',c?'1':'0'); }catch(e){} };
+      tb.insertBefore(b,tb.firstChild);
+    }
+  });
+}
 function errHtml(e){ return `<div class="alert alert-danger"> ${esc(e.message)}<br><small>If this keeps happening, the backend may be asleep — refresh after 30–60 seconds.</small></div>`; }
 
 // ============================================================
