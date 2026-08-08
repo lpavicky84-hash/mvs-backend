@@ -1892,8 +1892,9 @@ def teacher_dpp_pack_file(pack_id: int, kind: str = "q", db: Session = Depends(g
     if not blob:
         raise HTTPException(status_code=404, detail="File not generated")
     fname = (pk.title or "DPP").replace("/", "-") + ("-solutions.pdf" if kind == "s" else "-questions.pdf")
-    return Response(content=base64.b64decode(blob), media_type="application/pdf",
-                    headers={"Content-Disposition": 'attachment; filename="%s"' % fname})
+    # R2 URL ho to server-side stream (viewer same-origin fetch chalega, crash nahi);
+    # base64 ho to decode. Dono safe.
+    return __import__("r2_storage").proxy_response(blob, "application/pdf", fname, True)
 
 
 @router.post("/dpp-answers/{answer_id}/check")

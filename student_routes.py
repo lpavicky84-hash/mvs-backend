@@ -2382,9 +2382,9 @@ def student_dpp_file(pack_id: int, kind: str = "q", med: str = "", db: Session =
     if not blob:
         raise HTTPException(status_code=404, detail="File not available")
     fname = (pk.title or "DPP").replace("/", "-") + ("-solutions.pdf" if kind == "s" else "-questions.pdf")
-    # R2 migration ke baad blob ek URL ho sakta hai -> file_response redirect karega,
-    # base64 ho to decode karega (dono safe).
-    return __import__("r2_storage").file_response(blob, "application/pdf", fname, True)
+    # R2 URL ho to server-side stream (viewer ka fetch same-origin rahe, CORS na aaye);
+    # base64 ho to decode. Dono safe.
+    return __import__("r2_storage").proxy_response(blob, "application/pdf", fname, True)
 
 
 @router.get("/batch-board")

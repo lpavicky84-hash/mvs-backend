@@ -145,6 +145,36 @@ def file_response(value, media_type="application/octet-stream", filename=None, d
     return Response(content=_b64.b64decode(v), media_type=media_type, headers=headers)
 
 
+def proxy_response(value, media_type="application/octet-stream", filename=None, download=True):
+    """Inline viewer / same-origin ke liye: R2 URL ho to server-side fetch karke bytes
+    STREAM karo (cross-origin fetch/CORS ki dikkat nahi aayegi, aur URL pe b64decode crash
+    bhi nahi). Base64 ho to decode. Fetch fail ho to redirect fallback. Empty -> 404."""
+    from fastapi import HTTPException, Response
+    if not value:
+        raise HTTPException(status_code=404, detail="Not found")
+    if isinstance(value, str) and value.startswith("http"):
+        try:
+            import urllib.request
+            req = urllib.request.Request(value, headers={"User-Agent": "mvs-proxy"})
+            with urllib.request.urlopen(req, timeout=25) as r:
+                data = r.read()
+        except Exception:
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url=value, status_code=302)
+    else:
+        import base64 as _b64
+        v = value.split(",")[-1] if isinstance(value, str) else value
+        try:
+            data = _b64.b64decode(v)
+        except Exception:
+            raise HTTPException(status_code=400, detail="File could not be read")
+    headers = {}
+    if filename:
+        disp = "attachment" if download else "inline"
+        headers["Content-Disposition"] = '%s; filename="%s"' % (disp, filename)
+    return Response(content=data, media_type=media_type, headers=headers)
+
+
 def normalize(value, prefix, content_type="application/octet-stream"):
     """Store-time helper: base64/dataURL -> R2 par upload -> URL return.
     Agar pehle se http URL hai -> waise hi. None/empty -> waise hi.
