@@ -239,9 +239,9 @@ function _setFavicon(){
   }catch(e){}
 }
 try{ _setFavicon(); }catch(e){}
-// Sirf /teacher aur /admin par default 3-card chooser turant chhupa do (login dikhana hai).
-// Root '/' par chooser waise hi dikhna chahiye (student ka original entry) — isliye chhupate nahi.
-try{ var _pf0=_portalFromPath(); if(_pf0==='teacher'||_pf0==='admin'){ var _ld0=document.getElementById('landing'); if(_ld0) _ld0.style.display='none'; } }catch(e){}
+// Login dikhana ho (student/teacher/admin) to default 3-card chooser turant chhupa do — flash na aaye.
+// Sirf /portal par chooser dikhta hai.
+try{ var _pf0=_portalFromPath(); if(_pf0!=='landing'){ var _ld0=document.getElementById('landing'); if(_ld0) _ld0.style.display='none'; } }catch(e){}
 
 // ---- Portal <-> URL mapping ----
 var _AUTH_META={
@@ -257,9 +257,10 @@ function _portalFromPath(){
   var p=(location.pathname||'/').replace(/\/+$/,'')||'/';
   if(p==='/teacher') return 'teacher';
   if(p==='/admin')   return 'admin';
-  // '/', '/student', '/portal' aur baaki sab -> ORIGINAL 3-card chooser.
-  // Student ka flow/URL (app.mvsfoundation.in) bilkul waisa ka waisa (approved template).
-  return 'landing';
+  if(p==='/portal')  return 'landing';   // /portal -> 3-card chooser (optional / backward compat)
+  // '/', '/student' aur baaki sab -> SEEDHA Student portal (root pe sirf student dikhta hai).
+  // Student ka LOGIN/template original hi rehta hai (premium sirf teacher/admin par).
+  return 'student';
 }
 
 // ---- Premium login: brand logo + role tag + portal switcher (teeno portals) ----
@@ -413,8 +414,9 @@ function _xhrJson(url,payload,onProgress){
 //  NAVIGATION
 // ========================================================
 function _authReset(){ _apiBust(); _clearSession(); TOKEN=null;ROLE=null; stopCountdown(); stopStudentHeartbeat(); stopAdminLivePoll(); stopNotifPolling(); var np=document.getElementById('notif-pop'); if(np)np.remove(); document.querySelectorAll('.app').forEach(a=>a.classList.remove('active')); var ls=document.getElementById('login-screen'); if(ls) ls.classList.remove('active'); document.getElementById('subject-screen').style.display='none'; var tss=document.getElementById('t-subject-screen'); if(tss)tss.style.display='none'; var ld=document.getElementById('landing'); if(ld) ld.style.display='none'; }
-// goHome (Back / logout): sab reset karke ORIGINAL 3-card chooser dikhao (URL '/' par).
-function goHome(){ _authReset(); try{ history.replaceState({},'', '/'); }catch(e){} var ld=document.getElementById('landing'); if(ld) ld.style.display='flex'; }
+// goHome (Back / logout): usi role ke login par wapas — student -> root '/', teacher -> /teacher,
+// admin -> /admin. Role _authReset se pehle capture karte hain (wo ROLE null kar deta hai).
+function goHome(){ var p=CURRENT_PORTAL||ROLE||'student'; _authReset(); goLogin(p); }
 function goLogin(portal){
   CURRENT_PORTAL=portal;
   try{ history.replaceState({mvs:1,auth:portal},'', _portalPath(portal)); }catch(e){}
