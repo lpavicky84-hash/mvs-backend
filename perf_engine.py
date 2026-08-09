@@ -66,10 +66,16 @@ def score_from_metrics(m, cfg, team=None):
     w = cfg.get("component_weights", {})
     raw = {}   # component -> % or None
 
-    # 1) TEACHING — reported scheduled classes ka on-time (delayed = aadha)
+    # 1) TEACHING — timetable ke SCHEDULED-DUE (jitni aaj tak honi chahiye) me se kitni
+    #    on-time hui (delayed = aadha). Ratio nahi — actual volume. 0 due -> N/A.
     ot, dl = m.get("lect_ontime", 0), m.get("lect_delayed", 0)
-    done = ot + dl
-    raw["teaching"] = round(100.0 * (ot + 0.5 * dl) / done, 1) if done > 0 else None
+    sched_due = m.get("lect_scheduled_due", 0)
+    if sched_due > 0:
+        raw["teaching"] = cap_pct(100.0 * (ot + 0.5 * dl) / sched_due, cfg)
+    elif (ot + dl) > 0:
+        raw["teaching"] = round(100.0 * (ot + 0.5 * dl) / (ot + dl), 1)  # no schedule data -> ratio
+    else:
+        raw["teaching"] = None
 
     # 2) CONTENT — TARGET-based + ON-TIME (Vicky): assigned content on time hona chahiye,
     #    delayed -> decrease. content% = (ontime + 0.5*delayed) / content_target. Koi content
@@ -105,6 +111,28 @@ def score_from_metrics(m, cfg, team=None):
     # 8) VIDEO INITIATIVE — reward-based, capped. Koi approved proposal nahi -> N/A (bonus, penalty nahi)
     raw["video_initiative"] = _initiative_pct(m, cfg)
 
+    # ---- per-component detail (actual numbers) — breakdown me transparency ----
+    def _tgt_det(items):
+        parts = []
+        for it in (items or []):
+            t = it.get("target", 0)
+            if t:
+                parts.append("%d/%d" % (it.get("done", 0), t))
+        return (", ".join(parts)) if parts else "no targets set"
+    tt = m.get("tests_target", 0)
+    _det = {
+        "teaching": ("%d of %d due classes on-time" % (ot, sched_due) + (", %d late" % dl if dl else "")) if sched_due > 0
+                    else (("%d done (no timetable schedule)" % (ot + dl)) if (ot + dl) else "no scheduled classes yet"),
+        "content": ("%d on-time of %d assigned" % (co, ct) + (", %d late" % cl if cl else "")) if ct > 0
+                   else (("%d done, no target" % (co + cl)) if (co + cl) else "no content assigned"),
+        "targets": _tgt_det(m.get("target_items", [])),
+        "student_support": ("%d of %d doubts within 15h" % (don, dec)) if dec > 0 else "no doubts to resolve (full)",
+        "tests": ("%d of %d tests" % (m.get("tests_done", 0), tt)) if tt else (("%d tests" % m.get("tests_done", 0)) if m.get("tests_done", 0) else "no tests"),
+        "task_discipline": ("%d on-time of %d tasks" % (to, tot) + ((", %d late" % td) if td else "") + ((", %d missed" % tn) if tn else "")) if tot > 0 else "no tasks assigned",
+        "consistency": "%d active days" % m.get("present_days", 0),
+        "video_initiative": ("%s reward pts (%d proposals)" % (m.get("reward_points", 0), m.get("prop_approved", 0))) if (m.get("prop_approved", 0) or m.get("reward_points", 0)) else "no proposals yet",
+    }
+
     # ---- component scores (raw%/100 * weight), N/A -> excluded ----
     comp = {}
     applic_w = 0.0
@@ -113,10 +141,10 @@ def score_from_metrics(m, cfg, team=None):
         wt = float(w.get(c, 0))
         pv = raw.get(c)
         if pv is None:
-            comp[c] = {"raw": None, "weight": wt, "score": None, "na": True}
+            comp[c] = {"raw": None, "weight": wt, "score": None, "na": True, "detail": _det.get(c, "")}
         else:
             sc = round(min(pv, 110) / 100.0 * wt, 2)
-            comp[c] = {"raw": pv, "weight": wt, "score": sc, "na": False}
+            comp[c] = {"raw": pv, "weight": wt, "score": sc, "na": False, "detail": _det.get(c, "")}
             applic_w += wt
             weighted_sum += (min(pv, 110) / 100.0) * wt
     overall = round(100.0 * weighted_sum / applic_w, 1) if applic_w > 0 else 0.0
@@ -239,6 +267,34 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
     except Exception:
         pass
     m["lect_ontime"], m["lect_delayed"] = ot, dl
+
+    # ---- Scheduled classes DUE by today (timetable) — teaching ka denominator.
+    #      Future classes (jo abhi honi hain) count nahi; sirf jo ho chuki honi chahiye. ----
+    try:
+        from sqlalchemy import or_ as _orS
+        try:
+            from models import ist_today as _ist_today
+            _today = _ist_today()
+        except Exception:
+            _today = datetime.utcnow().date()
+        _cut = min(_today, (dt1.date() - timedelta(days=1)))
+        _subsL = [s for s in (tp.subjects or []) if s]
+        _condL = [TimetableEntry.teacher_id == tp.id]
+        if _subsL:
+            _condL.append(TimetableEntry.subject.in_(_subsL))
+        _rowsL = db.query(TimetableEntry).filter(
+            TimetableEntry.entry_date >= dt0.date(),
+            TimetableEntry.entry_date <= _cut,
+            _orS(*_condL)).all()
+        _due = 0
+        for e in _rowsL:
+            _tx = ((e.chapter or "") + " " + (e.part or "")).lower()
+            if ("mock" in _tx) or ("test" in _tx) or ("series" in _tx):
+                continue   # test entries teaching me nahi
+            _due += 1
+        m["lect_scheduled_due"] = _due
+    except Exception:
+        m["lect_scheduled_due"] = 0
 
     # ---- DPP (content/target) ----
     # DPPs DONE — asli chapter DATE (timetable) se scope, upload date se nahi.
@@ -426,7 +482,6 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
         {"done": vt["live"]["done"],   "target": _T("live", vt["live"]["target"]),   "units": aw.get("youtube_live", 4)},
         {"done": tests_done,           "target": _T("tests", _auto_tests),            "units": aw.get("weekly_test", 3)},
         {"done": dpp_done,             "target": _auto_dpp,                            "units": aw.get("dpp", 1)},
-        {"done": ot + dl,              "target": _auto_classes,                       "units": aw.get("class", 1)},
     ]
     m["tests_target"] = _T("tests", _auto_tests)
 

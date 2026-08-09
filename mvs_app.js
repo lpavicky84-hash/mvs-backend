@@ -2024,9 +2024,10 @@ function pfBreakdown(tid){
   const bars=PF_COMPS.map(c=>{
     const v=comps[c[0]]||{}; const na=v.na||v.score==null;
     const w=v.weight||0; const sc=na?0:(v.score||0); const pct=na?0:Math.min(100,Math.round((v.raw||0)));
+    const det=v.detail?`<div class="pfb-det">${esc(v.detail)}</div>`:'';
     return `<div class="pfb-row">
       <div class="pfb-top"><span>${esc(c[1])}</span><b class="${na?'na':''}">${na?'N/A':sc+' / '+w}</b></div>
-      <div class="pfb-bar"><div class="pfb-fill" style="width:${pct}%"></div></div></div>`;
+      <div class="pfb-bar"><div class="pfb-fill" style="width:${pct}%"></div></div>${det}</div>`;
   }).join('');
   // strong / improve (client-side)
   const applic=PF_COMPS.map(c=>[c[1],(comps[c[0]]||{})]).filter(x=>!x[1].na&&x[1].raw!=null);
@@ -2127,6 +2128,7 @@ function _ensurePfCss(){
     '.pfb-row{margin-bottom:11px}',
     '.pfb-top{display:flex;justify-content:space-between;font-size:.82rem;margin-bottom:4px}.pfb-top b.na{color:var(--text-muted);font-weight:600}',
     '.pfb-bar{height:7px;background:#eef1f8;border-radius:4px;overflow:hidden}',
+    '.pfb-det{font-size:.68rem;color:var(--text-muted);margin-top:4px}',
     '.pfb-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#e2b552,#b8941f)}',
     '.pfb-areas{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:16px 0}',
     '.pfb-h{font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);font-weight:800;margin-bottom:7px}',
