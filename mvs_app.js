@@ -289,34 +289,62 @@ function _ensureAuth2Css(){
   if(document.getElementById('mvs-auth2-css')) return;
   var st=document.createElement('style'); st.id='mvs-auth2-css';
   st.textContent=[
-    '#login-screen .a2-brand{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;margin-bottom:22px}',
-    '#login-screen .a2-logo{width:62px;height:62px;border-radius:18px;box-shadow:0 12px 30px -10px rgba(0,0,0,.5);overflow:hidden}',
-    '#login-screen .a2-logo img{width:100%;height:100%;object-fit:contain;border-radius:18px;display:block}',
-    '#login-screen .a2-title{font-size:1.55rem;font-weight:800;letter-spacing:-.02em;line-height:1.1}',
-    '#login-screen .a2-switch{margin-top:22px;padding-top:16px;border-top:1px solid var(--a2-rule);text-align:center}',
-    '#login-screen .a2-switch>span{display:block;font-size:.64rem;letter-spacing:.11em;text-transform:uppercase;opacity:.55;margin-bottom:10px}',
-    '#login-screen .a2-switch-row{display:flex;gap:8px;justify-content:center}',
-    '#login-screen .a2-pill{font-size:.78rem;font-weight:700;padding:7px 16px;border-radius:99px;cursor:pointer;transition:.18s;border:1px solid var(--a2-pill-brd);background:var(--a2-pill-bg);color:var(--a2-pill-fg)}',
+    /* ---- brand (real logo + title) ---- */
+    '#login-screen .a2-brand{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;margin-bottom:26px}',
+    '#login-screen .a2-logo{width:66px;height:66px;border-radius:19px;overflow:hidden;box-shadow:0 14px 34px -10px rgba(0,0,0,.5),0 0 0 5px rgba(226,180,88,.14)}',
+    '#login-screen .a2-logo img{width:100%;height:100%;object-fit:contain;border-radius:19px;display:block}',
+    '#login-screen .a2-title{position:relative;font-size:1.6rem;font-weight:800;letter-spacing:-.02em;line-height:1.1}',
+    '#login-screen .a2-title::after{content:"";display:block;width:46px;height:3px;margin:12px auto 0;border-radius:2px;background:linear-gradient(90deg,#e2b458,#b8941f)}',
+    /* ---- inputs: smooth + gold focus ring (dono modes) ---- */
+    '#login-screen .login-box .form-control{transition:border-color .15s ease,box-shadow .15s ease}',
+    '#login-screen .login-box .form-control:focus{border-color:#c9a227;box-shadow:0 0 0 3px rgba(201,162,39,.20);outline:none}',
+    /* ---- button: premium gold + lift ---- */
+    '#login-screen .login-btn{box-shadow:0 12px 26px -10px rgba(184,148,31,.55);transition:transform .18s ease,box-shadow .18s ease,filter .18s ease}',
+    '#login-screen .login-btn:hover{transform:translateY(-2px);box-shadow:0 18px 34px -10px rgba(184,148,31,.6);filter:brightness(1.04)}',
+    /* ---- switch pills ---- */
+    '#login-screen .a2-switch{margin-top:24px;padding-top:18px;border-top:1px solid var(--a2-rule);text-align:center}',
+    '#login-screen .a2-switch>span{display:block;font-size:.64rem;letter-spacing:.12em;text-transform:uppercase;opacity:.55;margin-bottom:11px}',
+    '#login-screen .a2-switch-row{display:flex;gap:9px;justify-content:center}',
+    '#login-screen .a2-pill{font-size:.78rem;font-weight:700;padding:8px 18px;border-radius:99px;cursor:pointer;transition:.18s;border:1px solid var(--a2-pill-brd);background:var(--a2-pill-bg);color:var(--a2-pill-fg)}',
     '#login-screen .a2-pill:hover{transform:translateY(-1px);filter:brightness(1.06)}',
-    '#login-screen.auth-light{background:radial-gradient(circle at top right,#faf6e8,#f4f1e8 45%,#ede8d8)!important;--a2-rule:#eadfc4;--a2-pill-brd:#e2d6b6;--a2-pill-bg:#f6f0dd;--a2-pill-fg:#6b550b}',
-    '#login-screen.auth-light .login-box{background:#fffdf9;border:1px solid #eadfc4;color:#2e2716;box-shadow:0 24px 60px -18px rgba(90,70,15,.28);backdrop-filter:none;-webkit-backdrop-filter:none}',
-    '#login-screen.auth-light .login-box .form-control{background:#eef1f8;border:1px solid #dfe3ee;color:#1f2937}',
+    /* ================= STUDENT — light / premium (image 4 + cream image 5) ================= */
+    '#login-screen.auth-light{--a2-rule:#eadfc4;--a2-pill-brd:#e2d6b6;--a2-pill-bg:#f6f0dd;--a2-pill-fg:#6b550b;background:radial-gradient(1100px 520px at 50% -8%,rgba(226,180,88,.22),transparent 60%),radial-gradient(circle at top right,#faf6e8,#f4f1e8 45%,#ece6d6)!important}',
+    '#login-screen.auth-light .login-box{background:linear-gradient(180deg,#fffefb,#fffdf7);border:1px solid #ece1c6;color:#2e2716;border-radius:26px;box-shadow:0 34px 80px -26px rgba(90,70,15,.38),0 6px 16px -8px rgba(90,70,15,.18);backdrop-filter:none;-webkit-backdrop-filter:none}',
+    '#login-screen.auth-light .login-box .form-control{background:#f2f0fa;border:1px solid #e2e0ee;color:#1f2937}',
     '#login-screen.auth-light .login-box .form-control::placeholder{color:#9aa2b1}',
-    '#login-screen.auth-light .login-box label{color:#6b5d33}',
+    '#login-screen.auth-light .login-box label{color:#6b5d33;font-weight:700}',
     '#login-screen.auth-light .login-box h2{color:#2e2716}',
     '#login-screen.auth-light .login-box p{color:#8a7c55}',
     '#login-screen.auth-light .a2-title{color:#2e2716}',
-    '#login-screen.auth-light .login-btn{background:linear-gradient(135deg,#d4a52a,#b8941f);color:#1a1305}',
+    '#login-screen.auth-light .login-btn{background:linear-gradient(135deg,#e2b552,#b8941f);color:#241a05}',
     '#login-screen.auth-light #login-student-phone>h2{display:none}',
-    '#login-screen.auth-console{--a2-rule:rgba(255,255,255,.1);--a2-pill-brd:rgba(255,255,255,.18);--a2-pill-bg:rgba(255,255,255,.08);--a2-pill-fg:#fff}',
-    '#login-screen.auth-console .login-box{background:#1b1a18;border:1px solid rgba(255,255,255,.08);box-shadow:0 24px 60px -18px rgba(0,0,0,.62);backdrop-filter:none;-webkit-backdrop-filter:none;max-width:410px}',
-    '#login-screen.auth-console .login-box .form-control{background:#eef1f8;border:1px solid #dfe3ee;color:#1f2937}',
+    /* ================= TEACHER / ADMIN — dark console / premium (image 6) ================= */
+    '#login-screen.auth-console{--a2-rule:rgba(255,255,255,.1);--a2-pill-brd:rgba(255,255,255,.18);--a2-pill-bg:rgba(255,255,255,.08);--a2-pill-fg:#fff;background:radial-gradient(900px 480px at 50% -10%,rgba(226,180,88,.16),transparent 60%),radial-gradient(circle at top right,#3a2f10,#241d0a 45%,#141007)!important}',
+    '#login-screen.auth-console .login-box{background:linear-gradient(180deg,#1f1d1a,#171512);border:1px solid rgba(255,255,255,.08);border-radius:24px;box-shadow:0 34px 80px -26px rgba(0,0,0,.7),0 0 0 1px rgba(226,180,88,.06);backdrop-filter:none;-webkit-backdrop-filter:none;max-width:412px}',
+    '#login-screen.auth-console .login-box .form-control{background:#f2f0fa;border:1px solid #e2e0ee;color:#1f2937}',
     '#login-screen.auth-console .login-box .form-control::placeholder{color:#9aa2b1}',
-    '#login-screen.auth-console .login-box label{color:rgba(255,255,255,.82)}',
+    '#login-screen.auth-console .login-box label{color:rgba(255,255,255,.82);font-weight:700}',
     '#login-screen.auth-console .login-box p{color:rgba(255,255,255,.55)}',
-    '#login-screen.auth-console .a2-title{color:#e2b458}',
-    '#login-screen.auth-console .login-btn{background:linear-gradient(135deg,#e2b458,#c99a3a);color:#1a1305}',
-    '#login-screen.auth-console #login-title,#login-screen.auth-console #login-subtitle{display:none}'
+    '#login-screen.auth-console .a2-title{color:#e9c169}',
+    '#login-screen.auth-console .login-btn{background:linear-gradient(135deg,#e9c169,#c99a3a);color:#221704}',
+    '#login-screen.auth-console #login-title,#login-screen.auth-console #login-subtitle{display:none}',
+    /* role badge — teacher/admin ko alag pehchan deta hai */
+    '#login-screen .a2-role-badge{display:inline-flex;align-items:center;gap:7px;margin-top:14px;padding:6px 14px;border-radius:99px;font-size:.7rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;border:1px solid;line-height:1}',
+    '#login-screen .a2-role-badge svg{width:14px;height:14px}',
+    /* TEACHER — warm amber theme + people icon */
+    '#login-screen.role-teacher{background:radial-gradient(900px 480px at 50% -10%,rgba(224,165,74,.18),transparent 60%),radial-gradient(circle at top right,#4a3a12,#2a2109 45%,#150f05)!important}',
+    '#login-screen.role-teacher .a2-title{color:#e6ad4e}',
+    '#login-screen.role-teacher .a2-title::after{background:linear-gradient(90deg,#e6ad4e,#c98a2e)}',
+    '#login-screen.role-teacher .a2-logo{box-shadow:0 14px 34px -10px rgba(0,0,0,.5),0 0 0 5px rgba(224,165,74,.18)}',
+    '#login-screen.role-teacher .login-btn{background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05}',
+    '#login-screen.role-teacher .a2-role-badge{background:rgba(224,165,74,.14);border-color:rgba(224,165,74,.5);color:#e6ad4e}',
+    /* ADMIN — gold + crimson authority theme + shield icon */
+    '#login-screen.role-admin{background:radial-gradient(900px 460px at 50% -10%,rgba(226,180,88,.16),transparent 60%),radial-gradient(1000px 420px at 50% 118%,rgba(190,60,50,.16),transparent 60%),radial-gradient(circle at top right,#3a2f14,#241a12 45%,#160c0a)!important}',
+    '#login-screen.role-admin .a2-title{color:#f0d07a}',
+    '#login-screen.role-admin .a2-title::after{background:linear-gradient(90deg,#f0d07a,#d1443a)}',
+    '#login-screen.role-admin .a2-logo{box-shadow:0 14px 34px -10px rgba(0,0,0,.5),0 0 0 5px rgba(220,70,60,.20)}',
+    '#login-screen.role-admin .login-btn{background:linear-gradient(135deg,#f0d07a,#d4a53a);color:#221704}',
+    '#login-screen.role-admin .a2-role-badge{background:rgba(220,70,60,.15);border-color:rgba(220,70,60,.5);color:#eb8f79}'
   ].join('');
   document.head.appendChild(st);
 }
@@ -325,19 +353,27 @@ function _premiumLogin(portal){
     _ensureAuth2Css();
     var scr=document.getElementById('login-screen'); if(!scr) return;
     var box=document.querySelector('#login-screen .login-box'); if(!box) return;
+    // Sabhi login sub-forms se "\u2190 Back" link hata do (teeno portals) — Vicky ne bola.
+    try{ box.querySelectorAll('p[onclick]').forEach(function(pp){ if(/goHome/.test(pp.getAttribute('onclick')||'')) pp.style.display='none'; }); }catch(e){}
     // purane gold-square version ke elements (agar hon) hata do
     var oldB=document.getElementById('mvs-auth-brand'); if(oldB) oldB.remove();
     var oldS=document.getElementById('mvs-auth-switch'); if(oldS) oldS.remove();
     scr.style.background='';                       // inline hata do — class handle karti hai
-    scr.classList.remove('auth-light','auth-console');
+    scr.classList.remove('auth-light','auth-console','role-teacher','role-admin');
     var isStudent=(portal==='student');
-    scr.classList.add(isStudent?'auth-light':'auth-console');
-    var title=isStudent?'Student Portal':(portal==='admin'?'Admin Console':'Teacher Console');
-    // brand: ASLI MVS logo + title
+    // Teacher aur Admin ko alag pehchan: alag color + icon + badge.
+    var roleUI={teacher:{title:'Teacher Console',icon:'users',badge:'Faculty Access'},
+                admin:{title:'Admin Console',icon:'shield',badge:'Administrator'}};
+    if(isStudent){ scr.classList.add('auth-light'); }
+    else { scr.classList.add('auth-console'); scr.classList.add(portal==='admin'?'role-admin':'role-teacher'); }
+    var rc=roleUI[portal];
+    var title=isStudent?'Student Portal':(rc?rc.title:'Console');
+    // brand: ASLI MVS logo + title (+ teacher/admin role badge)
     var brand=document.getElementById('mvs-auth2-brand');
     if(!brand){ brand=document.createElement('div'); brand.id='mvs-auth2-brand'; brand.className='a2-brand'; box.insertBefore(brand, box.firstChild); }
     brand.style.display='';
-    brand.innerHTML='<div class="a2-logo">'+_mvsLogoImg(62)+'</div><div class="a2-title">'+title+'</div>';
+    var badgeHtml=(isStudent||!rc)?'':('<div class="a2-role-badge">'+(typeof ic==='function'?ic(rc.icon):'')+'<span>'+rc.badge+'</span></div>');
+    brand.innerHTML='<div class="a2-logo">'+_mvsLogoImg(62)+'</div><div class="a2-title">'+title+'</div>'+badgeHtml;
     // switcher: STUDENT par nahi (clean); teacher/admin par baaki portals
     var sw=document.getElementById('mvs-auth2-switch');
     if(isStudent){ if(sw) sw.style.display='none'; return; }
