@@ -5043,7 +5043,7 @@ def orphan_data_cleanup(db: Session = Depends(get_db), _=Depends(get_admin)):
 @router.get("/dpp-rankings")
 def admin_dpp_rankings(db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import DppPack, DppAnswer, DppEvent, TeacherProfile, User as _U
-    packs = db.query(DppPack).options(defer(DppPack.q_pdf), defer(DppPack.s_pdf)).order_by(DppPack.created_at.desc()).all()
+    packs = db.query(DppPack).options(defer(DppPack.questions), defer(DppPack.q_pdf), defer(DppPack.s_pdf)).order_by(DppPack.created_at.desc()).all()
     out = []
     for pk in packs:
         subs = (db.query(DppAnswer)

@@ -1496,7 +1496,7 @@ def _dpp_pack_out(db, pk, with_counts=True):
 def teacher_dpp_packs(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import DppPack
     tp = get_teacher_profile(current_user, db)
-    packs = (db.query(DppPack).filter(DppPack.teacher_id == tp.id)
+    packs = (db.query(DppPack).options(defer(DppPack.questions), defer(DppPack.q_pdf), defer(DppPack.s_pdf)).filter(DppPack.teacher_id == tp.id)
              .order_by(DppPack.created_at.desc()).all())
     return {"packs": [_dpp_pack_out(db, pk) for pk in packs]}
 
@@ -3657,7 +3657,7 @@ def _material_tree(db, subjects=None):
     # normal material tree waisa hi rehta hai.
     try:
         from models import DppPack
-        _dpacks = db.query(DppPack).options(defer(DppPack.q_pdf), defer(DppPack.s_pdf)).filter(DppPack.source == "created").order_by(
+        _dpacks = db.query(DppPack).options(defer(DppPack.questions), defer(DppPack.q_pdf), defer(DppPack.s_pdf)).filter(DppPack.source == "created").order_by(
             DppPack.created_at.desc()).all()
         if subjects is not None:
             _allowed = set()

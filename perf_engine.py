@@ -14,6 +14,7 @@
 from datetime import datetime, date, timedelta
 import perf_config as _pc
 import time as _time
+from sqlalchemy.orm import defer
 
 # ---- Leaderboard compute cache — current month 90s (RAM/CPU/egress bachaata hai) ----
 _BOARD_CACHE = {}
@@ -338,7 +339,7 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
                 k = ((e.subject or "").strip().lower(), (e.chapter or "").strip().lower())
                 _chmap.setdefault(k, []).append(e.entry_date)
         dpp_done = 0
-        for d in db.query(DppPack).filter(DppPack.teacher_id == tp.id).all():
+        for d in db.query(DppPack).options(defer(DppPack.questions), defer(DppPack.q_pdf), defer(DppPack.s_pdf)).filter(DppPack.teacher_id == tp.id).all():
             k = ((d.subject or "").strip().lower(), (d.chapter or "").strip().lower())
             dates = _chmap.get(k)
             if dates:
@@ -572,23 +573,31 @@ def _score_all(db, month, cfg):
     from sqlalchemy.orm import defer as _defer
     from sqlalchemy import func as _func
     dt0, dt1, mkey = month_bounds(month)
-    # kaunse users ke paas photo hai — blob load kiye bina (RAM bachaao)
+    # kaun teacher ke paas photo hai — blob load kiye bina (photo TeacherProfile pe hai, User pe NAHI)
     _photo_ids = set()
     try:
-        for (uid,) in db.query(User.id).filter(User.photo_b64 != None, _func.length(User.photo_b64) > 10).all():
-            _photo_ids.add(uid)
+        for (ptid,) in db.query(TeacherProfile.id).filter(
+                TeacherProfile.photo_b64 != None, _func.length(TeacherProfile.photo_b64) > 10).all():
+            _photo_ids.add(ptid)
     except Exception:
         pass
     metricmap = {}
-    for tp in db.query(TeacherProfile).all():
+    for tp in db.query(TeacherProfile).options(_defer(TeacherProfile.photo_b64)).all():
         try:
-            u = db.query(User).options(_defer(User.photo_b64)).filter(User.id == tp.user_id).first()
+            u = db.query(User).filter(User.id == tp.user_id).first()
             if not u:
                 continue
             _w0, _w1 = _teacher_window(db, tp, dt0, dt1)   # session-mode teacher ka apna window
             metricmap[tp.id] = (tp, u, gather_metrics(db, tp, _w0, _w1, cfg))
         except Exception:
-            # ek teacher ka data kharab ho to use skip — poora board na toote
+            # ek teacher ka data kharab ho to use skip — poora board na toote.
+            # LOG bhi karo taaki Railway me exact wajah dikhe (blind na rahein).
+            try:
+                import traceback as _tb
+                print("[perf] teacher skip tid=%s:" % getattr(tp, "id", "?"))
+                _tb.print_exc()
+            except Exception:
+                pass
             try:
                 db.rollback()
             except Exception:
@@ -603,10 +612,16 @@ def _score_all(db, month, cfg):
         try:
             sc = score_from_metrics(m, cfg, team)
         except Exception:
+            try:
+                import traceback as _tb2
+                print("[perf] score skip tid=%s:" % getattr(tp, "id", "?"))
+                _tb2.print_exc()
+            except Exception:
+                pass
             continue
         rows.append({
             "teacher_id": tp.id, "name": u.name or "", "user_id": u.user_id or "",
-            "has_photo": (u.id in _photo_ids),
+            "has_photo": (tp.id in _photo_ids),
             "subjects": tp.subjects or [], "batch": tp.batch or "",
             "score": sc["overall"], "components": sc["components"],
             "target_items": sc.get("target_items", []),
@@ -893,7 +908,7 @@ def _subject_targets(db, tp, dt0, dt1):
 
     # ---- DPP (DppPack per subject) ----
     try:
-        for d in db.query(DppPack).filter(DppPack.teacher_id == tp.id,
+        for d in db.query(DppPack).options(defer(DppPack.questions), defer(DppPack.q_pdf), defer(DppPack.s_pdf)).filter(DppPack.teacher_id == tp.id,
                                           DppPack.created_at >= dt0, DppPack.created_at < dt1).all():
             b = _bucket(d.subject or "General")
             b["dpp"]["done"] += 1
