@@ -375,7 +375,10 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
             _orP(VideoTask.teacher_id == tp.id,
                  VideoTask.collab_teacher_ids.like("%" + str(tp.id) + "%")),
             VideoTask.kind.in_(["one_shot", "rapid_revision", "project"]),
-            VideoTask.created_at >= dt0, VideoTask.created_at < dt1).all()
+            VideoTask.created_at < dt1).all()   # month-end se pehle bana ho
+        # is month me ACTIVE ho: deadline is month-start ke baad (ya deadline nahi).
+        # Long projects (Sep deadline) August me bhi active -> August me count.
+        _pc = [p for p in _pc if (p.deadline is None or p.deadline >= dt0)]
         try:
             from video_tasks import _collab_all_ids as _cai2
             _pc = [p for p in _pc if (p.teacher_id == tp.id or tp.id in _cai2(p))]
