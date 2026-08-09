@@ -79,9 +79,9 @@ def score_from_metrics(m, cfg, team=None):
     traw = _blend_target(m.get("target_items", []), cfg)
     raw["targets"] = traw
 
-    # 4) STUDENT SUPPORT — doubts resolved ratio (pending penalty). Koi doubt nahi -> N/A
-    rec, res = m.get("doubts_received", 0), m.get("doubts_resolved", 0)
-    raw["student_support"] = round(100.0 * res / rec, 1) if rec > 0 else None
+    # 4) STUDENT SUPPORT — 15h SLA: on-time / decided. Koi decided doubt nahi -> N/A
+    dec, don = m.get("doubts_decided", 0), m.get("doubts_ontime", 0)
+    raw["student_support"] = round(100.0 * don / dec, 1) if dec > 0 else None
 
     # 5) TESTS — tests done vs target (agar target/assigned ho)
     raw["tests"] = _ratio_pct(m.get("tests_done", 0), m.get("tests_target", 0), cfg) \
@@ -283,15 +283,31 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
         pass
     m["projects_completed"] = proj_completed
 
-    # ---- Doubts (student support) ----
+    # ---- Doubts (student support) — 15h SLA rule: sirf "decided" doubts count
+    #      (resolved YA pending-but-overdue). Recent pending (SLA ke andar) penalty nahi.
+    #      Koi decided doubt nahi -> N/A (sabko full, redistribute). ----
+    from datetime import timedelta as _td
+    sla = float(cfg.get("doubt_sla_hours", 15))
+    rec = decided = ontime = 0
     try:
-        rec = db.query(Doubt).filter(Doubt.teacher_id == tp.id,
-                                     Doubt.created_at >= dt0, Doubt.created_at < dt1).count()
-        pend = db.query(Doubt).filter(Doubt.teacher_id == tp.id, Doubt.status == DoubtStatus.pending,
-                                      Doubt.created_at >= dt0, Doubt.created_at < dt1).count()
+        _now = datetime.utcnow()
+        dqs = db.query(Doubt).filter(Doubt.teacher_id == tp.id,
+                                     Doubt.created_at >= dt0, Doubt.created_at < dt1).all()
+        rec = len(dqs)
+        for dq in dqs:
+            if dq.status == DoubtStatus.resolved and dq.resolved_at:
+                decided += 1
+                if (dq.resolved_at - dq.created_at).total_seconds() / 3600.0 <= sla:
+                    ontime += 1
+            elif dq.status != DoubtStatus.resolved:
+                # pending: sirf tab count jab SLA nikal chuka (overdue) -> late
+                if (_now - dq.created_at).total_seconds() / 3600.0 > sla:
+                    decided += 1   # late (ontime nahi)
     except Exception:
-        rec = pend = 0
-    m["doubts_received"], m["doubts_resolved"] = rec, max(0, rec - pend)
+        pass
+    m["doubts_received"] = rec
+    m["doubts_decided"] = decided
+    m["doubts_ontime"] = ontime
 
     # ---- Tasks timeliness (on-time / delayed / not_completed) + proposals + rewards ----
     to = tdl = tnc = 0
@@ -345,7 +361,21 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
         {"done": vt["shorts"]["done"], "target": vt["shorts"]["target"] or vt["shorts"]["assigned"],
          "units": aw.get("short", 1)},
     ]
-    # explicit per-teacher targets (agar admin ne set kiye) -> targets component me use
+    # ---- AUTO targets from timetable (classes/chapters/dpp/tests) — Vicky: teaching/dpp/tests auto ----
+    try:
+        _auto = auto_targets_from_timetable(db, tp, dt0.strftime("%Y-%m"))
+    except Exception:
+        _auto = {}
+    _auto_classes = _auto.get("classes", 0)
+    _auto_dpp = _auto.get("dpp_min", 0) or _auto.get("chapters", 0)
+    # tests target: timetable tests -> warna weekly-2 expected (weeks * weekly)
+    _days = (dt1 - dt0).days or 30
+    _weeks = max(1, round(_days / 7.0))
+    _weekly_exp = float(cfg.get("weekly_tests_expected", 2))
+    _auto_tests = _auto.get("tests", 0) or vt["tests"]["target"] or int(round(_weekly_exp * _weeks))
+
+    # explicit per-teacher targets (agar admin ne set kiye) -> videos/shorts/live/tests override.
+    # Classes & DPP HAMESHA auto (timetable) — inhe set karne ki zaroorat nahi.
     _ttg = (get_teacher_targets(db, tp.id).get("targets", {}) or {})
     def _T(k, fallback):
         v = _ttg.get(k)
@@ -354,10 +384,11 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
         {"done": vt["videos"]["done"], "target": _T("videos", vt["videos"]["target"]), "units": aw.get("long_video", 2)},
         {"done": vt["shorts"]["done"], "target": _T("shorts", vt["shorts"]["target"]), "units": aw.get("short", 1)},
         {"done": vt["live"]["done"],   "target": _T("live", vt["live"]["target"]),   "units": aw.get("youtube_live", 4)},
-        {"done": tests_done,           "target": _T("tests", vt["tests"]["target"]), "units": aw.get("weekly_test", 3)},
-        {"done": dpp_done,             "target": _T("dpp", m.get("dpp_target", 0)),   "units": aw.get("dpp", 1)},
-        {"done": ot + dl,              "target": _T("classes", 0),                    "units": aw.get("class", 1)},
+        {"done": tests_done,           "target": _T("tests", _auto_tests),            "units": aw.get("weekly_test", 3)},
+        {"done": dpp_done,             "target": _auto_dpp,                            "units": aw.get("dpp", 1)},
+        {"done": ot + dl,              "target": _auto_classes,                       "units": aw.get("class", 1)},
     ]
+    m["tests_target"] = _T("tests", _auto_tests)
 
     # ---- workload units (assigned vs completed) for normalization + eligibility ----
     def _u(key, n):
@@ -368,7 +399,7 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
                       + _u("task", len_or0(m, "task_ontime", "task_delayed", "task_not_completed")))
     completed_units = (_u("long_video", vt["videos"]["done"]) + _u("short", vt["shorts"]["done"])
                        + _u("youtube_live", vt["live"]["done"]) + _u("weekly_test", tests_done)
-                       + _u("dpp", dpp_done) + _u("class", ot) + _u("doubt", m["doubts_resolved"])
+                       + _u("dpp", dpp_done) + _u("class", ot) + _u("doubt", m["doubts_ontime"])
                        + _u("task", to))
     m["workload_units_assigned"] = assigned_units
     m["workload_units_completed"] = completed_units

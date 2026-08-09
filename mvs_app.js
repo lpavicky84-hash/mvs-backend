@@ -1598,13 +1598,15 @@ async function _ttLoadTeacher(tid){
         <input type="number" min="${minv||0}" class="input tt-in" data-k="${k}" data-min="${minv||0}" value="${v}" oninput="_ttClamp(this)">
         ${hint?`<div class="ttp-hint">${hint}</div>`:''}</div>`;
     };
+    const acell=(label,val,hint)=>`<div class="ttp-cell auto"><label>${esc(label)} <span class="ttp-autobadge">AUTO</span></label>
+        <div class="ttp-autoval">${val}</div><div class="ttp-hint">${hint}</div></div>`;
     const cells=[
-      cell('classes','Classes', `timetable: <b>${classes}</b>`, 0),
-      cell('dpp','DPP', `min <b>${dppMin}</b> (chapters) · max <b>${dppMax}</b> (classes)`, dppMin),
+      acell('Classes', classes, `timetable se auto — <b>${classes}</b> classes`),
+      acell('DPP', dppMin, `auto = chapters <b>${dppMin}</b> (min) · max ${dppMax}`),
       cell('videos','Videos', `assigned: ${a.videos||0}`, 0),
       cell('shorts','Shorts', `assigned: ${a.shorts||0}`, 0),
       cell('live','YouTube Live', `assigned: ${a.live||0}`, 0),
-      cell('tests','Weekly Tests', `assigned: ${a.tests||0}`, 0),
+      cell('tests','Weekly Tests', `auto/weekly-2; assigned: ${a.tests||0}`, 0),
     ].join('');
     const _ti=(window._ttTeachers||{})[tid]||{};
     const _nm=d.name||_ti.name||('Teacher #'+tid);
@@ -1616,7 +1618,7 @@ async function _ttLoadTeacher(tid){
       <div class="ttp-summary">${ic('calendar')||''} <span>This month (timetable): <b>${chapters}</b> chapter${chapters===1?'':'s'} across <b>${classes}</b> class${classes===1?'':'es'}</span>
         <span class="ttp-mode">${d.mode==='auto'?'Auto':(useSaved?'Manual':'Not set')}</span></div>
       <div class="ttp-grid">${cells}</div>
-      <div class="ttp-note">DPP kam se kam <b>${dppMin}</b> (jitne chapters) hone chahiye — isse neeche nahi. Max <b>${dppMax}</b> (classes) suggested; usse zyada bhi de sakte ho.</div>
+      <div class="ttp-note"><b>Classes</b> aur <b>DPP</b> timetable se AUTO (set karne ki zaroorat nahi — DPP min = chapters). Sirf Videos/Shorts/Live/Tests manual (jinka timetable nahi unke liye). Tests khaali chhodo to weekly-2 expected lagta hai.</div>
       <div class="tt-actions">
         <button class="btn btn-secondary btn-sm" onclick="ttAutoFill()">${ic('calendar')||''} Auto-fill from Timetable</button>
         <button class="btn btn-primary btn-sm" onclick="saveTeacherTargets('manual')">Save (manual)</button>
@@ -1773,7 +1775,10 @@ function _ensurePsCss(){
     '.ttp-av-img{object-fit:cover;border:2px solid rgba(226,180,88,.5)}',
     '.ttp-tname{font-size:1.1rem;font-weight:800;color:#fff}',
     '.ttp-tsubs{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}',
-    '.ttp-subchip{font-size:.68rem;font-weight:700;padding:2px 10px;border-radius:99px;background:rgba(226,180,88,.18);color:#e9c169}'
+    '.ttp-subchip{font-size:.68rem;font-weight:700;padding:2px 10px;border-radius:99px;background:rgba(226,180,88,.18);color:#e9c169}',
+    '.ttp-cell.auto{background:linear-gradient(135deg,#f6fbf6,#eefaef);border-color:#cde6cf}',
+    '.ttp-autobadge{font-size:.56rem;font-weight:800;padding:1px 6px;border-radius:99px;background:rgba(16,163,74,.16);color:#15803d;vertical-align:middle}',
+    '.ttp-autoval{font-size:1.15rem;font-weight:800;color:#15803d;padding:6px 2px}'
   ].join('');
   document.head.appendChild(st);
 }

@@ -55,6 +55,10 @@ PERF_DEFAULTS = {
     },
     # ---- Part 17: consistency rules ----
     "consistency": {"max_points": 5, "streak_days_for_badge": 12},
+    # ---- Student Support: doubt SLA (ghante) — isse zyada me resolve na ho to impact ----
+    "doubt_sla_hours": 15,
+    # ---- Tests: agar timetable/explicit na ho to expected weekly tests (weekly 2) ----
+    "weekly_tests_expected": 2,
     # ---- Part 22: workload level thresholds (team-average ke % me) ----
     "workload_levels": {
         "low_below": 60,          # < 60% team-avg  -> Low
