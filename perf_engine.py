@@ -879,31 +879,44 @@ def save_teacher_targets(db, tid, targets, mode="manual"):
 
 
 def auto_targets_from_timetable(db, tp, month=""):
-    """Timetable se suggested targets + DPP ke liye min (chapters) / max (classes)."""
+    """BULLETPROOF: teacher ki is month ki timetable se targets nikaalo.
+    - Entry teacher ki hai agar teacher_id == tp.id YA subject teacher ke subjects me (dono).
+    - Mock/Test Series -> TESTS. PYQ solution / Revision / Doubt / chapter parts -> CLASSES.
+    - Chapters (DPP min) = distinct real syllabus chapters (pyq/revision/test chhod ke).
+    - Sabhi assigned subjects consider hote hain."""
     from models import TimetableEntry
+    from sqlalchemy import or_
     dt0, dt1, _ = month_bounds(month)
-    subs = list(tp.subjects or [])
+    subs = [s for s in (tp.subjects or []) if s]
     classes = 0
-    chapters = 0
+    tests_tt = 0
+    chset = set()
     try:
-        # pehle teacher_id se (accurate); na mile to subject se
-        q = db.query(TimetableEntry).filter(
-            TimetableEntry.entry_type == "chapter",
+        conds = [TimetableEntry.teacher_id == tp.id]
+        if subs:
+            conds.append(TimetableEntry.subject.in_(subs))
+        rows = db.query(TimetableEntry).filter(
             TimetableEntry.entry_date >= dt0.date(),
-            TimetableEntry.entry_date < dt1.date())
-        rows = q.filter(TimetableEntry.teacher_id == tp.id).all()
-        if not rows and subs:
-            rows = q.filter(TimetableEntry.subject.in_(subs)).all()
-        classes = len(rows)
-        chset = set()
+            TimetableEntry.entry_date < dt1.date(),
+            or_(*conds)).all()
         for e in rows:
+            txt = ((e.chapter or "") + " " + (e.part or "") + " " +
+                   (getattr(e, "topic_covered", "") or "")).lower()
+            # Mock / Test Series / Test -> tests (class nahi)
+            if ("mock" in txt) or ("test" in txt) or ("series" in txt):
+                tests_tt += 1
+                continue
+            # baaki sab (chapter part / PYQ solution / revision / doubt) -> class
+            classes += 1
             ch = (e.chapter or "").strip()
-            if ch:
-                chset.add((e.subject or "", ch))
-        chapters = len(chset)
+            low = ch.lower()
+            # real chapter hi DPP-chapter count me (pyq/revision/doubt nahi)
+            if ch and not any(w in low for w in ("pyq", "revision", "doubt", "mock", "test", "series")):
+                chset.add(((e.subject or "").strip().lower(), low))
     except Exception:
         pass
-    vids = shorts = live = tests = 0
+    chapters = len(chset)
+    vids = shorts = live = tests_v = 0
     try:
         tg = _vt_targets_for(db, tp, dt0, dt1)
         for r in tg.get("rows", []):
@@ -916,11 +929,38 @@ def auto_targets_from_timetable(db, tp, month=""):
             elif k == "live":
                 live = n
             elif k == "tests":
-                tests = r.get("target", 0) or r.get("assigned", 0)
+                tests_v = r.get("target", 0) or r.get("assigned", 0)
     except Exception:
         pass
+    tests = tests_tt or tests_v   # timetable ke mock/test priority
     dpp_min = chapters
     dpp_max = max(classes, chapters)
     return {"classes": classes, "chapters": chapters,
             "dpp": (dpp_min or classes), "dpp_min": dpp_min, "dpp_max": dpp_max,
             "videos": vids, "shorts": shorts, "live": live, "tests": tests}
+
+
+# =============================================================================
+# TEACHER ACTIVITY LOG (timetable timing change / delete / reschedule request)
+# =============================================================================
+_ACT_LABEL = {"timing_change": "Class timing changed", "class_edit": "Class edited",
+              "class_delete": "Class/part deleted", "reschedule_request": "Reschedule requested"}
+
+
+def teacher_activity_rows(db, tid, limit=30):
+    from models import TeacherActivity
+    lim = max(1, min(int(limit or 30), 100))
+    rows = db.query(TeacherActivity).filter(TeacherActivity.teacher_id == tid) \
+        .order_by(TeacherActivity.created_at.desc()).limit(lim).all()
+    counts = {}
+    out = []
+    for a in rows:
+        counts[a.action] = counts.get(a.action, 0) + 1
+        out.append({"action": a.action, "label": _ACT_LABEL.get(a.action, a.action),
+                    "subject": a.subject or "", "chapter": a.chapter or "",
+                    "detail": a.detail or "", "at": _ist(a.created_at)})
+    try:
+        total = db.query(TeacherActivity).filter(TeacherActivity.teacher_id == tid).count()
+    except Exception:
+        total = len(out)
+    return {"teacher_id": tid, "total": total, "counts": counts, "activity": out}

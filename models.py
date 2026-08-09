@@ -976,6 +976,20 @@ class AppSetting(Base):
     value = Column(Text, nullable=True)
 
 
+class TeacherActivity(Base):
+    """Teacher ke portal actions ka log — timetable timing change, class/part delete,
+    reschedule request. Admin/teacher dekh sakte hain; performance context me count."""
+    __tablename__ = "teacher_activity"
+
+    id         = Column(Integer, primary_key=True)
+    teacher_id = Column(Integer, index=True)
+    action     = Column(String(30))                 # timing_change | class_edit | class_delete | reschedule_request
+    subject    = Column(String(120), default="")
+    chapter    = Column(String(250), default="")
+    detail     = Column(Text, default="")
+    created_at = Column(DateTime, default=func.now())
+
+
 # =============================================
 # TEACHER CONTRACT (appointment letter + payout rules)
 # =============================================

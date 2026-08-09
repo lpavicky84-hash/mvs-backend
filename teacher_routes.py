@@ -258,6 +258,8 @@ def request_reschedule(req: RescheduleCreate, db: Session = Depends(get_db), cur
 
     db.commit()
     db.refresh(rs)
+    _log_activity(db, tp, "reschedule_request", class_entry.subject or "", "",
+                  "Reschedule to %s%s \u2014 %s" % (req.new_date, (" " + (req.new_time or "")) if req.new_time else "", (req.reason or "")[:200]))
     return rs
 
 @router.get("/reschedule", response_model=List[RescheduleOut])
@@ -823,7 +825,15 @@ def delete_tt_entry(entry_id: int, db: Session = Depends(get_db), current_user=D
     e = db.query(TimetableEntry).filter(TimetableEntry.id == entry_id).first()
     if not e or (e.subject not in (tp.subjects or []) and e.teacher_id != tp.id):
         raise HTTPException(status_code=404, detail="Entry not found")
+    _pd = e.entry_date.strftime("%d %b") if e.entry_date else ""
+    _det = "Deleted class"
+    if e.part:
+        _det = "Deleted part '%s'" % e.part
+    if _pd:
+        _det += " (%s)" % _pd
+    _subj, _chap = e.subject, e.chapter
     db.delete(e); db.commit()
+    _log_activity(db, tp, "class_delete", _subj, _chap, _det)
     return {"message": "Class deleted"}
 
 @router.delete("/timetable-entries/all")
@@ -937,6 +947,9 @@ def edit_tt_entry(entry_id: int, payload: dict, db: Session = Depends(get_db), c
     e = db.query(TimetableEntry).filter(TimetableEntry.id == entry_id).first()
     if not e or (e.subject not in (tp.subjects or []) and e.teacher_id != tp.id):
         raise HTTPException(status_code=404, detail="Entry not found")
+    _old_time = e.time_text or ""
+    _old_date = e.entry_date.strftime("%d %b") if e.entry_date else ""
+    _changed = []
     if "part" in payload:
         e.part = (payload.get("part") or "").strip() or None
     if "time" in payload:
@@ -956,7 +969,28 @@ def edit_tt_entry(entry_id: int, payload: dict, db: Session = Depends(get_db), c
         else:
             e.entry_date = None
     db.commit()
+    # ---- activity log: timing change / date change / edit ----
+    _new_time = e.time_text or ""
+    _new_date = e.entry_date.strftime("%d %b") if e.entry_date else ""
+    if _old_time != _new_time:
+        _changed.append("time %s \u2192 %s" % (_old_time or "\u2014", _new_time or "\u2014"))
+    if _old_date != _new_date:
+        _changed.append("date %s \u2192 %s" % (_old_date or "\u2014", _new_date or "\u2014"))
+    _act = "timing_change" if (_old_time != _new_time or _old_date != _new_date) else "class_edit"
+    _log_activity(db, tp, _act, e.subject, e.chapter,
+                  ("; ".join(_changed) or "Edited class details"))
     return _serialize_tt(e)
+
+
+def _log_activity(db, tp, action, subject="", chapter="", detail=""):
+    """Teacher ke portal action ko log karo (audit + performance context)."""
+    try:
+        from models import TeacherActivity
+        db.add(TeacherActivity(teacher_id=tp.id, action=action, subject=(subject or "")[:120],
+                               chapter=(chapter or "")[:250], detail=(detail or "")[:1000]))
+        db.commit()
+    except Exception:
+        db.rollback()
 
 # ===== TEACHER: DELETE OWN SUBJECT TIMETABLE (one click, type-to-confirm on frontend) =====
 @router.delete("/timetable-subject")
@@ -2368,6 +2402,14 @@ def teacher_perf_board(month: str = "", db: Session = Depends(get_db), current_u
     bhi dekh sakte hain (spec Part 29)."""
     import perf_engine as _pe
     return _pe.compute(db, month)
+
+
+@router.get("/my-activity")
+def teacher_my_activity(limit: int = 30, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Teacher ke apne timetable actions ka log (timing change / delete / reschedule)."""
+    import perf_engine as _pe
+    tp = get_teacher_profile(current_user, db)
+    return _pe.teacher_activity_rows(db, tp.id, limit)
 
 
 @router.get("/monthly-targets")

@@ -1572,13 +1572,14 @@ let _ttCur=null;
 async function openTeacherTargets(){
   _ensurePsCss();
   let teachers=[];
-  try{ const b=await api('/api/admin/perf-scores'); teachers=(b.results||[]).map(r=>({id:r.teacher_id,name:r.name})); }catch(e){}
+  try{ const b=await api('/api/admin/perf-scores'); teachers=(b.results||[]).map(r=>({id:r.teacher_id,name:r.name,photo:r.photo||'',subjects:r.subjects||[]})); }catch(e){}
+  window._ttTeachers={}; teachers.forEach(t=>{ window._ttTeachers[t.id]=t; });
   const opts=teachers.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
   showModal('Per-Teacher Targets',
     `<div class="ps-intro">Kisi bhi teacher ke monthly targets set karo — <b>Timetable se auto</b> (jo scheduled hai uske hisaab se) ya <b>manually</b>. Ye "Monthly Target Achievement" score aur teacher ke Monthly Performance me use hote hain.</div>
-     <div class="ps-row" style="margin-bottom:14px"><label>Select Teacher</label>
-       <select class="input" id="tt-teacher" onchange="_ttLoadTeacher(this.value)"><option value="">\u2014 Choose teacher \u2014</option>${opts}</select></div>
-     <div id="tt-fields"><div class="pfb-muted">Pehle teacher choose karo.</div></div>`,
+     <div class="ttp-picker"><label>Select Teacher</label>
+       <select class="ttp-select" id="tt-teacher" onchange="_ttLoadTeacher(this.value)"><option value="">\u2014 Choose teacher \u2014</option>${opts}</select></div>
+     <div id="tt-fields"><div class="pfb-muted" style="margin-top:12px">Pehle teacher choose karo.</div></div>`,
     `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
 }
 async function _ttLoadTeacher(tid){
@@ -1605,7 +1606,13 @@ async function _ttLoadTeacher(tid){
       cell('live','YouTube Live', `assigned: ${a.live||0}`, 0),
       cell('tests','Weekly Tests', `assigned: ${a.tests||0}`, 0),
     ].join('');
+    const _ti=(window._ttTeachers||{})[tid]||{};
+    const _nm=d.name||_ti.name||('Teacher #'+tid);
+    const _subs=(d.subjects&&d.subjects.length?d.subjects:(_ti.subjects||[]));
+    const _ini=esc((_nm||'?').slice(0,1).toUpperCase());
+    const _av=_ti.photo?`<img src="${_ti.photo}" class="ttp-av-img">`:`<div class="ttp-av">${_ini}</div>`;
     box.innerHTML=`
+      <div class="ttp-teacher">${_av}<div><div class="ttp-tname">${esc(_nm)}</div><div class="ttp-tsubs">${_subs.map(x=>`<span class="ttp-subchip">${esc(x)}</span>`).join('')||'<span class="pfb-muted">No subjects</span>'}</div></div></div>
       <div class="ttp-summary">${ic('calendar')||''} <span>This month (timetable): <b>${chapters}</b> chapter${chapters===1?'':'s'} across <b>${classes}</b> class${classes===1?'':'es'}</span>
         <span class="ttp-mode">${d.mode==='auto'?'Auto':(useSaved?'Manual':'Not set')}</span></div>
       <div class="ttp-grid">${cells}</div>
@@ -1755,7 +1762,18 @@ function _ensurePsCss(){
     '.ttp-cell .tt-in{padding:8px 10px;font-size:.95rem;font-weight:700}',
     '.ttp-cell .tt-in.below-min{border-color:#dc2626;background:rgba(220,38,38,.05)}',
     '.ttp-hint{font-size:.68rem;color:var(--text-muted)}',
-    '.ttp-note{font-size:.74rem;color:var(--text-muted);background:var(--primary-50);border-radius:9px;padding:9px 12px;margin-top:14px}'
+    '.ttp-note{font-size:.74rem;color:var(--text-muted);background:var(--primary-50);border-radius:9px;padding:9px 12px;margin-top:14px}',
+    '.ttp-picker{margin-bottom:16px}',
+    '.ttp-picker label{display:block;font-size:.72rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}',
+    '.ttp-select{width:100%;padding:12px 14px;font-size:1rem;font-weight:700;color:var(--text);border:1.5px solid #e2d6b6;border-radius:12px;background:linear-gradient(135deg,#fffdf7,#faf4e3);cursor:pointer;appearance:none;-webkit-appearance:none;background-image:url(\'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2214%22 height=%2214%22 fill=%22none%22 stroke=%22%238a6d10%22 stroke-width=%223%22><polyline points=%223 5 7 9 11 5%22/></svg>\');background-repeat:no-repeat;background-position:right 14px center}',
+    '.ttp-select:focus{outline:none;border-color:#c9a227;box-shadow:0 0 0 3px rgba(201,162,39,.18)}',
+    '.ttp-teacher{display:flex;align-items:center;gap:13px;padding:14px 16px;background:linear-gradient(135deg,#1f1d1a,#2a2414);border-radius:14px;margin-bottom:14px;box-shadow:0 10px 26px -16px rgba(90,70,15,.6)}',
+    '.ttp-av,.ttp-av-img{width:48px;height:48px;border-radius:50%;flex-shrink:0}',
+    '.ttp-av{background:linear-gradient(135deg,#e2b552,#b8941f);color:#241a05;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.25rem;border:2px solid rgba(255,255,255,.25)}',
+    '.ttp-av-img{object-fit:cover;border:2px solid rgba(226,180,88,.5)}',
+    '.ttp-tname{font-size:1.1rem;font-weight:800;color:#fff}',
+    '.ttp-tsubs{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}',
+    '.ttp-subchip{font-size:.68rem;font-weight:700;padding:2px 10px;border-radius:99px;background:rgba(226,180,88,.18);color:#e9c169}'
   ].join('');
   document.head.appendChild(st);
 }
@@ -2005,9 +2023,27 @@ function pfBreakdown(tid){
       <div class="pfb-areas"><div><div class="pfb-h">Strong areas</div>${strong}</div><div><div class="pfb-h">Areas to improve</div>${improve}</div></div>
       ${viHtml}
       <div class="pfb-h" style="margin-top:16px">Next rank gap</div>${gapHtml}
+      <div id="pfb-activity"></div>
       <div class="pfb-note">Ye score sirf raw activity se nahi \u2014 workload, quality, timeliness, consistency, support & initiative sabse milke banta hai. Koi bhi ek cheez se #1 nahi bana ja sakta.</div>
     </div>`,
     `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
+  _pfLoadActivity(tid);
+}
+function _ACT_LBL(k){ return ({timing_change:'Timing changes',class_edit:'Edits',class_delete:'Deletions',reschedule_request:'Reschedule requests'})[k]||k; }
+function _pfLoadActivity(tid){
+  const box=document.getElementById('pfb-activity'); if(!box) return;
+  const who=_pfState.who; let url=null;
+  if(who==='a') url='/api/admin/teacher-activity/'+tid;
+  else if(_pfState.meId && tid===_pfState.meId) url='/api/teacher/my-activity';
+  if(!url){ box.innerHTML=''; return; }
+  api(url).then(d=>{
+    const acts=d.activity||[];
+    if(!acts.length){ box.innerHTML='<div class="pfb-h" style="margin-top:18px">Recent Timetable Activity</div><div class="pfb-muted">No portal actions logged yet.</div>'; return; }
+    const c=d.counts||{};
+    const chips=Object.keys(c).map(k=>`<span class="pfb-chip warn">${_ACT_LBL(k)}: ${c[k]}</span>`).join('');
+    const list=acts.slice(0,10).map(a=>`<div class="pfa-row"><div style="min-width:0"><div class="pfa-lbl">${esc(a.label)}</div><div class="pfa-det">${a.subject?esc(a.subject):''}${a.chapter?' \u00b7 '+esc(a.chapter):''}${a.detail?' \u2014 '+esc(a.detail):''}</div></div><div class="pfa-at">${a.at?esc(_pfDate(a.at)):''}</div></div>`).join('');
+    box.innerHTML=`<div class="pfb-h" style="margin-top:18px">Recent Timetable Activity (${d.total||acts.length})</div><div class="pfa-chips">${chips}</div><div class="pfa-list">${list}</div>`;
+  }).catch(()=>{ box.innerHTML=''; });
 }
 function _ensurePfCss(){
   if(document.getElementById('pf-css')) return;
@@ -2073,6 +2109,12 @@ function _ensurePfCss(){
     '.pfb-gap-col{display:flex;flex-direction:column;text-align:center;flex:1}.pfb-gap-col span{font-size:.66rem;color:var(--text-muted)}.pfb-gap-col b{font-size:1.2rem;font-weight:800}.pfb-gap-col small{font-size:.68rem;color:var(--text-muted)}',
     '.pfb-gap-col.gap b{color:#dc2626}.pfb-gap-arrow{color:var(--text-muted);font-size:1.2rem}',
     '.pfb-note{font-size:.72rem;color:var(--text-muted);margin-top:16px;line-height:1.5}',
+    '.pfa-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}',
+    '.pfa-list{display:flex;flex-direction:column;gap:7px}',
+    '.pfa-row{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;background:var(--card,#fff);border:1px solid var(--border,#eee);border-radius:10px;padding:9px 12px}',
+    '.pfa-lbl{font-weight:700;font-size:.82rem;color:var(--text)}',
+    '.pfa-det{font-size:.7rem;color:var(--text-muted);margin-top:2px;overflow-wrap:anywhere}',
+    '.pfa-at{font-size:.66rem;color:var(--text-muted);white-space:nowrap;flex-shrink:0}',
     '.pf-settings-btn{font-size:.74rem;font-weight:800;padding:6px 13px;border-radius:99px;border:1px solid #e2d6b6;background:var(--primary-50);color:#6b550b;cursor:pointer;display:inline-flex;align-items:center;gap:5px}',
     '.pf-settings-btn:hover{background:#f0e6c8}',
     '.pf-settings-btn svg{width:14px;height:14px}',

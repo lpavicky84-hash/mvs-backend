@@ -3651,6 +3651,13 @@ def perf_snapshot(payload: dict = Body(default={}), db: Session = Depends(get_db
     return _pe.freeze_month(db, (payload or {}).get("month", ""))
 
 
+@router.get("/teacher-activity/{tid}")
+def teacher_activity(tid: int, limit: int = 30, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Kisi teacher ke portal actions ka log (timetable timing/delete/reschedule)."""
+    import perf_engine as _pe
+    return _pe.teacher_activity_rows(db, tid, limit)
+
+
 @router.get("/teacher-perf-targets/{tid}")
 def teacher_perf_targets_get(tid: int, month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
     """Individual teacher ke saved targets + timetable-se AUTO suggestions (dono option)."""
