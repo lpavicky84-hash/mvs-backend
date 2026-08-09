@@ -1566,6 +1566,56 @@ async function loadTDashboard(){
  loadTeacherToday();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
+// ---- Per-teacher targets editor (individual): auto (timetable) ya manual ----
+const TT_ACTS=[['classes','Classes'],['dpp','DPP'],['videos','Videos'],['shorts','Shorts'],['live','YouTube Live'],['tests','Weekly Tests']];
+let _ttCur=null;
+async function openTeacherTargets(){
+  _ensurePsCss();
+  let teachers=[];
+  try{ const b=await api('/api/admin/perf-scores'); teachers=(b.results||[]).map(r=>({id:r.teacher_id,name:r.name})); }catch(e){}
+  const opts=teachers.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
+  showModal('Per-Teacher Targets',
+    `<div class="ps-intro">Kisi bhi teacher ke monthly targets set karo — <b>Timetable se auto</b> (jo scheduled hai uske hisaab se) ya <b>manually</b>. Ye "Monthly Target Achievement" score aur teacher ke Monthly Performance me use hote hain.</div>
+     <div class="ps-row" style="margin-bottom:14px"><label>Select Teacher</label>
+       <select class="input" id="tt-teacher" onchange="_ttLoadTeacher(this.value)"><option value="">\u2014 Choose teacher \u2014</option>${opts}</select></div>
+     <div id="tt-fields"><div class="pfb-muted">Pehle teacher choose karo.</div></div>`,
+    `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
+}
+async function _ttLoadTeacher(tid){
+  const box=document.getElementById('tt-fields'); if(!box) return;
+  if(!tid){ box.innerHTML='<div class="pfb-muted">Pehle teacher choose karo.</div>'; _ttCur=null; return; }
+  box.innerHTML='<div class="spinner"></div>';
+  try{
+    const d=await api('/api/admin/teacher-perf-targets/'+tid);
+    _ttCur={tid:tid, auto:d.auto||{}};
+    const saved=d.saved||{}; const useSaved=Object.keys(saved).length>0;
+    const base=useSaved?saved:(d.auto||{});
+    const rows=TT_ACTS.map(a=>`<div class="ps-row"><label>${esc(a[1])}</label>
+      <input type="number" min="0" class="input tt-in" data-k="${a[0]}" value="${base[a[0]]!=null?base[a[0]]:0}"></div>`).join('');
+    box.innerHTML=`<div class="tt-mode">Current mode: <b>${d.mode==='auto'?'Auto (timetable)':(useSaved?'Manual':'Not set \u2014 timetable auto dikha rahe hain')}</b>${(d.subjects&&d.subjects.length)?(' \u00b7 '+d.subjects.map(esc).join(', ')):''}</div>
+      <div class="ps-grid">${rows}</div>
+      <div class="tt-actions">
+        <button class="btn btn-secondary btn-sm" onclick="ttAutoFill()">${ic('calendar')||''} Auto-fill from Timetable</button>
+        <button class="btn btn-primary btn-sm" onclick="saveTeacherTargets('manual')">Save (manual)</button>
+        <button class="btn btn-success btn-sm" onclick="saveTeacherTargets('auto')">Save as Auto</button>
+      </div>
+      <div class="pfb-muted" style="margin-top:8px">Auto = timetable ke hisaab se (Classes = is month ki scheduled chapter classes, videos/shorts/live/tests = assigned). Manual = jo tu type kare wahi.</div>`;
+  }catch(e){ box.innerHTML=errHtml(e); }
+}
+function ttAutoFill(){
+  if(!_ttCur) return; const a=_ttCur.auto||{};
+  document.querySelectorAll('.tt-in').forEach(i=>{ const k=i.getAttribute('data-k'); i.value=(a[k]!=null?a[k]:0); });
+  toast('Timetable se bhar diya \u2014 ab Save dabao.');
+}
+async function saveTeacherTargets(mode){
+  if(!_ttCur){ toast('Select a teacher first',true); return; }
+  const targets={}; document.querySelectorAll('.tt-in').forEach(i=>{ targets[i.getAttribute('data-k')]=parseInt(i.value||0,10)||0; });
+  try{ await api('/api/admin/teacher-perf-targets/'+_ttCur.tid,'POST',{targets:targets,mode:mode});
+    toast('Targets saved for this teacher ('+mode+').');
+    if(typeof loadATeacherRanks==='function') loadATeacherRanks();
+  }catch(e){ toast(e.message||'Save failed',true); }
+}
+
 // ============================================================
 //  PHASE 7: ADMIN PERFORMANCE SETTINGS UI (Phase-1 config editable)
 // ============================================================
@@ -1620,7 +1670,9 @@ async function openPerfSettings(){
       <div class="ps-sec-note">${esc(sec.note)}</div><div class="ps-grid">${rows}</div></div>`;
   }).join('');
   showModal('Performance Settings',
-    `<div class="ps-wrap"><div class="ps-intro">Yahaan se saare scoring weights, workload units aur rewards live badal sakte ho. Save karte hi naye scores in values se compute honge (purane months Phase 8 snapshots ke baad freeze rahenge).</div>${body}</div>`,
+    `<div class="ps-wrap"><div class="ps-intro">Yahaan se saare scoring weights, workload units aur rewards live badal sakte ho (ye SAB teachers par lagta hai). Kisi <b>individual teacher</b> ke targets ke liye neeche button use karo.</div>
+    <button class="btn btn-secondary" style="margin-bottom:16px" onclick="openTeacherTargets()">${ic('users')||''} Per-Teacher Targets (individual — timetable auto ya manual)</button>
+    ${body}</div>`,
     `<button class="btn btn-secondary" onclick="resetPerfSettings()">Reset to defaults</button>
      <button class="btn btn-primary" onclick="savePerfSettings()">Save settings</button>`);
   _psSum();
@@ -1666,7 +1718,9 @@ function _ensurePsCss(){
     '.ps-row label{font-size:.72rem;font-weight:700;color:var(--text-muted)}',
     '.ps-in{padding:8px 10px;font-size:.9rem}',
     '.ps-sum{font-size:.72rem;font-weight:800;padding:3px 10px;border-radius:99px}',
-    '.ps-sum.ok{background:rgba(16,163,74,.15);color:#15803d}.ps-sum.bad{background:rgba(220,38,38,.14);color:#dc2626}'
+    '.ps-sum.ok{background:rgba(16,163,74,.15);color:#15803d}.ps-sum.bad{background:rgba(220,38,38,.14);color:#dc2626}',
+    '.tt-mode{font-size:.76rem;color:var(--text-muted);margin-bottom:12px;font-weight:600}',
+    '.tt-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}'
   ].join('');
   document.head.appendChild(st);
 }

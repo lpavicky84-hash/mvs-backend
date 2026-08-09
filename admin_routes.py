@@ -3651,6 +3651,33 @@ def perf_snapshot(payload: dict = Body(default={}), db: Session = Depends(get_db
     return _pe.freeze_month(db, (payload or {}).get("month", ""))
 
 
+@router.get("/teacher-perf-targets/{tid}")
+def teacher_perf_targets_get(tid: int, month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Individual teacher ke saved targets + timetable-se AUTO suggestions (dono option)."""
+    import perf_engine as _pe
+    from models import TeacherProfile, User
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(404, "Teacher not found")
+    u = db.query(User).filter(User.id == tp.user_id).first()
+    saved = _pe.get_teacher_targets(db, tid)
+    return {"teacher_id": tid, "name": (u.name if u else "Teacher #%d" % tid),
+            "subjects": tp.subjects or [],
+            "saved": saved.get("targets", {}), "mode": saved.get("mode", ""),
+            "auto": _pe.auto_targets_from_timetable(db, tp, month)}
+
+
+@router.post("/teacher-perf-targets/{tid}")
+def teacher_perf_targets_set(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Individual teacher ke targets save (mode: auto/manual)."""
+    import perf_engine as _pe
+    from models import TeacherProfile
+    if not db.query(TeacherProfile).filter(TeacherProfile.id == tid).first():
+        raise HTTPException(404, "Teacher not found")
+    r = _pe.save_teacher_targets(db, tid, (payload or {}).get("targets", {}), (payload or {}).get("mode", "manual"))
+    return {"ok": True, **r}
+
+
 @router.get("/whatsapp/config")
 def whatsapp_get_config(db: Session = Depends(get_db), _=Depends(get_admin)):
     """Combirds/WhatsApp config (portal me set kiya hua) — API key masked."""

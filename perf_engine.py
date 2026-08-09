@@ -345,12 +345,18 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
         {"done": vt["shorts"]["done"], "target": vt["shorts"]["target"] or vt["shorts"]["assigned"],
          "units": aw.get("short", 1)},
     ]
+    # explicit per-teacher targets (agar admin ne set kiye) -> targets component me use
+    _ttg = (get_teacher_targets(db, tp.id).get("targets", {}) or {})
+    def _T(k, fallback):
+        v = _ttg.get(k)
+        return v if (v is not None and v != "") else fallback
     m["target_items"] = [
-        {"done": vt["videos"]["done"], "target": vt["videos"]["target"], "units": aw.get("long_video", 2)},
-        {"done": vt["shorts"]["done"], "target": vt["shorts"]["target"], "units": aw.get("short", 1)},
-        {"done": vt["live"]["done"], "target": vt["live"]["target"], "units": aw.get("youtube_live", 4)},
-        {"done": tests_done, "target": vt["tests"]["target"], "units": aw.get("weekly_test", 3)},
-        {"done": dpp_done, "target": m.get("dpp_target", 0), "units": aw.get("dpp", 1)},
+        {"done": vt["videos"]["done"], "target": _T("videos", vt["videos"]["target"]), "units": aw.get("long_video", 2)},
+        {"done": vt["shorts"]["done"], "target": _T("shorts", vt["shorts"]["target"]), "units": aw.get("short", 1)},
+        {"done": vt["live"]["done"],   "target": _T("live", vt["live"]["target"]),   "units": aw.get("youtube_live", 4)},
+        {"done": tests_done,           "target": _T("tests", vt["tests"]["target"]), "units": aw.get("weekly_test", 3)},
+        {"done": dpp_done,             "target": _T("dpp", m.get("dpp_target", 0)),   "units": aw.get("dpp", 1)},
+        {"done": ot + dl,              "target": _T("classes", 0),                    "units": aw.get("class", 1)},
     ]
 
     # ---- workload units (assigned vs completed) for normalization + eligibility ----
@@ -829,3 +835,79 @@ def _ist(dt):
         return ist_iso(dt)
     except Exception:
         return dt.isoformat() if dt else None
+
+
+# =============================================================================
+# PER-TEACHER TARGETS (individual) — 2 modes: AUTO (timetable se) ya MANUAL.
+# Store: AppSetting perf_ttgt_<tid> = {mode, targets:{classes,dpp,videos,shorts,live,tests}}.
+# Engine ka "targets" component in explicit targets ko use karta hai (set hon to).
+# =============================================================================
+def _ttgt_key(tid):
+    return "perf_ttgt_%s" % tid
+
+
+def get_teacher_targets(db, tid):
+    from models import AppSetting
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == _ttgt_key(tid)).first()
+        if row and row.value:
+            return _json.loads(row.value)
+    except Exception:
+        pass
+    return {}
+
+
+def save_teacher_targets(db, tid, targets, mode="manual"):
+    from models import AppSetting
+    clean = {}
+    for k, v in (targets or {}).items():
+        try:
+            clean[k] = max(0, int(float(v or 0)))
+        except Exception:
+            clean[k] = 0
+    payload = {"mode": (mode or "manual"), "targets": clean, "at": _ist(datetime.utcnow()) or ""}
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == _ttgt_key(tid)).first()
+        if not row:
+            db.add(AppSetting(key=_ttgt_key(tid), value=_json.dumps(payload)))
+        else:
+            row.value = _json.dumps(payload)
+        db.commit()
+    except Exception:
+        pass
+    return payload
+
+
+def auto_targets_from_timetable(db, tp, month=""):
+    """Timetable + existing assignments se suggested targets (auto mode ke liye)."""
+    from models import TimetableEntry
+    dt0, dt1, _ = month_bounds(month)
+    subs = list(tp.subjects or [])
+    classes = 0
+    try:
+        if subs:
+            classes = db.query(TimetableEntry).filter(
+                TimetableEntry.subject.in_(subs),
+                TimetableEntry.entry_type == "chapter",
+                TimetableEntry.entry_date >= dt0.date(),
+                TimetableEntry.entry_date < dt1.date()).count()
+    except Exception:
+        pass
+    vids = shorts = live = tests = 0
+    try:
+        tg = _vt_targets_for(db, tp, dt0, dt1)
+        for r in tg.get("rows", []):
+            k = r.get("key")
+            n = r.get("assigned", 0) or r.get("target", 0)
+            if k == "videos":
+                vids = n
+            elif k == "shorts":
+                shorts = n
+            elif k == "live":
+                live = n
+            elif k == "tests":
+                tests = r.get("target", 0) or r.get("assigned", 0)
+    except Exception:
+        pass
+    return {"classes": classes, "dpp": classes, "videos": vids, "shorts": shorts,
+            "live": live, "tests": tests}
