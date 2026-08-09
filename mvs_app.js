@@ -227,15 +227,36 @@ function _mvsLogoSVG(gid){
     +"<rect x='3' y='3' width='58' height='58' rx='15' fill='url(#"+gid+")'/>"
     +"<text x='32' y='43' font-family='Arial,Helvetica,sans-serif' font-size='23' font-weight='800' fill='#fff' text-anchor='middle' letter-spacing='0.5'>MVS</text></svg>";
 }
+// Gold "MVS" SVG ab sirf FALLBACK hai. Asli MVS logo backend se aata hai (/api/student/logo).
+function _logoSrc(){ try{ return (typeof API!=='undefined'?API:'')+'/api/student/logo'; }catch(e){ return '/api/student/logo'; } }
+function _logoDataURI(){ return 'data:image/svg+xml,'+encodeURIComponent(_mvsLogoSVG('mvsfb')); }
+function _logoFallback(img){ try{ img.onerror=null; img.src=_logoDataURI(); img.style.background='transparent'; }catch(e){} }
+function _mvsLogoImg(px,rad,bg){
+  px=px||60; rad=(rad==null?Math.round(px*0.28):rad);
+  return '<img src="'+_logoSrc()+'" alt="MVS Foundation" onerror="_logoFallback(this)" '+
+    'style="width:'+px+'px;height:'+px+'px;border-radius:'+rad+'px;object-fit:contain;background:'+(bg||'#0d1b2a')+';display:block">';
+}
+function _faviconApply(href,isSvg){
+  var l=document.querySelector("link[rel~='icon']");
+  if(!l){ l=document.createElement('link'); l.setAttribute('rel','icon'); document.head.appendChild(l); }
+  if(isSvg) l.setAttribute('type','image/svg+xml'); else l.removeAttribute('type');
+  l.setAttribute('href',href);
+  var a=document.querySelector("link[rel='apple-touch-icon']");
+  if(!a){ a=document.createElement('link'); a.setAttribute('rel','apple-touch-icon'); document.head.appendChild(a); }
+  a.setAttribute('href',href);
+}
 function _setFavicon(){
   try{
-    var href='data:image/svg+xml,'+encodeURIComponent(_mvsLogoSVG('mvsfav'));
-    var l=document.querySelector("link[rel~='icon']");
-    if(!l){ l=document.createElement('link'); l.setAttribute('rel','icon'); document.head.appendChild(l); }
-    l.setAttribute('type','image/svg+xml'); l.setAttribute('href',href);
-    var a=document.querySelector("link[rel='apple-touch-icon']");
-    if(!a){ a=document.createElement('link'); a.setAttribute('rel','apple-touch-icon'); document.head.appendChild(a); }
-    a.setAttribute('href',href);
+    // 1) Turant gold SVG (tab khaali na dikhe). 2) direct URL try (bina CORS). 3) blob->dataURL
+    //    (pakka tareeka, CORS already open hai) — asli MVS logo load hote hi tab me lag jaata hai.
+    _faviconApply(_logoDataURI(), true);
+    var src=_logoSrc();
+    try{ var probe=new Image(); probe.onload=function(){ try{ _faviconApply(src, false); }catch(e){} }; probe.onerror=function(){}; probe.src=src; }catch(e){}
+    try{
+      fetch(src).then(function(r){ return r.ok?r.blob():null; }).then(function(b){
+        if(!b) return; var fr=new FileReader(); fr.onload=function(){ try{ _faviconApply(fr.result, false); }catch(e){} }; fr.readAsDataURL(b);
+      }).catch(function(){});
+    }catch(e){}
   }catch(e){}
 }
 try{ _setFavicon(); }catch(e){}
@@ -264,48 +285,67 @@ function _portalFromPath(){
 }
 
 // ---- Premium login: brand logo + role tag + portal switcher (teeno portals) ----
-function _ensureAuthCss(){
-  if(document.getElementById('mvs-auth-css')) return;
-  var st=document.createElement('style'); st.id='mvs-auth-css';
-  st.textContent=
-    '.auth-brand{display:flex;align-items:center;gap:13px;margin-bottom:24px}'+
-    '.auth-brand .auth-logo{width:48px;height:48px;border-radius:14px;flex-shrink:0;box-shadow:0 10px 24px -8px rgba(0,0,0,.55)}'+
-    '.auth-brand .auth-logo svg{width:100%;height:100%;display:block;border-radius:14px}'+
-    '.auth-brand-txt b{display:block;font-size:1.06rem;font-weight:800;color:#fff;letter-spacing:-.01em}'+
-    '.auth-brand-txt span{display:block;font-size:.76rem;color:rgba(255,255,255,.62);margin-top:3px}'+
-    '.auth-switch{margin-top:24px;padding-top:18px;border-top:1px solid rgba(255,255,255,.12);text-align:center}'+
-    '.auth-switch>span{display:block;font-size:.68rem;letter-spacing:.09em;text-transform:uppercase;color:rgba(255,255,255,.5);margin-bottom:11px}'+
-    '.auth-switch-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}'+
-    '.auth-pill{background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.18);color:#fff;font-size:.8rem;font-weight:700;padding:8px 17px;border-radius:99px;cursor:pointer;transition:.2s}'+
-    '.auth-pill:hover{background:rgba(255,255,255,.2);transform:translateY(-1px)}';
+function _ensureAuth2Css(){
+  if(document.getElementById('mvs-auth2-css')) return;
+  var st=document.createElement('style'); st.id='mvs-auth2-css';
+  st.textContent=[
+    '#login-screen .a2-brand{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;margin-bottom:22px}',
+    '#login-screen .a2-logo{width:62px;height:62px;border-radius:18px;box-shadow:0 12px 30px -10px rgba(0,0,0,.5);overflow:hidden}',
+    '#login-screen .a2-logo img{width:100%;height:100%;object-fit:contain;border-radius:18px;display:block}',
+    '#login-screen .a2-title{font-size:1.55rem;font-weight:800;letter-spacing:-.02em;line-height:1.1}',
+    '#login-screen .a2-switch{margin-top:22px;padding-top:16px;border-top:1px solid var(--a2-rule);text-align:center}',
+    '#login-screen .a2-switch>span{display:block;font-size:.64rem;letter-spacing:.11em;text-transform:uppercase;opacity:.55;margin-bottom:10px}',
+    '#login-screen .a2-switch-row{display:flex;gap:8px;justify-content:center}',
+    '#login-screen .a2-pill{font-size:.78rem;font-weight:700;padding:7px 16px;border-radius:99px;cursor:pointer;transition:.18s;border:1px solid var(--a2-pill-brd);background:var(--a2-pill-bg);color:var(--a2-pill-fg)}',
+    '#login-screen .a2-pill:hover{transform:translateY(-1px);filter:brightness(1.06)}',
+    '#login-screen.auth-light{background:radial-gradient(circle at top right,#faf6e8,#f4f1e8 45%,#ede8d8)!important;--a2-rule:#eadfc4;--a2-pill-brd:#e2d6b6;--a2-pill-bg:#f6f0dd;--a2-pill-fg:#6b550b}',
+    '#login-screen.auth-light .login-box{background:#fffdf9;border:1px solid #eadfc4;color:#2e2716;box-shadow:0 24px 60px -18px rgba(90,70,15,.28);backdrop-filter:none;-webkit-backdrop-filter:none}',
+    '#login-screen.auth-light .login-box .form-control{background:#eef1f8;border:1px solid #dfe3ee;color:#1f2937}',
+    '#login-screen.auth-light .login-box .form-control::placeholder{color:#9aa2b1}',
+    '#login-screen.auth-light .login-box label{color:#6b5d33}',
+    '#login-screen.auth-light .login-box h2{color:#2e2716}',
+    '#login-screen.auth-light .login-box p{color:#8a7c55}',
+    '#login-screen.auth-light .a2-title{color:#2e2716}',
+    '#login-screen.auth-light .login-btn{background:linear-gradient(135deg,#d4a52a,#b8941f);color:#1a1305}',
+    '#login-screen.auth-light #login-student-phone>h2{display:none}',
+    '#login-screen.auth-console{--a2-rule:rgba(255,255,255,.1);--a2-pill-brd:rgba(255,255,255,.18);--a2-pill-bg:rgba(255,255,255,.08);--a2-pill-fg:#fff}',
+    '#login-screen.auth-console .login-box{background:#1b1a18;border:1px solid rgba(255,255,255,.08);box-shadow:0 24px 60px -18px rgba(0,0,0,.62);backdrop-filter:none;-webkit-backdrop-filter:none;max-width:410px}',
+    '#login-screen.auth-console .login-box .form-control{background:#eef1f8;border:1px solid #dfe3ee;color:#1f2937}',
+    '#login-screen.auth-console .login-box .form-control::placeholder{color:#9aa2b1}',
+    '#login-screen.auth-console .login-box label{color:rgba(255,255,255,.82)}',
+    '#login-screen.auth-console .login-box p{color:rgba(255,255,255,.55)}',
+    '#login-screen.auth-console .a2-title{color:#e2b458}',
+    '#login-screen.auth-console .login-btn{background:linear-gradient(135deg,#e2b458,#c99a3a);color:#1a1305}',
+    '#login-screen.auth-console #login-title,#login-screen.auth-console #login-subtitle{display:none}'
+  ].join('');
   document.head.appendChild(st);
 }
 function _premiumLogin(portal){
   try{
-    var scr=document.getElementById('login-screen');
-    var brand=document.getElementById('mvs-auth-brand');
-    var sw=document.getElementById('mvs-auth-switch');
-    // STUDENT login ko bilkul ORIGINAL rakho (approved template) — koi premium/brand/switcher nahi.
-    // (Shared .login-box hai, isliye teacher/admin ke inject kiye elements yahan chhupa dete hain.)
-    if(portal==='student'){
-      if(brand) brand.style.display='none';
-      if(sw) sw.style.display='none';
-      if(scr) scr.style.background='';   // CSS default (original gold-dark) par wapas
-      return;
-    }
-    _ensureAuthCss();
-    var cfg=_AUTH_META[portal]||_AUTH_META.teacher;
-    if(scr) scr.style.background=cfg.bg;
+    _ensureAuth2Css();
+    var scr=document.getElementById('login-screen'); if(!scr) return;
     var box=document.querySelector('#login-screen .login-box'); if(!box) return;
-    if(!brand){ brand=document.createElement('div'); brand.id='mvs-auth-brand'; brand.className='auth-brand'; box.insertBefore(brand, box.firstChild); }
+    // purane gold-square version ke elements (agar hon) hata do
+    var oldB=document.getElementById('mvs-auth-brand'); if(oldB) oldB.remove();
+    var oldS=document.getElementById('mvs-auth-switch'); if(oldS) oldS.remove();
+    scr.style.background='';                       // inline hata do — class handle karti hai
+    scr.classList.remove('auth-light','auth-console');
+    var isStudent=(portal==='student');
+    scr.classList.add(isStudent?'auth-light':'auth-console');
+    var title=isStudent?'Student Portal':(portal==='admin'?'Admin Console':'Teacher Console');
+    // brand: ASLI MVS logo + title
+    var brand=document.getElementById('mvs-auth2-brand');
+    if(!brand){ brand=document.createElement('div'); brand.id='mvs-auth2-brand'; brand.className='a2-brand'; box.insertBefore(brand, box.firstChild); }
     brand.style.display='';
-    brand.innerHTML='<div class="auth-logo">'+_mvsLogoSVG('mvsauthlogo')+'</div>'+
-      '<div class="auth-brand-txt"><b>MVS Foundation</b><span>'+cfg.label+'</span></div>';
-    if(!sw){ sw=document.createElement('div'); sw.id='mvs-auth-switch'; sw.className='auth-switch'; box.appendChild(sw); }
+    brand.innerHTML='<div class="a2-logo">'+_mvsLogoImg(62)+'</div><div class="a2-title">'+title+'</div>';
+    // switcher: STUDENT par nahi (clean); teacher/admin par baaki portals
+    var sw=document.getElementById('mvs-auth2-switch');
+    if(isStudent){ if(sw) sw.style.display='none'; return; }
+    if(!sw){ sw=document.createElement('div'); sw.id='mvs-auth2-switch'; sw.className='a2-switch'; box.appendChild(sw); }
     sw.style.display='';
     var others=['student','teacher','admin'].filter(function(x){return x!==portal;});
-    sw.innerHTML='<span>Switch portal</span><div class="auth-switch-row">'+
-      others.map(function(x){return '<button type="button" class="auth-pill" onclick="goLogin(\''+x+'\')">'+_AUTH_META[x].tag+'</button>';}).join('')+'</div>';
+    sw.innerHTML='<span>Switch portal</span><div class="a2-switch-row">'+
+      others.map(function(x){return '<button type="button" class="a2-pill" onclick="goLogin(\''+x+'\')">'+(_AUTH_META[x]?_AUTH_META[x].tag:x)+'</button>';}).join('')+'</div>';
   }catch(e){}
 }
 
