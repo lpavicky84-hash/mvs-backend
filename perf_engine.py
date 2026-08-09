@@ -546,6 +546,41 @@ def _prev_month_key(month):
 
 
 # ------------- PHASE 8: monthly history snapshots (freeze) -------------
+def _rank_movements(db, back=10):
+    """Saare frozen snapshots se har teacher ka up/down count (rank change history)."""
+    cur = _cur_month_key()
+    y, m = int(cur[:4]), int(cur[5:7])
+    keys = []
+    for i in range(back, -1, -1):
+        yy, mm = y, m - i
+        while mm <= 0:
+            mm += 12; yy -= 1
+        keys.append("%04d-%02d" % (yy, mm))
+    timelines = {}   # tid -> [(mkey, rank)]
+    for mk in keys:
+        snap = _load_snapshot(db, mk)
+        if not snap:
+            continue
+        for r in snap.get("results", []):
+            timelines.setdefault(r["teacher_id"], []).append((mk, r.get("rank")))
+    out = {}
+    for tid, tl in timelines.items():
+        tl.sort(key=lambda x: x[0])
+        up = down = same = 0
+        for i in range(1, len(tl)):
+            prev, curr = tl[i - 1][1], tl[i][1]
+            if prev is None or curr is None:
+                continue
+            if curr < prev:
+                up += 1
+            elif curr > prev:
+                down += 1
+            else:
+                same += 1
+        out[tid] = {"up": up, "down": down, "same": same, "months": len(tl)}
+    return out
+
+
 def _snap_key(mkey):
     return "perf_snap_" + mkey
 
@@ -625,6 +660,14 @@ def compute(db, month=""):
         except Exception:
             pass
     _apply_rank_change(db, rows, prev_key)
+    try:
+        mv = _rank_movements(db)
+        for r in rows:
+            m2 = mv.get(r["teacher_id"], {})
+            r["rank_up"] = m2.get("up", 0)
+            r["rank_down"] = m2.get("down", 0)
+    except Exception:
+        pass
     return {"month": mkey, "prev_month": prev_key, "frozen": False,
             "weights": cfg.get("component_weights", {}),
             "team_avg_workload_units": avg, "results": rows}

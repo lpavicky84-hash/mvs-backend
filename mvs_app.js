@@ -1983,7 +1983,7 @@ function _pfPaint(){
     const isMe=_pfState.meId&&r.teacher_id===_pfState.meId;
     return `<div class="pf-pod ${rk===1?'first':''}" onclick="pfBreakdown(${r.teacher_id})">
       <div class="pf-pod-av">${_pfAv(r,sz)}<span class="pf-medal" style="background:${medal[rk-1]}">${rk}</span></div>
-      <div class="pf-pod-nm">${esc(r.name)}${isMe?' <span class="pf-you">you</span>':''}</div>
+      <div class="pf-pod-nm"><span class="pf-nmwrap">${esc(r.name)}${_pfTipHtml(r)}</span>${isMe?' <span class="pf-you">you</span>':''}</div>
       <div class="pf-pod-sc">${_pfVal(r)}</div>
       <div class="pf-pod-meta">${_pfChange(r)}${r.limited_workload?'<span class="pf-lim">Limited</span>':''}</div>
       <div class="pf-pod-base" style="height:${h}px;background:linear-gradient(180deg,${medal[rk-1]}2e,${medal[rk-1]}08);border-top:4px solid ${medal[rk-1]}"><b>#${rk}</b></div>
@@ -1996,7 +1996,7 @@ function _pfPaint(){
     const vi=(r.video_initiative||{});
     return `<div class="pf-row ${isMe?'me':''} ${rk<=3?'top':''}" style="animation-delay:${Math.min(i*28,420)}ms" onclick="pfBreakdown(${r.teacher_id})">
       <div class="pf-rk">#${rk}${_pfChange(r)}</div>
-      <div class="pf-who">${_pfAv(r,42)}<div><div class="pf-nm">${esc(r.name)}${isMe?' <span class="pf-you">you</span>':''}</div><div class="pf-subs">${subs}</div></div></div>
+      <div class="pf-who">${_pfAv(r,42)}<div><div class="pf-nm"><span class="pf-nmwrap">${esc(r.name)}${_pfTipHtml(r)}</span>${isMe?' <span class="pf-you">you</span>':''}</div><div class="pf-subs">${subs}</div></div></div>
       <div class="pf-kpi"><span class="pf-wl pf-wl-${wl.replace(/ /g,'').toLowerCase()}">${esc(wl)} workload</span>
         ${r.consistency_streak?`<span class="pf-mini">${r.consistency_streak}d streak</span>`:''}
         ${vi.approved?`<span class="pf-mini">${vi.approved} ideas approved</span>`:''}</div>
@@ -2017,6 +2017,17 @@ function _pfPaint(){
 function _pfTab(k){ _pfState.sort=k; _pfPaint(); }
 
 // -------- Phase 6: breakdown drawer (client-side from board row) --------
+function _pfTipHtml(r){
+  const up=r.rank_up||0, down=r.rank_down||0;
+  let body;
+  if(up===0&&down===0){ body='<div class="pft-none">No rank history yet</div>'; }
+  else {
+    body=`<div class="pft-row"><span class="pft-up">\u2191 Up</span><b>${up}\u00d7</b></div>
+      <div class="pft-row"><span class="pft-down">\u2193 Down</span><b>${down}\u00d7</b></div>
+      ${up===0?'<div class="pft-never">Kabhi upar nahi gaya</div>':''}`;
+  }
+  return `<span class="pf-tipbox"><div class="pft-h">Rank movement</div>${body}</span>`;
+}
 function pfBreakdown(tid){
   const rows=((_pfState.board||{}).results)||[];
   const r=rows.find(x=>x.teacher_id===tid); if(!r) return;
@@ -2152,6 +2163,15 @@ function _ensurePfCss(){
     '.pf-settings-btn svg{width:14px;height:14px}',
     '.pf-msel{font-size:.76rem;font-weight:700;padding:6px 10px;border-radius:9px;border:1px solid var(--border,#e5e5e5);background:var(--card,#fff);color:var(--text);cursor:pointer}',
     '.pf-frozen{font-size:.64rem;font-weight:800;padding:3px 9px;border-radius:99px;background:rgba(37,99,235,.14);color:#2563eb}',
+    '.pf-nmwrap{position:relative;cursor:help;border-bottom:1px dotted rgba(0,0,0,.22)}',
+    '.pf-tipbox{position:absolute;left:0;bottom:calc(100% + 8px);z-index:60;min-width:170px;background:linear-gradient(135deg,#1f1d17,#2b2413);color:#fff;border-radius:12px;padding:11px 13px;box-shadow:0 16px 40px -14px rgba(0,0,0,.6);opacity:0;visibility:hidden;transform:translateY(4px);transition:.16s;pointer-events:none}',
+    '.pf-nmwrap:hover .pf-tipbox{opacity:1;visibility:visible;transform:none}',
+    '.pf-tipbox::after{content:"";position:absolute;top:100%;left:22px;border:7px solid transparent;border-top-color:#241d0f}',
+    '.pft-h{font-size:.62rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#e9c169;margin-bottom:7px}',
+    '.pft-row{display:flex;justify-content:space-between;align-items:center;gap:16px;font-size:.82rem;font-weight:700;padding:2px 0}',
+    '.pft-up{color:#4ade80}.pft-down{color:#f87171}',
+    '.pft-never{margin-top:6px;font-size:.68rem;color:#d6cbb0;border-top:1px solid rgba(255,255,255,.12);padding-top:6px}',
+    '.pft-none{font-size:.74rem;color:#d6cbb0}',
     '.pf-live{font-size:.64rem;font-weight:800;padding:3px 9px;border-radius:99px;background:rgba(16,163,74,.14);color:#15803d}',
     '@keyframes pfIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}',
     '@keyframes pfPod{from{opacity:0;transform:translateY(16px) scale(.96)}to{opacity:1;transform:none}}',
