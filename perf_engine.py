@@ -15,7 +15,7 @@ from datetime import datetime, date, timedelta
 import perf_config as _pc
 
 COMPONENTS = ["teaching", "content", "targets", "student_support",
-              "tests", "task_discipline", "consistency", "video_initiative"]
+              "tests", "consistency", "video_initiative"]
 
 
 # ---------------------------------------------------------------- month helpers
@@ -163,6 +163,7 @@ def score_from_metrics(m, cfg, team=None):
         "overall": overall,
         "components": comp,
         "raw": raw,
+        "target_items": m.get("target_items", []),
         "workload_units_assigned": round(my_units, 1),
         "workload_units_completed": round(m.get("workload_units_completed", 0), 1),
         "workload_level": wl_level,
@@ -405,8 +406,17 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
     content_assigned = 0
     rw = cfg.get("video_rewards", {})
     try:
-        tasks = db.query(VideoTask).filter(VideoTask.teacher_id == tp.id,
-                                           VideoTask.created_at >= dt0, VideoTask.created_at < dt1).all()
+        from sqlalchemy import or_ as _orT
+        _cand = db.query(VideoTask).filter(
+            _orT(VideoTask.teacher_id == tp.id,
+                 VideoTask.collab_teacher_ids.like("%" + str(tp.id) + "%")),
+            VideoTask.created_at >= dt0, VideoTask.created_at < dt1).all()
+        # collab: agar teacher primary YA collab-member hai to task uske liye ginte hain
+        try:
+            from video_tasks import _collab_all_ids as _cai
+            tasks = [t for t in _cand if (t.teacher_id == tp.id or tp.id in _cai(t))]
+        except Exception:
+            tasks = [t for t in _cand if t.teacher_id == tp.id]
         for t in tasks:
             if bool(getattr(t, "is_old", False)):
                 continue   # OLD/pre-portal content -> is month count nahi
@@ -477,11 +487,11 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
         v = _ttg.get(k)
         return v if (v is not None and v != "") else fallback
     m["target_items"] = [
-        {"done": vt["videos"]["done"], "target": _T("videos", vt["videos"]["target"]), "units": aw.get("long_video", 2)},
-        {"done": vt["shorts"]["done"], "target": _T("shorts", vt["shorts"]["target"]), "units": aw.get("short", 1)},
-        {"done": vt["live"]["done"],   "target": _T("live", vt["live"]["target"]),   "units": aw.get("youtube_live", 4)},
-        {"done": tests_done,           "target": _T("tests", _auto_tests),            "units": aw.get("weekly_test", 3)},
-        {"done": dpp_done,             "target": _auto_dpp,                            "units": aw.get("dpp", 1)},
+        {"label": "Videos",       "done": vt["videos"]["done"], "target": _T("videos", vt["videos"]["target"]), "units": aw.get("long_video", 2)},
+        {"label": "Shorts",       "done": vt["shorts"]["done"], "target": _T("shorts", vt["shorts"]["target"]), "units": aw.get("short", 1)},
+        {"label": "YouTube Live", "done": vt["live"]["done"],   "target": _T("live", vt["live"]["target"]),   "units": aw.get("youtube_live", 4)},
+        {"label": "Weekly Tests", "done": tests_done,           "target": _T("tests", _auto_tests),            "units": aw.get("weekly_test", 3)},
+        {"label": "DPP",          "done": dpp_done,             "target": _auto_dpp,                            "units": aw.get("dpp", 1)},
     ]
     m["tests_target"] = _T("tests", _auto_tests)
 
@@ -517,17 +527,29 @@ def _score_all(db, month, cfg):
             continue
         _w0, _w1 = _teacher_window(db, tp, dt0, dt1)   # session-mode teacher ka apna window
         metricmap[tp.id] = (tp, u, gather_metrics(db, tp, _w0, _w1, cfg))
-    units = [mm[2].get("workload_units_assigned", 0) for mm in metricmap.values()]
+
+    # ---- INACTIVE teachers ko ranking se hatao (Vicky): jinki koi activity/attendance nahi.
+    #      Present-day YA koi real work (class/task/doubt/test/dpp/proposal) -> active. ----
+    def _is_active(m):
+        did = ((m.get("lect_ontime", 0) + m.get("lect_delayed", 0)) or m.get("task_ontime", 0)
+               or m.get("task_delayed", 0) or m.get("task_not_completed", 0)
+               or m.get("doubts_received", 0) or m.get("tests_done", 0) or m.get("dpp_done", 0)
+               or m.get("reward_points", 0) or m.get("prop_approved", 0))
+        return bool(m.get("present_days", 0) or did)
+    active_map = {tid: v for tid, v in metricmap.items() if _is_active(v[2])}
+
+    units = [mm[2].get("workload_units_assigned", 0) for mm in active_map.values()]
     avg_units = (sum(units) / len(units)) if units else 0
     team = {"avg_workload_units": avg_units}
     rows = []
-    for tid, (tp, u, m) in metricmap.items():
+    for tid, (tp, u, m) in active_map.items():
         sc = score_from_metrics(m, cfg, team)
         rows.append({
             "teacher_id": tp.id, "name": u.name or "", "user_id": u.user_id or "",
             "photo": getattr(u, "photo_b64", None) or "",
             "subjects": tp.subjects or [], "batch": tp.batch or "",
             "score": sc["overall"], "components": sc["components"],
+            "target_items": sc.get("target_items", []),
             "workload_level": sc["workload_level"], "workload_pct": sc["workload_pct"],
             "limited_workload": sc["limited_workload"],
             "video_initiative": sc["video_initiative"],

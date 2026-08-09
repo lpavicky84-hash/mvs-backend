@@ -986,28 +986,62 @@ def _special_out(db, t):
 
 
 def vt_task_rank_rows(db):
-    """Task completion ranking — on-time delivery rate ke hisaab se."""
+    """Task completion ranking — on-time delivery rate. Collab tasks kisi ek teacher ko
+    nahi, ek alag 'Collab' row me (click par saare teacher naam)."""
     rows = []
     tps = db.query(TeacherProfile).all()
+    _name = {}
+    for tp in tps:
+        u = db.query(User).filter(User.id == tp.user_id).first()
+        _name[tp.id] = (u.name if u else "") or ("Teacher #%d" % tp.id)
+    collab_seen = set()
+    collab_all = []
     for tp in tps:
         tasks = (db.query(VideoTask)
                  .filter(VideoTask.teacher_id == tp.id,
                          VideoTask.proposal_ok != "pending", NOT_SPECIAL).all())
-        if not tasks:
+        # collab tasks alag — Collab row me jaayenge (primary ko attribute nahi)
+        solo = []
+        for t in tasks:
+            if _collab_extra_ids(t):
+                if t.id not in collab_seen:
+                    collab_seen.add(t.id); collab_all.append(t)
+            else:
+                solo.append(t)
+        if not solo:
             continue
-        subs = [t for t in tasks if t.submitted_at]
+        subs = [t for t in solo if t.submitted_at]
         done = len(subs)
         ontime = sum(1 for t in subs if t.on_time)
         delayed = sum(1 for t in subs if t.on_time is False)
-        not_completed = sum(1 for t in tasks if t.status == "not_completed")
-        pending = sum(1 for t in tasks if t.status == "assigned")
+        not_completed = sum(1 for t in solo if t.status == "not_completed")
+        pending = sum(1 for t in solo if t.status == "assigned")
         rate = round(100 * ontime / done) if done else 0
-        u = db.query(User).filter(User.id == tp.user_id).first()
         rows.append({
             "teacher_id": tp.id,
-            "name": (u.name if u else "") or f"Teacher #{tp.id}",
+            "name": _name.get(tp.id, "Teacher #%d" % tp.id),
             "photo": bool(getattr(tp, "photo_b64", None)),
-            "assigned": len(tasks), "done": done, "pending": pending,
+            "assigned": len(solo), "done": done, "pending": pending,
+            "ontime": ontime, "delayed": delayed, "not_completed": not_completed, "rate": rate,
+        })
+    # ---- Collab aggregate row (koi individual name nahi) ----
+    if collab_all:
+        subs = [t for t in collab_all if t.submitted_at]
+        done = len(subs)
+        ontime = sum(1 for t in subs if t.on_time)
+        delayed = sum(1 for t in subs if t.on_time is False)
+        not_completed = sum(1 for t in collab_all if t.status == "not_completed")
+        pending = sum(1 for t in collab_all if t.status == "assigned")
+        rate = round(100 * ontime / done) if done else 0
+        cnames = set()
+        for t in collab_all:
+            for tid in _collab_all_ids(t):
+                if tid in _name:
+                    cnames.add(_name[tid])
+        rows.append({
+            "teacher_id": 0, "name": "Collab", "is_collab": True,
+            "collab_names": sorted(cnames), "photo": False,
+            "assigned": len(collab_all), "done": done, "pending": pending,
             "ontime": ontime, "delayed": delayed, "not_completed": not_completed, "rate": rate,
         })
     rows.sort(key=lambda r: (-r["rate"], -r["ontime"], -r["done"], r["name"]))
@@ -2656,11 +2690,15 @@ def _vt_targets_for(db, tp, dt0, dt1):
     tgt = {k: int(getattr(cfg, k + "_target", 0) or 0) for k in ("tests", "videos", "live", "shorts")} \
         if cfg else {"tests": 0, "videos": 0, "live": 0, "shorts": 0}
 
-    tasks = db.query(VideoTask).filter(
-        VideoTask.teacher_id == tp.id,
+    from sqlalchemy import or_ as _orVT
+    _cand = db.query(VideoTask).filter(
+        _orVT(VideoTask.teacher_id == tp.id,
+              VideoTask.collab_teacher_ids.like("%" + str(tp.id) + "%")),
         VideoTask.created_at >= dt0, VideoTask.created_at < dt1,
         VideoTask.proposal_ok != "pending",
         VideoTask.status != "rejected").all()
+    # collab: primary YA collab-member dono ke liye task count (Vicky: sabhi collab done)
+    tasks = [t for t in _cand if (t.teacher_id == tp.id or tp.id in _collab_all_ids(t))]
 
     cats = {"videos": {"assigned": 0, "done": 0, "verify": 0},
             "shorts": {"assigned": 0, "done": 0, "verify": 0},

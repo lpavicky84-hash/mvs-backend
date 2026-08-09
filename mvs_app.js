@@ -1674,7 +1674,7 @@ const PS_SECTIONS=[
    note:'8 components ka weight — sum 100 hona chahiye (spec Part 2).', sumWatch:true,
    keys:[['teaching','Teaching & Class Delivery'],['content','Content Production'],
      ['targets','Monthly Target Achievement'],['student_support','Student Support'],
-     ['tests','Tests & Assessments'],['task_discipline','Task Discipline'],
+     ['tests','Tests & Assessments'],
      ['consistency','Consistency'],['video_initiative','Video Initiative']]},
   {g:'activity_workload', title:'Activity Workload Units (effort)',
    note:'Har activity ka effort — 1 short = 1, 1 one-shot = 5, etc. (spec Part 3).', step:'0.5',
@@ -1917,7 +1917,7 @@ function _ensureVcCss(){
 // ============================================================
 const PF_COMPS=[['teaching','Teaching & Class Delivery'],['content','Content Production'],
   ['targets','Monthly Target Achievement'],['student_support','Student Support'],
-  ['tests','Tests & Assessments'],['task_discipline','Task Discipline'],
+  ['tests','Tests & Assessments'],
   ['consistency','Consistency'],['video_initiative','Video Initiative']];
 const PF_TABS=[['overall','Overall'],['teaching','Teaching'],['content','Content'],
   ['targets','Targets'],['student_support','Student Support'],
@@ -2036,6 +2036,15 @@ function pfBreakdown(tid){
     const v=comps[c[0]]||{}; const na=v.na||v.score==null;
     const w=v.weight||0; const sc=na?0:(v.score||0); const pct=na?0:Math.min(100,Math.round((v.raw||0)));
     const det=v.detail?`<div class="pfb-det">${esc(v.detail)}</div>`:'';
+    if(c[0]==='targets'){
+      const items=(r.target_items||[]);
+      const detail=items.map(it=>{ const t=it.target||0, dn=it.done||0; const p=t>0?Math.min(100,Math.round(dn/t*100)):0;
+        return `<div class="mtg-item"><div class="mtg-top"><span>${esc(it.label||'')}</span><b>${dn} / ${t}</b></div><div class="mtg-bar"><div class="mtg-fill" style="width:${p}%"></div></div></div>`; }).join('');
+      return `<div class="pfb-row mtg-row" onclick="this.classList.toggle('open')">
+        <div class="pfb-top"><span>${esc(c[1])} <span class="mtg-caret">\u25be</span></span><b class="${na?'na':''}">${na?'N/A':sc+' / '+w}</b></div>
+        <div class="pfb-bar"><div class="pfb-fill" style="width:${pct}%"></div></div>${det}
+        <div class="mtg-detail">${detail||'<div class="pfb-muted">No targets set</div>'}</div></div>`;
+    }
     return `<div class="pfb-row">
       <div class="pfb-top"><span>${esc(c[1])}</span><b class="${na?'na':''}">${na?'N/A':sc+' / '+w}</b></div>
       <div class="pfb-bar"><div class="pfb-fill" style="width:${pct}%"></div></div>${det}</div>`;
@@ -2140,6 +2149,12 @@ function _ensurePfCss(){
     '.pfb-top{display:flex;justify-content:space-between;font-size:.82rem;margin-bottom:4px}.pfb-top b.na{color:var(--text-muted);font-weight:600}',
     '.pfb-bar{height:7px;background:#eef1f8;border-radius:4px;overflow:hidden}',
     '.pfb-det{font-size:.68rem;color:var(--text-muted);margin-top:4px}',
+    '.mtg-row{cursor:pointer}.mtg-caret{font-size:.7rem;color:var(--text-muted);transition:.2s;display:inline-block}',
+    '.mtg-row.open .mtg-caret{transform:rotate(180deg)}',
+    '.mtg-detail{max-height:0;overflow:hidden;transition:max-height .28s ease}',
+    '.mtg-row.open .mtg-detail{max-height:360px;margin-top:10px}',
+    '.mtg-item{margin-bottom:8px}.mtg-top{display:flex;justify-content:space-between;font-size:.76rem;font-weight:700;margin-bottom:3px;color:var(--text)}',
+    '.mtg-bar{height:6px;background:#eef1f8;border-radius:3px;overflow:hidden}.mtg-fill{height:100%;background:linear-gradient(90deg,#e2b552,#b8941f);border-radius:3px}',
     '.pfb-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#e2b552,#b8941f)}',
     '.pfb-areas{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:16px 0}',
     '.pfb-h{font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);font-weight:800;margin-bottom:7px}',
@@ -2249,12 +2264,16 @@ async function _loadTRankBoardOld(){
     wrap.innerHTML+=_vtTaskRankHTML(d.task_ranking||[], me?me.teacher_id:0);
   }catch(e){ wrap.innerHTML=''; }
 }
+function _trkCollab(el){
+  let names=[]; try{ names=JSON.parse(el.getAttribute('data-names')||'[]'); }catch(e){}
+  showModal('Collab Teachers', names.length?`<div class="cbp-list">${names.map(n=>`<div class="cbp-row"><span class="cbp-nm">${esc(n)}</span></div>`).join('')}</div>`:'<div class="pfb-muted">No teachers found.</div>', `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
+}
 function _vtTaskRankHTML(tr, meTid){
   if(!tr||!tr.length) return '';
   return `<div class="card" style="margin-top:14px;border:1.5px solid rgba(184,148,31,.3)"><div class="card-header"><h3>${ic('play')} Video Task Completion Ranking</h3><span class="xm-chip">${tr.length}</span></div><div class="card-body">
     <p style="font-size:.76rem;color:var(--text-muted);margin-bottom:10px">Ranked by on-time video delivery — tasks submitted before the deadline.</p>
-    ${tr.map(r=>`<div class="vt-rank-row${meTid&&r.teacher_id===meTid?' me':''}"><span class="sbb-rank ${r.rank<=3?'top':''}">${r.rank}</span><span class="sbb-av">${esc((r.name||'?').slice(0,1))}</span>
-      <div class="sbb-main"><div class="sbb-nm">${esc(r.name)}${meTid&&r.teacher_id===meTid?' <span class="trk-you">(you)</span>':''}</div><div class="sbb-sub">${r.done}/${r.assigned} completed · ${r.ontime} on time · ${r.delayed} delayed</div></div>
+    ${tr.map(r=>`<div class="vt-rank-row${meTid&&r.teacher_id===meTid?' me':''}${r.is_collab?' collab':''}"${r.is_collab?` style="cursor:pointer" data-names="${esc(JSON.stringify(r.collab_names||[]))}" onclick="_trkCollab(this)"`:''}><span class="sbb-rank ${r.rank<=3?'top':''}">${r.rank}</span><span class="sbb-av">${r.is_collab?ic('users'):esc((r.name||'?').slice(0,1))}</span>
+      <div class="sbb-main"><div class="sbb-nm">${esc(r.name)}${r.is_collab?' <span class="trk-you">(tap for teachers)</span>':(meTid&&r.teacher_id===meTid?' <span class="trk-you">(you)</span>':'')}</div><div class="sbb-sub">${r.done}/${r.assigned} completed · ${r.ontime} on time · ${r.delayed} delayed</div></div>
       <span class="vt-pill ${r.rate>=80?'ontime':r.rate>=50?'submitted':'delayed'}">${r.rate}% on time</span></div>`).join('')}</div></div>`;
 }
 function trkCompare(tid){
@@ -7818,8 +7837,8 @@ function _avtCard(t){
       const ytBtn=`<button class="btn btn-ghost btn-sm" onclick="openVtYtLink(${t.id},'${esc(t.youtube_url||'').replace(/'/g,'')}')" title="Post the published YouTube link">${ic('play')} ${t.youtube_url?'Edit YT Link':'Post YT Link'}</button>`;
       const histBtn=`<button class="btn btn-ghost btn-sm" onclick="vtStatusOpen(${t.id},'a',event)" title="See the full status timeline">${ic('history')} Timeline</button>`;
       return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-done="${t.submitted_at?1:0}" data-pending="${(t.status==='assigned'||t.status==='reshoot'||t.status==='rejected')?1:0}" data-delayed="${t.submitted_at&&!t.on_time?1:0}" data-collab="${t.is_collab?1:0}" data-collabdone="${t.is_collab?(t.collab_all_verified?1:0):''}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
-        <div class="vt-title">${esc(t.title)}${t.is_collab?_vtCollabChip(t,'a'):''}${t.status==='submitted'?`<span class="vt-newsub">${ic('bell')} NEW · ${esc(t.submitted_by_name||t.teacher)}</span>`:''}</div>
-        <div class="vt-chips"><span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>${t.is_old?`<span class="vt-pill" style="background:rgba(120,113,108,.18);color:#78716c;font-weight:800">OLD · not counted</span>`:''}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}</div>
+        <div class="vt-title">${esc(t.title)}${t.is_collab?_vtCollabChip(t,'a'):''}${t.status==='submitted'?`<span class="vt-newsub">${ic('bell')} NEW · ${t.is_collab?'Collab':esc(t.submitted_by_name||t.teacher)}</span>`:''}</div>
+        <div class="vt-chips">${t.is_collab?`<span class="vt-pill assigned" style="cursor:pointer" onclick="event.stopPropagation();vtCollabPopup(${t.id},'a')">${ic('users')} Collab</span>`:`<span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>`}${t.is_old?`<span class="vt-pill" style="background:rgba(120,113,108,.18);color:#78716c;font-weight:800">OLD · not counted</span>`:''}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}</div>
         <div class="vt-meta">
           <span class="${dlBlink}">${ic('clock')} ${dlLbl}: <b>${esc(t.deadline_nice)}</b>${t.status==='assigned'&&t.seconds_left!=null?` · <span data-vt-cd="${t.id}" data-secs="${t.seconds_left}"></span>`:''}</span>
           ${t.submitted_at?`<span>${ic('check')} Submitted: <b>${esc(t.submitted_at)}</b>${isU?'':` ${t.on_time===true?'(on time)':(t.on_time===false?'(delayed)':'')}`}</span>`:''}
