@@ -1945,11 +1945,17 @@ async function renderPerfBoard(wrapId, who, month){
   _pfState.who=who; _pfState.wrapId=wrapId;
   wrap.innerHTML='<div class="spinner"></div>';
   const url=(who==='a'?'/api/admin/perf-scores':'/api/teacher/perf-board')+(month?('?month='+month):'');
-  const d=await api(url);
+  let d;
+  try{ d=await api(url); }
+  catch(e){
+    wrap.innerHTML='<div class="card"><div class="card-body" style="text-align:center;padding:24px">Ranking board abhi load nahi ho paaya. <button class="btn btn-primary" style="margin-top:10px" onclick="renderPerfBoard(\''+wrapId+'\',\''+who+'\')">Retry</button><div style="margin-top:8px;font-size:.72rem;color:var(--text-muted)">'+esc((e&&e.message)||'error')+'</div></div></div>';
+    return;
+  }
   _pfState.board=d;
   if(!_pfState.history){ try{ _pfState.history=await api(who==='a'?'/api/admin/perf-history':'/api/teacher/perf-history'); }catch(e){ _pfState.history=null; } }
   if(who!=='a'){ try{ const mr=await api('/api/teacher/my-rank'); _pfState.meId=(mr.me&&mr.me.teacher_id)||null; }catch(e){} }
-  _pfPaint();
+  try{ _pfPaint(); }
+  catch(e){ wrap.innerHTML='<div class="card"><div class="card-body">Board render error: '+esc((e&&e.message)||'')+'</div></div>'; }
 }
 function _pfMonth(m){ renderPerfBoard(_pfState.wrapId, _pfState.who, m); }
 async function _pfFreeze(){

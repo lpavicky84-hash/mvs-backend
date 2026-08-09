@@ -2401,7 +2401,16 @@ def teacher_perf_board(month: str = "", db: Session = Depends(get_db), current_u
     """Phase 5: full premium leaderboard (ranked, 8-component, rank-change) — teachers
     bhi dekh sakte hain (spec Part 29)."""
     import perf_engine as _pe
-    return _pe.compute(db, month)
+    try:
+        return _pe.compute(db, month)
+    except Exception as _e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        import traceback as _tb; _tb.print_exc()
+        return {"month": month or "", "frozen": False, "weights": {},
+                "team_avg_workload_units": 0, "results": [], "error": str(_e)}
 
 
 @router.get("/my-activity")

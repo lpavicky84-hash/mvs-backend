@@ -3638,7 +3638,16 @@ def perf_settings_set(payload: dict = Body(...), db: Session = Depends(get_db), 
 def perf_scores(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
     """Phase 2: saare teachers ka month-scoped 8-component performance score (ranked)."""
     import perf_engine as _pe
-    return _pe.compute(db, month)
+    try:
+        return _pe.compute(db, month)
+    except Exception as _e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        import traceback as _tb; _tb.print_exc()
+        return {"month": month or "", "frozen": False, "weights": {},
+                "team_avg_workload_units": 0, "results": [], "error": str(_e)}
 
 
 @router.get("/perf-history")

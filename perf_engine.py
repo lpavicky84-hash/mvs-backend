@@ -581,18 +581,29 @@ def _score_all(db, month, cfg):
         pass
     metricmap = {}
     for tp in db.query(TeacherProfile).all():
-        u = db.query(User).options(_defer(User.photo_b64)).filter(User.id == tp.user_id).first()
-        if not u:
+        try:
+            u = db.query(User).options(_defer(User.photo_b64)).filter(User.id == tp.user_id).first()
+            if not u:
+                continue
+            _w0, _w1 = _teacher_window(db, tp, dt0, dt1)   # session-mode teacher ka apna window
+            metricmap[tp.id] = (tp, u, gather_metrics(db, tp, _w0, _w1, cfg))
+        except Exception:
+            # ek teacher ka data kharab ho to use skip — poora board na toote
+            try:
+                db.rollback()
+            except Exception:
+                pass
             continue
-        _w0, _w1 = _teacher_window(db, tp, dt0, dt1)   # session-mode teacher ka apna window
-        metricmap[tp.id] = (tp, u, gather_metrics(db, tp, _w0, _w1, cfg))
 
     units = [mm[2].get("workload_units_assigned", 0) for mm in metricmap.values()]
     avg_units = (sum(units) / len(units)) if units else 0
     team = {"avg_workload_units": avg_units}
     rows = []
     for tid, (tp, u, m) in metricmap.items():
-        sc = score_from_metrics(m, cfg, team)
+        try:
+            sc = score_from_metrics(m, cfg, team)
+        except Exception:
+            continue
         rows.append({
             "teacher_id": tp.id, "name": u.name or "", "user_id": u.user_id or "",
             "has_photo": (u.id in _photo_ids),
