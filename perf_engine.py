@@ -13,6 +13,26 @@
 # =============================================================================
 from datetime import datetime, date, timedelta
 import perf_config as _pc
+import time as _time
+
+# ---- Leaderboard compute cache — current month 90s (RAM/CPU/egress bachaata hai) ----
+_BOARD_CACHE = {}
+_BOARD_TTL = 90
+
+
+def _board_cache_get(mkey):
+    ce = _BOARD_CACHE.get(mkey)
+    if ce and (_time.time() - ce[0]) < _BOARD_TTL:
+        return ce[1]
+    return None
+
+
+def _board_cache_set(mkey, result):
+    _BOARD_CACHE[mkey] = (_time.time(), result)
+
+
+def bust_board_cache():
+    _BOARD_CACHE.clear()
 
 COMPONENTS = ["teaching", "content", "targets", "student_support",
               "tests", "project", "consistency", "video_initiative"]
@@ -549,10 +569,19 @@ def len_or0(m, *keys):
 def _score_all(db, month, cfg):
     """Ek month ke saare teachers ki ranked rows (bina rank_change) + team avg."""
     from models import TeacherProfile, User
+    from sqlalchemy.orm import defer as _defer
+    from sqlalchemy import func as _func
     dt0, dt1, mkey = month_bounds(month)
+    # kaunse users ke paas photo hai — blob load kiye bina (RAM bachaao)
+    _photo_ids = set()
+    try:
+        for (uid,) in db.query(User.id).filter(User.photo_b64 != None, _func.length(User.photo_b64) > 10).all():
+            _photo_ids.add(uid)
+    except Exception:
+        pass
     metricmap = {}
     for tp in db.query(TeacherProfile).all():
-        u = db.query(User).filter(User.id == tp.user_id).first()
+        u = db.query(User).options(_defer(User.photo_b64)).filter(User.id == tp.user_id).first()
         if not u:
             continue
         _w0, _w1 = _teacher_window(db, tp, dt0, dt1)   # session-mode teacher ka apna window
@@ -566,7 +595,7 @@ def _score_all(db, month, cfg):
         sc = score_from_metrics(m, cfg, team)
         rows.append({
             "teacher_id": tp.id, "name": u.name or "", "user_id": u.user_id or "",
-            "photo": getattr(u, "photo_b64", None) or "",
+            "has_photo": (u.id in _photo_ids),
             "subjects": tp.subjects or [], "batch": tp.batch or "",
             "score": sc["overall"], "components": sc["components"],
             "target_items": sc.get("target_items", []),
@@ -675,6 +704,11 @@ def compute(db, month=""):
     _, _, mkey = month_bounds(month)
     prev_key = _prev_month_key(month)
     cur = _cur_month_key()
+    # current month: 90s cache — repeated views/polls recompute na karein
+    if mkey == cur:
+        _cached = _board_cache_get(mkey)
+        if _cached is not None:
+            return _cached
 
     if mkey != cur:
         # --- past month: agar snapshot hai to frozen return; warna live compute + auto-freeze ---
@@ -711,13 +745,17 @@ def compute(db, month=""):
             r["rank_down"] = m2.get("down", 0)
     except Exception:
         pass
-    return {"month": mkey, "prev_month": prev_key, "frozen": False,
-            "weights": cfg.get("component_weights", {}),
-            "team_avg_workload_units": avg, "results": rows}
+    _result = {"month": mkey, "prev_month": prev_key, "frozen": False,
+               "weights": cfg.get("component_weights", {}),
+               "team_avg_workload_units": avg, "results": rows}
+    if mkey == cur:
+        _board_cache_set(mkey, _result)
+    return _result
 
 
 def freeze_month(db, month=""):
     """Admin: is month ke current scores ko snapshot me freeze/re-freeze kar do."""
+    bust_board_cache()
     cfg = _pc.get_perf_config(db)
     rows, avg, mkey = _score_all(db, month, cfg)
     snap = _save_snapshot(db, mkey, rows)
@@ -1094,6 +1132,7 @@ def save_teacher_targets(db, tid, targets, mode="manual", period="monthly", sess
         db.commit()
     except Exception:
         pass
+    bust_board_cache()
     return payload
 
 

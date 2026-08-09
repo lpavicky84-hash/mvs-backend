@@ -1229,6 +1229,10 @@ def vt_mark_old(task_id: int, payload: dict = Body(default={}),
         raise HTTPException(404, "Task not found")
     t.is_old = bool((payload or {}).get("is_old", True))
     db.commit()
+    try:
+        import perf_engine as _pe; _pe.bust_board_cache()
+    except Exception:
+        pass
     return {"ok": True, "id": t.id, "is_old": bool(t.is_old)}
 
 

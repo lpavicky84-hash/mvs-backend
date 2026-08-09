@@ -3627,6 +3627,10 @@ def perf_settings_set(payload: dict = Body(...), db: Session = Depends(get_db), 
         cfg = _pc.get_perf_config(db)
     else:
         cfg = _pc.save_perf_config(db, patch)
+    try:
+        import perf_engine as _pe; _pe.bust_board_cache()
+    except Exception:
+        pass
     return {"ok": True, "config": cfg, "component_weight_sum": _pc.component_weight_sum(cfg)}
 
 

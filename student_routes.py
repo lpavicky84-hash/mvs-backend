@@ -2455,11 +2455,21 @@ def student_batch_board(db: Session = Depends(get_db), current_user=Depends(get_
     return {"batch": my_batch, "total": len(rows), "me": me, "rows": rows}
 
 
+import time as _stu_perf_time
+_STU_PERF_CACHE = {}
+_STU_PERF_TTL = 30   # seconds — lakhs students par heavy endpoint ko fast rakhta hai
+
+
 @router.get("/performance")
 def student_performance(db: Session = Depends(get_db), current_user=Depends(get_student)):
     """Everything the Academic Performance Dashboard needs, all from real data."""
     from models import Material, MaterialView, TimetableEntry
     sp = get_student_profile(current_user, db)
+    # short-TTL cache (per student) — repeated polls/re-renders recompute na karein
+    _ck = sp.id
+    _ce = _STU_PERF_CACHE.get(_ck)
+    if _ce and (_stu_perf_time.time() - _ce[0]) < _STU_PERF_TTL:
+        return _ce[1]
     subs = sp.subjects or []
     today = ist_today()
     st = _get_stats(db, sp.id)
@@ -2664,7 +2674,7 @@ def student_performance(db: Session = Depends(get_db), current_user=Depends(get_
 
     db.commit()  # persist prev_rank + any badge/stat touch
 
-    return {
+    _result = {
         "health": {"score": health, "label": health_label},
         "overall_pct": overall,
         "xp": st.xp or 0, "streak": st.streak or 0, "best_streak": st.best_streak or 0,
@@ -2685,6 +2695,12 @@ def student_performance(db: Session = Depends(get_db), current_user=Depends(get_
         "targets": targets,
         "insights": insights,
     }
+    _STU_PERF_CACHE[_ck] = (_stu_perf_time.time(), _result)
+    if len(_STU_PERF_CACHE) > 4000:
+        _cut = _stu_perf_time.time() - _STU_PERF_TTL
+        for _k in [k for k, v in _STU_PERF_CACHE.items() if v[0] < _cut]:
+            _STU_PERF_CACHE.pop(_k, None)
+    return _result
 
 # ==================================================================
 #  MANISH VERMA CLASSES — LIVE PLAY STORE INFO

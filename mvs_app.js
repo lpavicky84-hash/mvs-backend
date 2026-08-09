@@ -400,7 +400,7 @@ let countdownTimer = null;
 // Koi bhi successful POST/PATCH/DELETE poora cache clear kar deta hai, to data kabhi
 // stale nahi rehta. Login/logout pe bhi clear hota hai.
 const _apiCache={};
-const _API_TTL=30000;
+const _API_TTL=60000;
 const _API_NOCACHE=/notifications|heartbeat|\/photo|\/image|\/voice|\/file|\/download|\/pdf|\/content|\/badge/i;
 let _curLoader=null;        // current page ka loader — background refresh aane par isse re-render
 let _swrT=null;
@@ -412,7 +412,14 @@ async function _apiRefreshBg(path,_ck){
     if(TOKEN) opts.headers['Authorization']='Bearer '+TOKEN;
     const res=await fetch(API+path,opts); if(!res.ok) return;
     const d=await res.json();
-    try{ if(JSON.stringify(d).length<1572864){ _apiCache[_ck]={t:Date.now(),d:d}; _swrRerender(); } }catch(e){}
+    try{ const s=JSON.stringify(d);
+      if(s.length<1572864){
+        const old=_apiCache[_ck];
+        const changed=!old||JSON.stringify(old.d)!==s;   // data BADLA tabhi re-render (warna view disturb nahi)
+        _apiCache[_ck]={t:Date.now(),d:d};
+        if(changed) _swrRerender();
+      }
+    }catch(e){}
   }catch(e){}
 }
 function _preloadAdmin(){
@@ -465,6 +472,7 @@ async function api(path, method='GET', body=null) {
  const msg = (data && data.detail) ? data.detail : ('Error ' + res.status);
  const err = new Error(msg); err.status = res.status; throw err;
   }
+  if(typeof _auth401!=='undefined') _auth401=0;   // koi bhi success -> 401-streak reset
   if(method==='GET'){
     if(!_API_NOCACHE.test(path)){ try{ if(JSON.stringify(data).length<1572864) _apiCache[_ck]={t:Date.now(),d:data}; }catch(e){} }
   } else _apiBust();
@@ -632,13 +640,20 @@ async function pollAdminLive(){
 function startAdminLivePoll(){ if(_adminLiveInt) return; pollAdminLive(); _adminLiveInt=setInterval(pollAdminLive,45000); }
 function stopAdminLivePoll(){ if(_adminLiveInt){ clearInterval(_adminLiveInt); _adminLiveInt=null; } }
 let _curPage='';
-function _pingNow(){
-  // sirf tab ping jab page saamne ho — background tab / back karke chale jaane par
-  // ping ruk jaata hai aur LIVE_WINDOW (3 min) ke baad live list se hat jaate ho
+let _lastPing=0;
+function _pingNow(force){
+  // sirf tab ping jab page saamne ho. THROTTLE: 25s me ek se zyada ping nahi (navigation/
+  // re-render se flood na ho — Railway logs me har second 2-3 ping aa rahe the).
   if(document.visibilityState!=='visible') return;
   if(!TOKEN) return;
-  api('/api/auth/ping','POST',{page:_curPage||''}).catch(e=>{ if(e&&e.status===401) _sessionExpired(); });
+  const now=Date.now();
+  if(!force && (now-_lastPing)<25000) return;
+  _lastPing=now;
+  api('/api/auth/ping','POST',{page:_curPage||''}).catch(e=>{ if(e&&e.status===401) _authFail(); });
 }
+// transient 401 (server hiccup) par turant logout mat karo — 2 lagataar 401 par hi session expire.
+let _auth401=0;
+function _authFail(){ _auth401++; if(_auth401>=2) _sessionExpired(); }
 // wapas tab pe aate hi turant ping — live list mein turant wapas aa jaao
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') _pingNow(); });
 function startStudentHeartbeat(){ if(_hbInt) return; _pingNow(); _hbInt=setInterval(_pingNow,60000); }
@@ -781,7 +796,7 @@ function _sessionExpired(){
   toast('Your session has expired — please log in again.', true);
   setTimeout(()=>{ window._sessDead=false; goHome(); }, 1600);
 }
-function startNotifPolling(role){ stopNotifPolling(); _notifInt=setInterval(()=>pollNotifs(role).catch(e=>{ if(e&&e.status===401) _sessionExpired(); }),90000); }
+function startNotifPolling(role){ stopNotifPolling(); _notifInt=setInterval(()=>pollNotifs(role).catch(e=>{ if(e&&e.status===401) _authFail(); }),90000); }
 function stopNotifPolling(){ if(_notifInt){ clearInterval(_notifInt); _notifInt=null; } }
 // ===== SEND NOTIFICATIONS (admin + teacher) =====
 // ===== v93: notify modals — recipient clarity + live student counts =====
@@ -1246,7 +1261,7 @@ function startDoubtBadge(role){
       else{ const all=await api('/api/admin/doubts?status=pending'); n=all.length||0; }
       const b=document.getElementById(role==='teacher'?'t-doubt-badge':'a-doubt-badge');
       if(b){ b.textContent=n; b.style.display=n>0?'':'none'; }
-    }catch(e){ if(e&&e.status===401) _sessionExpired(); }
+    }catch(e){ if(e&&e.status===401) _authFail(); }
   };
   run(); if(_dbadgeInt) clearInterval(_dbadgeInt); _dbadgeInt=setInterval(run,180000);
 }
