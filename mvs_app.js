@@ -1,3 +1,5 @@
+// ===== BROWSER TAB TITLE =====
+try{ document.title='Class Manager - MVS Foundation'; }catch(e){}
 // ===== PROFESSIONAL SVG ICONS =====
 const _S='<svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
 const ICONS={
