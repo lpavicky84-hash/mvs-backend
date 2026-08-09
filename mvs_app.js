@@ -6832,7 +6832,7 @@ function _vtFilterTypes(streamSelId,typeSelId,types){
   const ts=document.getElementById(typeSelId); if(!ts) return;
   ts.innerHTML=_vtTypeOptsHtml(types,s,ts.value);
 }
-const VT_LBL={assigned:'Assigned',submitted:'Submitted',approved:'Approved',editing_soon:'Editing Soon',editing_done:'Editing Done',uploaded:'Uploaded',reshoot:'Reshoot',rejected:'Rejected',proposal:'Pending Approval'};
+const VT_LBL={assigned:'Assigned',submitted:'Submitted',approved:'Approved',editing_soon:'Editing Soon',editing_done:'Editing Done',uploaded:'Uploaded',reshoot:'Reshoot',rejected:'Rejected',not_completed:'Not Completed',proposal:'Pending Approval'};
 function _vtQs(){ const f=_vtF,q=[]; if(f.teacher_id)q.push('teacher_id='+f.teacher_id); if(f.status)q.push('status='+f.status); if(f.channel_id)q.push('channel_id='+f.channel_id); if(f.video_type)q.push('video_type='+encodeURIComponent(f.video_type)); return q.length?'?'+q.join('&'):''; }
 function _vtPill(t,blink,who){
   let cls=t.status, lbl=VT_LBL[t.status]||t.status;
@@ -7142,12 +7142,15 @@ function _ensureCbpCss(){
     '.cbp-tag.ok{background:rgba(16,163,74,.15);color:#15803d}',
     '.cbp-tag.pend{background:rgba(245,158,11,.16);color:#b45309}',
     '.cbp-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}',
-    '.cbp-note{font-size:.76rem;color:var(--text-muted);margin-top:10px}'
+    '.cbp-note{font-size:.76rem;color:var(--text-muted);margin-top:10px}',
+    '.vt-pill.not_completed{background:rgba(220,38,38,.15);color:#dc2626}',
+    '.vt-card.st-not_completed{border-left:3px solid #dc2626}'
   ].join('');
   document.head.appendChild(st);
 }
 function _vtCollabChip(t, who){
   if(!t||!t.is_collab) return '';
+  _ensureCbpCss();
   var all=t.collab_teachers||[], total=all.length, dn=all.filter(function(c){return c.verified;}).length;
   var submitted=!!t.submitted_at || ['submitted','uploaded','approved','editing_soon','editing_done'].indexOf(t.status)>=0;
   var status=(total&&dn>=total)?'<span class="vt-cbchip ok">All '+total+' verified</span>'
@@ -7173,11 +7176,18 @@ function vtCollabPopup(id, who){
              :(submitted?'<span class="cb-pill bad">'+dn+'/'+total+' verified</span>':'');
   var actions='';
   if(who==='a'){
-    if(submitted){
+    if(t.status==='not_completed'){
+      actions='<div class="cbp-actions"><button class="btn btn-primary btn-sm" onclick="vtVerifyComplete('+t.id+',false,true)">'+ic('refresh')+' Give Reshoot (unlock)</button></div>'
+        +'<div class="cbp-note">Ye task LOCKED hai (not completed) — teacher submit nahi kar sakta. Reshoot dene par task dobara khulega aur teacher resubmit kar payega.</div>';
+    } else if(submitted){
       actions='<div class="cbp-actions">'
         +'<button class="btn btn-success btn-sm" onclick="vtVerifyComplete('+t.id+',true)">'+ic('check')+' Task Completed (verify all)</button>'
-        +'<button class="btn btn-danger btn-sm" onclick="vtVerifyComplete('+t.id+',false)">Task Not Completed</button></div>'
-        +'<div class="cbp-note">Verify karte hi SAB collab teachers ko notification jaata hai aur sabka ek task complete ho jaata hai (sirf submit karne wale ka nahi).</div>';
+        +'<button class="btn btn-warning btn-sm" onclick="vtVerifyComplete('+t.id+',false,true)">Not Completed — Give Reshoot</button>'
+        +'<button class="btn btn-danger btn-sm" onclick="vtVerifyComplete('+t.id+',false,false)">Not Completed — Lock</button></div>'
+        +'<div class="cbp-note"><b>Completed</b> → sab teachers verified + sabko notification (sabka task complete). '
+        +'<b>Give Reshoot</b> → task dobara khulta hai, teacher resubmit karega. '
+        +'<b>Lock</b> → task band; teacher tab tak submit nahi kar payega jab tak aap reshoot na do. '
+        +'Warning + not-completed-on-time +1 + payout DELAY (task delayed) lagta hai.</div>';
     } else {
       actions='<div class="cbp-note">Verification video submit hone ke baad milega.</div>';
     }
@@ -7186,11 +7196,14 @@ function vtCollabPopup(id, who){
     '<div style="margin-bottom:10px">'+headTag+'</div>'+subLine+'<div class="cbp-list">'+rows+'</div>'+actions,
     '<button class="btn btn-primary" onclick="closeModal()">Close</button>');
 }
-async function vtVerifyComplete(id, completed){
-  if(!completed){ if(!confirm('Mark this task as NOT completed?\nSabhi collab teachers ko notify hoga aur task dobara khul jaayega.')) return; }
+async function vtVerifyComplete(id, completed, reshoot){
+  reshoot=!!reshoot;
+  if(!completed && !reshoot){ if(!confirm('LOCK this task as NOT completed?\nTeacher tab tak submit nahi kar payega jab tak aap reshoot na do. Warning + payout delay lagega.')) return; }
   try{
-    await api('/api/admin/video-tasks/'+id+'/verify-complete','POST',{completed:!!completed});
-    toast(completed?'Task completed \u2014 sab teachers verified & notified.':'Not completed \u2014 teachers notified, task reopened.');
+    await api('/api/admin/video-tasks/'+id+'/verify-complete','POST',{completed:!!completed, reshoot:reshoot});
+    toast(completed?'Task completed \u2014 sab teachers verified & notified.'
+         :(reshoot?'Reshoot diya \u2014 task dobara khula, teachers notified.'
+                  :'Locked \u2014 not completed. Teachers notified, payout delay lagega.'));
     closeModal();
     if(typeof loadAVTasks==='function') loadAVTasks();
   }catch(e){ toast(e.message||'Could not update',true); }

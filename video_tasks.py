@@ -997,6 +997,7 @@ def vt_task_rank_rows(db):
         done = len(subs)
         ontime = sum(1 for t in subs if t.on_time)
         delayed = sum(1 for t in subs if t.on_time is False)
+        not_completed = sum(1 for t in tasks if t.status == "not_completed")
         pending = sum(1 for t in tasks if t.status == "assigned")
         rate = round(100 * ontime / done) if done else 0
         u = db.query(User).filter(User.id == tp.user_id).first()
@@ -1005,7 +1006,7 @@ def vt_task_rank_rows(db):
             "name": (u.name if u else "") or f"Teacher #{tp.id}",
             "photo": bool(getattr(tp, "photo_b64", None)),
             "assigned": len(tasks), "done": done, "pending": pending,
-            "ontime": ontime, "delayed": delayed, "rate": rate,
+            "ontime": ontime, "delayed": delayed, "not_completed": not_completed, "rate": rate,
         })
     rows.sort(key=lambda r: (-r["rate"], -r["ontime"], -r["done"], r["name"]))
     for i, r in enumerate(rows):
@@ -1214,18 +1215,39 @@ def vt_verify_complete(task_id: int, payload: dict = Body(...),
                            'Your collaborative task "%s" has been verified by the production manager. '
                            'Task complete for all collaborating teachers — great teamwork!' % t.title)
     else:
+        reshoot = bool(payload.get("reshoot", False))
         t.collab_verified = "{}"
-        t.status = "reshoot"
         t.reviewed = True
-        t.review_remarks = remarks or "Marked NOT completed by production manager"
-        _hist_add(t, "rejected", "Task marked NOT completed by production manager"
-                  + (" — " + remarks if remarks else ""))
-        for pid in allids:
-            uid = _uid(pid)
-            if uid:
-                _vt_notify(db, uid, "\u26a0\ufe0f Task Not Completed",
-                           'Your collaborative task "%s" was marked NOT completed by the production manager%s. '
-                           'Please review and redo.' % (t.title, (" (" + remarks + ")") if remarks else ""))
+        if reshoot:
+            # Admin ne RESHOOT diya — task dobara khulta hai, teacher resubmit kar sakta hai.
+            t.status = "reshoot"
+            t.review_remarks = remarks or "Not completed — reshoot allowed by production manager"
+            _hist_add(t, "reshoot", "Not completed — reshoot allowed"
+                      + (" — " + remarks if remarks else ""))
+            for pid in allids:
+                uid = _uid(pid)
+                if uid:
+                    _vt_notify(db, uid, "\U0001f501 Reshoot Allowed",
+                               'Your collaborative task "%s" was not completed, but the production manager '
+                               'has allowed a reshoot%s. Please record and submit again.'
+                               % (t.title, (" (" + remarks + ")") if remarks else ""))
+        else:
+            # NO reshoot — task LOCK. Teacher tab tak resubmit nahi kar sakta jab tak admin
+            # reshoot na de. Warning + not-completed-on-time +1 + payout DELAY (on_time=False).
+            t.status = "not_completed"
+            t.on_time = False
+            t.review_remarks = remarks or "Marked NOT completed (locked) by production manager"
+            _hist_add(t, "rejected", "Task NOT completed — LOCKED (no reshoot)"
+                      + (" — " + remarks if remarks else ""))
+            for pid in allids:
+                uid = _uid(pid)
+                if uid:
+                    _vt_notify(db, uid, "\u26a0\ufe0f Task Not Completed — Locked",
+                               'Your collaborative task "%s" was marked NOT COMPLETED by the production manager%s. '
+                               'This counts as not completed on time and affects your payout (delayed). '
+                               'You cannot resubmit until the production manager allows a reshoot.'
+                               % (t.title, (" (" + remarks + ")") if remarks else ""),
+                               ntype="warning")
     db.commit()
     return {"ok": True, "completed": completed, "status": t.status,
             "collab_teachers": [{"id": i, "name": _teacher_name(db, i),
@@ -2003,6 +2025,7 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
         "pending": sum(1 for t in real if t.status == "assigned"),
         "on_time": sum(1 for t in subs if t.on_time),
         "delayed": sum(1 for t in subs if t.on_time is False),
+        "not_completed": sum(1 for t in real if t.status == "not_completed"),
         "month_types": month_type,
     }
     # special tasks (One Shot per subject + Rapid Revision) — chapters ke saath
