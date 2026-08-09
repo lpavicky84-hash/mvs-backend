@@ -13580,7 +13580,30 @@ function _classSplit(entries, opts){
     return Object.assign({},e,{subject:disp});
   });
 }
+// ===== WEEKLY VIEW: week navigation (prev/next week + date picker) =====
+if(typeof window._wkOffset==='undefined') window._wkOffset=0;
+function _wkBaseDate(){ var d=istNow(); d.setHours(0,0,0,0); d.setDate(d.getDate()+(window._wkOffset||0)*7); return d; }
+function _wkWeekStart(d){ var x=new Date(d); x.setHours(0,0,0,0); var dow=(x.getDay()+6)%7; x.setDate(x.getDate()-dow); return x; }
+function _wkReRender(){ try{ var L=window._ttLast; if(L) renderStudentTimetable(L.entries, L.containerId, L.opts); }catch(e){} }
+function wkNav(delta){ window._wkOffset=(window._wkOffset||0)+delta; _wkReRender(); }
+function wkThisWeek(){ window._wkOffset=0; _wkReRender(); }
+function wkPickDate(ds){ if(!ds) return; try{ var picked=new Date(ds+'T00:00:00'); var base=istNow(); base.setHours(0,0,0,0);
+  window._wkOffset=Math.round((_wkWeekStart(picked)-_wkWeekStart(base))/(7*86400000)); _wkReRender(); }catch(e){} }
+function _ensureWkNavCss(){
+  if(document.getElementById('wknav-css')) return;
+  var st=document.createElement('style'); st.id='wknav-css';
+  st.textContent=[
+    '.wk-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}',
+    '.wk-nav-btn{font-size:.78rem;font-weight:700;padding:6px 13px;border-radius:99px;border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.12);color:#fff;cursor:pointer;transition:.15s}',
+    '.wk-nav-btn:hover{background:rgba(255,255,255,.24)}',
+    '.wk-nav-btn.now{background:#fff;color:#5c4a0a;border-color:#fff}',
+    '.wk-nav-date{font-size:.78rem;font-weight:700;padding:6px 10px;border-radius:9px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.92);color:#2e2716;cursor:pointer}',
+    '.wk-nav-lbl{font-size:.74rem;font-weight:800;color:rgba(255,255,255,.85);padding:0 4px}'
+  ].join('');
+  document.head.appendChild(st);
+}
 function renderStudentTimetable(entries, containerId, opts={}){
+  window._ttLast={entries:entries, containerId:containerId, opts:opts};
   const el=document.getElementById(containerId);
   entries=_classSplit(entries||[],opts);
   if(!entries||entries.length===0){ el.innerHTML=`<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>${opts.emptyMsg||'No timetable for your subjects yet.'}</p></div></div></div>`; return; }
@@ -13658,7 +13681,7 @@ function renderStudentTimetable(entries, containerId, opts={}){
   if(_ttView==='weekly'){
     // ---- Weekly Overview hero: is week ki classes subject-wise + doubts + tests ----
     const _isoW=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-    const _wd0=istNow(); _wd0.setHours(0,0,0,0);
+    const _wd0=_wkBaseDate();
     const _dow=(_wd0.getDay()+6)%7;
     const _ws=new Date(_wd0); _ws.setDate(_wd0.getDate()-_dow);
     const _we=new Date(_ws); _we.setDate(_ws.getDate()+6);
@@ -13677,7 +13700,8 @@ function renderStudentTimetable(entries, containerId, opts={}){
       <div class="ov2-top">
         <div style="min-width:0"><div class="ov-lbl">Weekly Overview${_wkAll?'':' - '+esc(active)}</div>
         <div class="ov2-name" style="font-size:1.3rem">${esc(fmtNice(_wsK))} to ${esc(fmtNice(_weK))}</div>
-        ${opts.scopeLabel?`<div class="ov2-sub">${esc(opts.scopeLabel)}</div>`:''}</div>
+        ${opts.scopeLabel?`<div class="ov2-sub">${esc(opts.scopeLabel)}</div>`:''}
+        ${(function(){ _ensureWkNavCss(); var _o=window._wkOffset||0; var _lbl=_o===0?'This week':(_o===1?'Next week':(_o===-1?'Last week':(_o>0?('+'+_o+' weeks'):(_o+' weeks')))); return `<div class="wk-nav"><button class="wk-nav-btn" onclick="wkNav(-1)">\u2039 Prev</button><input type="date" class="wk-nav-date" value="${_wsK}" onchange="wkPickDate(this.value)"><button class="wk-nav-btn" onclick="wkNav(1)">Next \u203a</button><span class="wk-nav-lbl">${_lbl}</span>${_o!==0?'<button class="wk-nav-btn now" onclick="wkThisWeek()">Today</button>':''}</div>`; })()}</div>
       </div>
       <div class="ov2-tiles">
         <div class="ov2-tile static"><div class="n">${wkEntries.length}</div><div class="l">Total Classes</div></div>
@@ -13856,7 +13880,7 @@ function renderStudentWeekly(tl, subjects, opts){
   const byDay={};
   const _seenSlot=new Set();
   // WEEK FILTER: sirf is week (Mon..Sun) ki classes — purani/aane wali weeks ki nahi
-  const _tzW0=istNow(); _tzW0.setHours(0,0,0,0);
+  const _tzW0=_wkBaseDate();
   const _dowW0=(_tzW0.getDay()+6)%7; const _monW0=new Date(_tzW0); _monW0.setDate(_tzW0.getDate()-_dowW0);
   const _sunW0=new Date(_monW0); _sunW0.setDate(_monW0.getDate()+6);
   const _wsKW=_monW0.toLocaleDateString('en-CA'), _weKW=_sunW0.toLocaleDateString('en-CA');
