@@ -15,7 +15,7 @@ from datetime import datetime, date, timedelta
 import perf_config as _pc
 
 COMPONENTS = ["teaching", "content", "targets", "student_support",
-              "tests", "consistency", "video_initiative"]
+              "tests", "project", "consistency", "video_initiative"]
 
 
 # ---------------------------------------------------------------- month helpers
@@ -91,6 +91,10 @@ def score_from_metrics(m, cfg, team=None):
     traw = _blend_target(m.get("target_items", []), cfg)
     raw["targets"] = traw
 
+    # 3b) PROJECT — assigned projects ka AVERAGE completion % (chapters done/total).
+    #     Koi project nahi -> N/A. (Project videos content/videos me count nahi hote.)
+    raw["project"] = m.get("project_pct_avg")
+
     # 4) STUDENT SUPPORT — 15h SLA: on-time / decided. Koi decided doubt nahi -> N/A
     dec, don = m.get("doubts_decided", 0), m.get("doubts_ontime", 0)
     raw["student_support"] = round(100.0 * don / dec, 1) if dec > 0 else None
@@ -126,6 +130,7 @@ def score_from_metrics(m, cfg, team=None):
         "content": ("%d on-time of %d assigned" % (co, ct) + (", %d late" % cl if cl else "")) if ct > 0
                    else (("%d done, no target" % (co + cl)) if (co + cl) else "no content assigned"),
         "targets": _tgt_det(m.get("target_items", [])),
+        "project": (("%d project%s, avg %s%%" % (len(m.get("projects", [])), "" if len(m.get("projects", [])) == 1 else "s", m.get("project_pct_avg", 0))) if m.get("projects") else "no projects assigned"),
         "student_support": ("%d of %d doubts within 15h" % (don, dec)) if dec > 0 else "no doubts to resolve (full)",
         "tests": ("%d of %d tests" % (m.get("tests_done", 0), tt)) if tt else (("%d tests" % m.get("tests_done", 0)) if m.get("tests_done", 0) else "no tests"),
         "task_discipline": ("%d on-time of %d tasks" % (to, tot) + ((", %d late" % td) if td else "") + ((", %d missed" % tn) if tn else "")) if tot > 0 else "no tasks assigned",
@@ -164,6 +169,7 @@ def score_from_metrics(m, cfg, team=None):
         "components": comp,
         "raw": raw,
         "target_items": m.get("target_items", []),
+        "projects": m.get("projects", []),
         "workload_units_assigned": round(my_units, 1),
         "workload_units_completed": round(m.get("workload_units_completed", 0), 1),
         "workload_level": wl_level,
@@ -358,19 +364,39 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
         m["_by_subject"] = []
     # tests target/done: existing config target + real Exam count as done
     m["tests_target"] = vt["tests"]["target"]
-    # projects completed (all chapters done) — per-video already counted in vt.videos
+    # ---- PROJECTS (one-shot / rapid-revision / project) — completion % per project ----
+    #      Har project = apne chapters ka done/total. Component = sab projects ka AVERAGE %.
+    #      Project ki videos yahin ginti hain — Content/videos me nahi. Old projects skip.
+    projects = []
     try:
         from models import VideoTaskChapter
-        projs = db.query(VideoTask).filter(VideoTask.teacher_id == tp.id,
-                                           VideoTask.kind.in_(["one_shot", "rapid_revision", "project"]),
-                                           VideoTask.created_at >= dt0, VideoTask.created_at < dt1).all()
-        for p in projs:
+        from sqlalchemy import or_ as _orP
+        _pc = db.query(VideoTask).filter(
+            _orP(VideoTask.teacher_id == tp.id,
+                 VideoTask.collab_teacher_ids.like("%" + str(tp.id) + "%")),
+            VideoTask.kind.in_(["one_shot", "rapid_revision", "project"]),
+            VideoTask.created_at >= dt0, VideoTask.created_at < dt1).all()
+        try:
+            from video_tasks import _collab_all_ids as _cai2
+            _pc = [p for p in _pc if (p.teacher_id == tp.id or tp.id in _cai2(p))]
+        except Exception:
+            _pc = [p for p in _pc if p.teacher_id == tp.id]
+        for p in _pc:
+            if bool(getattr(p, "is_old", False)):
+                continue
             chs = db.query(VideoTaskChapter).filter(VideoTaskChapter.task_id == p.id).all()
-            if chs and all((c.link or "").strip() or c.submitted_at for c in chs):
-                proj_completed += 1
+            if chs:
+                total = len(chs)
+                done = sum(1 for c in chs if (c.link or "").strip() or c.submitted_at)
+            else:
+                total, done = 1, (1 if p.submitted_at else 0)
+            pct = round(100.0 * done / total) if total else 0
+            projects.append({"name": p.title or "Project", "done": done, "total": total, "pct": pct})
     except Exception:
         pass
-    m["projects_completed"] = proj_completed
+    m["projects"] = projects
+    m["project_pct_avg"] = round(sum(x["pct"] for x in projects) / len(projects), 1) if projects else None
+    m["projects_completed"] = sum(1 for x in projects if x["total"] and x["done"] >= x["total"])
 
     # ---- Doubts (student support) — 15h SLA rule: sirf "decided" doubts count
     #      (resolved YA pending-but-overdue). Recent pending (SLA ke andar) penalty nahi.
@@ -419,6 +445,8 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
         for t in tasks:
             if bool(getattr(t, "is_old", False)):
                 continue   # OLD/pre-portal content -> is month count nahi
+            if (t.kind or "normal") in ("one_shot", "rapid_revision", "project"):
+                continue   # projects Content me nahi -> alag "Project" component me
             # assigned content task (proposal pending/rejected chhod ke) -> content target
             if (getattr(t, "proposal_ok", "") or "") != "pending" and getattr(t, "status", "") != "rejected":
                 content_assigned += 1
@@ -539,6 +567,7 @@ def _score_all(db, month, cfg):
             "subjects": tp.subjects or [], "batch": tp.batch or "",
             "score": sc["overall"], "components": sc["components"],
             "target_items": sc.get("target_items", []),
+            "projects": sc.get("projects", []),
             "workload_level": sc["workload_level"], "workload_pct": sc["workload_pct"],
             "limited_workload": sc["limited_workload"],
             "video_initiative": sc["video_initiative"],

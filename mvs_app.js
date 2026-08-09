@@ -1916,7 +1916,7 @@ function _ensureVcCss(){
 //  (Phase 2 engine ka result — podium, tabs, rank-change, breakdown drawer)
 // ============================================================
 const PF_COMPS=[['teaching','Teaching & Class Delivery'],['content','Content Production'],
-  ['targets','Monthly Target Achievement'],['student_support','Student Support'],
+  ['project','Projects'],['targets','Monthly Target Achievement'],['student_support','Student Support'],
   ['tests','Tests & Assessments'],
   ['consistency','Consistency'],['video_initiative','Video Initiative']];
 const PF_TABS=[['overall','Overall'],['teaching','Teaching'],['content','Content'],
@@ -2036,6 +2036,15 @@ function pfBreakdown(tid){
     const v=comps[c[0]]||{}; const na=v.na||v.score==null;
     const w=v.weight||0; const sc=na?0:(v.score||0); const pct=na?0:Math.min(100,Math.round((v.raw||0)));
     const det=v.detail?`<div class="pfb-det">${esc(v.detail)}</div>`:'';
+    if(c[0]==='project'){
+      const pjs=(r.projects||[]);
+      const detail=pjs.map(pj=>{ const p=pj.pct||0;
+        return `<div class="mtg-item"><div class="mtg-top"><span>${esc(pj.name||'Project')}</span><b>${pj.done||0}/${pj.total||0} \u00b7 ${p}%</b></div><div class="mtg-bar"><div class="mtg-fill" style="width:${p}%"></div></div></div>`; }).join('');
+      return `<div class="pfb-row mtg-row" onclick="this.classList.toggle('open')">
+        <div class="pfb-top"><span>${esc(c[1])} <span class="pfb-wt">${w}%</span> <span class="mtg-caret">\u25be</span></span><b class="${na?'na':''}">${na?'N/A':Math.round(v.raw)+'%'}</b></div>
+        <div class="pfb-bar"><div class="pfb-fill" style="width:${pct}%"></div></div>${det}
+        <div class="mtg-detail">${detail||'<div class="pfb-muted">No projects assigned</div>'}</div></div>`;
+    }
     if(c[0]==='targets'){
       const items=(r.target_items||[]);
       const detail=items.map(it=>{ const t=it.target||0, dn=it.done||0; const p=t>0?Math.min(100,Math.round(dn/t*100)):0;

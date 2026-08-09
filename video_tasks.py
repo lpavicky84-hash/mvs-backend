@@ -2708,6 +2708,7 @@ def _vt_targets_for(db, tp, dt0, dt1):
         kind = (t.kind or "normal")
         sub = t.subject or "General"
         if kind in ("one_shot", "rapid_revision", "project"):
+            continue   # projects "Project" component me count hote hain — videos me nahi
             chs = db.query(VideoTaskChapter).filter(VideoTaskChapter.task_id == t.id).all()
             if not chs:
                 cats["videos"]["assigned"] += 1

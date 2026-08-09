@@ -15,11 +15,12 @@ PERF_DEFAULTS = {
     # ---- Part 2: main Performance Score components (out of 100) ----
     "component_weights": {
         "teaching": 20,           # Teaching & Class Delivery
-        "content": 25,            # Content Production (Task Discipline yahin merge)
+        "content": 15,            # Content Production (project videos yahan se nikal gaye)
         "targets": 20,            # Monthly Target Achievement
         "student_support": 15,    # Doubt resolution (15h SLA)
         "tests": 10,              # Tests & Assessment work
-        "task_discipline": 0,     # HATA diya — Content me merge (dono task-timeliness the)
+        "project": 10,            # Projects (one-shot/revision) — completion % based
+        "task_discipline": 0,     # HATA diya — Content me merge
         "consistency": 5,         # Consistency
         "video_initiative": 5,    # Video ideas/proposals (capped)
     },
