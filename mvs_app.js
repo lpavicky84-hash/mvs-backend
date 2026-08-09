@@ -1920,8 +1920,8 @@ const PF_COMPS=[['teaching','Teaching & Class Delivery'],['content','Content Pro
   ['tests','Tests & Assessments'],
   ['consistency','Consistency'],['video_initiative','Video Initiative']];
 const PF_TABS=[['overall','Overall'],['teaching','Teaching'],['content','Content'],
-  ['targets','Targets'],['student_support','Student Support'],
-  ['video_initiative','Video Initiative'],['consistency','Consistency']];
+  ['project','Projects'],['targets','Targets'],['student_support','Student Support'],
+  ['tests','Tests'],['video_initiative','Video Initiative'],['consistency','Consistency']];
 let _pfState={who:'t', sort:'overall', board:null, meId:null};
 
 async function renderPerfBoard(wrapId, who, month){
@@ -1968,7 +1968,7 @@ function _pfAv(r,sz){
 function _pfVal(r){
   if(_pfState.sort==='overall') return `${r.score}<small>/100</small>`;
   const c=(r.components||{})[_pfState.sort]||{};
-  return (c.score==null)?'<small>N/A</small>':`${c.score}<small>/${c.weight}</small>`;
+  return (c.raw==null)?'<small>N/A</small>':`${Math.round(c.raw)}<small>%</small>`;
 }
 function _pfPaint(){
   const wrap=document.getElementById(_pfState.wrapId); if(!wrap) return;
