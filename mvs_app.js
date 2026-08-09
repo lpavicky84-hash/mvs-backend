@@ -216,6 +216,99 @@ function injectTopbarIcons(){
 }
 
 // ========================================================
+//  BROWSER TAB FAVICON (MVS) + PATH-BASED PORTAL ROUTING + PREMIUM LOGIN
+// ========================================================
+// HTML file chhue bina — favicon aur premium login sab yahin se inject hote hain.
+function _mvsLogoSVG(gid){
+  gid=gid||'mvsfav';
+  return "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>"
+    +"<defs><linearGradient id='"+gid+"' x1='0' y1='0' x2='1' y2='1'>"
+    +"<stop offset='0' stop-color='#e2b458'/><stop offset='1' stop-color='#8a6d10'/></linearGradient></defs>"
+    +"<rect x='3' y='3' width='58' height='58' rx='15' fill='url(#"+gid+")'/>"
+    +"<text x='32' y='43' font-family='Arial,Helvetica,sans-serif' font-size='23' font-weight='800' fill='#fff' text-anchor='middle' letter-spacing='0.5'>MVS</text></svg>";
+}
+function _setFavicon(){
+  try{
+    var href='data:image/svg+xml,'+encodeURIComponent(_mvsLogoSVG('mvsfav'));
+    var l=document.querySelector("link[rel~='icon']");
+    if(!l){ l=document.createElement('link'); l.setAttribute('rel','icon'); document.head.appendChild(l); }
+    l.setAttribute('type','image/svg+xml'); l.setAttribute('href',href);
+    var a=document.querySelector("link[rel='apple-touch-icon']");
+    if(!a){ a=document.createElement('link'); a.setAttribute('rel','apple-touch-icon'); document.head.appendChild(a); }
+    a.setAttribute('href',href);
+  }catch(e){}
+}
+try{ _setFavicon(); }catch(e){}
+// Sirf /teacher aur /admin par default 3-card chooser turant chhupa do (login dikhana hai).
+// Root '/' par chooser waise hi dikhna chahiye (student ka original entry) — isliye chhupate nahi.
+try{ var _pf0=_portalFromPath(); if(_pf0==='teacher'||_pf0==='admin'){ var _ld0=document.getElementById('landing'); if(_ld0) _ld0.style.display='none'; } }catch(e){}
+
+// ---- Portal <-> URL mapping ----
+var _AUTH_META={
+  student:{label:'Student Portal', tag:'Student', sub:'Time table, materials, tests & progress',
+           bg:'radial-gradient(circle at top right,#5c4a0a,#2e2408 45%,#171203)'},
+  teacher:{label:'Teacher Portal', tag:'Teacher', sub:'Classes, DPP, lectures & doubts',
+           bg:'radial-gradient(circle at top right,#6b4a12,#3a2a0c 45%,#1c1305)'},
+  admin:{label:'Admin Panel', tag:'Admin', sub:'Approvals, manage teachers & students',
+         bg:'radial-gradient(circle at top right,#6b5a12,#3a300c 45%,#1c1705)'}
+};
+function _portalPath(p){ return p==='teacher'?'/teacher':(p==='admin'?'/admin':'/'); }
+function _portalFromPath(){
+  var p=(location.pathname||'/').replace(/\/+$/,'')||'/';
+  if(p==='/teacher') return 'teacher';
+  if(p==='/admin')   return 'admin';
+  // '/', '/student', '/portal' aur baaki sab -> ORIGINAL 3-card chooser.
+  // Student ka flow/URL (app.mvsfoundation.in) bilkul waisa ka waisa (approved template).
+  return 'landing';
+}
+
+// ---- Premium login: brand logo + role tag + portal switcher (teeno portals) ----
+function _ensureAuthCss(){
+  if(document.getElementById('mvs-auth-css')) return;
+  var st=document.createElement('style'); st.id='mvs-auth-css';
+  st.textContent=
+    '.auth-brand{display:flex;align-items:center;gap:13px;margin-bottom:24px}'+
+    '.auth-brand .auth-logo{width:48px;height:48px;border-radius:14px;flex-shrink:0;box-shadow:0 10px 24px -8px rgba(0,0,0,.55)}'+
+    '.auth-brand .auth-logo svg{width:100%;height:100%;display:block;border-radius:14px}'+
+    '.auth-brand-txt b{display:block;font-size:1.06rem;font-weight:800;color:#fff;letter-spacing:-.01em}'+
+    '.auth-brand-txt span{display:block;font-size:.76rem;color:rgba(255,255,255,.62);margin-top:3px}'+
+    '.auth-switch{margin-top:24px;padding-top:18px;border-top:1px solid rgba(255,255,255,.12);text-align:center}'+
+    '.auth-switch>span{display:block;font-size:.68rem;letter-spacing:.09em;text-transform:uppercase;color:rgba(255,255,255,.5);margin-bottom:11px}'+
+    '.auth-switch-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}'+
+    '.auth-pill{background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.18);color:#fff;font-size:.8rem;font-weight:700;padding:8px 17px;border-radius:99px;cursor:pointer;transition:.2s}'+
+    '.auth-pill:hover{background:rgba(255,255,255,.2);transform:translateY(-1px)}';
+  document.head.appendChild(st);
+}
+function _premiumLogin(portal){
+  try{
+    var scr=document.getElementById('login-screen');
+    var brand=document.getElementById('mvs-auth-brand');
+    var sw=document.getElementById('mvs-auth-switch');
+    // STUDENT login ko bilkul ORIGINAL rakho (approved template) — koi premium/brand/switcher nahi.
+    // (Shared .login-box hai, isliye teacher/admin ke inject kiye elements yahan chhupa dete hain.)
+    if(portal==='student'){
+      if(brand) brand.style.display='none';
+      if(sw) sw.style.display='none';
+      if(scr) scr.style.background='';   // CSS default (original gold-dark) par wapas
+      return;
+    }
+    _ensureAuthCss();
+    var cfg=_AUTH_META[portal]||_AUTH_META.teacher;
+    if(scr) scr.style.background=cfg.bg;
+    var box=document.querySelector('#login-screen .login-box'); if(!box) return;
+    if(!brand){ brand=document.createElement('div'); brand.id='mvs-auth-brand'; brand.className='auth-brand'; box.insertBefore(brand, box.firstChild); }
+    brand.style.display='';
+    brand.innerHTML='<div class="auth-logo">'+_mvsLogoSVG('mvsauthlogo')+'</div>'+
+      '<div class="auth-brand-txt"><b>MVS Foundation</b><span>'+cfg.label+'</span></div>';
+    if(!sw){ sw=document.createElement('div'); sw.id='mvs-auth-switch'; sw.className='auth-switch'; box.appendChild(sw); }
+    sw.style.display='';
+    var others=['student','teacher','admin'].filter(function(x){return x!==portal;});
+    sw.innerHTML='<span>Switch portal</span><div class="auth-switch-row">'+
+      others.map(function(x){return '<button type="button" class="auth-pill" onclick="goLogin(\''+x+'\')">'+_AUTH_META[x].tag+'</button>';}).join('')+'</div>';
+  }catch(e){}
+}
+
+// ========================================================
 //  CONFIG — Aapka live backend URL
 // ========================================================
 const API = "https://mvs-foundation-api-production-0553.up.railway.app";
@@ -319,9 +412,12 @@ function _xhrJson(url,payload,onProgress){
 // ========================================================
 //  NAVIGATION
 // ========================================================
-function goHome(){ _apiBust(); _clearSession(); TOKEN=null;ROLE=null; stopCountdown(); stopStudentHeartbeat(); stopAdminLivePoll(); stopNotifPolling(); var np=document.getElementById('notif-pop'); if(np)np.remove(); document.querySelectorAll('.app').forEach(a=>a.classList.remove('active')); document.getElementById('login-screen').classList.remove('active'); document.getElementById('subject-screen').style.display='none'; var tss=document.getElementById('t-subject-screen'); if(tss)tss.style.display='none'; document.getElementById('landing').style.display='flex'; }
+function _authReset(){ _apiBust(); _clearSession(); TOKEN=null;ROLE=null; stopCountdown(); stopStudentHeartbeat(); stopAdminLivePoll(); stopNotifPolling(); var np=document.getElementById('notif-pop'); if(np)np.remove(); document.querySelectorAll('.app').forEach(a=>a.classList.remove('active')); var ls=document.getElementById('login-screen'); if(ls) ls.classList.remove('active'); document.getElementById('subject-screen').style.display='none'; var tss=document.getElementById('t-subject-screen'); if(tss)tss.style.display='none'; var ld=document.getElementById('landing'); if(ld) ld.style.display='none'; }
+// goHome (Back / logout): sab reset karke ORIGINAL 3-card chooser dikhao (URL '/' par).
+function goHome(){ _authReset(); try{ history.replaceState({},'', '/'); }catch(e){} var ld=document.getElementById('landing'); if(ld) ld.style.display='flex'; }
 function goLogin(portal){
   CURRENT_PORTAL=portal;
+  try{ history.replaceState({mvs:1,auth:portal},'', _portalPath(portal)); }catch(e){}
   document.getElementById('landing').style.display='none';
   document.getElementById('login-screen').classList.add('active');
   // show right sub-screen
@@ -337,6 +433,7 @@ function goLogin(portal){
  document.getElementById('login-title').textContent=t[portal];
  document.getElementById('login-uid').value=''; document.getElementById('login-pass').value='';
   }
+  _premiumLogin(portal);
 }
 function logout(){ goHome(); }
 // ===== SESSION PERSIST — refresh karne par logout na ho, wahi page par wapas aao =====
@@ -364,8 +461,18 @@ async function _restoreSession(){
   return true;
 }
 window.addEventListener('DOMContentLoaded', function(){
+  try{ _setFavicon(); }catch(e){}
   if(/^#sso=/.test(location.hash||'')) return;   // SSO hash ho to wo flow handle karega
-  try{ _restoreSession(); }catch(e){}
+  // Session ho to wahi khol do; warna URL path ke hisaab se sahi portal:
+  //   /  -> Student, /teacher -> Teacher, /admin -> Admin, /portal -> 3-card chooser.
+  try{
+    Promise.resolve(_restoreSession()).then(function(ok){
+      if(ok) return;
+      var r=_portalFromPath();
+      if(r==='landing'){ var ld=document.getElementById('landing'); if(ld) ld.style.display='flex'; }
+      else goLogin(r);
+    }).catch(function(){ try{ var r2=_portalFromPath(); if(r2==='landing'){ var ld2=document.getElementById('landing'); if(ld2) ld2.style.display='flex'; } else goLogin(r2); }catch(e){} });
+  }catch(e){ try{ goLogin('student'); }catch(_){} }
 });
 
 // Student onboarding: fetch by phone

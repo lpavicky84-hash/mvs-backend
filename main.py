@@ -406,6 +406,33 @@ def _r2_mig_secret():
     return (os.getenv("R2_ACCOUNT_ID") or "").strip()
 
 
+@app.get("/r2-optimize")
+def _r2_optimize(key: str = ""):
+    """Migration ke baad MySQL me jo freed space (purana base64) bacha hai use reclaim karta hai
+    (OPTIMIZE TABLE). Kam traffic me chalao. Browser: /r2-optimize?key=<R2_ACCOUNT_ID>"""
+    if not _r2_mig_secret() or key != _r2_mig_secret():
+        return JSONResponse(status_code=403, content={"error": "bad key — R2 Account ID daalo"})
+    from database import SessionLocal
+    from sqlalchemy import text as _t
+    tables = ["student_profiles", "teacher_profiles", "materials", "video_tasks",
+              "dpp_packs", "exam_questions", "doubts", "dpp_answers", "exam_attempts",
+              "class_reports", "lectures"]
+    done = {}
+    db = SessionLocal()
+    try:
+        for tb in tables:
+            try:
+                db.execute(_t("OPTIMIZE TABLE %s" % tb))
+                done[tb] = "ok"
+            except Exception as e:
+                done[tb] = "skip (%s)" % str(e)[:60]
+        try: db.commit()
+        except Exception: pass
+    finally:
+        db.close()
+    return {"optimized": done, "note": "DB space reclaimed. Queries + RAM ab lighter."}
+
+
 @app.get("/r2-diag")
 def _r2_diag(key: str = "", url: str = "", attempt: int = 0):
     """Ek R2 file ki asli bytes check karo — valid image/pdf hai, corrupt hai, HTML error
@@ -842,6 +869,16 @@ def root():
 
 @app.get("/portal")
 def portal():
+    if os.path.exists(_PORTAL_FILE):
+        return FileResponse(_PORTAL_FILE, media_type="text/html")
+    return {"error": "portal file not deployed"}
+
+# Path-based portal entry points — Teacher aur Admin ke liye alag URL. Dono same SPA serve
+# karte hain; frontend path padh ke sahi portal khol deta hai. Student ka URL sirf root
+# (app.mvsfoundation.in) hi rehta hai — uska flow bilkul waisa ka waisa (approved template).
+@app.get("/teacher")
+@app.get("/admin")
+def portal_entry():
     if os.path.exists(_PORTAL_FILE):
         return FileResponse(_PORTAL_FILE, media_type="text/html")
     return {"error": "portal file not deployed"}
