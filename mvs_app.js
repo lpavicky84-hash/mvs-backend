@@ -14609,26 +14609,7 @@ function initNavCollapse(){
       b.onclick=function(ev){ ev.stopPropagation(); var c=app.classList.toggle('nav-collapsed'); try{ localStorage.setItem('mvs_nav_collapsed',c?'1':'0'); }catch(e){} };
       lg.appendChild(b);
     }
-    // sidebar-logo me letter ki jagah MVS logo image (public /api/student/logo). Fail ho to letter.
-    var li=app.querySelector('.sidebar-logo .logo-icon');
-    if(li && !li.querySelector('img') && !li.dataset.logoTried){
-      li.dataset.logoTried='1';
-      var im=new Image(); im.alt='MVS';
-      im.onload=function(){ li.textContent=''; li.style.padding='0'; li.style.background='#fff'; li.style.border='1px solid rgba(0,0,0,.08)'; li.style.overflow='hidden'; im.style.cssText='width:100%;height:100%;object-fit:contain;border-radius:inherit;display:block'; li.appendChild(im); };
-      im.onerror=function(){};
-      im.src=(typeof API!=='undefined'?API:'')+'/api/student/logo';
-    }
-    // Admin ke bottom profile ("AH") me bhi MVS logo — teacher/student ke asli photo ko na chhede
-    if(app.id==='admin-app'){
-      var bav=app.querySelector('.sidebar-bottom .avatar, .sidebar-bottom .user-avatar, .sidebar-user .avatar, .sidebar-bottom .stu-photo');
-      if(bav && !bav.querySelector('img') && !bav.dataset.logoTried){
-        bav.dataset.logoTried='1';
-        var bim=new Image(); bim.alt='MVS';
-        bim.onload=function(){ bav.textContent=''; bav.style.background='#fff'; bav.style.overflow='hidden'; bim.style.cssText='width:100%;height:100%;object-fit:contain;border-radius:inherit;display:block'; bav.appendChild(bim); };
-        bim.onerror=function(){};
-        bim.src=(typeof API!=='undefined'?API:'')+'/api/student/logo';
-      }
-    }
+    try{ _applyMvsLogos(app); }catch(e){}
   });
 }
 // ===== SECTION ACCORDION — sidebar me sirf category headers (HOME/MATERIALS/WORK/PROGRESS)
@@ -14636,23 +14617,67 @@ function initNavCollapse(){
 // category apne aap khuli rehti hai. =====
 // Teacher sidebar ko premium banao: 3 groups (Main/Content/Account) ke Content me 10 items
 // the -> unhe logical sub-groups me baant do. Idempotent + defensive (HTML edit nahi).
+// MVS logo: top sidebar-logo + admin bottom profile. Flag SIRF onload (success) par set ho —
+// fail/early ho to agli baar (interval) dobara try kare. Isliye pehle logo nahi lagta tha.
+function _applyMvsLogos(app){
+  try{
+    var LOGO=(typeof API!=='undefined'?API:'')+'/api/student/logo';
+    function setImg(host, whiteBorder){
+      if(!host || host.querySelector('img') || host.dataset.logoOk==='1') return;
+      var im=new Image(); im.alt='MVS';
+      im.onload=function(){
+        if(host.querySelector('img')) return;
+        host.textContent=''; host.style.padding='0'; host.style.background='#fff';
+        if(whiteBorder) host.style.border='1px solid rgba(0,0,0,.08)';
+        host.style.overflow='hidden';
+        im.style.cssText='width:100%;height:100%;object-fit:contain;border-radius:inherit;display:block';
+        host.appendChild(im); host.dataset.logoOk='1';
+      };
+      im.onerror=function(){};   // flag set nahi -> agli baar retry
+      im.src=LOGO;
+    }
+    var apps=app?[app]:[].slice.call(document.querySelectorAll('.app'));
+    apps.forEach(function(a){
+      setImg(a.querySelector('.sidebar-logo .logo-icon'), true);
+      if(a.id==='admin-app'){
+        setImg(a.querySelector('.sidebar-bottom .avatar, .sidebar-bottom .user-avatar, .sidebar-user .avatar, .sidebar-bottom .stu-photo'), false);
+      }
+    });
+  }catch(e){}
+}
 function _teacherNavRegroup(nav){
   try{
-    if(!nav || nav.dataset.regrouped==='1') return;
+    if(!nav) return;
     var app=nav.closest('.app'); if(!app || app.id!=='teacher-app') return;
-    function itemByPage(pg){ return nav.querySelector('.nav-item[onclick*="\'"+pg+"\'"]'); }
-    function insertSecBefore(pg, label){
-      var item=itemByPage(pg); if(!item) return;
+    if(nav.dataset.regrouped==='1') return;
+    function findItem(pg, label){
+      var items=nav.querySelectorAll('.nav-item');
+      for(var i=0;i<items.length;i++){
+        var oc=items[i].getAttribute('onclick')||'';
+        if(oc.indexOf("'"+pg+"'")>=0) return items[i];
+        var t=(items[i].textContent||'').trim().toLowerCase();
+        if(label && t===label) return items[i];
+      }
+      return null;
+    }
+    function insertSecBefore(item, secLabel){
+      if(!item) return false;
       var prev=item.previousElementSibling;
       if(prev && prev.classList && prev.classList.contains('nav-section') &&
-         (prev.textContent||'').trim().toLowerCase()===label.toLowerCase()) return;
-      var sec=document.createElement('div'); sec.className='nav-section'; sec.textContent=label;
+         (prev.textContent||'').trim().toLowerCase()===secLabel.toLowerCase()) return true;
+      var sec=document.createElement('div'); sec.className='nav-section'; sec.textContent=secLabel;
       item.parentNode.insertBefore(sec, item);
+      return true;
     }
-    // Content (DPP, Lecture Reports, Tests, Classes Material, Study Material) — jaisa hai
-    insertSecBefore('doubts', 'Support');            // Doubts
-    insertSecBefore('performance', 'Performance');   // Performance, Predicted, Attendance, Payout
-    nav.dataset.regrouped='1';
+    var doubtsItem=findItem('doubts','doubts');
+    var perfItem=findItem('performance','performance');
+    if(!doubtsItem && !perfItem) return;   // nav abhi ready nahi -> agli baar retry
+    var ok1=insertSecBefore(doubtsItem, 'Support');
+    var ok2=insertSecBefore(perfItem, 'Performance');
+    if(ok1 && ok2){
+      nav.dataset.regrouped='1';
+      try{ if(typeof _accGroupClose==='function') _accGroupClose(nav,false); }catch(e){}
+    }
   }catch(e){}
 }
 function initNavAccordion(){
@@ -14748,8 +14773,12 @@ function _updateAllSecBadges(){
     });
   }catch(e){}
 }
-// counts periodically change (polling) — section badge bhi refresh karte raho
-setInterval(_updateAllSecBadges, 4000);
+// counts periodically change (polling) — section badge + teacher regroup refresh karte raho
+setInterval(function(){
+  try{ document.querySelectorAll('.app .sidebar-nav').forEach(_teacherNavRegroup); }catch(e){}
+  try{ _updateAllSecBadges(); }catch(e){}
+  try{ if(typeof _applyMvsLogos==='function') _applyMvsLogos(); }catch(e){}
+}, 4000);
 function errHtml(e){ return `<div class="alert alert-danger"> ${esc(e.message)}<br><small>If this keeps happening, the backend may be asleep — refresh after 30–60 seconds.</small></div>`; }
 
 // ============================================================
