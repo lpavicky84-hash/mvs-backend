@@ -6702,7 +6702,7 @@ async function loadTPerformance(){
     const chart=`<div class="card"><div class="card-header"><h3>Monthly Classes Completed</h3></div><div class="card-body"><div class="bar-chart">${bars}</div></div></div>`;
     const tl=pf.recent.length?pf.recent.map(a=>`<div class="act-item"><div class="act-dot ${esc(a.type)}"></div><div><div class="act-text">${esc(a.text)}</div><div class="act-time">${esc(a.at)}</div></div></div>`).join(''):'<div class="empty-state"><p>No recent activity.</p></div>';
     const timeline=`<div class="card"><div class="card-header"><h3>Recent Activity</h3></div><div class="card-body"><div class="act-list">${tl}</div></div></div>`;
-    el.innerHTML=`<div id="t-rankboard-wrap"></div><div id="t-vc-wrap"></div>`+cards+`<div class="grid-2">${chart}${timeline}</div><div id="t-reports-wrap"></div>`;
+    el.innerHTML=`<div id="t-rankboard-wrap"></div><div id="t-vc-wrap"></div>`+cards+`<div id="t-reports-wrap"></div>`;
     loadTRankBoard();
     renderVideoContribution('t-vc-wrap');
     _renderClassReports('t-reports-wrap','/api/teacher/class-reports');
@@ -6734,7 +6734,14 @@ async function _renderClassReports(wrapId, endpoint, showTeacher){
       const who=showTeacher&&r.teacher_name?` \u00b7 ${esc(r.teacher_name)}`:'';
       return `<div class="rp-row">${badge}<div class="rp-main"><div class="rp-title">${esc(r.subject)}${r.chapter?' \u00b7 '+esc(r.chapter):''}${r.part?' \u00b7 '+esc(r.part):''}</div><div class="rp-meta">${esc(r.date||'')}${who} \u00b7 slot ${esc(r.scheduled||'\u2014')} \u00b7 started ${esc(r.start_time||'\u2014')}</div></div><span class="rp-dur">${r.duration_min?Math.round(r.duration_min)+' min':'\u2014'}</span></div>`;
     }).join('');
-    const list=`<div class="card"><div class="card-header"><h3>Class Reports</h3><span class="tc-count">${(d.rows||[]).length}</span></div><div class="card-body">${rows||'<div class="ws-empty"><p>No class reports yet</p><small>Reports appear here when a class is marked Done.</small></div>'}</div></div>`;
+    const _rc=(d.rows||[]).length;
+    const _rowsWrap=_rc>5?`<div class="rp-list-scroll">${rows}</div>`:rows;
+    const list=`<div class="card"><div class="card-header"><h3>Class Reports</h3><span class="tc-count">${(d.rows||[]).length}</span></div><div class="card-body">${rows?_rowsWrap:'<div class="ws-empty"><p>No class reports yet</p><small>Reports appear here when a class is marked Done.</small></div>'}${_rc>5?`<div class="rp-scroll-hint">Scroll for all ${_rc} reports</div>`:''}</div></div>`;
+    if(!document.getElementById('rp-scroll-css')){
+      const st=document.createElement('style'); st.id='rp-scroll-css';
+      st.textContent='.rp-list-scroll{max-height:360px;overflow-y:auto;-webkit-overflow-scrolling:touch;margin:-4px -4px 0;padding:4px}.rp-list-scroll::-webkit-scrollbar{width:7px}.rp-list-scroll::-webkit-scrollbar-thumb{background:rgba(184,148,31,.35);border-radius:4px}.rp-scroll-hint{text-align:center;font-size:.72rem;color:var(--text-muted);margin-top:8px;font-weight:600}';
+      document.head.appendChild(st);
+    }
     wrap.innerHTML=stats+subCard+list;
   }catch(e){ wrap.innerHTML=errHtml(e); }
 }
@@ -14627,6 +14634,27 @@ function initNavCollapse(){
 // ===== SECTION ACCORDION — sidebar me sirf category headers (HOME/MATERIALS/WORK/PROGRESS)
 // dikhein; unke items tabhi khulein jab category pe click ho. Kam clutter. Active page waali
 // category apne aap khuli rehti hai. =====
+// Teacher sidebar ko premium banao: 3 groups (Main/Content/Account) ke Content me 10 items
+// the -> unhe logical sub-groups me baant do. Idempotent + defensive (HTML edit nahi).
+function _teacherNavRegroup(nav){
+  try{
+    if(!nav || nav.dataset.regrouped==='1') return;
+    var app=nav.closest('.app'); if(!app || app.id!=='teacher-app') return;
+    function itemByPage(pg){ return nav.querySelector('.nav-item[onclick*="\'"+pg+"\'"]'); }
+    function insertSecBefore(pg, label){
+      var item=itemByPage(pg); if(!item) return;
+      var prev=item.previousElementSibling;
+      if(prev && prev.classList && prev.classList.contains('nav-section') &&
+         (prev.textContent||'').trim().toLowerCase()===label.toLowerCase()) return;
+      var sec=document.createElement('div'); sec.className='nav-section'; sec.textContent=label;
+      item.parentNode.insertBefore(sec, item);
+    }
+    // Content (DPP, Lecture Reports, Tests, Classes Material, Study Material) — jaisa hai
+    insertSecBefore('doubts', 'Support');            // Doubts
+    insertSecBefore('performance', 'Performance');   // Performance, Predicted, Attendance, Payout
+    nav.dataset.regrouped='1';
+  }catch(e){}
+}
 function initNavAccordion(){
   if(!document.getElementById('navacc-css')){
     var st=document.createElement('style'); st.id='navacc-css';
@@ -14638,6 +14666,10 @@ function initNavAccordion(){
       '.nav-sec-ic{display:inline-flex;width:20px;height:20px;flex:none;opacity:.85}',
       '.nav-sec-ic svg{width:19px;height:19px}',
       '.nav-sec-chev{margin-left:auto;font-size:.7rem;opacity:.6;transition:transform .25s}',
+      '.nav-sec-badge{margin-left:auto;min-width:19px;height:19px;padding:0 6px;border-radius:11px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:.66rem;font-weight:800;display:none;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(220,38,38,.4);animation:navSecPulse 2s ease-in-out infinite}',
+      '.nav-sec-badge+.nav-sec-chev{margin-left:8px}',
+      '@keyframes navSecPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}',
+      '.app.nav-collapsed .nav-sec-badge{position:absolute;top:6px;right:8px;margin:0}',
       '.sidebar-nav .nav-section.open .nav-sec-chev{transform:rotate(180deg)}',
       // sub-items thoda andar (hierarchy) + smooth
       '.sidebar-nav .nav-item{margin-left:22px !important;margin-right:12px !important}',
@@ -14647,6 +14679,7 @@ function initNavAccordion(){
     document.head.appendChild(st);
   }
   document.querySelectorAll('.app .sidebar-nav').forEach(function(nav){
+    try{ _teacherNavRegroup(nav); }catch(e){}
     _accGroupClose(nav, true);
     if(!nav._accObs){
       nav._accObs=new MutationObserver(function(){
@@ -14678,8 +14711,45 @@ function _secOf(secs,item){ for(var i=0;i<secs.length;i++){ if((secs[i]._items||
 function _setNavSec(sec,open){
   if(!sec) return; sec._open=open; sec.classList.toggle('open',open);
   (sec._items||[]).forEach(function(it){ it.style.display=open?'':'none'; });
+  try{ _updateSecBadge(sec); }catch(e){}
   // chevron ki rotation CSS (.nav-section.open .nav-sec-chev) se hoti hai
 }
+// Section header par red count — jab section BAND ho aur uske andar kisi item me count ho
+// (Doubts 6 jaise) to parent pe total dikhe (kuch naya hai andar). Khula ho to items apna
+// badge dikhate hain, section badge chhup jaata hai.
+function _updateSecBadge(sec){
+  if(!sec) return;
+  var total=0;
+  (sec._items||[]).forEach(function(it){
+    var b=it.querySelector('.badge');
+    if(b && b.style && b.style.display && b.style.display!=='none'){
+      var n=parseInt((b.textContent||'').replace(/[^0-9]/g,''),10);
+      if(!isNaN(n)) total+=n;
+    }
+  });
+  var sb=sec.querySelector('.nav-sec-badge');
+  if(!sb){
+    sb=document.createElement('span'); sb.className='nav-sec-badge';
+    var chev=sec.querySelector('.nav-sec-chev');
+    sec.insertBefore(sb, chev||null);
+  }
+  if(total>0 && !sec._open){ sb.textContent=total>99?'99+':String(total); sb.style.display='inline-flex'; }
+  else{ sb.style.display='none'; }
+}
+function _updateAllSecBadges(){
+  try{
+    document.querySelectorAll('.app .sidebar-nav .nav-section').forEach(function(sec){
+      if(!sec._items){
+        var items=[], n=sec.nextElementSibling;
+        while(n && !n.classList.contains('nav-section')){ if(n.classList.contains('nav-item')) items.push(n); n=n.nextElementSibling; }
+        sec._items=items;
+      }
+      _updateSecBadge(sec);
+    });
+  }catch(e){}
+}
+// counts periodically change (polling) — section badge bhi refresh karte raho
+setInterval(_updateAllSecBadges, 4000);
 function errHtml(e){ return `<div class="alert alert-danger"> ${esc(e.message)}<br><small>If this keeps happening, the backend may be asleep — refresh after 30–60 seconds.</small></div>`; }
 
 // ============================================================
