@@ -879,18 +879,28 @@ def save_teacher_targets(db, tid, targets, mode="manual"):
 
 
 def auto_targets_from_timetable(db, tp, month=""):
-    """Timetable + existing assignments se suggested targets (auto mode ke liye)."""
+    """Timetable se suggested targets + DPP ke liye min (chapters) / max (classes)."""
     from models import TimetableEntry
     dt0, dt1, _ = month_bounds(month)
     subs = list(tp.subjects or [])
     classes = 0
+    chapters = 0
     try:
-        if subs:
-            classes = db.query(TimetableEntry).filter(
-                TimetableEntry.subject.in_(subs),
-                TimetableEntry.entry_type == "chapter",
-                TimetableEntry.entry_date >= dt0.date(),
-                TimetableEntry.entry_date < dt1.date()).count()
+        # pehle teacher_id se (accurate); na mile to subject se
+        q = db.query(TimetableEntry).filter(
+            TimetableEntry.entry_type == "chapter",
+            TimetableEntry.entry_date >= dt0.date(),
+            TimetableEntry.entry_date < dt1.date())
+        rows = q.filter(TimetableEntry.teacher_id == tp.id).all()
+        if not rows and subs:
+            rows = q.filter(TimetableEntry.subject.in_(subs)).all()
+        classes = len(rows)
+        chset = set()
+        for e in rows:
+            ch = (e.chapter or "").strip()
+            if ch:
+                chset.add((e.subject or "", ch))
+        chapters = len(chset)
     except Exception:
         pass
     vids = shorts = live = tests = 0
@@ -909,5 +919,8 @@ def auto_targets_from_timetable(db, tp, month=""):
                 tests = r.get("target", 0) or r.get("assigned", 0)
     except Exception:
         pass
-    return {"classes": classes, "dpp": classes, "videos": vids, "shorts": shorts,
-            "live": live, "tests": tests}
+    dpp_min = chapters
+    dpp_max = max(classes, chapters)
+    return {"classes": classes, "chapters": chapters,
+            "dpp": (dpp_min or classes), "dpp_min": dpp_min, "dpp_max": dpp_max,
+            "videos": vids, "shorts": shorts, "live": live, "tests": tests}

@@ -1587,35 +1587,60 @@ async function _ttLoadTeacher(tid){
   box.innerHTML='<div class="spinner"></div>';
   try{
     const d=await api('/api/admin/teacher-perf-targets/'+tid);
-    _ttCur={tid:tid, auto:d.auto||{}};
+    const a=d.auto||{}; _ttCur={tid:tid, auto:a};
     const saved=d.saved||{}; const useSaved=Object.keys(saved).length>0;
-    const base=useSaved?saved:(d.auto||{});
-    const rows=TT_ACTS.map(a=>`<div class="ps-row"><label>${esc(a[1])}</label>
-      <input type="number" min="0" class="input tt-in" data-k="${a[0]}" value="${base[a[0]]!=null?base[a[0]]:0}"></div>`).join('');
-    box.innerHTML=`<div class="tt-mode">Current mode: <b>${d.mode==='auto'?'Auto (timetable)':(useSaved?'Manual':'Not set \u2014 timetable auto dikha rahe hain')}</b>${(d.subjects&&d.subjects.length)?(' \u00b7 '+d.subjects.map(esc).join(', ')):''}</div>
-      <div class="ps-grid">${rows}</div>
+    const base=useSaved?saved:a;
+    const chapters=a.chapters||0, classes=a.classes||0, dppMin=a.dpp_min||0, dppMax=a.dpp_max||classes||0;
+    const cell=(k,label,hint,minv)=>{
+      const v=(base[k]!=null?base[k]:0);
+      return `<div class="ttp-cell"><label>${esc(label)}</label>
+        <input type="number" min="${minv||0}" class="input tt-in" data-k="${k}" data-min="${minv||0}" value="${v}" oninput="_ttClamp(this)">
+        ${hint?`<div class="ttp-hint">${hint}</div>`:''}</div>`;
+    };
+    const cells=[
+      cell('classes','Classes', `timetable: <b>${classes}</b>`, 0),
+      cell('dpp','DPP', `min <b>${dppMin}</b> (chapters) · max <b>${dppMax}</b> (classes)`, dppMin),
+      cell('videos','Videos', `assigned: ${a.videos||0}`, 0),
+      cell('shorts','Shorts', `assigned: ${a.shorts||0}`, 0),
+      cell('live','YouTube Live', `assigned: ${a.live||0}`, 0),
+      cell('tests','Weekly Tests', `assigned: ${a.tests||0}`, 0),
+    ].join('');
+    box.innerHTML=`
+      <div class="ttp-summary">${ic('calendar')||''} <span>This month (timetable): <b>${chapters}</b> chapter${chapters===1?'':'s'} across <b>${classes}</b> class${classes===1?'':'es'}</span>
+        <span class="ttp-mode">${d.mode==='auto'?'Auto':(useSaved?'Manual':'Not set')}</span></div>
+      <div class="ttp-grid">${cells}</div>
+      <div class="ttp-note">DPP kam se kam <b>${dppMin}</b> (jitne chapters) hone chahiye — isse neeche nahi. Max <b>${dppMax}</b> (classes) suggested; usse zyada bhi de sakte ho.</div>
       <div class="tt-actions">
         <button class="btn btn-secondary btn-sm" onclick="ttAutoFill()">${ic('calendar')||''} Auto-fill from Timetable</button>
         <button class="btn btn-primary btn-sm" onclick="saveTeacherTargets('manual')">Save (manual)</button>
         <button class="btn btn-success btn-sm" onclick="saveTeacherTargets('auto')">Save as Auto</button>
-      </div>
-      <div class="pfb-muted" style="margin-top:8px">Auto = timetable ke hisaab se (Classes = is month ki scheduled chapter classes, videos/shorts/live/tests = assigned). Manual = jo tu type kare wahi.</div>`;
+      </div>`;
   }catch(e){ box.innerHTML=errHtml(e); }
+}
+function _ttClamp(inp){
+  const mn=parseInt(inp.getAttribute('data-min')||0,10)||0;
+  const v=parseInt(inp.value||0,10)||0;
+  inp.classList.toggle('below-min', v<mn);
 }
 function ttAutoFill(){
   if(!_ttCur) return; const a=_ttCur.auto||{};
-  document.querySelectorAll('.tt-in').forEach(i=>{ const k=i.getAttribute('data-k'); i.value=(a[k]!=null?a[k]:0); });
-  toast('Timetable se bhar diya \u2014 ab Save dabao.');
+  document.querySelectorAll('.tt-in').forEach(i=>{ const k=i.getAttribute('data-k'); i.value=(a[k]!=null?a[k]:0); _ttClamp(i); });
+  toast('Timetable se bhar diya — DPP min '+((a.dpp_min)||0)+'. Save dabao.');
 }
 async function saveTeacherTargets(mode){
   if(!_ttCur){ toast('Select a teacher first',true); return; }
-  const targets={}; document.querySelectorAll('.tt-in').forEach(i=>{ targets[i.getAttribute('data-k')]=parseInt(i.value||0,10)||0; });
+  const targets={}; let clamped=false;
+  document.querySelectorAll('.tt-in').forEach(i=>{
+    const k=i.getAttribute('data-k'); const mn=parseInt(i.getAttribute('data-min')||0,10)||0;
+    let v=parseInt(i.value||0,10)||0;
+    if(v<mn){ v=mn; i.value=mn; _ttClamp(i); clamped=true; }
+    targets[k]=v;
+  });
   try{ await api('/api/admin/teacher-perf-targets/'+_ttCur.tid,'POST',{targets:targets,mode:mode});
-    toast('Targets saved for this teacher ('+mode+').');
+    toast((clamped?'DPP ko minimum (chapters) tak set kiya. ':'')+'Targets saved ('+mode+').');
     if(typeof loadATeacherRanks==='function') loadATeacherRanks();
   }catch(e){ toast(e.message||'Save failed',true); }
 }
-
 // ============================================================
 //  PHASE 7: ADMIN PERFORMANCE SETTINGS UI (Phase-1 config editable)
 // ============================================================
@@ -1720,7 +1745,17 @@ function _ensurePsCss(){
     '.ps-sum{font-size:.72rem;font-weight:800;padding:3px 10px;border-radius:99px}',
     '.ps-sum.ok{background:rgba(16,163,74,.15);color:#15803d}.ps-sum.bad{background:rgba(220,38,38,.14);color:#dc2626}',
     '.tt-mode{font-size:.76rem;color:var(--text-muted);margin-bottom:12px;font-weight:600}',
-    '.tt-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}'
+    '.tt-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}',
+    '.ttp-summary{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:linear-gradient(135deg,#fffdf7,#faf4e3);border:1px solid #ece1c6;border-radius:12px;padding:11px 14px;margin-bottom:16px;font-size:.84rem;color:#5c4a0a}',
+    '.ttp-summary svg{width:16px;height:16px;color:#b8941f}',
+    '.ttp-mode{font-size:.66rem;font-weight:800;padding:3px 10px;border-radius:99px;background:var(--primary-50);color:#6b550b}',
+    '.ttp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px 14px}',
+    '.ttp-cell{display:flex;flex-direction:column;gap:5px;background:var(--card,#fff);border:1px solid var(--border,#eee);border-radius:12px;padding:11px 12px}',
+    '.ttp-cell label{font-size:.74rem;font-weight:800;color:var(--text)}',
+    '.ttp-cell .tt-in{padding:8px 10px;font-size:.95rem;font-weight:700}',
+    '.ttp-cell .tt-in.below-min{border-color:#dc2626;background:rgba(220,38,38,.05)}',
+    '.ttp-hint{font-size:.68rem;color:var(--text-muted)}',
+    '.ttp-note{font-size:.74rem;color:var(--text-muted);background:var(--primary-50);border-radius:9px;padding:9px 12px;margin-top:14px}'
   ].join('');
   document.head.appendChild(st);
 }
