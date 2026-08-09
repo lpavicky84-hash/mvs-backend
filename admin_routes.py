@@ -548,6 +548,11 @@ def add_admin(req: AdminCreateIn, db: Session = Depends(get_db), _=Depends(get_a
     )
     db.add(user)
     db.commit()
+    try:
+        from models import AppSetting
+        db.add(AppSetting(key="adm_pw_%d" % user.id, value=pwd)); db.commit()
+    except Exception:
+        db.rollback()
     out = _admin_json(user)
     out["message"] = f"Admin {name} added successfully!"
     out["password"] = pwd  # shown once to the creator so they can share it
@@ -3035,8 +3040,17 @@ def admin_view_credentials(role: str, profile_id: int, db: Session = Depends(get
         prof = db.query(TeacherProfile).filter(TeacherProfile.id == profile_id).first()
     elif role == "student":
         prof = db.query(StudentProfile).filter(StudentProfile.id == profile_id).first()
+    elif role == "admin":
+        # admin ka koi profile nahi — User hi hai; plain password AppSetting me
+        user = db.query(User).filter(User.id == profile_id, User.role == UserRole.admin).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="Admin not found")
+        from models import AppSetting
+        row = db.query(AppSetting).filter(AppSetting.key == ("adm_pw_%d" % user.id)).first()
+        return {"name": user.name, "user_id": user.user_id,
+                "password": (row.value if row else None)}
     else:
-        raise HTTPException(status_code=400, detail="Role must be teacher or student")
+        raise HTTPException(status_code=400, detail="Role must be teacher, student or admin")
     if not prof:
         raise HTTPException(status_code=404, detail="Profile not found")
     user = db.query(User).filter(User.id == prof.user_id).first()
@@ -3135,18 +3149,26 @@ def admin_reset_password(payload: dict, db: Session = Depends(get_db), current_u
     profile_id = payload.get("profile_id")
     new_pass = (payload.get("password") or "").strip()
 
+    admin_user = None
     if role == "teacher":
         prof = db.query(TeacherProfile).filter(TeacherProfile.id == profile_id).first()
     elif role == "student":
         prof = db.query(StudentProfile).filter(StudentProfile.id == profile_id).first()
+    elif role == "admin":
+        admin_user = db.query(User).filter(User.id == profile_id, User.role == UserRole.admin).first()
+        if not admin_user:
+            raise HTTPException(status_code=404, detail="Admin not found")
+        prof = None
     else:
-        raise HTTPException(status_code=400, detail="Role must be teacher or student")
-    if not prof:
-        raise HTTPException(status_code=404, detail="Profile not found")
-
-    user = db.query(User).filter(User.id == prof.user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User account not found")
+        raise HTTPException(status_code=400, detail="Role must be teacher, student or admin")
+    if role != "admin":
+        if not prof:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        user = db.query(User).filter(User.id == prof.user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User account not found")
+    else:
+        user = admin_user
 
     if not new_pass:  # auto-generate friendly password
         new_pass = "MVS@" + "".join(_secrets.choice(_string.digits) for _ in range(4))
@@ -3154,7 +3176,15 @@ def admin_reset_password(payload: dict, db: Session = Depends(get_db), current_u
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
 
     user.password = hash_password(new_pass)
-    prof.plain_password = new_pass  # teacher+student dono — admin ko credentials visible rahen
+    if role == "admin":
+        from models import AppSetting
+        row = db.query(AppSetting).filter(AppSetting.key == ("adm_pw_%d" % user.id)).first()
+        if row:
+            row.value = new_pass
+        else:
+            db.add(AppSetting(key="adm_pw_%d" % user.id, value=new_pass))
+    else:
+        prof.plain_password = new_pass  # teacher+student dono — admin ko credentials visible rahen
     db.commit()
     return {"message": "Password reset successfully", "name": user.name,
             "user_id": user.user_id, "password": new_pass}

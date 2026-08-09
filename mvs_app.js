@@ -497,7 +497,24 @@ function _xhrJson(url,payload,onProgress){
 // ========================================================
 //  NAVIGATION
 // ========================================================
-function _authReset(){ _apiBust(); _clearSession(); TOKEN=null;ROLE=null; stopCountdown(); stopStudentHeartbeat(); stopAdminLivePoll(); stopNotifPolling(); var np=document.getElementById('notif-pop'); if(np)np.remove(); document.querySelectorAll('.app').forEach(a=>a.classList.remove('active')); var ls=document.getElementById('login-screen'); if(ls) ls.classList.remove('active'); document.getElementById('subject-screen').style.display='none'; var tss=document.getElementById('t-subject-screen'); if(tss)tss.style.display='none'; var ld=document.getElementById('landing'); if(ld) ld.style.display='none'; }
+function _authReset(){
+  _apiBust();
+  // account switch par PURANA state clear karo (access + photo leak fix)
+  try{ window._adminMe=null; }catch(e){}
+  try{ for(var _k in _apiCache) delete _apiCache[_k]; }catch(e){}
+  try{ for(var _u in _imgBlobCache){ try{ URL.revokeObjectURL(_imgBlobCache[_u]); }catch(_){} delete _imgBlobCache[_u]; } }catch(e){}
+  try{ window._photoUrls={}; }catch(e){}
+  try{ _lastPing=0; }catch(e){} try{ _auth401=0; }catch(e){}
+  // avatars/logos reset — agli user ka photo/logo fresh load ho, purana na dikhe
+  try{
+    document.querySelectorAll('.avatar,.topbar-avatar,.sidebar-logo .logo-icon').forEach(function(a){
+      var im=a.querySelector('img'); if(im) im.remove();
+      a.style.backgroundImage=''; a.classList.remove('has-photo');
+      try{ delete a.dataset.logoOk; }catch(_){ a.dataset.logoOk=''; }
+      try{ delete a.dataset.logoTried; }catch(_){ a.dataset.logoTried=''; }
+    });
+  }catch(e){}
+  _clearSession(); TOKEN=null;ROLE=null; stopCountdown(); stopStudentHeartbeat(); stopAdminLivePoll(); stopNotifPolling(); var np=document.getElementById('notif-pop'); if(np)np.remove(); document.querySelectorAll('.app').forEach(a=>a.classList.remove('active')); var ls=document.getElementById('login-screen'); if(ls) ls.classList.remove('active'); document.getElementById('subject-screen').style.display='none'; var tss=document.getElementById('t-subject-screen'); if(tss)tss.style.display='none'; var ld=document.getElementById('landing'); if(ld) ld.style.display='none'; }
 // goHome (Back / logout): usi role ke login par wapas — student -> root '/', teacher -> /teacher,
 // admin -> /admin. Role _authReset se pehle capture karte hain (wo ROLE null kar deta hai).
 function goHome(){ var p=CURRENT_PORTAL||ROLE||'student'; _authReset(); goLogin(p); }
@@ -6990,23 +7007,30 @@ function adminAllowed(page){
   return secs.includes(page);
 }
 function applyAdminAccess(){
-  document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ n.style.display=''; });
-  document.querySelectorAll('#admin-app .nav-section').forEach(s=>{ s.style.display=''; });
-  const me=window._adminMe;
-  if(!me||me.full_access) return;
+  if(!document.getElementById('noaccess-css')){
+    var st=document.createElement('style'); st.id='noaccess-css';
+    st.textContent='#admin-app .nav-noaccess{display:none !important}';
+    document.head.appendChild(st);
+  }
+  var me=window._adminMe;
+  document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ n.classList.remove('nav-noaccess'); });
+  if(!me||me.full_access){
+    document.querySelectorAll('#admin-app .nav-section').forEach(s=>{ s.classList.remove('nav-noaccess'); });
+    return;
+  }
   document.querySelectorAll('#admin-app .nav-item').forEach(n=>{
     const oc=n.getAttribute('onclick')||'';
     const m=oc.match(/aPage\('([^']+)'/);
-    if(m){ if(!adminAllowed(m[1])) n.style.display='none'; return; }
-    if(oc.includes('openAdminNotify')&&!adminAllowed('notify')) n.style.display='none';
+    if(m){ if(!adminAllowed(m[1])) n.classList.add('nav-noaccess'); return; }
+    if(oc.includes('openAdminNotify')&&!adminAllowed('notify')) n.classList.add('nav-noaccess');
   });
   document.querySelectorAll('#admin-app .nav-section').forEach(s=>{
     let vis=false, el=s.nextElementSibling;
     while(el&&el.classList.contains('nav-item')){
-      if(el.style.display!=='none'){ vis=true; break; }
+      if(!el.classList.contains('nav-noaccess')){ vis=true; break; }
       el=el.nextElementSibling;
     }
-    s.style.display=vis?'':'none';
+    s.classList.toggle('nav-noaccess', !vis);
   });
 }
 function openAdmin(){
@@ -9181,7 +9205,8 @@ async function loadADashboard(){
   const el=document.getElementById('a-dashboard-content');
   try{
  const d=await api('/api/admin/dashboard');
- el.innerHTML=`<div class="stats-grid">${statCard('Teachers',d.total_teachers,'users','indigo',"navTo('admin-app','teachers')")}${statCard('Students',d.total_students,'user','teal',"navTo('admin-app','students')")}${statCard('Classes Done',d.total_classes_done,'check','green')}${statCard('Pending',d.total_pending,'clipboard','amber')}${statCard('Pending Approvals',d.pending_reschedules,'refresh','purple',"navTo('admin-app','approvals')",true)}${statCard('Unresolved Doubts',d.unresolved_doubts,'help','red',"navTo('admin-app','doubts')",true)}</div>
+ const _aName=((window._adminMe&&window._adminMe.name)||NAME||'Admin');
+ el.innerHTML=`${greetingCard(_aName,'')}<div class="stats-grid">${statCard('Teachers',d.total_teachers,'users','indigo',"navTo('admin-app','teachers')")}${statCard('Students',d.total_students,'user','teal',"navTo('admin-app','students')")}${statCard('Classes Done',d.total_classes_done,'check','green')}${statCard('Pending',d.total_pending,'clipboard','amber')}${statCard('Pending Approvals',d.pending_reschedules,'refresh','purple',"navTo('admin-app','approvals')",true)}${statCard('Unresolved Doubts',d.unresolved_doubts,'help','red',"navTo('admin-app','doubts')",true)}</div>
  <div class="card glass-soft"><div class="card-header"><h3>System Health — Teacher Activity</h3><div class="legend"><span><i style="background:#059669"></i>High</span><span><i style="background:#d97706"></i>Medium</span><span><i style="background:#a2946d"></i>Low</span></div></div><div class="card-body"><div class="mat-twrap"><div id="a-health-wrap"><div class="spinner"></div></div></div></div></div>
  <div class="card"><div class="card-header"><h3>Quick Actions</h3></div><div class="card-body">${d.pending_reschedules>0?`<div class="alert alert-danger">${d.pending_reschedules} reschedule requests pending — <span style="cursor:pointer;text-decoration:underline" onclick="navTo('admin-app','approvals')">Review</span></div>`:`<div class="alert alert-success">No pending approvals</div>`}
  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px"><button class="btn btn-primary btn-sm" onclick="openAddTeacher()">${ic('users')} Teacher Add</button><button class="btn btn-primary btn-sm" onclick="openAddStudent()">${ic('user')} Student Add</button><button class="btn btn-success btn-sm" onclick="openBulkPhone()">${ic('users')} Add by Phone</button></div></div></div>`;
@@ -10848,7 +10873,7 @@ async function loadAAdmins(){
     const secLine=secs.length?`<div class="adm-meta">Access: ${secs.map(_aaSecName).join(' · ')}</div>`:`<div class="adm-meta">${a.full_access?'Can open every section, including Payouts.':'Dashboard only'}</div>`;
     const st=_aaEdit[a.id];
     const editBox=(st&&st.open)?`<div style="flex-basis:100%"></div><div class="adm-edit"><div class="ae-title">Edit Admin</div><div class="aa-grid"><div class="form-group" style="margin-bottom:10px"><label>Name</label><input class="form-control" id="aa-ename-${a.id}" value="${esc(st.name)}" maxlength="60"></div><div class="form-group" style="margin-bottom:10px"><label>Access</label><div id="sdd-wrap-edit-${a.id}">${sddHTML('edit-'+a.id,st.full,st.sel,a.id)}</div></div></div><div style="display:flex;gap:8px;margin-top:2px"><button class="btn btn-primary btn-sm" onclick="aaSaveEdit(${a.id})">Save Changes</button><button class="btn btn-ghost btn-sm" onclick="aaEditClose(${a.id})">Cancel</button></div></div>`:'';
-    return `<div class="adm-row${a.is_active?'':' off'}"><div class="adm-ava">${esc(initials(a.name))}</div><div class="adm-main"><div class="adm-name">${esc(a.name)} ${badge} ${off}</div><div class="adm-meta">User ID: <b>${esc(a.user_id)}</b>${a.created_at?' · since '+esc(a.created_at.slice(0,10)):''}</div>${secLine}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="aaEditOpen(${a.id})">${(st&&st.open)?'Close':'Edit'}</button><button class="btn ${a.is_active?'btn-danger':'btn-primary'} btn-sm" onclick="aaToggleAdmin(${a.id},'${esc(a.name).replace(/'/g,'')}',${a.is_active})">${a.is_active?'Deactivate':'Activate'}</button></div>${editBox}</div>`;
+    return `<div class="adm-row${a.is_active?'':' off'}"><div class="adm-ava">${esc(initials(a.name))}</div><div class="adm-main"><div class="adm-name">${esc(a.name)} ${badge} ${off}</div><div class="adm-meta">User ID: <b>${esc(a.user_id)}</b>${a.created_at?' · since '+esc(a.created_at.slice(0,10)):''}</div>${secLine}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="openResetPassword('admin',${a.id},'${esc(a.name).replace(/'/g,'')}')">Login</button><button class="btn btn-ghost btn-sm" onclick="aaEditOpen(${a.id})">${(st&&st.open)?'Close':'Edit'}</button><button class="btn ${a.is_active?'btn-danger':'btn-primary'} btn-sm" onclick="aaToggleAdmin(${a.id},'${esc(a.name).replace(/'/g,'')}',${a.is_active})">${a.is_active?'Deactivate':'Activate'}</button></div>${editBox}</div>`;
   }).join('');
   el.innerHTML=`
     <div class="sm-head"><h2>Admin Users</h2><p>Create admins with exactly the access they need — their panel shows only the sections you allow. Everything else, including Payouts, stays hidden.</p></div>
@@ -14784,6 +14809,7 @@ setInterval(function(){
   try{ document.querySelectorAll('.app .sidebar-nav').forEach(_teacherNavRegroup); }catch(e){}
   try{ _updateAllSecBadges(); }catch(e){}
   try{ if(typeof _applyMvsLogos==='function') _applyMvsLogos(); }catch(e){}
+  try{ if(window._adminMe && !window._adminMe.full_access && typeof applyAdminAccess==='function') applyAdminAccess(); }catch(e){}
 }, 4000);
 function errHtml(e){ return `<div class="alert alert-danger"> ${esc(e.message)}<br><small>If this keeps happening, the backend may be asleep — refresh after 30–60 seconds.</small></div>`; }
 
