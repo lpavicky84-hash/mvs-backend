@@ -6530,7 +6530,7 @@ async function loadTVTasks(){
       const rejNote='';
       const propNote=(t.proposal_ok==='pending')?`<span class="vt-pill proposal">Pending Approval</span>`:'';
       return `<div class="vt-card st-${t.status}">${_vtThumb(t,'t')}<div class="vt-body">
-        <div class="vt-chips">${propNote}${t.is_collab?`<span class="vt-pill vt-collab-blink" style="background:rgba(37,99,235,.15);color:#2563eb;font-weight:800">${ic('users')} COLLAB</span>`:''}${t.kind==='urgent'?`<span class="vt-pill" style="background:rgba(220,38,38,.15);color:#dc2626;font-weight:800">${ic('alert')} URGENT</span>`:''}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
+        <div class="vt-chips">${propNote}${t.is_collab?_vtCollabChip(t,'t'):''}${t.kind==='urgent'?`<span class="vt-pill" style="background:rgba(220,38,38,.15);color:#dc2626;font-weight:800">${ic('alert')} URGENT</span>`:''}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
         <div class="vt-title">${esc(t.title)}</div>
         <div class="vt-meta">
           ${t.deadline_nice?`<span class="${dlBlink}">${ic('clock')} ${dlLbl}: <b>${esc(t.deadline_nice)}</b></span>`:''}
@@ -6542,7 +6542,6 @@ async function loadTVTasks(){
           ${!_open&&t.review_remarks?`<span>Review remarks: ${esc(t.review_remarks)}</span>`:''}
           ${t.reject_count>0?`<span style="color:var(--text-muted);font-weight:700">Reshoot/Rejection count: ${t.reject_count}</span>`:''}
         </div>
-        ${_vtCollabHtml(t,false)}
         ${rejNote}${subBox}${doneBox}
       </div></div>`;
     };
@@ -7083,7 +7082,7 @@ function _avtCard(t){
       const ytBtn=`<button class="btn btn-ghost btn-sm" onclick="openVtYtLink(${t.id},'${esc(t.youtube_url||'').replace(/'/g,'')}')" title="Post the published YouTube link">${ic('play')} ${t.youtube_url?'Edit YT Link':'Post YT Link'}</button>`;
       const histBtn=`<button class="btn btn-ghost btn-sm" onclick="vtStatusOpen(${t.id},'a',event)" title="See the full status timeline">${ic('history')} Timeline</button>`;
       return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-done="${t.submitted_at?1:0}" data-pending="${(t.status==='assigned'||t.status==='reshoot'||t.status==='rejected')?1:0}" data-delayed="${t.submitted_at&&!t.on_time?1:0}" data-collab="${t.is_collab?1:0}" data-collabdone="${t.is_collab?(t.collab_all_verified?1:0):''}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
-        <div class="vt-title">${esc(t.title)}${t.is_collab?`<span class="vt-pill vt-collab-blink" style="background:rgba(37,99,235,.15);color:#2563eb;font-weight:800;margin-left:8px">${ic('users')} COLLAB</span>`:''}${t.status==='submitted'?`<span class="vt-newsub">${ic('bell')} NEW · ${esc(t.teacher)}</span>`:''}</div>
+        <div class="vt-title">${esc(t.title)}${t.is_collab?_vtCollabChip(t,'a'):''}${t.status==='submitted'?`<span class="vt-newsub">${ic('bell')} NEW · ${esc(t.submitted_by_name||t.teacher)}</span>`:''}</div>
         <div class="vt-chips"><span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}</div>
         <div class="vt-meta">
           <span class="${dlBlink}">${ic('clock')} ${dlLbl}: <b>${esc(t.deadline_nice)}</b>${t.status==='assigned'&&t.seconds_left!=null?` · <span data-vt-cd="${t.id}" data-secs="${t.seconds_left}"></span>`:''}</span>
@@ -7094,7 +7093,6 @@ function _avtCard(t){
           ${t.remarks?`<span>Remarks: ${esc(t.remarks)}</span>`:''}
           ${t.review_remarks?`<span>Review: ${esc(t.review_remarks)}${t.reject_count?` · Reshoot #${t.reject_count}`:''}</span>`:''}
         </div>
-        ${_vtCollabHtml(t,true)}
         <div class="vt-foot">
           ${t.submitted_link?`<a class="btn btn-ghost btn-sm" href="${esc(t.submitted_link)}" target="_blank" rel="noopener">${ic('link')} Open Video</a>`:''}
           ${histBtn}${reviewBtn}${editBtn}${editTaskBtn}${ytBtn}${notifyBtn}${delTaskBtn}
@@ -7127,6 +7125,77 @@ function _vtCollabHtml(t, canVerify){
     + (done.length?`<div class="cb-sub"${pending.length?' style="margin-top:9px"':''}>Verified — tap to cancel:</div><div class="cb-chips">${doneChips}</div>`:'')
     + `</div>`;
 }
+// ===== COLLAB: blinking chip -> popup (inline list hata diya; cards compact) =====
+function _ensureCbpCss(){
+  if(document.getElementById('cbp-css')) return;
+  var st=document.createElement('style'); st.id='cbp-css';
+  st.textContent=[
+    '.vt-cbchip{display:inline-block;margin-left:6px;padding:2px 9px;border-radius:99px;font-size:.66rem;font-weight:800;letter-spacing:.02em;background:#eef1f8;color:#475569;vertical-align:middle}',
+    '.vt-cbchip.ok{background:rgba(16,163,74,.15);color:#15803d}',
+    '.vt-cbchip.pend{background:rgba(245,158,11,.16);color:#b45309}',
+    '.vt-collab-click{cursor:pointer}',
+    '.cbp-sub{font-size:.82rem;color:var(--text-muted);margin:2px 0 12px}',
+    '.cbp-list{display:flex;flex-direction:column;gap:8px;margin:4px 0 4px}',
+    '.cbp-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 13px;background:var(--primary-50);border-radius:11px}',
+    '.cbp-nm{font-weight:700;color:var(--text)}',
+    '.cbp-tag{font-size:.7rem;font-weight:800;padding:3px 10px;border-radius:99px;background:#eef1f8;color:#64748b}',
+    '.cbp-tag.ok{background:rgba(16,163,74,.15);color:#15803d}',
+    '.cbp-tag.pend{background:rgba(245,158,11,.16);color:#b45309}',
+    '.cbp-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}',
+    '.cbp-note{font-size:.76rem;color:var(--text-muted);margin-top:10px}'
+  ].join('');
+  document.head.appendChild(st);
+}
+function _vtCollabChip(t, who){
+  if(!t||!t.is_collab) return '';
+  var all=t.collab_teachers||[], total=all.length, dn=all.filter(function(c){return c.verified;}).length;
+  var submitted=!!t.submitted_at || ['submitted','uploaded','approved','editing_soon','editing_done'].indexOf(t.status)>=0;
+  var status=(total&&dn>=total)?'<span class="vt-cbchip ok">All '+total+' verified</span>'
+            :(submitted?'<span class="vt-cbchip pend">'+dn+'/'+total+' verified</span>'
+            :'<span class="vt-cbchip">'+total+' teachers</span>');
+  var w=(who==='a')?'a':'t';
+  return '<span class="vt-pill vt-collab-blink vt-collab-click" style="background:rgba(37,99,235,.15);color:#2563eb;font-weight:800;margin-left:8px" '
+       + 'onclick="vtCollabPopup('+t.id+',\''+w+'\')" title="Click to see collab teachers">'+ic('users')+' COLLAB</span>'
+       + '<span class="vt-collab-click" onclick="vtCollabPopup('+t.id+',\''+w+'\')">'+status+'</span>';
+}
+function vtCollabPopup(id, who){
+  _ensureCbpCss();
+  var t=(((who==='a')?window._avtMap:window._tvtMap)||{})[id]; if(!t) return;
+  var all=t.collab_teachers||[], total=all.length, dn=all.filter(function(c){return c.verified;}).length;
+  var submitted=!!t.submitted_at || ['submitted','uploaded','approved','editing_soon','editing_done'].indexOf(t.status)>=0;
+  var rows=all.map(function(c){
+    var tag=c.verified?'<span class="cbp-tag ok">Verified</span>'
+           :(submitted?'<span class="cbp-tag pend">Pending</span>':'<span class="cbp-tag">Assigned</span>');
+    return '<div class="cbp-row"><span class="cbp-nm">'+esc(c.name)+'</span>'+tag+'</div>';
+  }).join('');
+  var subLine=t.submitted_by_name?('<div class="cbp-sub">Submitted by <b>'+esc(t.submitted_by_name)+'</b>'+(t.submitted_at?(' \u00b7 '+esc(t.submitted_at)):'')+'</div>'):'';
+  var headTag=(total&&dn>=total)?'<span class="cb-pill ok">All '+total+' verified</span>'
+             :(submitted?'<span class="cb-pill bad">'+dn+'/'+total+' verified</span>':'');
+  var actions='';
+  if(who==='a'){
+    if(submitted){
+      actions='<div class="cbp-actions">'
+        +'<button class="btn btn-success btn-sm" onclick="vtVerifyComplete('+t.id+',true)">'+ic('check')+' Task Completed (verify all)</button>'
+        +'<button class="btn btn-danger btn-sm" onclick="vtVerifyComplete('+t.id+',false)">Task Not Completed</button></div>'
+        +'<div class="cbp-note">Verify karte hi SAB collab teachers ko notification jaata hai aur sabka ek task complete ho jaata hai (sirf submit karne wale ka nahi).</div>';
+    } else {
+      actions='<div class="cbp-note">Verification video submit hone ke baad milega.</div>';
+    }
+  }
+  showModal('Collab Teachers \u2014 '+esc(t.title),
+    '<div style="margin-bottom:10px">'+headTag+'</div>'+subLine+'<div class="cbp-list">'+rows+'</div>'+actions,
+    '<button class="btn btn-primary" onclick="closeModal()">Close</button>');
+}
+async function vtVerifyComplete(id, completed){
+  if(!completed){ if(!confirm('Mark this task as NOT completed?\nSabhi collab teachers ko notify hoga aur task dobara khul jaayega.')) return; }
+  try{
+    await api('/api/admin/video-tasks/'+id+'/verify-complete','POST',{completed:!!completed});
+    toast(completed?'Task completed \u2014 sab teachers verified & notified.':'Not completed \u2014 teachers notified, task reopened.');
+    closeModal();
+    if(typeof loadAVTasks==='function') loadAVTasks();
+  }catch(e){ toast(e.message||'Could not update',true); }
+}
+
 // multi-select dropdown ko bahar click karne par band karo
 document.addEventListener('click',function(e){
   if(e.target.closest && (e.target.closest('.ms-box')||e.target.closest('.ms-panel'))) return;

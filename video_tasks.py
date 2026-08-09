@@ -92,6 +92,7 @@ def _ensure_special_columns():
         "ALTER TABLE video_tasks ADD COLUMN vintage VARCHAR(10) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN collab_teacher_ids TEXT NULL",
         "ALTER TABLE video_tasks ADD COLUMN collab_verified TEXT NULL",
+        "ALTER TABLE video_tasks ADD COLUMN submitted_by INTEGER NULL",
     ]
     for ddl in alters:
         try:
@@ -784,8 +785,23 @@ def _vt_notify(db, user_id, title, message, ntype="video_task", link=None):
                         notif_type=ntype, link=link or None))
 
 
+_TP_CACHE = {"t": 0.0, "map": {}}
 def _teacher_profile(db, tid):
-    return db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    # sirf ~12 teachers — sabko 30s cache karo, warna har task par alag query (N+1) chalti thi
+    import time
+    now = time.time()
+    if now - _TP_CACHE["t"] > 30:
+        try:
+            _TP_CACHE["map"] = {tp.id: tp for tp in db.query(TeacherProfile).all()}
+            _TP_CACHE["t"] = now
+        except Exception:
+            pass
+    tp = _TP_CACHE["map"].get(tid)
+    if tp is None and tid:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+        if tp:
+            _TP_CACHE["map"][tid] = tp
+    return tp
 
 
 def _teacher_name(db, tid):
@@ -931,6 +947,10 @@ def _task_out(db, t, with_thumb=True):
     out["collab_teachers"] = [{"id": i, "name": _teacher_name(db, i),
                                "verified": bool(_vmap.get(str(i)))} for i in _allids]
     out["collab_all_verified"] = bool(_allids) and all(_vmap.get(str(i)) for i in _allids)
+    # Kisne actually submit kiya (collab me koi bhi teacher kar sakta hai). Na ho to primary.
+    _sub_by = getattr(t, "submitted_by", None)
+    out["submitted_by"] = _sub_by or (t.teacher_id if t.submitted_at else None)
+    out["submitted_by_name"] = _teacher_name(db, out["submitted_by"]) if out["submitted_by"] else ""
     if with_thumb:
         out["thumbnail_b64"] = t.thumbnail_b64 or ""
     return out
@@ -1160,6 +1180,56 @@ def vt_assign(payload: dict = Body(...), db: Session = Depends(get_db), _=Depend
                                      "restart karwein: column apne aap upgrade ho jayega.)")
         raise HTTPException(400, f"Could not assign the task: {e}")
     return {"ok": True, "id": t.id}
+
+
+@router.post("/admin/video-tasks/{task_id}/verify-complete", dependencies=[Depends(_admin_section_guard)])
+def vt_verify_complete(task_id: int, payload: dict = Body(...),
+                       db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Ek hi action se poore collab task ko verify: 'Task Completed' -> saare collab
+    teachers verified + status Approved + SAB teachers ko notification (sirf submit karne
+    wale ko nahi). 'Task Not Completed' -> reopen (reshoot) + sab ko notify."""
+    import json as _j
+    t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
+    if not t:
+        raise HTTPException(404, "Task not found")
+    completed = bool(payload.get("completed", True))
+    remarks = (payload.get("remarks") or "").strip()
+    allids = _collab_all_ids(t)
+    # teacher profile id -> user id (notification bhejne ke liye)
+    def _uid(pid):
+        _tp = db.query(TeacherProfile).filter(TeacherProfile.id == pid).first()
+        return _tp.user_id if _tp else None
+    if completed:
+        vmap = {str(i): True for i in allids}
+        t.collab_verified = _j.dumps(vmap)
+        t.status = "approved"
+        t.reviewed = True
+        if remarks:
+            t.review_remarks = remarks
+        _hist_add(t, "approved", "Task verified & completed by production manager — all %d teacher(s)" % len(allids))
+        for pid in allids:
+            uid = _uid(pid)
+            if uid:
+                _vt_notify(db, uid, "\u2705 Task Verified & Completed",
+                           'Your collaborative task "%s" has been verified by the production manager. '
+                           'Task complete for all collaborating teachers — great teamwork!' % t.title)
+    else:
+        t.collab_verified = "{}"
+        t.status = "reshoot"
+        t.reviewed = True
+        t.review_remarks = remarks or "Marked NOT completed by production manager"
+        _hist_add(t, "rejected", "Task marked NOT completed by production manager"
+                  + (" — " + remarks if remarks else ""))
+        for pid in allids:
+            uid = _uid(pid)
+            if uid:
+                _vt_notify(db, uid, "\u26a0\ufe0f Task Not Completed",
+                           'Your collaborative task "%s" was marked NOT completed by the production manager%s. '
+                           'Please review and redo.' % (t.title, (" (" + remarks + ")") if remarks else ""))
+    db.commit()
+    return {"ok": True, "completed": completed, "status": t.status,
+            "collab_teachers": [{"id": i, "name": _teacher_name(db, i),
+                                 "verified": bool(_collab_vmap(t).get(str(i)))} for i in allids]}
 
 
 @router.post("/admin/video-tasks/{task_id}/verify-teacher", dependencies=[Depends(_admin_section_guard)])
@@ -2082,6 +2152,7 @@ def vt_submit(task_id: int, payload: dict = Body(...), db: Session = Depends(get
     now = _now_ist()
     t.submitted_link = link
     t.submitted_at = now
+    t.submitted_by = tp.id
     t.status = "submitted"
     t.reviewed = False
     t.on_time = bool(t.deadline and now <= t.deadline)
