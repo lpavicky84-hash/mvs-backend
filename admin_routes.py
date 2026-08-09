@@ -3671,17 +3671,23 @@ def teacher_perf_targets_get(tid: int, month: str = "", db: Session = Depends(ge
     return {"teacher_id": tid, "name": (u.name if u else "Teacher #%d" % tid),
             "subjects": tp.subjects or [],
             "saved": saved.get("targets", {}), "mode": saved.get("mode", ""),
+            "period": saved.get("period", "monthly"),
+            "session_start": saved.get("session_start", ""),
+            "session_end": saved.get("session_end", ""),
             "auto": _pe.auto_targets_from_timetable(db, tp, month)}
 
 
 @router.post("/teacher-perf-targets/{tid}")
 def teacher_perf_targets_set(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
-    """Individual teacher ke targets save (mode: auto/manual)."""
+    """Individual teacher ke targets save (mode auto/manual, period monthly/session + dates)."""
     import perf_engine as _pe
     from models import TeacherProfile
     if not db.query(TeacherProfile).filter(TeacherProfile.id == tid).first():
         raise HTTPException(404, "Teacher not found")
-    r = _pe.save_teacher_targets(db, tid, (payload or {}).get("targets", {}), (payload or {}).get("mode", "manual"))
+    pl = payload or {}
+    r = _pe.save_teacher_targets(db, tid, pl.get("targets", {}), pl.get("mode", "manual"),
+                                 pl.get("period", "monthly"),
+                                 pl.get("session_start", ""), pl.get("session_end", ""))
     return {"ok": True, **r}
 
 

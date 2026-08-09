@@ -45,6 +45,9 @@ PERF_DEFAULTS = {
     "min_workload_fraction": 0.60,
     # ---- Part 9: video initiative max points (teaching ko overpower na kare) ----
     "video_initiative_cap": 5,
+    # ---- Video initiative motivation: 100 reward-point goal + monthly full-scale points ----
+    "video_initiative_target_points": 100,
+    "video_initiative_month_full": 10,
     # ---- Part 8 & 30: video idea reward points (approval/production/published) ----
     "video_rewards": {
         "submitted": 0,

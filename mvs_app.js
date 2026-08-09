@@ -1584,47 +1584,64 @@ async function openTeacherTargets(){
 }
 async function _ttLoadTeacher(tid){
   const box=document.getElementById('tt-fields'); if(!box) return;
-  if(!tid){ box.innerHTML='<div class="pfb-muted">Pehle teacher choose karo.</div>'; _ttCur=null; return; }
+  if(!tid){ box.innerHTML='<div class="pfb-muted" style="margin-top:12px">Pehle teacher choose karo.</div>'; _ttCur=null; return; }
   box.innerHTML='<div class="spinner"></div>';
   try{
     const d=await api('/api/admin/teacher-perf-targets/'+tid);
-    const a=d.auto||{}; _ttCur={tid:tid, auto:a};
-    const saved=d.saved||{}; const useSaved=Object.keys(saved).length>0;
-    const base=useSaved?saved:a;
-    const chapters=a.chapters||0, classes=a.classes||0, dppMin=a.dpp_min||0, dppMax=a.dpp_max||classes||0;
-    const cell=(k,label,hint,minv)=>{
-      const v=(base[k]!=null?base[k]:0);
-      return `<div class="ttp-cell"><label>${esc(label)}</label>
-        <input type="number" min="${minv||0}" class="input tt-in" data-k="${k}" data-min="${minv||0}" value="${v}" oninput="_ttClamp(this)">
-        ${hint?`<div class="ttp-hint">${hint}</div>`:''}</div>`;
-    };
-    const acell=(label,val,hint)=>`<div class="ttp-cell auto"><label>${esc(label)} <span class="ttp-autobadge">AUTO</span></label>
-        <div class="ttp-autoval">${val}</div><div class="ttp-hint">${hint}</div></div>`;
-    const cells=[
-      acell('Classes', classes, `timetable se auto — <b>${classes}</b> classes`),
-      acell('DPP', dppMin, `auto = chapters <b>${dppMin}</b> (min) · max ${dppMax}`),
-      cell('videos','Videos', `assigned: ${a.videos||0}`, 0),
-      cell('shorts','Shorts', `assigned: ${a.shorts||0}`, 0),
-      cell('live','YouTube Live', `assigned: ${a.live||0}`, 0),
-      cell('tests','Weekly Tests', `auto/weekly-2; assigned: ${a.tests||0}`, 0),
-    ].join('');
-    const _ti=(window._ttTeachers||{})[tid]||{};
-    const _nm=d.name||_ti.name||('Teacher #'+tid);
-    const _subs=(d.subjects&&d.subjects.length?d.subjects:(_ti.subjects||[]));
-    const _ini=esc((_nm||'?').slice(0,1).toUpperCase());
-    const _av=_ti.photo?`<img src="${_ti.photo}" class="ttp-av-img">`:`<div class="ttp-av">${_ini}</div>`;
-    box.innerHTML=`
-      <div class="ttp-teacher">${_av}<div><div class="ttp-tname">${esc(_nm)}</div><div class="ttp-tsubs">${_subs.map(x=>`<span class="ttp-subchip">${esc(x)}</span>`).join('')||'<span class="pfb-muted">No subjects</span>'}</div></div></div>
-      <div class="ttp-summary">${ic('calendar')||''} <span>This month (timetable): <b>${chapters}</b> chapter${chapters===1?'':'s'} across <b>${classes}</b> class${classes===1?'':'es'}</span>
-        <span class="ttp-mode">${d.mode==='auto'?'Auto':(useSaved?'Manual':'Not set')}</span></div>
-      <div class="ttp-grid">${cells}</div>
-      <div class="ttp-note"><b>Classes</b> aur <b>DPP</b> timetable se AUTO (set karne ki zaroorat nahi — DPP min = chapters). Sirf Videos/Shorts/Live/Tests manual (jinka timetable nahi unke liye). Tests khaali chhodo to weekly-2 expected lagta hai.</div>
-      <div class="tt-actions">
-        <button class="btn btn-secondary btn-sm" onclick="ttAutoFill()">${ic('calendar')||''} Auto-fill from Timetable</button>
-        <button class="btn btn-primary btn-sm" onclick="saveTeacherTargets('manual')">Save (manual)</button>
-        <button class="btn btn-success btn-sm" onclick="saveTeacherTargets('auto')">Save as Auto</button>
-      </div>`;
+    const a=d.auto||{}; const saved=d.saved||{}; const useSaved=Object.keys(saved).length>0;
+    _ttCur={tid:tid, auto:a, name:d.name, subjects:(d.subjects||[]),
+            src:(d.mode==='manual'?'manual':'auto'), period:(d.period||'monthly'),
+            ss:(d.session_start||'').slice(0,10), se:(d.session_end||'').slice(0,10), saved:saved};
+    _ttRender();
   }catch(e){ box.innerHTML=errHtml(e); }
+}
+function _ttSrc(v){ _ttCur.src=v; _ttRender(); }
+function _ttPeriod(v){ _ttCur.period=v; _ttRender(); }
+function _ttRender(){
+  const box=document.getElementById('tt-fields'); if(!box||!_ttCur) return;
+  const c=_ttCur, a=c.auto||{}, saved=c.saved||{}; const useSaved=Object.keys(saved).length>0;
+  const base=useSaved?saved:a;
+  const chapters=a.chapters||0, classes=a.classes||0, dppMin=a.dpp_min||0, dppMax=a.dpp_max||classes||0;
+  const _ti=(window._ttTeachers||{})[c.tid]||{};
+  const _ini=esc((c.name||'?').slice(0,1).toUpperCase());
+  const _av=_ti.photo?`<img src="${_ti.photo}" class="ttp-av-img">`:`<div class="ttp-av">${_ini}</div>`;
+  const header=`<div class="ttp-teacher">${_av}<div><div class="ttp-tname">${esc(c.name||'')}</div><div class="ttp-tsubs">${(c.subjects||[]).map(x=>`<span class="ttp-subchip">${esc(x)}</span>`).join('')||'<span class="pfb-muted">No subjects</span>'}</div></div></div>`;
+  // source dropdown
+  const srcSel=`<div class="ttp-src"><label>Target source</label>
+    <select class="ttp-select" onchange="_ttSrc(this.value)">
+      <option value="auto" ${c.src==='auto'?'selected':''}>Timetable set hai — auto fetch (classes/dpp/tests)</option>
+      <option value="manual" ${c.src==='manual'?'selected':''}>Timetable nahi — main khud set karunga</option>
+    </select></div>`;
+  const cell=(k,label,hint,minv)=>{ const v=(base[k]!=null?base[k]:0);
+    return `<div class="ttp-cell"><label>${esc(label)}</label>
+      <input type="number" min="${minv||0}" class="input tt-in" data-k="${k}" data-min="${minv||0}" value="${v}" oninput="_ttClamp(this)">
+      ${hint?`<div class="ttp-hint">${hint}</div>`:''}</div>`; };
+  const acell=(label,val,hint)=>`<div class="ttp-cell auto"><label>${esc(label)} <span class="ttp-autobadge">AUTO</span></label>
+      <div class="ttp-autoval">${val}</div><div class="ttp-hint">${hint}</div></div>`;
+  let cells, summary, note, periodUI='';
+  if(c.src==='auto'){
+    summary=`<div class="ttp-summary">${ic('calendar')||''} <span>This month (timetable): <b>${chapters}</b> chapter${chapters===1?'':'s'} across <b>${classes}</b> class${classes===1?'':'es'}</span><span class="ttp-mode">Auto</span></div>`;
+    cells=[acell('Classes',classes,`timetable auto`),acell('DPP',dppMin,`auto = chapters ${dppMin}`),
+      cell('videos','Videos',`assigned: ${a.videos||0}`,0),cell('shorts','Shorts',`assigned: ${a.shorts||0}`,0),
+      cell('live','YouTube Live',`assigned: ${a.live||0}`,0),cell('tests','Weekly Tests',`auto/weekly-2`,0)].join('');
+    note=`Classes & DPP timetable se AUTO. Videos/Shorts/Live/Tests manual (khaali=auto/weekly-2).`;
+  } else {
+    // manual: monthly / session toggle + saare fields editable
+    periodUI=`<div class="ttp-period">
+      <div class="ttp-seg"><button class="${c.period==='monthly'?'on':''}" onclick="_ttPeriod('monthly')">Monthly</button><button class="${c.period==='session'?'on':''}" onclick="_ttPeriod('session')">Session</button></div>
+      ${c.period==='session'?`<div class="ttp-dates"><div><label>Start</label><input type="date" id="tt-ss" class="input" value="${c.ss||''}"></div><div><label>End</label><input type="date" id="tt-se" class="input" value="${c.se||''}"></div></div>`:'<div class="ttp-hint" style="margin-top:6px">Monthly = is mahine ka target.</div>'}</div>`;
+    summary=`<div class="ttp-summary">${ic('edit')||''} <span>Manual targets — jinka timetable nahi. ${c.period==='session'?'Session date-range pe measure hoga.':'Monthly.'}</span><span class="ttp-mode">Manual</span></div>`;
+    cells=[cell('classes','Classes',`total for period`,0),cell('dpp','DPP',`total`,0),
+      cell('videos','Videos',``,0),cell('shorts','Shorts',``,0),
+      cell('live','YouTube Live',``,0),cell('tests','Weekly Tests',``,0)].join('');
+    note=`Manual mode: saare targets khud set karo. Session me start–end date ke beech ka total target.`;
+  }
+  box.innerHTML=header+srcSel+periodUI+summary+`<div class="ttp-grid">${cells}</div>
+    <div class="ttp-note">${note}</div>
+    <div class="tt-actions">
+      ${c.src==='auto'?`<button class="btn btn-secondary btn-sm" onclick="ttAutoFill()">${ic('calendar')||''} Auto-fill from Timetable</button>`:''}
+      <button class="btn btn-primary btn-sm" onclick="saveTeacherTargets()">Save targets</button>
+    </div>`;
 }
 function _ttClamp(inp){
   const mn=parseInt(inp.getAttribute('data-min')||0,10)||0;
@@ -1634,19 +1651,18 @@ function _ttClamp(inp){
 function ttAutoFill(){
   if(!_ttCur) return; const a=_ttCur.auto||{};
   document.querySelectorAll('.tt-in').forEach(i=>{ const k=i.getAttribute('data-k'); i.value=(a[k]!=null?a[k]:0); _ttClamp(i); });
-  toast('Timetable se bhar diya — DPP min '+((a.dpp_min)||0)+'. Save dabao.');
+  toast('Timetable se bhar diya — Save dabao.');
 }
-async function saveTeacherTargets(mode){
+async function saveTeacherTargets(){
   if(!_ttCur){ toast('Select a teacher first',true); return; }
-  const targets={}; let clamped=false;
-  document.querySelectorAll('.tt-in').forEach(i=>{
-    const k=i.getAttribute('data-k'); const mn=parseInt(i.getAttribute('data-min')||0,10)||0;
-    let v=parseInt(i.value||0,10)||0;
-    if(v<mn){ v=mn; i.value=mn; _ttClamp(i); clamped=true; }
-    targets[k]=v;
-  });
-  try{ await api('/api/admin/teacher-perf-targets/'+_ttCur.tid,'POST',{targets:targets,mode:mode});
-    toast((clamped?'DPP ko minimum (chapters) tak set kiya. ':'')+'Targets saved ('+mode+').');
+  const targets={}; document.querySelectorAll('.tt-in').forEach(i=>{ targets[i.getAttribute('data-k')]=parseInt(i.value||0,10)||0; });
+  const mode=(_ttCur.src==='manual')?'manual':'auto';
+  const period=(mode==='manual')?(_ttCur.period||'monthly'):'monthly';
+  const body={targets:targets, mode:mode, period:period};
+  if(period==='session'){ body.session_start=(val('tt-ss')||''); body.session_end=(val('tt-se')||'');
+    if(!body.session_start||!body.session_end){ toast('Session ke liye start aur end date chuno',true); return; } }
+  try{ await api('/api/admin/teacher-perf-targets/'+_ttCur.tid,'POST',body);
+    toast('Targets saved ('+mode+(period==='session'?' · session':'')+').');
     if(typeof loadATeacherRanks==='function') loadATeacherRanks();
   }catch(e){ toast(e.message||'Save failed',true); }
 }
@@ -1778,7 +1794,15 @@ function _ensurePsCss(){
     '.ttp-subchip{font-size:.68rem;font-weight:700;padding:2px 10px;border-radius:99px;background:rgba(226,180,88,.18);color:#e9c169}',
     '.ttp-cell.auto{background:linear-gradient(135deg,#f6fbf6,#eefaef);border-color:#cde6cf}',
     '.ttp-autobadge{font-size:.56rem;font-weight:800;padding:1px 6px;border-radius:99px;background:rgba(16,163,74,.16);color:#15803d;vertical-align:middle}',
-    '.ttp-autoval{font-size:1.15rem;font-weight:800;color:#15803d;padding:6px 2px}'
+    '.ttp-autoval{font-size:1.15rem;font-weight:800;color:#15803d;padding:6px 2px}',
+    '.ttp-src{margin-bottom:14px}.ttp-src label{display:block;font-size:.72rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}',
+    '.ttp-period{margin-bottom:14px}',
+    '.ttp-seg{display:inline-flex;background:var(--primary-50);border:1px solid #e2d6b6;border-radius:99px;padding:3px;gap:2px}',
+    '.ttp-seg button{border:none;background:none;font-size:.8rem;font-weight:700;padding:6px 18px;border-radius:99px;cursor:pointer;color:#6b550b}',
+    '.ttp-seg button.on{background:linear-gradient(135deg,#c9a227,#8a6d10);color:#fff}',
+    '.ttp-dates{display:flex;gap:12px;margin-top:10px}.ttp-dates>div{flex:1}.ttp-dates label{display:block;font-size:.7rem;font-weight:700;color:var(--text-muted);margin-bottom:4px}',
+    '.vc-reward-goal{margin-top:12px}.vc-reward-goal .g-top{display:flex;justify-content:space-between;font-size:.74rem;font-weight:700;color:#7c3aed;margin-bottom:4px}',
+    '.vc-reward-goal .g-bar{height:8px;background:#efe9fb;border-radius:4px;overflow:hidden}.vc-reward-goal .g-fill{height:100%;background:linear-gradient(90deg,#a78bfa,#7c3aed);border-radius:4px}'
   ].join('');
   document.head.appendChild(st);
 }
@@ -1810,8 +1834,9 @@ async function renderVideoContribution(wrapId){
       <div class="vc-rates">
         <div class="vc-rate"><span>Approval Rate</span><b>${d.approval_rate||0}%</b></div>
         <div class="vc-rate"><span>Publication Rate</span><b>${d.publication_rate||0}%</b></div>
-        <div class="vc-rate reward"><span>Reward Points</span><b>${d.reward_points||0}</b></div>
+        <div class="vc-rate reward"><span>Reward Points</span><b>${d.reward_points||0}<small style="color:var(--text-muted)">/${d.reward_target||100}</small></b></div>
       </div>
+      <div class="vc-reward-goal"><div class="g-top"><span>Reward goal</span><span>${d.reward_pct||0}% of ${d.reward_target||100}</span></div><div class="g-bar"><div class="g-fill" style="width:${Math.min(100,d.reward_pct||0)}%"></div></div></div>
       ${ti?`<div class="vc-top">${ic('star')||'\u2605'} Top idea: <b>${esc(ti.title)}</b> <span class="vc-top-pts">+${ti.points}</span></div>`:''}
       ${d.duplicates?`<div class="vc-dup">${d.duplicates} possible duplicate/similar proposal(s) flagged</div>`:''}
     </div>`;

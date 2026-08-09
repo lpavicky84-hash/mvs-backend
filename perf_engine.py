@@ -71,9 +71,15 @@ def score_from_metrics(m, cfg, team=None):
     done = ot + dl
     raw["teaching"] = round(100.0 * (ot + 0.5 * dl) / done, 1) if done > 0 else None
 
-    # 2) CONTENT — video + short + project (per-video) production vs target
-    craw = _blend_target(m.get("content_items", []), cfg)
-    raw["content"] = craw
+    # 2) CONTENT — TARGET-based + ON-TIME (Vicky): assigned content on time hona chahiye,
+    #    delayed -> decrease. content% = (ontime + 0.5*delayed) / content_target. Koi content
+    #    assigned nahi -> N/A.
+    ct = m.get("content_target", 0)
+    co, cl = m.get("task_ontime", 0), m.get("task_delayed", 0)
+    if ct > 0:
+        raw["content"] = cap_pct(100.0 * (co + 0.5 * cl) / ct, cfg)
+    else:
+        raw["content"] = 100.0 if (co + cl) > 0 else None
 
     # 3) TARGETS — SAARE monthly targets ka achievement (videos/shorts/live/tests/dpp/custom)
     traw = _blend_target(m.get("target_items", []), cfg)
@@ -182,12 +188,13 @@ def _consistency_pct(m):
 
 
 def _initiative_pct(m, cfg):
-    """Reward points ko % me — quality/approval-based (raw count nahi). 10 reward pts = 100%.
-    Koi approved proposal nahi -> None (bonus, penalty nahi)."""
+    """Reward points ko % me — quality/approval-based (raw count nahi). Monthly full-scale
+    points config se (default 10 monthly reward pts = 100%). Koi approved proposal nahi -> None."""
     if m.get("prop_approved", 0) <= 0 and m.get("reward_points", 0) <= 0:
         return None
+    full = float(cfg.get("video_initiative_month_full", 10)) or 10.0
     pts = float(m.get("reward_points", 0))
-    return round(min(100.0, pts / 10.0 * 100.0), 1)
+    return round(min(100.0, pts / full * 100.0), 1)
 
 
 def _workload_level(units, team, cfg):
@@ -313,11 +320,15 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
     to = tdl = tnc = 0
     p_proposed = p_approved = p_inprod = p_published = 0
     reward = 0
+    content_assigned = 0
     rw = cfg.get("video_rewards", {})
     try:
         tasks = db.query(VideoTask).filter(VideoTask.teacher_id == tp.id,
                                            VideoTask.created_at >= dt0, VideoTask.created_at < dt1).all()
         for t in tasks:
+            # assigned content task (proposal pending/rejected chhod ke) -> content target
+            if (getattr(t, "proposal_ok", "") or "") != "pending" and getattr(t, "status", "") != "rejected":
+                content_assigned += 1
             if t.submitted_at and t.on_time is True:
                 to += 1
             elif t.submitted_at and t.on_time is False:
@@ -340,6 +351,7 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
     except Exception:
         pass
     m["task_ontime"], m["task_delayed"], m["task_not_completed"] = to, tdl, tnc
+    m["content_target"] = content_assigned
     m["prop_proposed"], m["prop_approved"] = p_proposed, p_approved
     m["prop_in_production"], m["prop_published"] = p_inprod, p_published
     m["reward_points"] = round(reward, 1)
@@ -420,7 +432,8 @@ def _score_all(db, month, cfg):
         u = db.query(User).filter(User.id == tp.user_id).first()
         if not u:
             continue
-        metricmap[tp.id] = (tp, u, gather_metrics(db, tp, dt0, dt1, cfg))
+        _w0, _w1 = _teacher_window(db, tp, dt0, dt1)   # session-mode teacher ka apna window
+        metricmap[tp.id] = (tp, u, gather_metrics(db, tp, _w0, _w1, cfg))
     units = [mm[2].get("workload_units_assigned", 0) for mm in metricmap.values()]
     avg_units = (sum(units) / len(units)) if units else 0
     team = {"avg_workload_units": avg_units}
@@ -848,6 +861,7 @@ def video_contribution(db, tp, month=""):
     pub_rate = round(100.0 * counts["published"] / proposed_total, 1) if proposed_total else 0.0
     reward_history.sort(key=lambda r: (r.get("date") or ""), reverse=True)
     plist.sort(key=lambda p: (p.get("date") or ""), reverse=True)
+    _target_pts = float(cfg.get("video_initiative_target_points", 100)) or 100.0
     return {
         "teacher_id": tp.id,
         "counts": {"proposed": proposed_total, "approved": approved_ct,
@@ -855,6 +869,8 @@ def video_contribution(db, tp, month=""):
                    "rejected": counts["rejected"]},
         "approval_rate": appr_rate, "publication_rate": pub_rate,
         "reward_points": round(reward_total, 1),
+        "reward_target": _target_pts,
+        "reward_pct": round(min(100.0, reward_total / _target_pts * 100.0), 1),
         "top_idea": top_idea, "duplicates": len(dup_ids),
         "reward_history": reward_history, "proposals": plist,
     }
@@ -888,7 +904,7 @@ def get_teacher_targets(db, tid):
     return {}
 
 
-def save_teacher_targets(db, tid, targets, mode="manual"):
+def save_teacher_targets(db, tid, targets, mode="manual", period="monthly", session_start="", session_end=""):
     from models import AppSetting
     clean = {}
     for k, v in (targets or {}).items():
@@ -896,7 +912,9 @@ def save_teacher_targets(db, tid, targets, mode="manual"):
             clean[k] = max(0, int(float(v or 0)))
         except Exception:
             clean[k] = 0
-    payload = {"mode": (mode or "manual"), "targets": clean, "at": _ist(datetime.utcnow()) or ""}
+    payload = {"mode": (mode or "manual"), "period": (period or "monthly"),
+               "session_start": (session_start or ""), "session_end": (session_end or ""),
+               "targets": clean, "at": _ist(datetime.utcnow()) or ""}
     try:
         row = db.query(AppSetting).filter(AppSetting.key == _ttgt_key(tid)).first()
         if not row:
@@ -907,6 +925,21 @@ def save_teacher_targets(db, tid, targets, mode="manual"):
     except Exception:
         pass
     return payload
+
+
+def _teacher_window(db, tp, dt0, dt1):
+    """Session-mode teacher ka window (start/end date). Warna month window."""
+    try:
+        tg = get_teacher_targets(db, tp.id)
+        if tg.get("period") == "session" and tg.get("session_start") and tg.get("session_end"):
+            s = datetime.strptime(tg["session_start"][:10], "%Y-%m-%d")
+            e = datetime.strptime(tg["session_end"][:10], "%Y-%m-%d")
+            e = datetime(e.year, e.month, e.day) + timedelta(days=1)  # end inclusive
+            if e > s:
+                return s, e
+    except Exception:
+        pass
+    return dt0, dt1
 
 
 def auto_targets_from_timetable(db, tp, month=""):
