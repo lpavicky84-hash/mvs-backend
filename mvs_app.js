@@ -1566,10 +1566,451 @@ async function loadTDashboard(){
  loadTeacherToday();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
+// ============================================================
+//  PHASE 7: ADMIN PERFORMANCE SETTINGS UI (Phase-1 config editable)
+// ============================================================
+const PS_SECTIONS=[
+  {g:'component_weights', title:'Performance Weights (out of 100)',
+   note:'8 components ka weight — sum 100 hona chahiye (spec Part 2).', sumWatch:true,
+   keys:[['teaching','Teaching & Class Delivery'],['content','Content Production'],
+     ['targets','Monthly Target Achievement'],['student_support','Student Support'],
+     ['tests','Tests & Assessments'],['task_discipline','Task Discipline'],
+     ['consistency','Consistency'],['video_initiative','Video Initiative']]},
+  {g:'activity_workload', title:'Activity Workload Units (effort)',
+   note:'Har activity ka effort — 1 short = 1, 1 one-shot = 5, etc. (spec Part 3).', step:'0.5',
+   keys:[['class','Class'],['dpp','DPP'],['short','Short'],['long_video','Long Video'],
+     ['one_shot','One Shot'],['revision','Revision'],['youtube_live','YouTube Live'],
+     ['weekly_test','Weekly Test'],['doubt','Doubt'],['task','Task'],['video_proposal','Video Proposal']]},
+  {g:'video_rewards', title:'Video Idea Reward Points',
+   note:'Reward sirf approval/production/published par (spec Part 8).', step:'0.5',
+   keys:[['submitted','Submitted'],['approved','Approved'],['in_production','Moved to Production'],
+     ['published','Published'],['high_impact','High-impact bonus']]},
+  {g:'overachievement', title:'Overachievement Caps (%)',
+   note:'100%=100, uske upar cap (spec Part 19).',
+   keys:[['base','Base (100)'],['cap_101_120','101-120% cap'],['cap_over_120','>120% cap']]},
+  {g:'quality_split', title:'Quality / Timeliness Split',
+   note:'Jahaan quality data ho: target/quality/timeliness (spec Part 18). Sum 1.', step:'0.05',
+   keys:[['target','Target'],['quality','Quality'],['timeliness','Timeliness']]},
+  {g:'consistency', title:'Consistency',
+   note:'Consistency ke max points + streak-badge days (spec Part 17).',
+   keys:[['max_points','Max points'],['streak_days_for_badge','Streak days for badge']]},
+  {g:'workload_levels', title:'Workload Level Thresholds (% of team avg)',
+   note:'Low/High/Very High workload cutoffs (spec Part 22).',
+   keys:[['low_below','Low below %'],['high_above','High above %'],['very_high_above','Very High above %']]},
+  {g:'_root', title:'Other',
+   note:'Min workload eligibility (fraction) + video initiative max points (Part 9, 20).', step:'0.05',
+   keys:[['min_workload_fraction','Min workload fraction (0-1)'],['video_initiative_cap','Video initiative cap (points)']]},
+];
+async function openPerfSettings(){
+  let d;
+  try{ d=await api('/api/admin/perf-settings'); }
+  catch(e){ toast(e.message||'Could not load settings',true); return; }
+  _ensurePsCss();
+  const cfg=d.config||{};
+  const body=PS_SECTIONS.map(sec=>{
+    const rows=sec.keys.map(k=>{
+      const val=(sec.g==='_root')?cfg[k[0]]:((cfg[sec.g]||{})[k[0]]);
+      const step=sec.step||'1';
+      const oin=sec.sumWatch?' oninput="_psSum()"':'';
+      return `<div class="ps-row"><label>${esc(k[1])}</label>
+        <input type="number" step="${step}" min="0" class="input ps-in" data-g="${sec.g}" data-k="${k[0]}" value="${val==null?'':val}"${oin}></div>`;
+    }).join('');
+    const sumBadge=sec.sumWatch?`<span class="ps-sum" id="ps-sum-badge">sum: ${d.component_weight_sum||0}</span>`:'';
+    return `<div class="ps-sec"><div class="ps-sec-h"><b>${esc(sec.title)}</b>${sumBadge}</div>
+      <div class="ps-sec-note">${esc(sec.note)}</div><div class="ps-grid">${rows}</div></div>`;
+  }).join('');
+  showModal('Performance Settings',
+    `<div class="ps-wrap"><div class="ps-intro">Yahaan se saare scoring weights, workload units aur rewards live badal sakte ho. Save karte hi naye scores in values se compute honge (purane months Phase 8 snapshots ke baad freeze rahenge).</div>${body}</div>`,
+    `<button class="btn btn-secondary" onclick="resetPerfSettings()">Reset to defaults</button>
+     <button class="btn btn-primary" onclick="savePerfSettings()">Save settings</button>`);
+  _psSum();
+}
+function _psSum(){
+  const badge=document.getElementById('ps-sum-badge'); if(!badge) return;
+  let sum=0;
+  document.querySelectorAll('.ps-in[data-g="component_weights"]').forEach(i=>{ sum+=parseFloat(i.value||0)||0; });
+  sum=Math.round(sum*10)/10;
+  badge.textContent='sum: '+sum;
+  badge.className='ps-sum'+(Math.abs(sum-100)>0.01?' bad':' ok');
+}
+async function savePerfSettings(){
+  const patch={};
+  document.querySelectorAll('.ps-in').forEach(i=>{
+    const g=i.getAttribute('data-g'), k=i.getAttribute('data-k');
+    let v=parseFloat(i.value); if(isNaN(v)) v=0;
+    if(g==='_root'){ patch[k]=v; }
+    else { (patch[g]=patch[g]||{})[k]=v; }
+  });
+  try{
+    const r=await api('/api/admin/perf-settings','POST',{config:patch});
+    toast('Settings saved. Weight sum: '+(r.component_weight_sum||0));
+    closeModal();
+    if(typeof loadATeacherRanks==='function') loadATeacherRanks();
+  }catch(e){ toast(e.message||'Save failed',true); }
+}
+async function resetPerfSettings(){
+  if(!confirm('Reset all performance settings to spec defaults?')) return;
+  try{ await api('/api/admin/perf-settings','POST',{reset:true}); toast('Reset to defaults.'); closeModal(); openPerfSettings(); }
+  catch(e){ toast(e.message||'Reset failed',true); }
+}
+function _ensurePsCss(){
+  if(document.getElementById('ps-css')) return;
+  var st=document.createElement('style'); st.id='ps-css';
+  st.textContent=[
+    '.ps-intro{font-size:.8rem;color:var(--text-muted);background:var(--primary-50);border-radius:10px;padding:11px 13px;margin-bottom:16px}',
+    '.ps-sec{margin-bottom:20px;border:1px solid var(--border,#eee);border-radius:14px;padding:15px 16px;background:var(--card,#fff)}',
+    '.ps-sec-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px}.ps-sec-h b{font-size:.95rem;color:var(--text)}',
+    '.ps-sec-note{font-size:.72rem;color:var(--text-muted);margin-bottom:12px}',
+    '.ps-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px 14px}',
+    '.ps-row{display:flex;flex-direction:column;gap:4px}',
+    '.ps-row label{font-size:.72rem;font-weight:700;color:var(--text-muted)}',
+    '.ps-in{padding:8px 10px;font-size:.9rem}',
+    '.ps-sum{font-size:.72rem;font-weight:800;padding:3px 10px;border-radius:99px}',
+    '.ps-sum.ok{background:rgba(16,163,74,.15);color:#15803d}.ps-sum.bad{background:rgba(220,38,38,.14);color:#dc2626}'
+  ].join('');
+  document.head.appendChild(st);
+}
+
+// ============================================================
+//  PHASE 4: VIDEO INITIATIVE — contribution dashboard + reward history + lifecycle
+// ============================================================
+const VC_STAGES={proposed:['Proposed','#2563eb'],approved:['Approved','#059669'],
+  in_production:['In Production','#b45309'],published:['Published','#7c3aed'],
+  rejected:['Rejected','#dc2626']};
+let _vcData=null;
+async function renderVideoContribution(wrapId){
+  const wrap=document.getElementById(wrapId); if(!wrap) return;
+  _ensureVcCss();
+  try{
+    const d=await api('/api/teacher/video-contribution');
+    _vcData=d;
+    const c=d.counts||{};
+    if(!(c.proposed>0)){ wrap.innerHTML=`<div class="vc-card vc-empty">${ic('video')||''}<div><b>Video Initiative</b><div class="vc-sub">Abhi tak koi video idea propose nahi kiya. Achhe topics propose karke reward points aur rank boost paao.</div></div></div>`; return; }
+    const ti=d.top_idea;
+    wrap.innerHTML=`<div class="vc-card" onclick="vcHistory()">
+      <div class="vc-head"><div class="vc-title">Video Initiative — My Contributions</div><span class="vc-open">View history \u203a</span></div>
+      <div class="vc-stats">
+        <div class="vc-stat"><b>${c.proposed||0}</b><span>Proposed</span></div>
+        <div class="vc-stat"><b>${c.approved||0}</b><span>Approved</span></div>
+        <div class="vc-stat"><b>${c.in_production||0}</b><span>In Production</span></div>
+        <div class="vc-stat"><b>${c.published||0}</b><span>Published</span></div>
+      </div>
+      <div class="vc-rates">
+        <div class="vc-rate"><span>Approval Rate</span><b>${d.approval_rate||0}%</b></div>
+        <div class="vc-rate"><span>Publication Rate</span><b>${d.publication_rate||0}%</b></div>
+        <div class="vc-rate reward"><span>Reward Points</span><b>${d.reward_points||0}</b></div>
+      </div>
+      ${ti?`<div class="vc-top">${ic('star')||'\u2605'} Top idea: <b>${esc(ti.title)}</b> <span class="vc-top-pts">+${ti.points}</span></div>`:''}
+      ${d.duplicates?`<div class="vc-dup">${d.duplicates} possible duplicate/similar proposal(s) flagged</div>`:''}
+    </div>`;
+  }catch(e){ wrap.innerHTML=''; }  // performance page na toote
+}
+function _vcStagePill(stage){
+  const s=VC_STAGES[stage]||[stage,'#64748b'];
+  return `<span class="vc-pill" style="background:${s[1]}22;color:${s[1]}">${esc(s[0])}</span>`;
+}
+function vcHistory(){
+  const d=_vcData; if(!d) return;
+  const props=(d.proposals||[]).map(p=>`<div class="vch-row">
+    <div class="vch-l"><div class="vch-title">${esc(p.title)}${p.duplicate?'<span class="vch-dup">Duplicate?</span>':''}</div>
+      <div class="vch-meta">${p.subject?esc(p.subject)+' \u00b7 ':''}${esc(p.video_type||'')}${p.date?' \u00b7 '+esc(_pfDate(p.date)):''}</div>
+      ${p.rejected_reason?`<div class="vch-rej">Reason: ${esc(p.rejected_reason)}</div>`:''}</div>
+    <div class="vch-r">${_vcStagePill(p.stage)}${p.reward?`<span class="vch-pts">+${p.reward}</span>`:''}</div></div>`).join('')||'<div class="pfb-muted">No proposals yet.</div>';
+  const rew=(d.reward_history||[]).map(r=>`<div class="vcr-row">
+    <div><div class="vcr-reason">${esc(r.reason)}</div><div class="vcr-meta">${esc(r.proposal||'')}${r.date?' \u00b7 '+esc(_pfDate(r.date)):''} \u00b7 by ${esc(r.approved_by||'Production Manager')}</div></div>
+    <div class="vcr-pts">+${r.points}</div></div>`).join('')||'<div class="pfb-muted">No rewards yet — approved/published ideas earn points.</div>';
+  showModal('Video Initiative — History & Rewards',
+    `<div class="vc-modal">
+      <div class="vc-mstats">
+        <div><b>${d.counts.proposed||0}</b><span>Proposed</span></div>
+        <div><b>${d.counts.approved||0}</b><span>Approved</span></div>
+        <div><b>${d.counts.published||0}</b><span>Published</span></div>
+        <div class="rw"><b>${d.reward_points||0}</b><span>Reward pts</span></div>
+      </div>
+      <div class="pfb-h">My Rewards</div><div class="vcr-list">${rew}</div>
+      <div class="pfb-h" style="margin-top:18px">Proposal History</div><div class="vch-list">${props}</div>
+      <div class="pfb-note">Reward sirf APPROVED/PRODUCTION/PUBLISHED par milta hai — raw proposal count par nahi. Duplicate/similar ideas flag hote hain (Production Manager reject/merge kar sakta hai).</div>
+    </div>`,
+    `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
+}
+function _pfDate(iso){ try{ return new Date(iso).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }catch(e){ return iso; } }
+function _ensureVcCss(){
+  if(document.getElementById('vc-css')) return;
+  var st=document.createElement('style'); st.id='vc-css';
+  st.textContent=[
+    '.vc-card{background:linear-gradient(135deg,#fffdf7,#faf4e6);border:1px solid #ece1c6;border-radius:16px;padding:18px 20px;margin-bottom:16px;cursor:pointer;transition:.15s}',
+    '.vc-card:hover{box-shadow:0 14px 34px -20px rgba(90,70,15,.5)}',
+    '.vc-empty{display:flex;gap:12px;align-items:center;cursor:default}.vc-empty svg{width:26px;height:26px;color:#b8941f}',
+    '.vc-sub{font-size:.8rem;color:var(--text-muted);margin-top:3px}',
+    '.vc-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}',
+    '.vc-title{font-size:1rem;font-weight:800;color:var(--text)}',
+    '.vc-open{font-size:.76rem;font-weight:700;color:#8a6d10}',
+    '.vc-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}',
+    '.vc-stat{text-align:center;background:#fff;border:1px solid #f0e8d4;border-radius:11px;padding:10px 6px}',
+    '.vc-stat b{display:block;font-size:1.35rem;font-weight:800;color:#8a6d10}.vc-stat span{font-size:.66rem;color:var(--text-muted);font-weight:600}',
+    '.vc-rates{display:flex;gap:10px;flex-wrap:wrap}',
+    '.vc-rate{flex:1;min-width:96px;background:#fff;border:1px solid #f0e8d4;border-radius:10px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center}',
+    '.vc-rate span{font-size:.7rem;color:var(--text-muted);font-weight:600}.vc-rate b{font-weight:800;color:var(--text)}',
+    '.vc-rate.reward b{color:#7c3aed}',
+    '.vc-top{margin-top:12px;font-size:.8rem;color:var(--text);background:#fff;border-radius:10px;padding:9px 12px;border:1px solid #f0e8d4}',
+    '.vc-top-pts{color:#7c3aed;font-weight:800}',
+    '.vc-dup{margin-top:10px;font-size:.74rem;font-weight:700;color:#b45309;background:rgba(245,158,11,.12);padding:6px 11px;border-radius:8px}',
+    '.vc-pill{font-size:.66rem;font-weight:800;padding:3px 10px;border-radius:99px}',
+    '.vc-mstats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}',
+    '.vc-mstats>div{text-align:center;background:var(--primary-50);border-radius:11px;padding:11px 6px}',
+    '.vc-mstats b{display:block;font-size:1.3rem;font-weight:800;color:#8a6d10}.vc-mstats span{font-size:.66rem;color:var(--text-muted);font-weight:600}',
+    '.vc-mstats .rw b{color:#7c3aed}',
+    '.vcr-list,.vch-list{display:flex;flex-direction:column;gap:8px}',
+    '.vcr-row{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--card,#fff);border:1px solid var(--border,#eee);border-radius:10px;padding:10px 13px}',
+    '.vcr-reason{font-weight:700;font-size:.86rem;color:var(--text)}.vcr-meta{font-size:.7rem;color:var(--text-muted);margin-top:2px}',
+    '.vcr-pts{font-weight:800;color:#059669}',
+    '.vch-row{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;background:var(--card,#fff);border:1px solid var(--border,#eee);border-radius:10px;padding:10px 13px}',
+    '.vch-title{font-weight:700;font-size:.88rem;color:var(--text)}.vch-meta{font-size:.7rem;color:var(--text-muted);margin-top:2px}',
+    '.vch-dup{margin-left:7px;font-size:.6rem;font-weight:800;color:#b45309;background:rgba(245,158,11,.16);padding:1px 7px;border-radius:99px}',
+    '.vch-rej{font-size:.7rem;color:#dc2626;margin-top:3px}',
+    '.vch-r{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}',
+    '.vch-pts{font-weight:800;color:#7c3aed;font-size:.82rem}'
+  ].join('');
+  document.head.appendChild(st);
+}
+
+// ============================================================
+//  PHASE 5 + 6: PREMIUM PERFORMANCE LEADERBOARD + "WHY AM I THIS RANK?"
+//  (Phase 2 engine ka result — podium, tabs, rank-change, breakdown drawer)
+// ============================================================
+const PF_COMPS=[['teaching','Teaching & Class Delivery'],['content','Content Production'],
+  ['targets','Monthly Target Achievement'],['student_support','Student Support'],
+  ['tests','Tests & Assessments'],['task_discipline','Task Discipline'],
+  ['consistency','Consistency'],['video_initiative','Video Initiative']];
+const PF_TABS=[['overall','Overall'],['teaching','Teaching'],['content','Content'],
+  ['targets','Targets'],['student_support','Student Support'],
+  ['video_initiative','Video Initiative'],['consistency','Consistency']];
+let _pfState={who:'t', sort:'overall', board:null, meId:null};
+
+async function renderPerfBoard(wrapId, who, month){
+  const wrap=document.getElementById(wrapId); if(!wrap) return;
+  _ensurePfCss();
+  _pfState.who=who; _pfState.wrapId=wrapId;
+  wrap.innerHTML='<div class="spinner"></div>';
+  const url=(who==='a'?'/api/admin/perf-scores':'/api/teacher/perf-board')+(month?('?month='+month):'');
+  const d=await api(url);
+  _pfState.board=d;
+  if(!_pfState.history){ try{ _pfState.history=await api(who==='a'?'/api/admin/perf-history':'/api/teacher/perf-history'); }catch(e){ _pfState.history=null; } }
+  if(who!=='a'){ try{ const mr=await api('/api/teacher/my-rank'); _pfState.meId=(mr.me&&mr.me.teacher_id)||null; }catch(e){} }
+  _pfPaint();
+}
+function _pfMonth(m){ renderPerfBoard(_pfState.wrapId, _pfState.who, m); }
+async function _pfFreeze(){
+  try{ const r=await api('/api/admin/perf-snapshot','POST',{month:(_pfState.board||{}).month||''});
+    toast('Month frozen — '+r.count+' teachers ki ranking ab locked hai.');
+    _pfState.history=null; renderPerfBoard(_pfState.wrapId,_pfState.who,r.month);
+  }catch(e){ toast(e.message||'Freeze failed',true); }
+}
+function _pfSorted(){
+  const rows=(_pfState.board.results||[]).slice();
+  const k=_pfState.sort;
+  if(k==='overall') return rows;   // already ranked by overall
+  rows.sort((a,b)=>{
+    const av=((a.components||{})[k]||{}).score, bv=((b.components||{})[k]||{}).score;
+    const an=(av==null?-1:av), bn=(bv==null?-1:bv);
+    return bn-an;
+  });
+  return rows;
+}
+function _pfChange(r){
+  if(r.rank_change==null) return '<span class="pf-chg new">NEW</span>';
+  if(r.rank_change>0) return `<span class="pf-chg up">\u2191 ${r.rank_change}</span>`;
+  if(r.rank_change<0) return `<span class="pf-chg dn">\u2193 ${Math.abs(r.rank_change)}</span>`;
+  return '<span class="pf-chg flat">\u2014</span>';
+}
+function _pfAv(r,sz){
+  const ini=esc((r.name||'?').slice(0,1).toUpperCase());
+  return r.photo?`<img src="${r.photo}" style="width:${sz}px;height:${sz}px;border-radius:50%;object-fit:cover;border:3px solid #fff">`
+    :`<div class="pf-ini" style="width:${sz}px;height:${sz}px;font-size:${Math.round(sz*.4)}px">${ini}</div>`;
+}
+function _pfVal(r){
+  if(_pfState.sort==='overall') return `${r.score}<small>/100</small>`;
+  const c=(r.components||{})[_pfState.sort]||{};
+  return (c.score==null)?'<small>N/A</small>':`${c.score}<small>/${c.weight}</small>`;
+}
+function _pfPaint(){
+  const wrap=document.getElementById(_pfState.wrapId); if(!wrap) return;
+  const d=_pfState.board; const rows=_pfSorted();
+  if(!rows.length){ wrap.innerHTML='<div class="vv-empty">No performance data yet this month.</div>'; return; }
+  const medal=['#e0b23c','#a7a29a','#c67b3e'];
+  const tabs=PF_TABS.map(t=>`<button class="pf-tab ${_pfState.sort===t[0]?'on':''}" onclick="_pfTab('${t[0]}')">${esc(t[1])}</button>`).join('');
+  // podium (2,1,3)
+  const pod=[rows[1],rows[0],rows[2]].filter(Boolean);
+  const podHtml=`<div class="pf-podium">${pod.map(r=>{
+    const rk=rows.indexOf(r)+1; const h=rk===1?128:rk===2?96:78; const sz=rk===1?70:56;
+    const isMe=_pfState.meId&&r.teacher_id===_pfState.meId;
+    return `<div class="pf-pod ${rk===1?'first':''}" onclick="pfBreakdown(${r.teacher_id})">
+      <div class="pf-pod-av">${_pfAv(r,sz)}<span class="pf-medal" style="background:${medal[rk-1]}">${rk}</span></div>
+      <div class="pf-pod-nm">${esc(r.name)}${isMe?' <span class="pf-you">you</span>':''}</div>
+      <div class="pf-pod-sc">${_pfVal(r)}</div>
+      <div class="pf-pod-meta">${_pfChange(r)}${r.limited_workload?'<span class="pf-lim">Limited</span>':''}</div>
+      <div class="pf-pod-base" style="height:${h}px;background:linear-gradient(180deg,${medal[rk-1]}2e,${medal[rk-1]}08);border-top:4px solid ${medal[rk-1]}"><b>#${rk}</b></div>
+    </div>`;}).join('')}</div>`;
+  // rest list
+  const list=rows.map((r,i)=>{
+    const rk=i+1; const isMe=_pfState.meId&&r.teacher_id===_pfState.meId;
+    const subs=(r.subjects||[]).slice(0,3).map(x=>`<span class="pf-sub">${esc(x)}</span>`).join('');
+    const wl=r.workload_level||'Standard';
+    const vi=(r.video_initiative||{});
+    return `<div class="pf-row ${isMe?'me':''} ${rk<=3?'top':''}" style="animation-delay:${Math.min(i*28,420)}ms" onclick="pfBreakdown(${r.teacher_id})">
+      <div class="pf-rk">#${rk}${_pfChange(r)}</div>
+      <div class="pf-who">${_pfAv(r,42)}<div><div class="pf-nm">${esc(r.name)}${isMe?' <span class="pf-you">you</span>':''}</div><div class="pf-subs">${subs}</div></div></div>
+      <div class="pf-kpi"><span class="pf-wl pf-wl-${wl.replace(/ /g,'').toLowerCase()}">${esc(wl)} workload</span>
+        ${r.consistency_streak?`<span class="pf-mini">${r.consistency_streak}d streak</span>`:''}
+        ${vi.approved?`<span class="pf-mini">${vi.approved} ideas approved</span>`:''}</div>
+      <div class="pf-sc">${_pfVal(r)}</div>
+    </div>`;}).join('');
+  const months=((_pfState.history||{}).months)||[];
+  const monthSel=months.length?`<select class="pf-msel" onchange="_pfMonth(this.value)">${months.map(m=>`<option value="${m.month}" ${m.month===d.month?'selected':''}>${esc(_mpMonthLabel(m.month))}${m.current?' \u00b7 live':(m.frozen?' \u00b7 frozen':'')}</option>`).join('')}</select>`:`<div class="pf-month">${esc(_mpMonthLabel(d.month))}</div>`;
+  const frozenBadge=d.frozen?'<span class="pf-frozen">Frozen</span>':'<span class="pf-live">Live</span>';
+  const adminBtn=(_pfState.who==='a')?`<button class="pf-settings-btn" onclick="_pfFreeze()">${ic('lock')||'\u2744'} Freeze</button><button class="pf-settings-btn" onclick="openPerfSettings()">${ic('settings')||'\u2699'} Settings</button>`:'';
+  wrap.innerHTML=`<div class="pf-wrap">
+    <div class="pf-head"><div class="pf-title">Teacher Performance Leaderboard</div><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${monthSel}${frozenBadge}${adminBtn}</div></div>
+    <div class="pf-tabs">${tabs}</div>
+    ${podHtml}
+    <div class="pf-list">${list}</div>
+    <div class="pf-note">Tap any teacher to see the full breakdown &amp; how the score is calculated.</div>
+  </div>`;
+}
+function _pfTab(k){ _pfState.sort=k; _pfPaint(); }
+
+// -------- Phase 6: breakdown drawer (client-side from board row) --------
+function pfBreakdown(tid){
+  const rows=((_pfState.board||{}).results)||[];
+  const r=rows.find(x=>x.teacher_id===tid); if(!r) return;
+  const comps=r.components||{};
+  const bars=PF_COMPS.map(c=>{
+    const v=comps[c[0]]||{}; const na=v.na||v.score==null;
+    const w=v.weight||0; const sc=na?0:(v.score||0); const pct=na?0:Math.min(100,Math.round((v.raw||0)));
+    return `<div class="pfb-row">
+      <div class="pfb-top"><span>${esc(c[1])}</span><b class="${na?'na':''}">${na?'N/A':sc+' / '+w}</b></div>
+      <div class="pfb-bar"><div class="pfb-fill" style="width:${pct}%"></div></div></div>`;
+  }).join('');
+  // strong / improve (client-side)
+  const applic=PF_COMPS.map(c=>[c[1],(comps[c[0]]||{})]).filter(x=>!x[1].na&&x[1].raw!=null);
+  const hi=applic.slice().sort((a,b)=>b[1].raw-a[1].raw);
+  const lo=applic.slice().sort((a,b)=>a[1].raw-b[1].raw);
+  const strong=hi.filter(x=>x[1].raw>=70).slice(0,2).map(x=>`<span class="pfb-chip ok">${esc(x[0])}</span>`).join('')||'<span class="pfb-muted">Keep building</span>';
+  const improve=lo.filter(x=>x[1].raw<85).slice(0,3).map(x=>`<span class="pfb-chip warn">${esc(x[0])}</span>`).join('')||'<span class="pfb-muted">All strong</span>';
+  // next rank gap
+  const ab=rows.find(x=>x.rank===r.rank-1);
+  const gapHtml=ab?`<div class="pfb-gap">
+      <div class="pfb-gap-col"><span>Your Rank</span><b>#${r.rank}</b><small>${r.score}/100</small></div>
+      <div class="pfb-gap-arrow">\u2192</div>
+      <div class="pfb-gap-col"><span>Next: ${esc(ab.name)}</span><b>#${ab.rank}</b><small>${ab.score}/100</small></div>
+      <div class="pfb-gap-col gap"><span>Gap</span><b>${Math.max(0,Math.round((ab.score-r.score)*10)/10)}</b><small>points</small></div>
+    </div>`:'<div class="pfb-muted" style="margin-top:12px">Top of the board \u2014 hold your lead!</div>';
+  const vi=r.video_initiative||{};
+  const viHtml=`<div class="pfb-vi"><b>Video Initiative</b>
+     <div class="pfb-vi-row"><span>${vi.proposed||0} Proposed</span><span>${vi.approved||0} Approved</span><span>${vi.published||0} Published</span><span>${vi.reward_points||0} Reward pts</span></div></div>`;
+  showModal(`Why am I ranked #${r.rank}? \u2014 ${esc(r.name)}`,
+    `<div class="pfb">
+      <div class="pfb-overall"><div><div class="pfb-o-lbl">Overall Score</div><div class="pfb-o-sc">${r.score}<small>/100</small></div></div>
+        <div class="pfb-o-side">${_pfChange(r)}<span class="pf-wl pf-wl-${(r.workload_level||'standard').replace(/ /g,'').toLowerCase()}">${esc(r.workload_level||'Standard')} workload</span>${r.limited_workload?'<span class="pf-lim">Limited workload data</span>':''}</div></div>
+      <div class="pfb-bars">${bars}</div>
+      <div class="pfb-areas"><div><div class="pfb-h">Strong areas</div>${strong}</div><div><div class="pfb-h">Areas to improve</div>${improve}</div></div>
+      ${viHtml}
+      <div class="pfb-h" style="margin-top:16px">Next rank gap</div>${gapHtml}
+      <div class="pfb-note">Ye score sirf raw activity se nahi \u2014 workload, quality, timeliness, consistency, support & initiative sabse milke banta hai. Koi bhi ek cheez se #1 nahi bana ja sakta.</div>
+    </div>`,
+    `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
+}
+function _ensurePfCss(){
+  if(document.getElementById('pf-css')) return;
+  var st=document.createElement('style'); st.id='pf-css';
+  st.textContent=[
+    '.pf-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px}',
+    '.pf-title{font-size:1.2rem;font-weight:800;letter-spacing:-.01em;color:var(--text)}',
+    '.pf-month{font-size:.82rem;color:var(--text-muted);font-weight:600}',
+    '.pf-tabs{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:8px}',
+    '.pf-tab{flex:0 0 auto;font-size:.78rem;font-weight:700;padding:7px 15px;border-radius:99px;border:1px solid var(--border,#e5e5e5);background:var(--card,#fff);color:var(--text-muted);cursor:pointer;transition:.15s}',
+    '.pf-tab.on{background:linear-gradient(135deg,#c9a227,#8a6d10);color:#fff;border-color:transparent}',
+    '.pf-ini{border-radius:50%;background:linear-gradient(135deg,#b8941f,#8a6d10);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;border:3px solid #fff}',
+    '.pf-podium{display:flex;align-items:flex-end;justify-content:center;gap:14px;margin:6px 0 22px}',
+    '.pf-pod{flex:1;max-width:150px;text-align:center;cursor:pointer}',
+    '.pf-pod-av{position:relative;display:inline-block;margin-bottom:6px}',
+    '.pf-medal{position:absolute;bottom:-4px;right:-4px;width:22px;height:22px;border-radius:50%;color:#fff;font-weight:800;font-size:.72rem;display:flex;align-items:center;justify-content:center;border:2px solid #fff}',
+    '.pf-pod-nm{font-weight:800;font-size:.86rem;color:var(--text);line-height:1.15}',
+    '.pf-pod-sc{font-weight:800;color:#8a6d10;font-size:1.05rem;margin-top:2px}',
+    '.pf-pod-sc small,.pf-sc small,.pf-pod-sc small{font-size:.6em;color:var(--text-muted);font-weight:600}',
+    '.pf-pod-meta{display:flex;gap:5px;justify-content:center;margin:4px 0 6px;flex-wrap:wrap}',
+    '.pf-pod.first .pf-pod-nm{font-size:.95rem}',
+    '.pf-pod-base{border-radius:10px 10px 0 0;display:flex;align-items:flex-start;justify-content:center;padding-top:8px;color:var(--text-muted);font-weight:800}',
+    '.pf-chg{font-size:.64rem;font-weight:800;padding:2px 7px;border-radius:99px}',
+    '.pf-chg.up{background:rgba(16,163,74,.15);color:#15803d}.pf-chg.dn{background:rgba(220,38,38,.14);color:#dc2626}',
+    '.pf-chg.flat{background:#eef1f8;color:#94a3b8}.pf-chg.new{background:rgba(37,99,235,.14);color:#2563eb}',
+    '.pf-lim{font-size:.62rem;font-weight:800;padding:2px 7px;border-radius:99px;background:rgba(245,158,11,.16);color:#b45309}',
+    '.pf-you{font-size:.6rem;font-weight:800;background:#2563eb;color:#fff;padding:1px 6px;border-radius:99px;vertical-align:middle}',
+    '.pf-list{display:flex;flex-direction:column;gap:9px}',
+    '.pf-row{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:12px;padding:12px 14px;background:var(--card,#fff);border:1px solid var(--border,#eee);border-radius:14px;cursor:pointer;transition:.15s}',
+    '.pf-row:hover{box-shadow:0 10px 26px -18px rgba(90,70,15,.5);transform:translateY(-1px)}',
+    '.pf-row.me{border-color:#2563eb;background:rgba(37,99,235,.04)}',
+    '.pf-row.top{background:linear-gradient(90deg,#fffdf6,var(--card,#fff))}',
+    '.pf-rk{display:flex;flex-direction:column;align-items:center;gap:3px;font-weight:800;color:var(--text);min-width:42px}',
+    '.pf-who{display:flex;align-items:center;gap:10px}',
+    '.pf-nm{font-weight:800;color:var(--text)}',
+    '.pf-subs{display:flex;gap:4px;flex-wrap:wrap;margin-top:2px}',
+    '.pf-sub{font-size:.64rem;font-weight:700;padding:1px 8px;border-radius:99px;background:var(--primary-50);color:#6b550b}',
+    '.pf-kpi{display:flex;flex-direction:column;gap:4px;align-items:flex-end}',
+    '.pf-wl{font-size:.66rem;font-weight:800;padding:3px 9px;border-radius:99px}',
+    '.pf-wl-low{background:#eef1f8;color:#64748b}.pf-wl-standard{background:rgba(37,99,235,.12);color:#2563eb}',
+    '.pf-wl-high{background:rgba(217,119,58,.16);color:#b45309}.pf-wl-veryhigh{background:rgba(220,38,38,.15);color:#dc2626}',
+    '.pf-mini{font-size:.64rem;color:var(--text-muted);font-weight:600}',
+    '.pf-sc{font-weight:800;color:#8a6d10;font-size:1.1rem;min-width:64px;text-align:right}',
+    '.pf-note{font-size:.72rem;color:var(--text-muted);text-align:center;margin-top:14px}',
+    // breakdown drawer
+    '.pfb-overall{display:flex;justify-content:space-between;align-items:center;gap:12px;background:linear-gradient(135deg,#fffdf7,#faf4e3);border:1px solid #ece1c6;border-radius:14px;padding:16px 18px;margin-bottom:16px}',
+    '.pfb-o-lbl{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:#9a854a;font-weight:800}',
+    '.pfb-o-sc{font-size:2rem;font-weight:800;color:#8a6d10;line-height:1}',
+    '.pfb-o-sc small{font-size:.5em;color:var(--text-muted)}',
+    '.pfb-o-side{display:flex;flex-direction:column;gap:6px;align-items:flex-end}',
+    '.pfb-row{margin-bottom:11px}',
+    '.pfb-top{display:flex;justify-content:space-between;font-size:.82rem;margin-bottom:4px}.pfb-top b.na{color:var(--text-muted);font-weight:600}',
+    '.pfb-bar{height:7px;background:#eef1f8;border-radius:4px;overflow:hidden}',
+    '.pfb-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#e2b552,#b8941f)}',
+    '.pfb-areas{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:16px 0}',
+    '.pfb-h{font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);font-weight:800;margin-bottom:7px}',
+    '.pfb-chip{display:inline-block;font-size:.72rem;font-weight:700;padding:4px 10px;border-radius:99px;margin:0 5px 5px 0}',
+    '.pfb-chip.ok{background:rgba(16,163,74,.14);color:#15803d}.pfb-chip.warn{background:rgba(245,158,11,.16);color:#b45309}',
+    '.pfb-muted{font-size:.76rem;color:var(--text-muted)}',
+    '.pfb-vi{background:var(--primary-50);border-radius:12px;padding:12px 14px;margin-top:6px}',
+    '.pfb-vi-row{display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;font-size:.78rem;font-weight:700;color:#6b550b}',
+    '.pfb-gap{display:flex;align-items:center;gap:12px;background:var(--card,#fff);border:1px solid var(--border,#eee);border-radius:12px;padding:14px;margin-top:8px}',
+    '.pfb-gap-col{display:flex;flex-direction:column;text-align:center;flex:1}.pfb-gap-col span{font-size:.66rem;color:var(--text-muted)}.pfb-gap-col b{font-size:1.2rem;font-weight:800}.pfb-gap-col small{font-size:.68rem;color:var(--text-muted)}',
+    '.pfb-gap-col.gap b{color:#dc2626}.pfb-gap-arrow{color:var(--text-muted);font-size:1.2rem}',
+    '.pfb-note{font-size:.72rem;color:var(--text-muted);margin-top:16px;line-height:1.5}',
+    '.pf-settings-btn{font-size:.74rem;font-weight:800;padding:6px 13px;border-radius:99px;border:1px solid #e2d6b6;background:var(--primary-50);color:#6b550b;cursor:pointer;display:inline-flex;align-items:center;gap:5px}',
+    '.pf-settings-btn:hover{background:#f0e6c8}',
+    '.pf-settings-btn svg{width:14px;height:14px}',
+    '.pf-msel{font-size:.76rem;font-weight:700;padding:6px 10px;border-radius:9px;border:1px solid var(--border,#e5e5e5);background:var(--card,#fff);color:var(--text);cursor:pointer}',
+    '.pf-frozen{font-size:.64rem;font-weight:800;padding:3px 9px;border-radius:99px;background:rgba(37,99,235,.14);color:#2563eb}',
+    '.pf-live{font-size:.64rem;font-weight:800;padding:3px 9px;border-radius:99px;background:rgba(16,163,74,.14);color:#15803d}',
+    '@keyframes pfIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}',
+    '@keyframes pfPod{from{opacity:0;transform:translateY(16px) scale(.96)}to{opacity:1;transform:none}}',
+    '.pf-row{animation:pfIn .34s ease both}',
+    '.pf-pod{animation:pfPod .45s cubic-bezier(.2,.8,.2,1) both}',
+    '.pf-pod:nth-child(2){animation-delay:.06s}.pf-pod:nth-child(3){animation-delay:.12s}',
+    '.pf-pod-base{transition:height .5s cubic-bezier(.2,.8,.2,1)}',
+    '.pfb-fill,.mp-sub-fill,.mp-act-fill,.pfb-bar>.pfb-fill{transition:width .6s cubic-bezier(.2,.8,.2,1)}',
+    '@media (prefers-reduced-motion:reduce){.pf-row,.pf-pod{animation:none}}'
+  ].join('');
+  document.head.appendChild(st);
+}
+
 // ---------- Teacher Ranking Board (Performance page) ----------
 // Podium top 3 + full board; kisi bhi teacher par click -> comparison + suggestions.
 let _trkBoard=null, _trkMe=null;
 async function loadTRankBoard(){
+  const wrap=document.getElementById('t-rankboard-wrap'); if(!wrap) return;
+  try{ await renderPerfBoard('t-rankboard-wrap','t'); }
+  catch(e){ try{ await _loadTRankBoardOld(); }catch(_){ wrap.innerHTML=errHtml(e); } }
+}
+async function _loadTRankBoardOld(){
   const wrap=document.getElementById('t-rankboard-wrap'); if(!wrap) return;
   try{
     const d=await api('/api/teacher/my-rank');
@@ -6028,8 +6469,9 @@ async function loadTPerformance(){
     const chart=`<div class="card"><div class="card-header"><h3>Monthly Classes Completed</h3></div><div class="card-body"><div class="bar-chart">${bars}</div></div></div>`;
     const tl=pf.recent.length?pf.recent.map(a=>`<div class="act-item"><div class="act-dot ${esc(a.type)}"></div><div><div class="act-text">${esc(a.text)}</div><div class="act-time">${esc(a.at)}</div></div></div>`).join(''):'<div class="empty-state"><p>No recent activity.</p></div>';
     const timeline=`<div class="card"><div class="card-header"><h3>Recent Activity</h3></div><div class="card-body"><div class="act-list">${tl}</div></div></div>`;
-    el.innerHTML=`<div id="t-rankboard-wrap"></div>`+cards+`<div class="grid-2">${chart}${timeline}</div><div id="t-reports-wrap"></div>`;
+    el.innerHTML=`<div id="t-rankboard-wrap"></div><div id="t-vc-wrap"></div>`+cards+`<div class="grid-2">${chart}${timeline}</div><div id="t-reports-wrap"></div>`;
     loadTRankBoard();
+    renderVideoContribution('t-vc-wrap');
     _renderClassReports('t-reports-wrap','/api/teacher/class-reports');
   }catch(e){ el.innerHTML=errHtml(e); }
 }
@@ -6708,13 +7150,124 @@ function _ttTeacherCard(t,showName){
 }
 async function renderMyTargets(wrapId){
   const wrap=document.getElementById(wrapId); if(!wrap) return;
+  _ensureMperfCss();
   wrap.innerHTML='<div class="spinner"></div>';
   try{
-    const d=await api('/api/teacher/my-targets');
-    const t=d.me;
-    if(!t||!t.rows){ wrap.innerHTML='<div class="vv-empty">No targets set yet.</div>'; return; }
-    wrap.innerHTML=`<div style="font-size:.72rem;color:var(--text-muted);margin-bottom:12px">Month: <b>${esc(d.month)}</b> · <span style="color:#059669;font-weight:700">green = target met</span></div>`+_ttTeacherCard(t,false);
-  }catch(e){ wrap.innerHTML=errHtml(e); }
+    const d=await api('/api/teacher/monthly-targets');
+    wrap.innerHTML=_mperfHtml(d);
+  }catch(e){
+    // fallback: purana simple view (kabhi na toote)
+    try{ const d2=await api('/api/teacher/my-targets'); const t=d2.me;
+      if(t&&t.rows){ wrap.innerHTML=_ttTeacherCard(t,false); return; } }catch(_){}
+    wrap.innerHTML=errHtml(e);
+  }
+}
+function _mpMonthLabel(m){
+  try{ const [y,mo]=m.split('-').map(Number); return new Date(y,mo-1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'}); }catch(e){ return m; }
+}
+function _mperfHtml(d){
+  if(!d||!d.subjects){ return '<div class="vv-empty">No targets/activity yet this month.</div>'; }
+  const opct=Math.round(d.overall_pct||0);
+  const dv=d.delta_vs_prev||0;
+  const deltaChip = (dv>0)?`<span class="mp-delta up">+${dv}% vs last month</span>`
+                  : (dv<0)?`<span class="mp-delta dn">${dv}% vs last month</span>`
+                  : `<span class="mp-delta flat">No change vs last month</span>`;
+  const subs=(d.subjects||[]).map((s,i)=>_mpSubCard(s,i)).join('');
+  const subChips=(d.subjects||[]).map(s=>`<span class="mp-chip">${esc(s.subject)}</span>`).join('');
+  return `<div class="mp-wrap">
+    <div class="mp-top">
+      <div class="mp-top-l">
+        <div class="mp-title">My Monthly Performance</div>
+        <div class="mp-month">${esc(_mpMonthLabel(d.month))}</div>
+      </div>
+    </div>
+    <div class="mp-overall">
+      <div class="mp-ovl-l">
+        <div class="mp-ovl-lbl">Overall Target Achievement</div>
+        <div class="mp-ovl-pct">${opct}%</div>
+        <div class="mp-ovl-sub">${d.overall_done||0} / ${d.overall_total||0} activities completed</div>
+        <div>${deltaChip}</div>
+      </div>
+      <div class="mp-ovl-ring" style="--p:${Math.min(100,opct)}"><span>${opct}%</span></div>
+    </div>
+    ${subChips?`<div class="mp-chips">${subChips}</div>`:''}
+    <div class="mp-subs">${subs||'<div class="vv-empty">No subjects assigned.</div>'}</div>
+  </div>`;
+}
+function _mpSubCard(s,i){
+  const pct=Math.round(s.pct||0);
+  const acts=(s.activities||[]).map(a=>{
+    const total=a.total||0, done=a.done||0;
+    const w=total>0?Math.min(100,Math.round(done/total*100)):(done>0?100:0);
+    const val=a.count_only?(total>0?`${done}/${total}`:`${done}`):`${done}/${total||'\u2014'}`;
+    const met=total>0&&done>=total;
+    return `<div class="mp-act">
+      <div class="mp-act-top"><span class="mp-act-lbl">${esc(a.label)}</span><span class="mp-act-val ${met?'ok':''}">${val}</span></div>
+      <div class="mp-act-bar"><div class="mp-act-fill ${met?'ok':''}" style="width:${w}%"></div></div>
+    </div>`;
+  }).join('');
+  return `<div class="mp-sub" id="mpsub-${i}">
+    <button type="button" class="mp-sub-head" onclick="_mpToggle(${i})">
+      <span class="mp-sub-name">${esc(s.subject)}</span>
+      <span class="mp-sub-right">
+        <span class="mp-sub-cnt">${s.done||0} / ${s.total||0}</span>
+        <span class="mp-sub-pct">${pct}%</span>
+        <span class="mp-caret"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
+      </span>
+    </button>
+    <div class="mp-sub-bar"><div class="mp-sub-fill" style="width:${Math.min(100,pct)}%"></div></div>
+    <div class="mp-sub-body">${acts}</div>
+  </div>`;
+}
+function _mpToggle(i){
+  const el=document.getElementById('mpsub-'+i); if(!el) return;
+  el.classList.toggle('open');
+}
+function _ensureMperfCss(){
+  if(document.getElementById('mperf-css')) return;
+  var st=document.createElement('style'); st.id='mperf-css';
+  st.textContent=[
+    '.mp-wrap{--g1:#c9a227;--g2:#8a6d10}',
+    '.mp-title{font-size:1.15rem;font-weight:800;color:var(--text);letter-spacing:-.01em}',
+    '.mp-month{font-size:.8rem;color:var(--text-muted);margin-top:2px}',
+    '.mp-overall{margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:18px;background:linear-gradient(135deg,#fffdf7,#faf4e3);border:1px solid #ece1c6;border-radius:18px;padding:20px 22px;box-shadow:0 14px 34px -20px rgba(90,70,15,.35)}',
+    '.mp-ovl-lbl{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:#9a854a;font-weight:700}',
+    '.mp-ovl-pct{font-size:2.4rem;font-weight:800;line-height:1;color:#8a6d10;margin:4px 0}',
+    '.mp-ovl-sub{font-size:.84rem;color:var(--text-muted);margin-bottom:8px}',
+    '.mp-delta{display:inline-block;font-size:.72rem;font-weight:800;padding:4px 11px;border-radius:99px}',
+    '.mp-delta.up{background:rgba(16,163,74,.14);color:#15803d}',
+    '.mp-delta.dn{background:rgba(220,38,38,.14);color:#dc2626}',
+    '.mp-delta.flat{background:#eef1f8;color:#64748b}',
+    '.mp-ovl-ring{--p:0;flex-shrink:0;width:96px;height:96px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--g1) calc(var(--p)*1%),#ece1c6 0);position:relative}',
+    '.mp-ovl-ring::before{content:"";position:absolute;inset:9px;border-radius:50%;background:#fffdf7}',
+    '.mp-ovl-ring span{position:relative;font-weight:800;font-size:1.15rem;color:#8a6d10}',
+    '.mp-chips{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 4px}',
+    '.mp-chip{font-size:.74rem;font-weight:700;padding:5px 13px;border-radius:99px;background:var(--primary-50);color:#6b550b;border:1px solid #e2d6b6}',
+    '.mp-subs{display:flex;flex-direction:column;gap:12px;margin-top:12px}',
+    '.mp-sub{background:var(--card,#fff);border:1px solid var(--border,#eee);border-radius:16px;overflow:hidden;transition:box-shadow .2s}',
+    '.mp-sub.open{box-shadow:0 12px 30px -18px rgba(90,70,15,.4)}',
+    '.mp-sub-head{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 18px;background:none;border:none;cursor:pointer;text-align:left}',
+    '.mp-sub-name{font-size:1rem;font-weight:800;color:var(--text)}',
+    '.mp-sub-right{display:flex;align-items:center;gap:12px}',
+    '.mp-sub-cnt{font-size:.78rem;color:var(--text-muted);font-weight:600}',
+    '.mp-sub-pct{font-size:1.05rem;font-weight:800;color:#8a6d10}',
+    '.mp-caret{display:inline-flex;transition:transform .2s;color:var(--text-muted)}',
+    '.mp-caret svg{width:18px;height:18px}',
+    '.mp-sub.open .mp-caret{transform:rotate(180deg)}',
+    '.mp-sub-bar{height:5px;background:#ece1c6;margin:0 18px}',
+    '.mp-sub-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#e2b552,#b8941f)}',
+    '.mp-sub-body{max-height:0;overflow:hidden;transition:max-height .28s ease;padding:0 18px}',
+    '.mp-sub.open .mp-sub-body{max-height:600px;padding:14px 18px 18px}',
+    '.mp-act{margin-bottom:11px}',
+    '.mp-act-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}',
+    '.mp-act-lbl{font-size:.84rem;color:var(--text);font-weight:600}',
+    '.mp-act-val{font-size:.84rem;font-weight:800;color:var(--text-muted)}',
+    '.mp-act-val.ok{color:#15803d}',
+    '.mp-act-bar{height:6px;background:#eef1f8;border-radius:3px;overflow:hidden}',
+    '.mp-act-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#93c5fd,#3b82f6)}',
+    '.mp-act-fill.ok{background:linear-gradient(90deg,#4ade80,#16a34a)}'
+  ].join('');
+  document.head.appendChild(st);
 }
 function tvtPKind(k){
   window._tvtPKind=k;
@@ -8246,6 +8799,8 @@ async function loadATeacherRanks(days){
   const el=document.getElementById('a-tranks-content');
   softSpin(el);
   days=days||90;
+  // Phase 5: premium engine leaderboard (month-scoped). Fail ho to purana activity board.
+  try{ await renderPerfBoard('a-tranks-content','a'); return; }catch(e){ /* fallback below */ }
   try{
     const d=await api('/api/teacher/rankings?days='+days);
     const rows=d.results||d.teachers||d.rankings||d.rows||[];

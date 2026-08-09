@@ -3601,6 +3601,56 @@ def whatsapp_test(payload: dict, db: Session = Depends(get_db), _=Depends(get_ad
     return {"ok": ok, "detail": detail[:300],
             "params_sent": W.build_params(name, batch, phone)}
 
+# =============================================================================
+# TEACHER PERFORMANCE — ADMIN SETTINGS (Phase 1)
+# Saare scoring weights/config yahin se read/update hote hain (spec Part 24).
+# Additive: generic AppSetting store par, koi nayi table nahi.
+# =============================================================================
+@router.get("/perf-settings")
+def perf_settings_get(db: Session = Depends(get_db), _=Depends(get_admin)):
+    import perf_config as _pc
+    cfg = _pc.get_perf_config(db)
+    return {"config": cfg, "defaults": _pc.PERF_DEFAULTS,
+            "component_weight_sum": _pc.component_weight_sum(cfg)}
+
+
+@router.post("/perf-settings")
+def perf_settings_set(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    import perf_config as _pc
+    patch = (payload or {}).get("config", payload) or {}
+    if (payload or {}).get("reset"):
+        # defaults par reset
+        from models import AppSetting
+        row = db.query(AppSetting).filter(AppSetting.key == "perf_config").first()
+        if row:
+            db.delete(row); db.commit()
+        cfg = _pc.get_perf_config(db)
+    else:
+        cfg = _pc.save_perf_config(db, patch)
+    return {"ok": True, "config": cfg, "component_weight_sum": _pc.component_weight_sum(cfg)}
+
+
+@router.get("/perf-scores")
+def perf_scores(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Phase 2: saare teachers ka month-scoped 8-component performance score (ranked)."""
+    import perf_engine as _pe
+    return _pe.compute(db, month)
+
+
+@router.get("/perf-history")
+def perf_history(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Phase 8: available months + kaunse frozen hain (leaderboard month-selector ke liye)."""
+    import perf_engine as _pe
+    return _pe.history_months(db)
+
+
+@router.post("/perf-snapshot")
+def perf_snapshot(payload: dict = Body(default={}), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Phase 8: is month ke scores ko freeze/re-freeze (weights badalne par purani ranking na badle)."""
+    import perf_engine as _pe
+    return _pe.freeze_month(db, (payload or {}).get("month", ""))
+
+
 @router.get("/whatsapp/config")
 def whatsapp_get_config(db: Session = Depends(get_db), _=Depends(get_admin)):
     """Combirds/WhatsApp config (portal me set kiya hua) — API key masked."""

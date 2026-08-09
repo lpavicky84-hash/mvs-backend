@@ -2346,6 +2346,48 @@ def teacher_doubt_stats(db: Session = Depends(get_db), current_user=Depends(get_
     return {"pending": pending, "resolved": resolved, "total": len(ds), "avg_response_minutes": avg_min}
 
 # ===== TEACHER: PERFORMANCE (aggregates + recent activity + monthly) =====
+@router.get("/video-contribution")
+def teacher_video_contribution(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Phase 4: teacher ki video-initiative dashboard — proposal counts, approval/publication
+    rates, reward points, top idea, full reward history + proposal lifecycle + duplicate flags."""
+    import perf_engine as _pe
+    tp = get_teacher_profile(current_user, db)
+    return _pe.video_contribution(db, tp)
+
+
+@router.get("/perf-history")
+def teacher_perf_history(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Phase 8: available months (current + frozen past) — leaderboard month selector."""
+    import perf_engine as _pe
+    return _pe.history_months(db)
+
+
+@router.get("/perf-board")
+def teacher_perf_board(month: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Phase 5: full premium leaderboard (ranked, 8-component, rank-change) — teachers
+    bhi dekh sakte hain (spec Part 29)."""
+    import perf_engine as _pe
+    return _pe.compute(db, month)
+
+
+@router.get("/monthly-targets")
+def teacher_monthly_targets(month: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Phase 3: multi-subject monthly performance — overall + per-subject expandable
+    breakdown + vs previous month (real data)."""
+    import perf_engine as _pe
+    tp = get_teacher_profile(current_user, db)
+    return _pe.monthly_targets(db, tp, month)
+
+
+@router.get("/perf-score")
+def teacher_perf_score(month: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Phase 2: logged-in teacher ka apna month-scoped performance breakdown
+    (overall + 8 components + workload + video initiative). 'Why am I this rank' ka data."""
+    import perf_engine as _pe
+    tp = get_teacher_profile(current_user, db)
+    return _pe.compute_one(db, tp, month)
+
+
 @router.get("/performance")
 def teacher_performance(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import TimetableEntry, Material
