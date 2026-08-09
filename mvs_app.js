@@ -7797,7 +7797,7 @@ function _avtCard(t){
       const histBtn=`<button class="btn btn-ghost btn-sm" onclick="vtStatusOpen(${t.id},'a',event)" title="See the full status timeline">${ic('history')} Timeline</button>`;
       return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-done="${t.submitted_at?1:0}" data-pending="${(t.status==='assigned'||t.status==='reshoot'||t.status==='rejected')?1:0}" data-delayed="${t.submitted_at&&!t.on_time?1:0}" data-collab="${t.is_collab?1:0}" data-collabdone="${t.is_collab?(t.collab_all_verified?1:0):''}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
         <div class="vt-title">${esc(t.title)}${t.is_collab?_vtCollabChip(t,'a'):''}${t.status==='submitted'?`<span class="vt-newsub">${ic('bell')} NEW · ${esc(t.submitted_by_name||t.teacher)}</span>`:''}</div>
-        <div class="vt-chips"><span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}</div>
+        <div class="vt-chips"><span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>${t.is_old?`<span class="vt-pill" style="background:rgba(120,113,108,.18);color:#78716c;font-weight:800">OLD · not counted</span>`:''}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}</div>
         <div class="vt-meta">
           <span class="${dlBlink}">${ic('clock')} ${dlLbl}: <b>${esc(t.deadline_nice)}</b>${t.status==='assigned'&&t.seconds_left!=null?` · <span data-vt-cd="${t.id}" data-secs="${t.seconds_left}"></span>`:''}</span>
           ${t.submitted_at?`<span>${ic('check')} Submitted: <b>${esc(t.submitted_at)}</b>${isU?'':` ${t.on_time===true?'(on time)':(t.on_time===false?'(delayed)':'')}`}</span>`:''}
@@ -7809,8 +7809,16 @@ function _avtCard(t){
         </div>
         <div class="vt-foot">
           ${t.submitted_link?`<a class="btn btn-ghost btn-sm" href="${esc(t.submitted_link)}" target="_blank" rel="noopener">${ic('link')} Open Video</a>`:''}
-          ${histBtn}${reviewBtn}${editBtn}${editTaskBtn}${ytBtn}${notifyBtn}${delTaskBtn}
+          ${histBtn}${reviewBtn}${editBtn}${editTaskBtn}${ytBtn}${notifyBtn}
+          <button class="btn btn-ghost btn-sm" onclick="vtMarkOld(${t.id},${t.is_old?'false':'true'})" title="Old = pre-portal/purana content, is month count nahi hoga">${t.is_old?ic('refresh')+' Mark as New':ic('clock')+' Mark as Old'}</button>
+          ${delTaskBtn}
         </div></div></div>`;
+}
+async function vtMarkOld(id, isOld){
+  try{ await api('/api/admin/video-tasks/'+id+'/mark-old','POST',{is_old:!!isOld});
+    toast(isOld?'Marked OLD — is month performance me count nahi hoga.':'Marked NEW — count hoga.');
+    if(typeof loadAVTasks==='function') loadAVTasks(); else location.reload();
+  }catch(e){ toast(e.message||'Failed',true); }
 }
 function _vtCollabChips(t){
   if(!t||!t.is_collab) return '';

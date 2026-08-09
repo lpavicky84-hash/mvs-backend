@@ -468,6 +468,7 @@ class VideoTask(Base):
     # assigned -> submitted -> approved|editing_soon|editing_done|uploaded
     # rejected -> wapas assigned (reshoot, new deadline)
     proposed_by    = Column(String(10), default="admin")  # admin | teacher
+    is_old         = Column(Boolean, default=False)   # pre-portal / purana content — is month count nahi
     proposal_ok    = Column(String(10), default="")       # pending | approved | rejected
     submitted_link = Column(String(600), default="")
     vintage        = Column(String(10), default="")       # "" unverified | new | old (admin verifies)

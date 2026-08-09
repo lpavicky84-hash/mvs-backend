@@ -74,6 +74,7 @@ def _ensure_special_columns():
     video_task_chapters table — purane deploys pe best-effort self-heal."""
     alters = [
         "ALTER TABLE video_tasks ADD COLUMN kind VARCHAR(20) DEFAULT 'normal'",
+        "ALTER TABLE video_tasks ADD COLUMN is_old BOOLEAN DEFAULT 0",
         "ALTER TABLE video_tasks ADD COLUMN subject VARCHAR(160) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN status_history TEXT NULL",
         "ALTER TABLE video_tasks ADD COLUMN last_link_at DATETIME NULL",
@@ -921,6 +922,7 @@ def _task_out(db, t, with_thumb=True):
         "overdue": bool(secs_left is not None and secs_left < 0 and t.status == "assigned"),
         "status": t.status,
         "proposed_by": t.proposed_by, "proposal_ok": t.proposal_ok or "",
+        "is_old": bool(getattr(t, "is_old", False)),
         "submitted_link": t.submitted_link or "",
         "submitted_at": t.submitted_at.strftime("%d %b %Y, %I:%M %p") if t.submitted_at else "",
         "on_time": t.on_time,
@@ -1181,6 +1183,19 @@ def vt_assign(payload: dict = Body(...), db: Session = Depends(get_db), _=Depend
                                      "restart karwein: column apne aap upgrade ho jayega.)")
         raise HTTPException(400, f"Could not assign the task: {e}")
     return {"ok": True, "id": t.id}
+
+
+@router.post("/admin/video-tasks/{task_id}/mark-old", dependencies=[Depends(_admin_section_guard)])
+def vt_mark_old(task_id: int, payload: dict = Body(default={}),
+                db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Project ko OLD/NEW mark karo. Old = pre-portal/purana content -> is month ke
+    performance me count NAHI hoga. New (default) -> count hoga."""
+    t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
+    if not t:
+        raise HTTPException(404, "Task not found")
+    t.is_old = bool((payload or {}).get("is_old", True))
+    db.commit()
+    return {"ok": True, "id": t.id, "is_old": bool(t.is_old)}
 
 
 @router.post("/admin/video-tasks/{task_id}/verify-complete", dependencies=[Depends(_admin_section_guard)])

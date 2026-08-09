@@ -241,18 +241,44 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
     m["lect_ontime"], m["lect_delayed"] = ot, dl
 
     # ---- DPP (content/target) ----
+    # DPPs DONE — asli chapter DATE (timetable) se scope, upload date se nahi.
+    # Purane chapter (June/July) ke DPP jo abhi upload hue -> is month count nahi.
     try:
-        dpp_done = db.query(DppPack).filter(DppPack.teacher_id == tp.id,
-                                            DppPack.created_at >= dt0,
-                                            DppPack.created_at < dt1).count()
+        from sqlalchemy import or_ as _orD
+        _subs = [s for s in (tp.subjects or []) if s]
+        _cond = [TimetableEntry.teacher_id == tp.id]
+        if _subs:
+            _cond.append(TimetableEntry.subject.in_(_subs))
+        _ttes = db.query(TimetableEntry).filter(_orD(*_cond)).all()
+        _chmap = {}
+        for e in _ttes:
+            if e.entry_date:
+                k = ((e.subject or "").strip().lower(), (e.chapter or "").strip().lower())
+                _chmap.setdefault(k, []).append(e.entry_date)
+        dpp_done = 0
+        for d in db.query(DppPack).filter(DppPack.teacher_id == tp.id).all():
+            k = ((d.subject or "").strip().lower(), (d.chapter or "").strip().lower())
+            dates = _chmap.get(k)
+            if dates:
+                if any(dt0.date() <= dd < dt1.date() for dd in dates):
+                    dpp_done += 1
+            elif d.created_at and dt0 <= d.created_at < dt1:
+                dpp_done += 1   # timetable match nahi -> upload date fallback
     except Exception:
         dpp_done = 0
     m["dpp_done"] = dpp_done
 
     # ---- Tests ----
+    # Tests DONE — asli test DATE (scheduled_at) se scope, upload date se nahi.
+    # Purane (June/July) test jo abhi upload hue -> is month count nahi.
     try:
-        tests_done = db.query(Exam).filter(Exam.teacher_id == tp.id, Exam.is_active == True,
-                                           Exam.created_at >= dt0, Exam.created_at < dt1).count()
+        from sqlalchemy import or_ as _or2, and_ as _and2
+        tests_done = db.query(Exam).filter(
+            Exam.teacher_id == tp.id, Exam.is_active == True,
+            _or2(
+                _and2(Exam.scheduled_at != None, Exam.scheduled_at >= dt0, Exam.scheduled_at < dt1),
+                _and2(Exam.scheduled_at == None, Exam.created_at >= dt0, Exam.created_at < dt1),
+            )).count()
     except Exception:
         tests_done = 0
     m["tests_done"] = tests_done
@@ -326,6 +352,8 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
         tasks = db.query(VideoTask).filter(VideoTask.teacher_id == tp.id,
                                            VideoTask.created_at >= dt0, VideoTask.created_at < dt1).all()
         for t in tasks:
+            if bool(getattr(t, "is_old", False)):
+                continue   # OLD/pre-portal content -> is month count nahi
             # assigned content task (proposal pending/rejected chhod ke) -> content target
             if (getattr(t, "proposal_ok", "") or "") != "pending" and getattr(t, "status", "") != "rejected":
                 content_assigned += 1
@@ -808,7 +836,8 @@ def video_contribution(db, tp, month=""):
     # teacher ke apne proposals (proposed_by teacher)
     q = db.query(VideoTask).filter(VideoTask.teacher_id == tp.id)
     tasks = [t for t in q.all()
-             if str(getattr(t, "proposed_by", "") or "").lower() not in ("admin", "system", "")]
+             if str(getattr(t, "proposed_by", "") or "").lower() not in ("admin", "system", "")
+             and not bool(getattr(t, "is_old", False))]
     tasks.sort(key=lambda t: (getattr(t, "created_at", None) or datetime.min))
 
     # duplicate detection (apne proposals me similar titles)
