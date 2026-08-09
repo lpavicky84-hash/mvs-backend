@@ -13865,7 +13865,11 @@ function _wkBaseDate(){ var d=istNow(); d.setHours(0,0,0,0); d.setDate(d.getDate
 function _wkWeekStart(d){ var x=new Date(d); x.setHours(0,0,0,0); var dow=(x.getDay()+6)%7; x.setDate(x.getDate()-dow); return x; }
 function _wkReRender(){ try{ var L=window._ttLast; if(L) renderStudentTimetable(L.entries, L.containerId, L.opts); }catch(e){} }
 function wkNav(delta){ window._wkOffset=(window._wkOffset||0)+delta; _wkReRender(); }
-function wkThisWeek(){ window._wkOffset=0; _wkReRender(); }
+function wkThisWeek(){ window._wkOffset=0; _wkReRender();
+  try{ setTimeout(function(){ var cs=document.querySelectorAll('.wk-day-card.today'); var t=null;
+    for(var i=0;i<cs.length;i++){ if(cs[i].offsetParent){ t=cs[i]; break; } }
+    if(!t&&cs.length) t=cs[0]; if(t&&t.scrollIntoView) t.scrollIntoView({behavior:'smooth',block:'center'}); }, 120); }catch(e){}
+}
 function wkPickDate(ds){ if(!ds) return; try{ var picked=new Date(ds+'T00:00:00'); var base=istNow(); base.setHours(0,0,0,0);
   window._wkOffset=Math.round((_wkWeekStart(picked)-_wkWeekStart(base))/(7*86400000)); _wkReRender(); }catch(e){} }
 function _ensureWkNavCss(){
@@ -13875,7 +13879,8 @@ function _ensureWkNavCss(){
     '.wk-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}',
     '.wk-nav-btn{font-size:.78rem;font-weight:700;padding:6px 13px;border-radius:99px;border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.12);color:#fff;cursor:pointer;transition:.15s}',
     '.wk-nav-btn:hover{background:rgba(255,255,255,.24)}',
-    '.wk-nav-btn.now{background:#fff;color:#5c4a0a;border-color:#fff}',
+    '.wk-nav-btn.now{background:#fff;color:#5c4a0a;border-color:#fff;animation:wkNowBlink 1.1s ease-in-out infinite;font-weight:800}',
+    '@keyframes wkNowBlink{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,.55);opacity:1}50%{box-shadow:0 0 0 6px rgba(255,255,255,0);opacity:.72}}',
     '.wk-nav-date{font-size:.78rem;font-weight:700;padding:6px 10px;border-radius:9px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.92);color:#2e2716;cursor:pointer}',
     '.wk-nav-lbl{font-size:.74rem;font-weight:800;color:rgba(255,255,255,.85);padding:0 4px}'
   ].join('');
@@ -14174,8 +14179,7 @@ function renderStudentWeekly(tl, subjects, opts){
   // class ka time; koi upcoming na ho to sabse recent past ka. Isse slot change
   // (e.g. 10:00 -> 9:30) hote hi weekly view naya time dikhata hai.
   const _tz=istNow(); _tz.setHours(0,0,0,0);
-  const _dowW=(_tz.getDay()+6)%7; const _monW=new Date(_tz); _monW.setDate(_tz.getDate()-_dowW);
-  const _dayDate={}; days.forEach((d,i)=>{ const dd=new Date(_monW); dd.setDate(_monW.getDate()+i); _dayDate[d]=dd; });
+  const _dayDate={}; days.forEach((d,i)=>{ const dd=new Date(_monW0); dd.setDate(_monW0.getDate()+i); _dayDate[d]=dd; });
   const _fdD=x=>x.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
   const _todayKW=_tz.toLocaleDateString('en-CA');
   const cols=days.filter(d=>byDay[d]&&byDay[d].length).map(d=>{
@@ -14197,15 +14201,8 @@ function renderStudentWeekly(tl, subjects, opts){
     const _isTodayW=byDay[d].some(x=>x.date===_todayKW);
     return `<div class="card wk-day-card ${_isTodayW?'today':''} wk-click" onclick="wkDayDetail('${d}')" title="Click to view ${d}'s classes"><div class="wk-day-head"><span>${esc(d)} <span class="wk-day-date">&middot; ${_fdD(_dayDate[d])}</span>${_isTodayW?'<span class="wk-today-chip">Today</span>':''}</span><span class="wk-day-cnt">${n} class${n>1?'es':''}</span></div><div class="wk-day-body">${rows}</div></div>`;
   }).join('');
-  // Today ki class card ko halke se view me le aao (block:'nearest' — agar pehle se
-  // dikh rahi hai to hilti nahi). Isse today par 'direct chala jaata hai'.
-  if(cols && cols.indexOf('wk-day-card')>=0){
-    var _wkFn=(window.requestAnimationFrame||function(f){setTimeout(f,0);});
-    _wkFn(function(){ try{ var _cs=document.querySelectorAll('.wk-day-card.today'),_tc=null;
-      for(var _i=0;_i<_cs.length;_i++){ if(_cs[_i].offsetParent){ _tc=_cs[_i]; break; } }
-      if(!_tc&&_cs.length) _tc=_cs[0];
-      if(_tc&&_tc.scrollIntoView) _tc.scrollIntoView({behavior:'smooth',block:'nearest'}); }catch(e){} });
-  }
+  // Auto-scroll-to-today HATA diya (Vicky): weekly khulte hi ya week badalte hi apne aap
+  // today par nahi jaana chahiye. Today par jaane ke liye ab "Today" button (blinking) hai.
   return cols||'<div class="empty-state"><p>No weekly schedule yet.</p></div>';
 }
 function wkDayDetail(day){
