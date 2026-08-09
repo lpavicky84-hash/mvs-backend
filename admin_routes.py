@@ -429,7 +429,7 @@ def add_student(req: RegisterRequest, db: Session = Depends(get_db), _=Depends(g
 @router.get("/activity")
 def teacher_activity(db: Session = Depends(get_db), _=Depends(get_admin)):
     """Complete activity of all teachers"""
-    teachers = db.query(TeacherProfile).all()
+    teachers = db.query(TeacherProfile).options(defer(TeacherProfile.photo_b64)).all()
     now = ist_now()
     month_start = date(now.year, now.month, 1)
     result = []
@@ -2726,7 +2726,7 @@ def admin_class_reports(teacher_id: int = 0, db: Session = Depends(get_db),
     from models import TeacherProfile
     tmap = {}
     teachers = []
-    for tp in db.query(TeacherProfile).all():
+    for tp in db.query(TeacherProfile).options(defer(TeacherProfile.photo_b64)).all():
         nm = tp.user.name if tp.user else ("Teacher #%d" % tp.id)
         tmap[tp.id] = nm
         teachers.append({"id": tp.id, "name": nm, "subjects": tp.subjects or []})
@@ -2884,7 +2884,7 @@ def admin_class_compliance(db: Session = Depends(get_db), _=Depends(get_admin)):
     month_start = date(today.year, today.month, 1)
 
     tmap = {}
-    for tp in db.query(TeacherProfile).all():
+    for tp in db.query(TeacherProfile).options(defer(TeacherProfile.photo_b64)).all():
         tmap[tp.id] = {"id": tp.id, "name": (tp.user.name if tp.user else "Teacher #%d" % tp.id),
                        "user_id": tp.user_id, "subjects": tp.subjects or []}
 
@@ -2991,7 +2991,7 @@ def admin_doubts_overview(db: Session = Depends(get_db), _=Depends(get_admin)):
                 return s
         return s
     tmap = {}
-    for tp in db.query(TeacherProfile).all():
+    for tp in db.query(TeacherProfile).options(defer(TeacherProfile.photo_b64)).all():
         for s in (tp.subjects or []):
             tmap.setdefault(_cs(s), tp.user.name if tp.user else "")
     by = {}
@@ -3921,7 +3921,7 @@ def reset_portal_data(payload: dict, db: Session = Depends(get_db), _=Depends(ge
 def _teacher_name_map(db):
     from models import TeacherProfile
     out = {}
-    for tp in db.query(TeacherProfile).all():
+    for tp in db.query(TeacherProfile).options(defer(TeacherProfile.photo_b64)).all():
         out[tp.id] = tp.user.name if tp.user else f"Teacher {tp.id}"
     return out
 
@@ -4215,7 +4215,7 @@ def admin_leaves(status: str = "", teacher_id: int = 0,
         q = q.filter(TeacherLeave.teacher_id == teacher_id)
     rows = q.order_by(TeacherLeave.created_at.desc()).limit(200).all()
     names = {}
-    for tp in db.query(TeacherProfile).all():
+    for tp in db.query(TeacherProfile).options(defer(TeacherProfile.photo_b64)).all():
         u = db.query(User).filter(User.id == tp.user_id).first()
         names[tp.id] = u.name if u else f"Teacher #{tp.id}"
     pend = db.query(TeacherLeave).filter(TeacherLeave.status == "pending").count()
@@ -5034,7 +5034,7 @@ def orphan_data_cleanup(db: Session = Depends(get_db), _=Depends(get_admin)):
 @router.get("/dpp-rankings")
 def admin_dpp_rankings(db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import DppPack, DppAnswer, DppEvent, TeacherProfile, User as _U
-    packs = db.query(DppPack).order_by(DppPack.created_at.desc()).all()
+    packs = db.query(DppPack).options(defer(DppPack.q_pdf), defer(DppPack.s_pdf)).order_by(DppPack.created_at.desc()).all()
     out = []
     for pk in packs:
         subs = (db.query(DppAnswer)

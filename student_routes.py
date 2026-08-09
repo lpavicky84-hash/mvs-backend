@@ -1940,7 +1940,7 @@ def student_dpp_packs(db: Session = Depends(get_db), current_user=Depends(get_st
     from models import DppPack, DppAnswer, TeacherProfile, User
     sp = get_student_profile(current_user, db)
     my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
-    packs = (db.query(DppPack).filter(DppPack.subject.in_(list(_subj_scope_for(db, DppPack, sp.subjects or []))))
+    packs = (db.query(DppPack).options(defer(DppPack.q_pdf), defer(DppPack.s_pdf)).filter(DppPack.subject.in_(list(_subj_scope_for(db, DppPack, sp.subjects or []))))
              .order_by(DppPack.created_at.desc()).all())
     out = []
     for pk in packs:

@@ -3648,7 +3648,7 @@ def _material_tree(db, subjects=None):
     # normal material tree waisa hi rehta hai.
     try:
         from models import DppPack
-        _dpacks = db.query(DppPack).filter(DppPack.source == "created").order_by(
+        _dpacks = db.query(DppPack).options(defer(DppPack.q_pdf), defer(DppPack.s_pdf)).filter(DppPack.source == "created").order_by(
             DppPack.created_at.desc()).all()
         if subjects is not None:
             _allowed = set()
