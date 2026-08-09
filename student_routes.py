@@ -1549,16 +1549,29 @@ def _get_stats(db, student_id):
     # race-safe create: do request ek saath aayein to duplicate na ho.
     # savepoint me try -> IntegrityError (doosri request ne bana diya) -> re-query.
     from sqlalchemy.exc import IntegrityError
-    sp = db.begin_nested()
     try:
+        sp = db.begin_nested()
+        try:
+            st = StudentStats(student_id=student_id, xp=0, streak=0, best_streak=0, badges=[])
+            db.add(st)
+            db.flush()
+            sp.commit()
+            return st
+        except IntegrityError:
+            sp.rollback()
+            st = db.query(StudentStats).filter(StudentStats.student_id == student_id).first()
+        except Exception:
+            try:
+                sp.rollback()
+            except Exception:
+                pass
+            st = db.query(StudentStats).filter(StudentStats.student_id == student_id).first()
+    except Exception:
+        st = None
+    if st is None:
+        # LAST RESORT: transient in-memory stats — endpoint crash na ho (RAM/log flood fix)
         st = StudentStats(student_id=student_id, xp=0, streak=0, best_streak=0, badges=[])
-        db.add(st)
-        db.flush()
-        sp.commit()
-        return st
-    except IntegrityError:
-        sp.rollback()
-        return db.query(StudentStats).filter(StudentStats.student_id == student_id).first()
+    return st
 
 
 def _touch_streak(st):
@@ -2589,7 +2602,7 @@ def student_performance(db: Session = Depends(get_db), current_user=Depends(get_
     test_attempt_pct = round(test_done * 100 / test_total) if test_total else 0
     overall = round((lec_pct + dpp_pct + test_attempt_pct + read_pct) / 4)
     # health score = weighted mix incl. consistency & test quality
-    consistency = min(100, (st.streak or 0) * 12)
+    consistency = min(100, (getattr(st, "streak", 0) or 0) * 12)
     health = round(0.30 * lec_pct + 0.20 * dpp_pct + 0.20 * avg_test +
                    0.15 * read_pct + 0.15 * consistency)
     health = max(0, min(100, health))

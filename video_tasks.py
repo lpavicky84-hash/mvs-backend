@@ -812,6 +812,18 @@ def _teacher_name(db, tid):
     u = db.query(User).filter(User.id == tp.user_id).first()
     return u.name if u else ""
 
+def _all_teacher_names(db):
+    """Ek hi query me saare teacher names (tid -> name) — task list me per-task
+    _teacher_name (N+1, 2 query/task) ki jagah. Task Manager fast."""
+    m = {}
+    try:
+        for tp_id, name in (db.query(TeacherProfile.id, User.name)
+                            .join(User, TeacherProfile.user_id == User.id).all()):
+            m[tp_id] = name or ""
+    except Exception:
+        pass
+    return m
+
 
 def _seed_channels(db):
     if db.query(VideoChannel).count() == 0:
@@ -843,8 +855,14 @@ def _seed_types(db):
 
 def _vt_sweep(db):
     """Deadline reminders — idempotent (flags se sirf ek baar jaate hain).
-    Kabhi bhi caller ka main operation fail nahi hone deta."""
+    Kabhi bhi caller ka main operation fail nahi hone deta.
+    THROTTLE: har list call par nahi — 90s me ek baar (Task Manager fast)."""
     try:
+        import time as _t
+        _last = globals().get("_VT_SWEEP_LAST", 0)
+        if _t.time() - _last < 90:
+            return
+        globals()["_VT_SWEEP_LAST"] = _t.time()
         _vt_sweep_inner(db)
     except Exception:
         db.rollback()
@@ -905,12 +923,16 @@ def _collab_vmap(t):
         return {}
 
 
-def _task_out(db, t, with_thumb=True):
+def _task_out(db, t, with_thumb=True, tname_map=None):
+    def _tn(tid):
+        if tname_map is not None:
+            return tname_map.get(tid, "")
+        return _teacher_name(db, tid)
     now = _now_ist()
     secs_left = int((t.deadline - now).total_seconds()) if t.deadline else None
     out = {
         "id": t.id, "title": t.title, "teacher_id": t.teacher_id,
-        "teacher": _teacher_name(db, t.teacher_id),
+        "teacher": _tn(t.teacher_id),
         "channel_id": t.channel_id, "channel": t.channel_name or "",
         "video_type": getattr(t, "video_type", "") or "",
         "has_thumbnail": bool(t.thumbnail_b64),
@@ -946,13 +968,13 @@ def _task_out(db, t, with_thumb=True):
     _allids = _collab_all_ids(t)
     _vmap = _collab_vmap(t)
     out["is_collab"] = len(_allids) > 1
-    out["collab_teachers"] = [{"id": i, "name": _teacher_name(db, i),
+    out["collab_teachers"] = [{"id": i, "name": _tn(i),
                                "verified": bool(_vmap.get(str(i)))} for i in _allids]
     out["collab_all_verified"] = bool(_allids) and all(_vmap.get(str(i)) for i in _allids)
     # Kisne actually submit kiya (collab me koi bhi teacher kar sakta hai). Na ho to primary.
     _sub_by = getattr(t, "submitted_by", None)
     out["submitted_by"] = _sub_by or (t.teacher_id if t.submitted_at else None)
-    out["submitted_by_name"] = _teacher_name(db, out["submitted_by"]) if out["submitted_by"] else ""
+    out["submitted_by_name"] = _tn(out["submitted_by"]) if out["submitted_by"] else ""
     if with_thumb:
         out["thumbnail_b64"] = t.thumbnail_b64 or ""
     return out
@@ -1360,9 +1382,10 @@ def vt_admin_list(teacher_id: int = 0, status: str = "", channel_id: int = 0,
              .order_by(VideoTask.created_at.desc()).all())
     urgent = (db.query(VideoTask).filter(VideoTask.kind == "urgent")
               .order_by(VideoTask.created_at.desc()).all())
-    return {"tasks": [_task_out(db, t) for t in tasks],
-            "proposals": [_task_out(db, t) for t in props],
-            "urgent": [_task_out(db, t) for t in urgent]}
+    _tnm = _all_teacher_names(db)   # ek query — per-task N+1 khatam (fast)
+    return {"tasks": [_task_out(db, t, tname_map=_tnm) for t in tasks],
+            "proposals": [_task_out(db, t, tname_map=_tnm) for t in props],
+            "urgent": [_task_out(db, t, tname_map=_tnm) for t in urgent]}
 
 
 @router.get("/admin/video-tasks/badge", dependencies=[Depends(_admin_section_guard)])
@@ -2060,7 +2083,8 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
     active = [t for t in tasks if t.status == "assigned" and t.proposal_ok != "pending"]
     active.sort(key=lambda t: t.deadline or datetime.max)
     rest = [t for t in tasks if t not in active]
-    out = [_task_out(db, t) for t in active + rest]
+    _tnm2 = _all_teacher_names(db)
+    out = [_task_out(db, t, tname_map=_tnm2) for t in active + rest]
     nxt = active[0] if active else None
     # teacher ke apne stats: kitni upload hui, pending, on-time, delayed + is mahine type-wise
     now = _now_ist()
