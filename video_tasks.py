@@ -2490,22 +2490,42 @@ def _vt_views_stats(db, teacher_id=None, period_start=None, period_end=None):
     """Totals + per-video (+thumb) + per-teacher + highest + all-teacher leaderboard.
     period_start/end diye ho to views = us period me GAINED (snapshot delta)."""
     vids_all = [t for t in db.query(VideoTask).all() if (t.youtube_url or "")]
-    tp_ids = list({t.teacher_id for t in vids_all if t.teacher_id})
+    # tmap me primary + collab-member dono ke naam (collab video ke liye)
+    tp_ids = set()
+    for t in vids_all:
+        if t.teacher_id:
+            tp_ids.add(t.teacher_id)
+        for cid in _collab_extra_ids(t):
+            tp_ids.add(cid)
+    tp_ids = list(tp_ids)
     tmap = {}
     if tp_ids:
         for tp in db.query(TeacherProfile).filter(TeacherProfile.id.in_(tp_ids)).all():
             u = db.query(User).filter(User.id == tp.user_id).first()
             tmap[tp.id] = (u.name if u else ("Teacher #%d" % tp.id))
 
+    def _vname(t):
+        # collab video -> ek teacher ka naam nahi, "Collab" (sabhi ne mehnat ki)
+        return "Collab" if _collab_extra_ids(t) else tmap.get(t.teacher_id, "\u2014")
+
+    def _cnames(t):
+        return sorted({tmap[cid] for cid in _collab_all_ids(t) if cid in tmap}) if _collab_extra_ids(t) else []
+
     def _vv(t):
         return _vt_task_period_views(db, t, period_start, period_end)
 
-    # all-teacher leaderboard (comparison bar/pie) — hamesha
+    # all-teacher leaderboard (comparison bar/pie) — collab video "Collab" ke naam se
     lb = {}
+    _collab_names = set()
     for t in vids_all:
-        nm = tmap.get(t.teacher_id, "\u2014")
+        nm = _vname(t)
+        if nm == "Collab":
+            for _n in _cnames(t):
+                _collab_names.add(_n)
         lb[nm] = lb.get(nm, 0) + _vv(t)
-    leaderboard = sorted(({"name": k, "views": v} for k, v in lb.items()),
+    leaderboard = sorted(({"name": k, "views": v, "is_collab": (k == "Collab"),
+                           "collab_names": (sorted(_collab_names) if k == "Collab" else [])}
+                          for k, v in lb.items()),
                          key=lambda x: -x["views"])
 
     # scoped (teacher's own, ya admin=all)
@@ -2520,9 +2540,10 @@ def _vt_views_stats(db, teacher_id=None, period_start=None, period_end=None):
     for t in vids:
         v = _vv(t)
         total_views += v
-        nm = tmap.get(t.teacher_id, "\u2014")
+        nm = _vname(t)
         per_teacher[nm] = per_teacher.get(nm, 0) + v
         item = {"id": t.id, "title": t.title or "", "teacher": nm, "views": v,
+                "is_collab": bool(_collab_extra_ids(t)), "collab_names": _cnames(t),
                 "url": t.youtube_url or "",
                 "thumb": (t.thumbnail_b64 or t.thumbnail_link or ""),
                 "at": t.yt_views_at.strftime("%d %b, %I:%M %p") if t.yt_views_at else ""}
@@ -2530,11 +2551,14 @@ def _vt_views_stats(db, teacher_id=None, period_start=None, period_end=None):
         if highest is None or v > highest["views"]:
             highest = item
     per_video.sort(key=lambda x: -x["views"])
-    by_teacher = sorted(({"name": k, "views": v} for k, v in per_teacher.items()),
+    by_teacher = sorted(({"name": k, "views": v, "is_collab": (k == "Collab"),
+                          "collab_names": (sorted(_collab_names) if k == "Collab" else [])}
+                         for k, v in per_teacher.items()),
                         key=lambda x: -x["views"])
     return {"uploaded": len(vids), "pending": pending, "total_views": total_views,
             "highest": highest, "per_video": per_video,
-            "by_teacher": by_teacher, "leaderboard": leaderboard}
+            "by_teacher": by_teacher, "leaderboard": leaderboard,
+            "collab_names": sorted(_collab_names)}
 
 
 def _vt_video_series(db, task_id, dt_from=None, dt_to=None):

@@ -8745,6 +8745,10 @@ async function vtRejectProposal(id){
 // =============================================================
 function _vvFmt(n){ n=+n||0; if(n>=1e6) return (n/1e6).toFixed(n>=1e7?0:1)+'M'; if(n>=1e3) return (n/1e3).toFixed(n>=1e4?0:1)+'K'; return ''+n; }
 const _VV_COL=['#0891b2','#7c3aed','#059669','#d97706','#dc2626','#2563eb','#db2777','#65a30d','#0d9488','#9333ea'];
+function _vvCollab(el){
+  let names=[]; try{ names=JSON.parse(el.getAttribute('data-names')||'[]'); }catch(e){}
+  showModal('Collab Teachers', names.length?`<p style="font-size:.82rem;color:var(--text-muted);margin-bottom:10px">Iss video pe in sabhi teachers ne saath mehnat ki — views sabki hain:</p><div class="cbp-list">${names.map(n=>`<div class="cbp-row"><span class="cbp-nm">${esc(n)}</span></div>`).join('')}</div>`:'<div class="pfb-muted">No teachers found.</div>', `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
+}
 function _svgBars(items, highlightName){
   const data=(items||[]).slice(0,10);
   if(!data.length) return '<div class="vv-empty">No views yet. Post YouTube links and hit Refresh.</div>';
@@ -8752,7 +8756,8 @@ function _svgBars(items, highlightName){
   const rows=data.map((d,i)=>{
     const w=Math.max(2,Math.round((d.views||0)/max*100));
     const me=(highlightName&&d.name===highlightName)?' vv-bar-me':'';
-    return `<div class="vv-bar-row${me}"><span class="vv-bar-lbl" title="${esc(d.name||'')}">${esc(d.name||'—')}${me?' <span class="vv-you">you</span>':''}</span>
+    const _cl=d.is_collab?` style="cursor:pointer;text-decoration:underline dotted" onclick="_vvCollab(this)" data-names="${esc(JSON.stringify(d.collab_names||[]))}"`:'';
+    return `<div class="vv-bar-row${me}"><span class="vv-bar-lbl"${_cl} title="${d.is_collab?'Tap to see collab teachers':esc(d.name||'')}">${esc(d.name||'—')}${me?' <span class="vv-you">you</span>':''}${d.is_collab?' <span class="vv-you" style="background:#7c3aed">collab</span>':''}</span>
       <span class="vv-bar-track"><span class="vv-bar-fill" style="width:${w}%;background:${_VV_COL[i%_VV_COL.length]}"></span></span>
       <b class="vv-bar-val">${_vvFmt(d.views)}</b></div>`;
   }).join('');
@@ -8768,7 +8773,8 @@ function _svgPie(items){
     const x0=cx+R*Math.cos(a0),y0=cy+R*Math.sin(a0),x1=cx+R*Math.cos(a1),y1=cy+R*Math.sin(a1);
     const large=frac>0.5?1:0; const col=_VV_COL[i%_VV_COL.length];
     segs.push(`<path d="M${cx},${cy} L${x0.toFixed(2)},${y0.toFixed(2)} A${R},${R} 0 ${large} 1 ${x1.toFixed(2)},${y1.toFixed(2)} Z" fill="${col}"/>`);
-    leg.push(`<div class="vv-leg"><span class="vv-leg-dot" style="background:${col}"></span>${esc(d.name||'—')} <b>${Math.round(frac*100)}%</b></div>`);
+    const _pl=d.is_collab?` style="cursor:pointer;text-decoration:underline dotted" onclick="_vvCollab(this)" data-names="${esc(JSON.stringify(d.collab_names||[]))}"`:'';
+    leg.push(`<div class="vv-leg"${_pl}><span class="vv-leg-dot" style="background:${col}"></span>${esc(d.name||'—')} <b>${Math.round(frac*100)}%</b></div>`);
     a0=a1;
   });
   return `<div class="vv-pie-wrap"><svg viewBox="0 0 120 120" class="vv-pie">${segs.join('')}<circle cx="${cx}" cy="${cy}" r="26" fill="var(--bg)"/></svg><div class="vv-legs">${leg.join('')}</div></div>`;
@@ -8804,7 +8810,7 @@ async function renderVideoViews(wrapId, base, isAdmin, rangeKey, frm, to){
       const thumb=v.thumb?`<img class="vv-v-thumb" src="${esc(v.thumb)}" alt="">`:`<span class="vv-v-play">${ic('play')}</span>`;
       return `<div class="vv-vrow" onclick="_vvSeries('${base}',${v.id},'${wrapId}-series')">
       ${thumb}
-      <div class="vv-v-main"><div class="vv-v-t">${esc(v.title||'Video')}</div><div class="vv-v-s">${esc(v.teacher||'')}${v.at?' · '+esc(v.at):''}</div></div>
+      <div class="vv-v-main"><div class="vv-v-t">${esc(v.title||'Video')}</div><div class="vv-v-s">${v.is_collab?`<span style="cursor:pointer;text-decoration:underline dotted;color:#7c3aed;font-weight:700" onclick="event.stopPropagation();_vvCollab(this)" data-names="${esc(JSON.stringify(v.collab_names||[]))}">Collab</span>`:esc(v.teacher||'')}${v.at?' · '+esc(v.at):''}</div></div>
       <b class="vv-v-views">${_vvFmt(v.views)}</b>${v.url?`<a class="vv-v-open" href="${esc(v.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open</a>`:''}</div>`;
     }).join('')||'<div class="vv-empty">No uploaded videos in this range yet.</div>';
     wrap.innerHTML=`${keyWarn}<div class="vv-top">${refresh}<span class="vv-fl">Period</span>${presetSel}${custom}</div>${tiles}<div class="vv-grid">${bar}${pie}</div>
