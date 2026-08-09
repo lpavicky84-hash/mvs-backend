@@ -2041,12 +2041,12 @@ function pfBreakdown(tid){
       const detail=items.map(it=>{ const t=it.target||0, dn=it.done||0; const p=t>0?Math.min(100,Math.round(dn/t*100)):0;
         return `<div class="mtg-item"><div class="mtg-top"><span>${esc(it.label||'')}</span><b>${dn} / ${t}</b></div><div class="mtg-bar"><div class="mtg-fill" style="width:${p}%"></div></div></div>`; }).join('');
       return `<div class="pfb-row mtg-row" onclick="this.classList.toggle('open')">
-        <div class="pfb-top"><span>${esc(c[1])} <span class="mtg-caret">\u25be</span></span><b class="${na?'na':''}">${na?'N/A':sc+' / '+w}</b></div>
+        <div class="pfb-top"><span>${esc(c[1])} <span class="pfb-wt">${w}%</span> <span class="mtg-caret">\u25be</span></span><b class="${na?'na':''}">${na?'N/A':Math.round(v.raw)+'%'}</b></div>
         <div class="pfb-bar"><div class="pfb-fill" style="width:${pct}%"></div></div>${det}
         <div class="mtg-detail">${detail||'<div class="pfb-muted">No targets set</div>'}</div></div>`;
     }
     return `<div class="pfb-row">
-      <div class="pfb-top"><span>${esc(c[1])}</span><b class="${na?'na':''}">${na?'N/A':sc+' / '+w}</b></div>
+      <div class="pfb-top"><span>${esc(c[1])} <span class="pfb-wt">${w}%</span></span><b class="${na?'na':''}">${na?'N/A':Math.round(v.raw)+'%'}</b></div>
       <div class="pfb-bar"><div class="pfb-fill" style="width:${pct}%"></div></div>${det}</div>`;
   }).join('');
   // strong / improve (client-side)
@@ -2149,6 +2149,7 @@ function _ensurePfCss(){
     '.pfb-top{display:flex;justify-content:space-between;font-size:.82rem;margin-bottom:4px}.pfb-top b.na{color:var(--text-muted);font-weight:600}',
     '.pfb-bar{height:7px;background:#eef1f8;border-radius:4px;overflow:hidden}',
     '.pfb-det{font-size:.68rem;color:var(--text-muted);margin-top:4px}',
+    '.pfb-wt{font-size:.6rem;font-weight:700;color:var(--text-muted);background:var(--primary-50,#f5efe0);padding:1px 6px;border-radius:99px;vertical-align:middle}',
     '.mtg-row{cursor:pointer}.mtg-caret{font-size:.7rem;color:var(--text-muted);transition:.2s;display:inline-block}',
     '.mtg-row.open .mtg-caret{transform:rotate(180deg)}',
     '.mtg-detail{max-height:0;overflow:hidden;transition:max-height .28s ease}',

@@ -200,19 +200,18 @@ def _blend_target(items, cfg):
 
 
 def _consistency_pct(m):
-    parts = []
+    # Consistency = attendance/regularity based. Jinki attendance hi active nahi
+    # (present_days = 0) -> N/A (consistency me count nahi, redistribute).
+    pres = m.get("present_days", 0)
+    if pres <= 0:
+        return None
+    parts = [min(100.0, 100.0 * pres / 24.0)]   # present-day regularity (~24 working days)
     tot = m.get("task_ontime", 0) + m.get("task_delayed", 0) + m.get("task_not_completed", 0)
     if tot > 0:
         parts.append(100.0 * m.get("task_ontime", 0) / tot)
     lect = m.get("lect_ontime", 0) + m.get("lect_delayed", 0)
     if lect > 0:
         parts.append(100.0 * m.get("lect_ontime", 0) / lect)
-    # present-day regularity (present / working-day-ish target ~ 24)
-    pres = m.get("present_days", 0)
-    if pres > 0:
-        parts.append(min(100.0, 100.0 * pres / 24.0))
-    if not parts:
-        return None
     return round(sum(parts) / len(parts), 1)
 
 
@@ -528,21 +527,11 @@ def _score_all(db, month, cfg):
         _w0, _w1 = _teacher_window(db, tp, dt0, dt1)   # session-mode teacher ka apna window
         metricmap[tp.id] = (tp, u, gather_metrics(db, tp, _w0, _w1, cfg))
 
-    # ---- INACTIVE teachers ko ranking se hatao (Vicky): jinki koi activity/attendance nahi.
-    #      Present-day YA koi real work (class/task/doubt/test/dpp/proposal) -> active. ----
-    def _is_active(m):
-        did = ((m.get("lect_ontime", 0) + m.get("lect_delayed", 0)) or m.get("task_ontime", 0)
-               or m.get("task_delayed", 0) or m.get("task_not_completed", 0)
-               or m.get("doubts_received", 0) or m.get("tests_done", 0) or m.get("dpp_done", 0)
-               or m.get("reward_points", 0) or m.get("prop_approved", 0))
-        return bool(m.get("present_days", 0) or did)
-    active_map = {tid: v for tid, v in metricmap.items() if _is_active(v[2])}
-
-    units = [mm[2].get("workload_units_assigned", 0) for mm in active_map.values()]
+    units = [mm[2].get("workload_units_assigned", 0) for mm in metricmap.values()]
     avg_units = (sum(units) / len(units)) if units else 0
     team = {"avg_workload_units": avg_units}
     rows = []
-    for tid, (tp, u, m) in active_map.items():
+    for tid, (tp, u, m) in metricmap.items():
         sc = score_from_metrics(m, cfg, team)
         rows.append({
             "teacher_id": tp.id, "name": u.name or "", "user_id": u.user_id or "",

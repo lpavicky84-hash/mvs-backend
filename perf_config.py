@@ -15,11 +15,11 @@ PERF_DEFAULTS = {
     # ---- Part 2: main Performance Score components (out of 100) ----
     "component_weights": {
         "teaching": 20,           # Teaching & Class Delivery
-        "content": 20,            # Content Production (videos/shorts/DPP etc.)
+        "content": 25,            # Content Production (Task Discipline yahin merge)
         "targets": 20,            # Monthly Target Achievement
-        "student_support": 15,    # Doubt resolution
+        "student_support": 15,    # Doubt resolution (15h SLA)
         "tests": 10,              # Tests & Assessment work
-        "task_discipline": 5,     # Task timeliness/discipline
+        "task_discipline": 0,     # HATA diya — Content me merge (dono task-timeliness the)
         "consistency": 5,         # Consistency
         "video_initiative": 5,    # Video ideas/proposals (capped)
     },
@@ -47,14 +47,14 @@ PERF_DEFAULTS = {
     "video_initiative_cap": 5,
     # ---- Video initiative motivation: 100 reward-point goal + monthly full-scale points ----
     "video_initiative_target_points": 100,
-    "video_initiative_month_full": 10,
+    "video_initiative_month_full": 8,
     # ---- Part 8 & 30: video idea reward points (approval/production/published) ----
     "video_rewards": {
-        "submitted": 0,
-        "approved": 1,
-        "in_production": 2,
-        "published": 2,
-        "high_impact": 2,
+        "submitted": 1,       # propose karne par hi thoda credit (motivation)
+        "approved": 3,        # idea approve -> zyada incentive
+        "in_production": 4,
+        "published": 6,       # publish -> sabse zyada
+        "high_impact": 4,
     },
     # ---- Part 17: consistency rules ----
     "consistency": {"max_points": 5, "streak_days_for_badge": 12},
