@@ -1430,12 +1430,25 @@ DPPTEXT = (30, 28, 22)
 
 def _teacher_photo_circle(b64):
     """Teacher photo -> circular-cropped PNG temp file (PDF band ke liye).
-    Kisi bhi step pe fail ho to None — caller logo/text pe fallback kare."""
+    Kisi bhi step pe fail ho to None — caller logo/text pe fallback kare.
+    R2 migration ke baad photo ek URL ho sakta hai (base64 nahi) -> usse fetch karo."""
     import base64 as _b
     import io as _io
     import tempfile as _tf
     from PIL import Image as _Im, ImageOps as _IO, ImageDraw as _ID
-    raw = _b.b64decode(b64)
+    if not b64:
+        return None
+    raw = None
+    if isinstance(b64, str) and b64.startswith("http"):
+        # R2 / http URL -> fetch bytes
+        import urllib.request as _u
+        with _u.urlopen(b64, timeout=15) as _r:
+            raw = _r.read()
+    else:
+        s = b64
+        if isinstance(s, str) and s.startswith("data:") and "," in s:
+            s = s.split(",", 1)[1]
+        raw = _b.b64decode(s)
     im = _Im.open(_io.BytesIO(raw)).convert("RGB")
     im = _IO.exif_transpose(im)
     w, h = im.size
