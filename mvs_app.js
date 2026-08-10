@@ -16559,11 +16559,25 @@ async function openOfficeLocation(){
       <div style="font-size:.76rem;color:var(--text-muted);margin-bottom:8px">A <b>PC, laptop or phone</b> connected to the office broadband/WiFi can punch <b>without location</b>. <b>Have 7–8 WiFis?</b> If they all run on one broadband line, <b>a single IP</b> is enough; if they are on separate lines, add each line's IP separately (connect to that WiFi and tap "Add this PC's IP", or use the unknown list below). <b>Never add a home IP</b> — that would allow punching from home!</div>
       <div id="ol-ip-list"></div>
       <div id="ol-unknown"></div>
-      <button class="btn btn-ghost btn-sm" onclick="olAddMyIp()">${ic('location')} Add This PC's IP</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+        <button class="btn btn-ghost btn-sm" onclick="olAddMyIp()">${ic('location')} Add This PC's IP</button>
+        <button class="btn btn-ghost btn-sm" onclick="olCheckIps()">Check IPs (ISP / location)</button>
+        <button class="btn btn-danger btn-sm" onclick="olClearIps()">Clear all IPs</button>
+      </div>
       <div id="ol-ip-note" style="margin-top:6px"></div>
     </div>`,
    `${window._olOffices.length?`<button class="btn btn-danger" onclick="olClear()">Remove All (Geofence OFF)</button>`:''}<button class="btn btn-primary" onclick="saveOfficeLocation()">Save (${window._olOffices.length} branch)</button>`);
   _olRenderList(); _olRenderIps();
+}
+function _olIpMeta(ip){
+  const m=(window._olIpInfo||{})[ip];
+  if(!m) return '';
+  if(!m.ok) return '<span style="color:var(--text-muted)"> · location unknown</span>';
+  const where=[m.city,m.region,m.country].filter(Boolean).join(', ');
+  let flag='';
+  if(m.mobile) flag=' <span style="color:#dc2626;font-weight:800">MOBILE DATA — risky (ghar se match ho sakta hai)</span>';
+  else if(m.proxy||m.hosting) flag=' <span style="color:#dc2626;font-weight:800">PROXY/VPN — risky</span>';
+  return `<span style="color:${(m.mobile||m.proxy||m.hosting)?'#dc2626':'var(--text-muted)'}"> · ${esc(m.isp||'')}${where?' · '+esc(where):''}${flag}</span>`;
 }
 function _olRenderIps(){
   const el=document.getElementById('ol-ip-list'); if(!el) return;
@@ -16571,9 +16585,8 @@ function _olRenderIps(){
   if(!ips.length){
     el.innerHTML='<div style="font-size:.76rem;color:var(--text-muted);margin-bottom:8px">No WiFi IPs yet — punching from PC/4G will ask for GPS location.</div>';
   } else {
-    const rows=ips.map((ip,i)=>`<div class="pc-task"><div class="t"><div class="tt">${esc(ip)}</div><div class="td">Office WiFi — punching on this network works without GPS</div></div>
+    const rows=ips.map((ip,i)=>`<div class="pc-task"><div class="t"><div class="tt">${esc(ip)}</div><div class="td">Office WiFi — punching on this network works without GPS${_olIpMeta(ip)}</div></div>
       <button class="btn btn-ghost btn-sm" onclick="olDelIp(${i})">Remove</button></div>`).join('');
-    // v121: 5 se zyada IPs ho to scroll-box (5 rows dikhte hain) + Hide/Show toggle
     el.innerHTML=ips.length>5
       ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
           <div style="font-size:.74rem;color:var(--text-muted)"><b>${ips.length}</b> WiFi IPs — scroll to see all</div>
@@ -16584,9 +16597,33 @@ function _olRenderIps(){
   const un=document.getElementById('ol-unknown');
   if(un){
     const list=(window._olUnknown||[]).filter(x=>!window._olIps.includes(x.ip));
-    un.innerHTML=list.length?`<div style="font-size:.78rem;font-weight:700;margin:10px 0 6px">New IPs — punches were attempted from these (add them if they are office WiFi):</div>`+list.map((x,i)=>`<div class="pc-task"><div class="t"><div class="tt">${esc(x.ip)}</div><div class="td">last try: ${esc(x.at||'-')}</div></div>
+    un.innerHTML=list.length?`<div style="font-size:.78rem;font-weight:700;margin:10px 0 6px">New IPs — punches were attempted from these (add them if they are office WiFi):</div>`+list.map((x,i)=>`<div class="pc-task"><div class="t"><div class="tt">${esc(x.ip)}${_olIpMeta(x.ip)}</div><div class="td">last try: ${esc(x.at||'-')}</div></div>
       <button class="btn btn-primary btn-sm" onclick="olAddUnknown(${i})">Add</button></div>`).join(''):'';
   }
+}
+function olClearIps(){
+  if(!(window._olIps||[]).length){ const n=document.getElementById('ol-ip-note'); if(n) n.innerHTML='<div style="font-size:.8rem;color:var(--text-muted)">List already empty.</div>'; return; }
+  if(!confirm(`Saare ${window._olIps.length} WiFi IPs list se hata dein? Phir har office WiFi se connect karke fresh add kar sakte ho. (Baad me Save dabana zaroori.)`)) return;
+  window._olIps=[]; _olRenderIps();
+  const n=document.getElementById('ol-ip-note');
+  if(n) n.innerHTML='<div class="alert alert-success" style="font-size:.8rem;margin-bottom:0">Saare IPs hata diye — ab har office WiFi se <b>Add This PC IP</b> karke, phir <b>Save</b> dabao.</div>';
+}
+async function olCheckIps(){
+  const all=[...(window._olIps||[]), ...((window._olUnknown||[]).map(x=>x.ip))];
+  const uniq=[...new Set(all.filter(Boolean))];
+  const n=document.getElementById('ol-ip-note');
+  if(!uniq.length){ if(n) n.innerHTML='<div style="font-size:.8rem;color:var(--text-muted)">No IPs to check.</div>'; return; }
+  if(n) n.innerHTML='<div style="font-size:.8rem;color:var(--text-muted)">Checking IPs (ISP / location)…</div>';
+  try{
+    const r=await api('/api/admin/office-ip-info','POST',{ips:uniq});
+    window._olIpInfo=r.info||{};
+    _olRenderIps();
+    const risky=uniq.filter(ip=>{const m=window._olIpInfo[ip]; return m&&m.ok&&(m.mobile||m.proxy||m.hosting);});
+    if(r.error==='lookup_unavailable'){ if(n) n.innerHTML='<div class="alert alert-warning" style="font-size:.8rem;margin-bottom:0">Location lookup abhi available nahi (network). Thodi der baad try karo.</div>'; return; }
+    if(n) n.innerHTML=risky.length
+      ? `<div class="alert alert-warning" style="font-size:.82rem;margin-bottom:0"><b>${risky.length} IP risky</b> (mobile/proxy) — inhe check karke <b>Remove</b> karo agar office broadband nahi: <b>${risky.map(esc).join(', ')}</b>. Har IP ke aage ISP/city dikh raha hai — jo alag city/ISP ka ho wo bahar ka ho sakta hai.</div>`
+      : '<div class="alert alert-success" style="font-size:.82rem;margin-bottom:0">Koi obvious mobile/proxy IP nahi mila. Har IP ke aage ISP/city dekh lo — jo tumhare office (Excitel) se alag lage, use Remove kar dena.</div>';
+  }catch(e){ if(n) n.innerHTML='<div class="alert alert-warning" style="font-size:.8rem;margin-bottom:0">Check nahi ho paya: '+esc(e.message||'error')+'</div>'; }
 }
 function olAddUnknown(i){
   const list=(window._olUnknown||[]).filter(x=>!window._olIps.includes(x.ip));

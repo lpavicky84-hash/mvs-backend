@@ -4737,6 +4737,49 @@ def admin_my_ip(request: Request, _=Depends(get_admin)):
     from teacher_routes import _client_ip
     return {"ip": _client_ip(request)}
 
+@router.post("/office-ip-info")
+def admin_office_ip_info(payload: dict = Body(default={}), _=Depends(get_admin)):
+    """Har office WiFi IP ka ISP + city + mobile/proxy flag laata hai (ip-api.com, free, no key).
+    Isse admin dekh sakta hai koi IP bahar ka / mobile-carrier to nahi (jo galti se add ho gaya).
+    Best-effort — API fail ho to 'unknown' return karta hai, kabhi crash nahi."""
+    import urllib.request as _u
+    import json as _json
+    ips = payload.get("ips") or []
+    if not isinstance(ips, list):
+        ips = []
+    ips = [str(x).strip() for x in ips if str(x).strip()][:100]
+    out = {}
+    if not ips:
+        return {"info": out}
+    try:
+        url = ("http://ip-api.com/batch"
+               "?fields=query,status,country,regionName,city,isp,org,mobile,proxy,hosting")
+        body = _json.dumps([{"query": ip} for ip in ips]).encode("utf-8")
+        req = _u.Request(url, data=body, headers={"Content-Type": "application/json"})
+        with _u.urlopen(req, timeout=12) as resp:
+            data = _json.loads(resp.read().decode("utf-8", "ignore"))
+        if isinstance(data, list):
+            for row in data:
+                if not isinstance(row, dict):
+                    continue
+                q = row.get("query") or ""
+                if not q:
+                    continue
+                out[q] = {
+                    "ok": row.get("status") == "success",
+                    "isp": row.get("isp") or row.get("org") or "",
+                    "city": row.get("city") or "",
+                    "region": row.get("regionName") or "",
+                    "country": row.get("country") or "",
+                    "mobile": bool(row.get("mobile")),
+                    "proxy": bool(row.get("proxy")),
+                    "hosting": bool(row.get("hosting")),
+                }
+    except Exception:
+        # API down/blocked — chup-chaap khali laut jao (UI 'lookup unavailable' dikha dega)
+        return {"info": out, "error": "lookup_unavailable"}
+    return {"info": out}
+
 @router.post("/office-location")
 def admin_set_office(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
     """Office branches (multi-location) save karo. Body: {'offices':[{name,lat,lng,radius},...]}
