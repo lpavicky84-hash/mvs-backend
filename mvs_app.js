@@ -15314,11 +15314,11 @@ async function doPunch(kind,confirm){
       try{ payload=await _getLocation(b=>_geoNote(`Getting your location… (±${Math.round(b.accuracy)}m — waiting for the best reading)`,'info')); }
       catch(e){ geoErr=e.message; payload={}; }   /* GPS fail — neeche WiFi fallback try hoga */
     }
-    if(geoErr || (payload.accuracy!=null && payload.accuracy>80)){
-      // GPS fail/PC — office WiFi (trusted IP) se auto-verify try karo, coords ke bina
-      wifiWhy = geoErr || `Your device's location is too weak (±${Math.round(payload.accuracy)}m) — please try office WiFi or a mobile phone.`;
-      payload={wifi_fallback:true};
-      _geoNote('GPS is not accurate enough — verifying via <b>office WiFi</b>...','info');
+    if(geoErr || payload.accuracy==null || (payload.accuracy!=null && payload.accuracy>80)){
+      // GPS weak/unavailable (upper floor / indoor). Hard block NAHI — request bhejo, backend
+      // office WiFi se verify kar lega. Jo coords mile (agar mile) wahi bhej do.
+      _geoNote('GPS weak/unavailable — verifying via <b>office WiFi</b> (upper floors ke liye)…','info');
+      if(payload.accuracy==null) payload=(payload&&payload.lat!=null)?payload:{};
     }
   }
   if(btn){ btn.disabled=true; btn.textContent=kind==='in'?'Punching In...':'Punching Out...'; }

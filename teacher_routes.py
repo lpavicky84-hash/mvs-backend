@@ -5146,38 +5146,59 @@ def _haversine_m(lat1, lng1, lat2, lng2):
     return 2 * R * asin(sqrt(h))
 
 def _geofence_check(db, lat, lng, accuracy, client_ip=""):
-    """Koi bhi branch set hai to nearest se distance validate karta hai. Returns (office|None, dist_m).
-    Office ke WiFi/broadband IP se aaya punch GPS ke bina bhi allowed hai (office dict me wifi=True).
-    Fail ho to HTTPException raise (403 'outside|<branch>|<dist>|<radius>' = geofence breach)."""
+    """Punch verify — DO me se koi ek sahi ho:
+      (A) GPS office ke radius ke andar ho, YA
+      (B) teacher office ki apni BROADBAND WiFi par ho (registered office IP).
+
+    Kyun hybrid: upper floors par GPS indoors reliable nahi (5000m tak error aata hai), isliye
+    building ke andar hone ka pakka signal = office WiFi. Poori building ek hi broadband/WiFi par
+    hoti hai -> kisi bhi floor se verify. Ground floor/bahar ke liye GPS.
+    Ghar se: na office WiFi (alag IP) na GPS radius me -> BLOCK.
+
+    ** SURAKSHA (bahut zaroori) **: office WiFi list me SIRF office ki BROADBAND WiFi ka public IP
+    daalna. Mobile data/hotspot (carrier CGNAT) ka IP ghar se bhi office jaisa match ho sakta hai
+    -> wo NAHI daalna (warna ghar se punch ka loophole wapas aa jayega).
+    Returns (office|None, dist_m|None). Fail -> HTTPException."""
     offices = _office_list(db)
     if not offices:
-        return None, None      # geofence off - purana behavior
-    ips = _office_ips(db)
-    if client_ip and ips and client_ip not in ips:
-        _log_unknown_ip(db, client_ip)   # naya WiFi/IP — admin ko one-click add ka option milega
-    if client_ip and client_ip in ips:
-        # office ka WiFi/broadband — trusted network, GPS optional (PC ke liye)
-        acc = None
-        try:
-            acc = float(accuracy) if accuracy is not None else None
-        except Exception:
-            acc = None
-        if lat is not None and lng is not None and acc is not None and acc <= 80:
-            o, d = _nearest_office(offices, float(lat), float(lng))
-            return {"name": o["name"], "wifi": True}, d
-        return {"name": offices[0]["name"], "wifi": True}, None
-    if lat is None or lng is None:
-        raise HTTPException(status_code=400, detail="Location is required. Allow location permission in your browser to punch.")
+        return None, None      # geofence off (koi office set hi nahi)
+    # (A) GPS check — accurate ho to
     try:
-        acc = float(accuracy or 0)
+        acc = float(accuracy) if accuracy is not None else None
     except Exception:
-        acc = 0
-    if acc > 80:
-        raise HTTPException(status_code=400, detail="Could not get an accurate location (\u00b1%dm error). PCs/laptops have no GPS - punch from Chrome/Safari on your mobile, in an open area." % int(acc))
+        acc = None
+    gps_valid = (lat is not None and lng is not None and acc is not None and 0 < acc <= 80)
+    if gps_valid:
+        office, dist = _nearest_office(offices, float(lat), float(lng))
+        if dist is not None and dist <= office["radius"] + min(acc, 20):
+            return office, dist        # GPS ne radius ke andar confirm kiya -> ALLOW
+    # (B) Office broadband WiFi check — upper floors / indoor GPS-fail ke liye
+    ips = _office_ips(db)
+    if client_ip and ips and client_ip in ips:
+        d = None
+        near = offices[0]
+        if lat is not None and lng is not None:
+            near, d = _nearest_office(offices, float(lat), float(lng))
+        # SAFETY (Excitel jaisa broadband kabhi CGNAT/shared-IP hota hai): agar GPS ACCURATE ho
+        # (acc chhota, ~60m tak) aur phir bhi office se BAHUT door (>600m) ho, to block — accurate
+        # GPS door matlab sach me ghar. Upper-floor ka GPS INACCURATE (bada acc) hota hai -> wo is
+        # check me nahi aayega, WiFi se allow ho jayega. Isse shared-IP wala loophole bhi band.
+        if d is not None and acc is not None and 0 < acc <= 60 and d > 600:
+            if client_ip:
+                try: _log_unknown_ip(db, client_ip)
+                except Exception: pass
+            raise HTTPException(status_code=403, detail="outside|%s|%d|%d" % (near["name"], int(d), int(near["radius"])))
+        return {"name": near["name"], "wifi": True}, d   # office WiFi -> ALLOW (any floor)
+    # (C) na GPS-inside, na office WiFi -> BLOCK (+ admin ko IP log)
+    if client_ip:
+        try:
+            _log_unknown_ip(db, client_ip)
+        except Exception:
+            pass
+    if not gps_valid:
+        raise HTTPException(status_code=400, detail="Location required. Mobile (Chrome/Safari) me accurate GPS 'Allow' karo, YA office ki WiFi se connect ho kar punch karo.")
     office, dist = _nearest_office(offices, float(lat), float(lng))
-    if dist > office["radius"] + min(acc, 20):
-        raise HTTPException(status_code=403, detail="outside|%s|%d|%d" % (office["name"], int(dist), int(office["radius"])))
-    return office, dist
+    raise HTTPException(status_code=403, detail="outside|%s|%d|%d" % (office["name"], int(dist or 0), int(office["radius"])))
 
 @router.get("/geofence")
 def teacher_geofence_status(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
