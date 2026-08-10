@@ -3427,12 +3427,15 @@ function dppPickLang(pid,action,kind){
   // STEP 2: paper choose karne ke baad language — jo select karo wahi khul jayega
   const info=window._dppPickInfo||{};
   const pk=info.pk||(window._dppPacks||[]).find(x=>x.id===pid)||{};
-  const meds=(pk.medium==='Hindi')?['hindi']:['english','hindi'];
+  const meds=(pk.medium==='Hindi')?['hindi','both']:['english','hindi','both'];
   if(meds.length===1){ closeModal(); dppPdfGo(pid,action,kind,meds[0]); return; }
-  const _mlbl={english:['English','Full paper in English medium'], hindi:['हिंदी','पूरा पेपर हिंदी में']};
+  const _mlbl={english:['English','Full paper in English medium'],
+               hindi:['हिंदी','पूरा पेपर हिंदी में'],
+               both:['Hindi + English','दोनों भाषाएँ एक साथ — bilingual paper']};
+  const _mic={english:'A', hindi:'अ', both:'A\u0905'};
   showModal('Select Language',
     `<div class="pm-grid">
-      ${meds.map(m=>`<button class="pm-opt" onclick="closeModal();dppPdfGo(${pid},'${action}','${kind}','${m}')"><span class="pm-ic">${m==='hindi'?'अ':'A'}</span><span class="pm-tx"><b>${_mlbl[m][0]}</b><small>${_mlbl[m][1]}</small></span></button>`).join('')}
+      ${meds.map(m=>`<button class="pm-opt" onclick="closeModal();dppPdfGo(${pid},'${action}','${kind}','${m}')"><span class="pm-ic">${_mic[m]}</span><span class="pm-tx"><b>${_mlbl[m][0]}</b><small>${_mlbl[m][1]}</small></span></button>`).join('')}
     </div>`,
     `<button class="btn btn-ghost" onclick="dppLangPick(${pid},'${action}')">Back</button>`);
 }
