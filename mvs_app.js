@@ -659,6 +659,7 @@ async function pollAdminLive(){
   // was 403-ing every cycle and flooding the server logs. (Full-access admins, and
   // the very first call before the access profile has loaded, still run.)
   if(window._adminMe && !adminAllowed('live')) return;
+  if(document.hidden) return;   // v167: backgrounded tab poll na kare
   try{
     const d=await api('/api/admin/live-users').catch(e=>{ if(e&&e.status===401){ _sessionExpired(); } throw e; }); window._lastLive=d;
     const n=(d.counts&&d.counts.live)||0;
@@ -669,7 +670,7 @@ async function pollAdminLive(){
     if(pg&&pg.classList.contains('active')) _paintLive(d);
   }catch(e){}
 }
-function startAdminLivePoll(){ if(_adminLiveInt) return; pollAdminLive(); _adminLiveInt=setInterval(pollAdminLive,90000); }
+function startAdminLivePoll(){ if(_adminLiveInt) return; pollAdminLive(); _adminLiveInt=setInterval(pollAdminLive,180000); }
 function stopAdminLivePoll(){ if(_adminLiveInt){ clearInterval(_adminLiveInt); _adminLiveInt=null; } }
 let _curPage='';
 let _lastPing=0;
@@ -811,6 +812,7 @@ async function notifPopupOnOpen(role){
   startNotifPolling(role);
 }
 async function pollNotifs(role){
+  if(document.hidden) return;   // v167: backgrounded tab poll na kare -> server load kam
   let list;
   try{ list=await fetchNotifs(role); }catch(e){ if(e&&e.status===401){ _sessionExpired(); return; } throw e; }
   const unread=list.filter(n=>!n.is_read);
@@ -828,7 +830,7 @@ function _sessionExpired(){
   toast('Your session has expired — please log in again.', true);
   setTimeout(()=>{ window._sessDead=false; goHome(); }, 1600);
 }
-function startNotifPolling(role){ stopNotifPolling(); _notifInt=setInterval(()=>pollNotifs(role).catch(e=>{ if(e&&e.status===401) _authFail(); }),150000); }
+function startNotifPolling(role){ stopNotifPolling(); _notifInt=setInterval(()=>pollNotifs(role).catch(e=>{ if(e&&e.status===401) _authFail(); }),300000); }
 function stopNotifPolling(){ if(_notifInt){ clearInterval(_notifInt); _notifInt=null; } }
 // ===== SEND NOTIFICATIONS (admin + teacher) =====
 // ===== v93: notify modals — recipient clarity + live student counts =====
@@ -1287,6 +1289,7 @@ function closeImageViewer(){
 let _dbadgeInt=null;
 function startDoubtBadge(role){
   const run=async()=>{
+    if(document.hidden) return;   // v167: hidden tab skip
     try{
       let n=0;
       if(role==='teacher'){ const st=await api('/api/teacher/doubt-stats'); n=st.pending||0; }
@@ -1295,7 +1298,7 @@ function startDoubtBadge(role){
       if(b){ b.textContent=n; b.style.display=n>0?'':'none'; }
     }catch(e){ if(e&&e.status===401) _authFail(); }
   };
-  run(); if(_dbadgeInt) clearInterval(_dbadgeInt); _dbadgeInt=setInterval(run,300000);
+  run(); if(_dbadgeInt) clearInterval(_dbadgeInt); _dbadgeInt=setInterval(run,600000);
 }
 function toast(msg,err=false){ const t=document.getElementById('toast'); t.className=err?'error':''; document.getElementById('toast-msg').textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3500); }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -1502,7 +1505,13 @@ function accountabilityBlock(comp,today){
 function statusTag(s){ const m={Completed:'tag-done',Pending:'tag-pending',Missed:'tag-missed',Upcoming:'tag-upcoming',Live:'tag-live'}; return `<span class="tag ${m[s]||'tag-low'}">${s}</span>`; }
 function tClassRow(c){
   const topic=c.completed?(c.topic_covered||c.chapter||'—'):(c.chapter||'—');
-  const btn=c.completed?'<span style="color:var(--success);font-size:.8rem;font-weight:600">Done ✓</span>':`<button class="btn btn-success btn-sm" onclick="openClassReport(${c.id})">Mark Completed</button>`;
+  // v168: report/mark-completed sirf class ka time nikalne ke baad; pehle "Upcoming"
+  const _dt=parseClassDT(c.date,c.time); const _over=!_dt || istNow()>_dt;
+  const btn=c.completed
+    ? '<span style="color:var(--success);font-size:.8rem;font-weight:600">Done ✓</span>'
+    : (_over
+        ? `<button class="btn btn-success btn-sm" onclick="openClassReport(${c.id})">Mark Completed</button>`
+        : '<span class="tstatus upcoming">Upcoming</span>');
   return `<tr><td><strong>${esc(c.subject)}</strong></td><td>${esc(c.class_name||'—')}</td><td>${esc(c.time||'—')}</td><td>${esc(topic)}</td><td>${c.completed?'<span class="tag tag-done">Completed</span>':statusTag(c.live_status)}</td><td style="text-align:right">${btn}</td></tr>`;
 }
 async function _renderTodayClasses(targetId){
@@ -2427,12 +2436,10 @@ async function loadTeacherToday(wrapId){
  } else if(e.notes && e.completed){
  right=`<span class="tstatus done"> Lecture Done · Material Done</span>`;
  } else {
- // Submit Report (Mark Done) + Upload Notes ab hamesha dikhte hain jab tak class complete
- // na ho — Time Table section jaisa. Pehle sirf slot ka time nikalne ke baad (over) dikhte
- // the, isliye class se pehle button gayab rehta tha aur teacher ko Time Table me jaana
- // padta tha. Upcoming ab sirf ek chhoti chip hai — button ko block nahi karti.
+ // v168: Submit Report ab SIRF class ka time nikalne ke BAAD dikhta hai (over=true).
+ // Class se pehle (Upcoming) report ka button nahi aayega — sirf "Upcoming" chip.
  let _b='';
- if(!e.completed) _b+=`<button class="btn btn-success btn-sm" onclick="openClassReport(${e.id})"> Submit Report</button>`;
+ if(!e.completed && (over || !dt)) _b+=`<button class="btn btn-success btn-sm" onclick="openClassReport(${e.id})"> Submit Report</button>`;
  if(!e.notes) _b+=`<button class="btn btn-primary btn-sm" onclick="openUploadHub({type:'notes',chapter:decodeURIComponent('${ch}'),subject:decodeURIComponent('${sub}'),class_name:decodeURIComponent('${cln}')})"> Upload Notes</button>`;
  if(over){
  _b+=`<span class="tstatus" style="background:rgba(245,158,11,.15);color:var(--warning)">${!e.completed?'Report Pending':'Material Pending'}</span>`;
@@ -7976,6 +7983,7 @@ async function _avtBadgePoll(){
   // v164: skip for admins without the Task Manager (vtasks) section — this poll was
   // 403-ing on /video-tasks/badge every cycle and flooding the logs.
   if(window._adminMe && !adminAllowed('vtasks') && !adminAllowed('urgent')) return;
+  if(document.hidden) return;   // v167: hidden tab skip
   try{
     const b=await api('/api/admin/video-tasks/badge');
     const badge=document.getElementById('a-vt-badge');

@@ -331,8 +331,26 @@ try:
     from sqlalchemy import event as _sa_event, exc as _sa_exc
     from database import engine as _db_engine
 
+    import time as _pool_time
+
+    @_sa_event.listens_for(_db_engine, "checkin")
+    def _mvs_pool_checkin(dbapi_conn, conn_record):
+        try:
+            conn_record.info["mvs_returned_at"] = _pool_time.time()
+        except Exception:
+            pass
+
     @_sa_event.listens_for(_db_engine, "checkout")
     def _mvs_pool_checkout_ping(dbapi_conn, conn_record, conn_proxy):
+        # v167: SELECT 1 SIRF tab jab connection 30s+ idle raha ho (MySQL ne tab drop
+        # kiya ho sakta hai). Busy load me connections turant reuse hote hain -> ping SKIP
+        # -> har request par extra query NAHI -> DB par kaafi kam load, pool jaldi free.
+        try:
+            _ret = conn_record.info.get("mvs_returned_at", 0)
+            if (_pool_time.time() - _ret) < 30:
+                return
+        except Exception:
+            pass
         try:
             cur = dbapi_conn.cursor()
             cur.execute("SELECT 1")
@@ -340,28 +358,27 @@ try:
         except Exception:
             # dead connection -> pool ko batao discard karke naya banaye
             raise _sa_exc.DisconnectionError("stale DB connection - reconnecting")
-    _mvs_log.warning("DB pool pre-ping (checkout) enabled")
+    _mvs_log.warning("DB pool pre-ping (idle-only) enabled")
 
-    # v166: har naye connection par query-time cap. Pool/DB pressure me pehle koi
-    # SELECT MINUTON hang ho jaati thi (get_current_user ka token-check bhi) -> saari
-    # requests atak ke 500 -> death spiral. Ab koi SELECT 15s se zyada nahi chalti,
-    # to connection turant pool me wapas -> baaki requests chalti rehti hain.
+    # v166/v167: har naye connection par query-time + socket cap. Pool/DB pressure me
+    # koi SELECT 10s se zyada nahi chalti aur dead socket 15s me error deta hai -> connection
+    # turant pool me wapas -> baaki requests chalti rehti hain (death spiral tuit jaata hai).
     @_sa_event.listens_for(_db_engine, "connect")
     def _mvs_conn_query_timeout(dbapi_conn, conn_record):
-        # socket-level guard: Railway MySQL idle connections drop kar deta hai; agar
-        # socket dead ho to query server tak pahunchti hi nahi aur bina timeout hamesha
-        # hang karti thi. Socket read timeout se aisi request seconds me fail -> pool
-        # use dead connection discard karke fresh deta hai.
+        try:
+            conn_record.info["mvs_returned_at"] = _pool_time.time()
+        except Exception:
+            pass
         try:
             _sock = getattr(dbapi_conn, "_sock", None)
             if _sock is not None:
-                _sock.settimeout(20)
+                _sock.settimeout(15)
         except Exception:
             pass
         try:
             cur = dbapi_conn.cursor()
             try:
-                cur.execute("SET SESSION max_execution_time = 15000")   # 15s cap (MySQL, ms)
+                cur.execute("SET SESSION max_execution_time = 10000")   # 10s cap (MySQL, ms)
             except Exception:
                 pass
             cur.close()
