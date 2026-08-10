@@ -3413,26 +3413,25 @@ function dppLangPick(pid,action,packInfo){
   const pk=(window._dppPacks||[]).find(x=>x.id===pid) || packInfo; if(!pk) return;
   // Uploaded PDF pack -> language nahi, par Question Paper vs Solution ka choice do
   if(pk.source!=='created'){
-    showModal((action==='view'?'View':'Download')+' \u2014 '+esc(pk.title||'DPP'),
+    showModal((action==='view'?'View':'Download')+' PDF',
       `<div class="pm-grid">
-        <button class="pm-opt" onclick="closeModal();dppPdfGo(${pid},'${action}','q','')"><span class="pm-ic">${ic('file')}</span><span class="pm-tx"><b>Question Paper</b><small>Questions PDF</small></span></button>
-        <button class="pm-opt" onclick="closeModal();dppPdfGo(${pid},'${action}','s','')"><span class="pm-ic">${ic('check')}</span><span class="pm-tx"><b>Solution</b><small>Solutions PDF (with answers)</small></span></button>
+        <button class="pm-opt" onclick="closeModal();dppPdfGo(${pid},'${action}','q','')"><span class="pm-ic">Q</span><span class="pm-tx"><b>Question Paper</b><small>Questions only — student copy</small></span></button>
+        <button class="pm-opt" onclick="closeModal();dppPdfGo(${pid},'${action}','s','')"><span class="pm-ic">A</span><span class="pm-tx"><b>Ques. with Answer</b><small>Questions + solutions — teacher copy</small></span></button>
       </div>`,
       `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
     return;
   }
   const meds=(pk.medium==='Hindi')?['hindi']:['english','hindi'];
   window._dppLang=meds[0];
-  showModal((action==='view'?'View':'Download')+' — '+esc(pk.title||'DPP'),
-    `<div style="padding:4px 2px">
-      <div style="font-size:.82rem;font-weight:700;color:var(--text-muted);margin-bottom:8px">1. LANGUAGE SELECT KARO</div>
+  showModal((action==='view'?'View':'Download')+' PDF',
+    `<div style="padding:2px 2px 4px">
+      ${meds.length>1?`<div style="font-size:.74rem;font-weight:800;letter-spacing:.04em;color:var(--text-muted);margin-bottom:8px">LANGUAGE</div>
       <div style="display:flex;gap:8px;margin-bottom:18px" id="dpp-lang-row">
         ${meds.map(m=>`<button class="btn ${m===meds[0]?'btn-primary':'btn-ghost'} btn-sm" data-lang="${m}" onclick="window._dppLang='${m}';document.querySelectorAll('#dpp-lang-row .btn').forEach(b=>{b.classList.remove('btn-primary');b.classList.add('btn-ghost')});this.classList.remove('btn-ghost');this.classList.add('btn-primary')">${m==='hindi'?'हिंदी':'English'}</button>`).join('')}
-      </div>
-      <div style="font-size:.82rem;font-weight:700;color:var(--text-muted);margin-bottom:8px">2. KAUNSA PAPER?</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-primary btn-sm" onclick="closeModal();dppPdfGo(${pid},'${action}','q',window._dppLang||'english')">${ic('file')} Questions Paper</button>
-        <button class="btn btn-ghost btn-sm" onclick="closeModal();dppPdfGo(${pid},'${action}','s',window._dppLang||'english')">${ic('check')} Solutions Paper</button>
+      </div>`:''}
+      <div class="pm-grid">
+        <button class="pm-opt" onclick="closeModal();dppPdfGo(${pid},'${action}','q',window._dppLang||'english')"><span class="pm-ic">Q</span><span class="pm-tx"><b>Question Paper</b><small>Questions only — student copy</small></span></button>
+        <button class="pm-opt" onclick="closeModal();dppPdfGo(${pid},'${action}','s',window._dppLang||'english')"><span class="pm-ic">A</span><span class="pm-tx"><b>Ques. with Answer</b><small>Questions + solutions — teacher copy</small></span></button>
       </div>
     </div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
