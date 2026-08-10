@@ -1588,6 +1588,33 @@ def _dpp_build_pdf(db, pk, kind="q", med=None):
     ex = _NS(teacher_name=tname, teacher_photo_b64=tphoto, title=pk.title, subject=pk.subject,
              chapter=pk.chapter, part=pk.part, class_name=(pk.class_name or ""), test_type="DPP",
              duration_mins=None, total_marks=None)
+    # Hindi/both maanga aur q_hi/model_hi missing -> ON-DEMAND translate (subject-aware, Gemini)
+    # + wapas pack me cache karo (agli baar free + instant). Fail ho to English fallback (jaisa tha).
+    if med in ("hindi", "both"):
+        _changed = False
+        for q in (pk.questions or []):
+            _need_q = not (q.get("q_hi") or "").strip()
+            _need_m = (kind == "s") and not (q.get("model_hi") or "").strip() and (q.get("model") or "").strip()
+            if not (_need_q or _need_m):
+                continue
+            try:
+                tr = grading.translate_question_to_hindi(
+                    q.get("q") or "", q.get("model") or "", None, pk.subject or "")
+            except Exception:
+                tr = None
+            if not tr:
+                continue
+            if _need_q and tr.get("question"):
+                q["q_hi"] = tr["question"]; _changed = True
+            if _need_m and tr.get("answer"):
+                q["model_hi"] = tr["answer"]; _changed = True
+        if _changed:
+            try:
+                from sqlalchemy.orm.attributes import flag_modified
+                flag_modified(pk, "questions")
+                db.commit()
+            except Exception:
+                db.rollback()
     qobjs = []
     for i, q in enumerate(pk.questions or [], 1):
         base = dict(q_no=i, question_text=q.get("q"), max_marks=q.get("marks"),
@@ -2655,11 +2682,51 @@ def create_exam(payload: dict = Body(...), background_tasks: BackgroundTasks = N
     db.commit()
     # Bilingual Hindi is now filled on-demand by the portal (free). Paid Gemini
     # auto-translation is disabled to avoid API costs. (Function kept for manual use.)
-    # if (ex.medium or "").lower().startswith("bi") and background_tasks is not None:
-    #     background_tasks.add_task(_bg_translate_exam, ex.id)
+    # Hindi/Bilingual test -> background me Hindi translate karo (subject-aware) taaki students ke
+    # liye pehle se ready ho. English-only test par koi cost nahi. (Sirf missing fields bharta hai.)
+    try:
+        _m = (ex.medium or "").lower()
+        if (_m.startswith("hi") or _m.startswith("bi") or _m.startswith("bo")) and background_tasks is not None:
+            background_tasks.add_task(_bg_translate_exam, ex.id)
+    except Exception:
+        pass
     return {"id": ex.id, "total_marks": total, "questions": len(qs),
             "test_type": ttype, "medium": ex.medium,
             "scheduled_at": ex.scheduled_at.isoformat() if getattr(ex, "scheduled_at", None) else None}
+
+
+def _ensure_exam_hindi(db, ex, qs):
+    """On-demand: exam ke missing Hindi fields (question/answer/options) bhar do — subject-aware
+    (Gemini) + wapas cache. Pehli Hindi request par translate, uske baad free + instant.
+    Fail ho to English fallback (jaisa tha). Cost sirf jab Hindi actually chahiye."""
+    if not ex or not qs:
+        return
+    changed = False
+    for q in qs:
+        need_q = not (getattr(q, "question_text_hi", "") or "").strip()
+        need_a = (ex.test_type != "mcq") and not (getattr(q, "model_answer_hi", "") or "").strip() and (getattr(q, "model_answer", "") or "").strip()
+        need_o = (ex.test_type == "mcq") and not getattr(q, "options_hi", None) and (getattr(q, "options", None) or [])
+        if not (need_q or need_a or need_o):
+            continue
+        try:
+            tr = grading.translate_question_to_hindi(
+                q.question_text or "", getattr(q, "model_answer", "") or "",
+                (q.options or []) if ex.test_type == "mcq" else None, ex.subject or "")
+        except Exception:
+            tr = None
+        if not tr:
+            continue
+        if need_q and tr.get("question"):
+            q.question_text_hi = tr["question"]; changed = True
+        if need_a and tr.get("answer"):
+            q.model_answer_hi = tr["answer"]; changed = True
+        if need_o and tr.get("options") and len(tr["options"]) == len(q.options or []):
+            q.options_hi = tr["options"]; changed = True
+    if changed:
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
 
 
 def _bg_translate_exam(exam_id):
@@ -2709,6 +2776,9 @@ def teacher_exam_pdf(exam_id: int, medium: str = "english",
         raise HTTPException(404, "Test not found")
     qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == ex.id).order_by(ExamQuestion.q_no).all()
     med = ("both" if str(medium).lower().startswith("bo") else ("hindi" if str(medium).lower().startswith("hi") else "english"))
+    if med in ("hindi", "both"):
+        try: _ensure_exam_hindi(db, ex, qs)
+        except Exception: pass
     try:
         data = exam_pdf.build_exam_pdf(ex, qs, med)
     except Exception as e:

@@ -3411,30 +3411,30 @@ async function dppDl(pid,kind){
 // ---------- View / Download with language selection (test jaise) ----------
 function dppLangPick(pid,action,packInfo){
   const pk=(window._dppPacks||[]).find(x=>x.id===pid) || packInfo; if(!pk) return;
-  // Uploaded PDF pack -> language nahi, par Question Paper vs Solution ka choice do
-  if(pk.source!=='created'){
-    showModal((action==='view'?'View':'Download')+' PDF',
-      `<div class="pm-grid">
-        <button class="pm-opt" onclick="closeModal();dppPdfGo(${pid},'${action}','q','')"><span class="pm-ic">Q</span><span class="pm-tx"><b>Question Paper</b><small>Questions only — student copy</small></span></button>
-        <button class="pm-opt" onclick="closeModal();dppPdfGo(${pid},'${action}','s','')"><span class="pm-ic">A</span><span class="pm-tx"><b>Ques. with Answer</b><small>Questions + solutions — teacher copy</small></span></button>
-      </div>`,
-      `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
-    return;
-  }
-  const meds=(pk.medium==='Hindi')?['hindi']:['english','hindi'];
-  window._dppLang=meds[0];
+  window._dppPickInfo={pid:pid, action:action, pk:pk};   // step-2 (language) ke liye yaad rakho
+  const created=(pk.source==='created');
+  // STEP 1: pehle paper choose (Question Paper / Ques. with Answer)
+  const qClick = created ? `dppPickLang(${pid},'${action}','q')` : `closeModal();dppPdfGo(${pid},'${action}','q','')`;
+  const sClick = created ? `dppPickLang(${pid},'${action}','s')` : `closeModal();dppPdfGo(${pid},'${action}','s','')`;
   showModal((action==='view'?'View':'Download')+' PDF',
-    `<div style="padding:2px 2px 4px">
-      ${meds.length>1?`<div style="font-size:.74rem;font-weight:800;letter-spacing:.04em;color:var(--text-muted);margin-bottom:8px">LANGUAGE</div>
-      <div style="display:flex;gap:8px;margin-bottom:18px" id="dpp-lang-row">
-        ${meds.map(m=>`<button class="btn ${m===meds[0]?'btn-primary':'btn-ghost'} btn-sm" data-lang="${m}" onclick="window._dppLang='${m}';document.querySelectorAll('#dpp-lang-row .btn').forEach(b=>{b.classList.remove('btn-primary');b.classList.add('btn-ghost')});this.classList.remove('btn-ghost');this.classList.add('btn-primary')">${m==='hindi'?'हिंदी':'English'}</button>`).join('')}
-      </div>`:''}
-      <div class="pm-grid">
-        <button class="pm-opt" onclick="closeModal();dppPdfGo(${pid},'${action}','q',window._dppLang||'english')"><span class="pm-ic">Q</span><span class="pm-tx"><b>Question Paper</b><small>Questions only — student copy</small></span></button>
-        <button class="pm-opt" onclick="closeModal();dppPdfGo(${pid},'${action}','s',window._dppLang||'english')"><span class="pm-ic">A</span><span class="pm-tx"><b>Ques. with Answer</b><small>Questions + solutions — teacher copy</small></span></button>
-      </div>
+    `<div class="pm-grid">
+      <button class="pm-opt" onclick="${qClick}"><span class="pm-ic">Q</span><span class="pm-tx"><b>Question Paper</b><small>Questions only — student copy</small></span></button>
+      <button class="pm-opt" onclick="${sClick}"><span class="pm-ic">A</span><span class="pm-tx"><b>Ques. with Answer</b><small>Questions + solutions — teacher copy</small></span></button>
     </div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+}
+function dppPickLang(pid,action,kind){
+  // STEP 2: paper choose karne ke baad language — jo select karo wahi khul jayega
+  const info=window._dppPickInfo||{};
+  const pk=info.pk||(window._dppPacks||[]).find(x=>x.id===pid)||{};
+  const meds=(pk.medium==='Hindi')?['hindi']:['english','hindi'];
+  if(meds.length===1){ closeModal(); dppPdfGo(pid,action,kind,meds[0]); return; }
+  const _mlbl={english:['English','Full paper in English medium'], hindi:['हिंदी','पूरा पेपर हिंदी में']};
+  showModal('Select Language',
+    `<div class="pm-grid">
+      ${meds.map(m=>`<button class="pm-opt" onclick="closeModal();dppPdfGo(${pid},'${action}','${kind}','${m}')"><span class="pm-ic">${m==='hindi'?'अ':'A'}</span><span class="pm-tx"><b>${_mlbl[m][0]}</b><small>${_mlbl[m][1]}</small></span></button>`).join('')}
+    </div>`,
+    `<button class="btn btn-ghost" onclick="dppLangPick(${pid},'${action}')">Back</button>`);
 }
 // ---------- DPP premium View/Download hub (test-section jaisa) ----------
 function _dppMeds(pk){ return (pk&&pk.medium==='Hindi')?['hindi']:(pk&&pk.medium==='English')?['english']:['english','hindi','both']; }

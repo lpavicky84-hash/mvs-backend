@@ -1350,6 +1350,13 @@ def student_exam_paper(exam_id: int, medium: str = "english", db: Session = Depe
     if _my and _ec and _ec != _my:
         raise HTTPException(403, "This test is for another class")
     qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).order_by(ExamQuestion.q_no).all()
+    _med2 = str(medium).lower()
+    if _med2.startswith("hi") or _med2.startswith("bo"):
+        try:
+            from teacher_routes import _ensure_exam_hindi
+            _ensure_exam_hindi(db, ex, qs)
+        except Exception:
+            pass
     # student paper must NEVER contain answers — strip every answer field defensively
     from types import SimpleNamespace as _NS
     qs = [_NS(q_no=q.q_no, question_text=q.question_text, max_marks=q.max_marks,
@@ -1374,6 +1381,15 @@ def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=D
     att = db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id, ExamAttempt.student_id == sp.id).first()
     _log_exam_action(db, exam_id, sp.id, "view")
     qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).order_by(ExamQuestion.q_no).all()
+    # Hindi/Bilingual test -> Hindi fields missing ho to on-demand translate + cache (student panel
+    # par language switch karte hi Hindi dikhe). English-only test slow na ho.
+    _exm = (getattr(ex, "medium", "") or "").lower()
+    if _exm.startswith("hi") or _exm.startswith("bi") or _exm.startswith("bo"):
+        try:
+            from teacher_routes import _ensure_exam_hindi
+            _ensure_exam_hindi(db, ex, qs)
+        except Exception:
+            pass
     # scheduled window: [scheduled_at, scheduled_at + duration]; stored naive = IST wall time
     _exp = False
     if getattr(ex, "scheduled_at", None) is not None:
