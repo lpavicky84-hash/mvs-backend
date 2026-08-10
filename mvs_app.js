@@ -16601,12 +16601,15 @@ function _olRenderIps(){
       <button class="btn btn-primary btn-sm" onclick="olAddUnknown(${i})">Add</button></div>`).join(''):'';
   }
 }
-function olClearIps(){
-  if(!(window._olIps||[]).length){ const n=document.getElementById('ol-ip-note'); if(n) n.innerHTML='<div style="font-size:.8rem;color:var(--text-muted)">List already empty.</div>'; return; }
-  if(!confirm(`Saare ${window._olIps.length} WiFi IPs list se hata dein? Phir har office WiFi se connect karke fresh add kar sakte ho. (Baad me Save dabana zaroori.)`)) return;
-  window._olIps=[]; _olRenderIps();
+async function olClearIps(){
+  const nHas=(window._olIps||[]).length, uHas=(window._olUnknown||[]).length;
+  if(!nHas && !uHas){ const n=document.getElementById('ol-ip-note'); if(n) n.innerHTML='<div style="font-size:.8rem;color:var(--text-muted)">List already empty.</div>'; return; }
+  if(!confirm(`Saari IP list reset karein? (${nHas} added WiFi IPs + ${uHas} "New IPs" attempted-log) — dono saaf ho jayenge. Phir office WiFi se connect karke fresh add karo. (Baad me Save dabana zaroori.)`)) return;
+  window._olIps=[];
+  try{ await api('/api/admin/office-unknown-clear','POST',{}); window._olUnknown=[]; }catch(e){}
+  window._olIpInfo={}; _olRenderIps();
   const n=document.getElementById('ol-ip-note');
-  if(n) n.innerHTML='<div class="alert alert-success" style="font-size:.8rem;margin-bottom:0">Saare IPs hata diye — ab har office WiFi se <b>Add This PC IP</b> karke, phir <b>Save</b> dabao.</div>';
+  if(n) n.innerHTML='<div class="alert alert-success" style="font-size:.8rem;margin-bottom:0">Saari IPs (added + New IPs) reset ho gayi. Ab office ki WiFi se connect ho kar <b>Add This PC IP</b> karo (ya teachers se office WiFi par punch karwao -> wo "New IPs" me aayega -> Add). Aakhir me <b>Save</b> dabana.</div>';
 }
 async function olCheckIps(){
   const all=[...(window._olIps||[]), ...((window._olUnknown||[]).map(x=>x.ip))];

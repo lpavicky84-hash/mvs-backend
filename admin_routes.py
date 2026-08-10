@@ -4737,6 +4737,19 @@ def admin_my_ip(request: Request, _=Depends(get_admin)):
     from teacher_routes import _client_ip
     return {"ip": _client_ip(request)}
 
+@router.post("/office-unknown-clear")
+def admin_office_unknown_clear(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """"New IPs" (attempted punches) ka log saaf karo — fresh start ke liye. Office WiFi list par
+    koi asar nahi. Iske baad sirf naye punch-attempts hi 'New IPs' me dikhenge."""
+    from models import AppSetting
+    row = db.query(AppSetting).filter(AppSetting.key == "unknown_ips").first()
+    if not row:
+        row = AppSetting(key="unknown_ips", value="[]"); db.add(row)
+    else:
+        row.value = "[]"
+    db.commit()
+    return {"message": "New IPs list cleared"}
+
 @router.post("/office-ip-info")
 def admin_office_ip_info(payload: dict = Body(default={}), _=Depends(get_admin)):
     """Har office WiFi IP ka ISP + city + mobile/proxy flag laata hai (ip-api.com, free, no key).
