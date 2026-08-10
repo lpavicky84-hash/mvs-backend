@@ -41,6 +41,7 @@ ADMIN_SECTION_MAP = {
     "class-report-backfill": "timetable",
     "questionbank": "qbank",
     "material": "material", "materials-tree": "material", "pending-materials": "material",
+    "dpp-pack-pdf": "material",
     "doubt": "doubts", "doubts": "doubts", "doubts-overview": "doubts",
     "exam": "tests", "exams": "tests", "dpp-packs": "tests",
     "teacher": "teachers", "teachers": "teachers", "warn-teacher": "teachers", "credentials": "teachers",
@@ -4712,6 +4713,37 @@ def admin_payout_paid(tid: int, payload: dict = Body(...), db: Session = Depends
     return {"message": "Marked as paid"}
 
 # ===== OFFICE LOCATION (punch geofence) =====
+@router.get("/dpp-pack-pdf/{pack_id}")
+def admin_dpp_pack_pdf(pack_id: int, kind: str = "q", medium: str = "",
+                       db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin: Classes Material tree se kisi bhi teacher ke DPP pack ka PDF (view/download).
+    (teacher endpoint teacher_id se filter karta hai -> admin ke liye alag, bina filter.)"""
+    from models import DppPack
+    pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
+    if not pk:
+        raise HTTPException(status_code=404, detail="DPP not found")
+    blob = None
+    if pk.source == "created" and pk.questions:
+        try:
+            from teacher_routes import _dpp_build_pdf
+            blob = _dpp_build_pdf(db, pk, kind, medium or pk.medium)
+        except Exception:
+            blob = (pk.q_pdf if kind == "q" else pk.s_pdf)
+    else:
+        blob = (pk.q_pdf if kind == "q" else pk.s_pdf)
+    try:
+        from teacher_routes import _dpp_shrink
+        blob = _dpp_shrink(db, pk, kind, blob)
+    except Exception:
+        pass
+    if not blob:
+        raise HTTPException(status_code=404, detail="File not available")
+    med = ("both" if (medium or "").lower().startswith("bo")
+           else ("hindi" if (medium or "").lower().startswith("hin") else "english"))
+    fname = (pk.title or "DPP").replace("/", "-") + \
+        ("-solutions" if kind == "s" else "-questions") + "-" + med + ".pdf"
+    return __import__("r2_storage").file_response(blob, "application/pdf", fname, False)
+
 @router.get("/office-location")
 def admin_get_office(db: Session = Depends(get_db), _=Depends(get_admin)):
     from teacher_routes import _ensure_geofence, _office_list, _office_ips

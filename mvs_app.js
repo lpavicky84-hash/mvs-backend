@@ -2033,11 +2033,12 @@ function _pfPaint(){
     const rk=i+1; const isMe=_pfState.meId&&r.teacher_id===_pfState.meId;
     const subs=(r.subjects||[]).slice(0,3).map(x=>`<span class="pf-sub">${esc(x)}</span>`).join('');
     const wl=r.workload_level||'Standard';
+    const _pfAdmin=(_pfState.who==='a');   // workload label sirf admin ko dikhe, teachers ko nahi
     const vi=(r.video_initiative||{});
     return `<div class="pf-row ${isMe?'me':''} ${rk<=3?'top':''}" style="animation-delay:${Math.min(i*28,420)}ms" onclick="pfBreakdown(${r.teacher_id})">
       <div class="pf-rk">#${rk}${_pfChange(r)}</div>
       <div class="pf-who">${_pfAv(r,42)}<div><div class="pf-nm"><span class="pf-nmwrap">${esc(r.name)}${_pfTipHtml(r)}</span>${isMe?' <span class="pf-you">you</span>':''}</div><div class="pf-subs">${subs}</div></div></div>
-      <div class="pf-kpi"><span class="pf-wl pf-wl-${wl.replace(/ /g,'').toLowerCase()}">${esc(wl)} workload</span>
+      <div class="pf-kpi">${_pfAdmin?`<span class="pf-wl pf-wl-${wl.replace(/ /g,'').toLowerCase()}">${esc(wl)} workload</span>`:''}
         ${r.consistency_streak?`<span class="pf-mini">${r.consistency_streak}d streak</span>`:''}
         ${vi.approved?`<span class="pf-mini">${vi.approved} ideas approved</span>`:''}</div>
       <div class="pf-sc">${_pfVal(r)}</div>
@@ -2118,7 +2119,7 @@ function pfBreakdown(tid){
   showModal(`Why am I ranked #${r.rank}? \u2014 ${esc(r.name)}`,
     `<div class="pfb">
       <div class="pfb-overall"><div><div class="pfb-o-lbl">Overall Score</div><div class="pfb-o-sc">${r.score}<small>/100</small></div></div>
-        <div class="pfb-o-side">${_pfChange(r)}<span class="pf-wl pf-wl-${(r.workload_level||'standard').replace(/ /g,'').toLowerCase()}">${esc(r.workload_level||'Standard')} workload</span>${r.limited_workload?'<span class="pf-lim">Limited workload data</span>':''}</div></div>
+        <div class="pfb-o-side">${_pfChange(r)}${(_pfState.who==='a')?`<span class="pf-wl pf-wl-${(r.workload_level||'standard').replace(/ /g,'').toLowerCase()}">${esc(r.workload_level||'Standard')} workload</span>${r.limited_workload?'<span class="pf-lim">Limited workload data</span>':''}`:''}</div></div>
       <div class="pfb-bars">${bars}</div>
       <div class="pfb-areas"><div><div class="pfb-h">Strong areas</div>${strong}</div><div><div class="pfb-h">Areas to improve</div>${improve}</div></div>
       ${viHtml}
@@ -3287,7 +3288,7 @@ function _mtPaint(wrapId){
         ? `<td><span class="mt-eng" style="cursor:default">${ic('users')} ${i.views}</span></td><td><span class="mt-eng" style="cursor:default">${ic('download')} ${i.downloads}</span></td>`
         : `<td><button class="mt-eng" title="Students who viewed" onclick="openMatAudience(${i.id},'view')">${ic('users')} ${i.views}</button></td><td><button class="mt-eng" title="Students who downloaded" onclick="openMatAudience(${i.id},'download')">${ic('download')} ${i.downloads}</button></td>`;
       const acts=isDpp
-        ? `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();dppLangPick(${i.dpp_pack_id},'download')">${ic('download')} Download</button>`
+        ? `<button class="btn btn-primary btn-sm" onclick='event.stopPropagation();dppLangPick(${i.dpp_pack_id},"download",{id:${i.dpp_pack_id},source:${JSON.stringify(i.dpp_source||"")},medium:${JSON.stringify(i.dpp_medium||"")},title:${JSON.stringify(i.title||"DPP")}})'>${ic('download')} Download</button>`
         : `<button class="btn btn-primary btn-sm" onclick="downloadMaterial('${who}',${i.id},'${esc(fname)}')">${ic('download')} Download</button><button class="btn btn-danger btn-sm" title="Delete this file permanently" onclick="deleteMaterial('${who}',${i.id},'${encodeURIComponent(i.filename||i.title||'')}')">${ic('trash')}</button>`;
       return `<tr class="${isNew?'mt-row-new':''}" onclick="_matRowSeen('${who}',this,${i.id})">
       <td class="mat-ch">${esc(i.chapter||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}${isDpp?'<span class="mt-new-tag" style="background:#0891b2">DPP</span>':''}</td>
@@ -3408,8 +3409,8 @@ async function dppDl(pid,kind){
   }catch(e){ toast('File not available',true); }
 }
 // ---------- View / Download with language selection (test jaise) ----------
-function dppLangPick(pid,action){
-  const pk=(window._dppPacks||[]).find(x=>x.id===pid); if(!pk) return;
+function dppLangPick(pid,action,packInfo){
+  const pk=(window._dppPacks||[]).find(x=>x.id===pid) || packInfo; if(!pk) return;
   // Uploaded PDF pack -> language nahi, par Question Paper vs Solution ka choice do
   if(pk.source!=='created'){
     showModal((action==='view'?'View':'Download')+' \u2014 '+esc(pk.title||'DPP'),
@@ -3513,7 +3514,13 @@ function pdfViewerModal(u,title,fname){
 async function dppPdfGo(pid,action,kind,med){
   toast('PDF '+(med==='hindi'?'(Hindi ':'(English ')+(kind==='s'?'solutions)':'questions)')+' aa rahi hai…');
   try{
-    const bl=await _dlPdfBlob(API+`/api/teacher/dpp-packs/${pid}/pdf?kind=${kind}&medium=${med||''}`);
+    // Admin Classes Material se download -> admin endpoint (teacher endpoint teacher_id se filter
+    // karta hai, admin ke liye 404/403 aata tha). Role ke hisaab se base.
+    const _isAdmin=(typeof ROLE!=='undefined' && ROLE==='admin');
+    const _url=_isAdmin
+      ? API+`/api/admin/dpp-pack-pdf/${pid}?kind=${kind}&medium=${med||''}`
+      : API+`/api/teacher/dpp-packs/${pid}/pdf?kind=${kind}&medium=${med||''}`;
+    const bl=await _dlPdfBlob(_url);
     const u=URL.createObjectURL(bl);
     const fname=(kind==='s'?'DPP-solutions':'DPP-questions')+'-'+(med||'english')+'.pdf';
     if(action==='view'){
