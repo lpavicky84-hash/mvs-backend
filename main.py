@@ -16,8 +16,23 @@ import video_tasks
 
 load_dotenv()
 
-# ===== CREATE TABLES =====
-Base.metadata.create_all(bind=engine)
+# ===== CREATE TABLES (startup-resilient) =====
+# v166: agar DB ek pal ke liye busy/slow ho (pool pressure), create_all startup ko
+# crash NAHI karega — warna Railway healthcheck fail ho jaata hai aur naya deploy hi
+# live nahi ho paata. Tables pehle se bani hain, isliye fail hone par bhi app start
+# hone do; DB free hote hi normal chalega.
+import time as _boot_time
+for _boot_try in range(3):
+    try:
+        Base.metadata.create_all(bind=engine)
+        break
+    except Exception as _boot_err:
+        try:
+            print("create_all attempt", _boot_try + 1, "failed:", str(_boot_err)[:200])
+        except Exception:
+            pass
+        if _boot_try < 2:
+            _boot_time.sleep(3)
 
 # ===== LIGHTWEIGHT MIGRATIONS (add new columns to existing tables) =====
 def ensure_columns():
@@ -326,6 +341,32 @@ try:
             # dead connection -> pool ko batao discard karke naya banaye
             raise _sa_exc.DisconnectionError("stale DB connection - reconnecting")
     _mvs_log.warning("DB pool pre-ping (checkout) enabled")
+
+    # v166: har naye connection par query-time cap. Pool/DB pressure me pehle koi
+    # SELECT MINUTON hang ho jaati thi (get_current_user ka token-check bhi) -> saari
+    # requests atak ke 500 -> death spiral. Ab koi SELECT 15s se zyada nahi chalti,
+    # to connection turant pool me wapas -> baaki requests chalti rehti hain.
+    @_sa_event.listens_for(_db_engine, "connect")
+    def _mvs_conn_query_timeout(dbapi_conn, conn_record):
+        # socket-level guard: Railway MySQL idle connections drop kar deta hai; agar
+        # socket dead ho to query server tak pahunchti hi nahi aur bina timeout hamesha
+        # hang karti thi. Socket read timeout se aisi request seconds me fail -> pool
+        # use dead connection discard karke fresh deta hai.
+        try:
+            _sock = getattr(dbapi_conn, "_sock", None)
+            if _sock is not None:
+                _sock.settimeout(20)
+        except Exception:
+            pass
+        try:
+            cur = dbapi_conn.cursor()
+            try:
+                cur.execute("SET SESSION max_execution_time = 15000")   # 15s cap (MySQL, ms)
+            except Exception:
+                pass
+            cur.close()
+        except Exception:
+            pass
 except Exception as _e:
     try:
         _mvs_log.error("pool pre-ping setup failed: %s", _e)

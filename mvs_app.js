@@ -669,7 +669,7 @@ async function pollAdminLive(){
     if(pg&&pg.classList.contains('active')) _paintLive(d);
   }catch(e){}
 }
-function startAdminLivePoll(){ if(_adminLiveInt) return; pollAdminLive(); _adminLiveInt=setInterval(pollAdminLive,45000); }
+function startAdminLivePoll(){ if(_adminLiveInt) return; pollAdminLive(); _adminLiveInt=setInterval(pollAdminLive,90000); }
 function stopAdminLivePoll(){ if(_adminLiveInt){ clearInterval(_adminLiveInt); _adminLiveInt=null; } }
 let _curPage='';
 let _lastPing=0;
@@ -828,7 +828,7 @@ function _sessionExpired(){
   toast('Your session has expired — please log in again.', true);
   setTimeout(()=>{ window._sessDead=false; goHome(); }, 1600);
 }
-function startNotifPolling(role){ stopNotifPolling(); _notifInt=setInterval(()=>pollNotifs(role).catch(e=>{ if(e&&e.status===401) _authFail(); }),90000); }
+function startNotifPolling(role){ stopNotifPolling(); _notifInt=setInterval(()=>pollNotifs(role).catch(e=>{ if(e&&e.status===401) _authFail(); }),150000); }
 function stopNotifPolling(){ if(_notifInt){ clearInterval(_notifInt); _notifInt=null; } }
 // ===== SEND NOTIFICATIONS (admin + teacher) =====
 // ===== v93: notify modals — recipient clarity + live student counts =====
@@ -1295,7 +1295,7 @@ function startDoubtBadge(role){
       if(b){ b.textContent=n; b.style.display=n>0?'':'none'; }
     }catch(e){ if(e&&e.status===401) _authFail(); }
   };
-  run(); if(_dbadgeInt) clearInterval(_dbadgeInt); _dbadgeInt=setInterval(run,180000);
+  run(); if(_dbadgeInt) clearInterval(_dbadgeInt); _dbadgeInt=setInterval(run,300000);
 }
 function toast(msg,err=false){ const t=document.getElementById('toast'); t.className=err?'error':''; document.getElementById('toast-msg').textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3500); }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
