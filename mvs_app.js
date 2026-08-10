@@ -613,15 +613,21 @@ async function doLogin(){
   if(!uid||!pass){ toast('Please enter both User ID and password.',true); return; }
   const btn=document.getElementById('login-btn'); btn.disabled=true; btn.textContent='Logging in...';
   try{
- const data=await api('/api/auth/login','POST',{user_id:uid,password:pass});
- if(data.role!==CURRENT_PORTAL){ toast(`This is the ${CURRENT_PORTAL} login, but this account belongs to a ${data.role}!`,true); btn.disabled=false; btn.textContent='Login'; return; }
+ // v164: the login request must never hang forever on a slow/unreachable backend -
+ // cap the wait so the button can't get stuck on "Logging in...". On timeout the user
+ // gets a clear retry message and can try again without reloading the page.
+ const data=await Promise.race([
+   api('/api/auth/login','POST',{user_id:uid,password:pass}),
+   new Promise((_,rej)=>setTimeout(()=>rej(new Error('The server is taking too long to respond. Please wait a few seconds and try again.')),30000))
+ ]);
+ if(data.role!==CURRENT_PORTAL){ toast(`This is the ${CURRENT_PORTAL} login, but this account belongs to a ${data.role}!`,true); return; }
  _apiBust(); TOKEN=data.access_token; ROLE=data.role; NAME=data.name;
  document.getElementById('login-screen').classList.remove('active');
  if(ROLE==='teacher') openTeacher();
  else if(ROLE==='admin') openAdmin();
  else openStudent();
   }catch(e){ toast(e.message,true); }
-  btn.disabled=false; btn.textContent='Login';
+  finally{ btn.disabled=false; btn.textContent='Login'; }
 }
 
 function toggleDark(){
@@ -646,6 +652,10 @@ function fmtDur(s){ s=Math.max(0,s|0); const m=Math.floor(s/60), h=Math.floor(m/
 async function pollAdminLive(){
   // Only keeps the header badge in sync. The Live Users page repaints itself, so
   // this must never re-render it (that was overwriting the page every 15s).
+  // v164: skip entirely for admins who do not have the Live Users section — the poll
+  // was 403-ing every cycle and flooding the server logs. (Full-access admins, and
+  // the very first call before the access profile has loaded, still run.)
+  if(window._adminMe && !adminAllowed('live')) return;
   try{
     const d=await api('/api/admin/live-users').catch(e=>{ if(e&&e.status===401){ _sessionExpired(); } throw e; }); window._lastLive=d;
     const n=(d.counts&&d.counts.live)||0;
@@ -2668,12 +2678,10 @@ async function loadSTeachers(){
     });
     html+=`</div>`;
     el.innerHTML=html;
-    // load photos
-    ts.filter(t=>t.has_photo).forEach(async t=>{
-      try{ const r=await fetch(API+`/api/student/teacher/${t.teacher_id}/photo`,{headers:{Authorization:'Bearer '+TOKEN}});
-        if(r.ok){ const u=URL.createObjectURL(await r.blob()); const key=`kyt-${t.teacher_id}-${t.subject.replace(/[^a-z0-9]/gi,'')}`;
-          window._photoUrls=window._photoUrls||{}; window._photoUrls[key]=u;
-          const d=document.getElementById(key); if(d){ d.style.backgroundImage=`url(${u})`; d.textContent=''; } } }catch(e){}
+    // load photos (v163: cached loader — dobara render/refresh pe server photo hit nahi)
+    ts.filter(t=>t.has_photo).forEach(t=>{
+      const key=`kyt-${t.teacher_id}-${String(t.subject).replace(/[^a-z0-9]/gi,'')}`;
+      _loadPhotoInto(key, `/api/student/teacher/${t.teacher_id}/photo`);
     });
   }catch(e){ el.innerHTML=errHtml(e); }
 }
@@ -4265,12 +4273,26 @@ function _chemAsc(m){
   return String(m).replace(/[→⟶]/g,'->').replace(/[←⟵]/g,'<-').replace(/[⇌⇋]/g,'<=>').replace(/[−‐‑‒]/g,'-').replace(/\s+/g,' ').trim();
 }
 const _WTOK='(?<![A-Za-z0-9])(?!(?:cosec|sinh|cosh|tanh|sin|cos|tan|cot|sec|csc|log|ln|lim|max|min|mod|arg|deg|det|exp)\\b)(?!(?:[A-Z][a-z]?\\d*){2,}(?![A-Za-z0-9]))(?:[a-zA-Z]{2,}(?![A-Za-z0-9])|[\\u0900-\\u097F]+)';
+// v163 ReDoS fix: the old lead/trail peel regexes had \s* at the START of the
+// repeated unit AND [ ,;:.'"]* at the END. Both consume spaces, so the spaces
+// between words could be split many ways -> catastrophic backtracking. On a long
+// prose line that also contained a math signal (=, ->, or an H2-style token) this
+// froze the whole page ("Page Unresponsive") while rendering doubts, DPP, tests
+// or model answers. Fixed by consuming spaces on ONE side only (trailing) inside
+// the repeated group, with a single optional leading run outside it. Output is
+// identical on normal text; only the exponential blow-up is removed. Precompiled
+// once (was rebuilt on every call) and length-capped so a giant paste can't stall.
+const _PEEL_LEAD=new RegExp('^(\\s*(?:'+_WTOK+'[ ,;:.\'"]*)+)(?=\\S)');
+const _PEEL_TRAIL=new RegExp('([ ,;:.\'"]*(?:'+_WTOK+'[ ,;:.\'"]*)+)$');
 function _peelWordy(t){
   const orig=t;
+  // Peeling is only a heuristic to isolate the math core; on very long segments the
+  // cost is not worth the risk, so treat the whole thing as the core and move on.
+  if(t.length>6000) return {lead:'',trail:'',t:orig};
   let lead='',trail='';
-  const m1=t.match(new RegExp('^((?:\\s*'+_WTOK+'[ ,;:.\'"]*)+)(?=\\S)'));
+  const m1=t.match(_PEEL_LEAD);
   if(m1){ lead=m1[1]; t=t.slice(lead.length); }
-  const m2=t.match(new RegExp('((?:[ ,;:.\'"]*'+_WTOK+'[ ,;:.\'"]*)+)$'));
+  const m2=t.match(_PEEL_TRAIL);
   if(m2){ trail=m2[1]; t=t.slice(0,t.length-trail.length); }
   if(!t||!t.trim()) return {lead:'',trail:'',t:orig};
   return {lead,trail,t};
@@ -4311,7 +4333,9 @@ function _tryChem(seg, stash){
   const pw=_peelWordy(seg); const t=pw.t;
   if(!t||!/(->|→|⟶|⇌|⇋|<=>|<-|=)/.test(t)) return null;
   // "2H2 + O2 -> 2H2O and CaCO3 + 2HCl -> ..." — wordy connectors ke dono taraf chem ho sakta hai
-  const re=new RegExp('((?:\\s*'+_WTOK+'\\s*)+)');
+  // v163 ReDoS fix: leading \s* moved outside the repeated group (spaces consumed on
+  // one side only) to remove catastrophic backtracking. Split boundaries unchanged.
+  const re=new RegExp('(\\s*(?:'+_WTOK+'\\s*)+)');
   const bits=t.split(re);
   let out='', anyChem=false;
   for(let i=0;i<bits.length;i++){
@@ -4865,7 +4889,18 @@ function _arrayToHtmlTable(body){
   html+='</table></div>';
   return html;
 }
+// v163: bulletproof wrapper. All callers use _fmtRich; the real work is in
+// _fmtRichCore. This guarantees the doubts / DPP / tests render can never freeze
+// or crash on any single piece of content: abnormally large blobs take a light
+// escape-only path, and any unexpected formatter error degrades to plain readable
+// text instead of taking down the whole list.
 function _fmtRich(t){
+  const _raw=String(t==null?'':t);
+  if(_raw.length>60000) return esc(_raw).replace(/\n/g,'<br>');
+  try{ return _fmtRichCore(_raw); }
+  catch(e){ try{ return esc(_raw).replace(/\n/g,'<br>'); }catch(_e){ return ''; } }
+}
+function _fmtRichCore(t){
   let s=String(t==null?'':t).replace(/\r\n?/g,'\n');
   // mobile/AI paste cleanup: thin/narrow spaces (KaTeX me black box ban jaate hain) -> normal space,
   // zero-width chars hatao, Unicode line separators (U+2028/2029 — mobile clipboard) -> \n
@@ -7912,6 +7947,9 @@ function _setUrgentBadge(n){
   n=n||0; b.style.display=n?'inline-block':'none'; b.textContent=n;
 }
 async function _avtBadgePoll(){
+  // v164: skip for admins without the Task Manager (vtasks) section — this poll was
+  // 403-ing on /video-tasks/badge every cycle and flooding the logs.
+  if(window._adminMe && !adminAllowed('vtasks') && !adminAllowed('urgent')) return;
   try{
     const b=await api('/api/admin/video-tasks/badge');
     const badge=document.getElementById('a-vt-badge');
@@ -11707,8 +11745,16 @@ function openSubjectMaterials(encSub){
 
 // teacher photo ko div me background-image ki tarah load karo (auth header ke saath)
 async function _loadPhotoInto(elId,url){
-  try{ const r=await fetch(API+url,{headers:{Authorization:'Bearer '+TOKEN}});
+  // v163: dedupe via _imgBlobCache — the same teacher photo was re-fetched from the
+  // server on EVERY render/background-refresh (the /photo 302 flood in Railway logs).
+  // Now each photo is fetched once per session and reused from cache.
+  try{
+    window._photoUrls=window._photoUrls||{};
+    const cached=_imgBlobCache[url];
+    if(cached){ window._photoUrls[elId]=cached; const d0=document.getElementById(elId); if(d0){ d0.style.backgroundImage=`url(${cached})`; d0.textContent=''; } return; }
+    const r=await fetch(API+url,{headers:{Authorization:'Bearer '+TOKEN}});
     if(!r.ok) return; const u=URL.createObjectURL(await r.blob());
+    _imgBlobCache[url]=u; window._photoUrls[elId]=u;
     const d=document.getElementById(elId); if(d){ d.style.backgroundImage=`url(${u})`; d.textContent=''; } }catch(e){}
 }
 function _sDppCardHTML(pk,isNew){
