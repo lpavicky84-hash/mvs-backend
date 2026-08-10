@@ -690,7 +690,10 @@ def _img(pdf, b64str):
         if isinstance(raw, str) and raw.startswith("http"):
             try:
                 import urllib.request
-                with urllib.request.urlopen(raw, timeout=15) as _r:
+                _ir = urllib.request.Request(raw, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; "
+                                                          "Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                                                          "Chrome/122 Safari/537.36"})
+                with urllib.request.urlopen(_ir, timeout=15) as _r:
                     data = _r.read()
             except Exception:
                 return  # fetch fail -> figure skip (PDF crash nahi hoga)
@@ -1440,9 +1443,12 @@ def _teacher_photo_circle(b64):
         return None
     raw = None
     if isinstance(b64, str) and b64.startswith("http"):
-        # R2 / http URL -> fetch bytes
+        # R2 / http URL -> fetch bytes. Cloudflare bot-check se bachne ko browser User-Agent.
         import urllib.request as _u
-        with _u.urlopen(b64, timeout=15) as _r:
+        _req = _u.Request(b64, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                                      "Chrome/122 Safari/537.36"})
+        with _u.urlopen(_req, timeout=15) as _r:
             raw = _r.read()
     else:
         s = b64
