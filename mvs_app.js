@@ -2032,14 +2032,11 @@ function _pfPaint(){
   const list=rows.map((r,i)=>{
     const rk=i+1; const isMe=_pfState.meId&&r.teacher_id===_pfState.meId;
     const subs=(r.subjects||[]).slice(0,3).map(x=>`<span class="pf-sub">${esc(x)}</span>`).join('');
-    const wl=r.workload_level||'Standard';
-    const _pfAdmin=(_pfState.who==='a');   // workload label sirf admin ko dikhe, teachers ko nahi
     const vi=(r.video_initiative||{});
     return `<div class="pf-row ${isMe?'me':''} ${rk<=3?'top':''}" style="animation-delay:${Math.min(i*28,420)}ms" onclick="pfBreakdown(${r.teacher_id})">
       <div class="pf-rk">#${rk}${_pfChange(r)}</div>
       <div class="pf-who">${_pfAv(r,42)}<div><div class="pf-nm"><span class="pf-nmwrap">${esc(r.name)}${_pfTipHtml(r)}</span>${isMe?' <span class="pf-you">you</span>':''}</div><div class="pf-subs">${subs}</div></div></div>
-      <div class="pf-kpi">${_pfAdmin?`<span class="pf-wl pf-wl-${wl.replace(/ /g,'').toLowerCase()}">${esc(wl)} workload</span>`:''}
-        ${r.consistency_streak?`<span class="pf-mini">${r.consistency_streak}d streak</span>`:''}
+      <div class="pf-kpi">${r.consistency_streak?`<span class="pf-mini">${r.consistency_streak}d streak</span>`:''}
         ${vi.approved?`<span class="pf-mini">${vi.approved} ideas approved</span>`:''}</div>
       <div class="pf-sc">${_pfVal(r)}</div>
     </div>`;}).join('');
@@ -2119,7 +2116,7 @@ function pfBreakdown(tid){
   showModal(`Why am I ranked #${r.rank}? \u2014 ${esc(r.name)}`,
     `<div class="pfb">
       <div class="pfb-overall"><div><div class="pfb-o-lbl">Overall Score</div><div class="pfb-o-sc">${r.score}<small>/100</small></div></div>
-        <div class="pfb-o-side">${_pfChange(r)}${(_pfState.who==='a')?`<span class="pf-wl pf-wl-${(r.workload_level||'standard').replace(/ /g,'').toLowerCase()}">${esc(r.workload_level||'Standard')} workload</span>${r.limited_workload?'<span class="pf-lim">Limited workload data</span>':''}`:''}</div></div>
+        <div class="pfb-o-side">${_pfChange(r)}</div></div>
       <div class="pfb-bars">${bars}</div>
       <div class="pfb-areas"><div><div class="pfb-h">Strong areas</div>${strong}</div><div><div class="pfb-h">Areas to improve</div>${improve}</div></div>
       ${viHtml}
@@ -2189,6 +2186,33 @@ function _ensurePfCss(){
     '.pf-mini{font-size:.64rem;color:var(--text-muted);font-weight:600}',
     '.pf-sc{font-weight:800;color:#8a6d10;font-size:1.1rem;min-width:64px;text-align:right}',
     '.pf-note{font-size:.72rem;color:var(--text-muted);text-align:center;margin-top:14px}',
+    // ---- Phone responsive: chhoti screen par row ko compact + wrap ----
+    '@media(max-width:560px){',
+    '  .pf-row{grid-template-columns:auto 1fr auto;gap:8px;padding:11px 12px;border-radius:12px}',
+    '  .pf-rk{min-width:34px;font-size:.9rem}',
+    '  .pf-who{gap:8px;min-width:0}',
+    '  .pf-who>div{min-width:0}',
+    '  .pf-nm{font-size:.92rem;white-space:normal;word-break:break-word;line-height:1.15}',
+    '  .pf-nmwrap{white-space:normal}',
+    '  .pf-sub{font-size:.6rem;padding:1px 7px}',
+    '  .pf-subs{margin-top:3px}',
+    '  .pf-kpi{display:none}',                 // streak/ideas mobile par hide (space ke liye)
+    '  .pf-sc{grid-column:3;min-width:auto;font-size:1rem;white-space:nowrap}',
+    '  .pf-sc small{display:none}',            // "/100" hata do mobile par
+    '  .pf-who img,.pf-ini{width:36px !important;height:36px !important;font-size:.85rem !important}',
+    '  .pf-podium{gap:7px;margin:4px 0 18px}',
+    '  .pf-pod{max-width:33%}',
+    '  .pf-pod-nm{font-size:.74rem}',
+    '  .pf-pod.first .pf-pod-nm{font-size:.8rem}',
+    '  .pf-pod-sc{font-size:.9rem}.pf-pod-sc small{display:none}',
+    '  .pf-pod-av img,.pf-pod-av .pf-ini{width:52px !important;height:52px !important}',
+    '}',
+    '@media(max-width:380px){',
+    '  .pf-row{gap:6px;padding:10px 10px}',
+    '  .pf-nm{font-size:.86rem}',
+    '  .pf-sc{font-size:.94rem}',
+    '  .pf-pod-nm{font-size:.68rem}',
+    '}',
     // breakdown drawer
     '.pfb-overall{display:flex;justify-content:space-between;align-items:center;gap:12px;background:linear-gradient(135deg,#fffdf7,#faf4e3);border:1px solid #ece1c6;border-radius:14px;padding:16px 18px;margin-bottom:16px}',
     '.pfb-o-lbl{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:#9a854a;font-weight:800}',
