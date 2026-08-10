@@ -2125,7 +2125,16 @@ def teacher_my_photo(db: Session = Depends(get_db), current_user=Depends(get_tea
     tp = get_teacher_profile(current_user, db)
     if not tp.photo_b64:
         raise HTTPException(status_code=404, detail="No photo")
-    return __import__("r2_storage").photo_response(tp.photo_b64)
+    resp = __import__("r2_storage").photo_response(tp.photo_b64)
+    # v165: this URL is identical for every teacher (the user is resolved from the
+    # token), so the browser must never cache the response/redirect - otherwise the
+    # next user who logs in on the same browser gets served the previous user's photo.
+    try:
+        resp.headers["Cache-Control"] = "no-store, private, max-age=0"
+        resp.headers["Vary"] = "Authorization"
+    except Exception:
+        pass
+    return resp
 
 @router.get("/teacher/{tid}/photo")
 def teacher_peer_photo(tid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):

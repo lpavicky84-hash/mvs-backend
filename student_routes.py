@@ -1058,7 +1058,15 @@ def student_my_photo(db: Session = Depends(get_db), current_user=Depends(get_stu
     sp = get_student_profile(current_user, db)
     if not sp.photo_b64:
         raise HTTPException(status_code=404, detail="No photo")
-    return __import__("r2_storage").photo_response(sp.photo_b64)
+    resp = __import__("r2_storage").photo_response(sp.photo_b64)
+    # v165: same-for-everyone URL (user resolved from token) -> never let the browser
+    # cache it, else the next user on the same browser sees the previous user's photo.
+    try:
+        resp.headers["Cache-Control"] = "no-store, private, max-age=0"
+        resp.headers["Vary"] = "Authorization"
+    except Exception:
+        pass
+    return resp
 
 @router.get("/has-photo")
 def student_has_photo(db: Session = Depends(get_db), current_user=Depends(get_student)):

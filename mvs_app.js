@@ -550,6 +550,7 @@ async function _restoreSession(){
   let s=null; try{ s=JSON.parse(localStorage.getItem('mvs_sess')||'null'); }catch(e){}
   if(!s||!s.t||!s.r) return false;
   TOKEN=s.t; ROLE=s.r; NAME=s.n||'';
+  window._sessNonce=window._sessNonce||Date.now();  // v165: ensure the my-photo cache-buster exists on restored sessions too
   try{
     const ep=ROLE==='teacher'?'/api/teacher/profile':(ROLE==='student'?'/api/student/profile':'/api/admin/me');
     await api(ep);            // token abhi valid hai? (expire ho gaya to catch me login)
@@ -602,6 +603,7 @@ async function studentDirectLogin(){
   try{
  const data=await api('/api/auth/login','POST',{user_id:uid,password:pass});
  _apiBust(); TOKEN=data.access_token; ROLE=data.role; NAME=data.name;
+ _freshSessionPhotos();  // v165: cross-user photo leak fix
  document.getElementById('login-screen').classList.remove('active');
  openStudent();
   }catch(e){ toast(e.message,true); }
@@ -622,6 +624,7 @@ async function doLogin(){
  ]);
  if(data.role!==CURRENT_PORTAL){ toast(`This is the ${CURRENT_PORTAL} login, but this account belongs to a ${data.role}!`,true); return; }
  _apiBust(); TOKEN=data.access_token; ROLE=data.role; NAME=data.name;
+ _freshSessionPhotos();  // v165: cross-user photo leak fix
  document.getElementById('login-screen').classList.remove('active');
  if(ROLE==='teacher') openTeacher();
  else if(ROLE==='admin') openAdmin();
@@ -894,7 +897,7 @@ async function openTeacherProfile(){
   showModal(' My Profile',
  `<div class="tprof-hero"><div class="tprof-ava" id="tprof-ava">${esc(initials(p.name||'T'))}</div><div style="min-width:0"><div style="font-weight:900;font-size:1.15rem">${esc(p.name||'Teacher')}${suf}</div><div style="font-size:.76rem;color:var(--text-muted);font-weight:700">${esc(p.user_id||'')}</div><div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">${(p.subjects||[]).map(s=>`<span class="xm-chip">${esc(s)}</span>`).join('')||'<span style="font-size:.76rem;color:var(--text-muted)">No subjects set</span>'}</div></div></div><div class="tprof-grid">${cell('Teacher ID',esc(p.user_id||''))}${cell('Phone',esc(p.phone||''))}${cell('Batch',esc(p.batch||''))}${cell('Classes',clsTxt)}</div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
-  if(p.has_photo) _loadPhotoInto('tprof-ava','/api/teacher/my-photo');
+  if(p.has_photo) _loadPhotoInto('tprof-ava',_selfPhoto('teacher'));
 }
 // ===== ADMIN PDF UPLOAD =====
 async function pdfSubjOptions(selId,cls){
@@ -2522,10 +2525,33 @@ async function submitRequestClass(){
 }
 // ===== TEACHER: MY STUDENTS (subject-wise counts) =====
 // ===== AVATARS / PHOTOS =====
+// v165 cross-user photo leak fix. The "own photo" endpoints (/api/{role}/my-photo)
+// use the SAME URL for every user (the server resolves the user from the token). After
+// the R2 migration these return a 302 redirect to the user's photo, and the browser was
+// caching that redirect against the shared URL — so the next user who logged in on the
+// same tab saw the previous user's photo. We defeat this with a per-login nonce appended
+// to every "my-photo" fetch, and by purging all photo caches + avatar DOM on each login.
+function _selfPhoto(role){
+  const n=window._sessNonce||'';
+  return '/api/'+(role==='teacher'?'teacher':role==='admin'?'admin':'student')+'/my-photo'+(n?('?v='+n):'');
+}
+function _freshSessionPhotos(){
+  window._sessNonce=Date.now();
+  try{ for(var _u in _imgBlobCache){ try{ URL.revokeObjectURL(_imgBlobCache[_u]); }catch(_){} delete _imgBlobCache[_u]; } }catch(e){}
+  try{ window._photoUrls={}; }catch(e){}
+  try{ if(window._myPhotoUrl){ URL.revokeObjectURL(window._myPhotoUrl); } }catch(e){}
+  window._myPhotoUrl=null;
+  try{
+    document.querySelectorAll('.avatar,.topbar-avatar,#t-avatar,#t-topavatar,#s-avatar,#s-topavatar,#a-avatar,#tprof-ava').forEach(function(a){
+      var im=a.querySelector&&a.querySelector('img'); if(im) im.remove();
+      a.style.backgroundImage=''; a.classList.remove('has-photo');
+    });
+  }catch(e){}
+}
 async function loadTopAvatar(role){
   const elId=role==='teacher'?'t-topavatar':'s-topavatar';
   const sideId=role==='teacher'?'t-avatar':'s-avatar';
-  const url=role==='teacher'?'/api/teacher/my-photo':'/api/student/my-photo';
+  const url=_selfPhoto(role);
   const el=document.getElementById(elId);
   if(el) el.textContent=initials(NAME);
   try{
@@ -2792,7 +2818,7 @@ async function loadTTimetable(){
       const me=await api('/api/teacher/profile');
       window._ttTeacherMap={};
       let url=null;
-      try{ const r=await fetch(API+'/api/teacher/my-photo',{headers:{Authorization:'Bearer '+TOKEN}}); if(r.ok) url=URL.createObjectURL(await r.blob()); }catch(e){}
+      try{ const r=await fetch(API+_selfPhoto('teacher'),{headers:{Authorization:'Bearer '+TOKEN}}); if(r.ok) url=URL.createObjectURL(await r.blob()); }catch(e){}
       [...new Set(_ttEntries.map(e=>e.subject))].forEach(sub=>{ window._ttTeacherMap[sub]={name:me.name||NAME,url}; });
     }catch(e){ window._ttTeacherMap=window._ttTeacherMap||{}; }
     renderStudentTimetable(tFilteredTT(),'t-tline-wrap',{onEdit:true,onDelete:'deleteTTEntry',onClassFilter:'tClassFilter',activeClass:_ttClass,tipTeacherMap:window._ttTeacherMap||{},onLecture:true,onComplete:'openClassReport',emptyMsg:'No timetable for your subjects yet.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'});
@@ -3948,7 +3974,7 @@ async function examPdfPremium(id,mode,medium){
     }
     let logo=null;
     try{
-      const lr=await fetch(API+'/api/teacher/my-photo',{headers:{Authorization:'Bearer '+TOKEN}});
+      const lr=await fetch(API+_selfPhoto('teacher'),{headers:{Authorization:'Bearer '+TOKEN}});
       if(lr.ok){ const lb=await lr.blob(); logo=await new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=()=>res(null); fr.readAsDataURL(lb); }); }
     }catch(e){}
     const qLbl=medium==='hi'?'\u092a\u094d\u0930\u0936\u094d\u0928':'Question';
@@ -10299,7 +10325,7 @@ function aRenderStudents(){
       <div class="seg">${segB('','All Students',ov.total)}${segB('mvs_portal','MVS Portal',ov.mvs_portal)}${segB('mvs_app','MVS App',ov.mvs_app)}</div>
       <button class="pp-btn" onclick="openPortalPending()">${ic('bell')} Portal Pending<span class="pp-n">${ov.portal_reachable?ov.pending_count:'?'}</span></button>
     </div>`:'';
-  el.innerHTML=`<div class="card-header" style="padding:0 4px 12px;border:none"><h3 style="font-size:1.3rem">Students</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-success btn-sm" onclick="openBulkPhone()">${ic('users')} Add by Phone</button><button class="btn btn-ghost btn-sm" onclick="openExcelUpload()">${ic('upload')} Excel Upload</button><button class="btn btn-primary btn-sm" onclick="openAddStudent()">${ic('user')} Add Student</button><button class="btn btn-success btn-sm" onclick="openWhatsApp()">${ic('megaphone')} WhatsApp</button><button class="btn btn-ghost btn-sm" onclick="openPortalSync()">${ic('refresh')} Sync Portal</button><button class="btn btn-ghost btn-sm" onclick="openMediumFix()">${ic('book')} Fix Medium</button><button class="btn btn-ghost btn-sm" onclick="openSsoCheck()">${ic('shield')} Portal Check</button><button class="btn btn-danger btn-sm" onclick="openDeleteAllStudents()">${ic('trash')} Delete All</button></div></div>${srcChips}
+  el.innerHTML=`<div class="card-header" style="padding:0 4px 12px;border:none"><h3 style="font-size:1.3rem">Students</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-success btn-sm" onclick="openBulkPhone()">${ic('users')} Add by Phone</button><button class="btn btn-ghost btn-sm" onclick="openExcelUpload()">${ic('upload')} Excel Upload</button><button class="btn btn-success btn-sm" onclick="openFormUpload()">${ic('upload')} Form Upload</button><button class="btn btn-primary btn-sm" onclick="openAddStudent()">${ic('user')} Add Student</button><button class="btn btn-success btn-sm" onclick="openWhatsApp()">${ic('megaphone')} WhatsApp</button><button class="btn btn-ghost btn-sm" onclick="openPortalSync()">${ic('refresh')} Sync Portal</button><button class="btn btn-ghost btn-sm" onclick="openMediumFix()">${ic('book')} Fix Medium</button><button class="btn btn-ghost btn-sm" onclick="openSsoCheck()">${ic('shield')} Portal Check</button><button class="btn btn-danger btn-sm" onclick="openDeleteAllStudents()">${ic('trash')} Delete All</button></div></div>${srcChips}
     ${cards.join('')}
     <div class="card"><div class="card-body">
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"><input id="a-stu-q" class="form-control" style="flex:1;min-width:180px" placeholder="Search name, phone, ID, email..." value="${esc(_stuSearch)}" oninput="aStuSearch(this.value,this)"><select class="form-control" style="width:auto" onchange="aStuSize(this.value)">${[10,25,50,100].map(n=>`<option value="${n}"${_stuSize===n?' selected':''}>${n} / page</option>`).join('')}</select></div>
@@ -11225,7 +11251,7 @@ async function loadSProfile(){
     </div></div>`;
     // load photo if set
     if(p.has_photo){
-      try{ const r=await fetch(API+'/api/student/my-photo',{headers:{Authorization:'Bearer '+TOKEN}});
+      try{ const r=await fetch(API+_selfPhoto('student'),{headers:{Authorization:'Bearer '+TOKEN}});
         if(r.ok){ const u=URL.createObjectURL(await r.blob()); const d=document.getElementById('prof-photo'); d.style.backgroundImage=`url(${u})`; d.textContent=''; } }catch(e){}
     }
   }catch(e){ el.innerHTML=errHtml(e); }
@@ -12658,7 +12684,7 @@ async function _ttCardLogo(el){
   if(!el||window._ttSelfPhoto===false) return;
   try{
     if(!window._ttSelfPhoto){
-      const r=await fetch(API+'/api/teacher/my-photo',{headers:{Authorization:'Bearer '+TOKEN}});
+      const r=await fetch(API+_selfPhoto('teacher'),{headers:{Authorization:'Bearer '+TOKEN}});
       if(!r.ok) throw new Error('x');
       const b=await r.blob(); if(!b.size) throw new Error('x');
       window._ttSelfPhoto=URL.createObjectURL(b);
@@ -14500,6 +14526,85 @@ function showCredentials(role,name,uid,pass){
 }
 
 // ===== EXCEL BULK UPLOAD (Students) =====
+// ===== Google Form onboarding upload (name/phone/class/session/medium only) =====
+// Students pick their Batch + Subjects themselves on first login.
+function openFormUpload(){
+  showModal('Google Form Upload (New Students)',
+ `<div class="alert alert-info">Upload the sheet exported from your Google Form. Only <strong>Name</strong>, <strong>Phone</strong>, <strong>Class</strong>, <strong>Exam Session</strong> and <strong>Medium</strong> are read. Each student logs in with their phone number and then picks their <strong>Batch and Subjects</strong> on their first login.</div><div class="form-group"><label>Form Sheet (.xlsx / .csv)</label><input type="file" class="form-control" id="form-file" accept=".xlsx,.xls,.csv" onchange="previewFormUpload()"></div><div id="form-preview"></div><label style="display:flex;align-items:center;gap:8px;font-size:.82rem;margin:6px 0"><input type="checkbox" id="form-wa"> Send a WhatsApp welcome to the new students after import</label><div id="form-status"></div>`,
+ `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="form-btn" onclick="processFormUpload()">Import Students</button>`);
+}
+function _parseFormRows(rows){
+  const out=[];
+  for(const row of rows){
+    const name=_pickCol(row,['Name','Student Name','Full Name']);
+    const phone=_pickCol(row,['Registered Phone Number','Phone Number','Phone No.','Phone No','Phone','Mobile','WhatsApp Number']);
+    const cls=_pickCol(row,['Class','Standard','Grade']);
+    const session=_pickCol(row,['Exam Session','Session','NIOS Session']);
+    const medium=_pickCol(row,['Medium of Study','Medium','Language']);
+    const digits=(phone||'').replace(/\D/g,'');
+    if(digits.length<10) continue;
+    out.push({name, phone:digits.slice(-10), class:cls, session, medium});
+  }
+  return out;
+}
+async function previewFormUpload(){
+  const fi=document.getElementById('form-file'); const pv=document.getElementById('form-preview');
+  const _st=document.getElementById('form-status'); if(_st) _st.innerHTML='';
+  if(!fi.files.length){ pv.innerHTML=''; return; }
+  try{
+    const data=await fi.files[0].arrayBuffer();
+    const wb=XLSX.read(data,{type:'array'});
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+    const parsed=_parseFormRows(rows);
+    if(parsed.length===0){ pv.innerHTML=`<div class="alert alert-danger">No valid rows found. The sheet needs a <strong>Name</strong> and a <strong>Phone Number</strong> column (10 digits).</div>`; return; }
+    const uniq=new Map(); parsed.forEach(p=>uniq.set(p.phone,p));
+    const dup=parsed.length-uniq.size;
+    const sample=[...uniq.values()].slice(0,3).map(p=>`<div class="slist-row"><div class="slist-info"><div class="slist-name">${esc(p.name||'-')}</div><div class="slist-meta">${esc(p.phone)} · ${esc(p.class||'class ?')} · ${esc(p.medium||'medium ?')} · ${esc(p.session||'session ?')}</div></div></div>`).join('');
+    pv.innerHTML=`<div class="alert alert-success"><strong>${uniq.size}</strong> unique students found${dup>0?` (${dup} duplicate inside the sheet - auto-removed)`:''}. Batch and Subjects will be chosen by each student on their first login.</div>${sample}`;
+  }catch(e){ pv.innerHTML=`<div class="alert alert-danger">File read error: ${esc(e.message)}</div>`; }
+}
+async function processFormUpload(){
+  const fi=document.getElementById('form-file');
+  if(!fi.files.length){ toast('Please select a file.',true); return; }
+  const btn=document.getElementById('form-btn'); btn.disabled=true; btn.textContent='Importing...';
+  const status=document.getElementById('form-status');
+  try{
+    const data=await fi.files[0].arrayBuffer(); const wb=XLSX.read(data,{type:'array'});
+    let parsed=_parseFormRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]));
+    if(!parsed.length){ toast('No valid students found.',true); btn.disabled=false; btn.textContent='Import Students'; return; }
+    const map=new Map(); parsed.forEach(p=>map.set(p.phone,p));
+    const deduped=[...map.values()];
+    const inSheetDup=parsed.length-deduped.length;
+    document.getElementById('form-preview').innerHTML='';
+    status.innerHTML=`<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill" id="fimp-fill"></div></div><div class="prog-text" id="fimp-text">0% - preparing...</div></div>`;
+    const batchSize=100; let created=0, skipped=0, done=0, dups=[];
+    for(let i=0;i<deduped.length;i+=batchSize){
+      const batch=deduped.slice(i,i+batchSize);
+      const r=await api('/api/admin/students/bulk-import-basic','POST',{students:batch});
+      created+=r.created||0; skipped+=r.skipped||0; dups=dups.concat(r.duplicates||[]); done+=batch.length;
+      const pct=Math.round(done/deduped.length*100);
+      const f=document.getElementById('fimp-fill'), t=document.getElementById('fimp-text');
+      if(f) f.style.width=pct+'%'; if(t) t.textContent=`${pct}% - ${done}/${deduped.length} students`;
+    }
+    const dupRows=dups.map(d=>`<div class="topper-row"><div style="flex:1;min-width:0"><b>${esc(d.existing_name||d.sheet_name)}</b> <span class="topper-sub">${esc(d.phone)} · ${esc(d.existing_user_id||'')} · batch: ${esc(d.existing_batch||'-')}</span></div><span class="xm-chip">ALREADY EXISTS</span></div>`).join('');
+    status.innerHTML=`<div class="alert alert-success"><strong>Import complete.</strong><br><strong>${created}</strong> new students added<br>${dups.length?`<strong>${dups.length}</strong> already existed (skipped)<br>`:''}${inSheetDup>0?`<strong>${inSheetDup}</strong> duplicates inside the sheet (auto-removed)<br>`:''}${skipped>0?`<strong>${skipped}</strong> invalid phone skipped<br>`:''}Each student will choose their Batch and Subjects on their first login.</div>${dups.length?`<div style="font-size:.75rem;font-weight:800;color:var(--text-muted);margin:12px 0 6px">ALREADY EXISTED (${dups.length})</div><div class="hide-scroll" style="max-height:250px">${dupRows}</div>`:''}`;
+    toast(`${created} new students added`);
+    if(created>0 && (document.getElementById('form-wa')||{}).checked){
+      try{
+        status.innerHTML+=`<div id="form-wa-out" style="margin-top:10px"><div class="spinner"></div> Sending WhatsApp welcome...</div>`;
+        let afterId=0,waSent=0,waFailed=0,more=true;
+        while(more){
+          const wr=await api('/api/admin/whatsapp/send-welcome','POST',{all_pending:true,after_id:afterId,limit:50});
+          waSent+=wr.sent||0; waFailed+=wr.failed||0; afterId=wr.last_id||afterId; more=!!wr.has_more;
+          const o=document.getElementById('form-wa-out'); if(o) o.innerHTML=`<div class="spinner" style="width:16px;height:16px"></div> WhatsApp: ${waSent} sent...`;
+        }
+        const o=document.getElementById('form-wa-out'); if(o) o.innerHTML=`<div class="alert ${waFailed?'alert-warning':'alert-success'}">WhatsApp: <b>${waSent}</b> sent · <b>${waFailed}</b> failed</div>`;
+      }catch(we){ const o=document.getElementById('form-wa-out'); if(o) o.innerHTML=`<div class="alert alert-warning">WhatsApp send skipped: ${esc(we.message)}</div>`; }
+    }
+    btn.textContent='Done'; btn.disabled=false; btn.setAttribute('onclick','closeModal()');
+    loadAStudents();
+  }catch(e){ status.innerHTML=`<div class="alert alert-danger">Import error: ${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Import Students'; }
+}
 function openExcelUpload(){
   showModal('App Sales Sheet Upload',
  `<div class="alert alert-info">Upload the Excel/CSV downloaded from your app's (Appx) <strong>Sales</strong> section here. The system automatically extracts the <strong>Name</strong>, <strong>Phone No.</strong> and <strong>Item (Batch)</strong> details and creates students — each student logs in with their phone and sees their batch.</div><div class="form-group"><label>Sales File (.xlsx / .csv)</label><input type="file" class="form-control" id="excel-file" accept=".xlsx,.xls,.csv" onchange="previewExcel()"></div><div id="excel-preview"></div><label style="display:flex;align-items:center;gap:8px;font-size:.82rem;margin:6px 0"><input type="checkbox" id="excel-wa"> Import ke baad naye students ko WhatsApp welcome bhejo</label><div id="excel-status"></div>`,
@@ -14997,6 +15102,7 @@ async function mvsSsoFromHash(){
     if(d.found){
       var data=await api('/api/auth/login','POST',{user_id:d.user_id,password:d.password});
       _apiBust(); TOKEN=data.access_token; ROLE=data.role; NAME=data.name;
+      _freshSessionPhotos();  // v165: cross-user photo leak fix
       document.getElementById('landing').style.display='none';
       document.getElementById('login-screen').classList.remove('active');
       _ssoOverlay(false);

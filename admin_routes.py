@@ -2249,6 +2249,114 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
             "message": f"{created} new students, {updated} updated, {skipped} skipped (invalid phone), {len(duplicates)} duplicate(s) already on MVS Portal."}
 
 
+@router.post("/students/bulk-import-basic")
+def admin_bulk_import_basic(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Google Form onboarding sheet import.
+
+    Sirf name / phone / class / exam_session / medium leta hai. Batch aur Subjects
+    JAAN-BOOJH KE khaali chhodta hai (subjects=[], batch_name="") taaki student pehle
+    login par khud choose kare (openStudent -> showSubjectScreen wahi flow). MVS Portal
+    cross-reference bilkul nahi hota — clean self-select onboarding. Login credentials
+    baaki students jaise hi (user_id = MVSS####, password = phone)."""
+    from sqlalchemy.exc import IntegrityError
+
+    def _norm_cls(v):
+        d = "".join(ch for ch in str(v or "") if ch.isdigit())
+        if "12" in d:
+            return "12"
+        if "10" in d:
+            return "10"
+        return ""
+
+    def _norm_med(v):
+        t = str(v or "").strip().lower()
+        if t.startswith("hin") or "\u0939\u093f\u0902" in t:
+            return "Hindi"
+        if t.startswith("eng") or "\u0905\u0902\u0917" in t:
+            return "English"
+        return ""
+
+    rows = payload.get("students", []) or []
+    created, skipped = 0, 0
+    duplicates = []
+
+    # next MVSS id -> max EK BAAR, phir sirf counter (per-row scan nahi)
+    _mx = (db.query(User.user_id).filter(User.user_id.like("MVSS%"))
+           .order_by(User.user_id.desc()).first())
+    _ctr = [1]
+    if _mx and _mx[0]:
+        _m = re.match(r"MVSS(\d+)", _mx[0])
+        if _m:
+            _ctr[0] = int(_m.group(1)) + 1
+
+    def _next_uid():
+        c = "MVSS%04d" % _ctr[0]
+        _ctr[0] += 1
+        return c
+
+    seen = set()
+    for r in rows:
+        phone = "".join(ch for ch in str(r.get("phone", "")) if ch.isdigit())
+        if len(phone) < 10:
+            skipped += 1
+            continue
+        phone = phone[-10:]
+        if phone in seen:
+            continue
+        seen.add(phone)
+        name = (r.get("name") or "").strip() or ("Student " + phone[-4:])
+        cls = _norm_cls(r.get("class"))
+        med = _norm_med(r.get("medium"))
+        sess = (r.get("session") or "").strip()
+
+        existing = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
+        if existing:
+            # already added — chhod do (unka profile/selection touch nahi karte)
+            duplicates.append({"phone": phone, "sheet_name": name,
+                               "existing_name": existing.user.name if existing.user else "",
+                               "existing_user_id": existing.user.user_id if existing.user else "",
+                               "existing_batch": existing.batch_name or ""})
+            continue
+
+        # collision-safe insert (savepoint retry) — koi dup id/phone batch ko na todhe
+        u = None
+        for _try in range(6):
+            cand = _next_uid()
+            sp = db.begin_nested()
+            try:
+                u = User(name=name, user_id=cand, password=hash_password(phone),
+                         role=UserRole.student, is_active=True)
+                db.add(u)
+                db.flush()
+                sp.commit()
+                break
+            except IntegrityError:
+                sp.rollback()
+                u = None
+        if u is None:
+            skipped += 1
+            continue
+
+        # subjects=[] aur batch_name="" -> pehle login par student choose karega
+        _nsp = StudentProfile(user_id=u.id, phone=phone, subjects=[], class_name="",
+                              batch_name="", email=None, is_verified=True,
+                              plain_password=phone, source="mvs_app",
+                              medium=(med or None), class_level=(cls or None))
+        if sess:
+            try:
+                _nsp.exam_session = sess
+            except Exception:
+                pass
+        db.add(_nsp)
+        created += 1
+
+    db.commit()
+    return {"created": created, "skipped": skipped, "duplicates": duplicates,
+            "message": (f"{created} new students added, {len(duplicates)} already existed (skipped), "
+                        f"{skipped} invalid phone skipped. Each student picks their Batch and "
+                        f"Subjects on their first login.")}
+
+
 @router.post("/students/bulk-analyze")
 def admin_bulk_analyze(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
     """Import se PEHLE ka breakdown (kuch add nahi hota):
