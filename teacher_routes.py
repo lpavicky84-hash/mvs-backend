@@ -384,19 +384,23 @@ def get_doubts(
     current_user=Depends(get_teacher)
 ):
     tp = get_teacher_profile(current_user, db)
+    # blob columns (voice/image/attachment base64) list me load NAHI karte -> tez + kam RAM.
+    # has_* neeche ek halki length-query se aata hai.
+    _dfr = (defer(Doubt.image_b64), defer(Doubt.audio_b64),
+            defer(Doubt.answer_audio_b64), defer(Doubt.answer_attach_b64))
     # Unassigned doubts (creation ke waqt koi teacher match nahi hua) — agar is
     # teacher ke subject ke hain to claim kar lo taaki panel pe dikhein aur
     # answer/respond/resolve (jo teacher_id se filter karte hain) chal sakein.
     _claimed = False
-    for d in db.query(Doubt).filter(Doubt.teacher_id == None,
+    for d in db.query(Doubt).options(*_dfr).filter(Doubt.teacher_id == None,
                                     Doubt.assigned_to_admin == False).all():
         if _teacher_teaches(tp, d.subject):
             d.teacher_id = tp.id
             _claimed = True
     if _claimed:
         db.commit()
-    own = db.query(Doubt).filter(Doubt.teacher_id == tp.id).all()
-    away = (db.query(Doubt).filter(Doubt.assigned_by_teacher_id == tp.id, Doubt.teacher_id != tp.id).all())
+    own = db.query(Doubt).options(*_dfr).filter(Doubt.teacher_id == tp.id).all()
+    away = (db.query(Doubt).options(*_dfr).filter(Doubt.assigned_by_teacher_id == tp.id, Doubt.teacher_id != tp.id).all())
     rows, seen = [], set()
     for d in own + away:
         if d.id in seen:
@@ -406,16 +410,24 @@ def get_doubts(
     if status:
         rows = [d for d in rows if (d.status.value if hasattr(d.status, "value") else d.status) == status]
     rows.sort(key=lambda d: (d.created_at or datetime.now()), reverse=True)
+    # has_* flags — blob load kiye bina, sirf length se (ek-ek query, N+1 nahi)
+    _rids = [d.id for d in rows]
+    _img_ids, _voice_ids, _ans_voice_ids, _ans_file_ids = set(), set(), set(), set()
+    if _rids:
+        _img_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.image_b64) > 0).all()}
+        _voice_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.audio_b64) > 0).all()}
+        _ans_voice_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.answer_audio_b64) > 0).all()}
+        _ans_file_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.answer_attach_b64) > 0).all()}
     out = []
     for d in rows:
         sname = d.student.user.name if d.student and d.student.user else "Student"
         is_away = (d.teacher_id != tp.id) or bool(getattr(d, "assigned_to_admin", False))
         out.append({"id": d.id, "student_name": sname, "student_id": d.student_id,
                     "subject": _subj_canon(d.subject), "topic": d.topic,
-                    "question": d.question, "has_image": bool(d.image_b64),
+                    "question": d.question, "has_image": (d.id in _img_ids),
                     "attach_mime": d.attach_mime, "attach_name": d.attach_name,
-                    "has_voice": bool(d.audio_b64), "has_answer_voice": bool(d.answer_audio_b64),
-                    "has_answer_file": bool(d.answer_attach_b64), "answer_attach_mime": d.answer_attach_mime,
+                    "has_voice": (d.id in _voice_ids), "has_answer_voice": (d.id in _ans_voice_ids),
+                    "has_answer_file": (d.id in _ans_file_ids), "answer_attach_mime": d.answer_attach_mime,
                     "answer": d.answer, "status": d.status.value if hasattr(d.status, "value") else d.status,
                     "created_at": ist_iso(d.created_at),
                     "assigned_away": is_away,

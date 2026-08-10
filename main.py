@@ -194,7 +194,8 @@ def _auto_migrate_loop():
     except Exception:
         return
     kinds = ['photos_student', 'photos_teacher', 'materials', 'notes', 'lecture_pdf',
-             'lecture_dpp', 'thumbnails', 'doubt_img', 'doubt_ans_file', 'dpp_answers',
+             'lecture_dpp', 'thumbnails', 'doubt_img', 'doubt_audio', 'doubt_ans_audio',
+             'doubt_ans_file', 'dpp_answers',
              'exam_q_img', 'exam_q_ans_img', 'exam_q_alt_img', 'dpp_q_pdf', 'dpp_s_pdf',
              'exam_ans_img', 'lecture_q_img']
     time.sleep(25)  # app ko boot hone do

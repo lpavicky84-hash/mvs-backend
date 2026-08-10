@@ -2500,11 +2500,23 @@ def admin_notif_read(notif_id: int, db: Session = Depends(get_db), current_user=
 @router.get("/doubts")
 def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import Doubt, StudentProfile, TeacherProfile
-    q = db.query(Doubt).order_by(Doubt.created_at.desc())
+    # blob columns list me load NAHI karte -> tez + kam RAM (admin saare doubts dekhta hai).
+    q = db.query(Doubt).options(
+        defer(Doubt.image_b64), defer(Doubt.audio_b64),
+        defer(Doubt.answer_audio_b64), defer(Doubt.answer_attach_b64)
+    ).order_by(Doubt.created_at.desc())
     if status in ("pending", "resolved"):
         q = q.filter(Doubt.status == status)
+    _rows = q.all()
+    _rids = [d.id for d in _rows]
+    _img_ids, _voice_ids, _ans_voice_ids, _ans_file_ids = set(), set(), set(), set()
+    if _rids:
+        _img_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.image_b64) > 0).all()}
+        _voice_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.audio_b64) > 0).all()}
+        _ans_voice_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.answer_audio_b64) > 0).all()}
+        _ans_file_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.answer_attach_b64) > 0).all()}
     out = []
-    for d in q.all():
+    for d in _rows:
         sp = db.query(StudentProfile).filter(StudentProfile.id == d.student_id).first()
         tp = db.query(TeacherProfile).filter(TeacherProfile.id == d.teacher_id).first() if d.teacher_id else None
         out.append({
@@ -2515,10 +2527,10 @@ def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depend
             "subject": (_SR.canon_display(d.subject) if _SR else d.subject),
             "topic": d.topic,
             "question": d.question,
-            "has_image": bool(d.image_b64),
+            "has_image": (d.id in _img_ids),
             "attach_mime": d.attach_mime, "attach_name": d.attach_name,
-            "has_voice": bool(d.audio_b64), "has_answer_voice": bool(d.answer_audio_b64),
-            "has_answer_file": bool(d.answer_attach_b64), "answer_attach_mime": d.answer_attach_mime,
+            "has_voice": (d.id in _voice_ids), "has_answer_voice": (d.id in _ans_voice_ids),
+            "has_answer_file": (d.id in _ans_file_ids), "answer_attach_mime": d.answer_attach_mime,
             "answer": d.answer,
             "answer_image_link": d.answer_image_link,
             "status": d.status.value if hasattr(d.status, "value") else d.status,
