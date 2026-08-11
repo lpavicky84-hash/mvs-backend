@@ -4835,6 +4835,79 @@ def _month_activity(db, tp, month):
     }
 
 
+_RANK_COMP_LABELS = {
+    "teaching": "Teaching & Class Delivery",
+    "content": "Content Production",
+    "targets": "Monthly Target Achievement",
+    "project": "Projects (One-Shot / Revision)",
+    "student_support": "Doubt Resolution (15h SLA)",
+    "tests": "Tests & Assessment",
+    "task_discipline": "Task Discipline",
+    "consistency": "Consistency & Regularity",
+    "video_initiative": "Video Initiative",
+}
+_RANK_COMP_ORDER = ["teaching", "content", "targets", "project", "student_support",
+                    "tests", "task_discipline", "consistency", "video_initiative"]
+
+
+def _ranking_pay(db, tp, month):
+    """RANKING-BASED PAYOUT — base = max monthly pay x (performance score %).
+    Components leaderboard ke SAME ranking components se aate hain (workload + targets
+    aware). Isse '1 class = poori pay' wala purana ratio-issue khatam, aur targets
+    ranking se hi. Overachievement rupees nahi deta (payout ke liye 100% par cap)."""
+    import perf_engine as _pe
+    cfg = get_pay_config(db, tp.id)
+    max_pay = sum(int(getattr(cfg, k) or 0) for k in EARNINGS_PAY_FIELDS)
+    overall = 0.0
+    comps = {}
+    wl_level, wl_pct, limited = "", None, False
+    try:
+        board = _pe.compute(db, month)
+        row = next((r for r in board.get("results", []) if r.get("teacher_id") == tp.id), None)
+        if row:
+            overall = float(row.get("score") or 0)
+            comps = row.get("components") or {}
+            wl_level = row.get("workload_level") or ""
+            wl_pct = row.get("workload_pct")
+            limited = bool(row.get("limited_workload"))
+    except Exception:
+        import traceback
+        traceback.print_exc()
+    pay_ratio = min(max(overall, 0.0), 100.0) / 100.0
+    base_earned = int(round(max_pay * pay_ratio))
+    # component rupees jo base_earned me EXACTLY sum hote hain (N/A weight redistribute)
+    contribs = {}
+    tot = 0.0
+    for c, cd in comps.items():
+        if not cd or cd.get("na") or cd.get("raw") is None:
+            continue
+        contribs[c] = (min(float(cd.get("raw") or 0), 100.0) / 100.0) * float(cd.get("weight") or 0)
+        tot += contribs[c]
+    ordered = [c for c in _RANK_COMP_ORDER if c in comps] + [c for c in comps if c not in _RANK_COMP_ORDER]
+    applicable = [c for c in ordered if c in contribs]
+    lines = []
+    running = 0
+    for c in ordered:
+        cd = comps.get(c) or {}
+        na = bool(cd.get("na") or cd.get("raw") is None)
+        weight = float(cd.get("weight") or 0)
+        if na or tot <= 0:
+            earned = 0
+        elif applicable and c == applicable[-1]:
+            earned = max(0, base_earned - running)     # remainder -> exact sum
+        else:
+            earned = int(round(base_earned * contribs[c] / tot))
+            running += earned
+        lines.append({"key": c, "label": _RANK_COMP_LABELS.get(c, c.replace("_", " ").title()),
+                      "detail": cd.get("detail") or "", "weight": round(weight, 1),
+                      "pct": (None if na else round(float(cd.get("raw") or 0), 1)),
+                      "earned": max(0, earned), "na": na,
+                      "pool": int(round(max_pay * weight / 100.0))})
+    return {"overall": round(overall, 1), "max_pay": max_pay, "base_earned": base_earned,
+            "components": lines, "workload_level": wl_level, "workload_pct": wl_pct,
+            "limited_workload": limited}
+
+
 def earnings_payload(db, tp, month):
     """Teacher + pay config + month activity + earnings — slip/letter dono ka data."""
     # defensive: month hamesha valid "YYYY-MM" ho (galat/empty -> current month)
@@ -4857,14 +4930,23 @@ def earnings_payload(db, tp, month):
                           "count": max(0, int(c.get("count") or 0))}
                          for c in _cust
                          if isinstance(c, dict) and str(c.get("name") or "").strip()][:12]
-    e = calc_earnings(act, {**pay, **targets})
+    # ---- RANKING-BASED PAYOUT: base = max monthly pay x performance score% ----
+    rp = _ranking_pay(db, tp, month)
+    max_pay = rp["max_pay"]
+    e = {
+        "perf_score": rp["overall"], "max_potential": max_pay,
+        "base_earned": rp["base_earned"], "gross_earned": rp["base_earned"],
+        "components": rp["components"], "workload_level": rp["workload_level"],
+        "workload_pct": rp["workload_pct"], "limited_workload": rp["limited_workload"],
+        "tds": 0, "other_deduct": 0,
+    }
     # ---- v86: UNPAID approved leave ka per-day deduction (complete salary se) ----
     # PAID leave (admin ne approve karte waqt 'Paid' chuna) pe koi ktaunti nahi.
     start, end = _month_range(month)
     unpaid_lv = sum(_leave_days_map(db, tp.id, start, end, unpaid_only=True).values())
     total_lv = sum(_leave_days_map(db, tp.id, start, end).values())
     dim = max(1, (end - start).days)
-    per_day_sal = e["max_potential"] / dim
+    per_day_sal = max_pay / dim
     lv_ded = round(per_day_sal * unpaid_lv)
     e["leave_unpaid_days"] = round(unpaid_lv, 1)
     e["leave_paid_days"] = round(total_lv - unpaid_lv, 1)
@@ -4875,78 +4957,14 @@ def earnings_payload(db, tp, month):
     e["reviewed_deduction"] = fin_ded
     # ---- APPROVED dynamic incentives (spec Part 108/118): Base + Incentives - Deductions ----
     incentive = _incentive_teacher_total(db, tp.id, month)
-    e["base_earned"] = e["gross_earned"]                       # appointment-letter base
     e["incentive"] = incentive
-    e["gross_with_incentive"] = e["gross_earned"] + incentive
-    e["net_payable"] = max(0, e["gross_earned"] + incentive - lv_ded - fin_ded)
-    # ---- v104: target-only teachers (Attendance System = Disabled) ----
-    # Inka punch nahi hota, isliye assigned hours-target har mahine FULLY MET maana
-    # jaata hai. Payout amounts kabhi display nahi hote — sirf ESTIMATED % of salary:
-    # base 100% minus common deduction rules (same as every teacher) ka estimated cut.
+    e["gross_with_incentive"] = rp["base_earned"] + incentive
+    e["net_payable"] = max(0, rp["base_earned"] + incentive - lv_ded - fin_ded)
+    e["salary_pct"] = round(e["net_payable"] / max_pay * 100.0, 1) if max_pay else 0.0
+    # ---- target-only teachers: SAME ranking-based model (koi alag est-deduction nahi) ----
     pol = _policy_dict(db, tp.id)
     target_only = bool(pol.get("disabled"))
     if target_only:
-        mx = e["max_potential"] or 0
-        pcts = e["pcts"]
-
-        def _share(amt):
-            return (float(amt) / mx * 100.0) if mx else 0.0
-
-        ded = []
-
-        def _add(pct, label):
-            pct = round(pct, 1)
-            if pct >= 0.5:
-                ded.append({"pct": pct, "label": label})
-
-        sched, cond = act["classes_scheduled"], act["classes_conducted"]
-        if sched > 0:
-            miss = sched - cond
-            if miss > 0:
-                _add((1 - pcts["class"]) * _share(pay["class_retainer"]),
-                     "%d scheduled class%s not conducted" % (miss, "es" if miss != 1 else ""))
-            if act["late_classes"] > 0:
-                _add((1 - pcts["quality"]) * _share(pay["class_quality"]),
-                     "%d late start%s (15-min grace crossed)"
-                     % (act["late_classes"], "s" if act["late_classes"] != 1 else ""))
-        if cond > 0:
-            if act["notes_uploaded"] < cond:
-                _add((1 - pcts["notes"]) * _share(pay["notes_dpp"] * 0.40),
-                     "class notes missing on %d conducted class%s"
-                     % (cond - act["notes_uploaded"], "es" if cond - act["notes_uploaded"] != 1 else ""))
-            pend = len(act.get("dpp_pending") or [])
-            if pend > 0:
-                _add((1 - pcts["dpp"]) * _share(pay["notes_dpp"] * 0.40),
-                     "DPP pending on %d chapter%s" % (pend, "s" if pend != 1 else ""))
-        if targets["tests_target"] > 0 and act["tests_created"] < targets["tests_target"]:
-            _add((1 - pcts["tests"]) * _share(pay["notes_dpp"] * 0.20),
-                 "weekly tests short (%d/%d)" % (act["tests_created"], targets["tests_target"]))
-        if act["doubts_assigned"] > act["doubts_resolved"]:
-            _add((1 - pcts["doubt"]) * _share(pay["doubt_resolution"]),
-                 "%d doubt%s unresolved" % (act["doubts_assigned"] - act["doubts_resolved"],
-                                            "s" if act["doubts_assigned"] - act["doubts_resolved"] != 1 else ""))
-        if act["tasks_assigned"] > act["tasks_on_time"]:
-            _add((1 - pcts["task"]) * _share(pay["project_delivery"] * 0.50),
-                 "%d task%s not delivered on time" % (act["tasks_assigned"] - act["tasks_on_time"],
-                                                      "s" if act["tasks_assigned"] - act["tasks_on_time"] != 1 else ""))
-        if pcts["content"] < 1:
-            _add((1 - pcts["content"]) * _share(pay["project_delivery"] * 0.50),
-                 "monthly content targets short (videos %d/%d, live %d/%d, shorts %d/%d, tests %d/%d)"
-                 % (act["videos_made"], targets["videos_target"],
-                    act["live_sessions"], targets["live_target"],
-                    act["shorts_made"], targets["shorts_target"],
-                    act["tests_created"], targets["tests_target"]))
-        if lv_ded > 0:
-            _add((float(lv_ded) / mx * 100.0) if mx else 0.0,
-                 "%s unpaid-leave day%s" % (e["leave_unpaid_days"],
-                                            "s" if e["leave_unpaid_days"] != 1 else ""))
-        if fin_ded > 0:
-            _add((float(fin_ded) / mx * 100.0) if mx else 0.0,
-                 "reviewed deductions (admin-approved)")
-        ded.sort(key=lambda x: -x["pct"])
-        e["salary_pct"] = round(e["net_payable"] / mx * 100.0, 1) if mx else 0.0
-        e["est_deductions"] = ded[:8]
-        e["est_ded_total"] = round(sum(x["pct"] for x in ded), 1)
         hrs = _policy_required(pol)
         tlabel = ("min %gh/day" % hrs) if pol.get("mode") == "flexible" else ("%gh/day" % hrs)
         pol_target = {"label": tlabel, "hours": hrs, "mode": pol.get("mode")}

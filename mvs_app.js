@@ -16000,14 +16000,10 @@ function _slipHTML(d){
    <div>
     <div style="background:#0F2A54;color:#fff;padding:5px 9px;border-radius:5px 5px 0 0;font-weight:800;font-size:9.5px;letter-spacing:.5px">EARNINGS BREAKDOWN</div>
     <table style="width:100%;border-collapse:collapse;font-size:9.5px;border:1px solid #e4ebf5;border-top:none"><tbody>
-     ${erow('Class Conduct Retainer',a.classes_conducted+' of '+a.classes_scheduled+' classes conducted',e.class_earned)}
-     ${erow('Class Quality Incentive',a.late_classes+' late start(s) this month',e.class_quality_earned)}
-     ${erow('Notes, DPP & Weekly Tests','Notes: '+a.notes_uploaded+'/'+a.classes_conducted+' \u00B7 DPP: '+a.dpp_uploaded+'/'+a.classes_conducted+' \u00B7 Tests: '+a.tests_created+'/'+tg.tests_target,e.notes_earned+e.dpp_earned+e.tests_earned)}
-     ${erow('Doubt Resolution Bonus',a.doubts_resolved+' of '+a.doubts_assigned+' doubts resolved',e.doubt_earned)}
-     ${erow('Project, Task & Content Delivery','Tasks: '+a.tasks_on_time+'/'+a.tasks_assigned+' \u00B7 Tests: '+a.tests_created+'/'+tg.tests_target+' \u00B7 Videos: '+a.videos_made+'/'+tg.videos_target+' \u00B7 Live: '+a.live_sessions+'/'+tg.live_target+' \u00B7 Shorts: '+a.shorts_made+'/'+tg.shorts_target,e.task_earned)}
-     ${erow('Gross Earned','',e.gross_earned,true)}
+     ${(e.components||[]).map(c=>c.na?erow(c.label,'not applicable this month',0):erow(c.label,(c.pct!=null?c.pct+'% achieved':'')+(c.weight?' · '+c.weight+'% of pay':''),c.earned)).join('')}
+     ${erow('Base Earned (performance)',e.perf_score+'% performance score',e.base_earned!=null?e.base_earned:e.gross_earned,true)}
      ${(e.incentive||0)>0?erow('Dynamic Incentives (approved)','auto-calculated, admin-approved',e.incentive):''}
-     ${(e.incentive||0)>0?erow('Gross Earnings (with incentives)','',(e.gross_with_incentive||(e.gross_earned+e.incentive)),true):''}
+     ${(e.incentive||0)>0?erow('Gross Earnings (with incentives)','',(e.gross_with_incentive||((e.base_earned!=null?e.base_earned:e.gross_earned)+e.incentive)),true):''}
     </tbody></table>
    </div>
    <div style="display:flex;flex-direction:column;gap:10px">
@@ -16068,21 +16064,21 @@ function _ecard(title,desc,earned,max,subs){
 const _esub=(l,r)=>`<div style="display:flex;justify-content:space-between;font-size:.71rem;color:var(--text-muted);padding:2px 0"><span>${l}</span><b style="color:var(--text)">${r}</b></div>`;
 
 function _earnComponentsHTML(d){
-  const a=d.activity, e=d.earnings, tg=d.targets, pay=d.pay;
-  const sub=(l,r)=>_esub(l,_inr(r));
-  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:14px">
-  ${_ecard('Class Conduct Retainer','60% of maximum potential — earned by conducting scheduled classes',e.class_earned,pay.class_retainer,
-    _esub(a.classes_conducted+' of '+a.classes_scheduled+' classes conducted',Math.round(e.pcts.class*100)+'%'))}
-  ${_ecard('Class Quality Incentive','On-time starts within the 15-minute grace window',e.class_quality_earned,pay.class_quality,
-    _esub(a.late_classes+' late of '+a.classes_scheduled+' scheduled',Math.round(e.pcts.quality*100)+'%'))}
-  ${_ecard('Notes, DPP & Weekly Tests','Notes 40% \u00B7 DPP 40% \u00B7 Weekly tests 20% of this pool',e.notes_earned+e.dpp_earned+e.tests_earned,pay.notes_dpp,
-    _esub('Notes uploaded ('+a.notes_uploaded+'/'+a.classes_conducted+')',_inr(e.notes_earned))+_esub('DPP chapters covered ('+(a.dpp_covered!=null?a.dpp_covered:a.dpp_uploaded)+'/'+a.classes_conducted+')'+(a.dpp_uploaded?' · '+a.dpp_uploaded+' uploaded':''),_inr(e.dpp_earned))+_esub('Weekly tests ('+a.tests_created+'/'+tg.tests_target+')',_inr(e.tests_earned)))}
-  ${_ecard('Doubt Resolution Bonus','Resolve 100% of assigned doubts within an average of 15 hours',e.doubt_earned,pay.doubt_resolution,
-    _esub(a.doubts_resolved+' of '+a.doubts_assigned+' doubts resolved',Math.round(e.pcts.doubt*100)+'%'))}
-  ${_ecard('Project, Task & Content Delivery','On-time tasks 50% \u00B7 monthly content targets 50%',e.task_earned,pay.project_delivery,
-    _esub('Tasks on time ('+a.tasks_on_time+'/'+a.tasks_assigned+') — 50%',Math.round(e.pcts.task*100)+'%')+
-    _esub('Videos '+a.videos_made+'/'+tg.videos_target+' \u00B7 Live '+a.live_sessions+'/'+tg.live_target+' \u00B7 Shorts '+a.shorts_made+'/'+tg.shorts_target+' \u00B7 Tests '+a.tests_created+'/'+tg.tests_target,'content '+Math.round(e.pcts.content*100)+'%'))}
-  </div>`;
+  const e=d.earnings;
+  const comps=e.components||[];
+  if(!comps.length) return '';
+  const cards=comps.map(c=>{
+    if(c.na){
+      return `<div class="card" style="margin-bottom:0;opacity:.62"><div class="card-body" style="padding:16px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+         <div><div style="font-weight:800;font-size:.92rem">${esc(c.label)}</div><div style="font-size:.7rem;color:var(--text-muted);margin-top:2px">${esc(c.detail||'Not applicable this month')}</div></div>
+         <div style="text-align:right;flex-shrink:0"><div style="font-size:.82rem;color:var(--text-muted);font-weight:700">Not applicable</div><div style="font-size:.66rem;color:var(--text-muted)">weight ${c.weight}%</div></div>
+        </div></div></div>`;
+    }
+    return _ecard(esc(c.label), esc(c.detail||'')+' \u00B7 '+c.weight+'% of pay', c.earned, c.pool,
+      _esub('Achievement', (c.pct!=null?c.pct+'%':'\u2014')));
+  }).join('');
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:14px">${cards}</div>`;
 }
 
 function _earnHeroHTML(d,actions){
@@ -16092,6 +16088,7 @@ function _earnHeroHTML(d,actions){
     <div style="font-size:.72rem;opacity:.62;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">Net Payable \u00B7 ${esc(d.month_label)}</div>
     <div style="font-size:2.2rem;font-weight:900;line-height:1.05">${_inr(e.net_payable)}</div>
     <div style="font-size:.74rem;opacity:.62;margin-top:6px">of maximum ${_inr(e.max_potential)} \u00B7 unclaimed ${_inr(Math.max(0,e.max_potential-e.net_payable))}</div>
+    <div style="font-size:.72rem;opacity:.62;margin-top:3px">Base (performance-linked): ${_inr(e.base_earned!=null?e.base_earned:e.gross_earned)}${e.workload_level?(' \u00B7 workload '+esc(e.workload_level)):''}${e.limited_workload?' \u00B7 below team minimum':''}</div>
     ${(e.leave_deduction||0)>0?`<div style="font-size:.72rem;margin-top:5px;color:#fca5a5">Unpaid leave deduction: −${_inr(e.leave_deduction)} (${e.leave_unpaid_days} day${e.leave_unpaid_days===1?'':'s'} × ${_inr(e.leave_per_day||0)}/day)${(e.leave_paid_days||0)>0?` \u00B7 ${e.leave_paid_days} paid-leave day${e.leave_paid_days===1?'':'s'} (no deduction)`:''}</div>`:(e.leave_paid_days||0)>0?`<div style="font-size:.72rem;margin-top:5px;opacity:.7">${e.leave_paid_days} paid-leave day${e.leave_paid_days===1?'':'s'} — no salary deduction</div>`:''}
     ${(e.reviewed_deduction||0)>0?`<div style="font-size:.72rem;margin-top:5px;color:#fca5a5">Reviewed deductions (admin-approved): −${_inr(e.reviewed_deduction)}</div>`:''}
     ${(e.incentive||0)>0?`<div style="font-size:.72rem;margin-top:5px;color:#86efac">Dynamic incentives (approved): +${_inr(e.incentive)}</div>`:''}
@@ -16125,8 +16122,11 @@ function _activityStripHTML(d){
   </div></div>`;
 }
 
-// ---------- v104: target-only teacher — estimated % view (amounts never shown) ----------
+// ---------- target-only teacher — same ranking-based breakdown as everyone ----------
 function _earnTargetOnlyHTML(d){
+  return _earnHeroHTML(d)+_earnComponentsHTML(d);
+}
+function _earnTargetOnlyHTML_legacy(d){
   const e=d.earnings, tg=(d.policy_target&&d.policy_target.label)||'set by admin';
   const sp=(e.salary_pct!=null?e.salary_pct:e.perf_score);
   const ded=e.est_deductions||[], dt=e.est_ded_total||0;
@@ -17287,7 +17287,7 @@ async function aEarnFetch(){
      +((d.target_only_count||0)>0?`<div class="alert alert-info" style="margin-bottom:14px">${d.target_only_count} target-only teacher${d.target_only_count>1?'s':''}: payout runs on the assigned target via the other app — shown here only as an <b>estimated % of salary</b>, never as amounts.</div>`:'')
      +`<div class="ae-grid">${d.teachers.map(x=>{
        const e=x.earnings, pc=_pfCol(e.perf_score);
-       const incent=e.gross_earned-e.class_earned;
+       const incent=e.incentive||0;
        // v91: appointment letter sign status — card pe turant update dikhta hai
        const ltr=x.letter||{};
        const lchip=ltr.accepted
@@ -17336,7 +17336,7 @@ async function aEarnFetch(){
          </div>
         </div>
         <div class="ae-mini">
-         <div><b>${_inr(e.class_earned)}</b><span>Retainer</span></div>
+         <div><b>${_inr(e.base_earned!=null?e.base_earned:e.gross_earned)}</b><span>Base</span></div>
          <div><b>${_inr(incent)}</b><span>Incentives</span></div>
          <div><b style="color:var(--primary)">${_inr(e.net_payable)}</b><span>Net Payable</span></div>
         </div>
