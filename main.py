@@ -143,6 +143,14 @@ def ensure_columns():
         # "Could not reach the server"). Widened so no class value can ever overflow;
         # the endpoints still normalise to the canonical '10'/'12' before saving.
         "ALTER TABLE lectures MODIFY COLUMN class_level VARCHAR(20)",
+        # Payout salary lifecycle (Phase 5): finalized -> in_progress -> credited -> receipt_confirmed
+        "ALTER TABLE payout_months ADD COLUMN in_progress_at DATETIME",
+        "ALTER TABLE payout_months ADD COLUMN receipt_confirmed_at DATETIME",
+        "ALTER TABLE payout_months ADD COLUMN pay_ref VARCHAR(120)",
+        # Payout biometric (WebAuthn) fallback
+        "ALTER TABLE payout_access ADD COLUMN webauthn_creds TEXT",
+        "ALTER TABLE payout_access ADD COLUMN reg_challenge VARCHAR(255)",
+        "ALTER TABLE payout_access ADD COLUMN auth_challenge VARCHAR(255)",
     ]
     for s in stmts:
         try:
@@ -197,6 +205,49 @@ def ensure_indexes():
             pass  # index already exists (ya column mismatch) — safe to ignore
 ensure_indexes()
 
+# ===== LIGHTWEIGHT DATA MIGRATIONS (one-time content fixes, idempotent) =====
+# Doubt SLA policy update: purane contracts ki rules_text me "24 hours + din-wise
+# Rs 100/300/600" wali doubt line ko naye "average 15 hours SLA (proportional)" se
+# badal do. Sirf us line ko chhuata hai jo doubts ke baare me hai; baaki rules waise
+# rehte hain. Idempotent — jis contract me 15 hours pehle se hai wo skip ho jaata hai.
+def ensure_data_migrations():
+    NEW_DOUBT_LINE = ("Portal ke student doubts average 15 hours ke andar resolve karna zaroori hai; "
+                      "is 15 hours SLA se zyada delay par doubt resolution component ke payout me proportional kami hogi.")
+    try:
+        from models import TeacherContract
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            rows = (db.query(TeacherContract)
+                    .filter(TeacherContract.rules_text.like("%student doubts%"))
+                    .all())
+            changed = 0
+            for c in rows:
+                txt = c.rules_text or ""
+                lines = txt.splitlines()
+                new_lines = []
+                touched = False
+                for ln in lines:
+                    s = ln.strip()
+                    if s.lower().startswith("portal ke student doubts") and "15 hours" not in s:
+                        new_lines.append(NEW_DOUBT_LINE)
+                        touched = True
+                    else:
+                        new_lines.append(ln)
+                if touched:
+                    c.rules_text = "\n".join(new_lines)
+                    changed += 1
+            if changed:
+                db.commit()
+                try: print("data-migration: doubt SLA updated on", changed, "contract(s)")
+                except Exception: pass
+        finally:
+            db.close()
+    except Exception as _e:
+        try: print("ensure_data_migrations skipped:", str(_e)[:160])
+        except Exception: pass
+ensure_data_migrations()
+
 # ===== AUTO R2 MIGRATION — background me khud chale (Start dabane ki zaroorat nahi) =====
 def _auto_migrate_loop():
     import time
@@ -215,6 +266,7 @@ def _auto_migrate_loop():
              'exam_ans_img', 'lecture_q_img']
     time.sleep(25)  # app ko boot hone do
     while True:
+        migrated_any = False
         try:
             for kind in kinds:
                 after_id = 0
@@ -232,13 +284,17 @@ def _auto_migrate_loop():
                     if not res or res.get("error"):
                         break
                     if res.get("has_more"):
+                        migrated_any = True
                         after_id = res.get("last_id", after_id)
                         time.sleep(2)   # gentle — DB/R2 par load na aaye
                     else:
                         break
         except Exception:
             pass
-        time.sleep(180)   # 3 min baad dobara check (naye base64 files migrate ho jaayein)
+        # v172: agar poore cycle me kuch bhi migrate nahi hua (sab pehle se R2 par hai),
+        # to har 3 min sab dobara scan karne ki zaroorat nahi — 12 min so jao. Isse constant
+        # background DB/CPU churn kam. Naya file aate hi agle cycle me migrate ho jaayega.
+        time.sleep(180 if migrated_any else 720)
 
 def _start_auto_migrate():
     import threading

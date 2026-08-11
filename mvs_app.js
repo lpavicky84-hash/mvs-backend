@@ -428,6 +428,7 @@ async function _apiRefreshBg(path,_ck){
   try{
     const opts={method:'GET',headers:{'Content-Type':'application/json'}};
     if(TOKEN) opts.headers['Authorization']='Bearer '+TOKEN;
+    if(window._payoutToken) opts.headers['X-Payout-Token']=window._payoutToken;
     const res=await fetch(API+path,opts); if(!res.ok) return;
     const d=await res.json();
     try{ const s=JSON.stringify(d);
@@ -447,7 +448,7 @@ function _preloadAdmin(){
     const m=(new Date()).toISOString().slice(0,7);
     const urls=[
       '/api/admin/dashboard','/api/admin/portal-overview','/api/admin/teachers',
-      '/api/admin/video-tasks','/api/admin/earnings?month='+m,
+      '/api/admin/video-tasks',
       '/api/admin/doubts?status=pending','/api/admin/doubts-overview',
       '/api/admin/timetable-all','/api/admin/materials-tree','/api/admin/live-users',
       '/api/admin/student-filter-counts?source=&session=&medium=&cls=',
@@ -464,6 +465,7 @@ function _preloadAdmin(){
 async function api(path, method='GET', body=null) {
   const opts = { method, headers: { 'Content-Type':'application/json' } };
   if (TOKEN) opts.headers['Authorization'] = 'Bearer ' + TOKEN;
+  if (window._payoutToken) opts.headers['X-Payout-Token'] = window._payoutToken;
   if (body) opts.body = JSON.stringify(body);
   const _ck=method+' '+path;
   if(method==='GET'&&!_API_NOCACHE.test(path)){
@@ -15839,7 +15841,7 @@ const _LETTER_RULES=[
   'Daily Practice Problems (DPP) must be uploaded within 24 hours of each class, along with a solutions sheet. Uploading DPP without solutions does not count as complete.',
   'A 24-hour grace period applies after the deadline. If either item is not uploaded within 48 hours, the Notes/DPP incentive for that class is forfeited. Three or more such misses in a month trigger a formal review.']},
  {num:'3.3',title:'Doubt Resolution',color:'#1b7a3e',rules:[
-  'All student doubts raised against your subject on the portal must be responded to substantively within 48 hours. Simply acknowledging a doubt is not resolution — a complete answer is required.',
+  'All student doubts raised against your subject on the portal must be responded to substantively within an average of 15 hours. Simply acknowledging a doubt is not resolution — a complete answer is required.',
   'Doubts pending beyond 72 hours are escalated automatically to the Academic Head. Each such escalation reduces the Doubt Resolution bonus by \u20B950, regardless of subsequent resolution.',
   'Your monthly Doubt Resolution Rate is calculated as (resolved \u00F7 assigned). Anything below 100% reduces your Doubt Resolution Bonus proportionally.']},
  {num:'3.4',title:'Content Production & Project Delivery',color:'#6b3fd4',rules:[
@@ -15880,7 +15882,7 @@ function _letterHTML(d){
    ['Class Conduct Retainer','Earned by conducting all scheduled timetable classes for the month. Proportionally reduced only if classes are not conducted without prior approval.',pay.class_retainer],
    ['Class Quality Incentive','Earned by starting every class on time, maintaining full scheduled duration, and keeping portal attendance records accurate.',pay.class_quality],
    ['Notes, DPP & Weekly Tests','Earned by uploading complete Class Notes and DPP within 24 hours for every class conducted, and creating the required Weekly Tests (MCQ / Subjective) each month.',pay.notes_dpp],
-   ['Doubt Resolution Bonus','Earned by resolving 100% of student doubts assigned on the portal within 48 hours. Proportionally reduced for unresolved doubts.',pay.doubt_resolution],
+   ['Doubt Resolution Bonus','Earned by resolving 100% of student doubts assigned on the portal within an average of 15 hours. Proportionally reduced for unresolved doubts.',pay.doubt_resolution],
    ['Project, Task & Content Delivery','Earned by submitting all production tasks and projects on time, and achieving monthly content targets: Weekly Tests, One Shot & Revision Videos, YouTube Live Sessions, and Shorts.',pay.project_delivery]
   ];
   const _tl=tg.labels||{};
@@ -16004,6 +16006,8 @@ function _slipHTML(d){
      ${erow('Doubt Resolution Bonus',a.doubts_resolved+' of '+a.doubts_assigned+' doubts resolved',e.doubt_earned)}
      ${erow('Project, Task & Content Delivery','Tasks: '+a.tasks_on_time+'/'+a.tasks_assigned+' \u00B7 Tests: '+a.tests_created+'/'+tg.tests_target+' \u00B7 Videos: '+a.videos_made+'/'+tg.videos_target+' \u00B7 Live: '+a.live_sessions+'/'+tg.live_target+' \u00B7 Shorts: '+a.shorts_made+'/'+tg.shorts_target,e.task_earned)}
      ${erow('Gross Earned','',e.gross_earned,true)}
+     ${(e.incentive||0)>0?erow('Dynamic Incentives (approved)','auto-calculated, admin-approved',e.incentive):''}
+     ${(e.incentive||0)>0?erow('Gross Earnings (with incentives)','',(e.gross_with_incentive||(e.gross_earned+e.incentive)),true):''}
     </tbody></table>
    </div>
    <div style="display:flex;flex-direction:column;gap:10px">
@@ -16014,13 +16018,17 @@ function _slipHTML(d){
       <tr style="border-bottom:1px solid #e4ebf5"><td style="padding:5px 9px;color:#1a2a3a">Other Deductions</td><td style="padding:5px 9px;text-align:right;color:#c0392b;font-weight:700">${_inr(e.other_deduct)}</td></tr>
       ${(e.leave_deduction||0)>0?`<tr style="border-bottom:1px solid #e4ebf5"><td style="padding:5px 9px;color:#1a2a3a">Unpaid Leave (${e.leave_unpaid_days} day${e.leave_unpaid_days===1?'':'s'} × ${_inr(e.leave_per_day||0)}/day)</td><td style="padding:5px 9px;text-align:right;color:#c0392b;font-weight:700">${_inr(e.leave_deduction)}</td></tr>`:''}
       ${(e.leave_paid_days||0)>0?`<tr style="border-bottom:1px solid #e4ebf5"><td style="padding:5px 9px;color:#5A6B85;font-style:italic">Paid Leave (${e.leave_paid_days} day${e.leave_paid_days===1?'':'s'}) — no deduction</td><td style="padding:5px 9px;text-align:right;color:#5A6B85">${_inr(0)}</td></tr>`:''}
-      <tr style="background:#fff8f7"><td style="padding:5px 9px;font-weight:800;color:#c0392b">Total Deductions</td><td style="padding:5px 9px;text-align:right;font-weight:800;color:#c0392b">${_inr(e.tds+e.other_deduct+(e.leave_deduction||0))}</td></tr>
+      ${(e.reviewed_deduction||0)>0?`<tr style="border-bottom:1px solid #e4ebf5"><td style="padding:5px 9px;color:#1a2a3a">Reviewed Deductions (admin-approved)</td><td style="padding:5px 9px;text-align:right;color:#c0392b;font-weight:700">${_inr(e.reviewed_deduction)}</td></tr>`:''}
+      <tr style="background:#fff8f7"><td style="padding:5px 9px;font-weight:800;color:#c0392b">Total Deductions</td><td style="padding:5px 9px;text-align:right;font-weight:800;color:#c0392b">${_inr(e.tds+e.other_deduct+(e.leave_deduction||0)+(e.reviewed_deduction||0))}</td></tr>
      </tbody></table>
     </div>
     <div style="background:linear-gradient(135deg,#0F2A54,#1a3d70);border-radius:8px;padding:12px 14px;color:#fff">
      <div style="font-size:8.5px;opacity:.65;letter-spacing:.5px;text-transform:uppercase;margin-bottom:2px">Net Payable — ${esc(d.month_label)}</div>
      <div style="font-size:24px;font-weight:900">${_inr(e.net_payable)}</div>
-     <div style="font-size:8px;opacity:.6;margin-top:2px">Paid by the 5th of the following month</div>
+     ${(()=>{ const sl=(window._tSalLast&&window._tSalLast.month===d.month)?window._tSalLast:null;
+        if(sl&&sl.status&&sl.status!=='pending'){ const lbl={finalized:'Finalized',in_progress:'Payment in progress',credited:'Credited',receipt_confirmed:'Receipt confirmed'}[sl.status]||sl.status;
+          return `<div style="font-size:8px;opacity:.85;margin-top:3px">Payment status: ${esc(lbl)}${sl.pay_ref?(' \u00B7 ref: '+esc(sl.pay_ref)):''}</div>`; }
+        return '<div style="font-size:8px;opacity:.6;margin-top:2px">Paid by the 5th of the following month</div>'; })()}
     </div>
     <div style="border:1px solid #e4ebf5;border-radius:7px;padding:9px 11px;background:${pbg}">
      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px"><span style="font-size:9px;font-weight:700;color:#5A6B85">Performance Score</span><span style="font-size:13px;font-weight:900;color:${pc}">${perf}%</span></div>
@@ -16069,7 +16077,7 @@ function _earnComponentsHTML(d){
     _esub(a.late_classes+' late of '+a.classes_scheduled+' scheduled',Math.round(e.pcts.quality*100)+'%'))}
   ${_ecard('Notes, DPP & Weekly Tests','Notes 40% \u00B7 DPP 40% \u00B7 Weekly tests 20% of this pool',e.notes_earned+e.dpp_earned+e.tests_earned,pay.notes_dpp,
     _esub('Notes uploaded ('+a.notes_uploaded+'/'+a.classes_conducted+')',_inr(e.notes_earned))+_esub('DPP chapters covered ('+(a.dpp_covered!=null?a.dpp_covered:a.dpp_uploaded)+'/'+a.classes_conducted+')'+(a.dpp_uploaded?' · '+a.dpp_uploaded+' uploaded':''),_inr(e.dpp_earned))+_esub('Weekly tests ('+a.tests_created+'/'+tg.tests_target+')',_inr(e.tests_earned)))}
-  ${_ecard('Doubt Resolution Bonus','Resolve 100% of assigned doubts within 48 hours',e.doubt_earned,pay.doubt_resolution,
+  ${_ecard('Doubt Resolution Bonus','Resolve 100% of assigned doubts within an average of 15 hours',e.doubt_earned,pay.doubt_resolution,
     _esub(a.doubts_resolved+' of '+a.doubts_assigned+' doubts resolved',Math.round(e.pcts.doubt*100)+'%'))}
   ${_ecard('Project, Task & Content Delivery','On-time tasks 50% \u00B7 monthly content targets 50%',e.task_earned,pay.project_delivery,
     _esub('Tasks on time ('+a.tasks_on_time+'/'+a.tasks_assigned+') — 50%',Math.round(e.pcts.task*100)+'%')+
@@ -16085,6 +16093,8 @@ function _earnHeroHTML(d,actions){
     <div style="font-size:2.2rem;font-weight:900;line-height:1.05">${_inr(e.net_payable)}</div>
     <div style="font-size:.74rem;opacity:.62;margin-top:6px">of maximum ${_inr(e.max_potential)} \u00B7 unclaimed ${_inr(Math.max(0,e.max_potential-e.net_payable))}</div>
     ${(e.leave_deduction||0)>0?`<div style="font-size:.72rem;margin-top:5px;color:#fca5a5">Unpaid leave deduction: −${_inr(e.leave_deduction)} (${e.leave_unpaid_days} day${e.leave_unpaid_days===1?'':'s'} × ${_inr(e.leave_per_day||0)}/day)${(e.leave_paid_days||0)>0?` \u00B7 ${e.leave_paid_days} paid-leave day${e.leave_paid_days===1?'':'s'} (no deduction)`:''}</div>`:(e.leave_paid_days||0)>0?`<div style="font-size:.72rem;margin-top:5px;opacity:.7">${e.leave_paid_days} paid-leave day${e.leave_paid_days===1?'':'s'} — no salary deduction</div>`:''}
+    ${(e.reviewed_deduction||0)>0?`<div style="font-size:.72rem;margin-top:5px;color:#fca5a5">Reviewed deductions (admin-approved): −${_inr(e.reviewed_deduction)}</div>`:''}
+    ${(e.incentive||0)>0?`<div style="font-size:.72rem;margin-top:5px;color:#86efac">Dynamic incentives (approved): +${_inr(e.incentive)}</div>`:''}
    </div>
    <div style="text-align:center;min-width:120px">
     <div style="font-size:2rem;font-weight:900;color:${e.perf_score>=85?'#34d399':e.perf_score>=65?'#fbbf24':'#f87171'}">${e.perf_score}%</div>
@@ -16284,9 +16294,92 @@ async function payoutRequestReset(){
 async function loadTPayout(){
   const el=document.getElementById('t-payout-content');
   _tEarnMonth=_tEarnMonth||curMonth();
-  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>Payout</h2><p>Work-based earnings — every rupee linked to a deliverable, auto-calculated from your portal activity.</p></div><input type="month" class="form-control" style="width:auto;padding:7px 12px" value="${_tEarnMonth}" onchange="_tEarnMonth=this.value;tEarnFetch()"></div>
-  <div id="te-body"><div class="spinner"></div></div>`;
+  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>Payout</h2><p>Work-based earnings — every rupee linked to a deliverable, auto-calculated from your portal activity.</p></div><input type="month" class="form-control" style="width:auto;padding:7px 12px" value="${_tEarnMonth}" onchange="_tEarnMonth=this.value;tEarnFetch();loadTDeductions()"></div>
+  <div id="te-body"><div class="spinner"></div></div>
+  <div id="t-inc-panel" style="margin-top:16px"></div>
+  <div id="t-sal-status" style="margin-top:16px"></div>
+  <div id="t-ded-panel" style="margin-top:18px"></div>`;
   tEarnFetch();
+  loadTIncentives();
+  loadTSalaryStatus();
+  loadTDeductions();
+}
+async function loadTIncentives(){
+  const box=document.getElementById('t-inc-panel'); if(!box) return;
+  let d;
+  try{ d=await api('/api/teacher/incentives?month='+encodeURIComponent(_tEarnMonth)); }
+  catch(e){ box.innerHTML=''; return; }
+  if(!d.items||!d.items.length){ box.innerHTML=''; return; }
+  let h='<div class="card"><div class="card-header"><h3>Dynamic Incentives</h3></div><div class="card-body">';
+  d.items.forEach(x=>{
+    h+=`<div style="display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--border);padding:8px 0">
+      <div><b>${esc(x.name)}</b>${x.metric&&x.metric!=='manual'?`<div style="font-size:12px;color:var(--text-muted)">${esc(_incMetricLabel(x.metric))}: ${_num(x.metric_value)}</div>`:''}</div>
+      <b>${_inr(x.amount)}</b></div>`;
+  });
+  h+=`<div style="display:flex;justify-content:space-between;padding:10px 0 0;font-weight:800"><span>Total Incentives</span><span>${_inr(d.total)}</span></div>`;
+  h+='</div></div>';
+  box.innerHTML=h;
+}
+async function loadTSalaryStatus(){
+  const box=document.getElementById('t-sal-status'); if(!box) return;
+  let d;
+  try{ d=await api('/api/teacher/payout/lifecycle?month='+encodeURIComponent(_tEarnMonth)); }
+  catch(e){ box.innerHTML=''; return; }
+  window._tSalLast=d;
+  const s=d.status||'pending';
+  const lbl={pending:'Not finalized yet',finalized:'Finalized',in_progress:'Payment in progress',credited:'Credited',receipt_confirmed:'Receipt confirmed'}[s]||s;
+  const col={pending:'#6b7280',finalized:'#3730a3',in_progress:'#92400e',credited:'#1e40af',receipt_confirmed:'#166534'}[s]||'#333';
+  let h=`<div class="card"><div class="card-body" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+     <div><b>Salary status \u00B7 ${esc(fmtMonthLabel(_tEarnMonth))}</b><br><span style="color:${col};font-weight:600">${esc(lbl)}</span>${d.pay_ref?(' <span style="color:#6b7280;font-size:13px">\u00B7 ref: '+esc(d.pay_ref)+'</span>'):''}</div>`;
+  if(s==='credited') h+=`<button class="btn btn-primary" onclick="tConfirmReceipt()">Confirm Receipt</button>`;
+  else if(s==='receipt_confirmed') h+=`<span style="color:#166534;font-size:13px">You confirmed receipt${d.receipt_confirmed_at?(' on '+esc(d.receipt_confirmed_at)):''}.</span>`;
+  h+='</div></div>';
+  box.innerHTML=h;
+}
+async function tConfirmReceipt(){
+  if(!confirm('Confirm that you have received your salary for '+fmtMonthLabel(_tEarnMonth)+'?')) return;
+  try{ await api('/api/teacher/payout/confirm-receipt','POST',{month:_tEarnMonth}); toast('Receipt confirmed. Thank you.'); loadTSalaryStatus(); }
+  catch(e){ toast(e.message||'Could not confirm.'); }
+}
+async function loadTDeductions(){
+  const panel=document.getElementById('t-ded-panel'); if(!panel) return;
+  let d;
+  try{ d=await api('/api/teacher/deductions?month='+encodeURIComponent(_tEarnMonth)); }
+  catch(e){ panel.innerHTML=''; return; }
+  const list=d.deductions||[];
+  if(!list.length){ panel.innerHTML=''; return; }
+  let h='<div class="card"><div class="card-header"><h3>Deductions</h3></div><div class="card-body">';
+  h+='<p style="color:var(--text-muted);font-size:.85rem;margin:0 0 12px">These are deductions raised by admin. If you disagree with one that is under review, you can raise an issue while it is still under review.</p>';
+  list.forEach(x=>{
+    const badge=_tDedBadge(x.status);
+    const amt=(x.final_amount!=null?x.final_amount:x.amount);
+    h+=`<div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
+        <div><b>${esc(x.month)}</b> \u00B7 <span style="color:var(--text-muted)">${esc(x.category)}</span></div>
+        <div style="display:flex;gap:8px;align-items:center">${badge}<b>${_inr(amt)}</b></div>
+      </div>
+      ${x.reason?`<div style="font-size:13px;color:var(--text);margin-top:6px">Reason: ${esc(x.reason)}</div>`:''}
+      ${x.issue_text?`<div style="font-size:13px;color:#92400e;background:#fffbeb;border-radius:8px;padding:8px 10px;margin-top:8px">Your issue: ${esc(x.issue_text)}</div>`:''}
+      ${x.admin_response?`<div style="font-size:13px;color:var(--text);margin-top:6px">Admin note: ${esc(x.admin_response)}</div>`:''}
+      ${x.status==='reviewing'?`<div style="margin-top:10px"><button class="btn btn-secondary" style="padding:5px 12px" onclick="tRaiseIssue(${x.id})">Raise Issue</button></div>`:''}
+    </div>`;
+  });
+  h+='</div></div>';
+  panel.innerHTML=h;
+}
+function _tDedBadge(s){
+  const m={reviewing:['Under review','#e0e7ff','#3730a3'],issue_raised:['Issue raised','#fde68a','#92400e'],finalized:['Applied','#fee2e2','#991b1b'],rejected:['Cancelled','#dcfce7','#166534']};
+  const x=m[s]||[s,'#eee','#333'];
+  return `<span class="chip" style="background:${x[1]};color:${x[2]}">${x[0]}</span>`;
+}
+async function tRaiseIssue(id){
+  const txt=prompt('Describe your issue with this deduction (admin will review it):','');
+  if(txt===null) return;
+  if((txt||'').trim().length<3) return toast('Please describe your issue.');
+  try{
+    await api('/api/teacher/deduction/'+id+'/raise-issue','POST',{issue_text:txt});
+    toast('Issue raised. Admin will review it.'); loadTDeductions();
+  }catch(e){ toast(e.message||'Could not raise issue.'); }
 }
 async function tEarnFetch(){
   const body=document.getElementById('te-body'); if(!body) return;
@@ -16574,13 +16667,611 @@ async function tadFetch(tid){
 // ---- Admin Payouts ----
 let _aPayMonth='';
 // ---------- ADMIN: Earnings overview + pay structure editor ----------
+// ===== SECURE PAYOUT ACCESS GATE (spec V3 PART 52-56) =====
+// Payout/Payroll ka data tabhi khulta hai jab admin passcode se unlock kare.
+// Token window._payoutToken me rehta hai (session), 15 min baad auto-lock.
+function _payoutGateWrap(inner){
+  return `<div style="max-width:460px;margin:40px auto;padding:26px 24px;border:1px solid var(--border,#e5e7eb);border-radius:14px;background:var(--card,#fff);box-shadow:0 6px 24px rgba(0,0,0,.06)">${inner}</div>`;
+}
+function _clearPayoutSession(){
+  window._payoutToken=null;
+  if(window._payoutTimer){ clearTimeout(window._payoutTimer); window._payoutTimer=null; }
+}
+function _startPayoutSession(token,mins){
+  window._payoutToken=token;
+  if(window._payoutTimer) clearTimeout(window._payoutTimer);
+  window._payoutTimer=setTimeout(function(){
+    _clearPayoutSession();
+    const el=document.getElementById('a-payouts-content');
+    if(el && el.offsetParent!==null){ toast('Payout session locked after 15 minutes. Enter passcode to continue.'); loadAPayouts(); }
+  }, (mins||15)*60*1000);
+}
 async function loadAPayouts(){
   const el=document.getElementById('a-payouts-content');
+  if(!el) return;
+  if(window._payoutToken){ return _aPayoutInner(); }
+  el.innerHTML='<div class="spinner"></div>';
+  let st;
+  try{ st=await api('/api/admin/payout/access-status'); }
+  catch(e){ el.innerHTML=_payoutGateWrap('<div class="alert alert-error">Could not check payout access. '+esc(e.message||'')+'</div>'); return; }
+  if(st.locked) return _renderPayoutLocked(st);
+  if(!st.configured) return _renderPayoutSetup();
+  return _renderPayoutUnlock(st);
+}
+function _renderPayoutSetup(){
+  const el=document.getElementById('a-payouts-content');
+  el.innerHTML=_payoutGateWrap(`
+    <h2 style="margin:0 0 6px">Secure Payout Access</h2>
+    <p style="margin:0 0 16px;color:var(--muted,#6b7280);font-size:14px">Set a passcode to protect the Payout and Payroll section. This is set once. Keep it safe. It can only be reset later using the verify number you enter below.</p>
+    <label style="font-size:13px;font-weight:600">New Passcode</label>
+    <input id="pa-set-pc" type="password" class="form-control" style="margin:4px 0 12px" placeholder="At least 4 characters" autocomplete="new-password">
+    <label style="font-size:13px;font-weight:600">Confirm Passcode</label>
+    <input id="pa-set-pc2" type="password" class="form-control" style="margin:4px 0 12px" placeholder="Re-enter passcode" autocomplete="new-password">
+    <label style="font-size:13px;font-weight:600">Verify Number (for forgot-reset)</label>
+    <input id="pa-set-phone" type="tel" class="form-control" style="margin:4px 0 16px" placeholder="10-digit number" maxlength="10">
+    <button class="btn btn-primary" style="width:100%" onclick="payoutSetup()">Set Passcode</button>`);
+}
+function _renderPayoutUnlock(st){
+  const el=document.getElementById('a-payouts-content');
+  const left=(st&&typeof st.attempts_left==='number')?st.attempts_left:'';
+  el.innerHTML=_payoutGateWrap(`
+    <h2 style="margin:0 0 6px">Secure Payroll Access</h2>
+    <p style="margin:0 0 16px;color:var(--muted,#6b7280);font-size:14px">Enter the Payout Access Passcode to continue.</p>
+    <input id="pa-pc" type="password" class="form-control" style="margin:0 0 12px" placeholder="Payout passcode" autocomplete="off" onkeydown="if(event.key==='Enter')payoutUnlock()">
+    <button class="btn btn-primary" style="width:100%" onclick="payoutUnlock()">Unlock Payout</button>
+    ${(st&&st.has_biometric&&_bioAvailable())?`<button class="btn btn-secondary" style="width:100%;margin-top:8px" onclick="payoutBioUnlock()">Unlock with Face / Fingerprint</button>`:''}
+    <div style="text-align:center;margin-top:12px"><a href="#" onclick="event.preventDefault();_renderPayoutForgot()" style="font-size:13px;color:var(--muted,#6b7280)">Forgot passcode?</a></div>
+    ${left!==''?`<div style="text-align:center;margin-top:8px;font-size:12px;color:var(--muted,#9ca3af)">${left} attempt(s) left before temporary lock</div>`:''}`);
+  setTimeout(function(){ const i=document.getElementById('pa-pc'); if(i) i.focus(); },50);
+}
+function _renderPayoutForgot(){
+  const el=document.getElementById('a-payouts-content');
+  el.innerHTML=_payoutGateWrap(`
+    <h2 style="margin:0 0 6px">Reset Payout Passcode</h2>
+    <p style="margin:0 0 16px;color:var(--muted,#6b7280);font-size:14px">Enter the verify number set during setup, then choose a new passcode.</p>
+    <label style="font-size:13px;font-weight:600">Verify Number</label>
+    <input id="pa-fg-phone" type="tel" class="form-control" style="margin:4px 0 12px" placeholder="10-digit number" maxlength="10">
+    <label style="font-size:13px;font-weight:600">New Passcode</label>
+    <input id="pa-fg-pc" type="password" class="form-control" style="margin:4px 0 16px" placeholder="At least 4 characters" autocomplete="new-password">
+    <button class="btn btn-primary" style="width:100%" onclick="payoutReset()">Reset Passcode</button>
+    <div style="text-align:center;margin-top:12px"><a href="#" onclick="event.preventDefault();loadAPayouts()" style="font-size:13px;color:var(--muted,#6b7280)">Back to unlock</a></div>`);
+}
+function _renderPayoutLocked(st){
+  const el=document.getElementById('a-payouts-content');
+  const mins=Math.ceil((st.locked_seconds||0)/60);
+  el.innerHTML=_payoutGateWrap(`
+    <h2 style="margin:0 0 6px">Payout Locked</h2>
+    <p style="margin:0 0 16px;color:var(--muted,#6b7280);font-size:14px">Too many incorrect attempts. Please try again in about ${mins} minute(s).</p>
+    <button class="btn btn-secondary" style="width:100%" onclick="loadAPayouts()">Try Again</button>`);
+}
+async function payoutSetup(){
+  const pc=(document.getElementById('pa-set-pc')||{}).value||'';
+  const pc2=(document.getElementById('pa-set-pc2')||{}).value||'';
+  const phone=(document.getElementById('pa-set-phone')||{}).value||'';
+  if(pc.length<4) return toast('Passcode must be at least 4 characters.');
+  if(pc!==pc2) return toast('Passcodes do not match.');
+  if(phone.replace(/\D/g,'').length<10) return toast('Enter a valid 10-digit verify number.');
+  try{
+    await api('/api/admin/payout/setup','POST',{passcode:pc,verify_phone:phone});
+    // auto-unlock right after setup
+    const r=await api('/api/admin/payout/unlock','POST',{passcode:pc});
+    _startPayoutSession(r.payout_token,r.session_minutes);
+    toast('Payout passcode set.'); _aPayoutInner();
+  }catch(e){ toast(e.message||'Setup failed.'); }
+}
+async function payoutUnlock(){
+  const pc=(document.getElementById('pa-pc')||{}).value||'';
+  if(!pc) return toast('Enter the passcode.');
+  try{
+    const r=await api('/api/admin/payout/unlock','POST',{passcode:pc});
+    _startPayoutSession(r.payout_token,r.session_minutes);
+    _aPayoutInner();
+  }catch(e){
+    if(e.status===423){ return loadAPayouts(); } // locked -> show locked screen
+    toast(e.message||'Unlock failed.');
+    loadAPayouts(); // refresh attempts-left
+  }
+}
+async function payoutReset(){
+  const phone=(document.getElementById('pa-fg-phone')||{}).value||'';
+  const pc=(document.getElementById('pa-fg-pc')||{}).value||'';
+  if(phone.replace(/\D/g,'').length<10) return toast('Enter the 10-digit verify number.');
+  if(pc.length<4) return toast('New passcode must be at least 4 characters.');
+  try{
+    const r=await api('/api/admin/payout/reset','POST',{verify_phone:phone,new_passcode:pc});
+    _startPayoutSession(r.payout_token,r.session_minutes||15);
+    toast('Passcode reset.'); _aPayoutInner();
+  }catch(e){ toast(e.message||'Reset failed.'); }
+}
+function payoutLock(){ _clearPayoutSession(); toast('Payout locked.'); loadAPayouts(); }
+// ---- Biometric (WebAuthn) helpers ----
+function _b64uToBuf(s){ s=(s||'').replace(/-/g,'+').replace(/_/g,'/'); const pad=s.length%4; if(pad) s+='='.repeat(4-pad); const bin=atob(s); const u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); return u.buffer; }
+function _bufToB64u(buf){ const b=new Uint8Array(buf); let s=''; for(let i=0;i<b.length;i++) s+=String.fromCharCode(b[i]); return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+function _bioAvailable(){ return !!(window.PublicKeyCredential && navigator.credentials); }
+async function payoutBioRegister(){
+  if(!_bioAvailable()) return toast('This device/browser does not support biometric unlock.');
+  try{
+    const opts=await api('/api/admin/payout/biometric/register-begin','POST',{});
+    opts.challenge=_b64uToBuf(opts.challenge);
+    opts.user.id=_b64uToBuf(opts.user.id);
+    if(opts.excludeCredentials) opts.excludeCredentials.forEach(c=>c.id=_b64uToBuf(c.id));
+    const cred=await navigator.credentials.create({publicKey:opts});
+    const out={id:cred.id, rawId:_bufToB64u(cred.rawId), type:cred.type,
+      response:{attestationObject:_bufToB64u(cred.response.attestationObject), clientDataJSON:_bufToB64u(cred.response.clientDataJSON)},
+      clientExtensionResults:(cred.getClientExtensionResults?cred.getClientExtensionResults():{})};
+    await api('/api/admin/payout/biometric/register-complete','POST',{credential:out});
+    toast('Face / Fingerprint registered on this device.');
+  }catch(e){ toast(e.message||'Biometric registration cancelled.'); }
+}
+async function payoutBioUnlock(){
+  if(!_bioAvailable()) return toast('Biometric not supported here — use passcode.');
+  try{
+    const opts=await api('/api/admin/payout/biometric/auth-begin','POST',{});
+    opts.challenge=_b64uToBuf(opts.challenge);
+    if(opts.allowCredentials) opts.allowCredentials.forEach(c=>c.id=_b64uToBuf(c.id));
+    const a=await navigator.credentials.get({publicKey:opts});
+    const out={id:a.id, rawId:_bufToB64u(a.rawId), type:a.type,
+      response:{authenticatorData:_bufToB64u(a.response.authenticatorData), clientDataJSON:_bufToB64u(a.response.clientDataJSON), signature:_bufToB64u(a.response.signature), userHandle:a.response.userHandle?_bufToB64u(a.response.userHandle):null},
+      clientExtensionResults:{}};
+    const r=await api('/api/admin/payout/biometric/auth-complete','POST',{credential:out});
+    _startPayoutSession(r.payout_token,r.session_minutes); _aPayoutInner();
+  }catch(e){ toast(e.message||'Biometric unlock cancelled — you can use the passcode.'); }
+}
+function _aPayoutInner(){
+  const el=document.getElementById('a-payouts-content');
   _aEarnMonth=_aEarnMonth||curMonth();
-  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>Payouts \u00B7 Earnings Model</h2><p>Live earnings per teacher — appointment-letter rule, auto-calculated from portal activity.</p></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="month" class="form-control" style="width:auto;padding:7px 12px" value="${_aEarnMonth}" onchange="_aEarnMonth=this.value;aEarnFetch()"></div></div>
+  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>Payouts \u00B7 Earnings Model</h2><p>Live earnings per teacher — appointment-letter rule, auto-calculated from portal activity.</p></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="month" class="form-control" style="width:auto;padding:7px 12px" value="${_aEarnMonth}" onchange="_aEarnMonth=this.value;aEarnFetch();loadADeductions();loadASalaryStatus()"><button class="btn btn-secondary" style="padding:7px 14px" onclick="adDoubtSlaOpen()">Doubt SLA</button><button class="btn btn-primary" style="padding:7px 14px" onclick="loadAIncentives()">Incentives</button><button class="btn btn-secondary" style="padding:7px 14px" onclick="payoutBioRegister()">Add Face/Fingerprint</button><button class="btn btn-secondary" style="padding:7px 14px" onclick="payoutLock()">Lock Payout</button></div></div>
   <div class="ae-stats" id="ae-stats"></div>
-  <div id="ae-body" style="margin-top:6px"><div class="spinner"></div></div>`;
+  <div id="ae-body" style="margin-top:6px"><div class="spinner"></div></div>
+  <div id="ded-panel" style="margin-top:22px"></div>
+  <div id="sal-panel" style="margin-top:22px"></div>`;
   aEarnFetch();
+  loadADeductions();
+  loadASalaryStatus();
+}
+async function adDoubtSlaOpen(){
+  let cur=15;
+  try{ const r=await api('/api/admin/doubt-sla'); cur=r.doubt_sla_hours; }catch(e){}
+  const v=prompt('Doubt SLA (hours) — doubts is time ke andar resolve hone chahiye. Change karke OK dabao:', cur);
+  if(v===null) return;
+  const n=parseFloat(v);
+  if(isNaN(n)||n<1||n>240) return toast('Enter a number between 1 and 240.');
+  try{ const r=await api('/api/admin/doubt-sla','POST',{doubt_sla_hours:n}); toast('Doubt SLA set to '+r.doubt_sla_hours+' hours.'); }
+  catch(e){ toast(e.message||'Could not save.'); }
+}
+async function loadADeductions(){
+  const panel=document.getElementById('ded-panel'); if(!panel) return;
+  panel.innerHTML='<div class="spinner"></div>';
+  let d;
+  try{ d=await api('/api/admin/payout-deductions?month='+encodeURIComponent(_aEarnMonth)); }
+  catch(e){ panel.innerHTML='<div class="alert alert-error">Could not load deductions. '+esc(e.message||'')+'</div>'; return; }
+  window._adDed=d.deductions||[];
+  const issues=d.pending_issues||0;
+  let h=`<div class="card"><div class="card-header" style="display:flex;justify-content:space-between;align-items:center"><h3>Deductions \u00B7 Review${issues>0?` <span class="chip" style="background:#fde68a;color:#92400e">${issues} issue${issues>1?'s':''} to review</span>`:''}</h3><button class="btn btn-primary" style="padding:6px 12px" onclick="adDedNewForm()">New Deduction</button></div><div class="card-body" id="ded-list">`;
+  h+=_renderDedList(window._adDed);
+  h+='</div></div>';
+  panel.innerHTML=h;
+}
+function _dedBadge(s){
+  const m={reviewing:['Under review','#e0e7ff','#3730a3'],issue_raised:['Issue raised','#fde68a','#92400e'],finalized:['Finalized','#dcfce7','#166534'],rejected:['Rejected','#f3f4f6','#6b7280']};
+  const x=m[s]||[s,'#eee','#333'];
+  return `<span class="chip" style="background:${x[1]};color:${x[2]}">${x[0]}</span>`;
+}
+function _renderDedList(list){
+  if(!list||!list.length) return '<p style="color:#6b7280;margin:6px 0">No deductions for this month.</p>';
+  let h='';
+  list.forEach(x=>{
+    const actionable=(x.status==='reviewing'||x.status==='issue_raised');
+    h+=`<div style="border:1px solid var(--border,#e5e7eb);border-radius:10px;padding:12px 14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
+        <div><b>${esc(x.teacher_name||('Teacher #'+x.teacher_id))}</b> \u00B7 ${esc(x.month)} \u00B7 <span style="color:#6b7280">${esc(x.category)}</span></div>
+        <div style="display:flex;gap:8px;align-items:center">${_dedBadge(x.status)}<b>${_inr(x.final_amount!=null?x.final_amount:x.amount)}</b></div>
+      </div>
+      ${x.reason?`<div style="font-size:13px;color:#374151;margin-top:6px">Reason: ${esc(x.reason)}</div>`:''}
+      ${x.issue_text?`<div style="font-size:13px;color:#92400e;background:#fffbeb;border-radius:8px;padding:8px 10px;margin-top:8px">Teacher's issue: ${esc(x.issue_text)}</div>`:''}
+      ${x.admin_response?`<div style="font-size:13px;color:#374151;margin-top:6px">Admin note: ${esc(x.admin_response)}</div>`:''}
+      ${actionable?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">
+         <button class="btn btn-primary" style="padding:5px 12px" onclick="adDedResolve(${x.id},'approve')">Approve ${_inr(x.amount)}</button>
+         <input id="ded-mod-${x.id}" type="number" class="form-control" style="width:120px;padding:5px 8px" placeholder="New amount">
+         <button class="btn btn-secondary" style="padding:5px 12px" onclick="adDedResolve(${x.id},'modify')">Modify</button>
+         <button class="btn btn-danger" style="padding:5px 12px" onclick="adDedResolve(${x.id},'reject')">Reject</button>
+       </div>`:''}
+    </div>`;
+  });
+  return h;
+}
+function adDedNewForm(){
+  const teachers=(window._aEarnData&&window._aEarnData.teachers)||[];
+  const opts=teachers.map(t=>`<option value="${t.teacher_id||t.id}">${esc(t.name||('Teacher #'+(t.teacher_id||t.id)))}</option>`).join('');
+  const cats=['manual','class_delay','doubt_sla','notes_delay','reschedule','task_delay'];
+  const catOpts=cats.map(c=>`<option value="${c}">${c}</option>`).join('');
+  const list=document.getElementById('ded-list');
+  list.insertAdjacentHTML('afterbegin',`<div id="ded-newform" style="border:1px solid var(--border,#e5e7eb);border-radius:10px;padding:14px;margin-bottom:12px;background:var(--bg,#f9fafb)">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+      <div><label style="font-size:12px;font-weight:600">Teacher</label><br><select id="ded-tid" class="form-control" style="min-width:180px">${opts||'<option value="">No teachers loaded</option>'}</select></div>
+      <div><label style="font-size:12px;font-weight:600">Amount (Rs)</label><br><input id="ded-amt" type="number" class="form-control" style="width:120px" placeholder="0"></div>
+      <div><label style="font-size:12px;font-weight:600">Category</label><br><select id="ded-cat" class="form-control">${catOpts}</select></div>
+      <div style="flex:1;min-width:180px"><label style="font-size:12px;font-weight:600">Reason</label><br><input id="ded-reason" type="text" class="form-control" placeholder="Short reason"></div>
+    </div>
+    <div style="margin-top:10px;display:flex;gap:8px">
+      <button class="btn btn-primary" style="padding:6px 14px" onclick="adDedCreate()">Propose Deduction</button>
+      <button class="btn btn-secondary" style="padding:6px 14px" onclick="document.getElementById('ded-newform').remove()">Cancel</button>
+    </div>
+    <p style="font-size:12px;color:#6b7280;margin:8px 0 0">The teacher can raise an issue before you finalize it. It affects payout only after you Approve or Modify.</p>
+  </div>`);
+}
+async function adDedCreate(){
+  const tid=parseInt((document.getElementById('ded-tid')||{}).value||0);
+  const amt=parseInt((document.getElementById('ded-amt')||{}).value||0);
+  const cat=(document.getElementById('ded-cat')||{}).value||'manual';
+  const reason=(document.getElementById('ded-reason')||{}).value||'';
+  if(!tid) return toast('Select a teacher.');
+  if(!amt||amt<=0) return toast('Enter an amount greater than 0.');
+  try{
+    await api('/api/admin/payout-deduction','POST',{teacher_id:tid,amount:amt,category:cat,reason:reason,month:_aEarnMonth});
+    toast('Deduction proposed (under review).'); loadADeductions();
+  }catch(e){ toast(e.message||'Could not create.'); }
+}
+async function adDedResolve(id,action){
+  const body={action:action};
+  if(action==='modify'){
+    const v=parseInt((document.getElementById('ded-mod-'+id)||{}).value||0);
+    if(!v||v<=0) return toast('Enter the new amount in the box, then press Modify.');
+    body.final_amount=v;
+  }
+  if(action==='reject' && !confirm('Cancel this deduction? It will not be applied.')) return;
+  try{
+    await api('/api/admin/payout-deduction/'+id+'/resolve','POST',body);
+    toast('Deduction '+(action==='reject'?'rejected':(action==='modify'?'modified':'approved'))+'.');
+    loadADeductions(); aEarnFetch();
+  }catch(e){ toast(e.message||'Could not resolve.'); }
+}
+// ---- Salary lifecycle (Finalized -> In Progress -> Credited -> Receipt confirmed) ----
+function _salBadge(s){
+  const m={pending:['Pending','#f3f4f6','#6b7280'],finalized:['Finalized','#e0e7ff','#3730a3'],in_progress:['In progress','#fde68a','#92400e'],credited:['Credited','#dbeafe','#1e40af'],receipt_confirmed:['Receipt confirmed','#dcfce7','#166534']};
+  const x=m[s]||[s,'#eee','#333'];
+  return `<span class="chip" style="background:${x[1]};color:${x[2]}">${x[0]}</span>`;
+}
+async function loadASalaryStatus(){
+  const panel=document.getElementById('sal-panel'); if(!panel) return;
+  panel.innerHTML='<div class="spinner"></div>';
+  let lf={};
+  try{ const r=await api('/api/admin/payout-lifecycle?month='+encodeURIComponent(_aEarnMonth)); lf=r.lifecycle||{}; }
+  catch(e){ panel.innerHTML='<div class="alert alert-error">Could not load salary status. '+esc(e.message||'')+'</div>'; return; }
+  const teachers=(window._aEarnData&&window._aEarnData.teachers)||[];
+  let h=`<div class="card"><div class="card-header"><h3>Salary Status \u00B7 ${esc(fmtMonthLabel(_aEarnMonth))}</h3></div><div class="card-body">`;
+  h+='<p style="color:#6b7280;font-size:.85rem;margin:0 0 12px">Finalize freezes the month. Then mark payment In Progress and Credited. The teacher confirms receipt from their side.</p>';
+  if(!teachers.length){ h+='<p style="color:#6b7280">Teachers load ho rahe hain…</p>'; }
+  teachers.forEach(t=>{
+    const tid=t.teacher_id||t.id;
+    const st=(lf[String(tid)]||{}).status||'pending';
+    const ref=(lf[String(tid)]||{}).pay_ref||'';
+    let btns='';
+    if(st==='pending') btns=`<button class="btn btn-primary" style="padding:5px 12px" onclick="salFinalize(${tid})">Finalize</button>`;
+    else if(st==='finalized') btns=`<button class="btn btn-secondary" style="padding:5px 12px" onclick="salProgress(${tid})">Mark In Progress</button><button class="btn btn-primary" style="padding:5px 12px" onclick="salCredited(${tid})">Mark Credited</button>`;
+    else if(st==='in_progress') btns=`<button class="btn btn-primary" style="padding:5px 12px" onclick="salCredited(${tid})">Mark Credited</button>`;
+    else if(st==='credited') btns=`<span style="color:#6b7280;font-size:13px">Waiting for teacher to confirm receipt${ref?(' \u00B7 ref: '+esc(ref)):''}</span>`;
+    else if(st==='receipt_confirmed') btns=`<span style="color:#166534;font-size:13px">Confirmed by teacher</span>`;
+    h+=`<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--border,#eee);padding:10px 0">
+      <div style="min-width:160px"><b>${esc(t.name||('Teacher #'+tid))}</b></div>
+      <div>${_salBadge(st)}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${btns}</div>
+    </div>`;
+  });
+  h+='</div></div>';
+  panel.innerHTML=h;
+}
+async function salFinalize(tid){
+  if(!confirm('Finalize '+fmtMonthLabel(_aEarnMonth)+' for this teacher? The calculation will be frozen.')) return;
+  try{ await api('/api/admin/teacher/'+tid+'/payout-finalize','POST',{month:_aEarnMonth}); toast('Finalized.'); loadASalaryStatus(); }
+  catch(e){ toast(e.message||'Could not finalize.'); }
+}
+async function salProgress(tid){
+  try{ await api('/api/admin/teacher/'+tid+'/payout-progress','POST',{month:_aEarnMonth}); toast('Marked in progress.'); loadASalaryStatus(); }
+  catch(e){ toast(e.message||'Failed.'); }
+}
+async function salCredited(tid){
+  const ref=prompt('Payment reference / note (optional) — e.g. UTR or bank ref. Leave blank if none:','');
+  if(ref===null) return;
+  try{ await api('/api/admin/teacher/'+tid+'/payout-paid','POST',{month:_aEarnMonth,pay_ref:ref}); toast('Marked credited. Teacher notified to confirm receipt.'); loadASalaryStatus(); }
+  catch(e){ toast(e.message||'Failed.'); }
+}
+// ===================== DYNAMIC INCENTIVE ENGINE (admin) =====================
+const INC_METRICS=[['video_views','Video Views'],['video_watch_time','Video Watch Time'],['shorts_views','Shorts Views'],['video_published','Videos Published'],['video_approvals','Video Approvals'],['video_completion','Video Completion'],['video_uploads','Video Uploads'],['shorts_uploads','Shorts Uploads'],['live_sessions','Live Sessions'],['live_attendance','Live Attendance'],['dpp_completion','DPP Completion'],['test_completion','Test Completion'],['doubts_resolved','Doubts Resolved'],['task_completion','Task Completion'],['content_submission','Content Submission'],['content_approval','Content Approval'],['student_engagement','Student Engagement'],['notes_uploaded','Notes Uploaded'],['classes_conducted','Classes Conducted'],['custom','Custom']];
+const INC_CALC=[['per_unit','Per Unit (every N = reward)'],['tiered','Tiered (ranges)'],['fixed','Fixed (flat reward)'],['percentage','Percentage of value'],['threshold_bonus','Threshold Bonus'],['milestone','Milestone (one-time)']];
+const _incMetricLabel=m=>{const f=INC_METRICS.find(x=>x[0]===m);return f?f[1]:m;};
+async function _incTeachers(){
+  if(window._aEarnData&&window._aEarnData.teachers&&window._aEarnData.teachers.length) return window._aEarnData.teachers.map(t=>({id:t.teacher_id||t.id,name:t.name}));
+  try{ const d=await api('/api/admin/teachers'); return (d||[]).map(t=>({id:t.id,name:t.name})); }catch(e){ return []; }
+}
+async function loadAIncentives(){
+  const el=document.getElementById('a-payouts-content'); if(!el) return;
+  _aEarnMonth=_aEarnMonth||curMonth();
+  el.innerHTML='<div class="spinner"></div>';
+  let rules={rules:[]},led={ledger:[],pending_review:0},an={};
+  try{
+    [rules,led,an]=await Promise.all([
+      api('/api/admin/incentive-rules').catch(()=>({rules:[]})),
+      api('/api/admin/incentive-ledger?month='+encodeURIComponent(_aEarnMonth)+'&status=pending_review').catch(()=>({ledger:[]})),
+      api('/api/admin/incentive-analytics?month='+encodeURIComponent(_aEarnMonth)).catch(()=>({}))
+    ]);
+  }catch(e){ el.innerHTML='<div class="alert alert-error">Could not load incentives. '+esc(e.message||'')+'</div>'; return; }
+  window._incRules=rules.rules||[];
+  const st=(v,l)=>`<div class="ae-stat"><div><div class="ae-stat-v">${v}</div><div class="ae-stat-l">${l}</div></div></div>`;
+  let h=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>Dynamic Incentives</h2><p>Create configurable, auditable incentive rules for any measurable activity. Only approved incentives enter payroll.</p></div>
+   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+     <input type="month" class="form-control" style="width:auto;padding:7px 12px" value="${_aEarnMonth}" onchange="_aEarnMonth=this.value;loadAIncentives()">
+     <button class="btn btn-primary" style="padding:7px 14px" onclick="incRun()">Run Calculation</button>
+     <button class="btn btn-secondary" style="padding:7px 14px" onclick="incSettingsForm()">Settings</button>
+     <button class="btn btn-secondary" style="padding:7px 14px" onclick="_aPayoutInner()">Back to Payouts</button>
+   </div></div>
+   <div class="ae-stats">${st((an.active_rules||0),'Active Rules')}${st((an.pending_review||0),'Pending Review')}${st(_inr(an.approved_total||0),'Approved (this month)')}${st(_inr(an.paid_total||0),'Paid')}</div>`;
+  // Rules
+  h+=`<div class="card" style="margin-top:14px"><div class="card-header" style="display:flex;justify-content:space-between;align-items:center"><h3>Incentive Rules</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-secondary" style="padding:6px 12px" onclick="incMetricForm()">Metric Values</button><button class="btn btn-secondary" style="padding:6px 12px" onclick="incManualForm()">Manual Incentive</button><button class="btn btn-primary" style="padding:6px 12px" onclick="incCreateForm()">Create Incentive Rule</button></div></div><div class="card-body" id="inc-rules">`;
+  h+=_incRulesList(window._incRules);
+  h+=`</div></div>`;
+  // Pending review ledger
+  h+=`<div class="card" style="margin-top:14px"><div class="card-header"><h3>Pending Review${(led.pending_review||0)>0?` <span class="chip" style="background:#fde68a;color:#92400e">${led.pending_review}</span>`:''}</h3></div><div class="card-body" id="inc-ledger">`;
+  h+=_incLedgerList(led.ledger||[]);
+  h+=`</div></div>`;
+  // Analytics
+  if(an.per_teacher&&an.per_teacher.length){
+    h+=`<div class="card" style="margin-top:14px"><div class="card-header"><h3>Incentive by Teacher</h3></div><div class="card-body">`;
+    an.per_teacher.forEach(t=>{ if(t.effective>0) h+=`<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border,#eee);padding:8px 0"><span>${esc(t.teacher_name||('Teacher #'+t.teacher_id))}</span><b>${_inr(t.effective)}</b></div>`; });
+    h+=`</div></div>`;
+  }
+  el.innerHTML=h;
+}
+function _incRuleBadge(s){const m={active:['Active','#dcfce7','#166534'],draft:['Draft','#f3f4f6','#6b7280'],inactive:['Inactive','#fee2e2','#991b1b']};const x=m[s]||[s,'#eee','#333'];return `<span class="chip" style="background:${x[1]};color:${x[2]}">${x[0]}</span>`;}
+function _incRuleSummary(r){
+  if(r.calc_type==='per_unit') return `Every ${_num(r.unit_size)} ${_incMetricLabel(r.metric)} = ${_inr(r.unit_reward)}`;
+  if(r.calc_type==='tiered') return `${(r.tiers||[]).length} tier(s)`;
+  if(r.calc_type==='fixed') return `Flat ${_inr(r.target_reward)}`;
+  if(r.calc_type==='percentage') return `${_num(r.percentage)}% of value`;
+  if(r.calc_type==='threshold_bonus') return `Reach ${_num(r.target_value)} -> ${_inr(r.target_reward)}`;
+  if(r.calc_type==='milestone') return `Milestone ${_num(r.target_value)} -> ${_inr(r.target_reward)}`;
+  return r.calc_type;
+}
+const _num=n=>Number(n||0).toLocaleString('en-IN');
+function _incRulesList(rules){
+  if(!rules||!rules.length) return '<p style="color:#6b7280;margin:6px 0">No incentive rules yet. Create your first rule.</p>';
+  let h='';
+  rules.forEach(r=>{
+    h+=`<div style="border:1px solid var(--border,#e5e7eb);border-radius:10px;padding:12px 14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
+        <div><b>${esc(r.name)}</b> ${_incRuleBadge(r.status)} <span style="color:#6b7280;font-size:12px">v${r.version}</span><div style="font-size:13px;color:#374151;margin-top:3px">${esc(_incMetricLabel(r.metric))} \u00B7 ${esc(_incRuleSummary(r))}${r.max_reward>0?(' \u00B7 max '+_inr(r.max_reward)):''}${r.effective_from?(' \u00B7 '+esc(r.effective_from)+(r.effective_until?(' to '+esc(r.effective_until)):' onward')):''}</div></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${r.status!=='active'?`<button class="btn btn-primary" style="padding:4px 10px" onclick="incRuleStatus(${r.id},'active')">Activate</button>`:`<button class="btn btn-secondary" style="padding:4px 10px" onclick="incRuleStatus(${r.id},'inactive')">Deactivate</button>`}
+          <button class="btn btn-secondary" style="padding:4px 10px" onclick="incCreateForm(${r.id})">Edit</button>
+          <button class="btn btn-secondary" style="padding:4px 10px" onclick="incPreview(${r.id})">Preview</button>
+        </div>
+      </div>${r.description?`<div style="font-size:12px;color:#6b7280;margin-top:5px">${esc(r.description)}</div>`:''}
+    </div>`;
+  });
+  return h;
+}
+function _incStatusBadge(s){const m={pending_review:['Pending review','#fde68a','#92400e'],approved:['Approved','#dcfce7','#166534'],rejected:['Rejected','#f3f4f6','#6b7280'],analytics_pending:['Analytics pending','#e0e7ff','#3730a3'],included_in_payroll:['In payroll','#dbeafe','#1e40af'],paid:['Paid','#dbeafe','#1e40af']};const x=m[s]||[s,'#eee','#333'];return `<span class="chip" style="background:${x[1]};color:${x[2]}">${x[0]}</span>`;}
+function _incLedgerList(rows){
+  if(!rows||!rows.length) return '<p style="color:#6b7280;margin:6px 0">Nothing pending review. Run the calculation for this month to generate incentives.</p>';
+  let h='';
+  rows.forEach(l=>{
+    h+=`<div style="border:1px solid var(--border,#e5e7eb);border-radius:10px;padding:12px 14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
+        <div><b>${esc(l.teacher_name||('Teacher #'+l.teacher_id))}</b> \u00B7 ${esc(l.rule_name||'')} <div style="font-size:12px;color:#6b7280;margin-top:2px">${esc(_incMetricLabel(l.metric))}: ${_num(l.metric_value)} \u00B7 ${esc(l.explain||'')}</div></div>
+        <div style="display:flex;gap:8px;align-items:center">${_incStatusBadge(l.status)}<b>${_inr(l.calculated_reward)}</b></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">
+        <button class="btn btn-primary" style="padding:5px 12px" onclick="incResolve(${l.id},'approve')">Approve ${_inr(l.calculated_reward)}</button>
+        <input id="inc-adj-${l.id}" type="number" class="form-control" style="width:120px;padding:5px 8px" placeholder="Adjust amount">
+        <button class="btn btn-secondary" style="padding:5px 12px" onclick="incResolve(${l.id},'adjust')">Adjust</button>
+        <button class="btn btn-danger" style="padding:5px 12px" onclick="incResolve(${l.id},'reject')">Reject</button>
+      </div>
+    </div>`;
+  });
+  return h;
+}
+async function incRun(){
+  if(!confirm('Run incentive calculation for '+fmtMonthLabel(_aEarnMonth)+'? This generates/updates incentives for all active rules. Already-decided ones stay frozen.')) return;
+  try{ const r=await api('/api/admin/incentive-run','POST',{month:_aEarnMonth}); toast('Run complete: '+r.created+' new, '+r.updated+' updated'+(r.analytics_pending?(', '+r.analytics_pending+' need data'):'')+'.'); loadAIncentives(); }
+  catch(e){ toast(e.message||'Run failed.'); }
+}
+async function incResolve(id,action){
+  const body={action};
+  if(action==='adjust'){ const v=parseInt((document.getElementById('inc-adj-'+id)||{}).value||-1); if(v<0) return toast('Enter the adjusted amount, then press Adjust.'); body.final_reward=v; }
+  if(action==='reject' && !confirm('Reject this incentive?')) return;
+  try{ await api('/api/admin/incentive-ledger/'+id+'/resolve','POST',body); toast('Incentive '+(action==='reject'?'rejected':(action==='adjust'?'adjusted':'approved'))+'.'); loadAIncentives(); }
+  catch(e){ toast(e.message||'Failed.'); }
+}
+async function incRuleStatus(id,status){
+  try{ await api('/api/admin/incentive-rule/'+id+'/status','POST',{status}); toast('Rule '+(status==='active'?'activated':'deactivated')+'.'); loadAIncentives(); }
+  catch(e){ toast(e.message||'Failed.'); }
+}
+function _incCalcFields(ct,r){
+  r=r||{};
+  const F=(id,lbl,val,ph)=>`<div><label style="font-size:12px;font-weight:600">${lbl}</label><br><input id="${id}" type="number" class="form-control" style="width:150px" value="${val!=null?val:''}" placeholder="${ph||''}"></div>`;
+  if(ct==='per_unit') return F('inc-unit_size','Every (units)',r.unit_size,'10000')+F('inc-unit_reward','Reward (Rs)',r.unit_reward,'500')+F('inc-min_threshold','Min threshold',r.min_threshold,'10000');
+  if(ct==='tiered') return `<div style="flex:1;min-width:260px"><label style="font-size:12px;font-weight:600">Tiers — one per line: <code>min,max,reward</code> (blank max = open)</label><br><textarea id="inc-tiers" class="form-control" rows="4" placeholder="0,9999,0&#10;10000,24999,500&#10;25000,49999,1000&#10;50000,,2000">${(r.tiers||[]).map(t=>[t.min,(t.max==null?'':t.max),t.reward].join(',')).join('\n')}</textarea></div>`;
+  if(ct==='fixed') return F('inc-target_reward','Flat reward (Rs)',r.target_reward,'100')+F('inc-min_threshold','Min metric to qualify',r.min_threshold,'1');
+  if(ct==='percentage') return F('inc-percentage','Percentage (%)',r.percentage,'5');
+  if(ct==='threshold_bonus') return F('inc-target_value','Reach value',r.target_value,'50000')+F('inc-target_reward','Bonus (Rs)',r.target_reward,'2000');
+  if(ct==='milestone') return F('inc-target_value','Milestone value',r.target_value,'100000')+F('inc-target_reward','One-time reward (Rs)',r.target_reward,'5000');
+  return '';
+}
+function incCalcChange(){ const ct=document.getElementById('inc-calc_type').value; document.getElementById('inc-calc-fields').innerHTML=_incCalcFields(ct, window._incEditRule||{}); }
+async function incCreateForm(rid){
+  const el=document.getElementById('a-payouts-content');
+  const r=rid?(window._incRules||[]).find(x=>x.id===rid):null; window._incEditRule=r||{};
+  const teachers=await _incTeachers();
+  const mOpts=INC_METRICS.map(m=>`<option value="${m[0]}" ${r&&r.metric===m[0]?'selected':''}>${m[1]}</option>`).join('');
+  const cOpts=INC_CALC.map(c=>`<option value="${c[0]}" ${r&&r.calc_type===c[0]?'selected':''}>${c[1]}</option>`).join('');
+  const tChecks=teachers.map(t=>`<label style="display:inline-flex;align-items:center;gap:4px;margin:2px 8px 2px 0;font-size:13px"><input type="checkbox" class="inc-elig-teacher" value="${t.id}" ${r&&(r.eligibility_ids||[]).map(String).includes(String(t.id))?'checked':''}>${esc(t.name)}</label>`).join('');
+  el.innerHTML=`<div class="sm-head"><div><h2>${rid?'Edit':'Create'} Incentive Rule</h2><p>Editing creates a new version. Old payroll stays connected to the old rule.</p></div><button class="btn btn-secondary" onclick="loadAIncentives()">Cancel</button></div>
+  <div class="card"><div class="card-body" style="display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <div style="flex:1;min-width:240px"><label style="font-size:12px;font-weight:600">Incentive Name</label><br><input id="inc-name" class="form-control" value="${r?esc(r.name):''}" placeholder="Monthly Video Views Bonus"></div>
+      <div style="flex:1;min-width:240px"><label style="font-size:12px;font-weight:600">Description</label><br><input id="inc-description" class="form-control" value="${r?esc(r.description):''}" placeholder="Short description"></div>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+      <div><label style="font-size:12px;font-weight:600">Metric</label><br><select id="inc-metric" class="form-control">${mOpts}</select></div>
+      <div><label style="font-size:12px;font-weight:600">Calculation</label><br><select id="inc-calc_type" class="form-control" onchange="incCalcChange()">${cOpts}</select></div>
+      <div id="inc-calc-fields" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end"></div>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+      <div><label style="font-size:12px;font-weight:600">Max reward / month (Rs, 0=none)</label><br><input id="inc-max_reward" type="number" class="form-control" style="width:170px" value="${r?r.max_reward:0}"></div>
+      <div><label style="font-size:12px;font-weight:600">Stacking</label><br><select id="inc-stacking" class="form-control"><option value="allow" ${r&&r.stacking==='allow'?'selected':''}>Allow</option><option value="highest" ${r&&r.stacking==='highest'?'selected':''}>Highest only</option><option value="none" ${r&&r.stacking==='none'?'selected':''}>No stacking</option></select></div>
+      <div><label style="font-size:12px;font-weight:600">Approval</label><br><select id="inc-review_mode" class="form-control"><option value="review" ${!r||r.review_mode==='review'?'selected':''}>Requires review</option><option value="auto" ${r&&r.review_mode==='auto'?'selected':''}>Auto approve</option></select></div>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+      <div><label style="font-size:12px;font-weight:600">Effective from (YYYY-MM)</label><br><input id="inc-effective_from" class="form-control" style="width:150px" value="${r?esc(r.effective_from):_aEarnMonth}" placeholder="2026-08"></div>
+      <div><label style="font-size:12px;font-weight:600">Effective until (blank=open)</label><br><input id="inc-effective_until" class="form-control" style="width:150px" value="${r?esc(r.effective_until):''}" placeholder="2026-08"></div>
+    </div>
+    <div>
+      <label style="font-size:12px;font-weight:600">Eligibility</label><br>
+      <select id="inc-eligibility_type" class="form-control" style="width:220px" onchange="document.getElementById('inc-elig-teachers').style.display=this.value==='teachers'?'block':'none';document.getElementById('inc-elig-subjects').style.display=this.value==='subjects'?'block':'none'">
+        <option value="all" ${!r||r.eligibility_type==='all'?'selected':''}>All teachers</option>
+        <option value="teachers" ${r&&r.eligibility_type==='teachers'?'selected':''}>Selected teachers</option>
+        <option value="subjects" ${r&&r.eligibility_type==='subjects'?'selected':''}>Selected subjects</option>
+      </select>
+      <div id="inc-elig-teachers" style="display:${r&&r.eligibility_type==='teachers'?'block':'none'};margin-top:8px;max-height:120px;overflow:auto;border:1px solid var(--border,#eee);border-radius:8px;padding:8px">${tChecks||'<span style="color:#6b7280">No teachers</span>'}</div>
+      <div id="inc-elig-subjects" style="display:${r&&r.eligibility_type==='subjects'?'block':'none'};margin-top:8px"><input id="inc-elig-subject-list" class="form-control" value="${r&&r.eligibility_type==='subjects'?esc((r.eligibility_ids||[]).join(', ')):''}" placeholder="Physics, Chemistry"></div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-secondary" onclick="incSaveRule('draft')">Save Draft</button>
+      <button class="btn btn-primary" onclick="incSaveRule('active')">${rid?'Save New Version (Active)':'Activate Rule'}</button>
+    </div>
+  </div></div>`;
+  incCalcChange();
+}
+function _incGather(status){
+  const g=id=>{const el=document.getElementById(id);return el?el.value:'';};
+  const gn=id=>{const el=document.getElementById(id);return el?parseFloat(el.value||0):0;};
+  const et=g('inc-eligibility_type'); let ids=[];
+  if(et==='teachers') ids=Array.from(document.querySelectorAll('.inc-elig-teacher:checked')).map(c=>parseInt(c.value));
+  else if(et==='subjects') ids=(g('inc-elig-subject-list')||'').split(',').map(s=>s.trim()).filter(Boolean);
+  let tiers=[];
+  const ta=document.getElementById('inc-tiers');
+  if(ta){ tiers=(ta.value||'').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{const p=l.split(',').map(s=>s.trim());return {min:parseFloat(p[0]||0),max:(p[1]===''||p[1]==null?null:parseFloat(p[1])),reward:parseFloat(p[2]||0)};}); }
+  return {name:g('inc-name'),description:g('inc-description'),metric:g('inc-metric'),calc_type:g('inc-calc_type'),
+    period:'monthly',min_threshold:gn('inc-min_threshold'),unit_size:gn('inc-unit_size'),unit_reward:gn('inc-unit_reward'),
+    tiers,percentage:gn('inc-percentage'),target_value:gn('inc-target_value'),target_reward:gn('inc-target_reward'),
+    max_reward:gn('inc-max_reward'),eligibility_type:et,eligibility_ids:ids,stacking:g('inc-stacking'),
+    review_mode:g('inc-review_mode'),effective_from:g('inc-effective_from'),effective_until:g('inc-effective_until'),status};
+}
+async function incSaveRule(status){
+  const body=_incGather(status);
+  if(!body.name) return toast('Enter a name.');
+  const rid=(window._incEditRule&&window._incEditRule.id)||0;
+  try{
+    if(rid) await api('/api/admin/incentive-rule/'+rid+'/update','POST',body);
+    else await api('/api/admin/incentive-rule','POST',body);
+    toast('Incentive rule saved.'); loadAIncentives();
+  }catch(e){ toast(e.message||'Save failed.'); }
+}
+function _incBack(){ return '<button class="btn btn-secondary" onclick="loadAIncentives()">Cancel</button>'; }
+const INC_MANUAL_METRICS=[['video_views','Video Views'],['video_watch_time','Video Watch Time'],['shorts_views','Shorts Views'],['video_published','Videos Published'],['video_approvals','Video Approvals'],['video_completion','Video Completion'],['live_attendance','Live Attendance'],['content_submission','Content Submission'],['content_approval','Content Approval'],['student_engagement','Student Engagement'],['custom','Custom']];
+async function incPreview(rid){
+  const el=document.getElementById('a-payouts-content');
+  const r=(window._incRules||[]).find(x=>x.id===rid)||{};
+  const teachers=await _incTeachers();
+  const tOpts=teachers.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
+  el.innerHTML=`<div class="sm-head"><div><h2>Preview Incentive</h2><p>${esc(r.name||'')} \u2014 exact amount a teacher would earn with current data.</p></div>${_incBack()}</div>
+   <div class="card"><div class="card-body" style="display:flex;flex-direction:column;gap:14px">
+     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+       <div><label style="font-size:12px;font-weight:600">Teacher</label><br><select id="incp-teacher" class="form-control" style="min-width:220px">${tOpts||'<option>No teachers</option>'}</select></div>
+       <div><label style="font-size:12px;font-weight:600">Month</label><br><input id="incp-month" type="month" class="form-control" value="${_aEarnMonth}"></div>
+       <button class="btn btn-primary" onclick="incRunPreview(${rid})">Compute</button>
+     </div>
+     <div id="incp-result"></div>
+   </div></div>`;
+}
+async function incRunPreview(rid){
+  const tsel=document.getElementById('incp-teacher'); if(!tsel||!tsel.value) return toast('No teacher selected.');
+  const tid=parseInt(tsel.value), mo=document.getElementById('incp-month').value||_aEarnMonth;
+  const box=document.getElementById('incp-result'); box.innerHTML='<div class="spinner"></div>';
+  try{ const r=await api('/api/admin/incentive-preview?rule_id='+rid+'&teacher_id='+tid+'&month='+encodeURIComponent(mo));
+    if(r.metric_value==null){ box.innerHTML='<div style="background:#e0e7ff;color:#3730a3;padding:12px;border-radius:10px">Metric value not available yet for this teacher/month. Record it under Metric Values, or use an auto-source metric.</div>'; return; }
+    box.innerHTML=`<div style="border:1px solid var(--border,#e5e7eb);border-radius:12px;padding:16px;background:var(--bg-soft,#f9fafb)">
+      <div style="display:flex;justify-content:space-between"><span>Metric value</span><b>${_num(r.metric_value)}</b></div>
+      <div style="display:flex;justify-content:space-between;margin-top:6px"><span>Estimated incentive</span><b style="font-size:1.3rem">${_inr(r.calculated)}</b></div>
+      <div style="font-size:12px;color:#6b7280;margin-top:8px">${esc(r.explain||'')}</div></div>`;
+  }catch(e){ box.innerHTML='<div class="alert alert-error">'+esc(e.message||'Preview failed.')+'</div>'; }
+}
+async function incManualForm(){
+  const el=document.getElementById('a-payouts-content');
+  const teachers=await _incTeachers();
+  const tOpts=teachers.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
+  el.innerHTML=`<div class="sm-head"><div><h2>Manual Incentive</h2><p>Controlled one-off incentive. A reason is required; it is approved on save and written to the audit trail.</p></div>${_incBack()}</div>
+   <div class="card"><div class="card-body" style="display:flex;flex-direction:column;gap:14px">
+     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+       <div><label style="font-size:12px;font-weight:600">Teacher</label><br><select id="incm-teacher" class="form-control" style="min-width:220px">${tOpts||'<option>No teachers</option>'}</select></div>
+       <div><label style="font-size:12px;font-weight:600">Month</label><br><input id="incm-month" type="month" class="form-control" value="${_aEarnMonth}"></div>
+       <div><label style="font-size:12px;font-weight:600">Amount (Rs)</label><br><input id="incm-amount" type="number" class="form-control" style="width:150px" placeholder="1000"></div>
+     </div>
+     <div><label style="font-size:12px;font-weight:600">Reason (required)</label><br><input id="incm-reason" class="form-control" placeholder="e.g. Special contribution to the Lakshya batch"></div>
+     <div><label style="font-size:12px;font-weight:600">Reference / evidence (optional)</label><br><input id="incm-reference" class="form-control" placeholder="Link, note, or reference number"></div>
+     <div><button class="btn btn-primary" onclick="incSaveManual()">Add Incentive</button></div>
+   </div></div>`;
+}
+async function incSaveManual(){
+  const tsel=document.getElementById('incm-teacher'); if(!tsel||!tsel.value) return toast('No teacher selected.');
+  const tid=parseInt(tsel.value);
+  const amt=parseInt(document.getElementById('incm-amount').value||0);
+  const reason=(document.getElementById('incm-reason').value||'').trim();
+  const ref=(document.getElementById('incm-reference').value||'').trim();
+  const mo=document.getElementById('incm-month').value||_aEarnMonth;
+  if(!(amt>0)) return toast('Enter an amount greater than 0.');
+  if(reason.length<3) return toast('A reason is required.');
+  try{ await api('/api/admin/incentive-manual','POST',{teacher_id:tid,amount:amt,reason,reference:ref,month:mo}); toast('Manual incentive added (approved).'); loadAIncentives(); }
+  catch(e){ toast(e.message||'Failed.'); }
+}
+async function incSettingsForm(){
+  const el=document.getElementById('a-payouts-content');
+  let s={global_cap:0,stacking:'allow'};
+  try{ s=await api('/api/admin/incentive-settings'); }catch(e){}
+  el.innerHTML=`<div class="sm-head"><div><h2>Incentive Settings</h2><p>Organisation-wide limits applied across all incentive rules.</p></div>${_incBack()}</div>
+   <div class="card"><div class="card-body" style="display:flex;flex-direction:column;gap:14px">
+     <div><label style="font-size:12px;font-weight:600">Global monthly cap across ALL rules (Rs, 0 = no cap)</label><br><input id="incs-cap" type="number" class="form-control" style="width:200px" value="${s.global_cap||0}"></div>
+     <div><label style="font-size:12px;font-weight:600">Stacking across rules</label><br><select id="incs-stacking" class="form-control" style="width:240px"><option value="allow" ${s.stacking==='allow'?'selected':''}>Allow (sum all rules)</option><option value="highest" ${s.stacking==='highest'?'selected':''}>Highest rule only</option><option value="none" ${s.stacking==='none'?'selected':''}>No stacking</option></select></div>
+     <div><button class="btn btn-primary" onclick="incSaveSettings()">Save Settings</button></div>
+   </div></div>`;
+}
+async function incSaveSettings(){
+  const cap=parseFloat(document.getElementById('incs-cap').value||0);
+  const stk=document.getElementById('incs-stacking').value||'allow';
+  try{ await api('/api/admin/incentive-settings','POST',{global_cap:cap,stacking:stk}); toast('Incentive settings saved.'); loadAIncentives(); }
+  catch(e){ toast(e.message||'Failed.'); }
+}
+async function incMetricForm(){
+  const el=document.getElementById('a-payouts-content');
+  const teachers=await _incTeachers();
+  const tOpts=teachers.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
+  const mOpts=INC_MANUAL_METRICS.map(m=>`<option value="${m[0]}">${m[1]}</option>`).join('');
+  let existing={values:[]};
+  try{ existing=await api('/api/admin/incentive-metric-values?period='+encodeURIComponent(_aEarnMonth)); }catch(e){}
+  let list='';
+  (existing.values||[]).forEach(v=>{ list+=`<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border,#eee);padding:7px 0"><span>${esc(v.teacher_name||('#'+v.teacher_id))} \u2014 ${esc(_incMetricLabel(v.metric))}</span><span>${_num(v.value)}${v.status==='analytics_pending'?' (pending)':''}</span></div>`; });
+  el.innerHTML=`<div class="sm-head"><div><h2>Metric Values</h2><p>For metrics with no automatic source (views, watch time, custom), record the value per teacher for the month. Missing value = analytics pending, never a penalty.</p></div>${_incBack()}</div>
+   <div class="card"><div class="card-body" style="display:flex;flex-direction:column;gap:14px">
+     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+       <div><label style="font-size:12px;font-weight:600">Teacher</label><br><select id="incv-teacher" class="form-control" style="min-width:200px">${tOpts||'<option>No teachers</option>'}</select></div>
+       <div><label style="font-size:12px;font-weight:600">Metric</label><br><select id="incv-metric" class="form-control">${mOpts}</select></div>
+       <div><label style="font-size:12px;font-weight:600">Month</label><br><input id="incv-period" type="month" class="form-control" value="${_aEarnMonth}"></div>
+       <div><label style="font-size:12px;font-weight:600">Value</label><br><input id="incv-value" type="number" class="form-control" style="width:140px" placeholder="46500"></div>
+       <div><label style="font-size:12px;font-weight:600">Status</label><br><select id="incv-status" class="form-control"><option value="available">Available</option><option value="analytics_pending">Analytics pending</option></select></div>
+       <button class="btn btn-primary" onclick="incSaveMetric()">Save Value</button>
+     </div>
+     <div><label style="font-size:12px;font-weight:600">Recorded for ${esc(fmtMonthLabel(_aEarnMonth))}</label><div style="margin-top:6px">${list||'<span style="color:#6b7280">None yet.</span>'}</div></div>
+   </div></div>`;
+}
+async function incSaveMetric(){
+  const tsel=document.getElementById('incv-teacher'); if(!tsel||!tsel.value) return toast('No teacher selected.');
+  const tid=parseInt(tsel.value);
+  const metric=document.getElementById('incv-metric').value;
+  const period=document.getElementById('incv-period').value||_aEarnMonth;
+  const value=parseFloat(document.getElementById('incv-value').value||0);
+  const status=document.getElementById('incv-status').value;
+  try{ await api('/api/admin/incentive-metric-value','POST',{teacher_id:tid,metric,period,value,status}); toast('Metric value saved.'); incMetricForm(); }
+  catch(e){ toast(e.message||'Failed.'); }
 }
 async function aEarnFetch(){
   const body=document.getElementById('ae-body'), stats=document.getElementById('ae-stats');

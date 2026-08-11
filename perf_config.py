@@ -82,8 +82,26 @@ def _deep_merge(base, patch):
     return base
 
 
+def _normalize_component_weights(cfg):
+    """Component weights ko 100 par proportionally scale karo (ratios same rehte hain).
+    Isse leaderboard ka score hamesha 100 ke scale par rehta hai aur Settings me weight
+    sum 100% dikhta hai, chahe admin ne kitne bhi weights daale hon (jaise 105). Sirf
+    tab chalta hai jab sum > 0 aur 100 ke barabar nahi (idempotent)."""
+    cw = cfg.get("component_weights")
+    if isinstance(cw, dict):
+        try:
+            s = sum(float(v or 0) for v in cw.values())
+        except Exception:
+            s = 0
+        if s > 0 and abs(s - 100.0) > 0.001:
+            for k in cw:
+                cw[k] = round(float(cw[k] or 0) * 100.0 / s, 4)
+    return cfg
+
+
 def get_perf_config(db):
-    """Defaults + admin ke saved overrides ka merged config. Kuch save na ho to pure defaults."""
+    """Defaults + admin ke saved overrides ka merged config. Kuch save na ho to pure defaults.
+    Component weights hamesha 100 par normalized milte hain (leaderboard 100-scale par)."""
     from models import AppSetting
     cfg = copy.deepcopy(PERF_DEFAULTS)
     try:
@@ -92,6 +110,7 @@ def get_perf_config(db):
             _deep_merge(cfg, json.loads(row.value))
     except Exception:
         pass
+    _normalize_component_weights(cfg)
     return cfg
 
 

@@ -13,7 +13,7 @@ from datetime import datetime, date, timedelta
 from typing import List, Optional
 
 from database import get_db
-from security import get_admin, hash_password
+from security import get_admin, hash_password, decode_token as _dec_tok
 from models import (
     User, TeacherProfile, StudentProfile, ClassEntry, ClassStatus,
     RescheduleRequest, RescheduleStatus, Doubt, DoubtStatus,
@@ -75,23 +75,53 @@ def admin_allowed_sections(user):
     return set(secs or [])
 
 
+def _needs_payout_token(path: str) -> bool:
+    """Confidential SALARY endpoints that require an unlocked payout session (spec
+    PART 56). Kept explicit (not whole 'payouts' section) so shared endpoints like
+    passcode-resets / contracts stay reachable in the general approvals view."""
+    p = path or ""
+    return (p.startswith("/api/admin/earnings")
+            or p.startswith("/api/admin/payouts")
+            or p.startswith("/api/admin/payout-task")
+            or p.startswith("/api/admin/payout-approvals")
+            or p.startswith("/api/admin/payout-adjust")
+            or p.startswith("/api/admin/payout-deduction")
+            or p.startswith("/api/admin/payout-lifecycle")
+            or p.startswith("/api/admin/incentive")
+            or (p.startswith("/api/admin/teacher/") and "/payout" in p))
+
+
+def _require_payout_token(request: Request, current_user):
+    """428 unless a valid, unexpired payout-access token is present (from unlock)."""
+    tok = request.headers.get("X-Payout-Token") or request.query_params.get("ptoken") or ""
+    if not tok:
+        raise HTTPException(status_code=428, detail="Payout locked — unlock required")
+    try:
+        payload = _dec_tok(tok)
+    except Exception:
+        raise HTTPException(status_code=428, detail="Payout session expired — unlock again")
+    if payload.get("scope") != "payout" or str(payload.get("sub")) != str(current_user.id):
+        raise HTTPException(status_code=428, detail="Payout session invalid — unlock again")
+
+
 def admin_section_guard(request: Request, current_user=Depends(get_admin)):
     """Router-level guard: restricted sub-admin sirf apne allowed sections ke
     endpoints call kar sakta hai. Unmapped endpoints (e.g. notifications bell)
-    sabke liye open rehte hain — safe default."""
-    allowed = admin_allowed_sections(current_user)
-    if allowed is None:
-        return current_user
+    sabke liye open rehte hain — safe default. Plus: confidential salary endpoints
+    need an unlocked payout session (secure payout access)."""
     path = request.url.path  # e.g. /api/admin/earnings/configs
-    if not path.startswith("/api/admin/"):
-        return current_user
-    parts = path.split("/")
-    first = parts[3] if len(parts) > 3 else ""
-    sec = ADMIN_SECTION_MAP.get(first)
-    if sec is not None:
-        acceptable = ADMIN_SECTION_ALIASES.get(sec, {sec})
-        if allowed.isdisjoint(acceptable):
-            raise HTTPException(status_code=403, detail="You do not have access to this section.")
+    allowed = admin_allowed_sections(current_user)
+    if allowed is not None and path.startswith("/api/admin/"):
+        parts = path.split("/")
+        first = parts[3] if len(parts) > 3 else ""
+        sec = ADMIN_SECTION_MAP.get(first)
+        if sec is not None:
+            acceptable = ADMIN_SECTION_ALIASES.get(sec, {sec})
+            if allowed.isdisjoint(acceptable):
+                raise HTTPException(status_code=403, detail="You do not have access to this section.")
+    # secure payout access — salary endpoints require an active unlocked session
+    if _needs_payout_token(path):
+        _require_payout_token(request, current_user)
     return current_user
 
 
@@ -4800,37 +4830,99 @@ def admin_payout_classes(tid: int, month: str = "", db: Session = Depends(get_db
          "chapter": e.chapter or "", "missed": e.id in missed} for e in entries]}
 
 @router.post("/teacher/{tid}/payout-finalize")
-def admin_finalize_payout(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
-    """Month lock: poora breakdown snapshot me freeze. Paid mark alag action."""
+def admin_finalize_payout(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Month lock: poora breakdown snapshot me freeze (baad me data badle to bhi record same).
+    Snapshot live earnings model (v80) se — jo admin screen par dikhta hai."""
     import json as _json
-    from models import PayoutMonth
-    from teacher_routes import compute_payout, _month_range
+    from models import PayoutMonth, TeacherProfile
+    from teacher_routes import _month_range, earnings_payload
     mk = _month_range(payload.get("month") or "")[0].strftime("%Y-%m")
-    p = compute_payout(db, tid, mk)
-    if not p:
-        raise HTTPException(400, "Is teacher ka payout configured nahi hai")
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(404, "Teacher not found.")
+    snap = earnings_payload(db, tp, mk)   # live model — sab teachers ke liye kaam karta hai
     rec = db.query(PayoutMonth).filter(PayoutMonth.teacher_id == tid, PayoutMonth.month == mk).first()
     if not rec:
         rec = PayoutMonth(teacher_id=tid, month=mk)
         db.add(rec)
-    rec.snapshot = _json.dumps(p, default=str)
+    if rec.status in ("credited", "receipt_confirmed", "paid"):
+        raise HTTPException(400, "This month is already credited — cannot re-finalize.")
+    rec.snapshot = _json.dumps(snap, default=str)
     rec.status = "finalized"
     rec.finalized_at = datetime.utcnow()
+    _pay_audit(db, "payout_month", rec.id, "finalized", current_user.id, "admin",
+               "Month finalized (snapshot frozen)", teacher_id=tid, month=mk)
     db.commit()
-    return {"message": "Month finalized - snapshot saved"}
+    return {"message": "Month finalized - snapshot saved", "status": rec.status}
 
-@router.post("/teacher/{tid}/payout-paid")
-def admin_payout_paid(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+@router.post("/teacher/{tid}/payout-progress")
+def admin_payout_progress(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Payment process shuru: status -> in_progress."""
     from models import PayoutMonth
     from teacher_routes import _month_range
     mk = _month_range(payload.get("month") or "")[0].strftime("%Y-%m")
     rec = db.query(PayoutMonth).filter(PayoutMonth.teacher_id == tid, PayoutMonth.month == mk).first()
-    if not rec:
-        raise HTTPException(400, "Pehle month finalize karo")
-    rec.status = "paid"
-    rec.paid_at = datetime.utcnow()
+    if not rec or rec.status not in ("finalized",):
+        raise HTTPException(400, "Finalize the month first.")
+    rec.status = "in_progress"
+    rec.in_progress_at = datetime.utcnow()
+    _pay_audit(db, "payout_month", rec.id, "in_progress", current_user.id, "admin",
+               "Payment marked in progress", teacher_id=tid, month=mk)
     db.commit()
-    return {"message": "Marked as paid"}
+    return {"message": "Marked in progress", "status": rec.status}
+
+@router.post("/teacher/{tid}/payout-paid")
+def admin_payout_paid(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Salary credited: status -> credited (+ optional payment reference). Teacher ko
+    CONFIDENTIAL notification (koi amount nahi) + receipt confirm karne ko kaha jaata hai."""
+    from models import PayoutMonth, TeacherProfile
+    from teacher_routes import _month_range
+    mk = _month_range(payload.get("month") or "")[0].strftime("%Y-%m")
+    rec = db.query(PayoutMonth).filter(PayoutMonth.teacher_id == tid, PayoutMonth.month == mk).first()
+    if not rec or rec.status not in ("finalized", "in_progress"):
+        raise HTTPException(400, "Finalize the month first.")
+    rec.status = "credited"
+    rec.paid_at = datetime.utcnow()
+    ref = (payload.get("pay_ref") or "").strip()[:120]
+    if ref:
+        rec.pay_ref = ref
+    _pay_audit(db, "payout_month", rec.id, "credited", current_user.id, "admin",
+               "Salary credited%s" % ((" (ref: " + ref + ")") if ref else ""), teacher_id=tid, month=mk)
+    try:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+        if tp and tp.user_id:
+            notify(db, tp.user_id, "Salary credited",
+                   "Your payout for %s has been credited. Please open your Payout section and confirm receipt." % _fmt_month_label(mk),
+                   "payout")
+    except Exception:
+        pass
+    db.commit()
+    return {"message": "Marked as credited", "status": rec.status}
+
+def _fmt_month_label(mk):
+    try:
+        from datetime import datetime as _dt
+        return _dt.strptime(mk, "%Y-%m").strftime("%B %Y")
+    except Exception:
+        return mk
+
+@router.get("/payout-lifecycle")
+def admin_payout_lifecycle(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Us month me har teacher ki salary lifecycle status (admin panel ke liye)."""
+    from models import PayoutMonth
+    from teacher_routes import _month_range
+    mk = _month_range(month or "")[0].strftime("%Y-%m")
+    rows = db.query(PayoutMonth).filter(PayoutMonth.month == mk).all()
+    def _st(r):
+        s = r.status
+        if s == "paid":
+            s = "credited"   # legacy alias
+        return {"teacher_id": r.teacher_id, "status": s,
+                "pay_ref": r.pay_ref or "",
+                "finalized_at": r.finalized_at.strftime("%d %b %Y") if r.finalized_at else "",
+                "paid_at": r.paid_at.strftime("%d %b %Y") if r.paid_at else "",
+                "receipt_confirmed_at": r.receipt_confirmed_at.strftime("%d %b %Y") if r.receipt_confirmed_at else ""}
+    return {"month": mk, "lifecycle": {str(r.teacher_id): _st(r) for r in rows}}
 
 # ===== OFFICE LOCATION (punch geofence) =====
 @router.get("/dpp-pack-pdf/{pack_id}")
@@ -5373,3 +5465,915 @@ def admin_dpp_track_list(pack_id: int, event: str = "view",
                     "at": e.created_at.strftime("%d %b %Y, %I:%M %p") if e.created_at else ""})
     return {"pack": {"id": pk.id, "title": pk.title or "DPP"},
             "event": ev, "count": len(out), "rows": out}
+
+
+# =====================================================================
+# SECURE PAYOUT ACCESS  (spec V3 PART 52-56) — server-side passcode gate
+# =====================================================================
+# The Payout/Payroll module needs more than a normal admin login. Admin must
+# unlock it with a passcode (hashed server-side). Set ONCE; forgot-reset needs a
+# verify number; too many wrong tries -> temporary lockout. On unlock the admin
+# gets a short-lived "payout access" token (15 min) that payout APIs will require.
+from security import verify_password as _pa_verify, create_access_token as _pa_mktok, decode_token as _pa_detok
+from datetime import timedelta as _pa_td, datetime as _pa_dt
+
+_PA_MAX_FAILS = 5
+_PA_LOCK_MIN = 15          # lockout minutes after max fails
+_PA_SESSION_MIN = 15       # payout access session length (inactivity handled client-side)
+
+
+def _pa_row(db):
+    from models import PayoutAccess
+    r = db.query(PayoutAccess).filter(PayoutAccess.id == 1).first()
+    return r
+
+
+def _pa_locked(r):
+    if r and r.locked_until and r.locked_until > _pa_dt.utcnow():
+        return int((r.locked_until - _pa_dt.utcnow()).total_seconds())
+    return 0
+
+
+def get_payout_admin(request: Request, current_user=Depends(get_admin)):
+    """Dependency for payout APIs: normal admin PLUS a valid, unexpired payout token
+    (sent as header X-Payout-Token). Fails 428 if the module is not unlocked."""
+    tok = request.headers.get("X-Payout-Token") or request.query_params.get("ptoken") or ""
+    if not tok:
+        raise HTTPException(status_code=428, detail="Payout locked — unlock required")
+    try:
+        payload = _pa_detok(tok)
+    except Exception:
+        raise HTTPException(status_code=428, detail="Payout session expired — unlock again")
+    if payload.get("scope") != "payout" or str(payload.get("sub")) != str(current_user.id):
+        raise HTTPException(status_code=428, detail="Payout session invalid — unlock again")
+    return current_user
+
+
+@router.get("/payout/access-status")
+def payout_access_status(db: Session = Depends(get_db), _=Depends(get_admin)):
+    r = _pa_row(db)
+    locked = _pa_locked(r)
+    try:
+        _bio = bool(r and r.webauthn_creds and _wjson.loads(r.webauthn_creds))
+    except Exception:
+        _bio = False
+    return {
+        "configured": bool(r and r.passcode_hash),
+        "locked": locked > 0,
+        "locked_seconds": locked,
+        "attempts_left": max(0, _PA_MAX_FAILS - (r.failed_attempts if r else 0)),
+        "session_minutes": _PA_SESSION_MIN,
+        "has_biometric": _bio,
+    }
+
+
+@router.post("/payout/setup")
+def payout_setup(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Set the passcode ONCE. Fails if already configured (nobody can silently change it)."""
+    from models import PayoutAccess
+    r = _pa_row(db)
+    if r and r.passcode_hash:
+        raise HTTPException(400, "Payout passcode is already set. Use Forgot to reset it.")
+    pc = str(payload.get("passcode") or "").strip()
+    phone = "".join(ch for ch in str(payload.get("verify_phone") or "") if ch.isdigit())
+    if len(pc) < 4:
+        raise HTTPException(400, "Passcode must be at least 4 characters.")
+    if len(phone) < 10:
+        raise HTTPException(400, "A valid 10-digit verify number is required (for forgot-reset).")
+    if not r:
+        r = PayoutAccess(id=1)
+        db.add(r)
+    r.passcode_hash = hash_password(pc)
+    r.verify_phone = phone[-10:]
+    r.set_by = current_user.id
+    r.set_at = _pa_dt.utcnow()
+    r.failed_attempts = 0
+    r.locked_until = None
+    db.commit()
+    return {"ok": True, "message": "Payout passcode set. Keep it safe — it cannot be changed without the verify number."}
+
+
+@router.post("/payout/unlock")
+def payout_unlock(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    r = _pa_row(db)
+    if not r or not r.passcode_hash:
+        raise HTTPException(400, "Payout passcode not set yet.")
+    locked = _pa_locked(r)
+    if locked > 0:
+        raise HTTPException(423, "Too many wrong attempts. Locked for %d more seconds." % locked)
+    pc = str(payload.get("passcode") or "")
+    if not _pa_verify(pc, r.passcode_hash):
+        r.failed_attempts = (r.failed_attempts or 0) + 1
+        if r.failed_attempts >= _PA_MAX_FAILS:
+            r.locked_until = _pa_dt.utcnow() + _pa_td(minutes=_PA_LOCK_MIN)
+            r.failed_attempts = 0
+            db.commit()
+            raise HTTPException(423, "Too many wrong attempts. Payout locked for %d minutes." % _PA_LOCK_MIN)
+        left = _PA_MAX_FAILS - r.failed_attempts
+        db.commit()
+        raise HTTPException(401, "Wrong passcode. %d attempt(s) left." % left)
+    # success
+    r.failed_attempts = 0
+    r.locked_until = None
+    db.commit()
+    token = _pa_mktok({"sub": str(current_user.id), "scope": "payout"},
+                      expires_delta=_pa_td(minutes=_PA_SESSION_MIN))
+    return {"ok": True, "payout_token": token, "session_minutes": _PA_SESSION_MIN}
+
+
+@router.post("/payout/reset")
+def payout_reset(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Forgot-reset: only works if the verify number matches the one set at setup."""
+    r = _pa_row(db)
+    if not r or not r.passcode_hash:
+        raise HTTPException(400, "Payout passcode not set yet — use Setup.")
+    phone = "".join(ch for ch in str(payload.get("verify_phone") or "") if ch.isdigit())[-10:]
+    new_pc = str(payload.get("new_passcode") or "").strip()
+    if phone != (r.verify_phone or ""):
+        raise HTTPException(401, "Verify number does not match. Reset denied.")
+    if len(new_pc) < 4:
+        raise HTTPException(400, "New passcode must be at least 4 characters.")
+    r.passcode_hash = hash_password(new_pc)
+    r.set_by = current_user.id
+    r.set_at = _pa_dt.utcnow()
+    r.failed_attempts = 0
+    r.locked_until = None
+    db.commit()
+    token = _pa_mktok({"sub": str(current_user.id), "scope": "payout"},
+                      expires_delta=_pa_td(minutes=_PA_SESSION_MIN))
+    return {"ok": True, "payout_token": token, "message": "Passcode reset successfully."}
+
+
+# =====================================================================
+# PAYOUT AUDIT TRAIL (append-only) + DEDUCTION REVIEW LIFECYCLE (spec V3)
+# =====================================================================
+def _pay_audit(db, entity_type, entity_id, action, actor_id, actor_role,
+               detail="", teacher_id=None, month=None):
+    """Immutable audit line. Sirf insert (kabhi update/delete nahi)."""
+    from models import PayoutAudit
+    try:
+        db.add(PayoutAudit(entity_type=entity_type, entity_id=entity_id, action=action,
+                           actor_id=actor_id, actor_role=actor_role, detail=(detail or "")[:1000],
+                           teacher_id=teacher_id, month=month))
+    except Exception:
+        pass
+
+
+_DED_CATEGORIES = {"manual", "class_delay", "doubt_sla", "notes_delay", "reschedule", "task_delay"}
+
+
+def _ded_out(db, d):
+    from models import TeacherProfile
+    nm = ""
+    try:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == d.teacher_id).first()
+        nm = (tp.name if tp else "") or ""
+    except Exception:
+        pass
+    return {
+        "id": d.id, "teacher_id": d.teacher_id, "teacher_name": nm,
+        "month": d.month, "category": d.category, "amount": d.amount,
+        "final_amount": d.final_amount, "reason": d.reason or "", "status": d.status,
+        "issue_text": d.issue_text or "", "admin_response": d.admin_response or "",
+        "created_at": d.created_at.strftime("%d %b %Y, %I:%M %p") if d.created_at else "",
+        "issue_at": d.issue_at.strftime("%d %b %Y, %I:%M %p") if d.issue_at else "",
+        "resolved_at": d.resolved_at.strftime("%d %b %Y, %I:%M %p") if d.resolved_at else "",
+    }
+
+
+@router.get("/payout-deductions")
+def payout_deductions_list(month: str = "", teacher_id: int = 0, status: str = "",
+                           db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin: saari deductions (filter by month / teacher / status)."""
+    from models import DeductionReview
+    q = db.query(DeductionReview)
+    if month:
+        q = q.filter(DeductionReview.month == month)
+    if teacher_id:
+        q = q.filter(DeductionReview.teacher_id == teacher_id)
+    if status:
+        q = q.filter(DeductionReview.status == status)
+    rows = q.order_by(DeductionReview.created_at.desc()).all()
+    out = [_ded_out(db, d) for d in rows]
+    pending_issues = sum(1 for d in rows if d.status == "issue_raised")
+    return {"deductions": out, "count": len(out), "pending_issues": pending_issues}
+
+
+@router.post("/payout-deduction")
+def payout_deduction_create(payload: dict = Body(...), db: Session = Depends(get_db),
+                            current_user=Depends(get_admin)):
+    """Admin: nayi deduction propose karo -> status 'reviewing' (abhi apply nahi hoti)."""
+    from models import DeductionReview, TeacherProfile
+    tid = int(payload.get("teacher_id") or 0)
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(404, "Teacher not found.")
+    amount = int(payload.get("amount") or 0)
+    if amount <= 0:
+        raise HTTPException(400, "Amount must be greater than 0.")
+    month = (payload.get("month") or "").strip() or datetime.now().strftime("%Y-%m")
+    category = (payload.get("category") or "manual").strip()
+    if category not in _DED_CATEGORIES:
+        category = "manual"
+    reason = (payload.get("reason") or "").strip()[:300]
+    d = DeductionReview(teacher_id=tid, month=month, category=category, amount=amount,
+                        reason=reason, status="reviewing", created_by=current_user.id)
+    db.add(d)
+    db.flush()
+    _pay_audit(db, "deduction_review", d.id, "created", current_user.id, "admin",
+               "Proposed Rs %d (%s): %s" % (amount, category, reason), teacher_id=tid, month=month)
+    # notify teacher (confidential — amount teacher ko apni deduction me dikhta hai, leaderboard me nahi)
+    try:
+        if tp.user_id:
+            notify(db, tp.user_id, "Deduction under review",
+                   "A deduction of Rs %d is under review for %s. You may raise an issue if you disagree." % (amount, month),
+                   "payout")
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "deduction": _ded_out(db, d)}
+
+
+@router.post("/payout-deduction/{did}/resolve")
+def payout_deduction_resolve(did: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                             current_user=Depends(get_admin)):
+    """Admin: issue/review resolve karo -> approve | reject | modify."""
+    from models import DeductionReview, TeacherProfile
+    d = db.query(DeductionReview).filter(DeductionReview.id == did).first()
+    if not d:
+        raise HTTPException(404, "Deduction not found.")
+    if d.status in ("finalized", "rejected"):
+        raise HTTPException(400, "This deduction is already resolved.")
+    action = (payload.get("action") or "").strip().lower()
+    note = (payload.get("admin_response") or "").strip()[:1000]
+    if action == "approve":
+        d.final_amount = d.amount
+        d.status = "finalized"
+        aud = "approved"
+    elif action == "reject":
+        d.final_amount = 0
+        d.status = "rejected"
+        aud = "rejected"
+    elif action == "modify":
+        new_amt = int(payload.get("final_amount") or 0)
+        if new_amt <= 0:
+            raise HTTPException(400, "Modified amount must be greater than 0 (use Reject to cancel).")
+        d.final_amount = new_amt
+        d.status = "finalized"
+        aud = "modified"
+    else:
+        raise HTTPException(400, "action must be approve, reject, or modify.")
+    d.admin_response = note
+    d.resolved_by = current_user.id
+    d.resolved_at = datetime.now()
+    _pay_audit(db, "deduction_review", d.id, aud, current_user.id, "admin",
+               "%s -> final Rs %s. %s" % (aud, d.final_amount, note), teacher_id=d.teacher_id, month=d.month)
+    try:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == d.teacher_id).first()
+        if tp and tp.user_id:
+            msg = {"approved": "A deduction of Rs %d has been confirmed for %s." % (d.final_amount or 0, d.month),
+                   "modified": "A deduction has been revised to Rs %d for %s." % (d.final_amount or 0, d.month),
+                   "rejected": "A deduction under review for %s has been cancelled." % d.month}.get(aud, "Deduction updated.")
+            notify(db, tp.user_id, "Deduction " + aud, msg, "payout")
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "deduction": _ded_out(db, d)}
+
+
+@router.get("/payout-audit")
+def payout_audit_list(teacher_id: int = 0, month: str = "", limit: int = 100,
+                      db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin: audit trail (read-only)."""
+    from models import PayoutAudit
+    q = db.query(PayoutAudit)
+    if teacher_id:
+        q = q.filter(PayoutAudit.teacher_id == teacher_id)
+    if month:
+        q = q.filter(PayoutAudit.month == month)
+    rows = q.order_by(PayoutAudit.created_at.desc()).limit(min(500, max(1, limit))).all()
+    return {"audit": [{
+        "id": r.id, "entity_type": r.entity_type, "entity_id": r.entity_id,
+        "teacher_id": r.teacher_id, "month": r.month, "action": r.action,
+        "actor_role": r.actor_role, "detail": r.detail or "",
+        "at": r.created_at.strftime("%d %b %Y, %I:%M %p") if r.created_at else "",
+    } for r in rows]}
+
+
+# ---- Doubt SLA (hours) — admin configurable (spec: kahin hard-code nahi) ----
+@router.get("/doubt-sla")
+def doubt_sla_get(db: Session = Depends(get_db), _=Depends(get_admin)):
+    import perf_config as _pc
+    cfg = _pc.get_perf_config(db)
+    return {"doubt_sla_hours": cfg.get("doubt_sla_hours", 15)}
+
+
+@router.post("/doubt-sla")
+def doubt_sla_set(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    import perf_config as _pc
+    try:
+        hrs = float(payload.get("doubt_sla_hours"))
+    except Exception:
+        raise HTTPException(400, "doubt_sla_hours must be a number.")
+    if hrs < 1 or hrs > 240:
+        raise HTTPException(400, "Doubt SLA must be between 1 and 240 hours.")
+    cfg = _pc.save_perf_config(db, {"doubt_sla_hours": hrs})
+    _pay_audit(db, "policy", None, "doubt_sla_changed", current_user.id, "admin",
+               "Doubt SLA set to %s hours" % hrs)
+    db.commit()
+    return {"ok": True, "doubt_sla_hours": cfg.get("doubt_sla_hours", hrs)}
+
+
+# =====================================================================
+# BIOMETRIC (WebAuthn) UNLOCK FALLBACK for Payout — additive to passcode
+# =====================================================================
+# Passcode ALWAYS works. Biometric is an optional extra: admin ek baar apna
+# device (face/fingerprint) register karta hai (passcode se unlock hone ke baad),
+# fir agli baar face/fingerprint se bhi unlock kar sakta hai. Server-side verify
+# hota hai (webauthn library). Library na ho to endpoints clean 503 dete hain —
+# app aur passcode bilkul unaffected.
+import base64 as _b64, json as _wjson
+
+
+def _wa_lib():
+    try:
+        import webauthn as _wa
+        return _wa
+    except Exception:
+        raise HTTPException(503, "Biometric not enabled on the server. Add 'webauthn' to requirements.txt.")
+
+
+def _b64u_e(b):
+    return _b64.urlsafe_b64encode(b).decode().rstrip("=")
+
+
+def _b64u_d(s):
+    s = s or ""
+    s += "=" * (-len(s) % 4)
+    return _b64.urlsafe_b64decode(s.encode())
+
+
+def _wa_origin_rp(request: Request):
+    from urllib.parse import urlparse
+    origin = request.headers.get("origin") or ""
+    if not origin:
+        host = request.headers.get("host") or "app.mvsfoundation.in"
+        origin = "https://" + host
+    rp_id = urlparse(origin).hostname or "app.mvsfoundation.in"
+    return origin, rp_id
+
+
+def _wa_creds(row):
+    try:
+        return _wjson.loads(row.webauthn_creds) if row and row.webauthn_creds else []
+    except Exception:
+        return []
+
+
+@router.post("/payout/biometric/register-begin")
+def payout_bio_register_begin(request: Request, db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Device register karne ke options. Sirf UNLOCKED payout session me (passcode ke baad)."""
+    _require_payout_token(request, current_user)   # passcode se unlocked hona zaroori
+    wa = _wa_lib()
+    from webauthn import generate_registration_options, options_to_json
+    from webauthn.helpers.structs import (AuthenticatorSelectionCriteria, UserVerificationRequirement,
+                                          AuthenticatorAttachment, ResidentKeyRequirement, PublicKeyCredentialDescriptor)
+    r = _pa_row(db)
+    if not r or not r.passcode_hash:
+        raise HTTPException(400, "Set the passcode first.")
+    origin, rp_id = _wa_origin_rp(request)
+    existing = _wa_creds(r)
+    excl = [PublicKeyCredentialDescriptor(id=_b64u_d(c["id"])) for c in existing]
+    opts = generate_registration_options(
+        rp_id=rp_id, rp_name="MVS Payout", user_name="payout-admin",
+        user_id=str(current_user.id).encode(),
+        authenticator_selection=AuthenticatorSelectionCriteria(
+            authenticator_attachment=AuthenticatorAttachment.PLATFORM,
+            resident_key=ResidentKeyRequirement.DISCOURAGED,
+            user_verification=UserVerificationRequirement.REQUIRED),
+        exclude_credentials=excl)
+    r.reg_challenge = _b64u_e(opts.challenge)
+    db.commit()
+    return _wjson.loads(options_to_json(opts))
+
+
+@router.post("/payout/biometric/register-complete")
+def payout_bio_register_complete(request: Request, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    _require_payout_token(request, current_user)
+    _wa_lib()
+    from webauthn import verify_registration_response
+    r = _pa_row(db)
+    if not r or not r.reg_challenge:
+        raise HTTPException(400, "Registration not started.")
+    origin, rp_id = _wa_origin_rp(request)
+    cred = payload.get("credential") or payload
+    try:
+        v = verify_registration_response(credential=_wjson.dumps(cred),
+                                         expected_challenge=_b64u_d(r.reg_challenge),
+                                         expected_rp_id=rp_id, expected_origin=origin)
+    except Exception as e:
+        raise HTTPException(400, "Biometric registration failed: " + str(e)[:120])
+    creds = _wa_creds(r)
+    creds.append({"id": _b64u_e(v.credential_id), "pk": _b64u_e(v.credential_public_key), "sc": v.sign_count})
+    r.webauthn_creds = _wjson.dumps(creds)
+    r.reg_challenge = None
+    _pay_audit(db, "payout_access", None, "biometric_registered", current_user.id, "admin", "Device biometric registered")
+    db.commit()
+    return {"ok": True, "count": len(creds)}
+
+
+@router.post("/payout/biometric/auth-begin")
+def payout_bio_auth_begin(request: Request, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Biometric unlock ke options (koi passcode/token nahi chahiye — ye unlock hi hai)."""
+    _wa_lib()
+    from webauthn import generate_authentication_options, options_to_json
+    from webauthn.helpers.structs import PublicKeyCredentialDescriptor, UserVerificationRequirement
+    r = _pa_row(db)
+    creds = _wa_creds(r)
+    if not creds:
+        raise HTTPException(400, "No biometric registered.")
+    origin, rp_id = _wa_origin_rp(request)
+    allow = [PublicKeyCredentialDescriptor(id=_b64u_d(c["id"])) for c in creds]
+    opts = generate_authentication_options(rp_id=rp_id, allow_credentials=allow,
+                                           user_verification=UserVerificationRequirement.REQUIRED)
+    r.auth_challenge = _b64u_e(opts.challenge)
+    db.commit()
+    return _wjson.loads(options_to_json(opts))
+
+
+@router.post("/payout/biometric/auth-complete")
+def payout_bio_auth_complete(request: Request, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    _wa_lib()
+    from webauthn import verify_authentication_response
+    r = _pa_row(db)
+    if not r or not r.auth_challenge:
+        raise HTTPException(400, "Unlock not started.")
+    if _pa_locked(r) > 0:
+        raise HTTPException(423, "Too many attempts. Locked temporarily.")
+    origin, rp_id = _wa_origin_rp(request)
+    cred = payload.get("credential") or payload
+    raw_id = cred.get("id") or cred.get("rawId") or ""
+    creds = _wa_creds(r)
+    match = next((c for c in creds if c["id"] == raw_id), None)
+    if not match:
+        raise HTTPException(400, "Unknown device.")
+    try:
+        v = verify_authentication_response(credential=_wjson.dumps(cred),
+                                           expected_challenge=_b64u_d(r.auth_challenge),
+                                           expected_rp_id=rp_id, expected_origin=origin,
+                                           credential_public_key=_b64u_d(match["pk"]),
+                                           credential_current_sign_count=int(match.get("sc") or 0))
+    except Exception as e:
+        raise HTTPException(401, "Biometric verification failed: " + str(e)[:120])
+    match["sc"] = v.new_sign_count
+    r.webauthn_creds = _wjson.dumps(creds)
+    r.auth_challenge = None
+    r.failed_attempts = 0
+    r.locked_until = None
+    _pay_audit(db, "payout_access", None, "biometric_unlock", current_user.id, "admin", "Unlocked via biometric")
+    db.commit()
+    token = _pa_mktok({"sub": str(current_user.id), "scope": "payout"},
+                      expires_delta=_pa_td(minutes=_PA_SESSION_MIN))
+    return {"ok": True, "payout_token": token, "session_minutes": _PA_SESSION_MIN}
+
+
+# =====================================================================
+# DYNAMIC INCENTIVE ENGINE (spec Part 76-120) — admin side
+# =====================================================================
+import incentive_engine as _ie
+
+_INC_PAYROLL_STATUSES = ("approved", "included_in_payroll", "paid")
+
+
+def _inc_settings(db):
+    from models import AppSetting
+    import json as _j
+    row = db.query(AppSetting).filter(AppSetting.key == "incentive_settings").first()
+    cfg = {"global_cap": 0, "stacking": "allow", "timezone": "Asia/Kolkata"}
+    if row and row.value:
+        try:
+            cfg.update(_j.loads(row.value))
+        except Exception:
+            pass
+    return cfg
+
+
+def _inc_params(r):
+    return {"min_threshold": r.min_threshold, "unit_size": r.unit_size,
+            "unit_reward": r.unit_reward, "tiers": r.tiers or [],
+            "percentage": r.percentage, "target_value": r.target_value,
+            "target_reward": r.target_reward, "max_reward": r.max_reward}
+
+
+def _inc_eligible_teachers(db, r):
+    from models import TeacherProfile, User, UserRole
+    q = db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(
+        User.role == UserRole.teacher, User.is_active == True)
+    tps = q.all()
+    et = (r.eligibility_type or "all")
+    ids = r.eligibility_ids or []
+    if et == "teachers" and ids:
+        idset = set(int(x) for x in ids)
+        return [t for t in tps if t.id in idset]
+    if et == "subjects" and ids:
+        want = set(str(x).strip().lower() for x in ids)
+        out = []
+        for t in tps:
+            subs = [str(s).strip().lower() for s in (t.subjects or [])]
+            if want & set(subs):
+                out.append(t)
+        return out
+    return tps
+
+
+def _inc_metric_value(db, r, tp, month):
+    """(value, status). AUTO metric -> portal activity; MANUAL -> recorded value.
+    MANUAL me value na ho to (None, 'analytics_pending') — penalize mat karo."""
+    from models import IncentiveMetricValue
+    metric = r.metric
+    if metric in _ie.AUTO_METRICS:
+        from teacher_routes import _month_activity
+        act = _month_activity(db, tp, month)
+        return float(act.get(_ie.AUTO_METRICS[metric], 0) or 0), "available"
+    mv = db.query(IncentiveMetricValue).filter(
+        IncentiveMetricValue.teacher_id == tp.id,
+        IncentiveMetricValue.metric == metric,
+        IncentiveMetricValue.period == month).first()
+    if not mv or mv.status == "analytics_pending":
+        return None, "analytics_pending"
+    return float(mv.value or 0), "available"
+
+
+def _inc_rule_effective(r, month):
+    ef = r.effective_from or ""
+    eu = r.effective_until or ""
+    if ef and month < ef:
+        return False
+    if eu and month > eu:
+        return False
+    return True
+
+
+def _inc_rule_out(r):
+    return {"id": r.id, "name": r.name, "description": r.description or "", "metric": r.metric,
+            "calc_type": r.calc_type, "period": r.period, "min_threshold": r.min_threshold,
+            "unit_size": r.unit_size, "unit_reward": r.unit_reward, "tiers": r.tiers or [],
+            "percentage": r.percentage, "target_value": r.target_value, "target_reward": r.target_reward,
+            "max_reward": r.max_reward, "eligibility_type": r.eligibility_type,
+            "eligibility_ids": r.eligibility_ids or [], "stacking": r.stacking,
+            "review_mode": r.review_mode, "status": r.status, "version": r.version,
+            "effective_from": r.effective_from or "", "effective_until": r.effective_until or ""}
+
+
+@router.get("/incentive-rules")
+def incentive_rules_list(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import IncentiveRule
+    rows = db.query(IncentiveRule).filter(IncentiveRule.status != "superseded").order_by(IncentiveRule.id.desc()).all()
+    return {"rules": [_inc_rule_out(r) for r in rows]}
+
+
+def _inc_apply_fields(r, p):
+    r.name = (p.get("name") or "").strip()[:120] or "Incentive"
+    r.description = (p.get("description") or "").strip()[:400]
+    r.metric = (p.get("metric") or "video_views").strip()
+    r.calc_type = (p.get("calc_type") or "per_unit").strip()
+    r.period = (p.get("period") or "monthly").strip()
+    for k in ("min_threshold", "unit_size", "unit_reward", "percentage",
+              "target_value", "target_reward", "max_reward"):
+        try:
+            setattr(r, k, float(p.get(k) or 0))
+        except Exception:
+            setattr(r, k, 0)
+    r.tiers = p.get("tiers") or []
+    r.eligibility_type = (p.get("eligibility_type") or "all").strip()
+    r.eligibility_ids = p.get("eligibility_ids") or []
+    r.stacking = (p.get("stacking") or "allow").strip()
+    r.review_mode = (p.get("review_mode") or "review").strip()
+    r.effective_from = (p.get("effective_from") or "").strip()[:7]
+    r.effective_until = (p.get("effective_until") or "").strip()[:7]
+
+
+@router.post("/incentive-rule")
+def incentive_rule_create(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    from models import IncentiveRule
+    r = IncentiveRule(created_by=current_user.id, version=1)
+    _inc_apply_fields(r, payload)
+    r.status = "active" if (payload.get("status") == "active") else "draft"
+    db.add(r)
+    db.flush()
+    _pay_audit(db, "incentive_rule", r.id, "rule_created", current_user.id, "admin",
+               "Rule '%s' (%s/%s)" % (r.name, r.metric, r.calc_type))
+    db.commit()
+    return {"ok": True, "rule": _inc_rule_out(r)}
+
+
+@router.post("/incentive-rule/{rid}/update")
+def incentive_rule_update(rid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Edit = NAYI version (spec Part 102): purani rule 'superseded', nayi active.
+    Purana payroll purani rule se juda rehta hai (ledger me rule_version frozen)."""
+    from models import IncentiveRule
+    old = db.query(IncentiveRule).filter(IncentiveRule.id == rid).first()
+    if not old:
+        raise HTTPException(404, "Rule not found.")
+    nr = IncentiveRule(created_by=current_user.id, version=(old.version or 1) + 1,
+                       parent_id=old.parent_id or old.id)
+    _inc_apply_fields(nr, payload)
+    nr.status = "active" if (payload.get("status") == "active") else "draft"
+    old.status = "superseded"
+    db.add(nr)
+    db.flush()
+    _pay_audit(db, "incentive_rule", nr.id, "rule_edited", current_user.id, "admin",
+               "Rule '%s' -> v%d" % (nr.name, nr.version))
+    db.commit()
+    return {"ok": True, "rule": _inc_rule_out(nr)}
+
+
+@router.post("/incentive-rule/{rid}/status")
+def incentive_rule_status(rid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    from models import IncentiveRule
+    r = db.query(IncentiveRule).filter(IncentiveRule.id == rid).first()
+    if not r:
+        raise HTTPException(404, "Rule not found.")
+    st = (payload.get("status") or "").strip()
+    if st not in ("active", "inactive", "draft"):
+        raise HTTPException(400, "Invalid status.")
+    r.status = st
+    _pay_audit(db, "incentive_rule", r.id, "rule_" + ("activated" if st == "active" else "deactivated"),
+               current_user.id, "admin", "Status -> " + st)
+    db.commit()
+    return {"ok": True, "rule": _inc_rule_out(r)}
+
+
+@router.get("/incentive-preview")
+def incentive_preview(rule_id: int, teacher_id: int, month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import IncentiveRule, TeacherProfile
+    from teacher_routes import _month_range
+    mk = _month_range(month or "")[0].strftime("%Y-%m")
+    r = db.query(IncentiveRule).filter(IncentiveRule.id == rule_id).first()
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == teacher_id).first()
+    if not r or not tp:
+        raise HTTPException(404, "Rule or teacher not found.")
+    val, vst = _inc_metric_value(db, r, tp, mk)
+    if val is None:
+        return {"metric_value": None, "status": "analytics_pending", "calculated": 0,
+                "explain": "Metric value not available yet."}
+    res = _ie.compute_incentive(r.calc_type, val, _inc_params(r))
+    return {"metric_value": val, "status": vst, "calculated": res["capped"],
+            "raw": res["calculated"], "explain": res["explain"]}
+
+
+@router.post("/incentive-run")
+def incentive_run(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Us month ke liye saari active+effective rules calculate karo. Idempotent:
+    (rule, teacher, period) par ek hi ledger; already-decided (approved/paid/rejected)
+    ko chhoo-ta nahi (freeze). Auto-mode rules turant approved, warna pending_review."""
+    from models import IncentiveRule, IncentiveLedger
+    from teacher_routes import _month_range
+    mk = _month_range(payload.get("month") or "")[0].strftime("%Y-%m")
+    rules = [r for r in db.query(IncentiveRule).filter(IncentiveRule.status == "active").all()
+             if _inc_rule_effective(r, mk)]
+    created = updated = pending_analytics = 0
+    FROZEN = ("approved", "included_in_payroll", "paid", "rejected", "disputed")
+    for r in rules:
+        for tp in _inc_eligible_teachers(db, r):
+            val, vst = _inc_metric_value(db, r, tp, mk)
+            ex = db.query(IncentiveLedger).filter(
+                IncentiveLedger.rule_id == r.id, IncentiveLedger.teacher_id == tp.id,
+                IncentiveLedger.period == mk).first()
+            if ex and ex.status in FROZEN:
+                continue  # decided -> frozen, no silent change
+            if val is None:
+                # analytics pending — record but never penalize / never pay
+                if not ex:
+                    db.add(IncentiveLedger(rule_id=r.id, rule_version=r.version, rule_name=r.name,
+                        teacher_id=tp.id, period=mk, metric=r.metric, metric_value=0,
+                        calculated_reward=0, final_reward=0, status="analytics_pending",
+                        explain="Metric value not available"))
+                    pending_analytics += 1
+                else:
+                    ex.status = "analytics_pending"; ex.calculated_reward = 0; ex.final_reward = 0
+                continue
+            res = _ie.compute_incentive(r.calc_type, val, _inc_params(r))
+            calc = res["capped"]
+            if calc <= 0:
+                if ex and ex.status not in FROZEN:
+                    ex.calculated_reward = 0; ex.final_reward = 0; ex.metric_value = val
+                    ex.status = "rejected"; ex.explain = res["explain"]
+                continue
+            auto = (r.review_mode == "auto")
+            status = "approved" if auto else "pending_review"
+            if not ex:
+                db.add(IncentiveLedger(rule_id=r.id, rule_version=r.version, rule_name=r.name,
+                    teacher_id=tp.id, period=mk, metric=r.metric, metric_value=val,
+                    calculated_reward=calc, final_reward=(calc if auto else 0),
+                    status=status, explain=res["explain"],
+                    approved_at=(datetime.utcnow() if auto else None),
+                    approved_by=(current_user.id if auto else None)))
+                created += 1
+            else:
+                ex.metric_value = val; ex.calculated_reward = calc; ex.explain = res["explain"]
+                ex.status = status
+                if auto:
+                    ex.final_reward = calc; ex.approved_at = datetime.utcnow(); ex.approved_by = current_user.id
+                updated += 1
+    _pay_audit(db, "incentive", None, "calculation_generated", current_user.id, "admin",
+               "Run for %s: %d new, %d updated, %d analytics-pending" % (mk, created, updated, pending_analytics),
+               month=mk)
+    db.commit()
+    return {"ok": True, "month": mk, "created": created, "updated": updated,
+            "analytics_pending": pending_analytics, "rules": len(rules)}
+
+
+def _inc_ledger_out(db, l):
+    from models import TeacherProfile
+    nm = ""
+    try:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == l.teacher_id).first()
+        nm = (tp.name if tp else "") or ""
+    except Exception:
+        pass
+    return {"id": l.id, "rule_id": l.rule_id, "rule_name": l.rule_name or ("Manual" if l.is_manual else ""),
+            "teacher_id": l.teacher_id, "teacher_name": nm, "period": l.period, "metric": l.metric,
+            "metric_value": l.metric_value, "calculated_reward": l.calculated_reward,
+            "final_reward": l.final_reward, "status": l.status, "explain": l.explain or "",
+            "is_manual": bool(l.is_manual), "reason": l.reason or "", "reference": l.reference or ""}
+
+
+@router.get("/incentive-ledger")
+def incentive_ledger_list(month: str = "", teacher_id: int = 0, status: str = "",
+                          db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import IncentiveLedger
+    q = db.query(IncentiveLedger)
+    if month:
+        q = q.filter(IncentiveLedger.period == month)
+    if teacher_id:
+        q = q.filter(IncentiveLedger.teacher_id == teacher_id)
+    if status:
+        q = q.filter(IncentiveLedger.status == status)
+    rows = q.order_by(IncentiveLedger.created_at.desc()).all()
+    out = [_inc_ledger_out(db, l) for l in rows]
+    pending = sum(1 for l in rows if l.status == "pending_review")
+    return {"ledger": out, "count": len(out), "pending_review": pending}
+
+
+@router.post("/incentive-ledger/{lid}/resolve")
+def incentive_ledger_resolve(lid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    from models import IncentiveLedger
+    l = db.query(IncentiveLedger).filter(IncentiveLedger.id == lid).first()
+    if not l:
+        raise HTTPException(404, "Incentive not found.")
+    if l.status in ("paid", "included_in_payroll"):
+        raise HTTPException(400, "Already in payroll — cannot change.")
+    action = (payload.get("action") or "").strip().lower()
+    if action == "approve":
+        l.final_reward = l.calculated_reward
+        l.status = "approved"
+    elif action == "reject":
+        l.final_reward = 0
+        l.status = "rejected"
+    elif action == "adjust":
+        amt = int(payload.get("final_reward") or 0)
+        if amt < 0:
+            raise HTTPException(400, "Amount cannot be negative.")
+        l.final_reward = amt
+        l.status = "approved"
+    else:
+        raise HTTPException(400, "action must be approve, reject, or adjust.")
+    l.approved_at = datetime.utcnow()
+    l.approved_by = current_user.id
+    _pay_audit(db, "incentive", l.id, "calculation_" + ("approved" if l.status == "approved" else "rejected"),
+               current_user.id, "admin", "%s -> Rs %s" % (action, l.final_reward),
+               teacher_id=l.teacher_id, month=l.period)
+    db.commit()
+    return {"ok": True, "ledger": _inc_ledger_out(db, l)}
+
+
+@router.post("/incentive-manual")
+def incentive_manual(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Manual incentive (controlled): teacher+amount+reason+reference. Admin-confirmed = approved."""
+    from models import IncentiveLedger, TeacherProfile
+    from teacher_routes import _month_range
+    tid = int(payload.get("teacher_id") or 0)
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(404, "Teacher not found.")
+    amt = int(payload.get("amount") or 0)
+    if amt <= 0:
+        raise HTTPException(400, "Amount must be greater than 0.")
+    reason = (payload.get("reason") or "").strip()
+    if len(reason) < 3:
+        raise HTTPException(400, "A reason is required for a manual incentive.")
+    mk = _month_range(payload.get("month") or "")[0].strftime("%Y-%m")
+    l = IncentiveLedger(rule_id=None, rule_name="Manual Incentive", teacher_id=tid, period=mk,
+                        metric="manual", metric_value=0, calculated_reward=amt, final_reward=amt,
+                        status="approved", is_manual=True, reason=reason[:300],
+                        reference=(payload.get("reference") or "").strip()[:200],
+                        explain="Manual incentive", approved_at=datetime.utcnow(), approved_by=current_user.id)
+    db.add(l)
+    db.flush()
+    _pay_audit(db, "incentive", l.id, "manual_incentive_added", current_user.id, "admin",
+               "Manual Rs %d: %s" % (amt, reason[:120]), teacher_id=tid, month=mk)
+    db.commit()
+    return {"ok": True, "ledger": _inc_ledger_out(db, l)}
+
+
+@router.get("/incentive-metric-values")
+def incentive_metric_values(period: str = "", metric: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import IncentiveMetricValue, TeacherProfile
+    q = db.query(IncentiveMetricValue)
+    if period:
+        q = q.filter(IncentiveMetricValue.period == period)
+    if metric:
+        q = q.filter(IncentiveMetricValue.metric == metric)
+    rows = q.order_by(IncentiveMetricValue.updated_at.desc()).all()
+    out = []
+    for v in rows:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == v.teacher_id).first()
+        out.append({"id": v.id, "teacher_id": v.teacher_id, "teacher_name": (tp.name if tp else "") or "",
+                    "metric": v.metric, "period": v.period, "value": v.value, "source": v.source,
+                    "status": v.status, "note": v.note or ""})
+    return {"values": out}
+
+
+@router.post("/incentive-metric-value")
+def incentive_metric_value_set(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Views/watch-time/custom jaisi metrics ke liye controlled value entry (spec Part 86/89).
+    status 'analytics_pending' rakh sakte ho jab data available na ho — penalize nahi hota."""
+    from models import IncentiveMetricValue
+    tid = int(payload.get("teacher_id") or 0)
+    metric = (payload.get("metric") or "").strip()
+    period = (payload.get("period") or "").strip()
+    if not (tid and metric and period):
+        raise HTTPException(400, "teacher_id, metric and period are required.")
+    status = (payload.get("status") or "available").strip()
+    v = db.query(IncentiveMetricValue).filter(
+        IncentiveMetricValue.teacher_id == tid, IncentiveMetricValue.metric == metric,
+        IncentiveMetricValue.period == period).first()
+    if not v:
+        v = IncentiveMetricValue(teacher_id=tid, metric=metric, period=period, created_by=current_user.id)
+        db.add(v)
+    try:
+        v.value = float(payload.get("value") or 0)
+    except Exception:
+        v.value = 0
+    v.source = (payload.get("source") or "manual").strip()
+    v.status = "analytics_pending" if status == "analytics_pending" else "available"
+    v.note = (payload.get("note") or "").strip()[:200]
+    _pay_audit(db, "incentive_metric", None, "metric_value_set", current_user.id, "admin",
+               "%s=%s for T%d %s" % (metric, v.value, tid, period), teacher_id=tid, month=period)
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/incentive-settings")
+def incentive_settings_get(db: Session = Depends(get_db), _=Depends(get_admin)):
+    return _inc_settings(db)
+
+
+@router.post("/incentive-settings")
+def incentive_settings_set(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    from models import AppSetting
+    import json as _j
+    cfg = _inc_settings(db)
+    try:
+        cfg["global_cap"] = max(0, float(payload.get("global_cap", cfg["global_cap"]) or 0))
+    except Exception:
+        pass
+    stk = (payload.get("stacking") or cfg["stacking"]).strip()
+    if stk in ("allow", "none", "highest"):
+        cfg["stacking"] = stk
+    row = db.query(AppSetting).filter(AppSetting.key == "incentive_settings").first()
+    if not row:
+        db.add(AppSetting(key="incentive_settings", value=_j.dumps(cfg)))
+    else:
+        row.value = _j.dumps(cfg)
+    _pay_audit(db, "incentive", None, "settings_changed", current_user.id, "admin",
+               "cap=%s stacking=%s" % (cfg["global_cap"], cfg["stacking"]))
+    db.commit()
+    return {"ok": True, "settings": cfg}
+
+
+@router.get("/incentive-analytics")
+def incentive_analytics(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import IncentiveRule, IncentiveLedger
+    from teacher_routes import _month_range, _incentive_teacher_total
+    mk = _month_range(month or "")[0].strftime("%Y-%m")
+    active_rules = db.query(IncentiveRule).filter(IncentiveRule.status == "active").count()
+    rows = db.query(IncentiveLedger).filter(IncentiveLedger.period == mk).all()
+    pending = sum(1 for l in rows if l.status == "pending_review")
+    approved_total = sum((l.final_reward or 0) for l in rows if l.status in _INC_PAYROLL_STATUSES)
+    paid_total = sum((l.final_reward or 0) for l in rows if l.status == "paid")
+    # per-teacher effective (after stacking + global cap)
+    per = {}
+    for l in rows:
+        per.setdefault(l.teacher_id, 0)
+    per_teacher = []
+    from models import TeacherProfile
+    for tid in per:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+        per_teacher.append({"teacher_id": tid, "teacher_name": (tp.name if tp else "") or "",
+                            "effective": _incentive_teacher_total(db, tid, mk)})
+    per_teacher.sort(key=lambda x: -x["effective"])
+    return {"month": mk, "active_rules": active_rules, "pending_review": pending,
+            "approved_total": int(approved_total), "paid_total": int(paid_total),
+            "per_teacher": per_teacher}

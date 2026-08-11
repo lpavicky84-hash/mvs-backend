@@ -1077,10 +1077,15 @@ class PayoutMonth(Base):
     id           = Column(Integer, primary_key=True)
     teacher_id   = Column(Integer, ForeignKey("teacher_profiles.id"), index=True)
     month        = Column(String(7), index=True)
-    status       = Column(String(20), default="finalized")  # finalized | paid
+    # lifecycle: finalized -> in_progress -> credited -> receipt_confirmed
+    # (purana "paid" = credited ke barabar treat hota hai — backward compatible)
+    status       = Column(String(20), default="finalized")
     snapshot     = Column(Text, nullable=True)              # JSON of full breakdown
     finalized_at = Column(DateTime, nullable=True)
-    paid_at      = Column(DateTime, nullable=True)
+    in_progress_at = Column(DateTime, nullable=True)
+    paid_at      = Column(DateTime, nullable=True)          # = credited_at
+    receipt_confirmed_at = Column(DateTime, nullable=True)  # teacher ne receive confirm kiya
+    pay_ref      = Column(String(120), nullable=True)       # payment reference / note (optional)
     created_at   = Column(DateTime, server_default=func.now())
 
     teacher = relationship("TeacherProfile")
@@ -1135,6 +1140,162 @@ class TeacherPayConfig(Base):
     updated_at       = Column(DateTime, default=func.now(), onupdate=func.now())
 
     teacher = relationship("TeacherProfile")
+
+
+# =============================================
+# SECURE PAYOUT ACCESS (passcode gate for the Admin Payout / Payroll module)
+# =============================================
+class PayoutAccess(Base):
+    """Single-row table: the org's Payout passcode (hashed, server-side only) plus a
+    verify number for 'forgot' reset and brute-force lockout state. Set ONCE by one
+    admin; after that nobody can change it except via forgot-with-correct-number.
+    Passcode is NEVER stored in plaintext or sent to the frontend."""
+    __tablename__ = "payout_access"
+
+    id             = Column(Integer, primary_key=True)   # always 1 (single row)
+    passcode_hash  = Column(String(255), nullable=True)  # bcrypt hash — never plaintext
+    verify_phone   = Column(String(20), default="")      # forgot-reset verification number
+    set_by         = Column(Integer, nullable=True)      # admin user id who set it
+    set_at         = Column(DateTime, nullable=True)
+    failed_attempts = Column(Integer, default=0)         # consecutive wrong tries
+    locked_until   = Column(DateTime, nullable=True)     # temp lockout after too many fails
+    updated_at     = Column(DateTime, default=func.now(), onupdate=func.now())
+    # ---- biometric (WebAuthn) fallback: passcode ke saath extra unlock (additive) ----
+    webauthn_creds = Column(Text, nullable=True)         # JSON list of {id, pk, sc} (base64url)
+    reg_challenge  = Column(String(255), nullable=True)  # temp during device registration
+    auth_challenge = Column(String(255), nullable=True)  # temp during biometric unlock
+
+
+# =============================================
+# DEDUCTION REVIEW LIFECYCLE  (spec V3 — deductions ke liye review + dispute flow)
+# =============================================
+class DeductionReview(Base):
+    """Deduction jo seedha nahi katti — pehle review hoti hai. Flow:
+       admin propose (reviewing) -> teacher chahe to Raise Issue (issue_raised)
+       -> admin Approve / Reject / Modify -> finalized (ya rejected).
+    Sirf FINALIZED (final_amount > 0) deductions payout se ghatit hoti hain.
+    Ye PayoutAdjustment se ALAG channel hai — purane bonus/adjustments untouched."""
+    __tablename__ = "deduction_reviews"
+
+    id            = Column(Integer, primary_key=True)
+    teacher_id    = Column(Integer, ForeignKey("teacher_profiles.id"), index=True)
+    month         = Column(String(7), index=True)             # "2026-08"
+    category      = Column(String(40), default="manual")      # manual|class_delay|doubt_sla|notes_delay|reschedule|task_delay
+    amount        = Column(Integer, default=0)                # proposed INR
+    final_amount  = Column(Integer, nullable=True)            # approve/modify ke baad; reject=0
+    reason        = Column(String(300), default="")
+    status        = Column(String(20), default="reviewing", index=True)  # reviewing|issue_raised|finalized|rejected
+    created_by    = Column(Integer, nullable=True)            # admin user id (ya null=system)
+    created_at    = Column(DateTime, server_default=func.now())
+    issue_text    = Column(Text, nullable=True)               # teacher ka dispute
+    issue_at      = Column(DateTime, nullable=True)
+    admin_response = Column(Text, nullable=True)              # admin ka note (resolve par)
+    resolved_by   = Column(Integer, nullable=True)
+    resolved_at   = Column(DateTime, nullable=True)
+
+    teacher = relationship("TeacherProfile")
+
+
+class PayoutAudit(Base):
+    """Immutable append-only audit trail (spec V3). Sirf INSERT — koi update/delete
+    endpoint nahi. Har payout action (deduction propose/dispute/resolve, passcode set,
+    salary lifecycle) yahan log hota hai — poora traceable."""
+    __tablename__ = "payout_audit"
+
+    id          = Column(Integer, primary_key=True)
+    entity_type = Column(String(40), index=True)     # deduction_review | payout_access | payout_month | ...
+    entity_id   = Column(Integer, index=True, nullable=True)
+    teacher_id  = Column(Integer, index=True, nullable=True)
+    month       = Column(String(7), index=True, nullable=True)
+    action      = Column(String(40))                 # created|issue_raised|approved|rejected|modified|finalized
+    actor_id    = Column(Integer, nullable=True)
+    actor_role  = Column(String(20), default="")     # admin|teacher|system
+    detail      = Column(Text, nullable=True)        # readable summary + amounts
+    created_at  = Column(DateTime, server_default=func.now())
+
+
+# =============================================
+# DYNAMIC INCENTIVE ENGINE (spec Part 76-120) — generic, configurable, versioned
+# =============================================
+class IncentiveRule(Base):
+    """Admin-defined incentive rule. Views is just the first metric — same engine
+    handles any metric. Editing creates a NEW version (history frozen)."""
+    __tablename__ = "incentive_rules"
+
+    id             = Column(Integer, primary_key=True)
+    name           = Column(String(120), default="")
+    description    = Column(String(400), default="")
+    metric         = Column(String(40), default="video_views")   # video_views | per AUTO/MANUAL metric keys
+    calc_type      = Column(String(20), default="per_unit")       # fixed|per_unit|tiered|percentage|threshold_bonus|milestone
+    period         = Column(String(20), default="monthly")        # monthly (session/per_video future)
+    # calculation params (jitne relevant hon us calc_type ke liye)
+    min_threshold  = Column(Float, default=0)
+    unit_size      = Column(Float, default=0)
+    unit_reward    = Column(Float, default=0)
+    tiers          = Column(JSON, nullable=True)                  # [{min,max,reward}]
+    percentage     = Column(Float, default=0)
+    target_value   = Column(Float, default=0)
+    target_reward  = Column(Float, default=0)
+    max_reward     = Column(Float, default=0)                     # per-rule monthly cap (0=none)
+    # eligibility
+    eligibility_type = Column(String(20), default="all")          # all|teachers|subjects
+    eligibility_ids  = Column(JSON, nullable=True)                # list of teacher ids OR subject names
+    stacking       = Column(String(10), default="allow")          # allow|none|highest
+    review_mode    = Column(String(10), default="review")         # review|auto
+    status         = Column(String(10), default="draft", index=True)  # draft|active|inactive
+    version        = Column(Integer, default=1)
+    parent_id      = Column(Integer, nullable=True, index=True)   # versioning chain
+    effective_from = Column(String(7), default="")                # "2026-08" (inclusive)
+    effective_until= Column(String(7), default="")                # "2026-08" (inclusive; "" = open)
+    created_by     = Column(Integer, nullable=True)
+    created_at     = Column(DateTime, server_default=func.now())
+    updated_at     = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class IncentiveMetricValue(Base):
+    """Un metrics ke liye jinka portal me auto source nahi (views/watch-time/custom):
+    admin/analytics controlled value per teacher/metric/month. Duplicate se bachne ke
+    liye (teacher, metric, period) unique treat hota hai."""
+    __tablename__ = "incentive_metric_values"
+
+    id         = Column(Integer, primary_key=True)
+    teacher_id = Column(Integer, ForeignKey("teacher_profiles.id"), index=True)
+    metric     = Column(String(40), index=True)
+    period     = Column(String(7), index=True)        # "2026-08"
+    value      = Column(Float, default=0)
+    source     = Column(String(20), default="manual") # manual|analytics|import
+    status     = Column(String(20), default="available")  # available|analytics_pending
+    note       = Column(String(200), nullable=True)
+    created_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class IncentiveLedger(Base):
+    """Har earned incentive ka record. Idempotent: (rule_id, teacher_id, period)
+    unique (manual entries alag). Sirf APPROVED/INCLUDED payroll me jaate hain."""
+    __tablename__ = "incentive_ledger"
+
+    id            = Column(Integer, primary_key=True)
+    rule_id       = Column(Integer, index=True, nullable=True)     # null = manual incentive
+    rule_version  = Column(Integer, default=1)
+    rule_name     = Column(String(120), default="")
+    teacher_id    = Column(Integer, ForeignKey("teacher_profiles.id"), index=True)
+    period        = Column(String(7), index=True)                 # "2026-08"
+    metric        = Column(String(40), default="")
+    metric_value  = Column(Float, default=0)
+    calculated_reward = Column(Integer, default=0)
+    final_reward  = Column(Integer, default=0)                    # after approve/adjust
+    status        = Column(String(24), default="pending_review", index=True)
+    # calculating|pending_review|approved|included_in_payroll|paid|disputed|rejected|analytics_pending|manual_adjustment
+    explain       = Column(String(300), default="")
+    is_manual     = Column(Boolean, default=False)
+    reason        = Column(String(300), nullable=True)            # manual reason
+    reference     = Column(String(200), nullable=True)            # manual reference/evidence
+    created_at    = Column(DateTime, server_default=func.now())
+    approved_at   = Column(DateTime, nullable=True)
+    approved_by   = Column(Integer, nullable=True)
+    paid_at       = Column(DateTime, nullable=True)
 
 
 # ===== NIOS SYLLABUS TRACKER =====

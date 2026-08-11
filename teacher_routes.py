@@ -4676,7 +4676,7 @@ def calc_earnings(a, pay):
             return min(x / t, 1)
         return 1 if x > 0 else 0
 
-    class_pct = cond / sched if sched > 0 else 0
+    class_pct = min(cond / sched, 1) if sched > 0 else 0
     class_earned = _jr(pay["class_retainer"] * class_pct)
 
     # Figma parity: late scheduled ke against measure hota hai (1 late of 20 -> 950),
@@ -4685,19 +4685,19 @@ def calc_earnings(a, pay):
                    if (sched > 0 and cond > 0) else 0)
     class_quality_earned = _jr(pay["class_quality"] * quality_pct)
 
-    notes_pct = a["notes_uploaded"] / cond if cond > 0 else 0
+    notes_pct = min(a["notes_uploaded"] / cond, 1) if cond > 0 else 0
     # v83: DPP pct chapter-coverage se (1 chapter = 1 DPP). Purane payloads me
-    # dpp_covered nahi hai to raw upload count par fallback.
-    dpp_pct = a.get("dpp_covered", a["dpp_uploaded"]) / cond if cond > 0 else 0
+    # dpp_covered nahi hai to raw upload count par fallback. (v-fix: 1 par cap)
+    dpp_pct = min(a.get("dpp_covered", a["dpp_uploaded"]) / cond, 1) if cond > 0 else 0
     test_pct = _cap(a["tests_created"], pay["tests_target"])
     notes_earned = _jr(pay["notes_dpp"] * 0.40 * notes_pct)
     dpp_earned = _jr(pay["notes_dpp"] * 0.40 * dpp_pct)
     tests_earned = _jr(pay["notes_dpp"] * 0.20 * test_pct)
 
-    doubt_pct = a["doubts_resolved"] / a["doubts_assigned"] if a["doubts_assigned"] > 0 else 0
+    doubt_pct = min(a["doubts_resolved"] / a["doubts_assigned"], 1) if a["doubts_assigned"] > 0 else 0
     doubt_earned = _jr(pay["doubt_resolution"] * doubt_pct)
 
-    task_pct = a["tasks_on_time"] / a["tasks_assigned"] if a["tasks_assigned"] > 0 else 0
+    task_pct = min(a["tasks_on_time"] / a["tasks_assigned"], 1) if a["tasks_assigned"] > 0 else 0
     content_pct = (_cap(a["tests_created"], pay["tests_target"]) * 0.25 +
                    _cap(a["videos_made"], pay["videos_target"]) * 0.40 +
                    _cap(a["live_sessions"], pay["live_target"]) * 0.24 +
@@ -4837,6 +4837,10 @@ def _month_activity(db, tp, month):
 
 def earnings_payload(db, tp, month):
     """Teacher + pay config + month activity + earnings — slip/letter dono ka data."""
+    # defensive: month hamesha valid "YYYY-MM" ho (galat/empty -> current month)
+    month = (month or "").strip()
+    if not (len(month) == 7 and month[4:5] == "-" and month[:4].isdigit() and month[5:7].isdigit()):
+        month = _ist_now().strftime("%Y-%m")
     _ensure_v86(db)
     cfg = get_pay_config(db, tp.id)
     act = _month_activity(db, tp, month)
@@ -4866,7 +4870,15 @@ def earnings_payload(db, tp, month):
     e["leave_paid_days"] = round(total_lv - unpaid_lv, 1)
     e["leave_per_day"] = round(per_day_sal)
     e["leave_deduction"] = lv_ded
-    e["net_payable"] = max(0, e["gross_earned"] - lv_ded)
+    # ---- reviewed & FINALIZED deductions (spec V3 deduction-review lifecycle) ----
+    fin_ded = _finalized_deductions_total(db, tp.id, month)
+    e["reviewed_deduction"] = fin_ded
+    # ---- APPROVED dynamic incentives (spec Part 108/118): Base + Incentives - Deductions ----
+    incentive = _incentive_teacher_total(db, tp.id, month)
+    e["base_earned"] = e["gross_earned"]                       # appointment-letter base
+    e["incentive"] = incentive
+    e["gross_with_incentive"] = e["gross_earned"] + incentive
+    e["net_payable"] = max(0, e["gross_earned"] + incentive - lv_ded - fin_ded)
     # ---- v104: target-only teachers (Attendance System = Disabled) ----
     # Inka punch nahi hota, isliye assigned hours-target har mahine FULLY MET maana
     # jaata hai. Payout amounts kabhi display nahi hote — sirf ESTIMATED % of salary:
@@ -4928,6 +4940,9 @@ def earnings_payload(db, tp, month):
             _add((float(lv_ded) / mx * 100.0) if mx else 0.0,
                  "%s unpaid-leave day%s" % (e["leave_unpaid_days"],
                                             "s" if e["leave_unpaid_days"] != 1 else ""))
+        if fin_ded > 0:
+            _add((float(fin_ded) / mx * 100.0) if mx else 0.0,
+                 "reviewed deductions (admin-approved)")
         ded.sort(key=lambda x: -x["pct"])
         e["salary_pct"] = round(e["net_payable"] / mx * 100.0, 1) if mx else 0.0
         e["est_deductions"] = ded[:8]
@@ -5025,7 +5040,7 @@ def _salary_breakup(gross):
 DEFAULT_CONTRACT_RULES = """Har class scheduled time par shuru hogi; bina prior intimation ke 15 minute se zyada der ho to class delayed/missed mani jayegi.
 Month me sirf 1 approved class re-scheduling allowed hai; uske baad har approved re-schedule par Rs 300/-, aur bina intimation/approval ke re-schedule par Rs 600/- per class deduction lagega.
 Class notes, DPP aur lecture report har class ke baad prescribed interval me upload karna compulsory hai; delay par 1st instance Rs 200/-, 2nd Rs 400/-, 3rd aur uske baad har instance par Rs 700/- auto-deduction hoga.
-Portal ke student doubts 24 hours me resolve karo; doubt pending >1 din Rs 100/-, >2 din Rs 300/-, >5 din Rs 600/- per doubt auto-deduction hoga.
+Portal ke student doubts average 15 hours ke andar resolve karna zaroori hai; is 15 hours SLA se zyada delay par doubt resolution component ke payout me proportional kami hogi.
 Shorts, strategy, promotional aur recording tasks deadline tak submit karo; 1st delay par warning, 2nd delay se Rs 100/- per day deduction submission tak lagega.
 Har Sunday doubt class + DPP solutions discussion compulsory hai.
 Monthly payout portal verification ke baad next month ki first week me process hoga; salary confidential hai aur payout ke liye sirf designated Account Manager se contact karna hai."""
@@ -6179,3 +6194,198 @@ def teacher_my_rank(days: int = 90, db: Session = Depends(get_db),
             "weights": TEACHER_RANK_WEIGHTS,
             "task_ranking": vt_task_rank_rows(db),
             "top3": [{k: r[k] for k in ("rank", "name", "score", "photo")} for r in rows[:3]]}
+
+
+# =====================================================================
+# DEDUCTION REVIEW — teacher side (spec V3): apni deductions dekho + Raise Issue
+# =====================================================================
+def _finalized_deductions_total(db, teacher_id, month):
+    """Us teacher + month ki FINALIZED deductions ka total (payout se ghatane ke liye)."""
+    from models import DeductionReview
+    mk = (month or "").strip() or datetime.now().strftime("%Y-%m")
+    try:
+        rows = (db.query(DeductionReview)
+                .filter(DeductionReview.teacher_id == teacher_id,
+                        DeductionReview.month == mk,
+                        DeductionReview.status == "finalized")
+                .all())
+        return sum(int(d.final_amount or 0) for d in rows)
+    except Exception:
+        return 0
+
+
+def _tded_out(d):
+    return {
+        "id": d.id, "month": d.month, "category": d.category,
+        "amount": d.amount, "final_amount": d.final_amount,
+        "reason": d.reason or "", "status": d.status,
+        "issue_text": d.issue_text or "", "admin_response": d.admin_response or "",
+        "created_at": d.created_at.strftime("%d %b %Y, %I:%M %p") if d.created_at else "",
+        "resolved_at": d.resolved_at.strftime("%d %b %Y, %I:%M %p") if d.resolved_at else "",
+    }
+
+
+@router.get("/deductions")
+def teacher_deductions(month: str = "", db: Session = Depends(get_db),
+                       current_user=Depends(get_teacher)):
+    """Teacher: apni deductions (reviewing / issue_raised / finalized / rejected)."""
+    from models import DeductionReview
+    tp = get_teacher_profile(current_user, db)
+    if not tp:
+        raise HTTPException(404, "Teacher profile not found.")
+    q = db.query(DeductionReview).filter(DeductionReview.teacher_id == tp.id)
+    if month:
+        q = q.filter(DeductionReview.month == month)
+    rows = q.order_by(DeductionReview.created_at.desc()).all()
+    return {"deductions": [_tded_out(d) for d in rows],
+            "can_raise": sum(1 for d in rows if d.status == "reviewing")}
+
+
+@router.post("/deduction/{did}/raise-issue")
+def teacher_deduction_raise_issue(did: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                                  current_user=Depends(get_teacher)):
+    """Teacher: deduction par issue raise karo (sirf 'reviewing' status me)."""
+    from models import DeductionReview, PayoutAudit
+    tp = get_teacher_profile(current_user, db)
+    if not tp:
+        raise HTTPException(404, "Teacher profile not found.")
+    d = db.query(DeductionReview).filter(DeductionReview.id == did,
+                                         DeductionReview.teacher_id == tp.id).first()
+    if not d:
+        raise HTTPException(404, "Deduction not found.")
+    if d.status != "reviewing":
+        raise HTTPException(400, "Issue can only be raised while the deduction is under review.")
+    txt = (payload.get("issue_text") or "").strip()
+    if len(txt) < 3:
+        raise HTTPException(400, "Please describe your issue.")
+    d.issue_text = txt[:2000]
+    d.issue_at = datetime.now()
+    d.status = "issue_raised"
+    try:
+        db.add(PayoutAudit(entity_type="deduction_review", entity_id=d.id, action="issue_raised",
+                           actor_id=current_user.id, actor_role="teacher",
+                           detail=("Issue: " + txt)[:1000], teacher_id=tp.id, month=d.month))
+    except Exception:
+        pass
+    # notify admins
+    try:
+        from models import User, UserRole
+        admins = db.query(User).filter(User.role == UserRole.admin, User.is_active == True).all()
+        for a in admins:
+            notify(db, a.id, "Deduction issue raised",
+                   "%s raised an issue on a Rs %d deduction (%s)." % (tp.name or "A teacher", d.amount or 0, d.month),
+                   "payout")
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "deduction": _tded_out(d)}
+
+
+@router.get("/payout/lifecycle")
+def teacher_payout_lifecycle(month: str = "", db: Session = Depends(get_db),
+                             current_user=Depends(get_teacher)):
+    """Teacher: apni salary lifecycle status (finalized/in_progress/credited/receipt_confirmed)."""
+    from models import PayoutMonth
+    tp = get_teacher_profile(current_user, db)
+    if not tp:
+        raise HTTPException(404, "Teacher profile not found.")
+    mk = (month or "").strip() or datetime.now().strftime("%Y-%m")
+    rec = db.query(PayoutMonth).filter(PayoutMonth.teacher_id == tp.id,
+                                       PayoutMonth.month == mk).first()
+    if not rec:
+        return {"status": "pending", "month": mk}
+    s = rec.status
+    if s == "paid":
+        s = "credited"
+    return {"status": s, "month": mk, "pay_ref": rec.pay_ref or "",
+            "credited_at": rec.paid_at.strftime("%d %b %Y") if rec.paid_at else "",
+            "receipt_confirmed_at": rec.receipt_confirmed_at.strftime("%d %b %Y") if rec.receipt_confirmed_at else ""}
+
+
+@router.post("/payout/confirm-receipt")
+def teacher_confirm_receipt(payload: dict = Body(...), db: Session = Depends(get_db),
+                            current_user=Depends(get_teacher)):
+    """Teacher: salary receive hone ki confirmation (sirf 'credited' status par)."""
+    from models import PayoutMonth, PayoutAudit, User, UserRole
+    tp = get_teacher_profile(current_user, db)
+    if not tp:
+        raise HTTPException(404, "Teacher profile not found.")
+    mk = (payload.get("month") or "").strip() or datetime.now().strftime("%Y-%m")
+    rec = db.query(PayoutMonth).filter(PayoutMonth.teacher_id == tp.id,
+                                       PayoutMonth.month == mk).first()
+    if not rec or rec.status not in ("credited", "paid"):
+        raise HTTPException(400, "Receipt can be confirmed only after the salary is credited.")
+    rec.status = "receipt_confirmed"
+    rec.receipt_confirmed_at = datetime.now()
+    try:
+        db.add(PayoutAudit(entity_type="payout_month", entity_id=rec.id, action="receipt_confirmed",
+                           actor_id=current_user.id, actor_role="teacher",
+                           detail="Teacher confirmed receipt", teacher_id=tp.id, month=mk))
+    except Exception:
+        pass
+    try:
+        admins = db.query(User).filter(User.role == UserRole.admin, User.is_active == True).all()
+        for a in admins:
+            notify(db, a.id, "Salary receipt confirmed",
+                   "%s confirmed receiving the payout for %s." % (tp.name or "A teacher", mk), "payout")
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "status": rec.status}
+
+
+# =====================================================================
+# DYNAMIC INCENTIVE — payroll helpers (approved incentives only) + teacher view
+# =====================================================================
+def _incentive_settings_read(db):
+    from models import AppSetting
+    import json as _j
+    row = db.query(AppSetting).filter(AppSetting.key == "incentive_settings").first()
+    cfg = {"global_cap": 0, "stacking": "allow"}
+    if row and row.value:
+        try:
+            cfg.update(_j.loads(row.value))
+        except Exception:
+            pass
+    return cfg
+
+
+def _incentive_teacher_total(db, teacher_id, month):
+    """Us teacher+month ka EFFECTIVE approved incentive (stacking + global cap ke baad).
+    Sirf approved/included/paid — pending/rejected/analytics_pending kabhi payroll me nahi."""
+    from models import IncentiveLedger
+    import incentive_engine as _ie
+    mk = (month or "").strip() or datetime.now().strftime("%Y-%m")
+    rows = db.query(IncentiveLedger).filter(
+        IncentiveLedger.teacher_id == teacher_id, IncentiveLedger.period == mk,
+        IncentiveLedger.status.in_(("approved", "included_in_payroll", "paid"))).all()
+    rule_rewards = [(l.rule_id, int(l.final_reward or 0)) for l in rows if l.rule_id is not None]
+    manual_total = sum(int(l.final_reward or 0) for l in rows if l.rule_id is None)
+    cfg = _incentive_settings_read(db)
+    stacked = _ie.apply_stacking(rule_rewards, cfg.get("stacking", "allow"))
+    total = sum(r for _, r in stacked) + manual_total
+    return _ie.apply_global_cap(total, cfg.get("global_cap", 0))
+
+
+def _incentive_breakdown(db, teacher_id, month):
+    from models import IncentiveLedger
+    mk = (month or "").strip() or datetime.now().strftime("%Y-%m")
+    rows = db.query(IncentiveLedger).filter(
+        IncentiveLedger.teacher_id == teacher_id, IncentiveLedger.period == mk,
+        IncentiveLedger.status.in_(("approved", "included_in_payroll", "paid"))).order_by(IncentiveLedger.id).all()
+    return [{"name": l.rule_name or ("Manual Incentive" if l.is_manual else "Incentive"),
+             "metric": l.metric, "metric_value": l.metric_value,
+             "amount": int(l.final_reward or 0), "explain": l.explain or ""} for l in rows]
+
+
+@router.get("/incentives")
+def teacher_incentives(month: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Teacher: apne approved incentives ka breakdown (confidential — sirf yahin dikhta hai)."""
+    tp = get_teacher_profile(current_user, db)
+    if not tp:
+        raise HTTPException(404, "Teacher profile not found.")
+    mk = (month or "").strip() or _ist_now().strftime("%Y-%m")
+    if not re.match(r"^\d{4}-\d{2}$", mk):
+        mk = _ist_now().strftime("%Y-%m")
+    items = _incentive_breakdown(db, tp.id, mk)
+    return {"month": mk, "total": _incentive_teacher_total(db, tp.id, mk), "items": items}
