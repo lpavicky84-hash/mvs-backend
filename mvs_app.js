@@ -406,7 +406,23 @@ const _API_TTL=60000;
 const _API_NOCACHE=/notifications|heartbeat|\/photo|\/image|\/voice|\/file|\/download|\/pdf|\/content|\/badge/i;
 let _curLoader=null;        // current page ka loader — background refresh aane par isse re-render
 let _swrT=null;
-function _swrRerender(){ if(_swrT) return; _swrT=setTimeout(function(){ _swrT=null; try{ if(typeof _curLoader==='function') _curLoader(); }catch(e){} }, 140); }
+function _swrRerender(){
+  if(_swrT) return;
+  _swrT=setTimeout(function(){
+    _swrT=null;
+    // v170: agar user abhi kisi input/textarea me type kar raha hai (ya select khula hai),
+    // to background refresh ka re-render MAT karo — warna text aur focus dono udd jaate hain.
+    // Thodi der baad phir try karega; type khatam hote hi normal refresh ho jaayega.
+    try{
+      var ae=document.activeElement;
+      if(ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName||'') && ae.type!=='checkbox' && ae.type!=='radio' && ae.type!=='button'){
+        _swrT=setTimeout(function(){ _swrT=null; _swrRerender(); }, 800);
+        return;
+      }
+    }catch(e){}
+    try{ if(typeof _curLoader==='function') _curLoader(); }catch(e){}
+  }, 140);
+}
 function _apiBust(){ for(const k in _apiCache){ if(_apiCache[k]) _apiCache[k].t=0; } }  // delete nahi — stale mark (SWR: turant stale + bg refresh)
 async function _apiRefreshBg(path,_ck){
   try{
@@ -7435,6 +7451,8 @@ async function openTVTPropose(){
   window._vtThumbB64=null;
   window._tvtPKind='task';
   const chOpts=`<option value="">— No channel —</option>`+chans.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  const _pdl=new Date(Date.now()+7*24*3600*1000); _pdl.setHours(23,59,0,0);
+  const _pdlVal=`${_pdl.getFullYear()}-${String(_pdl.getMonth()+1).padStart(2,'0')}-${String(_pdl.getDate()).padStart(2,'0')}T23:59`;
   showModal('Propose a Video / Project',`
     <div class="form-grid vt-form">
       <div class="form-group" style="grid-column:1/-1">
@@ -7461,6 +7479,7 @@ async function openTVTPropose(){
       <div class="form-group"><label>Streaming</label><select id="tvt-p-stream" class="input" onchange="_vtFilterTypes('tvt-p-stream','tvt-p-type',window._vtTypesT)"><option value="">— Select —</option><option value="recorded">Recorded</option><option value="live">Live</option></select></div>
       <div class="form-group"><label>Video Type</label><select id="tvt-p-type" class="input">${_vtTypeOptsHtml(types,'','','— Select type —')}</select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Channel (optional)</label><select id="tvt-p-channel" class="input">${chOpts}</select></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Expected Deadline</label><input id="tvt-p-deadline" type="datetime-local" class="input" value="${_pdlVal}"><div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">When you expect to deliver. The manager sees this and it becomes the task deadline on approval (they can still change it).</div></div>
       <div class="form-group vt-thumb-box" style="grid-column:1/-1"><label>Reference Thumbnail (optional)</label>
         <div class="vt-file vt-drop" ondragover="_vtDropOver(event,this)" ondragleave="_vtDropLeave(event,this)" ondrop="_vtDropFile(event,this)"><label class="vt-file-btn" for="tvt-p-thumb">${ic('image')} Upload Image</label><span class="vt-drop-hint">or drag &amp; drop an image here</span>
           <span class="vt-file-name" id="vt-thumb-name">No file chosen</span></div>
@@ -7657,6 +7676,7 @@ async function tvtProposeSave(){
     video_type:(document.getElementById('tvt-p-type')||{}).value||'',
     streaming:val('tvt-p-stream')||'',
     channel_id:val('tvt-p-channel')||'',
+    expected_deadline:val('tvt-p-deadline')||'',
     reference:document.getElementById('tvt-p-ref').value.trim(),
     thumbnail_b64:window._vtThumbB64||null };
   if(ptype==='project'){
@@ -8252,7 +8272,7 @@ async function loadAVTasks(fromCache){
         <div class="vt-chips"><span class="vt-pill proposal">Proposal</span>${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill assigned">${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}</div>
         <div class="vt-title">${esc(t.title)}</div>
         ${t.remarks?`<div class="vt-req">${esc(t.remarks)}</div>`:''}
-        <div class="vt-meta"><span class="vt-proposer">${ic('user')} ${esc(t.teacher)}</span><span class="vt-prop-when vt-prop-when-blink">proposed \u00b7 ${esc(t.created_at)}</span>${t.reference?`<span class="vt-prop-note">Note: ${esc(t.reference)}</span>`:''}</div>
+        <div class="vt-meta"><span class="vt-proposer">${ic('user')} ${esc(t.teacher)}</span><span class="vt-prop-when vt-prop-when-blink">proposed \u00b7 ${esc(t.created_at)}</span>${t.expected_deadline_nice?`<span class="vt-prop-note">${ic('clock')} Expected by: ${esc(t.expected_deadline_nice)}</span>`:''}${t.reference?`<span class="vt-prop-note">Note: ${esc(t.reference)}</span>`:''}</div>
         <div class="vt-foot"><button class="btn btn-primary btn-sm" onclick="openVTAssign(${t.id})">${ic('check')} Approve & Assign</button><button class="btn btn-ghost btn-sm" onclick="vtRejectProposal(${t.id})">Decline</button></div>
       </div></div>`).join('')}</div></div></div>`:'';
     const rankRows=(stats.by_teacher||[]);
@@ -8557,6 +8577,9 @@ async function openVTAssign(proposalId){
   const cOpts=_vtChannels.map(c=>`<option value="${c.id}" ${pre&&pre.channel_id===c.id?'selected':''}>${esc(c.name)}</option>`).join('');
   const dl=new Date(Date.now()+48*3600*1000); dl.setMinutes(0);
   const dlVal=`${dl.getFullYear()}-${String(dl.getMonth()+1).padStart(2,'0')}-${String(dl.getDate()).padStart(2,'0')}T${String(dl.getHours()).padStart(2,'0')}:00`;
+  // v169: teacher ne proposal me jo expected deadline di thi, wahi yahan pre-fill ho jaaye
+  // taaki admin ko dobara set na karna pade (chahe to badal sakta hai).
+  const dlPrefill=(pre&&pre.expected_deadline)?pre.expected_deadline:((pre&&pre.deadline)?pre.deadline:dlVal);
   const preStream=(pre&&pre.streaming)||'';
   const taskForm=`<div class="form-grid vt-form">
       <div class="form-group" style="grid-column:1/-1"><label>Collaborate with others?</label>
@@ -8572,7 +8595,7 @@ async function openVTAssign(proposalId){
       <div class="form-group" style="grid-column:1/-1"><label>Streaming</label><select id="vt-f-stream" class="input" onchange="_vtFilterTypes('vt-f-stream','vt-f-type',_vtTypes)"><option value="" ${preStream?'':'selected'}>— Not set —</option><option value="recorded" ${preStream==='recorded'?'selected':''}>Recorded</option><option value="live" ${preStream==='live'?'selected':''}>Live</option></select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Video Type</label><select id="vt-f-type" class="input">${_vtTypeOptsHtml(_vtTypes,preStream,pre?pre.video_type:'')}</select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Video Title</label><input id="vt-f-title" class="input" placeholder="e.g. Thermodynamics Part 1 — Full Concept" value="${pre?esc(pre.title):''}"></div>
-      <div class="form-group" style="grid-column:1/-1"><label>Deadline</label><input id="vt-f-deadline" type="datetime-local" class="input" value="${dlVal}"></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Deadline${pre&&(pre.expected_deadline||pre.deadline)?' <span style="font-weight:600;color:var(--success)">(from teacher\'s proposal)</span>':''}</label><input id="vt-f-deadline" type="datetime-local" class="input" value="${dlPrefill}"></div>
       <div class="form-group vt-thumb-box" style="grid-column:1/-1"><label>Thumbnail</label>
         <div class="vt-file vt-drop" ondragover="_vtDropOver(event,this)" ondragleave="_vtDropLeave(event,this)" ondrop="_vtDropFile(event,this)"><label class="vt-file-btn" for="vt-f-thumb">${ic('image')} Upload Image</label><span class="vt-drop-hint">or drag &amp; drop an image here</span>
           <span class="vt-file-name" id="vt-thumb-name">No file chosen</span></div>
@@ -8725,6 +8748,7 @@ function _vtPrefillProject(pre){
   setTimeout(()=>{
     const t=document.getElementById('vtp-title'); if(t&&pre.title) t.value=pre.title;
     const tc=document.getElementById('vtp-teacher'); if(tc&&pre.teacher_id) tc.value=String(pre.teacher_id);
+    const dlp=document.getElementById('vtp-deadline'); const _edl=(pre.expected_deadline||pre.deadline||''); if(dlp&&_edl) dlp.value=_edl;   // v169: teacher ki proposed deadline
     // teacher ne jo subject/class chuna tha (pre.subject = "Physics 12") -> yahan auto-select
     if(pre.subject){
       const m=String(pre.subject).match(/^(.*?)\s+(10|12)$/);
@@ -9798,6 +9822,9 @@ async function loadAStudents(){
     window._aPortalOv=await api('/api/admin/portal-overview').catch(()=>null);
     await _stuReloadCounts();
     await _stuReload();
+    // v170: fresh open par hi filters reset hote hain (upar). Background SWR refresh ab
+    // filters/search ko WIPE na kare — sirf current filters ke saath list dobara laaye.
+    _curLoader=function(){ try{ _stuReloadCounts(); }catch(e){} _stuReload(); };
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function _stuQP(){
@@ -10350,7 +10377,13 @@ function aStuBatch(v){ _stuBatch=v; _stuPage=1; _stuReload(); }
 function aStuSearch(q,inp){
   _stuSearch=q; _stuPage=1;
   clearTimeout(window._stuSearchT);
-  window._stuSearchT=setTimeout(function(){ _stuReload(); var b=document.getElementById('a-stu-q'); if(b&&inp){ b.focus(); if(b.value.length){ try{b.setSelectionRange(b.value.length,b.value.length);}catch(e){} } } },350);
+  // v170: reload re-renders the search box, so restore focus + caret AFTER it completes.
+  window._stuSearchT=setTimeout(function(){
+    Promise.resolve(_stuReload()).then(function(){
+      var b=document.getElementById('a-stu-q');
+      if(b){ b.focus(); if(b.value.length){ try{ b.setSelectionRange(b.value.length,b.value.length); }catch(e){} } }
+    });
+  },350);
 }
 function aStuSize(n){ _stuSize=parseInt(n); _stuPage=1; _stuReload(); }
 function aStuPage(p){ _stuPage=p; _stuReload(); }

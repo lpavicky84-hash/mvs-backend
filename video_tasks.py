@@ -940,6 +940,8 @@ def _task_out(db, t, with_thumb=True, tname_map=None):
         "reference": t.reference or "", "remarks": t.remarks or "",
         "deadline": t.deadline.strftime("%Y-%m-%dT%H:%M") if t.deadline else "",
         "deadline_nice": t.deadline.strftime("%d %b %Y, %I:%M %p") if t.deadline else "",
+        "expected_deadline": (t.deadline.strftime("%Y-%m-%dT%H:%M") if (t.deadline and (t.proposal_ok or "") == "pending") else ""),
+        "expected_deadline_nice": (t.deadline.strftime("%d %b %Y, %I:%M %p") if (t.deadline and (t.proposal_ok or "") == "pending") else ""),
         "seconds_left": secs_left,
         "overdue": bool(secs_left is not None and secs_left < 0 and t.status == "assigned"),
         "status": t.status,
@@ -2186,6 +2188,7 @@ def vt_propose(payload: dict = Body(...), db: Session = Depends(get_db),
                   streaming=(payload.get("streaming") or "").strip(),
                   reference=(payload.get("reference") or "").strip(),
                   remarks=req, subject=subj_store,
+                  deadline=_parse_deadline(payload.get("expected_deadline")),
                   status="proposal", proposed_by="teacher", proposal_ok="pending")
     db.add(t)
     _hist_add(t, "proposal", "Proposed by teacher")
