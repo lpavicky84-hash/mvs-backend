@@ -558,19 +558,32 @@ function goLogin(portal){
 }
 function logout(){ goHome(); }
 // ===== SESSION PERSIST — refresh karne par logout na ho, wahi page par wapas aao =====
+// v171: session ab PORTAL-WISE store hoti hai (mvs_sess_admin / _teacher / _student).
+// Isse ek hi browser me admin aur student dono alag-alag rah sakte hain, aur student
+// link (/) kholne par admin panel nahi khulta — jis portal ka URL hai usi ki session.
 function _saveSession(){
-  try{ if(TOKEN&&ROLE) localStorage.setItem('mvs_sess', JSON.stringify({t:TOKEN,r:ROLE,n:NAME||''})); }catch(e){}
+  try{ if(TOKEN&&ROLE){
+    localStorage.setItem('mvs_sess_'+ROLE, JSON.stringify({t:TOKEN,r:ROLE,n:NAME||''}));
+    localStorage.removeItem('mvs_sess');   // purani shared key hata do (migration)
+  } }catch(e){}
 }
-function _clearSession(){ try{ localStorage.removeItem('mvs_sess'); }catch(e){} }
+function _clearSession(){ try{ if(ROLE) localStorage.removeItem('mvs_sess_'+ROLE); localStorage.removeItem('mvs_sess'); }catch(e){} }
 async function _restoreSession(){
-  let s=null; try{ s=JSON.parse(localStorage.getItem('mvs_sess')||'null'); }catch(e){}
-  if(!s||!s.t||!s.r) return false;
-  TOKEN=s.t; ROLE=s.r; NAME=s.n||'';
-  window._sessNonce=window._sessNonce||Date.now();  // v165: ensure the my-photo cache-buster exists on restored sessions too
+  // Jis portal ka URL khula hai (/, /teacher, /admin) — usi role ki session restore hogi.
+  var want=_portalFromPath();
+  if(want==='landing') return false;   // /portal -> chooser dikhega, auto-restore nahi
+  var s=null;
+  try{ s=JSON.parse(localStorage.getItem('mvs_sess_'+want)||'null'); }catch(e){}
+  // backward-compat: purani shared 'mvs_sess' agar isi role ki thi to use + migrate
+  if(!s){ try{ var leg=JSON.parse(localStorage.getItem('mvs_sess')||'null'); if(leg&&leg.r===want){ s=leg; } }catch(e){} }
+  if(!s||!s.t||!s.r||s.r!==want) return false;
+  TOKEN=s.t; ROLE=s.r; NAME=s.n||''; CURRENT_PORTAL=ROLE;
+  window._sessNonce=window._sessNonce||Date.now();  // v165: my-photo cache-buster restored sessions par bhi
   try{
     const ep=ROLE==='teacher'?'/api/teacher/profile':(ROLE==='student'?'/api/student/profile':'/api/admin/me');
     await api(ep);            // token abhi valid hai? (expire ho gaya to catch me login)
-  }catch(e){ TOKEN=null; ROLE=null; _clearSession(); return false; }
+  }catch(e){ TOKEN=null; ROLE=null; try{ localStorage.removeItem('mvs_sess_'+want); }catch(_){} return false; }
+  try{ localStorage.setItem('mvs_sess_'+ROLE, JSON.stringify({t:TOKEN,r:ROLE,n:NAME||''})); localStorage.removeItem('mvs_sess'); }catch(e){}
   try{ document.getElementById('landing').style.display='none'; }catch(e){}
   try{ const ls=document.getElementById('login-screen'); if(ls) ls.classList.remove('active'); }catch(e){}
   try{
