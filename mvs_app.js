@@ -784,19 +784,22 @@ async function _notifImgs(root){
   }
 }
 async function notifGo(role,nid,type,fbPage){
-  if(nid){ try{ await api(notifEp(role,'/notifications/'+nid+'/read'),'PATCH'); }catch(e){} }
-  refreshNotifBadge(role);
+  // NAVIGATE PEHLE (read-call ka intezaar nahi) — warna slow/failed read navigation ko rok deta tha.
   const page=(NOTIF_GO[role]||{})[type||'']||fbPage||'';
   closeModal();
-  if(!page) return;
-  const navTo=(role==='teacher')?tPage:(role==='admin')?aPage:sPage;
-  try{ navTo(page,null); }catch(e){}
-  // navbar me active item bhi sahi dikhe
-  const appId=role==='teacher'?'teacher-app':role==='admin'?'admin-app':'student-app';
-  document.querySelectorAll('#'+appId+' .nav-item').forEach(el=>{
-    el.classList.remove('active');
-    if((el.getAttribute('onclick')||'').includes("'"+page+"'")) el.classList.add('active');
-  });
+  if(page){
+    const navTo=(role==='teacher')?tPage:(role==='admin')?aPage:sPage;
+    try{ navTo(page,null); }catch(e){}
+    // navbar me active item bhi sahi dikhe
+    const appId=role==='teacher'?'teacher-app':role==='admin'?'admin-app':'student-app';
+    document.querySelectorAll('#'+appId+' .nav-item').forEach(el=>{
+      el.classList.remove('active');
+      if((el.getAttribute('onclick')||'').includes("'"+page+"'")) el.classList.add('active');
+    });
+  }
+  // read + badge background me (fire-and-forget)
+  if(nid){ try{ api(notifEp(role,'/notifications/'+nid+'/read'),'PATCH').catch(function(){}); }catch(e){} }
+  try{ refreshNotifBadge(role); }catch(e){}
 }
 async function openNotifPanel(role){
   let list;
@@ -7375,8 +7378,11 @@ async function openUserSessions(uid){
 function aPage(page,el){
   if(!adminAllowed(page)){ toast('You do not have access to this section.',true); return; }
   navPush('admin-app',page);
-  document.querySelectorAll('#admin-app .page').forEach(p=>p.classList.remove('active'));
-  document.getElementById('a-page-'+page).classList.add('active');
+  const _pel=document.getElementById('a-page-'+page);
+  if(_pel){
+    document.querySelectorAll('#admin-app .page').forEach(p=>p.classList.remove('active'));
+    _pel.classList.add('active');
+  }
   if(!el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) el=n; }); }
   if(el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
   const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',attendance:'Teacher Attendance',payouts:'Payouts'};
