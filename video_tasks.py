@@ -786,31 +786,53 @@ def _vt_notify(db, user_id, title, message, ntype="video_task", link=None):
                         notif_type=ntype, link=link or None))
 
 
-_TP_CACHE = {"t": 0.0, "map": {}}
+_TP_CACHE = {"t": 0.0, "map": {}}   # legacy (ab use nahi — cross-request ORM cache DetachedInstanceError deta tha)
+
+
 def _teacher_profile(db, tid):
-    # sirf ~12 teachers — sabko 30s cache karo, warna har task par alag query (N+1) chalti thi
-    import time
-    now = time.time()
-    if now - _TP_CACHE["t"] > 30:
+    """REQUEST-scoped cache (db session par). Pehle module-level _TP_CACHE ORM objects
+    ko requests ke beech cache karta tha -> session band hone par woh detach ho jaate the
+    -> tp.user_id/tp.subjects access par DetachedInstanceError (baar-baar crash + slow).
+    Ab cache db session ke saath hi jeeta/marta hai: ek request me har teacher ek hi baar
+    load (N+1 nahi), aur object hamesha live session se bandha (kabhi detached nahi)."""
+    if not tid:
+        return None
+    cache = getattr(db, "_tp_req_cache", None)
+    if cache is None:
+        cache = {}
         try:
-            _TP_CACHE["map"] = {tp.id: tp for tp in db.query(TeacherProfile).all()}
-            _TP_CACHE["t"] = now
+            db._tp_req_cache = cache
         except Exception:
-            pass
-    tp = _TP_CACHE["map"].get(tid)
-    if tp is None and tid:
-        tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
-        if tp:
-            _TP_CACHE["map"][tid] = tp
+            cache = None
+    if cache is not None and tid in cache:
+        return cache[tid]
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if cache is not None:
+        cache[tid] = tp
     return tp
 
 
 def _teacher_name(db, tid):
-    tp = _teacher_profile(db, tid)
-    if not tp:
+    """Request-scoped name cache — session ke saath. Detach-safe + no per-task N+1."""
+    if not tid:
         return ""
-    u = db.query(User).filter(User.id == tp.user_id).first()
-    return u.name if u else ""
+    cache = getattr(db, "_tn_req_cache", None)
+    if cache is None:
+        cache = {}
+        try:
+            db._tn_req_cache = cache
+        except Exception:
+            cache = None
+    if cache is not None and tid in cache:
+        return cache[tid]
+    tp = _teacher_profile(db, tid)
+    name = ""
+    if tp:
+        u = db.query(User).filter(User.id == tp.user_id).first()
+        name = (u.name if u else "") or ""
+    if cache is not None:
+        cache[tid] = name
+    return name
 
 def _all_teacher_names(db):
     """Ek hi query me saare teacher names (tid -> name) — task list me per-task
@@ -982,9 +1004,9 @@ def _task_out(db, t, with_thumb=True, tname_map=None):
     return out
 
 
-def _special_out(db, t):
+def _special_out(db, t, tname_map=None):
     """One Shot / Rapid Revision task — chapters ke saath progress + NEW blink."""
-    out = _task_out(db, t, with_thumb=False)
+    out = _task_out(db, t, with_thumb=False, tname_map=tname_map)
     chs = (db.query(VideoTaskChapter)
            .filter(VideoTaskChapter.task_id == t.id)
            .order_by(VideoTaskChapter.sort.asc(), VideoTaskChapter.id.asc()).all())
@@ -1953,7 +1975,8 @@ def vt_admin_project_chapters(subject: str = "", class_level: str = "",
 def _special_payload(db, kind):
     tasks = (db.query(VideoTask).filter(VideoTask.kind == kind)
              .order_by(VideoTask.created_at.asc()).all())
-    outs = [_special_out(db, t) for t in tasks]
+    _tnm = _all_teacher_names(db)
+    outs = [_special_out(db, t, tname_map=_tnm) for t in tasks]
     # v115: read-side guarantee — same teacher + same (normalized) subject ke
     # duplicate cards UI me kabhi na dikhen. DB self-heal _dedupe_special karta
     # hai; ye sirf display merge hai (kuch write nahi hota).
@@ -2122,7 +2145,7 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
                 .order_by(VideoTask.kind.asc(), VideoTask.subject.asc()).all())
     # legacy "All Subjects"/empty-subject card kabhi na dikhe — sirf subject-wise cards
     spts = [t for t in spts if (t.subject or "").strip().lower() not in ("", "all subjects")]
-    special_all = [_special_out(db, t) for t in spts]
+    special_all = [_special_out(db, t, tname_map=_tnm2) for t in spts]
     # Bulletproof display dedup: DB me duplicate ho (alag spelling/spacing/id) to bhi
     # teacher ko (kind + class-aware subject) ke hisaab se SIRF EK card dikhe —
     # sabse zyada progress (done chapters) wala. DB merge alag se _ensure_special_teacher me.
