@@ -1454,6 +1454,9 @@ def vt_mark_collab_teacher(task_id: int, payload: dict = Body(...),
             "collab_teachers": [{"id": i, "name": _teacher_name(db, i),
                                  "verified": bool(vmap.get(str(i))),
                                  "not_completed": bool(ncmap.get(str(i)))} for i in allids]}
+
+
+@router.get("/admin/video-tasks", dependencies=[Depends(_admin_section_guard)])
 def vt_admin_list(teacher_id: int = 0, status: str = "", channel_id: int = 0,
                   video_type: str = "",
                   db: Session = Depends(get_db), _=Depends(get_admin)):
