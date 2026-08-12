@@ -670,7 +670,16 @@ function toggleDark(){
 }
 // ===== NOTIFICATIONS =====
 function notifEp(role,suffix){ return '/api/'+(role==='teacher'?'teacher':role==='admin'?'admin':'student')+suffix; }
-async function fetchNotifs(role){ try{ return await api(notifEp(role,'/notifications')); }catch(e){ if(e&&e.status===401) throw e; return []; } }
+function _notifVisible(role, n){
+  // admin ke paas jis section ka access nahi, us section ka notification na dikhe.
+  if(role!=='admin' || !n) return true;
+  const me=window._adminMe;
+  if(!me || me.full_access) return true;
+  const pg=(NOTIF_GO['admin']||{})[n.notif_type||''];
+  if(!pg || pg==='dashboard') return true;   // general / no-section -> sabko dikhe
+  try{ return adminAllowed(pg); }catch(e){ return true; }
+}
+async function fetchNotifs(role){ try{ let l=await api(notifEp(role,'/notifications')); if(role==='admin'&&Array.isArray(l)) l=l.filter(n=>_notifVisible('admin',n)); return l; }catch(e){ if(e&&e.status===401) throw e; return []; } }
 async function refreshNotifBadge(role){
   let list;
   try{ list=await fetchNotifs(role); }catch(e){ if(e&&e.status===401){ _sessionExpired(); return []; } list=[]; }
@@ -744,9 +753,11 @@ const NOTIF_GO={
   teacher:{class_request:'timetable',class_approved:'timetable',class_rejected:'timetable',new_class:'timetable',timetable:'timetable',
     reschedule_approved:'timetable',reschedule_rejected:'timetable',reschedule_request:'timetable',leave:'attendance',
     doubt:'doubts',new_doubt:'doubts',admin_message:'notifications',admin_broadcast:'notifications',broadcast:'notifications',
+    video_task:'vtasks',video_proposal:'vtasks',new_video_proposal:'vtasks',video_submitted:'vtasks',
     payout:'payout',attendance:'attendance',dpp:'dpp',test:'tests',warning:'dashboard'},
   admin:{class_request:'approvals',teacher_to_admin:'reports',app_review:'approvals',new_class:'timetable',timetable:'timetable',
     reschedule_request:'approvals',class_rescheduled:'timetable',leave:'attendance',
+    video_task:'vtasks',video_proposal:'vtasks',new_video_proposal:'vtasks',video_submitted:'vtasks',
     doubt:'doubts',teacher_message:'reports',payout:'payouts',attendance:'attendance',warning:'dashboard'}
 };
 function _notifAvHtml(n,fb){
