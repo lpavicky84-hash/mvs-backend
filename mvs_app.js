@@ -16106,7 +16106,7 @@ function _activityStripHTML(d){
   const a=d.activity;
   const cov=(a.dpp_covered!=null)?a.dpp_covered:a.dpp_uploaded;
   const tiles=[
-    {i:'calendar', l:'Classes',      v:a.classes_conducted+'/'+a.classes_scheduled, s:'conducted / scheduled', c:'#1b7a3e', bg:'linear-gradient(135deg,#eef7f0,#e2f2e8)'},
+    {i:'calendar', l:'Classes',      v:a.classes_conducted+'/'+a.classes_scheduled, s:'conducted / scheduled', c:'#1b7a3e', bg:'linear-gradient(135deg,#eef7f0,#e2f2e8)', id:'act-classes-v'},
     {i:'clock',    l:'Late Starts',  v:a.late_classes, s:a.late_classes?'beyond 15-min grace':'all on time', c:a.late_classes?'#c0392b':'#1b7a3e', bg:a.late_classes?'linear-gradient(135deg,#fdf1f0,#fbe7e5)':'linear-gradient(135deg,#eef7f0,#e2f2e8)'},
     {i:'book',     l:'Notes',        v:a.notes_uploaded, s:'uploaded this month', c:'#9a6b00', bg:'linear-gradient(135deg,#fbf6e9,#f6edda)'},
     {i:'clipboard',l:'DPP',          v:a.dpp_uploaded, s:cov+' chapters covered', c:'#9a6b00', bg:'linear-gradient(135deg,#fbf6e9,#f6edda)'},
@@ -16118,7 +16118,7 @@ function _activityStripHTML(d){
     {i:'check',    l:'Tasks on time',v:a.tasks_on_time+'/'+a.tasks_assigned, s:'on-time / assigned', c:'#6d28d9', bg:'linear-gradient(135deg,#f4f0fc,#ece5fa)'}
   ];
   return `<div class="card" style="margin-top:18px"><div class="card-header"><h3>${ic('chart')} This Month's Activity (auto-tracked)</h3></div><div class="card-body">
-   <div class="act-grid">${tiles.map(t=>`<div class="act-tile"><div class="act-ic" style="color:${t.c};background:${t.bg}">${ic(t.i)}</div><div class="act-tx"><div class="act-v" style="color:${t.c}">${t.v}</div><div class="act-l">${t.l}</div><div class="act-s">${t.s}</div></div></div>`).join('')}</div>
+   <div class="act-grid">${tiles.map(t=>`<div class="act-tile"><div class="act-ic" style="color:${t.c};background:${t.bg}">${ic(t.i)}</div><div class="act-tx"><div class="act-v"${t.id?(' id="'+t.id+'"'):''} style="color:${t.c}">${t.v}</div><div class="act-l">${t.l}</div><div class="act-s">${t.s}</div></div></div>`).join('')}</div>
   </div></div>`;
 }
 
@@ -16394,11 +16394,41 @@ async function tEarnFetch(){
     body.innerHTML=_earnHeroHTML(d,
       `<button class="btn btn-light btn-sm" onclick="downloadMySlip()">${ic('download')} Earnings Slip</button>
        <button class="btn btn-light btn-sm" onclick="viewMyLetter()">${ic('book')} Appointment Letter</button>`)
+      +`<div id="t-pay-drivers"></div>`
       +pendHTML
       +(noAct?`<div class="alert alert-info" style="margin-bottom:14px">Is month me abhi koi activity record nahi hui — classes, notes, tests, videos, doubts, tasks complete hote hi aapki earnings yahan live build hoti jayengi.</div>`
         :(zeroPay?`<div class="alert alert-info" style="margin-bottom:14px">No earnings have built up for this month yet — every component pays only on actual activity (classes conducted, notes/DPP uploads, tests, videos, doubts resolved, on-time tasks). Amounts grow here live as activity is completed.</div>`:''))
       +_earnComponentsHTML(d)+_activityStripHTML(d)+_payStructureHTML(d);
+    loadTPayoutDrivers();
   }catch(e){ body.innerHTML=`<div class="card"><div class="card-body"><div class="empty-state"><p>${esc(e.message)}</p></div></div></div>`; }
+}
+async function loadTPayoutDrivers(){
+  const box=document.getElementById('t-pay-drivers'); if(!box) return;
+  let d;
+  try{ d=await api('/api/teacher/payout-detail?month='+encodeURIComponent(_tEarnMonth)); }
+  catch(e){ box.innerHTML=''; return; }
+  window._tPayDrivers=d;
+  const drv=(d.drivers||[]).filter(x=>x.total>0||x.done>0||x.key==='classes');
+  const bar=(pct)=>`<div style="height:7px;border-radius:6px;background:var(--border);overflow:hidden;margin-top:6px"><div style="height:100%;width:${Math.min(pct,100)}%;background:${pct>=100?'linear-gradient(90deg,#1b7a3e,#34d399)':(pct>=60?'linear-gradient(90deg,var(--primary),#e8c66a)':'#e0a24a')};border-radius:6px"></div></div>`;
+  const cards=drv.map(x=>`<div onclick="navTo('teacher-app','${x.nav}')" style="cursor:pointer;border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:var(--card)" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div style="font-weight:700;font-size:.86rem">${esc(x.label)}</div>
+        <div style="font-weight:800;font-size:.9rem">${x.done}${x.total>0?('<span style="color:var(--text-muted);font-weight:600">/'+x.total+'</span>'):''}</div>
+      </div>${bar(x.pct)}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:.7rem">
+        <span style="color:var(--text-muted)">${x.pct}%${x.unit?(' · '+esc(x.unit)):''}</span>
+        ${x.pending>0?`<span style="color:#b45309;font-weight:700">${x.pending} pending \u2192</span>`:`<span style="color:#15803d;font-weight:700">on track \u2192</span>`}
+      </div>${(x.hint&&(x.pending>0||x.total===0))?`<div style="font-size:.66rem;color:var(--text-muted);margin-top:5px;line-height:1.4">${esc(x.hint)}</div>`:''}</div>`).join('');
+  const pend=d.pending||[];
+  const pendHTML=pend.length?`<div class="card" style="margin-top:14px;border:1px solid #f0dfb8"><div class="card-header"><h3>Complete these to increase your pay</h3></div><div class="card-body" style="display:flex;flex-direction:column;gap:8px">
+    ${pend.map(p=>`<div onclick="navTo('teacher-app','${p.nav}')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:#fffdf7"><span style="font-size:.82rem;color:var(--text)">${esc(p.label)}</span><span style="color:var(--primary);font-weight:800;white-space:nowrap">Fix now \u2192</span></div>`).join('')}
+  </div></div>`:`<div class="card" style="margin-top:14px"><div class="card-body" style="display:flex;align-items:center;gap:8px;color:#15803d;font-weight:700;font-size:.85rem">${ic('check')} Everything for this month is on track — great work.</div></div>`;
+  box.innerHTML=`<div class="card" style="margin-top:16px"><div class="card-header" style="display:flex;justify-content:space-between;align-items:center"><h3>How your pay builds this month</h3><span style="font-size:.72rem;color:var(--text-muted)">Tap any item to open it</span></div><div class="card-body">
+    <div style="font-size:.76rem;color:var(--text-muted);margin-bottom:10px">Your pay grows as you complete this month's classes, DPP, tests, doubts and content targets. Tap any card to go there and complete it.</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));gap:10px">${cards||'<div style="color:var(--text-muted);font-size:.8rem">No targets set for this month yet.</div>'}</div>
+  </div></div>`+pendHTML;
+  const cd=(d.drivers||[]).find(x=>x.key==='classes');
+  if(cd){ const tile=document.getElementById('act-classes-v'); if(tile) tile.textContent=cd.done+'/'+cd.total; }
 }
 function downloadMySlip(){ if(!window._tEarn){ toast('Earnings not loaded yet.',true); return; } _printDocHTML(_slipHTML(window._tEarn)); }
 function viewMyLetter(){ if(!window._tEarn){ toast('Earnings not loaded yet.',true); return; } _printDocHTML(_letterHTML(window._tEarn)); }

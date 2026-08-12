@@ -6396,6 +6396,94 @@ def _incentive_breakdown(db, teacher_id, month):
              "amount": int(l.final_reward or 0), "explain": l.explain or ""} for l in rows]
 
 
+def _payout_drivers(db, tp, month):
+    """Ranking metrics se pay-drivers (jo pay chala rahe hain): classes/DPP/tests/doubts/
+    content — done vs target + pending. Pending items clickable redirect ke saath. Yahi
+    'pay kaise ban raha hai / kam kyun hai' ko transparent + smart banata hai."""
+    import perf_engine as _pe
+    cfg = _pe._pc.get_perf_config(db)
+    dt0, dt1, mkey = _pe.month_bounds(month)
+    overall = 0.0
+    try:
+        board = _pe.compute(db, month)
+        row = next((r for r in board.get("results", []) if r.get("teacher_id") == tp.id), None)
+        overall = float(row.get("score") or 0) if row else 0.0
+    except Exception:
+        pass
+    m = _pe.gather_metrics(db, tp, dt0, dt1, cfg)
+    ti = {}
+    for it in m.get("target_items", []):
+        ti[it.get("label")] = it
+
+    def _pct(done, total):
+        if total > 0:
+            return round(100.0 * min(done, total) / total, 1)
+        return 100.0 if done > 0 else 0.0
+
+    def drv(key, label, done, total, nav, unit=""):
+        done, total = int(done or 0), int(total or 0)
+        return {"key": key, "label": label, "done": done, "total": total,
+                "pending": max(0, total - done), "pct": _pct(done, total),
+                "nav": nav, "unit": unit}
+
+    cls_done = int(m.get("lect_ontime", 0)) + int(m.get("lect_delayed", 0))
+    cls_due = int(m.get("lect_scheduled_due", 0))
+    d_dec = int(m.get("doubts_decided", 0))
+    d_on = int(m.get("doubts_ontime", 0))
+    drivers = [
+        {"key": "classes", "label": "Classes conducted", "done": cls_done, "total": cls_due,
+         "pending": max(0, cls_due - cls_done), "pct": _pct(cls_done, cls_due),
+         "nav": "timetable", "unit": "class reports",
+         "hint": "Submit the class report from your timetable to mark a class Done."},
+        drv("dpp", "DPP chapters", (ti.get("DPP", {}) or {}).get("done", 0),
+            (ti.get("DPP", {}) or {}).get("target", 0), "dpp"),
+        drv("tests", "Weekly tests", m.get("tests_done", 0), m.get("tests_target", 0), "tests"),
+        {"key": "doubts", "label": "Doubts within 15h", "done": d_on, "total": d_dec,
+         "pending": max(0, d_dec - d_on), "pct": (_pct(d_on, d_dec) if d_dec > 0 else 100.0),
+         "nav": "doubts", "unit": "doubts"},
+        drv("videos", "Videos (one shot / revision)", (ti.get("Videos", {}) or {}).get("done", 0),
+            (ti.get("Videos", {}) or {}).get("target", 0), "lectures"),
+        drv("live", "YouTube Live", (ti.get("YouTube Live", {}) or {}).get("done", 0),
+            (ti.get("YouTube Live", {}) or {}).get("target", 0), "lectures"),
+        drv("shorts", "Shorts", (ti.get("Shorts", {}) or {}).get("done", 0),
+            (ti.get("Shorts", {}) or {}).get("target", 0), "lectures"),
+    ]
+    pending = []
+    cp = drivers[0]["pending"]
+    if cp > 0:
+        pending.append({"label": "%d class report%s pending — submit to earn the class component"
+                        % (cp, "s" if cp != 1 else ""), "nav": "timetable", "count": cp})
+    if drivers[1]["pending"] > 0 and drivers[1]["total"] > 0:
+        n = drivers[1]["pending"]
+        pending.append({"label": "DPP pending on %d chapter%s" % (n, "s" if n != 1 else ""),
+                        "nav": "dpp", "count": n})
+    if drivers[2]["pending"] > 0 and drivers[2]["total"] > 0:
+        pending.append({"label": "Weekly tests: %d of %d done" % (drivers[2]["done"], drivers[2]["total"]),
+                        "nav": "tests", "count": drivers[2]["pending"]})
+    dl = max(0, d_dec - d_on)
+    if dl > 0:
+        pending.append({"label": "%d doubt%s crossed the 15h window" % (dl, "s" if dl != 1 else ""),
+                        "nav": "doubts", "count": dl})
+    for k, lbl in [("videos", "Videos"), ("live", "YouTube Live"), ("shorts", "Shorts")]:
+        dd = next((x for x in drivers if x["key"] == k), None)
+        if dd and dd["total"] > 0 and dd["pending"] > 0:
+            pending.append({"label": "%s: %d of %d done" % (lbl, dd["done"], dd["total"]),
+                            "nav": "lectures", "count": dd["pending"]})
+    return {"month": mkey, "overall": round(overall, 1), "drivers": drivers, "pending": pending}
+
+
+@router.get("/payout-detail")
+def teacher_payout_detail(month: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Teacher ko clear dikhaye: pay kis kis cheez se ban raha hai, kya pending hai (clickable)."""
+    tp = get_teacher_profile(current_user, db)
+    if not tp:
+        raise HTTPException(404, "Teacher profile not found.")
+    mk = (month or "").strip() or _ist_now().strftime("%Y-%m")
+    if not re.match(r"^\d{4}-\d{2}$", mk):
+        mk = _ist_now().strftime("%Y-%m")
+    return _payout_drivers(db, tp, mk)
+
+
 @router.get("/incentives")
 def teacher_incentives(month: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     """Teacher: apne approved incentives ka breakdown (confidential — sirf yahin dikhta hai)."""
