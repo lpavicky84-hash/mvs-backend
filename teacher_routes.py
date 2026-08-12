@@ -4850,6 +4850,27 @@ _RANK_COMP_ORDER = ["teaching", "content", "targets", "project", "student_suppor
                     "tests", "task_discipline", "consistency", "video_initiative"]
 
 
+def _teacher_score(db, tp, month):
+    """SIRF ek teacher ka performance score — poora leaderboard (sab teachers) compute
+    kiye BINA. Isse har payout/earnings view par DB par bahut kam load (pehle full board
+    compute connection lambe hold karta tha -> QueuePool exhaustion). Team-average sirf
+    tab use hota hai jab board pehle se cached ho; warna None (overall score par koi asar
+    nahi — team sirf limited-workload flag/level ke liye hai). Returns (detail, metrics)."""
+    import perf_engine as _pe
+    cfg = _pe._pc.get_perf_config(db)
+    dt0, dt1, mkey = _pe.month_bounds(month)
+    team = None
+    try:
+        cached = _pe._board_cache_get(mkey)
+        if cached and cached.get("team_avg_workload_units"):
+            team = {"avg_workload_units": cached["team_avg_workload_units"]}
+    except Exception:
+        pass
+    m = _pe.gather_metrics(db, tp, dt0, dt1, cfg)
+    detail = _pe.score_from_metrics(m, cfg, team)
+    return detail, m
+
+
 def _ranking_pay(db, tp, month):
     """RANKING-BASED PAYOUT — base = max monthly pay x (performance score %).
     Components leaderboard ke SAME ranking components se aate hain (workload + targets
@@ -4862,14 +4883,12 @@ def _ranking_pay(db, tp, month):
     comps = {}
     wl_level, wl_pct, limited = "", None, False
     try:
-        board = _pe.compute(db, month)
-        row = next((r for r in board.get("results", []) if r.get("teacher_id") == tp.id), None)
-        if row:
-            overall = float(row.get("score") or 0)
-            comps = row.get("components") or {}
-            wl_level = row.get("workload_level") or ""
-            wl_pct = row.get("workload_pct")
-            limited = bool(row.get("limited_workload"))
+        detail, _m = _teacher_score(db, tp, month)
+        overall = float(detail.get("overall") or 0)
+        comps = detail.get("components") or {}
+        wl_level = detail.get("workload_level") or ""
+        wl_pct = detail.get("workload_pct")
+        limited = bool(detail.get("limited_workload"))
     except Exception:
         import traceback
         traceback.print_exc()
@@ -6401,16 +6420,18 @@ def _payout_drivers(db, tp, month):
     content — done vs target + pending. Pending items clickable redirect ke saath. Yahi
     'pay kaise ban raha hai / kam kyun hai' ko transparent + smart banata hai."""
     import perf_engine as _pe
-    cfg = _pe._pc.get_perf_config(db)
     dt0, dt1, mkey = _pe.month_bounds(month)
     overall = 0.0
+    m = {}
     try:
-        board = _pe.compute(db, month)
-        row = next((r for r in board.get("results", []) if r.get("teacher_id") == tp.id), None)
-        overall = float(row.get("score") or 0) if row else 0.0
+        detail, m = _teacher_score(db, tp, month)
+        overall = float(detail.get("overall") or 0)
     except Exception:
-        pass
-    m = _pe.gather_metrics(db, tp, dt0, dt1, cfg)
+        try:
+            cfg = _pe._pc.get_perf_config(db)
+            m = _pe.gather_metrics(db, tp, dt0, dt1, cfg)
+        except Exception:
+            m = {}
     ti = {}
     for it in m.get("target_items", []):
         ti[it.get("label")] = it
