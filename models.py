@@ -483,6 +483,7 @@ class VideoTask(Base):
     subject        = Column(String(160), default="")      # special/project task ka subject (class ke saath — "Physics 12")
     collab_teacher_ids = Column(Text, default="")         # JSON list of ADDITIONAL teacher ids (collab task)
     collab_verified    = Column(Text, default="")         # JSON {teacher_id: true} — production manager per-teacher verify
+    collab_not_completed = Column(Text, default="")        # JSON {teacher_id: true} — per-teacher "task not completed" (collab)
     submitted_by       = Column(Integer, nullable=True)   # collab: jis teacher ne actually submit kiya uski profile id
     status_history = Column(Text, default="")             # JSON [{s, at, note}] — status timeline
     last_link_at   = Column(DateTime, nullable=True)      # special task me aakhri chapter link kab aaya

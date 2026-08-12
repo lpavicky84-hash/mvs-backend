@@ -474,11 +474,23 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
             # assigned content task (proposal pending/rejected chhod ke) -> content target
             if (getattr(t, "proposal_ok", "") or "") != "pending" and getattr(t, "status", "") != "rejected":
                 content_assigned += 1
-            if t.submitted_at and t.on_time is True:
+            # collab task me IS teacher ka part 'not completed' mark hua? -> uske liye not-completed
+            # (baaki collab teachers ko credit milta hai; sirf isko payout penalty).
+            _my_nc = False
+            try:
+                import json as _jnc
+                _ncraw = getattr(t, "collab_not_completed", "") or ""
+                if _ncraw:
+                    _my_nc = bool(_jnc.loads(_ncraw).get(str(tp.id)))
+            except Exception:
+                _my_nc = False
+            if _my_nc:
+                tnc += 1
+            elif t.submitted_at and t.on_time is True:
                 to += 1
             elif t.submitted_at and t.on_time is False:
                 tdl += 1
-            if getattr(t, "status", "") == "not_completed":
+            if not _my_nc and getattr(t, "status", "") == "not_completed":
                 tnc += 1
             # proposals (teacher-proposed)
             if str(getattr(t, "proposed_by", "") or "").lower() not in ("admin", "system", ""):

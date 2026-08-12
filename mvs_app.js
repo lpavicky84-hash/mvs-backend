@@ -8138,30 +8138,18 @@ function vtCollabPopup(id, who){
   var all=t.collab_teachers||[], total=all.length, dn=all.filter(function(c){return c.verified;}).length;
   var submitted=!!t.submitted_at || ['submitted','uploaded','approved','editing_soon','editing_done'].indexOf(t.status)>=0;
   var rows=all.map(function(c){
-    var tag=c.verified?'<span class="cbp-tag ok">Verified</span>'
-           :(submitted?'<span class="cbp-tag pend">Pending</span>':'<span class="cbp-tag">Assigned</span>');
+    var tag=c.not_completed?'<span class="cbp-tag" style="background:rgba(220,38,38,.15);color:#dc2626">Not completed</span>'
+           :(c.verified?'<span class="cbp-tag ok">Verified</span>'
+           :(submitted?'<span class="cbp-tag pend">Pending</span>':'<span class="cbp-tag">Assigned</span>'));
     return '<div class="cbp-row"><span class="cbp-nm">'+esc(c.name)+'</span>'+tag+'</div>';
   }).join('');
   var subLine=t.submitted_by_name?('<div class="cbp-sub">Submitted by <b>'+esc(t.submitted_by_name)+'</b>'+(t.submitted_at?(' \u00b7 '+esc(t.submitted_at)):'')+'</div>'):'';
   var headTag=(total&&dn>=total)?'<span class="cb-pill ok">All '+total+' verified</span>'
              :(submitted?'<span class="cb-pill bad">'+dn+'/'+total+' verified</span>':'');
+  // COLLAB chip = sirf info (teachers ke naam + state). Verify/not-completed ab "Checking — Review" button se hota hai.
   var actions='';
   if(who==='a'){
-    if(t.status==='not_completed'){
-      actions='<div class="cbp-actions"><button class="btn btn-primary btn-sm" onclick="vtVerifyComplete('+t.id+',false,true)">'+ic('refresh')+' Give Reshoot (unlock)</button></div>'
-        +'<div class="cbp-note">Ye task LOCKED hai (not completed) — teacher submit nahi kar sakta. Reshoot dene par task dobara khulega aur teacher resubmit kar payega.</div>';
-    } else if(submitted){
-      actions='<div class="cbp-actions">'
-        +'<button class="btn btn-success btn-sm" onclick="vtVerifyComplete('+t.id+',true)">'+ic('check')+' Task Completed (verify all)</button>'
-        +'<button class="btn btn-warning btn-sm" onclick="vtVerifyComplete('+t.id+',false,true)">Not Completed — Give Reshoot</button>'
-        +'<button class="btn btn-danger btn-sm" onclick="vtVerifyComplete('+t.id+',false,false)">Not Completed — Lock</button></div>'
-        +'<div class="cbp-note"><b>Completed</b> → sab teachers verified + sabko notification (sabka task complete). '
-        +'<b>Give Reshoot</b> → task dobara khulta hai, teacher resubmit karega. '
-        +'<b>Lock</b> → task band; teacher tab tak submit nahi kar payega jab tak aap reshoot na do. '
-        +'Warning + not-completed-on-time +1 + payout DELAY (task delayed) lagta hai.</div>';
-    } else {
-      actions='<div class="cbp-note">Verification video submit hone ke baad milega.</div>';
-    }
+    actions='<div class="cbp-note">Verify / mark "not completed" from the <b>Checking \u2014 Review</b> button on the task card.</div>';
   }
   showModal('Collab Teachers \u2014 '+esc(t.title),
     '<div style="margin-bottom:10px">'+headTag+'</div>'+subLine+'<div class="cbp-list">'+rows+'</div>'+actions,
@@ -8869,6 +8857,7 @@ async function openVTReview(id){
   const t=(l.tasks||[]).find(x=>x.id===id)||(l.urgent||[]).find(x=>x.id===id)||(l.proposals||[]).find(x=>x.id===id); if(!t){ toast('Task not found'); return; }
   const nd=new Date(Date.now()+48*3600*1000); nd.setMinutes(0);
   const ndVal=`${nd.getFullYear()}-${String(nd.getMonth()+1).padStart(2,'0')}-${String(nd.getDate()).padStart(2,'0')}T${String(nd.getHours()).padStart(2,'0')}:00`;
+  const collabSec=(t.is_collab&&(t.submitted_at||['submitted','uploaded','approved','editing_soon','editing_done'].indexOf(t.status)>=0))?_vtReviewCollabHTML(t):'';
   showModal(`Review — ${esc(t.title)}`,`
     <div style="margin-bottom:12px">${_vtPill(t)}</div>
     <div class="sdet-grid" style="grid-template-columns:1fr 1fr;margin-bottom:12px">
@@ -8877,7 +8866,8 @@ async function openVTReview(id){
       ${t.submitted_at?`<div class="sdet-row"><span>Submitted</span><b>${esc(t.submitted_at)} ${t.on_time===true?'(on time)':(t.on_time===false?'(delayed)':'')}</b></div>`:''}
       ${t.submitted_link?`<div class="sdet-row"><span>Video</span><b><a href="${esc(t.submitted_link)}" target="_blank" rel="noopener" style="color:var(--primary)">Open drive link</a></b></div>`:''}
     </div>
-    <div class="vt-form"><div class="form-group"><label>Set Status</label>
+    ${collabSec}
+    <div class="vt-form"><div class="form-group"><label>${t.is_collab?'Then set the video status':'Set Status'}</label>
       <div style="display:flex;gap:7px;flex-wrap:wrap" id="vt-rv-actions">
         ${['approved','editing_soon','editing_done','uploaded'].map(a=>`<button class="btn btn-ghost btn-sm" data-act="${a}" onclick="vtRvPick(this)">${VT_LBL[a]}</button>`).join('')}
         <button class="btn btn-ghost btn-sm" data-act="reshoot" style="border-color:rgba(180,83,9,.5);color:#b45309" onclick="vtRvPick(this)">Reshoot</button>
@@ -8887,6 +8877,36 @@ async function openVTReview(id){
     <div class="form-group" id="vt-rv-ndl" style="display:none"><label>New Deadline (required for reshoot / rejection)</label><input id="vt-rv-deadline" type="datetime-local" class="input" value="${ndVal}"></div></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="vtReviewSave(${t.id})">${ic('check')} Save Status</button>`);
   window._vtRvAct=null;
+}
+function _vtReviewCollabHTML(t){
+  _ensureCbpCss();
+  const all=t.collab_teachers||[];
+  const ncCount=all.filter(c=>c.not_completed).length;
+  const rows=all.map(c=>{
+    const tag=c.not_completed?'<span class="cbp-tag" style="background:rgba(220,38,38,.15);color:#dc2626">Not completed</span>'
+      :(c.verified?'<span class="cbp-tag ok">Verified</span>':'<span class="cbp-tag pend">Pending</span>');
+    const btn=c.not_completed
+      ? `<button class="btn btn-ghost btn-sm" onclick="_vtMarkTeacher(${t.id},${c.id},'pending')">Undo</button>`
+      : `<button class="btn btn-ghost btn-sm" style="border-color:rgba(220,38,38,.5);color:#b91c1c" onclick="_vtMarkTeacher(${t.id},${c.id},'not_completed')">Not completed</button>`;
+    return `<div class="cbp-row"><span class="cbp-nm">${esc(c.name)}</span><span style="display:flex;gap:8px;align-items:center">${tag}${btn}</span></div>`;
+  }).join('');
+  return `<div style="background:var(--primary-50);border-radius:12px;padding:12px 14px;margin-bottom:14px">
+    <div style="font-weight:800;font-size:.88rem;margin-bottom:4px">${ic('users')} Verify collab teachers</div>
+    <div style="font-size:.72rem;color:var(--text-muted);margin-bottom:10px">Jis teacher ne apna part nahi kiya uspe "Not completed" dabao — verify-all me wo verified nahi hoga aur uske payout par asar padega. Baaki sab verified ho jaayenge.</div>
+    <div class="cbp-list">${rows}</div>
+    <div class="cbp-actions"><button class="btn btn-success btn-sm" onclick="_vtVerifyAllThenClose(${t.id})">${ic('check')} Task Completed (verify all${ncCount?' \u2014 except '+ncCount+' not completed':''})</button></div>
+  </div>`;
+}
+function _vtMarkTeacher(taskId, tid, state){
+  api('/api/admin/video-tasks/'+taskId+'/mark-collab-teacher','POST',{teacher_id:tid,state:state})
+    .then(()=>{ closeModal(); openVTReview(taskId); })
+    .catch(e=>toast(e.message||'Could not update',true));
+}
+async function _vtVerifyAllThenClose(taskId){
+  try{
+    await api('/api/admin/video-tasks/'+taskId+'/verify-complete','POST',{completed:true});
+    toast('Verified \u2014 completed teachers marked & video approved.'); closeModal(); loadAVTasks();
+  }catch(e){ toast(e.message||'Could not verify',true); }
 }
 function vtRvPick(btn){
   document.querySelectorAll('#vt-rv-actions .btn').forEach(b=>{ b.classList.remove('btn-primary'); b.classList.add('btn-ghost'); });
@@ -8931,7 +8951,7 @@ function _vvRenderVRows(wrapId,cat){
   if(!list.length) return '<div class="vv-empty">No videos of this type in this range.</div>';
   return list.map(v=>{
     const thumb=v.thumb?`<img class="vv-v-thumb" src="${esc(v.thumb)}" alt="">`:`<span class="vv-v-play">${ic('play')}</span>`;
-    const who=v.is_collab?`<span style="cursor:pointer;text-decoration:underline dotted;color:#7c3aed;font-weight:700" onclick="event.stopPropagation();_vvCollab(this)" data-names="${esc(JSON.stringify(v.collab_names||[]))}">${esc(v.teacher||'Collab')}</span>`:esc(v.teacher||'');
+    const who=v.is_collab?`<span style="cursor:pointer;text-decoration:underline dotted;color:#7c3aed;font-weight:700" onclick="event.stopPropagation();_vvCollab(this)" data-names="${esc(JSON.stringify(v.collab_names||[]))}">Collab</span>`:esc(v.teacher||'');
     return `<div class="vv-vrow" onclick="_vvSeries('${base}',${v.id},'${wrapId}-series')">
       ${thumb}
       <div class="vv-v-main"><div class="vv-v-t">${esc(v.title||'Video')}</div><div class="vv-v-s">${who}${v.vtype_label?' · <span style="color:var(--text-muted)">'+esc(v.vtype_label)+'</span>':''}${v.at?' · '+esc(v.at):''}</div></div>
@@ -8955,7 +8975,7 @@ function _svgBars(items, highlightName){
     const w=Math.max(2,Math.round((d.views||0)/max*100));
     const me=(highlightName&&d.name===highlightName)?' vv-bar-me':'';
     const _cl=d.is_collab?` style="cursor:pointer;text-decoration:underline dotted" onclick="_vvCollab(this)" data-names="${esc(JSON.stringify(d.collab_names||[]))}"`:'';
-    return `<div class="vv-bar-row${me}"><span class="vv-bar-lbl"${_cl} title="${d.is_collab?'Tap to see collab teachers':esc(d.name||'')}">${esc(d.name||'—')}${me?' <span class="vv-you">you</span>':''}${d.is_collab?' <span class="vv-you" style="background:#7c3aed">collab</span>':''}</span>
+    return `<div class="vv-bar-row${me}"><span class="vv-bar-lbl"${_cl} title="${d.is_collab?'Tap to see collab teachers':esc(d.name||'')}">${d.is_collab?'Collab':esc(d.name||'\u2014')}${me?' <span class="vv-you">you</span>':''}${d.is_collab?' <span class="vv-you" style="background:#7c3aed">collab</span>':''}</span>
       <span class="vv-bar-track"><span class="vv-bar-fill" style="width:${w}%;background:${_VV_COL[i%_VV_COL.length]}"></span></span>
       <b class="vv-bar-val">${_vvFmt(d.views)}</b></div>`;
   }).join('');
@@ -8972,7 +8992,7 @@ function _svgPie(items){
     const large=frac>0.5?1:0; const col=_VV_COL[i%_VV_COL.length];
     segs.push(`<path d="M${cx},${cy} L${x0.toFixed(2)},${y0.toFixed(2)} A${R},${R} 0 ${large} 1 ${x1.toFixed(2)},${y1.toFixed(2)} Z" fill="${col}"/>`);
     const _pl=d.is_collab?` style="cursor:pointer;text-decoration:underline dotted" onclick="_vvCollab(this)" data-names="${esc(JSON.stringify(d.collab_names||[]))}"`:'';
-    leg.push(`<div class="vv-leg"${_pl}><span class="vv-leg-dot" style="background:${col}"></span>${esc(d.name||'—')} <b>${Math.round(frac*100)}%</b></div>`);
+    leg.push(`<div class="vv-leg"${_pl}><span class="vv-leg-dot" style="background:${col}"></span>${d.is_collab?'Collab':esc(d.name||'\u2014')} <b>${Math.round(frac*100)}%</b></div>`);
     a0=a1;
   });
   return `<div class="vv-pie-wrap"><svg viewBox="0 0 120 120" class="vv-pie">${segs.join('')}<circle cx="${cx}" cy="${cy}" r="26" fill="var(--bg)"/></svg><div class="vv-legs">${leg.join('')}</div></div>`;

@@ -93,6 +93,7 @@ def _ensure_special_columns():
         "ALTER TABLE video_tasks ADD COLUMN vintage VARCHAR(10) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN collab_teacher_ids TEXT NULL",
         "ALTER TABLE video_tasks ADD COLUMN collab_verified TEXT NULL",
+        "ALTER TABLE video_tasks ADD COLUMN collab_not_completed TEXT NULL",
         "ALTER TABLE video_tasks ADD COLUMN submitted_by INTEGER NULL",
     ]
     for ddl in alters:
@@ -945,6 +946,16 @@ def _collab_vmap(t):
         return {}
 
 
+def _collab_ncmap(t):
+    """Per-teacher 'task not completed' map {teacher_id_str: True} — collab task me kisi
+    ek teacher ne apna kaam nahi kiya to sirf usko not-completed mark karte hain."""
+    import json as _j
+    try:
+        return _j.loads(t.collab_not_completed) if getattr(t, "collab_not_completed", "") else {}
+    except Exception:
+        return {}
+
+
 def _task_out(db, t, with_thumb=True, tname_map=None):
     def _tn(tid):
         if tname_map is not None:
@@ -991,10 +1002,13 @@ def _task_out(db, t, with_thumb=True, tname_map=None):
     # ---- collab (multi-teacher) info
     _allids = _collab_all_ids(t)
     _vmap = _collab_vmap(t)
+    _ncmap = _collab_ncmap(t)
     out["is_collab"] = len(_allids) > 1
     out["collab_teachers"] = [{"id": i, "name": _tn(i),
-                               "verified": bool(_vmap.get(str(i)))} for i in _allids]
-    out["collab_all_verified"] = bool(_allids) and all(_vmap.get(str(i)) for i in _allids)
+                               "verified": bool(_vmap.get(str(i))),
+                               "not_completed": bool(_ncmap.get(str(i)))} for i in _allids]
+    out["collab_all_verified"] = bool(_allids) and all(
+        (_vmap.get(str(i)) or _ncmap.get(str(i))) for i in _allids)
     # Kisne actually submit kiya (collab me koi bhi teacher kar sakta hai). Na ho to primary.
     _sub_by = getattr(t, "submitted_by", None)
     out["submitted_by"] = _sub_by or (t.teacher_id if t.submitted_at else None)
@@ -1300,19 +1314,32 @@ def vt_verify_complete(task_id: int, payload: dict = Body(...),
         _tp = db.query(TeacherProfile).filter(TeacherProfile.id == pid).first()
         return _tp.user_id if _tp else None
     if completed:
-        vmap = {str(i): True for i in allids}
+        ncmap = _collab_ncmap(t)
+        # 'not completed' mark kiye teachers ko verify NAHI karte — baaki sab verified.
+        _ok_ids = [i for i in allids if not ncmap.get(str(i))]
+        _nc_ids = [i for i in allids if ncmap.get(str(i))]
+        vmap = {str(i): True for i in _ok_ids}
         t.collab_verified = _j.dumps(vmap)
         t.status = "approved"
         t.reviewed = True
         if remarks:
             t.review_remarks = remarks
-        _hist_add(t, "approved", "Task verified & completed by production manager — all %d teacher(s)" % len(allids))
-        for pid in allids:
+        _hist_add(t, "approved", "Task verified by production manager — %d completed, %d not completed"
+                  % (len(_ok_ids), len(_nc_ids)))
+        for pid in _ok_ids:
             uid = _uid(pid)
             if uid:
                 _vt_notify(db, uid, "\u2705 Task Verified & Completed",
                            'Your collaborative task "%s" has been verified by the production manager. '
-                           'Task complete for all collaborating teachers — great teamwork!' % t.title)
+                           'Task complete — great teamwork!' % t.title)
+        for pid in _nc_ids:
+            uid = _uid(pid)
+            if uid:
+                _vt_notify(db, uid, "\u26a0\ufe0f Your part was not completed",
+                           'On the collaborative task "%s", your part was marked NOT completed by the '
+                           'production manager. The video was approved for the other teachers, but this '
+                           'counts as not completed for you and affects your payout.' % t.title,
+                           ntype="warning")
     else:
         reshoot = bool(payload.get("reshoot", False))
         t.collab_verified = "{}"
@@ -1386,7 +1413,47 @@ def vt_verify_teacher(task_id: int, payload: dict = Body(...),
                                  "verified": bool(vmap.get(str(i)))} for i in allids]}
 
 
-@router.get("/admin/video-tasks", dependencies=[Depends(_admin_section_guard)])
+@router.post("/admin/video-tasks/{task_id}/mark-collab-teacher", dependencies=[Depends(_admin_section_guard)])
+def vt_mark_collab_teacher(task_id: int, payload: dict = Body(...),
+                           db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Collab task me EK teacher ka state set karo: 'not_completed' / 'verified' / 'pending'.
+    'not_completed' -> us teacher ne apna kaam nahi kiya; verify-all me wo verified nahi hoga
+    aur uske payout par asar padega (baaki teachers verified ho jaate hain)."""
+    import json as _j
+    t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
+    if not t:
+        raise HTTPException(404, "Task not found")
+    tid = int(payload.get("teacher_id") or 0)
+    state = (payload.get("state") or "").strip()
+    allids = _collab_all_ids(t)
+    if tid not in allids:
+        raise HTTPException(400, "Ye teacher is task me nahi hai.")
+    vmap = _collab_vmap(t)
+    ncmap = _collab_ncmap(t)
+    if state == "not_completed":
+        ncmap[str(tid)] = True
+        vmap.pop(str(tid), None)
+        _hist_add(t, "verify", "%s marked NOT COMPLETED by production manager" % _teacher_name(db, tid))
+        _tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+        if _tp and _tp.user_id:
+            _vt_notify(db, _tp.user_id, "\u26a0\ufe0f Your part not completed",
+                       'On the collaborative task "%s", your part was marked NOT completed by the '
+                       'production manager. This affects your payout.' % t.title, ntype="warning")
+    elif state == "verified":
+        vmap[str(tid)] = True
+        ncmap.pop(str(tid), None)
+        _hist_add(t, "verify", "%s verified by production manager" % _teacher_name(db, tid))
+    else:  # pending -> reset
+        vmap.pop(str(tid), None)
+        ncmap.pop(str(tid), None)
+        _hist_add(t, "verify", "%s reset to pending by production manager" % _teacher_name(db, tid))
+    t.collab_verified = _j.dumps(vmap)
+    t.collab_not_completed = _j.dumps(ncmap)
+    db.commit()
+    return {"ok": True,
+            "collab_teachers": [{"id": i, "name": _teacher_name(db, i),
+                                 "verified": bool(vmap.get(str(i))),
+                                 "not_completed": bool(ncmap.get(str(i)))} for i in allids]}
 def vt_admin_list(teacher_id: int = 0, status: str = "", channel_id: int = 0,
                   video_type: str = "",
                   db: Session = Depends(get_db), _=Depends(get_admin)):
