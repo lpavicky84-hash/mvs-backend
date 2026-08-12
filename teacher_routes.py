@@ -3099,6 +3099,14 @@ def format_text_ai(payload: dict = Body(...), db: Session = Depends(get_db), cur
     directly with a fallback model chain and the same GEMINI_API_KEY, so AI
     formatting keeps working without touching grading.py.
     """
+    # CONNECTION RELEASE: ye endpoint db use nahi karta (sirf auth ke liye tha). Auth ke
+    # baad connection request-end tak checked-out reh jaati thi, aur Gemini call 4 models x
+    # 30s = 120s tak chal sakta hai -> connection utni der pool se bahar -> QueuePool drain.
+    # Isliye slow AI call se PEHLE connection pool me wapas de do.
+    try:
+        db.close()
+    except Exception:
+        pass
     import os
     import urllib.request
     import urllib.error
@@ -3182,6 +3190,12 @@ def ocr_question_ai(payload: dict = Body(...), db: Session = Depends(get_db), cu
     """v163: screenshot -> Gemini VISION se EXACT question text (clean LaTeX). PYQ
     integral/fraction jaise cases me copy-paste tootta hai; screenshot bulletproof hai.
     Direct Gemini call (grading.py bypass) + model fallback chain."""
+    # CONNECTION RELEASE: db use nahi hota (sirf auth). Slow Gemini VISION call (4 models x
+    # 40s = 160s tak) se PEHLE connection pool me wapas -> QueuePool drain nahi hota.
+    try:
+        db.close()
+    except Exception:
+        pass
     import os, urllib.request, urllib.error
     img = str((payload or {}).get("image_b64") or "")
     mime = str((payload or {}).get("mime_type") or "image/jpeg")

@@ -1164,6 +1164,34 @@ import threading as _threading
 # AI grading (Gemini) background tasks concurrency bound — DB pool na khaayein. Max 2.
 _AI_BG_SEM = _threading.Semaphore(2)
 
+# On-demand Hindi translation ko student ke request se HATA diya: pehle student jab Hindi
+# test kholta tha to Gemini translation uski DB connection ko minute-bhar hold karti thi ->
+# QueuePool drain. Ab background me (connection release karke) hota hai; ek exam ke liye ek
+# hi baar (dedup), aur student ko abhi jo hai wo dikhta hai, agle open par Hindi.
+_HINDI_KICKED = set()
+
+
+def _kick_exam_hindi(ex_id, qs):
+    try:
+        if not any(not (getattr(q, "question_text_hi", "") or "").strip() for q in (qs or [])):
+            return  # sab already translated
+        if ex_id in _HINDI_KICKED:
+            return  # already background me chal raha
+        _HINDI_KICKED.add(ex_id)
+        from teacher_routes import _bg_translate_exam
+
+        def _run():
+            try:
+                _bg_translate_exam(ex_id)
+            finally:
+                _HINDI_KICKED.discard(ex_id)
+        _threading.Thread(target=_run, daemon=True).start()
+    except Exception:
+        try:
+            _HINDI_KICKED.discard(ex_id)
+        except Exception:
+            pass
+
 
 def _bg_grade_attempt(attempt_id, mime_type="image/jpeg"):
     """Runs AFTER the response is sent (FastAPI BackgroundTasks) so the upload stays
@@ -1370,11 +1398,7 @@ def student_exam_paper(exam_id: int, medium: str = "english", db: Session = Depe
     qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).order_by(ExamQuestion.q_no).all()
     _med2 = str(medium).lower()
     if _med2.startswith("hi") or _med2.startswith("bo"):
-        try:
-            from teacher_routes import _ensure_exam_hindi
-            _ensure_exam_hindi(db, ex, qs)
-        except Exception:
-            pass
+        _kick_exam_hindi(ex.id, qs)   # non-blocking: student ki connection hold nahi hoti
     # student paper must NEVER contain answers — strip every answer field defensively
     from types import SimpleNamespace as _NS
     qs = [_NS(q_no=q.q_no, question_text=q.question_text, max_marks=q.max_marks,
@@ -1403,11 +1427,7 @@ def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=D
     # par language switch karte hi Hindi dikhe). English-only test slow na ho.
     _exm = (getattr(ex, "medium", "") or "").lower()
     if _exm.startswith("hi") or _exm.startswith("bi") or _exm.startswith("bo"):
-        try:
-            from teacher_routes import _ensure_exam_hindi
-            _ensure_exam_hindi(db, ex, qs)
-        except Exception:
-            pass
+        _kick_exam_hindi(ex.id, qs)   # non-blocking: student ki connection hold nahi hoti
     # scheduled window: [scheduled_at, scheduled_at + duration]; stored naive = IST wall time
     _exp = False
     if getattr(ex, "scheduled_at", None) is not None:
