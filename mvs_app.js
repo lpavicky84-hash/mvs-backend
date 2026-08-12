@@ -763,6 +763,14 @@ async function _notifImgs(root){
         el.textContent=''; const b=document.createElement('span'); b.className='mvs-b'; b.textContent='M'; el.appendChild(b); }
     }catch(e){}
   }
+  // full-size attached image preview (admin notification)
+  for(const el of [...root.querySelectorAll('[data-nimg-full]')]){
+    const u=el.getAttribute('data-nimg-full'); if(!u) continue;
+    try{
+      const r=await fetch(API+u,{headers:{Authorization:'Bearer '+TOKEN}});
+      if(r.ok){ el.src=URL.createObjectURL(await r.blob()); el.style.display='block'; }
+    }catch(e){}
+  }
 }
 async function notifGo(role,nid,type,fbPage){
   if(nid){ try{ await api(notifEp(role,'/notifications/'+nid+'/read'),'PATCH'); }catch(e){} }
@@ -787,11 +795,15 @@ async function openNotifPanel(role){
     const go=(NOTIF_GO[role]||{})[n.notif_type||''];
     const hasLink=!!n.link;
     const click=hasLink?`notifLinkOpen('${role}',${n.id},'${encodeURIComponent(n.link)}')`:(go?`notifGo('${role}',${n.id},'${esc(n.notif_type||'')}')`:`notifGo('${role}',${n.id},'','${fbPage}')`);
-    const clickable=true;   // v93: har notification clickable
+    const unread=!n.is_read;
     const hint=hasLink?` <span style="font-size:.68rem;color:var(--primary);font-weight:800">Open Link &#8250;</span>`:' <span style="font-size:.68rem;color:var(--primary);font-weight:800">&#8250;</span>';
-    const av=_notifAvHtml(n,'MVS');
-    const inner=`<div class="ni-title">${esc(n.title)}${hint}</div><div class="ni-msg">${esc(n.message)}</div><div class="ni-time"> ${fmtNice(n.created_at)}</div>`;
-    return `<div class="notif-item ${n.is_read?'':'unread'}"${clickable?` data-go="1" style="cursor:pointer" onclick="${click}"`:' '} title="${hasLink?'Tap to open the link':'Tap to open this section'}">${av?`<div class="notif-row">${av}<div style="min-width:0;flex:1">${inner}</div></div>`:inner}</div>`;
+    const isBroadcast=(n.notif_type==='admin_broadcast');
+    const av=(isBroadcast&&n.image_url)?'':_notifAvHtml(n,'MVS');
+    const imgPrev=(isBroadcast&&n.image_url)?`<img data-nimg-full="${esc(n.image_url)}" alt="" style="width:100%;max-height:220px;object-fit:cover;border-radius:10px;margin-top:8px;display:none;background:var(--border)">`:'';
+    const dot=unread?`<span style="width:9px;height:9px;border-radius:50%;background:var(--primary);flex:0 0 9px;margin-top:6px;box-shadow:0 0 0 3px var(--primary-50)"></span>`:'';
+    const inner=`<div class="ni-title" style="font-weight:${unread?'800':'600'}">${esc(n.title)}${hint}</div><div class="ni-msg"${unread?' style="color:var(--text);font-weight:500"':''}>${esc(n.message)}</div>${imgPrev}<div class="ni-time"> ${fmtNice(n.created_at)}</div>`;
+    const itStyle=`cursor:pointer;${unread?'border-left:3px solid var(--primary);background:linear-gradient(90deg,var(--primary-50),transparent 70%)':''}`;
+    return `<div class="notif-item ${unread?'unread':''}" data-go="1" style="${itStyle}" onclick="${click}" title="${hasLink?'Tap to open the link':'Tap to open this section'}"><div class="notif-row" style="display:flex;gap:10px;align-items:flex-start">${dot}${av}<div style="min-width:0;flex:1">${inner}</div></div></div>`;
   }).join(''):'<div class="empty-state"><div class="empty-icon"></div><p>No notifications yet</p></div>';
   showModal(' Notifications',html,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
   _notifImgs(document.getElementById('modal-body'));
@@ -867,28 +879,78 @@ function stopNotifPolling(){ if(_notifInt){ clearInterval(_notifInt); _notifInt=
 // ===== v93: notify modals — recipient clarity + live student counts =====
 async function openAdminNotify(){
   if(!adminAllowed('notify')){ toast('You do not have access to this section.',true); return; }
-  showModal(' Send Notification','<div class="spinner"></div>','');
-  let c={all:0,teachers:0,students:0};
+  showModal('Send Notification','<div class="spinner"></div>','');
+  let c={all:0,teachers:0,students:0,subjects:[],classes:[]};
   try{ c=await api('/api/admin/notify-targets'); }catch(e){}
-  window._anCounts=c;
-  showModal(' Send Notification',
- `<div class="form-group"><label>Send To</label><select class="form-control" id="an-target" onchange="anScope()"><option value="all">Everyone — Teachers + Students (${c.all})</option><option value="teachers">Teachers Only (${c.teachers})</option><option value="students">Students Only (${c.students})</option></select></div><div class="ntf-scope" id="an-scope"></div><div class="form-group"><label>Title</label><input class="form-control" id="an-title" placeholder="e.g. Holiday Notice"></div><div class="form-group"><label>Message</label><textarea class="form-control" id="an-msg" rows="4" placeholder="Write your message..."></textarea></div>`,
- `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitAdminNotify()">Send</button>`);
+  window._anCounts=c; window._anImg=null;
+  const subOpts=['<option value="">All subjects</option>'].concat((c.subjects||[]).map(s=>`<option value="${esc(s)}">${esc(s)}</option>`)).join('');
+  const clsOpts=['<option value="">All classes</option>'].concat((c.classes||[]).map(cl=>`<option value="${esc(cl)}">Class ${esc(cl)}</option>`)).join('');
+  showModal('Send Notification',
+   `<div class="form-group"><label>Send To</label>
+      <select class="form-control" id="an-target" onchange="anScope()">
+        <option value="all">Everyone — Teachers + Students (${c.all})</option>
+        <option value="teachers">Teachers Only (${c.teachers})</option>
+        <option value="students">Students Only (${c.students})</option>
+      </select></div>
+    <div id="an-filters" class="ex-grid2" style="display:none">
+      <div><label class="ex-lbl">Class (optional)</label><select class="form-control" id="an-class" onchange="anScope()">${clsOpts}</select></div>
+      <div><label class="ex-lbl">Subject (optional)</label><select class="form-control" id="an-subject" onchange="anScope()">${subOpts}</select></div>
+    </div>
+    <div id="an-scope" style="margin:6px 0 12px"></div>
+    <div class="form-group"><label>Title</label><input class="form-control" id="an-title" placeholder="e.g. Holiday Notice"></div>
+    <div class="form-group"><label>Message</label><textarea class="form-control" id="an-msg" rows="4" placeholder="Write your message..."></textarea></div>
+    <div class="form-group"><label>Attach Link <span style="color:var(--text-muted);font-weight:400">(optional — tapping the notification opens it)</span></label><input class="form-control" id="an-link" placeholder="https://..."></div>
+    <div class="form-group"><label>Attach Image <span style="color:var(--text-muted);font-weight:400">(optional)</span></label>
+      <input type="file" accept="image/*" id="an-imgfile" style="display:none" onchange="anPickImg(this)">
+      <div id="an-imgbox"><button class="btn btn-ghost btn-sm" onclick="document.getElementById('an-imgfile').click()">${ic('upload')} Choose image</button></div>
+    </div>`,
+   `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitAdminNotify()">${ic('bell')} Send Notification</button>`);
   anScope();
 }
 function anScope(){
   const c=window._anCounts||{all:0,teachers:0,students:0};
-  const t=document.getElementById('an-target'); const box=document.getElementById('an-scope');
+  const t=document.getElementById('an-target'); const box=document.getElementById('an-scope'); const filt=document.getElementById('an-filters');
   if(!t||!box) return;
   const v=t.value;
-  const label=v==='teachers'?'Teachers Only':v==='students'?'Students Only':'Everyone — Teachers + Students';
-  const n=v==='teachers'?c.teachers:v==='students'?c.students:c.all;
-  box.innerHTML=`<div class="ns-n">${n}</div><div class="ns-t"><b>${label}</b><br>This notification will reach ${n} user${n===1?'':'s'}.</div>`;
+  if(filt) filt.style.display=(v==='students')?'grid':'none';
+  let label,n,star='';
+  if(v==='teachers'){ label='Teachers Only'; n=c.teachers; }
+  else if(v==='students'){
+    label='Students'; n=c.students;
+    const cl=val('an-class'), sub=val('an-subject');
+    if(cl||sub){ label='Students'+(cl?' · Class '+cl:'')+(sub?' · '+sub:''); star='*'; }
+  } else { label='Everyone — Teachers + Students'; n=c.all; }
+  box.innerHTML=`<div style="display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,var(--primary-50),#fff);border:1px solid var(--border);border-radius:14px;padding:12px 16px">
+    <div style="font-size:1.7rem;font-weight:800;color:var(--primary);line-height:1">${n}${star}</div>
+    <div style="font-size:.84rem"><b>${esc(label)}</b><br><span style="color:var(--text-muted);font-size:.74rem">${star?'Reaches the matching subset of these '+n+' students.':'This notification will reach '+n+' user'+(n===1?'':'s')+'.'}</span></div>
+  </div>`;
+}
+async function anPickImg(inp){
+  const f=inp.files&&inp.files[0]; if(!f) return;
+  try{
+    let file=f;
+    if(typeof smartCompress==='function'){ try{ const r=await smartCompress(f,()=>{}); if(r&&r.ok&&r.file) file=r.file; }catch(e){} }
+    const b64=await new Promise((res,rej)=>{ const rd=new FileReader(); rd.onload=()=>res(rd.result); rd.onerror=rej; rd.readAsDataURL(file); });
+    window._anImg=b64;
+    const box=document.getElementById('an-imgbox');
+    if(box) box.innerHTML=`<div style="display:flex;align-items:center;gap:10px"><img src="${b64}" style="width:72px;height:72px;object-fit:cover;border-radius:10px;border:1px solid var(--border)"><button class="btn btn-ghost btn-sm" onclick="anClearImg()">${ic('trash')} Remove</button></div>`;
+  }catch(e){ toast('Could not load image',true); }
+}
+function anClearImg(){
+  window._anImg=null;
+  const box=document.getElementById('an-imgbox');
+  if(box) box.innerHTML=`<button class="btn btn-ghost btn-sm" onclick="document.getElementById('an-imgfile').click()">${ic('upload')} Choose image</button>`;
 }
 async function submitAdminNotify(){
   const title=val('an-title'), message=document.getElementById('an-msg').value.trim(), target=val('an-target');
   if(!title||!message){ toast('Title and message are required.',true); return; }
-  try{ const r=await api('/api/admin/notify','POST',{title,message,target}); closeModal(); toast(r.message); }catch(e){ toast(e.message,true); }
+  const body={title,message,target};
+  if(target==='students'){ body.class_name=val('an-class')||''; body.subject=val('an-subject')||''; }
+  const link=val('an-link'); if(link) body.link=link;
+  if(window._anImg) body.image_b64=window._anImg;
+  const btns=document.querySelectorAll('.modal-footer .btn'); btns.forEach(b=>b.disabled=true);
+  try{ const r=await api('/api/admin/notify','POST',body); closeModal(); toast(r.message); }
+  catch(e){ toast(e.message,true); btns.forEach(b=>b.disabled=false); }
 }
 async function openTeacherNotify(){
   showModal(' Notify Students','<div class="spinner"></div>','');
@@ -8866,6 +8928,7 @@ async function openVTReview(id){
   const ndVal=`${nd.getFullYear()}-${String(nd.getMonth()+1).padStart(2,'0')}-${String(nd.getDate()).padStart(2,'0')}T${String(nd.getHours()).padStart(2,'0')}:00`;
   const collabSec=(t.is_collab&&(t.submitted_at||['submitted','uploaded','approved','editing_soon','editing_done'].indexOf(t.status)>=0))?_vtReviewCollabHTML(t):'';
   showModal(`Review — ${esc(t.title)}`,`
+    ${_modalHero(t.is_collab?'users':'play', t.is_collab?'Collab video review':'Video review', t.is_collab?'Verify each teacher, then set the video status below.':'Check the submission and set the status below.','#b45309')}
     <div style="margin-bottom:12px">${_vtPill(t)}</div>
     <div class="sdet-grid" style="grid-template-columns:1fr 1fr;margin-bottom:12px">
       <div class="sdet-row"><span>Teacher</span><b>${esc(t.teacher)}</b></div>
@@ -9099,10 +9162,17 @@ async function vvSaveKey(){
   try{ await api('/api/admin/settings/youtube-key','POST',{key}); closeModal(); toast(key?'API key saved.':'API key cleared.'); if(typeof loadAVTasks==='function') loadAVTasks(); }
   catch(e){ toast(e.message||'Could not save',true); }
 }
+function _modalHero(icon,title,sub,color){
+  color=color||'var(--primary)';
+  return `<div style="display:flex;gap:12px;align-items:center;background:linear-gradient(135deg,var(--primary-50),transparent);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin-bottom:16px">
+    <div style="width:42px;height:42px;flex:0 0 42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:${color};color:#fff">${ic(icon)}</div>
+    <div style="min-width:0"><div style="font-weight:800;font-size:.98rem">${esc(title)}</div>${sub?`<div style="font-size:.74rem;color:var(--text-muted);line-height:1.45;margin-top:2px">${esc(sub)}</div>`:''}</div>
+  </div>`;
+}
 function openVtYtLink(id,cur){
-  showModal('Post YouTube Link',`
-    <p style="font-size:.82rem;color:var(--text-muted)">Paste the published YouTube link. The task becomes <b>Uploaded</b> and live views start showing on the card.</p>
-    <div class="form-group"><label>YouTube Link</label><input id="vt-yt" class="input" placeholder="https://youtu.be/..." value="${esc(cur||'')}"></div>`,
+  showModal('Post YouTube Link',
+    _modalHero('play','Publish YouTube Link','Paste the published link — the task turns Uploaded and live views start showing on the card.','#dc2626')+
+    `<div class="form-group"><label>YouTube Link</label><input id="vt-yt" class="input" placeholder="https://youtu.be/..." value="${esc(cur||'')}"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="vtSaveYtLink(${id})">${ic('check')} Post Link</button>`);
 }
 async function vtSaveYtLink(id){
@@ -9227,9 +9297,9 @@ async function avtDeleteProject(id,name,ev){
   catch(e){ toast(e.message||'Delete failed',true); }
 }
 function vtNotifyStudents(id){
-  showModal('Send Video to Students',`
-    <p style="font-size:.84rem;color:var(--text-muted);margin-bottom:10px">All students will receive a notification with the video link attached — tapping it opens the video directly.</p>
-    <div class="form-group"><label>Message (optional)</label><textarea id="vt-ns-msg" class="input" rows="3" placeholder="A new video is now available..."></textarea></div>`,
+  showModal('Send Video to Students',
+    _modalHero('send','Send Video to Students','Every student gets a notification with the video link attached — tapping it opens the video directly.','var(--primary)')+
+    `<div class="form-group"><label>Message (optional)</label><textarea id="vt-ns-msg" class="input" rows="3" placeholder="A new video is now available..."></textarea></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="vtNotifySave(${id})">${ic('send')} Send to All Students</button>`);
 }
 async function vtNotifySave(id){

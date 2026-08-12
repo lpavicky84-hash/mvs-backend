@@ -13,7 +13,7 @@ from datetime import datetime, date, timedelta
 from typing import List, Optional
 
 from database import get_db
-from security import get_admin, hash_password, decode_token as _dec_tok
+from security import get_admin, get_current_user, hash_password, decode_token as _dec_tok
 from models import (
     User, TeacherProfile, StudentProfile, ClassEntry, ClassStatus,
     RescheduleRequest, RescheduleStatus, Doubt, DoubtStatus,
@@ -127,8 +127,9 @@ def admin_section_guard(request: Request, current_user=Depends(get_admin)):
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"], dependencies=[Depends(admin_section_guard)])
 
-def notify(db, user_id: int, title: str, message: str, notif_type: str):
-    n = Notification(user_id=user_id, title=title, message=message, notif_type=notif_type)
+def notify(db, user_id: int, title: str, message: str, notif_type: str, link=None, image_url=None):
+    n = Notification(user_id=user_id, title=title, message=message, notif_type=notif_type,
+                     link=link, image_url=image_url)
     db.add(n)
 
 # ===== DASHBOARD =====
@@ -1368,29 +1369,72 @@ def admin_timetable_pdf_commit(payload: dict, db: Session = Depends(get_db), _=D
 # ===== ADMIN: SEND NOTIFICATION (target teachers/students/all) =====
 @router.get("/notify-targets")
 def admin_notify_targets(db: Session = Depends(get_db), _=Depends(get_admin)):
-    """v93: admin notify modal — har target pe kitne users jayenge (live counts)."""
+    """v93: admin notify modal — har target pe kitne users jayenge (live counts).
+    v193: + subject / class-wise targeting ke liye subjects & classes list."""
+    from models import StudentProfile, AvailableSubject
     q = db.query(User).filter(User.is_active == True, User.role != "admin")
     teachers = q.filter(User.role == "teacher").count()
     students = q.filter(User.role == "student").count()
-    return {"teachers": teachers, "students": students, "all": teachers + students}
+    _classes = sorted({(c or "").strip() for (c,) in db.query(StudentProfile.class_level).distinct()
+                       if c and (c or "").strip()})
+    try:
+        _subs = sorted({(s.name or "").strip() for s in db.query(AvailableSubject).all()
+                        if (getattr(s, "name", "") or "").strip()})
+    except Exception:
+        _subs = []
+    return {"teachers": teachers, "students": students, "all": teachers + students,
+            "classes": _classes, "subjects": _subs}
+
 
 @router.post("/notify")
 def admin_notify(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import StudentProfile
     title = (payload.get("title") or "").strip()
     message = (payload.get("message") or "").strip()
     target = (payload.get("target") or "all").strip()   # teachers | students | all
+    subject = (payload.get("subject") or "").strip()
+    cls = (payload.get("class_name") or "").strip()
+    link = (payload.get("link") or "").strip() or None
+    if link and not (link.startswith("http://") or link.startswith("https://")):
+        link = "https://" + link
     if not title or not message:
         raise HTTPException(status_code=400, detail="Title and message are required")
+    # optional image attachment -> R2 -> serve URL
+    image_url = None
+    img_b64 = payload.get("image_b64") or ""
+    if img_b64:
+        try:
+            import base64 as _b64
+            raw = _b64.b64decode(img_b64.split(",", 1)[-1])
+            if raw and len(raw) <= 8 * 1024 * 1024:
+                _ref = __import__("r2_storage").store_file_value(
+                    __import__("r2_storage").new_key("notif-img", "notif.jpg"), raw, "image/jpeg")
+                if _ref:
+                    import urllib.parse as _up
+                    image_url = "/api/notif-image?k=" + _up.quote(str(_ref), safe="")
+        except Exception:
+            image_url = None
     q = db.query(User).filter(User.is_active == True, User.role != "admin")
     if target == "teachers":
         q = q.filter(User.role == "teacher")
     elif target == "students":
         q = q.filter(User.role == "student")
+        if subject or cls:
+            q = q.join(StudentProfile, StudentProfile.user_id == User.id)
+            if cls:
+                q = q.filter(StudentProfile.class_level == cls)
+            if subject:
+                q = q.filter(StudentProfile.subjects.like("%" + subject + "%"))
     users = q.all()
     for u in users:
-        notify(db, u.id, "📢 " + title, message, "admin_broadcast")
+        notify(db, u.id, "\U0001f4e2 " + title, message, "admin_broadcast",
+               link=link, image_url=image_url)
     db.commit()
-    return {"message": f"Notification sent to {len(users)} people!", "count": len(users)}
+    _scope = target if target != "students" else (
+        "students" + (" · " + cls if cls else "") + (" · " + subject if subject else ""))
+    return {"message": "Notification sent to %d people!" % len(users), "count": len(users),
+            "scope": _scope}
+
 
 # ===== ADMIN: MATERIAL UPLOAD (direct PDF) + pending view =====
 @router.post("/material")

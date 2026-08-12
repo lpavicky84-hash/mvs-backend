@@ -502,6 +502,18 @@ def _serve_app_js():
     return JSONResponse(status_code=404, content={"detail": "mvs_app.js not found"})
 
 
+# ===== Notification image serve (admin-attached image) — koi bhi logged-in user (jise
+# notif mila) load kar sake, isliye admin router ke bahar app-level route. =====
+@app.get("/api/notif-image")
+def _serve_notif_image(k: str = ""):
+    from fastapi import HTTPException as _HX
+    if not k:
+        raise _HX(404, "Not found")
+    import urllib.parse as _up
+    ref = _up.unquote(k)
+    return __import__("r2_storage").file_response(ref, "image/jpeg", "notif.jpg", False)
+
+
 # ===== R2 TEST (temporary — verify karne ke baad hata denge) =====
 @app.get("/r2-test")
 def _r2_test():
