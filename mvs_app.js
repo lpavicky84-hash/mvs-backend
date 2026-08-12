@@ -1069,6 +1069,13 @@ function istNow(){
   try{ return new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Kolkata'})); }
   catch(e){ return new Date(); }
 }
+// Class ka scheduled time nikal chuka? (report/notes button sirf iske baad dikhein). Date/time
+// na ho to true (backward-compatible — purane entries block na hon).
+function _classOver(e){
+  if(!e) return true;
+  try{ var dt=parseClassDT(e.date,e.time); return !dt || istNow()>dt; }
+  catch(_){ return true; }
+}
 function istDateKey(d){
   var x=(d!=null)?new Date(d):istNow();
   return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
@@ -2471,7 +2478,7 @@ async function loadTeacherToday(wrapId){
  // Class se pehle (Upcoming) report ka button nahi aayega — sirf "Upcoming" chip.
  let _b='';
  if(!e.completed && (over || !dt)) _b+=`<button class="btn btn-success btn-sm" onclick="openClassReport(${e.id})"> Submit Report</button>`;
- if(!e.notes) _b+=`<button class="btn btn-primary btn-sm" onclick="openUploadHub({type:'notes',chapter:decodeURIComponent('${ch}'),subject:decodeURIComponent('${sub}'),class_name:decodeURIComponent('${cln}')})"> Upload Notes</button>`;
+ if(!e.notes && (over || !dt)) _b+=`<button class="btn btn-primary btn-sm" onclick="openUploadHub({type:'notes',chapter:decodeURIComponent('${ch}'),subject:decodeURIComponent('${sub}'),class_name:decodeURIComponent('${cln}')})"> Upload Notes</button>`;
  if(over){
  _b+=`<span class="tstatus" style="background:rgba(245,158,11,.15);color:var(--warning)">${!e.completed?'Report Pending':'Material Pending'}</span>`;
  } else {
@@ -13566,7 +13573,7 @@ async function submitDoubt(){
   if(!question&&!st.voice&&!st.file){ toast('Please write your doubt, record a voice note or attach a file.',true); return; }
   const btn=document.getElementById('cmps-sdo'); btn.disabled=true; btn.textContent='Submitting...';
   const fd=new FormData();
-  fd.append('subject',subject); fd.append('topic',topic); fd.append('question',question||'(voice note)');
+  fd.append('subject',subject); fd.append('topic',topic); fd.append('question',question||(st.voice?'(voice note)':(st.file?'(photo / attachment)':'(no text)')));
   fd.append('teacher_id', val('sdo-tid')||'0');
   if(st.file){
     let f=st.file;
@@ -13903,7 +13910,7 @@ function renderTimelineItem(item, opts, tipT){
  ${p.time?`<span class="tchip"> ${esc(p.time)}</span>`:''}
  ${opts.onEdit?`<button class="btn btn-ghost btn-sm" onclick="openEditTopic(${p.id},'${encodeURIComponent(p.part||'')}')">${ic('edit')}</button>`:''}
  ${opts.onDelete?`<button class="btn btn-danger btn-sm" onclick="${opts.onDelete}(${p.id})">${ic('trash')}</button>`:''}
- ${opts.onComplete?(p.completed?`<span class="tag tag-done" style="font-size:.6rem">Completed</span>`:`<button class="btn btn-success btn-sm" onclick="${opts.onComplete}(${p.id})">Class Report</button>`):''}
+ ${opts.onComplete?(p.completed?`<span class="tag tag-done" style="font-size:.6rem">Completed</span>`:(_classOver(p)?`<button class="btn btn-success btn-sm" onclick="${opts.onComplete}(${p.id})">Class Report</button>`:'')):''}
  </div></div>`).join('');
   return `<div class="tnode ${st}">${dotHtml}<div class="tcard" id="card-${accId}"><div class="tchapter-head" onclick="document.getElementById('card-${accId}').classList.toggle('open')"><div class="left"><span class="arrow">▶</span><h4> ${esc(item.chapter)}</h4></div><div style="display:flex;align-items:center;gap:8px;flex-shrink:0"><span class="tstatus ${st}">${st}</span><span class="cnt-badge">${parts.length} ${parts.length>1?'parts':'part'}</span></div></div><div class="tparts">${partsHtml}</div></div></div>`;
 }
@@ -14331,7 +14338,7 @@ function renderStudentNode(item, st, tmap, opts, ongoing){
   if(item.kind==='event'){
     const e=item.data; const isT=_isTest(e.chapter);
     const lbl=st==='current'?'Live':st==='done'?'Done':st==='progress'?'In Progress':'Upcoming';
-    const edel=`${opts.onEditAny?`<button class="btn btn-ghost btn-sm stl-act" onclick="${opts.onEditAny}(${e.id})">${ic('edit')}</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${e.id})">${ic('trash')}</button>`:''}${opts.onReport?_crChipHTML(e.id):''}`;
+    const edel=`${opts.onEditAny?`<button class="btn btn-ghost btn-sm stl-act" onclick="${opts.onEditAny}(${e.id})">${ic('edit')}</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${e.id})">${ic('trash')}</button>`:''}${opts.onReport?_crChipHTML(e):''}`;
     return `<div class="stl-node ${st}${ongoing?' ongoing':''}">${dot}<div class="stl-card event ${isT?'test':''}${ongoing?' ongoing':''}"><div class="stl-chead"><div class="stl-cname">${esc(e.chapter)}</div><div class="stl-cmeta">${e.date?`<span class="stl-date">${fmtNice(e.date)}${e.day?' · '+esc(e.day):''}</span>`:''}<span class="stl-badge ${st}">${lbl}</span>${edel}</div></div></div></div>`;
   }
   const parts=item.parts, open=(st==='current'||ongoing), id='stl-'+Math.random().toString(36).slice(2,8);
@@ -14345,7 +14352,7 @@ function renderStudentNode(item, st, tmap, opts, ongoing){
       else if(p.cooling){ verifyBtn=`<button class="btn btn-ghost btn-sm stl-act" disabled title="Too many wrong tries \u2014 try again shortly">Try later</button>`; }
       else{ verifyBtn=`<button class="btn btn-success btn-sm stl-act" onclick="markLectureDone(${p.lecture_id})">Mark Done</button>`; }
     }
-    const acts=_hasAct?`${opts.onEditAny?`<button class="btn btn-ghost btn-sm stl-act" onclick="${opts.onEditAny}(${p.id})">${ic('edit')}</button>`:''}${opts.onEdit?`<button class="btn btn-ghost btn-sm stl-act" onclick="openEditTopic(${p.id},'${encodeURIComponent(p.part||'')}')">${ic('edit')}</button>`:''}${opts.onComplete&&!p.completed?`<button class="btn btn-success btn-sm stl-act" onclick="${opts.onComplete}(${p.id})">Class Report</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${p.id})">${ic('trash')}</button>`:''}${opts.onReport?_crChipHTML(p.id):''}`:'';
+    const acts=_hasAct?`${opts.onEditAny?`<button class="btn btn-ghost btn-sm stl-act" onclick="${opts.onEditAny}(${p.id})">${ic('edit')}</button>`:''}${opts.onEdit?`<button class="btn btn-ghost btn-sm stl-act" onclick="openEditTopic(${p.id},'${encodeURIComponent(p.part||'')}')">${ic('edit')}</button>`:''}${opts.onComplete&&!p.completed&&_classOver(p)?`<button class="btn btn-success btn-sm stl-act" onclick="${opts.onComplete}(${p.id})">Class Report</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${p.id})">${ic('trash')}</button>`:''}${opts.onReport?_crChipHTML(p):''}`:'';
     return `<div class="stl-part"><span class="stl-pdot ${pst}">${pst==='done'?'✓':''}</span><div class="stl-pname">${esc(p.part||'Full chapter')}</div><div class="stl-pright"><div class="stl-ptime">${p.date?fmtNice(p.date)+(p.day?' · '+esc(p.day):''):''}${p.time?'<br>'+esc(p.time):''}</div><span class="stl-pbadge ${pst}">${plbl}</span>${acts}</div></div>`; }).join('');
   const stlbl=st==='done'?'DONE':(ongoing?'ONGOING CHAPTER':(st==='progress'?'IN PROGRESS':(st==='current'?'ONGOING CHAPTER':'UPCOMING')));
   return `<div class="stl-node ${st}${ongoing?' ongoing':''}">${dot}<div class="stl-card chapter ${open?'open':''}${ongoing?' ongoing':''}" id="${id}"><div class="stl-chead" onclick="document.getElementById('${id}').classList.toggle('open')"><div class="stl-cname"><span class="stl-arrow">${open?'▾':'›'}</span>${esc(item.chapter)}</div><div class="stl-cmeta"><span class="stl-badge ${ongoing?'ongoing':st}">${stlbl}</span><span class="cnt-badge dark">${parts.length} part${parts.length>1?'s':''}</span></div></div><div class="stl-parts">${partsHtml}</div></div></div>`;
@@ -14435,7 +14442,7 @@ function wkDayDetail(day){
   const rows=list.map(x=>{
     const tmap=(opts.tipTeacherMap||{})[x.subject]||{};
     const stb=x.st==='current'?'<span class="wkc-status live">Live</span>':x.st==='done'?'<span class="wkc-status done">Completed</span>':'<span class="wkc-status up">Upcoming</span>';
-    return `<div class="wkc-row"><div class="wkc-time">${esc(x.time||'\u2014')}<span>90min</span></div><div class="wkc-main"><div class="wkc-sub">${esc(x.subject)}</div>${x.chapter?`<div class="wkc-teacher">${esc(x.chapter)}${x.part?' \u2014 '+esc(x.part):''}</div>`:''}${tmap.name?`<div class="wkc-teacher">${esc(tmap.name)}</div>`:''}</div><div class="wkc-right">${stb}${opts.onReport&&x.id?_crChipHTML(x.id):''}</div></div>`;
+    return `<div class="wkc-row"><div class="wkc-time">${esc(x.time||'\u2014')}<span>90min</span></div><div class="wkc-main"><div class="wkc-sub">${esc(x.subject)}</div>${x.chapter?`<div class="wkc-teacher">${esc(x.chapter)}${x.part?' \u2014 '+esc(x.part):''}</div>`:''}${tmap.name?`<div class="wkc-teacher">${esc(tmap.name)}</div>`:''}</div><div class="wkc-right">${stb}${opts.onReport&&x.id?_crChipHTML(x):''}</div></div>`;
   }).join('');
   showModal(`${day} \u2014 ${list.length} class${list.length>1?'es':''}`,
     (opts.onReport?`<div style="font-size:.72rem;color:var(--text-muted);margin-bottom:10px"><b>Class Report</b> = class report + notes for students (studio note inside) &nbsp;\u00b7&nbsp; <b>Done</b> = report already submitted.</div>`:'')+(rows||'<div class="empty-state"><p>No classes this day.</p></div>'),'');
@@ -14543,11 +14550,15 @@ function _dzInit(inputId){
   });
 }
 // ===== v99: ADMIN CLASS-REPORT UPLOAD (past classes ka report + notes backfill) =====
-function _crChipHTML(id){
-  // v101: ONE report chip per class — Done once the teacher (or a backfill) has submitted
+function _crChipHTML(e){
+  // v101: ONE report chip per class — Done once the teacher (or a backfill) has submitted.
+  // v192: report chip class ka time nikalne ke BAAD hi (upcoming classes pe nahi).
+  const id=(e&&e.id!=null)?e.id:e;
+  const ent=(e&&e.id!=null)?e:((window._attEntries||[]).find(x=>x.id===id)||null);
   const up=(window._crUploaded||{})[id];
-  return up?`<span class="tl-report done" onclick="event.stopPropagation();openClassReportUpload(${id})" title="Class report submitted \u2014 click to view / update">${ic('check')} Done</span>`
-          :`<span class="tl-report" onclick="event.stopPropagation();openClassReportUpload(${id})" title="Upload this class's report + notes for students">${ic('upload')} Class Report</span>`;
+  if(up) return `<span class="tl-report done" onclick="event.stopPropagation();openClassReportUpload(${id})" title="Class report submitted \u2014 click to view / update">${ic('check')} Done</span>`;
+  if(ent && !_classOver(ent)) return '';   // class time nahi aaya -> report chip mat dikhao
+  return `<span class="tl-report" onclick="event.stopPropagation();openClassReportUpload(${id})" title="Upload this class's report + notes for students">${ic('upload')} Class Report</span>`;
 }
 function openClassReportUpload(id){
   const e=(_attEntries||[]).find(x=>x.id===id);
