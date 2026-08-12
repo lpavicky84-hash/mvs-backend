@@ -2536,11 +2536,27 @@ def _vt_task_period_views(db, t, period_start, period_end):
     return cur
 
 
+def _vt_category(t):
+    """Video ka type category (short/live/one_shot/recorded/long) + label — breakdown ke liye."""
+    kind = (t.kind or "normal")
+    if kind in ("one_shot", "rapid_revision", "project"):
+        return ("one_shot", "One Shot / Revision")
+    vt = (t.video_type or "").lower()
+    if "short" in vt:
+        return ("short", "Shorts")
+    if "live" in vt or (getattr(t, "streaming", "") or "").lower() == "live":
+        return ("live", "YouTube Live")
+    if "record" in vt:
+        return ("recorded", "Recorded")
+    return ("long", "Long Video")
+
+
 def _vt_views_stats(db, teacher_id=None, period_start=None, period_end=None):
-    """Totals + per-video (+thumb) + per-teacher + highest + all-teacher leaderboard.
-    period_start/end diye ho to views = us period me GAINED (snapshot delta)."""
+    """Totals + per-video (+thumb) + per-teacher + highest + all-teacher leaderboard + by-type.
+    period_start/end diye ho to views = us period me GAINED (snapshot delta).
+    Collab video -> team-specific bucket ("Collab: A + B"): SAME team merge, ALAG team alag.
+    teacher_id diya ho to collab-member wali videos bhi us teacher ke scope me aati hain."""
     vids_all = [t for t in db.query(VideoTask).all() if (t.youtube_url or "")]
-    # tmap me primary + collab-member dono ke naam (collab video ke liye)
     tp_ids = set()
     for t in vids_all:
         if t.teacher_id:
@@ -2554,61 +2570,81 @@ def _vt_views_stats(db, teacher_id=None, period_start=None, period_end=None):
             u = db.query(User).filter(User.id == tp.user_id).first()
             tmap[tp.id] = (u.name if u else ("Teacher #%d" % tp.id))
 
-    def _vname(t):
-        # collab video -> ek teacher ka naam nahi, "Collab" (sabhi ne mehnat ki)
-        return "Collab" if _collab_extra_ids(t) else tmap.get(t.teacher_id, "\u2014")
-
     def _cnames(t):
         return sorted({tmap[cid] for cid in _collab_all_ids(t) if cid in tmap}) if _collab_extra_ids(t) else []
+
+    def _vname(t):
+        # collab video -> team-specific label. Same collab team wali videos ek bar me merge,
+        # alag team wali alag bar. Non-collab -> primary teacher ka naam.
+        if _collab_extra_ids(t):
+            nms = _cnames(t)
+            return ("Collab: " + " + ".join(nms)) if nms else "Collab"
+        return tmap.get(t.teacher_id, "\u2014")
 
     def _vv(t):
         return _vt_task_period_views(db, t, period_start, period_end)
 
-    # all-teacher leaderboard (comparison bar/pie) — collab video "Collab" ke naam se
-    lb = {}
-    _collab_names = set()
+    # all-teacher leaderboard (comparison bar/pie) — collab team-wise buckets
+    lb, lb_collab = {}, {}
     for t in vids_all:
         nm = _vname(t)
-        if nm == "Collab":
-            for _n in _cnames(t):
-                _collab_names.add(_n)
         lb[nm] = lb.get(nm, 0) + _vv(t)
-    leaderboard = sorted(({"name": k, "views": v, "is_collab": (k == "Collab"),
-                           "collab_names": (sorted(_collab_names) if k == "Collab" else [])}
+        if nm.startswith("Collab"):
+            lb_collab[nm] = _cnames(t)
+    leaderboard = sorted(({"name": k, "views": v, "is_collab": k.startswith("Collab"),
+                           "collab_names": lb_collab.get(k, [])}
                           for k, v in lb.items()),
                          key=lambda x: -x["views"])
 
-    # scoped (teacher's own, ya admin=all)
-    scoped_tasks = db.query(VideoTask)
+    # scoped: teacher ki apni + collab-member wali videos (ya admin = sab)
     if teacher_id:
-        scoped_tasks = scoped_tasks.filter(VideoTask.teacher_id == teacher_id)
-    scoped_tasks = scoped_tasks.all()
+        from sqlalchemy import or_ as _orSc
+        scoped_tasks = db.query(VideoTask).filter(
+            _orSc(VideoTask.teacher_id == teacher_id,
+                  VideoTask.collab_teacher_ids.like("%" + str(teacher_id) + "%"))).all()
+        scoped_tasks = [t for t in scoped_tasks
+                        if (t.teacher_id == teacher_id or teacher_id in _collab_all_ids(t))]
+    else:
+        scoped_tasks = db.query(VideoTask).all()
     vids = [t for t in scoped_tasks if (t.youtube_url or "")]
     pending = len([t for t in scoped_tasks
                    if t.status in ("assigned", "submitted") and not (t.youtube_url or "")])
     per_video, per_teacher, total_views, highest = [], {}, 0, None
+    pt_collab, by_type = {}, {}
     for t in vids:
         v = _vv(t)
         total_views += v
         nm = _vname(t)
         per_teacher[nm] = per_teacher.get(nm, 0) + v
+        if nm.startswith("Collab"):
+            pt_collab[nm] = _cnames(t)
+        catk, catl = _vt_category(t)
+        bt = by_type.setdefault(catk, {"key": catk, "label": catl, "views": 0, "count": 0})
+        bt["views"] += v
+        bt["count"] += 1
         item = {"id": t.id, "title": t.title or "", "teacher": nm, "views": v,
                 "is_collab": bool(_collab_extra_ids(t)), "collab_names": _cnames(t),
                 "url": t.youtube_url or "",
                 "thumb": (t.thumbnail_b64 or t.thumbnail_link or ""),
+                "vtype": catk, "vtype_label": catl,
+                "subject": t.subject or "", "kind": (t.kind or "normal"),
+                "status": t.status or "", "primary": tmap.get(t.teacher_id, "\u2014"),
                 "at": t.yt_views_at.strftime("%d %b, %I:%M %p") if t.yt_views_at else ""}
         per_video.append(item)
         if highest is None or v > highest["views"]:
             highest = item
     per_video.sort(key=lambda x: -x["views"])
-    by_teacher = sorted(({"name": k, "views": v, "is_collab": (k == "Collab"),
-                          "collab_names": (sorted(_collab_names) if k == "Collab" else [])}
+    by_teacher = sorted(({"name": k, "views": v, "is_collab": k.startswith("Collab"),
+                          "collab_names": pt_collab.get(k, [])}
                          for k, v in per_teacher.items()),
                         key=lambda x: -x["views"])
+    by_type_list = sorted(by_type.values(), key=lambda x: -x["views"])
+    # backward-compat: sabhi collab teams ke naamon ka union
+    _all_collab = sorted({n for names in list(lb_collab.values()) + list(pt_collab.values()) for n in names})
     return {"uploaded": len(vids), "pending": pending, "total_views": total_views,
             "highest": highest, "per_video": per_video,
             "by_teacher": by_teacher, "leaderboard": leaderboard,
-            "collab_names": sorted(_collab_names)}
+            "by_type": by_type_list, "collab_names": _all_collab}
 
 
 def _vt_video_series(db, task_id, dt_from=None, dt_to=None):

@@ -8918,6 +8918,30 @@ async function vtRejectProposal(id){
 // REAL-TIME YOUTUBE VIEWS — dashboard, SVG charts, link/key
 // =============================================================
 function _vvFmt(n){ n=+n||0; if(n>=1e6) return (n/1e6).toFixed(n>=1e7?0:1)+'M'; if(n>=1e3) return (n/1e3).toFixed(n>=1e4?0:1)+'K'; return ''+n; }
+function _vvTypeCol(k){ return ({short:'#e0a24a',long:'#0891b2',live:'#dc2626',recorded:'#7c3aed',one_shot:'#1b7a3e'})[k]||'#64748b'; }
+function _vvToggleTypes(wrapId){
+  const b=document.getElementById(wrapId+'-tbreak'); if(!b) return;
+  const open=(b.style.display==='none'); b.style.display=open?'block':'none';
+  const ch=document.getElementById(wrapId+'-tchev'); if(ch) ch.textContent=open?'\u25b4':'\u25be';
+}
+function _vvRenderVRows(wrapId,cat){
+  const st=(window._vvList||{})[wrapId]; if(!st) return '';
+  const base=st.base; let list=st.all||[];
+  if(cat&&cat!=='all') list=list.filter(v=>v.vtype===cat);
+  if(!list.length) return '<div class="vv-empty">No videos of this type in this range.</div>';
+  return list.map(v=>{
+    const thumb=v.thumb?`<img class="vv-v-thumb" src="${esc(v.thumb)}" alt="">`:`<span class="vv-v-play">${ic('play')}</span>`;
+    const who=v.is_collab?`<span style="cursor:pointer;text-decoration:underline dotted;color:#7c3aed;font-weight:700" onclick="event.stopPropagation();_vvCollab(this)" data-names="${esc(JSON.stringify(v.collab_names||[]))}">${esc(v.teacher||'Collab')}</span>`:esc(v.teacher||'');
+    return `<div class="vv-vrow" onclick="_vvSeries('${base}',${v.id},'${wrapId}-series')">
+      ${thumb}
+      <div class="vv-v-main"><div class="vv-v-t">${esc(v.title||'Video')}</div><div class="vv-v-s">${who}${v.vtype_label?' · <span style="color:var(--text-muted)">'+esc(v.vtype_label)+'</span>':''}${v.at?' · '+esc(v.at):''}</div></div>
+      <b class="vv-v-views">${_vvFmt(v.views)}</b>${v.url?`<a class="vv-v-open" href="${esc(v.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open</a>`:''}</div>`;
+  }).join('');
+}
+function _vvFilterList(wrapId){
+  const cat=(document.getElementById(wrapId+'-vcat')||{}).value||'all';
+  const box=document.getElementById(wrapId+'-vlist'); if(box) box.innerHTML=_vvRenderVRows(wrapId,cat);
+}
 const _VV_COL=['#0891b2','#7c3aed','#059669','#d97706','#dc2626','#2563eb','#db2777','#65a30d','#0d9488','#9333ea'];
 function _vvCollab(el){
   let names=[]; try{ names=JSON.parse(el.getAttribute('data-names')||'[]'); }catch(e){}
@@ -8970,25 +8994,28 @@ async function renderVideoViews(wrapId, base, isAdmin, rangeKey, frm, to){
     const custom=(rangeKey==='custom')?`<span class="vv-fl">From</span><input type="date" id="${wrapId}-frm" class="vv-din" value="${frm||''}"><span class="vv-fl">To</span><input type="date" id="${wrapId}-to" class="vv-din" value="${to||''}"><button class="btn btn-ghost btn-sm" onclick="renderVideoViews('${wrapId}','${base}',${!!isAdmin},'custom',val('${wrapId}-frm'),val('${wrapId}-to'))">Apply</button>`:'';
     const refresh=`<button class="btn btn-primary btn-sm" onclick="vvRefresh('${base}','${wrapId}')">${ic('refresh')} Refresh live views</button>`;
     const viewsLbl=(rangeKey==='all')?'Total views':('Views · '+periodLbl);
+    const byType=d.by_type||[];
+    const typeBreak=byType.length?`<div id="${wrapId}-tbreak" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 14px;margin:-4px 0 14px">
+      <div style="font-size:.72rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Views by video type</div>
+      ${byType.map(t=>`<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)"><span style="width:10px;height:10px;border-radius:3px;flex:0 0 10px;background:${_vvTypeCol(t.key)}"></span><span style="flex:1;font-weight:700;font-size:.86rem">${esc(t.label)}</span><span style="font-size:.72rem;color:var(--text-muted)">${t.count} video${t.count!=1?'s':''}</span><b style="font-size:.92rem;min-width:56px;text-align:right">${_vvFmt(t.views)}</b></div>`).join('')}
+    </div>`:'';
     const tiles=`<div class="vv-tiles">
-      <div class="vv-tile"><div class="vv-t-n">${_vvFmt(d.total_views)}</div><div class="vv-t-l">${esc(viewsLbl)}</div></div>
+      <div class="vv-tile${byType.length?' vv-tile-click':''}"${byType.length?` style="cursor:pointer" onclick="_vvToggleTypes('${wrapId}')" title="Tap for breakdown by video type"`:''}><div class="vv-t-n">${_vvFmt(d.total_views)}</div><div class="vv-t-l">${esc(viewsLbl)}${byType.length?' <span id="'+wrapId+'-tchev">\u25be</span>':''}</div></div>
       <div class="vv-tile"><div class="vv-t-n">${d.uploaded||0}</div><div class="vv-t-l">Videos uploaded</div></div>
       <div class="vv-tile"><div class="vv-t-n">${d.pending||0}</div><div class="vv-t-l">Upload pending</div></div>
-      <div class="vv-tile hi"><div class="vv-t-n">${d.highest?_vvFmt(d.highest.views):'—'}</div><div class="vv-t-l">Highest: ${d.highest?esc((d.highest.title||'').slice(0,22)):'—'}</div></div></div>`;
+      <div class="vv-tile hi"><div class="vv-t-n">${d.highest?_vvFmt(d.highest.views):'\u2014'}</div><div class="vv-t-l">Highest: ${d.highest?esc((d.highest.title||'').slice(0,22)):'\u2014'}</div></div></div>${typeBreak}`;
     const comp=d.leaderboard||d.by_teacher||[];
     const bar=`<div class="vv-panel"><div class="vv-panel-h">Views by teacher${rangeKey!=='all'?' · '+esc(periodLbl):''}</div>${_svgBars(comp,d.me)}</div>`;
     const pie=(comp.length>1)?`<div class="vv-panel"><div class="vv-panel-h">Share of views (all teachers)</div>${_svgPie(comp)}</div>`:'';
-    window._vvMeta={};
-    const vids=(d.per_video||[]).slice(0,30).map(v=>{
-      window._vvMeta[v.id]={thumb:v.thumb||'',title:v.title||'',url:v.url||'',views:v.views||0,at:v.at||''};
-      const thumb=v.thumb?`<img class="vv-v-thumb" src="${esc(v.thumb)}" alt="">`:`<span class="vv-v-play">${ic('play')}</span>`;
-      return `<div class="vv-vrow" onclick="_vvSeries('${base}',${v.id},'${wrapId}-series')">
-      ${thumb}
-      <div class="vv-v-main"><div class="vv-v-t">${esc(v.title||'Video')}</div><div class="vv-v-s">${v.is_collab?`<span style="cursor:pointer;text-decoration:underline dotted;color:#7c3aed;font-weight:700" onclick="event.stopPropagation();_vvCollab(this)" data-names="${esc(JSON.stringify(v.collab_names||[]))}">Collab</span>`:esc(v.teacher||'')}${v.at?' · '+esc(v.at):''}</div></div>
-      <b class="vv-v-views">${_vvFmt(v.views)}</b>${v.url?`<a class="vv-v-open" href="${esc(v.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open</a>`:''}</div>`;
-    }).join('')||'<div class="vv-empty">No uploaded videos in this range yet.</div>';
+    window._vvMeta={}; window._vvList=window._vvList||{};
+    (d.per_video||[]).forEach(v=>{ window._vvMeta[v.id]={thumb:v.thumb||'',title:v.title||'',url:v.url||'',views:v.views||0,at:v.at||'',subject:v.subject||'',kind:v.kind||'',status:v.status||'',primary:v.primary||'',is_collab:!!v.is_collab,collab_names:v.collab_names||[],vtype_label:v.vtype_label||''}; });
+    window._vvList[wrapId]={base:base, all:(d.per_video||[])};
+    const catOpts=[['all','All types']].concat(byType.map(t=>[t.key,t.label]));
+    const catSel=byType.length?`<select id="${wrapId}-vcat" class="vv-din" onchange="_vvFilterList('${wrapId}')">${catOpts.map(c=>`<option value="${c[0]}">${esc(c[1])}</option>`).join('')}</select>`:'';
     wrap.innerHTML=`${keyWarn}<div class="vv-top">${refresh}<span class="vv-fl">Period</span>${presetSel}${custom}</div>${tiles}<div class="vv-grid">${bar}${pie}</div>
-      <div class="vv-panel"><div class="vv-panel-h">Every video · tap for thumbnail &amp; views timeline</div>${vids}<div id="${wrapId}-series" class="vv-series"></div></div>`;
+      <div class="vv-panel"><div class="vv-panel-h" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span>Every video · tap for thumbnail &amp; views timeline</span>${catSel?`<span style="display:flex;align-items:center;gap:6px"><span class="vv-fl">Type</span>${catSel}</span>`:''}</div>
+      <div id="${wrapId}-vlist" style="max-height:340px;overflow-y:auto">${_vvRenderVRows(wrapId,'all')}</div>
+      <div id="${wrapId}-series" class="vv-series"></div></div>`;
   }catch(e){ wrap.innerHTML=errHtml(e); }
 }
 function _vvRangeChange(wrapId,base,isAdmin){
@@ -8999,9 +9026,17 @@ async function _vvSeries(base, videoId, boxId){
   const box=document.getElementById(boxId); if(!box) return;
   const m=(window._vvMeta||{})[videoId]||{};
   const thumb=m.thumb||'', title=m.title||'Video', vurl=m.url||'';
+  const who=m.is_collab?('Collab: '+((m.collab_names||[]).join(' + '))):(m.primary||'');
+  const _bits=[];
+  if(who) _bits.push('<b>By:</b> '+esc(who));
+  if(m.subject) _bits.push('<b>Subject:</b> '+esc(m.subject));
+  if(m.vtype_label) _bits.push('<b>Type:</b> '+esc(m.vtype_label));
+  if(m.status) _bits.push('<b>Status:</b> '+esc(m.status));
+  const taskInfo=_bits.length?`<div style="font-size:.72rem;color:var(--text-muted);margin-top:5px;line-height:1.6">${_bits.join(' &nbsp;·&nbsp; ')}</div>`:'';
   const head=`<div class="vv-vidhead">${thumb?`<img src="${esc(thumb)}" class="vv-vidhead-thumb" alt="">`:`<span class="vv-v-play" style="width:54px;height:54px;flex:0 0 54px">${ic('play')}</span>`}
     <div style="flex:1"><div class="vv-vidhead-t">${esc(title)}</div>
       <div style="font-size:1.3rem;font-weight:800;color:var(--primary);margin:2px 0">${_vvFmt(m.views||0)} <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">views${m.at?' · '+esc(m.at):''}</span></div>
+      ${taskInfo}
       ${vurl?`<a href="${esc(vurl)}" target="_blank" rel="noopener" class="vv-v-open">${ic('play')} Open on YouTube</a>`:''}</div></div>`;
   box.innerHTML=head+'<div class="spinner"></div>';
   try{ box.scrollIntoView({behavior:'smooth',block:'nearest'}); }catch(e){}
