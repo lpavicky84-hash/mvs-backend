@@ -1377,13 +1377,25 @@ def admin_notify_targets(db: Session = Depends(get_db), _=Depends(get_admin)):
     students = q.filter(User.role == "student").count()
     _classes = sorted({(c or "").strip() for (c,) in db.query(StudentProfile.class_level).distinct()
                        if c and (c or "").strip()})
+    _subs_by_class = {}
+    _all_subs = set()
     try:
-        _subs = sorted({(s.name or "").strip() for s in db.query(AvailableSubject).all()
-                        if (getattr(s, "name", "") or "").strip()})
+        for s in db.query(AvailableSubject).all():
+            nm = (getattr(s, "name", "") or "").strip()
+            cl = (getattr(s, "class_level", "") or "").strip()
+            if not nm:
+                continue
+            _all_subs.add(nm)
+            _subs_by_class.setdefault(cl, [])
+            if nm not in _subs_by_class[cl]:
+                _subs_by_class[cl].append(nm)
+        for k in _subs_by_class:
+            _subs_by_class[k] = sorted(_subs_by_class[k])
     except Exception:
-        _subs = []
+        _subs_by_class = {}
     return {"teachers": teachers, "students": students, "all": teachers + students,
-            "classes": _classes, "subjects": _subs}
+            "classes": _classes, "subjects": sorted(_all_subs),
+            "subjects_by_class": _subs_by_class}
 
 
 @router.post("/notify")

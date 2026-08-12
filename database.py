@@ -40,5 +40,13 @@ def get_db():
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        # request crash (e.g. IntegrityError) -> aborted transaction ko rollback karke
+        # connection saaf return karo (poisoned session/pool na bane).
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         db.close()

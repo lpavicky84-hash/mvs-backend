@@ -882,7 +882,7 @@ async function openAdminNotify(){
   showModal('Send Notification','<div class="spinner"></div>','');
   let c={all:0,teachers:0,students:0,subjects:[],classes:[]};
   try{ c=await api('/api/admin/notify-targets'); }catch(e){}
-  window._anCounts=c; window._anImg=null;
+  window._anCounts=c; window._anImg=null; window._anSubsByClass=c.subjects_by_class||{}; window._anAllSubs=c.subjects||[];
   const subOpts=['<option value="">All subjects</option>'].concat((c.subjects||[]).map(s=>`<option value="${esc(s)}">${esc(s)}</option>`)).join('');
   const clsOpts=['<option value="">All classes</option>'].concat((c.classes||[]).map(cl=>`<option value="${esc(cl)}">Class ${esc(cl)}</option>`)).join('');
   showModal('Send Notification',
@@ -893,7 +893,7 @@ async function openAdminNotify(){
         <option value="students">Students Only (${c.students})</option>
       </select></div>
     <div id="an-filters" class="ex-grid2" style="display:none">
-      <div><label class="ex-lbl">Class (optional)</label><select class="form-control" id="an-class" onchange="anScope()">${clsOpts}</select></div>
+      <div><label class="ex-lbl">Class (optional)</label><select class="form-control" id="an-class" onchange="anClassChange()">${clsOpts}</select></div>
       <div><label class="ex-lbl">Subject (optional)</label><select class="form-control" id="an-subject" onchange="anScope()">${subOpts}</select></div>
     </div>
     <div id="an-scope" style="margin:6px 0 12px"></div>
@@ -905,6 +905,19 @@ async function openAdminNotify(){
       <div id="an-imgbox"><button class="btn btn-ghost btn-sm" onclick="document.getElementById('an-imgfile').click()">${ic('upload')} Choose image</button></div>
     </div>`,
    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitAdminNotify()">${ic('bell')} Send Notification</button>`);
+  anScope();
+}
+function anClassChange(){
+  const cl=val('an-class');
+  const sel=document.getElementById('an-subject');
+  if(sel){
+    const byCls=window._anSubsByClass||{};
+    const subs=cl?(byCls[cl]||[]):(window._anAllSubs||[]);
+    const cur=sel.value;
+    sel.innerHTML=['<option value="">All subjects</option>'].concat(subs.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`)).join('');
+    // agar pehle chuna subject nayi class me nahi hai to reset
+    if(cur && subs.indexOf(cur)>=0) sel.value=cur; else sel.value='';
+  }
   anScope();
 }
 function anScope(){
@@ -15090,6 +15103,38 @@ function _teacherNavRegroup(nav){
     }
   }catch(e){}
 }
+function _adminNavRegroup(nav){
+  try{
+    if(!nav) return;
+    var app=nav.closest('.app'); if(!app || app.id!=='admin-app') return;
+    if(nav.dataset.regrouped==='1') return;
+    function findItem(label){
+      var items=nav.querySelectorAll('.nav-item');
+      for(var i=0;i<items.length;i++){
+        var t=(items[i].textContent||'').trim().toLowerCase();
+        if(t.indexOf(label)===0) return items[i];
+      }
+      return null;
+    }
+    function insertSecBefore(item, secLabel){
+      if(!item) return false;
+      var prev=item.previousElementSibling;
+      if(prev && prev.classList && prev.classList.contains('nav-section') &&
+         (prev.textContent||'').trim().toLowerCase()===secLabel.toLowerCase()) return true;
+      var sec=document.createElement('div'); sec.className='nav-section'; sec.textContent=secLabel;
+      item.parentNode.insertBefore(sec, item);
+      return true;
+    }
+    // crowded ACADEMICS (Time Table, Study Material, Classes Material, Doubts, Tests, DPP)
+    // ko do me baanto: ACADEMICS + TRACKING (Doubts se aage).
+    var doubtsItem=findItem('doubts');
+    if(!doubtsItem) return;   // nav abhi ready nahi -> agli baar retry
+    if(insertSecBefore(doubtsItem, 'Tracking')){
+      nav.dataset.regrouped='1';
+      try{ if(typeof _accGroupClose==='function') _accGroupClose(nav,false); }catch(e){}
+    }
+  }catch(e){}
+}
 function initNavAccordion(){
   if(!document.getElementById('navacc-css')){
     var st=document.createElement('style'); st.id='navacc-css';
@@ -15115,6 +15160,7 @@ function initNavAccordion(){
   }
   document.querySelectorAll('.app .sidebar-nav').forEach(function(nav){
     try{ _teacherNavRegroup(nav); }catch(e){}
+    try{ _adminNavRegroup(nav); }catch(e){}
     _accGroupClose(nav, true);
     if(!nav._accObs){
       nav._accObs=new MutationObserver(function(){
@@ -15133,12 +15179,20 @@ function _accGroupClose(nav, forceAll){
     sec._items=items;
     if(!sec.querySelector('.nav-sec-ic')){
       var _lbl=(sec.textContent||'').trim().toLowerCase();
-      var _SIC={main:'grid',home:'grid',overview:'grid',content:'folder',materials:'folder',material:'folder',work:'clipboard',progress:'chart',account:'user',academics:'book',production:'play',teachers:'users','leads & support':'help',system:'shield',sales:'chart'};
+      var _SIC={main:'grid',home:'grid',overview:'grid',content:'folder',materials:'folder',material:'folder',work:'clipboard',progress:'chart',account:'user',academics:'book',production:'play',teachers:'users','leads & support':'help',system:'shield',sales:'chart',tracking:'clipboard',support:'help'};
       var icw=document.createElement('span'); icw.className='nav-sec-ic'; try{ icw.innerHTML=ic(_SIC[_lbl]||'folder'); }catch(e){}
       sec.insertBefore(icw, sec.firstChild);
     }
     if(!sec.querySelector('.nav-sec-chev')){ var ch=document.createElement('span'); ch.className='nav-sec-chev'; ch.textContent='\u25be'; sec.appendChild(ch); }
-    if(!sec._accClick){ sec._accClick=true; sec.addEventListener('click',function(){ _setNavSec(sec, !sec._open); }); }
+    if(!sec._accClick){ sec._accClick=true; sec.addEventListener('click',function(){
+      var willOpen=!sec._open;
+      if(willOpen){
+        // accordion: ek section khule to baaki sab band ho jaayein
+        var all=nav.querySelectorAll('.nav-section');
+        for(var i=0;i<all.length;i++){ if(all[i]!==sec && all[i]._open) _setNavSec(all[i],false); }
+      }
+      _setNavSec(sec, willOpen);
+    }); }
   });
   secs.forEach(function(sec){ if(forceAll || !sec._open) _setNavSec(sec,false); });
 }
