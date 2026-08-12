@@ -1160,10 +1160,16 @@ def _notify_exam_result(db, att, ex):
         pass
 
 
+import threading as _threading
+# AI grading (Gemini) background tasks concurrency bound — DB pool na khaayein. Max 2.
+_AI_BG_SEM = _threading.Semaphore(2)
+
+
 def _bg_grade_attempt(attempt_id, mime_type="image/jpeg"):
     """Runs AFTER the response is sent (FastAPI BackgroundTasks) so the upload stays
     fast. Grades the handwritten sheet, saves marks, and notifies the student."""
     from database import SessionLocal
+    _AI_BG_SEM.acquire()   # concurrency bound: AI grading DB pool na thoke
     db = SessionLocal()
     try:
         att = db.query(ExamAttempt).filter(ExamAttempt.id == attempt_id).first()
@@ -1193,6 +1199,10 @@ def _bg_grade_attempt(attempt_id, mime_type="image/jpeg"):
         db.rollback()
     finally:
         db.close()
+        try:
+            _AI_BG_SEM.release()
+        except Exception:
+            pass
 
 # ---- exam engine: lazy column migration (same as teacher side) ----
 _EXAM_COLS_READY = False

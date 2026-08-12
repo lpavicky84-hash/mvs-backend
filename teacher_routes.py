@@ -2750,32 +2750,70 @@ def _ensure_exam_hindi(db, ex, qs):
             db.rollback()
 
 
+import threading as _threading
+# AI background tasks (Gemini) ki concurrency bound — taaki ye DB pool / Gemini rate limit
+# na thok dein. Max 2 ek saath.
+_AI_BG_SEM = _threading.Semaphore(2)
+
+
 def _bg_translate_exam(exam_id):
     """Fill in any missing Hindi fields for a bilingual test using Gemini.
     Runs after the response so test creation stays fast. Only fills blanks."""
     from database import SessionLocal
+    # Phase 1: kya-kya translate karna hai wo padho, phir connection CHHOD do (AI call ke
+    # dauraan DB connection hold NAHI hoti -> pool exhaustion nahi). Sirf scalar text chahiye.
     db = SessionLocal()
+    todo = []
+    subject = ""
+    test_type = ""
     try:
         ex = db.query(Exam).filter(Exam.id == exam_id).first()
         if not ex:
             return
+        subject = ex.subject or ""
+        test_type = ex.test_type or ""
         qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == ex.id).order_by(ExamQuestion.q_no).all()
         for q in qs:
             need_q = not (q.question_text_hi or "").strip()
-            need_a = (ex.test_type != "mcq") and not (q.model_answer_hi or "").strip()
-            need_o = (ex.test_type == "mcq") and not q.options_hi
+            need_a = (test_type != "mcq") and not (q.model_answer_hi or "").strip()
+            need_o = (test_type == "mcq") and not q.options_hi
             if not (need_q or need_a or need_o):
                 continue
-            tr = grading.translate_question_to_hindi(
-                q.question_text or "", q.model_answer or "",
-                (q.options or []) if ex.test_type == "mcq" else None, ex.subject or "")
-            if not tr:
+            todo.append({"id": q.id, "need_q": need_q, "need_a": need_a, "need_o": need_o,
+                         "question_text": q.question_text or "", "model_answer": q.model_answer or "",
+                         "options": list(q.options or [])})
+    except Exception:
+        pass
+    finally:
+        db.close()
+    if not todo:
+        return
+    # Phase 2: Gemini translations — koi DB connection HOLD nahi (bounded concurrency).
+    out = []
+    with _AI_BG_SEM:
+        for t in todo:
+            try:
+                tr = grading.translate_question_to_hindi(
+                    t["question_text"], t["model_answer"],
+                    (t["options"] if test_type == "mcq" else None), subject)
+            except Exception:
+                tr = None
+            if tr:
+                out.append((t, tr))
+    if not out:
+        return
+    # Phase 3: results wapas likho (chhoti connection).
+    db = SessionLocal()
+    try:
+        for t, tr in out:
+            q = db.query(ExamQuestion).filter(ExamQuestion.id == t["id"]).first()
+            if not q:
                 continue
-            if need_q and tr.get("question"):
+            if t["need_q"] and tr.get("question"):
                 q.question_text_hi = tr["question"]
-            if need_a and tr.get("answer"):
+            if t["need_a"] and tr.get("answer"):
                 q.model_answer_hi = tr["answer"]
-            if need_o and tr.get("options") and len(tr["options"]) == len(q.options or []):
+            if t["need_o"] and tr.get("options") and len(tr["options"]) == len(q.options or []):
                 q.options_hi = tr["options"]
         db.commit()
     except Exception:
