@@ -139,30 +139,25 @@ def admin_dashboard(db: Session = Depends(get_db), _=Depends(get_admin)):
     # Classes done = teachers dwara submit ki gayi LECTURES (ClassEntry purana system tha,
     # ab teachers timetable se lecture report daalte hain). Pending = timetable ke chapter
     # entries jinka din aa chuka par abhi tak lecture nahi aaya.
-    from models import Lecture, TimetableEntry
-    total_done = db.query(Lecture).options(defer(Lecture.pdf_b64), defer(Lecture.dpp_b64)).count()
+    from models import Lecture, TimetableEntry, Doubt, DoubtStatus
+    from sqlalchemy import func as _func
+    total_done = db.query(Lecture).count()   # count() blobs load nahi karta
     _today = ist_today()
-    _done_tt = set(x[0] for x in db.query(Lecture.timetable_entry_id).filter(
-        Lecture.timetable_entry_id.isnot(None)).all())
-    total_pending = 0
-    for _e in db.query(TimetableEntry).filter(TimetableEntry.entry_type == "chapter").all():
-        if _e.entry_date and _e.entry_date <= _today and _e.id not in _done_tt:
-            total_pending += 1
+    # pending = chapter timetable entries jinki date aa chuki par koi lecture nahi.
+    # (Pehle SAARE lectures + SAARE entries Python memory me load hote the -> heavy.
+    #  Ab ek hi COUNT query, NOT IN subquery se — DB kaam karta hai, memory nahi bharti.)
+    _done_sub = db.query(Lecture.timetable_entry_id).filter(Lecture.timetable_entry_id.isnot(None))
+    total_pending = db.query(_func.count(TimetableEntry.id)).filter(
+        TimetableEntry.entry_type == "chapter",
+        TimetableEntry.entry_date.isnot(None),
+        TimetableEntry.entry_date <= _today,
+        TimetableEntry.id.notin_(_done_sub),
+    ).scalar() or 0
     pending_rs      = db.query(RescheduleRequest).filter(RescheduleRequest.status == RescheduleStatus.pending).count()
-    # unresolved = jo resolved nahi, PLUS resolved par jinpe naya follow-up aaya (attention chahiye)
-    # — bilkul subject-wise doubts section jaise, taaki dashboard aur section match karein.
-    unresolved = 0
-    from sqlalchemy.orm import load_only as _lo
-    for d in db.query(Doubt).options(_lo(Doubt.id, Doubt.status)).all():
-        is_resolved = (getattr(d.status, "value", str(d.status)) == "resolved")
-        if not is_resolved:
-            unresolved += 1
-        else:
-            try:
-                if _doubt_needs_attention(db, d.id):
-                    unresolved += 1
-            except Exception:
-                pass
+    # unresolved doubts: follow-up system hata diya (_doubt_needs_attention hamesha False),
+    # isliye ye sirf non-resolved doubts ka COUNT hai. Pehle har dashboard load par SAARE
+    # doubts (hazaaron) memory me load hote the -> RAM balloon + slow + QueuePool pressure.
+    unresolved = db.query(Doubt).filter(Doubt.status != DoubtStatus.resolved).count()
 
     return AdminDashboard(
         total_teachers=total_teachers, total_students=total_students,
@@ -2637,7 +2632,7 @@ def admin_notif_read(notif_id: int, db: Session = Depends(get_db), current_user=
 # ===== ADMIN: DOUBTS OVERSIGHT (full thread of every doubt) =====
 @router.get("/doubts")
 def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depends(get_admin)):
-    from models import Doubt, StudentProfile, TeacherProfile
+    from models import Doubt, StudentProfile, TeacherProfile, User as _U, DoubtResponse as _DR
     # blob columns list me load NAHI karte -> tez + kam RAM (admin saare doubts dekhta hai).
     q = db.query(Doubt).options(
         defer(Doubt.image_b64), defer(Doubt.audio_b64),
@@ -2653,15 +2648,37 @@ def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depend
         _voice_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.audio_b64) > 0).all()}
         _ans_voice_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.answer_audio_b64) > 0).all()}
         _ans_file_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.answer_attach_b64) > 0).all()}
+    # batch-load student/teacher names + responses (pehle 3 query PER doubt -> ab ~3 total).
+    _sids = list({d.student_id for d in _rows if d.student_id})
+    _tids = list({d.teacher_id for d in _rows if d.teacher_id})
+    smap = {}
+    for i in range(0, len(_sids), 500):
+        for sid, sname, sphone in db.query(StudentProfile.id, _U.name, StudentProfile.phone).join(
+                _U, StudentProfile.user_id == _U.id).filter(StudentProfile.id.in_(_sids[i:i + 500])):
+            smap[sid] = ((sname or ""), sphone)
+    tmap2 = {}
+    for i in range(0, len(_tids), 500):
+        for tid2, tname in db.query(TeacherProfile.id, _U.name).join(
+                _U, TeacherProfile.user_id == _U.id).filter(TeacherProfile.id.in_(_tids[i:i + 500])):
+            tmap2[tid2] = tname or ""
+    rmap = {}
+    for i in range(0, len(_rids), 500):
+        for r in (db.query(_DR).filter(_DR.doubt_id.in_(_rids[i:i + 500]))
+                  .order_by(_DR.created_at.asc(), _DR.id.asc())):
+            rmap.setdefault(r.doubt_id, []).append({
+                "id": r.id, "role": r.role, "author_name": r.author_name,
+                "body": r.body, "mine": (r.role == "admin"),
+                "author_tid": (r.author_teacher_id if r.role == "teacher" else None),
+                "created_at": ist_iso(r.created_at)})
     out = []
     for d in _rows:
-        sp = db.query(StudentProfile).filter(StudentProfile.id == d.student_id).first()
-        tp = db.query(TeacherProfile).filter(TeacherProfile.id == d.teacher_id).first() if d.teacher_id else None
+        sname, sphone = smap.get(d.student_id, ("Unknown student", None))
+        tname = tmap2.get(d.teacher_id, "") if d.teacher_id else ""
         out.append({
             "id": d.id,
-            "student_name": (sp.user.name if sp and sp.user else "Unknown student"),
-            "student_phone": (sp.phone if sp else None),
-            "teacher_name": (tp.user.name if tp and tp.user else "Unassigned"),
+            "student_name": sname or "Unknown student",
+            "student_phone": sphone,
+            "teacher_name": tname or "Unassigned",
             "subject": (_SR.canon_display(d.subject) if _SR else d.subject),
             "topic": d.topic,
             "question": d.question,
@@ -2674,13 +2691,12 @@ def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depend
             "status": d.status.value if hasattr(d.status, "value") else d.status,
             "created_at": ist_iso(d.created_at),
             "resolved_at": ist_iso(d.resolved_at),
-            # v93: thread + reassignment context
             "assigned_to_admin": bool(getattr(d, "assigned_to_admin", False)),
             "assigned_by_name": getattr(d, "assigned_by_name", None),
             "owner_name": ("MVS Foundation" if getattr(d, "assigned_to_admin", False)
-                           else (tp.user.name if tp and tp.user else "Unassigned")),
-            "needs_attention": _doubt_needs_attention(db, d.id),
-            "responses": _admin_doubt_resps(db, d.id),
+                           else (tname or "Unassigned")),
+            "needs_attention": False,
+            "responses": rmap.get(d.id, []),
         })
     return out
 
@@ -3133,11 +3149,6 @@ def admin_doubts_overview(db: Session = Depends(get_db), _=Depends(get_admin)):
     now = datetime.now()
     # Sirf grouping ke columns load karo — image/audio/attachment base64 (har doubt me
     # 4 blobs) load karne ki zaroorat nahi. Ye poori list par bahut RAM bachata hai.
-    ds = db.query(Doubt).options(_lo(Doubt.id, Doubt.subject, Doubt.status,
-                                     Doubt.created_at)).all()
-    # Subject naam ko canonical karo — "PHYSICS"/"Physics"/"MATHEMATICS" ek hi card
-    # banenge (case/spelling variant kabhi 2 subject nahi banega). Ek class 12 me
-    # 2 Physics / 2 Maths ka bug yahi se aata tha.
     def _cs(s):
         s = (s or "").strip() or "General"
         if _SR:
@@ -3150,28 +3161,35 @@ def admin_doubts_overview(db: Session = Depends(get_db), _=Depends(get_admin)):
     for tp in db.query(TeacherProfile).options(defer(TeacherProfile.photo_b64)).all():
         for s in (tp.subjects or []):
             tmap.setdefault(_cs(s), tp.user.name if tp.user else "")
+    # EFFICIENT: subject+status par GROUP BY — SAARE doubt rows memory me load NAHI karta
+    # (bade doubt table par bhi turant, RAM spike nahi; pehle poori list load hoti thi ->
+    # 9.9GB RAM + slow + QueuePool pressure ka bada kaaran). _doubt_needs_attention hamesha
+    # False hai (follow-up system hata diya) isliye resolved kabhi pending nahi banta.
     by = {}
-    for d in ds:
-        sub = _cs(d.subject)
+    grand_total = 0
+    rows = db.query(Doubt.subject, Doubt.status,
+                    func.count(Doubt.id), func.min(Doubt.created_at)).group_by(
+                    Doubt.subject, Doubt.status).all()
+    for subject, status, cnt, oldest in rows:
+        cnt = int(cnt or 0)
+        grand_total += cnt
+        sub = _cs(subject)
         c = by.setdefault(sub, {"subject": sub, "teacher": tmap.get(sub, ""),
                                 "total": 0, "resolved": 0, "pending": 0,
                                 "oldest_pending_min": None})
-        c["total"] += 1
-        resolved = (getattr(d.status, "value", str(d.status)) == "resolved")
+        c["total"] += cnt
+        resolved = (getattr(status, "value", str(status)) == "resolved")
         if resolved:
-            c["resolved"] += 1
-            # v112: student ka naya follow-up -> phir se attention maangta hai
-            if _doubt_needs_attention(db, d.id):
-                c["pending"] += 1
+            c["resolved"] += cnt
         else:
-            c["pending"] += 1
-            if d.created_at:
-                mins = int((now - d.created_at).total_seconds() // 60)
+            c["pending"] += cnt
+            if oldest:
+                mins = int((now - oldest).total_seconds() // 60)
                 if c["oldest_pending_min"] is None or mins > c["oldest_pending_min"]:
                     c["oldest_pending_min"] = mins
     out = sorted(by.values(), key=lambda x: (-x["pending"], x["subject"]))
     return {"subjects": out,
-            "totals": {"total": len(ds),
+            "totals": {"total": grand_total,
                        "pending": sum(c["pending"] for c in out),
                        "resolved": sum(c["resolved"] for c in out)}}
 
