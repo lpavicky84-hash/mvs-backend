@@ -1827,6 +1827,31 @@ def vt_edit(task_id: int, payload: dict = Body(...),
     return {"ok": True, "changed": changes}
 
 
+def _purge_task_children(db, task_id):
+    """Delete every child row that references a video_task via FK, so deleting the task
+    does not hit a foreign-key constraint (MySQL error 1451). Safe if a table/row is absent."""
+    try:
+        db.query(VideoTaskChapter).filter(VideoTaskChapter.task_id == task_id).delete(synchronize_session=False)
+    except Exception:
+        pass
+    try:
+        from models import VideoViewSnapshot as _VVS
+        db.query(_VVS).filter(_VVS.task_id == task_id).delete(synchronize_session=False)
+    except Exception:
+        pass
+    # Production management tables also FK to video_tasks.id
+    try:
+        from models import (EditingSession as _ES, GraphicsTask as _GT, TaskReview as _TR,
+                             ProductionEvent as _PE, TaskAttachment as _TA)
+        for _M in (_ES, _GT, _TR, _PE, _TA):
+            try:
+                db.query(_M).filter(_M.task_id == task_id).delete(synchronize_session=False)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 @router.delete("/admin/video-tasks/{task_id}", dependencies=[Depends(_admin_section_guard)])
 def vt_delete(task_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     """v97: assigned video task delete — chapter rows bhi saath clean. Permanent action.
@@ -1835,15 +1860,7 @@ def vt_delete(task_id: int, db: Session = Depends(get_db), _=Depends(get_admin))
     if not t:
         raise HTTPException(404, "Task not found")
     title = t.title or "Video task"
-    db.query(VideoTaskChapter).filter(VideoTaskChapter.task_id == t.id).delete(
-        synchronize_session=False)
-    # v150: view snapshots (YouTube views history) bhi hatao — warna FK constraint
-    # (video_view_snapshots.task_id -> video_tasks.id) delete ko block karti hai.
-    try:
-        from models import VideoViewSnapshot as _VVS
-        db.query(_VVS).filter(_VVS.task_id == t.id).delete(synchronize_session=False)
-    except Exception:
-        pass
+    _purge_task_children(db, t.id)
     tp = _teacher_profile(db, t.teacher_id)
     db.delete(t)
     if tp and tp.user_id:
@@ -2041,13 +2058,7 @@ def vt_create_project(payload: dict = Body(...),
                 _vt_notify(db, ptp.user_id, "Video Proposal Approved",
                            'Your proposal "%s" has been approved and assigned as a project.'
                            % (prop.title or "Video"))
-            db.query(VideoTaskChapter).filter(
-                VideoTaskChapter.task_id == prop.id).delete(synchronize_session=False)
-            try:
-                from models import VideoViewSnapshot as _VVS
-                db.query(_VVS).filter(_VVS.task_id == prop.id).delete(synchronize_session=False)
-            except Exception:
-                pass
+            _purge_task_children(db, prop.id)
             db.delete(prop)
     db.commit()
     return {"ok": True, "id": t.id, "teacher": _teacher_name(db, tp.id),
