@@ -5261,10 +5261,12 @@ function _orInserted(i){
 }
 function renderMath(el){
   if(!el||!window.katex) return;
+  // guard: bahut lamba text (student ka pathological doubt) math-render ko slow kar sakta hai -> skip
+  try{ if((el.textContent||'').length>8000) return; }catch(e){}
   try{
     const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT,null);
     const nodes=[]; let n;
-    while(n=walker.nextNode()){ if(n.nodeValue&&/[$\\]|[_^][A-Za-z0-9{]|\)\s*\/\s*\(/.test(n.nodeValue)&&!(n.parentNode&&n.parentNode.closest&&n.parentNode.closest('.katex'))) nodes.push(n); }
+    while(n=walker.nextNode()){ if(n.nodeValue&&n.nodeValue.length<=4000&&/[$\\]|[_^][A-Za-z0-9{]|\)\s*\/\s*\(/.test(n.nodeValue)&&!(n.parentNode&&n.parentNode.closest&&n.parentNode.closest('.katex'))) nodes.push(n); }
     nodes.forEach(node=>{
       const parts=spBareMath(node.nodeValue).split(/([$][$][^$]*[$][$]|[$][^$]+[$])/g);
       if(parts.length<=1) return;
@@ -7152,8 +7154,13 @@ function tRenderDoubts(){
     let _mi=0;
     const _mNext=function(){ if(window.requestAnimationFrame) window.requestAnimationFrame(_mChunk); else setTimeout(_mChunk,0); };
     function _mChunk(){
-      const end=Math.min(_mi+4,_mEls.length);
-      for(;_mi<end;_mi++){ try{ renderMath(_mEls[_mi]); }catch(e){} }
+      const t0=(window.performance&&performance.now)?performance.now():Date.now();
+      while(_mi<_mEls.length){
+        try{ renderMath(_mEls[_mi]); }catch(e){}
+        _mi++;
+        const t1=(window.performance&&performance.now)?performance.now():Date.now();
+        if(t1-t0>8) break;   // 8ms/frame budget -> beech me browser ko yield, page freeze nahi
+      }
       if(_mi<_mEls.length) _mNext();
     }
     if(_mEls.length) _mNext();

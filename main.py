@@ -498,7 +498,10 @@ _APP_JS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mvs_app
 @app.get("/mvs_app.js")
 def _serve_app_js():
     if os.path.exists(_APP_JS_FILE):
-        return FileResponse(_APP_JS_FILE, media_type="application/javascript")
+        # no-cache + revalidate: har deploy ke baad browser turant nayi JS le (purani cached
+        # version ki wajah se fixes miss na hon). ETag se 304 milega agar file unchanged.
+        return FileResponse(_APP_JS_FILE, media_type="application/javascript",
+                            headers={"Cache-Control": "no-cache, must-revalidate"})
     return JSONResponse(status_code=404, content={"detail": "mvs_app.js not found"})
 
 
