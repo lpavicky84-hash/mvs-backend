@@ -577,7 +577,13 @@ def add_admin(req: AdminCreateIn, db: Session = Depends(get_db), _=Depends(get_a
     db.commit()
     try:
         from models import AppSetting
-        db.add(AppSetting(key="adm_pw_%d" % user.id, value=pwd)); db.commit()
+        _pk = "adm_pw_%d" % user.id
+        _prow = db.query(AppSetting).filter(AppSetting.key == _pk).first()
+        if _prow:
+            _prow.value = pwd          # orphan/reused id -> update, insert nahi
+        else:
+            db.add(AppSetting(key=_pk, value=pwd))
+        db.commit()
     except Exception:
         db.rollback()
     out = _admin_json(user)
@@ -2709,9 +2715,10 @@ def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depend
     _tids = list({d.teacher_id for d in _rows if d.teacher_id})
     smap = {}
     for i in range(0, len(_sids), 500):
-        for sid, sname, sphone in db.query(StudentProfile.id, _U.name, StudentProfile.phone).join(
+        for sid, sname, sphone, scls in db.query(
+                StudentProfile.id, _U.name, StudentProfile.phone, StudentProfile.class_level).join(
                 _U, StudentProfile.user_id == _U.id).filter(StudentProfile.id.in_(_sids[i:i + 500])):
-            smap[sid] = ((sname or ""), sphone)
+            smap[sid] = ((sname or ""), sphone, (scls or ""))
     tmap2 = {}
     for i in range(0, len(_tids), 500):
         for tid2, tname in db.query(TeacherProfile.id, _U.name).join(
@@ -2728,12 +2735,13 @@ def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depend
                 "created_at": ist_iso(r.created_at)})
     out = []
     for d in _rows:
-        sname, sphone = smap.get(d.student_id, ("Unknown student", None))
+        sname, sphone, scls = smap.get(d.student_id, ("Unknown student", None, ""))
         tname = tmap2.get(d.teacher_id, "") if d.teacher_id else ""
         out.append({
             "id": d.id,
             "student_name": sname or "Unknown student",
             "student_phone": sphone,
+            "class_name": scls or "",
             "teacher_name": tname or "Unassigned",
             "subject": (_SR.canon_display(d.subject) if _SR else d.subject),
             "topic": d.topic,
@@ -3410,7 +3418,22 @@ def admin_reset_password(payload: dict, db: Session = Depends(get_db), current_u
             db.add(AppSetting(key="adm_pw_%d" % user.id, value=new_pass))
     else:
         prof.plain_password = new_pass  # teacher+student dono — admin ko credentials visible rahen
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        # race: doosri request ne same adm_pw row bana di -> rollback + update
+        db.rollback()
+        user.password = hash_password(new_pass)
+        if role == "admin":
+            from models import AppSetting
+            _r = db.query(AppSetting).filter(AppSetting.key == ("adm_pw_%d" % user.id)).first()
+            if _r:
+                _r.value = new_pass
+            else:
+                db.add(AppSetting(key="adm_pw_%d" % user.id, value=new_pass))
+        else:
+            prof.plain_password = new_pass
+        db.commit()
     return {"message": "Password reset successfully", "name": user.name,
             "user_id": user.user_id, "password": new_pass}
 

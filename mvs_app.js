@@ -10691,8 +10691,49 @@ async function loadADoubts(){
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function aDoubtFilter(f){ _aDoubtFilter=f; aRenderDoubts(); }
+function _adAggCards(doubts){
+  const by={};
+  doubts.forEach(d=>{
+    const s=d.subject||'Other';
+    const o=(by[s]=by[s]||{subject:s,total:0,resolved:0,pending:0,teacher:'',oldest_pending_min:null});
+    o.total++;
+    const isP=(d.status!=='resolved'||d.needs_attention);
+    if(d.status==='resolved'&&!d.needs_attention) o.resolved++;
+    if(isP){ o.pending++; const mins=Math.floor((Date.now()-new Date(d.created_at).getTime())/60000); if(o.oldest_pending_min==null||mins>o.oldest_pending_min) o.oldest_pending_min=mins; }
+    if(d.teacher_name && d.teacher_name!=='Unassigned' && !o.teacher) o.teacher=d.teacher_name;
+  });
+  return Object.values(by).sort((a,b)=>String(a.subject).localeCompare(String(b.subject)));
+}
+function _adToggle(id){ const b=document.getElementById(id+'-body'),c=document.getElementById(id+'-chev'); if(!b)return; const o=b.style.display!=='none'; b.style.display=o?'none':'block'; if(c)c.classList.toggle('open',!o); }
+function adSetClass(cls){ window._adClass=cls||''; aRenderDoubts(); }
+function _adClassBar(){
+  const all=window._aDoubts||[];
+  const classes=[...new Set(all.map(d=>(d.class_name||'').trim()).filter(Boolean))].sort();
+  const cur=window._adClass||'';
+  if(!classes.length) return '';
+  const opts=['<option value="">All classes</option>'].concat(classes.map(c=>`<option value="${esc(c)}"${cur===c?' selected':''}>Class ${esc(c)}</option>`)).join('');
+  return `<div class="card" style="margin-bottom:14px"><div class="card-header" style="cursor:pointer" onclick="_adToggle('adcls')"><h3 style="display:flex;align-items:center;gap:10px">${ic('user')} Filter by Class ${cur?`<span style="font-size:.72rem;color:var(--primary);font-weight:800">Class ${esc(cur)}</span>`:'<span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(tap to filter)</span>'}</h3><span class="chev" id="adcls-chev">\u25bc</span></div><div class="card-body" id="adcls-body" style="display:${cur?'block':'none'}"><select class="form-control" onchange="adSetClass(this.value)" style="max-width:340px">${opts}</select></div></div>`;
+}
+function _adTeacherChart(){
+  const all=window._aDoubts||[];
+  const cls=window._adClass||'';
+  const src=cls?all.filter(d=>(d.class_name||'')===cls):all;
+  const by={};
+  src.forEach(d=>{ const t=d.teacher_name||'Unassigned'; const o=(by[t]=by[t]||{n:0,pend:0}); o.n++; if(d.status!=='resolved'||d.needs_attention) o.pend++; });
+  const rows=Object.keys(by).map(t=>({t,n:by[t].n,pend:by[t].pend})).sort((a,b)=>b.n-a.n);
+  const max=Math.max(1,...rows.map(r=>r.n));
+  const COLORS=['#3b82a0','#7c3aed','#3d9970','#d97706','#dc2626','#2563eb','#c026a0','#0891b2','#65a30d'];
+  const bars=rows.map((r,i)=>{
+    const w=Math.max(4,Math.round(r.n/max*100)); const col=COLORS[i%COLORS.length];
+    return `<div style="display:flex;align-items:center;gap:12px;margin-bottom:11px"><div style="width:140px;flex:0 0 140px;font-weight:700;font-size:.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.t)}">${esc(r.t)}</div><div style="flex:1;background:#ece7d8;border-radius:999px;height:22px;overflow:hidden"><div style="width:${w}%;height:100%;background:${col};border-radius:999px;transition:width .3s"></div></div><div style="width:96px;flex:0 0 96px;text-align:right;font-weight:800;font-size:.9rem">${r.n}${r.pend?` <span style="color:#dc2626;font-size:.72rem;font-weight:800">${r.pend}p</span>`:''}</div></div>`;
+  }).join('');
+  return `<div class="card" style="margin-bottom:14px"><div class="card-header" style="cursor:pointer" onclick="_adToggle('adtch')"><h3 style="display:flex;align-items:center;gap:10px">${ic('chart')} Doubts by Teacher <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(${cls?'Class '+esc(cls)+' \u00b7 ':''}tap to view)</span></h3><span class="chev" id="adtch-chev">\u25bc</span></div><div class="card-body hide-scroll" id="adtch-body" style="display:none;max-height:380px">${bars||'<div class="empty-state"><p>No doubts.</p></div>'}</div></div>`;
+}
 function _adCards(){
-  const ov=window._aDoubtOv||{}; const subs=ov.subjects||[];
+  const cls=window._adClass||'';
+  let subs;
+  if(cls){ subs=_adAggCards((window._aDoubts||[]).filter(d=>(d.class_name||'')===cls)); }
+  else { const ov=window._aDoubtOv||{}; subs=ov.subjects||[]; }
   if(!subs.length) return `<div class="card"><div class="card-body"><div class="empty-state"><p>No doubts yet.</p></div></div></div>`;
   const fmt=m=>m==null?'\u2014':(m<60?m+'m':(m<1440?Math.floor(m/60)+'h':Math.floor(m/1440)+'d'));
   return `<div class="ad-grid">`+subs.map(sub=>`<div class="ad-card" onclick="adPickSub('${encodeURIComponent(sub.subject)}')">
@@ -10710,7 +10751,7 @@ function aRenderDoubts(){
   const bd=document.getElementById('a-doubt-badge'); if(bd){ bd.textContent=pendAll; bd.style.display=pendAll>0?'':'none'; }
   if(!_adSub){
     // ---- DEFAULT: toppers (collapsed) + subject cards ----
-    el.innerHTML=toppersHTML(all,'atop',true)+`<div class="card-header" style="padding:0 4px 18px;border:none"><h3 style="font-size:1.3rem">Doubts \u2014 Subject Wise</h3></div>`+_adCards();
+    el.innerHTML=toppersHTML(all,'atop',true)+_adClassBar()+_adTeacherChart()+`<div class="card-header" style="padding:0 4px 18px;border:none"><h3 style="font-size:1.3rem">Doubts \u2014 Subject Wise</h3></div>`+_adCards();
     return;
   }
   // ---- DRILL: ek subject ke doubts ----
