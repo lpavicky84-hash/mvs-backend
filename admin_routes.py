@@ -2873,6 +2873,42 @@ def admin_doubt_answer_voice(did: int, db: Session = Depends(get_db), _=Depends(
         raise HTTPException(status_code=404, detail="Not found")
     return __import__("r2_storage").file_response(d.answer_audio_b64, "audio/webm")
 
+@router.get("/doubt/{did}/student")
+def admin_doubt_student(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Doubts page — student ke naam par click karne par uski poori details.
+    Doubt-id se student nikalta hai (doubts-section access wala admin bhi dekh sake)."""
+    from models import Doubt, StudentProfile, User as _U, DPPSubmission as _DS, TestSubmission as _TS
+    d = db.query(Doubt).filter(Doubt.id == did).first()
+    if not d or not d.student_id:
+        raise HTTPException(status_code=404, detail="Student not found")
+    sp = db.query(StudentProfile).filter(StudentProfile.id == d.student_id).first()
+    if not sp:
+        raise HTTPException(status_code=404, detail="Student not found")
+    u = db.query(_U).filter(_U.id == sp.user_id).first()
+    dpp_n = db.query(func.count(_DS.id)).filter(_DS.student_id == sp.id).scalar() or 0
+    test_n = db.query(func.count(_TS.id)).filter(_TS.student_id == sp.id).scalar() or 0
+    has_photo = bool(db.query(StudentProfile.id).filter(
+        StudentProfile.id == sp.id, StudentProfile.photo_b64.isnot(None)).first())
+    return {
+        "profile_id": sp.id,
+        "name": (u.name if u else "") or "Unknown student",
+        "user_id": (u.user_id if u else None),
+        "phone": sp.phone,
+        "email": sp.email,
+        "batch": sp.batch_name or (sp.batch.value if hasattr(sp.batch, "value") else sp.batch),
+        "class_level": sp.class_level,
+        "medium": getattr(sp, "medium", None),
+        "exam_session": getattr(sp, "exam_session", None),
+        "exam_stream": getattr(sp, "exam_stream", None),
+        "nios_ref": getattr(sp, "nios_ref", None),
+        "subjects": (_SR.canon_list(sp.subjects, sp.class_level) if _SR else sp.subjects) or [],
+        "is_active": (u.is_active if u else True),
+        "is_verified": sp.is_verified,
+        "dpp_submitted": int(dpp_n),
+        "tests_attempted": int(test_n),
+        "has_photo": has_photo,
+    }
+
 # ===== ADMIN: QUESTION BANK (global materials, Hindi/English, no-compress or link) =====
 @router.post("/questionbank")
 async def admin_upload_questionbank(
@@ -6474,3 +6510,134 @@ def incentive_analytics(month: str = "", db: Session = Depends(get_db), _=Depend
     return {"month": mk, "active_rules": active_rules, "pending_review": pending,
             "approved_total": int(approved_total), "paid_total": int(paid_total),
             "per_teacher": per_teacher}
+
+
+# =====================================================================
+# PRODUCTION ECOSYSTEM — user management (YouTubers, Editors, Graphics, PMs)
+# These users are OUTSIDE the teacher/academic system.
+# =====================================================================
+_PROD_ROLE_PREFIX = {
+    "production_manager": "MVSPM", "editor": "MVSED",
+    "graphics": "MVSGR", "youtuber": "MVSYT",
+}
+_PROD_ROLES = set(_PROD_ROLE_PREFIX.keys())
+
+
+def _gen_prod_uid(role, name, db):
+    initials = "".join(p[0] for p in (name or "").strip().split()[:2]).upper() or "X"
+    base = _PROD_ROLE_PREFIX.get(role, "MVSPR")
+    i = 1
+    while True:
+        cand = f"{base}{i:02d}"
+        if not db.query(User).filter(User.user_id == cand).first():
+            return cand
+        i += 1
+
+
+def _prod_user_out(db, u):
+    from models import YouTuberProfile, ProductionStaffProfile
+    role = getattr(u.role, "value", str(u.role))
+    row = {"id": u.id, "name": u.name, "user_id": u.user_id, "role": role,
+           "is_active": bool(u.is_active)}
+    if role == "youtuber":
+        yp = db.query(YouTuberProfile).filter(YouTuberProfile.user_id == u.id).first()
+        row["approval_required"] = bool(yp.approval_required) if yp else True
+        row["password"] = (yp.plain_password if yp else "") or ""
+        row["profile_id"] = yp.id if yp else None
+    else:
+        sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.user_id == u.id).first()
+        row["recommended_load"] = (sp.recommended_load if sp else 5)
+        row["password"] = (sp.plain_password if sp else "") or ""
+        row["profile_id"] = sp.id if sp else None
+    return row
+
+
+@router.get("/production-users")
+def list_production_users(role: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import UserRole as _UR
+    q = db.query(User).filter(User.role.in_([_UR.production_manager, _UR.editor,
+                                             _UR.youtuber, _UR.graphics]))
+    if role in _PROD_ROLES:
+        q = q.filter(User.role == role)
+    return [_prod_user_out(db, u) for u in q.order_by(User.name.asc()).all()]
+
+
+@router.post("/production-users")
+def create_production_user(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import YouTuberProfile, ProductionStaffProfile
+    name = (payload.get("name") or "").strip()
+    role = (payload.get("role") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name is required")
+    if role not in _PROD_ROLES:
+        raise HTTPException(status_code=400, detail="Invalid production role")
+    uid = (payload.get("user_id") or "").strip() or _gen_prod_uid(role, name, db)
+    if db.query(User).filter(User.user_id == uid).first():
+        raise HTTPException(status_code=400, detail="This User ID already exists")
+    pwd = (payload.get("password") or "").strip() or "".join(
+        secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
+    u = User(name=name, user_id=uid, password=hash_password(pwd), role=role, is_active=True)
+    db.add(u)
+    db.flush()
+    if role == "youtuber":
+        db.add(YouTuberProfile(user_id=u.id, plain_password=pwd,
+                               approval_required=bool(payload.get("approval_required", True)),
+                               phone=(payload.get("phone") or "").strip()))
+    else:
+        db.add(ProductionStaffProfile(user_id=u.id, staff_role=role, plain_password=pwd,
+                                      phone=(payload.get("phone") or "").strip(),
+                                      recommended_load=int(payload.get("recommended_load") or 5)))
+    db.commit()
+    return {"ok": True, "id": u.id, "user_id": uid, "password": pwd, "role": role}
+
+
+@router.patch("/production-users/{uid}")
+def update_production_user(uid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import YouTuberProfile, ProductionStaffProfile
+    u = db.query(User).filter(User.id == uid).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    role = getattr(u.role, "value", str(u.role))
+    if role not in _PROD_ROLES:
+        raise HTTPException(status_code=400, detail="Not a production user")
+    if "name" in payload and (payload.get("name") or "").strip():
+        u.name = payload["name"].strip()
+    if "is_active" in payload:
+        u.is_active = bool(payload["is_active"])
+    if role == "youtuber":
+        yp = db.query(YouTuberProfile).filter(YouTuberProfile.user_id == u.id).first()
+        if yp and "approval_required" in payload:
+            yp.approval_required = bool(payload["approval_required"])
+    else:
+        sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.user_id == u.id).first()
+        if sp and "recommended_load" in payload:
+            sp.recommended_load = int(payload["recommended_load"] or 5)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/production-users/{uid}/reset-password")
+def reset_production_password(uid: int, payload: dict = None, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import YouTuberProfile, ProductionStaffProfile
+    payload = payload or {}
+    u = db.query(User).filter(User.id == uid).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    role = getattr(u.role, "value", str(u.role))
+    if role not in _PROD_ROLES:
+        raise HTTPException(status_code=400, detail="Not a production user")
+    new_pass = (payload.get("password") or "").strip() or ("MVS@" + "".join(
+        secrets.choice(string.digits) for _ in range(4)))
+    if len(new_pass) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    u.password = hash_password(new_pass)
+    if role == "youtuber":
+        yp = db.query(YouTuberProfile).filter(YouTuberProfile.user_id == u.id).first()
+        if yp:
+            yp.plain_password = new_pass
+    else:
+        sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.user_id == u.id).first()
+        if sp:
+            sp.plain_password = new_pass
+    db.commit()
+    return {"ok": True, "user_id": u.user_id, "password": new_pass}

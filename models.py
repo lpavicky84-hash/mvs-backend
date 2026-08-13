@@ -51,6 +51,11 @@ class UserRole(str, enum.Enum):
     admin   = "admin"
     teacher = "teacher"
     student = "student"
+    # Production ecosystem roles (content production — NOT academic teachers)
+    production_manager = "production_manager"
+    editor             = "editor"
+    youtuber           = "youtuber"
+    graphics           = "graphics"
 
 class ClassStatus(str, enum.Enum):
     pending      = "pending"
@@ -496,6 +501,25 @@ class VideoTask(Base):
     yt_video_id    = Column(String(40), default="")       # extracted video id
     yt_views       = Column(Integer, nullable=True)       # last fetched view count
     yt_views_at    = Column(DateTime, nullable=True)      # last fetch time
+    # ---- Production ecosystem (v-prod) — additive; legacy `status` stays untouched ----
+    ref_code        = Column(String(30), default="")      # readable id e.g. VID-2026-000123
+    creator_type    = Column(String(20), default="teacher")  # teacher | youtuber
+    youtuber_id     = Column(Integer, ForeignKey("youtuber_profiles.id"), nullable=True)
+    approval_required = Column(Boolean, nullable=True)     # per-video override; NULL = use creator default
+    lifecycle       = Column(String(30), default="")       # new state engine (see legacy `status` map)
+    priority        = Column(String(10), default="normal") # normal | urgent
+    editor_id       = Column(Integer, ForeignKey("production_staff_profiles.id"), nullable=True)
+    graphics_id     = Column(Integer, ForeignKey("production_staff_profiles.id"), nullable=True)
+    editing_progress = Column(Integer, default=0)          # 0..100
+    editing_started_at = Column(DateTime, nullable=True)
+    editing_done_at    = Column(DateTime, nullable=True)
+    editing_seconds    = Column(Integer, default=0)        # accumulated ACTIVE editing time (from sessions)
+    edited_link     = Column(String(600), default="")      # editor-submitted final drive link
+    qc_status       = Column(String(20), default="")       # "" | pending | approved | changes
+    revision_count  = Column(Integer, default=0)
+    on_hold         = Column(Boolean, default=False)
+    cancelled       = Column(Boolean, default=False)
+    published_at    = Column(DateTime, nullable=True)
     created_at     = Column(DateTime, default=func.now())
     updated_at     = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -1329,3 +1353,123 @@ class ChapterPlan(Base):
     tma_assumed       = Column(Float, nullable=True)
     practical_assumed = Column(Float, nullable=True)
     updated_at        = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+# =====================================================================
+# PRODUCTION ECOSYSTEM (v-prod) — YouTubers, Editors, Graphics, PM
+# Additive models. Existing Teacher/Student/Admin untouched.
+# =====================================================================
+
+class YouTuberProfile(Base):
+    """Independent content creator (e.g. Manish Verma, Zeba Ma'am).
+    NOT an academic teacher — never enters teacher performance/ranking."""
+    __tablename__ = "youtuber_profiles"
+
+    id                = Column(Integer, primary_key=True)
+    user_id           = Column(Integer, ForeignKey("users.id"), unique=True, index=True)
+    approval_required = Column(Boolean, default=True)   # default PM-approval mode (per-video override on task)
+    photo_b64         = Column(_PHOTO, nullable=True)
+    phone             = Column(String(15), default="")
+    channels          = Column(Text, default="")        # JSON list of channel names/ids (optional)
+    notes             = Column(Text, default="")
+    plain_password    = Column(String(255), nullable=True)
+    is_active         = Column(Boolean, default=True)
+    created_at        = Column(DateTime, default=func.now())
+
+    user = relationship("User", foreign_keys=[user_id])
+
+
+class ProductionStaffProfile(Base):
+    """Editor / Graphics / Production Manager profile (shared table, staff_role discriminates).
+    Kept separate from TeacherProfile so these users never touch academic systems."""
+    __tablename__ = "production_staff_profiles"
+
+    id                  = Column(Integer, primary_key=True)
+    user_id             = Column(Integer, ForeignKey("users.id"), unique=True, index=True)
+    staff_role          = Column(String(20), index=True)   # editor | graphics | production_manager
+    photo_b64           = Column(_PHOTO, nullable=True)
+    phone               = Column(String(15), default="")
+    recommended_load    = Column(Integer, default=5)       # workload intelligence: recommended active tasks
+    skills              = Column(Text, default="")         # JSON/text — e.g. long, shorts, reels
+    notes               = Column(Text, default="")
+    plain_password      = Column(String(255), nullable=True)
+    is_active           = Column(Boolean, default=True)
+    created_at          = Column(DateTime, default=func.now())
+
+    user = relationship("User", foreign_keys=[user_id])
+
+
+class EditingSession(Base):
+    """Real active editing sessions — total ACTIVE time excludes paused/idle gaps."""
+    __tablename__ = "editing_sessions"
+
+    id               = Column(Integer, primary_key=True)
+    task_id          = Column(Integer, ForeignKey("video_tasks.id"), index=True)
+    editor_id        = Column(Integer, ForeignKey("production_staff_profiles.id"), index=True)
+    started_at       = Column(DateTime, default=func.now())
+    ended_at         = Column(DateTime, nullable=True)     # NULL = currently running
+    duration_seconds = Column(Integer, default=0)          # filled when the session ends
+    note             = Column(String(300), default="")
+
+
+class ProductionEvent(Base):
+    """Immutable production timeline event. One row per important action."""
+    __tablename__ = "production_events"
+
+    id            = Column(Integer, primary_key=True)
+    task_id       = Column(Integer, ForeignKey("video_tasks.id"), index=True)
+    actor_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    actor_role    = Column(String(24), default="")
+    actor_name    = Column(String(120), default="")
+    event         = Column(String(40), index=True)         # e.g. editing_started, qc_approved
+    prev_state    = Column(String(30), default="")
+    new_state     = Column(String(30), default="")
+    meta          = Column(Text, default="")               # JSON metadata (optional)
+    created_at    = Column(DateTime, default=func.now(), index=True)
+
+
+class TaskReview(Base):
+    """A QC/approval decision (creator review, thumbnail QC, edit QC)."""
+    __tablename__ = "task_reviews"
+
+    id               = Column(Integer, primary_key=True)
+    task_id          = Column(Integer, ForeignKey("video_tasks.id"), index=True)
+    kind             = Column(String(20), index=True)      # creator | thumbnail | edit
+    reviewer_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    decision         = Column(String(20))                  # approved | changes | rejected
+    remarks          = Column(Text, default="")
+    revision_no      = Column(Integer, default=0)
+    created_at       = Column(DateTime, default=func.now())
+
+
+class TaskAttachment(Base):
+    """Attachment metadata (screenshots etc.). File bytes live in R2 — only URL/path here."""
+    __tablename__ = "task_attachments"
+
+    id               = Column(Integer, primary_key=True)
+    task_id          = Column(Integer, ForeignKey("video_tasks.id"), index=True)
+    review_id        = Column(Integer, ForeignKey("task_reviews.id"), nullable=True, index=True)
+    kind             = Column(String(20), default="review")  # review | thumbnail | brief
+    url              = Column(String(600), default="")     # R2 key / URL
+    mime             = Column(String(80), default="")
+    uploader_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at       = Column(DateTime, default=func.now())
+
+
+class GraphicsTask(Base):
+    """Thumbnail work tracked independently of the video's editing lifecycle."""
+    __tablename__ = "graphics_tasks"
+
+    id             = Column(Integer, primary_key=True)
+    task_id        = Column(Integer, ForeignKey("video_tasks.id"), unique=True, index=True)
+    graphics_id    = Column(Integer, ForeignKey("production_staff_profiles.id"), nullable=True, index=True)
+    status         = Column(String(20), default="new")     # new | in_progress | submitted | changes | approved
+    reference_image = Column(String(600), default="")      # optional reference (R2 url) — NOT base64
+    instructions   = Column(Text, default="")              # thumbnail brief
+    thumbnail_url  = Column(String(600), default="")        # submitted thumbnail (R2 url)
+    remarks        = Column(Text, default="")               # PM change remarks
+    revision_count = Column(Integer, default=0)
+    started_at     = Column(DateTime, nullable=True)
+    submitted_at   = Column(DateTime, nullable=True)
+    approved_at    = Column(DateTime, nullable=True)
+    created_at     = Column(DateTime, default=func.now())

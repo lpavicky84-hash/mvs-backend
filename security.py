@@ -70,3 +70,13 @@ get_teacher = require_role("teacher")
 get_admin   = require_role("admin")
 get_student = require_role("student")
 get_any     = require_role("admin", "teacher", "student")
+
+# ---- Production ecosystem role guards ----
+get_production_manager = require_role("production_manager")
+get_editor             = require_role("editor")
+get_youtuber           = require_role("youtuber")
+get_graphics           = require_role("graphics")
+# Admin has oversight over the whole production ecosystem.
+get_pm_or_admin        = require_role("production_manager", "admin")
+get_production_any     = require_role(
+    "admin", "production_manager", "editor", "youtuber", "graphics")

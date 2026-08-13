@@ -1,0 +1,215 @@
+"""Editor API (/api/editor). Editors only see and act on their own assigned tasks.
+Active editing time is measured from real EditingSession rows (excludes idle/paused)."""
+from fastapi import APIRouter, Depends, HTTPException, Body
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from datetime import datetime, date
+
+from database import get_db
+from security import get_editor
+from models import VideoTask, EditingSession, ProductionStaffProfile
+import production_core as pc
+
+router = APIRouter(prefix="/api/editor", tags=["Editor"])
+
+
+def _me_staff(db, me):
+    sp = pc.staff_profile(db, me)
+    if not sp or sp.staff_role != "editor":
+        raise HTTPException(403, "Editor profile not found")
+    return sp
+
+
+def _my_task(db, sp, tid):
+    t = db.query(VideoTask).filter(VideoTask.id == int(tid)).first()
+    if not t:
+        raise HTTPException(404, "Task not found")
+    if t.editor_id != sp.id:
+        raise HTTPException(403, "This task is not assigned to you")
+    return t
+
+
+def _open_session(db, sp, tid):
+    return (db.query(EditingSession)
+            .filter(EditingSession.task_id == tid, EditingSession.editor_id == sp.id,
+                    EditingSession.ended_at == None)
+            .order_by(EditingSession.started_at.desc()).first())
+
+
+def _close_open_session(db, sp, t):
+    s = _open_session(db, sp, t.id)
+    if s:
+        now = datetime.utcnow()
+        s.ended_at = now
+        s.duration_seconds = int((now - (s.started_at or now)).total_seconds())
+        t.editing_seconds = (t.editing_seconds or 0) + max(0, s.duration_seconds)
+
+
+# ============================================================ DASHBOARD
+@router.get("/dashboard")
+def editor_dashboard(db: Session = Depends(get_db), me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    now = datetime.utcnow()
+    today = date.today()
+    base = db.query(VideoTask).filter(VideoTask.editor_id == sp.id)
+
+    def c(*st):
+        return base.filter(VideoTask.lifecycle.in_(st)).count()
+
+    month_start = datetime(now.year, now.month, 1)
+    edited_m = base.filter(VideoTask.lifecycle.in_(["ready_for_youtube", "uploaded", "completed"]),
+                           VideoTask.updated_at >= month_start).count()
+    total_secs = db.query(func.coalesce(func.sum(EditingSession.duration_seconds), 0)).filter(
+        EditingSession.editor_id == sp.id).scalar() or 0
+    return {
+        "greeting_name": me.name,
+        "kpis": {
+            "assigned": c("editor_assigned"),
+            "not_started": c("editor_assigned"),
+            "editing": c("editing", "editing_paused"),
+            "qc_pending": c("qc_pending"),
+            "changes": c("qc_changes"),
+            "completed": c("ready_for_youtube", "uploaded", "completed"),
+            "due_today": base.filter(VideoTask.deadline != None,
+                                     func.date(VideoTask.deadline) == today,
+                                     ~VideoTask.lifecycle.in_(["uploaded", "completed", "ready_for_youtube"])).count(),
+            "overdue": base.filter(VideoTask.deadline != None, VideoTask.deadline < now,
+                                   ~VideoTask.lifecycle.in_(["uploaded", "completed", "ready_for_youtube"])).count(),
+        },
+        "monthly": {
+            "videos_edited": edited_m,
+            "active_editing_seconds": int(total_secs),
+        },
+    }
+
+
+@router.get("/tasks")
+def editor_tasks(status: str = "", db: Session = Depends(get_db), me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    q = db.query(VideoTask).filter(VideoTask.editor_id == sp.id)
+    if status:
+        q = q.filter(VideoTask.lifecycle == status)
+    rows = q.order_by(VideoTask.updated_at.desc()).all()
+    return {"tasks": [pc.task_out(db, t, light=True) for t in rows]}
+
+
+@router.get("/tasks/{tid}")
+def editor_task_detail(tid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    t = _my_task(db, sp, tid)
+    out = pc.task_out(db, t, timeline=True)
+    out["source_link"] = t.submitted_link or ""   # editor needs the creator's raw video
+    return out
+
+
+# ============================================================ ACTIONS
+@router.post("/tasks/{tid}/start")
+def editor_start(tid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    t = _my_task(db, sp, tid)
+    if t.lifecycle not in ("editor_assigned", "editing_paused", "qc_changes"):
+        raise HTTPException(400, "Task is not ready to start editing")
+    if not _open_session(db, sp, t.id):
+        db.add(EditingSession(task_id=t.id, editor_id=sp.id, started_at=datetime.utcnow()))
+    if not t.editing_started_at:
+        t.editing_started_at = datetime.utcnow()
+    pc.set_state(db, t, "editing", actor=me, event="editing_started")
+    pc.notify_pms(db, "Editing Started", f'{me.name} started editing "{t.title}".', "production", link=str(t.id))
+    db.commit()
+    return {"ok": True, "lifecycle": t.lifecycle}
+
+
+@router.post("/tasks/{tid}/pause")
+def editor_pause(tid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    t = _my_task(db, sp, tid)
+    if t.lifecycle != "editing":
+        raise HTTPException(400, "Editing is not currently active")
+    _close_open_session(db, sp, t)
+    pc.set_state(db, t, "editing_paused", actor=me, event="editing_paused")
+    db.commit()
+    return {"ok": True, "editing_seconds": t.editing_seconds or 0}
+
+
+@router.post("/tasks/{tid}/resume")
+def editor_resume(tid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    t = _my_task(db, sp, tid)
+    if t.lifecycle != "editing_paused":
+        raise HTTPException(400, "Task is not paused")
+    if not _open_session(db, sp, t.id):
+        db.add(EditingSession(task_id=t.id, editor_id=sp.id, started_at=datetime.utcnow()))
+    pc.set_state(db, t, "editing", actor=me, event="editing_resumed")
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/tasks/{tid}/progress")
+def editor_progress(tid: int, payload: dict = Body(...),
+                    db: Session = Depends(get_db), me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    t = _my_task(db, sp, tid)
+    try:
+        pct = int(payload.get("progress"))
+    except Exception:
+        raise HTTPException(400, "progress (0-100) required")
+    pct = max(0, min(100, pct))
+    t.editing_progress = pct
+    pc.log_event(db, t, me, "progress_updated", new_state=t.lifecycle,
+                 meta={"progress": pct, "note": (payload.get("remarks") or "")[:200]})
+    db.commit()
+    return {"ok": True, "progress": pct}
+
+
+@router.post("/tasks/{tid}/complete")
+def editor_complete(tid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    t = _my_task(db, sp, tid)
+    if t.lifecycle not in ("editing", "editing_paused"):
+        raise HTTPException(400, "Editing is not in progress")
+    _close_open_session(db, sp, t)
+    t.editing_progress = 100
+    t.editing_done_at = datetime.utcnow()
+    pc.set_state(db, t, "editing_done", actor=me, event="editing_completed")
+    pc.notify_pms(db, "Editing Completed", f'{me.name} finished editing "{t.title}".', "production", link=str(t.id))
+    db.commit()
+    return {"ok": True, "lifecycle": t.lifecycle, "editing_seconds": t.editing_seconds or 0}
+
+
+@router.post("/tasks/{tid}/submit")
+def editor_submit(tid: int, payload: dict = Body(...),
+                  db: Session = Depends(get_db), me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    t = _my_task(db, sp, tid)
+    link = (payload.get("edited_link") or "").strip()
+    if not link:
+        raise HTTPException(400, "Edited video drive link is required")
+    if t.lifecycle not in ("editing_done", "editing", "editing_paused", "qc_changes"):
+        raise HTTPException(400, "Task is not ready to submit")
+    if t.lifecycle in ("editing", "editing_paused"):
+        _close_open_session(db, sp, t)
+    t.edited_link = link
+    t.qc_status = "pending"
+    is_revision = (t.lifecycle == "qc_changes")
+    pc.set_state(db, t, "qc_pending", actor=me,
+                 event="revision_submitted" if is_revision else "edited_video_submitted")
+    pc.notify_pms(db, "Edited Video Submitted",
+                  f'{me.name} submitted the edited "{t.title}" for QC.', "production", link=str(t.id))
+    db.commit()
+    return {"ok": True, "lifecycle": t.lifecycle}
+
+
+# ============================================================ NOTIFICATIONS
+@router.get("/notifications")
+def _pnotifs(db: Session = Depends(get_db), me=Depends(get_editor)):
+    return {"notifications": pc.notifications_out(db, me), "unread": pc.unread_count(db, me)}
+
+
+@router.post("/notifications/{nid}/read")
+def _pnotif_read(nid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    pc.mark_read(db, me, nid); db.commit(); return {"ok": True}
+
+
+@router.post("/notifications/read-all")
+def _pnotif_read_all(db: Session = Depends(get_db), me=Depends(get_editor)):
+    pc.mark_read(db, me); db.commit(); return {"ok": True}

@@ -2417,6 +2417,15 @@ def vt_submit(task_id: int, payload: dict = Body(...), db: Session = Depends(get
                    f'{(uname.name if uname else "A teacher")} submitted the video '
                    f'"{t.title}" ({"on time" if t.on_time else "delayed"}). '
                    f'Please review it in Task Manager.')
+    # Production bridge: if this task is tracked by the production system, advance
+    # its lifecycle so it appears in PM Review (never breaks the legacy flow).
+    try:
+        if getattr(t, "lifecycle", "") in ("creator_assigned", "creator_working", "changes_required"):
+            import production_core as _pc
+            _pc.set_state(db, t, "pm_review", actor=current_user, event="teacher_submitted")
+            _pc.log_event(db, t, current_user, "approval_requested", new_state="pm_review")
+    except Exception:
+        pass
     db.commit()
     return {"ok": True, "on_time": t.on_time}
 

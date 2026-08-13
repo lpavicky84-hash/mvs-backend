@@ -275,11 +275,15 @@ var _AUTH_META={
   admin:{label:'Admin Panel', tag:'Admin', sub:'Approvals, manage teachers & students',
          bg:'radial-gradient(circle at top right,#6b5a12,#3a300c 45%,#1c1705)'}
 };
-function _portalPath(p){ return p==='teacher'?'/teacher':(p==='admin'?'/admin':'/'); }
+function _portalPath(p){ return p==='teacher'?'/teacher':(p==='admin'?'/admin':(_PROD_PORTALS&&_PROD_PORTALS[p]?'/'+p:'/')); }
 function _portalFromPath(){
   var p=(location.pathname||'/').replace(/\/+$/,'')||'/';
   if(p==='/teacher') return 'teacher';
   if(p==='/admin')   return 'admin';
+  if(p==='/production') return 'production';
+  if(p==='/editor')     return 'editor';
+  if(p==='/youtuber')   return 'youtuber';
+  if(p==='/graphics')   return 'graphics';
   if(p==='/portal')  return 'landing';   // /portal -> 3-card chooser (optional / backward compat)
   // '/', '/student' aur baaki sab -> SEEDHA Student portal (root pe sirf student dikhta hai).
   // Student ka LOGIN/template original hi rehta hai (premium sirf teacher/admin par).
@@ -365,7 +369,11 @@ function _premiumLogin(portal){
     var isStudent=(portal==='student');
     // Teacher aur Admin ko alag pehchan: alag color + icon + badge.
     var roleUI={teacher:{title:'Teacher Console',icon:'users',badge:'Faculty Access'},
-                admin:{title:'Admin Console',icon:'shield',badge:'Administrator'}};
+                admin:{title:'Admin Console',icon:'shield',badge:'Administrator'},
+                production:{title:'Production Console',icon:'shield',badge:'Production Manager'},
+                editor:{title:'Editor Workspace',icon:'users',badge:'Editor Access'},
+                youtuber:{title:'Creator Studio',icon:'users',badge:'Content Creator'},
+                graphics:{title:'Graphics Workspace',icon:'users',badge:'Graphics Access'}};
     if(isStudent){ scr.classList.add('auth-light'); }
     else { scr.classList.add('auth-console'); scr.classList.add(portal==='admin'?'role-admin':'role-teacher'); }
     var rc=roleUI[portal];
@@ -552,8 +560,8 @@ function goLogin(portal){
  document.getElementById('sp-phone').value='';
   } else {
  document.getElementById('login-standard').style.display='block';
- const t={teacher:' Teacher Login',admin:' Admin Login'};
- document.getElementById('login-title').textContent=t[portal];
+ const t={teacher:' Teacher Login',admin:' Admin Login',production:' Production Login',editor:' Editor Login',youtuber:' Creator Login',graphics:' Graphics Login'};
+ document.getElementById('login-title').textContent=t[portal]||' Login';
  document.getElementById('login-uid').value=''; document.getElementById('login-pass').value='';
   }
   _premiumLogin(portal);
@@ -565,11 +573,11 @@ function logout(){ goHome(); }
 // link (/) kholne par admin panel nahi khulta — jis portal ka URL hai usi ki session.
 function _saveSession(){
   try{ if(TOKEN&&ROLE){
-    localStorage.setItem('mvs_sess_'+ROLE, JSON.stringify({t:TOKEN,r:ROLE,n:NAME||''}));
+    localStorage.setItem('mvs_sess_'+(typeof ROLE_PORTAL==='function'?ROLE_PORTAL(ROLE):ROLE), JSON.stringify({t:TOKEN,r:ROLE,n:NAME||''}));
     localStorage.removeItem('mvs_sess');   // purani shared key hata do (migration)
   } }catch(e){}
 }
-function _clearSession(){ try{ if(ROLE) localStorage.removeItem('mvs_sess_'+ROLE); localStorage.removeItem('mvs_sess'); }catch(e){} }
+function _clearSession(){ try{ if(ROLE) localStorage.removeItem('mvs_sess_'+(typeof ROLE_PORTAL==='function'?ROLE_PORTAL(ROLE):ROLE)); localStorage.removeItem('mvs_sess'); }catch(e){} }
 async function _restoreSession(){
   // Jis portal ka URL khula hai (/, /teacher, /admin) — usi role ki session restore hogi.
   var want=_portalFromPath();
@@ -578,19 +586,20 @@ async function _restoreSession(){
   try{ s=JSON.parse(localStorage.getItem('mvs_sess_'+want)||'null'); }catch(e){}
   // backward-compat: purani shared 'mvs_sess' agar isi role ki thi to use + migrate
   if(!s){ try{ var leg=JSON.parse(localStorage.getItem('mvs_sess')||'null'); if(leg&&leg.r===want){ s=leg; } }catch(e){} }
-  if(!s||!s.t||!s.r||s.r!==want) return false;
-  TOKEN=s.t; ROLE=s.r; NAME=s.n||''; CURRENT_PORTAL=ROLE;
+  if(!s||!s.t||!s.r||ROLE_PORTAL(s.r)!==want) return false;
+  TOKEN=s.t; ROLE=s.r; NAME=s.n||''; CURRENT_PORTAL=ROLE_PORTAL(ROLE);
   window._sessNonce=window._sessNonce||Date.now();  // v165: my-photo cache-buster restored sessions par bhi
   try{
-    const ep=ROLE==='teacher'?'/api/teacher/profile':(ROLE==='student'?'/api/student/profile':'/api/admin/me');
+    const ep=ROLE==='teacher'?'/api/teacher/profile':(ROLE==='student'?'/api/student/profile':(_PROD_PORTALS&&_PROD_PORTALS[ROLE_PORTAL(ROLE)]?_PROD_PORTALS[ROLE_PORTAL(ROLE)].api+'/dashboard':'/api/admin/me'));
     await api(ep);            // token abhi valid hai? (expire ho gaya to catch me login)
   }catch(e){ TOKEN=null; ROLE=null; try{ localStorage.removeItem('mvs_sess_'+want); }catch(_){} return false; }
-  try{ localStorage.setItem('mvs_sess_'+ROLE, JSON.stringify({t:TOKEN,r:ROLE,n:NAME||''})); localStorage.removeItem('mvs_sess'); }catch(e){}
+  try{ localStorage.setItem('mvs_sess_'+ROLE_PORTAL(ROLE), JSON.stringify({t:TOKEN,r:ROLE,n:NAME||''})); localStorage.removeItem('mvs_sess'); }catch(e){}
   try{ document.getElementById('landing').style.display='none'; }catch(e){}
   try{ const ls=document.getElementById('login-screen'); if(ls) ls.classList.remove('active'); }catch(e){}
   try{
     if(ROLE==='teacher') await openTeacher();
     else if(ROLE==='admin') await openAdmin();
+    else if(_PROD_PORTALS&&_PROD_PORTALS[ROLE_PORTAL(ROLE)]) await openProdPortal(ROLE_PORTAL(ROLE));
     else await openStudent();
   }catch(e){}
   // refresh par history.state bacha rehta hai -> wahi page par wapas le jao (dashboard nahi)
@@ -653,12 +662,13 @@ async function doLogin(){
    api('/api/auth/login','POST',{user_id:uid,password:pass}),
    new Promise((_,rej)=>setTimeout(()=>rej(new Error('The server is taking too long to respond. Please wait a few seconds and try again.')),30000))
  ]);
- if(data.role!==CURRENT_PORTAL){ toast(`This is the ${CURRENT_PORTAL} login, but this account belongs to a ${data.role}!`,true); return; }
+ if(ROLE_PORTAL(data.role)!==CURRENT_PORTAL){ toast(`This is the ${CURRENT_PORTAL} login, but this account belongs to a ${data.role}!`,true); return; }
  _apiBust(); TOKEN=data.access_token; ROLE=data.role; NAME=data.name;
  _freshSessionPhotos();  // v165: cross-user photo leak fix
  document.getElementById('login-screen').classList.remove('active');
  if(ROLE==='teacher') openTeacher();
  else if(ROLE==='admin') openAdmin();
+ else if(_PROD_PORTALS && _PROD_PORTALS[ROLE_PORTAL(ROLE)]) openProdPortal(ROLE_PORTAL(ROLE));
  else openStudent();
   }catch(e){ toast(e.message,true); }
   finally{ btn.disabled=false; btn.textContent='Login'; }
@@ -7328,6 +7338,8 @@ function openAdmin(){
   try{_saveSession();}catch(e){}
   document.getElementById('admin-app').classList.add('active');
   try{ initAdminDppTracker(); }catch(e){}
+  try{ initAdminProdTeam(); }catch(e){}
+  try{ initAdminProdMonitor(); }catch(e){}
   try{ initNavCollapse(); }catch(e){}
   try{ initNavAccordion(); }catch(e){}   // ek fail ho to bhi accordion chale (sections band)
   [400,1200].forEach(function(d){ setTimeout(function(){ try{ document.querySelectorAll('.app .sidebar-nav').forEach(function(nav){ if(typeof _accGroupClose==='function') _accGroupClose(nav,false); }); }catch(e){} }, d); });
@@ -7442,7 +7454,7 @@ function aPage(page,el){
   }
   if(!el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) el=n; }); }
   if(el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',attendance:'Teacher Attendance',payouts:'Payouts'};
+  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodmon:'Production Overview'};
   _setPage(titles[page]||page);
   document.getElementById('a-title').textContent=titles[page]||page;
   _curLoader=function(){ _aLoadPage(page); };
@@ -7451,6 +7463,8 @@ function aPage(page,el){
 function _aLoadPage(page){
   if(page==='dashboard') loadADashboard();
   else if(page==='dpptracker') loadADppTracker();
+  else if(page==='prodteam') loadAProductionTeam();
+  else if(page==='prodmon') loadAProdMonitor();
   else if(page==='vtasks') loadAVTasks();
   else if(page==='urgent') loadAUrgent();
   else if(page==='approvals') loadAApprovals();
@@ -18130,3 +18144,989 @@ async function payoutPaid(tid,name){
 }
 
 window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
+
+/* =====================================================================
+ * PRODUCTION PORTALS (v-prod frontend) — Production Manager / Editor /
+ * YouTuber / Graphics. Self-contained: builds its own app shell + CSS,
+ * hooks into the existing login/session flow. Backend: /api/production,
+ * /api/editor, /api/youtuber, /api/graphics.
+ * ===================================================================== */
+(function(){
+  // --- role <-> portal name mapping (production_manager <-> production) ---
+  window.ROLE_PORTAL = function(role){ return role==='production_manager'?'production':role; };
+  window.PORTAL_ROLE = function(p){ return p==='production'?'production_manager':p; };
+
+  // --- tiny inline icon set (emoji-free, symbol-free SVG) ---
+  var IC={
+    grid:'<path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>',
+    board:'<path d="M3 3h5v18H3zM10 3h5v12h-5zM17 3h5v18h-5z"/>',
+    list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+    team:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+    video:'<path d="M23 7l-7 5 7 5V7zM1 5h15v14H1z"/>',
+    image:'<path d="M3 3h18v18H3zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM21 15l-5-5L5 21"/>',
+    check:'<path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+    bell:'<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/>',
+    logout:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>'
+  };
+  function icon(n){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+(IC[n]||IC.list)+'</svg>'; }
+
+  // --- portal definitions ---
+  var P={
+    production:{ role:'production_manager', title:'Production', sub:'Command Center', api:'/api/production',
+      nav:[ {g:'Operations',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'board',t:'Production Board',i:'board'}, {p:'tasks',t:'All Tasks',i:'list'} ]},
+            {g:'Team',items:[ {p:'team',t:'Team & Workload',i:'team'} ]},
+            {g:'Analytics',items:[ {p:'analytics',t:'Analytics',i:'grid'} ]} ] },
+    editor:{ role:'editor', title:'Editor', sub:'Workspace', api:'/api/editor',
+      nav:[ {g:'Workspace',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'tasks',t:'My Tasks',i:'list'} ]} ] },
+    youtuber:{ role:'youtuber', title:'Creator', sub:'Studio', api:'/api/youtuber',
+      nav:[ {g:'Workspace',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'videos',t:'My Videos',i:'video'} ]} ] },
+    graphics:{ role:'graphics', title:'Graphics', sub:'Thumbnails', api:'/api/graphics',
+      nav:[ {g:'Workspace',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'tasks',t:'My Tasks',i:'image'} ]} ] }
+  };
+  window._PROD_PORTALS=P;
+
+  // --- KPI label maps (backend key -> human label) ---
+  var KPI_LABELS={
+    active:'Active Tasks', teacher_pending:'Teacher Pending', youtuber_pending:'YouTuber Pending',
+    pm_review:'PM Review', editing:'Editing', graphics:'Graphics', qc_pending:'QC Pending',
+    ready_for_youtube:'Ready for YouTube', due_today:'Due Today', overdue:'Overdue',
+    assigned:'Assigned', not_started:'Not Started', changes:'Changes', completed:'Completed',
+    requests:'Requests', pending_submission:'Pending Submission', submitted:'Submitted',
+    in_production:'In Production', qc:'QC', published:'Published',
+    new:'New Requests', in_progress:'In Progress', approved:'Approved'
+  };
+
+  // --- premium CSS (scoped to .prodapp) ---
+  function ensureCSS(){
+    if(document.getElementById('prod-portal-css')) return;
+    var accent='#e6ad4e';
+    var css=[
+'.prodapp{position:fixed;inset:0;display:none;background:#f6f1e7;color:#2a2313;font-family:inherit}',
+'.prodapp.active{display:block}',
+'body.dark .prodapp{background:#100d07;color:#eee6d4}',
+'.prodwrap{display:flex;height:100%;width:100%}',
+/* sidebar */
+'.prodside{width:248px;flex:0 0 248px;background:#171203;color:#f0e6cf;display:flex;flex-direction:column;border-right:1px solid rgba(230,173,78,.16);overflow-y:auto}',
+'.prodside .ps-brand{display:flex;align-items:center;gap:11px;padding:18px 18px 14px}',
+'.prodside .ps-logo{width:38px;height:38px;border-radius:10px;overflow:hidden;flex:0 0 38px;box-shadow:0 0 0 3px rgba(230,173,78,.14)}',
+'.prodside .ps-logo img{width:100%;height:100%;object-fit:contain}',
+'.prodside .ps-title{font-weight:800;font-size:1.02rem;line-height:1.05;letter-spacing:-.01em}',
+'.prodside .ps-sub{font-size:.68rem;color:'+accent+';text-transform:uppercase;letter-spacing:.12em;margin-top:2px}',
+'.prodside .ps-group{padding:14px 14px 2px;font-size:.66rem;text-transform:uppercase;letter-spacing:.13em;color:#9c8f6e}',
+'.prodside .ps-item{display:flex;align-items:center;gap:11px;margin:2px 10px;padding:9px 12px;border-radius:10px;cursor:pointer;color:#d9cfb4;font-size:.9rem;font-weight:600;transition:background .15s,color .15s}',
+'.prodside .ps-item svg{width:17px;height:17px;flex:0 0 17px;opacity:.85}',
+'.prodside .ps-item:hover{background:rgba(230,173,78,.10);color:#fff}',
+'.prodside .ps-item.on{background:linear-gradient(135deg,rgba(230,173,78,.22),rgba(230,173,78,.08));color:#fff;box-shadow:inset 3px 0 0 '+accent+'}',
+'.prodside .ps-foot{margin-top:auto;padding:12px 10px;border-top:1px solid rgba(230,173,78,.14);display:flex;gap:8px}',
+'.prodside .ps-fbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px;border-radius:9px;background:rgba(255,255,255,.05);color:#e9dfc4;border:1px solid rgba(230,173,78,.16);cursor:pointer;font-size:.82rem;font-weight:600}',
+'.prodside .ps-fbtn svg{width:15px;height:15px}',
+'.prodside .ps-fbtn:hover{background:rgba(230,173,78,.14);color:#fff}',
+/* main */
+'.prodmain{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden}',
+'.prodhead{display:flex;align-items:center;justify-content:space-between;padding:20px 26px 14px;gap:14px}',
+'.prodhead .ph-hi{font-size:1.32rem;font-weight:800;letter-spacing:-.02em}',
+'.prodhead .ph-date{font-size:.82rem;color:#8a7d5c;margin-top:2px}',
+'body.dark .prodhead .ph-date{color:#9c8f6e}',
+'.prodhead .ph-badge{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:'+accent+';border:1px solid rgba(230,173,78,.4);border-radius:999px;padding:5px 12px}',
+'.ph-bell{position:relative;width:40px;height:40px;border-radius:11px;border:1px solid rgba(230,173,78,.28);background:transparent;color:inherit;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}',
+'.ph-bell svg{width:19px;height:19px}',
+'.ph-bell:hover{background:rgba(230,173,78,.12)}',
+'.ph-bell-dot{position:absolute;top:6px;right:7px;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:#d1443a;color:#fff;font-size:.62rem;font-weight:800;display:flex;align-items:center;justify-content:center}',
+'.pn-panel{position:absolute;top:60px;right:16px;width:340px;max-width:calc(100vw - 32px);max-height:70vh;overflow-y:auto;background:#fff;border:1px solid #ece2cd;border-radius:16px;box-shadow:0 20px 50px -12px rgba(40,30,10,.35);z-index:120}',
+'body.dark .pn-panel{background:#1b1508;border-color:#2c2410}',
+'.pn-head{display:flex;justify-content:space-between;align-items:center;padding:13px 16px;border-bottom:1px solid rgba(140,125,92,.16);font-weight:800;font-size:.92rem;position:sticky;top:0;background:inherit}',
+'.pn-head button{background:none;border:none;color:'+accent+';font-weight:700;font-size:.78rem;cursor:pointer}',
+'.pn-item{padding:12px 16px;border-bottom:1px solid rgba(140,125,92,.1);cursor:pointer}',
+'.pn-item:hover{background:rgba(230,173,78,.07)}',
+'.pn-item.unread{background:rgba(230,173,78,.06)}',
+'.pn-item .pn-t{font-weight:700;font-size:.86rem;display:flex;align-items:center;gap:7px}',
+'.pn-item.unread .pn-t::before{content:"";width:7px;height:7px;border-radius:50%;background:'+accent+';flex:0 0 7px}',
+'.pn-item .pn-m{font-size:.8rem;color:#8a7d5c;margin-top:3px;line-height:1.4}',
+'.pn-item .pn-at{font-size:.7rem;color:#b0a483;margin-top:4px}',
+'.pn-empty{padding:36px 16px;text-align:center;color:#9c8f6e;font-size:.86rem}',
+'.prodbody{flex:1;overflow-y:auto;padding:6px 26px 40px}',
+/* kpi cards */
+'.pk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:13px;margin:10px 0 22px}',
+'.pk-card{background:#fff;border:1px solid #ece2cd;border-radius:15px;padding:16px 16px 14px;box-shadow:0 1px 3px rgba(40,30,10,.05)}',
+'body.dark .pk-card{background:#1b1508;border-color:#2c2410}',
+'.pk-val{font-size:1.85rem;font-weight:800;letter-spacing:-.02em;line-height:1}',
+'.pk-lbl{font-size:.76rem;color:#8a7d5c;margin-top:7px;font-weight:600}',
+'body.dark .pk-lbl{color:#9c8f6e}',
+'.pk-card.warn .pk-val{color:#d1443a}',
+'.pk-card.good .pk-val{color:#2e9e6b}',
+/* section title */
+'.p-sec{font-size:.95rem;font-weight:800;margin:22px 0 12px;letter-spacing:-.01em}',
+'.p-bottleneck{display:inline-flex;align-items:center;gap:8px;background:rgba(209,68,58,.08);border:1px solid rgba(209,68,58,.28);color:#d1443a;border-radius:10px;padding:8px 14px;font-weight:700;font-size:.86rem;margin-bottom:8px}',
+/* task rows */
+'.pt-row{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid #ece2cd;border-radius:13px;padding:13px 16px;margin-bottom:10px;cursor:pointer;transition:box-shadow .15s,transform .05s}',
+'body.dark .pt-row{background:#1b1508;border-color:#2c2410}',
+'.pt-row:hover{box-shadow:0 4px 16px -6px rgba(40,30,10,.18)}',
+'.pt-main{flex:1;min-width:0}',
+'.pt-title{font-weight:700;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+'.pt-meta{font-size:.76rem;color:#8a7d5c;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}',
+'body.dark .pt-meta{color:#9c8f6e}',
+'.pt-badge{font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:3px 9px;border-radius:999px;white-space:nowrap}',
+'.pt-badge.b-teacher{background:rgba(59,130,180,.14);color:#2f7fb0}',
+'.pt-badge.b-youtuber{background:rgba(209,68,58,.14);color:#d1443a}',
+'.pt-stage{font-size:.72rem;font-weight:700;padding:4px 11px;border-radius:999px;background:rgba(230,173,78,.16);color:#a9791f;white-space:nowrap}',
+'body.dark .pt-stage{color:'+accent+'}',
+'.pt-ref{font-size:.7rem;color:#b0a483;font-family:ui-monospace,monospace}',
+'.pt-dl{font-size:.68rem;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}',
+'.pt-dl.overdue{background:rgba(209,68,58,.14);color:#d1443a}',
+'.pt-dl.today{background:rgba(224,165,74,.18);color:#a9791f}',
+'.pt-dl.soon{background:rgba(224,165,74,.18);color:#a9791f}',
+'.p-filter{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}',
+'.p-chip{padding:7px 13px;border-radius:999px;border:1px solid #d9cba8;background:transparent;color:inherit;cursor:pointer;font-size:.8rem;font-weight:600}',
+'body.dark .p-chip{border-color:#3a2f14}',
+'.p-chip:hover{background:rgba(230,173,78,.1)}',
+'.p-chip.on{background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05;border-color:transparent}',
+'.p-filter .p-input,.p-filter .p-select{width:auto;min-width:130px;padding:8px 11px}',
+'.p-filter .p-input{min-width:180px}',
+/* empty / loading */
+'.p-empty{text-align:center;padding:56px 20px;color:#9c8f6e;font-size:.92rem}',
+'.p-load{text-align:center;padding:50px;color:#9c8f6e}',
+/* board columns */
+'.pb-cols{display:flex;gap:14px;overflow-x:auto;padding-bottom:16px}',
+'.pb-col{flex:0 0 250px;background:rgba(0,0,0,.02);border:1px solid #ece2cd;border-radius:14px;padding:12px;max-height:calc(100vh - 210px);overflow-y:auto}',
+'body.dark .pb-col{background:rgba(255,255,255,.02);border-color:#2c2410}',
+'.pb-col h4{font-size:.76rem;text-transform:uppercase;letter-spacing:.08em;color:#8a7d5c;margin:2px 4px 10px;display:flex;justify-content:space-between}',
+'.pb-mini{background:#fff;border:1px solid #ece2cd;border-radius:10px;padding:10px 12px;margin-bottom:9px;cursor:pointer;font-size:.85rem}',
+'body.dark .pb-mini{background:#1b1508;border-color:#2c2410}',
+'.pb-mini:hover{box-shadow:0 3px 12px -5px rgba(40,30,10,.2)}',
+/* mobile */
+/* buttons */
+'.p-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:10px 16px;border-radius:10px;font-size:.86rem;font-weight:700;cursor:pointer;border:1px solid #d9cbA8;background:#fff;color:#2a2313;transition:filter .15s,background .15s}',
+'body.dark .p-btn{background:#241c0b;border-color:#3a2f14;color:#eee6d4}',
+'.p-btn:hover{filter:brightness(.97)}',
+'.p-btn-primary{background:linear-gradient(135deg,#e6ad4e,#c98a2e);border-color:transparent;color:#241a05}',
+'.p-btn-danger{background:rgba(209,68,58,.1);border-color:rgba(209,68,58,.35);color:#d1443a}',
+'.p-btn-ok{background:rgba(46,158,107,.12);border-color:rgba(46,158,107,.35);color:#2e9e6b}',
+'.p-acts{display:flex;flex-wrap:wrap;gap:9px;margin-top:20px;padding-top:16px;border-top:1px solid rgba(140,125,92,.18)}',
+'.p-toolbar{display:flex;justify-content:flex-end;margin-bottom:14px}',
+'.p-field{margin:10px 0}',
+'.p-field label{display:block;font-size:.78rem;font-weight:600;color:#8a7d5c;margin-bottom:5px}',
+'.p-input,.p-select,.p-area{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #d9cbA8;background:#fff;color:#2a2313;font-size:.9rem;font-family:inherit}',
+'body.dark .p-input,body.dark .p-select,body.dark .p-area{background:#241c0b;border-color:#3a2f14;color:#eee6d4}',
+'.p-area{min-height:78px;resize:vertical}',
+'.p-prog-btns{display:flex;flex-wrap:wrap;gap:7px}',
+'.p-prog-btns button{padding:8px 13px;border-radius:8px;border:1px solid #d9cbA8;background:#fff;cursor:pointer;font-weight:700;font-size:.82rem}',
+'body.dark .p-prog-btns button{background:#241c0b;border-color:#3a2f14;color:#eee6d4}',
+'.p-prog-btns button.on{background:#e6ad4e;color:#241a05;border-color:transparent}',
+'.p-drop{border:2px dashed #d9cba8;border-radius:11px;padding:14px;text-align:center;color:#8a7d5c;font-size:.82rem;cursor:pointer;margin-top:6px}',
+'body.dark .p-drop{border-color:#3a2f14}',
+'.p-drop:hover,.p-drop.drag{background:rgba(230,173,78,.08);border-color:#e6ad4e;color:#a9791f}',
+'.p-thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}',
+'.p-thumb{position:relative;width:70px;height:70px;border-radius:9px;overflow:hidden;border:1px solid #d9cba8}',
+'.p-thumb img{width:100%;height:100%;object-fit:cover;display:block}',
+'.p-thumb .x{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;border:none;cursor:pointer;font-size:.7rem;line-height:1;display:flex;align-items:center;justify-content:center}',
+'.p-gallery{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}',
+'.p-gallery img{width:88px;height:66px;object-fit:cover;border-radius:9px;border:1px solid #d9cba8;cursor:pointer}',
+'.p-lightbox{position:fixed;inset:0;z-index:260;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out}',
+'.p-lightbox img{max-width:96%;max-height:96%;border-radius:8px}',
+'.prod-burger{display:none}',
+'@media(max-width:860px){',
+'  .prodside{position:fixed;left:0;top:0;bottom:0;z-index:60;transform:translateX(-100%);transition:transform .22s}',
+'  .prodapp.side-open .prodside{transform:translateX(0)}',
+'  .prod-burger{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:rgba(230,173,78,.14);border:1px solid rgba(230,173,78,.3);color:'+accent+';cursor:pointer}',
+'  .prod-burger svg{width:20px;height:20px}',
+'  .prodbody{padding:6px 16px 40px}',
+'  .prodhead{padding:16px}',
+'  .prod-scrim{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:55}',
+'  .prodapp.side-open .prod-scrim{display:block}',
+'}'
+    ].join('');
+    var st=document.createElement('style'); st.id='prod-portal-css'; st.textContent=css;
+    document.head.appendChild(st);
+  }
+
+  // --- build the app shell for a portal (once) ---
+  function ensureShell(portal){
+    var id=portal+'-app';
+    var el=document.getElementById(id);
+    if(el) return el;
+    var d=P[portal];
+    var navHtml=d.nav.map(function(grp){
+      return '<div class="ps-group">'+grp.g+'</div>'+grp.items.map(function(it){
+        return '<div class="ps-item" data-page="'+it.p+'" onclick="prodNav(\''+portal+'\',\''+it.p+'\')">'+icon(it.i)+'<span>'+it.t+'</span></div>';
+      }).join('');
+    }).join('');
+    var logo=(typeof _mvsLogoImg==='function')?_mvsLogoImg(38):'';
+    var html=''+
+      '<div class="prodwrap">'+
+        '<aside class="prodside">'+
+          '<div class="ps-brand"><div class="ps-logo">'+logo+'</div><div><div class="ps-title">'+d.title+'</div><div class="ps-sub">'+d.sub+'</div></div></div>'+
+          navHtml+
+          '<div class="ps-foot">'+
+            '<button class="ps-fbtn" onclick="toggleDark()">'+icon('grid')+'<span>Theme</span></button>'+
+            '<button class="ps-fbtn" onclick="logout()">'+icon('logout')+'<span>Logout</span></button>'+
+          '</div>'+
+        '</aside>'+
+        '<section class="prodmain">'+
+          '<header class="prodhead">'+
+            '<div style="display:flex;align-items:center;gap:12px">'+
+              '<button class="prod-burger" onclick="document.getElementById(\''+id+'\').classList.toggle(\'side-open\')">'+icon('list')+'</button>'+
+              '<div><div class="ph-hi" id="'+portal+'-hi">Welcome</div><div class="ph-date" id="'+portal+'-date"></div></div>'+
+            '</div>'+
+            '<div style="display:flex;align-items:center;gap:12px">'+
+              '<button class="ph-bell" onclick="prodBell(\''+portal+'\')">'+icon('bell')+'<span class="ph-bell-dot" id="'+portal+'-bell-dot" style="display:none">0</span></button>'+
+              '<div class="ph-badge">'+d.title+'</div>'+
+            '</div>'+
+          '</header>'+
+          '<div class="prodbody" id="'+portal+'-body"><div class="p-load">Loading...</div></div>'+
+        '</section>'+
+        '<div class="prod-scrim" onclick="document.getElementById(\''+id+'\').classList.remove(\'side-open\')"></div>'+
+      '</div>';
+    el=document.createElement('div'); el.id=id; el.className='app prodapp'; el.innerHTML=html;
+    document.body.appendChild(el);
+    return el;
+  }
+
+  // --- open a portal (called after login / restore) ---
+  window.openProdPortal=function(portal){
+    ensureCSS(); ensureShell(portal);
+    try{ if(typeof _saveSession==='function') _saveSession(); }catch(e){}
+    document.querySelectorAll('.app').forEach(function(a){ a.classList.remove('active'); });
+    var el=document.getElementById(portal+'-app'); el.classList.add('active');
+    try{ history.replaceState({mvs:1,app:portal+'-app',pg:'dashboard'},'', '/'+portal); }catch(e){}
+    var hi=document.getElementById(portal+'-hi'); if(hi) hi.textContent=_greet()+', '+(NAME||'');
+    var dt=document.getElementById(portal+'-date'); if(dt) dt.textContent=_today();
+    prodNav(portal,'dashboard');
+    prodStartNotifPoll(portal);
+    return Promise.resolve();
+  };
+
+  // --- notifications (bell + deep-link) ---
+  window.prodStartNotifPoll=function(portal){
+    try{ clearInterval(window._prodNotifTimer); }catch(e){}
+    prodNotifRefreshDot(portal);
+    window._prodNotifTimer=setInterval(function(){ if(document.getElementById(portal+'-app')&&document.getElementById(portal+'-app').classList.contains('active')) prodNotifRefreshDot(portal); }, 30000);
+  };
+  window.prodNotifRefreshDot=function(portal){
+    api(P[portal].api+'/notifications').then(function(r){
+      window._prodNotifCache=r.notifications||[];
+      var dot=document.getElementById(portal+'-bell-dot'); if(!dot) return;
+      var u=r.unread||0; dot.textContent=u>99?'99+':u; dot.style.display=u>0?'flex':'none';
+    }).catch(function(){});
+  };
+  window.prodBell=function(portal){
+    var ex=document.getElementById('pn-panel'); if(ex){ ex.remove(); return; }
+    var main=document.querySelector('#'+portal+'-app .prodmain'); if(!main) return;
+    var p=document.createElement('div'); p.className='pn-panel'; p.id='pn-panel';
+    p.innerHTML='<div class="pn-head"><span>Notifications</span><button onclick="prodNotifReadAll(\''+portal+'\')">Mark all read</button></div><div id="pn-list"><div class="p-load" style="padding:24px">Loading...</div></div>';
+    main.appendChild(p);
+    // close on outside click
+    setTimeout(function(){ document.addEventListener('click',_prodBellOutside); },0);
+    api(P[portal].api+'/notifications').then(function(r){
+      window._prodNotifCache=r.notifications||[];
+      _prodRenderNotifs(portal, r.notifications||[]);
+      var dot=document.getElementById(portal+'-bell-dot'); var u=r.unread||0; if(dot){ dot.textContent=u>99?'99+':u; dot.style.display=u>0?'flex':'none'; }
+    }).catch(function(e){ var l=document.getElementById('pn-list'); if(l) l.innerHTML='<div class="pn-empty">Could not load.</div>'; });
+  };
+  function _prodBellOutside(e){
+    var p=document.getElementById('pn-panel'); if(!p) { document.removeEventListener('click',_prodBellOutside); return; }
+    if(p.contains(e.target)) return;
+    if(e.target.closest && e.target.closest('.ph-bell')) return;
+    p.remove(); document.removeEventListener('click',_prodBellOutside);
+  }
+  function _prodRenderNotifs(portal, list){
+    var l=document.getElementById('pn-list'); if(!l) return;
+    if(!list.length){ l.innerHTML='<div class="pn-empty">No notifications yet.</div>'; return; }
+    l.innerHTML=list.map(function(n){
+      return '<div class="pn-item'+(n.is_read?'':' unread')+'" onclick="prodNotifClick(\''+portal+'\','+n.id+','+(n.task_id||'null')+')">'+
+        '<div class="pn-t">'+esc(n.title||'Update')+'</div>'+
+        (n.message?'<div class="pn-m">'+esc(n.message)+'</div>':'')+
+        '<div class="pn-at">'+esc(n.at||'')+'</div></div>';
+    }).join('');
+  }
+  window.prodNotifClick=function(portal,nid,taskId){
+    api(P[portal].api+'/notifications/'+nid+'/read','POST',{}).catch(function(){});
+    var p=document.getElementById('pn-panel'); if(p) p.remove();
+    document.removeEventListener('click',_prodBellOutside);
+    prodNotifRefreshDot(portal);
+    if(taskId){ prodOpenTask(portal, taskId); }
+  };
+  window.prodNotifReadAll=function(portal){
+    api(P[portal].api+'/notifications/read-all','POST',{}).then(function(){
+      prodNotifRefreshDot(portal);
+      _prodRenderNotifs(portal,(window._prodNotifCache||[]).map(function(n){ n.is_read=true; return n; }));
+    }).catch(function(){});
+  };
+
+  function _greet(){ var h=new Date().getHours(); return h<12?'Good Morning':(h<17?'Good Afternoon':'Good Evening'); }
+  function _today(){ try{ return new Date().toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long',year:'numeric'}); }catch(e){ return ''; } }
+
+  // --- nav dispatch ---
+  window.prodNav=function(portal,page){
+    var el=document.getElementById(portal+'-app'); if(!el) return;
+    (window._prodCurPage=window._prodCurPage||{})[portal]=page;
+    el.classList.remove('side-open');
+    el.querySelectorAll('.ps-item').forEach(function(n){ n.classList.toggle('on', n.getAttribute('data-page')===page); });
+    var body=document.getElementById(portal+'-body'); if(!body) return;
+    body.innerHTML='<div class="p-load">Loading...</div>';
+    try{ history.replaceState({mvs:1,app:portal+'-app',pg:page},'', '/'+portal); }catch(e){}
+    if(page==='dashboard') return renderDashboard(portal,body);
+    if(page==='board') return renderBoard(portal,body);
+    if(page==='team') return renderTeam(portal,body);
+    if(page==='analytics') return renderAnalytics(portal,body);
+    if(page==='tasks'||page==='videos') return renderList(portal,body);
+    body.innerHTML='<div class="p-empty">This section is coming soon.</div>';
+  };
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+  // --- dashboard ---
+  function _stale(portal,page){ return ((window._prodCurPage&&window._prodCurPage[portal])||'dashboard')!==page; }
+  function renderDashboard(portal,body){
+    var d=P[portal];
+    return api(d.api+'/dashboard').then(function(r){
+      if(_stale(portal,'dashboard')) return;
+      var hi=document.getElementById(portal+'-hi'); if(hi&&r.greeting_name) hi.textContent=_greet()+', '+r.greeting_name;
+      var kpis=r.kpis||{}; var html='';
+      if(portal==='production' && r.bottleneck && r.bottleneck!=='None')
+        html+='<div class="p-bottleneck">Current bottleneck: '+esc(r.bottleneck)+'</div>';
+      html+='<div class="pk-grid">';
+      Object.keys(kpis).forEach(function(k){
+        var cls=(k==='overdue'?'warn':(k==='completed'||k==='published'||k==='approved'?'good':''));
+        html+='<div class="pk-card '+cls+'"><div class="pk-val">'+(kpis[k]||0)+'</div><div class="pk-lbl">'+(KPI_LABELS[k]||k)+'</div></div>';
+      });
+      html+='</div>';
+      var sec=r.secondary||r.monthly;
+      if(sec){ html+='<div class="p-sec">This Month</div><div class="pk-grid">';
+        Object.keys(sec).forEach(function(k){
+          var v=sec[k]; if(k==='active_editing_seconds') v=Math.round((v||0)/3600)+'h';
+          html+='<div class="pk-card"><div class="pk-val">'+v+'</div><div class="pk-lbl">'+(KPI_LABELS[k]||k.replace(/_/g,' '))+'</div></div>';
+        });
+        html+='</div>';
+      }
+      body.innerHTML=html||'<div class="p-empty">No data yet.</div>';
+    }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load dashboard. '+esc(e&&e.message||'')+'</div>'; });
+  }
+
+  // --- generic task/video list ---
+  function _taskRow(portal,t){
+    var badge=(t.creator_type==='youtuber')?'<span class="pt-badge b-youtuber">YouTuber</span>':'<span class="pt-badge b-teacher">Teacher</span>';
+    var meta=[]; if(t.creator_name) meta.push(esc(t.creator_name)); if(t.subject) meta.push(esc(t.subject)); if(t.deadline) meta.push('Due '+esc(t.deadline));
+    var df=t.deadline_flag||{}; var dl=(df.kind&&['overdue','today','soon'].indexOf(df.kind)>=0)?'<span class="pt-dl '+df.kind+'">'+esc(df.label)+'</span>':'';
+    return '<div class="pt-row" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
+      '<div class="pt-main"><div class="pt-title">'+esc(t.title||'Untitled')+'</div>'+
+      '<div class="pt-meta"><span class="pt-ref">'+esc(t.ref_code||'')+'</span>'+meta.map(function(m){return '<span>'+m+'</span>';}).join('')+'</div></div>'+
+      dl+badge+'<span class="pt-stage">'+esc(t.next_action||t.lifecycle_label||'')+'</span></div>';
+  }
+  var SAVED={
+    production:[['','All'],['pm_review','PM Review'],['editing','Editing'],['qc_pending','QC Queue'],['ready_for_youtube','Ready for YouTube'],['__overdue','Overdue']],
+    editor:[['','All'],['editor_assigned','Not Started'],['editing','Editing'],['qc_changes','Changes']],
+    youtuber:[['','All'],['creator_assigned','To Submit'],['pm_review','Submitted'],['uploaded','Published']],
+    graphics:[['','All'],['new','New'],['in_progress','In Progress'],['changes','Changes']]
+  };
+  function _flt(portal){ return (window._prodFilter=window._prodFilter||{})[portal]=(window._prodFilter[portal]||{}); }
+  function _prodQuery(portal){
+    var f=_flt(portal); var p=[];
+    if(f.status) p.push('status='+encodeURIComponent(f.status));
+    if(portal==='production'){
+      if(f.creator_type) p.push('creator_type='+encodeURIComponent(f.creator_type));
+      if(f.deadline) p.push('deadline='+encodeURIComponent(f.deadline));
+      if(f.q) p.push('q='+encodeURIComponent(f.q));
+      p.push('size=100');
+    }
+    return p.length?('?'+p.join('&')):'';
+  }
+  function _savedChips(portal){
+    var f=_flt(portal);
+    return (SAVED[portal]||[]).map(function(v){
+      var active=(v[0].indexOf('__')===0)?(f.deadline==='overdue'):((f.status||'')===v[0] && !f.deadline);
+      return '<button class="p-chip'+(active?' on':'')+'" onclick="prodView(\''+portal+'\',\''+v[0]+'\')">'+esc(v[1])+'</button>';
+    }).join('');
+  }
+  function _filterBar(portal){
+    var f=_flt(portal);
+    var html='<div class="p-filter">'+_savedChips(portal);
+    if(portal==='production'){
+      html+='<input class="p-input" id="prod-search" placeholder="Search title, ref, subject..." value="'+esc(f.q||'')+'" oninput="prodSearch(\'production\',this.value)">'+
+        '<select class="p-select" onchange="prodSetFilter(\'production\',\'creator_type\',this.value)">'+
+          [['','All Creators'],['teacher','Teacher'],['youtuber','YouTuber']].map(function(o){return '<option value="'+o[0]+'"'+((f.creator_type||'')===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>'+
+        '<button class="p-btn p-btn-primary" onclick="prodNewTask()">+ New Task</button>';
+    }
+    html+='</div>';
+    return html;
+  }
+  function renderList(portal,body){
+    body.innerHTML=_filterBar(portal)+'<div id="'+portal+'-results"><div class="p-load">Loading...</div></div>';
+    return _prodLoadList(portal);
+  }
+  function _prodLoadList(portal){
+    var d=P[portal]; var key=(portal==='youtuber')?'videos':'tasks';
+    var res=document.getElementById(portal+'-results'); if(res) res.innerHTML='<div class="p-load">Loading...</div>';
+    return api(d.api+'/'+key+_prodQuery(portal)).then(function(r){
+      var arr=r[key]||r.tasks||r.videos||[];
+      if(!res) return;
+      res.innerHTML=arr.length?arr.map(function(t){ return _taskRow(portal,t); }).join(''):'<div class="p-empty">Nothing matches these filters.</div>';
+    }).catch(function(e){ if(res) res.innerHTML='<div class="p-empty">Could not load. '+esc(e&&e.message||'')+'</div>'; });
+  }
+  window.prodView=function(portal,val){
+    var f=_flt(portal);
+    if(val.indexOf('__')===0){ f.status=''; f.deadline=(val==='__overdue')?'overdue':''; }
+    else { f.status=val; f.deadline=''; }
+    // update chip highlight without rebuilding the search box
+    var bar=document.querySelector('#'+portal+'-app .p-filter');
+    if(bar){ var chips=bar.querySelectorAll('.p-chip'); var views=SAVED[portal]||[];
+      chips.forEach(function(c,i){ var v=views[i]?views[i][0]:''; var on=(v.indexOf('__')===0)?(f.deadline==='overdue'):((f.status||'')===v && !f.deadline); c.classList.toggle('on',on); }); }
+    _prodLoadList(portal);
+  };
+  window.prodSetFilter=function(portal,k,v){ _flt(portal)[k]=v; _prodLoadList(portal); };
+  window.prodSearch=function(portal,v){ _flt(portal).q=v; clearTimeout(window._prodSearchT); window._prodSearchT=setTimeout(function(){ _prodLoadList(portal); },350); };
+
+  // --- PM production board (grouped by lifecycle) ---
+  var BOARD_COLS=[['creator_submitted,pm_review','PM Review'],['approved,editor_assigned','Editor Assignment'],
+    ['editing,editing_paused','Editing'],['qc_pending','QC'],['qc_changes,changes_required','Changes'],
+    ['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded']];
+  function renderBoard(portal,body){
+    return api(P[portal].api+'/tasks?size=200').then(function(r){
+      if(_stale(portal,'board')) return;
+      var tasks=r.tasks||[]; var html='<div class="p-toolbar"><button class="p-btn p-btn-primary" onclick="prodNewTask()">+ New Task</button></div><div class="pb-cols">';
+      BOARD_COLS.forEach(function(col){
+        var states=col[0].split(','); var items=tasks.filter(function(t){return states.indexOf(t.lifecycle)>=0;});
+        html+='<div class="pb-col"><h4><span>'+esc(col[1])+'</span><span>'+items.length+'</span></h4>'+
+          (items.length?items.map(function(t){
+            return '<div class="pb-mini" onclick="prodOpenTask(\''+portal+'\','+t.id+')"><div style="font-weight:700">'+esc(t.title||'')+'</div><div class="pt-ref" style="margin-top:4px">'+esc(t.ref_code||'')+'</div></div>';
+          }).join(''):'<div style="color:#9c8f6e;font-size:.78rem;padding:6px 4px">Empty</div>')+'</div>';
+      });
+      html+='</div>';
+      body.innerHTML=html;
+    }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load board. '+esc(e&&e.message||'')+'</div>'; });
+  }
+
+  // --- PM team / workload ---
+  function renderTeam(portal,body){
+    return api(P[portal].api+'/team').then(function(r){
+      if(_stale(portal,'team')) return;
+      function block(title,arr,fields){
+        if(!arr||!arr.length) return '<div class="p-sec">'+title+'</div><div class="p-empty" style="padding:20px">None yet.</div>';
+        return '<div class="p-sec">'+title+'</div>'+arr.map(function(m){
+          var load=(m.active||0)+' / '+(m.recommended||m.recommended_load||5);
+          var over=(m.active||0)>(m.recommended||5);
+          return '<div class="pt-row" style="cursor:default"><div class="pt-main"><div class="pt-title">'+esc(m.name||'')+'</div>'+
+            '<div class="pt-meta">'+fields.map(function(f){return '<span>'+f[0]+': '+(m[f[1]]!=null?m[f[1]]:0)+'</span>';}).join('')+'</div></div>'+
+            '<span class="pt-stage" '+(over?'style="background:rgba(209,68,58,.14);color:#d1443a"':'')+'>'+load+'</span></div>';
+        }).join('');
+      }
+      var html=block('Editors',r.editors,[['Active','active'],['Completed','completed'],['Overdue','overdue']]);
+      html+=block('Graphics',r.graphics,[['Active','active'],['Completed','completed']]);
+      html+=block('YouTubers',r.youtubers,[['Pending','pending'],['In Production','in_production'],['Published','published']]);
+      body.innerHTML=html;
+    }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load team. '+esc(e&&e.message||'')+'</div>'; });
+  }
+
+  // --- analytics ---
+  window._prodAnDays=30;
+  function renderAnalytics(portal,body){
+    return api(P.production.api+'/analytics?days='+(window._prodAnDays||30)).then(function(r){
+      if(_stale(portal,'analytics')) return;
+      var o=r.overview||{};
+      var kpis=[['Created',o.created],['Completed',o.completed],['Pending',o.pending],
+                ['Overdue',o.overdue,'warn'],['On-Time %',o.on_time_pct==null?'\u2014':o.on_time_pct+'%','good'],
+                ['Avg Production',o.avg_production_hours==null?'\u2014':o.avg_production_hours+'h'],
+                ['QC First-Pass',o.qc_first_pass_pct==null?'\u2014':o.qc_first_pass_pct+'%','good']];
+      var html='<div class="p-toolbar" style="gap:8px">'+
+        [30,90].map(function(d){ return '<button class="p-btn'+((window._prodAnDays||30)===d?' p-btn-primary':'')+'" onclick="prodAnDays('+d+')">Last '+d+'d</button>'; }).join('')+'</div>';
+      html+='<div class="pk-grid">'+kpis.map(function(k){ return '<div class="pk-card '+(k[2]||'')+'"><div class="pk-val">'+(k[1]==null?0:k[1])+'</div><div class="pk-lbl">'+k[0]+'</div></div>'; }).join('')+'</div>';
+      // trend chart
+      html+='<div class="p-sec">Weekly Output (Created vs Completed)</div>'+_trendChart(r.trend||[]);
+      // editors
+      html+='<div class="p-sec">Editor Performance</div>'+_perfTable(r.editors||[],
+        [['Editor','name'],['Videos','videos'],['Active Hrs','active_hours'],['Avg/Video','avg_hours'],['On-Time','on_time_pct','pct'],['Revisions','revisions']],'videos');
+      // graphics
+      html+='<div class="p-sec">Graphics Performance</div>'+_perfTable(r.graphics||[],
+        [['Member','name'],['Thumbnails','thumbnails'],['Avg Hrs','avg_hours'],['Revisions','revisions']],'thumbnails');
+      // content mix
+      html+='<div class="p-sec">Content Mix</div>'+_hbars(r.content_mix||[],'type','count');
+      body.innerHTML=html;
+    }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load analytics. '+esc(e&&e.message||'')+'</div>'; });
+  }
+  window.prodAnDays=function(d){ window._prodAnDays=d; var body=document.getElementById('production-body'); if(body) renderAnalytics('production',body); };
+
+  function _trendChart(rows){
+    if(!rows.length) return '<div class="p-empty" style="padding:20px">No data.</div>';
+    var W=680,H=180,pad=28,n=rows.length, gw=(W-pad*2)/n;
+    var max=Math.max(1,Math.max.apply(null,rows.map(function(d){return Math.max(d.created,d.completed);})));
+    var bars='',labels='';
+    rows.forEach(function(d,i){
+      var x=pad+i*gw, bw=gw*0.32;
+      var hc=(d.created/max)*(H-pad*2), hd=(d.completed/max)*(H-pad*2);
+      bars+='<rect x="'+(x+gw*0.16)+'" y="'+(H-pad-hc)+'" width="'+bw+'" height="'+hc+'" rx="3" fill="#c98a2e"/>';
+      bars+='<rect x="'+(x+gw*0.16+bw+3)+'" y="'+(H-pad-hd)+'" width="'+bw+'" height="'+hd+'" rx="3" fill="#2e9e6b"/>';
+      labels+='<text x="'+(x+gw/2)+'" y="'+(H-9)+'" font-size="9" text-anchor="middle" fill="#9c8f6e">'+esc(d.label)+'</text>';
+    });
+    return '<div class="pk-card" style="padding:14px"><svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto">'+bars+labels+'</svg>'+
+      '<div style="display:flex;gap:16px;font-size:.76rem;margin-top:6px"><span style="color:#c98a2e">\u25a0 Created</span><span style="color:#2e9e6b">\u25a0 Completed</span></div></div>';
+  }
+
+  function _perfTable(rows,cols,barKey){
+    if(!rows.length) return '<div class="p-empty" style="padding:18px">No data yet.</div>';
+    var max=Math.max(1,Math.max.apply(null,rows.map(function(r){return r[barKey]||0;})));
+    var head='<tr>'+cols.map(function(c){return '<th style="text-align:left;padding:8px 10px;font-size:.74rem;color:#8a7d5c;text-transform:uppercase;letter-spacing:.04em">'+esc(c[0])+'</th>';}).join('')+'</tr>';
+    var body=rows.map(function(r){
+      return '<tr style="border-top:1px solid rgba(140,125,92,.14)">'+cols.map(function(c){
+        var v=r[c[1]]; if(c[2]==='pct') v=(v==null?'\u2014':v+'%');
+        if(c[1]===barKey){ var w=Math.round(((r[barKey]||0)/max)*100);
+          return '<td style="padding:8px 10px"><div style="display:flex;align-items:center;gap:8px"><span style="min-width:22px;font-weight:700">'+(v==null?0:v)+'</span><span style="flex:1;height:7px;background:rgba(230,173,78,.14);border-radius:4px;overflow:hidden;min-width:50px"><span style="display:block;height:100%;width:'+w+'%;background:#e6ad4e"></span></span></div></td>'; }
+        return '<td style="padding:8px 10px;font-size:.88rem">'+esc(v==null?'\u2014':v)+'</td>';
+      }).join('')+'</tr>';
+    }).join('');
+    return '<div class="pk-card" style="padding:6px 4px;overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+head+body+'</table></div>';
+  }
+
+  function _hbars(rows,labelKey,valKey){
+    if(!rows.length) return '<div class="p-empty" style="padding:18px">No data yet.</div>';
+    var max=Math.max(1,Math.max.apply(null,rows.map(function(r){return r[valKey]||0;})));
+    return '<div class="pk-card">'+rows.map(function(r){
+      var w=Math.round(((r[valKey]||0)/max)*100);
+      return '<div style="display:flex;align-items:center;gap:10px;margin:7px 0"><span style="min-width:120px;font-size:.85rem;font-weight:600">'+esc(r[labelKey])+'</span>'+
+        '<span style="flex:1;height:10px;background:rgba(230,173,78,.14);border-radius:5px;overflow:hidden"><span style="display:block;height:100%;width:'+w+'%;background:linear-gradient(90deg,#e6ad4e,#c98a2e)"></span></span>'+
+        '<span style="min-width:26px;text-align:right;font-weight:700;font-size:.85rem">'+(r[valKey]||0)+'</span></div>';
+    }).join('')+'</div>';
+  }
+
+  // --- task detail (placeholder modal for now; full detail + timeline next phase) ---
+  window.prodOpenTask=function(portal,id){
+    var d=P[portal]; var ep=(portal==='youtuber')?d.api+'/videos/'+id:d.api+'/tasks/'+id;
+    api(ep).then(function(t){
+      var tl=(t.timeline||[]).map(function(e){ return '<div style="display:flex;gap:12px;padding:8px 0;border-bottom:1px solid rgba(140,125,92,.14)"><div style="color:#8a7d5c;font-size:.76rem;min-width:120px">'+esc(e.at)+'</div><div style="font-size:.86rem"><b>'+esc(e.label)+'</b>'+(e.actor?' <span style="color:#8a7d5c">— '+esc(e.actor)+'</span>':'')+'</div></div>'; }).join('');
+      var g=t.graphics||{};
+      var body='<div style="margin-bottom:14px"><span class="pt-ref">'+esc(t.ref_code||'')+'</span> &nbsp; <span class="pt-stage">'+esc(t.lifecycle_label||'')+'</span></div>'+
+        '<div style="font-size:.9rem;line-height:1.7">'+
+        '<div><b>Creator:</b> '+esc(t.creator_badge||'')+'</div>'+
+        (t.subject?'<div><b>Subject:</b> '+esc(t.subject)+'</div>':'')+
+        (t.editor_name?'<div><b>Editor:</b> '+esc(t.editor_name)+'</div>':'')+
+        '<div><b>Next action:</b> '+esc(t.next_action||'')+'</div>'+
+        (t.deadline?'<div><b>Deadline:</b> '+esc(t.deadline)+'</div>':'')+
+        (g.status?'<div><b>Thumbnail:</b> '+esc(g.status)+'</div>':'')+
+        (t.youtube_url?'<div><b>YouTube:</b> <a href="'+esc(t.youtube_url)+'" target="_blank" style="color:#e6ad4e">Open</a>'+(t.yt_views!=null?' ('+t.yt_views+' views)':'')+'</div>':'')+
+        '</div>'+
+        (Array.isArray(t.attachments)&&t.attachments.length?'<div class="p-sec">Change Screenshots</div><div class="p-gallery">'+t.attachments.map(function(a){ return '<img src="'+esc(a.url)+'" onclick="prodLightbox(this.src)">'; }).join('')+'</div>':'')+
+        (tl?'<div class="p-sec">Timeline</div>'+tl:'');
+      _prodModal(esc(t.title||'Task'),body+_actions(portal,t));
+    }).catch(function(e){ toast((e&&e.message)||'Could not open task',true); });
+  };
+
+  // ---- action buttons per portal + lifecycle (backend enforces auth) ----
+  function _actions(portal,t){
+    var b=[]; var lc=t.lifecycle||''; var g=t.graphics||{};
+    if(portal==='editor'){
+      if(lc==='editor_assigned') b.push(_ab('Start Editing','prodAct(\'editor\','+t.id+',\'/start\')','primary'));
+      else if(lc==='editing'){ b.push(_ab('Pause','prodAct(\'editor\','+t.id+',\'/pause\')'));
+        b.push(_ab('Update Progress','prodProgForm('+t.id+')')); b.push(_ab('Complete Editing','prodAct(\'editor\','+t.id+',\'/complete\')','ok')); }
+      else if(lc==='editing_paused'){ b.push(_ab('Resume','prodAct(\'editor\','+t.id+',\'/resume\')','primary'));
+        b.push(_ab('Complete Editing','prodAct(\'editor\','+t.id+',\'/complete\')','ok')); }
+      else if(lc==='editing_done') b.push(_ab('Submit Edited Video','prodLinkForm(\'editor\','+t.id+',\'/submit\',\'edited_link\',\'Edited video Drive link\')','primary'));
+      else if(lc==='qc_changes') b.push(_ab('Submit Revised Video','prodLinkForm(\'editor\','+t.id+',\'/submit\',\'edited_link\',\'Revised video Drive link\')','primary'));
+    } else if(portal==='youtuber'){
+      if(lc==='creator_assigned'||lc==='creator_working'||lc==='changes_required')
+        b.push(_ab('Submit Video','prodLinkForm(\'youtuber\','+t.id+',\'/videos/'+t.id+'/submit\',\'drive_link\',\'Video Drive link\',true)','primary'));
+    } else if(portal==='graphics'){
+      if(g.status==='new'||g.status==='changes') b.push(_ab('Start Designing','prodAct(\'graphics\','+t.id+',\'/start\')','primary'));
+      else if(g.status==='in_progress') b.push(_ab('Submit Thumbnail','prodLinkForm(\'graphics\','+t.id+',\'/submit\',\'thumbnail_url\',\'Thumbnail image URL\')','primary'));
+    } else if(portal==='production'){
+      if(lc==='creator_submitted'||lc==='pm_review'){ b.push(_ab('Approve','prodAct(\'production\','+t.id+',\'/approve-creator\')','ok'));
+        b.push(_ab('Request Changes','prodRemarkForm(\'production\','+t.id+',\'/request-creator-changes\')'));
+        b.push(_ab('Reject','prodRemarkForm(\'production\','+t.id+',\'/reject-creator\')','danger')); }
+      if((lc==='approved'||lc==='editor_assigned'||lc==='editing'||lc==='editing_paused'||lc==='editing_done'||lc==='qc_pending'||lc==='qc_changes'||lc==='ready_for_youtube') && !t.editor_id)
+        b.push(_ab('Assign Editor','prodAssignForm('+t.id+',\'editor\')','primary'));
+      if((lc==='approved'||lc==='editor_assigned'||lc==='editing') && (!g.graphics_id))
+        b.push(_ab('Assign Graphics','prodAssignForm('+t.id+',\'graphics\')'));
+      if(g.status==='submitted'){ b.push(_ab('Approve Thumbnail','prodAct(\'production\','+t.id+',\'/thumbnail-approve\')','ok'));
+        b.push(_ab('Thumbnail Changes','prodRemarkForm(\'production\','+t.id+',\'/thumbnail-changes\')')); }
+      if(lc==='qc_pending'){ b.push(_ab('QC Approve','prodAct(\'production\','+t.id+',\'/qc-approve\')','ok'));
+        b.push(_ab('Request Edit Changes','prodRemarkForm(\'production\','+t.id+',\'/request-edit-changes\')')); }
+      if(lc==='ready_for_youtube') b.push(_ab('Add YouTube URL','prodLinkForm(\'production\','+t.id+',\'/youtube\',\'youtube_url\',\'Published YouTube URL\')','primary'));
+      if(lc==='uploaded') b.push(_ab('Mark Completed','prodAct(\'production\','+t.id+',\'/complete\')','ok'));
+    }
+    if(!b.length) return '';
+    return '<div class="p-acts" id="p-acts">'+b.join('')+'</div>';
+  }
+  function _ab(label,onclick,kind){ return '<button class="p-btn'+(kind?' p-btn-'+kind:'')+'" onclick="'+onclick+'">'+esc(label)+'</button>'; }
+
+  // ---- action executors (all refresh the current page on success) ----
+  function _refresh(portal){ var pg=(window._prodCurPage&&window._prodCurPage[portal])||'dashboard'; prodNav(portal,pg); }
+  window.prodAct=function(portal,id,ep,body){
+    var full=P[portal].api+((ep.indexOf('/tasks/')===0||ep.indexOf('/videos/')===0)?ep:('/tasks/'+id+ep));
+    // youtuber submit uses /videos/{id}/submit already absolute-ish handled in prodLinkForm
+    api(full,'POST',body||{}).then(function(){ var m=document.getElementById('prod-modal'); if(m)m.remove(); toast('Done'); _refresh(portal); })
+      .catch(function(e){ toast((e&&e.message)||'Action failed',true); });
+  };
+  function _actsBox(){ return document.getElementById('p-acts'); }
+  function _formWrap(inner,submitLabel,submitCall){
+    return inner+'<div style="display:flex;gap:9px;margin-top:12px"><button class="p-btn p-btn-primary" onclick="'+submitCall+'">'+esc(submitLabel)+'</button>'+
+      '<button class="p-btn" onclick="document.getElementById(\'prod-modal\').remove()">Cancel</button></div>';
+  }
+  window.prodLinkForm=function(portal,id,ep,field,label,isYt){
+    var box=_actsBox(); if(!box) return;
+    box.innerHTML=_formWrap('<div class="p-field"><label>'+esc(label)+'</label><input class="p-input" id="p-link-in" placeholder="https://..."></div>',
+      'Submit','prodLinkSubmit(\''+portal+'\','+id+',\''+ep+'\',\''+field+'\','+(isYt?'true':'false')+')');
+  };
+  window.prodLinkSubmit=function(portal,id,ep,field,isYt){
+    var v=(document.getElementById('p-link-in')||{}).value||''; v=v.trim();
+    if(!v){ toast('Please enter a link',true); return; }
+    var body={}; body[field]=v;
+    var full=isYt?(P[portal].api+ep):(P[portal].api+'/tasks/'+id+ep);
+    api(full,'POST',body).then(function(){ var m=document.getElementById('prod-modal'); if(m)m.remove(); toast('Submitted'); _refresh(portal); })
+      .catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  window.prodRemarkForm=function(portal,id,ep){
+    var box=_actsBox(); if(!box) return;
+    box.innerHTML=_formWrap('<div class="p-field"><label>Remarks (required)</label><textarea class="p-area" id="p-rem-in" placeholder="Explain what needs to change..."></textarea></div>'+
+      '<div class="p-field"><label>Screenshots (optional)</label><div class="p-drop" id="p-drop" onclick="document.getElementById(\'p-file\').click()">Paste (Ctrl+V), drop, or click to add screenshots</div>'+
+      '<input type="file" id="p-file" accept="image/*" multiple style="display:none" onchange="prodImgFiles(this.files)"><div class="p-thumbs" id="p-thumbs"></div></div>',
+      'Send','prodRemarkSubmit(\''+portal+'\','+id+',\''+ep+'\')');
+    prodImgInit();
+  };
+  window.prodRemarkSubmit=function(portal,id,ep){
+    var v=(document.getElementById('p-rem-in')||{}).value||''; v=v.trim();
+    if(!v){ toast('Remarks are required',true); return; }
+    var body={remarks:v}; if((window._prodImgs||[]).length) body.images=window._prodImgs.slice();
+    api(P[portal].api+'/tasks/'+id+ep,'POST',body).then(function(){ var m=document.getElementById('prod-modal'); if(m)m.remove(); toast('Sent'); _refresh(portal); })
+      .catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+
+  // ---- screenshot capture (paste / drop / file) ----
+  window._prodImgs=[];
+  window.prodImgInit=function(){
+    window._prodImgs=[]; var t=document.getElementById('p-thumbs'); if(t) t.innerHTML='';
+    var dz=document.getElementById('p-drop');
+    if(dz){
+      dz.addEventListener('dragover',function(e){ e.preventDefault(); dz.classList.add('drag'); });
+      dz.addEventListener('dragleave',function(){ dz.classList.remove('drag'); });
+      dz.addEventListener('drop',function(e){ e.preventDefault(); dz.classList.remove('drag'); prodImgFiles(e.dataTransfer&&e.dataTransfer.files); });
+    }
+    if(!window._prodPasteBound){ window._prodPasteBound=true;
+      document.addEventListener('paste',function(e){ if(!document.getElementById('p-drop')) return;
+        var items=(e.clipboardData&&e.clipboardData.items)||[];
+        for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ var f=items[i].getAsFile(); if(f) prodImgFiles([f]); } } });
+    }
+  };
+  window.prodImgFiles=function(files){
+    if(!files) return;
+    Array.prototype.slice.call(files).forEach(function(f){
+      if(!f.type||f.type.indexOf('image')!==0) return;
+      if((window._prodImgs||[]).length>=8){ toast('Up to 8 screenshots',true); return; }
+      var rd=new FileReader(); rd.onload=function(){ window._prodImgs.push(rd.result); _prodRenderThumbs(); }; rd.readAsDataURL(f);
+    });
+  };
+  function _prodRenderThumbs(){
+    var t=document.getElementById('p-thumbs'); if(!t) return;
+    t.innerHTML=(window._prodImgs||[]).map(function(src,i){ return '<div class="p-thumb"><img src="'+src+'"><button class="x" onclick="prodImgDel('+i+')">&times;</button></div>'; }).join('');
+  }
+  window.prodImgDel=function(i){ (window._prodImgs||[]).splice(i,1); _prodRenderThumbs(); };
+  window.prodLightbox=function(src){ var b=document.createElement('div'); b.className='p-lightbox'; b.innerHTML='<img src="'+src+'">'; b.onclick=function(){ b.remove(); }; document.body.appendChild(b); };
+  window.prodProgForm=function(id){
+    var box=_actsBox(); if(!box) return;
+    var btns=[10,25,40,50,75,90,100].map(function(p){ return '<button type="button" onclick="prodProgPick(this,'+p+')">'+p+'%</button>'; }).join('');
+    box.innerHTML=_formWrap('<div class="p-field"><label>Progress</label><div class="p-prog-btns" id="p-prog">'+btns+'</div></div>'+
+      '<div class="p-field"><label>Note (optional)</label><input class="p-input" id="p-prog-note" placeholder="e.g. graphics & subtitles remaining"></div>',
+      'Update','prodProgSubmit('+id+')');
+  };
+  window._prodProgVal=null;
+  window.prodProgPick=function(btn,p){ window._prodProgVal=p; var wrap=document.getElementById('p-prog'); if(wrap) wrap.querySelectorAll('button').forEach(function(b){ b.classList.toggle('on', b===btn); }); };
+  window.prodProgSubmit=function(id){
+    if(window._prodProgVal==null){ toast('Pick a progress %',true); return; }
+    api(P.editor.api+'/tasks/'+id+'/progress','POST',{progress:window._prodProgVal, remarks:(document.getElementById('p-prog-note')||{}).value||''})
+      .then(function(){ var m=document.getElementById('prod-modal'); if(m)m.remove(); toast('Progress updated'); _refresh('editor'); })
+      .catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  window.prodAssignForm=function(id,role){
+    var box=_actsBox(); if(!box) return;
+    box.innerHTML='<div class="p-load" style="padding:16px">Loading '+role+'s...</div>';
+    api(P.production.api+'/people?role='+role).then(function(r){
+      var list=r[role+'s']||[];
+      if(!list.length){ box.innerHTML='<div class="p-empty" style="padding:16px">No '+role+'s available. Create one from the Admin panel first.</div>'; return; }
+      var opts=list.map(function(m){ return '<option value="'+m.id+'">'+esc(m.name)+' ('+(m.recommended||5)+' recommended)</option>'; }).join('');
+      box.innerHTML=_formWrap('<div class="p-field"><label>Select '+role.charAt(0).toUpperCase()+role.slice(1)+'</label><select class="p-select" id="p-assign-sel">'+opts+'</select></div>',
+        'Assign','prodAssignSubmit('+id+',\''+role+'\')');
+    }).catch(function(e){ box.innerHTML='<div class="p-empty" style="padding:16px">Could not load. '+esc(e&&e.message||'')+'</div>'; });
+  };
+  window.prodAssignSubmit=function(id,role){
+    var v=(document.getElementById('p-assign-sel')||{}).value; if(!v){ toast('Pick one',true); return; }
+    var body={}; body[role+'_id']=parseInt(v,10);
+    api(P.production.api+'/tasks/'+id+'/assign-'+role,'POST',body).then(function(){ var m=document.getElementById('prod-modal'); if(m)m.remove(); toast(role+' assigned'); _refresh('production'); })
+      .catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+
+  // ---- PM: create new task ----
+  window.prodNewTask=function(){
+    _prodModal('New Production Task',
+      '<div class="p-field"><label>Creator Type</label><select class="p-select" id="nt-ctype" onchange="prodNtCreator()"><option value="teacher">Teacher</option><option value="youtuber">YouTuber</option></select></div>'+
+      '<div class="p-field"><label>Creator</label><select class="p-select" id="nt-creator"><option>Loading...</option></select></div>'+
+      '<div class="p-field"><label>Title</label><input class="p-input" id="nt-title" placeholder="Video title"></div>'+
+      '<div class="p-field"><label>Subject (optional)</label><input class="p-input" id="nt-subject" placeholder="e.g. Physics 12"></div>'+
+      '<div class="p-field"><label>Video Type (optional)</label><input class="p-input" id="nt-vtype" placeholder="e.g. One Shot"></div>'+
+      '<div class="p-field"><label>Deadline (optional)</label><input class="p-input" id="nt-deadline" type="datetime-local"></div>'+
+      '<div class="p-acts" id="p-acts"><button class="p-btn p-btn-primary" onclick="prodNtSubmit()">Create Task</button>'+
+      '<button class="p-btn" onclick="document.getElementById(\'prod-modal\').remove()">Cancel</button></div>');
+    prodNtCreator();
+  };
+  window.prodNtCreator=function(){
+    var ct=(document.getElementById('nt-ctype')||{}).value||'teacher';
+    var sel=document.getElementById('nt-creator'); if(!sel) return; sel.innerHTML='<option>Loading...</option>';
+    api(P.production.api+'/people?role='+ct).then(function(r){
+      var list=r[ct+'s']||[];
+      sel.innerHTML=list.length?list.map(function(m){ return '<option value="'+m.id+'">'+esc(m.name)+'</option>'; }).join(''):'<option value="">None found</option>';
+    }).catch(function(){ sel.innerHTML='<option value="">Could not load</option>'; });
+  };
+  window.prodNtSubmit=function(){
+    var ct=(document.getElementById('nt-ctype')||{}).value;
+    var creator=(document.getElementById('nt-creator')||{}).value;
+    var title=(document.getElementById('nt-title')||{}).value.trim();
+    if(!title){ toast('Title is required',true); return; }
+    if(!creator){ toast('Pick a creator',true); return; }
+    var body={title:title, creator_type:ct, subject:(document.getElementById('nt-subject')||{}).value.trim(),
+      video_type:(document.getElementById('nt-vtype')||{}).value.trim()};
+    if(ct==='teacher') body.teacher_id=parseInt(creator,10); else body.youtuber_id=parseInt(creator,10);
+    var dl=(document.getElementById('nt-deadline')||{}).value; if(dl) body.deadline=dl;
+    api(P.production.api+'/tasks','POST',body).then(function(){ var m=document.getElementById('prod-modal'); if(m)m.remove(); toast('Task created'); _refresh('production'); })
+      .catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+
+  function _prodModal(title,inner){
+    var old=document.getElementById('prod-modal'); if(old) old.remove();
+    var m=document.createElement('div'); m.id='prod-modal';
+    m.style.cssText='position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:18px';
+    var dark=document.body.classList.contains('dark');
+    m.innerHTML='<div style="background:'+(dark?'#1b1508':'#fff')+';color:'+(dark?'#eee6d4':'#2a2313')+';max-width:560px;width:100%;max-height:86vh;overflow-y:auto;border-radius:18px;padding:24px;box-shadow:0 24px 60px -12px rgba(0,0,0,.5)">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px"><div style="font-size:1.15rem;font-weight:800">'+title+'</div>'+
+      '<button onclick="document.getElementById(\'prod-modal\').remove()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:inherit;line-height:1">&times;</button></div>'+inner+'</div>';
+    m.addEventListener('click',function(e){ if(e.target===m) m.remove(); });
+    document.body.appendChild(m);
+  }
+})();
+
+/* =====================================================================
+ * ADMIN — Production Team management (YouTubers / Editors / Graphics / PMs)
+ * Nav item + page injected via JS (HTML shell untouched), mirroring the
+ * DPP Tracker pattern. Backend: /api/admin/production-users
+ * ===================================================================== */
+function _ape(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+var _AP_ROLES=[
+  {key:'production_manager',label:'Production Managers',one:'Production Manager'},
+  {key:'editor',label:'Editors',one:'Editor'},
+  {key:'graphics',label:'Graphics Team',one:'Graphics Member'},
+  {key:'youtuber',label:'YouTubers',one:'YouTuber'}
+];
+function _apRoleMeta(k){ for(var i=0;i<_AP_ROLES.length;i++) if(_AP_ROLES[i].key===k) return _AP_ROLES[i]; return {key:k,label:k,one:k}; }
+
+function initAdminProdTeam(){
+  var app=document.getElementById('admin-app'); if(!app) return;
+  if(!document.getElementById('aprod-css')){
+    var st=document.createElement('style'); st.id='aprod-css';
+    st.textContent=[
+      '#a-page-prodteam .ap-sec{margin:22px 0 10px;font-size:1rem;font-weight:800;display:flex;align-items:center;justify-content:space-between;gap:10px}',
+      '#a-page-prodteam .ap-add{padding:8px 14px;border-radius:9px;border:none;background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05;font-weight:700;cursor:pointer;font-size:.84rem}',
+      '#a-page-prodteam .ap-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px}',
+      '#a-page-prodteam .ap-card{border:1px solid var(--border,#e5ddcb);border-radius:14px;padding:15px;background:var(--card,#fff)}',
+      'body.dark #a-page-prodteam .ap-card{background:#1b1508;border-color:#2c2410}',
+      '#a-page-prodteam .ap-nm{font-weight:800;font-size:1rem}',
+      '#a-page-prodteam .ap-uid{font-family:ui-monospace,monospace;font-size:.8rem;color:#8a7d5c;margin-top:2px}',
+      '#a-page-prodteam .ap-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:11px}',
+      '#a-page-prodteam .ap-pill{font-size:.68rem;font-weight:700;padding:3px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em}',
+      '#a-page-prodteam .ap-on{background:rgba(46,158,107,.14);color:#2e9e6b}',
+      '#a-page-prodteam .ap-off{background:rgba(150,120,60,.16);color:#a07c34}',
+      '#a-page-prodteam .ap-appr{background:rgba(59,130,180,.14);color:#2f7fb0}',
+      '#a-page-prodteam .ap-btn{padding:7px 11px;border-radius:8px;border:1px solid var(--border,#ddd);background:transparent;cursor:pointer;font-size:.78rem;font-weight:600;color:inherit}',
+      '#a-page-prodteam .ap-btn:hover{background:rgba(230,173,78,.12)}',
+      '#a-page-prodteam .ap-pass{font-family:ui-monospace,monospace;font-size:.82rem;background:rgba(230,173,78,.12);padding:3px 8px;border-radius:6px}',
+      '.ap-modal{position:fixed;inset:0;z-index:210;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:18px}',
+      '.ap-box{background:#fff;color:#2a2313;max-width:460px;width:100%;max-height:88vh;overflow:auto;border-radius:18px;padding:22px;box-shadow:0 24px 60px -12px rgba(0,0,0,.5)}',
+      'body.dark .ap-box{background:#1b1508;color:#eee6d4}',
+      '.ap-fld{margin:11px 0}','.ap-fld label{display:block;font-size:.78rem;font-weight:600;color:#8a7d5c;margin-bottom:5px}',
+      '.ap-in,.ap-sel{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #d9cba8;background:#fff;color:#2a2313;font-size:.9rem;font-family:inherit}',
+      'body.dark .ap-in,body.dark .ap-sel{background:#241c0b;border-color:#3a2f14;color:#eee6d4}',
+      '.ap-cred{background:rgba(46,158,107,.1);border:1px solid rgba(46,158,107,.3);border-radius:12px;padding:14px;margin-top:6px;font-size:.9rem;line-height:1.7}'
+    ].join('');
+    document.head.appendChild(st);
+  }
+  var nav=app.querySelector('.sidebar-nav');
+  if(nav && !nav.querySelector('[onclick*="prodteam"]')){
+    var items=[].slice.call(nav.querySelectorAll('.nav-item'));
+    var anchor=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'admins'")>=0;})[0]
+             ||items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'teachers'")>=0;})[0];
+    var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"aPage('prodteam',this)");
+    d.innerHTML=(typeof ic==='function'?ic('users'):'')+'<span>Production Team</span>';
+    if(anchor){ anchor.parentNode.insertBefore(d, anchor.nextSibling); } else { nav.appendChild(d); }
+  }
+  var main=app.querySelector('.main');
+  if(main && !document.getElementById('a-page-prodteam')){
+    var pg=document.createElement('div'); pg.className='page'; pg.id='a-page-prodteam';
+    pg.innerHTML='<div id="a-prodteam-content"><div class="spinner"></div></div>';
+    main.appendChild(pg);
+  }
+}
+
+function loadAProductionTeam(){
+  var el=document.getElementById('a-prodteam-content'); if(!el) return;
+  try{ softSpin(el); }catch(e){ el.innerHTML='<div class="spinner"></div>'; }
+  api('/api/admin/production-users').then(function(list){
+    window._apUsers=Array.isArray(list)?list:[];
+    _renderAProdTeam();
+  }).catch(function(e){ el.innerHTML='<div style="padding:24px;color:#c1443a">Could not load production team. '+_ape(e&&e.message||'')+'</div>'; });
+}
+
+function _renderAProdTeam(){
+  var el=document.getElementById('a-prodteam-content'); if(!el) return;
+  var users=window._apUsers||[];
+  var html='<p style="color:#8a7d5c;font-size:.9rem;margin:4px 0 8px">Create and manage Editors, YouTubers, Graphics members and Production Managers. These accounts are separate from Teachers and never appear in academic performance.</p>';
+  _AP_ROLES.forEach(function(r){
+    var mine=users.filter(function(u){return u.role===r.key;});
+    html+='<div class="ap-sec"><span>'+_ape(r.label)+' ('+mine.length+')</span><button class="ap-add" onclick="apAdd(\''+r.key+'\')">Add '+_ape(r.one)+'</button></div>';
+    if(!mine.length){ html+='<div style="color:#9c8f6e;font-size:.86rem;padding:4px 2px 6px">None yet.</div>'; return; }
+    html+='<div class="ap-grid">'+mine.map(_apCard).join('')+'</div>';
+  });
+  el.innerHTML=html;
+}
+
+function _apCard(u){
+  var active=u.is_active!==false;
+  var extra='';
+  if(u.role==='youtuber') extra='<span class="ap-pill ap-appr">Approval '+(u.approval_required?'ON':'OFF')+'</span>';
+  else if(u.recommended_load!=null) extra='<span class="ap-pill ap-appr">Load '+u.recommended_load+'</span>';
+  var toggles='';
+  if(u.role==='youtuber') toggles='<button class="ap-btn" onclick="apToggleApproval('+u.id+','+(u.approval_required?'false':'true')+')">Approval '+(u.approval_required?'OFF':'ON')+'</button>';
+  return '<div class="ap-card">'+
+    '<div class="ap-nm">'+_ape(u.name)+'</div>'+
+    '<div class="ap-uid">'+_ape(u.user_id)+'</div>'+
+    '<div class="ap-row"><span class="ap-pill '+(active?'ap-on':'ap-off')+'">'+(active?'Active':'Inactive')+'</span>'+extra+'</div>'+
+    '<div class="ap-row"><span>Password:</span> <span class="ap-pass" id="ap-pw-'+u.id+'">'+(u.password?'\u2022\u2022\u2022\u2022\u2022\u2022':'\u2014')+'</span>'+
+      (u.password?'<button class="ap-btn" onclick="apShowPass('+u.id+')">Show</button>':'')+'</div>'+
+    '<div class="ap-row">'+
+      '<button class="ap-btn" onclick="apReset('+u.id+')">Reset Password</button>'+
+      toggles+
+      '<button class="ap-btn" onclick="apToggleActive('+u.id+','+(active?'false':'true')+')">'+(active?'Deactivate':'Activate')+'</button>'+
+    '</div></div>';
+}
+
+window.apShowPass=function(id){
+  var u=(window._apUsers||[]).filter(function(x){return x.id===id;})[0]; if(!u) return;
+  var el=document.getElementById('ap-pw-'+id); if(el) el.textContent=u.password||'\u2014';
+};
+window.apToggleActive=function(id,val){
+  api('/api/admin/production-users/'+id,'PATCH',{is_active:val}).then(function(){ toast('Updated'); loadAProductionTeam(); })
+    .catch(function(e){ toast((e&&e.message)||'Failed',true); });
+};
+window.apToggleApproval=function(id,val){
+  api('/api/admin/production-users/'+id,'PATCH',{approval_required:val}).then(function(){ toast('Approval mode updated'); loadAProductionTeam(); })
+    .catch(function(e){ toast((e&&e.message)||'Failed',true); });
+};
+window.apReset=function(id){
+  api('/api/admin/production-users/'+id+'/reset-password','POST',{}).then(function(r){
+    _apModalMsg('Password Reset','<div class="ap-cred"><div><b>User ID:</b> '+_ape(r.user_id)+'</div><div><b>New Password:</b> <span class="ap-pass">'+_ape(r.password)+'</span></div></div><p style="color:#8a7d5c;font-size:.84rem;margin-top:10px">Share these with the team member. They can log in at the matching portal URL.</p>');
+    loadAProductionTeam();
+  }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+};
+
+window.apAdd=function(role){
+  var meta=_apRoleMeta(role);
+  var roleFields='';
+  if(role==='youtuber') roleFields='<div class="ap-fld"><label>Default Approval Mode</label><select class="ap-sel" id="ap-approval"><option value="true">Approval Required (PM reviews videos)</option><option value="false">Approval Off (videos enter production directly)</option></select></div>';
+  else if(role==='editor'||role==='graphics') roleFields='<div class="ap-fld"><label>Recommended Workload (active tasks)</label><input class="ap-in" id="ap-load" type="number" value="5" min="1" max="30"></div>';
+  _apModal('Add '+_ape(meta.one),
+    '<div class="ap-fld"><label>Full Name</label><input class="ap-in" id="ap-name" placeholder="e.g. Rahul Sharma"></div>'+
+    '<div class="ap-fld"><label>Phone (optional)</label><input class="ap-in" id="ap-phone" placeholder="10-digit"></div>'+
+    roleFields+
+    '<div style="display:flex;gap:9px;margin-top:16px"><button class="ap-add" onclick="apAddSubmit(\''+role+'\')">Create Account</button>'+
+    '<button class="ap-btn" onclick="apClose()">Cancel</button></div>');
+};
+window.apAddSubmit=function(role){
+  var name=(document.getElementById('ap-name')||{}).value||''; name=name.trim();
+  if(!name){ toast('Name is required',true); return; }
+  var body={name:name, role:role, phone:((document.getElementById('ap-phone')||{}).value||'').trim()};
+  if(role==='youtuber') body.approval_required=((document.getElementById('ap-approval')||{}).value==='true');
+  if(role==='editor'||role==='graphics') body.recommended_load=parseInt((document.getElementById('ap-load')||{}).value||'5',10);
+  api('/api/admin/production-users','POST',body).then(function(r){
+    _apModalMsg('Account Created','<div class="ap-cred"><div><b>Name:</b> '+_ape(name)+'</div><div><b>User ID:</b> '+_ape(r.user_id)+'</div><div><b>Password:</b> <span class="ap-pass">'+_ape(r.password)+'</span></div></div><p style="color:#8a7d5c;font-size:.84rem;margin-top:10px">Share these credentials. They log in at the '+_ape(_apRoleMeta(role).one)+' portal.</p>');
+    loadAProductionTeam();
+  }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+};
+
+function _apModal(title,inner){
+  apClose();
+  var m=document.createElement('div'); m.className='ap-modal'; m.id='ap-modal';
+  m.innerHTML='<div class="ap-box"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div style="font-size:1.12rem;font-weight:800">'+title+'</div><button onclick="apClose()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:inherit;line-height:1">&times;</button></div>'+inner+'</div>';
+  m.addEventListener('click',function(e){ if(e.target===m) apClose(); });
+  document.body.appendChild(m);
+}
+function _apModalMsg(title,inner){ _apModal(title, inner+'<div style="margin-top:14px"><button class="ap-add" onclick="apClose()">Done</button></div>'); }
+window.apClose=function(){ var m=document.getElementById('ap-modal'); if(m) m.remove(); };
+
+/* =====================================================================
+ * ADMIN — Production Overview (read-only monitoring). Reuses the PM
+ * endpoints (admin is authorised via get_pm_or_admin). Nav+page injected.
+ * ===================================================================== */
+function initAdminProdMonitor(){
+  var app=document.getElementById('admin-app'); if(!app) return;
+  if(!document.getElementById('aprodmon-css')){
+    var st=document.createElement('style'); st.id='aprodmon-css';
+    st.textContent=[
+      '#a-page-prodmon .pm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin:8px 0 18px}',
+      '#a-page-prodmon .pm-card{border:1px solid var(--border,#e5ddcb);border-radius:14px;padding:15px;background:var(--card,#fff)}',
+      'body.dark #a-page-prodmon .pm-card{background:#1b1508;border-color:#2c2410}',
+      '#a-page-prodmon .pm-val{font-size:1.7rem;font-weight:800;line-height:1}',
+      '#a-page-prodmon .pm-val.warn{color:#d1443a}','#a-page-prodmon .pm-val.good{color:#2e9e6b}',
+      '#a-page-prodmon .pm-lbl{font-size:.74rem;color:#8a7d5c;margin-top:6px;font-weight:600}',
+      '#a-page-prodmon .pm-sec{font-weight:800;margin:20px 0 10px;font-size:.98rem}',
+      '#a-page-prodmon .pm-bot{display:inline-flex;gap:8px;align-items:center;background:rgba(209,68,58,.08);border:1px solid rgba(209,68,58,.28);color:#d1443a;border-radius:10px;padding:8px 14px;font-weight:700;font-size:.86rem}',
+      '#a-page-prodmon .pm-row{display:flex;align-items:center;gap:12px;border:1px solid var(--border,#e5ddcb);border-radius:11px;padding:11px 14px;margin-bottom:8px}',
+      'body.dark #a-page-prodmon .pm-row{border-color:#2c2410}',
+      '#a-page-prodmon .pm-row .t{flex:1;min-width:0}',
+      '#a-page-prodmon .pm-row .nm{font-weight:700;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      '#a-page-prodmon .pm-row .mt{font-size:.74rem;color:#8a7d5c;font-family:ui-monospace,monospace}',
+      '#a-page-prodmon .pm-stage{font-size:.72rem;font-weight:700;padding:4px 11px;border-radius:999px;background:rgba(230,173,78,.16);color:#a9791f;white-space:nowrap}',
+      '#a-page-prodmon .pm-load{display:inline-block;font-size:.72rem;font-weight:700;padding:4px 10px;border-radius:999px}',
+      '#a-page-prodmon .pm-load.over{background:rgba(209,68,58,.14);color:#d1443a}',
+      '#a-page-prodmon .pm-load.ok{background:rgba(46,158,107,.12);color:#2e9e6b}'
+    ].join('');
+    document.head.appendChild(st);
+  }
+  var nav=app.querySelector('.sidebar-nav');
+  if(nav && !nav.querySelector('[onclick*="prodmon"]')){
+    var items=[].slice.call(nav.querySelectorAll('.nav-item'));
+    var anchor=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'prodteam'")>=0;})[0];
+    var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"aPage('prodmon',this)");
+    d.innerHTML=(typeof ic==='function'?ic('chart'):'')+'<span>Production Overview</span>';
+    if(anchor){ anchor.parentNode.insertBefore(d, anchor); } else { nav.appendChild(d); }
+  }
+  var main=app.querySelector('.main');
+  if(main && !document.getElementById('a-page-prodmon')){
+    var pg=document.createElement('div'); pg.className='page'; pg.id='a-page-prodmon';
+    pg.innerHTML='<div id="a-prodmon-content"><div class="spinner"></div></div>';
+    main.appendChild(pg);
+  }
+}
+
+function loadAProdMonitor(){
+  var el=document.getElementById('a-prodmon-content'); if(!el) return;
+  try{ softSpin(el); }catch(e){ el.innerHTML='<div class="spinner"></div>'; }
+  Promise.all([
+    api('/api/production/dashboard').catch(function(){return {};}),
+    api('/api/production/team').catch(function(){return {};}),
+    api('/api/production/tasks?size=12').catch(function(){return {};})
+  ]).then(function(res){
+    var dash=res[0]||{}, team=res[1]||{}, tasks=(res[2]&&res[2].tasks)||[];
+    var k=dash.kpis||{}; var s=dash.secondary||{};
+    var cards=[['Active',k.active],['Teacher Pending',k.teacher_pending],['YouTuber Pending',k.youtuber_pending],
+      ['PM Review',k.pm_review],['Editing',k.editing],['Graphics',k.graphics],['QC Pending',k.qc_pending],
+      ['Ready for YouTube',k.ready_for_youtube],['Due Today',k.due_today],['Overdue',k.overdue,'warn']];
+    var html='';
+    if(dash.bottleneck&&dash.bottleneck!=='None') html+='<div class="pm-bot">Current bottleneck: '+_ape(dash.bottleneck)+'</div>';
+    html+='<div class="pm-grid">'+cards.map(function(c){ return '<div class="pm-card"><div class="pm-val '+(c[2]||'')+'">'+(c[1]==null?0:c[1])+'</div><div class="pm-lbl">'+c[0]+'</div></div>'; }).join('')+'</div>';
+    // team workload
+    function trow(m){ var over=(m.active||0)>(m.recommended||m.recommended_load||5);
+      return '<div class="pm-row"><div class="t"><div class="nm">'+_ape(m.name||'')+'</div></div><span class="pm-load '+(over?'over':'ok')+'">'+(m.active||0)+' / '+(m.recommended||m.recommended_load||5)+'</span></div>'; }
+    if((team.editors||[]).length){ html+='<div class="pm-sec">Editors</div>'+team.editors.map(trow).join(''); }
+    if((team.graphics||[]).length){ html+='<div class="pm-sec">Graphics</div>'+team.graphics.map(trow).join(''); }
+    // recent tasks
+    html+='<div class="pm-sec">Recent Tasks</div>';
+    html+=tasks.length?tasks.map(function(t){
+      var badge=(t.creator_type==='youtuber')?'YouTuber':'Teacher';
+      return '<div class="pm-row"><div class="t"><div class="nm">'+_ape(t.title||'Untitled')+'</div><div class="mt">'+_ape(t.ref_code||'')+' \u00b7 '+_ape(t.creator_name||badge)+'</div></div><span class="pm-stage">'+_ape(t.next_action||t.lifecycle_label||'')+'</span></div>';
+    }).join(''):'<div style="color:#9c8f6e;padding:10px">No tasks yet.</div>';
+    html+='<p style="color:#8a7d5c;font-size:.82rem;margin-top:16px">This is a read-only overview. Day-to-day production is managed by the Production Manager in their dedicated portal.</p>';
+    el.innerHTML=html;
+  }).catch(function(e){ el.innerHTML='<div style="padding:24px;color:#c1443a">Could not load production overview. '+_ape(e&&e.message||'')+'</div>'; });
+}

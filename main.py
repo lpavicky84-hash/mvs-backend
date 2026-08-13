@@ -13,6 +13,11 @@ import student_routes
 import ext_materials
 import syllabus_routes
 import video_tasks
+# Production ecosystem (v-prod)
+import production_routes
+import editor_routes
+import youtuber_routes
+import graphics_routes
 
 load_dotenv()
 
@@ -151,6 +156,28 @@ def ensure_columns():
         "ALTER TABLE payout_access ADD COLUMN webauthn_creds TEXT",
         "ALTER TABLE payout_access ADD COLUMN reg_challenge VARCHAR(255)",
         "ALTER TABLE payout_access ADD COLUMN auth_challenge VARCHAR(255)",
+        # ---- Production ecosystem (v-prod) ----
+        # Extend the users.role ENUM to allow the new production roles (keeps existing values).
+        "ALTER TABLE users MODIFY COLUMN role ENUM('admin','teacher','student','production_manager','editor','youtuber','graphics') NOT NULL",
+        # New VideoTask lifecycle / creator columns (new tables are auto-created by create_all).
+        "ALTER TABLE video_tasks ADD COLUMN ref_code VARCHAR(30) DEFAULT ''",
+        "ALTER TABLE video_tasks ADD COLUMN creator_type VARCHAR(20) DEFAULT 'teacher'",
+        "ALTER TABLE video_tasks ADD COLUMN youtuber_id INTEGER NULL",
+        "ALTER TABLE video_tasks ADD COLUMN approval_required BOOLEAN NULL",
+        "ALTER TABLE video_tasks ADD COLUMN lifecycle VARCHAR(30) DEFAULT ''",
+        "ALTER TABLE video_tasks ADD COLUMN priority VARCHAR(10) DEFAULT 'normal'",
+        "ALTER TABLE video_tasks ADD COLUMN editor_id INTEGER NULL",
+        "ALTER TABLE video_tasks ADD COLUMN graphics_id INTEGER NULL",
+        "ALTER TABLE video_tasks ADD COLUMN editing_progress INTEGER DEFAULT 0",
+        "ALTER TABLE video_tasks ADD COLUMN editing_started_at DATETIME NULL",
+        "ALTER TABLE video_tasks ADD COLUMN editing_done_at DATETIME NULL",
+        "ALTER TABLE video_tasks ADD COLUMN editing_seconds INTEGER DEFAULT 0",
+        "ALTER TABLE video_tasks ADD COLUMN edited_link VARCHAR(600) DEFAULT ''",
+        "ALTER TABLE video_tasks ADD COLUMN qc_status VARCHAR(20) DEFAULT ''",
+        "ALTER TABLE video_tasks ADD COLUMN revision_count INTEGER DEFAULT 0",
+        "ALTER TABLE video_tasks ADD COLUMN on_hold BOOLEAN DEFAULT 0",
+        "ALTER TABLE video_tasks ADD COLUMN cancelled BOOLEAN DEFAULT 0",
+        "ALTER TABLE video_tasks ADD COLUMN published_at DATETIME NULL",
     ]
     for s in stmts:
         try:
@@ -479,6 +506,10 @@ app.include_router(student_routes.router)
 app.include_router(ext_materials.router)
 app.include_router(syllabus_routes.router)
 app.include_router(video_tasks.router)
+app.include_router(production_routes.router)
+app.include_router(editor_routes.router)
+app.include_router(youtuber_routes.router)
+app.include_router(graphics_routes.router)
 
 # ===== ROOT =====
 # ===== ROOT: serve the portal =====
@@ -1008,6 +1039,10 @@ def portal():
 # (app.mvsfoundation.in) hi rehta hai — uska flow bilkul waisa ka waisa (approved template).
 @app.get("/teacher")
 @app.get("/admin")
+@app.get("/production")
+@app.get("/editor")
+@app.get("/youtuber")
+@app.get("/graphics")
 def portal_entry():
     if os.path.exists(_PORTAL_FILE):
         return FileResponse(_PORTAL_FILE, media_type="text/html")
