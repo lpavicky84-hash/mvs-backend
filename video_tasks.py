@@ -1240,6 +1240,7 @@ def vt_assign(payload: dict = Body(...), db: Session = Depends(get_db), _=Depend
             teacher_id=tid, title=title,
             channel_id=ch.id if ch else None,
             channel_name=ch.name if ch else "",
+            subject=(payload.get("subject") or "").strip(),
             video_type=(payload.get("video_type") or "").strip(),
             thumbnail_b64=_checked_b64(payload),
             thumbnail_link=(payload.get("thumbnail_link") or "").strip(),
@@ -1613,6 +1614,8 @@ def vt_approve_proposal(task_id: int, payload: dict = Body(...),
             t.remarks = payload["remarks"].strip()
         if payload.get("video_type") is not None:
             t.video_type = (payload.get("video_type") or "").strip()
+        if (payload.get("subject") or "").strip():
+            t.subject = payload["subject"].strip()   # admin ne approval par subject chuna to override, warna proposal ka subject rahe
         if ch:
             t.channel_id = ch.id
             t.channel_name = ch.name

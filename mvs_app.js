@@ -8741,6 +8741,9 @@ async function openVTAssign(proposalId){
   const dlPrefill=(pre&&pre.expected_deadline)?pre.expected_deadline:((pre&&pre.deadline)?pre.deadline:dlVal);
   const preStream=(pre&&pre.streaming)||'';
   const taskForm=`<div class="form-grid vt-form">
+      <div class="form-group"><label>Subject <span style="font-weight:600;color:var(--text-muted)">(optional — auto-picks the teacher)</span></label><select id="vt-f-subject" class="input" onchange="vtfSubjectChange()"><option value="">— Loading subjects… —</option></select></div>
+      <div class="form-group"><label>Class</label><select id="vt-f-class" class="input" onchange="vtfSubjectChange()"><option value="">— Auto from subject —</option><option value="10">Class 10</option><option value="12">Class 12</option></select></div>
+      <div id="vt-f-autot" class="vtp-auto" style="grid-column:1/-1;display:none"></div>
       <div class="form-group" style="grid-column:1/-1"><label>Collaborate with others?</label>
         <select id="vt-f-collab-on" class="input" onchange="_vtCollabMode('vtf',this.value)">
           <option value="no" selected>No — single teacher</option>
@@ -8781,11 +8784,13 @@ async function openVTAssign(proposalId){
         `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="vtaw-save" onclick="vtAwSaveProposal(${proposalId||0})">${ic('check')} Approve &amp; Assign Project</button>`);
       window._vtAwTab='proj';
       vtpLoadSubjects();
+      vtfLoadSubjects();
       _vtPrefillProject(pre);
       return;
     }
     showModal('Approve Proposal & Assign',taskForm,
       `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="vtAssignSave(${proposalId||0})">${ic('check')} Approve & Assign</button>`);
+    vtfLoadSubjects();
     return;
   }
   showModal('Assign Work',`
@@ -8796,6 +8801,8 @@ async function openVTAssign(proposalId){
     <div id="vtaw-b-task">${taskForm}</div>
     <div id="vtaw-b-proj" style="display:none">${_vtProjectForm()}</div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="vtaw-save" onclick="vtAwSave()">${ic('check')} Assign Task</button>`);
+  window._vtAwTab='task';   // fresh open par hamesha Task tab — warna pichli baar ka 'proj' stale reh jaata tha (galat validation)
+  vtfLoadSubjects();
   vtpLoadSubjects();
 }
 function vtAwTab(k){
@@ -8858,6 +8865,37 @@ async function vtpLoadSubjects(){
     const grp=(lv,lbl)=>`<optgroup label="${lbl}">${(d[lv]||[]).map(x=>`<option value="${esc(x.name)}" data-level="${lv}">${esc(x.name)}</option>`).join('')}</optgroup>`;
     sel.innerHTML=`<option value="">— Select subject —</option>`+grp('12','Class 12')+grp('10','Class 10');
   }catch(e){ sel.innerHTML=`<option value="">— Could not load subjects —</option>`; }
+}
+// ---- Task Assign form: subject dropdown + auto teacher fetch ----
+async function vtfLoadSubjects(){
+  const sel=document.getElementById('vt-f-subject'); if(!sel) return;
+  try{
+    const d=window._vtpSubs||await api('/api/admin/subjects');
+    window._vtpSubs=d;
+    const grp=(lv,lbl)=>`<optgroup label="${lbl}">${(d[lv]||[]).map(x=>`<option value="${esc(x.name)}" data-level="${lv}">${esc(x.name)}</option>`).join('')}</optgroup>`;
+    sel.innerHTML=`<option value="">— No subject (standalone video) —</option>`+grp('12','Class 12')+grp('10','Class 10');
+  }catch(e){ sel.innerHTML=`<option value="">— Could not load subjects —</option>`; }
+}
+async function vtfSubjectChange(){
+  const sel=document.getElementById('vt-f-subject'), cls=document.getElementById('vt-f-class'), box=document.getElementById('vt-f-autot');
+  if(!sel||!box) return;
+  const opt=sel.options[sel.selectedIndex];
+  if(opt&&opt.dataset&&opt.dataset.level&&cls) cls.value=opt.dataset.level;  // subject ka class auto
+  const subject=sel.value, level=(cls||{}).value||'';
+  if(!subject){ box.style.display='none'; return; }
+  box.style.display=''; box.className='vtp-auto'; box.textContent='Fetching teacher…';
+  try{
+    const r=await api('/api/admin/video-tasks/subject-teachers?subject='+encodeURIComponent(subject)+(level?'&class_level='+level:''));
+    const ts=r.teachers||[];
+    const tsel=document.getElementById('vt-f-teacher');
+    if(ts.length){
+      // pehle matching teacher ko teacher dropdown me select karo (override allowed)
+      if(tsel){ const want=String(ts[0].profile_id); if([...tsel.options].some(o=>o.value===want)) tsel.value=want; }
+      box.className='vtp-auto ok'; box.textContent='Teacher auto-selected: '+ts.map(t=>t.name+(t.level?' (Class '+t.level+')':'')).join(', ')+' — you can override it below';
+    }else{
+      box.className='vtp-auto warn'; box.textContent='No active teacher found for this subject'+(level?' + class':'')+' — please pick the teacher manually below';
+    }
+  }catch(e){ box.className='vtp-auto warn'; box.textContent='Could not fetch the teacher — please select manually'; }
 }
 async function vtpSubjectChange(){
   const sel=document.getElementById('vtp-subject'), cls=document.getElementById('vtp-class'), box=document.getElementById('vtp-autot');
@@ -8994,6 +9032,8 @@ async function vtAssignSave(proposalId){
   if(!teacher_id||!title){ toast('Teacher and title are required'); return; }
   if(!deadline){ toast('Please set a deadline'); return; }
   const payload={teacher_id,title,channel_id,deadline,collab_teacher_ids,
+    subject:(document.getElementById('vt-f-subject')||{}).value||'',
+    class_level:(document.getElementById('vt-f-class')||{}).value||'',
     video_type:(document.getElementById('vt-f-type')||{}).value||'',
     streaming:(document.getElementById('vt-f-stream')||{}).value||'',
     thumbnail_b64:window._vtThumbB64||null,
