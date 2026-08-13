@@ -18945,8 +18945,10 @@ function initAdminProdTeam(){
   var nav=app.querySelector('.sidebar-nav');
   if(nav && !nav.querySelector('[onclick*="prodteam"]')){
     var items=[].slice.call(nav.querySelectorAll('.nav-item'));
-    var anchor=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'admins'")>=0;})[0]
-             ||items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'teachers'")>=0;})[0];
+    // Place under the existing PRODUCTION group (after "Urgent Videos" -> else "Task Manager").
+    var anchor=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'urgent'")>=0;})[0]
+             ||items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'vtasks'")>=0;})[0]
+             ||items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'admins'")>=0;})[0];
     var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"aPage('prodteam',this)");
     d.innerHTML=(typeof ic==='function'?ic('users'):'')+'<span>Production Team</span>';
     if(anchor){ anchor.parentNode.insertBefore(d, anchor.nextSibling); } else { nav.appendChild(d); }
@@ -19089,7 +19091,12 @@ function initAdminProdMonitor(){
     var anchor=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'prodteam'")>=0;})[0];
     var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"aPage('prodmon',this)");
     d.innerHTML=(typeof ic==='function'?ic('chart'):'')+'<span>Production Overview</span>';
-    if(anchor){ anchor.parentNode.insertBefore(d, anchor); } else { nav.appendChild(d); }
+    if(anchor){ anchor.parentNode.insertBefore(d, anchor); }
+    else {
+      var uv=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'urgent'")>=0;})[0]
+           ||items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'vtasks'")>=0;})[0];
+      if(uv){ uv.parentNode.insertBefore(d, uv.nextSibling); } else { nav.appendChild(d); }
+    }
   }
   var main=app.querySelector('.main');
   if(main && !document.getElementById('a-page-prodmon')){
