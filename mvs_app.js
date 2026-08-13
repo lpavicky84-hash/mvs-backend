@@ -7136,11 +7136,17 @@ function tRenderDoubts(){
   el.innerHTML=html;
   loadDoubtThumbs(el);   // v69 — image attachments ke inline previews
   _dbtLoadAvas('teacher');   // v112 — thread me teacher photos
-  // KaTeX math render ($..$) — DPP questions ke formulas sahi dikhenge
-  list.forEach(d=>{
-    const q=document.getElementById(`tdq-${d.id}`); if(q) renderMath(q);
-    const a=document.getElementById(`tda-${d.id}`); if(a) renderMath(a);
-  });
+  // KaTeX math render ($..$) — CHUNKED taaki main thread freeze na ho. Math jaise subjects me
+  // 30-50 doubts × (question+answer) ek saath render karne se page "unresponsive" ho jaata tha.
+  const _mEls=[];
+  list.forEach(d=>{ const q=document.getElementById('tdq-'+d.id); if(q) _mEls.push(q);
+                    const a=document.getElementById('tda-'+d.id); if(a) _mEls.push(a); });
+  let _mi=0;
+  (function _mChunk(){
+    const end=Math.min(_mi+5,_mEls.length);
+    for(;_mi<end;_mi++){ try{ renderMath(_mEls[_mi]); }catch(e){} }
+    if(_mi<_mEls.length) (window.requestAnimationFrame||setTimeout)(_mChunk,0);
+  })();
 }
 function tPickDoubtSub(sub){ _tdSub=sub; tRenderDoubts(); }
 async function tDelDoubtAnswer(id){
