@@ -1616,6 +1616,20 @@ def vt_approve_proposal(task_id: int, payload: dict = Body(...),
             t.video_type = (payload.get("video_type") or "").strip()
         if (payload.get("subject") or "").strip():
             t.subject = payload["subject"].strip()   # admin ne approval par subject chuna to override, warna proposal ka subject rahe
+        # collab carry-forward: agar payload me teachers aaye to set karo, warna proposal
+        # par jo the wahi rahein (admin ko dobara select na karna pade).
+        import json as _json_ap
+        _ap_collab = []
+        for x in (payload.get("collab_teacher_ids") or []):
+            try:
+                xi = int(x)
+            except Exception:
+                continue
+            if xi and xi != t.teacher_id and xi not in _ap_collab:
+                _ap_collab.append(xi)
+        if _ap_collab:
+            try: t.collab_teacher_ids = _json_ap.dumps(_ap_collab)
+            except Exception: pass
         if ch:
             t.channel_id = ch.id
             t.channel_name = ch.name
@@ -1629,6 +1643,17 @@ def vt_approve_proposal(task_id: int, payload: dict = Body(...),
                        f'Your video proposal "{t.title}" has been approved. '
                        f'Deadline: {dl.strftime("%d %b %Y, %I:%M %p")}. '
                        f'Thumbnail and details are available in My Tasks.')
+        # collab teachers ko bhi batao — unke My Tasks me ye video aa jaayega
+        try:
+            _ap_ids = _json_ap.loads(t.collab_teacher_ids) if getattr(t, "collab_teacher_ids", "") else []
+        except Exception:
+            _ap_ids = []
+        for _cid in _ap_ids:
+            _ctp = _teacher_profile(db, _cid)
+            if _ctp and _ctp.user_id and _ctp.user_id != (tp.user_id if tp else None):
+                _vt_notify(db, _ctp.user_id, "🎬 Collab Video Task",
+                           f'You are a collaborator on the approved video "{t.title}". '
+                           f'Deadline: {dl.strftime("%d %b %Y, %I:%M %p")}. Check My Tasks.')
         db.commit()
     except HTTPException:
         raise
@@ -2275,6 +2300,23 @@ def vt_propose(payload: dict = Body(...), db: Session = Depends(get_db),
             req += "\nSubject: " + subj_label
     else:
         req = "Requested: TASK — single video"
+        if subj_label:
+            req += "\nSubject: " + subj_label
+    # collab (multiple teachers) — teacher doosre teachers ke saath propose kar sakta hai.
+    # Proposal par hi store; approve hone par task inhi teachers ko dikhega (dobara set nahi karna padta).
+    import json as _json_p
+    _collab_p = []
+    for x in (payload.get("collab_teacher_ids") or []):
+        try:
+            xi = int(x)
+        except Exception:
+            continue
+        if xi and xi != tp.id and xi not in _collab_p:
+            _tt = db.query(TeacherProfile).filter(TeacherProfile.id == xi).first()
+            if _tt:
+                _collab_p.append(xi)
+    if _collab_p:
+        req += "\nCollab with %d more teacher(s)" % len(_collab_p)
     t = VideoTask(teacher_id=tp.id, title=title,
                   channel_id=ch.id if ch else None,
                   channel_name=ch.name if ch else "",
@@ -2286,6 +2328,9 @@ def vt_propose(payload: dict = Body(...), db: Session = Depends(get_db),
                   remarks=req, subject=subj_store,
                   deadline=_parse_deadline(payload.get("expected_deadline")),
                   status="proposal", proposed_by="teacher", proposal_ok="pending")
+    if _collab_p:
+        try: t.collab_teacher_ids = _json_p.dumps(_collab_p)
+        except Exception: pass
     db.add(t)
     _hist_add(t, "proposal", "Proposed by teacher")
     uname = db.query(User).filter(User.id == tp.user_id).first()

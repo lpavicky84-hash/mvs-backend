@@ -7631,6 +7631,15 @@ async function openTVTPropose(){
           <button type="button" class="vtaw-tab on" id="tvtp-t-task" onclick="tvtPKind('task')">${ic('play')} Single Video</button>
           <button type="button" class="vtaw-tab" id="tvtp-t-proj" onclick="tvtPKind('project')">${ic('clipboard')} Project</button>
         </div></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Collaborate with others?</label>
+        <select id="tvt-p-collab-on" class="input" onchange="_tvtCollabMode(this.value)">
+          <option value="no" selected>No — just me</option>
+          <option value="yes">Yes — collaborate with other teachers</option>
+        </select></div>
+      <div class="form-group" id="tvt-p-collab-wrap" style="grid-column:1/-1;display:none"><label>Collaborating teachers (each is verified separately)</label>
+        <div class="ms-box" onclick="_msToggle('tvtc')"><span id="tvtc-ms-lbl" class="ms-ph">Select teachers…</span><span class="ms-arw">\u25be</span></div>
+        <div class="ms-panel" id="tvtc-ms-panel"><label style="color:var(--text-muted)">Loading teachers…</label></div>
+        <div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">You are the primary. Selected teachers collaborate on this video and are verified separately.</div></div>
       <div class="form-group" id="tvt-p-scope-wrap" style="grid-column:1/-1;display:none"><label>Project scope</label>
         <select id="tvt-p-scope" class="input" onchange="tvtScopeToggle()">
           <option value="chapter">Complete chapter — from my timetable (manager assigns the videos)</option>
@@ -7642,9 +7651,9 @@ async function openTVTPropose(){
           <button type="button" class="btn btn-ghost btn-sm" onclick="tvtPItemAdd()" style="margin-top:4px">${ic('plus')} Add video</button>
         </div>
       </div>
-      <div class="form-group" id="tvt-p-subj-wrap" style="grid-column:1/-1;display:none"><label>Subject &amp; Class (for the project)</label>
+      <div class="form-group" id="tvt-p-subj-wrap" style="grid-column:1/-1"><label>Subject &amp; Class <span style="font-weight:600;color:var(--text-muted)">(so the manager does not re-enter it)</span></label>
         <select id="tvt-p-subject" class="input"><option value="">— Select your subject —</option></select>
-        <div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">Which subject and class this project is for, so the manager gets the correct chapters from your timetable.</div>
+        <div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">Which subject and class this video is for. For a project, this also fetches the correct chapters from your timetable.</div>
       </div>
       <div class="form-group" style="grid-column:1/-1"><label>Title</label><input id="tvt-p-title" class="input" placeholder="e.g. Probability Short Tricks — NIOS Special"></div>
       <div class="form-group"><label>Streaming</label><select id="tvt-p-stream" class="input" onchange="_vtFilterTypes('tvt-p-stream','tvt-p-type',window._vtTypesT)"><option value="">— Select —</option><option value="recorded">Recorded</option><option value="live">Live</option></select></div>
@@ -7662,6 +7671,7 @@ async function openTVTPropose(){
     <p style="font-size:.74rem;color:var(--text-muted)">Your proposal goes to the production manager. Once approved, you will get the thumbnail and deadline here.</p>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="tvtProposeSave()">${ic('send')} Send for Approval</button>`);
   tvtLoadMySubjects();
+  tvtLoadColleagues();
 }
 async function tvtLoadMySubjects(){
   const sel=document.getElementById('tvt-p-subject'); if(!sel) return;
@@ -7836,8 +7846,18 @@ function tvtPKind(k){
   if(tk) tk.classList.toggle('on',k==='task');
   if(pj) pj.classList.toggle('on',k==='project');
   const sw=document.getElementById('tvt-p-scope-wrap'); if(sw) sw.style.display=(k==='project')?'block':'none';
-  const subw=document.getElementById('tvt-p-subj-wrap'); if(subw) subw.style.display=(k==='project')?'block':'none';
   if(k==='project') tvtScopeToggle();
+}
+function _tvtCollabMode(v){
+  const w=document.getElementById('tvt-p-collab-wrap'); if(w) w.style.display=(v==='yes')?'block':'none';
+}
+async function tvtLoadColleagues(){
+  const panel=document.getElementById('tvtc-ms-panel'); if(!panel) return;
+  let list=window._tvtColleagues;
+  if(!list){ try{ const r=await api('/api/teacher/doubts-assign-targets'); list=r.teachers||[]; window._tvtColleagues=list; }catch(e){ list=[]; } }
+  panel.innerHTML=list.length
+    ? list.map(t=>`<label><input type="checkbox" class="tvtc-ms-cb" value="${t.id}" onchange="_msUpd('tvtc')"> ${esc(t.name)}</label>`).join('')
+    : '<label style="color:var(--text-muted)">No other teachers available</label>';
 }
 async function tvtProposeSave(){
   const title=document.getElementById('tvt-p-title').value.trim();
@@ -7850,10 +7870,17 @@ async function tvtProposeSave(){
     expected_deadline:val('tvt-p-deadline')||'',
     reference:document.getElementById('tvt-p-ref').value.trim(),
     thumbnail_b64:window._vtThumbB64||null };
+  // Subject & class — ab single video + project dono ke liye (admin ko dobara na bharna pade)
+  const sv=val('tvt-p-subject')||'';
+  if(sv){ const i=sv.indexOf('||'); body.subject=(i<0?sv:sv.slice(0,i)).trim(); body.class_level=(i<0?'':sv.slice(i+2)).trim(); }
+  // Collab — teacher doosre teachers ke saath propose kar sakta hai
+  if((document.getElementById('tvt-p-collab-on')||{}).value==='yes'){
+    const ids=_msGet('tvtc');
+    if(!ids.length){ toast('Select at least one teacher to collaborate with'); return; }
+    body.collab_teacher_ids=ids;
+  }
   if(ptype==='project'){
     body.project_scope=val('tvt-p-scope')||'chapter';
-    const sv=val('tvt-p-subject')||'';
-    if(sv){ const i=sv.indexOf('||'); body.subject=(i<0?sv:sv.slice(0,i)).trim(); body.class_level=(i<0?'':sv.slice(i+2)).trim(); }
     if(body.project_scope==='chapter' && !body.subject){ toast('Please select the subject and class for this project'); return; }
     if(body.project_scope==='videos'){
       const items=[...document.querySelectorAll('#tvt-p-items .tvt-p-itm')].map(i=>i.value.trim()).filter(Boolean);
@@ -8416,7 +8443,7 @@ async function loadAVTasks(fromCache){
     window._avtMap={}; (list.tasks||[]).forEach(t=>window._avtMap[t.id]=t); (list.proposals||[]).forEach(t=>window._avtMap[t.id]=t); (list.urgent||[]).forEach(t=>window._avtMap[t.id]=t); _setUrgentBadge((list.urgent||[]).filter(u=>u.status!=='uploaded').length);
     window._avtSpec=(spec&&spec.one_shot)?spec:null;
     if(window._avtSpec){ (spec.one_shot.tasks||[]).forEach(t=>window._avtMap[t.id]=t); ((spec.rapid_revision||{}).tasks||[]).forEach(t=>window._avtMap[t.id]=t); ((spec.project||{}).tasks||[]).forEach(t=>window._avtMap[t.id]=t); }
-    _vtTeachers=(Array.isArray(ts)?ts:(ts.teachers||[])).map(t=>({pid:t.profile_id,name:t.name}));
+    _vtTeachers=(Array.isArray(ts)?ts:(ts.teachers||[])).map(t=>({pid:t.profile_id,name:t.name,sc:t.subject_classes||[],subs:t.subjects||[]}));
     const checking=(list.tasks||[]).filter(t=>t.status==='submitted'&&!t.reviewed).length;
     const badge=document.getElementById('a-vt-badge');
     const bn=checking+(list.proposals||[]).length;
@@ -8732,7 +8759,7 @@ async function openVTAssign(proposalId){
   window._vtThumbB64=null; // har baar fresh state — warna pichli failed attempt ka bada base64 dobara chala jaata hai
   let pre=null;
   if(proposalId){ try{ const l=await api('/api/admin/video-tasks'); pre=(l.proposals||[]).find(t=>t.id===proposalId); }catch(e){} }
-  const tOpts=_vtTeachers.map(t=>`<option value="${t.pid}" ${pre&&pre.teacher_id===t.pid?'selected':''}>${esc(t.name)}</option>`).join('');
+  const tOpts='<option value="">— Select teacher —</option>'+_vtTeachers.map(t=>`<option value="${t.pid}" ${pre&&pre.teacher_id===t.pid?'selected':''}>${esc(t.name)}</option>`).join('');
   const cOpts=_vtChannels.map(c=>`<option value="${c.id}" ${pre&&pre.channel_id===c.id?'selected':''}>${esc(c.name)}</option>`).join('');
   const dl=new Date(Date.now()+48*3600*1000); dl.setMinutes(0);
   const dlVal=`${dl.getFullYear()}-${String(dl.getMonth()+1).padStart(2,'0')}-${String(dl.getDate()).padStart(2,'0')}T${String(dl.getHours()).padStart(2,'0')}:00`;
@@ -8741,18 +8768,18 @@ async function openVTAssign(proposalId){
   const dlPrefill=(pre&&pre.expected_deadline)?pre.expected_deadline:((pre&&pre.deadline)?pre.deadline:dlVal);
   const preStream=(pre&&pre.streaming)||'';
   const taskForm=`<div class="form-grid vt-form">
-      <div class="form-group"><label>Subject <span style="font-weight:600;color:var(--text-muted)">(optional — auto-picks the teacher)</span></label><select id="vt-f-subject" class="input" onchange="vtfSubjectChange()"><option value="">— Loading subjects… —</option></select></div>
-      <div class="form-group"><label>Class</label><select id="vt-f-class" class="input" onchange="vtfSubjectChange()"><option value="">— Auto from subject —</option><option value="10">Class 10</option><option value="12">Class 12</option></select></div>
-      <div id="vt-f-autot" class="vtp-auto" style="grid-column:1/-1;display:none"></div>
       <div class="form-group" style="grid-column:1/-1"><label>Collaborate with others?</label>
         <select id="vt-f-collab-on" class="input" onchange="_vtCollabMode('vtf',this.value)">
           <option value="no" selected>No — single teacher</option>
           <option value="yes">Yes — multiple teachers collaborate</option>
         </select></div>
-      <div class="form-group" id="vtf-teacher-single" style="grid-column:1/-1"><label>Teacher</label><select id="vt-f-teacher" class="input">${tOpts}</select></div>
+      <div class="form-group" id="vtf-teacher-single" style="grid-column:1/-1"><label>Teacher <span style="font-weight:600;color:var(--text-muted)">(pick first — subjects filter to this teacher)</span></label><select id="vt-f-teacher" class="input" onchange="vtfTeacherSubjects()">${tOpts}</select></div>
       <div class="form-group" id="vtf-teacher-multi" style="display:none;grid-column:1/-1"><label>Teachers (select multiple — pehla = primary, sab production manager se alag verify honge)</label>
         <div class="ms-box" onclick="_msToggle('vtf')"><span id="vtf-ms-lbl" class="ms-ph">Select teachers…</span><span class="ms-arw">\u25be</span></div>
         <div class="ms-panel" id="vtf-ms-panel">${_vtTeachers.map(t=>`<label><input type="checkbox" class="vtf-ms-cb" value="${t.pid}" onchange="_msUpd('vtf')"> ${esc(t.name)}</label>`).join('')}</div></div>
+      <div class="form-group"><label>Subject <span style="font-weight:600;color:var(--text-muted)">(optional)</span></label><select id="vt-f-subject" class="input" onchange="vtfSubjectChange()"><option value="">— Select a teacher first —</option></select></div>
+      <div class="form-group"><label>Class</label><select id="vt-f-class" class="input"><option value="">— Auto from subject —</option><option value="10">Class 10</option><option value="12">Class 12</option></select></div>
+      <div id="vt-f-autot" class="vtp-auto" style="grid-column:1/-1;display:none"></div>
       <div class="form-group"><label>YouTube Channel</label><select id="vt-f-channel" class="input"><option value="">— Select channel —</option>${cOpts}</select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Streaming</label><select id="vt-f-stream" class="input" onchange="_vtFilterTypes('vt-f-stream','vt-f-type',_vtTypes)"><option value="" ${preStream?'':'selected'}>— Not set —</option><option value="recorded" ${preStream==='recorded'?'selected':''}>Recorded</option><option value="live" ${preStream==='live'?'selected':''}>Live</option></select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Video Type</label><select id="vt-f-type" class="input">${_vtTypeOptsHtml(_vtTypes,preStream,pre?pre.video_type:'')}</select></div>
@@ -8784,13 +8811,15 @@ async function openVTAssign(proposalId){
         `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="vtaw-save" onclick="vtAwSaveProposal(${proposalId||0})">${ic('check')} Approve &amp; Assign Project</button>`);
       window._vtAwTab='proj';
       vtpLoadSubjects();
-      vtfLoadSubjects();
+      vtfTeacherSubjects();
       _vtPrefillProject(pre);
       return;
     }
     showModal('Approve Proposal & Assign',taskForm,
       `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="vtAssignSave(${proposalId||0})">${ic('check')} Approve & Assign</button>`);
-    vtfLoadSubjects();
+    vtfTeacherSubjects();
+    _vtfPrefillCollab(pre);            // teacher ne collab propose kiya to admin ko dobara na chunna pade
+    _vtfPrefillSubject(pre&&pre.subject);  // teacher ka chuna subject pehle se bhara ho
     return;
   }
   showModal('Assign Work',`
@@ -8802,7 +8831,7 @@ async function openVTAssign(proposalId){
     <div id="vtaw-b-proj" style="display:none">${_vtProjectForm()}</div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="vtaw-save" onclick="vtAwSave()">${ic('check')} Assign Task</button>`);
   window._vtAwTab='task';   // fresh open par hamesha Task tab — warna pichli baar ka 'proj' stale reh jaata tha (galat validation)
-  vtfLoadSubjects();
+  vtfTeacherSubjects();
   vtpLoadSubjects();
 }
 function vtAwTab(k){
@@ -8867,35 +8896,49 @@ async function vtpLoadSubjects(){
   }catch(e){ sel.innerHTML=`<option value="">— Could not load subjects —</option>`; }
 }
 // ---- Task Assign form: subject dropdown + auto teacher fetch ----
-async function vtfLoadSubjects(){
-  const sel=document.getElementById('vt-f-subject'); if(!sel) return;
-  try{
-    const d=window._vtpSubs||await api('/api/admin/subjects');
-    window._vtpSubs=d;
-    const grp=(lv,lbl)=>`<optgroup label="${lbl}">${(d[lv]||[]).map(x=>`<option value="${esc(x.name)}" data-level="${lv}">${esc(x.name)}</option>`).join('')}</optgroup>`;
-    sel.innerHTML=`<option value="">— No subject (standalone video) —</option>`+grp('12','Class 12')+grp('10','Class 10');
-  }catch(e){ sel.innerHTML=`<option value="">— Could not load subjects —</option>`; }
+function _vtfActiveTeacher(){
+  const collabOn=(document.getElementById('vt-f-collab-on')||{}).value==='yes';
+  if(collabOn){ const ids=_msGet('vtf'); return ids[0]||0; }
+  return +((document.getElementById('vt-f-teacher')||{}).value)||0;
 }
-async function vtfSubjectChange(){
-  const sel=document.getElementById('vt-f-subject'), cls=document.getElementById('vt-f-class'), box=document.getElementById('vt-f-autot');
-  if(!sel||!box) return;
+// Teacher chuno -> uske apne subjects hi dikhein (jaisa admin ne maanga). Subject ke saath class bhi.
+function vtfTeacherSubjects(){
+  const ssel=document.getElementById('vt-f-subject'); if(!ssel) return;
+  const cls=document.getElementById('vt-f-class'); if(cls) cls.value='';
+  const box=document.getElementById('vt-f-autot'); if(box) box.style.display='none';
+  const pid=_vtfActiveTeacher();
+  const t=_vtTeachers.find(x=>x.pid===pid);
+  if(!pid||!t){ ssel.innerHTML='<option value="">— Select a teacher first —</option>'; return; }
+  let sc=(t.sc&&t.sc.length)?t.sc:[];
+  if(!sc.length && t.subs && t.subs.length) sc=t.subs.map(s=>({subject:s,class:''}));
+  if(!sc.length){ ssel.innerHTML='<option value="">— This teacher has no subjects set —</option>'; return; }
+  ssel.innerHTML='<option value="">— No subject (standalone video) —</option>'+sc.map(x=>{
+    const s=(x.subject||'').trim(), c=(x.class||x.class_level||'').trim();
+    return `<option value="${esc(s)}" data-level="${esc(c)}">${esc(s)}${c?' \u00b7 Class '+esc(c):''}</option>`;
+  }).join('');
+}
+function vtfSubjectChange(){
+  const sel=document.getElementById('vt-f-subject'), cls=document.getElementById('vt-f-class');
+  if(!sel) return;
   const opt=sel.options[sel.selectedIndex];
-  if(opt&&opt.dataset&&opt.dataset.level&&cls) cls.value=opt.dataset.level;  // subject ka class auto
-  const subject=sel.value, level=(cls||{}).value||'';
-  if(!subject){ box.style.display='none'; return; }
-  box.style.display=''; box.className='vtp-auto'; box.textContent='Fetching teacher…';
-  try{
-    const r=await api('/api/admin/video-tasks/subject-teachers?subject='+encodeURIComponent(subject)+(level?'&class_level='+level:''));
-    const ts=r.teachers||[];
-    const tsel=document.getElementById('vt-f-teacher');
-    if(ts.length){
-      // pehle matching teacher ko teacher dropdown me select karo (override allowed)
-      if(tsel){ const want=String(ts[0].profile_id); if([...tsel.options].some(o=>o.value===want)) tsel.value=want; }
-      box.className='vtp-auto ok'; box.textContent='Teacher auto-selected: '+ts.map(t=>t.name+(t.level?' (Class '+t.level+')':'')).join(', ')+' — you can override it below';
-    }else{
-      box.className='vtp-auto warn'; box.textContent='No active teacher found for this subject'+(level?' + class':'')+' — please pick the teacher manually below';
-    }
-  }catch(e){ box.className='vtp-auto warn'; box.textContent='Could not fetch the teacher — please select manually'; }
+  const lv=(opt&&opt.dataset&&opt.dataset.level)||'';
+  if(cls&&lv) cls.value=lv;   // subject ka class auto-fill
+}
+// Proposal approve: teacher ka chuna subject pehle se select ho ("Painting" ya "Painting 12" dono match)
+function _vtfPrefillSubject(subjStr){
+  const ssel=document.getElementById('vt-f-subject'); if(!ssel||!subjStr) return;
+  const norm=s=>String(s||'').toLowerCase().replace(/\s+(10|12)\s*$/,'').trim();
+  const want=norm(subjStr); let matched=null;
+  [...ssel.options].forEach(o=>{ if(o.value && norm(o.value)===want) matched=o; });
+  if(matched){ ssel.value=matched.value; vtfSubjectChange(); }
+}
+// Proposal approve: teacher ne collab (multiple teachers) propose kiya to admin ko dobara select na karna pade
+function _vtfPrefillCollab(pre){
+  if(!pre||!pre.is_collab||!Array.isArray(pre.collab_teachers)||pre.collab_teachers.length<2) return;
+  const on=document.getElementById('vt-f-collab-on'); if(on){ on.value='yes'; _vtCollabMode('vtf','yes'); }
+  const ids=pre.collab_teachers.map(c=>String(c.id));
+  [...document.querySelectorAll('.vtf-ms-cb')].forEach(cb=>{ if(ids.indexOf(cb.value)>=0) cb.checked=true; });
+  _msUpd('vtf');
 }
 async function vtpSubjectChange(){
   const sel=document.getElementById('vtp-subject'), cls=document.getElementById('vtp-class'), box=document.getElementById('vtp-autot');
@@ -9009,12 +9052,14 @@ function _msUpd(pfx){
   var names=cbs.map(function(c){ return (c.parentNode.textContent||'').trim(); });
   lbl.textContent=names.length?names.join(', '):'Select teachers\u2026';
   lbl.className=names.length?'':'ms-ph';
+  if(pfx==='vtf' && typeof vtfTeacherSubjects==='function') vtfTeacherSubjects();  // primary (pehla) teacher ke subjects
 }
 function _msGet(pfx){ return [].slice.call(document.querySelectorAll('.'+pfx+'-ms-cb:checked')).map(function(c){ return +c.value; }).filter(Boolean); }
 function _vtCollabMode(pfx,v){
   var s=document.getElementById(pfx+'-teacher-single'), m=document.getElementById(pfx+'-teacher-multi');
   if(s) s.style.display=(v==='yes')?'none':'';
   if(m) m.style.display=(v==='yes')?'block':'none';
+  if(pfx==='vtf' && typeof vtfTeacherSubjects==='function') vtfTeacherSubjects();  // primary teacher badla -> subjects refresh
 }
 async function vtAssignSave(proposalId){
   const collabOn=(document.getElementById('vt-f-collab-on')||{}).value==='yes';
@@ -10751,6 +10796,28 @@ async function loadADoubts(){
     aRenderDoubts();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
+// Doubts page — student ke naam par click -> uski poori details (doubt-id se fetch)
+async function aDoubtStudent(did){
+  showModal('Student Details','<div style="padding:26px 8px;text-align:center;color:var(--text-muted)">Loading student details…</div>','');
+  let s;
+  try{ s=await api('/api/admin/doubt/'+did+'/student'); }
+  catch(e){ showModal('Student Details',`<div class="empty-state"><p>${esc(e.message||'Could not load student details')}</p></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`); return; }
+  const subs=(s.subjects||[]).map(x=>`<span class="chip">${esc(x)}</span>`).join('')||'<span style="color:var(--text-muted)">None</span>';
+  const rows=[
+    ['User ID',s.user_id||'\u2014'],['Phone',s.phone||'\u2014'],['Email',s.email||'\u2014'],
+    ['Batch',s.batch||'\u2014'],['Class',s.class_level?('Class '+s.class_level):'\u2014'],
+    ['Medium',s.medium||'\u2014'],['Exam Session',s.exam_session||'\u2014'],
+    ['NIOS Ref',s.nios_ref||'\u2014'],['DPPs Submitted',s.dpp_submitted],
+    ['Tests Attempted',s.tests_attempted],['Status',s.is_active?'Active':'Inactive']
+  ];
+  const sid=s.profile_id;
+  showModal('Student Details',
+    `<div class="prof-head" style="padding-bottom:16px;margin-bottom:16px"><div class="prof-photo" id="dsp-${sid}">${esc(initials(s.name||'S'))}</div><div class="prof-id"><h2 style="font-size:1.2rem">${esc(s.name)}</h2><span class="chip" style="margin-top:6px">${esc(s.batch||'Student')}</span></div></div>
+     <div class="prof-grid">${rows.map(([k,v])=>`<div class="prof-cell"><div class="prof-k">${k}</div><div class="prof-v">${esc(String(v))}</div></div>`).join('')}</div>
+     <div class="prof-cell" style="margin-top:14px"><div class="prof-k">Subjects</div><div class="slist-chips" style="margin-top:6px">${subs}</div></div>`,
+    `<button class="btn btn-ghost" onclick="sendStudentWhatsApp(${sid},'${esc((s.name||'').replace(/'/g,''))}',this)">${ic('megaphone')} WhatsApp</button><button class="btn btn-primary" onclick="closeModal()">Close</button>`);
+  if(s.has_photo) loadImgInto('dsp-'+sid,'/api/admin/student/'+sid+'/photo');
+}
 function aDoubtFilter(f){ _aDoubtFilter=f; aRenderDoubts(); }
 function _adAggCards(doubts){
   const by={};
@@ -10872,7 +10939,7 @@ function aRenderDoubts(){
       : `<div class="bubble-pending">${d.assigned_to_admin?'Awaiting an official reply from MVS Foundation...':'Awaiting teacher\'s reply...'}</div>`;
     const reassignNote=d.assigned_by_name?`<div style="margin-top:3px;font-size:.72rem;color:#4f46e5;font-weight:700">Reassigned by ${esc(d.assigned_by_name)} \u2192 now with ${esc(owner)}</div>`:'';
     const adminReply=`<div style="display:flex;align-items:center;gap:9px;margin-top:12px;background:linear-gradient(135deg,rgba(201,162,39,.1),rgba(201,162,39,.03));border:1px solid rgba(201,162,39,.4);border-radius:12px;padding:9px 12px"><div class="mvs-logo" style="width:30px;height:30px;font-size:.8rem">M</div><input class="form-control" style="flex:1;min-width:0" id="dbtr-admin-${d.id}" placeholder="Reply as MVS Foundation${d.status==='resolved'?'':''} — posting on a pending doubt resolves it" onkeydown="if(event.key==='Enter')dbtRespond('admin',${d.id},'dbtr-admin-${d.id}')"><button class="btn btn-primary btn-sm" onclick="dbtRespond('admin',${d.id},'dbtr-admin-${d.id}')">Post</button></div>`;
-    return `<div class="dcard"${d.assigned_to_admin?' style="border-color:rgba(201,162,39,.6);box-shadow:0 0 0 3px rgba(201,162,39,.12)"':''}><div class="dcard-head"><div class="dcard-who"><b>${esc(d.student_name)}</b>${d.student_phone?' \u00b7 '+esc(d.student_phone):''} asked <b>${esc(d.teacher_name)}</b><div style="margin-top:3px">${esc(d.subject||'')}${d.topic?' \u00b7 '+esc(d.topic):''} \u00b7 ${esc(when)}</div>${reassignNote}</div><div style="display:flex;align-items:center;gap:8px">${d.assigned_to_admin?'<span class="tag" style="background:linear-gradient(135deg,#c9a227,#a8841a);color:#241a05">With MVS Foundation</span>':''}${d.needs_attention&&d.status==='resolved'?'<span class="tag tag-pending">New Follow-up</span>':('<span class="tag '+(d.status==='resolved'?'tag-done':'tag-pending')+'">'+(d.status==='resolved'?'Resolved':'Pending')+'</span>')}<button class="btn btn-danger btn-sm" title="Delete this doubt (removed from student and teacher portals)" onclick="aDelDoubt(${d.id})">${ic('trash')}</button></div></div>
+    return `<div class="dcard"${d.assigned_to_admin?' style="border-color:rgba(201,162,39,.6);box-shadow:0 0 0 3px rgba(201,162,39,.12)"':''}><div class="dcard-head"><div class="dcard-who"><b onclick="aDoubtStudent(${d.id})" style="cursor:pointer;text-decoration:underline;text-underline-offset:3px" title="View student details">${esc(d.student_name)}</b>${d.student_phone?' \u00b7 '+esc(d.student_phone):''} asked <b>${esc(d.teacher_name)}</b><div style="margin-top:3px">${esc(d.subject||'')}${d.topic?' \u00b7 '+esc(d.topic):''} \u00b7 ${esc(when)}</div>${reassignNote}</div><div style="display:flex;align-items:center;gap:8px">${d.assigned_to_admin?'<span class="tag" style="background:linear-gradient(135deg,#c9a227,#a8841a);color:#241a05">With MVS Foundation</span>':''}${d.needs_attention&&d.status==='resolved'?'<span class="tag tag-pending">New Follow-up</span>':('<span class="tag '+(d.status==='resolved'?'tag-done':'tag-pending')+'">'+(d.status==='resolved'?'Resolved':'Pending')+'</span>')}<button class="btn btn-danger btn-sm" title="Delete this doubt (removed from student and teacher portals)" onclick="aDelDoubt(${d.id})">${ic('trash')}</button></div></div>
       <div class="chat-thread"><div class="bubble bubble-q"><div class="who">${esc(d.student_name)} (Student)</div>${esc(d.question||'')}${qvoice}${qfile}${qimg}</div>${ans}</div>${dbtThreadHTML(d)}${adminReply}</div>`;
   }).join(''):`<div class="empty-state"><p>No doubts in this view.</p></div>`;
   el.innerHTML=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="adPickSub('')">\u2190 All Subjects</button><h3 style="margin:0;font-size:1.2rem">${esc(_adSubLabel())}</h3></div>
