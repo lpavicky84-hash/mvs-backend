@@ -419,9 +419,46 @@ def get_doubts(
         _ans_voice_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.answer_audio_b64) > 0).all()}
         _ans_file_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.answer_attach_b64) > 0).all()}
     out = []
+    # ---- batch-load taaki N+1 na ho (student names, thread responses, away-owner names) ----
+    from models import DoubtResponse, StudentProfile, User as _U
+    _sids = {d.student_id for d in rows if d.student_id}
+    _sname_map = {}
+    if _sids:
+        for sid, nm in (db.query(StudentProfile.id, _U.name)
+                        .join(_U, _U.id == StudentProfile.user_id)
+                        .filter(StudentProfile.id.in_(_sids)).all()):
+            _sname_map[sid] = nm or "Student"
+    _away_tids = {d.teacher_id for d in rows
+                  if d.teacher_id and d.teacher_id != tp.id and not getattr(d, "assigned_to_admin", False)}
+    _owner_map = {}
+    if _away_tids:
+        for tid2, nm in (db.query(TeacherProfile.id, _U.name)
+                         .join(_U, _U.id == TeacherProfile.user_id)
+                         .filter(TeacherProfile.id.in_(_away_tids)).all()):
+            _owner_map[tid2] = nm or "Unassigned"
+    _resp_map = {}
+    if _rids:
+        for r in (db.query(DoubtResponse).filter(DoubtResponse.doubt_id.in_(_rids))
+                  .order_by(DoubtResponse.created_at.asc(), DoubtResponse.id.asc()).all()):
+            _resp_map.setdefault(r.doubt_id, []).append(r)
+
+    def _resp_json_for(did):
+        o = []
+        for r in _resp_map.get(did, []):
+            mine = (r.role == "teacher") and (r.author_teacher_id == tp.id)
+            o.append({"id": r.id, "role": r.role, "author_name": r.author_name,
+                      "body": r.body, "mine": bool(mine),
+                      "author_tid": (r.author_teacher_id if r.role == "teacher" else None),
+                      "created_at": ist_iso(r.created_at)})
+        return o
+
     for d in rows:
-        sname = d.student.user.name if d.student and d.student.user else "Student"
+        sname = _sname_map.get(d.student_id, "Student")
         is_away = (d.teacher_id != tp.id) or bool(getattr(d, "assigned_to_admin", False))
+        _owner = None
+        if is_away:
+            _owner = "MVS Foundation" if getattr(d, "assigned_to_admin", False) \
+                else _owner_map.get(d.teacher_id, "Unassigned")
         out.append({"id": d.id, "student_name": sname, "student_id": d.student_id,
                     "subject": _subj_canon(d.subject), "topic": d.topic,
                     "question": d.question, "has_image": (d.id in _img_ids),
@@ -431,9 +468,9 @@ def get_doubts(
                     "answer": d.answer, "status": d.status.value if hasattr(d.status, "value") else d.status,
                     "created_at": ist_iso(d.created_at),
                     "assigned_away": is_away,
-                    "assigned_to_name": (_doubt_owner_name(db, d) if is_away else None),
-                    "needs_attention": _doubt_needs_attention(db, d.id),
-                    "responses": _doubt_resp_json(db, d.id, "teacher", tp.id)})
+                    "assigned_to_name": _owner,
+                    "needs_attention": False,
+                    "responses": _resp_json_for(d.id)})
     return out
 
 @router.post("/doubts/{doubt_id}/respond")
@@ -2409,23 +2446,23 @@ def teacher_compliance(db: Session = Depends(get_db), current_user=Depends(get_t
 # ===== TEACHER: DOUBT STATS (pending, resolved, avg response time) =====
 @router.get("/doubt-stats")
 def teacher_doubt_stats(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
-    from models import Doubt, DoubtStatus
+    from models import Doubt
     tp = get_teacher_profile(current_user, db)
-    ds = db.query(Doubt).filter(Doubt.teacher_id == tp.id).all()
-    # v93: admin ko assigned doubts meri pending/responsibility se bahar
-    ds = [d for d in ds if not getattr(d, "assigned_to_admin", False)]
-    # v112: resolved doubt pe naya student follow-up bhi pending attention hai
-    pending = sum(1 for d in ds if (d.status.value if hasattr(d.status, "value") else d.status) == "pending")
-    pending += sum(1 for d in ds
-                   if (d.status.value if hasattr(d.status, "value") else d.status) == "resolved"
-                   and _doubt_needs_attention(db, d.id))
-    resolved_list = [d for d in ds if (d.status.value if hasattr(d.status, "value") else d.status) == "resolved" and d.resolved_at and d.created_at]
-    resolved = sum(1 for d in ds if (d.status.value if hasattr(d.status, "value") else d.status) == "resolved")
+    # sirf zaroori columns — blob (image/audio base64) load NAHI karte -> tez + kam RAM.
+    rows = (db.query(Doubt.status, Doubt.resolved_at, Doubt.created_at, Doubt.assigned_to_admin)
+            .filter(Doubt.teacher_id == tp.id).all())
+    rows = [r for r in rows if not r[3]]   # admin ko assigned doubts meri responsibility se bahar
+
+    def _st(v):
+        return v.value if hasattr(v, "value") else v
+    pending = sum(1 for r in rows if _st(r[0]) == "pending")
+    resolved_list = [r for r in rows if _st(r[0]) == "resolved" and r[1] and r[2]]
+    resolved = sum(1 for r in rows if _st(r[0]) == "resolved")
     avg_min = None
     if resolved_list:
-        total = sum((d.resolved_at - d.created_at).total_seconds() for d in resolved_list)
+        total = sum((r[1] - r[2]).total_seconds() for r in resolved_list)
         avg_min = round(total / len(resolved_list) / 60)
-    return {"pending": pending, "resolved": resolved, "total": len(ds), "avg_response_minutes": avg_min}
+    return {"pending": pending, "resolved": resolved, "total": len(rows), "avg_response_minutes": avg_min}
 
 # ===== TEACHER: PERFORMANCE (aggregates + recent activity + monthly) =====
 @router.get("/video-contribution")
