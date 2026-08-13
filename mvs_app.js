@@ -7021,6 +7021,7 @@ function _dbtLoadAvas(role){
     _loadPhotoInto(el.id, base+el.getAttribute('data-tid')+'/photo');
   });
 }
+function _dbtSafe(t){ return esc(String(t==null?'':t)).replace(/\n/g,'<br>'); }
 function dbtThreadHTML(d){
   const rs=d.responses||[]; if(!rs.length) return '';
   return `<div class="dbt-thread">${rs.map(dbtRespHTML).join('')}</div>`;
@@ -7119,7 +7120,7 @@ function tRenderDoubts(){
     rows+=pendShown.map(d=>{
       const media=mediaOf(d);
       const amedia=`${d.has_answer_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/answer-voice')">${ic('play')} Your Voice Answer</button>`:''}${d.has_answer_file?doubtAttachHtml('teacher',d.id,d.answer_attach_mime,d.answer_attach_name,true):''}`;
-      return `<div class="dbt-card pend">${headOf(d,(d.needs_attention&&d.status==='resolved')?'<span class="dbt-pill open">New Follow-up</span>':'<span class="dbt-pill open">Pending</span>')}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> <span id="tda-${d.id}">${_fmtRich(d.answer)}</span></div>`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}${dbtThreadHTML(d)}<div style="margin-top:12px">${composerHTML('ta'+d.id,'Write your answer\u2026 or send a voice note / file','resolveDoubt('+d.id+')','Resolve')}</div>${tAssignRow(d)}</div>`;
+      return `<div class="dbt-card pend">${headOf(d,(d.needs_attention&&d.status==='resolved')?'<span class="dbt-pill open">New Follow-up</span>':'<span class="dbt-pill open">Pending</span>')}<div class="dbt-q" id="tdq-${d.id}">${_dbtSafe(d.question)}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> <span id="tda-${d.id}">${_dbtSafe(d.answer)}</span></div>`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}${dbtThreadHTML(d)}<div style="margin-top:12px">${composerHTML('ta'+d.id,'Write your answer\u2026 or send a voice note / file','resolveDoubt('+d.id+')','Resolve')}</div>${tAssignRow(d)}</div>`;
     }).join('');
   }
   if(done.length){
@@ -7127,7 +7128,7 @@ function tRenderDoubts(){
     rows+=doneShown.map(d=>{
       const media=mediaOf(d);
       const amedia=`${d.has_answer_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/answer-voice')">${ic('play')} Your Voice Answer</button>`:''}${d.has_answer_file?doubtAttachHtml('teacher',d.id,d.answer_attach_mime,d.answer_attach_name,true):''}`;
-      return `<div class="dbt-card res">${headOf(d,'<span class="dbt-pill res">\u2713 Resolved</span>')}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> <span id="tda-${d.id}">${_fmtRich(d.answer)}</span></div>`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}${dbtThreadHTML(d)}<div style="margin-top:10px"><button class="btn btn-danger btn-sm" title="Delete your response — the doubt moves back to Pending" onclick="tDelDoubtAnswer(${d.id})">${ic('trash')} Delete Response</button></div></div>`;
+      return `<div class="dbt-card res">${headOf(d,'<span class="dbt-pill res">\u2713 Resolved</span>')}<div class="dbt-q" id="tdq-${d.id}">${_dbtSafe(d.question)}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> <span id="tda-${d.id}">${_dbtSafe(d.answer)}</span></div>`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}${dbtThreadHTML(d)}<div style="margin-top:10px"><button class="btn btn-danger btn-sm" title="Delete your response — the doubt moves back to Pending" onclick="tDelDoubtAnswer(${d.id})">${ic('trash')} Delete Response</button></div></div>`;
     }).join('');
     if(done.length>_dn) rows+=`<div style="text-align:center;margin:10px 0"><button class="btn btn-ghost btn-sm" onclick="tMoreDone()">Show more resolved (${done.length-_dn} more)</button></div>`;
   }
@@ -7136,7 +7137,7 @@ function tRenderDoubts(){
     rows+=awayShown.map(d=>{
       const owner=d.assigned_to_name||'the new owner';
       const st=(d.status==='resolved')?'<span class="dbt-pill res">\u2713 Resolved</span>':'<span class="dbt-pill open">Pending</span>';
-      return `<div class="dbt-away">${headOf(d,`<span class="dbt-pill away">Reassigned \u2192 ${esc(owner)}</span>`)}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${dbtThreadHTML(d)}<div style="font-size:.72rem;color:var(--text-muted);margin-top:8px">Handed over by you ${st} — resolving this doubt is now <b>${esc(owner)}</b>'s responsibility.</div></div>`;
+      return `<div class="dbt-away">${headOf(d,`<span class="dbt-pill away">Reassigned \u2192 ${esc(owner)}</span>`)}<div class="dbt-q" id="tdq-${d.id}">${_dbtSafe(d.question)}</div>${dbtThreadHTML(d)}<div style="font-size:.72rem;color:var(--text-muted);margin-top:8px">Handed over by you ${st} — resolving this doubt is now <b>${esc(owner)}</b>'s responsibility.</div></div>`;
     }).join('');
     if(away.length>_an) rows+=`<div style="text-align:center;margin:10px 0"><button class="btn btn-ghost btn-sm" onclick="tMoreAway()">Show more (${away.length-_an} more)</button></div>`;
   }
@@ -7144,26 +7145,31 @@ function tRenderDoubts(){
   el.innerHTML=html;
   try{ loadDoubtThumbs(el); }catch(e){}   // v69 — image attachments ke inline previews
   try{ _dbtLoadAvas('teacher'); }catch(e){}   // v112 — thread me teacher photos
-  // KaTeX math render ($..$) — CHUNKED taaki main thread freeze na ho. Math jaise subjects me
-  // 30-50 doubts × (question+answer) ek saath render karne se page "unresponsive" ho jaata tha.
+  // Build ho gaya plain-safe text se (turant, freeze-proof). Ab rich formatting + KaTeX ko
+  // LAZILY + budgeted + guarded apply karo — koi ek pathological/bada question poore page ko
+  // block nahi karega. Bahut lambe questions plain hi rehte hain (safe).
   try{
-    const _mEls=[];
-    (pendShown.concat(doneShown,awayShown)).forEach(d=>{
-      const q=document.getElementById('tdq-'+d.id); if(q) _mEls.push(q);
-      const a=document.getElementById('tda-'+d.id); if(a) _mEls.push(a); });
-    let _mi=0;
-    const _mNext=function(){ if(window.requestAnimationFrame) window.requestAnimationFrame(_mChunk); else setTimeout(_mChunk,0); };
-    function _mChunk(){
+    const _items=[];
+    pendShown.concat(doneShown,awayShown).forEach(d=>{
+      const q=document.getElementById('tdq-'+d.id); if(q) _items.push({el:q,raw:String(d.question||'')});
+      const a=document.getElementById('tda-'+d.id); if(a&&d.answer) _items.push({el:a,raw:String(d.answer||'')});
+    });
+    let _ci=0;
+    const _next=function(){ if(window.requestAnimationFrame) window.requestAnimationFrame(_chunk); else setTimeout(_chunk,0); };
+    function _chunk(){
       const t0=(window.performance&&performance.now)?performance.now():Date.now();
-      while(_mi<_mEls.length){
-        try{ renderMath(_mEls[_mi]); }catch(e){}
-        _mi++;
+      while(_ci<_items.length){
+        const it=_items[_ci]; _ci++;
+        try{
+          const _hasMath=/[$\\]|\d\s*[\/^]|[\u221A\u00B0\u222B\u2211\u03C0\u03B8]|[_^]\{/.test(it.raw);
+          if(it.raw && it.raw.length<=1500 && _hasMath){ it.el.innerHTML=_fmtRich(it.raw); renderMath(it.el); }
+        }catch(e){}
         const t1=(window.performance&&performance.now)?performance.now():Date.now();
-        if(t1-t0>8) break;   // 8ms/frame budget -> beech me browser ko yield, page freeze nahi
+        if(t1-t0>8) break;   // per-frame budget -> page kabhi freeze na ho
       }
-      if(_mi<_mEls.length) _mNext();
+      if(_ci<_items.length) _next();
     }
-    if(_mEls.length) _mNext();
+    if(_items.length) _next();
   }catch(e){}
 }
 function tMoreDone(){ window._tdDoneN=(window._tdDoneN||8)+10; tRenderDoubts(); }
