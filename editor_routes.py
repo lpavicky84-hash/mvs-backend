@@ -213,3 +213,40 @@ def _pnotif_read(nid: int, db: Session = Depends(get_db), me=Depends(get_editor)
 @router.post("/notifications/read-all")
 def _pnotif_read_all(db: Session = Depends(get_db), me=Depends(get_editor)):
     pc.mark_read(db, me); db.commit(); return {"ok": True}
+
+
+# ============================================================ TIME ANALYTICS
+@router.get("/time-analytics")
+def editor_time_analytics(db: Session = Depends(get_db), me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    done = ["editing_done", "qc_pending", "qc_changes", "ready_for_youtube", "uploaded", "completed"]
+    completed = db.query(VideoTask).filter(VideoTask.editor_id == sp.id, VideoTask.lifecycle.in_(done)).count()
+    total_secs = int(db.query(func.coalesce(func.sum(EditingSession.duration_seconds), 0)).filter(
+        EditingSession.editor_id == sp.id).scalar() or 0)
+    # per-task active seconds (from sessions), joined to type
+    rows = (db.query(VideoTask.id, VideoTask.video_type,
+                     func.coalesce(func.sum(EditingSession.duration_seconds), 0))
+            .join(EditingSession, EditingSession.task_id == VideoTask.id)
+            .filter(EditingSession.editor_id == sp.id)
+            .group_by(VideoTask.id, VideoTask.video_type).all())
+    per_task = [(r[1] or "Other", int(r[2] or 0)) for r in rows if r[2]]
+    by_type = {}
+    for vt, secs in per_task:
+        d = by_type.setdefault(vt, {"type": vt, "videos": 0, "seconds": 0})
+        d["videos"] += 1; d["seconds"] += secs
+    by_type_list = sorted(by_type.values(), key=lambda x: x["seconds"], reverse=True)
+    for d in by_type_list:
+        d["hours"] = round(d["seconds"] / 3600.0, 1)
+        d["avg_hours"] = round(d["seconds"] / 3600.0 / d["videos"], 1) if d["videos"] else 0
+        d.pop("seconds", None)
+    task_secs = [s for _, s in per_task]
+    n = len(task_secs)
+    return {
+        "total_active_hours": round(total_secs / 3600.0, 1),
+        "videos_with_time": n,
+        "videos_completed": completed,
+        "avg_per_video_hours": round((sum(task_secs) / n) / 3600.0, 1) if n else 0,
+        "longest_hours": round(max(task_secs) / 3600.0, 1) if task_secs else 0,
+        "shortest_hours": round(min(task_secs) / 3600.0, 1) if task_secs else 0,
+        "by_type": by_type_list,
+    }

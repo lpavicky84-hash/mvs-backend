@@ -18174,14 +18174,17 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   var P={
     production:{ role:'production_manager', title:'Production', sub:'Command Center', api:'/api/production',
       nav:[ {g:'Operations',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'board',t:'Production Board',i:'board'}, {p:'tasks',t:'All Tasks',i:'list'} ]},
+            {g:'Pipeline',items:[ {p:'q:pm_review',t:'PM Review',i:'check'}, {p:'q:editing',t:'Editing Queue',i:'video'}, {p:'q:qc_pending',t:'QC Queue',i:'check'}, {p:'q:ready_for_youtube',t:'Ready for YouTube',i:'video'}, {p:'urgent',t:'Urgent Videos',i:'board'} ]},
             {g:'Team',items:[ {p:'team',t:'Team & Workload',i:'team'} ]},
-            {g:'Analytics',items:[ {p:'analytics',t:'Analytics',i:'grid'} ]} ] },
+            {g:'Analytics',items:[ {p:'analytics',t:'Analytics',i:'grid'}, {p:'creators',t:'Creator Performance',i:'team'}, {p:'views',t:'Real-time Views',i:'grid'} ]} ] },
     editor:{ role:'editor', title:'Editor', sub:'Workspace', api:'/api/editor',
-      nav:[ {g:'Workspace',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'tasks',t:'My Tasks',i:'list'} ]} ] },
+      nav:[ {g:'Workspace',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'tasks',t:'My Tasks',i:'list'} ]},
+            {g:'Performance',items:[ {p:'time',t:'Time Analytics',i:'grid'} ]} ] },
     youtuber:{ role:'youtuber', title:'Creator', sub:'Studio', api:'/api/youtuber',
       nav:[ {g:'Workspace',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'videos',t:'My Videos',i:'video'} ]} ] },
     graphics:{ role:'graphics', title:'Graphics', sub:'Thumbnails', api:'/api/graphics',
-      nav:[ {g:'Workspace',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'tasks',t:'My Tasks',i:'image'} ]} ] }
+      nav:[ {g:'Workspace',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'tasks',t:'My Tasks',i:'image'} ]},
+            {g:'Library',items:[ {p:'library',t:'Thumbnail Library',i:'image'} ]} ] }
   };
   window._PROD_PORTALS=P;
 
@@ -18194,6 +18197,15 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     requests:'Requests', pending_submission:'Pending Submission', submitted:'Submitted',
     in_production:'In Production', qc:'QC', published:'Published',
     new:'New Requests', in_progress:'In Progress', approved:'Approved'
+  };
+  // Which KPI cards drill into a filtered list (status/deadline). Others stay static.
+  var KPI_NAV={
+    production:{ pm_review:{status:'pm_review'}, editing:{status:'editing'}, qc_pending:{status:'qc_pending'},
+                 ready_for_youtube:{status:'ready_for_youtube'}, due_today:{deadline:'today'}, overdue:{deadline:'overdue'} },
+    editor:{ assigned:{status:'editor_assigned'}, not_started:{status:'editor_assigned'}, editing:{status:'editing'},
+             qc_pending:{status:'qc_pending'}, changes:{status:'qc_changes'} },
+    youtuber:{ requests:{status:'creator_assigned'}, submitted:{status:'pm_review'}, published:{status:'uploaded'} },
+    graphics:{ new:{status:'new'}, in_progress:{status:'in_progress'}, changes:{status:'changes'}, approved:{status:'approved'} }
   };
 
   // --- premium CSS (scoped to .prodapp) ---
@@ -18247,8 +18259,18 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.prodbody{flex:1;overflow-y:auto;padding:6px 26px 40px}',
 /* kpi cards */
 '.pk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:13px;margin:10px 0 22px}',
-'.pk-card{background:#fff;border:1px solid #ece2cd;border-radius:15px;padding:16px 16px 14px;box-shadow:0 1px 3px rgba(40,30,10,.05)}',
+'.pk-card{background:#fff;border:1px solid #ece2cd;border-radius:15px;padding:16px 16px 14px;box-shadow:0 1px 3px rgba(40,30,10,.05);transition:transform .12s,box-shadow .15s,border-color .15s}',
 'body.dark .pk-card{background:#1b1508;border-color:#2c2410}',
+'.pk-card.click{cursor:pointer;position:relative}',
+'.pk-card.click:hover{transform:translateY(-2px);box-shadow:0 10px 24px -10px rgba(40,30,10,.22);border-color:rgba(230,173,78,.5)}',
+'.pk-card.click::after{content:"\\2192";position:absolute;top:13px;right:14px;color:#cbb686;font-weight:700;opacity:0;transition:opacity .15s}',
+'.pk-card.click:hover::after{opacity:1}',
+'.p-active{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin:2px 0 12px}',
+'.p-active .lbl{font-size:.76rem;color:#8a7d5c;font-weight:600}',
+'.p-active .achip{display:inline-flex;align-items:center;gap:6px;background:rgba(230,173,78,.14);color:#a9791f;border:1px solid rgba(230,173,78,.34);border-radius:999px;padding:4px 10px;font-size:.76rem;font-weight:700}',
+'body.dark .p-active .achip{color:#e6ad4e}',
+'.p-active .achip button{background:none;border:none;color:inherit;cursor:pointer;font-size:.9rem;line-height:1;padding:0;margin-left:1px}',
+'.p-active .clr{background:none;border:none;color:#d1443a;font-weight:700;font-size:.78rem;cursor:pointer}',
 '.pk-val{font-size:1.85rem;font-weight:800;letter-spacing:-.02em;line-height:1}',
 '.pk-lbl{font-size:.76rem;color:#8a7d5c;margin-top:7px;font-weight:600}',
 'body.dark .pk-lbl{color:#9c8f6e}',
@@ -18271,6 +18293,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pt-stage{font-size:.72rem;font-weight:700;padding:4px 11px;border-radius:999px;background:rgba(230,173,78,.16);color:#a9791f;white-space:nowrap}',
 'body.dark .pt-stage{color:'+accent+'}',
 '.pt-ref{font-size:.7rem;color:#b0a483;font-family:ui-monospace,monospace}',
+'.pw-card{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid #ece2cd;border-radius:14px;padding:13px 16px;margin-bottom:10px;transition:box-shadow .15s}',
+'body.dark .pw-card{background:#1b1508;border-color:#2c2410}',
+'.pw-card:hover{box-shadow:0 6px 18px -8px rgba(40,30,10,.2)}',
+'.pw-card .pw-main{flex:1;min-width:0;cursor:pointer}',
+'.pw-card .pw-title{font-weight:700;font-size:.94rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+'.pw-card .pw-meta{font-size:.76rem;color:#8a7d5c;margin-top:4px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}',
+'body.dark .pw-card .pw-meta{color:#9c8f6e}',
+'.pw-card .p-btn{flex:0 0 auto;white-space:nowrap}',
 '.pt-dl{font-size:.68rem;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}',
 '.pt-dl.overdue{background:rgba(209,68,58,.14);color:#d1443a}',
 '.pt-dl.today{background:rgba(224,165,74,.18);color:#a9791f}',
@@ -18323,6 +18353,72 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.p-gallery img{width:88px;height:66px;object-fit:cover;border-radius:9px;border:1px solid #d9cba8;cursor:pointer}',
 '.p-lightbox{position:fixed;inset:0;z-index:260;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out}',
 '.p-lightbox img{max-width:96%;max-height:96%;border-radius:8px}',
+/* task detail drawer */
+'.p-drawer{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.5);display:flex;justify-content:flex-end}',
+'.pd-panel{width:min(660px,100%);height:100%;background:#f6f1e7;color:#2a2313;display:flex;flex-direction:column;box-shadow:-24px 0 60px -20px rgba(0,0,0,.45);animation:pdIn .2s ease}',
+'body.dark .pd-panel{background:#120e07;color:#eee6d4}',
+'@keyframes pdIn{from{transform:translateX(34px);opacity:.5}to{transform:none;opacity:1}}',
+'.pd-head{padding:18px 22px 14px;border-bottom:1px solid rgba(140,125,92,.16);display:flex;justify-content:space-between;align-items:flex-start;gap:12px}',
+'.pd-head .h-title{font-size:1.16rem;font-weight:800;letter-spacing:-.01em;line-height:1.25}',
+'.pd-head .h-meta{display:flex;gap:9px;align-items:center;margin-top:7px;flex-wrap:wrap}',
+'.pd-x{background:none;border:none;font-size:1.5rem;cursor:pointer;color:inherit;line-height:1;flex:0 0 auto}',
+'.pd-tabs{display:flex;gap:2px;padding:0 12px;border-bottom:1px solid rgba(140,125,92,.16);overflow-x:auto;flex:0 0 auto}',
+'.pd-tab{padding:12px 13px;font-size:.83rem;font-weight:700;color:#8a7d5c;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;background:none;border-top:none;border-left:none;border-right:none}',
+'.pd-tab:hover{color:#a9791f}',
+'.pd-tab.on{color:#a9791f;border-bottom-color:#e6ad4e}',
+'body.dark .pd-tab.on{color:#e6ad4e}',
+'.pd-body{flex:1;overflow-y:auto;padding:20px 22px}',
+'.pd-foot{padding:12px 22px;border-top:1px solid rgba(140,125,92,.16);flex:0 0 auto}',
+'.pd-foot .p-acts{margin-top:0;padding-top:0;border-top:none}',
+'.pd-kv{display:grid;grid-template-columns:130px 1fr;gap:9px 14px;font-size:.9rem}',
+'.pd-kv .k{color:#8a7d5c;font-weight:600}',
+'.pd-kv .v{font-weight:600;word-break:break-word}',
+'.pd-kv .v a{color:#a9791f;font-weight:700}',
+'.pd-progress{height:9px;border-radius:5px;background:rgba(230,173,78,.16);overflow:hidden;margin-top:4px}',
+'.pd-progress span{display:block;height:100%;background:linear-gradient(90deg,#e6ad4e,#c98a2e)}',
+'.pd-empty{color:#9c8f6e;font-size:.88rem;padding:26px 4px;text-align:center}',
+'.pd-tl{position:relative;padding-left:6px}',
+'.pd-tl .ev{display:flex;gap:12px;padding:9px 0;border-bottom:1px solid rgba(140,125,92,.12)}',
+'.pd-tl .ev .at{color:#8a7d5c;font-size:.74rem;min-width:118px;flex:0 0 118px}',
+'.pd-tl .ev .lb{font-size:.87rem;font-weight:600}',
+'.pd-tl .ev .ac{color:#8a7d5c;font-weight:400}',
+'@media(max-width:640px){.pd-panel{width:100%}.pd-kv{grid-template-columns:112px 1fr}}',
+'.aw-steps{display:flex;gap:6px;margin-bottom:18px}',
+'.aw-steps .s{flex:1;text-align:center;font-size:.72rem;font-weight:700;color:#b0a483;padding-bottom:8px;border-bottom:3px solid rgba(140,125,92,.18)}',
+'.aw-steps .s.on{color:#a9791f;border-bottom-color:#e6ad4e}',
+'.aw-steps .s.done{color:#2e9e6b;border-bottom-color:#2e9e6b}',
+'.aw-sum{background:rgba(230,173,78,.08);border:1px solid rgba(230,173,78,.24);border-radius:12px;padding:14px;font-size:.86rem;line-height:1.8}',
+'.aw-sum b{color:#8a7d5c;font-weight:600}',
+'.aw-toggle{display:flex;gap:8px}',
+'.aw-toggle button{flex:1;padding:11px;border-radius:11px;border:1px solid #d9cba8;background:transparent;color:inherit;font-weight:700;cursor:pointer}',
+'body.dark .aw-toggle button{border-color:#3a2f14}',
+'.aw-toggle button.on{background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05;border-color:transparent}',
+'.p-opt{font-size:.78rem;color:#8a7d5c;margin-top:5px}',
+'.gl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px}',
+'.gl-card{background:#fff;border:1px solid #ece2cd;border-radius:14px;overflow:hidden}',
+'body.dark .gl-card{background:#1b1508;border-color:#2c2410}',
+'.gl-card img{width:100%;aspect-ratio:16/9;object-fit:cover;cursor:pointer;display:block;background:#efe7d4}',
+'.gl-cap{padding:10px 12px}',
+'.gl-cap .gl-t{font-weight:700;font-size:.86rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+'.gl-cap .gl-m{font-size:.72rem;color:#8a7d5c;font-family:ui-monospace,monospace;margin-top:3px}',
+'.cr-row{background:#fff;border:1px solid #ece2cd;border-radius:13px;padding:14px 16px;margin-bottom:10px}',
+'body.dark .cr-row{background:#1b1508;border-color:#2c2410}',
+'.cr-row .cr-name{font-weight:800;font-size:.98rem;margin-bottom:10px}',
+'.cr-metrics{display:flex;gap:20px;flex-wrap:wrap}',
+'.cr-m .n{font-size:1.15rem;font-weight:800;line-height:1}',
+'.cr-m .l{font-size:.68rem;color:#8a7d5c;text-transform:uppercase;letter-spacing:.04em;margin-top:3px}',
+'.ph-search{position:relative}',
+'.ph-search input{width:230px;max-width:38vw;padding:9px 13px;border-radius:11px;border:1px solid rgba(230,173,78,.28);background:rgba(255,255,255,.04);color:inherit;font-size:.85rem}',
+'.ph-search input:focus{outline:none;border-color:rgba(230,173,78,.6)}',
+'.gs-panel{position:absolute;top:46px;left:0;width:360px;max-width:80vw;max-height:60vh;overflow-y:auto;background:#fff;border:1px solid #ece2cd;border-radius:14px;box-shadow:0 20px 50px -12px rgba(40,30,10,.35);z-index:130}',
+'body.dark .gs-panel{background:#1b1508;border-color:#2c2410}',
+'.gs-item{padding:11px 14px;border-bottom:1px solid rgba(140,125,92,.1);cursor:pointer;display:flex;align-items:center;gap:10px}',
+'.gs-item:hover{background:rgba(230,173,78,.08)}',
+'.gs-item .gt{flex:1;min-width:0}',
+'.gs-item .gn{font-weight:700;font-size:.86rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+'.gs-item .gm{font-size:.72rem;color:#8a7d5c;font-family:ui-monospace,monospace}',
+'.gs-badge{font-size:.66rem;font-weight:800;padding:3px 8px;border-radius:999px;background:rgba(230,173,78,.16);color:#a9791f;white-space:nowrap}',
+'.gs-empty{padding:22px 14px;text-align:center;color:#9c8f6e;font-size:.84rem}',
 '.prod-burger{display:none}',
 '@media(max-width:860px){',
 '  .prodside{position:fixed;left:0;top:0;bottom:0;z-index:60;transform:translateX(-100%);transition:transform .22s}',
@@ -18331,8 +18427,19 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '  .prod-burger svg{width:20px;height:20px}',
 '  .prodbody{padding:6px 16px 40px}',
 '  .prodhead{padding:16px}',
+'  .prodhead .ph-badge{display:none}',
+'  .prodhead .ph-date{display:none}',
+'  .prodhead .ph-hi{font-size:1.05rem;max-width:30vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+'  .ph-search input{width:150px;max-width:32vw}',
 '  .prod-scrim{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:55}',
 '  .prodapp.side-open .prod-scrim{display:block}',
+'}',
+'@media(max-width:480px){',
+'  .ph-search input{width:120px}',
+'  .aw-steps .s{font-size:.6rem}',
+'  .pd-head{padding:14px 16px 10px}',
+'  .pd-body{padding:16px}',
+'  .pd-foot{padding:10px 16px}',
 '}'
     ].join('');
     var st=document.createElement('style'); st.id='prod-portal-css'; st.textContent=css;
@@ -18368,6 +18475,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
               '<div><div class="ph-hi" id="'+portal+'-hi">Welcome</div><div class="ph-date" id="'+portal+'-date"></div></div>'+
             '</div>'+
             '<div style="display:flex;align-items:center;gap:12px">'+
+              (portal==='production'?'<div class="ph-search"><input id="prod-gsearch" placeholder="Search tasks, creators, editors..." oninput="prodGSearch(this.value)" autocomplete="off"></div>':'')+
               '<button class="ph-bell" onclick="prodBell(\''+portal+'\')">'+icon('bell')+'<span class="ph-bell-dot" id="'+portal+'-bell-dot" style="display:none">0</span></button>'+
               '<div class="ph-badge">'+d.title+'</div>'+
             '</div>'+
@@ -18452,6 +18560,31 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }).catch(function(){});
   };
 
+  // --- global production search ---
+  window.prodGSearch=function(v){
+    v=(v||'').trim(); clearTimeout(window._prodGSt);
+    var box=document.querySelector('#production-app .ph-search'); if(!box) return;
+    var ex=document.getElementById('prod-gs-panel');
+    if(v.length<2){ if(ex) ex.remove(); return; }
+    window._prodGSt=setTimeout(function(){
+      api(P.production.api+'/search?q='+encodeURIComponent(v)).then(function(r){
+        var box=document.querySelector('#production-app .ph-search'); if(!box) return;
+        var old=document.getElementById('prod-gs-panel'); if(old) old.remove();
+        var p=document.createElement('div'); p.className='gs-panel'; p.id='prod-gs-panel';
+        var res=r.results||[];
+        p.innerHTML=res.length?res.map(function(t){ return '<div class="gs-item" onclick="prodGSOpen('+t.id+')"><div class="gt"><div class="gn">'+esc(t.title||'Untitled')+'</div><div class="gm">'+esc(t.ref_code||'')+(t.creator_name?' \u00b7 '+esc(t.creator_name):'')+'</div></div><span class="gs-badge">'+esc(t.match||'Task')+'</span></div>'; }).join(''):'<div class="gs-empty">No matches for \u201c'+esc(v)+'\u201d.</div>';
+        box.appendChild(p);
+        setTimeout(function(){ document.addEventListener('click',_prodGSOutside); },0);
+      }).catch(function(){});
+    }, 300);
+  };
+  function _prodGSOutside(e){
+    var p=document.getElementById('prod-gs-panel'); if(!p){ document.removeEventListener('click',_prodGSOutside); return; }
+    if(p.contains(e.target)) return; if(e.target.closest&&e.target.closest('.ph-search')) return;
+    p.remove(); document.removeEventListener('click',_prodGSOutside);
+  }
+  window.prodGSOpen=function(id){ var p=document.getElementById('prod-gs-panel'); if(p) p.remove(); document.removeEventListener('click',_prodGSOutside); var s=document.getElementById('prod-gsearch'); if(s) s.value=''; prodOpenTask('production',id); };
+
   function _greet(){ var h=new Date().getHours(); return h<12?'Good Morning':(h<17?'Good Afternoon':'Good Evening'); }
   function _today(){ try{ return new Date().toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long',year:'numeric'}); }catch(e){ return ''; } }
 
@@ -18465,6 +18598,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     body.innerHTML='<div class="p-load">Loading...</div>';
     try{ history.replaceState({mvs:1,app:portal+'-app',pg:page},'', '/'+portal); }catch(e){}
     if(page==='dashboard') return renderDashboard(portal,body);
+    if(page.indexOf('q:')===0){ var st=page.slice(2); var f=_flt(portal);
+      if(st==='__overdue'){ f.status=''; f.deadline='overdue'; } else { f.status=st; f.deadline=''; } f.priority='';
+      return renderList(portal,body); }
+    if(page==='urgent'){ var fu=_flt(portal); fu.priority='urgent'; fu.status=''; fu.deadline=''; return renderList(portal,body); }
+    if(page==='views') return renderViews(portal,body);
+    if(page==='time') return renderEditorTime(portal,body);
+    if(page==='library') return renderGraphicsLib(portal,body);
+    if(page==='creators') return renderCreators(portal,body);
     if(page==='board') return renderBoard(portal,body);
     if(page==='team') return renderTeam(portal,body);
     if(page==='analytics') return renderAnalytics(portal,body);
@@ -18487,7 +18628,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       html+='<div class="pk-grid">';
       Object.keys(kpis).forEach(function(k){
         var cls=(k==='overdue'?'warn':(k==='completed'||k==='published'||k==='approved'?'good':''));
-        html+='<div class="pk-card '+cls+'"><div class="pk-val">'+(kpis[k]||0)+'</div><div class="pk-lbl">'+(KPI_LABELS[k]||k)+'</div></div>';
+        var nav=(KPI_NAV[portal]||{})[k];
+        var click=nav?(' click" onclick="prodKpiGo(\''+portal+'\',\''+k+'\')'):'';
+        html+='<div class="pk-card '+cls+click+'"><div class="pk-val">'+(kpis[k]||0)+'</div><div class="pk-lbl">'+(KPI_LABELS[k]||k)+'</div></div>';
       });
       html+='</div>';
       var sec=r.secondary||r.monthly;
@@ -18498,8 +18641,138 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         });
         html+='</div>';
       }
-      body.innerHTML=html||'<div class="p-empty">No data yet.</div>';
+      body.innerHTML=(html||'<div class="p-empty">No data yet.</div>')+'<div id="'+portal+'-work"></div>';
+      _loadWork(portal);
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load dashboard. '+esc(e&&e.message||'')+'</div>'; });
+  }
+
+  // --- dashboard "current work" cards with a primary action on the card ---
+  function _workTitle(portal){ return portal==='production'?'Needs Your Attention':'Your Current Work'; }
+  function _workFilter(portal,arr){
+    var out=arr;
+    if(portal==='editor') out=arr.filter(function(t){ return ['editor_assigned','editing','editing_paused','editing_done','qc_changes'].indexOf(t.lifecycle)>=0; });
+    else if(portal==='graphics') out=arr.filter(function(t){ var s=(t.graphics||{}).status; return ['new','in_progress','changes'].indexOf(s)>=0; });
+    else if(portal==='youtuber') out=arr.filter(function(t){ return ['creator_assigned','creator_working','changes_required'].indexOf(t.lifecycle)>=0; });
+    else if(portal==='production') out=arr.filter(function(t){ var f=(t.deadline_flag||{}).kind; return ['creator_submitted','pm_review','qc_pending','ready_for_youtube'].indexOf(t.lifecycle)>=0 || f==='overdue'; });
+    return out.slice(0,10);
+  }
+  function _loadWork(portal){
+    var wrap=document.getElementById(portal+'-work'); if(!wrap) return;
+    var d=P[portal];
+    var ep=(portal==='youtuber')?d.api+'/videos':(portal==='production'?d.api+'/tasks?size=100':d.api+'/tasks');
+    wrap.innerHTML='<div class="p-sec">'+_workTitle(portal)+'</div><div class="p-load" style="padding:14px">Loading...</div>';
+    api(ep).then(function(r){
+      if(_stale(portal,'dashboard')) return;
+      var arr=_workFilter(portal, r.videos||r.tasks||[]);
+      wrap.innerHTML='<div class="p-sec">'+_workTitle(portal)+'</div>'+
+        (arr.length?arr.map(function(t){ return _workCard(portal,t); }).join(''):'<div class="p-empty" style="padding:22px">All clear \u2014 nothing needs your attention right now.</div>');
+    }).catch(function(){ if(wrap) wrap.innerHTML=''; });
+  }
+  function _workCard(portal,t){
+    var meta=[]; if(t.creator_name) meta.push(esc(t.creator_name));
+    var df=t.deadline_flag||{}; var dl=(df.kind&&['overdue','today','soon'].indexOf(df.kind)>=0)?'<span class="pt-dl '+df.kind+'">'+esc(df.label)+'</span>':'';
+    return '<div class="pw-card">'+
+      '<div class="pw-main" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
+        '<div class="pw-title">'+esc(t.title||'Untitled')+'</div>'+
+        '<div class="pw-meta"><span class="pt-ref">'+esc(t.ref_code||'')+'</span>'+meta.map(function(m){return '<span>'+m+'</span>';}).join('')+dl+'<span class="pt-stage">'+esc(t.lifecycle_label||t.next_action||'')+'</span></div>'+
+      '</div>'+_primaryBtn(portal,t)+'</div>';
+  }
+  function _primaryBtn(portal,t){
+    var lc=t.lifecycle||''; var g=t.graphics||{};
+    function direct(label,ep){ return '<button class="p-btn p-btn-primary" onclick="event.stopPropagation();prodAct(\''+portal+'\','+t.id+',\''+ep+'\')">'+label+'</button>'; }
+    function openb(label){ return '<button class="p-btn p-btn-primary" onclick="event.stopPropagation();prodOpenTask(\''+portal+'\','+t.id+')">'+label+'</button>'; }
+    if(portal==='editor'){
+      if(lc==='editor_assigned') return direct('Start Editing','/start');
+      if(lc==='editing_paused') return direct('Resume','/resume');
+      if(lc==='editing') return openb('Manage');
+      if(lc==='editing_done') return openb('Submit for QC');
+      if(lc==='qc_changes') return openb('Submit Revision');
+    } else if(portal==='graphics'){
+      if(g.status==='new'||g.status==='changes') return direct('Start Designing','/start');
+      if(g.status==='in_progress') return openb('Submit Thumbnail');
+    } else if(portal==='youtuber'){
+      if(lc==='creator_assigned'||lc==='creator_working'||lc==='changes_required') return openb('Submit Video');
+    } else if(portal==='production'){
+      if(lc==='creator_submitted'||lc==='pm_review') return openb('Review');
+      if(lc==='qc_pending') return openb('QC');
+      if(lc==='ready_for_youtube') return openb('Publish');
+    }
+    return openb('Open');
+  }
+
+  // --- real-time views (production analytics) ---
+  function _num(n){ try{ return (n||0).toLocaleString(); }catch(e){ return String(n||0); } }
+  function renderViews(portal,body){
+    body.innerHTML='<div class="p-load">Loading views...</div>';
+    return api(P.production.api+'/views').then(function(r){
+      if(_stale(portal,'views')) return;
+      var kpis=[['Total Views',_num(r.total_views)],['Videos Uploaded',r.uploaded||0],['Pending Upload',r.pending_upload||0],['Highest Viewed',r.highest?_num(r.highest.views):'0']];
+      var html='<div class="pk-grid">'+kpis.map(function(c){ return '<div class="pk-card"><div class="pk-val">'+c[1]+'</div><div class="pk-lbl">'+c[0]+'</div></div>'; }).join('')+'</div>';
+      var cr=r.by_creator||[];
+      html+='<div class="p-sec">Views by Creator</div>';
+      html+=cr.length?cr.map(function(c){ return '<div class="pt-row"><div class="pt-main"><div class="pt-title">'+esc(c.name)+'</div><div class="pt-meta"><span>'+(c.creator_type==='youtuber'?'YouTuber':'Teacher')+'</span><span>'+c.videos+' videos</span></div></div><div style="text-align:right"><div style="font-weight:800">'+_num(c.views)+'</div><div style="font-size:.72rem;color:#8a7d5c">'+c.share+'%</div></div></div>'; }).join(''):'<div class="p-empty">No uploaded videos yet.</div>';
+      var vs=r.videos||[];
+      html+='<div class="p-sec">All Uploaded Videos</div>';
+      html+=vs.length?vs.map(function(v){ return '<div class="pt-row"'+(v.youtube_url?' style="cursor:pointer" onclick="window.open(\''+esc(v.youtube_url)+'\',\'_blank\')"':'')+'><div class="pt-main"><div class="pt-title">'+esc(v.title)+'</div><div class="pt-meta"><span class="pt-ref">'+esc(v.ref_code)+'</span><span>'+esc(v.creator)+'</span>'+(v.video_type?'<span>'+esc(v.video_type)+'</span>':'')+'</div></div><span class="pt-stage">'+_num(v.views)+' views</span></div>'; }).join(''):'<div class="p-empty">No uploaded videos yet.</div>';
+      body.innerHTML=html;
+    }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load views. '+esc(e&&e.message||'')+'</div>'; });
+  }
+
+  // --- editor time analytics ---
+  function renderEditorTime(portal,body){
+    body.innerHTML='<div class="p-load">Loading time analytics...</div>';
+    return api(P.editor.api+'/time-analytics').then(function(r){
+      if(_stale(portal,'time')) return;
+      var kpis=[['Total Active Time',r.total_active_hours+'h'],['Videos Completed',r.videos_completed||0],['Avg per Video',r.avg_per_video_hours+'h'],['Longest Edit',r.longest_hours+'h'],['Shortest Edit',r.shortest_hours+'h']];
+      var html='<div class="pk-grid">'+kpis.map(function(c){ return '<div class="pk-card"><div class="pk-val">'+c[1]+'</div><div class="pk-lbl">'+c[0]+'</div></div>'; }).join('')+'</div>';
+      var bt=r.by_type||[];
+      html+='<div class="p-sec">Time by Video Type</div>';
+      html+=bt.length?bt.map(function(d){ return '<div class="pt-row" style="cursor:default"><div class="pt-main"><div class="pt-title">'+esc(d.type)+'</div><div class="pt-meta"><span>'+d.videos+' videos</span><span>avg '+d.avg_hours+'h</span></div></div><span class="pt-stage">'+d.hours+'h total</span></div>'; }).join(''):'<div class="p-empty">No editing time recorded yet. Active time is measured only while you are editing.</div>';
+      body.innerHTML=html;
+    }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load. '+esc(e&&e.message||'')+'</div>'; });
+  }
+
+  // --- graphics thumbnail library ---
+  function renderGraphicsLib(portal,body){
+    body.innerHTML='<div class="p-load">Loading library...</div>';
+    return api(P.graphics.api+'/library').then(function(r){
+      if(_stale(portal,'library')) return;
+      var arr=r.thumbnails||[];
+      if(!arr.length){ body.innerHTML='<div class="p-sec">Thumbnail Library</div><div class="p-empty">No submitted thumbnails yet. Approved and submitted thumbnails will appear here.</div>'; return; }
+      body.innerHTML='<div class="p-sec">Thumbnail Library</div><div class="gl-grid">'+arr.map(function(x){
+        return '<div class="gl-card"><img src="'+esc(x.thumbnail_url)+'" onclick="prodLightbox(this.src)"><div class="gl-cap"><div class="gl-t">'+esc(x.title)+'</div><div class="gl-m">'+esc(x.ref_code)+' \u00b7 '+esc(x.status)+'</div></div></div>';
+      }).join('')+'</div>';
+    }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load. '+esc(e&&e.message||'')+'</div>'; });
+  }
+
+  // --- creator performance (teachers / youtubers) ---
+  function renderCreators(portal,body){
+    if(!window._crTab) window._crTab='teachers';
+    body.innerHTML='<div class="p-load">Loading creator performance...</div>';
+    return api(P.production.api+'/creators').then(function(r){
+      if(_stale(portal,'creators')) return;
+      window._crData=r; _renderCreators();
+    }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load. '+esc(e&&e.message||'')+'</div>'; });
+  }
+  window.crTab=function(t){ window._crTab=t; _renderCreators(); };
+  function _renderCreators(){
+    var body=document.getElementById('production-body'); if(!body) return;
+    var r=window._crData||{}; var tab=window._crTab||'teachers';
+    var teachers=r.teachers||[], youtubers=r.youtubers||[];
+    var html='<div class="pd-tabs" style="margin-bottom:14px">'+
+      '<button class="pd-tab'+(tab==='teachers'?' on':'')+'" onclick="crTab(\'teachers\')">Teachers ('+teachers.length+')</button>'+
+      '<button class="pd-tab'+(tab==='youtubers'?' on':'')+'" onclick="crTab(\'youtubers\')">YouTubers ('+youtubers.length+')</button></div>';
+    var list=(tab==='teachers')?teachers:youtubers;
+    if(!list.length){ html+='<div class="p-empty">No '+tab+' with production activity yet.</div>'; body.innerHTML=html; return; }
+    html+=list.map(function(c){
+      var metrics=(tab==='teachers')
+        ? [['Videos',c.videos],['Completed',c.completed],['Pending',c.pending],['Overdue',c.overdue],['On-Time',c.on_time_pct==null?'\u2014':c.on_time_pct+'%'],['Views',_num(c.views)]]
+        : [['Videos',c.videos],['Published',c.published],['Pending',c.pending],['On-Time',c.on_time_pct==null?'\u2014':c.on_time_pct+'%'],['Views',_num(c.views)]];
+      return '<div class="cr-row">'+
+        '<div class="cr-name">'+esc(c.name)+'</div>'+
+        '<div class="cr-metrics">'+metrics.map(function(m){ return '<div class="cr-m"><div class="n">'+(m[1]==null?0:m[1])+'</div><div class="l">'+m[0]+'</div></div>'; }).join('')+'</div></div>';
+    }).join('');
+    body.innerHTML=html;
   }
 
   // --- generic task/video list ---
@@ -18525,6 +18798,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(portal==='production'){
       if(f.creator_type) p.push('creator_type='+encodeURIComponent(f.creator_type));
       if(f.deadline) p.push('deadline='+encodeURIComponent(f.deadline));
+      if(f.priority) p.push('priority='+encodeURIComponent(f.priority));
       if(f.q) p.push('q='+encodeURIComponent(f.q));
       p.push('size=100');
     }
@@ -18550,11 +18824,29 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     return html;
   }
   function renderList(portal,body){
-    body.innerHTML=_filterBar(portal)+'<div id="'+portal+'-results"><div class="p-load">Loading...</div></div>';
+    body.innerHTML=_filterBar(portal)+'<div id="'+portal+'-active"></div><div id="'+portal+'-results"><div class="p-load">Loading...</div></div>';
     return _prodLoadList(portal);
+  }
+  var _ST_LABEL={pm_review:'PM Review',creator_submitted:'Submitted',approved:'Approved',editor_assigned:'Not Started',editing:'Editing',editing_paused:'Paused',editing_done:'Editing Done',qc_pending:'QC Pending',qc_changes:'Changes',ready_for_youtube:'Ready for YouTube',uploaded:'Uploaded',creator_assigned:'To Submit',changes_required:'Changes',new:'New',in_progress:'In Progress',changes:'Changes',submitted:'Submitted'};
+  function _activeChips(portal){
+    var f=_flt(portal); var chips=[];
+    if(f.status) chips.push(['Status: '+(_ST_LABEL[f.status]||f.status),'status']);
+    if(portal==='production'&&f.creator_type) chips.push(['Creator: '+(f.creator_type==='youtuber'?'YouTuber':'Teacher'),'creator_type']);
+    if(f.deadline) chips.push(['Deadline: '+(f.deadline==='overdue'?'Overdue':(f.deadline==='today'?'Due Today':f.deadline)),'deadline']);
+    if(portal==='production'&&f.priority) chips.push(['Priority: '+(f.priority==='urgent'?'Urgent':f.priority),'priority']);
+    if(portal==='production'&&f.q) chips.push(['Search: "'+f.q+'"','q']);
+    if(!chips.length) return '';
+    return '<div class="p-active"><span class="lbl">Active:</span>'+
+      chips.map(function(c){ return '<span class="achip">'+esc(c[0])+'<button onclick="prodClearFilter(\''+portal+'\',\''+c[1]+'\')">\u00d7</button></span>'; }).join('')+
+      '<button class="clr" onclick="prodClearAll(\''+portal+'\')">Clear all</button></div>';
   }
   function _prodLoadList(portal){
     var d=P[portal]; var key=(portal==='youtuber')?'videos':'tasks';
+    var act=document.getElementById(portal+'-active'); if(act) act.innerHTML=_activeChips(portal);
+    // keep saved-view chip highlight in sync
+    var bar=document.querySelector('#'+portal+'-app .p-filter');
+    if(bar){ var f=_flt(portal); var chips=bar.querySelectorAll('.p-chip'); var views=SAVED[portal]||[];
+      chips.forEach(function(c,i){ var v=views[i]?views[i][0]:''; var on=(v.indexOf('__')===0)?(f.deadline==='overdue'):((f.status||'')===v && !f.deadline); c.classList.toggle('on',on); }); }
     var res=document.getElementById(portal+'-results'); if(res) res.innerHTML='<div class="p-load">Loading...</div>';
     return api(d.api+'/'+key+_prodQuery(portal)).then(function(r){
       var arr=r[key]||r.tasks||r.videos||[];
@@ -18562,6 +18854,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       res.innerHTML=arr.length?arr.map(function(t){ return _taskRow(portal,t); }).join(''):'<div class="p-empty">Nothing matches these filters.</div>';
     }).catch(function(e){ if(res) res.innerHTML='<div class="p-empty">Could not load. '+esc(e&&e.message||'')+'</div>'; });
   }
+  window.prodKpiGo=function(portal,key){
+    var nav=(KPI_NAV[portal]||{})[key]; if(!nav) return;
+    var f=_flt(portal); f.status=nav.status||''; f.deadline=nav.deadline||'';
+    prodNav(portal,(portal==='youtuber')?'videos':'tasks');
+  };
+  window.prodClearFilter=function(portal,k){ _flt(portal)[k]=''; if(k==='q'){ var s=document.getElementById('prod-search'); if(s) s.value=''; } _prodLoadList(portal); };
+  window.prodClearAll=function(portal){ window._prodFilter[portal]={}; var s=document.getElementById('prod-search'); if(s) s.value=''; _prodLoadList(portal); };
   window.prodView=function(portal,val){
     var f=_flt(portal);
     if(val.indexOf('__')===0){ f.status=''; f.deadline=(val==='__overdue')?'overdue':''; }
@@ -18690,23 +18989,98 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.prodOpenTask=function(portal,id){
     var d=P[portal]; var ep=(portal==='youtuber')?d.api+'/videos/'+id:d.api+'/tasks/'+id;
     api(ep).then(function(t){
-      var tl=(t.timeline||[]).map(function(e){ return '<div style="display:flex;gap:12px;padding:8px 0;border-bottom:1px solid rgba(140,125,92,.14)"><div style="color:#8a7d5c;font-size:.76rem;min-width:120px">'+esc(e.at)+'</div><div style="font-size:.86rem"><b>'+esc(e.label)+'</b>'+(e.actor?' <span style="color:#8a7d5c">— '+esc(e.actor)+'</span>':'')+'</div></div>'; }).join('');
-      var g=t.graphics||{};
-      var body='<div style="margin-bottom:14px"><span class="pt-ref">'+esc(t.ref_code||'')+'</span> &nbsp; <span class="pt-stage">'+esc(t.lifecycle_label||'')+'</span></div>'+
-        '<div style="font-size:.9rem;line-height:1.7">'+
-        '<div><b>Creator:</b> '+esc(t.creator_badge||'')+'</div>'+
-        (t.subject?'<div><b>Subject:</b> '+esc(t.subject)+'</div>':'')+
-        (t.editor_name?'<div><b>Editor:</b> '+esc(t.editor_name)+'</div>':'')+
-        '<div><b>Next action:</b> '+esc(t.next_action||'')+'</div>'+
-        (t.deadline?'<div><b>Deadline:</b> '+esc(t.deadline)+'</div>':'')+
-        (g.status?'<div><b>Thumbnail:</b> '+esc(g.status)+'</div>':'')+
-        (t.youtube_url?'<div><b>YouTube:</b> <a href="'+esc(t.youtube_url)+'" target="_blank" style="color:#e6ad4e">Open</a>'+(t.yt_views!=null?' ('+t.yt_views+' views)':'')+'</div>':'')+
-        '</div>'+
-        (Array.isArray(t.attachments)&&t.attachments.length?'<div class="p-sec">Change Screenshots</div><div class="p-gallery">'+t.attachments.map(function(a){ return '<img src="'+esc(a.url)+'" onclick="prodLightbox(this.src)">'; }).join('')+'</div>':'')+
-        (tl?'<div class="p-sec">Timeline</div>'+tl:'');
-      _prodModal(esc(t.title||'Task'),body+_actions(portal,t));
+      window._prodTask={portal:portal,t:t};
+      var old=document.getElementById('prod-drawer'); if(old) old.remove();
+      var dr=document.createElement('div'); dr.className='p-drawer'; dr.id='prod-drawer';
+      var tabs=['overview','timeline','editor','graphics','qc','youtube'];
+      var tabLbl={overview:'Overview',timeline:'Timeline',editor:'Editor',graphics:'Graphics',qc:'QC',youtube:'YouTube'};
+      dr.innerHTML='<div class="pd-panel">'+
+        '<div class="pd-head"><div><div class="h-title">'+esc(t.title||'Task')+'</div>'+
+          '<div class="h-meta"><span class="pt-ref">'+esc(t.ref_code||'')+'</span><span class="pt-stage">'+esc(t.lifecycle_label||'')+'</span>'+
+          ((t.creator_type==='youtuber')?'<span class="pt-badge b-youtuber">YouTuber</span>':'<span class="pt-badge b-teacher">Teacher</span>')+'</div></div>'+
+          '<button class="pd-x" onclick="prodCloseTask()">&times;</button></div>'+
+        '<div class="pd-tabs">'+tabs.map(function(tb){ return '<button class="pd-tab'+(tb==='overview'?' on':'')+'" data-tab="'+tb+'" onclick="prodTab(\''+tb+'\')">'+tabLbl[tb]+'</button>'; }).join('')+'</div>'+
+        '<div class="pd-body" id="pd-body">'+_tabHtml(portal,t,'overview')+'</div>'+
+        '<div class="pd-foot" id="pd-foot">'+_actions(portal,t)+'</div>'+
+        '</div>';
+      dr.addEventListener('click',function(e){ if(e.target===dr) prodCloseTask(); });
+      document.body.appendChild(dr);
     }).catch(function(e){ toast((e&&e.message)||'Could not open task',true); });
   };
+  window.prodCloseTask=function(){ var d=document.getElementById('prod-drawer'); if(d) d.remove(); };
+  window.prodDismiss=function(){ ['prod-modal','prod-drawer'].forEach(function(id){ var e=document.getElementById(id); if(e) e.remove(); }); };
+  window.prodTab=function(tab){
+    var st=window._prodTask; if(!st) return;
+    document.querySelectorAll('#prod-drawer .pd-tab').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-tab')===tab); });
+    var body=document.getElementById('pd-body'); if(body) body.innerHTML=_tabHtml(st.portal, st.t, tab);
+  };
+  function _kv(k,v){ return v?('<div class="k">'+esc(k)+'</div><div class="v">'+v+'</div>'):''; }
+  function _fmtSecs(s){ s=parseInt(s||0,10); if(!s) return '0m'; var h=Math.floor(s/3600),m=Math.round((s%3600)/60); return (h?h+'h ':'')+(m?m+'m':(h?'':'0m')); }
+  function _tabHtml(portal,t,tab){
+    var g=t.graphics||{};
+    if(tab==='overview'){
+      return '<div class="pd-kv">'+
+        _kv('Creator', esc(t.creator_badge||''))+
+        _kv('Video Type', esc(t.video_type||''))+
+        _kv('Channel', esc(t.channel_name||''))+
+        _kv('Subject', esc(t.subject||''))+
+        _kv('Streaming', esc(t.streaming||''))+
+        _kv('Priority', esc((t.priority||'normal')==='urgent'?'Urgent':'Normal'))+
+        _kv('Deadline', esc(t.deadline||'Not set'))+
+        _kv('Current Stage', esc(t.lifecycle_label||''))+
+        _kv('Next Action', esc(t.next_action||''))+
+        _kv('Source Drive', t.submitted_link?('<a href="'+esc(t.submitted_link)+'" target="_blank">Open link</a>'):'')+
+        _kv('Reference', esc(t.reference||''))+
+      '</div>';
+    }
+    if(tab==='timeline'){
+      var rows=(t.timeline||[]);
+      if(!rows.length) return '<div class="pd-empty">No timeline events yet.</div>';
+      return '<div class="pd-tl">'+rows.map(function(e){ return '<div class="ev"><div class="at">'+esc(e.at||'')+'</div><div class="lb">'+esc(e.label||'')+(e.actor?' <span class="ac">— '+esc(e.actor)+'</span>':'')+'</div></div>'; }).join('')+'</div>';
+    }
+    if(tab==='editor'){
+      if(!t.editor_name) return '<div class="pd-empty">No editor assigned yet.</div>';
+      return '<div class="pd-kv">'+
+        _kv('Editor', esc(t.editor_name))+
+        _kv('Progress', '<div>'+(t.editing_progress||0)+'%</div><div class="pd-progress"><span style="width:'+(t.editing_progress||0)+'%"></span></div>')+
+        _kv('Active Editing Time', esc(_fmtSecs(t.editing_seconds)))+
+        _kv('Revisions', String(t.revision_count||0))+
+        _kv('Edited Link', t.edited_link?('<a href="'+esc(t.edited_link)+'" target="_blank">Open link</a>'):'Not submitted')+
+        _kv('Deadline', esc(t.deadline||'Not set'))+
+      '</div>';
+    }
+    if(tab==='graphics'){
+      if(!g.graphics_name && (g.status==='new'||!g.status)) return '<div class="pd-empty">No graphics member assigned yet.</div>';
+      return '<div class="pd-kv">'+
+        _kv('Graphics Member', esc(g.graphics_name||'Unassigned'))+
+        _kv('Status', esc(g.status||'new'))+
+        _kv('Revisions', String(g.revision_count||0))+
+        _kv('Instructions', esc(g.instructions||''))+
+        _kv('Reference', g.reference_image?('<a href="'+esc(g.reference_image)+'" target="_blank">Open reference</a>'):'None provided')+
+        _kv('Thumbnail', g.thumbnail_url?('<a href="'+esc(g.thumbnail_url)+'" target="_blank">Open thumbnail</a>'):'Not submitted')+
+      '</div>'+(g.thumbnail_url?'<div class="p-gallery" style="margin-top:12px"><img src="'+esc(g.thumbnail_url)+'" onclick="prodLightbox(this.src)"></div>':'');
+    }
+    if(tab==='qc'){
+      var att=(t.attachments||[]);
+      return '<div class="pd-kv">'+
+        _kv('QC Status', esc(t.qc_status||'Not started'))+
+        _kv('Revisions', String(t.revision_count||0))+
+      '</div>'+
+      (att.length?'<div class="p-sec">Change Screenshots</div><div class="p-gallery">'+att.map(function(a){ return '<img src="'+esc(a.url)+'" onclick="prodLightbox(this.src)">'; }).join('')+'</div>':'<div class="pd-empty">No QC screenshots.</div>');
+    }
+    if(tab==='youtube'){
+      if(!t.youtube_url) return '<div class="pd-empty">Not published yet.</div>';
+      return '<div class="pd-kv">'+
+        _kv('YouTube URL', '<a href="'+esc(t.youtube_url)+'" target="_blank">Open on YouTube</a>')+
+        _kv('Video ID', esc(t.yt_video_id||''))+
+        _kv('Channel', esc(t.channel_name||''))+
+        _kv('Published', esc(t.published_at||''))+
+        _kv('Current Views', t.yt_views!=null?String(t.yt_views):'\u2014')+
+        _kv('Last Updated', esc(t.yt_views_at||''))+
+      '</div>';
+    }
+    return '';
+  }
 
   // ---- action buttons per portal + lifecycle (backend enforces auth) ----
   function _actions(portal,t){
@@ -18750,13 +19124,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.prodAct=function(portal,id,ep,body){
     var full=P[portal].api+((ep.indexOf('/tasks/')===0||ep.indexOf('/videos/')===0)?ep:('/tasks/'+id+ep));
     // youtuber submit uses /videos/{id}/submit already absolute-ish handled in prodLinkForm
-    api(full,'POST',body||{}).then(function(){ var m=document.getElementById('prod-modal'); if(m)m.remove(); toast('Done'); _refresh(portal); })
+    api(full,'POST',body||{}).then(function(){ prodDismiss(); toast('Done'); _refresh(portal); })
       .catch(function(e){ toast((e&&e.message)||'Action failed',true); });
   };
   function _actsBox(){ return document.getElementById('p-acts'); }
   function _formWrap(inner,submitLabel,submitCall){
     return inner+'<div style="display:flex;gap:9px;margin-top:12px"><button class="p-btn p-btn-primary" onclick="'+submitCall+'">'+esc(submitLabel)+'</button>'+
-      '<button class="p-btn" onclick="document.getElementById(\'prod-modal\').remove()">Cancel</button></div>';
+      '<button class="p-btn" onclick="prodDismiss()">Cancel</button></div>';
   }
   window.prodLinkForm=function(portal,id,ep,field,label,isYt){
     var box=_actsBox(); if(!box) return;
@@ -18768,7 +19142,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(!v){ toast('Please enter a link',true); return; }
     var body={}; body[field]=v;
     var full=isYt?(P[portal].api+ep):(P[portal].api+'/tasks/'+id+ep);
-    api(full,'POST',body).then(function(){ var m=document.getElementById('prod-modal'); if(m)m.remove(); toast('Submitted'); _refresh(portal); })
+    api(full,'POST',body).then(function(){ prodDismiss(); toast('Submitted'); _refresh(portal); })
       .catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
   window.prodRemarkForm=function(portal,id,ep){
@@ -18783,7 +19157,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var v=(document.getElementById('p-rem-in')||{}).value||''; v=v.trim();
     if(!v){ toast('Remarks are required',true); return; }
     var body={remarks:v}; if((window._prodImgs||[]).length) body.images=window._prodImgs.slice();
-    api(P[portal].api+'/tasks/'+id+ep,'POST',body).then(function(){ var m=document.getElementById('prod-modal'); if(m)m.remove(); toast('Sent'); _refresh(portal); })
+    api(P[portal].api+'/tasks/'+id+ep,'POST',body).then(function(){ prodDismiss(); toast('Sent'); _refresh(portal); })
       .catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
 
@@ -18829,60 +19203,113 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.prodProgSubmit=function(id){
     if(window._prodProgVal==null){ toast('Pick a progress %',true); return; }
     api(P.editor.api+'/tasks/'+id+'/progress','POST',{progress:window._prodProgVal, remarks:(document.getElementById('p-prog-note')||{}).value||''})
-      .then(function(){ var m=document.getElementById('prod-modal'); if(m)m.remove(); toast('Progress updated'); _refresh('editor'); })
+      .then(function(){ prodDismiss(); toast('Progress updated'); _refresh('editor'); })
       .catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
   window.prodAssignForm=function(id,role){
     var box=_actsBox(); if(!box) return;
     box.innerHTML='<div class="p-load" style="padding:16px">Loading '+role+'s...</div>';
-    api(P.production.api+'/people?role='+role).then(function(r){
+    Promise.all([ api(P.production.api+'/people?role='+role), api(P.production.api+'/team').catch(function(){return {};}) ]).then(function(res){
+      var r=res[0]||{}, team=res[1]||{};
       var list=r[role+'s']||[];
       if(!list.length){ box.innerHTML='<div class="p-empty" style="padding:16px">No '+role+'s available. Create one from the Admin panel first.</div>'; return; }
-      var opts=list.map(function(m){ return '<option value="'+m.id+'">'+esc(m.name)+' ('+(m.recommended||5)+' recommended)</option>'; }).join('');
-      box.innerHTML=_formWrap('<div class="p-field"><label>Select '+role.charAt(0).toUpperCase()+role.slice(1)+'</label><select class="p-select" id="p-assign-sel">'+opts+'</select></div>',
+      var tarr=(role==='editor')?(team.editors||[]):(team.graphics||[]);
+      var loadOf=function(pid){ for(var i=0;i<tarr.length;i++){ if(tarr[i].id===pid) return tarr[i]; } return null; };
+      var opts=list.map(function(m){ var w=loadOf(m.id); var load=w?(' \u2014 '+(w.active||0)+'/'+(w.recommended||m.recommended||5)+' active'+((w.active||0)>(w.recommended||5)?' (overloaded)':'')):''; return '<option value="'+m.id+'">'+esc(m.name)+load+'</option>'; }).join('');
+      box.innerHTML=_formWrap('<div class="p-field"><label>Select '+role.charAt(0).toUpperCase()+role.slice(1)+' (workload shown)</label><select class="p-select" id="p-assign-sel">'+opts+'</select></div>',
         'Assign','prodAssignSubmit('+id+',\''+role+'\')');
     }).catch(function(e){ box.innerHTML='<div class="p-empty" style="padding:16px">Could not load. '+esc(e&&e.message||'')+'</div>'; });
   };
   window.prodAssignSubmit=function(id,role){
     var v=(document.getElementById('p-assign-sel')||{}).value; if(!v){ toast('Pick one',true); return; }
     var body={}; body[role+'_id']=parseInt(v,10);
-    api(P.production.api+'/tasks/'+id+'/assign-'+role,'POST',body).then(function(){ var m=document.getElementById('prod-modal'); if(m)m.remove(); toast(role+' assigned'); _refresh('production'); })
+    api(P.production.api+'/tasks/'+id+'/assign-'+role,'POST',body).then(function(){ prodDismiss(); toast(role+' assigned'); _refresh('production'); })
       .catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
 
   // ---- PM: create new task ----
-  window.prodNewTask=function(){
-    _prodModal('New Production Task',
-      '<div class="p-field"><label>Creator Type</label><select class="p-select" id="nt-ctype" onchange="prodNtCreator()"><option value="teacher">Teacher</option><option value="youtuber">YouTuber</option></select></div>'+
-      '<div class="p-field"><label>Creator</label><select class="p-select" id="nt-creator"><option>Loading...</option></select></div>'+
-      '<div class="p-field"><label>Title</label><input class="p-input" id="nt-title" placeholder="Video title"></div>'+
-      '<div class="p-field"><label>Subject (optional)</label><input class="p-input" id="nt-subject" placeholder="e.g. Physics 12"></div>'+
-      '<div class="p-field"><label>Video Type (optional)</label><input class="p-input" id="nt-vtype" placeholder="e.g. One Shot"></div>'+
-      '<div class="p-field"><label>Deadline (optional)</label><input class="p-input" id="nt-deadline" type="datetime-local"></div>'+
-      '<div class="p-acts" id="p-acts"><button class="p-btn p-btn-primary" onclick="prodNtSubmit()">Create Task</button>'+
-      '<button class="p-btn" onclick="document.getElementById(\'prod-modal\').remove()">Cancel</button></div>');
-    prodNtCreator();
+  window.prodNewTask=function(){ prodAssignWork(); };
+  window.prodAssignWork=function(){
+    window._aw={step:1, data:{creator_type:'teacher', priority:'normal'}, people:null};
+    var old=document.getElementById('prod-drawer'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-drawer'; dr.id='prod-drawer';
+    dr.innerHTML='<div class="pd-panel"><div class="pd-head"><div class="h-title">Assign Work</div>'+
+      '<button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="pd-body" id="aw-body"><div class="p-load">Loading...</div></div>'+
+      '<div class="pd-foot" id="aw-foot"></div></div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+    document.body.appendChild(dr);
+    api(P.production.api+'/people').then(function(r){ window._aw.people=r; _awRender(); })
+      .catch(function(){ window._aw.people={teachers:[],youtubers:[]}; _awRender(); });
   };
-  window.prodNtCreator=function(){
-    var ct=(document.getElementById('nt-ctype')||{}).value||'teacher';
-    var sel=document.getElementById('nt-creator'); if(!sel) return; sel.innerHTML='<option>Loading...</option>';
-    api(P.production.api+'/people?role='+ct).then(function(r){
-      var list=r[ct+'s']||[];
-      sel.innerHTML=list.length?list.map(function(m){ return '<option value="'+m.id+'">'+esc(m.name)+'</option>'; }).join(''):'<option value="">None found</option>';
-    }).catch(function(){ sel.innerHTML='<option value="">Could not load</option>'; });
+  var _AW_STEPS=['Content','Creator','Production','References'];
+  function _awSave(){
+    var aw=window._aw; if(!aw) return; var g=function(id){ var e=document.getElementById(id); return e?e.value:undefined; };
+    var s=aw.step, d=aw.data;
+    if(s===1){ if(g('aw-title')!==undefined)d.title=g('aw-title').trim(); if(g('aw-vtype')!==undefined)d.video_type=g('aw-vtype').trim(); if(g('aw-channel')!==undefined)d.channel_name=g('aw-channel').trim(); if(g('aw-subject')!==undefined)d.subject=g('aw-subject').trim(); if(g('aw-stream')!==undefined)d.streaming=g('aw-stream').trim(); }
+    else if(s===2){ if(g('aw-creator')!==undefined){ var v=g('aw-creator'); if(d.creator_type==='teacher')d.teacher_id=v?parseInt(v,10):0; else d.youtuber_id=v?parseInt(v,10):0; } }
+    else if(s===3){ if(g('aw-deadline')!==undefined)d.deadline=g('aw-deadline'); if(g('aw-priority')!==undefined)d.priority=g('aw-priority'); var ar=document.getElementById('aw-approval'); if(ar)d.approval_required=ar.checked; }
+    else if(s===4){ if(g('aw-reference')!==undefined)d.reference=g('aw-reference').trim(); }
+  }
+  window.awSetCreatorType=function(ct){ _awSave(); window._aw.data.creator_type=ct; window._aw.data.teacher_id=0; window._aw.data.youtuber_id=0; _awRender(); };
+  window.awNext=function(){ _awSave(); var aw=window._aw;
+    if(aw.step===1 && !(aw.data.title||'').trim()){ toast('Title is required',true); return; }
+    if(aw.step===2){ var id=aw.data.creator_type==='teacher'?aw.data.teacher_id:aw.data.youtuber_id; if(!id){ toast('Please select a '+aw.data.creator_type,true); return; } }
+    if(aw.step<4){ aw.step++; _awRender(); }
   };
-  window.prodNtSubmit=function(){
-    var ct=(document.getElementById('nt-ctype')||{}).value;
-    var creator=(document.getElementById('nt-creator')||{}).value;
-    var title=(document.getElementById('nt-title')||{}).value.trim();
-    if(!title){ toast('Title is required',true); return; }
-    if(!creator){ toast('Pick a creator',true); return; }
-    var body={title:title, creator_type:ct, subject:(document.getElementById('nt-subject')||{}).value.trim(),
-      video_type:(document.getElementById('nt-vtype')||{}).value.trim()};
-    if(ct==='teacher') body.teacher_id=parseInt(creator,10); else body.youtuber_id=parseInt(creator,10);
-    var dl=(document.getElementById('nt-deadline')||{}).value; if(dl) body.deadline=dl;
-    api(P.production.api+'/tasks','POST',body).then(function(){ var m=document.getElementById('prod-modal'); if(m)m.remove(); toast('Task created'); _refresh('production'); })
-      .catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  window.awBack=function(){ _awSave(); if(window._aw.step>1){ window._aw.step--; _awRender(); } };
+  function _awRender(){
+    var aw=window._aw; if(!aw) return; var d=aw.data; var body=document.getElementById('aw-body'), foot=document.getElementById('aw-foot'); if(!body) return;
+    var steps='<div class="aw-steps">'+_AW_STEPS.map(function(lbl,i){ var n=i+1; var cls=n===aw.step?'on':(n<aw.step?'done':''); return '<div class="s '+cls+'">'+n+'. '+lbl+'</div>'; }).join('')+'</div>';
+    var html=steps;
+    if(aw.step===1){
+      html+='<div class="p-field"><label>Title</label><input class="p-input" id="aw-title" placeholder="Video title" value="'+esc(d.title||'')+'"></div>'+
+        '<div class="p-field"><label>Video Type</label><input class="p-input" id="aw-vtype" placeholder="e.g. One Shot, Rapid Revision" value="'+esc(d.video_type||'')+'"></div>'+
+        '<div class="p-field"><label>Channel</label><input class="p-input" id="aw-channel" placeholder="e.g. MVS Foundation" value="'+esc(d.channel_name||'')+'"></div>'+
+        '<div class="p-field"><label>Subject</label><input class="p-input" id="aw-subject" placeholder="e.g. Physics 12" value="'+esc(d.subject||'')+'"></div>'+
+        '<div class="p-field"><label>Streaming</label><input class="p-input" id="aw-stream" placeholder="e.g. Live / Recorded" value="'+esc(d.streaming||'')+'"></div>';
+    } else if(aw.step===2){
+      var ppl=aw.people||{}; var list=(d.creator_type==='teacher')?(ppl.teachers||[]):(ppl.youtubers||[]);
+      var sel=(d.creator_type==='teacher')?d.teacher_id:d.youtuber_id;
+      html+='<div class="p-field"><label>Creator Type</label><div class="aw-toggle">'+
+        '<button class="'+(d.creator_type==='teacher'?'on':'')+'" onclick="awSetCreatorType(\'teacher\')">Teacher</button>'+
+        '<button class="'+(d.creator_type==='youtuber'?'on':'')+'" onclick="awSetCreatorType(\'youtuber\')">YouTuber</button></div></div>'+
+        '<div class="p-field"><label>Select '+(d.creator_type==='teacher'?'Teacher':'YouTuber')+'</label><select class="p-select" id="aw-creator" onchange="awPickCreator()">'+
+        '<option value="">Choose...</option>'+list.map(function(m){ return '<option value="'+m.id+'"'+(sel===m.id?' selected':'')+'>'+esc(m.name)+(m.approval_required!==undefined?(m.approval_required?' (approval on)':' (approval off)'):'')+'</option>'; }).join('')+'</select>'+
+        (d.creator_type==='youtuber'?'<div class="p-opt">Teachers submit to PM review by default. YouTuber approval can be set in the next step.</div>':'')+'</div>';
+    } else if(aw.step===3){
+      var isYt=d.creator_type==='youtuber';
+      html+='<div class="p-field"><label>Deadline</label><input class="p-input" id="aw-deadline" type="datetime-local" value="'+esc(d.deadline||'')+'"></div>'+
+        '<div class="p-field"><label>Priority</label><select class="p-select" id="aw-priority"><option value="normal"'+(d.priority!=='urgent'?' selected':'')+'>Normal</option><option value="urgent"'+(d.priority==='urgent'?' selected':'')+'>Urgent</option></select></div>'+
+        (isYt?'<div class="p-field"><label style="display:flex;align-items:center;gap:9px;cursor:pointer"><input type="checkbox" id="aw-approval"'+(d.approval_required?' checked':'')+'> Require PM approval before production</label><div class="p-opt">If off, this creator\u2019s videos go straight into production after they submit.</div></div>':'');
+    } else {
+      html+='<div class="p-field"><label>Reference / Instructions</label><input class="p-input" id="aw-reference" placeholder="Reference link or notes (optional)" value="'+esc(d.reference||'')+'"></div>';
+      var ppl2=aw.people||{}; var clist=(d.creator_type==='teacher')?(ppl2.teachers||[]):(ppl2.youtubers||[]); var cid=(d.creator_type==='teacher')?d.teacher_id:d.youtuber_id;
+      var cname=(clist.filter(function(m){return m.id===cid;})[0]||{}).name||'\u2014';
+      html+='<div class="p-sec">Review</div><div class="aw-sum">'+
+        '<div><b>Title:</b> '+esc(d.title||'\u2014')+'</div>'+
+        '<div><b>Creator:</b> '+esc(cname)+' ('+(d.creator_type==='teacher'?'Teacher':'YouTuber')+')</div>'+
+        (d.video_type?'<div><b>Video Type:</b> '+esc(d.video_type)+'</div>':'')+
+        (d.subject?'<div><b>Subject:</b> '+esc(d.subject)+'</div>':'')+
+        (d.channel_name?'<div><b>Channel:</b> '+esc(d.channel_name)+'</div>':'')+
+        '<div><b>Priority:</b> '+(d.priority==='urgent'?'Urgent':'Normal')+'</div>'+
+        (d.deadline?'<div><b>Deadline:</b> '+esc(d.deadline.replace('T',' '))+'</div>':'')+
+        (d.creator_type==='youtuber'?'<div><b>Approval:</b> '+(d.approval_required?'Required':'Not required')+'</div>':'')+
+        '</div>';
+    }
+    body.innerHTML=html;
+    var back=aw.step>1?'<button class="p-btn" onclick="awBack()">Back</button>':'<button class="p-btn" onclick="prodDismiss()">Cancel</button>';
+    var next=aw.step<4?'<button class="p-btn p-btn-primary" onclick="awNext()">Next</button>':'<button class="p-btn p-btn-primary" onclick="awCreate()">Create Production Task</button>';
+    if(foot) foot.innerHTML='<div class="p-acts" style="justify-content:space-between">'+back+next+'</div>';
+  }
+  window.awPickCreator=function(){ _awSave(); };
+  window.awCreate=function(){ _awSave(); var d=window._aw.data;
+    if(!(d.title||'').trim()){ toast('Title is required',true); window._aw.step=1; _awRender(); return; }
+    var body={title:d.title, creator_type:d.creator_type, subject:d.subject||'', video_type:d.video_type||'', channel_name:d.channel_name||'', streaming:d.streaming||'', reference:d.reference||'', priority:d.priority||'normal'};
+    if(d.creator_type==='teacher') body.teacher_id=d.teacher_id; else { body.youtuber_id=d.youtuber_id; body.approval_required=!!d.approval_required; }
+    if(d.deadline) body.deadline=d.deadline;
+    api(P.production.api+'/tasks','POST',body).then(function(){ prodDismiss(); toast('Production task created'); _refresh('production'); })
+      .catch(function(e){ toast((e&&e.message)||'Could not create task',true); });
   };
 
   function _prodModal(title,inner){
@@ -18892,7 +19319,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var dark=document.body.classList.contains('dark');
     m.innerHTML='<div style="background:'+(dark?'#1b1508':'#fff')+';color:'+(dark?'#eee6d4':'#2a2313')+';max-width:560px;width:100%;max-height:86vh;overflow-y:auto;border-radius:18px;padding:24px;box-shadow:0 24px 60px -12px rgba(0,0,0,.5)">'+
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px"><div style="font-size:1.15rem;font-weight:800">'+title+'</div>'+
-      '<button onclick="document.getElementById(\'prod-modal\').remove()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:inherit;line-height:1">&times;</button></div>'+inner+'</div>';
+      '<button onclick="prodDismiss()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:inherit;line-height:1">&times;</button></div>'+inner+'</div>';
     m.addEventListener('click',function(e){ if(e.target===m) m.remove(); });
     document.body.appendChild(m);
   }
@@ -18938,7 +19365,25 @@ function initAdminProdTeam(){
       '.ap-fld{margin:11px 0}','.ap-fld label{display:block;font-size:.78rem;font-weight:600;color:#8a7d5c;margin-bottom:5px}',
       '.ap-in,.ap-sel{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #d9cba8;background:#fff;color:#2a2313;font-size:.9rem;font-family:inherit}',
       'body.dark .ap-in,body.dark .ap-sel{background:#241c0b;border-color:#3a2f14;color:#eee6d4}',
-      '.ap-cred{background:rgba(46,158,107,.1);border:1px solid rgba(46,158,107,.3);border-radius:12px;padding:14px;margin-top:6px;font-size:.9rem;line-height:1.7}'
+      '.ap-cred{background:rgba(46,158,107,.1);border:1px solid rgba(46,158,107,.3);border-radius:12px;padding:14px;margin-top:6px;font-size:.9rem;line-height:1.7}',
+      '#a-page-prodteam .ap-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border,#e5ddcb);margin:6px 0 16px;overflow-x:auto}',
+      '#a-page-prodteam .ap-tab{padding:11px 15px;font-size:.86rem;font-weight:700;color:#8a7d5c;cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;white-space:nowrap}',
+      '#a-page-prodteam .ap-tab.on{color:#a9791f;border-bottom-color:#e6ad4e}',
+      '#a-page-prodteam .ap-hd{display:flex;align-items:center;gap:12px;margin-bottom:12px}',
+      '#a-page-prodteam .ap-avatar{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1rem;flex:0 0 44px}',
+      '#a-page-prodteam .ap-card.clk{cursor:pointer;transition:box-shadow .15s,transform .1s,border-color .15s}',
+      '#a-page-prodteam .ap-card.clk:hover{box-shadow:0 8px 22px -10px rgba(40,30,10,.22);border-color:rgba(230,173,78,.5)}',
+      '#a-page-prodteam .ap-stats{display:flex;gap:16px;flex-wrap:wrap;margin-top:11px}',
+      '#a-page-prodteam .ap-stat .n{font-size:1.15rem;font-weight:800;line-height:1}',
+      '#a-page-prodteam .ap-stat .l{font-size:.68rem;color:#8a7d5c;text-transform:uppercase;letter-spacing:.04em;margin-top:2px}',
+      '#a-page-prodteam .ap-stat .n.over{color:#d1443a}',
+      '#a-page-prodteam .ap-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}',
+      '.ap-prow{display:flex;align-items:center;gap:12px;border:1px solid #ece2cd;border-radius:11px;padding:11px 14px;margin-bottom:8px}',
+      'body.dark .ap-prow{border-color:#2c2410}',
+      '.ap-prow .t{flex:1;min-width:0}',
+      '.ap-prow .nm{font-weight:700;font-size:.9rem}',
+      '.ap-prow .mt{font-size:.74rem;color:#8a7d5c;font-family:ui-monospace,monospace}',
+      '.ap-prow .st{font-size:.72rem;font-weight:700;padding:4px 10px;border-radius:999px;background:rgba(230,173,78,.16);color:#a9791f;white-space:nowrap}'
     ].join('');
     document.head.appendChild(st);
   }
@@ -18964,48 +19409,105 @@ function initAdminProdTeam(){
 function loadAProductionTeam(){
   var el=document.getElementById('a-prodteam-content'); if(!el) return;
   try{ softSpin(el); }catch(e){ el.innerHTML='<div class="spinner"></div>'; }
-  api('/api/admin/production-users').then(function(list){
-    window._apUsers=Array.isArray(list)?list:[];
+  Promise.all([
+    api('/api/admin/production-users').catch(function(){return [];}),
+    api('/api/production/team').catch(function(){return {};})
+  ]).then(function(res){
+    window._apUsers=Array.isArray(res[0])?res[0]:[];
+    window._apTeam=res[1]||{};
+    if(!window._apTab) window._apTab='editor';
     _renderAProdTeam();
   }).catch(function(e){ el.innerHTML='<div style="padding:24px;color:#c1443a">Could not load production team. '+_ape(e&&e.message||'')+'</div>'; });
+}
+
+function _apTeamStats(role, profileId){
+  var team=window._apTeam||{};
+  var arr=(role==='editor')?team.editors:(role==='graphics')?team.graphics:(role==='youtuber')?team.youtubers:null;
+  if(!arr) return null;
+  for(var i=0;i<arr.length;i++){ if(arr[i].id===profileId) return arr[i]; }
+  return null;
 }
 
 function _renderAProdTeam(){
   var el=document.getElementById('a-prodteam-content'); if(!el) return;
   var users=window._apUsers||[];
-  var html='<p style="color:#8a7d5c;font-size:.9rem;margin:4px 0 8px">Create and manage Editors, YouTubers, Graphics members and Production Managers. These accounts are separate from Teachers and never appear in academic performance.</p>';
-  _AP_ROLES.forEach(function(r){
-    var mine=users.filter(function(u){return u.role===r.key;});
-    html+='<div class="ap-sec"><span>'+_ape(r.label)+' ('+mine.length+')</span><button class="ap-add" onclick="apAdd(\''+r.key+'\')">Add '+_ape(r.one)+'</button></div>';
-    if(!mine.length){ html+='<div style="color:#9c8f6e;font-size:.86rem;padding:4px 2px 6px">None yet.</div>'; return; }
-    html+='<div class="ap-grid">'+mine.map(_apCard).join('')+'</div>';
-  });
-  el.innerHTML=html;
+  var tab=window._apTab||'editor';
+  var tabsHtml=_AP_ROLES.map(function(r){
+    var n=users.filter(function(u){return u.role===r.key;}).length;
+    return '<button class="ap-tab'+(tab===r.key?' on':'')+'" onclick="apTab(\''+r.key+'\')">'+_ape(r.label)+' ('+n+')</button>';
+  }).join('');
+  var meta=_apRoleMeta(tab);
+  var mine=users.filter(function(u){return u.role===tab;});
+  var head='<div class="ap-tabs">'+tabsHtml+'</div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="color:#8a7d5c;font-size:.88rem">'+
+    (tab==='youtuber'?'Independent content creators \u2014 separate from Teachers, never in academic performance.':(tab==='production_manager'?'Operational owners of the production pipeline.':'Production '+_ape(meta.label.toLowerCase())+'.'))+
+    '</div><button class="ap-add" onclick="apAdd(\''+tab+'\')">Add '+_ape(meta.one)+'</button></div>';
+  var body=mine.length?'<div class="ap-grid">'+mine.map(_apCard).join('')+'</div>':'<div style="color:#9c8f6e;padding:20px">None yet. Use \u201cAdd '+_ape(meta.one)+'\u201d to create one.</div>';
+  el.innerHTML=head+body;
 }
+
+window.apTab=function(role){ window._apTab=role; _renderAProdTeam(); };
+
+function _apInitials(nm){ return (String(nm||'').trim().split(/\s+/).slice(0,2).map(function(p){return p[0]||'';}).join('')||'?').toUpperCase(); }
 
 function _apCard(u){
   var active=u.is_active!==false;
+  var st=_apTeamStats(u.role, u.profile_id);
+  var clickable=(u.role==='editor'||u.role==='graphics'||u.role==='youtuber');
+  var statsHtml='';
+  if(u.role==='editor'||u.role==='graphics'){
+    var load=(st?st.active:0)+' / '+(u.recommended_load||(st?st.recommended:5)||5);
+    var over=st&&(st.active||0)>(st.recommended||5);
+    statsHtml='<div class="ap-stats">'+
+      '<div class="ap-stat"><div class="n'+(over?' over':'')+'">'+load+'</div><div class="l">Workload</div></div>'+
+      '<div class="ap-stat"><div class="n">'+(st?st.completed||0:0)+'</div><div class="l">Completed</div></div>'+
+      (u.role==='editor'?'<div class="ap-stat"><div class="n">'+(st?(st.overdue||0):0)+'</div><div class="l">Overdue</div></div>':'')+
+      '</div>';
+  } else if(u.role==='youtuber'){
+    statsHtml='<div class="ap-stats">'+
+      '<div class="ap-stat"><div class="n">'+(st?st.pending||0:0)+'</div><div class="l">Pending</div></div>'+
+      '<div class="ap-stat"><div class="n">'+(st?st.in_production||0:0)+'</div><div class="l">In Production</div></div>'+
+      '<div class="ap-stat"><div class="n">'+(st?st.published||0:0)+'</div><div class="l">Published</div></div>'+
+      '</div>';
+  }
   var extra='';
   if(u.role==='youtuber') extra='<span class="ap-pill ap-appr">Approval '+(u.approval_required?'ON':'OFF')+'</span>';
-  else if(u.recommended_load!=null) extra='<span class="ap-pill ap-appr">Load '+u.recommended_load+'</span>';
   var toggles='';
-  if(u.role==='youtuber') toggles='<button class="ap-btn" onclick="apToggleApproval('+u.id+','+(u.approval_required?'false':'true')+')">Approval '+(u.approval_required?'OFF':'ON')+'</button>';
-  return '<div class="ap-card">'+
-    '<div class="ap-nm">'+_ape(u.name)+'</div>'+
-    '<div class="ap-uid">'+_ape(u.user_id)+'</div>'+
+  if(u.role==='youtuber') toggles='<button class="ap-btn" onclick="event.stopPropagation();apToggleApproval('+u.id+','+(u.approval_required?'false':'true')+')">Approval '+(u.approval_required?'OFF':'ON')+'</button>';
+  var clkAttr=clickable?(' clk" onclick="apPerson(\''+u.role+'\','+u.profile_id+',\''+_ape(u.name).replace(/'/g,"")+'\')'):'"';
+  return '<div class="ap-card'+clkAttr+'">'+
+    '<div class="ap-hd"><div class="ap-avatar">'+_apInitials(u.name)+'</div>'+
+      '<div><div class="ap-nm">'+_ape(u.name)+'</div><div class="ap-uid">'+_ape(u.user_id)+'</div></div></div>'+
     '<div class="ap-row"><span class="ap-pill '+(active?'ap-on':'ap-off')+'">'+(active?'Active':'Inactive')+'</span>'+extra+'</div>'+
-    '<div class="ap-row"><span>Password:</span> <span class="ap-pass" id="ap-pw-'+u.id+'">'+(u.password?'\u2022\u2022\u2022\u2022\u2022\u2022':'\u2014')+'</span>'+
-      (u.password?'<button class="ap-btn" onclick="apShowPass('+u.id+')">Show</button>':'')+'</div>'+
-    '<div class="ap-row">'+
+    statsHtml+
+    '<div class="ap-actions" onclick="event.stopPropagation()">'+
       '<button class="ap-btn" onclick="apReset('+u.id+')">Reset Password</button>'+
+      (u.password?'<button class="ap-btn" onclick="apShowPass('+u.id+')">Show Password</button>':'')+
       toggles+
       '<button class="ap-btn" onclick="apToggleActive('+u.id+','+(active?'false':'true')+')">'+(active?'Deactivate':'Activate')+'</button>'+
     '</div></div>';
 }
 
+window.apPerson=function(kind,pid,name){
+  _apModal(_ape(name),'<div class="ap-load" style="padding:16px">Loading profile...</div>');
+  api('/api/production/person/'+kind+'/'+pid).then(function(r){
+    var s=r.stats||{}; var cards=[];
+    if(kind==='editor'){ cards=[['Active',s.active],['Completed',s.completed],['This Month',s.completed_this_month],['Overdue',s.overdue],['Active Hrs',s.active_hours],['On-Time',s.on_time_pct==null?'\u2014':s.on_time_pct+'%']]; }
+    else if(kind==='graphics'){ cards=[['Active',s.active],['Completed',s.completed],['This Month',s.completed_this_month],['Avg Hrs',s.avg_hours]]; }
+    else { cards=[['Pending',s.pending],['Submitted',s.submitted],['In Production',s.in_production],['Published',s.published],['Total Views',s.total_views]]; }
+    var box=document.querySelector('#ap-modal .ap-box'); if(!box) return;
+    var html='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-size:1.12rem;font-weight:800">'+_ape(name)+' <span style="font-size:.72rem;color:#8a7d5c;text-transform:uppercase;letter-spacing:.06em">'+_ape(kind)+'</span></div><button onclick="apClose()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:inherit">&times;</button></div>';
+    html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px">'+cards.map(function(c){ return '<div class="pm-card" style="border:1px solid var(--border,#e5ddcb);border-radius:12px;padding:12px"><div style="font-size:1.4rem;font-weight:800;line-height:1">'+(c[1]==null?0:c[1])+'</div><div style="font-size:.68rem;color:#8a7d5c;text-transform:uppercase;letter-spacing:.04em;margin-top:5px">'+c[0]+'</div></div>'; }).join('')+'</div>';
+    var rec=r.recent||[];
+    html+='<div style="font-weight:800;margin:18px 0 10px">Recent Work</div>';
+    html+=rec.length?rec.map(function(t){ return '<div class="ap-prow"><div class="t"><div class="nm">'+_ape(t.title||'Untitled')+'</div><div class="mt">'+_ape(t.ref_code||'')+'</div></div><span class="st">'+_ape(t.lifecycle_label||t.next_action||'')+'</span></div>'; }).join(''):'<div style="color:#9c8f6e;padding:8px">No recent work.</div>';
+    box.innerHTML=html;
+  }).catch(function(e){ var box=document.querySelector('#ap-modal .ap-box'); if(box) box.innerHTML='<div style="padding:20px;color:#c1443a">Could not load profile. '+_ape(e&&e.message||'')+'</div><div style="margin-top:12px"><button class="ap-btn" onclick="apClose()">Close</button></div>'; });
+};
+
 window.apShowPass=function(id){
   var u=(window._apUsers||[]).filter(function(x){return x.id===id;})[0]; if(!u) return;
-  var el=document.getElementById('ap-pw-'+id); if(el) el.textContent=u.password||'\u2014';
+  _apModalMsg('Login Credentials','<div class="ap-cred"><div><b>Name:</b> '+_ape(u.name)+'</div><div><b>User ID:</b> '+_ape(u.user_id)+'</div><div><b>Password:</b> <span class="ap-pass">'+_ape(u.password||'\u2014')+'</span></div></div>');
 };
 window.apToggleActive=function(id,val){
   api('/api/admin/production-users/'+id,'PATCH',{is_active:val}).then(function(){ toast('Updated'); loadAProductionTeam(); })

@@ -134,3 +134,23 @@ def _pnotif_read(nid: int, db: Session = Depends(get_db), me=Depends(get_graphic
 @router.post("/notifications/read-all")
 def _pnotif_read_all(db: Session = Depends(get_db), me=Depends(get_graphics)):
     pc.mark_read(db, me); db.commit(); return {"ok": True}
+
+
+# ============================================================ THUMBNAIL LIBRARY
+@router.get("/library")
+def graphics_library(db: Session = Depends(get_db), me=Depends(get_graphics)):
+    sp = pc.staff_profile(db, me)
+    if not sp:
+        raise HTTPException(403, "Graphics profile not found")
+    rows = (db.query(GraphicsTask).filter(GraphicsTask.graphics_id == sp.id,
+                                          GraphicsTask.thumbnail_url != None,
+                                          GraphicsTask.thumbnail_url != "")
+            .order_by(GraphicsTask.id.desc())
+            .limit(60).all())
+    out = []
+    for g in rows:
+        t = db.query(VideoTask).filter(VideoTask.id == g.task_id).first()
+        out.append({"task_id": g.task_id, "title": (t.title if t else "") or "Untitled",
+                    "ref_code": (t.ref_code if t else "") or "", "status": g.status or "",
+                    "thumbnail_url": g.thumbnail_url, "at": pc._dt(g.submitted_at or g.created_at)})
+    return {"thumbnails": out}

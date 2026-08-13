@@ -486,6 +486,190 @@ def pm_people(role: str = "", db: Session = Depends(get_db), me=Depends(get_pm_o
     return out
 
 
+# ============================================================ CREATOR PERFORMANCE
+@router.get("/creators")
+def pm_creators(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    now = datetime.utcnow()
+    done = ["uploaded", "completed", "ready_for_youtube"]
+
+    def stats_for(base):
+        total = base.count()
+        completed = base.filter(VideoTask.lifecycle.in_(done)).count()
+        pending = base.filter(~VideoTask.lifecycle.in_(done)).count()
+        overdue = base.filter(VideoTask.deadline != None, VideoTask.deadline < now,
+                              ~VideoTask.lifecycle.in_(done)).count()
+        views = int(base.with_entities(func.coalesce(func.sum(VideoTask.yt_views), 0)).scalar() or 0)
+        comp = base.filter(VideoTask.lifecycle.in_(done), VideoTask.published_at != None,
+                           VideoTask.deadline != None).all()
+        den = len(comp); hit = sum(1 for t in comp if t.published_at <= t.deadline)
+        return {"videos": total, "completed": completed, "pending": pending, "overdue": overdue,
+                "views": views, "on_time_pct": round(100.0 * hit / den) if den else None}
+
+    teachers = []
+    for tp in db.query(TeacherProfile).all():
+        base = db.query(VideoTask).filter(VideoTask.creator_type == "teacher", VideoTask.teacher_id == tp.id)
+        if base.count() == 0:
+            continue
+        s = stats_for(base); s["name"] = tp.user.name if tp.user else ""; s["id"] = tp.id
+        teachers.append(s)
+    teachers.sort(key=lambda x: x["videos"], reverse=True)
+
+    youtubers = []
+    for yp in db.query(YouTuberProfile).all():
+        base = db.query(VideoTask).filter(VideoTask.creator_type == "youtuber", VideoTask.youtuber_id == yp.id)
+        if base.count() == 0:
+            continue
+        s = stats_for(base); s["name"] = yp.user.name if yp.user else ""; s["id"] = yp.id
+        s["published"] = base.filter(VideoTask.lifecycle.in_(["uploaded", "completed"])).count()
+        youtubers.append(s)
+    youtubers.sort(key=lambda x: x["videos"], reverse=True)
+
+    return {"teachers": teachers, "youtubers": youtubers}
+
+
+# ============================================================ REAL-TIME VIEWS
+@router.get("/views")
+def pm_views(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    uploaded_q = db.query(VideoTask).filter(VideoTask.yt_video_id != None, VideoTask.yt_video_id != "")
+    uploaded = uploaded_q.count()
+    total_views = int(db.query(func.coalesce(func.sum(VideoTask.yt_views), 0)).filter(
+        VideoTask.yt_video_id != None, VideoTask.yt_video_id != "").scalar() or 0)
+    pending_upload = db.query(VideoTask).filter(VideoTask.lifecycle == "ready_for_youtube").count()
+
+    vids = uploaded_q.all()
+    by_creator = {}
+    videos = []
+    for t in vids:
+        name, ctype = pc.creator_info(db, t)
+        v = int(t.yt_views or 0)
+        key = (name or "Unknown") + "|" + ctype
+        c = by_creator.setdefault(key, {"name": name or "Unknown", "creator_type": ctype.lower(), "views": 0, "videos": 0})
+        c["views"] += v; c["videos"] += 1
+        videos.append({"id": t.id, "title": t.title or "Untitled", "ref_code": t.ref_code or "",
+                       "creator": name or "Unknown", "creator_type": ctype.lower(),
+                       "video_type": t.video_type or "", "views": v,
+                       "youtube_url": t.youtube_url or "", "published_at": pc._dt(t.published_at)})
+    creators = sorted(by_creator.values(), key=lambda x: x["views"], reverse=True)
+    for c in creators:
+        c["share"] = round(100.0 * c["views"] / total_views, 1) if total_views else 0
+    videos.sort(key=lambda x: x["views"], reverse=True)
+    highest = videos[0] if videos else None
+    return {"total_views": total_views, "uploaded": uploaded, "pending_upload": pending_upload,
+            "highest": highest, "by_creator": creators, "videos": videos[:50]}
+
+
+# ============================================================ GLOBAL SEARCH
+@router.get("/search")
+def pm_search(q: str = "", db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    q = (q or "").strip()
+    if len(q) < 2:
+        return {"results": []}
+    like = "%" + q + "%"
+    ids = {}  # id -> matched-on label
+
+    def add(rows, label):
+        for t in rows:
+            ids.setdefault(t.id, label)
+
+    # direct fields on the task
+    add(db.query(VideoTask).filter(or_(
+        VideoTask.ref_code.like(like), VideoTask.title.like(like),
+        VideoTask.yt_video_id.like(like), VideoTask.subject.like(like),
+        VideoTask.channel_name.like(like))).limit(30).all(), "Task")
+
+    # by teacher name
+    tps = db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.name.like(like)).all()
+    if tps:
+        tids = [t.id for t in tps]
+        add(db.query(VideoTask).filter(VideoTask.teacher_id.in_(tids)).limit(30).all(), "Teacher")
+
+    # by youtuber name
+    yps = db.query(YouTuberProfile).join(User, YouTuberProfile.user_id == User.id).filter(User.name.like(like)).all()
+    if yps:
+        yids = [y.id for y in yps]
+        add(db.query(VideoTask).filter(VideoTask.creator_type == "youtuber", VideoTask.youtuber_id.in_(yids)).limit(30).all(), "YouTuber")
+
+    # by editor / graphics name
+    sps = db.query(ProductionStaffProfile).join(User, ProductionStaffProfile.user_id == User.id).filter(User.name.like(like)).all()
+    eids = [s.id for s in sps if s.staff_role == "editor"]
+    gids = [s.id for s in sps if s.staff_role == "graphics"]
+    if eids:
+        add(db.query(VideoTask).filter(VideoTask.editor_id.in_(eids)).limit(30).all(), "Editor")
+    if gids:
+        add(db.query(VideoTask).filter(VideoTask.graphics_id.in_(gids)).limit(30).all(), "Graphics")
+
+    if not ids:
+        return {"results": []}
+    tasks = db.query(VideoTask).filter(VideoTask.id.in_(list(ids.keys()))).order_by(VideoTask.updated_at.desc()).limit(20).all()
+    out = []
+    for t in tasks:
+        o = pc.task_out(db, t, light=True)
+        o["match"] = ids.get(t.id, "Task")
+        out.append(o)
+    return {"results": out}
+
+
+# ============================================================ PERSON PROFILE
+@router.get("/person/{kind}/{pid}")
+def pm_person(kind: str, pid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    kind = (kind or "").lower()
+    now = datetime.utcnow()
+    month_start = datetime(now.year, now.month, 1)
+    done = ["uploaded", "completed", "ready_for_youtube"]
+
+    if kind in ("editor", "graphics"):
+        sp = db.query(ProductionStaffProfile).filter(
+            ProductionStaffProfile.id == pid, ProductionStaffProfile.staff_role == kind).first()
+        if not sp:
+            raise HTTPException(404, "Not found")
+        name = sp.user.name if sp.user else ""
+        if kind == "editor":
+            base = db.query(VideoTask).filter(VideoTask.editor_id == pid)
+            active = base.filter(VideoTask.lifecycle.in_(["editor_assigned", "editing", "editing_paused", "editing_done", "qc_pending", "qc_changes"])).count()
+            completed = base.filter(VideoTask.lifecycle.in_(done)).count()
+            completed_m = base.filter(VideoTask.lifecycle.in_(done), VideoTask.updated_at >= month_start).count()
+            overdue = base.filter(VideoTask.deadline != None, VideoTask.deadline < now, ~VideoTask.lifecycle.in_(done)).count()
+            secs = db.query(func.coalesce(func.sum(EditingSession.duration_seconds), 0)).filter(EditingSession.editor_id == pid).scalar() or 0
+            comp = base.filter(VideoTask.lifecycle.in_(done), VideoTask.published_at != None, VideoTask.deadline != None).all()
+            ot_den = len(comp); ot_hit = sum(1 for t in comp if t.published_at <= t.deadline)
+            stats = {"active": active, "completed": completed, "completed_this_month": completed_m,
+                     "overdue": overdue, "active_hours": round(secs / 3600.0, 1),
+                     "on_time_pct": round(100.0 * ot_hit / ot_den) if ot_den else None,
+                     "recommended_load": sp.recommended_load or 5}
+            recent = base.order_by(VideoTask.updated_at.desc()).limit(8).all()
+        else:
+            gbase = db.query(GraphicsTask).filter(GraphicsTask.graphics_id == pid)
+            active = gbase.filter(GraphicsTask.status.in_(["new", "in_progress", "changes"])).count()
+            completed = gbase.filter(GraphicsTask.status == "approved").count()
+            completed_m = gbase.filter(GraphicsTask.status == "approved", GraphicsTask.approved_at != None, GraphicsTask.approved_at >= month_start).count()
+            gts = gbase.filter(GraphicsTask.status == "approved", GraphicsTask.started_at != None, GraphicsTask.approved_at != None).all()
+            hrs = [((g.approved_at - g.started_at).total_seconds() / 3600.0) for g in gts]
+            stats = {"active": active, "completed": completed, "completed_this_month": completed_m,
+                     "overdue": 0, "avg_hours": round(sum(hrs) / len(hrs), 1) if hrs else 0,
+                     "on_time_pct": None, "recommended_load": sp.recommended_load or 5}
+            task_ids = [g.task_id for g in gbase.order_by(GraphicsTask.created_at.desc()).limit(8).all()]
+            recent = db.query(VideoTask).filter(VideoTask.id.in_(task_ids)).all() if task_ids else []
+        return {"kind": kind, "name": name, "stats": stats,
+                "recent": [pc.task_out(db, t, light=True) for t in recent]}
+
+    if kind == "youtuber":
+        yp = db.query(YouTuberProfile).filter(YouTuberProfile.id == pid).first()
+        if not yp:
+            raise HTTPException(404, "Not found")
+        base = db.query(VideoTask).filter(VideoTask.creator_type == "youtuber", VideoTask.youtuber_id == pid)
+        stats = {"pending": base.filter(VideoTask.lifecycle.in_(["creator_assigned", "creator_working", "changes_required"])).count(),
+                 "submitted": base.filter(VideoTask.lifecycle.in_(["creator_submitted", "pm_review"])).count(),
+                 "in_production": base.filter(VideoTask.lifecycle.in_(["approved", "editor_assigned", "editing", "editing_paused", "editing_done", "qc_pending", "qc_changes", "ready_for_youtube"])).count(),
+                 "published": base.filter(VideoTask.lifecycle.in_(["uploaded", "completed"])).count(),
+                 "total_views": db.query(func.coalesce(func.sum(VideoTask.yt_views), 0)).filter(VideoTask.creator_type == "youtuber", VideoTask.youtuber_id == pid).scalar() or 0,
+                 "approval_required": bool(yp.approval_required)}
+        recent = base.order_by(VideoTask.updated_at.desc()).limit(8).all()
+        return {"kind": kind, "name": yp.user.name if yp.user else "", "stats": stats,
+                "recent": [pc.task_out(db, t, light=True) for t in recent]}
+
+    raise HTTPException(400, "Invalid person kind")
+
+
 # ============================================================ ANALYTICS
 @router.get("/analytics")
 def pm_analytics(days: int = 30, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
