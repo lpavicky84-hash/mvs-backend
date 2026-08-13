@@ -481,6 +481,13 @@ async def ask_doubt(
     if tp and tp.user:
         notify(db, tp.user.id, f"New Doubt — {current_user.name}",
                f"Subject: {subject} | Topic: {topic} | {question[:100]}", "new_doubt")
+    else:
+        # Is subject ka koi teacher assign nahi — doubt kisi ke paas nahi jaayega.
+        # Admin ko batao taaki Admin Inbox (Doubts page) se reply de sake.
+        for au in db.query(User).filter(User.role == "admin", User.is_active == True).all():
+            notify(db, au.id, "Unassigned Doubt — needs your reply",
+                   f"{current_user.name} asked a {subject} doubt but no teacher is assigned for it. "
+                   f"Open the Doubts page to reply.", "new_doubt")
     db.commit()
     db.refresh(doubt)
     return {"id": doubt.id, "message": "Doubt sent!" + (f" Teacher: {tp.user.name}" if tp and tp.user else "")}

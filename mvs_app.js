@@ -758,8 +758,30 @@ const NOTIF_GO={
   admin:{class_request:'approvals',teacher_to_admin:'reports',app_review:'approvals',new_class:'timetable',timetable:'timetable',
     reschedule_request:'approvals',class_rescheduled:'timetable',leave:'attendance',
     video_task:'vtasks',video_proposal:'vtasks',new_video_proposal:'vtasks',video_submitted:'vtasks',
-    doubt:'doubts',teacher_message:'reports',payout:'payouts',attendance:'attendance',warning:'dashboard'}
+    doubt:'doubts',new_doubt:'doubts',doubt_resolved:'doubts',teacher_message:'reports',payout:'payouts',attendance:'attendance',warning:'dashboard'}
 };
+/* Fallback: agar exact type map me na ho, to type ke keywords se sahi section dhoondo —
+   isse har notification click sahi jagah le jaata hai (dashboard pe atak nahi jaata). */
+function _notifResolvePage(role,type,fbPage){
+  const exact=(NOTIF_GO[role]||{})[type||''];
+  if(exact) return exact;
+  const t=(type||'').toLowerCase();
+  const has=w=>t.indexOf(w)>=0;
+  let g='';
+  if(has('doubt')) g='doubts';
+  else if(has('video')||has('task')||has('reshoot')||has('proposal')) g='vtasks';
+  else if(has('reschedule')||has('class')||has('timetable')||has('slot')) g='timetable';
+  else if(has('payout')||has('salary')||has('incentive')) g=(role==='admin'?'payouts':'payout');
+  else if(has('attend')||has('leave')||has('punch')) g='attendance';
+  else if(has('test')||has('exam')||has('marks')||has('result')) g=(role==='admin'?'tests':(role==='teacher'?'tests':'tests'));
+  else if(has('dpp')) g='dpp';
+  else if(has('material')||has('note')||has('qbank')||has('syllabus')) g=(role==='student'?'materials':'qbank');
+  else if(has('approval')||has('request')) g=(role==='admin'?'approvals':'timetable');
+  else if(has('message')||has('broadcast')) g=(role==='admin'?'reports':'notifications');
+  // admin ke case me section-access check — na ho to fallback page
+  if(g && role==='admin'){ try{ if(!adminAllowed(g)) g=''; }catch(e){} }
+  return g||fbPage||'';
+}
 function _notifAvHtml(n,fb){
   if(!n.image_url) return '';
   return `<div class="notif-av" data-nimg="${esc(n.image_url)}">${esc(initials(fb||'MVS'))}<span class="mvs-b">M</span></div>`;
@@ -785,7 +807,7 @@ async function _notifImgs(root){
 }
 async function notifGo(role,nid,type,fbPage){
   // NAVIGATE PEHLE (read-call ka intezaar nahi) — warna slow/failed read navigation ko rok deta tha.
-  const page=(NOTIF_GO[role]||{})[type||'']||fbPage||'';
+  const page=_notifResolvePage(role,type,fbPage);
   closeModal();
   if(page){
     const navTo=(role==='teacher')?tPage:(role==='admin')?aPage:sPage;
@@ -806,9 +828,8 @@ async function openNotifPanel(role){
   try{ list=await fetchNotifs(role); }catch(e){ if(e&&e.status===401){ _sessionExpired(); return; } list=[]; }
   const fbPage=role==='admin'?'dashboard':'notifications';
   const html=list.length?list.map(n=>{
-    const go=(NOTIF_GO[role]||{})[n.notif_type||''];
     const hasLink=!!n.link;
-    const click=hasLink?`notifLinkOpen('${role}',${n.id},'${encodeURIComponent(n.link)}')`:(go?`notifGo('${role}',${n.id},'${esc(n.notif_type||'')}')`:`notifGo('${role}',${n.id},'','${fbPage}')`);
+    const click=hasLink?`notifLinkOpen('${role}',${n.id},'${encodeURIComponent(n.link)}')`:`notifGo('${role}',${n.id},'${esc(n.notif_type||'')}','${fbPage}')`;
     const unread=!n.is_read;
     const hint=hasLink?` <span style="font-size:.68rem;color:var(--primary);font-weight:800">Open Link &#8250;</span>`:' <span style="font-size:.68rem;color:var(--primary);font-weight:800">&#8250;</span>';
     const isBroadcast=(n.notif_type==='admin_broadcast');
@@ -10712,7 +10733,7 @@ function _adClassBar(){
   const cur=window._adClass||'';
   if(!classes.length) return '';
   const opts=['<option value="">All classes</option>'].concat(classes.map(c=>`<option value="${esc(c)}"${cur===c?' selected':''}>Class ${esc(c)}</option>`)).join('');
-  return `<div class="card" style="margin-bottom:14px"><div class="card-header" style="cursor:pointer" onclick="_adToggle('adcls')"><h3 style="display:flex;align-items:center;gap:10px">${ic('user')} Filter by Class ${cur?`<span style="font-size:.72rem;color:var(--primary);font-weight:800">Class ${esc(cur)}</span>`:'<span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(tap to filter)</span>'}</h3><span class="chev" id="adcls-chev">\u25bc</span></div><div class="card-body" id="adcls-body" style="display:${cur?'block':'none'}"><select class="form-control" onchange="adSetClass(this.value)" style="max-width:340px">${opts}</select></div></div>`;
+  return `<div class="card" style="margin-bottom:14px"><div class="card-header" style="cursor:pointer" onclick="_adToggle('adcls')"><h3 style="display:flex;align-items:center;gap:10px">${ic('user')} Filter by Class ${cur?`<span style="font-size:.72rem;color:var(--primary);font-weight:800">Class ${esc(cur)}</span>`:'<span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(tap to filter)</span>'}</h3><span class="chev open" id="adcls-chev">\u25bc</span></div><div class="card-body" id="adcls-body" style="display:block"><select class="form-control" onchange="adSetClass(this.value)" style="max-width:340px">${opts}</select></div></div>`;
 }
 function _adTeacherChart(){
   const all=window._aDoubts||[];
@@ -10743,6 +10764,41 @@ function _adCards(){
       ${sub.pending?`<div class="ad-oldest">Oldest pending: <b>${fmt(sub.oldest_pending_min)}</b></div>`:''}
     </div>`).join('')+`</div>`;
 }
+// Doubts that need the admin's own reply:
+//   Unassigned  -> student ne aisa subject poocha jiska koi teacher hi assign nahi
+//   With admin  -> kisi teacher ne ye doubt MVS Foundation (admin) ko push kiya
+const AD_UNASSIGNED='__ad_unassigned__', AD_TOADMIN='__ad_toadmin__';
+function _adIsUnassigned(d){ return (!d.teacher_name || d.teacher_name==='Unassigned') && !d.assigned_to_admin; }
+function _adIsToAdmin(d){ return !!d.assigned_to_admin; }
+function _adSubLabel(){
+  if(_adSub===AD_UNASSIGNED) return 'Unassigned Doubts';
+  if(_adSub===AD_TOADMIN) return 'Assigned to You (Admin)';
+  return _adSub;
+}
+function _adInboxCard(key,title,note,list){
+  const total=list.length;
+  const pending=list.filter(d=>d.status==='pending'||d.needs_attention).length;
+  const resolved=total-pending;
+  let oldest=null;
+  list.forEach(d=>{ if(d.status==='pending'||d.needs_attention){ const m=Math.floor((Date.now()-new Date(d.created_at).getTime())/60000); if(oldest==null||m>oldest) oldest=m; } });
+  const fmt=m=>m==null?'\u2014':(m<60?m+'m':(m<1440?Math.floor(m/60)+'h':Math.floor(m/1440)+'d'));
+  return `<div class="ad-card" style="border-color:rgba(201,162,39,.55);box-shadow:0 0 0 2px rgba(201,162,39,.1)" onclick="adPickSub('${key}')">
+      <div class="ad-top"><div class="ad-sub">${title}</div>${pending?`<span class="xm-pend">${pending} pending</span>`:'<span class="ad-clear">All clear</span>'}</div>
+      <div class="ad-teacher">${ic('shield')} ${note}</div>
+      <div class="ad-stats"><span><b>${total}</b> total</span><span class="ad-ok"><b>${resolved}</b> resolved</span><span class="ad-wait"><b>${pending}</b> pending</span></div>
+      ${pending?`<div class="ad-oldest">Oldest pending: <b>${fmt(oldest)}</b></div>`:''}
+    </div>`;
+}
+function _adAdminInbox(){
+  const cls=window._adClass||'';
+  let src=window._aDoubts||[];
+  if(cls) src=src.filter(d=>(d.class_name||'')===cls);
+  const unassigned=src.filter(_adIsUnassigned);
+  const toAdmin=src.filter(_adIsToAdmin);
+  const cards=_adInboxCard(AD_UNASSIGNED,'Unassigned Doubts','No teacher assigned for this subject',unassigned)
+            + _adInboxCard(AD_TOADMIN,'Assigned to You (Admin)','A teacher pushed these to MVS Foundation',toAdmin);
+  return `<div class="card-header" style="padding:0 4px 14px;border:none"><h3 style="font-size:1.3rem">Admin Inbox \u2014 Needs Your Reply</h3></div><div class="ad-grid">${cards}</div>`;
+}
 function aRenderDoubts(){
   const el=document.getElementById('a-doubts-content');
   const all=window._aDoubts||[];
@@ -10751,11 +10807,15 @@ function aRenderDoubts(){
   const bd=document.getElementById('a-doubt-badge'); if(bd){ bd.textContent=pendAll; bd.style.display=pendAll>0?'':'none'; }
   if(!_adSub){
     // ---- DEFAULT: toppers (collapsed) + subject cards ----
-    el.innerHTML=toppersHTML(all,'atop',true)+_adClassBar()+_adTeacherChart()+`<div class="card-header" style="padding:0 4px 18px;border:none"><h3 style="font-size:1.3rem">Doubts \u2014 Subject Wise</h3></div>`+_adCards();
+    el.innerHTML=toppersHTML(all,'atop',true)+_adClassBar()+_adTeacherChart()+_adAdminInbox()+`<div class="card-header" style="padding:0 4px 18px;border:none"><h3 style="font-size:1.3rem">Doubts \u2014 Subject Wise</h3></div>`+_adCards();
     return;
   }
-  // ---- DRILL: ek subject ke doubts ----
-  let list=all.filter(d=>d.subject===_adSub);
+  // ---- DRILL: ek subject / admin-inbox bucket ke doubts ----
+  let list;
+  if(_adSub===AD_UNASSIGNED) list=all.filter(_adIsUnassigned);
+  else if(_adSub===AD_TOADMIN) list=all.filter(_adIsToAdmin);
+  else list=all.filter(d=>d.subject===_adSub);
+  if(window._adClass) list=list.filter(d=>(d.class_name||'')===window._adClass);
   const pending=list.filter(d=>d.status==='pending'||d.needs_attention).length, resolved=list.filter(d=>d.status==='resolved'&&!d.needs_attention).length, total=list.length;
   if(_aDoubtFilter==='pending') list=list.filter(d=>d.status==='pending'||d.needs_attention);
   else if(_aDoubtFilter==='resolved') list=list.filter(d=>d.status==='resolved'&&!d.needs_attention);
@@ -10775,7 +10835,7 @@ function aRenderDoubts(){
     return `<div class="dcard"${d.assigned_to_admin?' style="border-color:rgba(201,162,39,.6);box-shadow:0 0 0 3px rgba(201,162,39,.12)"':''}><div class="dcard-head"><div class="dcard-who"><b>${esc(d.student_name)}</b>${d.student_phone?' \u00b7 '+esc(d.student_phone):''} asked <b>${esc(d.teacher_name)}</b><div style="margin-top:3px">${esc(d.subject||'')}${d.topic?' \u00b7 '+esc(d.topic):''} \u00b7 ${esc(when)}</div>${reassignNote}</div><div style="display:flex;align-items:center;gap:8px">${d.assigned_to_admin?'<span class="tag" style="background:linear-gradient(135deg,#c9a227,#a8841a);color:#241a05">With MVS Foundation</span>':''}${d.needs_attention&&d.status==='resolved'?'<span class="tag tag-pending">New Follow-up</span>':('<span class="tag '+(d.status==='resolved'?'tag-done':'tag-pending')+'">'+(d.status==='resolved'?'Resolved':'Pending')+'</span>')}<button class="btn btn-danger btn-sm" title="Delete this doubt (removed from student and teacher portals)" onclick="aDelDoubt(${d.id})">${ic('trash')}</button></div></div>
       <div class="chat-thread"><div class="bubble bubble-q"><div class="who">${esc(d.student_name)} (Student)</div>${esc(d.question||'')}${qvoice}${qfile}${qimg}</div>${ans}</div>${dbtThreadHTML(d)}${adminReply}</div>`;
   }).join(''):`<div class="empty-state"><p>No doubts in this view.</p></div>`;
-  el.innerHTML=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="adPickSub('')">\u2190 All Subjects</button><h3 style="margin:0;font-size:1.2rem">${esc(_adSub)}</h3></div>
+  el.innerHTML=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="adPickSub('')">\u2190 All Subjects</button><h3 style="margin:0;font-size:1.2rem">${esc(_adSubLabel())}</h3></div>
     <div class="dfilter">${fbtn('all','All ('+total+')')}${fbtn('pending','Pending ('+pending+')')}${fbtn('resolved','Resolved ('+resolved+')')}</div>
     <div class="hide-scroll doubt-drill">${cards}</div>`;
   list.forEach(d=>{ if(d.has_image&&(d.attach_mime||'image/jpeg').startsWith('image/')) loadImgInto2('adimg-'+d.id,'/api/admin/doubt/'+d.id+'/image'); });
