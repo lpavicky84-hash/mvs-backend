@@ -870,7 +870,7 @@ class UserSession(Base):
     __tablename__ = "user_sessions"
     id           = Column(Integer, primary_key=True)
     user_id      = Column(Integer, index=True)
-    role         = Column(String(12), index=True)     # student | teacher | admin
+    role         = Column(String(30), index=True)     # student | teacher | admin | production_manager | editor | youtuber | graphics
     started_at   = Column(DateTime, default=func.now(), index=True)
     last_seen    = Column(DateTime, default=func.now(), index=True)
     current_page = Column(String(40), nullable=True)  # which section they are on

@@ -159,6 +159,8 @@ def ensure_columns():
         # ---- Production ecosystem (v-prod) ----
         # Extend the users.role ENUM to allow the new production roles (keeps existing values).
         "ALTER TABLE users MODIFY COLUMN role ENUM('admin','teacher','student','production_manager','editor','youtuber','graphics') NOT NULL",
+        # Widen the role column that stores the role name as text so 'production_manager' (18 chars) fits.
+        "ALTER TABLE user_sessions MODIFY COLUMN role VARCHAR(30)",
         # New VideoTask lifecycle / creator columns (new tables are auto-created by create_all).
         "ALTER TABLE video_tasks ADD COLUMN ref_code VARCHAR(30) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN creator_type VARCHAR(20) DEFAULT 'teacher'",
