@@ -7108,9 +7108,13 @@ function tRenderDoubts(){
   const mediaOf=d=>`${d.has_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/voice')">${ic('play')} Voice Note</button>`:''}${d.has_image?doubtAttachHtml('teacher',d.id,d.attach_mime,d.attach_name,false):''}`;
   const headOf=(d,pill)=>`<div class="dbt-head"><div style="min-width:0"><div class="dbt-name dbt-name-link" title="View all doubts by this student" onclick="event.stopPropagation();openStudentDoubts(${d.student_id||0},'${encodeURIComponent(d.student_name||'Student')}')">${esc(d.student_name||'Student')}</div><div class="dbt-meta">${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}${d.created_at?' \u00b7 '+esc(fmtDT(d.created_at)):''}</div></div><div class="dbt-badges">${pill}</div></div>`;
   let rows='';
+  // PAGINATION: pending sab dikhao (zaroori), resolved/reassigned pehle 8 + "Show more"
+  // (Math jaise subjects me 30-50 cards ek saath render karne se page freeze/blank ho jaata tha).
+  const _dn=window._tdDoneN||8, _an=window._tdAwayN||8;
+  const pendShown=pend, doneShown=done.slice(0,_dn), awayShown=away.slice(0,_an);
   if(pend.length){
     rows+=`<div class="dbt-sec">Pending (${pend.length})</div>`;
-    rows+=pend.map(d=>{
+    rows+=pendShown.map(d=>{
       const media=mediaOf(d);
       const amedia=`${d.has_answer_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/answer-voice')">${ic('play')} Your Voice Answer</button>`:''}${d.has_answer_file?doubtAttachHtml('teacher',d.id,d.answer_attach_mime,d.answer_attach_name,true):''}`;
       return `<div class="dbt-card pend">${headOf(d,(d.needs_attention&&d.status==='resolved')?'<span class="dbt-pill open">New Follow-up</span>':'<span class="dbt-pill open">Pending</span>')}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> <span id="tda-${d.id}">${_fmtRich(d.answer)}</span></div>`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}${dbtThreadHTML(d)}<div style="margin-top:12px">${composerHTML('ta'+d.id,'Write your answer\u2026 or send a voice note / file','resolveDoubt('+d.id+')','Resolve')}</div>${tAssignRow(d)}</div>`;
@@ -7118,37 +7122,46 @@ function tRenderDoubts(){
   }
   if(done.length){
     rows+=`<div class="dbt-sec">Resolved (${done.length})</div>`;
-    rows+=done.map(d=>{
+    rows+=doneShown.map(d=>{
       const media=mediaOf(d);
       const amedia=`${d.has_answer_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/answer-voice')">${ic('play')} Your Voice Answer</button>`:''}${d.has_answer_file?doubtAttachHtml('teacher',d.id,d.answer_attach_mime,d.answer_attach_name,true):''}`;
       return `<div class="dbt-card res">${headOf(d,'<span class="dbt-pill res">\u2713 Resolved</span>')}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> <span id="tda-${d.id}">${_fmtRich(d.answer)}</span></div>`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}${dbtThreadHTML(d)}<div style="margin-top:10px"><button class="btn btn-danger btn-sm" title="Delete your response — the doubt moves back to Pending" onclick="tDelDoubtAnswer(${d.id})">${ic('trash')} Delete Response</button></div></div>`;
     }).join('');
+    if(done.length>_dn) rows+=`<div style="text-align:center;margin:10px 0"><button class="btn btn-ghost btn-sm" onclick="tMoreDone()">Show more resolved (${done.length-_dn} more)</button></div>`;
   }
   if(away.length){
     rows+=`<div class="dbt-sec">Reassigned — Handed Over (${away.length})</div>`;
-    rows+=away.map(d=>{
+    rows+=awayShown.map(d=>{
       const owner=d.assigned_to_name||'the new owner';
       const st=(d.status==='resolved')?'<span class="dbt-pill res">\u2713 Resolved</span>':'<span class="dbt-pill open">Pending</span>';
       return `<div class="dbt-away">${headOf(d,`<span class="dbt-pill away">Reassigned \u2192 ${esc(owner)}</span>`)}<div class="dbt-q" id="tdq-${d.id}">${_fmtRich(d.question||'')}</div>${dbtThreadHTML(d)}<div style="font-size:.72rem;color:var(--text-muted);margin-top:8px">Handed over by you ${st} — resolving this doubt is now <b>${esc(owner)}</b>'s responsibility.</div></div>`;
     }).join('');
+    if(away.length>_an) rows+=`<div style="text-align:center;margin:10px 0"><button class="btn btn-ghost btn-sm" onclick="tMoreAway()">Show more (${away.length-_an} more)</button></div>`;
   }
   html+=(rows||`<div class="empty-state"><p>No doubts in this subject.</p></div>`)+`</div>`;
   el.innerHTML=html;
-  loadDoubtThumbs(el);   // v69 — image attachments ke inline previews
-  _dbtLoadAvas('teacher');   // v112 — thread me teacher photos
+  try{ loadDoubtThumbs(el); }catch(e){}   // v69 — image attachments ke inline previews
+  try{ _dbtLoadAvas('teacher'); }catch(e){}   // v112 — thread me teacher photos
   // KaTeX math render ($..$) — CHUNKED taaki main thread freeze na ho. Math jaise subjects me
   // 30-50 doubts × (question+answer) ek saath render karne se page "unresponsive" ho jaata tha.
-  const _mEls=[];
-  list.forEach(d=>{ const q=document.getElementById('tdq-'+d.id); if(q) _mEls.push(q);
-                    const a=document.getElementById('tda-'+d.id); if(a) _mEls.push(a); });
-  let _mi=0;
-  (function _mChunk(){
-    const end=Math.min(_mi+5,_mEls.length);
-    for(;_mi<end;_mi++){ try{ renderMath(_mEls[_mi]); }catch(e){} }
-    if(_mi<_mEls.length) (window.requestAnimationFrame||setTimeout)(_mChunk,0);
-  })();
+  try{
+    const _mEls=[];
+    (pendShown.concat(doneShown,awayShown)).forEach(d=>{
+      const q=document.getElementById('tdq-'+d.id); if(q) _mEls.push(q);
+      const a=document.getElementById('tda-'+d.id); if(a) _mEls.push(a); });
+    let _mi=0;
+    const _mNext=function(){ if(window.requestAnimationFrame) window.requestAnimationFrame(_mChunk); else setTimeout(_mChunk,0); };
+    function _mChunk(){
+      const end=Math.min(_mi+4,_mEls.length);
+      for(;_mi<end;_mi++){ try{ renderMath(_mEls[_mi]); }catch(e){} }
+      if(_mi<_mEls.length) _mNext();
+    }
+    if(_mEls.length) _mNext();
+  }catch(e){}
 }
-function tPickDoubtSub(sub){ _tdSub=sub; tRenderDoubts(); }
+function tMoreDone(){ window._tdDoneN=(window._tdDoneN||8)+10; tRenderDoubts(); }
+function tMoreAway(){ window._tdAwayN=(window._tdAwayN||8)+10; tRenderDoubts(); }
+function tPickDoubtSub(sub){ _tdSub=sub; window._tdDoneN=8; window._tdAwayN=8; tRenderDoubts(); }
 async function tDelDoubtAnswer(id){
   if(!confirm('Delete your response?\n\nThe doubt will move back to Pending and the student will no longer see your answer.')) return;
   try{ await api('/api/teacher/doubt/'+id+'/answer','DELETE'); toast('Response deleted — doubt is pending again.'); loadTDoubts(); }
