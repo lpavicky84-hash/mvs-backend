@@ -18296,6 +18296,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.prodside .ps-group{padding:14px 14px 2px;font-size:.66rem;text-transform:uppercase;letter-spacing:.13em;color:#9c8f6e}',
 '.prodside .ps-item{display:flex;align-items:center;gap:11px;margin:2px 10px;padding:9px 12px;border-radius:10px;cursor:pointer;color:#d9cfb4;font-size:.9rem;font-weight:600;transition:background .15s,color .15s}',
 '.prodside .ps-item svg{width:17px;height:17px;flex:0 0 17px;opacity:.85}',
+'.prodside .ps-badge{background:#d1443a;color:#fff;font-size:.68rem;font-weight:800;min-width:20px;text-align:center;padding:1px 7px;border-radius:999px;flex:0 0 auto}',
 '.prodside .ps-item:hover{background:rgba(230,173,78,.10);color:#fff}',
 '.prodside .ps-item.on{background:linear-gradient(135deg,rgba(230,173,78,.22),rgba(230,173,78,.08));color:#fff;box-shadow:inset 3px 0 0 '+accent+'}',
 '.prodside .ps-foot{margin-top:auto;padding:12px 10px;border-top:1px solid rgba(230,173,78,.14);display:flex;gap:8px}',
@@ -18422,6 +18423,41 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.vv-vtitle{font-weight:700;font-size:.92rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
 '.vv-vmeta{font-size:.76rem;color:#8a7d5c;margin-top:2px}',
 '.vv-vviews{font-weight:800;font-size:.95rem}',
+'.pm-master{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}',
+'@media(max-width:700px){.pm-master{grid-template-columns:1fr}}',
+'.pm-mcard{text-align:left;border:1.5px solid #e3d9bf;background:var(--card,#fffdf7);border-radius:16px;padding:16px 18px;cursor:pointer;transition:.15s}',
+'body.dark .pm-mcard{border-color:#3a2f14;background:#211a0d;color:#f0e6cf}',
+'.pm-mcard.on{border-color:#c79a3a;box-shadow:0 0 0 3px rgba(199,154,58,.18);background:linear-gradient(120deg,rgba(199,154,58,.12),transparent)}',
+'.pm-mi{font-size:1.15rem;font-weight:800;display:flex;align-items:center;gap:10px}',
+'.pm-mn{background:#d1443a;color:#fff;font-size:.72rem;font-weight:800;padding:2px 9px;border-radius:999px}',
+'.pm-ms{font-size:.82rem;color:#8a7d5c;margin-top:4px}',
+'.pjf-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--card,#fffdf7);border:1px solid #e8dfc8;border-radius:14px;padding:12px 14px;margin-bottom:14px}',
+'body.dark .pjf-bar{border-color:#3a2f14;background:#211a0d}',
+'.pjf-l{font-size:.68rem;font-weight:800;letter-spacing:.05em;color:#a9791f}',
+'.pjf-sel{width:auto;min-width:130px;padding:7px 10px}',
+'.pj-card{display:flex;align-items:center;gap:16px;border-radius:16px;padding:16px 20px;margin-bottom:12px;color:#fff;flex-wrap:wrap}',
+'.pj-l{flex:1;min-width:220px}',
+'.pj-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}',
+'.pj-badge{font-size:.6rem;font-weight:800;letter-spacing:.06em;padding:3px 9px;border-radius:999px;background:rgba(255,255,255,.22)}',
+'.pj-title{font-weight:800;font-size:1.05rem}',
+'.pj-sub{font-size:.8rem;opacity:.85;margin-top:6px}',
+'.pj-acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}',
+'.pj-btn{background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:6px 14px;font-weight:700;font-size:.8rem;cursor:pointer}',
+'.pj-btn:hover{background:rgba(255,255,255,.28)}',
+'.pj-r{text-align:right;min-width:180px}',
+'.pj-pct{font-size:1.8rem;font-weight:800;line-height:1}',
+'.pj-ch{font-size:.8rem;opacity:.9;margin:4px 0 8px}',
+'.pj-track{height:7px;background:rgba(255,255,255,.25);border-radius:99px;overflow:hidden}',
+'.pj-track>i{display:block;height:100%;background:#e6ad4e;border-radius:99px}',
+'.aw-collab{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}',
+'.aw-ctag{padding:7px 13px;border-radius:999px;border:1.5px solid #d9cba8;background:transparent;color:inherit;cursor:pointer;font-weight:600;font-size:.82rem}',
+'body.dark .aw-ctag{border-color:#3a2f14}',
+'.aw-ctag.on{background:rgba(46,158,107,.15);border-color:#2e9e6b;color:#2e9e6b}',
+'.p-filter{align-items:center}',
+'.pf-sel{width:auto;min-width:118px;padding:8px 11px;border-radius:10px}',
+'.pf-clear{color:#d1443a;border-color:rgba(209,68,58,.4)}',
+'.pf-clear:hover{background:rgba(209,68,58,.08)}',
+'.pt-thumb{width:58px;height:36px;border-radius:8px;object-fit:cover;flex:0 0 58px;background:#efe8d6;margin-right:2px}',
 '.p-filter{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}',
 '.p-chip{padding:7px 13px;border-radius:999px;border:1px solid #d9cba8;background:transparent;color:inherit;cursor:pointer;font-size:.8rem;font-weight:600}',
 'body.dark .p-chip{border-color:#3a2f14}',
@@ -18571,7 +18607,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var d=P[portal];
     var navHtml=d.nav.map(function(grp){
       return '<div class="ps-group">'+grp.g+'</div>'+grp.items.map(function(it){
-        return '<div class="ps-item" data-page="'+it.p+'" onclick="prodNav(\''+portal+'\',\''+it.p+'\')">'+icon(it.i)+'<span>'+it.t+'</span></div>';
+        var bk=(it.p.indexOf('q:')===0)?it.p.slice(2):(it.p==='urgent'?'urgent':'');
+        var badge=bk?'<span class="ps-badge" data-nav-badge="'+bk+'" style="display:none"></span>':'';
+        return '<div class="ps-item" data-page="'+it.p+'" onclick="prodNav(\''+portal+'\',\''+it.p+'\')">'+icon(it.i)+'<span style="flex:1">'+it.t+'</span>'+badge+'</div>';
       }).join('');
     }).join('');
     var logo=(typeof _mvsLogoImg==='function')?_mvsLogoImg(38):'';
@@ -18617,8 +18655,18 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var dt=document.getElementById(portal+'-date'); if(dt) dt.textContent=_today();
     prodNav(portal,'dashboard');
     prodStartNotifPoll(portal);
+    if(portal==='production'){ _prodNavBadges(); if(window._prodBadgeInt) clearInterval(window._prodBadgeInt); window._prodBadgeInt=setInterval(function(){ var pa=document.getElementById('production-app'); if(pa&&pa.classList.contains('active')&&!document.hidden) _prodNavBadges(); },45000); }
     return Promise.resolve();
   };
+  function _prodNavBadges(){
+    api(P.production.api+'/dashboard').then(function(r){
+      var k=r.kpis||{};
+      document.querySelectorAll('#production-app .ps-badge[data-nav-badge]').forEach(function(b){
+        var key=b.getAttribute('data-nav-badge'); var n=(key==='urgent')?(k.urgent||0):(k[key]||0);
+        if(n>0){ b.textContent=n>99?'99+':n; b.style.display='inline-block'; } else { b.style.display='none'; }
+      });
+    }).catch(function(){});
+  }
 
   // --- notifications (bell + deep-link) ---
   window.prodStartNotifPoll=function(portal){
@@ -18816,7 +18864,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var g=t.graphics||{};
     var lc=t.lifecycle||'';
     var thumb=(g.thumbnail_url||t.thumbnail_link||'');
-    var thumbHtml=thumb?'<img class="pw-thumb" src="'+esc(thumb)+'" alt="">':'';
+    if(!thumb && t.youtube_url){ var _yi=_ytId(t.youtube_url); if(_yi) thumb='https://img.youtube.com/vi/'+_yi+'/mqdefault.jpg'; }
+    var thumbHtml=thumb?'<img class="pw-thumb" src="'+esc(thumb)+'" alt="" loading="lazy">':'';
     var urgent=(t.priority==='urgent')?'<span class="pw-urgent">URGENT</span>':'';
     var newpm=(portal==='production'&&(lc==='creator_submitted'||lc==='pm_review'))?'<span class="pw-newpm">NEW</span>':'';
     var df=t.deadline_flag||{}; var dl=(df.kind&&['overdue','today','soon'].indexOf(df.kind)>=0)?'<span class="pt-dl '+df.kind+'">'+esc(df.label)+'</span>':'';
@@ -18963,7 +19012,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(t.deadline) meta.push('Due '+esc(t.deadline));
     var urg=(t.priority==='urgent')?'<span class="pw-urgent">URGENT</span>':'';
     var df=t.deadline_flag||{}; var dl=(df.kind&&['overdue','today','soon'].indexOf(df.kind)>=0)?'<span class="pt-dl '+df.kind+'">'+esc(df.label)+'</span>':'';
-    return '<div class="pt-row" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
+    var _th=(_g.thumbnail_url||t.thumbnail_link||''); if(!_th && t.youtube_url){ var _yi2=_ytId(t.youtube_url); if(_yi2) _th='https://img.youtube.com/vi/'+_yi2+'/mqdefault.jpg'; }
+    var _thumb=_th?'<img class="pt-thumb" src="'+esc(_th)+'" alt="" loading="lazy">':'';
+    return '<div class="pt-row" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+_thumb+
       '<div class="pt-main"><div class="pt-title">'+esc(t.title||'Untitled')+urg+'</div>'+
       '<div class="pt-meta"><span class="pt-ref">'+esc(t.ref_code||'')+'</span>'+meta.map(function(m){return '<span>'+m+'</span>';}).join('')+'</div></div>'+
       dl+badge+'<span class="pt-stage">'+esc(t.next_action||t.lifecycle_label||'')+'</span></div>';
@@ -18980,6 +19031,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(f.status) p.push('status='+encodeURIComponent(f.status));
     if(portal==='production'){
       if(f.creator_type) p.push('creator_type='+encodeURIComponent(f.creator_type));
+      if(f.teacher_id) p.push('teacher_id='+encodeURIComponent(f.teacher_id));
+      if(f.channel) p.push('channel='+encodeURIComponent(f.channel));
+      if(f.video_type) p.push('video_type='+encodeURIComponent(f.video_type));
       if(f.deadline) p.push('deadline='+encodeURIComponent(f.deadline));
       if(f.priority) p.push('priority='+encodeURIComponent(f.priority));
       if(f.q) p.push('q='+encodeURIComponent(f.q));
@@ -18998,18 +19052,90 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var f=_flt(portal);
     var html='<div class="p-filter">'+_savedChips(portal);
     if(portal==='production'){
+      var fd=window._prodFD||{};
+      var teachers=(fd.teachers||[]), channels=(fd.channels||[]), types=(fd.types||[]);
+      var statuses=[['','All Status'],['pm_review','PM Review'],['creator_submitted','Submitted'],['approved','Approved'],['editing','Editing'],['editing_done','Editing Done'],['qc_pending','QC Pending'],['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded'],['changes_required','Changes']];
+      var sel=function(id,cur,opts,vk,lk){ return '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\''+id+'\',this.value)"><option value="">'+opts.ph+'</option>'+(opts.list||[]).map(function(o){ var val=vk?o[vk]:o[0], lbl=lk?o[lk]:o[1]; return '<option value="'+esc(val)+'"'+((cur||'')==String(val)?' selected':'')+'>'+esc(lbl)+'</option>'; }).join('')+'</select>'; };
       html+='<input class="p-input" id="prod-search" placeholder="Search title, ref, subject..." value="'+esc(f.q||'')+'" oninput="prodSearch(\'production\',this.value)">'+
-        '<select class="p-select" onchange="prodSetFilter(\'production\',\'creator_type\',this.value)">'+
-          [['','All Creators'],['teacher','Teacher'],['youtuber','YouTuber']].map(function(o){return '<option value="'+o[0]+'"'+((f.creator_type||'')===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>'+
+        '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'teacher_id\',this.value)"><option value="">All Teachers</option>'+teachers.map(function(t){ return '<option value="'+t.id+'"'+((f.teacher_id||'')==String(t.id)?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('')+'</select>'+
+        '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'channel\',this.value)"><option value="">All Channels</option>'+channels.map(function(ch){ return '<option value="'+esc(ch.name)+'"'+((f.channel||'')===ch.name?' selected':'')+'>'+esc(ch.name)+'</option>'; }).join('')+'</select>'+
+        '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'video_type\',this.value)"><option value="">All Types</option>'+types.map(function(ty){ return '<option value="'+esc(ty.name)+'"'+((f.video_type||'')===ty.name?' selected':'')+'>'+esc(ty.name)+'</option>'; }).join('')+'</select>'+
+        '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'status\',this.value)">'+statuses.map(function(o){ return '<option value="'+o[0]+'"'+((f.status||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select>'+
+        '<button class="p-btn pf-clear" onclick="prodClearFilters()">Clear</button>'+
+        '<button class="p-btn" onclick="prodDownloadReport()">Download Report</button>'+
         '<button class="p-btn p-btn-primary" onclick="prodNewTask()">+ New Task</button>';
+      if(!window._prodFD) _prodLoadFilterData();
     }
     html+='</div>';
     return html;
   }
+  function _prodLoadFilterData(){
+    Promise.all([
+      api(P.production.api+'/people').catch(function(){return {};}),
+      api(P.production.api+'/channels').catch(function(){return {};}),
+      api(P.production.api+'/video-types').catch(function(){return {};})
+    ]).then(function(res){
+      window._prodFD={teachers:(res[0].teachers)||[],channels:(res[1].channels)||[],types:(res[2].types)||[]};
+      // re-render the filter bar area if we're on a list page
+      var bar=document.querySelector('#production-body .p-filter');
+      if(bar){ var wrap=document.createElement('div'); wrap.innerHTML=_filterBar('production'); bar.parentNode.replaceChild(wrap.firstChild,bar); }
+    }).catch(function(){});
+  }
+  window.prodClearFilters=function(){ var f=_flt('production'); ['q','teacher_id','channel','video_type','status','priority','deadline','creator_type'].forEach(function(k){ delete f[k]; }); var body=document.getElementById('production-body'); if(body) renderList('production',body); };
   function renderList(portal,body){
+    if(portal==='production'){
+      var mode=window._prodListMode||'tasks';
+      api(P.production.api+'/projects').then(function(pr){
+        var pcount=(pr&&pr.total)||0;
+        var master='<div class="pm-master">'+
+          '<button class="pm-mcard'+(mode==='tasks'?' on':'')+'" onclick="prodListMode(\'tasks\')"><div class="pm-mi">Tasks</div><div class="pm-ms">Single video assignments</div></button>'+
+          '<button class="pm-mcard'+(mode==='projects'?' on':'')+'" onclick="prodListMode(\'projects\')"><div class="pm-mi">Projects <span class="pm-mn">'+pcount+'</span></div><div class="pm-ms">One Shot \u00b7 Rapid Revision \u00b7 Projects</div></button>'+
+          '</div>';
+        if(mode==='projects'){ body.innerHTML=master+'<div id="prod-projects"><div class="p-load">Loading projects...</div></div>'; _prodLoadProjects(pr); }
+        else { body.innerHTML=master+_filterBar(portal)+'<div id="'+portal+'-active"></div><div id="'+portal+'-results"><div class="p-load">Loading...</div></div>'; _prodLoadList(portal); }
+      }).catch(function(){ body.innerHTML=_filterBar(portal)+'<div id="'+portal+'-active"></div><div id="'+portal+'-results"><div class="p-load">Loading...</div></div>'; _prodLoadList(portal); });
+      return;
+    }
     body.innerHTML=_filterBar(portal)+'<div id="'+portal+'-active"></div><div id="'+portal+'-results"><div class="p-load">Loading...</div></div>';
     return _prodLoadList(portal);
   }
+  window.prodListMode=function(m){ window._prodListMode=m; window._prodProjFlt={}; var body=document.getElementById('production-body'); if(body) renderList('production',body); };
+  var _PJ_COL={one_shot:['#1e4d6b','#2a6b8f'],rapid_revision:['#1f5c3a','#2e7d4f'],project:['#6b2f4d','#8f3d66']};
+  function _prodLoadProjects(pr){
+    var box=document.getElementById('prod-projects'); if(!box) return;
+    var render=function(data){
+      var projs=data.projects||[]; var flt=window._prodProjFlt||{};
+      var subjects=data.subjects||[];
+      var kinds=[['','All Types'],['one_shot','One Shot'],['rapid_revision','Rapid Revision'],['project','Project']];
+      var classes=[['','All Classes'],['12','Class 12'],['10','Class 10']];
+      // filter client-side
+      var shown=projs.filter(function(p){
+        if(flt.kind && p.kind!==flt.kind) return false;
+        if(flt.class_level && p.class_level!==flt.class_level) return false;
+        if(flt.subject && p.subject!==flt.subject) return false;
+        return true;
+      });
+      var bar='<div class="pjf-bar">'+
+        '<span class="pjf-l">CLASS</span><select class="p-select pjf-sel" onchange="prodProjFlt(\'class_level\',this.value)">'+classes.map(function(o){return '<option value="'+o[0]+'"'+(flt.class_level===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>'+
+        '<span class="pjf-l">SUBJECT</span><select class="p-select pjf-sel" onchange="prodProjFlt(\'subject\',this.value)"><option value="">All Subjects ('+subjects.length+')</option>'+subjects.map(function(s){return '<option value="'+esc(s)+'"'+(flt.subject===s?' selected':'')+'>'+esc(s)+'</option>';}).join('')+'</select>'+
+        '<span class="pjf-l">TYPE</span><select class="p-select pjf-sel" onchange="prodProjFlt(\'kind\',this.value)">'+kinds.map(function(o){return '<option value="'+o[0]+'"'+(flt.kind===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>'+
+        '<span style="color:#8a7d5c;font-size:.8rem;margin-left:auto">Showing '+shown.length+' of '+projs.length+'</span></div>';
+      var cards=shown.length?shown.map(function(p){
+        var col=_PJ_COL[p.kind]||['#5a4a1e','#7a6528'];
+        var klbl={one_shot:'ONE SHOT',rapid_revision:'RAPID REVISION',project:'PROJECT'}[p.kind]||'PROJECT';
+        return '<div class="pj-card" style="background:linear-gradient(100deg,'+col[0]+','+col[1]+')">'+
+          '<div class="pj-l"><div class="pj-top"><span class="pj-badge">'+klbl+'</span><span class="pj-title">'+esc(p.title||p.subject||'Project')+'</span></div>'+
+          '<div class="pj-sub">'+esc(p.creator||'')+(p.deadline?' \u00b7 Deadline: '+esc(p.deadline):'')+(p.updated?' \u00b7 Updated: '+esc(p.updated):'')+'</div>'+
+          '<div class="pj-acts"><button class="pj-btn" onclick="prodOpenTask(\'production\','+p.id+')">Open / Chapters</button><button class="pj-btn" onclick="prodMarkOld('+p.id+','+(p.is_old?'false':'true')+')">'+(p.is_old?'Mark New':'Mark Old')+'</button></div></div>'+
+          '<div class="pj-r"><div class="pj-pct">'+p.pct+'%</div><div class="pj-ch">'+p.chapters_done+' / '+p.chapters_total+' chapters done</div><div class="pj-track"><i style="width:'+p.pct+'%"></i></div></div>'+
+          '</div>';
+      }).join(''):'<div class="p-empty">No projects match these filters. Create one from Assign Work \u2192 Project.</div>';
+      box.innerHTML=bar+cards;
+    };
+    if(pr && pr.projects){ render(pr); }
+    else api(P.production.api+'/projects').then(render).catch(function(){ box.innerHTML='<div class="p-empty">Could not load projects.</div>'; });
+  }
+  window.prodProjFlt=function(k,v){ window._prodProjFlt=window._prodProjFlt||{}; window._prodProjFlt[k]=v; _prodLoadProjects(); };
   var _ST_LABEL={pm_review:'PM Review',creator_submitted:'Submitted',approved:'Approved',editor_assigned:'Not Started',editing:'Editing',editing_paused:'Paused',editing_done:'Editing Done',qc_pending:'QC Pending',qc_changes:'Changes',ready_for_youtube:'Ready for YouTube',uploaded:'Uploaded',creator_assigned:'To Submit',changes_required:'Changes',new:'New',in_progress:'In Progress',changes:'Changes',submitted:'Submitted'};
   function _activeChips(portal){
     var f=_flt(portal); var chips=[];
@@ -19379,6 +19505,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 
   // ---- action executors (all refresh the current page on success) ----
   function _refresh(portal){
+    if(portal==='production'){ try{ _prodNavBadges(); }catch(e){} }
     var page=(window._prodCurPage&&window._prodCurPage[portal])||'dashboard';
     var body=document.getElementById(portal+'-body');
     if(!body) return prodNav(portal,page);
@@ -19681,6 +19808,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '<div class="p-field"><label>Select '+(d.creator_type==='teacher'?'Teacher':'YouTuber')+'</label><select class="p-select" id="aw-creator" onchange="awPickCreator()">'+
         '<option value="">Choose...</option>'+list.map(function(m){ return '<option value="'+m.id+'"'+(sel===m.id?' selected':'')+'>'+esc(m.name)+(m.approval_required!==undefined?(m.approval_required?' (approval on)':' (approval off)'):'')+'</option>'; }).join('')+'</select>'+
         (d.creator_type==='youtuber'?'<div class="p-opt">Teachers submit to PM review by default. YouTuber approval can be set in the next step.</div>':'')+'</div>';
+      if(d.creator_type==='teacher'){
+        var teachers2=ppl.teachers||[]; var collab=d.collab_teacher_ids||[];
+        html+='<div class="p-field"><label>Collaborators (optional \u2014 for a collab video)</label>'+
+          '<div class="aw-collab">'+teachers2.filter(function(m){return m.id!==sel;}).map(function(m){ var on=collab.indexOf(m.id)>=0; return '<button type="button" class="aw-ctag'+(on?' on':'')+'" onclick="awToggleCollab('+m.id+')">'+esc(m.name)+'</button>'; }).join('')+'</div>'+
+          '<div class="p-opt">Tap teachers to add them as collaborators. The one selected above is the primary; each collaborator is verified separately.</div></div>';
+      }
     } else if(aw.step===3){
       var isYt=d.creator_type==='youtuber';
       html+='<div class="p-field"><label>Deadline</label><input class="p-input" id="aw-deadline" type="datetime-local" value="'+esc(d.deadline||'')+'"></div>'+
@@ -19706,14 +19839,19 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var next=aw.step<4?'<button class="p-btn p-btn-primary" onclick="awNext()">Next</button>':'<button class="p-btn p-btn-primary" onclick="awCreate()">Create Production Task</button>';
     if(foot) foot.innerHTML='<div class="p-acts" style="justify-content:space-between">'+back+next+'</div>';
   }
-  window.awPickCreator=function(){ _awSave(); };
+  window.awPickCreator=function(){ _awSave();
+    // if the new primary is in the collab list, remove it from there
+    var d=window._aw.data; if(d.creator_type==='teacher' && d.collab_teacher_ids){ d.collab_teacher_ids=(d.collab_teacher_ids||[]).filter(function(x){ return x!==d.teacher_id; }); _awRender(); }
+  };
+  window.awToggleCollab=function(id){ _awSave(); var d=window._aw.data; d.collab_teacher_ids=d.collab_teacher_ids||[]; var i=d.collab_teacher_ids.indexOf(id); if(i>=0) d.collab_teacher_ids.splice(i,1); else d.collab_teacher_ids.push(id); _awRender(); };
   window.awCreate=function(){ _awSave(); var d=window._aw.data;
     if(!(d.title||'').trim()){ toast('Title is required',true); window._aw.step=1; _awRender(); return; }
     var body={title:d.title, creator_type:d.creator_type, subject:d.subject||'', video_type:d.video_type||'', channel_name:d.channel_name||'', streaming:d.streaming||'', reference:d.reference||'', priority:d.priority||'normal'};
-    if(d.creator_type==='teacher') body.teacher_id=d.teacher_id; else { body.youtuber_id=d.youtuber_id; body.approval_required=!!d.approval_required; }
+    if(d.creator_type==='teacher'){ body.teacher_id=d.teacher_id; if((d.collab_teacher_ids||[]).length) body.collab_teacher_ids=d.collab_teacher_ids; } else { body.youtuber_id=d.youtuber_id; body.approval_required=!!d.approval_required; }
     if(d.deadline) body.deadline=d.deadline;
-    api(P.production.api+'/tasks','POST',body).then(function(){ prodDismiss(); toast('Production task created'); _refresh('production'); })
-      .catch(function(e){ toast((e&&e.message)||'Could not create task',true); });
+    _pBusy(true);
+    api(P.production.api+'/tasks','POST',body).then(function(){ prodDismiss(); toast('Production task created'+((d.collab_teacher_ids||[]).length?' (collab)':'')); _refresh('production'); })
+      .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Could not create task',true); });
   };
 
   function _prodModal(title,inner){

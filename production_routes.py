@@ -87,9 +87,20 @@ def pm_dashboard(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
 @router.get("/tasks")
 def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
              graphics_id: int = 0, priority: str = "", q: str = "",
-             deadline: str = "", page: int = 1, size: int = 40,
+             deadline: str = "", teacher_id: int = 0, channel: str = "",
+             video_type: str = "", page: int = 1, size: int = 40,
              db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     query = db.query(VideoTask).filter(VideoTask.cancelled == False)
+    # Single-video TASKS only — projects (one_shot / rapid_revision / project) live in their
+    # own Projects section, so they must not clutter the tasks list.
+    query = query.filter(or_(VideoTask.kind == None, VideoTask.kind == "",
+                             VideoTask.kind == "normal"))
+    if teacher_id:
+        query = query.filter(VideoTask.teacher_id == teacher_id)
+    if channel:
+        query = query.filter(VideoTask.channel_name == channel)
+    if video_type:
+        query = query.filter(VideoTask.video_type == video_type)
     if status:
         query = query.filter(VideoTask.lifecycle == status)
     if creator_type:
@@ -162,6 +173,21 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
         if not tid or not db.query(TeacherProfile).filter(TeacherProfile.id == tid).first():
             raise HTTPException(400, "Valid teacher_id required")
         t.teacher_id = tid
+        # optional collaborators (multi-teacher video)
+        import json as _jc
+        collab = []
+        for x in (payload.get("collab_teacher_ids") or []):
+            try:
+                xi = int(x)
+            except Exception:
+                continue
+            if xi and xi != tid and xi not in collab and db.query(TeacherProfile).filter(TeacherProfile.id == xi).first():
+                collab.append(xi)
+        if collab:
+            try:
+                t.collab_teacher_ids = _jc.dumps(collab)
+            except Exception:
+                pass
     else:
         yid = int(payload.get("youtuber_id") or 0)
         yp = db.query(YouTuberProfile).filter(YouTuberProfile.id == yid).first()
@@ -1354,3 +1380,62 @@ def prod_chapter_status(payload: dict = Body(...), db: Session = Depends(get_db)
         pass
     db.commit()
     return {"ok": True, "chapter_id": cid, "status": status}
+
+
+# ============================================================ PROJECTS LIST (premium section)
+# Projects = one_shot / rapid_revision / project. Each shows chapter progress so the PM can
+# see, per subject, how many videos are done. Same VideoTask + VideoTaskChapter data as admin.
+@router.get("/projects")
+def pm_projects(kind: str = "", class_level: str = "", subject: str = "", q: str = "",
+                db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    from sqlalchemy import or_ as _or
+    query = db.query(VideoTask).filter(VideoTask.cancelled == False,
+                                       VideoTask.kind.in_(["one_shot", "rapid_revision", "project"]))
+    if kind in ("one_shot", "rapid_revision", "project"):
+        query = query.filter(VideoTask.kind == kind)
+    if subject:
+        query = query.filter(VideoTask.subject == subject)
+    if q:
+        like = "%" + q.strip() + "%"
+        query = query.filter(_or(VideoTask.title.like(like), VideoTask.subject.like(like)))
+    rows = query.order_by(VideoTask.created_at.desc()).all()
+    # chapter progress per project (single grouped query)
+    prog = {}
+    try:
+        from models import VideoTaskChapter as _VC
+        ids = [t.id for t in rows]
+        if ids:
+            for c in db.query(_VC).filter(_VC.task_id.in_(ids)).all():
+                p = prog.setdefault(c.task_id, {"total": 0, "done": 0})
+                p["total"] += 1
+                st = (getattr(c, "edit_status", "") or "")
+                if st == "uploaded" or (c.link or "").strip():
+                    p["done"] += 1
+    except Exception:
+        pass
+    out = []
+    counts = {"one_shot": 0, "rapid_revision": 0, "project": 0}
+    subjects = set()
+    for t in rows:
+        counts[t.kind] = counts.get(t.kind, 0) + 1
+        if t.subject:
+            subjects.add(t.subject)
+        p = prog.get(t.id, {"total": 0, "done": 0})
+        cname = ""
+        try:
+            cname, _ = pc.creator_info(db, t)
+        except Exception:
+            pass
+        pct = round(100.0 * p["done"] / p["total"]) if p["total"] else 0
+        out.append({
+            "id": t.id, "kind": t.kind, "title": t.title or "Untitled",
+            "subject": t.subject or "", "creator": cname,
+            "class_level": ("12" if "12" in (t.subject or "") else ("10" if "10" in (t.subject or "") else "")),
+            "deadline": pc._dt(t.deadline), "updated": pc._dt(t.updated_at),
+            "weekly_quota": getattr(t, "weekly_quota", 0) or 0,
+            "chapters_total": p["total"], "chapters_done": p["done"], "pct": pct,
+            "is_old": bool(getattr(t, "is_old", False)),
+        })
+    return {"projects": out, "counts": counts,
+            "subjects": sorted(subjects),
+            "total": len(out)}
