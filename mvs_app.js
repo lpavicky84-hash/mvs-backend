@@ -18374,6 +18374,19 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pt-dl.overdue{background:rgba(209,68,58,.14);color:#d1443a}',
 '.pt-dl.today{background:rgba(224,165,74,.18);color:#a9791f}',
 '.pt-dl.soon{background:rgba(224,165,74,.18);color:#a9791f}',
+'.pw-thumb{width:74px;height:48px;border-radius:9px;object-fit:cover;border:1px solid #ece2cd;flex:0 0 auto;background:#f4f1e8}',
+'.pw-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}',
+'.pw-chip{font-size:.66rem;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(230,173,78,.14);color:#a9791f;white-space:nowrap}',
+'.pw-chip.who{background:rgba(60,110,200,.12);color:#3a6ec8}',
+'.pw-chip.ed{background:rgba(46,158,107,.13);color:#2e9e6b}',
+'.pw-chip.gr{background:rgba(150,90,200,.13);color:#8a4fc0}',
+'.pw-chip.sub{background:rgba(120,113,108,.14);color:#78716c}',
+'.pw-urgent{font-size:.62rem;font-weight:800;letter-spacing:.05em;padding:2px 7px;border-radius:999px;background:#d1443a;color:#fff;margin-left:7px}',
+'.pw-newpm{font-size:.62rem;font-weight:800;letter-spacing:.04em;padding:2px 7px;border-radius:999px;background:#2e9e6b;color:#fff;margin-left:7px;animation:pmBlink 1.1s ease-in-out infinite}',
+'.pw-prog{height:5px;border-radius:99px;background:#efe8d6;overflow:hidden;margin-top:6px;max-width:240px}',
+'.pw-prog>i{display:block;height:100%;background:#2e9e6b}',
+'@keyframes pmBlink{0%,100%{opacity:1}50%{opacity:.4}}',
+'.pw-vlink{font-size:.68rem;font-weight:700;color:#3a6ec8;text-decoration:none;padding:3px 9px;border:1px solid #cfe0f5;border-radius:999px;white-space:nowrap}',
 '.p-filter{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}',
 '.p-chip{padding:7px 13px;border-radius:999px;border:1px solid #d9cba8;background:transparent;color:inherit;cursor:pointer;font-size:.8rem;font-weight:600}',
 'body.dark .p-chip{border-color:#3a2f14}',
@@ -18738,13 +18751,34 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }).catch(function(){ if(wrap) wrap.innerHTML=''; });
   }
   function _workCard(portal,t){
-    var meta=[]; if(t.creator_name) meta.push(esc(t.creator_name));
+    var g=t.graphics||{};
+    var lc=t.lifecycle||'';
+    var thumb=(g.thumbnail_url||t.thumbnail_link||'');
+    var thumbHtml=thumb?'<img class="pw-thumb" src="'+esc(thumb)+'" alt="">':'';
+    var urgent=(t.priority==='urgent')?'<span class="pw-urgent">URGENT</span>':'';
+    var newpm=(portal==='production'&&(lc==='creator_submitted'||lc==='pm_review'))?'<span class="pw-newpm">NEW</span>':'';
     var df=t.deadline_flag||{}; var dl=(df.kind&&['overdue','today','soon'].indexOf(df.kind)>=0)?'<span class="pt-dl '+df.kind+'">'+esc(df.label)+'</span>':'';
-    return '<div class="pw-card">'+
+    // chips: creator, subject, type/channel, assignees
+    var chips=[];
+    if(t.creator_name) chips.push('<span class="pw-chip who">'+esc(t.creator_name)+((t.creator_type==='youtuber')?' (YouTuber)':'')+'</span>');
+    if(t.subject) chips.push('<span class="pw-chip sub">'+esc(t.subject)+'</span>');
+    if(t.video_type) chips.push('<span class="pw-chip">'+esc(t.video_type)+'</span>');
+    if(t.channel_name) chips.push('<span class="pw-chip">'+esc(t.channel_name)+'</span>');
+    if(t.editor_name) chips.push('<span class="pw-chip ed">Editor: '+esc(t.editor_name)+'</span>');
+    if(g.graphics_name) chips.push('<span class="pw-chip gr">Graphics: '+esc(g.graphics_name)+((g.status&&g.status!=='new')?' ('+esc(g.status)+')':'')+'</span>');
+    if((t.revision_count||0)>0) chips.push('<span class="pw-chip" style="background:rgba(209,68,58,.12);color:#d1443a">Revision '+t.revision_count+'</span>');
+    // progress bar while editing
+    var prog=(lc==='editing'&&(t.editing_progress||0)>0)?'<div class="pw-prog"><i style="width:'+Math.min(100,t.editing_progress)+'%"></i></div>':'';
+    // open-video link
+    var vlink=(t.submitted_link||t.edited_link||'');
+    var vbtn=vlink?'<a class="pw-vlink" href="'+esc(vlink)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open Video</a>':'';
+    return '<div class="pw-card">'+thumbHtml+
       '<div class="pw-main" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
-        '<div class="pw-title">'+esc(t.title||'Untitled')+'</div>'+
-        '<div class="pw-meta"><span class="pt-ref">'+esc(t.ref_code||'')+'</span>'+meta.map(function(m){return '<span>'+m+'</span>';}).join('')+dl+'<span class="pt-stage">'+esc(t.lifecycle_label||t.next_action||'')+'</span></div>'+
-      '</div>'+_primaryBtn(portal,t)+'</div>';
+        '<div class="pw-title">'+esc(t.title||'Untitled')+urgent+newpm+'</div>'+
+        '<div class="pw-meta"><span class="pt-ref">'+esc(t.ref_code||'')+'</span>'+dl+'<span class="pt-stage">'+esc(t.lifecycle_label||t.next_action||'')+'</span></div>'+
+        (chips.length?'<div class="pw-chips">'+chips.join('')+'</div>':'')+prog+
+      '</div>'+
+      '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">'+_primaryBtn(portal,t)+vbtn+'</div></div>';
   }
   function _primaryBtn(portal,t){
     var lc=t.lifecycle||''; var g=t.graphics||{};
@@ -18847,10 +18881,15 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // --- generic task/video list ---
   function _taskRow(portal,t){
     var badge=(t.creator_type==='youtuber')?'<span class="pt-badge b-youtuber">YouTuber</span>':'<span class="pt-badge b-teacher">Teacher</span>';
-    var meta=[]; if(t.creator_name) meta.push(esc(t.creator_name)); if(t.subject) meta.push(esc(t.subject)); if(t.deadline) meta.push('Due '+esc(t.deadline));
+    var meta=[]; if(t.creator_name) meta.push(esc(t.creator_name)+((t.creator_type==='youtuber')?' (YouTuber)':'')); if(t.subject) meta.push(esc(t.subject));
+    if(t.editor_name) meta.push('Editor: '+esc(t.editor_name));
+    var _g=t.graphics||{}; if(_g.graphics_name) meta.push('Graphics: '+esc(_g.graphics_name));
+    if((t.revision_count||0)>0) meta.push('Revision '+t.revision_count);
+    if(t.deadline) meta.push('Due '+esc(t.deadline));
+    var urg=(t.priority==='urgent')?'<span class="pw-urgent">URGENT</span>':'';
     var df=t.deadline_flag||{}; var dl=(df.kind&&['overdue','today','soon'].indexOf(df.kind)>=0)?'<span class="pt-dl '+df.kind+'">'+esc(df.label)+'</span>':'';
     return '<div class="pt-row" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
-      '<div class="pt-main"><div class="pt-title">'+esc(t.title||'Untitled')+'</div>'+
+      '<div class="pt-main"><div class="pt-title">'+esc(t.title||'Untitled')+urg+'</div>'+
       '<div class="pt-meta"><span class="pt-ref">'+esc(t.ref_code||'')+'</span>'+meta.map(function(m){return '<span>'+m+'</span>';}).join('')+'</div></div>'+
       dl+badge+'<span class="pt-stage">'+esc(t.next_action||t.lifecycle_label||'')+'</span></div>';
   }
