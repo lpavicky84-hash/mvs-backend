@@ -918,7 +918,7 @@ function _sessionExpired(){
   toast('Your session has expired — please log in again.', true);
   setTimeout(()=>{ window._sessDead=false; goHome(); }, 1600);
 }
-function startNotifPolling(role){ stopNotifPolling(); _notifInt=setInterval(()=>pollNotifs(role).catch(e=>{ if(e&&e.status===401) _authFail(); }),300000); }
+function startNotifPolling(role){ stopNotifPolling(); pollNotifs(role).catch(()=>{}); _notifInt=setInterval(()=>pollNotifs(role).catch(e=>{ if(e&&e.status===401) _authFail(); }),45000); }
 function stopNotifPolling(){ if(_notifInt){ clearInterval(_notifInt); _notifInt=null; } }
 // ===== SEND NOTIFICATIONS (admin + teacher) =====
 // ===== v93: notify modals — recipient clarity + live student counts =====
@@ -19163,14 +19163,19 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       else if(lc==='editing_done') b.push(_ab('Submit Edited Video','prodLinkForm(\'editor\','+t.id+',\'/submit\',\'edited_link\',\'Edited video Drive link\')','primary'));
       else if(lc==='qc_changes') b.push(_ab('Submit Revised Video','prodLinkForm(\'editor\','+t.id+',\'/submit\',\'edited_link\',\'Revised video Drive link\')','primary'));
     } else if(portal==='youtuber'){
-      if(lc==='creator_assigned'||lc==='creator_working'||lc==='changes_required')
+      if(lc==='creator_assigned'||lc==='creator_working')
         b.push(_ab('Submit Video','prodLinkForm(\'youtuber\','+t.id+',\'/videos/'+t.id+'/submit\',\'drive_link\',\'Video Drive link\',true)','primary'));
+      else if(lc==='changes_required')
+        b.push(_ab('Re-submit Video','prodLinkForm(\'youtuber\','+t.id+',\'/videos/'+t.id+'/submit\',\'drive_link\',\'Revised video Drive link\',true)','primary'));
+      else if(lc==='creator_submitted'||lc==='pm_review')
+        b.push(_ab('Submit Again','prodLinkForm(\'youtuber\','+t.id+',\'/videos/'+t.id+'/submit\',\'drive_link\',\'Updated video Drive link\',true)'));
     } else if(portal==='graphics'){
       if(g.status==='new'||g.status==='changes') b.push(_ab('Start Designing','prodAct(\'graphics\','+t.id+',\'/start\')','primary'));
       else if(g.status==='in_progress') b.push(_ab('Submit Thumbnail','prodLinkForm(\'graphics\','+t.id+',\'/submit\',\'thumbnail_url\',\'Thumbnail image URL\')','primary'));
     } else if(portal==='production'){
       if(lc==='creator_submitted'||lc==='pm_review'){ b.push(_ab('Approve','prodAct(\'production\','+t.id+',\'/approve-creator\')','ok'));
         b.push(_ab('Request Changes','prodRemarkForm(\'production\','+t.id+',\'/request-creator-changes\')'));
+        b.push(_ab('Request Reshoot','prodRemarkForm(\'production\','+t.id+',\'/request-creator-changes\',\'Reshoot reason \\u2014 what should the creator redo?\')','warn'));
         b.push(_ab('Reject','prodRemarkForm(\'production\','+t.id+',\'/reject-creator\')','danger')); }
       if((lc==='approved'||lc==='editor_assigned'||lc==='editing'||lc==='editing_paused'||lc==='editing_done'||lc==='qc_pending'||lc==='qc_changes'||lc==='ready_for_youtube') && !t.editor_id)
         b.push(_ab('Assign Editor','prodAssignForm('+t.id+',\'editor\')','primary'));
@@ -19214,9 +19219,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     api(full,'POST',body).then(function(){ prodDismiss(); toast('Submitted'); _refresh(portal); })
       .catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
-  window.prodRemarkForm=function(portal,id,ep){
+  window.prodRemarkForm=function(portal,id,ep,label){
     var box=_actsBox(); if(!box) return;
-    box.innerHTML=_formWrap('<div class="p-field"><label>Remarks (required)</label><textarea class="p-area" id="p-rem-in" placeholder="Explain what needs to change..."></textarea></div>'+
+    box.innerHTML=_formWrap('<div class="p-field"><label>'+esc(label||'Remarks (required)')+'</label><textarea class="p-area" id="p-rem-in" placeholder="Explain what needs to change..."></textarea></div>'+
       '<div class="p-field"><label>Screenshots (optional)</label><div class="p-drop" id="p-drop" onclick="document.getElementById(\'p-file\').click()">Paste (Ctrl+V), drop, or click to add screenshots</div>'+
       '<input type="file" id="p-file" accept="image/*" multiple style="display:none" onchange="prodImgFiles(this.files)"><div class="p-thumbs" id="p-thumbs"></div></div>',
       'Send','prodRemarkSubmit(\''+portal+'\','+id+',\''+ep+'\')');
@@ -19284,16 +19289,22 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(!list.length){ box.innerHTML='<div class="p-empty" style="padding:16px">No '+role+'s available. Create one from the Admin panel first.</div>'; return; }
       var tarr=(role==='editor')?(team.editors||[]):(team.graphics||[]);
       var loadOf=function(pid){ for(var i=0;i<tarr.length;i++){ if(tarr[i].id===pid) return tarr[i]; } return null; };
-      var opts=list.map(function(m){ var w=loadOf(m.id); var load=w?(' \u2014 '+(w.active||0)+'/'+(w.recommended||m.recommended||5)+' active'+((w.active||0)>(w.recommended||5)?' (overloaded)':'')):''; return '<option value="'+m.id+'">'+esc(m.name)+load+'</option>'; }).join('');
-      box.innerHTML=_formWrap('<div class="p-field"><label>Select '+role.charAt(0).toUpperCase()+role.slice(1)+' (workload shown)</label><select class="p-select" id="p-assign-sel">'+opts+'</select></div>',
-        'Assign','prodAssignSubmit('+id+',\''+role+'\')');
+      var rows=list.map(function(m){ var w=loadOf(m.id);
+        var active=w?(w.active||0):0, rec=(w&&w.recommended)||m.recommended||5, over=active>rec;
+        return '<button class="p-btn" style="display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;margin-bottom:6px;gap:10px" onclick="prodAssignPick('+id+',\''+role+'\','+m.id+',this)"><span style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(m.name)+'</span><span style="font-size:.72rem;font-weight:800;white-space:nowrap;color:'+(over?'#d1443a':'#2e9e6b')+'">'+active+'/'+rec+(over?' busy':'')+'</span></button>';
+      }).join('');
+      box.innerHTML='<div class="p-field"><label>Tap a '+role+' to assign (one click)</label><div>'+rows+'</div></div><div style="margin-top:8px"><button class="p-btn" onclick="prodDismiss()">Cancel</button></div>';
     }).catch(function(e){ box.innerHTML='<div class="p-empty" style="padding:16px">Could not load. '+esc(e&&e.message||'')+'</div>'; });
+  };
+  window.prodAssignPick=function(id,role,pid,btn){
+    if(btn){ try{ btn.disabled=true; btn.style.opacity='.6'; }catch(e){} }
+    var body={}; body[role+'_id']=parseInt(pid,10);
+    api(P.production.api+'/tasks/'+id+'/assign-'+role,'POST',body).then(function(){ prodDismiss(); toast(role.charAt(0).toUpperCase()+role.slice(1)+' assigned'); _refresh('production'); })
+      .catch(function(e){ if(btn){ btn.disabled=false; btn.style.opacity='1'; } toast((e&&e.message)||'Failed',true); });
   };
   window.prodAssignSubmit=function(id,role){
     var v=(document.getElementById('p-assign-sel')||{}).value; if(!v){ toast('Pick one',true); return; }
-    var body={}; body[role+'_id']=parseInt(v,10);
-    api(P.production.api+'/tasks/'+id+'/assign-'+role,'POST',body).then(function(){ prodDismiss(); toast(role+' assigned'); _refresh('production'); })
-      .catch(function(e){ toast((e&&e.message)||'Failed',true); });
+    prodAssignPick(id,role,v,null);
   };
 
   // ---- PM: create new task ----
@@ -19652,7 +19663,12 @@ function initAdminProdMonitor(){
       '#a-page-prodmon .pm-stage{font-size:.72rem;font-weight:700;padding:4px 11px;border-radius:999px;background:rgba(230,173,78,.16);color:#a9791f;white-space:nowrap}',
       '#a-page-prodmon .pm-load{display:inline-block;font-size:.72rem;font-weight:700;padding:4px 10px;border-radius:999px}',
       '#a-page-prodmon .pm-load.over{background:rgba(209,68,58,.14);color:#d1443a}',
-      '#a-page-prodmon .pm-load.ok{background:rgba(46,158,107,.12);color:#2e9e6b}'
+      '#a-page-prodmon .pm-load.ok{background:rgba(46,158,107,.12);color:#2e9e6b}',
+      '#a-page-prodmon .pm-row.isnew{border-color:#e6ad4e;box-shadow:0 0 0 2px rgba(230,173,78,.18);animation:pmBlink 1.1s ease-in-out infinite}',
+      '#a-page-prodmon .pm-new{display:inline-block;font-size:.66rem;font-weight:800;letter-spacing:.06em;padding:3px 8px;border-radius:999px;background:#d1443a;color:#fff;margin-left:8px;animation:pmBlink 1.1s ease-in-out infinite}',
+      '@keyframes pmBlink{0%,100%{opacity:1}50%{opacity:.35}}',
+      '#a-page-prodmon .pm-live{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;color:#2e9e6b;font-weight:700;margin-left:10px}',
+      '#a-page-prodmon .pm-live i{width:8px;height:8px;border-radius:50%;background:#2e9e6b;display:inline-block;animation:pmBlink 1.1s ease-in-out infinite}'
     ].join('');
     document.head.appendChild(st);
   }
@@ -19698,14 +19714,24 @@ function loadAProdMonitor(){
       return '<div class="pm-row"><div class="t"><div class="nm">'+_ape(m.name||'')+'</div></div><span class="pm-load '+(over?'over':'ok')+'">'+(m.active||0)+' / '+(m.recommended||m.recommended_load||5)+'</span></div>'; }
     if((team.editors||[]).length){ html+='<div class="pm-sec">Editors</div>'+team.editors.map(trow).join(''); }
     if((team.graphics||[]).length){ html+='<div class="pm-sec">Graphics</div>'+team.graphics.map(trow).join(''); }
-    // recent tasks
-    html+='<div class="pm-sec">Recent Tasks</div>';
+    // recent tasks — blink a NEW badge on tasks that appeared since the last look
+    html+='<div class="pm-sec">Recent Tasks<span class="pm-live"><i></i>Live</span></div>';
+    var seen=window._aProdSeen||null;   // null on first load -> don't blink everything
+    var nowSeen={};
+    (tasks||[]).forEach(function(t){ if(t&&t.ref_code) nowSeen[t.ref_code]=1; });
     html+=tasks.length?tasks.map(function(t){
       var badge=(t.creator_type==='youtuber')?'YouTuber':'Teacher';
-      return '<div class="pm-row"><div class="t"><div class="nm">'+_ape(t.title||'Untitled')+'</div><div class="mt">'+_ape(t.ref_code||'')+' \u00b7 '+_ape(t.creator_name||badge)+'</div></div><span class="pm-stage">'+_ape(t.next_action||t.lifecycle_label||'')+'</span></div>';
+      var isNew=(seen && t.ref_code && !seen[t.ref_code]);
+      return '<div class="pm-row'+(isNew?' isnew':'')+'"><div class="t"><div class="nm">'+_ape(t.title||'Untitled')+(isNew?'<span class="pm-new">NEW</span>':'')+'</div><div class="mt">'+_ape(t.ref_code||'')+' \u00b7 '+_ape(t.creator_name||badge)+'</div></div><span class="pm-stage">'+_ape(t.next_action||t.lifecycle_label||'')+'</span></div>';
     }).join(''):'<div style="color:#9c8f6e;padding:10px">No tasks yet.</div>';
+    window._aProdSeen=nowSeen;
     html+='<p style="color:#8a7d5c;font-size:.82rem;margin-top:16px">This is a read-only overview. Day-to-day production is managed by the Production Manager in their dedicated portal.</p>';
     el.innerHTML=html;
+    if(window._aProdMonTimer) clearTimeout(window._aProdMonTimer);
+    window._aProdMonTimer=setTimeout(function(){
+      var pg=document.getElementById('a-page-prodmon');
+      if(pg && pg.classList.contains('active') && !document.hidden) loadAProdMonitor();
+    }, 30000);
   }).catch(function(e){ el.innerHTML='<div style="padding:24px;color:#c1443a">Could not load production overview. '+_ape(e&&e.message||'')+'</div>'; });
 }
 
