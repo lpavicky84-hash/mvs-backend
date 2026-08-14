@@ -102,7 +102,28 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
     if video_type:
         query = query.filter(VideoTask.video_type == video_type)
     if status:
-        query = query.filter(VideoTask.lifecycle == status)
+        # The dropdown uses production-style statuses, but old / admin-created tasks store
+        # their state in the admin `status` field (lifecycle may be blank). Match BOTH so
+        # every task shows up under the right filter.
+        _SMAP = {
+            "pm_review":        (["pm_review", "creator_submitted"], ["submitted"]),
+            "creator_submitted": (["creator_submitted"],            ["submitted"]),
+            "approved":         (["approved"],                       ["approved"]),
+            "editing":          (["editing", "editing_paused", "editor_assigned"], ["editing_soon"]),
+            "editing_done":     (["editing_done"],                   ["editing_done"]),
+            "qc_pending":       (["qc_pending"],                     []),
+            "ready_for_youtube": (["ready_for_youtube"],            []),
+            "uploaded":         (["uploaded", "completed"],          ["uploaded"]),
+            "changes_required": (["changes_required", "qc_changes"], ["reshoot", "rejected"]),
+        }
+        lcs, sts = _SMAP.get(status, ([status], [status]))
+        conds = []
+        if lcs:
+            conds.append(VideoTask.lifecycle.in_(lcs))
+        if sts:
+            conds.append(VideoTask.status.in_(sts))
+        if conds:
+            query = query.filter(or_(*conds))
     if creator_type:
         query = query.filter(VideoTask.creator_type == creator_type)
     if editor_id:
