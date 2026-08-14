@@ -18397,6 +18397,31 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 'body.dark .pd-collab-card{border-color:#3a2f14}',
 '.pd-collab-h{font-weight:800;margin-bottom:8px;display:flex;align-items:center;gap:8px}',
 '.pd-collab-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid rgba(0,0,0,.05)}',
+'.vv-panel{background:var(--card,#fffdf7);border:1px solid #e8dfc8;border-radius:16px;padding:16px 18px}',
+'body.dark .vv-panel{border-color:#3a2f14;background:#211a0d}',
+'.vv-panel-h{font-size:.72rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8a7d5c;margin-bottom:14px}',
+'.vv-grid{display:grid;grid-template-columns:1.7fr 1fr;gap:16px;margin-top:16px}',
+'@media(max-width:900px){.vv-grid{grid-template-columns:1fr}}',
+'.vv-bars{display:flex;flex-direction:column;gap:12px}',
+'.vv-bar-row{display:flex;align-items:center;gap:12px}',
+'.vv-bar-lbl{width:118px;flex:0 0 118px;font-weight:700;font-size:.84rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+'.vv-bar-track{flex:1;height:22px;background:#efe8d6;border-radius:999px;overflow:hidden}',
+'body.dark .vv-bar-track{background:#2a2211}',
+'.vv-bar-fill{display:block;height:100%;border-radius:999px}',
+'.vv-bar-val{font-weight:800;min-width:52px;text-align:right;font-size:.9rem}',
+'.vv-you{font-size:.58rem;font-weight:800;padding:1px 6px;border-radius:999px;background:#2e9e6b;color:#fff;margin-left:4px}',
+'.vv-empty{color:#8a7d5c;padding:14px 0}',
+'.vv-pie-wrap{display:flex;gap:16px;align-items:center;flex-wrap:wrap}',
+'.vv-pie{width:130px;height:130px;flex:0 0 130px}',
+'.vv-legs{display:flex;flex-direction:column;gap:7px;flex:1;min-width:120px}',
+'.vv-leg{font-size:.82rem;font-weight:600;display:flex;align-items:center;gap:7px}',
+'.vv-leg-dot{width:11px;height:11px;border-radius:3px;flex:0 0 11px}',
+'.vv-vrow{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid #efe8d6}',
+'body.dark .vv-vrow{border-color:#2a2211}',
+'.vv-vthumb{width:72px;height:44px;border-radius:8px;object-fit:cover;flex:0 0 72px;background:#efe8d6}',
+'.vv-vtitle{font-weight:700;font-size:.92rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+'.vv-vmeta{font-size:.76rem;color:#8a7d5c;margin-top:2px}',
+'.vv-vviews{font-weight:800;font-size:.95rem}',
 '.p-filter{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}',
 '.p-chip{padding:7px 13px;border-radius:999px;border:1px solid #d9cba8;background:transparent;color:inherit;cursor:pointer;font-size:.8rem;font-weight:600}',
 'body.dark .p-chip{border-color:#3a2f14}',
@@ -18842,19 +18867,31 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 
   // --- real-time views (production analytics) ---
   function _num(n){ try{ return (n||0).toLocaleString(); }catch(e){ return String(n||0); } }
+  function _ytId(url){ if(!url) return ''; var m=String(url).match(/(?:v=|\/embed\/|youtu\.be\/|\/shorts\/)([A-Za-z0-9_-]{6,})/); return m?m[1]:''; }
   function renderViews(portal,body){
     body.innerHTML='<div class="p-load">Loading views...</div>';
     return api(P.production.api+'/views').then(function(r){
       if(_stale(portal,'views')) return;
+      var comp=(r.by_creator||[]).map(function(c){ var col=/collab/i.test(c.name||''); return {name:c.name,views:c.views,videos:c.videos,share:c.share,creator_type:c.creator_type,is_collab:col}; });
       var kpis=[['Total Views',_num(r.total_views)],['Videos Uploaded',r.uploaded||0],['Pending Upload',r.pending_upload||0],['Highest Viewed',r.highest?_num(r.highest.views):'0']];
       var html='<div class="p-toolbar" style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="p-btn p-btn-primary" id="pv-refresh" onclick="prodRefreshViews()">Refresh live views</button></div>';
       html+='<div class="pk-grid">'+kpis.map(function(c){ return '<div class="pk-card"><div class="pk-val">'+c[1]+'</div><div class="pk-lbl">'+c[0]+'</div></div>'; }).join('')+'</div>';
-      var cr=r.by_creator||[];
-      html+='<div class="p-sec">Views by Creator</div>';
-      html+=cr.length?cr.map(function(c){ return '<div class="pt-row"><div class="pt-main"><div class="pt-title">'+esc(c.name)+'</div><div class="pt-meta"><span>'+(c.creator_type==='youtuber'?'YouTuber':'Teacher')+'</span><span>'+c.videos+' videos</span></div></div><div style="text-align:right"><div style="font-weight:800">'+_num(c.views)+'</div><div style="font-size:.72rem;color:#8a7d5c">'+c.share+'%</div></div></div>'; }).join(''):'<div class="p-empty">No uploaded videos yet.</div>';
+      // premium charts: bar (views by creator) + donut (share)
+      var bar='<div class="vv-panel"><div class="vv-panel-h">Views by Creator</div>'+_svgBars(comp)+'</div>';
+      var pie=(comp.filter(function(x){return (x.views||0)>0;}).length>1)?'<div class="vv-panel"><div class="vv-panel-h">Share of Views (all creators)</div>'+_svgPie(comp)+'</div>':'';
+      html+='<div class="vv-grid">'+bar+pie+'</div>';
+      // every video with thumbnails
       var vs=r.videos||[];
-      html+='<div class="p-sec">All Uploaded Videos</div>';
-      html+=vs.length?vs.map(function(v){ return '<div class="pt-row"'+(v.youtube_url?' style="cursor:pointer" onclick="window.open(\''+esc(v.youtube_url)+'\',\'_blank\')"':'')+'><div class="pt-main"><div class="pt-title">'+esc(v.title)+'</div><div class="pt-meta"><span class="pt-ref">'+esc(v.ref_code)+'</span><span>'+esc(v.creator)+'</span>'+(v.video_type?'<span>'+esc(v.video_type)+'</span>':'')+'</div></div><span class="pt-stage">'+_num(v.views)+' views</span></div>'; }).join(''):'<div class="p-empty">No uploaded videos yet.</div>';
+      html+='<div class="vv-panel" style="margin-top:16px"><div class="vv-panel-h">Every Video</div><div style="max-height:420px;overflow-y:auto">';
+      html+=vs.length?vs.map(function(v){
+        var yid=_ytId(v.youtube_url); var thumb=yid?('https://img.youtube.com/vi/'+yid+'/mqdefault.jpg'):'';
+        var meta=[esc(v.creator||'')]; if(v.video_type) meta.push(esc(v.video_type)); if(v.published_at) meta.push(esc(v.published_at));
+        return '<div class="vv-vrow"'+(v.youtube_url?' style="cursor:pointer" onclick="window.open(\''+esc(v.youtube_url)+'\',\'_blank\')"':'')+'>'+
+          (thumb?'<img class="vv-vthumb" src="'+thumb+'" alt="" loading="lazy">':'<div class="vv-vthumb"></div>')+
+          '<div style="flex:1;min-width:0"><div class="vv-vtitle">'+esc(v.title||'Untitled')+'</div><div class="vv-vmeta">'+meta.join(' \u00b7 ')+'</div></div>'+
+          '<div style="text-align:right"><div class="vv-vviews">'+_num(v.views)+'</div>'+(v.youtube_url?'<div class="pw-vlink" style="border:0;padding:0;color:#a9791f">Open</div>':'')+'</div></div>';
+      }).join(''):'<div class="p-empty">No uploaded videos yet.</div>';
+      html+='</div></div>';
       body.innerHTML=html;
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load views. '+esc(e&&e.message||'')+'</div>'; });
   }
