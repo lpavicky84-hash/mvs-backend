@@ -75,29 +75,30 @@ def _instance_static(src, wght=400, tag="reg"):
 
 
 def _enable_shaping(pdf, font_path):
-    """Turn ON Devanagari text shaping AND verify it works. Correct Hindi in the PDF
-    (conjuncts like क्त, matra reordering like प्रतिष्ठा) requires HarfBuzz shaping via
-    uharfbuzz. If shaping is provably dead we RAISE a clear error rather than silently
-    emitting broken, unreadable Devanagari (spec §39)."""
-    pdf.set_text_shaping(True)          # fpdf2 itself raises here if uharfbuzz is missing
-    broken = False
+    """Enable Devanagari shaping AND verify fpdf2 actually applies it. Correct Hindi in
+    the PDF (conjuncts like क्त, matra reordering like प्रतिष्ठा) needs HarfBuzz shaping.
+    We compare the width of the क्त conjunct with shaping ON vs OFF: if they match, the
+    engine is NOT shaping -> we RAISE a clear error instead of emitting unreadable
+    Devanagari to students (spec §39). Fix is always: bump fpdf2/uharfbuzz in
+    requirements.txt and do a clean rebuild."""
     try:
-        import uharfbuzz as hb
-        with open(font_path, "rb") as _f:
-            _blob = hb.Blob(_f.read())
-        _font = hb.Font(hb.Face(_blob))
-        _buf = hb.Buffer()
-        _buf.add_str("\u0915\u094d\u0924")     # क + ् + त  ->  क्त must collapse to < 3 glyphs
-        _buf.guess_segment_properties()
-        hb.shape(_font, _buf)
-        broken = len(_buf.glyph_infos) >= 3
-    except Exception:
-        broken = False                  # can't verify -> trust set_text_shaping, don't block
-    if broken:
+        pdf.set_font("Noto", "", 12)
+        pdf.set_text_shaping(True)
+        w_on = pdf.get_string_width("\u0915\u094d\u0924")     # क्त shaped
+        pdf.set_text_shaping(False)
+        w_off = pdf.get_string_width("\u0915\u094d\u0924")    # क्त unshaped
+        pdf.set_text_shaping(True)                            # leave shaping ON for the render
+        applied = abs(w_on - w_off) > 0.05
+    except Exception as e:
         raise RuntimeError(
-            "Hindi shaping is not working on this server (the क्त conjunct did not form). "
-            "Deploy the FULL exam_pdf.py, keep 'uharfbuzz' + 'fonttools' in requirements.txt, "
-            "and do a clean rebuild.")
+            "Hindi text shaping could not be enabled (%s). Ensure 'uharfbuzz' is in "
+            "requirements.txt and do a clean rebuild." % e)
+    if not applied:
+        raise RuntimeError(
+            "Hindi shaping is present but the PDF engine is NOT applying it (the क्त conjunct "
+            "did not shape). This is a stale server build: the deployed fpdf2/uharfbuzz is not "
+            "the version in requirements.txt. Bump fpdf2 + uharfbuzz versions in "
+            "requirements.txt and redeploy so Railway does a clean rebuild.")
 
 
 def _font_path():
