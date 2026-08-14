@@ -18242,7 +18242,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // --- portal definitions ---
   var P={
     production:{ role:'production_manager', title:'Production', sub:'Command Center', api:'/api/production',
-      nav:[ {g:'Operations',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'board',t:'Production Board',i:'board'}, {p:'tasks',t:'All Tasks',i:'list'} ]},
+      nav:[ {g:'Operations',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'board',t:'Production Board',i:'board'}, {p:'tasks',t:'Tasks',i:'list'}, {p:'projects',t:'Projects',i:'folder'} ]},
             {g:'Pipeline',items:[ {p:'q:pm_review',t:'PM Review',i:'check'}, {p:'q:editing',t:'Editing Queue',i:'video'}, {p:'q:qc_pending',t:'QC Queue',i:'check'}, {p:'q:ready_for_youtube',t:'Ready for YouTube',i:'video'}, {p:'urgent',t:'Urgent Videos',i:'board'} ]},
             {g:'Team',items:[ {p:'team',t:'Team & Workload',i:'team'} ]},
             {g:'Analytics',items:[ {p:'analytics',t:'Analytics',i:'grid'}, {p:'creators',t:'Creator Performance',i:'team'}, {p:'views',t:'Real-time Views',i:'grid'} ]} ] },
@@ -18449,6 +18449,22 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pj-ch{font-size:.8rem;opacity:.9;margin:4px 0 8px}',
 '.pj-track{height:7px;background:rgba(255,255,255,.25);border-radius:99px;overflow:hidden}',
 '.pj-track>i{display:block;height:100%;background:#e6ad4e;border-radius:99px}',
+'.pj-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}',
+'.pj-h-title{font-size:1.3rem;font-weight:800}',
+'.pj-h-sub{font-size:.84rem;color:#8a7d5c;margin-top:2px}',
+'.pj-card2{border-radius:16px;margin-bottom:12px;color:#fff;overflow:hidden;background:linear-gradient(100deg,var(--pj0),var(--pj1))}',
+'.pj-c-head{display:flex;align-items:center;gap:16px;padding:16px 20px;cursor:pointer;flex-wrap:wrap}',
+'.pj-c-l{flex:1;min-width:200px}',
+'.pj-c-t{display:flex;align-items:center;gap:10px;flex-wrap:wrap}',
+'.pj-c-r{text-align:right;min-width:170px}',
+'.pj-chev{font-size:1.1rem;opacity:.85;transition:transform .2s}',
+'.pj-c-acts{display:flex;gap:8px;flex-wrap:wrap;padding:0 20px 16px}',
+'.pj-del{border-color:rgba(255,120,120,.5)!important;color:#ffd9d9!important}',
+'.pj-chapters{background:rgba(0,0,0,.18);padding:6px 20px 14px}',
+'.pj-ch-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.12)}',
+'.pj-ch-dot{width:8px;height:8px;border-radius:50%;background:#e6ad4e;flex:0 0 8px}',
+'.pj-ch-t{flex:1;font-size:.9rem}',
+'.pj-ch-st{font-size:.75rem;opacity:.85;text-transform:capitalize}',
 '.aw-collab{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}',
 '.aw-ctag{padding:7px 13px;border-radius:999px;border:1.5px solid #d9cba8;background:transparent;color:inherit;cursor:pointer;font-weight:600;font-size:.82rem}',
 'body.dark .aw-ctag{border-color:#3a2f14}',
@@ -18772,6 +18788,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(page==='library') return renderGraphicsLib(portal,body);
     if(page==='creators') return renderCreators(portal,body);
     if(page==='board') return renderBoard(portal,body);
+    if(page==='projects') return renderProjects(portal,body);
     if(page==='team') return renderTeam(portal,body);
     if(page==='analytics') return renderAnalytics(portal,body);
     if(page==='tasks'||page==='videos') return renderList(portal,body);
@@ -19083,59 +19100,75 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   window.prodClearFilters=function(){ var f=_flt('production'); ['q','teacher_id','channel','video_type','status','priority','deadline','creator_type'].forEach(function(k){ delete f[k]; }); var body=document.getElementById('production-body'); if(body) renderList('production',body); };
   function renderList(portal,body){
-    if(portal==='production'){
-      var mode=window._prodListMode||'tasks';
-      api(P.production.api+'/projects').then(function(pr){
-        var pcount=(pr&&pr.total)||0;
-        var master='<div class="pm-master">'+
-          '<button class="pm-mcard'+(mode==='tasks'?' on':'')+'" onclick="prodListMode(\'tasks\')"><div class="pm-mi">Tasks</div><div class="pm-ms">Single video assignments</div></button>'+
-          '<button class="pm-mcard'+(mode==='projects'?' on':'')+'" onclick="prodListMode(\'projects\')"><div class="pm-mi">Projects <span class="pm-mn">'+pcount+'</span></div><div class="pm-ms">One Shot \u00b7 Rapid Revision \u00b7 Projects</div></button>'+
-          '</div>';
-        if(mode==='projects'){ body.innerHTML=master+'<div id="prod-projects"><div class="p-load">Loading projects...</div></div>'; _prodLoadProjects(pr); }
-        else { body.innerHTML=master+_filterBar(portal)+'<div id="'+portal+'-active"></div><div id="'+portal+'-results"><div class="p-load">Loading...</div></div>'; _prodLoadList(portal); }
-      }).catch(function(){ body.innerHTML=_filterBar(portal)+'<div id="'+portal+'-active"></div><div id="'+portal+'-results"><div class="p-load">Loading...</div></div>'; _prodLoadList(portal); });
-      return;
-    }
     body.innerHTML=_filterBar(portal)+'<div id="'+portal+'-active"></div><div id="'+portal+'-results"><div class="p-load">Loading...</div></div>';
     return _prodLoadList(portal);
   }
-  window.prodListMode=function(m){ window._prodListMode=m; window._prodProjFlt={}; var body=document.getElementById('production-body'); if(body) renderList('production',body); };
-  var _PJ_COL={one_shot:['#1e4d6b','#2a6b8f'],rapid_revision:['#1f5c3a','#2e7d4f'],project:['#6b2f4d','#8f3d66']};
+  function renderProjects(portal,body){
+    body.innerHTML='<div class="pj-head"><div><div class="pj-h-title">Projects</div><div class="pj-h-sub">One Shot \u00b7 Rapid Revision \u00b7 Projects \u2014 syllabus-connected</div></div><button class="p-btn p-btn-primary" onclick="prodNewProject()">+ Assign Project</button></div><div id="prod-projects"><div class="p-load">Loading projects...</div></div>';
+    _prodLoadProjects();
+  }
+  window.prodNewProject=function(){ prodNewTask(); setTimeout(function(){ if(window.prodAwMode) prodAwMode('project'); },60); };
+  var _PJ_PAL=[['#1e4d6b','#2a6b8f'],['#1f5c3a','#2e7d4f'],['#6b2f4d','#8f3d66'],['#5a4a1e','#7a6528'],['#3a3a6b','#4f4f8f'],['#6b3a1e','#8f5228'],['#1e6b5a','#28907a'],['#5a1e4d','#7a2868'],['#4d5a1e','#687a28'],['#1e3a6b','#28528f']];
   function _prodLoadProjects(pr){
     var box=document.getElementById('prod-projects'); if(!box) return;
     var render=function(data){
-      var projs=data.projects||[]; var flt=window._prodProjFlt||{};
-      var subjects=data.subjects||[];
+      var projs=data.projects||[]; var flt=window._prodProjFlt||{}; var subjects=data.subjects||[];
       var kinds=[['','All Types'],['one_shot','One Shot'],['rapid_revision','Rapid Revision'],['project','Project']];
       var classes=[['','All Classes'],['12','Class 12'],['10','Class 10']];
-      // filter client-side
-      var shown=projs.filter(function(p){
-        if(flt.kind && p.kind!==flt.kind) return false;
-        if(flt.class_level && p.class_level!==flt.class_level) return false;
-        if(flt.subject && p.subject!==flt.subject) return false;
-        return true;
-      });
+      var shown=projs.filter(function(p){ if(flt.kind&&p.kind!==flt.kind)return false; if(flt.class_level&&p.class_level!==flt.class_level)return false; if(flt.subject&&p.subject!==flt.subject)return false; return true; });
       var bar='<div class="pjf-bar">'+
         '<span class="pjf-l">CLASS</span><select class="p-select pjf-sel" onchange="prodProjFlt(\'class_level\',this.value)">'+classes.map(function(o){return '<option value="'+o[0]+'"'+(flt.class_level===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>'+
         '<span class="pjf-l">SUBJECT</span><select class="p-select pjf-sel" onchange="prodProjFlt(\'subject\',this.value)"><option value="">All Subjects ('+subjects.length+')</option>'+subjects.map(function(s){return '<option value="'+esc(s)+'"'+(flt.subject===s?' selected':'')+'>'+esc(s)+'</option>';}).join('')+'</select>'+
         '<span class="pjf-l">TYPE</span><select class="p-select pjf-sel" onchange="prodProjFlt(\'kind\',this.value)">'+kinds.map(function(o){return '<option value="'+o[0]+'"'+(flt.kind===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>'+
         '<span style="color:#8a7d5c;font-size:.8rem;margin-left:auto">Showing '+shown.length+' of '+projs.length+'</span></div>';
-      var cards=shown.length?shown.map(function(p){
-        var col=_PJ_COL[p.kind]||['#5a4a1e','#7a6528'];
+      var cards=shown.length?shown.map(function(p,i){
+        var col=_PJ_PAL[i%_PJ_PAL.length];
         var klbl={one_shot:'ONE SHOT',rapid_revision:'RAPID REVISION',project:'PROJECT'}[p.kind]||'PROJECT';
-        return '<div class="pj-card" style="background:linear-gradient(100deg,'+col[0]+','+col[1]+')">'+
-          '<div class="pj-l"><div class="pj-top"><span class="pj-badge">'+klbl+'</span><span class="pj-title">'+esc(p.title||p.subject||'Project')+'</span></div>'+
-          '<div class="pj-sub">'+esc(p.creator||'')+(p.deadline?' \u00b7 Deadline: '+esc(p.deadline):'')+(p.updated?' \u00b7 Updated: '+esc(p.updated):'')+'</div>'+
-          '<div class="pj-acts"><button class="pj-btn" onclick="prodOpenTask(\'production\','+p.id+')">Open / Chapters</button><button class="pj-btn" onclick="prodMarkOld('+p.id+','+(p.is_old?'false':'true')+')">'+(p.is_old?'Mark New':'Mark Old')+'</button></div></div>'+
-          '<div class="pj-r"><div class="pj-pct">'+p.pct+'%</div><div class="pj-ch">'+p.chapters_done+' / '+p.chapters_total+' chapters done</div><div class="pj-track"><i style="width:'+p.pct+'%"></i></div></div>'+
+        return '<div class="pj-card2" id="pjc-'+p.id+'" style="--pj0:'+col[0]+';--pj1:'+col[1]+'">'+
+          '<div class="pj-c-head" onclick="prodProjExpand('+p.id+')">'+
+            '<div class="pj-c-l"><div class="pj-c-t"><span class="pj-badge">'+klbl+'</span><span class="pj-title">'+esc(p.title||p.subject||'Project')+'</span></div>'+
+            '<div class="pj-sub">'+esc(p.creator||'')+(p.deadline?' \u00b7 Deadline: '+esc(p.deadline):'')+(p.updated?' \u00b7 Updated: '+esc(p.updated):'')+'</div></div>'+
+            '<div class="pj-c-r"><div class="pj-pct">'+p.pct+'%</div><div class="pj-ch">'+p.chapters_done+' / '+p.chapters_total+' chapters done</div><div class="pj-track"><i style="width:'+p.pct+'%"></i></div></div>'+
+            '<span class="pj-chev" id="pjchev-'+p.id+'">\u25be</span></div>'+
+          '<div class="pj-c-acts"><button class="pj-btn" onclick="event.stopPropagation();prodOpenTask(\'production\','+p.id+')">History</button>'+
+            '<button class="pj-btn" onclick="event.stopPropagation();prodEditTask('+p.id+')">Edit</button>'+
+            '<button class="pj-btn" onclick="event.stopPropagation();prodMarkOld('+p.id+','+(p.is_old?'false':'true')+')">'+(p.is_old?'Mark New':'Mark Old')+'</button>'+
+            '<button class="pj-btn pj-del" onclick="event.stopPropagation();prodDeleteTask('+p.id+')">Delete</button></div>'+
+          '<div class="pj-chapters" id="pjch-'+p.id+'" style="display:none"></div>'+
           '</div>';
-      }).join(''):'<div class="p-empty">No projects match these filters. Create one from Assign Work \u2192 Project.</div>';
+      }).join(''):'<div class="p-empty">No projects match these filters. Use "+ Assign Project" above.</div>';
       box.innerHTML=bar+cards;
     };
     if(pr && pr.projects){ render(pr); }
     else api(P.production.api+'/projects').then(render).catch(function(){ box.innerHTML='<div class="p-empty">Could not load projects.</div>'; });
   }
   window.prodProjFlt=function(k,v){ window._prodProjFlt=window._prodProjFlt||{}; window._prodProjFlt[k]=v; _prodLoadProjects(); };
+  window.prodProjExpand=function(id){
+    var box=document.getElementById('pjch-'+id), chev=document.getElementById('pjchev-'+id); if(!box) return;
+    if(box.style.display!=='none'){ box.style.display='none'; if(chev)chev.style.transform=''; return; }
+    box.style.display='block'; if(chev)chev.style.transform='rotate(180deg)';
+    box.innerHTML='<div class="p-load" style="color:#fff">Loading chapters...</div>';
+    api(P.production.api+'/tasks/'+id+'/chapters').then(function(r){
+      var chs=r.chapters||[];
+      box.innerHTML=chs.length?chs.map(function(ch){
+        var st=ch.status||''; var lbl=st==='uploaded'?'uploaded':(st==='editing_done'?'edited':(st==='editing_soon'?'to edit':((ch.link&&ch.link.trim())?'submitted':'pending')));
+        return '<div class="pj-ch-row"><span class="pj-ch-dot"></span><span class="pj-ch-t">'+esc(ch.title)+(ch.link?' <a href="'+esc(ch.link)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#ffe6ad;text-decoration:underline">open</a>':'')+'</span><span class="pj-ch-st">'+lbl+'</span></div>';
+      }).join(''):'<div style="color:#fff;opacity:.8;padding:8px">No chapter items.</div>';
+    }).catch(function(){ box.innerHTML='<div style="color:#fff;opacity:.8;padding:8px">Could not load chapters.</div>'; });
+  };
+  window.prodEditTask=function(id){
+    api(P.production.api+'/tasks/'+id).then(function(t){
+      var cur=(t&&t.title)||'';
+      var nt=prompt('Edit title:', cur); if(nt===null) return; nt=(nt||'').trim(); if(!nt){ toast('Title cannot be empty',true); return; }
+      var dl=prompt('Edit deadline (YYYY-MM-DD HH:MM) \u2014 leave blank to keep:','');
+      var body={title:nt}; if(dl&&dl.trim()) body.deadline=dl.trim().replace(' ','T');
+      api(P.production.api+'/tasks/'+id+'/edit','POST',body).then(function(){ toast('Saved'); _refresh('production'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+    }).catch(function(){ toast('Could not load task',true); });
+  };
+  window.prodDeleteTask=function(id){
+    if(!confirm('Delete this? It will be removed from all lists (reversible by admin).')) return;
+    api(P.production.api+'/tasks/'+id,'DELETE').then(function(){ toast('Deleted'); _refresh('production'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
   var _ST_LABEL={pm_review:'PM Review',creator_submitted:'Submitted',approved:'Approved',editor_assigned:'Not Started',editing:'Editing',editing_paused:'Paused',editing_done:'Editing Done',qc_pending:'QC Pending',qc_changes:'Changes',ready_for_youtube:'Ready for YouTube',uploaded:'Uploaded',creator_assigned:'To Submit',changes_required:'Changes',new:'New',in_progress:'In Progress',changes:'Changes',submitted:'Submitted'};
   function _activeChips(portal){
     var f=_flt(portal); var chips=[];
@@ -19809,10 +19842,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '<option value="">Choose...</option>'+list.map(function(m){ return '<option value="'+m.id+'"'+(sel===m.id?' selected':'')+'>'+esc(m.name)+(m.approval_required!==undefined?(m.approval_required?' (approval on)':' (approval off)'):'')+'</option>'; }).join('')+'</select>'+
         (d.creator_type==='youtuber'?'<div class="p-opt">Teachers submit to PM review by default. YouTuber approval can be set in the next step.</div>':'')+'</div>';
       if(d.creator_type==='teacher'){
-        var teachers2=ppl.teachers||[]; var collab=d.collab_teacher_ids||[];
-        html+='<div class="p-field"><label>Collaborators (optional \u2014 for a collab video)</label>'+
-          '<div class="aw-collab">'+teachers2.filter(function(m){return m.id!==sel;}).map(function(m){ var on=collab.indexOf(m.id)>=0; return '<button type="button" class="aw-ctag'+(on?' on':'')+'" onclick="awToggleCollab('+m.id+')">'+esc(m.name)+'</button>'; }).join('')+'</div>'+
-          '<div class="p-opt">Tap teachers to add them as collaborators. The one selected above is the primary; each collaborator is verified separately.</div></div>';
+        var teachers2=ppl.teachers||[]; var collab=d.collab_teacher_ids||[]; var on=!!d.collab_on;
+        html+='<div class="p-field"><label>Collaboration</label><select class="p-select" id="aw-collab-toggle" onchange="awCollabToggle(this.value)">'+
+          '<option value="no"'+(!on?' selected':'')+'>No \u2014 single teacher</option>'+
+          '<option value="yes"'+(on?' selected':'')+'>Yes \u2014 multiple teachers (collab)</option></select></div>';
+        if(on){
+          html+='<div class="p-field"><label>Select collaborators (tap names to multi-select)</label>'+
+            '<select class="p-select" id="aw-collab-multi" multiple size="6" onchange="awCollabMulti()" style="height:auto;min-height:150px;padding:6px">'+
+            teachers2.filter(function(m){return m.id!==sel;}).map(function(m){ return '<option value="'+m.id+'"'+(collab.indexOf(m.id)>=0?' selected':'')+'>'+esc(m.name)+'</option>'; }).join('')+
+            '</select><div class="p-opt">The teacher chosen above is the primary. '+(collab.length?collab.length+' collaborator(s) selected.':'None selected yet.')+' Each is verified separately.</div></div>';
+        }
       }
     } else if(aw.step===3){
       var isYt=d.creator_type==='youtuber';
@@ -19843,7 +19882,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // if the new primary is in the collab list, remove it from there
     var d=window._aw.data; if(d.creator_type==='teacher' && d.collab_teacher_ids){ d.collab_teacher_ids=(d.collab_teacher_ids||[]).filter(function(x){ return x!==d.teacher_id; }); _awRender(); }
   };
-  window.awToggleCollab=function(id){ _awSave(); var d=window._aw.data; d.collab_teacher_ids=d.collab_teacher_ids||[]; var i=d.collab_teacher_ids.indexOf(id); if(i>=0) d.collab_teacher_ids.splice(i,1); else d.collab_teacher_ids.push(id); _awRender(); };
+  window.awCollabToggle=function(v){ _awSave(); var d=window._aw.data; d.collab_on=(v==='yes'); if(!d.collab_on) d.collab_teacher_ids=[]; _awRender(); };
+  window.awCollabMulti=function(){ var s=document.getElementById('aw-collab-multi'); if(!s) return; var ids=[]; for(var i=0;i<s.options.length;i++){ if(s.options[i].selected) ids.push(parseInt(s.options[i].value,10)); } window._aw.data.collab_teacher_ids=ids; var opt=document.querySelector('#aw-body .p-opt'); };
   window.awCreate=function(){ _awSave(); var d=window._aw.data;
     if(!(d.title||'').trim()){ toast('Title is required',true); window._aw.step=1; _awRender(); return; }
     var body={title:d.title, creator_type:d.creator_type, subject:d.subject||'', video_type:d.video_type||'', channel_name:d.channel_name||'', streaming:d.streaming||'', reference:d.reference||'', priority:d.priority||'normal'};

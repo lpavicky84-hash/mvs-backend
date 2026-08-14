@@ -1439,3 +1439,36 @@ def pm_projects(kind: str = "", class_level: str = "", subject: str = "", q: str
     return {"projects": out, "counts": counts,
             "subjects": sorted(subjects),
             "total": len(out)}
+
+
+# ============================================================ EDIT / DELETE (tasks & projects)
+@router.post("/tasks/{tid}/edit")
+def pm_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                 me=Depends(get_pm_or_admin)):
+    t = _task(db, tid)
+    if (payload.get("title") or "").strip():
+        t.title = payload["title"].strip()
+    dl = (payload.get("deadline") or "").strip()
+    if dl:
+        try:
+            t.deadline = datetime.fromisoformat(dl.replace("Z", ""))
+        except Exception:
+            pass
+    for f in ("subject", "video_type", "channel_name", "reference", "remarks", "streaming"):
+        if f in payload:
+            setattr(t, f, (payload.get(f) or "").strip())
+    try:
+        pc.log_event(db, t, me, t.lifecycle, note="Edited by production manager")
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "id": t.id}
+
+
+@router.delete("/tasks/{tid}")
+def pm_delete_task(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    # Soft delete (reversible): removed from every list but data is preserved.
+    t = _task(db, tid)
+    t.cancelled = True
+    db.commit()
+    return {"ok": True}
