@@ -345,15 +345,50 @@ def timeline_out(db, t):
     rows = (db.query(ProductionEvent)
             .filter(ProductionEvent.task_id == t.id)
             .order_by(ProductionEvent.created_at.asc(), ProductionEvent.id.asc()).all())
-    return [{
-        "event": e.event,
-        "label": _event_label(e.event),
-        "actor": e.actor_name or "",
-        "role": e.actor_role or "",
-        "prev": e.prev_state or "",
-        "new": e.new_state or "",
-        "at": _dt(e.created_at),
-    } for e in rows]
+    merged = []
+    for e in rows:
+        merged.append((e.created_at, {
+            "event": e.event, "label": _event_label(e.event),
+            "actor": e.actor_name or "", "role": e.actor_role or "",
+            "prev": e.prev_state or "", "new": e.new_state or "",
+            "note": getattr(e, "note", "") or "",
+            "at": _dt(e.created_at),
+        }))
+    # merge admin Task-Manager history (status_history JSON) so tasks created or updated
+    # in the admin panel also show a full timeline in the production portal.
+    _AH = {"assigned": "Assigned", "submitted": "Submitted", "approved": "Approved",
+           "reshoot": "Reshoot Requested", "rejected": "Rejected", "editing_soon": "Editing Soon",
+           "editing_done": "Editing Done", "uploaded": "Uploaded", "verify": "Verified",
+           "progress": "Progress Update", "proposal": "Proposed", "changes": "Changes Requested"}
+    try:
+        import json as _jh
+        from datetime import datetime as _dtc
+        hist = _jh.loads(t.status_history) if getattr(t, "status_history", "") else []
+    except Exception:
+        hist = []
+    for h in hist:
+        raw = h.get("at", "")
+        ts = None
+        for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M"):
+            try:
+                ts = _dtc.strptime(raw, fmt); break
+            except Exception:
+                continue
+        s = h.get("s", "")
+        merged.append((ts or _dtc.min, {
+            "event": s, "label": _AH.get(s, s.replace("_", " ").title() if s else "Update"),
+            "actor": "", "role": "", "prev": "", "new": s,
+            "note": h.get("note", "") or "", "at": (ts.strftime("%d %b %Y, %I:%M %p") if ts else raw),
+        }))
+    merged.sort(key=lambda x: (x[0] is None, x[0]))
+    # de-dup exact same label+at (production event + admin history overlap)
+    seen = set(); out = []
+    for _, d in merged:
+        k = (d["label"], d["at"])
+        if k in seen:
+            continue
+        seen.add(k); out.append(d)
+    return out
 
 
 _EVENT_LABELS = {

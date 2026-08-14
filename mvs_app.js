@@ -18478,8 +18478,30 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.ptc{background:var(--card,#fffdf7);border:1px solid #e8dfc8;border-radius:16px;overflow:hidden;cursor:pointer;transition:box-shadow .15s,transform .15s;display:flex;flex-direction:column}',
 'body.dark .ptc{border-color:#3a2f14;background:#211a0d}',
 '.ptc:hover{box-shadow:0 8px 24px rgba(0,0,0,.12);transform:translateY(-2px)}',
-'.ptc-hw{position:relative;height:132px}',
-'.ptc-head{height:132px;background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center}',
+'.ptc-head{height:150px;background-size:contain;background-repeat:no-repeat;background-position:center;background-color:#17130c;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:16px 16px 0 0}',
+'.ptc-hw{position:relative;height:150px}',
+'.ptc-badge{cursor:pointer}',
+'@keyframes ptcblink{0%,100%{opacity:1}50%{opacity:.35}}',
+'.ptc-blink{animation:ptcblink 1.1s ease-in-out infinite}',
+'.p-lightbox{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;cursor:zoom-out}',
+'.p-lightbox img{max-width:96%;max-height:92vh;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.5)}',
+'.p-lb-x{position:absolute;top:18px;right:22px;background:rgba(255,255,255,.15);color:#fff;border:0;font-size:1.6rem;width:44px;height:44px;border-radius:50%;cursor:pointer}',
+'.sh-cur{display:flex;align-items:center;gap:10px;margin-bottom:16px}',
+'.sh-collab{background:rgba(230,173,78,.1);border-radius:12px;padding:12px 14px;margin-bottom:16px}',
+'.sh-collab-h{font-size:.72rem;font-weight:800;letter-spacing:.05em;color:#8a7d5c;margin-bottom:8px;display:flex;align-items:center;gap:8px}',
+'.sh-allv{background:rgba(46,158,107,.16);color:#1f8a54;padding:2px 9px;border-radius:999px;font-size:.7rem}',
+'.sh-somev{background:rgba(224,165,46,.18);color:#a5761f;padding:2px 9px;border-radius:999px;font-size:.7rem}',
+'.sh-ct{display:inline-block;background:rgba(0,0,0,.05);padding:4px 11px;border-radius:999px;font-size:.8rem;font-weight:600;margin:3px 5px 0 0}',
+'.sh-ct.ok{background:rgba(46,158,107,.14);color:#1f8a54}',
+'.sh-timeline{position:relative;padding-left:6px}',
+'.sh-row{display:flex;gap:14px;position:relative;padding-bottom:18px}',
+'.sh-row:not(:last-child)::before{content:"";position:absolute;left:6px;top:16px;bottom:0;width:2px;background:#e8dfc8}',
+'body.dark .sh-row:not(:last-child)::before{background:#3a2f14}',
+'.sh-dot{width:14px;height:14px;border-radius:50%;flex:0 0 14px;margin-top:3px;z-index:1}',
+'.sh-lbl{font-weight:800;font-size:.95rem}',
+'.sh-at{font-size:.8rem;color:#8a7d5c;margin-top:1px}',
+'.sh-note{font-size:.82rem;color:#6b5f43;margin-top:3px}',
+'body.dark .sh-note{color:#c9bd9a}',
 '.ptc-letter{font-size:3rem;font-weight:800;color:rgba(255,255,255,.9)}',
 '.ptc-badge{position:absolute;top:10px;right:10px;color:#fff;font-size:.62rem;font-weight:800;letter-spacing:.05em;padding:4px 10px;border-radius:999px}',
 '.ptc-urgent{position:absolute;top:10px;left:10px;background:#d1443a;color:#fff;font-size:.6rem;font-weight:800;padding:3px 8px;border-radius:999px}',
@@ -19055,9 +19077,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var letter=((t.title||'?').trim().charAt(0)||'?').toUpperCase();
     var hcol=_PTC_HCOL[(t.id||0)%_PTC_HCOL.length];
     var header=thumb
-      ? '<div class="ptc-head" style="background-image:url('+esc(thumb)+')">'+(t.youtube_url?'<a class="ptc-view" href="'+esc(t.youtube_url)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">VIEW</a>':'')+'</div>'
+      ? '<div class="ptc-head" style="background-image:url('+esc(thumb)+')" onclick="event.stopPropagation();prodThumbView(\''+esc(thumb)+'\')"><a class="ptc-view" onclick="event.stopPropagation();prodThumbView(\''+esc(thumb)+'\')">VIEW</a></div>'
       : '<div class="ptc-head ptc-letter" style="background:linear-gradient(135deg,'+hcol+',rgba(0,0,0,.15))">'+esc(letter)+'</div>';
-    var badge=st[0]?'<span class="ptc-badge" style="background:'+(st[1]||'#8a7d5c')+'">'+esc(st[0])+'</span>':'';
+    var isLive=['editing','qc_pending','pm_review','creator_submitted','editor_assigned','approved'].indexOf(lc)>=0;
+    var badge=st[0]?'<span class="ptc-badge'+(isLive?' ptc-blink':'')+'" style="background:'+(st[1]||'#8a7d5c')+'" onclick="event.stopPropagation();prodStatusHistory('+t.id+')" title="View status history">'+esc(st[0])+'</span>':'';
     var chips=[];
     if((t.collab&&t.collab.length)||t.is_collab) chips.push('<span class="pw-chip" style="background:rgba(124,79,192,.14);color:#7c4fc0">Collab</span>');
     if(t.creator_name) chips.push('<span class="pw-chip who">'+esc(t.creator_name)+((t.creator_type==='youtuber')?' (YT)':'')+'</span>');
@@ -19082,7 +19105,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(lc==='qc_pending') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\''+portal+'\','+t.id+',\'/qc-approve\')">QC Approve</button>';
     if(lc==='ready_for_youtube') acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'post-yt\','+t.id+')">Post YT Link</button>';
     if(t.youtube_url||t.submitted_link||t.edited_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+esc(t.youtube_url||t.submitted_link||t.edited_link)+'\',\'_blank\')">Open Video</button>';
-    acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodOpenTask(\''+portal+'\','+t.id+')">Timeline</button>';
+    acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodEditTask('+t.id+')">Edit</button>';
     if(t.youtube_url) acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodNotifyStudents('+t.id+')">Send to Students</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodMarkOld('+t.id+','+(t.is_old?'false':'true')+')">'+(t.is_old?'Mark New':'Mark Old')+'</button>';
@@ -19205,7 +19228,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
             '<div class="pj-sub">'+esc(p.creator||'')+(p.deadline?' \u00b7 Deadline: '+esc(p.deadline):'')+(p.updated?' \u00b7 Updated: '+esc(p.updated):'')+'</div></div>'+
             '<div class="pj-c-r"><div class="pj-pct">'+p.pct+'%</div><div class="pj-ch">'+p.chapters_done+' / '+p.chapters_total+' chapters done</div><div class="pj-track"><i style="width:'+p.pct+'%"></i></div></div>'+
             '<span class="pj-chev" id="pjchev-'+p.id+'">\u25be</span></div>'+
-          '<div class="pj-c-acts"><button class="pj-btn" onclick="event.stopPropagation();prodOpenTask(\'production\','+p.id+')">History</button>'+
+          '<div class="pj-c-acts"><button class="pj-btn" onclick="event.stopPropagation();prodStatusHistory('+p.id+')">History</button>'+
             '<button class="pj-btn" onclick="event.stopPropagation();prodEditTask('+p.id+')">Edit</button>'+
             '<button class="pj-btn" onclick="event.stopPropagation();prodMarkOld('+p.id+','+(p.is_old?'false':'true')+')">'+(p.is_old?'Mark New':'Mark Old')+'</button>'+
             '<button class="pj-btn pj-del" onclick="event.stopPropagation();prodDeleteTask('+p.id+')">Delete</button></div>'+
@@ -19669,6 +19692,41 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _pBusy(on){ var box=document.getElementById('p-acts'); if(!box) return;
     if(on){ box.style.opacity='.5'; box.style.pointerEvents='none'; } else { box.style.opacity=''; box.style.pointerEvents=''; } }
   window.prodCardForm=function(kind,id){ window._prodPendingForm={kind:kind,id:id}; prodOpenTask('production',id); };
+  window.prodThumbView=function(url){
+    if(!url) return; var old=document.getElementById('prod-lightbox'); if(old) old.remove();
+    var lb=document.createElement('div'); lb.id='prod-lightbox'; lb.className='p-lightbox';
+    lb.innerHTML='<img src="'+esc(url)+'" alt="thumbnail"><button class="p-lb-x" onclick="document.getElementById(\'prod-lightbox\').remove()">&times;</button>';
+    lb.addEventListener('click',function(e){ if(e.target===lb||e.target.className==='p-lb-x') lb.remove(); });
+    document.body.appendChild(lb);
+  };
+  var _SH_DOT={approved:'#2e9e6b',uploaded:'#2e9e6b',submitted:'#2e9e6b',teacher_submitted:'#2e9e6b',youtuber_submitted:'#2e9e6b',qc_approved:'#2e9e6b',completed:'#2e9e6b',assigned:'#e0a52e',creator_assigned:'#e0a52e',task_created:'#e0a52e',editing_soon:'#e0a52e',editing:'#7c4fc0',approval_requested:'#e0a52e',reshoot:'#d1443a',rejected:'#d1443a',changes:'#d1443a',changes_requested:'#d1443a'};
+  window.prodStatusHistory=function(id){
+    Promise.all([ api(P.production.api+'/tasks/'+id), api(P.production.api+'/tasks/'+id+'/collab').catch(function(){return {};}) ]).then(function(res){
+      var t=res[0]||{}, col=res[1]||{}; var tl=t.timeline||[];
+      var lc=t.lifecycle||''; var st=_PTC_ST[lc]||[(t.lifecycle_label||'').toUpperCase(),'#8a7d5c'];
+      var isLive=['editing','qc_pending','pm_review','creator_submitted','editor_assigned','approved'].indexOf(lc)>=0;
+      var collabHtml='';
+      if(col && col.is_collab){
+        var cols=col.collaborators||[];
+        collabHtml='<div class="sh-collab"><div class="sh-collab-h">COLLAB TASK '+(col.all_verified?'<span class="sh-allv">All verified</span>':'<span class="sh-somev">'+cols.filter(function(x){return x.verified;}).length+'/'+cols.length+' verified</span>')+'</div>'+
+          cols.map(function(c){ return '<span class="sh-ct'+(c.verified?' ok':'')+'">'+esc(c.name)+' \u2014 '+(c.verified?'Approved':'Pending')+'</span>'; }).join('')+'</div>';
+      }
+      var rows=tl.length?tl.map(function(e){
+        var dot=_SH_DOT[e.event]||_SH_DOT[e.new]||'#b0a483';
+        return '<div class="sh-row"><span class="sh-dot" style="background:'+dot+'"></span><div class="sh-c"><div class="sh-lbl">'+esc(e.label||e.event||'')+'</div><div class="sh-at">'+esc(e.at||'')+'</div>'+(e.note?'<div class="sh-note">'+esc(e.note)+(e.actor?' \u2014 '+esc(e.actor):'')+'</div>':(e.actor?'<div class="sh-note">by '+esc(e.actor)+'</div>':''))+'</div></div>';
+      }).join(''):'<div class="p-empty">No timeline events recorded yet.</div>';
+      var old=document.getElementById('prod-modal'); if(old) old.remove();
+      var dr=document.createElement('div'); dr.className='p-drawer p-modal-wrap'; dr.id='prod-modal';
+      dr.innerHTML='<div class="p-modal">'+
+        '<div class="pd-head"><div class="h-title">Status History \u2014 '+esc(t.title||'')+'</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+        '<div class="p-modal-body"><div class="sh-cur"><span class="ptc-badge'+(isLive?' ptc-blink':'')+'" style="background:'+(st[1]||'#8a7d5c')+'">'+esc(st[0])+'</span> <span style="color:#8a7d5c">current status</span></div>'+
+          collabHtml+'<div class="sh-timeline">'+rows+'</div></div>'+
+        '<div class="pd-foot"><div class="p-acts"><button class="p-btn p-btn-primary" onclick="prodDismiss()">Close</button></div></div>'+
+        '</div>';
+      dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+      document.body.appendChild(dr);
+    }).catch(function(e){ toast((e&&e.message)||'Could not load history',true); });
+  };
   function _prodRunPendingForm(){
     var pf=window._prodPendingForm; if(!pf) return; window._prodPendingForm=null;
     setTimeout(function(){
