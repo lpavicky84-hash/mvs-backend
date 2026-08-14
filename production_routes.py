@@ -107,9 +107,9 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
         # every task shows up under the right filter.
         _SMAP = {
             "pm_review":        (["pm_review", "creator_submitted"], ["submitted"]),
-            "creator_submitted": (["creator_submitted"],            ["submitted"]),
             "approved":         (["approved"],                       ["approved"]),
-            "editing":          (["editing", "editing_paused", "editor_assigned"], ["editing_soon"]),
+            "editor_assigned":  (["editor_assigned"],                ["editing_soon"]),
+            "editing":          (["editing", "editing_paused"],      []),
             "editing_done":     (["editing_done"],                   ["editing_done"]),
             "qc_pending":       (["qc_pending"],                     []),
             "ready_for_youtube": (["ready_for_youtube"],            []),

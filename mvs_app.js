@@ -19079,8 +19079,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
 
   // --- generic task/video list ---
-  var _PTC_ST={creator_assigned:['ASSIGNED','#2a7fb8'],creator_working:['IN PROGRESS','#2a7fb8'],creator_submitted:['PM REVIEW','#c99a2e'],pm_review:['PM REVIEW','#c99a2e'],approved:['EDITING SOON','#7c4fc0'],editor_assigned:['EDITING SOON','#7c4fc0'],editing:['EDITING','#7c4fc0'],editing_paused:['PAUSED','#c99a2e'],editing_done:['QC','#2a7fb8'],qc_pending:['QC PENDING','#c99a2e'],qc_changes:['CHANGES','#d1443a'],ready_for_youtube:['READY','#2e9e6b'],uploaded:['UPLOADED','#2e9e6b'],changes_required:['CHANGES','#d1443a'],completed:['DONE','#2e9e6b']};
-  var _PTC_ASTAT={assigned:['ASSIGNED','#2a7fb8'],submitted:['PM REVIEW','#c99a2e'],approved:['APPROVED','#7c4fc0'],editing_soon:['EDITING SOON','#7c4fc0'],editing_done:['EDITING DONE','#2a7fb8'],uploaded:['UPLOADED','#2e9e6b'],reshoot:['RESHOOT','#d1443a'],rejected:['REJECTED','#d1443a']};
+  var _PTC_ST={creator_assigned:['ASSIGNED','#2a7fb8'],creator_working:['CREATING','#2a7fb8'],creator_submitted:['PM REVIEW','#c99a2e'],pm_review:['PM REVIEW','#c99a2e'],approved:['APPROVED','#2e9e6b'],editor_assigned:['EDITING SOON','#7c4fc0'],editing:['EDITING IN PROGRESS','#7c4fc0'],editing_paused:['EDITING PAUSED','#c99a2e'],editing_done:['EDITING DONE','#2a7fb8'],qc_pending:['QC PENDING','#c99a2e'],qc_changes:['CHANGES','#d1443a'],ready_for_youtube:['READY FOR YOUTUBE','#e0a52e'],uploaded:['UPLOADED','#2e9e6b'],changes_required:['CHANGES','#d1443a'],completed:['DONE','#2e9e6b']};
+  var _PTC_ASTAT={assigned:['ASSIGNED','#2a7fb8'],submitted:['PM REVIEW','#c99a2e'],approved:['APPROVED','#2e9e6b'],editing_soon:['EDITING SOON','#7c4fc0'],editing_done:['EDITING DONE','#2a7fb8'],uploaded:['UPLOADED','#2e9e6b'],reshoot:['RESHOOT','#d1443a'],rejected:['REJECTED','#d1443a']};
   function _prodStatus(t){
     var lc=t.lifecycle||''; var st=_PTC_ST[lc];
     if(!st) st=_PTC_ASTAT[t.status||''];
@@ -19089,8 +19089,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   function _prodIsLive(t){
     var lc=t.lifecycle||'', s=t.status||'';
-    return ['editing','qc_pending','pm_review','creator_submitted','editor_assigned','approved'].indexOf(lc)>=0
-      || ['submitted','editing_soon','approved'].indexOf(s)>=0 && (lc==='' || lc==='creator_assigned');
+    var liveLc=['creator_submitted','pm_review','approved','editor_assigned','editing','editing_paused','editing_done','qc_pending','qc_changes','ready_for_youtube','changes_required'];
+    var liveSt=['submitted','approved','editing_soon','editing_done','reshoot'];
+    if(liveLc.indexOf(lc)>=0) return true;
+    if((lc===''||lc==='creator_assigned') && liveSt.indexOf(s)>=0) return true;
+    return false;
   }
   var _PTC_HCOL=['#1e4d6b','#1f5c3a','#6b2f4d','#5a4a1e','#3a3a6b','#6b3a1e','#1e6b5a','#5a1e4d'];
   function _prodTaskCard(portal,t){
@@ -19191,7 +19194,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(portal==='production'){
       var fd=window._prodFD||{};
       var teachers=(fd.teachers||[]), channels=(fd.channels||[]), types=(fd.types||[]);
-      var statuses=[['','All Status'],['pm_review','PM Review'],['creator_submitted','Submitted'],['approved','Approved'],['editing','Editing'],['editing_done','Editing Done'],['qc_pending','QC Pending'],['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded'],['changes_required','Changes']];
+      var statuses=[['','All Status'],['pm_review','PM Review'],['approved','Approved'],['editor_assigned','Editing Soon'],['editing','Editing In Progress'],['editing_done','Editing Done'],['qc_pending','QC Pending'],['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded'],['changes_required','Changes']];
       var html='<div class="p-filter p-filter-prod">'+
         '<div class="pf-search"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="prod-search" placeholder="Search tasks \u2014 title, ref, subject..." value="'+esc(f.q||'')+'" oninput="prodSearch(\'production\',this.value)"></div>'+
         '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'teacher_id\',this.value)"><option value="">All Teachers</option>'+teachers.map(function(t){ return '<option value="'+t.id+'"'+((f.teacher_id||'')==String(t.id)?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('')+'</select>'+
