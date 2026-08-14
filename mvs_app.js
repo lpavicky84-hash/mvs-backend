@@ -8123,10 +8123,11 @@ function _vtThumbFile(file){
 }
 function _vtThumb(t,who){
   const has=!!(t.thumbnail_b64||t.thumbnail_link);
-  const img=t.thumbnail_b64?`<img src="${t.thumbnail_b64}" alt="">`
-    :(t.thumbnail_link?`<img src="${esc(t.thumbnail_link)}" onerror="this.remove()" alt="">`:'');
+  const _is='width:100%;height:100%;object-fit:cover;display:block';
+  const img=t.thumbnail_b64?`<img src="${t.thumbnail_b64}" alt="" style="${_is}">`
+    :(t.thumbnail_link?`<img src="${esc(t.thumbnail_link)}" onerror="this.remove()" alt="" style="${_is}">`:'');
   const blink=who==='t';
-  return `<div class="vt-thumb${has?' click':''}"${has?` onclick="vtThumbOpen(${t.id},'${who||'t'}')" title="Open full screen — download available"`:''}>${img||esc((t.title||'V').slice(0,1).toUpperCase())}<div class="vt-status">${_vtPill(t,blink,who)}</div>${has?`<span class="vt-dl">${ic('download')} View</span>`:''}</div>`;
+  return `<div class="vt-thumb${has?' click':''}" style="aspect-ratio:16/9;height:auto;overflow:hidden;position:relative"${has?` onclick="vtThumbOpen(${t.id},'${who||'t'}')" title="Open full screen — download available"`:''}>${img||esc((t.title||'V').slice(0,1).toUpperCase())}<div class="vt-status">${_vtPill(t,blink,who)}</div>${has?`<span class="vt-dl">${ic('download')} View</span>`:''}</div>`;
 }
 function _vtTypeBadge(t){ return t.video_type?`<span class="vt-type">${ic('play')} ${esc(t.video_type)}</span>`:''; }
 function vtThumbOpen(id,who){
@@ -18478,8 +18479,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.ptc{background:var(--card,#fffdf7);border:1px solid #e8dfc8;border-radius:16px;overflow:hidden;cursor:pointer;transition:box-shadow .15s,transform .15s;display:flex;flex-direction:column}',
 'body.dark .ptc{border-color:#3a2f14;background:#211a0d}',
 '.ptc:hover{box-shadow:0 8px 24px rgba(0,0,0,.12);transform:translateY(-2px)}',
-'.ptc-head{height:150px;background-size:contain;background-repeat:no-repeat;background-position:center;background-color:#17130c;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:16px 16px 0 0}',
-'.ptc-hw{position:relative;height:150px}',
+'.ptc-head{width:100%;height:100%;background-size:cover;background-repeat:no-repeat;background-position:center;background-color:#17130c;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:16px 16px 0 0}',
+'.ptc-hw{position:relative;width:100%;aspect-ratio:16/9}',
 '.ptc-badge{cursor:pointer}',
 '@keyframes ptcblink{0%,100%{opacity:1}50%{opacity:.35}}',
 '.ptc-blink{animation:ptcblink 1.1s ease-in-out infinite}',
