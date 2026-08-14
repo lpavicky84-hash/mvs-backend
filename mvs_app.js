@@ -3741,6 +3741,68 @@ function pdfViewerModal(u,title,fname){
   _pdfView(document.getElementById('pvm-view'), u, {title:title||'PDF', downloadName:fname||'document.pdf', src:u});
 }
 async function dppPdfGo(pid,action,kind,med){
+  // CREATED DPPs -> render via the browser (same as Tests): the browser shapes Hindi
+  // perfectly, so the PDF matches the portal view with no server font/shaping dependency.
+  // UPLOADED DPPs are a static PDF -> keep the server download.
+  try{
+    const pk=(window._dppPacks||[]).find(x=>x.id===pid);
+    const isCreated = pk ? (pk.source==='created') : true;   // unknown -> try browser (it falls back)
+    const _isAdmin=(typeof ROLE!=='undefined' && ROLE==='admin');
+    if(isCreated && !_isAdmin){ return dppBrowserPdf(pid,kind,med); }
+  }catch(e){}
+  return dppPdfGoServer(pid,action,kind,med);
+}
+
+// Browser-print DPP PDF — fetches the pack's questions and prints premium HTML that the
+// browser renders (Hindi correct by construction). Falls back to the server PDF if there
+// are no structured questions (e.g. an uploaded pack).
+async function dppBrowserPdf(pid,kind,med){
+  try{
+    toast('Preparing the '+(med==='hindi'?'Hindi ':'')+(kind==='s'?'solutions':'question')+' PDF\u2026');
+    let d=null;
+    try{ d=await api('/api/teacher/dpp-packs/'+pid+'/questions'); }catch(e){ d=null; }
+    if(!d || !Array.isArray(d.questions) || !d.questions.length){
+      return dppPdfGoServer(pid,'download',kind,med);   // uploaded / no structured questions
+    }
+    const withSol=(kind==='s');
+    const isHi=(med==='hindi'), isBoth=(med==='both');
+    const blang=isHi?'hi':'en';
+    // teacher photo (for the premium header) — best effort
+    let logo=null;
+    try{
+      const lr=await fetch(API+_selfPhoto('teacher'),{headers:{Authorization:'Bearer '+TOKEN}});
+      if(lr.ok){ const lb=await lr.blob(); logo=await new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=()=>res(null); fr.readAsDataURL(lb); }); }
+    }catch(e){}
+    const ex={ title:d.title||'Daily Practice Paper', subject:d.subject||'',
+               chapter:d.chapter||'', total_marks:d.questions.length,
+               class_name:d.class_name||'', teacher_name:d.teacher||'' };
+    const qLbl=isHi?'\u092a\u094d\u0930\u0936\u094d\u0928':'Question';   // प्रश्न
+    const body=d.questions.map((q,i)=>{
+      const qno=q.qno||i+1;
+      const en=q.q||'', hi=q.q_hi||'';
+      const qMain=isHi?(hi.trim()?hi:en):en;
+      let h='';
+      if(isBoth && hi.trim()) h+=_pdfQHTML(hi,null,null,'q-hi');
+      if(withSol){
+        const mdl=q.model||'', mdlHi=q.model_hi||'';
+        if((mdl||'').trim() || (mdlHi||'').trim()){
+          const solMain=isHi?((mdlHi||'').trim()?mdlHi:mdl):mdl;
+          h+='<div class="sol"><div class="sol-l">'+(isHi?'\u0909\u0924\u094d\u0924\u0930':'Answer')+'</div><div class="sol-t">'+_fmtRich(solMain)+'</div>'
+            +((isBoth&&(mdlHi||'').trim())?'<div class="q-hi">'+_fmtRich(mdlHi)+'</div>':'')
+            +(q.model_image?'<img class="qimg" src="'+q.model_image+'">':'')+'</div>';
+        }
+      }
+      return '<div class="q"><div class="q-h"><b>'+qLbl+' '+qno+'</b></div>'
+        +_pdfQHTML(qMain,q.image,q.alt_image,'q-t')+h+'</div>';
+    }).join('');
+    const w=window.open('','_blank');
+    if(!w){ toast('Popup blocked — please allow popups to download the PDF.',true); return; }
+    w.document.write(buildPdfDoc(ex,body,withSol,false,blang,logo,{tag:'Daily Practice Paper',typeChip:'DPP'}));
+    w.document.close();
+  }catch(e){ toast('Could not prepare the PDF — using server\u2026',true); return dppPdfGoServer(pid,'download',kind,med); }
+}
+
+async function dppPdfGoServer(pid,action,kind,med){
   toast('PDF '+(med==='hindi'?'(Hindi ':'(English ')+(kind==='s'?'solutions)':'questions)')+' aa rahi hai…');
   try{
     // Admin Classes Material se download -> admin endpoint (teacher endpoint teacher_id se filter
@@ -4008,7 +4070,8 @@ function _dppFilter(mode){
 
 /* ================= PREMIUM PDF (question paper + with solutions) ================= */
 function escH(x){ return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function buildPdfDoc(ex,body,withSol,isM,lang,logo){
+function buildPdfDoc(ex,body,withSol,isM,lang,logo,opts){
+  opts=opts||{};
   lang=lang||'en';
   const docTitle='MVS '+(ex.title||'Test')+(withSol?' — With Solutions':' — Question Paper');
   const logoHtml=logo
@@ -4057,11 +4120,11 @@ function buildPdfDoc(ex,body,withSol,isM,lang,logo){
   +'.sol-t{white-space:pre-wrap;font-size:12px;overflow-x:auto}'
   +'.foot{margin-top:16px;text-align:center;font-size:9px;color:#7a6d45;letter-spacing:.07em;border-top:1px solid #e8e3d3;padding-top:8px}'
   +'</style></head><body>'
-  +'<div class="band">'+logoHtml+'<div class="brand"><div class="logo-t">MVS FOUNDATION</div><div class="tag">Test Series</div></div><div class="band-r"><div class="yr">'+escH(new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}))+'</div>'+(withSol?'<div class="tcopy">TEACHER COPY</div>':'')+'</div></div>'
+  +'<div class="band">'+logoHtml+'<div class="brand"><div class="logo-t">MVS FOUNDATION</div><div class="tag">'+escH(opts.tag||'Test Series')+'</div></div><div class="band-r"><div class="yr">'+escH(new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}))+'</div>'+(withSol?'<div class="tcopy">TEACHER COPY</div>':'')+'</div></div>'
   +'<div class="tstrip"><div class="ttitle">'+escH(ex.title||'Test')+'</div><div class="tchips">'
   +(ex.subject?'<span class="tchip">'+escH(ex.subject)+'</span>':'')
   +(spCleanCh(ex.chapter)?'<span class="tchip">'+escH(spCleanCh(ex.chapter))+'</span>':'')
-  +'<span class="tchip">'+(isM?'Objective':'Mission 75')+'</span>'
+  +'<span class="tchip">'+escH(opts.typeChip||(isM?'Objective':'Mission 75'))+'</span>'
   +(lang==='hi'?'<span class="tchip">\u0939\u093f\u0902\u0926\u0940 \u092e\u093e\u0927\u094d\u092f\u092e</span>':'')
   +'</div></div>'
   +'<div class="meta">'
