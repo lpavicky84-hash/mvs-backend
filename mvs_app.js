@@ -18474,6 +18474,26 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pf-clear{color:#d1443a;border-color:rgba(209,68,58,.4)}',
 '.pf-clear:hover{background:rgba(209,68,58,.08)}',
 '.pt-thumb{width:58px;height:36px;border-radius:8px;object-fit:cover;flex:0 0 58px;background:#efe8d6;margin-right:2px}',
+'.ptc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}',
+'.ptc{background:var(--card,#fffdf7);border:1px solid #e8dfc8;border-radius:16px;overflow:hidden;cursor:pointer;transition:box-shadow .15s,transform .15s;display:flex;flex-direction:column}',
+'body.dark .ptc{border-color:#3a2f14;background:#211a0d}',
+'.ptc:hover{box-shadow:0 8px 24px rgba(0,0,0,.12);transform:translateY(-2px)}',
+'.ptc-hw{position:relative;height:132px}',
+'.ptc-head{height:132px;background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center}',
+'.ptc-letter{font-size:3rem;font-weight:800;color:rgba(255,255,255,.9)}',
+'.ptc-badge{position:absolute;top:10px;right:10px;color:#fff;font-size:.62rem;font-weight:800;letter-spacing:.05em;padding:4px 10px;border-radius:999px}',
+'.ptc-urgent{position:absolute;top:10px;left:10px;background:#d1443a;color:#fff;font-size:.6rem;font-weight:800;padding:3px 8px;border-radius:999px}',
+'.ptc-view{position:absolute;bottom:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;font-size:.64rem;font-weight:800;padding:4px 10px;border-radius:8px;text-decoration:none}',
+'.ptc-body{padding:14px 16px;display:flex;flex-direction:column;gap:8px;flex:1}',
+'.ptc-title{font-weight:800;font-size:1rem;line-height:1.25}',
+'.ptc-meta{font-size:.76rem;color:#8a7d5c;display:flex;align-items:center;gap:6px;flex-wrap:wrap}',
+'.ptc-ref{font-size:.68rem;color:#b0a483;font-family:monospace}',
+'.ptc-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto;padding-top:6px}',
+'.ptc-btn{font-size:.72rem;font-weight:700;padding:5px 11px;border-radius:8px;border:1px solid #e0d4b3;background:transparent;color:inherit;cursor:pointer}',
+'body.dark .ptc-btn{border-color:#3a2f14}',
+'.ptc-btn:hover{background:rgba(230,173,78,.12)}',
+'.ptc-del{color:#d1443a;border-color:rgba(209,68,58,.35)}',
+'.pw-chip.pwlive{background:rgba(209,68,58,.14);color:#d1443a}',
 '.p-filter{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}',
 '.p-chip{padding:7px 13px;border-radius:999px;border:1px solid #d9cba8;background:transparent;color:inherit;cursor:pointer;font-size:.8rem;font-weight:600}',
 'body.dark .p-chip{border-color:#3a2f14}',
@@ -19020,6 +19040,45 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
 
   // --- generic task/video list ---
+  var _PTC_ST={creator_assigned:['ASSIGNED','#2a7fb8'],creator_working:['IN PROGRESS','#2a7fb8'],creator_submitted:['PM REVIEW','#c99a2e'],pm_review:['PM REVIEW','#c99a2e'],approved:['EDITING SOON','#7c4fc0'],editor_assigned:['EDITING SOON','#7c4fc0'],editing:['EDITING','#7c4fc0'],editing_paused:['PAUSED','#c99a2e'],editing_done:['QC','#2a7fb8'],qc_pending:['QC PENDING','#c99a2e'],qc_changes:['CHANGES','#d1443a'],ready_for_youtube:['READY','#2e9e6b'],uploaded:['UPLOADED','#2e9e6b'],changes_required:['CHANGES','#d1443a'],completed:['DONE','#2e9e6b']};
+  var _PTC_HCOL=['#1e4d6b','#1f5c3a','#6b2f4d','#5a4a1e','#3a3a6b','#6b3a1e','#1e6b5a','#5a1e4d'];
+  function _prodTaskCard(portal,t){
+    var g=t.graphics||{}; var lc=t.lifecycle||'';
+    var thumb=(g.thumbnail_url||t.thumbnail_link||''); if(!thumb && t.youtube_url){ var yi=_ytId(t.youtube_url); if(yi) thumb='https://img.youtube.com/vi/'+yi+'/hqdefault.jpg'; }
+    var st=_PTC_ST[lc]||[(t.lifecycle_label||'').toUpperCase(),'#8a7d5c'];
+    var letter=((t.title||'?').trim().charAt(0)||'?').toUpperCase();
+    var hcol=_PTC_HCOL[(t.id||0)%_PTC_HCOL.length];
+    var header=thumb
+      ? '<div class="ptc-head" style="background-image:url('+esc(thumb)+')">'+(t.youtube_url?'<a class="ptc-view" href="'+esc(t.youtube_url)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">VIEW</a>':'')+'</div>'
+      : '<div class="ptc-head ptc-letter" style="background:linear-gradient(135deg,'+hcol+',rgba(0,0,0,.15))">'+esc(letter)+'</div>';
+    var badge=st[0]?'<span class="ptc-badge" style="background:'+(st[1]||'#8a7d5c')+'">'+esc(st[0])+'</span>':'';
+    var chips=[];
+    if((t.collab&&t.collab.length)||t.is_collab) chips.push('<span class="pw-chip" style="background:rgba(124,79,192,.14);color:#7c4fc0">Collab</span>');
+    if(t.creator_name) chips.push('<span class="pw-chip who">'+esc(t.creator_name)+((t.creator_type==='youtuber')?' (YT)':'')+'</span>');
+    if(t.video_type) chips.push('<span class="pw-chip">'+esc(t.video_type)+'</span>');
+    if(t.channel_name) chips.push('<span class="pw-chip">'+esc(t.channel_name)+'</span>');
+    if(t.streaming) chips.push('<span class="pw-chip'+(/live/i.test(t.streaming)?' pwlive':'')+'">'+esc(t.streaming)+'</span>');
+    if(t.editor_name) chips.push('<span class="pw-chip ed">Editor: '+esc(t.editor_name)+'</span>');
+    if(g.graphics_name) chips.push('<span class="pw-chip gr">Graphics: '+esc(g.graphics_name)+'</span>');
+    var meta=[]; if(t.deadline) meta.push('Deadline: '+esc(t.deadline));
+    var df=t.deadline_flag||{}; var dl=(df.kind&&['overdue','today','soon'].indexOf(df.kind)>=0)?'<span class="pt-dl '+df.kind+'">'+esc(df.label)+'</span>':'';
+    if((t.revision_count||0)>0) meta.push('Revision '+t.revision_count);
+    if(t.yt_views!=null && t.youtube_url) meta.push('Live views: '+_num(t.yt_views));
+    var acts='';
+    if(t.youtube_url||t.submitted_link||t.edited_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+esc(t.youtube_url||t.submitted_link||t.edited_link)+'\',\'_blank\')">Open Video</button>';
+    acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodOpenTask(\''+portal+'\','+t.id+')">Timeline</button>';
+    acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodEditTask('+t.id+')">Edit</button>';
+    if(t.youtube_url) acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodNotifyStudents('+t.id+')">Send to Students</button>';
+    acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodMarkOld('+t.id+','+(t.is_old?'false':'true')+')">'+(t.is_old?'Mark New':'Mark Old')+'</button>';
+    acts+='<button class="ptc-btn ptc-del" onclick="event.stopPropagation();prodDeleteTask('+t.id+')">Delete</button>';
+    return '<div class="ptc" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
+      '<div class="ptc-hw">'+header+badge+((t.priority==='urgent')?'<span class="ptc-urgent">URGENT</span>':'')+'</div>'+
+      '<div class="ptc-body"><div class="ptc-title">'+esc(t.title||'Untitled')+'</div>'+
+      (chips.length?'<div class="pw-chips">'+chips.join('')+'</div>':'')+
+      (meta.length||dl?'<div class="ptc-meta">'+dl+(dl&&meta.length?' ':'')+meta.join(' \u00b7 ')+'</div>':'')+
+      '<div class="ptc-ref">'+esc(t.ref_code||'')+'</div>'+
+      '<div class="ptc-acts">'+acts+'</div></div></div>';
+  }
   function _taskRow(portal,t){
     var badge=(t.creator_type==='youtuber')?'<span class="pt-badge b-youtuber">YouTuber</span>':'<span class="pt-badge b-teacher">Teacher</span>';
     var meta=[]; if(t.creator_name) meta.push(esc(t.creator_name)+((t.creator_type==='youtuber')?' (YouTuber)':'')); if(t.subject) meta.push(esc(t.subject));
@@ -19195,7 +19254,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     return api(d.api+'/'+key+_prodQuery(portal)).then(function(r){
       var arr=r[key]||r.tasks||r.videos||[];
       if(!res) return;
-      res.innerHTML=arr.length?arr.map(function(t){ return _taskRow(portal,t); }).join(''):'<div class="p-empty">Nothing matches these filters.</div>';
+      res.innerHTML=arr.length?(portal==='production'?'<div class="ptc-grid">'+arr.map(function(t){ return _prodTaskCard(portal,t); }).join('')+'</div>':arr.map(function(t){ return _taskRow(portal,t); }).join('')):'<div class="p-empty">Nothing matches these filters.</div>';
     }).catch(function(e){ if(res) res.innerHTML='<div class="p-empty">Could not load. '+esc(e&&e.message||'')+'</div>'; });
   }
   window.prodKpiGo=function(portal,key){
