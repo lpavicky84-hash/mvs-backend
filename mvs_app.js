@@ -18472,6 +18472,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.aw-ctag.on{background:rgba(46,158,107,.15);border-color:#2e9e6b;color:#2e9e6b}',
 '.p-filter{align-items:center}',
 '.pf-sel{width:auto;min-width:118px;padding:8px 11px;border-radius:10px}',
+'.p-filter-prod{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card,#fffdf7);border:1px solid #e8dfc8;border-radius:16px;padding:12px 14px;margin-bottom:16px}',
+'body.dark .p-filter-prod{background:#211a0d;border-color:#3a2f14}',
+'.pf-search{display:flex;align-items:center;gap:9px;background:#fff;border:1.5px solid #e0d4b3;border-radius:12px;padding:9px 14px;flex:1;min-width:220px;color:#a9791f;transition:border-color .15s,box-shadow .15s}',
+'.pf-search:focus-within{border-color:#c79a3a;box-shadow:0 0 0 3px rgba(199,154,58,.15)}',
+'.pf-search input{border:0;outline:0;background:transparent;flex:1;font-size:.9rem;color:var(--text,#2a2419)}',
+'body.dark .pf-search{background:#1a140a;border-color:#3a2f14}',
+'body.dark .pf-search input{color:#f0e6cf}',
 '.pf-clear{color:#d1443a;border-color:rgba(209,68,58,.4)}',
 '.pf-clear:hover{background:rgba(209,68,58,.08)}',
 '.pt-thumb{width:58px;height:36px;border-radius:8px;object-fit:cover;flex:0 0 58px;background:#efe8d6;margin-right:2px}',
@@ -18481,9 +18488,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.ptc:hover{box-shadow:0 8px 24px rgba(0,0,0,.12);transform:translateY(-2px)}',
 '.ptc-head{width:100%;height:100%;background-size:cover;background-repeat:no-repeat;background-position:center;background-color:#17130c;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:16px 16px 0 0}',
 '.ptc-hw{position:relative;width:100%;aspect-ratio:16/9}',
-'.ptc-badge{cursor:pointer}',
 '@keyframes ptcblink{0%,100%{opacity:1}50%{opacity:.35}}',
 '.ptc-blink{animation:ptcblink 1.1s ease-in-out infinite}',
+'.pw-status{display:inline-block;color:#fff;font-size:.64rem;font-weight:800;letter-spacing:.04em;padding:2px 9px;border-radius:999px;cursor:pointer}',
 '.p-lightbox{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;cursor:zoom-out}',
 '.p-lightbox img{max-width:96%;max-height:92vh;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.5)}',
 '.p-lb-x{position:absolute;top:18px;right:22px;background:rgba(255,255,255,.15);color:#fff;border:0;font-size:1.6rem;width:44px;height:44px;border-radius:50%;cursor:pointer}',
@@ -18504,8 +18511,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.sh-note{font-size:.82rem;color:#6b5f43;margin-top:3px}',
 'body.dark .sh-note{color:#c9bd9a}',
 '.ptc-letter{font-size:3rem;font-weight:800;color:rgba(255,255,255,.9)}',
-'.ptc-badge{position:absolute;top:10px;right:10px;color:#fff;font-size:.62rem;font-weight:800;letter-spacing:.05em;padding:4px 10px;border-radius:999px}',
-'.ptc-urgent{position:absolute;top:10px;left:10px;background:#d1443a;color:#fff;font-size:.6rem;font-weight:800;padding:3px 8px;border-radius:999px}',
+'.ptc-badge{position:absolute;top:10px;right:10px;color:#fff;font-size:.62rem;font-weight:800;letter-spacing:.05em;padding:4px 10px;border-radius:999px;z-index:4;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.25)}',
+'.ptc-urgent{position:absolute;top:10px;left:10px;background:#d1443a;color:#fff;font-size:.6rem;font-weight:800;padding:3px 8px;border-radius:999px;z-index:4}',
 '.ptc-view{position:absolute;bottom:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;font-size:.64rem;font-weight:800;padding:4px 10px;border-radius:8px;text-decoration:none}',
 '.ptc-body{padding:14px 16px;display:flex;flex-direction:column;gap:8px;flex:1}',
 '.ptc-title{font-weight:800;font-size:1rem;line-height:1.25}',
@@ -18949,10 +18956,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // open-video link
     var vlink=(t.submitted_link||t.edited_link||'');
     var vbtn=vlink?'<a class="pw-vlink" href="'+esc(vlink)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open Video</a>':'';
-    return '<div class="pw-card">'+thumbHtml+
+    var _wst=(_PTC_ST[lc]||[(t.lifecycle_label||'').toUpperCase(),'#8a7d5c']);
+    var _wLive=['editing','qc_pending','pm_review','creator_submitted','editor_assigned','approved'].indexOf(lc)>=0;
+    var _wbadge=_wst[0]?'<span class="pw-status'+(_wLive?' ptc-blink':'')+'" style="background:'+(_wst[1]||'#8a7d5c')+'" onclick="event.stopPropagation();prodStatusHistory('+t.id+')" title="View status history">'+esc(_wst[0])+'</span>':'';
+    return '<div class="pw-card" style="border-left:5px solid '+(_wst[1]||'#8a7d5c')+'">'+thumbHtml+
       '<div class="pw-main" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
         '<div class="pw-title">'+esc(t.title||'Untitled')+urgent+newpm+'</div>'+
-        '<div class="pw-meta"><span class="pt-ref">'+esc(t.ref_code||'')+'</span>'+dl+'<span class="pt-stage">'+esc(t.lifecycle_label||t.next_action||'')+'</span></div>'+
+        '<div class="pw-meta"><span class="pt-ref">'+esc(t.ref_code||'')+'</span>'+dl+_wbadge+'</div>'+
         (chips.length?'<div class="pw-chips">'+chips.join('')+'</div>':'')+prog+
       '</div>'+
       '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">'+_primaryBtn(portal,t)+vbtn+'</div></div>';
@@ -19111,7 +19121,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(t.youtube_url) acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodNotifyStudents('+t.id+')">Send to Students</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodMarkOld('+t.id+','+(t.is_old?'false':'true')+')">'+(t.is_old?'Mark New':'Mark Old')+'</button>';
     acts+='<button class="ptc-btn ptc-del" onclick="event.stopPropagation();prodDeleteTask('+t.id+')">Delete</button>';
-    return '<div class="ptc" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
+    return '<div class="ptc" style="border-left:5px solid '+(st[1]||'#8a7d5c')+'" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
       '<div class="ptc-hw">'+header+badge+((t.priority==='urgent')?'<span class="ptc-urgent">URGENT</span>':'')+'</div>'+
       '<div class="ptc-body"><div class="ptc-title">'+esc(t.title||'Untitled')+'</div>'+
       (chips.length?'<div class="pw-chips">'+chips.join('')+'</div>':'')+
@@ -19166,24 +19176,24 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   function _filterBar(portal){
     var f=_flt(portal);
-    var html='<div class="p-filter">'+_savedChips(portal);
     if(portal==='production'){
       var fd=window._prodFD||{};
       var teachers=(fd.teachers||[]), channels=(fd.channels||[]), types=(fd.types||[]);
       var statuses=[['','All Status'],['pm_review','PM Review'],['creator_submitted','Submitted'],['approved','Approved'],['editing','Editing'],['editing_done','Editing Done'],['qc_pending','QC Pending'],['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded'],['changes_required','Changes']];
-      var sel=function(id,cur,opts,vk,lk){ return '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\''+id+'\',this.value)"><option value="">'+opts.ph+'</option>'+(opts.list||[]).map(function(o){ var val=vk?o[vk]:o[0], lbl=lk?o[lk]:o[1]; return '<option value="'+esc(val)+'"'+((cur||'')==String(val)?' selected':'')+'>'+esc(lbl)+'</option>'; }).join('')+'</select>'; };
-      html+='<input class="p-input" id="prod-search" placeholder="Search title, ref, subject..." value="'+esc(f.q||'')+'" oninput="prodSearch(\'production\',this.value)">'+
+      var html='<div class="p-filter p-filter-prod">'+
+        '<div class="pf-search"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="prod-search" placeholder="Search tasks \u2014 title, ref, subject..." value="'+esc(f.q||'')+'" oninput="prodSearch(\'production\',this.value)"></div>'+
         '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'teacher_id\',this.value)"><option value="">All Teachers</option>'+teachers.map(function(t){ return '<option value="'+t.id+'"'+((f.teacher_id||'')==String(t.id)?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('')+'</select>'+
         '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'channel\',this.value)"><option value="">All Channels</option>'+channels.map(function(ch){ return '<option value="'+esc(ch.name)+'"'+((f.channel||'')===ch.name?' selected':'')+'>'+esc(ch.name)+'</option>'; }).join('')+'</select>'+
         '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'video_type\',this.value)"><option value="">All Types</option>'+types.map(function(ty){ return '<option value="'+esc(ty.name)+'"'+((f.video_type||'')===ty.name?' selected':'')+'>'+esc(ty.name)+'</option>'; }).join('')+'</select>'+
         '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'status\',this.value)">'+statuses.map(function(o){ return '<option value="'+o[0]+'"'+((f.status||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select>'+
         '<button class="p-btn pf-clear" onclick="prodClearFilters()">Clear</button>'+
         '<button class="p-btn" onclick="prodDownloadReport()">Download Report</button>'+
-        '<button class="p-btn p-btn-primary" onclick="prodNewTask()">+ New Task</button>';
+        '<button class="p-btn p-btn-primary" onclick="prodNewTask()">+ New Task</button>'+
+        '</div>';
       if(!window._prodFD) _prodLoadFilterData();
+      return html;
     }
-    html+='</div>';
-    return html;
+    return '<div class="p-filter">'+_savedChips(portal)+'</div>';
   }
   function _prodLoadFilterData(){
     Promise.all([
