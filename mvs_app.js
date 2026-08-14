@@ -18526,7 +18526,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.ptc-ok{color:#1f8a54;border-color:rgba(46,158,107,.4);font-weight:800}',
 '.ptc-ok:hover{background:rgba(46,158,107,.12)}',
 '.pw-chip.pwlive{background:rgba(209,68,58,.14);color:#d1443a}',
-'.p-modal-wrap{display:flex;align-items:center;justify-content:center;padding:20px}',
+'.p-modal-wrap{position:fixed;inset:0;z-index:210;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:20px}',
 '.p-modal{background:var(--card,#fffdf7);border-radius:18px;width:100%;max-width:560px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3)}',
 'body.dark .p-modal{background:#211a0d}',
 '.p-modal-body{padding:18px 22px;overflow-y:auto;flex:1}',
@@ -18956,8 +18956,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // open-video link
     var vlink=(t.submitted_link||t.edited_link||'');
     var vbtn=vlink?'<a class="pw-vlink" href="'+esc(vlink)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open Video</a>':'';
-    var _wst=(_PTC_ST[lc]||[(t.lifecycle_label||'').toUpperCase(),'#8a7d5c']);
-    var _wLive=['editing','qc_pending','pm_review','creator_submitted','editor_assigned','approved'].indexOf(lc)>=0;
+    var _wst=_prodStatus(t);
+    var _wLive=_prodIsLive(t);
     var _wbadge=_wst[0]?'<span class="pw-status'+(_wLive?' ptc-blink':'')+'" style="background:'+(_wst[1]||'#8a7d5c')+'" onclick="event.stopPropagation();prodStatusHistory('+t.id+')" title="View status history">'+esc(_wst[0])+'</span>':'';
     return '<div class="pw-card" style="border-left:5px solid '+(_wst[1]||'#8a7d5c')+'">'+thumbHtml+
       '<div class="pw-main" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
@@ -19080,17 +19080,29 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 
   // --- generic task/video list ---
   var _PTC_ST={creator_assigned:['ASSIGNED','#2a7fb8'],creator_working:['IN PROGRESS','#2a7fb8'],creator_submitted:['PM REVIEW','#c99a2e'],pm_review:['PM REVIEW','#c99a2e'],approved:['EDITING SOON','#7c4fc0'],editor_assigned:['EDITING SOON','#7c4fc0'],editing:['EDITING','#7c4fc0'],editing_paused:['PAUSED','#c99a2e'],editing_done:['QC','#2a7fb8'],qc_pending:['QC PENDING','#c99a2e'],qc_changes:['CHANGES','#d1443a'],ready_for_youtube:['READY','#2e9e6b'],uploaded:['UPLOADED','#2e9e6b'],changes_required:['CHANGES','#d1443a'],completed:['DONE','#2e9e6b']};
+  var _PTC_ASTAT={assigned:['ASSIGNED','#2a7fb8'],submitted:['PM REVIEW','#c99a2e'],approved:['APPROVED','#7c4fc0'],editing_soon:['EDITING SOON','#7c4fc0'],editing_done:['EDITING DONE','#2a7fb8'],uploaded:['UPLOADED','#2e9e6b'],reshoot:['RESHOOT','#d1443a'],rejected:['REJECTED','#d1443a']};
+  function _prodStatus(t){
+    var lc=t.lifecycle||''; var st=_PTC_ST[lc];
+    if(!st) st=_PTC_ASTAT[t.status||''];
+    if(!st) st=[((t.lifecycle_label||t.status||'').replace(/_/g,' ').toUpperCase())||'ASSIGNED','#8a7d5c'];
+    return st;
+  }
+  function _prodIsLive(t){
+    var lc=t.lifecycle||'', s=t.status||'';
+    return ['editing','qc_pending','pm_review','creator_submitted','editor_assigned','approved'].indexOf(lc)>=0
+      || ['submitted','editing_soon','approved'].indexOf(s)>=0 && (lc==='' || lc==='creator_assigned');
+  }
   var _PTC_HCOL=['#1e4d6b','#1f5c3a','#6b2f4d','#5a4a1e','#3a3a6b','#6b3a1e','#1e6b5a','#5a1e4d'];
   function _prodTaskCard(portal,t){
     var g=t.graphics||{}; var lc=t.lifecycle||'';
     var thumb=(t.thumbnail||g.thumbnail_url||t.thumbnail_link||''); if(!thumb && t.youtube_url){ var yi=_ytId(t.youtube_url); if(yi) thumb='https://img.youtube.com/vi/'+yi+'/hqdefault.jpg'; }
-    var st=_PTC_ST[lc]||[(t.lifecycle_label||'').toUpperCase(),'#8a7d5c'];
+    var st=_prodStatus(t);
     var letter=((t.title||'?').trim().charAt(0)||'?').toUpperCase();
     var hcol=_PTC_HCOL[(t.id||0)%_PTC_HCOL.length];
     var header=thumb
       ? '<div class="ptc-head" style="background-image:url('+esc(thumb)+')" onclick="event.stopPropagation();prodThumbView(\''+esc(thumb)+'\')"><a class="ptc-view" onclick="event.stopPropagation();prodThumbView(\''+esc(thumb)+'\')">VIEW</a></div>'
       : '<div class="ptc-head ptc-letter" style="background:linear-gradient(135deg,'+hcol+',rgba(0,0,0,.15))">'+esc(letter)+'</div>';
-    var isLive=['editing','qc_pending','pm_review','creator_submitted','editor_assigned','approved'].indexOf(lc)>=0;
+    var isLive=_prodIsLive(t);
     var badge=st[0]?'<span class="ptc-badge'+(isLive?' ptc-blink':'')+'" style="background:'+(st[1]||'#8a7d5c')+'" onclick="event.stopPropagation();prodStatusHistory('+t.id+')" title="View status history">'+esc(st[0])+'</span>':'';
     var chips=[];
     if((t.collab&&t.collab.length)||t.is_collab) chips.push('<span class="pw-chip" style="background:rgba(124,79,192,.14);color:#7c4fc0">Collab</span>');
@@ -19277,7 +19289,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var tyOpts='<option value="">Select type</option>'+types.map(function(c){ return '<option value="'+esc(c.name)+'"'+((t.video_type===c.name)?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('')+((t.video_type&&types.filter(function(c){return c.name===t.video_type;}).length===0)?'<option value="'+esc(t.video_type)+'" selected>'+esc(t.video_type)+'</option>':'');
       var stOpts=['','Recorded','Live'].map(function(o){ return '<option value="'+esc(o)+'"'+((t.streaming===o)?' selected':'')+'>'+(o||'Select')+'</option>'; }).join('');
       var old=document.getElementById('prod-modal'); if(old) old.remove();
-      var dr=document.createElement('div'); dr.className='p-drawer p-modal-wrap'; dr.id='prod-modal';
+      var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
       dr.innerHTML='<div class="p-modal">'+
         '<div class="pd-head"><div class="h-title">Edit Task \u2014 '+esc(t.title||'')+'</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
         '<div class="p-modal-body">'+
@@ -19727,7 +19739,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         return '<div class="sh-row"><span class="sh-dot" style="background:'+dot+'"></span><div class="sh-c"><div class="sh-lbl">'+esc(e.label||e.event||'')+'</div><div class="sh-at">'+esc(e.at||'')+'</div>'+(e.note?'<div class="sh-note">'+esc(e.note)+(e.actor?' \u2014 '+esc(e.actor):'')+'</div>':(e.actor?'<div class="sh-note">by '+esc(e.actor)+'</div>':''))+'</div></div>';
       }).join(''):'<div class="p-empty">No timeline events recorded yet.</div>';
       var old=document.getElementById('prod-modal'); if(old) old.remove();
-      var dr=document.createElement('div'); dr.className='p-drawer p-modal-wrap'; dr.id='prod-modal';
+      var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
       dr.innerHTML='<div class="p-modal">'+
         '<div class="pd-head"><div class="h-title">Status History \u2014 '+esc(t.title||'')+'</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
         '<div class="p-modal-body"><div class="sh-cur"><span class="ptc-badge'+(isLive?' ptc-blink':'')+'" style="background:'+(st[1]||'#8a7d5c')+'">'+esc(st[0])+'</span> <span style="color:#8a7d5c">current status</span></div>'+

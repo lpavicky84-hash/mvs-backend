@@ -293,6 +293,7 @@ def task_out(db, t, g=None, timeline=False, light=False):
         "streaming": t.streaming or "",
         "priority": t.priority or "normal",
         "is_old": bool(getattr(t, "is_old", False)),
+        "status": (t.status or ""),
         "lifecycle": t.lifecycle or "",
         "lifecycle_label": lc_label(t.lifecycle),
         "legacy_status": t.status or "",
