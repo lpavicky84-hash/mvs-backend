@@ -7,25 +7,83 @@ steps, centered equations, highlighted final answer) with a premium layout.
 import os, re, io, base64
 
 
-def _font_path():
-    """NotoSansDevanagari-Regular.ttf (the original file) is a VARIABLE font
-    (wght/wdth axes). fpdf2's glyph-subset embedding can corrupt complex Devanagari
-    conjuncts from a variable font (e.g. 'ज्ञ' rendering as a stray dot) even though
-    HarfBuzz shapes it correctly. NotoSansDevanagari-Static.ttf is the same font
-    frozen to its default instance (fontTools varLib.instancer) - a plain static
-    TrueType font that embeds reliably. Prefer it; fall back to the variable file
-    (and finally the bare filename) so deploys stay backward compatible."""
+import tempfile as _tempfile
+
+# Cache of variable-font -> frozen static instance (per (src, weight)).
+_STATIC_CACHE = {}
+# All the Devanagari Noto filenames we might find in a deploy (static first, then variable).
+_NOTO_NAMES = [
+    "NotoSansDevanagari-Static.ttf", "NotoSansDevanagari-Regular.ttf",
+    "NotoSansDevanagari.ttf", "NotoSansDevanagari-VariableFont_wdth,wght.ttf",
+    "NotoSansDevanagari[wdth,wght].ttf",
+]
+
+
+def _noto_candidates(name):
     here = os.path.dirname(os.path.abspath(__file__))
-    candidates = []
-    for name in ["NotoSansDevanagari-Static.ttf", "NotoSansDevanagari-Regular.ttf"]:
-        candidates += [
-            os.path.join(here, "fonts", name), os.path.join(here, name),
+    return [os.path.join(here, "fonts", name), os.path.join(here, name),
             os.path.join(os.getcwd(), "fonts", name), os.path.join(os.getcwd(), name),
-            "fonts/%s" % name, name,
-        ]
-    for c in candidates:
+            "fonts/%s" % name, name]
+
+
+def _find_existing(name):
+    for c in _noto_candidates(name):
         if os.path.exists(c):
             return c
+    return None
+
+
+def _raw_noto_src():
+    """First Noto Devanagari file that actually exists on disk (static or variable)."""
+    for name in _NOTO_NAMES:
+        p = _find_existing(name)
+        if p:
+            return p
+    return None
+
+
+def _instance_static(src, wght=400, tag="reg"):
+    """A VARIABLE font's Devanagari conjuncts/matras get corrupted by fpdf2's glyph
+    subsetter (e.g. 'प्रतिष्ठा' -> 'प्रतष्ठिा'), even though HarfBuzz shapes them
+    correctly. Freezing the variable font to a STATIC instance embeds reliably. This
+    does that at runtime and caches the result in a temp file, so a deploy only needs
+    the ordinary variable Noto file (no binary static upload required). Needs fonttools;
+    if unavailable, returns src unchanged (no worse than before)."""
+    if not src:
+        return src
+    key = (src, wght)
+    cached = _STATIC_CACHE.get(key)
+    if cached and os.path.exists(cached):
+        return cached
+    try:
+        from fontTools.ttLib import TTFont
+        from fontTools.varLib.instancer import instantiateVariableFont
+        f = TTFont(src)
+        if "fvar" not in f:                 # already a static font -> use as-is
+            _STATIC_CACHE[key] = src
+            return src
+        axes = {}
+        for a in f["fvar"].axes:
+            axes[a.axisTag] = wght if a.axisTag == "wght" else a.defaultValue
+        instantiateVariableFont(f, axes, inplace=True)
+        out = os.path.join(_tempfile.gettempdir(), "MVSNotoDeva-%s.ttf" % tag)
+        f.save(out)
+        _STATIC_CACHE[key] = out
+        return out
+    except Exception:
+        return src
+
+
+def _font_path():
+    """Regular Devanagari font path. Prefers an explicit static file; otherwise takes
+    whatever Noto file exists and freezes a variable one to static at runtime so
+    conjuncts embed correctly."""
+    static = _find_existing("NotoSansDevanagari-Static.ttf")
+    if static:
+        return static
+    src = _raw_noto_src()
+    if src:
+        return _instance_static(src, 400, "reg")
     return "NotoSansDevanagari-Static.ttf"
 
 
@@ -77,16 +135,17 @@ def _para_font(pdf, raw, c, size, bold):
 
 
 def _font_path_bold():
-    """Bold static instance (wght=700) of the same Devanagari font. Optional -
-    if not deployed, the caller falls back to registering the regular file as
-    'bold' so nothing breaks."""
-    here = os.path.dirname(os.path.abspath(__file__))
-    name = "NotoSansDevanagari-Bold-Static.ttf"
-    for c in [os.path.join(here, "fonts", name), os.path.join(here, name),
-              os.path.join(os.getcwd(), "fonts", name), os.path.join(os.getcwd(), name),
-              "fonts/%s" % name, name]:
-        if os.path.exists(c):
-            return c
+    """Bold Devanagari font. Prefers an explicit bold-static file; otherwise freezes a
+    bold (wght=700) static instance from the variable font at runtime. Returns None only
+    if no Noto file exists at all (caller then registers the regular file as bold)."""
+    boldstatic = _find_existing("NotoSansDevanagari-Bold-Static.ttf")
+    if boldstatic:
+        return boldstatic
+    src = _raw_noto_src()
+    if src:
+        out = _instance_static(src, 700, "bold")
+        if out and out != src:
+            return out
     return None
 
 
