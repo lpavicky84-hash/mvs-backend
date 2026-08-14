@@ -18948,14 +18948,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       chips.map(function(c){ return '<span class="achip">'+esc(c[0])+'<button onclick="prodClearFilter(\''+portal+'\',\''+c[1]+'\')">\u00d7</button></span>'; }).join('')+
       '<button class="clr" onclick="prodClearAll(\''+portal+'\')">Clear all</button></div>';
   }
-  function _prodLoadList(portal){
+  function _prodLoadList(portal,silent){
     var d=P[portal]; var key=(portal==='youtuber')?'videos':'tasks';
     var act=document.getElementById(portal+'-active'); if(act) act.innerHTML=_activeChips(portal);
     // keep saved-view chip highlight in sync
     var bar=document.querySelector('#'+portal+'-app .p-filter');
     if(bar){ var f=_flt(portal); var chips=bar.querySelectorAll('.p-chip'); var views=SAVED[portal]||[];
       chips.forEach(function(c,i){ var v=views[i]?views[i][0]:''; var on=(v.indexOf('__')===0)?(f.deadline==='overdue'):((f.status||'')===v && !f.deadline); c.classList.toggle('on',on); }); }
-    var res=document.getElementById(portal+'-results'); if(res) res.innerHTML='<div class="p-load">Loading...</div>';
+    var res=document.getElementById(portal+'-results');
+    var hasRows=res && res.children.length && res.textContent.indexOf('Loading')<0;
+    if(res && !(silent && hasRows)) res.innerHTML='<div class="p-load">Loading...</div>';
     return api(d.api+'/'+key+_prodQuery(portal)).then(function(r){
       var arr=r[key]||r.tasks||r.videos||[];
       if(!res) return;
@@ -19233,12 +19235,33 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _ab(label,onclick,kind){ return '<button class="p-btn'+(kind?' p-btn-'+kind:'')+'" onclick="'+onclick+'">'+esc(label)+'</button>'; }
 
   // ---- action executors (all refresh the current page on success) ----
-  function _refresh(portal){ var pg=(window._prodCurPage&&window._prodCurPage[portal])||'dashboard'; prodNav(portal,pg); }
+  function _refresh(portal){
+    var page=(window._prodCurPage&&window._prodCurPage[portal])||'dashboard';
+    var body=document.getElementById(portal+'-body');
+    if(!body) return prodNav(portal,page);
+    // silent re-render: skip prodNav's full-body "Loading" blank so it doesn't flash after an action
+    try{
+      if(page==='dashboard') return renderDashboard(portal,body);
+      if(page.indexOf('q:')===0){ var st=page.slice(2); var f=_flt(portal); if(st==='__overdue'){f.status='';f.deadline='overdue';}else{f.status=st;f.deadline='';} f.priority=''; return document.getElementById(portal+'-results')?_prodLoadList(portal,true):renderList(portal,body); }
+      if(page==='urgent'){ var fu=_flt(portal); fu.priority='urgent'; fu.status=''; fu.deadline=''; return document.getElementById(portal+'-results')?_prodLoadList(portal,true):renderList(portal,body); }
+      if(page==='board') return renderBoard(portal,body);
+      if(page==='tasks'||page==='videos') return document.getElementById(portal+'-results')?_prodLoadList(portal,true):renderList(portal,body);
+      if(page==='team') return renderTeam(portal,body);
+      if(page==='views') return renderViews(portal,body);
+      if(page==='time') return renderEditorTime(portal,body);
+      if(page==='library') return renderGraphicsLib(portal,body);
+      if(page==='creators') return renderCreators(portal,body);
+      if(page==='analytics') return renderAnalytics(portal,body);
+    }catch(e){}
+    return prodNav(portal,page);
+  }
+  function _pBusy(on){ var box=document.getElementById('p-acts'); if(!box) return;
+    if(on){ box.style.opacity='.5'; box.style.pointerEvents='none'; } else { box.style.opacity=''; box.style.pointerEvents=''; } }
   window.prodAct=function(portal,id,ep,body){
+    _pBusy(true);   // instant feedback + blocks double-clicks
     var full=P[portal].api+((ep.indexOf('/tasks/')===0||ep.indexOf('/videos/')===0)?ep:('/tasks/'+id+ep));
-    // youtuber submit uses /videos/{id}/submit already absolute-ish handled in prodLinkForm
     api(full,'POST',body||{}).then(function(){ prodDismiss(); toast('Done'); _refresh(portal); })
-      .catch(function(e){ toast((e&&e.message)||'Action failed',true); });
+      .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Action failed',true); });
   };
   function _actsBox(){ return document.getElementById('p-acts'); }
   function _formWrap(inner,submitLabel,submitCall){
@@ -19254,9 +19277,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var v=(document.getElementById('p-link-in')||{}).value||''; v=v.trim();
     if(!v){ toast('Please enter a link',true); return; }
     var body={}; body[field]=v;
+    _pBusy(true);
     var full=isYt?(P[portal].api+ep):(P[portal].api+'/tasks/'+id+ep);
     api(full,'POST',body).then(function(){ prodDismiss(); toast('Submitted'); _refresh(portal); })
-      .catch(function(e){ toast((e&&e.message)||'Failed',true); });
+      .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
   };
   window.prodRemarkForm=function(portal,id,ep,label){
     var box=_actsBox(); if(!box) return;
@@ -19270,8 +19294,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var v=(document.getElementById('p-rem-in')||{}).value||''; v=v.trim();
     if(!v){ toast('Remarks are required',true); return; }
     var body={remarks:v}; if((window._prodImgs||[]).length) body.images=window._prodImgs.slice();
+    _pBusy(true);
     api(P[portal].api+'/tasks/'+id+ep,'POST',body).then(function(){ prodDismiss(); toast('Sent'); _refresh(portal); })
-      .catch(function(e){ toast((e&&e.message)||'Failed',true); });
+      .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
   };
 
   // ---- screenshot capture (paste / drop / file) ----
@@ -19358,9 +19383,26 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '<div class="pd-foot" id="aw-foot"></div></div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
     document.body.appendChild(dr);
-    api(P.production.api+'/people').then(function(r){ window._aw.people=r; _awRender(); })
-      .catch(function(){ window._aw.people={teachers:[],youtubers:[]}; _awRender(); });
+    Promise.all([
+      api(P.production.api+'/people').catch(function(){return {teachers:[],youtubers:[]};}),
+      api(P.production.api+'/tasks?size=150').catch(function(){return {tasks:[]};})
+    ]).then(function(res){
+      window._aw.people=res[0]||{teachers:[],youtubers:[]};
+      // build dropdown suggestions from what has actually been used before
+      var tasks=(res[1]&&res[1].tasks)||[]; var uniq=function(key){ var m={}; tasks.forEach(function(t){ var v=(t[key]||'').trim(); if(v)m[v]=1; }); return Object.keys(m).sort(); };
+      var vt=uniq('video_type'), ch=uniq('channel_name'), sb=uniq('subject');
+      var merge=function(base,extra){ var m={}; base.concat(extra).forEach(function(x){ if(x)m[x]=1; }); return Object.keys(m); };
+      window._aw.opts={
+        video_type: merge(['One Shot','Rapid Revision','Long Video','Short Video','Live Class','PYQ Solving'], vt),
+        channel_name: merge(['MVS Foundation','MVS Science','Manish Verma Classes'], ch),
+        subject: merge(['Physics 12','Chemistry 12','Biology 12','Mathematics 12','Science 10','Social Science 10'], sb),
+        streaming: ['Recorded','Live']
+      };
+      _awRender();
+    });
   };
+  function _awOpts(key){ return ((window._aw&&window._aw.opts)||{})[key]||[]; }
+  function _awDatalist(id,key){ return '<datalist id="'+id+'">'+_awOpts(key).map(function(o){ return '<option value="'+esc(o)+'">'; }).join('')+'</datalist>'; }
   var _AW_STEPS=['Content','Creator','Production','References'];
   function _awSave(){
     var aw=window._aw; if(!aw) return; var g=function(id){ var e=document.getElementById(id); return e?e.value:undefined; };
@@ -19383,10 +19425,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var html=steps;
     if(aw.step===1){
       html+='<div class="p-field"><label>Title</label><input class="p-input" id="aw-title" placeholder="Video title" value="'+esc(d.title||'')+'"></div>'+
-        '<div class="p-field"><label>Video Type</label><input class="p-input" id="aw-vtype" placeholder="e.g. One Shot, Rapid Revision" value="'+esc(d.video_type||'')+'"></div>'+
-        '<div class="p-field"><label>Channel</label><input class="p-input" id="aw-channel" placeholder="e.g. MVS Foundation" value="'+esc(d.channel_name||'')+'"></div>'+
-        '<div class="p-field"><label>Subject</label><input class="p-input" id="aw-subject" placeholder="e.g. Physics 12" value="'+esc(d.subject||'')+'"></div>'+
-        '<div class="p-field"><label>Streaming</label><input class="p-input" id="aw-stream" placeholder="e.g. Live / Recorded" value="'+esc(d.streaming||'')+'"></div>';
+        '<div class="p-field"><label>Video Type</label><input class="p-input" id="aw-vtype" list="aw-vtype-list" placeholder="Select or type" value="'+esc(d.video_type||'')+'">'+_awDatalist('aw-vtype-list','video_type')+'</div>'+
+        '<div class="p-field"><label>Channel</label><input class="p-input" id="aw-channel" list="aw-channel-list" placeholder="Select or type" value="'+esc(d.channel_name||'')+'">'+_awDatalist('aw-channel-list','channel_name')+'</div>'+
+        '<div class="p-field"><label>Subject</label><input class="p-input" id="aw-subject" list="aw-subject-list" placeholder="Select or type" value="'+esc(d.subject||'')+'">'+_awDatalist('aw-subject-list','subject')+'</div>'+
+        '<div class="p-field"><label>Streaming</label><select class="p-select" id="aw-stream"><option value="">Select</option>'+_awOpts('streaming').map(function(o){ return '<option value="'+esc(o)+'"'+((d.streaming===o)?' selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>';
     } else if(aw.step===2){
       var ppl=aw.people||{}; var list=(d.creator_type==='teacher')?(ppl.teachers||[]):(ppl.youtubers||[]);
       var sel=(d.creator_type==='teacher')?d.teacher_id:d.youtuber_id;
