@@ -18387,6 +18387,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pw-prog>i{display:block;height:100%;background:#2e9e6b}',
 '@keyframes pmBlink{0%,100%{opacity:1}50%{opacity:.4}}',
 '.pw-vlink{font-size:.68rem;font-weight:700;color:#3a6ec8;text-decoration:none;padding:3px 9px;border:1px solid #cfe0f5;border-radius:999px;white-space:nowrap}',
+'.pq-card{border:2px solid rgba(209,68,58,.42);border-radius:14px;padding:14px 16px;margin-bottom:14px;background:rgba(209,68,58,.04)}',
+'.pq-head{font-weight:800;margin-bottom:8px;color:#b91c1c;display:flex;align-items:center;gap:8px}',
+'.pq-n{background:#d1443a;color:#fff;font-size:.7rem;font-weight:800;padding:2px 9px;border-radius:999px}',
+'.pq-row{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:10px 0;border-top:1px solid rgba(209,68,58,.14);flex-wrap:wrap}',
+'.pq-main{flex:1;min-width:180px}.pq-title{font-weight:700}.pq-meta{font-size:.76rem;color:#8a7d5c;margin-top:3px}',
+'.pq-acts{display:flex;gap:8px;flex-wrap:wrap}',
 '.p-filter{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}',
 '.p-chip{padding:7px 13px;border-radius:999px;border:1px solid #d9cba8;background:transparent;color:inherit;cursor:pointer;font-size:.8rem;font-weight:600}',
 'body.dark .p-chip{border-color:#3a2f14}',
@@ -18723,14 +18729,41 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         });
         html+='</div>';
       }
-      body.innerHTML=(html||'<div class="p-empty">No data yet.</div>')+'<div id="'+portal+'-work"></div>';
+      body.innerHTML=(html||'<div class="p-empty">No data yet.</div>')+(portal==='production'?'<div id="production-queues"></div>':'')+'<div id="'+portal+'-work"></div>';
       _loadWork(portal);
+      if(portal==='production'){ try{ _loadQueues(); }catch(e){} }
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load dashboard. '+esc(e&&e.message||'')+'</div>'; });
   }
 
   // --- dashboard "current work" cards with a primary action on the card ---
   function _workTitle(portal){ return portal==='production'?'Needs Your Attention':'Your Current Work'; }
-  function _workFilter(portal,arr){
+  function _loadQueues(){
+    var box=document.getElementById('production-queues'); if(!box) return;
+    api(P.production.api+'/queues').then(function(r){
+      var props=(r.proposals||[]), urg=(r.urgent||[]); var html='';
+      if(props.length){
+        html+='<div class="pq-card"><div class="pq-head">Video Proposals \u2014 Approval Needed <span class="pq-n">'+props.length+'</span></div>';
+        html+=props.map(function(t){
+          return '<div class="pq-row"><div class="pq-main"><div class="pq-title">'+esc(t.title||'Untitled')+'</div><div class="pq-meta">'+esc(t.creator_name||'')+(t.subject?' \u00b7 '+esc(t.subject):'')+(t.reference?' \u00b7 '+esc(t.reference):'')+'</div></div>'+
+            '<div class="pq-acts"><button class="p-btn p-btn-primary" onclick="prodApproveProposal('+t.id+')">Approve &amp; Assign</button><button class="p-btn" onclick="prodDeclineProposal('+t.id+')">Decline</button></div></div>';
+        }).join('')+'</div>';
+      }
+      if(urg.length){
+        html+='<div class="pq-card"><div class="pq-head">Urgent Requests <span class="pq-n">'+urg.length+'</span></div>';
+        html+=urg.map(function(t){ return '<div class="pq-row"><div class="pq-main"><div class="pq-title">'+esc(t.title||'Untitled')+'</div><div class="pq-meta">'+esc(t.creator_name||'')+(t.deadline?' \u00b7 Due '+esc(t.deadline):'')+'</div></div><div class="pq-acts"><button class="p-btn" onclick="prodOpenTask(\'production\','+t.id+')">Open</button></div></div>'; }).join('')+'</div>';
+      }
+      box.innerHTML=html;
+    }).catch(function(){ box.innerHTML=''; });
+  }
+  window.prodApproveProposal=function(id){
+    var dl=prompt('Set a deadline for this video (YYYY-MM-DD HH:MM) \u2014 or leave blank:');
+    var body={}; if(dl&&dl.trim()){ body.deadline=dl.trim().replace(' ','T'); }
+    api(P.production.api+'/proposals/'+id+'/approve','POST',body).then(function(){ toast('Approved \u2014 assigned to creator'); _refresh('production'); }).catch(function(e){ toast((e&&e.message)||'Could not approve',true); });
+  };
+  window.prodDeclineProposal=function(id){
+    var rem=prompt('Reason for declining (optional):'); if(rem===null) return;
+    api(P.production.api+'/proposals/'+id+'/decline','POST',{remarks:(rem||'').trim()}).then(function(){ toast('Proposal declined'); _refresh('production'); }).catch(function(e){ toast((e&&e.message)||'Could not decline',true); });
+  };  function _workFilter(portal,arr){
     var out=arr;
     if(portal==='editor') out=arr.filter(function(t){ return ['editor_assigned','editing','editing_paused','editing_done','qc_changes'].indexOf(t.lifecycle)>=0; });
     else if(portal==='graphics') out=arr.filter(function(t){ var s=(t.graphics||{}).status; return ['new','in_progress','changes'].indexOf(s)>=0; });
@@ -18810,7 +18843,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     return api(P.production.api+'/views').then(function(r){
       if(_stale(portal,'views')) return;
       var kpis=[['Total Views',_num(r.total_views)],['Videos Uploaded',r.uploaded||0],['Pending Upload',r.pending_upload||0],['Highest Viewed',r.highest?_num(r.highest.views):'0']];
-      var html='<div class="pk-grid">'+kpis.map(function(c){ return '<div class="pk-card"><div class="pk-val">'+c[1]+'</div><div class="pk-lbl">'+c[0]+'</div></div>'; }).join('')+'</div>';
+      var html='<div class="p-toolbar" style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="p-btn p-btn-primary" id="pv-refresh" onclick="prodRefreshViews()">Refresh live views</button></div>';
+      html+='<div class="pk-grid">'+kpis.map(function(c){ return '<div class="pk-card"><div class="pk-val">'+c[1]+'</div><div class="pk-lbl">'+c[0]+'</div></div>'; }).join('')+'</div>';
       var cr=r.by_creator||[];
       html+='<div class="p-sec">Views by Creator</div>';
       html+=cr.length?cr.map(function(c){ return '<div class="pt-row"><div class="pt-main"><div class="pt-title">'+esc(c.name)+'</div><div class="pt-meta"><span>'+(c.creator_type==='youtuber'?'YouTuber':'Teacher')+'</span><span>'+c.videos+' videos</span></div></div><div style="text-align:right"><div style="font-weight:800">'+_num(c.views)+'</div><div style="font-size:.72rem;color:#8a7d5c">'+c.share+'%</div></div></div>'; }).join(''):'<div class="p-empty">No uploaded videos yet.</div>';
@@ -19048,9 +19082,31 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         [['Member','name'],['Thumbnails','thumbnails'],['Avg Hrs','avg_hours'],['Revisions','revisions']],'thumbnails');
       // content mix
       html+='<div class="p-sec">Content Mix</div>'+_hbars(r.content_mix||[],'type','count');
+      html+='<div class="p-sec" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">Team Performance<button class="p-btn p-btn-primary" onclick="prodDownloadReport()">Download Report (CSV)</button></div><div id="prod-rank-box"><div class="p-load">Loading ranking...</div></div><div id="prod-targets-box"></div>';
       body.innerHTML=html;
+      _loadRankTargets();
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load analytics. '+esc(e&&e.message||'')+'</div>'; });
   }
+  function _loadRankTargets(){
+    var rb=document.getElementById('prod-rank-box'), tb=document.getElementById('prod-targets-box');
+    api(P.production.api+'/ranking').then(function(r){ if(!rb) return; var rows=r.ranking||[];
+      rb.innerHTML=rows.length?rows.slice(0,10).map(function(x){
+        return '<div class="pt-row"><span class="pq-n" style="background:'+(x.rank<=3?'#e6ad4e':'#b0a483')+'">'+x.rank+'</span><div class="pt-main" style="margin-left:8px"><div class="pt-title">'+esc(x.name)+'</div><div class="pt-meta">'+x.done+'/'+x.assigned+' done \u00b7 '+x.ontime+' on time \u00b7 '+x.delayed+' delayed</div></div><span class="pt-stage">'+x.rate+'% on time</span></div>';
+      }).join(''):'<div class="p-empty">No completed tasks yet.</div>';
+    }).catch(function(){ if(rb) rb.innerHTML='<div class="p-empty">Ranking unavailable.</div>'; });
+    api(P.production.api+'/teacher-targets').then(function(r){ if(!tb) return; var ts=r.teachers||[];
+      if(!ts.length){ tb.innerHTML=''; return; }
+      tb.innerHTML='<div class="p-sec">Teacher Monthly Targets ('+esc(r.month||'')+')</div>'+ts.map(function(t){
+        var rows=(t.rows||[]); var done=0,tgt=0; rows.forEach(function(x){ done+=(x.done||0); tgt+=(x.target||0); });
+        return '<div class="pt-row"><div class="pt-main"><div class="pt-title">'+esc(t.name||'')+'</div><div class="pt-meta">'+rows.map(function(x){ return esc(x.label||x.type||'')+': '+(x.done||0)+'/'+(x.target||0); }).join(' \u00b7 ')+'</div></div><span class="pt-stage">'+done+'/'+tgt+'</span></div>';
+      }).join('');
+    }).catch(function(){ if(tb) tb.innerHTML=''; });
+  }
+  window.prodDownloadReport=function(){
+    fetch(API+P.production.api+'/report.csv',{headers:{Authorization:'Bearer '+TOKEN}}).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.blob(); }).then(function(bl){
+      var u=URL.createObjectURL(bl); var a=document.createElement('a'); a.href=u; a.download='production_report.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(u); },60000); toast('Report downloaded');
+    }).catch(function(e){ toast((e&&e.message)||'Could not download report',true); });
+  };
   window.prodAnDays=function(d){ window._prodAnDays=d; var body=document.getElementById('production-body'); if(body) renderAnalytics('production',body); };
 
   function _trendChart(rows){
@@ -19227,6 +19283,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(lc==='qc_pending'){ b.push(_ab('QC Approve','prodAct(\'production\','+t.id+',\'/qc-approve\')','ok'));
         b.push(_ab('Request Edit Changes','prodRemarkForm(\'production\','+t.id+',\'/request-edit-changes\')')); }
       if(lc==='ready_for_youtube') b.push(_ab('Add YouTube URL','prodLinkForm(\'production\','+t.id+',\'/youtube\',\'youtube_url\',\'Published YouTube URL\')','primary'));
+      if(t.youtube_url) b.push(_ab('Send to Students','prodNotifyStudents('+t.id+')','ok'));
       if(lc==='uploaded') b.push(_ab('Mark Completed','prodAct(\'production\','+t.id+',\'/complete\')','ok'));
     }
     if(!b.length) return '';
@@ -19257,6 +19314,17 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   function _pBusy(on){ var box=document.getElementById('p-acts'); if(!box) return;
     if(on){ box.style.opacity='.5'; box.style.pointerEvents='none'; } else { box.style.opacity=''; box.style.pointerEvents=''; } }
+  window.prodNotifyStudents=function(id){
+    if(!confirm('Send this video link to all students as a notification?')) return;
+    _pBusy(true);
+    api(P.production.api+'/tasks/'+id+'/notify-students','POST',{}).then(function(r){ _pBusy(false); toast('Sent to '+((r&&r.count)||0)+' students'); })
+      .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Could not send',true); });
+  };
+  window.prodRefreshViews=function(){
+    var btn=document.getElementById('pv-refresh'); if(btn){ btn.disabled=true; btn.textContent='Refreshing…'; }
+    api(P.production.api+'/refresh-views','POST',{}).then(function(r){ toast('Views updated ('+((r&&r.updated)||0)+' videos)'); _refresh('production'); })
+      .catch(function(e){ if(btn){ btn.disabled=false; btn.textContent='Refresh live views'; } toast((e&&e.message)||'Could not refresh',true); });
+  };
   window.prodAct=function(portal,id,ep,body){
     _pBusy(true);   // instant feedback + blocks double-clicks
     var full=P[portal].api+((ep.indexOf('/tasks/')===0||ep.indexOf('/videos/')===0)?ep:('/tasks/'+id+ep));
@@ -19385,16 +19453,18 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     document.body.appendChild(dr);
     Promise.all([
       api(P.production.api+'/people').catch(function(){return {teachers:[],youtubers:[]};}),
-      api(P.production.api+'/tasks?size=150').catch(function(){return {tasks:[]};})
+      api(P.production.api+'/tasks?size=150').catch(function(){return {tasks:[]};}),
+      api(P.production.api+'/channels').catch(function(){return {channels:[]};}),
+      api(P.production.api+'/video-types').catch(function(){return {types:[]};})
     ]).then(function(res){
       window._aw.people=res[0]||{teachers:[],youtubers:[]};
-      // build dropdown suggestions from what has actually been used before
+      window._aw.channels=(res[2]&&res[2].channels)||[];
+      window._aw.types=(res[3]&&res[3].types)||[];
+      // build datalist suggestions from what has actually been used before
       var tasks=(res[1]&&res[1].tasks)||[]; var uniq=function(key){ var m={}; tasks.forEach(function(t){ var v=(t[key]||'').trim(); if(v)m[v]=1; }); return Object.keys(m).sort(); };
-      var vt=uniq('video_type'), ch=uniq('channel_name'), sb=uniq('subject');
+      var sb=uniq('subject');
       var merge=function(base,extra){ var m={}; base.concat(extra).forEach(function(x){ if(x)m[x]=1; }); return Object.keys(m); };
       window._aw.opts={
-        video_type: merge(['One Shot','Rapid Revision','Long Video','Short Video','Live Class','PYQ Solving'], vt),
-        channel_name: merge(['MVS Foundation','MVS Science','Manish Verma Classes'], ch),
         subject: merge(['Physics 12','Chemistry 12','Biology 12','Mathematics 12','Science 10','Social Science 10'], sb),
         streaming: ['Recorded','Live']
       };
@@ -19403,6 +19473,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   function _awOpts(key){ return ((window._aw&&window._aw.opts)||{})[key]||[]; }
   function _awDatalist(id,key){ return '<datalist id="'+id+'">'+_awOpts(key).map(function(o){ return '<option value="'+esc(o)+'">'; }).join('')+'</datalist>'; }
+  window.prodAwAddChannel=function(){ _awSave(); var n=prompt('New channel name:'); if(!n||!n.trim())return; n=n.trim();
+    api(P.production.api+'/channels','POST',{name:n}).then(function(r){ (window._aw.channels=window._aw.channels||[]).push({id:r.id,name:r.name}); if(window._aw){window._aw.data.channel_name=r.name;} _awRender(); toast('Channel added'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
+  window.prodAwAddType=function(){ _awSave(); var n=prompt('New video type name:'); if(!n||!n.trim())return; n=n.trim();
+    api(P.production.api+'/video-types','POST',{name:n}).then(function(r){ (window._aw.types=window._aw.types||[]).push({id:r.id,name:r.name}); if(window._aw){window._aw.data.video_type=r.name;} _awRender(); toast('Type added'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
   var _AW_STEPS=['Content','Creator','Production','References'];
   function _awSave(){
     var aw=window._aw; if(!aw) return; var g=function(id){ var e=document.getElementById(id); return e?e.value:undefined; };
@@ -19424,9 +19498,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var steps='<div class="aw-steps">'+_AW_STEPS.map(function(lbl,i){ var n=i+1; var cls=n===aw.step?'on':(n<aw.step?'done':''); return '<div class="s '+cls+'">'+n+'. '+lbl+'</div>'; }).join('')+'</div>';
     var html=steps;
     if(aw.step===1){
+      var chList=(aw.channels||[]), tyList=(aw.types||[]);
+      var chSel='<select class="p-select" id="aw-channel" style="flex:1"><option value="">Select channel</option>'+chList.map(function(c){ return '<option value="'+esc(c.name)+'"'+((d.channel_name===c.name)?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('')+(d.channel_name&&chList.filter(function(c){return c.name===d.channel_name;}).length===0?'<option value="'+esc(d.channel_name)+'" selected>'+esc(d.channel_name)+'</option>':'')+'</select>';
+      var tySel='<select class="p-select" id="aw-vtype" style="flex:1"><option value="">Select type</option>'+tyList.map(function(c){ return '<option value="'+esc(c.name)+'"'+((d.video_type===c.name)?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('')+(d.video_type&&tyList.filter(function(c){return c.name===d.video_type;}).length===0?'<option value="'+esc(d.video_type)+'" selected>'+esc(d.video_type)+'</option>':'')+'</select>';
       html+='<div class="p-field"><label>Title</label><input class="p-input" id="aw-title" placeholder="Video title" value="'+esc(d.title||'')+'"></div>'+
-        '<div class="p-field"><label>Video Type</label><input class="p-input" id="aw-vtype" list="aw-vtype-list" placeholder="Select or type" value="'+esc(d.video_type||'')+'">'+_awDatalist('aw-vtype-list','video_type')+'</div>'+
-        '<div class="p-field"><label>Channel</label><input class="p-input" id="aw-channel" list="aw-channel-list" placeholder="Select or type" value="'+esc(d.channel_name||'')+'">'+_awDatalist('aw-channel-list','channel_name')+'</div>'+
+        '<div class="p-field"><label>Video Type</label><div style="display:flex;gap:8px;align-items:center">'+tySel+'<button class="p-btn" type="button" onclick="prodAwAddType()">Add</button></div></div>'+
+        '<div class="p-field"><label>Channel</label><div style="display:flex;gap:8px;align-items:center">'+chSel+'<button class="p-btn" type="button" onclick="prodAwAddChannel()">Add</button></div></div>'+
         '<div class="p-field"><label>Subject</label><input class="p-input" id="aw-subject" list="aw-subject-list" placeholder="Select or type" value="'+esc(d.subject||'')+'">'+_awDatalist('aw-subject-list','subject')+'</div>'+
         '<div class="p-field"><label>Streaming</label><select class="p-select" id="aw-stream"><option value="">Select</option>'+_awOpts('streaming').map(function(o){ return '<option value="'+esc(o)+'"'+((d.streaming===o)?' selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>';
     } else if(aw.step===2){

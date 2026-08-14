@@ -3,7 +3,7 @@
 The PM is the operational owner. Admin also has access (oversight). Every mutation
 is authorised server-side and updates the shared state engine in production_core.
 """
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from datetime import datetime, date, timedelta
@@ -807,3 +807,285 @@ def _pnotif_read(nid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_a
 @router.post("/notifications/read-all")
 def _pnotif_read_all(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     pc.mark_read(db, me); db.commit(); return {"ok": True}
+
+
+# ============================================================ CHANNELS & VIDEO TYPES
+# Slice 1 of Task-Manager parity: the PM can manage channels & video types and use them
+# as real dropdowns in Assign Work (same underlying tables as the admin Task Manager).
+from models import VideoChannel, VideoType
+try:
+    from video_tasks import _seed_channels as _vt_seed_channels, _seed_types as _vt_seed_types
+except Exception:   # pragma: no cover
+    def _vt_seed_channels(db): pass
+    def _vt_seed_types(db): pass
+
+
+@router.get("/channels")
+def prod_list_channels(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    try:
+        _vt_seed_channels(db)
+    except Exception:
+        pass
+    rows = (db.query(VideoChannel).filter(VideoChannel.active == True)
+            .order_by(VideoChannel.id.asc()).all())
+    return {"channels": [{"id": c.id, "name": c.name} for c in rows]}
+
+
+@router.post("/channels")
+def prod_add_channel(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    try:
+        _vt_seed_channels(db)
+    except Exception:
+        pass
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "Channel name is required")
+    if db.query(VideoChannel).filter(VideoChannel.name == name).first():
+        raise HTTPException(400, "This channel already exists")
+    c = VideoChannel(name=name)
+    db.add(c); db.commit()
+    return {"ok": True, "id": c.id, "name": c.name}
+
+
+@router.get("/video-types")
+def prod_list_types(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    try:
+        _vt_seed_types(db)
+    except Exception:
+        pass
+    rows = (db.query(VideoType).filter(VideoType.active == True)
+            .order_by(VideoType.sort.asc(), VideoType.id.asc()).all())
+    return {"types": [{"id": c.id, "name": c.name,
+                       "streaming_scope": getattr(c, "streaming_scope", "both") or "both"} for c in rows]}
+
+
+@router.post("/video-types")
+def prod_add_type(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    try:
+        _vt_seed_types(db)
+    except Exception:
+        pass
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "Type name is required")
+    if db.query(VideoType).filter(VideoType.name == name).first():
+        raise HTTPException(400, "This type already exists")
+    mx = db.query(VideoType).order_by(VideoType.sort.desc()).first()
+    scope = (payload.get("streaming_scope") or "both").strip().lower()
+    if scope not in ("both", "live", "recorded"):
+        scope = "both"
+    c = VideoType(name=name, sort=(mx.sort + 1) if mx else 0, streaming_scope=scope)
+    db.add(c); db.commit()
+    return {"ok": True, "id": c.id, "name": c.name, "streaming_scope": scope}
+
+
+# ============================================================ REAL-TIME VIEWS + NOTIFY STUDENTS
+# Slice 3: PM can refresh live YouTube views and push a published video to students.
+try:
+    from video_tasks import _yt_get_key as _vt_yt_get_key, _yt_fetch_views as _vt_yt_fetch_views, _vt_notify as _vt_notify_fn
+except Exception:   # pragma: no cover
+    _vt_yt_get_key = lambda db: None
+    _vt_yt_fetch_views = lambda ids, key: {}
+    def _vt_notify_fn(db, user_id, title, message, ntype="video_task", link=None): pass
+
+
+@router.post("/refresh-views")
+def prod_refresh_views(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Pull live YouTube view counts for every published task (same source as admin)."""
+    from models import VideoViewSnapshot
+    key = _vt_yt_get_key(db)
+    if not key:
+        raise HTTPException(400, "No YouTube API key is set yet. Ask the admin to add it in the Task Manager settings.")
+    tasks = db.query(VideoTask).filter(VideoTask.yt_video_id != "", VideoTask.yt_video_id != None).all()
+    idmap = {}
+    for t in tasks:
+        idmap.setdefault(t.yt_video_id, []).append(t)
+    if not idmap:
+        return {"ok": True, "updated": 0, "fetched": 0, "total": 0}
+    got = _vt_yt_fetch_views(list(idmap.keys()), key)
+    now = datetime.utcnow(); n = 0
+    for vid, views in got.items():
+        for t in idmap.get(vid, []):
+            t.yt_views = views; t.yt_views_at = now
+            try:
+                db.add(VideoViewSnapshot(task_id=t.id, views=views))
+            except Exception:
+                pass
+            n += 1
+    db.commit()
+    return {"ok": True, "updated": n, "fetched": len(got), "total": len(idmap)}
+
+
+@router.post("/tasks/{tid}/notify-students")
+def prod_notify_students(tid: int, payload: dict = Body(default={}),
+                         db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Send the published video link to all students as a tappable notification."""
+    t = _task(db, tid)
+    link = (payload.get("link") or t.youtube_url or t.submitted_link or "").strip()
+    if not link:
+        raise HTTPException(400, "No video link is attached to this task yet.")
+    msg = (payload.get("message") or "").strip() or \
+        ('A new video "%s" is now available' % (t.title or "")) + \
+        ((" on %s" % t.channel_name) if t.channel_name else "") + ". Tap to watch."
+    users = db.query(User).filter(User.is_active == True, User.role == "student").all()
+    for u in users:
+        _vt_notify_fn(db, u.id, "New Video: %s" % (t.title or ""), msg, "video_link", link)
+    db.commit()
+    return {"ok": True, "count": len(users)}
+
+
+# ============================================================ PROPOSALS + URGENT QUEUE
+# Slice 4: teacher-proposed videos (proposal_ok == "pending") and teacher-flagged urgent
+# requests (kind == "urgent") — the PM can approve into the pipeline or decline.
+@router.get("/queues")
+def prod_queues(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    props = (db.query(VideoTask).filter(VideoTask.proposal_ok == "pending")
+             .order_by(VideoTask.created_at.desc()).all())
+    urgent = (db.query(VideoTask).filter(VideoTask.kind == "urgent")
+              .order_by(VideoTask.created_at.desc()).all())
+    return {"proposals": [pc.task_out(db, t, light=True) for t in props],
+            "urgent": [pc.task_out(db, t, light=True) for t in urgent]}
+
+
+@router.post("/proposals/{tid}/approve")
+def prod_approve_proposal(tid: int, payload: dict = Body(default={}),
+                          db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    t = db.query(VideoTask).filter(VideoTask.id == int(tid),
+                                   VideoTask.proposal_ok == "pending").first()
+    if not t:
+        raise HTTPException(404, "Proposal not found")
+    dl = (payload.get("deadline") or "").strip()
+    if dl:
+        try:
+            t.deadline = datetime.fromisoformat(dl.replace("Z", ""))
+        except Exception:
+            pass
+    for f in ("channel_name", "video_type", "subject", "reference"):
+        v = (payload.get(f) or "").strip()
+        if v:
+            setattr(t, f, v)
+    t.proposal_ok = "approved"
+    t.status = "assigned"
+    pc.ensure_ref_code(t)
+    pc.set_state(db, t, "creator_assigned", actor=me, event="proposal_approved")
+    pc.log_event(db, t, me, "creator_assigned", new_state="creator_assigned")
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == t.teacher_id).first()
+    if tp and tp.user_id:
+        pc.notify(db, tp.user_id, "Proposal Approved",
+                  'Your video proposal "%s" has been approved. Check My Tasks.' % (t.title or ""),
+                  "video_task", link=str(t.id))
+    db.commit()
+    return {"ok": True, "id": t.id}
+
+
+@router.post("/proposals/{tid}/decline")
+def prod_decline_proposal(tid: int, payload: dict = Body(default={}),
+                          db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    t = db.query(VideoTask).filter(VideoTask.id == int(tid),
+                                   VideoTask.proposal_ok == "pending").first()
+    if not t:
+        raise HTTPException(404, "Proposal not found")
+    t.proposal_ok = "rejected"
+    t.status = "rejected"
+    rem = (payload.get("remarks") or "").strip()
+    if hasattr(t, "review_remarks"):
+        t.review_remarks = rem
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == t.teacher_id).first()
+    if tp and tp.user_id:
+        pc.notify(db, tp.user_id, "Proposal Not Approved",
+                  ('Your video proposal "%s" was not approved' % (t.title or "")) + ((": " + rem) if rem else "."),
+                  "video_task", link=str(t.id))
+    db.commit()
+    return {"ok": True}
+
+
+# ============================================================ TARGETS · RANKING · CSV REPORT
+# Slice 5: teacher monthly targets, task-completion ranking, and a CSV export — the same
+# numbers the admin Task Manager shows (shared VideoTask data).
+@router.get("/teacher-targets")
+def prod_teacher_targets(month: str = "", db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    try:
+        from teacher_routes import _month_range
+        from video_tasks import _vt_targets_for
+    except Exception:
+        return {"month": "", "teachers": []}
+    start, end = _month_range(month)
+    dt0 = datetime(start.year, start.month, start.day)
+    dt1 = datetime(end.year, end.month, end.day)
+    out = []
+    for tp in db.query(TeacherProfile).all():
+        try:
+            row = _vt_targets_for(db, tp, dt0, dt1)
+        except Exception:
+            continue
+        if any(r.get("target", 0) > 0 for r in row.get("rows", [])) or row.get("has_tasks"):
+            out.append(row)
+    out.sort(key=lambda x: (x.get("name") or "").lower())
+    return {"month": "%04d-%02d" % (start.year, start.month), "teachers": out}
+
+
+@router.get("/ranking")
+def prod_ranking(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Per-teacher task completion ranking (done / assigned / on-time / delayed / rate)."""
+    from sqlalchemy import or_ as _or
+    NOT_SPECIAL = _or(VideoTask.kind == None, VideoTask.kind == "", VideoTask.kind == "normal")
+    tasks = (db.query(VideoTask).filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL,
+                                        VideoTask.teacher_id != None).all())
+    agg = {}
+    for t in tasks:
+        a = agg.setdefault(t.teacher_id, {"assigned": 0, "done": 0, "ontime": 0, "delayed": 0})
+        a["assigned"] += 1
+        if t.submitted_at:
+            a["done"] += 1
+            if t.on_time is True:
+                a["ontime"] += 1
+            elif t.on_time is False:
+                a["delayed"] += 1
+    rows = []
+    for tid, a in agg.items():
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+        nm = ""
+        try:
+            nm = tp.user.name if (tp and tp.user) else ""
+        except Exception:
+            nm = ""
+        den = a["ontime"] + a["delayed"]
+        rate = round(100.0 * a["ontime"] / den) if den else 0
+        rows.append({"name": nm or ("Teacher #%s" % tid), "assigned": a["assigned"],
+                     "done": a["done"], "ontime": a["ontime"], "delayed": a["delayed"], "rate": rate})
+    rows.sort(key=lambda x: (x["rate"], x["done"]), reverse=True)
+    for i, r in enumerate(rows, 1):
+        r["rank"] = i
+    return {"ranking": rows}
+
+
+@router.get("/report.csv")
+def prod_report_csv(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    import csv, io
+    from sqlalchemy import or_ as _or
+    NOT_SPECIAL = _or(VideoTask.kind == None, VideoTask.kind == "", VideoTask.kind == "normal")
+    try:
+        from video_tasks import _teacher_name as _tn
+    except Exception:
+        def _tn(db, tid): return ""
+    tasks = (db.query(VideoTask).filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL)
+             .order_by(VideoTask.created_at.desc()).all())
+    buf = io.StringIO(); w = csv.writer(buf)
+    w.writerow(["ID", "Title", "Creator", "Channel", "Type", "Stage", "Deadline",
+                "Submitted At", "On Time", "Revisions", "YouTube Views", "Created"])
+    for t in tasks:
+        try:
+            cname, _ct = pc.creator_info(db, t)
+        except Exception:
+            cname = _tn(db, t.teacher_id)
+        w.writerow([
+            t.id, t.title or "", cname or "", t.channel_name or "", t.video_type or "",
+            pc.lc_label(t.lifecycle) if hasattr(pc, "lc_label") else (t.lifecycle or ""),
+            t.deadline.strftime("%d %b %Y %H:%M") if t.deadline else "",
+            t.submitted_at.strftime("%d %b %Y %H:%M") if t.submitted_at else "",
+            ("Yes" if t.on_time else ("No" if t.on_time is False else "")),
+            t.revision_count or 0, (t.yt_views if t.yt_views is not None else ""),
+            t.created_at.strftime("%d %b %Y") if t.created_at else "",
+        ])
+    return Response(content=buf.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=production_report.csv"})
