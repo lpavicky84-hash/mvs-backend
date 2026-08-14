@@ -74,6 +74,32 @@ def _instance_static(src, wght=400, tag="reg"):
         return src
 
 
+def _enable_shaping(pdf, font_path):
+    """Turn ON Devanagari text shaping AND verify it works. Correct Hindi in the PDF
+    (conjuncts like क्त, matra reordering like प्रतिष्ठा) requires HarfBuzz shaping via
+    uharfbuzz. If shaping is provably dead we RAISE a clear error rather than silently
+    emitting broken, unreadable Devanagari (spec §39)."""
+    pdf.set_text_shaping(True)          # fpdf2 itself raises here if uharfbuzz is missing
+    broken = False
+    try:
+        import uharfbuzz as hb
+        with open(font_path, "rb") as _f:
+            _blob = hb.Blob(_f.read())
+        _font = hb.Font(hb.Face(_blob))
+        _buf = hb.Buffer()
+        _buf.add_str("\u0915\u094d\u0924")     # क + ् + त  ->  क्त must collapse to < 3 glyphs
+        _buf.guess_segment_properties()
+        hb.shape(_font, _buf)
+        broken = len(_buf.glyph_infos) >= 3
+    except Exception:
+        broken = False                  # can't verify -> trust set_text_shaping, don't block
+    if broken:
+        raise RuntimeError(
+            "Hindi shaping is not working on this server (the क्त conjunct did not form). "
+            "Deploy the FULL exam_pdf.py, keep 'uharfbuzz' + 'fonttools' in requirements.txt, "
+            "and do a clean rebuild.")
+
+
 def _font_path():
     """Regular Devanagari font path. Prefers an explicit static file; otherwise takes
     whatever Noto file exists and freezes a variable one to static at runtime so
@@ -966,7 +992,7 @@ def build_exam_pdf(ex, questions, medium="english"):
     except Exception:
         pass
     pdf.add_page()
-    pdf.set_text_shaping(True)
+    _enable_shaping(pdf, FONT)
     EPW = pdf.epw
     LM = pdf.l_margin
 
@@ -1634,7 +1660,7 @@ def build_dpp_pdf(ex, questions, medium="english", kind="q"):
     except Exception:
         pass
     pdf.add_page()
-    pdf.set_text_shaping(True)
+    _enable_shaping(pdf, FONT)
     EPW = pdf.epw
     LM = pdf.l_margin
 
