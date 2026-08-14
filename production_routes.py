@@ -1089,3 +1089,268 @@ def prod_report_csv(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
         ])
     return Response(content=buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": "attachment; filename=production_report.csv"})
+
+
+# ============================================================ COLLAB (multi-teacher verify)
+# Slice 6: show collaborators and verify each one. This ONLY sets the verification flags
+# (collab_verified) exactly like the admin Task Manager — it does NOT compute or touch any
+# payout/performance numbers (those are derived from these flags elsewhere, untouched).
+try:
+    from video_tasks import (_collab_all_ids as _c_all_ids, _collab_vmap as _c_vmap,
+                             _teacher_name as _c_tname, _hist_add as _c_hist)
+except Exception:   # pragma: no cover
+    def _c_all_ids(t): return [t.teacher_id] if getattr(t, "teacher_id", None) else []
+    def _c_vmap(t):
+        import json
+        try: return json.loads(t.collab_verified) if getattr(t, "collab_verified", "") else {}
+        except Exception: return {}
+    def _c_tname(db, tid): return ""
+    def _c_hist(t, *a, **k): pass
+
+
+@router.get("/tasks/{tid}/collab")
+def prod_task_collab(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    t = _task(db, tid)
+    ids = _c_all_ids(t)
+    if len(ids) <= 1:
+        return {"is_collab": False, "collaborators": []}
+    vmap = _c_vmap(t)
+    cols = [{"id": i, "name": _c_tname(db, i) or ("Teacher #%s" % i),
+             "verified": bool(vmap.get(str(i))), "primary": (i == t.teacher_id)} for i in ids]
+    return {"is_collab": True, "collaborators": cols,
+            "all_verified": all(vmap.get(str(i)) for i in ids)}
+
+
+@router.post("/tasks/{tid}/verify-teacher")
+def prod_verify_teacher(tid: int, payload: dict = Body(...),
+                        db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    t = _task(db, tid)
+    teacher_id = int(payload.get("teacher_id") or 0)
+    verified = payload.get("verified", True)
+    ids = _c_all_ids(t)
+    if teacher_id not in ids:
+        raise HTTPException(400, "This teacher is not part of this task.")
+    import json as _j
+    vmap = _c_vmap(t)
+    if verified:
+        vmap[str(teacher_id)] = True
+    else:
+        vmap.pop(str(teacher_id), None)
+    t.collab_verified = _j.dumps(vmap)     # flags only — payout logic reads these, unchanged
+    all_ok = bool(ids) and all(vmap.get(str(i)) for i in ids)
+    try:
+        _c_hist(t, "verify", "%s %s by production manager" % (
+            _c_tname(db, teacher_id), "verified" if verified else "verification removed"))
+        if all_ok:
+            _c_hist(t, "approved", "All collab teachers verified")
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "all_verified": all_ok,
+            "collaborators": [{"id": i, "name": _c_tname(db, i) or ("Teacher #%s" % i),
+                               "verified": bool(vmap.get(str(i)))} for i in ids]}
+
+
+# ============================================================ VINTAGE (Old / New)
+# Slice 7: mark a video as Old (pre-portal) so it does NOT count toward this month's
+# performance, or New (default). This ONLY sets the is_old flag and busts the board cache
+# exactly like the admin — it does NOT change any performance/payout calculation.
+@router.post("/tasks/{tid}/mark-old")
+def prod_mark_old(tid: int, payload: dict = Body(default={}),
+                  db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    t = _task(db, tid)
+    t.is_old = bool((payload or {}).get("is_old", True))
+    db.commit()
+    try:
+        import perf_engine as _pe
+        _pe.bust_board_cache()
+    except Exception:
+        pass
+    return {"ok": True, "id": t.id, "is_old": bool(t.is_old)}
+
+
+# ============================================================ PROJECT ASSIGN (syllabus)
+# Slice 8: assign a whole subject's worth of videos as a PROJECT — items generated from the
+# syllabus chapters (PE / TMA scope) or a custom list, with a weekly quota and final
+# deadline. Reuses the admin Task Manager's exact helpers (no duplicate logic), so admin and
+# production stay perfectly in sync.
+try:
+    from video_tasks import (_subject_teachers as _p_subject_teachers,
+                             _chapters_for as _p_chapters_for,
+                             _sync_chapters as _p_sync_chapters,
+                             _stable_subject_display as _p_subj_display,
+                             _parse_deadline as _p_parse_dl,
+                             _teacher_profile as _p_teacher_profile,
+                             _teacher_name as _p_teacher_name,
+                             _hist_add as _p_hist, _vt_notify as _p_notify,
+                             _ch_status as _p_ch_status,
+                             WEEK_DAYS as _P_WEEK_DAYS,
+                             CHAPTER_EDIT_STATUSES as _P_CH_STATUSES)
+    from models import VideoTaskChapter as _PVChapter
+    _PROJECT_OK = True
+except Exception:   # pragma: no cover
+    _PROJECT_OK = False
+
+
+@router.get("/subjects")
+def prod_subjects(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    from models import AvailableSubject
+    out = {"10": [], "12": []}
+    for s in db.query(AvailableSubject).filter(AvailableSubject.is_active == True).all():
+        out.get(s.class_level, out.setdefault(s.class_level, [])).append(
+            {"id": s.id, "name": s.name, "code": s.code, "mode": (s.mode or "live")})
+    return out
+
+
+@router.get("/project/subject-teachers")
+def prod_project_subject_teachers(subject: str = "", class_level: str = "",
+                                  db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    if not _PROJECT_OK:
+        return {"teachers": []}
+    return {"teachers": _p_subject_teachers(db, subject, class_level)}
+
+
+@router.get("/project/chapters-preview")
+def prod_project_chapters_preview(subject: str = "", class_level: str = "", scope: str = "",
+                                  teacher_id: int = 0, db: Session = Depends(get_db),
+                                  me=Depends(get_pm_or_admin)):
+    if not _PROJECT_OK:
+        return {"count": 0, "titles": [], "source": "none"}
+    subject = (subject or "").strip()
+    if not subject:
+        return {"count": 0, "titles": [], "source": "none"}
+    if class_level not in ("10", "12"):
+        class_level = ""
+    tp = _p_teacher_profile(db, teacher_id) if teacher_id else None
+    titles, src = _p_chapters_for(db, tp.id if tp else 0, subject, class_level, scope)
+    return {"count": len(titles), "titles": titles[:8], "source": src}
+
+
+@router.post("/project")
+def prod_create_project(payload: dict = Body(...), db: Session = Depends(get_db),
+                        me=Depends(get_pm_or_admin)):
+    if not _PROJECT_OK:
+        raise HTTPException(400, "Project assignment is not available on this server build.")
+    import json as _pj, re as _pre
+    subject = (payload.get("subject") or "").strip()
+    class_level = (payload.get("class_level") or "").strip()
+    if class_level not in ("10", "12"):
+        class_level = ""
+    connect = bool(payload.get("connect"))
+    final_dl = _p_parse_dl(payload.get("deadline"))
+    if not final_dl:
+        raise HTTPException(400, "Final deadline is required")
+    tp = None
+    tid = int(payload.get("teacher_id") or 0)
+    if tid:
+        tp = _p_teacher_profile(db, tid)
+        if not tp:
+            raise HTTPException(404, "Teacher not found")
+    elif subject:
+        matches = _p_subject_teachers(db, subject, class_level)
+        if not matches:
+            raise HTTPException(400, "No active teacher found for this subject — please select one manually.")
+        tp = _p_teacher_profile(db, matches[0]["profile_id"])
+    if not tp:
+        raise HTTPException(400, "Select a teacher, or choose a subject for auto-fetch.")
+    display = _p_subj_display(subject, class_level) if subject else ""
+    title = (payload.get("title") or "").strip() or (("Project — %s" % display) if display else "")
+    if not title:
+        raise HTTPException(400, "A subject or a project title is required")
+    try:
+        weekly_quota = max(0, min(50, int(payload.get("weekly_quota") or 0)))
+    except Exception:
+        weekly_quota = 0
+    weekly_day = (payload.get("weekly_day") or "").strip().lower()
+    if weekly_day and weekly_day not in _P_WEEK_DAYS:
+        raise HTTPException(400, "Invalid weekly day — use monday..sunday")
+    scope = (payload.get("chapter_scope") or "").strip().lower()
+    if scope not in ("pe", "tma"):
+        scope = ""
+    item_source, items = "custom", []
+    if connect and subject:
+        items, _src = _p_chapters_for(db, tp.id, subject, class_level, scope)
+        item_source = "syllabus"
+        if not items:
+            raise HTTPException(400, "No chapters found for this scope in the syllabus manager — "
+                                     "choose a different scope or enter video names manually (Connect: No).")
+    else:
+        seen = set()
+        for it in (payload.get("items") or []):
+            s2 = _pre.sub(r"\s+", " ", str(it or "")).strip()
+            if s2 and s2.lower() not in seen:
+                seen.add(s2.lower()); items.append(s2[:300])
+            if len(items) >= 100:
+                break
+        if not items:
+            raise HTTPException(400, "Add at least one video/item name (or turn on syllabus connect).")
+    t = VideoTask(teacher_id=tp.id, title=title, kind="project", subject=display,
+                  video_type="Project", status="assigned", proposed_by="admin",
+                  proposal_ok="approved", deadline=final_dl,
+                  remarks=(payload.get("remarks") or "").strip(),
+                  reference=(payload.get("reference") or "").strip(),
+                  weekly_quota=weekly_quota, weekly_day=weekly_day, item_source=item_source)
+    db.add(t); db.flush()
+    if items:
+        _p_sync_chapters(db, t, items)
+    try:
+        pc.ensure_ref_code(t)
+    except Exception:
+        pass
+    wk = []
+    if weekly_quota:
+        wk.append("%d videos/week" % weekly_quota)
+    if weekly_day:
+        wk.append("due every %s" % weekly_day.title())
+    try:
+        _p_hist(t, "assigned", "Project assigned — %d video items. Final deadline: %s" % (
+            len(items), final_dl.strftime("%d %b %Y, %I:%M %p")))
+    except Exception:
+        pass
+    if tp.user_id:
+        try:
+            _p_notify(db, tp.user_id, "New Project — %s" % title,
+                      'You have been assigned a new project: "%s" (%d videos). Final deadline: %s.'
+                      % (title, len(items), final_dl.strftime("%d %b %Y, %I:%M %p")))
+        except Exception:
+            pass
+    db.commit()
+    return {"ok": True, "id": t.id, "teacher": _p_teacher_name(db, tp.id), "total": len(items)}
+
+
+@router.get("/tasks/{tid}/chapters")
+def prod_task_chapters(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    if not _PROJECT_OK:
+        return {"chapters": []}
+    t = _task(db, tid)
+    rows = (db.query(_PVChapter).filter(_PVChapter.task_id == t.id)
+            .order_by(_PVChapter.sort.asc(), _PVChapter.id.asc()).all())
+    return {"is_project": (getattr(t, "kind", "") == "project"),
+            "chapters": [{"id": c.id, "title": c.title, "link": (c.link or ""),
+                          "status": _p_ch_status(c)} for c in rows]}
+
+
+@router.post("/chapter-status")
+def prod_chapter_status(payload: dict = Body(...), db: Session = Depends(get_db),
+                        me=Depends(get_pm_or_admin)):
+    if not _PROJECT_OK:
+        raise HTTPException(400, "Not available on this server build.")
+    cid = int(payload.get("chapter_id") or 0)
+    status = (payload.get("status") or "").strip()
+    if status not in _P_CH_STATUSES:
+        raise HTTPException(400, "Invalid status — use editing_soon / editing_done / uploaded")
+    row = db.query(_PVChapter).filter(_PVChapter.id == cid).first()
+    if not row:
+        raise HTTPException(404, "Chapter not found")
+    if not (row.link or "").strip():
+        raise HTTPException(400, "Video link is not submitted yet — status can be set only after that.")
+    t = db.query(VideoTask).filter(VideoTask.id == row.task_id).first()
+    if not t or (getattr(t, "kind", "") or "") not in ("one_shot", "rapid_revision", "project"):
+        raise HTTPException(404, "Project not found")
+    row.edit_status = status
+    try:
+        _p_hist(t, "progress", '"%s" production status set to %s' % (row.title, status))
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "chapter_id": cid, "status": status}

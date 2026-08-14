@@ -18393,6 +18393,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pq-row{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:10px 0;border-top:1px solid rgba(209,68,58,.14);flex-wrap:wrap}',
 '.pq-main{flex:1;min-width:180px}.pq-title{font-weight:700}.pq-meta{font-size:.76rem;color:#8a7d5c;margin-top:3px}',
 '.pq-acts{display:flex;gap:8px;flex-wrap:wrap}',
+'.pd-collab-card{margin:12px 16px 0;border:1px solid #e3d9bf;border-radius:12px;padding:12px 14px;background:rgba(46,158,107,.05)}',
+'body.dark .pd-collab-card{border-color:#3a2f14}',
+'.pd-collab-h{font-weight:800;margin-bottom:8px;display:flex;align-items:center;gap:8px}',
+'.pd-collab-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid rgba(0,0,0,.05)}',
 '.p-filter{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}',
 '.p-chip{padding:7px 13px;border-radius:999px;border:1px solid #d9cba8;background:transparent;color:inherit;cursor:pointer;font-size:.8rem;font-weight:600}',
 'body.dark .p-chip{border-color:#3a2f14}',
@@ -19166,12 +19170,56 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           ((t.creator_type==='youtuber')?'<span class="pt-badge b-youtuber">YouTuber</span>':'<span class="pt-badge b-teacher">Teacher</span>')+'</div></div>'+
           '<button class="pd-x" onclick="prodCloseTask()">&times;</button></div>'+
         '<div class="pd-tabs">'+tabs.map(function(tb){ return '<button class="pd-tab'+(tb==='overview'?' on':'')+'" data-tab="'+tb+'" onclick="prodTab(\''+tb+'\')">'+tabLbl[tb]+'</button>'; }).join('')+'</div>'+
+        '<div id="pd-collab"></div>'+
+        '<div id="pd-chapters"></div>'+
         '<div class="pd-body" id="pd-body">'+_tabHtml(portal,t,'overview')+'</div>'+
         '<div class="pd-foot" id="pd-foot">'+_actions(portal,t)+'</div>'+
         '</div>';
       dr.addEventListener('click',function(e){ if(e.target===dr) prodCloseTask(); });
       document.body.appendChild(dr);
+      if(portal==='production' && t.creator_type!=='youtuber'){ try{ _loadCollab(id); }catch(e){} }
+      if(portal==='production'){ try{ _loadChapters(id); }catch(e){} }
     }).catch(function(e){ toast((e&&e.message)||'Could not open task',true); });
+  };
+  function _loadChapters(id){
+    var box=document.getElementById('pd-chapters'); if(!box) return;
+    api(P.production.api+'/tasks/'+id+'/chapters').then(function(r){
+      if(!r || !r.is_project || !(r.chapters||[]).length){ box.innerHTML=''; return; }
+      var chs=r.chapters||[];
+      var stLbl={editing_soon:'To Edit',editing_done:'Edited',uploaded:'Uploaded','':'Awaiting link'};
+      box.innerHTML='<div class="pd-collab-card"><div class="pd-collab-h">Project Videos ('+chs.length+')</div>'+
+        chs.map(function(ch){
+          var hasLink=!!(ch.link&&ch.link.trim());
+          var ctrl=hasLink
+            ? '<select class="p-select" style="width:auto;padding:5px 8px" onchange="prodChapterStatus('+ch.id+',this.value,'+id+')">'+
+                ['editing_soon','editing_done','uploaded'].map(function(s){ return '<option value="'+s+'"'+((ch.status===s)?' selected':'')+'>'+stLbl[s]+'</option>'; }).join('')+'</select>'
+            : '<span class="pw-chip sub">Awaiting link</span>';
+          return '<div class="pd-collab-row"><div style="flex:1"><b>'+esc(ch.title)+'</b>'+(hasLink?' <a class="pw-vlink" href="'+esc(ch.link)+'" target="_blank" rel="noopener">Open</a>':'')+'</div>'+ctrl+'</div>';
+        }).join('')+'</div>';
+    }).catch(function(){ box.innerHTML=''; });
+  }
+  window.prodChapterStatus=function(chapterId,status,taskId){
+    api(P.production.api+'/chapter-status','POST',{chapter_id:chapterId,status:status})
+      .then(function(){ toast('Status updated'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); _loadChapters(taskId); });
+  };
+  function _loadCollab(id){
+    var box=document.getElementById('pd-collab'); if(!box) return;
+    api(P.production.api+'/tasks/'+id+'/collab').then(function(r){
+      if(!r || !r.is_collab){ box.innerHTML=''; return; }
+      var cols=r.collaborators||[];
+      box.innerHTML='<div class="pd-collab-card"><div class="pd-collab-h">Collaborators'+(r.all_verified?' <span class="pw-chip ed">All verified</span>':'')+'</div>'+
+        cols.map(function(c){
+          return '<div class="pd-collab-row"><div><b>'+esc(c.name)+'</b>'+(c.primary?' <span class="pw-chip sub">Primary</span>':'')+'</div>'+
+            (c.verified
+              ? '<button class="p-btn" onclick="prodVerifyTeacher('+id+','+c.id+',false)">Verified \u2014 undo</button>'
+              : '<button class="p-btn p-btn-ok" onclick="prodVerifyTeacher('+id+','+c.id+',true)">Verify</button>')+'</div>';
+        }).join('')+'</div>';
+    }).catch(function(){ box.innerHTML=''; });
+  }
+  window.prodVerifyTeacher=function(taskId,teacherId,verified){
+    api(P.production.api+'/tasks/'+taskId+'/verify-teacher','POST',{teacher_id:teacherId,verified:verified})
+      .then(function(r){ toast(verified?'Teacher verified':'Verification removed'); _loadCollab(taskId); })
+      .catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
   window.prodCloseTask=function(){ var d=document.getElementById('prod-drawer'); if(d) d.remove(); };
   window.prodDismiss=function(){ ['prod-modal','prod-drawer'].forEach(function(id){ var e=document.getElementById(id); if(e) e.remove(); }); };
@@ -19285,6 +19333,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(lc==='ready_for_youtube') b.push(_ab('Add YouTube URL','prodLinkForm(\'production\','+t.id+',\'/youtube\',\'youtube_url\',\'Published YouTube URL\')','primary'));
       if(t.youtube_url) b.push(_ab('Send to Students','prodNotifyStudents('+t.id+')','ok'));
       if(lc==='uploaded') b.push(_ab('Mark Completed','prodAct(\'production\','+t.id+',\'/complete\')','ok'));
+      b.push(_ab(t.is_old?'Mark as New':'Mark as Old','prodMarkOld('+t.id+','+(t.is_old?'false':'true')+')'));
     }
     if(!b.length) return '';
     return '<div class="p-acts" id="p-acts">'+b.join('')+'</div>';
@@ -19314,8 +19363,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   function _pBusy(on){ var box=document.getElementById('p-acts'); if(!box) return;
     if(on){ box.style.opacity='.5'; box.style.pointerEvents='none'; } else { box.style.opacity=''; box.style.pointerEvents=''; } }
-  window.prodNotifyStudents=function(id){
-    if(!confirm('Send this video link to all students as a notification?')) return;
+  window.prodMarkOld=function(id,isOld){
+    _pBusy(true);
+    api(P.production.api+'/tasks/'+id+'/mark-old','POST',{is_old:!!isOld}).then(function(){ prodDismiss(); toast(isOld?'Marked as Old (won\u2019t count this month)':'Marked as New'); _refresh('production'); })
+      .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
+  };
+  window.prodNotifyStudents=function(id){    if(!confirm('Send this video link to all students as a notification?')) return;
     _pBusy(true);
     api(P.production.api+'/tasks/'+id+'/notify-students','POST',{}).then(function(r){ _pBusy(false); toast('Sent to '+((r&&r.count)||0)+' students'); })
       .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Could not send',true); });
@@ -19493,10 +19546,86 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(aw.step<4){ aw.step++; _awRender(); }
   };
   window.awBack=function(){ _awSave(); if(window._aw.step>1){ window._aw.step--; _awRender(); } };
+  window.prodAwMode=function(m){ if(!window._aw) return; window._aw.mode=m; if(m==='project'&&!window._aw.proj){ window._aw.proj={connect:true,chapter_scope:'pe',class_level:'12'}; } _awRender(); };
+  function _projFetchSubjects(cb){
+    if(window._aw._subjects){ cb(window._aw._subjects); return; }
+    api(P.production.api+'/subjects').then(function(r){ window._aw._subjects=r||{}; cb(window._aw._subjects); }).catch(function(){ cb({}); });
+  }
+  function _awProjectRender(modeTabs){
+    var aw=window._aw, p=aw.proj||(aw.proj={connect:true,chapter_scope:'pe',class_level:'12'});
+    var body=document.getElementById('aw-body'), foot=document.getElementById('aw-foot');
+    _projFetchSubjects(function(subs){
+      var cl=p.class_level||'12'; var list=(subs[cl]||[]);
+      var subOpts='<option value="">Select subject</option>'+list.map(function(s){ return '<option value="'+esc(s.name)+'"'+((p.subject===s.name)?' selected':'')+'>'+esc(s.name)+'</option>'; }).join('');
+      var teachers=aw.people?((aw.people.teachers)||[]):[];
+      var teachOpts='<option value="">Auto from subject</option>'+teachers.map(function(t){ return '<option value="'+t.id+'"'+((p.teacher_id==t.id)?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('');
+      var html=modeTabs+
+        '<div class="p-field"><label>Class</label><select class="p-select" id="pj-class" onchange="prodPjChange()"><option value="12"'+(cl==='12'?' selected':'')+'>Class 12</option><option value="10"'+(cl==='10'?' selected':'')+'>Class 10</option></select></div>'+
+        '<div class="p-field"><label>Subject</label><select class="p-select" id="pj-subject" onchange="prodPjChange()">'+subOpts+'</select></div>'+
+        '<div class="p-field"><label>Teacher</label><select class="p-select" id="pj-teacher" onchange="prodPjChange()">'+teachOpts+'</select></div>'+
+        '<div class="p-field"><label>Project Title (optional)</label><input class="p-input" id="pj-title" placeholder="Auto: Project — Subject" value="'+esc(p.title||'')+'"></div>'+
+        '<div class="p-field"><label>Connect to syllabus chapters?</label><select class="p-select" id="pj-connect" onchange="prodPjChange()"><option value="1"'+(p.connect?' selected':'')+'>Yes — use syllabus chapters</option><option value="0"'+(!p.connect?' selected':'')+'>No — I will type video names</option></select></div>';
+      if(p.connect){
+        html+='<div class="p-field"><label>Syllabus scope</label><select class="p-select" id="pj-scope" onchange="prodPjChange()"><option value="pe"'+(p.chapter_scope==='pe'?' selected':'')+'>PE chapters only (recommended)</option><option value="tma"'+(p.chapter_scope==='tma'?' selected':'')+'>TMA chapters only</option><option value=""'+(!p.chapter_scope?' selected':'')+'>PE + TMA (full)</option></select></div>'+
+          '<div id="pj-chapters" class="p-empty" style="margin-bottom:12px">Pick a subject to preview chapters.</div>';
+      } else {
+        html+='<div class="p-field"><label>Video names (one per line)</label><textarea class="p-area" id="pj-items" placeholder="Chapter 1 - ...\nChapter 2 - ...">'+esc((p.items||[]).join('\n'))+'</textarea></div>';
+      }
+      html+='<div class="p-field"><label>Weekly target (videos/week, 0 = none)</label><input class="p-input" id="pj-quota" type="number" min="0" max="50" value="'+(p.weekly_quota||0)+'"></div>'+
+        '<div class="p-field"><label>Weekly deadline day (optional)</label><select class="p-select" id="pj-day"><option value="">None</option>'+['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].map(function(dd){ return '<option value="'+dd+'"'+((p.weekly_day===dd)?' selected':'')+'>'+dd.charAt(0).toUpperCase()+dd.slice(1)+'</option>'; }).join('')+'</select></div>'+
+        '<div class="p-field"><label>Final deadline</label><input class="p-input" id="pj-deadline" type="datetime-local" value="'+esc(p.deadline||'')+'"></div>'+
+        '<div class="p-field"><label>Remarks for teacher (optional)</label><textarea class="p-area" id="pj-remarks" placeholder="Any instructions...">'+esc(p.remarks||'')+'</textarea></div>';
+      body.innerHTML=html;
+      if(foot) foot.innerHTML='<button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodCreateProject()">Create Project</button>';
+      if(p.connect) prodPjPreview();
+    });
+  }
+  function _pjSave(){
+    var p=window._aw.proj||{}; var g=function(id){ var e=document.getElementById(id); return e?e.value:undefined; };
+    if(g('pj-class')!==undefined)p.class_level=g('pj-class');
+    if(g('pj-subject')!==undefined)p.subject=g('pj-subject');
+    if(g('pj-teacher')!==undefined)p.teacher_id=g('pj-teacher');
+    if(g('pj-title')!==undefined)p.title=g('pj-title');
+    if(g('pj-connect')!==undefined)p.connect=(g('pj-connect')==='1');
+    if(g('pj-scope')!==undefined)p.chapter_scope=g('pj-scope');
+    if(g('pj-items')!==undefined)p.items=(g('pj-items')||'').split('\n').map(function(s){return s.trim();}).filter(Boolean);
+    if(g('pj-quota')!==undefined)p.weekly_quota=parseInt(g('pj-quota')||'0',10)||0;
+    if(g('pj-day')!==undefined)p.weekly_day=g('pj-day');
+    if(g('pj-deadline')!==undefined)p.deadline=g('pj-deadline');
+    if(g('pj-remarks')!==undefined)p.remarks=g('pj-remarks');
+    window._aw.proj=p;
+  }
+  window.prodPjChange=function(){ _pjSave(); _awProjectRender('<div style="display:flex;gap:8px;margin-bottom:14px"><button class="p-btn" type="button" onclick="prodAwMode(\'task\')">Single Video</button><button class="p-btn p-btn-primary" type="button" onclick="prodAwMode(\'project\')">Project (Syllabus)</button></div>'); };
+  window.prodPjPreview=function(){
+    var p=window._aw.proj||{}; var box=document.getElementById('pj-chapters'); if(!box||!p.connect) return;
+    if(!p.subject){ box.innerHTML='Pick a subject to preview chapters.'; return; }
+    box.innerHTML='<div class="p-load">Loading chapters...</div>';
+    api(P.production.api+'/project/chapters-preview?subject='+encodeURIComponent(p.subject)+'&class_level='+(p.class_level||'')+'&scope='+(p.chapter_scope||'')+'&teacher_id='+(p.teacher_id||0)).then(function(r){
+      if(!r.count){ box.innerHTML='<div class="p-empty">No chapters found for this scope. Try a different scope, or switch Connect to No and type names.</div>'; return; }
+      box.innerHTML='<div style="font-weight:700;margin-bottom:6px">'+r.count+' video items will be created:</div>'+(r.titles||[]).map(function(t){ return '<div class="pt-meta" style="padding:2px 0">'+esc(t)+'</div>'; }).join('')+(r.count>(r.titles||[]).length?'<div class="pt-meta">…and '+(r.count-(r.titles||[]).length)+' more</div>':'');
+    }).catch(function(){ box.innerHTML='<div class="p-empty">Could not load chapter preview.</div>'; });
+  };
+  window.prodCreateProject=function(){
+    _pjSave(); var p=window._aw.proj||{};
+    if(!p.subject && !(p.title||'').trim()){ toast('Select a subject or enter a title',true); return; }
+    if(!p.deadline){ toast('Final deadline is required',true); return; }
+    if(!p.connect && !(p.items||[]).length){ toast('Add at least one video name (or turn Connect on)',true); return; }
+    var payload={subject:p.subject||'',class_level:p.class_level||'',teacher_id:parseInt(p.teacher_id||'0',10)||0,
+      title:(p.title||'').trim(),connect:!!p.connect,chapter_scope:p.chapter_scope||'',items:p.items||[],
+      weekly_quota:p.weekly_quota||0,weekly_day:p.weekly_day||'',deadline:p.deadline.replace(' ','T'),remarks:(p.remarks||'').trim()};
+    _pBusy(true);
+    api(P.production.api+'/project','POST',payload).then(function(r){ prodDismiss(); toast('Project created — '+((r&&r.total)||0)+' videos assigned to '+((r&&r.teacher)||'teacher')); _refresh('production'); })
+      .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Could not create project',true); });
+  };
   function _awRender(){
     var aw=window._aw; if(!aw) return; var d=aw.data; var body=document.getElementById('aw-body'), foot=document.getElementById('aw-foot'); if(!body) return;
+    var mode=aw.mode||'task';
+    var modeTabs='<div style="display:flex;gap:8px;margin-bottom:14px">'+
+      '<button class="p-btn'+(mode==='task'?' p-btn-primary':'')+'" type="button" onclick="prodAwMode(\'task\')">Single Video</button>'+
+      '<button class="p-btn'+(mode==='project'?' p-btn-primary':'')+'" type="button" onclick="prodAwMode(\'project\')">Project (Syllabus)</button></div>';
+    if(mode==='project'){ return _awProjectRender(modeTabs); }
     var steps='<div class="aw-steps">'+_AW_STEPS.map(function(lbl,i){ var n=i+1; var cls=n===aw.step?'on':(n<aw.step?'done':''); return '<div class="s '+cls+'">'+n+'. '+lbl+'</div>'; }).join('')+'</div>';
-    var html=steps;
+    var html=modeTabs+steps;
     if(aw.step===1){
       var chList=(aw.channels||[]), tyList=(aw.types||[]);
       var chSel='<select class="p-select" id="aw-channel" style="flex:1"><option value="">Select channel</option>'+chList.map(function(c){ return '<option value="'+esc(c.name)+'"'+((d.channel_name===c.name)?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('')+(d.channel_name&&chList.filter(function(c){return c.name===d.channel_name;}).length===0?'<option value="'+esc(d.channel_name)+'" selected>'+esc(d.channel_name)+'</option>':'')+'</select>';

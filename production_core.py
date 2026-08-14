@@ -292,6 +292,7 @@ def task_out(db, t, g=None, timeline=False, light=False):
         "channel_name": t.channel_name or "",
         "streaming": t.streaming or "",
         "priority": t.priority or "normal",
+        "is_old": bool(getattr(t, "is_old", False)),
         "lifecycle": t.lifecycle or "",
         "lifecycle_label": lc_label(t.lifecycle),
         "legacy_status": t.status or "",
