@@ -1454,7 +1454,7 @@ def pm_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_
             t.deadline = datetime.fromisoformat(dl.replace("Z", ""))
         except Exception:
             pass
-    for f in ("subject", "video_type", "channel_name", "reference", "remarks", "streaming"):
+    for f in ("subject", "video_type", "channel_name", "reference", "remarks", "streaming", "thumbnail_link"):
         if f in payload:
             setattr(t, f, (payload.get(f) or "").strip())
     try:

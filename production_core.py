@@ -317,6 +317,8 @@ def task_out(db, t, g=None, timeline=False, light=False):
         "reference": t.reference or "",
         "submitted_link": t.submitted_link or "",
         "created_at": _dt(t.created_at),
+        # card thumbnail: graphics-made thumbnail first, else the one uploaded at assign time
+        "thumbnail": ((g.thumbnail_url if g else "") or getattr(t, "thumbnail_b64", "") or (t.thumbnail_link or "")),
         "graphics": {
             "id": (g.id if g else None),
             "graphics_id": (g.graphics_id if g else None),
@@ -330,6 +332,9 @@ def task_out(db, t, g=None, timeline=False, light=False):
     }
     if not light:
         out["thumbnail_link"] = t.thumbnail_link or ""
+        out["deadline_iso"] = (t.deadline.strftime("%Y-%m-%dT%H:%M") if t.deadline else "")
+        out["reference"] = t.reference or ""
+        out["remarks"] = t.remarks or ""
     if timeline:
         out["timeline"] = timeline_out(db, t)
         out["attachments"] = attachments_out(db, t)

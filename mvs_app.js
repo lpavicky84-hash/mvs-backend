@@ -18493,7 +18493,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 'body.dark .ptc-btn{border-color:#3a2f14}',
 '.ptc-btn:hover{background:rgba(230,173,78,.12)}',
 '.ptc-del{color:#d1443a;border-color:rgba(209,68,58,.35)}',
+'.ptc-ok{color:#1f8a54;border-color:rgba(46,158,107,.4);font-weight:800}',
+'.ptc-ok:hover{background:rgba(46,158,107,.12)}',
 '.pw-chip.pwlive{background:rgba(209,68,58,.14);color:#d1443a}',
+'.p-modal-wrap{display:flex;align-items:center;justify-content:center;padding:20px}',
+'.p-modal{background:var(--card,#fffdf7);border-radius:18px;width:100%;max-width:560px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3)}',
+'body.dark .p-modal{background:#211a0d}',
+'.p-modal-body{padding:18px 22px;overflow-y:auto;flex:1}',
 '.p-filter{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}',
 '.p-chip{padding:7px 13px;border-radius:999px;border:1px solid #d9cba8;background:transparent;color:inherit;cursor:pointer;font-size:.8rem;font-weight:600}',
 'body.dark .p-chip{border-color:#3a2f14}',
@@ -19044,7 +19050,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   var _PTC_HCOL=['#1e4d6b','#1f5c3a','#6b2f4d','#5a4a1e','#3a3a6b','#6b3a1e','#1e6b5a','#5a1e4d'];
   function _prodTaskCard(portal,t){
     var g=t.graphics||{}; var lc=t.lifecycle||'';
-    var thumb=(g.thumbnail_url||t.thumbnail_link||''); if(!thumb && t.youtube_url){ var yi=_ytId(t.youtube_url); if(yi) thumb='https://img.youtube.com/vi/'+yi+'/hqdefault.jpg'; }
+    var thumb=(t.thumbnail||g.thumbnail_url||t.thumbnail_link||''); if(!thumb && t.youtube_url){ var yi=_ytId(t.youtube_url); if(yi) thumb='https://img.youtube.com/vi/'+yi+'/hqdefault.jpg'; }
     var st=_PTC_ST[lc]||[(t.lifecycle_label||'').toUpperCase(),'#8a7d5c'];
     var letter=((t.title||'?').trim().charAt(0)||'?').toUpperCase();
     var hcol=_PTC_HCOL[(t.id||0)%_PTC_HCOL.length];
@@ -19065,6 +19071,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if((t.revision_count||0)>0) meta.push('Revision '+t.revision_count);
     if(t.yt_views!=null && t.youtube_url) meta.push('Live views: '+_num(t.yt_views));
     var acts='';
+    if(lc==='creator_submitted'||lc==='pm_review'){
+      acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\''+portal+'\','+t.id+',\'/approve-creator\')">Approve</button>';
+      acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'changes\','+t.id+')">Changes</button>';
+    }
+    if((lc==='approved'||lc==='editor_assigned'||lc==='editing'||lc==='editing_paused'||lc==='editing_done'||lc==='qc_pending'||lc==='qc_changes'||lc==='ready_for_youtube') && !t.editor_id)
+      acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'assign-editor\','+t.id+')">Assign Editor</button>';
+    if((lc==='approved'||lc==='editor_assigned'||lc==='editing') && !g.graphics_id)
+      acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'assign-graphics\','+t.id+')">Assign Graphics</button>';
+    if(lc==='qc_pending') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\''+portal+'\','+t.id+',\'/qc-approve\')">QC Approve</button>';
+    if(lc==='ready_for_youtube') acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'post-yt\','+t.id+')">Post YT Link</button>';
     if(t.youtube_url||t.submitted_link||t.edited_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+esc(t.youtube_url||t.submitted_link||t.edited_link)+'\',\'_blank\')">Open Video</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodOpenTask(\''+portal+'\','+t.id+')">Timeline</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodEditTask('+t.id+')">Edit</button>';
@@ -19216,13 +19232,45 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }).catch(function(){ box.innerHTML='<div style="color:#fff;opacity:.8;padding:8px">Could not load chapters.</div>'; });
   };
   window.prodEditTask=function(id){
-    api(P.production.api+'/tasks/'+id).then(function(t){
-      var cur=(t&&t.title)||'';
-      var nt=prompt('Edit title:', cur); if(nt===null) return; nt=(nt||'').trim(); if(!nt){ toast('Title cannot be empty',true); return; }
-      var dl=prompt('Edit deadline (YYYY-MM-DD HH:MM) \u2014 leave blank to keep:','');
-      var body={title:nt}; if(dl&&dl.trim()) body.deadline=dl.trim().replace(' ','T');
-      api(P.production.api+'/tasks/'+id+'/edit','POST',body).then(function(){ toast('Saved'); _refresh('production'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
-    }).catch(function(){ toast('Could not load task',true); });
+    Promise.all([
+      api(P.production.api+'/tasks/'+id),
+      api(P.production.api+'/channels').catch(function(){return {channels:[]};}),
+      api(P.production.api+'/video-types').catch(function(){return {types:[]};})
+    ]).then(function(res){
+      var t=res[0]||{}, channels=(res[1].channels)||[], types=(res[2].types)||[];
+      window._prodEdit={id:id};
+      var chOpts='<option value="">Select channel</option>'+channels.map(function(c){ return '<option value="'+esc(c.name)+'"'+((t.channel_name===c.name)?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('')+((t.channel_name&&channels.filter(function(c){return c.name===t.channel_name;}).length===0)?'<option value="'+esc(t.channel_name)+'" selected>'+esc(t.channel_name)+'</option>':'');
+      var tyOpts='<option value="">Select type</option>'+types.map(function(c){ return '<option value="'+esc(c.name)+'"'+((t.video_type===c.name)?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('')+((t.video_type&&types.filter(function(c){return c.name===t.video_type;}).length===0)?'<option value="'+esc(t.video_type)+'" selected>'+esc(t.video_type)+'</option>':'');
+      var stOpts=['','Recorded','Live'].map(function(o){ return '<option value="'+esc(o)+'"'+((t.streaming===o)?' selected':'')+'>'+(o||'Select')+'</option>'; }).join('');
+      var old=document.getElementById('prod-modal'); if(old) old.remove();
+      var dr=document.createElement('div'); dr.className='p-drawer p-modal-wrap'; dr.id='prod-modal';
+      dr.innerHTML='<div class="p-modal">'+
+        '<div class="pd-head"><div class="h-title">Edit Task \u2014 '+esc(t.title||'')+'</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+        '<div class="p-modal-body">'+
+          '<div class="p-field"><label>Video Title</label><input class="p-input" id="pe-title" value="'+esc(t.title||'')+'"></div>'+
+          '<div class="p-field"><label>Deadline</label><input class="p-input" id="pe-deadline" type="datetime-local" value="'+esc(t.deadline_iso||'')+'"></div>'+
+          '<div class="p-field"><label>YouTube Channel</label><select class="p-select" id="pe-channel">'+chOpts+'</select></div>'+
+          '<div class="p-field"><label>Streaming</label><select class="p-select" id="pe-stream">'+stOpts+'</select></div>'+
+          '<div class="p-field"><label>Video Type</label><select class="p-select" id="pe-vtype">'+tyOpts+'</select></div>'+
+          '<div class="p-field"><label>Thumbnail link (paste a Drive/image URL to change)</label><input class="p-input" id="pe-thumb" placeholder="https://drive.google.com/... (leave blank to keep current)" value="'+esc(t.thumbnail_link||'')+'"></div>'+
+          '<div class="p-field"><label>Reference / Brief</label><textarea class="p-area" id="pe-reference">'+esc(t.reference||'')+'</textarea></div>'+
+          '<div class="p-field"><label>Remarks for Teacher</label><textarea class="p-area" id="pe-remarks">'+esc(t.remarks||'')+'</textarea></div>'+
+        '</div>'+
+        '<div class="pd-foot"><div class="p-acts" id="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodEditSave('+id+')">Save Changes</button></div></div>'+
+        '</div>';
+      dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+      document.body.appendChild(dr);
+    }).catch(function(e){ toast((e&&e.message)||'Could not open task',true); });
+  };
+  window.prodEditSave=function(id){
+    var g=function(x){ var e=document.getElementById(x); return e?e.value:''; };
+    var title=(g('pe-title')||'').trim(); if(!title){ toast('Title cannot be empty',true); return; }
+    var body={title:title, channel_name:g('pe-channel'), streaming:g('pe-stream'), video_type:g('pe-vtype'),
+      thumbnail_link:(g('pe-thumb')||'').trim(), reference:(g('pe-reference')||'').trim(), remarks:(g('pe-remarks')||'').trim()};
+    var dl=(g('pe-deadline')||'').trim(); if(dl) body.deadline=dl;
+    _pBusy(true);
+    api(P.production.api+'/tasks/'+id+'/edit','POST',body).then(function(){ prodDismiss(); toast('Changes saved'); _refresh('production'); })
+      .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Could not save',true); });
   };
   window.prodDeleteTask=function(id){
     if(!confirm('Delete this? It will be removed from all lists (reversible by admin).')) return;
@@ -19434,6 +19482,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       document.body.appendChild(dr);
       if(portal==='production' && t.creator_type!=='youtuber'){ try{ _loadCollab(id); }catch(e){} }
       if(portal==='production'){ try{ _loadChapters(id); }catch(e){} }
+      if(portal==='production'){ try{ _prodRunPendingForm(); }catch(e){} }
     }).catch(function(e){ toast((e&&e.message)||'Could not open task',true); });
   };
   function _loadChapters(id){
@@ -19619,8 +19668,17 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   function _pBusy(on){ var box=document.getElementById('p-acts'); if(!box) return;
     if(on){ box.style.opacity='.5'; box.style.pointerEvents='none'; } else { box.style.opacity=''; box.style.pointerEvents=''; } }
-  window.prodMarkOld=function(id,isOld){
-    _pBusy(true);
+  window.prodCardForm=function(kind,id){ window._prodPendingForm={kind:kind,id:id}; prodOpenTask('production',id); };
+  function _prodRunPendingForm(){
+    var pf=window._prodPendingForm; if(!pf) return; window._prodPendingForm=null;
+    setTimeout(function(){
+      if(pf.kind==='assign-editor') prodAssignForm(pf.id,'editor');
+      else if(pf.kind==='assign-graphics') prodAssignForm(pf.id,'graphics');
+      else if(pf.kind==='changes') prodRemarkForm('production',pf.id,'/request-creator-changes');
+      else if(pf.kind==='post-yt') prodLinkForm('production',pf.id,'/youtube','youtube_url','Published YouTube URL');
+    },140);
+  }
+  window.prodMarkOld=function(id,isOld){    _pBusy(true);
     api(P.production.api+'/tasks/'+id+'/mark-old','POST',{is_old:!!isOld}).then(function(){ prodDismiss(); toast(isOld?'Marked as Old (won\u2019t count this month)':'Marked as New'); _refresh('production'); })
       .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
   };
