@@ -461,6 +461,9 @@ def _clean(text, fx=True):
     t = t.replace("\\\\", "\n").replace("$", "")
     t = re.sub(r"\\[,;:! ]", " ", t)
     t = re.sub(r"[ \t]{2,}", " ", t)
+    # atomic ordinal safety: keep "12वीं" together (old content may store "12 वीं",
+    # which would break across a line in the PDF). Only joins genuine ordinal suffixes.
+    t = re.sub(r"(\d)[ \t\u00A0]+(?=(?:वीं|वाँ|वां|वें|वीँ))", r"\1", t)
     return (_fx(t) if fx else t).strip()
 
 
@@ -842,6 +845,31 @@ def _draw_best_of_luck(pdf, LM, EPW, is_hi, teacher_name):
     pdf.set_line_width(0.3)
 
 
+def validate_pdf(data, want_devanagari=False):
+    """Lightweight post-generation sanity check (spec §6/§39). Returns (ok, issues).
+    Never raises. Confirms the bytes are a real, non-empty PDF with at least one page,
+    and (optionally) that Devanagari text made it into the file."""
+    issues = []
+    try:
+        if not data or len(data) < 800:
+            return False, ["empty or truncated PDF"]
+        head = bytes(data[:5])
+        if head[:4] != b"%PDF":
+            issues.append("missing %PDF header")
+        if b"%%EOF" not in bytes(data[-1024:]):
+            issues.append("missing %%EOF trailer")
+        blob = bytes(data)
+        if b"/Type /Page" not in blob and b"/Type/Page" not in blob:
+            issues.append("no page objects found")
+        if want_devanagari:
+            # a correctly embedded/shaped Devanagari PDF embeds the Noto font subset
+            if b"Noto" not in blob and b"Devanagari" not in blob:
+                issues.append("Devanagari font not embedded")
+    except Exception as e:
+        return False, ["validation error: %s" % e]
+    return (len(issues) == 0), issues
+
+
 def build_exam_pdf(ex, questions, medium="english"):
     from fpdf import FPDF
     is_hi = (medium == "hindi")
@@ -1032,7 +1060,11 @@ def build_exam_pdf(ex, questions, medium="english"):
     except Exception:
         pass
 
-    return bytes(pdf.output())
+    _out = bytes(pdf.output())
+    _ok, _iss = validate_pdf(_out, want_devanagari=(medium in ("hindi", "both")))
+    if not _ok:
+        raise RuntimeError("PDF validation failed: " + "; ".join(_iss))
+    return _out
 
 
 def _split_frac(raw, fx=True):
@@ -1487,7 +1519,7 @@ def build_dpp_pdf(ex, questions, medium="english", kind="q"):
         "questions":("प्रश्न" if is_hi else "QUESTIONS"),
         "marks":   ("अंक" if is_hi else "MARKS"),
         "max":     ("पूर्णांक" if is_hi else "MAX MARKS"),
-        "model":   ("मॉडल उत्तर" if is_hi else "MODEL ANSWER"),
+        "model":   ("\u0909\u0924\u094d\u0924\u0930" if is_hi else ("\u0909\u0924\u094d\u0924\u0930 / ANSWER" if is_both else "ANSWER")),
         "gi":      ("सामान्य निर्देश" if is_hi else "GENERAL INSTRUCTIONS"),
         "setby":   ("SET BY"),
         "faculty": ("Faculty"),
@@ -1817,4 +1849,8 @@ def build_dpp_pdf(ex, questions, medium="english", kind="q"):
         pdf.line(LM, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
         pdf.ln(4.5)
 
-    return bytes(pdf.output())
+    _out = bytes(pdf.output())
+    _ok, _iss = validate_pdf(_out, want_devanagari=(medium in ("hindi", "both")))
+    if not _ok:
+        raise RuntimeError("PDF validation failed: " + "; ".join(_iss))
+    return _out
