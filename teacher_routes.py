@@ -10,6 +10,29 @@ from typing import List, Optional
 from database import get_db
 from security import get_teacher, get_current_user
 import grading
+import re as _hi_re
+
+
+def _fix_hi_ordinals(s):
+    """Join a number to a following Hindi ordinal suffix so options like
+    '12th century' -> '12वीं शताब्दी' don't split ('12 वीं शताब्दी') on render."""
+    if not s or not isinstance(s, str):
+        return s
+    return _hi_re.sub(r'(\d)[ \t\u00A0]+(?=(?:वीं|वाँ|वां|वें|वीँ))', r'\1', s)
+
+
+def _fix_tr(tr):
+    """Normalise a translation result dict in place (question / answer / options)."""
+    if not isinstance(tr, dict):
+        return tr
+    if tr.get("question"):
+        tr["question"] = _fix_hi_ordinals(tr["question"])
+    if tr.get("answer"):
+        tr["answer"] = _fix_hi_ordinals(tr["answer"])
+    if isinstance(tr.get("options"), list):
+        tr["options"] = [_fix_hi_ordinals(o) for o in tr["options"]]
+    return tr
+
 from models import (
     User, TeacherProfile, ClassEntry, ClassStatus,
     RescheduleRequest, RescheduleStatus, DPP, Test, Doubt,
@@ -1653,6 +1676,7 @@ def _dpp_build_pdf(db, pk, kind="q", med=None):
                 tr = None
             if not tr:
                 continue
+            tr = _fix_tr(tr)
             if _need_q and tr.get("question"):
                 q["q_hi"] = tr["question"]; _changed = True
             if _need_m and tr.get("answer"):
@@ -2774,6 +2798,7 @@ def _ensure_exam_hindi(db, ex, qs):
             tr = None
         if not tr:
             continue
+        tr = _fix_tr(tr)
         if need_q and tr.get("question"):
             q.question_text_hi = tr["question"]; changed = True
         if need_a and tr.get("answer"):
@@ -2836,7 +2861,7 @@ def _bg_translate_exam(exam_id):
             except Exception:
                 tr = None
             if tr:
-                out.append((t, tr))
+                out.append((t, _fix_tr(tr)))
     if not out:
         return
     # Phase 3: results wapas likho (chhoti connection).

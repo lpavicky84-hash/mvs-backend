@@ -5098,6 +5098,10 @@ function _fmtRichCore(t){
   s=s.replace(/[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g,' ')
      .replace(/[\u200B\u200C\u200D\uFEFF]/g,'')
      .replace(/[\u2028\u2029\u0085]/g,'\n');
+  // Hindi ordinal join: options like "12th century" translate to "12वीं शताब्दी" but a stray
+  // space ("12 वीं शताब्दी") makes the number break onto its own line. Remove the space between
+  // a number and a Hindi ordinal suffix so "12वीं" stays together on one line.
+  s=s.replace(/(\d)[ \t\u00A0]+(?=(?:वीं|वाँ|वां|वें|वीँ))/g,'$1');
   s=_mathHeal(s);  // v116: render-time repair (purana content bhi auto-theek)
   // ---- 1) math stash (placeholders) — escape se PEHLE ----
   const M=[];
@@ -7340,6 +7344,7 @@ function openAdmin(){
   try{ initAdminDppTracker(); }catch(e){}
   try{ initAdminProdTeam(); }catch(e){}
   try{ initAdminProdMonitor(); }catch(e){}
+  try{ initAdminTranslation(); }catch(e){}
   try{ initNavCollapse(); }catch(e){}
   try{ initNavAccordion(); }catch(e){}   // ek fail ho to bhi accordion chale (sections band)
   [400,1200].forEach(function(d){ setTimeout(function(){ try{ document.querySelectorAll('.app .sidebar-nav').forEach(function(nav){ if(typeof _accGroupClose==='function') _accGroupClose(nav,false); }); }catch(e){} }, d); });
@@ -7454,7 +7459,7 @@ function aPage(page,el){
   }
   if(!el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) el=n; }); }
   if(el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodmon:'Production Overview'};
+  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodmon:'Production Overview',translation:'Translation Center'};
   _setPage(titles[page]||page);
   document.getElementById('a-title').textContent=titles[page]||page;
   _curLoader=function(){ _aLoadPage(page); };
@@ -7465,6 +7470,7 @@ function _aLoadPage(page){
   else if(page==='dpptracker') loadADppTracker();
   else if(page==='prodteam') loadAProductionTeam();
   else if(page==='prodmon') loadAProdMonitor();
+  else if(page==='translation') loadATranslation();
   else if(page==='vtasks') loadAVTasks();
   else if(page==='urgent') loadAUrgent();
   else if(page==='approvals') loadAApprovals();
@@ -19639,3 +19645,204 @@ function loadAProdMonitor(){
     el.innerHTML=html;
   }).catch(function(e){ el.innerHTML='<div style="padding:24px;color:#c1443a">Could not load production overview. '+_ape(e&&e.message||'')+'</div>'; });
 }
+
+/* =====================================================================
+ * ADMIN — Translation Center (subject-aware Hindi quality system)
+ * Overview / Glossary / Review Queue / Scan & Migrate / Settings.
+ * Nav injected under SETTINGS. All data from real backend.
+ * ===================================================================== */
+function initAdminTranslation(){
+  var app=document.getElementById('admin-app'); if(!app) return;
+  if(!document.getElementById('atr-css')){
+    var st=document.createElement('style'); st.id='atr-css';
+    st.textContent=[
+      '#a-page-translation .atr-tabs{display:flex;gap:2px;border-bottom:1px solid var(--border,#e5ddcb);margin:4px 0 16px;overflow-x:auto}',
+      '#a-page-translation .atr-tab{padding:11px 15px;font-size:.86rem;font-weight:700;color:#8a7d5c;cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;white-space:nowrap}',
+      '#a-page-translation .atr-tab.on{color:#a9791f;border-bottom-color:#e6ad4e}',
+      '#a-page-translation .atr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:16px}',
+      '#a-page-translation .atr-card{border:1px solid var(--border,#e5ddcb);border-radius:14px;padding:15px;background:var(--card,#fff)}',
+      'body.dark #a-page-translation .atr-card{background:#1b1508;border-color:#2c2410}',
+      '#a-page-translation .atr-val{font-size:1.7rem;font-weight:800;line-height:1}',
+      '#a-page-translation .atr-lbl{font-size:.72rem;color:#8a7d5c;margin-top:6px;font-weight:600}',
+      '#a-page-translation .atr-row{border:1px solid var(--border,#e5ddcb);border-radius:12px;padding:12px 14px;margin-bottom:10px}',
+      'body.dark #a-page-translation .atr-row{border-color:#2c2410}',
+      '#a-page-translation .atr-en{font-weight:600;font-size:.9rem}',
+      '#a-page-translation .atr-hi{font-size:.92rem;margin-top:4px}',
+      '#a-page-translation .atr-iss{font-size:.76rem;color:#c1443a;margin-top:5px}',
+      '#a-page-translation .atr-conf{display:inline-block;font-size:.72rem;font-weight:800;padding:3px 9px;border-radius:999px}',
+      '#a-page-translation .atr-conf.hi{background:rgba(46,158,107,.14);color:#2e9e6b}',
+      '#a-page-translation .atr-conf.mid{background:rgba(224,165,74,.18);color:#a9791f}',
+      '#a-page-translation .atr-conf.lo{background:rgba(209,68,58,.14);color:#d1443a}',
+      '#a-page-translation .atr-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}',
+      '#a-page-translation .atr-form{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;align-items:end;border:1px solid var(--border,#e5ddcb);border-radius:12px;padding:14px;margin-bottom:16px}',
+      'body.dark #a-page-translation .atr-form{border-color:#2c2410}',
+      '#a-page-translation .atr-lock{font-size:.68rem;font-weight:800;padding:2px 8px;border-radius:999px;background:rgba(230,173,78,.16);color:#a9791f;margin-left:6px}',
+      '#a-page-translation .atr-set{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--border,#e5ddcb);border-radius:11px;padding:12px 14px;margin-bottom:10px}',
+      'body.dark #a-page-translation .atr-set{border-color:#2c2410}'
+    ].join('');
+    document.head.appendChild(st);
+  }
+  var nav=app.querySelector('.sidebar-nav');
+  if(nav && !nav.querySelector('[onclick*="translation"]')){
+    var items=[].slice.call(nav.querySelectorAll('.nav-item'));
+    var anchor=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'admins'")>=0;})[0]
+             ||items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'settings'")>=0;})[0];
+    var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"aPage('translation',this)");
+    d.innerHTML=(typeof ic==='function'?ic('grid'):'')+'<span>Translation Center</span>';
+    if(anchor){ anchor.parentNode.insertBefore(d, anchor.nextSibling); } else { nav.appendChild(d); }
+  }
+  var main=app.querySelector('.main');
+  if(main && !document.getElementById('a-page-translation')){
+    var pg=document.createElement('div'); pg.className='page'; pg.id='a-page-translation';
+    pg.innerHTML='<div id="a-tr-content"><div class="spinner"></div></div>';
+    main.appendChild(pg);
+  }
+}
+
+function loadATranslation(){
+  if(!window._atrTab) window._atrTab='overview';
+  _atrRender();
+}
+window.atTab=function(t){ window._atrTab=t; _atrRender(); };
+
+function _atrRender(){
+  var el=document.getElementById('a-tr-content'); if(!el) return;
+  var tab=window._atrTab||'overview';
+  var tabs=[['overview','Overview'],['glossary','Glossary'],['reviews','Review Queue'],['scan','Scan & Migrate'],['history','History'],['settings','Settings']];
+  var head='<div class="atr-tabs">'+tabs.map(function(t){ return '<button class="atr-tab'+(tab===t[0]?' on':'')+'" onclick="atTab(\''+t[0]+'\')">'+t[1]+'</button>'; }).join('')+'</div>';
+  el.innerHTML=head+'<div id="a-tr-body"><div class="spinner"></div></div>';
+  if(tab==='overview') _atrOverview();
+  else if(tab==='glossary') _atrGlossary();
+  else if(tab==='reviews') _atrReviews();
+  else if(tab==='scan') _atrScan();
+  else if(tab==='history') _atrHistory();
+  else if(tab==='settings') _atrSettings();
+}
+
+function _atrBody(){ return document.getElementById('a-tr-body'); }
+function _atrConfCls(c){ return c>=85?'hi':(c>=55?'mid':'lo'); }
+function _ape2(s){ return (typeof _ape==='function')?_ape(s):String(s==null?'':s); }
+
+function _atrOverview(){
+  api('/api/admin/translation/overview').then(function(o){
+    var b=_atrBody(); if(!b) return;
+    var cards=[['Total Questions',o.total_questions],['Translated',o.translated_questions],['Pending Reviews',o.pending_reviews],['Fixed',o.fixed_reviews],['Glossary Terms',o.glossary_terms],['Locked Terms',o.locked_terms]];
+    b.innerHTML='<div class="atr-grid">'+cards.map(function(c){ return '<div class="atr-card"><div class="atr-val">'+(c[1]==null?0:c[1])+'</div><div class="atr-lbl">'+c[0]+'</div></div>'; }).join('')+'</div>'+
+      '<p style="color:#8a7d5c;font-size:.86rem;line-height:1.6">This system translates exam content into subject-aware, exam-safe Hindi. Numbers, formulas and scientific names are protected; approved glossary terms are enforced; low-confidence translations are flagged for review. Use <b>Scan &amp; Migrate</b> to bring existing content onto the quality system.</p>';
+  }).catch(function(e){ var b=_atrBody(); if(b)b.innerHTML='<div style="color:#c1443a;padding:16px">Could not load. '+_ape2(e&&e.message||'')+'</div>'; });
+}
+
+function _atrGlossary(){
+  var b=_atrBody(); if(!b) return;
+  api('/api/admin/glossary').then(function(r){
+    var terms=r.terms||[];
+    var form='<div class="atr-form">'+
+      '<div class="form-group"><label>Subject</label><input class="form-control" id="atg-subject" placeholder="e.g. Physics (blank = all)"></div>'+
+      '<div class="form-group"><label>Chapter</label><input class="form-control" id="atg-chapter" placeholder="optional"></div>'+
+      '<div class="form-group"><label>English Term</label><input class="form-control" id="atg-en" placeholder="e.g. Current"></div>'+
+      '<div class="form-group"><label>Preferred Hindi</label><input class="form-control" id="atg-hi" placeholder="e.g. विद्युत धारा"></div>'+
+      '<div class="form-group"><label><input type="checkbox" id="atg-lock"> Locked (enforce)</label></div>'+
+      '<div class="form-group"><label><input type="checkbox" id="atg-dnt"> Keep English</label></div>'+
+      '<button class="btn btn-primary" onclick="atGlossAdd()">Add Term</button></div>';
+    var list=terms.length?terms.map(function(t){
+      return '<div class="atr-row"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px">'+
+        '<div><span class="atr-en">'+_ape2(t.english_term)+'</span> &rarr; <b>'+(t.do_not_translate?'<i>keep English</i>':_ape2(t.preferred_hindi))+'</b>'+(t.locked?'<span class="atr-lock">LOCKED</span>':'')+
+        '<div style="font-size:.74rem;color:#8a7d5c;margin-top:3px">'+_ape2(t.subject||'all subjects')+(t.chapter?' / '+_ape2(t.chapter):'')+'</div></div>'+
+        '<div style="display:flex;gap:8px;flex-shrink:0">'+
+          '<button class="btn btn-sm" onclick="atGlossLock('+t.id+','+(t.locked?'false':'true')+')">'+(t.locked?'Unlock':'Lock')+'</button>'+
+          '<button class="btn btn-sm btn-danger" onclick="atGlossDel('+t.id+')">Delete</button>'+
+        '</div></div></div>';
+    }).join(''):'<div style="color:#9c8f6e;padding:14px">No glossary terms yet. Add the subject terms your papers use most.</div>';
+    b.innerHTML=form+'<div style="font-weight:800;margin:6px 0 10px">Terms ('+terms.length+')</div>'+list;
+  }).catch(function(e){ b.innerHTML='<div style="color:#c1443a;padding:16px">Could not load glossary.</div>'; });
+}
+window.atGlossAdd=function(){
+  var g=function(id){var e=document.getElementById(id);return e?e.value.trim():'';};
+  var en=g('atg-en'); if(!en){ toast('English term required',true); return; }
+  api('/api/admin/glossary','POST',{subject:g('atg-subject'),chapter:g('atg-chapter'),english_term:en,preferred_hindi:g('atg-hi'),
+    locked:document.getElementById('atg-lock').checked,do_not_translate:document.getElementById('atg-dnt').checked})
+    .then(function(){ toast('Term added'); _atrGlossary(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+};
+window.atGlossLock=function(id,val){ api('/api/admin/glossary/'+id,'PATCH',{locked:val}).then(function(){ _atrGlossary(); }); };
+window.atGlossDel=function(id){ api('/api/admin/glossary/'+id,'DELETE').then(function(){ toast('Deleted'); _atrGlossary(); }); };
+
+function _atrReviews(){
+  var b=_atrBody(); if(!b) return;
+  api('/api/admin/translation/reviews').then(function(r){
+    var rv=r.reviews||[];
+    if(!rv.length){ b.innerHTML='<div style="color:#9c8f6e;padding:20px">No translations need review. All clear.</div>'; return; }
+    b.innerHTML=rv.map(function(x){
+      var cc=_atrConfCls(x.confidence);
+      return '<div class="atr-row"><div style="display:flex;justify-content:space-between;gap:10px"><div style="font-size:.74rem;color:#8a7d5c">'+_ape2(x.subject||'')+(x.chapter?' / '+_ape2(x.chapter):'')+' \u00b7 '+_ape2(x.question_ref)+'</div><span class="atr-conf '+cc+'">'+x.confidence+'%</span></div>'+
+        '<div class="atr-en">EN: '+_ape2(x.english_text)+'</div>'+
+        '<div class="atr-hi">HI: '+_ape2(x.current_hindi||'(none)')+'</div>'+
+        (x.issues&&x.issues.length?'<div class="atr-iss">Issues: '+_ape2(x.issues.join('; '))+'</div>':'')+
+        '<div class="atr-actions">'+
+          (x.content_type==='exam'?'<button class="btn btn-sm btn-primary" onclick="atRetranslate('+x.content_id+','+x.id+')">Re-translate</button>':'')+
+          '<button class="btn btn-sm" onclick="atReviewEdit('+x.id+')">Edit &amp; Apply</button>'+
+          '<button class="btn btn-sm" onclick="atReviewReject('+x.id+')">Keep Existing</button>'+
+        '</div></div>';
+    }).join('');
+  }).catch(function(e){ b.innerHTML='<div style="color:#c1443a;padding:16px">Could not load reviews.</div>'; });
+}
+window.atRetranslate=function(qid,rid){ toast('Re-translating\u2026'); api('/api/admin/translation/retranslate/'+qid,'POST',{}).then(function(r){ toast('Re-translated (confidence '+(r.confidence!=null?r.confidence+'%':'n/a')+')'); _atrReviews(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
+window.atReviewReject=function(rid){ api('/api/admin/translation/reviews/'+rid+'/resolve','POST',{action:'reject'}).then(function(){ toast('Kept existing'); _atrReviews(); }); };
+window.atReviewEdit=function(rid){
+  var hi=prompt('Enter the corrected Hindi translation:'); if(hi==null) return;
+  api('/api/admin/translation/reviews/'+rid+'/resolve','POST',{action:'apply',hindi:hi}).then(function(){ toast('Applied'); _atrReviews(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+};
+
+function _atrScan(){
+  var b=_atrBody(); if(!b) return;
+  b.innerHTML='<p style="color:#8a7d5c;font-size:.88rem;line-height:1.6;margin-bottom:14px">Scan existing translated questions. Safe fixes (like ordinal joins &ldquo;12 वीं&rdquo;&rarr;&ldquo;12वीं&rdquo;) are applied automatically and recorded in History; questions that look untranslated or broken are flagged in the Review Queue. Nothing is overwritten without review.</p>'+
+    '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">'+
+    '<label style="font-size:.82rem;color:#8a7d5c">Content:</label>'+
+    '<select class="form-control" id="atr-scan-type" style="width:auto"><option value="exam">Test / Exam questions</option><option value="lecture">Lecture questions</option></select>'+
+    '<button class="btn btn-primary" id="atr-scan-btn" onclick="atScanRun()">Run Legacy Scan</button></div>'+
+    '<div id="atr-scan-out"></div>';
+}
+window.atScanRun=function(){
+  var btn=document.getElementById('atr-scan-btn'); if(btn){ btn.disabled=true; btn.textContent='Scanning\u2026'; }
+  var ctSel=document.getElementById('atr-scan-type'); var ctype=ctSel?ctSel.value:'exam';
+  var out=document.getElementById('atr-scan-out');
+  var totals={scanned:0,verified:0,repaired:0,flagged:0};
+  function batch(offset){
+    api('/api/admin/translation/scan','POST',{offset:offset,limit:200,content_type:ctype}).then(function(r){
+      var c=r.counts||{}; Object.keys(totals).forEach(function(k){ totals[k]+=(c[k]||0); });
+      if(out) out.innerHTML='<div class="atr-grid">'+
+        [['Scanned',totals.scanned],['Verified',totals.verified],['Auto-repaired',totals.repaired],['Flagged for review',totals.flagged]].map(function(x){ return '<div class="atr-card"><div class="atr-val">'+x[1]+'</div><div class="atr-lbl">'+x[0]+'</div></div>'; }).join('')+'</div>'+
+        (r.remaining>0?'<div style="color:#8a7d5c;font-size:.82rem">'+r.remaining+' remaining\u2026</div>':'<div style="color:#2e9e6b;font-weight:700">Scan complete.</div>');
+      if(r.remaining>0){ batch(r.next_offset); }
+      else if(btn){ btn.disabled=false; btn.textContent='Run Legacy Scan'; }
+    }).catch(function(e){ if(out)out.innerHTML='<div style="color:#c1443a">Scan failed: '+_ape2(e&&e.message||'')+'</div>'; if(btn){btn.disabled=false;btn.textContent='Run Legacy Scan';} });
+  }
+  batch(0);
+};
+
+function _atrHistory(){
+  var b=_atrBody(); if(!b) return;
+  api('/api/admin/translation/versions').then(function(r){
+    var vs=r.versions||[];
+    if(!vs.length){ b.innerHTML='<div style="color:#9c8f6e;padding:20px">No changes yet. Repairs, re-translations and edits will appear here and can be reverted.</div>'; return; }
+    b.innerHTML='<div style="font-weight:800;margin-bottom:10px">Recent Changes ('+vs.length+')</div>'+vs.map(function(v){
+      return '<div class="atr-row"><div style="display:flex;justify-content:space-between;gap:10px"><div style="font-size:.74rem;color:#8a7d5c">'+_ape2(v.content_type)+' #'+v.content_id+' \u00b7 '+_ape2(v.question_ref)+' \u00b7 '+_ape2(v.reason)+'</div><div style="font-size:.72rem;color:#8a7d5c">'+_ape2(v.at)+'</div></div>'+
+        '<div class="atr-hi" style="color:#c1443a;text-decoration:line-through">'+_ape2(v.old_value||'(empty)')+'</div>'+
+        '<div class="atr-hi" style="color:#2e9e6b">'+_ape2(v.new_value||'(empty)')+'</div>'+
+        (v.reason!=='revert'?'<div class="atr-actions"><button class="btn btn-sm" onclick="atRevert('+v.id+')">Revert to old</button></div>':'')+
+      '</div>';
+    }).join('');
+  }).catch(function(e){ b.innerHTML='<div style="color:#c1443a;padding:16px">Could not load history.</div>'; });
+}
+window.atRevert=function(vid){ api('/api/admin/translation/versions/'+vid+'/revert','POST',{}).then(function(){ toast('Reverted'); _atrHistory(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
+
+function _atrSettings(){
+  var b=_atrBody(); if(!b) return;
+  api('/api/admin/translation/settings').then(function(r){
+    var s=r.settings||{};
+    function toggle(key,label,on){ return '<div class="atr-set"><div style="font-weight:600;font-size:.9rem">'+label+'</div><button class="btn btn-sm '+(on?'btn-primary':'')+'" onclick="atSet(\''+key+'\',\''+(on?'off':'on')+'\')">'+(on?'ON':'OFF')+'</button></div>'; }
+    b.innerHTML=toggle('gemini_verification','Gemini verification',(s.gemini_verification!=='off'))+
+      toggle('strict_mode','Strict mode (flag more aggressively)',(s.strict_mode==='on'))+
+      '<div class="atr-set"><div style="font-weight:600;font-size:.9rem">Confidence threshold (flag below)</div><input class="form-control" style="width:90px" id="atr-thr" value="'+_ape2(s.confidence_threshold||'70')+'" onchange="atSet(\'confidence_threshold\',this.value)"></div>';
+  }).catch(function(e){ b.innerHTML='<div style="color:#c1443a;padding:16px">Could not load settings.</div>'; });
+}
+window.atSet=function(k,v){ var o={}; o[k]=v; api('/api/admin/translation/settings','POST',o).then(function(){ toast('Saved'); if(k!=='confidence_threshold')_atrSettings(); }); };

@@ -605,19 +605,23 @@ def _subject_hint(subject):
     translation uses the words students actually see in their Hindi textbooks."""
     s = (subject or "").lower()
     hints = {
-        ("physics", "भौतिक"): "Physics (भौतिक विज्ञान): use standard NIOS Hindi terms e.g. force=बल, velocity=वेग, acceleration=त्वरण, momentum=संवेग, energy=ऊर्जा, work=कार्य, power=शक्ति, mass=द्रव्यमान, displacement=विस्थापन, dipole moment=द्विध्रुव आघूर्ण, charge=आवेश, field=क्षेत्र.",
-        ("chemistry", "रसायन"): "Chemistry (रसायन विज्ञान): reaction=अभिक्रिया, compound=यौगिक, element=तत्व, bond=आबंध, mole=मोल, oxidation=ऑक्सीकरण, reduction=अपचयन, acid=अम्ल, base=क्षार, salt=लवण. Keep chemical formulae and element symbols in English.",
-        ("bio", "जीव"): "Biology (जीव विज्ञान): cell=कोशिका, tissue=ऊतक, gene=जीन, respiration=श्वसन, photosynthesis=प्रकाश संश्लेषण, enzyme=एंजाइम, organism=जीव. Keep scientific (Latin) names in English.",
-        ("math", "गणित"): "Mathematics (गणित): equation=समीकरण, function=फलन, derivative=अवकलज, integral=समाकल, probability=प्रायिकता, matrix=आव्यूह, triangle=त्रिभुज, ratio=अनुपात. Keep all symbols/numbers in English.",
-        ("history", "इतिहास"): "History (इतिहास): use standard Hindi historical terms; keep proper nouns (people, dynasties, places, treaties) as commonly written in Hindi. revolution=क्रांति, empire=साम्राज्य, civilization=सभ्यता, movement=आंदोलन.",
-        ("geograph", "भूगोल"): "Geography (भूगोल): climate=जलवायु, river=नदी, plateau=पठार, latitude=अक्षांश, longitude=देशांतर, monsoon=मानसून, plain=मैदान.",
-        ("politic", "राजन"): "Political Science (राजनीति विज्ञान): democracy=लोकतंत्र, constitution=संविधान, fundamental rights=मौलिक अधिकार, parliament=संसद, federalism=संघवाद.",
+        ("physics", "भौतिक"): "Physics (भौतिक विज्ञान): force=बल, velocity=वेग, speed=चाल, acceleration=त्वरण, momentum=संवेग, angular momentum=कोणीय संवेग, energy=ऊर्जा, work=कार्य, power=शक्ति, mass=द्रव्यमान, displacement=विस्थापन, dipole moment=द्विध्रुव आघूर्ण, torque=बल आघूर्ण, charge=आवेश, electric current=विद्युत धारा, potential difference=विभवांतर, resistance=प्रतिरोध, capacitance=धारिता, electric field=विद्युत क्षेत्र, magnetic field=चुंबकीय क्षेत्र, wavelength=तरंगदैर्ध्य, frequency=आवृत्ति. In Physics, 'current' means विद्युत धारा (not a generic word).",
+        ("chemistry", "रसायन"): "Chemistry (रसायन विज्ञान): reaction=अभिक्रिया, rate of reaction=अभिक्रिया की दर, compound=यौगिक, element=तत्व, bond=आबंध, chemical bond=रासायनिक बंध, mole=मोल, molarity=मोलरता, molality=मोललता, oxidation=ऑक्सीकरण, reduction=अपचयन, electrolysis=विद्युत अपघटन, electrode=इलेक्ट्रोड, electrolyte=विद्युत अपघट्य, catalyst=उत्प्रेरक, equilibrium=साम्यावस्था, activation energy=सक्रियण ऊर्जा, acid=अम्ल, base=क्षार, salt=लवण. Keep chemical formulae and element symbols (H2O, CO2, NaCl, H2SO4, KMnO4) exactly in English.",
+        ("bio", "जीव"): "Biology (जीव विज्ञान): cell=कोशिका, tissue=ऊतक, nucleus=केंद्रक, mitochondria=माइटोकॉन्ड्रिया, gene=जीन, chromosome=गुणसूत्र, respiration=श्वसन, photosynthesis=प्रकाश संश्लेषण, transpiration=वाष्पोत्सर्जन, osmosis=परासरण, diffusion=विसरण, enzyme=एंजाइम, organism=जीव. Keep DNA=डीएनए, RNA=आरएनए. Keep scientific (Latin) names like Homo sapiens exactly in English.",
+        ("math", "गणित"): "Mathematics (गणित): equation=समीकरण, differential equation=अवकल समीकरण, function=फलन, derivative=अवकलज, differentiation=अवकलन, integration=समाकलन, integral=समाकल, limit=सीमा, continuity=सातत्य, probability=प्रायिकता, matrix=आव्यूह, determinant=सारणिक, vector=सदिश, scalar=अदिश, triangle=त्रिभुज, ratio=अनुपात. Keep ALL symbols, variables, operators, numbers, LaTeX, matrices and fractions exactly unchanged (e.g. dy/dx = 2x stays as-is).",
+        ("history", "इतिहास"): "History (इतिहास): revolution=क्रांति, Industrial Revolution=औद्योगिक क्रांति, nationalism=राष्ट्रवाद, colonialism=उपनिवेशवाद, imperialism=साम्राज्यवाद, empire=साम्राज्य, civilization=सभ्यता, movement=आंदोलन, Non-Cooperation Movement=असहयोग आंदोलन, Civil Disobedience Movement=सविनय अवज्ञा आंदोलन. Preserve names, dates, places, treaties and organizations as commonly written in Hindi.",
+        ("geograph", "भूगोल"): "Geography (भूगोल): climate=जलवायु, weather=मौसम, river=नदी, plateau=पठार, plain=मैदान, latitude=अक्षांश, longitude=देशांतर, equator=भूमध्य रेखा, atmosphere=वायुमंडल, monsoon=मानसून, alluvial soil=जलोढ़ मृदा, population density=जनसंख्या घनत्व. Do not mistranslate geographical proper names.",
+        ("politic", "राजन", "civics"): "Political Science (राजनीति विज्ञान): democracy=लोकतंत्र, constitution=संविधान, fundamental rights=मौलिक अधिकार, parliament=संसद, federalism=संघवाद, judiciary=न्यायपालिका, legislature=विधायिका, executive=कार्यपालिका, secularism=धर्मनिरपेक्षता, political party=राजनीतिक दल.",
         ("econom", "अर्थ"): "Economics (अर्थशास्त्र): demand=मांग, supply=पूर्ति, market=बाजार, inflation=मुद्रास्फीति, poverty=गरीबी. Keep GDP, GNP as English abbreviations.",
         ("account", "लेखा"): "Accountancy (लेखाशास्त्र): debit=नामे, credit=जमा, ledger=खाताबही, balance sheet=तुलन पत्र, journal=रोजनामचा, capital=पूंजी.",
         ("business",): "Business Studies (व्यवसाय अध्ययन): management=प्रबंधन, marketing=विपणन, partnership=साझेदारी, organisation=संगठन.",
         ("home science", "गृह विज्ञान"): "Home Science (गृह विज्ञान): nutrition=पोषण, vitamin=विटामिन, hygiene=स्वच्छता, balanced diet=संतुलित आहार.",
         ("psycholog", "मनोविज्ञान"): "Psychology (मनोविज्ञान): behaviour=व्यवहार, memory=स्मृति, perception=प्रत्यक्ष, motivation=अभिप्रेरणा, learning=अधिगम.",
+        ("sociolog", "समाजशास्त्र"): "Sociology (समाजशास्त्र): society=समाज, culture=संस्कृति, socialization=समाजीकरण, institution=संस्था, community=समुदाय.",
         ("computer", "data entry", "कंप्यू"): "Computer/Data Entry: keep technical computing terms (software, hardware, keyboard, file, database, spreadsheet, operating system) in English; translate only the surrounding explanation into simple Hindi.",
+        ("environment", "पर्यावरण"): "Environmental Science (पर्यावरण विज्ञान): ecosystem=पारिस्थितिकी तंत्र, pollution=प्रदूषण, biodiversity=जैव विविधता, conservation=संरक्षण, food chain=खाद्य श्रृंखला.",
+        ("general science", "सामान्य विज्ञान", "science"): "General Science (सामान्य विज्ञान): use the standard NIOS Hindi term for each concept from Physics/Chemistry/Biology as appropriate to the question's context.",
+        ("social",): "Social Science (सामाजिक विज्ञान): use the correct History/Geography/Political Science/Economics Hindi terminology based on the question's context.",
         ("english", "hindi", "language"): "Language subject: translate naturally; keep grammar terms standard.",
     }
     for keys, hint in hints.items():
@@ -627,12 +631,30 @@ def _subject_hint(subject):
             "technical terms exactly as they are commonly written in Hindi textbooks.")
 
 
-def translate_question_to_hindi(question_text, model_answer="", options=None, subject=""):
+def _fix_hi_ordinals(s):
+    """Join a number to a following Hindi ordinal suffix so options like
+    '12th century' -> '12वीं शताब्दी' don't split ('12 वीं शताब्दी') on render.
+    Only joins genuine ordinal suffixes (वीं/वाँ/वां/वें), never other words."""
+    if not s or not isinstance(s, str):
+        return s
+    return re.sub(r'(\d)[ \t\u00A0]+(?=(?:वीं|वाँ|वां|वें|वीँ))', r'\1', s)
+
+
+def translate_question_to_hindi(question_text, model_answer="", options=None, subject="",
+                                chapter="", db=None):
     """Translate an exam question (question + model answer + mcq options) into accurate,
     subject-aware Hindi for NIOS bilingual tests. Keeps LaTeX/chemistry/numbers/units
     intact and uses the correct Hindi technical terminology for the subject.
-    Returns {"question","answer","options":[...]} or None."""
+    When a db session is passed, the approved glossary is injected and the result is
+    validated (adds 'confidence' 0-100 and 'issues' to the return).
+    Returns {"question","answer","options":[...],"confidence","issues"} or None."""
     options = options or []
+    try:
+        import translation_engine as _te
+    except Exception:
+        _te = None
+    gloss_rows = _te.glossary_rows(db, subject, chapter) if (_te and db is not None) else []
+    gloss_block = _te.glossary_prompt(gloss_rows) if _te else ""
     payload = {
         "question": question_text or "",
         "answer": model_answer or "",
@@ -645,6 +667,7 @@ def translate_question_to_hindi(question_text, model_answer="", options=None, su
         "Hindi (Devanagari), exactly as it would appear in an official NIOS Hindi-medium "
         "textbook or question paper.\n\n"
         "SUBJECT TERMINOLOGY GUIDE:\n" + _subject_hint(subject) + "\n\n"
+        + (gloss_block + "\n" if gloss_block else "") +
         "STRICT RULES:\n"
         "1. Use the correct, standard Hindi technical term for every concept in THIS "
         "subject. Do NOT translate literally word-by-word - translate the MEANING using "
@@ -660,6 +683,12 @@ def translate_question_to_hindi(question_text, model_answer="", options=None, su
         "4. Translate structural headings to their standard Hindi equivalents: "
         "'Given Data:' -> 'दिया गया:', 'Step 1:' -> 'चरण 1:', 'Final Answer:' -> "
         "'अंतिम उत्तर:', 'Solution:' -> 'हल:', 'Formula:' -> 'सूत्र:'.\n"
+        "4b. ORDINALS: attach the Hindi ordinal suffix DIRECTLY to the digits with NO "
+        "space between them: '12th century' -> '12वीं शताब्दी' (never '12 वीं शताब्दी'), "
+        "'20th' -> '20वाँ', '19th' -> '19वें', '1st' -> '1ला/पहला', '3rd' -> '3रा/तीसरा'. "
+        "The number and its Hindi suffix must stay together as one token.\n"
+        "4c. CONSISTENCY: use the SAME preferred Hindi term every time a technical term "
+        "repeats within this content - do not switch between synonyms.\n"
         "5. Do NOT add, remove, explain, or solve anything. Translate only.\n"
         "6. Keep the SAME number of options in the SAME order.\n"
         "7. " + _STRUCT_NOTE_JSON + "If the source 'answer' text already has line breaks "
@@ -678,11 +707,24 @@ def translate_question_to_hindi(question_text, model_answer="", options=None, su
         return None
     if not isinstance(data, dict):
         return None
-    return {
-        "question": (data.get("question") or "").strip(),
-        "answer": (data.get("answer") or "").strip(),
-        "options": [str(o).strip() for o in (data.get("options") or [])],
-    }
+    q_hi = _fix_hi_ordinals((data.get("question") or "").strip())
+    a_hi = _fix_hi_ordinals((data.get("answer") or "").strip())
+    o_hi = [_fix_hi_ordinals(str(o).strip()) for o in (data.get("options") or [])]
+    if _te and gloss_rows:
+        q_hi = _te.enforce_glossary(q_hi, question_text or "", gloss_rows)
+        a_hi = _te.enforce_glossary(a_hi, model_answer or "", gloss_rows)
+        o_hi = [_te.enforce_glossary(o_hi[i], str(options[i]) if i < len(options) else "", gloss_rows)
+                for i in range(len(o_hi))]
+    result = {"question": q_hi, "answer": a_hi, "options": o_hi}
+    if _te:
+        try:
+            v = _te.validate_pack(question_text or "", q_hi, model_answer or "", a_hi,
+                                  [str(o) for o in options], o_hi)
+            result["confidence"] = v["confidence"]
+            result["issues"] = v["issues"]
+        except Exception:
+            pass
+    return result
 
 
 # ================================================================ FREE local parser

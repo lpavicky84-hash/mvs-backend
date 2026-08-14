@@ -1473,3 +1473,76 @@ class GraphicsTask(Base):
     submitted_at   = Column(DateTime, nullable=True)
     approved_at    = Column(DateTime, nullable=True)
     created_at     = Column(DateTime, default=func.now())
+
+
+# ======================================================================
+# TRANSLATION QUALITY SYSTEM (subject-aware Hindi engine)
+# ======================================================================
+
+class TranslationGlossary(Base):
+    """Centralised subject/chapter terminology. Priority: chapter > subject > global.
+    Locked terms are enforced (post-translation) so approved terminology always wins."""
+    __tablename__ = "translation_glossary"
+
+    id                    = Column(Integer, primary_key=True)
+    subject               = Column(String(80), default="", index=True)   # "" = global
+    chapter               = Column(String(160), default="", index=True)  # "" = whole subject
+    english_term          = Column(String(240), default="", index=True)
+    preferred_hindi       = Column(String(240), default="")
+    alternate_hindi       = Column(String(240), default="")
+    do_not_translate      = Column(Boolean, default=False)   # keep the English term as-is
+    transliteration_ok    = Column(Boolean, default=False)
+    locked                = Column(Boolean, default=False)   # admin-approved, enforce strictly
+    priority              = Column(Integer, default=0)       # higher wins on conflict
+    notes                 = Column(Text, default="")
+    created_by            = Column(Integer, nullable=True)
+    created_at            = Column(DateTime, default=func.now())
+    updated_at            = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class TranslationReview(Base):
+    """Flagged translations (low confidence / validation issues) awaiting admin review."""
+    __tablename__ = "translation_reviews"
+
+    id              = Column(Integer, primary_key=True)
+    content_type    = Column(String(30), default="")     # dpp | objective | subjective | mission75 | qbank
+    content_id      = Column(Integer, nullable=True, index=True)
+    question_ref    = Column(String(60), default="")     # e.g. "Q3.optionB"
+    subject         = Column(String(80), default="")
+    chapter         = Column(String(160), default="")
+    english_text    = Column(Text, default="")
+    current_hindi   = Column(Text, default="")
+    suggested_hindi = Column(Text, default="")
+    issues          = Column(Text, default="")           # JSON list of issue strings
+    confidence      = Column(Integer, default=0)         # 0-100
+    source          = Column(String(30), default="auto") # auto | scan | manual
+    status          = Column(String(20), default="pending", index=True)  # pending | approved | rejected | fixed
+    created_at      = Column(DateTime, default=func.now())
+    resolved_at     = Column(DateTime, nullable=True)
+    resolved_by     = Column(Integer, nullable=True)
+
+
+class TranslationSetting(Base):
+    """Key/value admin controls for the translation engine (verification on/off, etc)."""
+    __tablename__ = "translation_settings"
+
+    id     = Column(Integer, primary_key=True)
+    key    = Column(String(60), unique=True, index=True)
+    value  = Column(String(240), default="")
+
+
+class TranslationVersion(Base):
+    """History of every Hindi change (scan-repair / retranslate / review / revert) so
+    any translation edit is auditable and reversible."""
+    __tablename__ = "translation_versions"
+
+    id            = Column(Integer, primary_key=True)
+    content_type  = Column(String(30), default="", index=True)   # exam | lecture
+    content_id    = Column(Integer, index=True)
+    question_ref  = Column(String(60), default="")               # question | answer | explanation | option:N
+    field         = Column(String(40), default="")
+    old_value     = Column(Text, default="")
+    new_value     = Column(Text, default="")
+    reason        = Column(String(40), default="")               # repair | retranslate | review | revert
+    created_by    = Column(Integer, nullable=True)
+    created_at    = Column(DateTime, default=func.now())
