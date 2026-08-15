@@ -12,7 +12,7 @@ from database import get_db
 from security import get_pm_or_admin
 from models import (
     User, UserRole, VideoTask, GraphicsTask, EditingSession, ProductionEvent,
-    TaskReview, YouTuberProfile, ProductionStaffProfile, TeacherProfile,
+    TaskReview, YouTuberProfile, ProductionStaffProfile, TeacherProfile, Notification,
 )
 import production_core as pc
 
@@ -80,6 +80,7 @@ def pm_dashboard(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     bottleneck = max(buckets, key=buckets.get) if any(buckets.values()) else "None"
     return {"greeting_name": me.name, "date": today.isoformat(),
             "kpis": kpis, "secondary": secondary,
+            "events": pc.active_events_for(db, "all"),
             "bottleneck": bottleneck, "buckets": buckets}
 
 
@@ -1493,3 +1494,176 @@ def pm_delete_task(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or
     t.cancelled = True
     db.commit()
     return {"ok": True}
+
+
+# ============================================================ DEADLINE EXTENSION (PM side)
+# Phase A: editors/youtubers request a new deadline; the PM approves or rejects. The old
+# deadline is preserved in the timeline — nothing is overwritten silently.
+@router.get("/deadline-requests")
+def pm_deadline_requests(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    rows = (db.query(VideoTask).filter(VideoTask.deadline_req_status == "pending",
+                                       VideoTask.cancelled == False)
+            .order_by(VideoTask.updated_at.desc()).all())
+    out = []
+    for t in rows:
+        d = pc.task_out(db, t, light=True)
+        d["deadline_req"] = pc._dt(t.deadline_req)
+        d["deadline_req_reason"] = t.deadline_req_reason or ""
+        out.append(d)
+    return {"requests": out, "count": len(out)}
+
+
+@router.post("/tasks/{tid}/deadline-decision")
+def pm_deadline_decision(tid: int, payload: dict = Body(...),
+                         db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    t = _task(db, tid)
+    if (t.deadline_req_status or "") != "pending":
+        raise HTTPException(400, "No pending deadline request on this task.")
+    decision = (payload.get("decision") or "").strip().lower()
+    if decision not in ("approve", "reject"):
+        raise HTTPException(400, "decision must be approve or reject")
+    old = t.deadline
+    new = t.deadline_req
+    if decision == "approve":
+        t.deadline = new
+        t.deadline_req_status = "approved"
+        pc.log_event(db, t, me, "deadline_extended", meta={"note": 'Deadline extended: %s \u2192 %s (old deadline kept in history)' % (
+            (old.strftime("%d %b %Y, %I:%M %p") if old else "none"),
+            (new.strftime("%d %b %Y, %I:%M %p") if new else "none"))})
+        msg = 'Your deadline request for "%s" was approved. New deadline: %s.' % (
+            t.title or "", new.strftime("%d %b %Y, %I:%M %p") if new else "")
+    else:
+        t.deadline_req_status = "rejected"
+        pc.log_event(db, t, me, "deadline_rejected", meta={"note": 'Deadline extension rejected by production manager'})
+        msg = 'Your deadline request for "%s" was not approved. Current deadline stands.' % (t.title or "")
+    # notify the editor who owns the task
+    try:
+        if t.editor_id:
+            ed = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
+            if ed and ed.user_id:
+                pc.notify(db, ed.user_id, "Deadline Request " + ("Approved" if decision == "approve" else "Rejected"),
+                          msg, "production", link=str(t.id))
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "decision": decision}
+
+
+# ============================================================ QUALITY RATING (PM rates work)
+# Phase B: after editing/graphics work is done, the PM can rate quality 1..5 with a note.
+# Feeds the editor/graphics performance averages. Does NOT touch teacher payout logic.
+@router.post("/tasks/{tid}/rate")
+def pm_rate(tid: int, payload: dict = Body(...), db: Session = Depends(get_db),
+            me=Depends(get_pm_or_admin)):
+    t = _task(db, tid)
+    try:
+        rating = int(payload.get("rating") or 0)
+    except Exception:
+        rating = 0
+    if rating < 1 or rating > 5:
+        raise HTTPException(400, "Rating must be between 1 and 5.")
+    t.quality_rating = rating
+    t.quality_note = (payload.get("note") or "").strip()[:400]
+    pc.log_event(db, t, me, "quality_rated",
+                 meta={"note": "Quality rated %d/5%s" % (rating, (" \u2014 " + t.quality_note) if t.quality_note else "")})
+    try:
+        if t.editor_id:
+            ed = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
+            if ed and ed.user_id:
+                if rating >= 5:
+                    ttl = "Excellent work!"
+                    msg = 'The PM rated "%s" a perfect 5/5. Outstanding!%s' % (t.title or "", (" " + t.quality_note) if t.quality_note else "")
+                elif rating >= 4:
+                    ttl = "Great work!"
+                    msg = 'The PM rated "%s": %d/5.%s' % (t.title or "", rating, (" " + t.quality_note) if t.quality_note else "")
+                else:
+                    ttl = "Your work was rated"
+                    msg = 'The PM rated "%s": %d/5.%s' % (t.title or "", rating, (" " + t.quality_note) if t.quality_note else "")
+                pc.notify(db, ed.user_id, ttl, msg, "appreciation" if rating >= 4 else "production", link=str(t.id))
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "rating": rating}
+
+
+# ============================================================ ANNOUNCEMENTS + EVENTS (§35)
+@router.post("/announce")
+def pm_announce(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Send a notification to a whole group (or one person)."""
+    title = (payload.get("title") or "").strip()
+    message = (payload.get("message") or "").strip()
+    if not title or not message:
+        raise HTTPException(400, "Title and message are required.")
+    image = (payload.get("image_url") or "").strip()
+    one = payload.get("user_id")
+    if one:
+        ids = [int(one)]
+    else:
+        ids = pc.audience_user_ids(db, payload.get("audience") or "all")
+    for uid in ids:
+        try:
+            n = Notification(user_id=uid, title=title, message=message, notif_type="announcement",
+                             image_url=image or None, sender_id=getattr(me, "id", None),
+                             sender_role="production_manager")
+            db.add(n)
+        except Exception:
+            pass
+    db.commit()
+    return {"ok": True, "sent": len(ids)}
+
+
+@router.get("/events")
+def pm_events_list(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    from models import PmEvent
+    rows = db.query(PmEvent).filter(PmEvent.active == True).order_by(PmEvent.event_at.asc()).all()
+    return {"events": [{"id": e.id, "title": e.title, "description": e.description,
+                        "at": pc._dt(e.event_at), "image_url": e.image_url or "",
+                        "audience": e.audience} for e in rows]}
+
+
+@router.post("/events")
+def pm_event_create(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    from models import PmEvent
+    title = (payload.get("title") or "").strip()
+    if not title:
+        raise HTTPException(400, "Event title is required.")
+    at = None
+    raw = (payload.get("event_at") or "").strip()
+    if raw:
+        try:
+            at = datetime.fromisoformat(raw.replace("Z", ""))
+        except Exception:
+            pass
+    aud = (payload.get("audience") or "all").lower()
+    if aud not in ("all", "teachers", "editors", "graphics", "youtubers"):
+        aud = "all"
+    e = PmEvent(title=title, description=(payload.get("description") or "").strip()[:1200],
+                event_at=at, image_url=(payload.get("image_url") or "").strip(),
+                audience=aud, created_by=getattr(me, "id", None), active=True)
+    db.add(e); db.commit()
+    # optional: notify the audience about the new event
+    if payload.get("notify"):
+        for uid in pc.audience_user_ids(db, aud):
+            try:
+                db.add(Notification(user_id=uid, title="New Event: " + title,
+                                    message=(payload.get("description") or "")[:300],
+                                    notif_type="event", image_url=(payload.get("image_url") or None),
+                                    sender_id=getattr(me, "id", None), sender_role="production_manager"))
+            except Exception:
+                pass
+        db.commit()
+    return {"ok": True, "id": e.id}
+
+
+@router.delete("/events/{eid}")
+def pm_event_delete(eid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    from models import PmEvent
+    e = db.query(PmEvent).filter(PmEvent.id == int(eid)).first()
+    if e:
+        e.active = False; db.commit()
+    return {"ok": True}
+
+
+@router.get("/my-events")
+def pm_my_events(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    return {"events": pc.active_events_for(db, "all")}

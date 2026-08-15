@@ -18243,7 +18243,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // --- portal definitions ---
   var P={
     production:{ role:'production_manager', title:'Production', sub:'Command Center', api:'/api/production',
-      nav:[ {g:'Operations',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'board',t:'Production Board',i:'board'}, {p:'tasks',t:'Tasks',i:'list'}, {p:'projects',t:'Projects',i:'folder'} ]},
+      nav:[ {g:'Operations',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'board',t:'Production Board',i:'board'}, {p:'tasks',t:'Tasks',i:'list'}, {p:'projects',t:'Projects',i:'folder'}, {p:'announce',t:'Announcements',i:'bell'} ]},
             {g:'Pipeline',items:[ {p:'q:pm_review',t:'PM Review',i:'check'}, {p:'q:editing',t:'Editing Queue',i:'video'}, {p:'q:qc_pending',t:'QC Queue',i:'check'}, {p:'q:ready_for_youtube',t:'Ready for YouTube',i:'video'}, {p:'urgent',t:'Urgent Videos',i:'board'} ]},
             {g:'Team',items:[ {p:'team',t:'Team & Workload',i:'team'} ]},
             {g:'Analytics',items:[ {p:'analytics',t:'Analytics',i:'grid'}, {p:'creators',t:'Creator Performance',i:'team'}, {p:'views',t:'Real-time Views',i:'grid'} ]} ] },
@@ -18376,6 +18376,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pt-dl.overdue{background:rgba(209,68,58,.14);color:#d1443a}',
 '.pt-dl.today{background:rgba(224,165,74,.18);color:#a9791f}',
 '.pt-dl.soon{background:rgba(224,165,74,.18);color:#a9791f}',
+'.pt-dl.later{background:rgba(120,120,120,.12);color:#6b6152}',
+'body.dark .pt-dl.later{background:rgba(255,255,255,.08);color:#b0a483}',
 '.pw-thumb{width:74px;height:48px;border-radius:9px;object-fit:cover;border:1px solid #ece2cd;flex:0 0 auto;background:#f4f1e8}',
 '.pw-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}',
 '.pw-chip{font-size:.66rem;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(230,173,78,.14);color:#a9791f;white-space:nowrap}',
@@ -18491,6 +18493,57 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '@keyframes ptcblink{0%,100%{opacity:1}50%{opacity:.35}}',
 '.ptc-blink{animation:ptcblink 1.1s ease-in-out infinite}',
 '.pw-status{display:inline-block;color:#fff;font-size:.64rem;font-weight:800;letter-spacing:.04em;padding:2px 9px;border-radius:999px;cursor:pointer}',
+'.ptc-stars{letter-spacing:1px}',
+'.rate-stars{display:inline-flex;gap:6px;font-size:2.2rem;cursor:pointer}',
+'.rate-star{color:#d9cba8;transition:color .1s}',
+'.rate-star.on{color:#e0a52e}',
+'.rate-star:hover{transform:scale(1.1)}',
+'.an-wrap{display:grid;grid-template-columns:1fr 1fr;gap:16px}',
+'@media(max-width:760px){.an-wrap{grid-template-columns:1fr}}',
+'.an-card{background:var(--card,#fffdf7);border:1px solid #e8dfc8;border-radius:16px;padding:16px 18px;margin-bottom:16px}',
+'body.dark .an-card{background:#211a0d;border-color:#3a2f14}',
+'.an-h{font-weight:800;font-size:1.05rem;margin-bottom:12px}',
+'.an-chk{display:flex;align-items:center;gap:8px;font-size:.85rem;color:#8a7d5c;margin:8px 0 12px}',
+'.an-ev{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid #efe8d6}',
+'body.dark .an-ev{border-color:#3a2f14}',
+'.an-ev-main{flex:1}.an-ev-t{font-weight:700}.an-ev-m{font-size:.8rem;color:#8a7d5c}',
+'.ev-banner{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}',
+'.ev-card{display:flex;gap:0;background:linear-gradient(100deg,#1e4d6b,#2a6b8f);color:#fff;border-radius:14px;overflow:hidden;min-width:280px;flex:1;max-width:460px}',
+'.ev-img{width:96px;background-size:cover;background-position:center;flex:0 0 96px}',
+'.ev-body{padding:12px 14px;flex:1}',
+'.ev-top{display:flex;align-items:center;gap:8px;margin-bottom:4px}',
+'.ev-tag{background:rgba(255,255,255,.2);font-size:.6rem;font-weight:800;letter-spacing:.06em;padding:2px 8px;border-radius:999px}',
+'.ev-cd{background:#e6ad4e;color:#3a2a00;font-size:.68rem;font-weight:800;padding:2px 9px;border-radius:999px}',
+'.ev-title{font-weight:800;font-size:1rem}',
+'.ev-at{font-size:.78rem;opacity:.9;margin-top:1px}',
+'.ev-desc{font-size:.82rem;opacity:.92;margin-top:4px}',
+'.ap-strip{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:linear-gradient(100deg,rgba(46,158,107,.12),rgba(224,165,78,.12));border:1px solid rgba(46,158,107,.25);border-radius:14px;padding:12px 16px;margin-bottom:16px}',
+'.ap-l{display:flex;gap:8px;flex-wrap:wrap;align-items:center}',
+'.ap-badge{background:#2e9e6b;color:#fff;font-size:.72rem;font-weight:800;padding:4px 12px;border-radius:999px}',
+'.ap-hi{color:#8a7d5c;font-size:.85rem}',
+'.ap-r{display:flex;gap:14px;flex-wrap:wrap}',
+'.ap-stat{font-size:.82rem;color:#6b5f43}.ap-stat b{color:#1f8a54}',
+'.yt-newbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}',
+'.yt-newhint{font-size:.84rem;color:#8a7d5c}',
+'.yt-tog{display:flex;gap:0;background:#efe8d6;border-radius:12px;padding:3px;margin-bottom:14px}',
+'body.dark .yt-tog{background:#2a2113}',
+'.yt-tg{flex:1;border:0;background:transparent;padding:8px;border-radius:9px;font-weight:700;font-size:.85rem;color:#8a7d5c;cursor:pointer}',
+'.yt-tg.on{background:var(--card,#fffdf7);color:#a9791f;box-shadow:0 1px 4px rgba(0,0,0,.1)}',
+'body.dark .yt-tg.on{background:#3a2f14;color:#e6ad4e}',
+'@media(max-width:640px){',
+'.ptc-grid{grid-template-columns:1fr}',
+'.p-filter-prod{padding:10px}.pf-sel{flex:1;min-width:calc(50% - 6px)}',
+'.pf-search{min-width:100%;order:-1}',
+'.p-modal{max-width:100%!important;max-height:94vh;border-radius:14px}',
+'.p-modal-wrap{padding:8px}',
+'.an-wrap{grid-template-columns:1fr}',
+'.ev-card{min-width:100%;max-width:100%}',
+'.ap-strip{flex-direction:column;align-items:flex-start;gap:8px}',
+'.ptc-acts{gap:5px}.ptc-btn{font-size:.7rem;padding:5px 9px}',
+'.ev-img{flex:0 0 72px;width:72px}',
+'.yt-newbar{flex-direction:column;align-items:stretch}',
+'}',
+'body.dark .ap-stat{color:#c9bd9a}',
 '.p-lightbox{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;cursor:zoom-out}',
 '.p-lightbox img{max-width:96%;max-height:92vh;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.5)}',
 '.p-lb-x{position:absolute;top:18px;right:22px;background:rgba(255,255,255,.15);color:#fff;border:0;font-size:1.6rem;width:44px;height:44px;border-radius:50%;cursor:pointer}',
@@ -18518,6 +18571,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.ptc-title{font-weight:800;font-size:1rem;line-height:1.25}',
 '.ptc-meta{font-size:.76rem;color:#8a7d5c;display:flex;align-items:center;gap:6px;flex-wrap:wrap}',
 '.ptc-ref{font-size:.68rem;color:#b0a483;font-family:monospace}',
+'.ptc-prog{height:7px;background:#efe8d6;border-radius:99px;overflow:hidden}',
+'body.dark .ptc-prog{background:#3a2f14}',
+'.ptc-prog>i{display:block;height:100%;background:linear-gradient(90deg,#7c4fc0,#a06fd8);border-radius:99px;transition:width .3s}',
+'.ptc-prog-l{font-size:.72rem;color:#7c4fc0;font-weight:700;margin-top:2px}',
 '.ptc-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto;padding-top:6px}',
 '.ptc-btn{font-size:.72rem;font-weight:700;padding:5px 11px;border-radius:8px;border:1px solid #e0d4b3;background:transparent;color:inherit;cursor:pointer}',
 'body.dark .ptc-btn{border-color:#3a2f14}',
@@ -18845,6 +18902,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(page==='creators') return renderCreators(portal,body);
     if(page==='board') return renderBoard(portal,body);
     if(page==='projects') return renderProjects(portal,body);
+    if(page==='announce') return renderAnnounce(portal,body);
     if(page==='team') return renderTeam(portal,body);
     if(page==='analytics') return renderAnalytics(portal,body);
     if(page==='tasks'||page==='videos') return renderList(portal,body);
@@ -18855,12 +18913,75 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 
   // --- dashboard ---
   function _stale(portal,page){ return ((window._prodCurPage&&window._prodCurPage[portal])||'dashboard')!==page; }
+  function _appreciationStrip(a){
+    var badges=(a.badges||[]).map(function(b){ return '<span class="ap-badge">'+esc(b)+'</span>'; }).join('');
+    var rlbl=a.rate_label||'On-time';
+    var stats='<span class="ap-stat">'+esc(rlbl)+' <b>'+(a.ontime_pct||0)+'%</b></span>'+(a.avg_rating?'<span class="ap-stat">Avg rating <b>'+a.avg_rating+'\u2605</b></span>':'')+(a.revisions!=null?'<span class="ap-stat">Revisions <b>'+a.revisions+'</b></span>':'')+'<span class="ap-stat">Delivered <b>'+(a.total_done||0)+'</b></span>';
+    if(!badges && (a.ontime_pct||0)<1) return '';
+    return '<div class="ap-strip"><div class="ap-l">'+(badges||'<span class="ap-hi">Keep delivering to earn badges</span>')+'</div><div class="ap-r">'+stats+'</div></div>';
+  }
+  window.ytNewVideo=function(){
+    var canDirect=!window._ytApprovalReq;
+    var old=document.getElementById('prod-modal'); if(old) old.remove();
+    window._ytMode='propose';
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+    var toggle=canDirect?'<div class="yt-tog"><button class="yt-tg on" id="yt-tg-p" onclick="ytSetMode(\'propose\')">Propose to PM</button><button class="yt-tg" id="yt-tg-d" onclick="ytSetMode(\'direct\')">Assign Editor Directly</button></div>':'';
+    dr.innerHTML='<div class="p-modal" style="max-width:480px">'+
+      '<div class="pd-head"><div class="h-title">New Video</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body">'+toggle+
+        '<div class="p-field"><label>Video title</label><input class="p-input" id="yt-title" placeholder="Video / topic title"></div>'+
+        '<div class="p-field"><label>Video type</label><input class="p-input" id="yt-type" placeholder="e.g. Short Video, Strategy Video"></div>'+
+        '<div class="p-field"><label>Required by (deadline)</label><input class="p-input" id="yt-dl" type="datetime-local"></div>'+
+        '<div id="yt-editor-wrap" style="display:none"><div class="p-field"><label>Assign to editor</label><select class="p-select" id="yt-editor"><option value="">Loading editors...</option></select></div></div>'+
+        '<label class="an-chk"><input type="checkbox" id="yt-urgent"> Mark as urgent</label>'+
+        '<div class="p-field"><label>Reference (link/notes)</label><input class="p-input" id="yt-ref" placeholder="https://... or notes"></div>'+
+        '<div class="p-field"><label>Remarks</label><textarea class="p-area" id="yt-remarks" placeholder="Anything the PM/editor should know"></textarea></div>'+
+        '<div class="p-field"><label>Remarks visible to</label><select class="p-select" id="yt-remaud"><option value="both">PM and Editor</option><option value="pm">PM only</option><option value="editor">Editor only</option></select></div>'+
+      '</div>'+
+      '<div class="pd-foot"><div class="p-acts" id="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" id="yt-submit" onclick="ytSubmitNew()">Send Proposal</button></div></div>'+
+      '</div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+    document.body.appendChild(dr);
+  };
+  window.ytSetMode=function(m){ window._ytMode=m;
+    var p=document.getElementById('yt-tg-p'), d=document.getElementById('yt-tg-d'), ew=document.getElementById('yt-editor-wrap'), sb=document.getElementById('yt-submit');
+    if(p)p.classList.toggle('on',m==='propose'); if(d)d.classList.toggle('on',m==='direct');
+    if(ew)ew.style.display=(m==='direct')?'block':'none';
+    if(sb)sb.textContent=(m==='direct')?'Assign Editor':'Send Proposal';
+    if(m==='direct'){ var sel=document.getElementById('yt-editor'); if(sel && sel.options.length<=1){ api(P.youtuber.api+'/editors').then(function(r){ sel.innerHTML='<option value="">Choose editor</option>'+(r.editors||[]).map(function(e){ return '<option value="'+e.id+'">'+esc(e.name)+' ('+e.active+' active)</option>'; }).join(''); }).catch(function(){}); } }
+  };
+  window.ytSubmitNew=function(){
+    var g=function(x){return (document.getElementById(x)||{}).value||'';};
+    var title=g('yt-title').trim(); if(!title){ toast('Title required',true); return; }
+    var body={title:title,video_type:g('yt-type').trim(),deadline:g('yt-dl'),reference:g('yt-ref').trim(),remarks:g('yt-remarks').trim(),remarks_audience:g('yt-remaud')||'both',urgent:document.getElementById('yt-urgent').checked};
+    _pBusy(true);
+    if(window._ytMode==='direct'){
+      var eid=g('yt-editor'); if(!eid){ _pBusy(false); toast('Choose an editor',true); return; }
+      body.editor_id=eid;
+      api(P.youtuber.api+'/assign-editor','POST',body).then(function(){ prodDismiss(); toast('Editor assigned'); _refresh('youtuber'); }).catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
+    } else {
+      api(P.youtuber.api+'/proposals','POST',body).then(function(){ prodDismiss(); toast('Proposal sent to PM'); _refresh('youtuber'); }).catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
+    }
+  };
+  function _eventsBanner(events){
+    return '<div class="ev-banner">'+events.map(function(e){
+      return '<div class="ev-card">'+(e.image_url?'<div class="ev-img" style="background-image:url('+esc(e.image_url)+')"></div>':'')+
+        '<div class="ev-body"><div class="ev-top"><span class="ev-tag">EVENT</span>'+(e.countdown?'<span class="ev-cd">'+esc(e.countdown)+'</span>':'')+'</div>'+
+        '<div class="ev-title">'+esc(e.title)+'</div>'+(e.at?'<div class="ev-at">'+esc(e.at)+'</div>':'')+(e.description?'<div class="ev-desc">'+esc(e.description)+'</div>':'')+'</div></div>';
+    }).join('')+'</div>';
+  }
   function renderDashboard(portal,body){
     var d=P[portal];
     return api(d.api+'/dashboard').then(function(r){
       if(_stale(portal,'dashboard')) return;
       var hi=document.getElementById(portal+'-hi'); if(hi&&r.greeting_name) hi.textContent=_greet()+', '+r.greeting_name;
       var kpis=r.kpis||{}; var html='';
+      if(portal==='youtuber'){ window._ytApprovalReq=!!r.approval_required;
+        html+='<div class="yt-newbar"><button class="p-btn p-btn-primary" onclick="ytNewVideo()">+ New Video</button>'+
+          '<span class="yt-newhint">'+(r.approval_required?'Propose a video for PM approval.':'Propose to PM, or assign an editor directly for urgent videos.')+'</span></div>';
+      }
+      if(r.events && r.events.length) html+=_eventsBanner(r.events);
+      if(r.appreciation && r.appreciation.total_done>0) html+=_appreciationStrip(r.appreciation);
       if(portal==='production' && r.bottleneck && r.bottleneck!=='None')
         html+='<div class="p-bottleneck">Current bottleneck: '+esc(r.bottleneck)+'</div>';
       html+='<div class="pk-grid">';
@@ -18889,8 +19010,18 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _workTitle(portal){ return portal==='production'?'Needs Your Attention':'Your Current Work'; }
   function _loadQueues(){
     var box=document.getElementById('production-queues'); if(!box) return;
-    api(P.production.api+'/queues').then(function(r){
-      var props=(r.proposals||[]), urg=(r.urgent||[]); var html='';
+    Promise.all([
+      api(P.production.api+'/queues').catch(function(){return {};}),
+      api(P.production.api+'/deadline-requests').catch(function(){return {};})
+    ]).then(function(res){
+      var r=res[0]||{}, dr=res[1]||{}; var props=(r.proposals||[]), urg=(r.urgent||[]), dreqs=(dr.requests||[]); var html='';
+      if(dreqs.length){
+        html+='<div class="pq-card"><div class="pq-head">Deadline Extension Requests <span class="pq-n">'+dreqs.length+'</span></div>';
+        html+=dreqs.map(function(t){
+          return '<div class="pq-row"><div class="pq-main"><div class="pq-title">'+esc(t.title||'Untitled')+'</div><div class="pq-meta">'+esc(t.creator_name||t.editor_name||'')+' \u00b7 New: '+esc(t.deadline_req||'')+(t.deadline_req_reason?' \u00b7 '+esc(t.deadline_req_reason):'')+'</div></div>'+
+            '<div class="pq-acts"><button class="p-btn p-btn-ok" onclick="prodDeadlineDecision('+t.id+',\'approve\')">Approve</button><button class="p-btn" onclick="prodDeadlineDecision('+t.id+',\'reject\')">Reject</button></div></div>';
+        }).join('')+'</div>';
+      }
       if(props.length){
         html+='<div class="pq-card"><div class="pq-head">Video Proposals \u2014 Approval Needed <span class="pq-n">'+props.length+'</span></div>';
         html+=props.map(function(t){
@@ -18905,6 +19036,22 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       box.innerHTML=html;
     }).catch(function(){ box.innerHTML=''; });
   }
+  window.prodDeadlineDecision=function(id,decision){
+    api(P.production.api+'/tasks/'+id+'/deadline-decision','POST',{decision:decision}).then(function(){ toast(decision==='approve'?'Deadline extended':'Request rejected'); _refresh('production'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  window.prodDeadlineReq=function(id){
+    var box=document.getElementById('p-acts'); if(!box) return;
+    box.innerHTML='<div class="p-form"><label>New deadline you need</label><input class="p-input" id="dr-date" type="datetime-local">'+
+      '<label style="margin-top:8px">Reason (PM will see this)</label><textarea class="p-area" id="dr-reason" placeholder="Why do you need more time?"></textarea>'+
+      '<div style="display:flex;gap:8px;margin-top:10px"><button class="p-btn" onclick="prodOpenTask(\'editor\','+id+')">Cancel</button><button class="p-btn p-btn-primary" onclick="prodDeadlineReqSubmit('+id+')">Send Request</button></div></div>';
+  };
+  window.prodDeadlineReqSubmit=function(id){
+    var dt=(document.getElementById('dr-date')||{}).value||''; var rs=(document.getElementById('dr-reason')||{}).value||'';
+    if(!dt){ toast('Pick the new deadline',true); return; } if(!rs.trim()){ toast('Add a reason',true); return; }
+    _pBusy(true);
+    api(P.editor.api+'/tasks/'+id+'/request-deadline','POST',{deadline:dt,reason:rs.trim()}).then(function(){ prodDismiss(); toast('Request sent to PM'); _refresh('editor'); })
+      .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
+  };
   window.prodApproveProposal=function(id){
     var dl=prompt('Set a deadline for this video (YYYY-MM-DD HH:MM) \u2014 or leave blank:');
     var body={}; if(dl&&dl.trim()){ body.deadline=dl.trim().replace(' ','T'); }
@@ -19116,10 +19263,32 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(t.editor_name) chips.push('<span class="pw-chip ed">Editor: '+esc(t.editor_name)+'</span>');
     if(g.graphics_name) chips.push('<span class="pw-chip gr">Graphics: '+esc(g.graphics_name)+'</span>');
     var meta=[]; if(t.deadline) meta.push('Deadline: '+esc(t.deadline));
-    var df=t.deadline_flag||{}; var dl=(df.kind&&['overdue','today','soon'].indexOf(df.kind)>=0)?'<span class="pt-dl '+df.kind+'">'+esc(df.label)+'</span>':'';
+    var df=t.deadline_flag||{}; var dl=(df.kind&&df.kind!=='none'&&df.kind!=='done')?'<span class="pt-dl '+df.kind+'">'+esc(df.label)+'</span>':'';
     if((t.revision_count||0)>0) meta.push('Revision '+t.revision_count);
     if(t.yt_views!=null && t.youtube_url) meta.push('Live views: '+_num(t.yt_views));
+    if(t.quality_rating) meta.push('<span class="ptc-stars" title="'+esc(t.quality_note||'')+'">'+_stars(t.quality_rating)+'</span>');
     var acts='';
+    if(portal==='editor'){
+      if(lc==='editor_assigned') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/start\')">Start Editing</button>';
+      else if(lc==='editing'){ acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardAct(\'editor\',\'progress\','+t.id+')">Update Progress</button>';
+        acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/pause\')">Pause</button>';
+        acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/complete\')">Complete</button>'; }
+      else if(lc==='editing_paused'){ acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/resume\')">Resume</button>';
+        acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/complete\')">Complete</button>'; }
+      else if(lc==='editing_done'||lc==='qc_changes') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodCardAct(\'editor\',\'submit\','+t.id+')">'+(lc==='qc_changes'?'Submit Revised':'Submit Video')+'</button>';
+      if(['editor_assigned','editing','editing_paused','editing_done','qc_changes'].indexOf(lc)>=0)
+        acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardAct(\'editor\',\'deadline\','+t.id+')">'+(t.deadline_req_status==='pending'?'Extension Pending':'Request Deadline')+'</button>';
+      acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
+    } else if(portal==='graphics'){
+      if(g.status==='new'||g.status==='changes') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'graphics\','+t.id+',\'/start\')">Start Designing</button>';
+      else if(g.status==='in_progress') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodCardAct(\'graphics\',\'submit\','+t.id+')">Submit Thumbnail</button>';
+      acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
+    } else if(portal==='youtuber'){
+      if(lc==='creator_assigned'||lc==='creator_working') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodCardAct(\'youtuber\',\'submit\','+t.id+')">Submit Video</button>';
+      else if(lc==='changes_required') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodCardAct(\'youtuber\',\'submit\','+t.id+')">Re-submit</button>';
+      if(t.youtube_url||t.submitted_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+esc(t.youtube_url||t.submitted_link)+'\',\'_blank\')">Open Video</button>';
+      acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
+    } else {
     if(lc==='creator_submitted'||lc==='pm_review'){
       acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\''+portal+'\','+t.id+',\'/approve-creator\')">Approve</button>';
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'changes\','+t.id+')">Changes</button>';
@@ -19135,11 +19304,15 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodEditTask('+t.id+')">Edit</button>';
     if(t.youtube_url) acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodNotifyStudents('+t.id+')">Send to Students</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodMarkOld('+t.id+','+(t.is_old?'false':'true')+')">'+(t.is_old?'Mark New':'Mark Old')+'</button>';
+    if(['editing_done','qc_pending','ready_for_youtube','uploaded','completed'].indexOf(lc)>=0 && t.editor_id)
+      acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodRateForm('+t.id+','+(t.quality_rating||0)+')">'+(t.quality_rating?'Rated '+t.quality_rating+'\u2605':'Rate')+'</button>';
     acts+='<button class="ptc-btn ptc-del" onclick="event.stopPropagation();prodDeleteTask('+t.id+')">Delete</button>';
+    }
+    var prog=(portal==='editor'&&(lc==='editing'||lc==='editing_paused'||lc==='editing_done')&&t.editing_progress!=null)?'<div class="ptc-prog"><i style="width:'+(t.editing_progress||0)+'%"></i></div><div class="ptc-prog-l">'+(t.editing_progress||0)+'% edited</div>':'';
     return '<div class="ptc" style="border-left:5px solid '+(st[1]||'#8a7d5c')+'" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
       '<div class="ptc-hw">'+header+badge+((t.priority==='urgent')?'<span class="ptc-urgent">URGENT</span>':'')+'</div>'+
       '<div class="ptc-body"><div class="ptc-title">'+esc(t.title||'Untitled')+'</div>'+
-      (chips.length?'<div class="pw-chips">'+chips.join('')+'</div>':'')+
+      (chips.length?'<div class="pw-chips">'+chips.join('')+'</div>':'')+prog+
       (meta.length||dl?'<div class="ptc-meta">'+dl+(dl&&meta.length?' ':'')+meta.join(' \u00b7 ')+'</div>':'')+
       '<div class="ptc-ref">'+esc(t.ref_code||'')+'</div>'+
       '<div class="ptc-acts">'+acts+'</div></div></div>';
@@ -19232,6 +19405,55 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     _prodLoadProjects();
   }
   window.prodNewProject=function(){ prodNewTask(); setTimeout(function(){ if(window.prodAwMode) prodAwMode('project'); },60); };
+  function renderAnnounce(portal,body){
+    var aud='<option value="all">All (everyone)</option><option value="teachers">All Teachers</option><option value="editors">All Editors</option><option value="graphics">All Graphics</option><option value="youtubers">All YouTubers</option>';
+    body.innerHTML='<div class="an-wrap">'+
+      '<div class="an-col"><div class="an-card"><div class="an-h">Send Announcement</div>'+
+        '<div class="p-field"><label>Audience</label><select class="p-select" id="an-aud">'+aud+'</select></div>'+
+        '<div class="p-field"><label>Title</label><input class="p-input" id="an-title" placeholder="Short title"></div>'+
+        '<div class="p-field"><label>Message</label><textarea class="p-area" id="an-msg" placeholder="Your message to the team"></textarea></div>'+
+        '<div class="p-field"><label>Image link (optional)</label><input class="p-input" id="an-img" placeholder="https://..."></div>'+
+        '<button class="p-btn p-btn-primary" onclick="prodSendAnnounce()">Send Announcement</button></div></div>'+
+      '<div class="an-col"><div class="an-card"><div class="an-h">Create Event</div>'+
+        '<div class="p-field"><label>Event title</label><input class="p-input" id="ev-title" placeholder="e.g. Lakshya Batch Launch"></div>'+
+        '<div class="p-field"><label>Date & time</label><input class="p-input" id="ev-at" type="datetime-local"></div>'+
+        '<div class="p-field"><label>Audience</label><select class="p-select" id="ev-aud">'+aud+'</select></div>'+
+        '<div class="p-field"><label>Description</label><textarea class="p-area" id="ev-desc" placeholder="Details shown on dashboards"></textarea></div>'+
+        '<div class="p-field"><label>Image link (optional)</label><input class="p-input" id="ev-img" placeholder="https://..."></div>'+
+        '<label class="an-chk"><input type="checkbox" id="ev-notify"> Also send a notification now</label>'+
+        '<button class="p-btn p-btn-primary" onclick="prodCreateEvent()">Create Event</button></div>'+
+        '<div class="an-card"><div class="an-h">Active Events</div><div id="an-events"><div class="p-load">Loading...</div></div></div></div>'+
+      '</div>';
+    _prodLoadEvents();
+  }
+  function _prodLoadEvents(){
+    var box=document.getElementById('an-events'); if(!box) return;
+    api(P.production.api+'/events').then(function(r){
+      var evs=r.events||[];
+      box.innerHTML=evs.length?evs.map(function(e){
+        return '<div class="an-ev"><div class="an-ev-main"><div class="an-ev-t">'+esc(e.title)+'</div><div class="an-ev-m">'+esc(e.at||'No date')+' \u00b7 '+esc(e.audience)+(e.description?' \u00b7 '+esc(e.description):'')+'</div></div><button class="p-btn pj-del" onclick="prodDeleteEvent('+e.id+')">Delete</button></div>';
+      }).join(''):'<div class="p-empty">No active events.</div>';
+    }).catch(function(){ box.innerHTML='<div class="p-empty">Could not load events.</div>'; });
+  }
+  window.prodSendAnnounce=function(){
+    var g=function(x){return (document.getElementById(x)||{}).value||'';};
+    var title=g('an-title').trim(), msg=g('an-msg').trim();
+    if(!title||!msg){ toast('Title and message required',true); return; }
+    _pBusy(true);
+    api(P.production.api+'/announce','POST',{audience:g('an-aud'),title:title,message:msg,image_url:g('an-img').trim()})
+      .then(function(r){ _pBusy(false); toast('Sent to '+(r.sent||0)+' people'); document.getElementById('an-title').value=''; document.getElementById('an-msg').value=''; document.getElementById('an-img').value=''; })
+      .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
+  };
+  window.prodCreateEvent=function(){
+    var g=function(x){return (document.getElementById(x)||{}).value||'';};
+    var title=g('ev-title').trim();
+    if(!title){ toast('Event title required',true); return; }
+    _pBusy(true);
+    api(P.production.api+'/events','POST',{title:title,event_at:g('ev-at'),audience:g('ev-aud'),description:g('ev-desc').trim(),image_url:g('ev-img').trim(),notify:document.getElementById('ev-notify').checked})
+      .then(function(){ _pBusy(false); toast('Event created'); ['ev-title','ev-at','ev-desc','ev-img'].forEach(function(id){var el=document.getElementById(id); if(el)el.value='';}); _prodLoadEvents(); })
+      .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
+  };
+  window.prodDeleteEvent=function(id){ if(!confirm('Delete this event?')) return; api(P.production.api+'/events/'+id,'DELETE').then(function(){ toast('Deleted'); _prodLoadEvents(); }).catch(function(){ toast('Failed',true); }); };
   var _PJ_PAL=[['#1e4d6b','#2a6b8f'],['#1f5c3a','#2e7d4f'],['#6b2f4d','#8f3d66'],['#5a4a1e','#7a6528'],['#3a3a6b','#4f4f8f'],['#6b3a1e','#8f5228'],['#1e6b5a','#28907a'],['#5a1e4d','#7a2868'],['#4d5a1e','#687a28'],['#1e3a6b','#28528f']];
   function _prodLoadProjects(pr){
     var box=document.getElementById('prod-projects'); if(!box) return;
@@ -19351,7 +19573,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     return api(d.api+'/'+key+_prodQuery(portal)).then(function(r){
       var arr=r[key]||r.tasks||r.videos||[];
       if(!res) return;
-      res.innerHTML=arr.length?(portal==='production'?'<div class="ptc-grid">'+arr.map(function(t){ return _prodTaskCard(portal,t); }).join('')+'</div>':arr.map(function(t){ return _taskRow(portal,t); }).join('')):'<div class="p-empty">Nothing matches these filters.</div>';
+      res.innerHTML=arr.length?('<div class="ptc-grid">'+arr.map(function(t){ return _prodTaskCard(portal,t); }).join('')+'</div>'):'<div class="p-empty">Nothing matches these filters.</div>';
     }).catch(function(e){ if(res) res.innerHTML='<div class="p-empty">Could not load. '+esc(e&&e.message||'')+'</div>'; });
   }
   window.prodKpiGo=function(portal,key){
@@ -19532,6 +19754,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(portal==='production' && t.creator_type!=='youtuber'){ try{ _loadCollab(id); }catch(e){} }
       if(portal==='production'){ try{ _loadChapters(id); }catch(e){} }
       if(portal==='production'){ try{ _prodRunPendingForm(); }catch(e){} }
+      else { try{ _prodRunPendingForm(); }catch(e){} }
     }).catch(function(e){ toast((e&&e.message)||'Could not open task',true); });
   };
   function _loadChapters(id){
@@ -19660,6 +19883,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         b.push(_ab('Complete Editing','prodAct(\'editor\','+t.id+',\'/complete\')','ok')); }
       else if(lc==='editing_done') b.push(_ab('Submit Edited Video','prodLinkForm(\'editor\','+t.id+',\'/submit\',\'edited_link\',\'Edited video Drive link\')','primary'));
       else if(lc==='qc_changes') b.push(_ab('Submit Revised Video','prodLinkForm(\'editor\','+t.id+',\'/submit\',\'edited_link\',\'Revised video Drive link\')','primary'));
+      if(['editor_assigned','editing','editing_paused','editing_done','qc_changes'].indexOf(lc)>=0)
+        b.push(_ab((t.deadline_req_status==='pending'?'Extension Pending':'Request New Deadline'),'prodDeadlineReq('+t.id+')'));
     } else if(portal==='youtuber'){
       if(lc==='creator_assigned'||lc==='creator_working')
         b.push(_ab('Submit Video','prodLinkForm(\'youtuber\','+t.id+',\'/videos/'+t.id+'/submit\',\'drive_link\',\'Video Drive link\',true)','primary'));
@@ -19717,7 +19942,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   function _pBusy(on){ var box=document.getElementById('p-acts'); if(!box) return;
     if(on){ box.style.opacity='.5'; box.style.pointerEvents='none'; } else { box.style.opacity=''; box.style.pointerEvents=''; } }
-  window.prodCardForm=function(kind,id){ window._prodPendingForm={kind:kind,id:id}; prodOpenTask('production',id); };
+  window.prodCardForm=function(kind,id){ window._prodPendingForm={portal:'production',kind:kind,id:id}; prodOpenTask('production',id); };
+  window.prodCardAct=function(portal,kind,id){ window._prodPendingForm={portal:portal,kind:kind,id:id}; prodOpenTask(portal,id); };
   window.prodThumbView=function(url){
     if(!url) return; var old=document.getElementById('prod-lightbox'); if(old) old.remove();
     var lb=document.createElement('div'); lb.id='prod-lightbox'; lb.className='p-lightbox';
@@ -19755,13 +19981,47 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   function _prodRunPendingForm(){
     var pf=window._prodPendingForm; if(!pf) return; window._prodPendingForm=null;
+    var portal=pf.portal||'production';
     setTimeout(function(){
-      if(pf.kind==='assign-editor') prodAssignForm(pf.id,'editor');
-      else if(pf.kind==='assign-graphics') prodAssignForm(pf.id,'graphics');
-      else if(pf.kind==='changes') prodRemarkForm('production',pf.id,'/request-creator-changes');
-      else if(pf.kind==='post-yt') prodLinkForm('production',pf.id,'/youtube','youtube_url','Published YouTube URL');
+      if(portal==='production'){
+        if(pf.kind==='assign-editor') prodAssignForm(pf.id,'editor');
+        else if(pf.kind==='assign-graphics') prodAssignForm(pf.id,'graphics');
+        else if(pf.kind==='changes') prodRemarkForm('production',pf.id,'/request-creator-changes');
+        else if(pf.kind==='post-yt') prodLinkForm('production',pf.id,'/youtube','youtube_url','Published YouTube URL');
+      } else if(portal==='editor'){
+        if(pf.kind==='progress') prodProgForm(pf.id);
+        else if(pf.kind==='submit') prodLinkForm('editor',pf.id,'/submit','edited_link','Edited video Drive link');
+        else if(pf.kind==='deadline') prodDeadlineReq(pf.id);
+      } else if(portal==='graphics'){
+        if(pf.kind==='submit') prodLinkForm('graphics',pf.id,'/submit','thumbnail_url','Thumbnail image URL');
+      } else if(portal==='youtuber'){
+        if(pf.kind==='submit') prodLinkForm('youtuber',pf.id,'/videos/'+pf.id+'/submit','drive_link','Video Drive link',true);
+      }
     },140);
   }
+  function _stars(n){ n=Math.max(0,Math.min(5,parseInt(n||0,10))); var s=''; for(var i=1;i<=5;i++) s+='<span style="color:'+(i<=n?'#e0a52e':'#d9cba8')+'">\u2605</span>'; return s; }
+  window.prodRateForm=function(id,cur){
+    var old=document.getElementById('prod-modal'); if(old) old.remove();
+    window._prodRate=parseInt(cur||0,10)||0;
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+    var starBtns=function(){ var h=''; for(var i=1;i<=5;i++){ h+='<span class="rate-star'+(i<=window._prodRate?' on':'')+'" data-v="'+i+'" onclick="prodRateSet('+i+')">\u2605</span>'; } return h; };
+    dr.innerHTML='<div class="p-modal" style="max-width:420px">'+
+      '<div class="pd-head"><div class="h-title">Rate this work</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body"><div style="text-align:center"><div class="rate-stars" id="rate-stars">'+starBtns()+'</div></div>'+
+      '<div class="p-field" style="margin-top:12px"><label>Note (optional)</label><textarea class="p-area" id="rate-note" placeholder="What was good / what to improve"></textarea></div></div>'+
+      '<div class="pd-foot"><div class="p-acts" id="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodRateSubmit('+id+')">Save Rating</button></div></div>'+
+      '</div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+    document.body.appendChild(dr);
+  };
+  window.prodRateSet=function(v){ window._prodRate=v; var box=document.getElementById('rate-stars'); if(box){ box.querySelectorAll('.rate-star').forEach(function(s){ s.classList.toggle('on', parseInt(s.getAttribute('data-v'),10)<=v); }); } };
+  window.prodRateSubmit=function(id){
+    if(!window._prodRate){ toast('Pick a star rating',true); return; }
+    var note=(document.getElementById('rate-note')||{}).value||'';
+    _pBusy(true);
+    api(P.production.api+'/tasks/'+id+'/rate','POST',{rating:window._prodRate,note:note.trim()}).then(function(){ prodDismiss(); toast('Rating saved'); _refresh('production'); })
+      .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
+  };
   window.prodMarkOld=function(id,isOld){    _pBusy(true);
     api(P.production.api+'/tasks/'+id+'/mark-old','POST',{is_old:!!isOld}).then(function(){ prodDismiss(); toast(isOld?'Marked as Old (won\u2019t count this month)':'Marked as New'); _refresh('production'); })
       .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });

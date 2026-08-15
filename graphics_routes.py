@@ -41,8 +41,25 @@ def gfx_dashboard(db: Session = Depends(get_db), me=Depends(get_graphics)):
     done_m = base.filter(GraphicsTask.status == "approved",
                          GraphicsTask.approved_at != None,
                          GraphicsTask.approved_at >= month_start).count()
+    # appreciation / achievements (§10, §23) from real graphics data
+    all_done = base.filter(GraphicsTask.status == "approved").all()
+    total_done = len(all_done)
+    revisions = sum(int(g.revision_count or 0) for g in all_done)
+    first_time = sum(1 for g in all_done if int(g.revision_count or 0) == 0)
+    approval_rate = round(first_time * 100 / total_done) if total_done else 0
+    badges = []
+    if total_done >= 3 and approval_rate >= 90:
+        badges.append("First-time Approved")
+    if total_done >= 10:
+        badges.append("10+ Thumbnails")
+    if total_done >= 25:
+        badges.append("25+ Thumbnails")
     return {
         "greeting_name": me.name,
+        "events": pc.active_events_for(db, "graphics"),
+        "appreciation": {"ontime_pct": approval_rate, "avg_rating": 0,
+                         "rate_label": "First-time approved", "revisions": revisions,
+                         "badges": badges, "total_done": total_done},
         "kpis": {
             "new": c("new"),
             "in_progress": c("in_progress"),

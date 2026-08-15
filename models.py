@@ -517,6 +517,14 @@ class VideoTask(Base):
     edited_link     = Column(String(600), default="")      # editor-submitted final drive link
     qc_status       = Column(String(20), default="")       # "" | pending | approved | changes
     revision_count  = Column(Integer, default=0)
+    # deadline extension request (editor -> PM approval)
+    deadline_req        = Column(DateTime, nullable=True)     # requested new deadline
+    deadline_req_reason = Column(String(400), default="")     # editor's reason
+    deadline_req_status = Column(String(20), default="")      # "" | pending | approved | rejected
+    # PM quality rating (1..5) after approval
+    quality_rating      = Column(Integer, nullable=True)      # editor/graphics work rating
+    quality_note        = Column(String(400), default="")
+    remarks_audience    = Column(String(10), default="both")  # pm | editor | both (§31)
     on_hold         = Column(Boolean, default=False)
     cancelled       = Column(Boolean, default=False)
     published_at    = Column(DateTime, nullable=True)
@@ -1390,6 +1398,8 @@ class ProductionStaffProfile(Base):
     photo_b64           = Column(_PHOTO, nullable=True)
     phone               = Column(String(15), default="")
     recommended_load    = Column(Integer, default=5)       # workload intelligence: recommended active tasks
+    rank1_since         = Column(DateTime, nullable=True)   # streak start when this person is rank #1 (§23)
+    rank_appreciated_at = Column(DateTime, nullable=True)   # last streak appreciation sent
     skills              = Column(Text, default="")         # JSON/text — e.g. long, shorts, reels
     notes               = Column(Text, default="")
     plain_password      = Column(String(255), nullable=True)
@@ -1546,3 +1556,17 @@ class TranslationVersion(Base):
     reason        = Column(String(40), default="")               # repair | retranslate | review | revert
     created_by    = Column(Integer, nullable=True)
     created_at    = Column(DateTime, default=func.now())
+
+
+class PmEvent(Base):
+    """Production-manager announcement/event shown on recipient dashboards with countdown (§35)."""
+    __tablename__ = "pm_events"
+    id          = Column(Integer, primary_key=True, index=True)
+    title       = Column(String(200))
+    description = Column(String(1200), default="")
+    event_at    = Column(DateTime, nullable=True)
+    image_url   = Column(String(600), default="")
+    audience    = Column(String(40), default="all")   # all | teachers | editors | graphics | youtubers
+    created_by  = Column(Integer, nullable=True)
+    active      = Column(Boolean, default=True)
+    created_at  = Column(DateTime, default=func.now())

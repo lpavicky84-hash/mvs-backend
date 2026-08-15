@@ -275,7 +275,7 @@ def _dt(x):
     return x.strftime("%d %b %Y, %I:%M %p") if x else ""
 
 
-def task_out(db, t, g=None, timeline=False, light=False):
+def task_out(db, t, g=None, timeline=False, light=False, viewer=None):
     """Production-facing task serializer (no heavy base64 blobs)."""
     if g is None:
         g = db.query(GraphicsTask).filter(GraphicsTask.task_id == t.id).first()
@@ -294,6 +294,9 @@ def task_out(db, t, g=None, timeline=False, light=False):
         "priority": t.priority or "normal",
         "is_old": bool(getattr(t, "is_old", False)),
         "status": (t.status or ""),
+        "deadline_req_status": (getattr(t, "deadline_req_status", "") or ""),
+        "quality_rating": getattr(t, "quality_rating", None),
+        "quality_note": (getattr(t, "quality_note", "") or ""),
         "lifecycle": t.lifecycle or "",
         "lifecycle_label": lc_label(t.lifecycle),
         "legacy_status": t.status or "",
@@ -335,7 +338,13 @@ def task_out(db, t, g=None, timeline=False, light=False):
         out["thumbnail_link"] = t.thumbnail_link or ""
         out["deadline_iso"] = (t.deadline.strftime("%Y-%m-%dT%H:%M") if t.deadline else "")
         out["reference"] = t.reference or ""
-        out["remarks"] = t.remarks or ""
+        # §31 remarks audience: editors don't see PM-only remarks
+        _aud = getattr(t, "remarks_audience", "both") or "both"
+        if viewer == "editor" and _aud == "pm":
+            out["remarks"] = ""
+        else:
+            out["remarks"] = t.remarks or ""
+        out["remarks_audience"] = _aud
     if timeline:
         out["timeline"] = timeline_out(db, t)
         out["attachments"] = attachments_out(db, t)
@@ -348,11 +357,19 @@ def timeline_out(db, t):
             .order_by(ProductionEvent.created_at.asc(), ProductionEvent.id.asc()).all())
     merged = []
     for e in rows:
+        _note = ""
+        try:
+            import json as _jm
+            _mm = _jm.loads(e.meta) if e.meta else {}
+            if isinstance(_mm, dict):
+                _note = _mm.get("note", "") or ""
+        except Exception:
+            _note = ""
         merged.append((e.created_at, {
             "event": e.event, "label": _event_label(e.event),
             "actor": e.actor_name or "", "role": e.actor_role or "",
             "prev": e.prev_state or "", "new": e.new_state or "",
-            "note": getattr(e, "note", "") or "",
+            "note": _note,
             "at": _dt(e.created_at),
         }))
     # merge admin Task-Manager history (status_history JSON) so tasks created or updated
@@ -393,6 +410,10 @@ def timeline_out(db, t):
 
 
 _EVENT_LABELS = {
+    "deadline_requested": "Deadline Extension Requested",
+    "deadline_extended": "Deadline Extended",
+    "deadline_rejected": "Deadline Request Rejected",
+    "quality_rated": "Quality Rated",
     "task_created": "Task Created",
     "creator_assigned": "Creator Assigned",
     "teacher_submitted": "Video Submitted",
@@ -459,18 +480,120 @@ def mark_read(db, user, nid=None):
 
 # ---------------------------------------------------------------- deadline
 def deadline_flag(t):
-    """Short human deadline signal for cards/filters."""
+    """Human-readable deadline signal for cards/filters (spec §38)."""
     if not t.deadline:
         return ("none", "No deadline")
-    now = datetime.utcnow()
-    delta = (t.deadline - now).total_seconds()
     if t.lifecycle in ("uploaded", "completed"):
         return ("done", "Completed")
+    now = datetime.utcnow()
+    delta = (t.deadline - now).total_seconds()
+    ad = abs(delta)
+    d = int(ad // 86400); h = int((ad % 86400) // 3600); m = int((ad % 3600) // 60)
     if delta < 0:
-        h = int(-delta // 3600)
-        return ("overdue", "Overdue by %dh" % h if h else "Overdue")
-    if delta < 3600:
-        return ("soon", "Due in %dm" % int(delta // 60))
-    if delta < 86400:
-        return ("today", "Due in %dh" % int(delta // 3600))
-    return ("later", "Due in %dd" % int(delta // 86400))
+        if d > 0:
+            s = "%dd %02dh overdue" % (d, h)
+        elif h > 0:
+            s = "%dh %02dm overdue" % (h, m)
+        else:
+            s = "%dm overdue" % m
+        return ("overdue", s)
+    if delta < 7200:          # under 2 hours
+        return ("soon", ("Due soon · %dh %02dm" % (h, m)) if h else ("Due soon · %dm" % m))
+    if delta < 86400:         # under 24 hours
+        return ("today", "Due today · %dh %02dm" % (h, m))
+    return ("later", "Due in %dd %02dh" % (d, h))
+
+
+# ---------------------------------------------------------------- announcements / events (§35)
+_AUDIENCE_ROLE = {"teachers": "teacher", "editors": "editor", "graphics": "graphics",
+                  "youtubers": "youtuber"}
+
+
+def audience_user_ids(db, audience):
+    """User ids for an announcement audience ('all' or a role group)."""
+    from models import User, ProductionStaffProfile, TeacherProfile, YouTuberProfile
+    ids = []
+    aud = (audience or "all").lower()
+    if aud in ("all", "teachers"):
+        for u in db.query(User).filter(User.is_active == True, User.role == "teacher").all():
+            ids.append(u.id)
+    if aud in ("all", "editors", "graphics"):
+        want = None if aud == "all" else _AUDIENCE_ROLE.get(aud)
+        q = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.is_active == True)
+        for sp in q.all():
+            if want and (sp.staff_role or "") != want:
+                continue
+            if sp.user_id:
+                ids.append(sp.user_id)
+    if aud in ("all", "youtubers"):
+        for yp in db.query(YouTuberProfile).all():
+            if getattr(yp, "user_id", None):
+                ids.append(yp.user_id)
+    return list(dict.fromkeys(ids))
+
+
+def active_events_for(db, role):
+    """Upcoming/active PM events visible to a given role, with a countdown label."""
+    from models import PmEvent
+    role_aud = {"teacher": "teachers", "editor": "editors", "graphics": "graphics",
+                "youtuber": "youtubers"}.get(role, "")
+    rows = (db.query(PmEvent).filter(PmEvent.active == True)
+            .order_by(PmEvent.event_at.asc()).all())
+    out = []
+    now = datetime.utcnow()
+    for e in rows:
+        if e.audience not in ("all", role_aud):
+            continue
+        cd = ""
+        if e.event_at:
+            delta = (e.event_at - now).total_seconds()
+            if delta < 0:
+                cd = "Happening now / passed"
+            else:
+                d = int(delta // 86400); h = int((delta % 86400) // 3600); m = int((delta % 3600) // 60)
+                cd = ("in %dd %02dh" % (d, h)) if d else (("in %dh %02dm" % (h, m)) if h else ("in %dm" % m))
+        out.append({"id": e.id, "title": e.title or "", "description": e.description or "",
+                    "image_url": e.image_url or "", "at": _dt(e.event_at), "countdown": cd,
+                    "audience": e.audience})
+    return out
+
+
+# ---------------------------------------------------------------- rank streak appreciation (§23)
+def editor_rank_and_streak(db, sp):
+    """Return this editor's current rank (1-based) among editors by month completions,
+    and lazily maintain a 7-day #1 streak appreciation (no cron needed)."""
+    from models import ProductionStaffProfile, VideoTask
+    now = datetime.utcnow()
+    month_start = datetime(now.year, now.month, 1)
+    done_states = ["ready_for_youtube", "uploaded", "completed"]
+    eds = db.query(ProductionStaffProfile).filter(
+        ProductionStaffProfile.staff_role == "editor",
+        ProductionStaffProfile.is_active == True).all()
+    scored = []
+    for e in eds:
+        cnt = db.query(VideoTask).filter(VideoTask.editor_id == e.id,
+                                         VideoTask.lifecycle.in_(done_states),
+                                         VideoTask.updated_at >= month_start).count()
+        scored.append((e.id, cnt))
+    scored.sort(key=lambda x: -x[1])
+    rank = 0
+    for i, (eid, cnt) in enumerate(scored):
+        if eid == sp.id:
+            rank = i + 1
+            my_cnt = cnt
+            break
+    # streak maintenance (only meaningful if actually producing)
+    is_top = (rank == 1 and my_cnt > 0)
+    if is_top:
+        if not sp.rank1_since:
+            sp.rank1_since = now
+        elif (now - sp.rank1_since).days >= 7:
+            already = sp.rank_appreciated_at and sp.rank_appreciated_at >= sp.rank1_since
+            if not already:
+                notify(db, sp.user_id, "Top Performer!",
+                       "You have stayed at Rank #1 among editors for 7 days straight. Outstanding consistency!",
+                       "appreciation")
+                sp.rank_appreciated_at = now
+    else:
+        sp.rank1_since = None
+    return rank

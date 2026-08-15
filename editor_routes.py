@@ -61,8 +61,37 @@ def editor_dashboard(db: Session = Depends(get_db), me=Depends(get_editor)):
                            VideoTask.updated_at >= month_start).count()
     total_secs = db.query(func.coalesce(func.sum(EditingSession.duration_seconds), 0)).filter(
         EditingSession.editor_id == sp.id).scalar() or 0
+    # appreciation / achievements (§23) — from real task data, no shaming
+    done_tasks = base.filter(VideoTask.lifecycle.in_(
+        ["editing_done", "qc_pending", "ready_for_youtube", "uploaded", "completed"])).all()
+    ontime = 0; total_done = 0; ratings = []
+    for tk in done_tasks:
+        total_done += 1
+        if tk.deadline and tk.editing_done_at and tk.editing_done_at <= tk.deadline:
+            ontime += 1
+        if getattr(tk, "quality_rating", None):
+            ratings.append(tk.quality_rating)
+    ontime_pct = round(ontime * 100 / total_done) if total_done else 0
+    avg_rating = round(sum(ratings) / len(ratings), 1) if ratings else 0
+    badges = []
+    if total_done >= 3 and ontime_pct >= 90:
+        badges.append("On-time Pro")
+    if avg_rating >= 4.5 and len(ratings) >= 3:
+        badges.append("Top Quality")
+    if total_done >= 10:
+        badges.append("10+ Delivered")
+    # rank #1 streak appreciation + top-performer badge (§23)
+    try:
+        rank = pc.editor_rank_and_streak(db, sp)
+        if rank == 1 and total_done > 0:
+            badges.insert(0, "Top Performer")
+    except Exception:
+        rank = 0
     return {
         "greeting_name": me.name,
+        "events": pc.active_events_for(db, "editor"),
+        "appreciation": {"ontime_pct": ontime_pct, "avg_rating": avg_rating,
+                         "badges": badges, "total_done": total_done, "rank": rank},
         "kpis": {
             "assigned": c("editor_assigned"),
             "not_started": c("editor_assigned"),
@@ -97,7 +126,7 @@ def editor_tasks(status: str = "", db: Session = Depends(get_db), me=Depends(get
 def editor_task_detail(tid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
     sp = _me_staff(db, me)
     t = _my_task(db, sp, tid)
-    out = pc.task_out(db, t, timeline=True)
+    out = pc.task_out(db, t, timeline=True, viewer="editor")
     out["source_link"] = t.submitted_link or ""   # editor needs the creator's raw video
     return out
 
@@ -195,6 +224,14 @@ def editor_submit(tid: int, payload: dict = Body(...),
                  event="revision_submitted" if is_revision else "edited_video_submitted")
     pc.notify_pms(db, "Edited Video Submitted",
                   f'{me.name} submitted the edited "{t.title}" for QC.', "production", link=str(t.id))
+    # on-time appreciation (§23) — one positive nudge, only on the first on-time submission
+    try:
+        if t.deadline and (not is_revision) and datetime.utcnow() <= t.deadline:
+            pc.notify(db, me.id, "Great work!",
+                      'Your edited "%s" was submitted on time. Keep it up!' % (t.title or ""),
+                      "appreciation", link=str(t.id))
+    except Exception:
+        pass
     db.commit()
     return {"ok": True, "lifecycle": t.lifecycle}
 
@@ -250,3 +287,31 @@ def editor_time_analytics(db: Session = Depends(get_db), me=Depends(get_editor))
         "shortest_hours": round(min(task_secs) / 3600.0, 1) if task_secs else 0,
         "by_type": by_type_list,
     }
+
+
+@router.post("/tasks/{tid}/request-deadline")
+def editor_request_deadline(tid: int, payload: dict = Body(...),
+                            db: Session = Depends(get_db), me=Depends(get_editor)):
+    """Editor asks the PM for a new deadline (§19). PM must approve before it changes."""
+    sp = pc.staff_profile(db, me)
+    t = _my_task(db, sp, tid)
+    raw = (payload.get("deadline") or "").strip()
+    reason = (payload.get("reason") or "").strip()
+    if not raw:
+        raise HTTPException(400, "Please choose the new deadline you need.")
+    if not reason:
+        raise HTTPException(400, "Please add a short reason for the PM.")
+    try:
+        newdl = datetime.fromisoformat(raw.replace("Z", ""))
+    except Exception:
+        raise HTTPException(400, "Invalid date/time.")
+    t.deadline_req = newdl
+    t.deadline_req_reason = reason[:400]
+    t.deadline_req_status = "pending"
+    pc.log_event(db, t, me, "deadline_requested",
+                 meta={"note": 'Deadline extension requested to %s \u2014 %s' % (newdl.strftime("%d %b %Y, %I:%M %p"), reason[:120])})
+    pc.notify_pms(db, "Deadline Extension Requested",
+                  '%s requested a new deadline for "%s".' % (me.name, t.title or ""),
+                  "production", link=str(t.id))
+    db.commit()
+    return {"ok": True, "requested": newdl.strftime("%d %b %Y, %I:%M %p")}

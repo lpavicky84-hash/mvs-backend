@@ -40,6 +40,7 @@ def yt_dashboard(db: Session = Depends(get_db), me=Depends(get_youtuber)):
 
     return {
         "greeting_name": me.name,
+        "events": pc.active_events_for(db, "youtuber"),
         "approval_required": bool(yp.approval_required),
         "kpis": {
             "requests": c("creator_assigned", "creator_working"),
@@ -105,10 +106,20 @@ def yt_propose(payload: dict = Body(...), db: Session = Depends(get_db), me=Depe
     title = (payload.get("title") or "").strip()
     if not title:
         raise HTTPException(400, "A video title is required")
+    dl = None
+    raw = (payload.get("deadline") or "").strip()
+    if raw:
+        try:
+            dl = datetime.fromisoformat(raw.replace("Z", ""))
+        except Exception:
+            pass
     t = VideoTask(title=title, creator_type="youtuber", youtuber_id=yp.id,
                   subject=(payload.get("subject") or "").strip(),
                   video_type=(payload.get("video_type") or "").strip(),
                   reference=(payload.get("reference") or "").strip(),
+                  remarks=(payload.get("remarks") or "").strip(), deadline=dl,
+                  remarks_audience=(payload.get("remarks_audience") or "both"),
+                  priority=("urgent" if payload.get("urgent") else "normal"),
                   proposed_by="youtuber", proposal_ok="pending", status="proposal")
     db.add(t)
     db.flush()
@@ -134,3 +145,69 @@ def _pnotif_read(nid: int, db: Session = Depends(get_db), me=Depends(get_youtube
 @router.post("/notifications/read-all")
 def _pnotif_read_all(db: Session = Depends(get_db), me=Depends(get_youtuber)):
     pc.mark_read(db, me); db.commit(); return {"ok": True}
+
+
+# ============================================================ EDITOR LIST (for direct assign, §32)
+@router.get("/editors")
+def yt_editors(db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    """Active editors with a light workload hint, for direct assignment."""
+    from models import ProductionStaffProfile, User, VideoTask
+    rows = db.query(ProductionStaffProfile).filter(
+        ProductionStaffProfile.staff_role == "editor",
+        ProductionStaffProfile.is_active == True).all()
+    out = []
+    for sp in rows:
+        active = db.query(VideoTask).filter(
+            VideoTask.editor_id == sp.id,
+            VideoTask.lifecycle.in_(["editor_assigned", "editing", "editing_paused", "editing_done", "qc_changes"])
+        ).count()
+        u = db.query(User).filter(User.id == sp.user_id).first()
+        out.append({"id": sp.id, "name": (u.name if u else "Editor"), "active": active})
+    out.sort(key=lambda x: x["active"])
+    return {"editors": out}
+
+
+# ============================================================ DIRECT EDITOR ASSIGN (§32)
+@router.post("/assign-editor")
+def yt_assign_editor(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    """Approval-not-required YouTubers can create a task and assign an editor directly.
+    The PM still sees the task and can monitor it."""
+    from models import ProductionStaffProfile, VideoTask
+    yp = _me_yt(db, me)
+    if yp.approval_required:
+        raise HTTPException(403, "Your workflow needs PM approval. Please submit a proposal instead.")
+    title = (payload.get("title") or "").strip()
+    if not title:
+        raise HTTPException(400, "A video title is required.")
+    eid = int(payload.get("editor_id") or 0)
+    ed = db.query(ProductionStaffProfile).filter(
+        ProductionStaffProfile.id == eid, ProductionStaffProfile.staff_role == "editor").first()
+    if not ed:
+        raise HTTPException(400, "Please choose a valid editor.")
+    from datetime import datetime as _dtc
+    dl = None
+    raw = (payload.get("deadline") or "").strip()
+    if raw:
+        try:
+            dl = _dtc.fromisoformat(raw.replace("Z", ""))
+        except Exception:
+            pass
+    remarks = (payload.get("remarks") or "").strip()
+    t = VideoTask(title=title, creator_type="youtuber", youtuber_id=yp.id,
+                  subject=(payload.get("subject") or "").strip(),
+                  video_type=(payload.get("video_type") or "").strip(),
+                  reference=(payload.get("reference") or "").strip(),
+                  remarks=remarks, remarks_audience=(payload.get("remarks_audience") or "both"),
+                  deadline=dl, editor_id=eid,
+                  priority=("urgent" if payload.get("urgent") else "normal"),
+                  proposed_by="youtuber", proposal_ok="approved", status="editing_soon")
+    db.add(t); db.flush()
+    pc.ensure_ref_code(t)
+    pc.set_state(db, t, "editor_assigned", actor=me, event="editor_assigned")
+    if ed.user_id:
+        pc.notify(db, ed.user_id, "New Editing Task",
+                  'You have been assigned to edit "%s" (from %s).' % (title, me.name), "video_task", link=str(t.id))
+    pc.notify_pms(db, "YouTuber Assigned an Editor",
+                  '%s directly assigned an editor for "%s".' % (me.name, title), "production", link=str(t.id))
+    db.commit()
+    return {"ok": True, "id": t.id, "ref_code": t.ref_code}
