@@ -18,11 +18,31 @@ ACCESS_TOKEN_EXPIRE_HOURS = int(os.getenv("ACCESS_TOKEN_EXPIRE_HOURS", 24))
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
+def _pw_bytes(password: str) -> bytes:
+    # bcrypt only uses the first 72 bytes — truncate to avoid ValueError on bcrypt 4.x
+    return (password or "").encode("utf-8")[:72]
+
+
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    # Use bcrypt directly (version-independent). passlib's bcrypt backend self-test
+    # breaks on newer bcrypt builds ("password cannot be longer than 72 bytes"), which
+    # would make every teacher/student add fail. Direct bcrypt avoids that entirely.
+    try:
+        import bcrypt as _bcrypt
+        return _bcrypt.hashpw(_pw_bytes(password), _bcrypt.gensalt()).decode("utf-8")
+    except Exception:
+        return pwd_context.hash((password or "")[:72])
+
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    try:
+        import bcrypt as _bcrypt
+        return _bcrypt.checkpw(_pw_bytes(plain), (hashed or "").encode("utf-8"))
+    except Exception:
+        try:
+            return pwd_context.verify((plain or "")[:72], hashed)
+        except Exception:
+            return False
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
