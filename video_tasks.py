@@ -260,12 +260,22 @@ def _chapters_for(db, tid, name, cls, scope=""):
         levels = ["12", "10"]
     for lv in levels:
         code = None
+        # AUTHORITATIVE: (class_level, exact name) from the DB subject list — unambiguous
+        # even when the same name exists in both classes (Painting 225 vs 332).
         try:
-            r = canon_subject(name, lv)
-            if r and r.get("code"):
-                code = r["code"]
+            from models import AvailableSubject as _AVS
+            _av = db.query(_AVS).filter(_AVS.class_level == lv, _AVS.name == name).first()
+            if _av and _av.code:
+                code = _av.code
         except Exception:
-            pass
+            code = None
+        if not code:
+            try:
+                r = canon_subject(name, lv)
+                if r and r.get("code"):
+                    code = r["code"]
+            except Exception:
+                pass
         if not code:
             try:
                 code = SR.subject_code_for_name(db, lv, name)
@@ -459,12 +469,21 @@ def _tagged_chapters_for(db, name, cls):
     levels = [lv0] if lv0 else ["12", "10"]
     for lv in levels:
         code = None
+        # AUTHORITATIVE: (class_level, exact name) from DB — unambiguous across classes.
         try:
-            r = canon_subject(name, lv)
-            if r and r.get("code"):
-                code = r["code"]
+            from models import AvailableSubject as _AVS
+            _av = db.query(_AVS).filter(_AVS.class_level == lv, _AVS.name == name).first()
+            if _av and _av.code:
+                code = _av.code
         except Exception:
-            pass
+            code = None
+        if not code:
+            try:
+                r = canon_subject(name, lv)
+                if r and r.get("code"):
+                    code = r["code"]
+            except Exception:
+                pass
         if not code:
             try:
                 code = SR.subject_code_for_name(db, lv, name)
