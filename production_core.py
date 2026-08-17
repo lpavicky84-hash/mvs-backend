@@ -275,6 +275,48 @@ def _dt(x):
     return x.strftime("%d %b %Y, %I:%M %p") if x else ""
 
 
+# ==================================================================== SELF-HEALING SCHEMA
+# Bulletproof: even if main.py's migration did not run (e.g. only these files were
+# deployed), make sure the new production columns exist. Idempotent + safe on every boot
+# (duplicate-column errors are ignored). Prevents "Unknown column" crashes that would
+# otherwise flood logs and exhaust the DB pool.
+def _ensure_production_columns():
+    try:
+        from database import engine
+        from sqlalchemy import text as _sql_text
+    except Exception:
+        return
+    _stmts = [
+        "ALTER TABLE video_tasks ADD COLUMN deadline_req DATETIME",
+        "ALTER TABLE video_tasks ADD COLUMN deadline_req_reason VARCHAR(400)",
+        "ALTER TABLE video_tasks ADD COLUMN deadline_req_status VARCHAR(20)",
+        "ALTER TABLE video_tasks ADD COLUMN quality_rating INTEGER",
+        "ALTER TABLE video_tasks ADD COLUMN quality_note VARCHAR(400)",
+        "ALTER TABLE video_tasks ADD COLUMN remarks_audience VARCHAR(10)",
+        "ALTER TABLE production_staff_profiles ADD COLUMN rank1_since DATETIME",
+        "ALTER TABLE production_staff_profiles ADD COLUMN rank_appreciated_at DATETIME",
+    ]
+    for _s in _stmts:
+        try:
+            with engine.connect() as _conn:
+                _conn.execute(_sql_text(_s))
+                _conn.commit()
+        except Exception:
+            pass
+    # ensure the pm_events table exists (announcements/events)
+    try:
+        from models import PmEvent
+        PmEvent.__table__.create(bind=engine, checkfirst=True)
+    except Exception:
+        pass
+
+
+try:
+    _ensure_production_columns()
+except Exception:
+    pass
+
+
 def task_out(db, t, g=None, timeline=False, light=False, viewer=None):
     """Production-facing task serializer (no heavy base64 blobs)."""
     if g is None:
@@ -510,90 +552,113 @@ _AUDIENCE_ROLE = {"teachers": "teacher", "editors": "editor", "graphics": "graph
 
 
 def audience_user_ids(db, audience):
-    """User ids for an announcement audience ('all' or a role group)."""
-    from models import User, ProductionStaffProfile, TeacherProfile, YouTuberProfile
-    ids = []
-    aud = (audience or "all").lower()
-    if aud in ("all", "teachers"):
-        for u in db.query(User).filter(User.is_active == True, User.role == "teacher").all():
-            ids.append(u.id)
-    if aud in ("all", "editors", "graphics"):
-        want = None if aud == "all" else _AUDIENCE_ROLE.get(aud)
-        q = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.is_active == True)
-        for sp in q.all():
-            if want and (sp.staff_role or "") != want:
-                continue
-            if sp.user_id:
-                ids.append(sp.user_id)
-    if aud in ("all", "youtubers"):
-        for yp in db.query(YouTuberProfile).all():
-            if getattr(yp, "user_id", None):
-                ids.append(yp.user_id)
-    return list(dict.fromkeys(ids))
+    """User ids for an announcement audience ('all' or a role group). Never raises."""
+    try:
+        from models import User, ProductionStaffProfile, TeacherProfile, YouTuberProfile
+        ids = []
+        aud = (audience or "all").lower()
+        if aud in ("all", "teachers"):
+            for u in db.query(User).filter(User.is_active == True, User.role == "teacher").all():
+                ids.append(u.id)
+        if aud in ("all", "editors", "graphics"):
+            want = None if aud == "all" else _AUDIENCE_ROLE.get(aud)
+            q = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.is_active == True)
+            for sp in q.all():
+                if want and (sp.staff_role or "") != want:
+                    continue
+                if sp.user_id:
+                    ids.append(sp.user_id)
+        if aud in ("all", "youtubers"):
+            for yp in db.query(YouTuberProfile).all():
+                if getattr(yp, "user_id", None):
+                    ids.append(yp.user_id)
+        return list(dict.fromkeys(ids))
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return []
 
 
 def active_events_for(db, role):
-    """Upcoming/active PM events visible to a given role, with a countdown label."""
-    from models import PmEvent
-    role_aud = {"teacher": "teachers", "editor": "editors", "graphics": "graphics",
-                "youtuber": "youtubers"}.get(role, "")
-    rows = (db.query(PmEvent).filter(PmEvent.active == True)
-            .order_by(PmEvent.event_at.asc()).all())
-    out = []
-    now = datetime.utcnow()
-    for e in rows:
-        if e.audience not in ("all", role_aud):
-            continue
-        cd = ""
-        if e.event_at:
-            delta = (e.event_at - now).total_seconds()
-            if delta < 0:
-                cd = "Happening now / passed"
-            else:
-                d = int(delta // 86400); h = int((delta % 86400) // 3600); m = int((delta % 3600) // 60)
-                cd = ("in %dd %02dh" % (d, h)) if d else (("in %dh %02dm" % (h, m)) if h else ("in %dm" % m))
-        out.append({"id": e.id, "title": e.title or "", "description": e.description or "",
-                    "image_url": e.image_url or "", "at": _dt(e.event_at), "countdown": cd,
-                    "audience": e.audience})
-    return out
+    """Upcoming/active PM events visible to a given role, with a countdown label. Never raises."""
+    try:
+        from models import PmEvent
+        role_aud = {"teacher": "teachers", "editor": "editors", "graphics": "graphics",
+                    "youtuber": "youtubers"}.get(role, "")
+        rows = (db.query(PmEvent).filter(PmEvent.active == True)
+                .order_by(PmEvent.event_at.asc()).all())
+        out = []
+        now = datetime.utcnow()
+        for e in rows:
+            if e.audience not in ("all", role_aud):
+                continue
+            cd = ""
+            if e.event_at:
+                delta = (e.event_at - now).total_seconds()
+                if delta < 0:
+                    cd = "Happening now / passed"
+                else:
+                    d = int(delta // 86400); h = int((delta % 86400) // 3600); m = int((delta % 3600) // 60)
+                    cd = ("in %dd %02dh" % (d, h)) if d else (("in %dh %02dm" % (h, m)) if h else ("in %dm" % m))
+            out.append({"id": e.id, "title": e.title or "", "description": e.description or "",
+                        "image_url": e.image_url or "", "at": _dt(e.event_at), "countdown": cd,
+                        "audience": e.audience})
+        return out
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return []
 
 
 # ---------------------------------------------------------------- rank streak appreciation (§23)
 def editor_rank_and_streak(db, sp):
-    """Return this editor's current rank (1-based) among editors by month completions,
-    and lazily maintain a 7-day #1 streak appreciation (no cron needed)."""
-    from models import ProductionStaffProfile, VideoTask
-    now = datetime.utcnow()
-    month_start = datetime(now.year, now.month, 1)
-    done_states = ["ready_for_youtube", "uploaded", "completed"]
-    eds = db.query(ProductionStaffProfile).filter(
-        ProductionStaffProfile.staff_role == "editor",
-        ProductionStaffProfile.is_active == True).all()
-    scored = []
-    for e in eds:
-        cnt = db.query(VideoTask).filter(VideoTask.editor_id == e.id,
-                                         VideoTask.lifecycle.in_(done_states),
-                                         VideoTask.updated_at >= month_start).count()
-        scored.append((e.id, cnt))
-    scored.sort(key=lambda x: -x[1])
-    rank = 0
-    for i, (eid, cnt) in enumerate(scored):
-        if eid == sp.id:
-            rank = i + 1
-            my_cnt = cnt
-            break
-    # streak maintenance (only meaningful if actually producing)
-    is_top = (rank == 1 and my_cnt > 0)
-    if is_top:
-        if not sp.rank1_since:
-            sp.rank1_since = now
-        elif (now - sp.rank1_since).days >= 7:
-            already = sp.rank_appreciated_at and sp.rank_appreciated_at >= sp.rank1_since
-            if not already:
-                notify(db, sp.user_id, "Top Performer!",
-                       "You have stayed at Rank #1 among editors for 7 days straight. Outstanding consistency!",
-                       "appreciation")
-                sp.rank_appreciated_at = now
-    else:
-        sp.rank1_since = None
-    return rank
+    """Return this editor's current rank (1-based) among editors and lazily maintain a
+    7-day #1 streak appreciation. Never raises — degrades to rank 0 on any error."""
+    try:
+        from models import ProductionStaffProfile, VideoTask
+        now = datetime.utcnow()
+        month_start = datetime(now.year, now.month, 1)
+        done_states = ["ready_for_youtube", "uploaded", "completed"]
+        eds = db.query(ProductionStaffProfile).filter(
+            ProductionStaffProfile.staff_role == "editor",
+            ProductionStaffProfile.is_active == True).all()
+        scored = []
+        for e in eds:
+            cnt = db.query(VideoTask).filter(VideoTask.editor_id == e.id,
+                                             VideoTask.lifecycle.in_(done_states),
+                                             VideoTask.updated_at >= month_start).count()
+            scored.append((e.id, cnt))
+        scored.sort(key=lambda x: -x[1])
+        rank = 0; my_cnt = 0
+        for i, (eid, cnt) in enumerate(scored):
+            if eid == sp.id:
+                rank = i + 1; my_cnt = cnt
+                break
+        is_top = (rank == 1 and my_cnt > 0)
+        if is_top:
+            if not sp.rank1_since:
+                sp.rank1_since = now
+            elif (now - sp.rank1_since).days >= 7:
+                already = sp.rank_appreciated_at and sp.rank_appreciated_at >= sp.rank1_since
+                if not already:
+                    notify(db, sp.user_id, "Top Performer!",
+                           "You have stayed at Rank #1 among editors for 7 days straight. Outstanding consistency!",
+                           "appreciation")
+                    sp.rank_appreciated_at = now
+        else:
+            sp.rank1_since = None
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+        return rank
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return 0
