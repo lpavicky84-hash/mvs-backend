@@ -58,7 +58,7 @@ TPL = {
     "SR_PAINTING": {
         "theory_max": 24, "practical_max": 70, "tma_max": 6,
         "theory_pass": 8, "practical_pass": 23, "combined_pass": 0,
-        "aggregate_pass": 33, "paper_marks": 30, "has_practical": True,
+        "aggregate_pass": 33, "paper_marks": 40, "has_practical": True,
     },
     "SR_DEO": {
         "theory_max": 32, "practical_max": 60, "tma_max": 8,
