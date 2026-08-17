@@ -10071,7 +10071,9 @@ function _subjBoxes(list,cls){
   return list.map(s=>`<label class="subj-check"><input type="checkbox" class="subj-cb" data-cls="${cls}" value="${esc(s.name)}"> ${esc(s.name)} <span class="code">${esc(s.code)}</span></label>`).join('');
 }
 async function openAddTeacher(){
-  const subj=await ensureSubjects();
+  let subj; try{ subj=await ensureSubjects(); }catch(e){ subj=null; }
+  subj=subj||window._allSubjects||{'10':[],'12':[]};
+  subj['10']=subj['10']||[]; subj['12']=subj['12']||[];
   showModal('Add Teacher',
  `<div class="alert alert-info">Enter the name, gender and phone, then select the subjects. <strong>User ID and password are generated automatically.</strong></div><div class="form-group"><label>Teacher Name</label><input class="form-control" id="at-name" placeholder="Rahul Sharma"></div><div class="form-group"><label>Gender</label><select class="form-control" id="at-gender"><option value="male">Male (Sir)</option><option value="female">Female (Ma'am)</option></select></div><div class="form-group"><label>Phone Number</label><input class="form-control" id="at-phone" placeholder="9876543210"></div><div class="form-group"><label>Subjects &mdash; select from either class (or both)</label><div class="subj-cols"><div class="subj-col"><div class="subj-col-h">Class 10</div>${_subjBoxes(subj['10'],'10')}</div><div class="subj-col"><div class="subj-col-h">Class 12</div>${_subjBoxes(subj['12'],'12')}</div></div></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitAddTeacher()">Add Teacher</button>`);
@@ -10646,9 +10648,10 @@ function batchOptions(sel,cls){
 }
 async function ensureSubjects(){
   const a=window._allSubjects;
-  if(a && ((a['10']||[]).length||(a['12']||[]).length)) return;
+  if(a && ((a['10']||[]).length||(a['12']||[]).length)) return a;
   try{ window._allSubjects=await api('/api/admin/subjects'); }
   catch(e){ window._allSubjects=window._allSubjects||{'10':[],'12':[]}; }
+  return window._allSubjects||{'10':[],'12':[]};
 }
 // Subject add/delete/mode ke baad cache tod do — warna student-edit ka Subjects
 // dropdown purani (cached) list dikhata rehta hai aur naya subject nahi aata.
