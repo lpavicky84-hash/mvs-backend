@@ -3,7 +3,7 @@ Approval ON/OFF (creator default + per-video override) decides whether a submitt
 video goes to PM review or straight into production."""
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from database import get_db
 from security import get_youtuber
@@ -38,10 +38,37 @@ def yt_dashboard(db: Session = Depends(get_db), me=Depends(get_youtuber)):
     def c(*st):
         return base.filter(VideoTask.lifecycle.in_(st)).count()
 
+    now = datetime.utcnow()
+    today0 = datetime(now.year, now.month, now.day)
+    week0 = today0 - timedelta(days=today0.weekday())
+    month0 = datetime(now.year, now.month, 1)
+    all_tasks = base.all()
+    total_views = sum(int(t.yt_views or 0) for t in all_tasks)
+    highest = max((int(t.yt_views or 0) for t in all_tasks), default=0)
+    _uploaded = ["uploaded", "completed"]
+    _editing = ["editor_assigned", "editing", "editing_paused", "editing_done", "qc_pending", "qc_changes"]
+    _pending = ["created", "creator_assigned", "creator_working", "creator_submitted",
+                "pm_review", "changes_required", "approved"]
+    weekly_uploads = base.filter(VideoTask.lifecycle.in_(_uploaded),
+                                 VideoTask.published_at != None,
+                                 VideoTask.published_at >= week0).count()
+    monthly_uploads = base.filter(VideoTask.lifecycle.in_(_uploaded),
+                                  VideoTask.published_at != None,
+                                  VideoTask.published_at >= month0).count()
     return {
         "greeting_name": me.name,
         "events": pc.active_events_for(db, "youtuber"),
         "approval_required": bool(yp.approval_required),
+        "cards": {
+            "total_videos": len(all_tasks),
+            "uploaded": c(*_uploaded),
+            "editing": c(*_editing),
+            "pending": c(*_pending),
+            "total_views": total_views,
+            "highest_views": highest,
+            "weekly_uploads": weekly_uploads,
+            "monthly_uploads": monthly_uploads,
+        },
         "kpis": {
             "requests": c("creator_assigned", "creator_working"),
             "pending_submission": c("creator_assigned", "creator_working", "changes_required"),
@@ -54,11 +81,94 @@ def yt_dashboard(db: Session = Depends(get_db), me=Depends(get_youtuber)):
     }
 
 
+@router.get("/views")
+def yt_views(db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    """Realtime views for THIS YouTuber's videos only. Reuses the shared yt_views data."""
+    yp = _me_yt(db, me)
+    now = datetime.utcnow()
+    today0 = datetime(now.year, now.month, now.day)
+    week0 = today0 - timedelta(days=today0.weekday())
+    month0 = datetime(now.year, now.month, 1)
+    tasks = db.query(VideoTask).filter(VideoTask.creator_type == "youtuber",
+                                       VideoTask.youtuber_id == yp.id).all()
+    _uploaded = ["uploaded", "completed"]
+    _editing = ["editor_assigned", "editing", "editing_paused", "editing_done", "qc_pending", "qc_changes"]
+    uploaded = [t for t in tasks if t.lifecycle in _uploaded and t.youtube_url]
+    total_views = sum(int(t.yt_views or 0) for t in uploaded)
+    videos = []
+    for t in uploaded:
+        videos.append({
+            "id": t.id, "title": t.title or "", "youtube_url": t.youtube_url or "",
+            "yt_video_id": t.yt_video_id or "", "video_type": t.video_type or "",
+            "views": int(t.yt_views or 0),
+            "published_at": pc._dt(t.published_at) if t.published_at else "",
+            "thumbnail": ("https://img.youtube.com/vi/%s/mqdefault.jpg" % t.yt_video_id) if t.yt_video_id else "",
+        })
+    videos.sort(key=lambda v: -v["views"])
+    return {
+        "total_videos": len(tasks),
+        "uploaded": len(uploaded),
+        "editing": sum(1 for t in tasks if t.lifecycle in _editing),
+        "pending": len(tasks) - len(uploaded) - sum(1 for t in tasks if t.lifecycle in _editing),
+        "total_views": total_views,
+        "highest_views": videos[0]["views"] if videos else 0,
+        "weekly_uploads": sum(1 for t in uploaded if t.published_at and t.published_at >= week0),
+        "monthly_uploads": sum(1 for t in uploaded if t.published_at and t.published_at >= month0),
+        "highest": videos[0] if videos else None,
+        "videos": videos,
+    }
+
+
+@router.post("/refresh-views")
+def yt_refresh_views(db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    """Refresh realtime views for THIS YouTuber's uploaded videos. Reuses the shared
+    YouTube fetch + snapshot system (no duplicate API)."""
+    yp = _me_yt(db, me)
+    try:
+        from video_tasks import _yt_get_key, _yt_fetch_views
+        from models import VideoViewSnapshot
+    except Exception:
+        return {"ok": False, "updated": 0}
+    rows = db.query(VideoTask).filter(VideoTask.creator_type == "youtuber",
+                                      VideoTask.youtuber_id == yp.id,
+                                      VideoTask.yt_video_id != None,
+                                      VideoTask.yt_video_id != "").all()
+    idmap = {t.yt_video_id: t for t in rows if t.yt_video_id}
+    if not idmap:
+        return {"ok": True, "updated": 0}
+    updated = 0
+    try:
+        key = _yt_get_key(db)
+        got = _yt_fetch_views(list(idmap.keys()), key)
+        for vid, views in (got or {}).items():
+            t = idmap.get(vid)
+            if t is not None:
+                t.yt_views = views
+                t.yt_views_at = datetime.utcnow()
+                db.add(VideoViewSnapshot(task_id=t.id, views=views))
+                updated += 1
+        db.commit()
+    except Exception:
+        db.rollback()
+    return {"ok": True, "updated": updated}
+
+
 @router.get("/videos")
-def yt_videos(status: str = "", db: Session = Depends(get_db), me=Depends(get_youtuber)):
+def yt_videos(status: str = "", filter: str = "", db: Session = Depends(get_db), me=Depends(get_youtuber)):
     yp = _me_yt(db, me)
     q = db.query(VideoTask).filter(VideoTask.creator_type == "youtuber",
                                    VideoTask.youtuber_id == yp.id)
+    preset = (filter or "").lower()
+    if preset == "proposal":
+        q = q.filter(VideoTask.lifecycle.in_(["created", "creator_assigned", "creator_working", "pm_review", "changes_required"]))
+    elif preset == "urgent":
+        q = q.filter(VideoTask.priority == "urgent",
+                     ~VideoTask.lifecycle.in_(["uploaded", "completed"]))
+    elif preset == "editing":
+        q = q.filter(VideoTask.lifecycle.in_(["editor_assigned", "editing", "editing_paused",
+                                              "editing_done", "qc_pending", "qc_changes"]))
+    elif preset == "ready":
+        q = q.filter(VideoTask.lifecycle == "ready_for_youtube")
     if status:
         q = q.filter(VideoTask.lifecycle == status)
     rows = q.order_by(VideoTask.updated_at.desc()).all()
@@ -117,6 +227,7 @@ def yt_propose(payload: dict = Body(...), db: Session = Depends(get_db), me=Depe
                   subject=(payload.get("subject") or "").strip(),
                   video_type=(payload.get("video_type") or "").strip(),
                   reference=(payload.get("reference") or "").strip(),
+                  description=(payload.get("description") or "").strip(),
                   remarks=(payload.get("remarks") or "").strip(), deadline=dl,
                   remarks_audience=(payload.get("remarks_audience") or "both"),
                   priority=("urgent" if payload.get("urgent") else "normal"),
@@ -124,6 +235,15 @@ def yt_propose(payload: dict = Body(...), db: Session = Depends(get_db), me=Depe
     db.add(t)
     db.flush()
     pc.ensure_ref_code(t)
+    # optional reference thumbnail (clipboard/upload) -> stored as the task thumbnail
+    _imgs = payload.get("images")
+    if _imgs:
+        try:
+            urls = pc.save_images(db, t, _imgs, "reference", None, me, return_urls=True) or []
+            if urls:
+                t.thumbnail_link = urls[0]
+        except Exception:
+            pass
     pc.set_state(db, t, "created", actor=me, event="task_created")
     pc.notify_pms(db, "New YouTuber Proposal",
                   f'{me.name} proposed a video: "{title}".', "production", link=str(t.id))
@@ -197,12 +317,21 @@ def yt_assign_editor(payload: dict = Body(...), db: Session = Depends(get_db), m
                   subject=(payload.get("subject") or "").strip(),
                   video_type=(payload.get("video_type") or "").strip(),
                   reference=(payload.get("reference") or "").strip(),
+                  description=(payload.get("description") or "").strip(),
                   remarks=remarks, remarks_audience=(payload.get("remarks_audience") or "both"),
                   deadline=dl, editor_id=eid,
                   priority=("urgent" if payload.get("urgent") else "normal"),
                   proposed_by="youtuber", proposal_ok="approved", status="editing_soon")
     db.add(t); db.flush()
     pc.ensure_ref_code(t)
+    _imgs = payload.get("images")
+    if _imgs:
+        try:
+            urls = pc.save_images(db, t, _imgs, "reference", None, me, return_urls=True) or []
+            if urls:
+                t.thumbnail_link = urls[0]
+        except Exception:
+            pass
     pc.set_state(db, t, "editor_assigned", actor=me, event="editor_assigned")
     if ed.user_id:
         pc.notify(db, ed.user_id, "New Editing Task",

@@ -3,11 +3,11 @@ Active editing time is measured from real EditingSession rows (excludes idle/pau
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 from database import get_db
 from security import get_editor
-from models import VideoTask, EditingSession, ProductionStaffProfile
+from models import VideoTask, EditingSession, ProductionStaffProfile, TaskReview
 import production_core as pc
 
 router = APIRouter(prefix="/api/editor", tags=["Editor"])
@@ -87,11 +87,32 @@ def editor_dashboard(db: Session = Depends(get_db), me=Depends(get_editor)):
             badges.insert(0, "Top Performer")
     except Exception:
         rank = 0
+    today0 = datetime(now.year, now.month, now.day)
+    soon = now + timedelta(hours=24)
+    _not_done = ["uploaded", "completed", "ready_for_youtube", "qc_pending"]
+    total_views = db.query(func.coalesce(func.sum(VideoTask.yt_views), 0)).filter(
+        VideoTask.editor_id == sp.id).scalar() or 0
+    cards = {
+        "assigned_today": base.filter(VideoTask.lifecycle == "editor_assigned",
+                                      VideoTask.updated_at >= today0).count(),
+        "editing_now": c("editing", "editing_paused"),
+        "due_soon": base.filter(VideoTask.deadline != None, VideoTask.deadline >= now,
+                                VideoTask.deadline <= soon,
+                                ~VideoTask.lifecycle.in_(_not_done)).count(),
+        "overdue": base.filter(VideoTask.deadline != None, VideoTask.deadline < now,
+                               ~VideoTask.lifecycle.in_(_not_done)).count(),
+        "submitted": c("qc_pending"),
+        "changes": c("qc_changes"),
+        "completed": c("ready_for_youtube", "uploaded", "completed"),
+        "ready_for_youtube": c("ready_for_youtube"),
+        "total_views": int(total_views),
+    }
     return {
         "greeting_name": me.name,
         "events": pc.active_events_for(db, "editor"),
         "appreciation": {"ontime_pct": ontime_pct, "avg_rating": avg_rating,
                          "badges": badges, "total_done": total_done, "rank": rank},
+        "cards": cards,
         "kpis": {
             "assigned": c("editor_assigned"),
             "not_started": c("editor_assigned"),
@@ -113,9 +134,26 @@ def editor_dashboard(db: Session = Depends(get_db), me=Depends(get_editor)):
 
 
 @router.get("/tasks")
-def editor_tasks(status: str = "", db: Session = Depends(get_db), me=Depends(get_editor)):
+def editor_tasks(status: str = "", filter: str = "", db: Session = Depends(get_db), me=Depends(get_editor)):
     sp = _me_staff(db, me)
     q = db.query(VideoTask).filter(VideoTask.editor_id == sp.id)
+    now = datetime.utcnow()
+    preset = (filter or "").lower()
+    if preset == "editing":
+        q = q.filter(VideoTask.lifecycle.in_(["editing", "editing_paused"]))
+    elif preset == "ready":            # ready for submission (editing done, not yet submitted)
+        q = q.filter(VideoTask.lifecycle == "editing_done")
+    elif preset == "changes":
+        q = q.filter(VideoTask.lifecycle == "qc_changes")
+    elif preset == "completed":
+        q = q.filter(VideoTask.lifecycle.in_(["ready_for_youtube", "uploaded", "completed"]))
+    elif preset == "submitted":
+        q = q.filter(VideoTask.lifecycle == "qc_pending")
+    elif preset == "assigned":
+        q = q.filter(VideoTask.lifecycle == "editor_assigned")
+    elif preset == "overdue":
+        q = q.filter(VideoTask.deadline != None, VideoTask.deadline < now,
+                     ~VideoTask.lifecycle.in_(["uploaded", "completed", "ready_for_youtube", "qc_pending"]))
     if status:
         q = q.filter(VideoTask.lifecycle == status)
     rows = q.order_by(VideoTask.updated_at.desc()).all()
@@ -128,6 +166,11 @@ def editor_task_detail(tid: int, db: Session = Depends(get_db), me=Depends(get_e
     t = _my_task(db, sp, tid)
     out = pc.task_out(db, t, timeline=True, viewer="editor")
     out["source_link"] = t.submitted_link or ""   # editor needs the creator's raw video
+    out["progress_history"] = pc.progress_history_out(db, t)
+    # Changes Required view: PM remarks + attachments + previous submissions + change history
+    out["edit_reviews"] = pc.edit_reviews_out(db, t)
+    out["edit_attachments"] = [a for a in pc.attachments_out(db, t) if a.get("kind") == "edit"]
+    out["edit_submissions"] = pc.edit_submissions_out(db, t)
     return out
 
 
@@ -220,13 +263,22 @@ def editor_submit(tid: int, payload: dict = Body(...),
     t.edited_link = link
     t.qc_status = "pending"
     is_revision = (t.lifecycle == "qc_changes")
+    # optional remarks + attachments (screenshots) from the editor
+    _rem = (payload.get("remarks") or "").strip()
+    rv = TaskReview(task_id=t.id, kind="editor", reviewer_user_id=me.id,
+                    decision="submitted", remarks=_rem)
+    db.add(rv); db.flush()
+    if payload.get("images"):
+        pc.save_images(db, t, payload.get("images"), "editor", rv.id, me)
     pc.set_state(db, t, "qc_pending", actor=me,
-                 event="revision_submitted" if is_revision else "edited_video_submitted")
+                 event="revision_submitted" if is_revision else "edited_video_submitted",
+                 meta={"link": link, "note": _rem[:200]})
     pc.notify_pms(db, "Edited Video Submitted",
                   f'{me.name} submitted the edited "{t.title}" for QC.', "production", link=str(t.id))
-    # on-time appreciation (§23) — one positive nudge, only on the first on-time submission
+    # on-time appreciation (§23) — one positive nudge, only once, only on an on-time submission
     try:
-        if t.deadline and (not is_revision) and datetime.utcnow() <= t.deadline:
+        if t.deadline and (not is_revision) and (not t.ontime_appreciated) and datetime.utcnow() <= t.deadline:
+            t.ontime_appreciated = True
             pc.notify(db, me.id, "Great work!",
                       'Your edited "%s" was submitted on time. Keep it up!' % (t.title or ""),
                       "appreciation", link=str(t.id))
@@ -286,6 +338,180 @@ def editor_time_analytics(db: Session = Depends(get_db), me=Depends(get_editor))
         "longest_hours": round(max(task_secs) / 3600.0, 1) if task_secs else 0,
         "shortest_hours": round(min(task_secs) / 3600.0, 1) if task_secs else 0,
         "by_type": by_type_list,
+    }
+
+
+def _is_short(vt):
+    v = (vt or "").lower()
+    return any(k in v for k in ("short", "reel", "rapid"))
+
+
+@router.get("/uploads")
+def editor_uploads(db: Session = Depends(get_db), me=Depends(get_editor)):
+    """Editor's published videos + realtime views. Reuses the shared YouTube views data
+    (yt_views), never a separate API. Real data only."""
+    sp = _me_staff(db, me)
+    base = db.query(VideoTask).filter(VideoTask.editor_id == sp.id)
+    _edited = ["editing_done", "qc_pending", "qc_changes", "ready_for_youtube", "uploaded", "completed"]
+    total_edited = base.filter(VideoTask.lifecycle.in_(_edited)).count()
+    uploaded_rows = base.filter(VideoTask.lifecycle.in_(["uploaded", "completed"]),
+                               VideoTask.youtube_url != None, VideoTask.youtube_url != "").all()
+    pending_upload = base.filter(VideoTask.lifecycle == "ready_for_youtube").count()
+    total_views = sum(int(t.yt_views or 0) for t in uploaded_rows)
+    videos = []
+    for t in uploaded_rows:
+        videos.append({
+            "id": t.id, "title": t.title or "", "youtube_url": t.youtube_url or "",
+            "yt_video_id": t.yt_video_id or "", "video_type": t.video_type or "",
+            "views": int(t.yt_views or 0),
+            "published_at": pc._dt(t.published_at) if t.published_at else "",
+            "thumbnail": ("https://img.youtube.com/vi/%s/mqdefault.jpg" % t.yt_video_id) if t.yt_video_id else "",
+        })
+    videos.sort(key=lambda v: -v["views"])
+    highest = videos[0] if videos else None
+    return {
+        "total_edited": total_edited,
+        "uploaded": len(uploaded_rows),
+        "pending_upload": pending_upload,
+        "total_views": total_views,
+        "highest": highest,
+        "videos": videos,
+    }
+
+
+@router.post("/refresh-views")
+def editor_refresh_views(db: Session = Depends(get_db), me=Depends(get_editor)):
+    """Refresh realtime views for THIS editor's uploaded videos. Reuses the existing
+    shared YouTube fetch + snapshot system (no duplicate API)."""
+    sp = _me_staff(db, me)
+    try:
+        from video_tasks import _yt_get_key, _yt_fetch_views
+        from models import VideoViewSnapshot
+    except Exception:
+        return {"ok": False, "updated": 0}
+    rows = db.query(VideoTask).filter(VideoTask.editor_id == sp.id,
+                                      VideoTask.yt_video_id != None,
+                                      VideoTask.yt_video_id != "").all()
+    idmap = {t.yt_video_id: t for t in rows if t.yt_video_id}
+    if not idmap:
+        return {"ok": True, "updated": 0}
+    updated = 0
+    try:
+        key = _yt_get_key(db)
+        got = _yt_fetch_views(list(idmap.keys()), key)
+        for vid, views in (got or {}).items():
+            t = idmap.get(vid)
+            if t is not None:
+                t.yt_views = views
+                t.yt_views_at = datetime.utcnow()
+                db.add(VideoViewSnapshot(task_id=t.id, views=views))
+                updated += 1
+        db.commit()
+    except Exception:
+        db.rollback()
+    return {"ok": True, "updated": updated}
+
+
+@router.get("/performance")
+def editor_performance(db: Session = Depends(get_db), me=Depends(get_editor)):
+    """Full editor performance: quantity, quality, timeliness; split LONG vs SHORT;
+    plus chart data (bar / donut / 6-month trend) and ranking. Real data only."""
+    sp = _me_staff(db, me)
+    now = datetime.utcnow()
+    base = db.query(VideoTask).filter(VideoTask.editor_id == sp.id)
+    all_tasks = base.all()
+    _done = ["editing_done", "qc_pending", "ready_for_youtube", "uploaded", "completed"]
+    _uploaded = ["uploaded", "completed"]
+    _pending = ["editor_assigned", "editing", "editing_paused", "qc_changes"]
+
+    def bucket(tasks):
+        edited = sum(1 for t in tasks if t.lifecycle in _done or t.lifecycle == "qc_changes")
+        approved = sum(1 for t in tasks if t.lifecycle in ["ready_for_youtube", "uploaded", "completed"])
+        uploaded = sum(1 for t in tasks if t.lifecycle in _uploaded)
+        pending = sum(1 for t in tasks if t.lifecycle in _pending)
+        overdue = sum(1 for t in tasks if t.deadline and t.deadline < now and t.lifecycle not in _uploaded + ["ready_for_youtube"])
+        revisions = sum(int(t.revision_count or 0) for t in tasks)
+        views = sum(int(t.yt_views or 0) for t in tasks)
+        # turnaround: start -> editing_done
+        turns = []
+        for t in tasks:
+            if t.editing_started_at and t.editing_done_at and t.editing_done_at >= t.editing_started_at:
+                turns.append((t.editing_done_at - t.editing_started_at).total_seconds() / 3600.0)
+        # on-time: editing_done_at <= deadline
+        done_with_dl = [t for t in tasks if t.editing_done_at and t.deadline]
+        ontime = sum(1 for t in done_with_dl if t.editing_done_at <= t.deadline)
+        ratings = [t.quality_rating for t in tasks if t.quality_rating]
+        return {
+            "videos_edited": edited, "videos_approved": approved, "videos_uploaded": uploaded,
+            "pending": pending, "overdue": overdue, "revision_count": revisions,
+            "avg_turnaround_hours": round(sum(turns) / len(turns), 1) if turns else 0,
+            "on_time_pct": round(ontime * 100 / len(done_with_dl)) if done_with_dl else 0,
+            "avg_quality": round(sum(ratings) / len(ratings), 1) if ratings else 0,
+            "youtube_views": views,
+        }
+
+    longs = [t for t in all_tasks if not _is_short(t.video_type)]
+    shorts = [t for t in all_tasks if _is_short(t.video_type)]
+    overall = bucket(all_tasks)
+
+    # 6-month trend (videos edited per month)
+    trend = []
+    for i in range(5, -1, -1):
+        m = (now.month - i - 1) % 12 + 1
+        y = now.year + ((now.month - i - 1) // 12)
+        m0 = datetime(y, m, 1)
+        m1 = datetime(y + (1 if m == 12 else 0), 1 if m == 12 else m + 1, 1)
+        cnt = sum(1 for t in all_tasks if t.editing_done_at and m0 <= t.editing_done_at < m1)
+        trend.append({"label": m0.strftime("%b"), "value": cnt})
+
+    # donut: status distribution
+    donut = [
+        {"label": "Editing", "value": sum(1 for t in all_tasks if t.lifecycle in ["editing", "editing_paused"])},
+        {"label": "In QC", "value": sum(1 for t in all_tasks if t.lifecycle == "qc_pending")},
+        {"label": "Changes", "value": sum(1 for t in all_tasks if t.lifecycle == "qc_changes")},
+        {"label": "Approved", "value": overall["videos_approved"]},
+    ]
+
+    try:
+        rank = pc.editor_rank_and_streak(db, sp)
+    except Exception:
+        rank = 0
+    # ranking cards: top editors this month by approvals
+    ranking = []
+    try:
+        month0 = datetime(now.year, now.month, 1)
+        eds = db.query(ProductionStaffProfile).filter(
+            ProductionStaffProfile.staff_role == "editor",
+            ProductionStaffProfile.is_active == True).all()
+        for e in eds:
+            appr = db.query(VideoTask).filter(
+                VideoTask.editor_id == e.id,
+                VideoTask.lifecycle.in_(["ready_for_youtube", "uploaded", "completed"]),
+                VideoTask.updated_at >= month0).count()
+            ranking.append({"name": e.user.name if e.user else "", "approved": appr,
+                            "me": (e.id == sp.id)})
+        ranking.sort(key=lambda x: -x["approved"])
+        ranking = ranking[:5]
+    except Exception:
+        ranking = []
+
+    return {
+        "overall": overall,
+        "long": bucket(longs),
+        "short": bucket(shorts),
+        "charts": {
+            "bar": [
+                {"label": "Edited", "value": overall["videos_edited"]},
+                {"label": "Approved", "value": overall["videos_approved"]},
+                {"label": "Uploaded", "value": overall["videos_uploaded"]},
+                {"label": "Pending", "value": overall["pending"]},
+                {"label": "Overdue", "value": overall["overdue"]},
+            ],
+            "donut": donut,
+            "trend": trend,
+        },
+        "rank": rank,
+        "ranking": ranking,
     }
 
 

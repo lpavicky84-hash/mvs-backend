@@ -349,7 +349,7 @@ class Doubt(Base):
     student_id  = Column(Integer, ForeignKey("student_profiles.id"))
     teacher_id  = Column(Integer, ForeignKey("teacher_profiles.id"))
     subject     = Column(String(60))
-    topic       = Column(String(200))
+    topic       = Column(Text)
     question    = Column(Text)
     image_link  = Column(String(500), nullable=True)
     image_b64   = Column(_IMGTEXT, nullable=True)   # direct-uploaded doubt image
@@ -467,6 +467,7 @@ class VideoTask(Base):
     thumbnail_b64  = Column(_B64TEXT, nullable=True)      # uploaded thumbnail image (compressed)
     thumbnail_link = Column(String(600), default="")      # ya drive link
     reference      = Column(Text, default="")             # manager ka reference/brief
+    description    = Column(Text, default="")              # creator's topic description (youtuber)
     remarks        = Column(Text, default="")             # assignment remarks
     deadline       = Column(DateTime, nullable=True)
     status         = Column(String(20), default="assigned")
@@ -524,6 +525,8 @@ class VideoTask(Base):
     # PM quality rating (1..5) after approval
     quality_rating      = Column(Integer, nullable=True)      # editor/graphics work rating
     quality_note        = Column(String(400), default="")
+    quality_dims        = Column(Text, default="")            # JSON: per-dimension sub-ratings
+    ontime_appreciated  = Column(Boolean, default=False)      # on-time appreciation sent once
     remarks_audience    = Column(String(10), default="both")  # pm | editor | both (§31)
     on_hold         = Column(Boolean, default=False)
     cancelled       = Column(Boolean, default=False)
@@ -1478,6 +1481,11 @@ class GraphicsTask(Base):
     instructions   = Column(Text, default="")              # thumbnail brief
     thumbnail_url  = Column(String(600), default="")        # submitted thumbnail (R2 url)
     remarks        = Column(Text, default="")               # PM change remarks
+    drive_link     = Column(String(600), default="")         # optional Drive link to the thumbnail
+    deadline       = Column(DateTime, nullable=True)          # graphics-specific deadline
+    priority       = Column(String(12), default="normal")    # normal | urgent
+    quality_rating = Column(Integer, nullable=True)          # PM thumbnail quality 1-5
+    quality_note   = Column(String(400), default="")
     revision_count = Column(Integer, default=0)
     started_at     = Column(DateTime, nullable=True)
     submitted_at   = Column(DateTime, nullable=True)

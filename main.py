@@ -61,6 +61,14 @@ def ensure_columns():
         "ALTER TABLE video_tasks ADD COLUMN remarks_audience VARCHAR(10)",
         "ALTER TABLE production_staff_profiles ADD COLUMN rank1_since DATETIME",
         "ALTER TABLE production_staff_profiles ADD COLUMN rank_appreciated_at DATETIME",
+        "ALTER TABLE graphics_tasks ADD COLUMN drive_link VARCHAR(600)",
+        "ALTER TABLE graphics_tasks ADD COLUMN deadline DATETIME",
+        "ALTER TABLE graphics_tasks ADD COLUMN priority VARCHAR(12)",
+        "ALTER TABLE graphics_tasks ADD COLUMN quality_rating INTEGER",
+        "ALTER TABLE graphics_tasks ADD COLUMN quality_note VARCHAR(400)",
+        "ALTER TABLE video_tasks ADD COLUMN quality_dims TEXT",
+        "ALTER TABLE video_tasks ADD COLUMN ontime_appreciated BOOLEAN DEFAULT 0",
+        "ALTER TABLE video_tasks ADD COLUMN description TEXT",
         "ALTER TABLE student_profiles ADD COLUMN class_level VARCHAR(5)",
         "ALTER TABLE timetable_entries ADD COLUMN time_text VARCHAR(40)",
         "ALTER TABLE timetable_entries ADD COLUMN entry_type VARCHAR(20)",
@@ -103,6 +111,7 @@ def ensure_columns():
         "ALTER TABLE available_subjects ADD COLUMN mode VARCHAR(12) DEFAULT 'live'",
         "ALTER TABLE notifications ADD COLUMN link VARCHAR(500)",
         "ALTER TABLE video_tasks MODIFY thumbnail_b64 MEDIUMTEXT",  # MySQL only; SQLite pe skip
+        "ALTER TABLE doubts MODIFY topic TEXT",  # v: long student doubt topics overflowed VARCHAR(200)
         "ALTER TABLE video_tasks ADD COLUMN video_type VARCHAR(120) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN kind VARCHAR(20) DEFAULT 'normal'",
         "ALTER TABLE video_tasks ADD COLUMN subject VARCHAR(160) DEFAULT ''",
@@ -402,6 +411,15 @@ import logging as _logging
 # Per-request access logs (har ping/200 OK) band -> Railway ka 500 logs/sec flood + CPU kam.
 _logging.getLogger("uvicorn.access").setLevel(_logging.WARNING)
 _mvs_log = _logging.getLogger("mvs")
+
+try:
+    from production_core import TransitionError as _TransitionError
+    @app.exception_handler(_TransitionError)
+    async def _transition_error_handler(request, exc):
+        # Illegal production lifecycle move — controlled state machine rejected it.
+        return JSONResponse(status_code=400, content={"detail": str(exc) or "That action is not allowed for this task right now."})
+except Exception:
+    pass
 
 @app.exception_handler(Exception)
 async def _unhandled_exception_handler(request, exc):

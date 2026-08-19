@@ -20,43 +20,138 @@ from models import (
 # Canonical lifecycle states (VideoTask.lifecycle). Graphics runs in PARALLEL and
 # is tracked on GraphicsTask.status — it is intentionally NOT in this list.
 LC = {
-    "created":            "Task Created",
-    "creator_assigned":   "Creator Assigned",
-    "creator_working":    "Creator Shooting",
-    "creator_submitted":  "Video Submitted",
-    "pm_review":          "PM Review",
-    "approved":           "Approved",
-    "changes_required":   "Changes Requested (Creator)",
-    "rejected":           "Rejected / Reshoot",
-    "editor_assigned":    "Editor Assigned",
-    "editing":            "Editing In Progress",
-    "editing_paused":     "Editing Paused",
-    "editing_done":       "Editing Completed",
-    "qc_pending":         "QC Pending",
-    "qc_changes":         "Changes Requested (Editor)",
-    "ready_for_youtube":  "Ready for YouTube",
-    "uploaded":           "Uploaded",
-    "completed":          "Completed",
+    "created":              "Task Created",
+    "creator_assigned":     "Task Assigned",
+    "thumbnail_pending":    "Thumbnail Pending",
+    "thumbnail_in_progress":"Thumbnail In Progress",
+    "thumbnail_submitted":  "Thumbnail Submitted",
+    "thumbnail_approved":   "Thumbnail Approved",
+    "creator_working":      "Shooting",
+    "creator_submitted":    "Video Submitted",
+    "pm_review":            "PM Review",
+    "changes_required":     "Resubmit Required",
+    "reshoot_required":     "Reshoot Required",
+    "rejected":             "Rejected",
+    "approved":             "Approved",
+    "editor_assigned":      "Editing Soon",
+    "editing_soon":         "Editing Soon",
+    "editing":              "Editing In Progress",
+    "editing_paused":       "Editing Paused",
+    "editing_done":         "Editing Done",
+    "qc_pending":           "Editor Submitted",
+    "qc_changes":           "Changes Required",
+    "qc_approved":          "QC Approved",
+    "ready_for_youtube":    "Ready for YouTube",
+    "uploaded":             "Uploaded",
+    "completed":            "Completed",
 }
 
 # Best-effort mapping to the EXISTING (legacy) VideoTask.status vocabulary so the
 # old Task Manager counters keep working. Only a subset maps cleanly.
 LEGACY_MAP = {
-    "creator_submitted": "submitted",
-    "pm_review":         "submitted",
-    "approved":          "approved",
-    "changes_required":  "assigned",
-    "rejected":          "reshoot",
-    "editor_assigned":   "approved",
-    "editing":           "editing_soon",
-    "editing_paused":    "editing_soon",
-    "editing_done":      "editing_done",
-    "qc_pending":        "editing_done",
-    "qc_changes":        "editing_done",
-    "ready_for_youtube": "editing_done",
-    "uploaded":          "uploaded",
-    "completed":         "uploaded",
+    "creator_assigned":     "assigned",
+    "thumbnail_pending":    "assigned",
+    "thumbnail_in_progress":"assigned",
+    "thumbnail_submitted":  "assigned",
+    "thumbnail_approved":   "assigned",
+    "creator_working":      "assigned",
+    "creator_submitted":    "submitted",
+    "pm_review":            "submitted",
+    "approved":             "approved",
+    "changes_required":     "assigned",
+    "reshoot_required":     "reshoot",
+    "rejected":             "reshoot",
+    "editor_assigned":      "approved",
+    "editing_soon":         "editing_soon",
+    "editing":              "editing_soon",
+    "editing_paused":       "editing_soon",
+    "editing_done":         "editing_done",
+    "qc_pending":           "editing_done",
+    "qc_changes":           "editing_done",
+    "qc_approved":          "editing_done",
+    "ready_for_youtube":    "editing_done",
+    "uploaded":             "uploaded",
+    "completed":            "uploaded",
 }
+
+# ---------------------------------------------------------------- state machine
+# One production task = one source of truth (VideoTask.lifecycle). Transitions are
+# CONTROLLED: only the moves below are legal. Admins can override (oversight), and a
+# fresh task (empty state) may enter at any initial state. Everything else is rejected
+# server-side so no portal can push a task into an impossible state.
+ALLOWED_TRANSITIONS = {
+    "created":              {"creator_assigned", "editor_assigned", "rejected"},
+    # Task assigned to a creator: may run the optional thumbnail sub-flow, start
+    # shooting, be submitted, or (youtuber direct/approval paths) jump ahead.
+    "creator_assigned":     {"thumbnail_pending", "thumbnail_approved", "creator_working",
+                             "creator_submitted", "pm_review", "approved", "editor_assigned",
+                             "changes_required", "reshoot_required", "rejected"},
+    # ---- optional thumbnail sub-flow (graphics) ----
+    "thumbnail_pending":    {"thumbnail_in_progress", "thumbnail_approved", "creator_working"},
+    "thumbnail_in_progress":{"thumbnail_submitted"},
+    "thumbnail_submitted":  {"thumbnail_approved", "thumbnail_in_progress"},
+    "thumbnail_approved":   {"creator_working", "creator_submitted", "creator_assigned"},
+    # ---- shooting / submission ----
+    "creator_working":      {"creator_submitted", "pm_review", "approved", "thumbnail_pending"},
+    "creator_submitted":    {"pm_review", "approved", "changes_required",
+                             "reshoot_required", "rejected"},
+    "pm_review":            {"approved", "changes_required", "reshoot_required",
+                             "rejected", "editor_assigned"},
+    # ---- creator rework branches ----
+    "changes_required":     {"creator_working", "creator_submitted", "pm_review", "approved"},
+    "reshoot_required":     {"creator_working", "creator_submitted", "pm_review"},
+    "rejected":             {"creator_assigned", "creator_working"},   # reopen (admin flows)
+    # ---- editing ----
+    "approved":             {"editor_assigned", "editing_soon"},
+    "editor_assigned":      {"editing_soon", "editing", "editing_paused"},
+    "editing_soon":         {"editing", "editing_paused"},
+    "editing":              {"editing_paused", "editing_done"},
+    "editing_paused":       {"editing", "editing_done"},
+    "editing_done":         {"qc_pending"},
+    # ---- QC ----
+    "qc_pending":           {"ready_for_youtube", "qc_approved", "qc_changes"},
+    "qc_approved":          {"ready_for_youtube"},
+    "qc_changes":           {"editing", "editing_done", "qc_pending"},
+    # ---- publish ----
+    "ready_for_youtube":    {"uploaded"},
+    "uploaded":             {"completed"},
+    "completed":            set(),
+}
+# States reachable from ANYWHERE (safety valves). Kept intentionally small.
+ALWAYS_ALLOWED = set()
+
+
+class TransitionError(Exception):
+    """Raised when a lifecycle transition is not permitted by the state machine."""
+    pass
+
+
+def can_transition(prev, new_state):
+    """True if moving prev -> new_state is a legal controlled transition."""
+    prev = prev or ""
+    new_state = new_state or ""
+    if not new_state:
+        return False
+    if prev == new_state:
+        return True                      # idempotent no-op
+    if not prev:
+        return True                      # fresh task may enter at any state
+    if new_state in ALWAYS_ALLOWED:
+        return True
+    return new_state in ALLOWED_TRANSITIONS.get(prev, set())
+
+
+def allowed_next(state):
+    """The set of legal next states from `state` (for UIs / validation)."""
+    return sorted(ALLOWED_TRANSITIONS.get(state or "", set()) | ALWAYS_ALLOWED)
+
+
+def _actor_is_admin(actor):
+    if actor is None:
+        return False
+    r = getattr(actor, "role", None)
+    r = getattr(r, "value", r)
+    return str(r) == "admin"
 
 
 def lc_label(state):
@@ -90,14 +185,28 @@ def log_event(db, t, actor, event, new_state=None, prev_state=None, meta=None):
     ))
 
 
-def set_state(db, t, new_state, actor=None, event=None):
-    """Move the task to a new lifecycle state, keep legacy status in sync, log event."""
+def set_state(db, t, new_state, actor=None, event=None, meta=None, force=False):
+    """Move a task to a new lifecycle state through the CONTROLLED state machine.
+
+    - Validates the transition (raises TransitionError if illegal) unless `force=True`
+      or the actor is an admin (oversight override).
+    - Keeps the legacy VideoTask.status in sync via LEGACY_MAP (old Task Manager).
+    - Appends an immutable timeline event. History is never overwritten.
+    Returns True on success.
+    """
     prev = t.lifecycle or ""
+    if not force and not _actor_is_admin(actor) and not can_transition(prev, new_state):
+        raise TransitionError(
+            "Illegal transition %s -> %s (allowed: %s)"
+            % (prev or "(new)", new_state, ", ".join(allowed_next(prev)) or "none"))
     t.lifecycle = new_state
     leg = LEGACY_MAP.get(new_state)
     if leg:
         t.status = leg
-    log_event(db, t, actor, event or new_state, new_state=new_state, prev_state=prev)
+    if prev != new_state:
+        log_event(db, t, actor, event or new_state, new_state=new_state,
+                  prev_state=prev, meta=meta)
+    return True
 
 
 # ---------------------------------------------------------------- notifications
@@ -219,17 +328,19 @@ def waiting_since(t):
 
 
 # ---------------------------------------------------------------- attachments
-def save_images(db, t, images, kind, review_id, uploader):
+def save_images(db, t, images, kind, review_id, uploader, return_urls=False):
     """Store base64/dataURL images to R2 (fallback base64) as TaskAttachment rows.
-    Never raises — a bad image is skipped so the parent action still succeeds."""
+    Never raises — a bad image is skipped so the parent action still succeeds.
+    return_urls=True returns the list of stored URLs (for thumbnails) instead of a count."""
     if not images:
-        return 0
+        return [] if return_urls else 0
     import base64 as _b64
     try:
         import r2_storage as _r2
     except Exception:
         _r2 = None
     n = 0
+    urls = []
     for img in list(images)[:8]:
         try:
             s = img or ""
@@ -254,7 +365,9 @@ def save_images(db, t, images, kind, review_id, uploader):
         db.add(TaskAttachment(task_id=t.id, review_id=review_id, kind=kind, url=url,
                               mime=mime, uploader_user_id=getattr(uploader, "id", None)))
         n += 1
-    return n
+        # for return_urls, expose a directly-usable URL (data-uri for base64 fallback)
+        urls.append(url if str(url).startswith("http") else ("data:" + mime + ";base64," + url))
+    return urls if return_urls else n
 
 
 def attachments_out(db, t):
@@ -295,6 +408,14 @@ def _ensure_production_columns():
         "ALTER TABLE video_tasks ADD COLUMN remarks_audience VARCHAR(10)",
         "ALTER TABLE production_staff_profiles ADD COLUMN rank1_since DATETIME",
         "ALTER TABLE production_staff_profiles ADD COLUMN rank_appreciated_at DATETIME",
+        "ALTER TABLE graphics_tasks ADD COLUMN drive_link VARCHAR(600)",
+        "ALTER TABLE graphics_tasks ADD COLUMN deadline DATETIME",
+        "ALTER TABLE graphics_tasks ADD COLUMN priority VARCHAR(12)",
+        "ALTER TABLE graphics_tasks ADD COLUMN quality_rating INTEGER",
+        "ALTER TABLE graphics_tasks ADD COLUMN quality_note VARCHAR(400)",
+        "ALTER TABLE video_tasks ADD COLUMN quality_dims TEXT",
+        "ALTER TABLE video_tasks ADD COLUMN ontime_appreciated BOOLEAN DEFAULT 0",
+        "ALTER TABLE video_tasks ADD COLUMN description TEXT",
     ]
     for _s in _stmts:
         try:
@@ -344,6 +465,7 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None):
         "legacy_status": t.status or "",
         "next_action": next_action(db, t, g),
         "deadline": _dt(t.deadline),
+        "deadline_iso": (t.deadline.strftime("%Y-%m-%dT%H:%M:%SZ") if t.deadline else ""),
         "deadline_flag": (lambda f: {"kind": f[0], "label": f[1]})(deadline_flag(t)),
         "editor_id": t.editor_id,
         "editor_name": _name_for_staff(db, t.editor_id),
@@ -390,6 +512,108 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None):
     if timeline:
         out["timeline"] = timeline_out(db, t)
         out["attachments"] = attachments_out(db, t)
+        out["submissions"] = submissions_out(db, t)
+        out["review_history"] = review_history_out(db, t)
+    return out
+
+
+def submissions_out(db, t):
+    """Previous video submissions (append-only) from the teacher/youtuber, newest first.
+    Reconstructed from the immutable timeline so nothing is ever overwritten."""
+    rows = (db.query(ProductionEvent)
+            .filter(ProductionEvent.task_id == t.id,
+                    ProductionEvent.event.in_(["teacher_submitted", "youtuber_submitted"]))
+            .order_by(ProductionEvent.created_at.desc(), ProductionEvent.id.desc()).all())
+    out = []
+    for e in rows:
+        link = ""
+        try:
+            link = (json.loads(e.meta) if e.meta else {}).get("link", "")
+        except Exception:
+            link = ""
+        out.append({"at": _dt(e.created_at), "by": e.actor_name or "",
+                    "link": link, "event": e.event})
+    # include the current link even if the event meta didn't carry it
+    if t.submitted_link and (not out or out[0].get("link") != t.submitted_link):
+        out.insert(0, {"at": _dt(t.submitted_at), "by": "", "link": t.submitted_link,
+                       "event": "current"})
+    return out
+
+
+def edit_reviews_out(db, t):
+    """PM QC decisions on the editor's work (changes / rejected / approved) with remarks."""
+    rows = (db.query(TaskReview)
+            .filter(TaskReview.task_id == t.id, TaskReview.kind == "edit")
+            .order_by(TaskReview.created_at.desc(), TaskReview.id.desc()).all())
+    _lbl = {"changes": "Changes Required", "rejected": "Rejected", "approved": "Approved",
+            "submitted": "Submitted"}
+    out = []
+    for r in rows:
+        out.append({"decision": _lbl.get(r.decision, r.decision or ""),
+                    "remarks": r.remarks or "", "at": _dt(r.created_at),
+                    "revision_no": r.revision_no or 0})
+    return out
+
+
+def edit_submissions_out(db, t):
+    """Previous edited-video submissions (append-only) from the timeline, newest first."""
+    rows = (db.query(ProductionEvent)
+            .filter(ProductionEvent.task_id == t.id,
+                    ProductionEvent.event.in_(["edited_video_submitted", "revision_submitted"]))
+            .order_by(ProductionEvent.created_at.desc(), ProductionEvent.id.desc()).all())
+    out = []
+    for e in rows:
+        link = ""
+        try:
+            link = (json.loads(e.meta) if e.meta else {}).get("link", "")
+        except Exception:
+            link = ""
+        out.append({"at": _dt(e.created_at), "link": link,
+                    "kind": ("Revision" if e.event == "revision_submitted" else "Submission")})
+    if t.edited_link and (not out or out[0].get("link") != t.edited_link):
+        out.insert(0, {"at": "", "link": t.edited_link, "kind": "Current"})
+    return out
+
+
+def progress_history_out(db, t):
+    """Editing progress timeline: Assigned -> Started -> each % update, with timestamps.
+    Reconstructed from the immutable ProductionEvent log (never overwritten)."""
+    rows = (db.query(ProductionEvent)
+            .filter(ProductionEvent.task_id == t.id,
+                    ProductionEvent.event.in_(["editor_assigned", "editing_started",
+                                               "editing_resumed", "editing_paused",
+                                               "progress_updated", "editing_completed",
+                                               "edited_video_submitted", "revision_submitted"]))
+            .order_by(ProductionEvent.created_at.asc(), ProductionEvent.id.asc()).all())
+    _lbl = {"editor_assigned": "Assigned", "editing_started": "Started",
+            "editing_resumed": "Resumed", "editing_paused": "Paused",
+            "editing_completed": "Editing Done", "edited_video_submitted": "Submitted",
+            "revision_submitted": "Re-submitted"}
+    out = []
+    for e in rows:
+        pct = None
+        if e.event == "progress_updated":
+            try:
+                pct = (json.loads(e.meta) if e.meta else {}).get("progress")
+            except Exception:
+                pct = None
+        label = _lbl.get(e.event, "") or ((str(pct) + "%") if pct is not None else e.event)
+        out.append({"label": (str(pct) + "%") if pct is not None else label,
+                    "progress": pct, "at": _dt(e.created_at)})
+    return out
+
+
+def review_history_out(db, t):
+    """Previous PM review decisions on the creator's video (approve/changes/reshoot/reject)."""
+    rows = (db.query(TaskReview)
+            .filter(TaskReview.task_id == t.id, TaskReview.kind == "creator")
+            .order_by(TaskReview.created_at.desc(), TaskReview.id.desc()).all())
+    _lbl = {"changes": "Resubmit", "reshoot": "Reshoot", "rejected": "Rejected", "approved": "Approved"}
+    out = []
+    for r in rows:
+        out.append({"decision": _lbl.get(r.decision, r.decision or ""),
+                    "remarks": r.remarks or "", "at": _dt(r.created_at),
+                    "revision_no": r.revision_no or 0})
     return out
 
 
@@ -463,19 +687,27 @@ _EVENT_LABELS = {
     "approval_requested": "Sent for PM Approval",
     "approved": "Approved",
     "changes_requested": "Changes Requested",
-    "rejected": "Rejected / Reshoot",
+    "rejected": "Rejected",
+    "reshoot_required": "Reshoot Required",
     "editor_assigned": "Editor Assigned",
     "graphics_assigned": "Graphics Assigned",
+    "thumbnail_assigned": "Thumbnail Assigned",
+    "thumbnail_pending": "Thumbnail Pending",
     "editing_started": "Editing Started",
     "editing_paused": "Editing Paused",
     "editing_resumed": "Editing Resumed",
     "progress_updated": "Progress Updated",
     "editing_completed": "Editing Completed",
+    "editor_submitted": "Editor Submitted",
+    "qc_pending": "Editor Submitted",
+    "ready_for_youtube": "Ready for YouTube",
+    "completed": "Completed",
     "edited_video_submitted": "Edited Video Submitted",
     "thumbnail_started": "Thumbnail Started",
     "thumbnail_submitted": "Thumbnail Submitted",
     "thumbnail_approved": "Thumbnail Approved",
     "thumbnail_changes_requested": "Thumbnail Changes Requested",
+    "thumbnail_rejected": "Thumbnail Rejected",
     "qc_approved": "QC Approved",
     "revision_submitted": "Revision Submitted",
     "youtube_link_added": "YouTube Link Added",
@@ -522,7 +754,8 @@ def mark_read(db, user, nid=None):
 
 # ---------------------------------------------------------------- deadline
 def deadline_flag(t):
-    """Human-readable deadline signal for cards/filters (spec §38)."""
+    """Human-readable deadline signal for cards/filters (spec §38). Canonical UTC stored;
+    labels are plain English, never raw timer text."""
     if not t.deadline:
         return ("none", "No deadline")
     if t.lifecycle in ("uploaded", "completed"):
@@ -532,17 +765,17 @@ def deadline_flag(t):
     ad = abs(delta)
     d = int(ad // 86400); h = int((ad % 86400) // 3600); m = int((ad % 3600) // 60)
     if delta < 0:
-        if d > 0:
-            s = "%dd %02dh overdue" % (d, h)
-        elif h > 0:
-            s = "%dh %02dm overdue" % (h, m)
+        # overdue: hours for the first 2 days (e.g. "34h 12m overdue"), then days
+        if ad < 172800:
+            th = int(ad // 3600)
+            s = "%dh %02dm overdue" % (th, m)
         else:
-            s = "%dm overdue" % m
+            s = "%dd %02dh overdue" % (d, h)
         return ("overdue", s)
-    if delta < 7200:          # under 2 hours
-        return ("soon", ("Due soon · %dh %02dm" % (h, m)) if h else ("Due soon · %dm" % m))
-    if delta < 86400:         # under 24 hours
-        return ("today", "Due today · %dh %02dm" % (h, m))
+    if delta < 7200:          # under 2 hours -> DUE SOON
+        return ("soon", ("Due soon %dh %02dm" % (h, m)) if h else ("Due soon %dm" % m))
+    if delta < 86400:         # under 24 hours -> DUE TODAY
+        return ("today", "Due today %dh %02dm" % (h, m))
     return ("later", "Due in %dd %02dh" % (d, h))
 
 

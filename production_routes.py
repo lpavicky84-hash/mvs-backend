@@ -4,6 +4,7 @@ The PM is the operational owner. Admin also has access (oversight). Every mutati
 is authorised server-side and updates the shared state engine in production_core.
 """
 from fastapi import APIRouter, Depends, HTTPException, Body, Response
+import json
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from datetime import datetime, date, timedelta
@@ -24,6 +25,24 @@ def _task(db, tid):
     if not t:
         raise HTTPException(status_code=404, detail="Task not found")
     return t
+
+
+def _apply_new_deadline(t, payload, require=False):
+    """Set a new deadline while PRESERVING the old one (returned for the timeline).
+    History is never overwritten — the previous deadline is recorded in the event meta."""
+    from datetime import datetime as _dt
+    old_dl = t.deadline.strftime("%d %b %Y, %I:%M %p") if t.deadline else ""
+    raw = (payload.get("new_deadline") or payload.get("deadline") or "").strip()
+    if not raw:
+        if require:
+            raise HTTPException(400, "A new deadline is required")
+        return old_dl, ""
+    try:
+        nd = _dt.fromisoformat(raw.replace("Z", ""))
+    except Exception:
+        raise HTTPException(400, "Invalid new deadline")
+    t.deadline = nd
+    return old_dl, nd.strftime("%d %b %Y, %I:%M %p")
 
 
 # ============================================================ DASHBOARD
@@ -259,12 +278,15 @@ def request_creator_changes(tid: int, payload: dict = Body(...),
     if not remarks:
         raise HTTPException(400, "Remarks are required for changes")
     t = _task(db, tid)
+    old_dl, new_dl_str = _apply_new_deadline(t, payload, require=True)
     rv = TaskReview(task_id=t.id, kind="creator", reviewer_user_id=me.id,
                     decision="changes", remarks=remarks)
     db.add(rv); db.flush()
     pc.save_images(db, t, payload.get("images"), "creator", rv.id, me)
-    pc.set_state(db, t, "changes_required", actor=me, event="changes_requested")
-    _notify_creator(db, t, "Changes Requested", remarks[:180])
+    pc.set_state(db, t, "changes_required", actor=me, event="changes_requested",
+                 meta={"note": remarks[:200], "old_deadline": old_dl, "new_deadline": new_dl_str})
+    _notify_creator(db, t, "Resubmit Required",
+                    (remarks[:160] + " — new deadline: " + new_dl_str) if new_dl_str else remarks[:180])
     db.commit()
     return {"ok": True, "lifecycle": t.lifecycle}
 
@@ -279,7 +301,27 @@ def reject_creator(tid: int, payload: dict = Body(...),
     db.add(TaskReview(task_id=t.id, kind="creator", reviewer_user_id=me.id,
                       decision="rejected", remarks=remarks))
     pc.set_state(db, t, "rejected", actor=me, event="rejected")
-    _notify_creator(db, t, "Reshoot Required", remarks[:180])
+    _notify_creator(db, t, "Rejected", remarks[:180])
+    db.commit()
+    return {"ok": True, "lifecycle": t.lifecycle}
+
+
+@router.post("/tasks/{tid}/reshoot-creator")
+def reshoot_creator(tid: int, payload: dict = Body(...),
+                    db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Distinct from reject: the video must be re-shot (not discarded). Keeps the task
+    and its history; the creator re-shoots and resubmits."""
+    remarks = (payload.get("remarks") or "").strip()
+    if not remarks:
+        raise HTTPException(400, "Remarks are required for a reshoot")
+    t = _task(db, tid)
+    old_dl, new_dl_str = _apply_new_deadline(t, payload, require=True)
+    db.add(TaskReview(task_id=t.id, kind="creator", reviewer_user_id=me.id,
+                      decision="reshoot", remarks=remarks))
+    pc.set_state(db, t, "reshoot_required", actor=me, event="reshoot_required",
+                 meta={"note": remarks[:200], "old_deadline": old_dl, "new_deadline": new_dl_str})
+    _notify_creator(db, t, "Reshoot Required",
+                    (remarks[:160] + " — new deadline: " + new_dl_str) if new_dl_str else remarks[:180])
     db.commit()
     return {"ok": True, "lifecycle": t.lifecycle}
 
@@ -296,12 +338,20 @@ def assign_editor(tid: int, payload: dict = Body(...),
     if not ed:
         raise HTTPException(400, "Valid editor_id required")
     t.editor_id = eid
-    pc.set_state(db, t, "editor_assigned", actor=me, event="editor_assigned")
+    # PM manually assigned an editor. Internal state stays 'editor_assigned' (what the
+    # editor portal reads); it is DISPLAYED as "Editing Soon". Normal path from Approved
+    # is validated; a late re-assignment from a deeper state is a PM oversight action.
+    _reassign = (t.lifecycle not in ("approved", "editor_assigned", "editing_soon", ""))
+    pc.set_state(db, t, "editor_assigned", actor=me, event="editor_assigned",
+                 meta={"note": "Assigned to " + (ed.user.name if ed.user else "editor")}, force=_reassign)
     if ed.user_id:
         pc.notify(db, ed.user_id, "New Editing Task",
                   f'You have been assigned to edit: "{t.title}".', "video_task", link=str(t.id))
+    # teacher sees updated status
+    _notify_task_teacher(db, t, "Editor Assigned",
+                         f'Your video "{t.title}" was approved and assigned to an editor.', link=str(t.id))
     db.commit()
-    return {"ok": True, "editor": ed.user.name if ed.user else ""}
+    return {"ok": True, "editor": ed.user.name if ed.user else "", "lifecycle": t.lifecycle}
 
 
 # ============================================================ GRAPHICS ASSIGN
@@ -318,31 +368,63 @@ def assign_graphics(tid: int, payload: dict = Body(...),
     g = pc.graphics_task(db, t, create=True)
     g.graphics_id = gid
     g.status = "new"
-    g.instructions = (payload.get("instructions") or g.instructions or "")
-    g.reference_image = (payload.get("reference_image") or g.reference_image or "")
+    g.instructions = (payload.get("instructions") or payload.get("notes") or g.instructions or "")
+    g.reference_image = (payload.get("reference_image") or payload.get("reference") or g.reference_image or "")
+    g.priority = (payload.get("priority") or g.priority or "normal")
+    _gdl = (payload.get("deadline") or "").strip()
+    if _gdl:
+        try:
+            from datetime import datetime as _dtg
+            g.deadline = _dtg.fromisoformat(_gdl.replace("Z", ""))
+        except Exception:
+            pass
     t.graphics_id = gid
-    pc.log_event(db, t, me, "graphics_assigned", new_state=t.lifecycle)
+    pc.log_event(db, t, me, "graphics_assigned", new_state=t.lifecycle,
+                 meta={"note": "Assigned to graphics" + (" (urgent)" if g.priority == "urgent" else "")})
     if gr.user_id:
         pc.notify(db, gr.user_id, "New Thumbnail Task",
                   f'You have a thumbnail to design for: "{t.title}".', "video_task", link=str(t.id))
+    # teacher sees THUMBNAIL PENDING
+    _notify_task_teacher(db, t, "Thumbnail Pending",
+                         f'A thumbnail is being prepared for "{t.title}".', link=str(t.id))
     db.commit()
     return {"ok": True, "graphics": gr.user.name if gr.user else ""}
 
 
 # ============================================================ THUMBNAIL QC
 @router.post("/tasks/{tid}/thumbnail-approve")
-def thumbnail_approve(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+def thumbnail_approve(tid: int, payload: dict = Body(default={}),
+                      db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     t = _task(db, tid)
     g = pc.graphics_task(db, t)
     if not g or g.status != "submitted":
         raise HTTPException(400, "No submitted thumbnail to approve")
     g.status = "approved"
     g.approved_at = datetime.utcnow()
-    pc.log_event(db, t, me, "thumbnail_approved", new_state=t.lifecycle)
+    # optional PM quality rating for the thumbnail
+    try:
+        rt = int(payload.get("quality_rating") or 0)
+        if 1 <= rt <= 5:
+            g.quality_rating = rt
+    except Exception:
+        pass
+    g.quality_note = (payload.get("quality_note") or payload.get("remarks") or g.quality_note or "")[:400]
+    db.add(TaskReview(task_id=t.id, kind="thumbnail", reviewer_user_id=me.id,
+                      decision="approved", remarks=g.quality_note or "",
+                      revision_no=g.revision_count or 0))
+    pc.log_event(db, t, me, "thumbnail_approved", new_state=t.lifecycle,
+                 meta={"note": (("Rated %d/5. " % g.quality_rating) if g.quality_rating else "") + (g.quality_note or "")})
     if g.graphics_id:
         sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == g.graphics_id).first()
         if sp and sp.user_id:
-            pc.notify(db, sp.user_id, "Thumbnail Approved", f'Your thumbnail for "{t.title}" was approved.', "video_task", link=str(t.id))
+            _msg = f'Your thumbnail for "{t.title}" was approved.'
+            if g.quality_rating:
+                _msg += " Rated %d/5." % g.quality_rating
+            pc.notify(db, sp.user_id, "Thumbnail Approved", _msg,
+                      "appreciation" if (g.quality_rating or 0) >= 4 else "video_task", link=str(t.id))
+    # teacher sees the approved thumbnail
+    _notify_task_teacher(db, t, "Thumbnail Approved",
+                         f'The thumbnail for "{t.title}" is approved and ready.', link=str(t.id))
     db.commit()
     return {"ok": True}
 
@@ -359,16 +441,53 @@ def thumbnail_changes(tid: int, payload: dict = Body(...),
         raise HTTPException(400, "No thumbnail task")
     g.status = "changes"
     g.remarks = remarks
+    # optional additional reference from the PM
+    _ref = (payload.get("reference") or payload.get("reference_image") or "").strip()
+    if _ref:
+        g.reference_image = _ref
     g.revision_count = (g.revision_count or 0) + 1
     rv = TaskReview(task_id=t.id, kind="thumbnail", reviewer_user_id=me.id,
                     decision="changes", remarks=remarks, revision_no=g.revision_count)
     db.add(rv); db.flush()
+    # PM screenshots / clipboard attachments (previous thumbnail_url is preserved, not overwritten)
     pc.save_images(db, t, payload.get("images"), "thumbnail", rv.id, me)
-    pc.log_event(db, t, me, "thumbnail_changes_requested", new_state=t.lifecycle)
+    pc.log_event(db, t, me, "thumbnail_changes_requested", new_state=t.lifecycle,
+                 meta={"note": remarks[:200]})
     if g.graphics_id:
         sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == g.graphics_id).first()
         if sp and sp.user_id:
             pc.notify(db, sp.user_id, "Thumbnail Changes Requested", remarks[:180], "video_task", link=str(t.id))
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/tasks/{tid}/thumbnail-reject")
+def thumbnail_reject(tid: int, payload: dict = Body(...),
+                     db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Reject the thumbnail entirely — the designer must redo it from scratch.
+    Distinct from 'changes' (which tweaks the existing submission). Previous submission
+    is preserved as history via TaskReview/attachments; the working thumbnail is cleared."""
+    remarks = (payload.get("remarks") or "").strip()
+    if not remarks:
+        raise HTTPException(400, "Remarks are required for rejection")
+    t = _task(db, tid)
+    g = pc.graphics_task(db, t)
+    if not g:
+        raise HTTPException(400, "No thumbnail task")
+    g.revision_count = (g.revision_count or 0) + 1
+    rv = TaskReview(task_id=t.id, kind="thumbnail", reviewer_user_id=me.id,
+                    decision="rejected", remarks=remarks, revision_no=g.revision_count)
+    db.add(rv); db.flush()
+    pc.save_images(db, t, payload.get("images"), "thumbnail", rv.id, me)
+    g.status = "new"            # back to the start of the thumbnail sub-flow
+    g.remarks = remarks
+    g.thumbnail_url = ""        # clear working thumbnail (history kept in attachments)
+    g.drive_link = ""
+    pc.log_event(db, t, me, "thumbnail_rejected", new_state=t.lifecycle, meta={"note": remarks[:200]})
+    if g.graphics_id:
+        sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == g.graphics_id).first()
+        if sp and sp.user_id:
+            pc.notify(db, sp.user_id, "Thumbnail Rejected — Redo Required", remarks[:180], "video_task", link=str(t.id))
     db.commit()
     return {"ok": True}
 
@@ -406,11 +525,40 @@ def request_edit_changes(tid: int, payload: dict = Body(...),
                     remarks=remarks, revision_no=t.revision_count)
     db.add(rv); db.flush()
     pc.save_images(db, t, payload.get("images"), "edit", rv.id, me)
-    pc.set_state(db, t, "qc_changes", actor=me, event="changes_requested")
+    _refs = (payload.get("references") or payload.get("reference") or "").strip()
+    pc.set_state(db, t, "qc_changes", actor=me, event="changes_requested",
+                 meta={"note": remarks[:200], "references": _refs})
     if t.editor_id:
         ed = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
         if ed and ed.user_id:
-            pc.notify(db, ed.user_id, "Edit Changes Requested", remarks[:180], "video_task", link=str(t.id))
+            pc.notify(db, ed.user_id, "Changes Required", remarks[:180], "video_task", link=str(t.id))
+    db.commit()
+    return {"ok": True, "lifecycle": t.lifecycle, "revision": t.revision_count}
+
+
+@router.post("/tasks/{tid}/qc-reject")
+def qc_reject(tid: int, payload: dict = Body(...),
+              db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Reject the edit outright (redo). Distinct from 'changes' — the edit must be redone.
+    Never creates a new task; full revision history is preserved."""
+    remarks = (payload.get("remarks") or "").strip()
+    if not remarks:
+        raise HTTPException(400, "Remarks are required for rejection")
+    t = _task(db, tid)
+    if t.lifecycle != "qc_pending":
+        raise HTTPException(400, "Task is not in QC")
+    t.qc_status = "changes"
+    t.revision_count = (t.revision_count or 0) + 1
+    rv = TaskReview(task_id=t.id, kind="edit", reviewer_user_id=me.id, decision="rejected",
+                    remarks=remarks, revision_no=t.revision_count)
+    db.add(rv); db.flush()
+    pc.save_images(db, t, payload.get("images"), "edit", rv.id, me)
+    pc.set_state(db, t, "qc_changes", actor=me, event="changes_requested",
+                 meta={"note": "Rejected \u2014 redo. " + remarks[:180]})
+    if t.editor_id:
+        ed = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
+        if ed and ed.user_id:
+            pc.notify(db, ed.user_id, "Edit Rejected \u2014 Redo Required", remarks[:180], "video_task", link=str(t.id))
     db.commit()
     return {"ok": True, "lifecycle": t.lifecycle, "revision": t.revision_count}
 
@@ -433,7 +581,21 @@ def add_youtube(tid: int, payload: dict = Body(...),
     t.published_at = datetime.utcnow()
     pc.set_state(db, t, "uploaded", actor=me, event="youtube_link_added")
     pc.log_event(db, t, me, "uploaded", new_state="uploaded")
-    # fetch initial metrics (best-effort)
+    # notify the editor + (if applicable) the youtuber creator that their video is live
+    try:
+        if t.editor_id:
+            ed = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
+            if ed and ed.user_id:
+                pc.notify(db, ed.user_id, "Your video is live",
+                          f'"{t.title}" you edited was uploaded to YouTube.', "appreciation", link=str(t.id))
+        if (t.creator_type or "") == "youtuber" and t.youtuber_id:
+            yp = db.query(YouTuberProfile).filter(YouTuberProfile.id == t.youtuber_id).first()
+            if yp and yp.user_id:
+                pc.notify(db, yp.user_id, "Your video is live",
+                          f'"{t.title}" was uploaded to YouTube.', "video_request", link=str(t.id))
+    except Exception:
+        pass
+    # fetch initial metrics (best-effort) — reuses the shared YouTube views system
     try:
         key = _yt_get_key(db)
         got = _yt_fetch_views([vid], key)
@@ -511,11 +673,20 @@ def pm_people(role: str = "", db: Session = Depends(get_db), me=Depends(get_pm_o
     """Light lists for assignment dropdowns: editors, graphics, youtubers, teachers."""
     out = {}
     if role in ("", "editor"):
-        out["editors"] = [{"id": s.id, "name": s.user.name if s.user else "",
-                           "recommended": s.recommended_load or 5}
-                          for s in db.query(ProductionStaffProfile).filter(
-                              ProductionStaffProfile.staff_role == "editor",
-                              ProductionStaffProfile.is_active == True).all()]
+        _ed_active = ["editor_assigned", "editing_soon", "editing", "editing_paused",
+                      "editing_done", "qc_pending", "qc_changes"]
+        eds = db.query(ProductionStaffProfile).filter(
+            ProductionStaffProfile.staff_role == "editor",
+            ProductionStaffProfile.is_active == True).all()
+        out["editors"] = []
+        for s in eds:
+            active = db.query(VideoTask).filter(VideoTask.editor_id == s.id,
+                                                VideoTask.lifecycle.in_(_ed_active)).count()
+            pending = db.query(VideoTask).filter(VideoTask.editor_id == s.id,
+                                                 VideoTask.lifecycle.in_(["editor_assigned", "editing_soon"])).count()
+            out["editors"].append({"id": s.id, "name": s.user.name if s.user else "",
+                                   "recommended": s.recommended_load or 5,
+                                   "active": active, "pending": pending})
     if role in ("", "graphics"):
         out["graphics"] = [{"id": s.id, "name": s.user.name if s.user else "",
                            "recommended": s.recommended_load or 5}
@@ -719,6 +890,167 @@ def pm_person(kind: str, pid: int, db: Session = Depends(get_db), me=Depends(get
 
 
 # ============================================================ ANALYTICS
+@router.get("/admin-analytics")
+def admin_analytics(days: int = 30, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """System-level production analytics for Admin oversight. Real task data only —
+    every metric is traceable to VideoTask / GraphicsTask / EditingSession rows."""
+    now = datetime.utcnow()
+    start = now - timedelta(days=max(1, min(365, days)))
+    _done = ["uploaded", "completed"]
+    _editing_states = ["editor_assigned", "editing", "editing_paused", "editing_done"]
+
+    all_active = db.query(VideoTask).filter(VideoTask.cancelled == False).all()
+
+    def has(t, *st):
+        return t.lifecycle in st
+
+    # ---- TASK HEALTH (9 canonical buckets) ----
+    task_health = {
+        "assigned": sum(1 for t in all_active if t.lifecycle not in ("", "created")),
+        "completed": sum(1 for t in all_active if has(t, "completed", "uploaded")),
+        "pending": sum(1 for t in all_active if t.lifecycle not in _done and t.lifecycle not in ("", "created")),
+        "overdue": sum(1 for t in all_active if t.deadline and t.deadline < now and t.lifecycle not in _done),
+        "pm_review": sum(1 for t in all_active if has(t, "pm_review", "creator_submitted")),
+        "editing": sum(1 for t in all_active if t.lifecycle in _editing_states),
+        "qc_pending": sum(1 for t in all_active if has(t, "qc_pending")),
+        "ready_for_youtube": sum(1 for t in all_active if has(t, "ready_for_youtube")),
+        "uploaded": sum(1 for t in all_active if has(t, "uploaded", "completed")),
+    }
+
+    # ---- TEACHERS (assigned / submitted / approved / reshoot / overdue / output) ----
+    teacher_tasks = [t for t in all_active if (t.creator_type or "teacher") == "teacher"]
+    tmap = {}
+    for t in teacher_tasks:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == t.teacher_id).first() if t.teacher_id else None
+        name = (tp.user.name if (tp and tp.user) else "Unassigned")
+        d = tmap.setdefault(t.teacher_id or 0, {"name": name, "assigned": 0, "submitted": 0,
+                                                "approved": 0, "reshoot": 0, "overdue": 0, "output": 0})
+        d["assigned"] += 1
+        if t.submitted_at or t.lifecycle not in ("", "created", "creator_assigned", "creator_working"):
+            d["submitted"] += 1
+        if t.lifecycle not in ("", "created", "creator_assigned", "creator_working", "pm_review", "changes_required", "reshoot_required"):
+            d["approved"] += 1
+        if t.lifecycle == "reshoot_required":
+            d["reshoot"] += 1
+        if t.deadline and t.deadline < now and t.lifecycle not in _done:
+            d["overdue"] += 1
+        if t.lifecycle in _done:
+            d["output"] += 1
+    teachers = sorted(tmap.values(), key=lambda x: -x["output"])
+    teachers_total = {k: sum(r[k] for r in teachers) for k in ("assigned", "submitted", "approved", "reshoot", "overdue", "output")}
+
+    # ---- GRAPHICS (assigned / completed / approval_pending / changes / rating / turnaround) ----
+    gfx = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.staff_role == "graphics").all()
+    gfx_rows = []
+    for sp in gfx:
+        gts = db.query(GraphicsTask).filter(GraphicsTask.graphics_id == sp.id).all()
+        completed_g = [g for g in gts if g.status == "approved"]
+        turns = [((g.approved_at - g.started_at).total_seconds() / 3600.0)
+                 for g in completed_g if g.started_at and g.approved_at]
+        ratings = [g.quality_rating for g in completed_g if g.quality_rating]
+        gfx_rows.append({
+            "name": sp.user.name if sp.user else "",
+            "assigned": len(gts),
+            "completed": len(completed_g),
+            "approval_pending": sum(1 for g in gts if g.status == "submitted"),
+            "changes": sum(1 for g in gts if g.status == "changes"),
+            "rating": round(sum(ratings) / len(ratings), 1) if ratings else 0,
+            "turnaround": round(sum(turns) / len(turns), 1) if turns else 0,
+        })
+    gfx_rows.sort(key=lambda x: -x["completed"])
+    gfx_total = {"assigned": sum(r["assigned"] for r in gfx_rows), "completed": sum(r["completed"] for r in gfx_rows),
+                 "approval_pending": sum(r["approval_pending"] for r in gfx_rows), "changes": sum(r["changes"] for r in gfx_rows),
+                 "rating": round(sum(r["rating"] for r in gfx_rows if r["rating"]) / max(1, sum(1 for r in gfx_rows if r["rating"])), 1) if any(r["rating"] for r in gfx_rows) else 0}
+
+    # ---- EDITORS (assigned / active / completed / changes / overdue / quality / turnaround) ----
+    eds = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.staff_role == "editor").all()
+    ed_rows = []
+    for sp in eds:
+        ets = [t for t in all_active if t.editor_id == sp.id]
+        completed_e = [t for t in ets if t.lifecycle in ["editing_done", "qc_pending", "ready_for_youtube", "uploaded", "completed"]]
+        turns = [((t.editing_done_at - t.editing_started_at).total_seconds() / 3600.0)
+                 for t in ets if t.editing_started_at and t.editing_done_at and t.editing_done_at >= t.editing_started_at]
+        ratings = [t.quality_rating for t in ets if t.quality_rating]
+        ed_rows.append({
+            "name": sp.user.name if sp.user else "",
+            "assigned": len(ets),
+            "active": sum(1 for t in ets if t.lifecycle in ["editing", "editing_paused"]),
+            "completed": len(completed_e),
+            "changes": sum(1 for t in ets if t.lifecycle == "qc_changes"),
+            "overdue": sum(1 for t in ets if t.deadline and t.deadline < now and t.lifecycle not in _done),
+            "quality": round(sum(ratings) / len(ratings), 1) if ratings else 0,
+            "turnaround": round(sum(turns) / len(turns), 1) if turns else 0,
+        })
+    ed_rows.sort(key=lambda x: -x["completed"])
+    ed_total = {k: sum(r[k] for r in ed_rows) for k in ("assigned", "active", "completed", "changes", "overdue")}
+    ed_total["quality"] = round(sum(r["quality"] for r in ed_rows if r["quality"]) / max(1, sum(1 for r in ed_rows if r["quality"])), 1) if any(r["quality"] for r in ed_rows) else 0
+
+    # ---- YOUTUBERS (proposed / assigned / active / completed / uploaded / views) ----
+    yts = db.query(YouTuberProfile).all()
+    yt_rows = []
+    for yp in yts:
+        yts_tasks = [t for t in all_active if (t.creator_type or "") == "youtuber" and t.youtuber_id == yp.id]
+        yt_rows.append({
+            "name": yp.user.name if yp.user else "",
+            "proposed": sum(1 for t in yts_tasks if t.lifecycle in ["created", "pm_review"]),
+            "assigned": len(yts_tasks),
+            "active": sum(1 for t in yts_tasks if t.lifecycle in _editing_states + ["editing", "editing_paused", "qc_pending", "qc_changes"]),
+            "completed": sum(1 for t in yts_tasks if t.lifecycle in _done),
+            "uploaded": sum(1 for t in yts_tasks if t.lifecycle in _done and t.youtube_url),
+            "views": sum(int(t.yt_views or 0) for t in yts_tasks),
+        })
+    yt_rows.sort(key=lambda x: -x["views"])
+    yt_total = {k: sum(r[k] for r in yt_rows) for k in ("proposed", "assigned", "active", "completed", "uploaded", "views")}
+
+    # ---- MAJOR DELAYS (most overdue active tasks) ----
+    delays = []
+    for t in all_active:
+        if t.deadline and t.deadline < now and t.lifecycle not in _done:
+            od_h = (now - t.deadline).total_seconds() / 3600.0
+            cname = ""
+            if (t.creator_type or "") == "youtuber" and t.youtuber_id:
+                yp = db.query(YouTuberProfile).filter(YouTuberProfile.id == t.youtuber_id).first()
+                cname = (yp.user.name if (yp and yp.user) else "")
+            elif t.teacher_id:
+                tp = db.query(TeacherProfile).filter(TeacherProfile.id == t.teacher_id).first()
+                cname = (tp.user.name if (tp and tp.user) else "")
+            delays.append({"id": t.id, "title": t.title or "", "ref_code": t.ref_code or "",
+                           "stage": pc.LC.get(t.lifecycle, t.lifecycle), "creator": cname,
+                           "overdue_hours": round(od_h, 1)})
+    delays.sort(key=lambda x: -x["overdue_hours"])
+    delays = delays[:20]
+
+    # ---- REVIEW QUEUES (pending decisions) ----
+    review_queues = {
+        "pm_review": sum(1 for t in all_active if t.lifecycle in ["pm_review", "creator_submitted"]),
+        "thumbnail_review": db.query(GraphicsTask).filter(GraphicsTask.status == "submitted").count(),
+        "qc_review": sum(1 for t in all_active if t.lifecycle == "qc_pending"),
+        "proposals": sum(1 for t in all_active if t.lifecycle == "created" and (t.creator_type or "") == "youtuber"),
+    }
+
+    # ---- TREND (weekly created vs completed, last 8 weeks) ----
+    trend = []
+    for w in range(7, -1, -1):
+        wk_start = now - timedelta(days=(w + 1) * 7)
+        wk_end = now - timedelta(days=w * 7)
+        c_created = db.query(VideoTask).filter(VideoTask.cancelled == False,
+                                               VideoTask.created_at >= wk_start, VideoTask.created_at < wk_end).count()
+        c_done = db.query(VideoTask).filter(VideoTask.published_at != None,
+                                            VideoTask.published_at >= wk_start, VideoTask.published_at < wk_end).count()
+        trend.append({"label": wk_end.strftime("%d %b"), "created": c_created, "completed": c_done})
+
+    return {
+        "task_health": task_health,
+        "teachers": {"total": teachers_total, "rows": teachers[:10]},
+        "graphics": {"total": gfx_total, "rows": gfx_rows},
+        "editors": {"total": ed_total, "rows": ed_rows},
+        "youtubers": {"total": yt_total, "rows": yt_rows},
+        "major_delays": delays,
+        "review_queues": review_queues,
+        "trend": trend,
+    }
+
+
 @router.get("/analytics")
 def pm_analytics(days: int = 30, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     now = datetime.utcnow()
@@ -839,6 +1171,11 @@ def _notify_creator(db, t, title, msg):
         tp = db.query(TeacherProfile).filter(TeacherProfile.id == t.teacher_id).first()
         if tp and tp.user_id:
             pc.notify(db, tp.user_id, title, msg, "video_task", link=str(t.id))
+
+
+def _notify_task_teacher(db, t, title, msg, link=None):
+    """Notify the video's teacher (or youtuber creator) — used by the thumbnail flow."""
+    _notify_creator(db, t, title, msg)
 
 
 # ============================================================ NOTIFICATIONS
@@ -1564,8 +1901,22 @@ def pm_rate(tid: int, payload: dict = Body(...), db: Session = Depends(get_db),
         raise HTTPException(400, "Rating must be between 1 and 5.")
     t.quality_rating = rating
     t.quality_note = (payload.get("note") or "").strip()[:400]
+    # optional per-dimension sub-ratings (pacing, cuts, audio, graphics, captions, storytelling, technical)
+    _DIMS = ["pacing", "cuts", "audio", "graphics", "captions", "storytelling", "technical"]
+    dims = {}
+    src = payload.get("dimensions") or payload.get("dims") or {}
+    if isinstance(src, dict):
+        for k in _DIMS:
+            try:
+                v = int(src.get(k) or 0)
+                if 1 <= v <= 5:
+                    dims[k] = v
+            except Exception:
+                pass
+    t.quality_dims = json.dumps(dims) if dims else ""
     pc.log_event(db, t, me, "quality_rated",
-                 meta={"note": "Quality rated %d/5%s" % (rating, (" \u2014 " + t.quality_note) if t.quality_note else "")})
+                 meta={"note": "Quality rated %d/5%s" % (rating, (" \u2014 " + t.quality_note) if t.quality_note else ""),
+                       "dims": dims})
     try:
         if t.editor_id:
             ed = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
@@ -1587,6 +1938,25 @@ def pm_rate(tid: int, payload: dict = Body(...), db: Session = Depends(get_db),
 
 
 # ============================================================ ANNOUNCEMENTS + EVENTS (§35)
+@router.get("/announce-targets")
+def pm_announce_targets(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """People the PM can send an individual announcement to (user_id + name), by role."""
+    out = {"teachers": [], "editors": [], "graphics": [], "youtubers": []}
+    try:
+        for tp in db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all():
+            out["teachers"].append({"user_id": tp.user_id, "name": tp.user.name if tp.user else ""})
+        for sp in db.query(ProductionStaffProfile).filter(ProductionStaffProfile.is_active == True).all():
+            grp = "editors" if sp.staff_role == "editor" else ("graphics" if sp.staff_role == "graphics" else None)
+            if grp and sp.user_id:
+                out[grp].append({"user_id": sp.user_id, "name": sp.user.name if sp.user else ""})
+        for yp in db.query(YouTuberProfile).all():
+            if getattr(yp, "user_id", None):
+                out["youtubers"].append({"user_id": yp.user_id, "name": yp.user.name if yp.user else ""})
+    except Exception:
+        pass
+    return out
+
+
 @router.post("/announce")
 def pm_announce(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     """Send a notification to a whole group (or one person)."""
