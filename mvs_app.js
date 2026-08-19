@@ -18629,14 +18629,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pt-badge.review{background:rgba(209,68,58,.12);color:#d1443a;font-weight:800}',
 /* mobile filter button + drawer */
 '.p-mfilter{display:none}',
-'.p-drawer-wrap{position:fixed;inset:0;z-index:900;background:rgba(20,15,5,.4);opacity:0;pointer-events:none;transition:opacity .2s}',
-'.p-drawer-wrap.open{opacity:1;pointer-events:auto}',
-'.p-drawer{position:absolute;left:0;right:0;bottom:0;background:var(--card,#fffdf7);border-radius:20px 20px 0 0;padding:18px 16px 26px;transform:translateY(100%);transition:transform .26s cubic-bezier(.2,.8,.2,1);max-height:80vh;overflow-y:auto}',
-'.p-drawer-wrap.open .p-drawer{transform:translateY(0)}',
-'body.dark .p-drawer{background:#1a140a}',
-'.p-drawer-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}',
-'.p-drawer-h .t{font-weight:800;font-size:1.05rem}',
-'.p-drawer-grip{width:38px;height:4px;border-radius:2px;background:#d8cba8;margin:0 auto 14px}',
+'.pfd-wrap{position:fixed;inset:0;z-index:900;background:rgba(20,15,5,.4);opacity:0;pointer-events:none;transition:opacity .2s}',
+'.pfd-wrap.open{opacity:1;pointer-events:auto}',
+'.pfd{position:absolute;left:0;right:0;bottom:0;background:var(--card,#fffdf7);border-radius:20px 20px 0 0;padding:18px 16px 26px;transform:translateY(100%);transition:transform .26s cubic-bezier(.2,.8,.2,1);max-height:80vh;overflow-y:auto}',
+'.pfd-wrap.open .pfd{transform:translateY(0)}',
+'body.dark .pfd{background:#1a140a}',
+'.pfd-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}',
+'.pfd-h .t{font-weight:800;font-size:1.05rem}',
+'.pfd-grip{width:38px;height:4px;border-radius:2px;background:#d8cba8;margin:0 auto 14px}',
 '@media(max-width:640px){.p-mfilter{display:inline-flex;align-items:center;gap:7px;background:var(--card,#fffdf7);border:1.5px solid #e0d4b3;border-radius:12px;padding:9px 14px;font-weight:700;font-size:.86rem;color:#a9791f;cursor:pointer}.p-filter-prod .pf-sel{display:none}}',
 '.p-filter-prod{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card,#fffdf7);border:1px solid #e8dfc8;border-radius:16px;padding:12px 14px;margin-bottom:16px}',
 'body.dark .p-filter-prod{background:#211a0d;border-color:#3a2f14}',
@@ -20291,9 +20291,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var teachers=(fd.teachers||[]), channels=(fd.channels||[]), types=(fd.types||[]);
     var statuses=[['','All Status'],['pm_review','PM Review'],['approved','Approved'],['editor_assigned','Editing Soon'],['editing','Editing In Progress'],['editing_done','Editing Done'],['qc_pending','QC Pending'],['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded'],['changes_required','Changes']];
     var sel=function(field,ph,opts){ return '<div class="p-field"><label>'+ph+'</label><select class="p-select" onchange="prodSetFilter(\'production\',\''+field+'\',this.value);prodCloseDrawer()">'+opts+'</select></div>'; };
-    var old=document.getElementById('prod-drawer'); if(old) old.remove();
-    var dr=document.createElement('div'); dr.className='p-drawer-wrap'; dr.id='prod-drawer';
-    dr.innerHTML='<div class="p-drawer"><div class="p-drawer-grip"></div><div class="p-drawer-h"><span class="t">Filters</span><button class="pd-x" onclick="prodCloseDrawer()">&times;</button></div>'+
+    var old=document.getElementById('prod-fdrawer'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='pfd-wrap'; dr.id='prod-fdrawer';
+    dr.innerHTML='<div class="pfd"><div class="pfd-grip"></div><div class="pfd-h"><span class="t">Filters</span><button class="pd-x" onclick="prodCloseDrawer()">&times;</button></div>'+
       sel('teacher_id','Teacher','<option value="">All Teachers</option>'+teachers.map(function(t){ return '<option value="'+t.id+'"'+((f.teacher_id||'')==String(t.id)?' selected':'')+'>'+esc(t.name)+'</option>'; }).join(''))+
       sel('channel','Channel','<option value="">All Channels</option>'+channels.map(function(ch){ return '<option value="'+esc(ch.name)+'"'+((f.channel||'')===ch.name?' selected':'')+'>'+esc(ch.name)+'</option>'; }).join(''))+
       sel('video_type','Type','<option value="">All Types</option>'+types.map(function(ty){ return '<option value="'+esc(ty.name)+'"'+((f.video_type||'')===ty.name?' selected':'')+'>'+esc(ty.name)+'</option>'; }).join(''))+
@@ -20303,7 +20303,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     document.body.appendChild(dr);
     setTimeout(function(){ dr.classList.add('open'); },10);
   };
-  window.prodCloseDrawer=function(){ var dr=document.getElementById('prod-drawer'); if(dr){ dr.classList.remove('open'); setTimeout(function(){ dr.remove(); },240); } };
+  window.prodCloseDrawer=function(){ var dr=document.getElementById('prod-fdrawer'); if(dr){ dr.classList.remove('open'); setTimeout(function(){ dr.remove(); },240); } };
   window.prodClearFilters=function(){ var f=_flt('production'); ['q','teacher_id','channel','video_type','status','priority','deadline','creator_type'].forEach(function(k){ delete f[k]; }); var body=document.getElementById('production-body'); if(body) renderList('production',body); };
   function renderList(portal,body){
     body.innerHTML=_filterBar(portal)+'<div id="'+portal+'-active"></div><div id="'+portal+'-results">'+_pSkelRows(5)+'</div>';
@@ -20765,7 +20765,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     try{ if(window._edtPasteH){ document.removeEventListener('paste',window._edtPasteH); window._edtPasteH=null; } }catch(e){}
     try{ if(window._qcPasteH){ document.removeEventListener('paste',window._qcPasteH); window._qcPasteH=null; } }catch(e){}
     try{ if(window._ytPasteH){ document.removeEventListener('paste',window._ytPasteH); window._ytPasteH=null; } }catch(e){}
-    try{ var _dw=document.getElementById('prod-drawer'); if(_dw) _dw.remove(); }catch(e){} };
+    try{ var _dw=document.getElementById('prod-drawer'); if(_dw) _dw.remove(); var _fdw=document.getElementById('prod-fdrawer'); if(_fdw) _fdw.remove(); }catch(e){} };
   window.prodTab=function(tab){
     var st=window._prodTask; if(!st) return;
     document.querySelectorAll('#prod-drawer .pd-tab').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-tab')===tab); });
