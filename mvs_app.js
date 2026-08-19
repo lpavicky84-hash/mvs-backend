@@ -1477,7 +1477,8 @@ function fmtDT(s){
 function initials(name){ const p=(name||'U').trim().split(' '); return ((p[0]||'')[0]||'')+((p[1]||'')[0]||''); }
 
 // Modal helpers
-function showModal(title,bodyHtml,footerHtml){ const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.remove('cx','modal-fs'); const _cs=document.querySelector('.cx-sub'); if(_cs)_cs.remove(); document.getElementById('modal-title').textContent=title; document.getElementById('modal-body').innerHTML=bodyHtml; document.getElementById('modal-footer').innerHTML=footerHtml||''; document.getElementById('modal').classList.add('open'); }
+function _deEnt(s){ if(s==null) return ''; return String(s).replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#0?39;/g,"'").replace(/&#x27;/gi,"'"); }
+function showModal(title,bodyHtml,footerHtml){ const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.remove('cx','modal-fs'); const _cs=document.querySelector('.cx-sub'); if(_cs)_cs.remove(); document.getElementById('modal-title').textContent=_deEnt(title); document.getElementById('modal-body').innerHTML=bodyHtml; document.getElementById('modal-footer').innerHTML=footerHtml||''; document.getElementById('modal').classList.add('open'); }
 function closeModal(){
   // AUTO-DRAFT: band hone se PEHLE draft save karo (galti se X dabe ya hang ho to bhi
   // questions safe) + timer band karo. Reopen par "Continue" milega.
@@ -8807,6 +8808,16 @@ async function openVTEdit(id,ev){
       </div>`}
       <div class="form-group" style="grid-column:1/-1"><label>Reference / Brief</label><textarea id="vt-e-ref" class="input" rows="2">${esc(t.reference||'')}</textarea></div>
       <div class="form-group" style="grid-column:1/-1"><label>Remarks for Teacher</label><textarea id="vt-e-remarks" class="input" rows="2">${esc(t.remarks||'')}</textarea></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Collaborating Teachers <span style="font-weight:500;color:var(--text-muted);font-size:.72rem;text-transform:none">— tick every teacher on this task. The primary teacher cannot be removed.</span></label>
+        <div id="vt-e-collab" class="vt-echaps" style="max-height:220px;overflow-y:auto">${(function(){
+          var primaryId=t.teacher_id;
+          var current={}; (t.collab_teacher_ids||[]).forEach(function(x){ current[x]=1; });
+          (t.collab_teachers||[]).forEach(function(c){ if(!c.primary && c.id!==primaryId) current[c.id]=1; });
+          return _vtTeachers.map(function(tt){
+            var isP=(tt.pid===primaryId);
+            return '<label class="vt-echap" style="display:flex;align-items:center;gap:9px;padding:7px 4px"><input type="checkbox" class="vt-e-collab-cb" value="'+tt.pid+'" '+(current[tt.pid]?'checked':'')+(isP?' disabled checked':'')+'> <span>'+esc(tt.name)+(isP?' <b style="color:var(--accent)">(Primary)</b>':'')+'</span></label>';
+          }).join('');
+        })()}</div></div>
       ${special?`<div class="form-group" style="grid-column:1/-1"><label>Chapters Included <span style="font-weight:500;color:var(--text-muted);font-size:.72rem;text-transform:none">— uncheck to remove, check to add (PE = exam chapters, TMA = assignment-only)</span></label>
         <div id="vt-e-chaps" class="vt-echaps"><div style="padding:10px;font-size:.82rem;color:var(--text-muted)">Loading chapters…</div></div></div>`:''}
     </div>`,
@@ -8858,8 +8869,19 @@ async function vtEditSave(id){
   if(!payload.deadline){ toast('Please set a deadline'); return; }
   try{
     const r=await api(`/api/admin/video-tasks/${id}/edit`,'POST',payload);
+    // save collaborating teachers (add/remove) — bulletproof edit for admin
+    const cbox=document.getElementById('vt-e-collab');
+    let collabMsg='';
+    if(cbox){
+      const primaryId=((window._avtMap||{})[id]||{}).teacher_id;
+      const ids=[...cbox.querySelectorAll('.vt-e-collab-cb')].filter(c=>c.checked && String(c.value)!==String(primaryId)).map(c=>+c.value);
+      try{
+        const rc=await api(`/api/admin/video-tasks/${id}/edit-collab`,'POST',{teacher_ids:ids});
+        if(rc&&(rc.added||rc.removed)) collabMsg=` · collaborators updated (${rc.added||0} added, ${rc.removed||0} removed)`;
+      }catch(ce){ /* non-fatal */ }
+    }
     window._vtThumbB64=null; closeModal();
-    toast(r.changed&&r.changed.length?'Updated: '+r.changed.join(', '):'No changes made.');
+    toast((r.changed&&r.changed.length?'Updated: '+r.changed.join(', '):'No changes made.')+collabMsg);
     loadAVTasks();
   }catch(e){ toast(e.message||'Could not save'); }
 }
