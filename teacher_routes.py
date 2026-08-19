@@ -654,7 +654,7 @@ def teacher_delete_doubt_answer(did: int, db: Session = Depends(get_db), current
     d.status = DoubtStatus.pending
     d.resolved_at = None
     db.commit()
-    return {"message": "Response deleted — doubt wapas pending hai"}
+    return {"message": "Response deleted — the doubt is pending again"}
 
 @router.patch("/doubts/{doubt_id}/resolve")
 def resolve_doubt(
@@ -1619,7 +1619,7 @@ def teacher_dpp_track_list(pack_id: int, event: str = "view",
         raise HTTPException(404, "DPP pack not found")
     ev = (event or "view").lower()
     if ev not in ("view", "download"):
-        raise HTTPException(400, "event 'view' ya 'download' hona chahiye")
+        raise HTTPException(400, "event must be 'view' or 'download'")
     rows = (db.query(DppEvent)
             .filter(DppEvent.pack_id == pack_id, DppEvent.event == ev)
             .order_by(DppEvent.created_at.desc(), DppEvent.id.desc()).all())
@@ -4137,7 +4137,7 @@ def create_extra_class(payload: dict, db: Session = Depends(get_db), current_use
 
     for adm in db.query(User).filter(User.role == UserRole.admin).all():
         msg = (f"{current_user.name} requested an extra class for {subject} "
-               f"({nd} {time_text}). Baaki classes shift nahi hongi — ye alag slot pe hogi.")
+               f"({nd} {time_text}). Other classes will not shift — this will be a separate slot.")
         db.add(Notification(user_id=adm.id, title="New Extra Class Request",
                             message=msg, notif_type="class_request"))
     db.commit(); db.refresh(e)
@@ -4274,7 +4274,7 @@ def request_tt_reschedule(payload: dict = Body(...), db: Session = Depends(get_d
                      f"of {e.entry_date} {e.time_text or ''} to {nd} {nt_txt}. Reason: {reason}"),
             notif_type="reschedule_request"))
     db.commit()
-    return {"message": "Request sent to the admin. Approval ke baad class move hogi — ye aapke monthly reschedule count me judegi."}
+    return {"message": "Request sent to the admin. The class will move after approval, and this will count toward your monthly reschedule count."}
 
 # =====================================================================
 # TEACHER ATTENDANCE (PUNCH IN / PUNCH OUT) + CONTRACT + PAYOUT
@@ -5874,13 +5874,13 @@ def mark_payout_task(payload: dict = Body(...), db: Session = Depends(get_db), c
     tp = get_teacher_profile(current_user, db)
     mk = (payload.get("month") or "").strip() or _ist_now().strftime("%Y-%m")
     if mk < PAYOUT_PERF_START:
-        raise HTTPException(400, "Performance payout %s se shuru hoga" % PAYOUT_PERF_START)
+        raise HTTPException(400, "Performance payout starts from %s" % PAYOUT_PERF_START)
     key = (payload.get("key") or "").strip()
     tpl = db.query(PayoutTemplate).filter(
         PayoutTemplate.teacher_id == tp.id, PayoutTemplate.key == key,
         PayoutTemplate.source == "manual").first()
     if not tpl or (tpl.target or 0) <= 0:
-        raise HTTPException(400, "Ye category aapke monthly target me nahi hai")
+        raise HTTPException(400, "This category is not in your monthly target")
     title = (payload.get("title") or "").strip()
     if not title:
         raise HTTPException(400, "Kaam ka naam likhna zaroori hai")
@@ -5901,9 +5901,9 @@ def delete_payout_task(tid: int, db: Session = Depends(get_db), current_user=Dep
     tp = get_teacher_profile(current_user, db)
     t = db.query(PayoutTask).filter(PayoutTask.id == tid, PayoutTask.teacher_id == tp.id).first()
     if not t:
-        raise HTTPException(404, "Task nahi mila")
+        raise HTTPException(404, "Task not found")
     if t.status == "approved":
-        raise HTTPException(400, "Approved task delete nahi ho sakta - admin se bolo")
+        raise HTTPException(400, "An approved task cannot be deleted — please contact the admin")
     db.delete(t); db.commit()
     return {"message": "Task removed"}
 

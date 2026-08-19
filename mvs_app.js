@@ -1151,7 +1151,7 @@ function openTTResched(id){
   const e=_ttEntryById(id)||{};
   const today=new Date().toISOString().slice(0,10);
   showModal('Reschedule Class',
- `<div class="alert alert-info"><b>${esc(e.subject||'Class')}</b>${e.class_name?' · '+esc(e.class_name):''}${e.chapter?' — '+esc(e.chapter):''}<br>Abhi: <b>${e.date?fmtNice(e.date):'—'}</b>${e.time?' · '+esc(e.time):''}. Ye request <b>admin approval</b> ke baad hi apply hogi aur aapke <b>monthly reschedule count</b> me judegi. (Approved leave ya admin move count me nahi jata.)</div>
+ `<div class="alert alert-info"><b>${esc(e.subject||'Class')}</b>${e.class_name?' · '+esc(e.class_name):''}${e.chapter?' — '+esc(e.chapter):''}<br>Now: <b>${e.date?fmtNice(e.date):'—'}</b>${e.time?' · '+esc(e.time):''}. Ye request <b>admin approval</b> will apply only after that, and your <b>monthly reschedule count</b> will count toward it. (Approved leave or admin moves are not counted.)</div>
   <div class="ex-grid2">
    <div><label class="ex-lbl">New Date</label><input type="date" class="form-control" id="trs-date" min="${today}" value="${e.date&&e.date>=today?e.date:today}"></div>
    <div><label class="ex-lbl">New Time</label><input type="time" class="form-control" id="trs-time" value="17:00"></div>
@@ -1790,15 +1790,15 @@ async function openTeacherTargets(){
   window._ttTeachers={}; teachers.forEach(t=>{ window._ttTeachers[t.id]=t; });
   const opts=teachers.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
   showModal('Per-Teacher Targets',
-    `<div class="ps-intro">Kisi bhi teacher ke monthly targets set karo — <b>Timetable se auto</b> (jo scheduled hai uske hisaab se) ya <b>manually</b>. Ye "Monthly Target Achievement" score aur teacher ke Monthly Performance me use hote hain.</div>
+    `<div class="ps-intro">Set monthly targets for any teacher — <b>auto from timetable</b> (based on what is scheduled) or <b>manually</b>. This feeds the "Monthly Target Achievement" score and the teacher’s Monthly Performance.</div>
      <div class="ttp-picker"><label>Select Teacher</label>
        <select class="ttp-select" id="tt-teacher" onchange="_ttLoadTeacher(this.value)"><option value="">\u2014 Choose teacher \u2014</option>${opts}</select></div>
-     <div id="tt-fields"><div class="pfb-muted" style="margin-top:12px">Pehle teacher choose karo.</div></div>`,
+     <div id="tt-fields"><div class="pfb-muted" style="margin-top:12px">Please choose a teacher first.</div></div>`,
     `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
 }
 async function _ttLoadTeacher(tid){
   const box=document.getElementById('tt-fields'); if(!box) return;
-  if(!tid){ box.innerHTML='<div class="pfb-muted" style="margin-top:12px">Pehle teacher choose karo.</div>'; _ttCur=null; return; }
+  if(!tid){ box.innerHTML='<div class="pfb-muted" style="margin-top:12px">Please choose a teacher first.</div>'; _ttCur=null; return; }
   box.innerHTML='<div class="spinner"></div>';
   try{
     const d=await api('/api/admin/teacher-perf-targets/'+tid);
@@ -1824,7 +1824,7 @@ function _ttRender(){
   const srcSel=`<div class="ttp-src"><label>Target source</label>
     <select class="ttp-select" onchange="_ttSrc(this.value)">
       <option value="auto" ${c.src==='auto'?'selected':''}>Timetable set hai — auto fetch (classes/dpp/tests)</option>
-      <option value="manual" ${c.src==='manual'?'selected':''}>Timetable nahi — main khud set karunga</option>
+      <option value="manual" ${c.src==='manual'?'selected':''}>No timetable — I will set it manually</option>
     </select></div>`;
   const cell=(k,label,hint,minv)=>{ const v=(base[k]!=null?base[k]:0);
     return `<div class="ttp-cell"><label>${esc(label)}</label>
@@ -1844,7 +1844,7 @@ function _ttRender(){
     periodUI=`<div class="ttp-period">
       <div class="ttp-seg"><button class="${c.period==='monthly'?'on':''}" onclick="_ttPeriod('monthly')">Monthly</button><button class="${c.period==='session'?'on':''}" onclick="_ttPeriod('session')">Session</button></div>
       ${c.period==='session'?`<div class="ttp-dates"><div><label>Start</label><input type="date" id="tt-ss" class="input" value="${c.ss||''}"></div><div><label>End</label><input type="date" id="tt-se" class="input" value="${c.se||''}"></div></div>`:'<div class="ttp-hint" style="margin-top:6px">Monthly = is mahine ka target.</div>'}</div>`;
-    summary=`<div class="ttp-summary">${ic('edit')||''} <span>Manual targets — jinka timetable nahi. ${c.period==='session'?'Session date-range pe measure hoga.':'Monthly.'}</span><span class="ttp-mode">Manual</span></div>`;
+    summary=`<div class="ttp-summary">${ic('edit')||''} <span>Manual targets — for those without a timetable. ${c.period==='session'?'Measured over the session date range.':'Monthly.'}</span><span class="ttp-mode">Manual</span></div>`;
     cells=[cell('classes','Classes',`total for period`,0),cell('dpp','DPP',`total`,0),
       cell('videos','Videos',``,0),cell('shorts','Shorts',``,0),
       cell('live','YouTube Live',``,0),cell('tests','Weekly Tests',``,0)].join('');
@@ -1934,7 +1934,7 @@ async function openPerfSettings(){
       <div class="ps-sec-note">${esc(sec.note)}</div><div class="ps-grid">${rows}</div></div>`;
   }).join('');
   showModal('Performance Settings',
-    `<div class="ps-wrap"><div class="ps-intro">Yahaan se saare scoring weights, workload units aur rewards live badal sakte ho (ye SAB teachers par lagta hai). Kisi <b>individual teacher</b> ke targets ke liye neeche button use karo.</div>
+    `<div class="ps-wrap"><div class="ps-intro">Change all scoring weights, workload units and rewards live here (this applies to ALL teachers). For an <b>individual teacher</b>’s targets, use the button below.</div>
     <button class="btn btn-secondary" style="margin-bottom:16px" onclick="openTeacherTargets()">${ic('users')||''} Per-Teacher Targets (individual — timetable auto ya manual)</button>
     ${body}</div>`,
     `<button class="btn btn-secondary" onclick="resetPerfSettings()">Reset to defaults</button>
@@ -2035,7 +2035,7 @@ async function renderVideoContribution(wrapId){
     const d=await api('/api/teacher/video-contribution');
     _vcData=d;
     const c=d.counts||{};
-    if(!(c.proposed>0)){ wrap.innerHTML=`<div class="vc-card vc-empty">${ic('video')||''}<div><b>Video Initiative</b><div class="vc-sub">Abhi tak koi video idea propose nahi kiya. Achhe topics propose karke reward points aur rank boost paao.</div></div></div>`; return; }
+    if(!(c.proposed>0)){ wrap.innerHTML=`<div class="vc-card vc-empty">${ic('video')||''}<div><b>Video Initiative</b><div class="vc-sub">No video ideas proposed yet. Propose good topics to earn reward points and boost your rank.</div></div></div>`; return; }
     const ti=d.top_idea;
     wrap.innerHTML=`<div class="vc-card" onclick="vcHistory()">
       <div class="vc-head"><div class="vc-title">Video Initiative — My Contributions</div><span class="vc-open">View history \u203a</span></div>
@@ -2080,7 +2080,7 @@ function vcHistory(){
       </div>
       <div class="pfb-h">My Rewards</div><div class="vcr-list">${rew}</div>
       <div class="pfb-h" style="margin-top:18px">Proposal History</div><div class="vch-list">${props}</div>
-      <div class="pfb-note">Reward sirf APPROVED/PRODUCTION/PUBLISHED par milta hai — raw proposal count par nahi. Duplicate/similar ideas flag hote hain (Production Manager reject/merge kar sakta hai).</div>
+      <div class="pfb-note">Rewards apply only on APPROVED/PRODUCTION/PUBLISHED items — not on raw proposal count. Duplicate or similar ideas are flagged (the Production Manager can reject or merge them).</div>
     </div>`,
     `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
 }
@@ -2147,7 +2147,7 @@ async function renderPerfBoard(wrapId, who, month){
   let d;
   try{ d=await api(url); }
   catch(e){
-    wrap.innerHTML='<div class="card"><div class="card-body" style="text-align:center;padding:24px">Ranking board abhi load nahi ho paaya. <button class="btn btn-primary" style="margin-top:10px" onclick="renderPerfBoard(\''+wrapId+'\',\''+who+'\')">Retry</button><div style="margin-top:8px;font-size:.72rem;color:var(--text-muted)">'+esc((e&&e.message)||'error')+'</div></div></div>';
+    wrap.innerHTML='<div class="card"><div class="card-body" style="text-align:center;padding:24px">The ranking board could not be loaded. <button class="btn btn-primary" style="margin-top:10px" onclick="renderPerfBoard(\''+wrapId+'\',\''+who+'\')">Retry</button><div style="margin-top:8px;font-size:.72rem;color:var(--text-muted)">'+esc((e&&e.message)||'error')+'</div></div></div>';
     return;
   }
   _pfState.board=d;
@@ -2242,7 +2242,7 @@ function _pfTipHtml(r){
   else {
     body=`<div class="pft-row"><span class="pft-up">\u2191 Up</span><b>${up}\u00d7</b></div>
       <div class="pft-row"><span class="pft-down">\u2193 Down</span><b>${down}\u00d7</b></div>
-      ${up===0?'<div class="pft-never">Kabhi upar nahi gaya</div>':''}`;
+      ${up===0?'<div class="pft-never">Never ranked higher</div>':''}`;
   }
   return `<span class="pf-tipbox"><div class="pft-h">Rank movement</div>${body}</span>`;
 }
@@ -2302,7 +2302,7 @@ function pfBreakdown(tid){
       ${viHtml}
       <div class="pfb-h" style="margin-top:16px">Next rank gap</div>${gapHtml}
       <div id="pfb-activity"></div>
-      <div class="pfb-note">Ye score sirf raw activity se nahi \u2014 workload, quality, timeliness, consistency, support & initiative sabse milke banta hai. Koi bhi ek cheez se #1 nahi bana ja sakta.</div>
+      <div class="pfb-note">This score is not from raw activity alone \u2014 it combines workload, quality, timeliness, consistency, support and initiative. No single factor alone makes you #1.</div>
     </div>`,
     `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
   _pfLoadActivity(tid);
@@ -2632,7 +2632,7 @@ async function openRequestClass(){
   if(subs.length===0){ try{ const p=await api('/api/teacher/profile'); subs=p.subjects||[]; }catch(e){} }
   const today=new Date().toISOString().slice(0,10);
   showModal('Add Extra Class',
-    `<div class="alert alert-info" style="font-size:.78rem">Missed class ya absent day ki compensation — extra class <b>alag slot / alag timing</b> pe add hoti hai. Baaki classes apni jagah rehti hain, <b>koi auto-shifting nahi</b> hoti.</div>
+    `<div class="alert alert-info" style="font-size:.78rem">Missed class ya absent day ki compensation — extra class <b>alag slot / alag timing</b> is added. Other classes stay in place, <b>no auto-shifting</b> hoti.</div>
     <div class="ex-grid2">
        <div><label class="ex-lbl">Subject</label><select class="form-control" id="rc-sub" onchange="rcFillCls();rcFillCh()">${subs.map(s=>`<option>${esc(s)}</option>`).join('')}</select></div>
        <div><label class="ex-lbl">Class</label><select class="form-control" id="rc-cls" onchange="rcFillCh()"></select></div>
@@ -2680,7 +2680,7 @@ async function submitRequestClass(){
   if(chSel==='__new'&&!val('rc-newch-in')){ toast('Please enter the new chapter/topic name.',true); return; }
   // Same date + same time pe pehle se class hai to rok do — extra class alag slot pe honi chahiye
   const sameTm=(window._rcEntries||[]).find(e=>e.date===date&&e.time&&e.status!=='pending'&&((e.time||'').toLowerCase().replace(/\s/g,'')===time.replace(/\s/g,'')));
-  if(sameTm){ document.getElementById('rc-status').innerHTML=`<div class="alert alert-danger">Is date/time pe aapki <b>${esc(sameTm.subject)}</b> class already hai (${esc(sameTm.time)}). Extra class ke liye alag timing choose karein.</div>`; return; }
+  if(sameTm){ document.getElementById('rc-status').innerHTML=`<div class="alert alert-danger">Is date/time pe aapki <b>${esc(sameTm.subject)}</b> class already exists (${esc(sameTm.time)}). Choose a different time for the extra class.</div>`; return; }
   const btn=document.getElementById('rc-btn'); btn.disabled=true; btn.textContent='Sending...';
   try{
     const r=await api('/api/teacher/extra-class','POST',{subject,topic,date,time,chapter,class_name:(document.getElementById('rc-cls')||{}).value||''});
@@ -3731,7 +3731,7 @@ async function sDppGo(pid,action,kind,med){
     else{ const a=document.createElement('a'); a.href=u; a.download=fname; document.body.appendChild(a); a.click(); a.remove(); _dppTrack(pid,'download'); toast('Downloaded.'); }
     setTimeout(()=>URL.revokeObjectURL(u),300000);
   }catch(e){
-    toast('PDF abhi nahi aa paayi — server busy hai. 1 min baad dobara try karo.',true);
+    toast('The PDF could not be generated — the server is busy. Please try again in a minute.',true);
   }
 }
 function pdfViewerModal(u,title,fname){
@@ -3821,7 +3821,7 @@ async function dppPdfGoServer(pid,action,kind,med){
     }
     setTimeout(()=>URL.revokeObjectURL(u),300000);
   }catch(e){
-    toast('PDF abhi nahi aa paayi — server busy hai. 1 min baad dobara try karo.',true);
+    toast('The PDF could not be generated — the server is busy. Please try again in a minute.',true);
   }
 }
 // ---------- submissions (results) — Checking / Checked + Remarks (no marks) ----------
@@ -3845,7 +3845,7 @@ async function openDppResults(pid){
           <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
             <button class="btn btn-ghost btn-sm" onclick="dppAnsDl(${a.id})">${ic('download')} Student PDF</button>
             ${a.allow_resubmit
-              ?`<button class="btn btn-ghost btn-sm" style="color:#047857;border-color:rgba(4,120,87,.4)" title="Student dobara submit kar sakta hai (ek baar) — band karne ke liye click karo" onclick="dppAllowResubmit(${pid},${a.id},false)">✓ Re-submit ON</button>`
+              ?`<button class="btn btn-ghost btn-sm" style="color:#047857;border-color:rgba(4,120,87,.4)" title="The student can submit again (once) — click to disable" onclick="dppAllowResubmit(${pid},${a.id},false)">✓ Re-submit ON</button>`
               :`<button class="btn btn-ghost btn-sm" title="Is student ko ek baar re-submit ki permission do" onclick="dppAllowResubmit(${pid},${a.id},true)">↻ Allow Re-submit</button>`}
             ${chk?'':`<input class="form-control" id="dpp-remark-${a.id}" placeholder="Write remarks for the student\u2026" style="flex:1;min-width:180px;font-size:.78rem">
             <button class="btn btn-primary btn-sm" onclick="dppMarkChecked(${a.id},${pid})">Mark Checked</button>`}
@@ -3871,7 +3871,7 @@ async function dppMarkChecked(aid,pid){
   const remarks=(document.getElementById('dpp-remark-'+aid)||{}).value||'';
   try{
     await api(`/api/teacher/dpp-answers/${aid}/check`,'POST',{remarks});
-    toast('Marked checked — student ko notification mil gaya.');
+    toast('Marked as checked — the student has been notified.');
     openDppResults(pid);
   }catch(e){ toast(e.message||'Failed',true); }
 }
@@ -4009,7 +4009,7 @@ async function openUploadDpp(){
   await _dppTtData();
   const subs=_dppAllSubjects();
   showModal('Upload DPP',
-    `<div class="alert alert-info">Ready-made DPP upload karo — <b>Questions PDF</b> aur <b>Solutions PDF</b> dono zaroori hain. Students ko pehle questions dikhenge; submit karne ke baad solutions.</div>
+    `<div class="alert alert-info">Upload a ready-made DPP — <b>Questions PDF</b> aur <b>Solutions PDF</b> both are required. Students see the questions first; solutions appear after they submit.</div>
      <div class="form-group"><label>Subject</label><select class="form-control" id="ud-sub">${subs.map(x=>`<option>${esc(x)}</option>`).join('')||'<option>General</option>'}</select></div>
      <div class="form-group"><label>Class, Chapter &amp; Part (from your timetable)</label>
        <div style="display:flex;gap:8px;flex-wrap:wrap"><select class="form-control" id="ud-cls" style="flex:0 0 132px" title="Class" onchange="window._udFillFn&&window._udFillFn(false)"></select>
@@ -4049,7 +4049,7 @@ function _udFillParts(){
 async function submitUploadDpp(){
   const qf=(document.getElementById('ud-qpdf')||{}).files||[];
   const sf=(document.getElementById('ud-spdf')||{}).files||[];
-  if(!qf.length||!sf.length){ toast('Questions aur Solutions — dono PDF upload karo',true); return; }
+  if(!qf.length||!sf.length){ toast('Please upload both the Questions and Solutions PDFs.',true); return; }
   const fd=new FormData();
   fd.append('subject',val('ud-sub')); fd.append('class_name',val('ud-cls')); fd.append('chapter',val('ud-ch')); fd.append('part',val('ud-part'));
   fd.append('title',val('ud-title')); fd.append('medium',val('ud-medium'));
@@ -5438,7 +5438,7 @@ async function openCreateExam(type,editData){
     ?'<div class="alert alert-info">Students upload a photo of their handwritten answers. You grade each answer manually from Results — award marks + remarks per question (your model answers stay visible to you while checking). Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{2H2 + O2 -> 2H2O}$</code> &mdash; they render automatically.</div>'
     :'<div class="alert alert-info">Students select an option. Auto-graded instantly. Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{...}$</code>.</div>';
   showModal(editData?('Edit '+tl+' Test'):('Create '+tl+' Test'),
-    (editData&&editData.attempts>0?'<div class="alert alert-info">This test is live — <b>'+editData.attempts+' submission(s)</b> have already been received. You may add new questions; previous submissions and their marks will remain safe.</div>':'')+`<div style="display:flex;gap:12px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:160px"><label>Subject</label><select class="form-control" id="ex-sub">${subOpts}</select></div><div class="form-group" style="width:128px" id="ex-cls-test-wrap"><label>Class</label><select class="form-control" id="ex-cls-test" title="Sirf is class ke students ko test dikhega"></select></div><div class="form-group" style="width:150px"><label>Duration (min)</label><input type="number" min="0" class="form-control" id="ex-dur" placeholder="No limit" title="Blank ya 0 = koi time limit nahi. Student jab chahe test kar sakta hai; Start dabane ke baad usko complete karna hoga."></div><div class="form-group" style="width:140px"><label>Medium</label><select class="form-control" id="ex-medium" onchange="examMediumChange()"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div><div class="form-group" style="min-width:210px;flex:1"><label>Schedule (optional)</label><input type="datetime-local" class="form-control" id="ex-sched" title="Students can start only after this date & time"></div></div>`
+    (editData&&editData.attempts>0?'<div class="alert alert-info">This test is live — <b>'+editData.attempts+' submission(s)</b> have already been received. You may add new questions; previous submissions and their marks will remain safe.</div>':'')+`<div style="display:flex;gap:12px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:160px"><label>Subject</label><select class="form-control" id="ex-sub">${subOpts}</select></div><div class="form-group" style="width:128px" id="ex-cls-test-wrap"><label>Class</label><select class="form-control" id="ex-cls-test" title="Sirf is class ke students ko test dikhega"></select></div><div class="form-group" style="width:150px"><label>Duration (min)</label><input type="number" min="0" class="form-control" id="ex-dur" placeholder="No limit" title="Blank or 0 = no time limit. The student can take the test anytime; once they press Start, they must complete it."></div><div class="form-group" style="width:140px"><label>Medium</label><select class="form-control" id="ex-medium" onchange="examMediumChange()"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div><div class="form-group" style="min-width:210px;flex:1"><label>Schedule (optional)</label><input type="datetime-local" class="form-control" id="ex-sched" title="Students can start only after this date & time"></div></div>`
     +`<div class="form-group"><label>${window._dppMode?'DPP Title':'Test Title'}</label><input class="form-control" id="ex-title" placeholder="e.g. Physics Chapter Test - Electric Charges"></div>`
     +`<div class="form-group"><label>Chapter (optional)</label><input class="form-control" id="ex-ch" placeholder="e.g. Electric Charges"></div>`
     +`<div class="ex-prog" id="ex-prog"><div class="ex-prog-top"><span class="ex-prog-label" id="ex-prog-label">Uploading\u2026</span><span class="ex-prog-pct" id="ex-prog-pct">0%</span></div><div class="ex-prog-track"><div class="ex-prog-fill" id="ex-prog-fill"></div></div></div>`
@@ -6851,7 +6851,7 @@ async function submitExam(){
     try{ res=await _dppApi(); }
     catch(e1){
       err=e1;
-      toast('Server tak nahi pahunch pa rahe — 4 sec me dobara try…',true);
+      toast('Cannot reach the server — retrying in 4 seconds...',true);
       await new Promise(r=>setTimeout(r,4000));
       try{ res=await _dppApi(); err=null; }catch(e2){ err=e2; }
     }
@@ -7157,7 +7157,7 @@ async function openStudentDoubts(sid,encName){
   try{
     const d=await api('/api/teacher/student-doubts?student_id='+sid);
     const body=document.getElementById('modal-body');
-    if(!d.doubts||!d.doubts.length){ body.innerHTML='<div class="vv-empty">Is student ne abhi tak koi doubt nahi poochha.</div>'; return; }
+    if(!d.doubts||!d.doubts.length){ body.innerHTML='<div class="vv-empty">This student has not asked any doubts yet.</div>'; return; }
     body.innerHTML=`<div style="font-size:.75rem;color:var(--text-muted);margin-bottom:12px">${d.total} doubt${d.total>1?'s':''} \u00b7 newest first</div>`+
       d.doubts.map(x=>`<div class="sh-card">
         <div class="sh-head"><span class="sh-sub">${esc(x.subject||'General')}${x.topic?' \u00b7 '+esc(x.topic):''}</span><span class="dbt-pill ${x.status==='resolved'?'res':'open'}" style="font-size:.62rem">${x.status==='resolved'?'\u2713 Resolved':'Pending'}</span></div>
@@ -8326,13 +8326,13 @@ function _avtCard(t){
         <div class="vt-foot">
           ${t.submitted_link?`<a class="btn btn-ghost btn-sm" href="${esc(t.submitted_link)}" target="_blank" rel="noopener">${ic('link')} Open Video</a>`:''}
           ${histBtn}${reviewBtn}${editBtn}${editTaskBtn}${ytBtn}${notifyBtn}
-          <button class="btn btn-ghost btn-sm" onclick="vtMarkOld(${t.id},${t.is_old?'false':'true'})" title="Old = pre-portal/purana content, is month count nahi hoga">${t.is_old?ic('refresh')+' Mark as New':ic('clock')+' Mark as Old'}</button>
+          <button class="btn btn-ghost btn-sm" onclick="vtMarkOld(${t.id},${t.is_old?'false':'true'})" title="Old = pre-portal content, will not count this month">${t.is_old?ic('refresh')+' Mark as New':ic('clock')+' Mark as Old'}</button>
           ${delTaskBtn}
         </div></div></div>`;
 }
 async function vtMarkOld(id, isOld){
   try{ await api('/api/admin/video-tasks/'+id+'/mark-old','POST',{is_old:!!isOld});
-    toast(isOld?'Marked OLD — is month performance me count nahi hoga.':'Marked NEW — count hoga.');
+    toast(isOld?'Marked as OLD — this will not count toward this month performance.':'Marked as NEW — this will count toward performance.');
     if(typeof loadAVTasks==='function') loadAVTasks(); else location.reload();
   }catch(e){ toast(e.message||'Failed',true); }
 }
@@ -8350,7 +8350,7 @@ function _vtCollabHtml(t, canVerify){
   // Teacher ko (ya submit se pehle admin ko) sirf naam dikhein — koi verify button nahi
   if(!canVerify || !submitted){
     const chips=all.map(c=>`<span class="cbnm ${c.verified?'ok':''}">${esc(c.name)}${c.verified?' \u2014 Approved':''}</span>`).join('');
-    const note=!submitted?`<div class="cb-sub" style="margin-top:8px">${canVerify?'Verification video submit hone ke baad milega.':'Verification production manager karega.'}</div>`:'';
+    const note=!submitted?`<div class="cb-sub" style="margin-top:8px">${canVerify?'Verification will be available after the video is submitted.':'The production manager will verify this.'}</div>`:'';
     return `<div class="cb-box"><div class="cb-head">COLLAB TEACHERS ${head}</div><div class="cb-chips">${chips}</div>${note}</div>`;
   }
   const pending=all.filter(c=>!c.verified);
@@ -9252,7 +9252,7 @@ function _vtReviewCollabHTML(t){
   }).join('');
   return `<div style="background:var(--primary-50);border-radius:12px;padding:12px 14px;margin-bottom:14px">
     <div style="font-weight:800;font-size:.88rem;margin-bottom:4px">${ic('users')} Verify collab teachers</div>
-    <div style="font-size:.72rem;color:var(--text-muted);margin-bottom:10px">Jis teacher ne apna part nahi kiya uspe "Not completed" dabao — verify-all me wo verified nahi hoga aur uske payout par asar padega. Baaki sab verified ho jaayenge.</div>
+    <div style="font-size:.72rem;color:var(--text-muted);margin-bottom:10px">For any teacher who did not do their part, press "Not completed" — they will not be verified in verify-all and their payout will be affected. The rest will be verified.</div>
     <div class="cbp-list">${rows}</div>
     <div class="cbp-actions"><button class="btn btn-success btn-sm" onclick="_vtVerifyAllThenClose(${t.id})">${ic('check')} Task Completed (verify all${ncCount?' \u2014 except '+ncCount+' not completed':''})</button></div>
   </div>`;
@@ -9325,7 +9325,7 @@ function _vvFilterList(wrapId){
 const _VV_COL=['#0891b2','#7c3aed','#059669','#d97706','#dc2626','#2563eb','#db2777','#65a30d','#0d9488','#9333ea'];
 function _vvCollab(el){
   let names=[]; try{ names=JSON.parse(el.getAttribute('data-names')||'[]'); }catch(e){}
-  showModal('Collab Teachers', names.length?`<p style="font-size:.82rem;color:var(--text-muted);margin-bottom:10px">Iss video pe in sabhi teachers ne saath mehnat ki — views sabki hain:</p><div class="cbp-list">${names.map(n=>`<div class="cbp-row"><span class="cbp-nm">${esc(n)}</span></div>`).join('')}</div>`:'<div class="pfb-muted">No teachers found.</div>', `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
+  showModal('Collab Teachers', names.length?`<p style="font-size:.82rem;color:var(--text-muted);margin-bottom:10px">All these teachers worked on this video together — the views belong to all of them:</p><div class="cbp-list">${names.map(n=>`<div class="cbp-row"><span class="cbp-nm">${esc(n)}</span></div>`).join('')}</div>`:'<div class="pfb-muted">No teachers found.</div>', `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
 }
 function _svgBars(items, highlightName){
   const data=(items||[]).slice(0,10);
@@ -9423,7 +9423,7 @@ async function _vvSeries(base, videoId, boxId){
   try{
     const d=await api(base+'/video-views?video_id='+videoId);
     const s=d.series||[];
-    if(s.length<2){ box.innerHTML=head+'<div class="vv-empty">Views timeline yahan banega — "Refresh live views" do-teen baar chalao (thodi der ke antaral pe), phir graph aa jayega.</div>'; return; }
+    if(s.length<2){ box.innerHTML=head+'<div class="vv-empty">The views timeline builds here — run "Refresh live views" a few times (with short gaps), then the graph will appear.</div>'; return; }
     const max=Math.max(1,...s.map(p=>p.views)),min=Math.min(...s.map(p=>p.views));
     const W=520,H=120,pad=8; const n=s.length;
     const xs=i=>pad+i*(W-2*pad)/(n-1), ys=v=>H-pad-((v-min)/Math.max(1,max-min))*(H-2*pad);
@@ -10018,7 +10018,7 @@ function openResetPassword(role,profileId,name){
     const el=document.getElementById('rp-current'); if(!el) return;
     el.innerHTML = r.password
       ? `<div style="font-size:.78rem;color:var(--text-muted)">Current login credentials:</div>`+_credRows(r.user_id,r.password,role)
-      : `<div style="font-size:.82rem;color:var(--text-muted);background:var(--panel);border:1px dashed var(--border);border-radius:10px;padding:10px 12px">Current password saved record mein nahi hai (purana account). Neeche ek baar reset karo \u2014 naya password turant dikhega aur agli baar se yahan hamesha visible rahega.</div>`;
+      : `<div style="font-size:.82rem;color:var(--text-muted);background:var(--panel);border:1px dashed var(--border);border-radius:10px;padding:10px 12px">The current password is not in the saved record (older account). Reset it once below \u2014 the new password will show immediately and stay visible here from next time.</div>`;
   }).catch(e=>{ const el=document.getElementById('rp-current'); if(el) el.innerHTML=`<div style="font-size:.82rem;color:#dc2626">${esc(e.message)}</div>`; });
 }
 async function doResetPassword(role,profileId){
@@ -10370,8 +10370,8 @@ async function runPortalSync(){
 // ============ FIX MEDIUM (backfill from MVS Portal) ============
 function openMediumFix(){
   showModal('Fix Medium from MVS Portal',
-    `<p style="font-size:.83rem;color:var(--text-muted);margin-bottom:12px">Jin students ka <b>Medium khaali</b> hai, unka medium MVS Portal se bhar diya jaayega. Ye un students ko bhi theek karta hai jo pehle se MVS Portal category me hain (normal Sync unhe skip kar deta hai). Sirf medium set hota hai — baaki koi field nahi badalti.</p>
-     <div class="alert alert-info" style="font-size:.8rem">Medium galat/khaali hone par student ko sahi language ka study material nahi milta — isliye ye zaroori hai.</div>
+    `<p style="font-size:.83rem;color:var(--text-muted);margin-bottom:12px">Jin students ka <b>Medium khaali</b> their medium will be filled from the MVS Portal. This also fixes students already in the MVS Portal category (normal Sync skips them). Only the medium is set — no other field changes.</p>
+     <div class="alert alert-info" style="font-size:.8rem">If the medium is wrong or empty, the student does not receive study material in the correct language — so this is important.</div>
      <div id="mfx-out" style="margin-top:12px"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" id="mfx-btn" onclick="runMediumFix()">Start</button>`);
 }
@@ -10393,7 +10393,7 @@ async function runMediumFix(){
       if(t) t.textContent=`${pct}% \u2014 ${done}${total?'/'+total:''} checked \u00b7 ${filled} medium set`;
     }
     const list=rows.slice(0,200).map((x,i)=>`<div class="topper-row"><div class="rank-b">${i+1}</div><div class="topper-name">${esc(x.name||'Student')}<div class="topper-sub">${esc(x.phone||'')} \u00b7 ${esc(x.user_id||'')}</div></div><span class="xm-chip" style="background:rgba(16,185,129,.15);color:#059669">${esc(x.medium||'')}</span></div>`).join('');
-    const diag=(notFound||noMed)?`<div class="alert alert-info" style="font-size:.8rem;margin-top:8px">Baaki khaali reh gaye: <b>${notFound}</b> portal par mile nahi (phone match nahi), <b>${noMed}</b> portal par mile par unka medium wahan bhi khaali hai. ${noMed?'Jinme portal par bhi medium khaali hai, unhe portal team se bharwana padega ya app me manually set karna hoga.':''}</div>`:'';
+    const diag=(notFound||noMed)?`<div class="alert alert-info" style="font-size:.8rem;margin-top:8px">Baaki khaali reh gaye: <b>${notFound}</b> were not found on the portal (phone did not match), <b>${noMed}</b> were found on the portal but their medium is empty there too. ${noMed?'For those whose medium is empty on the portal too, it must be filled by the portal team or set manually in the app.':''}</div>`:'';
     out.innerHTML=`<div class="alert alert-success"><b>${filled}</b> student(s) ka medium set hua (${done} checked).</div>${diag}${list?`<div class="hide-scroll" style="max-height:40vh;margin-top:10px">${list}</div>`:''}`;
     toast(`${filled} medium set from Portal`); loadAStudents();
   }catch(e){ out.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
@@ -10431,13 +10431,13 @@ async function openWhatsApp(){
     const welcomeSec=st.configured?`<details class="wa-sec" open><summary><b>Welcome — send to MVS App students</b></summary>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">
         <button class="xm-chip xm-chip-hl" style="cursor:pointer;border:none" onclick="openWhatsAppPending()">Pending \u00b7 ${st.pending} \u25b8</button><span class="xm-chip">Already sent \u00b7 ${st.sent}</span></div>
-      <p style="font-size:.78rem;color:var(--text-muted)">Template ke variables: {{1}} = student ka naam, {{2}} = upar Settings me likha "Welcome message". Message change karna ho to Settings me badlo — sabko naya jaayega. Portal students ko welcome nahi jaata.</p>
+      <p style="font-size:.78rem;color:var(--text-muted)">Template variables: {{1}} = student name, {{2}} = the "Welcome message" set in Settings above. To change the message, edit it in Settings — everyone gets the new one. Portal students do not receive the welcome.</p>
       <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;margin:8px 0"><input type="checkbox" id="wa-resend"> Resend to students who already got it</label>
       <button class="btn btn-success btn-sm" id="wa-btn" onclick="sendWhatsAppWelcome()">${ic('megaphone')} Send welcome to ${st.pending} pending</button>
       <div id="wa-out" style="margin-top:8px"></div></details>`:'';
 
     const announceSec=st.configured?`<details class="wa-sec"><summary><b>Announcement — custom message (Template 2)</b></summary>
-      <p style="font-size:.78rem;color:var(--text-muted)">Apna message likho — sabhi (ya batch-wise) MVS App students ko jaayega. Ek line ka block (newline nahi).</p>
+      <p style="font-size:.78rem;color:var(--text-muted)">Write your message — it goes to all (or batch-wise) MVS App students. Single-line block (no newline).</p>
       <div class="form-group"><label>Batch (optional — blank = all)</label><input class="form-control" id="wa-an-batch" placeholder="e.g. Lakshya Science"></div>
       <div class="form-group"><label>Message</label><textarea class="form-control" id="wa-an-msg" rows="3" placeholder="e.g. Kal 6 PM par Physics ki special class hogi"></textarea></div>
       <button class="btn btn-primary btn-sm" onclick="waAnnounce()">${ic('send')} Send announcement</button>
@@ -10462,7 +10462,7 @@ async function openWhatsAppPending(){
     const b=document.getElementById('modal-body');
     if(!list.length){ b.innerHTML='<div class="alert alert-success">No pending students — sabko welcome ja chuka hai.</div>'; return; }
     b.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-        <span style="font-size:.82rem;color:var(--text-muted)"><b>${list.length}</b> student(s) jinhe abhi welcome nahi gaya</span>
+        <span style="font-size:.82rem;color:var(--text-muted)"><b>${list.length}</b> student(s) who have not received the welcome yet</span>
         <button class="btn btn-success btn-sm" onclick="_waSendAllPending(this)">${ic('megaphone')} Send to all ${list.length}</button>
       </div>
       <div style="max-height:60vh;overflow:auto">${list.map(x=>`<div class="stu-row" style="cursor:default">
@@ -10537,7 +10537,7 @@ async function sendWhatsAppWelcome(){
     out.innerHTML=`<div class="alert ${failed?'alert-warning':'alert-success'}"><b>${sent}</b> sent \u00b7 <b>${failed}</b> failed</div>${errHtml?`<div class="hide-scroll" style="max-height:30vh">${errHtml}</div>`:''}`;
     toast(`${sent} sent, ${failed} failed`);
     if(window._waSt) openWhatsApp();
-  }catch(e){ out.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div><div style="font-size:.75rem;color:var(--text-muted);margin-top:6px">Jitne abhi tak gaye wo save ho gaye — dobara "Send again" karo, baaki ko chala jayega.</div>`; }
+  }catch(e){ out.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div><div style="font-size:.75rem;color:var(--text-muted);margin-top:6px">Those already sent have been saved — press "Send again" and the rest will be delivered.</div>`; }
   btn.disabled=false; btn.textContent='Send again';
 }
 // ============ SESSION DEADLINES (admin) ============
@@ -10615,13 +10615,13 @@ async function runExtFeedCheck(){
   const out=document.getElementById('ssoc-feed-out');
   try{
     const r=await api('/api/ext/status');
-    if(!r.configured){ out.innerHTML='<div class="alert alert-warning">Portal integration configured nahi hai.</div>'; }
-    else if(!r.reachable){ out.innerHTML=`<div class="alert alert-danger">Class manager tak pahunch nahi ban pa rahi (status ${esc(String(r.status_code||''))}).</div>`; }
+    if(!r.configured){ out.innerHTML='<div class="alert alert-warning">Portal integration is not configured.</div>'; }
+    else if(!r.reachable){ out.innerHTML=`<div class="alert alert-danger">Cannot reach the class manager (status ${esc(String(r.status_code||''))}).</div>`; }
     else{
       const cats=r.categories||{};
       const keys=Object.keys(cats).sort((a2,b2)=>cats[b2]-cats[a2]);
       const hasPyq=keys.some(k=>/pyq|previous/i.test(k));
-      out.innerHTML=`<div class="alert ${hasPyq?'alert-success':'alert-warning'}" style="margin-top:8px">Feed mein <b>${r.count}</b> materials hain, <b>${keys.length}</b> categories.${hasPyq?' <b>PYQ category mil gayi!</b>':' <b>PYQ category nahi mili</b> — class manager ko feed mein Solved PYQs include karne honge.'}</div>
+      out.innerHTML=`<div class="alert ${hasPyq?'alert-success':'alert-warning'}" style="margin-top:8px">Feed mein <b>${r.count}</b> materials found, <b>${keys.length}</b> categories.${hasPyq?' <b>PYQ category mil gayi!</b>':' <b>PYQ category not found</b> — class manager ko feed mein Solved PYQs include karne honge.'}</div>
         <div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:.78rem;line-height:1.8">${keys.map(k=>`<div style="display:flex;justify-content:space-between"><span>${esc(k)}</span><b>${cats[k]}</b></div>`).join('')}</div>`;
     }
   }catch(e){ out.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
@@ -11304,7 +11304,7 @@ function adminEditTT(id){
 function openAdminReschedTT(id){
   const e=(_attEntries||[]).find(x=>x.id===id); if(!e){ toast('Entry not found.',true); return; }
   showModal(`${ic('calendar')} Reschedule Class — Admin`,
-  `<div class="alert alert-info">Yeh class admin ki taraf se move hogi — approval ki zaroorat nahi, aur <b>teacher ke reschedule count ya salary pe koi asar nahi padega</b>. Students ko teacher ki photo ke saath notification jayegi.</div>
+  `<div class="alert alert-info">This class will be moved by the admin — no approval needed, and <b>it will not affect the teacher reschedule count or salary</b>. Students ko teacher ki photo ke saath notification jayegi.</div>
    <div class="alert alert-info" style="margin-top:6px"><b>${esc(e.subject||'')}</b> · ${esc(e.class_name||'')} · ${esc(e.chapter||'')}${e.part?' · '+esc(e.part):''}<br>Current: <b>${esc(e.date||'')}</b> · <b>${esc(e.time||'')}</b>${e.resched_by?`<br><span class="muted">Last moved by: ${esc(e.resched_by)}</span>`:''}</div>
    <div class="form-group"><label>New Date</label><input type="date" class="form-control" id="ars-date" value="${esc(e.date||'')}"></div>
    <div class="form-group"><label>New Time (optional — khali chhodo to time same rahega)</label><input class="form-control" id="ars-time" placeholder="e.g. 6:30 PM"></div>
@@ -12383,7 +12383,7 @@ function _sDppCardHTML(pk,isNew){
     : (subm
       ? `<button class="btn btn-success btn-sm" onclick="openSDppPanel(${pk.id})">${ic('eye')} View Solution</button>`
       : `<button class="btn btn-primary btn-sm" onclick="openSDppPanel(${pk.id})">${ic('eye')} View Questions</button>`);
-  const rankBtn=`<button class="btn btn-ghost btn-sm" title="Sabse pehle submit karne waale ki ranking dekho" onclick="openDppRanking(${pk.id},'student')">${ic('chart')} Ranking${(pk.submissions||0)>0?` (${pk.submissions})`:''}</button>`;
+  const rankBtn=`<button class="btn btn-ghost btn-sm" title="See the ranking of the earliest submitters" onclick="openDppRanking(${pk.id},'student')">${ic('chart')} Ranking${(pk.submissions||0)>0?` (${pk.submissions})`:''}</button>`;
   const remBtn=checked?`<button class="btn btn-primary btn-sm" onclick="openDppRemarks(${pk.id})"> View Remarks</button>`:'';
   const subBtn=(!subm||pk.can_resubmit)?`<button class="btn ${subm?'btn-ghost':'btn-success'} btn-sm" onclick="openDppSubmit(${pk.id})">${ic('upload')} ${subm?'Re-submit':'Submit'}</button>`:'';
   const subDate=subm&&pk.my_submitted_at?`<span class="dpp-subdate"> Submitted: ${esc(pk.my_submitted_at)}</span>`:'';
@@ -12525,7 +12525,7 @@ async function openSDppView(pid){
         <b style="font-size:1rem">${esc(d.title)}</b>
         <div style="font-size:.72rem;color:var(--text-muted);margin-top:3px">${esc(d.subject)}${d.chapter?' · '+esc(d.chapter):''}${d.part?' · '+esc(d.part):''}${d.teacher?' ·  '+esc(d.teacher):''}</div>
       </div><span class="chip" style="font-size:.62rem">${qs.length} Questions</span></div>
-      <div style="font-size:.74rem;color:var(--text-muted);margin-top:9px;line-height:1.5">Kisi question me doubt ho to uske neeche <b>Raise Doubt</b> dabao — question ka text + image apne aap teacher ke paas chala jayega, <b>screenshot ki zaroorat nahi</b>.</div>
+      <div style="font-size:.74rem;color:var(--text-muted);margin-top:9px;line-height:1.5">Kisi question me doubt ho to uske neeche <b>Raise Doubt</b> dabao — question ka text + image apne aap teacher ke paas chala jayega, <b>no screenshot needed</b>.</div>
     </div></div>`
     +qs.map(q=>`<div class="card" style="margin-bottom:10px"><div class="card-body" style="padding:14px 16px">
       <div style="font-size:.68rem;font-weight:800;letter-spacing:.06em;color:#8a6d10;margin-bottom:6px">QUESTION ${q.qno}</div>
@@ -12566,7 +12566,7 @@ function _dppQCards(qs,showModel,pid,lang){
     ${q.image?`<img src="${_imgSrc(q.image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
     ${q.alt_image?`<img src="${_imgSrc(q.alt_image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
     ${showModel&&(mtx||q.model_image)?`<div style="margin-top:12px;padding:10px 12px;border-left:3px solid #15803d;background:rgba(21,128,61,.06);border-radius:8px"><div style="font-size:.68rem;font-weight:800;color:#15803d;margin-bottom:5px">MODEL ANSWER</div><div id="da-${pid}-${q.qno}">${_fmtRich(mtx)}${mBothHtml}</div>${q.model_image?`<img src="${_imgSrc(q.model_image)}" style="max-width:100%;margin-top:8px;border-radius:8px">`:''}</div>`:''}
-    ${pid?`<div style="margin-top:11px"><button class="btn btn-ghost btn-sm btn-blink" title="Doubt ho to yahan bhejo — question ka text+image apne aap teacher ko chala jayega" onclick="sDppDoubtOpen(${pid},${q.qno},${q.qno})">${ic('headset')} Raise Doubt</button></div>`:''}
+    ${pid?`<div style="margin-top:11px"><button class="btn btn-ghost btn-sm btn-blink" title="Send your doubt here — the question text and image go to the teacher automatically" onclick="sDppDoubtOpen(${pid},${q.qno},${q.qno})">${ic('headset')} Raise Doubt</button></div>`:''}
   </div>`;}).join('');
 }
 // premium language DROPDOWN (English / हिंदी / English + हिंदी) — phone responsive
@@ -12722,7 +12722,7 @@ async function _pvwAct(container,a){
       const an=document.createElement('a'); an.href=u; an.download=st.opts.downloadName||'document.pdf';
       document.body.appendChild(an); an.click(); an.remove();
       if(u!==src) setTimeout(()=>URL.revokeObjectURL(u),60000);
-    }catch(e){ toast('Download nahi ho paya.',true); }
+    }catch(e){ toast('Download failed.',true); }
     return;
   } else return;
 }
@@ -12834,7 +12834,7 @@ function _cropConfirmModal(){
    `<div class="crop-prev"><img src="${_crop.dataUrl}" alt="crop"></div>
     <div class="form-group" style="margin-top:12px"><label>Question No. (PDF me kaunsa question hai)</label><input class="form-control" id="crop-qno" type="number" min="1" value="1"></div>
     <div class="form-group"><label>Apna doubt (optional)</label><textarea class="form-control" id="crop-note" rows="2" placeholder="e.g. Sir, is step me yeh value kaise aayi?"></textarea></div>
-    <div style="font-size:.72rem;color:var(--text-muted);line-height:1.5">Crop ki hui image aur aapka doubt seedha teacher ke doubt section me chala jayega.</div>`,
+    <div style="font-size:.72rem;color:var(--text-muted);line-height:1.5">The cropped image and your doubt go straight to the teacher doubt section.</div>`,
    `${_crop.pdf?'<button class="btn btn-ghost" onclick="_cropPaint()">← Change Crop</button>':''}
     <button class="btn btn-primary" onclick="_cropSend()">Send Doubt</button>`);
   { const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.add('cx'); }
@@ -12857,7 +12857,7 @@ async function sDppCropOpen(pid){
     const pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
     _crop={pid,pdf,page:1,total:pdf.numPages,rect:null,dataUrl:null};
     _cropPaint();
-  }catch(e){ closeModal(); toast('PDF load nahi ho payi — thodi der baad try karo.',true); }
+  }catch(e){ closeModal(); toast('The PDF could not be loaded — please try again shortly.',true); }
 }
 function _cropPaint(){
   showModal('✂ Crop Question & Raise Doubt',
@@ -12865,7 +12865,7 @@ function _cropPaint(){
       <button class="btn btn-ghost btn-sm" onclick="_cropNav(-1)">‹ Prev</button>
       <span class="crop-status" id="crop-pg">Page ${_crop.page} / ${_crop.total}</span>
       <button class="btn btn-ghost btn-sm" onclick="_cropNav(1)">Next ›</button>
-      <span class="crop-status" style="margin-left:auto">Drag karke question select karo</span>
+      <span class="crop-status" style="margin-left:auto">Drag to select the question</span>
     </div>
     <div class="crop-wrap" id="crop-wrap"><canvas id="crop-cv"></canvas><div class="crop-sel" id="crop-sel"></div></div>
     <div class="crop-status" id="crop-hint" style="margin-top:9px;line-height:1.4">Page render ho raha hai…</div>`,
@@ -12955,7 +12955,7 @@ async function _fillSDppPanel(pid,el){
           <button class="btn ${_vk==='q'?'btn-dl':'btn-ghost'} btn-sm" onclick="openSDppPanel(${pid},'q')">${ic('file')} ${_vk==='q'?'Viewing: Questions':'Question Paper'}</button>
           ${pk.submitted&&pk.has_solution?`<button class="btn ${_vk==='s'?'btn-dl-sol':'btn-ghost'} btn-sm" onclick="openSDppPanel(${pid},'s')">${ic('check')} ${_vk==='s'?'Viewing: Solution':'Solution'}</button>`:''}
           <button class="btn btn-dl btn-sm" onclick="sDppHub(${pid},'${_vk}')">${ic('download')} Download ${_vk==='s'?'Solution':'Paper'}</button>
-          <button class="btn btn-ghost btn-sm" title="PDF pe drag/touch-hold karke question crop karo — seedha teacher ko doubt" onclick="sDppCropOpen(${pid})">✂ Crop & Raise Doubt</button></div>`;
+          <button class="btn btn-ghost btn-sm" title="Drag or touch-hold on the PDF to crop the question — sent straight to the teacher" onclick="sDppCropOpen(${pid})">✂ Crop & Raise Doubt</button></div>`;
       await _dppPdfPanel(el,API+`/api/student/dpp-packs/${pid}/file?kind=${_vk}`,pk.title||'DPP',pid);
       if(!document.contains(el)||window._sDppOpenPid!==pid) return;  // stale fill — naya render aa chuka
       el.insertAdjacentHTML('beforeend',_dppSubmitCardHTML(pid,!!pk.submitted,!!pk.can_resubmit));
@@ -13025,9 +13025,9 @@ function sDppDoubtOpen(pid,qno,qtextFrom){
     <div class="form-group"><label>Question No.${isCreated?'':' (PDF me jis question me doubt hai)'}</label>
       <input class="form-control" id="dpp-doubt-qno" type="number" min="1" ${isCreated&&pk.questions_n?`max="${pk.questions_n}"`:''} value="${qno||1}">
     </div>
-    <div class="form-group"><label>Apna doubt likho (optional — sirf question bhi bhej sakte ho)</label>
-      <textarea class="form-control" id="dpp-doubt-note" rows="3" placeholder="e.g. Sir, is question ka step 2 samajh nahi aaya…"></textarea></div>
-    <div style="font-size:.72rem;color:var(--text-muted);line-height:1.5">Question ka text ${isCreated?'+ image ':''}automatically <b>${esc(pk.teacher||'subject teacher')}</b> ke doubt section me chala jayega — screenshot upload karne ki zaroorat nahi.</div>`,
+    <div class="form-group"><label>Write your doubt (optional — you can send just the question)</label>
+      <textarea class="form-control" id="dpp-doubt-note" rows="3" placeholder="e.g. Sir, I did not understand step 2 of this question..."></textarea></div>
+    <div style="font-size:.72rem;color:var(--text-muted);line-height:1.5">Question ka text ${isCreated?'+ image ':''}automatically <b>${esc(pk.teacher||'subject teacher')}</b> doubt section — no need to upload a screenshot.</div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
      <button class="btn btn-primary" onclick="sDppDoubtSend(${pid})">Send Doubt</button>`);
 }
@@ -13444,7 +13444,7 @@ function rankClick(sid){
         <div class="trk-cmp-diff ${ahead?'behind':'ahead'}">${ahead?gap+' marks behind':Math.abs(gap)+' marks ahead'}</div>
         <div class="trk-cmp-cell"><div class="trk-cmp-score">${r.marks}</div><div class="trk-cmp-who">${esc(r.name)} &middot; Rank #${r.rank}</div></div></div>
       <div class="sdet-grid" style="grid-template-columns:1fr;margin-top:6px">${attL}</div>
-      ${ahead?`<div class="trk-sugg"><b>&#128161; Rank #${r.rank} tak kaise pahunche:</b><div class="trk-sugg-note">Aapko <b>${gap} marks</b> aur chahiye. Solutions dekho, galtiyan note karo aur agle test mein unhi topics ko strong karo — har question ki practice se gap band ho jayega.</div></div>`
+      ${ahead?`<div class="trk-sugg"><b>&#128161; Rank #${r.rank} tak kaise pahunche:</b><div class="trk-sugg-note">Aapko <b>${gap} marks</b> more needed. Review the solutions, note your mistakes, and strengthen those topics in the next test — practising every question closes the gap.</div></div>`
             :`<div class="trk-sugg"><b>&#127881; You are ahead!</b><div class="trk-sugg-note">${esc(r.name)} se aap <b>${Math.abs(gap)} marks</b> aage ho. Aise hi consistent raho.</div></div>`}`,
       `<button class="btn btn-ghost" onclick="openExamRanking(${d.exam.id},'student')">&larr; Back</button><button class="btn btn-primary btn-sm" onclick="closeModal()">Close</button>`);
   }else{
@@ -13470,7 +13470,7 @@ async function openDppRanking(pid,role){
     const pk=d.pack||{};
     const pkLine=`${esc(pk.subject||'')}${pk.chapter?' &middot; '+esc(pk.chapter):''}${pk.part?' &middot; '+esc(pk.part):' &middot; Whole Chapter'}${pk.class_name?' &middot; Class '+esc(pk.class_name):''}`;
     if(!rows.length){
-      showModal(`${esc(pk.title||'DPP')} — Ranking`,`<div class="ws-empty"><div class="big">${ic('chart')}</div><p><b>Kisi ne abhi submit nahi kiya</b></p><small>Jaise hi pehla student submit karega, ranking yaha dikhne lagegi.</small></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+      showModal(`${esc(pk.title||'DPP')} — Ranking`,`<div class="ws-empty"><div class="big">${ic('chart')}</div><p><b>No one has submitted yet</b></p><small>Jaise hi pehla student submit karega, ranking yaha dikhne lagegi.</small></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
       return;
     }
     const canClick=(role==='teacher'||role==='admin');
@@ -13530,7 +13530,7 @@ async function openDppTrack(pid,event){
     const isV=d.event==='view';
     const title=`${esc((d.pack&&d.pack.title)||'DPP')} — ${isV?'Views':'Downloads'}`;
     if(!rows.length){
-      showModal(title,`<div class="ws-empty"><div class="big">${ic(isV?'eye':'download')}</div><p><b>Abhi kisi ne ${isV?'view':'download'} nahi kiya</b></p><small>Jaise hi students DPP ${isV?'kholenge':'download karenge'}, unke naam yaha aa jayenge.</small></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+      showModal(title,`<div class="ws-empty"><div class="big">${ic(isV?'eye':'download')}</div><p><b>No one has ${isV?'viewed':'downloaded'} it yet</b></p><small>As soon as students ${isV?'open':'download'} the DPP, their names will appear here.</small></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
       return;
     }
     const list=rows.map((r,i)=>`<div class="sbb-row nosel">
@@ -13841,7 +13841,7 @@ async function _solData(id,med){
   if(!r||r.id!==id){
     try{ r=await api('/api/student/exam/'+id+'/result'); }
     catch(err){
-      // Jis student ne test attempt hi nahi kiya uske liye result nahi hota -
+      // Jis student ne test attempt hi it yet uske liye result nahi hota -
       // window khatam hone ke baad exam detail me hi solutions aa jate hain
       const d=await api('/api/student/exam/'+id);
       const ex=d.exam||d;
@@ -13904,7 +13904,7 @@ async function _solView(id,med){
       }
       return `<div class="rs-q"><div class="rs-qhead"><div class="rs-qtext"><b>Q${o.q_no}.</b> ${_fmtRich(qMain)}${qHi}</div><div class="rs-marks">${o.max} marks</div></div>${ans}</div>`;
     }).join('');
-    // Jis student ne test attempt nahi kiya uska result hi nahi hota - uske
+    // Jis student ne test attempt it yet uska result hi nahi hota - uske
     // liye "Back to Result" 404 ("No attempt found") de raha tha
     const _hasAtt=(r.total_awarded!=null);
     const _back=_hasAtt?`openExamResult(${id})`:`loadSTests()`;
@@ -14236,9 +14236,9 @@ function sbbCompare(sid){
       <div class="trk-cmp-diff behind">${gap} XP behind</div>
       <div class="trk-cmp-cell"><div class="trk-cmp-score">${other.xp}</div><div class="trk-cmp-who">${esc(other.name)} &middot; Rank #${other.rank}</div></div></div>
       <div class="trk-sugg"><b>&#128161; Rank #${other.rank} tak kaise pahunche:</b><ul>
-        <li><b>${lec}</b> lectures verify karo (+20 XP each) — ya</li>
-        <li><b>${dpp}</b> DPP submit karo (+15 XP each) — ya</li>
-        <li><b>${tst}</b> tests attempt karo (+25 XP each)</li>
+        <li><b>${lec}</b> verify lectures (+20 XP each) — or</li>
+        <li><b>${dpp}</b> submit DPPs (+15 XP each) — or</li>
+        <li><b>${tst}</b> attempt tests (+25 XP each)</li>
       </ul>
       <div class="trk-sugg-note">Inme se mix bhi chalega — roz thoda sa, aur aap ${esc(other.name)} ko catch kar loge. Har verified lecture/DPP/test se XP milta hai.</div></div>`;
   }else{
@@ -14726,7 +14726,7 @@ function renderStudentTimetable(entries, containerId, opts={}){
       <div class="ov2-foot"><span class="nw">${_nowTxt}</span>${_nextTest?`<span class="nt">Next test: ${esc(fmtNice(_nextTest))}</span>`:''}</div>
     </div>`;
   } else if(_stuDD && !active && _ttView!=='weekly'){
-    // student timeline, abhi subject select nahi kiya — prompt hero
+    // student timeline, abhi subject select it yet — prompt hero
     overall=`<div class="ov-card"><div class="ov-top"><div><div class="ov-lbl">Chapter Timeline</div><div class="ov-big" style="font-size:1.02rem;line-height:1.55">Select your subject below — its complete timetable will appear here</div></div></div></div>`;
   } else {
     overall=`<div class="ov-card"><div class="ov-top"><div><div class="ov-lbl">Overall Progress</div><div class="ov-big">${subD} / ${subT} Classes</div></div><div class="ov-pct"><div class="ov-pct-num">${subPct}%</div><div class="ov-pct-lbl">Completed</div></div></div><div class="ov-bar"><div class="ov-fill" style="width:${subPct}%"></div></div><div class="ov-badges">${opts.batch?`<span class="ov-badge">${esc(opts.batch)}</span><span class="ov-badge">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span>`:(opts.scopeLabel?`<span class="ov-badge">${esc(opts.scopeLabel)}</span>`:'')}<span class="ov-badge-plain">${subjects.length} subject${subjects.length>1?'s':''}</span><span class="ov-badge-plain ov-all">All subjects: <b>${doneParts}/${totalParts}</b> \u00b7 ${pct}%</span></div>${chapChips}</div>`;
@@ -16996,7 +16996,7 @@ async function tEarnFetch(){
        <button class="btn btn-light btn-sm" onclick="viewMyLetter()">${ic('book')} Appointment Letter</button>`)
       +`<div id="t-pay-drivers"></div>`
       +pendHTML
-      +(noAct?`<div class="alert alert-info" style="margin-bottom:14px">Is month me abhi koi activity record nahi hui — classes, notes, tests, videos, doubts, tasks complete hote hi aapki earnings yahan live build hoti jayengi.</div>`
+      +(noAct?`<div class="alert alert-info" style="margin-bottom:14px">No activity recorded this month yet — as you complete classes, notes, tests, videos, doubts and tasks, your earnings build here live.</div>`
         :(zeroPay?`<div class="alert alert-info" style="margin-bottom:14px">No earnings have built up for this month yet — every component pays only on actual activity (classes conducted, notes/DPP uploads, tests, videos, doubts resolved, on-time tasks). Amounts grow here live as activity is completed.</div>`:''))
       +_earnComponentsHTML(d)+_activityStripHTML(d)+_payStructureHTML(d);
     loadTPayoutDrivers();
@@ -17145,7 +17145,7 @@ async function openAdminPunch(){
   if(!ts.length){ toast('No active teachers found.',true); return; }
   const today=new Date().toISOString().slice(0,10);
   showModal('Add Punch — Admin Entry',
- `<div class="alert alert-info" style="font-size:.78rem">Teacher present tha par <b>punch karna bhool gaya</b>? Date aur in/out time daal kar entry kar dein — present/short apne aap policy ke hisaab se calculate hoga, aur teacher ko notification chali jayegi.</div>
+ `<div class="alert alert-info" style="font-size:.78rem">Teacher present tha par <b>punch karna bhool gaya</b>? Enter the date and in/out time — present/short is calculated automatically per policy, and the teacher is notified.</div>
   <div class="form-group"><label>Teacher</label><select class="form-control" id="ap-t">${ts.map(t=>`<option value="${t.teacher_id}">${esc(t.name)}</option>`).join('')}</select></div>
   <div class="form-group"><label>Date</label><input type="date" class="form-control" id="ap-d" max="${today}" value="${_aAttDate||today}"></div>
   <div class="ex-grid2">
@@ -17188,10 +17188,10 @@ async function aLeaveFetch(){
 }
 function aLeaveApproveOpen(id){
   showModal('Approve Leave',`
-    <div class="alert alert-info" style="font-size:.78rem">Approve karte waqt choose karein ki ye leave <b>paid</b> hai ya <b>unpaid</b>. Unpaid leave complete salary ke per-day rate se katti hai; paid pe koi deduction nahi. Approved full-day leave ki us-din ki classes time table me apne aap aage move ho jayengi (teacher ke reschedule count pe asar nahi) aur students ko notification chali jayegi.</div>
+    <div class="alert alert-info" style="font-size:.78rem">When approving, choose whether this leave is <b>paid</b> hai ya <b>unpaid</b>. Unpaid leave is deducted at the per-day rate of the full salary; paid leave has no deduction. For an approved full-day leave, that day’s classes move forward automatically in the timetable (no effect on the teacher reschedule count) and students are notified.</div>
     <div class="form-group"><label>Leave Type (pay)</label><select class="form-control" id="alv-paid">
-      <option value="unpaid" selected>Unpaid Leave — per-day salary deduction hogi</option>
-      <option value="paid">Paid Leave — payout pe koi asar nahi</option>
+      <option value="unpaid" selected>Unpaid Leave — per-day salary deduction applies</option>
+      <option value="paid">Paid Leave — no effect on payout</option>
     </select></div>
     <div class="form-group"><label>Remark (optional)</label><input class="form-control" id="alv-remark2" placeholder="e.g. Approved — classes auto-moved"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="aLeaveApproveSubmit(${id})">${ic('check')} Approve Leave</button>`);
@@ -17571,7 +17571,7 @@ async function loadASalaryStatus(){
   const teachers=(window._aEarnData&&window._aEarnData.teachers)||[];
   let h=`<div class="card"><div class="card-header"><h3>Salary Status \u00B7 ${esc(fmtMonthLabel(_aEarnMonth))}</h3></div><div class="card-body">`;
   h+='<p style="color:#6b7280;font-size:.85rem;margin:0 0 12px">Finalize freezes the month. Then mark payment In Progress and Credited. The teacher confirms receipt from their side.</p>';
-  if(!teachers.length){ h+='<p style="color:#6b7280">Teachers load ho rahe hain…</p>'; }
+  if(!teachers.length){ h+='<p style="color:#6b7280">Loading teachers...</p>'; }
   teachers.forEach(t=>{
     const tid=t.teacher_id||t.id;
     const st=(lf[String(tid)]||{}).status||'pending';
@@ -18139,7 +18139,7 @@ function _olIpMeta(ip){
   if(!m.ok) return '<span style="color:var(--text-muted)"> · location unknown</span>';
   const where=[m.city,m.region,m.country].filter(Boolean).join(', ');
   let flag='';
-  if(m.mobile) flag=' <span style="color:#dc2626;font-weight:800">MOBILE DATA — risky (ghar se match ho sakta hai)</span>';
+  if(m.mobile) flag=' <span style="color:#dc2626;font-weight:800">MOBILE DATA — risky (may match home network)</span>';
   else if(m.proxy||m.hosting) flag=' <span style="color:#dc2626;font-weight:800">PROXY/VPN — risky</span>';
   return `<span style="color:${(m.mobile||m.proxy||m.hosting)?'#dc2626':'var(--text-muted)'}"> · ${esc(m.isp||'')}${where?' · '+esc(where):''}${flag}</span>`;
 }
@@ -18186,11 +18186,11 @@ async function olCheckIps(){
     window._olIpInfo=r.info||{};
     _olRenderIps();
     const risky=uniq.filter(ip=>{const m=window._olIpInfo[ip]; return m&&m.ok&&(m.mobile||m.proxy||m.hosting);});
-    if(r.error==='lookup_unavailable'){ if(n) n.innerHTML='<div class="alert alert-warning" style="font-size:.8rem;margin-bottom:0">Location lookup abhi available nahi (network). Thodi der baad try karo.</div>'; return; }
+    if(r.error==='lookup_unavailable'){ if(n) n.innerHTML='<div class="alert alert-warning" style="font-size:.8rem;margin-bottom:0">Location lookup is not available right now (network). Please try again shortly.</div>'; return; }
     if(n) n.innerHTML=risky.length
-      ? `<div class="alert alert-warning" style="font-size:.82rem;margin-bottom:0"><b>${risky.length} IP risky</b> (mobile/proxy) — inhe check karke <b>Remove</b> karo agar office broadband nahi: <b>${risky.map(esc).join(', ')}</b>. Har IP ke aage ISP/city dikh raha hai — jo alag city/ISP ka ho wo bahar ka ho sakta hai.</div>`
-      : '<div class="alert alert-success" style="font-size:.82rem;margin-bottom:0">Koi obvious mobile/proxy IP nahi mila. Har IP ke aage ISP/city dekh lo — jo tumhare office (Excitel) se alag lage, use Remove kar dena.</div>';
-  }catch(e){ if(n) n.innerHTML='<div class="alert alert-warning" style="font-size:.8rem;margin-bottom:0">Check nahi ho paya: '+esc(e.message||'error')+'</div>'; }
+      ? `<div class="alert alert-warning" style="font-size:.82rem;margin-bottom:0"><b>${risky.length} IP risky</b> (mobile/proxy) — inhe check karke <b>Remove</b> use this if not on office broadband: <b>${risky.map(esc).join(', ')}</b>. Har IP ke aage ISP/city dikh raha hai — jo alag city/ISP ka ho wo bahar ka ho sakta hai.</div>`
+      : '<div class="alert alert-success" style="font-size:.82rem;margin-bottom:0">No obvious mobile/proxy IP found. Check the ISP/city next to each IP — remove any that differ from your office (Excitel) network.</div>';
+  }catch(e){ if(n) n.innerHTML='<div class="alert alert-warning" style="font-size:.8rem;margin-bottom:0">Check failed: '+esc(e.message||'error')+'</div>'; }
 }
 function olAddUnknown(i){
   const list=(window._olUnknown||[]).filter(x=>!window._olIps.includes(x.ip));

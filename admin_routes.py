@@ -1790,7 +1790,7 @@ def admin_reschedule_tt(eid: int, payload: dict = Body(...),
                          + ". Ye aapke reschedule count ya salary pe asar nahi daalegi."),
                 notif_type="timetable"))
     db.commit()
-    return {"ok": True, "message": "Class moved. Teacher and students have been notified — teacher ke reschedule count/salary par koi asar nahi."}
+    return {"ok": True, "message": "Class moved. The teacher and students have been notified. This does not affect the teacher's reschedule count or salary."}
 
 # ===== ADMIN: TEACHER TT-RESCHEDULE REQUESTS (timetable entries) =====
 @router.get("/tt-reschedules/pending")
@@ -4859,7 +4859,7 @@ def admin_set_payout_template(tid: int, payload: dict = Body(...), db: Session =
         raise HTTPException(400, "Template khaali hai")
     wsum = sum(float(i.get("weight") or 0) for i in items)
     if abs(wsum - 100) > 0.01:
-        raise HTTPException(400, "Weight ka total 100%% hona chahiye (abhi %.1f%%)" % wsum)
+        raise HTTPException(400, "The weights must total 100%% (currently %.1f%%)" % wsum)
     rows = {r.key: r for r in db.query(PayoutTemplate).filter(PayoutTemplate.teacher_id == tid).all()}
     for i, it in enumerate(items):
         key = (it.get("key") or "").strip()
@@ -4900,7 +4900,7 @@ def admin_approve_payout_task(task_id: int, db: Session = Depends(get_db), curre
     from models import PayoutTask
     t = db.query(PayoutTask).filter(PayoutTask.id == task_id).first()
     if not t:
-        raise HTTPException(404, "Task nahi mila")
+        raise HTTPException(404, "Task not found")
     t.status = "approved"
     t.approved_by = getattr(current_user, "name", "Admin") or "Admin"
     t.approved_at = datetime.utcnow()
@@ -4912,7 +4912,7 @@ def admin_reject_payout_task(task_id: int, db: Session = Depends(get_db), _=Depe
     from models import PayoutTask
     t = db.query(PayoutTask).filter(PayoutTask.id == task_id).first()
     if not t:
-        raise HTTPException(404, "Task nahi mila")
+        raise HTTPException(404, "Task not found")
     t.status = "rejected"
     db.commit()
     return {"message": "Rejected"}
@@ -4925,10 +4925,10 @@ def admin_flag_missed_class(tid: int, payload: dict = Body(...), db: Session = D
     eid = int(payload.get("entry_id") or 0)
     e = db.query(TimetableEntry).filter(TimetableEntry.id == eid, TimetableEntry.teacher_id == tid).first()
     if not e:
-        raise HTTPException(404, "Class entry nahi mili")
+        raise HTTPException(404, "Class entry not found")
     mk = e.entry_date.strftime("%Y-%m") if e.entry_date else ""
     if not mk:
-        raise HTTPException(400, "Entry ka date nahi hai")
+        raise HTTPException(400, "Entry has no date")
     flag = (payload.get("missed") is True) or (str(payload.get("missed")) == "true")
     ex = db.query(PayoutTask).filter(PayoutTask.teacher_id == tid, PayoutTask.key == "live_class",
                                      PayoutTask.status == "missed", PayoutTask.ref_id == eid).first()
@@ -5579,7 +5579,7 @@ def admin_dpp_track_list(pack_id: int, event: str = "view",
         raise HTTPException(404, "DPP pack not found")
     ev = (event or "view").lower()
     if ev not in ("view", "download"):
-        raise HTTPException(400, "event 'view' ya 'download' hona chahiye")
+        raise HTTPException(400, "event must be 'view' or 'download'")
     rows = (db.query(DppEvent)
             .filter(DppEvent.pack_id == pack_id, DppEvent.event == ev)
             .order_by(DppEvent.created_at.desc(), DppEvent.id.desc()).all())

@@ -2092,7 +2092,7 @@ def student_dpp_track(pack_id: int, payload: dict = Body(...),
     sp = get_student_profile(current_user, db)
     ev = str((payload or {}).get("event") or "").lower()
     if ev not in ("view", "download"):
-        raise HTTPException(400, "event 'view' ya 'download' hona chahiye")
+        raise HTTPException(400, "event must be 'view' or 'download'")
     pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
     if not pk:
         raise HTTPException(404, "DPP pack not found")
