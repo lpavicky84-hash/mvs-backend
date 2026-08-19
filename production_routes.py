@@ -701,7 +701,28 @@ def pm_people(role: str = "", db: Session = Depends(get_db), me=Depends(get_pm_o
     if role in ("", "teacher"):
         rows = (db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id)
                 .filter(User.is_active == True).order_by(User.name.asc()).all())
-        out["teachers"] = [{"id": t.id, "name": t.user.name if t.user else ""} for t in rows]
+        teachers = []
+        for t in rows:
+            subs = []
+            try:
+                for sc in (t.subject_classes or []):
+                    nm = (sc.get("subject") or "").strip()
+                    cl = str(sc.get("class") or "").strip()
+                    label = (nm + (" " + cl if cl else "")).strip()
+                    if label and label not in subs:
+                        subs.append(label)
+            except Exception:
+                pass
+            if not subs:
+                try:
+                    for nm in (t.subjects or []):
+                        nm = (nm or "").strip()
+                        if nm and nm not in subs:
+                            subs.append(nm)
+                except Exception:
+                    pass
+            teachers.append({"id": t.id, "name": t.user.name if t.user else "", "subjects": subs})
+        out["teachers"] = teachers
     return out
 
 

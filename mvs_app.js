@@ -21200,20 +21200,36 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     api(P.production.api+'/channels','POST',{name:n}).then(function(r){ (window._aw.channels=window._aw.channels||[]).push({id:r.id,name:r.name}); if(window._aw){window._aw.data.channel_name=r.name;} _awRender(); toast('Channel added'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
   window.prodAwAddType=function(){ _awSave(); var n=prompt('New video type name:'); if(!n||!n.trim())return; n=n.trim();
     api(P.production.api+'/video-types','POST',{name:n}).then(function(r){ (window._aw.types=window._aw.types||[]).push({id:r.id,name:r.name}); if(window._aw){window._aw.data.video_type=r.name;} _awRender(); toast('Type added'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
-  var _AW_STEPS=['Content','Creator','Production','References'];
+  var _AW_STEPS=['Content','Production','References'];
   function _awSave(){
     var aw=window._aw; if(!aw) return; var g=function(id){ var e=document.getElementById(id); return e?e.value:undefined; };
     var s=aw.step, d=aw.data;
-    if(s===1){ if(g('aw-title')!==undefined)d.title=g('aw-title').trim(); if(g('aw-vtype')!==undefined)d.video_type=g('aw-vtype').trim(); if(g('aw-channel')!==undefined)d.channel_name=g('aw-channel').trim(); if(g('aw-subject')!==undefined)d.subject=g('aw-subject').trim(); if(g('aw-stream')!==undefined)d.streaming=g('aw-stream').trim(); }
-    else if(s===2){ if(g('aw-creator')!==undefined){ var v=g('aw-creator'); if(d.creator_type==='teacher')d.teacher_id=v?parseInt(v,10):0; else d.youtuber_id=v?parseInt(v,10):0; } }
-    else if(s===3){ if(g('aw-deadline')!==undefined)d.deadline=g('aw-deadline'); if(g('aw-priority')!==undefined)d.priority=g('aw-priority'); var ar=document.getElementById('aw-approval'); if(ar)d.approval_required=ar.checked; }
-    else if(s===4){ if(g('aw-reference')!==undefined)d.reference=g('aw-reference').trim(); }
+    if(s===1){
+      if(g('aw-title')!==undefined)d.title=g('aw-title').trim();
+      if(g('aw-vtype')!==undefined)d.video_type=g('aw-vtype').trim();
+      if(g('aw-channel')!==undefined)d.channel_name=g('aw-channel').trim();
+      if(g('aw-subject')!==undefined)d.subject=g('aw-subject').trim();
+      if(g('aw-stream')!==undefined)d.streaming=g('aw-stream').trim();
+      if(g('aw-creator')!==undefined){ var v=g('aw-creator'); if(d.creator_type==='teacher')d.teacher_id=v?parseInt(v,10):0; else d.youtuber_id=v?parseInt(v,10):0; }
+    }
+    else if(s===2){ if(g('aw-deadline')!==undefined)d.deadline=g('aw-deadline'); if(g('aw-priority')!==undefined)d.priority=g('aw-priority'); var ar=document.getElementById('aw-approval'); if(ar)d.approval_required=ar.checked; }
+    else if(s===3){ if(g('aw-reference')!==undefined)d.reference=g('aw-reference').trim(); }
   }
   window.awSetCreatorType=function(ct){ _awSave(); window._aw.data.creator_type=ct; window._aw.data.teacher_id=0; window._aw.data.youtuber_id=0; _awRender(); };
+  function _awSubjectOptions(){
+    var aw=window._aw; if(!aw) return [];
+    var d=aw.data; if(d.creator_type!=='teacher') return [];
+    var tid=d.teacher_id; if(!tid) return [];
+    var t=((aw.people||{}).teachers||[]).filter(function(m){return m.id===tid;})[0];
+    return (t&&t.subjects)?t.subjects.slice():[];
+  }
   window.awNext=function(){ _awSave(); var aw=window._aw;
-    if(aw.step===1 && !(aw.data.title||'').trim()){ toast('Title is required',true); return; }
-    if(aw.step===2){ var id=aw.data.creator_type==='teacher'?aw.data.teacher_id:aw.data.youtuber_id; if(!id){ toast('Please select a '+aw.data.creator_type,true); return; } }
-    if(aw.step<4){ aw.step++; _awRender(); }
+    if(aw.step===1){
+      if(!(aw.data.title||'').trim()){ toast('Title is required',true); return; }
+      var id=aw.data.creator_type==='teacher'?aw.data.teacher_id:aw.data.youtuber_id;
+      if(!id){ toast('Please select a '+aw.data.creator_type,true); return; }
+    }
+    if(aw.step<3){ aw.step++; _awRender(); }
   };
   window.awBack=function(){ _awSave(); if(window._aw.step>1){ window._aw.step--; _awRender(); } };
   window.prodAwMode=function(m){ if(!window._aw) return; window._aw.mode=m; if(m==='project'&&!window._aw.proj){ window._aw.proj={connect:true,chapter_scope:'pe',class_level:'12'}; } _awRender(); };
@@ -21298,35 +21314,52 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var html=modeTabs+steps;
     if(aw.step===1){
       var chList=(aw.channels||[]), tyList=(aw.types||[]);
+      var ppl=aw.people||{}; var list=(d.creator_type==='teacher')?(ppl.teachers||[]):(ppl.youtubers||[]);
+      var sel=(d.creator_type==='teacher')?d.teacher_id:d.youtuber_id;
       var chSel='<select class="p-select" id="aw-channel" style="flex:1"><option value="">Select channel</option>'+chList.map(function(c){ return '<option value="'+esc(c.name)+'"'+((d.channel_name===c.name)?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('')+(d.channel_name&&chList.filter(function(c){return c.name===d.channel_name;}).length===0?'<option value="'+esc(d.channel_name)+'" selected>'+esc(d.channel_name)+'</option>':'')+'</select>';
       var tySel='<select class="p-select" id="aw-vtype" style="flex:1"><option value="">Select type</option>'+tyList.map(function(c){ return '<option value="'+esc(c.name)+'"'+((d.video_type===c.name)?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('')+(d.video_type&&tyList.filter(function(c){return c.name===d.video_type;}).length===0?'<option value="'+esc(d.video_type)+'" selected>'+esc(d.video_type)+'</option>':'')+'</select>';
+      // 1) creator type
+      html+='<div class="p-field"><label>Creator Type</label><div class="aw-toggle">'+
+        '<button class="'+(d.creator_type==='teacher'?'on':'')+'" onclick="awSetCreatorType(\'teacher\')">Teacher</button>'+
+        '<button class="'+(d.creator_type==='youtuber'?'on':'')+'" onclick="awSetCreatorType(\'youtuber\')">YouTuber</button></div></div>';
+      // 2) collaboration (teachers only) — asked FIRST like admin
+      var isCollab=false;
+      if(d.creator_type==='teacher'){
+        var on=!!d.collab_on; isCollab=on;
+        html+='<div class="p-field"><label>Collaborate with others?</label><select class="p-select" id="aw-collab-toggle" onchange="awCollabToggle(this.value)">'+
+          '<option value="no"'+(!on?' selected':'')+'>No \u2014 single teacher</option>'+
+          '<option value="yes"'+(on?' selected':'')+'>Yes \u2014 multiple teachers (collab)</option></select></div>';
+      }
+      // 3) primary creator / teacher
+      html+='<div class="p-field"><label>'+(d.creator_type==='teacher'?(isCollab?'Primary Teacher':'Teacher'):'YouTuber')+(d.creator_type==='teacher'&&!isCollab?' (subjects filter to this teacher)':'')+'</label><select class="p-select" id="aw-creator" onchange="awPickCreator()">'+
+        '<option value="">Choose...</option>'+list.map(function(m){ return '<option value="'+m.id+'"'+(sel===m.id?' selected':'')+'>'+esc(m.name)+(m.approval_required!==undefined?(m.approval_required?' (approval on)':' (approval off)'):'')+'</option>'; }).join('')+'</select></div>';
+      // 3b) collaborators multi-select
+      if(d.creator_type==='teacher' && isCollab){
+        var teachers2=ppl.teachers||[]; var collab=d.collab_teacher_ids||[];
+        html+='<div class="p-field"><label>Select collaborators (tap names to multi-select)</label>'+
+          '<select class="p-select" id="aw-collab-multi" multiple size="6" onchange="awCollabMulti()" style="height:auto;min-height:150px;padding:6px">'+
+          teachers2.filter(function(m){return m.id!==sel;}).map(function(m){ return '<option value="'+m.id+'"'+(collab.indexOf(m.id)>=0?' selected':'')+'>'+esc(m.name)+'</option>'; }).join('')+
+          '</select><div class="p-opt">The teacher chosen above is the primary. '+(collab.length?collab.length+' collaborator(s) selected.':'None selected yet.')+' Each is verified separately. Subject selection is not required for a collaboration.</div></div>';
+      }
+      // 4) subject — filtered to the selected teacher (single-teacher only)
+      if(!(d.creator_type==='teacher' && isCollab)){
+        var subjOpts=_awSubjectOptions();
+        if(d.creator_type==='teacher' && !sel){
+          html+='<div class="p-field"><label>Subject</label><select class="p-select" disabled><option>Select a teacher first</option></select></div>';
+        } else if(subjOpts.length){
+          html+='<div class="p-field"><label>Subject'+(d.creator_type==='teacher'?'':' (optional)')+'</label><select class="p-select" id="aw-subject"><option value="">Select or type below</option>'+
+            subjOpts.map(function(s){ return '<option value="'+esc(s)+'"'+((d.subject===s)?' selected':'')+'>'+esc(s)+'</option>'; }).join('')+
+            (d.subject&&subjOpts.indexOf(d.subject)<0?'<option value="'+esc(d.subject)+'" selected>'+esc(d.subject)+'</option>':'')+'</select></div>';
+        } else {
+          html+='<div class="p-field"><label>Subject (optional)</label><input class="p-input" id="aw-subject" list="aw-subject-list" placeholder="Select or type" value="'+esc(d.subject||'')+'">'+_awDatalist('aw-subject-list','subject')+'</div>';
+        }
+      }
+      // 5) title, type, channel, streaming
       html+='<div class="p-field"><label>Title</label><input class="p-input" id="aw-title" placeholder="Video title" value="'+esc(d.title||'')+'"></div>'+
         '<div class="p-field"><label>Video Type</label><div style="display:flex;gap:8px;align-items:center">'+tySel+'<button class="p-btn" type="button" onclick="prodAwAddType()">Add</button></div></div>'+
         '<div class="p-field"><label>Channel</label><div style="display:flex;gap:8px;align-items:center">'+chSel+'<button class="p-btn" type="button" onclick="prodAwAddChannel()">Add</button></div></div>'+
-        '<div class="p-field"><label>Subject</label><input class="p-input" id="aw-subject" list="aw-subject-list" placeholder="Select or type" value="'+esc(d.subject||'')+'">'+_awDatalist('aw-subject-list','subject')+'</div>'+
         '<div class="p-field"><label>Streaming</label><select class="p-select" id="aw-stream"><option value="">Select</option>'+_awOpts('streaming').map(function(o){ return '<option value="'+esc(o)+'"'+((d.streaming===o)?' selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>';
     } else if(aw.step===2){
-      var ppl=aw.people||{}; var list=(d.creator_type==='teacher')?(ppl.teachers||[]):(ppl.youtubers||[]);
-      var sel=(d.creator_type==='teacher')?d.teacher_id:d.youtuber_id;
-      html+='<div class="p-field"><label>Creator Type</label><div class="aw-toggle">'+
-        '<button class="'+(d.creator_type==='teacher'?'on':'')+'" onclick="awSetCreatorType(\'teacher\')">Teacher</button>'+
-        '<button class="'+(d.creator_type==='youtuber'?'on':'')+'" onclick="awSetCreatorType(\'youtuber\')">YouTuber</button></div></div>'+
-        '<div class="p-field"><label>Select '+(d.creator_type==='teacher'?'Teacher':'YouTuber')+'</label><select class="p-select" id="aw-creator" onchange="awPickCreator()">'+
-        '<option value="">Choose...</option>'+list.map(function(m){ return '<option value="'+m.id+'"'+(sel===m.id?' selected':'')+'>'+esc(m.name)+(m.approval_required!==undefined?(m.approval_required?' (approval on)':' (approval off)'):'')+'</option>'; }).join('')+'</select>'+
-        (d.creator_type==='youtuber'?'<div class="p-opt">Teachers submit to PM review by default. YouTuber approval can be set in the next step.</div>':'')+'</div>';
-      if(d.creator_type==='teacher'){
-        var teachers2=ppl.teachers||[]; var collab=d.collab_teacher_ids||[]; var on=!!d.collab_on;
-        html+='<div class="p-field"><label>Collaboration</label><select class="p-select" id="aw-collab-toggle" onchange="awCollabToggle(this.value)">'+
-          '<option value="no"'+(!on?' selected':'')+'>No \u2014 single teacher</option>'+
-          '<option value="yes"'+(on?' selected':'')+'>Yes \u2014 multiple teachers (collab)</option></select></div>';
-        if(on){
-          html+='<div class="p-field"><label>Select collaborators (tap names to multi-select)</label>'+
-            '<select class="p-select" id="aw-collab-multi" multiple size="6" onchange="awCollabMulti()" style="height:auto;min-height:150px;padding:6px">'+
-            teachers2.filter(function(m){return m.id!==sel;}).map(function(m){ return '<option value="'+m.id+'"'+(collab.indexOf(m.id)>=0?' selected':'')+'>'+esc(m.name)+'</option>'; }).join('')+
-            '</select><div class="p-opt">The teacher chosen above is the primary. '+(collab.length?collab.length+' collaborator(s) selected.':'None selected yet.')+' Each is verified separately.</div></div>';
-        }
-      }
-    } else if(aw.step===3){
       var isYt=d.creator_type==='youtuber';
       html+='<div class="p-field"><label>Deadline</label><input class="p-input" id="aw-deadline" type="datetime-local" value="'+esc(d.deadline||'')+'"></div>'+
         '<div class="p-field"><label>Priority</label><select class="p-select" id="aw-priority"><option value="normal"'+(d.priority!=='urgent'?' selected':'')+'>Normal</option><option value="urgent"'+(d.priority==='urgent'?' selected':'')+'>Urgent</option></select></div>'+
@@ -21348,12 +21381,15 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     body.innerHTML=html;
     var back=aw.step>1?'<button class="p-btn" onclick="awBack()">Back</button>':'<button class="p-btn" onclick="prodDismiss()">Cancel</button>';
-    var next=aw.step<4?'<button class="p-btn p-btn-primary" onclick="awNext()">Next</button>':'<button class="p-btn p-btn-primary" onclick="awCreate()">Create Production Task</button>';
+    var next=aw.step<3?'<button class="p-btn p-btn-primary" onclick="awNext()">Next</button>':'<button class="p-btn p-btn-primary" onclick="awCreate()">Create Production Task</button>';
     if(foot) foot.innerHTML='<div class="p-acts" style="justify-content:space-between">'+back+next+'</div>';
   }
   window.awPickCreator=function(){ _awSave();
+    var d=window._aw.data;
     // if the new primary is in the collab list, remove it from there
-    var d=window._aw.data; if(d.creator_type==='teacher' && d.collab_teacher_ids){ d.collab_teacher_ids=(d.collab_teacher_ids||[]).filter(function(x){ return x!==d.teacher_id; }); _awRender(); }
+    if(d.creator_type==='teacher' && d.collab_teacher_ids){ d.collab_teacher_ids=(d.collab_teacher_ids||[]).filter(function(x){ return x!==d.teacher_id; }); }
+    // re-render so the Subject dropdown filters to this teacher's subjects
+    _awRender();
   };
   window.awCollabToggle=function(v){ _awSave(); var d=window._aw.data; d.collab_on=(v==='yes'); if(!d.collab_on) d.collab_teacher_ids=[]; _awRender(); };
   window.awCollabMulti=function(){ var s=document.getElementById('aw-collab-multi'); if(!s) return; var ids=[]; for(var i=0;i<s.options.length;i++){ if(s.options[i].selected) ids.push(parseInt(s.options[i].value,10)); } window._aw.data.collab_teacher_ids=ids; var opt=document.querySelector('#aw-body .p-opt'); };
