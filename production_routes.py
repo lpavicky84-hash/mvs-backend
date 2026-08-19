@@ -1178,6 +1178,16 @@ def _notify_task_teacher(db, t, title, msg, link=None):
     _notify_creator(db, t, title, msg)
 
 
+def _notify_teacher_by_profile(db, teacher_profile_id, title, msg, task_id=None):
+    """Notify a teacher directly by their TeacherProfile id (used by collab edit)."""
+    try:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == teacher_profile_id).first()
+        if tp and tp.user_id:
+            pc.notify(db, tp.user_id, title, msg, "video_task", link=(str(task_id) if task_id else None))
+    except Exception:
+        pass
+
+
 # ============================================================ NOTIFICATIONS
 @router.get("/notifications")
 def _pnotifs(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
@@ -1534,6 +1544,75 @@ def prod_verify_teacher(tid: int, payload: dict = Body(...),
     return {"ok": True, "all_verified": all_ok,
             "collaborators": [{"id": i, "name": _c_tname(db, i) or ("Teacher #%s" % i),
                                "verified": bool(vmap.get(str(i)))} for i in ids]}
+
+
+@router.post("/tasks/{tid}/edit-collab")
+def prod_edit_collab(tid: int, payload: dict = Body(...),
+                     db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Add or remove collaborating teachers on an existing task (PM/Admin).
+    The primary teacher cannot be removed. Payout logic is untouched — this only
+    edits the collaborator list and cleans per-teacher verify/not-completed flags."""
+    import json as _j
+    t = _task(db, tid)
+    primary = t.teacher_id
+    # desired ADDITIONAL collaborators (excluding primary)
+    raw = payload.get("teacher_ids")
+    if raw is None:
+        raw = payload.get("collab_teacher_ids") or []
+    new_ids = []
+    for x in raw:
+        try:
+            xi = int(x)
+        except Exception:
+            continue
+        if xi and xi != primary and xi not in new_ids:
+            new_ids.append(xi)
+    old_ids = []
+    try:
+        old_ids = [int(x) for x in (_j.loads(t.collab_teacher_ids) if t.collab_teacher_ids else [])]
+    except Exception:
+        old_ids = []
+    added = [i for i in new_ids if i not in old_ids]
+    removed = [i for i in old_ids if i not in new_ids]
+    t.collab_teacher_ids = _j.dumps(new_ids)
+    # clean verify / not-completed maps for removed teachers
+    for field in ("collab_verified", "collab_not_completed"):
+        try:
+            m = _j.loads(getattr(t, field) or "{}")
+        except Exception:
+            m = {}
+        for rid in removed:
+            m.pop(str(rid), None)
+        setattr(t, field, _j.dumps(m))
+    # history + notifications
+    for i in added:
+        nm = _c_tname(db, i) or ("Teacher #%s" % i)
+        try: _c_hist(t, "collab_added", "%s added to collaboration by production manager" % nm)
+        except Exception: pass
+        _notify_teacher_by_profile(db, i, "Added to a collaboration",
+                                   'You have been added to "%s".' % (t.title or "a task"), t.id)
+    for i in removed:
+        nm = _c_tname(db, i) or ("Teacher #%s" % i)
+        try: _c_hist(t, "collab_removed", "%s removed from collaboration by production manager" % nm)
+        except Exception: pass
+        _notify_teacher_by_profile(db, i, "Removed from a collaboration",
+                                   'You are no longer part of "%s".' % (t.title or "a task"), t.id)
+    db.commit()
+    ids = _c_all_ids(t)
+    vmap = _c_vmap(t)
+    return {"ok": True, "added": len(added), "removed": len(removed),
+            "collaborators": [{"id": i, "name": _c_tname(db, i) or ("Teacher #%s" % i),
+                               "verified": bool(vmap.get(str(i))), "primary": (i == primary)} for i in ids]}
+
+
+@router.get("/collab-teachers")
+def prod_collab_teachers(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """All active teachers (id + name) for the collab add/remove picker."""
+    out = []
+    for tp in db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all():
+        out.append({"id": tp.id, "name": (tp.user.name if tp.user else ("Teacher #%s" % tp.id))})
+    out.sort(key=lambda x: x["name"].lower())
+    return {"teachers": out}
 
 
 # ============================================================ VINTAGE (Old / New)

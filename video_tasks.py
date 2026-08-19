@@ -930,7 +930,7 @@ def _vt_sweep_inner(db):
             changed = True
         if secs < 0 and not t.warned_overdue:
             t.warned_overdue = True
-            _vt_notify(db, uid, "⚠️ Video Task Overdue",
+            _vt_notify(db, uid, "Video Task Overdue",
                        f'Your video task "{t.title}" has crossed its deadline. '
                        f'Repeated delays may affect your payout. Please submit the video link at the earliest.')
             changed = True
@@ -1025,7 +1025,9 @@ def _task_out(db, t, with_thumb=True, tname_map=None):
     out["is_collab"] = len(_allids) > 1
     out["collab_teachers"] = [{"id": i, "name": _tn(i),
                                "verified": bool(_vmap.get(str(i))),
+                               "primary": (i == t.teacher_id),
                                "not_completed": bool(_ncmap.get(str(i)))} for i in _allids]
+    out["collab_teacher_ids"] = _collab_extra_ids(t)
     out["collab_all_verified"] = bool(_allids) and all(
         (_vmap.get(str(i)) or _ncmap.get(str(i))) for i in _allids)
     # Kisne actually submit kiya (collab me koi bhi teacher kar sakta hai). Na ho to primary.
@@ -1355,7 +1357,7 @@ def vt_verify_complete(task_id: int, payload: dict = Body(...),
         for pid in _nc_ids:
             uid = _uid(pid)
             if uid:
-                _vt_notify(db, uid, "\u26a0\ufe0f Your part was not completed",
+                _vt_notify(db, uid, "Your part was not completed",
                            'On the collaborative task "%s", your part was marked NOT completed by the '
                            'production manager. The video was approved for the other teachers, but this '
                            'counts as not completed for you and affects your payout.' % t.title,
@@ -1388,7 +1390,7 @@ def vt_verify_complete(task_id: int, payload: dict = Body(...),
             for pid in allids:
                 uid = _uid(pid)
                 if uid:
-                    _vt_notify(db, uid, "\u26a0\ufe0f Task Not Completed — Locked",
+                    _vt_notify(db, uid, "Task Not Completed — Locked",
                                'Your collaborative task "%s" was marked NOT COMPLETED by the production manager%s. '
                                'This counts as not completed on time and affects your payout (delayed). '
                                'You cannot resubmit until the production manager allows a reshoot.'
@@ -1413,8 +1415,7 @@ def vt_verify_teacher(task_id: int, payload: dict = Body(...),
     verified = payload.get("verified", True)
     allids = _collab_all_ids(t)
     if tid not in allids:
-        raise HTTPException(400, "Ye teacher is task me nahi hai — verify nahi kar sakte "
-                                 "(Task not completed by them).")
+        raise HTTPException(400, "This teacher is not part of this task.")
     import json as _j
     vmap = _collab_vmap(t)
     if verified:
@@ -1433,6 +1434,67 @@ def vt_verify_teacher(task_id: int, payload: dict = Body(...),
                                  "verified": bool(vmap.get(str(i)))} for i in allids]}
 
 
+@router.post("/admin/video-tasks/{task_id}/edit-collab", dependencies=[Depends(_admin_section_guard)])
+def vt_edit_collab(task_id: int, payload: dict = Body(...),
+                   db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Add or remove collaborating teachers on an existing task (Admin).
+    The primary teacher cannot be removed. Only edits the collaborator list and cleans
+    per-teacher verify / not-completed flags — payout logic is untouched."""
+    import json as _j
+    t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
+    if not t:
+        raise HTTPException(404, "Task not found")
+    primary = t.teacher_id
+    raw = payload.get("teacher_ids")
+    if raw is None:
+        raw = payload.get("collab_teacher_ids") or []
+    new_ids = []
+    for x in raw:
+        try:
+            xi = int(x)
+        except Exception:
+            continue
+        if xi and xi != primary and xi not in new_ids:
+            new_ids.append(xi)
+    old_ids = _collab_extra_ids(t)
+    added = [i for i in new_ids if i not in old_ids]
+    removed = [i for i in old_ids if i not in new_ids]
+    t.collab_teacher_ids = _j.dumps(new_ids)
+    vmap = _collab_vmap(t); ncmap = _collab_ncmap(t)
+    for rid in removed:
+        vmap.pop(str(rid), None); ncmap.pop(str(rid), None)
+    t.collab_verified = _j.dumps(vmap)
+    t.collab_not_completed = _j.dumps(ncmap)
+    for i in added:
+        _hist_add(t, "collab_added", "%s added to collaboration by admin" % _teacher_name(db, i))
+        _tp = db.query(TeacherProfile).filter(TeacherProfile.id == i).first()
+        if _tp and _tp.user_id:
+            _vt_notify(db, _tp.user_id, "Added to a collaboration",
+                       'You have been added to the collaborative task "%s".' % (t.title or "a task"))
+    for i in removed:
+        _hist_add(t, "collab_removed", "%s removed from collaboration by admin" % _teacher_name(db, i))
+        _tp = db.query(TeacherProfile).filter(TeacherProfile.id == i).first()
+        if _tp and _tp.user_id:
+            _vt_notify(db, _tp.user_id, "Removed from a collaboration",
+                       'You are no longer part of the collaborative task "%s".' % (t.title or "a task"))
+    db.commit()
+    allids = _collab_all_ids(t)
+    return {"ok": True, "added": len(added), "removed": len(removed),
+            "collab_teachers": [{"id": i, "name": _teacher_name(db, i),
+                                 "verified": bool(vmap.get(str(i))),
+                                 "primary": (i == primary)} for i in allids]}
+
+
+@router.get("/admin/collab-teachers", dependencies=[Depends(_admin_section_guard)])
+def vt_collab_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """All active teachers (id + name) for the collaboration add/remove picker."""
+    out = []
+    for tp in db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all():
+        out.append({"id": tp.id, "name": (tp.user.name if tp.user else ("Teacher #%s" % tp.id))})
+    out.sort(key=lambda x: x["name"].lower())
+    return {"teachers": out}
+
+
 @router.post("/admin/video-tasks/{task_id}/mark-collab-teacher", dependencies=[Depends(_admin_section_guard)])
 def vt_mark_collab_teacher(task_id: int, payload: dict = Body(...),
                            db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -1447,7 +1509,7 @@ def vt_mark_collab_teacher(task_id: int, payload: dict = Body(...),
     state = (payload.get("state") or "").strip()
     allids = _collab_all_ids(t)
     if tid not in allids:
-        raise HTTPException(400, "Ye teacher is task me nahi hai.")
+        raise HTTPException(400, "This teacher is not part of this task.")
     vmap = _collab_vmap(t)
     ncmap = _collab_ncmap(t)
     if state == "not_completed":
@@ -1456,7 +1518,7 @@ def vt_mark_collab_teacher(task_id: int, payload: dict = Body(...),
         _hist_add(t, "verify", "%s marked NOT COMPLETED by production manager" % _teacher_name(db, tid))
         _tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
         if _tp and _tp.user_id:
-            _vt_notify(db, _tp.user_id, "\u26a0\ufe0f Your part not completed",
+            _vt_notify(db, _tp.user_id, "Your part was not completed",
                        'On the collaborative task "%s", your part was marked NOT completed by the '
                        'production manager. This affects your payout.' % t.title, ntype="warning")
     elif state == "verified":
@@ -2437,7 +2499,7 @@ def vt_submit(task_id: int, payload: dict = Body(...), db: Session = Depends(get
                    f'Keep up the great consistency!')
     elif not t.warned_overdue:
         t.warned_overdue = True
-        _vt_notify(db, tp.user_id, "⚠️ Late Submission Noted",
+        _vt_notify(db, tp.user_id, "Late Submission Noted",
                    f'Your video "{t.title}" was submitted after the deadline. '
                    f'Repeated delays may affect your payout.')
     uname = db.query(User).filter(User.id == tp.user_id).first()
@@ -2450,10 +2512,14 @@ def vt_submit(task_id: int, payload: dict = Body(...), db: Session = Depends(get
     # Production bridge: if this task is tracked by the production system, advance
     # its lifecycle so it appears in PM Review (never breaks the legacy flow).
     try:
-        if getattr(t, "lifecycle", "") in ("creator_assigned", "creator_working", "changes_required"):
+        if getattr(t, "lifecycle", "") in ("creator_assigned", "creator_working",
+                                            "changes_required", "reshoot_required"):
             import production_core as _pc
-            _pc.set_state(db, t, "pm_review", actor=current_user, event="teacher_submitted")
-            _pc.log_event(db, t, current_user, "approval_requested", new_state="pm_review")
+            _pc.set_state(db, t, "pm_review", actor=current_user, event="teacher_submitted",
+                          meta={"link": link, "note": "Video submitted" + ("" if t.on_time else " (delayed)")})
+            _pc.notify_pms(db, "Video Submitted for Review",
+                           f'{(uname.name if uname else "A teacher")} submitted "{t.title}" — ready for PM review.',
+                           "production", link=str(t.id))
     except Exception:
         pass
     db.commit()

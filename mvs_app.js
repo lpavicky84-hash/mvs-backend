@@ -8154,7 +8154,7 @@ function vtStatusOpen(id,who,ev){
     <div class="vt-tl-a">${esc(h.at||'')}</div>${h.note?`<div class="vt-tl-n">${esc(h.note)}</div>`:''}</div>`).join('');
   showModal(`Status History — ${esc(t.title)}`,`
     <div style="margin-bottom:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">${_vtPill(t,false)}<span style="font-size:.72rem;color:var(--text-muted);font-weight:700">current status</span></div>
-    ${t.is_collab?`<div class="cb-box" style="margin:0 0 14px"><div class="cb-head">${ic('users')} COLLAB TASK ${t.collab_all_verified?'<span class="cb-pill ok">All verified</span>':'<span class="cb-pill bad">Verify pending</span>'}</div><div class="cb-chips">${(t.collab_teachers||[]).map(c=>`<span class="cbnm ${c.verified?'ok':''}">${esc(c.name)}${c.verified?' — Approved':''}</span>`).join('')}</div></div>`:''}
+    ${t.is_collab?`<div class="cb-box" style="margin:0 0 14px"><div class="cb-head">${ic('users')} COLLAB TASK ${t.collab_all_verified?'<span class="cb-pill ok">All verified</span>':'<span class="cb-pill bad">Verify pending</span>'}</div><div class="cb-chips">${(t.collab_teachers||[]).map(c=>`<span class="cbnm ${c.verified?'ok':''}">${esc(c.name)}${c.verified?' — Approved':''}</span>`).join('')}</div><div style="margin-top:10px"><button class="btn btn-sm" onclick="aEditCollab(${t.id})">Edit Collaboration</button></div></div>`:''}
     <div class="vt-tl">${rows||'<div style="font-size:.8rem;color:var(--text-muted)">No history yet.</div>'}</div>`,
     `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
 }
@@ -8440,6 +8440,40 @@ document.addEventListener('click',function(e){
   if(e.target.closest && (e.target.closest('.ms-box')||e.target.closest('.ms-panel'))) return;
   document.querySelectorAll('.ms-panel').forEach(function(p){ p.style.display='none'; });
 });
+async function aEditCollab(taskId){
+  try{
+    const [detail, all] = await Promise.all([
+      api('/api/admin/video-tasks/'+taskId),
+      api('/api/admin/collab-teachers').catch(()=>({teachers:[]}))
+    ]);
+    const t=detail||{}; const teachers=(all&&all.teachers)||[];
+    const cols=t.collab_teachers||[];
+    let primaryId=null; const current={};
+    cols.forEach(c=>{ if(c.primary||c.id===t.teacher_id) primaryId=c.id; });
+    (t.collab_teacher_ids||[]).forEach(id=>{ current[id]=1; });
+    // fallback: derive current collaborators from cols (non-primary)
+    cols.forEach(c=>{ if(c.id!==primaryId) current[c.id]=1; });
+    const rows=teachers.map(tt=>{
+      const isPrimary=(tt.id===primaryId);
+      return `<label style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--border)">
+        <input type="checkbox" value="${tt.id}" ${current[tt.id]?'checked':''} ${isPrimary?'disabled checked':''} class="aec-chk">
+        <span style="flex:1">${esc(tt.name)}${isPrimary?' <span style="color:var(--accent);font-weight:700">(Primary)</span>':''}</span></label>`;
+    }).join('');
+    showModal('Edit Collaboration',
+      `<div style="font-size:.85rem;color:var(--text-muted);margin-bottom:10px">Tick the teachers who should collaborate on this task. The primary teacher cannot be removed.</div>
+       <div style="max-height:340px;overflow-y:auto">${rows}</div>`,
+      `<button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="aSaveCollab(${taskId},${primaryId||'null'})">Save Changes</button>`);
+  }catch(e){ toast((e&&e.message)||'Could not load',true); }
+}
+async function aSaveCollab(taskId,primaryId){
+  const ids=[]; document.querySelectorAll('.aec-chk').forEach(cb=>{ if(cb.checked && String(cb.value)!==String(primaryId)) ids.push(parseInt(cb.value)); });
+  try{
+    const r=await api('/api/admin/video-tasks/'+taskId+'/edit-collab','POST',{teacher_ids:ids});
+    closeModal();
+    toast('Collaboration updated'+((r.added||r.removed)?` (${r.added||0} added, ${r.removed||0} removed)`:''));
+    if(typeof loadAVTasks==='function') loadAVTasks();
+  }catch(e){ toast((e&&e.message)||'Failed',true); }
+}
 async function vtVerifyTeacher(taskId,teacherId,name,verified){
   const v=verified!==false;
   try{
@@ -15335,6 +15369,34 @@ function initResponsiveCss(){
     '@media(max-width:400px){',
     '  .tx-stats,.mstat-grid,.ovv-grid{grid-template-columns:1fr !important}',
     '  .today-tabs,.perf-tabs{flex-wrap:wrap}',
+    '}',
+    /* ===== comprehensive phone hardening — applies to every portal ===== */
+    '*{-webkit-tap-highlight-color:transparent}',
+    'body,.app,.main,.page,.card,.card-body{max-width:100%}',
+    '.main,.page,.card,.card-body,.modal,.modal-content{overflow-wrap:break-word;word-break:break-word}',
+    '@media(max-width:768px){',
+    '  .main{margin-left:0 !important;width:100% !important}',
+    '  [style*="grid-template-columns"]{grid-template-columns:repeat(auto-fill,minmax(140px,1fr)) !important}',
+    '  table{max-width:100%}',
+    '  pre,code{white-space:pre-wrap;word-break:break-word;max-width:100%;overflow-x:auto}',
+    '}',
+    '@media(max-width:600px){',
+    '  .modal,.modal-content,.dialog,.sheet,.popup{width:96vw !important;max-width:96vw !important;max-height:92vh !important;border-radius:16px !important;overflow-y:auto}',
+    '  .modal-actions,.dialog-actions,.form-actions,.btn-row,.actions{flex-wrap:wrap !important;gap:8px !important}',
+    '  .modal-actions .btn,.form-actions .btn,.actions .btn{flex:1 1 auto;min-width:120px}',
+    '  input,select,textarea{max-width:100%;font-size:16px}',  /* 16px stops iOS zoom */
+    '  .btn{min-height:40px}',
+    '  h1{font-size:1.35rem}h2{font-size:1.15rem}h3{font-size:1rem}',
+    '  .card{border-radius:14px}',
+    '  .chips,.chip-row,.tag-row,.pill-row{flex-wrap:wrap !important}',
+    '  .row,.flex-row,.hrow,.split{flex-wrap:wrap !important}',
+    '  .grid,.g2,.g3,.g4,.stat-grid,.kpi-grid,.metric-grid{grid-template-columns:1fr 1fr !important;gap:10px !important}',
+    '}',
+    '@media(max-width:380px){',
+    '  .grid,.g2,.g3,.g4,.stat-grid,.kpi-grid,.metric-grid{grid-template-columns:1fr !important}',
+    '  [style*="grid-template-columns"]{grid-template-columns:1fr 1fr !important}',
+    '  .topbar h2{font-size:.98rem}',
+    '  .btn{font-size:.86rem;padding:8px 12px}',
     '}'
   ].join('\n');
   document.head.appendChild(st);
@@ -18629,6 +18691,19 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.apa-tab{white-space:nowrap;flex:0 0 auto}',
 '.donut-wrap{flex-direction:column;text-align:center}',
 '.p-toolbar{flex-wrap:wrap;gap:8px}',
+'.pk-grid{grid-template-columns:repeat(2,1fr);gap:11px}',
+'.prodmain,.prod-body{width:100%!important;overflow-x:hidden}',
+'.ptc{width:100%}',
+'.pd-foot{position:sticky;bottom:0;background:var(--card,#fffdf7);z-index:2}',
+'.pd-foot .p-acts{flex-wrap:wrap;gap:8px}',
+'.pd-foot .p-btn{flex:1 1 auto;min-width:110px}',
+'.p-field input,.p-field select,.p-field textarea,.p-input,.p-select,.p-area{width:100%;font-size:16px}',
+'.p-sec{font-size:.95rem}',
+'.vv-vrow{flex-wrap:wrap}',
+'.rate-row{flex-wrap:wrap;gap:6px}',
+'.apa-rq{grid-template-columns:1fr 1fr}',
+'.prod-scrim{display:none;position:fixed;inset:0;z-index:55;background:rgba(15,10,4,.45)}',
+'.prodapp.side-open .prod-scrim{display:block}',
 '}',
 /* very small phones (<=380px): single-column KPIs, no horizontal overflow */
 '@media(max-width:380px){',
@@ -18783,7 +18858,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pn-item{padding:12px 14px;border-radius:10px;background:var(--card,#fffdf7);border:1px solid rgba(0,0,0,.06);margin-bottom:7px}',
 'body.dark .pn-item{background:#241d10;border-color:rgba(255,255,255,.06)}',
 '.pn-item.unread{border-left:3px solid #d1443a;background:linear-gradient(90deg,rgba(209,68,58,.06),transparent 70%);animation:pnBlink 2.2s ease-in-out infinite}',
-'.pn-item.unread .pn-title{font-weight:800}',
+'.pn-item.unread .pn-title,.pn-item.unread .pn-t{font-weight:800}',
+'.pn-item.unread .pn-t,.pn-item.unread .pn-title{color:#2c2415}',
+'body.dark .pn-item.unread .pn-t,body.dark .pn-item.unread .pn-title{color:#f0e6cf}',
 '@keyframes pnBlink{0%,100%{border-left-color:#d1443a}50%{border-left-color:rgba(209,68,58,.35)}}',
 '.pn-title{font-weight:600;font-size:.9rem;color:var(--text,#2c2415)}',
 '.pn-msg{font-size:.82rem;color:var(--text-muted,#8a7d5c);margin-top:2px}',
@@ -19004,6 +19081,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       window._prodNotifCache=r.notifications||[];
       _prodRenderNotifs(portal, r.notifications||[]);
       var dot=document.getElementById(portal+'-bell-dot'); var u=r.unread||0; if(dot){ dot.textContent=u>99?'99+':u; dot.style.display=u>0?'flex':'none'; }
+      // viewing the bell = read: clear the counter immediately, then persist
+      if(u>0){ try{ api(P[portal].api+'/notifications/read-all','POST').then(function(){ prodNotifRefreshDot(portal); }); }catch(e){} }
     }).catch(function(e){ var l=document.getElementById('pn-list'); if(l) l.innerHTML='<div class="pn-empty">Could not load.</div>'; });
   };
   function _prodBellOutside(e){
@@ -20617,6 +20696,41 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         }).join('')+'</div>';
     }).catch(function(){ box.innerHTML=''; });
   }
+  window.prodEditCollab=function(id){
+    Promise.all([ api(P.production.api+'/tasks/'+id+'/collab').catch(function(){return {};}),
+                  api(P.production.api+'/collab-teachers').catch(function(){return {teachers:[]};}) ]).then(function(res){
+      var col=res[0]||{}, all=(res[1]||{}).teachers||[];
+      var cols=col.collaborators||[];
+      var primaryId=null, current={};
+      cols.forEach(function(c){ if(c.primary) primaryId=c.id; else current[c.id]=1; });
+      var old=document.getElementById('prod-modal2'); if(old) old.remove();
+      var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal2'; dr.style.zIndex='120';
+      var rows=all.map(function(tt){
+        var isPrimary=(tt.id===primaryId);
+        return '<label class="an-chk" style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid rgba(140,125,92,.14)">'+
+          '<input type="checkbox" value="'+tt.id+'" '+(current[tt.id]?'checked':'')+(isPrimary?' disabled checked':'')+' class="ec-chk">'+
+          '<span style="flex:1">'+esc(tt.name)+(isPrimary?' <span style="color:#a9791f;font-weight:700">(Primary)</span>':'')+'</span></label>';
+      }).join('');
+      dr.innerHTML='<div class="p-modal" style="max-width:440px">'+
+        '<div class="pd-head"><div class="h-title">Edit Collaboration</div><button class="pd-x" onclick="document.getElementById(\'prod-modal2\').remove()">&times;</button></div>'+
+        '<div class="p-modal-body"><div class="pk-lbl" style="margin-bottom:10px">Tick the teachers who should collaborate on this task. The primary teacher cannot be removed.</div>'+
+        '<div style="max-height:320px;overflow-y:auto">'+rows+'</div></div>'+
+        '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="document.getElementById(\'prod-modal2\').remove()">Cancel</button>'+
+        '<button class="p-btn p-btn-primary" onclick="prodSaveCollab('+id+','+(primaryId||'null')+')">Save Changes</button></div></div>'+
+        '</div>';
+      dr.addEventListener('click',function(e){ if(e.target===dr) dr.remove(); });
+      document.body.appendChild(dr);
+    }).catch(function(e){ toast((e&&e.message)||'Could not load',true); });
+  };
+  window.prodSaveCollab=function(id,primaryId){
+    var ids=[]; document.querySelectorAll('#prod-modal2 .ec-chk').forEach(function(cb){ if(cb.checked && String(cb.value)!==String(primaryId)) ids.push(parseInt(cb.value)); });
+    _pBusy(true);
+    api(P.production.api+'/tasks/'+id+'/edit-collab','POST',{teacher_ids:ids}).then(function(r){
+      _pBusy(false); var m=document.getElementById('prod-modal2'); if(m) m.remove();
+      toast('Collaboration updated'+((r.added||r.removed)?(' ('+(r.added||0)+' added, '+(r.removed||0)+' removed)'):''));
+      prodDismiss(); _refresh('production');
+    }).catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
+  };
   window.prodVerifyTeacher=function(taskId,teacherId,verified){
     api(P.production.api+'/tasks/'+taskId+'/verify-teacher','POST',{teacher_id:teacherId,verified:verified})
       .then(function(r){ toast(verified?'Teacher verified':'Verification removed'); _loadCollab(taskId); })
@@ -20812,7 +20926,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(col && col.is_collab){
         var cols=col.collaborators||[];
         collabHtml='<div class="sh-collab"><div class="sh-collab-h">COLLAB TASK '+(col.all_verified?'<span class="sh-allv">All verified</span>':'<span class="sh-somev">'+cols.filter(function(x){return x.verified;}).length+'/'+cols.length+' verified</span>')+'</div>'+
-          cols.map(function(c){ return '<span class="sh-ct'+(c.verified?' ok':'')+'">'+esc(c.name)+' \u2014 '+(c.verified?'Approved':'Pending')+'</span>'; }).join('')+'</div>';
+          cols.map(function(c){ return '<span class="sh-ct'+(c.verified?' ok':'')+'">'+esc(c.name)+' \u2014 '+(c.verified?'Approved':'Pending')+(c.primary?' (Primary)':'')+'</span>'; }).join('')+
+          '<div style="margin-top:10px"><button class="p-btn p-btn-primary" onclick="prodEditCollab('+id+')">Edit Collaboration</button></div></div>';
       }
       var rows=tl.length?tl.map(function(e){
         var dot=_SH_DOT[e.event]||_SH_DOT[e.new]||'#b0a483';
