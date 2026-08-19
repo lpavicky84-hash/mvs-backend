@@ -416,6 +416,7 @@ def _ensure_production_columns():
         "ALTER TABLE video_tasks ADD COLUMN quality_dims TEXT",
         "ALTER TABLE video_tasks ADD COLUMN ontime_appreciated BOOLEAN DEFAULT 0",
         "ALTER TABLE video_tasks ADD COLUMN description TEXT",
+        "ALTER TABLE video_tasks ADD COLUMN thumbnail_required BOOLEAN DEFAULT 0",
     ]
     for _s in _stmts:
         try:

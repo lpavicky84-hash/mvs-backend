@@ -116,7 +116,16 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
     query = query.filter(or_(VideoTask.kind == None, VideoTask.kind == "",
                              VideoTask.kind == "normal"))
     if teacher_id:
-        query = query.filter(VideoTask.teacher_id == teacher_id)
+        # collab-aware: match the primary teacher OR any collaborator (precise JSON
+        # boundary patterns against json.dumps format "[2, 3]" so id 1 != 11).
+        _ts = str(teacher_id)
+        query = query.filter(or_(
+            VideoTask.teacher_id == teacher_id,
+            VideoTask.collab_teacher_ids == "[" + _ts + "]",
+            VideoTask.collab_teacher_ids.like("[" + _ts + ", %"),
+            VideoTask.collab_teacher_ids.like("%, " + _ts + ", %"),
+            VideoTask.collab_teacher_ids.like("%, " + _ts + "]"),
+        ))
     if channel:
         query = query.filter(VideoTask.channel_name == channel)
     if video_type:
@@ -178,7 +187,24 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
 @router.get("/tasks/{tid}")
 def pm_task_detail(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     t = _task(db, tid)
-    return pc.task_out(db, t, timeline=True)
+    out = pc.task_out(db, t, timeline=True)
+    # collab info for the edit modal (pre-checks collaborators)
+    try:
+        from video_tasks import (_collab_all_ids as _cai, _collab_vmap as _cvm,
+                                  _collab_extra_ids as _cei, _teacher_name as _ctn)
+        allids = _cai(t)
+        vmap = _cvm(t)
+        out["is_collab"] = len(allids) > 1
+        out["collab_teacher_ids"] = _cei(t)
+        out["collaborators"] = [{"id": i, "name": _ctn(db, i),
+                                 "verified": bool(vmap.get(str(i))),
+                                 "primary": (i == t.teacher_id)} for i in allids]
+    except Exception:
+        pass
+    out["thumbnail_required"] = bool(getattr(t, "thumbnail_required", False))
+    out["graphics_id"] = getattr(t, "graphics_id", None)
+    out["editor_id"] = getattr(t, "editor_id", None)
+    return out
 
 
 # ============================================================ CREATE TASK
@@ -238,8 +264,54 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
     db.add(t)
     db.flush()
     pc.ensure_ref_code(t)
+    # thumbnail requirement + optional pre-assignment of graphics designer and editor
+    t.thumbnail_required = bool(payload.get("thumbnail_required"))
+    try:
+        gid = int(payload.get("graphics_id") or 0)
+    except Exception:
+        gid = 0
+    if t.thumbnail_required and gid:
+        gp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == gid,
+                                                     ProductionStaffProfile.staff_role == "graphics").first()
+        if gp:
+            g = GraphicsTask(task_id=None, graphics_id=gid, status="pending",
+                             priority=(payload.get("priority") or "normal"))
+            # will be linked after flush; set fk once task has id
+            t.graphics_id = gid
+    try:
+        eid = int(payload.get("editor_id") or 0)
+    except Exception:
+        eid = 0
+    if eid:
+        ep = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == eid,
+                                                     ProductionStaffProfile.staff_role == "editor").first()
+        if ep:
+            t.editor_id = eid
     pc.set_state(db, t, "creator_assigned", actor=me, event="task_created")
     pc.log_event(db, t, me, "creator_assigned", new_state="creator_assigned")
+    db.flush()
+    # create the graphics sub-task now that the task has an id, and notify the designer
+    if t.thumbnail_required and t.graphics_id:
+        gp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.graphics_id).first()
+        existing = db.query(GraphicsTask).filter(GraphicsTask.task_id == t.id).first()
+        if not existing:
+            g = GraphicsTask(task_id=t.id, graphics_id=t.graphics_id, status="pending",
+                             priority=(payload.get("priority") or "normal"))
+            gdl = (payload.get("graphics_deadline") or payload.get("deadline") or "").strip()
+            if gdl:
+                try:
+                    g.deadline = datetime.fromisoformat(gdl.replace("Z", ""))
+                except Exception:
+                    pass
+            db.add(g)
+        if gp and gp.user_id:
+            pc.notify(db, gp.user_id, "New Thumbnail Task",
+                      f'A thumbnail has been requested for "{title}".', "graphics_task", link=str(t.id))
+    if t.editor_id:
+        ep = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
+        if ep and ep.user_id:
+            pc.notify(db, ep.user_id, "You are the editor for an upcoming video",
+                      f'You have been pre-assigned to edit "{title}" once it is ready.', "video_task", link=str(t.id))
     # notify creator
     if ctype == "teacher":
         tp = db.query(TeacherProfile).filter(TeacherProfile.id == t.teacher_id).first()
@@ -747,10 +819,22 @@ def pm_creators(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
 
     teachers = []
     for tp in db.query(TeacherProfile).all():
-        base = db.query(VideoTask).filter(VideoTask.creator_type == "teacher", VideoTask.teacher_id == tp.id)
+        # collab-aware: a collab video counts for every collaborator separately (same
+        # precise JSON-boundary matching used by the task list).
+        _ts = str(tp.id)
+        base = db.query(VideoTask).filter(VideoTask.creator_type == "teacher", or_(
+            VideoTask.teacher_id == tp.id,
+            VideoTask.collab_teacher_ids == "[" + _ts + "]",
+            VideoTask.collab_teacher_ids.like("[" + _ts + ", %"),
+            VideoTask.collab_teacher_ids.like("%, " + _ts + ", %"),
+            VideoTask.collab_teacher_ids.like("%, " + _ts + "]"),
+        ))
         if base.count() == 0:
             continue
         s = stats_for(base); s["name"] = tp.user.name if tp.user else ""; s["id"] = tp.id
+        # how many of these are collaborations (shown separately, like the admin panel)
+        s["collab_videos"] = base.filter(VideoTask.collab_teacher_ids != None,
+                                         VideoTask.collab_teacher_ids != "").count()
         teachers.append(s)
     teachers.sort(key=lambda x: x["videos"], reverse=True)
 
@@ -1916,6 +2000,47 @@ def pm_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_
     for f in ("subject", "video_type", "channel_name", "reference", "remarks", "streaming", "thumbnail_link"):
         if f in payload:
             setattr(t, f, (payload.get(f) or "").strip())
+    # thumbnail requirement + graphics designer (create/assign the sub-task if needed)
+    if "thumbnail_required" in payload:
+        t.thumbnail_required = bool(payload.get("thumbnail_required"))
+    if "graphics_id" in payload:
+        try:
+            gid = int(payload.get("graphics_id") or 0)
+        except Exception:
+            gid = 0
+        if gid:
+            gp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == gid,
+                                                         ProductionStaffProfile.staff_role == "graphics").first()
+            if gp:
+                t.graphics_id = gid
+                g = db.query(GraphicsTask).filter(GraphicsTask.task_id == t.id).first()
+                if not g:
+                    g = GraphicsTask(task_id=t.id, graphics_id=gid, status="pending",
+                                     priority=(t.priority or "normal"))
+                    db.add(g)
+                else:
+                    g.graphics_id = gid
+                if gp.user_id:
+                    pc.notify(db, gp.user_id, "Thumbnail task assigned",
+                              f'You have been assigned the thumbnail for "{t.title}".', "graphics_task", link=str(t.id))
+        else:
+            t.graphics_id = None
+    if "editor_id" in payload:
+        try:
+            eid = int(payload.get("editor_id") or 0)
+        except Exception:
+            eid = 0
+        if eid:
+            ep = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == eid,
+                                                         ProductionStaffProfile.staff_role == "editor").first()
+            if ep:
+                prev = t.editor_id
+                t.editor_id = eid
+                if ep.user_id and prev != eid:
+                    pc.notify(db, ep.user_id, "You are the editor for a video",
+                              f'You have been assigned to edit "{t.title}".', "video_task", link=str(t.id))
+        else:
+            t.editor_id = None
     try:
         pc.log_event(db, t, me, t.lifecycle, note="Edited by production manager")
     except Exception:

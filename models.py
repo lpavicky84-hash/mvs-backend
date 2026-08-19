@@ -511,6 +511,7 @@ class VideoTask(Base):
     priority        = Column(String(10), default="normal") # normal | urgent
     editor_id       = Column(Integer, ForeignKey("production_staff_profiles.id"), nullable=True)
     graphics_id     = Column(Integer, ForeignKey("production_staff_profiles.id"), nullable=True)
+    thumbnail_required  = Column(Boolean, default=False)   # PM wants a thumbnail for this task
     editing_progress = Column(Integer, default=0)          # 0..100
     editing_started_at = Column(DateTime, nullable=True)
     editing_done_at    = Column(DateTime, nullable=True)
