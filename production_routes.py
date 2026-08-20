@@ -401,10 +401,29 @@ def reject_creator(tid: int, payload: dict = Body(...),
     if not remarks:
         raise HTTPException(400, "Remarks are required for rejection")
     t = _task(db, tid)
+    # If a new deadline is given (or resubmit requested), send it back for re-submission
+    # instead of a final reject.
+    want_resubmit = bool(payload.get("allow_resubmit")) or bool((payload.get("new_deadline") or "").strip())
     db.add(TaskReview(task_id=t.id, kind="creator", reviewer_user_id=me.id,
                       decision="rejected", remarks=remarks))
-    pc.set_state(db, t, "rejected", actor=me, event="rejected")
-    _notify_creator(db, t, "Rejected", remarks[:180])
+    if want_resubmit:
+        old_dl, new_dl_str = _apply_new_deadline(t, payload, require=True)
+        try:
+            t.no_resubmit = False
+        except Exception:
+            pass
+        pc.set_state(db, t, "changes_required", actor=me, event="changes_requested",
+                     meta={"note": remarks[:200], "old_deadline": old_dl, "new_deadline": new_dl_str})
+        _notify_creator(db, t, "Resubmit Required",
+                        (remarks[:160] + " — new deadline: " + new_dl_str) if new_dl_str else remarks[:180])
+    else:
+        try:
+            t.no_resubmit = True
+        except Exception:
+            pass
+        pc.set_state(db, t, "rejected", actor=me, event="rejected")
+        _notify_creator(db, t, "Rejected — no re-submission",
+                        remarks[:180] + " No re-submission is required.")
     db.commit()
     return {"ok": True, "lifecycle": t.lifecycle}
 

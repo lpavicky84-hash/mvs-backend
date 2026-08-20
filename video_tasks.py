@@ -1005,6 +1005,7 @@ def _task_out(db, t, with_thumb=True, tname_map=None):
         "reviewed": bool(t.reviewed),
         "review_remarks": t.review_remarks or "",
         "reject_count": t.reject_count or 0,
+        "no_resubmit": bool(getattr(t, "no_resubmit", False)),
         "kind": getattr(t, "kind", "normal") or "normal",
         "subject": getattr(t, "subject", "") or "",
         "weekly_quota": getattr(t, "weekly_quota", 0) or 0,
@@ -1036,6 +1037,48 @@ def _task_out(db, t, with_thumb=True, tname_map=None):
     out["submitted_by_name"] = _tn(out["submitted_by"]) if out["submitted_by"] else ""
     if with_thumb:
         out["thumbnail_b64"] = t.thumbnail_b64 or ""
+    # ---- thumbnail (graphics) status so the creator knows if a thumbnail is coming
+    out["thumbnail_required"] = bool(getattr(t, "thumbnail_required", False))
+    # ---- production assignment info (so admin/PM cards can assign editor & graphics)
+    out["lifecycle"] = getattr(t, "lifecycle", "") or ""
+    out["editor_id"] = getattr(t, "editor_id", None)
+    out["graphics_id"] = getattr(t, "graphics_id", None)
+    try:
+        from models import ProductionStaffProfile as _PSPx
+        if out["editor_id"]:
+            ep = db.query(_PSPx).filter(_PSPx.id == out["editor_id"]).first()
+            out["editor_name"] = (ep.user.name if ep and ep.user else "") or ""
+        else:
+            out["editor_name"] = ""
+        if out["graphics_id"]:
+            gpx = db.query(_PSPx).filter(_PSPx.id == out["graphics_id"]).first()
+            out["graphics_name"] = (gpx.user.name if gpx and gpx.user else "") or ""
+        else:
+            out["graphics_name"] = ""
+    except Exception:
+        out["editor_name"] = ""; out["graphics_name"] = ""
+    try:
+        if out["thumbnail_required"] or getattr(t, "graphics_id", None):
+            from models import GraphicsTask as _GTt, ProductionStaffProfile as _PSP
+            g = db.query(_GTt).filter(_GTt.task_id == t.id).order_by(_GTt.id.desc()).first()
+            if g:
+                designer = ""
+                gp = db.query(_PSP).filter(_PSP.id == g.graphics_id).first()
+                if gp and gp.user:
+                    designer = gp.user.name or ""
+                _tsecs = int((g.deadline - _now_ist()).total_seconds()) if g.deadline else None
+                out["thumbnail"] = {
+                    "status": g.status or "pending",
+                    "designer": designer,
+                    "deadline": g.deadline.strftime("%d %b %Y, %I:%M %p") if g.deadline else "",
+                    "seconds_left": _tsecs,
+                    "overdue": bool(_tsecs is not None and _tsecs < 0 and (g.status or "") not in ("approved", "submitted")),
+                    "url": g.thumbnail_url or g.drive_link or "",
+                    "approved": (g.status or "") == "approved",
+                    "pending": (g.status or "pending") not in ("approved",),
+                }
+    except Exception:
+        pass
     return out
 
 
@@ -1080,7 +1123,8 @@ def vt_task_rank_rows(db):
     for tp in tps:
         tasks = (db.query(VideoTask)
                  .filter(VideoTask.teacher_id == tp.id,
-                         VideoTask.proposal_ok != "pending", NOT_SPECIAL).all())
+                         VideoTask.proposal_ok != "pending", NOT_SPECIAL,
+                         VideoTask.cancelled.isnot(True)).all())
         # collab tasks alag — Collab row me jaayenge (primary ko attribute nahi)
         solo = []
         for t in tasks:
@@ -1544,7 +1588,8 @@ def vt_admin_list(teacher_id: int = 0, status: str = "", channel_id: int = 0,
                   db: Session = Depends(get_db), _=Depends(get_admin)):
     _seed_channels(db)
     _vt_sweep(db)
-    q = db.query(VideoTask).filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL)
+    q = db.query(VideoTask).filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL,
+                                   VideoTask.cancelled.isnot(True))
     if teacher_id:
         q = q.filter(VideoTask.teacher_id == teacher_id)
     if status:
@@ -1554,9 +1599,11 @@ def vt_admin_list(teacher_id: int = 0, status: str = "", channel_id: int = 0,
     if video_type:
         q = q.filter(VideoTask.video_type == video_type)
     tasks = q.order_by(VideoTask.created_at.desc()).all()
-    props = (db.query(VideoTask).filter(VideoTask.proposal_ok == "pending")
+    props = (db.query(VideoTask).filter(VideoTask.proposal_ok == "pending",
+                                        VideoTask.cancelled.isnot(True))
              .order_by(VideoTask.created_at.desc()).all())
-    urgent = (db.query(VideoTask).filter(VideoTask.kind == "urgent")
+    urgent = (db.query(VideoTask).filter(VideoTask.kind == "urgent",
+                                         VideoTask.cancelled.isnot(True))
               .order_by(VideoTask.created_at.desc()).all())
     _tnm = _all_teacher_names(db)   # ek query — per-task N+1 khatam (fast)
     return {"tasks": [_task_out(db, t, tname_map=_tnm) for t in tasks],
@@ -1572,12 +1619,15 @@ def vt_admin_badge(db: Session = Depends(get_db), _=Depends(get_admin)):
     checking = (db.query(VideoTask)
                 .filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL,
                         VideoTask.status == "submitted",
-                        VideoTask.reviewed.isnot(True))
+                        VideoTask.reviewed.isnot(True),
+                        VideoTask.cancelled.isnot(True))
                 .count())
-    proposals = db.query(VideoTask).filter(VideoTask.proposal_ok == "pending").count()
+    proposals = db.query(VideoTask).filter(VideoTask.proposal_ok == "pending",
+                                           VideoTask.cancelled.isnot(True)).count()
     urgent = (db.query(VideoTask)
               .filter(VideoTask.kind == "urgent",
-                      VideoTask.status != "uploaded")
+                      VideoTask.status != "uploaded",
+                      VideoTask.cancelled.isnot(True))
               .count())
     return {"checking": checking, "proposals": proposals,
             "urgent": urgent,
@@ -1589,7 +1639,8 @@ def vt_admin_stats(db: Session = Depends(get_db), _=Depends(get_admin)):
     _seed_channels(db)
     _vt_sweep(db)
     tasks = (db.query(VideoTask)
-             .filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL).all())
+             .filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL,
+                     VideoTask.cancelled.isnot(True)).all())
     now = _now_ist()
     total = len(tasks)
     done = sum(1 for t in tasks if t.submitted_at)
@@ -1628,9 +1679,10 @@ def vt_review(task_id: int, payload: dict = Body(...),
     uid = tp.user_id if tp else None
 
     if action in ("rejected", "reshoot"):
+        final = bool(payload.get("final") or payload.get("no_resubmit"))
         ndl = _parse_deadline(payload.get("new_deadline"))
-        if not ndl:
-            raise HTTPException(400, "A new deadline is required")
+        if not final and not ndl:
+            raise HTTPException(400, "Set a new deadline, or choose Final reject (no re-submission)")
         t.status = action            # "reshoot" / "rejected" — filter me track hota hai
         t.reject_count = (t.reject_count or 0) + 1
         t.reviewed = True
@@ -1638,19 +1690,32 @@ def vt_review(task_id: int, payload: dict = Body(...),
         t.submitted_link = ""
         t.submitted_at = None
         t.on_time = None
-        t.deadline = ndl
         t.warned_24h = False
         t.warned_overdue = False
+        t.no_resubmit = final
         _word = "Reshoot" if action == "reshoot" else "Rejected"
-        _hist_add(t, action, ("%s — sent back for re-submission" % _word)
-                  + (f": {remarks}" if remarks else "")
-                  + " — new deadline: " + ndl.strftime("%d %b %Y, %I:%M %p"))
-        if uid:
-            _vt_notify(db, uid, f"↩️ Video Task Sent Back — {_word}",
-                       f'Your submission for "{t.title}" needs a {_word.lower()}'
-                       + (f': {remarks}' if remarks else '.')
-                       + f' New deadline: {ndl.strftime("%d %b %Y, %I:%M %p")}. '
-                       f'Please submit again from My Tasks.')
+        if final:
+            # final: no re-submission — only remarks are shown to the creator
+            _hist_add(t, action, ("%s — final, no re-submission" % _word)
+                      + (f": {remarks}" if remarks else ""))
+            if uid:
+                _vt_notify(db, uid, f"Video Task {_word} — no re-submission",
+                           f'Your submission for "{t.title}" was {_word.lower()}.'
+                           + (f' Remarks: {remarks}' if remarks else '')
+                           + ' No re-submission is required.',
+                           link=str(t.id))
+        else:
+            t.deadline = ndl
+            _hist_add(t, action, ("%s — sent back for re-submission" % _word)
+                      + (f": {remarks}" if remarks else "")
+                      + " — new deadline: " + ndl.strftime("%d %b %Y, %I:%M %p"))
+            if uid:
+                _vt_notify(db, uid, f"Video Task Sent Back — {_word}",
+                           f'Your submission for "{t.title}" needs a {_word.lower()}'
+                           + (f': {remarks}' if remarks else '.')
+                           + f' New deadline: {ndl.strftime("%d %b %Y, %I:%M %p")}. '
+                           f'Please submit again from My Tasks.',
+                           link=str(t.id))
     else:
         t.status = action
         t.reviewed = True
@@ -2237,7 +2302,8 @@ def vt_report_csv(teacher_id: int = 0, status: str = "", channel_id: int = 0,
                   db: Session = Depends(get_db), _=Depends(get_admin)):
     import csv
     import io
-    q = db.query(VideoTask).filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL)
+    q = db.query(VideoTask).filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL,
+                                   VideoTask.cancelled.isnot(True))
     if teacher_id:
         q = q.filter(VideoTask.teacher_id == teacher_id)
     if status:
@@ -2286,6 +2352,7 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
         tasks = (db.query(VideoTask)
                  .filter(or_(VideoTask.teacher_id == tp.id,
                              VideoTask.collab_teacher_ids.like('%' + str(tp.id) + '%')),
+                         VideoTask.cancelled.isnot(True),
                          or_(NOT_SPECIAL, VideoTask.kind == "urgent"))
                  .order_by(VideoTask.created_at.desc()).all())
         tasks = [t for t in tasks if tp.id in _collab_all_ids(t)]
@@ -2293,6 +2360,7 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
         # models me collab column abhi na ho to sirf primary teacher ke tasks
         tasks = (db.query(VideoTask)
                  .filter(VideoTask.teacher_id == tp.id,
+                         VideoTask.cancelled.isnot(True),
                          or_(NOT_SPECIAL, VideoTask.kind == "urgent"))
                  .order_by(VideoTask.created_at.desc()).all())
     active = [t for t in tasks if t.status == "assigned" and t.proposal_ok != "pending"]
@@ -2325,12 +2393,14 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
         spts = (db.query(VideoTask)
                 .filter(or_(VideoTask.teacher_id == tp.id,
                             VideoTask.collab_teacher_ids.like('%' + str(tp.id) + '%')),
+                        VideoTask.cancelled.isnot(True),
                         VideoTask.kind.in_(["one_shot", "rapid_revision", "project"]))
                 .order_by(VideoTask.kind.asc(), VideoTask.subject.asc()).all())
         spts = [t for t in spts if tp.id in _collab_all_ids(t)]
     except Exception:
         spts = (db.query(VideoTask)
                 .filter(VideoTask.teacher_id == tp.id,
+                        VideoTask.cancelled.isnot(True),
                         VideoTask.kind.in_(["one_shot", "rapid_revision", "project"]))
                 .order_by(VideoTask.kind.asc(), VideoTask.subject.asc()).all())
     # legacy "All Subjects"/empty-subject card kabhi na dikhe — sirf subject-wise cards

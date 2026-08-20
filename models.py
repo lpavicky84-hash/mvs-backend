@@ -483,6 +483,7 @@ class VideoTask(Base):
     reviewed       = Column(Boolean, default=False)       # admin check = checking blink off
     review_remarks = Column(Text, default="")             # rejection reason etc.
     reject_count   = Column(Integer, default=0)
+    no_resubmit         = Column(Boolean, default=False)   # rejected with no re-submission allowed
     warned_24h     = Column(Boolean, default=False)
     warned_overdue = Column(Boolean, default=False)
     kind           = Column(String(20), default="normal") # normal | one_shot | rapid_revision | project

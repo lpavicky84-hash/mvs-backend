@@ -411,7 +411,7 @@ let countdownTimer = null;
 // stale nahi rehta. Login/logout pe bhi clear hota hai.
 const _apiCache={};
 const _API_TTL=60000;
-const _API_NOCACHE=/notifications|heartbeat|\/photo|\/image|\/voice|\/file|\/download|\/pdf|\/content|\/badge|video-tasks\/my|production\/tasks|\/collab/i;
+const _API_NOCACHE=/notifications|heartbeat|\/photo|\/image|\/voice|\/file|\/download|\/pdf|\/content|\/badge|video-tasks\/my|video-tasks\b|production\/tasks|\/collab/i;
 let _curLoader=null;        // current page ka loader — background refresh aane par isse re-render
 let _swrT=null;
 function _swrRerender(){
@@ -839,7 +839,7 @@ async function openNotifPanel(role){
   const fbPage=role==='admin'?'dashboard':'notifications';
   const html=list.length?list.map(n=>{
     const hasLink=!!n.link;
-    const click=hasLink?`notifLinkOpen('${role}',${n.id},'${encodeURIComponent(n.link)}')`:`notifGo('${role}',${n.id},'${esc(n.notif_type||'')}','${fbPage}')`;
+    const click=hasLink?`notifLinkOpen('${role}',${n.id},'${encodeURIComponent(n.link)}','${esc(n.notif_type||'')}','${fbPage}')`:`notifGo('${role}',${n.id},'${esc(n.notif_type||'')}','${fbPage}')`;
     const unread=!n.is_read;
     const hint=hasLink?` <span style="font-size:.68rem;color:var(--primary);font-weight:800">Open Link &#8250;</span>`:' <span style="font-size:.68rem;color:var(--primary);font-weight:800">&#8250;</span>';
     const isBroadcast=(n.notif_type==='admin_broadcast');
@@ -869,11 +869,44 @@ function _setBellUnread(role,on){
   const b=document.getElementById((role==='teacher'?'t':role==='admin'?'a':'s')+'-notif-badge');
   const w=b&&b.closest('.bell-wrap'); if(w) w.classList.toggle('has-unread',!!on);
 }
-async function notifLinkOpen(role,id,encLink){
+async function notifLinkOpen(role,id,encLink,ntype,fbPage){
   try{ await api(notifEp(role,'/notifications/'+id+'/read'),'PATCH'); }catch(e){}
   const link=decodeURIComponent(encLink||'');
+  try{ refreshNotifBadge(role); }catch(e){}
+  // Real URL -> open in a new tab
+  if(/^https?:\/\//i.test(link)){ if(link) window.open(link,'_blank','noopener'); openNotifPanel(role); return; }
+  // Numeric task id -> navigate INSIDE the app to that task and highlight it
+  const tid=parseInt(link,10);
+  if(tid && (''+tid)===link.trim()){
+    closeModal();
+    const page=_notifResolvePage(role,ntype||'video_task',fbPage||'vtasks');
+    if(page){
+      const navTo=(role==='teacher')?tPage:(role==='admin')?aPage:sPage;
+      try{ navTo(page,null); }catch(e){}
+      const appId=role==='teacher'?'teacher-app':role==='admin'?'admin-app':'student-app';
+      document.querySelectorAll('#'+appId+' .nav-item').forEach(el=>{ el.classList.remove('active'); if((el.getAttribute('onclick')||'').includes("'"+page+"'")) el.classList.add('active'); });
+    }
+    setTimeout(()=>_focusTaskCard(tid),650);
+    return;
+  }
   if(link) window.open(link,'_blank','noopener');
-  refreshNotifBadge(role); openNotifPanel(role);
+  openNotifPanel(role);
+}
+function _focusTaskCard(tid){
+  // find the task card by any known data-attribute and scroll+flash it
+  let el=document.querySelector('[data-tid-card="'+tid+'"]')
+      || document.querySelector('.vt-card [id="tvt-link-'+tid+'"]')
+      || document.querySelector('[data-vt-cd="'+tid+'"]');
+  if(el && !el.classList.contains('vt-card')){ const c=el.closest('.vt-card'); if(c) el=c; }
+  if(!el){
+    // retry once after lists finish loading
+    setTimeout(()=>{ let e2=document.querySelector('[data-tid-card="'+tid+'"]'); if(e2){ e2.scrollIntoView({behavior:'smooth',block:'center'}); _flashCard(e2); } },900);
+    return;
+  }
+  el.scrollIntoView({behavior:'smooth',block:'center'}); _flashCard(el);
+}
+function _flashCard(el){
+  try{ el.style.transition='box-shadow .3s'; const prev=el.style.boxShadow; el.style.boxShadow='0 0 0 3px var(--primary)'; setTimeout(()=>{ el.style.boxShadow=prev||''; },1600); }catch(e){}
 }
 async function markAllRead(role){
   let list;
@@ -7594,9 +7627,15 @@ async function loadTVTasks(){
         ?(t.on_time===true?`<span class="vt-up-ok">${ic('check')} Uploaded on time</span>`
          :t.on_time===false?`<span class="vt-up-late">${ic('alert')} Upload delayed vs the deadline</span>`:'')
         :`<span class="vt-up-wait">${ic('clock')} Awaiting upload — publish before the deadline</span>`):'';
-      const _open=(t.status==='assigned'||t.status==='reshoot'||t.status==='rejected');
+      const _open=(t.status==='assigned'||t.status==='reshoot'||t.status==='rejected')&&!t.no_resubmit;
+      const _finalRej=(t.status==='rejected'||t.status==='reshoot')&&t.no_resubmit;
       const _sbHead=(t.status==='reshoot')?`<div class="vt-resh-head">${ic('refresh')} Reshoot needed${t.review_remarks?` — ${esc(t.review_remarks)}`:''}</div>`
         :(t.status==='rejected')?`<div class="vt-resh-head" style="background:rgba(220,38,38,.1);color:#b91c1c;border-color:rgba(220,38,38,.35)">${ic('alert')} Rejected${t.review_remarks?` — ${esc(t.review_remarks)}`:''}</div>`:'';
+      const finalRejBox=_finalRej?`
+        <div class="vt-subm" style="border-color:rgba(220,38,38,.35);background:rgba(220,38,38,.06)">
+          <div class="vs-h" style="color:#b91c1c">${ic('alert')} ${t.status==='reshoot'?'Reshoot closed':'Rejected'} — no re-submission needed</div>
+          ${t.review_remarks?`<div class="vt-subm-note" style="color:var(--text)">Remarks: ${esc(t.review_remarks)}</div>`:'<div class="vt-subm-note">This task was closed by the manager.</div>'}
+        </div>`:'';
       const subBox=_open?`
         <div class="vt-subm">
           ${_sbHead}
@@ -7621,7 +7660,7 @@ async function loadTVTasks(){
             : `<div class="vts-h vts-blink">${ic('image')} Thumbnail pending${th.designer?` — ${esc(th.designer)} is designing it`:''}</div>${th.deadline?`<div class="vts-sub">Expected by <b>${esc(th.deadline)}</b>${th.overdue?' <span class="vts-late">· overdue</span>':''}</div>`:`<div class="vts-sub">A thumbnail will be provided for this video.</div>`}`
           }
         </div>`:'';
-      return `<div class="vt-card st-${t.status}">${_vtThumb(t,'t')}<div class="vt-body">
+      return `<div class="vt-card st-${t.status}" data-tid-card="${t.id}">${_vtThumb(t,'t')}<div class="vt-body">
         <div class="vt-chips">${propNote}${t.is_collab?_vtCollabChip(t,'t'):''}${t.kind==='urgent'?`<span class="vt-pill" style="background:rgba(220,38,38,.15);color:#dc2626;font-weight:800">${ic('alert')} URGENT</span>`:''}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
         <div class="vt-title">${esc(t.title)}</div>
         <div class="vt-meta">
@@ -7634,7 +7673,7 @@ async function loadTVTasks(){
           ${!_open&&t.review_remarks?`<span>Review remarks: ${esc(t.review_remarks)}</span>`:''}
           ${t.reject_count>0?`<span style="color:var(--text-muted);font-weight:700">Reshoot/Rejection count: ${t.reject_count}</span>`:''}
         </div>
-        ${thumbBox}${rejNote}${subBox}${doneBox}
+        ${thumbBox}${rejNote}${subBox}${finalRejBox}${doneBox}
       </div></div>`;
     };
     // ---- v73: master Task/Project cards + subject & type filters ----
@@ -8320,9 +8359,16 @@ function _avtCard(t){
       const delTaskBtn=`<button class="btn btn-ghost btn-sm vt-del" onclick="vtDeleteTask(${t.id})" title="Delete this task permanently">${ic('trash')} Delete</button>`;
       const ytBtn=`<button class="btn btn-ghost btn-sm" onclick="openVtYtLink(${t.id},'${esc(t.youtube_url||'').replace(/'/g,'')}')" title="Post the published YouTube link">${ic('play')} ${t.youtube_url?'Edit YT Link':'Post YT Link'}</button>`;
       const histBtn=`<button class="btn btn-ghost btn-sm" onclick="vtStatusOpen(${t.id},'a',event)" title="See the full status timeline">${ic('history')} Timeline</button>`;
-      return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-done="${t.submitted_at?1:0}" data-pending="${(t.status==='assigned'||t.status==='reshoot'||t.status==='rejected')?1:0}" data-delayed="${t.submitted_at&&!t.on_time?1:0}" data-collab="${t.is_collab?1:0}" data-collabdone="${t.is_collab?(t.collab_all_verified?1:0):''}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
+      const _lcAssign=['approved','editor_assigned','editing','editing_paused','editing_done','qc_pending','qc_changes','ready_for_youtube'];
+      const asgEditorBtn=(_lcAssign.indexOf(t.lifecycle)>=0 && !t.editor_id)
+        ?`<button class="btn btn-ghost btn-sm" onclick="aAssignProd(${t.id},'editor')" title="Assign an editor to this approved video">${ic('play')} Assign Editor</button>`:'';
+      const asgGfxBtn=(['approved','editor_assigned','editing'].indexOf(t.lifecycle)>=0 && !t.graphics_id)
+        ?`<button class="btn btn-ghost btn-sm" onclick="aAssignProd(${t.id},'graphics')" title="Assign a graphics designer for the thumbnail">${ic('image')} Assign Graphics</button>`:'';
+      const asgInfo=(t.editor_name||t.graphics_name)
+        ?`<span class="vt-pill editing_soon" style="cursor:default">${[t.editor_name?('Editor: '+esc(t.editor_name)):'',t.graphics_name?('Graphics: '+esc(t.graphics_name)):''].filter(Boolean).join(' · ')}</span>`:'';
+      return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-tid-card="${t.id}" data-done="${t.submitted_at?1:0}" data-pending="${(t.status==='assigned'||t.status==='reshoot'||t.status==='rejected')?1:0}" data-delayed="${t.submitted_at&&!t.on_time?1:0}" data-collab="${t.is_collab?1:0}" data-collabdone="${t.is_collab?(t.collab_all_verified?1:0):''}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
         <div class="vt-title">${esc(t.title)}${t.is_collab?_vtCollabChip(t,'a'):''}${t.status==='submitted'?`<span class="vt-newsub">${ic('bell')} NEW · ${t.is_collab?'Collab':esc(t.submitted_by_name||t.teacher)}</span>`:''}</div>
-        <div class="vt-chips">${t.is_collab?`<span class="vt-pill assigned" style="cursor:pointer" onclick="event.stopPropagation();vtCollabPopup(${t.id},'a')">${ic('users')} Collab</span>`:`<span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>`}${t.is_old?`<span class="vt-pill" style="background:rgba(120,113,108,.18);color:#78716c;font-weight:800">OLD · not counted</span>`:''}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}</div>
+        <div class="vt-chips">${t.is_collab?`<span class="vt-pill assigned" style="cursor:pointer" onclick="event.stopPropagation();vtCollabPopup(${t.id},'a')">${ic('users')} Collab</span>`:`<span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>`}${t.is_old?`<span class="vt-pill" style="background:rgba(120,113,108,.18);color:#78716c;font-weight:800">OLD · not counted</span>`:''}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}${asgInfo}</div>
         <div class="vt-meta">
           <span class="${dlBlink}">${ic('clock')} ${dlLbl}: <b>${esc(t.deadline_nice)}</b>${t.status==='assigned'&&t.seconds_left!=null?` · <span data-vt-cd="${t.id}" data-secs="${t.seconds_left}"></span>`:''}</span>
           ${t.submitted_at?`<span>${ic('check')} Submitted: <b>${esc(t.submitted_at)}</b>${isU?'':` ${t.on_time===true?'(on time)':(t.on_time===false?'(delayed)':'')}`}</span>`:''}
@@ -8334,10 +8380,36 @@ function _avtCard(t){
         </div>
         <div class="vt-foot">
           ${t.submitted_link?`<a class="btn btn-ghost btn-sm" href="${esc(t.submitted_link)}" target="_blank" rel="noopener">${ic('link')} Open Video</a>`:''}
-          ${histBtn}${reviewBtn}${editBtn}${editTaskBtn}${ytBtn}${notifyBtn}
+          ${histBtn}${reviewBtn}${editBtn}${editTaskBtn}${asgEditorBtn}${asgGfxBtn}${ytBtn}${notifyBtn}
           <button class="btn btn-ghost btn-sm" onclick="vtMarkOld(${t.id},${t.is_old?'false':'true'})" title="Old = pre-portal content, will not count this month">${t.is_old?ic('refresh')+' Mark as New':ic('clock')+' Mark as Old'}</button>
           ${delTaskBtn}
         </div></div></div>`;
+}
+async function aAssignProd(id, role){
+  // role: 'editor' | 'graphics' — admin assigns from the video-task card using the production endpoints
+  try{
+    const ppl=await api('/api/production/people');
+    const list=(role==='editor')?(ppl.editors||[]):(ppl.graphics||[]);
+    if(!list.length){ toast('No '+(role==='editor'?'editors':'graphics designers')+' available. Add them under Production Team first.',true); return; }
+    const label=(role==='editor')?'Editor':'Graphics Designer';
+    const opts=list.map(p=>`<option value="${p.id}">${esc(p.name)}${p.active!=null?` · ${p.active} active`:''}</option>`).join('');
+    const extra=(role==='graphics')?`<div class="form-group"><label>Thumbnail deadline (optional)</label><input id="aap-deadline" type="datetime-local" class="input"></div>`:'';
+    showModal(`Assign ${label}`,
+      `<div class="form-group"><label>Choose ${label.toLowerCase()}</label><select id="aap-sel" class="input"><option value="">Select...</option>${opts}</select></div>${extra}`,
+      `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="aAssignProdSave(${id},'${role}')">${ic('check')} Assign</button>`);
+  }catch(e){ toast((e&&e.message)||'Could not load team',true); }
+}
+async function aAssignProdSave(id, role){
+  const sel=document.getElementById('aap-sel'); const val=sel?sel.value:'';
+  if(!val){ toast('Please choose someone',true); return; }
+  const body=(role==='editor')?{editor_id:parseInt(val,10)}:{graphics_id:parseInt(val,10)};
+  if(role==='graphics'){ const dl=document.getElementById('aap-deadline'); if(dl&&dl.value) body.deadline=dl.value; }
+  const path=(role==='editor')?`/api/production/tasks/${id}/assign-editor`:`/api/production/tasks/${id}/assign-graphics`;
+  try{
+    await api(path,'POST',body);
+    closeModal(); toast((role==='editor'?'Editor':'Graphics designer')+' assigned');
+    if(typeof loadAVTasks==='function') loadAVTasks();
+  }catch(e){ toast((e&&e.message)||'Could not assign',true); }
 }
 async function vtMarkOld(id, isOld){
   try{ await api('/api/admin/video-tasks/'+id+'/mark-old','POST',{is_old:!!isOld});
@@ -9275,7 +9347,10 @@ async function openVTReview(id){
         <button class="btn btn-ghost btn-sm" data-act="rejected" style="border-color:rgba(220,38,38,.5);color:#b91c1c" onclick="vtRvPick(this)">Rejected</button>
       </div></div>
     <div class="form-group"><label>Remarks (reason — required for reshoot / rejection)</label><textarea id="vt-rv-remarks" class="input" rows="2" placeholder="e.g. Audio not clear in the middle section..."></textarea></div>
-    <div class="form-group" id="vt-rv-ndl" style="display:none"><label>New Deadline (required for reshoot / rejection)</label><input id="vt-rv-deadline" type="datetime-local" class="input" value="${ndVal}"></div></div>`,
+    <div class="form-group" id="vt-rv-ndl" style="display:none">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px"><input type="checkbox" id="vt-rv-final" onchange="vtRvFinalToggle()"> Final — no re-submission (only remarks are shown to the teacher)</label>
+      <div id="vt-rv-ndl-wrap"><label>New Deadline (required for re-submission)</label><input id="vt-rv-deadline" type="datetime-local" class="input" value="${ndVal}"></div>
+    </div></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="vtReviewSave(${t.id})">${ic('check')} Save Status</button>`);
   window._vtRvAct=null;
 }
@@ -9315,16 +9390,24 @@ function vtRvPick(btn){
   window._vtRvAct=btn.dataset.act;
   document.getElementById('vt-rv-ndl').style.display=(window._vtRvAct==='rejected'||window._vtRvAct==='reshoot')?'block':'none';
 }
+function vtRvFinalToggle(){
+  var f=document.getElementById('vt-rv-final'); var w=document.getElementById('vt-rv-ndl-wrap');
+  if(w) w.style.display=(f&&f.checked)?'none':'block';
+}
 async function vtReviewSave(id){
   const act=window._vtRvAct;
   if(!act){ toast('Please pick a status first'); return; }
   const remarks=document.getElementById('vt-rv-remarks').value.trim();
   const payload={action:act,remarks};
   if(act==='rejected'||act==='reshoot'){
-    const ndl=document.getElementById('vt-rv-deadline').value;
-    if(!ndl){ toast('A new deadline is required'); return; }
     if(!remarks){ toast('Please mention the reason'); return; }
-    payload.new_deadline=ndl;
+    const fin=document.getElementById('vt-rv-final'); const isFinal=fin&&fin.checked;
+    if(isFinal){ payload.final=true; }
+    else{
+      const ndl=document.getElementById('vt-rv-deadline').value;
+      if(!ndl){ toast('Set a new deadline, or tick "Final — no re-submission"'); return; }
+      payload.new_deadline=ndl;
+    }
   }
   try{ await api(`/api/admin/video-tasks/${id}/review`,'POST',payload);
     closeModal(); toast('Status updated.'); loadAVTasks();
@@ -20193,6 +20276,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(lc==='creator_submitted'||lc==='pm_review'){
       acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\''+portal+'\','+t.id+',\'/approve-creator\')">Approve</button>';
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'changes\','+t.id+')">Changes</button>';
+      acts+='<button class="ptc-btn" style="color:#b91c1c" onclick="event.stopPropagation();prodReviewForm('+t.id+',\'reject\')">Reject</button>';
     }
     if((lc==='approved'||lc==='editor_assigned'||lc==='editing'||lc==='editing_paused'||lc==='editing_done'||lc==='qc_pending'||lc==='qc_changes'||lc==='ready_for_youtube') && !t.editor_id)
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'assign-editor\','+t.id+')">Assign Editor</button>';
@@ -21113,19 +21197,32 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.prodReviewForm=function(id,action){
     var box=_actsBox(); if(!box) return;
     var isReshoot=(action==='reshoot');
-    var title=isReshoot?'Reshoot Required':'Resubmit Required';
+    var isReject=(action==='reject');
+    var title=isReshoot?'Reshoot Required':(isReject?'Reject Video':'Resubmit Required');
+    var finalToggle=isReject?('<div class="p-field"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="p-rev-final" checked onchange="prodRejFinalToggle()"> Final \u2014 no re-submission (only remarks are shown to the creator)</label></div>'):'';
     box.innerHTML=_formWrap('<div class="p-sec" style="margin-top:0">'+title+'</div>'+
-      '<div class="p-field"><label>Remarks (required)</label><textarea class="p-area" id="p-rev-rem" placeholder="'+(isReshoot?'What must the creator re-shoot?':'What needs to change?')+'"></textarea></div>'+
-      '<div class="p-field"><label>New deadline (required)</label><input class="p-input" id="p-rev-dl" type="datetime-local"></div>'+
+      '<div class="p-field"><label>Remarks (required)</label><textarea class="p-area" id="p-rev-rem" placeholder="'+(isReshoot?'What must the creator re-shoot?':(isReject?'Why is this rejected?':'What needs to change?'))+'"></textarea></div>'+
+      finalToggle+
+      '<div class="p-field" id="p-rev-dl-wrap"'+(isReject?' style="display:none"':'')+'><label>New deadline'+(isReject?' (for re-submission)':' (required)')+'</label><input class="p-input" id="p-rev-dl" type="datetime-local"></div>'+
       '<div class="p-field"><label>Screenshots (optional)</label><div class="p-drop" id="p-drop" onclick="document.getElementById(\'p-file\').click()">Paste (Ctrl+V), drop, or click to add</div>'+
       '<input type="file" id="p-file" accept="image/*" multiple style="display:none" onchange="prodImgFiles(this.files)"><div class="p-thumbs" id="p-thumbs"></div></div>',
-      'Send','prodReviewSubmit('+id+',\''+action+'\')');
+      isReject?'Reject':'Send','prodReviewSubmit('+id+',\''+action+'\')');
     prodImgInit();
   };
+  window.prodRejFinalToggle=function(){ var f=document.getElementById('p-rev-final'); var w=document.getElementById('p-rev-dl-wrap'); if(w) w.style.display=(f&&f.checked)?'none':'block'; };
   window.prodReviewSubmit=function(id,action){
     var rem=((document.getElementById('p-rev-rem')||{}).value||'').trim();
     var dl=(document.getElementById('p-rev-dl')||{}).value||'';
     if(!rem){ toast('Remarks are required',true); return; }
+    if(action==='reject'){
+      var fin=document.getElementById('p-rev-final'); var isFinal=fin&&fin.checked;
+      var body={remarks:rem}; if((window._prodImgs||[]).length) body.images=window._prodImgs.slice();
+      if(!isFinal){ if(!dl){ toast('Set a new deadline, or tick "Final"',true); return; } body.new_deadline=dl; body.allow_resubmit=true; }
+      _pBusy(true);
+      api(P.production.api+'/tasks/'+id+'/reject-creator','POST',body).then(function(){ prodDismiss(); toast(isFinal?'Video rejected':'Sent back for re-submission'); _refresh('production'); })
+        .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
+      return;
+    }
     if(!dl){ toast('A new deadline is required',true); return; }
     var ep=(action==='reshoot')?'/reshoot-creator':'/request-creator-changes';
     var body={remarks:rem,new_deadline:dl}; if((window._prodImgs||[]).length) body.images=window._prodImgs.slice();
