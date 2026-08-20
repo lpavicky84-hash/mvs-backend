@@ -467,6 +467,7 @@ class VideoTask(Base):
     thumbnail_b64  = Column(_B64TEXT, nullable=True)      # uploaded thumbnail image (compressed)
     thumbnail_link = Column(String(600), default="")      # ya drive link
     reference      = Column(Text, default="")             # manager ka reference/brief
+    reference_video = Column(Text, default="")            # reference video link (clickable on teacher card)
     description    = Column(Text, default="")              # creator's topic description (youtuber)
     remarks        = Column(Text, default="")             # assignment remarks
     deadline       = Column(DateTime, nullable=True)
@@ -1580,3 +1581,14 @@ class PmEvent(Base):
     created_by  = Column(Integer, nullable=True)
     active      = Column(Boolean, default=True)
     created_at  = Column(DateTime, default=func.now())
+
+
+class VideoTaskComment(Base):
+    __tablename__ = "video_task_comments"
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, ForeignKey("video_tasks.id"), index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    author_name = Column(String(120), default="")
+    author_role = Column(String(40), default="")   # teacher / admin / production_manager
+    message = Column(Text, default="")
+    created_at = Column(DateTime, default=func.now())

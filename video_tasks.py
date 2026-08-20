@@ -17,7 +17,7 @@ from database import get_db, engine
 from security import get_admin, get_teacher
 # v94: restricted sub-admin — /api/admin/* video endpoints bhi section guard se cover
 from admin_routes import admin_section_guard as _admin_section_guard
-from models import User, TeacherProfile, Notification, VideoChannel, VideoTask, VideoType, VideoTaskChapter
+from models import User, TeacherProfile, Notification, VideoChannel, VideoTask, VideoType, VideoTaskChapter, VideoTaskComment
 
 router = APIRouter(prefix="/api", tags=["Video Task Manager"])
 
@@ -806,6 +806,83 @@ def _vt_notify(db, user_id, title, message, ntype="video_task", link=None):
                         notif_type=ntype, link=link or None))
 
 
+def _vtc_out(db, c):
+    return {"id": c.id, "task_id": c.task_id, "user_id": c.user_id,
+            "author": c.author_name or "", "role": c.author_role or "",
+            "message": c.message or "",
+            "at": c.created_at.strftime("%d %b %Y, %I:%M %p") if c.created_at else ""}
+
+
+def _vtc_list(db, task_id):
+    rows = (db.query(VideoTaskComment)
+            .filter(VideoTaskComment.task_id == task_id)
+            .order_by(VideoTaskComment.id.asc()).all())
+    return [_vtc_out(db, c) for c in rows]
+
+
+def _vtc_add(db, task_id, user, message, role):
+    msg = (message or "").strip()
+    if not msg:
+        return None
+    c = VideoTaskComment(task_id=task_id, user_id=getattr(user, "id", None),
+                         author_name=getattr(user, "name", "") or "",
+                         author_role=role, message=msg)
+    db.add(c); db.flush()
+    return c
+
+
+@router.get("/teacher/video-tasks/{task_id}/comments")
+def vt_teacher_comments(task_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    return {"comments": _vtc_list(db, task_id)}
+
+
+@router.post("/teacher/video-tasks/{task_id}/comments")
+def vt_teacher_comment_add(task_id: int, payload: dict = Body(...),
+                           db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
+    if not t:
+        raise HTTPException(404, "Task not found")
+    c = _vtc_add(db, task_id, current_user, payload.get("message"), "teacher")
+    if not c:
+        raise HTTPException(400, "Message cannot be empty")
+    # notify every admin so the reply shows up on their side
+    for adm in db.query(User).filter(User.role == "admin", User.is_active == True).all():
+        _vt_notify(db, adm.id, "Teacher replied on a video task",
+                   f'{current_user.name} replied on "{t.title}": {c.message[:120]}',
+                   "video_task", link=str(task_id))
+    db.commit()
+    return {"ok": True, "comment": _vtc_out(db, c)}
+
+
+@router.get("/admin/video-tasks/{task_id}/comments", dependencies=[Depends(_admin_section_guard)])
+def vt_admin_comments(task_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    return {"comments": _vtc_list(db, task_id)}
+
+
+@router.post("/admin/video-tasks/{task_id}/comments", dependencies=[Depends(_admin_section_guard)])
+def vt_admin_comment_add(task_id: int, payload: dict = Body(...),
+                         db: Session = Depends(get_db), me=Depends(get_admin)):
+    t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
+    if not t:
+        raise HTTPException(404, "Task not found")
+    c = _vtc_add(db, task_id, me, payload.get("message"), "admin")
+    if not c:
+        raise HTTPException(400, "Message cannot be empty")
+    # notify the creator (and collaborators) that the manager replied
+    for tid in _collab_all_ids(t):
+        tp = _teacher_profile(db, tid)
+        if tp and tp.user_id:
+            _vt_notify(db, tp.user_id, "Manager replied on your video task",
+                       f'Message on "{t.title}": {c.message[:120]}',
+                       "video_task", link=str(task_id))
+    db.commit()
+    return {"ok": True, "comment": _vtc_out(db, c)}
+
+
+def _vt_notify_UNUSED(db, user_id, title, message, ntype="video_task", link=None):
+    pass
+
+
 _TP_CACHE = {"t": 0.0, "map": {}}   # legacy (ab use nahi — cross-request ORM cache DetachedInstanceError deta tha)
 
 
@@ -990,6 +1067,7 @@ def _task_out(db, t, with_thumb=True, tname_map=None):
         "has_thumbnail": bool(t.thumbnail_b64),
         "thumbnail_link": t.thumbnail_link or "",
         "reference": t.reference or "", "remarks": t.remarks or "",
+        "reference_video": getattr(t, "reference_video", "") or "",
         "deadline": t.deadline.strftime("%Y-%m-%dT%H:%M") if t.deadline else "",
         "deadline_nice": t.deadline.strftime("%d %b %Y, %I:%M %p") if t.deadline else "",
         "expected_deadline": (t.deadline.strftime("%Y-%m-%dT%H:%M") if (t.deadline and (t.proposal_ok or "") == "pending") else ""),
@@ -1006,6 +1084,7 @@ def _task_out(db, t, with_thumb=True, tname_map=None):
         "review_remarks": t.review_remarks or "",
         "reject_count": t.reject_count or 0,
         "no_resubmit": bool(getattr(t, "no_resubmit", False)),
+        "comment_count": db.query(VideoTaskComment).filter(VideoTaskComment.task_id == t.id).count(),
         "kind": getattr(t, "kind", "normal") or "normal",
         "subject": getattr(t, "subject", "") or "",
         "weekly_quota": getattr(t, "weekly_quota", 0) or 0,
@@ -1943,7 +2022,7 @@ def vt_edit(task_id: int, payload: dict = Body(...),
                     added += 1
             if removed or added:
                 changes.append("chapters (%d added, %d removed)" % (added, removed))
-    for fld, col in (("reference", "reference"), ("remarks", "remarks")):
+    for fld, col in (("reference", "reference"), ("reference_video", "reference_video"), ("remarks", "remarks")):
         if payload.get(fld) is not None:
             v = (payload.get(fld) or "").strip()
             if v != (getattr(t, col) or ""):

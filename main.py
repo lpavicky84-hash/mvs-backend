@@ -71,6 +71,7 @@ def ensure_columns():
         "ALTER TABLE video_tasks ADD COLUMN description TEXT",
         "ALTER TABLE video_tasks ADD COLUMN thumbnail_required BOOLEAN DEFAULT 0",
         "ALTER TABLE video_tasks ADD COLUMN no_resubmit BOOLEAN DEFAULT 0",
+        "ALTER TABLE video_tasks ADD COLUMN reference_video TEXT",
         "ALTER TABLE student_profiles ADD COLUMN class_level VARCHAR(5)",
         "ALTER TABLE timetable_entries ADD COLUMN time_text VARCHAR(40)",
         "ALTER TABLE timetable_entries ADD COLUMN entry_type VARCHAR(20)",

@@ -7591,6 +7591,42 @@ function _aLoadPage(page){
 }
 
 /* ================= VIDEO TASK MANAGER (teacher) ================= */
+async function tvtOpenNeeds(id){
+  const t=(window._tvtMap||{})[id]||{};
+  const remarks=(t.remarks||'').trim();
+  const refVid=(t.reference_video||'').trim()||((/^https?:\/\//i.test((t.reference||'').trim()))?(t.reference||'').trim():'');
+  let comments=[];
+  try{ const d=await api('/api/teacher/video-tasks/'+id+'/comments'); comments=d.comments||[]; }catch(e){}
+  _tvtRenderNeeds(id,t,remarks,refVid,comments);
+}
+function _tvtRenderNeeds(id,t,remarks,refVid,comments){
+  const refBlock=refVid?`<a href="${esc(refVid)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="margin-bottom:10px">${ic('play')} Open Reference Video</a>`:'';
+  const remBlock=remarks?`<div class="tvn-remarks"><div class="tvn-h">${ic('alert')} What the manager needs</div><div class="tvn-body">${esc(remarks)}</div></div>`:'<div class="tvn-remarks"><div class="tvn-body" style="color:var(--text-muted)">No specific remarks were added.</div></div>';
+  const thread=comments.length?comments.map(c=>{
+    const mine=(c.role==='teacher');
+    return `<div class="tvn-msg ${mine?'mine':'them'}"><div class="tvn-msg-a">${esc(c.author)}${mine?'':` · ${c.role==='admin'?'Admin':'Manager'}`}</div><div class="tvn-msg-b">${esc(c.message)}</div><div class="tvn-msg-t">${esc(c.at)}</div></div>`;
+  }).join(''):'<div style="color:var(--text-muted);font-size:.82rem;padding:6px 0">No messages yet. If something is unclear, ask below.</div>';
+  showModal('Video Needs — '+esc(t.title||''),
+    `${refBlock}${remBlock}
+     <div class="tvn-thread" id="tvn-thread">${thread}</div>
+     <div class="form-group" style="margin-top:10px"><label>Reply / ask a question</label><textarea id="tvn-reply" class="input" rows="2" placeholder="Type your message to the manager..."></textarea></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" onclick="tvtSendNeeds(${id})">${ic('send')} Send</button>`);
+}
+async function tvtSendNeeds(id){
+  const el=document.getElementById('tvn-reply'); const msg=(el?el.value:'').trim();
+  if(!msg){ toast('Type a message first',true); return; }
+  try{
+    await api('/api/teacher/video-tasks/'+id+'/comments','POST',{message:msg});
+    toast('Sent to the manager');
+    // reload comments in place
+    const t=(window._tvtMap||{})[id]||{};
+    const remarks=(t.remarks||'').trim();
+    const refVid=(t.reference_video||'').trim()||((/^https?:\/\//i.test((t.reference||'').trim()))?(t.reference||'').trim():'');
+    let comments=[]; try{ const d=await api('/api/teacher/video-tasks/'+id+'/comments'); comments=d.comments||[]; }catch(e){}
+    _tvtRenderNeeds(id,t,remarks,refVid,comments);
+    if(typeof loadTVTasks==='function') loadTVTasks();
+  }catch(e){ toast((e&&e.message)||'Could not send',true); }
+}
 let _tvtTimer=null;
 async function loadTVTasks(){
   const el=document.getElementById('t-vtasks-content');
@@ -7628,6 +7664,10 @@ async function loadTVTasks(){
          :t.on_time===false?`<span class="vt-up-late">${ic('alert')} Upload delayed vs the deadline</span>`:'')
         :`<span class="vt-up-wait">${ic('clock')} Awaiting upload — publish before the deadline</span>`):'';
       const _open=(t.status==='assigned'||t.status==='reshoot'||t.status==='rejected')&&!t.no_resubmit;
+      const _refVid=(t.reference_video||'').trim()||((/^https?:\/\//i.test((t.reference||'').trim()))?(t.reference||'').trim():'');
+      const _refBtn=_refVid?`<span class="vt-refvid-btn" onclick="window.open('${esc(_refVid).replace(/'/g,"")}','_blank','noopener')">${ic('play')} Reference Video</span>`:'';
+      const _refText=(!_refVid&&(t.reference||'').trim())?`<span>Reference: ${esc(t.reference)}</span>`:'';
+      const _needsBtn=(t.remarks||t.comment_count)?`<span class="vt-needs-btn" onclick="tvtOpenNeeds(${t.id})">${ic('alert')} Video Needs${t.comment_count?` <b>(${t.comment_count})</b>`:''}</span>`:'';
       const _finalRej=(t.status==='rejected'||t.status==='reshoot')&&t.no_resubmit;
       const _sbHead=(t.status==='reshoot')?`<div class="vt-resh-head">${ic('refresh')} Reshoot needed${t.review_remarks?` — ${esc(t.review_remarks)}`:''}</div>`
         :(t.status==='rejected')?`<div class="vt-resh-head" style="background:rgba(220,38,38,.1);color:#b91c1c;border-color:rgba(220,38,38,.35)">${ic('alert')} Rejected${t.review_remarks?` — ${esc(t.review_remarks)}`:''}</div>`:'';
@@ -7666,8 +7706,8 @@ async function loadTVTasks(){
         <div class="vt-meta">
           ${t.deadline_nice?`<span class="${dlBlink}">${ic('clock')} ${dlLbl}: <b>${esc(t.deadline_nice)}</b></span>`:''}
           ${_open&&t.seconds_left!=null?`<span data-tvt-cd="${t.id}" data-secs="${t.seconds_left}" style="font-weight:800"></span>`:''}
-          ${t.reference?`<span>Reference: ${esc(t.reference)}</span>`:''}
-          ${t.remarks?`<span>Manager remarks: ${esc(t.remarks)}</span>`:''}
+          ${t.reference?_refText:''}
+          ${(_refBtn||_needsBtn)?`<span style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px">${_refBtn}${_needsBtn}</span>`:''}
           ${t.submitted_at?`<span>${ic('check')} Submitted: ${esc(t.submitted_at)}${isU?'':` — <b>${t.on_time?'on time':'delayed'}</b>`}</span>`:''}
           ${upTxt?`<span>${upTxt}</span>`:''}
           ${!_open&&t.review_remarks?`<span>Review remarks: ${esc(t.review_remarks)}</span>`:''}
@@ -8359,6 +8399,7 @@ function _avtCard(t){
       const delTaskBtn=`<button class="btn btn-ghost btn-sm vt-del" onclick="vtDeleteTask(${t.id})" title="Delete this task permanently">${ic('trash')} Delete</button>`;
       const ytBtn=`<button class="btn btn-ghost btn-sm" onclick="openVtYtLink(${t.id},'${esc(t.youtube_url||'').replace(/'/g,'')}')" title="Post the published YouTube link">${ic('play')} ${t.youtube_url?'Edit YT Link':'Post YT Link'}</button>`;
       const histBtn=`<button class="btn btn-ghost btn-sm" onclick="vtStatusOpen(${t.id},'a',event)" title="See the full status timeline">${ic('history')} Timeline</button>`;
+      const convoBtn=`<button class="btn btn-ghost btn-sm" onclick="aVtConvo(${t.id})" title="Reference video, remarks and the conversation with the teacher">${ic('alert')} Video Needs${t.comment_count?` (${t.comment_count})`:''}</button>`;
       const _lcAssign=['approved','editor_assigned','editing','editing_paused','editing_done','qc_pending','qc_changes','ready_for_youtube'];
       const asgEditorBtn=(_lcAssign.indexOf(t.lifecycle)>=0 && !t.editor_id)
         ?`<button class="btn btn-ghost btn-sm" onclick="aAssignProd(${t.id},'editor')" title="Assign an editor to this approved video">${ic('play')} Assign Editor</button>`:'';
@@ -8380,10 +8421,41 @@ function _avtCard(t){
         </div>
         <div class="vt-foot">
           ${t.submitted_link?`<a class="btn btn-ghost btn-sm" href="${esc(t.submitted_link)}" target="_blank" rel="noopener">${ic('link')} Open Video</a>`:''}
-          ${histBtn}${reviewBtn}${editBtn}${editTaskBtn}${asgEditorBtn}${asgGfxBtn}${ytBtn}${notifyBtn}
+          ${histBtn}${convoBtn}${reviewBtn}${editBtn}${editTaskBtn}${asgEditorBtn}${asgGfxBtn}${ytBtn}${notifyBtn}
           <button class="btn btn-ghost btn-sm" onclick="vtMarkOld(${t.id},${t.is_old?'false':'true'})" title="Old = pre-portal content, will not count this month">${t.is_old?ic('refresh')+' Mark as New':ic('clock')+' Mark as Old'}</button>
           ${delTaskBtn}
         </div></div></div>`;
+}
+async function aVtConvo(id){
+  let comments=[]; try{ const d=await api('/api/admin/video-tasks/'+id+'/comments'); comments=d.comments||[]; }catch(e){}
+  const t=(window._avtMap&&window._avtMap[id])||{};
+  _aVtConvoRender(id,t,comments);
+}
+function _aVtConvoRender(id,t,comments){
+  const refVid=(t.reference_video||'').trim()||((/^https?:\/\//i.test((t.reference||'').trim()))?(t.reference||'').trim():'');
+  const refBlock=refVid?`<a href="${esc(refVid)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="margin-bottom:10px">${ic('play')} Open Reference Video</a>`:'';
+  const remarks=(t.remarks||'').trim();
+  const remBlock=remarks?`<div class="tvn-remarks"><div class="tvn-h">${ic('alert')} Remarks you sent</div><div class="tvn-body">${esc(remarks)}</div></div>`:'';
+  const thread=comments.length?comments.map(c=>{
+    const mine=(c.role!=='teacher');
+    return `<div class="tvn-msg ${mine?'mine':'them'}"><div class="tvn-msg-a">${esc(c.author)}${c.role==='teacher'?' · Teacher':''}</div><div class="tvn-msg-b">${esc(c.message)}</div><div class="tvn-msg-t">${esc(c.at)}</div></div>`;
+  }).join(''):'<div style="color:var(--text-muted);font-size:.82rem;padding:6px 0">No messages yet.</div>';
+  showModal('Video Needs — '+esc(t.title||''),
+    `${refBlock}${remBlock}<div class="tvn-thread">${thread}</div>
+     <div class="form-group" style="margin-top:10px"><label>Reply to the teacher</label><textarea id="avn-reply" class="input" rows="2" placeholder="Type your message..."></textarea></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" onclick="aVtConvoSend(${id})">${ic('send')} Send</button>`);
+}
+async function aVtConvoSend(id){
+  const el=document.getElementById('avn-reply'); const msg=(el?el.value:'').trim();
+  if(!msg){ toast('Type a message first',true); return; }
+  try{
+    await api('/api/admin/video-tasks/'+id+'/comments','POST',{message:msg});
+    toast('Sent to the teacher');
+    let comments=[]; try{ const d=await api('/api/admin/video-tasks/'+id+'/comments'); comments=d.comments||[]; }catch(e){}
+    const t=(window._avtMap&&window._avtMap[id])||{};
+    _aVtConvoRender(id,t,comments);
+    if(typeof loadAVTasks==='function') loadAVTasks();
+  }catch(e){ toast((e&&e.message)||'Could not send',true); }
 }
 async function aAssignProd(id, role){
   // role: 'editor' | 'graphics' — admin assigns from the video-task card using the production endpoints
@@ -8474,7 +8546,20 @@ function _ensureCbpCss(){
     '.vt-thumb-status .vts-late{color:#b91c1c;font-weight:800}',
     '.vt-thumb-status .vts-link{display:inline-flex;align-items:center;gap:5px;margin-top:6px;font-size:.76rem;font-weight:700;color:#047857;text-decoration:none}',
     '@keyframes vtsBlink{0%,100%{opacity:1}50%{opacity:.5}}',
-    '.vts-blink{animation:vtsBlink 1.2s ease-in-out infinite}'
+    '.vts-blink{animation:vtsBlink 1.2s ease-in-out infinite}',
+    '.vt-refvid-btn,.vt-needs-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;font-size:.75rem;font-weight:800;cursor:pointer;animation:vtsBlink 1.3s ease-in-out infinite}',
+    '.vt-refvid-btn{background:rgba(8,145,178,.14);color:#0891b2;border:1px solid rgba(8,145,178,.35)}',
+    '.vt-needs-btn{background:rgba(180,83,9,.14);color:#b45309;border:1px solid rgba(180,83,9,.35)}',
+    '.vt-refvid-btn:hover,.vt-needs-btn:hover{filter:brightness(.95)}',
+    '.tvn-remarks{background:rgba(180,83,9,.08);border:1px solid rgba(180,83,9,.25);border-radius:10px;padding:11px 13px;margin-bottom:12px}',
+    '.tvn-h{font-weight:800;font-size:.82rem;color:#b45309;margin-bottom:5px;display:flex;align-items:center;gap:6px}',
+    '.tvn-body{font-size:.86rem;color:var(--text);white-space:pre-wrap}',
+    '.tvn-thread{max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0}',
+    '.tvn-msg{max-width:82%;padding:7px 11px;border-radius:12px;font-size:.83rem}',
+    '.tvn-msg.mine{align-self:flex-end;background:var(--primary-50);border:1px solid var(--primary-100,rgba(224,165,46,.3))}',
+    '.tvn-msg.them{align-self:flex-start;background:var(--surface-2,#f4f2ec);border:1px solid var(--border)}',
+    '.tvn-msg-a{font-weight:800;font-size:.7rem;color:var(--text-muted);margin-bottom:2px}',
+    '.tvn-msg-t{font-size:.66rem;color:var(--text-muted);margin-top:3px}'
   ].join('');
   document.head.appendChild(st);
 }
@@ -8898,7 +8983,8 @@ async function openVTEdit(id,ev){
         <div id="vt-thumb-prev" style="margin-top:8px">${t.thumbnail_b64?`<img src="${t.thumbnail_b64}" style="max-height:90px;border-radius:10px;border:1px solid var(--border)">`:''}</div>
       </div>`}
       <div class="form-group" style="grid-column:1/-1"><label>Reference / Brief</label><textarea id="vt-e-ref" class="input" rows="2">${esc(t.reference||'')}</textarea></div>
-      <div class="form-group" style="grid-column:1/-1"><label>Remarks for Teacher</label><textarea id="vt-e-remarks" class="input" rows="2">${esc(t.remarks||'')}</textarea></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Reference Video link <span style="font-weight:500;color:var(--text-muted);font-size:.72rem;text-transform:none">— teacher taps a blinking button to open it</span></label><input id="vt-e-refvid" class="input" placeholder="https://drive.google.com/... or YouTube link" value="${esc(t.reference_video||'')}"></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Remarks for Teacher <span style="font-weight:500;color:var(--text-muted);font-size:.72rem;text-transform:none">— shows as a blinking "Video Needs" button on the teacher card</span></label><textarea id="vt-e-remarks" class="input" rows="2">${esc(t.remarks||'')}</textarea></div>
       <div class="form-group" style="grid-column:1/-1"><label>Collaborating Teachers <span style="font-weight:500;color:var(--text-muted);font-size:.72rem;text-transform:none">— tick every teacher on this task. The primary teacher cannot be removed.</span></label>
         <div id="vt-e-collab" class="vt-echaps" style="max-height:220px;overflow-y:auto">${(function(){
           var primaryId=t.teacher_id;
@@ -8942,6 +9028,7 @@ async function vtEditSave(id){
     title:document.getElementById('vt-e-title').value.trim(),
     deadline:document.getElementById('vt-e-deadline').value,
     reference:document.getElementById('vt-e-ref').value.trim(),
+    reference_video:(document.getElementById('vt-e-refvid')||{}).value.trim()||'',
     remarks:document.getElementById('vt-e-remarks').value.trim()};
   const chEl=document.getElementById('vt-e-channel');
   if(chEl){ payload.channel_id=+chEl.value||null; payload.video_type=(document.getElementById('vt-e-type')||{}).value||'';
@@ -20285,6 +20372,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(lc==='qc_pending') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\''+portal+'\','+t.id+',\'/qc-approve\')">QC Approve</button>';
     if(lc==='ready_for_youtube') acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'post-yt\','+t.id+')">Post YT Link</button>';
     if(t.youtube_url||t.submitted_link||t.edited_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+esc(t.youtube_url||t.submitted_link||t.edited_link)+'\',\'_blank\')">Open Video</button>';
+    acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodConvo('+t.id+')">Video Needs'+(t.comment_count?(' ('+t.comment_count+')'):'')+'</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodEditTask('+t.id+')">Edit</button>';
     if(t.youtube_url) acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodNotifyStudents('+t.id+')">Send to Students</button>';
@@ -20561,6 +20649,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           '<div class="p-field"><label>Video Type</label><select class="p-select" id="pe-vtype">'+tyOpts+'</select></div>'+
           '<div class="p-field"><label>Thumbnail link (paste a Drive/image URL to change)</label><input class="p-input" id="pe-thumb" placeholder="https://drive.google.com/... (leave blank to keep current)" value="'+esc(t.thumbnail_link||'')+'"></div>'+
           '<div class="p-field"><label>Reference / Brief</label><textarea class="p-area" id="pe-reference">'+esc(t.reference||'')+'</textarea></div>'+
+          '<div class="p-field"><label>Reference Video link (teacher taps a blinking button to open)</label><input class="p-input" id="pe-refvid" placeholder="https://drive.google.com/... or YouTube" value="'+esc(t.reference_video||'')+'"></div>'+
           '<div class="p-field"><label>Remarks for Teacher</label><textarea class="p-area" id="pe-remarks">'+esc(t.remarks||'')+'</textarea></div>'+
           '<div class="p-field"><label>Subject</label><input class="p-input" id="pe-subject" value="'+esc(t.subject||'')+'"></div>'+
           '<div class="p-field"><label>Thumbnail required?</label><select class="p-select" id="pe-thumbreq" onchange="prodEditThumbToggle(this.value)"><option value="no"'+(!t.thumbnail_required?' selected':'')+'>No</option><option value="yes"'+(t.thumbnail_required?' selected':'')+'>Yes</option></select></div>'+
@@ -20587,6 +20676,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var gid=g('pe-graphics'); if(thumbReq && !gid){ toast('Select a graphics designer (thumbnail required)',true); return; }
     var body={title:title, channel_name:g('pe-channel'), streaming:g('pe-stream'), video_type:g('pe-vtype'),
       thumbnail_link:(g('pe-thumb')||'').trim(), reference:(g('pe-reference')||'').trim(), remarks:(g('pe-remarks')||'').trim(),
+      reference_video:(g('pe-refvid')||'').trim(),
       subject:(g('pe-subject')||'').trim(), thumbnail_required:thumbReq};
     if(thumbReq && gid) body.graphics_id=parseInt(gid,10);
     body.editor_id=g('pe-editor')?parseInt(g('pe-editor'),10):0;
@@ -20850,6 +20940,39 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         }).join('')+'</div>';
     }).catch(function(){ box.innerHTML=''; });
   }
+  window.prodConvo=function(id){
+    api(P.production.api+'/tasks/'+id+'/comments').then(function(r){
+      var comments=(r&&r.comments)||[];
+      // pull task detail for reference/remarks
+      api(P.production.api+'/tasks/'+id).then(function(t){ _prodConvoRender(id,t||{},comments); })
+        .catch(function(){ _prodConvoRender(id,{},comments); });
+    }).catch(function(e){ toast((e&&e.message)||'Could not load',true); });
+  };
+  function _prodConvoRender(id,t,comments){
+    var refVid=(t.reference_video||'').trim()||(/^https?:\/\//i.test((t.reference||'').trim())?(t.reference||'').trim():'');
+    var remarks=(t.remarks||'').trim();
+    var refBlock=refVid?'<a href="'+esc(refVid)+'" target="_blank" rel="noopener" class="p-btn" style="display:inline-flex;margin-bottom:10px">Open Reference Video</a>':'';
+    var remBlock=remarks?'<div style="background:rgba(180,83,9,.08);border:1px solid rgba(180,83,9,.25);border-radius:10px;padding:11px 13px;margin-bottom:12px"><div style="font-weight:800;font-size:.82rem;color:#b45309;margin-bottom:5px">Remarks you sent</div><div style="font-size:.86rem;white-space:pre-wrap">'+esc(remarks)+'</div></div>':'';
+    var thread=comments.length?comments.map(function(c){
+      var mine=(c.role!=='teacher');
+      return '<div style="max-width:82%;padding:7px 11px;border-radius:12px;font-size:.83rem;'+(mine?'align-self:flex-end;background:var(--surface-2);border:1px solid var(--border)':'align-self:flex-start;background:rgba(124,79,192,.1);border:1px solid rgba(124,79,192,.25)')+'"><div style="font-weight:800;font-size:.7rem;color:var(--muted);margin-bottom:2px">'+esc(c.author)+(c.role==='teacher'?' \u00b7 Teacher':'')+'</div><div>'+esc(c.message)+'</div><div style="font-size:.66rem;color:var(--muted);margin-top:3px">'+esc(c.at)+'</div></div>';
+    }).join(''):'<div style="color:var(--muted);font-size:.82rem;padding:6px 0">No messages yet.</div>';
+    var old=document.getElementById('prod-modal2'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal2'; dr.style.zIndex='130';
+    dr.innerHTML='<div class="p-modal" style="max-width:480px"><div class="pd-head"><div class="h-title">Video Needs</div><button class="pd-x" onclick="document.getElementById(\'prod-modal2\').remove()">&times;</button></div>'+
+      '<div class="p-modal-body">'+refBlock+remBlock+'<div style="max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0">'+thread+'</div>'+
+      '<div class="p-field" style="margin-top:10px"><label>Reply to the creator</label><textarea class="p-area" id="prod-convo-reply" placeholder="Type your message..."></textarea></div></div>'+
+      '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="document.getElementById(\'prod-modal2\').remove()">Close</button><button class="p-btn p-btn-primary" onclick="prodConvoSend('+id+')">Send</button></div></div></div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) dr.remove(); });
+    document.body.appendChild(dr);
+  }
+  window.prodConvoSend=function(id){
+    var el=document.getElementById('prod-convo-reply'); var msg=(el?el.value:'').trim();
+    if(!msg){ toast('Type a message first',true); return; }
+    api(P.production.api+'/tasks/'+id+'/comments','POST',{message:msg}).then(function(){
+      toast('Sent'); var old=document.getElementById('prod-modal2'); if(old) old.remove(); prodConvo(id); _refresh('production');
+    }).catch(function(e){ toast((e&&e.message)||'Could not send',true); });
+  };
   window.prodCollabPopup=function(id){
     api(P.production.api+'/tasks/'+id+'/collab').then(function(r){
       var cols=(r&&r.collaborators)||[];
@@ -21376,7 +21499,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(g('aw-gfxdeadline')!==undefined)d.graphics_deadline=g('aw-gfxdeadline');
       if(g('aw-thumb-rating')!==undefined)d.thumb_rating=g('aw-thumb-rating')?parseInt(g('aw-thumb-rating'),10):0;
       if(g('aw-editor')!==undefined)d.editor_id=g('aw-editor')?parseInt(g('aw-editor'),10):0; }
-    else if(s===3){ if(g('aw-reference')!==undefined)d.reference=g('aw-reference').trim(); }
+    else if(s===3){ if(g('aw-reference')!==undefined)d.reference=g('aw-reference').trim(); if(g('aw-refvid')!==undefined)d.reference_video=g('aw-refvid').trim(); if(g('aw-remarks')!==undefined)d.remarks=g('aw-remarks').trim(); }
   }
   window.awSetCreatorType=function(ct){ _awSave(); window._aw.data.creator_type=ct; window._aw.data.teacher_id=0; window._aw.data.youtuber_id=0; _awRender(); };
   function _awSubjectOptions(){
@@ -21545,6 +21668,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         (isYt?'<div class="p-field"><label style="display:flex;align-items:center;gap:9px;cursor:pointer"><input type="checkbox" id="aw-approval"'+(d.approval_required?' checked':'')+'> Require PM approval before production</label><div class="p-opt">If off, this creator\u2019s videos go straight into production after they submit.</div></div>':'');
     } else {
       html+='<div class="p-field"><label>Reference / Instructions</label><input class="p-input" id="aw-reference" placeholder="Reference link or notes (optional)" value="'+esc(d.reference||'')+'"></div>';
+      html+='<div class="p-field"><label>Reference Video link (teacher taps a blinking button to open)</label><input class="p-input" id="aw-refvid" placeholder="https://drive.google.com/... or YouTube" value="'+esc(d.reference_video||'')+'"></div>';
+      html+='<div class="p-field"><label>Remarks for creator (how to shoot \u2014 shows as a "Video Needs" button)</label><textarea class="p-area" id="aw-remarks" placeholder="Any specific instructions...">'+esc(d.remarks||'')+'</textarea></div>';
       var ppl2=aw.people||{}; var clist=(d.creator_type==='teacher')?(ppl2.teachers||[]):(ppl2.youtubers||[]); var cid=(d.creator_type==='teacher')?d.teacher_id:d.youtuber_id;
       var cname=(clist.filter(function(m){return m.id===cid;})[0]||{}).name||'\u2014';
       html+='<div class="p-sec">Review</div><div class="aw-sum">'+

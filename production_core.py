@@ -418,6 +418,7 @@ def _ensure_production_columns():
         "ALTER TABLE video_tasks ADD COLUMN description TEXT",
         "ALTER TABLE video_tasks ADD COLUMN thumbnail_required BOOLEAN DEFAULT 0",
         "ALTER TABLE video_tasks ADD COLUMN no_resubmit BOOLEAN DEFAULT 0",
+        "ALTER TABLE video_tasks ADD COLUMN reference_video TEXT",
     ]
     for _s in _stmts:
         try:
@@ -438,6 +439,14 @@ try:
     _ensure_production_columns()
 except Exception:
     pass
+
+
+def _comment_count(db, task_id):
+    try:
+        from models import VideoTaskComment as _VTC
+        return db.query(_VTC).filter(_VTC.task_id == task_id).count()
+    except Exception:
+        return 0
 
 
 def task_out(db, t, g=None, timeline=False, light=False, viewer=None):
@@ -485,6 +494,9 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None):
         "yt_views_at": _dt(t.yt_views_at),
         "published_at": _dt(t.published_at),
         "reference": t.reference or "",
+        "reference_video": getattr(t, "reference_video", "") or "",
+        "remarks": t.remarks or "",
+        "comment_count": _comment_count(db, t.id),
         "submitted_link": t.submitted_link or "",
         "created_at": _dt(t.created_at),
         # card thumbnail: graphics-made thumbnail first, else the one uploaded at assign time

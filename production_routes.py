@@ -184,6 +184,35 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
             "tasks": [pc.task_out(db, t, light=True) for t in rows]}
 
 
+@router.get("/tasks/{tid}/comments")
+def pm_task_comments(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    from video_tasks import _vtc_list
+    return {"comments": _vtc_list(db, tid)}
+
+
+@router.post("/tasks/{tid}/comments")
+def pm_task_comment_add(tid: int, payload: dict = Body(...),
+                        db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    from video_tasks import _vtc_add, _vtc_out
+    t = _task(db, tid)
+    c = _vtc_add(db, tid, me, payload.get("message"), "production_manager")
+    if not c:
+        raise HTTPException(400, "Message cannot be empty")
+    # notify the creator (and collaborators) so they see the manager's message
+    try:
+        from video_tasks import _collab_all_ids as _cai
+        from models import TeacherProfile as _TP
+        for teach_id in _cai(t):
+            tp = db.query(_TP).filter(_TP.id == teach_id).first()
+            if tp and tp.user_id:
+                pc.notify(db, tp.user_id, "Manager replied on your video task",
+                          f'Message on "{t.title}": {c.message[:120]}', "video_task", link=str(tid))
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "comment": _vtc_out(db, c)}
+
+
 @router.get("/tasks/{tid}")
 def pm_task_detail(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     t = _task(db, tid)
@@ -223,6 +252,8 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
                   channel_name=(payload.get("channel_name") or "").strip(),
                   streaming=(payload.get("streaming") or "").strip(),
                   reference=(payload.get("reference") or "").strip(),
+                  reference_video=(payload.get("reference_video") or "").strip(),
+                  remarks=(payload.get("remarks") or "").strip(),
                   priority=(payload.get("priority") or "normal").strip(),
                   proposed_by="admin", status="assigned")
     if payload.get("approval_required") is not None:
@@ -2047,7 +2078,7 @@ def pm_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_
             t.deadline = datetime.fromisoformat(dl.replace("Z", ""))
         except Exception:
             pass
-    for f in ("subject", "video_type", "channel_name", "reference", "remarks", "streaming", "thumbnail_link"):
+    for f in ("subject", "video_type", "channel_name", "reference", "reference_video", "remarks", "streaming", "thumbnail_link"):
         if f in payload:
             setattr(t, f, (payload.get(f) or "").strip())
     # thumbnail requirement + graphics designer (create/assign the sub-task if needed)
