@@ -411,7 +411,7 @@ let countdownTimer = null;
 // stale nahi rehta. Login/logout pe bhi clear hota hai.
 const _apiCache={};
 const _API_TTL=60000;
-const _API_NOCACHE=/notifications|heartbeat|\/photo|\/image|\/voice|\/file|\/download|\/pdf|\/content|\/badge/i;
+const _API_NOCACHE=/notifications|heartbeat|\/photo|\/image|\/voice|\/file|\/download|\/pdf|\/content|\/badge|video-tasks\/my|production\/tasks|\/collab/i;
 let _curLoader=null;        // current page ka loader — background refresh aane par isse re-render
 let _swrT=null;
 function _swrRerender(){
@@ -7613,6 +7613,14 @@ async function loadTVTasks(){
       const reviewNote=(t.status==='submitted')?`<span class="vt-pill submitted blink">${ic('clock')} Under Review — Checking</span>`:'';
       const rejNote='';
       const propNote=(t.proposal_ok==='pending')?`<span class="vt-pill proposal">Pending Approval</span>`:'';
+      const th=t.thumbnail;
+      const thumbBox=th?`
+        <div class="vt-thumb-status ${th.approved?'ready':'pending'}${(!th.approved&&th.overdue)?' overdue':''}">
+          ${th.approved
+            ? `<div class="vts-h">${ic('check')} Thumbnail ready${th.designer?` — designed by ${esc(th.designer)}`:''}</div>${th.url?`<a href="${esc(th.url)}" target="_blank" rel="noopener" class="vts-link">${ic('image')} View thumbnail</a>`:''}`
+            : `<div class="vts-h vts-blink">${ic('image')} Thumbnail pending${th.designer?` — ${esc(th.designer)} is designing it`:''}</div>${th.deadline?`<div class="vts-sub">Expected by <b>${esc(th.deadline)}</b>${th.overdue?' <span class="vts-late">· overdue</span>':''}</div>`:`<div class="vts-sub">A thumbnail will be provided for this video.</div>`}`
+          }
+        </div>`:'';
       return `<div class="vt-card st-${t.status}">${_vtThumb(t,'t')}<div class="vt-body">
         <div class="vt-chips">${propNote}${t.is_collab?_vtCollabChip(t,'t'):''}${t.kind==='urgent'?`<span class="vt-pill" style="background:rgba(220,38,38,.15);color:#dc2626;font-weight:800">${ic('alert')} URGENT</span>`:''}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
         <div class="vt-title">${esc(t.title)}</div>
@@ -7626,7 +7634,7 @@ async function loadTVTasks(){
           ${!_open&&t.review_remarks?`<span>Review remarks: ${esc(t.review_remarks)}</span>`:''}
           ${t.reject_count>0?`<span style="color:var(--text-muted);font-weight:700">Reshoot/Rejection count: ${t.reject_count}</span>`:''}
         </div>
-        ${rejNote}${subBox}${doneBox}
+        ${thumbBox}${rejNote}${subBox}${doneBox}
       </div></div>`;
     };
     // ---- v73: master Task/Project cards + subject & type filters ----
@@ -8383,7 +8391,18 @@ function _ensureCbpCss(){
     '.cbp-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}',
     '.cbp-note{font-size:.76rem;color:var(--text-muted);margin-top:10px}',
     '.vt-pill.not_completed{background:rgba(220,38,38,.15);color:#dc2626}',
-    '.vt-card.st-not_completed{border-left:3px solid #dc2626}'
+    '.vt-card.st-not_completed{border-left:3px solid #dc2626}',
+    '.vt-thumb-status{margin:10px 0 4px;padding:10px 12px;border-radius:10px;border:1px solid rgba(124,79,192,.3);background:rgba(124,79,192,.07)}',
+    '.vt-thumb-status.ready{border-color:rgba(4,120,87,.35);background:rgba(4,120,87,.08)}',
+    '.vt-thumb-status.overdue{border-color:rgba(220,38,38,.4);background:rgba(220,38,38,.08)}',
+    '.vt-thumb-status .vts-h{font-size:.82rem;font-weight:800;color:#7c4fc0;display:flex;align-items:center;gap:6px}',
+    '.vt-thumb-status.ready .vts-h{color:#047857}',
+    '.vt-thumb-status.overdue .vts-h{color:#b91c1c}',
+    '.vt-thumb-status .vts-sub{font-size:.74rem;color:var(--text-muted);margin-top:3px}',
+    '.vt-thumb-status .vts-late{color:#b91c1c;font-weight:800}',
+    '.vt-thumb-status .vts-link{display:inline-flex;align-items:center;gap:5px;margin-top:6px;font-size:.76rem;font-weight:700;color:#047857;text-decoration:none}',
+    '@keyframes vtsBlink{0%,100%{opacity:1}50%{opacity:.5}}',
+    '.vts-blink{animation:vtsBlink 1.2s ease-in-out infinite}'
   ].join('');
   document.head.appendChild(st);
 }
@@ -18389,6 +18408,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.prodapp{position:fixed;inset:0;display:none;background:var(--bg);color:var(--text);font-family:inherit}',
 '@keyframes pwCollabBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(124,79,192,.5)}50%{opacity:.55;box-shadow:0 0 0 4px rgba(124,79,192,0)}}',
 '.pw-collab-blink{animation:pwCollabBlink 1.3s ease-in-out infinite;font-weight:800!important}',
+'.aw-drop{border:2px dashed var(--border);border-radius:12px;padding:18px;text-align:center;cursor:pointer;background:var(--surface-2);transition:border-color .15s}',
+'.aw-drop.drag{border-color:var(--primary);background:rgba(224,165,46,.08)}',
+'.aw-drop-hint{font-size:.82rem;color:var(--muted)}',
 '.prodapp.active{display:block}',
 'body.dark .prodapp{background:#100d07;color:#eee6d4}',
 '.prodwrap{display:flex;height:100%;width:100%}',
@@ -21254,6 +21276,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     else if(s===2){ if(g('aw-deadline')!==undefined)d.deadline=g('aw-deadline'); if(g('aw-priority')!==undefined)d.priority=g('aw-priority'); var ar=document.getElementById('aw-approval'); if(ar)d.approval_required=ar.checked;
       var tr=document.getElementById('aw-thumbreq'); if(tr)d.thumbnail_required=(tr.value==='yes');
       if(g('aw-graphics')!==undefined)d.graphics_id=g('aw-graphics')?parseInt(g('aw-graphics'),10):0;
+      if(g('aw-gfxdeadline')!==undefined)d.graphics_deadline=g('aw-gfxdeadline');
+      if(g('aw-thumb-rating')!==undefined)d.thumb_rating=g('aw-thumb-rating')?parseInt(g('aw-thumb-rating'),10):0;
       if(g('aw-editor')!==undefined)d.editor_id=g('aw-editor')?parseInt(g('aw-editor'),10):0; }
     else if(s===3){ if(g('aw-reference')!==undefined)d.reference=g('aw-reference').trim(); }
   }
@@ -21411,7 +21435,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           '<option value="no"'+(!thumbYes?' selected':'')+'>No \u2014 not needed</option>'+
           '<option value="yes"'+(thumbYes?' selected':'')+'>Yes \u2014 assign a graphics designer</option></select></div>'+
         (thumbYes?('<div class="p-field"><label>Graphics Designer (required)</label><select class="p-select" id="aw-graphics"><option value="">Choose designer...</option>'+
-          gfxList.map(function(g){ return '<option value="'+g.id+'"'+(d.graphics_id===g.id?' selected':'')+'>'+esc(g.name)+(g.active!==undefined?(' \u00b7 '+g.active+' active'):'')+'</option>'; }).join('')+'</select></div>'):'')+
+          gfxList.map(function(g){ return '<option value="'+g.id+'"'+(d.graphics_id===g.id?' selected':'')+'>'+esc(g.name)+(g.active!==undefined?(' \u00b7 '+g.active+' active'):'')+'</option>'; }).join('')+'</select></div>'+
+          '<div class="p-field"><label>Thumbnail deadline (designer must finish by)</label><input class="p-input" id="aw-gfxdeadline" type="datetime-local" value="'+esc(d.graphics_deadline||'')+'"></div>'+
+          '<div class="p-field"><label>Already have the thumbnail? Upload it now (optional)</label>'+
+            '<div id="aw-thumb-drop" class="aw-drop" onclick="document.getElementById(\'aw-thumb-file\').click()" ondragover="event.preventDefault();this.classList.add(\'drag\')" ondragleave="this.classList.remove(\'drag\')" ondrop="awThumbDrop(event)">'+
+              (d.thumb_upload?('<img src="'+esc(d.thumb_upload)+'" style="max-width:100%;max-height:150px;border-radius:8px">'):'<div class="aw-drop-hint">Drag &amp; drop, click to choose, or paste (Ctrl+V) an image</div>')+
+            '</div><input type="file" id="aw-thumb-file" accept="image/*" style="display:none" onchange="awThumbFile(event)">'+
+            (d.thumb_upload?'<div class="p-opt">Thumbnail attached. It will be auto-approved and you can rate it below.</div><div class="p-field" style="margin-top:8px"><label>Rate this thumbnail (optional)</label><select class="p-select" id="aw-thumb-rating"><option value="">No rating</option><option value="5"'+(d.thumb_rating==5?' selected':'')+'>5 - Excellent</option><option value="4"'+(d.thumb_rating==4?' selected':'')+'>4 - Good</option><option value="3"'+(d.thumb_rating==3?' selected':'')+'>3 - Average</option><option value="2"'+(d.thumb_rating==2?' selected':'')+'>2 - Below average</option><option value="1"'+(d.thumb_rating==1?' selected':'')+'>1 - Poor</option></select></div>':'')+
+          '</div>'):'')+
         '<div class="p-field"><label>Editor (optional \u2014 can also assign after PM review)</label><select class="p-select" id="aw-editor"><option value="">Assign later</option>'+
           edList.map(function(ed){ return '<option value="'+ed.id+'"'+(d.editor_id===ed.id?' selected':'')+'>'+esc(ed.name)+(ed.active!==undefined?(' \u00b7 '+ed.active+' active'):'')+'</option>'; }).join('')+'</select></div>'+
         (isYt?'<div class="p-field"><label style="display:flex;align-items:center;gap:9px;cursor:pointer"><input type="checkbox" id="aw-approval"'+(d.approval_required?' checked':'')+'> Require PM approval before production</label><div class="p-opt">If off, this creator\u2019s videos go straight into production after they submit.</div></div>':'');
@@ -21444,6 +21475,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   window.awCollabToggle=function(v){ _awSave(); var d=window._aw.data; d.collab_on=(v==='yes'); if(!d.collab_on) d.collab_teacher_ids=[]; _awRender(); };
   window.awThumbToggle=function(v){ _awSave(); window._aw.data.thumbnail_required=(v==='yes'); _awRender(); };
+  function _awReadImg(file){ if(!file||!/^image\//.test(file.type)) { toast('Please choose an image file',true); return; } if(file.size>5*1024*1024){ toast('Image too large (max 5MB)',true); return; } var r=new FileReader(); r.onload=function(){ window._aw.data.thumb_upload=r.result; _awRender(); }; r.readAsDataURL(file); }
+  window.awThumbFile=function(e){ _awSave(); var f=e.target.files&&e.target.files[0]; _awReadImg(f); };
+  window.awThumbDrop=function(e){ e.preventDefault(); _awSave(); var el=document.getElementById('aw-thumb-drop'); if(el)el.classList.remove('drag'); var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; _awReadImg(f); };
+  document.addEventListener('paste',function(e){ if(!window._aw||window._aw.step!==2||!window._aw.data.thumbnail_required) return; var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(/^image\//.test(items[i].type)){ _awSave(); _awReadImg(items[i].getAsFile()); e.preventDefault(); break; } } });
   window.awCollabMulti=function(){ var s=document.getElementById('aw-collab-multi'); if(!s) return; var ids=[]; for(var i=0;i<s.options.length;i++){ if(s.options[i].selected) ids.push(parseInt(s.options[i].value,10)); } window._aw.data.collab_teacher_ids=ids; var opt=document.querySelector('#aw-body .p-opt'); };
   window.awCreate=function(){ _awSave(); var d=window._aw.data;
     if(!(d.title||'').trim()){ toast('Title is required',true); window._aw.step=1; _awRender(); return; }
@@ -21453,6 +21488,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(d.deadline) body.deadline=d.deadline;
     body.thumbnail_required=!!d.thumbnail_required;
     if(d.thumbnail_required && d.graphics_id) body.graphics_id=d.graphics_id;
+    if(d.thumbnail_required && d.graphics_deadline) body.graphics_deadline=d.graphics_deadline;
+    if(d.thumbnail_required && d.thumb_upload){ body.thumbnail_upload=d.thumb_upload; if(d.thumb_rating) body.thumbnail_rating=d.thumb_rating; }
     if(d.editor_id) body.editor_id=d.editor_id;
     _pBusy(true);
     api(P.production.api+'/tasks','POST',body).then(function(){ prodDismiss(); toast('Production task created'+((d.collab_teacher_ids||[]).length?' (collab)':'')); _refresh('production'); })

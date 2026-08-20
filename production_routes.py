@@ -304,9 +304,40 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
                 except Exception:
                     pass
             db.add(g)
+            db.flush()
+        else:
+            g = existing
+        # PM already has the finished thumbnail -> upload now, auto-approve, optional rating
+        _upload = payload.get("thumbnail_upload")
+        if _upload:
+            try:
+                urls = pc.save_images(db, t, [_upload], "thumbnail", None, me, return_urls=True) or []
+                if urls:
+                    g.thumbnail_url = urls[0]
+                    t.thumbnail_link = urls[0]
+            except Exception:
+                pass
+            g.status = "approved"
+            try:
+                g.submitted_at = datetime.utcnow()
+            except Exception:
+                pass
+            _rating = payload.get("thumbnail_rating")
+            if _rating:
+                try:
+                    g.quality_rating = int(_rating)
+                except Exception:
+                    pass
+            pc.log_event(db, t, me, "thumbnail_approved", new_state=t.lifecycle,
+                         meta={"note": "Thumbnail uploaded and auto-approved by production manager"
+                               + ((" (rated %s/5)" % int(_rating)) if _rating else "")})
         if gp and gp.user_id:
-            pc.notify(db, gp.user_id, "New Thumbnail Task",
-                      f'A thumbnail has been requested for "{title}".', "graphics_task", link=str(t.id))
+            if _upload:
+                pc.notify(db, gp.user_id, "Thumbnail recorded",
+                          f'Your thumbnail for "{title}" was uploaded and approved.', "graphics_task", link=str(t.id))
+            else:
+                pc.notify(db, gp.user_id, "New Thumbnail Task",
+                          f'A thumbnail has been requested for "{title}".', "graphics_task", link=str(t.id))
     if t.editor_id:
         ep = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
         if ep and ep.user_id:
