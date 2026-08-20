@@ -1541,10 +1541,26 @@ def prod_approve_proposal(tid: int, payload: dict = Body(default={}),
             t.deadline = datetime.fromisoformat(dl.replace("Z", ""))
         except Exception:
             pass
-    for f in ("channel_name", "video_type", "subject", "reference"):
+    if (payload.get("title") or "").strip():
+        t.title = payload["title"].strip()
+    for f in ("channel_name", "video_type", "subject", "reference", "streaming",
+              "reference_video", "remarks"):
         v = (payload.get(f) or "").strip()
         if v:
             setattr(t, f, v)
+    # collab teachers (primary stays the proposer)
+    raw = payload.get("collab_teacher_ids")
+    if isinstance(raw, list):
+        import json as _jc
+        ids = []
+        for x in raw:
+            try:
+                xi = int(x)
+                if xi and xi != t.teacher_id and xi not in ids:
+                    ids.append(xi)
+            except Exception:
+                pass
+        t.collab_teacher_ids = _jc.dumps(ids) if ids else None
     t.proposal_ok = "approved"
     t.status = "assigned"
     pc.ensure_ref_code(t)

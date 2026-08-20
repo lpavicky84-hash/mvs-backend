@@ -19881,13 +19881,108 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
   };
   window.prodApproveProposal=function(id){
-    var dl=prompt('Set a deadline for this video (YYYY-MM-DD HH:MM) \u2014 or leave blank:');
-    var body={}; if(dl&&dl.trim()){ body.deadline=dl.trim().replace(' ','T'); }
-    api(P.production.api+'/proposals/'+id+'/approve','POST',body).then(function(){ toast('Approved \u2014 assigned to creator'); _refresh('production'); }).catch(function(e){ toast((e&&e.message)||'Could not approve',true); });
+    Promise.all([
+      api(P.production.api+'/tasks/'+id),
+      api(P.production.api+'/channels').catch(function(){return {channels:[]};}),
+      api(P.production.api+'/video-types').catch(function(){return {types:[]};}),
+      api(P.production.api+'/people').catch(function(){return {teachers:[]};})
+    ]).then(function(res){
+      var t=res[0]||{}, channels=(res[1].channels)||[], types=(res[2].types)||[], ppl=res[3]||{};
+      window._prodApr={id:id, task:t, people:ppl, channels:channels, types:types, collab_on:!!(t.collab_teacher_ids&&t.collab_teacher_ids.length), collab_ids:(t.collab_teacher_ids||[]).slice()};
+      _prodAprRender();
+    }).catch(function(e){ toast((e&&e.message)||'Could not load proposal',true); });
+  };
+  function _prodAprSubjects(){
+    var A=window._prodApr; if(!A) return [];
+    var t=A.task; var tid=t.teacher_id;
+    var tt=((A.people||{}).teachers||[]).filter(function(m){return m.id===tid;})[0];
+    return (tt&&tt.subjects)?tt.subjects.slice():[];
+  }
+  function _prodAprRender(){
+    var A=window._prodApr; var t=A.task; var d=t;
+    var teacherName='';
+    var tt=((A.people||{}).teachers||[]).filter(function(m){return m.id===t.teacher_id;})[0];
+    teacherName=(tt&&tt.name)||t.teacher||'\u2014';
+    var subjOpts=_prodAprSubjects();
+    var chOpts='<option value="">Select channel</option>'+(A.channels||[]).map(function(c){return '<option value="'+esc(c.name)+'"'+(t.channel_name===c.name?' selected':'')+'>'+esc(c.name)+'</option>';}).join('')+((t.channel_name&&(A.channels||[]).filter(function(c){return c.name===t.channel_name;}).length===0)?'<option value="'+esc(t.channel_name)+'" selected>'+esc(t.channel_name)+'</option>':'');
+    var tyOpts='<option value="">Select type</option>'+(A.types||[]).map(function(c){return '<option value="'+esc(c.name)+'"'+(t.video_type===c.name?' selected':'')+'>'+esc(c.name)+'</option>';}).join('')+((t.video_type&&(A.types||[]).filter(function(c){return c.name===t.video_type;}).length===0)?'<option value="'+esc(t.video_type)+'" selected>'+esc(t.video_type)+'</option>':'');
+    var dl=(t.deadline||t.expected_deadline||'');
+    var subjBlock;
+    if(A.collab_on){
+      var teachers2=((A.people||{}).teachers||[]);
+      subjBlock='<div class="p-field"><label>Collaborators (tap to multi-select)</label><select class="p-select" id="pa-collab" multiple size="5" style="height:auto;min-height:130px;padding:6px">'+
+        teachers2.filter(function(m){return m.id!==t.teacher_id;}).map(function(m){return '<option value="'+m.id+'"'+((A.collab_ids||[]).indexOf(m.id)>=0?' selected':'')+'>'+esc(m.name)+'</option>';}).join('')+
+        '</select><div class="p-opt">Primary is '+esc(teacherName)+'. Subject is not required for a collaboration.</div></div>';
+    } else {
+      if(subjOpts.length){
+        subjBlock='<div class="p-field"><label>Subject (optional)</label><select class="p-select" id="pa-subject"><option value="">No subject (standalone video)</option>'+
+          subjOpts.map(function(s){return '<option value="'+esc(s)+'"'+(t.subject===s?' selected':'')+'>'+esc(s)+'</option>';}).join('')+
+          ((t.subject&&subjOpts.indexOf(t.subject)<0)?'<option value="'+esc(t.subject)+'" selected>'+esc(t.subject)+'</option>':'')+'</select></div>';
+      } else {
+        subjBlock='<div class="p-field"><label>Subject (optional)</label><input class="p-input" id="pa-subject" placeholder="No subject (standalone video)" value="'+esc(t.subject||'')+'"></div>';
+      }
+    }
+    var html='<div class="p-field"><label>Collaborate with others?</label><select class="p-select" id="pa-collab-toggle" onchange="prodAprCollabToggle(this.value)">'+
+        '<option value="no"'+(!A.collab_on?' selected':'')+'>No \u2014 single teacher</option>'+
+        '<option value="yes"'+(A.collab_on?' selected':'')+'>Yes \u2014 multiple teachers (collab)</option></select></div>'+
+      '<div class="p-field"><label>Teacher (proposer)</label><input class="p-input" value="'+esc(teacherName)+'" disabled></div>'+
+      subjBlock+
+      '<div class="p-field"><label>YouTube Channel</label><select class="p-select" id="pa-channel">'+chOpts+'</select></div>'+
+      '<div class="p-field"><label>Streaming</label><select class="p-select" id="pa-stream"><option value="">Not set</option><option value="recorded"'+(t.streaming==='recorded'?' selected':'')+'>Recorded</option><option value="live"'+(t.streaming==='live'?' selected':'')+'>Live</option></select></div>'+
+      '<div class="p-field"><label>Video Type</label><select class="p-select" id="pa-vtype">'+tyOpts+'</select></div>'+
+      '<div class="p-field"><label>Video Title</label><input class="p-input" id="pa-title" value="'+esc(t.title||'')+'"></div>'+
+      '<div class="p-field"><label>Deadline'+(dl?' (from teacher\u2019s proposal)':'')+'</label><input class="p-input" id="pa-deadline" type="datetime-local" value="'+esc(dl)+'"></div>'+
+      '<div class="p-field"><label>Reference / Brief (optional)</label><textarea class="p-area" id="pa-reference">'+esc(t.reference||'')+'</textarea></div>'+
+      '<div class="p-field"><label>Remarks for creator (optional)</label><textarea class="p-area" id="pa-remarks">'+esc(t.remarks||'')+'</textarea></div>';
+    var old=document.getElementById('prod-modal2'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal2'; dr.style.zIndex='130';
+    dr.innerHTML='<div class="p-modal" style="max-width:520px"><div class="pd-head"><div class="h-title">Approve Proposal &amp; Assign</div><button class="pd-x" onclick="document.getElementById(\'prod-modal2\').remove()">&times;</button></div>'+
+      '<div class="p-modal-body">'+html+'</div>'+
+      '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="document.getElementById(\'prod-modal2\').remove()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodAprSave()">Approve &amp; Assign</button></div></div></div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) dr.remove(); });
+    document.body.appendChild(dr);
+  }
+  window.prodAprCollabToggle=function(v){
+    var A=window._prodApr; if(!A) return;
+    // capture current selections before re-render
+    var s=document.getElementById('pa-subject'); if(s) A.task.subject=s.value;
+    A.collab_on=(v==='yes');
+    _prodAprRender();
+  };
+  window.prodAprSave=function(){
+    var A=window._prodApr; if(!A) return; var g=function(x){var e=document.getElementById(x);return e?e.value:'';};
+    var body={ title:(g('pa-title')||'').trim(), channel_name:(g('pa-channel')||'').trim(),
+      video_type:(g('pa-vtype')||'').trim(), streaming:(g('pa-stream')||'').trim(),
+      reference:(g('pa-reference')||'').trim(), remarks:(g('pa-remarks')||'').trim() };
+    var dl=(g('pa-deadline')||'').trim(); if(dl) body.deadline=dl;
+    if(A.collab_on){
+      var sel=document.getElementById('pa-collab'); var ids=[];
+      if(sel){ for(var i=0;i<sel.options.length;i++){ if(sel.options[i].selected) ids.push(parseInt(sel.options[i].value,10)); } }
+      body.collab_teacher_ids=ids;
+    } else {
+      body.subject=(g('pa-subject')||'').trim();
+      body.collab_teacher_ids=[];
+    }
+    api(P.production.api+'/proposals/'+A.id+'/approve','POST',body).then(function(){
+      var old=document.getElementById('prod-modal2'); if(old) old.remove();
+      toast('Approved \u2014 assigned to creator'); _refresh('production');
+    }).catch(function(e){ toast((e&&e.message)||'Could not approve',true); });
   };
   window.prodDeclineProposal=function(id){
-    var rem=prompt('Reason for declining (optional):'); if(rem===null) return;
-    api(P.production.api+'/proposals/'+id+'/decline','POST',{remarks:(rem||'').trim()}).then(function(){ toast('Proposal declined'); _refresh('production'); }).catch(function(e){ toast((e&&e.message)||'Could not decline',true); });
+    var old=document.getElementById('prod-modal2'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal2'; dr.style.zIndex='130';
+    dr.innerHTML='<div class="p-modal" style="max-width:420px"><div class="pd-head"><div class="h-title">Decline Proposal</div><button class="pd-x" onclick="document.getElementById(\'prod-modal2\').remove()">&times;</button></div>'+
+      '<div class="p-modal-body"><div class="p-field"><label>Reason (optional \u2014 shown to the teacher)</label><textarea class="p-area" id="pa-decline-rem" placeholder="Why is this proposal declined?"></textarea></div></div>'+
+      '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="document.getElementById(\'prod-modal2\').remove()">Cancel</button><button class="p-btn p-btn-primary" style="background:#b91c1c" onclick="prodDeclineSave('+id+')">Decline</button></div></div></div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) dr.remove(); });
+    document.body.appendChild(dr);
+  };
+  window.prodDeclineSave=function(id){
+    var rem=((document.getElementById('pa-decline-rem')||{}).value||'').trim();
+    api(P.production.api+'/proposals/'+id+'/decline','POST',{remarks:rem}).then(function(){
+      var old=document.getElementById('prod-modal2'); if(old) old.remove();
+      toast('Proposal declined'); _refresh('production');
+    }).catch(function(e){ toast((e&&e.message)||'Could not decline',true); });
   };  function _workFilter(portal,arr){
     var out=arr;
     if(portal==='editor') out=arr.filter(function(t){ return ['editor_assigned','editing','editing_paused','editing_done','qc_changes'].indexOf(t.lifecycle)>=0; });
