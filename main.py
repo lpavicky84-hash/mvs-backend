@@ -358,7 +358,8 @@ def _auto_migrate_loop():
                 for _ in range(3000):  # safety cap per kind
                     db = SessionLocal()
                     try:
-                        res = RM.migrate_batch(db, kind, after_id, 5)
+                        # bigger batch (20) so base64 DB se jaldi khali ho -> MySQL RAM/cost gire
+                        res = RM.migrate_batch(db, kind, after_id, 20)
                         db.commit()
                     except Exception:
                         try: db.rollback()
@@ -371,15 +372,14 @@ def _auto_migrate_loop():
                     if res.get("has_more"):
                         migrated_any = True
                         after_id = res.get("last_id", after_id)
-                        time.sleep(2)   # gentle — DB/R2 par load na aaye
+                        time.sleep(0.6)   # gentle par tez — DB/R2 par load na aaye
                     else:
                         break
         except Exception:
             pass
-        # v172: agar poore cycle me kuch bhi migrate nahi hua (sab pehle se R2 par hai),
-        # to har 3 min sab dobara scan karne ki zaroorat nahi — 12 min so jao. Isse constant
-        # background DB/CPU churn kam. Naya file aate hi agle cycle me migrate ho jaayega.
-        time.sleep(180 if migrated_any else 720)
+        # Jab tak base64 bacha hai (migrated_any) tez chalte raho (30s). Sab R2 par aa gaya
+        # to 12 min so jao — naya file aate hi agle cycle me migrate ho jaayega.
+        time.sleep(30 if migrated_any else 720)
 
 def _start_auto_migrate():
     import threading
