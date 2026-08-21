@@ -914,12 +914,56 @@ def _r2_count(key: str = ""):
             "student_photos": ph(StudentProfile, StudentProfile.photo_b64),
             "teacher_photos": ph(TeacherProfile, TeacherProfile.photo_b64),
             "materials_by_type": materials,
-            "note": "in_db_base64 = abhi DB me (migrate hona baaki). on_r2 = R2 par ho gaye. Migration ke baad in_db_base64=0 aur on_r2 me sab.",
+            "other_tables": _r2_count_all(db),
+            "note": "in_db_base64 = abhi DB me (migrate hona baaki). on_r2 = R2 par ho gaye. Migration ke baad in_db_base64=0 aur on_r2 me sab. SAB in_db_base64=0 hone par hi OPTIMIZE TABLE chalao.",
         }
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)[:300]})
     finally:
         db.close()
+
+
+def _r2_count_all(db):
+    """Har base64 column ka in_db_base64 vs on_r2 count — poori picture (OPTIMIZE se pehle
+    confirm karne ke liye ki har table clear ho gaya)."""
+    from sqlalchemy import func
+    out = {}
+    try:
+        import models as M
+        # (table_label, Model attr name, column attr name)
+        targets = [
+            ("lecture_pdf", "Lecture", "pdf_b64"),
+            ("lecture_dpp", "Lecture", "dpp_b64"),
+            ("dpp_answers", "DppAnswer", "answer_b64"),
+            ("exam_attempt_answers", "ExamAttempt", "answer_image_b64"),
+            ("exam_question_img", "ExamQuestion", "image_b64"),
+            ("exam_question_alt_img", "ExamQuestion", "alt_image_b64"),
+            ("lecture_question_img", "LectureQuestion", "image_b64"),
+            ("doubt_img", "Doubt", "image_b64"),
+            ("doubt_audio", "Doubt", "audio_b64"),
+            ("doubt_answer_audio", "Doubt", "answer_audio_b64"),
+            ("doubt_answer_attach", "Doubt", "answer_attach_b64"),
+            ("video_task_thumbnail", "VideoTask", "thumbnail_b64"),
+            ("studio_report_notes", "StudioReport", "notes_file_b64"),
+            ("production_staff_photos", "ProductionStaffProfile", "photo_b64"),
+            ("youtuber_photos", "YouTuberProfile", "photo_b64"),
+        ]
+        for label, model_name, col_name in targets:
+            try:
+                Model = getattr(M, model_name, None)
+                if Model is None:
+                    continue
+                col = getattr(Model, col_name, None)
+                if col is None:
+                    continue
+                b = db.query(func.count()).select_from(Model).filter(col.isnot(None), col != "", ~col.like("http%")).scalar() or 0
+                r = db.query(func.count()).select_from(Model).filter(col.like("http%")).scalar() or 0
+                out[label] = {"in_db_base64": int(b), "on_r2": int(r), "total": int(b) + int(r)}
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return out
 
 
 @app.get("/r2-status")
