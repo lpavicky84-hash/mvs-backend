@@ -1512,7 +1512,7 @@ def admin_download(mid: int, db: Session = Depends(get_db), _=Depends(get_admin)
     from models import Material
     m = db.query(Material).options(defer(Material.content_b64)).filter(Material.id == mid).first()
     if not m: raise HTTPException(status_code=404, detail="Not found")
-    return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", m.filename or "file.pdf", True, sniff=True)
+    return __import__("r2_storage").file_response(m.content_b64, "application/pdf", m.filename or "file.pdf", True)
 
 @router.get("/pending-materials")
 def admin_pending_materials(db: Session = Depends(get_db), _=Depends(get_admin)):

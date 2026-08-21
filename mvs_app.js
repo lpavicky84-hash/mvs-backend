@@ -13301,8 +13301,9 @@ async function _dppStageUpload(pid,file){
   }catch(e){ txt.textContent='Could not read the file — please select it again.'; return; }
   const kb=Math.round(f.size/1024);
   // Test-answer sheet wala hi proven flow: EK direct upload, live progress % ke
-  // saath (koi chunks nahi). 100% pe Submit enable hota hai.
-  for(let att=0;att<2;att++){
+  // saath (koi chunks nahi). 100% pe Submit enable hota hai. Server restart/slow net
+  // par 3 baar tak apne aap retry — student ko error na dikhe.
+  for(let att=0;att<3;att++){
     try{
       const res=await _dppStageXHR(pid,f,setp);
       window._dppStaged={pid:pid,answer_id:res.answer_id};
@@ -13311,11 +13312,11 @@ async function _dppStageUpload(pid,file){
       if(btn){ btn.disabled=false; btn.focus(); }
       return;
     }catch(e){
-      if(att===0 && /fail|fetch|network|timeout|abort/i.test(e.message||'')){
-        txt.textContent='Network issue — retrying in 4 seconds…';
-        await new Promise(r=>setTimeout(r,4000)); setp(0); continue;
+      if(att<2 && /fail|fetch|network|timeout|abort|502|503|504/i.test(e.message||'')){
+        txt.textContent='Network issue — retrying… ('+(att+2)+'/3)';
+        await new Promise(r=>setTimeout(r,3000+att*2000)); setp(0); continue;
       }
-      txt.innerHTML='<span style="color:var(--danger)">'+(e.message||'Upload failed')+' — please select the file and try again.</span>';
+      txt.innerHTML='<span style="color:var(--danger)">'+(e.message||'Upload failed')+' — please check your internet and select the file again.</span>';
       return;
     }
   }
