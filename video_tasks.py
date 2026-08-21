@@ -2060,6 +2060,10 @@ def _purge_task_children(db, task_id):
     except Exception:
         pass
     try:
+        db.query(VideoTaskComment).filter(VideoTaskComment.task_id == task_id).delete(synchronize_session=False)
+    except Exception:
+        pass
+    try:
         from models import VideoViewSnapshot as _VVS
         db.query(_VVS).filter(_VVS.task_id == task_id).delete(synchronize_session=False)
     except Exception:

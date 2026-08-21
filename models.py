@@ -1586,7 +1586,7 @@ class PmEvent(Base):
 class VideoTaskComment(Base):
     __tablename__ = "video_task_comments"
     id = Column(Integer, primary_key=True, index=True)
-    task_id = Column(Integer, ForeignKey("video_tasks.id"), index=True)
+    task_id = Column(Integer, ForeignKey("video_tasks.id", ondelete="CASCADE"), index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     author_name = Column(String(120), default="")
     author_role = Column(String(40), default="")   # teacher / admin / production_manager

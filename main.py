@@ -211,6 +211,41 @@ def ensure_columns():
             pass  # column already exists — safe to ignore
 ensure_columns()
 
+
+def ensure_fk_cascade():
+    """Make child tables that FK to video_tasks use ON DELETE CASCADE, so deleting a
+    video task never fails with MySQL 1451. Fully idempotent and never breaks startup:
+    the actual constraint name is looked up from information_schema (auto-generated
+    names like `video_task_comments_ibfk_1` differ across environments)."""
+    targets = [
+        # (child table, fk column)
+        ("video_task_comments", "task_id"),
+    ]
+    for tbl, col in targets:
+        try:
+            with engine.connect() as conn:
+                # find the current FK constraint name for this column -> video_tasks(id)
+                row = conn.execute(text(
+                    "SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE "
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t "
+                    "AND COLUMN_NAME = :c AND REFERENCED_TABLE_NAME = 'video_tasks' LIMIT 1"
+                ), {"t": tbl, "c": col}).fetchone()
+                # check whether it is already ON DELETE CASCADE
+                rule = conn.execute(text(
+                    "SELECT DELETE_RULE FROM information_schema.REFERENTIAL_CONSTRAINTS "
+                    "WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = :t LIMIT 1"
+                ), {"t": tbl}).fetchone()
+                if row and (not rule or (rule[0] or "").upper() != "CASCADE"):
+                    cname = row[0]
+                    conn.execute(text("ALTER TABLE %s DROP FOREIGN KEY %s" % (tbl, cname)))
+                    conn.execute(text(
+                        "ALTER TABLE %s ADD CONSTRAINT %s_cascade FOREIGN KEY (%s) "
+                        "REFERENCES video_tasks(id) ON DELETE CASCADE" % (tbl, tbl, col)))
+                    conn.commit()
+        except Exception:
+            pass  # if anything is off, the app-level purge still cleans children safely
+ensure_fk_cascade()
+
 # ===== PERFORMANCE INDEXES (scale ke liye — 4500 se lakhs students) =====
 # Hot filter/join columns pe indexes. Bina index ke MySQL poora table scan karta hai
 # (4500 pe theek, par lakhs pe bahut slow). Index lookups table bade hone par bhi fast
