@@ -3403,7 +3403,7 @@ def attempt_answer_image(attempt_id: int, db: Session = Depends(get_db), current
         # migration ne sabko .jpg/image/jpeg bana diya tha, chahe student ne PDF upload kiya ho —
         # isi wajah se PDF sheets "damaged/broken" aati thi. sniff=True -> file ke ASAL magic
         # bytes se sahi content-type (PDF/JPEG/PNG) se serve karo (same-origin stream, no CORS).
-        return __import__("r2_storage").proxy_response(att.answer_image_b64, "application/octet-stream", None, False, sniff=True)
+        return __import__("r2_storage").file_response(att.answer_image_b64, "application/octet-stream", None, False)
     # Students upload a photo OR a PDF. Pehle hamesha image/jpeg bheja jaata tha
     # aur decode fail hone par unhandled 500 aata tha - browser use CORS ke bina
     # block kar deta tha, isliye portal par "Failed to fetch" dikhta tha.

@@ -900,7 +900,7 @@ def student_material_view(mid: int, db: Session = Depends(get_db), current_user=
         raise HTTPException(status_code=404, detail="Not found")
     sp = get_student_profile(current_user, db)
     _log_material(db, mid, sp.id, "view")
-    return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", m.filename or "file.pdf", False, sniff=True)
+    return __import__("r2_storage").file_response(m.content_b64, "application/pdf", m.filename or "file.pdf", False)
 
 @router.get("/materials-v2")
 def student_materials_v2(db: Session = Depends(get_db), current_user=Depends(get_student)):
@@ -1786,6 +1786,9 @@ def student_lecture_file(lecture_id: int, kind: str = "pdf", db: Session = Depen
     fname = (lec.dpp_filename if kind == "dpp" else lec.pdf_filename) or ("%s.pdf" % kind)
     if not raw:
         raise HTTPException(404, "File not available")
+    # R2-hosted file -> redirect (free egress, no server RAM). Old base64 -> serve.
+    if isinstance(raw, str) and raw.startswith("http"):
+        return __import__("r2_storage").file_response(raw, "application/pdf", fname, True)
     try:
         data = base64.b64decode(raw.split(",")[-1])
     except Exception:
