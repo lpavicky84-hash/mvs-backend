@@ -702,6 +702,14 @@ async function refreshNotifBadge(role){
 // ===== LIVE PRESENCE + HEARTBEAT + ADMIN BELL =====
 let _adminLiveInt=null, _hbInt=null;
 function fmtDur(s){ s=Math.max(0,s|0); const m=Math.floor(s/60), h=Math.floor(m/60); if(h>0) return h+'h '+(m%60)+'m'; if(m>0) return m+'m '+(s%60)+'s'; return s+'s'; }
+function _setLiveBadge(n){
+  // Single source for the header 'live' pill so it always matches the Live Users
+  // page (both read counts.live from the same response).
+  n=n||0;
+  const ind=document.getElementById('a-live-ind'), cnt=document.getElementById('a-live-count'), bdg=document.getElementById('a-live-badge');
+  if(ind&&cnt){ if(n>0){ ind.style.display='inline-flex'; cnt.textContent=n; } else ind.style.display='none'; }
+  if(bdg){ if(n>0){ bdg.style.display='flex'; bdg.textContent=n; } else bdg.style.display='none'; }
+}
 async function pollAdminLive(){
   // Only keeps the header badge in sync. The Live Users page repaints itself, so
   // this must never re-render it (that was overwriting the page every 15s).
@@ -713,15 +721,25 @@ async function pollAdminLive(){
   try{
     const d=await api('/api/admin/live-users').catch(e=>{ if(e&&e.status===401){ _sessionExpired(); } throw e; }); window._lastLive=d;
     const n=(d.counts&&d.counts.live)||0;
-    const ind=document.getElementById('a-live-ind'), cnt=document.getElementById('a-live-count'), bdg=document.getElementById('a-live-badge');
-    if(ind&&cnt){ if(n>0){ ind.style.display='inline-flex'; cnt.textContent=n; } else ind.style.display='none'; }
-    if(bdg){ if(n>0){ bdg.style.display='flex'; bdg.textContent=n; } else bdg.style.display='none'; }
+    _setLiveBadge(n);
     const pg=document.getElementById('a-page-live');
     if(pg&&pg.classList.contains('active')) _paintLive(d);
   }catch(e){}
 }
-function startAdminLivePoll(){ if(_adminLiveInt) return; pollAdminLive(); _adminLiveInt=setInterval(pollAdminLive,180000); }
-function stopAdminLivePoll(){ if(_adminLiveInt){ clearInterval(_adminLiveInt); _adminLiveInt=null; } }
+// Live Users page: refresh every 20s while it is open + visible (honours the
+// "auto-refreshes" note and keeps the page and the header badge on the same number).
+let _livePageInt=null;
+function startLivePageRefresh(){
+  if(_livePageInt) return;
+  _livePageInt=setInterval(function(){
+    if(document.hidden) return;
+    const pg=document.getElementById('a-page-live');
+    if(pg && pg.classList.contains('active') && _luTab==='live') loadALive();
+  }, 20000);
+}
+function stopLivePageRefresh(){ if(_livePageInt){ clearInterval(_livePageInt); _livePageInt=null; } }
+function startAdminLivePoll(){ if(_adminLiveInt) return; pollAdminLive(); _adminLiveInt=setInterval(pollAdminLive,180000); startLivePageRefresh(); }
+function stopAdminLivePoll(){ if(_adminLiveInt){ clearInterval(_adminLiveInt); _adminLiveInt=null; } stopLivePageRefresh(); }
 let _curPage='';
 let _lastPing=0;
 function _pingNow(force){
@@ -7688,7 +7706,8 @@ function _paintLive(d){
             never:['\u2705 All admins have logged in.','\u2705 All teachers have logged in.','\u2705 All students have logged in.']}[_luTab];
   const body=`<div class="ws-grid-3 lu3">${_luSection('Admins',admins,_luTab,em[0])}${_luSection('Teachers',teachers,_luTab,em[1])}${_luSection('Students',students,_luTab,em[2])}</div>`;
   el.dataset.painted='1';
-  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2>Live Users</h2><p>Admins, teachers and students shown separately \u2014 who is online, what they are doing, and who never logs in.</p></div><span class="pager-info">Auto-refreshes every 15s</span></div>${cards}${tabs}${body}`;
+  _setLiveBadge(c.live||0);   // page and header badge always show the same count
+  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2>Live Users</h2><p>Admins, teachers and students shown separately \u2014 who is online, what they are doing, and who never logs in.</p></div><span class="pager-info">Auto-refreshes every 20s</span></div>${cards}${tabs}${body}`;
 }
 
 async function openUserSessions(uid){
