@@ -5347,6 +5347,95 @@ def _office_ips(db):
     except Exception:
         return []
 
+# =============================================================================
+# OFFICE-IP MATCHING (exact IP + CIDR range + wildcard) — bulletproof attendance
+# -----------------------------------------------------------------------------
+# Kyun: office broadband (Excitel jaisa) har reconnect pe usi subnet se ALAG public
+# IP deta hai (dynamic pool). Ek-ek IP add karke us rotation ko pakad paana namumkin
+# hai -> teacher bar-bar block hote the. Ab admin poori range ek baar whitelist kar
+# sakta hai (jaise 146.196.33.0/24  ya  146.196.33.*) aur us block ka KOI bhi IP
+# match ho jaata hai. Exact IPs, CIDR, aur wildcard teeno support karte hain.
+# =============================================================================
+def _norm_ip_entry(entry):
+    """Whitelist entry ko canonical form me laao.
+    Accept: exact IPv4/IPv6, CIDR (a.b.c.0/24), wildcard (a.b.c.* / a.b.*.*).
+    Return: cleaned string ("146.196.33.0/24" ya "146.196.33.141") ya None (invalid)."""
+    import ipaddress as _ip
+    e = str(entry or "").strip()
+    if not e:
+        return None
+    # wildcard -> CIDR
+    if "*" in e:
+        parts = e.split(".")
+        if len(parts) != 4:
+            return None
+        nums, wild, seen = [], 0, False
+        for p in parts:
+            if p == "*":
+                seen = True; wild += 1; nums.append("0")
+            else:
+                if seen:
+                    return None  # non-contiguous like 1.*.3.* not allowed
+                if not (p.isdigit() and 0 <= int(p) <= 255):
+                    return None
+                nums.append(p)
+        if wild == 0 or wild > 3:
+            return None
+        prefix = 32 - 8 * wild
+        try:
+            return str(_ip.ip_network("%s/%d" % (".".join(nums), prefix), strict=False))
+        except Exception:
+            return None
+    # CIDR or exact
+    try:
+        if "/" in e:
+            return str(_ip.ip_network(e, strict=False))
+        return str(_ip.ip_address(e))
+    except Exception:
+        return None
+
+def _ip_in_office(client_ip, entries):
+    """True agar client_ip kisi bhi whitelist entry (exact / CIDR / wildcard) me aata hai."""
+    import ipaddress as _ip
+    c = str(client_ip or "").strip()
+    if not c:
+        return False
+    try:
+        cip = _ip.ip_address(c)
+    except Exception:
+        return False
+    for e in (entries or []):
+        e = str(e or "").strip()
+        if not e:
+            continue
+        try:
+            if "/" in e:
+                if cip in _ip.ip_network(e, strict=False):
+                    return True
+            elif "*" in e:
+                n = _norm_ip_entry(e)
+                if n and cip in _ip.ip_network(n, strict=False):
+                    return True
+            else:
+                if cip == _ip.ip_address(e):
+                    return True
+        except Exception:
+            if c == e:      # last-resort exact string compare
+                return True
+    return False
+
+def _ignored_ips(db):
+    """Admin ne jinhe 'Remove' (dismiss) kiya — ye IPs 'New IPs' me dubara nahi dikhte,
+    aur inka punch-attempt log bhi nahi hota."""
+    from models import AppSetting
+    import json as _json
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == "ignored_ips").first()
+        data = _json.loads(row.value) if row and row.value else []
+        return [str(ip).strip() for ip in data if str(ip).strip()] if isinstance(data, list) else []
+    except Exception:
+        return []
+
 def _log_unknown_ip(db, ip):
     """Geofence ke bahar/GPS-fail punch try karne wala IP (office WiFi list me nahi) — admin ko dikhane ke liye."""
     from models import AppSetting
@@ -5354,6 +5443,13 @@ def _log_unknown_ip(db, ip):
     ip = (ip or "").strip()
     if not ip:
         return
+    # Jo IP already kisi office range/CIDR me aata hai use "New IP" me mat dikhao (warna
+    # range whitelist hone ke baad bhi noise aata rahega). Dismiss-kiye IPs bhi skip.
+    try:
+        if _ip_in_office(ip, _office_ips(db)) or ip in _ignored_ips(db):
+            return
+    except Exception:
+        pass
     try:
         row = db.query(AppSetting).filter(AppSetting.key == "unknown_ips").first()
         if not row:
@@ -5432,7 +5528,7 @@ def _geofence_check(db, lat, lng, accuracy, client_ip=""):
             return office, dist        # GPS ne radius ke andar confirm kiya -> ALLOW
     # (B) Office broadband WiFi check — upper floors / indoor GPS-fail ke liye
     ips = _office_ips(db)
-    if client_ip and ips and client_ip in ips:
+    if client_ip and ips and _ip_in_office(client_ip, ips):
         d = None
         near = offices[0]
         if lat is not None and lng is not None:

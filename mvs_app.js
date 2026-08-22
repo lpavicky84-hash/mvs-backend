@@ -18332,9 +18332,14 @@ async function openOfficeLocation(){
     </div>
     <div style="border:1px dashed var(--border);border-radius:12px;padding:14px;margin-top:10px">
       <div style="font-weight:700;font-size:.85rem;margin-bottom:4px">Office WiFi / PC Punch</div>
-      <div style="font-size:.76rem;color:var(--text-muted);margin-bottom:8px">A <b>PC, laptop or phone</b> connected to the office broadband/WiFi can punch <b>without location</b>. <b>Have 7–8 WiFis?</b> If they all run on one broadband line, <b>a single IP</b> is enough; if they are on separate lines, add each line's IP separately (connect to that WiFi and tap "Add this PC's IP", or use the unknown list below). <b>Never add a home IP</b> — that would allow punching from home!</div>
+      <div style="font-size:.76rem;color:var(--text-muted);margin-bottom:8px">A <b>PC, laptop or phone</b> connected to the office broadband/WiFi can punch <b>without location</b>. If the office IP <b>keeps changing</b> (broadband gives a new IP on every reconnect), do <b>not</b> add IPs one by one — add the <b>whole range once</b> (e.g. <b>146.196.33.0/24</b> or <b>146.196.33.*</b>) and every IP in that block will work. <b>Never add a home IP or a mobile/hotspot IP</b> — that would allow punching from home.</div>
       <div id="ol-ip-list"></div>
       <div id="ol-unknown"></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:10px 0 2px">
+        <input class="form-control" id="ol-ip-manual" placeholder="Add IP or range e.g. 146.196.33.0/24" style="flex:1;min-width:190px" onkeydown="if(event.key==='Enter'){event.preventDefault();olAddIpText();}">
+        <button class="btn btn-primary btn-sm" onclick="olAddIpText()">Add</button>
+      </div>
+      <div style="font-size:.72rem;color:var(--text-muted);margin-bottom:6px">Tip: office IP badalta rehta hai to poori range daalo — <b>146.196.33.0/24</b> (yaani 146.196.33.0 se 146.196.33.255 tak sab). Ek baar mein permanent fix.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
         <button class="btn btn-ghost btn-sm" onclick="olAddMyIp()">${ic('location')} Add This PC's IP</button>
         <button class="btn btn-ghost btn-sm" onclick="olCheckIps()">Check IPs (ISP / location)</button>
@@ -18345,6 +18350,47 @@ async function openOfficeLocation(){
    `${window._olOffices.length?`<button class="btn btn-danger" onclick="olClear()">Remove All (Geofence OFF)</button>`:''}<button class="btn btn-primary" onclick="saveOfficeLocation()">Save (${window._olOffices.length} branch)</button>`);
   _olRenderList(); _olRenderIps();
 }
+// ---- Client-side IP range matcher (backend jaisa) — exact IP + CIDR + wildcard ----
+function _ipToInt(ip){
+  const p=String(ip||'').trim().split('.');
+  if(p.length!==4) return null;
+  let n=0;
+  for(const o of p){ if(!/^\d{1,3}$/.test(o)) return null; const v=+o; if(v<0||v>255) return null; n=(n*256)+v; }
+  return n>>>0;
+}
+function _ipNorm(entry){
+  // canonical string ya null. exact -> 'a.b.c.d'; range -> 'a.b.c.0/24'
+  let e=String(entry||'').trim();
+  if(!e) return null;
+  if(e.indexOf('*')>=0){
+    const parts=e.split('.'); if(parts.length!==4) return null;
+    const nums=[]; let wild=0, seen=false;
+    for(const p of parts){
+      if(p==='*'){ seen=true; wild++; nums.push('0'); }
+      else { if(seen) return null; if(!/^\d{1,3}$/.test(p)||+p>255) return null; nums.push(p); }
+    }
+    if(wild<1||wild>3) return null;
+    return nums.join('.')+'/'+(32-8*wild);
+  }
+  if(e.indexOf('/')>=0){
+    const parts=e.split('/'); const pfx=+parts[1];
+    if(_ipToInt(parts[0])===null||!(pfx>=0&&pfx<=32)) return null;
+    const bi=_ipToInt(parts[0]); const mask=pfx===0?0:((0xFFFFFFFF<<(32-pfx))>>>0);
+    const net=(bi&mask)>>>0;
+    return [net>>>24,(net>>>16)&255,(net>>>8)&255,net&255].join('.')+'/'+pfx;
+  }
+  return _ipToInt(e)===null?null:e;
+}
+function _ipMatch(ip, entry){
+  const ii=_ipToInt(ip); if(ii===null) return false;
+  const n=_ipNorm(entry); if(!n) return false;
+  if(n.indexOf('/')<0) return _ipToInt(n)===ii;
+  const parts=n.split('/'); const pfx=+parts[1];
+  const bi=_ipToInt(parts[0]); const mask=pfx===0?0:((0xFFFFFFFF<<(32-pfx))>>>0);
+  return ((ii&mask)>>>0)===((bi&mask)>>>0);
+}
+function _ipInList(ip, list){ return (list||[]).some(e=>_ipMatch(ip,e)); }
+function _ip24(ip){ const p=String(ip||'').trim().split('.'); return p.length===4?`${p[0]}.${p[1]}.${p[2]}.0/24`:''; }
 function _olIpMeta(ip){
   const m=(window._olIpInfo||{})[ip];
   if(!m) return '';
@@ -18372,9 +18418,14 @@ function _olRenderIps(){
   }
   const un=document.getElementById('ol-unknown');
   if(un){
-    const list=(window._olUnknown||[]).filter(x=>!window._olIps.includes(x.ip));
-    un.innerHTML=list.length?`<div style="font-size:.78rem;font-weight:700;margin:10px 0 6px">New IPs — punches were attempted from these (add them if they are office WiFi):</div>`+list.map((x,i)=>`<div class="pc-task"><div class="t"><div class="tt">${esc(x.ip)}${_olIpMeta(x.ip)}</div><div class="td">last try: ${esc(x.at||'-')}</div></div>
-      <button class="btn btn-primary btn-sm" onclick="olAddUnknown(${i})">Add</button></div>`).join(''):'';
+    // range-aware: jo IP already kisi added range/IP me aata hai use "New IPs" me na dikhao
+    const list=(window._olUnknown||[]).filter(x=>!_ipInList(x.ip, window._olIps));
+    un.innerHTML=list.length?`<div style="font-size:.78rem;font-weight:700;margin:10px 0 6px">New IPs — punches were attempted from these (add if office WiFi, add the whole range, or remove):</div>`+list.map((x,i)=>`<div class="pc-task"><div class="t"><div class="tt">${esc(x.ip)}${_olIpMeta(x.ip)}</div><div class="td">last try: ${esc(x.at||'-')}</div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+        <button class="btn btn-primary btn-sm" onclick="olAddUnknown(${i})" title="Add just this single IP">Add</button>
+        <button class="btn btn-ghost btn-sm" onclick="olAddUnknownRange(${i})" title="Add the whole ${esc(_ip24(x.ip))} range — covers a changing office IP permanently">Add range</button>
+        <button class="btn btn-ghost btn-sm" onclick="olDismissUnknown(${i})" title="Not office WiFi — never show this IP again">Remove</button>
+      </div></div>`).join(''):'';
   }
 }
 async function olClearIps(){
@@ -18405,11 +18456,55 @@ async function olCheckIps(){
   }catch(e){ if(n) n.innerHTML='<div class="alert alert-warning" style="font-size:.8rem;margin-bottom:0">Check failed: '+esc(e.message||'error')+'</div>'; }
 }
 function olAddUnknown(i){
-  const list=(window._olUnknown||[]).filter(x=>!window._olIps.includes(x.ip));
+  const list=(window._olUnknown||[]).filter(x=>!_ipInList(x.ip, window._olIps));
   const x=list[i]; if(!x) return;
   window._olIps.push(x.ip); _olRenderIps();
   const n=document.getElementById('ol-ip-note');
-  if(n) n.innerHTML=`<div class="alert alert-success" style="font-size:.8rem;margin-bottom:0">IP <b>${esc(x.ip)}</b> added — don't forget to Save.</div>`;
+  const r24=_ip24(x.ip);
+  if(n) n.innerHTML=`<div class="alert alert-success" style="font-size:.8rem;margin-bottom:0">IP <b>${esc(x.ip)}</b> added — don't forget to Save.${r24?` If the office IP keeps changing, <a href="#" onclick="olSwapToRange('${esc(x.ip)}','${esc(r24)}');return false;" style="font-weight:700">add the whole ${esc(r24)} range instead</a>.`:''}</div>`;
+}
+// New IP ki poori /24 range add karo (dynamic office IP ka permanent fix)
+function olAddUnknownRange(i){
+  const list=(window._olUnknown||[]).filter(x=>!_ipInList(x.ip, window._olIps));
+  const x=list[i]; if(!x) return;
+  const r=_ip24(x.ip);
+  const n=document.getElementById('ol-ip-note');
+  if(!r){ if(n) n.innerHTML='<div class="alert alert-danger" style="font-size:.8rem;margin-bottom:0">Could not build a range for this IP.</div>'; return; }
+  if(!window._olIps.includes(r)) window._olIps.push(r);
+  _olRenderIps();
+  if(n) n.innerHTML=`<div class="alert alert-success" style="font-size:.8rem;margin-bottom:0">Range <b>${esc(r)}</b> added — every IP from ${esc(r.split('/')[0].replace(/0$/,'0'))} to ${esc(r.split('.').slice(0,3).join('.'))}.255 now works. Don't forget to Save.</div>`;
+}
+// single IP ko usi /24 range se replace kar do
+function olSwapToRange(ip, r){
+  window._olIps=(window._olIps||[]).filter(e=>e!==ip);
+  if(!window._olIps.includes(r)) window._olIps.push(r);
+  _olRenderIps();
+  const n=document.getElementById('ol-ip-note');
+  if(n) n.innerHTML=`<div class="alert alert-success" style="font-size:.8rem;margin-bottom:0">Switched to range <b>${esc(r)}</b> — covers the whole office block. Don't forget to Save.</div>`;
+}
+// "New IP" ko permanently dismiss karo — dubara nahi dikhega
+async function olDismissUnknown(i){
+  const list=(window._olUnknown||[]).filter(x=>!_ipInList(x.ip, window._olIps));
+  const x=list[i]; if(!x) return;
+  const n=document.getElementById('ol-ip-note');
+  try{
+    await api('/api/admin/office-ip-dismiss','POST',{ip:x.ip});
+    window._olUnknown=(window._olUnknown||[]).filter(y=>y.ip!==x.ip);
+    _olRenderIps();
+    if(n) n.innerHTML=`<div class="alert alert-info" style="font-size:.8rem;margin-bottom:0">IP <b>${esc(x.ip)}</b> removed — it will not appear in New IPs again.</div>`;
+  }catch(e){ if(n) n.innerHTML=`<div class="alert alert-danger" style="font-size:.8rem;margin-bottom:0">${esc(e.message||'Could not remove')}</div>`; }
+}
+// manual IP/range add (text box)
+function olAddIpText(){
+  const inp=document.getElementById('ol-ip-manual'); const n=document.getElementById('ol-ip-note');
+  const raw=(inp&&inp.value||'').trim();
+  if(!raw){ if(n) n.innerHTML='<div class="alert alert-warning" style="font-size:.8rem;margin-bottom:0">Type an IP or range first (e.g. 146.196.33.0/24).</div>'; return; }
+  const norm=_ipNorm(raw);
+  if(!norm){ if(n) n.innerHTML='<div class="alert alert-danger" style="font-size:.8rem;margin-bottom:0">Invalid — use 146.196.33.141, 146.196.33.0/24, or 146.196.33.*</div>'; return; }
+  if(window._olIps.includes(norm)){ if(n) n.innerHTML=`<div class="alert alert-info" style="font-size:.8rem;margin-bottom:0"><b>${esc(norm)}</b> is already on the list.</div>`; if(inp) inp.value=''; return; }
+  window._olIps.push(norm); if(inp) inp.value=''; _olRenderIps();
+  const isRange=norm.indexOf('/')>=0;
+  if(n) n.innerHTML=`<div class="alert alert-success" style="font-size:.8rem;margin-bottom:0">${isRange?'Range':'IP'} <b>${esc(norm)}</b> added${isRange?' — covers the whole block':''} — don't forget to Save.</div>`;
 }
 async function olAddMyIp(){
   const n=document.getElementById('ol-ip-note');
@@ -18417,9 +18512,10 @@ async function olAddMyIp(){
     const d=await api('/api/admin/my-ip');
     const ip=String(d.ip||'').trim();
     if(!ip){ if(n) n.innerHTML='<div class="alert alert-danger" style="font-size:.8rem;margin-bottom:0">Could not detect the IP.</div>'; return; }
-    if(window._olIps.includes(ip)){ if(n) n.innerHTML=`<div class="alert alert-info" style="font-size:.8rem;margin-bottom:0">IP ${esc(ip)} is already on the list.</div>`; return; }
+    if(_ipInList(ip, window._olIps)){ if(n) n.innerHTML=`<div class="alert alert-info" style="font-size:.8rem;margin-bottom:0">IP ${esc(ip)} is already covered by the list.</div>`; return; }
     window._olIps.push(ip); _olRenderIps();
-    if(n) n.innerHTML=`<div class="alert alert-success" style="font-size:.8rem;margin-bottom:0">This PC's IP <b>${esc(ip)}</b> added — don't forget to Save.</div>`;
+    const r24=_ip24(ip);
+    if(n) n.innerHTML=`<div class="alert alert-success" style="font-size:.8rem;margin-bottom:0">This PC's IP <b>${esc(ip)}</b> added — don't forget to Save.${r24?` If your office IP changes often, <a href="#" onclick="olSwapToRange('${esc(ip)}','${esc(r24)}');return false;" style="font-weight:700">add the whole ${esc(r24)} range instead</a>.`:''}</div>`;
   }catch(e){ if(n) n.innerHTML=`<div class="alert alert-danger" style="font-size:.8rem;margin-bottom:0">${esc(e.message)}</div>`; }
 }
 function olDelIp(i){ window._olIps.splice(i,1); _olRenderIps(); }

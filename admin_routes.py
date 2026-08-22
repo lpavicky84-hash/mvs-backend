@@ -5091,7 +5091,7 @@ def admin_dpp_pack_pdf(pack_id: int, kind: str = "q", medium: str = "",
 
 @router.get("/office-location")
 def admin_get_office(db: Session = Depends(get_db), _=Depends(get_admin)):
-    from teacher_routes import _ensure_geofence, _office_list, _office_ips
+    from teacher_routes import _ensure_geofence, _office_list, _office_ips, _ip_in_office, _ignored_ips
     _ensure_geofence(db)
     offices = _office_list(db)
     unknown = []
@@ -5100,8 +5100,13 @@ def admin_get_office(db: Session = Depends(get_db), _=Depends(get_admin)):
         import json as _json
         row = db.query(AppSetting).filter(AppSetting.key == "unknown_ips").first()
         data = _json.loads(row.value) if row and row.value else []
-        have = set(_office_ips(db))
-        unknown = [x for x in data if isinstance(x, dict) and x.get("ip") and x["ip"] not in have][:10]
+        have = _office_ips(db)          # exact IPs + ranges (CIDR/wildcard)
+        ignored = set(_ignored_ips(db))
+        # Jo IP kisi whitelisted range me aata hai ya dismiss ho chuka hai use "New IPs" me na dikhao
+        unknown = [x for x in data
+                   if isinstance(x, dict) and x.get("ip")
+                   and x["ip"] not in ignored
+                   and not _ip_in_office(x["ip"], have)][:10]
     except Exception:
         unknown = []
     return {"active": bool(offices),
@@ -5126,6 +5131,43 @@ def admin_office_unknown_clear(db: Session = Depends(get_db), _=Depends(get_admi
         row.value = "[]"
     db.commit()
     return {"message": "New IPs list cleared"}
+
+@router.post("/office-ip-dismiss")
+def admin_office_ip_dismiss(payload: dict = Body(default={}), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Ek 'New IP' ko permanently dismiss karo — jo IP admin office WiFi maanta hi nahi.
+    Ye IP 'New IPs' se hat jaata hai AUR dubara wahan nahi aata (na hi uska punch-attempt log hota).
+    Office WiFi list par koi asar nahi. undo=True bhejo to ignore list se hata do."""
+    from models import AppSetting
+    import json as _json
+    ip = str(payload.get("ip") or "").strip()
+    if not ip:
+        raise HTTPException(status_code=400, detail="IP required")
+    undo = bool(payload.get("undo"))
+    # ignored_ips update
+    row = db.query(AppSetting).filter(AppSetting.key == "ignored_ips").first()
+    if not row:
+        row = AppSetting(key="ignored_ips", value="[]"); db.add(row)
+    try:
+        ignored = _json.loads(row.value or "[]")
+        if not isinstance(ignored, list):
+            ignored = []
+    except Exception:
+        ignored = []
+    ignored = [str(x).strip() for x in ignored if str(x).strip() and str(x).strip() != ip]
+    if not undo:
+        ignored.insert(0, ip)
+    row.value = _json.dumps(ignored[:200])
+    # unknown_ips se bhi hata do
+    urow = db.query(AppSetting).filter(AppSetting.key == "unknown_ips").first()
+    if urow and urow.value:
+        try:
+            udata = _json.loads(urow.value)
+            if isinstance(udata, list):
+                urow.value = _json.dumps([x for x in udata if not (isinstance(x, dict) and x.get("ip") == ip)])
+        except Exception:
+            pass
+    db.commit()
+    return {"message": ("IP %s restored to New IPs" % ip) if undo else ("IP %s dismissed — it will not appear again" % ip)}
 
 @router.post("/office-ip-info")
 def admin_office_ip_info(payload: dict = Body(default={}), _=Depends(get_admin)):
@@ -5187,23 +5229,28 @@ def admin_set_office(payload: dict = Body(...), db: Session = Depends(get_db), _
         _set("offices", ""); _set("office_lat", ""); _set("office_lng", ""); _set("office_ips", "")
         db.commit()
         return {"message": "Geofence turned off - punching is now allowed from anywhere"}
-    # office WiFi/broadband IPs (optional) — in se aaye punch GPS ke bina allowed
-    # v121: IP count limit hata di (19+ office WiFis) — sirf format validate hota hai
-    import re as _re
-    raw_ips = payload.get("ips") or []
-    if not isinstance(raw_ips, list):
-        raise HTTPException(status_code=400, detail="WiFi IPs list bhejo")
+    # office WiFi/broadband IPs (optional) — in se aaye punch GPS ke bina allowed.
+    # v121: IP count limit hata di. v123: ab exact IP + CIDR range + wildcard teeno accept.
+    # Dynamic office IP (Excitel jaisa pool) ke liye poori range whitelist karo: 146.196.33.0/24
+    from teacher_routes import _norm_ip_entry
     clean_ips = []
-    for ip in raw_ips:
-        ip = str(ip).strip()
-        if not ip:
-            continue
-        if not (_re.match(r"^\d{1,3}(\.\d{1,3}){3}$", ip) or ":" in ip):
-            raise HTTPException(status_code=400, detail=f"Invalid IP address: {ip}")
-        if ip not in clean_ips:
-            clean_ips.append(ip)
-    _set("office_ips", _json.dumps(clean_ips))
+    if "ips" in payload:
+        raw_ips = payload.get("ips") or []
+        if not isinstance(raw_ips, list):
+            raise HTTPException(status_code=400, detail="WiFi IPs list bhejo")
+        for ip in raw_ips:
+            norm = _norm_ip_entry(ip)
+            if norm is None:
+                raise HTTPException(status_code=400, detail="Invalid IP / range: %s (use 146.196.33.141, 146.196.33.0/24, or 146.196.33.*)" % str(ip).strip())
+            if norm not in clean_ips:
+                clean_ips.append(norm)
+        _set("office_ips", _json.dumps(clean_ips))
+    # Branches: sirf tab validate/save karo jab caller ne 'offices' bheja ho. Isse
+    # IP-only save (bina branch touch kiye) bhi kaam karta hai — koi silent 400 nahi.
     raw = payload.get("offices")
+    if "offices" not in payload:
+        db.commit()
+        return {"message": "Office WiFi IP list saved (%d entr%s)" % (len(clean_ips), "y" if len(clean_ips) == 1 else "ies")}
     if not isinstance(raw, list) or not raw:
         raise HTTPException(status_code=400, detail="Kam se kam 1 office branch bhejo")
     if len(raw) > 6:
