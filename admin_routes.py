@@ -2740,6 +2740,7 @@ def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depend
         out.append({
             "id": d.id,
             "student_name": sname or "Unknown student",
+            "student_id": d.student_id,
             "student_phone": sphone,
             "class_name": scls or "",
             "teacher_name": tname or "Unassigned",
@@ -2909,7 +2910,42 @@ def admin_doubt_student(did: int, db: Session = Depends(get_db), _=Depends(get_a
         "has_photo": has_photo,
     }
 
-# ===== ADMIN: QUESTION BANK (global materials, Hindi/English, no-compress or link) =====
+@router.get("/student-doubts")
+def admin_student_doubts(student_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin doubts page — student naam pe click karne par uski SAARI chatting ek saath
+    (WhatsApp-style). Full thread + media flags ke saath."""
+    from teacher_routes import _student_chat_payload
+    return _student_chat_payload(db, student_id)
+
+@router.get("/doubt-rate-config")
+def admin_doubt_rate_get(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Doubt anti-spam limits padho (admin config)."""
+    from student_routes import _doubt_rate_cfg
+    return _doubt_rate_cfg(db)
+
+@router.post("/doubt-rate-config")
+def admin_doubt_rate_set(payload: dict = Body(default={}), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Doubt anti-spam limits set karo. Body: {enabled, cooldown_sec, per_hour, per_day}.
+    0 = us layer ko off kar do (jaise per_day=0 -> koi daily cap nahi)."""
+    from student_routes import _doubt_rate_cfg
+    from models import AppSetting
+    import json as _json
+    cfg = _doubt_rate_cfg(db)
+    if "enabled" in payload:
+        cfg["enabled"] = bool(payload.get("enabled"))
+    for k, lo, hi in [("cooldown_sec", 0, 3600), ("per_hour", 0, 200), ("per_day", 0, 1000)]:
+        if k in payload and payload.get(k) is not None:
+            try:
+                v = int(payload.get(k))
+            except Exception:
+                raise HTTPException(status_code=400, detail="%s must be a number" % k)
+            cfg[k] = max(lo, min(hi, v))
+    row = db.query(AppSetting).filter(AppSetting.key == "doubt_rate_cfg").first()
+    if not row:
+        row = AppSetting(key="doubt_rate_cfg"); db.add(row)
+    row.value = _json.dumps(cfg)
+    db.commit()
+    return {"message": "Doubt limits saved", "config": cfg}
 @router.post("/questionbank")
 async def admin_upload_questionbank(
     title: str = Form(...),

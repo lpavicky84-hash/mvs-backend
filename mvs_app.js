@@ -7184,23 +7184,188 @@ function dbtReplyRow(role,id,ph){
   const iid='dbtr-'+role+'-'+id;
   return `<div class="dbt-replyrow"><input class="form-control" id="${iid}" placeholder="${ph||'Write a reply...'}" onkeydown="if(event.key==='Enter')dbtRespond('${role}',${id},'${iid}')"><button class="btn btn-primary btn-sm" onclick="dbtRespond('${role}',${id},'${iid}')">Send</button></div>`;
 }
-async function openStudentDoubts(sid,encName){
+// ===== PREMIUM DOUBT CHAT (WhatsApp-style) + DOUBT RATE-LIMIT POPUP =====
+function _ensureDoubtChatCss(){
+  if(document.getElementById('dbtchat-css')) return;
+  const st=document.createElement('style'); st.id='dbtchat-css';
+  st.textContent=`
+  .dchat-modal-wrap{margin:-6px -4px 0}
+  .dchat-hdr{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px 16px 0 0;
+    background:linear-gradient(135deg,var(--primary,#b8941f),#8a6f16);color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.12)}
+  .dchat-hdr .av{width:46px;height:46px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;
+    font-weight:800;font-size:1rem;background:rgba(255,255,255,.22);color:#fff;overflow:hidden;border:2px solid rgba(255,255,255,.5);
+    background-size:cover;background-position:center}
+  .dchat-hdr .av img{width:100%;height:100%;object-fit:cover}
+  .dchat-hdr .nm{font-weight:800;font-size:1.02rem;line-height:1.2}
+  .dchat-hdr .sub{font-size:.72rem;opacity:.9;margin-top:2px}
+  .dchat-scroll{max-height:min(66vh,560px);overflow-y:auto;padding:16px 12px 20px;
+    background:var(--card,#fbf7ec);
+    background-image:radial-gradient(rgba(150,130,80,.06) 1px,transparent 1px);background-size:22px 22px;
+    border:1px solid var(--border,rgba(0,0,0,.08));border-top:none;border-radius:0 0 16px 16px}
+  .dchat-sep{display:flex;align-items:center;justify-content:center;gap:8px;margin:16px 0 4px;flex-wrap:wrap}
+  .dchat-sep-l{font-size:.72rem;font-weight:800;color:var(--text,#3a3226);background:var(--bg,#efe8d6);
+    padding:4px 12px;border-radius:20px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+  .dchat-sep-pill{font-size:.62rem;font-weight:800;padding:3px 9px;border-radius:20px}
+  .dchat-sep-pill.res{background:rgba(5,150,105,.14);color:#059669}
+  .dchat-sep-pill.open{background:rgba(217,119,6,.15);color:#b45309}
+  .dchat-day{text-align:center;font-size:.66rem;color:var(--text-muted,#8a8272);margin:6px 0 10px;font-weight:700;letter-spacing:.02em}
+  .dchat-row{display:flex;margin:5px 0;width:100%}
+  .dchat-row.in{justify-content:flex-start}
+  .dchat-row.out{justify-content:flex-end}
+  .dchat-bubble{max-width:82%;padding:8px 11px 6px;border-radius:14px;font-size:.9rem;line-height:1.45;
+    box-shadow:0 1px 2px rgba(0,0,0,.08);word-break:break-word;position:relative}
+  .dchat-bubble.in{background:var(--card,#fff);color:var(--text,#2c2519);border:1px solid var(--border,rgba(0,0,0,.06));border-top-left-radius:4px}
+  .dchat-bubble.out{background:linear-gradient(135deg,#dcf8c6,#c8f0b0);color:#123a12;border-top-right-radius:4px}
+  .dchat-bubble.out.mvs{background:linear-gradient(135deg,#fbeec2,#f3dd9a);color:#3a2c05}
+  .dchat-auth{font-size:.7rem;font-weight:800;margin-bottom:2px;opacity:.9;display:flex;gap:6px;align-items:center}
+  .dchat-tag{font-size:.56rem;font-weight:800;padding:1px 6px;border-radius:10px;background:rgba(0,0,0,.09)}
+  .dchat-txt .katex{font-size:1em}
+  .dchat-time{font-size:.6rem;color:rgba(0,0,0,.42);text-align:right;margin-top:3px;font-weight:600}
+  .dchat-bubble.in .dchat-time{color:var(--text-muted,#9a927f)}
+  .dchat-media{margin-top:6px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+  .dchat-img{max-width:210px;max-height:230px;border-radius:12px;cursor:pointer;border:1px solid rgba(0,0,0,.08);display:block}
+  .dchat-file{display:inline-flex;align-items:center;gap:6px;font-size:.76rem;font-weight:700;padding:6px 11px;border-radius:20px;
+    border:1px solid var(--border,rgba(0,0,0,.12));background:rgba(255,255,255,.6);color:var(--text,#2c2519);cursor:pointer}
+  .dchat-file:hover{background:rgba(255,255,255,.9)}
+  .dchat-empty{text-align:center;color:var(--text-muted,#9a927f);padding:50px 16px;font-size:.9rem}
+  /* rate-limit cooldown popup */
+  .dbtcd-box{text-align:center;padding:8px 6px 4px}
+  .dbtcd-ic{width:66px;height:66px;border-radius:50%;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,rgba(217,119,6,.16),rgba(217,119,6,.06));color:#d97706}
+  .dbtcd-ic svg{width:34px;height:34px}
+  .dbtcd-timer{font-size:2.4rem;font-weight:800;letter-spacing:.04em;color:var(--primary,#b8941f);margin:6px 0 2px;font-variant-numeric:tabular-nums}
+  .dbtcd-msg{font-size:.92rem;color:var(--text,#3a3226);max-width:360px;margin:0 auto 6px;line-height:1.5}
+  .dbtcd-sub{font-size:.76rem;color:var(--text-muted,#8a8272);margin-top:4px}
+  .dbtcd-ok{color:#059669;font-weight:800;font-size:1.1rem;margin:10px 0 4px}
+  .dbtcd-hint{display:inline-flex;gap:6px;align-items:center;font-size:.72rem;color:var(--text-muted,#8a8272);
+    background:var(--bg,#efe8d6);padding:5px 11px;border-radius:20px;margin-top:8px}`;
+  document.head.appendChild(st);
+}
+// IST-safe clock/day straight from the +05:30 ISO string (browser tz se independent)
+function _istClock(iso){
+  const m=String(iso||'').match(/T(\d{2}):(\d{2})/); if(!m) return '';
+  let h=+m[1]; const mm=m[2], ap=h>=12?'PM':'AM'; h=h%12||12; return h+':'+mm+' '+ap;
+}
+function _istDay(iso){
+  const d=String(iso||'').slice(0,10); const p=d.split('-'); if(p.length!==3) return '';
+  const mon=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][(+p[1])-1]||'';
+  return (+p[2])+' '+mon+' '+p[0];
+}
+function _dchatMedia(role,d,kind){
+  const base='/api/'+role+'/doubt/'+d.id; let h='';
+  if(kind==='q'){
+    if(d.has_image){
+      if((d.attach_mime||'image/jpeg').startsWith('image/'))
+        h+=`<img class="dchat-img doubt-thumb" data-url="${base}/image" data-name="${esc(d.attach_name||'')}" onclick="openImageViewer(this)" alt="doubt image">`;
+      else h+=`<button class="dchat-file" onclick="viewDoubtFile('${role}',${d.id},'${esc(d.attach_mime||'')}')">${ic('folder')} ${esc(d.attach_name||'Attachment')}</button>`;
+    }
+    if(d.has_voice) h+=`<button class="dchat-file" onclick="playDoubtVoice(this,'${base}/voice')">${ic('play')} Voice note</button>`;
+  }else{
+    if(d.has_answer_voice) h+=`<button class="dchat-file" onclick="playDoubtVoice(this,'${base}/answer-voice')">${ic('play')} Voice answer</button>`;
+    if(d.has_answer_file) h+=`<button class="dchat-file" onclick="viewAnswerFile('${role}',${d.id},'${esc(d.answer_attach_mime||'')}')">${ic('folder')} ${esc(d.answer_attach_name||'Answer file')}</button>`;
+  }
+  return h;
+}
+function _dchatBubble(side,author,tag,mvs,text,time,media){
+  return `<div class="dchat-row ${side}"><div class="dchat-bubble ${side}${mvs?' mvs':''}">`+
+    (author?`<div class="dchat-auth">${esc(author)}${tag?`<span class="dchat-tag">${esc(tag)}</span>`:''}</div>`:'')+
+    (text?`<div class="dchat-txt">${_doubtFmt(text)}</div>`:'')+
+    (media?`<div class="dchat-media">${media}</div>`:'')+
+    (time?`<div class="dchat-time">${esc(time)}</div>`:'')+
+  `</div></div>`;
+}
+function _dchatDoubtBlock(role,d){
+  const subj=esc(d.subject||'General')+(d.topic?' \u00b7 '+esc(d.topic):'');
+  const pill=d.status==='resolved'?'<span class="dchat-sep-pill res">Resolved</span>':'<span class="dchat-sep-pill open">Pending</span>';
+  const msgs=[];
+  // student question (incoming)
+  msgs.push({t:d.created_at||'', html:_dchatBubble('in',null,null,false,d.question||'',_istClock(d.created_at),_dchatMedia(role,d,'q'))});
+  // teacher/MVS answer (outgoing)
+  if(d.answer||d.has_answer_voice||d.has_answer_file){
+    const isMvs=/mvs foundation/i.test(d.owner||'');
+    msgs.push({t:d.answered_at||d.created_at||'', html:_dchatBubble('out',d.owner||'Teacher','Answer',isMvs,d.answer||'',_istClock(d.answered_at||d.created_at),_dchatMedia(role,d,'a'))});
+  }
+  // thread follow-ups
+  (d.responses||[]).forEach(r=>{
+    const side=r.role==='student'?'in':'out';
+    const isMvs=r.role==='admin';
+    const who=isMvs?'MVS Foundation':(r.author_name||(r.role==='student'?'Student':'Teacher'));
+    const tag=isMvs?'MVS':(r.role==='student'?'Student':'Teacher');
+    msgs.push({t:r.created_at||'', html:_dchatBubble(side,who,tag,isMvs,r.body||'',_istClock(r.created_at))});
+  });
+  msgs.sort((a,b)=> new Date(a.t||0)-new Date(b.t||0));
+  return `<div class="dchat-sep"><span class="dchat-sep-l">${subj}</span>${pill}</div>`+
+         `<div class="dchat-day">${esc(_istDay(d.created_at))}</div>`+
+         msgs.map(m=>m.html).join('');
+}
+async function openDoubtChat(role,sid,encName){
+  _ensureDoubtChatCss();
   const name=decodeURIComponent(encName||'')||'Student';
   if(!sid){ toast('Student not linked.',true); return; }
-  showModal(esc(name)+' \u2014 Doubt History','<div class="spinner"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  showModal(esc(name)+' \u2014 Doubts',
+    `<div class="dchat-modal-wrap"><div class="dchat-hdr"><div class="av" id="dchat-av">${esc(initials(name))}</div><div><div class="nm">${esc(name)}</div><div class="sub" id="dchat-sub">Loading chat\u2026</div></div></div><div class="dchat-scroll" id="dchat-scroll"><div class="dchat-empty">Loading\u2026</div></div></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
   try{
-    const d=await api('/api/teacher/student-doubts?student_id='+sid);
-    const body=document.getElementById('modal-body');
-    if(!d.doubts||!d.doubts.length){ body.innerHTML='<div class="vv-empty">This student has not asked any doubts yet.</div>'; return; }
-    body.innerHTML=`<div style="font-size:.75rem;color:var(--text-muted);margin-bottom:12px">${d.total} doubt${d.total>1?'s':''} \u00b7 newest first</div>`+
-      d.doubts.map(x=>`<div class="sh-card">
-        <div class="sh-head"><span class="sh-sub">${esc(x.subject||'General')}${x.topic?' \u00b7 '+esc(x.topic):''}</span><span class="dbt-pill ${x.status==='resolved'?'res':'open'}" style="font-size:.62rem">${x.status==='resolved'?'\u2713 Resolved':'Pending'}</span></div>
-        <div class="sh-q">${_doubtFmt(x.question||'')}</div>
-        ${x.answer?`<div class="sh-a"><b>Answer:</b> ${_doubtFmt(x.answer)}</div>`:'<div class="sh-noans">Not answered yet</div>'}
-        <div class="sh-meta">${esc(fmtDT(x.created_at))}${x.owner?' \u00b7 '+esc(x.owner):''}${x.mine?' \u00b7 <b>you</b>':''}</div>
-      </div>`).join('');
-  }catch(e){ document.getElementById('modal-body').innerHTML=errHtml(e); }
+    const d=await api('/api/'+role+'/student-doubts?student_id='+sid);
+    const sub=document.getElementById('dchat-sub');
+    if(sub) sub.textContent=`${d.total} doubt${d.total===1?'':'s'} \u00b7 ${d.resolved} resolved`;
+    const sc=document.getElementById('dchat-scroll'); if(!sc) return;
+    if(!d.doubts||!d.doubts.length){ sc.innerHTML='<div class="dchat-empty">This student has not asked any doubts yet.</div>'; return; }
+    sc.innerHTML=d.doubts.map(x=>_dchatDoubtBlock(role,x)).join('');
+    // lazy-load doubt images (doubt-thumb pattern -> openImageViewer works) + student photo avatar
+    try{ loadDoubtThumbs(sc); }catch(e){}
+    if(d.has_photo){ const base=role==='teacher'?'/api/teacher/student/':'/api/admin/student/'; loadImgInto('dchat-av',base+sid+'/photo'); }
+    sc.scrollTop=sc.scrollHeight;
+  }catch(e){ const sc=document.getElementById('dchat-scroll'); if(sc) sc.innerHTML=`<div class="dchat-empty">${esc(e.message||'Could not load chat')}</div>`; }
 }
+
+// ---- Doubt rate-limit cooldown popup (student) ----
+function _fmtCountdown(sec){
+  sec=Math.max(0,Math.floor(sec));
+  const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60;
+  const pad=n=>String(n).padStart(2,'0');
+  return h>0?`${h}:${pad(m)}:${pad(s)}`:`${m}:${pad(s)}`;
+}
+function _showDoubtCooldownPopup(status,serverMsg){
+  _ensureDoubtChatCss();
+  if(window._dbtCdTimer){ clearInterval(window._dbtCdTimer); window._dbtCdTimer=null; }
+  const total=(status&&status.retry_after_sec)||0;
+  const end=Date.now()+total*1000;
+  let why=serverMsg||'You are sending doubts too quickly.';
+  let sub='';
+  if(status){
+    if(status.reason==='hour') sub=`Limit: ${status.per_hour} doubts per hour.`;
+    else if(status.reason==='day') sub=`Limit: ${status.per_day} doubts per day.`;
+    else if(status.reason==='cooldown') sub='Please space out your doubts a little.';
+  }
+  const clockIc=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`;
+  showModal('Please wait',
+    `<div class="dbtcd-box"><div class="dbtcd-ic">${clockIc}</div>
+      <div class="dbtcd-msg">${esc(why)}</div>
+      <div class="dbtcd-timer" id="dbtcd-timer">${_fmtCountdown(total)}</div>
+      <div class="dbtcd-sub" id="dbtcd-state">You can send your next doubt when the timer ends.</div>
+      ${sub?`<div class="dbtcd-hint">${clockIc}${esc(sub)}</div>`:''}
+    </div>`,
+    `<button class="btn btn-primary" onclick="closeModal()">Got it</button>`);
+  const tick=()=>{
+    const el=document.getElementById('dbtcd-timer');
+    if(!el){ clearInterval(window._dbtCdTimer); window._dbtCdTimer=null; return; }
+    const left=Math.ceil((end-Date.now())/1000);
+    if(left<=0){
+      el.outerHTML='<div class="dbtcd-ok" id="dbtcd-timer">You can ask now</div>';
+      const stt=document.getElementById('dbtcd-state'); if(stt) stt.textContent='Go ahead and send your doubt.';
+      clearInterval(window._dbtCdTimer); window._dbtCdTimer=null;
+      return;
+    }
+    el.textContent=_fmtCountdown(left);
+  };
+  window._dbtCdTimer=setInterval(tick,1000);
+}
+async function _doubtRateStatus(){
+  try{ return await api('/api/student/doubt-rate-status?t='+Date.now()); }catch(e){ return null; }
+}
+async function openStudentDoubts(sid,encName){ return openDoubtChat('teacher',sid,encName); }
+
 async function dbtRespond(role,id,iid){
   const inp=document.getElementById(iid); const body=(inp?inp.value:'').trim();
   if(!body){ toast('Please write a reply first.',true); return; }
@@ -7346,11 +7511,12 @@ function viewAnswerFile(role,id,mime,name){
   }).catch(()=>toast('Attachment not found.',true));
 }
 function toppersHTML(doubts,idPrefix,withPhone){
+  const role=idPrefix==='ttop'?'teacher':'admin';
   const by={};
-  doubts.forEach(d=>{ const k=(d.student_name||'Student')+(withPhone&&d.student_phone?('|'+d.student_phone):''); (by[k]=by[k]||{name:d.student_name||'Student',phone:d.student_phone||'',total:0,pending:0}); by[k].total++; if(d.status!=='resolved') by[k].pending++; });
+  doubts.forEach(d=>{ const k=(d.student_name||'Student')+(withPhone&&d.student_phone?('|'+d.student_phone):''); const o=(by[k]=by[k]||{name:d.student_name||'Student',phone:d.student_phone||'',sid:0,total:0,pending:0}); o.total++; if(!o.sid&&d.student_id) o.sid=d.student_id; if(d.status!=='resolved') o.pending++; });
   const rows=Object.values(by).sort((a,b)=>b.total-a.total).slice(0,15);
   if(!rows.length) return '';
-  const inner=rows.map((r,i)=>`<div class="topper-row"><div class="rank-b ${i<3?'rank-'+(i+1):''}">${i+1}</div><div class="topper-name">${esc(r.name)}${withPhone&&r.phone?`<div class="topper-sub">${esc(r.phone)}</div>`:''}</div><span class="xm-chip">${r.total} doubts</span>${r.pending?`<span class="xm-pend">${r.pending} pending</span>`:''}</div>`).join('');
+  const inner=rows.map((r,i)=>`<div class="topper-row"${r.sid?` style="cursor:pointer" title="Open chat with ${esc(r.name)}" onclick="openDoubtChat('${role}',${r.sid},'${encodeURIComponent(r.name)}')"`:''}><div class="rank-b ${i<3?'rank-'+(i+1):''}">${i+1}</div><div class="topper-name">${esc(r.name)}${withPhone&&r.phone?`<div class="topper-sub">${esc(r.phone)}</div>`:''}</div><span class="xm-chip">${r.total} doubts</span>${r.pending?`<span class="xm-pend">${r.pending} pending</span>`:''}</div>`).join('');
   return `<div class="card" style="margin-bottom:16px"><div class="card-header" style="cursor:pointer" onclick="const b=document.getElementById('${idPrefix}-tops');const c=document.getElementById('${idPrefix}-chev');const o=b.style.display!=='none';b.style.display=o?'none':'block';c.classList.toggle('open',!o)"><h3 style="display:flex;align-items:center;gap:10px">${ic('users')} Most Active Students <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(by doubts asked \u2014 tap to view)</span></h3><span class="chev" id="${idPrefix}-chev">\u25bc</span></div><div class="card-body hide-scroll" id="${idPrefix}-tops" style="display:none;max-height:295px">${inner}</div></div>`;
 }
 
@@ -11114,8 +11280,35 @@ async function loadAActivity(){
 let _attEntries=[]; let _attActiveSub=''; let _attClass=''; let _attTeacherMap={};
 let _aDoubtFilter='all';
 let _adSub=null;
-function adPickSub(sub){ _adSub=sub?decodeURIComponent(sub):''; _aDoubtFilter='all'; aRenderDoubts(); }
-async function aDelDoubt(id){
+function _adDoubtLimitsCard(){
+  const c=window._aDoubtRate; if(!c) return '';
+  const on=!!c.enabled;
+  return `<div class="card" style="margin-bottom:14px"><div class="card-header" style="cursor:pointer" onclick="_adToggle('adrl')"><h3 style="display:flex;align-items:center;gap:10px">${ic('clock')||ic('user')} Doubt Limits <span style="font-size:.72rem;color:${on?'#059669':'var(--text-muted)'};font-weight:800">${on?'ON':'OFF'}</span><span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(anti-spam \u2014 tap to configure)</span></h3><span class="chev" id="adrl-chev">\u25bc</span></div>
+    <div class="card-body" id="adrl-body" style="display:none">
+      <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:12px">Stop doubt spam. A student who exceeds these limits gets a timed cooldown, and sees a popup with the countdown for when they can send the next doubt. Set any field to <b>0</b> to turn that layer off.</div>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:.85rem;margin-bottom:14px;cursor:pointer"><input type="checkbox" id="adrl-en" ${on?'checked':''} style="width:18px;height:18px"> Enable doubt limits</label>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
+        <div class="form-group" style="margin:0"><label>Cooldown between doubts (seconds)</label><input class="form-control" type="number" min="0" max="3600" id="adrl-cd" value="${c.cooldown_sec}"></div>
+        <div class="form-group" style="margin:0"><label>Max doubts per hour</label><input class="form-control" type="number" min="0" max="200" id="adrl-ph" value="${c.per_hour}"></div>
+        <div class="form-group" style="margin:0"><label>Max doubts per day</label><input class="form-control" type="number" min="0" max="1000" id="adrl-pd" value="${c.per_day}"></div>
+      </div>
+      <div style="margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><button class="btn btn-primary btn-sm" onclick="saveDoubtLimits()">Save Limits</button><span id="adrl-note" style="font-size:.78rem"></span></div>
+    </div></div>`;
+}
+async function saveDoubtLimits(){
+  const en=document.getElementById('adrl-en').checked;
+  const cd=parseInt(document.getElementById('adrl-cd').value)||0;
+  const ph=parseInt(document.getElementById('adrl-ph').value)||0;
+  const pd=parseInt(document.getElementById('adrl-pd').value)||0;
+  const note=document.getElementById('adrl-note');
+  try{
+    const r=await api('/api/admin/doubt-rate-config','POST',{enabled:en,cooldown_sec:cd,per_hour:ph,per_day:pd});
+    window._aDoubtRate=r.config||{enabled:en,cooldown_sec:cd,per_hour:ph,per_day:pd};
+    if(note) note.innerHTML='<span style="color:#059669;font-weight:700">Saved.</span>';
+    toast('Doubt limits saved.');
+  }catch(e){ if(note) note.innerHTML=`<span style="color:var(--danger);font-weight:700">${esc(e.message||'Save failed')}</span>`; }
+}
+function adPickSub(sub){ _adSub=sub?decodeURIComponent(sub):''; _aDoubtFilter='all'; aRenderDoubts(); }async function aDelDoubt(id){
   if(!confirm('Delete this doubt?\n\nIt will be removed immediately from BOTH the student and teacher portals. This cannot be undone.')) return;
   try{ await api('/api/admin/doubt/'+id,'DELETE'); toast('Doubt deleted.'); loadADoubts(); }
   catch(e){ toast(e.message||'Delete failed',true); }
@@ -11125,6 +11318,7 @@ async function loadADoubts(){
   try{
     const [all,ov]=await Promise.all([api('/api/admin/doubts'),api('/api/admin/doubts-overview')]);
     window._aDoubts=all; window._aDoubtOv=ov;
+    try{ window._aDoubtRate=await api('/api/admin/doubt-rate-config'); }catch(e){ if(!window._aDoubtRate) window._aDoubtRate=null; }
     aRenderDoubts();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
@@ -11246,7 +11440,7 @@ function aRenderDoubts(){
   const bd=document.getElementById('a-doubt-badge'); if(bd){ bd.textContent=pendAll; bd.style.display=pendAll>0?'':'none'; }
   if(!_adSub){
     // ---- DEFAULT: toppers (collapsed) + subject cards ----
-    el.innerHTML=toppersHTML(all,'atop',true)+_adClassBar()+_adTeacherChart()+_adAdminInbox()+`<div class="card-header" style="padding:0 4px 18px;border:none"><h3 style="font-size:1.3rem">Doubts \u2014 Subject Wise</h3></div>`+_adCards();
+    el.innerHTML=toppersHTML(all,'atop',true)+_adClassBar()+_adDoubtLimitsCard()+_adTeacherChart()+_adAdminInbox()+`<div class="card-header" style="padding:0 4px 18px;border:none"><h3 style="font-size:1.3rem">Doubts \u2014 Subject Wise</h3></div>`+_adCards();
     return;
   }
   // ---- DRILL: ek subject / admin-inbox bucket ke doubts ----
@@ -11271,7 +11465,7 @@ function aRenderDoubts(){
       : `<div class="bubble-pending">${d.assigned_to_admin?'Awaiting an official reply from MVS Foundation...':'Awaiting teacher\'s reply...'}</div>`;
     const reassignNote=d.assigned_by_name?`<div style="margin-top:3px;font-size:.72rem;color:#4f46e5;font-weight:700">Reassigned by ${esc(d.assigned_by_name)} \u2192 now with ${esc(owner)}</div>`:'';
     const adminReply=`<div style="display:flex;align-items:center;gap:9px;margin-top:12px;background:linear-gradient(135deg,rgba(201,162,39,.1),rgba(201,162,39,.03));border:1px solid rgba(201,162,39,.4);border-radius:12px;padding:9px 12px"><div class="mvs-logo" style="width:30px;height:30px;font-size:.8rem">M</div><input class="form-control" style="flex:1;min-width:0" id="dbtr-admin-${d.id}" placeholder="Reply as MVS Foundation${d.status==='resolved'?'':''} — posting on a pending doubt resolves it" onkeydown="if(event.key==='Enter')dbtRespond('admin',${d.id},'dbtr-admin-${d.id}')"><button class="btn btn-primary btn-sm" onclick="dbtRespond('admin',${d.id},'dbtr-admin-${d.id}')">Post</button></div>`;
-    return `<div class="dcard"${d.assigned_to_admin?' style="border-color:rgba(201,162,39,.6);box-shadow:0 0 0 3px rgba(201,162,39,.12)"':''}><div class="dcard-head"><div class="dcard-who"><b onclick="aDoubtStudent(${d.id})" style="cursor:pointer;text-decoration:underline;text-underline-offset:3px" title="View student details">${esc(d.student_name)}</b>${d.student_phone?' \u00b7 '+esc(d.student_phone):''} asked <b>${esc(d.teacher_name)}</b><div style="margin-top:3px">${esc(d.subject||'')}${d.topic?' \u00b7 '+esc(d.topic):''} \u00b7 ${esc(when)}</div>${reassignNote}</div><div style="display:flex;align-items:center;gap:8px">${d.assigned_to_admin?'<span class="tag" style="background:linear-gradient(135deg,#c9a227,#a8841a);color:#241a05">With MVS Foundation</span>':''}${d.needs_attention&&d.status==='resolved'?'<span class="tag tag-pending">New Follow-up</span>':('<span class="tag '+(d.status==='resolved'?'tag-done':'tag-pending')+'">'+(d.status==='resolved'?'Resolved':'Pending')+'</span>')}<button class="btn btn-danger btn-sm" title="Delete this doubt (removed from student and teacher portals)" onclick="aDelDoubt(${d.id})">${ic('trash')}</button></div></div>
+    return `<div class="dcard"${d.assigned_to_admin?' style="border-color:rgba(201,162,39,.6);box-shadow:0 0 0 3px rgba(201,162,39,.12)"':''}><div class="dcard-head"><div class="dcard-who"><b onclick="openDoubtChat('admin',${d.student_id||0},'${encodeURIComponent(d.student_name||'Student')}')" style="cursor:pointer;text-decoration:underline;text-underline-offset:3px" title="Open full chat with this student">${esc(d.student_name)}</b><button style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:0 4px;vertical-align:middle;opacity:.7" title="Student details" onclick="aDoubtStudent(${d.id})">${ic('user')}</button>${d.student_phone?' \u00b7 '+esc(d.student_phone):''} asked <b>${esc(d.teacher_name)}</b><div style="margin-top:3px">${esc(d.subject||'')}${d.topic?' \u00b7 '+esc(d.topic):''} \u00b7 ${esc(when)}</div>${reassignNote}</div><div style="display:flex;align-items:center;gap:8px">${d.assigned_to_admin?'<span class="tag" style="background:linear-gradient(135deg,#c9a227,#a8841a);color:#241a05">With MVS Foundation</span>':''}${d.needs_attention&&d.status==='resolved'?'<span class="tag tag-pending">New Follow-up</span>':('<span class="tag '+(d.status==='resolved'?'tag-done':'tag-pending')+'">'+(d.status==='resolved'?'Resolved':'Pending')+'</span>')}<button class="btn btn-danger btn-sm" title="Delete this doubt (removed from student and teacher portals)" onclick="aDelDoubt(${d.id})">${ic('trash')}</button></div></div>
       <div class="chat-thread"><div class="bubble bubble-q"><div class="who">${esc(d.student_name)} (Student)</div>${esc(d.question||'')}${qvoice}${qfile}${qimg}</div>${ans}</div>${dbtThreadHTML(d)}${adminReply}</div>`;
   }).join(''):`<div class="empty-state"><p>No doubts in this view.</p></div>`;
   el.innerHTML=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="adPickSub('')">\u2190 All Subjects</button><h3 style="margin:0;font-size:1.2rem">${esc(_adSubLabel())}</h3></div>
@@ -14170,6 +14364,7 @@ async function loadSDoubts(){
       <div class="form-group"><label>Topic</label><input class="form-control" id="sdo-topic" placeholder="e.g. EM Waves"></div>
       <div class="form-group"><label>Your Doubt</label>${composerHTML('sdo','Write your doubt here... or record a voice note','submitDoubt()','Submit Doubt')}</div>
       <div id="sdo-status" style="margin-top:10px"></div>
+      <div id="sdo-ratehint" style="margin-top:8px"></div>
     </div></div><div class="card"><div class="card-header"><h3>My Doubts</h3></div><div class="card-body hide-scroll s-dlist">`;
     if(mine.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No doubts yet.</p></div>`;
     else html+=mine.map(d=>{
@@ -14199,7 +14394,30 @@ async function loadSDoubts(){
     });
     _dbtLoadAvas('student');   // v112 — thread me teacher photos
     sdoBindPaste();
+    _sdoRateHint();
   }catch(e){ el.innerHTML=errHtml(e); }
+}
+// Ask-a-Doubt ke neeche halka hint: kitne doubts bache / abhi cooldown to nahi
+async function _sdoRateHint(){
+  const el=document.getElementById('sdo-ratehint'); if(!el) return;
+  const s=await _doubtRateStatus(); if(!s||!s.enabled){ el.innerHTML=''; return; }
+  if(s.blocked){
+    el.innerHTML=`<div class="alert alert-warning" style="font-size:.8rem;margin:0;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><span>You can send your next doubt in <b id="sdo-cdmini">${_fmtCountdown(s.retry_after_sec)}</b>.</span><button class="btn btn-ghost btn-sm" onclick="_showDoubtCooldownPopup(window._sdoRL||null)">Details</button></div>`;
+    window._sdoRL=s;
+    if(window._sdoCdMini){ clearInterval(window._sdoCdMini); }
+    const end=Date.now()+(s.retry_after_sec||0)*1000;
+    window._sdoCdMini=setInterval(()=>{
+      const m=document.getElementById('sdo-cdmini'); if(!m){ clearInterval(window._sdoCdMini); return; }
+      const left=Math.ceil((end-Date.now())/1000);
+      if(left<=0){ clearInterval(window._sdoCdMini); _sdoRateHint(); return; }
+      m.textContent=_fmtCountdown(left);
+    },1000);
+  } else {
+    const bits=[];
+    if(s.remaining_hour!=null) bits.push(`${s.remaining_hour} left this hour`);
+    if(s.remaining_day!=null) bits.push(`${s.remaining_day} left today`);
+    el.innerHTML=bits.length?`<div style="font-size:.74rem;color:var(--text-muted)">${esc(bits.join(' \u00b7 '))}</div>`:'';
+  }
 }
 function _activeComposerKey(){
   if(_cmpFocus&&document.getElementById('cmp-'+_cmpFocus)) return _cmpFocus;
@@ -14275,7 +14493,17 @@ async function submitDoubt(){
   if(st.voice) fd.append('voice',st.voice,'voice.webm');
   try{
     const r=await fetch(API+'/api/student/doubts',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
-    const d=await r.json(); if(!r.ok) throw new Error(d.detail||'Error');
+    const d=await r.json();
+    if(!r.ok){
+      if(r.status===429){
+        btn.disabled=false; btn.textContent='Submit Doubt';
+        const stt=await _doubtRateStatus();
+        _showDoubtCooldownPopup(stt, d.detail||'You are sending doubts too quickly.');
+        const sd=document.getElementById('sdo-status'); if(sd) sd.innerHTML='';
+        return;
+      }
+      throw new Error(d.detail||'Error');
+    }
     _cmpState['sdo']={file:null,voice:null};
     document.getElementById('sdo-status').innerHTML=`<div class="alert alert-success">${esc(d.message)}</div>`;
     toast('Doubt submitted.'); loadSDoubts();

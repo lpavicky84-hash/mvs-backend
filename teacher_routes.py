@@ -518,28 +518,61 @@ def teacher_doubt_respond(doubt_id: int, payload: dict, db: Session = Depends(ge
     return {"message": "Reply added", "responses": _doubt_resp_json(db, d.id, "teacher", tp.id)}
 
 
+def _student_chat_payload(db, student_id):
+    """Ek student ke SAARE doubts + poore threads + media flags — WhatsApp-style chat
+    view ke liye (teacher + admin dono use karte hain). created_at ASC (purana pehle).
+    Media blobs load NAHI karte — sirf has_* flags length se. Role-neutral: frontend
+    apne role ke hisaab se media URLs banata hai."""
+    from models import Doubt, DoubtResponse, StudentProfile, User as _U
+    sp = db.query(StudentProfile).filter(StudentProfile.id == student_id).first()
+    name = (sp.user.name if sp and sp.user else "Student")
+    has_photo = bool(sp and sp.photo_b64) if sp else False
+    ds = (db.query(Doubt).options(defer(Doubt.image_b64), defer(Doubt.audio_b64),
+            defer(Doubt.answer_audio_b64), defer(Doubt.answer_attach_b64))
+          .filter(Doubt.student_id == student_id)
+          .order_by(Doubt.created_at.asc(), Doubt.id.asc()).all())
+    rids = [d.id for d in ds]
+    img = voice = av = af = set()
+    if rids:
+        img = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(rids), func.length(Doubt.image_b64) > 0).all()}
+        voice = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(rids), func.length(Doubt.audio_b64) > 0).all()}
+        av = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(rids), func.length(Doubt.answer_audio_b64) > 0).all()}
+        af = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(rids), func.length(Doubt.answer_attach_b64) > 0).all()}
+    rmap = {}
+    if rids:
+        for r in (db.query(DoubtResponse).filter(DoubtResponse.doubt_id.in_(rids))
+                  .order_by(DoubtResponse.created_at.asc(), DoubtResponse.id.asc()).all()):
+            rmap.setdefault(r.doubt_id, []).append({
+                "id": r.id, "role": r.role, "author_name": r.author_name,
+                "author_tid": (r.author_teacher_id if r.role == "teacher" else None),
+                "body": r.body, "created_at": ist_iso(r.created_at)})
+    out, resolved_n = [], 0
+    for d in ds:
+        st = d.status.value if hasattr(d.status, "value") else d.status
+        if st == "resolved":
+            resolved_n += 1
+        out.append({
+            "id": d.id, "subject": _subj_canon(d.subject),
+            "topic": d.topic, "question": d.question or "", "answer": d.answer or "",
+            "status": st, "owner": _doubt_owner_name(db, d),
+            "created_at": ist_iso(d.created_at), "answered_at": ist_iso(d.resolved_at),
+            "has_image": (d.id in img), "has_voice": (d.id in voice),
+            "has_answer_voice": (d.id in av), "has_answer_file": (d.id in af),
+            "attach_mime": d.attach_mime, "attach_name": d.attach_name,
+            "answer_attach_mime": d.answer_attach_mime, "answer_attach_name": d.answer_attach_name,
+            "responses": rmap.get(d.id, []),
+        })
+    return {"student_id": student_id, "name": name, "has_photo": has_photo,
+            "total": len(out), "resolved": resolved_n, "doubts": out}
+
+
 @router.get("/student-doubts")
 def teacher_student_doubts(student_id: int, db: Session = Depends(get_db),
                            current_user=Depends(get_teacher)):
-    """Ek student ke SAARE doubts (history) — teacher name pe click kare to dikhe.
-    Kuch na ho to khaali list. Naye pehle."""
-    from models import StudentProfile
-    tp = get_teacher_profile(current_user, db)
-    sp = db.query(StudentProfile).filter(StudentProfile.id == student_id).first()
-    name = (sp.user.name if sp and sp.user else "Student")
-    ds = (db.query(Doubt).filter(Doubt.student_id == student_id)
-          .order_by(Doubt.created_at.desc()).all())
-    out = []
-    for d in ds:
-        st = d.status.value if hasattr(d.status, "value") else d.status
-        owner = _doubt_owner_name(db, d)
-        out.append({"id": d.id, "subject": d.subject, "topic": d.topic,
-                    "question": d.question or "", "answer": d.answer or "",
-                    "status": st, "owner": owner,
-                    "mine": (d.teacher_id == tp.id),
-                    "created_at": str(d.created_at)[:16] if d.created_at else "",
-                    "has_answer": bool(d.answer)})
-    return {"student_id": student_id, "name": name, "total": len(out), "doubts": out}
+    """Ek student ke SAARE doubts (chat history) — teacher naam pe click kare to WhatsApp-
+    style chat khule. Full thread + media flags ke saath."""
+    get_teacher_profile(current_user, db)   # auth guard
+    return _student_chat_payload(db, student_id)
 
 
 @router.get("/doubts-assign-targets")

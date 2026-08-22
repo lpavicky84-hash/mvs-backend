@@ -436,6 +436,99 @@ def teacher_for_subject(subject: str, db: Session = Depends(get_db), current_use
         return {"found": False, "teacher_name": None, "teacher_id": None}
     return {"found": True, "teacher_name": tp.user.name, "teacher_user_id": tp.user.user_id, "teacher_id": tp.id, "has_photo": bool(tp.photo_b64)}
 
+# ===== DOUBT RATE LIMIT (anti-spam) =====
+# Kuch students ek saath bahut saare doubts bhej dete hain (chat spam). Uske liye
+# 3-layer limit: (1) do consecutive doubts ke beech cooldown, (2) per-hour cap,
+# (3) per-day cap. Admin config kar sakta hai (AppSetting 'doubt_rate_cfg').
+import json as _json_rl
+
+_DEFAULT_DOUBT_RATE = {"enabled": True, "cooldown_sec": 45, "per_hour": 8, "per_day": 25}
+
+def _doubt_rate_cfg(db):
+    from models import AppSetting
+    cfg = dict(_DEFAULT_DOUBT_RATE)
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == "doubt_rate_cfg").first()
+        if row and row.value:
+            data = _json_rl.loads(row.value)
+            if isinstance(data, dict):
+                for k in list(cfg.keys()):
+                    if k in data and data[k] is not None:
+                        cfg[k] = data[k]
+        cfg["enabled"] = bool(cfg["enabled"])
+        cfg["cooldown_sec"] = max(0, int(cfg["cooldown_sec"] or 0))
+        cfg["per_hour"] = max(0, int(cfg["per_hour"] or 0))
+        cfg["per_day"] = max(0, int(cfg["per_day"] or 0))
+    except Exception:
+        cfg = dict(_DEFAULT_DOUBT_RATE)
+    return cfg
+
+def _doubt_rate_state(db, sp, cfg=None):
+    """Current usage + blocked flag + next_allowed. created_at DB me UTC hai, isliye
+    comparison utcnow se; display ke liye next_allowed ko IST ISO me convert karte hain."""
+    from models import Doubt
+    cfg = cfg or _doubt_rate_cfg(db)
+    now = datetime.utcnow()
+    hour_ago = now - timedelta(hours=1)
+    day_ago = now - timedelta(days=1)
+    recent = (db.query(Doubt.created_at)
+              .filter(Doubt.student_id == sp.id, Doubt.created_at >= day_ago)
+              .order_by(Doubt.created_at.desc()).all())
+    times = [r[0] for r in recent if r[0]]
+    used_day = len(times)
+    used_hour = len([t for t in times if t >= hour_ago])
+    last_at = times[0] if times else None
+    next_allowed = now
+    reason = None
+    if cfg["enabled"]:
+        if cfg["cooldown_sec"] and last_at is not None:
+            cd_at = last_at + timedelta(seconds=cfg["cooldown_sec"])
+            if cd_at > next_allowed:
+                next_allowed, reason = cd_at, "cooldown"
+        if cfg["per_hour"] and used_hour >= cfg["per_hour"]:
+            hour_times = sorted([t for t in times if t >= hour_ago])
+            idx = used_hour - cfg["per_hour"]
+            base = hour_times[idx] if 0 <= idx < len(hour_times) else hour_times[0]
+            h_at = base + timedelta(hours=1)
+            if h_at > next_allowed:
+                next_allowed, reason = h_at, "hour"
+        if cfg["per_day"] and used_day >= cfg["per_day"]:
+            day_times = sorted(times)
+            idx = used_day - cfg["per_day"]
+            base = day_times[idx] if 0 <= idx < len(day_times) else day_times[0]
+            d_at = base + timedelta(days=1)
+            if d_at > next_allowed:
+                next_allowed, reason = d_at, "day"
+    blocked = next_allowed > now
+    retry = int((next_allowed - now).total_seconds()) if blocked else 0
+    return {
+        "enabled": cfg["enabled"], "blocked": blocked, "reason": reason,
+        "retry_after_sec": max(0, retry),
+        "next_allowed_iso": ist_iso(next_allowed) if blocked else None,
+        "cooldown_sec": cfg["cooldown_sec"], "per_hour": cfg["per_hour"], "per_day": cfg["per_day"],
+        "used_hour": used_hour, "used_day": used_day,
+        "remaining_hour": (max(0, cfg["per_hour"] - used_hour) if cfg["per_hour"] else None),
+        "remaining_day": (max(0, cfg["per_day"] - used_day) if cfg["per_day"] else None),
+    }
+
+def _fmt_wait(sec):
+    sec = max(0, int(sec))
+    if sec < 60:
+        return "%d sec" % sec
+    m, s = sec // 60, sec % 60
+    if m < 60:
+        return ("%d min %d sec" % (m, s)) if s else ("%d min" % m)
+    h, m = m // 60, m % 60
+    return ("%d hr %d min" % (h, m)) if m else ("%d hr" % h)
+
+@router.get("/doubt-rate-status")
+def student_doubt_rate_status(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Student ko batata hai ki abhi doubt bhej sakta hai ya nahi, aur agar nahi to
+    kitni der baad (popup countdown ke liye). Portal ke Ask-a-Doubt section me use hota hai."""
+    sp = get_student_profile(current_user, db)
+    return _doubt_rate_state(db, sp)
+
+
 @router.post("/doubts")
 async def ask_doubt(
     subject: str = Form(...),
@@ -451,6 +544,17 @@ async def ask_doubt(
     if not (subject or "").strip():
         raise HTTPException(status_code=400, detail="Please select a subject first")
     sp = get_student_profile(current_user, db)
+    # anti-spam: cooldown / hourly / daily limit
+    _rl = _doubt_rate_state(db, sp)
+    if _rl["blocked"]:
+        wait = _fmt_wait(_rl["retry_after_sec"])
+        if _rl["reason"] == "cooldown":
+            msg = "Please wait %s before sending another doubt." % wait
+        elif _rl["reason"] == "hour":
+            msg = "You have reached the limit of %d doubts per hour. You can ask again in %s." % (_rl["per_hour"], wait)
+        else:
+            msg = "You have reached the daily limit of %d doubts. You can ask again in %s." % (_rl["per_day"], wait)
+        raise HTTPException(status_code=429, detail=msg)
     # auto-resolve teacher by subject if not provided
     tp = None
     if teacher_id:
