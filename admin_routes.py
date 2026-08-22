@@ -5101,11 +5101,11 @@ def admin_get_office(db: Session = Depends(get_db), _=Depends(get_admin)):
         row = db.query(AppSetting).filter(AppSetting.key == "unknown_ips").first()
         data = _json.loads(row.value) if row and row.value else []
         have = _office_ips(db)          # exact IPs + ranges (CIDR/wildcard)
-        ignored = set(_ignored_ips(db))
-        # Jo IP kisi whitelisted range me aata hai ya dismiss ho chuka hai use "New IPs" me na dikhao
+        ignored = _ignored_ips(db)      # exact IPs + ranges (dismissed)
+        # Jo IP whitelisted range me aata hai YA dismissed range me aata hai use "New IPs" me na dikhao
         unknown = [x for x in data
                    if isinstance(x, dict) and x.get("ip")
-                   and x["ip"] not in ignored
+                   and not _ip_in_office(x["ip"], ignored)
                    and not _ip_in_office(x["ip"], have)][:10]
     except Exception:
         unknown = []
@@ -5134,14 +5134,27 @@ def admin_office_unknown_clear(db: Session = Depends(get_db), _=Depends(get_admi
 
 @router.post("/office-ip-dismiss")
 def admin_office_ip_dismiss(payload: dict = Body(default={}), db: Session = Depends(get_db), _=Depends(get_admin)):
-    """Ek 'New IP' ko permanently dismiss karo — jo IP admin office WiFi maanta hi nahi.
-    Ye IP 'New IPs' se hat jaata hai AUR dubara wahan nahi aata (na hi uska punch-attempt log hota).
-    Office WiFi list par koi asar nahi. undo=True bhejo to ignore list se hata do."""
+    """Ek ya kai 'New IPs' ko permanently dismiss karo — jo office WiFi hai hi nahi (jaise
+    mobile-data / Jio IPs jo har baar badalte hain). Ye entries 'New IPs' se hat jaati hain
+    AUR dubara nahi aatin (na hi unka punch-attempt log hota). Range (CIDR/wildcard) bhi
+    accept hai — mobile pool ek /16 se ignore kar do to poora Jio noise band.
+    NOTE: dismiss sirf LOG suppress karta hai — kisi ka punch block/allow nahi karta.
+    Body: {'ip': '1.2.3.4'} | {'entry': '157.49.0.0/16'} | {'ips': [...]} | {'undo': true, 'ip': ...}"""
     from models import AppSetting
+    from teacher_routes import _norm_ip_entry, _ip_in_office
     import json as _json
-    ip = str(payload.get("ip") or "").strip()
-    if not ip:
-        raise HTTPException(status_code=400, detail="IP required")
+    # entries collect (single ya list)
+    raw_entries = []
+    if payload.get("ip"):    raw_entries.append(payload.get("ip"))
+    if payload.get("entry"): raw_entries.append(payload.get("entry"))
+    if isinstance(payload.get("ips"), list): raw_entries.extend(payload.get("ips"))
+    entries = []
+    for e in raw_entries:
+        n = _norm_ip_entry(e)
+        if n and n not in entries:
+            entries.append(n)
+    if not entries:
+        raise HTTPException(status_code=400, detail="IP or range required")
     undo = bool(payload.get("undo"))
     # ignored_ips update
     row = db.query(AppSetting).filter(AppSetting.key == "ignored_ips").first()
@@ -5153,21 +5166,24 @@ def admin_office_ip_dismiss(payload: dict = Body(default={}), db: Session = Depe
             ignored = []
     except Exception:
         ignored = []
-    ignored = [str(x).strip() for x in ignored if str(x).strip() and str(x).strip() != ip]
+    ignored = [str(x).strip() for x in ignored if str(x).strip() and str(x).strip() not in entries]
     if not undo:
-        ignored.insert(0, ip)
+        ignored = entries + ignored
     row.value = _json.dumps(ignored[:200])
-    # unknown_ips se bhi hata do
+    # unknown_ips se woh saare hata do jo in entries (range bhi) me match karte hain
     urow = db.query(AppSetting).filter(AppSetting.key == "unknown_ips").first()
-    if urow and urow.value:
+    if urow and urow.value and not undo:
         try:
             udata = _json.loads(urow.value)
             if isinstance(udata, list):
-                urow.value = _json.dumps([x for x in udata if not (isinstance(x, dict) and x.get("ip") == ip)])
+                urow.value = _json.dumps([x for x in udata
+                    if not (isinstance(x, dict) and x.get("ip") and _ip_in_office(x["ip"], entries))])
         except Exception:
             pass
     db.commit()
-    return {"message": ("IP %s restored to New IPs" % ip) if undo else ("IP %s dismissed — it will not appear again" % ip)}
+    if undo:
+        return {"message": "%d entr%s restored" % (len(entries), "y" if len(entries) == 1 else "ies")}
+    return {"message": "Dismissed %d entr%s — these will not appear in New IPs again" % (len(entries), "y" if len(entries) == 1 else "ies")}
 
 @router.post("/office-ip-info")
 def admin_office_ip_info(payload: dict = Body(default={}), _=Depends(get_admin)):

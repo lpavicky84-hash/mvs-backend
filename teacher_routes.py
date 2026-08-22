@@ -5444,9 +5444,9 @@ def _log_unknown_ip(db, ip):
     if not ip:
         return
     # Jo IP already kisi office range/CIDR me aata hai use "New IP" me mat dikhao (warna
-    # range whitelist hone ke baad bhi noise aata rahega). Dismiss-kiye IPs bhi skip.
+    # range whitelist hone ke baad bhi noise aata rahega). Dismiss-kiye IP/range bhi skip.
     try:
-        if _ip_in_office(ip, _office_ips(db)) or ip in _ignored_ips(db):
+        if _ip_in_office(ip, _office_ips(db)) or _ip_in_office(ip, _ignored_ips(db)):
             return
     except Exception:
         pass

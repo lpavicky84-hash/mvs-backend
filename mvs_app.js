@@ -18349,6 +18349,9 @@ async function openOfficeLocation(){
     </div>`,
    `${window._olOffices.length?`<button class="btn btn-danger" onclick="olClear()">Remove All (Geofence OFF)</button>`:''}<button class="btn btn-primary" onclick="saveOfficeLocation()">Save (${window._olOffices.length} branch)</button>`);
   _olRenderList(); _olRenderIps();
+  // Modal khulte hi ISP/location auto-check (silent) — taaki MOBILE/proxy flag turant dikhe
+  // aur admin ko galti se mobile IP add karne se pehle warning mil jaye.
+  if((window._olUnknown||[]).length || (window._olIps||[]).length){ try{ olCheckIps(true); }catch(e){} }
 }
 // ---- Client-side IP range matcher (backend jaisa) — exact IP + CIDR + wildcard ----
 function _ipToInt(ip){
@@ -18391,6 +18394,7 @@ function _ipMatch(ip, entry){
 }
 function _ipInList(ip, list){ return (list||[]).some(e=>_ipMatch(ip,e)); }
 function _ip24(ip){ const p=String(ip||'').trim().split('.'); return p.length===4?`${p[0]}.${p[1]}.${p[2]}.0/24`:''; }
+function _ip16(ip){ const p=String(ip||'').trim().split('.'); return p.length===4?`${p[0]}.${p[1]}.0.0/16`:''; }
 function _olIpMeta(ip){
   const m=(window._olIpInfo||{})[ip];
   if(!m) return '';
@@ -18420,12 +18424,26 @@ function _olRenderIps(){
   if(un){
     // range-aware: jo IP already kisi added range/IP me aata hai use "New IPs" me na dikhao
     const list=(window._olUnknown||[]).filter(x=>!_ipInList(x.ip, window._olIps));
-    un.innerHTML=list.length?`<div style="font-size:.78rem;font-weight:700;margin:10px 0 6px">New IPs — punches were attempted from these (add if office WiFi, add the whole range, or remove):</div>`+list.map((x,i)=>`<div class="pc-task"><div class="t"><div class="tt">${esc(x.ip)}${_olIpMeta(x.ip)}</div><div class="td">last try: ${esc(x.at||'-')}</div></div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
-        <button class="btn btn-primary btn-sm" onclick="olAddUnknown(${i})" title="Add just this single IP">Add</button>
-        <button class="btn btn-ghost btn-sm" onclick="olAddUnknownRange(${i})" title="Add the whole ${esc(_ip24(x.ip))} range — covers a changing office IP permanently">Add range</button>
-        <button class="btn btn-ghost btn-sm" onclick="olDismissUnknown(${i})" title="Not office WiFi — never show this IP again">Remove</button>
-      </div></div>`).join(''):'';
+    if(!list.length){ un.innerHTML=''; }
+    else{
+      const info=window._olIpInfo||{};
+      const isMobile=ip=>{const m=info[ip]; return !!(m&&m.ok&&(m.mobile||m.proxy||m.hosting));};
+      const nMob=list.filter(x=>isMobile(x.ip)).length;
+      const header=`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:10px 0 6px;flex-wrap:wrap">
+          <div style="font-size:.78rem;font-weight:700">New IPs — blocked punch attempts (add if office WiFi, add the range, or remove):</div>
+          <button class="btn btn-ghost btn-sm" style="padding:3px 10px;font-size:.72rem" onclick="olDismissAllUnknown()" title="These are not office WiFi (e.g. mobile data) — dismiss all so they stop appearing">Dismiss all</button>
+        </div>`
+        + (nMob?`<div style="font-size:.72rem;color:#b45309;margin:-2px 0 8px">${nMob} of these are <b>mobile-data</b> attempts (teacher punching without office WiFi) — <b>do not add</b> these; ask them to connect to office WiFi. Use <b>Remove</b> to stop the whole mobile range.</div>`:'');
+      un.innerHTML=header+list.map((x,i)=>{
+        const mob=isMobile(x.ip);
+        return `<div class="pc-task"><div class="t"><div class="tt">${esc(x.ip)}${_olIpMeta(x.ip)}</div><div class="td">last try: ${esc(x.at||'-')}</div></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+          <button class="btn btn-primary btn-sm" onclick="olAddUnknown(${i})" title="Add just this single IP">Add</button>
+          <button class="btn btn-ghost btn-sm" onclick="olAddUnknownRange(${i})" title="Add the whole ${esc(_ip24(x.ip))} range">Add range</button>
+          <button class="btn btn-ghost btn-sm" onclick="olDismissUnknown(${i})" title="${mob?'Not office WiFi — dismiss the whole mobile range so it never returns':'Never show this IP again'}">Remove</button>
+        </div></div>`;
+      }).join('');
+    }
   }
 }
 async function olClearIps(){
@@ -18438,22 +18456,23 @@ async function olClearIps(){
   const n=document.getElementById('ol-ip-note');
   if(n) n.innerHTML='<div class="alert alert-success" style="font-size:.8rem;margin-bottom:0">Saari IPs (added + New IPs) reset ho gayi. Ab office ki WiFi se connect ho kar <b>Add This PC IP</b> karo (ya teachers se office WiFi par punch karwao -> wo "New IPs" me aayega -> Add). Aakhir me <b>Save</b> dabana.</div>';
 }
-async function olCheckIps(){
+async function olCheckIps(silent){
   const all=[...(window._olIps||[]), ...((window._olUnknown||[]).map(x=>x.ip))];
-  const uniq=[...new Set(all.filter(Boolean))];
+  const uniq=[...new Set(all.filter(Boolean).filter(ip=>ip.indexOf('/')<0&&ip.indexOf('*')<0))];
   const n=document.getElementById('ol-ip-note');
-  if(!uniq.length){ if(n) n.innerHTML='<div style="font-size:.8rem;color:var(--text-muted)">No IPs to check.</div>'; return; }
-  if(n) n.innerHTML='<div style="font-size:.8rem;color:var(--text-muted)">Checking IPs (ISP / location)…</div>';
+  if(!uniq.length){ if(!silent && n) n.innerHTML='<div style="font-size:.8rem;color:var(--text-muted)">No IPs to check.</div>'; return; }
+  if(!silent && n) n.innerHTML='<div style="font-size:.8rem;color:var(--text-muted)">Checking IPs (ISP / location)…</div>';
   try{
     const r=await api('/api/admin/office-ip-info','POST',{ips:uniq});
     window._olIpInfo=r.info||{};
     _olRenderIps();
+    if(silent) return;
     const risky=uniq.filter(ip=>{const m=window._olIpInfo[ip]; return m&&m.ok&&(m.mobile||m.proxy||m.hosting);});
     if(r.error==='lookup_unavailable'){ if(n) n.innerHTML='<div class="alert alert-warning" style="font-size:.8rem;margin-bottom:0">Location lookup is not available right now (network). Please try again shortly.</div>'; return; }
     if(n) n.innerHTML=risky.length
       ? `<div class="alert alert-warning" style="font-size:.82rem;margin-bottom:0"><b>${risky.length} IP risky</b> (mobile/proxy) — inhe check karke <b>Remove</b> use this if not on office broadband: <b>${risky.map(esc).join(', ')}</b>. Har IP ke aage ISP/city dikh raha hai — jo alag city/ISP ka ho wo bahar ka ho sakta hai.</div>`
       : '<div class="alert alert-success" style="font-size:.82rem;margin-bottom:0">No obvious mobile/proxy IP found. Check the ISP/city next to each IP — remove any that differ from your office (Excitel) network.</div>';
-  }catch(e){ if(n) n.innerHTML='<div class="alert alert-warning" style="font-size:.8rem;margin-bottom:0">Check failed: '+esc(e.message||'error')+'</div>'; }
+  }catch(e){ if(!silent && n) n.innerHTML='<div class="alert alert-warning" style="font-size:.8rem;margin-bottom:0">Check failed: '+esc(e.message||'error')+'</div>'; }
 }
 function olAddUnknown(i){
   const list=(window._olUnknown||[]).filter(x=>!_ipInList(x.ip, window._olIps));
@@ -18482,17 +18501,37 @@ function olSwapToRange(ip, r){
   const n=document.getElementById('ol-ip-note');
   if(n) n.innerHTML=`<div class="alert alert-success" style="font-size:.8rem;margin-bottom:0">Switched to range <b>${esc(r)}</b> — covers the whole office block. Don't forget to Save.</div>`;
 }
-// "New IP" ko permanently dismiss karo — dubara nahi dikhega
+// "New IP" ko permanently dismiss karo. Mobile/proxy IP ho to poori carrier range (/16)
+// ignore karo (Jio jaise pool har baar naya IP dete hain) — warna exact IP.
 async function olDismissUnknown(i){
   const list=(window._olUnknown||[]).filter(x=>!_ipInList(x.ip, window._olIps));
   const x=list[i]; if(!x) return;
   const n=document.getElementById('ol-ip-note');
+  const info=(window._olIpInfo||{})[x.ip];
+  const mob=!!(info&&info.ok&&(info.mobile||info.proxy||info.hosting));
+  const entry=mob?_ip16(x.ip):x.ip;   // mobile -> whole /16, else exact
   try{
-    await api('/api/admin/office-ip-dismiss','POST',{ip:x.ip});
-    window._olUnknown=(window._olUnknown||[]).filter(y=>y.ip!==x.ip);
+    await api('/api/admin/office-ip-dismiss','POST',{entry:entry});
+    // client se woh saare unknown hata do jo is entry (range) me aate hain
+    window._olUnknown=(window._olUnknown||[]).filter(y=>!_ipMatch(y.ip, entry));
     _olRenderIps();
-    if(n) n.innerHTML=`<div class="alert alert-info" style="font-size:.8rem;margin-bottom:0">IP <b>${esc(x.ip)}</b> removed — it will not appear in New IPs again.</div>`;
+    if(n) n.innerHTML=`<div class="alert alert-info" style="font-size:.8rem;margin-bottom:0">${mob?`Mobile range <b>${esc(entry)}</b> dismissed — no IP from this carrier block will appear again.`:`IP <b>${esc(x.ip)}</b> removed — it will not appear again.`}</div>`;
   }catch(e){ if(n) n.innerHTML=`<div class="alert alert-danger" style="font-size:.8rem;margin-bottom:0">${esc(e.message||'Could not remove')}</div>`; }
+}
+// Saare shown "New IPs" ek saath dismiss — mobile ko /16, baaki ko exact IP se ignore
+async function olDismissAllUnknown(){
+  const list=(window._olUnknown||[]).filter(x=>!_ipInList(x.ip, window._olIps));
+  if(!list.length) return;
+  if(!confirm(`Dismiss all ${list.length} New IP attempt(s)? These are not office WiFi (e.g. mobile data). They will stop appearing. (Office WiFi list par koi asar nahi.)`)) return;
+  const info=window._olIpInfo||{};
+  const entries=[...new Set(list.map(x=>{const m=info[x.ip]; const mob=!!(m&&m.ok&&(m.mobile||m.proxy||m.hosting)); return mob?_ip16(x.ip):x.ip;}).filter(Boolean))];
+  const n=document.getElementById('ol-ip-note');
+  try{
+    await api('/api/admin/office-ip-dismiss','POST',{ips:entries});
+    window._olUnknown=(window._olUnknown||[]).filter(y=>!entries.some(e=>_ipMatch(y.ip,e)));
+    _olRenderIps();
+    if(n) n.innerHTML=`<div class="alert alert-success" style="font-size:.8rem;margin-bottom:0">All New IP attempts dismissed (${entries.length} range/IP). They will not appear again.</div>`;
+  }catch(e){ if(n) n.innerHTML=`<div class="alert alert-danger" style="font-size:.8rem;margin-bottom:0">${esc(e.message||'Could not dismiss')}</div>`; }
 }
 // manual IP/range add (text box)
 function olAddIpText(){
