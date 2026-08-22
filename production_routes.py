@@ -1878,7 +1878,7 @@ def prod_project_subject_teachers(subject: str = "", class_level: str = "",
 
 @router.get("/project/chapters-preview")
 def prod_project_chapters_preview(subject: str = "", class_level: str = "", scope: str = "",
-                                  teacher_id: int = 0, db: Session = Depends(get_db),
+                                  group: str = "", teacher_id: int = 0, db: Session = Depends(get_db),
                                   me=Depends(get_pm_or_admin)):
     if not _PROJECT_OK:
         return {"count": 0, "titles": [], "source": "none"}
@@ -1888,7 +1888,7 @@ def prod_project_chapters_preview(subject: str = "", class_level: str = "", scop
     if class_level not in ("10", "12"):
         class_level = ""
     tp = _p_teacher_profile(db, teacher_id) if teacher_id else None
-    titles, src = _p_chapters_for(db, tp.id if tp else 0, subject, class_level, scope)
+    titles, src = _p_chapters_for(db, tp.id if tp else 0, subject, class_level, scope, group)
     return {"count": len(titles), "titles": titles[:8], "source": src}
 
 
@@ -1933,9 +1933,12 @@ def prod_create_project(payload: dict = Body(...), db: Session = Depends(get_db)
     scope = (payload.get("chapter_scope") or "").strip().lower()
     if scope not in ("pe", "tma"):
         scope = ""
+    p_group = (payload.get("chapter_group") or "").strip().lower()
+    if p_group not in ("chapters", "categories"):
+        p_group = ""
     item_source, items = "custom", []
     if connect and subject:
-        items, _src = _p_chapters_for(db, tp.id, subject, class_level, scope)
+        items, _src = _p_chapters_for(db, tp.id, subject, class_level, scope, p_group)
         item_source = "syllabus"
         if not items:
             raise HTTPException(400, "No chapters found for this scope in the syllabus manager — "

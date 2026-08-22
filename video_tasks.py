@@ -238,13 +238,16 @@ def _teacher_subject_list(db, tp):
     return out
 
 
-def _chapters_for(db, tid, name, cls, scope=""):
+def _chapters_for(db, tid, name, cls, scope="", group=""):
     """([chapter titles], source). Syllabus manager (admin overrides included)
     -> timetable topics -> [] (baad me auto-sync). Display naam is function ka
     kaam nahi — wo caller stable banata hai.
     scope: '' / 'all' = saare chapters; 'pe' = sirf Public Exam chapters;
     'tma' = sirf TMA chapters (kind flag syllabus manager se aata hai).
-    Timetable fallback pe kind pata nahi hota — wahan scope filter nahi lagta."""
+    group: '' / 'all' = sab; 'chapters' = sirf book chapters (no L-...);
+    'categories' = sirf grammar/writing/reading topics (no T-...). Language
+    subjects me ye do alag dikhane ke liye (baaki subjects me sab L- hote hain,
+    to 'chapters' sab de deta hai — koi asar nahi)."""
     from subjects_registry import canon_subject, squash
     import syllabus_routes as SR
     import syllabus_data as SD
@@ -252,6 +255,9 @@ def _chapters_for(db, tid, name, cls, scope=""):
     scope = (scope or "").strip().lower()
     if scope not in ("pe", "tma"):
         scope = ""
+    group = (group or "").strip().lower()
+    if group not in ("chapters", "categories"):
+        group = ""
     lv0 = _class_level(cls)
     if lv0:
         levels = [lv0]   # class pata ho to SIRF usi class ka syllabus — doosri
@@ -299,11 +305,16 @@ def _chapters_for(db, tid, name, cls, scope=""):
             had_any = True
             if scope and (r.get("kind") or "").strip().lower() != scope:
                 continue   # PE/TMA scope — sirf wahi chapters
+            _isT = str(no).upper().startswith("T-")
+            if group == "chapters" and _isT:
+                continue   # sirf book chapters (grammar/writing/reading chhodo)
+            if group == "categories" and not _isT:
+                continue   # sirf grammar/writing/reading topics
             titles.append(ti if (not no or ti[:1].isdigit()) else (no + ". " + ti))
         if titles:
             return titles, "syllabus"
-        if had_any and scope:
-            return [], "syllabus"   # chapters hain par is scope me koi nahi — fallback mat jao
+        if had_any and (scope or group):
+            return [], "syllabus"   # chapters hain par is scope/group me koi nahi — fallback mat jao
     # fallback: timetable ke distinct topics (teacher + subject)
     try:
         sq = squash(name)
@@ -2206,9 +2217,12 @@ def vt_create_project(payload: dict = Body(...),
     chapter_scope = (payload.get("chapter_scope") or "").strip().lower()
     if chapter_scope not in ("pe", "tma"):
         chapter_scope = ""
+    chapter_group = (payload.get("chapter_group") or "").strip().lower()
+    if chapter_group not in ("chapters", "categories"):
+        chapter_group = ""
     item_source, items = "custom", []
     if connect and subject:
-        items, _src = _chapters_for(db, tp.id, subject, class_level, chapter_scope)
+        items, _src = _chapters_for(db, tp.id, subject, class_level, chapter_scope, chapter_group)
         item_source = "syllabus"
         if not items:
             raise HTTPException(400, "No chapters found for this scope in the syllabus "
@@ -2296,7 +2310,7 @@ def vt_create_project(payload: dict = Body(...),
 
 @router.get("/admin/video-tasks/project-chapters", dependencies=[Depends(_admin_section_guard)])
 def vt_admin_project_chapters(subject: str = "", class_level: str = "",
-                              scope: str = "", teacher_id: int = 0,
+                              scope: str = "", group: str = "", teacher_id: int = 0,
                               db: Session = Depends(get_db), _=Depends(get_admin)):
     """Project assign form ka LIVE preview — syllabus connect on hone pe is
     subject/class/scope me kitne chapters video items banenge. count + sample."""
@@ -2306,7 +2320,7 @@ def vt_admin_project_chapters(subject: str = "", class_level: str = "",
     if class_level not in ("10", "12"):
         class_level = ""
     tp = _teacher_profile(db, teacher_id) if teacher_id else None
-    titles, src = _chapters_for(db, tp.id if tp else 0, subject, class_level, scope)
+    titles, src = _chapters_for(db, tp.id if tp else 0, subject, class_level, scope, group)
     return {"count": len(titles), "titles": titles[:8], "source": src}
 
 

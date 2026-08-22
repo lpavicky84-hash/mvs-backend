@@ -9361,6 +9361,12 @@ function _vtProjectForm(){
           <option value="all">PE + TMA Chapters (full syllabus)</option>
         </select>
         <div class="vt-hint" id="vtp-chcount">Select a subject to see the chapter count</div></div>
+      <div class="form-group" style="grid-column:1/-1" id="vtp-group-wrap"><label>Content — chapters or grammar/writing (language subjects)</label>
+        <select id="vtp-group" class="input" onchange="vtpChaptersPreview()">
+          <option value="chapters" selected>Chapters only (book lessons)</option>
+          <option value="categories">Grammar / Writing / Reading only</option>
+          <option value="">Both — chapters + grammar/writing (merged)</option>
+        </select></div>
       <div class="form-group" id="vtp-items-wrap" style="grid-column:1/-1;display:none"><label>Videos / Deliverables — one row per video</label>
         <div id="vtp-items"></div>
         <button type="button" class="btn btn-ghost btn-sm" onclick="vtpItemAdd()">${ic('plus')} Add video</button></div>
@@ -9452,10 +9458,11 @@ async function vtpChaptersPreview(){
   const subject=(document.getElementById('vtp-subject')||{}).value||'';
   const level=(document.getElementById('vtp-class')||{}).value||'';
   const scope=(document.getElementById('vtp-scope')||{}).value||'pe';
+  const grp=(document.getElementById('vtp-group')||{}).value;
   if(!subject){ box.textContent='Select a subject to see the chapter count'; return; }
   box.textContent='Counting chapters…';
   try{
-    const r=await api('/api/admin/video-tasks/project-chapters?subject='+encodeURIComponent(subject)+(level?'&class_level='+level:'')+'&scope='+scope);
+    const r=await api('/api/admin/video-tasks/project-chapters?subject='+encodeURIComponent(subject)+(level?'&class_level='+level:'')+'&scope='+scope+(grp!==undefined?'&group='+encodeURIComponent(grp):''));
     box.innerHTML=r.count
       ?`<b>${r.count} chapters</b> will become the video items — ${esc(r.titles.slice(0,3).join(' · '))}${r.count>3?' …':''}`
       :'No chapters found for this scope — choose a different scope, or set Connect to No and enter videos manually';
@@ -9517,6 +9524,7 @@ async function vtProjectSave(proposalId){
     teacher_id:teacherIdP,title:gv('vtp-title').trim(),connect,items,
     collab_teacher_ids:collabP,
     chapter_scope:connect?(gv('vtp-scope')||'pe'):'',
+    chapter_group:connect?gv('vtp-group'):'',
     weekly_quota:+gv('vtp-quota')||0,weekly_day:gv('vtp-day'),
     deadline:gv('vtp-deadline'),remarks:gv('vtp-remarks').trim(),
     proposal_id:proposalId||0};
@@ -21998,6 +22006,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '<div class="p-field"><label>Connect to syllabus chapters?</label><select class="p-select" id="pj-connect" onchange="prodPjChange()"><option value="1"'+(p.connect?' selected':'')+'>Yes — use syllabus chapters</option><option value="0"'+(!p.connect?' selected':'')+'>No — I will type video names</option></select></div>';
       if(p.connect){
         html+='<div class="p-field"><label>Syllabus scope</label><select class="p-select" id="pj-scope" onchange="prodPjChange()"><option value="pe"'+(p.chapter_scope==='pe'?' selected':'')+'>PE chapters only (recommended)</option><option value="tma"'+(p.chapter_scope==='tma'?' selected':'')+'>TMA chapters only</option><option value=""'+(!p.chapter_scope?' selected':'')+'>PE + TMA (full)</option></select></div>'+
+          '<div class="p-field"><label>Content (language subjects)</label><select class="p-select" id="pj-group" onchange="prodPjChange()"><option value="chapters"'+((p.chapter_group===undefined||p.chapter_group==='chapters')?' selected':'')+'>Chapters only (book lessons)</option><option value="categories"'+(p.chapter_group==='categories'?' selected':'')+'>Grammar / Writing / Reading only</option><option value=""'+(p.chapter_group===''?' selected':'')+'>Both (merged)</option></select></div>'+
           '<div id="pj-chapters" class="p-empty" style="margin-bottom:12px">Pick a subject to preview chapters.</div>';
       } else {
         html+='<div class="p-field"><label>Video names (one per line)</label><textarea class="p-area" id="pj-items" placeholder="Chapter 1 - ...\nChapter 2 - ...">'+esc((p.items||[]).join('\n'))+'</textarea></div>';
@@ -22019,6 +22028,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(g('pj-title')!==undefined)p.title=g('pj-title');
     if(g('pj-connect')!==undefined)p.connect=(g('pj-connect')==='1');
     if(g('pj-scope')!==undefined)p.chapter_scope=g('pj-scope');
+    if(g('pj-group')!==undefined)p.chapter_group=g('pj-group');
     if(g('pj-items')!==undefined)p.items=(g('pj-items')||'').split('\n').map(function(s){return s.trim();}).filter(Boolean);
     if(g('pj-quota')!==undefined)p.weekly_quota=parseInt(g('pj-quota')||'0',10)||0;
     if(g('pj-day')!==undefined)p.weekly_day=g('pj-day');
@@ -22031,7 +22041,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var p=window._aw.proj||{}; var box=document.getElementById('pj-chapters'); if(!box||!p.connect) return;
     if(!p.subject){ box.innerHTML='Pick a subject to preview chapters.'; return; }
     box.innerHTML='<div class="p-load">Loading chapters...</div>';
-    api(P.production.api+'/project/chapters-preview?subject='+encodeURIComponent(p.subject)+'&class_level='+(p.class_level||'')+'&scope='+(p.chapter_scope||'')+'&teacher_id='+(p.teacher_id||0)).then(function(r){
+    api(P.production.api+'/project/chapters-preview?subject='+encodeURIComponent(p.subject)+'&class_level='+(p.class_level||'')+'&scope='+(p.chapter_scope||'')+'&group='+(p.chapter_group!==undefined?encodeURIComponent(p.chapter_group):'chapters')+'&teacher_id='+(p.teacher_id||0)).then(function(r){
       if(!r.count){ box.innerHTML='<div class="p-empty">No chapters found for this scope. Try a different scope, or switch Connect to No and type names.</div>'; return; }
       box.innerHTML='<div style="font-weight:700;margin-bottom:6px">'+r.count+' video items will be created:</div>'+(r.titles||[]).map(function(t){ return '<div class="pt-meta" style="padding:2px 0">'+esc(t)+'</div>'; }).join('')+(r.count>(r.titles||[]).length?'<div class="pt-meta">…and '+(r.count-(r.titles||[]).length)+' more</div>':'');
     }).catch(function(){ box.innerHTML='<div class="p-empty">Could not load chapter preview.</div>'; });
@@ -22042,7 +22052,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(!p.deadline){ toast('Final deadline is required',true); return; }
     if(!p.connect && !(p.items||[]).length){ toast('Add at least one video name (or turn Connect on)',true); return; }
     var payload={subject:p.subject||'',class_level:p.class_level||'',teacher_id:parseInt(p.teacher_id||'0',10)||0,
-      title:(p.title||'').trim(),connect:!!p.connect,chapter_scope:p.chapter_scope||'',items:p.items||[],
+      title:(p.title||'').trim(),connect:!!p.connect,chapter_scope:p.chapter_scope||'',chapter_group:(p.chapter_group!==undefined?p.chapter_group:'chapters'),items:p.items||[],
       weekly_quota:p.weekly_quota||0,weekly_day:p.weekly_day||'',deadline:p.deadline.replace(' ','T'),remarks:(p.remarks||'').trim()};
     _pBusy(true);
     api(P.production.api+'/project','POST',payload).then(function(r){ prodDismiss(); toast('Project created — '+((r&&r.total)||0)+' videos assigned to '+((r&&r.teacher)||'teacher')); _refresh('production'); })

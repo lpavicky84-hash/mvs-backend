@@ -5343,16 +5343,41 @@ function sylSubject(scrollTop){
     }
     _ogRep[g]=pick;
   });
+  // Language subjects also carry grammar / writing / reading topics (no starts with
+  // T-) alongside the real book chapters (no starts with L-). Keep the two apart so
+  // the exam-chapter count stays true to NIOS and students are not shown a huge list.
+  var _isCat=function(ch){ return /^T-/.test(String(ch.no||'')); };
+  var hasCat=(d.chapters||[]).some(function(ch){ return ch.kind==='PE' && _isCat(ch); });
+  if(hasCat && !_SYL.grpView) _SYL.grpView='chapters';
+  var _grpView=hasCat?(_SYL.grpView||'chapters'):'all';
+  var _grpShow=function(ch){
+    if(!hasCat || _grpView==='all') return true;
+    return _grpView==='categories' ? _isCat(ch) : !_isCat(ch);
+  };
+  var catTotal=0, catDone=0;
   d.chapters.forEach(function(ch){
     if(ch.kind!=='PE') return;
     var mg=modGroup[ch.module];
     if(mg && _ogRep[mg] && ch.module!==_ogRep[mg]) return;   // the pair is one module: it counts once
+    if(hasCat && _isCat(ch)){ catTotal++; if(sel.indexOf(ch.no)>-1) catDone++; return; }
     peTotal++; if(sel.indexOf(ch.no)>-1) peDone++;
   });
+  var _grpSeg = hasCat
+    ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">'
+      +[['chapters','Chapters'],['categories','Grammar / Writing / Reading'],['all','All (merged)']]
+        .map(function(g){ return '<button class="syl-cta'+(_grpView===g[0]?'':' o')+'" '
+          +'style="padding:6px 12px;font-size:.74rem" onclick="sylGrpView(\''+g[0]+'\')">'+g[1]+'</button>'; }).join('')
+      +'</div>'
+    : '';
+  var _grpCountTxt = hasCat
+    ? (_grpView==='categories' ? (catDone+' of '+catTotal+' grammar / writing / reading topics picked. ')
+       : _grpView==='all' ? ((peDone+catDone)+' of '+(peTotal+catTotal)+' items picked. ')
+       : (peDone+' of '+peTotal+' exam chapters picked. '))
+    : (peDone+' of '+peTotal+' exam chapters picked. ');
 
   h+='<div class="syl-panel" style="margin-top:14px" id="syl-chpanel"><div class="syl-phead">'
-   +'<div><h4>Chapter list'+(planSet?' <span class="syl-fchip">Showing '+esc(filterLbl)+' plan chapters <b onclick="sylClearTargetFilter()" title="Show all chapters">&times;</b></span>':'')+'</h4><p>'+peDone+' of '+peTotal+' exam chapters picked. '
-   +'Tap a module to open its chapters.</p></div>'
+   +'<div><h4>Chapter list'+(planSet?' <span class="syl-fchip">Showing '+esc(filterLbl)+' plan chapters <b onclick="sylClearTargetFilter()" title="Show all chapters">&times;</b></span>':'')+'</h4><p>'+_grpCountTxt
+   +'Tap a module to open its chapters.</p>'+_grpSeg+'</div>'
    +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
    +(sel.length?'<button class="syl-clear" onclick="sylClearAll()">Clear all ('+sel.length+')</button>':'')
    +'<button class="syl-cta o" style="padding:7px 13px;font-size:.76rem" onclick="sylTmaToggle()">'
@@ -5388,7 +5413,7 @@ function sylSubject(scrollTop){
       var na=parseInt(String(a.no).replace(/\D/g,''),10)||999, nb=parseInt(String(b.no).replace(/\D/g,''),10)||999;
       return na-nb || String(a.no).localeCompare(String(b.no));
     });
-    var fList=allCh.filter(function(ch){ return (showTma || ch.kind==='PE') && (!planSet || planSet[ch.no]); });
+    var fList=allCh.filter(function(ch){ return (showTma || ch.kind==='PE') && (!planSet || planSet[ch.no]) && _grpShow(ch); });
     h+='<div class="syl-chmod">'+fList.map(function(ch){ return chRow(ch,true); }).join('')+'</div>';
   }else{
   /* Module accordion — collapsed module cards (rank list jaisa clean look).
@@ -5397,7 +5422,7 @@ function sylSubject(scrollTop){
   Object.keys(mods).forEach(function(mod){
     var mg=modGroup[mod];
     if(mg && oc[mg] && oc[mg]!==mod) return;   // student studies the other option
-    var list=mods[mod].filter(function(ch){ return (showTma || ch.kind==='PE') && (!planSet || planSet[ch.no]); });
+    var list=mods[mod].filter(function(ch){ return (showTma || ch.kind==='PE') && (!planSet || planSet[ch.no]) && _grpShow(ch); });
     if(!list.length) return;
     var all=mods[mod], mw=all.length?all[0].module_weightage:0, got=0, pickedN=0;
     if(mg && ogMax[mg]) mw=ogMax[mg];          // the slot's marks show on the option
@@ -5431,6 +5456,7 @@ function sylModToggle(mod){
   sylSubject();
 }
 function sylTmaToggle(){ _SYL.showTma=!_SYL.showTma; sylSubject(); }
+function sylGrpView(v){ _SYL.grpView=v; _SYL.openMod=null; sylSubject(); }
 
 async function sylChoice(group, module){
   var d=_SYL.cur; if(!d) return;
@@ -7318,12 +7344,22 @@ async function sylImportPdf(file){
     _SYL.mods = (d.modules||sylParseMods(d.text));
     sylChapRender();
     var s=d.stats;
+    // Language subjects carry real book chapters (no starts with L-) plus grammar/
+    // writing/reading topics (no starts with T-). Show the two counts separately so
+    // the admin sees the true chapter count, not the combined total.
+    var _bookN=0,_catN=0;
+    (d.modules||[]).forEach(function(m){(m.lessons||[]).forEach(function(l){
+      if(/^T-/.test(String(l.no||''))) _catN++; else _bookN++; });});
+    var _chipCount = _catN>0
+      ? '<span class="syl-chip">Chapters <b>'+_bookN+'</b></span>'
+        +'<span class="syl-chip">Categories <b>'+_catN+'</b></span>'
+      : '<span class="syl-chip">Chapters <b>'+s.total+'</b></span>'
+        +'<span class="syl-chip">Public Examination <b>'+s.pe+'</b></span>'
+        +'<span class="syl-chip">TMA <b>'+s.tma+'</b></span>';
     var h='<div style="margin-top:11px"><span style="font-size:.72rem;opacity:.55;display:block;margin-bottom:6px">'
      +'Read from the PDF. The live count is shown above the chapter table below.</span>'
      +'<span class="syl-chip">Modules <b>'+s.modules+'</b></span>'
-     +'<span class="syl-chip">Chapters <b>'+s.total+'</b></span>'
-     +'<span class="syl-chip">Public Examination <b>'+s.pe+'</b></span>'
-     +'<span class="syl-chip">TMA <b>'+s.tma+'</b></span>'
+     +_chipCount
      +'<span class="syl-chip">Paper marks <b>'+d.paper_marks+'</b></span></div>'
     +((d.modules||[]).some(function(m){return m.optional_group;})
       ?'<div class="syl-note" style="margin-top:9px">This subject has <b>OR option modules</b> '
