@@ -1476,9 +1476,11 @@ def _compute_expected(joined, hdr_counts):
     return expected
 
 
-def parse_syllabus_pdf(data: bytes):
+def _parse_bifurcation_pdf(data: bytes):
     """
-    Parse a NIOS syllabus PDF.
+    Parse a standard NIOS syllabus PDF (Bifurcation of Syllabus + Weightage by
+    Content). Internal — call parse_syllabus_pdf(), which adds a language-format
+    fallback on top of this.
 
     Returns dict:
         ok            bool
@@ -1754,3 +1756,318 @@ def suggest_marks(paper_marks, has_practical, practical_max=0):
         "aggregate_pass": 33,
         "has_practical": bool(has_practical),
     }
+
+
+# =====================================================================
+# LANGUAGE SUBJECTS (English / Hindi) — section-weightage format
+# ---------------------------------------------------------------------
+# NIOS language subjects are not given as a "Bifurcation of Syllabus"
+# (Module | TMA | Public Examination) table. Instead the syllabus is a
+# "Section | Marks" weightage table plus "Section | Lesson/Topic | Marks"
+# detail tables. Each weightage SECTION becomes a MODULE (main heading),
+# and the lessons/topics under it become that module's chapters. Every
+# chapter is Public-Examination (PE) — language papers have no per-lesson
+# TMA split. This runs ONLY when the standard parser can't read the PDF,
+# so existing (Physics etc.) subjects are never affected.
+# =====================================================================
+
+def _lang_table_kind(t):
+    """Classify a table by its header row: 'detail' (has a Lesson/Topic column
+    and a Marks column — a Section column is optional), 'weightage' (Section +
+    Marks only, no Lesson/Topic), or None (no recognisable header)."""
+    for row in (t or [])[:6]:
+        cells = [_clean(c).lower() for c in (row or []) if _clean(c)]
+        if not cells:
+            continue
+        has_section = any("section" in c for c in cells)
+        has_marks = any("mark" in c for c in cells)
+        has_lesson = any(("lesson" in c or "topic" in c) for c in cells)
+        if has_lesson and has_marks:
+            return "detail"
+        if has_section and has_marks:
+            return "weightage"
+    return None
+
+
+def _lang_marks_in_row(cells):
+    """Return (marks_float, marks_cell_cleaned) if a cell carries 'N marks'."""
+    for c in cells:
+        cc = _clean(c)
+        m = re.search(r"(\d{1,3}(?:\.\d+)?)\s*marks?\b", cc, re.I)
+        if m:
+            return float(m.group(1)), cc
+    return None, None
+
+
+def _lang_split_row(row):
+    """A detail-table row -> (topic, section, marks). topic = longest text
+    cell, marks = the 'N marks' cell, section = the remaining short label."""
+    ne = [_clean(c) for c in (row or []) if _clean(c)]
+    if not ne:
+        return "", "", None
+    marks, marks_cell = _lang_marks_in_row(ne)
+    rest = [c for c in ne if c != marks_cell]
+    if not rest:
+        return "", "", marks
+    topic = max(rest, key=len)
+    rest2 = list(rest)
+    rest2.remove(topic)
+    section = rest2[0] if rest2 else ""
+    return topic, section, marks
+
+
+def _lang_is_lesson_start(topic):
+    return bool(re.match(r"^\s*(?:Lesson|Chapter|Ch|L)\s*[-\u2013\u2014.:]?\s*\d", topic, re.I)
+               or re.match(r"^\s*\d{1,2}\s*[.)]\s+\S", topic))
+
+
+def _lang_lesson_no(raw):
+    """Real NIOS lesson number ('Lesson 12'/'Chapter 9') -> 12/9, else None.
+    A bare '1.' topic numbering is NOT treated as a lesson number (it would
+    clash with real lesson numbers across sections)."""
+    m = re.match(r"^\s*(?:Lesson|Chapter|Ch)\s*[-\u2013\u2014.:]?\s*(\d{1,2})\b", raw, re.I)
+    return int(m.group(1)) if m else None
+
+
+def _lang_clean_title(raw):
+    t = _clean(raw)
+    t = re.sub(r"^\s*(?:Lesson|Chapter|Ch|L)\s*[-\u2013\u2014.:]?\s*\d{1,2}\s*[-\u2013\u2014.:]\s*", "", t, flags=re.I)
+    t = re.sub(r"^\s*\d{1,2}\s*[.)]\s*", "", t)
+    return t.strip(" -\u2013\u2014:.")
+
+
+def _lang_weightage_rows(t):
+    """From a Section|Marks table -> [(name, marks)], skipping header and Total."""
+    out = []
+    for row in (t or []):
+        cells = [_clean(c) for c in (row or []) if _clean(c)]
+        if not cells:
+            continue
+        joined = " ".join(cells).lower()
+        if "section" in joined and "mark" in joined and not re.search(r"\d", joined):
+            continue  # header
+        num, name_parts = None, []
+        for c in cells:
+            mm = re.fullmatch(r"(\d{1,3}(?:\.\d+)?)", c)
+            if mm and num is None:
+                num = float(mm.group(1))
+            else:
+                name_parts.append(c)
+        name = " ".join(name_parts).strip()
+        if num is None or not name or re.match(r"^\s*total\b", name, re.I):
+            continue
+        out.append((name, num))
+    return out
+
+
+def _lang_apply_weightage_names(modules, weight_rows):
+    """Upgrade each module's name to the matching weightage-table section name.
+    Matching is by MARKS (so it works even when the detail order differs from
+    the weightage order). When several sections share the same marks, the tie is
+    broken by name similarity, else by weightage order. Parent rows (e.g.
+    'Prescribed Text (Poetry + Prose)') never match because no detail module
+    carries their combined marks, so they are ignored automatically."""
+    if not weight_rows:
+        return
+    used = set()
+    for m in modules:
+        want = float(m["weightage"])
+        cands = [(i, nm) for i, (nm, mk) in enumerate(weight_rows)
+                 if i not in used and abs(mk - want) < 0.01]
+        if not cands:
+            continue
+        if len(cands) == 1:
+            i, nm = cands[0]
+        else:
+            cur = m.get("module") or ""
+            best = max(cands, key=lambda c: difflib.SequenceMatcher(
+                None, _norm(cur), _norm(c[1])).ratio())
+            score = difflib.SequenceMatcher(None, _norm(cur), _norm(best[1])).ratio()
+            i, nm = best if (cur and score >= 0.5) else cands[0]
+        used.add(i)
+        if nm:
+            m["module"] = nm
+
+
+def _lang_add_lesson(cur, topic):
+    cur["lessons"].append({"raw": topic, "title": _lang_clean_title(topic)})
+
+
+def _lang_lesson_dup(cur, topic):
+    key = _norm(_lang_clean_title(topic))
+    return any(_norm(l["title"]) == key for l in cur["lessons"]) if key else False
+
+
+def _lang_modules_from_tables(ordered_tables):
+    """Build modules from tables in reading order.
+
+    detail table : a new MODULE starts at a row carrying an 'N marks' value; a
+                   new LESSON starts on a row with a section label, a lesson-start
+                   pattern, or after a blank row; anything else is a continuation
+                   of the previous lesson's title (wrapped text).
+    loose  table : a headerless table (e.g. a page-break continuation). Only rows
+                   that clearly begin a lesson ('Chapter 26 - ...', 'Lesson 3 - ',
+                   '1. ...') are kept and appended to the CURRENT module; junk
+                   fragments a broken PDF sometimes emits are ignored."""
+    modules = []
+    cur = None
+    for kind, t in ordered_tables:
+        prev_blank = True
+        for row in (t or []):
+            ne = [_clean(c) for c in (row or []) if _clean(c)]
+            if not ne:
+                prev_blank = True
+                continue
+            topic, section, marks = _lang_split_row(row)
+            if not topic:
+                prev_blank = True
+                continue
+            low_t, low_s = topic.lower(), section.lower()
+            if low_s == "section" or low_t in ("lesson / topic", "lesson/topic", "topic", "marks"):
+                prev_blank = True
+                continue  # header row
+
+            if kind != "detail":
+                # loose / headerless table: keep only clear lesson-start rows
+                if _lang_is_lesson_start(topic) and cur is not None and not _lang_lesson_dup(cur, topic):
+                    _lang_add_lesson(cur, topic)
+                prev_blank = False
+                continue
+
+            new_module = marks is not None
+            new_lesson = new_module or bool(section) or prev_blank or _lang_is_lesson_start(topic)
+            if new_module:
+                name = section or ""
+                if not name:
+                    mm = re.match(r"^(.*?)\s*[-\u2013\u2014]\s*\d", topic)
+                    name = _clean(mm.group(1)) if (mm and not _lang_is_lesson_start(topic)) \
+                        else ("Section %d" % (len(modules) + 1))
+                cur = {"module": name, "weightage": float(marks), "lessons": []}
+                modules.append(cur)
+                _lang_add_lesson(cur, topic)
+            elif cur is None:
+                prev_blank = False
+                continue
+            elif new_lesson:
+                _lang_add_lesson(cur, topic)
+            else:
+                last = cur["lessons"][-1] if cur["lessons"] else None
+                if last:
+                    last["title"] = (last["title"] + " " + topic).strip()
+                    last["raw"] = (last.get("raw", "") + " " + topic).strip()
+                else:
+                    _lang_add_lesson(cur, topic)
+            prev_blank = False
+    return modules
+
+
+def _lang_number_lessons(modules):
+    """Assign globally-unique lesson ids + PE kind. Real NIOS lesson numbers
+    become 'L-<n>'; unnumbered topics (grammar/writing/reading) become 'T-<k>'
+    so they never clash with a real lesson number."""
+    used = set()
+    # first pass: real lesson numbers
+    for m in modules:
+        for l in m["lessons"]:
+            n = _lang_lesson_no(l.get("raw", ""))
+            if n is not None:
+                no = "L-%d" % n
+                while no in used:
+                    no += "x"
+                l["no"] = no
+                used.add(no)
+    # second pass: everything else
+    k = 0
+    for m in modules:
+        for l in m["lessons"]:
+            if l.get("no"):
+                l["kind"] = "PE"
+                l.pop("raw", None)
+                continue
+            k += 1
+            no = "T-%d" % k
+            while no in used:
+                k += 1
+                no = "T-%d" % k
+            l["no"] = no
+            l["kind"] = "PE"
+            used.add(no)
+            l.pop("raw", None)
+
+
+def parse_language_pdf(data: bytes):
+    """Fallback parser for NIOS language subjects (English / Hindi). Returns the
+    same shape as parse_syllabus_pdf so the admin editor works identically."""
+    if not HAVE_PDFPLUMBER:
+        return {"ok": False, "error": "PDF reader is not installed on the server."}
+    try:
+        pdf = pdfplumber.open(io.BytesIO(data))
+    except Exception as exc:
+        return {"ok": False, "error": "This file could not be opened as a PDF. " + str(exc)[:150]}
+    ordered_tables, weight_rows = [], []
+    have_detail = False
+    try:
+        for page in pdf.pages[:40]:
+            for t in (page.extract_tables() or []):
+                kind = _lang_table_kind(t)
+                if kind == "weightage" and not weight_rows:
+                    weight_rows = _lang_weightage_rows(t)
+                    continue
+                if kind == "detail":
+                    have_detail = True
+                ordered_tables.append((kind, t))  # detail + loose, in reading order
+    finally:
+        pdf.close()
+    if not have_detail:
+        return {"ok": False, "error": "This does not look like a NIOS language syllabus table."}
+    modules = _lang_modules_from_tables(ordered_tables)
+    modules = [m for m in modules if m["lessons"]]
+    if not modules:
+        return {"ok": False, "error": "No section / lesson rows could be read from this PDF."}
+    _lang_apply_weightage_names(modules, weight_rows)
+    _lang_number_lessons(modules)
+    paper = round(sum(float(m["weightage"]) for m in modules), 2)
+    total = sum(len(m["lessons"]) for m in modules)
+    expected = {"total": total, "tma": 0, "pe": total}
+    warnings = ["Read as a NIOS language syllabus: each section became a module and every "
+                "chapter is Public-Examination. Please check the list before saving."]
+    if paper and paper not in (30, 40, 60, 70, 80, 85, 100):
+        warnings.append("Section marks add up to %s. A NIOS language paper is usually 100 marks. "
+                        "Please verify." % (int(paper) if float(paper).is_integer() else paper))
+    text = "\n\n".join(
+        "# %s | %s\n%s" % (
+            m["module"],
+            int(m["weightage"]) if float(m["weightage"]).is_integer() else m["weightage"],
+            "\n".join("%s | %s | %s" % (l["no"], l["title"], l["kind"]) for l in m["lessons"]),
+        )
+        for m in modules
+    )
+    return {
+        "ok": True,
+        "modules": modules,
+        "text": text,
+        "paper_marks": paper,
+        "expected": expected,
+        "stats": {"total": total, "pe": total, "tma": 0, "modules": len(modules)},
+        "warnings": warnings,
+    }
+
+
+def parse_syllabus_pdf(data: bytes):
+    """Public entry point. Tries the standard NIOS bifurcation parser first;
+    if that PDF format isn't found, falls back to the language section-weightage
+    parser. Standard subjects are unaffected — the fallback only runs on
+    failure."""
+    try:
+        res = _parse_bifurcation_pdf(data)
+    except Exception as exc:
+        res = {"ok": False, "error": "Could not read this PDF. " + str(exc)[:150]}
+    if res.get("ok"):
+        return res
+    try:
+        lang = parse_language_pdf(data)
+    except Exception:
+        lang = None
+    if lang and lang.get("ok"):
+        return lang
+    return res
