@@ -2321,7 +2321,9 @@ def vt_admin_project_chapters(subject: str = "", class_level: str = "",
         class_level = ""
     tp = _teacher_profile(db, teacher_id) if teacher_id else None
     titles, src = _chapters_for(db, tp.id if tp else 0, subject, class_level, scope, group)
-    return {"count": len(titles), "titles": titles[:8], "source": src}
+    _catp, _ = _chapters_for(db, tp.id if tp else 0, subject, class_level, "", "categories")
+    return {"count": len(titles), "titles": titles[:8], "source": src,
+            "has_categories": len(_catp) > 0}
 
 
 def _special_payload(db, kind):

@@ -9361,7 +9361,7 @@ function _vtProjectForm(){
           <option value="all">PE + TMA Chapters (full syllabus)</option>
         </select>
         <div class="vt-hint" id="vtp-chcount">Select a subject to see the chapter count</div></div>
-      <div class="form-group" style="grid-column:1/-1" id="vtp-group-wrap"><label>Content — chapters or grammar/writing (language subjects)</label>
+      <div class="form-group" style="grid-column:1/-1;display:none" id="vtp-group-wrap"><label>Content — chapters or grammar/writing</label>
         <select id="vtp-group" class="input" onchange="vtpChaptersPreview()">
           <option value="chapters" selected>Chapters only (book lessons)</option>
           <option value="categories">Grammar / Writing / Reading only</option>
@@ -9463,6 +9463,7 @@ async function vtpChaptersPreview(){
   box.textContent='Counting chapters…';
   try{
     const r=await api('/api/admin/video-tasks/project-chapters?subject='+encodeURIComponent(subject)+(level?'&class_level='+level:'')+'&scope='+scope+(grp!==undefined?'&group='+encodeURIComponent(grp):''));
+    const gw=document.getElementById('vtp-group-wrap'); if(gw) gw.style.display=r.has_categories?'block':'none';
     box.innerHTML=r.count
       ?`<b>${r.count} chapters</b> will become the video items — ${esc(r.titles.slice(0,3).join(' · '))}${r.count>3?' …':''}`
       :'No chapters found for this scope — choose a different scope, or set Connect to No and enter videos manually';
@@ -22006,7 +22007,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '<div class="p-field"><label>Connect to syllabus chapters?</label><select class="p-select" id="pj-connect" onchange="prodPjChange()"><option value="1"'+(p.connect?' selected':'')+'>Yes — use syllabus chapters</option><option value="0"'+(!p.connect?' selected':'')+'>No — I will type video names</option></select></div>';
       if(p.connect){
         html+='<div class="p-field"><label>Syllabus scope</label><select class="p-select" id="pj-scope" onchange="prodPjChange()"><option value="pe"'+(p.chapter_scope==='pe'?' selected':'')+'>PE chapters only (recommended)</option><option value="tma"'+(p.chapter_scope==='tma'?' selected':'')+'>TMA chapters only</option><option value=""'+(!p.chapter_scope?' selected':'')+'>PE + TMA (full)</option></select></div>'+
-          '<div class="p-field"><label>Content (language subjects)</label><select class="p-select" id="pj-group" onchange="prodPjChange()"><option value="chapters"'+((p.chapter_group===undefined||p.chapter_group==='chapters')?' selected':'')+'>Chapters only (book lessons)</option><option value="categories"'+(p.chapter_group==='categories'?' selected':'')+'>Grammar / Writing / Reading only</option><option value=""'+(p.chapter_group===''?' selected':'')+'>Both (merged)</option></select></div>'+
+          '<div class="p-field" id="pj-group-wrap" style="display:none"><label>Content</label><select class="p-select" id="pj-group" onchange="prodPjChange()"><option value="chapters"'+((p.chapter_group===undefined||p.chapter_group==='chapters')?' selected':'')+'>Chapters only (book lessons)</option><option value="categories"'+(p.chapter_group==='categories'?' selected':'')+'>Grammar / Writing / Reading only</option><option value=""'+(p.chapter_group===''?' selected':'')+'>Both (merged)</option></select></div>'+
           '<div id="pj-chapters" class="p-empty" style="margin-bottom:12px">Pick a subject to preview chapters.</div>';
       } else {
         html+='<div class="p-field"><label>Video names (one per line)</label><textarea class="p-area" id="pj-items" placeholder="Chapter 1 - ...\nChapter 2 - ...">'+esc((p.items||[]).join('\n'))+'</textarea></div>';
@@ -22042,6 +22043,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(!p.subject){ box.innerHTML='Pick a subject to preview chapters.'; return; }
     box.innerHTML='<div class="p-load">Loading chapters...</div>';
     api(P.production.api+'/project/chapters-preview?subject='+encodeURIComponent(p.subject)+'&class_level='+(p.class_level||'')+'&scope='+(p.chapter_scope||'')+'&group='+(p.chapter_group!==undefined?encodeURIComponent(p.chapter_group):'chapters')+'&teacher_id='+(p.teacher_id||0)).then(function(r){
+      var gw=document.getElementById('pj-group-wrap'); if(gw) gw.style.display=r.has_categories?'block':'none';
       if(!r.count){ box.innerHTML='<div class="p-empty">No chapters found for this scope. Try a different scope, or switch Connect to No and type names.</div>'; return; }
       box.innerHTML='<div style="font-weight:700;margin-bottom:6px">'+r.count+' video items will be created:</div>'+(r.titles||[]).map(function(t){ return '<div class="pt-meta" style="padding:2px 0">'+esc(t)+'</div>'; }).join('')+(r.count>(r.titles||[]).length?'<div class="pt-meta">…and '+(r.count-(r.titles||[]).length)+' more</div>':'');
     }).catch(function(){ box.innerHTML='<div class="p-empty">Could not load chapter preview.</div>'; });

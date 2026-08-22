@@ -1889,7 +1889,9 @@ def prod_project_chapters_preview(subject: str = "", class_level: str = "", scop
         class_level = ""
     tp = _p_teacher_profile(db, teacher_id) if teacher_id else None
     titles, src = _p_chapters_for(db, tp.id if tp else 0, subject, class_level, scope, group)
-    return {"count": len(titles), "titles": titles[:8], "source": src}
+    _catp, _ = _p_chapters_for(db, tp.id if tp else 0, subject, class_level, "", "categories")
+    return {"count": len(titles), "titles": titles[:8], "source": src,
+            "has_categories": len(_catp) > 0}
 
 
 @router.post("/project")
