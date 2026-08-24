@@ -64,6 +64,11 @@ ADMIN_SECTION_MAP = {
     "category-materials": "categories", "work-types": "categories",
     "material-submissions": "matcheck", "material-versions": "matcheck",
     "material-attachments": "matcheck",
+    # Complaints & Feedback
+    "complaints": "complaints", "complaint-categories": "complaints",
+    "complaint-analytics": "complaints", "complaint-attachments": "complaints",
+    "complaint-resolvers": "complaints",
+    "feedback": "feedback", "feedback-analytics": "feedback",
 }
 
 # Kuch sections ke endpoints ek se zyada section-permission se khulte hain.

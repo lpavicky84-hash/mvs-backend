@@ -796,7 +796,9 @@ function _notifResolvePage(role,type,fbPage){
   const t=(type||'').toLowerCase();
   const has=w=>t.indexOf(w)>=0;
   let g='';
-  if(has('doubt')) g='doubts';
+  if(has('complaint')) g='complaints';
+  else if(has('feedback')) g='feedback';
+  else if(has('doubt')) g='doubts';
   else if(has('video')||has('task')||has('reshoot')||has('proposal')) g='vtasks';
   else if(has('reschedule')||has('class')||has('timetable')||has('slot')) g='timetable';
   else if(has('payout')||has('salary')||has('incentive')) g=(role==='admin'?'payouts':'payout');
@@ -893,6 +895,21 @@ async function notifLinkOpen(role,id,encLink,ntype,fbPage){
   try{ refreshNotifBadge(role); }catch(e){}
   // Real URL -> open in a new tab
   if(/^https?:\/\//i.test(link)){ if(link) window.open(link,'_blank','noopener'); openNotifPanel(role); return; }
+  // Support deep links -> open the exact record INSIDE the portal
+  if(link.indexOf('/support/')===0){
+    closeModal();
+    var _appId=role==='admin'?'admin-app':'student-app';
+    var _navTo=(role==='admin')?aPage:sPage;
+    if(link.indexOf('/support/feedback')===0){
+      try{ _navTo('feedback',null); }catch(e){}
+      _supActivateNav(_appId,'feedback'); return;
+    }
+    var _m=link.match(/\/support\/complaint\/(\d+)/);
+    try{ _navTo('complaints',null); }catch(e){}
+    _supActivateNav(_appId,'complaints');
+    if(_m){ var _cid=parseInt(_m[1],10); setTimeout(function(){ try{ (role==='admin')?amcCmpOpen(_cid):scOpenDetail(_cid); }catch(e){} }, 420); }
+    return;
+  }
   // Numeric task id -> navigate INSIDE the app to that task and highlight it
   const tid=parseInt(link,10);
   if(tid && (''+tid)===link.trim()){
@@ -7632,6 +7649,7 @@ function openAdmin(){
   try{ initAdminProdTeam(); }catch(e){}
   try{ initAdminCategories(); }catch(e){}
   try{ initAdminMatCheck(); }catch(e){}
+  try{ initAdminSupport(); }catch(e){}
   try{ initAdminProdMonitor(); }catch(e){}
   try{ initAdminTranslation(); }catch(e){}
   try{ initNavCollapse(); }catch(e){}
@@ -7749,7 +7767,7 @@ function aPage(page,el){
   }
   if(!el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) el=n; }); }
   if(el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodmon:'Production Overview',translation:'Translation Center',categories:'Teacher Categories',matcheck:'Material Checker'};
+  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodmon:'Production Overview',translation:'Translation Center',categories:'Teacher Categories',matcheck:'Material Checker',complaints:'Complaints & Resolution',feedback:'Feedback & Ratings'};
   _setPage(titles[page]||page);
   document.getElementById('a-title').textContent=titles[page]||page;
   _curLoader=function(){ _aLoadPage(page); };
@@ -7761,6 +7779,8 @@ function _aLoadPage(page){
   else if(page==='prodteam') loadAProductionTeam();
   else if(page==='categories') loadACategories();
   else if(page==='matcheck') loadAMatCheck();
+  else if(page==='complaints') loadAComplaints();
+  else if(page==='feedback') loadAFeedback();
   else if(page==='prodmon') loadAProdMonitor();
   else if(page==='translation') loadATranslation();
   else if(page==='vtasks') loadAVTasks();
@@ -11958,7 +11978,7 @@ const ADMIN_SECTIONS=[
   ['qbank','Study Material'],['material','Classes Material'],['doubts','Doubts'],['tests','Tests Tracker'],
   ['vtasks','Task Manager'],['urgent','Urgent Videos'],['teachers','Teachers'],['reports','Teacher Reports'],['tranks','Teacher Ranking'],
   ['compliance','Class Compliance'],['attendance','Attendance'],['payouts','Payouts'],['students','Students'],
-  ['notify','Send Notice'],['subjects','Subjects'],['syllabus','Syllabus Manager'],['categories','Teacher Categories'],['matcheck','Material Checker'],['admins','Admin Users']
+  ['notify','Send Notice'],['subjects','Subjects'],['syllabus','Syllabus Manager'],['categories','Teacher Categories'],['matcheck','Material Checker'],['complaints','Complaints'],['feedback','Feedback'],['admins','Admin Users']
 ];
 let _aaFull=false, _aaSel=new Set(['dashboard']), _aaEdit={};
 window._sddOpen=new Set();
@@ -12134,6 +12154,7 @@ function enterStudentApp(){
   loadTopAvatar('student');
   document.querySelectorAll('#student-app .nav-item').forEach(n=>n.classList.remove('active'));
   document.querySelector('#student-app .nav-item').classList.add('active');
+  try{ initStudentSupport(); }catch(e){}
   sPage('dashboard',null);
   notifPopupOnOpen('student');
   loadStudentLiveBanner();
@@ -12227,9 +12248,9 @@ function sPage(page,el){
   document.querySelectorAll('#student-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('s-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#student-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Home',timetable:'Time Table',materials:'Classes Material',teachers:'Know Your Teacher',dpp:'DPP Submit',tests:'Tests',doubts:'Doubts',progress:'Progress',syllabus:'Syllabus Tracker',resultcard:'Result Card',notifications:'Notifications',profile:'My Profile',qbank:'Study Material'};
+  const titles={dashboard:'Home',timetable:'Time Table',materials:'Classes Material',teachers:'Know Your Teacher',dpp:'DPP Submit',tests:'Tests',doubts:'Doubts',progress:'Progress',syllabus:'Syllabus Tracker',resultcard:'Result Card',notifications:'Notifications',profile:'My Profile',qbank:'Study Material',complaints:'Complaints',feedback:'Feedback & Ratings'};
   _setPage(titles[page]||page);
-  document.getElementById('s-title').textContent=titles[page];
+  document.getElementById('s-title').textContent=titles[page]||page;
   stopCountdown();
   _curLoader=function(){ _sLoadPage(page); };
   _sLoadPage(page);
@@ -12248,6 +12269,8 @@ function _sLoadPage(page){
   else if(page==='notifications') loadSNotif();
   else if(page==='profile') loadSProfile();
   else if(page==='qbank') loadSQBank();
+  else if(page==='complaints') loadSComplaints();
+  else if(page==='feedback') loadSFeedback();
 }
 
 async function loadSProfile(){
@@ -24111,3 +24134,601 @@ function loadTCatEarnings(){
   if(document.head){ inject(); }
   else { document.addEventListener('DOMContentLoaded', inject); }
 })();
+
+/* ============================================================
+   COMPLAINTS & FEEDBACK — Student UI (Phase 4)
+   Injected into #student-app, same pattern as existing pages.
+   ============================================================ */
+function _supCss(){
+  if(document.getElementById('sup-css')) return;
+  var s=document.createElement('style'); s.id='sup-css';
+  s.textContent=[
+    '.sup-top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}',
+    '.sup-list{display:flex;flex-direction:column;gap:10px;max-height:calc(100vh - 240px);overflow:auto;padding:2px}',
+    '.sup-card{border:1px solid var(--border);border-radius:14px;padding:15px 16px;background:var(--card);cursor:pointer;transition:.14s}',
+    '.sup-card:hover{border-color:#d9b978;transform:translateY(-1px);box-shadow:0 8px 22px rgba(15,23,42,.06)}',
+    '.sup-num{font-family:ui-monospace,monospace;font-size:.72rem;color:var(--text-muted)}',
+    '.sup-ttl{font-weight:700;margin-top:2px}',
+    '.sup-meta{font-size:.75rem;color:var(--text-muted);margin-top:4px}',
+    '.sup-pill{font-size:.66rem;font-weight:800;padding:3px 10px;border-radius:999px;color:#fff;white-space:nowrap}',
+    '.sup-dot{width:8px;height:8px;border-radius:50%;background:#dc2626;display:inline-block;margin-left:6px}',
+    '.sup-empty{border:1px dashed var(--border);border-radius:14px;padding:28px;text-align:center;color:var(--text-muted)}',
+    '.sup-thread{display:flex;flex-direction:column;gap:10px;max-height:44vh;overflow:auto;margin:6px 0 12px}',
+    '.sup-b{max-width:82%;padding:10px 13px;border-radius:14px;font-size:.88rem;line-height:1.4;word-break:break-word}',
+    '.sup-b .who{font-size:.64rem;font-weight:800;text-transform:uppercase;opacity:.7;margin-bottom:3px}',
+    '.sup-b.them{align-self:flex-start;background:var(--card);border:1px solid var(--border)}',
+    '.sup-b.me{align-self:flex-end;background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05}',
+    '.sup-b img.att{max-width:190px;border-radius:9px;margin-top:6px;display:block;cursor:pointer}',
+    '.sup-att-row{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}',
+    '.sup-att-chip{position:relative;border:1px solid var(--border);border-radius:8px;overflow:hidden;width:60px;height:60px}',
+    '.sup-att-chip img{width:100%;height:100%;object-fit:cover}',
+    '.sup-att-chip .x{position:absolute;top:2px;right:2px;background:rgba(0,0,0,.6);color:#fff;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:.8rem}',
+    '.sup-stars{display:flex;gap:8px;font-size:2.2rem;cursor:pointer;justify-content:center;margin:10px 0}',
+    '.sup-star{color:#d9c9a0;transition:.1s}.sup-star.on{color:#e6ad4e}',
+    '.sup-star:focus{outline:2px solid #b8941f;border-radius:6px}'
+  ].join('');
+  document.head.appendChild(s);
+  try{ _supPolishCss(); }catch(e){}
+}
+var SUP_ST={open:['Open','#2563eb'],assigned:['Assigned','#7c3aed'],in_progress:['In Progress','#0891b2'],waiting_student:['Waiting For You','#d97706'],resolved:['Resolved','#059669'],reopened:['Reopened','#dc2626']};
+function _supPill(st){ var m=SUP_ST[st]||[st,'#6b7280']; return '<span class="sup-pill" style="background:'+m[1]+'">'+m[0]+'</span>'; }
+
+function initStudentSupport(){
+  var app=document.getElementById('student-app'); if(!app) return;
+  var nav=app.querySelector('.sidebar-nav'); var main=app.querySelector('.main');
+  if(nav && !nav.querySelector('[onclick*="complaints"]')){
+    var sec=document.createElement('div'); sec.className='nav-section'; sec.textContent='Support';
+    var c=document.createElement('div'); c.className='nav-item'; c.setAttribute('onclick',"sPage('complaints',this)");
+    c.innerHTML=(typeof ic==='function'?ic('help'):'')+'<span>Complaints</span><span class="badge" id="s-cmp-badge" style="display:none">0</span>';
+    var f=document.createElement('div'); f.className='nav-item'; f.setAttribute('onclick',"sPage('feedback',this)");
+    f.innerHTML=(typeof ic==='function'?ic('star'):'')+'<span>Feedback</span>';
+    nav.appendChild(sec); nav.appendChild(c); nav.appendChild(f);
+  }
+  if(main && !document.getElementById('s-page-complaints')){
+    var p1=document.createElement('div'); p1.className='page'; p1.id='s-page-complaints';
+    p1.innerHTML='<div id="s-complaints-content"><div class="spinner"></div></div>'; main.appendChild(p1);
+    var p2=document.createElement('div'); p2.className='page'; p2.id='s-page-feedback';
+    p2.innerHTML='<div id="s-feedback-content"><div class="spinner"></div></div>'; main.appendChild(p2);
+  }
+  _supLoadBadge();
+}
+function _supLoadBadge(){
+  api('/api/student/support-badges').then(function(r){
+    var b=document.getElementById('s-cmp-badge'); if(!b) return;
+    var n=(r&&r.complaints)||0; b.textContent=n; b.style.display=n>0?'':'none';
+  }).catch(function(){});
+}
+
+/* ---- My Complaints ---- */
+function loadSComplaints(){
+  var el=document.getElementById('s-complaints-content'); if(!el) return;
+  _supCss(); el.innerHTML=_supSkelList(4);
+  api('/api/student/complaints').then(function(r){
+    var list=(r&&r.complaints)||[];
+    var head='<div class="sup-top"><div><div style="font-weight:800;font-size:1.1rem">My Complaints</div>'
+      +'<div style="font-size:.82rem;color:var(--text-muted)">Non-academic issues — for subject doubts use Doubts.</div></div>'
+      +'<button class="btn btn-primary" onclick="scOpenForm()">+ Raise a Complaint</button></div>';
+    if(!list.length){ el.innerHTML=head+'<div class="sup-empty"><div style="font-weight:700;margin-bottom:4px">No complaints yet</div>You haven\u2019t raised any complaints.</div>'; _supLoadBadge(); return; }
+    var cards=list.map(function(c){
+      return '<div class="sup-card" onclick="scOpenDetail('+c.id+')"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">'
+        +'<div><div class="sup-num">'+esc(c.complaint_number)+'</div><div class="sup-ttl">'+esc(c.title)+(c.read_by_student?'':'<span class="sup-dot" title="New reply"></span>')+'</div>'
+        +'<div class="sup-meta">'+(c.category?esc(c.category)+' \u00b7 ':'')+esc(c.created_at)+(c.image_count?' \u00b7 \uD83D\uDCCE '+c.image_count:'')+(c.voice_count?' \u00b7 \uD83C\uDF99':'')+'</div></div>'
+        +_supPill(c.status)+'</div></div>';
+    }).join('');
+    el.innerHTML=head+'<div class="sup-list">'+cards+'</div>';
+    _supLoadBadge();
+  }).catch(function(e){ el.innerHTML='<div style="padding:20px;color:#c1443a">'+esc((e&&e.message)||'Could not load')+'</div>'; });
+}
+
+/* ---- Raise a Complaint (form) ---- */
+window._scImgs=[];
+function scOpenForm(){
+  window._scImgs=[];
+  api('/api/student/complaint-categories').then(function(r){
+    var cats=(r&&r.categories)||[];
+    var opts='<option value="">Select a category</option>'+cats.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join('');
+    var body='<div class="form-group"><label class="form-label">Category</label><select id="sc-cat" class="form-control">'+opts+'</select></div>'
+      +'<div class="form-group"><label class="form-label">Short Title</label><input id="sc-title" class="form-control" maxlength="200" placeholder="e.g. Portal login issue"></div>'
+      +'<div class="form-group"><label class="form-label">Description</label><textarea id="sc-desc" class="form-control" rows="4" maxlength="2000" placeholder="Describe your issue\u2026" oninput="document.getElementById(\'sc-cc\').textContent=this.value.length+\'/2000\'"></textarea><div id="sc-cc" style="font-size:.7rem;color:var(--text-muted);text-align:right">0/2000</div></div>'
+      +'<div class="form-group"><label class="form-label">Images (optional)</label><div id="sc-prev" class="sup-att-row"></div>'
+        +'<label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">\uD83D\uDCCE Add Images<input id="sc-file" type="file" accept="image/*" multiple style="display:none" onchange="scAddImgs(this.files)"></label></div>'
+      +'<div class="form-group"><label class="form-label">Voice (optional)</label><div id="sc-voice"></div></div>'
+      +'<div id="sc-status" style="font-size:.8rem"></div>';
+    showModal('Raise a Complaint', body,
+      '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="sc-submit" onclick="scSubmit()">Submit Complaint</button>');
+    _supVoiceUI('sc-voice','_scVoice');
+    _supWireClipboard('sc-desc', window._scImgs, _scRenderPrev);
+  });
+}
+function scAddImgs(files){
+  for(var i=0;i<files.length;i++){ if((files[i].type||'').indexOf('image')===0) window._scImgs.push(files[i]); }
+  _scRenderPrev();
+}
+function _scRenderPrev(){
+  var el=document.getElementById('sc-prev'); if(!el) return;
+  el.innerHTML=window._scImgs.map(function(f,i){ return '<span class="sup-att-chip"><img src="'+URL.createObjectURL(f)+'"><span class="x" onclick="window._scImgs.splice('+i+',1);_scRenderPrev()">\u00d7</span></span>'; }).join('');
+}
+async function scSubmit(){
+  var title=(document.getElementById('sc-title').value||'').trim();
+  if(!title){ toast('Please add a short title',true); return; }
+  var btn=document.getElementById('sc-submit'); btn.disabled=true; btn.textContent='Submitting...';
+  try{
+    var fd=new FormData();
+    fd.append('title',title);
+    fd.append('description',document.getElementById('sc-desc').value||'');
+    fd.append('category_id',document.getElementById('sc-cat').value||'');
+    window._scImgs.forEach(function(f){ fd.append('images',f,f.name||'image'); });
+    if(window._scVoice&&window._scVoice.blob){ fd.append('voice',window._scVoice.blob,'voice.webm'); }
+    var r=await fetch(API+'/api/student/complaints',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+    if(!r.ok){ var d=null; try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||'Submit failed'); }
+    var res=await r.json();
+    closeModal();
+    showModal('Complaint Submitted','<div style="text-align:center;padding:10px"><div style="font-size:2.4rem">\u2705</div>'
+      +'<div style="font-weight:800;font-size:1.05rem;margin-top:8px">We\u2019ve received your complaint</div>'
+      +'<div class="sup-num" style="margin-top:8px;font-size:.9rem">'+esc(res.complaint_number)+'</div>'
+      +'<div style="margin-top:6px">'+_supPill('open')+'</div>'
+      +'<div style="font-size:.84rem;color:var(--text-muted);margin-top:10px">We\u2019ll review it and respond here.</div></div>',
+      '<button class="btn btn-primary" onclick="closeModal();loadSComplaints()">Done</button>');
+  }catch(e){ document.getElementById('sc-status').innerHTML='<span style="color:#c1443a">'+esc(e.message)+'</span>'; btn.disabled=false; btn.textContent='Submit Complaint'; }
+}
+
+/* ---- Complaint detail / conversation ---- */
+window._scReplyImgs=[];
+function scOpenDetail(cid){
+  showModal('Complaint','<div class="spinner"></div>','');
+  api('/api/student/complaints/'+cid).then(function(r){
+    var c=r.complaint; window._scReplyImgs=[]; _supRenderDetail('student', c);
+    _supLoadBadge();
+  }).catch(function(e){ document.getElementById('modal-body').innerHTML='<div style="color:#c1443a;padding:12px">'+esc((e&&e.message)||'Could not load')+'</div>'; });
+}
+function _supRenderDetail(role, c){
+  _supCss();
+  var imgJobs=[];
+  var thread=(c.messages||[]).map(function(m){
+    var mine=(m.sender_role===role);
+    var atts=(m.attachments||[]).map(function(a){
+      if(a.kind==='image'){ var id='sca-'+a.id; imgJobs.push([id,role,a.id]); return '<img id="'+id+'" class="att" onclick="_supViewImg(\''+role+'\','+a.id+')">'; }
+      return '<div style="margin-top:6px"><audio controls id="scv-'+a.id+'" style="height:34px"></audio></div>';
+    }).join('');
+    (m.attachments||[]).forEach(function(a){ if(a.kind==='voice') imgJobs.push(['AUDIO:scv-'+a.id, role, a.id]); });
+    return '<div class="sup-b '+(mine?'me':'them')+'"><div class="who">'+(m.sender_role==='admin'?'Support':'You')+'</div>'+(m.message?esc(m.message).replace(/\n/g,'<br>'):'')+atts+'</div>';
+  }).join('') || '<div style="color:var(--text-muted);font-size:.84rem">No messages yet.</div>';
+  var canReply=(c.status!=='resolved'||role==='student');
+  var head='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px"><div>'
+    +'<div class="sup-num">'+esc(c.complaint_number)+'</div><div style="font-weight:800;font-size:1.05rem">'+esc(c.title)+'</div>'
+    +'<div class="sup-meta">'+(c.category?esc(c.category)+' \u00b7 ':'')+esc(c.created_at)+'</div></div>'+_supPill(c.status)+'</div>';
+  var composer=canReply?('<div style="border-top:1px solid var(--border);padding-top:10px">'
+    +'<div id="sc-rprev" class="sup-att-row"></div>'
+    +'<textarea id="sc-reply" class="form-control" rows="2" placeholder="'+(role==='student'?'Reply to support\u2026':'Write a reply\u2026')+'"></textarea>'
+    +'<div id="sc-rvoice" style="margin-top:8px"></div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">'
+    +'<label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">\uD83D\uDCCE Image<input id="sc-rfile" type="file" accept="image/*" multiple style="display:none" onchange="scReplyAddImgs(this.files)"></label>'
+    +'<button class="btn btn-primary btn-sm" id="sc-rbtn" onclick="scSendReply(\''+role+'\','+c.id+')">Send</button></div></div>'):'';
+  document.getElementById('modal-body').innerHTML=head+'<div class="sup-thread">'+thread+'</div>'+composer;
+  document.getElementById('modal-footer').innerHTML='<button class="btn btn-ghost" onclick="closeModal()">Close</button>';
+  if(canReply){ _supVoiceUI('sc-rvoice','_scReplyVoice'); _supWireClipboard('sc-reply', window._scReplyImgs, _scReplyPrev); }
+  var title=document.getElementById('modal-title'); if(title) title.textContent='Complaint \u00b7 '+c.complaint_number;
+  imgJobs.forEach(function(j){
+    if((''+j[0]).indexOf('AUDIO:')===0){ _supLoadAudio(j[0].slice(6), '/api/'+j[1]+'/complaint-attachments/'+j[2]+'/view'); }
+    else { _supLoadImg(j[0], '/api/'+j[1]+'/complaint-attachments/'+j[2]+'/view'); }
+  });
+}
+async function _supLoadImg(id,url){ try{ var r=await fetch(API+url,{headers:{Authorization:'Bearer '+TOKEN}}); if(!r.ok)return; var u=URL.createObjectURL(await r.blob()); var im=document.getElementById(id); if(im) im.src=u; }catch(e){} }
+async function _supLoadAudio(id,url){ try{ var r=await fetch(API+url,{headers:{Authorization:'Bearer '+TOKEN}}); if(!r.ok)return; var u=URL.createObjectURL(await r.blob()); var a=document.getElementById(id); if(a) a.src=u; }catch(e){} }
+function _supViewImg(role,aid){ _supLoadImg('_lightbox', '/api/'+role+'/complaint-attachments/'+aid+'/view'); }
+function scReplyAddImgs(files){ for(var i=0;i<files.length;i++){ if((files[i].type||'').indexOf('image')===0) window._scReplyImgs.push(files[i]); } _scReplyPrev(); }
+function _scReplyPrev(){ var el=document.getElementById('sc-rprev'); if(!el)return; el.innerHTML=window._scReplyImgs.map(function(f,i){ return '<span class="sup-att-chip"><img src="'+URL.createObjectURL(f)+'"><span class="x" onclick="window._scReplyImgs.splice('+i+',1);_scReplyPrev()">\u00d7</span></span>'; }).join(''); }
+async function scSendReply(role, cid){
+  var txt=(document.getElementById('sc-reply').value||'').trim();
+  if(!txt && !window._scReplyImgs.length){ toast('Type a message',true); return; }
+  var btn=document.getElementById('sc-rbtn'); btn.disabled=true; btn.textContent='Sending...';
+  try{
+    var fd=new FormData(); fd.append('message',txt);
+    window._scReplyImgs.forEach(function(f){ fd.append('images',f,f.name||'image'); });
+    if(window._scReplyVoice&&window._scReplyVoice.blob){ fd.append('voice',window._scReplyVoice.blob,'voice.webm'); }
+    var base=role==='student'?'/api/student/complaints/':'/api/admin/complaints/';
+    var r=await fetch(API+base+cid+'/messages',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+    if(!r.ok){ var d=null; try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||'Send failed'); }
+    window._scReplyImgs=[];
+    if(role==='student') scOpenDetail(cid); else amcCmpOpen(cid);
+  }catch(e){ toast(e.message||'Could not send',true); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent='Send'; } }
+}
+
+/* ---- Feedback & Ratings ---- */
+window._sfRating=0;
+function loadSFeedback(){
+  var el=document.getElementById('s-feedback-content'); if(!el) return;
+  _supCss(); window._sfRating=0;
+  var stars=[1,2,3,4,5].map(function(n){ return '<span class="sup-star" role="button" tabindex="0" aria-label="'+n+' star" data-n="'+n+'" onclick="sfSetRating('+n+')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){sfSetRating('+n+');event.preventDefault()}">\u2605</span>'; }).join('');
+  el.innerHTML='<div style="max-width:560px;margin:0 auto"><div class="sup-card" style="cursor:default;text-align:center;padding:24px">'
+    +'<div style="font-weight:800;font-size:1.15rem">How was your experience?</div>'
+    +'<div style="font-size:.84rem;color:var(--text-muted);margin-top:4px">Your feedback helps us improve MVS Foundation.</div>'
+    +'<div class="sup-stars" id="sf-stars">'+stars+'</div>'
+    +'<div id="sf-label" style="font-size:.8rem;color:var(--text-muted);min-height:1em">Tap a star to rate</div>'
+    +'<textarea id="sf-review" class="form-control" rows="3" maxlength="1000" placeholder="Tell us more (optional)" style="margin-top:12px"></textarea>'
+    +'<div style="margin-top:12px"><button class="btn btn-primary" id="sf-submit" onclick="sfSubmit()" style="min-width:180px">Submit Feedback</button></div>'
+    +'<div id="sf-status" style="font-size:.82rem;margin-top:8px"></div></div>'
+    +'<div id="sf-mine" style="margin-top:16px"></div></div>';
+  _sfLoadMine();
+}
+function sfSetRating(n){
+  window._sfRating=n;
+  document.querySelectorAll('#sf-stars .sup-star').forEach(function(s){ s.classList.toggle('on', parseInt(s.dataset.n,10)<=n); });
+  var lbl=['','Poor','Fair','Good','Very Good','Excellent'][n];
+  var el=document.getElementById('sf-label'); if(el) el.textContent=lbl;
+}
+async function sfSubmit(){
+  if(!window._sfRating){ toast('Please choose a star rating',true); return; }
+  var btn=document.getElementById('sf-submit'); btn.disabled=true; btn.textContent='Submitting...';
+  try{
+    await api('/api/student/feedback','POST',{rating:window._sfRating,review:document.getElementById('sf-review').value||''});
+    document.getElementById('sf-status').innerHTML='<span style="color:#059669;font-weight:700">\u2705 Thank you for your feedback!</span>';
+    document.getElementById('sf-review').value=''; sfSetRating(0); window._sfRating=0;
+    _sfLoadMine();
+    setTimeout(function(){ btn.disabled=false; btn.textContent='Submit Feedback'; },400);
+  }catch(e){ document.getElementById('sf-status').innerHTML='<span style="color:#c1443a">'+esc((e&&e.message)||'Could not submit')+'</span>'; btn.disabled=false; btn.textContent='Submit Feedback'; }
+}
+function _sfLoadMine(){
+  api('/api/student/feedback').then(function(r){
+    var list=(r&&r.feedback)||[]; var el=document.getElementById('sf-mine'); if(!el)return;
+    if(!list.length){ el.innerHTML=''; return; }
+    el.innerHTML='<div style="font-weight:700;font-size:.9rem;margin-bottom:8px">Your Feedback</div>'+list.map(function(f){
+      var st='<span style="color:#e6ad4e">'+'\u2605'.repeat(f.rating)+'</span><span style="color:#d9c9a0">'+'\u2605'.repeat(5-f.rating)+'</span>';
+      return '<div class="sup-card" style="cursor:default;margin-bottom:8px">'+st+(f.review?'<div style="margin-top:6px;font-size:.88rem">'+esc(f.review)+'</div>':'')+'<div class="sup-meta">'+esc(f.created_at)+'</div></div>';
+    }).join('');
+  }).catch(function(){});
+}
+
+/* ============================================================
+   COMPLAINTS & FEEDBACK — Admin UI (Phase 5)
+   ============================================================ */
+function _asupCss(){
+  if(document.getElementById('asup-css')) return;
+  var s=document.createElement('style'); s.id='asup-css';
+  s.textContent=[
+    '#a-page-complaints .ac-cards,#a-page-feedback .ac-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}',
+    '.ac-kpi{border:1px solid var(--border);border-radius:14px;padding:15px;background:var(--card);cursor:pointer;transition:.14s}',
+    '.ac-kpi:hover{border-color:#d9b978;transform:translateY(-2px)}',
+    '.ac-kpi.static{cursor:default}.ac-kpi.static:hover{transform:none;border-color:var(--border)}',
+    '.ac-kpi b{display:block;font-size:1.7rem;font-weight:800;line-height:1}',
+    '.ac-kpi span{font-size:.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em;font-weight:700}',
+    '.ac-kpi small{display:block;font-size:.72rem;color:var(--text-muted);margin-top:3px}',
+    '.ac-filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center}',
+    '.ac-filters select,.ac-filters input{padding:8px 11px;border-radius:9px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:.82rem}',
+    '.ac-list{display:flex;flex-direction:column;gap:10px;max-height:calc(100vh - 380px);min-height:200px;overflow:auto;padding:2px}',
+    '.ac-card{border:1px solid var(--border);border-radius:14px;padding:15px;background:var(--card);transition:.14s}',
+    '.ac-card:hover{border-color:#d9b978}',
+    '.ac-name{font-weight:800;cursor:pointer}.ac-name:hover{color:#b8941f}',
+    '.ac-prio{font-size:.64rem;font-weight:800;padding:2px 8px;border-radius:999px}',
+    '.ac-prio.critical{background:rgba(220,38,38,.14);color:#dc2626}.ac-prio.emergency{background:#dc2626;color:#fff}',
+    '.ac-trend{display:flex;align-items:flex-end;gap:3px;height:52px;margin-top:6px}',
+    '.ac-trend .bar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:1px;min-width:3px}',
+    '.ac-trend .r{background:#c98a2e;border-radius:2px 2px 0 0}.ac-trend .g{background:#059669;border-radius:2px 2px 0 0}',
+    '.ac-dist-row{display:flex;align-items:center;gap:10px;margin-bottom:7px}',
+    '.ac-dist-bar{flex:1;height:10px;border-radius:999px;background:rgba(120,113,108,.16);overflow:hidden}',
+    '.ac-dist-fill{height:100%;background:#e6ad4e}',
+    '.ac-star{color:#e6ad4e}'
+  ].join('');
+  document.head.appendChild(s);
+  try{ _supPolishCss(); }catch(e){}
+}
+function _fmtDur(secs){ secs=secs||0; if(!secs) return '—'; var h=Math.floor(secs/3600),m=Math.floor((secs%3600)/60); return h?(h+'h '+m+'m'):(m+'m'); }
+function _acPrio(p){ return (p==='critical'||p==='emergency')?'<span class="ac-prio '+p+'">'+p.toUpperCase()+'</span>':''; }
+
+function initAdminSupport(){
+  var app=document.getElementById('admin-app'); if(!app) return;
+  var nav=app.querySelector('.sidebar-nav'); var main=app.querySelector('.main');
+  if(nav && !nav.querySelector('[onclick*="complaints"]')){
+    var anchor=[].slice.call(nav.querySelectorAll('.nav-item')).filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'matcheck'")>=0;})[0];
+    var sec=document.createElement('div'); sec.className='nav-section'; sec.textContent='Leads & Support';
+    var c=document.createElement('div'); c.className='nav-item'; c.setAttribute('onclick',"aPage('complaints',this)");
+    c.innerHTML=(typeof ic==='function'?ic('help'):'')+'<span>Complaints</span><span class="badge" id="a-cmp-badge" style="display:none">0</span>';
+    var f=document.createElement('div'); f.className='nav-item'; f.setAttribute('onclick',"aPage('feedback',this)");
+    f.innerHTML=(typeof ic==='function'?ic('star'):'')+'<span>Feedback</span><span class="badge" id="a-fb-badge" style="display:none">0</span>';
+    if(anchor){ anchor.parentNode.insertBefore(f, anchor.nextSibling); anchor.parentNode.insertBefore(c, anchor.nextSibling); anchor.parentNode.insertBefore(sec, anchor.nextSibling); }
+    else { nav.appendChild(sec); nav.appendChild(c); nav.appendChild(f); }
+  }
+  if(main){
+    if(!document.getElementById('a-page-complaints')){ var p1=document.createElement('div'); p1.className='page'; p1.id='a-page-complaints'; p1.innerHTML='<div id="a-complaints-content"><div class="spinner"></div></div>'; main.appendChild(p1); }
+    if(!document.getElementById('a-page-feedback')){ var p2=document.createElement('div'); p2.className='page'; p2.id='a-page-feedback'; p2.innerHTML='<div id="a-feedback-content"><div class="spinner"></div></div>'; main.appendChild(p2); }
+  }
+  _asupBadges();
+}
+function _asupBadges(){
+  api('/api/admin/support-badges').then(function(r){
+    var b=document.getElementById('a-cmp-badge'), f=document.getElementById('a-fb-badge');
+    if(b){ var n=(r&&r.complaints)||0; b.textContent=n; b.style.display=n>0?'':'none'; }
+    if(f){ var m=(r&&r.feedback)||0; f.textContent=m; f.style.display=m>0?'':'none'; }
+  }).catch(function(){});
+}
+
+/* ---- Complaints console ---- */
+window._acFilter={status:'',category_id:0,priority:'',resolver:0,date_range:'',q:'',page:1};
+function loadAComplaints(){
+  var el=document.getElementById('a-complaints-content'); if(!el) return;
+  _asupCss(); _supCss(); el.innerHTML=_supSkelCards(6)+_supSkelList(4);
+  Promise.all([
+    api('/api/admin/complaint-analytics?range=30').catch(function(){return {};}),
+    api('/api/admin/complaint-categories').catch(function(){return {categories:[]};}),
+    api('/api/admin/complaint-resolvers').catch(function(){return {resolvers:[]};})
+  ]).then(function(res){
+    window._acAnalytics=res[0]; window._acCats=res[1].categories||[]; window._acResolvers=res[2].resolvers||[];
+    _renderAComplaints();
+  }).catch(function(e){ el.innerHTML='<div style="padding:20px;color:#c1443a">'+esc((e&&e.message)||'Could not load')+'</div>'; });
+}
+function _renderAComplaints(){
+  var el=document.getElementById('a-complaints-content'); if(!el) return;
+  var a=window._acAnalytics||{};
+  var tr=(a.trend||[]).slice(-30);
+  var mx=Math.max(1, Math.max.apply(null, tr.map(function(t){return Math.max(t.received,t.resolved);}).concat([1])));
+  var trend=tr.map(function(t){ return '<div class="bar" title="'+t.date+': '+t.received+' in / '+t.resolved+' out"><div class="r" style="height:'+Math.round(t.received/mx*40)+'px"></div><div class="g" style="height:'+Math.round(t.resolved/mx*40)+'px"></div></div>'; }).join('');
+  var cards='<div class="ac-cards">'
+    +'<div class="ac-kpi" onclick="acQuick(\'status\',\'pending\')"><b style="color:#d97706">'+(a.pending||0)+'</b><span>Pending Now</span></div>'
+    +'<div class="ac-kpi" onclick="acQuick(\'date_range\',\'today\')"><b>'+(a.created_today||0)+'</b><span>Today</span><small>'+(a.resolved_today||0)+' resolved</small></div>'
+    +'<div class="ac-kpi" onclick="acQuick(\'date_range\',\'month\')"><b>'+(a.created_month||0)+'</b><span>This Month</span><small>'+(a.resolved_month||0)+' resolved</small></div>'
+    +'<div class="ac-kpi" onclick="acQuick(\'status\',\'all\')"><b>'+(a.total||0)+'</b><span>Total</span></div>'
+    +'<div class="ac-kpi static"><b style="color:#059669">'+(a.resolution_rate||0)+'%</b><span>Resolution Rate</span></div>'
+    +'<div class="ac-kpi static"><b style="font-size:1.2rem">'+_fmtDur(a.avg_resolution_secs)+'</b><span>Avg Resolution</span></div>'
+    +(a.top_resolver?'<div class="ac-kpi" onclick="acQuick(\'resolver\','+a.top_resolver.id+')"><b style="font-size:1.1rem">'+esc(a.top_resolver.name)+'</b><span>Top Resolver</span><small>'+a.top_resolver.count+' resolved</small></div>':'')
+    +'</div>';
+  var chart=tr.length?'<div class="ac-card static" style="margin-bottom:14px;cursor:default"><div style="display:flex;justify-content:space-between;font-size:.8rem;color:var(--text-muted)"><b style="color:var(--text)">Complaints Trend</b><span><span style="color:#c98a2e">\u25a0</span> Received <span style="color:#059669">\u25a0</span> Resolved</span></div><div class="ac-trend">'+trend+'</div></div>':'';
+  var f=window._acFilter;
+  var catOpts='<option value="0">All categories</option>'+(window._acCats||[]).map(function(c){return '<option value="'+c.id+'"'+(f.category_id==c.id?' selected':'')+'>'+esc(c.name)+'</option>';}).join('');
+  var resOpts='<option value="0">All resolvers</option>'+(window._acResolvers||[]).map(function(x){return '<option value="'+x.id+'"'+(f.resolver==x.id?' selected':'')+'>'+esc(x.name)+'</option>';}).join('');
+  var stOpts=[['','Status: All'],['pending','Pending'],['open','Open'],['in_progress','In Progress'],['waiting_student','Waiting'],['resolved','Resolved'],['reopened','Reopened']].map(function(x){return '<option value="'+x[0]+'"'+(f.status===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('');
+  var prOpts=[['','Priority: All'],['normal','Normal'],['critical','Critical'],['emergency','Emergency']].map(function(x){return '<option value="'+x[0]+'"'+(f.priority===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('');
+  var dtOpts=[['','Any date'],['today','Today'],['yesterday','Yesterday'],['week','This Week'],['month','This Month'],['last_month','Last Month']].map(function(x){return '<option value="'+x[0]+'"'+(f.date_range===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('');
+  var filters='<button class="btn btn-ghost btn-sm ac-fbtn" onclick="var e=document.getElementById(\'ac-filterbar\');e&&e.classList.toggle(\'open\')">\u2699 Filters</button><div id="ac-filterbar" class="ac-filters">'
+    +'<input id="ac-q" placeholder="Search name, ID, number or text\u2026" value="'+esc(f.q)+'" style="flex:1;min-width:180px" oninput="acDebounceSearch(this.value)">'
+    +'<select onchange="acSetF(\'status\',this.value)">'+stOpts+'</select>'
+    +'<select onchange="acSetF(\'category_id\',this.value)">'+catOpts+'</select>'
+    +'<select onchange="acSetF(\'priority\',this.value)">'+prOpts+'</select>'
+    +'<select onchange="acSetF(\'resolver\',this.value)">'+resOpts+'</select>'
+    +'<select onchange="acSetF(\'date_range\',this.value)">'+dtOpts+'</select></div>';
+  el.innerHTML=cards+chart+filters+'<div id="ac-listwrap"><div class="spinner"></div></div>';
+  _acLoadList();
+}
+function _acLoadList(){
+  var f=window._acFilter;
+  var qs='?status='+f.status+'&category_id='+f.category_id+'&priority='+f.priority+'&resolver='+f.resolver+'&date_range='+f.date_range+'&q='+encodeURIComponent(f.q)+'&page='+f.page+'&page_size=20';
+  api('/api/admin/complaints'+qs).then(function(r){
+    var list=r.complaints||[]; var wrap=document.getElementById('ac-listwrap'); if(!wrap)return;
+    if(!list.length && f.page===1){ wrap.innerHTML='<div class="sup-empty"><div style="font-weight:700;margin-bottom:4px">No complaints found</div>Try changing your filters or search term.</div>'; return; }
+    var cards=list.map(function(c){
+      var atts=(c.image_count?'\uD83D\uDCCE '+c.image_count+' ':'')+(c.voice_count?'\uD83C\uDF99 '+c.voice_count:'');
+      return '<div class="ac-card"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">'
+        +'<div><span class="ac-name" onclick="event.stopPropagation();_supDrawer('+(c.student&&c.student.id)+')">'+esc(c.student&&c.student.name||'Student')+'</span> <span class="sup-num">'+esc(c.student&&c.student.student_id||'')+' \u00b7 '+esc(c.complaint_number)+'</span>'
+        +'<div class="sup-ttl" style="margin-top:3px">'+esc(c.title)+(c.read_by_admin?'':'<span class="sup-dot"></span>')+'</div>'
+        +'<div class="sup-meta">'+(c.category?esc(c.category)+' \u00b7 ':'')+esc(c.created_at)+(atts?' \u00b7 '+atts:'')+'</div></div>'
+        +'<div style="text-align:right;display:flex;flex-direction:column;gap:5px;align-items:flex-end">'+_supPill(c.status)+_acPrio(c.priority)+'</div></div>'
+        +'<div style="display:flex;gap:7px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="amcCmpOpen('+c.id+')">Reply</button>'
+        +(c.status!=='resolved'?'<button class="btn btn-ghost btn-sm" style="color:#059669" onclick="acAction('+c.id+',\'resolve\')">Resolve</button>':'')
+        +'<button class="btn btn-ghost btn-sm" onclick="_supDrawer('+(c.student&&c.student.id)+')">View Student</button></div></div>';
+    }).join('');
+    var more=r.has_more?'<div style="text-align:center;margin-top:12px"><button class="btn btn-ghost btn-sm" onclick="acMore()">Load more</button></div>':'';
+    if(f.page===1){ wrap.innerHTML='<div class="ac-list">'+cards+'</div>'+more; }
+    else { var lw=wrap.querySelector('.ac-list'); if(lw) lw.insertAdjacentHTML('beforeend',cards); var mb=wrap.querySelector('.btn'); }
+  }).catch(function(e){ var wrap=document.getElementById('ac-listwrap'); if(wrap) wrap.innerHTML='<div style="padding:14px;color:#c1443a">'+esc((e&&e.message)||'Could not load')+'</div>'; });
+}
+var _acSearchT=null;
+function acDebounceSearch(v){ window._acFilter.q=v; window._acFilter.page=1; clearTimeout(_acSearchT); _acSearchT=setTimeout(function(){ document.getElementById('ac-listwrap').innerHTML='<div class="spinner"></div>'; _acLoadList(); }, 350); }
+function acSetF(k,v){ window._acFilter[k]=(k==='category_id'||k==='resolver')?(parseInt(v,10)||0):v; window._acFilter.page=1; _renderAComplaints(); }
+function acQuick(k,v){ window._acFilter={status:'',category_id:0,priority:'',resolver:0,date_range:'',q:'',page:1}; window._acFilter[k]=(k==='resolver'||k==='category_id')?v:v; _renderAComplaints(); }
+function acMore(){ window._acFilter.page++; _acLoadList(); }
+async function acAction(cid, action, extra){
+  try{ await api('/api/admin/complaints/'+cid+'/action','POST',Object.assign({action:action},extra||{})); toast('Done'); loadAComplaints(); _asupBadges(); }
+  catch(e){ toast((e&&e.message)||'Failed',true); }
+}
+
+/* ---- admin complaint detail ---- */
+function amcCmpOpen(cid){
+  showModal('Complaint','<div class="spinner"></div>','');
+  api('/api/admin/complaints/'+cid).then(function(r){
+    var c=r.complaint; window._scReplyImgs=[]; _amcRenderDetail(c); _asupBadges();
+  }).catch(function(e){ document.getElementById('modal-body').innerHTML='<div style="color:#c1443a;padding:12px">'+esc((e&&e.message)||'Could not load')+'</div>'; });
+}
+function _amcRenderDetail(c){
+  _supCss(); _asupCss();
+  var imgJobs=[];
+  var thread=(c.messages||[]).map(function(m){
+    var mine=(m.sender_role==='admin');
+    var atts=(m.attachments||[]).map(function(a){
+      if(a.kind==='image'){ var id='aca-'+a.id; imgJobs.push(['IMG:'+id,a.id]); return '<img id="'+id+'" class="att" onclick="_supLoadImg(\'_lb\',\'/api/admin/complaint-attachments/'+a.id+'/view\')">'; }
+      var vid='acv-'+a.id; imgJobs.push(['AUD:'+vid,a.id]); return '<div style="margin-top:6px"><audio controls id="'+vid+'" style="height:34px"></audio></div>';
+    }).join('');
+    return '<div class="sup-b '+(mine?'me':'them')+'"><div class="who">'+(mine?'Support':(c.student&&c.student.name||'Student'))+'</div>'+(m.message?esc(m.message).replace(/\n/g,'<br>'):'')+atts+'</div>';
+  }).join('')||'<div style="color:var(--text-muted)">No messages.</div>';
+  var st=c.student||{};
+  var head='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px"><div>'
+    +'<span class="ac-name" onclick="_supDrawer('+st.id+')">'+esc(st.name||'Student')+'</span> <span class="sup-num">'+esc(st.student_id||'')+'</span>'
+    +'<div class="sup-num">'+esc(c.complaint_number)+'</div><div style="font-weight:800;font-size:1.05rem;margin-top:2px">'+esc(c.title)+'</div>'
+    +'<div class="sup-meta">'+(c.category?esc(c.category)+' \u00b7 ':'')+esc(c.created_at)+'</div></div><div style="text-align:right;display:flex;flex-direction:column;gap:5px;align-items:flex-end">'+_supPill(c.status)+_acPrio(c.priority)+'</div></div>';
+  var ctrl='<div class="ac-filters" style="margin:0 0 10px">'
+    +'<select onchange="acAction('+c.id+',\'priority\',{priority:this.value})"><option value="">Set priority\u2026</option><option value="normal"'+(c.priority==='normal'?' selected':'')+'>Normal</option><option value="critical"'+(c.priority==='critical'?' selected':'')+'>Critical</option><option value="emergency"'+(c.priority==='emergency'?' selected':'')+'>Emergency</option></select>'
+    +'<button class="btn btn-ghost btn-sm" onclick="_supDrawer('+st.id+')">View Student</button>'
+    +'<button class="btn btn-ghost btn-sm" id="ac-wa" style="color:#25D366;display:none" onclick="acWhatsApp('+c.id+')">Send on WhatsApp</button></div>';
+  var composer='<div style="border-top:1px solid var(--border);padding-top:10px"><div id="sc-rprev" class="sup-att-row"></div>'
+    +'<textarea id="sc-reply" class="form-control" rows="2" placeholder="Write a reply\u2026"></textarea>'
+    +'<div id="sc-rvoice" style="margin-top:8px"></div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">'
+    +'<label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">\uD83D\uDCCE Image<input id="sc-rfile" type="file" accept="image/*" multiple style="display:none" onchange="scReplyAddImgs(this.files)"></label>'
+    +'<button class="btn btn-primary btn-sm" id="sc-rbtn" onclick="scSendReply(\'admin\','+c.id+')">Reply</button></div></div>';
+  document.getElementById('modal-body').innerHTML=head+ctrl+'<div class="sup-thread">'+thread+'</div>'+composer;
+  _supVoiceUI('sc-rvoice','_scReplyVoice'); _supWireClipboard('sc-reply', window._scReplyImgs, _scReplyPrev);
+  document.getElementById('modal-footer').innerHTML='<button class="btn btn-ghost" onclick="closeModal()">Close</button>'
+    +(c.status==='resolved'?'<button class="btn btn-ghost" onclick="acAction('+c.id+',\'reopen\');closeModal()">Reopen</button>':'<button class="btn btn-primary" style="background:#059669" onclick="acAction('+c.id+',\'resolve\');closeModal()">Mark Resolved</button>');
+  var title=document.getElementById('modal-title'); if(title) title.textContent='Complaint \u00b7 '+c.complaint_number;
+  imgJobs.forEach(function(j){ var t=j[0].slice(0,4), id=j[0].slice(4); if(t==='IMG:') _supLoadImg(id,'/api/admin/complaint-attachments/'+j[1]+'/view'); else _supLoadAudio(id,'/api/admin/complaint-attachments/'+j[1]+'/view'); });
+  api('/api/admin/complaints/'+c.id+'/whatsapp').then(function(w){ if(w&&w.available){ var b=document.getElementById('ac-wa'); if(b){ b.style.display=''; b.dataset.url=w.url; } } }).catch(function(){});
+}
+function acWhatsApp(cid){ var b=document.getElementById('ac-wa'); if(b&&b.dataset.url) window.open(b.dataset.url,'_blank'); }
+
+/* ---- shared student profile drawer ---- */
+function _supDrawer(sid){
+  if(!sid) return;
+  showModal('Student','<div class="spinner"></div>','');
+  api('/api/admin/students/'+sid+'/support').then(function(r){
+    var s=r.student||{}, sm=r.summary||{};
+    var info='<div style="display:flex;gap:14px;align-items:center;margin-bottom:12px"><div class="avatar" style="width:52px;height:52px;font-size:1.2rem;background:#b8941f;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800">'+esc((s.name||'S').slice(0,1))+'</div>'
+      +'<div><div style="font-weight:800;font-size:1.1rem">'+esc(s.name||'Student')+'</div><div class="sup-num">'+esc(s.student_id||'')+(s.batch?' \u00b7 '+esc(s.batch):'')+'</div>'+(s.phone?'<div class="sup-meta">'+esc(s.phone)+'</div>':'')+'</div></div>';
+    var summ='<div class="ac-cards" style="grid-template-columns:repeat(auto-fit,minmax(90px,1fr))">'
+      +'<div class="ac-kpi static"><b>'+(sm.total||0)+'</b><span>Complaints</span></div>'
+      +'<div class="ac-kpi static"><b style="color:#d97706">'+(sm.open||0)+'</b><span>Open</span></div>'
+      +'<div class="ac-kpi static"><b style="color:#059669">'+(sm.resolved||0)+'</b><span>Resolved</span></div>'
+      +'<div class="ac-kpi static"><b style="color:#dc2626">'+(sm.critical||0)+'</b><span>Critical</span></div>'
+      +'<div class="ac-kpi static"><b style="font-size:1rem">'+_fmtDur(sm.avg_resolution_secs)+'</b><span>Avg Time</span></div></div>';
+    var hist=(r.complaints||[]).map(function(c){ return '<div class="ac-card" style="padding:11px 13px;cursor:pointer" onclick="amcCmpOpen('+c.id+')"><div style="display:flex;justify-content:space-between;gap:8px"><div><div class="sup-num">'+esc(c.complaint_number)+'</div><div style="font-weight:600;font-size:.9rem">'+esc(c.title)+'</div><div class="sup-meta">'+(c.category?esc(c.category)+' \u00b7 ':'')+esc(c.created_at)+'</div></div>'+_supPill(c.status)+'</div></div>'; }).join('')||'<div style="color:var(--text-muted);font-size:.85rem">No complaints.</div>';
+    var fbs=(r.feedback||[]).map(function(f){ return '<div class="ac-card" style="padding:10px 13px;cursor:default;margin-bottom:6px"><span class="ac-star">'+'\u2605'.repeat(f.rating)+'</span><span style="color:#d9c9a0">'+'\u2605'.repeat(5-f.rating)+'</span>'+(f.review?'<div style="font-size:.86rem;margin-top:4px">'+esc(f.review)+'</div>':'')+'<div class="sup-meta">'+esc(f.created_at)+'</div></div>'; }).join('');
+    var body=info+summ+'<div style="font-weight:700;font-size:.9rem;margin:8px 0 8px">Complaint History</div><div class="sup-list" style="max-height:34vh">'+hist+'</div>'
+      +(fbs?'<div style="font-weight:700;font-size:.9rem;margin:14px 0 8px">Feedback</div>'+fbs:'');
+    document.getElementById('modal-body').innerHTML=body;
+    document.getElementById('modal-footer').innerHTML='<button class="btn btn-ghost" onclick="closeModal()">Close</button>';
+    var t=document.getElementById('modal-title'); if(t) t.textContent='Student \u00b7 '+(s.name||'');
+  }).catch(function(e){ document.getElementById('modal-body').innerHTML='<div style="color:#c1443a;padding:12px">'+esc((e&&e.message)||'Could not load')+'</div>'; });
+}
+
+/* ---- Feedback dashboard ---- */
+window._afRating=0;
+function loadAFeedback(){
+  var el=document.getElementById('a-feedback-content'); if(!el) return;
+  _asupCss(); _supCss(); el.innerHTML=_supSkelCards(3)+_supSkelList(4);
+  Promise.all([ api('/api/admin/feedback-analytics').catch(function(){return {};}),
+                api('/api/admin/feedback?rating='+(window._afRating||0)+'&page=1&page_size=30').catch(function(){return {feedback:[]};}) ])
+  .then(function(res){ _renderAFeedback(res[0],res[1]); _asupBadges(); })
+  .catch(function(e){ el.innerHTML='<div style="padding:20px;color:#c1443a">'+esc((e&&e.message)||'Could not load')+'</div>'; });
+}
+function _renderAFeedback(a, l){
+  var el=document.getElementById('a-feedback-content'); if(!el) return;
+  var cards='<div class="ac-cards"><div class="ac-kpi static"><b>'+(a.total||0)+'</b><span>Total Feedback</span></div>'
+    +'<div class="ac-kpi static"><b style="color:#e6ad4e">'+(a.average||0)+' <span style="font-size:1rem">/5</span></b><span>Average Rating</span></div>'
+    +'<div class="ac-kpi static"><b style="color:#dc2626">'+(a.new||0)+'</b><span>New</span></div></div>';
+  var dist=(a.distribution||[]).map(function(d){ return '<div class="ac-dist-row"><span style="width:64px;font-size:.8rem" class="ac-star">'+'\u2605'.repeat(d.star)+'</span><div class="ac-dist-bar"><div class="ac-dist-fill" style="width:'+d.pct+'%"></div></div><span style="width:80px;text-align:right;font-size:.8rem;color:var(--text-muted)">'+d.count+' \u00b7 '+d.pct+'%</span></div>'; }).join('');
+  var distBlock=dist?'<div class="ac-card static" style="margin-bottom:14px;cursor:default"><b style="font-size:.9rem">Rating Distribution</b><div style="margin-top:10px">'+dist+'</div></div>':'';
+  var filt='<div class="ac-filters"><select onchange="window._afRating=parseInt(this.value,10)||0;loadAFeedback()"><option value="0">All ratings</option>'+[5,4,3,2,1].map(function(n){return '<option value="'+n+'"'+(window._afRating===n?' selected':'')+'>'+n+' star</option>';}).join('')+'</select></div>';
+  var list=(l.feedback||[]);
+  var rows=list.length?list.map(function(f){
+    return '<div class="ac-card"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div>'
+      +'<span class="ac-name" onclick="_supDrawer('+(f.student&&f.student.id)+')">'+esc(f.student&&f.student.name||'Student')+'</span> <span class="sup-num">'+esc(f.student&&f.student.student_id||'')+'</span>'+(f.new?' <span style="font-size:.6rem;font-weight:800;color:#dc2626">NEW</span>':'')
+      +'<div style="margin-top:4px"><span class="ac-star">'+'\u2605'.repeat(f.rating)+'</span><span style="color:#d9c9a0">'+'\u2605'.repeat(5-f.rating)+'</span></div>'
+      +(f.review?'<div style="font-size:.9rem;margin-top:6px">'+esc(f.review)+'</div>':'')
+      +'<div class="sup-meta">'+esc(f.created_at)+'</div></div>'
+      +'<button class="btn btn-ghost btn-sm" style="color:#c1443a" onclick="afDelete('+f.id+')">Delete</button></div></div>';
+  }).join(''):'<div class="sup-empty">No feedback received yet.</div>';
+  el.innerHTML=cards+distBlock+filt+'<div class="ac-list">'+rows+'</div>';
+}
+function afDelete(fid){
+  showModal('Delete this feedback?','<div style="padding:6px 2px;color:var(--text-muted)">This action cannot be undone. The review will be removed and excluded from the average rating.</div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-danger" onclick="afDoDelete('+fid+')">Delete</button>');
+}
+async function afDoDelete(fid){
+  try{ await api('/api/admin/feedback/'+fid+'/delete','POST',{}); closeModal(); toast('Feedback removed'); loadAFeedback(); }
+  catch(e){ toast((e&&e.message)||'Could not delete',true); }
+}
+
+/* ============================================================
+   COMPLAINTS — Media: clipboard paste + voice (Phase 6)
+   Reusable, composer-scoped. No global clipboard hijack.
+   ============================================================ */
+function _supWireClipboard(taId, imgs, renderFn){
+  var ta=document.getElementById(taId); if(!ta||ta._supPasteWired) return; ta._supPasteWired=true;
+  ta.addEventListener('paste', function(e){
+    var items=(e.clipboardData&&e.clipboardData.items)||[]; var added=false;
+    for(var i=0;i<items.length;i++){
+      var it=items[i];
+      if(it.type&&it.type.indexOf('image')===0){ var f=it.getAsFile(); if(f){ imgs.push(new File([f],'pasted-'+Date.now()+'.png',{type:f.type||'image/png'})); added=true; } }
+    }
+    if(added){ e.preventDefault(); try{ renderFn(); }catch(_){} try{ toast('Image pasted'); }catch(_){} }
+  });
+}
+function _supFmtT(s){ s=s||0; var m=Math.floor(s/60), r=s%60; return (m<10?'0':'')+m+':'+(r<10?'0':'')+r; }
+function _supVoiceUI(containerId, refName){
+  try{ window[refName]=null; }catch(_){}
+  var el=document.getElementById(containerId); if(!el) return;
+  el.innerHTML='<button type="button" class="btn btn-ghost btn-sm" style="margin:0" onclick="_supVoiceStart(\''+containerId+'\',\''+refName+'\')">\uD83C\uDF99 Record Voice</button>';
+}
+async function _supVoiceStart(containerId, refName){
+  var el=document.getElementById(containerId); if(!el) return;
+  if(!navigator.mediaDevices||!window.MediaRecorder){ el.innerHTML='<span style="font-size:.78rem;color:#c1443a">Recording isn\u2019t supported on this device.</span>'; return; }
+  var stream;
+  try{ stream=await navigator.mediaDevices.getUserMedia({audio:true}); }
+  catch(e){ el.innerHTML='<span style="font-size:.78rem;color:#c1443a">Microphone permission denied.</span> <button type="button" class="btn btn-ghost btn-sm" onclick="_supVoiceUI(\''+containerId+'\',\''+refName+'\')">Try again</button>'; return; }
+  var chunks=[]; var mime=(window.MediaRecorder&&MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported('audio/webm'))?'audio/webm':'';
+  var mr; try{ mr=mime?new MediaRecorder(stream,{mimeType:mime}):new MediaRecorder(stream); }catch(e){ mr=new MediaRecorder(stream); }
+  el._mr=mr; el._sec=0; el._paused=false;
+  mr.ondataavailable=function(ev){ if(ev.data&&ev.data.size) chunks.push(ev.data); };
+  mr.onstop=function(){
+    try{ stream.getTracks().forEach(function(t){t.stop();}); }catch(_){}
+    var blob=new Blob(chunks,{type:mime||'audio/webm'});
+    try{ window[refName]={blob:blob,dur:el._sec}; }catch(_){}
+    var url=URL.createObjectURL(blob);
+    el.innerHTML='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><audio controls src="'+url+'" style="height:34px"></audio>'
+      +'<span style="font-size:.74rem;color:var(--text-muted)">'+_supFmtT(el._sec)+'</span>'
+      +'<button type="button" class="btn btn-ghost btn-sm" style="color:#c1443a;margin:0" onclick="_supVoiceUI(\''+containerId+'\',\''+refName+'\')">Delete / Re-record</button></div>';
+  };
+  try{ mr.start(); }catch(e){ el.innerHTML='<span style="font-size:.78rem;color:#c1443a">Could not start recording.</span>'; return; }
+  el._tick=setInterval(function(){ if(!el._paused){ el._sec++; var t=document.getElementById(containerId+'-t'); if(t) t.textContent=_supFmtT(el._sec); } },1000);
+  el.innerHTML='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="color:#dc2626">\u25cf</span> Recording <span id="'+containerId+'-t" style="font-family:ui-monospace,monospace">00:00</span>'
+    +'<button type="button" class="btn btn-ghost btn-sm" onclick="_supVoicePause(\''+containerId+'\',this)">Pause</button>'
+    +'<button type="button" class="btn btn-primary btn-sm" onclick="_supVoiceStop(\''+containerId+'\')">Stop</button></div>';
+}
+function _supVoicePause(containerId, btn){
+  var el=document.getElementById(containerId); if(!el||!el._mr) return;
+  try{
+    if(el._paused){ el._mr.resume&&el._mr.resume(); el._paused=false; if(btn) btn.textContent='Pause'; }
+    else { el._mr.pause&&el._mr.pause(); el._paused=true; if(btn) btn.textContent='Resume'; }
+  }catch(_){}
+}
+function _supVoiceStop(containerId){ var el=document.getElementById(containerId); if(!el||!el._mr)return; try{ clearInterval(el._tick); }catch(_){} try{ el._mr.stop(); }catch(_){} }
+
+/* Support (Phase 7): activate the nav item after a deep-link jump */
+function _supActivateNav(appId, page){
+  try{
+    document.querySelectorAll('#'+appId+' .nav-item').forEach(function(el){
+      el.classList.remove('active');
+      if((el.getAttribute('onclick')||'').indexOf("'"+page+"'")>=0) el.classList.add('active');
+    });
+  }catch(e){}
+}
+
+/* ============================================================
+   COMPLAINTS & FEEDBACK — Premium polish + responsive (Phase 8)
+   ============================================================ */
+function _supPolishCss(){
+  if(document.getElementById('sup-polish-css')) return;
+  var s=document.createElement('style'); s.id='sup-polish-css';
+  s.textContent=[
+    /* premium scrollbar */
+    '.sup-list::-webkit-scrollbar,.ac-list::-webkit-scrollbar,.sup-thread::-webkit-scrollbar{width:8px}',
+    '.sup-list::-webkit-scrollbar-thumb,.ac-list::-webkit-scrollbar-thumb,.sup-thread::-webkit-scrollbar-thumb{background:rgba(120,113,108,.32);border-radius:99px}',
+    '.sup-list::-webkit-scrollbar-thumb:hover,.ac-list::-webkit-scrollbar-thumb:hover{background:rgba(120,113,108,.5)}',
+    '.sup-list,.ac-list,.sup-thread{scrollbar-width:thin;scrollbar-color:rgba(120,113,108,.32) transparent}',
+    /* skeleton shimmer */
+    '@keyframes supShim{0%{background-position:-320px 0}100%{background-position:320px 0}}',
+    '.sup-sk{background:linear-gradient(90deg,rgba(120,113,108,.10) 25%,rgba(120,113,108,.20) 37%,rgba(120,113,108,.10) 63%);background-size:640px 100%;animation:supShim 1.2s infinite;border-radius:8px}',
+    '.sup-sk-card{border:1px solid var(--border);border-radius:14px;padding:15px;background:var(--card);margin-bottom:10px}',
+    /* card hover micro-interaction already set; focus rings for a11y */
+    '.ac-card:focus-within{border-color:#d9b978}',
+    /* mobile filter toggle (hidden on desktop) */
+    '.ac-fbtn{display:none}',
+    '@media(max-width:680px){',
+    '  #a-page-complaints .ac-cards,#a-page-feedback .ac-cards{grid-template-columns:1fr 1fr;gap:9px}',
+    '  .ac-kpi b{font-size:1.4rem}',
+    '  .ac-fbtn{display:inline-flex;margin-bottom:10px}',
+    '  #ac-filterbar{display:none !important}#ac-filterbar.open{display:flex !important}',
+    '  #ac-filterbar select,#ac-filterbar input{flex:1 1 100% !important;min-width:0 !important}',
+    '  .ac-list,.sup-list{max-height:none}',
+    '  .sup-b{max-width:92%}',
+    '  .sup-top{gap:8px}.sup-top .btn{width:100%}',
+    '}'
+  ].join('');
+  document.head.appendChild(s);
+}
+function _supSkelList(n){
+  var one='<div class="sup-sk-card"><div class="sup-sk" style="height:11px;width:38%;margin-bottom:9px"></div><div class="sup-sk" style="height:16px;width:68%;margin-bottom:7px"></div><div class="sup-sk" style="height:10px;width:48%"></div></div>';
+  var out=''; for(var i=0;i<(n||4);i++) out+=one; return out;
+}
+function _supSkelCards(n){
+  var one='<div class="sup-sk-card" style="margin:0"><div class="sup-sk" style="height:26px;width:52%;margin-bottom:9px"></div><div class="sup-sk" style="height:10px;width:72%"></div></div>';
+  var out='<div class="ac-cards">'; for(var i=0;i<(n||6);i++) out+=one; out+='</div>'; return out;
+}

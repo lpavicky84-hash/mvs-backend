@@ -7,6 +7,8 @@ from database import engine, Base
 from sqlalchemy import text
 import models  # triggers model registration
 import category_models  # category workspace tables (additive, Phase 3)
+import support_models   # complaints & feedback tables (additive)
+import support_routes   # complaints & feedback API (additive)
 import auth_routes
 import teacher_routes
 import admin_routes
@@ -433,6 +435,10 @@ seed_subjects()
 # Creates NIOS + DU SOL categories, default feature flags, assigns every existing
 # teacher to NIOS and mirrors their subjects. Safe to run on every boot.
 try:
+    support_models.seed_complaint_categories()
+except Exception:
+    pass
+try:
     category_models.backfill_categories()
 except Exception as _cat_err:
     try:
@@ -592,6 +598,7 @@ app.include_router(youtuber_routes.router)
 app.include_router(graphics_routes.router)
 app.include_router(translation_routes.router)
 app.include_router(category_routes.router)
+app.include_router(support_routes.router)
 
 # ===== ROOT =====
 # ===== ROOT: serve the portal =====
