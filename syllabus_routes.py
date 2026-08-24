@@ -450,6 +450,8 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
     pass_plan_modules, pass_plan_marks = modules_until(pass_paper)
     high_plan_modules, high_plan_marks = modules_until(high_paper)
     top_plan_modules, top_plan_marks = modules_until(top_paper)
+    # Full-syllabus target: cover every chapter, nothing left out.
+    full_plan_modules, full_plan_marks = modules_until(total_paper)
 
     def pick_until(target_paper):
         need = target_paper - covered_paper
@@ -540,6 +542,14 @@ def compute(subject, selected, tma_assumed=None, practical_assumed=None,
         "high_plan_marks": high_plan_marks,
         "top_plan_modules": top_plan_modules,
         "top_plan_marks": top_plan_marks,
+        # full syllabus = every chapter; needed equals the whole paper
+        "full_paper_needed": total_paper,
+        "full_core_needed": total_paper,
+        "full_reached": has_marks and covered_paper + 0.01 >= total_paper,
+        "full_core_reached": has_marks and covered_paper + 0.01 >= total_paper,
+        "full_plan_modules": full_plan_modules,
+        "full_plan_marks": full_plan_marks,
+        "full_gap_chapters": pick_until(total_paper),
         "pass_gap_chapters": pick_until(pass_paper),
         "high_gap_chapters": pick_until(high_paper),
         "top_gap_chapters": pick_until(top_paper),
@@ -898,18 +908,21 @@ def syl_important_pdf(code: str, target: str = "pass",
         raise HTTPException(status_code=404, detail="Subject not found.")
     if subj.get("status") != "ready":
         raise HTTPException(status_code=409, detail="Syllabus for this subject is not verified yet.")
-    if target not in ("pass", "high", "top"):
+    if target not in ("pass", "high", "top", "full"):
         target = "pass"
     sel, done, tma, pr, choice = _plan_row(db, sp.id, code)
     cfg = _cfg(db)
     calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"],
                    cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp), choice=choice)
     mods = calc[{"pass": "pass_plan_modules", "high": "high_plan_modules",
-                 "top": "top_plan_modules"}[target]] or []
+                 "top": "top_plan_modules", "full": "full_plan_modules"}[target]] or []
     def num(v):
         f = float(v or 0)
         return str(int(round(f))) if abs(f - round(f)) < 0.05 else ("%.1f" % f).rstrip("0").rstrip(".")
-    if target == "top":
+    if target == "full":
+        need, core = calc["full_paper_needed"], calc["full_core_needed"]
+        tgt_label = "Full syllabus"
+    elif target == "top":
         need, core = calc["top_paper_needed"], calc.get("top_core_needed") or calc["top_paper_needed"]
         tgt_label = "%s percent" % num(calc["top_target"])
     elif target == "high":
@@ -1269,7 +1282,7 @@ def _sync_milestones(db, sp, code, calc):
     longer qualifies for are erased the same way.
     """
     now = datetime.utcnow()
-    for tier in ("pass", "high", "top"):
+    for tier in ("pass", "high", "top", "full"):
         ex = db.execute(_text(
             "SELECT id FROM milestone_dates WHERE student_id=:s AND subject_code=:c AND target=:t"),
             {"s": sp.id, "c": code, "t": tier}).fetchone()
@@ -1282,7 +1295,7 @@ def _sync_milestones(db, sp, code, calc):
             db.execute(_text("DELETE FROM milestone_dates WHERE id=:i"), {"i": ex[0]})
     # a result card stays only while every subject still reaches its tier
     rows = _progress_rows(db, sp)
-    for tier in ("pass", "high", "top"):
+    for tier in ("pass", "high", "top", "full"):
         card = db.execute(_text(
             "SELECT id FROM predicted_results WHERE student_id=:s AND target=:t"),
             {"s": sp.id, "t": tier}).fetchone()
@@ -1298,6 +1311,8 @@ def _sync_milestones(db, sp, code, calc):
 # everything from the saved chapter plans - the client only asks.
 
 def _tier_needed(calc, tier):
+    if tier == "full":
+        return float(calc.get("full_paper_needed") or 0)
     if tier == "top":
         return float(calc.get("top_paper_needed") or 0)
     if tier == "high":
@@ -1388,7 +1403,7 @@ def syl_predicted_record(payload: dict = Body(...), db: Session = Depends(get_db
     _ensure_syllabus(db)
     sp = _student_profile(db, user)
     tier = str((payload or {}).get("target") or "")
-    if tier not in ("pass", "high", "top"):
+    if tier not in ("pass", "high", "top", "full"):
         raise HTTPException(status_code=400, detail="Unknown target.")
     complete, card = _prediction_card(db, sp, tier)
     if not complete:
@@ -1457,7 +1472,7 @@ def syl_admin_predicted(target: str = "", db: Session = Depends(get_db), _=Depen
          "JOIN student_profiles sp ON sp.id = pr.student_id "
          "JOIN users u ON u.id = sp.user_id")
     args = {}
-    if target in ("pass", "high", "top"):
+    if target in ("pass", "high", "top", "full"):
         q += " WHERE pr.target=:t"
         args["t"] = target
     out = [{"student_id": r[0], "target": r[1], "subjects": json.loads(r[2] or "[]"),
@@ -1487,7 +1502,7 @@ def syl_teacher_predicted(target: str = "", db: Session = Depends(get_db),
          "JOIN student_profiles sp ON sp.id = pr.student_id "
          "JOIN users u ON u.id = sp.user_id")
     args = {}
-    if target in ("pass", "high", "top"):
+    if target in ("pass", "high", "top", "full"):
         q += " WHERE pr.target=:t"
         args["t"] = target
     out = []
@@ -1625,7 +1640,7 @@ def syl_strategy(db: Session = Depends(get_db), user=Depends(get_student)):
     cl, codes, unmapped = _student_codes(db, sp)
     cfg = _cfg(db)
     target = getattr(sp, "study_target", "") or ""
-    if target not in ("pass", "high", "top"):
+    if target not in ("pass", "high", "top", "full"):
         raise HTTPException(status_code=409,
                             detail="Please choose your target first, then build the plan.")
 
@@ -1648,7 +1663,10 @@ def syl_strategy(db: Session = Depends(get_db), user=Depends(get_student)):
             continue
         sel, done, tma, pr, choice = _plan_row(db, sp.id, code)
         calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp), cfg["top_target"], choice=choice)
-        if target == "top":
+        if target == "full":
+            need = calc["full_paper_needed"]
+            plan_mods = calc["full_plan_modules"]
+        elif target == "top":
             need = calc["top_paper_needed"]
             plan_mods = calc["top_plan_modules"]
         elif target == "high":
@@ -1694,17 +1712,20 @@ def syl_strategy(db: Session = Depends(get_db), user=Depends(get_student)):
             "total": calc["total_pe_marks"],
             "pending_chapters": len(rows),
             "chapters_left": len(rows),
-            "core_needed": calc["top_core_needed"] if target == "top" else (
+            "core_needed": calc["full_core_needed"] if target == "full" else (
+                calc["top_core_needed"] if target == "top" else (
                 calc["high_core_needed"] if target == "high" else max(
-                    calc["pass_core_needed"], calc["theory_core_needed"])),
-            "core_reached": calc["top_paper_needed"] <= calc["covered_paper"] if target == "top" else (
+                    calc["pass_core_needed"], calc["theory_core_needed"]))),
+            "core_reached": calc["full_reached"] if target == "full" else (
+                calc["top_paper_needed"] <= calc["covered_paper"] if target == "top" else (
                 calc["high_core_reached"] if target == "high" else (
-                    calc["pass_core_reached"] and calc["theory_reached"])),
+                    calc["pass_core_reached"] and calc["theory_reached"]))),
             "pending_marks": round(sum(r["marks"] for r in rows), 1),
             "done": list(done),
-            "reached": calc["top_reached"] if target == "top" else (
+            "reached": calc["full_reached"] if target == "full" else (
+                calc["top_reached"] if target == "top" else (
                 calc["high_reached"] if target == "high" else (
-                    calc["pass_reached"] and calc["theory_reached"])),
+                    calc["pass_reached"] and calc["theory_reached"]))),
             "theory_reached": calc["theory_reached"],
             "plan_modules": plan_out,
             "plan_marks": new_marks,

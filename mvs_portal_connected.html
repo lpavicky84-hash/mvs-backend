@@ -4597,6 +4597,7 @@ function sylHome(){
    +'<option value="pass"'+(me.target==='pass'?' selected':'')+'>Clear the exam (passing marks)</option>'
    +'<option value="high"'+(me.target==='high'?' selected':'')+'>Score '+me.high_target+' percent or above</option>'
    +'<option value="top"'+(me.target==='top'?' selected':'')+'>Score '+(me.top_target||90)+' percent or above</option>'
+   +'<option value="full"'+(me.target==='full'?' selected':'')+'>Full Syllabus (cover every chapter)</option>'
    +'</select>'
    +(noTarget?'<div class="syl-reqmsg">Target marks are required &mdash; your entire plan below is built around them</div>':'')+'</div>'
    +'</div>'
@@ -4626,7 +4627,7 @@ function sylHome(){
   h += sylExamCards(ex);
 
   var subjLine=ready.map(function(s){
-    var c=s.calc, left=Math.max(0,Math.ceil((( _SYL.me.target==='high'?c.high_paper_needed:Math.max(c.pass_paper_needed,c.theory_paper_needed))-c.covered_paper)/Math.max(c.total_pe_marks/Math.max(c.pe_count,1),1)));
+    var c=s.calc, left=Math.max(0,Math.ceil((( _SYL.me.target==='full'?c.full_paper_needed:_SYL.me.target==='high'?c.high_paper_needed:Math.max(c.pass_paper_needed,c.theory_paper_needed))-c.covered_paper)/Math.max(c.total_pe_marks/Math.max(c.pe_count,1),1)));
     return s.name+': '+(left?left+' more chapters':'target reached');
   }).join('<br>') || 'No verified subject yet';
 
@@ -4918,18 +4919,22 @@ function _sylCovDate(ms, kind){
    dono same numbers dikhayein */
 function _sylTInfo(c, kind, ms){
   var me=_SYL.me||{};
-  var total = kind==='top' ? c.top_paper_needed
+  var total = kind==='full' ? c.full_paper_needed
+            : kind==='top' ? c.top_paper_needed
             : kind==='high' ? c.high_paper_needed
             : Math.max(c.pass_paper_needed, c.theory_paper_needed);
-  var req   = kind==='top' ? (c.top_core_needed!=null?c.top_core_needed:c.top_paper_needed)
+  var req   = kind==='full' ? c.full_core_needed
+            : kind==='top' ? (c.top_core_needed!=null?c.top_core_needed:c.top_paper_needed)
             : kind==='high' ? c.high_core_needed
             : Math.max(c.pass_core_needed, c.theory_core_needed);
-  var done  = kind==='top' ? !!c.top_reached
+  var done  = kind==='full' ? !!c.full_reached
+            : kind==='top' ? !!c.top_reached
             : kind==='high' ? !!c.high_reached
             : !!(c.pass_reached && c.theory_reached);
-  var label = kind==='top' ? ((me.top_target||90)+' percent target')
+  var label = kind==='full' ? 'Full syllabus target'
+            : kind==='top' ? ((me.top_target||90)+' percent target')
             : kind==='high' ? (me.high_target+' percent target') : 'Passing target';
-  var col   = done ? '#059669' : (kind==='pass' ? '#b45309' : (kind==='high' ? '#b45309' : '#7a6d45'));
+  var col   = done ? '#059669' : (kind==='full' ? '#0e7490' : (kind==='pass' ? '#b45309' : (kind==='high' ? '#b45309' : '#7a6d45')));
   return {kind:kind, total:total, req:req, done:done, label:label, col:col,
           covd: done ? _sylCovDate(ms||{}, kind) : ''};
 }
@@ -4941,7 +4946,7 @@ function _sylTInfo(c, kind, ms){
 function sylTargetCards(c, ms){
   ms = ms || (_SYL.cur && _SYL.cur.milestones) || {};
   var me=_SYL.me||{}, aim=me.target||'pass';
-  var kinds = aim==='top' ? ['pass','high','top'] : aim==='high' ? ['pass','high'] : ['pass'];
+  var kinds = aim==='full' ? ['pass','high','top','full'] : aim==='top' ? ['pass','high','top'] : aim==='high' ? ['pass','high'] : ['pass'];
   var infos = kinds.map(function(k){ return _sylTInfo(c,k,ms); });
   var A = infos[infos.length-1];            // the aim itself
   var have = c.covered_paper;
@@ -4959,10 +4964,11 @@ function sylTargetCards(c, ms){
   // progress bar — har milestone ka apna marker tick (pass green, 75% amber, 90% violet)
   // tick pe hover = tooltip batata hai line kya hai; tap/click = us target ki
   // chapter list neeche filter ho jati hai (chhote sub-rows ki zaroorat nahi)
-  var mcol = {pass:'#059669', high:'#d97706', top:'#7c3aed'};
+  var mcol = {pass:'#059669', high:'#d97706', top:'#7c3aed', full:'#0e7490'};
   var tickTip = function(t){
     var hint = t.kind==='pass' ? 'Chapters up to this line secure your passing.'
              : t.kind==='high' ? 'Chapters up to this line take you to 75 percent.'
+             : t.kind==='full' ? 'Every chapter of the syllabus is covered up to this line.'
              : 'Chapters up to this line take you to 90 percent.';
     return t.label+' — '+_sylN(t.total)+' paper marks. '+hint
       +(t.done?' Covered ✓.':'')+' Tap to see these chapters below.';
@@ -5034,16 +5040,21 @@ function sylClearTargetFilter(){ _SYL.targetFilter=null; sylSubject(); }
 function sylBonusBlock(c, kind){
   var m = c.marks || {};
   // requirement = exactly what NIOS asks, nothing added
-  var req  = kind==='top' ? (c.top_core_needed!=null?c.top_core_needed:c.top_paper_needed)
+  var req  = kind==='full' ? c.full_core_needed
+           : kind==='top' ? (c.top_core_needed!=null?c.top_core_needed:c.top_paper_needed)
            : kind==='high' ? c.high_core_needed : Math.max(c.pass_core_needed, c.theory_core_needed);
-  var total= kind==='top' ? c.top_paper_needed
+  var total= kind==='full' ? c.full_paper_needed
+           : kind==='top' ? c.top_paper_needed
            : kind==='high' ? c.high_paper_needed : Math.max(c.pass_paper_needed, c.theory_paper_needed);
   var bonus= Math.round((total-req)*10)/10;
-  var reqOk  = kind==='top' ? (!!c.top_core_reached)
+  var reqOk  = kind==='full' ? (!!c.full_reached)
+           : kind==='top' ? (!!c.top_core_reached)
            : kind==='high' ? c.high_core_reached : (c.pass_core_reached && c.theory_reached);
-  var totOk  = kind==='top' ? (!!c.top_reached)
+  var totOk  = kind==='full' ? (!!c.full_reached)
+           : kind==='top' ? (!!c.top_reached)
            : kind==='high' ? c.high_reached : c.pass_reached;
-  var list   = kind==='top' ? (c.top_bonus_chapters||[])
+  var list   = kind==='full' ? []
+           : kind==='top' ? (c.top_bonus_chapters||[])
            : kind==='high' ? (c.high_bonus_chapters||[]) : (c.pass_bonus_chapters||[]);
   var label  = kind==='top' ? ((_SYL.me.top_target||90)+' percent')
            : kind==='high' ? (_SYL.me.high_target+' percent') : 'Passing';
@@ -5229,11 +5240,13 @@ function sylSubject(scrollTop){
   d.chapters.forEach(function(ch){ (mods[ch.module]=mods[ch.module]||[]).push(ch); });
   var planSet=null, filterLbl='', planReq={};
   if(_SYL.targetFilter){
-    var fm = (_SYL.targetFilter==='top' ? c.top_plan_modules
+    var fm = (_SYL.targetFilter==='full' ? c.full_plan_modules
+           : _SYL.targetFilter==='top' ? c.top_plan_modules
            : _SYL.targetFilter==='high' ? c.high_plan_modules : c.pass_plan_modules) || [];
     planSet={};
     fm.forEach(function(mo){ planReq[mo.module]=mo.require||null; (mo.chapters||[]).forEach(function(ch){ planSet[ch.no]=1; }); });
-    filterLbl = _SYL.targetFilter==='top' ? ((_SYL.me.top_target||90)+' percent')
+    filterLbl = _SYL.targetFilter==='full' ? 'Full syllabus'
+             : _SYL.targetFilter==='top' ? ((_SYL.me.top_target||90)+' percent')
              : _SYL.targetFilter==='high' ? (_SYL.me.high_target+' percent') : 'Passing marks';
   }
   var col=c.high_reached?'#d97706':(c.pass_reached?'#059669':'#b8941f');
@@ -5245,7 +5258,23 @@ function sylSubject(scrollTop){
    +'<button class="syl-cta o" onclick="loadSSyllabus()">Back to my subjects</button></div>'
    +'<div id="syl-top"></div>';
 
-  if(c.high_reached)
+  if(_SYL.me.target==='full'){
+    if(c.full_reached)
+      h+='<div class="syl-banner g" id="syl-cong"><div><b>Congratulations, full syllabus covered</b>'
+       +'<p>Every chapter is in your plan — '+_sylN(c.covered_paper)+' of '+_sylN(c.total_pe_marks)
+       +' exam marks. Projected total '+_sylN(c.projected_total)+' out of 100. Now finish them properly.</p></div></div>';
+    else{
+      var fgap=(c.full_gap_chapters||[]);
+      var fneed=Math.max(_sylN(c.full_paper_needed-c.covered_paper),0);
+      h+='<div class="syl-banner g" id="syl-cong"><div style="flex:1"><b>Full syllabus plan — every chapter included</b>'
+       +'<p>You have '+fneed+' marks worth of chapters left to cover the whole syllabus.</p>'
+       +'<div class="syl-bar" style="margin-top:11px"><i style="width:'+_sylPct(c.covered_paper,c.total_pe_marks)+'%;background:#0e7490"></i></div>'
+       +'<div class="syl-foot"><span>'+_sylN(c.covered_paper)+' of '+_sylN(c.total_pe_marks)+' marks covered</span></div>'
+       +(fgap.length?'<button class="syl-cta a" style="margin-top:11px" onclick="sylAddGap(\'full\')">Add the remaining chapters to my plan</button>':'')
+       +'</div></div>';
+    }
+  }
+  else if(c.high_reached)
     h+='<div class="syl-banner g" id="syl-cong"><div><b>Congratulations, '+(_SYL.me.target==='top'?(_SYL.me.top_target||90):_SYL.me.high_target)+' percent plan ready</b>'
      +'<p>Your plan covers '+_sylN(c.covered_paper)+' of '+_sylN(c.total_pe_marks)
      +' exam marks. Projected total '+_sylN(c.projected_total)+' out of 100. Now finish these chapters properly.</p>'
@@ -5263,7 +5292,7 @@ function sylSubject(scrollTop){
      +(gap.length?': '+esc(gap.map(function(r){return r.no}).join(', ')):'')+'</p>'
      +'<div class="syl-bar" style="margin-top:11px"><i style="width:'+_sylPct(c.covered_paper,c.high_paper_needed)+'%;background:#d97706"></i></div>'
      +'<div class="syl-foot"><span>'+_sylN(c.covered_paper)+' of '+_sylN(c.high_paper_needed)+' marks towards '+_SYL.me.high_target+' percent</span></div>'
-     +(gap.length?'<button class="syl-cta a" style="margin-top:11px" onclick="sylAddGap()">Add them to my plan</button>':'')
+     +(gap.length?'<button class="syl-cta a" style="margin-top:11px" onclick="sylAddGap(\'high\')">Add them to my plan</button>':'')
      +'</div></div>';
   }
 
@@ -5276,18 +5305,22 @@ function sylSubject(scrollTop){
    +'<div class="syl-bar"><i style="width:'+_sylPct(c.covered_paper,c.total_pe_marks)+'%;background:'+col+'"></i>'
    +'<u style="left:'+_sylPct(c.pass_core_needed,c.total_pe_marks)+'%;background:#059669" title="NIOS passing requirement"></u>'
    +'<u style="left:'+_sylPct(c.pass_paper_needed,c.total_pe_marks)+'%;background:#059669;opacity:.45" title="passing with bonus"></u>'
-   +(((_SYL.me||{}).target==='high'||(_SYL.me||{}).target==='top')
+   +(((_SYL.me||{}).target==='high'||(_SYL.me||{}).target==='top'||(_SYL.me||{}).target==='full')
       ?'<u style="left:'+_sylPct(c.high_core_needed,c.total_pe_marks)+'%;background:#d97706" title="'+_SYL.me.high_target+' percent requirement"></u>'
       +'<u style="left:'+_sylPct(c.high_paper_needed,c.total_pe_marks)+'%;background:#d97706;opacity:.45" title="'+_SYL.me.high_target+' percent with bonus"></u>'
       :'')
-   +(((_SYL.me||{}).target==='top')
+   +(((_SYL.me||{}).target==='top'||(_SYL.me||{}).target==='full')
       ?'<u style="left:'+_sylPct(c.top_core_needed,c.total_pe_marks)+'%;background:#7c3aed" title="'+(_SYL.me.top_target||90)+' percent requirement"></u>'
       +'<u style="left:'+_sylPct(c.top_paper_needed,c.total_pe_marks)+'%;background:#7c3aed;opacity:.45" title="'+(_SYL.me.top_target||90)+' percent with bonus"></u>'
       :'')
+   +(((_SYL.me||{}).target==='full')
+      ?'<u style="left:'+_sylPct(c.full_paper_needed,c.total_pe_marks)+'%;background:#0e7490" title="Full syllabus — every chapter"></u>'
+      :'')
    +'</div>'
    +'<div class="syl-foot"><span>Passing plan '+_sylN(c.pass_paper_needed)+' marks</span>'
-   +(((_SYL.me||{}).target==='high'||(_SYL.me||{}).target==='top')?'<span>'+_SYL.me.high_target+' percent plan '+_sylN(c.high_paper_needed)+' marks</span>':'')
-   +(((_SYL.me||{}).target==='top')?'<span>'+(_SYL.me.top_target||90)+' percent plan '+_sylN(c.top_paper_needed)+' marks</span>':'')
+   +(((_SYL.me||{}).target==='high'||(_SYL.me||{}).target==='top'||(_SYL.me||{}).target==='full')?'<span>'+_SYL.me.high_target+' percent plan '+_sylN(c.high_paper_needed)+' marks</span>':'')
+   +(((_SYL.me||{}).target==='top'||(_SYL.me||{}).target==='full')?'<span>'+(_SYL.me.top_target||90)+' percent plan '+_sylN(c.top_paper_needed)+' marks</span>':'')
+   +(((_SYL.me||{}).target==='full')?'<span>Full syllabus '+_sylN(c.full_paper_needed)+' marks</span>':'')
    +'</div>'
    + sylTargetCards(c, (_SYL.cur && _SYL.cur.milestones) || (s && s.milestones) || {})
    +'<div style="margin-top:12px">'
@@ -5494,6 +5527,8 @@ function sylImportant(){
    +'<p>The modules needed to reach '+_SYL.me.high_target+' percent overall</p></div>'
    +'<div class="syl-tgtc" onclick="sylImpList(\'top\')"><b>Score '+(_SYL.me.top_target||90)+' percent</b>'
    +'<p>The modules needed to reach '+(_SYL.me.top_target||90)+' percent overall</p></div>'
+   +'<div class="syl-tgtc" onclick="sylImpList(\'full\')"><b>Full Syllabus</b>'
+   +'<p>Every module and chapter of the subject — nothing left out</p></div>'
    +'</div></div></div></div>';
 }
 
@@ -5503,15 +5538,19 @@ function sylImpList(target){
   // chapter-wise weightage wale subjects mein module logic nahi, chapter ranking dikhegi
   if(((d.subject.display_mode)||'modules')==='chapters') return sylImpListChapters(target);
   _SYL.impTarget=target;
-  var mods = (target==='top' ? c.top_plan_modules
+  var mods = (target==='full' ? c.full_plan_modules
+           : target==='top' ? c.top_plan_modules
            : target==='high' ? c.high_plan_modules : c.pass_plan_modules) || [];
-  var need = target==='top' ? c.top_paper_needed
+  var need = target==='full' ? c.full_paper_needed
+           : target==='top' ? c.top_paper_needed
            : target==='high' ? c.high_paper_needed
            : Math.max(c.pass_paper_needed, c.theory_paper_needed);
-  var core = target==='top' ? (c.top_core_needed!=null?c.top_core_needed:need)
+  var core = target==='full' ? need
+           : target==='top' ? (c.top_core_needed!=null?c.top_core_needed:need)
            : target==='high' ? c.high_core_needed
            : Math.max(c.pass_core_needed, c.theory_core_needed);
-  var tgtLabel = target==='top' ? ((_SYL.me.top_target||90)+' percent')
+  var tgtLabel = target==='full' ? 'Full syllabus'
+               : target==='top' ? ((_SYL.me.top_target||90)+' percent')
                : target==='high' ? (_SYL.me.high_target+' percent') : 'Passing marks';
 
   // every exam module of the subject, so the student also sees what comes later
@@ -5836,15 +5875,19 @@ function _sylImpImgDraw(D){
 function sylImpListChapters(target){
   var d=_SYL.cur, s=d.subject, c=d.calc;
   _SYL.impTarget=target;
-  var mods = (target==='top' ? c.top_plan_modules
+  var mods = (target==='full' ? c.full_plan_modules
+           : target==='top' ? c.top_plan_modules
            : target==='high' ? c.high_plan_modules : c.pass_plan_modules) || [];
-  var need = target==='top' ? c.top_paper_needed
+  var need = target==='full' ? c.full_paper_needed
+           : target==='top' ? c.top_paper_needed
            : target==='high' ? c.high_paper_needed
            : Math.max(c.pass_paper_needed, c.theory_paper_needed);
-  var core = target==='top' ? (c.top_core_needed!=null?c.top_core_needed:need)
+  var core = target==='full' ? need
+           : target==='top' ? (c.top_core_needed!=null?c.top_core_needed:need)
            : target==='high' ? c.high_core_needed
            : Math.max(c.pass_core_needed, c.theory_core_needed);
-  var tgtLabel = target==='top' ? ((_SYL.me.top_target||90)+' percent')
+  var tgtLabel = target==='full' ? 'Full syllabus'
+               : target==='top' ? ((_SYL.me.top_target||90)+' percent')
                : target==='high' ? (_SYL.me.high_target+' percent') : 'Passing marks';
 
   var mk=function(ch){ return ch.marks||0; };
@@ -5948,19 +5991,21 @@ async function sylImpPick(no){
 
 async function sylImpAddModules(target){
   var d=_SYL.cur, c=d.calc;
-  var mods = (target==='top' ? c.top_plan_modules
+  var mods = (target==='full' ? c.full_plan_modules
+           : target==='top' ? c.top_plan_modules
            : target==='high' ? c.high_plan_modules : c.pass_plan_modules) || [];
   mods.forEach(function(mo){
     mo.chapters.forEach(function(ch){ if(d.selected.indexOf(ch.no)<0) d.selected.push(ch.no); });
   });
   _SYL.impTarget=target;
-  var was=d.calc.pass_reached, wasHigh=d.calc.high_reached, wasTop=!!d.calc.top_reached;
+  var was=d.calc.pass_reached, wasHigh=d.calc.high_reached, wasTop=!!d.calc.top_reached, wasFull=!!d.calc.full_reached;
   try{
     var res=await api('/api/syllabus/plan','POST',{subject_code:d.subject.code,
       selected:d.selected, done:d.done, tma_assumed:d.calc.tma_assumed, practical_assumed:d.calc.practical_assumed});
     d.calc=res.calc;
     sylImpList(target);
-    if(!wasTop && res.calc.top_reached) sylCongrats('top');
+    if(!wasFull && res.calc.full_reached) sylCongrats('full');
+    else if(!wasTop && res.calc.top_reached) sylCongrats('top');
     else if(!wasHigh && res.calc.high_reached) sylCongrats('high');
     else if(!was && res.calc.pass_reached) sylCelebrate();
     else toast('Modules added to your plan.');
@@ -5994,19 +6039,21 @@ function sylProjBreak(c){
 
 function _sylTierLabel(tier){
   var me=_SYL.me||{};
-  return tier==='top' ? ((me.top_target||90)+'%') : tier==='high' ? ((me.high_target||75)+'%') : 'Passing';
+  return tier==='full' ? 'Full' : tier==='top' ? ((me.top_target||90)+'%') : tier==='high' ? ((me.high_target||75)+'%') : 'Passing';
 }
 function _sylTierNeed(c, tier){
-  return tier==='top' ? (c.top_paper_needed||0)
+  return tier==='full' ? (c.full_paper_needed||0)
+       : tier==='top' ? (c.top_paper_needed||0)
        : tier==='high' ? (c.high_paper_needed||0)
        : Math.max(c.pass_paper_needed||0, c.theory_paper_needed||0);
 }
 function _sylTierHit(c, tier){
-  return tier==='top' ? !!c.top_reached
+  return tier==='full' ? !!c.full_reached
+       : tier==='top' ? !!c.top_reached
        : tier==='high' ? !!c.high_reached
        : !!(c.pass_reached && c.theory_reached);
 }
-function _sylTierCol(tier){ return tier==='top'?'#a1741a':tier==='high'?'#d97706':'#059669'; }
+function _sylTierCol(tier){ return tier==='full'?'#0e7490':tier==='top'?'#a1741a':tier==='high'?'#d97706':'#059669'; }
 function _sylGoalWord(){
   var me=_SYL.me||{};
   if(me.goal==='jee') return 'JEE';
@@ -6178,7 +6225,7 @@ function sylResultCardHtml(card){
      +(showTma?'<td>'+cell(s.tma,s.tma_max)+'</td>':'')
      +'<td><b>'+_sylN(tot)+'</b><span style="opacity:.5;font-size:.7rem">/100</span></td></tr>';
   }).join('');
-  var tier=(card.target==='top'?'top':card.target==='high'?'high':'pass');
+  var tier=(card.target==='full'?'full':card.target==='top'?'top':card.target==='high'?'high':'pass');
   return '<div class="syl-rcard '+tier+'">'
    +'<div class="syl-rcard-h"><div class="syl-rcard-logo">MVS</div>'
    +'<div style="text-align:left"><b>MVS FOUNDATION</b><span>Predicted Score Card &middot; '+esc(lbl)+' Target</span></div></div>'
@@ -6217,7 +6264,7 @@ async function sylCardShow(tier){
 }
 
 function sylCelebrate(){ sylMilestone('pass'); }
-function sylCongrats(kind){ sylMilestone(kind==='top'?'top':'high'); }
+function sylCongrats(kind){ sylMilestone(kind==='full'?'full':kind==='top'?'top':'high'); }
 
 /* ---------- result card: theory calculation popup ---------- */
 function sylCardTheory(code){
@@ -6362,9 +6409,13 @@ function sylDone(no){
   if(i>-1) d.done.splice(i,1); else d.done.push(no);
   sylSave();
 }
-function sylAddGap(){
-  var d=_SYL.cur;
-  (d.calc.high_gap_chapters||[]).forEach(function(r){ if(d.selected.indexOf(r.no)<0) d.selected.push(r.no); });
+function sylAddGap(which){
+  var d=_SYL.cur, t=which||(_SYL.me&&_SYL.me.target)||'high';
+  var gap = t==='full' ? (d.calc.full_gap_chapters||[])
+          : t==='top'  ? (d.calc.top_gap_chapters||[])
+          : t==='high' ? (d.calc.high_gap_chapters||[])
+          : (d.calc.pass_gap_chapters||[]);
+  gap.forEach(function(r){ if(d.selected.indexOf(r.no)<0) d.selected.push(r.no); });
   sylSave();
 }
 async function sylSave(){
@@ -6374,13 +6425,14 @@ async function sylSave(){
       selected:d.selected, done:d.done,
       tma_assumed: t? parseFloat(t.value) : (d.calc&&d.calc.tma_set?d.calc.tma_assumed:-1),
       practical_assumed: p? parseFloat(p.value) : (d.calc&&d.calc.practical_set?d.calc.practical_assumed:-1)});
-    var was=d.calc.pass_reached, wasHigh=d.calc.high_reached, wasTop=!!d.calc.top_reached;
+    var was=d.calc.pass_reached, wasHigh=d.calc.high_reached, wasTop=!!d.calc.top_reached, wasFull=!!d.calc.full_reached;
     d.calc=res.calc;
     if(res.selected) d.selected=res.selected;   // server may have healed a legacy double-option pick
     if(res.done) d.done=res.done;
     var justPassed = !was && res.calc.pass_reached;
     sylSubject();
-    if(!wasTop && res.calc.top_reached) sylCongrats('top');
+    if(!wasFull && res.calc.full_reached) sylCongrats('full');
+    else if(!wasTop && res.calc.top_reached) sylCongrats('top');
     else if(!wasHigh && res.calc.high_reached) sylCongrats('high');
     else if(justPassed) sylCelebrate();
     /* expected marks ka auto popup nahi — unset rows blink karti hain, student khud bhare */
@@ -6405,7 +6457,8 @@ async function sylPlan(mode){
 function sylPlanRender(){
   var s=_SYL.plan, ex=s.exam||{}, mode=_SYL.planMode||'weekly';
   var buckets = mode==='monthly' ? (s.monthly||[]) : (s.weekly||[]);
-  var tgt = s.target==='top' ? ((s.top_target||90)+' percent')
+  var tgt = s.target==='full' ? 'the full syllabus'
+          : s.target==='top' ? ((s.top_target||90)+' percent')
           : s.target==='high' ? (s.high_target+' percent') : 'Passing marks';
 
   var anyTicks=Object.keys(_SYL.planDone||{}).some(function(k){ return (_SYL.planDone[k]||[]).length>0; });
@@ -6516,7 +6569,8 @@ function sylPlanRender(){
     var core=x.core_needed!=null?x.core_needed:x.needed;
     var coreOk=x.core_reached!=null?x.core_reached:x.reached;
     var completed = x.reached || coreOk;
-    var doneLbl = s.target==='top' ? ((s.top_target||90)+' Percent Target Completed')
+    var doneLbl = s.target==='full' ? 'Full Syllabus Completed'
+               : s.target==='top' ? ((s.top_target||90)+' Percent Target Completed')
                : s.target==='high' ? (s.high_target+' Percent Target Completed')
                : 'Passing Marks Criteria Completed';
     var pct=x.needed>0 ? Math.min(100,Math.round((x.covered/x.needed)*1000)/10) : 0;
@@ -6680,8 +6734,8 @@ function _sylPredRows(rows){
     return '';
   };
   return rows.map(function(r){
-    var tcol=r.target==='top'?'#a1741a':r.target==='high'?'#d97706':'#059669';
-    var tlbl=r.target==='top'?'90%':r.target==='high'?'75%':'Passing';
+    var tcol=r.target==='full'?'#0e7490':r.target==='top'?'#a1741a':r.target==='high'?'#d97706':'#059669';
+    var tlbl=r.target==='full'?'Full':r.target==='top'?'90%':r.target==='high'?'75%':'Passing';
     var gw=goalWord(r);
     return '<div class="syl-prrow"><div class="syl-prank'+(r.rank<=3?' t'+r.rank:'')+'">'+r.rank+'</div>'
      +'<div class="syl-prmain"><b>'+esc(r.name)+'</b>'
