@@ -228,6 +228,22 @@ def admin_set_teacher_category_access(tid: int, payload: dict = Body(...),
     for key, x in existing_tcs.items():
         if key[0] not in want_cats or key not in want_subs:
             db.delete(x)
+    # Keep the legacy NIOS subject field in sync with the NIOS category assignment so
+    # NIOS-only surfaces (video tasks, notify-students, class students) reflect it.
+    # NIOS removed -> clear legacy subjects; NIOS kept -> mirror the selected NIOS
+    # category-subject names. Non-NIOS categories never touch the legacy field.
+    try:
+        nios = db.query(Category).filter(Category.internal_key == "nios").first()
+        if nios:
+            if nios.id in want_cats:
+                nios_sub_ids = [s for (c, s) in want_subs if c == nios.id]
+                names = [cs.name for cs in db.query(CategorySubject).filter(
+                    CategorySubject.id.in_(nios_sub_ids)).all()] if nios_sub_ids else []
+                tp.subjects = names
+            else:
+                tp.subjects = []
+    except Exception:
+        pass
     db.commit()
     return {"ok": True}
 

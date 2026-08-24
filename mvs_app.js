@@ -1614,9 +1614,11 @@ async function _tAttModeInit(){
 function _tAttApplyNav(){
   document.querySelectorAll('#teacher-app .nav-item').forEach(n=>{
     const oc=n.getAttribute('onclick')||'';
-    // v105: payout ab estimated-% view ke saath DIKHTA hai — sirf attendance hide hota hai
-    if(oc.indexOf("tPage('attendance'")>=0) n.style.display=window._tAttOff?'none':'';
+    // v105: payout ab estimated-% view ke saath DIKHTA hai — sirf attendance hide hota hai.
+    // class use karo (style.display accordion se override ho jaata tha).
+    if(oc.indexOf("tPage('attendance'")>=0) n.classList.toggle('nav-feat-off', !!window._tAttOff);
   });
+  try{ var app=document.getElementById('teacher-app'); if(app && typeof _tHideEmptyNavSections==='function') _tHideEmptyNavSections(app); }catch(e){}
 }
 async function renderTTargetOnly(el){
   if(!el) return;
@@ -23194,12 +23196,18 @@ function _applyTNavFeatures(){
   app.querySelectorAll('.sidebar-nav .nav-item').forEach(function(n){
     var oc=n.getAttribute('onclick')||'';
     var m=oc.match(/tPage\('([^']+)'/);
-    if(!m){ n.classList.remove('nav-feat-off'); return; }   // non-page items stay
-    var page=m[1]; var feat=T_NAV_FEATURE[page];
-    var show;
-    if(page==='students'){ show=_tFeatureOn('students')&&!!window._tCanSeeStudents; }
-    else if(feat===undefined){ show=true; }                 // unmapped -> always show
-    else { show=_tFeatureOn(feat); }
+    var show=true;
+    if(m){
+      var page=m[1]; var feat=T_NAV_FEATURE[page];
+      if(page==='students'){ show=_tFeatureOn('students')&&!!window._tCanSeeStudents; }
+      else if(page==='attendance'){ show=!window._tAttOff; }        // attendance disabled -> hide
+      else if(feat===undefined){ show=true; }                       // unmapped -> always show
+      else { show=_tFeatureOn(feat); }
+    } else if(oc.indexOf('openTeacherNotify')>=0){
+      show=_tFeatureOn('students');                                 // notify students -> student feature
+    } else {
+      show=true;                                                    // Message Admin etc. stay
+    }
     n.classList.toggle('nav-feat-off', !show);
   });
   _tHideEmptyNavSections(app);
