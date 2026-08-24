@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from database import engine, Base
 from sqlalchemy import text
 import models  # triggers model registration
+import category_models  # category workspace tables (additive, Phase 3)
 import auth_routes
 import teacher_routes
 import admin_routes
@@ -426,6 +427,17 @@ def seed_subjects():
     finally:
         db.close()
 seed_subjects()
+
+# ===== CATEGORY WORKSPACE BACKFILL (additive, idempotent) =====
+# Creates NIOS + DU SOL categories, default feature flags, assigns every existing
+# teacher to NIOS and mirrors their subjects. Safe to run on every boot.
+try:
+    category_models.backfill_categories()
+except Exception as _cat_err:
+    try:
+        print("category backfill skipped:", str(_cat_err)[:200])
+    except Exception:
+        pass
 
 # ===== APP =====
 app = FastAPI(
