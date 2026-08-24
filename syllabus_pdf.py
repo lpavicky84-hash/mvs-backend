@@ -1774,14 +1774,15 @@ def suggest_marks(paper_marks, has_practical, practical_max=0):
 def _lang_table_kind(t):
     """Classify a table by its header row: 'detail' (has a Lesson/Topic column
     and a Marks column — a Section column is optional), 'weightage' (Section +
-    Marks only, no Lesson/Topic), or None (no recognisable header)."""
+    Marks only, no Lesson/Topic), or None (no recognisable header). Works for
+    English and Hindi headers (khand/paath/ank)."""
     for row in (t or [])[:6]:
         cells = [_clean(c).lower() for c in (row or []) if _clean(c)]
         if not cells:
             continue
-        has_section = any("section" in c for c in cells)
-        has_marks = any("mark" in c for c in cells)
-        has_lesson = any(("lesson" in c or "topic" in c) for c in cells)
+        has_section = any(("section" in c or "\u0916\u0902\u0921" in c or "\u092d\u093e\u0917" in c) for c in cells)  # section / खंड / भाग
+        has_marks = any(("mark" in c or "\u0905\u0902\u0915" in c) for c in cells)  # marks / अंक
+        has_lesson = any(("lesson" in c or "topic" in c or "\u092a\u093e\u0920" in c) for c in cells)  # lesson/topic / पाठ
         if has_lesson and has_marks:
             return "detail"
         if has_section and has_marks:
@@ -1793,7 +1794,7 @@ def _lang_marks_in_row(cells):
     """Return (marks_float, marks_cell_cleaned) if a cell carries 'N marks'."""
     for c in cells:
         cc = _clean(c)
-        m = re.search(r"(\d{1,3}(?:\.\d+)?)\s*marks?\b", cc, re.I)
+        m = re.search(r"(\d{1,3}(?:\.\d+)?)\s*(?:marks?\b|\u0905\u0902\u0915)", cc, re.I)  # marks / अंक
         if m:
             return float(m.group(1)), cc
     return None, None
@@ -1817,47 +1818,111 @@ def _lang_split_row(row):
 
 
 def _lang_is_lesson_start(topic):
-    return bool(re.match(r"^\s*(?:Lesson|Chapter|Ch|L)\s*[-\u2013\u2014.:]?\s*\d", topic, re.I)
+    return bool(re.match(r"^\s*(?:Lesson|Chapter|Ch|L|\u092a\u093e\u0920)\s*[-\u2013\u2014.:]?\s*\d", topic, re.I)
                or re.match(r"^\s*\d{1,2}\s*[.)]\s+\S", topic))
 
 
 def _lang_lesson_no(raw):
-    """Real NIOS lesson number ('Lesson 12'/'Chapter 9') -> 12/9, else None.
-    A bare '1.' topic numbering is NOT treated as a lesson number (it would
-    clash with real lesson numbers across sections)."""
-    m = re.match(r"^\s*(?:Lesson|Chapter|Ch)\s*[-\u2013\u2014.:]?\s*(\d{1,2})\b", raw, re.I)
+    """Real NIOS lesson number ('Lesson 12' / 'Chapter 9' / 'पाठ 2') -> 12/9/2,
+    else None. A bare '1.' topic numbering is NOT treated as a lesson number (it
+    would clash with real lesson numbers across sections)."""
+    m = re.match(r"^\s*(?:Lesson|Chapter|Ch|\u092a\u093e\u0920)\s*[-\u2013\u2014.:]?\s*(\d{1,2})\b", raw, re.I)
     return int(m.group(1)) if m else None
 
 
 def _lang_clean_title(raw):
     t = _clean(raw)
-    t = re.sub(r"^\s*(?:Lesson|Chapter|Ch|L)\s*[-\u2013\u2014.:]?\s*\d{1,2}\s*[-\u2013\u2014.:]\s*", "", t, flags=re.I)
+    t = re.sub(r"^\s*(?:Lesson|Chapter|Ch|L|\u092a\u093e\u0920)\s*[-\u2013\u2014.:]?\s*\d{1,2}\s*[-\u2013\u2014.:]\s*", "", t, flags=re.I)
     t = re.sub(r"^\s*\d{1,2}\s*[.)]\s*", "", t)
     return t.strip(" -\u2013\u2014:.")
 
 
 def _lang_weightage_rows(t):
-    """From a Section|Marks table -> [(name, marks)], skipping header and Total."""
+    """From a Section|Marks table -> [(name, marks)], skipping header and Total.
+    Handles Hindi 'N अंक' marks cells and the 'कुल' (total) row."""
     out = []
     for row in (t or []):
         cells = [_clean(c) for c in (row or []) if _clean(c)]
         if not cells:
             continue
         joined = " ".join(cells).lower()
-        if "section" in joined and "mark" in joined and not re.search(r"\d", joined):
-            continue  # header
+        # header row: section/marks words and no number
+        if (("section" in joined or "\u0916\u0902\u0921" in joined)
+                and ("mark" in joined or "\u0905\u0902\u0915" in joined)
+                and not re.search(r"\d", joined)):
+            continue
         num, name_parts = None, []
         for c in cells:
-            mm = re.fullmatch(r"(\d{1,3}(?:\.\d+)?)", c)
+            mm = re.fullmatch(r"(\d{1,3}(?:\.\d+)?)", c) or re.fullmatch(
+                r"(\d{1,3}(?:\.\d+)?)\s*(?:marks?|\u0905\u0902\u0915)", c, re.I)  # 100 / 100 अंक
             if mm and num is None:
                 num = float(mm.group(1))
             else:
                 name_parts.append(c)
         name = " ".join(name_parts).strip()
-        if num is None or not name or re.match(r"^\s*total\b", name, re.I):
+        # total row: 'total' or 'कुल' (extraction may insert spaces: 'कु ल')
+        _desp = re.sub(r"\s", "", name)
+        if num is None or not name or re.match(r"^\s*total\b", name, re.I) or _desp.startswith("\u0915\u0941\u0932"):
             continue
         out.append((name, num))
     return out
+
+
+def _lang_norm2(s):
+    """Normalise for token matching. Keeps every non-space character (garbled
+    Devanagari PDFs map letters to '=', digits, punctuation — both sides carry
+    the SAME garble, so matching still works as long as nothing is stripped)."""
+    return re.sub(r"\s+", " ", _clean(s).lower()).strip()
+
+
+_LANG_STOP = {"and", "of", "the", "module", "no", "name", "marks", "mark",
+              "\u0905\u0902\u0915", "\u0916\u0902\u0921", "\u092a\u093e\u0920",
+              "\u092d\u093e\u0917", "\u0914\u0930"}  # ank, khand, paath, bhaag, aur
+
+
+def _lang_tokens(s):
+    return {w for w in _lang_norm2(s).split() if len(w) >= 2 and w not in _LANG_STOP}
+
+
+def _lang_weightage_leaves(rows):
+    """Drop parent rows (marks == sum of the 2-3 rows just before or just after)
+    so only the leaf sections that add up to the paper total remain."""
+    n = len(rows)
+    parent = set()
+    for i in range(n):
+        mk = rows[i][1]
+        for lo, hi in (("after", None), ("before", None)):
+            if lo == "after":
+                for j in range(i + 2, min(i + 4, n) + 1):
+                    if abs(sum(r[1] for r in rows[i + 1:j]) - mk) < 0.01 and (j - (i + 1)) >= 2:
+                        parent.add(i)
+            else:
+                for j in range(i - 2, max(i - 4, -1), -1):
+                    if abs(sum(r[1] for r in rows[j:i]) - mk) < 0.01 and (i - j) >= 2:
+                        parent.add(i)
+    return [r for k, r in enumerate(rows) if k not in parent]
+
+
+def _lang_assign_marks_from_leaves(modules, leaves):
+    """Reassign each module's weightage from the weightage-table leaves, matched
+    by Devanagari/Latin token overlap (unique). Used only when the detail marks
+    do not add up to the paper total (e.g. a section whose printed marks already
+    include its unseen sub-part)."""
+    used = set()
+    for m in modules:
+        mt = _lang_tokens(m.get("module", ""))
+        best, bi = -1.0, None
+        for i, (nm, mk) in enumerate(leaves):
+            if i in used:
+                continue
+            lt = _lang_tokens(nm)
+            ov = len(mt & lt)
+            score = ov / (len(mt | lt) or 1)
+            if ov > 0 and score > best:
+                best, bi = score, i
+        if bi is not None:
+            used.add(bi)
+            m["weightage"] = float(leaves[bi][1])
 
 
 def _lang_apply_weightage_names(modules, weight_rows):
@@ -1939,9 +2004,12 @@ def _lang_modules_from_tables(ordered_tables):
             if new_module:
                 name = section or ""
                 if not name:
-                    mm = re.match(r"^(.*?)\s*[-\u2013\u2014]\s*\d", topic)
-                    name = _clean(mm.group(1)) if (mm and not _lang_is_lesson_start(topic)) \
-                        else ("Section %d" % (len(modules) + 1))
+                    if _lang_is_lesson_start(topic):
+                        mm = re.match(r"^(.*?)\s*[-\u2013\u2014]\s*\d", topic)
+                        name = _clean(mm.group(1)) if mm else ("Section %d" % (len(modules) + 1))
+                    else:
+                        # e.g. अपठित काव्यांश — the topic itself is the section name
+                        name = _lang_clean_title(topic) or ("Section %d" % (len(modules) + 1))
                 cur = {"module": name, "weightage": float(marks), "lessons": []}
                 modules.append(cur)
                 _lang_add_lesson(cur, topic)
@@ -2024,6 +2092,15 @@ def parse_language_pdf(data: bytes):
     modules = [m for m in modules if m["lessons"]]
     if not modules:
         return {"ok": False, "error": "No section / lesson rows could be read from this PDF."}
+    # Some PDFs (e.g. Hindi 301) print a section's marks INCLUDING its unseen
+    # sub-part, then also list the unseen part again — so the detail marks over-
+    # count. When the detail marks don't add up to the weightage-table total, take
+    # the authoritative per-module marks from the weightage table's leaf rows.
+    _detail_sum = round(sum(float(m["weightage"]) for m in modules), 2)
+    _leaves = _lang_weightage_leaves(weight_rows) if weight_rows else []
+    _leaf_sum = round(sum(l[1] for l in _leaves), 2) if _leaves else 0
+    if _leaves and _leaf_sum in (30, 40, 60, 70, 80, 85, 100) and abs(_detail_sum - _leaf_sum) > 0.5:
+        _lang_assign_marks_from_leaves(modules, _leaves)
     _lang_apply_weightage_names(modules, weight_rows)
     _lang_number_lessons(modules)
     paper = round(sum(float(m["weightage"]) for m in modules), 2)
