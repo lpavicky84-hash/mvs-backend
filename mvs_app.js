@@ -23186,14 +23186,21 @@ function _tFeatureOn(key){
 
 function _applyTNavFeatures(){
   var app=document.getElementById('teacher-app'); if(!app) return;
+  if(!document.getElementById('tnav-feat-css')){
+    var st=document.createElement('style'); st.id='tnav-feat-css';
+    st.textContent='#teacher-app .sidebar-nav .nav-item.nav-feat-off{display:none !important}#teacher-app .sidebar-nav .nav-section.nav-sec-off{display:none !important}';
+    document.head.appendChild(st);
+  }
   app.querySelectorAll('.sidebar-nav .nav-item').forEach(function(n){
     var oc=n.getAttribute('onclick')||'';
     var m=oc.match(/tPage\('([^']+)'/);
-    if(!m){ return; }                         // non-page items (Notify, Message) stay
+    if(!m){ n.classList.remove('nav-feat-off'); return; }   // non-page items stay
     var page=m[1]; var feat=T_NAV_FEATURE[page];
-    if(page==='students'){ n.style.display=(_tFeatureOn('students')&&window._tCanSeeStudents)?'':'none'; return; }
-    if(feat===undefined){ n.style.display=''; return; }   // unmapped -> always show
-    n.style.display=_tFeatureOn(feat)?'':'none';
+    var show;
+    if(page==='students'){ show=_tFeatureOn('students')&&!!window._tCanSeeStudents; }
+    else if(feat===undefined){ show=true; }                 // unmapped -> always show
+    else { show=_tFeatureOn(feat); }
+    n.classList.toggle('nav-feat-off', !show);
   });
   _tHideEmptyNavSections(app);
 }
@@ -23206,9 +23213,10 @@ function _tHideEmptyNavSections(app){
     var vis=false;
     for(var j=idx+1;j<kids.length;j++){
       if(kids[j].classList.contains('nav-section')) break;
-      if(kids[j].classList.contains('nav-item') && kids[j].style.display!=='none'){ vis=true; break; }
+      // a feature-off item never counts, regardless of accordion inline display
+      if(kids[j].classList.contains('nav-item') && !kids[j].classList.contains('nav-feat-off')){ vis=true; break; }
     }
-    el.style.display=vis?'':'none';
+    el.classList.toggle('nav-sec-off', !vis);
   });
 }
 
