@@ -24203,19 +24203,32 @@ function _supLoadBadge(){
 function loadSComplaints(){
   var el=document.getElementById('s-complaints-content'); if(!el) return;
   _supCss(); el.innerHTML=_supSkelList(4);
-  api('/api/student/complaints').then(function(r){
-    var list=(r&&r.complaints)||[];
-    var head='<div class="sup-top"><div><div style="font-weight:800;font-size:1.1rem">My Complaints</div>'
-      +'<div style="font-size:.82rem;color:var(--text-muted)">Non-academic issues — for subject doubts use Doubts.</div></div>'
-      +'<button class="btn btn-primary" onclick="scOpenForm()">+ Raise a Complaint</button></div>';
-    if(!list.length){ el.innerHTML=head+'<div class="sup-empty"><div style="font-weight:700;margin-bottom:4px">No complaints yet</div>You haven\u2019t raised any complaints.</div>'; _supLoadBadge(); return; }
-    var cards=list.map(function(c){
-      return '<div class="sup-card" onclick="scOpenDetail('+c.id+')"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">'
-        +'<div><div class="sup-num">'+esc(c.complaint_number)+'</div><div class="sup-ttl">'+esc(c.title)+(c.read_by_student?'':'<span class="sup-dot" title="New reply"></span>')+'</div>'
-        +'<div class="sup-meta">'+(c.category?esc(c.category)+' \u00b7 ':'')+esc(c.created_at)+(c.image_count?' \u00b7 \uD83D\uDCCE '+c.image_count:'')+(c.voice_count?' \u00b7 \uD83C\uDF99':'')+'</div></div>'
-        +_supPill(c.status)+'</div></div>';
-    }).join('');
-    el.innerHTML=head+'<div class="sup-list">'+cards+'</div>';
+  Promise.all([
+    api('/api/student/complaint-categories').catch(function(){return {categories:[]};}),
+    api('/api/student/complaints').catch(function(){return {complaints:[]};})
+  ]).then(function(res){
+    var cats=(res[0]&&res[0].categories)||[];
+    var list=(res[1]&&res[1].complaints)||[];
+    var opts='<option value="">Select a category</option>'+cats.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join('');
+    var form='<div class="card"><div class="card-header"><h3>Raise a Complaint</h3></div><div class="card-body">'
+      +'<div class="form-group"><label>Category</label><select id="sc-cat" class="form-control">'+opts+'</select></div>'
+      +'<div class="form-group"><label>Short Title <span style="color:var(--text-muted);font-weight:400">(optional)</span></label><input id="sc-title" class="form-control" maxlength="200" placeholder="e.g. Portal login issue"></div>'
+      +'<div class="form-group"><label>Your Complaint</label>'+composerHTML('sccmp','Write your complaint here\u2026 or record a voice note','scSubmit()','Submit Complaint')+'</div>'
+      +'<div style="font-size:.78rem;color:var(--text-muted)">Non-academic issues \u2014 for subject doubts use Doubts.</div>'
+      +'<div id="sc-status" style="font-size:.82rem;margin-top:8px"></div>'
+      +'</div></div>';
+    var body;
+    if(!list.length){ body='<div class="sup-empty"><div style="font-weight:700;margin-bottom:4px">No complaints yet</div>You haven\u2019t raised any complaints.</div>'; }
+    else {
+      body='<div class="sup-list">'+list.map(function(c){
+        return '<div class="sup-card" onclick="scOpenDetail('+c.id+')"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">'
+          +'<div><div class="sup-num">'+esc(c.complaint_number)+'</div><div class="sup-ttl">'+esc(c.title)+(c.read_by_student?'':'<span class="sup-dot" title="New reply"></span>')+'</div>'
+          +'<div class="sup-meta">'+(c.category?esc(c.category)+' \u00b7 ':'')+esc(c.created_at)+(c.image_count?' \u00b7 \uD83D\uDCCE '+c.image_count:'')+(c.voice_count?' \u00b7 \uD83C\uDF99':'')+'</div></div>'
+          +_supPill(c.status)+'</div></div>';
+      }).join('')+'</div>';
+    }
+    var listCard='<div class="card"><div class="card-header"><h3>My Complaints</h3></div><div class="card-body hide-scroll">'+body+'</div></div>';
+    el.innerHTML='<div class="grid-2">'+form+listCard+'</div>';
     _supLoadBadge();
   }).catch(function(e){ el.innerHTML='<div style="padding:20px;color:#c1443a">'+esc((e&&e.message)||'Could not load')+'</div>'; });
 }
