@@ -6904,7 +6904,15 @@ async function sylEdit(code){
      +'<button class="syl-b" onclick="document.getElementById(\'syl-wimg\').click()">Choose a screenshot</button>'
      +'<input type="file" id="syl-wimg" accept="image/*" style="display:none" onchange="sylReadWeightImage(this.files[0])">'
      +'</div></div><div id="syl-wout"></div></div>'
-     +'<div class="syl-fs"><h5>Chapters</h5><div id="syl-chapbox"></div></div>'
+     +'<div class="syl-fs"><h5>Chapters</h5>'
+     +'<div class="syl-paste" style="margin-bottom:12px">'
+     +'<p style="font-size:.78rem;opacity:.7;margin:0 0 8px">Or paste the whole chapter list as text (useful when a PDF reads the names wrongly). '
+     +'One <b>#&nbsp;Module&nbsp;|&nbsp;marks</b> line, then <b>L-2&nbsp;|&nbsp;title&nbsp;|&nbsp;PE</b> lines under it. '
+     +'Use L- for real book chapters and T- for grammar / writing / unseen topics. This replaces the list below.</p>'
+     +'<textarea id="syl-modtext" rows="5" placeholder="# Poetry | 25&#10;L-2 | Chapter name | PE&#10;L-3 | Chapter name | PE"></textarea>'
+     +'<button class="syl-b pri" style="margin-top:9px" onclick="sylLoadModText()">Load chapters from this text</button>'
+     +'</div>'
+     +'<div id="syl-chapbox"></div></div>'
      +'<div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
      +'<button class="btn btn-primary" onclick="sylSaveSubject()">Save subject</button>'
      +(code?'<button class="syl-ib dz" style="margin-left:auto" onclick="sylResetSubject(\''+esc(code)+'\')">Reset to built in data</button>':'')
@@ -6946,6 +6954,13 @@ function sylApplyTpl(){
   Object.keys(t).forEach(function(k){ var n=_sylEl('sylf_'+k); if(n) n.value=t[k]; });
 }
 
+function sylLoadModText(){
+  var el=_sylEl('syl-modtext'); var t=(el&&el.value)||'';
+  var mods=sylParseMods(t);
+  if(!mods.length){ alert('No chapters found. Use "# Module | marks" lines, then "L-2 | title | PE" lines under each.'); return; }
+  _SYL.mods=mods; sylChapRender();
+  var cb=_sylEl('syl-chapbox'); if(cb) cb.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
 function sylParseMods(txt){
   var mods=[], cur=null;
   String(txt||'').split(/\r?\n/).forEach(function(line){
