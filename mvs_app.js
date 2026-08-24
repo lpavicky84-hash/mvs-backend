@@ -23156,6 +23156,14 @@ async function initTeacherCategories(){
     var cur=window._tActiveCat&&cats.filter(function(c){return c.id===window._tActiveCat.id;})[0];
     _tSetActiveCat(cur||cats[0], false);
     _tRenderSwitcher();
+    // the dashboard was rendered before the active workspace was known — re-render it
+    // so a non-NIOS teacher lands on their workspace dashboard, not the NIOS one.
+    try{
+      var dpg=document.getElementById('t-page-dashboard');
+      if(dpg && dpg.classList.contains('active')){
+        if(_tIsCatWorkspace()) loadTCatDashboard(); else loadTDashboard();
+      }
+    }catch(e){}
   }catch(e){}
 }
 

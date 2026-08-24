@@ -350,22 +350,36 @@ def backfill_categories():
         for cs in db.query(CategorySubject).filter(CategorySubject.category_id == nios.id).all():
             name_to_catsubj.setdefault(str(cs.name).strip().lower(), cs)
 
-        # Assign teachers to NIOS ONLY on first-ever categorisation — a teacher who
-        # already has ANY category row (NIOS or another) is left untouched. This
-        # respects admin removals: a teacher moved to DU SOL / removed from NIOS is
-        # never silently re-added on the next boot.
-        for tp in db.query(TeacherProfile).all():
-            has_any = db.query(TeacherCategory).filter(
-                TeacherCategory.teacher_id == tp.id).count() > 0
-            if has_any:
-                continue
-            db.add(TeacherCategory(teacher_id=tp.id, category_id=nios.id, status="active"))
-            for subj in (tp.subjects or []):
-                cs = name_to_catsubj.get(str(subj).strip().lower())
-                if cs:
-                    db.add(TeacherCategorySubject(teacher_id=tp.id, category_id=nios.id,
-                                                  category_subject_id=cs.id))
-        db.commit()
+        # Assign teachers to NIOS as a ONE-TIME migration only. After this flag is
+        # set, new teachers are NEVER auto-added to NIOS — the admin assigns their
+        # workspace(s) explicitly. Existing teachers with any category are skipped, so
+        # an admin removal is never re-added on a later boot.
+        try:
+            from models import AppSetting
+            done = db.query(AppSetting).filter(
+                AppSetting.key == "cat_teachers_backfilled_v1").first()
+        except Exception:
+            done = None
+        if not done:
+            for tp in db.query(TeacherProfile).all():
+                has_any = db.query(TeacherCategory).filter(
+                    TeacherCategory.teacher_id == tp.id).count() > 0
+                if has_any:
+                    continue
+                db.add(TeacherCategory(teacher_id=tp.id, category_id=nios.id,
+                                       status="active"))
+                for subj in (tp.subjects or []):
+                    cs = name_to_catsubj.get(str(subj).strip().lower())
+                    if cs:
+                        db.add(TeacherCategorySubject(teacher_id=tp.id,
+                                                      category_id=nios.id,
+                                                      category_subject_id=cs.id))
+            try:
+                from models import AppSetting
+                db.add(AppSetting(key="cat_teachers_backfilled_v1", value="1"))
+            except Exception:
+                pass
+            db.commit()
     except Exception:
         db.rollback()
     finally:
