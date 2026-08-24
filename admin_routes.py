@@ -274,6 +274,33 @@ def _derive_subject_classes(profile, db):
 @router.get("/teachers")
 def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
     teachers = db.query(User).filter(User.role == UserRole.teacher).all()
+    # --- non-NIOS category assignments for each teacher's card (additive) ---
+    cat_map = {}
+    try:
+        from category_models import (Category, TeacherCategory, CategorySubject,
+                                     TeacherCategorySubject)
+        noncat = {c.id: c.display_name for c in db.query(Category).filter(
+            Category.internal_key != "nios").all()}
+        if noncat:
+            ids = list(noncat.keys())
+            subname = {s.id: s.name for s in db.query(CategorySubject).filter(
+                CategorySubject.category_id.in_(ids)).all()}
+            for tc in db.query(TeacherCategory).filter(
+                    TeacherCategory.category_id.in_(ids),
+                    TeacherCategory.status == "active").all():
+                cat_map.setdefault(tc.teacher_id, {}).setdefault(
+                    tc.category_id, {"category": noncat.get(tc.category_id, ""),
+                                     "subjects": []})
+            for x in db.query(TeacherCategorySubject).filter(
+                    TeacherCategorySubject.category_id.in_(ids)).all():
+                d = cat_map.setdefault(x.teacher_id, {}).setdefault(
+                    x.category_id, {"category": noncat.get(x.category_id, ""),
+                                    "subjects": []})
+                nm = subname.get(x.category_subject_id)
+                if nm:
+                    d["subjects"].append(nm)
+    except Exception:
+        cat_map = {}
     result = []
     for t in teachers:
         profile = t.teacher_profile
@@ -307,6 +334,7 @@ def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
                 "reschedule_this_month": profile.reschedule_count_this_month,
                 "reschedule_limit": 2,
                 "can_see_students": profile.id in _students_allowed_ids(db),
+                "categories": list(cat_map.get(profile.id, {}).values()),
             })
     return result
 
