@@ -34,7 +34,7 @@ const ICONS={
   moon:_S+'<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
   sun:_S+'<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>',
   play:_S+'<polygon points="5 3 19 12 5 21 5 3"/></svg>',
-  trophy:_S+'<path d="M6 9a6 6 0 0 0 12 0V3H6z"/><path d="M6 5H3v2a3 3 0 0 0 3 3"/><path d="M18 5h3v2a3 3 0 0 1-3 3"/><path d="M12 15v3"/><path d="M8 21h8"/><path d="M10 18h4"/></svg>',
+  trophy:_S+'<path d="M6 9a6 6 0 0 0 12 0V3H6z"/><path d="M6 5H3v2a3 3 0 0 0 3 3"/><path d="M18 5h3v2a3 3 0 0 1-3 3"/><path d="M12 15v3"/><path d="M8 21h8"/><path d="M10 18h4"/></svg>',star:_S+'<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
   target:_S+'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
   'chev-down':_S+'<polyline points="6 9 12 15 18 9"/></svg>',
   history:_S+'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
@@ -24223,21 +24223,14 @@ function loadSComplaints(){
 /* ---- Raise a Complaint (form) ---- */
 window._scImgs=[];
 function scOpenForm(){
-  window._scImgs=[];
   api('/api/student/complaint-categories').then(function(r){
     var cats=(r&&r.categories)||[];
     var opts='<option value="">Select a category</option>'+cats.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join('');
     var body='<div class="form-group"><label class="form-label">Category</label><select id="sc-cat" class="form-control">'+opts+'</select></div>'
-      +'<div class="form-group"><label class="form-label">Short Title</label><input id="sc-title" class="form-control" maxlength="200" placeholder="e.g. Portal login issue"></div>'
-      +'<div class="form-group"><label class="form-label">Description</label><textarea id="sc-desc" class="form-control" rows="4" maxlength="2000" placeholder="Describe your issue\u2026" oninput="document.getElementById(\'sc-cc\').textContent=this.value.length+\'/2000\'"></textarea><div id="sc-cc" style="font-size:.7rem;color:var(--text-muted);text-align:right">0/2000</div></div>'
-      +'<div class="form-group"><label class="form-label">Images (optional)</label><div id="sc-prev" class="sup-att-row"></div>'
-        +'<label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">\uD83D\uDCCE Add Images<input id="sc-file" type="file" accept="image/*" multiple style="display:none" onchange="scAddImgs(this.files)"></label></div>'
-      +'<div class="form-group"><label class="form-label">Voice (optional)</label><div id="sc-voice"></div></div>'
-      +'<div id="sc-status" style="font-size:.8rem"></div>';
-    showModal('Raise a Complaint', body,
-      '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="sc-submit" onclick="scSubmit()">Submit Complaint</button>');
-    _supVoiceUI('sc-voice','_scVoice');
-    _supWireClipboard('sc-desc', window._scImgs, _scRenderPrev);
+      +'<div class="form-group"><label class="form-label">Short Title <span style="color:var(--text-muted);font-weight:400">(optional)</span></label><input id="sc-title" class="form-control" maxlength="200" placeholder="e.g. Portal login issue"></div>'
+      +'<div class="form-group"><label class="form-label">Your Complaint</label>'+composerHTML('sccmp','Write your complaint here\u2026 or record a voice note','scSubmit()','Submit Complaint')+'</div>'
+      +'<div id="sc-status" style="font-size:.82rem;margin-top:4px"></div>';
+    showModal('Raise a Complaint', body, '');
   });
 }
 function scAddImgs(files){
@@ -24249,16 +24242,29 @@ function _scRenderPrev(){
   el.innerHTML=window._scImgs.map(function(f,i){ return '<span class="sup-att-chip"><img src="'+URL.createObjectURL(f)+'"><span class="x" onclick="window._scImgs.splice('+i+',1);_scRenderPrev()">\u00d7</span></span>'; }).join('');
 }
 async function scSubmit(){
-  var title=(document.getElementById('sc-title').value||'').trim();
-  if(!title){ toast('Please add a short title',true); return; }
-  var btn=document.getElementById('sc-submit'); btn.disabled=true; btn.textContent='Submitting...';
+  var cat=(document.getElementById('sc-cat')||{}).value||'';
+  var title=((document.getElementById('sc-title')||{}).value||'').trim();
+  var descEl=document.getElementById('cmpt-sccmp');
+  var desc=((descEl&&descEl.value)||'').trim();
+  var st=(window._cmpState&&_cmpState['sccmp'])||{};
+  if(!desc && !st.file && !st.voice){ toast('Please describe your complaint, attach a photo or record a voice note.',true); return; }
+  if(!title){
+    if(desc) title=desc.replace(/\s+/g,' ').slice(0,60);
+    else if(cat){ var sel=document.getElementById('sc-cat'); title=sel.options[sel.selectedIndex].text; }
+    else title='Complaint';
+  }
+  var btn=document.getElementById('cmps-sccmp'); if(btn){ btn.disabled=true; btn.textContent='Submitting...'; }
   try{
     var fd=new FormData();
-    fd.append('title',title);
-    fd.append('description',document.getElementById('sc-desc').value||'');
-    fd.append('category_id',document.getElementById('sc-cat').value||'');
-    window._scImgs.forEach(function(f){ fd.append('images',f,f.name||'image'); });
-    if(window._scVoice&&window._scVoice.blob){ fd.append('voice',window._scVoice.blob,'voice.webm'); }
+    fd.append('title',title); fd.append('description',desc); fd.append('category_id',cat);
+    if(st.file){
+      var fl=st.file;
+      if((fl.type||'').indexOf('image/')===0){
+        try{ var _r=await Promise.race([smartCompress(fl,function(){}),new Promise(function(rs){setTimeout(function(){rs(null);},12000);})]); if(_r&&_r.ok&&_r.file) fl=_r.file; }catch(e){}
+      }
+      fd.append('images',fl,fl.name||'image');
+    }
+    if(st.voice){ fd.append('voice',st.voice,'voice.webm'); }
     var r=await fetch(API+'/api/student/complaints',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
     if(!r.ok){ var d=null; try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||'Submit failed'); }
     var res=await r.json();
@@ -24269,7 +24275,7 @@ async function scSubmit(){
       +'<div style="margin-top:6px">'+_supPill('open')+'</div>'
       +'<div style="font-size:.84rem;color:var(--text-muted);margin-top:10px">We\u2019ll review it and respond here.</div></div>',
       '<button class="btn btn-primary" onclick="closeModal();loadSComplaints()">Done</button>');
-  }catch(e){ document.getElementById('sc-status').innerHTML='<span style="color:#c1443a">'+esc(e.message)+'</span>'; btn.disabled=false; btn.textContent='Submit Complaint'; }
+  }catch(e){ var sx=document.getElementById('sc-status'); if(sx) sx.innerHTML='<span style="color:#c1443a">'+esc(e.message)+'</span>'; if(btn){ btn.disabled=false; btn.textContent='Submit Complaint'; } }
 }
 
 /* ---- Complaint detail / conversation ---- */
