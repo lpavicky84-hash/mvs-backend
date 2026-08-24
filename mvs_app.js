@@ -191,7 +191,7 @@ async function _smartPdfPick(f,dzId,onDone){
     toast('Could not process this PDF. Please try another file.',true);
   }
 }
-const NAV_ICON={'task manager':'play','urgent videos':'alert','my tasks':'target','result card':'trophy','teacher ranking':'trophy','predicted results':'chart','syllabus tracker':'clipboard','syllabus manager':'book','tests tracker':'clipboard','dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book','classes material':'folder','attendance':'clock','teacher attendance':'clock','payout':'wallet','payouts':'wallet','my attendance':'clock','my payout':'wallet','study material':'book','teacher reports':'chart','class compliance':'shield','live users':'user','admin users':'shield','send notice':'megaphone'};
+const NAV_ICON={'task manager':'play','urgent videos':'alert','my tasks':'target','result card':'trophy','teacher ranking':'trophy','predicted results':'chart','syllabus tracker':'clipboard','syllabus manager':'book','tests tracker':'clipboard','dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book','classes material':'folder','attendance':'clock','teacher attendance':'clock','payout':'wallet','payouts':'wallet','my attendance':'clock','my payout':'wallet','study material':'book','teacher reports':'chart','class compliance':'shield','live users':'user','admin users':'shield','send notice':'megaphone','my subjects':'book','subject materials':'folder','material checker':'check'};
 function injectNavIcons(){
   document.querySelectorAll('.nav-item').forEach(el=>{
     if(el.querySelector('svg')) return;
@@ -10467,11 +10467,12 @@ async function loadATeachers(){
  html+=`<div class="tcard-grid">`;
  ts.forEach(t=>{
    const sc=_teacherSubjByClass(t.subjects,t.subject_classes);
-   const cls10=sc.c10.length?`<div class="tcard2-cls"><div class="tcard2-cls-h">Class 10</div>${_codeChips(sc.c10)}</div>`:'';
-   const cls12=sc.c12.length?`<div class="tcard2-cls"><div class="tcard2-cls-h">Class 12</div>${_codeChips(sc.c12)}</div>`:'';
-   const other=sc.other.length?`<div class="tcard2-cls"><div class="tcard2-cls-h" style="color:var(--warning)">Class not set \u2014 fix via Edit</div>${sc.other.map(s=>`<span class="code-chip">${esc(s)}</span>`).join('')}</div>`:'';
+   const _inNios=(t.in_nios!==false);
+   const cls10=(_inNios&&sc.c10.length)?`<div class="tcard2-cls"><div class="tcard2-cls-h">Class 10</div>${_codeChips(sc.c10)}</div>`:'';
+   const cls12=(_inNios&&sc.c12.length)?`<div class="tcard2-cls"><div class="tcard2-cls-h">Class 12</div>${_codeChips(sc.c12)}</div>`:'';
+   const other=(_inNios&&sc.other.length)?`<div class="tcard2-cls"><div class="tcard2-cls-h" style="color:var(--warning)">Class not set \u2014 fix via Edit</div>${sc.other.map(s=>`<span class="code-chip">${esc(s)}</span>`).join('')}</div>`:'';
    const catBlocks=(t.categories||[]).map(c=>`<div class="tcard2-cls"><div class="tcard2-cls-h" style="color:#b8941f">${esc(c.category)}</div>${(c.subjects||[]).length?c.subjects.map(s=>`<span class="code-chip">${esc(s)}</span>`).join(''):'<span class="tcard2-sub">No subjects yet</span>'}</div>`).join('');
-   const none=(!sc.c10.length&&!sc.c12.length&&!sc.other.length&&!(t.categories||[]).length)?`<div class="tcard2-sub" style="margin-top:10px">No subjects assigned yet.</div>`:'';
+   const none=(!(_inNios&&sc.c10.length)&&!(_inNios&&sc.c12.length)&&!(_inNios&&sc.other.length)&&!(t.categories||[]).length)?`<div class="tcard2-sub" style="margin-top:10px">No subjects assigned yet.</div>`:'';
    const ph=`tphoto-${t.profile_id}`;
    html+=`<div class="tcard2"><div class="tcard2-head"><div class="tcard2-photo${t.has_photo?' clickable':''}" id="${ph}" onclick="viewPhoto('${ph}','${esc((t.name||'').replace(/'/g,''))}',${t.profile_id})" title="${t.has_photo?'View photo':'Upload photo'}">${esc(initials(t.name||'T'))}</div><div style="flex:1"><div class="tcard2-name">${esc(t.name)}</div><div class="tcard2-sub"><code>${esc(t.user_id)}</code> · ${esc(t.phone||'no phone')}</div><span class="tag ${t.is_active?'tag-done':'tag-low'}" style="margin-top:6px">${t.is_active?'Active':'Inactive'}</span></div></div>
      ${cls10}${cls12}${other}${catBlocks}${none}
@@ -23267,7 +23268,7 @@ function _tInjectCategoryNav(){
       return (n.getAttribute('onclick')||'').indexOf("'dashboard'")>=0;})[0];
     var d=document.createElement('div'); d.className='nav-item';
     d.setAttribute('onclick',"tPage('mysubjects',this)");
-    d.innerHTML='<span>My Subjects</span>'; d.style.display='none';
+    d.innerHTML=(typeof ic==='function'?ic('book'):'')+'<span>My Subjects</span>'; d.style.display='none';
     if(anchor){ anchor.parentNode.insertBefore(d, anchor.nextSibling); } else { nav.appendChild(d); }
   }
   if(!document.getElementById('t-page-mysubjects')){
@@ -23280,7 +23281,7 @@ function _tInjectCategoryNav(){
       return (n.getAttribute('onclick')||'').indexOf("'mysubjects'")>=0;})[0];
     var d2=document.createElement('div'); d2.className='nav-item';
     d2.setAttribute('onclick',"tPage('subjectmaterials',this)");
-    d2.innerHTML='<span>Subject Materials</span>'; d2.style.display='none';
+    d2.innerHTML=(typeof ic==='function'?ic('folder'):'')+'<span>Subject Materials</span>'; d2.style.display='none';
     if(a2){ a2.parentNode.insertBefore(d2, a2.nextSibling); } else { nav.appendChild(d2); }
   }
   if(!document.getElementById('t-page-subjectmaterials')){
@@ -23293,7 +23294,7 @@ function _tInjectCategoryNav(){
       return (n.getAttribute('onclick')||'').indexOf("'subjectmaterials'")>=0;})[0];
     var d3=document.createElement('div'); d3.className='nav-item';
     d3.setAttribute('onclick',"tPage('matchecker',this)");
-    d3.innerHTML='<span>Material Checker</span>'; d3.style.display='none';
+    d3.innerHTML=(typeof ic==='function'?ic('check'):'')+'<span>Material Checker</span>'; d3.style.display='none';
     if(a3){ a3.parentNode.insertBefore(d3, a3.nextSibling); } else { nav.appendChild(d3); }
   }
   if(!document.getElementById('t-page-matchecker')){

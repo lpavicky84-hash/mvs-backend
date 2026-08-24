@@ -276,9 +276,17 @@ def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
     teachers = db.query(User).filter(User.role == UserRole.teacher).all()
     # --- non-NIOS category assignments for each teacher's card (additive) ---
     cat_map = {}
+    nios_ids = set()
+    nios_known = False
     try:
         from category_models import (Category, TeacherCategory, CategorySubject,
                                      TeacherCategorySubject)
+        nios_cat = db.query(Category).filter(Category.internal_key == "nios").first()
+        if nios_cat:
+            nios_known = True
+            nios_ids = {tc.teacher_id for tc in db.query(TeacherCategory).filter(
+                TeacherCategory.category_id == nios_cat.id,
+                TeacherCategory.status == "active").all()}
         noncat = {c.id: c.display_name for c in db.query(Category).filter(
             Category.internal_key != "nios").all()}
         if noncat:
@@ -301,6 +309,7 @@ def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
                     d["subjects"].append(nm)
     except Exception:
         cat_map = {}
+        nios_ids = set()
     result = []
     for t in teachers:
         profile = t.teacher_profile
@@ -335,6 +344,7 @@ def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
                 "reschedule_limit": 2,
                 "can_see_students": profile.id in _students_allowed_ids(db),
                 "categories": list(cat_map.get(profile.id, {}).values()),
+                "in_nios": (profile.id in nios_ids) if nios_known else True,
             })
     return result
 

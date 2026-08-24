@@ -350,21 +350,21 @@ def backfill_categories():
         for cs in db.query(CategorySubject).filter(CategorySubject.category_id == nios.id).all():
             name_to_catsubj.setdefault(str(cs.name).strip().lower(), cs)
 
-        # Assign every existing teacher to NIOS + mirror their subjects
-        assigned = {tc.teacher_id for tc in db.query(TeacherCategory)
-                    .filter(TeacherCategory.category_id == nios.id).all()}
-        tcs_have = {(x.teacher_id, x.category_subject_id) for x in
-                    db.query(TeacherCategorySubject)
-                    .filter(TeacherCategorySubject.category_id == nios.id).all()}
+        # Assign teachers to NIOS ONLY on first-ever categorisation — a teacher who
+        # already has ANY category row (NIOS or another) is left untouched. This
+        # respects admin removals: a teacher moved to DU SOL / removed from NIOS is
+        # never silently re-added on the next boot.
         for tp in db.query(TeacherProfile).all():
-            if tp.id not in assigned:
-                db.add(TeacherCategory(teacher_id=tp.id, category_id=nios.id, status="active"))
+            has_any = db.query(TeacherCategory).filter(
+                TeacherCategory.teacher_id == tp.id).count() > 0
+            if has_any:
+                continue
+            db.add(TeacherCategory(teacher_id=tp.id, category_id=nios.id, status="active"))
             for subj in (tp.subjects or []):
                 cs = name_to_catsubj.get(str(subj).strip().lower())
-                if cs and (tp.id, cs.id) not in tcs_have:
+                if cs:
                     db.add(TeacherCategorySubject(teacher_id=tp.id, category_id=nios.id,
                                                   category_subject_id=cs.id))
-                    tcs_have.add((tp.id, cs.id))
         db.commit()
     except Exception:
         db.rollback()
