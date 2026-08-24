@@ -24466,18 +24466,23 @@ function _asupBadges(){
 window._acFilter={status:'',category_id:0,priority:'',resolver:0,date_range:'',q:'',page:1};
 function loadAComplaints(){
   var el=document.getElementById('a-complaints-content'); if(!el) return;
-  _asupCss(); _supCss(); el.innerHTML=_supSkelCards(6)+_supSkelList(4);
+  _asupCss(); _supCss();
+  // paint instantly: KPI skeleton + filters (cached options) + list skeleton, then load the LIST first
+  el.innerHTML='<div id="ac-kpis">'+_supSkelCards(6)+'</div>'+_acFiltersHTML()+'<div id="ac-listwrap">'+_supSkelList(4)+'</div>';
+  _acLoadList();
+  // analytics + filter options load in the background and fill in when ready
   Promise.all([
     api('/api/admin/complaint-analytics?range=30').catch(function(){return {};}),
     api('/api/admin/complaint-categories').catch(function(){return {categories:[]};}),
     api('/api/admin/complaint-resolvers').catch(function(){return {resolvers:[]};})
   ]).then(function(res){
-    window._acAnalytics=res[0]; window._acCats=res[1].categories||[]; window._acResolvers=res[2].resolvers||[];
-    _renderAComplaints();
-  }).catch(function(e){ el.innerHTML='<div style="padding:20px;color:#c1443a">'+esc((e&&e.message)||'Could not load')+'</div>'; });
+    window._acAnalytics=res[0]||{}; window._acCats=(res[1]&&res[1].categories)||[]; window._acResolvers=(res[2]&&res[2].resolvers)||[];
+    var k=document.getElementById('ac-kpis'); if(k) k.innerHTML=_acKpisHTML();
+    var fw=document.getElementById('ac-filters-wrap');
+    if(fw){ var tmp=document.createElement('div'); tmp.innerHTML=_acFiltersHTML(); if(tmp.firstChild) fw.replaceWith(tmp.firstChild); }
+  }).catch(function(){});
 }
-function _renderAComplaints(){
-  var el=document.getElementById('a-complaints-content'); if(!el) return;
+function _acKpisHTML(){
   var a=window._acAnalytics||{};
   var tr=(a.trend||[]).slice(-30);
   var mx=Math.max(1, Math.max.apply(null, tr.map(function(t){return Math.max(t.received,t.resolved);}).concat([1])));
@@ -24492,20 +24497,26 @@ function _renderAComplaints(){
     +(a.top_resolver?'<div class="ac-kpi" onclick="acQuick(\'resolver\','+a.top_resolver.id+')"><b style="font-size:1.1rem">'+esc(a.top_resolver.name)+'</b><span>Top Resolver</span><small>'+a.top_resolver.count+' resolved</small></div>':'')
     +'</div>';
   var chart=tr.length?'<div class="ac-card static" style="margin-bottom:14px;cursor:default"><div style="display:flex;justify-content:space-between;font-size:.8rem;color:var(--text-muted)"><b style="color:var(--text)">Complaints Trend</b><span><span style="color:#c98a2e">\u25a0</span> Received <span style="color:#059669">\u25a0</span> Resolved</span></div><div class="ac-trend">'+trend+'</div></div>':'';
+  return cards+chart;
+}
+function _acFiltersHTML(){
   var f=window._acFilter;
   var catOpts='<option value="0">All categories</option>'+(window._acCats||[]).map(function(c){return '<option value="'+c.id+'"'+(f.category_id==c.id?' selected':'')+'>'+esc(c.name)+'</option>';}).join('');
   var resOpts='<option value="0">All resolvers</option>'+(window._acResolvers||[]).map(function(x){return '<option value="'+x.id+'"'+(f.resolver==x.id?' selected':'')+'>'+esc(x.name)+'</option>';}).join('');
   var stOpts=[['','Status: All'],['pending','Pending'],['open','Open'],['in_progress','In Progress'],['waiting_student','Waiting'],['resolved','Resolved'],['reopened','Reopened']].map(function(x){return '<option value="'+x[0]+'"'+(f.status===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('');
   var prOpts=[['','Priority: All'],['normal','Normal'],['critical','Critical'],['emergency','Emergency']].map(function(x){return '<option value="'+x[0]+'"'+(f.priority===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('');
   var dtOpts=[['','Any date'],['today','Today'],['yesterday','Yesterday'],['week','This Week'],['month','This Month'],['last_month','Last Month']].map(function(x){return '<option value="'+x[0]+'"'+(f.date_range===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('');
-  var filters='<button class="btn btn-ghost btn-sm ac-fbtn" onclick="var e=document.getElementById(\'ac-filterbar\');e&&e.classList.toggle(\'open\')">\u2699 Filters</button><div id="ac-filterbar" class="ac-filters">'
+  return '<div id="ac-filters-wrap"><button class="btn btn-ghost btn-sm ac-fbtn" onclick="var e=document.getElementById(\'ac-filterbar\');e&&e.classList.toggle(\'open\')">\u2699 Filters</button><div id="ac-filterbar" class="ac-filters">'
     +'<input id="ac-q" placeholder="Search name, ID, number or text\u2026" value="'+esc(f.q)+'" style="flex:1;min-width:180px" oninput="acDebounceSearch(this.value)">'
     +'<select onchange="acSetF(\'status\',this.value)">'+stOpts+'</select>'
     +'<select onchange="acSetF(\'category_id\',this.value)">'+catOpts+'</select>'
     +'<select onchange="acSetF(\'priority\',this.value)">'+prOpts+'</select>'
     +'<select onchange="acSetF(\'resolver\',this.value)">'+resOpts+'</select>'
-    +'<select onchange="acSetF(\'date_range\',this.value)">'+dtOpts+'</select></div>';
-  el.innerHTML=cards+chart+filters+'<div id="ac-listwrap"><div class="spinner"></div></div>';
+    +'<select onchange="acSetF(\'date_range\',this.value)">'+dtOpts+'</select></div></div>';
+}
+function _renderAComplaints(){
+  var el=document.getElementById('a-complaints-content'); if(!el) return;
+  el.innerHTML='<div id="ac-kpis">'+_acKpisHTML()+'</div>'+_acFiltersHTML()+'<div id="ac-listwrap">'+_supSkelList(3)+'</div>';
   _acLoadList();
 }
 function _acLoadList(){
@@ -24611,11 +24622,38 @@ function _supDrawer(sid){
 window._afRating=0;
 function loadAFeedback(){
   var el=document.getElementById('a-feedback-content'); if(!el) return;
-  _asupCss(); _supCss(); el.innerHTML=_supSkelCards(3)+_supSkelList(4);
-  Promise.all([ api('/api/admin/feedback-analytics').catch(function(){return {};}),
-                api('/api/admin/feedback?rating='+(window._afRating||0)+'&page=1&page_size=30').catch(function(){return {feedback:[]};}) ])
-  .then(function(res){ _renderAFeedback(res[0],res[1]); _asupBadges(); })
-  .catch(function(e){ el.innerHTML='<div style="padding:20px;color:#c1443a">'+esc((e&&e.message)||'Could not load')+'</div>'; });
+  _asupCss(); _supCss();
+  el.innerHTML='<div id="af-kpis">'+_supSkelCards(3)+'</div>'+_afFilterHTML()+'<div id="af-listwrap">'+_supSkelList(4)+'</div>';
+  // list first
+  api('/api/admin/feedback?rating='+(window._afRating||0)+'&page=1&page_size=30').catch(function(){return {feedback:[]};})
+    .then(function(l){ var w=document.getElementById('af-listwrap'); if(w) w.innerHTML=_afListHTML(l); });
+  // analytics in background
+  api('/api/admin/feedback-analytics').catch(function(){return {};})
+    .then(function(a){ var k=document.getElementById('af-kpis'); if(k) k.innerHTML=_afKpisHTML(a); _asupBadges(); });
+}
+function _afKpisHTML(a){
+  a=a||{};
+  var cards='<div class="ac-cards"><div class="ac-kpi static"><b>'+(a.total||0)+'</b><span>Total Feedback</span></div>'
+    +'<div class="ac-kpi static"><b style="color:#e6ad4e">'+(a.average||0)+' <span style="font-size:1rem">/5</span></b><span>Average Rating</span></div>'
+    +'<div class="ac-kpi static"><b style="color:#dc2626">'+(a.new||0)+'</b><span>New</span></div></div>';
+  var dist=(a.distribution||[]).map(function(d){ return '<div class="ac-dist-row"><span style="width:64px;font-size:.8rem" class="ac-star">'+'\u2605'.repeat(d.star)+'</span><div class="ac-dist-bar"><div class="ac-dist-fill" style="width:'+d.pct+'%"></div></div><span style="width:80px;text-align:right;font-size:.8rem;color:var(--text-muted)">'+d.count+' \u00b7 '+d.pct+'%</span></div>'; }).join('');
+  var distBlock=dist?'<div class="ac-card static" style="margin-bottom:14px;cursor:default"><b style="font-size:.9rem">Rating Distribution</b><div style="margin-top:10px">'+dist+'</div></div>':'';
+  return cards+distBlock;
+}
+function _afFilterHTML(){
+  return '<div class="ac-filters"><select onchange="window._afRating=parseInt(this.value,10)||0;loadAFeedback()"><option value="0">All ratings</option>'+[5,4,3,2,1].map(function(n){return '<option value="'+n+'"'+(window._afRating===n?' selected':'')+'>'+n+' star</option>';}).join('')+'</select></div>';
+}
+function _afListHTML(l){
+  var list=(l&&l.feedback)||[];
+  var rows=list.length?list.map(function(f){
+    return '<div class="ac-card"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div>'
+      +'<span class="ac-name" onclick="_supDrawer('+(f.student&&f.student.id)+')">'+esc(f.student&&f.student.name||'Student')+'</span> <span class="sup-num">'+esc(f.student&&f.student.student_id||'')+'</span>'+(f.new?' <span style="font-size:.6rem;font-weight:800;color:#dc2626">NEW</span>':'')
+      +'<div style="margin-top:4px"><span class="ac-star">'+'\u2605'.repeat(f.rating)+'</span><span style="color:#d9c9a0">'+'\u2605'.repeat(5-f.rating)+'</span></div>'
+      +(f.review?'<div style="font-size:.9rem;margin-top:6px">'+esc(f.review)+'</div>':'')
+      +'<div class="sup-meta">'+esc(f.created_at)+'</div></div>'
+      +'<button class="btn btn-ghost btn-sm" style="color:#c1443a" onclick="afDelete('+f.id+')">Delete</button></div></div>';
+  }).join(''):'<div class="sup-empty">No feedback received yet.</div>';
+  return '<div class="ac-list">'+rows+'</div>';
 }
 function _renderAFeedback(a, l){
   var el=document.getElementById('a-feedback-content'); if(!el) return;
