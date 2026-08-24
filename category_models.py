@@ -17,7 +17,8 @@ Design rules honoured (from the spec):
   is one reusable engine across all categories.
 """
 from sqlalchemy import (Column, Integer, String, Boolean, DateTime, Text,
-                        ForeignKey, func, JSON, UniqueConstraint, Index)
+                        ForeignKey, func, JSON, UniqueConstraint, Index,
+                        Date, Float)
 
 from models import Base
 
@@ -48,8 +49,15 @@ FEATURE_CATALOG = [
 FEATURE_KEYS = [k for k, _ in FEATURE_CATALOG]
 
 # Default feature set per seeded category (spec sections 6 & 7).
-# NIOS keeps EVERYTHING it has today so nothing disappears for existing teachers.
-NIOS_DEFAULT_FEATURES = set(FEATURE_KEYS) - {"content_calendar"}
+# NIOS keeps exactly its CLASSIC sidebar so existing teachers see no new sections.
+NIOS_DEFAULT_FEATURES = {
+    "dashboard", "my_tasks", "timetable", "students", "dpp", "tests",
+    "classes_material", "study_material", "doubts", "performance",
+    "payout", "notifications",
+}
+# Brand-new sections that NIOS never had — off for NIOS unless an admin turns them on.
+CATEGORY_ONLY_FEATURES = {"my_subjects", "subject_materials",
+                          "material_checker", "content_calendar"}
 DU_SOL_DEFAULT_FEATURES = {
     "dashboard", "my_subjects", "my_tasks", "subject_materials",
     "material_checker", "performance", "payout", "notifications", "profile",
@@ -221,8 +229,58 @@ class CategoryEvent(Base):
     created_at    = Column(DateTime, default=func.now())
 
 
-# ---------------------------------------------------------------------------
-# Idempotent backfill — safe to run on every boot. Creates the seed categories,
+class CategoryMaterial(Base):
+    """Admin-uploaded material scoped to a category (and optionally a subject).
+    File bytes live in R2 (or base64 fallback) via r2_storage; only the ref here."""
+    __tablename__ = "category_materials"
+
+    id                  = Column(Integer, primary_key=True)
+    category_id         = Column(Integer, ForeignKey("categories.id"), index=True)
+    category_subject_id = Column(Integer, ForeignKey("category_subjects.id"),
+                                 nullable=True, index=True)
+    title               = Column(String(200), nullable=False)
+    material_type       = Column(String(30), nullable=True)   # notes|book|pdf|ppt|qbank|reference|resource
+    description         = Column(Text, nullable=True)
+    filename            = Column(String(200), nullable=True)
+    file_ref            = Column(Text, nullable=True)          # R2 URL or base64
+    file_size           = Column(Integer, nullable=True)
+    mime                = Column(String(80), nullable=True)
+    version             = Column(Integer, default=1)
+    uploaded_by         = Column(Integer, nullable=True)
+    is_active           = Column(Boolean, default=True)
+    created_at          = Column(DateTime, default=func.now())
+
+
+class CategoryWorkType(Base):
+    """A payable unit of work within a category (e.g. 'Approved Material',
+    'Live Class', 'Doubt Session'). NIOS payroll never uses this table."""
+    __tablename__ = "category_work_types"
+
+    id            = Column(Integer, primary_key=True)
+    category_id   = Column(Integer, ForeignKey("categories.id"), index=True)
+    key           = Column(String(40))
+    label         = Column(String(120), nullable=False)
+    unit          = Column(String(20), default="per_item")   # per_item|per_hour|fixed
+    source        = Column(String(30), default="manual")     # auto_material|manual
+    display_order = Column(Integer, default=0)
+    is_active     = Column(Boolean, default=True)
+    created_at    = Column(DateTime, default=func.now())
+
+
+class CategoryPayRate(Base):
+    """Effective-dated rate for a work type. The rate in force for a date is the
+    latest row whose effective_from is on/before that date — old snapshots stay,
+    so historical months never change when a rate is updated."""
+    __tablename__ = "category_pay_rates"
+
+    id             = Column(Integer, primary_key=True)
+    work_type_id   = Column(Integer, ForeignKey("category_work_types.id"), index=True)
+    category_id    = Column(Integer, ForeignKey("categories.id"), index=True)
+    amount         = Column(Float, default=0)          # INR per unit
+    effective_from = Column(Date, index=True)
+    note           = Column(String(200), nullable=True)
+    created_by     = Column(Integer, nullable=True)
+    created_at     = Column(DateTime, default=func.now())
 # their default features, backfills existing teachers into NIOS, and mirrors the
 # NIOS subject master + each teacher's existing subjects into the category layer.
 # Nothing here alters or deletes existing rows.
@@ -256,6 +314,23 @@ def backfill_categories():
         nios = _ensure_category(db, "nios", "NIOS", "NIOS", 1, NIOS_DEFAULT_FEATURES)
         _ensure_category(db, "du_sol", "DU SOL", "DU SOL", 2, DU_SOL_DEFAULT_FEATURES)
         db.commit()
+
+        # One-time correction: an earlier build seeded NIOS with ALL features on,
+        # which would surface brand-new sections (My Subjects / Subject Materials /
+        # Material Checker) to existing NIOS teachers. Turn those off for NIOS exactly
+        # once; after this flag is set we never override admin choices again.
+        try:
+            from models import AppSetting
+            flag = db.query(AppSetting).filter(AppSetting.key == "cat_nios_feat_v2").first()
+            if not flag:
+                for f in db.query(CategoryFeature).filter(
+                        CategoryFeature.category_id == nios.id,
+                        CategoryFeature.feature_key.in_(list(CATEGORY_ONLY_FEATURES))).all():
+                    f.enabled = False
+                db.add(AppSetting(key="cat_nios_feat_v2", value="1"))
+                db.commit()
+        except Exception:
+            db.rollback()
 
         # NIOS subject master -> category_subjects (mirror by distinct name+class)
         have = {(s.name, s.class_level) for s in db.query(CategorySubject)

@@ -59,6 +59,11 @@ ADMIN_SECTION_MAP = {
     "admins": "admins", "reset-data": "admins", "whatsapp": "admins", "orphan-data": "admins",
     "notify": "notify", "notify-targets": "notify", "broadcast": "notify",
     "video-channels": "vtasks", "video-types": "vtasks", "video-tasks": "vtasks",
+    # Category portal (Phase 17)
+    "categories": "categories", "category-subjects": "categories",
+    "category-materials": "categories", "work-types": "categories",
+    "material-submissions": "matcheck", "material-versions": "matcheck",
+    "material-attachments": "matcheck",
 }
 
 # Kuch sections ke endpoints ek se zyada section-permission se khulte hain.

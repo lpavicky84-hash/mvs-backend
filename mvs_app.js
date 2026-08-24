@@ -1571,6 +1571,7 @@ function enterTeacherApp(){
   loadTopAvatar('teacher');
   window._tAttOff=false; _tAttModeInit();
   _applyTStudentAccess();
+  try{ initTeacherCategories(); }catch(e){}
   document.querySelectorAll('#teacher-app .nav-item').forEach(n=>n.classList.remove('active'));
   document.querySelector('#teacher-app .nav-item').classList.add('active');
   tPage('dashboard',null);
@@ -1654,18 +1655,18 @@ function tPage(page,el){
   document.querySelectorAll('#teacher-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('t-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#teacher-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',vtasks:'My Tasks',performance:'Performance',predicted:'Predicted Results',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',material:'Classes Material',extmat:'Study Material',attendance:'Attendance',payout:'Payout'};
+  const titles={dashboard:'Dashboard',vtasks:'My Tasks',performance:'Performance',predicted:'Predicted Results',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',material:'Classes Material',extmat:'Study Material',attendance:'Attendance',payout:'Payout',mysubjects:'My Subjects',subjectmaterials:'Subject Materials',matchecker:'Material Checker'};
   _setPage(titles[page]||page);
-  document.getElementById('t-title').textContent=titles[page];
+  document.getElementById('t-title').textContent=titles[page]||page;
   stopCountdown();
   _curLoader=function(){ _tLoadPage(page); };
   _tLoadPage(page);
 }
 function _tLoadPage(page){
-  if(page==='dashboard') loadTDashboard();
+  if(page==='dashboard'){ if(_tIsCatWorkspace()) loadTCatDashboard(); else loadTDashboard(); }
   else if(page==='vtasks') loadTVTasks();
   else if(page==='today'){ _ttTab='today'; tPage('timetable'); return; }
-  else if(page==='performance') loadTPerformance();
+  else if(page==='performance'){ if(_tIsCatWorkspace()) loadTCatPerformance(); else loadTPerformance(); }
   else if(page==='predicted') loadTPredicted();
   else if(page==='timetable') loadTTimetable();
   else if(page==='dpp') loadTDpp();
@@ -1677,7 +1678,10 @@ function _tLoadPage(page){
   else if(page==='extmat') loadExtMaterials('t-extmat-content');
   else if(page==='students') loadTStudents();
   else if(page==='attendance') loadTAttendance();
-  else if(page==='payout') payoutGate();
+  else if(page==='payout'){ if(_tIsCatWorkspace()) loadTCatEarnings(); else payoutGate(); }
+  else if(page==='mysubjects') loadTMySubjects();
+  else if(page==='subjectmaterials') loadTSubjectMaterials();
+  else if(page==='matchecker') loadTMatChecker();
 }
 
 // ===== TEACHER STUDY MATERIAL =====
@@ -7624,6 +7628,8 @@ function openAdmin(){
   document.getElementById('admin-app').classList.add('active');
   try{ initAdminDppTracker(); }catch(e){}
   try{ initAdminProdTeam(); }catch(e){}
+  try{ initAdminCategories(); }catch(e){}
+  try{ initAdminMatCheck(); }catch(e){}
   try{ initAdminProdMonitor(); }catch(e){}
   try{ initAdminTranslation(); }catch(e){}
   try{ initNavCollapse(); }catch(e){}
@@ -7741,7 +7747,7 @@ function aPage(page,el){
   }
   if(!el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) el=n; }); }
   if(el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodmon:'Production Overview',translation:'Translation Center'};
+  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodmon:'Production Overview',translation:'Translation Center',categories:'Teacher Categories',matcheck:'Material Checker'};
   _setPage(titles[page]||page);
   document.getElementById('a-title').textContent=titles[page]||page;
   _curLoader=function(){ _aLoadPage(page); };
@@ -7751,6 +7757,8 @@ function _aLoadPage(page){
   if(page==='dashboard') loadADashboard();
   else if(page==='dpptracker') loadADppTracker();
   else if(page==='prodteam') loadAProductionTeam();
+  else if(page==='categories') loadACategories();
+  else if(page==='matcheck') loadAMatCheck();
   else if(page==='prodmon') loadAProdMonitor();
   else if(page==='translation') loadATranslation();
   else if(page==='vtasks') loadAVTasks();
@@ -10467,7 +10475,7 @@ async function loadATeachers(){
    html+=`<div class="tcard2"><div class="tcard2-head"><div class="tcard2-photo${t.has_photo?' clickable':''}" id="${ph}" onclick="viewPhoto('${ph}','${esc((t.name||'').replace(/'/g,''))}',${t.profile_id})" title="${t.has_photo?'View photo':'Upload photo'}">${esc(initials(t.name||'T'))}</div><div style="flex:1"><div class="tcard2-name">${esc(t.name)}</div><div class="tcard2-sub"><code>${esc(t.user_id)}</code> · ${esc(t.phone||'no phone')}</div><span class="tag ${t.is_active?'tag-done':'tag-low'}" style="margin-top:6px">${t.is_active?'Active':'Inactive'}</span></div></div>
      ${cls10}${cls12}${other}${none}
      <div class="tcard2-stats"><div class="mini-stat"><div class="n">${t.total_classes_done||0}</div><div class="l">Classes</div></div><div class="mini-stat"><div class="n">${t.monthly_classes_done||0}</div><div class="l">This Month</div></div><div class="mini-stat"><div class="n">${t.reschedule_this_month||0}</div><div class="l">Reschedule</div></div></div>
-     <div class="tcard2-actions"><button class="btn btn-primary btn-sm" onclick="openNotifyTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('bell')} Notify</button><button class="btn btn-ghost btn-sm" onclick='openEditTeacher(${t.profile_id},${JSON.stringify({name:t.name,phone:t.phone,subjects:t.subjects||[],is_active:t.is_active}).replace(/'/g,"&#39;")})'>${ic('edit')} Edit</button><button class="btn btn-ghost btn-sm" onclick="openTeacherPhoto(${t.profile_id})">${ic('upload')} Photo</button><button class="btn btn-ghost btn-sm" onclick="openResetPassword('teacher',${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('shield')} Password</button><button class="btn btn-ghost btn-sm" onclick="toggleTeacherStudents(${t.profile_id},${t.can_see_students?1:0},this)" style="${t.can_see_students?'color:#059669;font-weight:800':'color:#b07f1e'}">${ic('users')} Students: ${t.can_see_students?'ON':'OFF'}</button><button class="btn btn-danger btn-sm" onclick="deleteTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
+     <div class="tcard2-actions"><button class="btn btn-primary btn-sm" onclick="openNotifyTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('bell')} Notify</button><button class="btn btn-ghost btn-sm" onclick='openEditTeacher(${t.profile_id},${JSON.stringify({name:t.name,phone:t.phone,subjects:t.subjects||[],is_active:t.is_active}).replace(/'/g,"&#39;")})'>${ic('edit')} Edit</button><button class="btn btn-ghost btn-sm" onclick="openTeacherPhoto(${t.profile_id})">${ic('upload')} Photo</button><button class="btn btn-ghost btn-sm" onclick="openResetPassword('teacher',${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('shield')} Password</button><button class="btn btn-ghost btn-sm" onclick="openTeacherCategories(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('grid')} Categories</button><button class="btn btn-ghost btn-sm" onclick="toggleTeacherStudents(${t.profile_id},${t.can_see_students?1:0},this)" style="${t.can_see_students?'color:#059669;font-weight:800':'color:#b07f1e'}">${ic('users')} Students: ${t.can_see_students?'ON':'OFF'}</button><button class="btn btn-danger btn-sm" onclick="deleteTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
  });
  html+=`</div>`;
  el.innerHTML=html;
@@ -11946,7 +11954,7 @@ const ADMIN_SECTIONS=[
   ['qbank','Study Material'],['material','Classes Material'],['doubts','Doubts'],['tests','Tests Tracker'],
   ['vtasks','Task Manager'],['urgent','Urgent Videos'],['teachers','Teachers'],['reports','Teacher Reports'],['tranks','Teacher Ranking'],
   ['compliance','Class Compliance'],['attendance','Attendance'],['payouts','Payouts'],['students','Students'],
-  ['notify','Send Notice'],['subjects','Subjects'],['syllabus','Syllabus Manager'],['admins','Admin Users']
+  ['notify','Send Notice'],['subjects','Subjects'],['syllabus','Syllabus Manager'],['categories','Teacher Categories'],['matcheck','Material Checker'],['admins','Admin Users']
 ];
 let _aaFull=false, _aaSel=new Set(['dashboard']), _aaEdit={};
 window._sddOpen=new Set();
@@ -22882,3 +22890,1198 @@ function _atrSettings(){
   }).catch(function(e){ b.innerHTML='<div style="color:#c1443a;padding:16px">Could not load settings.</div>'; });
 }
 window.atSet=function(k,v){ var o={}; o[k]=v; api('/api/admin/translation/settings','POST',o).then(function(){ toast('Saved'); if(k!=='confidence_threshold')_atrSettings(); }); };
+
+/* ============================================================
+   PHASE 5 — Admin: Teacher Categories (premium management UI)
+   Drives the Phase 4 API. NIOS/existing pages untouched.
+   ============================================================ */
+function initAdminCategories(){
+  var app=document.getElementById('admin-app'); if(!app) return;
+  if(!document.getElementById('cat-admin-css')){
+    var st=document.createElement('style'); st.id='cat-admin-css';
+    st.textContent=[
+      '#a-page-categories .cat-top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}',
+      '#a-page-categories .cat-add{padding:9px 16px;border-radius:10px;border:none;background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05;font-weight:800;cursor:pointer;font-size:.86rem}',
+      '#a-page-categories .cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}',
+      '#a-page-categories .cat-card{border:1px solid var(--border);border-radius:16px;padding:18px;background:var(--card);display:flex;flex-direction:column;gap:12px;transition:.16s}',
+      '#a-page-categories .cat-card:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(15,23,42,.08);border-color:#d9b978}',
+      'body.dark #a-page-categories .cat-card{background:var(--card);border-color:var(--border)}',
+      '#a-page-categories .cat-hd{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}',
+      '#a-page-categories .cat-nm{font-weight:800;font-size:1.12rem;line-height:1.2}',
+      '#a-page-categories .cat-key{font-family:ui-monospace,monospace;font-size:.72rem;color:#8a7d5c;margin-top:3px}',
+      '#a-page-categories .cat-desc{font-size:.82rem;color:#8a7d5c;min-height:1.1em}',
+      '#a-page-categories .cat-pill{font-size:.68rem;font-weight:800;padding:4px 10px;border-radius:999px;white-space:nowrap;text-transform:uppercase;letter-spacing:.04em}',
+      '#a-page-categories .cat-pill.on{background:rgba(5,150,105,.14);color:#059669}',
+      '#a-page-categories .cat-pill.off{background:rgba(120,113,108,.16);color:#78716c}',
+      '#a-page-categories .cat-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}',
+      '#a-page-categories .cat-stat{background:rgba(230,173,78,.08);border-radius:11px;padding:10px;text-align:center}',
+      'body.dark #a-page-categories .cat-stat{background:rgba(230,173,78,.06)}',
+      '#a-page-categories .cat-stat b{display:block;font-size:1.2rem;font-weight:800;color:#b8941f}',
+      '#a-page-categories .cat-stat span{font-size:.68rem;color:#8a7d5c;text-transform:uppercase;letter-spacing:.03em}',
+      '#a-page-categories .cat-acts{display:flex;flex-wrap:wrap;gap:7px;margin-top:2px}',
+      '#a-page-categories .cat-btn{flex:1;min-width:78px;padding:8px 10px;border-radius:9px;border:1px solid var(--border);background:transparent;color:inherit;font-weight:700;font-size:.78rem;cursor:pointer;transition:.14s}',
+      '#a-page-categories .cat-btn:hover{border-color:#b8941f;color:#b8941f}',
+      '#a-page-categories .cat-btn.danger:hover{border-color:#c1443a;color:#c1443a}',
+      '.catf-list{display:flex;flex-direction:column;gap:2px;max-height:52vh;overflow:auto;margin:6px 0}',
+      '.catf-row{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:10px;cursor:pointer}',
+      '.catf-row:hover{background:rgba(230,173,78,.08)}',
+      '.catf-cb{width:20px;height:20px;border-radius:6px;border:2px solid #cbb98f;display:flex;align-items:center;justify-content:center;font-size:.8rem;color:#fff;flex:0 0 auto}',
+      '.catf-cb.on{background:#059669;border-color:#059669}'
+    ].join('');
+    document.head.appendChild(st);
+  }
+  var nav=app.querySelector('.sidebar-nav');
+  if(nav && !nav.querySelector('[onclick*="categories"]')){
+    var items=[].slice.call(nav.querySelectorAll('.nav-item'));
+    var anchor=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'syllabus'")>=0;})[0]
+             ||items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'subjects'")>=0;})[0]
+             ||items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'admins'")>=0;})[0];
+    var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"aPage('categories',this)");
+    d.innerHTML=(typeof ic==='function'?ic('grid'):'')+'<span>Teacher Categories</span>';
+    if(anchor){ anchor.parentNode.insertBefore(d, anchor.nextSibling); } else { nav.appendChild(d); }
+  }
+  var main=app.querySelector('.main');
+  if(main && !document.getElementById('a-page-categories')){
+    var pg=document.createElement('div'); pg.className='page'; pg.id='a-page-categories';
+    pg.innerHTML='<div id="a-categories-content"><div class="spinner"></div></div>';
+    main.appendChild(pg);
+  }
+}
+
+function loadACategories(){
+  var el=document.getElementById('a-categories-content'); if(!el) return;
+  try{ softSpin(el); }catch(e){ el.innerHTML='<div class="spinner"></div>'; }
+  api('/api/admin/categories').then(function(r){
+    window._catData=r||{categories:[],features:[]};
+    _renderACategories();
+  }).catch(function(e){
+    el.innerHTML='<div style="padding:24px;color:#c1443a">Could not load categories. '+esc((e&&e.message)||'')+'</div>';
+  });
+}
+
+function _renderACategories(){
+  var el=document.getElementById('a-categories-content'); if(!el) return;
+  var d=window._catData||{}; var cats=d.categories||[];
+  var head='<div class="cat-top"><div><div style="font-weight:800;font-size:1.05rem">Workspaces</div>'
+    +'<div style="font-size:.82rem;color:#8a7d5c">One teacher account, category-based workspaces. Renaming is safe — the internal ID never changes.</div></div>'
+    +'<button class="cat-add" onclick="catOpenEdit(0)">+ Add Category</button></div>';
+  if(!cats.length){ el.innerHTML=head+'<div style="color:#9c8f6e;padding:22px">No categories yet. Use \u201cAdd Category\u201d to create one.</div>'; return; }
+  var cards=cats.map(function(c){
+    var on=(c.status==='active');
+    return '<div class="cat-card">'
+      +'<div class="cat-hd"><div><div class="cat-nm">'+esc(c.display_name)+'</div>'
+        +'<div class="cat-key">'+esc(c.internal_key)+'</div></div>'
+        +'<span class="cat-pill '+(on?'on':'off')+'">'+(on?'Active':'Inactive')+'</span></div>'
+      +'<div class="cat-desc">'+esc(c.description||c.short_name||'')+'</div>'
+      +'<div class="cat-stats">'
+        +'<div class="cat-stat"><b>'+(c.teacher_count||0)+'</b><span>Teachers</span></div>'
+        +'<div class="cat-stat"><b>'+(c.subject_count||0)+'</b><span>Subjects</span></div>'
+        +'<div class="cat-stat"><b>'+(c.feature_count||0)+'</b><span>Features</span></div>'
+      +'</div>'
+      +'<div class="cat-acts">'
+        +'<button class="cat-btn" onclick="catOpenEdit('+c.id+')">Edit</button>'
+        +'<button class="cat-btn" onclick="catOpenSubjects('+c.id+')">Subjects</button>'
+        +'<button class="cat-btn" onclick="catOpenMaterials('+c.id+')">Materials</button>'
+        +'<button class="cat-btn" onclick="catOpenPayRates('+c.id+')">Pay Rates</button>'
+        +'<button class="cat-btn" onclick="catOpenFeatures('+c.id+')">Features</button>'
+        +'<button class="cat-btn '+(on?'danger':'')+'" onclick="catToggle('+c.id+','+(on?'0':'1')+')">'+(on?'Deactivate':'Activate')+'</button>'
+      +'</div>'
+    +'</div>';
+  }).join('');
+  el.innerHTML=head+'<div class="cat-grid">'+cards+'</div>';
+}
+
+function _catById(id){ return ((window._catData||{}).categories||[]).filter(function(c){return c.id===id;})[0]; }
+
+function catOpenEdit(id){
+  var c=id?_catById(id):null; var isNew=!c;
+  var body='<div class="form-group"><label class="form-label">Display Name</label>'
+    +'<input id="cat-nm" class="form-control" maxlength="120" placeholder="e.g. DU SOL" value="'+esc(c?c.display_name:'')+'"></div>'
+    +(isNew?'<div style="font-size:.74rem;color:#8a7d5c;margin:-4px 0 10px">A permanent internal ID is generated automatically from this name and never changes, even if you rename the category later.</div>'
+           :'<div class="form-group"><label class="form-label">Internal ID (permanent)</label><input class="form-control" value="'+esc(c.internal_key)+'" disabled style="opacity:.7;font-family:ui-monospace,monospace"></div>')
+    +'<div class="form-group"><label class="form-label">Short Name</label>'
+    +'<input id="cat-short" class="form-control" maxlength="40" placeholder="Optional" value="'+esc(c?c.short_name:'')+'"></div>'
+    +'<div class="form-group"><label class="form-label">Description</label>'
+    +'<textarea id="cat-desc" class="form-control" rows="2" maxlength="300" placeholder="Optional">'+esc(c?c.description:'')+'</textarea></div>'
+    +'<div style="display:flex;gap:10px"><div class="form-group" style="flex:1"><label class="form-label">Icon</label>'
+    +'<input id="cat-icon" class="form-control" maxlength="40" placeholder="e.g. grid" value="'+esc(c?c.icon:'')+'"></div>'
+    +'<div class="form-group" style="width:120px"><label class="form-label">Order</label>'
+    +'<input id="cat-order" type="number" class="form-control" value="'+(c?c.display_order:0)+'"></div></div>';
+  var footer='<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>'
+    +'<button class="btn btn-primary" onclick="catSave('+(id||0)+')">'+(isNew?'Create Category':'Save Changes')+'</button>';
+  showModal(isNew?'Add Category':'Edit Category', body, footer);
+}
+
+async function catSave(id){
+  var name=(document.getElementById('cat-nm').value||'').trim();
+  if(!name){ toast('Display name is required',true); return; }
+  var payload={display_name:name,
+    short_name:(document.getElementById('cat-short').value||'').trim(),
+    description:(document.getElementById('cat-desc').value||'').trim(),
+    icon:(document.getElementById('cat-icon').value||'').trim(),
+    display_order:parseInt(document.getElementById('cat-order').value||'0',10)||0};
+  try{
+    if(id) await api('/api/admin/categories/'+id,'PATCH',payload);
+    else   await api('/api/admin/categories','POST',payload);
+    closeModal(); toast(id?'Category updated':'Category created'); loadACategories();
+  }catch(e){ toast((e&&e.message)||'Could not save',true); }
+}
+
+async function catToggle(id,to){
+  try{ await api('/api/admin/categories/'+id+'/status','POST',{status:to==1||to==='1'?'active':'inactive'});
+    toast('Status updated'); loadACategories();
+  }catch(e){ toast((e&&e.message)||'Could not update',true); }
+}
+
+async function catOpenFeatures(id){
+  var c=_catById(id);
+  showModal('Features · '+(c?c.display_name:''), '<div class="spinner"></div>', '');
+  try{
+    var r=await api('/api/admin/categories/'+id+'/features');
+    var feats=((r.category||{}).features)||[];
+    window._catFeat={id:id, feats:feats.map(function(f){return {key:f.key,label:f.label,enabled:!!f.enabled};})};
+    _renderCatFeatures();
+  }catch(e){ document.getElementById('modal-body').innerHTML='<div style="color:#c1443a;padding:12px">'+esc((e&&e.message)||'Could not load features')+'</div>'; }
+}
+
+function _renderCatFeatures(){
+  var st=window._catFeat||{feats:[]};
+  var rows=st.feats.map(function(f,i){
+    return '<div class="catf-row" onclick="catFeatToggle('+i+')"><span class="catf-cb'+(f.enabled?' on':'')+'">'+(f.enabled?'\u2713':'')+'</span><span>'+esc(f.label)+'</span></div>';
+  }).join('');
+  document.getElementById('modal-body').innerHTML='<div style="font-size:.82rem;color:#8a7d5c;margin-bottom:6px">Tick the sidebar sections this workspace should show. Turning a feature off hides it for every teacher in this category.</div><div class="catf-list">'+rows+'</div>';
+  document.getElementById('modal-footer').innerHTML='<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="catFeatSave()">Save Features</button>';
+}
+
+function catFeatToggle(i){ var st=window._catFeat; if(!st)return; st.feats[i].enabled=!st.feats[i].enabled; _renderCatFeatures(); }
+
+async function catFeatSave(){
+  var st=window._catFeat; if(!st) return;
+  var map={}; st.feats.forEach(function(f){ map[f.key]=!!f.enabled; });
+  try{ await api('/api/admin/categories/'+st.id+'/features','PUT',{features:map});
+    closeModal(); toast('Features updated'); loadACategories();
+  }catch(e){ toast((e&&e.message)||'Could not save',true); }
+}
+
+/* ============================================================
+   PHASE 6 — Admin: assign categories + subjects to a teacher
+   ============================================================ */
+function openTeacherCategories(tid, name){
+  showModal('Category Access · '+name, '<div class="spinner"></div>', '');
+  api('/api/admin/teachers/'+tid+'/category-access').then(function(r){
+    window._tcaState={tid:tid, cats:(r.categories||[])};
+    _renderTeacherCats();
+  }).catch(function(e){
+    document.getElementById('modal-body').innerHTML='<div style="color:#c1443a;padding:12px">'+esc((e&&e.message)||'Could not load')+'</div>';
+  });
+}
+
+function _renderTeacherCats(){
+  var st=window._tcaState||{cats:[]};
+  if(!document.getElementById('tca-css')){
+    var s=document.createElement('style'); s.id='tca-css';
+    s.textContent=[
+      '.tca-cat{border:1px solid var(--border);border-radius:12px;margin-bottom:10px;overflow:hidden}',
+      'body.dark .tca-cat{border-color:var(--border)}',
+      '.tca-hd{display:flex;align-items:center;gap:11px;padding:12px 14px;cursor:pointer}',
+      '.tca-hd:hover{background:rgba(230,173,78,.07)}',
+      '.tca-cb{width:20px;height:20px;border-radius:6px;border:2px solid #cbb98f;display:flex;align-items:center;justify-content:center;font-size:.8rem;color:#fff;flex:0 0 auto}',
+      '.tca-cb.on{background:#b8941f;border-color:#b8941f}',
+      '.tca-nm{font-weight:800}',
+      '.tca-key{font-family:ui-monospace,monospace;font-size:.7rem;color:#8a7d5c}',
+      '.tca-subs{padding:4px 14px 12px 45px;display:flex;flex-wrap:wrap;gap:8px}',
+      '.tca-subs.dis{opacity:.4;pointer-events:none}',
+      '.tca-chip{display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border-radius:999px;border:1px solid var(--border);cursor:pointer;font-size:.8rem;font-weight:600}',
+      '.tca-chip.on{background:rgba(184,148,31,.14);border-color:#b8941f;color:#8a6d12}',
+      'body.dark .tca-chip.on{color:#e6c15a}'
+    ].join('');
+    document.head.appendChild(s);
+  }
+  var html=st.cats.map(function(c,ci){
+    var subs=(c.subjects||[]).map(function(su,si){
+      return '<span class="tca-chip'+(su.assigned?' on':'')+'" onclick="tcaToggleSub('+ci+','+si+')">'
+        +'<span style="font-weight:800">'+(su.assigned?'\u2713':'+')+'</span>'+esc(su.name)+(su.code?' <span class="tca-key">'+esc(su.code)+'</span>':'')+'</span>';
+    }).join('') || '<span style="color:#9c8f6e;font-size:.8rem">No subjects in this category yet — add them in Teacher Categories → Subjects.</span>';
+    return '<div class="tca-cat">'
+      +'<div class="tca-hd" onclick="tcaToggleCat('+ci+')"><span class="tca-cb'+(c.assigned?' on':'')+'">'+(c.assigned?'\u2713':'')+'</span>'
+        +'<div style="flex:1"><div class="tca-nm">'+esc(c.display_name)+'</div><div class="tca-key">'+esc(c.internal_key)+'</div></div></div>'
+      +'<div class="tca-subs'+(c.assigned?'':' dis')+'">'+subs+'</div>'
+    +'</div>';
+  }).join('') || '<div style="color:#9c8f6e;padding:12px">No active categories. Create one in Teacher Categories.</div>';
+  document.getElementById('modal-body').innerHTML='<div style="font-size:.82rem;color:#8a7d5c;margin-bottom:10px">Tick the workspaces this teacher can access, then choose their subjects inside each. Renaming a category later never affects this.</div>'+html;
+  document.getElementById('modal-footer').innerHTML='<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="tcaSave()">Save Access</button>';
+}
+
+function tcaToggleCat(ci){
+  var c=window._tcaState.cats[ci]; c.assigned=!c.assigned;
+  if(!c.assigned){ (c.subjects||[]).forEach(function(s){ s.assigned=false; }); }
+  _renderTeacherCats();
+}
+function tcaToggleSub(ci,si){
+  var c=window._tcaState.cats[ci]; if(!c.assigned) return;
+  c.subjects[si].assigned=!c.subjects[si].assigned; _renderTeacherCats();
+}
+async function tcaSave(){
+  var st=window._tcaState; if(!st) return;
+  var access=st.cats.filter(function(c){return c.assigned;}).map(function(c){
+    return {category_id:c.id, subject_ids:(c.subjects||[]).filter(function(s){return s.assigned;}).map(function(s){return s.id;})};
+  });
+  try{ await api('/api/admin/teachers/'+st.tid+'/category-access','PUT',{access:access});
+    closeModal(); toast('Category access updated');
+  }catch(e){ toast((e&&e.message)||'Could not save',true); }
+}
+
+/* ============================================================
+   PHASE 7 — Teacher header category switcher + feature-gated sidebar
+   NIOS has every feature ON (backfill), so NIOS teachers see no change:
+   nothing is hidden, and a single-category teacher gets no dropdown.
+   ============================================================ */
+var T_NAV_FEATURE={dashboard:'dashboard',vtasks:'my_tasks',timetable:'timetable',
+  students:'students',dpp:'dpp',tests:'tests',material:'classes_material',
+  extmat:'study_material',doubts:'doubts',performance:'performance',
+  payout:'payout',notifications:'notifications',lectures:'classes_material',
+  predicted:'tests',mysubjects:'my_subjects',subjectmaterials:'subject_materials',matchecker:'material_checker'};
+
+async function initTeacherCategories(){
+  try{
+    var r=await api('/api/teacher/categories');
+    var cats=(r&&r.categories)||[];
+    window._tCats=cats;
+    if(!cats.length){ return; }               // no category -> leave portal as-is
+    try{ _tInjectCategoryNav(); }catch(e){}
+    try{ var p=await api('/api/teacher/profile'); window._tCanSeeStudents=!!p.can_see_students; }catch(e){}
+    // keep previously active if still valid, else first
+    var cur=window._tActiveCat&&cats.filter(function(c){return c.id===window._tActiveCat.id;})[0];
+    _tSetActiveCat(cur||cats[0], false);
+    _tRenderSwitcher();
+  }catch(e){}
+}
+
+function _tSetActiveCat(cat, reload){
+  window._tActiveCat={id:cat.id, internal_key:cat.internal_key,
+    display_name:cat.display_name, features:(cat.features||[])};
+  _applyTNavFeatures();
+  if(reload){
+    document.querySelectorAll('#teacher-app .nav-item').forEach(function(n){n.classList.remove('active');});
+    var first=document.querySelector('#teacher-app .nav-item'); if(first) first.classList.add('active');
+    try{ tPage('dashboard',null); }catch(e){}
+  }
+}
+
+function _tFeatureOn(key){
+  var a=window._tActiveCat; if(!a) return true;
+  if(!key) return true;
+  return (a.features||[]).indexOf(key)>=0;
+}
+
+function _applyTNavFeatures(){
+  var app=document.getElementById('teacher-app'); if(!app) return;
+  app.querySelectorAll('.sidebar-nav .nav-item').forEach(function(n){
+    var oc=n.getAttribute('onclick')||'';
+    var m=oc.match(/tPage\('([^']+)'/);
+    if(!m){ return; }                         // non-page items (Notify, Message) stay
+    var page=m[1]; var feat=T_NAV_FEATURE[page];
+    if(page==='students'){ n.style.display=(_tFeatureOn('students')&&window._tCanSeeStudents)?'':'none'; return; }
+    if(feat===undefined){ n.style.display=''; return; }   // unmapped -> always show
+    n.style.display=_tFeatureOn(feat)?'':'none';
+  });
+  _tHideEmptyNavSections(app);
+}
+
+function _tHideEmptyNavSections(app){
+  var nav=app.querySelector('.sidebar-nav'); if(!nav) return;
+  var kids=[].slice.call(nav.children);
+  kids.forEach(function(el,idx){
+    if(!el.classList.contains('nav-section')) return;
+    var vis=false;
+    for(var j=idx+1;j<kids.length;j++){
+      if(kids[j].classList.contains('nav-section')) break;
+      if(kids[j].classList.contains('nav-item') && kids[j].style.display!=='none'){ vis=true; break; }
+    }
+    el.style.display=vis?'':'none';
+  });
+}
+
+function _tRenderSwitcher(){
+  var cats=window._tCats||[]; var a=window._tActiveCat||{};
+  var app=document.getElementById('teacher-app'); if(!app) return;
+  var actions=app.querySelector('.topbar .topbar-actions'); if(!actions) return;
+  var host=document.getElementById('t-wsswitch');
+  if(!host){
+    host=document.createElement('div'); host.id='t-wsswitch';
+    actions.insertBefore(host, actions.firstChild);
+  }
+  if(!document.getElementById('tws-css')){
+    var s=document.createElement('style'); s.id='tws-css';
+    s.textContent=[
+      '#t-wsswitch{position:relative;margin-right:8px}',
+      '.tws-pill{display:inline-flex;align-items:center;gap:8px;padding:7px 13px;border-radius:999px;border:1px solid var(--border);background:rgba(184,148,31,.08);font-weight:800;font-size:.82rem;color:#8a6d12;white-space:nowrap}',
+      'body.dark .tws-pill{color:#e6c15a;border-color:var(--border)}',
+      '.tws-pill.btn{cursor:pointer}.tws-pill.btn:hover{border-color:#b8941f}',
+      '.tws-dot{width:8px;height:8px;border-radius:50%;background:#b8941f}',
+      '.tws-menu{position:absolute;top:110%;right:0;min-width:190px;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 30px rgba(15,23,42,.14);padding:6px;z-index:60;display:none}',
+      'body.dark .tws-menu{background:var(--card);border-color:var(--border)}',
+      '#t-wsswitch.open .tws-menu{display:block}',
+      '.tws-item{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:9px;cursor:pointer;font-size:.86rem;font-weight:600}',
+      '.tws-item:hover{background:rgba(184,148,31,.1)}',
+      '.tws-item.on{color:#8a6d12;font-weight:800}',
+      '.tws-check{margin-left:auto;color:#059669;font-weight:800}'
+    ].join('');
+    document.head.appendChild(s);
+  }
+  if(cats.length<=1){
+    // single-category teacher (e.g. a normal NIOS teacher) — show nothing,
+    // so their header stays exactly as it was.
+    host.className=''; host.innerHTML=''; return;
+  }
+  var items=cats.map(function(c){
+    return '<div class="tws-item'+(c.id===a.id?' on':'')+'" onclick="tSwitchCat('+c.id+')"><span class="tws-dot"></span><span>'+esc(c.display_name)+'</span>'+(c.id===a.id?'<span class="tws-check">\u2713</span>':'')+'</div>';
+  }).join('');
+  host.innerHTML='<span class="tws-pill btn" onclick="twsToggle(event)"><span class="tws-dot"></span>'+esc(a.display_name||'Workspace')+' <span style="opacity:.6">\u25BE</span></span><div class="tws-menu">'+items+'</div>';
+}
+
+function twsToggle(e){ if(e){e.stopPropagation();} var h=document.getElementById('t-wsswitch'); if(h) h.classList.toggle('open'); }
+document.addEventListener('click',function(){ var h=document.getElementById('t-wsswitch'); if(h&&h.classList.contains('open')) h.classList.remove('open'); });
+
+function tSwitchCat(id){
+  var cats=window._tCats||[]; var c=cats.filter(function(x){return x.id===id;})[0]; if(!c) return;
+  var h=document.getElementById('t-wsswitch'); if(h) h.classList.remove('open');
+  _tSetActiveCat(c, true);
+  _tRenderSwitcher();
+  toast(c.display_name+' workspace');
+}
+
+/* ============================================================
+   PHASE 8 — Category subjects (admin) + Teacher "My Subjects"
+   ============================================================ */
+/* Inject category-only nav items into the teacher sidebar once. They are
+   feature-gated by Phase 7, so they only appear for categories that enable them
+   (NIOS has them OFF, so NIOS teachers never see them). */
+function _tInjectCategoryNav(){
+  var app=document.getElementById('teacher-app'); if(!app) return;
+  var nav=app.querySelector('.sidebar-nav'); var main=app.querySelector('.main');
+  if(!nav||!main) return;
+  if(!nav.querySelector('[onclick*="mysubjects"]')){
+    var anchor=[].slice.call(nav.querySelectorAll('.nav-item')).filter(function(n){
+      return (n.getAttribute('onclick')||'').indexOf("'dashboard'")>=0;})[0];
+    var d=document.createElement('div'); d.className='nav-item';
+    d.setAttribute('onclick',"tPage('mysubjects',this)");
+    d.innerHTML='<span>My Subjects</span>'; d.style.display='none';
+    if(anchor){ anchor.parentNode.insertBefore(d, anchor.nextSibling); } else { nav.appendChild(d); }
+  }
+  if(!document.getElementById('t-page-mysubjects')){
+    var pg=document.createElement('div'); pg.className='page'; pg.id='t-page-mysubjects';
+    pg.innerHTML='<div id="t-mysubjects-content"><div class="spinner"></div></div>';
+    main.appendChild(pg);
+  }
+  if(!nav.querySelector('[onclick*="subjectmaterials"]')){
+    var a2=[].slice.call(nav.querySelectorAll('.nav-item')).filter(function(n){
+      return (n.getAttribute('onclick')||'').indexOf("'mysubjects'")>=0;})[0];
+    var d2=document.createElement('div'); d2.className='nav-item';
+    d2.setAttribute('onclick',"tPage('subjectmaterials',this)");
+    d2.innerHTML='<span>Subject Materials</span>'; d2.style.display='none';
+    if(a2){ a2.parentNode.insertBefore(d2, a2.nextSibling); } else { nav.appendChild(d2); }
+  }
+  if(!document.getElementById('t-page-subjectmaterials')){
+    var pg2=document.createElement('div'); pg2.className='page'; pg2.id='t-page-subjectmaterials';
+    pg2.innerHTML='<div id="t-subjectmaterials-content"><div class="spinner"></div></div>';
+    main.appendChild(pg2);
+  }
+  if(!nav.querySelector('[onclick*="matchecker"]')){
+    var a3=[].slice.call(nav.querySelectorAll('.nav-item')).filter(function(n){
+      return (n.getAttribute('onclick')||'').indexOf("'subjectmaterials'")>=0;})[0];
+    var d3=document.createElement('div'); d3.className='nav-item';
+    d3.setAttribute('onclick',"tPage('matchecker',this)");
+    d3.innerHTML='<span>Material Checker</span>'; d3.style.display='none';
+    if(a3){ a3.parentNode.insertBefore(d3, a3.nextSibling); } else { nav.appendChild(d3); }
+  }
+  if(!document.getElementById('t-page-matchecker')){
+    var pg3=document.createElement('div'); pg3.className='page'; pg3.id='t-page-matchecker';
+    pg3.innerHTML='<div id="t-matchecker-content"><div class="spinner"></div></div>';
+    main.appendChild(pg3);
+  }
+}
+
+function loadTMySubjects(){
+  var el=document.getElementById('t-mysubjects-content'); if(!el) return;
+  var a=window._tActiveCat; if(!a){ el.innerHTML='<div style="padding:22px;color:#9c8f6e">No workspace selected.</div>'; return; }
+  try{ softSpin(el); }catch(e){ el.innerHTML='<div class="spinner"></div>'; }
+  if(!document.getElementById('tmsub-css')){
+    var s=document.createElement('style'); s.id='tmsub-css';
+    s.textContent=[
+      '.tmsub-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}',
+      '.tmsub-card{border:1px solid var(--border);border-radius:16px;padding:18px;background:var(--card);transition:.16s}',
+      '.tmsub-card:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(15,23,42,.08);border-color:#d9b978}',
+      'body.dark .tmsub-card{background:var(--card);border-color:var(--border)}',
+      '.tmsub-nm{font-weight:800;font-size:1.1rem}',
+      '.tmsub-code{font-family:ui-monospace,monospace;font-size:.72rem;color:#8a7d5c;margin-top:2px}',
+      '.tmsub-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}',
+      '.tmsub-stat{text-align:center;background:rgba(230,173,78,.08);border-radius:11px;padding:9px}',
+      'body.dark .tmsub-stat{background:rgba(230,173,78,.06)}',
+      '.tmsub-stat b{display:block;font-size:1.15rem;font-weight:800;color:#b8941f}',
+      '.tmsub-stat.pend b{color:#d97706}.tmsub-stat.appr b{color:#059669}',
+      '.tmsub-stat span{font-size:.66rem;color:#8a7d5c;text-transform:uppercase;letter-spacing:.03em}'
+    ].join('');
+    document.head.appendChild(s);
+  }
+  api('/api/teacher/subjects?category_id='+a.id).then(function(r){
+    var subs=(r&&r.subjects)||[];
+    if(!subs.length){ el.innerHTML='<div style="padding:26px;text-align:center;color:#9c8f6e"><div style="font-size:1.05rem;font-weight:700;margin-bottom:6px">No subjects assigned yet</div><div style="font-size:.86rem">Your admin will assign subjects for the '+esc(a.display_name)+' workspace.</div></div>'; return; }
+    var cards=subs.map(function(s){
+      return '<div class="tmsub-card"><div class="tmsub-nm">'+esc(s.name)+'</div>'
+        +(s.code?'<div class="tmsub-code">'+esc(s.code)+'</div>':'')
+        +(s.description?'<div style="font-size:.82rem;color:#8a7d5c;margin-top:8px">'+esc(s.description)+'</div>':'')
+        +'<div class="tmsub-stats">'
+          +'<div class="tmsub-stat"><b>'+(s.materials||0)+'</b><span>Materials</span></div>'
+          +'<div class="tmsub-stat pend"><b>'+(s.pending||0)+'</b><span>Pending</span></div>'
+          +'<div class="tmsub-stat appr"><b>'+(s.approved||0)+'</b><span>Approved</span></div>'
+        +'</div></div>';
+    }).join('');
+    el.innerHTML='<div style="margin-bottom:14px"><div style="font-weight:800;font-size:1.05rem">My Subjects</div><div style="font-size:.84rem;color:#8a7d5c">'+esc(a.display_name)+' workspace</div></div><div class="tmsub-grid">'+cards+'</div>';
+  }).catch(function(e){ el.innerHTML='<div style="padding:22px;color:#c1443a">'+esc((e&&e.message)||'Could not load subjects')+'</div>'; });
+}
+
+/* ---- Admin: manage a category's subjects ---- */
+function catOpenSubjects(cid){
+  var c=_catById(cid);
+  showModal('Subjects · '+(c?c.display_name:''), '<div class="spinner"></div>', '');
+  _catLoadSubjects(cid);
+}
+function _catLoadSubjects(cid){
+  api('/api/admin/categories/'+cid+'/subjects').then(function(r){
+    window._catSubState={cid:cid, subjects:(r.subjects||[])};
+    _renderCatSubjects();
+  }).catch(function(e){ document.getElementById('modal-body').innerHTML='<div style="color:#c1443a;padding:12px">'+esc((e&&e.message)||'Could not load')+'</div>'; });
+}
+function _renderCatSubjects(){
+  var st=window._catSubState||{subjects:[]};
+  var rows=st.subjects.map(function(s){
+    var on=(s.status==='active');
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border,#e5ddcb);border-radius:10px;margin-bottom:8px'+(on?'':';opacity:.55')+'">'
+      +'<div style="flex:1"><div style="font-weight:700">'+esc(s.name)+(s.code?' <span style="font-family:ui-monospace,monospace;font-size:.72rem;color:#8a7d5c">'+esc(s.code)+'</span>':'')+'</div>'
+        +(s.description?'<div style="font-size:.78rem;color:#8a7d5c">'+esc(s.description)+'</div>':'')+'</div>'
+      +'<button class="btn btn-ghost btn-sm" onclick="catSubEdit('+s.id+')">Edit</button>'
+      +'<button class="btn btn-ghost btn-sm" onclick="catSubToggle('+s.id+','+(on?'0':'1')+')">'+(on?'Disable':'Enable')+'</button>'
+    +'</div>';
+  }).join('') || '<div style="color:#9c8f6e;padding:8px 0">No subjects yet.</div>';
+  var add='<div style="border-top:1px solid var(--border,#e5ddcb);margin-top:12px;padding-top:12px"><div style="font-weight:700;font-size:.86rem;margin-bottom:8px">Add subject</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap"><input id="csub-name" class="form-control" style="flex:2;min-width:150px" placeholder="Subject name">'
+    +'<input id="csub-code" class="form-control" style="flex:1;min-width:90px" placeholder="Code (optional)">'
+    +'<button class="btn btn-primary" onclick="catSubAdd()">Add</button></div></div>';
+  document.getElementById('modal-body').innerHTML='<div class="catf-list" style="max-height:44vh">'+rows+'</div>'+add;
+  document.getElementById('modal-footer').innerHTML='<button class="btn btn-ghost" onclick="closeModal()">Close</button>';
+}
+async function catSubAdd(){
+  var st=window._catSubState; if(!st) return;
+  var name=(document.getElementById('csub-name').value||'').trim();
+  if(!name){ toast('Subject name required',true); return; }
+  var code=(document.getElementById('csub-code').value||'').trim();
+  try{ await api('/api/admin/categories/'+st.cid+'/subjects','POST',{name:name,code:code});
+    _catLoadSubjects(st.cid); loadACategories();
+  }catch(e){ toast((e&&e.message)||'Could not add',true); }
+}
+function catSubEdit(sid){
+  var st=window._catSubState; var s=(st.subjects||[]).filter(function(x){return x.id===sid;})[0]; if(!s) return;
+  var body='<div class="form-group"><label class="form-label">Name</label><input id="cse-name" class="form-control" value="'+esc(s.name)+'"></div>'
+    +'<div class="form-group"><label class="form-label">Code</label><input id="cse-code" class="form-control" value="'+esc(s.code||'')+'"></div>'
+    +'<div class="form-group"><label class="form-label">Description</label><textarea id="cse-desc" class="form-control" rows="2">'+esc(s.description||'')+'</textarea></div>';
+  showModal('Edit Subject', body,
+    '<button class="btn btn-ghost" onclick="catOpenSubjects('+st.cid+')">Back</button><button class="btn btn-primary" onclick="catSubSave('+sid+')">Save</button>');
+}
+async function catSubSave(sid){
+  var st=window._catSubState;
+  try{ await api('/api/admin/category-subjects/'+sid,'PATCH',{
+      name:(document.getElementById('cse-name').value||'').trim(),
+      code:(document.getElementById('cse-code').value||'').trim(),
+      description:(document.getElementById('cse-desc').value||'').trim()});
+    toast('Subject updated'); catOpenSubjects(st.cid); loadACategories();
+  }catch(e){ toast((e&&e.message)||'Could not save',true); }
+}
+async function catSubToggle(sid,to){
+  var st=window._catSubState;
+  try{ await api('/api/admin/category-subjects/'+sid,'PATCH',{status:(to==1||to==='1')?'active':'inactive'});
+    _catLoadSubjects(st.cid); loadACategories();
+  }catch(e){ toast((e&&e.message)||'Could not update',true); }
+}
+
+/* ============================================================
+   PHASE 10 — Non-NIOS workspace dashboard shell (feature-driven)
+   NIOS dashboard is never touched: this only runs for non-NIOS categories.
+   ============================================================ */
+function _tIsCatWorkspace(){
+  var a=window._tActiveCat;
+  return !!(a && a.internal_key && a.internal_key!=='nios');
+}
+
+function _tGreet(){
+  var h=new Date().getHours();
+  return h<12?'Good Morning':h<17?'Good Afternoon':'Good Evening';
+}
+
+function loadTCatDashboard(){
+  var el=document.getElementById('t-dashboard-content'); if(!el) return;
+  var a=window._tActiveCat; if(!a){ if(typeof loadTDashboard==='function') loadTDashboard(); return; }
+  try{ softSpin(el); }catch(e){ el.innerHTML='<div class="spinner"></div>'; }
+  if(!document.getElementById('tcd-css')){
+    var s=document.createElement('style'); s.id='tcd-css';
+    s.textContent=[
+      '.tcd-hero{border-radius:18px;padding:22px 24px;background:linear-gradient(135deg,rgba(230,173,78,.16),rgba(184,148,31,.05));border:1px solid var(--border);margin-bottom:18px}',
+      'body.dark .tcd-hero{background:linear-gradient(135deg,rgba(230,173,78,.12),rgba(0,0,0,0));border-color:var(--border)}',
+      '.tcd-hero h2{margin:0;font-size:1.4rem;font-weight:800}',
+      '.tcd-hero p{margin:4px 0 0;color:#8a7d5c;font-size:.9rem;font-weight:600}',
+      '.tcd-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:20px}',
+      '.tcd-kpi{border:1px solid var(--border);border-radius:16px;padding:18px;background:var(--card);cursor:pointer;transition:.16s}',
+      '.tcd-kpi:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(15,23,42,.08);border-color:#d9b978}',
+      'body.dark .tcd-kpi{background:var(--card);border-color:var(--border)}',
+      '.tcd-kpi b{display:block;font-size:2rem;font-weight:800;line-height:1}',
+      '.tcd-kpi span{font-size:.76rem;color:#8a7d5c;text-transform:uppercase;letter-spacing:.04em;font-weight:700}',
+      '.tcd-kpi.tasks b{color:#b8941f}.tcd-kpi.mat b{color:#6d28d9}.tcd-kpi.pend b{color:#d97706}.tcd-kpi.appr b{color:#059669}',
+      '.tcd-sec{font-weight:800;font-size:1.02rem;margin:22px 0 12px}',
+      '.tcd-empty{border:1px dashed var(--border);border-radius:14px;padding:22px;text-align:center;color:#9c8f6e;font-size:.88rem}'
+    ].join('');
+    document.head.appendChild(s);
+  }
+  api('/api/teacher/category-dashboard?category_id='+a.id).then(function(d){
+    var k=d.kpis||{};
+    var hero='<div class="tcd-hero"><h2>'+_tGreet()+', '+esc((NAME||'')+(typeof _tSuffix!=='undefined'?_tSuffix:''))+'</h2>'
+      +'<p>'+esc(d.category&&d.category.display_name||a.display_name)+' Workspace</p></div>';
+    var feats=(a.features||[]);
+    var kcards='';
+    if(feats.indexOf('my_tasks')>=0) kcards+='<div class="tcd-kpi tasks" onclick="tPage(\'vtasks\',null)"><b>'+(k.active_tasks||0)+'</b><span>Active Tasks</span></div>';
+    if(feats.indexOf('material_checker')>=0||feats.indexOf('subject_materials')>=0){
+      kcards+='<div class="tcd-kpi mat" onclick="tPage(\'mysubjects\',null)"><b>'+(k.materials||0)+'</b><span>Materials</span></div>';
+      kcards+='<div class="tcd-kpi pend" onclick="tPage(\'mysubjects\',null)"><b>'+(k.pending_reviews||0)+'</b><span>Pending Reviews</span></div>';
+      kcards+='<div class="tcd-kpi appr" onclick="tPage(\'mysubjects\',null)"><b>'+(k.approved||0)+'</b><span>Approved</span></div>';
+    }
+    var kpis=kcards?'<div class="tcd-kpis">'+kcards+'</div>':'';
+
+    var subs=d.subjects||[];
+    var subHtml='';
+    if(feats.indexOf('my_subjects')>=0){
+      subHtml='<div class="tcd-sec">My Subjects</div>';
+      if(subs.length){
+        subHtml+='<div class="tmsub-grid">'+subs.map(function(s){
+          return '<div class="tmsub-card" onclick="tPage(\'mysubjects\',null)" style="cursor:pointer"><div class="tmsub-nm">'+esc(s.name)+'</div>'
+            +(s.code?'<div class="tmsub-code">'+esc(s.code)+'</div>':'')
+            +'<div class="tmsub-stats"><div class="tmsub-stat"><b>'+(s.materials||0)+'</b><span>Materials</span></div>'
+            +'<div class="tmsub-stat pend"><b>'+(s.pending||0)+'</b><span>Pending</span></div>'
+            +'<div class="tmsub-stat appr"><b>'+(s.approved||0)+'</b><span>Approved</span></div></div></div>';
+        }).join('')+'</div>';
+      } else {
+        subHtml+='<div class="tcd-empty">No subjects assigned yet for this workspace.</div>';
+      }
+    }
+
+    var rec=d.recent||[];
+    var recHtml='<div class="tcd-sec">Recent Activity</div>'+(rec.length
+      ? '<div style="display:flex;flex-direction:column;gap:8px">'+rec.map(function(r){
+          return '<div style="display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--border,#e5ddcb);border-radius:10px"><span style="color:#059669;font-weight:800">\u2713</span><div style="flex:1"><div style="font-weight:600;font-size:.86rem">'+esc(r.detail||r.action)+'</div><div style="font-size:.72rem;color:#8a7d5c">'+esc(r.at)+'</div></div></div>';
+        }).join('')+'</div>'
+      : '<div class="tcd-empty">You\u2019re all clear \u2014 no recent activity yet.</div>');
+
+    el.innerHTML=hero+kpis+subHtml+recHtml;
+  }).catch(function(e){
+    el.innerHTML='<div style="padding:22px;color:#c1443a">Could not load workspace. '+esc((e&&e.message)||'')+'</div>';
+  });
+}
+
+/* ============================================================
+   PHASE 11 — Subject Materials (admin upload + teacher secure view)
+   ============================================================ */
+var MAT_TYPES=[['notes','Notes'],['book','Book'],['pdf','PDF'],['ppt','PPT'],
+  ['qbank','Question Bank'],['reference','Reference'],['resource','Study Resource']];
+function _matTypeLabel(k){ var f=MAT_TYPES.filter(function(x){return x[0]===k;})[0]; return f?f[1]:k; }
+function _fmtSize(n){ n=n||0; return n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?(n/1024).toFixed(0)+' KB':n+' B'; }
+
+async function catDownloadMaterial(role, mid, name){
+  try{
+    var r=await fetch(API+'/api/'+role+'/category-materials/'+mid+'/download',{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('Download failed');
+    var blob=await r.blob(); var url=URL.createObjectURL(blob);
+    var a=document.createElement('a'); a.href=url; a.download=name||'file';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(url);},4000);
+  }catch(e){ toast('Could not download',true); }
+}
+
+/* ---- Admin materials manager ---- */
+function catOpenMaterials(cid){
+  var c=_catById(cid);
+  showModal('Subject Materials · '+(c?c.display_name:''), '<div class="spinner"></div>', '');
+  Promise.all([
+    api('/api/admin/categories/'+cid+'/subjects').catch(function(){return {subjects:[]};}),
+    api('/api/admin/categories/'+cid+'/materials').catch(function(){return {materials:[]};})
+  ]).then(function(res){
+    window._catMatState={cid:cid, subjects:(res[0].subjects||[]), materials:(res[1].materials||[])};
+    _renderCatMaterials();
+  }).catch(function(e){ document.getElementById('modal-body').innerHTML='<div style="color:#c1443a;padding:12px">'+esc((e&&e.message)||'Could not load')+'</div>'; });
+}
+function _renderCatMaterials(){
+  var st=window._catMatState||{subjects:[],materials:[]};
+  var subOpts='<option value="">Whole category (no subject)</option>'+st.subjects.map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+'</option>';}).join('');
+  var typeOpts=MAT_TYPES.map(function(t){return '<option value="'+t[0]+'">'+t[1]+'</option>';}).join('');
+  var up='<div style="border:1px solid var(--border,#e5ddcb);border-radius:12px;padding:14px;margin-bottom:14px">'
+    +'<div style="font-weight:700;font-size:.88rem;margin-bottom:10px">Upload material</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+    +'<input id="cm-title" class="form-control" placeholder="Title">'
+    +'<select id="cm-type" class="form-control">'+typeOpts+'</select>'
+    +'<select id="cm-subject" class="form-control">'+subOpts+'</select>'
+    +'<input id="cm-file" type="file" class="form-control">'
+    +'</div>'
+    +'<textarea id="cm-desc" class="form-control" rows="2" placeholder="Description (optional)" style="margin-top:8px"></textarea>'
+    +'<div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn btn-primary" id="cm-up-btn" onclick="catUploadMaterial()">Upload</button></div>'
+    +'<div id="cm-up-status" style="font-size:.8rem;margin-top:6px"></div></div>';
+  var rows=st.materials.length?st.materials.map(function(m){
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border,#e5ddcb);border-radius:10px;margin-bottom:8px'+(m.is_active?'':';opacity:.55')+'">'
+      +'<div style="flex:1"><div style="font-weight:700">'+esc(m.title)+' <span style="font-size:.68rem;color:#8a7d5c;background:rgba(230,173,78,.14);padding:2px 8px;border-radius:999px">'+esc(_matTypeLabel(m.material_type))+'</span></div>'
+      +'<div style="font-size:.74rem;color:#8a7d5c">'+(m.subject?esc(m.subject)+' · ':'Whole category · ')+_fmtSize(m.file_size)+' · '+esc(m.created_at)+'</div></div>'
+      +'<button class="btn btn-ghost btn-sm" onclick="catDownloadMaterial(\'admin\','+m.id+',\''+esc((m.filename||'file').replace(/'/g,''))+'\')">Download</button>'
+      +'<button class="btn btn-ghost btn-sm" onclick="catMatToggle('+m.id+','+(m.is_active?0:1)+')">'+(m.is_active?'Disable':'Enable')+'</button>'
+    +'</div>';
+  }).join(''):'<div style="color:#9c8f6e;padding:8px 0">No materials uploaded yet.</div>';
+  document.getElementById('modal-body').innerHTML=up+'<div style="font-weight:700;font-size:.86rem;margin-bottom:8px">Uploaded ('+st.materials.length+')</div>'+rows;
+  document.getElementById('modal-footer').innerHTML='<button class="btn btn-ghost" onclick="closeModal()">Close</button>';
+}
+async function catUploadMaterial(){
+  var st=window._catMatState; if(!st) return;
+  var f=document.getElementById('cm-file'); var title=(document.getElementById('cm-title').value||'').trim();
+  if(!f.files||!f.files[0]){ toast('Choose a file',true); return; }
+  if(!title){ title=f.files[0].name; }
+  var btn=document.getElementById('cm-up-btn'); btn.disabled=true; btn.textContent='Uploading...';
+  try{
+    var fd=new FormData();
+    fd.append('file', f.files[0]); fd.append('title', title);
+    fd.append('material_type', document.getElementById('cm-type').value);
+    fd.append('subject_id', document.getElementById('cm-subject').value||'');
+    fd.append('description', document.getElementById('cm-desc').value||'');
+    var r=await fetch(API+'/api/admin/categories/'+st.cid+'/materials',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+    if(!r.ok){ var d=null; try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||'Upload failed'); }
+    toast('Material uploaded'); catOpenMaterials(st.cid); loadACategories();
+  }catch(e){ document.getElementById('cm-up-status').innerHTML='<span style="color:#c1443a">'+esc(e.message)+'</span>'; btn.disabled=false; btn.textContent='Upload'; }
+}
+async function catMatToggle(mid,to){
+  var st=window._catMatState;
+  try{ await api('/api/admin/category-materials/'+mid,'PATCH',{is_active:(to==1||to==='1')}); catOpenMaterials(st.cid); }
+  catch(e){ toast((e&&e.message)||'Could not update',true); }
+}
+
+/* ---- Teacher subject materials ---- */
+function loadTSubjectMaterials(){
+  var el=document.getElementById('t-subjectmaterials-content'); if(!el) return;
+  var a=window._tActiveCat; if(!a){ el.innerHTML=''; return; }
+  try{ softSpin(el); }catch(e){ el.innerHTML='<div class="spinner"></div>'; }
+  api('/api/teacher/materials?category_id='+a.id).then(function(r){
+    var mats=(r&&r.materials)||[];
+    if(!mats.length){ el.innerHTML='<div style="margin-bottom:14px"><div style="font-weight:800;font-size:1.05rem">Subject Materials</div><div style="font-size:.84rem;color:#8a7d5c">'+esc(a.display_name)+' workspace</div></div><div class="tcd-empty">No materials available yet.</div>'; return; }
+    // group by subject
+    var groups={}; mats.forEach(function(m){ var k=m.subject||'General'; (groups[k]=groups[k]||[]).push(m); });
+    var html='<div style="margin-bottom:14px"><div style="font-weight:800;font-size:1.05rem">Subject Materials</div><div style="font-size:.84rem;color:#8a7d5c">'+esc(a.display_name)+' workspace</div></div>';
+    Object.keys(groups).forEach(function(g){
+      html+='<div class="tcd-sec">'+esc(g)+'</div><div style="display:flex;flex-direction:column;gap:8px">';
+      html+=groups[g].map(function(m){
+        return '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border,#e5ddcb);border-radius:12px;background:var(--card,#fff)">'
+          +'<div style="flex:1"><div style="font-weight:700">'+esc(m.title)+' <span style="font-size:.66rem;color:#8a7d5c;background:rgba(230,173,78,.14);padding:2px 8px;border-radius:999px">'+esc(_matTypeLabel(m.material_type))+'</span></div>'
+          +(m.description?'<div style="font-size:.78rem;color:#8a7d5c;margin-top:2px">'+esc(m.description)+'</div>':'')
+          +'<div style="font-size:.72rem;color:#8a7d5c;margin-top:2px">'+_fmtSize(m.file_size)+' · '+esc(m.created_at)+'</div></div>'
+          +'<button class="btn btn-primary btn-sm" onclick="catDownloadMaterial(\'teacher\','+m.id+',\''+esc((m.filename||'file').replace(/'/g,''))+'\')">Download</button></div>';
+      }).join('')+'</div>';
+    });
+    el.innerHTML=html;
+  }).catch(function(e){ el.innerHTML='<div style="padding:22px;color:#c1443a">'+esc((e&&e.message)||'Could not load materials')+'</div>'; });
+}
+
+/* ============================================================
+   PHASE 12A — Material Checker (teacher side)
+   ============================================================ */
+var MS_STATUS={submitted:['Submitted','#2563eb'],under_review:['Under Review','#7c3aed'],
+  changes_required:['Changes Required','#d97706'],resubmitted:['Resubmitted','#0891b2'],
+  approved:['Approved','#059669'],rejected:['Rejected','#dc2626'],draft:['Draft','#6b7280']};
+function _msPill(st){ var m=MS_STATUS[st]||[st,'#6b7280']; return '<span style="font-size:.68rem;font-weight:800;padding:3px 10px;border-radius:999px;white-space:nowrap;color:#fff;background:'+m[1]+'">'+m[0]+'</span>'; }
+function _mcCss(){
+  if(document.getElementById('mc-css')) return;
+  var s=document.createElement('style'); s.id='mc-css';
+  s.textContent=[
+    '.mc-row{display:flex;align-items:center;gap:12px;padding:13px 15px;border:1px solid var(--border);border-radius:12px;background:var(--card);margin-bottom:9px;cursor:pointer;transition:.14s}',
+    '.mc-row:hover{border-color:#d9b978;transform:translateY(-1px)}',
+    'body.dark .mc-row{background:var(--card);border-color:var(--border)}',
+    '.mc-ttl{font-weight:700}',
+    '.mc-meta{font-size:.74rem;color:#8a7d5c;margin-top:2px}',
+    '.mc-ver{font-family:ui-monospace,monospace;font-size:.72rem;color:#8a7d5c}',
+    '.mc-v{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:7px}',
+    '.mc-due{font-size:.7rem;font-weight:800;padding:2px 9px;border-radius:999px}',
+    '.mc-due.ok{background:rgba(5,150,105,.14);color:#059669}.mc-due.soon{background:rgba(217,119,6,.16);color:#d97706}.mc-due.over{background:rgba(220,38,38,.15);color:#dc2626}'
+  ].join('');
+  document.head.appendChild(s);
+}
+function _dueBadge(deadline){
+  if(!deadline) return '';
+  var d=new Date(deadline.replace(' ','T')); if(isNaN(d)) return '';
+  var days=Math.ceil((d-new Date())/86400000);
+  var cls=days<0?'over':days<=2?'soon':'ok';
+  var txt=days<0?('Overdue '+(-days)+'d'):days===0?'Due today':days===1?'Due tomorrow':('Due in '+days+'d');
+  return '<span class="mc-due '+cls+'">'+txt+'</span>';
+}
+
+function loadTMatChecker(){
+  var el=document.getElementById('t-matchecker-content'); if(!el) return;
+  var a=window._tActiveCat; if(!a){ el.innerHTML=''; return; }
+  _mcCss(); try{ softSpin(el); }catch(e){ el.innerHTML='<div class="spinner"></div>'; }
+  api('/api/teacher/material-submissions?category_id='+a.id).then(function(r){
+    var subs=(r&&r.submissions)||[];
+    var head='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'
+      +'<div><div style="font-weight:800;font-size:1.05rem">Material Checker</div><div style="font-size:.84rem;color:#8a7d5c">'+esc(a.display_name)+' workspace</div></div>'
+      +'<button class="btn btn-primary" onclick="mcOpenSubmit()">+ New Submission</button></div>';
+    if(!subs.length){ el.innerHTML=head+'<div class="tcd-empty">No submissions yet. Use \u201cNew Submission\u201d to send your first material for review.</div>'; return; }
+    var rows=subs.map(function(m){
+      return '<div class="mc-row" onclick="mcOpenDetail('+m.id+')">'
+        +'<div style="flex:1"><div class="mc-ttl">'+esc(m.title)+'</div>'
+        +'<div class="mc-meta">'+(m.subject?esc(m.subject)+' · ':'')+esc(_matTypeLabel(m.material_type))+' · <span class="mc-ver">v'+(m.current_version||1)+'</span></div></div>'
+        +_dueBadge(m.deadline)+_msPill(m.status)+'</div>';
+    }).join('');
+    el.innerHTML=head+rows;
+  }).catch(function(e){ el.innerHTML='<div style="padding:22px;color:#c1443a">'+esc((e&&e.message)||'Could not load')+'</div>'; });
+}
+
+function mcOpenSubmit(){
+  var a=window._tActiveCat; if(!a) return;
+  api('/api/teacher/subjects?category_id='+a.id).then(function(r){
+    var subs=(r&&r.subjects)||[];
+    var subOpts='<option value="">No specific subject</option>'+subs.map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+'</option>';}).join('');
+    var typeOpts=MAT_TYPES.map(function(t){return '<option value="'+t[0]+'">'+t[1]+'</option>';}).join('');
+    var body='<div class="form-group"><label class="form-label">Title</label><input id="mcs-title" class="form-control" placeholder="e.g. Economics Unit 2 PPT"></div>'
+      +'<div style="display:flex;gap:10px"><div class="form-group" style="flex:1"><label class="form-label">Subject</label><select id="mcs-subject" class="form-control">'+subOpts+'</select></div>'
+      +'<div class="form-group" style="flex:1"><label class="form-label">Type</label><select id="mcs-type" class="form-control">'+typeOpts+'</select></div></div>'
+      +'<div class="form-group"><label class="form-label">Description</label><textarea id="mcs-desc" class="form-control" rows="2" placeholder="What is this material?"></textarea></div>'
+      +'<div class="form-group"><label class="form-label">Reference link (optional)</label><input id="mcs-ref" class="form-control" placeholder="Drive/source link"></div>'
+      +'<div class="form-group"><label class="form-label">File</label><input id="mcs-file" type="file" class="form-control"></div>'
+      +'<div id="mcs-status" style="font-size:.8rem"></div>';
+    showModal('New Submission · '+esc(a.display_name), body,
+      '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="mcs-btn" onclick="mcSubmit()">Submit for Review</button>');
+  });
+}
+async function mcSubmit(){
+  var a=window._tActiveCat; var f=document.getElementById('mcs-file');
+  var title=(document.getElementById('mcs-title').value||'').trim();
+  if(!f.files||!f.files[0]){ toast('Choose a file',true); return; }
+  if(!title) title=f.files[0].name;
+  var btn=document.getElementById('mcs-btn'); btn.disabled=true; btn.textContent='Submitting...';
+  try{
+    var fd=new FormData();
+    fd.append('file',f.files[0]); fd.append('category_id',a.id); fd.append('title',title);
+    fd.append('subject_id',document.getElementById('mcs-subject').value||'');
+    fd.append('material_type',document.getElementById('mcs-type').value);
+    fd.append('description',document.getElementById('mcs-desc').value||'');
+    fd.append('reference',document.getElementById('mcs-ref').value||'');
+    var r=await fetch(API+'/api/teacher/material-submissions',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+    if(!r.ok){ var d=null; try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||'Submit failed'); }
+    closeModal(); toast('Submitted for review'); loadTMatChecker();
+  }catch(e){ document.getElementById('mcs-status').innerHTML='<span style="color:#c1443a">'+esc(e.message)+'</span>'; btn.disabled=false; btn.textContent='Submit for Review'; }
+}
+
+function mcOpenDetail(sid){
+  showModal('Submission', '<div class="spinner"></div>', '');
+  api('/api/teacher/material-submissions/'+sid).then(function(r){
+    var m=r.submission; window._mcCur=m;
+    var vers=(m.versions||[]).map(function(v){
+      return '<div class="mc-v"><div style="flex:1"><b>Version '+v.version_no+'</b> <span class="mc-ver">'+esc(v.filename)+' · '+_fmtSize(v.file_size)+'</span>'
+        +(v.remarks?'<div style="font-size:.78rem;color:#8a7d5c;margin-top:3px">'+esc(v.remarks)+'</div>':'')
+        +'<div style="font-size:.7rem;color:#8a7d5c">'+esc(v.created_at)+'</div></div>'
+        +'<button class="btn btn-ghost btn-sm" onclick="catDownloadVersion(\'teacher\','+v.id+',\''+esc((v.filename||'file').replace(/'/g,''))+'\')">Download</button></div>';
+    }).join('');
+    var canResub=(m.status!=='approved'&&m.status!=='rejected');
+    var body='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px"><div><div style="font-weight:800;font-size:1.05rem">'+esc(m.title)+'</div>'
+      +'<div style="font-size:.78rem;color:#8a7d5c">'+(m.subject?esc(m.subject)+' · ':'')+esc(_matTypeLabel(m.material_type))+'</div></div>'+_msPill(m.status)+'</div>'
+      +(m.deadline?'<div style="margin-bottom:8px">'+_dueBadge(m.deadline)+'</div>':'')
+      +(m.description?'<div style="font-size:.85rem;margin-bottom:10px">'+esc(m.description)+'</div>':'')
+      +'<div style="font-weight:700;font-size:.86rem;margin:10px 0 8px">Version history</div>'+vers;
+    var footer='<button class="btn btn-ghost" onclick="closeModal()">Close</button>'
+      +(canResub?'<button class="btn btn-primary" onclick="mcResubmitPrompt('+m.id+')">Upload New Version</button>':'');
+    showModal('Submission · v'+(m.current_version||1), body, footer);
+    document.getElementById('modal-body').insertAdjacentHTML('beforeend','<div id="mc-chat-host" style="margin-top:16px;border-top:1px solid var(--border,#e5ddcb);padding-top:14px"></div>');
+    _mcLoadChat('teacher', m.id);
+  }).catch(function(e){ document.getElementById('modal-body').innerHTML='<div style="color:#c1443a;padding:12px">'+esc((e&&e.message)||'Could not load')+'</div>'; });
+}
+function mcResubmitPrompt(sid){
+  var body='<div class="form-group"><label class="form-label">New version file</label><input id="mcr-file" type="file" class="form-control"></div>'
+    +'<div class="form-group"><label class="form-label">Note (optional)</label><textarea id="mcr-note" class="form-control" rows="2" placeholder="What changed?"></textarea></div><div id="mcr-status" style="font-size:.8rem"></div>';
+  showModal('Upload New Version', body,
+    '<button class="btn btn-ghost" onclick="mcOpenDetail('+sid+')">Back</button><button class="btn btn-primary" id="mcr-btn" onclick="mcResubmit('+sid+')">Upload</button>');
+}
+async function mcResubmit(sid){
+  var f=document.getElementById('mcr-file'); if(!f.files||!f.files[0]){ toast('Choose a file',true); return; }
+  var btn=document.getElementById('mcr-btn'); btn.disabled=true; btn.textContent='Uploading...';
+  try{
+    var fd=new FormData(); fd.append('file',f.files[0]); fd.append('remarks',document.getElementById('mcr-note').value||'');
+    var r=await fetch(API+'/api/teacher/material-submissions/'+sid+'/resubmit',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+    if(!r.ok){ var d=null; try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||'Upload failed'); }
+    toast('New version uploaded'); mcOpenDetail(sid); loadTMatChecker();
+  }catch(e){ document.getElementById('mcr-status').innerHTML='<span style="color:#c1443a">'+esc(e.message)+'</span>'; btn.disabled=false; btn.textContent='Upload'; }
+}
+async function catDownloadVersion(role, vid, name){
+  try{
+    var r=await fetch(API+'/api/'+role+'/material-versions/'+vid+'/download',{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('fail'); var blob=await r.blob(); var url=URL.createObjectURL(blob);
+    var a=document.createElement('a'); a.href=url; a.download=name||'file'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(url);},4000);
+  }catch(e){ toast('Could not download',true); }
+}
+
+/* ============================================================
+   PHASE 12A — Material Checker (admin side)
+   ============================================================ */
+function initAdminMatCheck(){
+  var app=document.getElementById('admin-app'); if(!app) return;
+  var nav=app.querySelector('.sidebar-nav'); var main=app.querySelector('.main');
+  if(nav && !nav.querySelector('[onclick*="matcheck"]')){
+    var anchor=[].slice.call(nav.querySelectorAll('.nav-item')).filter(function(n){
+      return (n.getAttribute('onclick')||'').indexOf("'categories'")>=0;})[0];
+    var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"aPage('matcheck',this)");
+    d.innerHTML=(typeof ic==='function'?ic('check'):'')+'<span>Material Checker</span>';
+    if(anchor){ anchor.parentNode.insertBefore(d, anchor.nextSibling); } else { nav.appendChild(d); }
+  }
+  if(main && !document.getElementById('a-page-matcheck')){
+    var pg=document.createElement('div'); pg.className='page'; pg.id='a-page-matcheck';
+    pg.innerHTML='<div id="a-matcheck-content"><div class="spinner"></div></div>';
+    main.appendChild(pg);
+  }
+}
+window._amcFilter={category_id:0,status:''};
+function loadAMatCheck(){
+  var el=document.getElementById('a-matcheck-content'); if(!el) return;
+  _mcCss(); try{ softSpin(el); }catch(e){ el.innerHTML='<div class="spinner"></div>'; }
+  Promise.all([
+    api('/api/admin/categories').catch(function(){return {categories:[]};}),
+    api('/api/admin/material-submissions?category_id='+(_amcFilter.category_id||0)+'&status='+(_amcFilter.status||''))
+  ]).then(function(res){
+    var cats=(res[0].categories||[]); var subs=(res[1].submissions||[]);
+    var catOpts='<option value="0">All categories</option>'+cats.map(function(c){return '<option value="'+c.id+'"'+(_amcFilter.category_id==c.id?' selected':'')+'>'+esc(c.display_name)+'</option>';}).join('');
+    var stList=[['','All statuses'],['submitted','Submitted'],['under_review','Under Review'],['changes_required','Changes Required'],['resubmitted','Resubmitted'],['approved','Approved'],['rejected','Rejected']];
+    var stOpts=stList.map(function(x){return '<option value="'+x[0]+'"'+(_amcFilter.status===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('');
+    var head='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'
+      +'<div style="font-weight:800;font-size:1.15rem">Material Checker</div>'
+      +'<div style="display:flex;gap:8px"><select class="form-control" style="width:auto" onchange="amcSetCat(this.value)">'+catOpts+'</select>'
+      +'<select class="form-control" style="width:auto" onchange="amcSetStatus(this.value)">'+stOpts+'</select></div></div>';
+    if(!subs.length){ el.innerHTML=head+'<div class="tcd-empty">No submissions match this filter.</div>'; return; }
+    var rows=subs.map(function(m){
+      return '<div class="mc-row" onclick="amcOpenDetail('+m.id+')">'
+        +'<div style="flex:1"><div class="mc-ttl">'+esc(m.title)+'</div>'
+        +'<div class="mc-meta">'+esc(m.teacher||'')+' · '+(m.subject?esc(m.subject)+' · ':'')+esc(_matTypeLabel(m.material_type))+' · <span class="mc-ver">v'+(m.current_version||1)+'</span></div></div>'
+        +_dueBadge(m.deadline)+(m.priority==='high'?'<span style="font-size:.66rem;font-weight:800;color:#dc2626">HIGH</span>':'')+_msPill(m.status)+'</div>';
+    }).join('');
+    el.innerHTML=head+rows;
+  }).catch(function(e){ el.innerHTML='<div style="padding:22px;color:#c1443a">'+esc((e&&e.message)||'Could not load')+'</div>'; });
+}
+function amcSetCat(v){ _amcFilter.category_id=parseInt(v,10)||0; loadAMatCheck(); }
+function amcSetStatus(v){ _amcFilter.status=v||''; loadAMatCheck(); }
+
+function amcOpenDetail(sid){
+  showModal('Review', '<div class="spinner"></div>', '');
+  api('/api/admin/material-submissions/'+sid).then(function(r){
+    var m=r.submission; window._amcCur=m;
+    var vers=(m.versions||[]).map(function(v){
+      return '<div class="mc-v"><div style="flex:1"><b>Version '+v.version_no+'</b> <span class="mc-ver">'+esc(v.filename)+' · '+_fmtSize(v.file_size)+'</span>'
+        +(v.remarks?'<div style="font-size:.78rem;color:#8a7d5c;margin-top:3px">'+esc(v.remarks)+'</div>':'')
+        +'<div style="font-size:.7rem;color:#8a7d5c">'+esc(v.created_at)+'</div></div>'
+        +'<button class="btn btn-ghost btn-sm" onclick="catDownloadVersion(\'admin\','+v.id+',\''+esc((v.filename||'file').replace(/'/g,''))+'\')">Download</button></div>';
+    }).join('');
+    var dl=m.deadline?m.deadline.replace(' ','T').slice(0,16):'';
+    var body='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px"><div><div style="font-weight:800;font-size:1.05rem">'+esc(m.title)+'</div>'
+      +'<div style="font-size:.78rem;color:#8a7d5c">'+esc(m.teacher||'')+' · '+(m.subject?esc(m.subject)+' · ':'')+esc(_matTypeLabel(m.material_type))+'</div></div>'+_msPill(m.status)+'</div>'
+      +(m.description?'<div style="font-size:.85rem;margin:6px 0 10px">'+esc(m.description)+'</div>':'')
+      +(m.reference?'<div style="font-size:.8rem;margin-bottom:10px">Reference: <a href="'+esc(m.reference)+'" target="_blank" rel="noopener" style="color:#2563eb">'+esc(m.reference)+'</a></div>':'')
+      +'<div style="font-weight:700;font-size:.86rem;margin:10px 0 8px">Version history</div>'+vers
+      +'<div style="border-top:1px solid var(--border,#e5ddcb);margin-top:12px;padding-top:12px"><div style="font-weight:700;font-size:.86rem;margin-bottom:8px">Review</div>'
+      +'<textarea id="amc-remarks" class="form-control" rows="2" placeholder="Remarks to the teacher (optional)"></textarea>'
+      +'<div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap"><div style="flex:1"><label class="form-label">Deadline</label><input id="amc-deadline" type="datetime-local" class="form-control" value="'+dl+'"></div>'
+      +'<div style="width:130px"><label class="form-label">Priority</label><select id="amc-priority" class="form-control"><option value="low"'+(m.priority==='low'?' selected':'')+'>Low</option><option value="normal"'+(m.priority==='normal'?' selected':'')+'>Normal</option><option value="high"'+(m.priority==='high'?' selected':'')+'>High</option></select></div></div></div>';
+    var footer='<button class="btn btn-ghost" onclick="closeModal()">Close</button>'
+      +'<button class="btn btn-ghost" style="color:#7c3aed" onclick="amcReview('+sid+',\'under_review\')">Under Review</button>'
+      +'<button class="btn btn-ghost" style="color:#d97706" onclick="amcReview('+sid+',\'changes_required\')">Changes Required</button>'
+      +'<button class="btn btn-danger" onclick="amcReview('+sid+',\'rejected\')">Reject</button>'
+      +'<button class="btn btn-primary" onclick="amcReview('+sid+',\'approved\')">Approve</button>';
+    showModal('Review · v'+(m.current_version||1), body, footer);
+    document.getElementById('modal-body').insertAdjacentHTML('beforeend','<div id="mc-chat-host" style="margin-top:16px;border-top:1px solid var(--border,#e5ddcb);padding-top:14px"></div>');
+    _mcLoadChat('admin', sid);
+  }).catch(function(e){ document.getElementById('modal-body').innerHTML='<div style="color:#c1443a;padding:12px">'+esc((e&&e.message)||'Could not load')+'</div>'; });
+}
+async function amcReview(sid, decision){
+  var payload={decision:decision,
+    remarks:(document.getElementById('amc-remarks')||{}).value||'',
+    deadline:(document.getElementById('amc-deadline')||{}).value||'',
+    priority:(document.getElementById('amc-priority')||{}).value||'normal'};
+  try{ await api('/api/admin/material-submissions/'+sid+'/review','POST',payload);
+    closeModal(); toast('Review saved'); loadAMatCheck();
+  }catch(e){ toast((e&&e.message)||'Could not save',true); }
+}
+
+/* ============================================================
+   PHASE 12B — Material Checker review chat (teacher + admin)
+   ============================================================ */
+function _mcChatCss(){
+  if(document.getElementById('mcchat-css')) return;
+  var s=document.createElement('style'); s.id='mcchat-css';
+  s.textContent=[
+    '.mc-chat-msgs{max-height:34vh;overflow:auto;display:flex;flex-direction:column;gap:10px;padding:4px 2px;margin-bottom:10px}',
+    '.mc-b{max-width:80%;padding:9px 12px;border-radius:14px;font-size:.86rem;line-height:1.35;word-break:break-word}',
+    '.mc-b .who{font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;opacity:.7;margin-bottom:3px}',
+    '.mc-b .at{font-size:.64rem;opacity:.6;margin-top:4px}',
+    '.mc-b.them{align-self:flex-start;background:var(--card);border:1px solid var(--border)}',
+    'body.dark .mc-b.them{background:var(--card);border-color:var(--border)}',
+    '.mc-b.me{align-self:flex-end;background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05}',
+    '.mc-b img.att{max-width:210px;border-radius:10px;margin-top:6px;display:block;cursor:pointer}',
+    '.mc-b a.att{display:inline-block;margin-top:6px;font-size:.78rem;font-weight:700;text-decoration:underline;cursor:pointer}',
+    '.mc-comp{border:1px solid var(--border);border-radius:12px;padding:10px;background:var(--card)}',
+    'body.dark .mc-comp{background:var(--card);border-color:var(--border)}',
+    '.mc-comp.drag{border-color:#b8941f;background:rgba(184,148,31,.08)}',
+    '.mc-pend{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:6px}',
+    '.mc-chip{position:relative;border:1px solid var(--border);border-radius:8px;padding:5px 9px;font-size:.74rem;display:flex;align-items:center;gap:6px}',
+    '.mc-chip img{width:34px;height:34px;object-fit:cover;border-radius:5px}',
+    '.mc-chip .x{cursor:pointer;font-weight:800;color:#c1443a}'
+  ].join('');
+  document.head.appendChild(s);
+}
+function _mcChatHostHtml(role, sid){
+  return '<div style="font-weight:700;font-size:.86rem;margin:6px 0 8px">Conversation</div>'
+    +'<div id="mc-chat-msgs" class="mc-chat-msgs"><div class="spinner"></div></div>'
+    +'<div class="mc-comp" id="mc-comp">'
+      +'<div id="mc-pend" class="mc-pend"></div>'
+      +'<textarea id="mc-input" class="form-control" rows="2" placeholder="Write a message\u2026 (paste or drop an image)"></textarea>'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">'
+        +'<label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">Attach<input id="mc-file" type="file" multiple accept="image/*,application/pdf" style="display:none" onchange="_mcPickFiles(this.files)"></label>'
+        +'<button class="btn btn-primary btn-sm" id="mc-send" onclick="mcChatSend(\''+role+'\','+sid+')">Send</button>'
+      +'</div></div>';
+}
+function _mcLoadChat(role, sid){
+  _mcChatCss();
+  var host=document.getElementById('mc-chat-host'); if(!host) return;
+  host.innerHTML=_mcChatHostHtml(role, sid);
+  window._mcChatPend=[];
+  var comp=document.getElementById('mc-comp'), input=document.getElementById('mc-input');
+  if(input){ input.addEventListener('paste', function(e){
+    var items=((e.clipboardData||{}).items)||[]; var got=false;
+    for(var i=0;i<items.length;i++){ if((items[i].type||'').indexOf('image')===0){ var f=items[i].getAsFile(); if(f){ _mcAddPend(f); got=true; } } }
+    if(got) e.preventDefault();
+  }); }
+  if(comp){
+    comp.addEventListener('dragover', function(e){ e.preventDefault(); comp.classList.add('drag'); });
+    comp.addEventListener('dragleave', function(){ comp.classList.remove('drag'); });
+    comp.addEventListener('drop', function(e){ e.preventDefault(); comp.classList.remove('drag'); var fs=((e.dataTransfer||{}).files)||[]; for(var i=0;i<fs.length;i++) _mcAddPend(fs[i]); });
+  }
+  api('/api/'+role+'/material-submissions/'+sid+'/messages').then(function(r){ _mcRenderMsgs(role,(r&&r.messages)||[]); })
+    .catch(function(e){ var el=document.getElementById('mc-chat-msgs'); if(el) el.innerHTML='<div style="color:#c1443a;font-size:.82rem">'+esc((e&&e.message)||'Could not load chat')+'</div>'; });
+}
+function _mcRenderMsgs(role, msgs){
+  var el=document.getElementById('mc-chat-msgs'); if(!el) return;
+  if(!msgs.length){ el.innerHTML='<div style="color:#9c8f6e;font-size:.82rem;padding:6px">No messages yet. Start the conversation below.</div>'; return; }
+  var imgJobs=[];
+  el.innerHTML=msgs.map(function(m){
+    var mine=(m.sender_role===role);
+    var atts=(m.attachments||[]).map(function(a){
+      if(a.is_image){ var id='mcimg-'+a.id; imgJobs.push([id, role, a.id]); return '<img id="'+id+'" class="att" alt="'+esc(a.filename)+'" onclick="_mcAttDownload(\''+role+'\','+a.id+',\''+esc((a.filename||'image').replace(/'/g,''))+'\')">'; }
+      return '<a class="att" onclick="_mcAttDownload(\''+role+'\','+a.id+',\''+esc((a.filename||'file').replace(/'/g,''))+'\')">\u2193 '+esc(a.filename)+'</a>';
+    }).join('');
+    return '<div class="mc-b '+(mine?'me':'them')+'"><div class="who">'+esc(m.sender_role==='admin'?'Admin':'Teacher')+'</div>'
+      +(m.message?esc(m.message).replace(/\n/g,'<br>'):'')+atts+'<div class="at">'+esc(m.at)+'</div></div>';
+  }).join('');
+  el.scrollTop=el.scrollHeight;
+  imgJobs.forEach(function(j){ _mcLoadImg(j[0], '/api/'+j[1]+'/material-attachments/'+j[2]+'/view'); });
+}
+async function _mcLoadImg(imgId, url){
+  try{ var r=await fetch(API+url,{headers:{Authorization:'Bearer '+TOKEN}}); if(!r.ok) return;
+    var u=URL.createObjectURL(await r.blob()); var im=document.getElementById(imgId); if(im) im.src=u;
+  }catch(e){}
+}
+function _mcPickFiles(files){ for(var i=0;i<files.length;i++) _mcAddPend(files[i]); }
+function _mcAddPend(file){
+  if(!file) return; window._mcChatPend=window._mcChatPend||[];
+  var entry={file:file, url:''};
+  if((file.type||'').indexOf('image')===0){ entry.url=URL.createObjectURL(file); }
+  window._mcChatPend.push(entry); _mcRenderPend();
+}
+function _mcRenderPend(){
+  var el=document.getElementById('mc-pend'); if(!el) return;
+  el.innerHTML=(window._mcChatPend||[]).map(function(p,i){
+    return '<span class="mc-chip">'+(p.url?'<img src="'+p.url+'">':'\uD83D\uDCCE ')+esc(p.file.name||'file')+' <span class="x" onclick="_mcRemovePend('+i+')">\u00d7</span></span>';
+  }).join('');
+}
+function _mcRemovePend(i){ (window._mcChatPend||[]).splice(i,1); _mcRenderPend(); }
+async function mcChatSend(role, sid){
+  var input=document.getElementById('mc-input'); var txt=(input&&input.value||'').trim();
+  var pend=window._mcChatPend||[];
+  if(!txt && !pend.length){ toast('Type a message or attach a file',true); return; }
+  var btn=document.getElementById('mc-send'); if(btn){ btn.disabled=true; btn.textContent='Sending...'; }
+  try{
+    var fd=new FormData(); fd.append('message', txt);
+    pend.forEach(function(p){ fd.append('files', p.file, p.file.name||'file'); });
+    var r=await fetch(API+'/api/'+role+'/material-submissions/'+sid+'/messages',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+    if(!r.ok){ var d=null; try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||'Send failed'); }
+    if(input) input.value=''; window._mcChatPend=[]; _mcRenderPend();
+    api('/api/'+role+'/material-submissions/'+sid+'/messages').then(function(rr){ _mcRenderMsgs(role,(rr&&rr.messages)||[]); });
+  }catch(e){ toast(e.message||'Could not send',true); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent='Send'; } }
+}
+async function _mcAttDownload(role, aid, name){
+  try{ var r=await fetch(API+'/api/'+role+'/material-attachments/'+aid+'/download',{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('fail'); var u=URL.createObjectURL(await r.blob());
+    var a=document.createElement('a'); a.href=u; a.download=name||'file'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},4000);
+  }catch(e){ toast('Could not download',true); }
+}
+
+/* ============================================================
+   PHASE 13 — Category performance (teacher). NIOS performance untouched:
+   this only runs for non-NIOS workspaces.
+   ============================================================ */
+function loadTCatPerformance(){
+  var el=document.getElementById('t-performance-content'); if(!el) return;
+  var a=window._tActiveCat; if(!a){ if(typeof loadTPerformance==='function') loadTPerformance(); return; }
+  try{ softSpin(el); }catch(e){ el.innerHTML='<div class="spinner"></div>'; }
+  api('/api/teacher/category-performance?category_id='+a.id).then(function(d){
+    var t=d.totals||{}; var rate=d.approval_rate||0;
+    var ring='conic-gradient(#059669 '+(rate*3.6)+'deg,rgba(120,113,108,.18) 0)';
+    var hero='<div class="tcd-hero" style="display:flex;align-items:center;gap:22px;flex-wrap:wrap">'
+      +'<div style="width:104px;height:104px;border-radius:50%;background:'+ring+';display:flex;align-items:center;justify-content:center">'
+        +'<div style="width:80px;height:80px;border-radius:50%;background:var(--bg,#fff);display:flex;flex-direction:column;align-items:center;justify-content:center"><b style="font-size:1.4rem;color:#059669">'+rate+'%</b><span style="font-size:.6rem;color:#8a7d5c;text-transform:uppercase">Approval</span></div></div>'
+      +'<div><h2 style="margin:0;font-size:1.3rem;font-weight:800">'+esc(a.display_name)+' Performance</h2>'
+        +'<p style="margin:4px 0 0;color:#8a7d5c;font-weight:600">'+(t.total||0)+' materials submitted \u00b7 '+(t.approved||0)+' approved</p></div></div>';
+    var kpis='<div class="tcd-kpis">'
+      +'<div class="tcd-kpi appr"><b>'+(t.approved||0)+'</b><span>Approved</span></div>'
+      +'<div class="tcd-kpi pend"><b>'+(t.in_review||0)+'</b><span>In Review</span></div>'
+      +'<div class="tcd-kpi mat"><b>'+(t.total||0)+'</b><span>Total</span></div>'
+      +'<div class="tcd-kpi tasks"><b>'+(t.changes||0)+'</b><span>Changes Asked</span></div>'
+      +'</div>';
+    var subs=d.subjects||[];
+    var subHtml='';
+    if(subs.length){
+      subHtml='<div class="tcd-sec">By Subject</div><div style="display:flex;flex-direction:column;gap:9px">'
+        +subs.map(function(s){
+          var pct=s.total?Math.round((s.approved||0)*100/s.total):0;
+          return '<div style="border:1px solid var(--border,#e5ddcb);border-radius:12px;padding:12px 14px">'
+            +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-weight:700">'+esc(s.name)+'</div><div style="font-size:.78rem;color:#8a7d5c">'+(s.approved||0)+'/'+(s.total||0)+' approved</div></div>'
+            +'<div style="height:8px;border-radius:999px;background:rgba(120,113,108,.16);overflow:hidden"><div style="height:100%;width:'+pct+'%;background:#059669"></div></div></div>';
+        }).join('')+'</div>';
+    }
+    el.innerHTML=hero+kpis+subHtml;
+  }).catch(function(e){ el.innerHTML='<div style="padding:22px;color:#c1443a">'+esc((e&&e.message)||'Could not load performance')+'</div>'; });
+}
+
+/* ============================================================
+   PHASE 14 — Category-aware payout (additive; NIOS payroll untouched)
+   ============================================================ */
+var WT_UNITS=[['per_item','Per item'],['per_hour','Per hour'],['fixed','Fixed']];
+function _wtUnit(u){ var f=WT_UNITS.filter(function(x){return x[0]===u;})[0]; return f?f[1]:u; }
+
+/* ---- Admin: work types + effective-dated rates ---- */
+function catOpenPayRates(cid){
+  var c=_catById(cid);
+  showModal('Pay Rates · '+(c?c.display_name:''), '<div class="spinner"></div>', '');
+  _catLoadPayRates(cid);
+}
+function _catLoadPayRates(cid){
+  api('/api/admin/categories/'+cid+'/work-types').then(function(r){
+    window._catWtState={cid:cid, wts:(r.work_types||[])};
+    _renderCatPayRates();
+  }).catch(function(e){ document.getElementById('modal-body').innerHTML='<div style="color:#c1443a;padding:12px">'+esc((e&&e.message)||'Could not load')+'</div>'; });
+}
+function _renderCatPayRates(){
+  var st=window._catWtState||{wts:[]};
+  var rows=st.wts.map(function(w){
+    var hist=(w.rates||[]).slice(0,4).map(function(r){return '<span style="font-size:.72rem;color:#8a7d5c">\u20b9'+r.amount+' from '+esc(r.effective_from)+'</span>';}).join(' · ');
+    return '<div style="border:1px solid var(--border,#e5ddcb);border-radius:12px;padding:12px 14px;margin-bottom:9px'+(w.is_active?'':';opacity:.55')+'">'
+      +'<div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div style="font-weight:700">'+esc(w.label)
+        +' <span style="font-size:.66rem;color:#8a7d5c;background:rgba(230,173,78,.14);padding:2px 8px;border-radius:999px">'+esc(_wtUnit(w.unit))+'</span>'
+        +(w.source==='auto_material'?' <span style="font-size:.62rem;font-weight:800;color:#059669">AUTO</span>':'')+'</div>'
+        +'<div style="font-size:.78rem;color:#8a7d5c;margin-top:2px">Current: <b>\u20b9'+(w.current_rate||0)+'</b>'+(hist?' · '+hist:'')+'</div></div>'
+      +'<button class="btn btn-ghost btn-sm" onclick="catRateAdd('+w.id+')">New Rate</button>'
+      +'<button class="btn btn-ghost btn-sm" onclick="catWtToggle('+w.id+','+(w.is_active?0:1)+')">'+(w.is_active?'Disable':'Enable')+'</button></div></div>';
+  }).join('') || '<div style="color:#9c8f6e;padding:8px 0">No work types yet.</div>';
+  var typeUnit=WT_UNITS.map(function(u){return '<option value="'+u[0]+'">'+u[1]+'</option>';}).join('');
+  var add='<div style="border-top:1px solid var(--border,#e5ddcb);margin-top:12px;padding-top:12px"><div style="font-weight:700;font-size:.86rem;margin-bottom:8px">Add work type</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap"><input id="cwt-label" class="form-control" style="flex:2;min-width:150px" placeholder="e.g. Approved Material">'
+    +'<select id="cwt-unit" class="form-control" style="flex:1;min-width:110px">'+typeUnit+'</select>'
+    +'<select id="cwt-source" class="form-control" style="flex:1;min-width:150px"><option value="manual">Manual count</option><option value="auto_material">Auto: approved materials</option></select>'
+    +'<button class="btn btn-primary" onclick="catWtAdd()">Add</button></div>'
+    +'<div style="font-size:.74rem;color:#8a7d5c;margin-top:6px">\u201cAuto: approved materials\u201d counts each approved Material Checker submission automatically. Set a rate after adding.</div></div>';
+  document.getElementById('modal-body').innerHTML='<div class="catf-list" style="max-height:42vh">'+rows+'</div>'+add;
+  document.getElementById('modal-footer').innerHTML='<button class="btn btn-ghost" onclick="closeModal()">Close</button>';
+}
+async function catWtAdd(){
+  var st=window._catWtState; var label=(document.getElementById('cwt-label').value||'').trim();
+  if(!label){ toast('Work type label required',true); return; }
+  try{ await api('/api/admin/categories/'+st.cid+'/work-types','POST',{label:label,unit:document.getElementById('cwt-unit').value,source:document.getElementById('cwt-source').value});
+    _catLoadPayRates(st.cid);
+  }catch(e){ toast((e&&e.message)||'Could not add',true); }
+}
+async function catWtToggle(wid,to){
+  var st=window._catWtState;
+  try{ await api('/api/admin/work-types/'+wid,'PATCH',{is_active:(to==1||to==='1')}); _catLoadPayRates(st.cid); }
+  catch(e){ toast((e&&e.message)||'Could not update',true); }
+}
+function catRateAdd(wid){
+  var today=new Date().toISOString().slice(0,10);
+  var body='<div class="form-group"><label class="form-label">Rate (\u20b9 per unit)</label><input id="cr-amt" type="number" class="form-control" placeholder="e.g. 150"></div>'
+    +'<div class="form-group"><label class="form-label">Effective from</label><input id="cr-eff" type="date" class="form-control" value="'+today+'"></div>'
+    +'<div class="form-group"><label class="form-label">Note (optional)</label><input id="cr-note" class="form-control" placeholder="e.g. revised rate"></div>'
+    +'<div style="font-size:.76rem;color:#8a7d5c">Older months keep their old rate — this only applies from the effective date onward.</div>';
+  showModal('New Rate', body, '<button class="btn btn-ghost" onclick="_catLoadPayRates('+(window._catWtState.cid)+');document.getElementById(\'modal-title\').textContent=\'Pay Rates\'">Back</button><button class="btn btn-primary" onclick="catRateSave('+wid+')">Save Rate</button>');
+}
+async function catRateSave(wid){
+  var st=window._catWtState; var amt=document.getElementById('cr-amt').value;
+  if(amt===''||isNaN(parseFloat(amt))){ toast('Enter a valid amount',true); return; }
+  try{ await api('/api/admin/work-types/'+wid+'/rates','POST',{amount:parseFloat(amt),effective_from:document.getElementById('cr-eff').value,note:document.getElementById('cr-note').value||''});
+    toast('Rate saved'); catOpenPayRates(st.cid);
+  }catch(e){ toast((e&&e.message)||'Could not save',true); }
+}
+
+/* ---- Teacher: category earnings (read-only estimate) ---- */
+function loadTCatEarnings(){
+  var el=document.getElementById('t-payout-content'); if(!el) return;
+  var a=window._tActiveCat; if(!a){ if(typeof payoutGate==='function') payoutGate(); return; }
+  try{ softSpin(el); }catch(e){ el.innerHTML='<div class="spinner"></div>'; }
+  api('/api/teacher/category-earnings?category_id='+a.id).then(function(d){
+    var lines=(d.lines||[]);
+    var rowHtml=lines.length?lines.map(function(l){
+      return '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border,#e5ddcb);border-radius:12px;margin-bottom:8px">'
+        +'<div style="flex:1"><div style="font-weight:700">'+esc(l.work_type)+(l.auto?' <span style="font-size:.62rem;font-weight:800;color:#059669">AUTO</span>':'')+'</div>'
+        +'<div style="font-size:.76rem;color:#8a7d5c">'+l.units+' \u00d7 \u20b9'+l.rate+' '+esc(_wtUnit(l.unit))+'</div></div>'
+        +'<div style="font-weight:800;font-size:1.05rem">\u20b9'+l.amount+'</div></div>';
+    }).join(''):'<div class="tcd-empty">No payable work types set for this workspace yet.</div>';
+    el.innerHTML='<div class="tcd-hero" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2 style="margin:0;font-size:1.3rem;font-weight:800">'+esc(a.display_name)+' Earnings</h2>'
+      +'<p style="margin:4px 0 0;color:#8a7d5c;font-weight:600">'+esc(d.month||'')+' \u00b7 estimated</p></div>'
+      +'<div style="text-align:right"><div style="font-size:1.8rem;font-weight:800;color:#059669">\u20b9'+(d.total||0)+'</div><div style="font-size:.7rem;color:#8a7d5c;text-transform:uppercase">This Month (est.)</div></div></div>'
+      +rowHtml
+      +'<div style="font-size:.78rem;color:#8a7d5c;margin-top:12px;padding:12px;border:1px dashed var(--border,#cbb98f);border-radius:10px">'+esc(d.note||'')+'</div>';
+  }).catch(function(e){ el.innerHTML='<div style="padding:22px;color:#c1443a">'+esc((e&&e.message)||'Could not load earnings')+'</div>'; });
+}
+
+/* ============================================================
+   PHASE 15-16 — Category screens: responsive + theme polish
+   ============================================================ */
+(function _catInjectResponsive(){
+  function inject(){
+    if(document.getElementById('cat-responsive-css')) return;
+    var s=document.createElement('style'); s.id='cat-responsive-css';
+    s.textContent=[
+      /* muted text + surfaces follow the app theme in both modes */
+      '#a-page-categories,#a-page-matcheck{color:var(--text)}',
+      /* smooth hover only on devices that support it */
+      '@media (hover:none){.cat-card:hover,.tmsub-card:hover,.mc-row:hover{transform:none}}',
+      /* narrow screens */
+      '@media (max-width:640px){',
+      '  .tcd-kpis{grid-template-columns:repeat(2,1fr)}',
+      '  .cat-grid,.tmsub-grid{grid-template-columns:1fr}',
+      '  .tcd-hero{padding:16px 16px}',
+      '  .tcd-hero h2{font-size:1.2rem}',
+      '  .mc-b{max-width:92%}',
+      '  .mc-chat-msgs{max-height:42vh}',
+      '  #t-wsswitch .tws-menu{min-width:170px}',
+      '  #a-page-categories .cat-acts .cat-btn{min-width:calc(50% - 4px)}',
+      '  .mc-row{flex-wrap:wrap}',
+      '}',
+      '@media (max-width:420px){',
+      '  .tcd-kpis{grid-template-columns:1fr}',
+      '  .cat-stats,.tmsub-stats{gap:6px}',
+      '}'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+  if(document.head){ inject(); }
+  else { document.addEventListener('DOMContentLoaded', inject); }
+})();

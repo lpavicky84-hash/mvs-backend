@@ -20,6 +20,7 @@ import editor_routes
 import youtuber_routes
 import graphics_routes
 import translation_routes
+import category_routes  # category workspace API (Phase 4)
 
 load_dotenv()
 
@@ -590,6 +591,7 @@ app.include_router(editor_routes.router)
 app.include_router(youtuber_routes.router)
 app.include_router(graphics_routes.router)
 app.include_router(translation_routes.router)
+app.include_router(category_routes.router)
 
 # ===== ROOT =====
 # ===== ROOT: serve the portal =====
