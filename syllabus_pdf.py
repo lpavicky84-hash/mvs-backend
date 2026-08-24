@@ -2063,6 +2063,26 @@ def _lang_number_lessons(modules):
             l.pop("raw", None)
 
 
+def _lang_names_garbled(modules):
+    """True if the parsed names look like broken-font Devanagari extraction:
+    Devanagari present, but Latin letters or '=' sit inside the words (clean Hindi
+    never mixes those in). Only then is the OCR pass worth its cost."""
+    names = []
+    for m in (modules or []):
+        names.append(str(m.get("module", "")))
+        for l in m.get("lessons", []):
+            names.append(str(l.get("title", "")))
+    blob = " ".join(names)
+    has_deva = bool(re.search(r"[\u0900-\u097F]", blob))
+    if not has_deva:
+        return False
+    bad = 0
+    for nm in names:
+        if re.search(r"[\u0900-\u097F]", nm) and re.search(r"[A-Za-z=]", nm):
+            bad += 1
+    return bad >= max(2, int(0.25 * len([n for n in names if n])))
+
+
 def parse_language_pdf(data: bytes):
     """Fallback parser for NIOS language subjects (English / Hindi). Returns the
     same shape as parse_syllabus_pdf so the admin editor works identically."""
@@ -2103,6 +2123,19 @@ def parse_language_pdf(data: bytes):
         _lang_assign_marks_from_leaves(modules, _leaves)
     _lang_apply_weightage_names(modules, weight_rows)
     _lang_number_lessons(modules)
+    # If the PDF's Devanagari text layer is garbled (broken font ToUnicode), the
+    # names come out as gibberish ("काव्य" -> "का5"). The structure/marks are still
+    # correct, so we OCR the rendered pages and swap in clean names BY ORDER. Fully
+    # optional: if the OCR toolchain/Hindi data is missing, we keep what we have.
+    try:
+        if _lang_names_garbled(modules):
+            import syllabus_ocr
+            if syllabus_ocr.ocr_available():
+                _otext = syllabus_ocr.ocr_pdf_text(data)
+                if _otext:
+                    syllabus_ocr.apply_ocr_names(modules, _otext)
+    except Exception:
+        pass
     paper = round(sum(float(m["weightage"]) for m in modules), 2)
     total = sum(len(m["lessons"]) for m in modules)
     expected = {"total": total, "tma": 0, "pe": total}
