@@ -24316,16 +24316,10 @@ function _supRenderDetail(role, c){
   var head='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px"><div>'
     +'<div class="sup-num">'+esc(c.complaint_number)+'</div><div style="font-weight:800;font-size:1.05rem">'+esc(c.title)+'</div>'
     +'<div class="sup-meta">'+(c.category?esc(c.category)+' \u00b7 ':'')+esc(c.created_at)+'</div></div>'+_supPill(c.status)+'</div>';
-  var composer=canReply?('<div style="border-top:1px solid var(--border);padding-top:10px">'
-    +'<div id="sc-rprev" class="sup-att-row"></div>'
-    +'<textarea id="sc-reply" class="form-control" rows="2" placeholder="'+(role==='student'?'Reply to support\u2026':'Write a reply\u2026')+'"></textarea>'
-    +'<div id="sc-rvoice" style="margin-top:8px"></div>'
-    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">'
-    +'<label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">\uD83D\uDCCE Image<input id="sc-rfile" type="file" accept="image/*" multiple style="display:none" onchange="scReplyAddImgs(this.files)"></label>'
-    +'<button class="btn btn-primary btn-sm" id="sc-rbtn" onclick="scSendReply(\''+role+'\','+c.id+')">Send</button></div></div>'):'';
+  window._scReplyCtx={role:role,cid:c.id,key:'screp'};
+  var composer=canReply?('<div style="border-top:1px solid var(--border);padding-top:10px">'+composerHTML('screp',(role==='student'?'Reply to support\u2026':'Write a reply\u2026'),'scComposerReply()','Send')+'</div>'):'';
   document.getElementById('modal-body').innerHTML=head+'<div class="sup-thread">'+thread+'</div>'+composer;
   document.getElementById('modal-footer').innerHTML='<button class="btn btn-ghost" onclick="closeModal()">Close</button>';
-  if(canReply){ _supVoiceUI('sc-rvoice','_scReplyVoice'); _supWireClipboard('sc-reply', window._scReplyImgs, _scReplyPrev); }
   var title=document.getElementById('modal-title'); if(title) title.textContent='Complaint \u00b7 '+c.complaint_number;
   imgJobs.forEach(function(j){
     if((''+j[0]).indexOf('AUDIO:')===0){ _supLoadAudio(j[0].slice(6), '/api/'+j[1]+'/complaint-attachments/'+j[2]+'/view'); }
@@ -24578,14 +24572,9 @@ function _amcRenderDetail(c){
     +'<select onchange="acAction('+c.id+',\'priority\',{priority:this.value})"><option value="">Set priority\u2026</option><option value="normal"'+(c.priority==='normal'?' selected':'')+'>Normal</option><option value="critical"'+(c.priority==='critical'?' selected':'')+'>Critical</option><option value="emergency"'+(c.priority==='emergency'?' selected':'')+'>Emergency</option></select>'
     +'<button class="btn btn-ghost btn-sm" onclick="_supDrawer('+st.id+')">View Student</button>'
     +'<button class="btn btn-ghost btn-sm" id="ac-wa" style="color:#25D366;display:none" onclick="acWhatsApp('+c.id+')">Send on WhatsApp</button></div>';
-  var composer='<div style="border-top:1px solid var(--border);padding-top:10px"><div id="sc-rprev" class="sup-att-row"></div>'
-    +'<textarea id="sc-reply" class="form-control" rows="2" placeholder="Write a reply\u2026"></textarea>'
-    +'<div id="sc-rvoice" style="margin-top:8px"></div>'
-    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">'
-    +'<label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">\uD83D\uDCCE Image<input id="sc-rfile" type="file" accept="image/*" multiple style="display:none" onchange="scReplyAddImgs(this.files)"></label>'
-    +'<button class="btn btn-primary btn-sm" id="sc-rbtn" onclick="scSendReply(\'admin\','+c.id+')">Reply</button></div></div>';
+  window._scReplyCtx={role:'admin',cid:c.id,key:'screp'};
+  var composer='<div style="border-top:1px solid var(--border);padding-top:10px">'+composerHTML('screp','Write a reply\u2026','scComposerReply()','Reply')+'</div>';
   document.getElementById('modal-body').innerHTML=head+ctrl+'<div class="sup-thread">'+thread+'</div>'+composer;
-  _supVoiceUI('sc-rvoice','_scReplyVoice'); _supWireClipboard('sc-reply', window._scReplyImgs, _scReplyPrev);
   document.getElementById('modal-footer').innerHTML='<button class="btn btn-ghost" onclick="closeModal()">Close</button>'
     +(c.status==='resolved'?'<button class="btn btn-ghost" onclick="acAction('+c.id+',\'reopen\');closeModal()">Reopen</button>':'<button class="btn btn-primary" style="background:#059669" onclick="acAction('+c.id+',\'resolve\');closeModal()">Mark Resolved</button>');
   var title=document.getElementById('modal-title'); if(title) title.textContent='Complaint \u00b7 '+c.complaint_number;
@@ -24788,4 +24777,30 @@ function _supSkelList(n){
 function _supSkelCards(n){
   var one='<div class="sup-sk-card" style="margin:0"><div class="sup-sk" style="height:26px;width:52%;margin-bottom:9px"></div><div class="sup-sk" style="height:10px;width:72%"></div></div>';
   var out='<div class="ac-cards">'; for(var i=0;i<(n||6);i++) out+=one; out+='</div>'; return out;
+}
+
+/* Complaint reply via the premium composer (student + admin) — Phase: composer reply */
+async function scComposerReply(){
+  var ctx=window._scReplyCtx||{}; var role=ctx.role||'student', cid=ctx.cid, key=ctx.key||'screp';
+  if(!cid) return;
+  var txtEl=document.getElementById('cmpt-'+key);
+  var txt=((txtEl&&txtEl.value)||'').trim();
+  var st=(window._cmpState&&_cmpState[key])||{};
+  if(!txt && !st.file && !st.voice){ toast('Type a message',true); return; }
+  var btn=document.getElementById('cmps-'+key); if(btn){ btn.disabled=true; btn.textContent='Sending...'; }
+  try{
+    var fd=new FormData(); fd.append('message',txt);
+    if(st.file){
+      var fl=st.file;
+      if((fl.type||'').indexOf('image/')===0){
+        try{ var _r=await Promise.race([smartCompress(fl,function(){}),new Promise(function(rs){setTimeout(function(){rs(null);},12000);})]); if(_r&&_r.ok&&_r.file) fl=_r.file; }catch(e){}
+      }
+      fd.append('images',fl,fl.name||'image');
+    }
+    if(st.voice){ fd.append('voice',st.voice,'voice.webm'); }
+    var base=role==='student'?'/api/student/complaints/':'/api/admin/complaints/';
+    var r=await fetch(API+base+cid+'/messages',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+    if(!r.ok){ var d=null; try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||'Send failed'); }
+    if(role==='student') scOpenDetail(cid); else amcCmpOpen(cid);
+  }catch(e){ toast(e.message||'Could not send',true); if(btn){ btn.disabled=false; btn.textContent=(role==='student'?'Send':'Reply'); } }
 }
