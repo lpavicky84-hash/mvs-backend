@@ -4871,7 +4871,7 @@ def calc_earnings(a, pay):
 def _month_activity(db, tp, month):
     """Portal activity logs se us month ke salary-input stats."""
     from models import (TimetableEntry, Material, Test, DPP, Doubt, VideoTask,
-                        RescheduleRequest, RescheduleStatus)
+                        RescheduleRequest, RescheduleStatus, Exam, DppPack)
     y, m = int(month[:4]), int(month[5:7])
     start = date(y, m, 1)
     end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
@@ -4897,6 +4897,20 @@ def _month_activity(db, tp, month):
         DPP.teacher_id == tp.id, DPP.created_at >= dt0, DPP.created_at < dt1).count()
     tests = db.query(Test).filter(
         Test.teacher_id == tp.id, Test.created_at >= dt0, Test.created_at < dt1).count()
+    # Real teacher flow: "Create Test" saves an Exam, and DPPs are saved as DppPacks.
+    # Count those too (the legacy Test/DPP tables are mostly empty now).
+    try:
+        exams = db.query(Exam).filter(
+            Exam.teacher_id == tp.id, Exam.is_active.isnot(False),
+            Exam.created_at >= dt0, Exam.created_at < dt1).count()
+    except Exception:
+        exams = 0
+    try:
+        dpp_packs = db.query(DppPack).filter(
+            DppPack.teacher_id == tp.id,
+            DppPack.created_at >= dt0, DppPack.created_at < dt1).count()
+    except Exception:
+        dpp_packs = 0
 
     vids = db.query(VideoTask).filter(
         VideoTask.teacher_id == tp.id,
@@ -4947,6 +4961,13 @@ def _month_activity(db, tp, month):
                                        Material.chapter != None).all():
         if _norm(x.chapter):
             chap_refs.append((_norm(x.subject), _norm(x.chapter)))
+    # DppPacks are the primary DPP flow now — a chapter is covered if a pack exists for it
+    try:
+        for x in db.query(DppPack).filter(DppPack.teacher_id == tp.id).all():
+            if _norm(getattr(x, "chapter", "")):
+                chap_refs.append((_norm(x.subject), _norm(x.chapter)))
+    except Exception:
+        pass
 
     def _dpp_covered(subject, chapter):
         ns, nc = _norm(subject), _norm(chapter)
@@ -4973,9 +4994,9 @@ def _month_activity(db, tp, month):
     return {
         "classes_scheduled": scheduled, "classes_conducted": conducted, "late_classes": late,
         "extra_reschedules": max(0, resched - 1),
-        "notes_uploaded": notes, "dpp_uploaded": dpps + mat_dpp,
+        "notes_uploaded": notes, "dpp_uploaded": dpps + mat_dpp + dpp_packs,
         "dpp_covered": dpp_covered, "dpp_pending": dpp_pending,
-        "tests_created": tests + mat_test,
+        "tests_created": tests + mat_test + exams,
         "videos_made": videos, "live_sessions": live, "shorts_made": shorts,
         "doubts_assigned": doubts_assigned, "doubts_resolved": doubts_resolved,
         "tasks_assigned": tasks_assigned, "tasks_on_time": tasks_on_time,
