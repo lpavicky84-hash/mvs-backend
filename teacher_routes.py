@@ -4880,8 +4880,12 @@ def _month_activity(db, tp, month):
     entries = db.query(TimetableEntry).filter(
         TimetableEntry.teacher_id == tp.id,
         TimetableEntry.entry_type == "chapter",
-        TimetableEntry.status == "approved",
         TimetableEntry.entry_date >= start, TimetableEntry.entry_date < end).all()
+    # Count planned + held classes. Earlier this required status=="approved", so a
+    # class a teacher actually took on a still-pending entry counted as 0. Only drop
+    # clearly-dead entries (rejected/cancelled).
+    entries = [e for e in entries
+               if (e.status or "approved") not in ("rejected", "cancelled", "declined", "deleted")]
     scheduled = len(entries)
     done = [e for e in entries if e.completed]
     conducted = len(done)
