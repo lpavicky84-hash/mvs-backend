@@ -24718,12 +24718,12 @@ function _afFilterHTML(){
 function _afListHTML(l){
   var list=(l&&l.feedback)||[];
   var rows=list.length?list.map(function(f){
-    return '<div class="ac-card"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div>'
+    return '<div class="ac-card"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div style="min-width:0;flex:1">'
       +'<span class="ac-name" onclick="_supDrawer('+(f.student&&f.student.id)+')">'+esc(f.student&&f.student.name||'Student')+'</span> <span class="sup-num">'+esc(f.student&&f.student.student_id||'')+'</span>'+(f.new?' <span style="font-size:.6rem;font-weight:800;color:#dc2626">NEW</span>':'')
       +'<div style="margin-top:4px"><span class="ac-star">'+'\u2605'.repeat(f.rating)+'</span><span style="color:#d9c9a0">'+'\u2605'.repeat(5-f.rating)+'</span></div>'
-      +(f.review?'<div style="font-size:.9rem;margin-top:6px">'+esc(f.review)+'</div>':'')
+      +(f.review?'<div style="font-size:.9rem;margin-top:6px;word-break:break-word;line-height:1.5">'+esc(f.review)+'</div>':'')
       +'<div class="sup-meta">'+esc(f.created_at)+'</div></div>'
-      +'<button class="btn btn-ghost btn-sm" style="color:#c1443a" onclick="afDelete('+f.id+')">Delete</button></div></div>';
+      +'<button class="btn btn-ghost btn-sm af-del" onclick="afDelete('+f.id+')">Delete</button></div></div>';
   }).join(''):'<div class="sup-empty">No feedback received yet.</div>';
   return '<div class="ac-list">'+rows+'</div>';
 }
@@ -24737,12 +24737,12 @@ function _renderAFeedback(a, l){
   var filt='<div class="ac-filters"><select onchange="window._afRating=parseInt(this.value,10)||0;loadAFeedback()"><option value="0">All ratings</option>'+[5,4,3,2,1].map(function(n){return '<option value="'+n+'"'+(window._afRating===n?' selected':'')+'>'+n+' star</option>';}).join('')+'</select></div>';
   var list=(l.feedback||[]);
   var rows=list.length?list.map(function(f){
-    return '<div class="ac-card"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div>'
+    return '<div class="ac-card"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div style="min-width:0;flex:1">'
       +'<span class="ac-name" onclick="_supDrawer('+(f.student&&f.student.id)+')">'+esc(f.student&&f.student.name||'Student')+'</span> <span class="sup-num">'+esc(f.student&&f.student.student_id||'')+'</span>'+(f.new?' <span style="font-size:.6rem;font-weight:800;color:#dc2626">NEW</span>':'')
       +'<div style="margin-top:4px"><span class="ac-star">'+'\u2605'.repeat(f.rating)+'</span><span style="color:#d9c9a0">'+'\u2605'.repeat(5-f.rating)+'</span></div>'
-      +(f.review?'<div style="font-size:.9rem;margin-top:6px">'+esc(f.review)+'</div>':'')
+      +(f.review?'<div style="font-size:.9rem;margin-top:6px;word-break:break-word;line-height:1.5">'+esc(f.review)+'</div>':'')
       +'<div class="sup-meta">'+esc(f.created_at)+'</div></div>'
-      +'<button class="btn btn-ghost btn-sm" style="color:#c1443a" onclick="afDelete('+f.id+')">Delete</button></div></div>';
+      +'<button class="btn btn-ghost btn-sm af-del" onclick="afDelete('+f.id+')">Delete</button></div></div>';
   }).join(''):'<div class="sup-empty">No feedback received yet.</div>';
   el.innerHTML=cards+distBlock+filt+'<div class="ac-list">'+rows+'</div>';
 }
@@ -24840,6 +24840,7 @@ function _supPolishCss(){
     '.ac-card:focus-within{border-color:#d9b978}',
     /* mobile filter toggle (hidden on desktop) */
     '.ac-fbtn{display:none}',
+    '.af-del{color:#c1443a;flex-shrink:0;white-space:nowrap}',
     '@media(max-width:680px){',
     '  #a-page-complaints .ac-cards,#a-page-feedback .ac-cards{grid-template-columns:1fr 1fr;gap:9px}',
     '  .ac-kpi b{font-size:1.4rem}',
@@ -24849,7 +24850,17 @@ function _supPolishCss(){
     '  .ac-list,.sup-list{max-height:none}',
     '  .sup-b{max-width:92%}',
     '  .sup-top{gap:8px}.sup-top .btn{width:100%}',
-    '}'
+    '  .ac-chead{padding:13px 14px}.ac-cbody{padding:12px 14px 14px}',
+    '  .ac-crow{gap:8px}.ac-cright{gap:4px}',
+    '  .ac-card .af-del{padding:6px 10px;font-size:.8rem}',
+    '  .sup-thread{max-height:52vh !important}',
+    '  .ac-name{font-size:.96rem}',
+    '}',
+    '@media(max-width:420px){',
+    '  #a-page-feedback .ac-cards{grid-template-columns:1fr}',
+    '  .ac-kpi{padding:12px}.ac-kpi b{font-size:1.25rem}',
+    '  .af-del{padding:5px 9px !important;font-size:.78rem !important}',
+    '}',
   ].join('');
   document.head.appendChild(s);
 }
