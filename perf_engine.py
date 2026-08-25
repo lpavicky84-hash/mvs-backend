@@ -429,12 +429,15 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
     sla = float(cfg.get("doubt_sla_hours", 15))
 
     def _sla_hours(a, b):
-        """Elapsed hours counting only the working window (08:00–23:00) each day, so a
-        doubt asked late at night and answered promptly next morning isn't penalised
-        for the overnight gap. Falls back to raw hours if anything is off."""
+        """Elapsed hours counting only the IST working window (08:00–23:00) each day, so a
+        doubt asked late at night and answered promptly next morning isn't penalised for
+        the overnight gap. Timestamps are stored in UTC (Railway), so shift to IST first."""
         try:
             if not a or not b or b <= a:
                 return 0.0
+            _IST = _td(hours=5, minutes=30)
+            a = a + _IST
+            b = b + _IST
             ds, de = 8, 23
             total = 0.0
             cur = a
