@@ -4877,14 +4877,17 @@ def _month_activity(db, tp, month):
     end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
     dt0, dt1 = datetime.combine(start, datetime.min.time()), datetime.combine(end, datetime.min.time())
 
-    # Count what the teacher actually HELD this month. Earlier this only looked at
-    # entries whose entry_date fell in the month + status=="approved", so classes on
-    # undated/recurring entries (or completed in a different calendar slot) showed 0.
-    # Now: conducted = completed entries whose completed_at is in the month.
-    all_ce = [e for e in db.query(TimetableEntry).filter(
-                  TimetableEntry.teacher_id == tp.id,
-                  TimetableEntry.entry_type == "chapter").all()
-              if (e.status or "approved") not in ("rejected", "cancelled", "declined", "deleted")]
+    # The timetable is SUBJECT-based: the teacher's own class list matches entries by
+    # TimetableEntry.subject IN tp.subjects (not teacher_id). So count the same way here,
+    # otherwise classes the teacher actually sees + completes never show up.
+    _subs = tp.subjects or []
+    _base = db.query(TimetableEntry).filter(TimetableEntry.entry_type == "chapter")
+    if _subs:
+        _base = _base.filter(TimetableEntry.subject.in_(_subs))
+    else:
+        _base = _base.filter(TimetableEntry.teacher_id == tp.id)
+    all_ce = [e for e in _base.all()
+              if (e.status or "approved") not in ("rejected", "cancelled", "declined", "deleted", "pending")]
 
     def _held_this_month(e):
         if getattr(e, "completed_at", None):
