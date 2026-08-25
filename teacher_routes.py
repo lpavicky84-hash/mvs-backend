@@ -4925,13 +4925,29 @@ def _month_activity(db, tp, month):
     except Exception:
         dpp_packs = 0
 
-    vids = db.query(VideoTask).filter(
-        VideoTask.teacher_id == tp.id,
+    # Videos SHOT this month — collab-aware (primary teacher OR a collaborator), by
+    # submitted_at. Projects (one-shot/rapid-revision) are tracked separately, not here.
+    from sqlalchemy import or_ as _orV
+    try:
+        from video_tasks import _collab_all_ids as _caiV
+    except Exception:
+        _caiV = None
+    _vcand = db.query(VideoTask).filter(
+        _orV(VideoTask.teacher_id == tp.id,
+             VideoTask.collab_teacher_ids.like("%" + str(tp.id) + "%")),
         VideoTask.submitted_at != None,
         VideoTask.submitted_at >= dt0, VideoTask.submitted_at < dt1,
         VideoTask.status != "rejected").all()
     videos = live = shorts = 0
-    for t in vids:
+    for t in _vcand:
+        try:
+            if t.teacher_id != tp.id and (not _caiV or tp.id not in _caiV(t)):
+                continue
+        except Exception:
+            if t.teacher_id != tp.id:
+                continue
+        if (t.kind or "normal") in ("one_shot", "rapid_revision", "project"):
+            continue
         vt = (t.video_type or "").lower()
         if "short" in vt:
             shorts += 1
@@ -4946,11 +4962,28 @@ def _month_activity(db, tp, month):
         Doubt.teacher_id == tp.id, Doubt.resolved_at != None,
         Doubt.resolved_at >= dt0, Doubt.resolved_at < dt1).count()
 
-    tasks = db.query(VideoTask).filter(
-        VideoTask.teacher_id == tp.id,
+    # Tasks — collab-aware (primary OR collaborator). Exclude projects + OLD content,
+    # matching the production dashboard's "assigned / on-time" counts.
+    _tcand = db.query(VideoTask).filter(
+        _orV(VideoTask.teacher_id == tp.id,
+             VideoTask.collab_teacher_ids.like("%" + str(tp.id) + "%")),
         VideoTask.created_at >= dt0, VideoTask.created_at < dt1).all()
-    tasks_assigned = len(tasks)
-    tasks_on_time = sum(1 for t in tasks if t.on_time)
+    tasks_assigned = tasks_on_time = 0
+    for t in _tcand:
+        try:
+            if t.teacher_id != tp.id and (not _caiV or tp.id not in _caiV(t)):
+                continue
+        except Exception:
+            if t.teacher_id != tp.id:
+                continue
+        if bool(getattr(t, "is_old", False)):
+            continue
+        if (t.kind or "normal") in ("one_shot", "rapid_revision", "project"):
+            continue
+        if (getattr(t, "proposal_ok", "") or "") != "pending" and (getattr(t, "status", "") or "") != "rejected":
+            tasks_assigned += 1
+        if t.submitted_at and t.on_time is True:
+            tasks_on_time += 1
 
     resched = db.query(RescheduleRequest).filter(
         RescheduleRequest.teacher_id == tp.id,
