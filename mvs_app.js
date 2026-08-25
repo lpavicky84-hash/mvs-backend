@@ -24466,7 +24466,7 @@ function loadAComplaints(){
   _acLoadList();
   // analytics + filter options load in the background and fill in when ready
   Promise.all([
-    api('/api/admin/complaint-analytics?range=30').catch(function(){return {};}),
+    api('/api/admin/complaint-analytics?rng=30').catch(function(){return {};}),
     api('/api/admin/complaint-categories').catch(function(){return {categories:[]};}),
     api('/api/admin/complaint-resolvers').catch(function(){return {resolvers:[]};})
   ]).then(function(res){

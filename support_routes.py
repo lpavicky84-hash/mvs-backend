@@ -572,7 +572,7 @@ def admin_complaint_whatsapp(cid: int, db: Session = Depends(get_db), _=Depends(
 
 # ---- analytics ----
 @router.get("/api/admin/complaint-analytics")
-def admin_complaint_analytics(range: str = "30", db: Session = Depends(get_db),
+def admin_complaint_analytics(rng: str = "30", db: Session = Depends(get_db),
                               _=Depends(admin_guard)):
     from datetime import timedelta, datetime, time
     C = SM.Complaint
@@ -613,7 +613,7 @@ def admin_complaint_analytics(range: str = "30", db: Session = Depends(get_db),
 
     # trend (received vs resolved) by day
     try:
-        days = int(range)
+        days = int(rng)
     except Exception:
         days = 30
     days = min(max(days, 7), 120)
