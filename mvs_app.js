@@ -24412,6 +24412,16 @@ function _asupCss(){
     '.ac-list{display:flex;flex-direction:column;gap:10px;max-height:calc(100vh - 380px);min-height:200px;overflow:auto;padding:2px}',
     '.ac-card{border:1px solid var(--border);border-radius:14px;padding:15px;background:var(--card);transition:.14s}',
     '.ac-card:hover{border-color:#d9b978}',
+    '.ac-card2{border:1px solid var(--border);border-radius:16px;background:var(--card);overflow:hidden;transition:.15s;box-shadow:0 1px 2px rgba(15,23,42,.04)}',
+    '.ac-card2:hover{border-color:#d9b978;box-shadow:0 8px 24px rgba(15,23,42,.08)}',
+    '.ac-card2.open{border-color:#d9b978;box-shadow:0 10px 30px rgba(15,23,42,.10)}',
+    '.ac-chead{padding:16px 18px;cursor:pointer}',
+    '.ac-crow{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}',
+    '.ac-cdesc{color:var(--text-muted);font-size:.9rem;margin-top:6px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
+    '.ac-cright{display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0}',
+    '.ac-chev{font-size:1.35rem;color:#c9a86a;transition:.18s;line-height:1;margin-top:2px}',
+    '.ac-cbody{border-top:1px solid var(--border);padding:14px 18px 16px;background:linear-gradient(180deg,rgba(230,173,78,.045),transparent)}',
+    '.ac-cbody .att{max-width:200px;border-radius:10px;border:1px solid var(--border);margin-top:6px;cursor:pointer;display:block}',
     '.ac-name{font-weight:800;cursor:pointer}.ac-name:hover{color:#b8941f}',
     '.ac-prio{font-size:.64rem;font-weight:800;padding:2px 8px;border-radius:999px}',
     '.ac-prio.critical{background:rgba(220,38,38,.14);color:#dc2626}.ac-prio.emergency{background:#dc2626;color:#fff}',
@@ -24526,21 +24536,88 @@ function _acLoadList(){
     var list=r.complaints||[]; var wrap=document.getElementById('ac-listwrap'); if(!wrap)return;
     if(!list.length && f.page===1){ wrap.innerHTML='<div class="sup-empty"><div style="font-weight:700;margin-bottom:4px">No complaints found</div>Try changing your filters or search term.</div>'; return; }
     var cards=list.map(function(c){
+      var sid=(c.student&&c.student.id)||0;
       var atts=(c.image_count?'\uD83D\uDCCE '+c.image_count+' ':'')+(c.voice_count?'\uD83C\uDF99 '+c.voice_count:'');
-      return '<div class="ac-card"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">'
-        +'<div><span class="ac-name" onclick="event.stopPropagation();_supDrawer('+(c.student&&c.student.id)+')">'+esc(c.student&&c.student.name||'Student')+'</span> <span class="sup-num">'+esc(c.student&&c.student.student_id||'')+' \u00b7 '+esc(c.complaint_number)+'</span>'
-        +'<div class="sup-ttl" style="margin-top:3px">'+esc(c.title)+(c.read_by_admin?'':'<span class="sup-dot"></span>')+'</div>'
-        +'<div class="sup-meta">'+(c.category?esc(c.category)+' \u00b7 ':'')+esc(c.created_at)+(atts?' \u00b7 '+atts:'')+'</div></div>'
-        +'<div style="text-align:right;display:flex;flex-direction:column;gap:5px;align-items:flex-end">'+_supPill(c.status)+_acPrio(c.priority)+'</div></div>'
-        +'<div style="display:flex;gap:7px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="amcCmpOpen('+c.id+')">Reply</button>'
-        +(c.status!=='resolved'?'<button class="btn btn-ghost btn-sm" style="color:#059669" onclick="acAction('+c.id+',\'resolve\')">Resolve</button>':'')
-        +'<button class="btn btn-ghost btn-sm" onclick="_supDrawer('+(c.student&&c.student.id)+')">View Student</button></div></div>';
+      var desc=(c.description||'').trim();
+      return '<div class="ac-card2" id="acc-'+c.id+'"><div class="ac-chead" onclick="amcToggle('+c.id+')"><div class="ac-crow">'
+        +'<div style="min-width:0"><span class="ac-name" onclick="event.stopPropagation();_supDrawer('+sid+')">'+esc(c.student&&c.student.name||'Student')+'</span> <span class="sup-num">'+esc(c.student&&c.student.student_id||'')+' \u00b7 '+esc(c.complaint_number)+'</span>'
+        +'<div class="sup-ttl" style="margin-top:4px;font-size:1.02rem">'+esc(c.title)+(c.read_by_admin?'':'<span class="sup-dot"></span>')+'</div>'
+        +(desc?'<div class="ac-cdesc">'+esc(desc)+'</div>':'')
+        +'<div class="sup-meta" style="margin-top:6px">'+(c.category?esc(c.category)+' \u00b7 ':'')+esc(c.created_at)+(atts?' \u00b7 '+atts:'')+'</div></div>'
+        +'<div class="ac-cright"><span id="achs-'+c.id+'">'+_supPill(c.status)+_acPrio(c.priority)+'</span><span class="ac-chev" id="acv-'+c.id+'">\u203a</span></div>'
+        +'</div></div><div class="ac-cbody" id="accb-'+c.id+'" style="display:none"></div></div>';
     }).join('');
     var more=r.has_more?'<div style="text-align:center;margin-top:12px"><button class="btn btn-ghost btn-sm" onclick="acMore()">Load more</button></div>':'';
     if(f.page===1){ wrap.innerHTML='<div class="ac-list">'+cards+'</div>'+more; }
-    else { var lw=wrap.querySelector('.ac-list'); if(lw) lw.insertAdjacentHTML('beforeend',cards); var mb=wrap.querySelector('.btn'); }
+    else { var lw=wrap.querySelector('.ac-list'); if(lw) lw.insertAdjacentHTML('beforeend',cards); }
   }).catch(function(e){ var wrap=document.getElementById('ac-listwrap'); if(wrap) wrap.innerHTML='<div style="padding:14px;color:#c1443a">'+esc((e&&e.message)||'Could not load')+'</div>'; });
 }
+function amcToggle(cid){
+  var card=document.getElementById('acc-'+cid); var body=document.getElementById('accb-'+cid); var chev=document.getElementById('acv-'+cid);
+  if(!body) return;
+  if(body.style.display!=='none'){ body.style.display='none'; body.innerHTML=''; if(chev) chev.style.transform=''; if(card) card.classList.remove('open'); return; }
+  if(chev) chev.style.transform='rotate(90deg)'; if(card) card.classList.add('open');
+  body.style.display=''; body.innerHTML='<div class="spinner" style="margin:16px auto"></div>';
+  api('/api/admin/complaints/'+cid).then(function(r){ _amcRenderInline(r.complaint, body); _asupBadges();
+    var hs=document.getElementById('achs-'+cid); if(hs) hs.innerHTML=_supPill(r.complaint.status)+_acPrio(r.complaint.priority);
+  }).catch(function(e){ body.innerHTML='<div style="color:#c1443a;padding:12px">'+esc((e&&e.message)||'Could not load')+'</div>'; });
+}
+function _amcRenderInline(c, body){
+  _supCss(); _asupCss();
+  var imgJobs=[];
+  var thread=(c.messages||[]).map(function(m){
+    var mine=(m.sender_role==='admin');
+    var atts=(m.attachments||[]).map(function(a){
+      if(a.kind==='image'){ var id='aci-'+a.id; imgJobs.push(['IMG:'+id,a.id]); return '<img id="'+id+'" class="att" onclick="_supLightbox(\'/api/admin/complaint-attachments/'+a.id+'/view\')">'; }
+      var vid='acu-'+a.id; imgJobs.push(['AUD:'+vid,a.id]); return '<div style="margin-top:6px"><audio controls id="'+vid+'" style="height:34px"></audio></div>';
+    }).join('');
+    return '<div class="sup-b '+(mine?'me':'them')+'"><div class="who">'+(mine?'Support':(c.student&&c.student.name||'Student'))+'</div>'+(m.message?esc(m.message).replace(/\n/g,'<br>'):'')+atts+'</div>';
+  }).join('')||'<div style="color:var(--text-muted)">No messages.</div>';
+  var key='ac'+c.id;
+  var prio='<select class="form-control" style="max-width:180px;height:38px;padding:6px 10px" onchange="acActionInline('+c.id+',\'priority\',{priority:this.value})"><option value="">Priority: '+(c.priority||'normal')+'</option><option value="normal">Normal</option><option value="critical">Critical</option><option value="emergency">Emergency</option></select>';
+  var resBtn=(c.status==='resolved')
+    ?'<button class="btn btn-ghost btn-sm" onclick="acActionInline('+c.id+',\'reopen\')">Reopen</button>'
+    :'<button class="btn btn-primary btn-sm" style="background:#059669" onclick="acActionInline('+c.id+',\'resolve\')">Mark Resolved</button>';
+  var actions='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:4px 0 12px">'+prio
+    +'<button class="btn btn-ghost btn-sm" onclick="_supDrawer('+((c.student&&c.student.id)||0)+')">View Student</button>'
+    +'<button class="btn btn-ghost btn-sm" id="acwa-'+c.id+'" style="color:#25D366;display:none" onclick="acWhatsApp2('+c.id+')">Send on WhatsApp</button>'
+    +resBtn+'</div>';
+  var composer='<div style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">'+composerHTML(key,'Write a reply to the student\u2026','amcInlineReply('+c.id+')','Reply')+'</div>';
+  body.innerHTML='<div class="sup-thread" style="max-height:40vh">'+thread+'</div>'+actions+composer;
+  imgJobs.forEach(function(j){ var t=j[0].slice(0,4), id=j[0].slice(4); if(t==='IMG:') _supLoadImg(id,'/api/admin/complaint-attachments/'+j[1]+'/view'); else _supLoadAudio(id,'/api/admin/complaint-attachments/'+j[1]+'/view'); });
+  api('/api/admin/complaints/'+c.id+'/whatsapp').then(function(w){ if(w&&w.available){ var b=document.getElementById('acwa-'+c.id); if(b){ b.style.display=''; b.dataset.url=w.url; } } }).catch(function(){});
+}
+function amcRefresh(cid){
+  var body=document.getElementById('accb-'+cid); if(!body||body.style.display==='none') return;
+  body.innerHTML='<div class="spinner" style="margin:16px auto"></div>';
+  api('/api/admin/complaints/'+cid).then(function(r){ _amcRenderInline(r.complaint, body);
+    var hs=document.getElementById('achs-'+cid); if(hs) hs.innerHTML=_supPill(r.complaint.status)+_acPrio(r.complaint.priority);
+    _asupBadges();
+  });
+}
+async function amcInlineReply(cid){
+  var key='ac'+cid;
+  var txt=((document.getElementById('cmpt-'+key)||{}).value||'').trim();
+  var st=(window._cmpState&&_cmpState[key])||{};
+  if(!txt&&!st.file&&!st.voice){ toast('Type a message',true); return; }
+  var btn=document.getElementById('cmps-'+key); if(btn){ btn.disabled=true; btn.textContent='Sending...'; }
+  try{
+    var fd=new FormData(); fd.append('message',txt);
+    if(st.file){ var fl=st.file; if((fl.type||'').indexOf('image/')===0){ try{ var _r=await Promise.race([smartCompress(fl,function(){}),new Promise(function(rs){setTimeout(function(){rs(null);},12000);})]); if(_r&&_r.ok&&_r.file) fl=_r.file; }catch(e){} } fd.append('images',fl,fl.name||'image'); }
+    if(st.voice){ fd.append('voice',st.voice,'voice.webm'); }
+    var r=await fetch(API+'/api/admin/complaints/'+cid+'/messages',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+    if(!r.ok){ var d=null; try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||'Send failed'); }
+    amcRefresh(cid);
+  }catch(e){ toast(e.message||'Could not send',true); if(btn){ btn.disabled=false; btn.textContent='Reply'; } }
+}
+async function acActionInline(cid, action, extra){
+  try{ var r=await api('/api/admin/complaints/'+cid+'/action','POST',Object.assign({action:action},extra||{}));
+    var hs=document.getElementById('achs-'+cid); if(hs) hs.innerHTML=_supPill(r.status)+_acPrio(r.priority);
+    amcRefresh(cid); _asupBadges();
+    if(action==='resolve') toast('Marked resolved'); else if(action==='reopen') toast('Reopened');
+  }catch(e){ toast((e&&e.message)||'Failed',true); }
+}
+function acWhatsApp2(cid){ var b=document.getElementById('acwa-'+cid); if(b&&b.dataset.url) window.open(b.dataset.url,'_blank'); }
 var _acSearchT=null;
 function acDebounceSearch(v){ window._acFilter.q=v; window._acFilter.page=1; clearTimeout(_acSearchT); _acSearchT=setTimeout(function(){ document.getElementById('ac-listwrap').innerHTML='<div class="spinner"></div>'; _acLoadList(); }, 350); }
 function acSetF(k,v){ window._acFilter[k]=(k==='category_id'||k==='resolver')?(parseInt(v,10)||0):v; window._acFilter.page=1; _renderAComplaints(); }
@@ -24564,7 +24641,7 @@ function _amcRenderDetail(c){
   var thread=(c.messages||[]).map(function(m){
     var mine=(m.sender_role==='admin');
     var atts=(m.attachments||[]).map(function(a){
-      if(a.kind==='image'){ var id='aca-'+a.id; imgJobs.push(['IMG:'+id,a.id]); return '<img id="'+id+'" class="att" onclick="_supLoadImg(\'_lb\',\'/api/admin/complaint-attachments/'+a.id+'/view\')">'; }
+      if(a.kind==='image'){ var id='aca-'+a.id; imgJobs.push(['IMG:'+id,a.id]); return '<img id="'+id+'" class="att" onclick="_supLightbox(\'/api/admin/complaint-attachments/'+a.id+'/view\')">'; }
       var vid='acv-'+a.id; imgJobs.push(['AUD:'+vid,a.id]); return '<div style="margin-top:6px"><audio controls id="'+vid+'" style="height:34px"></audio></div>';
     }).join('');
     return '<div class="sup-b '+(mine?'me':'them')+'"><div class="who">'+(mine?'Support':(c.student&&c.student.name||'Student'))+'</div>'+(m.message?esc(m.message).replace(/\n/g,'<br>'):'')+atts+'</div>';
@@ -24809,4 +24886,14 @@ async function scComposerReply(){
     if(!r.ok){ var d=null; try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||'Send failed'); }
     if(role==='student') scOpenDetail(cid); else amcCmpOpen(cid);
   }catch(e){ toast(e.message||'Could not send',true); if(btn){ btn.disabled=false; btn.textContent=(role==='student'?'Send':'Reply'); } }
+}
+
+/* Fullscreen image lightbox for complaint attachments */
+function _supLightbox(url){
+  var ov=document.getElementById('_sup-lb');
+  if(!ov){ ov=document.createElement('div'); ov.id='_sup-lb'; ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.86);display:flex;align-items:center;justify-content:center;z-index:99999;cursor:zoom-out'; ov.onclick=function(){ ov.style.display='none'; ov.innerHTML=''; }; document.body.appendChild(ov); }
+  ov.style.display='flex'; ov.innerHTML='<div style="color:#fff;font-size:.9rem">Loading\u2026</div>';
+  fetch(API+url,{headers:{Authorization:'Bearer '+TOKEN}}).then(function(r){ if(!r.ok) throw 0; return r.blob(); })
+    .then(function(b){ ov.innerHTML='<img src="'+URL.createObjectURL(b)+'" style="max-width:92vw;max-height:92vh;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5)">'; })
+    .catch(function(){ ov.innerHTML='<div style="color:#fff">Could not load image</div>'; });
 }
