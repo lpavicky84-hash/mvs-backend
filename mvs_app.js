@@ -24415,9 +24415,10 @@ function _asupCss(){
     '.ac-name{font-weight:800;cursor:pointer}.ac-name:hover{color:#b8941f}',
     '.ac-prio{font-size:.64rem;font-weight:800;padding:2px 8px;border-radius:999px}',
     '.ac-prio.critical{background:rgba(220,38,38,.14);color:#dc2626}.ac-prio.emergency{background:#dc2626;color:#fff}',
-    '.ac-trend{display:flex;align-items:flex-end;gap:3px;height:52px;margin-top:6px}',
-    '.ac-trend .bar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:1px;min-width:3px}',
-    '.ac-trend .r{background:#c98a2e;border-radius:2px 2px 0 0}.ac-trend .g{background:#059669;border-radius:2px 2px 0 0}',
+    '.ac-trend{display:flex;align-items:flex-end;gap:2px;height:64px;padding:6px 2px 0;overflow:hidden}',
+    '.ac-tday{flex:1;min-width:0;height:100%;display:flex;align-items:flex-end;justify-content:center;gap:2px}',
+    '.ac-tday .r{width:4px;max-width:45%;background:#c98a2e;border-radius:3px 3px 0 0}',
+    '.ac-tday .g{width:4px;max-width:45%;background:#059669;border-radius:3px 3px 0 0}',
     '.ac-dist-row{display:flex;align-items:center;gap:10px;margin-bottom:7px}',
     '.ac-dist-bar{flex:1;height:10px;border-radius:999px;background:rgba(120,113,108,.16);overflow:hidden}',
     '.ac-dist-fill{height:100%;background:#e6ad4e}',
@@ -24480,7 +24481,12 @@ function _acKpisHTML(){
   var a=window._acAnalytics||{};
   var tr=(a.trend||[]).slice(-30);
   var mx=Math.max(1, Math.max.apply(null, tr.map(function(t){return Math.max(t.received,t.resolved);}).concat([1])));
-  var trend=tr.map(function(t){ return '<div class="bar" title="'+t.date+': '+t.received+' in / '+t.resolved+' out"><div class="r" style="height:'+Math.round(t.received/mx*40)+'px"></div><div class="g" style="height:'+Math.round(t.resolved/mx*40)+'px"></div></div>'; }).join('');
+  var H=54;
+  var trend=tr.map(function(t){
+    var rh=t.received?Math.max(3,Math.round(t.received/mx*H)):0;
+    var gh=t.resolved?Math.max(3,Math.round(t.resolved/mx*H)):0;
+    return '<div class="ac-tday" title="'+t.date+' \u00b7 '+t.received+' received, '+t.resolved+' resolved"><span class="r" style="height:'+rh+'px"></span><span class="g" style="height:'+gh+'px"></span></div>';
+  }).join('');
   var cards='<div class="ac-cards">'
     +'<div class="ac-kpi" onclick="acQuick(\'status\',\'pending\')"><b style="color:#d97706">'+(a.pending||0)+'</b><span>Pending Now</span></div>'
     +'<div class="ac-kpi" onclick="acQuick(\'date_range\',\'today\')"><b>'+(a.created_today||0)+'</b><span>Today</span><small>'+(a.resolved_today||0)+' resolved</small></div>'
