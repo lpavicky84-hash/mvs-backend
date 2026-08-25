@@ -4877,18 +4877,24 @@ def _month_activity(db, tp, month):
     end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
     dt0, dt1 = datetime.combine(start, datetime.min.time()), datetime.combine(end, datetime.min.time())
 
-    entries = db.query(TimetableEntry).filter(
-        TimetableEntry.teacher_id == tp.id,
-        TimetableEntry.entry_type == "chapter",
-        TimetableEntry.entry_date >= start, TimetableEntry.entry_date < end).all()
-    # Count planned + held classes. Earlier this required status=="approved", so a
-    # class a teacher actually took on a still-pending entry counted as 0. Only drop
-    # clearly-dead entries (rejected/cancelled).
-    entries = [e for e in entries
-               if (e.status or "approved") not in ("rejected", "cancelled", "declined", "deleted")]
-    scheduled = len(entries)
-    done = [e for e in entries if e.completed]
+    # Count what the teacher actually HELD this month. Earlier this only looked at
+    # entries whose entry_date fell in the month + status=="approved", so classes on
+    # undated/recurring entries (or completed in a different calendar slot) showed 0.
+    # Now: conducted = completed entries whose completed_at is in the month.
+    all_ce = [e for e in db.query(TimetableEntry).filter(
+                  TimetableEntry.teacher_id == tp.id,
+                  TimetableEntry.entry_type == "chapter").all()
+              if (e.status or "approved") not in ("rejected", "cancelled", "declined", "deleted")]
+
+    def _held_this_month(e):
+        if getattr(e, "completed_at", None):
+            return dt0 <= e.completed_at < dt1
+        return bool(e.entry_date and start <= e.entry_date < end)
+
+    done = [e for e in all_ce if e.completed and _held_this_month(e)]
     conducted = len(done)
+    dated = [e for e in all_ce if e.entry_date and start <= e.entry_date < end]
+    scheduled = max(len(dated), conducted)
     late = sum(1 for e in done if _delay_band(_delay_of(e)) == "late")
 
     mats = db.query(Material).options(defer(Material.content_b64)).filter(

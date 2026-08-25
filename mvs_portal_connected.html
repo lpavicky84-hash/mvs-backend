@@ -1573,8 +1573,8 @@ canvas{max-width:100%}
   .modal-header{position:sticky;top:0;background:var(--card);z-index:3;border-radius:20px 20px 0 0}
   .modal-body{overflow-x:auto}
   .modal-footer{position:sticky;bottom:0;background:var(--card);z-index:3;display:flex;gap:10px;padding-bottom:calc(14px + env(safe-area-inset-bottom))}
-  .modal-footer .btn{flex:1;justify-content:center;white-space:nowrap}
-@media(max-width:560px){.modal-footer{flex-wrap:wrap}.modal-footer .btn{flex:1 1 calc(50% - 6px);font-size:.84rem;padding:11px 8px}}
+  .modal-footer .btn{flex:1;justify-content:center;white-space:nowrap !important}
+@media(max-width:560px){.modal-footer{flex-wrap:wrap}.modal-footer .btn{flex:1 1 calc(50% - 6px) !important;font-size:.84rem;padding:11px 8px;white-space:nowrap !important}}
   /* landing page */
   #landing{gap:28px;padding:24px 16px}
   .landing-logo h1{font-size:clamp(2rem,9vw,3rem)}

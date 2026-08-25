@@ -425,8 +425,34 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
     # ---- Doubts (student support) — 15h SLA rule: sirf "decided" doubts count
     #      (resolved YA pending-but-overdue). Recent pending (SLA ke andar) penalty nahi.
     #      Koi decided doubt nahi -> N/A (sabko full, redistribute). ----
-    from datetime import timedelta as _td
+    from datetime import timedelta as _td, time as _time
     sla = float(cfg.get("doubt_sla_hours", 15))
+
+    def _sla_hours(a, b):
+        """Elapsed hours counting only the working window (08:00–23:00) each day, so a
+        doubt asked late at night and answered promptly next morning isn't penalised
+        for the overnight gap. Falls back to raw hours if anything is off."""
+        try:
+            if not a or not b or b <= a:
+                return 0.0
+            ds, de = 8, 23
+            total = 0.0
+            cur = a
+            guard = 0
+            while cur < b and guard < 400:
+                guard += 1
+                day = cur.date()
+                w_s = datetime.combine(day, _time(ds, 0))
+                w_e = datetime.combine(day, _time(de, 0))
+                s = cur if cur > w_s else w_s
+                e = b if b < w_e else w_e
+                if e > s:
+                    total += (e - s).total_seconds() / 3600.0
+                cur = datetime.combine(day + _td(days=1), _time(ds, 0))
+            return total
+        except Exception:
+            return (b - a).total_seconds() / 3600.0
+
     rec = decided = ontime = 0
     try:
         _now = datetime.utcnow()
@@ -436,11 +462,11 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
         for dq in dqs:
             if dq.status == DoubtStatus.resolved and dq.resolved_at:
                 decided += 1
-                if (dq.resolved_at - dq.created_at).total_seconds() / 3600.0 <= sla:
+                if _sla_hours(dq.created_at, dq.resolved_at) <= sla:
                     ontime += 1
             elif dq.status != DoubtStatus.resolved:
                 # pending: sirf tab count jab SLA nikal chuka (overdue) -> late
-                if (_now - dq.created_at).total_seconds() / 3600.0 > sla:
+                if _sla_hours(dq.created_at, _now) > sla:
                     decided += 1   # late (ontime nahi)
     except Exception:
         pass
