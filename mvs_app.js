@@ -24908,3 +24908,16 @@ function _supLightbox(url){
     .then(function(b){ ov.innerHTML='<img src="'+URL.createObjectURL(b)+'" style="max-width:92vw;max-height:92vh;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5)">'; })
     .catch(function(){ ov.innerHTML='<div style="color:#fff">Could not load image</div>'; });
 }
+
+/* Modal footer buttons: never wrap char-by-char; on mobile go 2-per-row.
+   Injected here so it ships with mvs_app.js (independent of the HTML file). */
+(function(){
+  try{
+    if(document.getElementById('mvs-footer-fix')) return;
+    var s=document.createElement('style'); s.id='mvs-footer-fix';
+    s.textContent='.modal-footer{flex-wrap:wrap}'
+      +'.modal-footer .btn{white-space:nowrap !important;overflow:hidden;text-overflow:ellipsis}'
+      +'@media(max-width:640px){.modal-footer .btn{flex:1 1 calc(50% - 6px) !important;min-width:0 !important;font-size:.84rem !important;padding:11px 8px !important}}';
+    (document.head||document.documentElement).appendChild(s);
+  }catch(e){}
+})();
