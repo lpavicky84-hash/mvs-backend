@@ -2100,8 +2100,25 @@ def vt_delete(task_id: int, db: Session = Depends(get_db), _=Depends(get_admin))
     if not t:
         raise HTTPException(404, "Task not found")
     title = t.title or "Video task"
-    _purge_task_children(db, t.id)
     tp = _teacher_profile(db, t.teacher_id)
+    # Special (auto-provisioned) projects — One Shot / Rapid Revision / project —
+    # are re-created by _ensure_special_teacher on every load. A hard delete would
+    # therefore reappear on the next refresh. Soft-delete (cancelled) so it stays
+    # gone: the existence check still finds this row (so it is NOT recreated) and
+    # _special_payload hides cancelled rows from both admin and teacher.
+    if (t.kind or "normal") in ("one_shot", "rapid_revision", "project"):
+        t.cancelled = True
+        try:
+            _hist_add(t, "deleted", "Project removed by admin")
+        except Exception:
+            pass
+        if tp and tp.user_id:
+            _vt_notify(db, tp.user_id, "🗑️ Video Task Removed",
+                       f'Your video task "{title}" was removed by the admin. '
+                       f'It no longer appears in My Tasks.')
+        db.commit()
+        return {"ok": True, "message": "Project deleted"}
+    _purge_task_children(db, t.id)
     db.delete(t)
     if tp and tp.user_id:
         _vt_notify(db, tp.user_id, "🗑️ Video Task Removed",
@@ -2327,7 +2344,8 @@ def vt_admin_project_chapters(subject: str = "", class_level: str = "",
 
 
 def _special_payload(db, kind):
-    tasks = (db.query(VideoTask).filter(VideoTask.kind == kind)
+    tasks = (db.query(VideoTask).filter(VideoTask.kind == kind,
+                                        VideoTask.cancelled.isnot(True))
              .order_by(VideoTask.created_at.asc()).all())
     _tnm = _all_teacher_names(db)
     outs = [_special_out(db, t, tname_map=_tnm) for t in tasks]
