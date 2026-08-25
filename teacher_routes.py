@@ -4925,8 +4925,10 @@ def _month_activity(db, tp, month):
     except Exception:
         dpp_packs = 0
 
-    # Videos SHOT this month — collab-aware (primary teacher OR a collaborator), by
-    # submitted_at. Projects (one-shot/rapid-revision) are tracked separately, not here.
+    # Videos this month — collab-aware (primary teacher OR a collaborator). Count a video
+    # if it was SUBMITTED or PUBLISHED (has a youtube_url) with an effective date in the
+    # month, so directly-published / collab videos that lack a submitted_at still count.
+    # Projects (one-shot/rapid-revision) are tracked separately.
     from sqlalchemy import or_ as _orV
     try:
         from video_tasks import _collab_all_ids as _caiV
@@ -4935,8 +4937,6 @@ def _month_activity(db, tp, month):
     _vcand = db.query(VideoTask).filter(
         _orV(VideoTask.teacher_id == tp.id,
              VideoTask.collab_teacher_ids.like("%" + str(tp.id) + "%")),
-        VideoTask.submitted_at != None,
-        VideoTask.submitted_at >= dt0, VideoTask.submitted_at < dt1,
         VideoTask.status != "rejected").all()
     videos = live = shorts = 0
     for t in _vcand:
@@ -4947,6 +4947,13 @@ def _month_activity(db, tp, month):
             if t.teacher_id != tp.id:
                 continue
         if (t.kind or "normal") in ("one_shot", "rapid_revision", "project"):
+            continue
+        _pub = (getattr(t, "youtube_url", "") or "").strip()
+        _sub = getattr(t, "submitted_at", None)
+        if not (_sub or _pub):
+            continue  # not made yet (still assigned/pending)
+        _d = _sub or getattr(t, "created_at", None)
+        if not (_d and dt0 <= _d < dt1):
             continue
         vt = (t.video_type or "").lower()
         if "short" in vt:
@@ -5107,35 +5114,45 @@ def _ranking_pay(db, tp, month):
         import traceback
         traceback.print_exc()
     pay_ratio = min(max(overall, 0.0), 100.0) / 100.0
-    base_earned = int(round(max_pay * pay_ratio))
-    # component rupees jo base_earned me EXACTLY sum hote hain (N/A weight redistribute)
-    contribs = {}
-    tot = 0.0
-    for c, cd in comps.items():
-        if not cd or cd.get("na") or cd.get("raw") is None:
-            continue
-        contribs[c] = (min(float(cd.get("raw") or 0), 100.0) / 100.0) * float(cd.get("weight") or 0)
-        tot += contribs[c]
+    # Component pools come from the ADMIN-set structure amounts (image: Pay Structure),
+    # NOT performance weights. So a component can never pay more than the rupees the admin
+    # fixed for it: Doubt is capped at the doubt_resolution amount, Classes at class_retainer,
+    # etc. Each perf component maps to a structure field; a field's rupees are split across
+    # its (applicable) components by weight, and N/A components redistribute within the field.
+    _FIELD_OF = {"teaching": "class_retainer", "content": "notes_dpp", "tests": "notes_dpp",
+                 "student_support": "doubt_resolution", "consistency": "class_quality",
+                 "task_discipline": "class_quality", "project": "project_delivery",
+                 "targets": "project_delivery", "video_initiative": "project_delivery"}
+    _field_amt = {f: int(getattr(cfg, f) or 0) for f in EARNINGS_PAY_FIELDS}
     ordered = [c for c in _RANK_COMP_ORDER if c in comps] + [c for c in comps if c not in _RANK_COMP_ORDER]
-    applicable = [c for c in ordered if c in contribs]
+    _field_wsum = {}
+    for c in ordered:
+        cd = comps.get(c) or {}
+        if cd.get("na") or cd.get("raw") is None:
+            continue
+        f = _FIELD_OF.get(c)
+        if f:
+            _field_wsum[f] = _field_wsum.get(f, 0.0) + float(cd.get("weight") or 0)
     lines = []
-    running = 0
+    total_earned = 0
     for c in ordered:
         cd = comps.get(c) or {}
         na = bool(cd.get("na") or cd.get("raw") is None)
         weight = float(cd.get("weight") or 0)
-        if na or tot <= 0:
+        f = _FIELD_OF.get(c)
+        fw = _field_wsum.get(f, 0.0)
+        pool = int(round(_field_amt.get(f, 0) * (weight / fw))) if (f and fw > 0 and not na) else 0
+        if na or pool <= 0:
             earned = 0
-        elif applicable and c == applicable[-1]:
-            earned = max(0, base_earned - running)     # remainder -> exact sum
         else:
-            earned = int(round(base_earned * contribs[c] / tot))
-            running += earned
+            ach = min(float(cd.get("raw") or 0), 100.0) / 100.0
+            earned = min(pool, int(round(pool * ach)))
+        total_earned += earned
         lines.append({"key": c, "label": _RANK_COMP_LABELS.get(c, c.replace("_", " ").title()),
                       "detail": cd.get("detail") or "", "weight": round(weight, 1),
                       "pct": (None if na else round(float(cd.get("raw") or 0), 1)),
-                      "earned": max(0, earned), "na": na,
-                      "pool": int(round(max_pay * weight / 100.0))})
+                      "earned": max(0, earned), "na": na, "pool": pool})
+    base_earned = total_earned
     return {"overall": round(overall, 1), "max_pay": max_pay, "base_earned": base_earned,
             "components": lines, "workload_level": wl_level, "workload_pct": wl_pct,
             "limited_workload": limited}
