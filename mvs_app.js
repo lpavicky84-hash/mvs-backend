@@ -24140,7 +24140,7 @@ function loadAMatCheck(){
     var stOpts=stList.map(function(x){return '<option value="'+x[0]+'"'+(_amcFilter.status===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('');
     var head='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'
       +'<div style="font-weight:800;font-size:1.15rem">Material Checker</div>'
-      +'<div style="display:flex;gap:8px"><select class="form-control" style="width:auto" onchange="amcSetCat(this.value)">'+catOpts+'</select>'
+      +'<div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="checkR2Health()" title="Test file storage (uploads/downloads)">'+(typeof ic==='function'?ic('shield'):'')+' Check Storage</button><select class="form-control" style="width:auto" onchange="amcSetCat(this.value)">'+catOpts+'</select>'
       +'<select class="form-control" style="width:auto" onchange="amcSetStatus(this.value)">'+stOpts+'</select></div></div>';
     if(!subs.length){ el.innerHTML=head+'<div class="tcd-empty">No submissions match this filter.</div>'; return; }
     var rows=subs.map(function(m){
@@ -24156,6 +24156,26 @@ function loadAMatCheck(){
 }
 function amcSetCat(v){ _amcFilter.category_id=parseInt(v,10)||0; loadAMatCheck(); }
 function amcSetStatus(v){ _amcFilter.status=v||''; loadAMatCheck(); }
+async function checkR2Health(){
+  showModal('Storage Health','<div style="text-align:center;padding:26px"><div class="spinner"></div><div style="margin-top:10px;color:var(--text-muted)">Testing file storage…</div></div>');
+  try{
+    var h=await api('/api/admin/r2-health');
+    var ok=function(b){return b?'<span style="color:#059669;font-weight:800">✔ Working</span>':'<span style="color:#c1443a;font-weight:800">✘ Failing</span>';};
+    var verdict='', color='#059669', title='All good';
+    if(!h.configured){ verdict='R2 storage configured nahi hai (env vars missing).'; color='#c1443a'; title='Not configured'; }
+    else if(!h.upload){ verdict='Upload hi fail ho raha hai — R2 credentials (Access Key / Secret) galat hain. Cloudflare mein sahi keys daalo.'; color='#c1443a'; title='Credentials issue'; }
+    else if(!h.auth_read){ verdict='Upload chalta hai par READ fail hai — aapka R2 API token <b>write-only</b> hai. Cloudflare → R2 → Manage API Tokens → token ko <b>"Object Read & Write"</b> permission do. Bas yahi fix karna hai — downloads turant theek ho jayenge.'; color='#c1443a'; title='Token is write-only'; }
+    else { verdict='Storage bilkul theek hai — authenticated read chal raha hai. Downloads ab kaam karenge.'; color='#059669'; title='Storage OK'; }
+    var body='<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:14px">'
+      +'<div style="display:flex;justify-content:space-between;padding:11px 14px;border-bottom:1px solid var(--border)"><span>Configured</span>'+ok(h.configured)+'</div>'
+      +'<div style="display:flex;justify-content:space-between;padding:11px 14px;border-bottom:1px solid var(--border)"><span>Upload (write)</span>'+ok(h.upload)+'</div>'
+      +'<div style="display:flex;justify-content:space-between;padding:11px 14px;border-bottom:1px solid var(--border)"><span>Authenticated read <span style="font-size:.7rem;color:var(--text-muted)">(downloads use this)</span></span>'+ok(h.auth_read)+'</div>'
+      +'<div style="display:flex;justify-content:space-between;padding:11px 14px"><span>Public read</span>'+ok(h.public_read)+'</div></div>'
+      +'<div style="background:'+(color==='#059669'?'#e9f8ee':'#fdecea')+';border-radius:12px;padding:14px 16px"><div style="font-weight:800;color:'+color+';margin-bottom:5px">'+title+'</div><div style="font-size:.88rem;line-height:1.55">'+verdict+'</div></div>'
+      +(h.detail?'<div style="font-size:.72rem;color:var(--text-muted);margin-top:8px">Debug: '+esc(h.detail)+'</div>':'');
+    showModal('Storage Health',body,'<button class="btn btn-primary" onclick="closeModal()">OK</button>');
+  }catch(e){ showModal('Storage Health','<div style="padding:16px;color:#c1443a">Could not run the check: '+esc(e.message||'')+'</div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>'); }
+}
 async function amcDeleteSubmission(sid, title){
   if(!confirm('Delete this submission'+(title?' "'+title+'"':'')+' permanently? This removes all its versions and messages.')) return;
   try{
