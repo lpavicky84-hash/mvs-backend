@@ -24521,6 +24521,8 @@ function _supCss(){
     '.sup-ttl{font-weight:700;margin-top:2px}',
     '.sup-meta{font-size:.75rem;color:var(--text-muted);margin-top:4px}',
     '.sup-pill{font-size:.66rem;font-weight:800;padding:4px 11px;border-radius:999px;color:#fff;white-space:nowrap;align-self:flex-start;flex-shrink:0;display:inline-block;line-height:1.35;height:fit-content}',
+    '.af-new-pill{font-size:.6rem;font-weight:800;color:#fff;background:#dc2626;padding:2px 7px;border-radius:999px;letter-spacing:.05em;display:inline-block;animation:afNewBlink 1s ease-in-out infinite;box-shadow:0 0 0 0 rgba(220,38,38,.5)}',
+    '@keyframes afNewBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(220,38,38,.45)}50%{opacity:.35;box-shadow:0 0 0 5px rgba(220,38,38,0)}}',
     '.sup-dot{width:8px;height:8px;border-radius:50%;background:#dc2626;display:inline-block;margin-left:6px}',
     '.sup-empty{border:1px dashed var(--border);border-radius:14px;padding:28px;text-align:center;color:var(--text-muted)}',
     '.sup-thread{display:flex;flex-direction:column;gap:10px;max-height:44vh;overflow:auto;margin:6px 0 12px}',
@@ -25068,7 +25070,12 @@ function loadAFeedback(){
   el.innerHTML='<div id="af-kpis">'+_supSkelCards(3)+'</div>'+_afFilterHTML()+'<div id="af-listwrap">'+_supSkelList(4)+'</div>';
   // list first
   api('/api/admin/feedback?rating='+(window._afRating||0)+'&page=1&page_size=30').catch(function(){return {feedback:[]};})
-    .then(function(l){ var w=document.getElementById('af-listwrap'); if(w) w.innerHTML=_afListHTML(l); });
+    .then(function(l){ var w=document.getElementById('af-listwrap'); if(w) w.innerHTML=_afListHTML(l);
+      // Admin ne feedback dekh liya — NEW ones ko background me seen mark karo (blink is baar dikha,
+      // agli baar NEW nahi aayega). List abhi blink karti rahegi is session me.
+      var news=(l&&l.feedback||[]).filter(function(f){return f.new;});
+      if(news.length){ setTimeout(function(){ news.forEach(function(f){ api('/api/admin/feedback/'+f.id+'/read','POST').catch(function(){}); }); },2500); }
+    });
   // analytics in background
   api('/api/admin/feedback-analytics').catch(function(){return {};})
     .then(function(a){ var k=document.getElementById('af-kpis'); if(k) k.innerHTML=_afKpisHTML(a); _asupBadges(); });
@@ -25089,7 +25096,7 @@ function _afListHTML(l){
   var list=(l&&l.feedback)||[];
   var rows=list.length?list.map(function(f){
     return '<div class="ac-card"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div style="min-width:0;flex:1">'
-      +'<span class="ac-name" onclick="_supDrawer('+(f.student&&f.student.id)+')">'+esc(f.student&&f.student.name||'Student')+'</span> <span class="sup-num">'+esc(f.student&&f.student.student_id||'')+'</span>'+(f.new?' <span style="font-size:.6rem;font-weight:800;color:#dc2626">NEW</span>':'')
+      +'<span class="ac-name" onclick="_supDrawer('+(f.student&&f.student.id)+')">'+esc(f.student&&f.student.name||'Student')+'</span> <span class="sup-num">'+esc(f.student&&f.student.student_id||'')+'</span>'+(f.new?' <span class="af-new-pill">NEW</span>':'')
       +'<div style="margin-top:4px"><span class="ac-star">'+'\u2605'.repeat(f.rating)+'</span><span style="color:#d9c9a0">'+'\u2605'.repeat(5-f.rating)+'</span></div>'
       +(f.review?'<div style="font-size:.9rem;margin-top:6px;word-break:break-word;line-height:1.5">'+esc(f.review)+'</div>':'')
       +'<div class="sup-meta">'+esc(f.created_at)+'</div></div>'
@@ -25108,7 +25115,7 @@ function _renderAFeedback(a, l){
   var list=(l.feedback||[]);
   var rows=list.length?list.map(function(f){
     return '<div class="ac-card"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div style="min-width:0;flex:1">'
-      +'<span class="ac-name" onclick="_supDrawer('+(f.student&&f.student.id)+')">'+esc(f.student&&f.student.name||'Student')+'</span> <span class="sup-num">'+esc(f.student&&f.student.student_id||'')+'</span>'+(f.new?' <span style="font-size:.6rem;font-weight:800;color:#dc2626">NEW</span>':'')
+      +'<span class="ac-name" onclick="_supDrawer('+(f.student&&f.student.id)+')">'+esc(f.student&&f.student.name||'Student')+'</span> <span class="sup-num">'+esc(f.student&&f.student.student_id||'')+'</span>'+(f.new?' <span class="af-new-pill">NEW</span>':'')
       +'<div style="margin-top:4px"><span class="ac-star">'+'\u2605'.repeat(f.rating)+'</span><span style="color:#d9c9a0">'+'\u2605'.repeat(5-f.rating)+'</span></div>'
       +(f.review?'<div style="font-size:.9rem;margin-top:6px;word-break:break-word;line-height:1.5">'+esc(f.review)+'</div>':'')
       +'<div class="sup-meta">'+esc(f.created_at)+'</div></div>'
