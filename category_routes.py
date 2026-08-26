@@ -643,6 +643,15 @@ def admin_list_messages(sid: int, db: Session = Depends(get_db), _=Depends(admin
     return {"messages": [_msg_dict(db, x) for x in msgs]}
 
 
+@router.get("/api/admin/r2-health")
+def admin_r2_health(_=Depends(admin_guard)):
+    """R2 storage self-test — batata hai upload/read (authenticated + public) chal rahe ya nahi."""
+    try:
+        return __import__("r2_storage").r2_selftest()
+    except Exception as e:
+        return {"error": str(e)[:300]}
+
+
 @router.post("/api/admin/material-submissions/{sid}/delete")
 def admin_delete_submission(sid: int, db: Session = Depends(get_db), _=Depends(admin_guard)):
     """Permanently delete a material submission and all its versions, messages and attachments."""

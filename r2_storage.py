@@ -177,19 +177,35 @@ def _fetch_r2_bytes(url):
         return None
 
 
+def _looks_like_error(data):
+    """R2/S3 access-denied ya HTML error page ko file samajh ke serve na karein."""
+    if not data or len(data) < 10:
+        return True
+    head = data[:400].lstrip()
+    low = head[:200].lower()
+    if head[:5] == b"<?xml" or head[:6] == b"<Error" or low[:5] == b"<html" or low[:9] == b"<!doctype":
+        return True
+    if b"AccessDenied" in head or b"<Error>" in head or b"NoSuchKey" in head:
+        return True
+    return False
+
+
 def proxy_response(value, media_type="application/octet-stream", filename=None, download=True, sniff=False):
     """Inline viewer / same-origin ke liye: R2 URL ho to server-side fetch karke bytes
     STREAM karo (cross-origin fetch/CORS ki dikkat nahi aayegi, aur URL pe b64decode crash
-    bhi nahi). Base64 ho to decode. Fetch fail ho to redirect fallback. Empty -> 404.
-    sniff=True -> content-type file ke ASAL magic bytes se pakdo (migration ne galat label
-    diya ho to bhi sahi type se serve ho, e.g. PDF ko image/jpeg bana diya tha)."""
+    bhi nahi). Base64 ho to decode. R2 se authenticated fetch pehle (bucket public na ho tab
+    bhi), phir public URL. Corrupt/error bytes kabhi serve nahi hote.
+    sniff=True -> content-type file ke ASAL magic bytes se pakdo."""
     from fastapi import HTTPException, Response
     if not value:
         raise HTTPException(status_code=404, detail="Not found")
     if isinstance(value, str) and value.startswith("http"):
+        data = None
         # 1) Authenticated S3 GET (bucket public na ho tab bhi chalega) — sabse reliable
-        data = _fetch_r2_bytes(value)
-        if not data:
+        d1 = _fetch_r2_bytes(value)
+        if d1 and not _looks_like_error(d1):
+            data = d1
+        if data is None:
             # 2) Public URL se seedha fetch (agar bucket public hai)
             try:
                 import urllib.request
@@ -198,16 +214,16 @@ def proxy_response(value, media_type="application/octet-stream", filename=None, 
                     "Accept": "*/*",
                 })
                 with urllib.request.urlopen(req, timeout=25) as r:
-                    if getattr(r, "status", 200) not in (200, 206):
-                        raise Exception("bad status")
-                    data = r.read()
-                # HTML challenge/error page mila (asli file nahi) -> galat, redirect
-                if data[:20].lstrip()[:1] in (b"<",) and b"PDF" not in data[:8] and data[:3] != b"\xff\xd8\xff":
-                    from fastapi.responses import RedirectResponse
-                    return RedirectResponse(url=value, status_code=302)
+                    if getattr(r, "status", 200) in (200, 206):
+                        d2 = r.read()
+                        if d2 and not _looks_like_error(d2):
+                            data = d2
             except Exception:
-                from fastapi.responses import RedirectResponse
-                return RedirectResponse(url=value, status_code=302)
+                pass
+        if data is None:
+            # dono fail — corrupt file serve karne se behtar clear error
+            raise HTTPException(status_code=502,
+                                detail="File storage se abhi retrieve nahi ho pa raha (R2 read permission ya bucket check karein).")
     else:
         import base64 as _b64
         v = value.split(",")[-1] if isinstance(value, str) else value
@@ -269,3 +285,41 @@ def normalize(value, prefix, content_type="application/octet-stream"):
         return upload_bytes(new_key(prefix, "f" + ext), raw, content_type or "application/octet-stream")
     except Exception:
         return value
+
+
+def r2_selftest():
+    """R2 upload + read (authenticated + public) test — diagnose karta hai ki
+    downloads kyun fail ho rahe (e.g. token write-only, bucket private)."""
+    out = {"configured": is_configured(), "upload": False, "auth_read": False,
+           "public_read": False, "public_url_set": bool((_cfg() or {}).get("public_url")),
+           "detail": ""}
+    if not is_configured():
+        out["detail"] = "R2 env vars not fully set."
+        return out
+    import time as _t
+    key = "healthcheck/selftest-%d.txt" % int(_t.time())
+    payload = b"mvs-r2-selftest"
+    try:
+        url = upload_bytes(key, payload, "text/plain", cache_seconds=60)
+        out["upload"] = True
+    except Exception as e:
+        out["detail"] = "upload failed: %s" % (str(e)[:200])
+        return out
+    try:
+        d = _fetch_r2_bytes(url)
+        out["auth_read"] = bool(d == payload)
+        if not out["auth_read"]:
+            out["detail"] += " auth_read mismatch/none;"
+    except Exception as e:
+        out["detail"] += " auth_read error: %s;" % (str(e)[:120])
+    try:
+        import urllib.request
+        with urllib.request.urlopen(urllib.request.Request(url), timeout=12) as r:
+            out["public_read"] = (r.read() == payload)
+    except Exception as e:
+        out["detail"] += " public_read error: %s;" % (str(e)[:120])
+    try:
+        delete_key(key)
+    except Exception:
+        pass
+    return out
