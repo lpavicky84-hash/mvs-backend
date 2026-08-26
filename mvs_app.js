@@ -487,13 +487,26 @@ async function api(path, method='GET', body=null) {
   // network fail (Failed to fetch) pe 2 baar aur retry — backend cold-start/restart sambhal jaata hai.
   // v113: badi bodies (PDF base64 uploads) ko retry MAT karo — server pehli baar me save kar
   // chuka ho sakta hai; dobara bhejne se duplicate banta hai aur screen "Saving..." pe atakti thi.
-  const _tries=(opts.body&&opts.body.length>524288)?1:3;
-  let res=null;
-  for(let attempt=0; attempt<_tries; attempt++){
+  // Network resilience: Railway backend cold-start me 30-60s le sakta hai (so jaata hai to
+  // pehli request use jagati hai). Isliye network-fail par GENTLE backoff ke saath kai baar
+  // retry karte hain — student ko scary error ke bajaye backend apne aap ready hone tak wait
+  // ho jata hai. Sacchi offline state me turant (bina 30s hang) friendly message. Badi uploads
+  // sirf 1 baar (duplicate save se bachne ke liye).
+  const _bigBody=(opts.body&&opts.body.length>524288);
+  const _delays=_bigBody?[]:[1200,2000,3000,5000,8000,8000];
+  let res=null,_wasOffline=false;
+  for(let attempt=0; attempt<=_delays.length; attempt++){
     try{ res=await fetch(API+path, opts); break; }
-    catch(e){ res=null; if(attempt<_tries-1) await new Promise(r=>setTimeout(r, attempt===0?2000:5000)); }
+    catch(e){
+      res=null;
+      if(typeof navigator!=='undefined' && navigator.onLine===false){ _wasOffline=true; break; }
+      if(attempt<_delays.length) await new Promise(r=>setTimeout(r, _delays[attempt]));
+    }
   }
-  if(!res) throw new Error('Could not reach the server — please check your internet connection and try again in 30–60 seconds (the backend may still be starting up).');
+  if(!res){
+    if(_wasOffline) throw new Error('You appear to be offline. Please check your internet — the page will update on its own once you are back online.');
+    throw new Error('The server is just waking up. Please wait a few seconds and tap the button again — it will work.');
+  }
   let data;
   try { data = await res.json(); } catch { data = null; }
   if (!res.ok) {
@@ -506,7 +519,52 @@ async function api(path, method='GET', body=null) {
   } else _apiBust();
   return data;
 }
-// v113: bade JSON uploads (class notes PDF) live progress ke saath — screen kabhi
+
+// ========================================================
+//  BULLETPROOF CONNECTIVITY — cold-start warm-up + silent auto-refresh
+//  Students ko kabhi manually refresh na karna pade, aur "server not reachable" panic khatam.
+// ========================================================
+// Railway backend so jaata hai. Login screen dikhte hi (aur reconnect par) backend ko background
+// me jaga do — taaki student jab tak phone type kare, server ready ho jaaye. Success (koi bhi HTTP
+// response) tak silently retry; kabhi bhi UI par error nahi.
+let _warmDone=false, _warmT=null, _warmN=0;
+function _warmBackend(){
+  if(_warmDone) return;
+  try{ if(_warmT) clearTimeout(_warmT); }catch(e){}
+  (function tick(){
+    if(_warmDone) return;
+    fetch(API+'/api/student/logo',{cache:'no-store',mode:'no-cors'})
+      .then(function(){ _warmDone=true; _warmN=0; })
+      .catch(function(){ _warmN++; if(_warmN<20){ _warmT=setTimeout(tick, 3500); } });
+  })();
+}
+// Current page ka data chupchaap fresh karo (spinner/flicker ke bina). _apiBust sab cache stale
+// mark karta hai; _swrRerender typing-safe re-render karta hai jo background me naya data laata hai
+// aur badla ho to hi dobara render karta hai. Isse student ko update apne aap milta rehta hai.
+let _lastAutoRefresh=0;
+function _autoRefreshNow(force){
+  try{
+    if(document.visibilityState!=='visible') return;
+    if(typeof navigator!=='undefined' && navigator.onLine===false) return;
+    const now=Date.now();
+    if(!force && (now-_lastAutoRefresh)<8000) return;   // throttle — flood na ho
+    _lastAutoRefresh=now;
+    try{ _apiBust(); }catch(e){}
+    try{ _swrRerender(); }catch(e){}
+  }catch(e){}
+}
+// Tab wapas focus me aane par: turant fresh data + backend jagao.
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState==='visible'){ _warmBackend(); _autoRefreshNow(true); }
+});
+// Internet wapas aane par: re-warm + fresh data + session ping.
+window.addEventListener('online', function(){
+  _warmDone=false; _warmN=0; _warmBackend();
+  _autoRefreshNow(true);
+  try{ _pingNow(true); }catch(e){}
+});
+// Halka periodic auto-refresh — koi bhi portal khula ho to har 60s me chupchaap fresh data.
+setInterval(function(){ if(TOKEN) _autoRefreshNow(false); }, 60000);
 // "Saving..." pe dead nahi dikhti; percent chalta rehta hai.
 function _xhrJson(url,payload,onProgress){
   return new Promise((resolve,reject)=>{
@@ -548,6 +606,7 @@ function _authReset(){
 function goHome(){ var p=CURRENT_PORTAL||ROLE||'student'; _authReset(); goLogin(p); }
 function goLogin(portal){
   CURRENT_PORTAL=portal;
+  try{ _warmBackend(); }catch(e){}   // login screen dikhte hi backend jagao
   try{ history.replaceState({mvs:1,auth:portal},'', _portalPath(portal)); }catch(e){}
   document.getElementById('landing').style.display='none';
   document.getElementById('login-screen').classList.add('active');
@@ -608,6 +667,7 @@ async function _restoreSession(){
 }
 window.addEventListener('DOMContentLoaded', function(){
   try{ _setFavicon(); }catch(e){}
+  try{ _warmBackend(); }catch(e){}   // page load hote hi backend warm karna shuru
   if(/^#sso=/.test(location.hash||'')) return;   // SSO hash ho to wo flow handle karega
   // Session ho to wahi khol do; warna URL path ke hisaab se sahi portal:
   //   /  -> Student, /teacher -> Teacher, /admin -> Admin, /portal -> 3-card chooser.
@@ -6299,6 +6359,290 @@ function _renderADppTracker(){
       : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No DPPs${cls==='all'?'':' for Class '+cls}</b><p>DPPs from teachers will appear here, subject-wise.</p></div>`);
 }
 
+// ===================== ADMIN — YOUTUBER TASKS (apna alag section) =====================
+// Teacher Task Manager se bilkul alag. Existing production engine (/api/production/*,
+// creator_type=youtuber) se chalta hai — youtuber panel se seedha connected. HTML file
+// chhue bina nav + page JS se inject (DPP Tracker jaisa pattern).
+(function(){ try{ if(document.getElementById('yt-adm-css')) return; var st=document.createElement('style'); st.id='yt-adm-css';
+  st.textContent=[
+    '#a-page-ytasks .yt-hero{background:linear-gradient(135deg,#2a1d02,#4a3608);color:#fff;border-radius:18px;padding:20px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px}',
+    '#a-page-ytasks .yt-hero h3{margin:0;font-size:1.25rem;font-weight:800}',
+    '#a-page-ytasks .yt-hero p{margin:3px 0 0;font-size:.8rem;opacity:.82}',
+    '#a-page-ytasks .yt-hero .vt-sp{flex:1}',
+    '#a-page-ytasks .ytc-thumb{width:104px;min-width:104px;height:66px;border-radius:11px;background:#efe8d6 center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:#b89a55}',
+    'body.dark #a-page-ytasks .ytc-thumb{background:#241b09;color:#7c6a38}',
+    '#a-page-ytasks .ytc-thumb img{width:100%;height:100%;object-fit:cover;border-radius:11px}',
+    '#a-page-ytasks .ytc-meta{display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:.74rem;color:var(--text-muted);margin-top:7px}',
+    '#a-page-ytasks .ytc-meta svg{width:13px;height:13px;vertical-align:-2px}',
+    '#a-page-ytasks .ytc-dl.over{color:#dc2626;font-weight:700}',
+    '#a-page-ytasks .ytc-next{margin-top:6px;font-size:.72rem;color:#8a6d10;font-weight:600}',
+    '#a-page-ytasks .yt-empty{text-align:center;padding:40px 16px;color:var(--text-muted)}',
+    '#a-page-ytasks .yt-empty .big{font-size:2rem;opacity:.5}'
+  ].join('\n'); document.head.appendChild(st); }catch(e){} })();
+
+function initAdminYtTasks(){
+  var app=document.getElementById('admin-app'); if(!app) return;
+  var nav=app.querySelector('.sidebar-nav');
+  if(nav && !nav.querySelector('[onclick*="ytasks"]')){
+    var items=[].slice.call(nav.querySelectorAll('.nav-item'));
+    var anchor=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'vtasks'")>=0;})[0]
+            || items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'urgent'")>=0;})[0];
+    var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"aPage('ytasks',this)");
+    d.innerHTML=ic('play')+'<span>YouTuber Tasks</span>';
+    if(anchor){ anchor.parentNode.insertBefore(d, anchor.nextSibling); } else { nav.appendChild(d); }
+  }
+  var main=app.querySelector('.main');
+  if(main && !document.getElementById('a-page-ytasks')){
+    var pg=document.createElement('div'); pg.className='page'; pg.id='a-page-ytasks';
+    pg.innerHTML='<div id="a-ytasks-content"><div class="spinner"></div></div>';
+    main.appendChild(pg);
+  }
+}
+
+var _YT_DONE=['uploaded','completed'];
+var _YT_PROD=['approved','editor_assigned','editing_soon','editing','editing_paused','editing_done','qc_pending','qc_approved','qc_changes','ready_for_youtube'];
+var _YT_REVIEW=['creator_submitted','pm_review'];
+function _ytBucket(t){ var lc=t.lifecycle||''; if(_YT_DONE.indexOf(lc)>=0)return'done'; if(_YT_PROD.indexOf(lc)>=0)return'prod'; if(_YT_REVIEW.indexOf(lc)>=0)return'review'; return 'assigned'; }
+function _ytOverdue(t){ return !!(t.deadline_flag&&t.deadline_flag.kind==='overdue')&&_YT_DONE.indexOf(t.lifecycle||'')<0; }
+function _ytNum(n){ try{ return (n||0).toLocaleString(); }catch(e){ return String(n||0); } }
+function _ytUrl(u){ u=String(u||''); return /^(https?:|data:)/i.test(u)?u.replace(/"/g,'%22'):''; }
+
+window._ytF={q:'',creator:'',channel:'',video_type:'',bucket:''};
+
+async function loadAYtTasks(){
+  var el=document.getElementById('a-ytasks-content'); if(!el) return;
+  softSpin(el);
+  try{
+    var res=await Promise.all([
+      api('/api/production/tasks?creator_type=youtuber&size=200'),
+      api('/api/production/channels').catch(function(){return{channels:[]};}),
+      api('/api/production/video-types').catch(function(){return{types:[]};}),
+      api('/api/admin/production-users?role=youtuber').catch(function(){return[];})
+    ]);
+    window._ytTasks=(res[0]&&res[0].tasks)||[];
+    window._ytChannels=(res[1]&&res[1].channels)||[];
+    window._ytTypes=(res[2]&&res[2].types)||[];
+    window._ytPeople=Array.isArray(res[3])?res[3]:[];
+    _renderAYtTasks();
+  }catch(e){ el.innerHTML=errHtml(e); }
+}
+
+function _renderAYtTasks(){
+  var el=document.getElementById('a-ytasks-content'); if(!el) return;
+  var all=window._ytTasks||[], f=window._ytF;
+  var total=all.length,done=0,prod=0,review=0,assigned=0,overdue=0;
+  all.forEach(function(t){ var b=_ytBucket(t); if(b==='done')done++;else if(b==='prod')prod++;else if(b==='review')review++;else assigned++; if(_ytOverdue(t))overdue++; });
+  function stat(l,n,color,icn,bucket){ return '<div class="vt-stat'+(bucket?' vt-stat-click':'')+'"'+(bucket?' data-ytb="'+bucket+'" onclick="_ytBucketFilter(\''+bucket+'\')"':'')+'><div class="vs-ic" style="background:'+color+'1f;color:'+color+'">'+ic(icn)+'</div><div><div class="vs-n" style="color:'+color+'">'+n+'</div><div class="vs-l">'+l+'</div></div></div>'; }
+  var byType={}; all.forEach(function(t){ var k=(t.video_type||'').trim()||'Uncategorized'; byType[k]=(byType[k]||0)+1; });
+  var creators=[]; all.forEach(function(t){ var c=(t.creator_name||'').trim(); if(c&&creators.indexOf(c)<0)creators.push(c); }); creators.sort();
+  var cOpt='<option value="">All YouTubers</option>'+creators.map(function(c){return '<option value="'+esc(c)+'"'+(f.creator===c?' selected':'')+'>'+esc(c)+'</option>';}).join('');
+  var chOpt='<option value="">All Channels</option>'+(window._ytChannels||[]).map(function(c){return '<option value="'+esc(c.name)+'"'+(f.channel===c.name?' selected':'')+'>'+esc(c.name)+'</option>';}).join('');
+  var tyOpt='<option value="">All Types</option>'+(window._ytTypes||[]).map(function(c){return '<option value="'+esc(c.name)+'"'+(f.video_type===c.name?' selected':'')+'>'+esc(c.name)+'</option>';}).join('');
+  var cards=all.map(_ytCard).join('');
+  el.innerHTML=''
+    +'<div class="yt-hero"><div><h3>'+ic('play')+' YouTuber Task Manager</h3><p>Assign videos & projects to your YouTubers, track the full production pipeline, and publish — separate from the teacher Task Manager.</p></div><div class="vt-sp"></div>'
+      +'<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="openYtChannels()">'+ic('play')+' Channels ('+(window._ytChannels||[]).length+')</button>'
+      +'<button class="btn btn-ghost btn-sm" onclick="openYtTypes()">'+ic('edit')+' Video Types ('+(window._ytTypes||[]).length+')</button>'
+      +'<button class="btn btn-ghost btn-sm" onclick="loadAYtTasks()">'+ic('refresh')+' Refresh</button>'
+      +'<button class="btn btn-gold btn-sm" onclick="openYtAssign()">'+ic('clipboard')+' Assign Work</button></div></div>'
+    +'<div class="vt-cards"></div>';
+  // build stat row cleanly
+  var statRow=''
+    +stat('Total Assigned',total,'#8a6d10','clipboard','all')
+    +stat('To Shoot',assigned,'#0891b2','clock','assigned')
+    +stat('Approval Pending',review,'#c99a2e','bell','review')
+    +stat('In Production',prod,'#7c4fc0','play','prod')
+    +stat('Published',done,'#059669','check','done')
+    +stat('Overdue',overdue,'#dc2626','alert','over');
+  el.querySelector('.vt-cards').innerHTML=statRow;
+  // type chips
+  var typeKeys=Object.keys(byType);
+  var typeHtml = typeKeys.length ? '<div class="card" style="margin-bottom:16px"><div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px"><span style="font-size:.68rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">'+ic('chart')+' Type-wise</span>'+typeKeys.map(function(k){return '<span class="vt-type" style="cursor:pointer" onclick="_ytTypeFilter(\''+esc(String(k).replace(/'/g,''))+'\')">'+esc(k)+' · '+byType[k]+'</span>';}).join('')+'</div></div>' : '';
+  var filters='<div class="vt-filters">'
+    +'<input id="yt-search" class="vt-filt-search" type="search" placeholder="Search — title, youtuber, channel, subject, ref…" value="'+esc(f.q||'')+'" oninput="window._ytF.q=this.value.trim().toLowerCase();_ytClientFilter()">'
+    +'<span class="vt-filt-lbl">'+ic('help')+' Filter</span>'
+    +'<select class="vt-filt-sel" onchange="window._ytF.creator=this.value;_ytClientFilter()">'+cOpt+'</select>'
+    +'<select class="vt-filt-sel" onchange="window._ytF.channel=this.value;_ytClientFilter()">'+chOpt+'</select>'
+    +'<select class="vt-filt-sel" onchange="window._ytF.video_type=this.value;_ytClientFilter()">'+tyOpt+'</select>'
+    +'<button class="vt-filt-clear" onclick="_ytClearFilters()" title="Clear all filters">× Clear</button>'
+    +'<div style="flex:1"></div>'
+    +'<button class="btn btn-ghost btn-sm" onclick="ytDownloadReport()">'+ic('download')+' Download Report</button>'
+    +'</div>';
+  var grid='<div class="vt-grid" id="yt-grid">'+(cards||'<div class="yt-empty"><div class="big">'+ic('clipboard')+'</div><p><b>No YouTuber tasks yet</b></p><small>Tap “Assign Work” to give a video or project to a YouTuber.</small></div>')+'</div>';
+  el.insertAdjacentHTML('beforeend', typeHtml+filters+grid);
+  if(f.q||f.creator||f.channel||f.video_type||f.bucket) _ytClientFilter();
+}
+
+function _ytCard(t){
+  var b=_ytBucket(t), over=_ytOverdue(t), lc=t.lifecycle||'';
+  var pc={done:'#059669',prod:'#7c4fc0',review:'#c99a2e',assigned:'#0891b2'}[b];
+  var timg=_ytUrl(t.thumbnail);
+  var thumb='<div class="ytc-thumb">'+(timg?'<img src="'+timg+'" onerror="this.style.display=\'none\'">':ic('play'))+'</div>';
+  var chips='';
+  if(t.channel_name) chips+='<span class="vt-pill assigned">'+esc(t.channel_name)+'</span>';
+  if(t.video_type) chips+='<span class="vt-type">'+esc(t.video_type)+'</span>';
+  if(t.streaming) chips+='<span class="vt-pill '+(t.streaming==='live'?'delayed':'assigned')+'">'+(t.streaming==='live'?'Live':'Recorded')+'</span>';
+  if(t.priority==='urgent') chips+='<span class="vt-pill delayed">URGENT</span>';
+  var dl = t.deadline?'<span class="ytc-dl'+(over?' over':'')+'">'+ic('clock')+' '+esc(t.deadline)+(over?' · overdue':'')+'</span>':'';
+  var acts='';
+  if(t.youtube_url) acts+='<a class="btn btn-ghost btn-sm" href="'+_ytUrl(t.youtube_url)+'" target="_blank" rel="noopener">'+ic('play')+' YouTube</a>';
+  if(t.submitted_link) acts+='<a class="btn btn-ghost btn-sm" href="'+_ytUrl(t.submitted_link)+'" target="_blank" rel="noopener">'+ic('eye')+' Submission</a>';
+  if(_YT_REVIEW.indexOf(lc)>=0){
+    acts+='<button class="btn btn-primary btn-sm" onclick="ytApprove('+t.id+')">'+ic('check')+' Approve</button>'
+      +'<button class="btn btn-ghost btn-sm" onclick="ytReview('+t.id+',\'changes\')">Changes</button>'
+      +'<button class="btn btn-ghost btn-sm" onclick="ytReview('+t.id+',\'reshoot\')">Reshoot</button>'
+      +'<button class="btn btn-ghost btn-sm" onclick="ytReview('+t.id+',\'reject\')">Reject</button>';
+  } else if(lc==='ready_for_youtube'){
+    acts+='<button class="btn btn-gold btn-sm" onclick="ytPublish('+t.id+')">'+ic('play')+' Add YouTube Link</button>';
+  }
+  var searchTxt=((t.title||'')+' '+(t.creator_name||'')+' '+(t.channel_name||'')+' '+(t.subject||'')+' '+(t.video_type||'')+' '+(t.ref_code||'')).toLowerCase();
+  return '<div class="vt-card" data-ytbucket="'+b+'" data-over="'+(over?1:0)+'" data-creator="'+esc(t.creator_name||'')+'" data-channel="'+esc(t.channel_name||'')+'" data-vt="'+esc(t.video_type||'')+'" data-txt="'+esc(searchTxt)+'">'
+    +thumb
+    +'<div class="vt-body">'
+      +'<div class="vt-title">'+esc(t.title||'Untitled')+' <span class="vt-pill" style="background:'+pc+'1f;color:'+pc+'">'+esc(t.lifecycle_label||b)+'</span></div>'
+      +(chips?'<div class="vt-chips">'+chips+'</div>':'')
+      +'<div class="ytc-meta"><span>'+ic('user')+' '+esc(t.creator_name||'—')+'</span>'+(t.editor_name?'<span>'+ic('edit')+' '+esc(t.editor_name)+'</span>':'')+dl+(t.yt_views!=null?'<span>'+ic('chart')+' '+_ytNum(t.yt_views)+' views</span>':'')+(t.ref_code?'<span style="opacity:.6">'+esc(t.ref_code)+'</span>':'')+'</div>'
+      +(t.next_action?'<div class="ytc-next">'+ic('clock')+' '+esc(t.next_action)+'</div>':'')
+      +(acts?'<div class="vt-foot" style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap">'+acts+'</div>':'')
+    +'</div></div>';
+}
+
+function _ytBucketFilter(b){ window._ytF.bucket=(window._ytF.bucket===b?'':b); _ytClientFilter(); }
+function _ytTypeFilter(k){ window._ytF.video_type=(window._ytF.video_type===k?'':k); var s=document.querySelectorAll('#a-page-ytasks .vt-filt-sel'); _ytClientFilter(); }
+function _ytClearFilters(){ window._ytF={q:'',creator:'',channel:'',video_type:'',bucket:''}; var sr=document.getElementById('yt-search'); if(sr)sr.value=''; document.querySelectorAll('#a-page-ytasks .vt-filt-sel').forEach(function(s){s.selectedIndex=0;}); _ytClientFilter(); }
+function _ytClientFilter(){
+  var f=window._ytF;
+  document.querySelectorAll('#a-page-ytasks .vt-stat[data-ytb]').forEach(function(c){ c.classList.toggle('vt-stat-on', !!f.bucket && c.getAttribute('data-ytb')===f.bucket); });
+  document.querySelectorAll('#yt-grid > .vt-card').forEach(function(c){
+    var show=true;
+    if(f.creator && c.getAttribute('data-creator')!==f.creator) show=false;
+    if(show && f.channel && c.getAttribute('data-channel')!==f.channel) show=false;
+    if(show && f.video_type && c.getAttribute('data-vt')!==f.video_type) show=false;
+    if(show && f.bucket){ if(f.bucket==='over'){ show=c.getAttribute('data-over')==='1'; } else if(f.bucket!=='all'){ show=c.getAttribute('data-ytbucket')===f.bucket; } }
+    if(show && f.q){ show=(c.getAttribute('data-txt')||'').indexOf(f.q)>=0; }
+    c.style.display=show?'':'none';
+  });
+}
+
+// ---- Assign Work (create a youtuber task) ----
+function openYtAssign(){
+  var ppl=(window._ytPeople||[]).filter(function(p){return p.profile_id;});
+  if(!ppl.length){ toast('Add a YouTuber first under Production Team.',true); return; }
+  var yOpt=ppl.map(function(p){return '<option value="'+p.profile_id+'">'+esc(p.name||('YouTuber #'+p.profile_id))+'</option>';}).join('');
+  var chOpt='<option value="">— No channel —</option>'+(window._ytChannels||[]).map(function(c){return '<option value="'+esc(c.name)+'">'+esc(c.name)+'</option>';}).join('');
+  var tyOpt='<option value="">— Type —</option>'+(window._ytTypes||[]).map(function(c){return '<option value="'+esc(c.name)+'">'+esc(c.name)+'</option>';}).join('');
+  showModal('Assign Work to a YouTuber',
+    '<div class="form-group"><label>Video title *</label><input id="yta-title" class="input" placeholder="e.g. Physics One Shot — Motion in a Plane"></div>'
+    +'<div class="form-group"><label>YouTuber *</label><select id="yta-yt" class="input">'+yOpt+'</select></div>'
+    +'<div style="display:flex;gap:10px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:150px"><label>Channel</label><select id="yta-ch" class="input">'+chOpt+'</select></div>'
+    +'<div class="form-group" style="flex:1;min-width:150px"><label>Video type</label><select id="yta-ty" class="input">'+tyOpt+'</select></div></div>'
+    +'<div style="display:flex;gap:10px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:150px"><label>Format</label><select id="yta-stream" class="input"><option value="">—</option><option value="recorded">Recorded</option><option value="live">Live</option></select></div>'
+    +'<div class="form-group" style="flex:1;min-width:150px"><label>Priority</label><select id="yta-pri" class="input"><option value="normal">Normal</option><option value="urgent">Urgent</option></select></div></div>'
+    +'<div class="form-group"><label>Deadline</label><input id="yta-dl" class="input" type="datetime-local"></div>'
+    +'<div class="form-group"><label>Reference / brief</label><input id="yta-ref" class="input" placeholder="Reference link or note (optional)"></div>'
+    +'<div class="form-group"><label>Remarks</label><textarea id="yta-rem" class="input" rows="2" placeholder="Instructions for the youtuber (optional)"></textarea></div>'
+    +'<label style="display:flex;gap:8px;align-items:center;font-size:.82rem;margin:4px 0"><input type="checkbox" id="yta-appr" checked> Require PM/Admin approval after submission</label>'
+    +'<label style="display:flex;gap:8px;align-items:center;font-size:.82rem;margin:4px 0"><input type="checkbox" id="yta-thumb"> Needs a thumbnail (graphics)</label>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitYtAssign(this)">'+ic('check')+' Assign</button>');
+}
+async function submitYtAssign(btn){
+  var title=(document.getElementById('yta-title').value||'').trim();
+  var yid=+(document.getElementById('yta-yt').value||0);
+  if(!title){ toast('Enter a video title',true); return; }
+  if(!yid){ toast('Choose a youtuber',true); return; }
+  var body={ creator_type:'youtuber', youtuber_id:yid, title:title,
+    channel_name:document.getElementById('yta-ch').value||'',
+    video_type:document.getElementById('yta-ty').value||'',
+    streaming:document.getElementById('yta-stream').value||'',
+    priority:document.getElementById('yta-pri').value||'normal',
+    reference:document.getElementById('yta-ref').value||'',
+    remarks:document.getElementById('yta-rem').value||'',
+    approval_required:document.getElementById('yta-appr').checked,
+    thumbnail_required:document.getElementById('yta-thumb').checked };
+  var dl=document.getElementById('yta-dl').value; if(dl) body.deadline=dl;
+  if(btn){ btn.disabled=true; btn.textContent='Assigning…'; }
+  try{ await api('/api/production/tasks','POST',body); closeModal(); toast('Assigned to the youtuber.'); loadAYtTasks(); }
+  catch(e){ toast((e&&e.message)||'Could not assign',true); if(btn){ btn.disabled=false; btn.innerHTML=ic('check')+' Assign'; } }
+}
+
+// ---- Creator review actions ----
+async function ytApprove(id){
+  try{ await api('/api/production/tasks/'+id+'/approve-creator','POST',{}); toast('Approved.'); loadAYtTasks(); }
+  catch(e){ toast((e&&e.message)||'Failed',true); }
+}
+function ytReview(id, action){
+  var titleMap={changes:'Request Changes',reshoot:'Ask for a Reshoot',reject:'Reject Submission'};
+  var needDl=(action==='changes'||action==='reshoot');
+  showModal(titleMap[action]||'Review',
+    '<div class="form-group"><label>Remarks *</label><textarea id="ytr-rem" class="input" rows="3" placeholder="What needs to change / why"></textarea></div>'
+    +'<div class="form-group"><label>New deadline'+(needDl?' *':' (optional — leave empty for a final reject)')+'</label><input id="ytr-dl" class="input" type="datetime-local"></div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitYtReview('+id+",'"+action+"',this)\">Submit</button>");
+}
+async function submitYtReview(id, action, btn){
+  var rem=(document.getElementById('ytr-rem').value||'').trim();
+  var dl=(document.getElementById('ytr-dl').value||'').trim();
+  if(!rem){ toast('Remarks are required',true); return; }
+  if((action==='changes'||action==='reshoot') && !dl){ toast('A new deadline is required',true); return; }
+  var ep={changes:'request-creator-changes',reshoot:'reshoot-creator',reject:'reject-creator'}[action];
+  var body={remarks:rem}; if(dl){ body.new_deadline=dl; } if(action==='reject'&&dl){ body.allow_resubmit=true; }
+  if(btn){ btn.disabled=true; btn.textContent='Submitting…'; }
+  try{ await api('/api/production/tasks/'+id+'/'+ep,'POST',body); closeModal(); toast('Done.'); loadAYtTasks(); }
+  catch(e){ toast((e&&e.message)||'Failed',true); if(btn){ btn.disabled=false; btn.textContent='Submit'; } }
+}
+function ytPublish(id){
+  showModal('Add YouTube Link',
+    '<div class="form-group"><label>Published YouTube URL *</label><input id="ytp-url" class="input" placeholder="https://youtu.be/..."></div>'
+    +'<p style="font-size:.74rem;color:var(--text-muted)">Adding the link marks this video as Uploaded and starts live-view tracking.</p>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitYtPublish('+id+',this)">'+ic('check')+' Publish</button>');
+}
+async function submitYtPublish(id, btn){
+  var url=(document.getElementById('ytp-url').value||'').trim();
+  if(!url){ toast('Paste the YouTube link',true); return; }
+  if(btn){ btn.disabled=true; btn.textContent='Saving…'; }
+  try{ await api('/api/production/tasks/'+id+'/youtube','POST',{youtube_url:url}); closeModal(); toast('Published.'); loadAYtTasks(); }
+  catch(e){ toast((e&&e.message)||'Failed',true); if(btn){ btn.disabled=false; btn.innerHTML=ic('check')+' Publish'; } }
+}
+
+async function ytDownloadReport(){
+  try{
+    var r=await fetch(API+'/api/production/report.csv?creator_type=youtuber',{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('Download failed');
+    var u=URL.createObjectURL(await r.blob());
+    var a=document.createElement('a'); a.href=u; a.download='youtuber_report.csv';
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u);
+    toast('Report downloaded.');
+  }catch(e){ toast('Could not download the report',true); }
+}
+// ---- Channels / Video Types (shared with production) ----
+function openYtChannels(){
+  var rows=(window._ytChannels||[]).map(function(c){return '<div class="vt-rank-row"><span class="sbb-av">'+ic('play')+'</span><div class="sbb-main"><div class="sbb-nm">'+esc(c.name)+'</div></div></div>';}).join('')||'<p style="color:var(--text-muted);font-size:.8rem">No channels yet.</p>';
+  showModal('YouTube Channels',
+    '<p style="font-size:.78rem;color:var(--text-muted);margin-bottom:10px">Channels appear in the channel dropdown while assigning.</p>'
+    +'<div style="max-height:280px;overflow-y:auto;margin-bottom:12px">'+rows+'</div>'
+    +'<div style="display:flex;gap:8px"><input id="yt-ch-new" class="input" placeholder="New channel name" style="flex:1"><button class="btn btn-primary btn-sm" onclick="ytAddChannel()">Add</button></div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+}
+async function ytAddChannel(){
+  var name=(document.getElementById('yt-ch-new').value||'').trim(); if(!name){ toast('Enter a name',true); return; }
+  try{ await api('/api/production/channels','POST',{name:name}); toast('Channel added.'); await loadAYtTasks(); setTimeout(openYtChannels,300); }
+  catch(e){ toast((e&&e.message)||'Could not add',true); }
+}
+function openYtTypes(){
+  var rows=(window._ytTypes||[]).map(function(c){return '<div class="vt-rank-row"><span class="sbb-av">'+ic('edit')+'</span><div class="sbb-main"><div class="sbb-nm">'+esc(c.name)+'</div></div></div>';}).join('')||'<p style="color:var(--text-muted);font-size:.8rem">No types yet.</p>';
+  showModal('Video Types',
+    '<p style="font-size:.78rem;color:var(--text-muted);margin-bottom:10px">Types appear in the video-type dropdown while assigning.</p>'
+    +'<div style="max-height:280px;overflow-y:auto;margin-bottom:12px">'+rows+'</div>'
+    +'<div style="display:flex;gap:8px"><input id="yt-ty-new" class="input" placeholder="New video type" style="flex:1"><button class="btn btn-primary btn-sm" onclick="ytAddType()">Add</button></div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+}
+async function ytAddType(){
+  var name=(document.getElementById('yt-ty-new').value||'').trim(); if(!name){ toast('Enter a name',true); return; }
+  try{ await api('/api/production/video-types','POST',{name:name}); toast('Type added.'); await loadAYtTasks(); setTimeout(openYtTypes,300); }
+  catch(e){ toast((e&&e.message)||'Could not add',true); }
+}
+// ===================== END YOUTUBER TASKS =====================
+
+
 console.log('MVS Smart Paste build 2026-07-20 v5 + scheduling + premium PDF v2');
 const spUMAP={'∫':'\\int ','π':'\\pi ','θ':'\\theta ','Δ':'\\Delta ','δ':'\\delta ','λ':'\\lambda ','μ':'\\mu ','α':'\\alpha ','β':'\\beta ','γ':'\\gamma ','ω':'\\omega ','Σ':'\\sum ','σ':'\\sigma ','×':'\\times ','·':'\\cdot ','÷':'\\div ','±':'\\pm ','∞':'\\infty ','≈':'\\approx ','≠':'\\ne ','≤':'\\le ','≥':'\\ge ','→':'\\to ','←':'\\leftarrow ','−':'-','–':'-','η':'\\eta ','Ω':'\\Omega ','ε':'\\epsilon ','ρ':'\\rho ','ν':'\\nu ','°':'^\\circ '};
 const spSUP={'⁰':'0','¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9','ⁿ':'n','⁻':'-'};
@@ -7617,6 +7961,7 @@ function adminAllowed(page){
   if(!me||me.full_access) return true;
   const secs=me.sections||[];
   if(page==='dpptracker') return secs.includes('tests')||secs.includes('dpptracker');
+  if(page==='ytasks') return secs.includes('ytasks')||secs.includes('vtasks');
   return secs.includes(page);
 }
 function applyAdminAccess(){
@@ -7650,6 +7995,7 @@ function openAdmin(){
   try{_saveSession();}catch(e){}
   document.getElementById('admin-app').classList.add('active');
   try{ initAdminDppTracker(); }catch(e){}
+  try{ initAdminYtTasks(); }catch(e){}
   try{ initAdminProdTeam(); }catch(e){}
   try{ initAdminCategories(); }catch(e){}
   try{ initAdminMatCheck(); }catch(e){}
@@ -7771,7 +8117,7 @@ function aPage(page,el){
   }
   if(!el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) el=n; }); }
   if(el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodmon:'Production Overview',translation:'Translation Center',categories:'Teacher Categories',matcheck:'Material Checker',complaints:'Complaints & Resolution',feedback:'Feedback & Ratings'};
+  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',ytasks:'YouTuber Tasks',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodmon:'Production Overview',translation:'Translation Center',categories:'Teacher Categories',matcheck:'Material Checker',complaints:'Complaints & Resolution',feedback:'Feedback & Ratings'};
   _setPage(titles[page]||page);
   document.getElementById('a-title').textContent=titles[page]||page;
   _curLoader=function(){ _aLoadPage(page); };
@@ -7788,6 +8134,7 @@ function _aLoadPage(page){
   else if(page==='prodmon') loadAProdMonitor();
   else if(page==='translation') loadATranslation();
   else if(page==='vtasks') loadAVTasks();
+  else if(page==='ytasks') loadAYtTasks();
   else if(page==='urgent') loadAUrgent();
   else if(page==='approvals') loadAApprovals();
   else if(page==='material') loadAMaterial();
@@ -11998,7 +12345,7 @@ async function doResetData(){
 const ADMIN_SECTIONS=[
   ['dashboard','Dashboard'],['approvals','Approvals'],['live','Live Users'],['timetable','Time Table'],
   ['qbank','Study Material'],['material','Classes Material'],['doubts','Doubts'],['tests','Tests Tracker'],
-  ['vtasks','Task Manager'],['urgent','Urgent Videos'],['teachers','Teachers'],['reports','Teacher Reports'],['tranks','Teacher Ranking'],
+  ['vtasks','Task Manager'],['ytasks','YouTuber Tasks'],['urgent','Urgent Videos'],['teachers','Teachers'],['reports','Teacher Reports'],['tranks','Teacher Ranking'],
   ['compliance','Class Compliance'],['attendance','Attendance'],['payouts','Payouts'],['students','Students'],
   ['notify','Send Notice'],['subjects','Subjects'],['syllabus','Syllabus Manager'],['categories','Teacher Categories'],['matcheck','Material Checker'],['complaints','Complaints'],['feedback','Feedback'],['admins','Admin Users']
 ];
@@ -15868,7 +16215,7 @@ async function processExcel(){
 try{injectNavIcons();injectTopbarIcons();}catch(e){}
 try{initResponsiveCss();}catch(e){}
 try{initNavCollapse();}catch(e){}
-try{initAdminDppTracker();}catch(e){}
+try{initAdminDppTracker();}catch(e){}try{initAdminYtTasks();}catch(e){}
 try{initNavAccordion();}catch(e){}
 setTimeout(function(){ try{initNavAccordion();}catch(e){} },500);
 function initResponsiveCss(){
