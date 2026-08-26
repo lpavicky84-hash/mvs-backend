@@ -643,7 +643,7 @@ def admin_list_messages(sid: int, db: Session = Depends(get_db), _=Depends(admin
     return {"messages": [_msg_dict(db, x) for x in msgs]}
 
 
-@router.delete("/api/admin/material-submissions/{sid}")
+@router.post("/api/admin/material-submissions/{sid}/delete")
 def admin_delete_submission(sid: int, db: Session = Depends(get_db), _=Depends(admin_guard)):
     """Permanently delete a material submission and all its versions, messages and attachments."""
     from category_models import (MaterialSubmission, MaterialVersion,
@@ -756,19 +756,24 @@ def _sub_dict(db, m, with_versions=False, teacher_name=None):
     return d
 
 
-def _add_version(db, submission, raw, file, uploader_id, status_at, remarks=None):
+def _add_version_raw(db, submission, raw, filename, mime, uploader_id, status_at, remarks=None):
     from category_models import MaterialVersion
     r2 = __import__("r2_storage")
-    ref = r2.store_file_value(r2.new_key("mat-versions", file.filename or "file"),
-                              raw, file.content_type or "application/octet-stream")
+    ref = r2.store_file_value(r2.new_key("mat-versions", filename or "file"),
+                              raw, mime or "application/octet-stream")
     vno = (submission.current_version or 0) + 1
     v = MaterialVersion(submission_id=submission.id, version_no=vno,
                         uploader_user_id=uploader_id, file_url=ref,
-                        filename=file.filename or "file", file_size=len(raw),
-                        mime=file.content_type or "", status_at=status_at, remarks=remarks)
+                        filename=filename or "file", file_size=len(raw),
+                        mime=mime or "", status_at=status_at, remarks=remarks)
     db.add(v)
     submission.current_version = vno
     return v
+
+
+def _add_version(db, submission, raw, file, uploader_id, status_at, remarks=None):
+    return _add_version_raw(db, submission, raw, getattr(file, "filename", None),
+                            getattr(file, "content_type", None), uploader_id, status_at, remarks)
 
 
 # ---- Teacher ----
@@ -841,6 +846,71 @@ async def teacher_resubmit(sid: int, file: UploadFile = File(...),
         raise HTTPException(status_code=409, detail="This submission is closed.")
     raw = await file.read()
     _add_version(db, m, raw, file, me.id, "resubmitted", str(remarks).strip() or None)
+    m.status = "resubmitted"
+    _log_event(db, m.category_id, tid, m.id, me.id, "teacher", "resubmitted", m.title)
+    db.commit()
+    return {"ok": True, "version": m.current_version}
+
+
+def _decode_b64(raw):
+    import base64 as _b64
+    if "," in (raw or "")[:80]:
+        raw = raw.split(",", 1)[1]
+    try:
+        return _b64.b64decode(raw)
+    except Exception:
+        raise HTTPException(status_code=400, detail="File data corrupt hai — dobara try karo.")
+
+
+@router.post("/api/teacher/material-submissions-json")
+def teacher_submit_material_json(data: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_teacher)):
+    """JSON base64 submission — multipart block ho tab bhi chalta hai (compressed upload + progress)."""
+    from category_models import MaterialSubmission
+    tid = CS.teacher_id_for_user(db, me)
+    if not tid:
+        raise HTTPException(status_code=403, detail="No teacher profile.")
+    d = data or {}
+    cid = int(d.get("category_id")) if str(d.get("category_id") or "").isdigit() else 0
+    CS.assert_teacher_category(db, tid, cid)
+    sid = None
+    if str(d.get("subject_id") or "").strip().isdigit():
+        sid = int(d.get("subject_id"))
+        CS.assert_teacher_subject(db, tid, sid)
+    raw = _decode_b64(d.get("file_b64") or "")
+    if not raw:
+        raise HTTPException(status_code=400, detail="File is empty")
+    if len(raw) > 40 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File bahut badi hai (40MB se zyada).")
+    fname = (d.get("filename") or "Material").strip()
+    m = MaterialSubmission(category_id=cid, category_subject_id=sid, teacher_id=tid,
+                           title=(str(d.get("title") or "").strip() or fname),
+                           material_type=d.get("material_type") or "resource",
+                           description=(str(d.get("description") or "").strip() or None),
+                           reference=(str(d.get("reference") or "").strip() or None),
+                           status="submitted", priority="normal", current_version=0)
+    db.add(m); db.flush()
+    _add_version_raw(db, m, raw, fname, d.get("mime") or "application/octet-stream", me.id, "submitted")
+    _log_event(db, cid, tid, m.id, me.id, "teacher", "submitted", m.title)
+    db.commit()
+    return {"ok": True, "id": m.id}
+
+
+@router.post("/api/teacher/material-submissions/{sid}/resubmit-json")
+def teacher_resubmit_json(sid: int, data: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_teacher)):
+    from category_models import MaterialSubmission
+    tid = CS.teacher_id_for_user(db, me)
+    m = db.query(MaterialSubmission).filter(MaterialSubmission.id == sid).first()
+    if not m or m.teacher_id != tid:
+        raise HTTPException(status_code=404, detail="Submission not found.")
+    if m.status in ("approved", "rejected"):
+        raise HTTPException(status_code=409, detail="This submission is closed.")
+    d = data or {}
+    raw = _decode_b64(d.get("file_b64") or "")
+    if not raw:
+        raise HTTPException(status_code=400, detail="File is empty")
+    _add_version_raw(db, m, raw, (d.get("filename") or "file").strip(),
+                     d.get("mime") or "application/octet-stream", me.id, "resubmitted",
+                     str(d.get("remarks") or "").strip() or None)
     m.status = "resubmitted"
     _log_event(db, m.category_id, tid, m.id, me.id, "teacher", "resubmitted", m.title)
     db.commit()

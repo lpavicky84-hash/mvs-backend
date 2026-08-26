@@ -3935,12 +3935,16 @@ async function openDppResults(pid){
   }catch(e){ showModal('DPP Submissions',errHtml(e),`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`); }
 }
 async function dppAnsDl(aid){
+  var url=API+`/api/teacher/dpp-answers/${aid}/file`;
   try{
-    const r=await fetch(API+`/api/teacher/dpp-answers/${aid}/file`,{headers:{Authorization:'Bearer '+TOKEN}});
+    const r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}});
     if(!r.ok) throw new Error('nf');
-    const bl=await r.blob(); const a=document.createElement('a');
-    a.href=URL.createObjectURL(bl); a.download='dpp-answer.pdf'; a.click();
-  }catch(e){ toast('File not available',true); }
+    const bl=await r.blob(); if(!bl||!bl.size) throw new Error('empty'); const a=document.createElement('a');
+    a.href=URL.createObjectURL(bl); a.download='dpp-answer.pdf'; document.body.appendChild(a); a.click(); a.remove();
+  }catch(e){
+    try{ window.open(url+'?t='+encodeURIComponent(TOKEN),'_blank','noopener'); }
+    catch(e2){ toast('File not available',true); }
+  }
 }
 async function dppMarkChecked(aid,pid){
   const remarks=(document.getElementById('dpp-remark-'+aid)||{}).value||'';
@@ -23842,13 +23846,17 @@ function _matTypeLabel(k){ var f=MAT_TYPES.filter(function(x){return x[0]===k;})
 function _fmtSize(n){ n=n||0; return n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?(n/1024).toFixed(0)+' KB':n+' B'; }
 
 async function catDownloadMaterial(role, mid, name){
+  var url=API+'/api/'+role+'/category-materials/'+mid+'/download';
   try{
-    var r=await fetch(API+'/api/'+role+'/category-materials/'+mid+'/download',{headers:{Authorization:'Bearer '+TOKEN}});
+    var r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}});
     if(!r.ok) throw new Error('Download failed');
-    var blob=await r.blob(); var url=URL.createObjectURL(blob);
-    var a=document.createElement('a'); a.href=url; a.download=name||'file';
-    document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(url);},4000);
-  }catch(e){ toast('Could not download',true); }
+    var blob=await r.blob(); if(!blob||!blob.size) throw new Error('empty'); var u=URL.createObjectURL(blob);
+    var a=document.createElement('a'); a.href=u; a.download=name||'file';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},4000);
+  }catch(e){
+    try{ window.open(url+'?t='+encodeURIComponent(TOKEN),'_blank','noopener'); }
+    catch(e2){ toast('Could not download',true); }
+  }
 }
 
 /* ---- Admin materials manager ---- */
@@ -23956,6 +23964,9 @@ function _mcCss(){
     '.mc-meta{font-size:.76rem;color:#8a7d5c;margin-top:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}',
     '.mc-chip{background:var(--hover);border-radius:999px;padding:2px 9px;font-size:.68rem;font-weight:700;color:#7a6a3f}',
     '.mc-del{color:#c1443a;flex-shrink:0}',
+    '.mc-rev-head{display:flex;align-items:center;gap:14px;padding:14px 16px;margin-bottom:14px;border-radius:14px;background:linear-gradient(135deg,rgba(184,148,31,.12),rgba(184,148,31,.03));border:1px solid var(--border)}',
+    '.mc-v{display:flex;align-items:center;gap:12px;padding:13px 15px;border:1px solid var(--border);border-radius:14px;margin-bottom:9px;background:var(--card)}',
+    '.mc-v-ic{width:40px;height:40px;border-radius:11px;background:linear-gradient(135deg,rgba(37,99,235,.14),rgba(37,99,235,.04));display:flex;align-items:center;justify-content:center;color:#2563eb;flex-shrink:0}',
     '.mc-ver{font-family:ui-monospace,monospace;font-size:.72rem;color:#8a7d5c}',
     '.mc-v{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:7px}',
     '.mc-due{font-size:.7rem;font-weight:800;padding:2px 9px;border-radius:999px}',
@@ -24014,19 +24025,26 @@ async function mcSubmit(){
   var a=window._tActiveCat; var f=document.getElementById('mcs-file');
   var title=(document.getElementById('mcs-title').value||'').trim();
   if(!f.files||!f.files[0]){ toast('Choose a file',true); return; }
-  if(!title) title=f.files[0].name;
-  var btn=document.getElementById('mcs-btn'); btn.disabled=true; btn.textContent='Submitting...';
+  var file=f.files[0], origName=file.name||'material';
+  if(!title) title=origName;
+  var btn=document.getElementById('mcs-btn'), st=document.getElementById('mcs-status');
+  btn.disabled=true;
   try{
-    var fd=new FormData();
-    fd.append('file',f.files[0]); fd.append('category_id',a.id); fd.append('title',title);
-    fd.append('subject_id',document.getElementById('mcs-subject').value||'');
-    fd.append('material_type',document.getElementById('mcs-type').value);
-    fd.append('description',document.getElementById('mcs-desc').value||'');
-    fd.append('reference',document.getElementById('mcs-ref').value||'');
-    var r=await fetch(API+'/api/teacher/material-submissions',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
-    if(!r.ok){ var d=null; try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||'Submit failed'); }
+    // Compress PDFs before upload (PPT/other types are sent as-is)
+    if(file.type==='application/pdf' && typeof compressPdf==='function'){
+      btn.textContent='Compressing…';
+      try{ file=await compressPdf(file,function(m){ if(st) st.textContent=m; }); }catch(e){}
+    }
+    btn.textContent='Preparing…';
+    var b64=await _fileB64(file);
+    var payload={category_id:a.id,title:title,subject_id:document.getElementById('mcs-subject').value||'',
+      material_type:document.getElementById('mcs-type').value,description:document.getElementById('mcs-desc').value||'',
+      reference:document.getElementById('mcs-ref').value||'',file_b64:b64,filename:origName,
+      mime:file.type||'application/octet-stream'};
+    await _xhrJson('/api/teacher/material-submissions-json',payload,function(pc){
+      btn.textContent='Uploading… '+pc+'%'; if(st) st.textContent='Uploading… '+pc+'%'; });
     closeModal(); toast('Submitted for review'); loadTMatChecker();
-  }catch(e){ document.getElementById('mcs-status').innerHTML='<span style="color:#c1443a">'+esc(e.message)+'</span>'; btn.disabled=false; btn.textContent='Submit for Review'; }
+  }catch(e){ if(st) st.innerHTML='<span style="color:#c1443a">'+esc(e.message)+'</span>'; btn.disabled=false; btn.textContent='Submit for Review'; }
 }
 
 function mcOpenDetail(sid){
@@ -24060,20 +24078,33 @@ function mcResubmitPrompt(sid){
 }
 async function mcResubmit(sid){
   var f=document.getElementById('mcr-file'); if(!f.files||!f.files[0]){ toast('Choose a file',true); return; }
-  var btn=document.getElementById('mcr-btn'); btn.disabled=true; btn.textContent='Uploading...';
+  var file=f.files[0], origName=file.name||'file';
+  var btn=document.getElementById('mcr-btn'), st=document.getElementById('mcr-status'); btn.disabled=true;
   try{
-    var fd=new FormData(); fd.append('file',f.files[0]); fd.append('remarks',document.getElementById('mcr-note').value||'');
-    var r=await fetch(API+'/api/teacher/material-submissions/'+sid+'/resubmit',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
-    if(!r.ok){ var d=null; try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||'Upload failed'); }
+    if(file.type==='application/pdf' && typeof compressPdf==='function'){
+      btn.textContent='Compressing…';
+      try{ file=await compressPdf(file,function(m){ if(st) st.textContent=m; }); }catch(e){}
+    }
+    btn.textContent='Preparing…';
+    var b64=await _fileB64(file);
+    await _xhrJson('/api/teacher/material-submissions/'+sid+'/resubmit-json',
+      {file_b64:b64,filename:origName,mime:file.type||'application/octet-stream',remarks:document.getElementById('mcr-note').value||''},
+      function(pc){ btn.textContent='Uploading… '+pc+'%'; if(st) st.textContent='Uploading… '+pc+'%'; });
     toast('New version uploaded'); mcOpenDetail(sid); loadTMatChecker();
   }catch(e){ document.getElementById('mcr-status').innerHTML='<span style="color:#c1443a">'+esc(e.message)+'</span>'; btn.disabled=false; btn.textContent='Upload'; }
 }
 async function catDownloadVersion(role, vid, name){
+  var url=API+'/api/'+role+'/material-versions/'+vid+'/download';
   try{
-    var r=await fetch(API+'/api/'+role+'/material-versions/'+vid+'/download',{headers:{Authorization:'Bearer '+TOKEN}});
-    if(!r.ok) throw new Error('fail'); var blob=await r.blob(); var url=URL.createObjectURL(blob);
-    var a=document.createElement('a'); a.href=url; a.download=name||'file'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(url);},4000);
-  }catch(e){ toast('Could not download',true); }
+    var r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('fail'); var blob=await r.blob(); if(!blob||!blob.size) throw new Error('empty');
+    var u=URL.createObjectURL(blob);
+    var a=document.createElement('a'); a.href=u; a.download=name||'file'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},4000);
+  }catch(e){
+    // Bulletproof: server R2 tak na pahunche to browser se seedha (top-level nav, no CORS)
+    try{ window.open(url+'?t='+encodeURIComponent(TOKEN),'_blank','noopener'); }
+    catch(e2){ toast('Could not download',true); }
+  }
 }
 
 /* ============================================================
@@ -24128,7 +24159,7 @@ function amcSetStatus(v){ _amcFilter.status=v||''; loadAMatCheck(); }
 async function amcDeleteSubmission(sid, title){
   if(!confirm('Delete this submission'+(title?' "'+title+'"':'')+' permanently? This removes all its versions and messages.')) return;
   try{
-    await fetch(API+'/api/admin/material-submissions/'+sid,{method:'DELETE',headers:{Authorization:'Bearer '+TOKEN}}).then(function(r){ if(!r.ok) throw new Error('Delete failed'); });
+    await api('/api/admin/material-submissions/'+sid+'/delete','POST',{});
     toast('Submission deleted.'); loadAMatCheck();
   }catch(e){ toast(e.message||'Could not delete',true); }
 }
@@ -24138,14 +24169,15 @@ function amcOpenDetail(sid){
   api('/api/admin/material-submissions/'+sid).then(function(r){
     var m=r.submission; window._amcCur=m;
     var vers=(m.versions||[]).map(function(v){
-      return '<div class="mc-v"><div style="flex:1"><b>Version '+v.version_no+'</b> <span class="mc-ver">'+esc(v.filename)+' · '+_fmtSize(v.file_size)+'</span>'
+      return '<div class="mc-v"><div class="mc-v-ic">'+(typeof ic==='function'?ic('clipboard'):'')+'</div><div style="flex:1;min-width:0"><b>Version '+v.version_no+'</b> <span class="mc-ver">'+esc(v.filename)+' · '+_fmtSize(v.file_size)+'</span>'
         +(v.remarks?'<div style="font-size:.78rem;color:#8a7d5c;margin-top:3px">'+esc(v.remarks)+'</div>':'')
-        +'<div style="font-size:.7rem;color:#8a7d5c">'+esc(v.created_at)+'</div></div>'
-        +'<button class="btn btn-ghost btn-sm" onclick="catDownloadVersion(\'admin\','+v.id+',\''+esc((v.filename||'file').replace(/'/g,''))+'\')">Download</button></div>';
+        +'<div style="font-size:.7rem;color:#8a7d5c;margin-top:2px">'+esc(v.created_at)+'</div></div>'
+        +'<button class="btn btn-primary btn-sm" onclick="catDownloadVersion(\'admin\','+v.id+',\''+esc((v.filename||'file').replace(/'/g,''))+'\')">'+(typeof ic==='function'?ic('download'):'')+' Download</button></div>';
     }).join('');
     var dl=m.deadline?m.deadline.replace(' ','T').slice(0,16):'';
-    var body='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px"><div><div style="font-weight:800;font-size:1.05rem">'+esc(m.title)+'</div>'
-      +'<div style="font-size:.78rem;color:#8a7d5c">'+esc(m.teacher||'')+' · '+(m.subject?esc(m.subject)+' · ':'')+esc(_matTypeLabel(m.material_type))+'</div></div>'+_msPill(m.status)+'</div>'
+    var body='<div class="mc-rev-head"><div class="mc-ic" style="width:48px;height:48px">'+(typeof ic==='function'?ic('folder'):'')+'</div>'
+      +'<div style="flex:1;min-width:0"><div style="font-weight:800;font-size:1.15rem">'+esc(m.title)+'</div>'
+      +'<div class="mc-meta" style="margin-top:4px">'+(m.teacher?'<span class="mc-chip">'+esc(m.teacher)+'</span>':'')+(m.subject?'<span class="mc-chip">'+esc(m.subject)+'</span>':'')+'<span class="mc-chip">'+esc(_matTypeLabel(m.material_type))+'</span></div></div>'+_msPill(m.status)+'</div>'
       +(m.description?'<div style="font-size:.85rem;margin:6px 0 10px">'+esc(m.description)+'</div>':'')
       +(m.reference?'<div style="font-size:.8rem;margin-bottom:10px">Reference: <a href="'+esc(m.reference)+'" target="_blank" rel="noopener" style="color:#2563eb">'+esc(m.reference)+'</a></div>':'')
       +'<div style="font-weight:700;font-size:.86rem;margin:10px 0 8px">Version history</div>'+vers
