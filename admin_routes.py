@@ -5068,6 +5068,30 @@ def admin_payout_classes(tid: int, month: str = "", db: Session = Depends(get_db
         {"id": e.id, "date": str(e.entry_date), "subject": e.subject,
          "chapter": e.chapter or "", "missed": e.id in missed} for e in entries]}
 
+@router.post("/teacher/{tid}/contract-review")
+def admin_contract_review(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Contract teachers: admin enters leave days for the month and releases the payout.
+    Until released, the teacher sees 'under review'. Setting leave here recomputes the
+    per-day leave deduction automatically. reviewed=False re-hides it (edit mode)."""
+    from models import PayoutMonth, TeacherProfile
+    from teacher_routes import _month_range
+    mk = _month_range(payload.get("month") or "")[0].strftime("%Y-%m")
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(404, "Teacher not found.")
+    rec = db.query(PayoutMonth).filter(PayoutMonth.teacher_id == tid, PayoutMonth.month == mk).first()
+    if not rec:
+        rec = PayoutMonth(teacher_id=tid, month=mk, status="in_progress")
+        db.add(rec)
+    try:
+        rec.leave_days = max(0, int(float(payload.get("leave_days", 0) or 0)))
+    except Exception:
+        rec.leave_days = 0
+    rec.reviewed = bool(payload.get("reviewed", True))
+    db.commit()
+    return {"message": "Review saved.", "leave_days": rec.leave_days, "reviewed": rec.reviewed}
+
+
 @router.post("/teacher/{tid}/payout-finalize")
 def admin_finalize_payout(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
     """Month lock: poora breakdown snapshot me freeze (baad me data badle to bhi record same).

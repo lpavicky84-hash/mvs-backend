@@ -17076,19 +17076,19 @@ function _contractLetterHTML(d){
   const fndSig=`<div style="${_sigCss}">Manish Verma</div>`;
   const tchrSig=(lt.accepted&&lt.signature_name)?`<div style="${_sigCss}">${esc(lt.signature_name)}</div>`:`<div style="height:28px"></div>`;
   const tchrDate=(lt.accepted&&lt.signed_at)?`Digitally signed on ${esc(lt.signed_at)}`:'Date: ___________________';
-  const base=pay.contract_base||0, tr=pay.task_rate||0, pr=pay.project_rate||0;
+  const base=pay.contract_base||0, pr=pay.project_rate||0, wd=pay.working_days||26;
   const dRelax=pay.delay_relax||0, dDed=pay.delay_deduct||0, rRelax=pay.reject_relax||0, rDed=pay.reject_deduct||0;
   const inr=v=>'\u20B9'+(v||0).toLocaleString('en-IN');
   const details=[['Name',t.name],['Designation',t.designation||'Contract Teacher'],['Department',t.department||'Academic'],
     ['Date of Engagement','as mutually agreed'],['Reporting To','Academic Head, MVS Foundation'],
-    ['Engagement Type','Task & Project Based Contract (renewable)']];
+    ['Engagement Type','Fixed-Salary Contract (task &amp; project based)']];
   const earnRows=[];
-  if(base) earnRows.push(['Monthly Base Retainer','A fixed amount paid every month, independent of task count.',inr(base)]);
-  earnRows.push(['Per On-time Task','Earned for every assigned task/video submitted on or before its deadline.',inr(tr)+' / task']);
-  if(pr) earnRows.push(['Per Completed Project','Earned for every assigned project completed and submitted.',inr(pr)+' / project']);
+  earnRows.push(['Fixed Monthly Salary','Paid in full every month when all assigned tasks &amp; projects are delivered on time.',inr(base)]);
+  if(pr) earnRows.push(['Per-Project Bonus','An additional amount for every completed project, over and above the salary.',inr(pr)+' / project']);
   const dedRows=[
    ['Delayed Submissions', dRelax>0?`First ${dRelax} delay${dRelax>1?'s':''} each month are exempt. Thereafter, ${inr(dDed)} is deducted per delayed task.`:`${inr(dDed)} is deducted for every delayed task.`],
-   ['Rejected Submissions', rRelax>0?`First ${rRelax} rejection${rRelax>1?'s':''} each month are exempt. Thereafter, ${inr(rDed)} is deducted per rejected task.`:`${inr(rDed)} is deducted for every rejected task.`]
+   ['Rejected Submissions', rRelax>0?`First ${rRelax} rejection${rRelax>1?'s':''} each month are exempt. Thereafter, ${inr(rDed)} is deducted per rejected task.`:`${inr(rDed)} is deducted for every rejected task.`],
+   ['Leave / Absence', `Each approved leave day is deducted at ${inr(Math.round(base/(wd||26)))} per day (salary ÷ ${wd} working days), as reviewed by the admin at month-end.`]
   ];
   const extra=(pay.contract_notes||'').trim();
   return `<div style="${_DOC_FONT}">
@@ -17100,8 +17100,8 @@ function _contractLetterHTML(d){
   <table style="width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:10px"><tbody>
    ${details.map(r=>`<tr style="border-bottom:1px solid #e4ebf5"><td style="padding:5px 9px;font-weight:700;color:#0F2A54;width:36%;background:#f7f9fc">${r[0]}</td><td style="padding:5px 9px;color:#1a2a3a">${esc(r[1])}</td></tr>`).join('')}
   </tbody></table>
-  ${_SEC('2. How You Earn')}
-  ${_P('You are paid for the work you deliver. Each on-time task and completed project adds to your monthly earning as set out below.')}
+  ${_SEC('2. Your Salary')}
+  ${_P('You are engaged on a <strong>fixed monthly salary</strong>. When your assigned tasks and projects are delivered on time, you receive the full salary below. Deductions apply only as described in Section 3.')}
   <table style="width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:10px"><thead><tr style="background:#0F2A54;color:#fff"><th style="padding:6px 9px;text-align:left">Component</th><th style="padding:6px 9px;text-align:left">Basis</th><th style="padding:6px 9px;text-align:right;white-space:nowrap">Rate</th></tr></thead><tbody>
    ${earnRows.map(r=>`<tr style="border-bottom:1px solid #e4ebf5"><td style="padding:5px 9px;font-weight:700;color:#0F2A54">${r[0]}</td><td style="padding:5px 9px;color:#1a2a3a">${esc(r[1])}</td><td style="padding:5px 9px;text-align:right;font-weight:800;color:#0F2A54;white-space:nowrap">${r[2]}</td></tr>`).join('')}
   </tbody></table>
@@ -17546,6 +17546,14 @@ async function tEarnFetch(){
   try{
     const d=await api('/api/teacher/earnings?month='+encodeURIComponent(_tEarnMonth));
     window._tEarn=d;
+    const _cs=(d.earnings&&d.earnings.contract_stats)||null;
+    const _isC=(d.earnings&&d.earnings.payout_mode)==='contract';
+    if(_isC){
+      if(!_cs || !_cs.reviewed){ body.innerHTML=_contractUnderReviewHTML(d); return; }
+      body.innerHTML=_contractTeacherHTML(d);
+      if(_cs.perfect) setTimeout(function(){ _contractCongrats(d); }, 500);
+      return;
+    }
     const a0=d.activity, noAct=!(a0.classes_scheduled||a0.classes_conducted||a0.notes_uploaded||a0.dpp_uploaded||a0.tests_created||a0.videos_made||a0.live_sessions||a0.shorts_made||a0.doubts_assigned||a0.tasks_assigned);
     const zeroPay=(d.earnings&&d.earnings.net_payable<=0);
     const pend=(d.activity&&d.activity.dpp_pending)||[];
@@ -17561,6 +17569,68 @@ async function tEarnFetch(){
       +_earnComponentsHTML(d)+_activityStripHTML(d)+_payStructureHTML(d);
     loadTPayoutDrivers();
   }catch(e){ body.innerHTML=`<div class="card"><div class="card-body"><div class="empty-state"><p>${esc(e.message)}</p></div></div></div>`; }
+}
+function _ctInr(v){ return '\u20B9'+(Math.round(v||0)).toLocaleString('en-IN'); }
+function _contractUnderReviewHTML(d){
+  const t=d.teacher||{};
+  return `<div class="card" style="border:1px solid #f0cf9a;background:linear-gradient(135deg,#fff8ee,#fff2dd)"><div class="card-body" style="text-align:center;padding:34px 20px">
+    <div style="font-size:2.6rem;margin-bottom:8px">\u23F3</div>
+    <div style="font-weight:800;font-size:1.15rem;color:#8a5a12">Payout Under Review</div>
+    <div style="color:var(--text-muted);font-size:.9rem;margin-top:8px;max-width:440px;margin-left:auto;margin-right:auto;line-height:1.6">
+      Your work for <b>${esc(fmtMonthLabel(_tEarnMonth))}</b> has been recorded. The admin is reviewing your month (including any leave) and will release your final payout shortly. You'll see the full breakdown here once it's released.</div>
+  </div></div>`;
+}
+function _contractTeacherHTML(d){
+  const cs=d.earnings.contract_stats||{}, t=d.teacher||{};
+  const perfect=!!cs.perfect;
+  const stat=(v,l,c)=>`<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;text-align:center"><div style="font-weight:800;font-size:1.3rem;color:${c}">${v}</div><div style="font-size:.64rem;color:var(--text-muted);letter-spacing:.04em;margin-top:2px">${l}</div></div>`;
+  const row=(l,v,neg)=>`<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border)"><span style="font-size:.86rem;color:var(--text)">${l}</span><span style="font-weight:700;color:${neg?'#c0392b':'#0F2A54'}">${neg?'– ':''}${_ctInr(Math.abs(v))}</span></div>`;
+  let breakdown=row('Fixed Monthly Salary',cs.salary||0,false);
+  if(cs.project_earn) breakdown+=row('Project Bonus ('+(cs.projects||0)+')',cs.project_earn,false);
+  if(cs.delay_cut) breakdown+=row('Delay Deduction',cs.delay_cut,true);
+  if(cs.reject_cut) breakdown+=row('Rejection Deduction',cs.reject_cut,true);
+  if(cs.leave_cut) breakdown+=row('Leave Deduction ('+(cs.leave_days||0)+' day'+((cs.leave_days||0)===1?'':'s')+')',cs.leave_cut,true);
+  const a=d.activity||{};
+  const act=(l,v)=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--border);font-size:.84rem"><span style="color:var(--text-muted)">${l}</span><b>${v}</b></div>`;
+  return `<div class="card" style="border:none;background:linear-gradient(135deg,${perfect?'#0f7a44,#0b5c34':'#0F2A54,#1a3a6a'});color:#fff;margin-bottom:14px"><div class="card-body" style="padding:22px">
+      <div style="font-size:.74rem;opacity:.85;letter-spacing:.05em">NET PAYOUT · ${esc(fmtMonthLabel(_tEarnMonth))}</div>
+      <div style="font-weight:800;font-size:2.1rem;margin:4px 0">${_ctInr(cs.net||0)}</div>
+      <div style="font-size:.8rem;opacity:.9">${perfect?'\uD83C\uDF89 Perfect month — full salary, no deductions!':'Released by admin'}</div>
+    </div></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:8px;margin-bottom:14px">
+      ${stat(cs.on_time||0,'ON-TIME','#1f7a44')}${stat(cs.delayed||0,'DELAYED','#d97706')}${stat(cs.rejected||0,'REJECTED','#c0392b')}${stat(cs.projects||0,'PROJECTS','#5b3aa6')}
+    </div>
+    <div class="card"><div class="card-header"><h3>Payout Breakdown</h3></div><div class="card-body">${breakdown}
+      <div style="display:flex;justify-content:space-between;padding:12px 0 0;font-weight:800;font-size:1.02rem"><span>Net Payable</span><span style="color:#0F2A54">${_ctInr(cs.net||0)}</span></div></div></div>
+    <div class="card" style="margin-top:14px"><div class="card-header"><h3>This Month's Full Activity</h3></div><div class="card-body">
+      ${act('Classes conducted',(a.classes_conducted||0)+' / '+(a.classes_scheduled||0))}
+      ${act('Notes uploaded',a.notes_uploaded||0)}
+      ${act('DPP uploaded',a.dpp_uploaded||0)}
+      ${act('Tests created',a.tests_created||0)}
+      ${act('Videos made',a.videos_made||0)}
+      ${act('YouTube Live',a.live_sessions||0)}
+      ${act('Shorts made',a.shorts_made||0)}
+      ${act('Doubts resolved',(a.doubts_resolved||0)+' / '+(a.doubts_assigned||0))}
+      ${act('Tasks on-time',(cs.on_time||0)+' on-time · '+(cs.delayed||0)+' delayed · '+(cs.rejected||0)+' rejected')}
+    </div></div>
+    <div style="text-align:center;margin-top:14px"><button class="btn btn-light btn-sm" onclick="downloadMySlip()">${ic('download')} Earnings Slip</button>
+      <button class="btn btn-light btn-sm" onclick="viewMyLetter()">${ic('book')} Contract Letter</button></div>`;
+}
+function _contractCongrats(d){
+  const cs=(d&&d.earnings&&d.earnings.contract_stats)||{};
+  if(window._ctCongratsShown===_tEarnMonth) return; window._ctCongratsShown=_tEarnMonth;
+  showModal('',
+   `<div style="text-align:center;padding:20px 10px">
+     <div style="font-size:3.4rem;line-height:1">\uD83C\uDF89</div>
+     <div style="font-weight:800;font-size:1.35rem;color:#0f7a44;margin-top:10px">Congratulations, ${esc((d.teacher&&d.teacher.name||'').split(' ')[0]||'')}!</div>
+     <div style="color:var(--text);font-size:.94rem;margin-top:10px;line-height:1.6;max-width:400px;margin-left:auto;margin-right:auto">
+       You completed <b>all your work on time</b> this month with <b>no delays, rejections or leave</b>. Your full salary of <b>${_ctInr(cs.net||0)}</b> has been released. Keep it up! \uD83D\uDE4C</div>
+     <div style="margin-top:14px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap">
+       <span style="background:#e9f8ee;color:#1f7a44;border-radius:999px;padding:4px 12px;font-size:.72rem;font-weight:800">${cs.on_time||0} on-time tasks</span>
+       <span style="background:#f4f0fc;color:#5b3aa6;border-radius:999px;padding:4px 12px;font-size:.72rem;font-weight:800">${cs.projects||0} projects</span>
+     </div>
+   </div>`,
+   `<button class="btn btn-primary" onclick="closeModal()">${ic('check')} Awesome!</button>`);
 }
 async function loadTPayoutDrivers(){
   const box=document.getElementById('t-pay-drivers'); if(!box) return;
@@ -18553,12 +18623,46 @@ function openEarnDetail(tid){
       <button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
     return;
   }
-  showModal('Earnings — '+x.teacher.name+' ('+fmtMonthLabel(x.month)+')',
-   _earnHeroHTML(x)+'<div style="margin-top:4px">'+_earnComponentsHTML(x)+'</div>'+_activityStripHTML(x),
+  const _isC=((x.pay&&x.pay.payout_mode)==='contract');
+  showModal((_isC?'Contract Payout — ':'Earnings — ')+x.teacher.name+' ('+fmtMonthLabel(x.month)+')',
+   (_isC?_contractReviewHTML(x):'')+_earnHeroHTML(x)+'<div style="margin-top:4px">'+_earnComponentsHTML(x)+'</div>'+_activityStripHTML(x),
    `<button class="btn btn-primary" onclick="openPayConfig(${tid})">${ic('edit')} Pay Structure</button>
     <button class="btn btn-ghost" onclick="adminSlip(${tid})">${ic('download')} Earnings Slip</button>
-    <button class="btn btn-ghost" onclick="adminLetter(${tid})">${ic('book')} ${((x.pay&&x.pay.payout_mode)==='contract')?'Contract Letter':'Appointment Letter'}</button>
+    <button class="btn btn-ghost" onclick="adminLetter(${tid})">${ic('book')} ${(_isC)?'Contract Letter':'Appointment Letter'}</button>
     <button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+}
+function _contractReviewHTML(x){
+  const cs=(x.earnings&&x.earnings.contract_stats)||{};
+  const rev=!!cs.reviewed;
+  const inr=v=>'\u20B9'+(v||0).toLocaleString('en-IN');
+  return `<div style="background:${rev?'linear-gradient(135deg,#e9f8ee,#dff3e6)':'linear-gradient(135deg,#fff4e5,#ffe9cc)'};border:1px solid ${rev?'#b6e3c6':'#f0cf9a'};border-radius:14px;padding:14px 16px;margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div><div style="font-weight:800;font-size:.9rem;color:${rev?'#1f7a44':'#8a5a12'}">${rev?'\u2713 Reviewed & Released':'\u26A0 Pending Your Review'}</div>
+      <div style="font-size:.72rem;color:var(--text-muted);margin-top:2px">${rev?'The teacher can now see their final payout.':'The teacher sees "under review" until you release this.'}</div></div>
+      <div style="text-align:right"><div style="font-size:.68rem;color:var(--text-muted)">Net Payout</div><div style="font-weight:800;font-size:1.1rem;color:#0F2A54">${inr(cs.net||0)}</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:12px 0">
+      <div style="background:#fff;border-radius:8px;padding:8px 10px;text-align:center"><div style="font-weight:800;color:#1f7a44">${cs.on_time||0}</div><div style="font-size:.62rem;color:var(--text-muted)">ON-TIME</div></div>
+      <div style="background:#fff;border-radius:8px;padding:8px 10px;text-align:center"><div style="font-weight:800;color:#d97706">${cs.delayed||0}</div><div style="font-size:.62rem;color:var(--text-muted)">DELAYED</div></div>
+      <div style="background:#fff;border-radius:8px;padding:8px 10px;text-align:center"><div style="font-weight:800;color:#c0392b">${cs.rejected||0}</div><div style="font-size:.62rem;color:var(--text-muted)">REJECTED</div></div>
+      <div style="background:#fff;border-radius:8px;padding:8px 10px;text-align:center"><div style="font-weight:800;color:#5b3aa6">${cs.projects||0}</div><div style="font-size:.62rem;color:var(--text-muted)">PROJECTS</div></div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+      <div style="flex:1;min-width:140px"><label style="font-size:.7rem;font-weight:700;color:#8a5a12;display:block;margin-bottom:4px">Leave days this month</label>
+        <input type="number" min="0" class="form-control" id="cr-leave" value="${cs.leave_days||0}"></div>
+      <div style="font-size:.72rem;color:var(--text-muted);padding-bottom:10px">Per-day: ${inr(cs.per_day||0)} · Leave cut: <b>${inr(cs.leave_cut||0)}</b></div>
+      <button class="btn btn-primary" onclick="acContractReview(${x.teacher.id},true)">${ic('check')} ${rev?'Update & Release':'Save & Release'}</button>
+      ${rev?`<button class="btn btn-ghost btn-sm" onclick="acContractReview(${x.teacher.id},false)">Un-release</button>`:''}
+    </div>
+  </div>`;
+}
+async function acContractReview(tid, release){
+  const ld=parseInt((document.getElementById('cr-leave')||{}).value)||0;
+  try{
+    await api('/api/admin/teacher/'+tid+'/contract-review','POST',{month:_aEarnMonth,leave_days:ld,reviewed:release});
+    toast(release?'Payout released to teacher.':'Moved back to review.');
+    closeModal(); await aEarnFetch(); openEarnDetail(tid);
+  }catch(e){ toast(e.message||'Failed',true); }
 }
 
 function openPayConfig(tid){
@@ -18580,11 +18684,12 @@ function openPayConfig(tid){
      <div style="font-size:.66rem;color:#6b4ca0;margin-top:5px">Contract mode ignores the component split below — the teacher is paid only from the task/project rates &amp; deductions you set. Best for DU-SOL / IGNOU / freelance teachers.</div>
     </div>
     <div id="pc-contract-box" style="display:none;background:linear-gradient(135deg,#fbf6e9,#f6edda);border:1px solid #e6d9ac;border-radius:12px;padding:14px 16px;margin-bottom:12px">
-     <div style="font-weight:800;font-size:.8rem;margin-bottom:10px;color:#7a5c00">CONTRACT PAYOUT — TASK &amp; PROJECT RATES</div>
+     <div style="font-weight:800;font-size:.8rem;margin-bottom:6px;color:#7a5c00">CONTRACT PAYOUT — FIXED SALARY</div>
+     <div style="font-size:.68rem;color:#8a6d1a;margin-bottom:10px">Teacher keeps the full fixed salary when work is on time. Deductions apply only for delays, rejections and leave. Per-project bonus is optional.</div>
      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:10px">
-       ${num('pc_cbase','Base Retainer (fixed ₹/month)',p.contract_base||0,'Optional fixed amount every month')}
-       ${num('pc_trate','Per On-time Task (₹)',p.task_rate||0,'Earned for each task submitted on time')}
-       ${num('pc_prate','Per Project (₹)',p.project_rate||0,'Earned for each completed project')}
+       ${num('pc_cbase','Fixed Monthly Salary (₹)',p.contract_base||0,'Full salary if all work is on time')}
+       ${num('pc_prate','Per-Project Bonus (₹, optional)',p.project_rate||0,'Leave 0 if salary already covers projects')}
+       ${num('pc_wdays','Working Days / Month',p.working_days||26,'Used for per-day leave deduction')}
      </div>
      <div style="font-weight:800;font-size:.74rem;margin:12px 0 8px;color:#7a5c00">DELAY DEDUCTION</div>
      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
@@ -18618,6 +18723,7 @@ function openPayConfig(tid){
     </div>
     <div id="pc_60" style="font-size:.68rem;color:var(--text-muted);margin-top:4px"></div>
     </div>
+    <div id="pc-targets-box">
     <div style="font-weight:800;font-size:.8rem;margin:14px 0 8px;color:var(--primary)">MONTHLY TARGETS</div>
     <div style="font-size:.7rem;color:var(--text-muted);margin:-3px 0 10px">Core targets drive the earnings calculation — rename them anytime. Add your own extra targets below; they appear on the appointment letter.</div>
     <div style="display:flex;flex-direction:column;gap:8px">
@@ -18627,6 +18733,7 @@ function openPayConfig(tid){
      ${tgRow('shorts','Shorts',g.shorts_target)}
     </div>
     <div id="pc_tg_custom" style="margin-top:8px"></div>
+    </div>
     <div style="font-weight:800;font-size:.8rem;margin:14px 0 8px;color:var(--primary)">PROFILE & BANK (for letter & slip)</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(160px,100%),1fr));gap:10px">
      ${txt('pc_desig','Designation',t.designation==='Subject Teacher'?'':t.designation,'Subject Teacher')}
@@ -18642,10 +18749,11 @@ function openPayConfig(tid){
   _pcMode((p.payout_mode||'standard'));
 }
 function _pcMode(mode){
-  const ct=document.getElementById('pc-contract-box'), st=document.getElementById('pc-standard-box');
+  const ct=document.getElementById('pc-contract-box'), st=document.getElementById('pc-standard-box'), tg=document.getElementById('pc-targets-box');
   const isC=(mode==='contract');
   if(ct) ct.style.display=isC?'block':'none';
   if(st) st.style.display=isC?'none':'block';
+  if(tg) tg.style.display=isC?'none':'block';
 }
 function _pcCustomRender(){
   const box=document.getElementById('pc_tg_custom'); if(!box) return;
@@ -18681,7 +18789,7 @@ async function submitPayConfig(tid){
     designation:v('pc_desig'),department:v('pc_dept'),employee_code:v('pc_emp'),
     bank_name:v('pc_bank'),account_no:v('pc_acct'),ifsc:v('pc_ifsc'),
     payout_mode:v('pc_mode')||'standard',
-    contract_base:v('pc_cbase'),task_rate:v('pc_trate'),project_rate:v('pc_prate'),
+    contract_base:v('pc_cbase'),task_rate:0,project_rate:v('pc_prate'),working_days:v('pc_wdays'),
     delay_relax:v('pc_drelax'),delay_deduct:v('pc_dded'),
     reject_relax:v('pc_rrelax'),reject_deduct:v('pc_rded'),
     contract_notes:v('pc_cnotes')};

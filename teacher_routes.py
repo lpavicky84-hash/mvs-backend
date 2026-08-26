@@ -4776,10 +4776,10 @@ EARNINGS_DEFAULTS = {
     "tests_target": 4, "videos_target": 8, "live_target": 4, "shorts_target": 8,
     "payout_mode": "standard", "contract_base": 0, "task_rate": 0, "project_rate": 0,
     "delay_relax": 0, "delay_deduct": 0, "reject_relax": 0, "reject_deduct": 0,
-    "contract_notes": "",
+    "working_days": 26, "contract_notes": "",
 }
 # Contract/task-based payout config fields (admin-editable)
-CONTRACT_NUM_FIELDS = ("contract_base", "task_rate", "project_rate",
+CONTRACT_NUM_FIELDS = ("contract_base", "task_rate", "project_rate", "working_days",
                        "delay_relax", "delay_deduct", "reject_relax", "reject_deduct")
 EARNINGS_PAY_FIELDS = ("class_retainer", "class_quality", "notes_dpp",
                        "doubt_resolution", "project_delivery")
@@ -5099,14 +5099,14 @@ def _teacher_score(db, tp, month):
 
 
 def _contract_pay(db, tp, month, cfg):
-    """Task/project-based CONTRACT payout — fully admin-configured on the pay structure.
-      net = base
-          + (on-time tasks  × task_rate)
-          + (projects done   × project_rate)
-          − max(0, delayed  − delay_relax)  × delay_deduct
-          − max(0, rejected − reject_relax) × reject_deduct   (floored at 0)
-    Task counting is collab-aware (primary OR collaborator) and scoped to the month."""
-    from models import VideoTask
+    """FIXED-SALARY contract payout — the admin sets a fixed monthly salary; the teacher
+    keeps it all when work is delivered on time. Deductions only apply for:
+      • delayed tasks   (beyond the free relaxation)
+      • rejected tasks  (beyond the free relaxation)
+      • leave days       (admin-entered at review; per-day = salary / working_days)
+    An optional per-project bonus can be added. Final payout is shown to the teacher only
+    after the admin reviews the month (enters leave days & releases)."""
+    from models import VideoTask, PayoutMonth
     from sqlalchemy import or_ as _orC
     from datetime import date as _date, datetime as _dtm
     y, m = int(month[:4]), int(month[5:7])
@@ -5143,33 +5143,42 @@ def _contract_pay(db, tp, month, cfg):
         elif t.submitted_at and t.on_time is False:
             delayed += 1
 
-    base = int(getattr(cfg, "contract_base", 0) or 0)
-    t_rate = int(getattr(cfg, "task_rate", 0) or 0)
-    p_rate = int(getattr(cfg, "project_rate", 0) or 0)
+    salary = int(getattr(cfg, "contract_base", 0) or 0)     # FIXED monthly salary
+    p_rate = int(getattr(cfg, "project_rate", 0) or 0)      # optional per-project bonus
     d_relax = int(getattr(cfg, "delay_relax", 0) or 0)
     d_ded = int(getattr(cfg, "delay_deduct", 0) or 0)
     r_relax = int(getattr(cfg, "reject_relax", 0) or 0)
     r_ded = int(getattr(cfg, "reject_deduct", 0) or 0)
+    wdays = max(1, int(getattr(cfg, "working_days", 26) or 26))
 
-    task_earn = on_time * t_rate
+    # leave days + review status from the month record (admin sets these at review)
+    leave_days = 0
+    reviewed = False
+    try:
+        pm = db.query(PayoutMonth).filter(PayoutMonth.teacher_id == tp.id,
+                                          PayoutMonth.month == month).first()
+        if pm:
+            leave_days = int(getattr(pm, "leave_days", 0) or 0)
+            reviewed = bool(getattr(pm, "reviewed", False))
+    except Exception:
+        pass
+
     project_earn = projects * p_rate
     delay_extra = max(0, delayed - d_relax)
     reject_extra = max(0, rejected - r_relax)
     delay_cut = delay_extra * d_ded
     reject_cut = reject_extra * r_ded
-    gross = base + task_earn + project_earn
-    net = max(0, gross - delay_cut - reject_cut)
+    per_day = salary / float(wdays) if wdays else 0
+    leave_cut = int(round(leave_days * per_day))
+    gross = salary + project_earn
+    net = max(0, gross - delay_cut - reject_cut - leave_cut)
+    perfect = (delay_cut == 0 and reject_cut == 0 and leave_cut == 0 and delayed == 0 and rejected == 0)
 
-    lines = []
-    if base:
-        lines.append({"key": "base", "label": "Base Retainer", "detail": "fixed monthly",
-                      "weight": 0, "pct": None, "earned": base, "na": False, "pool": base})
-    lines.append({"key": "tasks", "label": "On-time Tasks",
-                  "detail": "%d on-time × ₹%d" % (on_time, t_rate),
-                  "weight": 0, "pct": None, "earned": task_earn, "na": False, "pool": task_earn})
+    lines = [{"key": "salary", "label": "Fixed Monthly Salary", "detail": "as per contract",
+              "weight": 0, "pct": None, "earned": salary, "na": False, "pool": salary}]
     if p_rate:
-        lines.append({"key": "projects", "label": "Projects Completed",
-                      "detail": "%d × ₹%d" % (projects, p_rate),
+        lines.append({"key": "projects", "label": "Project Bonus",
+                      "detail": "%d project%s × ₹%d" % (projects, "" if projects == 1 else "s", p_rate),
                       "weight": 0, "pct": None, "earned": project_earn, "na": False, "pool": project_earn})
     lines.append({"key": "delay_cut", "label": "Delay Deduction",
                   "detail": "%d delayed, %d free → %d × ₹%d" % (delayed, d_relax, delay_extra, d_ded),
@@ -5177,14 +5186,20 @@ def _contract_pay(db, tp, month, cfg):
     lines.append({"key": "reject_cut", "label": "Rejection Deduction",
                   "detail": "%d rejected, %d free → %d × ₹%d" % (rejected, r_relax, reject_extra, r_ded),
                   "weight": 0, "pct": None, "earned": -reject_cut, "na": False, "pool": 0})
+    lines.append({"key": "leave_cut", "label": "Leave Deduction",
+                  "detail": "%d day%s × ₹%d/day (₹%d ÷ %d)" % (leave_days, "" if leave_days == 1 else "s",
+                                                               int(round(per_day)), salary, wdays),
+                  "weight": 0, "pct": None, "earned": -leave_cut, "na": False, "pool": 0})
 
     overall = round(100.0 * net / gross, 1) if gross > 0 else (100.0 if net > 0 else 0.0)
     return {"overall": overall, "max_pay": gross, "base_earned": net,
             "components": lines, "workload_level": "contract", "workload_pct": None,
             "limited_workload": False,
             "contract_stats": {"on_time": on_time, "delayed": delayed, "rejected": rejected,
-                               "projects": projects, "gross": gross, "delay_cut": delay_cut,
-                               "reject_cut": reject_cut, "net": net}}
+                               "projects": projects, "salary": salary, "project_earn": project_earn,
+                               "gross": gross, "delay_cut": delay_cut, "reject_cut": reject_cut,
+                               "leave_days": leave_days, "leave_cut": leave_cut, "per_day": int(round(per_day)),
+                               "working_days": wdays, "net": net, "reviewed": reviewed, "perfect": perfect}}
 
 
 def _ranking_pay(db, tp, month):
@@ -5269,7 +5284,7 @@ def earnings_payload(db, tp, month):
     pay = {k: int(getattr(cfg, k) or 0) for k in EARNINGS_PAY_FIELDS}
     pay["payout_mode"] = getattr(cfg, "payout_mode", "standard") or "standard"
     pay["contract_notes"] = getattr(cfg, "contract_notes", "") or ""
-    for _ck in ("contract_base", "task_rate", "project_rate", "delay_relax",
+    for _ck in ("contract_base", "task_rate", "project_rate", "working_days", "delay_relax",
                 "delay_deduct", "reject_relax", "reject_deduct"):
         pay[_ck] = int(getattr(cfg, _ck, 0) or 0)
     targets = {k: int(getattr(cfg, k) or 0) for k in EARNINGS_TARGET_FIELDS}
@@ -5292,6 +5307,8 @@ def earnings_payload(db, tp, month):
         "base_earned": rp["base_earned"], "gross_earned": rp["base_earned"],
         "components": rp["components"], "workload_level": rp["workload_level"],
         "workload_pct": rp["workload_pct"], "limited_workload": rp["limited_workload"],
+        "payout_mode": (getattr(cfg, "payout_mode", "standard") or "standard"),
+        "contract_stats": rp.get("contract_stats"),
         "tds": 0, "other_deduct": 0,
     }
     # ---- v86: UNPAID approved leave ka per-day deduction (complete salary se) ----
@@ -5498,6 +5515,9 @@ def _ensure_v86(db):
         "ALTER TABLE teacher_pay_configs ADD COLUMN reject_relax INTEGER DEFAULT 0",
         "ALTER TABLE teacher_pay_configs ADD COLUMN reject_deduct INTEGER DEFAULT 0",
         "ALTER TABLE teacher_pay_configs ADD COLUMN contract_notes VARCHAR(600) DEFAULT ''",
+        "ALTER TABLE teacher_pay_configs ADD COLUMN working_days INTEGER DEFAULT 26",
+        "ALTER TABLE payout_months ADD COLUMN leave_days INTEGER DEFAULT 0",
+        "ALTER TABLE payout_months ADD COLUMN reviewed BOOLEAN DEFAULT FALSE",
     ]:
         try:
             db.execute(_text(stmt)); db.commit()

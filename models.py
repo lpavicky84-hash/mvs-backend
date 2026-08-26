@@ -1119,7 +1119,9 @@ class PayoutMonth(Base):
     # lifecycle: finalized -> in_progress -> credited -> receipt_confirmed
     # (purana "paid" = credited ke barabar treat hota hai — backward compatible)
     status       = Column(String(20), default="finalized")
-    snapshot     = Column(Text, nullable=True)              # JSON of full breakdown
+    snapshot     = Column(Text, nullable=True)              # JS
+    leave_days   = Column(Integer, default=0)               # contract mode: admin-entered leave for the month
+    reviewed     = Column(Boolean, default=False)           # contract mode: admin has reviewed & releasedON of full breakdown
     finalized_at = Column(DateTime, nullable=True)
     in_progress_at = Column(DateTime, nullable=True)
     paid_at      = Column(DateTime, nullable=True)          # = credited_at
@@ -1186,6 +1188,7 @@ class TeacherPayConfig(Base):
     delay_deduct     = Column(Integer, default=0)     # rupees deducted per delayed task beyond relax
     reject_relax     = Column(Integer, default=0)     # rejected tasks allowed before deduction starts
     reject_deduct    = Column(Integer, default=0)     # rupees deducted per rejection beyond relax
+    working_days     = Column(Integer, default=26)    # working days/month — used for per-day leave deduction
     contract_notes   = Column(String(600), default="")  # extra free-text terms for the contract letter
     updated_at       = Column(DateTime, default=func.now(), onupdate=func.now())
 
