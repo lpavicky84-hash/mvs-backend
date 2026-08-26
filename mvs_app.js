@@ -6685,30 +6685,86 @@ async function ytDownloadReport(){
   }catch(e){ toast('Could not download the report',true); }
 }
 // ---- Channels / Video Types (shared with production) ----
+async function _ytReloadChannels(){ try{ var r=await api('/api/production/channels'); window._ytChannels=(r&&r.channels)||[]; try{ if(document.getElementById(window._ytHost||'a-ytasks-content')) _renderAYtTasks(); }catch(e){} }catch(e){} }
+async function _ytReloadTypes(){ try{ var r=await api('/api/production/video-types'); window._ytTypes=(r&&r.types)||[]; try{ if(document.getElementById(window._ytHost||'a-ytasks-content')) _renderAYtTasks(); }catch(e){} }catch(e){} }
+
 function openYtChannels(){
-  var rows=(window._ytChannels||[]).map(function(c){return '<div class="vt-rank-row"><span class="sbb-av">'+ic('play')+'</span><div class="sbb-main"><div class="sbb-nm">'+esc(c.name)+'</div></div></div>';}).join('')||'<p style="color:var(--text-muted);font-size:.8rem">No channels yet.</p>';
+  var rows=(window._ytChannels||[]).map(function(c){
+    return '<div class="vt-rank-row" id="ytch-'+c.id+'" style="gap:8px">'
+      +'<span class="sbb-av">'+ic('play')+'</span>'
+      +'<div class="sbb-main" style="flex:1;min-width:0"><div class="sbb-nm">'+esc(c.name)+'</div></div>'
+      +'<button class="btn btn-ghost btn-sm" onclick="ytEditChannel('+c.id+')" title="Rename">'+ic('edit')+'</button>'
+      +'<button class="btn btn-ghost btn-sm" onclick="ytDeleteChannel('+c.id+')" title="Remove">'+ic('trash')+'</button></div>';
+  }).join('')||'<p style="color:var(--text-muted);font-size:.8rem">No channels yet.</p>';
   showModal('YouTube Channels',
-    '<p style="font-size:.78rem;color:var(--text-muted);margin-bottom:10px">Channels appear in the channel dropdown while assigning.</p>'
-    +'<div style="max-height:280px;overflow-y:auto;margin-bottom:12px">'+rows+'</div>'
-    +'<div style="display:flex;gap:8px"><input id="yt-ch-new" class="input" placeholder="New channel name" style="flex:1"><button class="btn btn-primary btn-sm" onclick="ytAddChannel()">Add</button></div>',
+    '<p style="font-size:.78rem;color:var(--text-muted);margin-bottom:10px">Channels assign karte waqt dropdown me dikhte hain. Rename ya remove kar sakte ho.</p>'
+    +'<div style="max-height:300px;overflow-y:auto;margin-bottom:12px">'+rows+'</div>'
+    +'<div style="display:flex;gap:8px"><input id="yt-ch-new" class="input" placeholder="New channel name" style="flex:1" onkeydown="if(event.key===\'Enter\')ytAddChannel()"><button class="btn btn-primary btn-sm" onclick="ytAddChannel()">Add</button></div>',
     '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+}
+function ytEditChannel(cid){
+  var c=(window._ytChannels||[]).filter(function(x){return x.id===cid;})[0]; if(!c) return;
+  var row=document.getElementById('ytch-'+cid); if(!row) return;
+  row.innerHTML='<span class="sbb-av">'+ic('play')+'</span>'
+    +'<div class="sbb-main" style="flex:1;min-width:0"><input class="input" id="ytch-in-'+cid+'" value="'+esc(c.name)+'" style="width:100%" onkeydown="if(event.key===\'Enter\')ytSaveChannel('+cid+')"></div>'
+    +'<button class="btn btn-primary btn-sm" onclick="ytSaveChannel('+cid+')">Save</button>'
+    +'<button class="btn btn-ghost btn-sm" onclick="openYtChannels()">Cancel</button>';
+  var i=document.getElementById('ytch-in-'+cid); if(i){ i.focus(); i.select(); }
+}
+async function ytSaveChannel(cid){
+  var i=document.getElementById('ytch-in-'+cid); if(!i) return;
+  var name=(i.value||'').trim(); if(!name){ toast('Enter a name',true); return; }
+  try{ await api('/api/production/channels/'+cid,'PATCH',{name:name}); toast('Channel renamed.'); await _ytReloadChannels(); openYtChannels(); }
+  catch(e){ toast((e&&e.message)||'Could not rename',true); }
+}
+async function ytDeleteChannel(cid){
+  if(!confirm('Remove this channel? Purani videos ka channel naam waisa hi rahega.')) return;
+  try{ await api('/api/production/channels/'+cid,'DELETE'); toast('Channel removed.'); await _ytReloadChannels(); openYtChannels(); }
+  catch(e){ toast((e&&e.message)||'Could not remove',true); }
 }
 async function ytAddChannel(){
   var name=(document.getElementById('yt-ch-new').value||'').trim(); if(!name){ toast('Enter a name',true); return; }
-  try{ await api('/api/production/channels','POST',{name:name}); toast('Channel added.'); await loadAYtTasks(); setTimeout(openYtChannels,300); }
+  try{ await api('/api/production/channels','POST',{name:name}); toast('Channel added.'); await _ytReloadChannels(); openYtChannels(); }
   catch(e){ toast((e&&e.message)||'Could not add',true); }
 }
+
 function openYtTypes(){
-  var rows=(window._ytTypes||[]).map(function(c){return '<div class="vt-rank-row"><span class="sbb-av">'+ic('edit')+'</span><div class="sbb-main"><div class="sbb-nm">'+esc(c.name)+'</div></div></div>';}).join('')||'<p style="color:var(--text-muted);font-size:.8rem">No types yet.</p>';
+  var rows=(window._ytTypes||[]).map(function(c){
+    return '<div class="vt-rank-row" id="ytty-'+c.id+'" style="gap:8px">'
+      +'<span class="sbb-av">'+ic('edit')+'</span>'
+      +'<div class="sbb-main" style="flex:1;min-width:0"><div class="sbb-nm">'+esc(c.name)+'</div></div>'
+      +'<button class="btn btn-ghost btn-sm" onclick="ytEditType('+c.id+')" title="Rename">'+ic('edit')+'</button>'
+      +'<button class="btn btn-ghost btn-sm" onclick="ytDeleteType('+c.id+')" title="Remove">'+ic('trash')+'</button></div>';
+  }).join('')||'<p style="color:var(--text-muted);font-size:.8rem">No types yet.</p>';
   showModal('Video Types',
-    '<p style="font-size:.78rem;color:var(--text-muted);margin-bottom:10px">Types appear in the video-type dropdown while assigning.</p>'
-    +'<div style="max-height:280px;overflow-y:auto;margin-bottom:12px">'+rows+'</div>'
-    +'<div style="display:flex;gap:8px"><input id="yt-ty-new" class="input" placeholder="New video type" style="flex:1"><button class="btn btn-primary btn-sm" onclick="ytAddType()">Add</button></div>',
+    '<p style="font-size:.78rem;color:var(--text-muted);margin-bottom:10px">Types assign karte waqt dropdown me dikhte hain. Rename ya remove kar sakte ho.</p>'
+    +'<div style="max-height:300px;overflow-y:auto;margin-bottom:12px">'+rows+'</div>'
+    +'<div style="display:flex;gap:8px"><input id="yt-ty-new" class="input" placeholder="New video type" style="flex:1" onkeydown="if(event.key===\'Enter\')ytAddType()"><button class="btn btn-primary btn-sm" onclick="ytAddType()">Add</button></div>',
     '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+}
+function ytEditType(tid){
+  var c=(window._ytTypes||[]).filter(function(x){return x.id===tid;})[0]; if(!c) return;
+  var row=document.getElementById('ytty-'+tid); if(!row) return;
+  row.innerHTML='<span class="sbb-av">'+ic('edit')+'</span>'
+    +'<div class="sbb-main" style="flex:1;min-width:0"><input class="input" id="ytty-in-'+tid+'" value="'+esc(c.name)+'" style="width:100%" onkeydown="if(event.key===\'Enter\')ytSaveType('+tid+')"></div>'
+    +'<button class="btn btn-primary btn-sm" onclick="ytSaveType('+tid+')">Save</button>'
+    +'<button class="btn btn-ghost btn-sm" onclick="openYtTypes()">Cancel</button>';
+  var i=document.getElementById('ytty-in-'+tid); if(i){ i.focus(); i.select(); }
+}
+async function ytSaveType(tid){
+  var i=document.getElementById('ytty-in-'+tid); if(!i) return;
+  var name=(i.value||'').trim(); if(!name){ toast('Enter a name',true); return; }
+  try{ await api('/api/production/video-types/'+tid,'PATCH',{name:name}); toast('Type renamed.'); await _ytReloadTypes(); openYtTypes(); }
+  catch(e){ toast((e&&e.message)||'Could not rename',true); }
+}
+async function ytDeleteType(tid){
+  if(!confirm('Remove this video type?')) return;
+  try{ await api('/api/production/video-types/'+tid,'DELETE'); toast('Type removed.'); await _ytReloadTypes(); openYtTypes(); }
+  catch(e){ toast((e&&e.message)||'Could not remove',true); }
 }
 async function ytAddType(){
   var name=(document.getElementById('yt-ty-new').value||'').trim(); if(!name){ toast('Enter a name',true); return; }
-  try{ await api('/api/production/video-types','POST',{name:name}); toast('Type added.'); await loadAYtTasks(); setTimeout(openYtTypes,300); }
+  try{ await api('/api/production/video-types','POST',{name:name}); toast('Type added.'); await _ytReloadTypes(); openYtTypes(); }
   catch(e){ toast((e&&e.message)||'Could not add',true); }
 }
 // ===================== PHASE 3B — YouTuber SERIES / BATCH (chapters ke bina) =====================

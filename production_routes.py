@@ -1531,6 +1531,32 @@ def prod_add_channel(payload: dict = Body(...), db: Session = Depends(get_db), m
     return {"ok": True, "id": c.id, "name": c.name}
 
 
+@router.patch("/channels/{cid}")
+def prod_rename_channel(cid: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                        me=Depends(get_pm_or_admin)):
+    c = db.query(VideoChannel).filter(VideoChannel.id == cid).first()
+    if not c:
+        raise HTTPException(404, "Channel not found")
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "Channel name is required")
+    if db.query(VideoChannel).filter(VideoChannel.name == name, VideoChannel.id != cid).first():
+        raise HTTPException(400, "Another channel already has this name")
+    c.name = name
+    db.commit()
+    return {"ok": True, "id": c.id, "name": c.name}
+
+
+@router.delete("/channels/{cid}")
+def prod_delete_channel(cid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    c = db.query(VideoChannel).filter(VideoChannel.id == cid).first()
+    if not c:
+        raise HTTPException(404, "Channel not found")
+    c.active = False
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/video-types")
 def prod_list_types(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     try:
@@ -1561,6 +1587,35 @@ def prod_add_type(payload: dict = Body(...), db: Session = Depends(get_db), me=D
     c = VideoType(name=name, sort=(mx.sort + 1) if mx else 0, streaming_scope=scope)
     db.add(c); db.commit()
     return {"ok": True, "id": c.id, "name": c.name, "streaming_scope": scope}
+
+
+@router.patch("/video-types/{tid}")
+def prod_rename_type(tid: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                     me=Depends(get_pm_or_admin)):
+    c = db.query(VideoType).filter(VideoType.id == tid).first()
+    if not c:
+        raise HTTPException(404, "Video type not found")
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "Type name is required")
+    if db.query(VideoType).filter(VideoType.name == name, VideoType.id != tid).first():
+        raise HTTPException(400, "Another type already has this name")
+    c.name = name
+    scope = (payload.get("streaming_scope") or "").strip().lower()
+    if scope in ("both", "live", "recorded"):
+        c.streaming_scope = scope
+    db.commit()
+    return {"ok": True, "id": c.id, "name": c.name}
+
+
+@router.delete("/video-types/{tid}")
+def prod_delete_type(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    c = db.query(VideoType).filter(VideoType.id == tid).first()
+    if not c:
+        raise HTTPException(404, "Video type not found")
+    c.active = False
+    db.commit()
+    return {"ok": True}
 
 
 # ============================================================ REAL-TIME VIEWS + NOTIFY STUDENTS
