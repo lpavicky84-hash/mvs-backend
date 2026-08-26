@@ -6599,17 +6599,19 @@ function openYtAssign(){
   var chOpt='<option value="">— No channel —</option>'+(window._ytChannels||[]).map(function(c){return '<option value="'+esc(c.name)+'">'+esc(c.name)+'</option>';}).join('');
   var tyOpt='<option value="">— Type —</option>'+(window._ytTypes||[]).map(function(c){return '<option value="'+esc(c.name)+'">'+esc(c.name)+'</option>';}).join('');
   showModal('Assign Work to a YouTuber',
-    '<div class="form-group"><label>Video title *</label><input id="yta-title" class="input" placeholder="e.g. Physics One Shot — Motion in a Plane"></div>'
-    +'<div class="form-group"><label>YouTuber *</label><select id="yta-yt" class="input">'+yOpt+'</select></div>'
-    +'<div style="display:flex;gap:10px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:150px"><label>Channel</label><select id="yta-ch" class="input">'+chOpt+'</select></div>'
-    +'<div class="form-group" style="flex:1;min-width:150px"><label>Video type</label><select id="yta-ty" class="input">'+tyOpt+'</select></div></div>'
-    +'<div style="display:flex;gap:10px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:150px"><label>Format</label><select id="yta-stream" class="input"><option value="">—</option><option value="recorded">Recorded</option><option value="live">Live</option></select></div>'
-    +'<div class="form-group" style="flex:1;min-width:150px"><label>Priority</label><select id="yta-pri" class="input"><option value="normal">Normal</option><option value="urgent">Urgent</option></select></div></div>'
-    +'<div class="form-group"><label>Deadline</label><input id="yta-dl" class="input" type="datetime-local"></div>'
-    +'<div class="form-group"><label>Reference / brief</label><input id="yta-ref" class="input" placeholder="Reference link or note (optional)"></div>'
-    +'<div class="form-group"><label>Remarks</label><textarea id="yta-rem" class="input" rows="2" placeholder="Instructions for the youtuber (optional)"></textarea></div>'
-    +'<label style="display:flex;gap:8px;align-items:center;font-size:.82rem;margin:4px 0"><input type="checkbox" id="yta-appr" checked> Require PM/Admin approval after submission</label>'
-    +'<label style="display:flex;gap:8px;align-items:center;font-size:.82rem;margin:4px 0"><input type="checkbox" id="yta-thumb"> Needs a thumbnail (graphics)</label>',
+    '<div class="form-grid vt-form">'
+    +'<div class="form-group" style="grid-column:1/-1"><label>Video Title</label><input id="yta-title" class="input" placeholder="e.g. Physics One Shot — Motion in a Plane"></div>'
+    +'<div class="form-group" style="grid-column:1/-1"><label>YouTuber</label><select id="yta-yt" class="input">'+yOpt+'</select></div>'
+    +'<div class="form-group"><label>Channel</label><select id="yta-ch" class="input">'+chOpt+'</select></div>'
+    +'<div class="form-group"><label>Video Type</label><select id="yta-ty" class="input">'+tyOpt+'</select></div>'
+    +'<div class="form-group"><label>Format</label><select id="yta-stream" class="input"><option value="">— Not set —</option><option value="recorded">Recorded</option><option value="live">Live</option></select></div>'
+    +'<div class="form-group"><label>Priority</label><select id="yta-pri" class="input"><option value="normal">Normal</option><option value="urgent">Urgent</option></select></div>'
+    +'<div class="form-group" style="grid-column:1/-1"><label>Deadline</label><input id="yta-dl" class="input" type="datetime-local"></div>'
+    +'<div class="form-group" style="grid-column:1/-1"><label>Reference / Brief <span style="font-weight:600;color:var(--text-muted)">(optional)</span></label><input id="yta-ref" class="input" placeholder="Reference link or note"></div>'
+    +'<div class="form-group" style="grid-column:1/-1"><label>Remarks <span style="font-weight:600;color:var(--text-muted)">(optional)</span></label><textarea id="yta-rem" class="input" rows="2" placeholder="Instructions for the youtuber"></textarea></div>'
+    +'<div class="form-group" style="grid-column:1/-1"><div class="yt-chks"><label class="yt-chk"><input type="checkbox" id="yta-appr" checked> Require PM/Admin approval after submission</label>'
+      +'<label class="yt-chk"><input type="checkbox" id="yta-thumb"> Needs a thumbnail (graphics)</label></div></div>'
+    +'</div>',
     '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitYtAssign(this)">'+ic('check')+' Assign</button>');
 }
 async function submitYtAssign(btn){
@@ -6641,8 +6643,10 @@ function ytReview(id, action){
   var titleMap={changes:'Request Changes',reshoot:'Ask for a Reshoot',reject:'Reject Submission'};
   var needDl=(action==='changes'||action==='reshoot');
   showModal(titleMap[action]||'Review',
-    '<div class="form-group"><label>Remarks *</label><textarea id="ytr-rem" class="input" rows="3" placeholder="What needs to change / why"></textarea></div>'
-    +'<div class="form-group"><label>New deadline'+(needDl?' *':' (optional — leave empty for a final reject)')+'</label><input id="ytr-dl" class="input" type="datetime-local"></div>',
+    '<div class="form-grid vt-form">'
+    +'<div class="form-group" style="grid-column:1/-1"><label>Remarks</label><textarea id="ytr-rem" class="input" rows="3" placeholder="What needs to change / why"></textarea></div>'
+    +'<div class="form-group" style="grid-column:1/-1"><label>New Deadline'+(needDl?'':' <span style="font-weight:600;color:var(--text-muted)">(optional — leave empty for a final reject)</span>')+'</label><input id="ytr-dl" class="input" type="datetime-local"></div>'
+    +'</div>',
     '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitYtReview('+id+",'"+action+"',this)\">Submit</button>");
 }
 async function submitYtReview(id, action, btn){
@@ -6658,8 +6662,8 @@ async function submitYtReview(id, action, btn){
 }
 function ytPublish(id){
   showModal('Add YouTube Link',
-    '<div class="form-group"><label>Published YouTube URL *</label><input id="ytp-url" class="input" placeholder="https://youtu.be/..."></div>'
-    +'<p style="font-size:.74rem;color:var(--text-muted)">Adding the link marks this video as Uploaded and starts live-view tracking.</p>',
+    '<div class="form-grid vt-form"><div class="form-group" style="grid-column:1/-1"><label>Published YouTube URL</label><input id="ytp-url" class="input" placeholder="https://youtu.be/..."></div>'
+    +'<div class="form-group" style="grid-column:1/-1"><div class="vt-hint">Adding the link marks this video as Uploaded and starts live-view tracking.</div></div></div>',
     '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitYtPublish('+id+',this)">'+ic('check')+' Publish</button>');
 }
 async function submitYtPublish(id, btn){
@@ -6775,17 +6779,19 @@ function openYtSeries(){
   var chOpt='<option value="">— No channel —</option>'+(window._ytChannels||[]).map(function(c){return '<option value="'+esc(c.name)+'">'+esc(c.name)+'</option>';}).join('');
   var tyOpt='<option value="">— Type —</option>'+(window._ytTypes||[]).map(function(c){return '<option value="'+esc(c.name)+'">'+esc(c.name)+'</option>';}).join('');
   showModal('Assign a Series to a YouTuber',
-    '<div class="form-group"><label>Series name *</label><input id="yts-name" class="input" placeholder="e.g. Class 10 Science — One Shot Series"></div>'
-    +'<div class="form-group"><label>YouTuber *</label><select id="yts-yt" class="input">'+yOpt+'</select></div>'
-    +'<div style="display:flex;gap:10px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:150px"><label>Channel</label><select id="yts-ch" class="input">'+chOpt+'</select></div>'
-    +'<div class="form-group" style="flex:1;min-width:150px"><label>Video type</label><select id="yts-ty" class="input">'+tyOpt+'</select></div></div>'
-    +'<div style="display:flex;gap:10px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:150px"><label>Format</label><select id="yts-stream" class="input"><option value="">—</option><option value="recorded">Recorded</option><option value="live">Live</option></select></div>'
-    +'<div class="form-group" style="flex:1;min-width:150px"><label>Priority</label><select id="yts-pri" class="input"><option value="normal">Normal</option><option value="urgent">Urgent</option></select></div></div>'
-    +'<div class="form-group"><label>Deadline — same for all videos (optional)</label><input id="yts-dl" class="input" type="datetime-local"></div>'
-    +'<div class="form-group"><label>Videos in this series *</label><div id="yts-vids">'+_ytSeriesRow()+_ytSeriesRow()+_ytSeriesRow()+'</div>'
-      +'<button class="btn btn-ghost btn-sm" onclick="ytSeriesAddRow()" style="margin-top:6px">+ Add video</button></div>'
-    +'<label style="display:flex;gap:8px;align-items:center;font-size:.82rem;margin:4px 0"><input type="checkbox" id="yts-appr" checked> Require PM/Admin approval after submission</label>'
-    +'<p style="font-size:.74rem;color:var(--text-muted)">Har video ek alag task banega — youtuber apne panel se ek-ek karke submit karega. Yahan sab ek series ke andar progress ke saath dikhenge.</p>',
+    '<div class="form-grid vt-form">'
+    +'<div class="form-group" style="grid-column:1/-1"><label>Series Name</label><input id="yts-name" class="input" placeholder="e.g. Class 10 Science — One Shot Series"></div>'
+    +'<div class="form-group" style="grid-column:1/-1"><label>YouTuber</label><select id="yts-yt" class="input">'+yOpt+'</select></div>'
+    +'<div class="form-group"><label>Channel</label><select id="yts-ch" class="input">'+chOpt+'</select></div>'
+    +'<div class="form-group"><label>Video Type</label><select id="yts-ty" class="input">'+tyOpt+'</select></div>'
+    +'<div class="form-group"><label>Format</label><select id="yts-stream" class="input"><option value="">— Not set —</option><option value="recorded">Recorded</option><option value="live">Live</option></select></div>'
+    +'<div class="form-group"><label>Priority</label><select id="yts-pri" class="input"><option value="normal">Normal</option><option value="urgent">Urgent</option></select></div>'
+    +'<div class="form-group" style="grid-column:1/-1"><label>Deadline <span style="font-weight:600;color:var(--text-muted)">— same for all videos (optional)</span></label><input id="yts-dl" class="input" type="datetime-local"></div>'
+    +'<div class="form-group" style="grid-column:1/-1"><label>Videos in this Series</label><div id="yts-vids">'+_ytSeriesRow()+_ytSeriesRow()+_ytSeriesRow()+'</div>'
+      +'<button type="button" class="btn btn-ghost btn-sm" onclick="ytSeriesAddRow()" style="margin-top:2px">'+ic('upload')+' Add video</button></div>'
+    +'<div class="form-group" style="grid-column:1/-1"><label class="yt-chk"><input type="checkbox" id="yts-appr" checked> Require PM/Admin approval after submission</label>'
+      +'<div class="vt-hint">Har video ek alag task banega — youtuber apne panel se ek-ek karke submit karega. Yahan sab ek series ke andar progress ke saath dikhenge.</div></div>'
+    +'</div>',
     '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitYtSeries(this)">'+ic('check')+' Create Series</button>');
 }
 function _ytSeriesRow(){ return '<div class="yts-row" style="display:flex;gap:6px;margin-bottom:6px"><input class="input yts-vin" placeholder="Video title" style="flex:1" onkeydown="if(event.key===\'Enter\'){event.preventDefault();ytSeriesAddRow();}"><button class="btn btn-ghost btn-sm" onclick="this.parentNode.remove()" title="Remove">×</button></div>'; }
@@ -6830,7 +6836,10 @@ async function submitYtSeries(btn){
     'body.dark #modal .ytd-cmt{background:#1b1710}',
     '#modal .ytd-cmt .who{font-weight:700;font-size:.72rem;color:#8a6d10}',
     '#modal .ytd-cmt .when{color:var(--text-muted);font-size:.66rem;float:right;font-weight:400}',
-    '#modal .ytd-sub-link{display:block;font-size:.76rem;margin:3px 0;word-break:break-all}'
+    '#modal .ytd-sub-link{display:block;font-size:.76rem;margin:3px 0;word-break:break-all}',
+    '#modal .yt-chk{display:flex;gap:9px;align-items:center;font-size:.85rem;margin:5px 0;cursor:pointer;font-weight:600}',
+    '#modal .yt-chk input{width:16px;height:16px;accent-color:#c99a2e;flex:none}',
+    '#modal .yt-chks{display:flex;flex-direction:column;gap:2px}'
   ].join('\n'); document.head.appendChild(st); }catch(e){} })();
 
 async function openYtDetail(id){
@@ -6937,7 +6946,7 @@ async function ytAssignEditor(id){
   if(!eds.length){ toast('Add an editor first under Production Team.',true); return; }
   var opt=eds.map(function(x){return '<option value="'+x.profile_id+'">'+esc(x.name||('Editor #'+x.profile_id))+'</option>';}).join('');
   showModal('Assign Editor',
-    '<div class="form-group"><label>Choose editor</label><select id="yt-ed-sel" class="input">'+opt+'</select></div>',
+    '<div class="form-grid vt-form"><div class="form-group" style="grid-column:1/-1"><label>Choose Editor</label><select id="yt-ed-sel" class="input">'+opt+'</select></div></div>',
     '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitYtEditor('+id+',this)">'+ic('check')+' Assign</button>');
 }
 async function submitYtEditor(id, btn){
