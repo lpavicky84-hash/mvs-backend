@@ -13573,8 +13573,19 @@ async function _dppStageUpload(pid,file){
         txt.textContent='Network issue — retrying… ('+(att+2)+'/3)';
         await new Promise(r=>setTimeout(r,3000+att*2000)); setp(0); continue;
       }
-      txt.innerHTML='<span style="color:var(--danger)">'+(e.message||'Upload failed')+' — please check your internet and select the file again.</span>';
-      return;
+      // Multipart exhausted — kuch networks multipart block karte hain. JSON base64 se try karo.
+      try{
+        txt.textContent='Trying a more compatible method…'; setp(0);
+        const res2=await _dppStageJSON(pid,f,setp);
+        window._dppStaged={pid:pid,answer_id:res2.answer_id};
+        fill.style.width='100%';
+        txt.innerHTML='<span style="color:var(--acc);font-weight:600">✔ Upload complete ('+(kb>1024?(kb/1024).toFixed(1)+'MB':kb+'KB')+')</span> — now press <b>Submit</b>';
+        if(btn){ btn.disabled=false; btn.focus(); }
+        return;
+      }catch(e2){
+        txt.innerHTML='<span style="color:var(--danger)">'+(e2.message||e.message||'Upload failed')+' — please check your internet and select the file again.</span>';
+        return;
+      }
     }
   }
 }
@@ -13594,6 +13605,29 @@ function _dppStageXHR(pid,f,onp){
     x.ontimeout=()=>rej(new TypeError('Upload timeout — network slow hai'));
     const fd=new FormData(); fd.append('file',f,f.name||'dpp-answer.pdf');
     x.send(fd);
+  });
+}
+
+// JSON base64 fallback — jab multipart block ho (proxy/antivirus), ye har network pe chalta hai
+function _dppStageJSON(pid,f,onp){
+  return new Promise((res,rej)=>{
+    const fr=new FileReader();
+    fr.onerror=()=>rej(new Error('Could not read the file'));
+    fr.onload=()=>{
+      let b64=String(fr.result||''); const ci=b64.indexOf(','); if(ci>=0) b64=b64.slice(ci+1);
+      const x=new XMLHttpRequest();
+      x.open('POST',API+`/api/student/dpp-packs/${pid}/stage-json`);
+      x.setRequestHeader('Authorization','Bearer '+TOKEN);
+      x.setRequestHeader('Content-Type','application/json');
+      x.timeout=10*60*1000;
+      x.upload.onprogress=e=>{ if(e.lengthComputable&&e.total>0&&onp) onp(Math.min(99,e.loaded/e.total*100)); };
+      x.onload=()=>{ if(x.status>=200&&x.status<300){ try{ res(JSON.parse(x.responseText)); }catch(e){ rej(new Error('Bad response')); } }
+        else{ let d='Upload failed ('+x.status+')'; try{ d=JSON.parse(x.responseText).detail||d; }catch(e){} rej(new Error(d)); } };
+      x.onerror=()=>rej(new TypeError('Failed to fetch'));
+      x.ontimeout=()=>rej(new TypeError('Upload timeout'));
+      x.send(JSON.stringify({file_b64:b64,filename:f.name||'dpp-answer.pdf'}));
+    };
+    fr.readAsDataURL(f);
   });
 }
 
@@ -23914,11 +23948,14 @@ function _mcCss(){
   if(document.getElementById('mc-css')) return;
   var s=document.createElement('style'); s.id='mc-css';
   s.textContent=[
-    '.mc-row{display:flex;align-items:center;gap:12px;padding:13px 15px;border:1px solid var(--border);border-radius:12px;background:var(--card);margin-bottom:9px;cursor:pointer;transition:.14s}',
-    '.mc-row:hover{border-color:#d9b978;transform:translateY(-1px)}',
+    '.mc-row{display:flex;align-items:center;gap:14px;padding:16px 18px;border:1px solid var(--border);border-radius:16px;background:var(--card);margin-bottom:11px;cursor:pointer;transition:.16s;box-shadow:0 1px 2px rgba(15,23,42,.04)}',
+    '.mc-row:hover{border-color:#d9b978;transform:translateY(-2px);box-shadow:0 10px 26px rgba(15,23,42,.08)}',
     'body.dark .mc-row{background:var(--card);border-color:var(--border)}',
-    '.mc-ttl{font-weight:700}',
-    '.mc-meta{font-size:.74rem;color:#8a7d5c;margin-top:2px}',
+    '.mc-ic{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,rgba(184,148,31,.18),rgba(184,148,31,.06));display:flex;align-items:center;justify-content:center;color:#b8941f;flex-shrink:0}',
+    '.mc-ttl{font-weight:800;font-size:1rem}',
+    '.mc-meta{font-size:.76rem;color:#8a7d5c;margin-top:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}',
+    '.mc-chip{background:var(--hover);border-radius:999px;padding:2px 9px;font-size:.68rem;font-weight:700;color:#7a6a3f}',
+    '.mc-del{color:#c1443a;flex-shrink:0}',
     '.mc-ver{font-family:ui-monospace,monospace;font-size:.72rem;color:#8a7d5c}',
     '.mc-v{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:7px}',
     '.mc-due{font-size:.7rem;font-weight:800;padding:2px 9px;border-radius:999px}',
@@ -23947,8 +23984,9 @@ function loadTMatChecker(){
     if(!subs.length){ el.innerHTML=head+'<div class="tcd-empty">No submissions yet. Use \u201cNew Submission\u201d to send your first material for review.</div>'; return; }
     var rows=subs.map(function(m){
       return '<div class="mc-row" onclick="mcOpenDetail('+m.id+')">'
-        +'<div style="flex:1"><div class="mc-ttl">'+esc(m.title)+'</div>'
-        +'<div class="mc-meta">'+(m.subject?esc(m.subject)+' · ':'')+esc(_matTypeLabel(m.material_type))+' · <span class="mc-ver">v'+(m.current_version||1)+'</span></div></div>'
+        +'<div class="mc-ic">'+(typeof ic==='function'?ic('folder'):'')+'</div>'
+        +'<div style="flex:1;min-width:0"><div class="mc-ttl">'+esc(m.title)+'</div>'
+        +'<div class="mc-meta">'+(m.subject?'<span class="mc-chip">'+esc(m.subject)+'</span>':'')+'<span class="mc-chip">'+esc(_matTypeLabel(m.material_type))+'</span><span class="mc-ver">v'+(m.current_version||1)+'</span></div></div>'
         +_dueBadge(m.deadline)+_msPill(m.status)+'</div>';
     }).join('');
     el.innerHTML=head+rows;
@@ -24076,15 +24114,24 @@ function loadAMatCheck(){
     if(!subs.length){ el.innerHTML=head+'<div class="tcd-empty">No submissions match this filter.</div>'; return; }
     var rows=subs.map(function(m){
       return '<div class="mc-row" onclick="amcOpenDetail('+m.id+')">'
-        +'<div style="flex:1"><div class="mc-ttl">'+esc(m.title)+'</div>'
-        +'<div class="mc-meta">'+esc(m.teacher||'')+' · '+(m.subject?esc(m.subject)+' · ':'')+esc(_matTypeLabel(m.material_type))+' · <span class="mc-ver">v'+(m.current_version||1)+'</span></div></div>'
-        +_dueBadge(m.deadline)+(m.priority==='high'?'<span style="font-size:.66rem;font-weight:800;color:#dc2626">HIGH</span>':'')+_msPill(m.status)+'</div>';
+        +'<div class="mc-ic">'+(typeof ic==='function'?ic('folder'):'')+'</div>'
+        +'<div style="flex:1;min-width:0"><div class="mc-ttl">'+esc(m.title)+'</div>'
+        +'<div class="mc-meta">'+(m.teacher?'<span class="mc-chip">'+esc(m.teacher)+'</span>':'')+(m.subject?'<span class="mc-chip">'+esc(m.subject)+'</span>':'')+'<span class="mc-chip">'+esc(_matTypeLabel(m.material_type))+'</span><span class="mc-ver">v'+(m.current_version||1)+'</span></div></div>'
+        +_dueBadge(m.deadline)+(m.priority==='high'?'<span style="font-size:.66rem;font-weight:800;color:#dc2626">HIGH</span>':'')+_msPill(m.status)
+        +'<button class="btn btn-ghost btn-sm mc-del" title="Delete this submission" onclick="event.stopPropagation();amcDeleteSubmission('+m.id+',\''+esc((m.title||'').replace(/\x27/g,"")) +'\')">'+(typeof ic==='function'?ic('trash'):'Delete')+'</button></div>';
     }).join('');
     el.innerHTML=head+rows;
   }).catch(function(e){ el.innerHTML='<div style="padding:22px;color:#c1443a">'+esc((e&&e.message)||'Could not load')+'</div>'; });
 }
 function amcSetCat(v){ _amcFilter.category_id=parseInt(v,10)||0; loadAMatCheck(); }
 function amcSetStatus(v){ _amcFilter.status=v||''; loadAMatCheck(); }
+async function amcDeleteSubmission(sid, title){
+  if(!confirm('Delete this submission'+(title?' "'+title+'"':'')+' permanently? This removes all its versions and messages.')) return;
+  try{
+    await fetch(API+'/api/admin/material-submissions/'+sid,{method:'DELETE',headers:{Authorization:'Bearer '+TOKEN}}).then(function(r){ if(!r.ok) throw new Error('Delete failed'); });
+    toast('Submission deleted.'); loadAMatCheck();
+  }catch(e){ toast(e.message||'Could not delete',true); }
+}
 
 function amcOpenDetail(sid){
   showModal('Review', '<div class="spinner"></div>', '');

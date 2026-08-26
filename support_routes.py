@@ -133,7 +133,7 @@ def _serve_attachment(db, aid, is_admin, me, download):
         if not c or c.student_id != sp.id:
             raise HTTPException(status_code=403, detail="Not your attachment.")
     r2 = __import__("r2_storage")
-    return r2.file_response(a.url, a.mime or "application/octet-stream",
+    return r2.proxy_response(a.url, a.mime or "application/octet-stream",
                             a.filename or "file", download)
 
 

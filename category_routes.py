@@ -643,6 +643,22 @@ def admin_list_messages(sid: int, db: Session = Depends(get_db), _=Depends(admin
     return {"messages": [_msg_dict(db, x) for x in msgs]}
 
 
+@router.delete("/api/admin/material-submissions/{sid}")
+def admin_delete_submission(sid: int, db: Session = Depends(get_db), _=Depends(admin_guard)):
+    """Permanently delete a material submission and all its versions, messages and attachments."""
+    from category_models import (MaterialSubmission, MaterialVersion,
+                                  MaterialMessage, MaterialAttachment)
+    m = db.query(MaterialSubmission).filter(MaterialSubmission.id == sid).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Submission not found.")
+    db.query(MaterialAttachment).filter(MaterialAttachment.submission_id == sid).delete(synchronize_session=False)
+    db.query(MaterialMessage).filter(MaterialMessage.submission_id == sid).delete(synchronize_session=False)
+    db.query(MaterialVersion).filter(MaterialVersion.submission_id == sid).delete(synchronize_session=False)
+    db.delete(m)
+    db.commit()
+    return {"ok": True, "message": "Submission deleted."}
+
+
 @router.post("/api/admin/material-submissions/{sid}/messages")
 async def admin_post_message(sid: int, message: str = Form(""),
                              files: list[UploadFile] = File(default=[]),
@@ -661,8 +677,8 @@ def _attachment_response(db, aid, is_admin, user, download):
         raise HTTPException(status_code=404, detail="Attachment not found.")
     _get_submission_for(db, a.submission_id, is_admin, user)   # authorizes
     r2 = __import__("r2_storage")
-    return r2.file_response(a.url, a.mime or "application/octet-stream",
-                            a.filename or "file", download)
+    return r2.proxy_response(a.url, a.mime or "application/octet-stream",
+                             a.filename or "file", download, sniff=True)
 
 
 @router.get("/api/admin/material-attachments/{aid}/view")
@@ -911,8 +927,8 @@ def _download_version(db, vid, is_admin, user):
         if not tid or m.teacher_id != tid:
             raise HTTPException(status_code=403, detail="Not your submission.")
     r2 = __import__("r2_storage")
-    return r2.file_response(v.file_url, v.mime or "application/octet-stream",
-                            v.filename or "file", True)
+    return r2.proxy_response(v.file_url, v.mime or "application/octet-stream",
+                             v.filename or "file", True, sniff=True)
 
 
 @router.get("/api/admin/material-versions/{vid}/download")
@@ -1006,7 +1022,7 @@ def admin_download_material(mid: int, db: Session = Depends(get_db), _=Depends(a
     if not m:
         raise HTTPException(status_code=404, detail="Material not found.")
     r2 = __import__("r2_storage")
-    return r2.file_response(m.file_ref, m.mime or "application/octet-stream",
+    return r2.proxy_response(m.file_ref, m.mime or "application/octet-stream",
                             m.filename or "file", True)
 
 
@@ -1052,7 +1068,7 @@ def teacher_download_material(mid: int, db: Session = Depends(get_db), me=Depend
         if m.category_subject_id not in set(CS.teacher_subject_ids(db, tid, m.category_id)):
             raise HTTPException(status_code=403, detail="Not your subject.")
     r2 = __import__("r2_storage")
-    return r2.file_response(m.file_ref, m.mime or "application/octet-stream",
+    return r2.proxy_response(m.file_ref, m.mime or "application/octet-stream",
                             m.filename or "file", True)
 
 

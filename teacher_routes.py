@@ -1404,7 +1404,7 @@ def teacher_download(mid: int, db: Session = Depends(get_db), current_user=Depen
     from models import Material
     m = db.query(Material).options(defer(Material.content_b64)).filter(Material.id == mid).first()
     if not m: raise HTTPException(status_code=404, detail="Not found")
-    return __import__("r2_storage").file_response(m.content_b64, "application/pdf", m.filename or "file.pdf", True)
+    return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", m.filename or "file.pdf", True)
 
 @router.delete("/material/{mid}")
 def delete_material(mid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
@@ -2093,7 +2093,7 @@ def teacher_dpp_answer_file(answer_id: int, db: Session = Depends(get_db), curre
     a = db.query(DppAnswer).filter(DppAnswer.id == answer_id).first()
     if not a or not a.answer_b64:
         raise HTTPException(status_code=404, detail="File not found")
-    return __import__("r2_storage").file_response(a.answer_b64, "application/pdf", a.filename or "dpp-answer.pdf", True)
+    return __import__("r2_storage").proxy_response(a.answer_b64, "application/pdf", a.filename or "dpp-answer.pdf", True, sniff=True)
 
 
 @router.delete("/dpp-packs/{pack_id}")
@@ -2137,7 +2137,7 @@ def teacher_dpp_pack_file(pack_id: int, kind: str = "q", db: Session = Depends(g
     fname = (pk.title or "DPP").replace("/", "-") + ("-solutions.pdf" if kind == "s" else "-questions.pdf")
     # R2 URL ho to server-side stream (viewer same-origin fetch chalega, crash nahi);
     # base64 ho to decode. Dono safe.
-    return __import__("r2_storage").file_response(blob, "application/pdf", fname, True)
+    return __import__("r2_storage").proxy_response(blob, "application/pdf", fname, True)
 
 
 @router.post("/dpp-answers/{answer_id}/check")
