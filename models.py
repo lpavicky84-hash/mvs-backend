@@ -1176,6 +1176,17 @@ class TeacherPayConfig(Base):
     bank_name        = Column(String(120), default="")
     account_no       = Column(String(60), default="")
     ifsc             = Column(String(20), default="")
+    # ---- Contract / task-based payout mode (admin-configurable, per teacher) ----
+    # payout_mode: "standard" (performance components) | "contract" (task + project based)
+    payout_mode      = Column(String(20), default="standard")
+    contract_base    = Column(Integer, default=0)     # fixed base amount (retainer) for contract mode
+    task_rate        = Column(Integer, default=0)     # rupees earned per on-time task/video
+    project_rate     = Column(Integer, default=0)     # rupees earned per completed project
+    delay_relax      = Column(Integer, default=0)     # delayed tasks allowed before deduction starts
+    delay_deduct     = Column(Integer, default=0)     # rupees deducted per delayed task beyond relax
+    reject_relax     = Column(Integer, default=0)     # rejected tasks allowed before deduction starts
+    reject_deduct    = Column(Integer, default=0)     # rupees deducted per rejection beyond relax
+    contract_notes   = Column(String(600), default="")  # extra free-text terms for the contract letter
     updated_at       = Column(DateTime, default=func.now(), onupdate=func.now())
 
     teacher = relationship("TeacherProfile")

@@ -16973,6 +16973,7 @@ const _LETTER_TERMS=[
 
 function _letterHTML(d){
   const t=d.teacher, pay=d.pay, tg=d.targets;
+  if((pay.payout_mode||'standard')==='contract') return _contractLetterHTML(d);
   const maxPot=pay.class_retainer+pay.class_quality+pay.notes_dpp+pay.doubt_resolution+pay.project_delivery;
   const refNo=d.letter.ref;
   // v91: digital signatures — founder ka authorised sign + teacher ka typed sign (accept ke baad)
@@ -17062,6 +17063,60 @@ function _letterHTML(d){
   <div style="margin-top:12px;border-top:2px solid #e4ebf5;padding-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:30px">
    <div><div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:6px">For Manish Verma Study Foundation</div>${fndSig}<div style="border-top:1.5px solid #0F2A54;padding-top:5px"><div style="font-weight:700;font-size:10px">Manish Verma</div><div style="font-size:8.5px;color:#5A6B85">Founder & Director, Manish Verma Study Foundation</div><div style="font-size:8.5px;color:#5A6B85;margin-top:2px">Date: ${esc(lt.date||'___________________')}</div></div></div>
    <div><div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:6px">Accepted by Teacher</div>${tchrSig}<div style="border-top:1.5px solid #0F2A54;padding-top:5px"><div style="font-weight:700;font-size:10px">${esc(t.name)}</div><div style="font-size:8.5px;color:#5A6B85">${esc(t.designation)}, ${esc(t.department)}</div><div style="font-size:8.5px;color:#5A6B85;margin-top:2px">${tchrDate}</div></div></div>
+  </div>
+  ${_DFOOT('Manish Verma Study Foundation | Plot No. 51-B, Maharani Enclave, West Delhi-110059','GST: 07AARCM9457H1ZQ · CIN: U85500DL2024NPL428819 · PAN: AARCM9457H','Ref: '+esc(refNo))}
+  </div>`;
+}
+
+// ---------- Contract Letter (task/project based teachers — DU-SOL / IGNOU / freelance) ----------
+function _contractLetterHTML(d){
+  const t=d.teacher, pay=d.pay;
+  const refNo=d.letter.ref, lt=d.letter||{};
+  const _sigCss="font-family:'Great Vibes',cursive;font-size:26px;color:#1a2a4a;line-height:1.05";
+  const fndSig=`<div style="${_sigCss}">Manish Verma</div>`;
+  const tchrSig=(lt.accepted&&lt.signature_name)?`<div style="${_sigCss}">${esc(lt.signature_name)}</div>`:`<div style="height:28px"></div>`;
+  const tchrDate=(lt.accepted&&lt.signed_at)?`Digitally signed on ${esc(lt.signed_at)}`:'Date: ___________________';
+  const base=pay.contract_base||0, tr=pay.task_rate||0, pr=pay.project_rate||0;
+  const dRelax=pay.delay_relax||0, dDed=pay.delay_deduct||0, rRelax=pay.reject_relax||0, rDed=pay.reject_deduct||0;
+  const inr=v=>'\u20B9'+(v||0).toLocaleString('en-IN');
+  const details=[['Name',t.name],['Designation',t.designation||'Contract Teacher'],['Department',t.department||'Academic'],
+    ['Date of Engagement','as mutually agreed'],['Reporting To','Academic Head, MVS Foundation'],
+    ['Engagement Type','Task & Project Based Contract (renewable)']];
+  const earnRows=[];
+  if(base) earnRows.push(['Monthly Base Retainer','A fixed amount paid every month, independent of task count.',inr(base)]);
+  earnRows.push(['Per On-time Task','Earned for every assigned task/video submitted on or before its deadline.',inr(tr)+' / task']);
+  if(pr) earnRows.push(['Per Completed Project','Earned for every assigned project completed and submitted.',inr(pr)+' / project']);
+  const dedRows=[
+   ['Delayed Submissions', dRelax>0?`First ${dRelax} delay${dRelax>1?'s':''} each month are exempt. Thereafter, ${inr(dDed)} is deducted per delayed task.`:`${inr(dDed)} is deducted for every delayed task.`],
+   ['Rejected Submissions', rRelax>0?`First ${rRelax} rejection${rRelax>1?'s':''} each month are exempt. Thereafter, ${inr(rDed)} is deducted per rejected task.`:`${inr(rDed)} is deducted for every rejected task.`]
+  ];
+  const extra=(pay.contract_notes||'').trim();
+  return `<div style="${_DOC_FONT}">
+  ${_LH(refNo,d.letter.date,true)}
+  <div style="text-align:center;margin-bottom:16px"><div style="display:inline-block;border-top:2px solid #0F2A54;border-bottom:2px solid #0F2A54;padding:5px 28px"><span style="font-weight:800;font-size:14px;letter-spacing:3px;color:#0F2A54;text-transform:uppercase">Contract Letter</span></div></div>
+  ${_P('Dear <strong>'+esc(t.name)+',</strong>')}
+  ${_P('This letter sets out the terms of your <strong>task &amp; project based engagement</strong> with <strong>Manish Verma Study Foundation (MVS)</strong>. Your compensation is directly tied to the tasks and projects you deliver each month. Please read carefully — by signing you accept all terms herein.')}
+  ${_SEC('1. Engagement Details')}
+  <table style="width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:10px"><tbody>
+   ${details.map(r=>`<tr style="border-bottom:1px solid #e4ebf5"><td style="padding:5px 9px;font-weight:700;color:#0F2A54;width:36%;background:#f7f9fc">${r[0]}</td><td style="padding:5px 9px;color:#1a2a3a">${esc(r[1])}</td></tr>`).join('')}
+  </tbody></table>
+  ${_SEC('2. How You Earn')}
+  ${_P('You are paid for the work you deliver. Each on-time task and completed project adds to your monthly earning as set out below.')}
+  <table style="width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:10px"><thead><tr style="background:#0F2A54;color:#fff"><th style="padding:6px 9px;text-align:left">Component</th><th style="padding:6px 9px;text-align:left">Basis</th><th style="padding:6px 9px;text-align:right;white-space:nowrap">Rate</th></tr></thead><tbody>
+   ${earnRows.map(r=>`<tr style="border-bottom:1px solid #e4ebf5"><td style="padding:5px 9px;font-weight:700;color:#0F2A54">${r[0]}</td><td style="padding:5px 9px;color:#1a2a3a">${esc(r[1])}</td><td style="padding:5px 9px;text-align:right;font-weight:800;color:#0F2A54;white-space:nowrap">${r[2]}</td></tr>`).join('')}
+  </tbody></table>
+  ${_SEC('3. Deductions','#c0392b')}
+  ${_P('A reasonable relaxation is provided each month before any deduction applies. Deductions reflect work not delivered to the agreed standard.')}
+  <table style="width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:10px"><tbody>
+   ${dedRows.map(r=>`<tr style="border-bottom:1px solid #e4ebf5"><td style="padding:5px 9px;font-weight:700;color:#c0392b;width:30%;background:#fff7f6">${r[0]}</td><td style="padding:5px 9px;color:#1a2a3a">${esc(r[1])}</td></tr>`).join('')}
+  </tbody></table>
+  ${_P('<em>Your portal\\u2019s \"Payout\" dashboard shows a real-time breakdown of tasks completed, on-time count, delays, rejections and your net earning through the month. Payment is released by the 7th of the following month.</em>','color:#5A6B85;font-size:9px')}
+  ${extra?`${_SEC('4. Additional Terms')}${_P(esc(extra).replace(/\\n/g,'<br>'))}`:''}
+  ${_SEC((extra?'5':'4')+'. Acceptance')}
+  ${_P('By signing below, you confirm that you have read and accepted the terms of this contract. This engagement is renewable and may be revised by mutual agreement; any revision to rates or deductions will be reflected in an updated contract on your portal.')}
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:26px">
+   <div><div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:6px">For Manish Verma Study Foundation</div>${fndSig}<div style="border-top:1.5px solid #0F2A54;padding-top:5px"><div style="font-weight:700;font-size:10px">Manish Verma</div><div style="font-size:8.5px;color:#5A6B85">Founder & Director, Manish Verma Study Foundation</div><div style="font-size:8.5px;color:#5A6B85;margin-top:2px">Date: ${esc(lt.date||'___________________')}</div></div></div>
+   <div><div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:6px">Accepted by Teacher</div>${tchrSig}<div style="border-top:1.5px solid #0F2A54;padding-top:5px"><div style="font-weight:700;font-size:10px">${esc(t.name)}</div><div style="font-size:8.5px;color:#5A6B85">${esc(t.designation||'Contract Teacher')}, ${esc(t.department||'Academic')}</div><div style="font-size:8.5px;color:#5A6B85;margin-top:2px">${tchrDate}</div></div></div>
   </div>
   ${_DFOOT('Manish Verma Study Foundation | Plot No. 51-B, Maharani Enclave, West Delhi-110059','GST: 07AARCM9457H1ZQ · CIN: U85500DL2024NPL428819 · PAN: AARCM9457H','Ref: '+esc(refNo))}
   </div>`;
@@ -17321,8 +17376,10 @@ async function payoutShowLetter(){
       : rs==='resolved'
       ? `<div class="alert alert-success" style="margin-top:12px;margin-bottom:0"><b>Admin's reply:</b> ${esc((_payGate&&_payGate.remark_reply)||'')}<br><span style="font-size:.76rem">You may now accept the letter — or send another remark if you still have a question.</span></div>`+remarkForm
       : remarkForm;
-    showModal('Appointment Letter — Accept & Sign',
-     `<div class="alert alert-info" style="margin-bottom:10px">Please read your appointment letter and <b>sign it digitally</b> (one-time). You will then create your payout passcode. Use the <b>full-screen</b> button above to read the letter comfortably.</div>
+    var _isContract=((d&&d.pay&&d.pay.payout_mode)==='contract');
+    var _docName=_isContract?'Contract Letter':'Appointment Letter';
+    showModal(_docName+' — Accept & Sign',
+     `<div class="alert alert-info" style="margin-bottom:10px">Please read your ${_isContract?'contract letter':'appointment letter'} and <b>sign it digitally</b> (one-time). You will then create your payout passcode. Use the <b>full-screen</b> button above to read the letter comfortably.</div>
       <div style="max-height:52vh;overflow:auto;border:1px solid var(--border);border-radius:12px;padding:16px;background:#fff">${_letterHTML(d)}</div>
       ${remarkState}
       <div class="form-group" style="margin-top:12px"><label>Digital Signature — type your full name</label><input class="form-control" id="pg-sign" placeholder="e.g. ${esc(NAME)}" autocomplete="off"></div>`,
@@ -17496,7 +17553,7 @@ async function tEarnFetch(){
       <div style="margin-top:7px;display:flex;flex-wrap:wrap;gap:6px">${pend.slice(0,8).map(p=>`<span style="background:#fff;border:1px solid #ecd9a8;border-radius:999px;padding:3px 11px;font-size:.72rem;font-weight:700">${esc(p.chapter||'—')}${p.subject?' · '+esc(p.subject):''}${p.class_name?' ('+esc(p.class_name)+')':''}${p.date?' — '+esc(p.date):''}</span>`).join('')}${pend.length>8?`<span style="font-size:.74rem;font-weight:800;align-self:center">+${pend.length-8} more</span>`:''}</div></div>`:'';
     body.innerHTML=_earnHeroHTML(d,
       `<button class="btn btn-light btn-sm" onclick="downloadMySlip()">${ic('download')} Earnings Slip</button>
-       <button class="btn btn-light btn-sm" onclick="viewMyLetter()">${ic('book')} Appointment Letter</button>`)
+       <button class="btn btn-light btn-sm" onclick="viewMyLetter()">${ic('book')} ${((window._tEarn&&_tEarn.pay&&_tEarn.pay.payout_mode)==='contract')?'Contract Letter':'Appointment Letter'}</button>`)
       +`<div id="t-pay-drivers"></div>`
       +pendHTML
       +(noAct?`<div class="alert alert-info" style="margin-bottom:14px">No activity recorded this month yet — as you complete classes, notes, tests, videos, doubts and tasks, your earnings build here live.</div>`
@@ -18500,7 +18557,7 @@ function openEarnDetail(tid){
    _earnHeroHTML(x)+'<div style="margin-top:4px">'+_earnComponentsHTML(x)+'</div>'+_activityStripHTML(x),
    `<button class="btn btn-primary" onclick="openPayConfig(${tid})">${ic('edit')} Pay Structure</button>
     <button class="btn btn-ghost" onclick="adminSlip(${tid})">${ic('download')} Earnings Slip</button>
-    <button class="btn btn-ghost" onclick="adminLetter(${tid})">${ic('book')} Appointment Letter</button>
+    <button class="btn btn-ghost" onclick="adminLetter(${tid})">${ic('book')} ${((x.pay&&x.pay.payout_mode)==='contract')?'Contract Letter':'Appointment Letter'}</button>
     <button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
 }
 
@@ -18514,6 +18571,35 @@ function openPayConfig(tid){
   window._pcCustom=(g.custom||[]).map(c=>({name:c.name,count:c.count}));
   showModal('Pay Structure — '+x.teacher.name,
    `<div class="alert alert-info">Full control: amounts, monthly targets, designation and bank details. Saving updates this teacher's live earnings and documents immediately.</div>
+    <div style="background:#f4f0fc;border:1px solid #d9cdf3;border-radius:12px;padding:12px 16px;margin-bottom:12px">
+     <label style="font-size:.7rem;color:#5b3aa6;font-weight:800;display:block;margin-bottom:6px;letter-spacing:.04em">PAYOUT MODE</label>
+     <select class="form-control" id="pc_mode" onchange="_pcMode(this.value)" style="font-weight:700">
+       <option value="standard"${(p.payout_mode||'standard')!=='contract'?' selected':''}>Standard — performance components (classes, notes, doubts, projects)</option>
+       <option value="contract"${(p.payout_mode||'standard')==='contract'?' selected':''}>Contract — task &amp; project based (on-time pays, delay/rejection deducts)</option>
+     </select>
+     <div style="font-size:.66rem;color:#6b4ca0;margin-top:5px">Contract mode ignores the component split below — the teacher is paid only from the task/project rates &amp; deductions you set. Best for DU-SOL / IGNOU / freelance teachers.</div>
+    </div>
+    <div id="pc-contract-box" style="display:none;background:linear-gradient(135deg,#fbf6e9,#f6edda);border:1px solid #e6d9ac;border-radius:12px;padding:14px 16px;margin-bottom:12px">
+     <div style="font-weight:800;font-size:.8rem;margin-bottom:10px;color:#7a5c00">CONTRACT PAYOUT — TASK &amp; PROJECT RATES</div>
+     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:10px">
+       ${num('pc_cbase','Base Retainer (fixed ₹/month)',p.contract_base||0,'Optional fixed amount every month')}
+       ${num('pc_trate','Per On-time Task (₹)',p.task_rate||0,'Earned for each task submitted on time')}
+       ${num('pc_prate','Per Project (₹)',p.project_rate||0,'Earned for each completed project')}
+     </div>
+     <div style="font-weight:800;font-size:.74rem;margin:12px 0 8px;color:#7a5c00">DELAY DEDUCTION</div>
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+       ${num('pc_drelax','Delays allowed (free)',p.delay_relax||0,'No deduction up to this many delays')}
+       ${num('pc_dded','Deduction per extra delay (₹)',p.delay_deduct||0,'Charged for each delay beyond the free ones')}
+     </div>
+     <div style="font-weight:800;font-size:.74rem;margin:12px 0 8px;color:#7a5c00">REJECTION DEDUCTION</div>
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+       ${num('pc_rrelax','Rejections allowed (free)',p.reject_relax||0,'No deduction up to this many rejections')}
+       ${num('pc_rded','Deduction per extra rejection (₹)',p.reject_deduct||0,'Charged for each rejection beyond the free ones')}
+     </div>
+     <div style="margin-top:12px"><label style="font-size:.7rem;color:#7a5c00;font-weight:700;display:block;margin-bottom:4px">Extra Contract Terms (appear on the Contract Letter)</label>
+       <textarea class="form-control" id="pc_cnotes" rows="2" maxlength="600" placeholder="e.g. Payment released by 7th of every month. Content rights belong to MVS Foundation.">${esc(p.contract_notes||'')}</textarea></div>
+    </div>
+    <div id="pc-standard-box">
     <div style="background:linear-gradient(135deg,#faf6e8,#f6efdb);border:1px solid #e6d9ac;border-radius:12px;padding:12px 16px;margin-bottom:12px">
      <label style="font-size:.7rem;color:#7a5c00;font-weight:800;display:block;margin-bottom:5px;letter-spacing:.04em">TOTAL MONTHLY SALARY — AUTO-SPLIT</label>
      <input type="number" min="0" class="form-control" id="pc_total" placeholder="e.g. 63000" style="font-weight:800;font-size:1rem" oninput="_pcSplit(this.value)">
@@ -18531,6 +18617,7 @@ function openPayConfig(tid){
      <span style="font-size:.76rem;font-weight:700">Maximum Monthly Potential</span><b id="pc_max" style="font-size:1rem"></b>
     </div>
     <div id="pc_60" style="font-size:.68rem;color:var(--text-muted);margin-top:4px"></div>
+    </div>
     <div style="font-weight:800;font-size:.8rem;margin:14px 0 8px;color:var(--primary)">MONTHLY TARGETS</div>
     <div style="font-size:.7rem;color:var(--text-muted);margin:-3px 0 10px">Core targets drive the earnings calculation — rename them anytime. Add your own extra targets below; they appear on the appointment letter.</div>
     <div style="display:flex;flex-direction:column;gap:8px">
@@ -18552,6 +18639,13 @@ function openPayConfig(tid){
    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitPayConfig(${tid})">${ic('check')} Save Pay Structure</button>`);
   _pcSum();
   _pcCustomRender();
+  _pcMode((p.payout_mode||'standard'));
+}
+function _pcMode(mode){
+  const ct=document.getElementById('pc-contract-box'), st=document.getElementById('pc-standard-box');
+  const isC=(mode==='contract');
+  if(ct) ct.style.display=isC?'block':'none';
+  if(st) st.style.display=isC?'none':'block';
 }
 function _pcCustomRender(){
   const box=document.getElementById('pc_tg_custom'); if(!box) return;
@@ -18585,7 +18679,12 @@ async function submitPayConfig(tid){
     target_labels:{tests:v('pc_lbl_tests'),videos:v('pc_lbl_videos'),live:v('pc_lbl_live'),shorts:v('pc_lbl_shorts')},
     custom_targets:(window._pcCustom||[]).map(c=>({name:(c.name||'').trim(),count:parseInt(c.count)||0})).filter(c=>c.name),
     designation:v('pc_desig'),department:v('pc_dept'),employee_code:v('pc_emp'),
-    bank_name:v('pc_bank'),account_no:v('pc_acct'),ifsc:v('pc_ifsc')};
+    bank_name:v('pc_bank'),account_no:v('pc_acct'),ifsc:v('pc_ifsc'),
+    payout_mode:v('pc_mode')||'standard',
+    contract_base:v('pc_cbase'),task_rate:v('pc_trate'),project_rate:v('pc_prate'),
+    delay_relax:v('pc_drelax'),delay_deduct:v('pc_dded'),
+    reject_relax:v('pc_rrelax'),reject_deduct:v('pc_rded'),
+    contract_notes:v('pc_cnotes')};
   try{ const r=await api('/api/admin/earnings/config','POST',body); toast(r.message); closeModal(); aEarnFetch(); }
   catch(e){ toast(e.message,true); }
 }

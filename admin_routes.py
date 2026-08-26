@@ -4854,9 +4854,14 @@ def admin_earnings_configs(db: Session = Depends(get_db), _=Depends(get_admin)):
                "subjects": tp.subjects or [], "saved": cfg.id is not None,
                "designation": cfg.designation or "", "department": cfg.department or "",
                "employee_code": cfg.employee_code or "", "bank_name": cfg.bank_name or "",
-               "account_no": cfg.account_no or "", "ifsc": cfg.ifsc or ""}
+               "account_no": cfg.account_no or "", "ifsc": cfg.ifsc or "",
+               "payout_mode": getattr(cfg, "payout_mode", "standard") or "standard",
+               "contract_notes": getattr(cfg, "contract_notes", "") or ""}
         for k in EARNINGS_PAY_FIELDS + EARNINGS_TARGET_FIELDS:
             row[k] = int(getattr(cfg, k) or 0)
+        for k in ("contract_base", "task_rate", "project_rate", "delay_relax",
+                  "delay_deduct", "reject_relax", "reject_deduct"):
+            row[k] = int(getattr(cfg, k, 0) or 0)
         out.append(row)
     out.sort(key=lambda x: x["name"])
     return {"configs": out}
@@ -4891,6 +4896,23 @@ def admin_earnings_config_save(payload: dict = Body(...), db: Session = Depends(
     for k in EARNINGS_PAY_FIELDS + EARNINGS_TARGET_FIELDS:
         cur = getattr(cfg, k)
         setattr(cfg, k, _num(k, int(cur if cur is not None else EARNINGS_DEFAULTS[k])))
+    # Contract / task-based payout mode config
+    try:
+        from teacher_routes import CONTRACT_NUM_FIELDS
+    except Exception:
+        CONTRACT_NUM_FIELDS = ("contract_base", "task_rate", "project_rate",
+                               "delay_relax", "delay_deduct", "reject_relax", "reject_deduct")
+    if "payout_mode" in payload:
+        _pm = str(payload.get("payout_mode") or "standard").strip().lower()
+        setattr(cfg, "payout_mode", "contract" if _pm == "contract" else "standard")
+    for k in CONTRACT_NUM_FIELDS:
+        if k in payload and payload[k] is not None:
+            try:
+                setattr(cfg, k, max(0, int(float(payload[k]))))
+            except Exception:
+                pass
+    if "contract_notes" in payload and payload["contract_notes"] is not None:
+        setattr(cfg, "contract_notes", str(payload["contract_notes"]).strip()[:600])
     for k in ("designation", "department", "employee_code", "bank_name", "account_no", "ifsc"):
         if k in payload and payload[k] is not None:
             setattr(cfg, k, str(payload[k]).strip()[:120])

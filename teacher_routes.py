@@ -4774,7 +4774,13 @@ EARNINGS_DEFAULTS = {
     "class_retainer": 15000, "class_quality": 1000, "notes_dpp": 2000,
     "doubt_resolution": 1000, "project_delivery": 6000,
     "tests_target": 4, "videos_target": 8, "live_target": 4, "shorts_target": 8,
+    "payout_mode": "standard", "contract_base": 0, "task_rate": 0, "project_rate": 0,
+    "delay_relax": 0, "delay_deduct": 0, "reject_relax": 0, "reject_deduct": 0,
+    "contract_notes": "",
 }
+# Contract/task-based payout config fields (admin-editable)
+CONTRACT_NUM_FIELDS = ("contract_base", "task_rate", "project_rate",
+                       "delay_relax", "delay_deduct", "reject_relax", "reject_deduct")
 EARNINGS_PAY_FIELDS = ("class_retainer", "class_quality", "notes_dpp",
                        "doubt_resolution", "project_delivery")
 EARNINGS_TARGET_FIELDS = ("tests_target", "videos_target", "live_target", "shorts_target")
@@ -5092,12 +5098,105 @@ def _teacher_score(db, tp, month):
     return detail, m
 
 
+def _contract_pay(db, tp, month, cfg):
+    """Task/project-based CONTRACT payout — fully admin-configured on the pay structure.
+      net = base
+          + (on-time tasks  × task_rate)
+          + (projects done   × project_rate)
+          − max(0, delayed  − delay_relax)  × delay_deduct
+          − max(0, rejected − reject_relax) × reject_deduct   (floored at 0)
+    Task counting is collab-aware (primary OR collaborator) and scoped to the month."""
+    from models import VideoTask
+    from sqlalchemy import or_ as _orC
+    from datetime import date as _date, datetime as _dtm
+    y, m = int(month[:4]), int(month[5:7])
+    start = _date(y, m, 1)
+    end = _date(y + 1, 1, 1) if m == 12 else _date(y, m + 1, 1)
+    dt0 = _dtm.combine(start, _dtm.min.time()); dt1 = _dtm.combine(end, _dtm.min.time())
+    try:
+        from video_tasks import _collab_all_ids as _caiC
+    except Exception:
+        _caiC = None
+    cand = db.query(VideoTask).filter(
+        _orC(VideoTask.teacher_id == tp.id,
+             VideoTask.collab_teacher_ids.like("%" + str(tp.id) + "%")),
+        VideoTask.created_at >= dt0, VideoTask.created_at < dt1).all()
+    on_time = delayed = rejected = projects = 0
+    for t in cand:
+        try:
+            if t.teacher_id != tp.id and (not _caiC or tp.id not in _caiC(t)):
+                continue
+        except Exception:
+            if t.teacher_id != tp.id:
+                continue
+        if bool(getattr(t, "is_old", False)):
+            continue
+        if (getattr(t, "status", "") or "") == "rejected" or (getattr(t, "proposal_ok", "") or "") == "rejected":
+            rejected += 1
+            continue
+        if (t.kind or "normal") in ("one_shot", "rapid_revision", "project"):
+            if t.submitted_at:
+                projects += 1
+            continue
+        if t.submitted_at and t.on_time is True:
+            on_time += 1
+        elif t.submitted_at and t.on_time is False:
+            delayed += 1
+
+    base = int(getattr(cfg, "contract_base", 0) or 0)
+    t_rate = int(getattr(cfg, "task_rate", 0) or 0)
+    p_rate = int(getattr(cfg, "project_rate", 0) or 0)
+    d_relax = int(getattr(cfg, "delay_relax", 0) or 0)
+    d_ded = int(getattr(cfg, "delay_deduct", 0) or 0)
+    r_relax = int(getattr(cfg, "reject_relax", 0) or 0)
+    r_ded = int(getattr(cfg, "reject_deduct", 0) or 0)
+
+    task_earn = on_time * t_rate
+    project_earn = projects * p_rate
+    delay_extra = max(0, delayed - d_relax)
+    reject_extra = max(0, rejected - r_relax)
+    delay_cut = delay_extra * d_ded
+    reject_cut = reject_extra * r_ded
+    gross = base + task_earn + project_earn
+    net = max(0, gross - delay_cut - reject_cut)
+
+    lines = []
+    if base:
+        lines.append({"key": "base", "label": "Base Retainer", "detail": "fixed monthly",
+                      "weight": 0, "pct": None, "earned": base, "na": False, "pool": base})
+    lines.append({"key": "tasks", "label": "On-time Tasks",
+                  "detail": "%d on-time × ₹%d" % (on_time, t_rate),
+                  "weight": 0, "pct": None, "earned": task_earn, "na": False, "pool": task_earn})
+    if p_rate:
+        lines.append({"key": "projects", "label": "Projects Completed",
+                      "detail": "%d × ₹%d" % (projects, p_rate),
+                      "weight": 0, "pct": None, "earned": project_earn, "na": False, "pool": project_earn})
+    lines.append({"key": "delay_cut", "label": "Delay Deduction",
+                  "detail": "%d delayed, %d free → %d × ₹%d" % (delayed, d_relax, delay_extra, d_ded),
+                  "weight": 0, "pct": None, "earned": -delay_cut, "na": False, "pool": 0})
+    lines.append({"key": "reject_cut", "label": "Rejection Deduction",
+                  "detail": "%d rejected, %d free → %d × ₹%d" % (rejected, r_relax, reject_extra, r_ded),
+                  "weight": 0, "pct": None, "earned": -reject_cut, "na": False, "pool": 0})
+
+    overall = round(100.0 * net / gross, 1) if gross > 0 else (100.0 if net > 0 else 0.0)
+    return {"overall": overall, "max_pay": gross, "base_earned": net,
+            "components": lines, "workload_level": "contract", "workload_pct": None,
+            "limited_workload": False,
+            "contract_stats": {"on_time": on_time, "delayed": delayed, "rejected": rejected,
+                               "projects": projects, "gross": gross, "delay_cut": delay_cut,
+                               "reject_cut": reject_cut, "net": net}}
+
+
 def _ranking_pay(db, tp, month):
     """RANKING-BASED PAYOUT — base = max monthly pay x (performance score %).
     Components leaderboard ke SAME ranking components se aate hain (workload + targets
     aware). Isse '1 class = poori pay' wala purana ratio-issue khatam, aur targets
-    ranking se hi. Overachievement rupees nahi deta (payout ke liye 100% par cap)."""
+    ranking se hi. Overachievement rupees nahi deta (payout ke liye 100% par cap).
+    Agar teacher CONTRACT (task/project) mode par hai to poori tarah alag calc."""
     import perf_engine as _pe
+    _cfg0 = get_pay_config(db, tp.id)
+    if (getattr(_cfg0, "payout_mode", "standard") or "standard") == "contract":
+        return _contract_pay(db, tp, month, _cfg0)
     cfg = get_pay_config(db, tp.id)
     max_pay = sum(int(getattr(cfg, k) or 0) for k in EARNINGS_PAY_FIELDS)
     overall = 0.0
@@ -5168,6 +5267,11 @@ def earnings_payload(db, tp, month):
     cfg = get_pay_config(db, tp.id)
     act = _month_activity(db, tp, month)
     pay = {k: int(getattr(cfg, k) or 0) for k in EARNINGS_PAY_FIELDS}
+    pay["payout_mode"] = getattr(cfg, "payout_mode", "standard") or "standard"
+    pay["contract_notes"] = getattr(cfg, "contract_notes", "") or ""
+    for _ck in ("contract_base", "task_rate", "project_rate", "delay_relax",
+                "delay_deduct", "reject_relax", "reject_deduct"):
+        pay[_ck] = int(getattr(cfg, _ck, 0) or 0)
     targets = {k: int(getattr(cfg, k) or 0) for k in EARNINGS_TARGET_FIELDS}
     # v95: editable target names + admin ke custom extra targets (letter/display only)
     _DEF_LABELS = {"tests": "Weekly Tests", "videos": "Videos (One Shot/Revision)",
@@ -5385,6 +5489,15 @@ def _ensure_v86(db):
         "ALTER TABLE notifications ADD COLUMN image_url VARCHAR(500) NULL",
         "ALTER TABLE timetable_entries ADD COLUMN resched_by VARCHAR(20) NULL",
         "ALTER TABLE reschedule_requests ADD COLUMN tt_entry_id INTEGER NULL",
+        "ALTER TABLE teacher_pay_configs ADD COLUMN payout_mode VARCHAR(20) DEFAULT 'standard'",
+        "ALTER TABLE teacher_pay_configs ADD COLUMN contract_base INTEGER DEFAULT 0",
+        "ALTER TABLE teacher_pay_configs ADD COLUMN task_rate INTEGER DEFAULT 0",
+        "ALTER TABLE teacher_pay_configs ADD COLUMN project_rate INTEGER DEFAULT 0",
+        "ALTER TABLE teacher_pay_configs ADD COLUMN delay_relax INTEGER DEFAULT 0",
+        "ALTER TABLE teacher_pay_configs ADD COLUMN delay_deduct INTEGER DEFAULT 0",
+        "ALTER TABLE teacher_pay_configs ADD COLUMN reject_relax INTEGER DEFAULT 0",
+        "ALTER TABLE teacher_pay_configs ADD COLUMN reject_deduct INTEGER DEFAULT 0",
+        "ALTER TABLE teacher_pay_configs ADD COLUMN contract_notes VARCHAR(600) DEFAULT ''",
     ]:
         try:
             db.execute(_text(stmt)); db.commit()
