@@ -17080,40 +17080,54 @@ function _contractLetterHTML(d){
   const dRelax=pay.delay_relax||0, dDed=pay.delay_deduct||0, rRelax=pay.reject_relax||0, rDed=pay.reject_deduct||0;
   const inr=v=>'\u20B9'+(v||0).toLocaleString('en-IN');
   const details=[['Name',t.name],['Designation',t.designation||'Contract Teacher'],['Department',t.department||'Academic'],
-    ['Date of Engagement','as mutually agreed'],['Reporting To','Academic Head, MVS Foundation'],
-    ['Engagement Type','Fixed-Salary Contract (task &amp; project based)']];
-  const earnRows=[];
-  earnRows.push(['Fixed Monthly Salary','Paid in full every month when all assigned tasks &amp; projects are delivered on time.',inr(base)]);
+    ['Employee Code',t.employee_code||'—'],['Date of Engagement','as mutually agreed'],['Reporting To','Academic Head, MVS Foundation'],
+    ['Mode of Work','Online — MVS Foundation Portal'],['Engagement Type','Fixed-Salary Contract (task & project based, renewable annually)']];
+  const earnRows=[['Fixed Monthly Salary','Paid in full every month when all assigned tasks & projects are delivered on time and no leave is taken.',inr(base)]];
   if(pr) earnRows.push(['Per-Project Bonus','An additional amount for every completed project, over and above the salary.',inr(pr)+' / project']);
   const dedRows=[
    ['Delayed Submissions', dRelax>0?`First ${dRelax} delay${dRelax>1?'s':''} each month are exempt. Thereafter, ${inr(dDed)} is deducted per delayed task.`:`${inr(dDed)} is deducted for every delayed task.`],
    ['Rejected Submissions', rRelax>0?`First ${rRelax} rejection${rRelax>1?'s':''} each month are exempt. Thereafter, ${inr(rDed)} is deducted per rejected task.`:`${inr(rDed)} is deducted for every rejected task.`],
-   ['Leave / Absence', `Each approved leave day is deducted at ${inr(Math.round(base/(wd||26)))} per day (salary ÷ ${wd} working days), as reviewed by the admin at month-end.`]
+   ['Leave / Absence', `Each approved leave day is deducted at ${inr(Math.round(base/(wd||26)))} per day (salary \u00F7 ${wd} working days), as reviewed by the admin at month-end.`]
+  ];
+  const terms=[
+   ['Salary Payment','Your monthly salary is processed after the admin\u2019s month-end review of your work (including any leave) and is credited to your registered bank account within the <strong>first week of the following month</strong>.'],
+   ['Punctuality & Deadlines','All assigned tasks and projects must be submitted on or before their deadlines. Delays beyond the free allowance attract deductions as set out in Section 3.'],
+   ['Leave & Attendance','Leave must be informed in advance and approved by the Academic Head. Approved leave is deducted per day (salary \u00F7 working days). Unapproved or excessive absence may trigger a review of this engagement.'],
+   ['Quality Standards','All submissions must meet MVS Foundation\u2019s content and quality guidelines. Rejected work beyond the free allowance attracts deductions and must be reworked promptly.'],
+   ['Intellectual Property','All study material, tests, videos and content produced during this engagement are the exclusive property of MVS Foundation and may not be redistributed or commercially used elsewhere.'],
+   ['Portal Exclusivity','All official academic activity \u2014 tasks, submissions and doubts \u2014 must be conducted through the MVS Foundation portal. Circumventing the portal is a breach of this agreement.'],
+   ['Confidentiality','Student data, internal materials and business information must be kept strictly confidential during and after this engagement.'],
+   ['Code of Conduct','Professional behaviour with students, parents and colleagues is required at all times. Any form of harassment will result in immediate termination.'],
+   ['Non-Compete (6 months)','For six months after this engagement ends, you agree not to establish or join a competing NIOS online coaching service targeting the same student demographic.'],
+   ['Amendments','MVS Foundation may revise the salary, rates, targets or standards with 15 days\u2019 written notice. Continued engagement constitutes acceptance of the revised terms, and your Contract Letter on the portal will be updated accordingly.'],
+   ['Notice & Termination','Either party may conclude this engagement with 30 days\u2019 written notice. All dues are settled for work delivered up to the last working day.']
   ];
   const extra=(pay.contract_notes||'').trim();
+  if(extra) terms.push(['Additional Terms', esc(extra).replace(/\n/g,'<br>')]);
   return `<div style="${_DOC_FONT}">
   ${_LH(refNo,d.letter.date,true)}
   <div style="text-align:center;margin-bottom:16px"><div style="display:inline-block;border-top:2px solid #0F2A54;border-bottom:2px solid #0F2A54;padding:5px 28px"><span style="font-weight:800;font-size:14px;letter-spacing:3px;color:#0F2A54;text-transform:uppercase">Contract Letter</span></div></div>
   ${_P('Dear <strong>'+esc(t.name)+',</strong>')}
-  ${_P('This letter sets out the terms of your <strong>task &amp; project based engagement</strong> with <strong>Manish Verma Study Foundation (MVS)</strong>. Your compensation is directly tied to the tasks and projects you deliver each month. Please read carefully — by signing you accept all terms herein.')}
+  ${_P('We are pleased to confirm your engagement with <strong>Manish Verma Study Foundation (MVS)</strong> on a <strong>fixed-salary contract</strong>. This letter sets out your salary, how deductions apply, and the professional terms of your engagement. Please read it carefully \u2014 by signing below you accept all terms herein.')}
   ${_SEC('1. Engagement Details')}
   <table style="width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:10px"><tbody>
    ${details.map(r=>`<tr style="border-bottom:1px solid #e4ebf5"><td style="padding:5px 9px;font-weight:700;color:#0F2A54;width:36%;background:#f7f9fc">${r[0]}</td><td style="padding:5px 9px;color:#1a2a3a">${esc(r[1])}</td></tr>`).join('')}
   </tbody></table>
   ${_SEC('2. Your Salary')}
-  ${_P('You are engaged on a <strong>fixed monthly salary</strong>. When your assigned tasks and projects are delivered on time, you receive the full salary below. Deductions apply only as described in Section 3.')}
-  <table style="width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:10px"><thead><tr style="background:#0F2A54;color:#fff"><th style="padding:6px 9px;text-align:left">Component</th><th style="padding:6px 9px;text-align:left">Basis</th><th style="padding:6px 9px;text-align:right;white-space:nowrap">Rate</th></tr></thead><tbody>
+  ${_P('You are engaged on a <strong>fixed monthly salary</strong>. When your assigned tasks and projects are delivered on time and no leave is taken, you receive the full salary below. Deductions apply only as described in Section 3.')}
+  <table style="width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:10px"><thead><tr style="background:#0F2A54;color:#fff"><th style="padding:6px 9px;text-align:left">Component</th><th style="padding:6px 9px;text-align:left">Basis</th><th style="padding:6px 9px;text-align:right;white-space:nowrap">Amount</th></tr></thead><tbody>
    ${earnRows.map(r=>`<tr style="border-bottom:1px solid #e4ebf5"><td style="padding:5px 9px;font-weight:700;color:#0F2A54">${r[0]}</td><td style="padding:5px 9px;color:#1a2a3a">${esc(r[1])}</td><td style="padding:5px 9px;text-align:right;font-weight:800;color:#0F2A54;white-space:nowrap">${r[2]}</td></tr>`).join('')}
   </tbody></table>
   ${_SEC('3. Deductions','#c0392b')}
-  ${_P('A reasonable relaxation is provided each month before any deduction applies. Deductions reflect work not delivered to the agreed standard.')}
+  ${_P('A reasonable relaxation is provided each month before any deduction applies. Deductions reflect work not delivered to the agreed standard, or leave taken.')}
   <table style="width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:10px"><tbody>
    ${dedRows.map(r=>`<tr style="border-bottom:1px solid #e4ebf5"><td style="padding:5px 9px;font-weight:700;color:#c0392b;width:30%;background:#fff7f6">${r[0]}</td><td style="padding:5px 9px;color:#1a2a3a">${esc(r[1])}</td></tr>`).join('')}
   </tbody></table>
-  ${_P('<em>Your portal\\u2019s \"Payout\" dashboard shows a real-time breakdown of tasks completed, on-time count, delays, rejections and your net earning through the month. Payment is released by the 7th of the following month.</em>','color:#5A6B85;font-size:9px')}
-  ${extra?`${_SEC('4. Additional Terms')}${_P(esc(extra).replace(/\\n/g,'<br>'))}`:''}
-  ${_SEC((extra?'5':'4')+'. Acceptance')}
-  ${_P('By signing below, you confirm that you have read and accepted the terms of this contract. This engagement is renewable and may be revised by mutual agreement; any revision to rates or deductions will be reflected in an updated contract on your portal.')}
+  ${_P('<em>Your portal\u2019s \"Payout\" dashboard shows a real-time view of tasks completed, on-time count, delays, rejections, leave and your net salary through the month. The final payout is released after the admin\u2019s month-end review.</em>','color:#5A6B85;font-size:9px')}
+  ${_SEC('4. Terms & Conditions')}
+  ${terms.map((r,i)=>`<div style="margin-bottom:6px;font-size:9.5px;line-height:1.65"><strong style="color:#0F2A54">${i+1}. ${r[0]}: </strong>${r[1]}</div>`).join('')}
+  ${_SEC('5. Acceptance')}
+  ${_P('By signing below, you confirm that you have read, understood and accepted the terms of this contract. This engagement is renewable and may be revised by mutual agreement; any revision will be reflected in an updated Contract Letter on your portal.')}
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:26px">
    <div><div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:6px">For Manish Verma Study Foundation</div>${fndSig}<div style="border-top:1.5px solid #0F2A54;padding-top:5px"><div style="font-weight:700;font-size:10px">Manish Verma</div><div style="font-size:8.5px;color:#5A6B85">Founder & Director, Manish Verma Study Foundation</div><div style="font-size:8.5px;color:#5A6B85;margin-top:2px">Date: ${esc(lt.date||'___________________')}</div></div></div>
    <div><div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:6px">Accepted by Teacher</div>${tchrSig}<div style="border-top:1.5px solid #0F2A54;padding-top:5px"><div style="font-weight:700;font-size:10px">${esc(t.name)}</div><div style="font-size:8.5px;color:#5A6B85">${esc(t.designation||'Contract Teacher')}, ${esc(t.department||'Academic')}</div><div style="font-size:8.5px;color:#5A6B85;margin-top:2px">${tchrDate}</div></div></div>
@@ -18701,8 +18715,8 @@ function openPayConfig(tid){
        ${num('pc_rrelax','Rejections allowed (free)',p.reject_relax||0,'No deduction up to this many rejections')}
        ${num('pc_rded','Deduction per extra rejection (₹)',p.reject_deduct||0,'Charged for each rejection beyond the free ones')}
      </div>
-     <div style="margin-top:12px"><label style="font-size:.7rem;color:#7a5c00;font-weight:700;display:block;margin-bottom:4px">Extra Contract Terms (appear on the Contract Letter)</label>
-       <textarea class="form-control" id="pc_cnotes" rows="2" maxlength="600" placeholder="e.g. Payment released by 7th of every month. Content rights belong to MVS Foundation.">${esc(p.contract_notes||'')}</textarea></div>
+     <div style="margin-top:12px"><label style="font-size:.7rem;color:#7a5c00;font-weight:700;display:block;margin-bottom:4px">Extra Contract Terms <span style="font-weight:400;color:#8a6d1a">(optional — the Contract Letter is auto-generated with full salary, deductions &amp; standard terms; add anything extra only if needed)</span></label>
+       <textarea class="form-control" id="pc_cnotes" rows="2" maxlength="600" placeholder="Leave blank — a complete premium contract letter is generated automatically.">${esc(p.contract_notes||'')}</textarea></div>
     </div>
     <div id="pc-standard-box">
     <div style="background:linear-gradient(135deg,#faf6e8,#f6efdb);border:1px solid #e6d9ac;border-radius:12px;padding:12px 16px;margin-bottom:12px">
