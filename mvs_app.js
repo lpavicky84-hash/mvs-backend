@@ -17616,15 +17616,11 @@ function _contractTeacherHTML(d){
     </div>
     <div class="card"><div class="card-header"><h3>Payout Breakdown</h3></div><div class="card-body">${breakdown}
       <div style="display:flex;justify-content:space-between;padding:12px 0 0;font-weight:800;font-size:1.02rem"><span>Net Payable</span><span style="color:#0F2A54">${_ctInr(cs.net||0)}</span></div></div></div>
-    <div class="card" style="margin-top:14px"><div class="card-header"><h3>This Month's Full Activity</h3></div><div class="card-body">
-      ${act('Classes conducted',(a.classes_conducted||0)+' / '+(a.classes_scheduled||0))}
-      ${act('Notes uploaded',a.notes_uploaded||0)}
-      ${act('DPP uploaded',a.dpp_uploaded||0)}
-      ${act('Tests created',a.tests_created||0)}
+    <div class="card" style="margin-top:14px"><div class="card-header"><h3>This Month's Work</h3></div><div class="card-body">
       ${act('Videos made',a.videos_made||0)}
       ${act('YouTube Live',a.live_sessions||0)}
       ${act('Shorts made',a.shorts_made||0)}
-      ${act('Doubts resolved',(a.doubts_resolved||0)+' / '+(a.doubts_assigned||0))}
+      ${act('Projects completed',cs.projects||0)}
       ${act('Tasks on-time',(cs.on_time||0)+' on-time · '+(cs.delayed||0)+' delayed · '+(cs.rejected||0)+' rejected')}
     </div></div>
     <div style="text-align:center;margin-top:14px"><button class="btn btn-light btn-sm" onclick="downloadMySlip()">${ic('download')} Earnings Slip</button>
@@ -18639,11 +18635,32 @@ function openEarnDetail(tid){
   }
   const _isC=((x.pay&&x.pay.payout_mode)==='contract');
   showModal((_isC?'Contract Payout — ':'Earnings — ')+x.teacher.name+' ('+fmtMonthLabel(x.month)+')',
-   (_isC?_contractReviewHTML(x):'')+_earnHeroHTML(x)+'<div style="margin-top:4px">'+_earnComponentsHTML(x)+'</div>'+_activityStripHTML(x),
+   (_isC ? (_contractReviewHTML(x)+_contractActivityHTML(x))
+         : (_earnHeroHTML(x)+'<div style="margin-top:4px">'+_earnComponentsHTML(x)+'</div>'+_activityStripHTML(x))),
    `<button class="btn btn-primary" onclick="openPayConfig(${tid})">${ic('edit')} Pay Structure</button>
     <button class="btn btn-ghost" onclick="adminSlip(${tid})">${ic('download')} Earnings Slip</button>
     <button class="btn btn-ghost" onclick="adminLetter(${tid})">${ic('book')} ${(_isC)?'Contract Letter':'Appointment Letter'}</button>
     <button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+}
+function _contractActivityHTML(x){
+  const a=x.activity||{}, cs=(x.earnings&&x.earnings.contract_stats)||{};
+  const inr=v=>'\u20B9'+(Math.round(v||0)).toLocaleString('en-IN');
+  const row=(l,v,neg)=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)"><span style="font-size:.84rem">${l}</span><span style="font-weight:700;color:${neg?'#c0392b':'#0F2A54'}">${neg?'– ':''}${inr(Math.abs(v))}</span></div>`;
+  let bd=row('Fixed Monthly Salary',cs.salary||0,false);
+  if(cs.project_earn) bd+=row('Project Bonus ('+(cs.projects||0)+')',cs.project_earn,false);
+  if(cs.delay_cut) bd+=row('Delay Deduction',cs.delay_cut,true);
+  if(cs.reject_cut) bd+=row('Rejection Deduction',cs.reject_cut,true);
+  if(cs.leave_cut) bd+=row('Leave Deduction ('+(cs.leave_days||0)+'d)',cs.leave_cut,true);
+  const act=(l,v)=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--border);font-size:.84rem"><span style="color:var(--text-muted)">${l}</span><b>${v}</b></div>`;
+  return `<div class="card" style="margin-bottom:12px"><div class="card-header"><h3>Payout Breakdown</h3></div><div class="card-body">${bd}
+      <div style="display:flex;justify-content:space-between;padding:11px 0 0;font-weight:800;font-size:1.02rem"><span>Net Payable</span><span style="color:#0F2A54">${inr(cs.net||0)}</span></div></div></div>
+    <div class="card"><div class="card-header"><h3>This Month's Work</h3></div><div class="card-body">
+      ${act('Videos made',a.videos_made||0)}
+      ${act('YouTube Live',a.live_sessions||0)}
+      ${act('Shorts made',a.shorts_made||0)}
+      ${act('Projects completed',cs.projects||0)}
+      ${act('Tasks',(cs.on_time||0)+' on-time · '+(cs.delayed||0)+' delayed · '+(cs.rejected||0)+' rejected')}
+    </div></div>`;
 }
 function _contractReviewHTML(x){
   const cs=(x.earnings&&x.earnings.contract_stats)||{};
