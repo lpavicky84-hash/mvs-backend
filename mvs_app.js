@@ -396,9 +396,35 @@ function _premiumLogin(portal){
 }
 
 // ========================================================
-//  CONFIG — Aapka live backend URL
+//  CONFIG — Aapka live backend URL (same-origin primary, taaki ISP-block ka asar na ho)
 // ========================================================
-const API = "https://mvs-foundation-api-production-0553.up.railway.app";
+// app.mvsfoundation.in KHUD API bhi serve karta hai (confirmed). Isliye API ko USI domain se call
+// karte hain jahan se page khula — wo hamesha reachable hai (page usi se aaya to API bhi aayega),
+// to kisi student ke ISP/DNS ne Railway domain block kiya ho to bhi login/logo chalta rahega.
+// Railway aur api.mvsfoundation.in sirf FALLBACK hain (agar kabhi same-origin fail ho).
+const API_DEFAULT = "https://mvs-foundation-api-production-0553.up.railway.app";
+const _API_BASES = [];
+try{ if(/^https/i.test(location.origin||'')) _API_BASES.push(location.origin); }catch(e){}
+if(_API_BASES.indexOf(API_DEFAULT)<0) _API_BASES.push(API_DEFAULT);
+if(_API_BASES.indexOf("https://api.mvsfoundation.in")<0) _API_BASES.push("https://api.mvsfoundation.in");
+let API = _API_BASES[0];
+// Note: same-origin hamesha reachable + API serve karta hai, isliye wahi primary rehta hai.
+// _apiSetBase runtime par sirf tab base badalta hai jab same-origin kabhi fail ho (safety net).
+function _apiSetBase(b){
+  if(!b || b===API) return;
+  API=b;
+  try{ localStorage.setItem('mvs_api_base', b); }catch(e){}
+  try{ _refreshLogos(); }catch(e){}
+  try{ _setFavicon(); }catch(e){}
+}
+function _refreshLogos(){
+  try{
+    document.querySelectorAll('img[src*="/api/student/logo"]').forEach(function(im){
+      im.onerror=function(){ try{ _logoFallback(im); }catch(e){} };
+      im.src=_logoSrc()+'?t='+Date.now();
+    });
+  }catch(e){}
+}
 
 let TOKEN = null, ROLE = null, NAME = null, CURRENT_PORTAL = null;
 let countdownTimer = null;
@@ -492,17 +518,28 @@ async function api(path, method='GET', body=null) {
   // retry karte hain — student ko scary error ke bajaye backend apne aap ready hone tak wait
   // ho jata hai. Sacchi offline state me turant (bina 30s hang) friendly message. Badi uploads
   // sirf 1 baar (duplicate save se bachne ke liye).
+  // Network resilience: (1) Railway cold-start me 30-60s -> gentle backoff se retry. (2) Agar
+  // student ke ISP ne primary domain block kar diya ho to baaki reachable bases apne aap try
+  // hote hain aur jo chale wahi yaad rakh liya jaata hai. Badi uploads sirf 1 try (duplicate se
+  // bachao). Note: fetch sirf NETWORK fail (connect na ho) par throw hota hai — 4xx/5xx nahi —
+  // isliye dusra base sirf tab try hota hai jab sach me domain reachable hi nahi.
   const _bigBody=(opts.body&&opts.body.length>524288);
   const _delays=_bigBody?[]:[1200,2000,3000,5000,8000,8000];
-  let res=null,_wasOffline=false;
-  for(let attempt=0; attempt<=_delays.length; attempt++){
-    try{ res=await fetch(API+path, opts); break; }
-    catch(e){
-      res=null;
-      if(typeof navigator!=='undefined' && navigator.onLine===false){ _wasOffline=true; break; }
-      if(attempt<_delays.length) await new Promise(r=>setTimeout(r, _delays[attempt]));
+  const _tryBases=[API].concat(_API_BASES.filter(function(b){ return b!==API; }));
+  let res=null,_wasOffline=false,_usedBase=API;
+  for(let bi=0; bi<_tryBases.length && !res && !_wasOffline; bi++){
+    const base=_tryBases[bi];
+    const delays=(bi===0)?_delays:[1500];   // primary: poora backoff; fallback base: quick single retry
+    for(let attempt=0; attempt<=delays.length; attempt++){
+      try{ res=await fetch(base+path, opts); _usedBase=base; break; }
+      catch(e){
+        res=null;
+        if(typeof navigator!=='undefined' && navigator.onLine===false){ _wasOffline=true; break; }
+        if(attempt<delays.length) await new Promise(r=>setTimeout(r, delays[attempt]));
+      }
     }
   }
+  if(res && _usedBase!==API) _apiSetBase(_usedBase);
   if(!res){
     if(_wasOffline) throw new Error('You appear to be offline. Please check your internet — the page will update on its own once you are back online.');
     throw new Error('The server is just waking up. Please wait a few seconds and tap the button again — it will work.');
@@ -528,15 +565,29 @@ async function api(path, method='GET', body=null) {
 // me jaga do — taaki student jab tak phone type kare, server ready ho jaaye. Success (koi bhi HTTP
 // response) tak silently retry; kabhi bhi UI par error nahi.
 let _warmDone=false, _warmT=null, _warmN=0;
+// Backend warm-up + safety net. Pehle CURRENT base (aam taur par same-origin) ko jagao. Wo reachable
+// ho to bas — kabhi kisi aur base par switch nahi (working same-origin ko badalna nahi). Sirf agar
+// current base sach me reachable na ho, tabhi fallbacks me se jo pehla chale use adopt karo.
 function _warmBackend(){
   if(_warmDone) return;
   try{ if(_warmT) clearTimeout(_warmT); }catch(e){}
-  (function tick(){
-    if(_warmDone) return;
-    fetch(API+'/api/student/logo',{cache:'no-store',mode:'no-cors'})
-      .then(function(){ _warmDone=true; _warmN=0; })
-      .catch(function(){ _warmN++; if(_warmN<20){ _warmT=setTimeout(tick, 3500); } });
-  })();
+  fetch(API+'/api/student/logo',{cache:'no-store',mode:'no-cors'})
+    .then(function(){ _warmDone=true; _warmN=0; })
+    .catch(function(){ _warmTryFallbacks(); });
+}
+function _warmTryFallbacks(){
+  var others=_API_BASES.filter(function(b){ return b!==API; });
+  var pending=others.length;
+  if(!pending){ _warmRetryLater(); return; }
+  others.forEach(function(base){
+    fetch(base+'/api/student/logo',{cache:'no-store',mode:'no-cors'})
+      .then(function(){ pending--; if(!_warmDone){ _warmDone=true; _warmN=0; _apiSetBase(base); } })
+      .catch(function(){ pending--; if(!_warmDone && pending<=0) _warmRetryLater(); });
+  });
+}
+function _warmRetryLater(){
+  if(_warmDone) return;
+  _warmN++; if(_warmN<20){ _warmT=setTimeout(_warmBackend, 3500); }   // koi base abhi reachable nahi -> dobara
 }
 // Current page ka data chupchaap fresh karo (spinner/flicker ke bina). _apiBust sab cache stale
 // mark karta hai; _swrRerender typing-safe re-render karta hai jo background me naya data laata hai
