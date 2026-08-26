@@ -129,6 +129,12 @@ DEFAULT_TYPES = ["Short Video", "Long Video", "One Shot Video", "Strategy Video"
 
 REVIEW_ACTIONS = ("approved", "editing_soon", "editing_done", "uploaded", "rejected", "reshoot")
 
+# ---- Lifecycle buckets (single source of truth for stat cards) ----
+# Har task in teeno me se EXACTLY ek bucket me girta hai, taaki
+# COMPLETED + APPROVAL-PENDING + PENDING = TOTAL hamesha reconcile ho.
+VT_COMPLETED_STATUSES = {"approved", "editing_soon", "editing_done", "uploaded"}
+VT_OPEN_STATUSES = {"assigned", "reshoot", "rejected"}  # teacher ko abhi kaam karna hai
+
 # Chapter-level production status (admin/production team set karti hai):
 # link lagte hi chapter "editing_soon" (editing karwani hai) — phir admin
 # "editing_done" (edited rakhi hai) -> "uploaded" (upload ho gayi) karta hai.
@@ -1733,11 +1739,14 @@ def vt_admin_stats(db: Session = Depends(get_db), _=Depends(get_admin)):
                      VideoTask.cancelled.isnot(True)).all())
     now = _now_ist()
     total = len(tasks)
-    done = sum(1 for t in tasks if t.submitted_at)
-    pending = sum(1 for t in tasks if t.status == "assigned")
+    # Exclusive lifecycle buckets — done + approval_pending + pending == total (hamesha)
+    done = sum(1 for t in tasks if (t.status or "") in VT_COMPLETED_STATUSES)
+    approval_pending = sum(1 for t in tasks if (t.status or "") == "submitted")
+    pending = total - done - approval_pending
+    # Delayed = cross-cutting overlay (kisi bhi open ya late-submitted task par lag sakta hai)
     delayed = sum(1 for t in tasks
                   if (t.on_time is False) or
-                  (t.status == "assigned" and t.deadline and t.deadline < now))
+                  ((t.status or "") in VT_OPEN_STATUSES and t.deadline and t.deadline < now))
     ranks = vt_task_rank_rows(db)
     top = ranks[0] if ranks else None
     most_delayed = None
@@ -1750,7 +1759,8 @@ def vt_admin_stats(db: Session = Depends(get_db), _=Depends(get_admin)):
     for t in tasks:
         k = (getattr(t, "video_type", "") or "").strip() or "Uncategorized"
         by_type[k] = by_type.get(k, 0) + 1
-    return {"total": total, "done": done, "pending": pending, "delayed": delayed,
+    return {"total": total, "done": done, "approval_pending": approval_pending,
+            "pending": pending, "delayed": delayed,
             "proposals": proposals, "by_teacher": ranks, "by_type": by_type,
             "top": top, "most_delayed": most_delayed}
 
@@ -2495,13 +2505,21 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
         if t.submitted_at and t.submitted_at.year == now.year and t.submitted_at.month == now.month:
             k = (getattr(t, "video_type", "") or "").strip() or "Uncategorized"
             month_type[k] = month_type.get(k, 0) + 1
+    _t_completed = sum(1 for t in real if (t.status or "") in VT_COMPLETED_STATUSES)
+    _t_review = sum(1 for t in real if (t.status or "") == "submitted")
+    _t_pending = len(real) - _t_completed - _t_review  # assigned + reshoot + rejected + not_completed
     stats = {
-        "assigned": len(real),
-        "uploaded": sum(1 for t in real if t.status == "uploaded"),
+        "assigned": len(real),          # total tasks assigned to this teacher
+        "completed": _t_completed,      # approved / editing / uploaded (sach me poori)
+        "under_review": _t_review,      # submitted, admin approval baaki
+        "pending": _t_pending,          # abhi kaam baaki hai
+        "uploaded": sum(1 for t in real if t.status == "uploaded"),  # backward-compat
         "submitted": len(subs),
-        "pending": sum(1 for t in real if t.status == "assigned"),
         "on_time": sum(1 for t in subs if t.on_time),
-        "delayed": sum(1 for t in subs if t.on_time is False),
+        # Delayed = late-submitted OR open task jiski deadline nikal gayi
+        "delayed": sum(1 for t in real
+                       if (t.on_time is False) or
+                       ((t.status or "") in VT_OPEN_STATUSES and t.deadline and t.deadline < now)),
         "not_completed": sum(1 for t in real if t.status == "not_completed"),
         "month_types": month_type,
     }

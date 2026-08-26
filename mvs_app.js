@@ -7867,8 +7867,9 @@ async function loadTVTasks(){
     const stat=(l,n,color,icn,bucket)=>`<div class="vt-stat${bucket?' vt-stat-click':''}"${bucket?` data-bucket="${bucket}" onclick="_vtBucketFilter('${bucket}')"`:''}><div class="vs-ic" style="background:${color}1f;color:${color}">${ic(icn)}</div><div><div class="vs-n" style="color:${color}">${n}</div><div class="vs-l">${l}</div></div></div>`;
     const statCards=`<div class="vt-cards">
       ${stat('Assigned',st.assigned||0,'#8a6d10','clipboard')}
-      ${stat('Uploaded',st.uploaded||0,'#059669','check')}
-      ${stat('Pending',st.pending||0,'#0891b2','clock')}
+      ${stat('Completed',st.completed||0,'#059669','check')}
+      ${stat('Under Review',st.under_review||0,'#c99a2e','clock')}
+      ${stat('Pending',st.pending||0,'#0891b2','clipboard')}
       ${stat('On Time',st.on_time||0,'#047857','star')}
       ${stat('Delayed',st.delayed||0,'#dc2626','alert')}
     </div>`;
@@ -7956,7 +7957,7 @@ async function loadTVTasks(){
         <div class="vtm-ic">${ic('clipboard')}</div>
         <div class="vtm-main"><div class="vtm-n">${active.length}<span> active</span></div>
           <div class="vtm-l">Tasks</div>
-          <div class="vtm-s">Single video assignments · ${st.uploaded||0} uploaded · ${st.pending||0} pending</div></div>
+          <div class="vtm-s">Single video assignments · ${st.completed||0} completed · ${st.pending||0} pending</div></div>
         <div class="vtm-go">${ic('chev-down')}</div></div>
       <div class="vtm-card${sug} ${_tvtView==='projects'?'on':''}" onclick="tvtView('projects')">
         <div class="vtm-ic">${ic('folder')}</div>
@@ -8626,7 +8627,7 @@ function _avtCard(t){
         ?`<button class="btn btn-ghost btn-sm" onclick="aAssignProd(${t.id},'graphics')" title="Assign a graphics designer for the thumbnail">${ic('image')} Assign Graphics</button>`:'';
       const asgInfo=(t.editor_name||t.graphics_name)
         ?`<span class="vt-pill editing_soon" style="cursor:default">${[t.editor_name?('Editor: '+esc(t.editor_name)):'',t.graphics_name?('Graphics: '+esc(t.graphics_name)):''].filter(Boolean).join(' · ')}</span>`:'';
-      return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-tid-card="${t.id}" data-done="${t.submitted_at?1:0}" data-pending="${(t.status==='assigned'||t.status==='reshoot'||t.status==='rejected')?1:0}" data-delayed="${t.submitted_at&&!t.on_time?1:0}" data-collab="${t.is_collab?1:0}" data-collabdone="${t.is_collab?(t.collab_all_verified?1:0):''}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
+      return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-tid-card="${t.id}" data-done="${['approved','editing_soon','editing_done','uploaded'].includes(t.status)?1:0}" data-pending="${(!['approved','editing_soon','editing_done','uploaded','submitted'].includes(t.status))?1:0}" data-delayed="${((t.on_time===false)||(['assigned','reshoot','rejected'].includes(t.status)&&t.seconds_left!=null&&t.seconds_left<0))?1:0}" data-collab="${t.is_collab?1:0}" data-collabdone="${t.is_collab?(t.collab_all_verified?1:0):''}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
         <div class="vt-title">${esc(t.title)}${t.is_collab?_vtCollabChip(t,'a'):''}${t.status==='submitted'?`<span class="vt-newsub">${ic('bell')} NEW · ${t.is_collab?'Collab':esc(t.submitted_by_name||t.teacher)}</span>`:''}</div>
         <div class="vt-chips">${t.is_collab?`<span class="vt-pill assigned" style="cursor:pointer" onclick="event.stopPropagation();vtCollabPopup(${t.id},'a')">${ic('users')} Collab</span>`:`<span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>`}${t.is_old?`<span class="vt-pill" style="background:rgba(120,113,108,.18);color:#78716c;font-weight:800">OLD · not counted</span>`:''}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}${asgInfo}</div>
         <div class="vt-meta">
@@ -9010,7 +9011,7 @@ async function loadAVTasks(fromCache){
       <div class="vt-cards">
         ${_isProj
           ? `${stat('Total Videos',_pT,'#8a6d10','clipboard')}${stat('Completed',_pD,'#059669','check')}${stat('Pending',Math.max(0,_pT-_pD),'#0891b2','clock')}${stat('New',spNewN||0,'#dc2626','bell')}`
-          : `${stat('Total Assigned',stats.total,'#8a6d10','clipboard','all')}${stat('Completed',stats.done,'#059669','check','done')}${stat('Pending',stats.pending,'#0891b2','clock','pending')}${(function(){const n=(list.tasks||[]).filter(t=>t.status==='submitted').length;return `<div class="vt-stat vt-stat-click${n>0?' vt-ap-blink':''}" data-ap="submitted" onclick="_vtStatusFilter('submitted')" title="Videos submitted by teachers, waiting for your approval"><div class="vs-ic" style="background:rgba(220,38,38,.12);color:#dc2626">${ic('bell')}</div><div><div class="vs-n" style="color:#dc2626">${n}</div><div class="vs-l">Approval Pending</div></div></div>`;})()}${stat('Delayed',stats.delayed,'#dc2626','alert','delayed')}`
+          : `${stat('Total Assigned',stats.total,'#8a6d10','clipboard','all')}${stat('Completed',stats.done,'#059669','check','done')}${stat('Pending',stats.pending,'#0891b2','clock','pending')}${(function(){const n=(stats.approval_pending!=null?stats.approval_pending:(list.tasks||[]).filter(t=>t.status==='submitted').length);return `<div class="vt-stat vt-stat-click${n>0?' vt-ap-blink':''}" data-ap="submitted" onclick="_vtStatusFilter('submitted')" title="Videos submitted by teachers, waiting for your approval"><div class="vs-ic" style="background:rgba(220,38,38,.12);color:#dc2626">${ic('bell')}</div><div><div class="vs-n" style="color:#dc2626">${n}</div><div class="vs-l">Approval Pending</div></div></div>`;})()}${stat('Delayed',stats.delayed,'#dc2626','alert','delayed')}`
         }
         ${stats.top?`<div class="vt-stat" style="border-color:rgba(16,185,129,.5)"><div class="vs-ic" style="background:rgba(16,185,129,.12);color:#047857">${ic('star')}</div><div><div style="font-size:.8rem;font-weight:800;color:#047857">${esc(stats.top.name)}</div><div class="vs-l">Top — ${stats.top.rate}% on time</div></div></div>`:''}
         ${stats.most_delayed?`<div class="vt-stat" style="border-color:rgba(220,38,38,.45)"><div class="vs-ic" style="background:rgba(220,38,38,.1);color:#b91c1c">${ic('alert')}</div><div><div style="font-size:.8rem;font-weight:800;color:#b91c1c">${esc(stats.most_delayed.name)}</div><div class="vs-l">Most delayed — ${stats.most_delayed.delayed}</div></div></div>`:''}
