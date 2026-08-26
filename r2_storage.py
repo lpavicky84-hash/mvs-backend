@@ -44,6 +44,7 @@ def _client():
         aws_access_key_id=c["access_key"],
         aws_secret_access_key=c["secret_key"],
         config=Config(signature_version="s3v4", region_name="auto",
+                      connect_timeout=8, read_timeout=30,
                       retries={"max_attempts": 3, "mode": "standard"}),
     )
     return _STATE["client"]
@@ -148,6 +149,34 @@ def file_response(value, media_type="application/octet-stream", filename=None, d
     return Response(content=_b64.b64decode(v), media_type=media_type, headers=headers)
 
 
+def _fetch_r2_bytes(url):
+    """Authenticated S3 GET by key — works even when the bucket is NOT public.
+    Extracts the object key from the stored URL and fetches with credentials."""
+    try:
+        cli = _client()
+        if not cli:
+            return None
+        c = _cfg()
+        pub = (c.get("public_url") or "").rstrip("/")
+        key = url
+        if pub and url.startswith(pub):
+            key = url[len(pub):].lstrip("/")
+        else:
+            from urllib.parse import urlparse
+            path = urlparse(url).path.lstrip("/")
+            # custom-domain/S3-style URL may include the bucket name as first path segment
+            bkt = str(c.get("bucket") or "")
+            if bkt and path.startswith(bkt + "/"):
+                path = path[len(bkt) + 1:]
+            key = path
+        if not key:
+            return None
+        obj = cli.get_object(Bucket=c["bucket"], Key=key)
+        return obj["Body"].read()
+    except Exception:
+        return None
+
+
 def proxy_response(value, media_type="application/octet-stream", filename=None, download=True, sniff=False):
     """Inline viewer / same-origin ke liye: R2 URL ho to server-side fetch karke bytes
     STREAM karo (cross-origin fetch/CORS ki dikkat nahi aayegi, aur URL pe b64decode crash
@@ -158,23 +187,27 @@ def proxy_response(value, media_type="application/octet-stream", filename=None, 
     if not value:
         raise HTTPException(status_code=404, detail="Not found")
     if isinstance(value, str) and value.startswith("http"):
-        try:
-            import urllib.request
-            req = urllib.request.Request(value, headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
-                "Accept": "*/*",
-            })
-            with urllib.request.urlopen(req, timeout=25) as r:
-                if getattr(r, "status", 200) not in (200, 206):
-                    raise Exception("bad status")
-                data = r.read()
-            # agar HTML challenge/error page mila (asli file nahi) -> redirect fallback
-            if data[:20].lstrip()[:1] in (b"<",) and b"PDF" not in data[:8] and data[:3] != b"\xff\xd8\xff":
+        # 1) Authenticated S3 GET (bucket public na ho tab bhi chalega) — sabse reliable
+        data = _fetch_r2_bytes(value)
+        if not data:
+            # 2) Public URL se seedha fetch (agar bucket public hai)
+            try:
+                import urllib.request
+                req = urllib.request.Request(value, headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
+                    "Accept": "*/*",
+                })
+                with urllib.request.urlopen(req, timeout=25) as r:
+                    if getattr(r, "status", 200) not in (200, 206):
+                        raise Exception("bad status")
+                    data = r.read()
+                # HTML challenge/error page mila (asli file nahi) -> galat, redirect
+                if data[:20].lstrip()[:1] in (b"<",) and b"PDF" not in data[:8] and data[:3] != b"\xff\xd8\xff":
+                    from fastapi.responses import RedirectResponse
+                    return RedirectResponse(url=value, status_code=302)
+            except Exception:
                 from fastapi.responses import RedirectResponse
                 return RedirectResponse(url=value, status_code=302)
-        except Exception:
-            from fastapi.responses import RedirectResponse
-            return RedirectResponse(url=value, status_code=302)
     else:
         import base64 as _b64
         v = value.split(",")[-1] if isinstance(value, str) else value
