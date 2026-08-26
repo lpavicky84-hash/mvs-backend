@@ -9016,7 +9016,7 @@ async function loadAVTasks(fromCache){
         ${stats.most_delayed?`<div class="vt-stat" style="border-color:rgba(220,38,38,.45)"><div class="vs-ic" style="background:rgba(220,38,38,.1);color:#b91c1c">${ic('alert')}</div><div><div style="font-size:.8rem;font-weight:800;color:#b91c1c">${esc(stats.most_delayed.name)}</div><div class="vs-l">Most delayed — ${stats.most_delayed.delayed}</div></div></div>`:''}
       </div>
       ${masterCards}
-      ${showTasks&&(stats.by_type&&Object.keys(stats.by_type).length)?`<div class="card" style="margin-bottom:16px"><div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px"><span style="font-size:.68rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">${ic('chart')} Type-wise tasks</span>${Object.entries(stats.by_type).map(([k,v])=>`<span class="vt-type">${esc(k)} · ${v}</span>`).join('')}</div></div>`:''}
+      ${showTasks&&(stats.by_type&&Object.keys(stats.by_type).length)?`<div class="card" style="margin-bottom:16px"><div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px"><span style="font-size:.68rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">${ic('chart')} Type-wise tasks</span>${Object.entries(stats.by_type).map(([k,v])=>`<span class="vt-type vt-type-click${(_vtF.video_type===(k==='Uncategorized'?'__none__':k))?' active':''}" onclick="_vtTypeChipFilter('${esc(String(k).replace(/'/g,''))}')" title="Click to filter by ${esc(k)}">${esc(k)} · ${v}</span>`).join('')}</div></div>`:''}
       ${showProj?_avtSpecHtml():''}
       ${showTasks?propHtml:''}
       ${showTasks?`<div class="vt-filters">
@@ -9926,6 +9926,23 @@ function _vtBucketFilter(bucket){
   if(window._vtBucket){ _vtF.status=''; const sels=document.querySelectorAll('.vt-filt-sel'); const s=sels[sels.length-1]; if(s) s.value=''; }
   _vtClientFilter();
 }
+(function(){ try{ if(!document.getElementById('vt-typechip-css')){ var s=document.createElement('style'); s.id='vt-typechip-css';
+  s.textContent='.vt-type-click{cursor:pointer;transition:.14s;border:1px solid transparent}.vt-type-click:hover{filter:brightness(.96);transform:translateY(-1px);box-shadow:0 3px 8px rgba(138,109,16,.18)}.vt-type-click.active{background:linear-gradient(135deg,#b8941f,#8a6d10)!important;color:#fff!important;box-shadow:0 3px 10px rgba(138,109,16,.35)}.vt-type-click.active svg{color:#fff!important}';
+  document.head.appendChild(s); } }catch(e){} })();
+function _vtTypeChipFilter(k){
+  var val=(k==='Uncategorized')?'__none__':k;
+  _vtF.video_type=(_vtF.video_type===val)?'':val;
+  // sync the "All Types" dropdown (client) + active chip highlight
+  document.querySelectorAll('.vt-filt-sel').forEach(function(s){
+    if([].some.call(s.options,function(o){return o.value===_vtF.video_type;})) s.value=_vtF.video_type||'';
+  });
+  document.querySelectorAll('.vt-type-click').forEach(function(el){
+    var kk=(el.textContent||'').split(' \u00b7 ')[0].trim();
+    var v=(kk==='Uncategorized')?'__none__':kk;
+    el.classList.toggle('active', v===_vtF.video_type);
+  });
+  _vtClientFilter();
+}
 function _vtStatusFilter(status){
   _vtF.status=(_vtF.status===status)?'':status;
   if(_vtF.status){ window._vtBucket=null; }
@@ -9941,7 +9958,7 @@ function _vtClientFilter(){
     let show=true;
     if(f.teacher_id && c.dataset.tid!=String(f.teacher_id)) show=false;
     if(show && f.channel_id && c.dataset.cid!=String(f.channel_id)) show=false;
-    if(show && f.video_type && c.dataset.vt!==f.video_type) show=false;
+    if(show && f.video_type){ if(f.video_type==='__none__'){ if(c.dataset.vt) show=false; } else if(c.dataset.vt!==f.video_type) show=false; }
     if(show && f.status && c.dataset.vstatus!==f.status) show=false;
     if(show && f.collab==='1' && c.dataset.collab!=='1') show=false;
     if(show && f.collab==='pending' && !(c.dataset.collab==='1' && c.dataset.collabdone==='0')) show=false;
