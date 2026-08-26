@@ -18626,6 +18626,16 @@ function _aEarnRow(tid){ return (_aEarnData&&_aEarnData.teachers||[]).find(x=>x.
 function openEarnDetail(tid){
   const x=_aEarnRow(tid); if(!x){ toast('Load the list first.',true); return; }
   const e=x.earnings, a=x.activity;
+  const _isC=((x.pay&&x.pay.payout_mode)==='contract');
+  if(_isC){
+    showModal('Contract Payout — '+x.teacher.name+' ('+fmtMonthLabel(x.month)+')',
+     _contractReviewHTML(x)+_contractActivityHTML(x),
+     `<button class="btn btn-primary" onclick="openPayConfig(${tid})">${ic('edit')} Pay Structure</button>
+      <button class="btn btn-ghost" onclick="adminSlip(${tid})">${ic('download')} Earnings Slip</button>
+      <button class="btn btn-ghost" onclick="adminLetter(${tid})">${ic('book')} Contract Letter</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+    return;
+  }
   if(x.target_only){
     showModal('Estimated Earnings \u00B7 '+x.teacher.name+' ('+fmtMonthLabel(x.month)+')',
      _earnTargetOnlyHTML(x)+_activityStripHTML(x),
@@ -18633,13 +18643,11 @@ function openEarnDetail(tid){
       <button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
     return;
   }
-  const _isC=((x.pay&&x.pay.payout_mode)==='contract');
-  showModal((_isC?'Contract Payout — ':'Earnings — ')+x.teacher.name+' ('+fmtMonthLabel(x.month)+')',
-   (_isC ? (_contractReviewHTML(x)+_contractActivityHTML(x))
-         : (_earnHeroHTML(x)+'<div style="margin-top:4px">'+_earnComponentsHTML(x)+'</div>'+_activityStripHTML(x))),
+  showModal('Earnings — '+x.teacher.name+' ('+fmtMonthLabel(x.month)+')',
+   _earnHeroHTML(x)+'<div style="margin-top:4px">'+_earnComponentsHTML(x)+'</div>'+_activityStripHTML(x),
    `<button class="btn btn-primary" onclick="openPayConfig(${tid})">${ic('edit')} Pay Structure</button>
     <button class="btn btn-ghost" onclick="adminSlip(${tid})">${ic('download')} Earnings Slip</button>
-    <button class="btn btn-ghost" onclick="adminLetter(${tid})">${ic('book')} ${(_isC)?'Contract Letter':'Appointment Letter'}</button>
+    <button class="btn btn-ghost" onclick="adminLetter(${tid})">${ic('book')} Appointment Letter</button>
     <button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
 }
 function _contractActivityHTML(x){
