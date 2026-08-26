@@ -1845,7 +1845,7 @@ def teacher_dpp_pdf(pack_id: int, kind: str = "q", medium: str = "",
     fname = (pk.title or "DPP").replace("/", "-") + \
         ("-solutions" if kind == "s" else "-questions") + "-" + med + ".pdf"
     # R2 URL ho to redirect, base64 ho to decode (dono safe)
-    return __import__("r2_storage").file_response(blob, "application/pdf", fname, False)
+    return __import__("r2_storage").proxy_response(blob, "application/pdf", fname, False, sniff=True)
 
 
 @router.post("/dpp-packs/create")

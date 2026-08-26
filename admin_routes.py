@@ -1560,7 +1560,7 @@ def admin_download(mid: int, db: Session = Depends(get_db), _=Depends(get_admin)
     from models import Material
     m = db.query(Material).options(defer(Material.content_b64)).filter(Material.id == mid).first()
     if not m: raise HTTPException(status_code=404, detail="Not found")
-    return __import__("r2_storage").file_response(m.content_b64, "application/pdf", m.filename or "file.pdf", True)
+    return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", m.filename or "file.pdf", True, sniff=True)
 
 @router.get("/pending-materials")
 def admin_pending_materials(db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -5217,7 +5217,7 @@ def admin_dpp_pack_pdf(pack_id: int, kind: str = "q", medium: str = "",
            else ("hindi" if (medium or "").lower().startswith("hin") else "english"))
     fname = (pk.title or "DPP").replace("/", "-") + \
         ("-solutions" if kind == "s" else "-questions") + "-" + med + ".pdf"
-    return __import__("r2_storage").file_response(blob, "application/pdf", fname, False)
+    return __import__("r2_storage").proxy_response(blob, "application/pdf", fname, False, sniff=True)
 
 @router.get("/office-location")
 def admin_get_office(db: Session = Depends(get_db), _=Depends(get_admin)):
