@@ -419,6 +419,8 @@ def _ensure_production_columns():
         "ALTER TABLE video_tasks ADD COLUMN thumbnail_required BOOLEAN DEFAULT 0",
         "ALTER TABLE video_tasks ADD COLUMN no_resubmit BOOLEAN DEFAULT 0",
         "ALTER TABLE video_tasks ADD COLUMN reference_video TEXT",
+        "ALTER TABLE video_tasks ADD COLUMN series_name VARCHAR(200)",
+        "ALTER TABLE youtuber_profiles ADD COLUMN monthly_target INTEGER",
     ]
     for _s in _stmts:
         try:
@@ -464,6 +466,7 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None):
         "subject": t.subject or "",
         "video_type": t.video_type or "",
         "channel_name": t.channel_name or "",
+        "series_name": (getattr(t, "series_name", "") or ""),
         "streaming": t.streaming or "",
         "priority": t.priority or "normal",
         "is_old": bool(getattr(t, "is_old", False)),

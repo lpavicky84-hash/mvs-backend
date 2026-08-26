@@ -180,6 +180,11 @@ def _now_ist():
 
 
 NOT_SPECIAL = or_(VideoTask.kind == None, VideoTask.kind == "", VideoTask.kind == "normal")
+# Teacher Task Manager ke saare admin/aggregate views SIRF teacher tasks dikhate hain.
+# YouTuber tasks (creator_type='youtuber') alag "YouTuber Tasks" section me jaate hain —
+# is filter se wo teacher manager me kabhi leak na karein. NULL/khaali = purana teacher task.
+NOT_YOUTUBER = or_(VideoTask.creator_type == None, VideoTask.creator_type == "",
+                   VideoTask.creator_type == "teacher")
 
 
 def _hist(t):
@@ -1006,7 +1011,7 @@ def _vt_sweep(db):
 
 def _vt_sweep_inner(db):
     now = _now_ist()
-    acts = db.query(VideoTask).filter(VideoTask.status == "assigned").all()
+    acts = db.query(VideoTask).filter(VideoTask.status == "assigned", NOT_YOUTUBER).all()
     changed = False
     for t in acts:
         if not t.deadline:
@@ -1684,7 +1689,7 @@ def vt_admin_list(teacher_id: int = 0, status: str = "", channel_id: int = 0,
                   db: Session = Depends(get_db), _=Depends(get_admin)):
     _seed_channels(db)
     _vt_sweep(db)
-    q = db.query(VideoTask).filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL,
+    q = db.query(VideoTask).filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL, NOT_YOUTUBER,
                                    VideoTask.cancelled.isnot(True))
     if teacher_id:
         q = q.filter(VideoTask.teacher_id == teacher_id)
@@ -1695,10 +1700,10 @@ def vt_admin_list(teacher_id: int = 0, status: str = "", channel_id: int = 0,
     if video_type:
         q = q.filter(VideoTask.video_type == video_type)
     tasks = q.order_by(VideoTask.created_at.desc()).all()
-    props = (db.query(VideoTask).filter(VideoTask.proposal_ok == "pending",
+    props = (db.query(VideoTask).filter(VideoTask.proposal_ok == "pending", NOT_YOUTUBER,
                                         VideoTask.cancelled.isnot(True))
              .order_by(VideoTask.created_at.desc()).all())
-    urgent = (db.query(VideoTask).filter(VideoTask.kind == "urgent",
+    urgent = (db.query(VideoTask).filter(VideoTask.kind == "urgent", NOT_YOUTUBER,
                                          VideoTask.cancelled.isnot(True))
               .order_by(VideoTask.created_at.desc()).all())
     _tnm = _all_teacher_names(db)   # ek query — per-task N+1 khatam (fast)
@@ -1713,15 +1718,15 @@ def vt_admin_badge(db: Session = Depends(get_db), _=Depends(get_admin)):
     proposal ya review-pending submission ka indicator dikhe (dashboard load +
     notification poll pe refresh hota hai)."""
     checking = (db.query(VideoTask)
-                .filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL,
+                .filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL, NOT_YOUTUBER,
                         VideoTask.status == "submitted",
                         VideoTask.reviewed.isnot(True),
                         VideoTask.cancelled.isnot(True))
                 .count())
-    proposals = db.query(VideoTask).filter(VideoTask.proposal_ok == "pending",
+    proposals = db.query(VideoTask).filter(VideoTask.proposal_ok == "pending", NOT_YOUTUBER,
                                            VideoTask.cancelled.isnot(True)).count()
     urgent = (db.query(VideoTask)
-              .filter(VideoTask.kind == "urgent",
+              .filter(VideoTask.kind == "urgent", NOT_YOUTUBER,
                       VideoTask.status != "uploaded",
                       VideoTask.cancelled.isnot(True))
               .count())
@@ -1735,7 +1740,7 @@ def vt_admin_stats(db: Session = Depends(get_db), _=Depends(get_admin)):
     _seed_channels(db)
     _vt_sweep(db)
     tasks = (db.query(VideoTask)
-             .filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL,
+             .filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL, NOT_YOUTUBER,
                      VideoTask.cancelled.isnot(True)).all())
     now = _now_ist()
     total = len(tasks)
@@ -1754,7 +1759,7 @@ def vt_admin_stats(db: Session = Depends(get_db), _=Depends(get_admin)):
         md = max(ranks, key=lambda r: r["delayed"])
         if md["delayed"] > 0:
             most_delayed = md
-    proposals = db.query(VideoTask).filter(VideoTask.proposal_ok == "pending").count()
+    proposals = db.query(VideoTask).filter(VideoTask.proposal_ok == "pending", NOT_YOUTUBER).count()
     by_type = {}
     for t in tasks:
         k = (getattr(t, "video_type", "") or "").strip() or "Uncategorized"
@@ -2354,7 +2359,7 @@ def vt_admin_project_chapters(subject: str = "", class_level: str = "",
 
 
 def _special_payload(db, kind):
-    tasks = (db.query(VideoTask).filter(VideoTask.kind == kind,
+    tasks = (db.query(VideoTask).filter(VideoTask.kind == kind, NOT_YOUTUBER,
                                         VideoTask.cancelled.isnot(True))
              .order_by(VideoTask.created_at.asc()).all())
     _tnm = _all_teacher_names(db)
@@ -2429,7 +2434,7 @@ def vt_report_csv(teacher_id: int = 0, status: str = "", channel_id: int = 0,
                   db: Session = Depends(get_db), _=Depends(get_admin)):
     import csv
     import io
-    q = db.query(VideoTask).filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL,
+    q = db.query(VideoTask).filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL, NOT_YOUTUBER,
                                    VideoTask.cancelled.isnot(True))
     if teacher_id:
         q = q.filter(VideoTask.teacher_id == teacher_id)

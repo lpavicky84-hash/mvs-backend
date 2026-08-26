@@ -237,6 +237,109 @@ def pm_task_detail(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or
 
 
 # ============================================================ CREATE TASK
+@router.get("/youtuber-targets")
+def prod_youtuber_targets(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Per-youtuber monthly target + is-mahine kitne publish hue (progress)."""
+    now = datetime.utcnow()
+    month_start = datetime(now.year, now.month, 1)
+    out = []
+    for yp in db.query(YouTuberProfile).filter(YouTuberProfile.is_active == True).all():
+        base = db.query(VideoTask).filter(VideoTask.creator_type == "youtuber",
+                                          VideoTask.youtuber_id == yp.id)
+        done = base.filter(VideoTask.published_at != None,
+                           VideoTask.published_at >= month_start).count()
+        active = base.filter(~VideoTask.lifecycle.in_(["uploaded", "completed"]),
+                             VideoTask.cancelled == False).count()
+        tgt = int(getattr(yp, "monthly_target", 0) or 0)
+        pct = round(100.0 * done / tgt) if tgt else 0
+        out.append({"id": yp.id, "name": (yp.user.name if yp.user else ""),
+                    "target": tgt, "done_this_month": done, "active": active,
+                    "pct": pct, "met": bool(tgt and done >= tgt)})
+    out.sort(key=lambda x: (-(x["target"] > 0), -x["pct"], -x["done_this_month"]))
+    return {"month": month_start.strftime("%B %Y"), "youtubers": out}
+
+
+@router.post("/youtuber-target")
+def prod_set_youtuber_target(payload: dict = Body(...), db: Session = Depends(get_db),
+                             me=Depends(get_pm_or_admin)):
+    yid = int(payload.get("youtuber_id") or 0)
+    yp = db.query(YouTuberProfile).filter(YouTuberProfile.id == yid).first()
+    if not yp:
+        raise HTTPException(404, "YouTuber not found")
+    try:
+        tgt = max(0, min(500, int(payload.get("target") or 0)))
+    except Exception:
+        tgt = 0
+    yp.monthly_target = tgt
+    db.commit()
+    return {"ok": True, "youtuber_id": yid, "target": tgt}
+
+
+@router.post("/youtuber-series")
+def prod_create_youtuber_series(payload: dict = Body(...), db: Session = Depends(get_db),
+                                me=Depends(get_pm_or_admin)):
+    """Assign a SERIES/BATCH of videos to one youtuber. Each video becomes a normal
+    single-video task (apna lifecycle), sabhi ek shared series_name ke andar group hote hain.
+    YouTuber ke liye chapters nahi — bas series."""
+    import re as _re
+    series = (payload.get("series_name") or "").strip()
+    if not series:
+        raise HTTPException(400, "A series name is required")
+    yid = int(payload.get("youtuber_id") or 0)
+    yp = db.query(YouTuberProfile).filter(YouTuberProfile.id == yid).first()
+    if not yp:
+        raise HTTPException(400, "Valid youtuber_id required")
+    vids, seen = [], set()
+    for it in (payload.get("videos") or []):
+        s = _re.sub(r"\s+", " ", str(it or "")).strip()
+        if s and s.lower() not in seen:
+            seen.add(s.lower()); vids.append(s[:300])
+        if len(vids) >= 50:
+            break
+    if not vids:
+        raise HTTPException(400, "Add at least one video title")
+    channel = (payload.get("channel_name") or "").strip()
+    vtype = (payload.get("video_type") or "").strip()
+    streaming = (payload.get("streaming") or "").strip()
+    priority = (payload.get("priority") or "normal").strip()
+    remarks = (payload.get("remarks") or "").strip()
+    reference = (payload.get("reference") or "").strip()
+    appr = payload.get("approval_required")
+    deadline = None
+    dls = (payload.get("deadline") or "").strip()
+    if dls:
+        try:
+            deadline = datetime.fromisoformat(dls.replace("Z", ""))
+        except Exception:
+            deadline = None
+    created = []
+    for title in vids:
+        t = VideoTask(title=title, creator_type="youtuber", youtuber_id=yid,
+                      series_name=series, channel_name=channel, video_type=vtype,
+                      streaming=streaming, priority=priority, remarks=remarks,
+                      reference=reference, proposed_by="admin", status="assigned",
+                      deadline=deadline)
+        if appr is not None:
+            t.approval_required = bool(appr)
+        db.add(t); db.flush()
+        try:
+            pc.ensure_ref_code(t)
+        except Exception:
+            pass
+        pc.set_state(db, t, "creator_assigned", actor=me, event="task_created")
+        pc.log_event(db, t, me, "creator_assigned", new_state="creator_assigned")
+        created.append(t.id)
+    try:
+        if yp.user_id:
+            pc.notify(db, yp.user_id, "New Series — %s" % series,
+                      'You have been assigned a new series: "%s" (%d videos). Check My Tasks.'
+                      % (series, len(created)), "video_task")
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "series": series, "count": len(created), "ids": created}
+
+
 @router.post("/tasks")
 def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
                    me=Depends(get_pm_or_admin)):
@@ -1657,7 +1760,7 @@ def prod_ranking(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
 
 
 @router.get("/report.csv")
-def prod_report_csv(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+def prod_report_csv(creator_type: str = "", db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     import csv, io
     from sqlalchemy import or_ as _or
     NOT_SPECIAL = _or(VideoTask.kind == None, VideoTask.kind == "", VideoTask.kind == "normal")
@@ -1665,8 +1768,12 @@ def prod_report_csv(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
         from video_tasks import _teacher_name as _tn
     except Exception:
         def _tn(db, tid): return ""
-    tasks = (db.query(VideoTask).filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL)
-             .order_by(VideoTask.created_at.desc()).all())
+    q = db.query(VideoTask).filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL)
+    if (creator_type or "").strip().lower() in ("teacher", "youtuber"):
+        q = q.filter(VideoTask.creator_type == creator_type.strip().lower())
+    tasks = q.order_by(VideoTask.created_at.desc()).all()
+    _fname = ("youtuber_report.csv" if (creator_type or "").strip().lower() == "youtuber"
+              else "production_report.csv")
     buf = io.StringIO(); w = csv.writer(buf)
     w.writerow(["ID", "Title", "Creator", "Channel", "Type", "Stage", "Deadline",
                 "Submitted At", "On Time", "Revisions", "YouTube Views", "Created"])
@@ -1685,7 +1792,7 @@ def prod_report_csv(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
             t.created_at.strftime("%d %b %Y") if t.created_at else "",
         ])
     return Response(content=buf.getvalue(), media_type="text/csv",
-                    headers={"Content-Disposition": "attachment; filename=production_report.csv"})
+                    headers={"Content-Disposition": "attachment; filename=" + _fname})
 
 
 # ============================================================ COLLAB (multi-teacher verify)

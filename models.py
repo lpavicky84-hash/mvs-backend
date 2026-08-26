@@ -508,6 +508,7 @@ class VideoTask(Base):
     ref_code        = Column(String(30), default="")      # readable id e.g. VID-2026-000123
     creator_type    = Column(String(20), default="teacher")  # teacher | youtuber
     youtuber_id     = Column(Integer, ForeignKey("youtuber_profiles.id"), nullable=True)
+    series_name     = Column(String(200), default="")     # youtuber "series/batch" grouping (chapters ke bina)
     approval_required = Column(Boolean, nullable=True)     # per-video override; NULL = use creator default
     lifecycle       = Column(String(30), default="")       # new state engine (see legacy `status` map)
     priority        = Column(String(10), default="normal") # normal | urgent
@@ -1396,6 +1397,7 @@ class YouTuberProfile(Base):
     id                = Column(Integer, primary_key=True)
     user_id           = Column(Integer, ForeignKey("users.id"), unique=True, index=True)
     approval_required = Column(Boolean, default=True)   # default PM-approval mode (per-video override on task)
+    monthly_target    = Column(Integer, default=0)      # per-youtuber monthly video target (0 = none)
     photo_b64         = Column(_PHOTO, nullable=True)
     phone             = Column(String(15), default="")
     channels          = Column(Text, default="")        # JSON list of channel names/ids (optional)
