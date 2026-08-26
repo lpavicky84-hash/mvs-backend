@@ -765,6 +765,39 @@ def _sub_dict(db, m, with_versions=False, teacher_name=None):
     return d
 
 
+def _mc_notify_teacher(db, m, decision, remarks=""):
+    """Status change (approve/changes/reject/review) pe teacher ko notification."""
+    try:
+        from admin_routes import notify
+        from models import TeacherProfile
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == m.teacher_id).first()
+        if not (tp and tp.user_id):
+            return
+        lbl = {"approved": "\u2705 Material Approved",
+               "changes_required": "\u270F\uFE0F Changes Required on your Material",
+               "rejected": "\u274C Material Rejected",
+               "under_review": "\U0001F440 Material Under Review"}.get(decision, "Material Update")
+        msg = 'Your submission "%s" is now %s.' % (m.title, decision.replace("_", " "))
+        if remarks:
+            msg += " Remarks: " + remarks
+        notify(db, tp.user_id, lbl, msg, "material_review")
+    except Exception:
+        pass
+
+
+def _mc_notify_admins(db, m, teacher_name="", action="submitted"):
+    """Teacher submit/resubmit pe sabhi admins ko notification."""
+    try:
+        from admin_routes import notify
+        from models import User
+        title = "\U0001F4C4 Material Submitted for Checking" if action == "submitted" else "\U0001F504 Material Resubmitted"
+        msg = '%s submitted "%s" for checking.' % (teacher_name or "A teacher", m.title)
+        for au in db.query(User).filter(User.role == "admin", User.is_active == True).all():
+            notify(db, au.id, title, msg, "material_submit")
+    except Exception:
+        pass
+
+
 def _add_version_raw(db, submission, raw, filename, mime, uploader_id, status_at, remarks=None):
     from category_models import MaterialVersion
     r2 = __import__("r2_storage")
@@ -812,6 +845,7 @@ async def teacher_submit_material(file: UploadFile = File(...),
     raw = await file.read()
     _add_version(db, m, raw, file, me.id, "submitted")
     _log_event(db, cid, tid, m.id, me.id, "teacher", "submitted", m.title)
+    _mc_notify_admins(db, m, getattr(me, "name", ""), "submitted")
     db.commit()
     return {"ok": True, "id": m.id}
 
@@ -857,6 +891,7 @@ async def teacher_resubmit(sid: int, file: UploadFile = File(...),
     _add_version(db, m, raw, file, me.id, "resubmitted", str(remarks).strip() or None)
     m.status = "resubmitted"
     _log_event(db, m.category_id, tid, m.id, me.id, "teacher", "resubmitted", m.title)
+    _mc_notify_admins(db, m, getattr(me, "name", ""), "resubmitted")
     db.commit()
     return {"ok": True, "version": m.current_version}
 
@@ -900,6 +935,7 @@ def teacher_submit_material_json(data: dict = Body(...), db: Session = Depends(g
     db.add(m); db.flush()
     _add_version_raw(db, m, raw, fname, d.get("mime") or "application/octet-stream", me.id, "submitted")
     _log_event(db, cid, tid, m.id, me.id, "teacher", "submitted", m.title)
+    _mc_notify_admins(db, m, getattr(me, "name", ""), "submitted")
     db.commit()
     return {"ok": True, "id": m.id}
 
@@ -922,6 +958,7 @@ def teacher_resubmit_json(sid: int, data: dict = Body(...), db: Session = Depend
                      str(d.get("remarks") or "").strip() or None)
     m.status = "resubmitted"
     _log_event(db, m.category_id, tid, m.id, me.id, "teacher", "resubmitted", m.title)
+    _mc_notify_admins(db, m, getattr(me, "name", ""), "resubmitted")
     db.commit()
     return {"ok": True, "version": m.current_version}
 
@@ -988,6 +1025,8 @@ def admin_review_submission(sid: int, payload: dict = Body(...),
             cur.remarks = ((cur.remarks + "\n") if cur.remarks else "") + remarks
     _log_event(db, m.category_id, m.teacher_id, m.id, me.id, "admin",
                decision or "reviewed", remarks or None)
+    if decision:
+        _mc_notify_teacher(db, m, decision, remarks)
     db.commit()
     return {"ok": True, "status": m.status}
 
