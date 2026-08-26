@@ -1416,6 +1416,77 @@ def delete_material(mid: int, db: Session = Depends(get_db), current_user=Depend
     return {"message": "Deleted"}
 
 # ===== TEACHER PROFILE & SUBJECT SELECTION (class-wise) =====
+@router.get("/task-stats")
+def teacher_task_stats(period: str = "month", frm: str = "", to: str = "",
+                       db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Collab-aware video-task stats for the teacher, filtered by period:
+    week | month | lifetime | custom (frm/to = YYYY-MM-DD). Returns assigned/submitted/
+    pending/on-time/delayed/rejected + projects, for a task-based dashboard."""
+    from models import VideoTask
+    from sqlalchemy import or_ as _or
+    from datetime import datetime as _dtm, timedelta as _td, date as _date
+    tp = get_teacher_profile(current_user, db)
+    now = ist_now()
+    dt0 = dt1 = None
+    period = (period or "month").lower()
+    if period == "week":
+        d0 = (now - _td(days=now.weekday())).date()
+        dt0 = _dtm.combine(d0, _dtm.min.time())
+    elif period == "month":
+        dt0 = _dtm(now.year, now.month, 1)
+    elif period == "lifetime":
+        dt0 = None
+    elif period == "custom":
+        try:
+            if frm:
+                dt0 = _dtm.combine(_date.fromisoformat(frm), _dtm.min.time())
+            if to:
+                dt1 = _dtm.combine(_date.fromisoformat(to), _dtm.max.time())
+        except Exception:
+            dt0 = None
+    try:
+        from video_tasks import _collab_all_ids as _cai
+    except Exception:
+        _cai = None
+    q = db.query(VideoTask).filter(
+        _or(VideoTask.teacher_id == tp.id,
+            VideoTask.collab_teacher_ids.like("%" + str(tp.id) + "%")))
+    if dt0 is not None:
+        q = q.filter(VideoTask.created_at >= dt0)
+    if dt1 is not None:
+        q = q.filter(VideoTask.created_at <= dt1)
+    cand = q.all()
+    assigned = submitted = pending = on_time = delayed = rejected = projects = 0
+    for t in cand:
+        try:
+            if t.teacher_id != tp.id and (not _cai or tp.id not in _cai(t)):
+                continue
+        except Exception:
+            if t.teacher_id != tp.id:
+                continue
+        if bool(getattr(t, "is_old", False)):
+            continue
+        if (getattr(t, "status", "") or "") == "rejected" or (getattr(t, "proposal_ok", "") or "") == "rejected":
+            rejected += 1
+            continue
+        if (t.kind or "normal") in ("one_shot", "rapid_revision", "project"):
+            if t.submitted_at:
+                projects += 1
+            continue
+        assigned += 1
+        if t.submitted_at:
+            submitted += 1
+            if t.on_time is True:
+                on_time += 1
+            elif t.on_time is False:
+                delayed += 1
+        else:
+            pending += 1
+    return {"period": period, "assigned": assigned, "submitted": submitted, "pending": pending,
+            "on_time": on_time, "delayed": delayed, "rejected": rejected, "projects": projects,
+            "done": submitted}
+
+
 @router.get("/profile")
 def teacher_profile(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
@@ -6075,7 +6146,12 @@ def payout_gate_status(db: Session = Depends(get_db), current_user=Depends(get_t
     _ensure_v89(db)
     _ensure_v90(db)
     tp = get_teacher_profile(current_user, db)
-    return _payout_status(tp)
+    st = _payout_status(tp)
+    try:
+        st["payout_mode"] = getattr(get_pay_config(db, tp.id), "payout_mode", "standard") or "standard"
+    except Exception:
+        st["payout_mode"] = "standard"
+    return st
 
 @router.post("/payout/accept-letter")
 def payout_accept_letter(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):

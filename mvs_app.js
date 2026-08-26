@@ -17342,9 +17342,13 @@ function _payStructureHTML(d,editable){
 let _payoutUnlocked=false, _payGate=null;
 async function payoutGate(){
   const el=document.getElementById('t-payout-content');
-  if(window._tAttOff){ renderTEstPayout(el); return; }
   if(_payoutUnlocked){ loadTPayout(); return; }
-  el.innerHTML=`<div class="sm-head"><h2>Payout</h2><p>Work-based earnings — appointment-letter rule, auto-calculated.</p></div>
+  let st;
+  try{ st=await api('/api/teacher/payout/status'); _payGate=st; }
+  catch(e){ if(window._tAttOff){ renderTEstPayout(el); return; } toast(e.message,true); return; }
+  const _isContract=(st&&st.payout_mode==='contract');
+  if(window._tAttOff && !_isContract){ renderTEstPayout(el); return; }
+  el.innerHTML=`<div class="sm-head"><h2>Payout</h2><p>${_isContract?'Contract salary — sign your contract, then unlock to view.':'Work-based earnings — appointment-letter rule, auto-calculated.'}</p></div>
    <div class="card"><div class="card-body" style="text-align:center;padding:46px 20px">
     <div style="width:62px;height:62px;border-radius:18px;background:linear-gradient(135deg,#b8941f,#8a6d10);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;color:#fff">${ic('shield')}</div>
     <h3 style="margin-bottom:6px">Payout Locked</h3>
@@ -17352,7 +17356,6 @@ async function payoutGate(){
     <button class="btn btn-primary" onclick="payoutGate()">${ic('shield')} Unlock Payout</button>
    </div></div>`;
   try{
-    const st=await api('/api/teacher/payout/status'); _payGate=st;
     if(!st.letter_accepted) return payoutShowLetter();
     if(!st.passcode_set) return payoutShowSetPasscode();
     return payoutShowUnlock();
@@ -23732,52 +23735,68 @@ function loadTCatDashboard(){
       '.tcd-kpi span{font-size:.76rem;color:#8a7d5c;text-transform:uppercase;letter-spacing:.04em;font-weight:700}',
       '.tcd-kpi.tasks b{color:#b8941f}.tcd-kpi.mat b{color:#6d28d9}.tcd-kpi.pend b{color:#d97706}.tcd-kpi.appr b{color:#059669}',
       '.tcd-sec{font-weight:800;font-size:1.02rem;margin:22px 0 12px}',
-      '.tcd-empty{border:1px dashed var(--border);border-radius:14px;padding:22px;text-align:center;color:#9c8f6e;font-size:.88rem}'
+      '.tcd-empty{border:1px dashed var(--border);border-radius:14px;padding:22px;text-align:center;color:#9c8f6e;font-size:.88rem}',
+      '.tcd-tasks-wrap{border:1px solid var(--border);border-radius:18px;padding:18px 18px 20px;background:var(--card);box-shadow:0 1px 2px rgba(15,23,42,.04)}',
+      '.tcd-tasks-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}',
+      '.tcd-filter{display:flex;gap:8px;align-items:center;flex-wrap:wrap}',
+      '.tcd-filter select{padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card);font-weight:700;font-size:.82rem;color:var(--text)}',
+      '.tcd-tgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px}',
+      '.tcd-tstat{border:1px solid var(--border);border-radius:14px;padding:16px 12px;text-align:center;background:linear-gradient(180deg,rgba(230,173,78,.05),transparent)}',
+      '.tcd-tstat b{display:block;font-size:1.9rem;font-weight:800;line-height:1}',
+      '.tcd-tstat span{font-size:.68rem;color:#8a7d5c;text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-top:4px;display:block}'
     ].join('');
     document.head.appendChild(s);
   }
   api('/api/teacher/category-dashboard?category_id='+a.id).then(function(d){
-    var k=d.kpis||{};
     var hero='<div class="tcd-hero"><h2>'+_tGreet()+', '+esc((NAME||'')+(typeof _tSuffix!=='undefined'?_tSuffix:''))+'</h2>'
       +'<p>'+esc(d.category&&d.category.display_name||a.display_name)+' Workspace</p></div>';
     var feats=(a.features||[]);
-    var kcards='';
-    if(feats.indexOf('my_tasks')>=0) kcards+='<div class="tcd-kpi tasks" onclick="tPage(\'vtasks\',null)"><b>'+(k.active_tasks||0)+'</b><span>Active Tasks</span></div>';
-    if(feats.indexOf('material_checker')>=0||feats.indexOf('subject_materials')>=0){
-      kcards+='<div class="tcd-kpi mat" onclick="tPage(\'mysubjects\',null)"><b>'+(k.materials||0)+'</b><span>Materials</span></div>';
-      kcards+='<div class="tcd-kpi pend" onclick="tPage(\'mysubjects\',null)"><b>'+(k.pending_reviews||0)+'</b><span>Pending Reviews</span></div>';
-      kcards+='<div class="tcd-kpi appr" onclick="tPage(\'mysubjects\',null)"><b>'+(k.approved||0)+'</b><span>Approved</span></div>';
+    var taskSec='';
+    if(feats.indexOf('my_tasks')>=0){
+      taskSec='<div class="tcd-tasks-wrap">'
+        +'<div class="tcd-tasks-head"><div class="tcd-sec" style="margin:0">Task Overview</div>'
+        +'<div class="tcd-filter"><select id="tcd-period" onchange="_catTaskPeriod(this.value)">'
+          +'<option value="week">This Week</option><option value="month" selected>This Month</option>'
+          +'<option value="lifetime">Lifetime</option><option value="custom">Custom range\u2026</option></select>'
+        +'<span id="tcd-custom" style="display:none;gap:6px;align-items:center"><input type="date" id="tcd-from" class="form-control" style="padding:6px 8px;width:auto"><span style="color:var(--text-muted)">to</span><input type="date" id="tcd-to" class="form-control" style="padding:6px 8px;width:auto"><button class="btn btn-primary btn-sm" onclick="_catTaskLoad()">Go</button></span></div></div>'
+        +'<div id="tcd-task-cards"><div class="spinner" style="margin:16px auto"></div></div>'
+        +'<div style="text-align:center;margin-top:12px"><button class="btn btn-primary btn-sm" onclick="tPage(\'vtasks\',null)">Open My Tasks</button></div>'
+        +'</div>';
     }
-    var kpis=kcards?'<div class="tcd-kpis">'+kcards+'</div>':'';
-
-    var subs=d.subjects||[];
-    var subHtml='';
-    if(feats.indexOf('my_subjects')>=0){
-      subHtml='<div class="tcd-sec">My Subjects</div>';
-      if(subs.length){
-        subHtml+='<div class="tmsub-grid">'+subs.map(function(s){
-          return '<div class="tmsub-card" onclick="tPage(\'mysubjects\',null)" style="cursor:pointer"><div class="tmsub-nm">'+esc(s.name)+'</div>'
-            +(s.code?'<div class="tmsub-code">'+esc(s.code)+'</div>':'')
-            +'<div class="tmsub-stats"><div class="tmsub-stat"><b>'+(s.materials||0)+'</b><span>Materials</span></div>'
-            +'<div class="tmsub-stat pend"><b>'+(s.pending||0)+'</b><span>Pending</span></div>'
-            +'<div class="tmsub-stat appr"><b>'+(s.approved||0)+'</b><span>Approved</span></div></div></div>';
-        }).join('')+'</div>';
-      } else {
-        subHtml+='<div class="tcd-empty">No subjects assigned yet for this workspace.</div>';
-      }
-    }
-
     var rec=d.recent||[];
     var recHtml='<div class="tcd-sec">Recent Activity</div>'+(rec.length
       ? '<div style="display:flex;flex-direction:column;gap:8px">'+rec.map(function(r){
           return '<div style="display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--border,#e5ddcb);border-radius:10px"><span style="color:#059669;font-weight:800">\u2713</span><div style="flex:1"><div style="font-weight:600;font-size:.86rem">'+esc(r.detail||r.action)+'</div><div style="font-size:.72rem;color:#8a7d5c">'+esc(r.at)+'</div></div></div>';
         }).join('')+'</div>'
       : '<div class="tcd-empty">You\u2019re all clear \u2014 no recent activity yet.</div>');
-
-    el.innerHTML=hero+kpis+subHtml+recHtml;
+    el.innerHTML=hero+taskSec+recHtml;
+    if(feats.indexOf('my_tasks')>=0) _catTaskLoad();
   }).catch(function(e){
     el.innerHTML='<div style="padding:22px;color:#c1443a">Could not load workspace. '+esc((e&&e.message)||'')+'</div>';
   });
+}
+function _catTaskPeriod(v){
+  var c=document.getElementById('tcd-custom'); if(c) c.style.display=(v==='custom')?'inline-flex':'none';
+  if(v!=='custom') _catTaskLoad();
+}
+function _catTaskLoad(){
+  var box=document.getElementById('tcd-task-cards'); if(!box) return;
+  var p=(document.getElementById('tcd-period')||{}).value||'month';
+  var qs='period='+p;
+  if(p==='custom'){ var f=(document.getElementById('tcd-from')||{}).value,t=(document.getElementById('tcd-to')||{}).value; if(!f||!t){ toast('Pick both dates',true); return; } qs+='&frm='+f+'&to='+t; }
+  box.innerHTML='<div class="spinner" style="margin:16px auto"></div>';
+  api('/api/teacher/task-stats?'+qs).then(function(s){
+    var card=function(v,l,c){ return '<div class="tcd-tstat"><b style="color:'+c+'">'+v+'</b><span>'+l+'</span></div>'; };
+    box.innerHTML='<div class="tcd-tgrid">'
+      +card(s.assigned||0,'Total Tasks','#b8941f')
+      +card(s.done||0,'Done','#059669')
+      +card(s.pending||0,'Pending','#d97706')
+      +card(s.on_time||0,'On-time','#0f7a44')
+      +card(s.delayed||0,'Delayed','#dc2626')
+      +card(s.rejected||0,'Rejected','#c0392b')
+      +'</div>'
+      +(s.projects?'<div style="text-align:center;margin-top:10px;font-size:.8rem;color:var(--text-muted)">Projects completed: <b>'+s.projects+'</b></div>':'');
+  }).catch(function(e){ box.innerHTML='<div class="tcd-empty">Could not load task stats.</div>'; });
 }
 
 /* ============================================================
@@ -24330,6 +24349,12 @@ function loadTCatEarnings(){
   var el=document.getElementById('t-payout-content'); if(!el) return;
   var a=window._tActiveCat; if(!a){ if(typeof payoutGate==='function') payoutGate(); return; }
   try{ softSpin(el); }catch(e){ el.innerHTML='<div class="spinner"></div>'; }
+  api('/api/teacher/payout/status').then(function(st){
+    if(st && st.payout_mode==='contract'){ if(typeof payoutGate==='function') payoutGate(); return; }
+    _catEarningsEstimate(a, el);
+  }).catch(function(){ _catEarningsEstimate(a, el); });
+}
+function _catEarningsEstimate(a, el){
   api('/api/teacher/category-earnings?category_id='+a.id).then(function(d){
     var lines=(d.lines||[]);
     var rowHtml=lines.length?lines.map(function(l){
