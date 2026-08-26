@@ -23952,6 +23952,14 @@ var MS_STATUS={submitted:['Submitted','#2563eb'],under_review:['Under Review','#
   changes_required:['Changes Required','#d97706'],resubmitted:['Resubmitted','#0891b2'],
   approved:['Approved','#059669'],rejected:['Rejected','#dc2626'],draft:['Draft','#6b7280']};
 function _msPill(st){ var m=MS_STATUS[st]||[st,'#6b7280']; return '<span style="font-size:.68rem;font-weight:800;padding:3px 10px;border-radius:999px;white-space:nowrap;color:#fff;background:'+m[1]+'">'+m[0]+'</span>'; }
+function _mcStatusCls(s){
+  s=String(s||'').toLowerCase();
+  if(s==='approved') return 'ok';
+  if(s==='rejected') return 'bad';
+  if(s==='changes_required') return 'warn';
+  if(s==='resubmitted') return 'info';
+  return 'pend';
+}
 function _mcCss(){
   if(document.getElementById('mc-css')) return;
   var s=document.createElement('style'); s.id='mc-css';
@@ -23964,6 +23972,21 @@ function _mcCss(){
     '.mc-meta{font-size:.76rem;color:#8a7d5c;margin-top:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}',
     '.mc-chip{background:var(--hover);border-radius:999px;padding:2px 9px;font-size:.68rem;font-weight:700;color:#7a6a3f}',
     '.mc-del{color:#c1443a;flex-shrink:0}',
+    '.mc-row{position:relative;overflow:hidden}',
+    '.mc-row::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:#cbb781}',
+    '.mc-acc-ok::before{background:linear-gradient(#34d399,#059669)}',
+    '.mc-acc-bad::before{background:linear-gradient(#f87171,#dc2626)}',
+    '.mc-acc-warn::before{background:linear-gradient(#fbbf24,#d97706)}',
+    '.mc-acc-info::before{background:linear-gradient(#60a5fa,#2563eb)}',
+    '.mc-acc-pend::before{background:linear-gradient(#cbd5e1,#94a3b8)}',
+    '.mc-ic-ok{background:linear-gradient(135deg,rgba(5,150,105,.18),rgba(5,150,105,.05));color:#059669}',
+    '.mc-ic-bad{background:linear-gradient(135deg,rgba(220,38,38,.16),rgba(220,38,38,.04));color:#dc2626}',
+    '.mc-ic-warn{background:linear-gradient(135deg,rgba(217,119,6,.18),rgba(217,119,6,.05));color:#d97706}',
+    '.mc-ic-info{background:linear-gradient(135deg,rgba(37,99,235,.16),rgba(37,99,235,.04));color:#2563eb}',
+    '.mc-right{display:flex;align-items:center;gap:9px;flex-shrink:0}',
+    '.mc-chev{color:var(--text-muted);opacity:.5;display:flex;flex-shrink:0}',
+    '.mc-chev svg{width:18px;height:18px}',
+    '.mc-row:hover .mc-chev{opacity:.9;transform:translateX(2px);transition:.15s}',
     '.mc-rev-head{display:flex;align-items:center;gap:14px;padding:14px 16px;margin-bottom:14px;border-radius:14px;background:linear-gradient(135deg,rgba(184,148,31,.12),rgba(184,148,31,.03));border:1px solid var(--border)}',
     '.mc-v{display:flex;align-items:center;gap:12px;padding:13px 15px;border:1px solid var(--border);border-radius:14px;margin-bottom:9px;background:var(--card)}',
     '.mc-v-ic{width:40px;height:40px;border-radius:11px;background:linear-gradient(135deg,rgba(37,99,235,.14),rgba(37,99,235,.04));display:flex;align-items:center;justify-content:center;color:#2563eb;flex-shrink:0}',
@@ -23994,11 +24017,12 @@ function loadTMatChecker(){
       +'<button class="btn btn-primary" onclick="mcOpenSubmit()">+ New Submission</button></div>';
     if(!subs.length){ el.innerHTML=head+'<div class="tcd-empty">No submissions yet. Use \u201cNew Submission\u201d to send your first material for review.</div>'; return; }
     var rows=subs.map(function(m){
-      return '<div class="mc-row" onclick="mcOpenDetail('+m.id+')">'
-        +'<div class="mc-ic">'+(typeof ic==='function'?ic('folder'):'')+'</div>'
+      var stCls=_mcStatusCls(m.status);
+      return '<div class="mc-row mc-acc-'+stCls+'" onclick="mcOpenDetail('+m.id+')">'
+        +'<div class="mc-ic mc-ic-'+stCls+'">'+(typeof ic==='function'?ic('folder'):'')+'</div>'
         +'<div style="flex:1;min-width:0"><div class="mc-ttl">'+esc(m.title)+'</div>'
         +'<div class="mc-meta">'+(m.subject?'<span class="mc-chip">'+esc(m.subject)+'</span>':'')+'<span class="mc-chip">'+esc(_matTypeLabel(m.material_type))+'</span><span class="mc-ver">v'+(m.current_version||1)+'</span></div></div>'
-        +_dueBadge(m.deadline)+_msPill(m.status)+'</div>';
+        +'<div class="mc-right">'+_dueBadge(m.deadline)+_msPill(m.status)+'<span class="mc-chev">'+(typeof ic==='function'?ic('chevron-right'):'\u203a')+'</span></div></div>';
     }).join('');
     el.innerHTML=head+rows;
   }).catch(function(e){ el.innerHTML='<div style="padding:22px;color:#c1443a">'+esc((e&&e.message)||'Could not load')+'</div>'; });
