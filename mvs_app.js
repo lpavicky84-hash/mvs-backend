@@ -24520,7 +24520,7 @@ function _supCss(){
     '.sup-num{font-family:ui-monospace,monospace;font-size:.72rem;color:var(--text-muted)}',
     '.sup-ttl{font-weight:700;margin-top:2px}',
     '.sup-meta{font-size:.75rem;color:var(--text-muted);margin-top:4px}',
-    '.sup-pill{font-size:.66rem;font-weight:800;padding:3px 10px;border-radius:999px;color:#fff;white-space:nowrap}',
+    '.sup-pill{font-size:.66rem;font-weight:800;padding:4px 11px;border-radius:999px;color:#fff;white-space:nowrap;align-self:flex-start;flex-shrink:0;display:inline-block;line-height:1.35;height:fit-content}',
     '.sup-dot{width:8px;height:8px;border-radius:50%;background:#dc2626;display:inline-block;margin-left:6px}',
     '.sup-empty{border:1px dashed var(--border);border-radius:14px;padding:28px;text-align:center;color:var(--text-muted)}',
     '.sup-thread{display:flex;flex-direction:column;gap:10px;max-height:44vh;overflow:auto;margin:6px 0 12px}',
@@ -25050,7 +25050,7 @@ function _supDrawer(sid){
       +'<div class="ac-kpi static"><b style="color:#059669">'+(sm.resolved||0)+'</b><span>Resolved</span></div>'
       +'<div class="ac-kpi static"><b style="color:#dc2626">'+(sm.critical||0)+'</b><span>Critical</span></div>'
       +'<div class="ac-kpi static"><b style="font-size:1rem">'+_fmtDur(sm.avg_resolution_secs)+'</b><span>Avg Time</span></div></div>';
-    var hist=(r.complaints||[]).map(function(c){ return '<div class="ac-card" style="padding:11px 13px;cursor:pointer" onclick="amcCmpOpen('+c.id+')"><div style="display:flex;justify-content:space-between;gap:8px"><div><div class="sup-num">'+esc(c.complaint_number)+'</div><div style="font-weight:600;font-size:.9rem">'+esc(c.title)+'</div><div class="sup-meta">'+(c.category?esc(c.category)+' \u00b7 ':'')+esc(c.created_at)+'</div></div>'+_supPill(c.status)+'</div></div>'; }).join('')||'<div style="color:var(--text-muted);font-size:.85rem">No complaints.</div>';
+    var hist=(r.complaints||[]).map(function(c){ return '<div class="ac-card" style="padding:11px 13px;cursor:pointer" onclick="amcCmpOpen('+c.id+')"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div style="min-width:0"><div class="sup-num">'+esc(c.complaint_number)+'</div><div style="font-weight:600;font-size:.9rem">'+esc(c.title)+'</div><div class="sup-meta">'+(c.category?esc(c.category)+' \u00b7 ':'')+esc(c.created_at)+'</div></div>'+_supPill(c.status)+'</div></div>'; }).join('')||'<div style="color:var(--text-muted);font-size:.85rem">No complaints.</div>';
     var fbs=(r.feedback||[]).map(function(f){ return '<div class="ac-card" style="padding:10px 13px;cursor:default;margin-bottom:6px"><span class="ac-star">'+'\u2605'.repeat(f.rating)+'</span><span style="color:#d9c9a0">'+'\u2605'.repeat(5-f.rating)+'</span>'+(f.review?'<div style="font-size:.86rem;margin-top:4px">'+esc(f.review)+'</div>':'')+'<div class="sup-meta">'+esc(f.created_at)+'</div></div>'; }).join('');
     var body=info+summ+'<div style="font-weight:700;font-size:.9rem;margin:8px 0 8px">Complaint History</div><div class="sup-list" style="max-height:34vh">'+hist+'</div>'
       +(fbs?'<div style="font-weight:700;font-size:.9rem;margin:14px 0 8px">Feedback</div>'+fbs:'');
