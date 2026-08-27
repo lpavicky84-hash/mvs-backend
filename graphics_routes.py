@@ -2,7 +2,7 @@
 video's editing lifecycle (a video can be Editing while its thumbnail is Approved)."""
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from datetime import datetime, date
 
 from database import get_db
@@ -95,9 +95,13 @@ def gfx_tasks(status: str = "", filter: str = "", db: Session = Depends(get_db),
         q = q.filter(GraphicsTask.status != "approved",
                      GraphicsTask.deadline != None, GraphicsTask.deadline < now)
     elif f == "today":
-        q = q.filter(GraphicsTask.status != "approved",
-                     GraphicsTask.deadline != None,
-                     func.date(GraphicsTask.deadline) == today)
+        # Aaj ka sab kaam — assign/due/submit/approve me se kuch bhi aaj hua ho (completed bhi dikhe).
+        q = q.filter(or_(
+            func.date(GraphicsTask.created_at) == today,
+            func.date(GraphicsTask.deadline) == today,
+            func.date(GraphicsTask.submitted_at) == today,
+            func.date(GraphicsTask.approved_at) == today,
+        ))
     out = []
     for g in q.order_by(GraphicsTask.created_at.desc()).all():
         t = db.query(VideoTask).filter(VideoTask.id == g.task_id).first()
