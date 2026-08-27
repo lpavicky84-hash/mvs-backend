@@ -50,7 +50,11 @@ def _apply_new_deadline(t, payload, require=False):
 def pm_dashboard(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     now = datetime.utcnow()
     today = date.today()
-    q = db.query(VideoTask).filter(VideoTask.cancelled == False)
+    # Pipeline KPIs (aur nav badges) SINGLE-VIDEO tasks ke liye hain — projects (one_shot /
+    # rapid_revision / project) apne section me count hote hain. Isliye special kinds yahan
+    # se hata do, warna PM Review list khali dikhe par badge me count aa jaata tha.
+    _NS = or_(VideoTask.kind == None, VideoTask.kind == "", VideoTask.kind == "normal")
+    q = db.query(VideoTask).filter(VideoTask.cancelled == False, _NS)
 
     def c(*states):
         return q.filter(VideoTask.lifecycle.in_(states)).count()

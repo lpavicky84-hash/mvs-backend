@@ -437,7 +437,7 @@ let countdownTimer = null;
 // stale nahi rehta. Login/logout pe bhi clear hota hai.
 const _apiCache={};
 const _API_TTL=60000;
-const _API_NOCACHE=/notifications|heartbeat|\/photo|\/image|\/voice|\/file|\/download|\/pdf|\/content|\/badge|video-tasks\/my|video-tasks\b|production\/tasks|\/collab/i;
+const _API_NOCACHE=/notifications|heartbeat|\/photo|\/image|\/voice|\/file|\/download|\/pdf|\/content|\/badge|video-tasks\/my|video-tasks\b|production\/tasks|production\/dashboard|\/collab/i;
 let _curLoader=null;        // current page ka loader — background refresh aane par isse re-render
 let _swrT=null;
 function _swrRerender(){
