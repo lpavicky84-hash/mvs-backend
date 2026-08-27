@@ -111,10 +111,13 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
              video_type: str = "", page: int = 1, size: int = 40,
              db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     query = db.query(VideoTask).filter(VideoTask.cancelled == False)
-    # Single-video TASKS only — projects (one_shot / rapid_revision / project) live in their
-    # own Projects section, so they must not clutter the tasks list.
-    query = query.filter(or_(VideoTask.kind == None, VideoTask.kind == "",
-                             VideoTask.kind == "normal"))
+    # Teacher/general list: single-video TASKS only — projects (one_shot / rapid_revision /
+    # project) live in their own Projects section. BUT the YouTuber Tasks section has NO separate
+    # projects area, so for creator_type=youtuber we show EVERY kind (warna youtuber ke
+    # one-shot/rapid/project tasks kahin nahi dikhte).
+    if (creator_type or "").strip().lower() != "youtuber":
+        query = query.filter(or_(VideoTask.kind == None, VideoTask.kind == "",
+                                 VideoTask.kind == "normal"))
     if teacher_id:
         # collab-aware: match the primary teacher OR any collaborator (precise JSON
         # boundary patterns against json.dumps format "[2, 3]" so id 1 != 11).
@@ -1823,12 +1826,14 @@ def prod_report_csv(creator_type: str = "", db: Session = Depends(get_db), me=De
         from video_tasks import _teacher_name as _tn
     except Exception:
         def _tn(db, tid): return ""
-    q = db.query(VideoTask).filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL)
+    _is_yt = (creator_type or "").strip().lower() == "youtuber"
+    q = db.query(VideoTask).filter(VideoTask.proposal_ok != "pending")
+    if not _is_yt:
+        q = q.filter(NOT_SPECIAL)
     if (creator_type or "").strip().lower() in ("teacher", "youtuber"):
         q = q.filter(VideoTask.creator_type == creator_type.strip().lower())
     tasks = q.order_by(VideoTask.created_at.desc()).all()
-    _fname = ("youtuber_report.csv" if (creator_type or "").strip().lower() == "youtuber"
-              else "production_report.csv")
+    _fname = ("youtuber_report.csv" if _is_yt else "production_report.csv")
     buf = io.StringIO(); w = csv.writer(buf)
     w.writerow(["ID", "Title", "Creator", "Channel", "Type", "Stage", "Deadline",
                 "Submitted At", "On Time", "Revisions", "YouTube Views", "Created"])

@@ -20323,7 +20323,18 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.ptc.urgent-task{border-color:rgba(209,68,58,.4)!important;box-shadow:0 0 0 1px rgba(209,68,58,.18)!important}',
 '.ptc.urgent-task::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,#e2564a,#d1443a);border-radius:16px 0 0 16px}',
 '.pt-dl.overdue{animation:pkUrge 2.6s ease-in-out infinite}',
-'.pt-badge.review{background:rgba(209,68,58,.12);color:#d1443a;font-weight:800}',
+'.pt-badge.review{background:linear-gradient(135deg,rgba(209,68,58,.15),rgba(230,120,60,.10));color:#c23a30;font-weight:800;display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(209,68,58,.28);box-shadow:0 1px 3px rgba(209,68,58,.12)}',
+'.pt-badge.review .rp-dot{width:7px;height:7px;border-radius:50%;background:#d1443a;flex:none;animation:rpPulse 1.6s infinite}',
+'@keyframes rpPulse{0%{box-shadow:0 0 0 0 rgba(209,68,58,.5)}70%{box-shadow:0 0 0 6px rgba(209,68,58,0)}100%{box-shadow:0 0 0 0 rgba(209,68,58,0)}}',
+'.ph-theme .thm-sun{display:none}',
+'body.dark .ph-theme .thm-moon{display:none}',
+'body.dark .ph-theme .thm-sun{display:inline-flex}',
+'.ph-theme svg{width:19px;height:19px}',
+'.ps-group{cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none;transition:color .15s}',
+'.ps-group::after{content:"";width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);opacity:.45;transition:transform .22s;margin-left:auto;margin-right:2px}',
+'.ps-group.open::after{transform:rotate(45deg);opacity:.75}',
+'.ps-gitems{overflow:hidden;max-height:0;opacity:.35;transition:max-height .28s ease,opacity .2s ease}',
+'.ps-gitems.open{max-height:720px;opacity:1}',
 /* mobile filter button + drawer */
 '.p-mfilter{display:none}',
 '.pfd-wrap{position:fixed;inset:0;z-index:900;background:rgba(20,15,5,.4);opacity:0;pointer-events:none;transition:opacity .2s}',
@@ -20707,13 +20718,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var el=document.getElementById(id);
     if(el) return el;
     var d=P[portal];
-    var navHtml=d.nav.map(function(grp){
-      return '<div class="ps-group">'+grp.g+'</div>'+grp.items.map(function(it){
+    var navHtml=d.nav.map(function(grp,gi){
+      var items=grp.items.map(function(it){
         var bk=(it.p.indexOf('q:')===0)?it.p.slice(2):(it.p==='urgent'?'urgent':'');
         var badge=bk?'<span class="ps-badge" data-nav-badge="'+bk+'" style="display:none"></span>':'';
         if(it.p==='notifs') badge='<span class="ps-badge ps-notif-badge" data-notif-badge="1" style="display:none"></span>';
         return '<div class="ps-item" data-page="'+it.p+'" onclick="prodNav(\''+portal+'\',\''+it.p+'\')">'+icon(it.i)+'<span style="flex:1">'+it.t+'</span>'+badge+'</div>';
       }).join('');
+      var op=(gi===0)?' open':'';
+      return '<div class="ps-group ps-gh'+op+'" onclick="prodNavGroup(this)">'+grp.g+'</div>'
+        +'<div class="ps-gitems'+op+'">'+items+'</div>';
     }).join('');
     var logo=(typeof _mvsLogoImg==='function')?_mvsLogoImg(38):'';
     var html=''+
@@ -20734,6 +20748,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
             '</div>'+
             '<div style="display:flex;align-items:center;gap:12px">'+
               (portal==='production'?'<div class="ph-search"><input id="prod-gsearch" placeholder="Search tasks, creators, editors..." oninput="prodGSearch(this.value)" autocomplete="off"></div>':'')+
+              '<button class="ph-bell ph-theme" onclick="toggleDark()" title="Dark / Light mode"><span class="thm-moon">'+ic('moon')+'</span><span class="thm-sun">'+ic('sun')+'</span></button>'+
               '<button class="ph-bell" onclick="prodBell(\''+portal+'\')">'+icon('bell')+'<span class="ph-bell-dot" id="'+portal+'-bell-dot" style="display:none">0</span></button>'+
               '<div class="ph-badge">'+d.title+'</div>'+
             '</div>'+
@@ -20758,7 +20773,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var dt=document.getElementById(portal+'-date'); if(dt) dt.textContent=_today();
     prodNav(portal,'dashboard');
     prodStartNotifPoll(portal);
-    if(portal==='production'){ _prodNavBadges(); if(window._prodBadgeInt) clearInterval(window._prodBadgeInt); window._prodBadgeInt=setInterval(function(){ var pa=document.getElementById('production-app'); if(pa&&pa.classList.contains('active')&&!document.hidden) _prodNavBadges(); },45000); }
+    if(portal==='production'){ _prodNavBadges(); if(window._prodBadgeInt) clearInterval(window._prodBadgeInt); window._prodBadgeInt=setInterval(function(){ var pa=document.getElementById('production-app'); if(pa&&pa.classList.contains('active')&&!document.hidden) _prodNavBadges(); },20000); }
     return Promise.resolve();
   };
   function _prodNavBadges(){
@@ -20774,8 +20789,17 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // --- notifications (bell + deep-link) ---
   window.prodStartNotifPoll=function(portal){
     try{ clearInterval(window._prodNotifTimer); }catch(e){}
+    window._prodNotifPortal=portal;
     prodNotifRefreshDot(portal);
-    window._prodNotifTimer=setInterval(function(){ if(document.getElementById(portal+'-app')&&document.getElementById(portal+'-app').classList.contains('active')) prodNotifRefreshDot(portal); }, 30000);
+    window._prodNotifTimer=setInterval(function(){ if(document.getElementById(portal+'-app')&&document.getElementById(portal+'-app').classList.contains('active')&&!document.hidden) prodNotifRefreshDot(portal); }, 12000);
+    // Turant refresh jab tab wapas focus me aaye ya internet wapas aaye — delay/miss na ho.
+    if(!window._prodNotifHooks){
+      window._prodNotifHooks=true;
+      var _pnKick=function(){ var pr=window._prodNotifPortal; var a=pr&&document.getElementById(pr+'-app'); if(a&&a.classList.contains('active')&&!document.hidden){ prodNotifRefreshDot(pr); } };
+      document.addEventListener('visibilitychange',function(){ if(!document.hidden) _pnKick(); });
+      window.addEventListener('online',_pnKick);
+      window.addEventListener('focus',_pnKick);
+    }
   };
   window.prodNotifRefreshDot=function(portal){
     api(P[portal].api+'/notifications').then(function(r){
@@ -20862,12 +20886,32 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _greet(){ var h=new Date().getHours(); return h<12?'Good Morning':(h<17?'Good Afternoon':'Good Evening'); }
   function _today(){ try{ return new Date().toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long',year:'numeric'}); }catch(e){ return ''; } }
 
+  // --- accordion: ek group khule to baaki band (admin sidebar jaisa) ---
+  window.prodNavGroup=function(h){
+    try{
+      var wasOpen=h.classList.contains('open');
+      var aside=h.parentNode;
+      aside.querySelectorAll('.ps-gh.open,.ps-gitems.open').forEach(function(x){ x.classList.remove('open'); });
+      if(!wasOpen){ h.classList.add('open'); var items=h.nextElementSibling; if(items&&items.classList.contains('ps-gitems')) items.classList.add('open'); }
+    }catch(e){}
+  };
   // --- nav dispatch ---
   window.prodNav=function(portal,page){
     var el=document.getElementById(portal+'-app'); if(!el) return;
     (window._prodCurPage=window._prodCurPage||{})[portal]=page;
     el.classList.remove('side-open');
     el.querySelectorAll('.ps-item').forEach(function(n){ n.classList.toggle('on', n.getAttribute('data-page')===page); });
+    // accordion: is page ka group khol do, baaki band
+    try{
+      var _ai=el.querySelector('.ps-item[data-page="'+page+'"]');
+      var _gi=_ai&&_ai.closest?_ai.closest('.ps-gitems'):null;
+      if(_gi && !_gi.classList.contains('open')){
+        var _as=_gi.parentNode;
+        _as.querySelectorAll('.ps-gh.open,.ps-gitems.open').forEach(function(x){ x.classList.remove('open'); });
+        _gi.classList.add('open');
+        var _gh=_gi.previousElementSibling; if(_gh) _gh.classList.add('open');
+      }
+    }catch(e){}
     var body=document.getElementById(portal+'-body'); if(!body) return;
     body.innerHTML='<div class="p-load">Loading...</div>';
     try{ history.replaceState({mvs:1,app:portal+'-app',pg:page},'', '/'+portal); }catch(e){}
@@ -21983,7 +22027,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var prog=(portal==='editor'&&(lc==='editing'||lc==='editing_paused'||lc==='editing_done')&&t.editing_progress!=null)?'<div class="ptc-prog"><i style="width:'+(t.editing_progress||0)+'%"></i></div><div class="ptc-prog-l">'+(t.editing_progress||0)+'% edited</div>':'';
     var _urgentCard=(t.priority==='urgent')||(lc==='pm_review')||(lc==='creator_submitted')||(t.deadline_flag&&t.deadline_flag.kind==='overdue');
     return '<div class="ptc'+(_urgentCard?' urgent-task':'')+'" style="border-left:5px solid '+(st[1]||'#8a7d5c')+';position:relative" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
-      '<div class="ptc-hw">'+header+badge+((lc==='pm_review'||lc==='creator_submitted')&&portal==='production'?'<span class="pt-badge review">REVIEW PENDING</span>':'')+((t.priority==='urgent')?'<span class="ptc-urgent">URGENT</span>':'')+'</div>'+
+      '<div class="ptc-hw">'+header+badge+((lc==='pm_review'||lc==='creator_submitted')&&portal==='production'?'<span class="pt-badge review"><i class="rp-dot"></i>REVIEW PENDING</span>':'')+((t.priority==='urgent')?'<span class="ptc-urgent">URGENT</span>':'')+'</div>'+
       '<div class="ptc-body"><div class="ptc-title">'+esc(t.title||'Untitled')+'</div>'+
       (chips.length?'<div class="pw-chips">'+chips.join('')+'</div>':'')+prog+
       (meta.length||dl?'<div class="ptc-meta">'+dl+(dl&&meta.length?' ':'')+meta.join(' \u00b7 ')+'</div>':'')+
