@@ -249,7 +249,22 @@ def pm_task_comment_add(tid: int, payload: dict = Body(...),
     c = _vtc_add(db, tid, me, payload.get("message"), "production_manager", _att, _aud)
     if not c:
         raise HTTPException(400, "Message cannot be empty")
-    # notify the creator (and collaborators) so they see the manager's message
+    if _aud == "internal":
+        # Internal thumbnail chat — notify the graphics designer, NOT the teacher.
+        try:
+            from models import GraphicsTask, ProductionStaffProfile
+            g = db.query(GraphicsTask).filter(GraphicsTask.task_id == tid).first()
+            if g and g.graphics_id:
+                sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == g.graphics_id).first()
+                if sp and sp.user_id:
+                    pc.notify(db, sp.user_id, "PM replied on thumbnail",
+                              f'{getattr(me, "name", "PM")} on "{t.title}": {c.message[:110]}',
+                              "gfx_chat", link=str(tid))
+        except Exception:
+            pass
+        db.commit()
+        return {"ok": True, "comment": _vtc_out(db, c)}
+    # creator thread → notify the creator (and collaborators)
     try:
         from video_tasks import _collab_all_ids as _cai
         from models import TeacherProfile as _TP

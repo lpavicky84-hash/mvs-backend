@@ -20917,18 +20917,25 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var l=document.getElementById('pn-list'); if(!l) return;
     if(!list.length){ l.innerHTML='<div class="pn-empty">No notifications yet.</div>'; return; }
     l.innerHTML=list.map(function(n){
-      return '<div class="pn-item'+(n.is_read?'':' unread')+'" onclick="prodNotifClick(\''+portal+'\','+n.id+','+(n.task_id||'null')+')">'+
+      return '<div class="pn-item'+(n.is_read?'':' unread')+'" onclick="prodNotifClick(\''+portal+'\','+n.id+','+(n.task_id||'null')+',\''+(n.type||'')+'\')">'+
         '<div class="pn-t">'+esc(n.title||'Update')+'</div>'+
         (n.message?'<div class="pn-m">'+esc(n.message)+'</div>':'')+
         '<div class="pn-at">'+esc(n.at||'')+'</div></div>';
     }).join('');
   }
-  window.prodNotifClick=function(portal,nid,taskId){
+  window.prodNotifClick=function(portal,nid,taskId,ntype){
     api(P[portal].api+'/notifications/'+nid+'/read','POST',{}).catch(function(){});
     var p=document.getElementById('pn-panel'); if(p) p.remove();
     document.removeEventListener('click',_prodBellOutside);
     prodNotifRefreshDot(portal);
-    if(taskId){ prodOpenTask(portal, taskId); }
+    if(taskId){
+      if(ntype==='gfx_chat'){
+        if(portal==='graphics'){ try{ gfxChat(taskId); return; }catch(e){} }
+        else { try{ prodGfxChat(taskId); return; }catch(e){} }
+      }
+      if(ntype==='creator_chat' && portal==='production'){ try{ prodConvo(taskId); return; }catch(e){} }
+      prodOpenTask(portal, taskId);
+    }
   };
   window.prodNotifReadAll=function(portal){
     api(P[portal].api+'/notifications/read-all','POST',{}).then(function(){

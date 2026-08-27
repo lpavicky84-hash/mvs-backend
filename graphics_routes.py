@@ -146,7 +146,7 @@ def gfx_comment_add(tid: int, payload: dict = Body(...),
         raise HTTPException(400, "Message or image required")
     pc.notify_pms(db, "Graphics replied on thumbnail",
                   f'{getattr(me, "name", "Designer")} on "{t.title if t else ""}": {c.message[:110]}',
-                  "production", link=str(tid))
+                  "gfx_chat", link=str(tid))
     db.commit()
     return {"ok": True, "comment": _vtc_out(db, c)}
 def gfx_start(tid: int, db: Session = Depends(get_db), me=Depends(get_graphics)):
