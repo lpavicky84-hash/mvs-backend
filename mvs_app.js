@@ -20042,7 +20042,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   var P={
     production:{ role:'production_manager', title:'Production', sub:'Command Center', api:'/api/production',
       nav:[ {g:'Operations',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'board',t:'Production Board',i:'board'}, {p:'tasks',t:'Tasks',i:'list'}, {p:'ytasks',t:'YouTuber Tasks',i:'video'}, {p:'projects',t:'Projects',i:'folder'}, {p:'announce',t:'Announcements',i:'bell'} ]},
-            {g:'Pipeline',items:[ {p:'q:pm_review',t:'PM Review',i:'check'}, {p:'q:thumb_review',t:'Thumbnail Review',i:'image'}, {p:'q:thumb_changes',t:'Thumbnail Changes',i:'edit'}, {p:'q:editing',t:'Editing Queue',i:'video'}, {p:'q:qc_pending',t:'QC Queue',i:'check'}, {p:'q:ready_for_youtube',t:'Ready for YouTube',i:'video'}, {p:'urgent',t:'Urgent Videos',i:'board'} ]},
+            {g:'Pipeline',items:[ {p:'q:pm_review',t:'PM Review',i:'check'}, {p:'q:thumb_review',t:'Thumbnail Review',i:'image'}, {p:'q:thumb_changes',t:'Thumbnail Changes',i:'edit'}, {p:'q:editing',t:'Editing Queue',i:'video'}, {p:'q:qc_pending',t:'QC Queue',i:'check'}, {p:'q:ready_for_youtube',t:'Ready for YouTube',i:'video'}, {p:'q:uploaded',t:'Uploaded Videos',i:'upload'}, {p:'urgent',t:'Urgent Videos',i:'board'} ]},
             {g:'Team',items:[ {p:'team',t:'Team & Workload',i:'team'} ]},
             {g:'Analytics',items:[ {p:'analytics',t:'Analytics',i:'grid'}, {p:'creators',t:'Creator Performance',i:'team'}, {p:'views',t:'Real-time Views',i:'grid'} ]} ] },
     editor:{ role:'editor', title:'Editor', sub:'Workspace', api:'/api/editor',
@@ -21558,7 +21558,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         html+='</div>';
       }
       body.innerHTML=(html||'<div class="p-empty">No data yet.</div>')+(portal==='production'?'<div id="production-queues"></div>':'')+'<div id="'+portal+'-work"></div>';
-      _loadWork(portal);
+      if(portal!=='production') _loadWork(portal);   // production dashboard pe "Needs Your Attention" nahi — sab sidebar sections me
       if(portal==='production'){ try{ _loadQueues(); }catch(e){} }
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load dashboard. '+esc(e&&e.message||'')+'</div>'; });
   }
@@ -22575,6 +22575,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.prodClearAll=function(portal){ window._prodFilter[portal]={}; var s=document.getElementById('prod-search'); if(s) s.value=''; _prodLoadList(portal); };
   window.prodView=function(portal,val){
     var f=_flt(portal);
+    f.epreset=''; f.gpreset=''; f.ypreset='';  // sidebar preset clear — warna stale filter results ko chhupa deta hai
     if(val.indexOf('__')===0){ f.status=''; f.deadline=(val==='__overdue')?'overdue':''; }
     else { f.status=val; f.deadline=''; }
     // update chip highlight without rebuilding the search box

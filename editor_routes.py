@@ -149,12 +149,15 @@ def editor_tasks(status: str = "", filter: str = "", db: Session = Depends(get_d
     elif preset == "submitted":
         q = q.filter(VideoTask.lifecycle == "qc_pending")
     elif preset == "assigned":
-        q = q.filter(VideoTask.lifecycle == "editor_assigned")
+        q = q.filter(VideoTask.lifecycle.in_(["editor_assigned", "editing_soon", "approved"]))
     elif preset == "overdue":
         q = q.filter(VideoTask.deadline != None, VideoTask.deadline < now,
                      ~VideoTask.lifecycle.in_(["uploaded", "completed", "ready_for_youtube", "qc_pending"]))
     if status:
-        q = q.filter(VideoTask.lifecycle == status)
+        if status == "editor_assigned":
+            q = q.filter(VideoTask.lifecycle.in_(["editor_assigned", "editing_soon", "approved"]))
+        else:
+            q = q.filter(VideoTask.lifecycle == status)
     rows = q.order_by(VideoTask.updated_at.desc()).all()
     return {"tasks": [pc.task_out(db, t, light=True) for t in rows]}
 

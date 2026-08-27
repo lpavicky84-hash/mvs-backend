@@ -158,6 +158,10 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
         query = query.filter(VideoTask.channel_name == channel)
     if video_type:
         query = query.filter(VideoTask.video_type == video_type)
+    if not status:
+        # Default Tasks view me uploaded/completed nahi — wo alag "Uploaded Videos" section me hain.
+        query = query.filter(or_(VideoTask.lifecycle == None, ~VideoTask.lifecycle.in_(["uploaded", "completed"])),
+                             or_(VideoTask.status == None, ~VideoTask.status.in_(["uploaded", "completed"])))
     if status == "thumb_changes":
         # Thumbnail Changes section — jin thumbnails ko PM ne changes ke liye wapas bheja.
         _csub = db.query(GraphicsTask.task_id).filter(GraphicsTask.status == "changes")
