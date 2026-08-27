@@ -433,7 +433,7 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
         gp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == gid,
                                                      ProductionStaffProfile.staff_role == "graphics").first()
         if gp:
-            g = GraphicsTask(task_id=None, graphics_id=gid, status="pending",
+            g = GraphicsTask(task_id=None, graphics_id=gid, status="new",
                              priority=(payload.get("priority") or "normal"))
             # will be linked after flush; set fk once task has id
             t.graphics_id = gid
@@ -454,8 +454,10 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
         gp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.graphics_id).first()
         existing = db.query(GraphicsTask).filter(GraphicsTask.task_id == t.id).first()
         if not existing:
-            g = GraphicsTask(task_id=t.id, graphics_id=t.graphics_id, status="pending",
-                             priority=(payload.get("priority") or "normal"))
+            g = GraphicsTask(task_id=t.id, graphics_id=t.graphics_id, status="new",
+                             priority=(payload.get("priority") or "normal"),
+                             instructions=(payload.get("graphics_instructions") or payload.get("graphics_notes") or "").strip(),
+                             reference_image=(payload.get("graphics_reference") or payload.get("reference_image") or "").strip())
             gdl = (payload.get("graphics_deadline") or payload.get("deadline") or "").strip()
             if gdl:
                 try:

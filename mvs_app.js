@@ -20358,6 +20358,25 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.ptc.ptc-optim,.pt-row.ptc-optim{opacity:.5;pointer-events:none;position:relative}',
 '.ptc.ptc-optim::after,.pt-row.ptc-optim::after{content:"";position:absolute;top:50%;left:50%;width:26px;height:26px;margin:-13px 0 0 -13px;border:3px solid rgba(201,154,46,.28);border-top-color:#c99a2e;border-radius:50%;animation:ptcSpin .7s linear infinite;z-index:6}',
 '@keyframes ptcSpin{to{transform:rotate(360deg)}}',
+'.pq-wrap{margin-top:16px}',
+'.pq-h{font-size:1.02rem;font-weight:800;color:#c23a30;display:flex;align-items:center;gap:8px;margin:0 2px 10px}',
+'.pq-h .pq-n{background:#d1443a;color:#fff;border-radius:999px;font-size:.72rem;min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;padding:0 6px}',
+'.pq-prem{border:2px solid rgba(209,68,58,.45);border-radius:16px;background:var(--surface,#fff);margin-bottom:12px;overflow:hidden}',
+'body.dark .pq-prem{background:#161310}',
+'.pq-prem.blink{animation:pqBlink 1.8s ease-in-out infinite}',
+'@keyframes pqBlink{0%,100%{box-shadow:0 0 0 0 rgba(209,68,58,0)}50%{box-shadow:0 0 0 4px rgba(209,68,58,.15)}}',
+'.pq-prem-body{padding:14px 16px}',
+'.pq-chips{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:9px}',
+'.pq-prem-title{font-weight:800;font-size:1.02rem;margin-bottom:8px}',
+'.pq-prem-box{background:rgba(217,119,6,.10);border-radius:10px;padding:9px 12px;font-size:.82rem;font-weight:600;color:#a15c12;margin-bottom:9px}',
+'body.dark .pq-prem-box{background:rgba(217,119,6,.16)}',
+'.pq-prem-reason{font-weight:500;color:var(--text-muted);margin-top:3px;font-style:italic}',
+'.pq-prem-who{display:inline-flex;align-items:center;gap:7px;background:#c99a2e;color:#fff;font-weight:700;font-size:.82rem;padding:5px 12px;border-radius:999px;margin-bottom:8px}',
+'.pq-prem-who .pq-av svg{width:14px;height:14px;vertical-align:-2px}',
+'.pq-prem-date{color:#c23a30;font-weight:700;font-size:.8rem;margin-bottom:6px}',
+'.pq-prem-exp{background:var(--surface-2,#f2ede1);border-radius:9px;padding:7px 11px;font-size:.78rem;color:var(--text-muted);display:flex;align-items:center;gap:6px;margin-bottom:12px}',
+'body.dark .pq-prem-exp{background:#221b0d}',
+'.pq-prem-acts{display:flex;gap:10px;flex-wrap:wrap}',
 /* mobile filter button + drawer */
 '.p-mfilter{display:none}',
 '.pfd-wrap{position:fixed;inset:0;z-index:900;background:rgba(20,15,5,.4);opacity:0;pointer-events:none;transition:opacity .2s}',
@@ -21439,25 +21458,40 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       api(P.production.api+'/queues').catch(function(){return {};}),
       api(P.production.api+'/deadline-requests').catch(function(){return {};})
     ]).then(function(res){
-      var r=res[0]||{}, dr=res[1]||{}; var props=(r.proposals||[]), urg=(r.urgent||[]), dreqs=(dr.requests||[]); var html='';
+      var r=res[0]||{}, dr=res[1]||{}; var props=(r.proposals||[]), dreqs=(dr.requests||[]); var html='';
       if(dreqs.length){
-        html+='<div class="pq-card"><div class="pq-head">Deadline Extension Requests <span class="pq-n">'+dreqs.length+'</span></div>';
+        html+='<div class="pq-wrap"><div class="pq-h">'+ic('clock')+' Deadline Extension Requests <span class="pq-n">'+dreqs.length+'</span></div>';
         html+=dreqs.map(function(t){
-          return '<div class="pq-row"><div class="pq-main"><div class="pq-title">'+esc(t.title||'Untitled')+'</div><div class="pq-meta">'+esc(t.creator_name||t.editor_name||'')+' \u00b7 New: '+esc(t.deadline_req||'')+(t.deadline_req_reason?' \u00b7 '+esc(t.deadline_req_reason):'')+'</div></div>'+
-            '<div class="pq-acts"><button class="p-btn p-btn-ok" onclick="prodDeadlineDecision('+t.id+',\'approve\')">Approve</button><button class="p-btn" onclick="prodDeadlineDecision('+t.id+',\'reject\')">Reject</button></div></div>';
+          return '<div class="pq-prem blink"><div class="pq-prem-body"><div class="pq-chips">'+
+            '<span class="vt-pill" style="background:rgba(217,119,6,.14);color:#b45309;font-weight:800">'+ic('clock')+' DEADLINE REQUEST</span>'+
+            (t.video_type?'<span class="vt-type">'+esc(t.video_type)+'</span>':'')+'</div>'+
+            '<div class="pq-prem-title">'+esc(t.title||'Untitled')+'</div>'+
+            '<div class="pq-prem-who"><span class="pq-av">'+ic('user')+'</span>'+esc(t.creator_name||t.editor_name||'\u2014')+'</div>'+
+            '<div class="pq-prem-box">New deadline: <b>'+esc(t.deadline_req||'\u2014')+'</b>'+(t.deadline_req_reason?'<div class="pq-prem-reason">\u201c'+esc(t.deadline_req_reason)+'\u201d</div>':'')+'</div>'+
+            '<div class="pq-prem-acts"><button class="btn btn-primary btn-sm" onclick="prodDeadlineDecision('+t.id+',\'approve\')">'+ic('check')+' Approve</button>'+
+            '<button class="btn btn-ghost btn-sm" onclick="prodDeadlineDecision('+t.id+',\'reject\')">Reject</button></div></div></div>';
         }).join('')+'</div>';
       }
       if(props.length){
-        html+='<div class="pq-card"><div class="pq-head">Video Proposals \u2014 Approval Needed <span class="pq-n">'+props.length+'</span></div>';
+        html+='<div class="pq-wrap"><div class="pq-h">'+ic('help')+' Video Proposals \u2014 Approval Needed <span class="pq-n">'+props.length+'</span></div>';
         html+=props.map(function(t){
-          return '<div class="pq-row"><div class="pq-main"><div class="pq-title">'+esc(t.title||'Untitled')+'</div><div class="pq-meta">'+esc(t.creator_name||'')+(t.subject?' \u00b7 '+esc(t.subject):'')+(t.reference?' \u00b7 '+esc(t.reference):'')+'</div></div>'+
-            '<div class="pq-acts"><button class="p-btn p-btn-primary" onclick="prodApproveProposal('+t.id+')">Approve &amp; Assign</button><button class="p-btn" onclick="prodDeclineProposal('+t.id+')">Decline</button></div></div>';
+          var chips='<span class="vt-pill" style="background:rgba(124,79,192,.14);color:#6d3fb0;font-weight:800">PROPOSAL</span>';
+          if(t.video_type) chips+='<span class="vt-type">'+esc(t.video_type)+'</span>';
+          if(t.channel_name) chips+='<span class="vt-pill assigned">'+esc(t.channel_name)+'</span>';
+          if(t.streaming) chips+='<span class="vt-pill">'+(t.streaming==='live'?'LIVE':'RECORDED')+'</span>';
+          var reqLine='Requested: TASK \u2014 single video'+(t.subject?'<br>Subject: '+esc(t.subject):'');
+          var exp=(t.deadline||t.expected_deadline||'');
+          return '<div class="pq-prem blink"><div class="pq-prem-body"><div class="pq-chips">'+chips+'</div>'+
+            '<div class="pq-prem-title">'+esc(t.title||'Untitled')+'</div>'+
+            '<div class="pq-prem-box">'+reqLine+'</div>'+
+            '<div class="pq-prem-who"><span class="pq-av">'+ic('user')+'</span>'+esc(t.creator_name||'\u2014')+'</div>'+
+            '<div class="pq-prem-date">proposed'+(t.created_at?' \u00b7 '+esc(t.created_at):'')+'</div>'+
+            (exp?'<div class="pq-prem-exp">'+ic('clock')+' Expected by: '+esc(exp)+'</div>':'')+
+            '<div class="pq-prem-acts"><button class="btn btn-gold btn-sm" onclick="prodApproveProposal('+t.id+')">'+ic('check')+' Approve &amp; Assign</button>'+
+            '<button class="btn btn-ghost btn-sm" onclick="prodDeclineProposal('+t.id+')">Decline</button></div></div></div>';
         }).join('')+'</div>';
       }
-      if(urg.length){
-        html+='<div class="pq-card"><div class="pq-head">Urgent Requests <span class="pq-n">'+urg.length+'</span></div>';
-        html+=urg.map(function(t){ return '<div class="pq-row"><div class="pq-main"><div class="pq-title">'+esc(t.title||'Untitled')+'</div><div class="pq-meta">'+esc(t.creator_name||'')+(t.deadline?' \u00b7 Due '+esc(t.deadline):'')+'</div></div><div class="pq-acts"><button class="p-btn" onclick="prodOpenTask(\'production\','+t.id+')">Open</button></div></div>'; }).join('')+'</div>';
-      }
+      // Urgent requests ab dashboard pe nahi \u2014 wo sidebar ke Urgent Videos section me hain.
       box.innerHTML=html;
     }).catch(function(){ box.innerHTML=''; });
   }
@@ -21583,9 +21617,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };  function _workFilter(portal,arr){
     var out=arr;
     if(portal==='editor') out=arr.filter(function(t){ return ['editor_assigned','editing','editing_paused','editing_done','qc_changes'].indexOf(t.lifecycle)>=0; });
-    else if(portal==='graphics') out=arr.filter(function(t){ var s=(t.graphics||{}).status; return ['new','in_progress','changes'].indexOf(s)>=0; });
+    else if(portal==='graphics') out=arr.filter(function(t){ var s=(t.graphics||{}).status; return ['new','pending','in_progress','changes'].indexOf(s)>=0; });
     else if(portal==='youtuber') out=arr.filter(function(t){ return ['creator_assigned','creator_working','changes_required'].indexOf(t.lifecycle)>=0; });
-    else if(portal==='production') out=arr.filter(function(t){ var f=(t.deadline_flag||{}).kind; return ['creator_submitted','pm_review','qc_pending','ready_for_youtube'].indexOf(t.lifecycle)>=0 || f==='overdue'; });
+    else if(portal==='production') out=arr.filter(function(t){ if(['uploaded','completed'].indexOf(t.lifecycle)>=0) return false; var f=(t.deadline_flag||{}).kind; return ['creator_submitted','pm_review','qc_pending','ready_for_youtube'].indexOf(t.lifecycle)>=0 || f==='overdue'; });
     return out.slice(0,10);
   }
   function _loadWork(portal){
@@ -22043,7 +22077,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardAct(\'editor\',\'deadline\','+t.id+')">'+(t.deadline_req_status==='pending'?'Extension Pending':'Request Deadline')+'</button>';
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
     } else if(portal==='graphics'){
-      if(g.status==='new'||g.status==='changes') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'graphics\','+t.id+',\'/start\')">Start Designing</button>';
+      if(g.status==='new'||g.status==='pending'||g.status==='changes') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'graphics\','+t.id+',\'/start\')">Start Designing</button>';
       else if(g.status==='in_progress') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodCardAct(\'graphics\',\'submit\','+t.id+')">Submit Thumbnail</button>';
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
     } else if(portal==='youtuber'){
@@ -22835,7 +22869,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       else if(lc==='creator_submitted'||lc==='pm_review')
         b.push(_ab('Submit Again','prodLinkForm(\'youtuber\','+t.id+',\'/videos/'+t.id+'/submit\',\'drive_link\',\'Updated video Drive link\',true)'));
     } else if(portal==='graphics'){
-      if(g.status==='new') b.push(_ab('Start Designing','prodAct(\'graphics\','+t.id+',\'/start\')','primary'));
+      if(g.status==='new'||g.status==='pending') b.push(_ab('Start Designing','prodAct(\'graphics\','+t.id+',\'/start\')','primary'));
       else if(g.status==='changes'){ b.push(_ab('View Changes','gfxChangesView('+t.id+')','warn'));
         b.push(_ab('Submit New','gfxSubmitModal('+t.id+')','primary')); }
       else if(g.status==='in_progress') b.push(_ab('Submit Thumbnail','gfxSubmitModal('+t.id+')','primary'));
@@ -23197,6 +23231,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var tr=document.getElementById('aw-thumbreq'); if(tr)d.thumbnail_required=(tr.value==='yes');
       if(g('aw-graphics')!==undefined)d.graphics_id=g('aw-graphics')?parseInt(g('aw-graphics'),10):0;
       if(g('aw-gfxdeadline')!==undefined)d.graphics_deadline=g('aw-gfxdeadline');
+      if(g('aw-gfx-instructions')!==undefined)d.graphics_instructions=g('aw-gfx-instructions');
+      if(g('aw-gfx-reference')!==undefined)d.graphics_reference=g('aw-gfx-reference');
       if(g('aw-thumb-rating')!==undefined)d.thumb_rating=g('aw-thumb-rating')?parseInt(g('aw-thumb-rating'),10):0;
       if(g('aw-editor')!==undefined)d.editor_id=g('aw-editor')?parseInt(g('aw-editor'),10):0; }
     else if(s===3){ if(g('aw-reference')!==undefined)d.reference=g('aw-reference').trim(); if(g('aw-refvid')!==undefined)d.reference_video=g('aw-refvid').trim(); if(g('aw-remarks')!==undefined)d.remarks=g('aw-remarks').trim(); }
@@ -23360,6 +23396,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         (thumbYes?('<div class="p-field"><label>Graphics Designer (required)</label><select class="p-select" id="aw-graphics"><option value="">Choose designer...</option>'+
           gfxList.map(function(g){ return '<option value="'+g.id+'"'+(d.graphics_id===g.id?' selected':'')+'>'+esc(g.name)+(g.active!==undefined?(' \u00b7 '+g.active+' active'):'')+'</option>'; }).join('')+'</select></div>'+
           '<div class="p-field"><label>Thumbnail deadline (designer must finish by)</label><input class="p-input" id="aw-gfxdeadline" type="datetime-local" value="'+esc(d.graphics_deadline||'')+'"></div>'+
+          '<div class="p-field"><label>Thumbnail brief / remarks (designer will see this)</label><textarea class="p-area" id="aw-gfx-instructions" placeholder="e.g. bold title text, red-yellow theme, student photo on the right, big marks callout">'+esc(d.graphics_instructions||'')+'</textarea></div>'+
+          '<div class="p-field"><label>Reference thumbnail link (optional)</label><input class="p-input" id="aw-gfx-reference" placeholder="Drive/image link of a sample thumbnail to follow" value="'+esc(d.graphics_reference||'')+'"></div>'+
           '<div class="p-field"><label>Already have the thumbnail? Upload it now (optional)</label>'+
             '<div id="aw-thumb-drop" class="aw-drop" onclick="document.getElementById(\'aw-thumb-file\').click()" ondragover="event.preventDefault();this.classList.add(\'drag\')" ondragleave="this.classList.remove(\'drag\')" ondrop="awThumbDrop(event)">'+
               (d.thumb_upload?('<img src="'+esc(d.thumb_upload)+'" style="max-width:100%;max-height:150px;border-radius:8px">'):'<div class="aw-drop-hint">Drag &amp; drop, click to choose, or paste (Ctrl+V) an image</div>')+

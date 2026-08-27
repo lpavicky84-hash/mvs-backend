@@ -2,6 +2,7 @@
 video's editing lifecycle (a video can be Editing while its thumbnail is Approved)."""
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from datetime import datetime, date
 
 from database import get_db
@@ -61,7 +62,7 @@ def gfx_dashboard(db: Session = Depends(get_db), me=Depends(get_graphics)):
                          "rate_label": "First-time approved", "revisions": revisions,
                          "badges": badges, "total_done": total_done},
         "kpis": {
-            "new": c("new"),
+            "new": c("new", "pending"),
             "in_progress": c("in_progress"),
             "changes": c("changes"),
             "submitted": c("submitted"),
@@ -72,11 +73,31 @@ def gfx_dashboard(db: Session = Depends(get_db), me=Depends(get_graphics)):
 
 
 @router.get("/tasks")
-def gfx_tasks(status: str = "", db: Session = Depends(get_db), me=Depends(get_graphics)):
+def gfx_tasks(status: str = "", filter: str = "", db: Session = Depends(get_db), me=Depends(get_graphics)):
     sp = _me_staff(db, me)
     q = db.query(GraphicsTask).filter(GraphicsTask.graphics_id == sp.id)
     if status:
         q = q.filter(GraphicsTask.status == status)
+    # Frontend tabs bhejte hain ?filter=<preset> — inhe status pe map karo (warna har tab pe
+    # saare tasks dikhte the). 'pending' me purane 'pending' aur naye 'new' dono aate hain.
+    f = (filter or "").strip().lower()
+    now = datetime.utcnow()
+    today = date.today()
+    if f == "pending":
+        q = q.filter(GraphicsTask.status.in_(["new", "pending", "in_progress"]))
+    elif f == "review":
+        q = q.filter(GraphicsTask.status == "submitted")
+    elif f == "changes":
+        q = q.filter(GraphicsTask.status == "changes")
+    elif f == "completed":
+        q = q.filter(GraphicsTask.status == "approved")
+    elif f == "overdue":
+        q = q.filter(GraphicsTask.status != "approved",
+                     GraphicsTask.deadline != None, GraphicsTask.deadline < now)
+    elif f == "today":
+        q = q.filter(GraphicsTask.status != "approved",
+                     GraphicsTask.deadline != None,
+                     func.date(GraphicsTask.deadline) == today)
     out = []
     for g in q.order_by(GraphicsTask.created_at.desc()).all():
         t = db.query(VideoTask).filter(VideoTask.id == g.task_id).first()
@@ -100,7 +121,7 @@ def gfx_task_detail(tid: int, db: Session = Depends(get_db), me=Depends(get_grap
 def gfx_start(tid: int, db: Session = Depends(get_db), me=Depends(get_graphics)):
     sp = _me_staff(db, me)
     g = _my_gtask(db, sp, tid)
-    if g.status not in ("new", "changes"):
+    if g.status not in ("new", "pending", "changes"):
         raise HTTPException(400, "Thumbnail is not ready to start")
     g.status = "in_progress"
     if not g.started_at:
