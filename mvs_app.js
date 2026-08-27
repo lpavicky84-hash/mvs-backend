@@ -20033,7 +20033,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   var P={
     production:{ role:'production_manager', title:'Production', sub:'Command Center', api:'/api/production',
       nav:[ {g:'Operations',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'board',t:'Production Board',i:'board'}, {p:'tasks',t:'Tasks',i:'list'}, {p:'ytasks',t:'YouTuber Tasks',i:'video'}, {p:'projects',t:'Projects',i:'folder'}, {p:'announce',t:'Announcements',i:'bell'} ]},
-            {g:'Pipeline',items:[ {p:'q:pm_review',t:'PM Review',i:'check'}, {p:'q:editing',t:'Editing Queue',i:'video'}, {p:'q:qc_pending',t:'QC Queue',i:'check'}, {p:'q:ready_for_youtube',t:'Ready for YouTube',i:'video'}, {p:'urgent',t:'Urgent Videos',i:'board'} ]},
+            {g:'Pipeline',items:[ {p:'q:pm_review',t:'PM Review',i:'check'}, {p:'q:thumb_review',t:'Thumbnail Review',i:'image'}, {p:'q:editing',t:'Editing Queue',i:'video'}, {p:'q:qc_pending',t:'QC Queue',i:'check'}, {p:'q:ready_for_youtube',t:'Ready for YouTube',i:'video'}, {p:'urgent',t:'Urgent Videos',i:'board'} ]},
             {g:'Team',items:[ {p:'team',t:'Team & Workload',i:'team'} ]},
             {g:'Analytics',items:[ {p:'analytics',t:'Analytics',i:'grid'}, {p:'creators',t:'Creator Performance',i:'team'}, {p:'views',t:'Real-time Views',i:'grid'} ]} ] },
     editor:{ role:'editor', title:'Editor', sub:'Workspace', api:'/api/editor',
@@ -20062,7 +20062,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // --- KPI label maps (backend key -> human label) ---
   var KPI_LABELS={
     active:'Active Tasks', teacher_pending:'Teacher Pending', youtuber_pending:'YouTuber Pending',
-    pm_review:'PM Review', editing:'Editing', graphics:'Graphics', qc_pending:'QC Pending',
+    pm_review:'PM Review', thumb_review:'Thumbnail Review', editing:'Editing', graphics:'Graphics', qc_pending:'QC Pending',
     ready_for_youtube:'Ready for YouTube', due_today:'Due Today', overdue:'Overdue',
     assigned:'Assigned', not_started:'Not Started', changes:'Changes', completed:'Completed',
     requests:'Requests', pending_submission:'Pending Submission', submitted:'Submitted',
@@ -20071,7 +20071,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   // Which KPI cards drill into a filtered list (status/deadline). Others stay static.
   var KPI_NAV={
-    production:{ pm_review:{status:'pm_review'}, editing:{status:'editing'}, qc_pending:{status:'qc_pending'},
+    production:{ pm_review:{status:'pm_review'}, thumb_review:{status:'thumb_review'}, editing:{status:'editing'}, qc_pending:{status:'qc_pending'},
                  ready_for_youtube:{status:'ready_for_youtube'}, due_today:{deadline:'today'}, overdue:{deadline:'overdue'} },
     editor:{ assigned:{status:'editor_assigned'}, not_started:{status:'editor_assigned'}, editing:{status:'editing'},
              qc_pending:{status:'qc_pending'}, changes:{status:'qc_changes'} },
@@ -21429,13 +21429,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         html+='<div class="p-bottleneck">Current bottleneck: '+esc(r.bottleneck)+'</div>';
       html+='<div class="pk-grid">';
       var _KICON={requests:'bell',pending_review:'eye',pm_review:'eye',in_production:'edit',editing:'edit',
-        graphics:'image',qc:'check',ready:'video',ready_for_youtube:'video',published:'upload',uploaded:'upload',
+        graphics:'image',thumb_review:'image',qc:'check',ready:'video',ready_for_youtube:'video',published:'upload',uploaded:'upload',
         overdue:'alert',completed:'check',approved:'check',urgent:'alert',proposals:'list',total:'grid'};
       Object.keys(kpis).forEach(function(k){
-        var urgent=(k==='overdue'||k==='pm_review'||k==='pending_review'||k==='urgent');
+        var urgent=(k==='overdue'||k==='pm_review'||k==='thumb_review'||k==='pending_review'||k==='urgent');
         var cls=(urgent?'urgent':(k==='completed'||k==='published'||k==='approved'||k==='uploaded'?'good':(k==='qc'||k==='changes'?'warn':'')));
         var _kv=(kpis[k]||0);
-        if((k==='pm_review'||k==='pending_review') && _kv>0) cls+=' pk-blink';
+        if((k==='pm_review'||k==='thumb_review'||k==='pending_review') && _kv>0) cls+=' pk-blink';
         var nav=(KPI_NAV[portal]||{})[k];
         html+=_pkc({icon:(_KICON[k]||'grid'),val:_kv,label:(KPI_LABELS[k]||k),cls:cls,onclick:nav?('prodKpiGo(\''+portal+'\',\''+k+'\')'):''});
       });
@@ -22100,6 +22100,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if((lc==='approved'||lc==='editor_assigned'||lc==='editing') && !g.graphics_id)
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'assign-graphics\','+t.id+')">Assign Graphics</button>';
     if(lc==='qc_pending') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\''+portal+'\','+t.id+',\'/qc-approve\')">QC Approve</button>';
+    if(g.status==='submitted') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();pmThumbReview('+t.id+')">Review Thumbnail</button>';
     if(lc==='ready_for_youtube') acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'post-yt\','+t.id+')">Post YT Link</button>';
     if(t.youtube_url||t.submitted_link||t.edited_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+esc(t.youtube_url||t.submitted_link||t.edited_link)+'\',\'_blank\')">Open Video</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodConvo('+t.id+')">Video Needs'+(t.comment_count?(' ('+t.comment_count+')'):'')+'</button>';
@@ -22425,7 +22426,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(!confirm('Delete this? It will be removed from all lists (reversible by admin).')) return;
     api(P.production.api+'/tasks/'+id,'DELETE').then(function(){ toast('Deleted'); _refresh('production'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
-  var _ST_LABEL={pm_review:'PM Review',creator_submitted:'Submitted',approved:'Approved',editor_assigned:'Not Started',editing:'Editing',editing_paused:'Paused',editing_done:'Editing Done',qc_pending:'QC Pending',qc_changes:'Changes',ready_for_youtube:'Ready for YouTube',uploaded:'Uploaded',creator_assigned:'To Submit',changes_required:'Changes',new:'New',in_progress:'In Progress',changes:'Changes',submitted:'Submitted'};
+  var _ST_LABEL={pm_review:'PM Review',thumb_review:'Thumbnail Review',creator_submitted:'Submitted',approved:'Approved',editor_assigned:'Not Started',editing:'Editing',editing_paused:'Paused',editing_done:'Editing Done',qc_pending:'QC Pending',qc_changes:'Changes',ready_for_youtube:'Ready for YouTube',uploaded:'Uploaded',creator_assigned:'To Submit',changes_required:'Changes',new:'New',in_progress:'In Progress',changes:'Changes',submitted:'Submitted'};
   function _activeChips(portal){
     var f=_flt(portal); var chips=[];
     if(f.status) chips.push(['Status: '+(_ST_LABEL[f.status]||f.status),'status']);

@@ -71,6 +71,7 @@ def pm_dashboard(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
                                      VideoTask.lifecycle.in_(["creator_assigned", "creator_working", "changes_required"])).count(),
         "pm_review": q.filter(or_(VideoTask.lifecycle.in_(["creator_submitted", "pm_review"]),
                                   VideoTask.status == "submitted")).count(),
+        "thumb_review": db.query(GraphicsTask).filter(GraphicsTask.status == "submitted").count(),
         "editing": c("editing", "editing_paused"),
         "graphics": db.query(GraphicsTask).filter(GraphicsTask.status.in_(["in_progress", "submitted"])).count(),
         "qc_pending": c("qc_pending"),
@@ -156,6 +157,12 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
         query = query.filter(VideoTask.channel_name == channel)
     if video_type:
         query = query.filter(VideoTask.video_type == video_type)
+    if status == "thumb_review":
+        # Thumbnail Review section — jin tasks ke thumbnail graphics designer ne submit kiye,
+        # wo PM ke review ke liye. (Graphics status = submitted.)
+        _tsub = db.query(GraphicsTask.task_id).filter(GraphicsTask.status == "submitted")
+        query = query.filter(VideoTask.id.in_(_tsub))
+        status = ""
     if status:
         # The dropdown uses production-style statuses, but old / admin-created tasks store
         # their state in the admin `status` field (lifecycle may be blank). Match BOTH so
