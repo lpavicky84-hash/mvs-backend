@@ -20100,7 +20100,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.prodapp{position:fixed;inset:0;display:none;background:var(--bg);color:var(--text);font-family:inherit}',
 '@keyframes pwCollabBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(124,79,192,.5)}50%{opacity:.55;box-shadow:0 0 0 4px rgba(124,79,192,0)}}',
 '.pw-collab-blink{animation:pwCollabBlink 1.3s ease-in-out infinite;font-weight:800!important}',
-'.aw-drop{border:2px dashed var(--border);border-radius:12px;padding:18px;text-align:center;cursor:pointer;background:var(--surface-2);transition:border-color .15s}',
+'.aw-drop{border:2px dashed var(--border);border-radius:12px;padding:18px;text-align:center;cursor:pointer;background:var(--surface-2);transition:border-color .15s;position:relative}',
+'.aw-drop .aw-x{position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:50%;border:none;background:rgba(209,68,58,.92);color:#fff;font-size:1.05rem;line-height:1;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.25)}',
+'.aw-drop .aw-x:hover{background:#c0392b}',
 '.aw-drop.drag{border-color:var(--primary);background:rgba(224,165,46,.08)}',
 '.aw-drop-hint{font-size:.82rem;color:var(--muted)}',
 '.prodapp.active{display:block}',
@@ -20374,6 +20376,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '@keyframes revDot{0%,100%{opacity:1}50%{opacity:.35}}',
 '.pt-dl.pt-dl-tog{cursor:pointer;user-select:none}',
 '.pt-dl.pt-dl-tog:hover{filter:brightness(.96)}',
+'.ptc-btn.ptc-ref-blink{background:linear-gradient(135deg,#7c4fc0,#6d3fb0) !important;color:#fff !important;border:none !important;font-weight:800;display:inline-flex;align-items:center;gap:8px;box-shadow:0 3px 10px rgba(124,79,192,.4);animation:revBlink 1.3s ease-in-out infinite}',
+'.ptc-btn.ptc-ref-blink:hover{background:linear-gradient(135deg,#6f43ad,#5d359a) !important;color:#fff !important}',
+'.ptc-btn.ptc-ref-blink .rev-dot{background:#fff}',
 '.ptc-btn.ptc-review-blink{background:linear-gradient(135deg,#e0b23a,#c99a2e) !important;color:#3a2f14 !important;border:none !important;font-weight:800;display:inline-flex;align-items:center;gap:8px;box-shadow:0 3px 10px rgba(201,154,46,.4);animation:revBlink 1.3s ease-in-out infinite}',
 '.ptc-btn.ptc-review-blink:hover{background:linear-gradient(135deg,#d6a629,#bd9024) !important;color:#3a2f14 !important}',
 '.ptc-btn.ptc-review-blink .rev-dot{background:#7a5c12}',
@@ -21348,6 +21353,30 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   // ---- PM: Thumbnail Review (view submission + rating + approve/changes/reject + screenshots) ----
   window._pmThumbImgs=[];
+  // ---- Graphics: PM reference thumbnail + brief viewer ----
+  window.gfxReference=function(id){
+    api(P.graphics.api+'/tasks/'+id).then(function(t){
+      var g=t.graphics||{}; var ref=(g.reference_image||''); var brief=(g.instructions||'');
+      var old=document.getElementById('prod-modal'); if(old) old.remove();
+      var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+      var isImg=ref && (/\.(png|jpe?g|webp|gif|bmp)(\?|#|$)/i.test(ref) || ref.indexOf('r2.')>=0 || ref.indexOf('cloudflarestorage')>=0 || ref.indexOf('/reference')>=0 || ref.indexOf('data:image')===0);
+      var refHtml = ref
+        ? (isImg
+            ? '<img src="'+esc(ref)+'" onclick="prodLightbox(\''+esc(ref)+'\')" style="max-width:100%;border-radius:10px;cursor:pointer;display:block">'
+            : '<a href="'+esc(ref)+'" target="_blank" rel="noopener" class="p-btn">Open reference link</a>')
+        : '<div class="pd-empty">No reference image provided.</div>';
+      dr.innerHTML='<div class="p-modal" style="max-width:460px">'+
+        '<div class="pd-head"><div class="h-title">Reference &amp; Brief</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+        '<div class="p-modal-body">'+
+          (brief?'<div class="gfx-remark-box"><div class="gfx-remark-l">Brief / Remarks from PM</div>'+esc(brief)+'</div>':'')+
+          '<div class="p-sec" style="margin-top:'+(brief?'12px':'0')+'">Reference thumbnail</div>'+refHtml+
+        '</div>'+
+        '<div class="pd-foot"><div class="p-acts"><button class="p-btn p-btn-primary" onclick="prodDismiss()">Got it</button></div></div>'+
+        '</div>';
+      dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+      document.body.appendChild(dr);
+    }).catch(function(e){ toast((e&&e.message)||'Could not load',true); });
+  };
   // ---- Graphics <-> PM chat (shared task thread; admin bhi dekh sakta hai) ----
   window._chatImg=null;
   window.gfxChat=function(id){
@@ -22194,6 +22223,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       else if(g.status==='in_progress') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodCardAct(\'graphics\',\'submit\','+t.id+')">Submit Thumbnail</button>';
       else if(g.status==='changes'){ acts+='<button class="ptc-btn" onclick="event.stopPropagation();gfxChangesView('+t.id+')">View Changes</button>';
         acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();gfxSubmitModal('+t.id+')">Submit New Thumbnail</button>'; }
+      if(g.reference_image||g.instructions) acts+='<button class="ptc-btn ptc-ref-blink" onclick="event.stopPropagation();gfxReference('+t.id+')"><span class="rev-dot"></span>Reference &amp; Brief</button>';
       acts+='<button class="ptc-btn'+(g.status==='changes'?' ptc-ok':'')+'" onclick="event.stopPropagation();gfxChat('+t.id+')">Chat with PM'+(t.comment_count?(' ('+t.comment_count+')'):'')+'</button>';
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
     } else if(portal==='youtuber'){
@@ -23588,10 +23618,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           gfxList.map(function(g){ return '<option value="'+g.id+'"'+(d.graphics_id===g.id?' selected':'')+'>'+esc(g.name)+(g.active!==undefined?(' \u00b7 '+g.active+' active'):'')+'</option>'; }).join('')+'</select></div>'+
           '<div class="p-field"><label>Thumbnail deadline (designer must finish by)</label><input class="p-input" id="aw-gfxdeadline" type="datetime-local" value="'+esc(d.graphics_deadline||'')+'"></div>'+
           '<div class="p-field"><label>Thumbnail brief / remarks (designer will see this)</label><textarea class="p-area" id="aw-gfx-instructions" placeholder="e.g. bold title text, red-yellow theme, student photo on the right, big marks callout">'+esc(d.graphics_instructions||'')+'</textarea></div>'+
-          '<div class="p-field"><label>Reference thumbnail link (optional)</label><input class="p-input" id="aw-gfx-reference" placeholder="Drive/image link of a sample thumbnail to follow" value="'+esc(d.graphics_reference||'')+'"></div>'+
+          '<div class="p-field"><label>Reference thumbnail (optional \u2014 link ya clipboard/upload se image jo designer follow kare)</label>'+            '<input class="p-input" id="aw-gfx-reference" placeholder="Drive/image link (optional)" value="'+esc(d.graphics_reference||'')+'" style="margin-bottom:8px">'+            '<div id="aw-ref-drop" class="aw-drop" onclick="window._awPasteTarget=\'ref\';document.getElementById(\'aw-ref-file\').click()" ondragover="event.preventDefault();this.classList.add(\'drag\')" ondragleave="this.classList.remove(\'drag\')" ondrop="awRefDrop(event)">'+              (d.graphics_reference_upload?('<img src="'+esc(d.graphics_reference_upload)+'" style="max-width:100%;max-height:140px;border-radius:8px"><button type="button" class="aw-x" onclick="event.stopPropagation();awRefRemove()">&times;</button>'):'<div class="aw-drop-hint">Drag &amp; drop, click, or paste (Ctrl+V) a reference image</div>')+            '</div><input type="file" id="aw-ref-file" accept="image/*" style="display:none" onchange="awRefFile(event)"></div>'+
           '<div class="p-field"><label>Already have the thumbnail? Upload it now (optional)</label>'+
-            '<div id="aw-thumb-drop" class="aw-drop" onclick="document.getElementById(\'aw-thumb-file\').click()" ondragover="event.preventDefault();this.classList.add(\'drag\')" ondragleave="this.classList.remove(\'drag\')" ondrop="awThumbDrop(event)">'+
-              (d.thumb_upload?('<img src="'+esc(d.thumb_upload)+'" style="max-width:100%;max-height:150px;border-radius:8px">'):'<div class="aw-drop-hint">Drag &amp; drop, click to choose, or paste (Ctrl+V) an image</div>')+
+            '<div id="aw-thumb-drop" class="aw-drop" onclick="window._awPasteTarget=\'thumb\';document.getElementById(\'aw-thumb-file\').click()" ondragover="event.preventDefault();this.classList.add(\'drag\')" ondragleave="this.classList.remove(\'drag\')" ondrop="awThumbDrop(event)">'+
+              (d.thumb_upload?('<img src="'+esc(d.thumb_upload)+'" style="max-width:100%;max-height:150px;border-radius:8px"><button type="button" class="aw-x" onclick="event.stopPropagation();awThumbRemove()">&times;</button>'):'<div class="aw-drop-hint">Drag &amp; drop, click to choose, or paste (Ctrl+V) an image</div>')+
             '</div><input type="file" id="aw-thumb-file" accept="image/*" style="display:none" onchange="awThumbFile(event)">'+
             (d.thumb_upload?'<div class="p-opt">Thumbnail attached. It will be auto-approved and you can rate it below.</div><div class="p-field" style="margin-top:8px"><label>Rate this thumbnail (optional)</label><select class="p-select" id="aw-thumb-rating"><option value="">No rating</option><option value="5"'+(d.thumb_rating==5?' selected':'')+'>5 - Excellent</option><option value="4"'+(d.thumb_rating==4?' selected':'')+'>4 - Good</option><option value="3"'+(d.thumb_rating==3?' selected':'')+'>3 - Average</option><option value="2"'+(d.thumb_rating==2?' selected':'')+'>2 - Below average</option><option value="1"'+(d.thumb_rating==1?' selected':'')+'>1 - Poor</option></select></div>':'')+
           '</div>'):'')+
@@ -23630,9 +23660,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.awCollabToggle=function(v){ _awSave(); var d=window._aw.data; d.collab_on=(v==='yes'); if(!d.collab_on) d.collab_teacher_ids=[]; _awRender(); };
   window.awThumbToggle=function(v){ _awSave(); window._aw.data.thumbnail_required=(v==='yes'); _awRender(); };
   function _awReadImg(file){ if(!file||!/^image\//.test(file.type)) { toast('Please choose an image file',true); return; } if(file.size>5*1024*1024){ toast('Image too large (max 5MB)',true); return; } var r=new FileReader(); r.onload=function(){ window._aw.data.thumb_upload=r.result; _awRender(); }; r.readAsDataURL(file); }
+  function _awReadRef(file){ if(!file||!/^image\//.test(file.type)) { toast('Please choose an image file',true); return; } if(file.size>5*1024*1024){ toast('Image too large (max 5MB)',true); return; } var r=new FileReader(); r.onload=function(){ window._aw.data.graphics_reference_upload=r.result; _awRender(); }; r.readAsDataURL(file); }
   window.awThumbFile=function(e){ _awSave(); var f=e.target.files&&e.target.files[0]; _awReadImg(f); };
+  window.awRefFile=function(e){ _awSave(); var f=e.target.files&&e.target.files[0]; _awReadRef(f); };
+  window.awThumbRemove=function(){ _awSave(); if(window._aw&&window._aw.data) window._aw.data.thumb_upload=''; _awRender(); };
+  window.awRefRemove=function(){ _awSave(); if(window._aw&&window._aw.data) window._aw.data.graphics_reference_upload=''; _awRender(); };
+  window.awRefDrop=function(e){ e.preventDefault(); _awSave(); var el=document.getElementById('aw-ref-drop'); if(el)el.classList.remove('drag'); var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; _awReadRef(f); };
   window.awThumbDrop=function(e){ e.preventDefault(); _awSave(); var el=document.getElementById('aw-thumb-drop'); if(el)el.classList.remove('drag'); var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; _awReadImg(f); };
-  document.addEventListener('paste',function(e){ if(!window._aw||window._aw.step!==2||!window._aw.data.thumbnail_required) return; var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(/^image\//.test(items[i].type)){ _awSave(); _awReadImg(items[i].getAsFile()); e.preventDefault(); break; } } });
+  document.addEventListener('paste',function(e){ if(!window._aw||window._aw.step!==2||!window._aw.data.thumbnail_required) return; var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(/^image\//.test(items[i].type)){ _awSave(); var f=items[i].getAsFile(); if(window._awPasteTarget==='ref') _awReadRef(f); else _awReadImg(f); e.preventDefault(); break; } } });
   window.awCollabMulti=function(){ var s=document.getElementById('aw-collab-multi'); if(!s) return; var ids=[]; for(var i=0;i<s.options.length;i++){ if(s.options[i].selected) ids.push(parseInt(s.options[i].value,10)); } window._aw.data.collab_teacher_ids=ids; var opt=document.querySelector('#aw-body .p-opt'); };
   window.awCreate=function(){ _awSave(); var d=window._aw.data;
     if(!(d.title||'').trim()){ toast('Title is required',true); window._aw.step=1; _awRender(); return; }
@@ -23643,6 +23678,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     body.thumbnail_required=!!d.thumbnail_required;
     if(d.thumbnail_required && d.graphics_id) body.graphics_id=d.graphics_id;
     if(d.thumbnail_required && d.graphics_deadline) body.graphics_deadline=d.graphics_deadline;
+    if(d.thumbnail_required){
+      if(d.graphics_instructions) body.graphics_instructions=d.graphics_instructions;
+      if(d.graphics_reference) body.graphics_reference=d.graphics_reference;
+      if(d.graphics_reference_upload) body.graphics_reference_upload=d.graphics_reference_upload;
+    }
     if(d.thumbnail_required && d.thumb_upload){ body.thumbnail_upload=d.thumb_upload; if(d.thumb_rating) body.thumbnail_rating=d.thumb_rating; }
     if(d.editor_id) body.editor_id=d.editor_id;
     _pBusy(true);

@@ -503,6 +503,15 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
                              priority=(payload.get("priority") or "normal"),
                              instructions=(payload.get("graphics_instructions") or payload.get("graphics_notes") or "").strip(),
                              reference_image=(payload.get("graphics_reference") or payload.get("reference_image") or "").strip())
+            # PM ne clipboard/upload se reference image di ho to R2 pe upload karke store karo
+            _refup = payload.get("graphics_reference_upload")
+            if _refup:
+                try:
+                    _rurls = pc.save_images(db, t, [_refup], "reference", None, me, return_urls=True) or []
+                    if _rurls:
+                        g.reference_image = _rurls[0]
+                except Exception:
+                    pass
             gdl = (payload.get("graphics_deadline") or payload.get("deadline") or "").strip()
             if gdl:
                 try:
