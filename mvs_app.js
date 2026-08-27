@@ -22178,8 +22178,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardAct(\'editor\',\'deadline\','+t.id+')">'+(t.deadline_req_status==='pending'?'Extension Pending':'Request Deadline')+'</button>';
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
     } else if(portal==='graphics'){
-      if(g.status==='new'||g.status==='pending'||g.status==='changes') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'graphics\','+t.id+',\'/start\')">Start Designing</button>';
+      if(g.status==='new'||g.status==='pending') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'graphics\','+t.id+',\'/start\')">Start Designing</button>';
       else if(g.status==='in_progress') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodCardAct(\'graphics\',\'submit\','+t.id+')">Submit Thumbnail</button>';
+      else if(g.status==='changes'){ acts+='<button class="ptc-btn" onclick="event.stopPropagation();gfxChangesView('+t.id+')">View Changes</button>';
+        acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();gfxSubmitModal('+t.id+')">Submit New Thumbnail</button>'; }
       acts+='<button class="ptc-btn'+(g.status==='changes'?' ptc-ok':'')+'" onclick="event.stopPropagation();gfxChat('+t.id+')">Chat with PM'+(t.comment_count?(' ('+t.comment_count+')'):'')+'</button>';
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
     } else if(portal==='youtuber'){
