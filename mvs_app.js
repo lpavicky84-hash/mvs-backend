@@ -20374,6 +20374,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '@keyframes revDot{0%,100%{opacity:1}50%{opacity:.35}}',
 '.pt-dl.pt-dl-tog{cursor:pointer;user-select:none}',
 '.pt-dl.pt-dl-tog:hover{filter:brightness(.96)}',
+'.ptc-btn.ptc-review-blink{background:linear-gradient(135deg,#e0b23a,#c99a2e) !important;color:#3a2f14 !important;border:none !important;font-weight:800;display:inline-flex;align-items:center;gap:8px;box-shadow:0 3px 10px rgba(201,154,46,.4);animation:revBlink 1.3s ease-in-out infinite}',
+'.ptc-btn.ptc-review-blink:hover{background:linear-gradient(135deg,#d6a629,#bd9024) !important;color:#3a2f14 !important}',
+'.ptc-btn.ptc-review-blink .rev-dot{background:#7a5c12}',
 '.p-area-req,textarea.p-area-req{border:2px solid #d1443a !important;box-shadow:0 0 0 3px rgba(209,68,58,.15) !important;animation:reqPulse .5s ease}',
 '@keyframes reqPulse{0%{box-shadow:0 0 0 0 rgba(209,68,58,.3)}100%{box-shadow:0 0 0 3px rgba(209,68,58,.15)}}',
 '.pq-wrap{margin-top:16px}',
@@ -22200,9 +22203,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
     } else {
     if(lc==='creator_submitted'||lc==='pm_review'){
-      acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\''+portal+'\','+t.id+',\'/approve-creator\')">Approve</button>';
-      acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'changes\','+t.id+')">Changes</button>';
-      acts+='<button class="ptc-btn" style="color:#b91c1c" onclick="event.stopPropagation();prodReviewForm('+t.id+',\'reject\')">Reject</button>';
+      acts+='<button class="ptc-btn ptc-review-blink" onclick="event.stopPropagation();prodReview('+t.id+')"><span class="rev-dot"></span>Checking \u2014 Review</button>';
     }
     if((lc==='approved'||lc==='editor_assigned'||lc==='editing'||lc==='editing_paused'||lc==='editing_done'||lc==='qc_pending'||lc==='qc_changes'||lc==='ready_for_youtube') && !t.editor_id)
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'assign-editor\','+t.id+')">Assign Editor</button>';
@@ -23093,7 +23094,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(portal==='production'){
         if(pf.kind==='assign-editor') prodAssignForm(pf.id,'editor');
         else if(pf.kind==='assign-graphics') prodAssignForm(pf.id,'graphics');
-        else if(pf.kind==='changes') prodRemarkForm('production',pf.id,'/request-creator-changes');
+        else if(pf.kind==='changes') prodReviewForm(pf.id,'changes');
+        else if(pf.kind==='reject') prodReviewForm(pf.id,'reject');
         else if(pf.kind==='post-yt') prodLinkForm('production',pf.id,'/youtube','youtube_url','Published YouTube URL');
       } else if(portal==='editor'){
         if(pf.kind==='progress') prodProgForm(pf.id);
@@ -23171,6 +23173,73 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var full=isYt?(P[portal].api+ep):(P[portal].api+'/tasks/'+id+ep);
     api(full,'POST',body).then(function(){ prodDismiss(); toast('Submitted'); _refresh(portal); })
       .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
+  };
+  // ---- PM: full video review modal (admin-style premium) — Approve / Reshoot / Reject ----
+  window.prodReview=function(id){
+    api(P.production.api+'/tasks/'+id).then(function(t){ _prodReviewRender(t||{}); })
+      .catch(function(e){ toast((e&&e.message)||'Could not load',true); });
+  };
+  function _prodReviewRender(t){
+    window._prodRvAct=null;
+    var nd=new Date(Date.now()+48*3600*1000); nd.setMinutes(0);
+    var ndVal=nd.getFullYear()+'-'+String(nd.getMonth()+1).padStart(2,'0')+'-'+String(nd.getDate()).padStart(2,'0')+'T'+String(nd.getHours()).padStart(2,'0')+':00';
+    var vid=(t.submitted_link||'');
+    var subAt=(t.submitted_at||'');
+    var chips='<span class="vt-pill submitted">SUBMITTED</span>'+(t.on_time===false?'<span class="vt-pill" style="background:rgba(220,38,38,.12);color:#b91c1c;margin-left:6px">DELAYED</span>':'<span class="vt-pill approved" style="margin-left:6px">ON TIME</span>');
+    var body=_modalHero('play','Video review','Check the submission and set the status below.','#b45309')+
+      '<div style="margin-bottom:12px">'+chips+'</div>'+
+      '<div class="sdet-grid" style="grid-template-columns:1fr 1fr;margin-bottom:12px">'+
+        '<div class="sdet-row"><span>Teacher</span><b>'+esc(t.creator_name||'\u2014')+'</b></div>'+
+        '<div class="sdet-row"><span>Deadline</span><b>'+esc(t.deadline||'\u2014')+'</b></div>'+
+        (subAt?'<div class="sdet-row"><span>Submitted</span><b>'+esc(subAt)+'</b></div>':'')+
+        (vid?'<div class="sdet-row"><span>Video</span><b><a href="'+esc(vid)+'" target="_blank" rel="noopener" style="color:var(--primary)">Open drive link</a></b></div>':'')+
+      '</div>'+
+      '<div class="vt-form"><div class="form-group"><label>Set Status</label>'+
+        '<div style="display:flex;gap:7px;flex-wrap:wrap" id="prod-rv-actions">'+
+          '<button class="btn btn-ghost btn-sm" data-act="approved" onclick="prodRvPick(this)">Approve</button>'+
+          '<button class="btn btn-ghost btn-sm" data-act="reshoot" style="border-color:rgba(180,83,9,.5);color:#b45309" onclick="prodRvPick(this)">Reshoot</button>'+
+          '<button class="btn btn-ghost btn-sm" data-act="rejected" style="border-color:rgba(220,38,38,.5);color:#b91c1c" onclick="prodRvPick(this)">Rejected</button>'+
+        '</div></div>'+
+        '<div class="form-group"><label>Remarks (reason \u2014 required for reshoot / rejection)</label><textarea id="prod-rv-remarks" class="input" rows="2" placeholder="e.g. Audio not clear in the middle section..."></textarea></div>'+
+        '<div class="form-group" id="prod-rv-ndl" style="display:none">'+
+          '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px"><input type="checkbox" id="prod-rv-final" onchange="prodRvFinalToggle()"> Final \u2014 no re-submission (only remarks are shown to the teacher)</label>'+
+          '<div id="prod-rv-ndl-wrap"><label>New Deadline (required for re-submission)</label><input id="prod-rv-deadline" type="datetime-local" class="input" value="'+ndVal+'"></div>'+
+        '</div></div>';
+    showModal('Review \u2014 '+esc(t.title||''), body,
+      '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="prodReviewSave('+t.id+')">'+ic('check')+' Save Status</button>');
+  }
+  window.prodRvPick=function(btn){
+    window._prodRvAct=btn.getAttribute('data-act');
+    var box=document.getElementById('prod-rv-actions');
+    if(box) box.querySelectorAll('button').forEach(function(b){
+      var on=(b===btn), a=b.getAttribute('data-act');
+      b.style.background=on?'var(--primary)':''; b.style.fontWeight=on?'800':'';
+      b.style.color=on?'#3a2f14':(a==='reshoot'?'#b45309':(a==='rejected'?'#b91c1c':''));
+    });
+    var ndl=document.getElementById('prod-rv-ndl'); if(ndl) ndl.style.display=(window._prodRvAct==='reshoot'||window._prodRvAct==='rejected')?'block':'none';
+  };
+  window.prodRvFinalToggle=function(){ var f=document.getElementById('prod-rv-final'); var w=document.getElementById('prod-rv-ndl-wrap'); if(w) w.style.display=(f&&f.checked)?'none':'block'; };
+  window.prodReviewSave=function(id){
+    var act=window._prodRvAct; if(!act){ toast('Pick a status first',true); return; }
+    var rem=((document.getElementById('prod-rv-remarks')||{}).value||'').trim();
+    var done=function(msg){ try{ closeModal(); }catch(e){} toast(msg); _refresh('production'); };
+    if(act==='approved'){
+      api(P.production.api+'/tasks/'+id+'/approve-creator','POST',{}).then(function(){ done('Approved \u2014 moving to editing'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+      return;
+    }
+    if(!rem){ toast('Remarks are required for reshoot / reject',true); var ta=document.getElementById('prod-rv-remarks'); if(ta){ ta.classList.add('p-area-req'); ta.focus(); } return; }
+    var fin=document.getElementById('prod-rv-final'); var isFinal=fin&&fin.checked;
+    var dl=((document.getElementById('prod-rv-deadline')||{}).value||'');
+    if(act==='reshoot'){
+      if(!dl){ toast('New deadline is required for reshoot',true); return; }
+      api(P.production.api+'/tasks/'+id+'/reshoot-creator','POST',{remarks:rem,new_deadline:dl}).then(function(){ done('Reshoot requested'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+      return;
+    }
+    if(act==='rejected'){
+      var body={remarks:rem}; if(!isFinal){ if(!dl){ toast('Set a new deadline, or tick "Final"',true); return; } body.new_deadline=dl; body.allow_resubmit=true; }
+      api(P.production.api+'/tasks/'+id+'/reject-creator','POST',body).then(function(){ done(isFinal?'Video rejected':'Sent back for re-submission'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+      return;
+    }
   };
   window.prodReviewForm=function(id,action){
     var box=_actsBox(); if(!box) return;
