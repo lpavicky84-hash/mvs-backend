@@ -20358,12 +20358,15 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.ptc.ptc-optim,.pt-row.ptc-optim{opacity:.5;pointer-events:none;position:relative}',
 '.ptc.ptc-optim::after,.pt-row.ptc-optim::after{content:"";position:absolute;top:50%;left:50%;width:26px;height:26px;margin:-13px 0 0 -13px;border:3px solid rgba(201,154,46,.28);border-top-color:#c99a2e;border-radius:50%;animation:ptcSpin .7s linear infinite;z-index:6}',
 '@keyframes ptcSpin{to{transform:rotate(360deg)}}',
-'.ptc-btn.ptc-btn-review{background:linear-gradient(135deg,#2e9e6b,#1f7d52);color:#fff !important;border:none;font-weight:800;font-size:.92rem;padding:11px 18px;border-radius:10px;display:inline-flex;align-items:center;gap:8px;box-shadow:0 3px 10px rgba(46,158,107,.35);animation:revBlink 1.3s ease-in-out infinite}',
-'.ptc-btn.ptc-btn-review .rev-dot{width:8px;height:8px;border-radius:50%;background:#fff;animation:revDot 1.3s ease-in-out infinite}',
+'.ptc-btn.ptc-btn-review{background:linear-gradient(135deg,#2fa06d,#1f7d52) !important;color:#fff !important;border:none !important;font-weight:800;font-size:.92rem;padding:11px 18px;border-radius:10px;display:inline-flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(46,158,107,.4);animation:revBlink 1.3s ease-in-out infinite}',
+'.ptc-btn.ptc-btn-review:hover{background:linear-gradient(135deg,#278f5f,#186a44) !important;color:#fff !important;transform:translateY(-1px);box-shadow:0 6px 18px rgba(46,158,107,.55)}',
+'.ptc-btn.ptc-btn-review .rev-dot{width:8px;height:8px;border-radius:50%;background:#fff;flex:none;animation:revDot 1.3s ease-in-out infinite}',
 '@keyframes revBlink{0%,100%{box-shadow:0 0 0 0 rgba(46,158,107,.55)}50%{box-shadow:0 0 0 6px rgba(46,158,107,.12)}}',
 '@keyframes revDot{0%,100%{opacity:1}50%{opacity:.35}}',
 '.pt-dl.pt-dl-tog{cursor:pointer;user-select:none}',
 '.pt-dl.pt-dl-tog:hover{filter:brightness(.96)}',
+'.p-area-req,textarea.p-area-req{border:2px solid #d1443a !important;box-shadow:0 0 0 3px rgba(209,68,58,.15) !important;animation:reqPulse .5s ease}',
+'@keyframes reqPulse{0%{box-shadow:0 0 0 0 rgba(209,68,58,.3)}100%{box-shadow:0 0 0 3px rgba(209,68,58,.15)}}',
 '.pq-wrap{margin-top:16px}',
 '.pq-h{font-size:1.02rem;font-weight:800;color:#c23a30;display:flex;align-items:center;gap:8px;margin:0 2px 10px}',
 '.pq-h .pq-n{background:#d1443a;color:#fff;border-radius:999px;font-size:.72rem;min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;padding:0 6px}',
@@ -21359,12 +21362,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window._pmSetStar=function(n){ window._pmStar=n; var box=document.getElementById('pm-stars'); if(box) box.querySelectorAll('.gfx-star').forEach(function(s){ s.classList.toggle('on', parseInt(s.getAttribute('data-n'),10)<=n); }); };
   function _pmAddFile(file){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ if(window._pmThumbImgs.length<6){ window._pmThumbImgs.push(rd.result); var box=document.getElementById('pm-prev'); if(box) box.innerHTML=window._pmThumbImgs.map(function(s){ return '<div class="gfx-thumb" style="background-image:url('+s+')"></div>'; }).join(''); } }; rd.readAsDataURL(file); }
   window.pmThumbDecide=function(action){
-    var rem=((document.getElementById('pm-th-remarks')||{}).value||'').trim();
+    var _ta=document.getElementById('pm-th-remarks');
+    var rem=((_ta||{}).value||'').trim();
     var id=window._pmThumbId;
     var ep,body;
+    function _needRem(){ if(_ta){ _ta.classList.add('p-area-req'); _ta.focus(); setTimeout(function(){ _ta.classList.remove('p-area-req'); },2500); } toast('Please add remarks \u2014 batao designer ko kya change karna hai',true); }
     if(action==='approve'){ ep='/thumbnail-approve'; body={quality_rating:window._pmStar||0,quality_note:rem}; }
-    else if(action==='changes'){ if(!rem){ toast('Remarks required for changes',true); return; } ep='/thumbnail-changes'; body={remarks:rem,images:window._pmThumbImgs}; }
-    else { if(!rem){ toast('Remarks required for reject',true); return; } ep='/thumbnail-reject'; body={remarks:rem,images:window._pmThumbImgs}; }
+    else if(action==='changes'){ if(!rem){ _needRem(); return; } ep='/thumbnail-changes'; body={remarks:rem,images:window._pmThumbImgs}; }
+    else { if(!rem){ _needRem(); return; } ep='/thumbnail-reject'; body={remarks:rem,images:window._pmThumbImgs}; }
     _pBusy(true);
     api(P.production.api+'/tasks/'+id+ep,'POST',body).then(function(){
       if(window._pmPasteH){ document.removeEventListener('paste',window._pmPasteH); window._pmPasteH=null; }
