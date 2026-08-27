@@ -20358,6 +20358,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.ptc.ptc-optim,.pt-row.ptc-optim{opacity:.5;pointer-events:none;position:relative}',
 '.ptc.ptc-optim::after,.pt-row.ptc-optim::after{content:"";position:absolute;top:50%;left:50%;width:26px;height:26px;margin:-13px 0 0 -13px;border:3px solid rgba(201,154,46,.28);border-top-color:#c99a2e;border-radius:50%;animation:ptcSpin .7s linear infinite;z-index:6}',
 '@keyframes ptcSpin{to{transform:rotate(360deg)}}',
+'.ptc-btn.ptc-btn-review{background:linear-gradient(135deg,#2e9e6b,#1f7d52);color:#fff !important;border:none;font-weight:800;font-size:.92rem;padding:11px 18px;border-radius:10px;display:inline-flex;align-items:center;gap:8px;box-shadow:0 3px 10px rgba(46,158,107,.35);animation:revBlink 1.3s ease-in-out infinite}',
+'.ptc-btn.ptc-btn-review .rev-dot{width:8px;height:8px;border-radius:50%;background:#fff;animation:revDot 1.3s ease-in-out infinite}',
+'@keyframes revBlink{0%,100%{box-shadow:0 0 0 0 rgba(46,158,107,.55)}50%{box-shadow:0 0 0 6px rgba(46,158,107,.12)}}',
+'@keyframes revDot{0%,100%{opacity:1}50%{opacity:.35}}',
+'.pt-dl.pt-dl-tog{cursor:pointer;user-select:none}',
+'.pt-dl.pt-dl-tog:hover{filter:brightness(.96)}',
 '.pq-wrap{margin-top:16px}',
 '.pq-h{font-size:1.02rem;font-weight:800;color:#c23a30;display:flex;align-items:center;gap:8px;margin:0 2px 10px}',
 '.pq-h .pq-n{background:#d1443a;color:#fff;border-radius:999px;font-size:.72rem;min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;padding:0 6px}',
@@ -21987,26 +21993,26 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   var _PTC_HCOL=['#1e4d6b','#1f5c3a','#6b2f4d','#5a4a1e','#3a3a6b','#6b3a1e','#1e6b5a','#5a1e4d'];
   // --- human-readable deadline (canonical ISO -> user-timezone live label) ---
-  function _dlHuman(iso, lifecycle){
+  function _dlHuman(iso, lifecycle, mode){
     if(!iso) return null;
     if(lifecycle==='uploaded'||lifecycle==='completed') return {kind:'done',label:'Completed'};
     var dt=new Date(iso); if(isNaN(dt.getTime())) return null;
-    var delta=Math.floor((dt.getTime()-Date.now())/1000); var ad=Math.abs(delta);
+    var delta=Math.floor((dt.getTime()-Date.now())/1000); var over=delta<0; var ad=Math.abs(delta);
     var d=Math.floor(ad/86400), h=Math.floor((ad%86400)/3600), m=Math.floor((ad%3600)/60), s=ad%60;
     var p=function(n){ return (n<10?'0':'')+n; };
-    if(delta<0){
-      var lbl=(ad<172800)?(Math.floor(ad/3600)+'h '+p(m)+'m '+p(s)+'s overdue'):(d+'d '+p(h)+'h overdue');
-      return {kind:'overdue',label:lbl};
-    }
-    if(delta<7200) return {kind:'soon',label:'Due soon '+(h?h+'h ':'')+p(m)+'m '+p(s)+'s'};
-    if(delta<86400) return {kind:'today',label:'Due today '+h+'h '+p(m)+'m '+p(s)+'s'};
-    return {kind:'later',label:'Due in '+d+'d '+p(h)+'h '+p(m)+'m'};
+    var kind=over?'overdue':(delta<7200?'soon':(delta<86400?'today':'later'));
+    var body;
+    if(mode==='compact'){ body=(d>0?(d+'d '+p(h)+'h'):(h>0?(h+'h '+p(m)+'m'):(p(m)+'m'))); }
+    else { body=(d>0?(d+'d '):'')+((d>0||h>0)?(p(h)+'h '):'')+p(m)+'m '+p(s)+'s'; }  // live ticking (default)
+    var lbl=over?(body+' overdue'):((kind==='soon'?'Due soon ':(kind==='today'?'Due today ':'Due in '))+body);
+    return {kind:kind,label:lbl};
   }
+  window._dlToggle=function(el){ el.setAttribute('data-dlmode', (el.getAttribute('data-dlmode')==='compact')?'full':'compact'); _dlTick(); };
   function _dlTick(){
     try{
       document.querySelectorAll('.pt-dl[data-dl]').forEach(function(el){
-        var live=_dlHuman(el.getAttribute('data-dl'), el.getAttribute('data-dllc'));
-        if(live){ el.textContent=live.label; el.className='pt-dl '+live.kind; }
+        var live=_dlHuman(el.getAttribute('data-dl'), el.getAttribute('data-dllc'), el.getAttribute('data-dlmode')||'full');
+        if(live){ el.textContent=live.label; el.className='pt-dl pt-dl-tog '+live.kind; }
       });
     }catch(e){}
   }
@@ -22064,7 +22070,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var meta=[]; if(t.deadline) meta.push('Deadline: '+esc(t.deadline));
     var df=t.deadline_flag||{};
     if(t.deadline_iso){ var live=_dlHuman(t.deadline_iso, t.lifecycle); if(live) df=live; }
-    var dl=(df.kind&&df.kind!=='none'&&df.kind!=='done')?'<span class="pt-dl '+df.kind+'"'+(t.deadline_iso?(' data-dl="'+esc(t.deadline_iso)+'" data-dllc="'+esc(t.lifecycle||'')+'"'):'')+'>'+esc(df.label)+'</span>':'';
+    var dl=(df.kind&&df.kind!=='none'&&df.kind!=='done')?'<span class="pt-dl pt-dl-tog '+df.kind+'"'+(t.deadline_iso?(' data-dl="'+esc(t.deadline_iso)+'" data-dllc="'+esc(t.lifecycle||'')+'" data-dlmode="full" onclick="event.stopPropagation();_dlToggle(this)" title="Tap to switch timer format"'):'')+'>'+esc(df.label)+'</span>':'';
     if((t.revision_count||0)>0) meta.push('Revision '+t.revision_count);
     if(t.yt_views!=null && t.youtube_url) meta.push('Live views: '+_num(t.yt_views));
     if(t.quality_rating) meta.push('<span class="ptc-stars" title="'+esc(t.quality_note||'')+'">'+_stars(t.quality_rating)+'</span>');
@@ -22100,7 +22106,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if((lc==='approved'||lc==='editor_assigned'||lc==='editing') && !g.graphics_id)
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'assign-graphics\','+t.id+')">Assign Graphics</button>';
     if(lc==='qc_pending') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\''+portal+'\','+t.id+',\'/qc-approve\')">QC Approve</button>';
-    if(g.status==='submitted') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();pmThumbReview('+t.id+')">Review Thumbnail</button>';
+    if(g.status==='submitted') acts+='<button class="ptc-btn ptc-btn-review" onclick="event.stopPropagation();pmThumbReview('+t.id+')"><span class="rev-dot"></span>Review Thumbnail</button>';
     if(lc==='ready_for_youtube') acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'post-yt\','+t.id+')">Post YT Link</button>';
     if(t.youtube_url||t.submitted_link||t.edited_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+esc(t.youtube_url||t.submitted_link||t.edited_link)+'\',\'_blank\')">Open Video</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodConvo('+t.id+')">Video Needs'+(t.comment_count?(' ('+t.comment_count+')'):'')+'</button>';
