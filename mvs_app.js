@@ -20113,8 +20113,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.prodside .ps-logo img{width:100%;height:100%;object-fit:contain}',
 '.prodside .ps-title{font-weight:800;font-size:1.02rem;line-height:1.05;letter-spacing:-.01em}',
 '.prodside .ps-sub{font-size:.68rem;color:'+accent+';text-transform:uppercase;letter-spacing:.12em;margin-top:2px}',
-'.prodside .ps-group{padding:17px 16px 6px;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;color:#bcae89;font-weight:700}',
-'.prodside .ps-item{display:flex;align-items:center;gap:12px;margin:3px 10px;padding:11px 14px;border-radius:11px;cursor:pointer;color:#e4dabf;font-size:.955rem;font-weight:600;transition:background .15s,color .15s}',
+'.prodside .ps-group{padding:18px 16px 7px;font-size:.82rem;text-transform:uppercase;letter-spacing:.08em;color:#d0c299;font-weight:800}',
+'.prodside .ps-item{display:flex;align-items:center;gap:11px;margin:2px 10px;padding:10px 13px;border-radius:11px;cursor:pointer;color:#ddd3b8;font-size:.9rem;font-weight:600;transition:background .15s,color .15s}',
 '.prodside .ps-item svg{width:19px;height:19px;flex:0 0 19px;opacity:.9}',
 '.prodside .ps-badge{background:#d1443a;color:#fff;font-size:.7rem;font-weight:800;min-width:20px;text-align:center;padding:1px 7px;border-radius:999px;flex:0 0 auto}',
 '.prodside .ps-item:hover{background:rgba(230,173,78,.12);color:#fff}',
@@ -21521,7 +21521,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         return;
       }
       if(portal==='editor' && r.cards){
-        var EC=[['assigned_today','Assigned Today','edt:assigned','','calendar'],['editing_now','Editing Now','edt:editing','','edit'],
+        var EC=[['assigned_today','To Start','edt:assigned','','calendar'],['editing_now','Editing Now','edt:editing','','edit'],
                 ['due_soon','Due Soon','edt:editing','warn','clock'],['overdue','Overdue','edt:overdue','urgent','alert'],
                 ['submitted','Submitted','edt:submitted','good','upload'],['changes','Changes Required','edt:changes','warn','edit'],
                 ['completed','Completed','edt:completed','good','check'],['ready_for_youtube','Ready for YouTube','edt:completed','good','video'],
@@ -21729,10 +21729,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }).catch(function(e){ toast((e&&e.message)||'Could not decline',true); });
   };  function _workFilter(portal,arr){
     var out=arr;
-    if(portal==='editor') out=arr.filter(function(t){ return ['editor_assigned','editing','editing_paused','editing_done','qc_changes'].indexOf(t.lifecycle)>=0; });
+    if(portal==='editor') out=arr.filter(function(t){ return ['editor_assigned','editing_soon','editing','editing_paused','editing_done','qc_changes'].indexOf(t.lifecycle)>=0; });
     else if(portal==='graphics') out=arr.filter(function(t){ var s=(t.graphics||{}).status; return ['new','pending','in_progress','changes'].indexOf(s)>=0; });
     else if(portal==='youtuber') out=arr.filter(function(t){ return ['creator_assigned','creator_working','changes_required'].indexOf(t.lifecycle)>=0; });
-    else if(portal==='production') out=arr.filter(function(t){ if(['uploaded','completed'].indexOf(t.lifecycle)>=0) return false; var f=(t.deadline_flag||{}).kind; return ['creator_submitted','pm_review','qc_pending','ready_for_youtube'].indexOf(t.lifecycle)>=0 || f==='overdue'; });
+    else if(portal==='production') out=arr.filter(function(t){ var lc=(t.lifecycle||''), st=(t.status||''); if(['uploaded','completed'].indexOf(lc)>=0||['uploaded','completed'].indexOf(st)>=0) return false; var f=(t.deadline_flag||{}).kind; return ['creator_submitted','pm_review','qc_pending','ready_for_youtube'].indexOf(lc)>=0 || f==='overdue'; });
     return out.slice(0,10);
   }
   function _loadWork(portal){
@@ -21786,7 +21786,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     function direct(label,ep){ return '<button class="p-btn p-btn-primary" onclick="event.stopPropagation();prodAct(\''+portal+'\','+t.id+',\''+ep+'\')">'+label+'</button>'; }
     function openb(label){ return '<button class="p-btn p-btn-primary" onclick="event.stopPropagation();prodOpenTask(\''+portal+'\','+t.id+')">'+label+'</button>'; }
     if(portal==='editor'){
-      if(lc==='editor_assigned') return direct('Start Editing','/start');
+      if(lc==='editor_assigned'||lc==='editing_soon') return direct('Start Editing','/start');
       if(lc==='editing_paused') return direct('Resume','/resume');
       if(lc==='editing') return openb('Manage');
       if(lc==='editing_done') return openb('Submit for QC');
@@ -22179,7 +22179,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(t.quality_rating) meta.push('<span class="ptc-stars" title="'+esc(t.quality_note||'')+'">'+_stars(t.quality_rating)+'</span>');
     var acts='';
     if(portal==='editor'){
-      if(lc==='editor_assigned') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/start\')">Start Editing</button>';
+      if(lc==='editor_assigned'||lc==='editing_soon') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/start\')">Start Editing</button>';
       else if(lc==='editing'){ acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardAct(\'editor\',\'progress\','+t.id+')">Update Progress</button>';
         acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/pause\')">Pause</button>';
         acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/complete\')">Complete</button>'; }
@@ -22972,7 +22972,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _actions(portal,t){
     var b=[]; var lc=t.lifecycle||''; var g=t.graphics||{};
     if(portal==='editor'){
-      if(lc==='editor_assigned') b.push(_ab('Start Editing','prodAct(\'editor\','+t.id+',\'/start\')','primary'));
+      if(lc==='editor_assigned'||lc==='editing_soon') b.push(_ab('Start Editing','prodAct(\'editor\','+t.id+',\'/start\')','primary'));
       else if(lc==='editing'){ b.push(_ab('Update Progress','edtProgressModal('+t.id+')','primary'));
         b.push(_ab('Pause','prodAct(\'editor\','+t.id+',\'/pause\')'));
         b.push(_ab('Complete Editing','prodAct(\'editor\','+t.id+',\'/complete\')','ok')); }

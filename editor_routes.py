@@ -93,8 +93,7 @@ def editor_dashboard(db: Session = Depends(get_db), me=Depends(get_editor)):
     total_views = db.query(func.coalesce(func.sum(VideoTask.yt_views), 0)).filter(
         VideoTask.editor_id == sp.id).scalar() or 0
     cards = {
-        "assigned_today": base.filter(VideoTask.lifecycle == "editor_assigned",
-                                      VideoTask.updated_at >= today0).count(),
+        "assigned_today": base.filter(VideoTask.lifecycle.in_(["editor_assigned", "editing_soon"])).count(),
         "editing_now": c("editing", "editing_paused"),
         "due_soon": base.filter(VideoTask.deadline != None, VideoTask.deadline >= now,
                                 VideoTask.deadline <= soon,
