@@ -9140,6 +9140,16 @@ const VT_LBL={assigned:'Assigned',submitted:'Submitted',approved:'Approved',edit
 function _vtQs(){ const f=_vtF,q=[]; if(f.teacher_id)q.push('teacher_id='+f.teacher_id); if(f.status)q.push('status='+f.status); if(f.channel_id)q.push('channel_id='+f.channel_id); if(f.video_type)q.push('video_type='+encodeURIComponent(f.video_type)); return q.length?'?'+q.join('&'):''; }
 function _vtPill(t,blink,who){
   let cls=t.status, lbl=VT_LBL[t.status]||t.status;
+  // Legacy `status` 'editing_soon' me editor-assigned AUR editing-in-progress dono aate hain.
+  // lifecycle zyada accurate hai — usse sahi label dikhao (warna editing shuru hone par bhi
+  // "Editing Soon" dikhta tha).
+  var _lc=t.lifecycle||'';
+  if(_lc==='editing') lbl='Editing In Progress';
+  else if(_lc==='editing_paused') lbl='Editing Paused';
+  else if(_lc==='editor_assigned') lbl='Editing Soon';
+  else if(_lc==='qc_pending') lbl='Editor Submitted';
+  else if(_lc==='qc_changes') lbl='Changes Required';
+  else if(_lc==='ready_for_youtube') lbl='Ready for YouTube';
   if((t.status==='assigned'||t.status==='reshoot'||t.status==='rejected')&&t.overdue){ cls='delayed'; lbl='Overdue'; }
   // teacher side: upload hone tak status blink karta rahe
   const bl=(blink&&t.status!=='uploaded'&&t.proposal_ok!=='pending')?' blink':'';
@@ -20335,6 +20345,19 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.ps-group.open::after{transform:rotate(45deg);opacity:.75}',
 '.ps-gitems{overflow:hidden;max-height:0;opacity:.35;transition:max-height .28s ease,opacity .2s ease}',
 '.ps-gitems.open{max-height:720px;opacity:1}',
+'.prod-npop{position:fixed;top:76px;right:24px;z-index:9000;max-width:360px;display:flex;align-items:flex-start;gap:10px;background:var(--surface,#fff);border:1px solid var(--border,#e6dfce);border-left:4px solid #c99a2e;border-radius:14px;padding:13px 14px;box-shadow:0 12px 34px rgba(0,0,0,.16);animation:npopIn .25s ease}',
+'body.dark .prod-npop{background:#161310;border-color:#2a2318}',
+'@keyframes npopIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}',
+'.prod-npop .np-dot{width:9px;height:9px;border-radius:50%;background:#d1443a;margin-top:5px;flex:none;animation:rpPulse 1.6s infinite}',
+'.prod-npop .np-body{flex:1;min-width:0}',
+'.prod-npop .np-count{font-size:.64rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#c99a2e}',
+'.prod-npop .np-title{font-weight:700;font-size:.86rem;margin-top:2px}',
+'.prod-npop .np-msg{font-size:.75rem;color:var(--text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}',
+'.prod-npop .np-view{background:#c99a2e;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-weight:700;font-size:.78rem;cursor:pointer;flex:none;align-self:center}',
+'.prod-npop .np-x{background:none;border:none;font-size:1.2rem;color:var(--text-muted);cursor:pointer;line-height:1;flex:none;padding:0 2px}',
+'.ptc.ptc-optim,.pt-row.ptc-optim{opacity:.5;pointer-events:none;position:relative}',
+'.ptc.ptc-optim::after,.pt-row.ptc-optim::after{content:"";position:absolute;top:50%;left:50%;width:26px;height:26px;margin:-13px 0 0 -13px;border:3px solid rgba(201,154,46,.28);border-top-color:#c99a2e;border-radius:50%;animation:ptcSpin .7s linear infinite;z-index:6}',
+'@keyframes ptcSpin{to{transform:rotate(360deg)}}',
 /* mobile filter button + drawer */
 '.p-mfilter{display:none}',
 '.pfd-wrap{position:fixed;inset:0;z-index:900;background:rgba(20,15,5,.4);opacity:0;pointer-events:none;transition:opacity .2s}',
@@ -20803,15 +20826,41 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   window.prodNotifRefreshDot=function(portal){
     api(P[portal].api+'/notifications').then(function(r){
-      window._prodNotifCache=r.notifications||[];
+      var _list=r.notifications||[];
+      window._prodNotifCache=_list;
       var u=r.unread||0;
       var dot=document.getElementById(portal+'-bell-dot'); if(dot){ dot.textContent=u>99?'99+':u; dot.style.display=u>0?'flex':'none'; }
       // sidebar Notifications counter (red)
       var app=document.getElementById(portal+'-app');
       if(app){ var nb=app.querySelector('.ps-notif-badge'); if(nb){ nb.textContent=u>99?'99+':u; nb.style.display=u>0?'flex':'none'; }
         var ni=app.querySelector('.ps-item[data-page="notifs"]'); if(ni) ni.classList.toggle('has-unread',u>0); }
+      try{ _prodNotifPopup(portal, _list, u); }catch(e){}
     }).catch(function(){});
   };
+  // Persistent new-notification popup — naya notification aate hi dikhta hai aur View/dismiss
+  // karne tak (ya sab read hone tak) rehta hai. Sabhi production portals ke liye.
+  function _prodNotifPopup(portal, list, unread){
+    var app=document.getElementById(portal+'-app');
+    var ex=document.getElementById('prod-npop');
+    if(!app || !app.classList.contains('active') || unread<=0){ if(ex) ex.remove(); return; }
+    var newest=null; for(var i=0;i<(list||[]).length;i++){ if(!list[i].is_read){ newest=list[i]; break; } }
+    if(!newest){ if(ex) ex.remove(); return; }
+    if(window._prodNpopDismissed===newest.id){ if(ex) ex.remove(); return; }
+    if(ex){
+      if(ex.getAttribute('data-nid')===String(newest.id)){ var c=ex.querySelector('.np-count'); if(c) c.textContent=unread+' new notification'+(unread>1?'s':''); return; }
+      ex.remove();
+    }
+    var pop=document.createElement('div'); pop.id='prod-npop'; pop.className='prod-npop'; pop.setAttribute('data-nid',String(newest.id));
+    pop.innerHTML='<span class="np-dot"></span>'+
+      '<div class="np-body"><div class="np-count">'+unread+' new notification'+(unread>1?'s':'')+'</div>'+
+      '<div class="np-title">'+esc(newest.title||'Update')+'</div>'+
+      (newest.message?'<div class="np-msg">'+esc(newest.message)+'</div>':'')+'</div>'+
+      '<button class="np-view" onclick="prodNpopView(\''+portal+'\')">View</button>'+
+      '<button class="np-x" title="Dismiss" onclick="prodNpopDismiss()">\u00d7</button>';
+    app.appendChild(pop);
+  }
+  window.prodNpopView=function(portal){ var e=document.getElementById('prod-npop'); if(e) e.remove(); window._prodNpopDismissed=null; prodBell(portal); };
+  window.prodNpopDismiss=function(){ var e=document.getElementById('prod-npop'); if(e){ window._prodNpopDismissed=parseInt(e.getAttribute('data-nid'),10)||0; e.remove(); } };
   window.prodBell=function(portal){
     var ex=document.getElementById('pn-panel'); if(ex){ ex.remove(); return; }
     var main=document.querySelector('#'+portal+'-app .prodmain'); if(!main) return;
@@ -22026,7 +22075,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     var prog=(portal==='editor'&&(lc==='editing'||lc==='editing_paused'||lc==='editing_done')&&t.editing_progress!=null)?'<div class="ptc-prog"><i style="width:'+(t.editing_progress||0)+'%"></i></div><div class="ptc-prog-l">'+(t.editing_progress||0)+'% edited</div>':'';
     var _urgentCard=(t.priority==='urgent')||(lc==='pm_review')||(lc==='creator_submitted')||(t.deadline_flag&&t.deadline_flag.kind==='overdue');
-    return '<div class="ptc'+(_urgentCard?' urgent-task':'')+'" style="border-left:5px solid '+(st[1]||'#8a7d5c')+';position:relative" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
+    return '<div class="ptc'+(_urgentCard?' urgent-task':'')+'" data-ptc="'+t.id+'" style="border-left:5px solid '+(st[1]||'#8a7d5c')+';position:relative" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
       '<div class="ptc-hw">'+header+badge+((lc==='pm_review'||lc==='creator_submitted')&&portal==='production'?'<span class="pt-badge review"><i class="rp-dot"></i>REVIEW PENDING</span>':'')+((t.priority==='urgent')?'<span class="ptc-urgent">URGENT</span>':'')+'</div>'+
       '<div class="ptc-body"><div class="ptc-title">'+esc(t.title||'Untitled')+'</div>'+
       (chips.length?'<div class="pw-chips">'+chips.join('')+'</div>':'')+prog+
@@ -22045,7 +22094,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var df=t.deadline_flag||{}; var dl=(df.kind&&['overdue','today','soon'].indexOf(df.kind)>=0)?'<span class="pt-dl '+df.kind+'">'+esc(df.label)+'</span>':'';
     var _th=(_g.thumbnail_url||t.thumbnail_link||''); if(!_th && t.youtube_url){ var _yi2=_ytId(t.youtube_url); if(_yi2) _th='https://img.youtube.com/vi/'+_yi2+'/mqdefault.jpg'; }
     var _thumb=_th?'<img class="pt-thumb" src="'+esc(_th)+'" alt="" loading="lazy">':'';
-    return '<div class="pt-row" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+_thumb+
+    return '<div class="pt-row" data-ptc="'+t.id+'" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+_thumb+
       '<div class="pt-main"><div class="pt-title">'+esc(t.title||'Untitled')+urg+'</div>'+
       '<div class="pt-meta"><span class="pt-ref">'+esc(t.ref_code||'')+'</span>'+meta.map(function(m){return '<span>'+m+'</span>';}).join('')+'</div></div>'+
       dl+badge+'<span class="pt-stage">'+esc(t.next_action||t.lifecycle_label||'')+'</span></div>';
@@ -22939,11 +22988,15 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     api(P.production.api+'/refresh-views','POST',{}).then(function(r){ toast('Views updated ('+((r&&r.updated)||0)+' videos)'); _refresh('production'); })
       .catch(function(e){ if(btn){ btn.disabled=false; btn.textContent='Refresh live views'; } toast((e&&e.message)||'Could not refresh',true); });
   };
+  // Card se action lene par TURANT feedback (dim + spinner) — "hang" jaisa feel na ho. Backend
+  // background me; success par list refresh, fail par card wapas normal + error.
   window.prodAct=function(portal,id,ep,body){
-    _pBusy(true);   // instant feedback + blocks double-clicks
+    _pBusy(true);
+    var _card=document.querySelector('#'+portal+'-app [data-ptc="'+id+'"]');
+    if(_card) _card.classList.add('ptc-optim');
     var full=P[portal].api+((ep.indexOf('/tasks/')===0||ep.indexOf('/videos/')===0)?ep:('/tasks/'+id+ep));
     api(full,'POST',body||{}).then(function(){ prodDismiss(); toast('Done'); _refresh(portal); })
-      .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Action failed',true); });
+      .catch(function(e){ _pBusy(false); if(_card) _card.classList.remove('ptc-optim'); toast((e&&e.message)||'Action failed',true); });
   };
   function _actsBox(){ return document.getElementById('p-acts'); }
   function _formWrap(inner,submitLabel,submitCall){

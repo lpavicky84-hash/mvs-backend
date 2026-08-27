@@ -7,7 +7,7 @@ Task Manager UI does not break (see LEGACY_MAP).
 
 Used by: production_routes, editor_routes, youtuber_routes, graphics_routes.
 """
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import json
 
 from models import (
@@ -385,6 +385,19 @@ def attachments_out(db, t):
 
 # ---------------------------------------------------------------- serializers
 def _dt(x):
+    """UTC-stored times (created / submitted / events / progress) -> IST display."""
+    if not x:
+        return ""
+    try:
+        y = x.replace(tzinfo=timezone.utc) if getattr(x, "tzinfo", None) is None else x
+        y = y.astimezone(timezone(timedelta(hours=5, minutes=30)))
+    except Exception:
+        y = x
+    return y.strftime("%d %b %Y, %I:%M %p")
+
+
+def _dt_raw(x):
+    """Already-local (IST) times like deadline -> show as-is (no shift)."""
     return x.strftime("%d %b %Y, %I:%M %p") if x else ""
 
 
@@ -478,7 +491,7 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None):
         "lifecycle_label": lc_label(t.lifecycle),
         "legacy_status": t.status or "",
         "next_action": next_action(db, t, g),
-        "deadline": _dt(t.deadline),
+        "deadline": _dt_raw(t.deadline),
         "deadline_iso": (t.deadline.strftime("%Y-%m-%dT%H:%M:%SZ") if t.deadline else ""),
         "deadline_flag": (lambda f: {"kind": f[0], "label": f[1]})(deadline_flag(t)),
         "editor_id": t.editor_id,
@@ -641,15 +654,20 @@ def timeline_out(db, t):
     merged = []
     for e in rows:
         _note = ""
+        _pct = None
         try:
             import json as _jm
             _mm = _jm.loads(e.meta) if e.meta else {}
             if isinstance(_mm, dict):
                 _note = _mm.get("note", "") or ""
+                _pct = _mm.get("progress")
         except Exception:
             _note = ""
+        _lbl = _event_label(e.event)
+        if e.event == "progress_updated" and _pct is not None:
+            _lbl = "Editing " + str(_pct) + "%"
         merged.append((e.created_at, {
-            "event": e.event, "label": _event_label(e.event),
+            "event": e.event, "label": _lbl,
             "actor": e.actor_name or "", "role": e.actor_role or "",
             "prev": e.prev_state or "", "new": e.new_state or "",
             "note": _note,
@@ -679,7 +697,7 @@ def timeline_out(db, t):
         merged.append((ts or _dtc.min, {
             "event": s, "label": _AH.get(s, s.replace("_", " ").title() if s else "Update"),
             "actor": "", "role": "", "prev": "", "new": s,
-            "note": h.get("note", "") or "", "at": (ts.strftime("%d %b %Y, %I:%M %p") if ts else raw),
+            "note": h.get("note", "") or "", "at": (_dt(ts) if ts else raw),
         }))
     merged.sort(key=lambda x: (x[0] is None, x[0]))
     # de-dup exact same label+at (production event + admin history overlap)
