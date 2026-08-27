@@ -110,6 +110,24 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
              deadline: str = "", teacher_id: int = 0, channel: str = "",
              video_type: str = "", page: int = 1, size: int = 40,
              db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    # Self-heal: agar legacy Task Manager me admin ne approve/upload kiya (status aage badh gaya)
+    # par production lifecycle abhi review/editing me atka hai, to lifecycle ko aage sync kar do —
+    # taaki approved video PM Review me dikhna band ho jaaye (dono portal ek jaisa).
+    try:
+        _healed = False
+        for s in (db.query(VideoTask).filter(
+                VideoTask.status == "approved",
+                VideoTask.lifecycle.in_(["pm_review", "creator_submitted"])).all()):
+            s.lifecycle = "approved"; _healed = True
+        for s in (db.query(VideoTask).filter(
+                VideoTask.status == "uploaded",
+                VideoTask.lifecycle.isnot(None), VideoTask.lifecycle != "",
+                ~VideoTask.lifecycle.in_(["uploaded", "completed"])).all()):
+            s.lifecycle = "uploaded"; _healed = True
+        if _healed:
+            db.commit()
+    except Exception:
+        db.rollback()
     query = db.query(VideoTask).filter(VideoTask.cancelled == False)
     # Teacher/general list: single-video TASKS only — projects (one_shot / rapid_revision /
     # project) live in their own Projects section. BUT the YouTuber Tasks section has NO separate

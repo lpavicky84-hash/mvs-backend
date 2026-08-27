@@ -1835,6 +1835,30 @@ def vt_review(task_id: int, payload: dict = Body(...),
             _vt_notify(db, uid, f"✅ Video Task Update — {label}",
                        f'Your video "{t.title}" status is now: {label}'
                        + (f'. Remarks: {remarks}' if remarks else '.'))
+    # Production bridge: legacy Task Manager me liya gaya review action production lifecycle me
+    # sync karo, taaki PM portal aur admin dono ek jaisa dikhein. (Warna approve hone par bhi
+    # video PM Review me atki reh jaati thi.) Sirf production-tracked tasks (lifecycle set) ke liye.
+    try:
+        if getattr(t, "lifecycle", ""):
+            _lc = None
+            if action == "approved":
+                _lc = "approved"
+            elif action == "editing_soon":
+                _lc = "editing"
+            elif action == "editing_done":
+                _lc = "editing_done"
+            elif action == "uploaded":
+                _lc = "uploaded"
+            elif action == "reshoot":
+                _lc = "reshoot_required"
+            elif action == "rejected":
+                _final = bool(payload.get("final") or payload.get("no_resubmit"))
+                _lc = "rejected" if _final else "changes_required"
+            if _lc and _lc != (t.lifecycle or ""):
+                import production_core as _pc
+                _pc.set_state(db, t, _lc, actor=_, event="legacy_review_" + action, force=True)
+    except Exception:
+        pass
     db.commit()
     return {"ok": True, "status": t.status}
 
