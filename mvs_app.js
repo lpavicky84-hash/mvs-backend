@@ -8684,12 +8684,11 @@ async function loadTVTasks(){
       const rejNote='';
       const propNote=(t.proposal_ok==='pending')?`<span class="vt-pill proposal">Pending Approval</span>`:'';
       const th=t.thumbnail;
-      const thumbBox=th?`
-        <div class="vt-thumb-status ${th.approved?'ready':'pending'}${(!th.approved&&th.overdue)?' overdue':''}">
-          ${th.approved
-            ? `<div class="vts-h">${ic('check')} Thumbnail ready${th.designer?` — designed by ${esc(th.designer)}`:''}</div>${th.url?`<a href="${esc(th.url)}" target="_blank" rel="noopener" class="vts-link">${ic('image')} View thumbnail</a>`:''}`
-            : `<div class="vts-h vts-blink">${ic('image')} Thumbnail pending${th.designer?` — ${esc(th.designer)} is designing it`:''}</div>${th.deadline?`<div class="vts-sub">Expected by <b>${esc(th.deadline)}</b>${th.overdue?' <span class="vts-late">· overdue</span>':''}</div>`:`<div class="vts-sub">A thumbnail will be provided for this video.</div>`}`
-          }
+      // Approved thumbnail ab card ke header image me dikhta hai (image jaisa) — alag "View thumbnail"
+      // block sirf pending ke liye rakho taaki teacher ko pata rahe thumbnail aa raha hai.
+      const thumbBox=(th && !th.approved)?`
+        <div class="vt-thumb-status pending${th.overdue?' overdue':''}">
+          <div class="vts-h vts-blink">${ic('image')} Thumbnail pending${th.designer?` — ${esc(th.designer)} is designing it`:''}</div>${th.deadline?`<div class="vts-sub">Expected by <b>${esc(th.deadline)}</b>${th.overdue?' <span class="vts-late">· overdue</span>':''}</div>`:`<div class="vts-sub">A thumbnail will be provided for this video.</div>`}
         </div>`:'';
       return `<div class="vt-card st-${t.status}" data-tid-card="${t.id}">${_vtThumb(t,'t')}<div class="vt-body">
         <div class="vt-chips">${propNote}${t.is_collab?_vtCollabChip(t,'t'):''}${t.kind==='urgent'?`<span class="vt-pill" style="background:rgba(220,38,38,.15);color:#dc2626;font-weight:800">${ic('alert')} URGENT</span>`:''}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
@@ -9211,10 +9210,12 @@ function _vtThumbFile(file){
   reader.readAsDataURL(file);
 }
 function _vtThumb(t,who){
-  const has=!!(t.thumbnail_b64||t.thumbnail_link);
+  const gth=(t.thumbnail && t.thumbnail.approved && t.thumbnail.url)?t.thumbnail.url:'';
+  const has=!!(t.thumbnail_b64||t.thumbnail_link||gth);
   const _is='width:100%;height:100%;object-fit:cover;display:block';
   const img=t.thumbnail_b64?`<img src="${t.thumbnail_b64}" alt="" style="${_is}">`
-    :(t.thumbnail_link?`<img src="${esc(t.thumbnail_link)}" onerror="this.remove()" alt="" style="${_is}">`:'');
+    :(t.thumbnail_link?`<img src="${esc(t.thumbnail_link)}" onerror="this.remove()" alt="" style="${_is}">`
+    :(gth?`<img src="${esc(gth)}" onerror="this.remove()" alt="" style="${_is}">`:''));
   const blink=who==='t';
   return `<div class="vt-thumb${has?' click':''}" style="aspect-ratio:16/9;height:auto;overflow:hidden;position:relative"${has?` onclick="vtThumbOpen(${t.id},'${who||'t'}')" title="Open full screen — download available"`:''}>${img||esc((t.title||'V').slice(0,1).toUpperCase())}<div class="vt-status">${_vtPill(t,blink,who)}</div>${has?`<span class="vt-dl">${ic('download')} View</span>`:''}</div>`;
 }
@@ -9223,7 +9224,7 @@ function vtThumbOpen(id,who){
   const t=(((who==='a')?window._avtMap:window._tvtMap)||{})[id]; if(!t) return;
   const name=((t.title||'thumbnail').replace(/[^\w\- ]+/g,'').trim().slice(0,60)||'thumbnail');
   if(t.thumbnail_b64){ openImageViewerSrc(t.thumbnail_b64,name+'.jpg'); return; }
-  const link=t.thumbnail_link||'';
+  const link=t.thumbnail_link||((t.thumbnail&&t.thumbnail.approved&&t.thumbnail.url)?t.thumbnail.url:'')||'';
   if(/\.(png|jpe?g|webp|gif|bmp)(\?|#|$)/i.test(link)) openImageViewerSrc(link,name+'.jpg');
   else if(link) window.open(link,'_blank');
   else toast('No thumbnail attached to this task');
@@ -9437,12 +9438,20 @@ function _aVtConvoRender(id,t,comments){
   const refBlock=refVid?`<a href="${esc(refVid)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="margin-bottom:10px">${ic('play')} Open Reference Video</a>`:'';
   const remarks=(t.remarks||'').trim();
   const remBlock=remarks?`<div class="tvn-remarks"><div class="tvn-h">${ic('alert')} Remarks you sent</div><div class="tvn-body">${esc(remarks)}</div></div>`:'';
-  const thread=comments.length?comments.map(c=>{
+  function _bubble(c){
     const mine=(c.role!=='teacher');
-    return `<div class="tvn-msg ${mine?'mine':'them'}"><div class="tvn-msg-a">${esc(c.author)}${c.role==='teacher'?' · Teacher':''}</div><div class="tvn-msg-b">${esc(c.message)}</div><div class="tvn-msg-t">${esc(c.at)}</div></div>`;
-  }).join(''):'<div style="color:var(--text-muted);font-size:.82rem;padding:6px 0">No messages yet.</div>';
+    const who=esc((c.role||'').replace('production_manager','PM').replace('graphics','Graphics').replace('teacher','Teacher').replace('admin','Admin'));
+    const img=c.attachment_url?`<img src="${esc(c.attachment_url)}" onclick="window.open('${esc(c.attachment_url)}','_blank')" style="max-width:190px;max-height:150px;border-radius:8px;margin-top:5px;cursor:pointer;display:block">`:'';
+    return `<div class="tvn-msg ${mine?'mine':'them'}"><div class="tvn-msg-a">${esc(c.author)} · ${who}</div>${c.message?`<div class="tvn-msg-b">${esc(c.message)}</div>`:''}${img}<div class="tvn-msg-t">${esc(c.at)}</div></div>`;
+  }
+  // Video Needs teachers ke liye bana tha — default sirf creator (teacher) baat dikhao.
+  const creatorC=comments.filter(c=>((c.audience||'creator')!=='internal'));
+  const internalC=comments.filter(c=>((c.audience||'creator')==='internal'));
+  const thread=creatorC.length?creatorC.map(_bubble).join(''):'<div style="color:var(--text-muted);font-size:.82rem;padding:6px 0">No messages with the teacher yet.</div>';
+  const internalBtn=internalC.length?`<button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick="var e=document.getElementById('avn-internal');if(e){var h=(e.style.display==='none');e.style.display=h?'block':'none';this.textContent=h?'Hide PM–Graphics chat':('Show PM–Graphics chat ('+${internalC.length}+')');}">${ic('users')} Show PM–Graphics chat (${internalC.length})</button>`:'';
+  const internalThread=internalC.length?`<div id="avn-internal" style="display:none;margin-top:10px;border-top:1px dashed var(--border);padding-top:10px"><div style="font-weight:800;font-size:.76rem;color:var(--text-muted);margin-bottom:6px">PM ↔ Graphics (internal — teacher ko nahi dikhta)</div><div class="tvn-thread">${internalC.map(_bubble).join('')}</div></div>`:'';
   showModal('Video Needs — '+esc(t.title||''),
-    `${refBlock}${remBlock}<div class="tvn-thread">${thread}</div>
+    `${refBlock}${remBlock}<div class="tvn-thread">${thread}</div>${internalBtn}${internalThread}
      <div class="form-group" style="margin-top:10px"><label>Reply to the teacher</label><textarea id="avn-reply" class="input" rows="2" placeholder="Type your message..."></textarea></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" onclick="aVtConvoSend(${id})">${ic('send')} Send</button>`);
 }

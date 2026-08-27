@@ -1130,7 +1130,10 @@ def _task_out(db, t, with_thumb=True, tname_map=None):
         "review_remarks": t.review_remarks or "",
         "reject_count": t.reject_count or 0,
         "no_resubmit": bool(getattr(t, "no_resubmit", False)),
-        "comment_count": db.query(VideoTaskComment).filter(VideoTaskComment.task_id == t.id).count(),
+        "comment_count": db.query(VideoTaskComment).filter(
+            VideoTaskComment.task_id == t.id,
+            or_(VideoTaskComment.audience == None, VideoTaskComment.audience == "",
+                VideoTaskComment.audience == "creator")).count(),
         "kind": getattr(t, "kind", "normal") or "normal",
         "subject": getattr(t, "subject", "") or "",
         "weekly_quota": getattr(t, "weekly_quota", 0) or 0,
