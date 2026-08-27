@@ -137,14 +137,34 @@ def gfx_submit(tid: int, payload: dict = Body(...),
                db: Session = Depends(get_db), me=Depends(get_graphics)):
     sp = _me_staff(db, me)
     g = _my_gtask(db, sp, tid)
-    url = (payload.get("thumbnail_url") or "").strip()
+    t = db.query(VideoTask).filter(VideoTask.id == g.task_id).first()
+    # Frontend bhejta hai: images[] (pasted/uploaded base64) aur/ya drive_link. Base64 ko R2 pe
+    # upload karke URL banao (VARCHAR me base64 fit nahi hota). thumbnail_url bhi accept karo.
+    url = (payload.get("thumbnail_url") or payload.get("drive_link") or "").strip()
+    images = payload.get("images") or []
+    if images and not url:
+        try:
+            urls = pc.save_images(db, t, images[:1], "thumbnail", None, me, return_urls=True) or []
+            if urls:
+                url = urls[0]
+        except Exception:
+            url = ""
     if not url:
         raise HTTPException(400, "Thumbnail image/URL is required")
     g.thumbnail_url = url
+    _drive = (payload.get("drive_link") or "").strip()
+    if _drive:
+        g.drive_link = _drive
     g.status = "submitted"
     g.submitted_at = datetime.utcnow()
-    t = db.query(VideoTask).filter(VideoTask.id == g.task_id).first()
-    pc.log_event(db, t, me, "thumbnail_submitted", new_state=t.lifecycle)
+    _note = (payload.get("remarks") or "").strip()
+    _ref = (payload.get("reference") or "").strip()
+    _meta = {}
+    if _note:
+        _meta["note"] = _note
+    if _ref:
+        _meta["reference"] = _ref
+    pc.log_event(db, t, me, "thumbnail_submitted", new_state=t.lifecycle, meta=(_meta or None))
     pc.notify_pms(db, "Thumbnail Submitted",
                   f'{me.name} submitted a thumbnail for "{t.title}".', "production", link=str(t.id))
     db.commit()

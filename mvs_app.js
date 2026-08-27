@@ -20377,6 +20377,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pq-prem-exp{background:var(--surface-2,#f2ede1);border-radius:9px;padding:7px 11px;font-size:.78rem;color:var(--text-muted);display:flex;align-items:center;gap:6px;margin-bottom:12px}',
 'body.dark .pq-prem-exp{background:#221b0d}',
 '.pq-prem-acts{display:flex;gap:10px;flex-wrap:wrap}',
+'.pk-card.pk-blink{animation:pkBlink 1.4s ease-in-out infinite}',
+'@keyframes pkBlink{0%,100%{box-shadow:0 0 0 0 rgba(209,68,58,0);border-color:rgba(209,68,58,.5)}50%{box-shadow:0 0 0 4px rgba(209,68,58,.22);border-color:rgba(209,68,58,.95)}}',
 /* mobile filter button + drawer */
 '.p-mfilter{display:none}',
 '.pfd-wrap{position:fixed;inset:0;z-index:900;background:rgba(20,15,5,.4);opacity:0;pointer-events:none;transition:opacity .2s}',
@@ -21432,8 +21434,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       Object.keys(kpis).forEach(function(k){
         var urgent=(k==='overdue'||k==='pm_review'||k==='pending_review'||k==='urgent');
         var cls=(urgent?'urgent':(k==='completed'||k==='published'||k==='approved'||k==='uploaded'?'good':(k==='qc'||k==='changes'?'warn':'')));
+        var _kv=(kpis[k]||0);
+        if((k==='pm_review'||k==='pending_review') && _kv>0) cls+=' pk-blink';
         var nav=(KPI_NAV[portal]||{})[k];
-        html+=_pkc({icon:(_KICON[k]||'grid'),val:(kpis[k]||0),label:(KPI_LABELS[k]||k),cls:cls,onclick:nav?('prodKpiGo(\''+portal+'\',\''+k+'\')'):''});
+        html+=_pkc({icon:(_KICON[k]||'grid'),val:_kv,label:(KPI_LABELS[k]||k),cls:cls,onclick:nav?('prodKpiGo(\''+portal+'\',\''+k+'\')'):''});
       });
       html+='</div>';
       var sec=r.secondary||r.monthly;
@@ -21988,15 +21992,15 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(lifecycle==='uploaded'||lifecycle==='completed') return {kind:'done',label:'Completed'};
     var dt=new Date(iso); if(isNaN(dt.getTime())) return null;
     var delta=Math.floor((dt.getTime()-Date.now())/1000); var ad=Math.abs(delta);
-    var d=Math.floor(ad/86400), h=Math.floor((ad%86400)/3600), m=Math.floor((ad%3600)/60);
+    var d=Math.floor(ad/86400), h=Math.floor((ad%86400)/3600), m=Math.floor((ad%3600)/60), s=ad%60;
     var p=function(n){ return (n<10?'0':'')+n; };
     if(delta<0){
-      var lbl=(ad<172800)?(Math.floor(ad/3600)+'h '+p(m)+'m overdue'):(d+'d '+p(h)+'h overdue');
+      var lbl=(ad<172800)?(Math.floor(ad/3600)+'h '+p(m)+'m '+p(s)+'s overdue'):(d+'d '+p(h)+'h overdue');
       return {kind:'overdue',label:lbl};
     }
-    if(delta<7200) return {kind:'soon',label:(h?('Due soon '+h+'h '+p(m)+'m'):('Due soon '+m+'m'))};
-    if(delta<86400) return {kind:'today',label:'Due today '+h+'h '+p(m)+'m'};
-    return {kind:'later',label:'Due in '+d+'d '+p(h)+'h'};
+    if(delta<7200) return {kind:'soon',label:'Due soon '+(h?h+'h ':'')+p(m)+'m '+p(s)+'s'};
+    if(delta<86400) return {kind:'today',label:'Due today '+h+'h '+p(m)+'m '+p(s)+'s'};
+    return {kind:'later',label:'Due in '+d+'d '+p(h)+'h '+p(m)+'m'};
   }
   function _dlTick(){
     try{
@@ -22006,7 +22010,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       });
     }catch(e){}
   }
-  try{ if(window._dlTickInt) clearInterval(window._dlTickInt); window._dlTickInt=setInterval(function(){ if(!document.hidden) _dlTick(); }, 60000); }catch(e){}
+  try{ if(window._dlTickInt) clearInterval(window._dlTickInt); window._dlTickInt=setInterval(function(){ if(!document.hidden) _dlTick(); }, 1000); }catch(e){}
   // --- premium KPI card builder (icon + value + label + optional sub + click) ---
   var _PKC_ICON={
     grid:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
