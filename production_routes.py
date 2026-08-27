@@ -72,6 +72,7 @@ def pm_dashboard(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
         "pm_review": q.filter(or_(VideoTask.lifecycle.in_(["creator_submitted", "pm_review"]),
                                   VideoTask.status == "submitted")).count(),
         "thumb_review": db.query(GraphicsTask).filter(GraphicsTask.status == "submitted").count(),
+        "thumb_changes": db.query(GraphicsTask).filter(GraphicsTask.status == "changes").count(),
         "editing": c("editing", "editing_paused"),
         "graphics": db.query(GraphicsTask).filter(GraphicsTask.status.in_(["in_progress", "submitted"])).count(),
         "qc_pending": c("qc_pending"),
@@ -157,6 +158,11 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
         query = query.filter(VideoTask.channel_name == channel)
     if video_type:
         query = query.filter(VideoTask.video_type == video_type)
+    if status == "thumb_changes":
+        # Thumbnail Changes section — jin thumbnails ko PM ne changes ke liye wapas bheja.
+        _csub = db.query(GraphicsTask.task_id).filter(GraphicsTask.status == "changes")
+        query = query.filter(VideoTask.id.in_(_csub))
+        status = ""
     if status == "thumb_review":
         # Thumbnail Review section — jin tasks ke thumbnail graphics designer ne submit kiye,
         # wo PM ke review ke liye. (Graphics status = submitted.)
@@ -218,9 +224,9 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
 
 
 @router.get("/tasks/{tid}/comments")
-def pm_task_comments(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+def pm_task_comments(tid: int, audience: str = "", db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     from video_tasks import _vtc_list
-    return {"comments": _vtc_list(db, tid)}
+    return {"comments": _vtc_list(db, tid, (audience or None))}
 
 
 @router.post("/tasks/{tid}/comments")
@@ -228,7 +234,19 @@ def pm_task_comment_add(tid: int, payload: dict = Body(...),
                         db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     from video_tasks import _vtc_add, _vtc_out
     t = _task(db, tid)
-    c = _vtc_add(db, tid, me, payload.get("message"), "production_manager")
+    _att = ""
+    _imgs = payload.get("images") or ([payload.get("attachment")] if payload.get("attachment") else [])
+    if _imgs:
+        try:
+            urls = pc.save_images(db, t, _imgs[:1], "chat", None, me, return_urls=True) or []
+            if urls:
+                _att = urls[0]
+        except Exception:
+            _att = ""
+    _aud = (payload.get("audience") or "creator").strip().lower()
+    if _aud not in ("creator", "internal"):
+        _aud = "creator"
+    c = _vtc_add(db, tid, me, payload.get("message"), "production_manager", _att, _aud)
     if not c:
         raise HTTPException(400, "Message cannot be empty")
     # notify the creator (and collaborators) so they see the manager's message

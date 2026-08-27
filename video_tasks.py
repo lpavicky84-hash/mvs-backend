@@ -829,33 +829,57 @@ def _vt_notify(db, user_id, title, message, ntype="video_task", link=None):
 
 
 def _vtc_out(db, c):
+    _at = ""
+    if c.created_at:
+        try:
+            from datetime import timezone as _tz, timedelta as _td
+            _y = c.created_at.replace(tzinfo=_tz.utc).astimezone(_tz(_td(hours=5, minutes=30)))
+            _at = _y.strftime("%d %b %Y, %I:%M %p")
+        except Exception:
+            _at = c.created_at.strftime("%d %b %Y, %I:%M %p")
     return {"id": c.id, "task_id": c.task_id, "user_id": c.user_id,
             "author": c.author_name or "", "role": c.author_role or "",
             "message": c.message or "",
-            "at": c.created_at.strftime("%d %b %Y, %I:%M %p") if c.created_at else ""}
+            "attachment_url": getattr(c, "attachment_url", "") or "",
+            "audience": getattr(c, "audience", "creator") or "creator",
+            "at": _at}
 
 
-def _vtc_list(db, task_id):
-    rows = (db.query(VideoTaskComment)
-            .filter(VideoTaskComment.task_id == task_id)
-            .order_by(VideoTaskComment.id.asc()).all())
+def _vtc_list(db, task_id, audience=None):
+    q = (db.query(VideoTaskComment)
+         .filter(VideoTaskComment.task_id == task_id))
+    if audience == "creator":
+        # Teacher-facing: only creator messages (NULL/'' from old rows = creator too).
+        q = q.filter(or_(VideoTaskComment.audience == None,
+                         VideoTaskComment.audience == "",
+                         VideoTaskComment.audience == "creator"))
+    elif audience == "internal":
+        q = q.filter(VideoTaskComment.audience == "internal")
+    rows = q.order_by(VideoTaskComment.id.asc()).all()
     return [_vtc_out(db, c) for c in rows]
 
 
-def _vtc_add(db, task_id, user, message, role):
+def _vtc_add(db, task_id, user, message, role, attachment_url="", audience="creator"):
     msg = (message or "").strip()
-    if not msg:
+    att = (attachment_url or "").strip()
+    if not msg and not att:
         return None
     c = VideoTaskComment(task_id=task_id, user_id=getattr(user, "id", None),
                          author_name=getattr(user, "name", "") or "",
                          author_role=role, message=msg)
+    try:
+        c.attachment_url = att
+        c.audience = audience or "creator"
+    except Exception:
+        pass
     db.add(c); db.flush()
     return c
 
 
 @router.get("/teacher/video-tasks/{task_id}/comments")
 def vt_teacher_comments(task_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
-    return {"comments": _vtc_list(db, task_id)}
+    # Teacher ko sirf creator-facing baat dikhe — PM<->graphics/editor ki internal chat nahi.
+    return {"comments": _vtc_list(db, task_id, "creator")}
 
 
 @router.post("/teacher/video-tasks/{task_id}/comments")

@@ -434,6 +434,8 @@ def _ensure_production_columns():
         "ALTER TABLE video_tasks ADD COLUMN reference_video TEXT",
         "ALTER TABLE video_tasks ADD COLUMN series_name VARCHAR(200)",
         "ALTER TABLE youtuber_profiles ADD COLUMN monthly_target INTEGER",
+        "ALTER TABLE video_task_comments ADD COLUMN attachment_url VARCHAR(600)",
+        "ALTER TABLE video_task_comments ADD COLUMN audience VARCHAR(20)",
     ]
     for _s in _stmts:
         try:
@@ -525,6 +527,9 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None):
             "thumbnail_url": (g.thumbnail_url if g else ""),
             "reference_image": (g.reference_image if g else ""),
             "instructions": (g.instructions if g else ""),
+            "remarks": (g.remarks if g else ""),
+            "quality_rating": (g.quality_rating if g else None),
+            "drive_link": (getattr(g, "drive_link", "") if g else ""),
             "revision_count": (g.revision_count if g else 0),
         },
     }

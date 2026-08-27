@@ -1607,4 +1607,6 @@ class VideoTaskComment(Base):
     author_name = Column(String(120), default="")
     author_role = Column(String(40), default="")   # teacher / admin / production_manager
     message = Column(Text, default="")
+    attachment_url = Column(String(600), default="")   # optional image/screenshot in chat (R2 url)
+    audience = Column(String(20), default="creator")    # creator (teacher-facing) | internal (PM/graphics/admin only)
     created_at = Column(DateTime, default=func.now())

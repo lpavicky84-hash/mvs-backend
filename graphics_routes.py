@@ -117,7 +117,38 @@ def gfx_task_detail(tid: int, db: Session = Depends(get_db), me=Depends(get_grap
     return out
 
 
-@router.post("/tasks/{tid}/start")
+@router.get("/tasks/{tid}/comments")
+def gfx_comments(tid: int, db: Session = Depends(get_db), me=Depends(get_graphics)):
+    sp = _me_staff(db, me)
+    _my_gtask(db, sp, tid)  # ensures this designer owns the thumbnail task
+    from video_tasks import _vtc_list
+    return {"comments": _vtc_list(db, tid, "internal")}
+
+
+@router.post("/tasks/{tid}/comments")
+def gfx_comment_add(tid: int, payload: dict = Body(...),
+                    db: Session = Depends(get_db), me=Depends(get_graphics)):
+    sp = _me_staff(db, me)
+    _my_gtask(db, sp, tid)
+    t = db.query(VideoTask).filter(VideoTask.id == tid).first()
+    from video_tasks import _vtc_add, _vtc_out
+    _att = ""
+    _imgs = payload.get("images") or ([payload.get("attachment")] if payload.get("attachment") else [])
+    if _imgs:
+        try:
+            urls = pc.save_images(db, t, _imgs[:1], "chat", None, me, return_urls=True) or []
+            if urls:
+                _att = urls[0]
+        except Exception:
+            _att = ""
+    c = _vtc_add(db, tid, me, payload.get("message"), "graphics", _att, "internal")
+    if not c:
+        raise HTTPException(400, "Message or image required")
+    pc.notify_pms(db, "Graphics replied on thumbnail",
+                  f'{getattr(me, "name", "Designer")} on "{t.title if t else ""}": {c.message[:110]}',
+                  "production", link=str(tid))
+    db.commit()
+    return {"ok": True, "comment": _vtc_out(db, c)}
 def gfx_start(tid: int, db: Session = Depends(get_db), me=Depends(get_graphics)):
     sp = _me_staff(db, me)
     g = _my_gtask(db, sp, tid)

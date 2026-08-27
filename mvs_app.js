@@ -20033,7 +20033,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   var P={
     production:{ role:'production_manager', title:'Production', sub:'Command Center', api:'/api/production',
       nav:[ {g:'Operations',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'board',t:'Production Board',i:'board'}, {p:'tasks',t:'Tasks',i:'list'}, {p:'ytasks',t:'YouTuber Tasks',i:'video'}, {p:'projects',t:'Projects',i:'folder'}, {p:'announce',t:'Announcements',i:'bell'} ]},
-            {g:'Pipeline',items:[ {p:'q:pm_review',t:'PM Review',i:'check'}, {p:'q:thumb_review',t:'Thumbnail Review',i:'image'}, {p:'q:editing',t:'Editing Queue',i:'video'}, {p:'q:qc_pending',t:'QC Queue',i:'check'}, {p:'q:ready_for_youtube',t:'Ready for YouTube',i:'video'}, {p:'urgent',t:'Urgent Videos',i:'board'} ]},
+            {g:'Pipeline',items:[ {p:'q:pm_review',t:'PM Review',i:'check'}, {p:'q:thumb_review',t:'Thumbnail Review',i:'image'}, {p:'q:thumb_changes',t:'Thumbnail Changes',i:'edit'}, {p:'q:editing',t:'Editing Queue',i:'video'}, {p:'q:qc_pending',t:'QC Queue',i:'check'}, {p:'q:ready_for_youtube',t:'Ready for YouTube',i:'video'}, {p:'urgent',t:'Urgent Videos',i:'board'} ]},
             {g:'Team',items:[ {p:'team',t:'Team & Workload',i:'team'} ]},
             {g:'Analytics',items:[ {p:'analytics',t:'Analytics',i:'grid'}, {p:'creators',t:'Creator Performance',i:'team'}, {p:'views',t:'Real-time Views',i:'grid'} ]} ] },
     editor:{ role:'editor', title:'Editor', sub:'Workspace', api:'/api/editor',
@@ -20062,7 +20062,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // --- KPI label maps (backend key -> human label) ---
   var KPI_LABELS={
     active:'Active Tasks', teacher_pending:'Teacher Pending', youtuber_pending:'YouTuber Pending',
-    pm_review:'PM Review', thumb_review:'Thumbnail Review', editing:'Editing', graphics:'Graphics', qc_pending:'QC Pending',
+    pm_review:'PM Review', thumb_review:'Thumbnail Review',thumb_changes:'Thumbnail Changes', thumb_changes:'Thumbnail Changes', editing:'Editing', graphics:'Graphics', qc_pending:'QC Pending',
     ready_for_youtube:'Ready for YouTube', due_today:'Due Today', overdue:'Overdue',
     assigned:'Assigned', not_started:'Not Started', changes:'Changes', completed:'Completed',
     requests:'Requests', pending_submission:'Pending Submission', submitted:'Submitted',
@@ -20071,7 +20071,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   // Which KPI cards drill into a filtered list (status/deadline). Others stay static.
   var KPI_NAV={
-    production:{ pm_review:{status:'pm_review'}, thumb_review:{status:'thumb_review'}, editing:{status:'editing'}, qc_pending:{status:'qc_pending'},
+    production:{ pm_review:{status:'pm_review'}, thumb_review:{status:'thumb_review'}, thumb_changes:{status:'thumb_changes'}, editing:{status:'editing'}, qc_pending:{status:'qc_pending'},
                  ready_for_youtube:{status:'ready_for_youtube'}, due_today:{deadline:'today'}, overdue:{deadline:'overdue'} },
     editor:{ assigned:{status:'editor_assigned'}, not_started:{status:'editor_assigned'}, editing:{status:'editing'},
              qc_pending:{status:'qc_pending'}, changes:{status:'qc_changes'} },
@@ -21321,7 +21321,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           '<div class="gfx-remark-box"><div class="gfx-remark-l">PM Remarks</div>'+esc(gx.remarks||'No remarks provided')+'</div>'+
           prevHtml+attHtml+
         '</div>'+
-        '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Close</button><button class="p-btn p-btn-primary" onclick="prodDismiss();gfxSubmitModal('+id+')">Submit New Thumbnail</button></div></div>'+
+        '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Close</button><button class="p-btn" onclick="prodDismiss();gfxChat('+id+')">Chat with PM</button><button class="p-btn p-btn-primary" onclick="prodDismiss();gfxSubmitModal('+id+')">Submit New Thumbnail</button></div></div>'+
         '</div>';
       dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
       document.body.appendChild(dr);
@@ -21329,6 +21329,85 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   // ---- PM: Thumbnail Review (view submission + rating + approve/changes/reject + screenshots) ----
   window._pmThumbImgs=[];
+  // ---- Graphics <-> PM chat (shared task thread; admin bhi dekh sakta hai) ----
+  window._chatImg=null;
+  window.gfxChat=function(id){
+    window._chatImg=null;
+    api(P.graphics.api+'/tasks/'+id+'/comments').then(function(r){ _gfxChatRender(id,(r&&r.comments)||[]); })
+      .catch(function(e){ toast((e&&e.message)||'Could not load chat',true); });
+  };
+  function _chatBubble(c, mineRole){
+    var mine=(c.role===mineRole);
+    var who=esc((c.role||'').replace('production_manager','PM').replace('graphics','Graphics').replace('admin','Admin').replace('teacher','Teacher'));
+    var img=c.attachment_url?'<img src="'+esc(c.attachment_url)+'" onclick="event.stopPropagation();prodLightbox(\''+esc(c.attachment_url)+'\')" style="max-width:190px;max-height:150px;border-radius:8px;margin-top:'+(c.message?'5px':'0')+';cursor:pointer;display:block">':'';
+    return '<div style="max-width:82%;padding:7px 11px;border-radius:12px;font-size:.83rem;'+(mine?'align-self:flex-end;background:rgba(46,158,107,.14);border:1px solid rgba(46,158,107,.3)':'align-self:flex-start;background:var(--surface-2,#f0ead9);border:1px solid var(--border)')+'"><div style="font-weight:800;font-size:.7rem;color:var(--muted);margin-bottom:2px">'+esc(c.author||'')+' \u00b7 '+who+'</div>'+(c.message?'<div>'+esc(c.message)+'</div>':'')+img+'<div style="font-size:.66rem;color:var(--muted);margin-top:3px">'+esc(c.at||'')+'</div></div>';
+  }
+  function _chatReadImg(file, prevId){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ window._chatImg=rd.result; var p=document.getElementById(prevId); if(p) p.innerHTML='<div style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:4px 8px"><img src="'+rd.result+'" style="height:34px;border-radius:4px"><button class="p-btn" style="padding:2px 8px" onclick="window._chatImg=null;var e=document.getElementById(\''+prevId+'\');if(e)e.innerHTML=\'\'">\u00d7</button></div>'; }; rd.readAsDataURL(file); }
+  function _chatFooter(id, sendFn){
+    return '<div class="pd-foot" style="display:block"><div id="chat-prev" style="margin-bottom:6px"></div>'+
+      '<div style="display:flex;gap:8px;width:100%;align-items:center">'+
+        '<button class="p-btn" title="Attach image" style="padding:8px 12px" onclick="document.getElementById(\'chat-file\').click()">\ud83d\udcce</button>'+
+        '<input class="p-input" id="chat-msg" placeholder="Type or paste an image..." style="flex:1" onkeydown="if(event.key===\'Enter\')'+sendFn+'('+id+')">'+
+        '<button class="p-btn p-btn-primary" onclick="'+sendFn+'('+id+')">Send</button>'+
+        '<input type="file" id="chat-file" accept="image/*" style="display:none">'+
+      '</div></div>';
+  }
+  function _chatWireInputs(){
+    var fi=document.getElementById('chat-file'); if(fi) fi.addEventListener('change',function(e){ var f=(e.target.files||[])[0]; if(f) _chatReadImg(f,'chat-prev'); });
+    window._chatPasteH=function(e){ if(!document.getElementById('chat-msg')){ document.removeEventListener('paste',window._chatPasteH); return; } var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ _chatReadImg(items[i].getAsFile(),'chat-prev'); e.preventDefault(); } } };
+    document.addEventListener('paste',window._chatPasteH);
+    var mi=document.getElementById('chat-msg'); if(mi) mi.focus();
+  }
+  function _gfxChatRender(id, comments){
+    var old=document.getElementById('prod-modal'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+    var thread=comments.length?comments.map(function(c){ return _chatBubble(c,'graphics'); }).join(''):'<div style="color:var(--muted);font-size:.82rem;padding:10px 0;text-align:center">No messages yet. Start the conversation with the PM about this thumbnail.</div>';
+    dr.innerHTML='<div class="p-modal" style="max-width:480px">'+
+      '<div class="pd-head"><div class="h-title">Chat with PM</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body"><div id="chat-thread" style="max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0">'+thread+'</div></div>'+
+      _chatFooter(id,'gfxChatSend')+
+      '</div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+    document.body.appendChild(dr);
+    var th=document.getElementById('chat-thread'); if(th) th.scrollTop=th.scrollHeight;
+    _chatWireInputs();
+  }
+  window.gfxChatSend=function(id){
+    var inp=document.getElementById('chat-msg'); var msg=inp?(inp.value||'').trim():'';
+    if(!msg && !window._chatImg) return;
+    var body={message:msg}; if(window._chatImg) body.attachment=window._chatImg;
+    if(inp) inp.value=''; var keep=window._chatImg; window._chatImg=null;
+    api(P.graphics.api+'/tasks/'+id+'/comments','POST',body).then(function(){ gfxChat(id); })
+      .catch(function(e){ toast((e&&e.message)||'Failed',true); window._chatImg=keep; });
+  };
+  // ---- PM <-> Graphics INTERNAL chat (teacher ko NAHI dikhta; admin dekhta hai) ----
+  window.prodGfxChat=function(id){
+    window._chatImg=null;
+    api(P.production.api+'/tasks/'+id+'/comments?audience=internal').then(function(r){ _pgChatRender(id,(r&&r.comments)||[]); })
+      .catch(function(e){ toast((e&&e.message)||'Could not load chat',true); });
+  };
+  function _pgChatRender(id, comments){
+    var old=document.getElementById('prod-modal'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+    var thread=comments.length?comments.map(function(c){ return _chatBubble(c,'production_manager'); }).join(''):'<div style="color:var(--muted);font-size:.82rem;padding:10px 0;text-align:center">No messages yet. Start the conversation with the graphics designer. (Teacher ko ye chat nahi dikhta.)</div>';
+    dr.innerHTML='<div class="p-modal" style="max-width:480px">'+
+      '<div class="pd-head"><div class="h-title">Chat with Graphics <span style="font-size:.66rem;font-weight:700;color:var(--muted)">\u00b7 internal</span></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body"><div id="chat-thread" style="max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0">'+thread+'</div></div>'+
+      _chatFooter(id,'prodGfxChatSend')+
+      '</div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+    document.body.appendChild(dr);
+    var th=document.getElementById('chat-thread'); if(th) th.scrollTop=th.scrollHeight;
+    _chatWireInputs();
+  }
+  window.prodGfxChatSend=function(id){
+    var inp=document.getElementById('chat-msg'); var msg=inp?(inp.value||'').trim():'';
+    if(!msg && !window._chatImg) return;
+    var body={message:msg,audience:'internal'}; if(window._chatImg) body.attachment=window._chatImg;
+    if(inp) inp.value=''; var keep=window._chatImg; window._chatImg=null;
+    api(P.production.api+'/tasks/'+id+'/comments','POST',body).then(function(){ prodGfxChat(id); })
+      .catch(function(e){ toast((e&&e.message)||'Failed',true); window._chatImg=keep; });
+  };
   window.pmThumbReview=function(id){
     window._pmThumbImgs=[]; window._pmThumbId=id;
     api(P.production.api+'/tasks/'+id).then(function(t){
@@ -21440,13 +21519,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         html+='<div class="p-bottleneck">Current bottleneck: '+esc(r.bottleneck)+'</div>';
       html+='<div class="pk-grid">';
       var _KICON={requests:'bell',pending_review:'eye',pm_review:'eye',in_production:'edit',editing:'edit',
-        graphics:'image',thumb_review:'image',qc:'check',ready:'video',ready_for_youtube:'video',published:'upload',uploaded:'upload',
+        graphics:'image',thumb_review:'image',thumb_changes:'edit',qc:'check',ready:'video',ready_for_youtube:'video',published:'upload',uploaded:'upload',
         overdue:'alert',completed:'check',approved:'check',urgent:'alert',proposals:'list',total:'grid'};
       Object.keys(kpis).forEach(function(k){
-        var urgent=(k==='overdue'||k==='pm_review'||k==='thumb_review'||k==='pending_review'||k==='urgent');
+        var urgent=(k==='overdue'||k==='pm_review'||k==='thumb_review'||k==='thumb_changes'||k==='pending_review'||k==='urgent');
         var cls=(urgent?'urgent':(k==='completed'||k==='published'||k==='approved'||k==='uploaded'?'good':(k==='qc'||k==='changes'?'warn':'')));
         var _kv=(kpis[k]||0);
-        if((k==='pm_review'||k==='thumb_review'||k==='pending_review') && _kv>0) cls+=' pk-blink';
+        if((k==='pm_review'||k==='thumb_review'||k==='thumb_changes'||k==='pending_review') && _kv>0) cls+=' pk-blink';
         var nav=(KPI_NAV[portal]||{})[k];
         html+=_pkc({icon:(_KICON[k]||'grid'),val:_kv,label:(KPI_LABELS[k]||k),cls:cls,onclick:nav?('prodKpiGo(\''+portal+'\',\''+k+'\')'):''});
       });
@@ -22094,6 +22173,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     } else if(portal==='graphics'){
       if(g.status==='new'||g.status==='pending'||g.status==='changes') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'graphics\','+t.id+',\'/start\')">Start Designing</button>';
       else if(g.status==='in_progress') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodCardAct(\'graphics\',\'submit\','+t.id+')">Submit Thumbnail</button>';
+      acts+='<button class="ptc-btn'+(g.status==='changes'?' ptc-ok':'')+'" onclick="event.stopPropagation();gfxChat('+t.id+')">Chat with PM'+(t.comment_count?(' ('+t.comment_count+')'):'')+'</button>';
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
     } else if(portal==='youtuber'){
       if(lc==='creator_assigned'||lc==='creator_working') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodCardAct(\'youtuber\',\'submit\','+t.id+')">Submit Video</button>';
@@ -22112,6 +22192,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'assign-graphics\','+t.id+')">Assign Graphics</button>';
     if(lc==='qc_pending') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\''+portal+'\','+t.id+',\'/qc-approve\')">QC Approve</button>';
     if(g.status==='submitted') acts+='<button class="ptc-btn ptc-btn-review" onclick="event.stopPropagation();pmThumbReview('+t.id+')"><span class="rev-dot"></span>Review Thumbnail</button>';
+    if(g.graphics_id && ['submitted','changes','in_progress'].indexOf(g.status)>=0) acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodGfxChat('+t.id+')">Chat with Graphics</button>';
     if(lc==='ready_for_youtube') acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'post-yt\','+t.id+')">Post YT Link</button>';
     if(t.youtube_url||t.submitted_link||t.edited_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+esc(t.youtube_url||t.submitted_link||t.edited_link)+'\',\'_blank\')">Open Video</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodConvo('+t.id+')">Video Needs'+(t.comment_count?(' ('+t.comment_count+')'):'')+'</button>';
@@ -22437,7 +22518,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(!confirm('Delete this? It will be removed from all lists (reversible by admin).')) return;
     api(P.production.api+'/tasks/'+id,'DELETE').then(function(){ toast('Deleted'); _refresh('production'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
-  var _ST_LABEL={pm_review:'PM Review',thumb_review:'Thumbnail Review',creator_submitted:'Submitted',approved:'Approved',editor_assigned:'Not Started',editing:'Editing',editing_paused:'Paused',editing_done:'Editing Done',qc_pending:'QC Pending',qc_changes:'Changes',ready_for_youtube:'Ready for YouTube',uploaded:'Uploaded',creator_assigned:'To Submit',changes_required:'Changes',new:'New',in_progress:'In Progress',changes:'Changes',submitted:'Submitted'};
+  var _ST_LABEL={pm_review:'PM Review',thumb_review:'Thumbnail Review',thumb_changes:'Thumbnail Changes',creator_submitted:'Submitted',approved:'Approved',editor_assigned:'Not Started',editing:'Editing',editing_paused:'Paused',editing_done:'Editing Done',qc_pending:'QC Pending',qc_changes:'Changes',ready_for_youtube:'Ready for YouTube',uploaded:'Uploaded',creator_assigned:'To Submit',changes_required:'Changes',new:'New',in_progress:'In Progress',changes:'Changes',submitted:'Submitted'};
   function _activeChips(portal){
     var f=_flt(portal); var chips=[];
     if(f.status) chips.push(['Status: '+(_ST_LABEL[f.status]||f.status),'status']);
@@ -22683,7 +22764,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }).catch(function(){ box.innerHTML=''; });
   }
   window.prodConvo=function(id){
-    api(P.production.api+'/tasks/'+id+'/comments').then(function(r){
+    api(P.production.api+'/tasks/'+id+'/comments?audience=creator').then(function(r){
       var comments=(r&&r.comments)||[];
       // pull task detail for reference/remarks
       api(P.production.api+'/tasks/'+id).then(function(t){ _prodConvoRender(id,t||{},comments); })
@@ -22697,21 +22778,27 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var remBlock=remarks?'<div style="background:rgba(180,83,9,.08);border:1px solid rgba(180,83,9,.25);border-radius:10px;padding:11px 13px;margin-bottom:12px"><div style="font-weight:800;font-size:.82rem;color:#b45309;margin-bottom:5px">Remarks you sent</div><div style="font-size:.86rem;white-space:pre-wrap">'+esc(remarks)+'</div></div>':'';
     var thread=comments.length?comments.map(function(c){
       var mine=(c.role!=='teacher');
-      return '<div style="max-width:82%;padding:7px 11px;border-radius:12px;font-size:.83rem;'+(mine?'align-self:flex-end;background:var(--surface-2);border:1px solid var(--border)':'align-self:flex-start;background:rgba(124,79,192,.1);border:1px solid rgba(124,79,192,.25)')+'"><div style="font-weight:800;font-size:.7rem;color:var(--muted);margin-bottom:2px">'+esc(c.author)+(c.role==='teacher'?' \u00b7 Teacher':'')+'</div><div>'+esc(c.message)+'</div><div style="font-size:.66rem;color:var(--muted);margin-top:3px">'+esc(c.at)+'</div></div>';
+      var img=c.attachment_url?'<img src="'+esc(c.attachment_url)+'" onclick="prodLightbox(\''+esc(c.attachment_url)+'\')" style="max-width:190px;max-height:150px;border-radius:8px;margin-top:5px;cursor:pointer;display:block">':'';
+      return '<div style="max-width:82%;padding:7px 11px;border-radius:12px;font-size:.83rem;'+(mine?'align-self:flex-end;background:var(--surface-2);border:1px solid var(--border)':'align-self:flex-start;background:rgba(124,79,192,.1);border:1px solid rgba(124,79,192,.25)')+'"><div style="font-weight:800;font-size:.7rem;color:var(--muted);margin-bottom:2px">'+esc(c.author)+' \u00b7 '+esc((c.role||'').replace('production_manager','PM').replace('graphics','Graphics').replace('teacher','Teacher').replace('admin','Admin'))+'</div>'+(c.message?'<div>'+esc(c.message)+'</div>':'')+img+'<div style="font-size:.66rem;color:var(--muted);margin-top:3px">'+esc(c.at)+'</div></div>';
     }).join(''):'<div style="color:var(--muted);font-size:.82rem;padding:6px 0">No messages yet.</div>';
     var old=document.getElementById('prod-modal2'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal2'; dr.style.zIndex='130';
     dr.innerHTML='<div class="p-modal" style="max-width:480px"><div class="pd-head"><div class="h-title">Video Needs</div><button class="pd-x" onclick="document.getElementById(\'prod-modal2\').remove()">&times;</button></div>'+
       '<div class="p-modal-body">'+refBlock+remBlock+'<div style="max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0">'+thread+'</div>'+
-      '<div class="p-field" style="margin-top:10px"><label>Reply to the creator</label><textarea class="p-area" id="prod-convo-reply" placeholder="Type your message..."></textarea></div></div>'+
+      '<div class="p-field" style="margin-top:10px"><label>Reply to the creator / graphics</label><div id="pc-prev" style="margin-bottom:6px"></div><div style="display:flex;gap:8px;align-items:flex-start"><button class="p-btn" title="Attach image" style="padding:8px 12px" onclick="document.getElementById(\'pc-file\').click()">\ud83d\udcce</button><textarea class="p-area" id="prod-convo-reply" placeholder="Type or paste an image..." style="flex:1"></textarea><input type="file" id="pc-file" accept="image/*" style="display:none"></div></div></div>'+
       '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="document.getElementById(\'prod-modal2\').remove()">Close</button><button class="p-btn p-btn-primary" onclick="prodConvoSend('+id+')">Send</button></div></div></div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) dr.remove(); });
     document.body.appendChild(dr);
+    window._chatImg=null;
+    var _pcf=document.getElementById('pc-file'); if(_pcf) _pcf.addEventListener('change',function(e){ var f=(e.target.files||[])[0]; if(f) _chatReadImg(f,'pc-prev'); });
+    window._pcPasteH=function(e){ if(!document.getElementById('prod-convo-reply')){ document.removeEventListener('paste',window._pcPasteH); return; } var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ _chatReadImg(items[i].getAsFile(),'pc-prev'); e.preventDefault(); } } };
+    document.addEventListener('paste',window._pcPasteH);
   }
   window.prodConvoSend=function(id){
     var el=document.getElementById('prod-convo-reply'); var msg=(el?el.value:'').trim();
-    if(!msg){ toast('Type a message first',true); return; }
-    api(P.production.api+'/tasks/'+id+'/comments','POST',{message:msg}).then(function(){
+    if(!msg && !window._chatImg){ toast('Type a message or attach an image',true); return; }
+    var body={message:msg,audience:'creator'}; if(window._chatImg) body.attachment=window._chatImg; window._chatImg=null;
+    api(P.production.api+'/tasks/'+id+'/comments','POST',body).then(function(){
       toast('Sent'); var old=document.getElementById('prod-modal2'); if(old) old.remove(); prodConvo(id); _refresh('production');
     }).catch(function(e){ toast((e&&e.message)||'Could not send',true); });
   };
