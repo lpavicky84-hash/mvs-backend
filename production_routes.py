@@ -570,6 +570,16 @@ def approve_creator(tid: int, payload: dict = Body(default={}),
     db.add(TaskReview(task_id=t.id, kind="creator", reviewer_user_id=me.id,
                       decision="approved", remarks=(payload.get("remarks") or "")))
     pc.set_state(db, t, "approved", actor=me, event="approved")
+    # editor pehle se assign hai to seedha editor_assigned — warna editor ko task dikhega hi nahi
+    if t.editor_id:
+        try:
+            pc.set_state(db, t, "editor_assigned", actor=me, event="editor_assigned", force=True)
+            ep = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
+            if ep and ep.user_id:
+                pc.notify(db, ep.user_id, "New editing task",
+                          f'"{t.title}" is approved and ready for you to edit.', "editor_task", link=str(t.id))
+        except Exception:
+            pass
     _notify_creator(db, t, "Video Approved", "Your video has been approved and entered production.")
     pc.graphics_task(db, t, create=True)   # graphics can begin in parallel
     db.commit()

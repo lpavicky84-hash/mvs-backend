@@ -93,7 +93,7 @@ def editor_dashboard(db: Session = Depends(get_db), me=Depends(get_editor)):
     total_views = db.query(func.coalesce(func.sum(VideoTask.yt_views), 0)).filter(
         VideoTask.editor_id == sp.id).scalar() or 0
     cards = {
-        "assigned_today": base.filter(VideoTask.lifecycle.in_(["editor_assigned", "editing_soon"])).count(),
+        "assigned_today": base.filter(VideoTask.lifecycle.in_(["editor_assigned", "editing_soon", "approved"])).count(),
         "editing_now": c("editing", "editing_paused"),
         "due_soon": base.filter(VideoTask.deadline != None, VideoTask.deadline >= now,
                                 VideoTask.deadline <= soon,
@@ -178,13 +178,13 @@ def editor_task_detail(tid: int, db: Session = Depends(get_db), me=Depends(get_e
 def editor_start(tid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
     sp = _me_staff(db, me)
     t = _my_task(db, sp, tid)
-    if t.lifecycle not in ("editor_assigned", "editing_paused", "qc_changes"):
+    if t.lifecycle not in ("editor_assigned", "editing_soon", "approved", "editing_paused", "qc_changes"):
         raise HTTPException(400, "Task is not ready to start editing")
     if not _open_session(db, sp, t.id):
         db.add(EditingSession(task_id=t.id, editor_id=sp.id, started_at=datetime.utcnow()))
     if not t.editing_started_at:
         t.editing_started_at = datetime.utcnow()
-    pc.set_state(db, t, "editing", actor=me, event="editing_started")
+    pc.set_state(db, t, "editing", actor=me, event="editing_started", force=True)
     pc.notify_pms(db, "Editing Started", f'{me.name} started editing "{t.title}".', "production", link=str(t.id))
     db.commit()
     return {"ok": True, "lifecycle": t.lifecycle}

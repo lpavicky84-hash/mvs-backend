@@ -21729,10 +21729,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }).catch(function(e){ toast((e&&e.message)||'Could not decline',true); });
   };  function _workFilter(portal,arr){
     var out=arr;
-    if(portal==='editor') out=arr.filter(function(t){ return ['editor_assigned','editing_soon','editing','editing_paused','editing_done','qc_changes'].indexOf(t.lifecycle)>=0; });
+    if(portal==='editor') out=arr.filter(function(t){ return ['approved','editor_assigned','editing_soon','editing','editing_paused','editing_done','qc_changes'].indexOf(t.lifecycle)>=0; });
     else if(portal==='graphics') out=arr.filter(function(t){ var s=(t.graphics||{}).status; return ['new','pending','in_progress','changes'].indexOf(s)>=0; });
     else if(portal==='youtuber') out=arr.filter(function(t){ return ['creator_assigned','creator_working','changes_required'].indexOf(t.lifecycle)>=0; });
-    else if(portal==='production') out=arr.filter(function(t){ var lc=(t.lifecycle||''), st=(t.status||''); if(['uploaded','completed'].indexOf(lc)>=0||['uploaded','completed'].indexOf(st)>=0) return false; var f=(t.deadline_flag||{}).kind; return ['creator_submitted','pm_review','qc_pending','ready_for_youtube'].indexOf(lc)>=0 || f==='overdue'; });
+    else if(portal==='production') out=arr.filter(function(t){ var lc=(t.lifecycle||''), st=(t.status||''); if(['uploaded','completed'].indexOf(lc)>=0||['uploaded','completed'].indexOf(st)>=0) return false; return ['creator_submitted','pm_review','qc_pending','ready_for_youtube'].indexOf(lc)>=0; });
     return out.slice(0,10);
   }
   function _loadWork(portal){
@@ -21786,7 +21786,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     function direct(label,ep){ return '<button class="p-btn p-btn-primary" onclick="event.stopPropagation();prodAct(\''+portal+'\','+t.id+',\''+ep+'\')">'+label+'</button>'; }
     function openb(label){ return '<button class="p-btn p-btn-primary" onclick="event.stopPropagation();prodOpenTask(\''+portal+'\','+t.id+')">'+label+'</button>'; }
     if(portal==='editor'){
-      if(lc==='editor_assigned'||lc==='editing_soon') return direct('Start Editing','/start');
+      if(lc==='editor_assigned'||lc==='editing_soon'||lc==='approved') return direct('Start Editing','/start');
       if(lc==='editing_paused') return direct('Resume','/resume');
       if(lc==='editing') return openb('Manage');
       if(lc==='editing_done') return openb('Submit for QC');
@@ -22179,7 +22179,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(t.quality_rating) meta.push('<span class="ptc-stars" title="'+esc(t.quality_note||'')+'">'+_stars(t.quality_rating)+'</span>');
     var acts='';
     if(portal==='editor'){
-      if(lc==='editor_assigned'||lc==='editing_soon') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/start\')">Start Editing</button>';
+      if(lc==='editor_assigned'||lc==='editing_soon'||lc==='approved') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/start\')">Start Editing</button>';
       else if(lc==='editing'){ acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardAct(\'editor\',\'progress\','+t.id+')">Update Progress</button>';
         acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/pause\')">Pause</button>';
         acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/complete\')">Complete</button>'; }
@@ -22972,7 +22972,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _actions(portal,t){
     var b=[]; var lc=t.lifecycle||''; var g=t.graphics||{};
     if(portal==='editor'){
-      if(lc==='editor_assigned'||lc==='editing_soon') b.push(_ab('Start Editing','prodAct(\'editor\','+t.id+',\'/start\')','primary'));
+      if(lc==='editor_assigned'||lc==='editing_soon'||lc==='approved') b.push(_ab('Start Editing','prodAct(\'editor\','+t.id+',\'/start\')','primary'));
       else if(lc==='editing'){ b.push(_ab('Update Progress','edtProgressModal('+t.id+')','primary'));
         b.push(_ab('Pause','prodAct(\'editor\','+t.id+',\'/pause\')'));
         b.push(_ab('Complete Editing','prodAct(\'editor\','+t.id+',\'/complete\')','ok')); }
