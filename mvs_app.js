@@ -437,7 +437,7 @@ let countdownTimer = null;
 // stale nahi rehta. Login/logout pe bhi clear hota hai.
 const _apiCache={};
 const _API_TTL=60000;
-const _API_NOCACHE=/notifications|heartbeat|\/photo|\/image|\/voice|\/file|\/download|\/pdf|\/content|\/badge|video-tasks\/my|video-tasks\b|production\/tasks|production\/dashboard|\/collab/i;
+const _API_NOCACHE=/notifications|heartbeat|\/photo|\/image|\/voice|\/file|\/download|\/pdf|\/content|\/badge|video-tasks\/my|video-tasks\b|production\/tasks|production\/dashboard|(editor|graphics|youtuber)\/(tasks|videos|dashboard)|\/collab/i;
 let _curLoader=null;        // current page ka loader — background refresh aane par isse re-render
 let _swrT=null;
 function _swrRerender(){
@@ -22851,7 +22851,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   var _SH_DOT={approved:'#2e9e6b',uploaded:'#2e9e6b',submitted:'#2e9e6b',teacher_submitted:'#2e9e6b',youtuber_submitted:'#2e9e6b',qc_approved:'#2e9e6b',completed:'#2e9e6b',assigned:'#e0a52e',creator_assigned:'#e0a52e',task_created:'#e0a52e',editing_soon:'#e0a52e',editing:'#7c4fc0',approval_requested:'#e0a52e',reshoot:'#d1443a',rejected:'#d1443a',changes:'#d1443a',changes_requested:'#d1443a'};
   window.prodStatusHistory=function(id){
-    Promise.all([ api(P.production.api+'/tasks/'+id), api(P.production.api+'/tasks/'+id+'/collab').catch(function(){return {};}) ]).then(function(res){
+    var _ap=(function(){ var a=document.querySelector('.app.prodapp.active'); if(a){ var m=(a.id||'').match(/^([a-z_]+)-app$/); if(m&&P[m[1]]) return m[1]; } return window._prodNotifPortal||'production'; })();
+    var _base=(P[_ap]&&P[_ap].api)||'/api/production';
+    var _dp=(_ap==='youtuber')?('/videos/'+id):('/tasks/'+id);
+    var _collab=(_ap==='production')?api(_base+'/tasks/'+id+'/collab').catch(function(){return {};}):Promise.resolve({});
+    Promise.all([ api(_base+_dp), _collab ]).then(function(res){
       var t=res[0]||{}, col=res[1]||{}; var tl=t.timeline||[];
       var lc=t.lifecycle||''; var st=_PTC_ST[lc]||[(t.lifecycle_label||'').toUpperCase(),'#8a7d5c'];
       var isLive=['editing','qc_pending','pm_review','creator_submitted','editor_assigned','approved'].indexOf(lc)>=0;
