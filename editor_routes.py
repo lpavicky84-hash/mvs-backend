@@ -51,7 +51,7 @@ def editor_dashboard(db: Session = Depends(get_db), me=Depends(get_editor)):
     sp = _me_staff(db, me)
     now = datetime.utcnow()
     today = date.today()
-    base = db.query(VideoTask).filter(VideoTask.editor_id == sp.id)
+    base = db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.editor_id == sp.id)
 
     def c(*st):
         return base.filter(VideoTask.lifecycle.in_(st)).count()
@@ -91,7 +91,7 @@ def editor_dashboard(db: Session = Depends(get_db), me=Depends(get_editor)):
     soon = now + timedelta(hours=24)
     _not_done = ["uploaded", "completed", "ready_for_youtube", "qc_pending"]
     total_views = db.query(func.coalesce(func.sum(VideoTask.yt_views), 0)).filter(
-        VideoTask.editor_id == sp.id).scalar() or 0
+        VideoTask.cancelled == False, VideoTask.editor_id == sp.id).scalar() or 0
     cards = {
         "assigned_today": base.filter(VideoTask.lifecycle.in_(["editor_assigned", "editing_soon", "approved"])).count(),
         "editing_now": c("editing", "editing_paused"),
@@ -135,7 +135,7 @@ def editor_dashboard(db: Session = Depends(get_db), me=Depends(get_editor)):
 @router.get("/tasks")
 def editor_tasks(status: str = "", filter: str = "", db: Session = Depends(get_db), me=Depends(get_editor)):
     sp = _me_staff(db, me)
-    q = db.query(VideoTask).filter(VideoTask.editor_id == sp.id)
+    q = db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.editor_id == sp.id)
     now = datetime.utcnow()
     preset = (filter or "").lower()
     if preset == "editing":
@@ -311,7 +311,7 @@ def _pnotif_read_all(db: Session = Depends(get_db), me=Depends(get_editor)):
 def editor_time_analytics(db: Session = Depends(get_db), me=Depends(get_editor)):
     sp = _me_staff(db, me)
     done = ["editing_done", "qc_pending", "qc_changes", "ready_for_youtube", "uploaded", "completed"]
-    completed = db.query(VideoTask).filter(VideoTask.editor_id == sp.id, VideoTask.lifecycle.in_(done)).count()
+    completed = db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.editor_id == sp.id, VideoTask.lifecycle.in_(done)).count()
     total_secs = int(db.query(func.coalesce(func.sum(EditingSession.duration_seconds), 0)).filter(
         EditingSession.editor_id == sp.id).scalar() or 0)
     # per-task active seconds (from sessions), joined to type
@@ -353,7 +353,7 @@ def editor_uploads(db: Session = Depends(get_db), me=Depends(get_editor)):
     """Editor's published videos + realtime views. Reuses the shared YouTube views data
     (yt_views), never a separate API. Real data only."""
     sp = _me_staff(db, me)
-    base = db.query(VideoTask).filter(VideoTask.editor_id == sp.id)
+    base = db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.editor_id == sp.id)
     _edited = ["editing_done", "qc_pending", "qc_changes", "ready_for_youtube", "uploaded", "completed"]
     total_edited = base.filter(VideoTask.lifecycle.in_(_edited)).count()
     uploaded_rows = base.filter(VideoTask.lifecycle.in_(["uploaded", "completed"]),
@@ -391,7 +391,7 @@ def editor_refresh_views(db: Session = Depends(get_db), me=Depends(get_editor)):
         from models import VideoViewSnapshot
     except Exception:
         return {"ok": False, "updated": 0}
-    rows = db.query(VideoTask).filter(VideoTask.editor_id == sp.id,
+    rows = db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.editor_id == sp.id,
                                       VideoTask.yt_video_id != None,
                                       VideoTask.yt_video_id != "").all()
     idmap = {t.yt_video_id: t for t in rows if t.yt_video_id}
@@ -420,7 +420,7 @@ def editor_performance(db: Session = Depends(get_db), me=Depends(get_editor)):
     plus chart data (bar / donut / 6-month trend) and ranking. Real data only."""
     sp = _me_staff(db, me)
     now = datetime.utcnow()
-    base = db.query(VideoTask).filter(VideoTask.editor_id == sp.id)
+    base = db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.editor_id == sp.id)
     all_tasks = base.all()
     _done = ["editing_done", "qc_pending", "ready_for_youtube", "uploaded", "completed"]
     _uploaded = ["uploaded", "completed"]

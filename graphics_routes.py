@@ -41,7 +41,7 @@ def _my_gtask(db, sp, tid):
 @router.get("/dashboard")
 def gfx_dashboard(db: Session = Depends(get_db), me=Depends(get_graphics)):
     sp = _me_staff(db, me)
-    base = db.query(GraphicsTask).filter(GraphicsTask.graphics_id == sp.id)
+    base = db.query(GraphicsTask).filter(GraphicsTask.graphics_id == sp.id, GraphicsTask.task_id.in_(db.query(VideoTask.id).filter(VideoTask.cancelled == False)))
 
     def c(*st):
         return base.filter(GraphicsTask.status.in_(st)).count()
@@ -84,7 +84,7 @@ def gfx_dashboard(db: Session = Depends(get_db), me=Depends(get_graphics)):
 @router.get("/tasks")
 def gfx_tasks(status: str = "", filter: str = "", db: Session = Depends(get_db), me=Depends(get_graphics)):
     sp = _me_staff(db, me)
-    q = db.query(GraphicsTask).filter(GraphicsTask.graphics_id == sp.id)
+    q = db.query(GraphicsTask).filter(GraphicsTask.graphics_id == sp.id, GraphicsTask.task_id.in_(db.query(VideoTask.id).filter(VideoTask.cancelled == False)))
     if status:
         q = q.filter(GraphicsTask.status == status)
     # Frontend tabs bhejte hain ?filter=<preset> — inhe status pe map karo (warna har tab pe
@@ -114,7 +114,7 @@ def gfx_tasks(status: str = "", filter: str = "", db: Session = Depends(get_db),
     out = []
     for g in q.order_by(GraphicsTask.created_at.desc()).all():
         t = db.query(VideoTask).filter(VideoTask.id == g.task_id).first()
-        if not t:
+        if not t or getattr(t, 'cancelled', False):
             continue
         row = pc.task_out(db, t, light=True)
         out.append(row)
