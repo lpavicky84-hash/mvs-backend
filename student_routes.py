@@ -15,11 +15,19 @@ from models import (
     , Exam, ExamQuestion, ExamAttempt, ExamResult, ist_iso, ist_now, ist_today
 )
 from schemas import (
+
     DPPSubmissionCreate, DPPSubmissionOut,
     TestSubmissionCreate, TestSubmissionOut,
     DoubtCreate, DoubtOut,
     StudentDashboard
 )
+
+def _hsafe(_n):
+    _n=(_n or "file")
+    for a,b in (("\u2019","'"),("\u2018","'"),("\u201c",'"'),("\u201d",'"'),("\u2013","-"),("\u2014","-")):
+        _n=_n.replace(a,b)
+    return _n.encode("latin-1","ignore").decode("latin-1") or "file"
+
 
 router = APIRouter(prefix="/api/student", tags=["Student"])
 
@@ -1004,7 +1012,7 @@ def student_material_view(mid: int, db: Session = Depends(get_db), current_user=
         raise HTTPException(status_code=404, detail="Not found")
     sp = get_student_profile(current_user, db)
     _log_material(db, mid, sp.id, "view")
-    return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", m.filename or "file.pdf", False, sniff=True)
+    return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", _hsafe(m.filename or "file.pdf"), False, sniff=True)
 
 @router.get("/materials-v2")
 def student_materials_v2(db: Session = Depends(get_db), current_user=Depends(get_student)):
@@ -1049,7 +1057,7 @@ def student_download(mid: int, db: Session = Depends(get_db), current_user=Depen
     if not m: raise HTTPException(status_code=404, detail="Not found")
     sp = get_student_profile(current_user, db)
     _log_material(db, mid, sp.id, "download")
-    return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", m.filename or "file.pdf", True, sniff=True)
+    return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", _hsafe(m.filename or "file.pdf"), True, sniff=True)
 
 # ===== STUDENT: DPP / TEST LIST (download + submit) =====
 def _my_submission(db, sp, parent_id):
@@ -2603,9 +2611,14 @@ def student_dpp_file(pack_id: int, kind: str = "q", med: str = "", db: Session =
     if not blob:
         raise HTTPException(status_code=404, detail="File not available")
     fname = (pk.title or "DPP").replace("/", "-") + ("-solutions.pdf" if kind == "s" else "-questions.pdf")
+    # HTTP headers latin-1 hote hain — curly quotes/dashes ascii me badlo, baaki non-latin-1 drop karo
+    fname = (fname.replace("\u2019", "'").replace("\u2018", "'")
+                  .replace("\u201c", '"').replace("\u201d", '"')
+                  .replace("\u2013", "-").replace("\u2014", "-"))
+    fname = fname.encode("latin-1", "ignore").decode("latin-1") or "DPP.pdf"
     # R2 URL ho to server-side stream (viewer ka fetch same-origin rahe, CORS na aaye);
     # base64 ho to decode. Dono safe.
-    return __import__("r2_storage").proxy_response(blob, "application/pdf", fname, True, sniff=True)
+    return __import__("r2_storage").proxy_response(blob, "application/pdf", _hsafe(fname), True, sniff=True)
 
 
 @router.get("/batch-board")

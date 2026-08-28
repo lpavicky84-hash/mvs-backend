@@ -13,6 +13,14 @@ from security import get_student, get_admin
 from models import User, UserRole, StudentProfile, Notification, ist_now
 import support_models as SM
 
+def _hsafe(_n):
+    """HTTP header (latin-1) safe filename — curly quotes/dashes ascii, baaki non-latin-1 drop."""
+    _n=(_n or "file")
+    for a,b in (("\u2019","'"),("\u2018","'"),("\u201c",'"'),("\u201d",'"'),("\u2013","-"),("\u2014","-")):
+        _n=_n.replace(a,b)
+    return _n.encode("latin-1","ignore").decode("latin-1") or "file"
+
+
 router = APIRouter(tags=["Support"])
 
 _MAX_IMG = 8 * 1024 * 1024        # 8 MB per image
@@ -134,7 +142,7 @@ def _serve_attachment(db, aid, is_admin, me, download):
             raise HTTPException(status_code=403, detail="Not your attachment.")
     r2 = __import__("r2_storage")
     return r2.proxy_response(a.url, a.mime or "application/octet-stream",
-                            a.filename or "file", download)
+                            _hsafe(a.filename or "file"), download)
 
 
 # ---------------------------------------------------------------------------

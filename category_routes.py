@@ -19,6 +19,14 @@ from category_models import (Category, CategoryFeature, FEATURE_CATALOG,
                              DU_SOL_DEFAULT_FEATURES)
 import category_service as CS
 
+def _hsafe(_n):
+    """HTTP header (latin-1) safe filename — curly quotes/dashes ascii, baaki non-latin-1 drop."""
+    _n=(_n or "file")
+    for a,b in (("\u2019","'"),("\u2018","'"),("\u201c",'"'),("\u201d",'"'),("\u2013","-"),("\u2014","-")):
+        _n=_n.replace(a,b)
+    return _n.encode("latin-1","ignore").decode("latin-1") or "file"
+
+
 
 def admin_guard(request: Request, current_user=Depends(get_admin)):
     """Section-aware admin gate for category endpoints. Full admins (allowed_sections
@@ -687,7 +695,7 @@ def _attachment_response(db, aid, is_admin, user, download):
     _get_submission_for(db, a.submission_id, is_admin, user)   # authorizes
     r2 = __import__("r2_storage")
     return r2.proxy_response(a.url, a.mime or "application/octet-stream",
-                             a.filename or "file", download, sniff=True)
+                             _hsafe(a.filename or "file"), download, sniff=True)
 
 
 @router.get("/api/admin/material-attachments/{aid}/view")
@@ -1046,7 +1054,7 @@ def _download_version(db, vid, is_admin, user):
             raise HTTPException(status_code=403, detail="Not your submission.")
     r2 = __import__("r2_storage")
     return r2.proxy_response(v.file_url, v.mime or "application/octet-stream",
-                             v.filename or "file", True, sniff=True)
+                             _hsafe(v.filename or "file"), True, sniff=True)
 
 
 @router.get("/api/admin/material-versions/{vid}/download")
@@ -1141,7 +1149,7 @@ def admin_download_material(mid: int, db: Session = Depends(get_db), _=Depends(a
         raise HTTPException(status_code=404, detail="Material not found.")
     r2 = __import__("r2_storage")
     return r2.proxy_response(m.file_ref, m.mime or "application/octet-stream",
-                            m.filename or "file", True)
+                            _hsafe(m.filename or "file"), True)
 
 
 @router.get("/api/teacher/materials")
@@ -1187,7 +1195,7 @@ def teacher_download_material(mid: int, db: Session = Depends(get_db), me=Depend
             raise HTTPException(status_code=403, detail="Not your subject.")
     r2 = __import__("r2_storage")
     return r2.proxy_response(m.file_ref, m.mime or "application/octet-stream",
-                            m.filename or "file", True)
+                            _hsafe(m.filename or "file"), True)
 
 
 # ===========================================================================
