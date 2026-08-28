@@ -9401,6 +9401,8 @@ function _avtCard(t){
       const delTaskBtn=`<button class="btn btn-ghost btn-sm vt-del" onclick="vtDeleteTask(${t.id})" title="Delete this task permanently">${ic('trash')} Delete</button>`;
       const ytBtn=`<button class="btn btn-ghost btn-sm" onclick="openVtYtLink(${t.id},'${esc(t.youtube_url||'').replace(/'/g,'')}')" title="Post the published YouTube link">${ic('play')} ${t.youtube_url?'Edit YT Link':'Post YT Link'}</button>`;
       const histBtn=`<button class="btn btn-ghost btn-sm" onclick="vtStatusOpen(${t.id},'a',event)" title="See the full status timeline">${ic('history')} Timeline</button>`;
+      const _aRefv=(t.reference_video||'').trim()||((/^https?:\/\//i.test((t.reference||'').trim()))?(t.reference||'').trim():'');
+      const refvBtn=_aRefv?`<button class="btn btn-sm vt-refv-btn" onclick="window.open('${esc(_aRefv).replace(/'/g,'')}','_blank','noopener')" title="Teacher's reference video">${ic('play')} Reference Video</button>`:'';
       const convoBtn=`<button class="btn btn-ghost btn-sm" onclick="aVtConvo(${t.id})" title="Reference video, remarks and the conversation with the teacher">${ic('alert')} Video Needs${t.comment_count?` (${t.comment_count})`:''}</button>`;
       const _lcAssign=['approved','editor_assigned','editing','editing_paused','editing_done','qc_pending','qc_changes','ready_for_youtube'];
       const asgEditorBtn=(_lcAssign.indexOf(t.lifecycle)>=0 && !t.editor_id)
@@ -9423,7 +9425,7 @@ function _avtCard(t){
         </div>
         <div class="vt-foot">
           ${t.submitted_link?`<a class="btn btn-ghost btn-sm" href="${esc(t.submitted_link)}" target="_blank" rel="noopener">${ic('link')} Open Video</a>`:''}
-          ${histBtn}${convoBtn}${reviewBtn}${editBtn}${editTaskBtn}${asgEditorBtn}${asgGfxBtn}${ytBtn}${notifyBtn}
+          ${refvBtn}${histBtn}${convoBtn}${reviewBtn}${editBtn}${editTaskBtn}${asgEditorBtn}${asgGfxBtn}${ytBtn}${notifyBtn}
           <button class="btn btn-ghost btn-sm" onclick="vtMarkOld(${t.id},${t.is_old?'false':'true'})" title="Old = pre-portal content, will not count this month">${t.is_old?ic('refresh')+' Mark as New':ic('clock')+' Mark as Old'}</button>
           ${delTaskBtn}
         </div></div></div>`;
@@ -9559,6 +9561,9 @@ function _ensureCbpCss(){
     '.vts-blink{animation:vtsBlink 1.2s ease-in-out infinite}',
     '.vt-refvid-btn,.vt-needs-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;font-size:.75rem;font-weight:800;cursor:pointer;animation:vtsBlink 1.3s ease-in-out infinite}',
     '.vt-refvid-btn{background:rgba(8,145,178,.14);color:#0891b2;border:1px solid rgba(8,145,178,.35)}',
+    '.vt-refv-btn{background:linear-gradient(135deg,#2f80c0,#2166a0);color:#fff;border:none;font-weight:700;animation:vtRefvBlink 1.3s ease-in-out infinite}',
+    '.vt-refv-btn:hover{background:linear-gradient(135deg,#2a72ac,#1c5a8f);color:#fff}',
+    '@keyframes vtRefvBlink{0%,100%{box-shadow:0 0 0 0 rgba(47,128,192,.5)}50%{box-shadow:0 0 0 5px rgba(47,128,192,.12)}}',
     '.vt-needs-btn{background:rgba(180,83,9,.14);color:#b45309;border:1px solid rgba(180,83,9,.35)}',
     '.vt-refvid-btn:hover,.vt-needs-btn:hover{filter:brightness(.95)}',
     '.tvn-remarks{background:rgba(180,83,9,.08);border:1px solid rgba(180,83,9,.25);border-radius:10px;padding:11px 13px;margin-bottom:12px}',
@@ -20376,6 +20381,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '@keyframes revDot{0%,100%{opacity:1}50%{opacity:.35}}',
 '.pt-dl.pt-dl-tog{cursor:pointer;user-select:none}',
 '.pt-dl.pt-dl-tog:hover{filter:brightness(.96)}',
+'.ptc-btn.ptc-refv-blink{background:linear-gradient(135deg,#2f80c0,#2166a0) !important;color:#fff !important;border:none !important;font-weight:800;display:inline-flex;align-items:center;gap:8px;box-shadow:0 3px 10px rgba(47,128,192,.4);animation:revBlink 1.3s ease-in-out infinite}',
+'.ptc-btn.ptc-refv-blink:hover{background:linear-gradient(135deg,#2a72ac,#1c5a8f) !important;color:#fff !important}',
+'.ptc-btn.ptc-refv-blink .rev-dot{background:#fff}',
 '.ptc-btn.ptc-ref-blink{background:linear-gradient(135deg,#7c4fc0,#6d3fb0) !important;color:#fff !important;border:none !important;font-weight:800;display:inline-flex;align-items:center;gap:8px;box-shadow:0 3px 10px rgba(124,79,192,.4);animation:revBlink 1.3s ease-in-out infinite}',
 '.ptc-btn.ptc-ref-blink:hover{background:linear-gradient(135deg,#6f43ad,#5d359a) !important;color:#fff !important}',
 '.ptc-btn.ptc-ref-blink .rev-dot{background:#fff}',
@@ -21248,7 +21256,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '<div class="p-sec">Detailed (optional)</div>'+dims.map(starRow).join('')+
         '<div class="p-field" style="margin-top:10px"><label>Remarks</label><textarea class="p-area" id="rate-note" placeholder="Feedback for the editor"></textarea></div>'+
       '</div>'+
-      '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Skip</button><button class="p-btn p-btn-primary" onclick="pmRateSubmit()">Submit Rating</button></div></div>'+
+      '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Skip</button><button class="p-btn" style="color:#b91c1c" onclick="prodRateRemove(window._rateId)">Remove Rating</button><button class="p-btn p-btn-primary" onclick="pmRateSubmit()">Submit Rating</button></div></div>'+
       '</div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
     document.body.appendChild(dr);
@@ -22243,6 +22251,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(g.status==='submitted') acts+='<button class="ptc-btn ptc-btn-review" onclick="event.stopPropagation();pmThumbReview('+t.id+')"><span class="rev-dot"></span>Review Thumbnail</button>';
     if(g.graphics_id && ['submitted','changes','in_progress'].indexOf(g.status)>=0) acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodGfxChat('+t.id+')">Chat with Graphics</button>';
     if(lc==='ready_for_youtube') acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'post-yt\','+t.id+')">Post YT Link</button>';
+    var _refv=(t.reference_video||'').trim()||((/^https?:\/\//i.test((t.reference||'').trim()))?(t.reference||'').trim():'');
+    if(_refv) acts+='<button class="ptc-btn ptc-refv-blink" onclick="event.stopPropagation();window.open(\''+esc(_refv)+'\',\'_blank\')"><span class="rev-dot"></span>Reference Video</button>';
     if(t.youtube_url||t.submitted_link||t.edited_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+esc(t.youtube_url||t.submitted_link||t.edited_link)+'\',\'_blank\')">Open Video</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodConvo('+t.id+')">Video Needs'+(t.comment_count?(' ('+t.comment_count+')'):'')+'</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
@@ -23149,12 +23159,17 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '<div class="pd-head"><div class="h-title">Rate this work</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
       '<div class="p-modal-body"><div style="text-align:center"><div class="rate-stars" id="rate-stars">'+starBtns()+'</div></div>'+
       '<div class="p-field" style="margin-top:12px"><label>Note (optional)</label><textarea class="p-area" id="rate-note" placeholder="What was good / what to improve"></textarea></div></div>'+
-      '<div class="pd-foot"><div class="p-acts" id="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodRateSubmit('+id+')">Save Rating</button></div></div>'+
+      '<div class="pd-foot"><div class="p-acts" id="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button>'+(window._prodRate?'<button class="p-btn" style="color:#b91c1c" onclick="prodRateRemove('+id+')">Remove Rating</button>':'')+'<button class="p-btn p-btn-primary" onclick="prodRateSubmit('+id+')">Save Rating</button></div></div>'+
       '</div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
     document.body.appendChild(dr);
   };
   window.prodRateSet=function(v){ window._prodRate=v; var box=document.getElementById('rate-stars'); if(box){ box.querySelectorAll('.rate-star').forEach(function(s){ s.classList.toggle('on', parseInt(s.getAttribute('data-v'),10)<=v); }); } };
+  window.prodRateRemove=function(id){
+    _pBusy(true);
+    api(P.production.api+'/tasks/'+id+'/rate','POST',{rating:0}).then(function(){ prodDismiss(); toast('Rating removed'); _refresh('production'); })
+      .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
+  };
   window.prodRateSubmit=function(id){
     if(!window._prodRate){ toast('Pick a star rating',true); return; }
     var note=(document.getElementById('rate-note')||{}).value||'';

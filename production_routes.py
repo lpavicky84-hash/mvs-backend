@@ -2479,6 +2479,17 @@ def pm_rate(tid: int, payload: dict = Body(...), db: Session = Depends(get_db),
         rating = int(payload.get("rating") or 0)
     except Exception:
         rating = 0
+    if rating == 0:
+        # rating=0 -> remove/clear the quality rating entirely
+        t.quality_rating = None
+        t.quality_note = ""
+        try:
+            t.quality_dims = ""
+        except Exception:
+            pass
+        pc.log_event(db, t, me, "quality_rating_removed", meta={"note": "Quality rating removed"})
+        db.commit()
+        return {"ok": True, "quality_rating": None, "cleared": True}
     if rating < 1 or rating > 5:
         raise HTTPException(400, "Rating must be between 1 and 5.")
     t.quality_rating = rating
