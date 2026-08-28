@@ -23878,6 +23878,7 @@ function _apCard(u){
       (u.password?'<button class="ap-btn" onclick="apShowPass('+u.id+')">Show Password</button>':'')+
       toggles+
       '<button class="ap-btn" onclick="apToggleActive('+u.id+','+(active?'false':'true')+')">'+(active?'Deactivate':'Activate')+'</button>'+
+      '<button class="ap-btn" style="color:#b91c1c;border-color:rgba(185,28,28,.4)" onclick="apDelete('+u.id+',\''+_ape(u.name).replace(/'/g,"")+'\',\''+u.role+'\')">Delete</button>'+
     '</div></div>';
 }
 
@@ -23905,6 +23906,11 @@ window.apShowPass=function(id){
 window.apToggleActive=function(id,val){
   api('/api/admin/production-users/'+id,'PATCH',{is_active:val}).then(function(){ toast('Updated'); loadAProductionTeam(); })
     .catch(function(e){ toast((e&&e.message)||'Failed',true); });
+};
+window.apDelete=function(id,name,role){
+  if(!confirm('Delete '+name+'? Unke saare assigned tasks unassign ho jaayenge (production board se bhi hat jaayenge) aur ye member team se hat jaayega. Ye wapas nahi hoga.')) return;
+  api('/api/admin/production-users/'+id,'DELETE').then(function(r){ toast('Deleted'+((r&&r.unassigned)?(' — '+r.unassigned+' task(s) unassigned'):'')); loadAProductionTeam(); })
+    .catch(function(e){ toast((e&&e.message)||'Delete failed',true); });
 };
 window.apToggleApproval=function(id,val){
   api('/api/admin/production-users/'+id,'PATCH',{approval_required:val}).then(function(){ toast('Approval mode updated'); loadAProductionTeam(); })

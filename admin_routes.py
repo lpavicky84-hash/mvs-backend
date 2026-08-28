@@ -6809,6 +6809,48 @@ def update_production_user(uid: int, payload: dict, db: Session = Depends(get_db
     return {"ok": True}
 
 
+@router.delete("/production-users/{uid}")
+def delete_production_user(uid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import (YouTuberProfile, ProductionStaffProfile, GraphicsTask,
+                        VideoTask, EditingSession)
+    u = db.query(User).filter(User.id == uid).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    role = getattr(u.role, "value", str(u.role))
+    if role not in _PROD_ROLES:
+        raise HTTPException(status_code=400, detail="Not a production user")
+    unassigned = 0
+    _EDIT_LC = ("editor_assigned", "editing", "editing_paused", "editing_soon", "editing_done")
+    if role == "youtuber":
+        yp = db.query(YouTuberProfile).filter(YouTuberProfile.user_id == u.id).first()
+        if yp:
+            db.delete(yp)
+    else:
+        sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.user_id == u.id).first()
+        if sp:
+            if role == "editor":
+                # unassign editor from all tasks; revert active editing back to 'approved' so PM can reassign
+                for t in db.query(VideoTask).filter(VideoTask.editor_id == sp.id).all():
+                    t.editor_id = None
+                    if getattr(t, "lifecycle", None) in _EDIT_LC:
+                        t.lifecycle = "approved"
+                    unassigned += 1
+                # remove their editing sessions (historical, tied to this profile)
+                for es in db.query(EditingSession).filter(EditingSession.editor_id == sp.id).all():
+                    db.delete(es)
+            elif role == "graphics":
+                for t in db.query(VideoTask).filter(VideoTask.graphics_id == sp.id).all():
+                    t.graphics_id = None
+                    unassigned += 1
+                for g in db.query(GraphicsTask).filter(GraphicsTask.graphics_id == sp.id).all():
+                    db.delete(g)
+            db.delete(sp)
+    # profile deleted -> team se gayab; user ko deactivate (login band). Hard-delete FK todh sakta hai.
+    u.is_active = False
+    db.commit()
+    return {"ok": True, "unassigned": unassigned}
+
+
 @router.post("/production-users/{uid}/reset-password")
 def reset_production_password(uid: int, payload: dict = None, db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import YouTuberProfile, ProductionStaffProfile
