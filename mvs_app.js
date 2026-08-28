@@ -9405,10 +9405,10 @@ function _avtCard(t){
       const refvBtn=_aRefv?`<button class="btn btn-sm vt-refv-btn" onclick="window.open('${esc(_aRefv).replace(/'/g,'')}','_blank','noopener')" title="Teacher's reference video">${ic('play')} Reference Video</button>`:'';
       const convoBtn=`<button class="btn btn-ghost btn-sm" onclick="aVtConvo(${t.id})" title="Reference video, remarks and the conversation with the teacher">${ic('alert')} Video Needs${t.comment_count?` (${t.comment_count})`:''}</button>`;
       const _lcAssign=['approved','editor_assigned','editing','editing_paused','editing_done','qc_pending','qc_changes','ready_for_youtube'];
-      const asgEditorBtn=(_lcAssign.indexOf(t.lifecycle)>=0 && !t.editor_id)
-        ?`<button class="btn btn-ghost btn-sm" onclick="aAssignProd(${t.id},'editor')" title="Assign an editor to this approved video">${ic('play')} Assign Editor</button>`:'';
-      const asgGfxBtn=(['approved','editor_assigned','editing'].indexOf(t.lifecycle)>=0 && !t.graphics_id)
-        ?`<button class="btn btn-ghost btn-sm" onclick="aAssignProd(${t.id},'graphics')" title="Assign a graphics designer for the thumbnail">${ic('image')} Assign Graphics</button>`:'';
+      const asgEditorBtn=(_lcAssign.indexOf(t.lifecycle)>=0 && !t.editor_name)
+        ?`<button class="btn btn-ghost btn-sm" onclick="aAssignProd(${t.id},'editor')" title="Assign an editor to this video">${ic('play')} ${t.editor_id?'Reassign Editor':'Assign Editor'}</button>`:'';
+      const asgGfxBtn=(['approved','editor_assigned','editing'].indexOf(t.lifecycle)>=0 && !t.graphics_name)
+        ?`<button class="btn btn-ghost btn-sm" onclick="aAssignProd(${t.id},'graphics')" title="Assign a graphics designer for the thumbnail">${ic('image')} ${t.graphics_id?'Reassign Graphics':'Assign Graphics'}</button>`:'';
       const asgInfo=(t.editor_name||t.graphics_name)
         ?`<span class="vt-pill editing_soon" style="cursor:default">${[t.editor_name?('Editor: '+esc(t.editor_name)):'',t.graphics_name?('Graphics: '+esc(t.graphics_name)):''].filter(Boolean).join(' · ')}</span>`:'';
       return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-tid-card="${t.id}" data-done="${['approved','editing_soon','editing_done','uploaded'].includes(t.status)?1:0}" data-pending="${(!['approved','editing_soon','editing_done','uploaded','submitted'].includes(t.status))?1:0}" data-delayed="${((t.on_time===false)||(['assigned','reshoot','rejected'].includes(t.status)&&t.seconds_left!=null&&t.seconds_left<0))?1:0}" data-collab="${t.is_collab?1:0}" data-collabdone="${t.is_collab?(t.collab_all_verified?1:0):''}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
@@ -22261,10 +22261,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(lc==='creator_submitted'||lc==='pm_review'){
       acts+='<button class="ptc-btn ptc-review-blink" onclick="event.stopPropagation();prodReview('+t.id+')"><span class="rev-dot"></span>Checking \u2014 Review</button>';
     }
-    if((lc==='approved'||lc==='editor_assigned'||lc==='editing'||lc==='editing_paused'||lc==='editing_done'||lc==='qc_pending'||lc==='qc_changes'||lc==='ready_for_youtube') && !t.editor_id)
-      acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'assign-editor\','+t.id+')">Assign Editor</button>';
-    if((lc==='approved'||lc==='editor_assigned'||lc==='editing') && !g.graphics_id)
-      acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'assign-graphics\','+t.id+')">Assign Graphics</button>';
+    if((lc==='approved'||lc==='editor_assigned'||lc==='editing'||lc==='editing_paused'||lc==='editing_done'||lc==='qc_pending'||lc==='qc_changes'||lc==='ready_for_youtube') && !t.editor_name)
+      acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'assign-editor\','+t.id+')">'+(t.editor_id?'Reassign Editor':'Assign Editor')+'</button>';
+    if((lc==='approved'||lc==='editor_assigned'||lc==='editing') && !g.graphics_name)
+      acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'assign-graphics\','+t.id+')">'+(g.graphics_id?'Reassign Graphics':'Assign Graphics')+'</button>';
     if(lc==='qc_pending') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\''+portal+'\','+t.id+',\'/qc-approve\')">QC Approve</button>';
     if(g.status==='submitted') acts+='<button class="ptc-btn ptc-btn-review" onclick="event.stopPropagation();pmThumbReview('+t.id+')"><span class="rev-dot"></span>Review Thumbnail</button>';
     if(g.graphics_id && ['submitted','changes','in_progress'].indexOf(g.status)>=0) acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodGfxChat('+t.id+')">Chat with Graphics</button>';
