@@ -22322,7 +22322,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'teacher_id\',this.value)"><option value="">All Teachers</option>'+teachers.map(function(t){ return '<option value="'+t.id+'"'+((f.teacher_id||'')==String(t.id)?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('')+'</select>'+
         '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'channel\',this.value)"><option value="">All Channels</option>'+channels.map(function(ch){ return '<option value="'+esc(ch.name)+'"'+((f.channel||'')===ch.name?' selected':'')+'>'+esc(ch.name)+'</option>'; }).join('')+'</select>'+
         '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'video_type\',this.value)"><option value="">All Types</option>'+types.map(function(ty){ return '<option value="'+esc(ty.name)+'"'+((f.video_type||'')===ty.name?' selected':'')+'>'+esc(ty.name)+'</option>'; }).join('')+'</select>'+
-        (f._locked?'':'<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'status\',this.value)">'+statuses.map(function(o){ return '<option value="'+o[0]+'"'+((f.status||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select>')+
+        ((f._locked&&f.status)?'':'<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'status\',this.value)">'+statuses.map(function(o){ return '<option value="'+o[0]+'"'+((f.status||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select>')+
         '<button class="p-btn pf-clear" onclick="prodClearFilters()">Clear</button>'+
         '<button class="p-mfilter" onclick="prodFilterDrawer()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M7 12h10M10 18h4"/></svg>Filters</button>'+
         '<button class="p-btn" onclick="prodDownloadReport()">Download Report</button>'+
@@ -22372,7 +22372,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     setTimeout(function(){ dr.classList.add('open'); },10);
   };
   window.prodCloseDrawer=function(){ var dr=document.getElementById('prod-fdrawer'); if(dr){ dr.classList.remove('open'); setTimeout(function(){ dr.remove(); },240); } };
-  window.prodClearFilters=function(){ var f=_flt('production'); var lk=f._locked, kst=f.status; ['q','teacher_id','channel','video_type','status','priority','deadline','creator_type'].forEach(function(k){ delete f[k]; }); if(lk){ f.status=kst; f._locked=true; } var body=document.getElementById('production-body'); if(body) renderList('production',body); };
+  window.prodClearFilters=function(){ var f=_flt('production'); f._locked=false; ['q','teacher_id','channel','video_type','status','priority','deadline','creator_type'].forEach(function(k){ delete f[k]; }); var body=document.getElementById('production-body'); if(body) renderList('production',body); };
   function renderList(portal,body){
     body.innerHTML=_filterBar(portal)+'<div id="'+portal+'-active"></div><div id="'+portal+'-results">'+_pSkelRows(5)+'</div>';
     return _prodLoadList(portal);
@@ -23064,7 +23064,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(page.indexOf('q:')===0){ var st=page.slice(2); var f=_flt(portal); if(st==='__overdue'){f.status='';f.deadline='overdue';f._locked=false;}else{f.status=st;f.deadline='';f._locked=true;} f.priority=''; return renderList(portal,body); }
       if(page==='urgent'){ var fu=_flt(portal); fu.priority='urgent'; fu.status=''; fu.deadline=''; return document.getElementById(portal+'-results')?_prodLoadList(portal,true):renderList(portal,body); }
       if(page==='board') return renderBoard(portal,body);
-      if(page==='tasks'||page==='videos'){ _flt(portal)._locked=false; return renderList(portal,body); }
+      if(page==='tasks'||page==='videos'){ var _tf=_flt(portal); _tf._locked=false; _tf.status=''; _tf.deadline=''; _tf.epreset=''; _tf.gpreset=''; _tf.ypreset=''; return renderList(portal,body); }
       if(page==='team') return renderTeam(portal,body);
       if(page==='views') return renderViews(portal,body);
       if(page==='time') return renderEditorTime(portal,body);
