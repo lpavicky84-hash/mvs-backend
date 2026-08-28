@@ -81,6 +81,20 @@ def gfx_dashboard(db: Session = Depends(get_db), me=Depends(get_graphics)):
     }
 
 
+@router.post("/me/photo")
+def gfx_photo_set(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_graphics)):
+    sp = _me_staff(db, me)
+    sp.photo_b64 = (payload.get("photo") or "").strip() or None
+    db.commit()
+    return {"ok": True, "has_photo": bool(sp.photo_b64)}
+
+
+@router.get("/me/photo")
+def gfx_photo_get(db: Session = Depends(get_db), me=Depends(get_graphics)):
+    sp = _me_staff(db, me)
+    return {"photo": (sp.photo_b64 if sp else "") or "", "name": getattr(me, "name", ""), "role": "graphics"}
+
+
 @router.get("/tasks")
 def gfx_tasks(status: str = "", filter: str = "", db: Session = Depends(get_db), me=Depends(get_graphics)):
     sp = _me_staff(db, me)

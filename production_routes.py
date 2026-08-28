@@ -1568,6 +1568,29 @@ def _notify_teacher_by_profile(db, teacher_profile_id, title, msg, task_id=None)
         pass
 
 
+# ============================================================ MY PROFILE (photo)
+def _pm_staff(db, me):
+    from models import ProductionStaffProfile
+    return db.query(ProductionStaffProfile).filter(
+        ProductionStaffProfile.user_id == getattr(me, "id", None)).first()
+
+
+@router.post("/me/photo")
+def pm_photo_set(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    sp = _pm_staff(db, me)
+    if not sp:
+        raise HTTPException(400, "No production profile for this account")
+    sp.photo_b64 = (payload.get("photo") or "").strip() or None
+    db.commit()
+    return {"ok": True, "has_photo": bool(sp.photo_b64)}
+
+
+@router.get("/me/photo")
+def pm_photo_get(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    sp = _pm_staff(db, me)
+    return {"photo": (sp.photo_b64 if sp else "") or "", "name": getattr(me, "name", ""), "role": "production_manager"}
+
+
 # ============================================================ NOTIFICATIONS
 @router.get("/notifications")
 def _pnotifs(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):

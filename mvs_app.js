@@ -20126,7 +20126,15 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.prodside .ps-badge{background:#d1443a;color:#fff;font-size:.7rem;font-weight:800;min-width:20px;text-align:center;padding:1px 7px;border-radius:999px;flex:0 0 auto}',
 '.prodside .ps-item:hover{background:rgba(230,173,78,.12);color:#fff}',
 '.prodside .ps-item.on{background:linear-gradient(135deg,rgba(230,173,78,.26),rgba(230,173,78,.10));color:#fff;box-shadow:inset 3px 0 0 '+accent+';font-weight:700}',
-'.prodside .ps-foot{margin-top:auto;padding:12px 10px;border-top:1px solid rgba(230,173,78,.14);display:flex;gap:8px}',
+'.prodside .ps-foot{margin-top:auto;padding:12px 10px;border-top:1px solid rgba(230,173,78,.14);display:flex;flex-direction:column;gap:8px}',
+'.ps-prof{display:flex;align-items:center;gap:10px;padding:8px;border-radius:12px;cursor:pointer;transition:background .15s}',
+'.ps-prof:hover{background:rgba(230,173,78,.12)}',
+'.ps-prof-av{width:40px;height:40px;border-radius:50%;flex:none;background:linear-gradient(135deg,#c99a2e,#a5801f);color:#231a05;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.95rem;background-size:cover;background-position:center;overflow:hidden}',
+'.ps-prof-av.has-img{color:transparent}',
+'.ps-prof-n{font-weight:700;font-size:.9rem;color:#f0e6cf;line-height:1.1}',
+'.ps-prof-r{font-size:.72rem;color:#bcae89;text-transform:capitalize}',
+'.pp-photo{width:120px;height:120px;border-radius:50%;margin:0 auto;background-size:cover;background-position:center;border:3px solid rgba(201,154,46,.4)}',
+'.pp-photo.pp-empty{background:linear-gradient(135deg,#c99a2e,#a5801f);color:#231a05;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:2.4rem}',
 '.prodside .ps-fbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px;border-radius:9px;background:rgba(255,255,255,.05);color:#e9dfc4;border:1px solid rgba(230,173,78,.16);cursor:pointer;font-size:.82rem;font-weight:600}',
 '.prodside .ps-fbtn svg{width:15px;height:15px}',
 '.prodside .ps-fbtn:hover{background:rgba(230,173,78,.14);color:#fff}',
@@ -20823,7 +20831,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           '<div class="ps-brand"><div class="ps-logo">'+logo+'</div><div><div class="ps-title">'+d.title+'</div><div class="ps-sub">'+d.sub+'</div></div></div>'+
           navHtml+
           '<div class="ps-foot">'+
-            '<button class="ps-fbtn" onclick="toggleDark()">'+icon('grid')+'<span>Theme</span></button>'+
+            '<div class="ps-prof" onclick="prodProfileOpen(\''+portal+'\')" title="Your profile"><div class="ps-prof-av" id="ps-prof-av-'+portal+'">'+esc((initials?initials(NAME||d.title):(NAME||d.title||'?').slice(0,1)).toUpperCase())+'</div><div class="ps-prof-i"><div class="ps-prof-n">'+esc(NAME||d.title)+'</div><div class="ps-prof-r">'+esc(d.role||portal)+'</div></div></div>'+
             '<button class="ps-fbtn" onclick="logout()">'+icon('logout')+'<span>Logout</span></button>'+
           '</div>'+
         '</aside>'+
@@ -20859,6 +20867,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var hi=document.getElementById(portal+'-hi'); if(hi) hi.textContent=_greet()+', '+(NAME||'');
     var dt=document.getElementById(portal+'-date'); if(dt) dt.textContent=_today();
     prodNav(portal,'dashboard');
+    try{ prodLoadProfilePhoto(portal); }catch(e){}
     prodStartNotifPoll(portal);
     if(portal==='production'){ _prodNavBadges(); if(window._prodBadgeInt) clearInterval(window._prodBadgeInt); window._prodBadgeInt=setInterval(function(){ var pa=document.getElementById('production-app'); if(pa&&pa.classList.contains('active')&&!document.hidden) _prodNavBadges(); },20000); }
     return Promise.resolve();
@@ -22622,6 +22631,48 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   window.prodClearFilter=function(portal,k){ _flt(portal)[k]=''; if(k==='q'){ var s=document.getElementById('prod-search'); if(s) s.value=''; } _prodLoadList(portal); };
   window.prodClearAll=function(portal){ window._prodFilter[portal]={}; var s=document.getElementById('prod-search'); if(s) s.value=''; _prodLoadList(portal); };
+  window.prodLoadProfilePhoto=function(portal){
+    try{ api(P[portal].api+'/me/photo').then(function(r){ var av=document.getElementById('ps-prof-av-'+portal); if(av && r && r.photo){ av.style.backgroundImage='url('+r.photo+')'; av.classList.add('has-img'); av.textContent=''; } }).catch(function(){}); }catch(e){}
+  };
+  window.prodProfileOpen=function(portal){
+    api(P[portal].api+'/me/photo').then(function(r){ _prodProfRender(portal,r||{}); }).catch(function(){ _prodProfRender(portal,{}); });
+  };
+  function _prodProfRender(portal, r){
+    window._prodProfImg=r.photo||''; window._prodProfPortal=portal;
+    var old=document.getElementById('prod-modal'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+    var prev=window._prodProfImg?'<div class="pp-photo" style="background-image:url('+esc(window._prodProfImg)+')"></div>':'<div class="pp-photo pp-empty">'+esc((NAME||'?').slice(0,1).toUpperCase())+'</div>';
+    dr.innerHTML='<div class="p-modal" style="max-width:400px">'+
+      '<div class="pd-head"><div class="h-title">My Profile</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body" style="text-align:center">'+
+        '<div id="pp-photo-wrap">'+prev+'</div>'+
+        '<div style="font-weight:800;font-size:1.05rem;margin-top:10px">'+esc(NAME||'')+'</div>'+
+        '<div style="color:var(--muted);font-size:.82rem;text-transform:capitalize">'+esc((r.role||portal||'').replace('production_manager','Production Manager'))+'</div>'+
+        '<div style="display:flex;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap">'+
+          '<button class="p-btn" onclick="document.getElementById(\'pp-file\').click()">'+ic('upload')+' Upload / change photo</button>'+
+          (window._prodProfImg?'<button class="p-btn" style="color:#b91c1c" onclick="prodProfileRemovePhoto()">Remove</button>':'')+
+        '</div>'+
+        '<input type="file" id="pp-file" accept="image/*" style="display:none">'+
+        '<div style="font-size:.72rem;color:var(--muted);margin-top:8px">Paste (Ctrl+V) bhi kar sakte ho</div>'+
+      '</div>'+
+      '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Close</button></div></div>'+
+      '</div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+    document.body.appendChild(dr);
+    var fi=document.getElementById('pp-file'); if(fi) fi.addEventListener('change',function(e){ var f=(e.target.files||[])[0]; if(f) _prodProfRead(f); });
+    window._ppPaste=function(e){ if(!document.getElementById('pp-photo-wrap')){ document.removeEventListener('paste',window._ppPaste); return; } var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ _prodProfRead(items[i].getAsFile()); e.preventDefault(); } } };
+    document.addEventListener('paste',window._ppPaste);
+  }
+  function _prodProfRead(file){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ _prodProfSave(rd.result); }; rd.readAsDataURL(file); }
+  function _prodProfSave(dataUrl){
+    var portal=window._prodProfPortal;
+    var w=document.getElementById('pp-photo-wrap'); if(w) w.innerHTML='<div class="pp-photo" style="background-image:url('+dataUrl+')"></div>';
+    api(P[portal].api+'/me/photo','POST',{photo:dataUrl}).then(function(){ toast('Photo updated'); window._prodProfImg=dataUrl; prodLoadProfilePhoto(portal); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  }
+  window.prodProfileRemovePhoto=function(){
+    var portal=window._prodProfPortal;
+    api(P[portal].api+'/me/photo','POST',{photo:''}).then(function(){ toast('Photo removed'); window._prodProfImg=''; var av=document.getElementById('ps-prof-av-'+portal); if(av){ av.style.backgroundImage=''; av.classList.remove('has-img'); av.textContent=(NAME||'?').slice(0,1).toUpperCase(); } prodDismiss(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
   window.prodView=function(portal,val){
     var f=_flt(portal);
     f.epreset=''; f.gpreset=''; f.ypreset='';  // sidebar preset clear — warna stale filter results ko chhupa deta hai

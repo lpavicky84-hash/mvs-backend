@@ -6845,10 +6845,25 @@ def delete_production_user(uid: int, db: Session = Depends(get_db), _=Depends(ge
                 for g in db.query(GraphicsTask).filter(GraphicsTask.graphics_id == sp.id).all():
                     db.delete(g)
             db.delete(sp)
-    # profile deleted -> team se gayab; user ko deactivate (login band). Hard-delete FK todh sakta hai.
-    u.is_active = False
+    # User ko FULLY delete karo (card + user-id + password sab khatam). Pehle FK references saaf
+    # karo taaki MySQL FK-constraint delete block na kare.
+    try:
+        from models import (Notification, ProductionEvent, TaskReview,
+                            TaskAttachment, VideoTaskComment)
+        db.query(Notification).filter(Notification.user_id == u.id).delete(synchronize_session=False)
+        db.query(ProductionEvent).filter(ProductionEvent.actor_user_id == u.id).update(
+            {ProductionEvent.actor_user_id: None}, synchronize_session=False)
+        db.query(TaskReview).filter(TaskReview.reviewer_user_id == u.id).update(
+            {TaskReview.reviewer_user_id: None}, synchronize_session=False)
+        db.query(TaskAttachment).filter(TaskAttachment.uploader_user_id == u.id).update(
+            {TaskAttachment.uploader_user_id: None}, synchronize_session=False)
+        db.query(VideoTaskComment).filter(VideoTaskComment.user_id == u.id).update(
+            {VideoTaskComment.user_id: None}, synchronize_session=False)
+    except Exception:
+        pass
+    db.delete(u)
     db.commit()
-    return {"ok": True, "unassigned": unassigned}
+    return {"ok": True, "unassigned": unassigned, "deleted": True}
 
 
 @router.post("/production-users/{uid}/reset-password")
