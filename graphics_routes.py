@@ -23,7 +23,16 @@ def _me_staff(db, me):
 def _my_gtask(db, sp, tid):
     g = db.query(GraphicsTask).filter(GraphicsTask.task_id == int(tid)).first()
     if not g:
-        raise HTTPException(404, "Thumbnail task not found")
+        # Self-heal (permanent fix): kabhi GraphicsTask row nahi banta (edit / alag creation path),
+        # par video is designer ko assigned hai -> row bana do taaki Start/Submit/Chat kabhi 404 na de.
+        t = db.query(VideoTask).filter(VideoTask.id == int(tid)).first()
+        if t and getattr(t, "graphics_id", None) == sp.id:
+            g = GraphicsTask(task_id=t.id, graphics_id=sp.id, status="new")
+            db.add(g)
+            db.commit()
+            db.refresh(g)
+        else:
+            raise HTTPException(404, "Thumbnail task not found")
     if g.graphics_id != sp.id:
         raise HTTPException(403, "This thumbnail is not assigned to you")
     return g
