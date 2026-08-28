@@ -162,6 +162,9 @@ def gfx_comment_add(tid: int, payload: dict = Body(...),
                   "gfx_chat", link=str(tid))
     db.commit()
     return {"ok": True, "comment": _vtc_out(db, c)}
+
+
+@router.post("/tasks/{tid}/start")
 def gfx_start(tid: int, db: Session = Depends(get_db), me=Depends(get_graphics)):
     sp = _me_staff(db, me)
     g = _my_gtask(db, sp, tid)
