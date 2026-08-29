@@ -20142,8 +20142,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pp-photo.pp-empty{background:linear-gradient(135deg,#c99a2e,#a5801f);color:#231a05;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:2.4rem}',
 '.pp-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:9px;margin-bottom:6px}',
 '.yt-modes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}',
-'.yt-mode{text-align:left;padding:12px 14px;border:1.5px solid var(--border,#e5ddcb);border-radius:12px;background:var(--card,#fff);cursor:pointer;transition:border-color .15s,background .15s}',
-'.yt-mode.on{border-color:#c99a2e;background:rgba(230,173,78,.1)}',
+'.yt-mode{text-align:left;padding:12px 14px;border:1.5px solid var(--border,#e5ddcb);border-radius:12px;background:var(--card,#fff);cursor:pointer;transition:border-color .15s,background .15s,box-shadow .15s,transform .1s}',
+'.yt-mode:hover{border-color:#d9b96a}',
+'.yt-mode.on{border-color:#c99a2e;background:linear-gradient(135deg,rgba(230,173,78,.24),rgba(230,173,78,.1));box-shadow:0 3px 10px rgba(201,154,46,.22)}',
 '.yt-mode b{display:block;font-size:.95rem}',
 '.yt-mode span{font-size:.72rem;color:var(--muted);margin-top:3px;display:block;line-height:1.3}',
 '.yt-drop{border:1.5px dashed var(--border,#d9cdae);border-radius:11px;padding:18px;text-align:center;color:var(--muted);cursor:pointer;font-size:.82rem;transition:border-color .15s}',
@@ -21108,7 +21109,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(!badges && (a.ontime_pct||0)<1) return '';
     return '<div class="ap-strip"><div class="ap-l">'+(badges||'<span class="ap-hi">Keep delivering to earn badges</span>')+'</div><div class="ap-r">'+stats+'</div></div>';
   }
-  window.ytNewVideo=function(){
+  window.ytNewVideo=function(){ if(typeof ytNewTask==='function'){ ytNewTask(); return; }
     var canDirect=!window._ytApprovalReq;
     var old=document.getElementById('prod-modal'); if(old) old.remove();
     window._ytMode='propose';
