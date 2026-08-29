@@ -1236,6 +1236,34 @@ def pm_person(kind: str, pid: int, db: Session = Depends(get_db), me=Depends(get
                      "on_time_pct": round(100.0 * ot_hit / ot_den) if ot_den else None,
                      "recommended_load": sp.recommended_load or 5}
             recent = base.order_by(VideoTask.updated_at.desc()).limit(8).all()
+            _act = base.filter(VideoTask.lifecycle.in_(["editor_assigned", "editing", "editing_paused", "editing_done", "qc_pending", "qc_changes"])).order_by(VideoTask.updated_at.desc()).all()
+            active_tasks = []
+            for _t in _act:
+                _ts = db.query(func.coalesce(func.sum(EditingSession.duration_seconds), 0)).filter(
+                    EditingSession.editor_id == pid, EditingSession.task_id == _t.id).scalar() or 0
+                active_tasks.append({
+                    "id": _t.id, "title": _t.title or "", "ref_code": _t.ref_code or "",
+                    "lifecycle": _t.lifecycle or "",
+                    "deadline": pc._dt_raw(_t.deadline) if _t.deadline else "",
+                    "editing_hours": round(_ts / 3600.0, 1),
+                    "editing_started": (pc._dt(_t.editing_started_at) if getattr(_t, "editing_started_at", None) else ""),
+                })
+            _all = base.order_by(VideoTask.updated_at.desc()).limit(80).all()
+            all_tasks = []
+            for _t in _all:
+                _done2 = _t.lifecycle in done
+                _act2 = _t.lifecycle in ("editor_assigned", "editing", "editing_paused", "editing_done", "qc_pending", "qc_changes")
+                _ov2 = (_t.deadline is not None and _t.deadline < now and not _done2)
+                _ts2 = db.query(func.coalesce(func.sum(EditingSession.duration_seconds), 0)).filter(
+                    EditingSession.editor_id == pid, EditingSession.task_id == _t.id).scalar() or 0
+                all_tasks.append({
+                    "id": _t.id, "title": _t.title or "", "ref_code": _t.ref_code or "",
+                    "lifecycle": _t.lifecycle or "",
+                    "deadline": pc._dt_raw(_t.deadline) if _t.deadline else "",
+                    "editing_hours": round(_ts2 / 3600.0, 1),
+                    "active": _act2, "completed": _done2, "overdue": _ov2,
+                    "this_month": bool(_done2 and _t.updated_at and _t.updated_at >= month_start),
+                })
         else:
             gbase = db.query(GraphicsTask).filter(GraphicsTask.graphics_id == pid)
             active = gbase.filter(GraphicsTask.status.in_(["new", "in_progress", "changes"])).count()
@@ -1248,7 +1276,26 @@ def pm_person(kind: str, pid: int, db: Session = Depends(get_db), me=Depends(get
                      "on_time_pct": None, "recommended_load": sp.recommended_load or 5}
             task_ids = [g.task_id for g in gbase.order_by(GraphicsTask.created_at.desc()).limit(8).all()]
             recent = db.query(VideoTask).filter(VideoTask.id.in_(task_ids)).all() if task_ids else []
+            active_tasks = [{"id": t.id, "title": t.title or "", "ref_code": t.ref_code or "",
+                             "lifecycle": t.lifecycle or "", "editing_hours": None,
+                             "deadline": pc._dt_raw(t.deadline) if t.deadline else "", "editing_started": ""}
+                            for t in recent]
+            all_tasks = []
+            for g in gbase.order_by(GraphicsTask.created_at.desc()).limit(80).all():
+                gt = db.query(VideoTask).filter(VideoTask.id == g.task_id).first()
+                if not gt:
+                    continue
+                _doneg = (g.status == "approved")
+                all_tasks.append({
+                    "id": gt.id, "title": gt.title or "", "ref_code": gt.ref_code or "",
+                    "lifecycle": gt.lifecycle or "", "editing_hours": None,
+                    "deadline": pc._dt_raw(gt.deadline) if gt.deadline else "",
+                    "active": g.status in ("new", "in_progress", "changes"),
+                    "completed": _doneg, "overdue": False,
+                    "this_month": bool(_doneg and g.approved_at and g.approved_at >= month_start),
+                })
         return {"kind": kind, "name": name, "stats": stats,
+                "active_tasks": active_tasks, "all_tasks": all_tasks,
                 "recent": [pc.task_out(db, t, light=True) for t in recent]}
 
     if kind == "youtuber":

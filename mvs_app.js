@@ -20138,6 +20138,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pp-photo.pp-empty{background:linear-gradient(135deg,#c99a2e,#a5801f);color:#231a05;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:2.4rem}',
 '.pp-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:9px;margin-bottom:6px}',
 '.pp-stat{border:1px solid var(--border,#ece2cd);border-radius:11px;padding:11px}',
+'.pp-stat.on{border-color:#c99a2e;background:rgba(230,173,78,.1)}',
 'body.dark .pp-stat{border-color:#2c2410}',
 '.pp-sv{font-size:1.35rem;font-weight:800;line-height:1}',
 '.pp-sl{font-size:.66rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:5px}',
@@ -22691,14 +22692,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   function _prodPersonRender(kind,name,r){
     var s=r.stats||{}; var cards=[];
-    if(kind==='editor') cards=[['Active',s.active],['Completed',s.completed],['This Month',s.completed_this_month],['Overdue',s.overdue],['Active Hrs',s.active_hours],['On-Time',s.on_time_pct==null?'\u2014':s.on_time_pct+'%']];
-    else if(kind==='graphics') cards=[['Active',s.active],['Completed',s.completed],['This Month',s.completed_this_month],['Avg Hrs',s.avg_hours]];
-    else cards=[['Pending',s.pending],['Submitted',s.submitted],['In Production',s.in_production],['Published',s.published],['Total Views',s.total_views]];
-    var body='<div class="pp-cards">'+cards.map(function(c){return '<div class="pp-stat"><div class="pp-sv">'+(c[1]==null?0:c[1])+'</div><div class="pp-sl">'+c[0]+'</div></div>';}).join('')+'</div>';
-    if(r.active_tasks && r.active_tasks.length){
-      body+='<div class="pp-h">Active Tasks \u2014 live editing</div>'+r.active_tasks.map(function(t){var lc=(t.lifecycle||'').replace(/_/g,' ');return '<div class="pp-row"><div><div class="pp-rn">'+esc(t.title||'')+'</div><div class="pp-rm">'+esc(t.ref_code||'')+(t.editing_started?(' \u00b7 started '+esc(t.editing_started)):'')+'</div></div><span class="pp-rt live">'+(t.editing_hours||0)+'h \u00b7 '+esc(lc)+'</span></div>';}).join('');
-    }
-    if(r.recent && r.recent.length){
+    if(kind==='editor') cards=[['Active',s.active,'active'],['Completed',s.completed,'completed'],['This Month',s.completed_this_month,'this_month'],['Overdue',s.overdue,'overdue'],['Active Hrs',s.active_hours,'active'],['On-Time',s.on_time_pct==null?'\u2014':s.on_time_pct+'%',null]];
+    else if(kind==='graphics') cards=[['Active',s.active,'active'],['Completed',s.completed,'completed'],['This Month',s.completed_this_month,'this_month'],['Avg Hrs',s.avg_hours,null]];
+    else cards=[['Pending',s.pending,null],['Submitted',s.submitted,null],['In Production',s.in_production,null],['Published',s.published,null],['Total Views',s.total_views,null]];
+    window._prodPersonAll=r.all_tasks||[];
+    var body='<div class="pp-cards" id="pp-cards">'+cards.map(function(c){var clk=c[2]?(' data-k="'+c[2]+'" onclick="prodPersonCard(\''+c[2]+'\')" style="cursor:pointer"'):''; return '<div class="pp-stat"'+clk+'><div class="pp-sv">'+(c[1]==null?0:c[1])+'</div><div class="pp-sl">'+c[0]+'</div></div>';}).join('')+'</div>';
+    if(kind==='editor'||kind==='graphics'){
+      body+='<div class="pp-h" id="pp-tlh">Active Tasks</div><div id="pp-tl"></div>';
+    } else if(r.recent && r.recent.length){
       body+='<div class="pp-h">Recent Work</div>'+r.recent.map(function(t){return '<div class="pp-row"><div><div class="pp-rn">'+esc(t.title||'')+'</div><div class="pp-rm">'+esc(t.ref_code||'')+'</div></div><span class="pp-rt">'+esc(t.lifecycle_label||t.next_action||'')+'</span></div>';}).join('');
     }
     var old=document.getElementById('prod-modal'); if(old) old.remove();
@@ -22706,7 +22707,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     dr.innerHTML='<div class="p-modal" style="max-width:540px"><div class="pd-head"><div class="h-title">'+esc(name)+' <span style="font-size:.7rem;color:var(--muted);text-transform:uppercase">'+esc(kind)+'</span></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div><div class="p-modal-body">'+body+'</div><div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Close</button></div></div></div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
     document.body.appendChild(dr);
+    if(kind==='editor'||kind==='graphics') prodPersonCard('active');
   }
+  window.prodPersonCard=function(key){
+    if(!key) return;
+    var cont=document.getElementById('pp-cards'); if(cont) cont.querySelectorAll('.pp-stat').forEach(function(c){ c.classList.toggle('on', c.getAttribute('data-k')===key); });
+    var h=document.getElementById('pp-tlh'); if(h) h.textContent=(window._PKEYLBL2&&window._PKEYLBL2[key])||{active:'Active Tasks',completed:'Completed',this_month:'Completed This Month',overdue:'Overdue Tasks'}[key]||'Tasks';
+    var el=document.getElementById('pp-tl'); if(el) el.innerHTML=(window._personTaskRows?_personTaskRows(_personFilter(window._prodPersonAll,key)):'');
+  };
   window.prodView=function(portal,val){
     var f=_flt(portal);
     f.epreset=''; f.gpreset=''; f.ypreset='';  // sidebar preset clear — warna stale filter results ko chhupa deta hai
@@ -23979,24 +23987,45 @@ function _apCard(u){
     '</div></div>';
 }
 
+window._personFilter=function(all,key){
+  all=all||[];
+  if(key==='overdue') return all.filter(function(t){return t.overdue;});
+  if(key==='this_month') return all.filter(function(t){return t.this_month;});
+  if(key==='completed') return all.filter(function(t){return t.completed;});
+  return all.filter(function(t){return t.active;});
+};
+window._personTaskRows=function(tasks){
+  if(!tasks||!tasks.length) return '<div style="color:#9c8f6e;padding:12px">No tasks in this category.</div>';
+  return tasks.map(function(t){ var lc=(t.lifecycle||'').replace(/_/g,' '); var hrs=(t.editing_hours!=null&&t.editing_hours!=='')?('<span class="st" style="background:rgba(124,79,192,.14);color:#6d3fb0;font-weight:800">'+t.editing_hours+'h \u00b7 '+_ape(lc)+'</span>'):('<span class="st">'+_ape(lc)+'</span>'); return '<div class="ap-prow"><div class="t"><div class="nm">'+_ape(t.title||'Untitled')+'</div><div class="mt">'+_ape(t.ref_code||'')+(t.deadline?(' \u00b7 due '+_ape(t.deadline)):'')+'</div></div>'+hrs+'</div>'; }).join('');
+};
+var _PKEYLBL={active:'Active Tasks',completed:'Completed',this_month:'Completed This Month',overdue:'Overdue Tasks'};
+window.apPersonCard=function(key){
+  if(!key) return;
+  var cont=document.getElementById('ap-person-cards'); if(cont) cont.querySelectorAll('.pm-card').forEach(function(c){ c.classList.toggle('on', c.getAttribute('data-k')===key); });
+  var h=document.getElementById('ap-person-tlh'); if(h) h.textContent=_PKEYLBL[key]||'Tasks';
+  var el=document.getElementById('ap-person-tl'); if(el) el.innerHTML=_personTaskRows(_personFilter(window._apPersonAll,key));
+};
 window.apPerson=function(kind,pid,name){
   _apModal(_ape(name),'<div class="ap-load" style="padding:16px">Loading profile...</div>');
   api('/api/production/person/'+kind+'/'+pid).then(function(r){
     var s=r.stats||{}; var cards=[];
-    if(kind==='editor'){ cards=[['Active',s.active],['Completed',s.completed],['This Month',s.completed_this_month],['Overdue',s.overdue],['Active Hrs',s.active_hours],['On-Time',s.on_time_pct==null?'\u2014':s.on_time_pct+'%']]; }
-    else if(kind==='graphics'){ cards=[['Active',s.active],['Completed',s.completed],['This Month',s.completed_this_month],['Avg Hrs',s.avg_hours]]; }
-    else { cards=[['Pending',s.pending],['Submitted',s.submitted],['In Production',s.in_production],['Published',s.published],['Total Views',s.total_views]]; }
+    if(kind==='editor'){ cards=[['Active',s.active,'active'],['Completed',s.completed,'completed'],['This Month',s.completed_this_month,'this_month'],['Overdue',s.overdue,'overdue'],['Active Hrs',s.active_hours,'active'],['On-Time',s.on_time_pct==null?'\u2014':s.on_time_pct+'%',null]]; }
+    else if(kind==='graphics'){ cards=[['Active',s.active,'active'],['Completed',s.completed,'completed'],['This Month',s.completed_this_month,'this_month'],['Avg Hrs',s.avg_hours,null]]; }
+    else { cards=[['Pending',s.pending,null],['Submitted',s.submitted,null],['In Production',s.in_production,null],['Published',s.published,null],['Total Views',s.total_views,null]]; }
+    window._apPersonAll=r.all_tasks||[];
     var box=document.querySelector('#ap-modal .ap-box'); if(!box) return;
     var html='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-size:1.12rem;font-weight:800">'+_ape(name)+' <span style="font-size:.72rem;color:#8a7d5c;text-transform:uppercase;letter-spacing:.06em">'+_ape(kind)+'</span></div><button onclick="apClose()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:inherit">&times;</button></div>';
-    html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px">'+cards.map(function(c){ return '<div class="pm-card" style="border:1px solid var(--border,#e5ddcb);border-radius:12px;padding:12px"><div style="font-size:1.4rem;font-weight:800;line-height:1">'+(c[1]==null?0:c[1])+'</div><div style="font-size:.68rem;color:#8a7d5c;text-transform:uppercase;letter-spacing:.04em;margin-top:5px">'+c[0]+'</div></div>'; }).join('')+'</div>';
+    html+='<div id="ap-person-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px">'+cards.map(function(c){ var clk=c[2]?(' data-k="'+c[2]+'" onclick="apPersonCard(\''+c[2]+'\')" style="border:1px solid var(--border,#e5ddcb);border-radius:12px;padding:12px;cursor:pointer;transition:border-color .12s,background .12s"'):(' style="border:1px solid var(--border,#e5ddcb);border-radius:12px;padding:12px"'); return '<div class="pm-card"'+clk+'><div style="font-size:1.4rem;font-weight:800;line-height:1">'+(c[1]==null?0:c[1])+'</div><div style="font-size:.68rem;color:#8a7d5c;text-transform:uppercase;letter-spacing:.04em;margin-top:5px">'+c[0]+'</div></div>'; }).join('')+'</div>';
     var rec=r.recent||[];
-    if(r.active_tasks && r.active_tasks.length){
-      html+='<div style="font-weight:800;margin:18px 0 10px">Active Tasks — live editing</div>';
-      html+=r.active_tasks.map(function(t){ var lc=(t.lifecycle||'').replace(/_/g,' '); return '<div class="ap-prow"><div class="t"><div class="nm">'+_ape(t.title||'Untitled')+'</div><div class="mt">'+_ape(t.ref_code||'')+(t.editing_started?(' \u00b7 started '+_ape(t.editing_started)):'')+'</div></div><span class="st" style="background:rgba(124,79,192,.14);color:#6d3fb0;font-weight:800">'+(t.editing_hours||0)+'h \u00b7 '+_ape(lc)+'</span></div>'; }).join('');
+    if(kind==='editor'||kind==='graphics'){
+      html+='<div id="ap-person-tlh" style="font-weight:800;margin:18px 0 10px">Active Tasks</div>';
+      html+='<div id="ap-person-tl"></div>';
+    } else {
+      html+='<div style="font-weight:800;margin:18px 0 10px">Recent Work</div>';
+      html+=(rec.length?rec.map(function(t){ return '<div class="ap-prow"><div class="t"><div class="nm">'+_ape(t.title||'Untitled')+'</div><div class="mt">'+_ape(t.ref_code||'')+'</div></div><span class="st">'+_ape(t.lifecycle_label||t.next_action||'')+'</span></div>'; }).join(''):'<div style="color:#9c8f6e;padding:8px">No recent work.</div>');
     }
-    html+='<div style="font-weight:800;margin:18px 0 10px">Recent Work</div>';
-    html+=rec.length?rec.map(function(t){ return '<div class="ap-prow"><div class="t"><div class="nm">'+_ape(t.title||'Untitled')+'</div><div class="mt">'+_ape(t.ref_code||'')+'</div></div><span class="st">'+_ape(t.lifecycle_label||t.next_action||'')+'</span></div>'; }).join(''):'<div style="color:#9c8f6e;padding:8px">No recent work.</div>';
     box.innerHTML=html;
+    if(kind==='editor'||kind==='graphics') apPersonCard('active');
   }).catch(function(e){ var box=document.querySelector('#ap-modal .ap-box'); if(box) box.innerHTML='<div style="padding:20px;color:#c1443a">Could not load profile. '+_ape(e&&e.message||'')+'</div><div style="margin-top:12px"><button class="ap-btn" onclick="apClose()">Close</button></div>'; });
 };
 
