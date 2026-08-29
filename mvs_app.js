@@ -23611,9 +23611,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     window._ytMode='ready'; window._ytThumb=''; window._ytRef=''; window._ytEd=''; window._ytGx='';
     Promise.all([
       api('/api/youtuber/editors').catch(function(){return {editors:[]};}),
-      api('/api/youtuber/graphics').catch(function(){return {graphics:[]};})
+      api('/api/youtuber/graphics').catch(function(){return {graphics:[]};}),
+      api('/api/youtuber/video-types').catch(function(){return {types:[]};}),
+      api('/api/youtuber/channels').catch(function(){return {channels:[]};})
     ]).then(function(res){
       window._ytEds=(res[0]&&res[0].editors)||[]; window._ytGfx=(res[1]&&res[1].graphics)||[];
+      window._ytTys=((res[2]&&res[2].types)||[]).map(function(x){return x.name;});
+      window._ytChs=((res[3]&&res[3].channels)||[]).map(function(x){return x.name;});
       _ytRenderNew();
     });
   };
@@ -23624,9 +23628,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '<button class="yt-mode'+(m==='ready'?' on':'')+'" onclick="ytMode(\'ready\')"><b>Video Ready</b><span>Shot + thumbnail — submit link now</span></button>'+
       '<button class="yt-mode'+(m==='thumbnail'?' on':'')+'" onclick="ytMode(\'thumbnail\')"><b>Need Thumbnail</b><span>Give topic + reference → graphics designs it</span></button>'+
       '</div>';
+    var _tyOpts=function(sel){ var l=window._ytTys||[]; return '<option value="">Select type</option>'+l.map(function(x){return '<option value="'+esc(x)+'"'+(sel===x?' selected':'')+'>'+esc(x)+'</option>';}).join(''); };
+    var _chOpts=function(sel){ var l=window._ytChs||[]; return '<option value="">— No channel —</option>'+l.map(function(x){return '<option value="'+esc(x)+'"'+(sel===x?' selected':'')+'>'+esc(x)+'</option>';}).join(''); };
     var common='<div class="p-field"><label>Video Title / Topic</label><input id="yt-title" class="p-input" placeholder="e.g. Why NIOS students fail — 3 mistakes"></div>'+
-      '<div class="form-grid vt-form" style="grid-template-columns:1fr 1fr"><div class="p-field"><label>Video Type</label><input id="yt-vtype" class="p-input" placeholder="e.g. Short Video"></div>'+
-      '<div class="p-field"><label>Channel</label><input id="yt-channel" class="p-input" placeholder="Channel name"></div></div>'+
+      '<div class="form-grid vt-form" style="grid-template-columns:1fr 1fr"><div class="p-field"><label>Video Type</label><select id="yt-vtype" class="p-input">'+_tyOpts('')+'</select></div>'+
+      '<div class="p-field"><label>Channel</label><select id="yt-channel" class="p-input">'+_chOpts('')+'</select></div></div>'+
       '<div class="p-field"><label>Deadline</label><input id="yt-deadline" type="datetime-local" class="p-input"></div>';
     var edSel='<div class="p-field"><label>Assign Editor <span class="vt-hint">(optional — PM/editor can also assign later)</span></label><select id="yt-editor" class="p-input">'+_ytOpts(window._ytEds,window._ytEd)+'</select></div>';
     var body;

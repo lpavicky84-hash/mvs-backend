@@ -224,6 +224,20 @@ def yt_delete_video(tid: int, db: Session = Depends(get_db), me=Depends(get_yout
     return {"ok": True}
 
 
+@router.get("/channels")
+def yt_channels(db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    from models import VideoChannel
+    rows = db.query(VideoChannel).filter(VideoChannel.active == True).order_by(VideoChannel.id.asc()).all()
+    return {"channels": [{"id": c.id, "name": c.name} for c in rows]}
+
+
+@router.get("/video-types")
+def yt_video_types(db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    from models import VideoType
+    rows = db.query(VideoType).filter(VideoType.active == True).order_by(VideoType.sort.asc(), VideoType.id.asc()).all()
+    return {"types": [{"id": c.id, "name": c.name} for c in rows]}
+
+
 @router.get("/graphics")
 def yt_graphics_people(db: Session = Depends(get_db), me=Depends(get_youtuber)):
     from models import ProductionStaffProfile
