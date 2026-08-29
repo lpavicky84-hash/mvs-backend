@@ -742,6 +742,51 @@ def pm_del_thumbnail(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_
     return {"ok": True}
 
 
+@router.post("/tasks/{tid}/credit-thumbnail")
+def pm_credit_thumbnail(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Thumbnail already made (by youtuber/PM) -> credit a designer + rate, auto-approve.
+    Designer does NOT need to re-upload for review — goes straight to their completed."""
+    from models import ProductionStaffProfile
+    t = _task(db, tid)
+    gid = int(payload.get("graphics_id") or 0)
+    gr = db.query(ProductionStaffProfile).filter(
+        ProductionStaffProfile.id == gid, ProductionStaffProfile.staff_role == "graphics").first()
+    if not gr:
+        raise HTTPException(400, "Valid graphics designer required")
+    g = pc.graphics_task(db, t, create=True)
+    g.graphics_id = gid
+    t.graphics_id = gid
+    _up = payload.get("thumbnail")
+    if _up:
+        try:
+            urls = pc.save_images(db, t, [_up[0] if isinstance(_up, list) else _up],
+                                  "thumbnail", None, me, return_urls=True) or []
+            if urls:
+                g.thumbnail_url = urls[0]
+                t.thumbnail_link = urls[0]
+        except Exception:
+            pass
+    g.status = "approved"
+    try:
+        g.submitted_at = datetime.utcnow()
+    except Exception:
+        pass
+    try:
+        rating = int(payload.get("rating") or 0)
+        if rating:
+            g.quality_rating = rating
+    except Exception:
+        pass
+    pc.log_event(db, t, me, "thumbnail_credited", new_state=t.lifecycle)
+    if gr.user_id:
+        _rt = int(payload.get("rating") or 0)
+        pc.notify(db, gr.user_id, "Thumbnail credited",
+                  f'Your thumbnail for "{t.title}" was approved' + (f" ({_rt}\u2605)" if _rt else "") + ".",
+                  "video_task", link=str(t.id))
+    db.commit()
+    return {"ok": True}
+
+
 @router.post("/tasks/{tid}/assign-graphics")
 def assign_graphics(tid: int, payload: dict = Body(...),
                     db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):

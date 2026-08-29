@@ -6417,6 +6417,8 @@ function _renderADppTracker(){
 (function(){ try{ if(document.getElementById('yt-adm-css')) return; var st=document.createElement('style'); st.id='yt-adm-css';
   st.textContent=[
     '.yt-scope .yt-hero{background:linear-gradient(135deg,#2a1d02,#4a3608);color:#fff;border-radius:18px;padding:20px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px}',
+    '.yt-new-blink{display:inline-block;background:#dc2626;color:#fff;font-size:.62rem;font-weight:800;padding:2px 7px;border-radius:999px;letter-spacing:.05em;vertical-align:middle;animation:ytNewBlink 1.1s ease-in-out infinite}',
+    '@keyframes ytNewBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(220,38,38,.5)}50%{opacity:.75;box-shadow:0 0 0 5px rgba(220,38,38,.05)}}',
     '.yt-scope .yt-hero h3{margin:0;font-size:1.25rem;font-weight:800}',
     '.yt-scope .yt-hero p{margin:3px 0 0;font-size:.8rem;opacity:.82}',
     '.yt-scope .yt-hero .vt-sp{flex:1}',
@@ -6487,7 +6489,7 @@ function _renderAYtTasks(){
   var all=window._ytTasks||[], f=window._ytF;
   var total=all.length,done=0,prod=0,review=0,assigned=0,overdue=0;
   all.forEach(function(t){ var b=_ytBucket(t); if(b==='done')done++;else if(b==='prod')prod++;else if(b==='review')review++;else assigned++; if(_ytOverdue(t))overdue++; });
-  function stat(l,n,color,icn,bucket){ return '<div class="vt-stat'+(bucket?' vt-stat-click':'')+'"'+(bucket?' data-ytb="'+bucket+'" onclick="_ytBucketFilter(\''+bucket+'\')"':'')+'><div class="vs-ic" style="background:'+color+'1f;color:'+color+'">'+ic(icn)+'</div><div><div class="vs-n" style="color:'+color+'">'+n+'</div><div class="vs-l">'+l+'</div></div></div>'; }
+  function stat(l,n,color,icn,bucket,blink){ return '<div class="vt-stat'+(bucket?' vt-stat-click':'')+((blink&&n>0)?' vt-ap-blink':'')+'"'+(bucket?' data-ytb="'+bucket+'" onclick="_ytBucketFilter(\''+bucket+'\')"':'')+'><div class="vs-ic" style="background:'+color+'1f;color:'+color+'">'+ic(icn)+'</div><div><div class="vs-n" style="color:'+color+'">'+n+'</div><div class="vs-l">'+l+'</div></div></div>'; }
   var byType={}; all.forEach(function(t){ var k=(t.video_type||'').trim()||'Uncategorized'; byType[k]=(byType[k]||0)+1; });
   var creators=[]; all.forEach(function(t){ var c=(t.creator_name||'').trim(); if(c&&creators.indexOf(c)<0)creators.push(c); }); creators.sort();
   var cOpt='<option value="">All YouTubers</option>'+creators.map(function(c){return '<option value="'+esc(c)+'"'+(f.creator===c?' selected':'')+'>'+esc(c)+'</option>';}).join('');
@@ -6495,7 +6497,7 @@ function _renderAYtTasks(){
   var tyOpt='<option value="">All Types</option>'+(window._ytTypes||[]).map(function(c){return '<option value="'+esc(c.name)+'"'+(f.video_type===c.name?' selected':'')+'>'+esc(c.name)+'</option>';}).join('');
   var _serTasks=all.filter(function(t){ return (t.series_name||'').trim(); });
   var _soloTasks=all.filter(function(t){ return !(t.series_name||'').trim(); });
-  var cards=_soloTasks.map(function(t){ return (window._prodTaskCard?window._prodTaskCard('production',t):_ytCard(t)); }).join('');
+  var cards=_soloTasks.map(_ytCard).join('');
   el.innerHTML=''
     +'<div class="yt-hero"><div><h3>'+ic('play')+' YouTuber Task Manager</h3><p>Assign videos & projects to your YouTubers, track the full production pipeline, and publish — separate from the teacher Task Manager.</p></div><div class="vt-sp"></div>'
       +'<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="openYtChannels()">'+ic('play')+' Channels ('+(window._ytChannels||[]).length+')</button>'
@@ -6509,7 +6511,7 @@ function _renderAYtTasks(){
   var statRow=''
     +stat('Total Assigned',total,'#8a6d10','clipboard','all')
     +stat('To Shoot',assigned,'#0891b2','clock','assigned')
-    +stat('Approval Pending',review,'#c99a2e','bell','review')
+    +stat('Approval Pending',review,'#dc2626','bell','review',true)
     +stat('In Production',prod,'#7c4fc0','play','prod')
     +stat('Published',done,'#059669','check','done')
     +stat('Overdue',overdue,'#dc2626','alert','over');
@@ -6527,7 +6529,7 @@ function _renderAYtTasks(){
     +'<div style="flex:1"></div>'
     +'<button class="btn btn-ghost btn-sm" onclick="ytDownloadReport()">'+ic('download')+' Download Report</button>'
     +'</div>';
-  var grid='<div class="ptc-grid">'+(cards||'<div class="yt-empty"><div class="big">'+ic('clipboard')+'</div><p><b>No YouTuber tasks yet</b></p><small>Tap “Assign Work” to give a video or project to a YouTuber.</small></div>')+'</div>';
+  var grid='<div class="vt-grid yt-grid">'+(cards||'<div class="yt-empty"><div class="big">'+ic('clipboard')+'</div><p><b>No YouTuber tasks yet</b></p><small>Tap “Assign Work” to give a video or project to a YouTuber.</small></div>')+'</div>';
   el.insertAdjacentHTML('beforeend', typeHtml+_ytRankStrip(all)+_ytSeriesSection(_serTasks)+filters+grid);
   if(f.q||f.creator||f.channel||f.video_type||f.bucket) _ytClientFilter();
 }
@@ -6535,6 +6537,55 @@ function _renderAYtTasks(){
 window.ytAdminDelete=function(id){
   if(!confirm('Delete this video permanently? Ye youtuber aur production dono se hat jaayega.')) return;
   api('/api/admin/video-tasks/'+id,'DELETE').then(function(){ toast('Deleted'); window._ytTasks=(window._ytTasks||[]).filter(function(x){return x.id!==id;}); if(typeof _renderAYtTasks==='function') _renderAYtTasks(); }).catch(function(e){ toast((e&&e.message)||'Delete failed',true); });
+};
+window.ytGfxManage=function(id){
+  Promise.all([
+    api('/api/production/tasks/'+id).catch(function(){return {};}),
+    api('/api/production/people?role=graphics').catch(function(){return {graphics:[]};})
+  ]).then(function(res){
+    var t=res[0]||{}; var gfx=((res[1]&&res[1].graphics)||[]);
+    window._ytgId=id; window._ytgImg=''; window._ytgRating=0;
+    var hasThumb=!!(t.thumbnail||t.thumbnail_link); window._ytgHas=hasThumb;
+    window._ytgMode=hasThumb?'credit':'assign';
+    var gOpts='<option value="">Select designer</option>'+gfx.map(function(g){return '<option value="'+g.id+'"'+(t.graphics_id==g.id?' selected':'')+'>'+_ape(g.name||'')+'</option>';}).join('');
+    var thumbPrev=hasThumb?'<div style="margin-bottom:10px"><img src="'+_ape(t.thumbnail||t.thumbnail_link)+'" style="max-width:100%;border-radius:10px"></div>':'';
+    var body='<div class="ap-modal-in">'+thumbPrev+
+      '<div style="display:flex;gap:8px;margin-bottom:12px">'+
+        '<button class="btn btn-ghost btn-sm ytg-mode'+(window._ytgMode==='credit'?' vt-checking':'')+'" id="ytg-m-credit" onclick="ytGfxMode(\'credit\')">Already made — Credit & Rate</button>'+
+        '<button class="btn btn-ghost btn-sm ytg-mode'+(window._ytgMode==='assign'?' vt-checking':'')+'" id="ytg-m-assign" onclick="ytGfxMode(\'assign\')">Assign designer to create</button>'+
+      '</div>'+
+      '<div class="p-field"><label>Graphics Designer (jisne banaya / banayega)</label><select id="ytg-gid" class="p-input">'+gOpts+'</select></div>'+
+      '<div id="ytg-credit-box"'+(window._ytgMode==='credit'?'':' style="display:none"')+'>'+
+        (hasThumb?'':'<div class="p-field"><label>Upload thumbnail (agar aapke paas hai)</label><div id="ytg-drop" class="yt-drop" onclick="document.getElementById(\'ytg-file\').click()"><span>Click / drop / paste (Ctrl+V)</span></div><input type="file" id="ytg-file" accept="image/*" style="display:none"></div>')+
+        '<div class="p-field"><label>Rating</label><div id="ytg-stars" style="display:flex;gap:4px;font-size:1.6rem;cursor:pointer">'+[1,2,3,4,5].map(function(n){return '<span class="ytg-star" data-n="'+n+'" onclick="ytGfxStar('+n+')" style="color:#d9cdae">\u2605</span>';}).join('')+'</div></div>'+
+      '</div>'+
+      '<div id="ytg-assign-box"'+(window._ytgMode==='assign'?'':' style="display:none"')+'>'+
+        '<div class="p-field"><label>Brief / instructions</label><textarea id="ytg-instr" class="p-area" rows="2" placeholder="Bold title, theme, photo placement..."></textarea></div>'+
+      '</div>'+
+      '<div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary" onclick="ytGfxSubmit()">Save</button><button class="btn btn-ghost" onclick="apClose()">Cancel</button></div></div>';
+    _apModal('Thumbnail — '+_ape(t.title||''), body);
+    setTimeout(function(){
+      var fi=document.getElementById('ytg-file'); if(fi) fi.onchange=function(e){var f=(e.target.files||[])[0]; if(f)_ytgRead(f);};
+      var d=document.getElementById('ytg-drop'); if(d){ d.addEventListener('dragover',function(e){e.preventDefault();}); d.addEventListener('drop',function(e){e.preventDefault();var f=(e.dataTransfer.files||[])[0];if(f)_ytgRead(f);}); }
+      if(window._ytgPaste) document.removeEventListener('paste',window._ytgPaste);
+      window._ytgPaste=function(e){ if(!document.getElementById('ytg-gid')){document.removeEventListener('paste',window._ytgPaste);return;} var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ _ytgRead(items[i].getAsFile()); e.preventDefault(); } } };
+      document.addEventListener('paste',window._ytgPaste);
+    },50);
+  }).catch(function(e){ toast((e&&e.message)||'Could not load',true); });
+};
+function _ytgRead(file){ if(!file)return; var rd=new FileReader(); rd.onload=function(){ window._ytgImg=rd.result; var d=document.getElementById('ytg-drop'); if(d)d.innerHTML='<img src="'+rd.result+'" style="max-width:100%;border-radius:8px">'; }; rd.readAsDataURL(file); }
+window.ytGfxMode=function(m){ window._ytgMode=m; var c=document.getElementById('ytg-credit-box'), a=document.getElementById('ytg-assign-box'); if(c)c.style.display=(m==='credit')?'':'none'; if(a)a.style.display=(m==='assign')?'':'none'; var mc=document.getElementById('ytg-m-credit'), ma=document.getElementById('ytg-m-assign'); if(mc)mc.classList.toggle('vt-checking',m==='credit'); if(ma)ma.classList.toggle('vt-checking',m==='assign'); };
+window.ytGfxStar=function(n){ window._ytgRating=n; document.querySelectorAll('#ytg-stars .ytg-star').forEach(function(s){ s.style.color=(parseInt(s.getAttribute('data-n'),10)<=n)?'#e6ad4e':'#d9cdae'; }); };
+window.ytGfxSubmit=function(){
+  var id=window._ytgId; var gid=(document.getElementById('ytg-gid')||{}).value||'';
+  if(!gid){ toast('Select a designer',true); return; }
+  if(window._ytgMode==='credit'){
+    var body={graphics_id:gid, rating:window._ytgRating||0}; if(window._ytgImg) body.thumbnail=[window._ytgImg];
+    api('/api/production/tasks/'+id+'/credit-thumbnail','POST',body).then(function(){ apClose(); toast('Thumbnail credited'+(window._ytgRating?(' · '+window._ytgRating+'\u2605'):'')); if(typeof loadAYtTasks==='function')loadAYtTasks(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  } else {
+    var instr=(document.getElementById('ytg-instr')||{}).value||'';
+    api('/api/production/tasks/'+id+'/assign-graphics','POST',{graphics_id:gid, instructions:instr}).then(function(){ apClose(); toast('Assigned to designer'); if(typeof loadAYtTasks==='function')loadAYtTasks(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  }
 };
 function _ytCard(t){
   var b=_ytBucket(t), over=_ytOverdue(t), lc=t.lifecycle||'';
@@ -6546,8 +6597,16 @@ function _ytCard(t){
   if(t.video_type) chips+='<span class="vt-type">'+esc(t.video_type)+'</span>';
   if(t.streaming) chips+='<span class="vt-pill '+(t.streaming==='live'?'delayed':'assigned')+'">'+(t.streaming==='live'?'Live':'Recorded')+'</span>';
   if(t.priority==='urgent') chips+='<span class="vt-pill delayed">URGENT</span>';
+  var _hasThumb=!!(t.thumbnail||t.thumbnail_link);
+  var _prodStage=['creator_working','pm_review','approved','editor_assigned','editing','editing_paused','editing_done','qc_pending','ready_for_youtube'].indexOf(lc)>=0;
+  if(_prodStage && !t.editor_name) chips+='<span class="vt-pill" style="background:rgba(209,68,58,.12);color:#c1443a;font-weight:700">\u26a0 Editor pending</span>';
+  if(_prodStage && !_hasThumb && !t.graphics_name) chips+='<span class="vt-pill" style="background:rgba(209,68,58,.12);color:#c1443a;font-weight:700">\u26a0 Thumbnail pending</span>';
   var dl = t.deadline?'<span class="ytc-dl'+(over?' over':'')+'">'+ic('clock')+' '+esc(t.deadline)+(over?' · overdue':'')+'</span>':'';
   var acts='<button class="btn btn-ghost btn-sm" onclick="openYtDetail('+t.id+')">'+ic('eye')+' Details</button>';
+  if(_prodStage){
+    if(!t.editor_name) acts+='<button class="btn btn-ghost btn-sm" onclick="aAssignProd('+t.id+',\'editor\')">'+ic('play')+' Assign Editor</button>';
+    acts+='<button class="btn btn-ghost btn-sm" onclick="ytGfxManage('+t.id+')">'+ic('image')+' '+(t.graphics_name?'Thumbnail':(_hasThumb?'Credit Thumbnail':'Assign / Credit Thumbnail'))+'</button>';
+  }
   acts+='<button class="btn btn-ghost btn-sm" style="color:#b91c1c" onclick="ytAdminDelete('+t.id+')" title="Delete this video">'+ic('trash')+' Delete</button>';
   if(t.youtube_url) acts+='<a class="btn btn-ghost btn-sm" href="'+_ytUrl(t.youtube_url)+'" target="_blank" rel="noopener">'+ic('play')+' YouTube</a>';
   if(t.submitted_link) acts+='<a class="btn btn-ghost btn-sm" href="'+_ytUrl(t.submitted_link)+'" target="_blank" rel="noopener">'+ic('eye')+' Submission</a>';
@@ -6563,7 +6622,7 @@ function _ytCard(t){
   return '<div class="vt-card" data-ytbucket="'+b+'" data-over="'+(over?1:0)+'" data-creator="'+esc(t.creator_name||'')+'" data-channel="'+esc(t.channel_name||'')+'" data-vt="'+esc(t.video_type||'')+'" data-txt="'+esc(searchTxt)+'">'
     +thumb
     +'<div class="vt-body">'
-      +'<div class="vt-title">'+esc(t.title||'Untitled')+' <span class="vt-pill" style="background:'+pc+'1f;color:'+pc+'">'+esc(t.lifecycle_label||b)+'</span></div>'
+      +'<div class="vt-title">'+esc(t.title||'Untitled')+' '+((_YT_REVIEW.indexOf(lc)>=0)?'<span class="yt-new-blink">NEW</span> ':'')+'<span class="vt-pill" style="background:'+pc+'1f;color:'+pc+'">'+esc(t.lifecycle_label||b)+'</span></div>'
       +(chips?'<div class="vt-chips">'+chips+'</div>':'')
       +'<div class="ytc-meta"><span>'+ic('user')+' '+esc(t.creator_name||'—')+'</span>'+(t.editor_name?'<span>'+ic('edit')+' '+esc(t.editor_name)+'</span>':'')+dl+(t.yt_views!=null?'<span>'+ic('chart')+' '+_ytNum(t.yt_views)+' views</span>':'')+(t.ref_code?'<span style="opacity:.6">'+esc(t.ref_code)+'</span>':'')+'</div>'
       +(t.next_action?'<div class="ytc-next">'+ic('clock')+' '+esc(t.next_action)+'</div>':'')
@@ -20271,6 +20330,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pw-thumb{width:74px;height:48px;border-radius:9px;object-fit:cover;border:1px solid #ece2cd;flex:0 0 auto;background:#f4f1e8}',
 '.pw-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}',
 '.pw-chip{font-size:.66rem;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(230,173,78,.14);color:#a9791f;white-space:nowrap}',
+'.yt-new-blink{display:inline-block;background:#dc2626;color:#fff;font-size:.62rem;font-weight:800;padding:2px 7px;border-radius:999px;letter-spacing:.05em;animation:ytNewBlink 1.1s ease-in-out infinite}',
+'@keyframes ytNewBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(220,38,38,.5)}50%{opacity:.72;box-shadow:0 0 0 5px rgba(220,38,38,.05)}}',
 '.pw-chip.who{background:rgba(60,110,200,.12);color:#3a6ec8}',
 '.pw-chip.ed{background:rgba(46,158,107,.13);color:#2e9e6b}',
 '.pw-chip.gr{background:rgba(150,90,200,.13);color:#8a4fc0}',
@@ -22275,6 +22336,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var isLive=_prodIsLive(t);
     var badge=st[0]?'<span class="ptc-badge'+(isLive?' ptc-blink':'')+'" style="background:'+(st[1]||'#8a7d5c')+'" onclick="event.stopPropagation();prodStatusHistory('+t.id+')" title="View status history">'+esc(st[0])+'</span>':'';
     var chips=[];
+    if(['creator_submitted','pm_review'].indexOf(t.lifecycle)>=0) chips.push('<span class="yt-new-blink">NEW</span>');
     if((t.collab&&t.collab.length)||t.is_collab) chips.push('<span class="pw-chip pw-collab-blink" style="background:rgba(124,79,192,.14);color:#7c4fc0;cursor:pointer" onclick="event.stopPropagation();prodCollabPopup('+t.id+')" title="View all collaborating teachers">Collab</span>');
     if(t.creator_name) chips.push('<span class="pw-chip who">'+esc(t.creator_name)+((t.creator_type==='youtuber')?' (YT)':'')+'</span>');
     if(t.video_type) chips.push('<span class="pw-chip">'+esc(t.video_type)+'</span>');
