@@ -6495,7 +6495,7 @@ function _renderAYtTasks(){
   var tyOpt='<option value="">All Types</option>'+(window._ytTypes||[]).map(function(c){return '<option value="'+esc(c.name)+'"'+(f.video_type===c.name?' selected':'')+'>'+esc(c.name)+'</option>';}).join('');
   var _serTasks=all.filter(function(t){ return (t.series_name||'').trim(); });
   var _soloTasks=all.filter(function(t){ return !(t.series_name||'').trim(); });
-  var cards=_soloTasks.map(_ytCard).join('');
+  var cards=_soloTasks.map(function(t){ return (window._prodTaskCard?window._prodTaskCard('production',t):_ytCard(t)); }).join('');
   el.innerHTML=''
     +'<div class="yt-hero"><div><h3>'+ic('play')+' YouTuber Task Manager</h3><p>Assign videos & projects to your YouTubers, track the full production pipeline, and publish — separate from the teacher Task Manager.</p></div><div class="vt-sp"></div>'
       +'<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="openYtChannels()">'+ic('play')+' Channels ('+(window._ytChannels||[]).length+')</button>'
@@ -6527,7 +6527,7 @@ function _renderAYtTasks(){
     +'<div style="flex:1"></div>'
     +'<button class="btn btn-ghost btn-sm" onclick="ytDownloadReport()">'+ic('download')+' Download Report</button>'
     +'</div>';
-  var grid='<div class="vt-grid yt-grid">'+(cards||'<div class="yt-empty"><div class="big">'+ic('clipboard')+'</div><p><b>No YouTuber tasks yet</b></p><small>Tap “Assign Work” to give a video or project to a YouTuber.</small></div>')+'</div>';
+  var grid='<div class="ptc-grid">'+(cards||'<div class="yt-empty"><div class="big">'+ic('clipboard')+'</div><p><b>No YouTuber tasks yet</b></p><small>Tap “Assign Work” to give a video or project to a YouTuber.</small></div>')+'</div>';
   el.insertAdjacentHTML('beforeend', typeHtml+_ytRankStrip(all)+_ytSeriesSection(_serTasks)+filters+grid);
   if(f.q||f.creator||f.channel||f.video_type||f.bucket) _ytClientFilter();
 }
@@ -22954,6 +22954,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
 
   // --- task detail (placeholder modal for now; full detail + timeline next phase) ---
+  window._prodTaskCard=_prodTaskCard;
   window.prodOpenTask=function(portal,id){
     var d=P[portal]; var ep=(portal==='youtuber')?d.api+'/videos/'+id:d.api+'/tasks/'+id;
     api(ep).then(function(t){
@@ -23257,7 +23258,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 
   // ---- action executors (all refresh the current page on success) ----
   function _refresh(portal){
-    if(portal==='production'){ try{ _prodNavBadges(); }catch(e){} }
+    if(portal==='production'){
+      var _yh=document.getElementById(window._ytHost||'a-ytasks-content');
+      if(_yh && _yh.offsetParent!==null && typeof loadAYtTasks==='function'){ try{ loadAYtTasks(); return; }catch(e){} }
+      try{ _prodNavBadges(); }catch(e){}
+    }
     var page=(window._prodCurPage&&window._prodCurPage[portal])||'dashboard';
     var body=document.getElementById(portal+'-body');
     if(!body) return prodNav(portal,page);

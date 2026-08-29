@@ -143,6 +143,9 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
     if (creator_type or "").strip().lower() != "youtuber":
         query = query.filter(or_(VideoTask.kind == None, VideoTask.kind == "",
                                  VideoTask.kind == "normal"))
+        # YouTuber tasks apne "YouTuber Tasks" section me hi dikhein — regular Tasks list me nahi
+        query = query.filter(or_(VideoTask.creator_type == None,
+                                 VideoTask.creator_type != "youtuber"))
     if teacher_id:
         # collab-aware: match the primary teacher OR any collaborator (precise JSON
         # boundary patterns against json.dumps format "[2, 3]" so id 1 != 11).
