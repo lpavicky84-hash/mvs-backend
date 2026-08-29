@@ -855,6 +855,9 @@ def _vtc_list(db, task_id, audience=None):
                          VideoTaskComment.audience == "creator"))
     elif audience == "internal":
         q = q.filter(VideoTaskComment.audience == "internal")
+    elif audience == "editor":
+        # YouTuber <-> editor channel
+        q = q.filter(VideoTaskComment.audience == "editor")
     rows = q.order_by(VideoTaskComment.id.asc()).all()
     return [_vtc_out(db, c) for c in rows]
 

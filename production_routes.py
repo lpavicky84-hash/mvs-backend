@@ -702,6 +702,43 @@ def assign_editor(tid: int, payload: dict = Body(...),
 
 
 # ============================================================ GRAPHICS ASSIGN
+@router.post("/tasks/{tid}/thumbnail")
+def pm_set_thumbnail(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """PM/admin uploads (or replaces) the thumbnail directly — auto-approves it."""
+    t = _task(db, tid)
+    _up = payload.get("thumbnail") or payload.get("thumbnail_upload") or payload.get("images")
+    if not _up:
+        raise HTTPException(400, "A thumbnail image is required")
+    up = _up[0] if isinstance(_up, list) else _up
+    urls = pc.save_images(db, t, [up], "thumbnail", None, me, return_urls=True) or []
+    g = pc.graphics_task(db, t, create=True)
+    if urls:
+        g.thumbnail_url = urls[0]
+        t.thumbnail_link = urls[0]
+    g.status = "approved"
+    try:
+        g.submitted_at = datetime.utcnow()
+    except Exception:
+        pass
+    pc.log_event(db, t, me, "thumbnail_uploaded", new_state=t.lifecycle)
+    db.commit()
+    return {"ok": True, "thumbnail": t.thumbnail_link or ""}
+
+
+@router.delete("/tasks/{tid}/thumbnail")
+def pm_del_thumbnail(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    t = _task(db, tid)
+    t.thumbnail_link = ""
+    g = pc.graphics_task(db, t, create=False)
+    if g:
+        g.thumbnail_url = ""
+        if g.status == "approved":
+            g.status = "new"
+    pc.log_event(db, t, me, "thumbnail_removed", new_state=t.lifecycle)
+    db.commit()
+    return {"ok": True}
+
+
 @router.post("/tasks/{tid}/assign-graphics")
 def assign_graphics(tid: int, payload: dict = Body(...),
                     db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):

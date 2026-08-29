@@ -210,6 +210,218 @@ def yt_submit(tid: int, payload: dict = Body(...),
     return {"ok": True, "lifecycle": t.lifecycle, "approval_required": pc.needs_pm_approval(db, t)}
 
 
+@router.get("/graphics")
+def yt_graphics_people(db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    from models import ProductionStaffProfile
+    rows = db.query(ProductionStaffProfile).filter(
+        ProductionStaffProfile.staff_role == "graphics",
+        ProductionStaffProfile.is_active == True).all()
+    return {"graphics": [{"id": g.id, "name": (g.user.name if g.user else "")} for g in rows]}
+
+
+@router.post("/new-task")
+def yt_new_task(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    """Direct task creation (no proposal). mode='ready' -> submit link+thumbnail;
+    mode='thumbnail' -> topic + reference for graphics; video link later."""
+    from models import ProductionStaffProfile
+    yp = _me_yt(db, me)
+    mode = (payload.get("mode") or "ready").strip().lower()
+    title = (payload.get("title") or "").strip()
+    if not title:
+        raise HTTPException(400, "A video title / topic is required")
+    dl = None
+    raw = (payload.get("deadline") or "").strip()
+    if raw:
+        try:
+            dl = datetime.fromisoformat(raw.replace("Z", ""))
+        except Exception:
+            pass
+    t = VideoTask(title=title, creator_type="youtuber", youtuber_id=yp.id,
+                  video_type=(payload.get("video_type") or "").strip(),
+                  channel_name=(payload.get("channel") or "").strip(),
+                  streaming=(payload.get("streaming") or "").strip(),
+                  reference=(payload.get("reference") or "").strip(),
+                  remarks=(payload.get("remarks") or "").strip(),
+                  deadline=dl,
+                  priority=("urgent" if payload.get("urgent") else "normal"))
+    db.add(t)
+    db.flush()
+    pc.ensure_ref_code(t)
+    pc.set_state(db, t, "created", actor=me, event="task_created")
+    # optional editor pre-assign (both modes; PM/editor can also do it later)
+    _eid = payload.get("editor_id")
+    if _eid:
+        try:
+            ep = db.query(ProductionStaffProfile).filter(
+                ProductionStaffProfile.id == int(_eid),
+                ProductionStaffProfile.staff_role == "editor").first()
+            if ep:
+                t.editor_id = ep.id
+        except Exception:
+            pass
+
+    if mode == "thumbnail":
+        # topic + reference thumbnail -> assign graphics; youtuber submits the video link later
+        g = pc.graphics_task(db, t, create=True)
+        g.status = "new"
+        g.instructions = (payload.get("instructions") or payload.get("remarks") or "").strip()
+        _ref = payload.get("reference_thumbnail") or payload.get("images")
+        if _ref:
+            try:
+                urls = pc.save_images(db, t, _ref if isinstance(_ref, list) else [_ref],
+                                      "reference", None, me, return_urls=True) or []
+                if urls:
+                    g.reference_image = urls[0]
+            except Exception:
+                pass
+        _gid = payload.get("graphics_id")
+        if _gid:
+            try:
+                gr = db.query(ProductionStaffProfile).filter(
+                    ProductionStaffProfile.id == int(_gid),
+                    ProductionStaffProfile.staff_role == "graphics").first()
+                if gr:
+                    g.graphics_id = gr.id
+                    t.graphics_id = gr.id
+                    if gr.user_id:
+                        pc.notify(db, gr.user_id, "New Thumbnail Task",
+                                  f'Design a thumbnail for: "{t.title}".', "video_task", link=str(t.id))
+            except Exception:
+                pass
+        pc.set_state(db, t, "creator_working", actor=me, event="youtuber_task_created", force=True)
+        pc.notify_pms(db, "YouTuber Task Created",
+                      f'{me.name} started "{t.title}" — thumbnail in progress.', "production", link=str(t.id))
+    else:
+        # ready: video shot + thumbnail -> submit directly
+        link = (payload.get("drive_link") or "").strip()
+        if not link:
+            raise HTTPException(400, "A Drive link is required for a ready video")
+        t.submitted_link = link
+        t.submitted_at = datetime.utcnow()
+        _th = payload.get("thumbnail") or payload.get("images")
+        if _th:
+            try:
+                urls = pc.save_images(db, t, _th if isinstance(_th, list) else [_th],
+                                      "thumbnail", None, me, return_urls=True) or []
+                if urls:
+                    t.thumbnail_link = urls[0]
+            except Exception:
+                pass
+        if pc.needs_pm_approval(db, t):
+            pc.set_state(db, t, "pm_review", actor=me, event="youtuber_submitted", force=True)
+            pc.notify_pms(db, "Video Submitted (Review)",
+                          f'{me.name} submitted "{t.title}" for review.', "production", link=str(t.id))
+        else:
+            pc.set_state(db, t, "approved", actor=me, event="youtuber_submitted", force=True)
+            try:
+                pc.graphics_task(db, t, create=True)
+            except Exception:
+                pass
+            if t.editor_id:
+                pc.set_state(db, t, "editor_assigned", actor=me, event="editor_assigned", force=True)
+                ep2 = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
+                if ep2 and ep2.user_id:
+                    pc.notify(db, ep2.user_id, "New editing task",
+                              f'"{t.title}" is ready to edit.', "editor_task", link=str(t.id))
+            pc.notify_pms(db, "Video Received",
+                          f'{me.name} submitted "{t.title}" — entered production.', "production", link=str(t.id))
+    db.commit()
+    return {"ok": True, "id": t.id, "ref_code": t.ref_code, "lifecycle": t.lifecycle}
+
+
+@router.post("/videos/{tid}/thumbnail")
+def yt_thumbnail(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    yp = _me_yt(db, me)
+    t = _my_task(db, yp, tid)
+    _th = payload.get("thumbnail") or payload.get("images")
+    if not _th:
+        raise HTTPException(400, "A thumbnail image is required")
+    urls = pc.save_images(db, t, _th if isinstance(_th, list) else [_th],
+                          "thumbnail", None, me, return_urls=True) or []
+    if urls:
+        t.thumbnail_link = urls[0]
+    pc.log_event(db, t, me, "thumbnail_uploaded", new_state=t.lifecycle)
+    db.commit()
+    return {"ok": True, "thumbnail": t.thumbnail_link or ""}
+
+
+@router.post("/videos/{tid}/assign-graphics")
+def yt_assign_graphics(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    from models import ProductionStaffProfile
+    yp = _me_yt(db, me)
+    t = _my_task(db, yp, tid)
+    gid = int(payload.get("graphics_id") or 0)
+    gr = db.query(ProductionStaffProfile).filter(
+        ProductionStaffProfile.id == gid, ProductionStaffProfile.staff_role == "graphics").first()
+    if not gr:
+        raise HTTPException(400, "Valid graphics_id required")
+    g = pc.graphics_task(db, t, create=True)
+    g.graphics_id = gid
+    g.status = "new"
+    g.instructions = (payload.get("instructions") or g.instructions or "").strip()
+    _ref = payload.get("reference_thumbnail") or payload.get("images")
+    if _ref:
+        try:
+            urls = pc.save_images(db, t, _ref if isinstance(_ref, list) else [_ref],
+                                  "reference", None, me, return_urls=True) or []
+            if urls:
+                g.reference_image = urls[0]
+        except Exception:
+            pass
+    t.graphics_id = gid
+    pc.log_event(db, t, me, "graphics_assigned", new_state=t.lifecycle)
+    if gr.user_id:
+        pc.notify(db, gr.user_id, "New Thumbnail Task",
+                  f'Design a thumbnail for: "{t.title}".', "video_task", link=str(t.id))
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/videos/{tid}/comments")
+def yt_comments(tid: int, audience: str = "creator", db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    import video_tasks as _VT
+    yp = _me_yt(db, me)
+    _my_task(db, yp, tid)
+    aud = (audience or "creator").strip().lower()
+    if aud not in ("creator", "editor"):
+        aud = "creator"
+    return {"comments": _VT._vtc_list(db, tid, aud)}
+
+
+@router.post("/videos/{tid}/comments")
+def yt_comment_add(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    import video_tasks as _VT
+    from models import ProductionStaffProfile
+    yp = _me_yt(db, me)
+    t = _my_task(db, yp, tid)
+    aud = (payload.get("audience") or "creator").strip().lower()
+    if aud not in ("creator", "editor"):
+        aud = "creator"
+    att = (payload.get("attachment_url") or "").strip()
+    imgs = payload.get("images")
+    if imgs and not att:
+        try:
+            urls = pc.save_images(db, t, imgs if isinstance(imgs, list) else [imgs], "chat", None, me, return_urls=True) or []
+            if urls:
+                att = urls[0]
+        except Exception:
+            pass
+    c = _VT._vtc_add(db, tid, me, payload.get("message") or "", "youtuber", attachment_url=att, audience=aud)
+    if not c:
+        raise HTTPException(400, "Empty message")
+    if aud == "editor":
+        if t.editor_id:
+            ep = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
+            if ep and ep.user_id:
+                pc.notify(db, ep.user_id, "Message from YouTuber",
+                          f'{me.name}: "{(payload.get("message") or "").strip()[:60]}"', "creator_chat", link=str(t.id))
+    else:
+        pc.notify_pms(db, "Message from YouTuber",
+                      f'{me.name}: "{(payload.get("message") or "").strip()[:60]}"', "creator_chat", link=str(t.id))
+    db.commit()
+    return {"ok": True, "comment": _VT._vtc_out(db, c)}
+
+
 @router.post("/proposals")
 def yt_propose(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_youtuber)):
     yp = _me_yt(db, me)

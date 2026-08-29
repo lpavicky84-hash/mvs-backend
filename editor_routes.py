@@ -191,6 +191,42 @@ def editor_task_detail(tid: int, db: Session = Depends(get_db), me=Depends(get_e
 
 
 # ============================================================ ACTIONS
+@router.get("/tasks/{tid}/comments")
+def editor_comments(tid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    import video_tasks as _VT
+    sp = _me_staff(db, me)
+    _my_task(db, sp, tid)
+    return {"comments": _VT._vtc_list(db, tid, "editor")}
+
+
+@router.post("/tasks/{tid}/comments")
+def editor_comment_add(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_editor)):
+    import video_tasks as _VT
+    from models import VideoTask, YouTuberProfile
+    sp = _me_staff(db, me)
+    t = _my_task(db, sp, tid)
+    att = (payload.get("attachment_url") or "").strip()
+    imgs = payload.get("images")
+    if imgs and not att:
+        try:
+            urls = pc.save_images(db, t, imgs if isinstance(imgs, list) else [imgs], "chat", None, me, return_urls=True) or []
+            if urls:
+                att = urls[0]
+        except Exception:
+            pass
+    c = _VT._vtc_add(db, tid, me, payload.get("message") or "", "editor", attachment_url=att, audience="editor")
+    if not c:
+        raise HTTPException(400, "Empty message")
+    # notify the creator (youtuber)
+    if getattr(t, "creator_type", "") == "youtuber" and t.youtuber_id:
+        yp = db.query(YouTuberProfile).filter(YouTuberProfile.id == t.youtuber_id).first()
+        if yp and yp.user_id:
+            pc.notify(db, yp.user_id, "Message from Editor",
+                      f'{me.name}: "{(payload.get("message") or "").strip()[:60]}"', "creator_chat", link=str(t.id))
+    db.commit()
+    return {"ok": True, "comment": _VT._vtc_out(db, c)}
+
+
 @router.post("/tasks/{tid}/start")
 def editor_start(tid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
     sp = _me_staff(db, me)
