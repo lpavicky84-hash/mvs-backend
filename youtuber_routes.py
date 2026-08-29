@@ -32,7 +32,7 @@ def _my_task(db, yp, tid):
 @router.get("/dashboard")
 def yt_dashboard(db: Session = Depends(get_db), me=Depends(get_youtuber)):
     yp = _me_yt(db, me)
-    base = db.query(VideoTask).filter(VideoTask.creator_type == "youtuber",
+    base = db.query(VideoTask).filter(VideoTask.creator_type == "youtuber", VideoTask.cancelled == False,
                                       VideoTask.youtuber_id == yp.id)
 
     def c(*st):
@@ -89,7 +89,7 @@ def yt_views(db: Session = Depends(get_db), me=Depends(get_youtuber)):
     today0 = datetime(now.year, now.month, now.day)
     week0 = today0 - timedelta(days=today0.weekday())
     month0 = datetime(now.year, now.month, 1)
-    tasks = db.query(VideoTask).filter(VideoTask.creator_type == "youtuber",
+    tasks = db.query(VideoTask).filter(VideoTask.creator_type == "youtuber", VideoTask.cancelled == False,
                                        VideoTask.youtuber_id == yp.id).all()
     _uploaded = ["uploaded", "completed"]
     _editing = ["editor_assigned", "editing", "editing_paused", "editing_done", "qc_pending", "qc_changes"]
@@ -129,7 +129,7 @@ def yt_refresh_views(db: Session = Depends(get_db), me=Depends(get_youtuber)):
         from models import VideoViewSnapshot
     except Exception:
         return {"ok": False, "updated": 0}
-    rows = db.query(VideoTask).filter(VideoTask.creator_type == "youtuber",
+    rows = db.query(VideoTask).filter(VideoTask.creator_type == "youtuber", VideoTask.cancelled == False,
                                       VideoTask.youtuber_id == yp.id,
                                       VideoTask.yt_video_id != None,
                                       VideoTask.yt_video_id != "").all()
@@ -156,7 +156,7 @@ def yt_refresh_views(db: Session = Depends(get_db), me=Depends(get_youtuber)):
 @router.get("/videos")
 def yt_videos(status: str = "", filter: str = "", db: Session = Depends(get_db), me=Depends(get_youtuber)):
     yp = _me_yt(db, me)
-    q = db.query(VideoTask).filter(VideoTask.creator_type == "youtuber",
+    q = db.query(VideoTask).filter(VideoTask.creator_type == "youtuber", VideoTask.cancelled == False,
                                    VideoTask.youtuber_id == yp.id)
     preset = (filter or "").lower()
     if preset == "proposal":
@@ -208,6 +208,20 @@ def yt_submit(tid: int, payload: dict = Body(...),
                       f'{me.name} submitted "{t.title}" — entered production directly.', "production", link=str(t.id))
     db.commit()
     return {"ok": True, "lifecycle": t.lifecycle, "approval_required": pc.needs_pm_approval(db, t)}
+
+
+@router.delete("/videos/{tid}")
+def yt_delete_video(tid: int, db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    yp = _me_yt(db, me)
+    t = _my_task(db, yp, tid)
+    t.cancelled = True
+    try:
+        pc.log_event(db, t, me, "task_deleted", new_state=t.lifecycle)
+    except Exception:
+        pass
+    pc.notify_pms(db, "Video Deleted", f'{me.name} deleted "{t.title}".', "production", link=str(t.id))
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/graphics")

@@ -6532,6 +6532,10 @@ function _renderAYtTasks(){
   if(f.q||f.creator||f.channel||f.video_type||f.bucket) _ytClientFilter();
 }
 
+window.ytAdminDelete=function(id){
+  if(!confirm('Delete this video permanently? Ye youtuber aur production dono se hat jaayega.')) return;
+  api('/api/admin/video-tasks/'+id,'DELETE').then(function(){ toast('Deleted'); window._ytTasks=(window._ytTasks||[]).filter(function(x){return x.id!==id;}); if(typeof _renderAYtTasks==='function') _renderAYtTasks(); }).catch(function(e){ toast((e&&e.message)||'Delete failed',true); });
+};
 function _ytCard(t){
   var b=_ytBucket(t), over=_ytOverdue(t), lc=t.lifecycle||'';
   var pc={done:'#059669',prod:'#7c4fc0',review:'#c99a2e',assigned:'#0891b2'}[b];
@@ -6544,6 +6548,7 @@ function _ytCard(t){
   if(t.priority==='urgent') chips+='<span class="vt-pill delayed">URGENT</span>';
   var dl = t.deadline?'<span class="ytc-dl'+(over?' over':'')+'">'+ic('clock')+' '+esc(t.deadline)+(over?' · overdue':'')+'</span>':'';
   var acts='<button class="btn btn-ghost btn-sm" onclick="openYtDetail('+t.id+')">'+ic('eye')+' Details</button>';
+  acts+='<button class="btn btn-ghost btn-sm" style="color:#b91c1c" onclick="ytAdminDelete('+t.id+')" title="Delete this video">'+ic('trash')+' Delete</button>';
   if(t.youtube_url) acts+='<a class="btn btn-ghost btn-sm" href="'+_ytUrl(t.youtube_url)+'" target="_blank" rel="noopener">'+ic('play')+' YouTube</a>';
   if(t.submitted_link) acts+='<a class="btn btn-ghost btn-sm" href="'+_ytUrl(t.submitted_link)+'" target="_blank" rel="noopener">'+ic('eye')+' Submission</a>';
   if(_YT_REVIEW.indexOf(lc)>=0){
@@ -21451,6 +21456,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     api(cfg.postUrl,'POST',body).then(function(){ window._chatImg=null; api(cfg.getUrl).then(function(r){ _ytcRender((r&&r.comments)||[]); }); }).catch(function(e){ toast((e&&e.message)||'Send failed',true); });
   };
   window.ytChatPM=function(id){ _ytcOpen({getUrl:P.youtuber.api+'/videos/'+id+'/comments?audience=creator',postUrl:P.youtuber.api+'/videos/'+id+'/comments',audience:'creator',mineRole:'youtuber',title:'Chat with PM'}); };
+  window.ytDeleteVideo=function(id){
+    if(!confirm('Delete this video? Ye aapke aur production dono panel se hat jaayega. Wapas nahi hoga.')) return;
+    api(P.youtuber.api+'/videos/'+id,'DELETE').then(function(){ toast('Deleted'); _refresh('youtuber'); }).catch(function(e){ toast((e&&e.message)||'Delete failed',true); });
+  };
   window.ytChatEditor=function(id){ _ytcOpen({getUrl:P.youtuber.api+'/videos/'+id+'/comments?audience=editor',postUrl:P.youtuber.api+'/videos/'+id+'/comments',audience:'editor',mineRole:'youtuber',title:'Chat with Editor'}); };
   window.edtChatCreator=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/comments',postUrl:P.editor.api+'/tasks/'+id+'/comments',audience:'editor',mineRole:'editor',title:'Chat with YouTuber'}); };
   window.gfxChat=function(id){
@@ -22314,6 +22323,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(t.editor_id) acts+='<button class="ptc-btn" onclick="event.stopPropagation();ytChatEditor('+t.id+')">Chat with Editor</button>';
       acts+='<button class="ptc-btn'+(_hasThumb?'':' ptc-ok')+'" onclick="event.stopPropagation();prodThumbUpload(\'youtuber\','+t.id+')">'+(_hasThumb?'Change Thumbnail':'Upload Thumbnail')+'</button>';
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
+      acts+='<button class="ptc-btn" style="color:#b91c1c" onclick="event.stopPropagation();ytDeleteVideo('+t.id+')">Delete</button>';
     } else {
     if(lc==='creator_submitted'||lc==='pm_review'){
       acts+='<button class="ptc-btn ptc-review-blink" onclick="event.stopPropagation();prodReview('+t.id+')"><span class="rev-dot"></span>Checking \u2014 Review</button>';
