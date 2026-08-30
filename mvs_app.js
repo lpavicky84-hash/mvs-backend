@@ -3747,20 +3747,19 @@ function _mtPaint(wrapId){
       const isNew=window._mtNew&&i.id!=null&&window._mtNew.has(i.id);
       const isDpp=i.dpp_pack_id!=null;
       const eng=isDpp
-        ? `<td><span class="mt-eng" style="cursor:default">${ic('users')} ${i.views}</span></td><td><span class="mt-eng" style="cursor:default">${ic('download')} ${i.downloads}</span></td>`
-        : `<td><button class="mt-eng" title="Students who viewed" onclick="openMatAudience(${i.id},'view')">${ic('users')} ${i.views}</button></td><td><button class="mt-eng" title="Students who downloaded" onclick="openMatAudience(${i.id},'download')">${ic('download')} ${i.downloads}</button></td>`;
+        ? `<td data-label="Views"><span class="mt-eng" style="cursor:default">${ic('users')} ${i.views}</span></td><td data-label="Downloads"><span class="mt-eng" style="cursor:default">${ic('download')} ${i.downloads}</span></td>`
+        : `<td data-label="Views"><button class="mt-eng" title="Students who viewed" onclick="openMatAudience(${i.id},'view')">${ic('users')} ${i.views}</button></td><td data-label="Downloads"><button class="mt-eng" title="Students who downloaded" onclick="openMatAudience(${i.id},'download')">${ic('download')} ${i.downloads}</button></td>`;
       const acts=isDpp
         ? `<button class="btn btn-primary btn-sm" onclick='event.stopPropagation();dppLangPick(${i.dpp_pack_id},"download",{id:${i.dpp_pack_id},source:${JSON.stringify(i.dpp_source||"")},medium:${JSON.stringify(i.dpp_medium||"")},title:${JSON.stringify(i.title||"DPP")}})'>${ic('download')} Download</button>`
         : `<button class="btn btn-primary btn-sm" onclick="downloadMaterial('${who}',${i.id},'${esc(fname)}')">${ic('download')} Download</button><button class="btn btn-danger btn-sm" title="Delete this file permanently" onclick="deleteMaterial('${who}',${i.id},'${encodeURIComponent(i.filename||i.title||'')}')">${ic('trash')}</button>`;
       return `<tr class="${isNew?'mt-row-new':''}" onclick="_matRowSeen('${who}',this,${i.id})">
-      <td class="mat-ch">${esc(i.chapter||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}${isDpp?'<span class="mt-new-tag" style="background:#0891b2">DPP</span>':''}</td>
-      <td>${i.part?esc(i.part):'<span class="mt-dim">Whole chapter</span>'}</td>
-      <td><div class="mat-file">${ic('book')}${esc(i.filename||i.title||'')}</div></td>
-      <td class="mt-dim">${esc(i.date)}</td>
+      <td class="mat-ch" data-label="Chapter">${esc(i.chapter||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}${isDpp?'<span class="mt-new-tag" style="background:#0891b2">DPP</span>':''}</td>
+      <td data-label="Class / Part">${i.part?esc(i.part):'<span class="mt-dim">Whole chapter</span>'}</td>
+      <td class="mt-dim" data-label="Uploaded">${esc(i.date)}</td>
       ${eng}
-      <td class="mat-dl-cell"><div class="mat-acts">${acts}</div></td>
+      <td class="mat-dl-cell rt-act" data-label=""><div class="mat-acts">${acts}</div></td>
     </tr>`;}).join('');
-    html+=`<div class="mat-cat"><div class="mat-cat-head" onclick="_mtToggle(this)"><div class="mc-badge ${meta.badge}">${ic(meta.icon)}</div>${esc(cat)}<span class="mc-count">${byCat[cat].length} file${byCat[cat].length>1?'s':''}</span><button class="btn btn-danger btn-sm mc-del" title="Delete every file in this category" onclick="event.stopPropagation();deleteMatCategory('${who}','${encodeURIComponent(cat)}')">${ic('trash')} Delete All</button><span class="mc-chev">\u203a</span></div><div class="mat-twrap"><table class="mat-table"><thead><tr><th>Chapter</th><th>Class / Part</th><th>File</th><th>Uploaded</th><th>Views</th><th>Downloads</th><th style="text-align:right">Actions</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+    html+=`<div class="mat-cat"><div class="mat-cat-head" onclick="_mtToggle(this)"><div class="mc-badge ${meta.badge}">${ic(meta.icon)}</div><span class="mc-name">${esc(cat)}</span><span class="mc-count">${byCat[cat].length} file${byCat[cat].length>1?'s':''}</span><button class="btn btn-danger btn-sm mc-del" title="Delete every file in this category" onclick="event.stopPropagation();deleteMatCategory('${who}','${encodeURIComponent(cat)}')">${ic('trash')} Delete All</button><span class="mc-chev">\u203a</span></div><div class="mat-twrap"><table class="mat-table rtable"><thead><tr><th>Chapter</th><th>Class / Part</th><th>Uploaded</th><th>Views</th><th>Downloads</th><th style="text-align:right">Actions</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   });
   html+=`</div></div>`;
   wrap.innerHTML=html;
@@ -4517,7 +4516,7 @@ async function loadTLectures(){
     else{
       html+=lecs.map(l=>{
          const files=[]; if(l.has_pdf) files.push('Notes'); if(l.has_dpp) files.push('DPP');
-        return `<div class="lec-card"><div class="lec-head"><div><div class="lec-title">${esc(l.title)}</div><div class="lec-meta">${esc(l.subject)}${l.chapter?' \u00b7 '+esc(l.chapter):''} \u00b7 ${esc(l.date)}${files.length?' \u00b7 '+files.join(' + '):''}</div></div><button class="btn btn-danger btn-sm" onclick="deleteLecture(${l.id})">${ic('trash')}</button></div><div class="lec-body"><b>${l.verified}</b> student${l.verified===1?'':'s'} marked done</div></div>`;
+        return `<div class="lec-card"><div class="lec-head"><div><div class="lec-title">${esc(l.title)}</div><div class="lec-meta">${esc(l.subject)}${l.chapter?' \u00b7 '+esc(l.chapter):''} \u00b7 ${esc(l.date)}${files.length?' \u00b7 '+files.join(' + '):''}</div></div><button class="lec-del" title="Delete this lecture report" onclick="deleteLecture(${l.id})">${ic('trash')}</button></div><div class="lec-body"><b>${l.verified}</b> student${l.verified===1?'':'s'} marked done</div></div>`;
       }).join('');
     }
     el.innerHTML=html;
@@ -16142,7 +16141,7 @@ function renderStudentTimetable(entries, containerId, opts={}){
   let liveChip='', _curLive=null;
   if(active){ _curLive=_liveFull(tl[active]); }
   if(_ttView!=='weekly' && _curLive){
-    liveChip=`<div class="ov-live" onclick="ttJump('${containerId}')" title="Click to jump to this position"><span class="d"></span><span class="t">${_curLive.mode==='today'?'LIVE TODAY':'ONGOING'}: ${esc(_curLive.name)}</span></div>`;
+    liveChip=`<div class="ov-live" onclick="ttJump('${containerId}')" title="Click to jump to this position"><span class="d"></span><span class="t">ONGOING: ${esc(_curLive.name)}</span></div>`;
   }
   // ---- Chapter data (premium hero + chapter progress modal, teeno portals) ----
   const _chapAll=[];
@@ -16911,6 +16910,33 @@ function initResponsiveCss(){
     '}',
     /* any table stays inside the viewport (scrolls instead of breaking the layout) */
     '.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}',
+    /* ===== Topbar page titles: proper case (fixes lowercase like "lectures"/"doubts") ===== */
+    '.topbar h2{text-transform:capitalize}',
+    /* ===== Premium lecture-report delete button ===== */
+    '.lec-del{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;flex:0 0 38px;border-radius:11px;border:1px solid rgba(220,38,38,.28);background:rgba(220,38,38,.08);color:#dc2626;cursor:pointer;transition:background .15s,transform .1s}',
+    '.lec-del:hover{background:rgba(220,38,38,.16)}',
+    '.lec-del:active{transform:scale(.94)}',
+    '.lec-del svg{width:17px;height:17px}',
+    /* ===== Classes Material / DPP category header — no more broken wrapping ===== */
+    '.mc-name{white-space:nowrap;font-weight:800}',
+    '.mat-cat-head{flex-wrap:wrap !important;row-gap:9px;align-items:center}',
+    '.mc-count{white-space:nowrap;flex:0 0 auto}',
+    '.mat-cat-head .mc-del{flex:0 0 auto;margin-left:auto}',
+    '.mat-cat-head .mc-chev{flex:0 0 auto}',
+    /* ===== Timetable "Overall Progress" hero — keep 93% / Completed on one line ===== */
+    '.ov-pct-num{white-space:nowrap;line-height:1}',
+    '.ov-pct-lbl{white-space:nowrap}',
+    '@media(max-width:600px){',
+    '  .ov-top{gap:10px;align-items:flex-start}',
+    '  .ov-big{font-size:1.5rem !important;line-height:1.15;word-break:break-word}',
+    '  .ov-pct{flex:0 0 auto;text-align:right;min-width:0}',
+    '  .ov-pct-num{font-size:2rem !important}',
+    '  .ov-pct-lbl{font-size:.72rem}',
+    '  .ov-badges{flex-wrap:wrap;gap:7px}',
+    '  .mat-acts{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}',
+    '  .mat-acts .btn{flex:0 0 auto}',
+    '  .mat-file{white-space:normal;word-break:break-word}',
+    '}',
     /* ===== Student Engagement — clickable downloads + download list modal ===== */
     '.eng-dl-link{background:rgba(201,162,39,.16);color:#a9791f;border:none;font-weight:800;padding:3px 13px;border-radius:999px;cursor:pointer;font-size:.9rem;font-family:inherit}',
     '.eng-dl-link:hover{background:rgba(201,162,39,.28)}',
