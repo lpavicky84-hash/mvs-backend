@@ -623,8 +623,11 @@ function _autoRefreshNow(force){
     const now=Date.now();
     if(!force && (now-_lastAutoRefresh)<8000) return;   // throttle — flood na ho
     _lastAutoRefresh=now;
+    // SILENT background refresh: just mark the cache stale so the next navigation/action
+    // shows fresh data. We do NOT re-render the current view here — a passive re-render
+    // resets what the user is looking at (drilled-in subject, scroll position, etc.).
+    // The user's OWN actions still refresh visibly; the timer must stay invisible.
     try{ _apiBust(); }catch(e){}
-    try{ _swrRerender(); }catch(e){}
   }catch(e){}
 }
 // Tab wapas focus me aane par: turant fresh data + backend jagao.
@@ -3582,7 +3585,7 @@ async function loadTMaterial(){
   softSpin(el);
   try{
     el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2>Classes Material</h2><p style="display:none"> Add anything extra as a custom category.</p></div><button class="btn btn-primary btn-sm" onclick="openUploadHub({typeLabel:'Other (custom)'})">${ic('upload')} Upload Other Material</button></div><div id="t-mat-tree"></div>`;
-    _renderMaterialTree('t-mat-tree','/api/teacher/materials-tree','/api/teacher');
+    _renderMaterialTree('t-mat-tree','/api/teacher/materials-tree','/api/teacher', !!_mtSub);
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 
@@ -3695,6 +3698,7 @@ function _matAllRead(role){
   document.querySelectorAll(sel+' .mt-new-tag, '+sel+' .sm-new-pill, '+sel+' .mt-new-head').forEach(x=>x.remove());
 }
 function _mtPick(wrapId,sub){ _mtSub=decodeURIComponent(sub); _mtPaint(wrapId); }
+function _mtToggleMore(key,wrapId){ key=decodeURIComponent(key); window._mtExpand=window._mtExpand||new Set(); if(window._mtExpand.has(key)) window._mtExpand.delete(key); else window._mtExpand.add(key); _mtPaint(wrapId); }
 function _mtBack(wrapId){ _mtSub=null; _mtPaint(wrapId); }
 function _mtToggle(el){ const c=el.closest('.mat-cat'); c.classList.toggle('closed'); }
 const _MT_CAT={notes:{label:'Class Notes',icon:'book',badge:'sc-indigo'},dpp:{label:'DPP',icon:'clipboard',badge:'sc-green'},test:{label:'Tests',icon:'edit',badge:'sc-purple'}};
@@ -3733,7 +3737,7 @@ function _mtPaint(wrapId){
   let html=`<div class="sm-head" style="display:flex;align-items:center;gap:14px"><button class="btn btn-ghost btn-sm" onclick="_mtBack('${wrapId}')">\u2190 Back</button><div><h2 style="margin:0;font-size:1.4rem">${esc(sub.subject)}</h2><p style="margin:0">Class Notes, DPP &amp; other material</p></div></div><div class="card"><div class="card-body">`;
   keys.forEach(cat=>{
     const meta=Object.values(_MT_CAT).find(m=>m.label===cat)||{icon:'folder',badge:'sc-amber'};
-    const rows=byCat[cat].slice().sort((a,b)=>{
+    const _sorted=byCat[cat].slice().sort((a,b)=>{
       const an=(window._mtNew&&a.id!=null&&window._mtNew.has(a.id))?1:0;
       const bn=(window._mtNew&&b.id!=null&&window._mtNew.has(b.id))?1:0;
       if(an!==bn) return bn-an;                                   // NEW (unopened) sabse upar
@@ -3742,7 +3746,10 @@ function _mtPaint(wrapId){
       const pa=_partNum(a.part), pb=_partNum(b.part);
       if(pb!==pa) return pb-pa;                                   // part number DESCENDING
       return String(b.part||'').localeCompare(String(a.part||'')); // fallback: part desc
-    }).map(i=>{
+    });
+    const _catKey=(_mtSub||'')+'\u2016'+cat;
+    const _expanded=!!(window._mtExpand&&window._mtExpand.has(_catKey));
+    const rows=(_expanded?_sorted:_sorted.slice(0,5)).map(i=>{
       const fname=(i.filename||((i.title||cat)+'.pdf')).replace(/'/g,'');
       const isNew=window._mtNew&&i.id!=null&&window._mtNew.has(i.id);
       const isDpp=i.dpp_pack_id!=null;
@@ -3761,7 +3768,8 @@ function _mtPaint(wrapId){
         <div class="mat-xacts">${dlBtn}${delBtn}</div>
       </div>`;
     }).join('');
-    html+=`<div class="xm-sec"><div class="xm-sec-h"><div class="xm-sec-ic">${ic(meta.icon)}</div><h3>${esc(cat)}</h3><span class="xm-count">${byCat[cat].length} ${byCat[cat].length===1?'file':'files'}</span><button class="mat-delall" title="Delete every file in this category" onclick="deleteMatCategory('${who}','${encodeURIComponent(cat)}')">${ic('trash')} Delete All</button></div>${rows}</div>`;
+    const moreBtn=_sorted.length>5?`<button class="mat-more" onclick="_mtToggleMore('${encodeURIComponent(_catKey)}','${wrapId}')">${_expanded?'Show less \u25b4':('Show all '+_sorted.length+' files \u25be')}</button>`:'';
+    html+=`<div class="xm-sec"><div class="xm-sec-h"><div class="xm-sec-ic">${ic(meta.icon)}</div><h3>${esc(cat)}</h3><span class="xm-count">${byCat[cat].length} ${byCat[cat].length===1?'file':'files'}</span><button class="mat-delall" title="Delete every file in this category" onclick="deleteMatCategory('${who}','${encodeURIComponent(cat)}')">${ic('trash')} Delete All</button></div>${rows}${moreBtn}</div>`;
   });
   html+=`</div></div>`;
   wrap.innerHTML=html;
@@ -11354,7 +11362,7 @@ function _codeChips(list){ return list.map(s=>`<span class="code-chip">${esc(s.n
 async function loadAMaterial(){
   const el=document.getElementById('a-material-content');
   el.innerHTML=`<div class="sm-head"><h2>Classes Material</h2></div><div id="a-mat-tree"></div>`;
-  _renderMaterialTree('a-mat-tree','/api/admin/materials-tree','/api/admin');
+  _renderMaterialTree('a-mat-tree','/api/admin/materials-tree','/api/admin', !!_mtSub);
 }
 
 async function loadAReports(){
@@ -16939,6 +16947,8 @@ function initResponsiveCss(){
     '.mat-delall:hover{background:rgba(220,38,38,.16)}',
     '.mat-delall svg{width:14px;height:14px}',
     '.xm-sec-h{flex-wrap:wrap;row-gap:8px}',
+    '.mat-more{display:block;width:100%;margin-top:6px;padding:9px;border-radius:11px;border:1px dashed var(--border,#d9cdae);background:transparent;color:#a9791f;font-weight:800;font-size:.82rem;cursor:pointer;font-family:inherit}',
+    '.mat-more:hover{background:rgba(201,162,39,.08)}',
     '.xm-row-m .mt-eng{background:rgba(201,162,39,.1);border:none;border-radius:999px;padding:2px 9px;font-size:.72rem;color:#8a6d10;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:3px;vertical-align:middle}',
     '.xm-row-m .mt-eng svg{width:12px;height:12px}',
     '.xm-row-m .mt-new-tag{margin-left:0}',
