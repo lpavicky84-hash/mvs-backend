@@ -6505,7 +6505,13 @@ function _renderAYtTasks(){
   var tyOpt='<option value="">All Types</option>'+(window._ytTypes||[]).map(function(c){return '<option value="'+esc(c.name)+'"'+(f.video_type===c.name?' selected':'')+'>'+esc(c.name)+'</option>';}).join('');
   var _serTasks=all.filter(function(t){ return (t.series_name||'').trim(); });
   var _soloTasks=all.filter(function(t){ return !(t.series_name||'').trim(); });
-  var cards=_soloTasks.map(_ytCard).join('');
+  // Premium card (big thumbnail + full detail drawer on click) — same renderer the
+  // production portal uses. _refresh('production') already re-loads this page after actions.
+  try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
+  var _pcard=(typeof window._prodTaskCard==='function')
+    ? function(t){ return window._prodTaskCard('production', t); }
+    : _ytCard;
+  var cards=_soloTasks.map(_pcard).join('');
   el.innerHTML=''
     +'<div class="yt-hero"><div><h3>'+ic('play')+' YouTuber Task Manager</h3><p>Assign videos & projects to your YouTubers, track the full production pipeline, and publish — separate from the teacher Task Manager.</p></div><div class="vt-sp"></div>'
       +'<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="openYtChannels()">'+ic('play')+' Channels ('+(window._ytChannels||[]).length+')</button>'
@@ -6537,7 +6543,7 @@ function _renderAYtTasks(){
     +'<div style="flex:1"></div>'
     +'<button class="btn btn-ghost btn-sm" onclick="ytDownloadReport()">'+ic('download')+' Download Report</button>'
     +'</div>';
-  var grid='<div class="vt-grid yt-grid">'+(cards||'<div class="yt-empty"><div class="big">'+ic('clipboard')+'</div><p><b>No YouTuber tasks yet</b></p><small>Tap “Assign Work” to give a video or project to a YouTuber.</small></div>')+'</div>';
+  var grid='<div class="ptc-grid yt-grid">'+(cards||'<div class="yt-empty" style="grid-column:1/-1"><div class="big">'+ic('clipboard')+'</div><p><b>No YouTuber tasks yet</b></p><small>Tap “Assign Work” to give a video or project to a YouTuber.</small></div>')+'</div>';
   el.insertAdjacentHTML('beforeend', typeHtml+_ytRankStrip(all)+_ytSeriesSection(_serTasks)+filters+grid);
   if(f.q||f.creator||f.channel||f.video_type||f.bucket) _ytClientFilter();
 }
@@ -6645,13 +6651,25 @@ function _ytClearFilters(){ window._ytF={q:'',creator:'',channel:'',video_type:'
 function _ytClientFilter(){
   var f=window._ytF, root=_ytRoot(); if(!root) return;
   root.querySelectorAll('.vt-stat[data-ytb]').forEach(function(c){ c.classList.toggle('vt-stat-on', !!f.bucket && c.getAttribute('data-ytb')===f.bucket); });
-  root.querySelectorAll('.yt-grid > .vt-card').forEach(function(c){
+  var byId={}; (window._ytTasks||[]).forEach(function(t){ byId[String(t.id)]=t; });
+  var cards=root.querySelectorAll('.ptc-grid > .ptc, .ptc-grid > .vt-card, .yt-grid > .vt-card');
+  cards.forEach(function(c){
+    var id=c.getAttribute('data-ptc')||c.getAttribute('data-id'); var t=id?byId[String(id)]:null;
     var show=true;
-    if(f.creator && c.getAttribute('data-creator')!==f.creator) show=false;
-    if(show && f.channel && c.getAttribute('data-channel')!==f.channel) show=false;
-    if(show && f.video_type && c.getAttribute('data-vt')!==f.video_type) show=false;
-    if(show && f.bucket){ if(f.bucket==='over'){ show=c.getAttribute('data-over')==='1'; } else if(f.bucket==='new'){ show=c.getAttribute('data-ytnew')==='1'; } else if(f.bucket!=='all'){ show=c.getAttribute('data-ytbucket')===f.bucket; } }
-    if(show && f.q){ show=(c.getAttribute('data-txt')||'').indexOf(f.q)>=0; }
+    if(t){
+      if(f.creator && (t.creator_name||'')!==f.creator) show=false;
+      if(show && f.channel && (t.channel_name||'')!==f.channel) show=false;
+      if(show && f.video_type && (t.video_type||'')!==f.video_type) show=false;
+      if(show && f.bucket){ if(f.bucket==='over'){ show=_ytOverdue(t); } else if(f.bucket==='new'){ show=_ytIsNew(t); } else if(f.bucket!=='all'){ show=_ytBucket(t)===f.bucket; } }
+      if(show && f.q){ var txt=((t.title||'')+' '+(t.creator_name||'')+' '+(t.channel_name||'')+' '+(t.subject||'')+' '+(t.video_type||'')+' '+(t.ref_code||'')).toLowerCase(); show=txt.indexOf(f.q)>=0; }
+    } else {
+      // fallback to data-attributes (legacy _ytCard)
+      if(f.creator && c.getAttribute('data-creator')!==f.creator) show=false;
+      if(show && f.channel && c.getAttribute('data-channel')!==f.channel) show=false;
+      if(show && f.video_type && c.getAttribute('data-vt')!==f.video_type) show=false;
+      if(show && f.bucket){ if(f.bucket==='over'){ show=c.getAttribute('data-over')==='1'; } else if(f.bucket==='new'){ show=c.getAttribute('data-ytnew')==='1'; } else if(f.bucket!=='all'){ show=c.getAttribute('data-ytbucket')===f.bucket; } }
+      if(show && f.q){ show=(c.getAttribute('data-txt')||'').indexOf(f.q)>=0; }
+    }
     c.style.display=show?'':'none';
   });
   // series groups respond to youtuber + search filters (channel/type/bucket apply to the flat grid)
@@ -6973,6 +6991,8 @@ async function submitYtSeries(btn){
   ].join('\n'); document.head.appendChild(st); }catch(e){} })();
 
 async function openYtDetail(id){
+  // Premium tabbed drawer (Overview / Timeline / Editor / Graphics / QC / YouTube).
+  if(typeof window.prodOpenTask==='function'){ window.prodOpenTask('production', id); return; }
   try{
     var r=await Promise.all([
       api('/api/production/tasks/'+id),
@@ -23029,6 +23049,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // --- task detail (placeholder modal for now; full detail + timeline next phase) ---
   window._prodTaskCard=_prodTaskCard;
   window.prodOpenTask=function(portal,id){
+    ensureCSS(); // admin YouTuber page may open this without the portal shell's CSS
     var d=P[portal]; var ep=(portal==='youtuber')?d.api+'/videos/'+id:d.api+'/tasks/'+id;
     api(ep).then(function(t){
       window._prodTask={portal:portal,t:t};
