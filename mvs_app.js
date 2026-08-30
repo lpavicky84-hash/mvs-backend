@@ -12638,7 +12638,9 @@ async function loadAQBank(){ loadExtMaterials('a-qbank-content'); }
 async function loadSQBank(){ loadExtMaterials('s-qbank-content'); }
 async function loadATimetable(){
   try{
-    _attEntries=await api('/api/admin/timetable-all'); _attActiveSub=''; _attTeacherMap={};
+    const _prevSub=_attActiveSub; // keep the admin on the subject they're viewing
+    _attEntries=await api('/api/admin/timetable-all'); _attTeacherMap={};
+    _attActiveSub=_prevSub||''; // don't kick back to the subject picker on reload/bg-refresh
     try{ const _sr=await api('/api/admin/studio-reports'); window._srReports={}; (_sr.reports||[]).forEach(r=>window._srReports[r.entry_id]=r); }catch(e){ window._srReports={}; }
     window._crUploaded={}; _attEntries.forEach(e=>{ if(e.has_lecture) window._crUploaded[e.id]=true; });
     aRenderTT();
@@ -12683,7 +12685,7 @@ function aRenderTT(){
 function aClassFilter(v){ _attClass=v; _attActiveSub=''; aRenderTT(); }
 async function adminDeleteTT(id){
   if(!confirm('Delete this class from the timetable?')) return;
-  try{ await api('/api/admin/timetable-entry/'+id,'DELETE'); toast('Class deleted.'); _attEntries=await api('/api/admin/timetable-all'); aRenderTT(); }catch(e){ toast(e.message,true); }
+  try{ await api('/api/admin/timetable-entry/'+id,'DELETE'); toast('Class deleted.'); _apiForget('timetable'); _attEntries=await api('/api/admin/timetable-all'); aRenderTT(); }catch(e){ toast(e.message,true); }
 }
 // ===== ADMIN: FULL EDIT OF ANY TIMETABLE ENTRY =====
 function adminEditTT(id){
@@ -12731,7 +12733,7 @@ async function submitAdminReschedTT(id){
   try{
     const r=await api('/api/admin/timetable-entry/'+id+'/reschedule','POST',body);
     closeModal(); toast(r.message||'Class rescheduled. Students notified.');
-    _attEntries=await api('/api/admin/timetable-all'); aRenderTT();
+    _apiForget('timetable'); _attEntries=await api('/api/admin/timetable-all'); aRenderTT();
   }catch(e){ toast(e.message,true); }
 }
 async function submitAdminEditTT(id){
@@ -12748,7 +12750,7 @@ async function submitAdminEditTT(id){
   try{
     await api('/api/admin/timetable-entry/'+id,'PATCH',body);
     closeModal(); toast('Entry updated.');
-    _attEntries=await api('/api/admin/timetable-all'); aRenderTT();
+    _apiForget('timetable'); _attEntries=await api('/api/admin/timetable-all'); aRenderTT();
   }catch(e){ toast(e.message,true); }
 }
 // ===== ADMIN: BULLETPROOF TIMETABLE DELETION (subject / class / everything) =====
@@ -12801,7 +12803,7 @@ async function submitTTDelete(){
     if(scope==='subject') r=await api('/api/admin/timetable-subject?subject='+encodeURIComponent(sub)+(cl?'&class_level='+cl:''),'DELETE');
     else r=await api('/api/admin/timetable-clear'+(cl?'?class_level='+cl:''),'DELETE');
     closeModal(); toast((r.deleted||0)+' entries deleted.');
-    _attEntries=await api('/api/admin/timetable-all'); _attActiveSub=''; aRenderTT();
+    _apiForget('timetable'); _attEntries=await api('/api/admin/timetable-all'); _attActiveSub=''; aRenderTT();
   }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Delete Permanently'; }
 }
 function openAdminMaterial(){
