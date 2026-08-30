@@ -1879,7 +1879,7 @@ function tClassRow(c){
     : (_over
         ? `<button class="btn btn-success btn-sm" onclick="openClassReport(${c.id})">Mark Completed</button>`
         : '<span class="tstatus upcoming">Upcoming</span>');
-  return `<tr><td><strong>${esc(c.subject)}</strong></td><td>${esc(c.class_name||'—')}</td><td>${esc(c.time||'—')}</td><td>${esc(topic)}</td><td>${c.completed?'<span class="tag tag-done">Completed</span>':statusTag(c.live_status)}</td><td style="text-align:right">${btn}</td></tr>`;
+  return `<tr><td data-label="Subject"><strong>${esc(c.subject)}</strong></td><td data-label="Batch">${esc(c.class_name||'—')}</td><td data-label="Time">${esc(c.time||'—')}</td><td data-label="Topic">${esc(topic)}</td><td data-label="Status">${c.completed?'<span class="tag tag-done">Completed</span>':statusTag(c.live_status)}</td><td data-label="" class="rt-act" style="text-align:right">${btn}</td></tr>`;
 }
 async function _renderTodayClasses(targetId){
   const el=document.getElementById(targetId||'t-today-inner');
@@ -1896,7 +1896,7 @@ async function _renderTodayClasses(targetId){
     const doneAll=all.filter(c=>c.completed).reverse();
     const doneRows=doneAll.map(c=>`<div class="qb-card"><div class="qb-info"><div class="qb-title">${esc(c.subject)} — ${esc(c.topic_covered||c.chapter||'')}</div><div class="qb-meta"><span class="tag tag-done">Completed</span><span>${esc(c.class_name||'')}</span><span>\u00b7 ${esc(c.date||'')}</span>${c.homework?'<span>\u00b7 HW: '+esc(c.homework)+'</span>':''}${c.dpp_given?'<span>\u00b7 DPP</span>':''}</div></div></div>`).join('');
     const doneCard=`<div class="card"><div class="card-header" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="_tToggleDone()"><h3 style="margin:0">Recently Completed (${doneAll.length})</h3><span id="t-done-chev" style="opacity:.6">\u25be</span></div><div class="card-body" id="t-done-body">${doneAll.length?`<div class="mat-scroll" style="max-height:330px;overflow:auto">${doneRows}</div>`:'<div class="empty-state"><p>No completed reports yet.</p></div>'}</div></div>`;
-    el.innerHTML=`${cards}<div class="card"><div class="card-header"><h3>Today's Classes</h3></div><div class="card-body"><div class="table-wrap"><table><thead><tr><th>Subject</th><th>Batch</th><th>Time</th><th>Topic</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div></div>${doneCard}`;
+    el.innerHTML=`${cards}<div class="card"><div class="card-header"><h3>Today's Classes</h3></div><div class="card-body"><div class="table-wrap"><table class="rtable"><thead><tr><th>Subject</th><th>Batch</th><th>Time</th><th>Topic</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div></div>${doneCard}`;
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function _tToggleDone(){ var b=document.getElementById('t-done-body'), c=document.getElementById('t-done-chev'); if(b){ var h=b.style.display==='none'; b.style.display=h?'':'none'; if(c) c.textContent=h?'\u25be':'\u25b8'; } }
@@ -3560,7 +3560,7 @@ async function loadTEngagement(){
         +`<td data-label="Last Active">${esc(s.last_active||'—')}</td>`
         +`</tr>`;
     }).join('');
-    wrap.innerHTML=`<div class="card"><div class="card-header"><h3>Student Engagement</h3><span class="pager-info">DPP &amp; test completion · material downloads · last active</span></div><div class="card-body"><div class="table-wrap"><table class="eng-table"><thead><tr><th>Student</th><th>DPP Done</th><th>Tests Done</th><th>Downloads</th><th>Last Active</th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
+    wrap.innerHTML=`<div class="card"><div class="card-header"><h3>Student Engagement</h3><span class="pager-info">DPP &amp; test completion · material downloads · last active</span></div><div class="card-body"><div class="table-wrap"><table class="rtable"><thead><tr><th>Student</th><th>DPP Done</th><th>Tests Done</th><th>Downloads</th><th>Last Active</th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
   }catch(e){ wrap.innerHTML=''; }
 }
 // Show the list of materials a student has downloaded (from the engagement table).
@@ -16919,15 +16919,19 @@ function initResponsiveCss(){
     '.tdl-t{font-weight:700;font-size:.92rem;word-break:break-word}',
     '.tdl-m{font-size:.74rem;color:var(--text-muted);margin-top:2px}',
     '.tdl-when{font-size:.72rem;color:var(--text-muted);white-space:nowrap}',
-    /* ===== Student Engagement — stack the table into cards on phones ===== */
+    /* ===== Reusable responsive table: stacks into cards on phones (add class "rtable") ===== */
     '@media(max-width:640px){',
-    '  .eng-table thead{display:none}',
-    '  .eng-table,.eng-table tbody,.eng-table tr,.eng-table td{display:block;width:100%}',
-    '  .eng-table tr{border:1px solid var(--border,#e8dfca);border-radius:14px;margin-bottom:12px;padding:11px 14px}',
-    '  .eng-table td{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 0;border:none !important;text-align:right}',
-    '  .eng-table td::before{content:attr(data-label);font-weight:800;color:var(--text-muted);font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;text-align:left}',
-    '  .eng-table td:first-child{flex-direction:column;align-items:flex-start;text-align:left;border-bottom:1px solid var(--border,#eee) !important;padding-bottom:9px;margin-bottom:5px}',
-    '  .eng-table td:first-child::before{display:none}',
+    '  .rtable thead{display:none}',
+    '  .rtable,.rtable tbody,.rtable tr,.rtable td{display:block;width:100%}',
+    '  .rtable tr{border:1px solid var(--border,#e8dfca);border-radius:14px;margin-bottom:12px;padding:11px 14px}',
+    '  .rtable td{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 0;border:none !important;text-align:right !important}',
+    '  .rtable td::before{content:attr(data-label);font-weight:800;color:var(--text-muted);font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;text-align:left;flex:0 0 auto}',
+    '  .rtable td:first-child{flex-direction:column;align-items:flex-start;text-align:left !important;border-bottom:1px solid var(--border,#eee) !important;padding-bottom:9px;margin-bottom:5px}',
+    '  .rtable td:first-child::before{display:none}',
+    '  .rtable td.rt-act{justify-content:center;padding-top:10px}',
+    '  .rtable td.rt-act::before{display:none}',
+    '  .rtable td.rt-act .btn{width:100%}',
+    '  .rtable td[data-label=""]::before{display:none}',
     '  .tdl-item{flex-direction:column;align-items:flex-start;gap:4px}',
     '}',
     /* ===== Timetable subject-progress card (ov2 ring) — phone ===== */
