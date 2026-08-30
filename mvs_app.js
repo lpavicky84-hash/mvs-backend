@@ -440,20 +440,39 @@ const _API_TTL=60000;
 const _API_NOCACHE=/notifications|heartbeat|\/photo|\/image|\/voice|\/file|\/download|\/pdf|\/content|\/badge|video-tasks\/my|video-tasks\b|production\/tasks|production\/dashboard|(editor|graphics|youtuber)\/(tasks|videos|dashboard)|\/collab/i;
 let _curLoader=null;        // current page ka loader — background refresh aane par isse re-render
 let _swrT=null;
+// Should the background/auto refresh SKIP re-rendering right now? Re-rendering the
+// current page mid-interaction wipes unsaved UI state (a student's test answers, a
+// half-filled form, a selected subject). So we defer whenever the user is busy.
+function _swrBlocked(){
+  try{
+    // 1) typing / focused in a field
+    var ae=document.activeElement;
+    if(ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName||'') && ae.type!=='checkbox' && ae.type!=='radio' && ae.type!=='button') return true;
+    // 2) a showModal dialog is open (a form is being filled)
+    var mo=document.getElementById('modal'); if(mo && mo.classList.contains('open')) return true;
+    // 3) a production/graphics/credit drawer or modal is open
+    if(document.getElementById('prod-drawer')||document.getElementById('prod-modal')||document.getElementById('prod-modal2')||document.getElementById('ap-modal')) return true;
+    // 4) a student test/exam attempt (or its review/submit step) is on screen
+    if(document.querySelector('input[name^="pl-"]')) return true;
+    if(document.querySelector('[onclick*="_plSubmit"]')) return true;
+    // 5) the user interacted in the last few seconds — don't disturb the view yet
+    if(window._lastUserAct && (Date.now()-window._lastUserAct)<5000) return true;
+  }catch(e){}
+  return false;
+}
+// Track the last real user interaction (capture phase, once, app-wide).
+try{
+  ['pointerdown','keydown','input','change','paste','touchstart'].forEach(function(ev){
+    document.addEventListener(ev, function(){ window._lastUserAct=Date.now(); }, true);
+  });
+}catch(e){}
 function _swrRerender(){
   if(_swrT) return;
   _swrT=setTimeout(function(){
     _swrT=null;
-    // v170: agar user abhi kisi input/textarea me type kar raha hai (ya select khula hai),
-    // to background refresh ka re-render MAT karo — warna text aur focus dono udd jaate hain.
-    // Thodi der baad phir try karega; type khatam hote hi normal refresh ho jaayega.
-    try{
-      var ae=document.activeElement;
-      if(ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName||'') && ae.type!=='checkbox' && ae.type!=='radio' && ae.type!=='button'){
-        _swrT=setTimeout(function(){ _swrT=null; _swrRerender(); }, 800);
-        return;
-      }
-    }catch(e){}
+    // If the user is mid-interaction (typing, a modal/test open, recent click),
+    // DON'T re-render now — retry shortly so it only refreshes when they're idle.
+    if(_swrBlocked()){ _swrT=setTimeout(function(){ _swrT=null; _swrRerender(); }, 1200); return; }
     try{ if(typeof _curLoader==='function') _curLoader(); }catch(e){}
   }, 140);
 }
@@ -23726,7 +23745,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 
   // ---- PM: create new task ----
   window.ytNewTask=function(){
-    window._ytMode='ready'; window._ytThumb=''; window._ytRef=''; window._ytEd=''; window._ytGx='';
+    window._ytMode='ready'; window._ytThumb=''; window._ytRef=''; window._ytEd=''; window._ytGx=''; window._ytKeep=null;
     Promise.all([
       api('/api/youtuber/editors').catch(function(){return {editors:[]};}),
       api('/api/youtuber/graphics').catch(function(){return {graphics:[]};}),
@@ -23774,11 +23793,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="ytNewTaskSubmit()">'+(m==='ready'?'Submit to Production':'Create & Assign Graphics')+'</button>');
     setTimeout(_ytWireNew,40);
   }
-  function _ytReadImg(file,which){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ if(which==='ref'){window._ytRef=rd.result;}else{window._ytThumb=rd.result;} _ytRenderNew(); }; rd.readAsDataURL(file); }
-  function _ytWireNew(){
-    // preserve typed values across re-render
+  function _ytReadImg(file,which){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ _ytCapture(); if(which==='ref'){window._ytRef=rd.result;}else{window._ytThumb=rd.result;} _ytRenderNew(); }; rd.readAsDataURL(file); }
+  // Snapshot the currently typed values. Call this BEFORE any re-render.
+  function _ytCapture(){
+    if(!document.getElementById('yt-title')) return; // form not on screen — keep last snapshot
     var g=function(id){var e=document.getElementById(id);return e?e.value:'';};
     window._ytKeep={title:g('yt-title'),vtype:g('yt-vtype'),channel:g('yt-channel'),deadline:g('yt-deadline'),link:g('yt-link'),instr:g('yt-instr'),ed:g('yt-editor'),gx:g('yt-graphics')};
+  }
+  function _ytWireNew(){
+    // Wire handlers, then RESTORE the captured values. Do NOT re-capture here —
+    // after a re-render the fields are empty, so capturing now would wipe them.
     var tf=document.getElementById('yt-thumb-file'); if(tf) tf.onchange=function(e){var f=(e.target.files||[])[0]; if(f)_ytReadImg(f,'thumb');};
     var rf=document.getElementById('yt-ref-file'); if(rf) rf.onchange=function(e){var f=(e.target.files||[])[0]; if(f)_ytReadImg(f,'ref');};
     ['yt-thumb-drop','yt-ref-drop'].forEach(function(id){ var d=document.getElementById(id); if(!d)return; var which=(id==='yt-ref-drop')?'ref':'thumb'; d.addEventListener('dragover',function(e){e.preventDefault();}); d.addEventListener('drop',function(e){e.preventDefault();var f=(e.dataTransfer.files||[])[0];if(f)_ytReadImg(f,which);}); });
@@ -23788,10 +23812,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // restore kept values
     var k=window._ytKeep; if(k){ var set=function(id,v){var e=document.getElementById(id);if(e&&v)e.value=v;}; set('yt-title',k.title);set('yt-vtype',k.vtype);set('yt-channel',k.channel);set('yt-deadline',k.deadline);set('yt-link',k.link);set('yt-instr',k.instr);set('yt-editor',k.ed);set('yt-graphics',k.gx); }
   }
-  window.ytMode=function(m){ _ytWireNew(); window._ytMode=m; if(window._ytKeep){window._ytEd=window._ytKeep.ed;window._ytGx=window._ytKeep.gx;} _ytRenderNew(); };
-  window.ytClearImg=function(which){ if(which==='ref')window._ytRef='';else window._ytThumb=''; _ytRenderNew(); };
+  window.ytMode=function(m){ _ytCapture(); window._ytMode=m; if(window._ytKeep){window._ytEd=window._ytKeep.ed;window._ytGx=window._ytKeep.gx;} _ytRenderNew(); };
+  window.ytClearImg=function(which){ _ytCapture(); if(which==='ref')window._ytRef='';else window._ytThumb=''; _ytRenderNew(); };
   window.ytNewTaskSubmit=function(){
-    _ytWireNew(); var k=window._ytKeep||{};
+    _ytCapture(); var k=window._ytKeep||{};
     var title=(k.title||'').trim(); if(!title){ toast('Title/topic required',true); return; }
     var body={mode:window._ytMode,title:title,video_type:(k.vtype||''),channel:(k.channel||''),deadline:(k.deadline||''),editor_id:(k.ed||'')};
     if(window._ytMode==='ready'){
