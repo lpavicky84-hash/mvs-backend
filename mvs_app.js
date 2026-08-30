@@ -6590,15 +6590,24 @@ window.ytGfxManage=function(id){
 function _ytgRead(file){ if(!file)return; var rd=new FileReader(); rd.onload=function(){ window._ytgImg=rd.result; var d=document.getElementById('ytg-drop'); if(d)d.innerHTML='<img src="'+rd.result+'" style="max-width:100%;border-radius:8px">'; }; rd.readAsDataURL(file); }
 window.ytGfxMode=function(m){ window._ytgMode=m; var c=document.getElementById('ytg-credit-box'), a=document.getElementById('ytg-assign-box'); if(c)c.style.display=(m==='credit')?'':'none'; if(a)a.style.display=(m==='assign')?'':'none'; var mc=document.getElementById('ytg-m-credit'), ma=document.getElementById('ytg-m-assign'); if(mc)mc.classList.toggle('vt-checking',m==='credit'); if(ma)ma.classList.toggle('vt-checking',m==='assign'); };
 window.ytGfxStar=function(n){ window._ytgRating=n; document.querySelectorAll('#ytg-stars .ytg-star').forEach(function(s){ s.style.color=(parseInt(s.getAttribute('data-n'),10)<=n)?'#e6ad4e':'#d9cdae'; }); };
+// Refresh whichever view is showing after a thumbnail credit / graphics assign,
+// so it works from the admin YouTuber page AND the production portal (any page).
+function _ytgAfterSave(){
+  var onYt=false;
+  try{ var h=document.getElementById(window._ytHost||'a-ytasks-content'); onYt=!!(h && h.offsetParent!==null); }catch(e){}
+  if(onYt){ try{ loadAYtTasks(); return; }catch(e){} }
+  try{ if(typeof window._prodRefresh==='function'){ window._prodRefresh('production'); return; } }catch(e){}
+  try{ if(typeof loadAYtTasks==='function') loadAYtTasks(); }catch(e){}
+}
 window.ytGfxSubmit=function(){
   var id=window._ytgId; var gid=(document.getElementById('ytg-gid')||{}).value||'';
   if(!gid){ toast('Select a designer',true); return; }
   if(window._ytgMode==='credit'){
     var body={graphics_id:gid, rating:window._ytgRating||0}; if(window._ytgImg) body.thumbnail=[window._ytgImg];
-    api('/api/production/tasks/'+id+'/credit-thumbnail','POST',body).then(function(){ apClose(); toast('Thumbnail credited'+(window._ytgRating?(' · '+window._ytgRating+'\u2605'):'')); if(typeof loadAYtTasks==='function')loadAYtTasks(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+    api('/api/production/tasks/'+id+'/credit-thumbnail','POST',body).then(function(){ apClose(); toast('Thumbnail credited'+(window._ytgRating?(' · '+window._ytgRating+'\u2605'):'')); _ytgAfterSave(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   } else {
     var instr=(document.getElementById('ytg-instr')||{}).value||'';
-    api('/api/production/tasks/'+id+'/assign-graphics','POST',{graphics_id:gid, instructions:instr}).then(function(){ apClose(); toast('Assigned to designer'); if(typeof loadAYtTasks==='function')loadAYtTasks(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+    api('/api/production/tasks/'+id+'/assign-graphics','POST',{graphics_id:gid, instructions:instr}).then(function(){ apClose(); toast('Assigned to designer'); _ytgAfterSave(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   }
 };
 function _ytCard(t){
@@ -20929,6 +20938,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // Expose so admin-context drawers/modals (Assign Work, Credit Thumbnail) can
   // pull in the production CSS even when the standalone portal shell never ran.
   try{ window._prodEnsureCSS=ensureCSS; }catch(e){}
+  // Expose the smart refresher: refreshes the admin YouTuber page if it's visible,
+  // otherwise the active production-portal page. (_refresh is hoisted in this IIFE.)
+  try{ window._prodRefresh=_refresh; }catch(e){}
 
   // --- build the app shell for a portal (once) ---
   function ensureShell(portal){
@@ -22423,9 +22435,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     if((lc==='approved'||lc==='editor_assigned'||lc==='editing'||lc==='editing_paused'||lc==='editing_done'||lc==='qc_pending'||lc==='qc_changes'||lc==='ready_for_youtube') && !t.editor_name)
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'assign-editor\','+t.id+')">'+(t.editor_id?'Reassign Editor':'Assign Editor')+'</button>';
-    if((lc==='approved'||lc==='editor_assigned'||lc==='editing') && !g.graphics_name)
-      acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'assign-graphics\','+t.id+')">'+(g.graphics_id?'Reassign Graphics':'Assign Graphics')+'</button>';
-    if(t.creator_type==='youtuber') acts+='<button class="ptc-btn'+((!_hasThumb&&!g.graphics_name)?' ptc-ok':'')+'" onclick="event.stopPropagation();prodThumbUpload(\'production\','+t.id+')">'+(_hasThumb?'Change Thumbnail':'Upload Thumbnail')+'</button>';
+    // ---- Thumbnail / Graphics (single smart control) ----
+    // Thumbnail already made -> credit who made it + rating (no "Assign Graphics").
+    // No thumbnail yet -> assign a designer (name shown once assigned), or the PM can
+    //   upload & credit directly (both handled inside ytGfxManage's two modes).
+    var _thumbStage=(lc==='approved'||lc==='editor_assigned'||lc==='editing'||lc==='editing_paused'||lc==='editing_done'||lc==='qc_pending'||lc==='qc_changes'||lc==='ready_for_youtube');
+    if(_hasThumb){
+      acts+='<button class="ptc-btn" onclick="event.stopPropagation();ytGfxManage('+t.id+')">Credit Thumbnail'+(g.graphics_name?' \u00b7 '+esc(g.graphics_name):'')+'</button>';
+    } else if(_thumbStage){
+      acts+='<button class="ptc-btn'+(g.graphics_name?'':' ptc-ok')+'" onclick="event.stopPropagation();ytGfxManage('+t.id+')">'+(g.graphics_name?'Graphics \u00b7 '+esc(g.graphics_name):'Assign Graphics')+'</button>';
+    }
     if(lc==='qc_pending') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\''+portal+'\','+t.id+',\'/qc-approve\')">QC Approve</button>';
     if(g.status==='submitted') acts+='<button class="ptc-btn ptc-btn-review" onclick="event.stopPropagation();pmThumbReview('+t.id+')"><span class="rev-dot"></span>Review Thumbnail</button>';
     if(g.graphics_id && ['submitted','changes','in_progress'].indexOf(g.status)>=0) acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodGfxChat('+t.id+')">Chat with Graphics</button>';
