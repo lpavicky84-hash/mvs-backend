@@ -477,6 +477,10 @@ function _swrRerender(){
   }, 140);
 }
 function _apiBust(){ for(const k in _apiCache){ if(_apiCache[k]) _apiCache[k].t=0; } }  // delete nahi — stale mark (SWR: turant stale + bg refresh)
+// Hard-drop cache entries whose key contains `match` (or all if empty). Use right after a
+// mutation so the very next load fetches FRESH data instead of serving stale cache — the
+// action's result then shows immediately (no waiting for the background refresh).
+function _apiForget(match){ try{ for(const k in _apiCache){ if(!match || k.indexOf(match)>=0) delete _apiCache[k]; } }catch(e){} }
 async function _apiRefreshBg(path,_ck){
   try{
     const opts={method:'GET',headers:{'Content-Type':'application/json'}};
@@ -8307,6 +8311,7 @@ async function dbtRespond(role,id,iid){
   try{
     await api('/api/'+role+'/doubts/'+id+'/respond','POST',{body});
     toast('Reply added.');
+    _apiForget('doubt'); // drop stale doubts cache so the reload shows the new reply at once
     if(role==='teacher') loadTDoubts(); else if(role==='student') loadSDoubts(); else loadADoubts();
   }catch(e){ toast(e.message,true); }
 }
