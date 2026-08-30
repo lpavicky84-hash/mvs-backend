@@ -3746,20 +3746,22 @@ function _mtPaint(wrapId){
       const fname=(i.filename||((i.title||cat)+'.pdf')).replace(/'/g,'');
       const isNew=window._mtNew&&i.id!=null&&window._mtNew.has(i.id);
       const isDpp=i.dpp_pack_id!=null;
-      const eng=isDpp
-        ? `<td data-label="Views"><span class="mt-eng" style="cursor:default">${ic('users')} ${i.views}</span></td><td data-label="Downloads"><span class="mt-eng" style="cursor:default">${ic('download')} ${i.downloads}</span></td>`
-        : `<td data-label="Views"><button class="mt-eng" title="Students who viewed" onclick="openMatAudience(${i.id},'view')">${ic('users')} ${i.views}</button></td><td data-label="Downloads"><button class="mt-eng" title="Students who downloaded" onclick="openMatAudience(${i.id},'download')">${ic('download')} ${i.downloads}</button></td>`;
-      const acts=isDpp
+      const vChip=isDpp
+        ? `<span class="mt-eng" style="cursor:default">${ic('users')} ${i.views}</span><span class="mt-eng" style="cursor:default">${ic('download')} ${i.downloads}</span>`
+        : `<button class="mt-eng" title="Students who viewed" onclick="event.stopPropagation();openMatAudience(${i.id},'view')">${ic('users')} ${i.views}</button><button class="mt-eng" title="Students who downloaded" onclick="event.stopPropagation();openMatAudience(${i.id},'download')">${ic('download')} ${i.downloads}</button>`;
+      const dlBtn=isDpp
         ? `<button class="btn btn-primary btn-sm" onclick='event.stopPropagation();dppLangPick(${i.dpp_pack_id},"download",{id:${i.dpp_pack_id},source:${JSON.stringify(i.dpp_source||"")},medium:${JSON.stringify(i.dpp_medium||"")},title:${JSON.stringify(i.title||"DPP")}})'>${ic('download')} Download</button>`
-        : `<button class="btn btn-primary btn-sm" onclick="downloadMaterial('${who}',${i.id},'${esc(fname)}')">${ic('download')} Download</button><button class="btn btn-danger btn-sm" title="Delete this file permanently" onclick="deleteMaterial('${who}',${i.id},'${encodeURIComponent(i.filename||i.title||'')}')">${ic('trash')}</button>`;
-      return `<tr class="${isNew?'mt-row-new':''}" onclick="_matRowSeen('${who}',this,${i.id})">
-      <td class="mat-ch" data-label="Chapter">${esc(i.chapter||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}${isDpp?'<span class="mt-new-tag" style="background:#0891b2">DPP</span>':''}</td>
-      <td data-label="Class / Part">${i.part?esc(i.part):'<span class="mt-dim">Whole chapter</span>'}</td>
-      <td class="mt-dim" data-label="Uploaded">${esc(i.date)}</td>
-      ${eng}
-      <td class="mat-dl-cell rt-act" data-label=""><div class="mat-acts">${acts}</div></td>
-    </tr>`;}).join('');
-    html+=`<div class="mat-cat"><div class="mat-cat-head" onclick="_mtToggle(this)"><div class="mc-badge ${meta.badge}">${ic(meta.icon)}</div><span class="mc-name">${esc(cat)}</span><span class="mc-count">${byCat[cat].length} file${byCat[cat].length>1?'s':''}</span><button class="btn btn-danger btn-sm mc-del" title="Delete every file in this category" onclick="event.stopPropagation();deleteMatCategory('${who}','${encodeURIComponent(cat)}')">${ic('trash')} Delete All</button><span class="mc-chev">\u203a</span></div><div class="mat-twrap"><table class="mat-table rtable"><thead><tr><th>Chapter</th><th>Class / Part</th><th>Uploaded</th><th>Views</th><th>Downloads</th><th style="text-align:right">Actions</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+        : `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();downloadMaterial('${who}',${i.id},'${esc(fname)}')">${ic('download')} Download</button>`;
+      const delBtn=isDpp?'':`<button class="mat-del" title="Delete this file permanently" onclick="event.stopPropagation();deleteMaterial('${who}',${i.id},'${encodeURIComponent(i.filename||i.title||'')}')">${ic('trash')}</button>`;
+      return `<div class="xm-row mat-xrow${isNew?' mt-row-new':''}" onclick="_matRowSeen('${who}',this,${i.id})">
+        <div style="flex:1;min-width:0">
+          <div class="xm-row-t">${esc(i.chapter||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}${isDpp?'<span class="mt-new-tag" style="background:#0891b2">DPP</span>':''}</div>
+          <div class="xm-row-m">${i.part?`<span>${esc(i.part)}</span>`:'<span>Whole chapter</span>'}${i.date?`<span>${esc(i.date)}</span>`:''}${vChip}</div>
+        </div>
+        <div class="mat-xacts">${dlBtn}${delBtn}</div>
+      </div>`;
+    }).join('');
+    html+=`<div class="xm-sec"><div class="xm-sec-h"><div class="xm-sec-ic">${ic(meta.icon)}</div><h3>${esc(cat)}</h3><span class="xm-count">${byCat[cat].length} ${byCat[cat].length===1?'file':'files'}</span><button class="mat-delall" title="Delete every file in this category" onclick="deleteMatCategory('${who}','${encodeURIComponent(cat)}')">${ic('trash')} Delete All</button></div>${rows}</div>`;
   });
   html+=`</div></div>`;
   wrap.innerHTML=html;
@@ -3809,7 +3811,7 @@ function _tDppCardHTML(pk){
   const srcChip=pk.source==='created'?`<span class="chip-sub" style="color:#b45309"> ${pk.questions_n||0} Questions</span>`:`<span class="chip-sub">Uploaded</span>`;
   return `<div class="dpp-card premium">
   <div style="display:flex;gap:13px;align-items:flex-start">
-    <div class="dpp-ava-init" title="${esc(pk.subject)}">${ini}</div>
+    ${window._myPhotoUrl?`<div class="dpp-ava" title="${esc(pk.subject)}" style="background-image:url('${window._myPhotoUrl}');background-size:cover;background-position:center"></div>`:`<div class="dpp-ava-init" title="${esc(pk.subject)}">${ini}</div>`}
     <div style="flex:1;min-width:0">
       <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div><div class="dpp-chips">${pk.class_name?`<span class="xm-chip xm-chip-hl2">${ic('book')} ${esc(pk.class_name)}</span>`:''}${pk.medium?`<span class="xm-chip xm-chip-hl2">${esc(pk.medium)}</span>`:''}${srcChip}</div></div>
       <div class="dpp-title">${esc(pk.title)}</div>
@@ -12534,7 +12536,7 @@ let _extSession='', _extClass='', _extMedium='';
 const _XM_CAT_ORDER=[['syllabus',1],['book',2],['studymaterial',3],['chapterwisenote',3],['questionbank',4],['tma',5],['practical',6],['exampattern',7],['samplepaper',8],['pyq',9],['previousyear',9],['solvedpyq',9]];
 function _xmCatKey(c){ return (c||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
 function _xmCatOrder(c){ const k=_xmCatKey(c); for(const [kw,o] of _XM_CAT_ORDER){ if(k.includes(kw)) return o; } return 50; }
-function _xmCatName(c){ const k=_xmCatKey(c); if(k.includes('studymaterial')) return 'Chapterwise Notes'; if(k.includes('pyq')||k.includes('previousyear')) return 'Solved PYQs'; return c||'Other'; }
+function _xmCatName(c){ const k=_xmCatKey(c); if(k.includes('studymaterial')) return 'Chapterwise Notes'; if(k.includes('unsolved')) return 'Unsolved PYQs'; if(k.includes('pyq')||k.includes('previousyear')) return 'Solved PYQs'; return c||'Other'; }
 function _xmSortCats(keys){ return keys.sort((a,b)=>{ const oa=_xmCatOrder(a),ob=_xmCatOrder(b); return oa!==ob?oa-ob:_xmCatName(a).localeCompare(_xmCatName(b)); }); }
 async function loadExtMaterials(cid){
   _extCid=cid; _extSubject=null;
@@ -12614,10 +12616,11 @@ function _extRenderSubject(){
   const groups={}; pool.forEach(m=>{
     let c=m.category||'Other';
     // PYQ safety-net: agar server ne category kuch aur bheji par title/session me
-    // PYQ/Previous Year likha hai to bhi Solved PYQs me daalo
+    // PYQ/Previous Year likha hai to bhi PYQs me daalo — aur "unsolved" ho to alag category.
     const k=_xmCatKey(c);
     const blob=(String(m.title||'')+' '+String(m.session||'')).toLowerCase();
-    if(!k.includes('pyq')&&!k.includes('previousyear')&&/\bpyq\b|previous year|prev\.? year|past year|solved paper|old paper/.test(blob)) c='Solved PYQs';
+    const _isPyqItem=k.includes('pyq')||k.includes('previousyear')||/\bpyq\b|previous year|prev\.? year|past year|solved paper|old paper|unsolved paper/.test(blob);
+    if(_isPyqItem) c=/unsolved/.test(blob)?'Unsolved PYQs':'Solved PYQs';
     (groups[c]=groups[c]||[]).push(m);
   });
   let body='';
@@ -16883,6 +16886,8 @@ function initResponsiveCss(){
     /* ===== comprehensive phone hardening — applies to every portal ===== */
     '*{-webkit-tap-highlight-color:transparent}',
     'body,.app,.main,.page,.card,.card-body{max-width:100%}',
+    'img,video{max-width:100%;height:auto}',
+    '.xm-row,.dpp-card,.qb-card,.lec-card,.sm-card,.mat-item{overflow-wrap:break-word;word-break:break-word}',
     '.main,.page,.card,.card-body,.modal,.modal-content{overflow-wrap:break-word;word-break:break-word}',
     '@media(max-width:768px){',
     '  .main{margin-left:0 !important;width:100% !important}',
@@ -16923,6 +16928,25 @@ function initResponsiveCss(){
     '.mc-count{white-space:nowrap;flex:0 0 auto}',
     '.mat-cat-head .mc-del{flex:0 0 auto;margin-left:auto}',
     '.mat-cat-head .mc-chev{flex:0 0 auto}',
+    /* ===== Premium material cards (teacher/admin Classes Material) ===== */
+    '.mat-xrow{align-items:center;cursor:pointer}',
+    '.mat-xacts{display:flex;gap:8px;align-items:center;flex:0 0 auto}',
+    '.mat-del{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;flex:0 0 40px;border-radius:11px;border:1px solid rgba(220,38,38,.28);background:rgba(220,38,38,.08);color:#dc2626;cursor:pointer;transition:background .15s,transform .1s}',
+    '.mat-del:hover{background:rgba(220,38,38,.16)}',
+    '.mat-del:active{transform:scale(.94)}',
+    '.mat-del svg{width:17px;height:17px}',
+    '.mat-delall{margin-left:auto;display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:10px;border:1px solid rgba(220,38,38,.28);background:rgba(220,38,38,.08);color:#dc2626;font-weight:700;font-size:.78rem;cursor:pointer;white-space:nowrap}',
+    '.mat-delall:hover{background:rgba(220,38,38,.16)}',
+    '.mat-delall svg{width:14px;height:14px}',
+    '.xm-sec-h{flex-wrap:wrap;row-gap:8px}',
+    '.xm-row-m .mt-eng{background:rgba(201,162,39,.1);border:none;border-radius:999px;padding:2px 9px;font-size:.72rem;color:#8a6d10;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:3px;vertical-align:middle}',
+    '.xm-row-m .mt-eng svg{width:12px;height:12px}',
+    '.xm-row-m .mt-new-tag{margin-left:0}',
+    '@media(max-width:600px){',
+    '  .mat-xrow{flex-wrap:wrap}',
+    '  .mat-xacts{width:100%;margin-top:9px}',
+    '  .mat-xacts .btn{flex:1}',
+    '}',
     /* ===== Timetable "Overall Progress" hero — keep 93% / Completed on one line ===== */
     '.ov-pct-num{white-space:nowrap;line-height:1}',
     '.ov-pct-lbl{white-space:nowrap}',
