@@ -6419,6 +6419,11 @@ function _renderADppTracker(){
     '.yt-scope .yt-hero{background:linear-gradient(135deg,#2a1d02,#4a3608);color:#fff;border-radius:18px;padding:20px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px}',
     '.yt-new-blink{display:inline-block;background:#dc2626;color:#fff;font-size:.62rem;font-weight:800;padding:2px 7px;border-radius:999px;letter-spacing:.05em;vertical-align:middle;animation:ytNewBlink 1.1s ease-in-out infinite}',
     '@keyframes ytNewBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(220,38,38,.5)}50%{opacity:.75;box-shadow:0 0 0 5px rgba(220,38,38,.05)}}',
+    // Premium red pulse for the "New Task" stat card (inset ring avoids layout shift).
+    '.yt-scope .vt-stat.vt-ap-blink{animation:ytApBlink 1.3s ease-in-out infinite}',
+    '@keyframes ytApBlink{0%,100%{box-shadow:inset 0 0 0 1.5px rgba(220,38,38,.55),0 0 0 0 rgba(220,38,38,.28)}50%{box-shadow:inset 0 0 0 1.5px rgba(220,38,38,.85),0 0 0 7px rgba(220,38,38,.02)}}',
+    '.yt-scope .vt-stat.vt-ap-blink .vs-ic{animation:ytApPulse 1.3s ease-in-out infinite}',
+    '@keyframes ytApPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}',
     '.yt-scope .yt-hero h3{margin:0;font-size:1.25rem;font-weight:800}',
     '.yt-scope .yt-hero p{margin:3px 0 0;font-size:.8rem;opacity:.82}',
     '.yt-scope .yt-hero .vt-sp{flex:1}',
@@ -6456,6 +6461,9 @@ var _YT_DONE=['uploaded','completed'];
 var _YT_PROD=['approved','editor_assigned','editing_soon','editing','editing_paused','editing_done','qc_pending','qc_approved','qc_changes','ready_for_youtube'];
 var _YT_REVIEW=['creator_submitted','pm_review'];
 function _ytBucket(t){ var lc=t.lifecycle||''; if(_YT_DONE.indexOf(lc)>=0)return'done'; if(_YT_PROD.indexOf(lc)>=0)return'prod'; if(_YT_REVIEW.indexOf(lc)>=0)return'review'; return 'assigned'; }
+// Brand-new tasks: just assigned, creator hasn't started shooting/submitting yet.
+var _YT_NEW_LC=['','created','creator_assigned'];
+function _ytIsNew(t){ return _YT_NEW_LC.indexOf(t.lifecycle||'')>=0; }
 function _ytOverdue(t){ return !!(t.deadline_flag&&t.deadline_flag.kind==='overdue')&&_YT_DONE.indexOf(t.lifecycle||'')<0; }
 function _ytNum(n){ try{ return (n||0).toLocaleString(); }catch(e){ return String(n||0); } }
 function _ytUrl(u){ u=String(u||''); return /^(https?:|data:)/i.test(u)?u.replace(/"/g,'%22'):''; }
@@ -6487,8 +6495,8 @@ function _renderAYtTasks(){
   var el=document.getElementById(window._ytHost||'a-ytasks-content'); if(!el) return;
   el.classList.add('yt-scope');
   var all=window._ytTasks||[], f=window._ytF;
-  var total=all.length,done=0,prod=0,review=0,assigned=0,overdue=0;
-  all.forEach(function(t){ var b=_ytBucket(t); if(b==='done')done++;else if(b==='prod')prod++;else if(b==='review')review++;else assigned++; if(_ytOverdue(t))overdue++; });
+  var total=all.length,done=0,prod=0,review=0,assigned=0,overdue=0,newcnt=0;
+  all.forEach(function(t){ var b=_ytBucket(t); if(b==='done')done++;else if(b==='prod')prod++;else if(b==='review')review++;else assigned++; if(_ytOverdue(t))overdue++; if(_ytIsNew(t))newcnt++; });
   function stat(l,n,color,icn,bucket,blink){ return '<div class="vt-stat'+(bucket?' vt-stat-click':'')+((blink&&n>0)?' vt-ap-blink':'')+'"'+(bucket?' data-ytb="'+bucket+'" onclick="_ytBucketFilter(\''+bucket+'\')"':'')+'><div class="vs-ic" style="background:'+color+'1f;color:'+color+'">'+ic(icn)+'</div><div><div class="vs-n" style="color:'+color+'">'+n+'</div><div class="vs-l">'+l+'</div></div></div>'; }
   var byType={}; all.forEach(function(t){ var k=(t.video_type||'').trim()||'Uncategorized'; byType[k]=(byType[k]||0)+1; });
   var creators=[]; all.forEach(function(t){ var c=(t.creator_name||'').trim(); if(c&&creators.indexOf(c)<0)creators.push(c); }); creators.sort();
@@ -6511,7 +6519,7 @@ function _renderAYtTasks(){
   var statRow=''
     +stat('Total Assigned',total,'#8a6d10','clipboard','all')
     +stat('To Shoot',assigned,'#0891b2','clock','assigned')
-    +stat('Approval Pending',review,'#dc2626','bell','review',true)
+    +stat('New Task',newcnt,'#dc2626','bell','new',true)
     +stat('In Production',prod,'#7c4fc0','play','prod')
     +stat('Published',done,'#059669','check','done')
     +stat('Overdue',overdue,'#dc2626','alert','over');
@@ -6619,7 +6627,7 @@ function _ytCard(t){
     acts+='<button class="btn btn-gold btn-sm" onclick="ytPublish('+t.id+')">'+ic('play')+' Add YouTube Link</button>';
   }
   var searchTxt=((t.title||'')+' '+(t.creator_name||'')+' '+(t.channel_name||'')+' '+(t.subject||'')+' '+(t.video_type||'')+' '+(t.ref_code||'')).toLowerCase();
-  return '<div class="vt-card" data-ytbucket="'+b+'" data-over="'+(over?1:0)+'" data-creator="'+esc(t.creator_name||'')+'" data-channel="'+esc(t.channel_name||'')+'" data-vt="'+esc(t.video_type||'')+'" data-txt="'+esc(searchTxt)+'">'
+  return '<div class="vt-card" data-ytbucket="'+b+'" data-ytnew="'+(_ytIsNew(t)?1:0)+'" data-over="'+(over?1:0)+'" data-creator="'+esc(t.creator_name||'')+'" data-channel="'+esc(t.channel_name||'')+'" data-vt="'+esc(t.video_type||'')+'" data-txt="'+esc(searchTxt)+'">'
     +thumb
     +'<div class="vt-body">'
       +'<div class="vt-title">'+esc(t.title||'Untitled')+' '+((_YT_REVIEW.indexOf(lc)>=0)?'<span class="yt-new-blink">NEW</span> ':'')+'<span class="vt-pill" style="background:'+pc+'1f;color:'+pc+'">'+esc(t.lifecycle_label||b)+'</span></div>'
@@ -6642,7 +6650,7 @@ function _ytClientFilter(){
     if(f.creator && c.getAttribute('data-creator')!==f.creator) show=false;
     if(show && f.channel && c.getAttribute('data-channel')!==f.channel) show=false;
     if(show && f.video_type && c.getAttribute('data-vt')!==f.video_type) show=false;
-    if(show && f.bucket){ if(f.bucket==='over'){ show=c.getAttribute('data-over')==='1'; } else if(f.bucket!=='all'){ show=c.getAttribute('data-ytbucket')===f.bucket; } }
+    if(show && f.bucket){ if(f.bucket==='over'){ show=c.getAttribute('data-over')==='1'; } else if(f.bucket==='new'){ show=c.getAttribute('data-ytnew')==='1'; } else if(f.bucket!=='all'){ show=c.getAttribute('data-ytbucket')===f.bucket; } }
     if(show && f.q){ show=(c.getAttribute('data-txt')||'').indexOf(f.q)>=0; }
     c.style.display=show?'':'none';
   });
@@ -20898,6 +20906,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var st=document.createElement('style'); st.id='prod-portal-css'; st.textContent=css;
     document.head.appendChild(st);
   }
+  // Expose so admin-context drawers/modals (Assign Work, Credit Thumbnail) can
+  // pull in the production CSS even when the standalone portal shell never ran.
+  try{ window._prodEnsureCSS=ensureCSS; }catch(e){}
 
   // --- build the app shell for a portal (once) ---
   function ensureShell(portal){
@@ -23756,6 +23767,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   window.prodNewTask=function(){ if((typeof CURRENT_PORTAL!=='undefined'&&CURRENT_PORTAL==='youtuber')){ ytNewTask(); return; } prodAssignWork(); };
   window.prodAssignWork=function(preCreator){
+    ensureCSS(); // admin may open this without the portal shell ever loading its CSS
     window._aw={step:1, data:{creator_type:(preCreator==='youtuber'?'youtuber':'teacher'), priority:'normal'}, people:null};
     var old=document.getElementById('prod-drawer'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='p-drawer'; dr.id='prod-drawer';
@@ -24312,8 +24324,36 @@ window.apAddSubmit=function(role){
   }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
 };
 
+// Modal-critical CSS. The full set lives in initAdminProdTeam()'s <style id="aprod-css">,
+// but that only injects when the admin visits the Production Team page. _apModal can be
+// triggered from anywhere (e.g. Credit Thumbnail on the YouTuber Tasks page, or from the
+// standalone production portal), so it must guarantee its own styling.
+function _apEnsureCSS(){
+  // Pull in production field CSS (.p-field / .p-input / .p-area / .yt-drop) used by
+  // modal bodies like the thumbnail credit form.
+  try{ if(typeof window._prodEnsureCSS==='function') window._prodEnsureCSS(); }catch(e){}
+  if(document.getElementById('ap-core-css')||document.getElementById('aprod-css')) return;
+  var st=document.createElement('style'); st.id='ap-core-css';
+  st.textContent=[
+    '.ap-modal{position:fixed;inset:0;z-index:210;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:18px}',
+    '.ap-box{background:#fff;color:#2a2313;max-width:460px;width:100%;max-height:88vh;overflow:auto;border-radius:18px;padding:22px;box-shadow:0 24px 60px -12px rgba(0,0,0,.5)}',
+    'body.dark .ap-box{background:#1b1508;color:#eee6d4}',
+    '.ap-fld{margin:11px 0}','.ap-fld label{display:block;font-size:.78rem;font-weight:600;color:#8a7d5c;margin-bottom:5px}',
+    '.ap-in,.ap-sel{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #d9cba8;background:#fff;color:#2a2313;font-size:.9rem;font-family:inherit}',
+    'body.dark .ap-in,body.dark .ap-sel{background:#241c0b;border-color:#3a2f14;color:#eee6d4}',
+    '.ap-cred{background:rgba(46,158,107,.1);border:1px solid rgba(46,158,107,.3);border-radius:12px;padding:14px;margin-top:6px;font-size:.9rem;line-height:1.7}',
+    '.ap-add{padding:8px 14px;border-radius:9px;border:none;background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05;font-weight:700;cursor:pointer;font-size:.84rem}',
+    '.ap-prow{display:flex;align-items:center;gap:12px;border:1px solid #ece2cd;border-radius:11px;padding:11px 14px;margin-bottom:8px}',
+    'body.dark .ap-prow{border-color:#2c2410}',
+    '.ap-prow .t{flex:1;min-width:0}','.ap-prow .nm{font-weight:700;font-size:.9rem}',
+    '.ap-prow .mt{font-size:.74rem;color:#8a7d5c;font-family:ui-monospace,monospace}',
+    '.ap-prow .st{font-size:.72rem;font-weight:700;padding:4px 10px;border-radius:999px;background:rgba(230,173,78,.16);color:#a9791f;white-space:nowrap}'
+  ].join('');
+  document.head.appendChild(st);
+}
 function _apModal(title,inner){
   apClose();
+  _apEnsureCSS();
   var m=document.createElement('div'); m.className='ap-modal'; m.id='ap-modal';
   m.innerHTML='<div class="ap-box"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div style="font-size:1.12rem;font-weight:800">'+title+'</div><button onclick="apClose()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:inherit;line-height:1">&times;</button></div>'+inner+'</div>';
   m.addEventListener('click',function(e){ if(e.target===m) apClose(); });
