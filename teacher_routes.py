@@ -2759,6 +2759,7 @@ def teacher_student_engagement(db: Session = Depends(get_db), current_user=Depen
             MaterialView.material_id.in_(mat_ids) if mat_ids else False).scalar() or 0
         last_act = db.query(MaterialView).filter(MaterialView.student_id == sp.id).order_by(MaterialView.created_at.desc()).first()
         out.append({
+            "id": sp.id,
             "name": (sp.user.name if sp.user else "Student"),
             "phone": (sp.phone if _see else ""), "subjects": sp.subjects or [],
             "class_level": sp.class_level,
@@ -2768,6 +2769,43 @@ def teacher_student_engagement(db: Session = Depends(get_db), current_user=Depen
         })
     out.sort(key=lambda x: (x["material_downloads"] + x["dpp_completed"] + x["tests_completed"]), reverse=True)
     return out
+
+
+@router.get("/student-downloads/{student_id}")
+def teacher_student_downloads(student_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """List the materials a student has downloaded, limited to this teacher's subjects."""
+    from models import Material, MaterialView, StudentProfile
+    tp = get_teacher_profile(current_user, db)
+    subs = tp.subjects or []
+    sp = db.query(StudentProfile).filter(StudentProfile.id == student_id).first()
+    student_name = (sp.user.name if (sp and sp.user) else "Student")
+    if not subs:
+        return {"student_name": student_name, "downloads": []}
+    # teacher's materials, keyed by id
+    mats = {m.id: m for m in db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs)).all()}
+    if not mats:
+        return {"student_name": student_name, "downloads": []}
+    views = db.query(MaterialView).filter(
+        MaterialView.student_id == student_id,
+        MaterialView.action == "download",
+        MaterialView.material_id.in_(list(mats.keys())),
+    ).order_by(MaterialView.created_at.desc()).all()
+    items = []
+    for v in views:
+        m = mats.get(v.material_id)
+        if not m:
+            continue
+        name = (m.title or m.filename or m.chapter or "Material")
+        items.append({
+            "title": name,
+            "type": (m.material_type or "").upper(),
+            "subject": m.subject or "",
+            "chapter": m.chapter or "",
+            "part": m.part or "",
+            "class_name": m.class_name or "",
+            "downloaded_at": str(v.created_at)[:16] if v.created_at else "",
+        })
+    return {"student_name": student_name, "downloads": items}
 
 
 # ===================== EXAM / TEST ENGINE (teacher) =====================

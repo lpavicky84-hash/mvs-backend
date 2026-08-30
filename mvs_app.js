@@ -3547,9 +3547,35 @@ async function loadTEngagement(){
   try{
     const eng=await api('/api/teacher/student-engagement');
     if(!eng.length){ wrap.innerHTML=''; return; }
-    const rows=eng.map(s=>`<tr><td><strong>${esc(s.name)}</strong>${s.class_level?` <span class="chip eng-cls">Class ${esc(s.class_level)}</span>`:''}<div style="font-size:.72rem;color:var(--text-muted)">${esc((s.subjects||[]).join(', '))}</div></td><td>${s.dpp_completed}</td><td>${s.tests_completed}</td><td>${s.material_downloads}</td><td>${esc(s.last_active||'—')}</td></tr>`).join('');
-    wrap.innerHTML=`<div class="card"><div class="card-header"><h3>Student Engagement</h3><span class="pager-info">DPP &amp; test completion · material downloads · last active</span></div><div class="card-body"><div class="table-wrap"><table><thead><tr><th>Student</th><th>DPP Done</th><th>Tests Done</th><th>Downloads</th><th>Last Active</th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
+    const rows=eng.map(s=>{
+      const dl=s.material_downloads||0;
+      const dlCell=dl>0
+        ? `<button class="eng-dl-link" onclick="tShowDownloads(${s.id},'${esc((s.name||'').replace(/'/g,'’'))}')" title="See what this student downloaded">${dl}</button>`
+        : '0';
+      return `<tr>`
+        +`<td data-label="Student"><strong>${esc(s.name)}</strong>${s.class_level?` <span class="chip eng-cls">Class ${esc(s.class_level)}</span>`:''}<div style="font-size:.72rem;color:var(--text-muted)">${esc((s.subjects||[]).join(', '))}</div></td>`
+        +`<td data-label="DPP Done">${s.dpp_completed}</td>`
+        +`<td data-label="Tests Done">${s.tests_completed}</td>`
+        +`<td data-label="Downloads">${dlCell}</td>`
+        +`<td data-label="Last Active">${esc(s.last_active||'—')}</td>`
+        +`</tr>`;
+    }).join('');
+    wrap.innerHTML=`<div class="card"><div class="card-header"><h3>Student Engagement</h3><span class="pager-info">DPP &amp; test completion · material downloads · last active</span></div><div class="card-body"><div class="table-wrap"><table class="eng-table"><thead><tr><th>Student</th><th>DPP Done</th><th>Tests Done</th><th>Downloads</th><th>Last Active</th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
   }catch(e){ wrap.innerHTML=''; }
+}
+// Show the list of materials a student has downloaded (from the engagement table).
+async function tShowDownloads(studentId,studentName){
+  showModal('Downloads — '+esc(studentName||'Student'),'<div id="tdl-body"><div class="spinner"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{
+    const r=await api('/api/teacher/student-downloads/'+studentId);
+    const list=(r&&r.downloads)||[];
+    const body=document.getElementById('tdl-body'); if(!body) return;
+    if(!list.length){ body.innerHTML='<div class="empty-state"><p>No downloads yet for your subjects.</p></div>'; return; }
+    body.innerHTML='<div class="tdl-list">'+list.map(function(d){
+      const meta=[d.type,d.subject,(d.class_name||''),(d.chapter||'')].filter(Boolean).map(esc).join(' · ');
+      return '<div class="tdl-item"><div class="tdl-main"><div class="tdl-t">'+esc(d.title)+'</div>'+(meta?'<div class="tdl-m">'+meta+'</div>':'')+'</div>'+(d.downloaded_at?'<div class="tdl-when">'+esc(d.downloaded_at)+'</div>':'')+'</div>';
+    }).join('')+'</div>';
+  }catch(e){ const body=document.getElementById('tdl-body'); if(body) body.innerHTML='<div class="alert alert-danger">'+esc((e&&e.message)||'Could not load')+'</div>'; }
 }
 async function loadTMaterial(){
   const el=document.getElementById('t-material-content');
@@ -16882,6 +16908,46 @@ function initResponsiveCss(){
     '  [style*="grid-template-columns"]{grid-template-columns:1fr 1fr !important}',
     '  .topbar h2{font-size:.98rem}',
     '  .btn{font-size:.86rem;padding:8px 12px}',
+    '}',
+    /* any table stays inside the viewport (scrolls instead of breaking the layout) */
+    '.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}',
+    /* ===== Student Engagement — clickable downloads + download list modal ===== */
+    '.eng-dl-link{background:rgba(201,162,39,.16);color:#a9791f;border:none;font-weight:800;padding:3px 13px;border-radius:999px;cursor:pointer;font-size:.9rem;font-family:inherit}',
+    '.eng-dl-link:hover{background:rgba(201,162,39,.28)}',
+    '.tdl-list{display:flex;flex-direction:column;gap:8px;max-height:62vh;overflow:auto}',
+    '.tdl-item{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--border,#e8dfca);border-radius:12px;padding:10px 12px}',
+    '.tdl-t{font-weight:700;font-size:.92rem;word-break:break-word}',
+    '.tdl-m{font-size:.74rem;color:var(--text-muted);margin-top:2px}',
+    '.tdl-when{font-size:.72rem;color:var(--text-muted);white-space:nowrap}',
+    /* ===== Student Engagement — stack the table into cards on phones ===== */
+    '@media(max-width:640px){',
+    '  .eng-table thead{display:none}',
+    '  .eng-table,.eng-table tbody,.eng-table tr,.eng-table td{display:block;width:100%}',
+    '  .eng-table tr{border:1px solid var(--border,#e8dfca);border-radius:14px;margin-bottom:12px;padding:11px 14px}',
+    '  .eng-table td{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 0;border:none !important;text-align:right}',
+    '  .eng-table td::before{content:attr(data-label);font-weight:800;color:var(--text-muted);font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;text-align:left}',
+    '  .eng-table td:first-child{flex-direction:column;align-items:flex-start;text-align:left;border-bottom:1px solid var(--border,#eee) !important;padding-bottom:9px;margin-bottom:5px}',
+    '  .eng-table td:first-child::before{display:none}',
+    '  .tdl-item{flex-direction:column;align-items:flex-start;gap:4px}',
+    '}',
+    /* ===== Timetable subject-progress card (ov2 ring) — phone ===== */
+    '@media(max-width:600px){',
+    '  .ov2-top{gap:12px;align-items:center}',
+    '  .ov2-ring{flex:0 0 78px !important;width:78px !important;height:78px !important;position:relative}',
+    '  .ov2-ring svg{width:78px !important;height:78px !important;display:block}',
+    '  .ov2-ringtxt{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;line-height:1}',
+    '  .ov2-ringtxt .n{font-size:1.15rem;font-weight:800}',
+    '  .ov2-ringtxt .l{font-size:.5rem;letter-spacing:.06em;margin-top:1px}',
+    '  .ov2-id{gap:11px;min-width:0}',
+    '  .ov2-name{font-size:1.08rem;line-height:1.2}',
+    '  .ov2-sub{font-size:.8rem}',
+    '  .ov2-tiles{display:grid;grid-template-columns:1fr 1fr !important;gap:9px}',
+    '  .ov2-foot{flex-wrap:wrap;gap:6px}',
+    '}',
+    '@media(max-width:380px){',
+    '  .ov2-ring{flex-basis:66px !important;width:66px !important;height:66px !important}',
+    '  .ov2-ring svg{width:66px !important;height:66px !important}',
+    '  .ov2-ringtxt .n{font-size:1rem}',
     '}'
   ].join('\n');
   document.head.appendChild(st);
