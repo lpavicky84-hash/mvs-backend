@@ -1084,7 +1084,7 @@ def pm_team(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
                 ProductionStaffProfile.staff_role == role,
                 ProductionStaffProfile.is_active == True).all():
             if role == "editor":
-                base = db.query(VideoTask).filter(VideoTask.editor_id == sp.id)
+                base = db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.editor_id == sp.id)
                 active = base.filter(VideoTask.lifecycle.in_(
                     ["editor_assigned", "editing", "editing_paused", "editing_done", "qc_pending", "qc_changes"])).count()
                 completed = base.filter(VideoTask.lifecycle.in_(["ready_for_youtube", "uploaded", "completed"])).count()
@@ -1092,7 +1092,7 @@ def pm_team(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
                                       ~VideoTask.lifecycle.in_(["uploaded", "completed", "ready_for_youtube"])).count()
                 due_today = base.filter(VideoTask.deadline != None, func.date(VideoTask.deadline) == today).count()
             else:
-                gbase = db.query(GraphicsTask).filter(GraphicsTask.graphics_id == sp.id)
+                gbase = db.query(GraphicsTask).filter(GraphicsTask.graphics_id == sp.id, GraphicsTask.task_id.in_(db.query(VideoTask.id).filter(VideoTask.cancelled == False)))
                 active = gbase.filter(GraphicsTask.status.in_(["new", "in_progress", "changes"])).count()
                 completed = gbase.filter(GraphicsTask.status == "approved").count()
                 overdue = 0
@@ -1104,7 +1104,7 @@ def pm_team(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
 
     yts = []
     for yp in db.query(YouTuberProfile).filter(YouTuberProfile.is_active == True).all():
-        base = db.query(VideoTask).filter(VideoTask.creator_type == "youtuber",
+        base = db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.creator_type == "youtuber",
                                           VideoTask.youtuber_id == yp.id)
         yts.append({
             "id": yp.id, "name": yp.user.name if yp.user else "",
@@ -1132,9 +1132,9 @@ def pm_people(role: str = "", db: Session = Depends(get_db), me=Depends(get_pm_o
             ProductionStaffProfile.is_active == True).all()
         out["editors"] = []
         for s in eds:
-            active = db.query(VideoTask).filter(VideoTask.editor_id == s.id,
+            active = db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.editor_id == s.id,
                                                 VideoTask.lifecycle.in_(_ed_active)).count()
-            pending = db.query(VideoTask).filter(VideoTask.editor_id == s.id,
+            pending = db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.editor_id == s.id,
                                                  VideoTask.lifecycle.in_(["editor_assigned", "editing_soon"])).count()
             out["editors"].append({"id": s.id, "name": s.user.name if s.user else "",
                                    "recommended": s.recommended_load or 5,
@@ -1220,7 +1220,7 @@ def pm_creators(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
 
     youtubers = []
     for yp in db.query(YouTuberProfile).all():
-        base = db.query(VideoTask).filter(VideoTask.creator_type == "youtuber", VideoTask.youtuber_id == yp.id)
+        base = db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.creator_type == "youtuber", VideoTask.youtuber_id == yp.id)
         if base.count() == 0:
             continue
         s = stats_for(base); s["name"] = yp.user.name if yp.user else ""; s["id"] = yp.id
@@ -1321,9 +1321,9 @@ def pm_search(q: str = "", db: Session = Depends(get_db), me=Depends(get_pm_or_a
     eids = [s.id for s in sps if s.staff_role == "editor"]
     gids = [s.id for s in sps if s.staff_role == "graphics"]
     if eids:
-        add(db.query(VideoTask).filter(VideoTask.editor_id.in_(eids)).limit(30).all(), "Editor")
+        add(db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.editor_id.in_(eids)).limit(30).all(), "Editor")
     if gids:
-        add(db.query(VideoTask).filter(VideoTask.graphics_id.in_(gids)).limit(30).all(), "Graphics")
+        add(db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.graphics_id.in_(gids)).limit(30).all(), "Graphics")
 
     if not ids:
         return {"results": []}
@@ -1351,7 +1351,7 @@ def pm_person(kind: str, pid: int, db: Session = Depends(get_db), me=Depends(get
             raise HTTPException(404, "Not found")
         name = sp.user.name if sp.user else ""
         if kind == "editor":
-            base = db.query(VideoTask).filter(VideoTask.editor_id == pid)
+            base = db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.editor_id == pid)
             active = base.filter(VideoTask.lifecycle.in_(["editor_assigned", "editing", "editing_paused", "editing_done", "qc_pending", "qc_changes"])).count()
             completed = base.filter(VideoTask.lifecycle.in_(done)).count()
             completed_m = base.filter(VideoTask.lifecycle.in_(done), VideoTask.updated_at >= month_start).count()
@@ -1393,7 +1393,7 @@ def pm_person(kind: str, pid: int, db: Session = Depends(get_db), me=Depends(get
                     "this_month": bool(_done2 and _t.updated_at and _t.updated_at >= month_start),
                 })
         else:
-            gbase = db.query(GraphicsTask).filter(GraphicsTask.graphics_id == pid)
+            gbase = db.query(GraphicsTask).filter(GraphicsTask.graphics_id == pid, GraphicsTask.task_id.in_(db.query(VideoTask.id).filter(VideoTask.cancelled == False)))
             active = gbase.filter(GraphicsTask.status.in_(["new", "in_progress", "changes"])).count()
             completed = gbase.filter(GraphicsTask.status == "approved").count()
             completed_m = gbase.filter(GraphicsTask.status == "approved", GraphicsTask.approved_at != None, GraphicsTask.approved_at >= month_start).count()
@@ -1430,7 +1430,7 @@ def pm_person(kind: str, pid: int, db: Session = Depends(get_db), me=Depends(get
         yp = db.query(YouTuberProfile).filter(YouTuberProfile.id == pid).first()
         if not yp:
             raise HTTPException(404, "Not found")
-        base = db.query(VideoTask).filter(VideoTask.creator_type == "youtuber", VideoTask.youtuber_id == pid)
+        base = db.query(VideoTask).filter(VideoTask.creator_type == "youtuber", VideoTask.youtuber_id == pid, VideoTask.cancelled == False)
         stats = {"pending": base.filter(VideoTask.lifecycle.in_(["creator_assigned", "creator_working", "changes_required"])).count(),
                  "submitted": base.filter(VideoTask.lifecycle.in_(["creator_submitted", "pm_review"])).count(),
                  "in_production": base.filter(VideoTask.lifecycle.in_(["approved", "editor_assigned", "editing", "editing_paused", "editing_done", "qc_pending", "qc_changes", "ready_for_youtube"])).count(),

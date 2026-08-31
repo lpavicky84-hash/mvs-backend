@@ -6519,9 +6519,17 @@ var _YT_DONE=['uploaded','completed'];
 var _YT_PROD=['approved','editor_assigned','editing_soon','editing','editing_paused','editing_done','qc_pending','qc_approved','qc_changes','ready_for_youtube'];
 var _YT_REVIEW=['creator_submitted','pm_review'];
 function _ytBucket(t){ var lc=t.lifecycle||''; if(_YT_DONE.indexOf(lc)>=0)return'done'; if(_YT_PROD.indexOf(lc)>=0)return'prod'; if(_YT_REVIEW.indexOf(lc)>=0)return'review'; return 'assigned'; }
-// Brand-new tasks: just assigned, creator hasn't started shooting/submitting yet.
+// Brand-new / just-arrived tasks that need the PM's attention (blink red under "New Task").
+// YouTuber videos are usually auto-approved, so an 'approved' task with no editor yet is still
+// "new" for the PM; submissions awaiting review count too.
 var _YT_NEW_LC=['','created','creator_assigned'];
-function _ytIsNew(t){ return _YT_NEW_LC.indexOf(t.lifecycle||'')>=0; }
+function _ytIsNew(t){
+  var lc=t.lifecycle||'';
+  if(_YT_NEW_LC.indexOf(lc)>=0) return true;
+  if(lc==='creator_submitted'||lc==='pm_review') return true;
+  if(lc==='approved' && !t.editor_name && !t.editor_id) return true;
+  return false;
+}
 function _ytOverdue(t){ return !!(t.deadline_flag&&t.deadline_flag.kind==='overdue')&&_YT_DONE.indexOf(t.lifecycle||'')<0; }
 function _ytNum(n){ try{ return (n||0).toLocaleString(); }catch(e){ return String(n||0); } }
 function _ytUrl(u){ u=String(u||''); return /^(https?:|data:)/i.test(u)?u.replace(/"/g,'%22'):''; }
