@@ -1360,7 +1360,7 @@ def pm_person(kind: str, pid: int, db: Session = Depends(get_db), me=Depends(get
             comp = base.filter(VideoTask.lifecycle.in_(done), VideoTask.published_at != None, VideoTask.deadline != None).all()
             ot_den = len(comp); ot_hit = sum(1 for t in comp if t.published_at <= t.deadline)
             stats = {"active": active, "completed": completed, "completed_this_month": completed_m,
-                     "overdue": overdue, "active_hours": round(secs / 3600.0, 1),
+                     "overdue": overdue, "active_hours": round(float(secs) / 3600.0, 1),
                      "on_time_pct": round(100.0 * ot_hit / ot_den) if ot_den else None,
                      "recommended_load": sp.recommended_load or 5}
             recent = base.order_by(VideoTask.updated_at.desc()).limit(8).all()
@@ -1373,7 +1373,7 @@ def pm_person(kind: str, pid: int, db: Session = Depends(get_db), me=Depends(get
                     "id": _t.id, "title": _t.title or "", "ref_code": _t.ref_code or "",
                     "lifecycle": _t.lifecycle or "",
                     "deadline": pc._dt_raw(_t.deadline) if _t.deadline else "",
-                    "editing_hours": round(_ts / 3600.0, 1),
+                    "editing_hours": round(float(_ts) / 3600.0, 1),
                     "editing_started": (pc._dt(_t.editing_started_at) if getattr(_t, "editing_started_at", None) else ""),
                 })
             _all = base.order_by(VideoTask.updated_at.desc()).limit(80).all()
@@ -1388,7 +1388,7 @@ def pm_person(kind: str, pid: int, db: Session = Depends(get_db), me=Depends(get
                     "id": _t.id, "title": _t.title or "", "ref_code": _t.ref_code or "",
                     "lifecycle": _t.lifecycle or "",
                     "deadline": pc._dt_raw(_t.deadline) if _t.deadline else "",
-                    "editing_hours": round(_ts2 / 3600.0, 1),
+                    "editing_hours": round(float(_ts2) / 3600.0, 1),
                     "active": _act2, "completed": _done2, "overdue": _ov2,
                     "this_month": bool(_done2 and _t.updated_at and _t.updated_at >= month_start),
                 })
@@ -1664,8 +1664,8 @@ def pm_analytics(days: int = 30, db: Session = Depends(get_db), me=Depends(get_p
         ed_rows.append({
             "name": sp.user.name if sp.user else "",
             "videos": vids,
-            "active_hours": round(secs / 3600.0, 1),
-            "avg_hours": round((secs / 3600.0) / vids, 1) if vids else 0,
+            "active_hours": round(float(secs) / 3600.0, 1),
+            "avg_hours": round((float(secs) / 3600.0) / vids, 1) if vids else 0,
             "on_time_pct": round(100.0 * ot_hit / ot_den) if ot_den else None,
             "revisions": revs,
         })
