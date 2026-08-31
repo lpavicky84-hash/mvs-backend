@@ -226,8 +226,28 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
     total = query.count()
     rows = (query.order_by(VideoTask.updated_at.desc())
             .offset(max(0, page - 1) * size).limit(size).all())
+
+    # Collab info for list cards (parses the task's JSON fields — no extra DB queries).
+    try:
+        from video_tasks import _collab_all_ids as _cai, _collab_vmap as _cvm
+    except Exception:
+        _cai = _cvm = None
+
+    def _task_out_collab(t):
+        o = pc.task_out(db, t, light=True)
+        if _cai:
+            try:
+                allids = _cai(t)
+                vmap = _cvm(t) or {}
+                o["is_collab"] = len(allids) > 1
+                o["collab_total"] = len(allids)
+                o["collab_verified"] = sum(1 for i in allids if vmap.get(str(i)))
+            except Exception:
+                pass
+        return o
+
     return {"total": total, "page": page, "size": size,
-            "tasks": [pc.task_out(db, t, light=True) for t in rows]}
+            "tasks": [_task_out_collab(t) for t in rows]}
 
 
 @router.get("/tasks/{tid}/comments")
@@ -1221,21 +1241,44 @@ def pm_views(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     pending_upload = db.query(VideoTask).filter(VideoTask.lifecycle == "ready_for_youtube").count()
 
     vids = uploaded_q.all()
+    try:
+        from video_tasks import _collab_all_ids as _cai, _teacher_name as _ctn
+    except Exception:
+        _cai = _ctn = None
     by_creator = {}
     videos = []
+    collab_names = set()
     for t in vids:
-        name, ctype = pc.creator_info(db, t)
         v = int(t.yt_views or 0)
-        key = (name or "Unknown") + "|" + ctype
-        c = by_creator.setdefault(key, {"name": name or "Unknown", "creator_type": ctype.lower(), "views": 0, "videos": 0})
+        real_name, real_ctype = pc.creator_info(db, t)
+        is_collab = False
+        if _cai:
+            try:
+                _ids = _cai(t)
+                is_collab = len(_ids) > 1
+                if is_collab and _ctn:
+                    for _i in _ids:
+                        _nm = _ctn(db, _i)
+                        if _nm:
+                            collab_names.add(_nm)
+            except Exception:
+                is_collab = False
+        # collab videos are grouped under a single "Collab" creator (same as the admin view)
+        gname, gctype = ("Collab", "collab") if is_collab else (real_name or "Unknown", real_ctype)
+        key = (gname or "Unknown") + "|" + gctype
+        c = by_creator.setdefault(key, {"name": gname or "Unknown", "creator_type": gctype.lower(), "views": 0, "videos": 0})
         c["views"] += v; c["videos"] += 1
         videos.append({"id": t.id, "title": t.title or "Untitled", "ref_code": t.ref_code or "",
-                       "creator": name or "Unknown", "creator_type": ctype.lower(),
+                       "creator": real_name or "Unknown", "creator_type": real_ctype.lower(),
+                       "is_collab": is_collab,
                        "video_type": t.video_type or "", "views": v,
                        "youtube_url": t.youtube_url or "", "published_at": pc._dt(t.published_at)})
     creators = sorted(by_creator.values(), key=lambda x: x["views"], reverse=True)
     for c in creators:
         c["share"] = round(100.0 * c["views"] / total_views, 1) if total_views else 0
+        if c["name"] == "Collab":
+            c["is_collab"] = True
+            c["collab_names"] = sorted(collab_names)
     videos.sort(key=lambda x: x["views"], reverse=True)
     highest = videos[0] if videos else None
     return {"total_views": total_views, "uploaded": uploaded, "pending_upload": pending_upload,

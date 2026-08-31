@@ -3761,7 +3761,7 @@ function _mtPaint(wrapId){
         : `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();downloadMaterial('${who}',${i.id},'${esc(fname)}')">${ic('download')} Download</button>`;
       const delBtn=isDpp?'':`<button class="mat-del" title="Delete this file permanently" onclick="event.stopPropagation();deleteMaterial('${who}',${i.id},'${encodeURIComponent(i.filename||i.title||'')}')">${ic('trash')}</button>`;
       return `<div class="xm-row mat-xrow${isNew?' mt-row-new':''}" onclick="_matRowSeen('${who}',this,${i.id})">
-        <div style="flex:1;min-width:0">
+        <div class="mat-xmain">
           <div class="xm-row-t">${esc(i.chapter||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}${isDpp?'<span class="mt-new-tag" style="background:#0891b2">DPP</span>':''}</div>
           <div class="xm-row-m">${i.part?`<span>${esc(i.part)}</span>`:'<span>Whole chapter</span>'}${i.date?`<span>${esc(i.date)}</span>`:''}${vChip}</div>
         </div>
@@ -16937,25 +16937,45 @@ function initResponsiveCss(){
     '.mat-cat-head .mc-del{flex:0 0 auto;margin-left:auto}',
     '.mat-cat-head .mc-chev{flex:0 0 auto}',
     /* ===== Premium material cards (teacher/admin Classes Material) ===== */
-    '.mat-xrow{align-items:center;cursor:pointer}',
+    '.mat-xrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer}',
+    '.mat-xmain{flex:1;min-width:0}',
     '.mat-xacts{display:flex;gap:8px;align-items:center;flex:0 0 auto}',
-    '.mat-del{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;flex:0 0 40px;border-radius:11px;border:1px solid rgba(220,38,38,.28);background:rgba(220,38,38,.08);color:#dc2626;cursor:pointer;transition:background .15s,transform .1s}',
+    '.mat-del{display:inline-flex;align-items:center;justify-content:center;width:42px;height:42px;flex:0 0 42px;border-radius:11px;border:1px solid rgba(220,38,38,.28);background:rgba(220,38,38,.08);color:#dc2626;cursor:pointer;transition:background .15s,transform .1s}',
     '.mat-del:hover{background:rgba(220,38,38,.16)}',
     '.mat-del:active{transform:scale(.94)}',
     '.mat-del svg{width:17px;height:17px}',
-    '.mat-delall{margin-left:auto;display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:10px;border:1px solid rgba(220,38,38,.28);background:rgba(220,38,38,.08);color:#dc2626;font-weight:700;font-size:.78rem;cursor:pointer;white-space:nowrap}',
+    '.mat-delall{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:10px;border:1px solid rgba(220,38,38,.28);background:rgba(220,38,38,.08);color:#dc2626;font-weight:700;font-size:.78rem;cursor:pointer;white-space:nowrap;flex:0 0 auto}',
     '.mat-delall:hover{background:rgba(220,38,38,.16)}',
     '.mat-delall svg{width:14px;height:14px}',
-    '.xm-sec-h{flex-wrap:wrap;row-gap:8px}',
-    '.mat-more{display:block;width:100%;margin-top:6px;padding:9px;border-radius:11px;border:1px dashed var(--border,#d9cdae);background:transparent;color:#a9791f;font-weight:800;font-size:.82rem;cursor:pointer;font-family:inherit}',
-    '.mat-more:hover{background:rgba(201,162,39,.08)}',
+    '.xm-sec-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;row-gap:9px}',
+    '.xm-sec-h h3{white-space:nowrap;margin:0;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}',
+    '.xm-sec-h .xm-count{flex:0 0 auto}',
+    '.xm-sec-h .xm-sec-ic{flex:0 0 auto}',
     '.xm-row-m .mt-eng{background:rgba(201,162,39,.1);border:none;border-radius:999px;padding:2px 9px;font-size:.72rem;color:#8a6d10;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:3px;vertical-align:middle}',
     '.xm-row-m .mt-eng svg{width:12px;height:12px}',
     '.xm-row-m .mt-new-tag{margin-left:0}',
+    '.mat-more{display:block;width:100%;margin-top:6px;padding:9px;border-radius:11px;border:1px dashed var(--border,#d9cdae);background:transparent;color:#a9791f;font-weight:800;font-size:.82rem;cursor:pointer;font-family:inherit}',
+    '.mat-more:hover{background:rgba(201,162,39,.08)}',
     '@media(max-width:600px){',
-    '  .mat-xrow{flex-wrap:wrap}',
-    '  .mat-xacts{width:100%;margin-top:9px}',
-    '  .mat-xacts .btn{flex:1}',
+    '  .mat-xmain{flex:1 1 100%}',
+    '  .mat-xacts{flex:1 1 100%;width:100%;margin-top:2px}',
+    '  .mat-xacts .btn{flex:1;min-width:0}',
+    '  .mat-del{flex:0 0 48px;width:48px;height:48px}',
+    '  .mat-delall{margin-left:auto}',
+    '  .xm-sec-h h3{flex:1 1 auto}',
+    '}',
+    /* ===== Video Initiative — My Contributions card (phone) ===== */
+    '.vc-stat b{white-space:nowrap}',
+    '.vc-stat span{word-break:normal;overflow-wrap:normal;white-space:normal}',
+    '.vc-rate b{white-space:nowrap}',
+    '.vc-reward-goal .g-top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline}',
+    '@media(max-width:600px){',
+    '  .vc-stats{display:grid !important;grid-template-columns:1fr 1fr !important;gap:8px}',
+    '  .vc-stat{min-width:0}',
+    '  .vc-stat span{font-size:.72rem;line-height:1.2}',
+    '  .vc-rates{display:grid !important;grid-template-columns:1fr 1fr !important;gap:8px}',
+    '  .vc-rate{min-width:0}',
+    '  .vc-rate.reward{grid-column:1/-1}',
     '}',
     /* ===== Timetable "Overall Progress" hero — keep 93% / Completed on one line ===== */
     '.ov-pct-num{white-space:nowrap;line-height:1}',
@@ -21086,6 +21106,39 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '  .pd-head{padding:14px 16px 10px}',
 '  .pd-body{padding:16px}',
 '  .pd-foot{padding:10px 16px}',
+'}',
+/* ===== Creator Performance — premium cards ===== */
+'.crp-grid{display:flex;flex-direction:column;gap:12px}',
+'.crp-card{background:#fff;border:1px solid #ece2cd;border-radius:16px;padding:16px 18px;box-shadow:0 2px 10px -4px rgba(90,74,30,.12);transition:box-shadow .15s,transform .1s}',
+'.crp-card:hover{box-shadow:0 10px 26px -10px rgba(90,74,30,.24);transform:translateY(-1px)}',
+'body.dark .crp-card{background:#1b1508;border-color:#2c2410}',
+'.crp-top{display:flex;align-items:center;gap:13px}',
+'.crp-rank{font-weight:800;font-size:.82rem;color:#a9791f;flex:0 0 auto;min-width:28px}',
+'.crp-ava{width:44px;height:44px;flex:0 0 44px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:1.1rem}',
+'.crp-id{flex:1;min-width:0}',
+'.crp-name{font-weight:800;font-size:1.05rem;color:#2a2313;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+'body.dark .crp-name{color:#eee6d4}',
+'.crp-sub{font-size:.76rem;color:#8a7d5c}',
+'.crp-views{text-align:right;flex:0 0 auto}',
+'.crp-views b{display:block;font-size:1.15rem;font-weight:800;color:#2a2313}',
+'body.dark .crp-views b{color:#eee6d4}',
+'.crp-views span{font-size:.64rem;color:#8a7d5c;text-transform:uppercase;letter-spacing:.05em}',
+'.crp-barwrap{display:flex;align-items:center;gap:10px;margin:13px 0 12px}',
+'.crp-bar{flex:1;height:8px;border-radius:5px;background:rgba(140,125,92,.16);overflow:hidden}',
+'.crp-fill{height:100%;border-radius:5px;background:linear-gradient(90deg,#2e9e6b,#57c08a);transition:width .4s}',
+'.crp-barlbl{font-size:.72rem;font-weight:700;color:#8a7d5c;white-space:nowrap;flex:0 0 auto}',
+'.crp-chips{display:flex;flex-wrap:wrap;gap:8px}',
+'.crp-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:999px;font-size:.76rem;font-weight:600;background:rgba(140,125,92,.1);color:#6b5f42}',
+'.crp-chip b{font-weight:800}',
+'.crp-chip.green{background:rgba(46,158,107,.13);color:#1f7a44}',
+'.crp-chip.amber{background:rgba(201,154,46,.15);color:#a9791f}',
+'.crp-chip.red{background:rgba(209,68,58,.13);color:#c0392b}',
+'.crp-chip.blue{background:rgba(42,127,184,.13);color:#1e5c7a}',
+'@media(max-width:600px){',
+'  .crp-card{padding:13px 14px}',
+'  .crp-name{font-size:.98rem}',
+'  .crp-views b{font-size:1.05rem}',
+'  .crp-ava{width:40px;height:40px;flex:0 0 40px;font-size:1rem}',
 '}'
     ].join('');
     var st=document.createElement('style'); st.id='prod-portal-css'; st.textContent=css;
@@ -22183,7 +22236,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     body.innerHTML='<div class="p-load">Loading views...</div>';
     return api(P.production.api+'/views').then(function(r){
       if(_stale(portal,'views')) return;
-      var comp=(r.by_creator||[]).map(function(c){ var col=/collab/i.test(c.name||''); return {name:c.name,views:c.views,videos:c.videos,share:c.share,creator_type:c.creator_type,is_collab:col}; });
+      var comp=(r.by_creator||[]).map(function(c){ var col=c.is_collab||/collab/i.test(c.name||''); return {name:c.name,views:c.views,videos:c.videos,share:c.share,creator_type:c.creator_type,is_collab:col,collab_names:c.collab_names||[]}; });
       var kpis=[['Total Views',_num(r.total_views)],['Videos Uploaded',r.uploaded||0],['Pending Upload',r.pending_upload||0],['Highest Viewed',r.highest?_num(r.highest.views):'0']];
       var html='<div class="p-toolbar" style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="p-btn p-btn-primary" id="pv-refresh" onclick="prodRefreshViews()">Refresh live views</button></div>';
       html+='<div class="pk-grid">'+kpis.map(function(c){ return '<div class="pk-card"><div class="pk-val">'+c[1]+'</div><div class="pk-lbl">'+c[0]+'</div></div>'; }).join('')+'</div>';
@@ -22438,14 +22491,34 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '<button class="pd-tab'+(tab==='youtubers'?' on':'')+'" onclick="crTab(\'youtubers\')">YouTubers ('+youtubers.length+')</button></div>';
     var list=(tab==='teachers')?teachers:youtubers;
     if(!list.length){ html+='<div class="p-empty">No '+tab+' with production activity yet.</div>'; body.innerHTML=html; return; }
-    html+=list.map(function(c){
-      var metrics=(tab==='teachers')
-        ? [['Videos',c.videos],['Collab',c.collab_videos||0],['Completed',c.completed],['Pending',c.pending],['Overdue',c.overdue],['On-Time',c.on_time_pct==null?'\u2014':c.on_time_pct+'%'],['Views',_num(c.views)]]
-        : [['Videos',c.videos],['Published',c.published],['Pending',c.pending],['On-Time',c.on_time_pct==null?'\u2014':c.on_time_pct+'%'],['Views',_num(c.views)]];
-      return '<div class="cr-row">'+
-        '<div class="cr-name">'+esc(c.name)+'</div>'+
-        '<div class="cr-metrics">'+metrics.map(function(m){ return '<div class="cr-m"><div class="n">'+(m[1]==null?0:m[1])+'</div><div class="l">'+m[0]+'</div></div>'; }).join('')+'</div></div>';
-    }).join('');
+    var _crPal=['#1e4d6b','#1f5c3a','#6b2f4d','#5a4a1e','#3a3a6b','#6b3a1e','#1e6b5a','#5a1e4d'];
+    var isYt=(tab==='youtubers');
+    html+='<div class="crp-grid">'+list.map(function(c,idx){
+      var vids=c.videos||0;
+      var done=isYt?(c.published||0):(c.completed||0);
+      var pending=c.pending||0, overdue=c.overdue||0, collab=c.collab_videos||0;
+      var onTime=(c.on_time_pct==null)?'\u2014':(c.on_time_pct+'%');
+      var views=_num(c.views);
+      var compPct=vids?Math.round(done/vids*100):0;
+      var ini=(esc((c.name||'?').trim().charAt(0)).toUpperCase())||'?';
+      var col=_crPal[idx%_crPal.length];
+      function chip(val,label,cls){ return '<span class="crp-chip '+cls+'"><b>'+val+'</b> '+label+'</span>'; }
+      return '<div class="crp-card">'+
+        '<div class="crp-top">'+
+          '<div class="crp-rank">#'+(idx+1)+'</div>'+
+          '<div class="crp-ava" style="background:'+col+'">'+ini+'</div>'+
+          '<div class="crp-id"><div class="crp-name">'+esc(c.name||'\u2014')+'</div><div class="crp-sub">'+vids+' video'+(vids===1?'':'s')+(collab?(' \u00b7 '+collab+' collab'):'')+'</div></div>'+
+          '<div class="crp-views"><b>'+views+'</b><span>views</span></div>'+
+        '</div>'+
+        '<div class="crp-barwrap"><div class="crp-bar"><div class="crp-fill" style="width:'+Math.min(100,compPct)+'%"></div></div><span class="crp-barlbl">'+compPct+'% done</span></div>'+
+        '<div class="crp-chips">'+
+          chip(done,isYt?'Published':'Completed','green')+
+          chip(pending,'Pending','amber')+
+          (isYt?'':chip(overdue,'Overdue','red'))+
+          chip(onTime,'On-time','blue')+
+        '</div>'+
+      '</div>';
+    }).join('')+'</div>';
     body.innerHTML=html;
   }
 
@@ -22536,7 +22609,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var badge=st[0]?'<span class="ptc-badge'+(isLive?' ptc-blink':'')+'" style="background:'+(st[1]||'#8a7d5c')+'" onclick="event.stopPropagation();prodStatusHistory('+t.id+')" title="View status history">'+esc(st[0])+'</span>':'';
     var chips=[];
     if(['creator_submitted','pm_review'].indexOf(t.lifecycle)>=0) chips.push('<span class="yt-new-blink">NEW</span>');
-    if((t.collab&&t.collab.length)||t.is_collab) chips.push('<span class="pw-chip pw-collab-blink" style="background:rgba(124,79,192,.14);color:#7c4fc0;cursor:pointer" onclick="event.stopPropagation();prodCollabPopup('+t.id+')" title="View all collaborating teachers">Collab</span>');
+    if((t.collab&&t.collab.length)||t.is_collab){
+      var _ct=t.collab_total||(t.collab&&t.collab.length)||0, _cv=(t.collab_verified!=null?t.collab_verified:0);
+      var _cstat=_ct?(_cv>=_ct?(' \u00b7 All '+_ct+' verified'):(' \u00b7 '+_cv+'/'+_ct+' verified')):'';
+      var _cok=(_ct&&_cv>=_ct);
+      chips.push('<span class="pw-chip pw-collab-blink" style="background:'+(_cok?'rgba(46,158,107,.14)':'rgba(124,79,192,.14)')+';color:'+(_cok?'#1f7a44':'#7c4fc0')+';cursor:pointer" onclick="event.stopPropagation();prodCollabPopup('+t.id+')" title="View all collaborating teachers">'+ic('users')+' Collab'+_cstat+'</span>');
+    }
     if(t.creator_name) chips.push('<span class="pw-chip who">'+esc(t.creator_name)+((t.creator_type==='youtuber')?' (YT)':'')+'</span>');
     if(t.video_type) chips.push('<span class="pw-chip">'+esc(t.video_type)+'</span>');
     if(t.channel_name) chips.push('<span class="pw-chip">'+esc(t.channel_name)+'</span>');
