@@ -490,10 +490,11 @@ async function _apiRefreshBg(path,_ck){
     const d=await res.json();
     try{ const s=JSON.stringify(d);
       if(s.length<1572864){
-        const old=_apiCache[_ck];
-        const changed=!old||JSON.stringify(old.d)!==s;   // data BADLA tabhi re-render (warna view disturb nahi)
+        // SILENT: only update the cache. We NEVER re-render the current view from a
+        // background refresh — that would disrupt whatever the user is doing (an open
+        // complaint, a half-typed reply, scroll position). Fresh data shows on the next
+        // navigation / action instead.
         _apiCache[_ck]={t:Date.now(),d:d};
-        if(changed) _swrRerender();
       }
     }catch(e){}
   }catch(e){}
@@ -26671,6 +26672,7 @@ async function scSendReply(role, cid){
     var r=await fetch(API+base+cid+'/messages',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
     if(!r.ok){ var d=null; try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||'Send failed'); }
     window._scReplyImgs=[];
+    _apiForget('complaints/'+cid); // fresh fetch so the reply appears immediately
     if(role==='student') scOpenDetail(cid); else amcCmpOpen(cid);
   }catch(e){ toast(e.message||'Could not send',true); }
   finally{ if(btn){ btn.disabled=false; btn.textContent='Send'; } }
@@ -26918,6 +26920,7 @@ function _amcRenderInline(c, body){
 function amcRefresh(cid){
   var body=document.getElementById('accb-'+cid); if(!body||body.style.display==='none') return;
   body.innerHTML='<div class="spinner" style="margin:16px auto"></div>';
+  _apiForget('complaints/'+cid); // drop stale cache so the just-posted reply/action shows at once
   api('/api/admin/complaints/'+cid).then(function(r){ _amcRenderInline(r.complaint, body);
     var hs=document.getElementById('achs-'+cid); if(hs) hs.innerHTML=_supPill(r.complaint.status)+_acPrio(r.complaint.priority);
     _asupBadges();
@@ -27084,7 +27087,7 @@ function afDelete(fid){
     '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-danger" onclick="afDoDelete('+fid+')">Delete</button>');
 }
 async function afDoDelete(fid){
-  try{ await api('/api/admin/feedback/'+fid+'/delete','POST',{}); closeModal(); toast('Feedback removed'); loadAFeedback(); }
+  try{ await api('/api/admin/feedback/'+fid+'/delete','POST',{}); closeModal(); toast('Feedback removed'); _apiForget('feedback'); loadAFeedback(); }
   catch(e){ toast((e&&e.message)||'Could not delete',true); }
 }
 
