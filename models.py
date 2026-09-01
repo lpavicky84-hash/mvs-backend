@@ -1497,6 +1497,9 @@ class GraphicsTask(Base):
     graphics_id    = Column(Integer, ForeignKey("production_staff_profiles.id"), nullable=True, index=True)
     status         = Column(String(20), default="new")     # new | in_progress | submitted | changes | approved
     reference_image = Column(String(600), default="")      # optional reference (R2 url) — NOT base64
+    reference_images = Column(Text, default="")            # JSON array of reference URLs (multiple)
+    thumbnail_candidates = Column(Text, default="")        # JSON array of designer's thumbnail options
+    final_note     = Column(String(400), default="")        # PM note when finalizing a chosen thumbnail
     instructions   = Column(Text, default="")              # thumbnail brief
     thumbnail_url  = Column(String(600), default="")        # submitted thumbnail (R2 url)
     remarks        = Column(Text, default="")               # PM change remarks

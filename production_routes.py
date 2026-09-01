@@ -530,13 +530,19 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
                              priority=(payload.get("priority") or "urgent"),
                              instructions=(payload.get("graphics_instructions") or payload.get("graphics_notes") or "").strip(),
                              reference_image=(payload.get("graphics_reference") or payload.get("reference_image") or "").strip())
-            # PM ne clipboard/upload se reference image di ho to R2 pe upload karke store karo
-            _refup = payload.get("graphics_reference_upload")
-            if _refup:
+            # PM ne clipboard/upload se reference image(s) di ho to R2 pe upload karke store karo.
+            # Multiple references supported: graphics_reference_uploads = [base64, base64, ...]
+            import json as _json
+            _refups = payload.get("graphics_reference_uploads")
+            if not _refups:
+                _one = payload.get("graphics_reference_upload")
+                _refups = [_one] if _one else []
+            if _refups:
                 try:
-                    _rurls = pc.save_images(db, t, [_refup], "reference", None, me, return_urls=True) or []
+                    _rurls = pc.save_images(db, t, list(_refups), "reference", None, me, return_urls=True) or []
                     if _rurls:
                         g.reference_image = _rurls[0]
+                        g.reference_images = _json.dumps(_rurls)
                 except Exception:
                     pass
             gdl = (payload.get("graphics_deadline") or payload.get("deadline") or "").strip()

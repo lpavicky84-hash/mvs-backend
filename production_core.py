@@ -278,6 +278,20 @@ def _name_for_teacher(db, tid):
     return ""
 
 
+def _json_list(s, fallback=""):
+    """Parse a JSON array of URLs; fall back to a single-item list."""
+    import json as _j
+    try:
+        v = _j.loads(s) if s else []
+        if isinstance(v, list):
+            out = [x for x in v if x]
+            if out:
+                return out
+    except Exception:
+        pass
+    return [fallback] if fallback else []
+
+
 def creator_info(db, t):
     """(name, type_label) for the task's creator."""
     if (t.creator_type or "teacher") == "youtuber":
@@ -426,6 +440,9 @@ def _ensure_production_columns():
         "ALTER TABLE graphics_tasks ADD COLUMN priority VARCHAR(12)",
         "ALTER TABLE graphics_tasks ADD COLUMN quality_rating INTEGER",
         "ALTER TABLE graphics_tasks ADD COLUMN quality_note VARCHAR(400)",
+        "ALTER TABLE graphics_tasks ADD COLUMN reference_images TEXT",
+        "ALTER TABLE graphics_tasks ADD COLUMN thumbnail_candidates TEXT",
+        "ALTER TABLE graphics_tasks ADD COLUMN final_note VARCHAR(400)",
         "ALTER TABLE video_tasks ADD COLUMN quality_dims TEXT",
         "ALTER TABLE video_tasks ADD COLUMN ontime_appreciated BOOLEAN DEFAULT 0",
         "ALTER TABLE video_tasks ADD COLUMN description TEXT",
@@ -526,6 +543,9 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None):
             "status": (g.status if g else "new"),
             "thumbnail_url": (g.thumbnail_url if g else ""),
             "reference_image": (g.reference_image if g else ""),
+            "reference_images": (_json_list(g.reference_images, g.reference_image) if g else []),
+            "thumbnail_candidates": (_json_list(g.thumbnail_candidates) if g else []),
+            "final_note": (getattr(g, "final_note", "") if g else ""),
             "instructions": (g.instructions if g else ""),
             "remarks": (g.remarks if g else ""),
             "quality_rating": (g.quality_rating if g else None),

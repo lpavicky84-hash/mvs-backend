@@ -16951,6 +16951,17 @@ function initResponsiveCss(){
     '.aw-ms-ck{width:22px;height:22px;flex:0 0 22px;border-radius:6px;border:1.5px solid var(--border,#c9bd9a);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:.8rem}',
     '.aw-ms-row.on .aw-ms-ck{background:#2e9e6b;border-color:#2e9e6b}',
     'body.dark .aw-ms{background:#1b1508;border-color:#2c2410}',
+    /* multiple reference thumbnails grid (numbered) */
+    '.aw-refgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-top:10px}',
+    '.aw-refcell{position:relative;border:1px solid var(--border,#d9cdae);border-radius:10px;overflow:hidden;background:#000}',
+    '.aw-refcell img{width:100%;height:96px;object-fit:cover;display:block;cursor:zoom-in}',
+    '.aw-refn{position:absolute;left:6px;top:6px;background:rgba(0,0,0,.7);color:#fff;font-size:.66rem;font-weight:800;padding:2px 7px;border-radius:999px;z-index:1}',
+    '.aw-refcell .aw-x{position:absolute;right:5px;top:5px}',
+    /* designer view: numbered reference grid */
+    '.gfx-refgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}',
+    '.gfx-refcell{position:relative;border:1px solid var(--border,#d9cdae);border-radius:10px;overflow:hidden;background:#000}',
+    '.gfx-refcell img{width:100%;height:110px;object-fit:cover;display:block;cursor:zoom-in}',
+    '.gfx-refn{position:absolute;left:6px;top:6px;background:rgba(0,0,0,.72);color:#fff;font-size:.66rem;font-weight:800;padding:2px 8px;border-radius:999px;z-index:1}',
     /* ===== Premium lecture-report delete button ===== */
     '.lec-del{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;flex:0 0 38px;border-radius:11px;border:1px solid rgba(220,38,38,.28);background:rgba(220,38,38,.08);color:#dc2626;cursor:pointer;transition:background .15s,transform .1s}',
     '.lec-del:hover{background:rgba(220,38,38,.16)}',
@@ -21752,20 +21763,19 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // ---- Graphics: PM reference thumbnail + brief viewer ----
   window.gfxReference=function(id){
     api(P.graphics.api+'/tasks/'+id).then(function(t){
-      var g=t.graphics||{}; var ref=(g.reference_image||''); var brief=(g.instructions||'');
+      var g=t.graphics||{}; var brief=(g.instructions||'');
+      var refs=(g.reference_images&&g.reference_images.length)?g.reference_images:((g.reference_image)?[g.reference_image]:[]);
       var old=document.getElementById('prod-modal'); if(old) old.remove();
       var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
-      var isImg=ref && (/\.(png|jpe?g|webp|gif|bmp)(\?|#|$)/i.test(ref) || ref.indexOf('r2.')>=0 || ref.indexOf('cloudflarestorage')>=0 || ref.indexOf('/reference')>=0 || ref.indexOf('data:image')===0);
-      var refHtml = ref
-        ? (isImg
-            ? '<img src="'+esc(ref)+'" onclick="prodLightbox(\''+esc(ref)+'\')" style="max-width:100%;border-radius:10px;cursor:pointer;display:block">'
-            : '<a href="'+esc(ref)+'" target="_blank" rel="noopener" class="p-btn">Open reference link</a>')
+      var _isImg=function(ref){ return ref && (/\.(png|jpe?g|webp|gif|bmp)(\?|#|$)/i.test(ref) || ref.indexOf('r2.')>=0 || ref.indexOf('cloudflarestorage')>=0 || ref.indexOf('/reference')>=0 || ref.indexOf('data:image')===0); };
+      var refHtml = refs.length
+        ? ('<div class="gfx-refgrid">'+refs.map(function(ref,i){ return '<div class="gfx-refcell"><span class="gfx-refn">Reference '+(i+1)+'</span>'+(_isImg(ref)?'<img src="'+esc(ref)+'" onclick="prodLightbox(\''+esc(ref)+'\')" title="Click to view full">':'<a href="'+esc(ref)+'" target="_blank" rel="noopener" class="p-btn" style="margin:8px">Open link</a>')+'</div>'; }).join('')+'</div>')
         : '<div class="pd-empty">No reference image provided.</div>';
       dr.innerHTML='<div class="p-modal" style="max-width:460px">'+
         '<div class="pd-head"><div class="h-title">Reference &amp; Brief</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
         '<div class="p-modal-body">'+
           (brief?'<div class="gfx-remark-box"><div class="gfx-remark-l">Brief / Remarks from PM</div>'+esc(brief)+'</div>':'')+
-          '<div class="p-sec" style="margin-top:'+(brief?'12px':'0')+'">Reference thumbnail</div>'+refHtml+
+          '<div class="p-sec" style="margin-top:'+(brief?'12px':'0')+'">Reference thumbnail'+(refs.length>1?'s ('+refs.length+')':'')+'</div>'+refHtml+
         '</div>'+
         '<div class="pd-foot"><div class="p-acts"><button class="p-btn p-btn-primary" onclick="prodDismiss()">Got it</button></div></div>'+
         '</div>';
@@ -24302,7 +24312,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           gfxList.map(function(g){ return '<option value="'+g.id+'"'+(d.graphics_id===g.id?' selected':'')+'>'+esc(g.name)+(g.active!==undefined?(' \u00b7 '+g.active+' active'):'')+'</option>'; }).join('')+'</select></div>'+
           '<div class="p-field"><label>Thumbnail deadline (designer must finish by)</label><input class="p-input" id="aw-gfxdeadline" type="datetime-local" value="'+esc(d.graphics_deadline||'')+'"></div>'+
           '<div class="p-field"><label>Thumbnail brief / remarks (designer will see this)</label><textarea class="p-area" id="aw-gfx-instructions" placeholder="e.g. bold title text, red-yellow theme, student photo on the right, big marks callout">'+esc(d.graphics_instructions||'')+'</textarea></div>'+
-          '<div class="p-field"><label>Reference thumbnail(s) for the designer <span style="color:#a9791f;font-weight:700">\u2014 Ctrl+V pastes here by default</span></label>'+            '<input class="p-input" id="aw-gfx-reference" placeholder="Drive/image link (optional)" value="'+esc(d.graphics_reference||'')+'" style="margin-bottom:8px">'+            '<div id="aw-ref-drop" class="aw-drop aw-paste-on" onmousedown="awSetPasteTgt(\'ref\')" onclick="awSetPasteTgt(\'ref\');document.getElementById(\'aw-ref-file\').click()" ondragover="event.preventDefault();this.classList.add(\'drag\')" ondragleave="this.classList.remove(\'drag\')" ondrop="awRefDrop(event)">'+              (d.graphics_reference_upload?('<img src="'+esc(d.graphics_reference_upload)+'" style="max-width:100%;max-height:140px;border-radius:8px"><button type="button" class="aw-x" onclick="event.stopPropagation();awRefRemove()">&times;</button>'):'<div class="aw-drop-hint"><b>Reference</b> \u2014 drag &amp; drop, click, or paste (Ctrl+V) here</div>')+            '</div><input type="file" id="aw-ref-file" accept="image/*" style="display:none" onchange="awRefFile(event)"></div>'+
+          '<div class="p-field"><label>Reference thumbnail(s) for the designer <span style="color:#a9791f;font-weight:700">\u2014 add several, Ctrl+V pastes here</span></label>'+            '<input class="p-input" id="aw-gfx-reference" placeholder="Drive/image link (optional)" value="'+esc(d.graphics_reference||'')+'" style="margin-bottom:8px">'+            '<div id="aw-ref-drop" class="aw-drop aw-paste-on" onmousedown="awSetPasteTgt(\'ref\')" onclick="awSetPasteTgt(\'ref\');document.getElementById(\'aw-ref-file\').click()" ondragover="event.preventDefault();this.classList.add(\'drag\')" ondragleave="this.classList.remove(\'drag\')" ondrop="awRefDrop(event)">'+              '<div class="aw-drop-hint"><b>Add reference</b> \u2014 drag &amp; drop, click, or paste (Ctrl+V). You can add up to 6.</div>'+            '</div><input type="file" id="aw-ref-file" accept="image/*" style="display:none" onchange="awRefFile(event)">'+            ((d.graphics_reference_uploads&&d.graphics_reference_uploads.length)?('<div class="aw-refgrid">'+d.graphics_reference_uploads.map(function(u,i){ return '<div class="aw-refcell"><span class="aw-refn">Reference '+(i+1)+'</span><img src="'+esc(u)+'" onclick="awRefView('+i+')" title="Click to view full"><button type="button" class="aw-x" onclick="event.stopPropagation();awRefRemove('+i+')">&times;</button></div>'; }).join('')+'</div>'):'')+'</div>'+
           '<div class="p-field"><label>Already have the FINAL thumbnail? Upload it here <span style="color:var(--muted);font-weight:600">(click here first, then Ctrl+V)</span></label>'+
             '<div id="aw-thumb-drop" class="aw-drop" onmousedown="awSetPasteTgt(\'thumb\')" onclick="awSetPasteTgt(\'thumb\');document.getElementById(\'aw-thumb-file\').click()" ondragover="event.preventDefault();this.classList.add(\'drag\')" ondragleave="this.classList.remove(\'drag\')" ondrop="awThumbDrop(event)">'+
               (d.thumb_upload?('<img src="'+esc(d.thumb_upload)+'" style="max-width:100%;max-height:150px;border-radius:8px"><button type="button" class="aw-x" onclick="event.stopPropagation();awThumbRemove()">&times;</button>'):'<div class="aw-drop-hint"><b>Final thumbnail</b> \u2014 click here, then drag/drop or paste (Ctrl+V)</div>')+
@@ -24360,11 +24370,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.awCollabAll=function(){ /* legacy no-op — replaced by awCollabTapTeacher */ };
   window.awThumbToggle=function(v){ _awSave(); window._aw.data.thumbnail_required=(v==='yes'); _awRender(); };
   function _awReadImg(file){ if(!file||!/^image\//.test(file.type)) { toast('Please choose an image file',true); return; } if(file.size>5*1024*1024){ toast('Image too large (max 5MB)',true); return; } var r=new FileReader(); r.onload=function(){ window._aw.data.thumb_upload=r.result; _awRender(); }; r.readAsDataURL(file); }
-  function _awReadRef(file){ if(!file||!/^image\//.test(file.type)) { toast('Please choose an image file',true); return; } if(file.size>5*1024*1024){ toast('Image too large (max 5MB)',true); return; } var r=new FileReader(); r.onload=function(){ window._aw.data.graphics_reference_upload=r.result; _awRender(); }; r.readAsDataURL(file); }
+  function _awReadRef(file){ if(!file||!/^image\//.test(file.type)) { toast('Please choose an image file',true); return; } if(file.size>5*1024*1024){ toast('Image too large (max 5MB)',true); return; } var r=new FileReader(); r.onload=function(){ var d=window._aw.data; d.graphics_reference_uploads=d.graphics_reference_uploads||[]; if(d.graphics_reference_uploads.length>=6){ toast('Up to 6 reference images',true); return; } d.graphics_reference_uploads.push(r.result); _awRender(); }; r.readAsDataURL(file); }
   window.awThumbFile=function(e){ _awSave(); var f=e.target.files&&e.target.files[0]; _awReadImg(f); };
   window.awRefFile=function(e){ _awSave(); var f=e.target.files&&e.target.files[0]; _awReadRef(f); };
   window.awThumbRemove=function(){ _awSave(); if(window._aw&&window._aw.data) window._aw.data.thumb_upload=''; _awRender(); };
-  window.awRefRemove=function(){ _awSave(); if(window._aw&&window._aw.data) window._aw.data.graphics_reference_upload=''; _awRender(); };
+  window.awRefRemove=function(i){ _awSave(); var d=window._aw&&window._aw.data; if(!d)return; d.graphics_reference_uploads=d.graphics_reference_uploads||[]; if(typeof i==='number') d.graphics_reference_uploads.splice(i,1); else d.graphics_reference_uploads=[]; _awRender(); };
+  window.awRefView=function(i){ var d=window._aw&&window._aw.data; var u=d&&(d.graphics_reference_uploads||[])[i]; if(!u)return; var o=document.createElement('div'); o.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out'; o.onclick=function(){o.remove();}; o.innerHTML='<img src="'+u+'" style="max-width:95%;max-height:95%;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5)">'; document.body.appendChild(o); };
   window.awRefDrop=function(e){ e.preventDefault(); _awSave(); var el=document.getElementById('aw-ref-drop'); if(el)el.classList.remove('drag'); var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; _awReadRef(f); };
   window.awThumbDrop=function(e){ e.preventDefault(); _awSave(); var el=document.getElementById('aw-thumb-drop'); if(el)el.classList.remove('drag'); var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; _awReadImg(f); };
   window.awSetPasteTgt=function(t){
@@ -24387,7 +24398,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(d.thumbnail_required){
       if(d.graphics_instructions) body.graphics_instructions=d.graphics_instructions;
       if(d.graphics_reference) body.graphics_reference=d.graphics_reference;
-      if(d.graphics_reference_upload) body.graphics_reference_upload=d.graphics_reference_upload;
+      if(d.graphics_reference_uploads&&d.graphics_reference_uploads.length) body.graphics_reference_uploads=d.graphics_reference_uploads;
+      else if(d.graphics_reference_upload) body.graphics_reference_upload=d.graphics_reference_upload;
     }
     if(d.thumbnail_required && d.thumb_upload){ body.thumbnail_upload=d.thumb_upload; if(d.thumb_rating) body.thumbnail_rating=d.thumb_rating; }
     if(d.editor_id) body.editor_id=d.editor_id;
