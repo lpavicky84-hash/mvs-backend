@@ -2893,3 +2893,24 @@ def pm_event_delete(eid: int, db: Session = Depends(get_db), me=Depends(get_pm_o
 @router.get("/my-events")
 def pm_my_events(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     return {"events": pc.active_events_for(db, "all")}
+
+
+# ============================================================ TEAM MEMBER PHOTO
+@router.get("/member-photo")
+def pm_member_photo(role: str = "", profile_id: int = 0,
+                    db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Admin/PM: fetch a production team member's profile photo (data URL) by role +
+    profile_id, so the Production Team cards show real photos instead of just initials.
+    Returns {'photo': ''} when none — the UI then keeps the initials avatar."""
+    photo = ""
+    r = (role or "").strip()
+    try:
+        if r == "youtuber":
+            yp = db.query(YouTuberProfile).filter(YouTuberProfile.id == profile_id).first()
+            photo = (getattr(yp, "photo_b64", "") if yp else "") or ""
+        else:  # editor | graphics | production_manager
+            sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == profile_id).first()
+            photo = (getattr(sp, "photo_b64", "") if sp else "") or ""
+    except Exception:
+        photo = ""
+    return {"photo": photo}

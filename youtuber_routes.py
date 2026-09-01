@@ -587,3 +587,20 @@ def yt_assign_editor(payload: dict = Body(...), db: Session = Depends(get_db), m
                   '%s directly assigned an editor for "%s".' % (me.name, title), "production", link=str(t.id))
     db.commit()
     return {"ok": True, "id": t.id, "ref_code": t.ref_code}
+
+
+# ============================================================ PROFILE PHOTO
+@router.post("/me/photo")
+def yt_photo_set(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    """Store the youtuber's profile photo (data URL, any image format). Bulletproof:
+    accepts whatever the client sends; empty string clears it."""
+    yp = _me_yt(db, me)
+    yp.photo_b64 = (payload.get("photo") or "").strip() or None
+    db.commit()
+    return {"ok": True, "has_photo": bool(yp.photo_b64)}
+
+
+@router.get("/me/photo")
+def yt_photo_get(db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    yp = _me_yt(db, me)
+    return {"photo": (yp.photo_b64 if yp else "") or "", "name": getattr(me, "name", ""), "role": "youtuber"}

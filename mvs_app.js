@@ -23564,7 +23564,30 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     window._ppPaste=function(e){ if(!document.getElementById('pp-photo-wrap')){ document.removeEventListener('paste',window._ppPaste); return; } var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ _prodProfRead(items[i].getAsFile()); e.preventDefault(); } } };
     document.addEventListener('paste',window._ppPaste);
   }
-  function _prodProfRead(file){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ _prodProfSave(rd.result); }; rd.readAsDataURL(file); }
+  function _prodProfRead(file){
+    if(!file) return;
+    var rd=new FileReader();
+    rd.onload=function(){
+      var raw=rd.result;
+      try{
+        var img=new Image();
+        img.onload=function(){
+          try{
+            var max=512, w=img.width||max, h=img.height||max;
+            if(w>max||h>max){ if(w>=h){ h=Math.round(h*max/w); w=max; } else { w=Math.round(w*max/h); h=max; } }
+            var cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+            var ctx=cv.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0,w,h);
+            var out=cv.toDataURL('image/jpeg',0.85);
+            _prodProfSave((out&&out.length>32)?out:raw);   // compressed; raw only if canvas failed
+          }catch(e){ _prodProfSave(raw); }
+        };
+        img.onerror=function(){ _prodProfSave(raw); };      // exotic format canvas can't draw -> store raw
+        img.src=raw;
+      }catch(e){ _prodProfSave(raw); }
+    };
+    rd.onerror=function(){ toast('Could not read that image — please try another file.',true); };
+    rd.readAsDataURL(file);
+  }
   function _prodProfSave(dataUrl){
     var portal=window._prodProfPortal;
     var w=document.getElementById('pp-photo-wrap'); if(w) w.innerHTML='<div class="pp-photo" style="background-image:url('+dataUrl+')"></div>';
@@ -24968,6 +24991,7 @@ function initAdminProdTeam(){
       '#a-page-prodteam .ap-tab.on{color:#a9791f;border-bottom-color:#e6ad4e}',
       '#a-page-prodteam .ap-hd{display:flex;align-items:center;gap:12px;margin-bottom:12px}',
       '#a-page-prodteam .ap-avatar{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1rem;flex:0 0 44px}',
+'#a-page-prodteam .ap-avatar.has-img{background-size:cover;background-position:center;background-repeat:no-repeat}',
       '#a-page-prodteam .ap-card.clk{cursor:pointer;transition:box-shadow .15s,transform .1s,border-color .15s}',
       '#a-page-prodteam .ap-card.clk:hover{box-shadow:0 8px 22px -10px rgba(40,30,10,.22);border-color:rgba(230,173,78,.5)}',
       '#a-page-prodteam .ap-stats{display:flex;gap:16px;flex-wrap:wrap;margin-top:11px}',
@@ -25041,6 +25065,23 @@ function _renderAProdTeam(){
     '</div><button class="ap-add" onclick="apAdd(\''+tab+'\')">Add '+_ape(meta.one)+'</button></div>';
   var body=mine.length?'<div class="ap-grid">'+mine.map(_apCard).join('')+'</div>':'<div style="color:#9c8f6e;padding:20px">None yet. Use \u201cAdd '+_ape(meta.one)+'\u201d to create one.</div>';
   el.innerHTML=head+body;
+  _apLoadAvatars();
+}
+function _apSetAv(el,photo){ if(!el||!photo) return; el.style.backgroundImage='url('+photo+')'; el.classList.add('has-img'); el.textContent=''; }
+function _apLoadAvatars(){
+  var tab=window._apTab||'editor';
+  var users=(window._apUsers||[]).filter(function(u){return u.role===tab;});
+  window._apPhotoCache=window._apPhotoCache||{};
+  users.forEach(function(u){
+    var key=u.role+'-'+u.profile_id;
+    var el=document.getElementById('apav-'+key); if(!el) return;
+    var cached=window._apPhotoCache[key];
+    if(cached!==undefined){ if(cached) _apSetAv(el,cached); return; }   // known: has photo or none
+    api('/api/production/member-photo?role='+encodeURIComponent(u.role)+'&profile_id='+u.profile_id)
+      .then(function(r){ var p=(r&&r.photo)||''; window._apPhotoCache[key]=p;
+        var e2=document.getElementById('apav-'+key); if(e2&&p) _apSetAv(e2,p); })
+      .catch(function(){ window._apPhotoCache[key]=''; });
+  });
 }
 
 window.apTab=function(role){ window._apTab=role; _renderAProdTeam(); };
@@ -25073,7 +25114,7 @@ function _apCard(u){
   if(u.role==='youtuber') toggles='<button class="ap-btn" onclick="event.stopPropagation();apToggleApproval('+u.id+','+(u.approval_required?'false':'true')+')">Approval '+(u.approval_required?'OFF':'ON')+'</button>';
   var clkAttr=clickable?(' clk" onclick="apPerson(\''+u.role+'\','+u.profile_id+',\''+_ape(u.name).replace(/'/g,"")+'\')'):'"';
   return '<div class="ap-card'+clkAttr+'">'+
-    '<div class="ap-hd"><div class="ap-avatar">'+_apInitials(u.name)+'</div>'+
+    '<div class="ap-hd"><div class="ap-avatar" id="apav-'+u.role+'-'+u.profile_id+'">'+_apInitials(u.name)+'</div>'+
       '<div><div class="ap-nm">'+_ape(u.name)+'</div><div class="ap-uid">'+_ape(u.user_id)+'</div></div></div>'+
     '<div class="ap-row"><span class="ap-pill '+(active?'ap-on':'ap-off')+'">'+(active?'Active':'Inactive')+'</span>'+extra+'</div>'+
     statsHtml+
