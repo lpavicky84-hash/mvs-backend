@@ -205,7 +205,7 @@ def editor_comments(tid: int, db: Session = Depends(get_db), me=Depends(get_edit
     sp = _me_staff(db, me)
     _my_task(db, sp, tid)
     _VT._vtc_mark_read(db, me, tid, "editor")
-    return {"comments": _VT._vtc_list(db, tid, "editor")}
+    return {"comments": _VT._vtc_list_v(db, tid, "editor", getattr(me, "id", None))}
 
 
 @router.post("/tasks/{tid}/comments")

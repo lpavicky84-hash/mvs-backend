@@ -155,9 +155,9 @@ def gfx_task_detail(tid: int, db: Session = Depends(get_db), me=Depends(get_grap
 def gfx_comments(tid: int, db: Session = Depends(get_db), me=Depends(get_graphics)):
     sp = _me_staff(db, me)
     _my_gtask(db, sp, tid)  # ensures this designer owns the thumbnail task
-    from video_tasks import _vtc_list, _vtc_mark_read
+    from video_tasks import _vtc_list_v, _vtc_mark_read
     _vtc_mark_read(db, me, tid, "internal")
-    return {"comments": _vtc_list(db, tid, "internal")}
+    return {"comments": _vtc_list_v(db, tid, "internal", getattr(me, "id", None))}
 
 
 @router.post("/tasks/{tid}/comments")

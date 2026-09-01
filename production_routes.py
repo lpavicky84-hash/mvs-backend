@@ -266,9 +266,9 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
 
 @router.get("/tasks/{tid}/comments")
 def pm_task_comments(tid: int, audience: str = "", db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
-    from video_tasks import _vtc_list, _vtc_mark_read
+    from video_tasks import _vtc_list_v, _vtc_mark_read
     _vtc_mark_read(db, me, tid, (audience or "creator"))
-    return {"comments": _vtc_list(db, tid, (audience or None))}
+    return {"comments": _vtc_list_v(db, tid, (audience or None), getattr(me, "id", None))}
 
 
 @router.post("/tasks/{tid}/comments")

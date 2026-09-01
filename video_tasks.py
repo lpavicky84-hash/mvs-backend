@@ -862,6 +862,29 @@ def _vtc_list(db, task_id, audience=None):
     return [_vtc_out(db, c) for c in rows]
 
 
+def _vtc_list_v(db, task_id, audience=None, viewer_id=None):
+    """Like _vtc_list but adds read-receipt info from the viewer's perspective:
+    mine=True for the viewer's own messages, seen=True if the OTHER side has read them."""
+    items = _vtc_list(db, task_id, audience)
+    if not viewer_id:
+        return items
+    try:
+        from models import VideoTaskChatRead
+        aud = audience or "creator"
+        others_max = 0
+        for r in (db.query(VideoTaskChatRead)
+                  .filter(VideoTaskChatRead.task_id == task_id,
+                          VideoTaskChatRead.audience == aud).all()):
+            if r.user_id and r.user_id != viewer_id:
+                others_max = max(others_max, r.last_read_id or 0)
+        for o in items:
+            o["mine"] = (o.get("user_id") == viewer_id)
+            o["seen"] = bool(o.get("user_id") == viewer_id and o.get("id", 0) <= others_max)
+    except Exception:
+        pass
+    return items
+
+
 def _vtc_add(db, task_id, user, message, role, attachment_url="", audience="creator"):
     msg = (message or "").strip()
     att = (attachment_url or "").strip()
@@ -942,7 +965,7 @@ def _vtc_unread_bulk(db, uid, task_ids):
 def vt_teacher_comments(task_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     # Teacher ko sirf creator-facing baat dikhe — PM<->graphics/editor ki internal chat nahi.
     _vtc_mark_read(db, current_user, task_id, "creator")
-    return {"comments": _vtc_list(db, task_id, "creator")}
+    return {"comments": _vtc_list_v(db, task_id, "creator", getattr(current_user, "id", None))}
 
 
 @router.post("/teacher/video-tasks/{task_id}/comments")
