@@ -24124,8 +24124,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.awNext=function(){ _awSave(); var aw=window._aw;
     if(aw.step===1){
       if(!(aw.data.title||'').trim()){ toast('Title is required',true); return; }
-      var id=aw.data.creator_type==='teacher'?aw.data.teacher_id:aw.data.youtuber_id;
-      if(!id){ toast('Please select a '+aw.data.creator_type,true); return; }
+      if(aw.data.creator_type==='teacher' && aw.data.collab_on){
+        var _cn=(aw.data.collab_all_ids||[]).length; if(!_cn) _cn=(aw.data.teacher_id?1:0)+((aw.data.collab_teacher_ids||[]).length);
+        if(_cn<2){ toast('Select at least 2 teachers for a collaboration',true); return; }
+      } else {
+        var id=aw.data.creator_type==='teacher'?aw.data.teacher_id:aw.data.youtuber_id;
+        if(!id){ toast('Please select a '+aw.data.creator_type,true); return; }
+      }
     }
     if(aw.step<3){ aw.step++; _awRender(); }
   };
@@ -24231,16 +24236,18 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           '<option value="no"'+(!on?' selected':'')+'>No \u2014 single teacher</option>'+
           '<option value="yes"'+(on?' selected':'')+'>Yes \u2014 multiple teachers (collab)</option></select></div>';
       }
-      // 3) primary creator / teacher
-      html+='<div class="p-field"><label>'+(d.creator_type==='teacher'?(isCollab?'Primary Teacher':'Teacher'):'YouTuber')+(d.creator_type==='teacher'&&!isCollab?' (subjects filter to this teacher)':'')+'</label><select class="p-select" id="aw-creator" onchange="awPickCreator()">'+
-        '<option value="">Choose...</option>'+list.map(function(m){ return '<option value="'+m.id+'"'+(sel===m.id?' selected':'')+'>'+esc(m.name)+(m.approval_required!==undefined?(m.approval_required?' (approval on)':' (approval off)'):'')+'</option>'; }).join('')+'</select></div>';
-      // 3b) collaborators multi-select
+      // 3) creator select — a single teacher / YouTuber, OR (for a collab) ONE multi-select
+      // of teachers. No separate "primary" field: the first teacher picked is the primary
+      // internally, everyone else is a collaborator. All of them get the task.
       if(d.creator_type==='teacher' && isCollab){
-        var teachers2=ppl.teachers||[]; var collab=d.collab_teacher_ids||[];
-        html+='<div class="p-field"><label>Select collaborators (tap names to multi-select)</label>'+
-          '<select class="p-select" id="aw-collab-multi" multiple size="6" onchange="awCollabMulti()" style="height:auto;min-height:150px;padding:6px">'+
-          teachers2.filter(function(m){return m.id!==sel;}).map(function(m){ return '<option value="'+m.id+'"'+(collab.indexOf(m.id)>=0?' selected':'')+'>'+esc(m.name)+'</option>'; }).join('')+
-          '</select><div class="p-opt">The teacher chosen above is the primary. '+(collab.length?collab.length+' collaborator(s) selected.':'None selected yet.')+' Each is verified separately. Subject selection is not required for a collaboration.</div></div>';
+        var _allIds=d.collab_all_ids||(d.teacher_id?[d.teacher_id].concat(d.collab_teacher_ids||[]):(d.collab_teacher_ids||[]).slice());
+        html+='<div class="p-field"><label>Select teachers for this collaboration <span style="color:var(--muted);font-weight:600">(tap to pick 2 or more)</span></label>'+
+          '<select class="p-select" id="aw-collab-all" multiple size="7" onchange="awCollabAll()" style="height:auto;min-height:180px;padding:6px">'+
+          list.map(function(m){ return '<option value="'+m.id+'"'+(_allIds.indexOf(m.id)>=0?' selected':'')+'>'+esc(m.name)+'</option>'; }).join('')+
+          '</select><div class="p-opt" id="aw-collab-note">'+(window._awCollabNoteHtml?window._awCollabNoteHtml(_allIds.length):(_allIds.length+' selected'))+'</div></div>';
+      } else {
+        html+='<div class="p-field"><label>'+(d.creator_type==='teacher'?('Teacher (subjects filter to this teacher)'):'YouTuber')+'</label><select class="p-select" id="aw-creator" onchange="awPickCreator()">'+
+          '<option value="">Choose...</option>'+list.map(function(m){ return '<option value="'+m.id+'"'+(sel===m.id?' selected':'')+'>'+esc(m.name)+(m.approval_required!==undefined?(m.approval_required?' (approval on)':' (approval off)'):'')+'</option>'; }).join('')+'</select></div>';
       }
       // 4) subject — teacher only (YouTubers make topic-based videos, no subject)
       if(d.creator_type==='teacher' && !isCollab){
@@ -24312,7 +24319,22 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // re-render so the Subject dropdown filters to this teacher's subjects
     _awRender();
   };
-  window.awCollabToggle=function(v){ _awSave(); var d=window._aw.data; d.collab_on=(v==='yes'); if(!d.collab_on) d.collab_teacher_ids=[]; _awRender(); };
+  window.awCollabToggle=function(v){ _awSave(); var d=window._aw.data; d.collab_on=(v==='yes'); if(!d.collab_on){ d.collab_teacher_ids=[]; d.collab_all_ids=[]; } _awRender(); };
+  function _awCollabNoteHtml(n){
+    return (n>=2)
+      ? (n+' teachers selected. This task will show on <b>all</b> their portals \u2014 any one of them can submit it, and it marks <b>Submitted</b> for everyone. Each teacher is verified separately by the PM.')
+      : 'Pick <b>2 or more</b> teachers to collaborate. (Subject selection is not needed for a collab.)';
+  }
+  window._awCollabNoteHtml=_awCollabNoteHtml;
+  window.awCollabAll=function(){
+    var s=document.getElementById('aw-collab-all'); if(!s) return;
+    var ids=[]; for(var i=0;i<s.options.length;i++){ if(s.options[i].selected) ids.push(parseInt(s.options[i].value,10)); }
+    var d=window._aw.data;
+    d.collab_all_ids=ids;
+    d.teacher_id=ids[0]||0;             // first pick = primary (internal, not shown)
+    d.collab_teacher_ids=ids.slice(1);  // the rest are collaborators
+    var note=document.getElementById('aw-collab-note'); if(note) note.innerHTML=_awCollabNoteHtml(ids.length);
+  };
   window.awThumbToggle=function(v){ _awSave(); window._aw.data.thumbnail_required=(v==='yes'); _awRender(); };
   function _awReadImg(file){ if(!file||!/^image\//.test(file.type)) { toast('Please choose an image file',true); return; } if(file.size>5*1024*1024){ toast('Image too large (max 5MB)',true); return; } var r=new FileReader(); r.onload=function(){ window._aw.data.thumb_upload=r.result; _awRender(); }; r.readAsDataURL(file); }
   function _awReadRef(file){ if(!file||!/^image\//.test(file.type)) { toast('Please choose an image file',true); return; } if(file.size>5*1024*1024){ toast('Image too large (max 5MB)',true); return; } var r=new FileReader(); r.onload=function(){ window._aw.data.graphics_reference_upload=r.result; _awRender(); }; r.readAsDataURL(file); }
