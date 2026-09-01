@@ -17008,15 +17008,20 @@ function initResponsiveCss(){
     '.ref-btn{flex:1;text-align:center;padding:8px 6px;font-size:.78rem;font-weight:800;color:#a9791f;background:none;border:none;border-top:1px solid var(--border,#e8dfca);cursor:pointer;text-decoration:none}',
     '.ref-btn+.ref-btn{border-left:1px solid var(--border,#e8dfca)}',
     /* thumbnail-review candidates: select the final one, view/download each */
-    '.thumb-gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:8px}',
-    '.thumb-cell{position:relative;border:2px solid var(--border,#d9cdae);border-radius:12px;overflow:hidden;background:#000;cursor:pointer;transition:border-color .12s,box-shadow .12s}',
-    '.thumb-cell.sel{border-color:#2e9e6b;box-shadow:0 0 0 3px rgba(46,158,107,.25)}',
-    '.thumb-cell>img{width:100%;height:110px;object-fit:cover;display:block}',
-    '.thumb-n{position:absolute;left:7px;top:7px;background:rgba(0,0,0,.72);color:#fff;font-size:.66rem;font-weight:800;padding:2px 8px;border-radius:999px;z-index:1}',
-    '.thumb-pick{position:absolute;right:7px;top:7px;width:22px;height:22px;border-radius:50%;background:#2e9e6b;color:#fff;font-weight:900;font-size:.8rem;display:none;align-items:center;justify-content:center;z-index:1}',
+    '.thumb-gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;margin-top:8px}',
+    '.thumb-cell{position:relative;border:2px solid var(--border,#d9cdae);border-radius:14px;overflow:hidden;background:var(--surface,#fff);cursor:pointer;transition:border-color .12s,box-shadow .12s}',
+    '.thumb-cell.sel{border-color:#2e9e6b;box-shadow:0 0 0 3px rgba(46,158,107,.22)}',
+    '.thumb-cell>img{width:100%;height:118px;object-fit:cover;display:block;background:#000}',
+    '.thumb-n{position:absolute;left:8px;top:8px;background:rgba(0,0,0,.72);color:#fff;font-size:.66rem;font-weight:800;padding:2px 9px;border-radius:999px;z-index:1;pointer-events:none}',
+    '.thumb-pick{position:absolute;right:8px;top:8px;width:24px;height:24px;border-radius:50%;background:#2e9e6b;color:#fff;font-weight:900;font-size:.85rem;display:none;align-items:center;justify-content:center;z-index:1;pointer-events:none}',
     '.thumb-cell.sel .thumb-pick{display:flex}',
-    '.thumb-cell.sel .thsel{color:#2e9e6b;font-weight:900}',
-    '.thumb-acts{display:flex;background:var(--surface,#fff)}',
+    '.thumb-sel-full{display:block;width:100%;border:none;border-top:1px solid var(--border,#e8dfca);background:none;padding:10px 8px;font-size:.82rem;font-weight:800;color:#a9791f;cursor:pointer;text-align:center}',
+    '.thumb-sel-full:hover{background:rgba(201,162,39,.09)}',
+    '.thumb-cell.sel .thumb-sel-full{background:rgba(46,158,107,.12);color:#2e9e6b}',
+    '.thumb-vd{display:flex;border-top:1px solid var(--border,#e8dfca)}',
+    '.thumb-vd-btn{flex:1;text-align:center;padding:9px 6px;font-size:.76rem;font-weight:700;color:var(--muted);background:none;border:none;cursor:pointer;text-decoration:none;white-space:nowrap}',
+    '.thumb-vd-btn+.thumb-vd-btn{border-left:1px solid var(--border,#e8dfca)}',
+    '.thumb-vd-btn:hover{background:rgba(201,162,39,.08);color:#a9791f}',
     '.ref-btn:hover{background:rgba(201,162,39,.1)}',
     /* chat presence (online / last seen) + typing indicator */
     '.chat-presence{font-size:.72rem;font-weight:700;color:#8a7d5c;margin-top:2px;min-height:14px;display:flex;align-items:center;gap:6px}',
@@ -22059,7 +22064,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       window._pmSelThumb=cands[0]||gx.thumbnail_url||'';
       var old=document.getElementById('prod-modal'); if(old) old.remove();
       var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
-      var gal=cands.length?('<div class="p-field"><label>Submitted thumbnails <span style="color:var(--muted);font-weight:600">(tap a thumbnail or press Select)</span></label><div class="thumb-gal">'+cands.map(function(u,i){ return '<div class="thumb-cell'+(u===window._pmSelThumb?' sel':'')+'" data-url="'+esc(u)+'" onclick="pmSelectThumb(this)"><span class="thumb-n">Thumbnail '+(i+1)+'</span><span class="thumb-pick">\u2713</span><img src="'+esc(u)+'"><div class="thumb-acts"><button class="ref-btn thsel" onclick="event.stopPropagation();pmSelectThumb(this.closest(\'.thumb-cell\'))">'+(u===window._pmSelThumb?'\u2713 Selected':'Select')+'</button><button class="ref-btn" onclick="event.stopPropagation();prodLightbox(\''+esc(u)+'\')">View</button><a class="ref-btn" href="'+esc(u)+'" download target="_blank" rel="noopener" onclick="event.stopPropagation()">Download</a></div></div>'; }).join('')+'</div></div>'):'<div class="p-empty">No image preview</div>';
+      var gal=cands.length?('<div class="p-field"><label>Submitted thumbnails <span style="color:var(--muted);font-weight:600">(tap a thumbnail or press Select)</span></label><div class="thumb-gal">'+cands.map(function(u,i){ return '<div class="thumb-cell'+(u===window._pmSelThumb?' sel':'')+'" data-url="'+esc(u)+'" onclick="pmSelectThumb(this)"><span class="thumb-n">Thumbnail '+(i+1)+'</span><span class="thumb-pick">\u2713</span><img src="'+esc(u)+'"><button class="thumb-sel-full thsel" onclick="event.stopPropagation();pmSelectThumb(this.closest(\'.thumb-cell\'))">'+(u===window._pmSelThumb?'\u2713 Selected':'Select as final')+'</button><div class="thumb-vd"><button class="thumb-vd-btn" onclick="event.stopPropagation();prodLightbox(\''+esc(u)+'\')">\uD83D\uDC41 View</button><a class="thumb-vd-btn" href="'+esc(u)+'" download target="_blank" rel="noopener" onclick="event.stopPropagation()">\u2B07 Download</a></div></div>'; }).join('')+'</div></div>'):'<div class="p-empty">No image preview</div>';
       dr.innerHTML='<div class="p-modal" style="max-width:560px">'+
         '<div class="pd-head"><div class="h-title">Thumbnail Review</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
         '<div class="p-modal-body">'+
@@ -22084,7 +22089,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       document.addEventListener('paste',window._pmPasteH);
     }).catch(function(e){ toast((e&&e.message)||'Could not load',true); });
   };
-  window.pmSelectThumb=function(el){ if(!el) return; var url=el.getAttribute('data-url')||''; window._pmSelThumb=url; var box=el.parentNode; if(box) box.querySelectorAll('.thumb-cell').forEach(function(c){ var on=(c===el); c.classList.toggle('sel', on); var b=c.querySelector('.thsel'); if(b) b.textContent=on?'\u2713 Selected':'Select'; }); };
+  window.pmSelectThumb=function(el){ if(!el) return; var url=el.getAttribute('data-url')||''; window._pmSelThumb=url; var box=el.parentNode; if(box) box.querySelectorAll('.thumb-cell').forEach(function(c){ var on=(c===el); c.classList.toggle('sel', on); var b=c.querySelector('.thsel'); if(b) b.textContent=on?'\u2713 Selected':'Select as final'; }); };
   window._pmSetStar=function(n){ window._pmStar=n; var box=document.getElementById('pm-stars'); if(box) box.querySelectorAll('.gfx-star').forEach(function(s){ s.classList.toggle('on', parseInt(s.getAttribute('data-n'),10)<=n); }); };
   function _pmAddFile(file){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ if(window._pmThumbImgs.length<6){ window._pmThumbImgs.push(rd.result); var box=document.getElementById('pm-prev'); if(box) box.innerHTML=window._pmThumbImgs.map(function(s){ return '<div class="gfx-thumb" style="background-image:url('+s+')"></div>'; }).join(''); } }; rd.readAsDataURL(file); }
   window.pmThumbDecide=function(action){
