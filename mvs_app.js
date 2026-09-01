@@ -6686,7 +6686,8 @@ function _ytCard(t){
   if(t.channel_name) chips+='<span class="vt-pill assigned">'+esc(t.channel_name)+'</span>';
   if(t.video_type) chips+='<span class="vt-type">'+esc(t.video_type)+'</span>';
   if(t.streaming) chips+='<span class="vt-pill '+(t.streaming==='live'?'delayed':'assigned')+'">'+(t.streaming==='live'?'Live':'Recorded')+'</span>';
-  if(t.priority==='urgent') chips+='<span class="vt-pill delayed">URGENT</span>';
+  if(t.priority==='most_urgent') chips+='<span class="vt-pill pw-prio-blink most">'+ic('alert')+' MOST URGENT</span>';
+  else if(t.priority==='urgent') chips+='<span class="vt-pill pw-prio-blink">'+ic('alert')+' URGENT</span>';
   var _hasThumb=!!(t.thumbnail||t.thumbnail_link);
   var _prodStage=['creator_working','pm_review','approved','editor_assigned','editing','editing_paused','editing_done','qc_pending','ready_for_youtube'].indexOf(lc)>=0;
   if(_prodStage && !t.editor_name) chips+='<span class="vt-pill" style="background:rgba(209,68,58,.12);color:#c1443a;font-weight:700">\u26a0 Editor pending</span>';
@@ -6773,7 +6774,7 @@ function openYtAssign(){
     +'<div class="form-group"><label>Channel</label><select id="yta-ch" class="input">'+chOpt+'</select></div>'
     +'<div class="form-group"><label>Video Type</label><select id="yta-ty" class="input">'+tyOpt+'</select></div>'
     +'<div class="form-group"><label>Format</label><select id="yta-stream" class="input"><option value="">— Not set —</option><option value="recorded">Recorded</option><option value="live">Live</option></select></div>'
-    +'<div class="form-group"><label>Priority</label><select id="yta-pri" class="input"><option value="normal">Normal</option><option value="urgent">Urgent</option></select></div>'
+    +'<div class="form-group"><label>Priority</label><select id="yta-pri" class="input"><option value="urgent">Urgent</option><option value="most_urgent">Most Urgent</option></select></div>'
     +'<div class="form-group" style="grid-column:1/-1"><label>Deadline</label><input id="yta-dl" class="input" type="datetime-local"></div>'
     +'<div class="form-group" style="grid-column:1/-1"><label>Reference / Brief <span style="font-weight:600;color:var(--text-muted)">(optional)</span></label><input id="yta-ref" class="input" placeholder="Reference link or note"></div>'
     +'<div class="form-group" style="grid-column:1/-1"><label>Remarks <span style="font-weight:600;color:var(--text-muted)">(optional)</span></label><textarea id="yta-rem" class="input" rows="2" placeholder="Instructions for the youtuber"></textarea></div>'
@@ -7009,7 +7010,7 @@ function openYtSeries(){
     +'<div class="form-group"><label>Channel</label><select id="yts-ch" class="input">'+chOpt+'</select></div>'
     +'<div class="form-group"><label>Video Type</label><select id="yts-ty" class="input">'+tyOpt+'</select></div>'
     +'<div class="form-group"><label>Format</label><select id="yts-stream" class="input"><option value="">— Not set —</option><option value="recorded">Recorded</option><option value="live">Live</option></select></div>'
-    +'<div class="form-group"><label>Priority</label><select id="yts-pri" class="input"><option value="normal">Normal</option><option value="urgent">Urgent</option></select></div>'
+    +'<div class="form-group"><label>Priority</label><select id="yts-pri" class="input"><option value="urgent">Urgent</option><option value="most_urgent">Most Urgent</option></select></div>'
     +'<div class="form-group" style="grid-column:1/-1"><label>Deadline <span style="font-weight:600;color:var(--text-muted)">— same for all videos (optional)</span></label><input id="yts-dl" class="input" type="datetime-local"></div>'
     +'<div class="form-group" style="grid-column:1/-1"><label>Videos in this Series</label><div id="yts-vids">'+_ytSeriesRow()+_ytSeriesRow()+_ytSeriesRow()+'</div>'
       +'<button type="button" class="btn btn-ghost btn-sm" onclick="ytSeriesAddRow()" style="margin-top:2px">'+ic('upload')+' Add video</button></div>'
@@ -16934,6 +16935,11 @@ function initResponsiveCss(){
     '.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}',
     /* ===== Topbar page titles: proper case (fixes lowercase like "lectures"/"doubts") ===== */
     '.topbar h2{text-transform:capitalize}',
+    /* ===== Urgent / Most Urgent priority — blinking chip on task cards ===== */
+    '.pw-prio-blink{background:rgba(220,38,38,.14)!important;color:#dc2626!important;font-weight:800;display:inline-flex;align-items:center;gap:4px;animation:pwPrioBlink 1s ease-in-out infinite}',
+    '.pw-prio-blink.most{background:rgba(190,18,60,.2)!important;color:#be123c!important;animation:pwPrioBlink .68s ease-in-out infinite}',
+    '.pw-prio-blink svg{width:12px;height:12px}',
+    '@keyframes pwPrioBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(220,38,38,.45)}50%{opacity:.5;box-shadow:0 0 0 5px rgba(220,38,38,.02)}}',
     /* ===== Premium lecture-report delete button ===== */
     '.lec-del{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;flex:0 0 38px;border-radius:11px;border:1px solid rgba(220,38,38,.28);background:rgba(220,38,38,.08);color:#dc2626;cursor:pointer;transition:background .15s,transform .1s}',
     '.lec-del:hover{background:rgba(220,38,38,.16)}',
@@ -22617,6 +22623,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var isLive=_prodIsLive(t);
     var badge=st[0]?'<span class="ptc-badge'+(isLive?' ptc-blink':'')+'" style="background:'+(st[1]||'#8a7d5c')+'" onclick="event.stopPropagation();prodStatusHistory('+t.id+')" title="View status history">'+esc(st[0])+'</span>':'';
     var chips=[];
+    if(t.priority==='most_urgent') chips.push('<span class="pw-chip pw-prio-blink most">'+ic('alert')+' MOST URGENT</span>');
+    else if(t.priority==='urgent') chips.push('<span class="pw-chip pw-prio-blink">'+ic('alert')+' URGENT</span>');
     if(['creator_submitted','pm_review'].indexOf(t.lifecycle)>=0) chips.push('<span class="yt-new-blink">NEW</span>');
     if((t.collab&&t.collab.length)||t.is_collab){
       var _ct=t.collab_total||(t.collab&&t.collab.length)||0, _cv=(t.collab_verified!=null?t.collab_verified:0);
@@ -23502,7 +23510,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         _kv('Channel', esc(t.channel_name||''))+
         _kv('Subject', esc(t.subject||''))+
         _kv('Streaming', esc(t.streaming||''))+
-        _kv('Priority', esc((t.priority||'normal')==='urgent'?'Urgent':'Normal'))+
+        _kv('Priority', esc((t.priority==='most_urgent')?'Most Urgent':((t.priority==='urgent')?'Urgent':'Normal')))+
         _kv('Deadline', esc(t.deadline||'Not set'))+
         _kv('Current Stage', esc(t.lifecycle_label||''))+
         _kv('Next Action', esc(t.next_action||''))+
@@ -23994,7 +24002,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var common='<div class="p-field"><label>Video Title / Topic</label><input id="yt-title" class="p-input" placeholder="e.g. Why NIOS students fail — 3 mistakes"></div>'+
       '<div class="form-grid vt-form" style="grid-template-columns:1fr 1fr"><div class="p-field"><label>Video Type</label><select id="yt-vtype" class="p-input">'+_tyOpts('')+'</select></div>'+
       '<div class="p-field"><label>Channel</label><select id="yt-channel" class="p-input">'+_chOpts('')+'</select></div></div>'+
-      '<div class="p-field"><label>Deadline</label><input id="yt-deadline" type="datetime-local" class="p-input"></div>';
+      '<div class="form-grid vt-form" style="grid-template-columns:1fr 1fr"><div class="p-field"><label>Deadline</label><input id="yt-deadline" type="datetime-local" class="p-input"></div>'+
+      '<div class="p-field"><label>Priority</label><select id="yt-priority" class="p-input"><option value="urgent">Urgent</option><option value="most_urgent">Most Urgent</option></select></div></div>';
     var edSel='<div class="p-field"><label>Assign Editor <span class="vt-hint">(optional — PM/editor can also assign later)</span></label><select id="yt-editor" class="p-input">'+_ytOpts(window._ytEds,window._ytEd)+'</select></div>';
     var body;
     if(m==='ready'){
@@ -24022,7 +24031,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _ytCapture(){
     if(!document.getElementById('yt-title')) return; // form not on screen — keep last snapshot
     var g=function(id){var e=document.getElementById(id);return e?e.value:'';};
-    window._ytKeep={title:g('yt-title'),vtype:g('yt-vtype'),channel:g('yt-channel'),deadline:g('yt-deadline'),link:g('yt-link'),instr:g('yt-instr'),ed:g('yt-editor'),gx:g('yt-graphics')};
+    window._ytKeep={title:g('yt-title'),vtype:g('yt-vtype'),channel:g('yt-channel'),deadline:g('yt-deadline'),link:g('yt-link'),instr:g('yt-instr'),ed:g('yt-editor'),gx:g('yt-graphics'),pri:g('yt-priority')};
   }
   function _ytWireNew(){
     // Wire handlers, then RESTORE the captured values. Do NOT re-capture here —
@@ -24034,14 +24043,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     window._ytPaste=function(e){ if(!document.getElementById('yt-title')){document.removeEventListener('paste',window._ytPaste);return;} var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ var which=(window._ytMode==='thumbnail')?'ref':'thumb'; _ytReadImg(items[i].getAsFile(),which); e.preventDefault(); } } };
     document.addEventListener('paste',window._ytPaste);
     // restore kept values
-    var k=window._ytKeep; if(k){ var set=function(id,v){var e=document.getElementById(id);if(e&&v)e.value=v;}; set('yt-title',k.title);set('yt-vtype',k.vtype);set('yt-channel',k.channel);set('yt-deadline',k.deadline);set('yt-link',k.link);set('yt-instr',k.instr);set('yt-editor',k.ed);set('yt-graphics',k.gx); }
+    var k=window._ytKeep; if(k){ var set=function(id,v){var e=document.getElementById(id);if(e&&v)e.value=v;}; set('yt-title',k.title);set('yt-vtype',k.vtype);set('yt-channel',k.channel);set('yt-deadline',k.deadline);set('yt-link',k.link);set('yt-instr',k.instr);set('yt-editor',k.ed);set('yt-graphics',k.gx);set('yt-priority',k.pri); }
   }
   window.ytMode=function(m){ _ytCapture(); window._ytMode=m; if(window._ytKeep){window._ytEd=window._ytKeep.ed;window._ytGx=window._ytKeep.gx;} _ytRenderNew(); };
   window.ytClearImg=function(which){ _ytCapture(); if(which==='ref')window._ytRef='';else window._ytThumb=''; _ytRenderNew(); };
   window.ytNewTaskSubmit=function(){
     _ytCapture(); var k=window._ytKeep||{};
     var title=(k.title||'').trim(); if(!title){ toast('Title/topic required',true); return; }
-    var body={mode:window._ytMode,title:title,video_type:(k.vtype||''),channel:(k.channel||''),deadline:(k.deadline||''),editor_id:(k.ed||'')};
+    var body={mode:window._ytMode,title:title,video_type:(k.vtype||''),channel:(k.channel||''),deadline:(k.deadline||''),editor_id:(k.ed||''),priority:(k.pri||'urgent')};
     if(window._ytMode==='ready'){
       if(!(k.link||'').trim()){ toast('Drive link required',true); return; }
       body.drive_link=(k.link||'').trim();
@@ -24056,7 +24065,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.prodNewTask=function(){ if((typeof CURRENT_PORTAL!=='undefined'&&CURRENT_PORTAL==='youtuber')){ ytNewTask(); return; } prodAssignWork(); };
   window.prodAssignWork=function(preCreator){
     ensureCSS(); // admin may open this without the portal shell ever loading its CSS
-    window._aw={step:1, data:{creator_type:(preCreator==='youtuber'?'youtuber':'teacher'), priority:'normal'}, people:null};
+    window._aw={step:1, data:{creator_type:(preCreator==='youtuber'?'youtuber':'teacher'), priority:'urgent'}, people:null};
     var old=document.getElementById('prod-drawer'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='p-drawer'; dr.id='prod-drawer';
     dr.innerHTML='<div class="pd-panel"><div class="pd-head"><div class="h-title">Assign Work</div>'+
@@ -24272,7 +24281,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var ppl=aw.people||{}; var gfxList=ppl.graphics||[]; var edList=ppl.editors||[];
       var thumbYes=!!d.thumbnail_required;
       html+='<div class="p-field"><label>Deadline</label><input class="p-input" id="aw-deadline" type="datetime-local" value="'+esc(d.deadline||'')+'"></div>'+
-        '<div class="p-field"><label>Priority</label><select class="p-select" id="aw-priority"><option value="normal"'+(d.priority!=='urgent'?' selected':'')+'>Normal</option><option value="urgent"'+(d.priority==='urgent'?' selected':'')+'>Urgent</option></select></div>'+
+        '<div class="p-field"><label>Priority</label><select class="p-select" id="aw-priority"><option value="urgent"'+(d.priority!=='most_urgent'?' selected':'')+'>Urgent</option><option value="most_urgent"'+(d.priority==='most_urgent'?' selected':'')+'>Most Urgent</option></select></div>'+
         '<div class="p-field"><label>Thumbnail required for this task?</label><select class="p-select" id="aw-thumbreq" onchange="awThumbToggle(this.value)">'+
           '<option value="no"'+(!thumbYes?' selected':'')+'>No \u2014 not needed</option>'+
           '<option value="yes"'+(thumbYes?' selected':'')+'>Yes \u2014 assign a graphics designer</option></select></div>'+
@@ -24302,7 +24311,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         (d.video_type?'<div><b>Video Type:</b> '+esc(d.video_type)+'</div>':'')+
         (d.subject?'<div><b>Subject:</b> '+esc(d.subject)+'</div>':'')+
         (d.channel_name?'<div><b>Channel:</b> '+esc(d.channel_name)+'</div>':'')+
-        '<div><b>Priority:</b> '+(d.priority==='urgent'?'Urgent':'Normal')+'</div>'+
+        '<div><b>Priority:</b> '+(d.priority==='most_urgent'?'Most Urgent':'Urgent')+'</div>'+
         (d.deadline?'<div><b>Deadline:</b> '+esc(d.deadline.replace('T',' '))+'</div>':'')+
         (d.creator_type==='youtuber'?'<div><b>Approval:</b> '+(d.approval_required?'Required':'Not required')+'</div>':'')+
         '</div>';

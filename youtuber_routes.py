@@ -271,7 +271,7 @@ def yt_new_task(payload: dict = Body(...), db: Session = Depends(get_db), me=Dep
                   reference=(payload.get("reference") or "").strip(),
                   remarks=(payload.get("remarks") or "").strip(),
                   deadline=dl,
-                  priority=("urgent" if payload.get("urgent") else "normal"))
+                  priority=((payload.get("priority") or "").strip() or "urgent"))
     db.add(t)
     db.flush()
     pc.ensure_ref_code(t)
@@ -470,7 +470,7 @@ def yt_propose(payload: dict = Body(...), db: Session = Depends(get_db), me=Depe
                   description=(payload.get("description") or "").strip(),
                   remarks=(payload.get("remarks") or "").strip(), deadline=dl,
                   remarks_audience=(payload.get("remarks_audience") or "both"),
-                  priority=("urgent" if payload.get("urgent") else "normal"),
+                  priority=((payload.get("priority") or "").strip() or "urgent"),
                   proposed_by="youtuber", proposal_ok="pending", status="proposal")
     db.add(t)
     db.flush()
@@ -560,7 +560,7 @@ def yt_assign_editor(payload: dict = Body(...), db: Session = Depends(get_db), m
                   description=(payload.get("description") or "").strip(),
                   remarks=remarks, remarks_audience=(payload.get("remarks_audience") or "both"),
                   deadline=dl, editor_id=eid,
-                  priority=("urgent" if payload.get("urgent") else "normal"),
+                  priority=((payload.get("priority") or "").strip() or "urgent"),
                   proposed_by="youtuber", proposal_ok="approved", status="editing_soon")
     db.add(t); db.flush()
     pc.ensure_ref_code(t)

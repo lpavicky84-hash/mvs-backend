@@ -394,7 +394,7 @@ def prod_create_youtuber_series(payload: dict = Body(...), db: Session = Depends
     channel = (payload.get("channel_name") or "").strip()
     vtype = (payload.get("video_type") or "").strip()
     streaming = (payload.get("streaming") or "").strip()
-    priority = (payload.get("priority") or "normal").strip()
+    priority = (payload.get("priority") or "urgent").strip()
     remarks = (payload.get("remarks") or "").strip()
     reference = (payload.get("reference") or "").strip()
     appr = payload.get("approval_required")
@@ -450,7 +450,7 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
                   reference=(payload.get("reference") or "").strip(),
                   reference_video=(payload.get("reference_video") or "").strip(),
                   remarks=(payload.get("remarks") or "").strip(),
-                  priority=(payload.get("priority") or "normal").strip(),
+                  priority=(payload.get("priority") or "urgent").strip(),
                   proposed_by="admin", status="assigned")
     if payload.get("approval_required") is not None:
         t.approval_required = bool(payload.get("approval_required"))
@@ -502,7 +502,7 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
                                                      ProductionStaffProfile.staff_role == "graphics").first()
         if gp:
             g = GraphicsTask(task_id=None, graphics_id=gid, status="new",
-                             priority=(payload.get("priority") or "normal"))
+                             priority=(payload.get("priority") or "urgent"))
             # will be linked after flush; set fk once task has id
             t.graphics_id = gid
     try:
@@ -523,7 +523,7 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
         existing = db.query(GraphicsTask).filter(GraphicsTask.task_id == t.id).first()
         if not existing:
             g = GraphicsTask(task_id=t.id, graphics_id=t.graphics_id, status="new",
-                             priority=(payload.get("priority") or "normal"),
+                             priority=(payload.get("priority") or "urgent"),
                              instructions=(payload.get("graphics_instructions") or payload.get("graphics_notes") or "").strip(),
                              reference_image=(payload.get("graphics_reference") or payload.get("reference_image") or "").strip())
             # PM ne clipboard/upload se reference image di ho to R2 pe upload karke store karo
