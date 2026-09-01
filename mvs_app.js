@@ -17008,6 +17008,14 @@ function initResponsiveCss(){
     '.ref-btn{flex:1;text-align:center;padding:8px 6px;font-size:.78rem;font-weight:800;color:#a9791f;background:none;border:none;border-top:1px solid var(--border,#e8dfca);cursor:pointer;text-decoration:none}',
     '.ref-btn+.ref-btn{border-left:1px solid var(--border,#e8dfca)}',
     '.ref-btn:hover{background:rgba(201,162,39,.1)}',
+    /* chat presence (online / last seen) + typing indicator */
+    '.chat-presence{font-size:.72rem;font-weight:700;color:#8a7d5c;margin-top:2px;min-height:14px;display:flex;align-items:center;gap:6px}',
+    '.cp-dot{width:8px;height:8px;border-radius:50%;background:#c3b998;display:inline-block}',
+    '.cp-dot.online{background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.2)}',
+    '.chat-typing{align-self:flex-start;display:inline-flex;align-items:center;gap:5px;color:#8a7d5c;font-size:.76rem;font-weight:600;padding:6px 11px;background:var(--surface-2,#f0ead9);border:1px solid var(--border);border-radius:12px;margin-top:2px}',
+    '.chat-typing span{width:6px;height:6px;border-radius:50%;background:#a9791f;display:inline-block;animation:chatTypeDot 1.2s infinite ease-in-out}',
+    '.chat-typing span:nth-child(2){animation-delay:.18s}.chat-typing span:nth-child(3){animation-delay:.36s}',
+    '@keyframes chatTypeDot{0%,80%,100%{opacity:.3;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}',
     /* ===== Premium lecture-report delete button ===== */
     '.lec-del{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;flex:0 0 38px;border-radius:11px;border:1px solid rgba(220,38,38,.28);background:rgba(220,38,38,.08);color:#dc2626;cursor:pointer;transition:background .15s,transform .1s}',
     '.lec-del:hover{background:rgba(220,38,38,.16)}',
@@ -21835,18 +21843,19 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   // ---- Graphics <-> PM chat (shared task thread; admin bhi dekh sakta hai) ----
   window._chatImg=null;
-  function _ytcRender(comments){
+  function _ytcRender(comments, presence){
     var cfg=window._chatCfg||{};
     var body='<div id="chat-scroll" style="display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow-y:auto;padding:4px">'+(comments.length?comments.map(function(c){return _chatBubble(c,cfg.mineRole);}).join(''):'<div style="color:var(--muted);text-align:center;padding:22px">No messages yet.</div>')+'</div>';
     var old=document.getElementById('prod-modal'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
-    dr.innerHTML='<div class="p-modal" style="max-width:460px"><div class="pd-head"><div class="h-title">'+esc(cfg.title||'Chat')+'</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div><div class="p-modal-body">'+(cfg.taskId?_prodChatBar(cfg.taskId,cfg.barPortal||''):'')+body+'</div><div class="pd-foot" style="display:block"><div id="chat-prev" style="margin-bottom:6px"></div><div style="display:flex;gap:8px;width:100%;align-items:center"><button class="p-btn" title="Attach image" style="padding:8px 12px" onclick="document.getElementById(\'chat-file\').click()">\ud83d\udcce</button><input class="p-input" id="chat-msg" placeholder="Type or paste an image..." style="flex:1" onkeydown="if(event.key===\'Enter\')ytcSend()"><button class="p-btn p-btn-primary" onclick="ytcSend()">Send</button><input type="file" id="chat-file" accept="image/*" style="display:none"></div></div></div>';
+    dr.innerHTML='<div class="p-modal" style="max-width:460px"><div class="pd-head"><div><div class="h-title">'+esc(cfg.title||'Chat')+'</div><div id="chat-presence" class="chat-presence"></div></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div><div class="p-modal-body">'+(cfg.taskId?_prodChatBar(cfg.taskId,cfg.barPortal||''):'')+body+'</div><div class="pd-foot" style="display:block"><div id="chat-prev" style="margin-bottom:6px"></div><div style="display:flex;gap:8px;width:100%;align-items:center"><button class="p-btn" title="Attach image" style="padding:8px 12px" onclick="document.getElementById(\'chat-file\').click()">\ud83d\udcce</button><input class="p-input" id="chat-msg" placeholder="Type or paste an image..." style="flex:1" onkeydown="if(event.key===\'Enter\')ytcSend()"><button class="p-btn p-btn-primary" onclick="ytcSend()">Send</button><input type="file" id="chat-file" accept="image/*" style="display:none"></div></div></div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
     document.body.appendChild(dr);
     _chatWireInputs();
+    _chatPresenceBar(presence);
     var sc=document.getElementById('chat-scroll'); if(sc) sc.scrollTop=sc.scrollHeight;
   }
-  function _ytcOpen(cfg){ window._chatCfg=cfg; window._chatImg=null; if(cfg.barPortal) window._chatDirty=cfg.barPortal; api(cfg.getUrl).then(function(r){ _ytcRender((r&&r.comments)||[]); }).catch(function(e){ toast((e&&e.message)||'Could not load chat',true); }); }
+  function _ytcOpen(cfg){ window._chatCfg=cfg; window._chatImg=null; if(cfg.barPortal) window._chatDirty=cfg.barPortal; window._chatPingUrl=cfg.pingUrl||''; api(cfg.getUrl).then(function(r){ _ytcRender((r&&r.comments)||[], r&&r.presence); _chatLivePoll(function(){ api(cfg.getUrl).then(function(rr){ _chatUpdateThread((rr&&rr.comments)||[], cfg.mineRole, rr&&rr.presence); }); }); }).catch(function(e){ toast((e&&e.message)||'Could not load chat',true); }); }
   window.ytcSend=function(){
     var cfg=window._chatCfg; if(!cfg) return;
     var inp=document.getElementById('chat-msg'); var msg=(inp&&inp.value||'').trim();
@@ -21860,12 +21869,35 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     api(P.youtuber.api+'/videos/'+id,'DELETE').then(function(){ toast('Deleted'); _refresh('youtuber'); }).catch(function(e){ toast((e&&e.message)||'Delete failed',true); });
   };
   window.ytChatEditor=function(id){ _ytcOpen({getUrl:P.youtuber.api+'/videos/'+id+'/comments?audience=editor',postUrl:P.youtuber.api+'/videos/'+id+'/comments',audience:'editor',mineRole:'youtuber',title:'Chat with Editor'}); };
-  window.edtChatCreator=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/comments',postUrl:P.editor.api+'/tasks/'+id+'/comments',audience:'editor',mineRole:'editor',title:'Chat with YouTuber',taskId:id,barPortal:'editor'}); };
+  window.edtChatCreator=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/comments',postUrl:P.editor.api+'/tasks/'+id+'/comments',audience:'editor',mineRole:'editor',title:'Chat with YouTuber',taskId:id,barPortal:'editor',pingUrl:P.editor.api+'/tasks/'+id+'/chat-ping'}); };
   window.gfxChat=function(id){
     window._chatImg=null;
-    api(P.graphics.api+'/tasks/'+id+'/comments').then(function(r){ window._chatDirty='graphics'; _gfxChatRender(id,(r&&r.comments)||[]); })
+    window._chatPingUrl=P.graphics.api+'/tasks/'+id+'/chat-ping';
+    api(P.graphics.api+'/tasks/'+id+'/comments').then(function(r){ window._chatDirty='graphics'; _gfxChatRender(id,(r&&r.comments)||[],r&&r.presence); _chatLivePoll(function(){ api(P.graphics.api+'/tasks/'+id+'/comments').then(function(rr){ _chatUpdateThread((rr&&rr.comments)||[],'graphics',rr&&rr.presence); }); }); })
       .catch(function(e){ toast((e&&e.message)||'Could not load chat',true); });
   };
+  function _chatUpdateThread(comments, mineRole, presence){
+    var th=document.getElementById('chat-thread')||document.getElementById('chat-scroll'); if(!th) return;
+    var nearBottom=(th.scrollHeight-th.scrollTop-th.clientHeight)<70;
+    var typing=presence&&presence.typing;
+    th.innerHTML=(comments.length?comments.map(function(c){return _chatBubble(c,mineRole);}).join(''):'<div style="color:var(--muted);text-align:center;padding:14px">No messages yet.</div>')+(typing?'<div class="chat-typing"><span></span><span></span><span></span> '+esc((presence.name||'They')+' is typing\u2026')+'</div>':'');
+    if(nearBottom) th.scrollTop=th.scrollHeight;
+    _chatPresenceBar(presence);
+  }
+  function _chatPresenceBar(presence){
+    var el=document.getElementById('chat-presence'); if(!el||!presence) return;
+    if(presence.online){ el.innerHTML='<span class="cp-dot online"></span> Online'; }
+    else if(presence.last_seen){ el.innerHTML='<span class="cp-dot"></span> last seen '+esc(presence.last_seen); }
+    else { el.innerHTML=''; }
+  }
+  function _chatLivePoll(refetchFn){
+    window._chatRefetch=refetchFn;
+    if(window._chatPollTimer){ clearInterval(window._chatPollTimer); }
+    window._chatPollTimer=setInterval(function(){
+      if((document.getElementById('chat-thread')||document.getElementById('chat-scroll')) && window._chatRefetch){ try{ window._chatRefetch(); }catch(e){} }
+      else { clearInterval(window._chatPollTimer); window._chatPollTimer=null; }
+    }, 3500);
+  }
   function _chatBubble(c, mineRole){
     var mine=(typeof c.mine==='boolean')?c.mine:(c.role===mineRole);
     var who=esc((c.role||'').replace('production_manager','PM').replace('graphics','Graphics').replace('admin','Admin').replace('teacher','Teacher'));
@@ -21887,21 +21919,28 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var fi=document.getElementById('chat-file'); if(fi) fi.addEventListener('change',function(e){ var f=(e.target.files||[])[0]; if(f) _chatReadImg(f,'chat-prev'); });
     window._chatPasteH=function(e){ if(!document.getElementById('chat-msg')){ document.removeEventListener('paste',window._chatPasteH); return; } var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ _chatReadImg(items[i].getAsFile(),'chat-prev'); e.preventDefault(); } } };
     document.addEventListener('paste',window._chatPasteH);
-    var mi=document.getElementById('chat-msg'); if(mi) mi.focus();
+    var mi=document.getElementById('chat-msg'); if(mi){ mi.addEventListener('input',_chatTypingPing); mi.focus(); }
   }
-  function _gfxChatRender(id, comments){
+  function _chatTypingPing(){
+    if(!window._chatPingUrl) return;
+    var now=Date.now();
+    if(window._chatTypingLast && (now-window._chatTypingLast)<2500) return; // throttle
+    window._chatTypingLast=now;
+    try{ api(window._chatPingUrl,'POST',{typing:true}).then(function(r){ if(r&&r.presence) _chatPresenceBar(r.presence); }).catch(function(){}); }catch(e){}
+  }
+  function _gfxChatRender(id, comments, presence){
     var old=document.getElementById('prod-modal'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
     var thread=comments.length?comments.map(function(c){ return _chatBubble(c,'graphics'); }).join(''):'<div style="color:var(--muted);font-size:.82rem;padding:10px 0;text-align:center">No messages yet. Start the conversation with the PM about this thumbnail.</div>';
     dr.innerHTML='<div class="p-modal" style="max-width:480px">'+
-      '<div class="pd-head"><div class="h-title">Chat with PM</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="pd-head"><div><div class="h-title">Chat with PM</div><div id="chat-presence" class="chat-presence"></div></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
       '<div class="p-modal-body">'+_prodChatBar(id,'graphics')+'<div id="chat-thread" style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0">'+thread+'</div></div>'+
       _chatFooter(id,'gfxChatSend')+
       '</div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
     document.body.appendChild(dr);
     var th=document.getElementById('chat-thread'); if(th) th.scrollTop=th.scrollHeight;
-    _chatWireInputs();
+    _chatPresenceBar(presence); _chatWireInputs();
   }
   window.gfxChatSend=function(id){
     var inp=document.getElementById('chat-msg'); var msg=inp?(inp.value||'').trim():'';
@@ -21914,22 +21953,23 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // ---- PM <-> Graphics INTERNAL chat (teacher ko NAHI dikhta; admin dekhta hai) ----
   window.prodGfxChat=function(id){
     window._chatImg=null;
-    api(P.production.api+'/tasks/'+id+'/comments?audience=internal').then(function(r){ window._chatDirty='production'; _pgChatRender(id,(r&&r.comments)||[]); })
+    window._chatPingUrl=P.production.api+'/tasks/'+id+'/chat-ping?audience=internal';
+    api(P.production.api+'/tasks/'+id+'/comments?audience=internal').then(function(r){ window._chatDirty='production'; _pgChatRender(id,(r&&r.comments)||[],r&&r.presence); _chatLivePoll(function(){ api(P.production.api+'/tasks/'+id+'/comments?audience=internal').then(function(rr){ _chatUpdateThread((rr&&rr.comments)||[],'production_manager',rr&&rr.presence); }); }); })
       .catch(function(e){ toast((e&&e.message)||'Could not load chat',true); });
   };
-  function _pgChatRender(id, comments){
+  function _pgChatRender(id, comments, presence){
     var old=document.getElementById('prod-modal'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
     var thread=comments.length?comments.map(function(c){ return _chatBubble(c,'production_manager'); }).join(''):'<div style="color:var(--muted);font-size:.82rem;padding:10px 0;text-align:center">No messages yet. Start the conversation with the graphics designer. (Teacher ko ye chat nahi dikhta.)</div>';
     dr.innerHTML='<div class="p-modal" style="max-width:480px">'+
-      '<div class="pd-head"><div class="h-title">Chat with Graphics <span style="font-size:.66rem;font-weight:700;color:var(--muted)">\u00b7 internal</span></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="pd-head"><div><div class="h-title">Chat with Graphics <span style="font-size:.66rem;font-weight:700;color:var(--muted)">\u00b7 internal</span></div><div id="chat-presence" class="chat-presence"></div></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
       '<div class="p-modal-body">'+_prodChatBar(id,'production')+'<div id="chat-thread" style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0">'+thread+'</div></div>'+
       _chatFooter(id,'prodGfxChatSend')+
       '</div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
     document.body.appendChild(dr);
     var th=document.getElementById('chat-thread'); if(th) th.scrollTop=th.scrollHeight;
-    _chatWireInputs();
+    _chatPresenceBar(presence); _chatWireInputs();
   }
   window.prodGfxChatSend=function(id){
     var inp=document.getElementById('chat-msg'); var msg=inp?(inp.value||'').trim():'';
@@ -21942,7 +21982,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // PM <-> Editor chat (audience=editor; editor reads/writes the same via their portal)
   window.prodEdtChat=function(id){
     window._chatImg=null;
-    api(P.production.api+'/tasks/'+id+'/comments?audience=editor').then(function(r){ window._chatDirty='production'; _peChatRender(id,'editor','Chat with Editor',(r&&r.comments)||[],'prodEdtChatSend'); })
+    window._chatPingUrl=P.production.api+'/tasks/'+id+'/chat-ping?audience=editor';
+    api(P.production.api+'/tasks/'+id+'/comments?audience=editor').then(function(r){ window._chatDirty='production'; _peChatRender(id,'editor','Chat with Editor',(r&&r.comments)||[],'prodEdtChatSend',r&&r.presence); _chatLivePoll(function(){ api(P.production.api+'/tasks/'+id+'/comments?audience=editor').then(function(rr){ _chatUpdateThread((rr&&rr.comments)||[],'production_manager',rr&&rr.presence); }); }); })
       .catch(function(e){ toast((e&&e.message)||'Could not load chat',true); });
   };
   window.prodEdtChatSend=function(id){
@@ -21953,19 +21994,19 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     api(P.production.api+'/tasks/'+id+'/comments','POST',body).then(function(){ prodEdtChat(id); })
       .catch(function(e){ toast((e&&e.message)||'Failed',true); window._chatImg=keep; });
   };
-  function _peChatRender(id, aud, title, comments, sendFn){
+  function _peChatRender(id, aud, title, comments, sendFn, presence){
     var old=document.getElementById('prod-modal'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
     var thread=comments.length?comments.map(function(c){ return _chatBubble(c,'production_manager'); }).join(''):'<div style="color:var(--muted);font-size:.82rem;padding:10px 0;text-align:center">No messages yet. Start the conversation.</div>';
     dr.innerHTML='<div class="p-modal" style="max-width:480px">'+
-      '<div class="pd-head"><div class="h-title">'+esc(title)+' <span style="font-size:.66rem;font-weight:700;color:var(--muted)">\u00b7 internal</span></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="pd-head"><div><div class="h-title">'+esc(title)+' <span style="font-size:.66rem;font-weight:700;color:var(--muted)">\u00b7 internal</span></div><div id="chat-presence" class="chat-presence"></div></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
       '<div class="p-modal-body">'+_prodChatBar(id,'production')+'<div id="chat-thread" style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0">'+thread+'</div></div>'+
       _chatFooter(id,sendFn)+
       '</div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
     document.body.appendChild(dr);
     var th=document.getElementById('chat-thread'); if(th) th.scrollTop=th.scrollHeight;
-    _chatWireInputs();
+    _chatPresenceBar(presence); _chatWireInputs();
   }
   // Chooser: PM picks who to chat with about this video
   // Task-info bar shown at the top of every chat so you always know WHICH video it's about.
@@ -21992,7 +22033,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     document.body.appendChild(dr);
   };
   // Editor side: Chat with PM (same audience=editor thread)
-  window.edtChatPM=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/comments',postUrl:P.editor.api+'/tasks/'+id+'/comments',audience:'editor',mineRole:'editor',title:'Chat with PM',taskId:id,barPortal:'editor'}); };
+  window.edtChatPM=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/comments',postUrl:P.editor.api+'/tasks/'+id+'/comments',audience:'editor',mineRole:'editor',title:'Chat with PM',taskId:id,barPortal:'editor',pingUrl:P.editor.api+'/tasks/'+id+'/chat-ping'}); };
   window.pmThumbReview=function(id){
     window._pmThumbImgs=[]; window._pmThumbId=id;
     api(P.production.api+'/tasks/'+id).then(function(t){
@@ -23616,6 +23657,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     try{ if(window._ytPasteH){ document.removeEventListener('paste',window._ytPasteH); window._ytPasteH=null; } }catch(e){}
     try{ var _dw=document.getElementById('prod-drawer'); if(_dw) _dw.remove(); var _fdw=document.getElementById('prod-fdrawer'); if(_fdw) _fdw.remove(); }catch(e){}
     // A chat was open and got marked read → refresh that portal's cards so the unread count clears.
+    try{ if(window._chatPollTimer){ clearInterval(window._chatPollTimer); window._chatPollTimer=null; } window._chatRefetch=null;
+      if(window._chatPingUrl){ try{ api(window._chatPingUrl,'POST',{typing:false}).catch(function(){}); }catch(e){} window._chatPingUrl=null; } }catch(e){}
     try{ if(window._chatDirty){ var _cp=window._chatDirty; window._chatDirty=null; _apiBust(); _refresh(_cp); } }catch(e){} };
   window.prodTab=function(tab){
     var st=window._prodTask; if(!st) return;

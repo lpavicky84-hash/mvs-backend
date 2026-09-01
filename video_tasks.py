@@ -961,11 +961,78 @@ def _vtc_unread_bulk(db, uid, task_ids):
     return out
 
 
+def _chat_touch(db, user, task_id, audience, typing=None):
+    """Record the user as active on this chat thread; optionally set typing."""
+    try:
+        from models import ChatPresence
+        from datetime import datetime as _dt, timedelta as _tdp
+        uid = getattr(user, "id", None)
+        if not uid:
+            return
+        aud = audience or "creator"
+        now = _dt.utcnow()
+        r = db.query(ChatPresence).filter_by(user_id=uid, task_id=task_id, audience=aud).first()
+        if not r:
+            r = ChatPresence(user_id=uid, task_id=task_id, audience=aud)
+            db.add(r)
+        r.last_seen = now
+        r.author_name = getattr(user, "name", "") or r.author_name or ""
+        if typing is True:
+            r.typing_until = now + _tdp(seconds=6)
+        elif typing is False:
+            r.typing_until = None
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
+def _chat_other_presence(db, viewer_id, task_id, audience):
+    """Presence of the OTHER participant(s) on this thread: {online, last_seen, typing, name}."""
+    out = {"online": False, "last_seen": "", "typing": False, "name": ""}
+    try:
+        from models import ChatPresence
+        from datetime import datetime as _dt, timedelta as _tdp, timezone as _tz
+        aud = audience or "creator"
+        now = _dt.utcnow()
+        rows = (db.query(ChatPresence)
+                .filter(ChatPresence.task_id == task_id, ChatPresence.audience == aud)
+                .all())
+        best = None
+        for r in rows:
+            if r.user_id == viewer_id or not r.last_seen:
+                continue
+            if best is None or (r.last_seen or now) > (best.last_seen or now):
+                best = r
+        if best:
+            out["name"] = best.author_name or ""
+            if best.typing_until and best.typing_until > now:
+                out["typing"] = True
+            if best.last_seen and (now - best.last_seen) <= _tdp(seconds=40):
+                out["online"] = True
+            elif best.last_seen:
+                try:
+                    _y = best.last_seen.replace(tzinfo=_tz.utc).astimezone(_tz(_tdp(hours=5, minutes=30)))
+                    out["last_seen"] = _y.strftime("%d %b, %I:%M %p")
+                except Exception:
+                    out["last_seen"] = best.last_seen.strftime("%d %b, %I:%M %p")
+    except Exception:
+        pass
+    return out
+
+
 @router.get("/teacher/video-tasks/{task_id}/comments")
 def vt_teacher_comments(task_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     # Teacher ko sirf creator-facing baat dikhe — PM<->graphics/editor ki internal chat nahi.
     _vtc_mark_read(db, current_user, task_id, "creator")
-    return {"comments": _vtc_list_v(db, task_id, "creator", getattr(current_user, "id", None))}
+    _chat_touch(db, current_user, task_id, "creator")
+    return {"comments": _vtc_list_v(db, task_id, "creator", getattr(current_user, "id", None)),
+            "presence": _chat_other_presence(db, getattr(current_user, "id", None), task_id, "creator")}
+
+
+@router.post("/teacher/video-tasks/{task_id}/chat-ping")
+def vt_teacher_chat_ping(task_id: int, payload: dict = Body(default={}), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    _chat_touch(db, current_user, task_id, "creator", typing=bool((payload or {}).get("typing")))
+    return {"presence": _chat_other_presence(db, getattr(current_user, "id", None), task_id, "creator")}
 
 
 @router.post("/teacher/video-tasks/{task_id}/comments")

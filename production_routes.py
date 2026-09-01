@@ -266,9 +266,19 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
 
 @router.get("/tasks/{tid}/comments")
 def pm_task_comments(tid: int, audience: str = "", db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
-    from video_tasks import _vtc_list_v, _vtc_mark_read
-    _vtc_mark_read(db, me, tid, (audience or "creator"))
-    return {"comments": _vtc_list_v(db, tid, (audience or None), getattr(me, "id", None))}
+    from video_tasks import _vtc_list_v, _vtc_mark_read, _chat_touch, _chat_other_presence
+    _aud = (audience or "creator")
+    _vtc_mark_read(db, me, tid, _aud)
+    _chat_touch(db, me, tid, _aud)
+    return {"comments": _vtc_list_v(db, tid, (audience or None), getattr(me, "id", None)),
+            "presence": _chat_other_presence(db, getattr(me, "id", None), tid, _aud)}
+
+@router.post("/tasks/{tid}/chat-ping")
+def pm_chat_ping(tid: int, audience: str = "", payload: dict = Body(default={}), db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    from video_tasks import _chat_touch, _chat_other_presence
+    _aud = (audience or (payload or {}).get("audience") or "creator")
+    _chat_touch(db, me, tid, _aud, typing=bool((payload or {}).get("typing")))
+    return {"presence": _chat_other_presence(db, getattr(me, "id", None), tid, _aud)}
 
 
 @router.post("/tasks/{tid}/comments")

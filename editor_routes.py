@@ -205,7 +205,15 @@ def editor_comments(tid: int, db: Session = Depends(get_db), me=Depends(get_edit
     sp = _me_staff(db, me)
     _my_task(db, sp, tid)
     _VT._vtc_mark_read(db, me, tid, "editor")
-    return {"comments": _VT._vtc_list_v(db, tid, "editor", getattr(me, "id", None))}
+    _VT._chat_touch(db, me, tid, "editor")
+    return {"comments": _VT._vtc_list_v(db, tid, "editor", getattr(me, "id", None)),
+            "presence": _VT._chat_other_presence(db, getattr(me, "id", None), tid, "editor")}
+
+@router.post("/tasks/{tid}/chat-ping")
+def editor_chat_ping(tid: int, payload: dict = Body(default={}), db: Session = Depends(get_db), me=Depends(get_editor)):
+    import video_tasks as _VT
+    _VT._chat_touch(db, me, tid, "editor", typing=bool((payload or {}).get("typing")))
+    return {"presence": _VT._chat_other_presence(db, getattr(me, "id", None), tid, "editor")}
 
 
 @router.post("/tasks/{tid}/comments")

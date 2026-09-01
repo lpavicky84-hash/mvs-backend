@@ -155,9 +155,17 @@ def gfx_task_detail(tid: int, db: Session = Depends(get_db), me=Depends(get_grap
 def gfx_comments(tid: int, db: Session = Depends(get_db), me=Depends(get_graphics)):
     sp = _me_staff(db, me)
     _my_gtask(db, sp, tid)  # ensures this designer owns the thumbnail task
-    from video_tasks import _vtc_list_v, _vtc_mark_read
+    from video_tasks import _vtc_list_v, _vtc_mark_read, _chat_touch, _chat_other_presence
     _vtc_mark_read(db, me, tid, "internal")
-    return {"comments": _vtc_list_v(db, tid, "internal", getattr(me, "id", None))}
+    _chat_touch(db, me, tid, "internal")
+    return {"comments": _vtc_list_v(db, tid, "internal", getattr(me, "id", None)),
+            "presence": _chat_other_presence(db, getattr(me, "id", None), tid, "internal")}
+
+@router.post("/tasks/{tid}/chat-ping")
+def gfx_chat_ping(tid: int, payload: dict = Body(default={}), db: Session = Depends(get_db), me=Depends(get_graphics)):
+    from video_tasks import _chat_touch, _chat_other_presence
+    _chat_touch(db, me, tid, "internal", typing=bool((payload or {}).get("typing")))
+    return {"presence": _chat_other_presence(db, getattr(me, "id", None), tid, "internal")}
 
 
 @router.post("/tasks/{tid}/comments")

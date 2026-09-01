@@ -1624,3 +1624,15 @@ class VideoTaskChatRead(Base):
     task_id = Column(Integer, ForeignKey("video_tasks.id", ondelete="CASCADE"), index=True)
     audience = Column(String(20), default="")
     last_read_id = Column(Integer, default=0)
+
+
+class ChatPresence(Base):
+    """Live presence for a chat thread: last_seen (online if recent) + typing_until."""
+    __tablename__ = "chat_presence"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    task_id = Column(Integer, ForeignKey("video_tasks.id", ondelete="CASCADE"), index=True)
+    audience = Column(String(20), default="")
+    author_name = Column(String(120), default="")
+    last_seen = Column(DateTime, nullable=True)
+    typing_until = Column(DateTime, nullable=True)
