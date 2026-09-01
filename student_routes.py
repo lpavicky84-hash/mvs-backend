@@ -834,9 +834,17 @@ STUDENT_BATCHES = {
 }
 
 @router.get("/batches")
-def student_batches(current_user=Depends(get_student)):
-    """Batch list for the onboarding screen."""
-    return [{"name": n, "class_level": c[0]} for n, c in STUDENT_BATCHES.items()]
+def student_batches(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Batch list for the onboarding screen — restricted to the student's admission class when known."""
+    items = [{"name": n, "class_level": c[0]} for n, c in STUDENT_BATCHES.items()]
+    try:
+        sp = get_student_profile(current_user, db)
+        cls = (sp.class_level or "").strip()
+        if cls in ("10", "12"):
+            items = [b for b in items if b["class_level"] == cls]
+    except Exception:
+        pass
+    return items
 
 @router.post("/set-subjects")
 def set_subjects(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_student)):
@@ -848,7 +856,15 @@ def set_subjects(payload: dict, db: Session = Depends(get_db), current_user=Depe
     if batch_name:
         if batch_name not in STUDENT_BATCHES:
             raise HTTPException(status_code=400, detail="Please select a valid batch")
-        class_level = STUDENT_BATCHES[batch_name][0]  # batch decides the class
+        batch_class = STUDENT_BATCHES[batch_name][0]  # ("10" / "12", stream)
+        # BULLETPROOF: if the student's class is already known from their admission (MVS Portal),
+        # the batch MUST match it — a Class 12 student can't be flipped to a Class 10 batch by
+        # picking the wrong one. (Admin can still change the class from the Edit screen.)
+        admission_class = (sp.class_level or "").strip()
+        if admission_class in ("10", "12") and batch_class != admission_class:
+            raise HTTPException(status_code=400,
+                detail=f"Your admission is for Class {admission_class}. Please choose a Class {admission_class} batch.")
+        class_level = batch_class  # batch decides the class
     if class_level not in ("10", "12"):
         raise HTTPException(status_code=400, detail="Please select Class 10 or 12")
     if medium and medium not in ("Hindi", "English"):
