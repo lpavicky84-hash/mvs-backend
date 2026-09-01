@@ -228,6 +228,48 @@ def _hist_out(t):
     return out
 
 
+def _full_hist_out(db, t):
+    """Complete status timeline for the teacher/admin Status-History modal.
+
+    Uses the SAME source as the production portal — production_core.timeline_out,
+    which merges ProductionEvent rows (editor assigned, editing soon, verify,
+    approved, uploaded, etc.) with the legacy status_history JSON, sorted & de-duped.
+    So the teacher now sees the full journey, not just 'Submitted'.
+
+    Falls back to the legacy _hist_out synthesis if no timeline is available.
+    Row shape: {s, label, at, note} — `label` is the humanized text; `s` is a
+    coarse code used only for the dot colour on the client.
+    """
+    try:
+        import production_core as pc
+        tl = pc.timeline_out(db, t) or []
+    except Exception:
+        tl = []
+    if not tl:
+        return _hist_out(t)
+    # production event / lifecycle state -> the client's known dot-colour codes
+    _GREEN = {
+        "teacher_submitted": "submitted", "youtuber_submitted": "submitted",
+        "creator_submitted": "submitted", "edited_video_submitted": "submitted",
+        "revision_submitted": "submitted", "submitted": "submitted",
+        "approved": "approved", "qc_approved": "approved", "thumbnail_approved": "approved",
+        "editing_completed": "editing_done", "editing_done": "editing_done",
+        "uploaded": "uploaded", "completed": "uploaded", "ready_for_youtube": "uploaded",
+    }
+    _RED = {
+        "rejected": "rejected", "reshoot_required": "rejected", "reshoot": "rejected",
+        "changes_requested": "rejected", "qc_changes": "rejected", "changes": "rejected",
+    }
+    out = []
+    for e in tl:
+        ev = (e.get("event") or "").strip()
+        nw = (e.get("new") or "").strip()
+        s = (_GREEN.get(ev) or _GREEN.get(nw) or _RED.get(ev) or _RED.get(nw) or "")
+        out.append({"s": s, "label": e.get("label") or "",
+                    "at": e.get("at") or "", "note": e.get("note") or ""})
+    return out
+
+
 def _teacher_subject_list(db, tp):
     """Teacher ke (subject, class) pairs — subject_classes pehle, flat subjects fallback."""
     out, seen = [], set()
@@ -1414,7 +1456,7 @@ def _task_out(db, t, with_thumb=True, tname_map=None):
         "yt_views": (t.yt_views if getattr(t, "yt_views", None) is not None else None),
         "yt_views_at": t.yt_views_at.strftime("%d %b %Y, %I:%M %p") if getattr(t, "yt_views_at", None) else "",
         "created_at": t.created_at.strftime("%d %b %Y") if t.created_at else "",
-        "history": _hist_out(t),
+        "history": (_full_hist_out(db, t) if (getattr(t, "lifecycle", "") or "") else _hist_out(t)),
     }
     # ---- collab (multi-teacher) info
     _allids = _collab_all_ids(t)

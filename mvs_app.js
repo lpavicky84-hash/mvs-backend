@@ -9438,7 +9438,7 @@ function vtStatusOpen(id,who,ev){
   }
   const lbl=s=>(VT_LBL[s]||(s==='progress'?'Progress':s==='edited'?'Updated':s));
   const dotCls=s=>['submitted','approved','editing_done','uploaded'].includes(s)?'done':(['rejected'].includes(s)?'bad':'');
-  const rows=hist.map(h=>`<div class="vt-tl-i ${dotCls(h.s)}"><div class="vt-tl-s">${esc(lbl(h.s))}</div>
+  const rows=hist.map(h=>`<div class="vt-tl-i ${dotCls(h.s)}"><div class="vt-tl-s">${esc(h.label||lbl(h.s))}</div>
     <div class="vt-tl-a">${esc(h.at||'')}</div>${h.note?`<div class="vt-tl-n">${esc(h.note)}</div>`:''}</div>`).join('');
   showModal(`Status History — ${esc(t.title)}`,`
     <div style="margin-bottom:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">${_vtPill(t,false)}<span style="font-size:.72rem;color:var(--text-muted);font-weight:700">current status</span></div>
