@@ -1682,7 +1682,8 @@ function closeDocViewer(){
   document.body.style.overflow=''; document.removeEventListener('keydown', _dvEsc);
   try{ if(window._dvUrl){ URL.revokeObjectURL(window._dvUrl); window._dvUrl=null; } }catch(e){}
 }
-async function openDocViewer(url, name){
+async function openDocViewer(url, name, opts){
+  opts=opts||{};
   _docViewerCss();
   var old=document.getElementById('docviewer'); if(old) old.remove();
   var _dic=(typeof ic==='function'?ic('download'):'\u2913');
@@ -1698,6 +1699,17 @@ async function openDocViewer(url, name){
   document.body.style.overflow='hidden';
   ov.addEventListener('click', function(e){ if(e.target===ov) closeDocViewer(); });
   document.addEventListener('keydown', _dvEsc);
+  // FAST PATH: stream the file straight into an iframe (browser shows page 1 before the
+  // whole file has downloaded). Used for large scans (DPP/answer sheets). The endpoint
+  // must serve inline (?inline=1). Download stays authed + lazy.
+  if(opts.stream){
+    var su=url+(url.indexOf('?')>=0?'&':'?')+'t='+encodeURIComponent(TOKEN);
+    var body=document.getElementById('dv-body');
+    if(body) body.innerHTML='<iframe class="dv-frame" src="'+su+'" title="'+esc(name||'document')+'"></iframe>';
+    var dl=document.getElementById('dv-dl'); if(dl){ dl.href='#'; dl.onclick=function(ev){ if(ev&&ev.preventDefault) ev.preventDefault(); _dvLazyDownload(url, name); }; }
+    var op=document.getElementById('dv-open'); if(op){ op.onclick=function(){ try{ window.open(su,'_blank'); }catch(e){} }; }
+    return;
+  }
   try{
     var r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}});
     if(!r.ok) throw new Error('fail');
@@ -1709,25 +1721,34 @@ async function openDocViewer(url, name){
     var isPdf=ct.indexOf('pdf')>=0 || /\.pdf$/.test(nm);
     var blob=isPdf?new Blob([raw],{type:'application/pdf'}):raw;
     var u=URL.createObjectURL(blob); window._dvUrl=u;
-    var body=document.getElementById('dv-body');
-    if(body){
-      if(isImg) body.innerHTML='<img class="dv-img" src="'+u+'" alt="'+esc(name||'')+'">';
-      else body.innerHTML='<iframe class="dv-frame" src="'+u+'" title="'+esc(name||'document')+'"></iframe>';
+    var body2=document.getElementById('dv-body');
+    if(body2){
+      if(isImg) body2.innerHTML='<img class="dv-img" src="'+u+'" alt="'+esc(name||'')+'">';
+      else body2.innerHTML='<iframe class="dv-frame" src="'+u+'" title="'+esc(name||'document')+'"></iframe>';
     }
-    var dl=document.getElementById('dv-dl'); if(dl){ dl.href=u; dl.setAttribute('download', name||'document'); }
-    var op=document.getElementById('dv-open'); if(op){ op.onclick=function(){ try{ window.open(u,'_blank'); }catch(e){} }; }
+    var dl2=document.getElementById('dv-dl'); if(dl2){ dl2.href=u; dl2.setAttribute('download', name||'document'); }
+    var op2=document.getElementById('dv-open'); if(op2){ op2.onclick=function(){ try{ window.open(u,'_blank'); }catch(e){} }; }
   }catch(e){
     var tokUrl=url+(url.indexOf('?')>=0?'&':'?')+'t='+encodeURIComponent(TOKEN);
-    var body=document.getElementById('dv-body'); if(body) body.innerHTML='<div class="dv-err">Preview couldn\u2019t load here. Tap Open or Download instead.</div>';
-    var dl=document.getElementById('dv-dl'); if(dl){ dl.href=tokUrl; dl.removeAttribute('download'); dl.target='_blank'; }
-    var op=document.getElementById('dv-open'); if(op){ op.onclick=function(){ try{ window.open(tokUrl,'_blank'); }catch(e){} }; }
+    var body3=document.getElementById('dv-body'); if(body3) body3.innerHTML='<div class="dv-err">Preview couldn\u2019t load here. Tap Open or Download instead.</div>';
+    var dl3=document.getElementById('dv-dl'); if(dl3){ dl3.href=tokUrl; dl3.removeAttribute('download'); dl3.target='_blank'; }
+    var op3=document.getElementById('dv-open'); if(op3){ op3.onclick=function(){ try{ window.open(tokUrl,'_blank'); }catch(e){} }; }
   }
+}
+async function _dvLazyDownload(url, name){
+  try{
+    var r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('fail');
+    var b=await r.blob(); var u=URL.createObjectURL(b);
+    var a=document.createElement('a'); a.href=u; a.download=name||'document'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(u); },4000);
+  }catch(e){ try{ window.open(url+(url.indexOf('?')>=0?'&':'?')+'t='+encodeURIComponent(TOKEN),'_blank'); }catch(e2){} }
 }
 // view helpers — mirror each download function's endpoint, but open the viewer instead
 function viewMaterial(role,id,name){ openDocViewer(API+'/api/'+role+'/material/'+id+'/download', name||'material.pdf'); }
 function viewExtMaterial(id,link,name){ if(link){ try{ window.open(link,'_blank'); }catch(e){} return; } openDocViewer(API+'/api/ext/material/'+encodeURIComponent(id)+'/file', name||'material.pdf'); }
 function viewStudentAnswer(attId,name){ openDocViewer(API+'/api/teacher/attempt/'+attId+'/answer', 'answer-'+(name||'student')); }
-function viewDppAns(aid,name){ openDocViewer(API+'/api/teacher/dpp-answers/'+aid+'/file', name||'dpp-answer.pdf'); }
+function viewDppAns(aid,name){ openDocViewer(API+'/api/teacher/dpp-answers/'+aid+'/file?inline=1', name||'dpp-answer.pdf', {stream:true}); }
 function viewMyAnswer(id){ openDocViewer(API+'/api/student/exam/'+id+'/answer', 'my-answer-sheet'); }
 // ============ DOUBT NAV BADGES ============
 let _dbadgeInt=null;
@@ -12776,7 +12797,7 @@ function _extRenderSubject(){
     }
     const rows=items.map(m=>{
       const isLink=(m.kind==='link'&&m.link);
-      return `<div class="xm-row"><div style="flex:1;min-width:0"><div class="xm-row-t">${esc(m.title||'Untitled')}</div><div class="xm-row-m">${m.medium?`<span class="qb-medium ${(m.medium||'').toLowerCase()==='hindi'?'hindi':''}">${esc(m.medium)}</span>`:''}${m.class_level?`<span>Class ${esc(String(m.class_level))}</span>`:''}${m.session?`<span>${esc(m.session)}</span>`:''}<span>${isLink?'Link':'PDF'}</span></div></div><div style="display:flex;gap:6px;flex:none;align-items:center"><button class="btn btn-ghost btn-sm" title="View" onclick="viewExtMaterial('${esc(String(m.id))}',${isLink?`'${esc(m.link)}'`:'null'},'${esc((m.filename||m.title||'material').replace(/'/g,''))}')">${ic('eye')} View</button><button class="btn btn-primary btn-sm" onclick="openExtMaterial('${esc(String(m.id))}',${isLink?`'${esc(m.link)}'`:'null'},'${esc((m.filename||m.title||'material').replace(/'/g,''))}')">${ic('download')} Download</button></div></div>`;
+      return `<div class="xm-row"><div style="flex:1;min-width:0"><div class="xm-row-t">${esc(m.title||'Untitled')}</div><div class="xm-row-m">${m.medium?`<span class="qb-medium ${(m.medium||'').toLowerCase()==='hindi'?'hindi':''}">${esc(m.medium)}</span>`:''}${m.class_level?`<span>Class ${esc(String(m.class_level))}</span>`:''}${m.session?`<span>${esc(m.session)}</span>`:''}<span>${isLink?'Link':'PDF'}</span></div></div><div class="xm-acts"><button class="btn btn-ghost btn-sm" title="View" onclick="viewExtMaterial('${esc(String(m.id))}',${isLink?`'${esc(m.link)}'`:'null'},'${esc((m.filename||m.title||'material').replace(/'/g,''))}')">${ic('eye')} View</button><button class="btn btn-primary btn-sm" onclick="openExtMaterial('${esc(String(m.id))}',${isLink?`'${esc(m.link)}'`:'null'},'${esc((m.filename||m.title||'material').replace(/'/g,''))}')">${ic('download')} Download</button></div></div>`;
     }).join('');
     body+=`<div class="xm-sec"><div class="xm-sec-h"><div class="xm-sec-ic">${_xmCatIc(c)}</div><h3>${esc(_xmCatName(c))}</h3><span class="xm-count">${items.length} ${items.length===1?'file':'files'}</span></div>${chipsHtml}${rows}</div>`;
   });
@@ -17186,6 +17207,10 @@ function initResponsiveCss(){
     '.mat-more:hover{background:rgba(201,162,39,.08)}',
     '.subm-act{display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
     '@media(max-width:600px){.subm-act{width:100%}.subm-act .marks-box{margin-left:auto}}',
+    '.xm-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}',
+    '.xm-acts{display:flex;gap:6px;align-items:center;flex-wrap:wrap;flex:0 0 auto}',
+    '.xm-acts .btn{white-space:nowrap}',
+    '@media(max-width:600px){.xm-acts{flex:1 1 100%;width:100%;margin-top:8px}.xm-acts .btn{flex:1 1 auto;justify-content:center}}',
     '@media(max-width:600px){',
     '  .mat-xmain{flex:1 1 100%}',
     '  .mat-xacts{flex:1 1 100%;width:100%;margin-top:2px}',
@@ -17540,8 +17565,12 @@ function errHtml(e){ return `<div class="alert alert-danger"> ${esc(e.message)}<
     h.addEventListener('click',function(e){ e.stopPropagation(); openSidebar(appEl); });
     tb.insertBefore(h, tb.firstChild);
   });
-  // tap on any nav item closes the drawer
-  document.querySelectorAll('.sidebar .nav-item').forEach(function(n){ n.addEventListener('click',function(){ closeSidebar(); }); });
+  // tap on any nav item closes the drawer — DELEGATED so dynamically-added items
+  // (e.g. Material Checker, which is injected after load) also close the sidebar.
+  document.addEventListener('click',function(e){
+    var t=e.target; if(!t||!t.closest) return;
+    if(t.closest('.sidebar .nav-item')) closeSidebar();
+  });
   // swipe-left on open drawer closes it
   var tx=null;
   document.addEventListener('touchstart',function(e){ tx=e.touches[0].clientX; },{passive:true});

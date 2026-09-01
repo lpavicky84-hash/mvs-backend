@@ -2127,13 +2127,15 @@ def teacher_dpp_allow_resubmit(pack_id: int, answer_id: int, data: dict = Body(.
 
 
 @router.get("/dpp-answers/{answer_id}/file")
-def teacher_dpp_answer_file(answer_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+def teacher_dpp_answer_file(answer_id: int, inline: int = 0, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import DppAnswer
     get_teacher_profile(current_user, db)
     a = db.query(DppAnswer).filter(DppAnswer.id == answer_id).first()
     if not a or not a.answer_b64:
         raise HTTPException(status_code=404, detail="File not found")
-    return __import__("r2_storage").proxy_response(a.answer_b64, "application/pdf", _hsafe(a.filename or "dpp-answer.pdf"), True, sniff=True)
+    # inline=1 -> serve inline so the in-app viewer can STREAM it (fast first page);
+    # default (attachment) keeps the existing download button working unchanged.
+    return __import__("r2_storage").proxy_response(a.answer_b64, "application/pdf", _hsafe(a.filename or "dpp-answer.pdf"), (inline == 0), sniff=True)
 
 
 @router.delete("/dpp-packs/{pack_id}")
