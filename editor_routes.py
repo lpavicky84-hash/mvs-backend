@@ -173,7 +173,15 @@ def editor_tasks(status: str = "", filter: str = "", db: Session = Depends(get_d
         else:
             q = q.filter(VideoTask.lifecycle == status)
     rows = q.order_by(VideoTask.updated_at.desc()).all()
-    return {"tasks": [pc.task_out(db, t, light=True) for t in rows]}
+    _outs = [pc.task_out(db, t, light=True) for t in rows]
+    try:
+        from video_tasks import _vtc_unread_bulk
+        _un = _vtc_unread_bulk(db, getattr(me, "id", None), [t.id for t in rows])
+        for _o in _outs:
+            _o["unread_total"] = (_un.get(_o.get("id"), {}) or {}).get("editor", 0)
+    except Exception:
+        pass
+    return {"tasks": _outs}
 
 
 @router.get("/tasks/{tid}")
@@ -196,6 +204,7 @@ def editor_comments(tid: int, db: Session = Depends(get_db), me=Depends(get_edit
     import video_tasks as _VT
     sp = _me_staff(db, me)
     _my_task(db, sp, tid)
+    _VT._vtc_mark_read(db, me, tid, "editor")
     return {"comments": _VT._vtc_list(db, tid, "editor")}
 
 

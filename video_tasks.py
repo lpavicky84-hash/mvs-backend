@@ -879,9 +879,69 @@ def _vtc_add(db, task_id, user, message, role, attachment_url="", audience="crea
     return c
 
 
+def _vtc_aud_filter(q, audience):
+    aud = audience or "creator"
+    if aud == "creator":
+        return q.filter(or_(VideoTaskComment.audience == None,
+                            VideoTaskComment.audience == "",
+                            VideoTaskComment.audience == "creator"))
+    return q.filter(VideoTaskComment.audience == aud)
+
+
+def _vtc_mark_read(db, user, task_id, audience):
+    """Mark the given thread as read up to the latest message for this user."""
+    try:
+        from models import VideoTaskChatRead
+        uid = getattr(user, "id", None)
+        if not uid:
+            return
+        aud = audience or "creator"
+        maxid = _vtc_aud_filter(
+            db.query(func.max(VideoTaskComment.id)).filter(VideoTaskComment.task_id == task_id),
+            aud).scalar() or 0
+        r = db.query(VideoTaskChatRead).filter_by(user_id=uid, task_id=task_id, audience=aud).first()
+        if r:
+            if (r.last_read_id or 0) < maxid:
+                r.last_read_id = maxid
+        else:
+            db.add(VideoTaskChatRead(user_id=uid, task_id=task_id, audience=aud, last_read_id=maxid))
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
+def _vtc_unread_bulk(db, uid, task_ids):
+    """{task_id: {teacher:N, graphics:N, editor:N}} unread counts for viewer uid (bulk, 2 queries)."""
+    out = {}
+    if not task_ids or not uid:
+        return out
+    try:
+        from models import VideoTaskChatRead
+        reads = {}
+        for r in (db.query(VideoTaskChatRead)
+                  .filter(VideoTaskChatRead.user_id == uid,
+                          VideoTaskChatRead.task_id.in_(task_ids)).all()):
+            reads[(r.task_id, r.audience or "creator")] = r.last_read_id or 0
+        _catmap = {"creator": "teacher", "": "teacher", None: "teacher",
+                   "internal": "graphics", "editor": "editor"}
+        for c in (db.query(VideoTaskComment.id, VideoTaskComment.task_id,
+                           VideoTaskComment.audience, VideoTaskComment.user_id)
+                  .filter(VideoTaskComment.task_id.in_(task_ids)).all()):
+            aud = c.audience or "creator"
+            lr = reads.get((c.task_id, aud), 0)
+            if c.id > lr and c.user_id != uid:
+                cat = _catmap.get(aud, "teacher")
+                d = out.setdefault(c.task_id, {})
+                d[cat] = d.get(cat, 0) + 1
+    except Exception:
+        pass
+    return out
+
+
 @router.get("/teacher/video-tasks/{task_id}/comments")
 def vt_teacher_comments(task_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     # Teacher ko sirf creator-facing baat dikhe — PM<->graphics/editor ki internal chat nahi.
+    _vtc_mark_read(db, current_user, task_id, "creator")
     return {"comments": _vtc_list(db, task_id, "creator")}
 
 

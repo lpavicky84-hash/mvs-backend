@@ -16951,6 +16951,21 @@ function initResponsiveCss(){
     '.esp-dl-l{font-size:.76rem;color:#8a7d5c;font-weight:700;display:inline-flex;align-items:center;gap:6px;justify-content:center}',
     '.esp-dl-l svg{width:14px;height:14px}',
     '.esp-dl-v{font-size:1.05rem;font-weight:800;color:#a9791f}',
+    /* PM chat chooser (Teacher / Graphics / Editor) */
+    '.pcm-list{display:flex;flex-direction:column;gap:9px}',
+    '.pcm-opt{display:flex;align-items:center;gap:12px;width:100%;padding:14px 15px;border:1px solid var(--border,#e8dfca);border-radius:13px;background:var(--surface,#fff);cursor:pointer;font-size:.96rem;font-weight:700;color:var(--text,#2a2313);transition:background .12s,transform .1s;text-align:left}',
+    '.pcm-opt:hover{background:rgba(201,162,39,.09)}',
+    '.pcm-opt:active{transform:scale(.99)}',
+    '.pcm-opt svg{width:20px;height:20px;color:#a9791f;flex:0 0 20px}',
+    '.pcm-opt span{flex:1}',
+    '.pcm-arw{margin-left:auto;color:var(--muted);font-size:1.2rem;font-weight:800}',
+    'body.dark .pcm-opt{background:#1b1508;border-color:#2c2410}',
+    /* unread chat badge + blink (cards & chooser) */
+    '.chat-badge,.pcm-badge{display:inline-flex;align-items:center;justify-content:center;min-width:19px;height:19px;padding:0 5px;border-radius:999px;background:#dc2626;color:#fff;font-size:.68rem;font-weight:800;margin-left:5px}',
+    '.pcm-badge{margin-left:auto}',
+    '.chat-blink{animation:chatBlink 1.05s ease-in-out infinite}',
+    '.ptc-btn.ptc-chat.chat-blink{border-color:rgba(220,38,38,.5)!important;color:#dc2626!important}',
+    '@keyframes chatBlink{0%,100%{opacity:1}50%{opacity:.5}}',
     '@keyframes pwPrioBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(220,38,38,.45)}50%{opacity:.5;box-shadow:0 0 0 5px rgba(220,38,38,.02)}}',
     /* active clipboard-paste target highlight (Assign Graphics reference vs thumbnail) */
     '.aw-drop.aw-paste-on{border-color:#c99a2e !important;box-shadow:0 0 0 2px rgba(201,154,46,.3);background:rgba(201,154,46,.06)}',
@@ -21900,6 +21915,53 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     api(P.production.api+'/tasks/'+id+'/comments','POST',body).then(function(){ prodGfxChat(id); })
       .catch(function(e){ toast((e&&e.message)||'Failed',true); window._chatImg=keep; });
   };
+  // PM <-> Editor chat (audience=editor; editor reads/writes the same via their portal)
+  window.prodEdtChat=function(id){
+    window._chatImg=null;
+    api(P.production.api+'/tasks/'+id+'/comments?audience=editor').then(function(r){ _peChatRender(id,'editor','Chat with Editor',(r&&r.comments)||[],'prodEdtChatSend'); })
+      .catch(function(e){ toast((e&&e.message)||'Could not load chat',true); });
+  };
+  window.prodEdtChatSend=function(id){
+    var inp=document.getElementById('chat-msg'); var msg=inp?(inp.value||'').trim():'';
+    if(!msg && !window._chatImg) return;
+    var body={message:msg,audience:'editor'}; if(window._chatImg) body.attachment=window._chatImg;
+    if(inp) inp.value=''; var keep=window._chatImg; window._chatImg=null;
+    api(P.production.api+'/tasks/'+id+'/comments','POST',body).then(function(){ prodEdtChat(id); })
+      .catch(function(e){ toast((e&&e.message)||'Failed',true); window._chatImg=keep; });
+  };
+  function _peChatRender(id, aud, title, comments, sendFn){
+    var old=document.getElementById('prod-modal'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+    var thread=comments.length?comments.map(function(c){ return _chatBubble(c,'production_manager'); }).join(''):'<div style="color:var(--muted);font-size:.82rem;padding:10px 0;text-align:center">No messages yet. Start the conversation.</div>';
+    dr.innerHTML='<div class="p-modal" style="max-width:480px">'+
+      '<div class="pd-head"><div class="h-title">'+esc(title)+' <span style="font-size:.66rem;font-weight:700;color:var(--muted)">\u00b7 internal</span></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body"><div id="chat-thread" style="max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0">'+thread+'</div></div>'+
+      _chatFooter(id,sendFn)+
+      '</div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+    document.body.appendChild(dr);
+    var th=document.getElementById('chat-thread'); if(th) th.scrollTop=th.scrollHeight;
+    _chatWireInputs();
+  }
+  // Chooser: PM picks who to chat with about this video
+  window.prodChatMenu=function(id, tc, gc, ec){
+    tc=tc||0; gc=gc||0; ec=ec||0;
+    var _b=function(n){ return n>0?' <span class="pcm-badge chat-blink">'+n+'</span>':''; };
+    var old=document.getElementById('prod-modal'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+    dr.innerHTML='<div class="p-modal" style="max-width:380px">'+
+      '<div class="pd-head"><div class="h-title">Chat about this video</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body"><div class="pcm-list">'+
+        '<button class="pcm-opt" onclick="prodDismiss();prodConvo('+id+')">'+ic('users')+'<span>Chat with Teacher</span>'+_b(tc)+'<span class="pcm-arw">\u203a</span></button>'+
+        '<button class="pcm-opt" onclick="prodDismiss();prodGfxChat('+id+')">'+ic('image')+'<span>Chat with Graphics</span>'+_b(gc)+'<span class="pcm-arw">\u203a</span></button>'+
+        '<button class="pcm-opt" onclick="prodDismiss();prodEdtChat('+id+')">'+ic('play')+'<span>Chat with Editor</span>'+_b(ec)+'<span class="pcm-arw">\u203a</span></button>'+
+      '</div></div>'+
+      '</div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+    document.body.appendChild(dr);
+  };
+  // Editor side: Chat with PM (same audience=editor thread)
+  window.edtChatPM=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/comments',postUrl:P.editor.api+'/tasks/'+id+'/comments',audience:'editor',mineRole:'editor',title:'Chat with PM'}); };
   window.pmThumbReview=function(id){
     window._pmThumbImgs=[]; window._pmThumbId=id;
     api(P.production.api+'/tasks/'+id).then(function(t){
@@ -22697,7 +22759,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       else if(lc==='editing_done'||lc==='qc_changes') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodCardAct(\'editor\',\'submit\','+t.id+')">'+(lc==='qc_changes'?'Submit Revised':'Submit Video')+'</button>';
       if(['editor_assigned','editing','editing_paused','editing_done','qc_changes'].indexOf(lc)>=0)
         acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardAct(\'editor\',\'deadline\','+t.id+')">'+(t.deadline_req_status==='pending'?'Extension Pending':'Request Deadline')+'</button>';
-      if(t.creator_type==='youtuber') acts+='<button class="ptc-btn" onclick="event.stopPropagation();edtChatCreator('+t.id+')">Chat with YouTuber</button>';
+      var _euc=t.unread_total||0; var _eb=(_euc>0?' <span class="chat-badge">'+_euc+'</span>':''); var _ebl=(_euc>0?' chat-blink':'');
+      if(t.creator_type==='youtuber') acts+='<button class="ptc-btn'+_ebl+'" onclick="event.stopPropagation();edtChatCreator('+t.id+')">\uD83D\uDCAC Chat with YouTuber'+_eb+'</button>';
+      else acts+='<button class="ptc-btn'+_ebl+'" onclick="event.stopPropagation();edtChatPM('+t.id+')">\uD83D\uDCAC Chat with PM'+_eb+'</button>';
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
     } else if(portal==='graphics'){
       if(g.status==='new'||g.status==='pending') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'graphics\','+t.id+',\'/start\')">Start Designing</button>';
@@ -22705,7 +22769,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       else if(g.status==='changes'){ acts+='<button class="ptc-btn" onclick="event.stopPropagation();gfxChangesView('+t.id+')">View Changes</button>';
         acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();gfxSubmitModal('+t.id+')">Submit New Thumbnail</button>'; }
       if(g.reference_image||g.instructions) acts+='<button class="ptc-btn ptc-ref-blink" onclick="event.stopPropagation();gfxReference('+t.id+')"><span class="rev-dot"></span>Reference &amp; Brief</button>';
-      acts+='<button class="ptc-btn'+(g.status==='changes'?' ptc-ok':'')+'" onclick="event.stopPropagation();gfxChat('+t.id+')">Chat with PM'+(t.comment_count?(' ('+t.comment_count+')'):'')+'</button>';
+      acts+='<button class="ptc-btn'+(t.unread_total>0?' chat-blink':(g.status==='changes'?' ptc-ok':''))+'" onclick="event.stopPropagation();gfxChat('+t.id+')">\uD83D\uDCAC Chat with PM'+(t.unread_total>0?(' <span class="chat-badge">'+t.unread_total+'</span>'):'')+'</button>';
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
     } else if(portal==='youtuber'){
       if(lc==='creator_assigned'||lc==='creator_working') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodCardAct(\'youtuber\',\'submit\','+t.id+')">Submit Video</button>';
@@ -22741,6 +22805,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(t.youtube_url||t.submitted_link||t.edited_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+esc(t.youtube_url||t.submitted_link||t.edited_link)+'\',\'_blank\')">Open Video</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodConvo('+t.id+')">Video Needs'+(t.comment_count?(' ('+t.comment_count+')'):'')+'</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
+    var _cu=t.unread||{}; var _ctot=t.unread_total||((_cu.teacher||0)+(_cu.graphics||0)+(_cu.editor||0));
+    acts+='<button class="ptc-btn ptc-chat'+(_ctot>0?' chat-blink':'')+'" onclick="event.stopPropagation();prodChatMenu('+t.id+','+(_cu.teacher||0)+','+(_cu.graphics||0)+','+(_cu.editor||0)+')">\uD83D\uDCAC Chat'+(_ctot>0?' <span class="chat-badge">'+_ctot+'</span>':'')+'</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodEditTask('+t.id+')">Edit</button>';
     if(t.youtube_url) acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodNotifyStudents('+t.id+')">Send to Students</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodMarkOld('+t.id+','+(t.is_old?'false':'true')+')">'+(t.is_old?'Mark New':'Mark Old')+'</button>';

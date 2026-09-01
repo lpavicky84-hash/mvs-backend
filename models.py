@@ -1613,3 +1613,14 @@ class VideoTaskComment(Base):
     attachment_url = Column(String(600), default="")   # optional image/screenshot in chat (R2 url)
     audience = Column(String(20), default="creator")    # creator (teacher-facing) | internal (PM/graphics/admin only)
     created_at = Column(DateTime, default=func.now())
+
+
+class VideoTaskChatRead(Base):
+    """Per-user read marker for a task's chat thread (one row per user+task+audience).
+    Unread = comments in that audience with id > last_read_id and not authored by the user."""
+    __tablename__ = "video_task_chat_reads"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    task_id = Column(Integer, ForeignKey("video_tasks.id", ondelete="CASCADE"), index=True)
+    audience = Column(String(20), default="")
+    last_read_id = Column(Integer, default=0)

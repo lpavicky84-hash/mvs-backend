@@ -250,13 +250,24 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
                 pass
         return o
 
-    return {"total": total, "page": page, "size": size,
-            "tasks": [_task_out_collab(t) for t in rows]}
+    _outs = [_task_out_collab(t) for t in rows]
+    try:
+        from video_tasks import _vtc_unread_bulk
+        _uid = getattr(me, "id", None)
+        _unread = _vtc_unread_bulk(db, _uid, [t.id for t in rows])
+        for _o in _outs:
+            _u = _unread.get(_o.get("id"), {})
+            _o["unread"] = _u
+            _o["unread_total"] = sum(_u.values()) if _u else 0
+    except Exception:
+        pass
+    return {"total": total, "page": page, "size": size, "tasks": _outs}
 
 
 @router.get("/tasks/{tid}/comments")
 def pm_task_comments(tid: int, audience: str = "", db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
-    from video_tasks import _vtc_list
+    from video_tasks import _vtc_list, _vtc_mark_read
+    _vtc_mark_read(db, me, tid, (audience or "creator"))
     return {"comments": _vtc_list(db, tid, (audience or None))}
 
 

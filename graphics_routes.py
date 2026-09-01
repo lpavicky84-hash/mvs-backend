@@ -132,6 +132,13 @@ def gfx_tasks(status: str = "", filter: str = "", db: Session = Depends(get_db),
             continue
         row = pc.task_out(db, t, light=True)
         out.append(row)
+    try:
+        from video_tasks import _vtc_unread_bulk
+        _un = _vtc_unread_bulk(db, getattr(me, "id", None), [_o.get("id") for _o in out if _o.get("id")])
+        for _o in out:
+            _o["unread_total"] = (_un.get(_o.get("id"), {}) or {}).get("graphics", 0)
+    except Exception:
+        pass
     return {"tasks": out}
 
 
@@ -148,7 +155,8 @@ def gfx_task_detail(tid: int, db: Session = Depends(get_db), me=Depends(get_grap
 def gfx_comments(tid: int, db: Session = Depends(get_db), me=Depends(get_graphics)):
     sp = _me_staff(db, me)
     _my_gtask(db, sp, tid)  # ensures this designer owns the thumbnail task
-    from video_tasks import _vtc_list
+    from video_tasks import _vtc_list, _vtc_mark_read
+    _vtc_mark_read(db, me, tid, "internal")
     return {"comments": _vtc_list(db, tid, "internal")}
 
 
