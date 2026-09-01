@@ -8758,22 +8758,33 @@ async function tvtOpenNeeds(id){
   const t=(window._tvtMap||{})[id]||{};
   const remarks=(t.remarks||'').trim();
   const refVid=(t.reference_video||'').trim()||((/^https?:\/\//i.test((t.reference||'').trim()))?(t.reference||'').trim():'');
-  let comments=[];
-  try{ const d=await api('/api/teacher/video-tasks/'+id+'/comments'); comments=d.comments||[]; }catch(e){}
-  _tvtRenderNeeds(id,t,remarks,refVid,comments);
+  _tvtRenderNeeds(id,t,remarks,refVid);
 }
-function _tvtRenderNeeds(id,t,remarks,refVid,comments){
+function _tvtRenderNeeds(id,t,remarks,refVid){
   const refBlock=refVid?`<a href="${esc(refVid)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="margin-bottom:10px">${ic('play')} Open Reference Video</a>`:'';
   const remBlock=remarks?`<div class="tvn-remarks"><div class="tvn-h">${ic('alert')} What the manager needs</div><div class="tvn-body">${esc(remarks)}</div></div>`:'<div class="tvn-remarks"><div class="tvn-body" style="color:var(--text-muted)">No specific remarks were added.</div></div>';
+  showModal('Video Needs — '+esc(t.title||''),
+    `${refBlock}${remBlock}<div style="margin-top:12px;font-size:.82rem;color:var(--text-muted)">Kuch poochhna hai? \u201cChat with PM\u201d se manager ko message karo.</div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" onclick="closeModal();tvtChatPM(${id})">${ic('send')} Chat with PM</button>`);
+}
+async function tvtChatPM(id){
+  const t=(window._tvtMap||{})[id]||{};
+  let comments=[];
+  try{ const d=await api('/api/teacher/video-tasks/'+id+'/comments'); comments=d.comments||[]; }catch(e){}
+  _tvtRenderChat(id,t,comments);
+}
+function _tvtRenderChat(id,t,comments){
   const thread=comments.length?comments.map(c=>{
     const mine=(c.role==='teacher');
-    return `<div class="tvn-msg ${mine?'mine':'them'}"><div class="tvn-msg-a">${esc(c.author)}${mine?'':` · ${c.role==='admin'?'Admin':'Manager'}`}</div><div class="tvn-msg-b">${esc(c.message)}</div><div class="tvn-msg-t">${esc(c.at)}</div></div>`;
-  }).join(''):'<div style="color:var(--text-muted);font-size:.82rem;padding:6px 0">No messages yet. If something is unclear, ask below.</div>';
-  showModal('Video Needs — '+esc(t.title||''),
-    `${refBlock}${remBlock}
-     <div class="tvn-thread" id="tvn-thread">${thread}</div>
-     <div class="form-group" style="margin-top:10px"><label>Reply / ask a question</label><textarea id="tvn-reply" class="input" rows="2" placeholder="Type your message to the manager..."></textarea></div>`,
+    const tick=mine?`<span style="margin-left:5px;font-weight:900;letter-spacing:-2px;color:${c.seen?'#2f80ed':'#9aa0a6'}">\u2713\u2713</span>`:'';
+    const img=c.attachment_url?`<img src="${esc(c.attachment_url)}" onclick="window.open('${esc(c.attachment_url)}','_blank')" style="max-width:180px;max-height:140px;border-radius:8px;margin-top:5px;cursor:pointer;display:block">`:'';
+    return `<div class="tvn-msg ${mine?'mine':'them'}"><div class="tvn-msg-a">${esc(c.author)}${mine?'':` · ${c.role==='admin'?'Admin':'Manager'}`}</div>${c.message?`<div class="tvn-msg-b">${esc(c.message)}</div>`:''}${img}<div class="tvn-msg-t">${esc(c.at)}${tick}</div></div>`;
+  }).join(''):'<div style="color:var(--text-muted);font-size:.82rem;padding:6px 0">No messages yet. Ask the manager anything about this video.</div>';
+  showModal('Chat with PM — '+esc(t.title||''),
+    `<div class="tvn-thread" id="tvn-thread">${thread}</div>
+     <div class="form-group" style="margin-top:10px"><label>Message</label><textarea id="tvn-reply" class="input" rows="2" placeholder="Type your message to the manager..."></textarea></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" onclick="tvtSendNeeds(${id})">${ic('send')} Send</button>`);
+  const th=document.getElementById('tvn-thread'); if(th) th.scrollTop=th.scrollHeight;
 }
 async function tvtSendNeeds(id){
   const el=document.getElementById('tvn-reply'); const msg=(el?el.value:'').trim();
@@ -8781,12 +8792,10 @@ async function tvtSendNeeds(id){
   try{
     await api('/api/teacher/video-tasks/'+id+'/comments','POST',{message:msg});
     toast('Sent to the manager');
-    // reload comments in place
+    // reload the chat thread in place
     const t=(window._tvtMap||{})[id]||{};
-    const remarks=(t.remarks||'').trim();
-    const refVid=(t.reference_video||'').trim()||((/^https?:\/\//i.test((t.reference||'').trim()))?(t.reference||'').trim():'');
     let comments=[]; try{ const d=await api('/api/teacher/video-tasks/'+id+'/comments'); comments=d.comments||[]; }catch(e){}
-    _tvtRenderNeeds(id,t,remarks,refVid,comments);
+    _tvtRenderChat(id,t,comments);
     if(typeof loadTVTasks==='function') loadTVTasks();
   }catch(e){ toast((e&&e.message)||'Could not send',true); }
 }
@@ -8831,7 +8840,8 @@ async function loadTVTasks(){
       const _refVid=(t.reference_video||'').trim()||((/^https?:\/\//i.test((t.reference||'').trim()))?(t.reference||'').trim():'');
       const _refBtn=_refVid?`<span class="vt-refvid-btn" onclick="window.open('${esc(_refVid).replace(/'/g,"")}','_blank','noopener')">${ic('play')} Reference Video</span>`:'';
       const _refText=(!_refVid&&(t.reference||'').trim())?`<span>Reference: ${esc(t.reference)}</span>`:'';
-      const _needsBtn=(t.remarks||t.comment_count)?`<span class="vt-needs-btn" onclick="tvtOpenNeeds(${t.id})">${ic('alert')} Video Needs${t.comment_count?` <b>(${t.comment_count})</b>`:''}</span>`:'';
+      const _needsBtn=((t.remarks||'').trim()||(t.reference_video||'').trim())?`<span class="vt-needs-btn" onclick="tvtOpenNeeds(${t.id})">${ic('alert')} Video Needs</span>`:'';
+      const _chatBtn=`<span class="vt-needs-btn" onclick="tvtChatPM(${t.id})">${ic('send')} Chat with PM${t.unread_count?` <b style="background:#dc2626;color:#fff;border-radius:999px;padding:0 6px;margin-left:3px">${t.unread_count}</b>`:''}</span>`;
       const _finalRej=(t.status==='rejected'||t.status==='reshoot')&&t.no_resubmit;
       const _sbHead=(t.status==='reshoot')?`<div class="vt-resh-head">${ic('refresh')} Reshoot needed${t.review_remarks?` — ${esc(t.review_remarks)}`:''}</div>`
         :(t.status==='rejected')?`<div class="vt-resh-head" style="background:rgba(220,38,38,.1);color:#b91c1c;border-color:rgba(220,38,38,.35)">${ic('alert')} Rejected${t.review_remarks?` — ${esc(t.review_remarks)}`:''}</div>`:'';
@@ -8870,7 +8880,7 @@ async function loadTVTasks(){
           ${t.deadline_nice?`<span class="${dlBlink}">${ic('clock')} ${dlLbl}: <b>${esc(t.deadline_nice)}</b></span>`:''}
           ${_open&&t.seconds_left!=null?`<span data-tvt-cd="${t.id}" data-secs="${t.seconds_left}" style="font-weight:800"></span>`:''}
           ${t.reference?_refText:''}
-          ${(_refBtn||_needsBtn)?`<span style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px">${_refBtn}${_needsBtn}</span>`:''}
+          ${(_refBtn||_needsBtn)?`<span style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px">${_refBtn}${_needsBtn}${_chatBtn}</span>`:''}
           ${t.submitted_at?`<span>${ic('check')} Submitted: ${esc(t.submitted_at)}${isU?'':` — <b>${t.on_time?'on time':'delayed'}</b>`}</span>`:''}
           ${upTxt?`<span>${upTxt}</span>`:''}
           ${!_open&&t.review_remarks?`<span>Review remarks: ${esc(t.review_remarks)}</span>`:''}
@@ -9576,7 +9586,7 @@ function _avtCard(t){
       const histBtn=`<button class="btn btn-ghost btn-sm" onclick="vtStatusOpen(${t.id},'a',event)" title="See the full status timeline">${ic('history')} Timeline</button>`;
       const _aRefv=(t.reference_video||'').trim()||((/^https?:\/\//i.test((t.reference||'').trim()))?(t.reference||'').trim():'');
       const refvBtn=_aRefv?`<button class="btn btn-sm vt-refv-btn" onclick="window.open('${esc(_aRefv).replace(/'/g,'')}','_blank','noopener')" title="Teacher's reference video">${ic('play')} Reference Video</button>`:'';
-      const convoBtn=`<button class="btn btn-ghost btn-sm" onclick="aVtConvo(${t.id})" title="Reference video, remarks and the conversation with the teacher">${ic('alert')} Video Needs${t.comment_count?` (${t.comment_count})`:''}</button>`;
+      const convoBtn=`<button class="btn btn-ghost btn-sm" onclick="aVtConvo(${t.id})" title="Reference video, remarks and the conversation with the teacher">${ic('alert')} Video Needs</button>`;
       const _lcAssign=['approved','editor_assigned','editing','editing_paused','editing_done','qc_pending','qc_changes','ready_for_youtube'];
       const asgEditorBtn=(_lcAssign.indexOf(t.lifecycle)>=0 && !t.editor_name)
         ?`<button class="btn btn-ghost btn-sm" onclick="aAssignProd(${t.id},'editor')" title="Assign an editor to this video">${ic('play')} ${t.editor_id?'Reassign Editor':'Assign Editor'}</button>`:'';
@@ -16999,6 +17009,8 @@ function initResponsiveCss(){
     '.gfx-refcell{position:relative;border:1px solid var(--border,#d9cdae);border-radius:10px;overflow:hidden;background:#000}',
     '.gfx-refcell img{width:100%;height:110px;object-fit:cover;display:block;cursor:zoom-in}',
     '.gfx-refn{position:absolute;left:6px;top:6px;background:rgba(0,0,0,.72);color:#fff;font-size:.66rem;font-weight:800;padding:2px 8px;border-radius:999px;z-index:1}',
+    '.ref-cell.sel-final{border-color:#2e9e6b !important;box-shadow:0 0 0 3px rgba(46,158,107,.28)}',
+    '.ref-cell.sel-final .ref-n{background:#2e9e6b}',
     /* reference gallery in task-detail Graphics tab (view + download) */
     '.ref-gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:8px}',
     '.ref-cell{position:relative;border:1px solid var(--border,#d9cdae);border-radius:11px;overflow:hidden;background:#000}',
@@ -22098,7 +22110,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var id=window._pmThumbId;
     var ep,body;
     function _needRem(){ if(_ta){ _ta.classList.add('p-area-req'); _ta.focus(); setTimeout(function(){ _ta.classList.remove('p-area-req'); },2500); } toast('Please add remarks \u2014 batao designer ko kya change karna hai',true); }
-    if(action==='approve'){ ep='/thumbnail-approve'; body={quality_rating:window._pmStar||0,quality_note:rem,selected_thumbnail:(window._pmSelThumb||'')}; }
+    if(action==='approve'){
+      if(!(window._pmStar>=1)){ toast('Please rate the designer (tap 1\u20135 stars) before approving',true); var _sb=document.getElementById('pm-stars'); if(_sb){ _sb.classList.add('stars-req'); setTimeout(function(){ _sb.classList.remove('stars-req'); },1800); } return; }
+      ep='/thumbnail-approve'; body={quality_rating:window._pmStar,quality_note:rem,selected_thumbnail:(window._pmSelThumb||'')};
+    }
     else if(action==='changes'){
       // Smooth: mark for a new thumbnail in the background, then open the PM<->Graphics chat with the
       // selected thumbnail pre-attached and the note pre-filled — PM edits and hits Send when ready.
@@ -22912,7 +22927,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var _refv=(t.reference_video||'').trim()||((/^https?:\/\//i.test((t.reference||'').trim()))?(t.reference||'').trim():'');
     if(_refv) acts+='<button class="ptc-btn ptc-refv-blink" onclick="event.stopPropagation();window.open(\''+esc(_refv)+'\',\'_blank\')"><span class="rev-dot"></span>Reference Video</button>';
     if(t.youtube_url||t.submitted_link||t.edited_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+esc(t.youtube_url||t.submitted_link||t.edited_link)+'\',\'_blank\')">Open Video</button>';
-    acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodConvo('+t.id+')">Video Needs'+(t.comment_count?(' ('+t.comment_count+')'):'')+'</button>';
+    acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodConvo('+t.id+')">Video Needs</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
     var _cu=t.unread||{}; var _ctot=t.unread_total||((_cu.teacher||0)+(_cu.graphics||0)+(_cu.editor||0));
     acts+='<button class="ptc-btn ptc-chat'+(_ctot>0?' chat-blink':'')+'" onclick="event.stopPropagation();prodChatMenu('+t.id+','+(_cu.teacher||0)+','+(_cu.graphics||0)+','+(_cu.editor||0)+')">\uD83D\uDCAC Chat'+(_ctot>0?' <span class="chat-badge">'+_ctot+'</span>':'')+'</button>';
@@ -23753,13 +23768,15 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(!g.graphics_name && (g.status==='new'||!g.status)) return '<div class="pd-empty">No graphics member assigned yet.</div>';
       var _grefs=(g.reference_images&&g.reference_images.length)?g.reference_images:((g.reference_image)?[g.reference_image]:[]);
       var _refGal=_grefs.length?('<div class="p-sec" style="margin-top:12px">Reference thumbnail'+(_grefs.length>1?'s ('+_grefs.length+')':'')+'</div><div class="ref-gal">'+_grefs.map(function(u,i){ return '<div class="ref-cell"><span class="ref-n">Reference '+(i+1)+'</span><img src="'+esc(u)+'" onclick="prodLightbox(\''+esc(u)+'\')" title="Click to view full"><div class="ref-acts"><button class="ref-btn" onclick="prodLightbox(\''+esc(u)+'\')">View</button><a class="ref-btn" href="'+esc(u)+'" download target="_blank" rel="noopener">Download</a></div></div>'; }).join('')+'</div>'):'';
+      var _tc=(g.thumbnail_candidates&&g.thumbnail_candidates.length)?g.thumbnail_candidates:((g.thumbnail_url)?[g.thumbnail_url]:[]);
+      var _thumbGal=_tc.length?('<div class="p-sec" style="margin-top:12px">Submitted thumbnail'+(_tc.length>1?'s ('+_tc.length+')':'')+(g.status==='approved'?' \u2014 \u2713 final selected':'')+'</div><div class="ref-gal">'+_tc.map(function(u,i){ var fin=(g.status==='approved'&&u===g.thumbnail_url); return '<div class="ref-cell'+(fin?' sel-final':'')+'"><span class="ref-n">Thumbnail '+(i+1)+(fin?' \u2713 FINAL':'')+'</span><img src="'+esc(u)+'" onclick="prodLightbox(\''+esc(u)+'\')" title="Click to view full"><div class="ref-acts"><button class="ref-btn" onclick="prodLightbox(\''+esc(u)+'\')">View</button><a class="ref-btn" href="'+esc(u)+'" download target="_blank" rel="noopener">Download</a></div></div>'; }).join('')+'</div>'):'';
       return '<div class="pd-kv">'+
         _kv('Graphics Member', esc(g.graphics_name||'Unassigned'))+
         _kv('Status', esc(g.status||'new'))+
         _kv('Revisions', String(g.revision_count||0))+
         _kv('Instructions', esc(g.instructions||''))+
         _kv('Thumbnail', g.thumbnail_url?('<a href="'+esc(g.thumbnail_url)+'" target="_blank">Open thumbnail</a>'):'Not submitted')+
-      '</div>'+_refGal+(g.thumbnail_url?'<div class="p-sec" style="margin-top:12px">Submitted thumbnail</div><div class="p-gallery"><img src="'+esc(g.thumbnail_url)+'" onclick="prodLightbox(this.src)"></div>':'');
+      '</div>'+_refGal+_thumbGal;
     }
     if(tab==='qc'){
       var att=(t.attachments||[]).filter(function(a){ return ['reference','thumbnail','chat'].indexOf(a.kind)<0; });

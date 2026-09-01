@@ -907,13 +907,14 @@ def thumbnail_approve(tid: int, payload: dict = Body(default={}),
     if _sel:
         g.thumbnail_url = _sel
     t.thumbnail_link = g.thumbnail_url or t.thumbnail_link
-    # optional PM quality rating for the thumbnail
+    # PM must rate the designer to approve — no rating, no approval.
     try:
         rt = int(payload.get("quality_rating") or 0)
-        if 1 <= rt <= 5:
-            g.quality_rating = rt
     except Exception:
-        pass
+        rt = 0
+    if not (1 <= rt <= 5):
+        raise HTTPException(400, "A 1\u20135 star rating is required to approve the thumbnail")
+    g.quality_rating = rt
     g.quality_note = (payload.get("quality_note") or payload.get("remarks") or g.quality_note or "")[:400]
     db.add(TaskReview(task_id=t.id, kind="thumbnail", reviewer_user_id=me.id,
                       decision="approved", remarks=g.quality_note or "",
