@@ -141,11 +141,15 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
     # projects area, so for creator_type=youtuber we show EVERY kind (warna youtuber ke
     # one-shot/rapid/project tasks kahin nahi dikhte).
     if (creator_type or "").strip().lower() != "youtuber":
-        query = query.filter(or_(VideoTask.kind == None, VideoTask.kind == "",
-                                 VideoTask.kind == "normal"))
-        # YouTuber tasks apne "YouTuber Tasks" section me hi dikhein — regular Tasks list me nahi
+        # YouTuber tasks live in their own "YouTuber Tasks" section — never in the general list.
         query = query.filter(or_(VideoTask.creator_type == None,
                                  VideoTask.creator_type != "youtuber"))
+        # Projects / urgent videos have their own sections, so hide them ONLY in the default
+        # (no-status) view. The moment a specific status is filtered (e.g. "Uploaded"), show
+        # EVERY kind so nothing is missed — even an urgent or project collab video.
+        if not (status or "").strip():
+            query = query.filter(or_(VideoTask.kind == None, VideoTask.kind == "",
+                                     VideoTask.kind == "normal"))
     if teacher_id:
         # collab-aware: match the primary teacher OR any collaborator (precise JSON
         # boundary patterns against json.dumps format "[2, 3]" so id 1 != 11).

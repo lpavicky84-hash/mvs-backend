@@ -16942,6 +16942,15 @@ function initResponsiveCss(){
     '@keyframes pwPrioBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(220,38,38,.45)}50%{opacity:.5;box-shadow:0 0 0 5px rgba(220,38,38,.02)}}',
     /* active clipboard-paste target highlight (Assign Graphics reference vs thumbnail) */
     '.aw-drop.aw-paste-on{border-color:#c99a2e !important;box-shadow:0 0 0 2px rgba(201,154,46,.3);background:rgba(201,154,46,.06)}',
+    /* tap-to-select collab teachers (production Assign Work) */
+    '.aw-ms{max-height:230px;overflow-y:auto;border:1px solid var(--border,#d9cdae);border-radius:12px;padding:5px;background:var(--surface,#fff)}',
+    '.aw-ms-row{display:flex;align-items:center;gap:10px;padding:10px 11px;border-radius:9px;cursor:pointer;font-size:.95rem;transition:background .12s}',
+    '.aw-ms-row:hover{background:rgba(201,162,39,.08)}',
+    '.aw-ms-row.on{background:rgba(46,158,107,.12)}',
+    '.aw-ms-row.on .aw-ms-nm{font-weight:700}',
+    '.aw-ms-ck{width:22px;height:22px;flex:0 0 22px;border-radius:6px;border:1.5px solid var(--border,#c9bd9a);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:.8rem}',
+    '.aw-ms-row.on .aw-ms-ck{background:#2e9e6b;border-color:#2e9e6b}',
+    'body.dark .aw-ms{background:#1b1508;border-color:#2c2410}',
     /* ===== Premium lecture-report delete button ===== */
     '.lec-del{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;flex:0 0 38px;border-radius:11px;border:1px solid rgba(220,38,38,.28);background:rgba(220,38,38,.08);color:#dc2626;cursor:pointer;transition:background .15s,transform .1s}',
     '.lec-del:hover{background:rgba(220,38,38,.16)}',
@@ -24252,10 +24261,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       // internally, everyone else is a collaborator. All of them get the task.
       if(d.creator_type==='teacher' && isCollab){
         var _allIds=d.collab_all_ids||(d.teacher_id?[d.teacher_id].concat(d.collab_teacher_ids||[]):(d.collab_teacher_ids||[]).slice());
-        html+='<div class="p-field"><label>Select teachers for this collaboration <span style="color:var(--muted);font-weight:600">(tap to pick 2 or more)</span></label>'+
-          '<select class="p-select" id="aw-collab-all" multiple size="7" onchange="awCollabAll()" style="height:auto;min-height:180px;padding:6px">'+
-          list.map(function(m){ return '<option value="'+m.id+'"'+(_allIds.indexOf(m.id)>=0?' selected':'')+'>'+esc(m.name)+'</option>'; }).join('')+
-          '</select><div class="p-opt" id="aw-collab-note">'+(window._awCollabNoteHtml?window._awCollabNoteHtml(_allIds.length):(_allIds.length+' selected'))+'</div></div>';
+        window._aw.data.collab_all_ids=_allIds.slice();
+        html+='<div class="p-field"><label>Select teachers for this collaboration <span style="color:var(--muted);font-weight:600">(tap names \u2014 pick 2 or more)</span></label>'+
+          '<div class="aw-ms" id="aw-collab-ms">'+
+          list.map(function(m){ var on=_allIds.indexOf(m.id)>=0; return '<div class="aw-ms-row'+(on?' on':'')+'" onclick="awCollabTapTeacher('+m.id+',this)"><span class="aw-ms-ck">'+(on?'\u2713':'')+'</span><span class="aw-ms-nm">'+esc(m.name)+'</span></div>'; }).join('')+
+          '</div>'+
+          '<div class="p-opt" id="aw-collab-note">'+(window._awCollabNoteHtml?window._awCollabNoteHtml(_allIds.length):(_allIds.length+' selected'))+'</div></div>';
       } else {
         html+='<div class="p-field"><label>'+(d.creator_type==='teacher'?('Teacher (subjects filter to this teacher)'):'YouTuber')+'</label><select class="p-select" id="aw-creator" onchange="awPickCreator()">'+
           '<option value="">Choose...</option>'+list.map(function(m){ return '<option value="'+m.id+'"'+(sel===m.id?' selected':'')+'>'+esc(m.name)+(m.approval_required!==undefined?(m.approval_required?' (approval on)':' (approval off)'):'')+'</option>'; }).join('')+'</select></div>';
@@ -24337,15 +24348,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       : 'Pick <b>2 or more</b> teachers to collaborate. (Subject selection is not needed for a collab.)';
   }
   window._awCollabNoteHtml=_awCollabNoteHtml;
-  window.awCollabAll=function(){
-    var s=document.getElementById('aw-collab-all'); if(!s) return;
-    var ids=[]; for(var i=0;i<s.options.length;i++){ if(s.options[i].selected) ids.push(parseInt(s.options[i].value,10)); }
-    var d=window._aw.data;
-    d.collab_all_ids=ids;
-    d.teacher_id=ids[0]||0;             // first pick = primary (internal, not shown)
-    d.collab_teacher_ids=ids.slice(1);  // the rest are collaborators
-    var note=document.getElementById('aw-collab-note'); if(note) note.innerHTML=_awCollabNoteHtml(ids.length);
+  window.awCollabTapTeacher=function(id,el){
+    var d=window._aw.data; d.collab_all_ids=d.collab_all_ids||[];
+    var i=d.collab_all_ids.indexOf(id);
+    if(i>=0){ d.collab_all_ids.splice(i,1); if(el){ el.classList.remove('on'); var c=el.querySelector('.aw-ms-ck'); if(c)c.textContent=''; } }
+    else { d.collab_all_ids.push(id); if(el){ el.classList.add('on'); var c2=el.querySelector('.aw-ms-ck'); if(c2)c2.textContent='\u2713'; } }
+    d.teacher_id=d.collab_all_ids[0]||0;
+    d.collab_teacher_ids=d.collab_all_ids.slice(1);
+    var note=document.getElementById('aw-collab-note'); if(note) note.innerHTML=(window._awCollabNoteHtml?window._awCollabNoteHtml(d.collab_all_ids.length):(d.collab_all_ids.length+' selected'));
   };
+  window.awCollabAll=function(){ /* legacy no-op — replaced by awCollabTapTeacher */ };
   window.awThumbToggle=function(v){ _awSave(); window._aw.data.thumbnail_required=(v==='yes'); _awRender(); };
   function _awReadImg(file){ if(!file||!/^image\//.test(file.type)) { toast('Please choose an image file',true); return; } if(file.size>5*1024*1024){ toast('Image too large (max 5MB)',true); return; } var r=new FileReader(); r.onload=function(){ window._aw.data.thumb_upload=r.result; _awRender(); }; r.readAsDataURL(file); }
   function _awReadRef(file){ if(!file||!/^image\//.test(file.type)) { toast('Please choose an image file',true); return; } if(file.size>5*1024*1024){ toast('Image too large (max 5MB)',true); return; } var r=new FileReader(); r.onload=function(){ window._aw.data.graphics_reference_upload=r.result; _awRender(); }; r.readAsDataURL(file); }
