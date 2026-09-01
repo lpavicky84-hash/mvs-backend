@@ -17015,6 +17015,7 @@ function initResponsiveCss(){
     '.thumb-n{position:absolute;left:7px;top:7px;background:rgba(0,0,0,.72);color:#fff;font-size:.66rem;font-weight:800;padding:2px 8px;border-radius:999px;z-index:1}',
     '.thumb-pick{position:absolute;right:7px;top:7px;width:22px;height:22px;border-radius:50%;background:#2e9e6b;color:#fff;font-weight:900;font-size:.8rem;display:none;align-items:center;justify-content:center;z-index:1}',
     '.thumb-cell.sel .thumb-pick{display:flex}',
+    '.thumb-cell.sel .thsel{color:#2e9e6b;font-weight:900}',
     '.thumb-acts{display:flex;background:var(--surface,#fff)}',
     '.ref-btn:hover{background:rgba(201,162,39,.1)}',
     /* chat presence (online / last seen) + typing indicator */
@@ -21931,7 +21932,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var fi=document.getElementById('chat-file'); if(fi) fi.addEventListener('change',function(e){ var f=(e.target.files||[])[0]; if(f) _chatReadImg(f,'chat-prev'); });
     window._chatPasteH=function(e){ if(!document.getElementById('chat-msg')){ document.removeEventListener('paste',window._chatPasteH); return; } var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ _chatReadImg(items[i].getAsFile(),'chat-prev'); e.preventDefault(); } } };
     document.addEventListener('paste',window._chatPasteH);
-    var mi=document.getElementById('chat-msg'); if(mi){ mi.addEventListener('input',_chatTypingPing); mi.focus(); }
+    var mi=document.getElementById('chat-msg'); if(mi){ mi.addEventListener('input',_chatTypingPing);
+      if(window._chatPendingMsg){ mi.value=window._chatPendingMsg; window._chatPendingMsg=null; }
+      mi.focus(); }
+    if(window._chatPendingUrl){ var pv=document.getElementById('chat-prev'); if(pv){ pv.innerHTML='<div style="display:inline-flex;align-items:center;gap:8px;background:var(--surface-2,#f0ead9);border:1px solid var(--border);border-radius:9px;padding:5px 9px"><img src="'+window._chatPendingUrl+'" style="height:40px;border-radius:5px"><span style="font-size:.76rem;font-weight:700;color:var(--muted)">Thumbnail attached \u2014 add a note &amp; Send</span><button class="p-btn" style="padding:2px 8px" onclick="window._chatPendingUrl=null;var e=document.getElementById(\'chat-prev\');if(e)e.innerHTML=\'\'">\u00d7</button></div>'; } }
   }
   function _chatTypingPing(){
     if(!window._chatPingUrl) return;
@@ -21985,11 +21989,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   window.prodGfxChatSend=function(id){
     var inp=document.getElementById('chat-msg'); var msg=inp?(inp.value||'').trim():'';
-    if(!msg && !window._chatImg) return;
-    var body={message:msg,audience:'internal'}; if(window._chatImg) body.attachment=window._chatImg;
-    if(inp) inp.value=''; var keep=window._chatImg; window._chatImg=null;
+    if(!msg && !window._chatImg && !window._chatPendingUrl) return;
+    var body={message:msg,audience:'internal'}; if(window._chatImg) body.attachment=window._chatImg; else if(window._chatPendingUrl) body.attachment_url=window._chatPendingUrl;
+    if(inp) inp.value=''; var keep=window._chatImg; var keepU=window._chatPendingUrl; window._chatImg=null; window._chatPendingUrl=null;
+    var pv=document.getElementById('chat-prev'); if(pv) pv.innerHTML='';
     api(P.production.api+'/tasks/'+id+'/comments','POST',body).then(function(){ prodGfxChat(id); })
-      .catch(function(e){ toast((e&&e.message)||'Failed',true); window._chatImg=keep; });
+      .catch(function(e){ toast((e&&e.message)||'Failed',true); window._chatImg=keep; window._chatPendingUrl=keepU; });
   };
   // PM <-> Editor chat (audience=editor; editor reads/writes the same via their portal)
   window.prodEdtChat=function(id){
@@ -22054,7 +22059,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       window._pmSelThumb=cands[0]||gx.thumbnail_url||'';
       var old=document.getElementById('prod-modal'); if(old) old.remove();
       var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
-      var gal=cands.length?('<div class="p-field"><label>Submitted thumbnails <span style="color:var(--muted);font-weight:600">(tap one to select the final)</span></label><div class="thumb-gal">'+cands.map(function(u,i){ return '<div class="thumb-cell'+(u===window._pmSelThumb?' sel':'')+'" data-url="'+esc(u)+'" onclick="pmSelectThumb(this,\''+esc(u)+'\')"><span class="thumb-n">Thumbnail '+(i+1)+'</span><span class="thumb-pick">\u2713</span><img src="'+esc(u)+'"><div class="thumb-acts"><button class="ref-btn" onclick="event.stopPropagation();prodLightbox(\''+esc(u)+'\')">View</button><a class="ref-btn" href="'+esc(u)+'" download target="_blank" rel="noopener" onclick="event.stopPropagation()">Download</a></div></div>'; }).join('')+'</div></div>'):'<div class="p-empty">No image preview</div>';
+      var gal=cands.length?('<div class="p-field"><label>Submitted thumbnails <span style="color:var(--muted);font-weight:600">(tap a thumbnail or press Select)</span></label><div class="thumb-gal">'+cands.map(function(u,i){ return '<div class="thumb-cell'+(u===window._pmSelThumb?' sel':'')+'" data-url="'+esc(u)+'" onclick="pmSelectThumb(this)"><span class="thumb-n">Thumbnail '+(i+1)+'</span><span class="thumb-pick">\u2713</span><img src="'+esc(u)+'"><div class="thumb-acts"><button class="ref-btn thsel" onclick="event.stopPropagation();pmSelectThumb(this.closest(\'.thumb-cell\'))">'+(u===window._pmSelThumb?'\u2713 Selected':'Select')+'</button><button class="ref-btn" onclick="event.stopPropagation();prodLightbox(\''+esc(u)+'\')">View</button><a class="ref-btn" href="'+esc(u)+'" download target="_blank" rel="noopener" onclick="event.stopPropagation()">Download</a></div></div>'; }).join('')+'</div></div>'):'<div class="p-empty">No image preview</div>';
       dr.innerHTML='<div class="p-modal" style="max-width:560px">'+
         '<div class="pd-head"><div class="h-title">Thumbnail Review</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
         '<div class="p-modal-body">'+
@@ -22079,7 +22084,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       document.addEventListener('paste',window._pmPasteH);
     }).catch(function(e){ toast((e&&e.message)||'Could not load',true); });
   };
-  window.pmSelectThumb=function(el, url){ window._pmSelThumb=url; var box=el&&el.parentNode; if(box) box.querySelectorAll('.thumb-cell').forEach(function(c){ c.classList.toggle('sel', c===el); }); };
+  window.pmSelectThumb=function(el){ if(!el) return; var url=el.getAttribute('data-url')||''; window._pmSelThumb=url; var box=el.parentNode; if(box) box.querySelectorAll('.thumb-cell').forEach(function(c){ var on=(c===el); c.classList.toggle('sel', on); var b=c.querySelector('.thsel'); if(b) b.textContent=on?'\u2713 Selected':'Select'; }); };
   window._pmSetStar=function(n){ window._pmStar=n; var box=document.getElementById('pm-stars'); if(box) box.querySelectorAll('.gfx-star').forEach(function(s){ s.classList.toggle('on', parseInt(s.getAttribute('data-n'),10)<=n); }); };
   function _pmAddFile(file){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ if(window._pmThumbImgs.length<6){ window._pmThumbImgs.push(rd.result); var box=document.getElementById('pm-prev'); if(box) box.innerHTML=window._pmThumbImgs.map(function(s){ return '<div class="gfx-thumb" style="background-image:url('+s+')"></div>'; }).join(''); } }; rd.readAsDataURL(file); }
   window.pmThumbDecide=function(action){
@@ -22090,17 +22095,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     function _needRem(){ if(_ta){ _ta.classList.add('p-area-req'); _ta.focus(); setTimeout(function(){ _ta.classList.remove('p-area-req'); },2500); } toast('Please add remarks \u2014 batao designer ko kya change karna hai',true); }
     if(action==='approve'){ ep='/thumbnail-approve'; body={quality_rating:window._pmStar||0,quality_note:rem,selected_thumbnail:(window._pmSelThumb||'')}; }
     else if(action==='changes'){
-      // Mark for a new thumbnail, AUTO-SEND the selected thumbnail into the chat (so the designer
-      // sees exactly which one needs changing), then open the PM<->Graphics chat to discuss.
+      // Smooth: mark for a new thumbnail in the background, then open the PM<->Graphics chat with the
+      // selected thumbnail pre-attached and the note pre-filled — PM edits and hits Send when ready.
       if(window._pmPasteH){ document.removeEventListener('paste',window._pmPasteH); window._pmPasteH=null; }
-      var _sel=window._pmSelThumb||''; var _rem=rem||'Is thumbnail mein changes chahiye \u2014 details neeche.';
-      prodDismiss(); toast('Opening chat to discuss changes\u2026');
-      api(P.production.api+'/tasks/'+id+'/thumbnail-changes','POST',{remarks:_rem,images:window._pmThumbImgs}).then(function(){
-        var post=function(){ setTimeout(function(){ prodGfxChat(id); },250); };
-        if(_sel){ api(P.production.api+'/tasks/'+id+'/comments','POST',{message:_rem,audience:'internal',attachment_url:_sel}).then(post).catch(post); }
-        else post();
-        _apiBust(); _refresh('production');
-      }).catch(function(e){ toast((e&&e.message)||'Failed \u2014 try again',true); });
+      var _selU=window._pmSelThumb||''; var _remU=rem||'';
+      api(P.production.api+'/tasks/'+id+'/thumbnail-changes','POST',{remarks:(rem||'Changes needed'),images:window._pmThumbImgs}).then(function(){ _apiBust(); }).catch(function(){});
+      prodDismiss();
+      window._chatPendingUrl=_selU; window._chatPendingMsg=_remU;
+      prodGfxChat(id);
       return;
     }
     else { if(!rem){ _needRem(); return; } ep='/thumbnail-reject'; body={remarks:rem,images:window._pmThumbImgs}; }
@@ -23686,7 +23688,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     try{ if(window._ytPasteH){ document.removeEventListener('paste',window._ytPasteH); window._ytPasteH=null; } }catch(e){}
     try{ var _dw=document.getElementById('prod-drawer'); if(_dw) _dw.remove(); var _fdw=document.getElementById('prod-fdrawer'); if(_fdw) _fdw.remove(); }catch(e){}
     // A chat was open and got marked read → refresh that portal's cards so the unread count clears.
-    try{ if(window._chatPollTimer){ clearInterval(window._chatPollTimer); window._chatPollTimer=null; } window._chatRefetch=null;
+    try{ if(window._chatPollTimer){ clearInterval(window._chatPollTimer); window._chatPollTimer=null; } window._chatRefetch=null; window._chatPendingUrl=null; window._chatPendingMsg=null;
       if(window._chatPingUrl){ try{ api(window._chatPingUrl,'POST',{typing:false}).catch(function(){}); }catch(e){} window._chatPingUrl=null; } }catch(e){}
     try{ if(window._chatDirty){ var _cp=window._chatDirty; window._chatDirty=null; _apiBust(); _refresh(_cp); } }catch(e){} };
   window.prodTab=function(tab){
