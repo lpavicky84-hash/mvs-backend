@@ -21568,13 +21568,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var body={title:title,description:g('yt-desc').trim(),video_type:g('yt-type').trim(),deadline:g('yt-dl'),reference:g('yt-ref').trim(),remarks:g('yt-remarks').trim(),remarks_audience:g('yt-remaud')||'both',urgent:document.getElementById('yt-urgent').checked};
     if((window._ytImgs||[]).length) body.images=window._ytImgs.slice();
     var done=function(){ if(window._ytPasteH){ document.removeEventListener('paste',window._ytPasteH); window._ytPasteH=null; } };
-    _pBusy(true);
     if(window._ytMode==='direct'){
-      var eid=g('yt-editor'); if(!eid){ _pBusy(false); toast('Choose an editor',true); return; }
+      var eid=g('yt-editor'); if(!eid){ toast('Choose an editor',true); return; }
       body.editor_id=eid;
-      api(P.youtuber.api+'/assign-editor','POST',body).then(function(){ done(); prodDismiss(); toast('Editor assigned'); _refresh('youtuber'); }).catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
+      done(); prodDismiss(); toast('Assigning\u2026');
+      api(P.youtuber.api+'/assign-editor','POST',body).then(function(){ toast('Editor assigned'); _apiBust(); _refresh('youtuber'); }).catch(function(e){ toast((e&&e.message)||'Failed \u2014 try again',true); });
     } else {
-      api(P.youtuber.api+'/proposals','POST',body).then(function(){ done(); prodDismiss(); toast('Proposal sent to PM'); _refresh('youtuber'); }).catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
+      done(); prodDismiss(); toast('Sending\u2026');
+      api(P.youtuber.api+'/proposals','POST',body).then(function(){ toast('Proposal sent to PM'); _apiBust(); _refresh('youtuber'); }).catch(function(e){ toast((e&&e.message)||'Failed \u2014 try again',true); });
     }
   };
   // ---- Editor: premium progress modal (ring + slider + history) ----
@@ -21644,11 +21645,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(!link){ toast('Edited video Drive link is required',true); return; }
     var body={edited_link:link,remarks:((document.getElementById('edt-rem')||{}).value||'').trim()};
     if(window._edtImgs.length) body.images=window._edtImgs.slice();
-    _pBusy(true);
-    api(P.editor.api+'/tasks/'+window._edtId+'/submit','POST',body).then(function(){
-      if(window._edtPasteH){ document.removeEventListener('paste',window._edtPasteH); window._edtPasteH=null; }
-      prodDismiss(); toast('Submitted for QC'); _refresh('editor');
-    }).catch(function(e){ _pBusy(false); toast((e&&e.message)||'Submit failed',true); });
+    var _eid=window._edtId;
+    if(window._edtPasteH){ document.removeEventListener('paste',window._edtPasteH); window._edtPasteH=null; }
+    prodDismiss(); toast('Submitting\u2026');
+    api(P.editor.api+'/tasks/'+_eid+'/submit','POST',body).then(function(){
+      toast('Submitted for QC'); _apiBust(); _refresh('editor');
+    }).catch(function(e){ toast((e&&e.message)||'Submit failed \u2014 please try again',true); });
   };
   // ---- PM: Edit QC review (edited video + approve/changes/reject + screenshots + drive refs) ----
   window._qcImgs=[];
@@ -21687,14 +21689,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(action==='approve'){ ep='/qc-approve'; }
     else if(action==='changes'){ if(!rem){ toast('Remarks required',true); return; } ep='/request-edit-changes'; body={remarks:rem,references:ref,images:window._qcImgs}; }
     else { if(!rem){ toast('Remarks required',true); return; } ep='/qc-reject'; body={remarks:rem,images:window._qcImgs}; }
-    _pBusy(true);
+    if(window._qcPasteH){ document.removeEventListener('paste',window._qcPasteH); window._qcPasteH=null; }
+    prodDismiss(); toast(action==='approve'?'Approving\u2026':'Sending\u2026');
     api(P.production.api+'/tasks/'+id+ep,'POST',body).then(function(){
-      if(window._qcPasteH){ document.removeEventListener('paste',window._qcPasteH); window._qcPasteH=null; }
-      prodDismiss();
       if(action==='approve'){ toast('QC approved'); setTimeout(function(){ pmRateModal(id); },300); }
       else { toast(action==='changes'?'Changes requested':'Edit rejected'); }
-      _refresh('production');
-    }).catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
+      _apiBust(); _refresh('production');
+    }).catch(function(e){ toast((e&&e.message)||'Failed \u2014 try again',true); });
   };
   // ---- PM: Quality Rating (overall + 7 dimensions + remarks) ----
   window._rateStars={};
@@ -21790,11 +21791,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var drive=g('gfx-drive').trim();
     if(!window._gfxImgs.length && !drive){ toast('Paste/upload an image or add a Drive link',true); return; }
     var body={images:window._gfxImgs,drive_link:drive,reference:g('gfx-ref').trim(),remarks:g('gfx-remarks').trim()};
-    _pBusy(true);
-    api(P.graphics.api+'/tasks/'+window._gfxTaskId+'/submit','POST',body).then(function(){
-      if(window._gfxPasteH){ document.removeEventListener('paste',window._gfxPasteH); window._gfxPasteH=null; }
-      prodDismiss(); toast('Thumbnail submitted for review'); _refresh('graphics');
-    }).catch(function(e){ _pBusy(false); toast((e&&e.message)||'Submit failed',true); });
+    var tid=window._gfxTaskId;
+    // Optimistic: close now and upload in the background — no 10s blocking wait.
+    if(window._gfxPasteH){ document.removeEventListener('paste',window._gfxPasteH); window._gfxPasteH=null; }
+    prodDismiss(); toast('Submitting thumbnail\u2026');
+    api(P.graphics.api+'/tasks/'+tid+'/submit','POST',body).then(function(){
+      toast('Thumbnail submitted for review'); _apiBust(); _refresh('graphics');
+    }).catch(function(e){ toast((e&&e.message)||'Submit failed \u2014 please try again',true); });
   };
   // ---- Graphics: Changes Required view (remarks + PM attachments + previous thumbnail + resubmit) ----
   window.gfxChangesView=function(id){
@@ -22075,11 +22078,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(action==='approve'){ ep='/thumbnail-approve'; body={quality_rating:window._pmStar||0,quality_note:rem}; }
     else if(action==='changes'){ if(!rem){ _needRem(); return; } ep='/thumbnail-changes'; body={remarks:rem,images:window._pmThumbImgs}; }
     else { if(!rem){ _needRem(); return; } ep='/thumbnail-reject'; body={remarks:rem,images:window._pmThumbImgs}; }
-    _pBusy(true);
+    if(window._pmPasteH){ document.removeEventListener('paste',window._pmPasteH); window._pmPasteH=null; }
+    prodDismiss(); toast('Saving\u2026');
     api(P.production.api+'/tasks/'+id+ep,'POST',body).then(function(){
-      if(window._pmPasteH){ document.removeEventListener('paste',window._pmPasteH); window._pmPasteH=null; }
-      prodDismiss(); toast(action==='approve'?'Thumbnail approved':(action==='changes'?'Changes requested':'Thumbnail rejected')); _refresh('production');
-    }).catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
+      toast(action==='approve'?'Thumbnail approved':(action==='changes'?'Changes requested':'Thumbnail rejected')); _apiBust(); _refresh('production');
+    }).catch(function(e){ toast((e&&e.message)||'Failed \u2014 try again',true); });
   };
   function _eventsBanner(events){
     return '<div class="ev-banner">'+events.map(function(e){
