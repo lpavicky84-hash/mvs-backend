@@ -16999,6 +16999,15 @@ function initResponsiveCss(){
     '.gfx-refcell{position:relative;border:1px solid var(--border,#d9cdae);border-radius:10px;overflow:hidden;background:#000}',
     '.gfx-refcell img{width:100%;height:110px;object-fit:cover;display:block;cursor:zoom-in}',
     '.gfx-refn{position:absolute;left:6px;top:6px;background:rgba(0,0,0,.72);color:#fff;font-size:.66rem;font-weight:800;padding:2px 8px;border-radius:999px;z-index:1}',
+    /* reference gallery in task-detail Graphics tab (view + download) */
+    '.ref-gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:8px}',
+    '.ref-cell{position:relative;border:1px solid var(--border,#d9cdae);border-radius:11px;overflow:hidden;background:#000}',
+    '.ref-cell>img{width:100%;height:120px;object-fit:cover;display:block;cursor:zoom-in}',
+    '.ref-n{position:absolute;left:7px;top:7px;background:rgba(0,0,0,.72);color:#fff;font-size:.66rem;font-weight:800;padding:2px 8px;border-radius:999px;z-index:1}',
+    '.ref-acts{display:flex;gap:0;background:var(--surface,#fff)}',
+    '.ref-btn{flex:1;text-align:center;padding:8px 6px;font-size:.78rem;font-weight:800;color:#a9791f;background:none;border:none;border-top:1px solid var(--border,#e8dfca);cursor:pointer;text-decoration:none}',
+    '.ref-btn+.ref-btn{border-left:1px solid var(--border,#e8dfca)}',
+    '.ref-btn:hover{background:rgba(201,162,39,.1)}',
     /* ===== Premium lecture-report delete button ===== */
     '.lec-del{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;flex:0 0 38px;border-radius:11px;border:1px solid rgba(220,38,38,.28);background:rgba(220,38,38,.08);color:#dc2626;cursor:pointer;transition:background .15s,transform .1s}',
     '.lec-del:hover{background:rgba(220,38,38,.16)}',
@@ -21810,7 +21819,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
       var _isImg=function(ref){ return ref && (/\.(png|jpe?g|webp|gif|bmp)(\?|#|$)/i.test(ref) || ref.indexOf('r2.')>=0 || ref.indexOf('cloudflarestorage')>=0 || ref.indexOf('/reference')>=0 || ref.indexOf('data:image')===0); };
       var refHtml = refs.length
-        ? ('<div class="gfx-refgrid">'+refs.map(function(ref,i){ return '<div class="gfx-refcell"><span class="gfx-refn">Reference '+(i+1)+'</span>'+(_isImg(ref)?'<img src="'+esc(ref)+'" onclick="prodLightbox(\''+esc(ref)+'\')" title="Click to view full">':'<a href="'+esc(ref)+'" target="_blank" rel="noopener" class="p-btn" style="margin:8px">Open link</a>')+'</div>'; }).join('')+'</div>')
+        ? ('<div class="ref-gal">'+refs.map(function(ref,i){ return '<div class="ref-cell"><span class="ref-n">Reference '+(i+1)+'</span>'+(_isImg(ref)?('<img src="'+esc(ref)+'" onclick="prodLightbox(\''+esc(ref)+'\')" title="Click to view full"><div class="ref-acts"><button class="ref-btn" onclick="prodLightbox(\''+esc(ref)+'\')">View</button><a class="ref-btn" href="'+esc(ref)+'" download target="_blank" rel="noopener">Download</a></div>'):('<a href="'+esc(ref)+'" target="_blank" rel="noopener" class="p-btn" style="margin:8px">Open link</a>'))+'</div>'; }).join('')+'</div>')
         : '<div class="pd-empty">No reference image provided.</div>';
       dr.innerHTML='<div class="p-modal" style="max-width:460px">'+
         '<div class="pd-head"><div class="h-title">Reference &amp; Brief</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
@@ -23663,17 +23672,18 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     if(tab==='graphics'){
       if(!g.graphics_name && (g.status==='new'||!g.status)) return '<div class="pd-empty">No graphics member assigned yet.</div>';
+      var _grefs=(g.reference_images&&g.reference_images.length)?g.reference_images:((g.reference_image)?[g.reference_image]:[]);
+      var _refGal=_grefs.length?('<div class="p-sec" style="margin-top:12px">Reference thumbnail'+(_grefs.length>1?'s ('+_grefs.length+')':'')+'</div><div class="ref-gal">'+_grefs.map(function(u,i){ return '<div class="ref-cell"><span class="ref-n">Reference '+(i+1)+'</span><img src="'+esc(u)+'" onclick="prodLightbox(\''+esc(u)+'\')" title="Click to view full"><div class="ref-acts"><button class="ref-btn" onclick="prodLightbox(\''+esc(u)+'\')">View</button><a class="ref-btn" href="'+esc(u)+'" download target="_blank" rel="noopener">Download</a></div></div>'; }).join('')+'</div>'):'';
       return '<div class="pd-kv">'+
         _kv('Graphics Member', esc(g.graphics_name||'Unassigned'))+
         _kv('Status', esc(g.status||'new'))+
         _kv('Revisions', String(g.revision_count||0))+
         _kv('Instructions', esc(g.instructions||''))+
-        _kv('Reference', g.reference_image?('<a href="'+esc(g.reference_image)+'" target="_blank">Open reference</a>'):'None provided')+
         _kv('Thumbnail', g.thumbnail_url?('<a href="'+esc(g.thumbnail_url)+'" target="_blank">Open thumbnail</a>'):'Not submitted')+
-      '</div>'+(g.thumbnail_url?'<div class="p-gallery" style="margin-top:12px"><img src="'+esc(g.thumbnail_url)+'" onclick="prodLightbox(this.src)"></div>':'');
+      '</div>'+_refGal+(g.thumbnail_url?'<div class="p-sec" style="margin-top:12px">Submitted thumbnail</div><div class="p-gallery"><img src="'+esc(g.thumbnail_url)+'" onclick="prodLightbox(this.src)"></div>':'');
     }
     if(tab==='qc'){
-      var att=(t.attachments||[]);
+      var att=(t.attachments||[]).filter(function(a){ return ['reference','thumbnail','chat'].indexOf(a.kind)<0; });
       return '<div class="pd-kv">'+
         _kv('QC Status', esc(t.qc_status||'Not started'))+
         _kv('Revisions', String(t.revision_count||0))+
