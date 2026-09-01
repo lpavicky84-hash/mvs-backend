@@ -21974,7 +21974,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
     var thread=comments.length?comments.map(function(c){ return _chatBubble(c,'production_manager'); }).join(''):'<div style="color:var(--muted);font-size:.82rem;padding:10px 0;text-align:center">No messages yet. Start the conversation with the graphics designer. (Teacher ko ye chat nahi dikhta.)</div>';
     dr.innerHTML='<div class="p-modal" style="max-width:480px">'+
-      '<div class="pd-head"><div><div class="h-title">Chat with Graphics <span style="font-size:.66rem;font-weight:700;color:var(--muted)">\u00b7 internal</span></div><div id="chat-presence" class="chat-presence"></div></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="pd-head"><div><div class="h-title">Chat with Graphics <span style="font-size:.66rem;font-weight:700;color:var(--muted)">\u00b7 internal</span></div><div id="chat-presence" class="chat-presence"></div></div><button class="p-btn" style="padding:6px 11px;font-size:.78rem;font-weight:800;margin-right:6px" onclick="prodDismiss();pmThumbReview('+id+')">\uD83D\uDDBC Thumbnails</button><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
       '<div class="p-modal-body">'+_prodChatBar(id,'production')+'<div id="chat-thread" style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0">'+thread+'</div></div>'+
       _chatFooter(id,'prodGfxChatSend')+
       '</div>';
@@ -22054,7 +22054,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       window._pmSelThumb=cands[0]||gx.thumbnail_url||'';
       var old=document.getElementById('prod-modal'); if(old) old.remove();
       var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
-      var gal=cands.length?('<div class="p-field"><label>Submitted thumbnails <span style="color:var(--muted);font-weight:600">(tap one to select the final)</span></label><div class="thumb-gal">'+cands.map(function(u,i){ return '<div class="thumb-cell'+(u===window._pmSelThumb?' sel':'')+'" data-url="'+esc(u)+'" onclick="pmSelectThumb(this,\''+esc(u)+'\')"><span class="thumb-n">Thumbnail '+(i+1)+'</span><span class="thumb-pick">\u2713</span><img src="'+esc(u)+'" onclick="event.stopPropagation();prodLightbox(\''+esc(u)+'\')" title="Click to view full"><div class="thumb-acts"><button class="ref-btn" onclick="event.stopPropagation();prodLightbox(\''+esc(u)+'\')">View</button><a class="ref-btn" href="'+esc(u)+'" download target="_blank" rel="noopener" onclick="event.stopPropagation()">Download</a></div></div>'; }).join('')+'</div></div>'):'<div class="p-empty">No image preview</div>';
+      var gal=cands.length?('<div class="p-field"><label>Submitted thumbnails <span style="color:var(--muted);font-weight:600">(tap one to select the final)</span></label><div class="thumb-gal">'+cands.map(function(u,i){ return '<div class="thumb-cell'+(u===window._pmSelThumb?' sel':'')+'" data-url="'+esc(u)+'" onclick="pmSelectThumb(this,\''+esc(u)+'\')"><span class="thumb-n">Thumbnail '+(i+1)+'</span><span class="thumb-pick">\u2713</span><img src="'+esc(u)+'"><div class="thumb-acts"><button class="ref-btn" onclick="event.stopPropagation();prodLightbox(\''+esc(u)+'\')">View</button><a class="ref-btn" href="'+esc(u)+'" download target="_blank" rel="noopener" onclick="event.stopPropagation()">Download</a></div></div>'; }).join('')+'</div></div>'):'<div class="p-empty">No image preview</div>';
       dr.innerHTML='<div class="p-modal" style="max-width:560px">'+
         '<div class="pd-head"><div class="h-title">Thumbnail Review</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
         '<div class="p-modal-body">'+
@@ -22090,11 +22090,17 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     function _needRem(){ if(_ta){ _ta.classList.add('p-area-req'); _ta.focus(); setTimeout(function(){ _ta.classList.remove('p-area-req'); },2500); } toast('Please add remarks \u2014 batao designer ko kya change karna hai',true); }
     if(action==='approve'){ ep='/thumbnail-approve'; body={quality_rating:window._pmStar||0,quality_note:rem,selected_thumbnail:(window._pmSelThumb||'')}; }
     else if(action==='changes'){
-      // Don't just push it through — mark for a new thumbnail AND open the PM<->Graphics chat so
-      // the PM can explain exactly what to change (with screenshots).
+      // Mark for a new thumbnail, AUTO-SEND the selected thumbnail into the chat (so the designer
+      // sees exactly which one needs changing), then open the PM<->Graphics chat to discuss.
       if(window._pmPasteH){ document.removeEventListener('paste',window._pmPasteH); window._pmPasteH=null; }
+      var _sel=window._pmSelThumb||''; var _rem=rem||'Is thumbnail mein changes chahiye \u2014 details neeche.';
       prodDismiss(); toast('Opening chat to discuss changes\u2026');
-      api(P.production.api+'/tasks/'+id+'/thumbnail-changes','POST',{remarks:(rem||'Changes needed \u2014 details in chat'),images:window._pmThumbImgs}).then(function(){ _apiBust(); _refresh('production'); setTimeout(function(){ prodGfxChat(id); },250); }).catch(function(e){ toast((e&&e.message)||'Failed \u2014 try again',true); });
+      api(P.production.api+'/tasks/'+id+'/thumbnail-changes','POST',{remarks:_rem,images:window._pmThumbImgs}).then(function(){
+        var post=function(){ setTimeout(function(){ prodGfxChat(id); },250); };
+        if(_sel){ api(P.production.api+'/tasks/'+id+'/comments','POST',{message:_rem,audience:'internal',attachment_url:_sel}).then(post).catch(post); }
+        else post();
+        _apiBust(); _refresh('production');
+      }).catch(function(e){ toast((e&&e.message)||'Failed \u2014 try again',true); });
       return;
     }
     else { if(!rem){ _needRem(); return; } ep='/thumbnail-reject'; body={remarks:rem,images:window._pmThumbImgs}; }

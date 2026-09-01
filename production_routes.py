@@ -287,7 +287,10 @@ def pm_task_comment_add(tid: int, payload: dict = Body(...),
     from video_tasks import _vtc_add, _vtc_out
     t = _task(db, tid)
     _att = ""
-    _imgs = payload.get("images") or ([payload.get("attachment")] if payload.get("attachment") else [])
+    _url_att = (payload.get("attachment_url") or "").strip()
+    if _url_att:
+        _att = _url_att  # already-hosted image (e.g. an existing thumbnail) — no re-upload
+    _imgs = [] if _att else (payload.get("images") or ([payload.get("attachment")] if payload.get("attachment") else []))
     if _imgs:
         try:
             urls = pc.save_images(db, t, _imgs[:1], "chat", None, me, return_urls=True) or []
