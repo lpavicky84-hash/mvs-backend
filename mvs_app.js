@@ -523,6 +523,40 @@ function _preloadAdmin(){
     })();
   }catch(e){}
 }
+// ===== GLOBAL TOP PROGRESS BAR — instant "something is happening" feedback on every
+// network api() call, across ALL portals. Cache hits (0ms) never trigger it, so instant
+// actions stay clean; only real network work shows the bar. Purely additive/UI-safe. =====
+function _progBar(){
+  var b=document.getElementById('nprog'); if(b) return b;
+  if(!document.getElementById('nprog-css')){
+    var s=document.createElement('style'); s.id='nprog-css';
+    s.textContent='#nprog{position:fixed;top:0;left:0;height:3px;width:0;z-index:2147483000;background:linear-gradient(90deg,#e6ad4e,#c98a2e);box-shadow:0 0 8px rgba(230,173,78,.7);transition:width .2s ease,opacity .3s ease;opacity:0;pointer-events:none;border-radius:0 2px 2px 0}';
+    document.head.appendChild(s);
+  }
+  b=document.createElement('div'); b.id='nprog'; (document.body||document.documentElement).appendChild(b); return b;
+}
+var _progN=0, _progT=null, _progW=0;
+function _progStart(){
+  _progN++;
+  if(_progN===1){
+    try{
+      var b=_progBar(); _progW=8; b.style.opacity='1'; b.style.width='8%';
+      if(_progT) clearInterval(_progT);
+      _progT=setInterval(function(){ _progW+=Math.max(.5,(90-_progW)*0.08); if(_progW>90)_progW=90; var e=document.getElementById('nprog'); if(e) e.style.width=_progW+'%'; },240);
+    }catch(e){}
+  }
+}
+function _progDone(){
+  _progN=Math.max(0,_progN-1);
+  if(_progN===0){
+    try{
+      var b=_progBar();
+      if(_progT){ clearInterval(_progT); _progT=null; }
+      b.style.width='100%';
+      setTimeout(function(){ b.style.opacity='0'; setTimeout(function(){ if(_progN===0){ b.style.width='0'; } },300); },150);
+    }catch(e){}
+  }
+}
 async function api(path, method='GET', body=null) {
   const opts = { method, headers: { 'Content-Type':'application/json' } };
   if (TOKEN) opts.headers['Authorization'] = 'Bearer ' + TOKEN;
@@ -551,6 +585,8 @@ async function api(path, method='GET', body=null) {
   // bachao). Note: fetch sirf NETWORK fail (connect na ho) par throw hota hai — 4xx/5xx nahi —
   // isliye dusra base sirf tab try hota hai jab sach me domain reachable hi nahi.
   const _bigBody=(opts.body&&opts.body.length>524288);
+  _progStart();
+  try{
   const _delays=_bigBody?[]:[1200,2000,3000,5000,8000,8000];
   const _tryBases=[API].concat(_API_BASES.filter(function(b){ return b!==API; }));
   let res=null,_wasOffline=false,_usedBase=API;
@@ -582,6 +618,7 @@ async function api(path, method='GET', body=null) {
     if(!_API_NOCACHE.test(path)){ try{ if(JSON.stringify(data).length<1572864) _apiCache[_ck]={t:Date.now(),d:data}; }catch(e){} }
   } else _apiBust();
   return data;
+  } finally { _progDone(); }
 }
 
 // ========================================================
