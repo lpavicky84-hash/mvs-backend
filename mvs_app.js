@@ -1652,6 +1652,83 @@ function closeImageViewer(){
   if(ov) ov.classList.remove('on');
   document.body.style.overflow='';
 }
+// ============ UNIVERSAL DOCUMENT VIEWER (PDF / image — view before download) ============
+// Opens any authenticated file in-app: PDF in an iframe, image inline. Has Download + Open
+// + Close. Mobile-safe: if the inline PDF renders blank on a device, "Open" uses the native
+// viewer. Used everywhere a "View" (eye) button appears — teacher, admin and student portals.
+function _docViewerCss(){
+  if(document.getElementById('docviewer-css')) return;
+  var s=document.createElement('style'); s.id='docviewer-css';
+  s.textContent=[
+    '.docviewer{position:fixed;inset:0;z-index:100050;background:rgba(0,0,0,.9);display:flex;flex-direction:column}',
+    '.dv-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:#141414;color:#fff;flex:none}',
+    '.dv-name{font-weight:700;font-size:.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}',
+    '.dv-acts{display:flex;gap:8px;flex:none;align-items:center}',
+    '.dv-btn{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:9px;padding:8px 12px;font-size:.82rem;font-weight:700;cursor:pointer;text-decoration:none}',
+    '.dv-btn:hover{background:rgba(255,255,255,.27)}',
+    '.dv-btn svg{width:15px;height:15px}',
+    '.dv-body{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:auto}',
+    '.dv-frame{width:100%;height:100%;border:0;background:#fff}',
+    '.dv-img{max-width:100%;max-height:100%;object-fit:contain;display:block}',
+    '.dv-load{color:#fff;display:flex;flex-direction:column;gap:12px;align-items:center;font-size:.9rem}',
+    '.dv-err{color:#fff;padding:30px;text-align:center;font-size:.9rem;line-height:1.5}',
+    '@media(max-width:640px){.dv-name{max-width:40vw;font-size:.82rem}.dv-btn{padding:7px 10px;font-size:.78rem}.dv-btn .dv-lbl{display:none}}'
+  ].join('');
+  document.head.appendChild(s);
+}
+function _dvEsc(e){ if(e.key==='Escape') closeDocViewer(); }
+function closeDocViewer(){
+  var ov=document.getElementById('docviewer'); if(ov) ov.remove();
+  document.body.style.overflow=''; document.removeEventListener('keydown', _dvEsc);
+  try{ if(window._dvUrl){ URL.revokeObjectURL(window._dvUrl); window._dvUrl=null; } }catch(e){}
+}
+async function openDocViewer(url, name){
+  _docViewerCss();
+  var old=document.getElementById('docviewer'); if(old) old.remove();
+  var _dic=(typeof ic==='function'?ic('download'):'\u2913');
+  var ov=document.createElement('div'); ov.id='docviewer'; ov.className='docviewer';
+  ov.innerHTML='<div class="dv-bar"><span class="dv-name">'+esc(name||'Document')+'</span>'
+    +'<span class="dv-acts">'
+      +'<a class="dv-btn" id="dv-dl" href="#">'+_dic+'<span class="dv-lbl">Download</span></a>'
+      +'<button class="dv-btn" id="dv-open" type="button"><span class="dv-lbl">Open</span>\u2197</button>'
+      +'<button class="dv-btn" type="button" onclick="closeDocViewer()">\u2715<span class="dv-lbl"> Close</span></button>'
+    +'</span></div>'
+    +'<div class="dv-body" id="dv-body"><div class="dv-load"><div class="spinner"></div><div>Loading\u2026</div></div></div>';
+  document.body.appendChild(ov);
+  document.body.style.overflow='hidden';
+  ov.addEventListener('click', function(e){ if(e.target===ov) closeDocViewer(); });
+  document.addEventListener('keydown', _dvEsc);
+  try{
+    var r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('fail');
+    var ct=(r.headers.get('content-type')||'').toLowerCase();
+    var raw=await r.blob();
+    if(!raw||!raw.size) throw new Error('empty');
+    var nm=(name||'').toLowerCase();
+    var isImg=ct.indexOf('image')>=0 || /\.(png|jpe?g|webp|gif|bmp)$/.test(nm);
+    var isPdf=ct.indexOf('pdf')>=0 || /\.pdf$/.test(nm);
+    var blob=isPdf?new Blob([raw],{type:'application/pdf'}):raw;
+    var u=URL.createObjectURL(blob); window._dvUrl=u;
+    var body=document.getElementById('dv-body');
+    if(body){
+      if(isImg) body.innerHTML='<img class="dv-img" src="'+u+'" alt="'+esc(name||'')+'">';
+      else body.innerHTML='<iframe class="dv-frame" src="'+u+'" title="'+esc(name||'document')+'"></iframe>';
+    }
+    var dl=document.getElementById('dv-dl'); if(dl){ dl.href=u; dl.setAttribute('download', name||'document'); }
+    var op=document.getElementById('dv-open'); if(op){ op.onclick=function(){ try{ window.open(u,'_blank'); }catch(e){} }; }
+  }catch(e){
+    var tokUrl=url+(url.indexOf('?')>=0?'&':'?')+'t='+encodeURIComponent(TOKEN);
+    var body=document.getElementById('dv-body'); if(body) body.innerHTML='<div class="dv-err">Preview couldn\u2019t load here. Tap Open or Download instead.</div>';
+    var dl=document.getElementById('dv-dl'); if(dl){ dl.href=tokUrl; dl.removeAttribute('download'); dl.target='_blank'; }
+    var op=document.getElementById('dv-open'); if(op){ op.onclick=function(){ try{ window.open(tokUrl,'_blank'); }catch(e){} }; }
+  }
+}
+// view helpers — mirror each download function's endpoint, but open the viewer instead
+function viewMaterial(role,id,name){ openDocViewer(API+'/api/'+role+'/material/'+id+'/download', name||'material.pdf'); }
+function viewExtMaterial(id,link,name){ if(link){ try{ window.open(link,'_blank'); }catch(e){} return; } openDocViewer(API+'/api/ext/material/'+encodeURIComponent(id)+'/file', name||'material.pdf'); }
+function viewStudentAnswer(attId,name){ openDocViewer(API+'/api/teacher/attempt/'+attId+'/answer', 'answer-'+(name||'student')); }
+function viewDppAns(aid,name){ openDocViewer(API+'/api/teacher/dpp-answers/'+aid+'/file', name||'dpp-answer.pdf'); }
+function viewMyAnswer(id){ openDocViewer(API+'/api/student/exam/'+id+'/answer', 'my-answer-sheet'); }
 // ============ DOUBT NAV BADGES ============
 let _dbadgeInt=null;
 function startDoubtBadge(role){
@@ -3424,7 +3501,7 @@ async function openSubmissions(parentId,title){
     wrap.innerHTML=`<div class="alert alert-info">Download and review the student's PDF, then enter the marks (e.g. 18 / 20). The student is notified as soon as you save.</div>`+subs.map(s=>{
       const parts=(s.marks||'').split('/'); const obt=parts[0]||''; const mx=parts[1]||'20';
       const graded=s.marks?`<span class="tstatus done" style="margin-right:6px">Checked: ${esc(s.marks)}</span>`:'';
-      return `<div class="subm-row"><div class="subm-name"><div class="tr-sub">${esc(s.student_name||'Student')}</div><div class="tr-topic">${esc(s.date)}</div></div><div class="subm-act">${graded}<button class="btn btn-ghost btn-sm" onclick="downloadMaterial('teacher',${s.id},'answer.pdf')">${ic('download')} PDF</button><div class="marks-box"><input class="form-control mk-in" id="mk-obt-${s.id}" value="${esc(obt)}" placeholder="18" inputmode="numeric"><span class="mk-sep">/</span><input class="form-control mk-in" id="mk-max-${s.id}" value="${esc(mx)}" placeholder="20" inputmode="numeric"></div><button class="btn btn-success btn-sm" onclick="saveMarks(${s.id})">Save</button></div></div>`;
+      return `<div class="subm-row"><div class="subm-name"><div class="tr-sub">${esc(s.student_name||'Student')}</div><div class="tr-topic">${esc(s.date)}</div></div><div class="subm-act">${graded}<button class="btn btn-ghost btn-sm" title="View" onclick="viewMaterial('teacher',${s.id},'answer.pdf')">${ic('eye')} View</button><button class="btn btn-ghost btn-sm" onclick="downloadMaterial('teacher',${s.id},'answer.pdf')">${ic('download')} PDF</button><div class="marks-box"><input class="form-control mk-in" id="mk-obt-${s.id}" value="${esc(obt)}" placeholder="18" inputmode="numeric"><span class="mk-sep">/</span><input class="form-control mk-in" id="mk-max-${s.id}" value="${esc(mx)}" placeholder="20" inputmode="numeric"></div><button class="btn btn-success btn-sm" onclick="saveMarks(${s.id})">Save</button></div></div>`;
     }).join('');
   }catch(e){ document.getElementById('subm-list').innerHTML=errHtml(e); }
 }
@@ -3763,13 +3840,16 @@ function _mtPaint(wrapId){
       const dlBtn=isDpp
         ? `<button class="btn btn-primary btn-sm" onclick='event.stopPropagation();dppLangPick(${i.dpp_pack_id},"download",{id:${i.dpp_pack_id},source:${JSON.stringify(i.dpp_source||"")},medium:${JSON.stringify(i.dpp_medium||"")},title:${JSON.stringify(i.title||"DPP")}})'>${ic('download')} Download</button>`
         : `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();downloadMaterial('${who}',${i.id},'${esc(fname)}')">${ic('download')} Download</button>`;
+      const viewBtn=isDpp
+        ? `<button class="btn btn-ghost btn-sm" title="View before download" onclick='event.stopPropagation();dppLangPick(${i.dpp_pack_id},"view",{id:${i.dpp_pack_id},source:${JSON.stringify(i.dpp_source||"")},medium:${JSON.stringify(i.dpp_medium||"")},title:${JSON.stringify(i.title||"DPP")}})'>${ic('eye')} View</button>`
+        : `<button class="btn btn-ghost btn-sm" title="View before download" onclick="event.stopPropagation();viewMaterial('${who}',${i.id},'${esc(fname)}')">${ic('eye')} View</button>`;
       const delBtn=isDpp?'':`<button class="mat-del" title="Delete this file permanently" onclick="event.stopPropagation();deleteMaterial('${who}',${i.id},'${encodeURIComponent(i.filename||i.title||'')}')">${ic('trash')}</button>`;
       return `<div class="xm-row mat-xrow${isNew?' mt-row-new':''}" onclick="_matRowSeen('${who}',this,${i.id})">
         <div class="mat-xmain">
           <div class="xm-row-t">${esc(i.chapter||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}${isDpp?'<span class="mt-new-tag" style="background:#0891b2">DPP</span>':''}</div>
           <div class="xm-row-m">${i.part?`<span>${esc(i.part)}</span>`:'<span>Whole chapter</span>'}${i.date?`<span>${esc(i.date)}</span>`:''}${vChip}</div>
         </div>
-        <div class="mat-xacts">${dlBtn}${delBtn}</div>
+        <div class="mat-xacts">${viewBtn}${dlBtn}${delBtn}</div>
       </div>`;
     }).join('');
     const moreBtn=_sorted.length>5?`<button class="mat-more" onclick="_mtToggleMore('${encodeURIComponent(_catKey)}','${wrapId}')">${_expanded?'Show less \u25b4':('Show all '+_sorted.length+' files \u25be')}</button>`:'';
@@ -4091,6 +4171,7 @@ async function openDppResults(pid){
           <div class="slist-meta">Submitted: ${a.submitted_at||'\u2014'} \u00b7 <b class="dpp-st ${chk?'ok':'wait'}">${chk?'Checked':'Checking\u2026'}</b></div>
           ${chk&&a.remarks?`<div style="font-size:.74rem;margin-top:5px;background:rgba(184,148,31,.08);border-radius:8px;padding:7px 10px"><b>Your remarks:</b> ${esc(a.remarks)}</div>`:''}
           <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
+            <button class="btn btn-ghost btn-sm" title="View submission" onclick="viewDppAns(${a.id},'dpp-answer-${esc((a.student||'student').replace(/[^A-Za-z0-9]/g,'-'))}.pdf')">${ic('eye')} View</button>
             <button class="btn btn-ghost btn-sm" onclick="dppAnsDl(${a.id})">${ic('download')} Student PDF</button>
             ${a.allow_resubmit
               ?`<button class="btn btn-ghost btn-sm" style="color:#047857;border-color:rgba(4,120,87,.4)" title="The student can submit again (once) — click to disable" onclick="dppAllowResubmit(${pid},${a.id},false)">✓ Re-submit ON</button>`
@@ -7928,7 +8009,7 @@ async function viewExamAttempts(id){
     const rows=d.attempts.length?d.attempts.map(a=>{
       const info=(a.status==='graded'?('Score: '+a.total_awarded+'/'+d.exam.total_marks+(a.verdict?' \u00b7 '+esc(a.verdict):'')):a.status==='marking'?'Marking in progress':a.status==='grading'?'Pending evaluation':'Awaiting submission')+(a.attempted_count!=null?' \u00b7 Answered '+a.attempted_count+'/'+(d.questions||[]).length:'');
       const btns=`<button class="btn btn-primary btn-sm" onclick="gradeManual(${a.attempt_id},${id})">${a.status==='graded'?'Edit Marks':'Grade Manually'}</button>`;
-      const dl=a.has_answer?`<button class="btn btn-ghost btn-sm ansdl-btn" onclick="downloadStudentAnswer(${a.attempt_id},'${esc((a.student_name||'student').replace(/[^A-Za-z0-9]/g,'-'))}')">${ic('download')} Sheet</button>`:'';
+      const dl=a.has_answer?`<button class="btn btn-ghost btn-sm" title="View answer sheet" onclick="viewStudentAnswer(${a.attempt_id},'${esc((a.student_name||'student').replace(/[^A-Za-z0-9]/g,'-'))}')">${ic('eye')} View</button><button class="btn btn-ghost btn-sm ansdl-btn" onclick="downloadStudentAnswer(${a.attempt_id},'${esc((a.student_name||'student').replace(/[^A-Za-z0-9]/g,'-'))}')">${ic('download')} Sheet</button>`:'';
       // naam pe click -> student ki poori detail usi row me khul jati hai
       const det=[
         ['Student ID', a.student_code],
@@ -12684,7 +12765,7 @@ function _extRenderSubject(){
     }
     const rows=items.map(m=>{
       const isLink=(m.kind==='link'&&m.link);
-      return `<div class="xm-row"><div style="flex:1;min-width:0"><div class="xm-row-t">${esc(m.title||'Untitled')}</div><div class="xm-row-m">${m.medium?`<span class="qb-medium ${(m.medium||'').toLowerCase()==='hindi'?'hindi':''}">${esc(m.medium)}</span>`:''}${m.class_level?`<span>Class ${esc(String(m.class_level))}</span>`:''}${m.session?`<span>${esc(m.session)}</span>`:''}<span>${isLink?'Link':'PDF'}</span></div></div><button class="btn btn-primary btn-sm" onclick="openExtMaterial('${esc(String(m.id))}',${isLink?`'${esc(m.link)}'`:'null'},'${esc((m.filename||m.title||'material').replace(/'/g,''))}')">${ic('download')} Download</button></div>`;
+      return `<div class="xm-row"><div style="flex:1;min-width:0"><div class="xm-row-t">${esc(m.title||'Untitled')}</div><div class="xm-row-m">${m.medium?`<span class="qb-medium ${(m.medium||'').toLowerCase()==='hindi'?'hindi':''}">${esc(m.medium)}</span>`:''}${m.class_level?`<span>Class ${esc(String(m.class_level))}</span>`:''}${m.session?`<span>${esc(m.session)}</span>`:''}<span>${isLink?'Link':'PDF'}</span></div></div><div style="display:flex;gap:6px;flex:none;align-items:center"><button class="btn btn-ghost btn-sm" title="View" onclick="viewExtMaterial('${esc(String(m.id))}',${isLink?`'${esc(m.link)}'`:'null'},'${esc((m.filename||m.title||'material').replace(/'/g,''))}')">${ic('eye')} View</button><button class="btn btn-primary btn-sm" onclick="openExtMaterial('${esc(String(m.id))}',${isLink?`'${esc(m.link)}'`:'null'},'${esc((m.filename||m.title||'material').replace(/'/g,''))}')">${ic('download')} Download</button></div></div>`;
     }).join('');
     body+=`<div class="xm-sec"><div class="xm-sec-h"><div class="xm-sec-ic">${_xmCatIc(c)}</div><h3>${esc(_xmCatName(c))}</h3><span class="xm-count">${items.length} ${items.length===1?'file':'files'}</span></div>${chipsHtml}${rows}</div>`;
   });
@@ -13828,7 +13909,7 @@ function openSubjectMaterials(encSub){
     const items=byCat[cat];
     html+=`<div class="mat-cat"><div class="mat-cat-head"><div class="mc-badge ${meta.badge}">${ic(meta.icon)}</div>${esc(cat)}<span class="mc-count">${items.length} file${items.length>1?'s':''}</span></div><div class="mat-scroll">`;
     items.forEach(m=>{ const fname=m.filename||((m.title||cat)+'.pdf'); const isNew=window._sMatNew&&window._sMatNew.has(m.id); const _sub=[m.part?esc(m.part):'', (m.title&&m.title!==m.chapter)?esc(m.title):''].filter(Boolean).join(' \u00b7 ');
-      html+=`<div class="mat-item ${isNew?'mt-row-new':''}" onclick="_matRowSeen('student',this,${m.id})"><div class="mat-item-info"><div class="mat-item-title">${esc(m.chapter||m.title||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}</div>${_sub?`<div class="mat-item-sub">${_sub}</div>`:''}</div><button class="btn btn-primary btn-sm mat-open" onclick="event.stopPropagation();downloadMaterial('student',${m.id},'${esc(fname).replace(/'/g,'')}')">${ic('download')} Download</button></div>`; });
+      html+=`<div class="mat-item ${isNew?'mt-row-new':''}" onclick="_matRowSeen('student',this,${m.id})"><div class="mat-item-info"><div class="mat-item-title">${esc(m.chapter||m.title||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}</div>${_sub?`<div class="mat-item-sub">${_sub}</div>`:''}</div><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><button class="btn btn-ghost btn-sm mat-open" onclick="event.stopPropagation();viewMaterial('student',${m.id},'${esc(fname).replace(/'/g,'')}')">${ic('eye')} View</button><button class="btn btn-primary btn-sm mat-open" onclick="event.stopPropagation();downloadMaterial('student',${m.id},'${esc(fname).replace(/'/g,'')}')">${ic('download')} Download</button></div></div>`; });
     html+=`</div>`;
   });
   // DPP packs — part-wise alag cards
@@ -15331,7 +15412,7 @@ async function openExamResult(id){
     let dlBlock='';
     if(dur&&st){ const left=parseInt(st)+dur*60000-Date.now(); if(left>0)dlBlock=`<span class="rs-dl-note">The answer sheet download will be available after the test duration ends.</span>`; }
     const hasSol=isMcq||((r.results||[]).some(it=>it.model_answer||it.model));
-    el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('back')}</button><div class="pl-title">${esc(r.title)} — Result</div></div><div class="rs-score-card"><div><div class="rs-score-big">${r.total_awarded}/${r.total_marks}</div><div class="rs-score-sub">${pct}% scored</div></div><div class="rs-verdict ${vClass}">${esc(r.verdict||'')}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0"><span class="tx-pill g">CHECKING DONE ✓</span>${hasSol?`<button class="btn btn-primary btn-sm" onclick="_solHub(${id})">Solutions</button>`:''}${r.has_answer?(dlBlock||`<button class="btn btn-ghost btn-sm" onclick="downloadMyAnswer(${id})">${ic('download')} Download My Answer Sheet</button>`):''}</div><div class="rs-list">${items}</div>${(r.feedback||'').trim()?`<div class="rs-feedback"><div class="rs-fb-title">Teacher's Suggestion <span class="rs-fb-lang"><button class="on" id="rsfb-en" onclick="rsFbLang('en')">EN</button><button id="rsfb-hi" onclick="rsFbLang('hi')">हिंदी</button></span></div><div class="rs-fb-text" id="rs-fb-text" data-en="${esc(r.feedback)}">${esc(r.feedback)}</div><div class="rs-fb-teacher">— ${esc(r.teacher_name||'Your Teacher')}</div></div>`:''}`;
+    el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('back')}</button><div class="pl-title">${esc(r.title)} — Result</div></div><div class="rs-score-card"><div><div class="rs-score-big">${r.total_awarded}/${r.total_marks}</div><div class="rs-score-sub">${pct}% scored</div></div><div class="rs-verdict ${vClass}">${esc(r.verdict||'')}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0"><span class="tx-pill g">CHECKING DONE ✓</span>${hasSol?`<button class="btn btn-primary btn-sm" onclick="_solHub(${id})">Solutions</button>`:''}${r.has_answer?(dlBlock||`<button class="btn btn-ghost btn-sm" onclick="viewMyAnswer(${id})">${ic('eye')} View My Answer Sheet</button><button class="btn btn-ghost btn-sm" onclick="downloadMyAnswer(${id})">${ic('download')} Download My Answer Sheet</button>`):''}</div><div class="rs-list">${items}</div>${(r.feedback||'').trim()?`<div class="rs-feedback"><div class="rs-fb-title">Teacher's Suggestion <span class="rs-fb-lang"><button class="on" id="rsfb-en" onclick="rsFbLang('en')">EN</button><button id="rsfb-hi" onclick="rsFbLang('hi')">हिंदी</button></span></div><div class="rs-fb-text" id="rs-fb-text" data-en="${esc(r.feedback)}">${esc(r.feedback)}</div><div class="rs-fb-teacher">— ${esc(r.teacher_name||'Your Teacher')}</div></div>`:''}`;
     renderMath(el);
   }catch(e){ el.innerHTML=errHtml(e); }
 }
@@ -17092,6 +17173,8 @@ function initResponsiveCss(){
     '.xm-row-m .mt-new-tag{margin-left:0}',
     '.mat-more{display:block;width:100%;margin-top:6px;padding:9px;border-radius:11px;border:1px dashed var(--border,#d9cdae);background:transparent;color:#a9791f;font-weight:800;font-size:.82rem;cursor:pointer;font-family:inherit}',
     '.mat-more:hover{background:rgba(201,162,39,.08)}',
+    '.subm-act{display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
+    '@media(max-width:600px){.subm-act{width:100%}.subm-act .marks-box{margin-left:auto}}',
     '@media(max-width:600px){',
     '  .mat-xmain{flex:1 1 100%}',
     '  .mat-xacts{flex:1 1 100%;width:100%;margin-top:2px}',
