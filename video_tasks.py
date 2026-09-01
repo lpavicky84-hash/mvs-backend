@@ -982,8 +982,86 @@ def _chat_touch(db, user, task_id, audience, typing=None):
         elif typing is False:
             r.typing_until = None
         db.commit()
+        _chat_touch_global(db, user)
     except Exception:
         db.rollback()
+
+
+def _chat_touch_global(db, user):
+    """Global 'I'm active' marker (task_id=0) — set on any chat activity or heartbeat.
+    Lets us show a user as Online whenever their portal is open, not only in an open chat."""
+    try:
+        from models import ChatPresence
+        from datetime import datetime as _dt
+        uid = getattr(user, "id", None)
+        if not uid:
+            return
+        r = db.query(ChatPresence).filter_by(user_id=uid, task_id=0, audience="__g__").first()
+        if not r:
+            r = ChatPresence(user_id=uid, task_id=0, audience="__g__")
+            db.add(r)
+        r.last_seen = _dt.utcnow()
+        r.author_name = getattr(user, "name", "") or r.author_name or ""
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
+def _chat_online_uids(db, uids):
+    """Subset of uids that are globally active within the last 60s."""
+    out = set()
+    try:
+        from models import ChatPresence
+        from datetime import datetime as _dt, timedelta as _tdp
+        if not uids:
+            return out
+        now = _dt.utcnow()
+        for r in (db.query(ChatPresence)
+                  .filter(ChatPresence.task_id == 0, ChatPresence.audience == "__g__",
+                          ChatPresence.user_id.in_(list(uids))).all()):
+            if r.last_seen and (now - r.last_seen) <= _tdp(seconds=60):
+                out.add(r.user_id)
+    except Exception:
+        pass
+    return out
+
+
+def _chat_counterparties(db, task_id, audience, viewer_id):
+    """The user_ids on the OTHER side of this thread (specialist for the audience + all managers)."""
+    ids = set()
+    try:
+        from models import (VideoTask, TeacherProfile, ProductionStaffProfile,
+                            GraphicsTask, User)
+        t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
+        aud = audience or "creator"
+        if aud == "creator" and t:
+            try:
+                from video_tasks import _collab_all_ids as _cai
+                tids = _cai(t)
+            except Exception:
+                tids = [t.creator_id] if getattr(t, "creator_id", None) else []
+            for tid in tids:
+                tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+                if tp and tp.user_id:
+                    ids.add(tp.user_id)
+        elif aud == "internal" and t:
+            g = db.query(GraphicsTask).filter(GraphicsTask.task_id == task_id).first()
+            if g and g.graphics_id:
+                sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == g.graphics_id).first()
+                if sp and sp.user_id:
+                    ids.add(sp.user_id)
+        elif aud == "editor" and t and t.editor_id:
+            sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
+            if sp and sp.user_id:
+                ids.add(sp.user_id)
+        # managers (PMs + admins) are always a counterparty for the specialist/teacher side
+        for u in db.query(User).filter(User.role.in_(["production_manager", "admin"]),
+                                       User.is_active == True).all():
+            ids.add(u.id)
+    except Exception:
+        pass
+    ids.discard(viewer_id)
+    return ids
 
 
 def _chat_other_presence(db, viewer_id, task_id, audience):
@@ -1015,6 +1093,16 @@ def _chat_other_presence(db, viewer_id, task_id, audience):
                     out["last_seen"] = _y.strftime("%d %b, %I:%M %p")
                 except Exception:
                     out["last_seen"] = best.last_seen.strftime("%d %b, %I:%M %p")
+        # Portal-open = Online: if any counterparty is globally active, show Online even if they
+        # haven't opened THIS chat.
+        if not out["online"]:
+            try:
+                cps = _chat_counterparties(db, task_id, audience, viewer_id)
+                if _chat_online_uids(db, cps):
+                    out["online"] = True
+                    out["last_seen"] = ""
+            except Exception:
+                pass
     except Exception:
         pass
     return out
@@ -1029,6 +1117,12 @@ def vt_teacher_comments(task_id: int, db: Session = Depends(get_db), current_use
             "presence": _chat_other_presence(db, getattr(current_user, "id", None), task_id, "creator")}
 
 
+@router.post("/teacher/heartbeat")
+def teacher_heartbeat(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    _chat_touch_global(db, current_user)
+    return {"ok": True}
+
+
 @router.post("/teacher/video-tasks/{task_id}/chat-ping")
 def vt_teacher_chat_ping(task_id: int, payload: dict = Body(default={}), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     _chat_touch(db, current_user, task_id, "creator", typing=bool((payload or {}).get("typing")))
@@ -1041,10 +1135,29 @@ def vt_teacher_comment_add(task_id: int, payload: dict = Body(...),
     t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
     if not t:
         raise HTTPException(404, "Task not found")
-    c = _vtc_add(db, task_id, current_user, payload.get("message"), "teacher")
+    _att = (payload.get("attachment_url") or "").strip()
+    if not _att:
+        _imgs = payload.get("images") or ([payload.get("attachment")] if payload.get("attachment") else [])
+        if _imgs:
+            try:
+                import production_core as pc
+                urls = pc.save_images(db, t, _imgs[:1], "chat", None, current_user, return_urls=True) or []
+                if urls:
+                    _att = urls[0]
+            except Exception:
+                _att = ""
+    c = _vtc_add(db, task_id, current_user, payload.get("message"), "teacher",
+                 attachment_url=_att, audience="creator")
     if not c:
         raise HTTPException(400, "Message cannot be empty")
-    # notify every admin so the reply shows up on their side
+    # notify managers + admins so the reply shows on their side
+    try:
+        import production_core as pc
+        pc.notify_pms(db, "Teacher replied on a video",
+                      f'{current_user.name} on "{t.title}": {(c.message or "")[:110]}',
+                      "creator_chat", link=str(task_id))
+    except Exception:
+        pass
     for adm in db.query(User).filter(User.role == "admin", User.is_active == True).all():
         _vt_notify(db, adm.id, "Teacher replied on a video task",
                    f'{current_user.name} replied on "{t.title}": {c.message[:120]}',

@@ -8762,12 +8762,27 @@ async function tvtOpenNeeds(id){
 }
 function _tvtRenderNeeds(id,t,remarks,refVid){
   const refBlock=refVid?`<a href="${esc(refVid)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="margin-bottom:10px">${ic('play')} Open Reference Video</a>`:'';
-  const remBlock=remarks?`<div class="tvn-remarks"><div class="tvn-h">${ic('alert')} What the manager needs</div><div class="tvn-body">${esc(remarks)}</div></div>`:'<div class="tvn-remarks"><div class="tvn-body" style="color:var(--text-muted)">No specific remarks were added.</div></div>';
+  const remBlock=remarks?`<div class="tvn-remarks"><div class="tvn-h">${ic('alert')} What the manager needs</div><div class="tvn-body">${esc(remarks)}</div></div>`:'<div class="tvn-remarks"><div class="tvn-body" style="color:var(--text-muted)">No specific instructions were added for this video.</div></div>';
   showModal('Video Needs — '+esc(t.title||''),
-    `${refBlock}${remBlock}<div style="margin-top:12px;font-size:.82rem;color:var(--text-muted)">Kuch poochhna hai? \u201cChat with PM\u201d se manager ko message karo.</div>`,
+    `${refBlock}${remBlock}<div style="margin-top:12px;font-size:.82rem;color:var(--text-muted)">Have a question? Use "Chat with PM" to message the manager.</div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" onclick="closeModal();tvtChatPM(${id})">${ic('send')} Chat with PM</button>`);
 }
-async function tvtChatPM(id){
+function tvtChatPM(id){
+  const t=(window._tvtMap||{})[id]||{};
+  // Use the premium chat (ticks, online/last-seen, typing, image paste, live updates).
+  if(typeof window._ytcOpen==='function'){
+    try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
+    try{ window._prodTaskInfo=window._prodTaskInfo||{}; window._prodTaskInfo[id]={title:t.title||'',ref:t.ref_code||'',creator:'Manager',ctype:''}; }catch(e){}
+    window._ytcOpen({
+      getUrl:'/api/teacher/video-tasks/'+id+'/comments',
+      postUrl:'/api/teacher/video-tasks/'+id+'/comments',
+      pingUrl:'/api/teacher/video-tasks/'+id+'/chat-ping',
+      audience:'creator', mineRole:'teacher', title:'Chat with PM',
+      taskId:id, barPortal:''
+    });
+  } else { tvtChatPMBasic(id); }
+}
+async function tvtChatPMBasic(id){
   const t=(window._tvtMap||{})[id]||{};
   let comments=[];
   try{ const d=await api('/api/teacher/video-tasks/'+id+'/comments'); comments=d.comments||[]; }catch(e){}
@@ -8800,7 +8815,7 @@ async function tvtSendNeeds(id){
   }catch(e){ toast((e&&e.message)||'Could not send',true); }
 }
 let _tvtTimer=null;
-async function loadTVTasks(){
+async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catch(e){}
   const el=document.getElementById('t-vtasks-content');
   softSpin(el);
   if(_tvtTimer){ clearInterval(_tvtTimer); _tvtTimer=null; }
@@ -8880,7 +8895,7 @@ async function loadTVTasks(){
           ${t.deadline_nice?`<span class="${dlBlink}">${ic('clock')} ${dlLbl}: <b>${esc(t.deadline_nice)}</b></span>`:''}
           ${_open&&t.seconds_left!=null?`<span data-tvt-cd="${t.id}" data-secs="${t.seconds_left}" style="font-weight:800"></span>`:''}
           ${t.reference?_refText:''}
-          ${(_refBtn||_needsBtn)?`<span style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px">${_refBtn}${_needsBtn}${_chatBtn}</span>`:''}
+          <span style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px">${_refBtn}${_needsBtn}${_chatBtn}</span>
           ${t.submitted_at?`<span>${ic('check')} Submitted: ${esc(t.submitted_at)}${isU?'':` — <b>${t.on_time?'on time':'delayed'}</b>`}</span>`:''}
           ${upTxt?`<span>${upTxt}</span>`:''}
           ${!_open&&t.review_remarks?`<span>Review remarks: ${esc(t.review_remarks)}</span>`:''}
@@ -21886,6 +21901,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var sc=document.getElementById('chat-scroll'); if(sc) sc.scrollTop=sc.scrollHeight;
   }
   function _ytcOpen(cfg){ window._chatCfg=cfg; window._chatImg=null; if(cfg.barPortal) window._chatDirty=cfg.barPortal; window._chatPingUrl=cfg.pingUrl||''; api(cfg.getUrl).then(function(r){ _ytcRender((r&&r.comments)||[], r&&r.presence); _chatLivePoll(function(){ api(cfg.getUrl).then(function(rr){ _chatUpdateThread((rr&&rr.comments)||[], cfg.mineRole, rr&&rr.presence); }); }); }).catch(function(e){ toast((e&&e.message)||'Could not load chat',true); }); }
+  window._ytcOpen=_ytcOpen;
+  // Global heartbeat: while the portal is open, tell the server we're active every ~25s so
+  // teammates see us as "Online" even when we don't have a chat open.
+  try{ if(!window._hbTimer){ window._hbTimer=setInterval(function(){
+    var url=window._hbUrl;
+    if(!url && window._chatPingUrl){ url=window._chatPingUrl; if(url.indexOf('/teacher/')>=0) url='/api/teacher/heartbeat'; else url=url.replace(/\/tasks\/\d+\/chat-ping.*/,'/heartbeat'); window._hbUrl=url; }
+    if(url){ try{ api(url,'POST',{}).catch(function(){}); }catch(e){} }
+  }, 25000); } }catch(e){}
   window.ytcSend=function(){
     var cfg=window._chatCfg; if(!cfg) return;
     var inp=document.getElementById('chat-msg'); var msg=(inp&&inp.value||'').trim();
@@ -23854,7 +23877,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _ab(label,onclick,kind){ return '<button class="p-btn'+(kind?' p-btn-'+kind:'')+'" onclick="'+onclick+'">'+esc(label)+'</button>'; }
 
   // ---- action executors (all refresh the current page on success) ----
-  function _refresh(portal){
+  function _refresh(portal){ try{ if(portal) window._hbUrl='/api/'+portal+'/heartbeat'; }catch(e){}
     if(portal==='production'){
       var _yh=document.getElementById(window._ytHost||'a-ytasks-content');
       if(_yh && _yh.offsetParent!==null && typeof loadAYtTasks==='function'){ try{ loadAYtTasks(); return; }catch(e){} }
