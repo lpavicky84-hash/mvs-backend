@@ -483,6 +483,31 @@ def _comment_count(db, task_id):
         return 0
 
 
+def editing_time_state(db, t):
+    """Live active-editing time for a task.
+
+    = accumulated closed-session seconds (t.editing_seconds)
+      + the gap of the CURRENTLY running session (only when lifecycle == 'editing').
+    So the number keeps growing live while an editor is editing, and freezes the
+    moment they pause / complete / submit (session gets closed then).
+
+    Returns (live_seconds:int, running:bool).
+    """
+    acc = int(getattr(t, "editing_seconds", 0) or 0)
+    running = False
+    if (t.lifecycle or "") == "editing":
+        s = (db.query(EditingSession)
+             .filter(EditingSession.task_id == t.id,
+                     EditingSession.ended_at == None)          # noqa: E711
+             .order_by(EditingSession.started_at.desc()).first())
+        if s and s.started_at:
+            running = True
+            gap = int((datetime.utcnow() - s.started_at).total_seconds())
+            if gap > 0:
+                acc += gap
+    return acc, running
+
+
 def task_out(db, t, g=None, timeline=False, light=False, viewer=None):
     """Production-facing task serializer (no heavy base64 blobs)."""
     if g is None:
@@ -553,6 +578,10 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None):
             "revision_count": (g.revision_count if g else 0),
         },
     }
+    # live editing timer: seconds keep counting while lifecycle == 'editing'
+    _live_secs, _editing_running = editing_time_state(db, t)
+    out["live_editing_seconds"] = _live_secs
+    out["editing_running"] = _editing_running
     if not light:
         out["thumbnail_link"] = t.thumbnail_link or ""
         out["deadline_iso"] = (t.deadline.strftime("%Y-%m-%dT%H:%M") if t.deadline else "")

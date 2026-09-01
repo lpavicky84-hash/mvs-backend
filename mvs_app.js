@@ -21175,6 +21175,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pd-kv .v a{color:#a9791f;font-weight:700}',
 '.pd-progress{height:9px;border-radius:5px;background:rgba(230,173,78,.16);overflow:hidden;margin-top:4px}',
 '.pd-progress span{display:block;height:100%;background:linear-gradient(90deg,#e6ad4e,#c98a2e)}',
+'.pd-edit-timer.live{font-variant-numeric:tabular-nums;font-feature-settings:"tnum";font-weight:800;color:#a9791f;letter-spacing:.02em}',
+'body.dark .pd-edit-timer.live{color:#e6ad4e}',
+'.pd-live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#2e9e6b;margin-left:7px;vertical-align:middle;animation:pdLivePulse 1.4s infinite}',
+'@keyframes pdLivePulse{0%{box-shadow:0 0 0 0 rgba(46,158,107,.55)}70%{box-shadow:0 0 0 7px rgba(46,158,107,0)}100%{box-shadow:0 0 0 0 rgba(46,158,107,0)}}',
 '.pd-empty{color:#9c8f6e;font-size:.88rem;padding:26px 4px;text-align:center}',
 '.pd-tl{position:relative;padding-left:6px}',
 '.pd-tl .ev{display:flex;gap:12px;padding:9px 0;border-bottom:1px solid rgba(140,125,92,.12)}',
@@ -23718,8 +23722,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       .then(function(r){ toast(verified?'Teacher verified':'Verification removed'); _loadCollab(taskId); })
       .catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
-  window.prodCloseTask=function(){ var d=document.getElementById('prod-drawer'); if(d) d.remove(); };
-  window.prodDismiss=function(){ ['prod-modal','prod-drawer'].forEach(function(id){ var e=document.getElementById(id); if(e) e.remove(); });
+  window.prodCloseTask=function(){ _stopEditTimer(); var d=document.getElementById('prod-drawer'); if(d) d.remove(); };
+  window.prodDismiss=function(){ try{ _stopEditTimer(); }catch(e){} ['prod-modal','prod-drawer'].forEach(function(id){ var e=document.getElementById(id); if(e) e.remove(); });
     try{ if(window._gfxPasteH){ document.removeEventListener('paste',window._gfxPasteH); window._gfxPasteH=null; } }catch(e){}
     try{ if(window._pmPasteH){ document.removeEventListener('paste',window._pmPasteH); window._pmPasteH=null; } }catch(e){}
     try{ if(window._edtPasteH){ document.removeEventListener('paste',window._edtPasteH); window._edtPasteH=null; } }catch(e){}
@@ -23734,9 +23738,33 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var st=window._prodTask; if(!st) return;
     document.querySelectorAll('#prod-drawer .pd-tab').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-tab')===tab); });
     var body=document.getElementById('pd-body'); if(body) body.innerHTML=_tabHtml(st.portal, st.t, tab);
+    _stopEditTimer(); if(tab==='editor') _startEditTimer();
   };
   function _kv(k,v){ return v?('<div class="k">'+esc(k)+'</div><div class="v">'+v+'</div>'):''; }
   function _fmtSecs(s){ s=parseInt(s||0,10); if(!s) return '0m'; var h=Math.floor(s/3600),m=Math.round((s%3600)/60); return (h?h+'h ':'')+(m?m+'m':(h?'':'0m')); }
+  // live ticking clock: H:MM:SS (or M:SS under an hour) — used while editing is running
+  function _fmtEditClock(s){ s=Math.max(0,parseInt(s||0,10)); var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60; var p=function(n){return (n<10?'0':'')+n;}; return h?(h+':'+p(m)+':'+p(ss)):(m+':'+p(ss)); }
+  function _editTimerHtml(t){
+    var run=!!t.editing_running;
+    var secs=(t.live_editing_seconds!=null)?parseInt(t.live_editing_seconds,10):parseInt(t.editing_seconds||0,10);
+    if(isNaN(secs)) secs=0;
+    if(!run) return '<span class="pd-edit-timer">'+esc(_fmtSecs(secs))+'</span>';
+    // running: seed with server-computed live seconds; _startEditTimer ticks it every second
+    return '<span class="pd-edit-timer live" id="pd-edit-timer" data-base="'+secs+'">'+esc(_fmtEditClock(secs))+'</span>'+
+           '<span class="pd-live-dot" title="Editing in progress right now"></span>';
+  }
+  function _stopEditTimer(){ if(window._pdEditTimer){ clearInterval(window._pdEditTimer); window._pdEditTimer=null; } }
+  function _startEditTimer(){
+    _stopEditTimer();
+    var el=document.getElementById('pd-edit-timer'); if(!el) return;   // not on editor tab / not running
+    var base=parseInt(el.getAttribute('data-base')||'0',10)||0;
+    var anchor=Date.now();
+    window._pdEditTimer=setInterval(function(){
+      var e=document.getElementById('pd-edit-timer');
+      if(!e){ _stopEditTimer(); return; }                              // tab switched or drawer closed
+      e.textContent=_fmtEditClock(base+Math.floor((Date.now()-anchor)/1000));
+    },1000);
+  }
   function _pmSubmissionsHtml(t){
     var s=t.submissions||[]; if(!s.length) return '';
     return '<div class="p-sec">Previous Submissions ('+s.length+')</div><div class="pn-list">'+s.map(function(x,i){
@@ -23777,7 +23805,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       return '<div class="pd-kv">'+
         _kv('Editor', esc(t.editor_name))+
         _kv('Progress', '<div>'+(t.editing_progress||0)+'%</div><div class="pd-progress"><span style="width:'+(t.editing_progress||0)+'%"></span></div>')+
-        _kv('Active Editing Time', esc(_fmtSecs(t.editing_seconds)))+
+        _kv('Active Editing Time', _editTimerHtml(t))+
         _kv('Revisions', String(t.revision_count||0))+
         _kv('Edited Link', t.edited_link?('<a href="'+esc(t.edited_link)+'" target="_blank">Open link</a>'):'Not submitted')+
         _kv('Deadline', esc(t.deadline||'Not set'))+
