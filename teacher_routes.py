@@ -2049,6 +2049,38 @@ def teacher_dpp_questions(pack_id: int, db: Session = Depends(get_db), current_u
             "questions": qs}
 
 
+@router.get("/dpp-pack-questions-any/{pack_id}")
+def admin_dpp_questions_any(pack_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin: fetch ANY DPP pack's structured questions (not filtered by teacher_id) so the
+    admin panel can build the SAME browser-rendered, Hindi-safe PDF the teacher portal uses.
+    Same JSON shape as /dpp-packs/{id}/questions."""
+    from models import DppPack
+    pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
+    if not pk:
+        raise HTTPException(status_code=404, detail="DPP not found")
+    qs = []
+    for i, q in enumerate(pk.questions or [], 1):
+        qs.append({"qno": i, "q": q.get("q") or "", "q_hi": q.get("q_hi") or "",
+                   "image": q.get("image"), "alt_image": q.get("alt_image"),
+                   "model": q.get("model") or "", "model_hi": q.get("model_hi") or "",
+                   "model_image": q.get("model_image")})
+    tname = ""
+    tph = False
+    try:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == pk.teacher_id).first()
+        if tp:
+            tname = tp.user.name if tp.user else ""
+            tph = bool(tp.photo_b64)
+    except Exception:
+        pass
+    return {"id": pk.id, "title": pk.title, "subject": pk.subject, "chapter": pk.chapter,
+            "part": pk.part, "medium": pk.medium, "source": pk.source, "teacher": tname,
+            "teacher_id": pk.teacher_id, "has_teacher_photo": tph,
+            "class_name": pk.class_name, "has_solution": bool(pk.s_pdf) or any(
+                (q.get("model") or q.get("model_image")) for q in (pk.questions or [])),
+            "questions": qs}
+
+
 @router.get("/dpp-packs/{pack_id}/answers")
 def teacher_dpp_answers(pack_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import DppPack, DppAnswer, StudentProfile, User
@@ -2310,8 +2342,9 @@ def teacher_my_photo(db: Session = Depends(get_db), current_user=Depends(get_tea
     return resp
 
 @router.get("/teacher/{tid}/photo")
-def teacher_peer_photo(tid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
-    """v112: doubt thread avatar — kisi bhi teacher ki photo (fallback initials)."""
+def teacher_peer_photo(tid: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """v112: doubt thread avatar — kisi bhi teacher ki photo (fallback initials).
+    Any signed-in user (teacher/admin) — admin needs it for the DPP PDF header."""
     import base64
     from fastapi import Response
     tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()

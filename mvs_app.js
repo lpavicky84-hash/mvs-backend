@@ -4072,11 +4072,12 @@ async function dppPdfGo(pid,action,kind,med){
   // CREATED DPPs -> render via the browser (same as Tests): the browser shapes Hindi
   // perfectly, so the PDF matches the portal view with no server font/shaping dependency.
   // UPLOADED DPPs are a static PDF -> keep the server download.
+  // This now applies to ADMIN too (admin ka server PDF me Hindi toot rahi thi).
   try{
-    const pk=(window._dppPacks||[]).find(x=>x.id===pid);
-    const isCreated = pk ? (pk.source==='created') : true;   // unknown -> try browser (it falls back)
-    const _isAdmin=(typeof ROLE!=='undefined' && ROLE==='admin');
-    if(isCreated && !_isAdmin){ return dppBrowserPdf(pid,kind,med); }
+    const info=window._dppPickInfo||{};
+    const pk=(window._dppPacks||[]).find(x=>x.id===pid) || info.pk;
+    const isCreated = pk ? ((pk.source||'created')==='created') : true;   // unknown -> try browser (it falls back)
+    if(isCreated){ return dppBrowserPdf(pid,kind,med); }
   }catch(e){}
   return dppPdfGoServer(pid,action,kind,med);
 }
@@ -4087,19 +4088,29 @@ async function dppPdfGo(pid,action,kind,med){
 async function dppBrowserPdf(pid,kind,med){
   try{
     toast('Preparing the '+(med==='hindi'?'Hindi ':'')+(kind==='s'?'solutions':'question')+' PDF\u2026');
+    const _isAdmin=(typeof ROLE!=='undefined' && ROLE==='admin');
     let d=null;
-    try{ d=await api('/api/teacher/dpp-packs/'+pid+'/questions'); }catch(e){ d=null; }
+    try{
+      // admin can't hit the teacher-scoped endpoint (filtered by teacher_id) -> admin route
+      d=await api(_isAdmin ? ('/api/teacher/dpp-pack-questions-any/'+pid)
+                           : ('/api/teacher/dpp-packs/'+pid+'/questions'));
+    }catch(e){ d=null; }
     if(!d || !Array.isArray(d.questions) || !d.questions.length){
       return dppPdfGoServer(pid,'download',kind,med);   // uploaded / no structured questions
     }
     const withSol=(kind==='s');
     const isHi=(med==='hindi'), isBoth=(med==='both');
     const blang=isHi?'hi':'en';
-    // teacher photo (for the premium header) — best effort
+    // header photo — teacher: apni photo; admin: DPP creator (pack ke teacher) ki photo
     let logo=null;
     try{
-      const lr=await fetch(API+_selfPhoto('teacher'),{headers:{Authorization:'Bearer '+TOKEN}});
-      if(lr.ok){ const lb=await lr.blob(); logo=await new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=()=>res(null); fr.readAsDataURL(lb); }); }
+      const _photoUrl=_isAdmin
+        ? (d.has_teacher_photo && d.teacher_id ? ('/api/teacher/teacher/'+d.teacher_id+'/photo') : '')
+        : _selfPhoto('teacher');
+      if(_photoUrl){
+        const lr=await fetch(API+_photoUrl,{headers:{Authorization:'Bearer '+TOKEN}});
+        if(lr.ok){ const lb=await lr.blob(); logo=await new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=()=>res(null); fr.readAsDataURL(lb); }); }
+      }
     }catch(e){}
     const ex={ title:d.title||'Daily Practice Paper', subject:d.subject||'',
                chapter:d.chapter||'', total_marks:d.questions.length,
