@@ -209,6 +209,13 @@ def editor_comments(tid: int, db: Session = Depends(get_db), me=Depends(get_edit
     return {"comments": _VT._vtc_list_v(db, tid, "editor", getattr(me, "id", None)),
             "presence": _VT._chat_other_presence(db, getattr(me, "id", None), tid, "editor")}
 
+@router.post("/heartbeat")
+def editor_heartbeat(db: Session = Depends(get_db), me=Depends(get_editor)):
+    import video_tasks as _VT
+    _VT._chat_touch_global(db, me)
+    return {"ok": True}
+
+
 @router.post("/tasks/{tid}/chat-ping")
 def editor_chat_ping(tid: int, payload: dict = Body(default={}), db: Session = Depends(get_db), me=Depends(get_editor)):
     import video_tasks as _VT
@@ -234,7 +241,14 @@ def editor_comment_add(tid: int, payload: dict = Body(...), db: Session = Depend
     c = _VT._vtc_add(db, tid, me, payload.get("message") or "", "editor", attachment_url=att, audience="editor")
     if not c:
         raise HTTPException(400, "Empty message")
-    # notify the creator (youtuber)
+    # notify the PM/admins so the editor's message shows on their side
+    try:
+        pc.notify_pms(db, "Editor messaged you on a video",
+                      f'{me.name} on "{t.title}": {(payload.get("message") or "").strip()[:100]}',
+                      "editor_chat", link=str(t.id))
+    except Exception:
+        pass
+    # youtuber videos: also notify the youtuber (creator)
     if getattr(t, "creator_type", "") == "youtuber" and t.youtuber_id:
         yp = db.query(YouTuberProfile).filter(YouTuberProfile.id == t.youtuber_id).first()
         if yp and yp.user_id:
