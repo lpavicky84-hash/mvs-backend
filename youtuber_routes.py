@@ -29,6 +29,13 @@ def _my_task(db, yp, tid):
     return t
 
 
+@router.post("/heartbeat")
+def yt_heartbeat(db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    from video_tasks import _chat_touch_global
+    _chat_touch_global(db, me)
+    return {"ok": True}
+
+
 @router.get("/dashboard")
 def yt_dashboard(db: Session = Depends(get_db), me=Depends(get_youtuber)):
     yp = _me_yt(db, me)

@@ -161,6 +161,13 @@ def gfx_comments(tid: int, db: Session = Depends(get_db), me=Depends(get_graphic
     return {"comments": _vtc_list_v(db, tid, "internal", getattr(me, "id", None)),
             "presence": _chat_other_presence(db, getattr(me, "id", None), tid, "internal")}
 
+@router.post("/heartbeat")
+def gfx_heartbeat(db: Session = Depends(get_db), me=Depends(get_graphics)):
+    from video_tasks import _chat_touch_global
+    _chat_touch_global(db, me)
+    return {"ok": True}
+
+
 @router.post("/tasks/{tid}/chat-ping")
 def gfx_chat_ping(tid: int, payload: dict = Body(default={}), db: Session = Depends(get_db), me=Depends(get_graphics)):
     from video_tasks import _chat_touch, _chat_other_presence
@@ -185,6 +192,9 @@ def gfx_comment_add(tid: int, payload: dict = Body(...),
         except Exception:
             _att = ""
     c = _vtc_add(db, tid, me, payload.get("message"), "graphics", _att, "internal")
+    from video_tasks import _chat_touch as _ctg
+    try: _ctg(db, me, tid, "internal", typing=False)
+    except Exception: pass
     if not c:
         raise HTTPException(400, "Message or image required")
     pc.notify_pms(db, "Graphics replied on thumbnail",

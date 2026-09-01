@@ -239,6 +239,8 @@ def editor_comment_add(tid: int, payload: dict = Body(...), db: Session = Depend
         except Exception:
             pass
     c = _VT._vtc_add(db, tid, me, payload.get("message") or "", "editor", attachment_url=att, audience="editor")
+    try: _VT._chat_touch(db, me, tid, "editor", typing=False)
+    except Exception: pass
     if not c:
         raise HTTPException(400, "Empty message")
     # notify the PM/admins so the editor's message shows on their side

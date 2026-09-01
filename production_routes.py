@@ -273,6 +273,13 @@ def pm_task_comments(tid: int, audience: str = "", db: Session = Depends(get_db)
     return {"comments": _vtc_list_v(db, tid, (audience or None), getattr(me, "id", None)),
             "presence": _chat_other_presence(db, getattr(me, "id", None), tid, _aud)}
 
+@router.post("/heartbeat")
+def pm_heartbeat(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    from video_tasks import _chat_touch_global
+    _chat_touch_global(db, me)
+    return {"ok": True}
+
+
 @router.post("/tasks/{tid}/chat-ping")
 def pm_chat_ping(tid: int, audience: str = "", payload: dict = Body(default={}), db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     from video_tasks import _chat_touch, _chat_other_presence
@@ -302,6 +309,9 @@ def pm_task_comment_add(tid: int, payload: dict = Body(...),
     if _aud not in ("creator", "internal", "editor"):
         _aud = "creator"
     c = _vtc_add(db, tid, me, payload.get("message"), "production_manager", _att, _aud)
+    from video_tasks import _chat_touch as _ct0
+    try: _ct0(db, me, tid, _aud, typing=False)
+    except Exception: pass
     if not c:
         raise HTTPException(400, "Message cannot be empty")
     if _aud == "editor":

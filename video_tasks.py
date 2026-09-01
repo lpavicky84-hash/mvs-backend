@@ -1149,6 +1149,8 @@ def vt_teacher_comment_add(task_id: int, payload: dict = Body(...),
                 _att = ""
     c = _vtc_add(db, task_id, current_user, payload.get("message"), "teacher",
                  attachment_url=_att, audience="creator")
+    try: _chat_touch(db, current_user, task_id, "creator", typing=False)
+    except Exception: pass
     if not c:
         raise HTTPException(400, "Message cannot be empty")
     # notify managers + admins so the reply shows on their side
