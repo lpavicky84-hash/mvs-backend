@@ -1055,7 +1055,8 @@ def _chat_counterparties(db, task_id, audience, viewer_id):
             if sp and sp.user_id:
                 ids.add(sp.user_id)
         # managers (PMs + admins) are always a counterparty for the specialist/teacher side
-        for u in db.query(User).filter(User.role.in_(["production_manager", "admin"]),
+        from models import UserRole as _UR
+        for u in db.query(User).filter(User.role.in_([_UR.production_manager, _UR.admin]),
                                        User.is_active == True).all():
             ids.add(u.id)
     except Exception:

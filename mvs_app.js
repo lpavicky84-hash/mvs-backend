@@ -21507,6 +21507,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   // --- nav dispatch ---
   window.prodNav=function(portal,page){
+    try{ if(portal) window._hbUrl='/api/'+portal+'/heartbeat'; }catch(e){}
     var el=document.getElementById(portal+'-app'); if(!el) return;
     (window._prodCurPage=window._prodCurPage||{})[portal]=page;
     el.classList.remove('side-open');
@@ -22950,7 +22951,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var _refv=(t.reference_video||'').trim()||((/^https?:\/\//i.test((t.reference||'').trim()))?(t.reference||'').trim():'');
     if(_refv) acts+='<button class="ptc-btn ptc-refv-blink" onclick="event.stopPropagation();window.open(\''+esc(_refv)+'\',\'_blank\')"><span class="rev-dot"></span>Reference Video</button>';
     if(t.youtube_url||t.submitted_link||t.edited_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+esc(t.youtube_url||t.submitted_link||t.edited_link)+'\',\'_blank\')">Open Video</button>';
-    acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodConvo('+t.id+')">Video Needs</button>';
+    acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodVideoNeeds('+t.id+')">Video Needs</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
     var _cu=t.unread||{}; var _ctot=t.unread_total||((_cu.teacher||0)+(_cu.graphics||0)+(_cu.editor||0));
     acts+='<button class="ptc-btn ptc-chat'+(_ctot>0?' chat-blink':'')+'" onclick="event.stopPropagation();prodChatMenu('+t.id+','+(_cu.teacher||0)+','+(_cu.graphics||0)+','+(_cu.editor||0)+')">\uD83D\uDCAC Chat'+(_ctot>0?' <span class="chat-badge">'+_ctot+'</span>':'')+'</button>';
@@ -23630,44 +23631,39 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         }).join('')+'</div>';
     }).catch(function(){ box.innerHTML=''; });
   }
+  // PM <-> Teacher chat (premium: ticks, online/last-seen, typing, image paste, live updates)
   window.prodConvo=function(id){
-    api(P.production.api+'/tasks/'+id+'/comments?audience=creator').then(function(r){ window._chatDirty='production';
-      var comments=(r&&r.comments)||[];
-      // pull task detail for reference/remarks
-      api(P.production.api+'/tasks/'+id).then(function(t){ _prodConvoRender(id,t||{},comments); })
-        .catch(function(){ _prodConvoRender(id,{},comments); });
-    }).catch(function(e){ toast((e&&e.message)||'Could not load',true); });
-  };
-  function _prodConvoRender(id,t,comments){
-    var refVid=(t.reference_video||'').trim()||(/^https?:\/\//i.test((t.reference||'').trim())?(t.reference||'').trim():'');
-    var remarks=(t.remarks||'').trim();
-    var refBlock=refVid?'<a href="'+esc(refVid)+'" target="_blank" rel="noopener" class="p-btn" style="display:inline-flex;margin-bottom:10px">Open Reference Video</a>':'';
-    var remBlock=remarks?'<div style="background:rgba(180,83,9,.08);border:1px solid rgba(180,83,9,.25);border-radius:10px;padding:11px 13px;margin-bottom:12px"><div style="font-weight:800;font-size:.82rem;color:#b45309;margin-bottom:5px">Remarks you sent</div><div style="font-size:.86rem;white-space:pre-wrap">'+esc(remarks)+'</div></div>':'';
-    var thread=comments.length?comments.map(function(c){
-      var mine=(c.role!=='teacher');
-      var img=c.attachment_url?'<img src="'+esc(c.attachment_url)+'" onclick="prodLightbox(\''+esc(c.attachment_url)+'\')" style="max-width:190px;max-height:150px;border-radius:8px;margin-top:5px;cursor:pointer;display:block">':'';
-      return '<div style="max-width:82%;padding:7px 11px;border-radius:12px;font-size:.83rem;'+(mine?'align-self:flex-end;background:var(--surface-2);border:1px solid var(--border)':'align-self:flex-start;background:rgba(124,79,192,.1);border:1px solid rgba(124,79,192,.25)')+'"><div style="font-weight:800;font-size:.7rem;color:var(--muted);margin-bottom:2px">'+esc(c.author)+' \u00b7 '+esc((c.role||'').replace('production_manager','PM').replace('graphics','Graphics').replace('teacher','Teacher').replace('admin','Admin'))+'</div>'+(c.message?'<div>'+esc(c.message)+'</div>':'')+img+'<div style="font-size:.66rem;color:var(--muted);margin-top:3px">'+esc(c.at)+'</div></div>';
-    }).join(''):'<div style="color:var(--muted);font-size:.82rem;padding:6px 0">No messages yet.</div>';
-    var old=document.getElementById('prod-modal2'); if(old) old.remove();
-    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal2'; dr.style.zIndex='130';
-    dr.innerHTML='<div class="p-modal" style="max-width:480px"><div class="pd-head"><div class="h-title">Video Needs</div><button class="pd-x" onclick="document.getElementById(\'prod-modal2\').remove()">&times;</button></div>'+
-      '<div class="p-modal-body">'+refBlock+remBlock+'<div style="max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0">'+thread+'</div>'+
-      '<div class="p-field" style="margin-top:10px"><label>Reply to the creator / graphics</label><div id="pc-prev" style="margin-bottom:6px"></div><div style="display:flex;gap:8px;align-items:flex-start"><button class="p-btn" title="Attach image" style="padding:8px 12px" onclick="document.getElementById(\'pc-file\').click()">\ud83d\udcce</button><textarea class="p-area" id="prod-convo-reply" placeholder="Type or paste an image..." style="flex:1"></textarea><input type="file" id="pc-file" accept="image/*" style="display:none"></div></div></div>'+
-      '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="document.getElementById(\'prod-modal2\').remove()">Close</button><button class="p-btn p-btn-primary" onclick="prodConvoSend('+id+')">Send</button></div></div></div>';
-    dr.addEventListener('click',function(e){ if(e.target===dr) dr.remove(); });
-    document.body.appendChild(dr);
     window._chatImg=null;
-    var _pcf=document.getElementById('pc-file'); if(_pcf) _pcf.addEventListener('change',function(e){ var f=(e.target.files||[])[0]; if(f) _chatReadImg(f,'pc-prev'); });
-    window._pcPasteH=function(e){ if(!document.getElementById('prod-convo-reply')){ document.removeEventListener('paste',window._pcPasteH); return; } var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ _chatReadImg(items[i].getAsFile(),'pc-prev'); e.preventDefault(); } } };
-    document.addEventListener('paste',window._pcPasteH);
-  }
+    window._chatPingUrl=P.production.api+'/tasks/'+id+'/chat-ping?audience=creator';
+    api(P.production.api+'/tasks/'+id+'/comments?audience=creator').then(function(r){ window._chatDirty='production'; _peChatRender(id,'creator','Chat with Teacher',(r&&r.comments)||[],'prodConvoSend',r&&r.presence); _chatLivePoll(function(){ api(P.production.api+'/tasks/'+id+'/comments?audience=creator').then(function(rr){ _chatUpdateThread((rr&&rr.comments)||[],'production_manager',rr&&rr.presence); }); }); })
+      .catch(function(e){ toast((e&&e.message)||'Could not load chat',true); });
+  };
   window.prodConvoSend=function(id){
-    var el=document.getElementById('prod-convo-reply'); var msg=(el?el.value:'').trim();
-    if(!msg && !window._chatImg){ toast('Type a message or attach an image',true); return; }
-    var body={message:msg,audience:'creator'}; if(window._chatImg) body.attachment=window._chatImg; window._chatImg=null;
-    api(P.production.api+'/tasks/'+id+'/comments','POST',body).then(function(){
-      toast('Sent'); var old=document.getElementById('prod-modal2'); if(old) old.remove(); prodConvo(id); _refresh('production');
-    }).catch(function(e){ toast((e&&e.message)||'Could not send',true); });
+    var inp=document.getElementById('chat-msg'); var msg=inp?(inp.value||'').trim():'';
+    if(!msg && !window._chatImg && !window._chatPendingUrl) return;
+    var body={message:msg,audience:'creator'}; if(window._chatImg) body.attachment=window._chatImg; else if(window._chatPendingUrl) body.attachment_url=window._chatPendingUrl;
+    if(inp) inp.value=''; var keep=window._chatImg; window._chatImg=null; window._chatPendingUrl=null;
+    var pv=document.getElementById('chat-prev'); if(pv) pv.innerHTML='';
+    api(P.production.api+'/tasks/'+id+'/comments','POST',body).then(function(){ prodConvo(id); })
+      .catch(function(e){ toast((e&&e.message)||'Failed',true); window._chatImg=keep; });
+  };
+  // PM: Video Needs = ONLY the shooting brief the PM set at assign time (reference + remarks). No chat.
+  window.prodVideoNeeds=function(id){
+    ensureCSS();
+    api(P.production.api+'/tasks/'+id).then(function(t){
+      t=t||{};
+      var refVid=(t.reference_video||'').trim()||(/^https?:\/\//i.test((t.reference||'').trim())?(t.reference||'').trim():'');
+      var remarks=(t.remarks||'').trim();
+      var refBlock=refVid?'<a href="'+esc(refVid)+'" target="_blank" rel="noopener" class="p-btn" style="display:inline-flex;margin-bottom:12px">Open Reference Video</a>':'';
+      var remBlock=remarks?'<div style="background:rgba(180,83,9,.08);border:1px solid rgba(180,83,9,.25);border-radius:11px;padding:12px 14px"><div style="font-weight:800;font-size:.82rem;color:#b45309;margin-bottom:5px">Shooting brief you set</div><div style="font-size:.9rem;white-space:pre-wrap;line-height:1.6">'+esc(remarks)+'</div></div>':'<div class="p-opt">No shooting brief was set for this video.</div>';
+      var old=document.getElementById('prod-modal2'); if(old) old.remove();
+      var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal2'; dr.style.zIndex='130';
+      dr.innerHTML='<div class="p-modal" style="max-width:460px"><div class="pd-head"><div class="h-title">Video Needs</div><button class="pd-x" onclick="document.getElementById(\'prod-modal2\').remove()">&times;</button></div>'+
+        '<div class="p-modal-body">'+refBlock+remBlock+'<div style="margin-top:12px;font-size:.82rem;color:var(--muted)">To talk with the teacher, use the \u201cChat\u201d button on the card.</div></div>'+
+        '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="document.getElementById(\'prod-modal2\').remove()">Close</button><button class="p-btn p-btn-primary" onclick="document.getElementById(\'prod-modal2\').remove();prodConvo('+id+')">Chat with Teacher</button></div></div></div>';
+      dr.addEventListener('click',function(e){ if(e.target===dr) dr.remove(); });
+      document.body.appendChild(dr);
+    }).catch(function(e){ toast((e&&e.message)||'Could not load',true); });
   };
   window.prodCollabPopup=function(id){
     api(P.production.api+'/tasks/'+id+'/collab').then(function(r){
