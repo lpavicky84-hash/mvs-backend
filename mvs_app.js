@@ -16939,6 +16939,18 @@ function initResponsiveCss(){
     '.pw-prio-blink{background:rgba(220,38,38,.14)!important;color:#dc2626!important;font-weight:800;display:inline-flex;align-items:center;gap:4px;animation:pwPrioBlink 1s ease-in-out infinite}',
     '.pw-prio-blink.most{background:rgba(190,18,60,.2)!important;color:#be123c!important;animation:pwPrioBlink .68s ease-in-out infinite}',
     '.pw-prio-blink svg{width:12px;height:12px}',
+    /* editor "Shoot Pending" — teacher hasn't shot the video yet */
+    '.pw-shoot-blink{background:rgba(217,119,6,.16)!important;color:#b45309!important;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:5px;animation:pwPrioBlink 1.15s ease-in-out infinite}',
+    '.pw-shoot-blink svg{width:12px;height:12px}',
+    '.esp-box{text-align:center;padding:6px 4px 2px}',
+    '.esp-ic{width:56px;height:56px;margin:0 auto 12px;border-radius:50%;background:rgba(217,119,6,.14);color:#b45309;display:flex;align-items:center;justify-content:center}',
+    '.esp-ic svg{width:28px;height:28px}',
+    '.esp-t{font-size:1.15rem;font-weight:800;color:#b45309;margin-bottom:6px}',
+    '.esp-m{font-size:.92rem;color:var(--text,#2a2313);line-height:1.6;margin-bottom:14px}',
+    '.esp-dl{display:flex;flex-direction:column;gap:4px;background:rgba(201,162,39,.1);border:1px solid rgba(201,162,39,.3);border-radius:12px;padding:13px 16px}',
+    '.esp-dl-l{font-size:.76rem;color:#8a7d5c;font-weight:700;display:inline-flex;align-items:center;gap:6px;justify-content:center}',
+    '.esp-dl-l svg{width:14px;height:14px}',
+    '.esp-dl-v{font-size:1.05rem;font-weight:800;color:#a9791f}',
     '@keyframes pwPrioBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(220,38,38,.45)}50%{opacity:.5;box-shadow:0 0 0 5px rgba(220,38,38,.02)}}',
     /* active clipboard-paste target highlight (Assign Graphics reference vs thumbnail) */
     '.aw-drop.aw-paste-on{border-color:#c99a2e !important;box-shadow:0 0 0 2px rgba(201,154,46,.3);background:rgba(201,154,46,.06)}',
@@ -22647,6 +22659,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(t.priority==='most_urgent') chips.push('<span class="pw-chip pw-prio-blink most">'+ic('alert')+' MOST URGENT</span>');
     else if(t.priority==='urgent') chips.push('<span class="pw-chip pw-prio-blink">'+ic('alert')+' URGENT</span>');
     if(['creator_submitted','pm_review'].indexOf(t.lifecycle)>=0) chips.push('<span class="yt-new-blink">NEW</span>');
+    if(portal==='editor' && (t.lifecycle==='creator_assigned'||t.lifecycle==='creator_working'||t.lifecycle==='changes_required'||t.lifecycle==='reshoot_required')){
+      chips.push('<span class="pw-chip pw-shoot-blink" onclick="event.stopPropagation();edtShootPending('+JSON.stringify(esc(t.creator_name||''))+','+JSON.stringify(esc(t.deadline||''))+')" title="Teacher hasn\'t shot the video yet \u2014 tap for their deadline">'+ic('clock')+' Shoot Pending</span>');
+    }
     if((t.collab&&t.collab.length)||t.is_collab){
       var _ct=t.collab_total||(t.collab&&t.collab.length)||0, _cv=(t.collab_verified!=null?t.collab_verified:0);
       var _cstat=_ct?(_cv>=_ct?(' \u00b7 All '+_ct+' verified'):(' \u00b7 '+_cv+'/'+_ct+' verified')):'';
@@ -24086,14 +24101,21 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.prodNewTask=function(){ if((typeof CURRENT_PORTAL!=='undefined'&&CURRENT_PORTAL==='youtuber')){ ytNewTask(); return; } prodAssignWork(); };
   window.prodAssignWork=function(preCreator){
     ensureCSS(); // admin may open this without the portal shell ever loading its CSS
-    window._aw={step:1, data:{creator_type:(preCreator==='youtuber'?'youtuber':'teacher'), priority:'urgent'}, people:null};
+    // Resume an in-progress form (accidental close should NOT wipe filled data). Start fresh
+    // only when there's nothing to resume (or after Cancel / a successful Create).
+    var resume=!!(window._awResume && window._aw && window._aw.data &&
+                  (window._aw.data.title || window._aw.data.teacher_id || window._aw.data.youtuber_id ||
+                   (window._aw.data.collab_all_ids&&window._aw.data.collab_all_ids.length) || window._aw.step>1));
+    if(!resume){ window._aw={step:1, data:{creator_type:(preCreator==='youtuber'?'youtuber':'teacher'), priority:'urgent'}, people:null}; }
+    window._awResume=false;
     var old=document.getElementById('prod-drawer'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='p-drawer'; dr.id='prod-drawer';
     dr.innerHTML='<div class="pd-panel"><div class="pd-head"><div class="h-title">Assign Work</div>'+
-      '<button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<button class="pd-x" onclick="_awSave();window._awResume=true;prodDismiss()">&times;</button></div>'+
       '<div class="pd-body" id="aw-body"><div class="p-load">Loading...</div></div>'+
       '<div class="pd-foot" id="aw-foot"></div></div>';
-    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+    // Click on the dark backdrop = close but KEEP the data (reopen resumes it).
+    dr.addEventListener('click',function(e){ if(e.target===dr){ try{_awSave();}catch(_e){} window._awResume=true; prodDismiss(); } });
     document.body.appendChild(dr);
     Promise.all([
       api(P.production.api+'/people').catch(function(){return {teachers:[],youtubers:[]};}),
@@ -24340,7 +24362,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '</div>';
     }
     body.innerHTML=html;
-    var back=aw.step>1?'<button class="p-btn" onclick="awBack()">Back</button>':'<button class="p-btn" onclick="prodDismiss()">Cancel</button>';
+    var back=aw.step>1?'<button class="p-btn" onclick="awBack()">Back</button>':'<button class="p-btn" onclick="window._aw=null;window._awResume=false;prodDismiss()">Cancel</button>';
     var next=aw.step<3?'<button class="p-btn p-btn-primary" onclick="awNext()">Next</button>':'<button class="p-btn p-btn-primary" onclick="awCreate()">Create Production Task</button>';
     if(foot) foot.innerHTML='<div class="p-acts" style="justify-content:space-between">'+back+next+'</div>';
   }
@@ -24366,6 +24388,24 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     d.teacher_id=d.collab_all_ids[0]||0;
     d.collab_teacher_ids=d.collab_all_ids.slice(1);
     var note=document.getElementById('aw-collab-note'); if(note) note.innerHTML=(window._awCollabNoteHtml?window._awCollabNoteHtml(d.collab_all_ids.length):(d.collab_all_ids.length+' selected'));
+  };
+  window.edtShootPending=function(teacher, deadline){
+    var o=document.getElementById('prod-modal'); if(o)o.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+    dr.innerHTML='<div class="p-modal" style="max-width:430px">'+
+      '<div class="pd-head"><div class="h-title">Waiting for the teacher</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body">'+
+        '<div class="esp-box">'+
+          '<div class="esp-ic">'+ic('clock')+'</div>'+
+          '<div class="esp-t">Shoot Pending</div>'+
+          '<div class="esp-m"><b>'+(teacher||'The teacher')+'</b> hasn\u2019t shot &amp; submitted this video yet. You\u2019ll be able to start editing the moment they submit it.</div>'+
+          (deadline?('<div class="esp-dl"><span class="esp-dl-l">'+ic('calendar')+' Teacher must deliver by</span><span class="esp-dl-v">'+deadline+'</span></div>'):'')+
+        '</div>'+
+      '</div>'+
+      '<div class="pd-foot"><div class="p-acts"><button class="p-btn p-btn-primary" onclick="prodDismiss()">Got it</button></div></div>'+
+    '</div>';
+    document.body.appendChild(dr);
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
   };
   window.awCollabAll=function(){ /* legacy no-op — replaced by awCollabTapTeacher */ };
   window.awThumbToggle=function(v){ _awSave(); window._aw.data.thumbnail_required=(v==='yes'); _awRender(); };
@@ -24403,9 +24443,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     if(d.thumbnail_required && d.thumb_upload){ body.thumbnail_upload=d.thumb_upload; if(d.thumb_rating) body.thumbnail_rating=d.thumb_rating; }
     if(d.editor_id) body.editor_id=d.editor_id;
-    _pBusy(true);
-    api(P.production.api+'/tasks','POST',body).then(function(){ prodDismiss(); toast('Production task created'+((d.collab_teacher_ids||[]).length?' (collab)':'')); _refresh('production'); })
-      .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Could not create task',true); });
+    // Optimistic: close the drawer NOW and create in the background — no blocking 10s wait.
+    var _wasCollab=((d.collab_teacher_ids||[]).length>0);
+    window._awResume=false;
+    prodDismiss();
+    toast('Creating task\u2026');
+    api(P.production.api+'/tasks','POST',body).then(function(){ window._aw=null; window._awResume=false; toast('Production task created'+(_wasCollab?' (collab)':'')); _refresh('production'); })
+      .catch(function(e){ window._awResume=true; toast((e&&e.message)||'Could not create task \u2014 your details are saved, tap “New Task” to retry',true); });
   };
 
   function _prodModal(title,inner){
