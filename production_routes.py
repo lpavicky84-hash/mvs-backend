@@ -286,11 +286,25 @@ def pm_task_comment_add(tid: int, payload: dict = Body(...),
         except Exception:
             _att = ""
     _aud = (payload.get("audience") or "creator").strip().lower()
-    if _aud not in ("creator", "internal"):
+    if _aud not in ("creator", "internal", "editor"):
         _aud = "creator"
     c = _vtc_add(db, tid, me, payload.get("message"), "production_manager", _att, _aud)
     if not c:
         raise HTTPException(400, "Message cannot be empty")
+    if _aud == "editor":
+        # PM <-> Editor thread — notify the assigned editor.
+        try:
+            from models import ProductionStaffProfile
+            if t.editor_id:
+                sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
+                if sp and sp.user_id:
+                    pc.notify(db, sp.user_id, "PM messaged you on a video",
+                              f'{getattr(me, "name", "PM")} on "{t.title}": {c.message[:110]}',
+                              "editor_chat", link=str(tid))
+        except Exception:
+            pass
+        db.commit()
+        return {"ok": True, "comment": _vtc_out(db, c)}
     if _aud == "internal":
         # Internal thumbnail chat — notify the graphics designer, NOT the teacher.
         try:

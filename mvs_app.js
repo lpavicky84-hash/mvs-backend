@@ -16966,6 +16966,15 @@ function initResponsiveCss(){
     '.chat-blink{animation:chatBlink 1.05s ease-in-out infinite}',
     '.ptc-btn.ptc-chat.chat-blink{border-color:rgba(220,38,38,.5)!important;color:#dc2626!important}',
     '@keyframes chatBlink{0%,100%{opacity:1}50%{opacity:.5}}',
+    /* chat task-info bar (which video this chat is about) */
+    '.pcb{display:flex;align-items:center;gap:11px;padding:11px 13px;margin-bottom:12px;background:linear-gradient(180deg,rgba(201,162,39,.1),rgba(201,162,39,.05));border:1px solid rgba(201,162,39,.28);border-radius:12px}',
+    '.pcb-i{width:34px;height:34px;flex:0 0 34px;border-radius:9px;background:rgba(201,162,39,.18);color:#a9791f;display:flex;align-items:center;justify-content:center}',
+    '.pcb-i svg{width:17px;height:17px}',
+    '.pcb-t{flex:1;min-width:0}',
+    '.pcb-title{font-weight:800;font-size:.95rem;color:var(--text,#2a2313);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.pcb-meta{font-size:.72rem;color:#8a7d5c;font-weight:600;margin-top:1px}',
+    '.pcb-open{flex:0 0 auto;background:#a9791f;color:#fff;border:none;border-radius:8px;padding:7px 11px;font-size:.76rem;font-weight:800;cursor:pointer;white-space:nowrap}',
+    '.pcb-open:hover{background:#946a17}',
     '@keyframes pwPrioBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(220,38,38,.45)}50%{opacity:.5;box-shadow:0 0 0 5px rgba(220,38,38,.02)}}',
     /* active clipboard-paste target highlight (Assign Graphics reference vs thumbnail) */
     '.aw-drop.aw-paste-on{border-color:#c99a2e !important;box-shadow:0 0 0 2px rgba(201,154,46,.3);background:rgba(201,154,46,.06)}',
@@ -21384,6 +21393,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         if(portal==='graphics'){ try{ gfxChat(taskId); return; }catch(e){} }
         else { try{ prodGfxChat(taskId); return; }catch(e){} }
       }
+      if(ntype==='editor_chat'){
+        if(portal==='editor'){ try{ edtChatPM(taskId); return; }catch(e){} }
+        else { try{ prodEdtChat(taskId); return; }catch(e){} }
+      }
       if(ntype==='creator_chat' && portal==='production'){ try{ prodConvo(taskId); return; }catch(e){} }
       prodOpenTask(portal, taskId);
     }
@@ -21817,7 +21830,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var body='<div id="chat-scroll" style="display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow-y:auto;padding:4px">'+(comments.length?comments.map(function(c){return _chatBubble(c,cfg.mineRole);}).join(''):'<div style="color:var(--muted);text-align:center;padding:22px">No messages yet.</div>')+'</div>';
     var old=document.getElementById('prod-modal'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
-    dr.innerHTML='<div class="p-modal" style="max-width:460px"><div class="pd-head"><div class="h-title">'+esc(cfg.title||'Chat')+'</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div><div class="p-modal-body">'+body+'</div><div class="pd-foot" style="display:block"><div id="chat-prev" style="margin-bottom:6px"></div><div style="display:flex;gap:8px;width:100%;align-items:center"><button class="p-btn" title="Attach image" style="padding:8px 12px" onclick="document.getElementById(\'chat-file\').click()">\ud83d\udcce</button><input class="p-input" id="chat-msg" placeholder="Type or paste an image..." style="flex:1" onkeydown="if(event.key===\'Enter\')ytcSend()"><button class="p-btn p-btn-primary" onclick="ytcSend()">Send</button><input type="file" id="chat-file" accept="image/*" style="display:none"></div></div></div>';
+    dr.innerHTML='<div class="p-modal" style="max-width:460px"><div class="pd-head"><div class="h-title">'+esc(cfg.title||'Chat')+'</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div><div class="p-modal-body">'+(cfg.taskId?_prodChatBar(cfg.taskId,cfg.barPortal||''):'')+body+'</div><div class="pd-foot" style="display:block"><div id="chat-prev" style="margin-bottom:6px"></div><div style="display:flex;gap:8px;width:100%;align-items:center"><button class="p-btn" title="Attach image" style="padding:8px 12px" onclick="document.getElementById(\'chat-file\').click()">\ud83d\udcce</button><input class="p-input" id="chat-msg" placeholder="Type or paste an image..." style="flex:1" onkeydown="if(event.key===\'Enter\')ytcSend()"><button class="p-btn p-btn-primary" onclick="ytcSend()">Send</button><input type="file" id="chat-file" accept="image/*" style="display:none"></div></div></div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
     document.body.appendChild(dr);
     _chatWireInputs();
@@ -21837,7 +21850,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     api(P.youtuber.api+'/videos/'+id,'DELETE').then(function(){ toast('Deleted'); _refresh('youtuber'); }).catch(function(e){ toast((e&&e.message)||'Delete failed',true); });
   };
   window.ytChatEditor=function(id){ _ytcOpen({getUrl:P.youtuber.api+'/videos/'+id+'/comments?audience=editor',postUrl:P.youtuber.api+'/videos/'+id+'/comments',audience:'editor',mineRole:'youtuber',title:'Chat with Editor'}); };
-  window.edtChatCreator=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/comments',postUrl:P.editor.api+'/tasks/'+id+'/comments',audience:'editor',mineRole:'editor',title:'Chat with YouTuber'}); };
+  window.edtChatCreator=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/comments',postUrl:P.editor.api+'/tasks/'+id+'/comments',audience:'editor',mineRole:'editor',title:'Chat with YouTuber',taskId:id,barPortal:'editor'}); };
   window.gfxChat=function(id){
     window._chatImg=null;
     api(P.graphics.api+'/tasks/'+id+'/comments').then(function(r){ _gfxChatRender(id,(r&&r.comments)||[]); })
@@ -21871,7 +21884,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var thread=comments.length?comments.map(function(c){ return _chatBubble(c,'graphics'); }).join(''):'<div style="color:var(--muted);font-size:.82rem;padding:10px 0;text-align:center">No messages yet. Start the conversation with the PM about this thumbnail.</div>';
     dr.innerHTML='<div class="p-modal" style="max-width:480px">'+
       '<div class="pd-head"><div class="h-title">Chat with PM</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
-      '<div class="p-modal-body"><div id="chat-thread" style="max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0">'+thread+'</div></div>'+
+      '<div class="p-modal-body">'+_prodChatBar(id,'graphics')+'<div id="chat-thread" style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0">'+thread+'</div></div>'+
       _chatFooter(id,'gfxChatSend')+
       '</div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
@@ -21899,7 +21912,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var thread=comments.length?comments.map(function(c){ return _chatBubble(c,'production_manager'); }).join(''):'<div style="color:var(--muted);font-size:.82rem;padding:10px 0;text-align:center">No messages yet. Start the conversation with the graphics designer. (Teacher ko ye chat nahi dikhta.)</div>';
     dr.innerHTML='<div class="p-modal" style="max-width:480px">'+
       '<div class="pd-head"><div class="h-title">Chat with Graphics <span style="font-size:.66rem;font-weight:700;color:var(--muted)">\u00b7 internal</span></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
-      '<div class="p-modal-body"><div id="chat-thread" style="max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0">'+thread+'</div></div>'+
+      '<div class="p-modal-body">'+_prodChatBar(id,'production')+'<div id="chat-thread" style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0">'+thread+'</div></div>'+
       _chatFooter(id,'prodGfxChatSend')+
       '</div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
@@ -21935,7 +21948,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var thread=comments.length?comments.map(function(c){ return _chatBubble(c,'production_manager'); }).join(''):'<div style="color:var(--muted);font-size:.82rem;padding:10px 0;text-align:center">No messages yet. Start the conversation.</div>';
     dr.innerHTML='<div class="p-modal" style="max-width:480px">'+
       '<div class="pd-head"><div class="h-title">'+esc(title)+' <span style="font-size:.66rem;font-weight:700;color:var(--muted)">\u00b7 internal</span></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
-      '<div class="p-modal-body"><div id="chat-thread" style="max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0">'+thread+'</div></div>'+
+      '<div class="p-modal-body">'+_prodChatBar(id,'production')+'<div id="chat-thread" style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0">'+thread+'</div></div>'+
       _chatFooter(id,sendFn)+
       '</div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
@@ -21944,6 +21957,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     _chatWireInputs();
   }
   // Chooser: PM picks who to chat with about this video
+  // Task-info bar shown at the top of every chat so you always know WHICH video it's about.
+  function _prodChatBar(id, portal){
+    var i=(window._prodTaskInfo||{})[id]||{};
+    var title=i.title||('Task #'+id); var ref=i.ref||''; var who=i.creator||'';
+    var open=portal?('<button class="pcb-open" onclick="prodDismiss();prodOpenTask(\''+portal+'\','+id+')">Open task \u203a</button>'):'';
+    return '<div class="pcb"><div class="pcb-i">'+ic('play')+'</div><div class="pcb-t"><div class="pcb-title">'+esc(title)+'</div><div class="pcb-meta">'+(ref?esc(ref):'')+(who?(' \u00b7 '+esc(who)):'')+'</div></div>'+open+'</div>';
+  }
   window.prodChatMenu=function(id, tc, gc, ec){
     tc=tc||0; gc=gc||0; ec=ec||0;
     var _b=function(n){ return n>0?' <span class="pcm-badge chat-blink">'+n+'</span>':''; };
@@ -21961,7 +21981,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     document.body.appendChild(dr);
   };
   // Editor side: Chat with PM (same audience=editor thread)
-  window.edtChatPM=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/comments',postUrl:P.editor.api+'/tasks/'+id+'/comments',audience:'editor',mineRole:'editor',title:'Chat with PM'}); };
+  window.edtChatPM=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/comments',postUrl:P.editor.api+'/tasks/'+id+'/comments',audience:'editor',mineRole:'editor',title:'Chat with PM',taskId:id,barPortal:'editor'}); };
   window.pmThumbReview=function(id){
     window._pmThumbImgs=[]; window._pmThumbId=id;
     api(P.production.api+'/tasks/'+id).then(function(t){
@@ -22718,6 +22738,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var isLive=_prodIsLive(t);
     var badge=st[0]?'<span class="ptc-badge'+(isLive?' ptc-blink':'')+'" style="background:'+(st[1]||'#8a7d5c')+'" onclick="event.stopPropagation();prodStatusHistory('+t.id+')" title="View status history">'+esc(st[0])+'</span>':'';
     var chips=[];
+    try{ window._prodTaskInfo=window._prodTaskInfo||{}; window._prodTaskInfo[t.id]={title:t.title||'',ref:t.ref_code||'',creator:t.creator_name||'',ctype:t.creator_type||''}; }catch(_e){}
     if(t.priority==='most_urgent') chips.push('<span class="pw-chip pw-prio-blink most">'+ic('alert')+' MOST URGENT</span>');
     else if(t.priority==='urgent') chips.push('<span class="pw-chip pw-prio-blink">'+ic('alert')+' URGENT</span>');
     if(['creator_submitted','pm_review'].indexOf(t.lifecycle)>=0) chips.push('<span class="yt-new-blink">NEW</span>');

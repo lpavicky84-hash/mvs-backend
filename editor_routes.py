@@ -231,7 +231,7 @@ def editor_comment_add(tid: int, payload: dict = Body(...), db: Session = Depend
         yp = db.query(YouTuberProfile).filter(YouTuberProfile.id == t.youtuber_id).first()
         if yp and yp.user_id:
             pc.notify(db, yp.user_id, "Message from Editor",
-                      f'{me.name}: "{(payload.get("message") or "").strip()[:60]}"', "creator_chat", link=str(t.id))
+                      f'{me.name}: "{(payload.get("message") or "").strip()[:60]}"', "editor_chat", link=str(t.id))
     db.commit()
     return {"ok": True, "comment": _VT._vtc_out(db, c)}
 
