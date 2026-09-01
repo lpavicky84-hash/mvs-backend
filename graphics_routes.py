@@ -219,16 +219,27 @@ def gfx_submit(tid: int, payload: dict = Body(...),
     # upload karke URL banao (VARCHAR me base64 fit nahi hota). thumbnail_url bhi accept karo.
     url = (payload.get("thumbnail_url") or payload.get("drive_link") or "").strip()
     images = payload.get("images") or []
-    if images and not url:
+    _all_urls = []
+    if images:
         try:
-            urls = pc.save_images(db, t, images[:1], "thumbnail", None, me, return_urls=True) or []
-            if urls:
-                url = urls[0]
+            _all_urls = pc.save_images(db, t, images, "thumbnail", None, me, return_urls=True) or []
+            if _all_urls and not url:
+                url = _all_urls[0]
         except Exception:
-            url = ""
+            _all_urls = []
     if not url:
         raise HTTPException(400, "Thumbnail image/URL is required")
     g.thumbnail_url = url
+    # Multiple thumbnails submitted -> keep them all as candidates so the PM can pick the final one.
+    try:
+        import json as _jt
+        _cands = list(_all_urls)
+        if url and url not in _cands:
+            _cands = [url] + _cands
+        if _cands:
+            g.thumbnail_candidates = _jt.dumps(_cands)
+    except Exception:
+        pass
     _drive = (payload.get("drive_link") or "").strip()
     if _drive:
         g.drive_link = _drive

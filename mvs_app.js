@@ -17007,6 +17007,15 @@ function initResponsiveCss(){
     '.ref-acts{display:flex;gap:0;background:var(--surface,#fff)}',
     '.ref-btn{flex:1;text-align:center;padding:8px 6px;font-size:.78rem;font-weight:800;color:#a9791f;background:none;border:none;border-top:1px solid var(--border,#e8dfca);cursor:pointer;text-decoration:none}',
     '.ref-btn+.ref-btn{border-left:1px solid var(--border,#e8dfca)}',
+    /* thumbnail-review candidates: select the final one, view/download each */
+    '.thumb-gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:8px}',
+    '.thumb-cell{position:relative;border:2px solid var(--border,#d9cdae);border-radius:12px;overflow:hidden;background:#000;cursor:pointer;transition:border-color .12s,box-shadow .12s}',
+    '.thumb-cell.sel{border-color:#2e9e6b;box-shadow:0 0 0 3px rgba(46,158,107,.25)}',
+    '.thumb-cell>img{width:100%;height:110px;object-fit:cover;display:block}',
+    '.thumb-n{position:absolute;left:7px;top:7px;background:rgba(0,0,0,.72);color:#fff;font-size:.66rem;font-weight:800;padding:2px 8px;border-radius:999px;z-index:1}',
+    '.thumb-pick{position:absolute;right:7px;top:7px;width:22px;height:22px;border-radius:50%;background:#2e9e6b;color:#fff;font-weight:900;font-size:.8rem;display:none;align-items:center;justify-content:center;z-index:1}',
+    '.thumb-cell.sel .thumb-pick{display:flex}',
+    '.thumb-acts{display:flex;background:var(--surface,#fff)}',
     '.ref-btn:hover{background:rgba(201,162,39,.1)}',
     /* chat presence (online / last seen) + typing indicator */
     '.chat-presence{font-size:.72rem;font-weight:700;color:#8a7d5c;margin-top:2px;min-height:14px;display:flex;align-items:center;gap:6px}',
@@ -22040,21 +22049,24 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.pmThumbReview=function(id){
     window._pmThumbImgs=[]; window._pmThumbId=id;
     api(P.production.api+'/tasks/'+id).then(function(t){
-      var gx=t.graphics||{}; var thumb=gx.thumbnail_url||gx.drive_link||'';
+      var gx=t.graphics||{};
+      var cands=(gx.thumbnail_candidates&&gx.thumbnail_candidates.length)?gx.thumbnail_candidates:((gx.thumbnail_url)?[gx.thumbnail_url]:[]);
+      window._pmSelThumb=cands[0]||gx.thumbnail_url||'';
       var old=document.getElementById('prod-modal'); if(old) old.remove();
       var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
-      dr.innerHTML='<div class="p-modal" style="max-width:500px">'+
+      var gal=cands.length?('<div class="p-field"><label>Submitted thumbnails <span style="color:var(--muted);font-weight:600">(tap one to select the final)</span></label><div class="thumb-gal">'+cands.map(function(u,i){ return '<div class="thumb-cell'+(u===window._pmSelThumb?' sel':'')+'" data-url="'+esc(u)+'" onclick="pmSelectThumb(this,\''+esc(u)+'\')"><span class="thumb-n">Thumbnail '+(i+1)+'</span><span class="thumb-pick">\u2713</span><img src="'+esc(u)+'" onclick="event.stopPropagation();prodLightbox(\''+esc(u)+'\')" title="Click to view full"><div class="thumb-acts"><button class="ref-btn" onclick="event.stopPropagation();prodLightbox(\''+esc(u)+'\')">View</button><a class="ref-btn" href="'+esc(u)+'" download target="_blank" rel="noopener" onclick="event.stopPropagation()">Download</a></div></div>'; }).join('')+'</div></div>'):'<div class="p-empty">No image preview</div>';
+      dr.innerHTML='<div class="p-modal" style="max-width:560px">'+
         '<div class="pd-head"><div class="h-title">Thumbnail Review</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
         '<div class="p-modal-body">'+
-          (thumb?('<div class="gfx-thumb lg" style="background-image:url('+esc(thumb)+')" onclick="prodLightbox(\''+esc(thumb)+'\')"></div>'):'<div class="p-empty">No image preview</div>')+
+          gal+
           (gx.drive_link?('<div class="p-field"><a href="'+esc(gx.drive_link)+'" target="_blank" class="p-link">Open Drive link</a></div>'):'')+
           '<div class="p-field"><label>Quality rating (on approve)</label><div class="gfx-stars" id="pm-stars">'+[1,2,3,4,5].map(function(n){ return '<span class="gfx-star" data-n="'+n+'" onclick="_pmSetStar('+n+')">\u2605</span>'; }).join('')+'</div></div>'+
-          '<div class="p-field"><label>Remarks</label><textarea class="p-area" id="pm-th-remarks" placeholder="Required for changes/reject; optional note on approve"></textarea></div>'+
-          '<div class="gfx-paste" id="pm-paste" tabindex="0"><div class="gfx-paste-i">Paste/upload screenshots for changes (optional)</div><input type="file" id="pm-file" accept="image/*" multiple style="display:none"></div>'+
+          '<div class="p-field"><label>Remarks <span style="color:var(--muted);font-weight:600">(for Approve note; for Changes you can discuss in chat)</span></label><textarea class="p-area" id="pm-th-remarks" placeholder="Optional note"></textarea></div>'+
+          '<div class="gfx-paste" id="pm-paste" tabindex="0"><div class="gfx-paste-i">Paste/upload screenshots (optional)</div><input type="file" id="pm-file" accept="image/*" multiple style="display:none"></div>'+
           '<div class="gfx-prev" id="pm-prev"></div>'+
         '</div>'+
-        '<div class="pd-foot"><div class="p-acts"><button class="p-btn p-btn-ok" onclick="pmThumbDecide(\'approve\')">Approve</button>'+
-          '<button class="p-btn p-btn-warn" onclick="pmThumbDecide(\'changes\')">Changes Required</button>'+
+        '<div class="pd-foot"><div class="p-acts"><button class="p-btn p-btn-ok" onclick="pmThumbDecide(\'approve\')">Approve Selected</button>'+
+          '<button class="p-btn p-btn-warn" onclick="pmThumbDecide(\'changes\')">Changes \u00b7 Discuss</button>'+
           '<button class="p-btn p-btn-danger" onclick="pmThumbDecide(\'reject\')">Reject</button></div></div>'+
         '</div>';
       dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
@@ -22067,6 +22079,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       document.addEventListener('paste',window._pmPasteH);
     }).catch(function(e){ toast((e&&e.message)||'Could not load',true); });
   };
+  window.pmSelectThumb=function(el, url){ window._pmSelThumb=url; var box=el&&el.parentNode; if(box) box.querySelectorAll('.thumb-cell').forEach(function(c){ c.classList.toggle('sel', c===el); }); };
   window._pmSetStar=function(n){ window._pmStar=n; var box=document.getElementById('pm-stars'); if(box) box.querySelectorAll('.gfx-star').forEach(function(s){ s.classList.toggle('on', parseInt(s.getAttribute('data-n'),10)<=n); }); };
   function _pmAddFile(file){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ if(window._pmThumbImgs.length<6){ window._pmThumbImgs.push(rd.result); var box=document.getElementById('pm-prev'); if(box) box.innerHTML=window._pmThumbImgs.map(function(s){ return '<div class="gfx-thumb" style="background-image:url('+s+')"></div>'; }).join(''); } }; rd.readAsDataURL(file); }
   window.pmThumbDecide=function(action){
@@ -22075,13 +22088,20 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var id=window._pmThumbId;
     var ep,body;
     function _needRem(){ if(_ta){ _ta.classList.add('p-area-req'); _ta.focus(); setTimeout(function(){ _ta.classList.remove('p-area-req'); },2500); } toast('Please add remarks \u2014 batao designer ko kya change karna hai',true); }
-    if(action==='approve'){ ep='/thumbnail-approve'; body={quality_rating:window._pmStar||0,quality_note:rem}; }
-    else if(action==='changes'){ if(!rem){ _needRem(); return; } ep='/thumbnail-changes'; body={remarks:rem,images:window._pmThumbImgs}; }
+    if(action==='approve'){ ep='/thumbnail-approve'; body={quality_rating:window._pmStar||0,quality_note:rem,selected_thumbnail:(window._pmSelThumb||'')}; }
+    else if(action==='changes'){
+      // Don't just push it through — mark for a new thumbnail AND open the PM<->Graphics chat so
+      // the PM can explain exactly what to change (with screenshots).
+      if(window._pmPasteH){ document.removeEventListener('paste',window._pmPasteH); window._pmPasteH=null; }
+      prodDismiss(); toast('Opening chat to discuss changes\u2026');
+      api(P.production.api+'/tasks/'+id+'/thumbnail-changes','POST',{remarks:(rem||'Changes needed \u2014 details in chat'),images:window._pmThumbImgs}).then(function(){ _apiBust(); _refresh('production'); setTimeout(function(){ prodGfxChat(id); },250); }).catch(function(e){ toast((e&&e.message)||'Failed \u2014 try again',true); });
+      return;
+    }
     else { if(!rem){ _needRem(); return; } ep='/thumbnail-reject'; body={remarks:rem,images:window._pmThumbImgs}; }
     if(window._pmPasteH){ document.removeEventListener('paste',window._pmPasteH); window._pmPasteH=null; }
     prodDismiss(); toast('Saving\u2026');
     api(P.production.api+'/tasks/'+id+ep,'POST',body).then(function(){
-      toast(action==='approve'?'Thumbnail approved':(action==='changes'?'Changes requested':'Thumbnail rejected')); _apiBust(); _refresh('production');
+      toast(action==='approve'?'Thumbnail approved':'Thumbnail rejected'); _apiBust(); _refresh('production');
     }).catch(function(e){ toast((e&&e.message)||'Failed \u2014 try again',true); });
   };
   function _eventsBanner(events){

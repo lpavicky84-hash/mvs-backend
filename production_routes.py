@@ -898,6 +898,12 @@ def thumbnail_approve(tid: int, payload: dict = Body(default={}),
         raise HTTPException(400, "No submitted thumbnail to approve")
     g.status = "approved"
     g.approved_at = datetime.utcnow()
+    # PM may pick ONE of several submitted thumbnails as the final — that becomes the approved one
+    # (and the only one the teacher/students see).
+    _sel = (payload.get("selected_thumbnail") or "").strip()
+    if _sel:
+        g.thumbnail_url = _sel
+    t.thumbnail_link = g.thumbnail_url or t.thumbnail_link
     # optional PM quality rating for the thumbnail
     try:
         rt = int(payload.get("quality_rating") or 0)
