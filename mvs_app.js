@@ -437,7 +437,7 @@ let countdownTimer = null;
 // stale nahi rehta. Login/logout pe bhi clear hota hai.
 const _apiCache={};
 const _API_TTL=60000;
-const _API_NOCACHE=/notifications|heartbeat|\/photo|\/image|\/voice|\/file|\/download|\/pdf|\/content|\/badge|video-tasks\/my|video-tasks\b|production\/tasks|production\/dashboard|(editor|graphics|youtuber)\/(tasks|videos|dashboard)|\/collab/i;
+const _API_NOCACHE=/notifications|heartbeat|\/photo|\/image|\/voice|\/file|\/download|\/pdf|\/content|\/badge|video-tasks\/my|video-tasks\b|production\/tasks|production\/dashboard|(editor|graphics|youtuber)\/(tasks|videos|dashboard)|\/collab|\/performance|\/refresh-views|(editor|graphics)\/(uploads|library|time-analytics)/i;
 let _curLoader=null;        // current page ka loader — background refresh aane par isse re-render
 let _swrT=null;
 // Should the background/auto refresh SKIP re-rendering right now? Re-rendering the
@@ -490,11 +490,14 @@ async function _apiRefreshBg(path,_ck){
     const d=await res.json();
     try{ const s=JSON.stringify(d);
       if(s.length<1572864){
-        // SILENT: only update the cache. We NEVER re-render the current view from a
-        // background refresh — that would disrupt whatever the user is doing (an open
-        // complaint, a half-typed reply, scroll position). Fresh data shows on the next
-        // navigation / action instead.
+        // SILENT cache update. If the fresh data actually CHANGED, quietly re-render the
+        // current page — but only when the user is idle (_swrRerender defers via _swrBlocked
+        // whenever a form/modal/drawer is open or they interacted in the last few seconds).
+        // This is what kills the "I did something but the screen still shows old data" delay.
+        var _old=_apiCache[_ck]&&_apiCache[_ck].d;
+        var _changed=true; try{ _changed=(JSON.stringify(_old)!==s); }catch(e){ _changed=true; }
         _apiCache[_ck]={t:Date.now(),d:d};
+        if(_changed){ try{ _swrRerender(); }catch(e){} }
       }
     }catch(e){}
   }catch(e){}
@@ -20483,7 +20486,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
              {p:'gfx:today',t:'Today',i:'calendar'}, {p:'gfx:pending',t:'Pending',i:'clock'},
              {p:'gfx:completed',t:'Completed',i:'check'} ]},
             {g:'Review',items:[ {p:'gfx:review',t:'Thumbnail Review',i:'eye'}, {p:'gfx:changes',t:'Changes Required',i:'alert'} ]},
-            {g:'Insights',items:[ {p:'performance',t:'Performance',i:'chart'} ]},
+            {g:'Insights',items:[ {p:'performance',t:'Performance',i:'chart'}, {p:'gviews',t:'Realtime Views',i:'chart'} ]},
             {g:'Account',items:[ {p:'notifs',t:'Notifications',i:'bell'}, {p:'profile',t:'Profile',i:'user'} ]} ] }
   };
   window._PROD_PORTALS=P;
@@ -21514,6 +21517,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     try{ if(portal) window._hbUrl='/api/'+portal+'/heartbeat'; }catch(e){}
     var el=document.getElementById(portal+'-app'); if(!el) return;
     (window._prodCurPage=window._prodCurPage||{})[portal]=page;
+    // let the SWR background-refresh quietly re-render THIS portal's current page when
+    // fresh data arrives (guarded by _swrBlocked so it never disturbs active work).
+    try{ _curLoader=function(){ try{ _refresh(portal); }catch(e){} }; }catch(e){}
     el.classList.remove('side-open');
     el.querySelectorAll('.ps-item').forEach(function(n){ n.classList.toggle('on', n.getAttribute('data-page')===page); });
     // accordion: is page ka group khol do, baaki band
@@ -21537,6 +21543,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(page==='ytviews') return renderYtViews(portal,body);
     if(page==='yttimeline') return renderYtTimeline(portal,body);
     if(page==='performance') return (portal==='editor')?renderEditorPerf(portal,body):renderGfxPerf(portal,body);
+    if(page==='gviews') return renderGfxViews(portal,body);
     if(page==='uploads') return renderEditorUploads(portal,body);
     if(page==='notifs') return renderProdNotifsPage(portal,body);
     if(page==='profile') return renderProdProfile(portal,body);
@@ -22673,19 +22680,65 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   function renderGfxPerf(portal,body){
     body.innerHTML='<div class="p-load">Loading performance...</div>';
-    return api(P.graphics.api+'/dashboard').then(function(r){
+    return api(P.graphics.api+'/performance').then(function(r){
       if(_stale(portal,'performance')) return;
-      var pf=r.performance||{};
-      var cards=[['Daily Output',pf.daily_output||0],['Weekly Output',pf.weekly_output||0],['Monthly Output',pf.monthly_output||0],
-                 ['Approved',pf.approved_count||0],['Revisions',pf.revision_count||0],
-                 ['Avg Turnaround',(pf.avg_turnaround_hours||0)+'h'],['PM Quality',(pf.pm_quality_rating||0)+'\u2605'],
-                 ['First-time Approved',(pf.approval_rate||0)+'%'],['Rank',pf.rank?('#'+pf.rank):'\u2014']];
+      var cards=[['Daily Output',r.daily_output||0],['Weekly Output',r.weekly_output||0],['Monthly Output',r.monthly_output||0],
+                 ['Approved',r.approved_count||0],['Revisions',r.revision_count||0],
+                 ['Avg Turnaround',(r.avg_turnaround_hours||0)+'h'],['PM Quality',(r.pm_quality_rating||0)+'\u2605'],
+                 ['First-time Approved',(r.approval_rate||0)+'%'],['Rank',r.rank?('#'+r.rank):'\u2014']];
       var html='<div class="p-sec">Your Performance</div><div class="pk-grid">'+cards.map(function(c){
         return '<div class="pk-card"><div class="pk-val">'+c[1]+'</div><div class="pk-lbl">'+c[0]+'</div></div>'; }).join('')+'</div>';
+      if(r.charts){
+        html+='<div class="perf-charts">';
+        html+='<div class="perf-card"><div class="perf-h">Output</div>'+_barChart(r.charts.bar)+'</div>';
+        html+='<div class="perf-card"><div class="perf-h">Status Mix</div>'+_donutChart(r.charts.donut)+'</div>';
+        html+='<div class="perf-card perf-wide"><div class="perf-h">6-Month Trend</div>'+_edtTrend(r.charts.trend)+'</div>';
+        html+='</div>';
+      }
+      if(r.ranking && r.ranking.length){
+        html+='<div class="p-sec">Designer Ranking (this month)</div><div class="rank-cards">'+r.ranking.map(function(x,i){
+          return '<div class="rank-card'+(x.me?' me':'')+'"><div class="rank-pos">#'+(i+1)+'</div><div class="rank-name">'+esc(x.name||'')+(x.me?' (You)':'')+'</div><div class="rank-val">'+(x.approved||0)+' approved</div></div>';
+        }).join('')+'</div>';
+      }
       if(r.appreciation && r.appreciation.total_done>0) html+=_appreciationStrip(r.appreciation);
       body.innerHTML=html;
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load performance. '+esc(e&&e.message||'')+'</div>'; });
   }
+  // Graphics realtime views — the videos this designer made thumbnails for + their live views.
+  function renderGfxViews(portal,body){
+    body.innerHTML='<div class="p-load">Loading published videos...</div>';
+    return api(P.graphics.api+'/uploads').then(function(r){
+      if(_stale(portal,'gviews')) return;
+      var kpis=[['Thumbnails Made',r.total_thumbnails||0],['Published',r.published||0],
+                ['Realtime Views',_num(r.total_views||0)],['Highest Viewed',r.highest?_num(r.highest.views):'0']];
+      var html='<div class="p-toolbar" style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="p-btn p-btn-primary" id="gv-refresh" onclick="gfxRefreshViews()">Refresh live views</button></div>';
+      html+='<div class="pk-grid">'+kpis.map(function(c){ return '<div class="pk-card"><div class="pk-val">'+c[1]+'</div><div class="pk-lbl">'+c[0]+'</div></div>'; }).join('')+'</div>';
+      if(r.highest && r.highest.views>0){
+        var h=r.highest; var ht=h.thumbnail||(h.yt_video_id?('https://img.youtube.com/vi/'+h.yt_video_id+'/mqdefault.jpg'):'');
+        html+='<div class="p-sec">Your Best-Performing Thumbnail</div><div class="vv-vrow"'+(h.youtube_url?' style="cursor:pointer" onclick="window.open(\''+esc(h.youtube_url)+'\',\'_blank\')"':'')+'>'+
+          (ht?'<img class="vv-vthumb" src="'+esc(ht)+'" loading="lazy">':'<div class="vv-vthumb"></div>')+
+          '<div style="flex:1;min-width:0"><div class="vv-vtitle">'+esc(h.title||'')+'</div><div class="vv-vmeta">'+esc(h.published_at||'')+'</div></div>'+
+          '<div style="text-align:right"><div class="vv-vviews">'+_num(h.views)+'</div></div></div>';
+      }
+      var vs=r.videos||[];
+      html+='<div class="p-sec">Your Thumbnails \u00b7 Live Views</div><div class="vv-panel"><div style="max-height:440px;overflow-y:auto">';
+      html+=vs.length?vs.map(function(v){
+        var thumb=v.thumbnail||(v.yt_video_id?('https://img.youtube.com/vi/'+v.yt_video_id+'/mqdefault.jpg'):'');
+        var meta=[]; if(v.video_type) meta.push(esc(v.video_type)); if(v.published_at) meta.push(esc(v.published_at));
+        return '<div class="vv-vrow"'+(v.youtube_url?' style="cursor:pointer" onclick="window.open(\''+esc(v.youtube_url)+'\',\'_blank\')"':'')+'>'+
+          (thumb?'<img class="vv-vthumb" src="'+esc(thumb)+'" loading="lazy">':'<div class="vv-vthumb"></div>')+
+          '<div style="flex:1;min-width:0"><div class="vv-vtitle">'+esc(v.title||'Untitled')+'</div><div class="vv-vmeta">'+meta.join(' \u00b7 ')+'</div></div>'+
+          '<div style="text-align:right"><div class="vv-vviews">'+_num(v.views)+'</div>'+(v.youtube_url?'<div class="pw-vlink" style="border:0;padding:0;color:#a9791f">Open</div>':'')+'</div></div>';
+      }).join(''):'<div class="p-empty">No published videos yet. Once a video you made a thumbnail for is uploaded, its live views appear here.</div>';
+      html+='</div></div>';
+      body.innerHTML=html;
+    }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load. '+esc(e&&e.message||'')+'</div>'; });
+  }
+  window.gfxRefreshViews=function(){
+    var btn=document.getElementById('gv-refresh'); if(btn){ btn.disabled=true; btn.textContent='Refreshing...'; }
+    api(P.graphics.api+'/refresh-views','POST').then(function(){ toast('Live views updated'); var body=document.getElementById('graphics-body'); if(body) renderGfxViews('graphics',body); })
+      .catch(function(e){ toast((e&&e.message)||'Failed',true); if(btn){ btn.disabled=false; btn.textContent='Refresh live views'; } });
+  };
   function renderProdNotifsPage(portal,body){
     body.innerHTML='<div class="p-load">Loading notifications...</div>';
     return api(P[portal].api+'/notifications').then(function(r){
@@ -26540,15 +26593,32 @@ function _mcChatCss(){
   if(document.getElementById('mcchat-css')) return;
   var s=document.createElement('style'); s.id='mcchat-css';
   s.textContent=[
-    '.mc-chat-msgs{max-height:34vh;overflow:auto;display:flex;flex-direction:column;gap:10px;padding:4px 2px;margin-bottom:10px}',
-    '.mc-b{max-width:80%;padding:9px 12px;border-radius:14px;font-size:.86rem;line-height:1.35;word-break:break-word}',
-    '.mc-b .who{font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;opacity:.7;margin-bottom:3px}',
-    '.mc-b .at{font-size:.64rem;opacity:.6;margin-top:4px}',
-    '.mc-b.them{align-self:flex-start;background:var(--card);border:1px solid var(--border)}',
-    'body.dark .mc-b.them{background:var(--card);border-color:var(--border)}',
-    '.mc-b.me{align-self:flex-end;background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05}',
-    '.mc-b img.att{max-width:210px;border-radius:10px;margin-top:6px;display:block;cursor:pointer}',
-    '.mc-b a.att{display:inline-block;margin-top:6px;font-size:.78rem;font-weight:700;text-decoration:underline;cursor:pointer}',
+    '.mc-chat-msgs{max-height:44vh;overflow:auto;display:flex;flex-direction:column;gap:8px;padding:14px 10px;margin-bottom:10px;border-radius:14px;background:#e7ded2}',
+    'body.dark .mc-chat-msgs{background:#0b141a}',
+    '.mc-b{position:relative;max-width:82%;padding:6px 9px 5px;border-radius:9px;font-size:.88rem;line-height:1.4;word-break:break-word;box-shadow:0 1px 1px rgba(0,0,0,.14);display:flex;flex-direction:column;gap:3px}',
+    '.mc-b .who{font-size:.68rem;font-weight:800;letter-spacing:.02em}',
+    '.mc-b.them{align-self:flex-start;background:#fff;color:#111b21;border-top-left-radius:2px}',
+    '.mc-b.me{align-self:flex-end;background:#d9fdd3;color:#111b21;border-top-right-radius:2px}',
+    'body.dark .mc-b.them{background:#202c33;color:#e9edef}',
+    'body.dark .mc-b.me{background:#005c4b;color:#e9edef}',
+    '.mc-b.them .who{color:#1f8a70}',
+    '.mc-b.me .who{color:#0a7d63}',
+    'body.dark .mc-b.me .who{color:#8fd9c7}',
+    '.mc-b.them::before{content:"";position:absolute;top:0;left:-7px;border:7px solid transparent;border-top-color:#fff;border-right-width:0}',
+    '.mc-b.me::before{content:"";position:absolute;top:0;right:-7px;border:7px solid transparent;border-top-color:#d9fdd3;border-left-width:0}',
+    'body.dark .mc-b.them::before{border-top-color:#202c33}',
+    'body.dark .mc-b.me::before{border-top-color:#005c4b}',
+    '.mc-b .mc-txt{white-space:normal}',
+    '.mc-b .at{align-self:flex-end;font-size:.62rem;opacity:.6;margin-top:1px;display:flex;align-items:center;gap:3px}',
+    '.mc-b .at .tick{letter-spacing:-2px;font-size:.72rem;opacity:.8}',
+    '.mc-img-wrap{position:relative;margin-top:4px;border-radius:8px;overflow:hidden;max-width:230px;background:rgba(0,0,0,.05)}',
+    '.mc-img-wrap img{display:block;width:100%;min-height:60px;cursor:zoom-in}',
+    '.mc-img-dl{position:absolute;top:6px;right:6px;width:30px;height:30px;border:none;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}',
+    '.mc-img-dl svg{width:16px;height:16px}',
+    '.mc-img-dl:hover{background:rgba(0,0,0,.78)}',
+    '.mc-file{display:flex;align-items:center;gap:9px;margin-top:5px;padding:8px 10px;border-radius:8px;background:rgba(0,0,0,.06);cursor:pointer;font-size:.8rem;font-weight:700}',
+    '.mc-file svg{width:16px;height:16px;flex:none}',
+    'body.dark .mc-file{background:rgba(255,255,255,.07)}',
     '.mc-comp{border:1px solid var(--border);border-radius:12px;padding:10px;background:var(--card)}',
     'body.dark .mc-comp{background:var(--card);border-color:var(--border)}',
     '.mc-comp.drag{border-color:#b8941f;background:rgba(184,148,31,.08)}',
@@ -26595,12 +26665,21 @@ function _mcRenderMsgs(role, msgs){
   var imgJobs=[];
   el.innerHTML=msgs.map(function(m){
     var mine=(m.sender_role===role);
+    var _dic=(typeof ic==='function'?ic('download'):'\u2913');
     var atts=(m.attachments||[]).map(function(a){
-      if(a.is_image){ var id='mcimg-'+a.id; imgJobs.push([id, role, a.id]); return '<img id="'+id+'" class="att" alt="'+esc(a.filename)+'" onclick="_mcAttDownload(\''+role+'\','+a.id+',\''+esc((a.filename||'image').replace(/'/g,''))+'\')">'; }
-      return '<a class="att" onclick="_mcAttDownload(\''+role+'\','+a.id+',\''+esc((a.filename||'file').replace(/'/g,''))+'\')">\u2193 '+esc(a.filename)+'</a>';
+      var nm=esc((a.filename||(a.is_image?'image':'file')).replace(/'/g,''));
+      if(a.is_image){ var id='mcimg-'+a.id; imgJobs.push([id, role, a.id]);
+        // tap the image -> open the full viewer (which has its own Download button).
+        // the small corner button downloads directly without opening the viewer.
+        return '<div class="mc-img-wrap"><img id="'+id+'" alt="'+esc(a.filename||'image')+'" onclick="_mcAttView(\''+id+'\',\''+nm+'\')">'
+          +'<button class="mc-img-dl" title="Download" onclick="event.stopPropagation();_mcAttDownload(\''+role+'\','+a.id+',\''+nm+'\')">'+_dic+'</button></div>';
+      }
+      return '<div class="mc-file" onclick="_mcAttDownload(\''+role+'\','+a.id+',\''+nm+'\')">'+_dic
+        +'<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(a.filename||'file')+'</span></div>';
     }).join('');
     return '<div class="mc-b '+(mine?'me':'them')+'"><div class="who">'+esc(m.sender_role==='admin'?'Admin':'Teacher')+'</div>'
-      +(m.message?esc(m.message).replace(/\n/g,'<br>'):'')+atts+'<div class="at">'+esc(m.at)+'</div></div>';
+      +(m.message?'<div class="mc-txt">'+esc(m.message).replace(/\n/g,'<br>')+'</div>':'')+atts
+      +'<div class="at">'+esc(m.at)+(mine?' <span class="tick">\u2713\u2713</span>':'')+'</div></div>';
   }).join('');
   el.scrollTop=el.scrollHeight;
   imgJobs.forEach(function(j){ _mcLoadImg(j[0], '/api/'+j[1]+'/material-attachments/'+j[2]+'/view'); });
@@ -26638,6 +26717,15 @@ async function mcChatSend(role, sid){
     api('/api/'+role+'/material-submissions/'+sid+'/messages').then(function(rr){ _mcRenderMsgs(role,(rr&&rr.messages)||[]); });
   }catch(e){ toast(e.message||'Could not send',true); }
   finally{ if(btn){ btn.disabled=false; btn.textContent='Send'; } }
+}
+function _mcAttView(imgId, name){
+  // open the already-loaded image blob in the full-screen viewer (it has its own
+  // Download button + Close + ESC). No re-fetch needed — the thumbnail blob is reused.
+  var im=document.getElementById(imgId);
+  var src=im&&im.src;
+  if(!src){ toast('Image is still loading — ek second rukiye.',true); return; }
+  if(typeof openImageViewerSrc==='function') openImageViewerSrc(src, name||'image');
+  else if(typeof prodLightbox==='function') prodLightbox(src);
 }
 async function _mcAttDownload(role, aid, name){
   try{ var r=await fetch(API+'/api/'+role+'/material-attachments/'+aid+'/download',{headers:{Authorization:'Bearer '+TOKEN}});
