@@ -235,7 +235,7 @@ function _logoDataURI(){ return 'data:image/svg+xml,'+encodeURIComponent(_mvsLog
 function _logoFallback(img){ try{ img.onerror=null; img.src=_logoDataURI(); img.style.background='transparent'; }catch(e){} }
 function _mvsLogoImg(px,rad,bg){
   px=px||60; rad=(rad==null?Math.round(px*0.28):rad);
-  return '<img src="'+_logoSrc()+'" alt="MVS Foundation" onerror="_logoFallback(this)" '+
+  return '<img loading="lazy" src="'+_logoSrc()+'" alt="MVS Foundation" onerror="_logoFallback(this)" '+
     'style="width:'+px+'px;height:'+px+'px;border-radius:'+rad+'px;object-fit:contain;background:'+(bg||'#0d1b2a')+';display:block">';
 }
 function _faviconApply(href,isSvg){
@@ -1119,7 +1119,7 @@ async function openNotifPanel(role){
     const hint=hasLink?` <span style="font-size:.68rem;color:var(--primary);font-weight:800">Open Link &#8250;</span>`:' <span style="font-size:.68rem;color:var(--primary);font-weight:800">&#8250;</span>';
     const isBroadcast=(n.notif_type==='admin_broadcast');
     const av=(isBroadcast&&n.image_url)?'':_notifAvHtml(n,'MVS');
-    const imgPrev=(isBroadcast&&n.image_url)?`<img data-nimg-full="${esc(n.image_url)}" alt="" style="width:100%;max-height:220px;object-fit:cover;border-radius:10px;margin-top:8px;display:none;background:var(--border)">`:'';
+    const imgPrev=(isBroadcast&&n.image_url)?`<img loading="lazy" data-nimg-full="${esc(n.image_url)}" alt="" style="width:100%;max-height:220px;object-fit:cover;border-radius:10px;margin-top:8px;display:none;background:var(--border)">`:'';
     const dot=unread?`<span style="width:9px;height:9px;border-radius:50%;background:var(--primary);flex:0 0 9px;margin-top:6px;box-shadow:0 0 0 3px var(--primary-50)"></span>`:'';
     const inner=`<div class="ni-title" style="font-weight:${unread?'800':'600'}">${esc(n.title)}${hint}</div><div class="ni-msg"${unread?' style="color:var(--text);font-weight:500"':''}>${esc(n.message)}</div>${imgPrev}<div class="ni-time"> ${fmtNice(n.created_at)}</div>`;
     const itStyle=`cursor:pointer;${unread?'border-left:3px solid var(--primary);background:linear-gradient(90deg,var(--primary-50),transparent 70%)':''}`;
@@ -1314,7 +1314,7 @@ async function anPickImg(inp){
     const b64=await new Promise((res,rej)=>{ const rd=new FileReader(); rd.onload=()=>res(rd.result); rd.onerror=rej; rd.readAsDataURL(file); });
     window._anImg=b64;
     const box=document.getElementById('an-imgbox');
-    if(box) box.innerHTML=`<div style="display:flex;align-items:center;gap:10px"><img src="${b64}" style="width:72px;height:72px;object-fit:cover;border-radius:10px;border:1px solid var(--border)"><button class="btn btn-ghost btn-sm" onclick="anClearImg()">${ic('trash')} Remove</button></div>`;
+    if(box) box.innerHTML=`<div style="display:flex;align-items:center;gap:10px"><img loading="lazy" src="${b64}" style="width:72px;height:72px;object-fit:cover;border-radius:10px;border:1px solid var(--border)"><button class="btn btn-ghost btn-sm" onclick="anClearImg()">${ic('trash')} Remove</button></div>`;
   }catch(e){ toast('Could not load image',true); }
 }
 function anClearImg(){
@@ -1729,7 +1729,7 @@ function _dlName(name,mime){
 function doubtAttachHtml(role,id,mime,name,isAns){
   if((mime||'').startsWith('image/')){
     const url='/api/'+role+'/doubt/'+id+(isAns?'/answer-file':'/image');
-    return `<img class="doubt-thumb" data-url="${url}" data-name="${esc(name||'')}" alt="attachment photo" onclick="openImageViewer(this)">`;
+    return `<img loading="lazy" class="doubt-thumb" data-url="${url}" data-name="${esc(name||'')}" alt="attachment photo" onclick="openImageViewer(this)">`;
   }
   return `<button class="btn btn-ghost btn-sm" onclick="${isAns?'viewAnswerFile':'viewDoubtFile'}('${role}',${id},'${esc(mime||'')}')">${ic('folder')} ${esc(name||'Attachment')}</button>`;
 }
@@ -1751,7 +1751,7 @@ function openImageViewerSrc(src,name){
   let ov=document.getElementById('imgviewer');
   if(!ov){
     ov=document.createElement('div'); ov.id='imgviewer'; ov.className='imgviewer';
-    ov.innerHTML=`<div class="iv-bar"><span class="iv-name" id="iv-name"></span><span style="display:flex;gap:8px;flex:none"><a class="iv-btn" id="iv-dl" href="#" download>&#8681; Download</a><button class="iv-btn" onclick="closeImageViewer()">&#10005; Close</button></span></div><img id="iv-img" alt="attachment full view">`;
+    ov.innerHTML=`<div class="iv-bar"><span class="iv-name" id="iv-name"></span><span style="display:flex;gap:8px;flex:none"><a class="iv-btn" id="iv-dl" href="#" download>&#8681; Download</a><button class="iv-btn" onclick="closeImageViewer()">&#10005; Close</button></span></div><img loading="lazy" id="iv-img" alt="attachment full view">`;
     document.body.appendChild(ov);
     ov.addEventListener('click',e=>{ if(e.target===ov) closeImageViewer(); });
     document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeImageViewer(); });
@@ -1837,7 +1837,7 @@ async function openDocViewer(url, name, opts){
     var u=URL.createObjectURL(blob); window._dvUrl=u;
     var body2=document.getElementById('dv-body');
     if(body2){
-      if(isImg) body2.innerHTML='<img class="dv-img" src="'+u+'" alt="'+esc(name||'')+'">';
+      if(isImg) body2.innerHTML='<img loading="lazy" class="dv-img" src="'+u+'" alt="'+esc(name||'')+'">';
       else body2.innerHTML='<iframe class="dv-frame" src="'+u+'" title="'+esc(name||'document')+'"></iframe>';
     }
     var dl2=document.getElementById('dv-dl'); if(dl2){ dl2.href=u; dl2.setAttribute('download', name||'document'); }
@@ -2246,7 +2246,7 @@ function _ttRender(){
   const chapters=a.chapters||0, classes=a.classes||0, dppMin=a.dpp_min||0, dppMax=a.dpp_max||classes||0;
   const _ti=(window._ttTeachers||{})[c.tid]||{};
   const _ini=esc((c.name||'?').slice(0,1).toUpperCase());
-  const _av=_ti.photo?`<img src="${_ti.photo}" class="ttp-av-img">`:`<div class="ttp-av">${_ini}</div>`;
+  const _av=_ti.photo?`<img loading="lazy" src="${_ti.photo}" class="ttp-av-img">`:`<div class="ttp-av">${_ini}</div>`;
   const header=`<div class="ttp-teacher">${_av}<div><div class="ttp-tname">${esc(c.name||'')}</div><div class="ttp-tsubs">${(c.subjects||[]).map(x=>`<span class="ttp-subchip">${esc(x)}</span>`).join('')||'<span class="pfb-muted">No subjects</span>'}</div></div></div>`;
   // source dropdown
   const srcSel=`<div class="ttp-src"><label>Target source</label>
@@ -2610,7 +2610,7 @@ function _pfChange(r){
 }
 function _pfAv(r,sz){
   const ini=esc((r.name||'?').slice(0,1).toUpperCase());
-  return r.photo?`<img src="${r.photo}" style="width:${sz}px;height:${sz}px;border-radius:50%;object-fit:cover;border:3px solid #fff">`
+  return r.photo?`<img loading="lazy" src="${r.photo}" style="width:${sz}px;height:${sz}px;border-radius:50%;object-fit:cover;border:3px solid #fff">`
     :`<div class="pf-ini" style="width:${sz}px;height:${sz}px;font-size:${Math.round(sz*.4)}px">${ini}</div>`;
 }
 function _pfVal(r){
@@ -2905,7 +2905,7 @@ async function _loadTRankBoardOld(){
     const av=function(r,sz){
       const ini=esc((r.name||'?').slice(0,1).toUpperCase());
       return r.photo
-        ? `<img src="${r.photo}" style="width:${sz}px;height:${sz}px;border-radius:50%;object-fit:cover;border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.18)">`
+        ? `<img loading="lazy" src="${r.photo}" style="width:${sz}px;height:${sz}px;border-radius:50%;object-fit:cover;border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.18)">`
         : `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:linear-gradient(135deg,#b8941f,#a1741a);color:#241a05;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:${Math.round(sz*.4)}px;border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.18)">${ini}</div>`;
     };
     // podium top 3 (clickable)
@@ -3275,7 +3275,7 @@ function viewKytPhoto(key,title){
   const u=(window._photoUrls||{})[key];
   if(!u) return;
   const ov=document.createElement('div'); ov.className='pv-overlay';
-  ov.innerHTML=`<button class="pv-close" aria-label="Close">\u2715</button><div class="pv-box"><img src="${u}" alt=""><div class="pv-cap">${esc(title||'')}</div></div>`;
+  ov.innerHTML=`<button class="pv-close" aria-label="Close">\u2715</button><div class="pv-box"><img loading="lazy" src="${u}" alt=""><div class="pv-cap">${esc(title||'')}</div></div>`;
   ov.addEventListener('click',()=>ov.remove());
   document.body.appendChild(ov);
   requestAnimationFrame(()=>ov.classList.add('show'));
@@ -4263,7 +4263,7 @@ async function dppBrowserPdf(pid,kind,med){
           const solMain=isHi?((mdlHi||'').trim()?mdlHi:mdl):mdl;
           h+='<div class="sol"><div class="sol-l">'+(isHi?'\u0909\u0924\u094d\u0924\u0930':'Answer')+'</div><div class="sol-t">'+_fmtRich(solMain)+'</div>'
             +((isBoth&&(mdlHi||'').trim())?'<div class="q-hi">'+_fmtRich(mdlHi)+'</div>':'')
-            +(q.model_image?'<img class="qimg" src="'+q.model_image+'">':'')+'</div>';
+            +(q.model_image?'<img loading="lazy" class="qimg" src="'+q.model_image+'">':'')+'</div>';
         }
       }
       return '<div class="q"><div class="q-h"><b>'+qLbl+' '+qno+'</b></div>'
@@ -4554,7 +4554,7 @@ function buildPdfDoc(ex,body,withSol,isM,lang,logo,opts){
   lang=lang||'en';
   const docTitle='MVS '+(ex.title||'Test')+(withSol?' — With Solutions':' — Question Paper');
   const logoHtml=logo
-    ?'<img src="'+logo+'" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:2.5px solid rgba(255,255,255,.55);box-shadow:0 2px 10px rgba(0,0,0,.28)">'
+    ?'<img loading="lazy" src="'+logo+'" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:2.5px solid rgba(255,255,255,.55);box-shadow:0 2px 10px rgba(0,0,0,.28)">'
     :'<div style="width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.14);border:2.5px solid rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;letter-spacing:.06em;flex:0 0 52px">MVS</div>';
   return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+escH(docTitle)+'</title>'
   +'<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">'
@@ -4647,7 +4647,7 @@ function buildPdfDoc(ex,body,withSol,isM,lang,logo,opts){
 }
 function _pdfQHTML(text, img, altImg, cls){
   // Print/PDF view me OR wale question ke dono parts ka apna figure
-  const im=src=>src?'<img class="qimg" src="'+src+'">':'';
+  const im=src=>src?'<img loading="lazy" class="qimg" src="'+src+'">':'';
   const sp=_splitOr(text||'');
   if(sp.b===null||!altImg) return '<div class="'+cls+'">'+_fmtRich(text||'')+'</div>'+im(img);
   return '<div class="'+cls+'">'+_fmtRich(sp.a)+'</div>'+im(img)
@@ -4718,7 +4718,7 @@ async function examPdfPremium(id,mode,medium){
         const solMain=medium==='hi'?((mdlHi||'').trim()?mdlHi:mdl):mdl;
         h+='<div class="sol"><div class="sol-l">'+(medium==='hi'?'\u0939\u0932':'Solution')+'</div><div class="sol-t">'+_fmtRich(solMain)+'</div>'
           +(medium==='both'&&(mdlHi||'').trim()?'<div class="q-hi">'+_fmtRich(mdlHi)+'</div>':'')
-          +(q.model_answer_image?'<img class="qimg" src="'+q.model_answer_image+'">':'')+'</div>';
+          +(q.model_answer_image?'<img loading="lazy" class="qimg" src="'+q.model_answer_image+'">':'')+'</div>';
       }
       const qMain=medium==='hi'?(hi.trim()?hi:en):en;
       return '<div class="q"><div class="q-h"><b>'+qLbl+' '+qno+'</b><span class="q-m">'+mkLbl(q.max_marks)+'</span></div>'
@@ -5978,7 +5978,7 @@ function examAnsImgDrop(e,i){ e.preventDefault(); const f=(e.dataTransfer.files|
 function examAnsImgPaste(e,i){ const items=(e.clipboardData||{}).items||[]; for(let k=0;k<items.length;k++){ if(items[k].type&&items[k].type.indexOf('image')===0){ const f=items[k].getAsFile(); if(f){ _examReadImg(f).then(d=>_setExamAnsImg(i,d)); e.preventDefault(); } break; } } }
 function examAnsImgRemove(i,ev){ if(ev)ev.stopPropagation(); _examQs[i].model_answer_image=null; renderExamQs(); }
 function _ansImgZone(i){ const q=_examQs[i]; return q.model_answer_image
-  ? `<div class="ex-img has" onclick="document.getElementById('ex-aimgf-${i}').click()"><img src="${q.model_answer_image}"><button type="button" class="ex-img-x" onclick="examAnsImgRemove(${i},event)">&times;</button></div>`
+  ? `<div class="ex-img has" onclick="document.getElementById('ex-aimgf-${i}').click()"><img loading="lazy" src="${q.model_answer_image}"><button type="button" class="ex-img-x" onclick="examAnsImgRemove(${i},event)">&times;</button></div>`
   : `<div class="ex-img ex-img-ans" tabindex="0" onpaste="examAnsImgPaste(event,${i})" ondragover="event.preventDefault()" ondrop="examAnsImgDrop(event,${i})" onclick="document.getElementById('ex-aimgf-${i}').click()"><span>Attach diagram (optional)</span></div>`; }
 function removeExamQ(i){ _examQs.splice(i,1); renderExamQs(); }
 function _splitOr(t){
@@ -5998,7 +5998,7 @@ async function examAltImgFile(inp,i){ const f=inp.files[0]; if(f&&f.type.indexOf
 function examAltImgDrop(e,i){ e.preventDefault(); const f=(e.dataTransfer.files||[])[0]; if(f&&f.type.indexOf('image')===0) _fileB64(f).then(d=>compressIfImage(d,1400,0.72)).then(d=>_setExamAltImg(i,d)); }
 function examAltImgPaste(e,i){ const items=(e.clipboardData||{}).items||[]; for(let k=0;k<items.length;k++){ if(items[k].type&&items[k].type.indexOf('image')===0){ const f=items[k].getAsFile(); if(f){ _fileB64(f).then(d=>compressIfImage(d,1400,0.72)).then(d=>_setExamAltImg(i,d)); e.preventDefault(); } break; } } }
 function _altImgZone(i){ const q=_examQs[i]; return q.alt_image_b64
-  ? `<div class="ex-img has" onclick="document.getElementById('ex-altimgf-${i}').click()"><img src="${q.alt_image_b64}"><button type="button" class="ex-img-x" onclick="examAltImgRemove(${i},event)">&times;</button></div>`
+  ? `<div class="ex-img has" onclick="document.getElementById('ex-altimgf-${i}').click()"><img loading="lazy" src="${q.alt_image_b64}"><button type="button" class="ex-img-x" onclick="examAltImgRemove(${i},event)">&times;</button></div>`
   : `<div class="ex-img" tabindex="0" onpaste="examAltImgPaste(event,${i})" ondragover="event.preventDefault()" ondrop="examAltImgDrop(event,${i})" onclick="document.getElementById('ex-altimgf-${i}').click()"><span>Attach the figure for the OR part (optional)</span></div>`; }
 function _qImgSection(i){
   // OR wale question me dono parts ke apne figure — tab se choose karo
@@ -6012,7 +6012,7 @@ function _qImgSection(i){
   return tabs+(part==='b'?_altImgZone(i):_imgZone(i))+inputs;
 }
 function _imgZone(i){ const q=_examQs[i]; return q.image_b64
-  ? `<div class="ex-img has" onclick="document.getElementById('ex-imgf-${i}').click()"><img src="${q.image_b64}"><button type="button" class="ex-img-x" onclick="examImgRemove(${i},event)">&times;</button></div>`
+  ? `<div class="ex-img has" onclick="document.getElementById('ex-imgf-${i}').click()"><img loading="lazy" src="${q.image_b64}"><button type="button" class="ex-img-x" onclick="examImgRemove(${i},event)">&times;</button></div>`
   : `<div class="ex-img" tabindex="0" onpaste="examImgPaste(event,${i})" ondragover="event.preventDefault()" ondrop="examImgDrop(event,${i})" onclick="document.getElementById('ex-imgf-${i}').click()"><span>Attach image (optional)</span></div>`; }
 function _hasTxt(v){ return !!(v&&String(v).trim()); }
 function _qTransState(q){
@@ -6859,7 +6859,7 @@ window.ytGfxManage=function(id){
     var hasThumb=!!(t.thumbnail||t.thumbnail_link); window._ytgHas=hasThumb;
     window._ytgMode=hasThumb?'credit':'assign';
     var gOpts='<option value="">Select designer</option>'+gfx.map(function(g){return '<option value="'+g.id+'"'+(t.graphics_id==g.id?' selected':'')+'>'+_ape(g.name||'')+'</option>';}).join('');
-    var thumbPrev=hasThumb?'<div style="margin-bottom:10px"><img src="'+_ape(t.thumbnail||t.thumbnail_link)+'" style="max-width:100%;border-radius:10px"></div>':'';
+    var thumbPrev=hasThumb?'<div style="margin-bottom:10px"><img loading="lazy" src="'+_ape(t.thumbnail||t.thumbnail_link)+'" style="max-width:100%;border-radius:10px"></div>':'';
     var body='<div class="ap-modal-in">'+thumbPrev+
       '<div style="display:flex;gap:8px;margin-bottom:12px">'+
         '<button class="btn btn-ghost btn-sm ytg-mode'+(window._ytgMode==='credit'?' vt-checking':'')+'" id="ytg-m-credit" onclick="ytGfxMode(\'credit\')">Already made — Credit & Rate</button>'+
@@ -6884,7 +6884,7 @@ window.ytGfxManage=function(id){
     },50);
   }).catch(function(e){ toast((e&&e.message)||'Could not load',true); });
 };
-function _ytgRead(file){ if(!file)return; var rd=new FileReader(); rd.onload=function(){ window._ytgImg=rd.result; var d=document.getElementById('ytg-drop'); if(d)d.innerHTML='<img src="'+rd.result+'" style="max-width:100%;border-radius:8px">'; }; rd.readAsDataURL(file); }
+function _ytgRead(file){ if(!file)return; var rd=new FileReader(); rd.onload=function(){ window._ytgImg=rd.result; var d=document.getElementById('ytg-drop'); if(d)d.innerHTML='<img loading="lazy" src="'+rd.result+'" style="max-width:100%;border-radius:8px">'; }; rd.readAsDataURL(file); }
 window.ytGfxMode=function(m){ window._ytgMode=m; var c=document.getElementById('ytg-credit-box'), a=document.getElementById('ytg-assign-box'); if(c)c.style.display=(m==='credit')?'':'none'; if(a)a.style.display=(m==='assign')?'':'none'; var mc=document.getElementById('ytg-m-credit'), ma=document.getElementById('ytg-m-assign'); if(mc)mc.classList.toggle('vt-checking',m==='credit'); if(ma)ma.classList.toggle('vt-checking',m==='assign'); };
 window.ytGfxStar=function(n){ window._ytgRating=n; document.querySelectorAll('#ytg-stars .ytg-star').forEach(function(s){ s.style.color=(parseInt(s.getAttribute('data-n'),10)<=n)?'#e6ad4e':'#d9cdae'; }); };
 // Refresh whichever view is showing after a thumbnail credit / graphics assign,
@@ -6911,7 +6911,7 @@ function _ytCard(t){
   var b=_ytBucket(t), over=_ytOverdue(t), lc=t.lifecycle||'';
   var pc={done:'#059669',prod:'#7c4fc0',review:'#c99a2e',assigned:'#0891b2'}[b];
   var timg=_ytUrl(t.thumbnail);
-  var thumb='<div class="ytc-thumb">'+(timg?'<img src="'+timg+'" onerror="this.style.display=\'none\'">':ic('play'))+'</div>';
+  var thumb='<div class="ytc-thumb">'+(timg?'<img loading="lazy" src="'+timg+'" onerror="this.style.display=\'none\'">':ic('play'))+'</div>';
   var chips='';
   if(t.channel_name) chips+='<span class="vt-pill assigned">'+esc(t.channel_name)+'</span>';
   if(t.video_type) chips+='<span class="vt-type">'+esc(t.video_type)+'</span>';
@@ -8217,7 +8217,7 @@ function gradeManual(attId,examId){
   const att=(d.attempts||[]).find(a=>a.attempt_id===attId)||{};
   const qs=d.questions||[];
   const isSubj=(d.exam.test_type||'')!=='mcq';
-  const ansBlock=isSubj?`<div class="gm-ans" id="gm-ans-img-wrap"><div class="gm-ans-lbl">Student's handwritten answer sheet</div><img id="gm-ans-img" class="gm-ans-img" style="display:none"></div>`:'';
+  const ansBlock=isSubj?`<div class="gm-ans" id="gm-ans-img-wrap"><div class="gm-ans-lbl">Student's handwritten answer sheet</div><img loading="lazy" id="gm-ans-img" class="gm-ans-img" style="display:none"></div>`:'';
   // pehle diye hue marks/remark wapas bhar do - warna edit karte waqt sab 0 dikhta tha
   const saved={}; (att.results||[]).forEach(r=>{ saved[r.q_no]=r; });
   const rows=qs.map(q=>{
@@ -8470,7 +8470,7 @@ function _dchatMedia(role,d,kind){
   if(kind==='q'){
     if(d.has_image){
       if((d.attach_mime||'image/jpeg').startsWith('image/'))
-        h+=`<img class="dchat-img doubt-thumb" data-url="${base}/image" data-name="${esc(d.attach_name||'')}" onclick="openImageViewer(this)" alt="doubt image">`;
+        h+=`<img loading="lazy" class="dchat-img doubt-thumb" data-url="${base}/image" data-name="${esc(d.attach_name||'')}" onclick="openImageViewer(this)" alt="doubt image">`;
       else h+=`<button class="dchat-file" onclick="viewDoubtFile('${role}',${d.id},'${esc(d.attach_mime||'')}')">${ic('folder')} ${esc(d.attach_name||'Attachment')}</button>`;
     }
     if(d.has_voice) h+=`<button class="dchat-file" onclick="playDoubtVoice(this,'${base}/voice')">${ic('play')} Voice note</button>`;
@@ -9022,7 +9022,7 @@ function _tvtRenderChat(id,t,comments){
   const thread=comments.length?comments.map(c=>{
     const mine=(c.role==='teacher');
     const tick=mine?`<span style="margin-left:5px;font-weight:900;letter-spacing:-2px;color:${c.seen?'#2f80ed':'#9aa0a6'}">\u2713\u2713</span>`:'';
-    const img=c.attachment_url?`<img src="${esc(c.attachment_url)}" onclick="window.open('${esc(c.attachment_url)}','_blank')" style="max-width:180px;max-height:140px;border-radius:8px;margin-top:5px;cursor:pointer;display:block">`:'';
+    const img=c.attachment_url?`<img loading="lazy" src="${esc(c.attachment_url)}" onclick="window.open('${esc(c.attachment_url)}','_blank')" style="max-width:180px;max-height:140px;border-radius:8px;margin-top:5px;cursor:pointer;display:block">`:'';
     return `<div class="tvn-msg ${mine?'mine':'them'}"><div class="tvn-msg-a">${esc(c.author)}${mine?'':` · ${c.role==='admin'?'Admin':'Manager'}`}</div>${c.message?`<div class="tvn-msg-b">${esc(c.message)}</div>`:''}${img}<div class="tvn-msg-t">${esc(c.at)}${tick}</div></div>`;
   }).join(''):'<div style="color:var(--text-muted);font-size:.82rem;padding:6px 0">No messages yet. Ask the manager anything about this video.</div>';
   showModal('Chat with PM — '+esc(t.title||''),
@@ -9602,7 +9602,7 @@ function _vtThumbFile(file){
   const nameEl=document.getElementById('vt-thumb-name');
   const prev=document.getElementById('vt-thumb-prev');
   const setName=(t)=>{ if(nameEl) nameEl.textContent=t; };
-  const setPrev=(src)=>{ if(prev) prev.innerHTML=`<img src="${src}" style="max-height:90px;border-radius:10px;border:1px solid var(--border)">`; };
+  const setPrev=(src)=>{ if(prev) prev.innerHTML=`<img loading="lazy" src="${src}" style="max-height:90px;border-radius:10px;border:1px solid var(--border)">`; };
   const fail=(msg)=>{ window._vtThumbB64=null; setName(msg||'Could not read this image'); };
   setName(file.name||'thumbnail');
   if(!/^image\//i.test(file.type||'')&&!/\.(jpe?g|png|webp|gif|bmp|heic|heif|avif)$/i.test(file.name||'')){
@@ -9641,9 +9641,9 @@ function _vtThumb(t,who){
   const gth=(t.thumbnail && t.thumbnail.approved && t.thumbnail.url)?t.thumbnail.url:'';
   const has=!!(t.thumbnail_b64||t.thumbnail_link||gth);
   const _is='width:100%;height:100%;object-fit:cover;display:block';
-  const img=t.thumbnail_b64?`<img src="${t.thumbnail_b64}" alt="" style="${_is}">`
-    :(t.thumbnail_link?`<img src="${esc(t.thumbnail_link)}" onerror="this.remove()" alt="" style="${_is}">`
-    :(gth?`<img src="${esc(gth)}" onerror="this.remove()" alt="" style="${_is}">`:''));
+  const img=t.thumbnail_b64?`<img loading="lazy" src="${t.thumbnail_b64}" alt="" style="${_is}">`
+    :(t.thumbnail_link?`<img loading="lazy" src="${esc(t.thumbnail_link)}" onerror="this.remove()" alt="" style="${_is}">`
+    :(gth?`<img loading="lazy" src="${esc(gth)}" onerror="this.remove()" alt="" style="${_is}">`:''));
   const blink=who==='t';
   return `<div class="vt-thumb${has?' click':''}" style="aspect-ratio:16/9;height:auto;overflow:hidden;position:relative"${has?` onclick="vtThumbOpen(${t.id},'${who||'t'}')" title="Open full screen — download available"`:''}>${img||esc((t.title||'V').slice(0,1).toUpperCase())}<div class="vt-status">${_vtPill(t,blink,who)}</div>${has?`<span class="vt-dl">${ic('download')} View</span>`:''}</div>`;
 }
@@ -9872,7 +9872,7 @@ function _aVtConvoRender(id,t,comments){
   function _bubble(c){
     const mine=(c.role!=='teacher');
     const who=esc((c.role||'').replace('production_manager','PM').replace('graphics','Graphics').replace('teacher','Teacher').replace('admin','Admin'));
-    const img=c.attachment_url?`<img src="${esc(c.attachment_url)}" onclick="window.open('${esc(c.attachment_url)}','_blank')" style="max-width:190px;max-height:150px;border-radius:8px;margin-top:5px;cursor:pointer;display:block">`:'';
+    const img=c.attachment_url?`<img loading="lazy" src="${esc(c.attachment_url)}" onclick="window.open('${esc(c.attachment_url)}','_blank')" style="max-width:190px;max-height:150px;border-radius:8px;margin-top:5px;cursor:pointer;display:block">`:'';
     return `<div class="tvn-msg ${mine?'mine':'them'}"><div class="tvn-msg-a">${esc(c.author)} · ${who}</div>${c.message?`<div class="tvn-msg-b">${esc(c.message)}</div>`:''}${img}<div class="tvn-msg-t">${esc(c.at)}</div></div>`;
   }
   // Video Needs teachers ke liye bana tha — default sirf creator (teacher) baat dikhao.
@@ -10424,7 +10424,7 @@ async function openVTEdit(id,ev){
         <input id="vt-e-thumb" type="file" accept="image/*" style="display:none" onchange="vtThumbPreview(this)">
         <div class="vt-hint">or paste a drive link below</div>
         <input id="vt-e-thumblink" class="input" style="margin-top:8px" placeholder="https://drive.google.com/..." value="${esc(t.thumbnail_link||'')}">
-        <div id="vt-thumb-prev" style="margin-top:8px">${t.thumbnail_b64?`<img src="${t.thumbnail_b64}" style="max-height:90px;border-radius:10px;border:1px solid var(--border)">`:''}</div>
+        <div id="vt-thumb-prev" style="margin-top:8px">${t.thumbnail_b64?`<img loading="lazy" src="${t.thumbnail_b64}" style="max-height:90px;border-radius:10px;border:1px solid var(--border)">`:''}</div>
       </div>`}
       <div class="form-group" style="grid-column:1/-1"><label>Reference / Brief</label><textarea id="vt-e-ref" class="input" rows="2">${esc(t.reference||'')}</textarea></div>
       <div class="form-group" style="grid-column:1/-1"><label>Reference Video link <span style="font-weight:500;color:var(--text-muted);font-size:.72rem;text-transform:none">— teacher taps a blinking button to open it</span></label><input id="vt-e-refvid" class="input" placeholder="https://drive.google.com/... or YouTube link" value="${esc(t.reference_video||'')}"></div>
@@ -10974,7 +10974,7 @@ function _vvRenderVRows(wrapId,cat){
   if(cat&&cat!=='all') list=list.filter(v=>v.vtype===cat);
   if(!list.length) return '<div class="vv-empty">No videos of this type in this range.</div>';
   return list.map(v=>{
-    const thumb=v.thumb?`<img class="vv-v-thumb" src="${esc(v.thumb)}" alt="">`:`<span class="vv-v-play">${ic('play')}</span>`;
+    const thumb=v.thumb?`<img loading="lazy" class="vv-v-thumb" src="${esc(v.thumb)}" alt="">`:`<span class="vv-v-play">${ic('play')}</span>`;
     const who=v.is_collab?`<span style="cursor:pointer;text-decoration:underline dotted;color:#7c3aed;font-weight:700" onclick="event.stopPropagation();_vvCollab(this)" data-names="${esc(JSON.stringify(v.collab_names||[]))}">Collab</span>`:esc(v.teacher||'');
     return `<div class="vv-vrow" onclick="_vvSeries('${base}',${v.id},'${wrapId}-series')">
       ${thumb}
@@ -11077,7 +11077,7 @@ async function _vvSeries(base, videoId, boxId){
   if(m.vtype_label) _bits.push('<b>Type:</b> '+esc(m.vtype_label));
   if(m.status) _bits.push('<b>Status:</b> '+esc(m.status));
   const taskInfo=_bits.length?`<div style="font-size:.72rem;color:var(--text-muted);margin-top:5px;line-height:1.6">${_bits.join(' &nbsp;·&nbsp; ')}</div>`:'';
-  const head=`<div class="vv-vidhead">${thumb?`<img src="${esc(thumb)}" class="vv-vidhead-thumb" alt="">`:`<span class="vv-v-play" style="width:54px;height:54px;flex:0 0 54px">${ic('play')}</span>`}
+  const head=`<div class="vv-vidhead">${thumb?`<img loading="lazy" src="${esc(thumb)}" class="vv-vidhead-thumb" alt="">`:`<span class="vv-v-play" style="width:54px;height:54px;flex:0 0 54px">${ic('play')}</span>`}
     <div style="flex:1"><div class="vv-vidhead-t">${esc(title)}</div>
       <div style="font-size:1.3rem;font-weight:800;color:var(--primary);margin:2px 0">${_vvFmt(m.views||0)} <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">views${m.at?' · '+esc(m.at):''}</span></div>
       ${taskInfo}
@@ -11342,7 +11342,7 @@ async function loadATeacherRanks(days){
     const av=function(r,sz){
       const ini=esc((r.name||'?').slice(0,1).toUpperCase());
       return r.photo
-        ? `<img src="${r.photo}" style="width:${sz}px;height:${sz}px;border-radius:50%;object-fit:cover;border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.18)">`
+        ? `<img loading="lazy" src="${r.photo}" style="width:${sz}px;height:${sz}px;border-radius:50%;object-fit:cover;border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.18)">`
         : `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:linear-gradient(135deg,#b8941f,#a1741a);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:${Math.round(sz*.4)}px;border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.18)">${ini}</div>`;
     };
     // podium (top 3)
@@ -11593,7 +11593,7 @@ function viewPhoto(elId,name,pid){
   const u=window._photoUrls[elId];
   if(!u){ if(pid) openTeacherPhoto(pid); else toast('No photo uploaded yet.'); return; }
   showModal(esc(name||'Photo'),
-    `<div style="text-align:center"><img src="${u}" style="width:100%;max-width:340px;border-radius:50%;aspect-ratio:1;object-fit:cover;box-shadow:0 10px 34px -12px rgba(0,0,0,.4)"><p style="font-size:.75rem;color:var(--text-muted);margin-top:12px">This photo is shown to students in "Know Your Teacher".</p></div>`,
+    `<div style="text-align:center"><img loading="lazy" src="${u}" style="width:100%;max-width:340px;border-radius:50%;aspect-ratio:1;object-fit:cover;box-shadow:0 10px 34px -12px rgba(0,0,0,.4)"><p style="font-size:.75rem;color:var(--text-muted);margin-top:12px">This photo is shown to students in "Know Your Teacher".</p></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button>${pid?`<button class="btn btn-danger" onclick="removeTeacherPhoto(${pid})">${ic('trash')} Remove</button><button class="btn btn-primary" onclick="closeModal();openTeacherPhoto(${pid})">${ic('upload')} Change Photo</button>`:''}`);
 }
 async function removeTeacherPhoto(pid){
@@ -12761,7 +12761,7 @@ function aRenderDoubts(){
   const fbtn=(f,label)=>`<button class="btn btn-sm ${_aDoubtFilter===f?'btn-primary':'btn-ghost'}" onclick="aDoubtFilter('${f}')">${label}</button>`;
   const cards=list.length?list.map(d=>{
     const when=d.created_at?fmtDT(d.created_at):'';
-    const qimg=d.has_image&&(d.attach_mime||'image/jpeg').startsWith('image/')?`<img class="doubt-thumb" id="adimg-${d.id}" data-name="${esc(d.attach_name||'')}" alt="doubt attachment" onclick="openImageViewer(this)">`:'';
+    const qimg=d.has_image&&(d.attach_mime||'image/jpeg').startsWith('image/')?`<img loading="lazy" class="doubt-thumb" id="adimg-${d.id}" data-name="${esc(d.attach_name||'')}" alt="doubt attachment" onclick="openImageViewer(this)">`:'';
     const qfile=d.has_image&&!(d.attach_mime||'image/jpeg').startsWith('image/')?`<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="viewDoubtFile('admin',${d.id},'${esc(d.attach_mime||'')}')">${ic('folder')} ${esc(d.attach_name||'Attachment')}</button>`:'';
     const qvoice=d.has_voice?`<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="playDoubtVoice(this,'/api/admin/doubt/${d.id}/voice')">${ic('play')} Voice Note</button>`:'';
     const avoice=`${d.has_answer_voice?`<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="playDoubtVoice(this,'/api/admin/doubt/${d.id}/answer-voice')">${ic('play')} Voice Answer</button>`:''}${d.has_answer_file?`<button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="viewAnswerFile('admin',${d.id},'${esc(d.answer_attach_mime||'')}')">${ic('folder')} Answer Attachment</button>`:''}`;
@@ -13675,7 +13675,7 @@ async function _renderPlayCard(){
   const box=document.getElementById('rb-ps-card'); if(!box) return;
   let a={name:'Manish Verma Classes',dev:'MVS FOUNDATION',rating:'4.6',reviews:'1.53K',downloads:'50K+',icon:null};
   try{ a=await api('/api/student/app-info'); }catch(e){}
-  const icon=a.icon?`<img class="ps-icon" src="${esc(a.icon)}" alt="">`:`<div class="ps-icon ps-icon-f">MVS</div>`;
+  const icon=a.icon?`<img loading="lazy" class="ps-icon" src="${esc(a.icon)}" alt="">`:`<div class="ps-icon ps-icon-f">MVS</div>`;
   box.innerHTML=`${icon}
     <div class="ps-name">${esc(a.name)}</div>
     <div class="ps-dev">${esc(a.dev)}</div>
@@ -13847,7 +13847,7 @@ function _tcPaint(){
     rows=list.map(c=>{
       const isTest=(c.type||'')==='test'||/test|exam/i.test(c.chapter||'');
       // photo sirf tab jab teacher ki asli photo ho — initials wala S circle hata diya
-      const photo=c.teacher_id?`<img class="tc-photo" src="" data-tid="${c.teacher_id}" alt="">`:'';
+      const photo=c.teacher_id?`<img loading="lazy" class="tc-photo" src="" data-tid="${c.teacher_id}" alt="">`:'';
       const topic=esc(c.part||c.chapter||'');
       // v114: auto-Done HATA diya — 90 min ke baad bhi report ke bina "Done" nahi.
       // Teacher report submit kare (class_done) to Done + report ki asli duration;
@@ -14247,9 +14247,9 @@ async function openSDppView(pid){
     +qs.map(q=>`<div class="card" style="margin-bottom:10px"><div class="card-body" style="padding:14px 16px">
       <div style="font-size:.68rem;font-weight:800;letter-spacing:.06em;color:#8a6d10;margin-bottom:6px">QUESTION ${q.qno}</div>
       <div class="pl-qtext" id="dq-${q.qno}">${_fmtRich(q.q||'')}</div>
-      ${q.image?`<img src="${_imgSrc(q.image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
-      ${q.alt_image?`<img src="${_imgSrc(q.alt_image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
-      ${d.submitted&&q.model?`<div style="margin-top:12px;padding:10px 12px;border-left:3px solid #15803d;background:rgba(21,128,61,.06);border-radius:8px"><div style="font-size:.68rem;font-weight:800;color:#15803d;margin-bottom:5px">MODEL ANSWER</div><div id="da-${q.qno}">${_fmtRich(q.model)}</div>${q.model_image?`<img src="${_imgSrc(q.model_image)}" style="max-width:100%;margin-top:8px;border-radius:8px">`:''}</div>`:''}
+      ${q.image?`<img loading="lazy" src="${_imgSrc(q.image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
+      ${q.alt_image?`<img loading="lazy" src="${_imgSrc(q.alt_image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
+      ${d.submitted&&q.model?`<div style="margin-top:12px;padding:10px 12px;border-left:3px solid #15803d;background:rgba(21,128,61,.06);border-radius:8px"><div style="font-size:.68rem;font-weight:800;color:#15803d;margin-bottom:5px">MODEL ANSWER</div><div id="da-${q.qno}">${_fmtRich(q.model)}</div>${q.model_image?`<img loading="lazy" src="${_imgSrc(q.model_image)}" style="max-width:100%;margin-top:8px;border-radius:8px">`:''}</div>`:''}
       <div style="margin-top:11px"><button class="btn btn-ghost btn-sm" onclick="sDppDoubtOpen(${pid},${q.qno},${q.qno})">${ic('headset')} Raise Doubt</button></div>
     </div></div>`).join('');
     showModal(esc(d.title), html, `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
@@ -14280,9 +14280,9 @@ function _dppQCards(qs,showModel,pid,lang){
     const mBothHtml=(both&&mHi)?`<div class="q-alt-lang">${_fmtRich(mHi)}</div>`:'';
     return `<div class="exp-q"><div class="pl-qtop"><div class="exp-qt"><b>Q${q.qno}.</b></div></div>
     <div class="pl-qtext" id="dq-${pid}-${q.qno}">${qHtml}</div>
-    ${q.image?`<img src="${_imgSrc(q.image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
-    ${q.alt_image?`<img src="${_imgSrc(q.alt_image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
-    ${showModel&&(mtx||q.model_image)?`<div style="margin-top:12px;padding:10px 12px;border-left:3px solid #15803d;background:rgba(21,128,61,.06);border-radius:8px"><div style="font-size:.68rem;font-weight:800;color:#15803d;margin-bottom:5px">MODEL ANSWER</div><div id="da-${pid}-${q.qno}">${_fmtRich(mtx)}${mBothHtml}</div>${q.model_image?`<img src="${_imgSrc(q.model_image)}" style="max-width:100%;margin-top:8px;border-radius:8px">`:''}</div>`:''}
+    ${q.image?`<img loading="lazy" src="${_imgSrc(q.image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
+    ${q.alt_image?`<img loading="lazy" src="${_imgSrc(q.alt_image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
+    ${showModel&&(mtx||q.model_image)?`<div style="margin-top:12px;padding:10px 12px;border-left:3px solid #15803d;background:rgba(21,128,61,.06);border-radius:8px"><div style="font-size:.68rem;font-weight:800;color:#15803d;margin-bottom:5px">MODEL ANSWER</div><div id="da-${pid}-${q.qno}">${_fmtRich(mtx)}${mBothHtml}</div>${q.model_image?`<img loading="lazy" src="${_imgSrc(q.model_image)}" style="max-width:100%;margin-top:8px;border-radius:8px">`:''}</div>`:''}
     ${pid?`<div style="margin-top:11px"><button class="btn btn-ghost btn-sm btn-blink" title="Send your doubt here — the question text and image go to the teacher automatically" onclick="sDppDoubtOpen(${pid},${q.qno},${q.qno})">${ic('headset')} Raise Doubt</button></div>`:''}
   </div>`;}).join('');
 }
@@ -14332,7 +14332,7 @@ async function _pdfView(container, src, opts){
   container._pvw=st;
   container.innerHTML=`<div class="pvw">
     <div class="pvw-head">
-      <div class="pvw-brand"><span class="pvw-logo">MVS</span><img class="pvw-logo-img" src="${API}/api/student/logo" alt="MVS" style="display:none" onload="this.previousElementSibling.style.display='none';this.style.display='block'" onerror="this.remove()"><span class="pvw-title">${esc(opts.title||'PDF')}</span></div>
+      <div class="pvw-brand"><span class="pvw-logo">MVS</span><img loading="lazy" class="pvw-logo-img" src="${API}/api/student/logo" alt="MVS" style="display:none" onload="this.previousElementSibling.style.display='none';this.style.display='block'" onerror="this.remove()"><span class="pvw-title">${esc(opts.title||'PDF')}</span></div>
       <div class="pvw-ctrl">
         <button class="pvw-btn" data-a="prev" title="Previous page">‹</button>
         <span class="pvw-pg">– / –</span>
@@ -14548,7 +14548,7 @@ function _pvwCropCapture(container){
 function _cropConfirmModal(){
   if(!_crop||!_crop.dataUrl) return;
   showModal('✂ Crop Question & Raise Doubt',
-   `<div class="crop-prev"><img src="${_crop.dataUrl}" alt="crop"></div>
+   `<div class="crop-prev"><img loading="lazy" src="${_crop.dataUrl}" alt="crop"></div>
     <div class="form-group" style="margin-top:12px"><label>Question No. (PDF me kaunsa question hai)</label><input class="form-control" id="crop-qno" type="number" min="1" value="1"></div>
     <div class="form-group"><label>Apna doubt (optional)</label><textarea class="form-control" id="crop-note" rows="2" placeholder="e.g. Sir, is step me yeh value kaise aayi?"></textarea></div>
     <div style="font-size:.72rem;color:var(--text-muted);line-height:1.5">The cropped image and your doubt go straight to the teacher doubt section.</div>`,
@@ -15011,7 +15011,7 @@ async function _txLoadLogos(root){
         const b=await r.blob(); if(!b.size) throw new Error('x');
         c[tid]=URL.createObjectURL(b);
       }
-      if(c[tid]) sp.outerHTML='<img class="'+(sp.classList.contains('pl-tlogo')?'pl-tlogo-img':'tx-tlogo-img')+'" src="'+c[tid]+'" alt="teacher">';
+      if(c[tid]) sp.outerHTML='<img loading="lazy" class="'+(sp.classList.contains('pl-tlogo')?'pl-tlogo-img':'tx-tlogo-img')+'" src="'+c[tid]+'" alt="teacher">';
     }catch(e){ c[tid]=false; }
   }
 }
@@ -15025,7 +15025,7 @@ async function _ttCardLogo(el){
       const b=await r.blob(); if(!b.size) throw new Error('x');
       window._ttSelfPhoto=URL.createObjectURL(b);
     }
-    el.querySelectorAll('.tx-tile').forEach(t=>{ t.outerHTML='<img class="tx-tlogo-self" src="'+window._ttSelfPhoto+'" alt="teacher">'; });
+    el.querySelectorAll('.tx-tile').forEach(t=>{ t.outerHTML='<img loading="lazy" class="tx-tlogo-self" src="'+window._ttSelfPhoto+'" alt="teacher">'; });
   }catch(e){ window._ttSelfPhoto=false; }
 }
 function sTestFilter(f){ window._sTestFilter=f; loadSTests(); }
@@ -15077,7 +15077,7 @@ async function examPdfStudent(id,medium,withSol){
         }
       }
       if(withSol&&!isM&&(q.model_answer||'').trim()){
-        h+='<div class="sol"><div class="sol-l">'+(medium==='hi'?'\u0939\u0932':'Solution')+'</div><div class="sol-t">'+_fmtRich(q.model_answer)+'</div>'+(q.model_answer_image?'<img class="qimg" src="'+q.model_answer_image+'">':'')+'</div>';
+        h+='<div class="sol"><div class="sol-l">'+(medium==='hi'?'\u0939\u0932':'Solution')+'</div><div class="sol-t">'+_fmtRich(q.model_answer)+'</div>'+(q.model_answer_image?'<img loading="lazy" class="qimg" src="'+q.model_answer_image+'">':'')+'</div>';
       }
       return '<div class="q"><div class="q-h"><b>'+qLbl+' '+qno+'</b><span class="q-m">'+mkLbl(q.max_marks)+'</span></div>'+_pdfQHTML(qMain,q.image_b64,q.alt_image_b64,'q-t')+h+'</div>';
     }).join('');
@@ -15390,7 +15390,7 @@ function _plOptText(q,j){
 }
 function _qBodyHTML(text, img, altImg){
   // OR wale question me: Part A -> uska figure -> OR -> Part B -> uska figure
-  const im=src=>src?`<img class="pl-qimg" src="${src}">`:'';
+  const im=src=>src?`<img loading="lazy" class="pl-qimg" src="${src}">`:'';
   const sp=_splitOr(text);
   if(sp.b===null||!altImg) return `<div class="pl-qtext">${_fmtRich(text)}</div>${im(img)}`;
   return `<div class="pl-qtext">${_fmtRich(sp.a)}</div>${im(img)}`
@@ -16249,7 +16249,7 @@ function photoZoom(url, name){
   const d=document.createElement('div');
   d.id='pz-ov'; d.className='pz-ov';
   d.onclick=()=>d.remove();
-  d.innerHTML=`<div class="pz-box" onclick="event.stopPropagation()"><img src="${url}" alt="Teacher photo"><div class="pz-name">${esc(name||'')}</div><button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="document.getElementById('pz-ov').remove()">Close</button></div>`;
+  d.innerHTML=`<div class="pz-box" onclick="event.stopPropagation()"><img loading="lazy" src="${url}" alt="Teacher photo"><div class="pz-name">${esc(name||'')}</div><button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="document.getElementById('pz-ov').remove()">Close</button></div>`;
   document.body.appendChild(d);
 }
 function _chStatus(c, cur){
@@ -22138,7 +22138,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
       var _isImg=function(ref){ return ref && (/\.(png|jpe?g|webp|gif|bmp)(\?|#|$)/i.test(ref) || ref.indexOf('r2.')>=0 || ref.indexOf('cloudflarestorage')>=0 || ref.indexOf('/reference')>=0 || ref.indexOf('data:image')===0); };
       var refHtml = refs.length
-        ? ('<div class="ref-gal">'+refs.map(function(ref,i){ return '<div class="ref-cell"><span class="ref-n">Reference '+(i+1)+'</span>'+(_isImg(ref)?('<img src="'+esc(ref)+'" onclick="prodLightbox(\''+esc(ref)+'\')" title="Click to view full"><div class="ref-acts"><button class="ref-btn" onclick="prodLightbox(\''+esc(ref)+'\')">View</button><a class="ref-btn" href="'+esc(ref)+'" download target="_blank" rel="noopener">Download</a></div>'):('<a href="'+esc(ref)+'" target="_blank" rel="noopener" class="p-btn" style="margin:8px">Open link</a>'))+'</div>'; }).join('')+'</div>')
+        ? ('<div class="ref-gal">'+refs.map(function(ref,i){ return '<div class="ref-cell"><span class="ref-n">Reference '+(i+1)+'</span>'+(_isImg(ref)?('<img loading="lazy" src="'+esc(ref)+'" onclick="prodLightbox(\''+esc(ref)+'\')" title="Click to view full"><div class="ref-acts"><button class="ref-btn" onclick="prodLightbox(\''+esc(ref)+'\')">View</button><a class="ref-btn" href="'+esc(ref)+'" download target="_blank" rel="noopener">Download</a></div>'):('<a href="'+esc(ref)+'" target="_blank" rel="noopener" class="p-btn" style="margin:8px">Open link</a>'))+'</div>'; }).join('')+'</div>')
         : '<div class="pd-empty">No reference image provided.</div>';
       dr.innerHTML='<div class="p-modal" style="max-width:460px">'+
         '<div class="pd-head"><div class="h-title">Reference &amp; Brief</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
@@ -22220,11 +22220,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _chatBubble(c, mineRole){
     var mine=(typeof c.mine==='boolean')?c.mine:(c.role===mineRole);
     var who=esc((c.role||'').replace('production_manager','PM').replace('graphics','Graphics').replace('admin','Admin').replace('teacher','Teacher'));
-    var img=c.attachment_url?'<img src="'+esc(c.attachment_url)+'" onclick="event.stopPropagation();prodLightbox(\''+esc(c.attachment_url)+'\')" style="max-width:190px;max-height:150px;border-radius:8px;margin-top:'+(c.message?'5px':'0')+';cursor:pointer;display:block">':'';
+    var img=c.attachment_url?'<img loading="lazy" src="'+esc(c.attachment_url)+'" onclick="event.stopPropagation();prodLightbox(\''+esc(c.attachment_url)+'\')" style="max-width:190px;max-height:150px;border-radius:8px;margin-top:'+(c.message?'5px':'0')+';cursor:pointer;display:block">':'';
     var tick=mine?('<span title="'+(c.seen?'Seen':'Sent')+'" style="margin-left:5px;font-weight:900;letter-spacing:-2px;color:'+(c.seen?'#2f80ed':'#9aa0a6')+'">\u2713\u2713</span>'):'';
     return '<div style="max-width:82%;padding:7px 11px;border-radius:12px;font-size:.83rem;'+(mine?'align-self:flex-end;background:rgba(46,158,107,.14);border:1px solid rgba(46,158,107,.3)':'align-self:flex-start;background:var(--surface-2,#f0ead9);border:1px solid var(--border)')+'"><div style="font-weight:800;font-size:.7rem;color:var(--muted);margin-bottom:2px">'+esc(c.author||'')+' \u00b7 '+who+'</div>'+(c.message?'<div>'+esc(c.message)+'</div>':'')+img+'<div style="font-size:.66rem;color:var(--muted);margin-top:3px">'+esc(c.at||'')+tick+'</div></div>';
   }
-  function _chatReadImg(file, prevId){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ window._chatImg=rd.result; var p=document.getElementById(prevId); if(p) p.innerHTML='<div style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:4px 8px"><img src="'+rd.result+'" style="height:34px;border-radius:4px"><button class="p-btn" style="padding:2px 8px" onclick="window._chatImg=null;var e=document.getElementById(\''+prevId+'\');if(e)e.innerHTML=\'\'">\u00d7</button></div>'; }; rd.readAsDataURL(file); }
+  function _chatReadImg(file, prevId){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ window._chatImg=rd.result; var p=document.getElementById(prevId); if(p) p.innerHTML='<div style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:4px 8px"><img loading="lazy" src="'+rd.result+'" style="height:34px;border-radius:4px"><button class="p-btn" style="padding:2px 8px" onclick="window._chatImg=null;var e=document.getElementById(\''+prevId+'\');if(e)e.innerHTML=\'\'">\u00d7</button></div>'; }; rd.readAsDataURL(file); }
   function _chatFooter(id, sendFn){
     return '<div class="pd-foot" style="display:block"><div id="chat-prev" style="margin-bottom:6px"></div>'+
       '<div style="display:flex;gap:8px;width:100%;align-items:center">'+
@@ -22241,7 +22241,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var mi=document.getElementById('chat-msg'); if(mi){ mi.addEventListener('input',_chatTypingPing);
       if(window._chatPendingMsg){ mi.value=window._chatPendingMsg; window._chatPendingMsg=null; }
       mi.focus(); }
-    if(window._chatPendingUrl){ var pv=document.getElementById('chat-prev'); if(pv){ pv.innerHTML='<div style="display:inline-flex;align-items:center;gap:8px;background:var(--surface-2,#f0ead9);border:1px solid var(--border);border-radius:9px;padding:5px 9px"><img src="'+window._chatPendingUrl+'" style="height:40px;border-radius:5px"><span style="font-size:.76rem;font-weight:700;color:var(--muted)">Thumbnail attached \u2014 add a note &amp; Send</span><button class="p-btn" style="padding:2px 8px" onclick="window._chatPendingUrl=null;var e=document.getElementById(\'chat-prev\');if(e)e.innerHTML=\'\'">\u00d7</button></div>'; } }
+    if(window._chatPendingUrl){ var pv=document.getElementById('chat-prev'); if(pv){ pv.innerHTML='<div style="display:inline-flex;align-items:center;gap:8px;background:var(--surface-2,#f0ead9);border:1px solid var(--border);border-radius:9px;padding:5px 9px"><img loading="lazy" src="'+window._chatPendingUrl+'" style="height:40px;border-radius:5px"><span style="font-size:.76rem;font-weight:700;color:var(--muted)">Thumbnail attached \u2014 add a note &amp; Send</span><button class="p-btn" style="padding:2px 8px" onclick="window._chatPendingUrl=null;var e=document.getElementById(\'chat-prev\');if(e)e.innerHTML=\'\'">\u00d7</button></div>'; } }
   }
   function _chatTypingPing(){
     if(!window._chatPingUrl) return;
@@ -22365,7 +22365,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       window._pmSelThumb=cands[0]||gx.thumbnail_url||'';
       var old=document.getElementById('prod-modal'); if(old) old.remove();
       var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
-      var gal=cands.length?('<div class="p-field"><label>Submitted thumbnails <span style="color:var(--muted);font-weight:600">(tap a thumbnail or press Select)</span></label><div class="thumb-gal">'+cands.map(function(u,i){ return '<div class="thumb-cell'+(u===window._pmSelThumb?' sel':'')+'" data-url="'+esc(u)+'" onclick="pmSelectThumb(this)"><span class="thumb-n">Thumbnail '+(i+1)+'</span><span class="thumb-pick">\u2713</span><img src="'+esc(u)+'"><button class="thumb-sel-full thsel" onclick="event.stopPropagation();pmSelectThumb(this.closest(\'.thumb-cell\'))">'+(u===window._pmSelThumb?'\u2713 Selected':'Select as final')+'</button><div class="thumb-vd"><button class="thumb-vd-btn" onclick="event.stopPropagation();prodLightbox(\''+esc(u)+'\')">\uD83D\uDC41 View</button><a class="thumb-vd-btn" href="'+esc(u)+'" download target="_blank" rel="noopener" onclick="event.stopPropagation()">\u2B07 Download</a></div></div>'; }).join('')+'</div></div>'):'<div class="p-empty">No image preview</div>';
+      var gal=cands.length?('<div class="p-field"><label>Submitted thumbnails <span style="color:var(--muted);font-weight:600">(tap a thumbnail or press Select)</span></label><div class="thumb-gal">'+cands.map(function(u,i){ return '<div class="thumb-cell'+(u===window._pmSelThumb?' sel':'')+'" data-url="'+esc(u)+'" onclick="pmSelectThumb(this)"><span class="thumb-n">Thumbnail '+(i+1)+'</span><span class="thumb-pick">\u2713</span><img loading="lazy" src="'+esc(u)+'"><button class="thumb-sel-full thsel" onclick="event.stopPropagation();pmSelectThumb(this.closest(\'.thumb-cell\'))">'+(u===window._pmSelThumb?'\u2713 Selected':'Select as final')+'</button><div class="thumb-vd"><button class="thumb-vd-btn" onclick="event.stopPropagation();prodLightbox(\''+esc(u)+'\')">\uD83D\uDC41 View</button><a class="thumb-vd-btn" href="'+esc(u)+'" download target="_blank" rel="noopener" onclick="event.stopPropagation()">\u2B07 Download</a></div></div>'; }).join('')+'</div></div>'):'<div class="p-empty">No image preview</div>';
       dr.innerHTML='<div class="p-modal" style="max-width:560px">'+
         '<div class="pd-head"><div class="h-title">Thumbnail Review</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
         '<div class="p-modal-body">'+
@@ -23035,7 +23035,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var arr=r.thumbnails||[];
       if(!arr.length){ body.innerHTML='<div class="p-sec">Thumbnail Library</div><div class="p-empty">No submitted thumbnails yet. Approved and submitted thumbnails will appear here.</div>'; return; }
       body.innerHTML='<div class="p-sec">Thumbnail Library</div><div class="gl-grid">'+arr.map(function(x){
-        return '<div class="gl-card"><img src="'+esc(x.thumbnail_url)+'" onclick="prodLightbox(this.src)"><div class="gl-cap"><div class="gl-t">'+esc(x.title)+'</div><div class="gl-m">'+esc(x.ref_code)+' \u00b7 '+esc(x.status)+'</div></div></div>';
+        return '<div class="gl-card"><img loading="lazy" src="'+esc(x.thumbnail_url)+'" onclick="prodLightbox(this.src)"><div class="gl-cap"><div class="gl-t">'+esc(x.title)+'</div><div class="gl-m">'+esc(x.ref_code)+' \u00b7 '+esc(x.status)+'</div></div></div>';
       }).join('')+'</div>';
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load. '+esc(e&&e.message||'')+'</div>'; });
   }
@@ -23737,7 +23737,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       document.addEventListener('paste',window._tuPaste);
     },40);
   };
-  function _tuRead(file){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ window._tuImg=rd.result; var d=document.getElementById('tu-drop'); if(d) d.innerHTML='<img src="'+rd.result+'" style="max-width:100%;border-radius:8px">'; }; rd.readAsDataURL(file); }
+  function _tuRead(file){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ window._tuImg=rd.result; var d=document.getElementById('tu-drop'); if(d) d.innerHTML='<img loading="lazy" src="'+rd.result+'" style="max-width:100%;border-radius:8px">'; }; rd.readAsDataURL(file); }
   window.prodThumbUploadSave=function(){
     if(!window._tuImg){ toast('Add an image first',true); return; }
     var portal=window._tuPortal, id=window._tuId;
@@ -24144,9 +24144,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(tab==='graphics'){
       if(!g.graphics_name && (g.status==='new'||!g.status)) return '<div class="pd-empty">No graphics member assigned yet.</div>';
       var _grefs=(g.reference_images&&g.reference_images.length)?g.reference_images:((g.reference_image)?[g.reference_image]:[]);
-      var _refGal=_grefs.length?('<div class="p-sec" style="margin-top:12px">Reference thumbnail'+(_grefs.length>1?'s ('+_grefs.length+')':'')+'</div><div class="ref-gal">'+_grefs.map(function(u,i){ return '<div class="ref-cell"><span class="ref-n">Reference '+(i+1)+'</span><img src="'+esc(u)+'" onclick="prodLightbox(\''+esc(u)+'\')" title="Click to view full"><div class="ref-acts"><button class="ref-btn" onclick="prodLightbox(\''+esc(u)+'\')">View</button><a class="ref-btn" href="'+esc(u)+'" download target="_blank" rel="noopener">Download</a></div></div>'; }).join('')+'</div>'):'';
+      var _refGal=_grefs.length?('<div class="p-sec" style="margin-top:12px">Reference thumbnail'+(_grefs.length>1?'s ('+_grefs.length+')':'')+'</div><div class="ref-gal">'+_grefs.map(function(u,i){ return '<div class="ref-cell"><span class="ref-n">Reference '+(i+1)+'</span><img loading="lazy" src="'+esc(u)+'" onclick="prodLightbox(\''+esc(u)+'\')" title="Click to view full"><div class="ref-acts"><button class="ref-btn" onclick="prodLightbox(\''+esc(u)+'\')">View</button><a class="ref-btn" href="'+esc(u)+'" download target="_blank" rel="noopener">Download</a></div></div>'; }).join('')+'</div>'):'';
       var _tc=(g.thumbnail_candidates&&g.thumbnail_candidates.length)?g.thumbnail_candidates:((g.thumbnail_url)?[g.thumbnail_url]:[]);
-      var _thumbGal=_tc.length?('<div class="p-sec" style="margin-top:12px">Submitted thumbnail'+(_tc.length>1?'s ('+_tc.length+')':'')+(g.status==='approved'?' \u2014 \u2713 final selected':'')+'</div><div class="ref-gal">'+_tc.map(function(u,i){ var fin=(g.status==='approved'&&u===g.thumbnail_url); return '<div class="ref-cell'+(fin?' sel-final':'')+'"><span class="ref-n">Thumbnail '+(i+1)+(fin?' \u2713 FINAL':'')+'</span><img src="'+esc(u)+'" onclick="prodLightbox(\''+esc(u)+'\')" title="Click to view full"><div class="ref-acts"><button class="ref-btn" onclick="prodLightbox(\''+esc(u)+'\')">View</button><a class="ref-btn" href="'+esc(u)+'" download target="_blank" rel="noopener">Download</a></div></div>'; }).join('')+'</div>'):'';
+      var _thumbGal=_tc.length?('<div class="p-sec" style="margin-top:12px">Submitted thumbnail'+(_tc.length>1?'s ('+_tc.length+')':'')+(g.status==='approved'?' \u2014 \u2713 final selected':'')+'</div><div class="ref-gal">'+_tc.map(function(u,i){ var fin=(g.status==='approved'&&u===g.thumbnail_url); return '<div class="ref-cell'+(fin?' sel-final':'')+'"><span class="ref-n">Thumbnail '+(i+1)+(fin?' \u2713 FINAL':'')+'</span><img loading="lazy" src="'+esc(u)+'" onclick="prodLightbox(\''+esc(u)+'\')" title="Click to view full"><div class="ref-acts"><button class="ref-btn" onclick="prodLightbox(\''+esc(u)+'\')">View</button><a class="ref-btn" href="'+esc(u)+'" download target="_blank" rel="noopener">Download</a></div></div>'; }).join('')+'</div>'):'';
       return '<div class="pd-kv">'+
         _kv('Graphics Member', esc(g.graphics_name||'Unassigned'))+
         _kv('Status', esc(g.status||'new'))+
@@ -24161,7 +24161,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         _kv('QC Status', esc(t.qc_status||'Not started'))+
         _kv('Revisions', String(t.revision_count||0))+
       '</div>'+
-      (att.length?'<div class="p-sec">Change Screenshots</div><div class="p-gallery">'+att.map(function(a){ return '<img src="'+esc(a.url)+'" onclick="prodLightbox(this.src)">'; }).join('')+'</div>':'<div class="pd-empty">No QC screenshots.</div>');
+      (att.length?'<div class="p-sec">Change Screenshots</div><div class="p-gallery">'+att.map(function(a){ return '<img loading="lazy" src="'+esc(a.url)+'" onclick="prodLightbox(this.src)">'; }).join('')+'</div>':'<div class="pd-empty">No QC screenshots.</div>');
     }
     if(tab==='youtube'){
       if(!t.youtube_url) return '<div class="pd-empty">Not published yet.</div>';
@@ -24263,7 +24263,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.prodThumbView=function(url){
     if(!url) return; var old=document.getElementById('prod-lightbox'); if(old) old.remove();
     var lb=document.createElement('div'); lb.id='prod-lightbox'; lb.className='p-lightbox';
-    lb.innerHTML='<img src="'+esc(url)+'" alt="thumbnail"><button class="p-lb-x" onclick="document.getElementById(\'prod-lightbox\').remove()">&times;</button>';
+    lb.innerHTML='<img loading="lazy" src="'+esc(url)+'" alt="thumbnail"><button class="p-lb-x" onclick="document.getElementById(\'prod-lightbox\').remove()">&times;</button>';
     lb.addEventListener('click',function(e){ if(e.target===lb||e.target.className==='p-lb-x') lb.remove(); });
     document.body.appendChild(lb);
   };
@@ -24538,10 +24538,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   function _prodRenderThumbs(){
     var t=document.getElementById('p-thumbs'); if(!t) return;
-    t.innerHTML=(window._prodImgs||[]).map(function(src,i){ return '<div class="p-thumb"><img src="'+src+'"><button class="x" onclick="prodImgDel('+i+')">&times;</button></div>'; }).join('');
+    t.innerHTML=(window._prodImgs||[]).map(function(src,i){ return '<div class="p-thumb"><img loading="lazy" src="'+src+'"><button class="x" onclick="prodImgDel('+i+')">&times;</button></div>'; }).join('');
   }
   window.prodImgDel=function(i){ (window._prodImgs||[]).splice(i,1); _prodRenderThumbs(); };
-  window.prodLightbox=function(src){ var b=document.createElement('div'); b.className='p-lightbox'; b.innerHTML='<img src="'+src+'">'; b.onclick=function(){ b.remove(); }; document.body.appendChild(b); };
+  window.prodLightbox=function(src){ var b=document.createElement('div'); b.className='p-lightbox'; b.innerHTML='<img loading="lazy" src="'+src+'">'; b.onclick=function(){ b.remove(); }; document.body.appendChild(b); };
   window.prodProgForm=function(id){
     var box=_actsBox(); if(!box) return;
     var btns=[10,25,40,50,75,90,100].map(function(p){ return '<button type="button" onclick="prodProgPick(this,'+p+')">'+p+'%</button>'; }).join('');
@@ -24620,13 +24620,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       body=toggle+common+
         '<div class="p-field"><label>Video Drive Link</label><input id="yt-link" class="p-input" placeholder="https://drive.google.com/file/d/..."></div>'+
         '<div class="p-field"><label>Thumbnail <span class="vt-hint">(paste / upload — optional; PM can add later)</span></label>'+
-          '<div id="yt-thumb-drop" class="yt-drop" onclick="document.getElementById(\'yt-thumb-file\').click()">'+(window._ytThumb?'<img src="'+window._ytThumb+'" style="max-width:100%;border-radius:8px">':'<span>Click, drop, or paste (Ctrl+V)</span>')+'</div>'+
+          '<div id="yt-thumb-drop" class="yt-drop" onclick="document.getElementById(\'yt-thumb-file\').click()">'+(window._ytThumb?'<img loading="lazy" src="'+window._ytThumb+'" style="max-width:100%;border-radius:8px">':'<span>Click, drop, or paste (Ctrl+V)</span>')+'</div>'+
           '<input type="file" id="yt-thumb-file" accept="image/*" style="display:none">'+(window._ytThumb?'<button class="p-btn" style="margin-top:6px;color:#b91c1c" onclick="ytClearImg(\'thumb\')">Remove thumbnail</button>':'')+'</div>'+
         edSel;
     } else {
       body=toggle+common+
         '<div class="p-field"><label>Reference Thumbnail <span class="vt-hint">(paste / upload — for the designer)</span></label>'+
-          '<div id="yt-ref-drop" class="yt-drop" onclick="document.getElementById(\'yt-ref-file\').click()">'+(window._ytRef?'<img src="'+window._ytRef+'" style="max-width:100%;border-radius:8px">':'<span>Click, drop, or paste (Ctrl+V)</span>')+'</div>'+
+          '<div id="yt-ref-drop" class="yt-drop" onclick="document.getElementById(\'yt-ref-file\').click()">'+(window._ytRef?'<img loading="lazy" src="'+window._ytRef+'" style="max-width:100%;border-radius:8px">':'<span>Click, drop, or paste (Ctrl+V)</span>')+'</div>'+
           '<input type="file" id="yt-ref-file" accept="image/*" style="display:none">'+(window._ytRef?'<button class="p-btn" style="margin-top:6px;color:#b91c1c" onclick="ytClearImg(\'ref\')">Remove</button>':'')+'</div>'+
         '<div class="p-field"><label>Brief / Instructions for designer</label><textarea id="yt-instr" class="p-area" rows="2" placeholder="Bold title, red-yellow theme, your photo on right..."></textarea></div>'+
         '<div class="p-field"><label>Graphics Designer</label><select id="yt-graphics" class="p-input">'+_ytOpts(window._ytGfx,window._ytGx)+'</select></div>'+
@@ -24908,10 +24908,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           gfxList.map(function(g){ return '<option value="'+g.id+'"'+(d.graphics_id===g.id?' selected':'')+'>'+esc(g.name)+(g.active!==undefined?(' \u00b7 '+g.active+' active'):'')+'</option>'; }).join('')+'</select></div>'+
           '<div class="p-field"><label>Thumbnail deadline (designer must finish by)</label><input class="p-input" id="aw-gfxdeadline" type="datetime-local" value="'+esc(d.graphics_deadline||'')+'"></div>'+
           '<div class="p-field"><label>Thumbnail brief / remarks (designer will see this)</label><textarea class="p-area" id="aw-gfx-instructions" placeholder="e.g. bold title text, red-yellow theme, student photo on the right, big marks callout">'+esc(d.graphics_instructions||'')+'</textarea></div>'+
-          '<div class="p-field"><label>Reference thumbnail(s) for the designer <span style="color:#a9791f;font-weight:700">\u2014 add several, Ctrl+V pastes here</span></label>'+            '<input class="p-input" id="aw-gfx-reference" placeholder="Drive/image link (optional)" value="'+esc(d.graphics_reference||'')+'" style="margin-bottom:8px">'+            '<div id="aw-ref-drop" class="aw-drop aw-paste-on" onmousedown="awSetPasteTgt(\'ref\')" onclick="awSetPasteTgt(\'ref\');document.getElementById(\'aw-ref-file\').click()" ondragover="event.preventDefault();this.classList.add(\'drag\')" ondragleave="this.classList.remove(\'drag\')" ondrop="awRefDrop(event)">'+              '<div class="aw-drop-hint"><b>Add reference</b> \u2014 drag &amp; drop, click, or paste (Ctrl+V). You can add up to 6.</div>'+            '</div><input type="file" id="aw-ref-file" accept="image/*" style="display:none" onchange="awRefFile(event)">'+            ((d.graphics_reference_uploads&&d.graphics_reference_uploads.length)?('<div class="aw-refgrid">'+d.graphics_reference_uploads.map(function(u,i){ return '<div class="aw-refcell"><span class="aw-refn">Reference '+(i+1)+'</span><img src="'+esc(u)+'" onclick="awRefView('+i+')" title="Click to view full"><button type="button" class="aw-x" onclick="event.stopPropagation();awRefRemove('+i+')">&times;</button></div>'; }).join('')+'</div>'):'')+'</div>'+
+          '<div class="p-field"><label>Reference thumbnail(s) for the designer <span style="color:#a9791f;font-weight:700">\u2014 add several, Ctrl+V pastes here</span></label>'+            '<input class="p-input" id="aw-gfx-reference" placeholder="Drive/image link (optional)" value="'+esc(d.graphics_reference||'')+'" style="margin-bottom:8px">'+            '<div id="aw-ref-drop" class="aw-drop aw-paste-on" onmousedown="awSetPasteTgt(\'ref\')" onclick="awSetPasteTgt(\'ref\');document.getElementById(\'aw-ref-file\').click()" ondragover="event.preventDefault();this.classList.add(\'drag\')" ondragleave="this.classList.remove(\'drag\')" ondrop="awRefDrop(event)">'+              '<div class="aw-drop-hint"><b>Add reference</b> \u2014 drag &amp; drop, click, or paste (Ctrl+V). You can add up to 6.</div>'+            '</div><input type="file" id="aw-ref-file" accept="image/*" style="display:none" onchange="awRefFile(event)">'+            ((d.graphics_reference_uploads&&d.graphics_reference_uploads.length)?('<div class="aw-refgrid">'+d.graphics_reference_uploads.map(function(u,i){ return '<div class="aw-refcell"><span class="aw-refn">Reference '+(i+1)+'</span><img loading="lazy" src="'+esc(u)+'" onclick="awRefView('+i+')" title="Click to view full"><button type="button" class="aw-x" onclick="event.stopPropagation();awRefRemove('+i+')">&times;</button></div>'; }).join('')+'</div>'):'')+'</div>'+
           '<div class="p-field"><label>Already have the FINAL thumbnail? Upload it here <span style="color:var(--muted);font-weight:600">(click here first, then Ctrl+V)</span></label>'+
             '<div id="aw-thumb-drop" class="aw-drop" onmousedown="awSetPasteTgt(\'thumb\')" onclick="awSetPasteTgt(\'thumb\');document.getElementById(\'aw-thumb-file\').click()" ondragover="event.preventDefault();this.classList.add(\'drag\')" ondragleave="this.classList.remove(\'drag\')" ondrop="awThumbDrop(event)">'+
-              (d.thumb_upload?('<img src="'+esc(d.thumb_upload)+'" style="max-width:100%;max-height:150px;border-radius:8px"><button type="button" class="aw-x" onclick="event.stopPropagation();awThumbRemove()">&times;</button>'):'<div class="aw-drop-hint"><b>Final thumbnail</b> \u2014 click here, then drag/drop or paste (Ctrl+V)</div>')+
+              (d.thumb_upload?('<img loading="lazy" src="'+esc(d.thumb_upload)+'" style="max-width:100%;max-height:150px;border-radius:8px"><button type="button" class="aw-x" onclick="event.stopPropagation();awThumbRemove()">&times;</button>'):'<div class="aw-drop-hint"><b>Final thumbnail</b> \u2014 click here, then drag/drop or paste (Ctrl+V)</div>')+
             '</div><input type="file" id="aw-thumb-file" accept="image/*" style="display:none" onchange="awThumbFile(event)">'+
             (d.thumb_upload?'<div class="p-opt">Thumbnail attached. It will be auto-approved and you can rate it below.</div><div class="p-field" style="margin-top:8px"><label>Rate this thumbnail (optional)</label><select class="p-select" id="aw-thumb-rating"><option value="">No rating</option><option value="5"'+(d.thumb_rating==5?' selected':'')+'>5 - Excellent</option><option value="4"'+(d.thumb_rating==4?' selected':'')+'>4 - Good</option><option value="3"'+(d.thumb_rating==3?' selected':'')+'>3 - Average</option><option value="2"'+(d.thumb_rating==2?' selected':'')+'>2 - Below average</option><option value="1"'+(d.thumb_rating==1?' selected':'')+'>1 - Poor</option></select></div>':'')+
           '</div>'):'')+
@@ -24989,7 +24989,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.awRefFile=function(e){ _awSave(); var f=e.target.files&&e.target.files[0]; _awReadRef(f); };
   window.awThumbRemove=function(){ _awSave(); if(window._aw&&window._aw.data) window._aw.data.thumb_upload=''; _awRender(); };
   window.awRefRemove=function(i){ _awSave(); var d=window._aw&&window._aw.data; if(!d)return; d.graphics_reference_uploads=d.graphics_reference_uploads||[]; if(typeof i==='number') d.graphics_reference_uploads.splice(i,1); else d.graphics_reference_uploads=[]; _awRender(); };
-  window.awRefView=function(i){ var d=window._aw&&window._aw.data; var u=d&&(d.graphics_reference_uploads||[])[i]; if(!u)return; var o=document.createElement('div'); o.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out'; o.onclick=function(){o.remove();}; o.innerHTML='<img src="'+u+'" style="max-width:95%;max-height:95%;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5)">'; document.body.appendChild(o); };
+  window.awRefView=function(i){ var d=window._aw&&window._aw.data; var u=d&&(d.graphics_reference_uploads||[])[i]; if(!u)return; var o=document.createElement('div'); o.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out'; o.onclick=function(){o.remove();}; o.innerHTML='<img loading="lazy" src="'+u+'" style="max-width:95%;max-height:95%;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5)">'; document.body.appendChild(o); };
   window.awRefDrop=function(e){ e.preventDefault(); _awSave(); var el=document.getElementById('aw-ref-drop'); if(el)el.classList.remove('drag'); var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; _awReadRef(f); };
   window.awThumbDrop=function(e){ e.preventDefault(); _awSave(); var el=document.getElementById('aw-thumb-drop'); if(el)el.classList.remove('drag'); var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; _awReadImg(f); };
   window.awSetPasteTgt=function(t){
@@ -26966,7 +26966,7 @@ function _mcRenderMsgs(role, msgs){
       if(a.is_image){ var id='mcimg-'+a.id; imgJobs.push([id, role, a.id]);
         // tap the image -> open the full viewer (which has its own Download button).
         // the small corner button downloads directly without opening the viewer.
-        return '<div class="mc-img-wrap"><img id="'+id+'" alt="'+esc(a.filename||'image')+'" onclick="_mcAttView(\''+id+'\',\''+nm+'\')">'
+        return '<div class="mc-img-wrap"><img loading="lazy" id="'+id+'" alt="'+esc(a.filename||'image')+'" onclick="_mcAttView(\''+id+'\',\''+nm+'\')">'
           +'<button class="mc-img-dl" title="Download" onclick="event.stopPropagation();_mcAttDownload(\''+role+'\','+a.id+',\''+nm+'\')">'+_dic+'</button></div>';
       }
       return '<div class="mc-file" onclick="_mcAttDownload(\''+role+'\','+a.id+',\''+nm+'\')">'+_dic
@@ -26994,7 +26994,7 @@ function _mcAddPend(file){
 function _mcRenderPend(){
   var el=document.getElementById('mc-pend'); if(!el) return;
   el.innerHTML=(window._mcChatPend||[]).map(function(p,i){
-    return '<span class="mc-chip">'+(p.url?'<img src="'+p.url+'">':'\uD83D\uDCCE ')+esc(p.file.name||'file')+' <span class="x" onclick="_mcRemovePend('+i+')">\u00d7</span></span>';
+    return '<span class="mc-chip">'+(p.url?'<img loading="lazy" src="'+p.url+'">':'\uD83D\uDCCE ')+esc(p.file.name||'file')+' <span class="x" onclick="_mcRemovePend('+i+')">\u00d7</span></span>';
   }).join('');
 }
 function _mcRemovePend(i){ (window._mcChatPend||[]).splice(i,1); _mcRenderPend(); }
@@ -27315,7 +27315,7 @@ function scAddImgs(files){
 }
 function _scRenderPrev(){
   var el=document.getElementById('sc-prev'); if(!el) return;
-  el.innerHTML=window._scImgs.map(function(f,i){ return '<span class="sup-att-chip"><img src="'+URL.createObjectURL(f)+'"><span class="x" onclick="window._scImgs.splice('+i+',1);_scRenderPrev()">\u00d7</span></span>'; }).join('');
+  el.innerHTML=window._scImgs.map(function(f,i){ return '<span class="sup-att-chip"><img loading="lazy" src="'+URL.createObjectURL(f)+'"><span class="x" onclick="window._scImgs.splice('+i+',1);_scRenderPrev()">\u00d7</span></span>'; }).join('');
 }
 async function scSubmit(){
   var cat=(document.getElementById('sc-cat')||{}).value||'';
@@ -27369,7 +27369,7 @@ function _supRenderDetail(role, c){
   var thread=(c.messages||[]).map(function(m){
     var mine=(m.sender_role===role);
     var atts=(m.attachments||[]).map(function(a){
-      if(a.kind==='image'){ var id='sca-'+a.id; imgJobs.push([id,role,a.id]); return '<img id="'+id+'" class="att" onclick="_supViewImg(\''+role+'\','+a.id+')">'; }
+      if(a.kind==='image'){ var id='sca-'+a.id; imgJobs.push([id,role,a.id]); return '<img loading="lazy" id="'+id+'" class="att" onclick="_supViewImg(\''+role+'\','+a.id+')">'; }
       return '<div style="margin-top:6px"><audio controls id="scv-'+a.id+'" style="height:34px"></audio></div>';
     }).join('');
     (m.attachments||[]).forEach(function(a){ if(a.kind==='voice') imgJobs.push(['AUDIO:scv-'+a.id, role, a.id]); });
@@ -27393,7 +27393,7 @@ async function _supLoadImg(id,url){ try{ var r=await fetch(API+url,{headers:{Aut
 async function _supLoadAudio(id,url){ try{ var r=await fetch(API+url,{headers:{Authorization:'Bearer '+TOKEN}}); if(!r.ok)return; var u=URL.createObjectURL(await r.blob()); var a=document.getElementById(id); if(a) a.src=u; }catch(e){} }
 function _supViewImg(role,aid){ _supLoadImg('_lightbox', '/api/'+role+'/complaint-attachments/'+aid+'/view'); }
 function scReplyAddImgs(files){ for(var i=0;i<files.length;i++){ if((files[i].type||'').indexOf('image')===0) window._scReplyImgs.push(files[i]); } _scReplyPrev(); }
-function _scReplyPrev(){ var el=document.getElementById('sc-rprev'); if(!el)return; el.innerHTML=window._scReplyImgs.map(function(f,i){ return '<span class="sup-att-chip"><img src="'+URL.createObjectURL(f)+'"><span class="x" onclick="window._scReplyImgs.splice('+i+',1);_scReplyPrev()">\u00d7</span></span>'; }).join(''); }
+function _scReplyPrev(){ var el=document.getElementById('sc-rprev'); if(!el)return; el.innerHTML=window._scReplyImgs.map(function(f,i){ return '<span class="sup-att-chip"><img loading="lazy" src="'+URL.createObjectURL(f)+'"><span class="x" onclick="window._scReplyImgs.splice('+i+',1);_scReplyPrev()">\u00d7</span></span>'; }).join(''); }
 async function scSendReply(role, cid){
   var txt=(document.getElementById('sc-reply').value||'').trim();
   if(!txt && !window._scReplyImgs.length){ toast('Type a message',true); return; }
@@ -27632,7 +27632,7 @@ function _amcRenderInline(c, body){
   var thread=(c.messages||[]).map(function(m){
     var mine=(m.sender_role==='admin');
     var atts=(m.attachments||[]).map(function(a){
-      if(a.kind==='image'){ var id='aci-'+a.id; imgJobs.push(['IMG:'+id,a.id]); return '<img id="'+id+'" class="att" onclick="_supLightbox(\'/api/admin/complaint-attachments/'+a.id+'/view\')">'; }
+      if(a.kind==='image'){ var id='aci-'+a.id; imgJobs.push(['IMG:'+id,a.id]); return '<img loading="lazy" id="'+id+'" class="att" onclick="_supLightbox(\'/api/admin/complaint-attachments/'+a.id+'/view\')">'; }
       var vid='acu-'+a.id; imgJobs.push(['AUD:'+vid,a.id]); return '<div style="margin-top:6px"><audio controls id="'+vid+'" style="height:34px"></audio></div>';
     }).join('');
     return '<div class="sup-b '+(mine?'me':'them')+'"><div class="who">'+(mine?'Support':(c.student&&c.student.name||'Student'))+'</div>'+(m.message?esc(m.message).replace(/\n/g,'<br>'):'')+atts+'</div>';
@@ -27706,7 +27706,7 @@ function _amcRenderDetail(c){
   var thread=(c.messages||[]).map(function(m){
     var mine=(m.sender_role==='admin');
     var atts=(m.attachments||[]).map(function(a){
-      if(a.kind==='image'){ var id='aca-'+a.id; imgJobs.push(['IMG:'+id,a.id]); return '<img id="'+id+'" class="att" onclick="_supLightbox(\'/api/admin/complaint-attachments/'+a.id+'/view\')">'; }
+      if(a.kind==='image'){ var id='aca-'+a.id; imgJobs.push(['IMG:'+id,a.id]); return '<img loading="lazy" id="'+id+'" class="att" onclick="_supLightbox(\'/api/admin/complaint-attachments/'+a.id+'/view\')">'; }
       var vid='acv-'+a.id; imgJobs.push(['AUD:'+vid,a.id]); return '<div style="margin-top:6px"><audio controls id="'+vid+'" style="height:34px"></audio></div>';
     }).join('');
     return '<div class="sup-b '+(mine?'me':'them')+'"><div class="who">'+(mine?'Support':(c.student&&c.student.name||'Student'))+'</div>'+(m.message?esc(m.message).replace(/\n/g,'<br>'):'')+atts+'</div>';
@@ -27975,7 +27975,7 @@ function _supLightbox(url){
   if(!ov){ ov=document.createElement('div'); ov.id='_sup-lb'; ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.86);display:flex;align-items:center;justify-content:center;z-index:99999;cursor:zoom-out'; ov.onclick=function(){ ov.style.display='none'; ov.innerHTML=''; }; document.body.appendChild(ov); }
   ov.style.display='flex'; ov.innerHTML='<div style="color:#fff;font-size:.9rem">Loading\u2026</div>';
   fetch(API+url,{headers:{Authorization:'Bearer '+TOKEN}}).then(function(r){ if(!r.ok) throw 0; return r.blob(); })
-    .then(function(b){ ov.innerHTML='<img src="'+URL.createObjectURL(b)+'" style="max-width:92vw;max-height:92vh;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5)">'; })
+    .then(function(b){ ov.innerHTML='<img loading="lazy" src="'+URL.createObjectURL(b)+'" style="max-width:92vw;max-height:92vh;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5)">'; })
     .catch(function(){ ov.innerHTML='<div style="color:#fff">Could not load image</div>'; });
 }
 
