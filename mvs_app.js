@@ -22879,6 +22879,25 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     };
     upd(); window._ytCd=setInterval(upd,1000);
   }
+  // ---- shared filter helpers (search + channel) for Today / Weekly ----
+  function _ytChanList(tasks){ var c=[],seen={}; (tasks||[]).forEach(function(t){ var x=t.channel_name||''; if(x&&!seen[x]){seen[x]=1;c.push(x);} }); c.sort(); return c; }
+  function _ytBar(scope,channels){
+    var apply=(scope==='yttd')?'_ytTdApply()':'_ytWkApply()';
+    return '<div class="ytf">'+
+      '<div class="ytf-search">'+_YT_SVG_SEARCH+'<input id="'+scope+'-q" placeholder="Search title, channel, type..." oninput="'+apply+'"></div>'+
+      '<select id="'+scope+'-ch" onchange="'+apply+'"><option value="">All channels</option>'+channels.map(function(c){return '<option value="'+esc(c)+'">'+esc(c)+'</option>';}).join('')+'</select>'+
+      '<button class="ytf-clear" onclick="_ytBarClear(\''+scope+'\')">Clear</button></div>';
+  }
+  function _ytFilterList(tasks,scope){
+    var q=((((document.getElementById(scope+'-q'))||{}).value)||'').trim().toLowerCase();
+    var ch=(((document.getElementById(scope+'-ch'))||{}).value)||'';
+    return (tasks||[]).filter(function(t){
+      if(ch && (t.channel_name||'')!==ch) return false;
+      if(q){ var hay=((t.title||'')+' '+(t.channel_name||'')+' '+(t.video_type||'')+' '+(t.creator_name||'')).toLowerCase(); if(hay.indexOf(q)<0) return false; }
+      return true;
+    });
+  }
+  window._ytBarClear=function(scope){ [scope+'-q',scope+'-ch'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; }); if(scope==='yttd')_ytTdApply(); else if(scope==='ytwk')_ytWkApply(); };
   // ---- My Tasks: master search + channel filter + date filter (no status chips) ----
   function renderYtMy(portal,body){
     _ytCss(); body.innerHTML='<div class="p-load">Loading your tasks...</div>';
@@ -22917,36 +22936,52 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     grid.innerHTML=out.length?('<div class="ptc-grid">'+out.map(function(t){return _prodTaskCard('youtuber',t);}).join('')+'</div>')
       :_pEmpty('list','No tasks match','Try a different channel or date, or clear the search.');
   };
-  // ---- Today ----
+  // ---- Today (with search + channel filter) ----
   function renderYtToday(portal,body){
     _ytCss(); body.innerHTML='<div class="p-load">Loading today\u2019s tasks...</div>';
     _ytLoad(function(tasks){
       var t0=new Date(); t0.setHours(0,0,0,0); var s=t0.getTime(), e=s+86400000;
-      var today=_ytActive(tasks).filter(function(t){ var ms=_ytDlMs(t); return ms!=null && ms>=s && ms<e; }).sort(function(a,b){return _ytDlMs(a)-_ytDlMs(b);});
-      body.innerHTML='<div class="p-sec">Due Today \u00b7 '+today.length+' task'+(today.length===1?'':'s')+'</div>'+
-        (today.length?('<div class="ptc-grid">'+today.map(function(t){return _prodTaskCard('youtuber',t);}).join('')+'</div>')
-          :_pEmpty('check','Nothing due today','You are all caught up for today.'));
+      window._ytTodayRaw=_ytActive(tasks).filter(function(t){ var ms=_ytDlMs(t); return ms!=null && ms>=s && ms<e; }).sort(function(a,b){return _ytDlMs(a)-_ytDlMs(b);});
+      body.innerHTML='<div class="p-sec">Due Today \u00b7 '+window._ytTodayRaw.length+' task'+(window._ytTodayRaw.length===1?'':'s')+'</div>'+
+        _ytBar('yttd',_ytChanList(window._ytTodayRaw))+'<div id="yt-td-grid"></div>';
+      _ytTdApply();
     });
   }
-  // ---- Weekly (next 7 days, grouped horizontally, click a task for details) ----
+  window._ytTdApply=function(){
+    var grid=document.getElementById('yt-td-grid'); if(!grid) return;
+    var out=_ytFilterList(window._ytTodayRaw||[],'yttd');
+    grid.innerHTML=out.length?('<div class="ptc-grid">'+out.map(function(t){return _prodTaskCard('youtuber',t);}).join('')+'</div>')
+      :_pEmpty('check',(window._ytTodayRaw&&window._ytTodayRaw.length)?'No matching tasks':'Nothing due today',(window._ytTodayRaw&&window._ytTodayRaw.length)?'Try clearing the search or channel.':'You are all caught up for today.');
+  };
+  // ---- Weekly (next 7 days, grouped horizontally + search/channel filter) ----
   function renderYtWeekly(portal,body){
     _ytCss(); body.innerHTML='<div class="p-load">Loading your week...</div>';
     _ytLoad(function(tasks){
-      var t0=new Date(); t0.setHours(0,0,0,0); var act=_ytActive(tasks);
-      var cols=[]; for(var i=0;i<7;i++){
-        var d=new Date(t0.getTime()+i*86400000), s=d.getTime(), e=s+86400000;
-        var items=act.filter(function(t){ var ms=_ytDlMs(t); return ms!=null && ms>=s && ms<e; }).sort(function(a,b){return _ytDlMs(a)-_ytDlMs(b);});
-        var head='<div class="ytw-dh"><b>'+(i===0?'Today':d.toLocaleDateString('en-US',{weekday:'short'}))+'</b><span>'+d.toLocaleDateString('en-US',{day:'numeric',month:'short'})+(items.length?' \u00b7 '+items.length:'')+'</span></div>';
-        var inner=items.length?items.map(function(t){
-          var tl=new Date(_ytDlMs(t)).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-          var m=[]; if(t.channel_name) m.push(esc(t.channel_name)); m.push(tl);
-          return '<div class="ytw-item" onclick="prodOpenTask(\'youtuber\','+t.id+')"><div class="ytw-it-t">'+esc(t.title||'Untitled')+'</div><div class="ytw-it-m"><span>'+m.join('</span><span>')+'</span></div></div>';
-        }).join(''):'<div class="ytw-empty">No tasks</div>';
-        cols.push('<div class="ytw-day'+(i===0?' today':'')+'">'+head+inner+'</div>');
-      }
-      body.innerHTML='<div class="p-sec">This Week \u00b7 next 7 days \u00b7 tap a task for details</div><div class="ytw">'+cols.join('')+'</div>';
+      var t0=new Date(); t0.setHours(0,0,0,0); var _we=t0.getTime()+7*86400000;
+      window._ytWeekRaw=_ytActive(tasks);
+      var weekTasks=window._ytWeekRaw.filter(function(t){ var ms=_ytDlMs(t); return ms!=null && ms>=t0.getTime() && ms<_we; });
+      body.innerHTML='<div class="p-sec">This Week \u00b7 next 7 days \u00b7 tap a task for details</div>'+
+        _ytBar('ytwk',_ytChanList(weekTasks))+'<div id="yt-wk-wrap"></div>';
+      _ytWkApply();
     });
   }
+  window._ytWkApply=function(){
+    var wrap=document.getElementById('yt-wk-wrap'); if(!wrap) return;
+    var src=_ytFilterList(window._ytWeekRaw||[],'ytwk');
+    var t0=new Date(); t0.setHours(0,0,0,0); var cols=[];
+    for(var i=0;i<7;i++){
+      var d=new Date(t0.getTime()+i*86400000), s=d.getTime(), e=s+86400000;
+      var items=src.filter(function(t){ var ms=_ytDlMs(t); return ms!=null && ms>=s && ms<e; }).sort(function(a,b){return _ytDlMs(a)-_ytDlMs(b);});
+      var head='<div class="ytw-dh"><b>'+(i===0?'Today':d.toLocaleDateString('en-US',{weekday:'short'}))+'</b><span>'+d.toLocaleDateString('en-US',{day:'numeric',month:'short'})+(items.length?' \u00b7 '+items.length:'')+'</span></div>';
+      var inner=items.length?items.map(function(t){
+        var tl=new Date(_ytDlMs(t)).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+        var m=[]; if(t.channel_name) m.push(esc(t.channel_name)); m.push(tl);
+        return '<div class="ytw-item" onclick="prodOpenTask(\'youtuber\','+t.id+')"><div class="ytw-it-t">'+esc(t.title||'Untitled')+'</div><div class="ytw-it-m"><span>'+m.join('</span><span>')+'</span></div></div>';
+      }).join(''):'<div class="ytw-empty">No tasks</div>';
+      cols.push('<div class="ytw-day'+(i===0?' today':'')+'">'+head+inner+'</div>');
+    }
+    wrap.innerHTML='<div class="ytw">'+cols.join('')+'</div>';
+  };
   function renderYtViews(portal,body){
     body.innerHTML='<div class="p-load">Loading views...</div>';
     return api(P.youtuber.api+'/views').then(function(r){
