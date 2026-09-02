@@ -239,6 +239,26 @@ def yt_channels(db: Session = Depends(get_db), me=Depends(get_youtuber)):
     return {"channels": [{"id": c.id, "name": c.name} for c in rows]}
 
 
+@router.post("/channels")
+def yt_create_channel(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    """YouTuber apne channel ka naam khud add kar sake (jo tasks/filters me dikhega).
+    Duplicate name ho to reactivate + return (crash nahi)."""
+    from models import VideoChannel
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Channel name daaliye")
+    ex = db.query(VideoChannel).filter(VideoChannel.name == name).first()
+    if ex:
+        if not ex.active:
+            ex.active = True
+            db.commit()
+        return {"ok": True, "id": ex.id, "name": ex.name, "existed": True}
+    c = VideoChannel(name=name, active=True)
+    db.add(c)
+    db.commit()
+    return {"ok": True, "id": c.id, "name": c.name}
+
+
 @router.get("/video-types")
 def yt_video_types(db: Session = Depends(get_db), me=Depends(get_youtuber)):
     from models import VideoType

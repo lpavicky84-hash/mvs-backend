@@ -22805,6 +22805,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '.ytf-search svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);width:16px;height:16px;opacity:.5}',
       '.ytf select{padding:11px 14px;border:1px solid var(--border);border-radius:12px;background:var(--card);font:inherit;font-size:.88rem;cursor:pointer;color:inherit}',
       '.ytf-clear{padding:11px 14px;border:1px solid var(--border);border-radius:12px;background:transparent;cursor:pointer;font:inherit;font-size:.85rem;font-weight:700;color:inherit}',
+      '.ytf-add{padding:11px 14px;border:1px dashed #c98a2e;border-radius:12px;background:rgba(230,173,78,.09);cursor:pointer;font:inherit;font-size:.85rem;font-weight:700;color:#8a6d10;white-space:nowrap}',
+      '.ytf-add:hover{background:rgba(230,173,78,.16)}',
+      'body.dark .ytf-add{color:#e6ad4e}',
       '.yts{position:relative;border-radius:18px;overflow:hidden;margin-bottom:18px;background:linear-gradient(135deg,#1a1408,#2c200b);color:#f5ecd8;box-shadow:0 12px 40px rgba(120,90,20,.22)}',
       '.yts-prio{position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#ff5252,#ff9800);z-index:2}',
       '.yts-count{position:absolute;top:14px;right:16px;font-size:.72rem;font-weight:700;background:rgba(0,0,0,.34);padding:4px 11px;border-radius:999px;z-index:2}',
@@ -22885,7 +22888,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var apply=(scope==='yttd')?'_ytTdApply()':'_ytWkApply()';
     return '<div class="ytf">'+
       '<div class="ytf-search">'+_YT_SVG_SEARCH+'<input id="'+scope+'-q" placeholder="Search title, channel, type..." oninput="'+apply+'"></div>'+
-      '<select id="'+scope+'-ch" onchange="'+apply+'"><option value="">All channels</option>'+channels.map(function(c){return '<option value="'+esc(c)+'">'+esc(c)+'</option>';}).join('')+'</select>'+
+      '<select id="'+scope+'-ch" onchange="'+apply+'"><option value="">All channels</option></select>'+
+      '<button class="ytf-add" onclick="ytAddChannel()">+ Channel</button>'+
       '<button class="ytf-clear" onclick="_ytBarClear(\''+scope+'\')">Clear</button></div>';
   }
   function _ytFilterList(tasks,scope){
@@ -22898,6 +22902,47 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     });
   }
   window._ytBarClear=function(scope){ [scope+'-q',scope+'-ch'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; }); if(scope==='yttd')_ytTdApply(); else if(scope==='ytwk')_ytWkApply(); };
+  // fill a channel <select> from the ACTUAL channels endpoint (union with any channels on tasks),
+  // so channel names show even before there are tasks.
+  function _ytFillChannels(selId, taskChannels){
+    var fill=function(names){
+      var sel=document.getElementById(selId); if(!sel) return;
+      (taskChannels||[]).forEach(function(c){ if(c && names.indexOf(c)<0) names.push(c); });
+      names.sort();
+      var cur=sel.value;
+      sel.innerHTML='<option value="">All channels</option>'+names.map(function(c){return '<option value="'+esc(c)+'">'+esc(c)+'</option>';}).join('');
+      if(cur && names.indexOf(cur)>=0) sel.value=cur;
+      window._ytChanCache=names.slice();
+    };
+    if(window._ytChanCache){ fill(window._ytChanCache.slice()); }
+    api(P.youtuber.api+'/channels').then(function(r){ fill((r&&r.channels||[]).map(function(c){return c.name;})); }).catch(function(){ if(!window._ytChanCache) fill([]); });
+  }
+  // YouTuber apna channel naam khud add kare
+  window.ytAddChannel=function(){
+    var old=document.getElementById('yt-ch-modal'); if(old) old.remove();
+    var d=document.createElement('div'); d.id='yt-ch-modal'; d.className='p-modal-wrap';
+    d.innerHTML='<div class="p-modal" style="max-width:420px">'+
+      '<div class="pd-head"><div class="h-title">Add Channel</div><button class="pd-x" onclick="_ytChModalClose()">&times;</button></div>'+
+      '<div class="p-modal-body"><div class="p-field"><label>Channel name</label>'+
+      '<input class="p-input" id="yt-ch-name" placeholder="e.g. MVS Foundation" autocomplete="off"></div>'+
+      '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">'+
+      '<button class="p-btn" onclick="_ytChModalClose()">Cancel</button>'+
+      '<button class="p-btn p-btn-primary" id="yt-ch-save" onclick="_ytChSave()">Add Channel</button></div></div></div>';
+    document.body.appendChild(d);
+    d.addEventListener('click',function(e){ if(e.target===d) _ytChModalClose(); });
+    var inp=document.getElementById('yt-ch-name'); if(inp){ setTimeout(function(){inp.focus();},50); inp.addEventListener('keydown',function(e){ if(e.key==='Enter') _ytChSave(); }); }
+  };
+  window._ytChModalClose=function(){ var d=document.getElementById('yt-ch-modal'); if(d) d.remove(); };
+  window._ytChSave=function(){
+    var inp=document.getElementById('yt-ch-name'); var name=(inp?inp.value:'').trim();
+    if(!name){ toast('Channel name daaliye',true); if(inp) inp.focus(); return; }
+    var btn=document.getElementById('yt-ch-save'); if(btn){ btn.disabled=true; btn.textContent='Adding...'; }
+    api(P.youtuber.api+'/channels','POST',{name:name}).then(function(r){
+      toast((r&&r.existed)?'Channel already added':'Channel added \u2713'); _ytChModalClose();
+      window._ytChanCache=null;
+      ['yt-ch','yttd-ch','ytwk-ch'].forEach(function(id){ if(document.getElementById(id)) _ytFillChannels(id,[]); });
+    }).catch(function(e){ if(btn){ btn.disabled=false; btn.textContent='Add Channel'; } toast((e&&e.message)||'Failed \u2014 try again',true); });
+  };
   // ---- My Tasks: master search + channel filter + date filter (no status chips) ----
   function renderYtMy(portal,body){
     _ytCss(); body.innerHTML='<div class="p-load">Loading your tasks...</div>';
@@ -22906,9 +22951,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var channels=[], seen={}; tasks.forEach(function(t){ var c=t.channel_name||''; if(c&&!seen[c]){seen[c]=1;channels.push(c);} }); channels.sort();
       body.innerHTML='<div class="ytf">'+
         '<div class="ytf-search">'+_YT_SVG_SEARCH+'<input id="yt-q" placeholder="Search by title, channel, type..." oninput="_ytMyApply()"></div>'+
-        '<select id="yt-ch" onchange="_ytMyApply()"><option value="">All channels</option>'+channels.map(function(c){return '<option value="'+esc(c)+'">'+esc(c)+'</option>';}).join('')+'</select>'+
+        '<select id="yt-ch" onchange="_ytMyApply()"><option value="">All channels</option></select>'+
         '<select id="yt-dt" onchange="_ytMyApply()"><option value="">Any date</option><option value="today">Due today</option><option value="week">Next 7 days</option><option value="overdue">Overdue</option><option value="nodl">No deadline</option></select>'+
+        '<button class="ytf-add" onclick="ytAddChannel()">+ Channel</button>'+
         '<button class="ytf-clear" onclick="_ytMyClear()">Clear</button></div><div id="yt-my-grid"></div>';
+      _ytFillChannels('yt-ch',channels);
       _ytMyApply();
     });
   }
@@ -22944,6 +22991,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       window._ytTodayRaw=_ytActive(tasks).filter(function(t){ var ms=_ytDlMs(t); return ms!=null && ms>=s && ms<e; }).sort(function(a,b){return _ytDlMs(a)-_ytDlMs(b);});
       body.innerHTML='<div class="p-sec">Due Today \u00b7 '+window._ytTodayRaw.length+' task'+(window._ytTodayRaw.length===1?'':'s')+'</div>'+
         _ytBar('yttd',_ytChanList(window._ytTodayRaw))+'<div id="yt-td-grid"></div>';
+      _ytFillChannels('yttd-ch',_ytChanList(window._ytTodayRaw));
       _ytTdApply();
     });
   }
@@ -22962,6 +23010,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var weekTasks=window._ytWeekRaw.filter(function(t){ var ms=_ytDlMs(t); return ms!=null && ms>=t0.getTime() && ms<_we; });
       body.innerHTML='<div class="p-sec">This Week \u00b7 next 7 days \u00b7 tap a task for details</div>'+
         _ytBar('ytwk',_ytChanList(weekTasks))+'<div id="yt-wk-wrap"></div>';
+      _ytFillChannels('ytwk-ch',_ytChanList(weekTasks));
       _ytWkApply();
     });
   }
