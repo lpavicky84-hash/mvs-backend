@@ -658,7 +658,8 @@ async function _apiCore(path, method='GET', body=null) {
   // bachao). Note: fetch sirf NETWORK fail (connect na ho) par throw hota hai — 4xx/5xx nahi —
   // isliye dusra base sirf tab try hota hai jab sach me domain reachable hi nahi.
   const _bigBody=(opts.body&&opts.body.length>524288);
-  _progStart();
+  var _prog=!/notifications|heartbeat|\/badge|\/dot|auth\/ping|refresh-views|nav-badge|\/live\b|prodNotif/i.test(path);
+  if(_prog) _progStart();
   const _t0=Date.now();
   try{
   const _delays=_bigBody?[]:[1200,2000,3000,5000,8000,8000];
@@ -692,7 +693,7 @@ async function _apiCore(path, method='GET', body=null) {
     if(!_API_NOCACHE.test(path)){ try{ if(JSON.stringify(data).length<1572864) _apiCache[_ck]={t:Date.now(),d:data}; }catch(e){} }
   } else _apiBust();
   return data;
-  } finally { _progDone(); try{ _perfRec(path, method, Date.now()-_t0); }catch(e){} }
+  } finally { if(_prog) _progDone(); try{ _perfRec(path, method, Date.now()-_t0); }catch(e){} }
 }
 
 // ========================================================
@@ -23555,6 +23556,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       acts+='<button class="ptc-btn'+(t.unread_total>0?' chat-blink':(g.status==='changes'?' ptc-ok':''))+'" onclick="event.stopPropagation();gfxChat('+t.id+')">\uD83D\uDCAC Chat with PM'+(t.unread_total>0?(' <span class="chat-badge">'+t.unread_total+'</span>'):'')+'</button>';
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
     } else if(portal==='youtuber'){
+      if(['uploaded','completed'].indexOf(lc)<0) acts+='<button class="ptc-btn" onclick="event.stopPropagation();ytEditTask('+t.id+')">Edit</button>';
       if(lc==='creator_assigned'||lc==='creator_working') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodCardAct(\'youtuber\',\'submit\','+t.id+')">Submit Video</button>';
       else if(lc==='changes_required') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodCardAct(\'youtuber\',\'submit\','+t.id+')">Re-submit</button>';
       if(t.youtube_url||t.submitted_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+esc(t.youtube_url||t.submitted_link)+'\',\'_blank\')">Open Video</button>';
