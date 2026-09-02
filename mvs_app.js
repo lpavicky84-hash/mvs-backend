@@ -20732,6 +20732,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
             {g:'Account',items:[ {p:'notifs',t:'Notifications',i:'bell'}, {p:'profile',t:'Profile',i:'user'} ]} ] },
     youtuber:{ role:'youtuber', title:'Creator', sub:'Studio', api:'/api/youtuber',
       nav:[ {g:'Workspace',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'videos',t:'My Tasks',i:'video'},
+             {p:'yttoday',t:'Today',i:'calendar'}, {p:'ytweekly',t:'Weekly',i:'calendar'},
              {p:'board',t:'Production Board',i:'grid'},
              {p:'ytb:proposal',t:'Proposal Tasks',i:'edit'}, {p:'ytb:urgent',t:'Urgent Tasks',i:'alert'},
              {p:'ytb:editing',t:'Editing Progress',i:'clock'}, {p:'ytb:ready',t:'Ready for YouTube',i:'upload'} ]},
@@ -21793,6 +21794,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     body.innerHTML='<div class="p-load">Loading...</div>';
     try{ history.replaceState({mvs:1,app:portal+'-app',pg:page},'', '/'+portal); }catch(e){}
     if(page==='dashboard') return renderDashboard(portal,body);
+    if(portal==='youtuber'){
+      if(page==='videos') return renderYtMy(portal,body);
+      if(page==='yttoday') return renderYtToday(portal,body);
+      if(page==='ytweekly') return renderYtWeekly(portal,body);
+    }
     if(page.indexOf('gfx:')===0){ var gp=page.slice(4); var gf=_flt(portal); gf.status=''; gf.deadline=''; gf.priority=''; gf.gpreset=gp; return renderList(portal,body); }
     if(page.indexOf('edt:')===0){ var ep=page.slice(4); var ef=_flt(portal); ef.status=''; ef.deadline=''; ef.priority=''; ef.epreset=ep; return renderList(portal,body); }
     if(page.indexOf('ytb:')===0){ var yp2=page.slice(4); var yf=_flt(portal); yf.status=''; yf.deadline=''; yf.priority=''; yf.ypreset=yp2; return renderList(portal,body); }
@@ -22457,6 +22463,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       }
       if(portal==='youtuber' && r.cards){
         window._ytApprovalReq=!!r.approval_required;
+        html+='<div id="yt-spotlight"></div>';
         var YC=[['total_videos','Total Videos','videos','','video'],['uploaded','Uploaded','ytb:ready','good','upload'],
                 ['editing','Editing','ytb:editing','','edit'],['pending','Pending','ytb:proposal','warn','clock'],
                 ['total_views','Total Views','ytviews','','eye'],['highest_views','Highest Views','ytviews','good','star'],
@@ -22466,6 +22473,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           return _pkc({icon:x[4],val:v,label:x[1],cls:x[3],onclick:'prodNav(\'youtuber\',\''+x[2]+'\')'});
         }).join('')+'</div>';
         body.innerHTML=html+'<div id="youtuber-work"></div>';
+        _ytLoadSpotlight();
         _loadWork('youtuber');
         return;
       }
@@ -22785,6 +22793,160 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
 
   // --- youtuber realtime views (own videos only) ---
+  // ============ YOUTUBER CREATOR — My Tasks / Today / Weekly / Due-spotlight ============
+  var _YT_SVG_SEARCH='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
+  function _ytCss(){
+    if(document.getElementById('yt-css')) return;
+    var s=document.createElement('style'); s.id='yt-css';
+    s.textContent=[
+      '.ytf{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}',
+      '.ytf-search{flex:1;min-width:200px;position:relative}',
+      '.ytf-search input{width:100%;padding:11px 14px 11px 40px;border:1px solid var(--border);border-radius:12px;background:var(--card);font:inherit;font-size:.9rem;color:inherit}',
+      '.ytf-search svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);width:16px;height:16px;opacity:.5}',
+      '.ytf select{padding:11px 14px;border:1px solid var(--border);border-radius:12px;background:var(--card);font:inherit;font-size:.88rem;cursor:pointer;color:inherit}',
+      '.ytf-clear{padding:11px 14px;border:1px solid var(--border);border-radius:12px;background:transparent;cursor:pointer;font:inherit;font-size:.85rem;font-weight:700;color:inherit}',
+      '.yts{position:relative;border-radius:18px;overflow:hidden;margin-bottom:18px;background:linear-gradient(135deg,#1a1408,#2c200b);color:#f5ecd8;box-shadow:0 12px 40px rgba(120,90,20,.22)}',
+      '.yts-prio{position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#ff5252,#ff9800);z-index:2}',
+      '.yts-count{position:absolute;top:14px;right:16px;font-size:.72rem;font-weight:700;background:rgba(0,0,0,.34);padding:4px 11px;border-radius:999px;z-index:2}',
+      '.yts-in{display:flex;min-height:210px}',
+      '.yts-thumb{width:320px;flex:none;background-size:cover;background-position:center}',
+      '.yts-thumb.empty{background:linear-gradient(135deg,#e6ad4e,#8a6d1a);display:flex;align-items:center;justify-content:center;font-size:3.4rem;font-weight:800;color:#241a05}',
+      '.yts-body{flex:1;padding:22px 26px;display:flex;flex-direction:column;gap:11px;min-width:0}',
+      '.yts-eyebrow{font-size:.72rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#e6ad4e;display:flex;align-items:center;gap:8px}',
+      '.yts-eyebrow svg{width:15px;height:15px}',
+      '.yts-title{font-size:1.42rem;font-weight:800;line-height:1.2;word-break:break-word}',
+      '.yts-meta{display:flex;gap:8px;flex-wrap:wrap}',
+      '.yts-meta span{font-size:.75rem;padding:3px 11px;border-radius:999px;background:rgba(255,255,255,.11);font-weight:600}',
+      '.yts-cd{display:flex;align-items:baseline;gap:10px;margin-top:auto}',
+      '.yts-cd b{font-size:1.95rem;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.02em}',
+      '.yts-cd.over b{color:#ff9a9a}',
+      '.yts-cd span{font-size:.78rem;opacity:.7}',
+      '.yts-acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}',
+      '.yts-btn{padding:10px 20px;border-radius:11px;border:none;font:inherit;font-weight:700;font-size:.86rem;cursor:pointer;background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05}',
+      '.yts-btn.ghost{background:rgba(255,255,255,.13);color:#f5ecd8}',
+      '.ytw{display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;scroll-snap-type:x proximity}',
+      '.ytw-day{flex:0 0 262px;scroll-snap-align:start;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px;min-height:120px}',
+      '.ytw-day.today{border-color:#e6ad4e;box-shadow:0 0 0 2px rgba(230,173,78,.18)}',
+      '.ytw-dh{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:8px;border-bottom:1px solid var(--border)}',
+      '.ytw-dh b{font-size:.98rem}.ytw-dh span{font-size:.72rem;color:var(--muted)}',
+      '.ytw-item{padding:9px 11px;border-radius:10px;background:var(--bg);border:1px solid var(--border);cursor:pointer;transition:.12s}',
+      '.ytw-item:hover{border-color:#e6ad4e;transform:translateX(2px)}',
+      '.ytw-it-t{font-size:.82rem;font-weight:700;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.ytw-it-m{font-size:.7rem;color:var(--muted);margin-top:3px;display:flex;gap:6px;flex-wrap:wrap}',
+      '.ytw-empty{font-size:.75rem;color:var(--muted);text-align:center;padding:16px 0}',
+      '@media(max-width:640px){.yts-in{flex-direction:column}.yts-thumb{width:100%;height:170px}.ytw-day{flex-basis:82vw}}'
+    ].join(''); document.head.appendChild(s);
+  }
+  function _ytDlMs(t){ var d=(t&&t.deadline_iso)||''; if(!d) return null; var ms=Date.parse(String(d).replace(' ','T')); return isNaN(ms)?null:ms; }
+  function _ytActive(tasks){ return (tasks||[]).filter(function(t){ return ['uploaded','completed'].indexOf(t.lifecycle||'')<0; }); }
+  function _ytDueSorted(tasks){ return _ytActive(tasks).filter(function(t){return _ytDlMs(t)!=null;}).sort(function(a,b){ return _ytDlMs(a)-_ytDlMs(b); }); }
+  function _ytLoad(cb){ _ytCss(); api(P.youtuber.api+'/videos').then(function(r){ window._ytAll=(r&&r.videos)||[]; cb(window._ytAll); }).catch(function(){ cb(window._ytAll||[]); }); }
+  function _ytCdText(ms){
+    var s=Math.round((ms-Date.now())/1000); var over=s<0; s=Math.abs(s);
+    var d=Math.floor(s/86400), h=Math.floor((s%86400)/3600), m=Math.floor((s%3600)/60), ss=s%60;
+    return {txt:(d>0?(d+'d '+h+'h '+m+'m'):(h+':'+(m<10?'0':'')+m+':'+(ss<10?'0':'')+ss)), over:over};
+  }
+  // ---- Dashboard due-spotlight (earliest-due first, live timer, Next) ----
+  function _ytLoadSpotlight(){ var host=document.getElementById('yt-spotlight'); if(!host) return;
+    _ytLoad(function(tasks){ window._ytSpot=_ytDueSorted(tasks); window._ytSpotIdx=0; _ytSpotRender(); }); }
+  window.ytSpotNext=function(){ var n=(window._ytSpot||[]).length; if(!n) return; window._ytSpotIdx=((window._ytSpotIdx||0)+1)%n; _ytSpotRender(); };
+  function _ytSpotRender(){
+    var host=document.getElementById('yt-spotlight'); if(!host) return;
+    var list=window._ytSpot||[];
+    if(!list.length){ host.innerHTML=''; if(window._ytCd){clearInterval(window._ytCd);window._ytCd=null;} return; }
+    var idx=window._ytSpotIdx||0, t=list[idx];
+    var thumb=t.thumbnail||''; if(!thumb && t.youtube_url){ var yi=_ytId(t.youtube_url); if(yi) thumb='https://img.youtube.com/vi/'+yi+'/hqdefault.jpg'; }
+    var prio=(t.priority==='most_urgent'||t.priority==='urgent');
+    var meta=[]; if(t.channel_name) meta.push(esc(t.channel_name)); if(t.video_type) meta.push(esc(t.video_type)); if(t.streaming) meta.push(esc(t.streaming));
+    host.innerHTML='<div class="yts">'+(prio?'<div class="yts-prio"></div>':'')+
+      '<div class="yts-count">'+(idx+1)+' of '+list.length+' \u00b7 by due date</div><div class="yts-in">'+
+      (thumb?'<div class="yts-thumb" style="background-image:url('+esc(thumb)+')"></div>':'<div class="yts-thumb empty">'+esc((t.title||'?').charAt(0).toUpperCase())+'</div>')+
+      '<div class="yts-body"><div class="yts-eyebrow">'+ic('clock')+' Next up \u00b7 earliest due</div>'+
+      '<div class="yts-title">'+esc(t.title||'Untitled task')+'</div>'+
+      (meta.length?'<div class="yts-meta"><span>'+meta.join('</span><span>')+'</span></div>':'')+
+      '<div class="yts-cd" id="yts-cd"><b>\u2014</b><span>left</span></div>'+
+      '<div class="yts-acts"><button class="yts-btn" onclick="prodOpenTask(\'youtuber\','+t.id+')">Open task</button>'+
+      (list.length>1?'<button class="yts-btn ghost" onclick="ytSpotNext()">Next \u2192</button>':'')+'</div></div></div></div>';
+    _ytCdStart();
+  }
+  function _ytCdStart(){
+    if(window._ytCd){ clearInterval(window._ytCd); window._ytCd=null; }
+    var upd=function(){
+      var el=document.getElementById('yts-cd'); var list=window._ytSpot||[]; var t=list[window._ytSpotIdx||0];
+      if(!el||!t){ if(window._ytCd){clearInterval(window._ytCd);window._ytCd=null;} return; }
+      var ms=_ytDlMs(t); if(ms==null){ el.className='yts-cd'; el.innerHTML='<b>No deadline set</b>'; return; }
+      var c=_ytCdText(ms); el.className='yts-cd'+(c.over?' over':''); el.innerHTML='<b>'+c.txt+'</b><span>'+(c.over?'overdue':'left')+'</span>';
+    };
+    upd(); window._ytCd=setInterval(upd,1000);
+  }
+  // ---- My Tasks: master search + channel filter + date filter (no status chips) ----
+  function renderYtMy(portal,body){
+    _ytCss(); body.innerHTML='<div class="p-load">Loading your tasks...</div>';
+    _ytLoad(function(tasks){
+      window._ytMyRaw=tasks;
+      var channels=[], seen={}; tasks.forEach(function(t){ var c=t.channel_name||''; if(c&&!seen[c]){seen[c]=1;channels.push(c);} }); channels.sort();
+      body.innerHTML='<div class="ytf">'+
+        '<div class="ytf-search">'+_YT_SVG_SEARCH+'<input id="yt-q" placeholder="Search by title, channel, type..." oninput="_ytMyApply()"></div>'+
+        '<select id="yt-ch" onchange="_ytMyApply()"><option value="">All channels</option>'+channels.map(function(c){return '<option value="'+esc(c)+'">'+esc(c)+'</option>';}).join('')+'</select>'+
+        '<select id="yt-dt" onchange="_ytMyApply()"><option value="">Any date</option><option value="today">Due today</option><option value="week">Next 7 days</option><option value="overdue">Overdue</option><option value="nodl">No deadline</option></select>'+
+        '<button class="ytf-clear" onclick="_ytMyClear()">Clear</button></div><div id="yt-my-grid"></div>';
+      _ytMyApply();
+    });
+  }
+  window._ytMyClear=function(){ ['yt-q','yt-ch','yt-dt'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; }); _ytMyApply(); };
+  window._ytMyApply=function(){
+    var grid=document.getElementById('yt-my-grid'); if(!grid) return;
+    var tasks=window._ytMyRaw||[];
+    var q=(((document.getElementById('yt-q')||{}).value)||'').trim().toLowerCase();
+    var ch=((document.getElementById('yt-ch')||{}).value)||'';
+    var dt=((document.getElementById('yt-dt')||{}).value)||'';
+    var now=Date.now(), day=86400000, t0=new Date(); t0.setHours(0,0,0,0);
+    var ts=t0.getTime(), te=ts+day, tw=ts+7*day;
+    var out=tasks.filter(function(t){
+      if(q){ var hay=((t.title||'')+' '+(t.channel_name||'')+' '+(t.video_type||'')+' '+(t.creator_name||'')).toLowerCase(); if(hay.indexOf(q)<0) return false; }
+      if(ch && (t.channel_name||'')!==ch) return false;
+      if(dt){ var ms=_ytDlMs(t);
+        if(dt==='nodl'){ if(ms!=null) return false; }
+        else if(ms==null) return false;
+        else if(dt==='today'){ if(ms<ts||ms>=te) return false; }
+        else if(dt==='week'){ if(ms<ts||ms>=tw) return false; }
+        else if(dt==='overdue'){ if(ms>=now) return false; }
+      }
+      return true;
+    });
+    grid.innerHTML=out.length?('<div class="ptc-grid">'+out.map(function(t){return _prodTaskCard('youtuber',t);}).join('')+'</div>')
+      :_pEmpty('list','No tasks match','Try a different channel or date, or clear the search.');
+  };
+  // ---- Today ----
+  function renderYtToday(portal,body){
+    _ytCss(); body.innerHTML='<div class="p-load">Loading today\u2019s tasks...</div>';
+    _ytLoad(function(tasks){
+      var t0=new Date(); t0.setHours(0,0,0,0); var s=t0.getTime(), e=s+86400000;
+      var today=_ytActive(tasks).filter(function(t){ var ms=_ytDlMs(t); return ms!=null && ms>=s && ms<e; }).sort(function(a,b){return _ytDlMs(a)-_ytDlMs(b);});
+      body.innerHTML='<div class="p-sec">Due Today \u00b7 '+today.length+' task'+(today.length===1?'':'s')+'</div>'+
+        (today.length?('<div class="ptc-grid">'+today.map(function(t){return _prodTaskCard('youtuber',t);}).join('')+'</div>')
+          :_pEmpty('check','Nothing due today','You are all caught up for today.'));
+    });
+  }
+  // ---- Weekly (next 7 days, grouped horizontally, click a task for details) ----
+  function renderYtWeekly(portal,body){
+    _ytCss(); body.innerHTML='<div class="p-load">Loading your week...</div>';
+    _ytLoad(function(tasks){
+      var t0=new Date(); t0.setHours(0,0,0,0); var act=_ytActive(tasks);
+      var cols=[]; for(var i=0;i<7;i++){
+        var d=new Date(t0.getTime()+i*86400000), s=d.getTime(), e=s+86400000;
+        var items=act.filter(function(t){ var ms=_ytDlMs(t); return ms!=null && ms>=s && ms<e; }).sort(function(a,b){return _ytDlMs(a)-_ytDlMs(b);});
+        var head='<div class="ytw-dh"><b>'+(i===0?'Today':d.toLocaleDateString('en-US',{weekday:'short'}))+'</b><span>'+d.toLocaleDateString('en-US',{day:'numeric',month:'short'})+(items.length?' \u00b7 '+items.length:'')+'</span></div>';
+        var inner=items.length?items.map(function(t){
+          var tl=new Date(_ytDlMs(t)).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+          var m=[]; if(t.channel_name) m.push(esc(t.channel_name)); m.push(tl);
+          return '<div class="ytw-item" onclick="prodOpenTask(\'youtuber\','+t.id+')"><div class="ytw-it-t">'+esc(t.title||'Untitled')+'</div><div class="ytw-it-m"><span>'+m.join('</span><span>')+'</span></div></div>';
+        }).join(''):'<div class="ytw-empty">No tasks</div>';
+        cols.push('<div class="ytw-day'+(i===0?' today':'')+'">'+head+inner+'</div>');
+      }
+      body.innerHTML='<div class="p-sec">This Week \u00b7 next 7 days \u00b7 tap a task for details</div><div class="ytw">'+cols.join('')+'</div>';
+    });
+  }
   function renderYtViews(portal,body){
     body.innerHTML='<div class="p-load">Loading views...</div>';
     return api(P.youtuber.api+'/views').then(function(r){
