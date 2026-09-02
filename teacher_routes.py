@@ -1195,8 +1195,19 @@ def teacher_notify_targets(db: Session = Depends(get_db), current_user=Depends(g
     from models import User, StudentProfile
     tp = get_teacher_profile(current_user, db)
     subs = tp.subjects or []
-    students = (db.query(StudentProfile).join(User, StudentProfile.user_id == User.id)
+    students = (db.query(StudentProfile).options(defer(StudentProfile.photo_b64))
+                .join(User, StudentProfile.user_id == User.id)
                 .filter(User.is_active == True, User.role == "student").all())
+    # precompute each student's (class, canonical subject-key set) ONCE — the old code recomputed
+    # canon_key for every (subject x student) pair; now it's computed per student only.
+    _sk_cache = []
+    for sp in students:
+        if not sp.subjects:
+            continue
+        cls = str(getattr(sp, "class_level", "") or "").strip() or "?"
+        keys = ({_SR.canon_key(x, cls) for x in sp.subjects} if _SR is not None
+                else {_subj_key(x) for x in sp.subjects})
+        _sk_cache.append((sp.id, cls, keys))
     subjects = []
     seen_sk = set()
     all_ids = set()
@@ -1206,18 +1217,10 @@ def teacher_notify_targets(db: Session = Depends(get_db), current_user=Depends(g
             continue
         seen_sk.add(sk)
         per_cls = {}
-        for sp in students:
-            if not sp.subjects:
-                continue
-            cls = str(getattr(sp, "class_level", "") or "").strip() or "?"
-            if _SR is not None:
-                tkey = _SR.canon_key(s, cls)
-                hit = any(_SR.canon_key(x, cls) == tkey for x in sp.subjects)
-            else:
-                hit = sk in {_subj_key(x) for x in sp.subjects}
-            if not hit:
-                continue
-            per_cls.setdefault(cls, []).append(sp.id)
+        for sid, cls, keys in _sk_cache:
+            tkey = _SR.canon_key(s, cls) if _SR is not None else sk
+            if tkey in keys:
+                per_cls.setdefault(cls, []).append(sid)
         for cls in sorted(per_cls):
             disp = _SR.canon_display(s, cls) if _SR else s
             ids = per_cls[cls]
@@ -1308,17 +1311,16 @@ def teacher_notify_log_detail(batch_key: str, db: Session = Depends(get_db),
             .order_by(Notification.created_at.asc()).all())
     if not rows:
         raise HTTPException(status_code=404, detail="Batch not found")
+    # BATCH recipient names (was 1-2 queries PER notification = N+1). sp.user.name and the
+    # User fallback both resolve to User.name for n.user_id, so one query is enough.
+    _uids = list({n.user_id for n in rows if n.user_id})
+    _umap = {}
+    if _uids:
+        for uid, nm in db.query(User.id, User.name).filter(User.id.in_(_uids)):
+            _umap[uid] = nm or "Student"
     out = []
     for n in rows:
-        sp = db.query(StudentProfile).filter(StudentProfile.user_id == n.user_id).first()
-        name = "Student"
-        if sp and sp.user:
-            name = sp.user.name
-        else:
-            u = db.query(User).filter(User.id == n.user_id).first()
-            if u:
-                name = u.name
-        out.append({"name": name, "read": bool(n.is_read),
+        out.append({"name": _umap.get(n.user_id, "Student"), "read": bool(n.is_read),
                     "read_at": n.read_at.isoformat() if n.read_at else None})
     out.sort(key=lambda r: (r["read"], r["name"].lower()), reverse=True)
     return {"batch_key": batch_key, "title": rows[0].title, "label": rows[0].batch_label or "Students",
@@ -2217,6 +2219,16 @@ def teacher_student_counts(db: Session = Depends(get_db), current_user=Depends(g
     tp = get_teacher_profile(current_user, db)
     subs = tp.subjects or []
     students = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all()
+    # precompute each student's (class, canonical subject-key set) ONCE (was recomputed for
+    # every subject x student pair)
+    _sk_cache = []
+    for sp in students:
+        if not sp.subjects:
+            continue
+        cls = str(sp.class_level or "").strip() or "?"
+        keys = ({_SR.canon_key(x, cls) for x in sp.subjects} if _SR is not None
+                else {_subj_key(x) for x in sp.subjects})
+        _sk_cache.append((sp.id, cls, keys))
     # (subject_key, class_level) -> NIOS subject code
     code_map = {}
     for a in db.query(AvailableSubject).all():
@@ -2230,19 +2242,11 @@ def teacher_student_counts(db: Session = Depends(get_db), current_user=Depends(g
             continue
         seen_sk.add(sk)
         per_cls = {}
-        for sp in students:
-            if not sp.subjects:
-                continue
-            cls = str(sp.class_level or "").strip() or "?"
-            if _SR is not None:
-                tkey = _SR.canon_key(s, cls)
-                hit = any(_SR.canon_key(x, cls) == tkey for x in sp.subjects)
-            else:
-                hit = sk in {_subj_key(x) for x in sp.subjects}
-            if not hit:
-                continue
-            seen_ids.add(sp.id)
-            per_cls[cls] = per_cls.get(cls, 0) + 1
+        for sid, cls, keys in _sk_cache:
+            tkey = _SR.canon_key(s, cls) if _SR is not None else sk
+            if tkey in keys:
+                seen_ids.add(sid)
+                per_cls[cls] = per_cls.get(cls, 0) + 1
         for cls in sorted(per_cls):
             disp = _SR.canon_display(s, cls) if _SR else s
             code = code_map.get((sk, cls))
@@ -2378,6 +2382,7 @@ def _subj_key(name):
 @router.get("/my-students-list")
 def teacher_my_students_list(q: str = "", subject: str = "", cls: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import StudentProfile
+    from sqlalchemy.orm import joinedload
     tp = get_teacher_profile(current_user, db)
     if not _teacher_sees_students(tp, db):
         return []   # is teacher ke liye "My Students" access admin ne band kiya hai
@@ -2395,7 +2400,10 @@ def teacher_my_students_list(q: str = "", subject: str = "", cls: str = "", db: 
     want_cls = (cls or "").strip()
     ql = " ".join((q or "").split()).strip().lower()
     q_tokens = [t for t in ql.split(" ") if t]
-    rows = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all()
+    rows = db.query(StudentProfile).options(
+        defer(StudentProfile.photo_b64), joinedload(StudentProfile.user)).all()
+    # has_photo WITHOUT lazy-loading the heavy base64 per student (bool(sp.photo_b64) did that):
+    _photo_ids = {r[0] for r in db.query(StudentProfile.id).filter(func.length(StudentProfile.photo_b64) > 0)}
     out = []
     for sp in rows:
         ssubs = sp.subjects or []
@@ -2432,7 +2440,7 @@ def teacher_my_students_list(q: str = "", subject: str = "", cls: str = "", db: 
                     "is_verified": bool(sp.is_verified),
                     "all_subjects": (_SR.canon_list(ssubs, scls) if _SR else ssubs),
                     "subjects": (_SR.canon_list(matched, scls) if _SR else matched),
-                    "has_photo": bool(sp.photo_b64)})
+                    "has_photo": (sp.id in _photo_ids)})
     out.sort(key=lambda x: (x["name"] or "").lower())
     return {"total": len(out), "students": out}
 
@@ -2766,41 +2774,59 @@ def teacher_material_analytics(db: Session = Depends(get_db), current_user=Depen
 @router.get("/student-engagement")
 def teacher_student_engagement(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import Material, MaterialView, StudentProfile
-    from sqlalchemy import func as _f, or_
+    from sqlalchemy import func as _f
     tp = get_teacher_profile(current_user, db)
     _see = _teacher_sees_students(tp, db)
     subs = tp.subjects or []
     if not subs:
         return []
-    # students who have any of the teacher's subjects
-    students = []
-    for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all():
-        if set(sp.subjects or []) & set(subs):
-            students.append(sp)
-    # teacher material ids
-    mat_ids = [m.id for m in db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs)).all()]
+    subset = set(subs)
+    students = [sp for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all()
+                if set(sp.subjects or []) & subset]
+    sids = [sp.id for sp in students]
+    if not sids:
+        return []
+    mat_ids = [m[0] for m in db.query(Material.id).filter(Material.subject.in_(subs)).all()]
+
+    # BATCH answers for ALL students (1 query, was 1 per student) -> {student_id: [parent_id,...]}
+    ans_by_student, all_pids = {}, set()
+    for sid, pid in db.query(Material.student_id, Material.parent_id).filter(
+            Material.material_type == "answer", Material.student_id.in_(sids)):
+        ans_by_student.setdefault(sid, []).append(pid)
+        if pid:
+            all_pids.add(pid)
+    # BATCH parent material types (1 query, was 1 per student)
+    ptypes = {}
+    if all_pids:
+        for pid, mt in db.query(Material.id, Material.material_type).filter(Material.id.in_(list(all_pids))):
+            ptypes[pid] = mt
+    # BATCH downloads per student (1 GROUP BY, was 1 count per student)
+    dl_map = {}
+    if mat_ids:
+        for sid, cnt in (db.query(MaterialView.student_id, _f.count(MaterialView.id))
+                         .filter(MaterialView.student_id.in_(sids), MaterialView.action == "download",
+                                 MaterialView.material_id.in_(mat_ids))
+                         .group_by(MaterialView.student_id)):
+            dl_map[sid] = cnt
+    # BATCH last activity per student (1 GROUP BY, was 1 query per student)
+    last_map = {}
+    for sid, mx in (db.query(MaterialView.student_id, _f.max(MaterialView.created_at))
+                    .filter(MaterialView.student_id.in_(sids)).group_by(MaterialView.student_id)):
+        last_map[sid] = mx
+
     out = []
     for sp in students:
-        answers = db.query(Material).options(defer(Material.content_b64)).filter(Material.material_type == "answer", Material.student_id == sp.id).all()
-        pids = [a.parent_id for a in answers if a.parent_id]
-        ptypes = {}
-        if pids:
-            for pm in db.query(Material).options(defer(Material.content_b64)).filter(Material.id.in_(pids)).all():
-                ptypes[pm.id] = pm.material_type
-        dpp_done = sum(1 for a in answers if ptypes.get(a.parent_id) == "dpp")
-        test_done = sum(1 for a in answers if ptypes.get(a.parent_id) == "test")
-        downloads = db.query(_f.count(MaterialView.id)).filter(
-            MaterialView.student_id == sp.id, MaterialView.action == "download",
-            MaterialView.material_id.in_(mat_ids) if mat_ids else False).scalar() or 0
-        last_act = db.query(MaterialView).filter(MaterialView.student_id == sp.id).order_by(MaterialView.created_at.desc()).first()
+        pids = ans_by_student.get(sp.id, [])
+        dpp_done = sum(1 for p in pids if ptypes.get(p) == "dpp")
+        test_done = sum(1 for p in pids if ptypes.get(p) == "test")
         out.append({
             "id": sp.id,
             "name": (sp.user.name if sp.user else "Student"),
             "phone": (sp.phone if _see else ""), "subjects": sp.subjects or [],
             "class_level": sp.class_level,
             "dpp_completed": dpp_done, "tests_completed": test_done,
-            "material_downloads": downloads,
-            "last_active": str(last_act.created_at)[:16] if last_act else None,
+            "material_downloads": dl_map.get(sp.id, 0),
+            "last_active": str(last_map.get(sp.id))[:16] if last_map.get(sp.id) else None,
         })
     out.sort(key=lambda x: (x["material_downloads"] + x["dpp_completed"] + x["tests_completed"]), reverse=True)
     return out

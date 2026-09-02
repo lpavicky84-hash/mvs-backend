@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Body
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
-from sqlalchemy import text, or_
+from sqlalchemy import text, or_, func
 
 from database import get_db, engine
 from security import get_admin, get_teacher
@@ -1409,7 +1409,7 @@ def _collab_ncmap(t):
         return {}
 
 
-def _task_out(db, t, with_thumb=True, tname_map=None):
+def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None):
     def _tn(tid):
         if tname_map is not None:
             return tname_map.get(tid, "")
@@ -1441,10 +1441,10 @@ def _task_out(db, t, with_thumb=True, tname_map=None):
         "review_remarks": t.review_remarks or "",
         "reject_count": t.reject_count or 0,
         "no_resubmit": bool(getattr(t, "no_resubmit", False)),
-        "comment_count": db.query(VideoTaskComment).filter(
+        "comment_count": (cc_map.get(t.id, 0) if cc_map is not None else db.query(VideoTaskComment).filter(
             VideoTaskComment.task_id == t.id,
             or_(VideoTaskComment.audience == None, VideoTaskComment.audience == "",
-                VideoTaskComment.audience == "creator")).count(),
+                VideoTaskComment.audience == "creator")).count()),
         "kind": getattr(t, "kind", "normal") or "normal",
         "subject": getattr(t, "subject", "") or "",
         "weekly_quota": getattr(t, "weekly_quota", 0) or 0,
@@ -2860,7 +2860,12 @@ def _get_tp(current_user, db):
 def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     _vt_sweep(db)
     tp = _get_tp(current_user, db)
-    _ensure_special_teacher(db, tp)
+    # write-heavy self-heal — doesn't need to run on every poll of this list (it's polled often)
+    import time as _tt
+    _te = globals().setdefault("_TEACHER_ENSURE_TS", {})
+    if _tt.time() - _te.get(tp.id, 0) > 180:
+        _ensure_special_teacher(db, tp)
+        _te[tp.id] = _tt.time()
     try:
         tasks = (db.query(VideoTask)
                  .filter(or_(VideoTask.teacher_id == tp.id,
@@ -2880,7 +2885,17 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
     active.sort(key=lambda t: t.deadline or datetime.max)
     rest = [t for t in tasks if t not in active]
     _tnm2 = _all_teacher_names(db)
-    out = [_task_out(db, t, tname_map=_tnm2) for t in active + rest]
+    # BATCH comment counts (1 GROUP BY, was 1 COUNT per task inside _task_out)
+    _mtids = [t.id for t in active + rest]
+    _ccm = {}
+    if _mtids:
+        for _tid, _cnt in (db.query(VideoTaskComment.task_id, func.count(VideoTaskComment.id))
+                           .filter(VideoTaskComment.task_id.in_(_mtids),
+                                   or_(VideoTaskComment.audience == None, VideoTaskComment.audience == "",
+                                       VideoTaskComment.audience == "creator"))
+                           .group_by(VideoTaskComment.task_id)):
+            _ccm[_tid] = _cnt
+    out = [_task_out(db, t, tname_map=_tnm2, cc_map=_ccm) for t in active + rest]
     nxt = active[0] if active else None
     # teacher ke apne stats: kitni upload hui, pending, on-time, delayed + is mahine type-wise
     now = _now_ist()
