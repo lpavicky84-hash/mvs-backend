@@ -6753,12 +6753,16 @@ function _ytBucket(t){ var lc=t.lifecycle||''; if(_YT_DONE.indexOf(lc)>=0)return
 // Brand-new / just-arrived tasks that need the PM's attention (blink red under "New Task").
 // YouTuber videos are usually auto-approved, so an 'approved' task with no editor yet is still
 // "new" for the PM; submissions awaiting review count too.
-var _YT_NEW_LC=['','created','creator_assigned'];
+var _YT_NEW_LC=['','created','creator_assigned','creator_working'];
 function _ytIsNew(t){
-  var lc=t.lifecycle||'';
+  if(t && t.is_old) return false;                    // PM ne "Mark Old" kar diya -> new nahi
+  var lc=(t&&t.lifecycle)||'';
   if(_YT_NEW_LC.indexOf(lc)>=0) return true;
   if(lc==='creator_submitted'||lc==='pm_review') return true;
   if(lc==='approved' && !t.editor_name && !t.editor_id) return true;
+  // gap-fill: koi bhi fresh task jo abhi "to-shoot/assigned" bucket me hai (production/review/done
+  // me nahi) -> PM ke liye new hai (warna kuch lifecycles New count me miss ho jaate the).
+  if(_YT_DONE.indexOf(lc)<0 && _YT_PROD.indexOf(lc)<0 && _YT_REVIEW.indexOf(lc)<0) return true;
   return false;
 }
 function _ytOverdue(t){ return !!(t.deadline_flag&&t.deadline_flag.kind==='overdue')&&_YT_DONE.indexOf(t.lifecycle||'')<0; }
@@ -22902,6 +22906,45 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     });
   }
   window._ytBarClear=function(scope){ [scope+'-q',scope+'-ch'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; }); if(scope==='yttd')_ytTdApply(); else if(scope==='ytwk')_ytWkApply(); };
+  // ---- Edit an existing task (title/channel/type/deadline/priority/remarks) ----
+  window.ytEditTask=function(id){
+    Promise.all([
+      api(P.youtuber.api+'/videos/'+id),
+      api(P.youtuber.api+'/channels').catch(function(){return {channels:[]};}),
+      api(P.youtuber.api+'/video-types').catch(function(){return {types:[]};})
+    ]).then(function(res){
+      var t=res[0]||{};
+      var chs=((res[1]&&res[1].channels)||[]).map(function(c){return c.name;});
+      var tys=((res[2]&&res[2].types)||[]).map(function(x){return x.name;});
+      if(t.channel_name && chs.indexOf(t.channel_name)<0) chs.push(t.channel_name);
+      if(t.video_type && tys.indexOf(t.video_type)<0) tys.push(t.video_type);
+      chs.sort(); tys.sort();
+      var dl=''; if(t.deadline_iso){ dl=String(t.deadline_iso).replace(' ','T').slice(0,16); }
+      var opt=function(list,cur){ return '<option value="">\u2014 None \u2014</option>'+list.map(function(x){return '<option value="'+esc(x)+'"'+(x===cur?' selected':'')+'>'+esc(x)+'</option>';}).join(''); };
+      var pris=[['most_urgent','Most Urgent'],['urgent','Urgent'],['normal','Normal']];
+      var body='<div style="display:flex;flex-direction:column;gap:12px">'+
+        '<div class="form-group"><label>Title / Topic</label><input class="input" id="yte-title" value="'+esc(t.title||'')+'"></div>'+
+        '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+          '<div class="form-group" style="flex:1;min-width:150px"><label>Channel</label><select class="input" id="yte-ch">'+opt(chs,t.channel_name||'')+'</select></div>'+
+          '<div class="form-group" style="flex:1;min-width:150px"><label>Type</label><select class="input" id="yte-ty">'+opt(tys,t.video_type||'')+'</select></div>'+
+        '</div>'+
+        '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+          '<div class="form-group" style="flex:1;min-width:170px"><label>Deadline</label><input class="input" type="datetime-local" id="yte-dl" value="'+esc(dl)+'"></div>'+
+          '<div class="form-group" style="flex:1;min-width:140px"><label>Priority</label><select class="input" id="yte-pri">'+pris.map(function(p){return '<option value="'+p[0]+'"'+((t.priority||'urgent')===p[0]?' selected':'')+'>'+p[1]+'</option>';}).join('')+'</select></div>'+
+        '</div>'+
+        '<div class="form-group"><label>Remarks / Notes</label><textarea class="input" id="yte-rem" rows="2">'+esc(t.remarks||'')+'</textarea></div></div>';
+      var footer='<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="yte-save" onclick="ytEditSave('+id+')">Save Changes</button>';
+      showModal('Edit Task', body, footer);
+    }).catch(function(e){ toast((e&&e.message)||'Could not load task',true); });
+  };
+  window.ytEditSave=function(id){
+    var g=function(x){ var e=document.getElementById(x); return e?e.value:''; };
+    var title=(g('yte-title')||'').trim(); if(!title){ toast('Title zaroori hai',true); return; }
+    var btn=document.getElementById('yte-save'); if(btn){ btn.disabled=true; btn.textContent='Saving...'; }
+    var body={title:title, channel:g('yte-ch'), video_type:g('yte-ty'), deadline:g('yte-dl'), priority:g('yte-pri'), remarks:g('yte-rem')};
+    api(P.youtuber.api+'/videos/'+id+'/edit','POST',body).then(function(){ closeModal(); toast('Task updated \u2713'); _apiBust(); try{ _refresh('youtuber'); }catch(e){} })
+      .catch(function(e){ if(btn){ btn.disabled=false; btn.textContent='Save Changes'; } toast((e&&e.message)||'Update failed',true); });
+  };
   // fill a channel <select> from the ACTUAL channels endpoint (union with any channels on tasks),
   // so channel names show even before there are tasks.
   function _ytFillChannels(selId, taskChannels){
@@ -24441,6 +24484,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(['editor_assigned','editing','editing_paused','editing_done','qc_changes'].indexOf(lc)>=0)
         b.push(_ab((t.deadline_req_status==='pending'?'Extension Pending':'Request New Deadline'),'prodDeadlineReq('+t.id+')'));
     } else if(portal==='youtuber'){
+      if(['uploaded','completed'].indexOf(lc)<0) b.push(_ab('Edit Task','ytEditTask('+t.id+')'));
       if(lc==='creator_assigned'||lc==='creator_working')
         b.push(_ab('Submit Video','prodLinkForm(\'youtuber\','+t.id+',\'/videos/'+t.id+'/submit\',\'drive_link\',\'Video Drive link\',true)','primary'));
       else if(lc==='changes_required')
