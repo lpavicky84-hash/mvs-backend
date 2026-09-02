@@ -492,14 +492,11 @@ async function _apiRefreshBg(path,_ck){
     const d=await res.json();
     try{ const s=JSON.stringify(d);
       if(s.length<1572864){
-        // SILENT cache update. If the fresh data actually CHANGED, quietly re-render the
-        // current page — but only when the user is idle (_swrRerender defers via _swrBlocked
-        // whenever a form/modal/drawer is open or they interacted in the last few seconds).
-        // This is what kills the "I did something but the screen still shows old data" delay.
-        var _old=_apiCache[_ck]&&_apiCache[_ck].d;
-        var _changed=true; try{ _changed=(JSON.stringify(_old)!==s); }catch(e){ _changed=true; }
+        // SILENT cache update only. (An earlier version re-rendered the page here when the
+        // data changed — but responses with live countdowns/timestamps change every poll, so
+        // it caused a constant re-render loop = flicker + a progress line every 2-3s. Fresh
+        // data now shows on the next navigation/action instead, which is the correct SWR trade.)
         _apiCache[_ck]={t:Date.now(),d:d};
-        if(_changed){ try{ _swrRerender(); }catch(e){} }
       }
     }catch(e){}
   }catch(e){}
@@ -22840,25 +22837,31 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '.ytf-add{padding:11px 14px;border:1px dashed #c98a2e;border-radius:12px;background:rgba(230,173,78,.09);cursor:pointer;font:inherit;font-size:.85rem;font-weight:700;color:#8a6d10;white-space:nowrap}',
       '.ytf-add:hover{background:rgba(230,173,78,.16)}',
       'body.dark .ytf-add{color:#e6ad4e}',
-      '.yts{position:relative;border-radius:18px;overflow:hidden;margin-bottom:18px;background:linear-gradient(135deg,#1a1408,#2c200b);color:#f5ecd8;box-shadow:0 12px 40px rgba(120,90,20,.22)}',
-      '.yts-prio{position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#ff5252,#ff9800);z-index:2}',
-      '.yts-count{position:absolute;top:14px;right:16px;font-size:.72rem;font-weight:700;background:rgba(0,0,0,.34);padding:4px 11px;border-radius:999px;z-index:2}',
-      '.yts-in{display:flex;min-height:210px}',
-      '.yts-thumb{width:320px;flex:none;background-size:cover;background-position:center}',
-      '.yts-thumb.empty{background:linear-gradient(135deg,#e6ad4e,#8a6d1a);display:flex;align-items:center;justify-content:center;font-size:3.4rem;font-weight:800;color:#241a05}',
-      '.yts-body{flex:1;padding:22px 26px;display:flex;flex-direction:column;gap:11px;min-width:0}',
-      '.yts-eyebrow{font-size:.72rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#e6ad4e;display:flex;align-items:center;gap:8px}',
+      '.yts{position:relative;border-radius:20px;overflow:hidden;margin-bottom:18px;background:radial-gradient(120% 140% at 0% 0%,#241a08 0%,#15100a 55%,#0e0b07 100%);color:#f6eddb;box-shadow:0 16px 50px rgba(120,90,20,.28),inset 0 1px 0 rgba(255,255,255,.05);border:1px solid rgba(230,173,78,.18)}',
+      '.yts-prio{position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#ff5252,#ff9800);z-index:3;box-shadow:0 0 14px rgba(255,120,60,.6)}',
+      '.yts-count{position:absolute;top:14px;right:16px;font-size:.7rem;font-weight:700;letter-spacing:.03em;background:rgba(0,0,0,.4);padding:5px 12px;border-radius:999px;z-index:3;border:1px solid rgba(255,255,255,.08)}',
+      '.yts-in{display:flex;min-height:220px}',
+      '.yts-thumb{position:relative;width:330px;flex:none;background-size:cover;background-position:center;overflow:hidden}',
+      '.yts-thumb.empty{background:linear-gradient(135deg,#e6ad4e,#a5791f);display:flex;align-items:center;justify-content:center;font-size:3.6rem;font-weight:800;color:#241a05}',
+      '.yts-shine{position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.22) 48%,transparent 62%);transform:translateX(-120%);animation:ytShine 4.5s ease-in-out infinite}',
+      '@keyframes ytShine{0%,72%{transform:translateX(-120%)}88%,100%{transform:translateX(120%)}}',
+      '.yts-body{flex:1;padding:24px 28px;display:flex;flex-direction:column;gap:11px;min-width:0}',
+      '.yts-eyebrow{font-size:.72rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#e6ad4e;display:flex;align-items:center;gap:8px}',
       '.yts-eyebrow svg{width:15px;height:15px}',
-      '.yts-title{font-size:1.42rem;font-weight:800;line-height:1.2;word-break:break-word}',
+      '.yts-title{font-size:1.5rem;font-weight:800;line-height:1.18;word-break:break-word;text-shadow:0 1px 12px rgba(0,0,0,.3)}',
       '.yts-meta{display:flex;gap:8px;flex-wrap:wrap}',
-      '.yts-meta span{font-size:.75rem;padding:3px 11px;border-radius:999px;background:rgba(255,255,255,.11);font-weight:600}',
-      '.yts-cd{display:flex;align-items:baseline;gap:10px;margin-top:auto}',
-      '.yts-cd b{font-size:1.95rem;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.02em}',
-      '.yts-cd.over b{color:#ff9a9a}',
-      '.yts-cd span{font-size:.78rem;opacity:.7}',
-      '.yts-acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}',
-      '.yts-btn{padding:10px 20px;border-radius:11px;border:none;font:inherit;font-weight:700;font-size:.86rem;cursor:pointer;background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05}',
-      '.yts-btn.ghost{background:rgba(255,255,255,.13);color:#f5ecd8}',
+      '.yts-meta span{font-size:.75rem;padding:4px 12px;border-radius:999px;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.07);font-weight:600}',
+      '.yts-cd{display:flex;align-items:baseline;gap:11px;margin-top:auto}',
+      '.yts-cd b{font-size:2.15rem;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.01em;background:linear-gradient(180deg,#fff,#e6ad4e);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}',
+      '.yts-cd.over b{background:linear-gradient(180deg,#ffb4b4,#ff6b6b);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}',
+      '.yts-cd span{font-size:.78rem;opacity:.65;font-weight:600}',
+      '.yts-dl{font-size:.76rem;opacity:.7;display:flex;align-items:center;gap:7px;margin-top:-2px}',
+      '.yts-dl svg{width:14px;height:14px}',
+      '.yts-acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}',
+      '.yts-btn{padding:10px 22px;border-radius:12px;border:none;font:inherit;font-weight:700;font-size:.86rem;cursor:pointer;background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05;box-shadow:0 6px 18px rgba(201,138,46,.35);transition:transform .12s,box-shadow .12s}',
+      '.yts-btn:hover{transform:translateY(-1px);box-shadow:0 9px 24px rgba(201,138,46,.45)}',
+      '.yts-btn.ghost{background:rgba(255,255,255,.11);color:#f6eddb;box-shadow:none;border:1px solid rgba(255,255,255,.12)}',
+      '.yts-btn.ghost:hover{background:rgba(255,255,255,.18)}',
       '.ytw{display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;scroll-snap-type:x proximity}',
       '.ytw-day{flex:0 0 262px;scroll-snap-align:start;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px;min-height:120px}',
       '.ytw-day.today{border-color:#e6ad4e;box-shadow:0 0 0 2px rgba(230,173,78,.18)}',
@@ -22872,7 +22875,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '@media(max-width:640px){.yts-in{flex-direction:column}.yts-thumb{width:100%;height:170px}.ytw-day{flex-basis:82vw}}'
     ].join(''); document.head.appendChild(s);
   }
-  function _ytDlMs(t){ var d=(t&&t.deadline_iso)||''; if(!d) return null; var ms=Date.parse(String(d).replace(' ','T')); return isNaN(ms)?null:ms; }
+  function _ytDlMs(t){ var d=(t&&t.deadline_iso)||''; if(!d) return null; d=String(d).replace(/Z$/i,'').replace(' ','T'); var ms=Date.parse(d); return isNaN(ms)?null:ms; }  // deadline is stored LOCAL (IST); Z is wrongly appended -> strip it so no +offset shift
   function _ytActive(tasks){ return (tasks||[]).filter(function(t){ return ['uploaded','completed'].indexOf(t.lifecycle||'')<0; }); }
   function _ytDueSorted(tasks){ return _ytActive(tasks).filter(function(t){return _ytDlMs(t)!=null;}).sort(function(a,b){ return _ytDlMs(a)-_ytDlMs(b); }); }
   function _ytLoad(cb){ _ytCss(); api(P.youtuber.api+'/videos').then(function(r){ window._ytAll=(r&&r.videos)||[]; cb(window._ytAll); }).catch(function(){ cb(window._ytAll||[]); }); }
@@ -22893,13 +22896,15 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var thumb=t.thumbnail||''; if(!thumb && t.youtube_url){ var yi=_ytId(t.youtube_url); if(yi) thumb='https://img.youtube.com/vi/'+yi+'/hqdefault.jpg'; }
     var prio=(t.priority==='most_urgent'||t.priority==='urgent');
     var meta=[]; if(t.channel_name) meta.push(esc(t.channel_name)); if(t.video_type) meta.push(esc(t.video_type)); if(t.streaming) meta.push(esc(t.streaming));
+    var dlTxt=t.deadline||'';
     host.innerHTML='<div class="yts">'+(prio?'<div class="yts-prio"></div>':'')+
       '<div class="yts-count">'+(idx+1)+' of '+list.length+' \u00b7 by due date</div><div class="yts-in">'+
-      (thumb?'<div class="yts-thumb" style="background-image:url('+esc(thumb)+')"></div>':'<div class="yts-thumb empty">'+esc((t.title||'?').charAt(0).toUpperCase())+'</div>')+
+      (thumb?'<div class="yts-thumb" style="background-image:url('+esc(thumb)+')"><div class="yts-shine"></div></div>':'<div class="yts-thumb empty">'+esc((t.title||'?').charAt(0).toUpperCase())+'<div class="yts-shine"></div></div>')+
       '<div class="yts-body"><div class="yts-eyebrow">'+ic('clock')+' Next up \u00b7 earliest due</div>'+
       '<div class="yts-title">'+esc(t.title||'Untitled task')+'</div>'+
       (meta.length?'<div class="yts-meta"><span>'+meta.join('</span><span>')+'</span></div>':'')+
       '<div class="yts-cd" id="yts-cd"><b>\u2014</b><span>left</span></div>'+
+      (dlTxt?'<div class="yts-dl">'+ic('calendar')+' Deadline \u00b7 '+esc(dlTxt)+'</div>':'')+
       '<div class="yts-acts"><button class="yts-btn" onclick="prodOpenTask(\'youtuber\','+t.id+')">Open task</button>'+
       (list.length>1?'<button class="yts-btn ghost" onclick="ytSpotNext()">Next \u2192</button>':'')+'</div></div></div></div>';
     _ytCdStart();
