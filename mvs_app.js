@@ -455,6 +455,8 @@ function _swrBlocked(){
     // 4) a student test/exam attempt (or its review/submit step) is on screen
     if(document.querySelector('input[name^="pl-"]')) return true;
     if(document.querySelector('[onclick*="_plSubmit"]')) return true;
+    // 4c) explicit exam-player guard — never re-render the page while a test is open
+    if(window._examPlayerOpen) return true;
     // 5) the user interacted in the last few seconds — don't disturb the view yet
     if(window._lastUserAct && (Date.now()-window._lastUserAct)<5000) return true;
   }catch(e){}
@@ -14884,6 +14886,7 @@ async function submitAnswerFile(parentId){
 }
 
 async function loadSTests(){
+  window._examPlayerOpen=false;
   const el=document.getElementById('s-tests-content');
   softSpin(el);
   try{
@@ -15241,7 +15244,7 @@ async function openExamPlayer(id){
   try{
     const ex=await api('/api/student/exam/'+id);
     ex.id=id;
-    window._curExam=ex; window._examFile=null; _plAns={}; _plRev={};
+    window._curExam=ex; window._examFile=null; _plAns={}; _plRev={}; window._examPlayerOpen=true;
     if(ex.already_submitted){ openExamResult(id); return; }
     const _gsch0=spSchedOf(ex);
     if(!_gsch0&&ex.duration_min){ const _k='mvs_start_'+id,_st=+localStorage.getItem(_k)||0;
@@ -15420,12 +15423,19 @@ async function _plSubmit(id){
     body={answer_image_b64:b64, mime_type:window._examFile.type||'image/jpeg'};
   }
   body.attempted=attempted; body.skipped=skipped;
+  return _plSubmitSend(id, body);
+}
+async function _plSubmitSend(id, body){
+  const ex=window._curExam;
+  window._plRetryBody=body; window._plRetryId=id;   // keep answers safe for a retry
   const el=document.getElementById('s-tests-content'); softSpin(el);
   try{
     const r=await api('/api/student/exam/'+id+'/submit','POST',body);
     if(_plTimerI){ clearInterval(_plTimerI); _plTimerI=null; }
+    window._plRetryBody=null; window._examPlayerOpen=false;
     let attM=0,skM=0;
     ex.questions.forEach(q=>{ if(_plRev[q.q_no])attM+=q.max_marks||0; else skM+=q.max_marks||0; });
+    const attempted=body.attempted||[], skipped=body.skipped||[];
     const allDone=skipped.length===0;
     const tName=ex.teacher_name||'your teacher';
     el.innerHTML=`<div class="pl-thanks">
@@ -15435,8 +15445,17 @@ async function _plSubmit(id){
       <div class="pl-tstats"><div><b>${attempted.length}</b><span>Attempted</span></div><div><b>${attM}</b><span>Attempt marks</span></div><div><b>${skipped.length}</b><span>Not answered</span></div><div><b>${skM}</b><span>Skipped marks</span></div></div>
       <div class="tx-pill a" style="margin-top:14px">CHECKING SOON</div>
       <button class="btn btn-primary" onclick="${r.status==='graded'?('openExamResult('+id+')'):'loadSTests()'}" style="margin-top:16px">${r.status==='graded'?'View Result':'Back to Tests'}</button></div>`;
-  }catch(e){ el.innerHTML=errHtml(e)+`<div style="margin-top:10px"><button class="btn btn-ghost btn-sm" onclick="openExamPlayer(${id})">Try Again</button></div>`; }
+  }catch(e){
+    // Submit failed (network hiccup / server waking). DO NOT restart the test — that used to
+    // wipe every answer and start from Q1. Keep the captured answers and re-send the SAME
+    // submission on Retry.
+    el.innerHTML=errHtml(e)+`<div style="margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" onclick="_plRetrySubmit()">Retry Submit</button>
+      <button class="btn btn-ghost btn-sm" onclick="openExamPlayer(${id})">Reopen Test</button></div>
+      <div style="text-align:center;color:var(--muted);font-size:.82rem;margin-top:8px">Your answers are safe \u2014 just tap <b>Retry Submit</b>.</div>`;
+  }
 }
+window._plRetrySubmit=function(){ if(window._plRetryBody!=null && window._plRetryId!=null) _plSubmitSend(window._plRetryId, window._plRetryBody); };
 function _examPickFile(inp){ const f=inp.files[0]; window._examFile=f; const n=document.getElementById('pl-file-name'); if(n) n.textContent=f?('Selected: '+f.name):''; }
 function _fileB64(file){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); }); }
 
