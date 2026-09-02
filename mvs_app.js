@@ -559,6 +559,47 @@ function _progDone(){
     }catch(e){}
   }
 }
+// ===== DEV PERF DIAGNOSTICS (opt-in) — real per-action latency / counts / duplicate bursts.
+// NEVER shown to normal users: toggle with Ctrl+Alt+P, or add ?perf=1 to the URL. Records only
+// path + timing (no payloads, no PII). This is the MEASURE tool so real before/after numbers can
+// be captured on the live deploy — never invented. =====
+var _perfLog=[], _perfOn=false, _perfDupWin={};
+function _perfRec(path, method, ms){
+  try{
+    var p=String(path).split('?')[0];
+    _perfLog.push({p:p, m:method||'GET', ms:ms|0, t:Date.now()});
+    if(_perfLog.length>600) _perfLog.shift();
+    var k=(method||'GET')+' '+p, now=Date.now();
+    _perfDupWin[k]=(_perfDupWin[k]||[]).filter(function(x){return now-x<1200;}); _perfDupWin[k].push(now);
+    if(_perfOn) _perfRender();
+  }catch(e){}
+}
+function _perfEsc(s){ return String(s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); }
+window._perfToggle=function(){ _perfOn=!_perfOn; if(_perfOn) _perfRender(); else { var e=document.getElementById('perfpanel'); if(e) e.remove(); } };
+window._perfClear=function(){ _perfLog=[]; _perfDupWin={}; _perfRender(); };
+function _perfRender(){
+  var el=document.getElementById('perfpanel');
+  if(!el){ el=document.createElement('div'); el.id='perfpanel'; (document.body||document.documentElement).appendChild(el);
+    el.style.cssText='position:fixed;right:8px;bottom:8px;z-index:2147483600;width:344px;max-height:62vh;overflow:auto;background:rgba(10,10,12,.95);color:#e8e8e8;font:11px/1.45 ui-monospace,Menlo,monospace;border:1px solid #333;border-radius:10px;padding:10px 12px;box-shadow:0 8px 30px rgba(0,0,0,.55)';
+  }
+  var byPath={}; _perfLog.forEach(function(r){ (byPath[r.p]=byPath[r.p]||[]).push(r.ms); });
+  var slow=Object.keys(byPath).map(function(p){ var a=byPath[p]; var avg=Math.round(a.reduce(function(x,y){return x+y;},0)/a.length); return {p:p,n:a.length,avg:avg,max:Math.max.apply(null,a)}; }).sort(function(x,y){return y.max-x.max;}).slice(0,8);
+  var dups=Object.keys(_perfDupWin).filter(function(k){return (_perfDupWin[k]||[]).length>1;});
+  var last=_perfLog.slice(-30).reverse();
+  var col=function(ms){ return ms>800?'#ff6b6b':ms>300?'#ffd166':'#8fe388'; };
+  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="color:#e6ad4e">MVS Perf · '+_perfLog.length+' calls</b>'
+    +'<span><button onclick="_perfClear()" style="background:#2a2a2a;color:#fff;border:0;border-radius:5px;padding:2px 7px;cursor:pointer;margin-right:4px">clear</button>'
+    +'<button onclick="_perfToggle()" style="background:#2a2a2a;color:#fff;border:0;border-radius:5px;padding:2px 7px;cursor:pointer">×</button></span></div>'
+    +'<div style="color:#9ad;margin:4px 0 2px">SLOWEST — avg / max ms · count</div>'
+    +(slow.length?slow.map(function(s){ return '<div style="color:'+col(s.max)+'">'+s.avg+' / '+s.max+' <span style="color:#888">'+s.n+'×</span> '+_perfEsc(s.p)+'</div>'; }).join(''):'<div style="color:#666">no calls yet</div>')
+    +(dups.length?('<div style="color:#fc8;margin:6px 0 2px">DUPLICATE bursts (&lt;1.2s)</div>'+dups.slice(0,6).map(function(k){return '<div style="color:#fc8">'+(_perfDupWin[k].length)+'× '+_perfEsc(k)+'</div>';}).join('')):'')
+    +'<div style="color:#9ad;margin:6px 0 2px">RECENT</div>'
+    +last.map(function(r){ return '<div><span style="color:'+col(r.ms)+'">'+r.ms+'ms</span> <span style="color:#888">'+r.m+'</span> '+_perfEsc(r.p)+'</div>'; }).join('');
+}
+try{
+  document.addEventListener('keydown',function(e){ if(e.ctrlKey&&e.altKey&&(e.key==='p'||e.key==='P')){ e.preventDefault(); _perfToggle(); } });
+  if(typeof location!=='undefined' && /[?&#]perf=1/.test(location.href)) setTimeout(function(){ _perfOn=true; _perfRender(); }, 800);
+}catch(e){}
 async function api(path, method='GET', body=null) {
   const opts = { method, headers: { 'Content-Type':'application/json' } };
   if (TOKEN) opts.headers['Authorization'] = 'Bearer ' + TOKEN;
@@ -588,6 +629,7 @@ async function api(path, method='GET', body=null) {
   // isliye dusra base sirf tab try hota hai jab sach me domain reachable hi nahi.
   const _bigBody=(opts.body&&opts.body.length>524288);
   _progStart();
+  const _t0=Date.now();
   try{
   const _delays=_bigBody?[]:[1200,2000,3000,5000,8000,8000];
   const _tryBases=[API].concat(_API_BASES.filter(function(b){ return b!==API; }));
@@ -620,7 +662,7 @@ async function api(path, method='GET', body=null) {
     if(!_API_NOCACHE.test(path)){ try{ if(JSON.stringify(data).length<1572864) _apiCache[_ck]={t:Date.now(),d:data}; }catch(e){} }
   } else _apiBust();
   return data;
-  } finally { _progDone(); }
+  } finally { _progDone(); try{ _perfRec(path, method, Date.now()-_t0); }catch(e){} }
 }
 
 // ========================================================

@@ -2162,8 +2162,22 @@ def student_filter_counts(source: str = "", session: str = "", medium: str = "",
 @router.post("/students/bulk-phone")
 def admin_bulk_phone(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
     """Paste phone numbers (no Excel). Each line: 'phone' or 'phone,Name'."""
+    from sqlalchemy.exc import IntegrityError
+    import re as _re
     text = payload.get("text", "") or ""
     created, skipped = 0, 0
+    # next MVSS id -> max EK BAAR, phir counter (no per-row scan = no N+1)
+    _mx = (db.query(User.user_id).filter(User.user_id.like("MVSS%"))
+           .order_by(User.user_id.desc()).first())
+    _ctr = [1]
+    if _mx and _mx[0]:
+        _m = _re.match(r"MVSS(\d+)", _mx[0])
+        if _m:
+            _ctr[0] = int(_m.group(1)) + 1
+
+    def _next_uid():
+        c = "MVSS%04d" % _ctr[0]; _ctr[0] += 1; return c
+
     for line in text.splitlines():
         line = line.strip()
         if not line:
@@ -2179,20 +2193,28 @@ def admin_bulk_phone(payload: dict, db: Session = Depends(get_db), _=Depends(get
             skipped += 1; continue
         if not name:
             name = "Student " + phone[-4:]
-        # MVS-prefixed student user id
-        i = 1
-        while True:
-            cand = f"MVSS{i:04d}"
-            if not db.query(User).filter(User.user_id == cand).first():
+        # collision-safe insert: flush retry on a duplicate MVSS id + per-student commit,
+        # so two concurrent imports/adds can NEVER 500 on 'Duplicate entry ... user_id'.
+        u = None
+        for _try in range(8):
+            cand = _next_uid()
+            u = User(name=name, user_id=cand, password=hash_password(phone),
+                     role=UserRole.student, is_active=True)
+            db.add(u)
+            try:
+                db.flush()
                 break
-            i += 1
-        u = User(name=name, user_id=cand, password=hash_password(phone),
-                 role=UserRole.student, is_active=True)
-        db.add(u); db.flush()
+            except IntegrityError:
+                db.rollback(); u = None
+        if u is None:
+            skipped += 1; continue
         db.add(StudentProfile(user_id=u.id, phone=phone, subjects=[], class_name="",
                               is_verified=True, plain_password=phone))
-        created += 1
-    db.commit()
+        try:
+            db.commit()          # durable now -> next flush sees it (concurrency-safe)
+            created += 1
+        except IntegrityError:
+            db.rollback(); skipped += 1
     return {"created": created, "skipped": skipped,
             "message": f"{created} students add hue, {skipped} skip (duplicate/galat)."}
 
