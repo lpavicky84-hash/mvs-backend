@@ -20774,6 +20774,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     youtuber:{ role:'youtuber', title:'Creator', sub:'Studio', api:'/api/youtuber',
       nav:[ {g:'Workspace',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'videos',t:'My Tasks',i:'video'},
              {p:'yttoday',t:'Today',i:'calendar'}, {p:'ytweekly',t:'Weekly',i:'calendar'},
+             {p:'ytthumbs',t:'Thumbnail Review',i:'image'}, {p:'ytthumbchg',t:'Thumbnail Changes',i:'edit'},
              {p:'board',t:'Production Board',i:'grid'},
              {p:'ytb:proposal',t:'Proposal Tasks',i:'edit'}, {p:'ytb:urgent',t:'Urgent Tasks',i:'alert'},
              {p:'ytb:editing',t:'Editing Progress',i:'clock'}, {p:'ytb:ready',t:'Ready for YouTube',i:'upload'} ]},
@@ -21839,6 +21840,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(page==='videos') return renderYtMy(portal,body);
       if(page==='yttoday') return renderYtToday(portal,body);
       if(page==='ytweekly') return renderYtWeekly(portal,body);
+      if(page==='ytthumbs') return renderYtThumbReviews(portal,body,'pending');
+      if(page==='ytthumbchg') return renderYtThumbReviews(portal,body,'changes');
     }
     if(page.indexOf('gfx:')===0){ var gp=page.slice(4); var gf=_flt(portal); gf.status=''; gf.deadline=''; gf.priority=''; gf.gpreset=gp; return renderList(portal,body); }
     if(page.indexOf('edt:')===0){ var ep=page.slice(4); var ef=_flt(portal); ef.status=''; ef.deadline=''; ef.priority=''; ef.epreset=ep; return renderList(portal,body); }
@@ -23123,6 +23126,62 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     wrap.innerHTML='<div class="ytw">'+cols.join('')+'</div>';
   };
+  // ---- YouTuber thumbnail review (apne task ke thumbnails — approve + rate / request changes) ----
+  window.ytThumbReview=function(id){
+    api(P.youtuber.api+'/videos/'+id).then(function(t){
+      var gx=t.graphics||{};
+      var cands=(gx.thumbnail_candidates&&gx.thumbnail_candidates.length)?gx.thumbnail_candidates:((gx.thumbnail_url)?[gx.thumbnail_url]:[]);
+      window._ytSelThumb=cands[0]||gx.thumbnail_url||''; window._ytThumbId=id; window._ytStar=0;
+      var old=document.getElementById('yt-thumb-modal'); if(old) old.remove();
+      var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='yt-thumb-modal';
+      var gal=cands.length?('<div class="p-field"><label>Submitted thumbnail'+(cands.length>1?'s':'')+' <span style="color:var(--muted);font-weight:600">(tap to pick the final one)</span></label><div class="thumb-gal">'+cands.map(function(u,i){ return '<div class="thumb-cell'+(u===window._ytSelThumb?' sel':'')+'" data-url="'+esc(u)+'" onclick="ytSelectThumb(this)"><span class="thumb-n">Option '+(i+1)+'</span><span class="thumb-pick">\u2713</span><img loading="lazy" src="'+esc(u)+'"><button class="thumb-sel-full thsel" onclick="event.stopPropagation();ytSelectThumb(this.closest(\'.thumb-cell\'))">'+(u===window._ytSelThumb?'\u2713 Selected':'Select as final')+'</button><div class="thumb-vd"><button class="thumb-vd-btn" onclick="event.stopPropagation();prodLightbox(\''+esc(u)+'\')">\uD83D\uDC41 View</button><a class="thumb-vd-btn" href="'+esc(u)+'" download target="_blank" rel="noopener" onclick="event.stopPropagation()">\u2B07 Download</a></div></div>'; }).join('')+'</div></div>'):'<div class="p-empty">No thumbnail submitted yet.</div>';
+      dr.innerHTML='<div class="p-modal" style="max-width:560px">'+
+        '<div class="pd-head"><div class="h-title">Thumbnail Review</div><button class="pd-x" onclick="_ytThumbClose()">&times;</button></div>'+
+        '<div class="p-modal-body">'+gal+
+          '<div class="p-field"><label>Rate the designer <span style="color:var(--muted);font-weight:600">(required to approve)</span></label><div class="gfx-stars" id="yt-stars">'+[1,2,3,4,5].map(function(n){ return '<span class="gfx-star" data-n="'+n+'" onclick="_ytSetStar('+n+')">\u2605</span>'; }).join('')+'</div></div>'+
+          '<div class="p-field"><label>Remarks <span style="color:var(--muted);font-weight:600">(approve note, ya designer ko kya change karna hai)</span></label><textarea class="p-area" id="yt-th-remarks" placeholder="Optional note"></textarea></div>'+
+        '</div>'+
+        '<div class="pd-foot"><div class="p-acts"><button class="p-btn p-btn-ok" onclick="ytThumbDecide(\'approve\')">Approve Selected</button>'+
+          '<button class="p-btn p-btn-warn" onclick="ytThumbDecide(\'changes\')">Request Changes</button></div></div>'+
+      '</div>';
+      dr.addEventListener('click',function(e){ if(e.target===dr) _ytThumbClose(); });
+      document.body.appendChild(dr);
+    }).catch(function(e){ toast((e&&e.message)||'Could not load',true); });
+  };
+  window._ytThumbClose=function(){ var d=document.getElementById('yt-thumb-modal'); if(d) d.remove(); };
+  window.ytSelectThumb=function(el){ if(!el) return; var url=el.getAttribute('data-url')||''; window._ytSelThumb=url; var box=el.parentNode; if(box) box.querySelectorAll('.thumb-cell').forEach(function(c){ var on=(c===el); c.classList.toggle('sel', on); var b=c.querySelector('.thsel'); if(b) b.textContent=on?'\u2713 Selected':'Select as final'; }); };
+  window._ytSetStar=function(n){ window._ytStar=n; var box=document.getElementById('yt-stars'); if(box) box.querySelectorAll('.gfx-star').forEach(function(s){ s.classList.toggle('on', parseInt(s.getAttribute('data-n'),10)<=n); }); };
+  window.ytThumbDecide=function(action){
+    var _ta=document.getElementById('yt-th-remarks'); var rem=((_ta||{}).value||'').trim(); var id=window._ytThumbId;
+    if(action==='approve'){
+      if(!(window._ytStar>=1)){ toast('Pehle designer ko rate karo (1\u20135 stars)',true); var sb=document.getElementById('yt-stars'); if(sb){ sb.classList.add('stars-req'); setTimeout(function(){sb.classList.remove('stars-req');},1800);} return; }
+      _ytThumbClose(); toast('Saving\u2026');
+      api(P.youtuber.api+'/videos/'+id+'/thumbnail-approve','POST',{quality_rating:window._ytStar,quality_note:rem,selected_thumbnail:(window._ytSelThumb||'')}).then(function(){ toast('Thumbnail approved \u2713'); _apiBust(); try{ _refresh('youtuber'); }catch(e){} }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+    } else {
+      if(!rem){ if(_ta){ _ta.classList.add('p-area-req'); _ta.focus(); setTimeout(function(){_ta.classList.remove('p-area-req');},2500);} toast('Batao designer ko kya change karna hai',true); return; }
+      _ytThumbClose(); toast('Saving\u2026');
+      api(P.youtuber.api+'/videos/'+id+'/thumbnail-changes','POST',{remarks:rem}).then(function(){ toast('Changes requested \u2014 designer ko bhej diya'); _apiBust(); try{ _refresh('youtuber'); }catch(e){} }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+    }
+  };
+  // ---- Thumbnail Review / Changes sidebar page ----
+  function renderYtThumbReviews(portal,body,mode){
+    _ytCss(); body.innerHTML='<div class="p-load">Loading thumbnails...</div>';
+    api(P.youtuber.api+'/thumbnail-reviews').then(function(r){
+      var list=(mode==='changes')?(r.changes||[]):(r.pending||[]);
+      var title=(mode==='changes')?'Thumbnail Changes':'Thumbnail Review';
+      var sub=(mode==='changes')?'Thumbnails you sent back for changes':'New thumbnails submitted for your videos \u2014 approve & rate';
+      body.innerHTML='<div class="p-sec">'+title+' \u00b7 '+list.length+'</div><div style="color:var(--muted);font-size:.84rem;margin:-8px 0 14px">'+sub+'</div>'+
+        (list.length?('<div class="ptc-grid">'+list.map(function(t){
+          var thumb=(t.graphics&&t.graphics.thumbnail_url)||t.thumbnail||'';
+          return '<div class="ptc" style="cursor:pointer" onclick="ytThumbReview('+t.id+')">'+
+            (thumb?'<div class="ptc-thumb" style="background-image:url('+esc(thumb)+')"></div>':'')+
+            '<div class="ptc-body"><div class="ptc-title">'+esc(t.title||'Untitled')+'</div>'+
+            '<div class="ptc-meta">'+(t.channel_name?esc(t.channel_name)+' \u00b7 ':'')+(t.graphics&&t.graphics.graphics_name?('by '+esc(t.graphics.graphics_name)):'')+'</div>'+
+            '<div class="ptc-acts"><button class="ptc-btn ptc-btn-review" onclick="event.stopPropagation();ytThumbReview('+t.id+')"><span class="rev-dot"></span>'+(mode==='changes'?'Re-review':'Review Thumbnail')+'</button></div></div></div>';
+        }).join('')+'</div>')
+        :_pEmpty('check',(mode==='changes')?'No pending changes':'No thumbnails to review','New thumbnails for your videos will show up here.'));
+    }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load. '+esc(e&&e.message||'')+'</div>'; });
+  }
   function renderYtViews(portal,body){
     body.innerHTML='<div class="p-load">Loading views...</div>';
     return api(P.youtuber.api+'/views').then(function(r){
@@ -23572,6 +23631,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
     } else if(portal==='youtuber'){
       if(['uploaded','completed'].indexOf(lc)<0) acts+='<button class="ptc-btn" onclick="event.stopPropagation();ytEditTask('+t.id+')">Edit</button>';
+      if(t.graphics && t.graphics.status==="submitted") acts+='<button class="ptc-btn ptc-btn-review" onclick="event.stopPropagation();ytThumbReview('+t.id+')"><span class="rev-dot"></span>Review Thumbnail</button>';
       if(lc==='creator_assigned'||lc==='creator_working') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodCardAct(\'youtuber\',\'submit\','+t.id+')">Submit Video</button>';
       else if(lc==='changes_required') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodCardAct(\'youtuber\',\'submit\','+t.id+')">Re-submit</button>';
       if(t.youtube_url||t.submitted_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+esc(t.youtube_url||t.submitted_link)+'\',\'_blank\')">Open Video</button>';

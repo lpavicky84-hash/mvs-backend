@@ -191,6 +191,95 @@ def yt_video_detail(tid: int, db: Session = Depends(get_db), me=Depends(get_yout
     return pc.task_out(db, t, timeline=True)
 
 
+@router.get("/thumbnail-reviews")
+def yt_thumbnail_reviews(db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    """Creator ke apne tasks jinke thumbnail review ke liye pending hain (ya changes me)."""
+    from models import GraphicsTask
+    yp = _me_yt(db, me)
+    tids = [r[0] for r in db.query(VideoTask.id).filter(
+        VideoTask.youtuber_id == yp.id, VideoTask.cancelled == False)]
+    if not tids:
+        return {"pending": [], "changes": []}
+    gts = db.query(GraphicsTask).filter(GraphicsTask.task_id.in_(tids)).all()
+    pend = [g.task_id for g in gts if g.status == "submitted"]
+    chg = [g.task_id for g in gts if g.status == "changes"]
+
+    def _out(ids):
+        if not ids:
+            return []
+        rows = db.query(VideoTask).filter(VideoTask.id.in_(ids)).order_by(VideoTask.updated_at.desc()).all()
+        return [pc.task_out(db, t, light=True) for t in rows]
+    return {"pending": _out(pend), "changes": _out(chg)}
+
+
+@router.post("/videos/{tid}/thumbnail-approve")
+def yt_thumbnail_approve(tid: int, payload: dict = Body(default={}),
+                         db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    """Creator apne task ki thumbnail approve + rate kare (PM jaisa). Rating 1-5 zaroori."""
+    from models import ProductionStaffProfile, TaskReview
+    yp = _me_yt(db, me)
+    t = _my_task(db, yp, tid)
+    g = pc.graphics_task(db, t)
+    if not g or g.status != "submitted":
+        raise HTTPException(400, "No submitted thumbnail to review")
+    _sel = (payload.get("selected_thumbnail") or "").strip()
+    if _sel:
+        g.thumbnail_url = _sel
+    t.thumbnail_link = g.thumbnail_url or t.thumbnail_link
+    try:
+        rt = int(payload.get("quality_rating") or 0)
+    except Exception:
+        rt = 0
+    if not (1 <= rt <= 5):
+        raise HTTPException(400, "A 1\u20135 star rating is required to approve the thumbnail")
+    g.status = "approved"
+    g.approved_at = datetime.utcnow()
+    g.quality_rating = rt
+    g.quality_note = (payload.get("quality_note") or payload.get("remarks") or g.quality_note or "")[:400]
+    db.add(TaskReview(task_id=t.id, kind="thumbnail", reviewer_user_id=me.id,
+                      decision="approved", remarks=g.quality_note or "",
+                      revision_no=g.revision_count or 0))
+    pc.log_event(db, t, me, "thumbnail_approved", new_state=t.lifecycle,
+                 meta={"note": ("Rated %d/5. " % rt) + (g.quality_note or "") + " (by creator)"})
+    if g.graphics_id:
+        sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == g.graphics_id).first()
+        if sp and sp.user_id:
+            _m = 'Your thumbnail for "%s" was approved by the creator. Rated %d/5.' % (t.title, rt)
+            pc.notify(db, sp.user_id, "Thumbnail Approved", _m,
+                      "appreciation" if rt >= 4 else "video_task", link=str(t.id))
+    pc.notify_pms(db, "Thumbnail Approved by Creator",
+                  '%s approved the thumbnail for "%s".' % (me.name, t.title), "production", link=str(t.id))
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/videos/{tid}/thumbnail-changes")
+def yt_thumbnail_changes(tid: int, payload: dict = Body(...),
+                         db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    """Creator thumbnail me changes maange (graphics ko wapas)."""
+    from models import ProductionStaffProfile
+    yp = _me_yt(db, me)
+    t = _my_task(db, yp, tid)
+    g = pc.graphics_task(db, t)
+    if not g:
+        raise HTTPException(400, "No thumbnail task")
+    rem = (payload.get("remarks") or "Changes needed").strip()
+    g.status = "changes"
+    g.revision_count = (g.revision_count or 0) + 1
+    pc.log_event(db, t, me, "thumbnail_changes", new_state=t.lifecycle,
+                 meta={"note": rem + " (creator requested changes)"})
+    if g.graphics_id:
+        sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == g.graphics_id).first()
+        if sp and sp.user_id:
+            pc.notify(db, sp.user_id, "Thumbnail Changes Requested",
+                      'Creator ne "%s" ke thumbnail me changes maange: %s' % (t.title, rem[:120]),
+                      "video_task", link=str(t.id))
+    pc.notify_pms(db, "Thumbnail Changes (by Creator)",
+                  '%s requested thumbnail changes for "%s".' % (me.name, t.title), "production", link=str(t.id))
+    db.commit()
+    return {"ok": True}
+
+
 @router.post("/videos/{tid}/submit")
 def yt_submit(tid: int, payload: dict = Body(...),
               db: Session = Depends(get_db), me=Depends(get_youtuber)):
@@ -313,6 +402,11 @@ def yt_new_task(payload: dict = Body(...), db: Session = Depends(get_db), me=Dep
                 ProductionStaffProfile.staff_role == "editor").first()
             if ep:
                 t.editor_id = ep.id
+                try:
+                    pc.log_event(db, t, me, "editor_assigned", new_state=t.lifecycle,
+                                 meta={"note": "Editor assigned: " + (ep.user.name if ep.user else "editor")})
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -625,3 +719,58 @@ def yt_photo_set(payload: dict = Body(...), db: Session = Depends(get_db), me=De
 def yt_photo_get(db: Session = Depends(get_db), me=Depends(get_youtuber)):
     yp = _me_yt(db, me)
     return {"photo": (yp.photo_b64 if yp else "") or "", "name": getattr(me, "name", ""), "role": "youtuber"}
+
+
+@router.post("/videos/{tid}/edit")
+def yt_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    """YouTuber apna task edit kare (title/deadline/channel/type/priority/remarks) —
+    sirf apna task, aur sirf jab tak publish (uploaded/completed) na ho."""
+    yp = _me_yt(db, me)
+    t = db.query(VideoTask).filter(VideoTask.id == tid, VideoTask.youtuber_id == yp.id).first()
+    if not t:
+        raise HTTPException(404, "Task nahi mila")
+    if (t.lifecycle or "") in ("uploaded", "completed"):
+        raise HTTPException(400, "Ye task publish ho chuka hai — ab edit nahi ho sakta")
+    changes = []
+
+    def _set(field, key, label):
+        if key in payload:
+            v = payload.get(key)
+            v = v.strip() if isinstance(v, str) else v
+            if getattr(t, field) != v:
+                setattr(t, field, v)
+                changes.append(label)
+
+    _set("title", "title", "title")
+    _set("video_type", "video_type", "type")
+    _set("channel_name", "channel", "channel")
+    _set("streaming", "streaming", "streaming")
+    _set("remarks", "remarks", "remarks")
+    _set("reference", "reference", "reference")
+    pri = (payload.get("priority") or "").strip()
+    if pri and pri != (t.priority or ""):
+        t.priority = pri
+        changes.append("priority")
+    if "deadline" in payload:
+        raw = (payload.get("deadline") or "").strip()
+        newdl = t.deadline
+        if raw:
+            try:
+                newdl = datetime.fromisoformat(raw.replace("Z", ""))
+            except Exception:
+                newdl = t.deadline
+        else:
+            newdl = None
+        if newdl != t.deadline:
+            t.deadline = newdl
+            changes.append("deadline")
+    if not (t.title or "").strip():
+        raise HTTPException(400, "Title zaroori hai")
+    if changes:
+        try:
+            pc.log_event(db, t, me, "task_edited", new_state=t.lifecycle,
+                         meta={"note": "Edited: " + ", ".join(changes)})
+        except Exception:
+            pass
+    db.commit()
+    return {"ok": True, "changed": changes}
