@@ -20760,7 +20760,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // --- portal definitions ---
   var P={
     production:{ role:'production_manager', title:'Production', sub:'Command Center', api:'/api/production',
-      nav:[ {g:'Operations',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'board',t:'Production Board',i:'board'}, {p:'tasks',t:'Tasks',i:'list'}, {p:'ytasks',t:'YouTuber Tasks',i:'video'}, {p:'projects',t:'Projects',i:'folder'}, {p:'announce',t:'Announcements',i:'bell'} ]},
+      nav:[ {g:'Operations',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'board',t:'Production Board',i:'board'}, {p:'thumbboard',t:'Thumbnail Board',i:'image'}, {p:'tasks',t:'Tasks',i:'list'}, {p:'ytasks',t:'YouTuber Tasks',i:'video'}, {p:'projects',t:'Projects',i:'folder'}, {p:'announce',t:'Announcements',i:'bell'} ]},
             {g:'Pipeline',items:[ {p:'q:pm_review',t:'PM Review',i:'check'}, {p:'q:thumb_review',t:'Thumbnail Review',i:'image'}, {p:'q:thumb_changes',t:'Thumbnail Changes',i:'edit'}, {p:'q:editing',t:'Editing Queue',i:'video'}, {p:'q:qc_pending',t:'QC Queue',i:'check'}, {p:'q:ready_for_youtube',t:'Ready for YouTube',i:'video'}, {p:'q:uploaded',t:'Uploaded Videos',i:'upload'}, {p:'urgent',t:'Urgent Videos',i:'board'} ]},
             {g:'Team',items:[ {p:'team',t:'Team & Workload',i:'team'} ]},
             {g:'Analytics',items:[ {p:'analytics',t:'Analytics',i:'grid'}, {p:'creators',t:'Creator Performance',i:'team'}, {p:'views',t:'Real-time Views',i:'grid'} ]} ] },
@@ -20775,7 +20775,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       nav:[ {g:'Workspace',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'videos',t:'My Tasks',i:'video'},
              {p:'yttoday',t:'Today',i:'calendar'}, {p:'ytweekly',t:'Weekly',i:'calendar'},
              {p:'ytthumbs',t:'Thumbnail Review',i:'image'}, {p:'ytthumbchg',t:'Thumbnail Changes',i:'edit'},
-             {p:'board',t:'Production Board',i:'grid'},
+             {p:'board',t:'Production Board',i:'grid'}, {p:'thumbboard',t:'Thumbnail Board',i:'image'},
              {p:'ytb:proposal',t:'Proposal Tasks',i:'edit'}, {p:'ytb:urgent',t:'Urgent Tasks',i:'alert'},
              {p:'ytb:editing',t:'Editing Progress',i:'clock'}, {p:'ytb:ready',t:'Ready for YouTube',i:'upload'} ]},
             {g:'Insights',items:[ {p:'ytviews',t:'Realtime Views',i:'chart'}, {p:'yttimeline',t:'Timeline',i:'list'} ]},
@@ -21862,6 +21862,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(page==='library') return renderGraphicsLib(portal,body);
     if(page==='creators') return renderCreators(portal,body);
     if(page==='board') return renderBoard(portal,body);
+    if(page==='thumbboard') return renderThumbBoard(portal,body);
     if(page==='projects') return renderProjects(portal,body);
     if(page==='ytasks'){ body.innerHTML='<div id="pyt-content" class="yt-scope"></div>'; try{ loadAYtTasks('pyt-content'); }catch(e){ body.innerHTML='<div class="p-empty">Could not load.</div>'; } return; }
     if(page==='announce') return renderAnnounce(portal,body);
@@ -24188,6 +24189,32 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load board. '+esc(e&&e.message||'')+'</div>'; });
   }
 
+  var THUMB_COLS=[['new','Assigned'],['in_progress','In Progress'],['submitted','Submitted \u00b7 Review'],['changes','Changes'],['approved','Done']];
+  function renderThumbBoard(portal,body){
+    body.innerHTML='<div class="p-load">Loading thumbnail board...</div>';
+    return api(P[portal].api+((portal==='youtuber')?'/videos?size=200':'/tasks?size=200')).then(function(r){
+      if(_stale(portal,'thumbboard')) return;
+      // only tasks that actually have a graphics/thumbnail task
+      var withG=(r.tasks||r.videos||[]).filter(function(t){ var g=t.graphics; return g && (g.graphics_id || g.thumbnail_url || g.reference_image || (g.thumbnail_candidates&&g.thumbnail_candidates.length) || (g.status&&g.status!=='new')) && (t.creator_type!=='teacher' || true); });
+      var html='<div class="p-sec">Thumbnail Board</div><div class="pb-cols">';
+      THUMB_COLS.forEach(function(col){
+        var items=withG.filter(function(t){ return (t.graphics.status||'new')===col[0]; });
+        html+='<div class="pb-col"><h4><span>'+esc(col[1])+'</span><span>'+items.length+'</span></h4>'+
+          (items.length?items.map(function(t){
+            var g=t.graphics||{};
+            var _th=g.thumbnail_url || (g.thumbnail_candidates&&g.thumbnail_candidates[0]) || g.reference_image || t.thumbnail || '';
+            var _thh=_th?'<div class="pbm-thumb" style="background-image:url('+esc(_th)+')" onclick="event.stopPropagation();prodThumbView(\''+esc(_th)+'\')" title="Tap to view full size"><span class="pbm-view">'+ic('expand')+'</span></div>':'';
+            var _review=(g.status==='submitted');
+            var _click=_review?((portal==='youtuber')?('ytThumbReview('+t.id+')'):('pmThumbReview('+t.id+')')):('prodOpenTask(\''+portal+'\','+t.id+')');
+            var _sub=(g.graphics_name?('by '+esc(g.graphics_name)):esc(t.ref_code||''))+(g.quality_rating?(' \u00b7 '+g.quality_rating+'\u2605'):'');
+            return '<div class="pb-mini" onclick="'+_click+'">'+_thh+'<div class="pbm-b"><div class="pbm-t">'+esc(t.title||'')+'</div><div class="pt-ref" style="margin-top:4px">'+_sub+'</div>'+(_review?'<div class="ptc-btn ptc-btn-review" style="margin-top:6px;display:inline-flex"><span class="rev-dot"></span>Review</div>':'')+'</div></div>';
+          }).join(''):'<div style="color:#9c8f6e;font-size:.78rem;padding:6px 4px">Empty</div>')+'</div>';
+      });
+      html+='</div>';
+      body.innerHTML=html;
+    }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load thumbnail board. '+esc(e&&e.message||'')+'</div>'; });
+  }
+
   // --- PM team / workload ---
   function renderTeam(portal,body){
     return api(P[portal].api+'/team').then(function(r){
@@ -24648,6 +24675,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(page.indexOf('q:')===0){ var st=page.slice(2); var f=_flt(portal); if(st==='__overdue'){f.status='';f.deadline='overdue';f._locked=false;}else{f.status=st;f.deadline='';f._locked=true;} f.priority=''; return renderList(portal,body); }
       if(page==='urgent'){ var fu=_flt(portal); fu.priority='urgent'; fu.status=''; fu.deadline=''; return document.getElementById(portal+'-results')?_prodLoadList(portal,true):renderList(portal,body); }
       if(page==='board') return renderBoard(portal,body);
+      if(page==='thumbboard') return renderThumbBoard(portal,body);
       if(page==='tasks'||page==='videos'){ var _tf=_flt(portal); _tf._locked=false; _tf.status=''; _tf.deadline=''; _tf.epreset=''; _tf.gpreset=''; _tf.ypreset=''; return renderList(portal,body); }
       if(page==='team') return renderTeam(portal,body);
       if(page==='views') return renderViews(portal,body);
@@ -24989,7 +25017,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 
   // ---- PM: create new task ----
   window.ytNewTask=function(){
-    window._ytMode='ready'; window._ytThumb=''; window._ytRef=''; window._ytEd=''; window._ytGx=''; window._ytKeep=null;
+    window._ytMode='ready'; window._ytThumb=''; window._ytRefs=[]; window._ytEd=''; window._ytGx=''; window._ytKeep=null;
     Promise.all([
       api('/api/youtuber/editors').catch(function(){return {editors:[]};}),
       api('/api/youtuber/graphics').catch(function(){return {graphics:[]};}),
@@ -25027,9 +25055,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         edSel;
     } else {
       body=toggle+common+
-        '<div class="p-field"><label>Reference Thumbnail <span class="vt-hint">(paste / upload — for the designer)</span></label>'+
-          '<div id="yt-ref-drop" class="yt-drop" onclick="document.getElementById(\'yt-ref-file\').click()">'+(window._ytRef?'<img loading="lazy" src="'+window._ytRef+'" style="max-width:100%;border-radius:8px">':'<span>Click, drop, or paste (Ctrl+V)</span>')+'</div>'+
-          '<input type="file" id="yt-ref-file" accept="image/*" style="display:none">'+(window._ytRef?'<button class="p-btn" style="margin-top:6px;color:#b91c1c" onclick="ytClearImg(\'ref\')">Remove</button>':'')+'</div>'+
+        '<div class="p-field"><label>Reference Thumbnails <span class="vt-hint">(paste / upload multiple — for the designer)</span></label>'+
+          '<div class="thumb-gal" id="yt-ref-gal">'+(window._ytRefs||[]).map(function(u,i){ return '<div class="thumb-cell"><span class="thumb-n">Ref '+(i+1)+'</span><img loading="lazy" src="'+u+'"><button class="thumb-sel-full" style="color:#b91c1c" onclick="ytRemoveRef('+i+')">Remove</button></div>'; }).join('')+'</div>'+
+          '<div id="yt-ref-drop" class="yt-drop" onclick="document.getElementById(\'yt-ref-file\').click()"><span>+ Add reference (click / drop / paste Ctrl+V) — multiple allowed</span></div>'+
+          '<input type="file" id="yt-ref-file" accept="image/*" multiple style="display:none"></div>'+
         '<div class="p-field"><label>Brief / Instructions for designer</label><textarea id="yt-instr" class="p-area" rows="2" placeholder="Bold title, red-yellow theme, your photo on right..."></textarea></div>'+
         '<div class="p-field"><label>Graphics Designer</label><select id="yt-graphics" class="p-input">'+_ytOpts(window._ytGfx,window._ytGx)+'</select></div>'+
         edSel;
@@ -25039,6 +25068,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     setTimeout(_ytWireNew,40);
   }
   function _ytReadImg(file,which){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ _ytCapture(); if(which==='ref'){window._ytRef=rd.result;}else{window._ytThumb=rd.result;} _ytRenderNew(); }; rd.readAsDataURL(file); }
+  // multiple reference thumbnails (compressed) for the designer
+  function _ytAddRef(file){ if(!file) return; _compressImg(file,1280,0.85,function(dataUrl){ if(!dataUrl) return; _ytCapture(); window._ytRefs=window._ytRefs||[]; if(window._ytRefs.length<8) window._ytRefs.push(dataUrl); _ytRenderNew(); }); }
+  window.ytRemoveRef=function(i){ _ytCapture(); if(window._ytRefs) window._ytRefs.splice(i,1); _ytRenderNew(); };
   // Snapshot the currently typed values. Call this BEFORE any re-render.
   function _ytCapture(){
     if(!document.getElementById('yt-title')) return; // form not on screen — keep last snapshot
@@ -25049,10 +25081,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // Wire handlers, then RESTORE the captured values. Do NOT re-capture here —
     // after a re-render the fields are empty, so capturing now would wipe them.
     var tf=document.getElementById('yt-thumb-file'); if(tf) tf.onchange=function(e){var f=(e.target.files||[])[0]; if(f)_ytReadImg(f,'thumb');};
-    var rf=document.getElementById('yt-ref-file'); if(rf) rf.onchange=function(e){var f=(e.target.files||[])[0]; if(f)_ytReadImg(f,'ref');};
-    ['yt-thumb-drop','yt-ref-drop'].forEach(function(id){ var d=document.getElementById(id); if(!d)return; var which=(id==='yt-ref-drop')?'ref':'thumb'; d.addEventListener('dragover',function(e){e.preventDefault();}); d.addEventListener('drop',function(e){e.preventDefault();var f=(e.dataTransfer.files||[])[0];if(f)_ytReadImg(f,which);}); });
+    var rf=document.getElementById('yt-ref-file'); if(rf) rf.onchange=function(e){ Array.prototype.forEach.call(e.target.files||[],function(f){_ytAddRef(f);}); };
+    ['yt-thumb-drop','yt-ref-drop'].forEach(function(id){ var d=document.getElementById(id); if(!d)return; d.addEventListener('dragover',function(e){e.preventDefault();}); d.addEventListener('drop',function(e){e.preventDefault(); if(id==='yt-ref-drop'){ Array.prototype.forEach.call(e.dataTransfer.files||[],function(f){_ytAddRef(f);}); } else { var f=(e.dataTransfer.files||[])[0]; if(f)_ytReadImg(f,'thumb'); } }); });
     if(window._ytPaste) document.removeEventListener('paste',window._ytPaste);
-    window._ytPaste=function(e){ if(!document.getElementById('yt-title')){document.removeEventListener('paste',window._ytPaste);return;} var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ var which=(window._ytMode==='thumbnail')?'ref':'thumb'; _ytReadImg(items[i].getAsFile(),which); e.preventDefault(); } } };
+    window._ytPaste=function(e){ if(!document.getElementById('yt-title')){document.removeEventListener('paste',window._ytPaste);return;} var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ if(window._ytMode==='thumbnail'){ _ytAddRef(items[i].getAsFile()); } else { _ytReadImg(items[i].getAsFile(),'thumb'); } e.preventDefault(); } } };
     document.addEventListener('paste',window._ytPaste);
     // restore kept values
     var k=window._ytKeep; if(k){ var set=function(id,v){var e=document.getElementById(id);if(e&&v)e.value=v;}; set('yt-title',k.title);set('yt-vtype',k.vtype);set('yt-channel',k.channel);set('yt-deadline',k.deadline);set('yt-link',k.link);set('yt-instr',k.instr);set('yt-editor',k.ed);set('yt-graphics',k.gx);set('yt-priority',k.pri); }
@@ -25069,7 +25101,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(window._ytThumb) body.thumbnail=[window._ytThumb];
     } else {
       body.instructions=(k.instr||''); body.graphics_id=(k.gx||'');
-      if(window._ytRef) body.reference_thumbnail=[window._ytRef];
+      if(window._ytRefs && window._ytRefs.length) body.reference_thumbnail=window._ytRefs;
     }
     api('/api/youtuber/new-task','POST',body).then(function(){ closeModal(); toast(window._ytMode==='ready'?'Video submitted':'Task created — graphics assigned'); try{ prodNav('youtuber','videos'); }catch(e){} })
       .catch(function(e){ toast((e&&e.message)||'Failed',true); });
