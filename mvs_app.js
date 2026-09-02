@@ -577,6 +577,24 @@ function _perfRec(path, method, ms){
 function _perfEsc(s){ return String(s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); }
 window._perfToggle=function(){ _perfOn=!_perfOn; if(_perfOn) _perfRender(); else { var e=document.getElementById('perfpanel'); if(e) e.remove(); } };
 window._perfClear=function(){ _perfLog=[]; _perfDupWin={}; _perfRender(); };
+window._perfCopy=function(){
+  try{
+    var byPath={}; _perfLog.forEach(function(r){ (byPath[r.p]=byPath[r.p]||[]).push(r.ms); });
+    var slow=Object.keys(byPath).map(function(p){ var a=byPath[p]; var avg=Math.round(a.reduce(function(x,y){return x+y;},0)/a.length); return {p:p,n:a.length,avg:avg,max:Math.max.apply(null,a)}; }).sort(function(x,y){return y.max-x.max;}).slice(0,15);
+    var dups=Object.keys(_perfDupWin).filter(function(k){return (_perfDupWin[k]||[]).length>1;});
+    var txt='MVS PERF REPORT — '+_perfLog.length+' calls\n\nSLOWEST (avg / max ms · count):\n'
+      +slow.map(function(s){return '  '+s.avg+' / '+s.max+' ms  x'+s.n+'  '+s.p;}).join('\n')
+      +'\n\nDUPLICATE bursts (<1.2s):\n'
+      +(dups.length?dups.slice(0,15).map(function(k){return '  '+_perfDupWin[k].length+'x  '+k;}).join('\n'):'  none');
+    var done=function(){ toast('Perf data copied — ab paste kar do'); };
+    if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(txt).then(done,function(){_perfCopyFallback(txt);}); }
+    else _perfCopyFallback(txt);
+  }catch(e){ toast('Copy failed',true); }
+};
+function _perfCopyFallback(txt){
+  try{ var ta=document.createElement('textarea'); ta.value=txt; ta.style.cssText='position:fixed;left:-9999px'; document.body.appendChild(ta); ta.focus(); ta.select(); document.execCommand('copy'); ta.remove(); toast('Perf data copied — ab paste kar do'); }
+  catch(e){ toast('Copy failed — screenshot le lo',true); }
+}
 function _perfRender(){
   var el=document.getElementById('perfpanel');
   if(!el){ el=document.createElement('div'); el.id='perfpanel'; (document.body||document.documentElement).appendChild(el);
@@ -588,7 +606,8 @@ function _perfRender(){
   var last=_perfLog.slice(-30).reverse();
   var col=function(ms){ return ms>800?'#ff6b6b':ms>300?'#ffd166':'#8fe388'; };
   el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="color:#e6ad4e">MVS Perf · '+_perfLog.length+' calls</b>'
-    +'<span><button onclick="_perfClear()" style="background:#2a2a2a;color:#fff;border:0;border-radius:5px;padding:2px 7px;cursor:pointer;margin-right:4px">clear</button>'
+    +'<span><button onclick="_perfCopy()" style="background:#3a6b3a;color:#fff;border:0;border-radius:5px;padding:2px 7px;cursor:pointer;margin-right:4px">Copy</button>'
+    +'<button onclick="_perfClear()" style="background:#2a2a2a;color:#fff;border:0;border-radius:5px;padding:2px 7px;cursor:pointer;margin-right:4px">clear</button>'
     +'<button onclick="_perfToggle()" style="background:#2a2a2a;color:#fff;border:0;border-radius:5px;padding:2px 7px;cursor:pointer">×</button></span></div>'
     +'<div style="color:#9ad;margin:4px 0 2px">SLOWEST — avg / max ms · count</div>'
     +(slow.length?slow.map(function(s){ return '<div style="color:'+col(s.max)+'">'+s.avg+' / '+s.max+' <span style="color:#888">'+s.n+'×</span> '+_perfEsc(s.p)+'</div>'; }).join(''):'<div style="color:#666">no calls yet</div>')
