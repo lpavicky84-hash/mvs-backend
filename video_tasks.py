@@ -1521,12 +1521,15 @@ def _task_out(db, t, with_thumb=True, tname_map=None):
     return out
 
 
-def _special_out(db, t, tname_map=None):
+def _special_out(db, t, tname_map=None, ch_map=None):
     """One Shot / Rapid Revision task — chapters ke saath progress + NEW blink."""
     out = _task_out(db, t, with_thumb=False, tname_map=tname_map)
-    chs = (db.query(VideoTaskChapter)
-           .filter(VideoTaskChapter.task_id == t.id)
-           .order_by(VideoTaskChapter.sort.asc(), VideoTaskChapter.id.asc()).all())
+    if ch_map is not None:
+        chs = ch_map.get(t.id, [])   # pre-fetched in one batched query by the caller
+    else:
+        chs = (db.query(VideoTaskChapter)
+               .filter(VideoTaskChapter.task_id == t.id)
+               .order_by(VideoTaskChapter.sort.asc(), VideoTaskChapter.id.asc()).all())
     lla = getattr(t, "last_link_at", None)
     asa = getattr(t, "admin_seen_at", None)
     # v91: chapter-level change flag — link add/update/remove admin_seen ke baad hua ho
@@ -2720,12 +2723,22 @@ def vt_admin_project_chapters(subject: str = "", class_level: str = "",
             "has_categories": len(_catp) > 0}
 
 
+_SPECIAL_ENSURE_TS = [0.0]   # process-wide throttle for the special-tasks self-heal (see vt_admin_special)
+
+
 def _special_payload(db, kind):
     tasks = (db.query(VideoTask).filter(VideoTask.kind == kind, NOT_YOUTUBER,
                                         VideoTask.cancelled.isnot(True))
              .order_by(VideoTask.created_at.asc()).all())
     _tnm = _all_teacher_names(db)
-    outs = [_special_out(db, t, tname_map=_tnm) for t in tasks]
+    # BATCH chapters for ALL tasks in ONE query (was: 1 query per task inside _special_out)
+    _tids = [t.id for t in tasks]
+    _chm = {}
+    if _tids:
+        for c in (db.query(VideoTaskChapter).filter(VideoTaskChapter.task_id.in_(_tids))
+                  .order_by(VideoTaskChapter.sort.asc(), VideoTaskChapter.id.asc()).all()):
+            _chm.setdefault(c.task_id, []).append(c)
+    outs = [_special_out(db, t, tname_map=_tnm, ch_map=_chm) for t in tasks]
     # v115: read-side guarantee — same teacher + same (normalized) subject ke
     # duplicate cards UI me kabhi na dikhen. DB self-heal _dedupe_special karta
     # hai; ye sirf display merge hai (kuch write nahi hota).
@@ -2768,11 +2781,17 @@ def vt_admin_special(kind: str = "one_shot",
     NEW blink (last_link_at > admin_seen_at). kind=all pe dono ek saath."""
     if kind not in ("one_shot", "rapid_revision", "project", "all"):
         raise HTTPException(400, "Invalid kind")
-    for tp in db.query(TeacherProfile).all():
-        try:
-            _ensure_special_teacher(db, tp)
-        except Exception:
-            db.rollback()
+    # self-heal (ensure each teacher's special task rows exist) is WRITE-heavy — running it on
+    # EVERY admin read cost seconds. Throttle to once per 5 min process-wide; teachers' own
+    # portals also ensure theirs, so the guarantee stays while the read gets fast.
+    import time as _tt
+    if _tt.time() - _SPECIAL_ENSURE_TS[0] > 300:
+        for tp in db.query(TeacherProfile).all():
+            try:
+                _ensure_special_teacher(db, tp)
+            except Exception:
+                db.rollback()
+        _SPECIAL_ENSURE_TS[0] = _tt.time()
     if kind == "all":
         return {"one_shot": _special_payload(db, "one_shot"),
                 "rapid_revision": _special_payload(db, "rapid_revision"),
@@ -2907,7 +2926,13 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
                 .order_by(VideoTask.kind.asc(), VideoTask.subject.asc()).all())
     # legacy "All Subjects"/empty-subject card kabhi na dikhe — sirf subject-wise cards
     spts = [t for t in spts if (t.subject or "").strip().lower() not in ("", "all subjects")]
-    special_all = [_special_out(db, t, tname_map=_tnm2) for t in spts]
+    _sp_ids = [t.id for t in spts]
+    _sp_chm = {}
+    if _sp_ids:
+        for c in (db.query(VideoTaskChapter).filter(VideoTaskChapter.task_id.in_(_sp_ids))
+                  .order_by(VideoTaskChapter.sort.asc(), VideoTaskChapter.id.asc()).all()):
+            _sp_chm.setdefault(c.task_id, []).append(c)
+    special_all = [_special_out(db, t, tname_map=_tnm2, ch_map=_sp_chm) for t in spts]
     # Bulletproof display dedup: DB me duplicate ho (alag spelling/spacing/id) to bhi
     # teacher ko (kind + class-aware subject) ke hisaab se SIRF EK card dikhe —
     # sabse zyada progress (done chapters) wala. DB merge alag se _ensure_special_teacher me.

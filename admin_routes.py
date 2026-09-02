@@ -2784,10 +2784,17 @@ def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depend
     _rids = [d.id for d in _rows]
     _img_ids, _voice_ids, _ans_voice_ids, _ans_file_ids = set(), set(), set(), set()
     if _rids:
-        _img_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.image_b64) > 0).all()}
-        _voice_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.audio_b64) > 0).all()}
-        _ans_voice_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.answer_audio_b64) > 0).all()}
-        _ans_file_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.answer_attach_b64) > 0).all()}
+        # attachment existence in ONE pass (was 4 separate queries each reading the heavy
+        # base64 blobs) — 4x fewer blob reads over the whole doubts table.
+        for _i in range(0, len(_rids), 500):
+            for did, il, al, aal, afl in db.query(
+                    Doubt.id, func.length(Doubt.image_b64), func.length(Doubt.audio_b64),
+                    func.length(Doubt.answer_audio_b64), func.length(Doubt.answer_attach_b64)
+                ).filter(Doubt.id.in_(_rids[_i:_i + 500])):
+                if il: _img_ids.add(did)
+                if al: _voice_ids.add(did)
+                if aal: _ans_voice_ids.add(did)
+                if afl: _ans_file_ids.add(did)
     # batch-load student/teacher names + responses (pehle 3 query PER doubt -> ab ~3 total).
     _sids = list({d.student_id for d in _rows if d.student_id})
     _tids = list({d.teacher_id for d in _rows if d.teacher_id})
