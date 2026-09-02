@@ -483,6 +483,24 @@ def _comment_count(db, task_id):
         return 0
 
 
+def comment_count_map(db, task_ids):
+    """Comment counts for many tasks in ONE grouped query -> {task_id: count}.
+    Pass the result as task_out(..., comment_count=...) to avoid the per-task COUNT (N+1)."""
+    out = {}
+    if not task_ids:
+        return out
+    try:
+        from models import VideoTaskComment as _VTC
+        from sqlalchemy import func as _f
+        for tid, cnt in (db.query(_VTC.task_id, _f.count(_VTC.id))
+                         .filter(_VTC.task_id.in_(list(task_ids)))
+                         .group_by(_VTC.task_id)):
+            out[tid] = cnt
+    except Exception:
+        pass
+    return out
+
+
 def editing_time_state(db, t):
     """Live active-editing time for a task.
 
@@ -508,7 +526,7 @@ def editing_time_state(db, t):
     return acc, running
 
 
-def task_out(db, t, g=None, timeline=False, light=False, viewer=None):
+def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_count=None):
     """Production-facing task serializer (no heavy base64 blobs)."""
     if g is None:
         g = db.query(GraphicsTask).filter(GraphicsTask.task_id == t.id).first()
@@ -556,7 +574,7 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None):
         "reference": t.reference or "",
         "reference_video": getattr(t, "reference_video", "") or "",
         "remarks": t.remarks or "",
-        "comment_count": _comment_count(db, t.id),
+        "comment_count": (comment_count if comment_count is not None else _comment_count(db, t.id)),
         "submitted_link": t.submitted_link or "",
         "created_at": _dt(t.created_at),
         # card thumbnail: graphics-made thumbnail first, else the one uploaded at assign time

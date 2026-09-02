@@ -237,8 +237,10 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
     except Exception:
         _cai = _cvm = None
 
+    _cc_map = pc.comment_count_map(db, [t.id for t in rows])   # 1 query, was 1 COUNT per task
+
     def _task_out_collab(t):
-        o = pc.task_out(db, t, light=True)
+        o = pc.task_out(db, t, light=True, comment_count=_cc_map.get(t.id, 0))
         if _cai:
             try:
                 allids = _cai(t)
