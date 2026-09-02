@@ -21842,6 +21842,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(page==='ytweekly') return renderYtWeekly(portal,body);
       if(page==='ytthumbs') return renderYtThumbReviews(portal,body,'pending');
       if(page==='ytthumbchg') return renderYtThumbReviews(portal,body,'changes');
+      if(page==='ytb:urgent') return renderYtMy(portal,body,'urgent');
+      if(page==='ytb:editing') return renderYtMy(portal,body,'editing');
+      if(page==='ytb:ready') return renderYtMy(portal,body,'ready');
     }
     if(page.indexOf('gfx:')===0){ var gp=page.slice(4); var gf=_flt(portal); gf.status=''; gf.deadline=''; gf.priority=''; gf.gpreset=gp; return renderList(portal,body); }
     if(page.indexOf('edt:')===0){ var ep=page.slice(4); var ef=_flt(portal); ef.status=''; ef.deadline=''; ef.priority=''; ef.epreset=ep; return renderList(portal,body); }
@@ -23055,12 +23058,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }).catch(function(e){ if(btn){ btn.disabled=false; btn.textContent='Add Channel'; } toast((e&&e.message)||'Failed \u2014 try again',true); });
   };
   // ---- My Tasks: master search + channel filter + date filter (no status chips) ----
-  function renderYtMy(portal,body){
+  function renderYtMy(portal,body,preset){
     _ytCss(); body.innerHTML='<div class="p-load">Loading your tasks...</div>';
-    _ytLoad(function(tasks){
+    var titles={urgent:'Urgent Tasks',editing:'Editing Progress',ready:'Ready for YouTube'};
+    api(P.youtuber.api+'/videos'+(preset?('?filter='+encodeURIComponent(preset)):'')).then(function(r){
+      var tasks=(r&&r.videos)||[];
       window._ytMyRaw=tasks;
       var channels=[], seen={}; tasks.forEach(function(t){ var c=t.channel_name||''; if(c&&!seen[c]){seen[c]=1;channels.push(c);} }); channels.sort();
-      body.innerHTML='<div class="yt-newbar" style="margin-bottom:14px"><button class="p-btn p-btn-primary" onclick="ytNewTask()">+ New Video</button> <span style="color:var(--muted);font-size:.84rem;margin-left:8px">Propose to PM, or assign an editor directly for urgent videos.</span></div>'+
+      var head=preset?('<div class="p-sec">'+esc(titles[preset]||'Tasks')+' \u00b7 '+tasks.length+'</div>')
+        :('<div class="yt-newbar" style="margin-bottom:14px"><button class="p-btn p-btn-primary" onclick="ytNewTask()">+ New Video</button> <span style="color:var(--muted);font-size:.84rem;margin-left:8px">Propose to PM, or assign an editor directly for urgent videos.</span></div>');
+      body.innerHTML=head+
         '<div class="ytf">'+
         '<div class="ytf-search">'+_YT_SVG_SEARCH+'<input id="yt-q" placeholder="Search by title, channel, type..." oninput="_ytMyApply()"></div>'+
         '<select id="yt-ch" onchange="_ytMyApply()"><option value="">All channels</option></select>'+
@@ -23069,7 +23076,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '<button class="ytf-clear" onclick="_ytMyClear()">Clear</button></div><div id="yt-my-grid"></div>';
       _ytFillChannels('yt-ch',channels);
       _ytMyApply();
-    });
+    }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load. '+esc(e&&e.message||'')+'</div>'; });
   }
   window._ytMyClear=function(){ ['yt-q','yt-ch','yt-dt'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; }); _ytMyApply(); };
   window._ytMyApply=function(){
