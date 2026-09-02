@@ -6888,7 +6888,7 @@ window.ytGfxManage=function(id){
     },50);
   }).catch(function(e){ toast((e&&e.message)||'Could not load',true); });
 };
-function _ytgRead(file){ if(!file)return; var rd=new FileReader(); rd.onload=function(){ window._ytgImg=rd.result; var d=document.getElementById('ytg-drop'); if(d)d.innerHTML='<img loading="lazy" src="'+rd.result+'" style="max-width:100%;border-radius:8px">'; }; rd.readAsDataURL(file); }
+function _ytgRead(file){ if(!file)return; _compressImg(file,1280,0.85,function(dataUrl){ if(!dataUrl)return; window._ytgImg=dataUrl; var d=document.getElementById('ytg-drop'); if(d)d.innerHTML='<img loading="lazy" src="'+dataUrl+'" style="max-width:100%;border-radius:8px">'; }); }
 window.ytGfxMode=function(m){ window._ytgMode=m; var c=document.getElementById('ytg-credit-box'), a=document.getElementById('ytg-assign-box'); if(c)c.style.display=(m==='credit')?'':'none'; if(a)a.style.display=(m==='assign')?'':'none'; var mc=document.getElementById('ytg-m-credit'), ma=document.getElementById('ytg-m-assign'); if(mc)mc.classList.toggle('vt-checking',m==='credit'); if(ma)ma.classList.toggle('vt-checking',m==='assign'); };
 window.ytGfxStar=function(n){ window._ytgRating=n; document.querySelectorAll('#ytg-stars .ytg-star').forEach(function(s){ s.style.color=(parseInt(s.getAttribute('data-n'),10)<=n)?'#e6ad4e':'#d9cdae'; }); };
 // Refresh whichever view is showing after a thumbnail credit / graphics assign,
@@ -15539,6 +15539,34 @@ async function _plSubmitSend(id, body){
 window._plRetrySubmit=function(){ if(window._plRetryBody!=null && window._plRetryId!=null) _plSubmitSend(window._plRetryId, window._plRetryBody); };
 function _examPickFile(inp){ const f=inp.files[0]; window._examFile=f; const n=document.getElementById('pl-file-name'); if(n) n.textContent=f?('Selected: '+f.name):''; }
 function _fileB64(file){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); }); }
+// Compress an image file BEFORE upload: full-res photos (3-8MB) -> small JPEG (~100-300KB).
+// Cuts upload time (R2 round-trip), Railway RAM (smaller payload in memory) and later egress.
+function _compressImg(file, maxDim, quality, cb){
+  maxDim=maxDim||1280; quality=quality||0.82;
+  try{
+    var rd=new FileReader();
+    rd.onload=function(){
+      var raw=rd.result;
+      try{
+        var img=new Image();
+        img.onload=function(){
+          try{
+            var w=img.width||maxDim, h=img.height||maxDim;
+            if(w>maxDim||h>maxDim){ if(w>=h){ h=Math.round(h*maxDim/w); w=maxDim; } else { w=Math.round(w*maxDim/h); h=maxDim; } }
+            var cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+            var ctx=cv.getContext('2d'); ctx.drawImage(img,0,0,w,h);
+            var out=cv.toDataURL('image/jpeg',quality);
+            cb((out&&out.length>32 && out.length<raw.length)?out:raw);
+          }catch(e){ cb(raw); }
+        };
+        img.onerror=function(){ cb(raw); };
+        img.src=raw;
+      }catch(e){ cb(raw); }
+    };
+    rd.onerror=function(){ try{ toast('Could not read the image \u2014 try another file.',true); }catch(e){} };
+    rd.readAsDataURL(file);
+  }catch(e){ if(cb) cb(null); }
+}
 
 async function downloadMyAnswer(id){
   try{

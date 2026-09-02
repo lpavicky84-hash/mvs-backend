@@ -19,10 +19,12 @@ engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,       # dead connection auto-refresh (Railway MySQL idle drop)
     pool_recycle=280,         # MySQL wait_timeout se pehle connection recycle
-    # PRO plan: MySQL ke paas theek RAM/capacity. Connection-hold fixes (fast release) ke
-    # saath ye pool aaram se peak handle karta hai. (Bahut zyada scale par replicas badhao.)
-    pool_size=30,
-    max_overflow=40,          # peak par 70 tak
+    # POOL IS PER-WORKER. total connections = workers x (pool_size + max_overflow).
+    # With WEB_CONCURRENCY=2 this is 2 x (15+15) = 60 — comfortably under MySQL's ~150 limit,
+    # and far less idle-connection RAM than the old 30/40 (which was 70/worker -> exploded with
+    # auto-scaled workers). Fast connection release + fail-fast keep peaks graceful.
+    pool_size=15,
+    max_overflow=15,          # peak par 30 per worker
     # SABSE ZAROORI (har plan par): overload par request 8s me fail ho (pehle 20s). Blocked
     # thread turant free -> FastAPI threadpool saturate nahi -> DB-free /health chalti rehti
     # hai -> Railway app ko healthy dekhta hai -> koi RESTART/DEATH-SPIRAL nahi. App graceful
