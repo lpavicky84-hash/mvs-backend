@@ -22174,7 +22174,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var url=window._hbUrl;
     if(!url && window._chatPingUrl){ url=window._chatPingUrl; if(url.indexOf('/teacher/')>=0) url='/api/teacher/heartbeat'; else url=url.replace(/\/tasks\/\d+\/chat-ping.*/,'/heartbeat'); window._hbUrl=url; }
     if(url){ try{ api(url,'POST',{}).catch(function(){}); }catch(e){} }
-  }, 25000); } }catch(e){}
+  }, 40000); } }catch(e){}
   window.ytcSend=function(){
     var cfg=window._chatCfg; if(!cfg) return;
     var inp=document.getElementById('chat-msg'); var msg=(inp&&inp.value||'').trim();
