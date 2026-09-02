@@ -422,6 +422,11 @@ def yt_new_task(payload: dict = Body(...), db: Session = Depends(get_db), me=Dep
                                       "reference", None, me, return_urls=True) or []
                 if urls:
                     g.reference_image = urls[0]
+                    try:
+                        import json as _json
+                        g.reference_images = _json.dumps(urls)   # designer ko SAARI references dikhein
+                    except Exception:
+                        pass
             except Exception:
                 pass
         _gid = payload.get("graphics_id")
