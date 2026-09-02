@@ -582,6 +582,36 @@ def _plan_row(db, student_id, code):
             (r[3] if r[3] is not None else -1.0), choice if isinstance(choice, dict) else {})
 
 
+def _plan_rows_all(db, student_id):
+    """ALL of a student's chapter_plans in ONE query -> {code: (sel, done, tma, pr, choice)}.
+    Same shape as _plan_row but batched — removes the per-subject N+1 on /overview."""
+    out = {}
+    try:
+        rows = db.execute(_text(
+            "SELECT subject_code, selected, done, tma_assumed, practical_assumed, option_choice "
+            "FROM chapter_plans WHERE student_id=:s"), {"s": student_id}).fetchall()
+    except Exception:
+        return out
+    for r in rows:
+        code = str(r[0])
+        try:
+            sel = json.loads(r[1] or "[]")
+        except Exception:
+            sel = []
+        try:
+            done = json.loads(r[2] or "[]")
+        except Exception:
+            done = []
+        try:
+            choice = json.loads(r[5] or "{}") if len(r) > 5 else {}
+        except Exception:
+            choice = {}
+        out[code] = (sel, done, (r[3] if r[3] is not None else -1.0),
+                     (r[4] if r[4] is not None else -1.0),
+                     choice if isinstance(choice, dict) else {})
+    return out
+
+
 def _stream_for(db, sp):
     """
     The stream is never asked from the learner. It follows the examination they
@@ -838,14 +868,20 @@ def syl_overview(db: Session = Depends(get_db), user=Depends(get_student)):
     sp = _student_profile(db, user)
     cl, codes, unmapped = _student_codes(db, sp)
     cfg = _cfg(db)
+    # BATCH (no N+1): subject list ONCE (get_subject per-code loaded the whole list + validated
+    # every subject each time), all chapter_plans in ONE query, and the stream once. This was
+    # the ~4N-queries + N-heavy-validation hot path that made /overview slow.
+    subj_map = {s["code"]: s for s in subject_list(db, cl, include_hidden=True)}
+    plan_map = _plan_rows_all(db, sp.id)
+    stream = _stream_for(db, sp)
     out = []
     for code in codes:
-        subj = get_subject(db, cl, code)
+        subj = subj_map.get(str(code))
         if not subj:
             continue
-        sel, done, tma, pr, choice = _plan_row(db, sp.id, code)
+        sel, done, tma, pr, choice = plan_map.get(str(code), ([], [], -1.0, -1.0, {}))
         ready = subj.get("status") == "ready"
-        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], _stream_for(db, sp), choice=choice) if ready else None
+        calc = compute(subj, sel, tma, pr, cfg["high_target"], cfg["buffer_pct"], cfg["bonus_chapters"], cfg["bonus_min_marks"], stream, choice=choice) if ready else None
         out.append({"code": subj["code"], "name": subj["name"],
                     "status": subj.get("status", "pending"),
                     "selected": len(sel) if ready else 0,
