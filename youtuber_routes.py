@@ -179,7 +179,8 @@ def yt_videos(status: str = "", filter: str = "", db: Session = Depends(get_db),
     if status:
         q = q.filter(VideoTask.lifecycle == status)
     rows = q.order_by(VideoTask.updated_at.desc()).all()
-    return {"videos": [pc.task_out(db, t, light=True) for t in rows]}
+    _ccm = pc.comment_count_map(db, [t.id for t in rows])
+    return {"videos": [pc.task_out(db, t, light=True, comment_count=_ccm.get(t.id, 0)) for t in rows]}
 
 
 @router.get("/videos/{tid}")

@@ -173,7 +173,8 @@ def editor_tasks(status: str = "", filter: str = "", db: Session = Depends(get_d
         else:
             q = q.filter(VideoTask.lifecycle == status)
     rows = q.order_by(VideoTask.updated_at.desc()).all()
-    _outs = [pc.task_out(db, t, light=True) for t in rows]
+    _ccm = pc.comment_count_map(db, [t.id for t in rows])
+    _outs = [pc.task_out(db, t, light=True, comment_count=_ccm.get(t.id, 0)) for t in rows]
     try:
         from video_tasks import _vtc_unread_bulk
         _un = _vtc_unread_bulk(db, getattr(me, "id", None), [t.id for t in rows])
