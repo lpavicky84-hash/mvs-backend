@@ -2141,40 +2141,84 @@ def student_exam_ranking(exam_id: int, db: Session = Depends(get_db), current_us
 # ================== STUDENT DPP PACKS ==================
 @router.get("/dpp-packs")
 def student_dpp_packs(db: Session = Depends(get_db), current_user=Depends(get_student)):
-    """Mere subjects+class ke DPP packs + meri submission status."""
+    """Mere subjects+class ke DPP packs + meri submission status. (BATCHED — no N+1:
+    ~6 queries total instead of ~5 per pack.)"""
     from models import DppPack, DppAnswer, TeacherProfile, User
+    from sqlalchemy import func as _func
     sp = get_student_profile(current_user, db)
     my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
     packs = (db.query(DppPack).options(defer(DppPack.questions), defer(DppPack.q_pdf), defer(DppPack.s_pdf)).filter(DppPack.subject.in_(list(_subj_scope_for(db, DppPack, sp.subjects or []))))
              .order_by(DppPack.created_at.desc()).all())
+    # class filter first
+    packs = [pk for pk in packs
+             if not (my_cls and _class_digits(pk.class_name) and _class_digits(pk.class_name) != my_cls)]
+    pack_ids = [pk.id for pk in packs]
+    teacher_ids = list({pk.teacher_id for pk in packs if pk.teacher_id})
+
+    # BATCH 1: teacher name + photo flag (2 queries, not 2 per pack)
+    tmap = {}
+    if teacher_ids:
+        tps = db.query(TeacherProfile).filter(TeacherProfile.id.in_(teacher_ids)).all()
+        uid_by_tid = {tp.id: tp.user_id for tp in tps}
+        photo_by_tid = {tp.id: bool(tp.photo_b64) for tp in tps}
+        uname = {}
+        _uids = [u for u in uid_by_tid.values() if u]
+        if _uids:
+            for uid, nm in db.query(User.id, User.name).filter(User.id.in_(_uids)):
+                uname[uid] = nm
+        for tid in teacher_ids:
+            tmap[tid] = (uname.get(uid_by_tid.get(tid), "") or "", photo_by_tid.get(tid, False))
+
+    # BATCH 2: my latest answer per pack (1 query — desc order, first seen = latest)
+    my_ans = {}
+    if pack_ids:
+        for a in (db.query(DppAnswer)
+                  .filter(DppAnswer.pack_id.in_(pack_ids), DppAnswer.student_id == sp.id,
+                          DppAnswer.status != "staged")
+                  .order_by(DppAnswer.submitted_at.desc())):
+            if a.pack_id not in my_ans:
+                my_ans[a.pack_id] = a
+
+    # BATCH 3: submission counts per pack (1 GROUP BY)
+    subs_map = {}
+    if pack_ids:
+        for pid, cnt in (db.query(DppAnswer.pack_id, _func.count(DppAnswer.id))
+                         .filter(DppAnswer.pack_id.in_(pack_ids), DppAnswer.status != "staged")
+                         .group_by(DppAnswer.pack_id)):
+            subs_map[pid] = cnt
+
+    # BATCH 4: questions-count + q_pdf/s_pdf existence (1 query, WITHOUT loading heavy blobs)
+    meta = {}
+    if pack_ids:
+        try:
+            for pid, qn, ql, sl in db.query(
+                    DppPack.id,
+                    _func.coalesce(_func.json_length(DppPack.questions), 0),
+                    _func.coalesce(_func.length(DppPack.q_pdf), 0),
+                    _func.coalesce(_func.length(DppPack.s_pdf), 0)).filter(DppPack.id.in_(pack_ids)):
+                meta[pid] = (int(qn or 0), (ql or 0) > 0, (sl or 0) > 0)
+        except Exception:
+            meta = {}   # rare: fall back per-pack below
+
     out = []
     for pk in packs:
-        pk_cls = _class_digits(pk.class_name)
-        if my_cls and pk_cls and pk_cls != my_cls:
-            continue
-        tname = ""
-        tp = db.query(TeacherProfile).filter(TeacherProfile.id == pk.teacher_id).first()
-        if tp and tp.user_id:
-            u = db.query(User).filter(User.id == tp.user_id).first()
-            tname = u.name if u else ""
-        ans = (db.query(DppAnswer)
-               .filter(DppAnswer.pack_id == pk.id, DppAnswer.student_id == sp.id,
-                       DppAnswer.status != "staged")
-               .order_by(DppAnswer.submitted_at.desc()).first())
-        subs_n = (db.query(DppAnswer)
-                  .filter(DppAnswer.pack_id == pk.id, DppAnswer.status != "staged")
-                  .count())
+        tname, thas_photo = tmap.get(pk.teacher_id, ("", False))
+        ans = my_ans.get(pk.id)
+        if pk.id in meta:
+            qn, has_qpdf, has_spdf = meta[pk.id]
+        else:  # fallback (only if BATCH 4 failed) — lazy load this one pack
+            qn = len(pk.questions or []); has_qpdf = bool(pk.q_pdf); has_spdf = bool(pk.s_pdf)
         out.append({"id": pk.id, "subject": pk.subject, "chapter": pk.chapter, "part": pk.part,
-                    "submissions": subs_n,
+                    "submissions": subs_map.get(pk.id, 0),
                     "class_name": getattr(pk, "class_name", "") or "",
                     "title": pk.title, "medium": pk.medium, "source": pk.source,
                     "teacher": tname, "teacher_id": pk.teacher_id,
-                    "has_teacher_photo": bool(tp and tp.photo_b64),
-                    "questions_n": len(pk.questions or []),
+                    "has_teacher_photo": thas_photo,
+                    "questions_n": qn,
                     "created_at": pk.created_at.strftime("%d %b %Y") if pk.created_at else None,
                     "created_ts": pk.created_at.isoformat() if pk.created_at else None,
-                    "has_questions": bool(pk.q_pdf or pk.questions),
-                    "has_solution": bool(pk.s_pdf),
+                    "has_questions": bool(has_qpdf or qn > 0),
+                    "has_solution": has_spdf,
                     "my_status": (ans.status if ans else None),
                     "my_remarks": (ans.remarks if ans and ans.status == "checked" else None),
                     "my_checked_by": (ans.checked_by if ans and ans.status == "checked" else None),

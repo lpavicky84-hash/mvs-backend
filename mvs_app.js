@@ -619,7 +619,21 @@ try{
   document.addEventListener('keydown',function(e){ if(e.ctrlKey&&e.altKey&&(e.key==='p'||e.key==='P')){ e.preventDefault(); _perfToggle(); } });
   if(typeof location!=='undefined' && /[?&#]perf=1/.test(location.href)) setTimeout(function(){ _perfOn=true; _perfRender(); }, 800);
 }catch(e){}
-async function api(path, method='GET', body=null) {
+// In-flight request dedup: if the same cacheable GET is already being fetched, overlapping
+// callers SHARE that one network call instead of firing their own. This kills the "same
+// endpoint hit 2× on page load" duplicate bursts seen across every portal — universally.
+var _apiInflight={};
+async function api(path, method='GET', body=null){
+  if(method==='GET' && !_API_NOCACHE.test(path)){
+    var ck=method+' '+path;
+    if(_apiInflight[ck]!==undefined) return _apiInflight[ck];
+    var p=_apiCore(path, method, body);
+    _apiInflight[ck]=p;
+    try{ return await p; } finally { delete _apiInflight[ck]; }
+  }
+  return _apiCore(path, method, body);
+}
+async function _apiCore(path, method='GET', body=null) {
   const opts = { method, headers: { 'Content-Type':'application/json' } };
   if (TOKEN) opts.headers['Authorization'] = 'Bearer ' + TOKEN;
   if (window._payoutToken) opts.headers['X-Payout-Token'] = window._payoutToken;
