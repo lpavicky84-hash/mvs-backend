@@ -776,12 +776,20 @@ def timetable_all(db: Session = Depends(get_db), _=Depends(get_admin)):
     # v99: kin entries ka class report (lecture) upload ho chuka hai — ek hi query me
     lec_entry_ids = set(x[0] for x in db.query(Lecture.timetable_entry_id).filter(
         Lecture.is_active == True, Lecture.timetable_entry_id.isnot(None)).all())
+    # BATCH teacher name + photo flag for the DISTINCT teachers (was 1 query PER entry = N+1)
+    _ttids = list({e.teacher_id for e in es if e.teacher_id})
+    _tname, _tphoto = {}, set()
+    if _ttids:
+        for _tid, _nm in db.query(TeacherProfile.id, User.name).join(
+                User, TeacherProfile.user_id == User.id).filter(TeacherProfile.id.in_(_ttids)):
+            _tname[_tid] = _nm or ""
+        _tphoto = {r[0] for r in db.query(TeacherProfile.id).filter(
+            TeacherProfile.id.in_(_ttids), func.length(TeacherProfile.photo_b64) > 0)}
     result = []
     for e in es:
-        tname = ""; tphoto = False; tpid = None
-        tp = db.query(TeacherProfile).filter(TeacherProfile.id == e.teacher_id).first()
-        if tp and tp.user:
-            tname = tp.user.name; tphoto = bool(tp.photo_b64); tpid = tp.id
+        tname = _tname.get(e.teacher_id, "")
+        tpid = e.teacher_id if e.teacher_id in _tname else None
+        tphoto = e.teacher_id in _tphoto
         result.append({
             "id": e.id, "subject": e.subject, "class_name": e.class_name,
             "chapter": e.chapter, "part": e.part,
@@ -5736,34 +5744,60 @@ def orphan_data_cleanup(db: Session = Depends(get_db), _=Depends(get_admin)):
 @router.get("/dpp-rankings")
 def admin_dpp_rankings(db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import DppPack, DppAnswer, DppEvent, TeacherProfile, User as _U
+    from sqlalchemy import func as _func
     packs = db.query(DppPack).options(defer(DppPack.questions), defer(DppPack.q_pdf), defer(DppPack.s_pdf)).order_by(DppPack.created_at.desc()).all()
+    pack_ids = [pk.id for pk in packs]
+    teacher_ids = list({pk.teacher_id for pk in packs if pk.teacher_id})
+
+    # BATCH teacher names (2 queries, not 2 per pack)
+    tmap = {}
+    if teacher_ids:
+        uid_by_tid = {tid: uid for tid, uid in
+                      db.query(TeacherProfile.id, TeacherProfile.user_id).filter(TeacherProfile.id.in_(teacher_ids))}
+        _uids = [u for u in uid_by_tid.values() if u]
+        uname = {}
+        if _uids:
+            for uid, nm in db.query(_U.id, _U.name).filter(_U.id.in_(_uids)):
+                uname[uid] = nm or ""
+        for tid in teacher_ids:
+            tmap[tid] = uname.get(uid_by_tid.get(tid), "")
+
+    # BATCH submissions + checked per pack (1 GROUP BY, not 1 .all() per pack)
+    sub_total, sub_checked = {}, {}
+    if pack_ids:
+        for pid, st, cnt in (db.query(DppAnswer.pack_id, DppAnswer.status, _func.count(DppAnswer.id))
+                             .filter(DppAnswer.pack_id.in_(pack_ids), DppAnswer.status != "staged")
+                             .group_by(DppAnswer.pack_id, DppAnswer.status)):
+            sub_total[pid] = sub_total.get(pid, 0) + cnt
+            if st == "checked":
+                sub_checked[pid] = sub_checked.get(pid, 0) + cnt
+
+    # BATCH distinct-student views + downloads per pack (1 GROUP BY, not 2 counts per pack)
+    views, downloads = {}, {}
+    if pack_ids:
+        for pid, ev, cnt in (db.query(DppEvent.pack_id, DppEvent.event,
+                                      _func.count(_func.distinct(DppEvent.student_id)))
+                             .filter(DppEvent.pack_id.in_(pack_ids), DppEvent.event.in_(["view", "download"]))
+                             .group_by(DppEvent.pack_id, DppEvent.event)):
+            if ev == "view":
+                views[pid] = cnt
+            elif ev == "download":
+                downloads[pid] = cnt
+
     out = []
     for pk in packs:
-        subs = (db.query(DppAnswer)
-                .filter(DppAnswer.pack_id == pk.id, DppAnswer.status != "staged")
-                .all())
-        checked = sum(1 for a in subs if a.status == "checked")
-        tname = ""
-        tp = db.query(TeacherProfile).filter(TeacherProfile.id == pk.teacher_id).first()
-        if tp and tp.user_id:
-            u = db.query(_U).filter(_U.id == tp.user_id).first()
-            tname = u.name if u else ""
-        if not subs and not tname:
-            tname = ""
+        total = sub_total.get(pk.id, 0)
+        chk = sub_checked.get(pk.id, 0)
         out.append({"id": pk.id, "title": pk.title or "DPP", "subject": pk.subject or "",
                     "chapter": pk.chapter or "", "part": pk.part or "",
                     "class_name": getattr(pk, "class_name", "") or "",
                     "medium": pk.medium or "", "source": pk.source or "",
-                    "teacher": tname,
+                    "teacher": tmap.get(pk.teacher_id, ""),
                     "created_at": pk.created_at.strftime("%d %b %Y") if pk.created_at else "",
-                    "submitted": len(subs), "checked": checked,
-                    "pending": len(subs) - checked,
-                    "views": (db.query(DppEvent.student_id)
-                              .filter(DppEvent.pack_id == pk.id, DppEvent.event == "view")
-                              .distinct().count()),
-                    "downloads": (db.query(DppEvent.student_id)
-                                  .filter(DppEvent.pack_id == pk.id, DppEvent.event == "download")
-                                  .distinct().count())})
+                    "submitted": total, "checked": chk,
+                    "pending": total - chk,
+                    "views": views.get(pk.id, 0),
+                    "downloads": downloads.get(pk.id, 0)})
     return {"packs": out}
 
 

@@ -1539,10 +1539,16 @@ def admin_analytics(days: int = 30, db: Session = Depends(get_db), me=Depends(ge
 
     # ---- TEACHERS (assigned / submitted / approved / reshoot / overdue / output) ----
     teacher_tasks = [t for t in all_active if (t.creator_type or "teacher") == "teacher"]
+    # BATCH teacher names for the DISTINCT teachers (was 1 query PER task = N+1)
+    _atids = list({t.teacher_id for t in teacher_tasks if t.teacher_id})
+    _aname = {}
+    if _atids:
+        for _tid, _nm in db.query(TeacherProfile.id, User.name).join(
+                User, TeacherProfile.user_id == User.id).filter(TeacherProfile.id.in_(_atids)):
+            _aname[_tid] = _nm or ""
     tmap = {}
     for t in teacher_tasks:
-        tp = db.query(TeacherProfile).filter(TeacherProfile.id == t.teacher_id).first() if t.teacher_id else None
-        name = (tp.user.name if (tp and tp.user) else "Unassigned")
+        name = (_aname.get(t.teacher_id) or "Unassigned") if t.teacher_id else "Unassigned"
         d = tmap.setdefault(t.teacher_id or 0, {"name": name, "assigned": 0, "submitted": 0,
                                                 "approved": 0, "reshoot": 0, "overdue": 0, "output": 0})
         d["assigned"] += 1
