@@ -448,7 +448,7 @@ def prod_create_youtuber_series(payload: dict = Body(...), db: Session = Depends
     channel = (payload.get("channel_name") or "").strip()
     vtype = (payload.get("video_type") or "").strip()
     streaming = (payload.get("streaming") or "").strip()
-    priority = (payload.get("priority") or "urgent").strip()
+    priority = (payload.get("priority") or "normal").strip()
     remarks = (payload.get("remarks") or "").strip()
     reference = (payload.get("reference") or "").strip()
     appr = payload.get("approval_required")
@@ -504,7 +504,7 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
                   reference=(payload.get("reference") or "").strip(),
                   reference_video=(payload.get("reference_video") or "").strip(),
                   remarks=(payload.get("remarks") or "").strip(),
-                  priority=(payload.get("priority") or "urgent").strip(),
+                  priority=(payload.get("priority") or "normal").strip(),
                   proposed_by="admin", status="assigned")
     if payload.get("approval_required") is not None:
         t.approval_required = bool(payload.get("approval_required"))
@@ -556,7 +556,7 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
                                                      ProductionStaffProfile.staff_role == "graphics").first()
         if gp:
             g = GraphicsTask(task_id=None, graphics_id=gid, status="new",
-                             priority=(payload.get("priority") or "urgent"))
+                             priority=(payload.get("priority") or "normal"))
             # will be linked after flush; set fk once task has id
             t.graphics_id = gid
     try:
@@ -577,7 +577,7 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
         existing = db.query(GraphicsTask).filter(GraphicsTask.task_id == t.id).first()
         if not existing:
             g = GraphicsTask(task_id=t.id, graphics_id=t.graphics_id, status="new",
-                             priority=(payload.get("priority") or "urgent"),
+                             priority=(payload.get("priority") or "normal"),
                              instructions=(payload.get("graphics_instructions") or payload.get("graphics_notes") or "").strip(),
                              reference_image=(payload.get("graphics_reference") or payload.get("reference_image") or "").strip())
             # PM ne clipboard/upload se reference image(s) di ho to R2 pe upload karke store karo.
@@ -771,9 +771,15 @@ def assign_editor(tid: int, payload: dict = Body(...),
     # PM manually assigned an editor. Internal state stays 'editor_assigned' (what the
     # editor portal reads); it is DISPLAYED as "Editing Soon". Normal path from Approved
     # is validated; a late re-assignment from a deeper state is a PM oversight action.
-    _reassign = (t.lifecycle not in ("approved", "editor_assigned", "editing_soon", ""))
+    _prev = t.lifecycle or ""
+    _ename = ed.user.name if ed.user else "editor"
     pc.set_state(db, t, "editor_assigned", actor=me, event="editor_assigned",
-                 meta={"note": "Assigned to " + (ed.user.name if ed.user else "editor")}, force=_reassign)
+                 meta={"note": "Assigned to " + _ename}, force=_reassign)
+    if _prev == "editor_assigned":
+        # state didn't change -> set_state skipped the timeline event; log it so the
+        # (re)assignment always shows up in the timeline.
+        pc.log_event(db, t, me, "editor_assigned", new_state="editor_assigned",
+                     meta={"note": "Editor changed to " + _ename})
     if ed.user_id:
         pc.notify(db, ed.user_id, "New Editing Task",
                   f'You have been assigned to edit: "{t.title}".', "video_task", link=str(t.id))

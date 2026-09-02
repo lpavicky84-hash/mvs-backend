@@ -7017,7 +7017,7 @@ function openYtAssign(){
     +'<div class="form-group"><label>Channel</label><select id="yta-ch" class="input">'+chOpt+'</select></div>'
     +'<div class="form-group"><label>Video Type</label><select id="yta-ty" class="input">'+tyOpt+'</select></div>'
     +'<div class="form-group"><label>Format</label><select id="yta-stream" class="input"><option value="">— Not set —</option><option value="recorded">Recorded</option><option value="live">Live</option></select></div>'
-    +'<div class="form-group"><label>Priority</label><select id="yta-pri" class="input"><option value="urgent">Urgent</option><option value="most_urgent">Most Urgent</option></select></div>'
+    +'<div class="form-group"><label>Priority</label><select id="yta-pri" class="input"><option value="normal">&mdash; Normal &mdash;</option><option value="urgent">Urgent</option></select></div>'
     +'<div class="form-group" style="grid-column:1/-1"><label>Deadline</label><input id="yta-dl" class="input" type="datetime-local"></div>'
     +'<div class="form-group" style="grid-column:1/-1"><label>Reference / Brief <span style="font-weight:600;color:var(--text-muted)">(optional)</span></label><input id="yta-ref" class="input" placeholder="Reference link or note"></div>'
     +'<div class="form-group" style="grid-column:1/-1"><label>Remarks <span style="font-weight:600;color:var(--text-muted)">(optional)</span></label><textarea id="yta-rem" class="input" rows="2" placeholder="Instructions for the youtuber"></textarea></div>'
@@ -7253,7 +7253,7 @@ function openYtSeries(){
     +'<div class="form-group"><label>Channel</label><select id="yts-ch" class="input">'+chOpt+'</select></div>'
     +'<div class="form-group"><label>Video Type</label><select id="yts-ty" class="input">'+tyOpt+'</select></div>'
     +'<div class="form-group"><label>Format</label><select id="yts-stream" class="input"><option value="">— Not set —</option><option value="recorded">Recorded</option><option value="live">Live</option></select></div>'
-    +'<div class="form-group"><label>Priority</label><select id="yts-pri" class="input"><option value="urgent">Urgent</option><option value="most_urgent">Most Urgent</option></select></div>'
+    +'<div class="form-group"><label>Priority</label><select id="yts-pri" class="input"><option value="normal">&mdash; Normal &mdash;</option><option value="urgent">Urgent</option></select></div>'
     +'<div class="form-group" style="grid-column:1/-1"><label>Deadline <span style="font-weight:600;color:var(--text-muted)">— same for all videos (optional)</span></label><input id="yts-dl" class="input" type="datetime-local"></div>'
     +'<div class="form-group" style="grid-column:1/-1"><label>Videos in this Series</label><div id="yts-vids">'+_ytSeriesRow()+_ytSeriesRow()+_ytSeriesRow()+'</div>'
       +'<button type="button" class="btn btn-ghost btn-sm" onclick="ytSeriesAddRow()" style="margin-top:2px">'+ic('upload')+' Add video</button></div>'
@@ -20773,10 +20773,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
             {g:'Account',items:[ {p:'notifs',t:'Notifications',i:'bell'}, {p:'profile',t:'Profile',i:'user'} ]} ] },
     youtuber:{ role:'youtuber', title:'Creator', sub:'Studio', api:'/api/youtuber',
       nav:[ {g:'Workspace',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'videos',t:'My Tasks',i:'video'},
-             {p:'yttoday',t:'Today',i:'calendar'}, {p:'ytweekly',t:'Weekly',i:'calendar'},
-             {p:'ytthumbs',t:'Thumbnail Review',i:'image'}, {p:'ytthumbchg',t:'Thumbnail Changes',i:'edit'},
-             {p:'board',t:'Production Board',i:'grid'}, {p:'thumbboard',t:'Thumbnail Board',i:'image'},
-             {p:'ytb:proposal',t:'Proposal Tasks',i:'edit'}, {p:'ytb:urgent',t:'Urgent Tasks',i:'alert'},
+             {p:'yttoday',t:'Today',i:'calendar'}, {p:'ytweekly',t:'Weekly',i:'calendar'} ]},
+            {g:'Thumbnails',items:[ {p:'ytthumbs',t:'Thumbnail Review',i:'image'}, {p:'ytthumbchg',t:'Thumbnail Changes',i:'edit'},
+             {p:'thumbboard',t:'Thumbnail Board',i:'image'} ]},
+            {g:'Production',items:[ {p:'board',t:'Production Board',i:'grid'}, {p:'ytb:urgent',t:'Urgent Tasks',i:'alert'},
              {p:'ytb:editing',t:'Editing Progress',i:'clock'}, {p:'ytb:ready',t:'Ready for YouTube',i:'upload'} ]},
             {g:'Insights',items:[ {p:'ytviews',t:'Realtime Views',i:'chart'}, {p:'yttimeline',t:'Timeline',i:'list'} ]},
             {g:'Account',items:[ {p:'notifs',t:'Notifications',i:'bell'}, {p:'profile',t:'Profile',i:'user'} ]} ] },
@@ -22510,7 +22510,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         window._ytApprovalReq=!!r.approval_required;
         html+='<div id="yt-spotlight"></div>';
         var YC=[['total_videos','Total Videos','videos','','video'],['uploaded','Uploaded','ytb:ready','good','upload'],
-                ['editing','Editing','ytb:editing','','edit'],['pending','Pending','ytb:proposal','warn','clock'],
+                ['editing','Editing','ytb:editing','','edit'],['pending','Pending','videos','warn','clock'],
                 ['total_views','Total Views','ytviews','','eye'],['highest_views','Highest Views','ytviews','good','star'],
                 ['weekly_uploads','Weekly Uploads','ytviews','','calendar'],['monthly_uploads','Monthly Uploads','ytviews','','chart']];
         html+='<div class="pk-grid">'+YC.map(function(x){
@@ -23060,7 +23060,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     _ytLoad(function(tasks){
       window._ytMyRaw=tasks;
       var channels=[], seen={}; tasks.forEach(function(t){ var c=t.channel_name||''; if(c&&!seen[c]){seen[c]=1;channels.push(c);} }); channels.sort();
-      body.innerHTML='<div class="ytf">'+
+      body.innerHTML='<div class="yt-newbar" style="margin-bottom:14px"><button class="p-btn p-btn-primary" onclick="ytNewTask()">+ New Video</button> <span style="color:var(--muted);font-size:.84rem;margin-left:8px">Propose to PM, or assign an editor directly for urgent videos.</span></div>'+
+        '<div class="ytf">'+
         '<div class="ytf-search">'+_YT_SVG_SEARCH+'<input id="yt-q" placeholder="Search by title, channel, type..." oninput="_ytMyApply()"></div>'+
         '<select id="yt-ch" onchange="_ytMyApply()"><option value="">All channels</option></select>'+
         '<select id="yt-dt" onchange="_ytMyApply()"><option value="">Any date</option><option value="today">Due today</option><option value="week">Next 7 days</option><option value="overdue">Overdue</option><option value="nodl">No deadline</option></select>'+
@@ -25058,7 +25059,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '<div class="form-grid vt-form" style="grid-template-columns:1fr 1fr"><div class="p-field"><label>Video Type</label><select id="yt-vtype" class="p-input">'+_tyOpts('')+'</select></div>'+
       '<div class="p-field"><label>Channel</label><select id="yt-channel" class="p-input">'+_chOpts('')+'</select></div></div>'+
       '<div class="form-grid vt-form" style="grid-template-columns:1fr 1fr"><div class="p-field"><label>Deadline</label><input id="yt-deadline" type="datetime-local" class="p-input"></div>'+
-      '<div class="p-field"><label>Priority</label><select id="yt-priority" class="p-input"><option value="urgent">Urgent</option><option value="most_urgent">Most Urgent</option></select></div></div>';
+      '<div class="p-field"><label>Priority <span class="vt-hint">(optional)</span></label><select id="yt-priority" class="p-input"><option value="">\u2014 Normal (no priority) \u2014</option><option value="urgent">Urgent</option></select></div></div>';
     var edSel='<div class="p-field"><label>Assign Editor <span class="vt-hint">(optional — PM/editor can also assign later)</span></label><select id="yt-editor" class="p-input">'+_ytOpts(window._ytEds,window._ytEd)+'</select></div>';
     var body;
     if(m==='ready'){
@@ -25109,7 +25110,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.ytNewTaskSubmit=function(){
     _ytCapture(); var k=window._ytKeep||{};
     var title=(k.title||'').trim(); if(!title){ toast('Title/topic required',true); return; }
-    var body={mode:window._ytMode,title:title,video_type:(k.vtype||''),channel:(k.channel||''),deadline:(k.deadline||''),editor_id:(k.ed||''),priority:(k.pri||'urgent')};
+    var body={mode:window._ytMode,title:title,video_type:(k.vtype||''),channel:(k.channel||''),deadline:(k.deadline||''),editor_id:(k.ed||''),priority:(k.pri||'normal')};
     if(window._ytMode==='ready'){
       if(!(k.link||'').trim()){ toast('Drive link required',true); return; }
       body.drive_link=(k.link||'').trim();
@@ -25129,7 +25130,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var resume=!!(window._awResume && window._aw && window._aw.data &&
                   (window._aw.data.title || window._aw.data.teacher_id || window._aw.data.youtuber_id ||
                    (window._aw.data.collab_all_ids&&window._aw.data.collab_all_ids.length) || window._aw.step>1));
-    if(!resume){ window._aw={step:1, data:{creator_type:(preCreator==='youtuber'?'youtuber':'teacher'), priority:'urgent'}, people:null}; }
+    if(!resume){ window._aw={step:1, data:{creator_type:(preCreator==='youtuber'?'youtuber':'teacher'), priority:'normal'}, people:null}; }
     window._awResume=false;
     var old=document.getElementById('prod-drawer'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='p-drawer'; dr.id='prod-drawer';
@@ -25349,7 +25350,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var ppl=aw.people||{}; var gfxList=ppl.graphics||[]; var edList=ppl.editors||[];
       var thumbYes=!!d.thumbnail_required;
       html+='<div class="p-field"><label>Deadline</label><input class="p-input" id="aw-deadline" type="datetime-local" value="'+esc(d.deadline||'')+'"></div>'+
-        '<div class="p-field"><label>Priority</label><select class="p-select" id="aw-priority"><option value="urgent"'+(d.priority!=='most_urgent'?' selected':'')+'>Urgent</option><option value="most_urgent"'+(d.priority==='most_urgent'?' selected':'')+'>Most Urgent</option></select></div>'+
+        '<div class="p-field"><label>Priority <span style="color:var(--muted);font-weight:600">(optional)</span></label><select class="p-select" id="aw-priority"><option value="normal"'+((d.priority!=='urgent'&&d.priority!=='most_urgent')?' selected':'')+'>\u2014 Normal (no priority) \u2014</option><option value="urgent"'+((d.priority==='urgent'||d.priority==='most_urgent')?' selected':'')+'>Urgent</option></select></div>'+
         '<div class="p-field"><label>Thumbnail required for this task?</label><select class="p-select" id="aw-thumbreq" onchange="awThumbToggle(this.value)">'+
           '<option value="no"'+(!thumbYes?' selected':'')+'>No \u2014 not needed</option>'+
           '<option value="yes"'+(thumbYes?' selected':'')+'>Yes \u2014 assign a graphics designer</option></select></div>'+
@@ -25379,7 +25380,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         (d.video_type?'<div><b>Video Type:</b> '+esc(d.video_type)+'</div>':'')+
         (d.subject?'<div><b>Subject:</b> '+esc(d.subject)+'</div>':'')+
         (d.channel_name?'<div><b>Channel:</b> '+esc(d.channel_name)+'</div>':'')+
-        '<div><b>Priority:</b> '+(d.priority==='most_urgent'?'Most Urgent':'Urgent')+'</div>'+
+        '<div><b>Priority:</b> '+((d.priority==='urgent'||d.priority==='most_urgent')?'Urgent':'Normal')+'</div>'+
         (d.deadline?'<div><b>Deadline:</b> '+esc(d.deadline.replace('T',' '))+'</div>':'')+
         (d.creator_type==='youtuber'?'<div><b>Approval:</b> '+(d.approval_required?'Required':'Not required')+'</div>':'')+
         '</div>';
