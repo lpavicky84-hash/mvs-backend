@@ -535,19 +535,30 @@ function _progBar(){
   b=document.createElement('div'); b.id='nprog'; (document.body||document.documentElement).appendChild(b); return b;
 }
 var _progN=0, _progT=null, _progW=0;
+var _progDelayT=null, _progShowing=false;
+function _progShow(){
+  _progShowing=true;
+  try{
+    var b=_progBar(); _progW=8; b.style.opacity='1'; b.style.width='8%';
+    if(_progT) clearInterval(_progT);
+    _progT=setInterval(function(){ _progW+=Math.max(.5,(90-_progW)*0.08); if(_progW>90)_progW=90; var e=document.getElementById('nprog'); if(e) e.style.width=_progW+'%'; },240);
+  }catch(e){}
+}
 function _progStart(){
   _progN++;
   if(_progN===1){
-    try{
-      var b=_progBar(); _progW=8; b.style.opacity='1'; b.style.width='8%';
-      if(_progT) clearInterval(_progT);
-      _progT=setInterval(function(){ _progW+=Math.max(.5,(90-_progW)*0.08); if(_progW>90)_progW=90; var e=document.getElementById('nprog'); if(e) e.style.width=_progW+'%'; },240);
-    }catch(e){}
+    // DELAY the bar: fast requests/polls (< 400ms) finish before it ever appears -> zero flicker.
+    // Only genuinely slow requests (where the user is actually waiting) show the bar.
+    if(_progDelayT) clearTimeout(_progDelayT);
+    _progDelayT=setTimeout(function(){ _progDelayT=null; if(_progN>0) _progShow(); }, 400);
   }
 }
 function _progDone(){
   _progN=Math.max(0,_progN-1);
   if(_progN===0){
+    if(_progDelayT){ clearTimeout(_progDelayT); _progDelayT=null; }   // finished before 400ms -> bar never showed
+    if(!_progShowing) return;
+    _progShowing=false;
     try{
       var b=_progBar();
       if(_progT){ clearInterval(_progT); _progT=null; }
@@ -22838,14 +22849,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '.ytf-add{padding:11px 14px;border:1px dashed #c98a2e;border-radius:12px;background:rgba(230,173,78,.09);cursor:pointer;font:inherit;font-size:.85rem;font-weight:700;color:#8a6d10;white-space:nowrap}',
       '.ytf-add:hover{background:rgba(230,173,78,.16)}',
       'body.dark .ytf-add{color:#e6ad4e}',
-      '.yts{position:relative;border-radius:20px;overflow:hidden;margin-bottom:18px;background:radial-gradient(120% 140% at 0% 0%,#241a08 0%,#15100a 55%,#0e0b07 100%);color:#f6eddb;box-shadow:0 16px 50px rgba(120,90,20,.28),inset 0 1px 0 rgba(255,255,255,.05);border:1px solid rgba(230,173,78,.18)}',
+      '.yts{position:relative;border-radius:20px;overflow:hidden;margin-bottom:18px;background:linear-gradient(120deg,#241a08 0%,#171009 42%,#0d0a06 100%);color:#f6eddb;box-shadow:0 18px 55px rgba(120,90,20,.30),inset 0 1px 0 rgba(255,255,255,.06);border:1px solid rgba(230,173,78,.2)}',
       '.yts-prio{position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#ff5252,#ff9800);z-index:3;box-shadow:0 0 14px rgba(255,120,60,.6)}',
       '.yts-count{position:absolute;top:14px;right:16px;font-size:.7rem;font-weight:700;letter-spacing:.03em;background:rgba(0,0,0,.4);padding:5px 12px;border-radius:999px;z-index:3;border:1px solid rgba(255,255,255,.08)}',
       '.yts-in{display:flex;min-height:220px}',
-      '.yts-thumb{position:relative;width:330px;flex:none;background-size:cover;background-position:center;overflow:hidden}',
+      '.yts-thumb{position:relative;width:340px;flex:none;background-size:contain;background-repeat:no-repeat;background-position:center;background-color:#0b0805;overflow:hidden}',
       '.yts-thumb.empty{background:linear-gradient(135deg,#e6ad4e,#a5791f);display:flex;align-items:center;justify-content:center;font-size:3.6rem;font-weight:800;color:#241a05}',
-      '.yts-shine{position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.22) 48%,transparent 62%);transform:translateX(-120%);animation:ytShine 4.5s ease-in-out infinite}',
-      '@keyframes ytShine{0%,72%{transform:translateX(-120%)}88%,100%{transform:translateX(120%)}}',
+      '.yts-shine{position:absolute;inset:0;z-index:2;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.18) 48%,transparent 62%);transform:translateX(-120%);animation:ytShine 4.8s ease-in-out infinite}',
+      '@keyframes ytShine{0%,74%{transform:translateX(-120%)}90%,100%{transform:translateX(120%)}}',
       '.yts-body{flex:1;padding:24px 28px;display:flex;flex-direction:column;gap:11px;min-width:0}',
       '.yts-eyebrow{font-size:.72rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#e6ad4e;display:flex;align-items:center;gap:8px}',
       '.yts-eyebrow svg{width:15px;height:15px}',
@@ -22956,17 +22967,21 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var dl=''; if(t.deadline_iso){ dl=String(t.deadline_iso).replace(' ','T').slice(0,16); }
       var opt=function(list,cur){ return '<option value="">\u2014 None \u2014</option>'+list.map(function(x){return '<option value="'+esc(x)+'"'+(x===cur?' selected':'')+'>'+esc(x)+'</option>';}).join(''); };
       var pris=[['most_urgent','Most Urgent'],['urgent','Urgent'],['normal','Normal']];
-      var body='<div style="display:flex;flex-direction:column;gap:12px">'+
-        '<div class="form-group"><label>Title / Topic</label><input class="input" id="yte-title" value="'+esc(t.title||'')+'"></div>'+
-        '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
-          '<div class="form-group" style="flex:1;min-width:150px"><label>Channel</label><select class="input" id="yte-ch">'+opt(chs,t.channel_name||'')+'</select></div>'+
-          '<div class="form-group" style="flex:1;min-width:150px"><label>Type</label><select class="input" id="yte-ty">'+opt(tys,t.video_type||'')+'</select></div>'+
+      var _fld='display:flex;flex-direction:column;gap:5px;min-width:0';
+      var _lbl='font-size:.8rem;font-weight:700;color:var(--text-muted)';
+      var _inp='width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card);font:inherit;font-size:.9rem;color:inherit';
+      var _row='display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px';
+      var body='<div style="display:flex;flex-direction:column;gap:14px">'+
+        '<div style="'+_fld+'"><label style="'+_lbl+'">Title / Topic</label><input id="yte-title" style="'+_inp+'" value="'+esc(t.title||'')+'"></div>'+
+        '<div style="'+_row+'">'+
+          '<div style="'+_fld+'"><label style="'+_lbl+'">Channel</label><select id="yte-ch" style="'+_inp+'">'+opt(chs,t.channel_name||'')+'</select></div>'+
+          '<div style="'+_fld+'"><label style="'+_lbl+'">Type</label><select id="yte-ty" style="'+_inp+'">'+opt(tys,t.video_type||'')+'</select></div>'+
         '</div>'+
-        '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
-          '<div class="form-group" style="flex:1;min-width:170px"><label>Deadline</label><input class="input" type="datetime-local" id="yte-dl" value="'+esc(dl)+'"></div>'+
-          '<div class="form-group" style="flex:1;min-width:140px"><label>Priority</label><select class="input" id="yte-pri">'+pris.map(function(p){return '<option value="'+p[0]+'"'+((t.priority||'urgent')===p[0]?' selected':'')+'>'+p[1]+'</option>';}).join('')+'</select></div>'+
+        '<div style="'+_row+'">'+
+          '<div style="'+_fld+'"><label style="'+_lbl+'">Deadline</label><input type="datetime-local" id="yte-dl" style="'+_inp+'" value="'+esc(dl)+'"></div>'+
+          '<div style="'+_fld+'"><label style="'+_lbl+'">Priority</label><select id="yte-pri" style="'+_inp+'">'+pris.map(function(p){return '<option value="'+p[0]+'"'+((t.priority||'urgent')===p[0]?' selected':'')+'>'+p[1]+'</option>';}).join('')+'</select></div>'+
         '</div>'+
-        '<div class="form-group"><label>Remarks / Notes</label><textarea class="input" id="yte-rem" rows="2">'+esc(t.remarks||'')+'</textarea></div></div>';
+        '<div style="'+_fld+'"><label style="'+_lbl+'">Remarks / Notes</label><textarea id="yte-rem" rows="2" style="'+_inp+';resize:vertical">'+esc(t.remarks||'')+'</textarea></div></div>';
       var footer='<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="yte-save" onclick="ytEditSave('+id+')">Save Changes</button>';
       showModal('Edit Task', body, footer);
     }).catch(function(e){ toast((e&&e.message)||'Could not load task',true); });

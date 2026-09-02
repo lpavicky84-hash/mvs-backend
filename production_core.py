@@ -554,7 +554,7 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
         "legacy_status": t.status or "",
         "next_action": next_action(db, t, g),
         "deadline": _dt_raw(t.deadline),
-        "deadline_iso": (t.deadline.strftime("%Y-%m-%dT%H:%M:%SZ") if t.deadline else ""),
+        "deadline_iso": (t.deadline.strftime("%Y-%m-%dT%H:%M:%S") if t.deadline else ""),  # LOCAL (IST), no Z — deadlines are already local; a Z made new Date() shift by the tz offset
         "deadline_flag": (lambda f: {"kind": f[0], "label": f[1]})(deadline_flag(t)),
         "editor_id": t.editor_id,
         "editor_name": _name_for_staff(db, t.editor_id),
