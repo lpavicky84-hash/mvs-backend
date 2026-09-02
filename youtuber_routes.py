@@ -771,6 +771,48 @@ def yt_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_
             changes.append("deadline")
     if not (t.title or "").strip():
         raise HTTPException(400, "Title zaroori hai")
+    # From the Edit modal: assign an editor / graphics ONLY if none is assigned yet.
+    from models import ProductionStaffProfile
+    _eid = str(payload.get("editor_id") or "").strip()
+    if _eid and not t.editor_id:
+        try:
+            ed = db.query(ProductionStaffProfile).filter(
+                ProductionStaffProfile.id == int(_eid),
+                ProductionStaffProfile.staff_role == "editor").first()
+            if ed:
+                t.editor_id = ed.id
+                try:
+                    pc.set_state(db, t, "editor_assigned", actor=me, event="editor_assigned", force=True)
+                except Exception:
+                    pass
+                if ed.user_id:
+                    pc.notify(db, ed.user_id, "New Editing Task",
+                              'You were assigned to edit "%s".' % t.title, "video_task", link=str(t.id))
+                pc.notify_pms(db, "Editor Assigned by Creator",
+                              '%s assigned an editor to "%s".' % (me.name, t.title), "production", link=str(t.id))
+                changes.append("editor")
+        except Exception:
+            pass
+    _gid = str(payload.get("graphics_id") or "").strip()
+    if _gid and not t.graphics_id:
+        try:
+            gr = db.query(ProductionStaffProfile).filter(
+                ProductionStaffProfile.id == int(_gid),
+                ProductionStaffProfile.staff_role == "graphics").first()
+            if gr:
+                g = pc.graphics_task(db, t, create=True)
+                g.graphics_id = gr.id
+                t.graphics_id = gr.id
+                if (g.status or "") in ("", "new"):
+                    g.status = "new"
+                if gr.user_id:
+                    pc.notify(db, gr.user_id, "New Thumbnail Task",
+                              'You were assigned a thumbnail for "%s".' % t.title, "video_task", link=str(t.id))
+                pc.notify_pms(db, "Graphics Assigned by Creator",
+                              '%s assigned graphics to "%s".' % (me.name, t.title), "production", link=str(t.id))
+                changes.append("graphics")
+        except Exception:
+            pass
     if changes:
         try:
             pc.log_event(db, t, me, "task_edited", new_state=t.lifecycle,

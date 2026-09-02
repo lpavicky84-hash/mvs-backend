@@ -22960,11 +22960,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     Promise.all([
       api(P.youtuber.api+'/videos/'+id),
       api(P.youtuber.api+'/channels').catch(function(){return {channels:[]};}),
-      api(P.youtuber.api+'/video-types').catch(function(){return {types:[]};})
+      api(P.youtuber.api+'/video-types').catch(function(){return {types:[]};}),
+      api(P.youtuber.api+'/editors').catch(function(){return {editors:[]};}),
+      api(P.youtuber.api+'/graphics').catch(function(){return {graphics:[]};})
     ]).then(function(res){
       var t=res[0]||{};
       var chs=((res[1]&&res[1].channels)||[]).map(function(c){return c.name;});
       var tys=((res[2]&&res[2].types)||[]).map(function(x){return x.name;});
+      var eds=(res[3]&&res[3].editors)||[]; var gfx=(res[4]&&res[4].graphics)||[];
       if(t.channel_name && chs.indexOf(t.channel_name)<0) chs.push(t.channel_name);
       if(t.video_type && tys.indexOf(t.video_type)<0) tys.push(t.video_type);
       chs.sort(); tys.sort();
@@ -22975,6 +22978,15 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var _lbl='font-size:.8rem;font-weight:700;color:var(--text-muted)';
       var _inp='width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card);font:inherit;font-size:.9rem;color:inherit';
       var _row='display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px';
+      var hasEd=!!(t.editor_id||t.editor_name); var hasGx=!!(t.graphics_id||(t.graphics&&t.graphics.graphics_id));
+      var _staffOpt=function(list){ return '<option value="">\u2014 Not assigned \u2014</option>'+list.map(function(x){return '<option value="'+x.id+'">'+esc(x.name||'')+'</option>';}).join(''); };
+      var assignRow='';
+      if(!hasEd || !hasGx){
+        assignRow='<div style="'+_row+'">'+
+          (!hasEd?'<div style="'+_fld+'"><label style="'+_lbl+'">Assign Editor <span style="color:var(--muted);font-weight:600">(optional)</span></label><select id="yte-editor" style="'+_inp+'">'+_staffOpt(eds)+'</select></div>':'')+
+          (!hasGx?'<div style="'+_fld+'"><label style="'+_lbl+'">Assign Graphics <span style="color:var(--muted);font-weight:600">(optional)</span></label><select id="yte-graphics" style="'+_inp+'">'+_staffOpt(gfx)+'</select></div>':'')+
+        '</div>';
+      }
       var body='<div style="display:flex;flex-direction:column;gap:14px">'+
         '<div style="'+_fld+'"><label style="'+_lbl+'">Title / Topic</label><input id="yte-title" style="'+_inp+'" value="'+esc(t.title||'')+'"></div>'+
         '<div style="'+_row+'">'+
@@ -22985,6 +22997,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           '<div style="'+_fld+'"><label style="'+_lbl+'">Deadline</label><input type="datetime-local" id="yte-dl" style="'+_inp+'" value="'+esc(dl)+'"></div>'+
           '<div style="'+_fld+'"><label style="'+_lbl+'">Priority</label><select id="yte-pri" style="'+_inp+'">'+pris.map(function(p){return '<option value="'+p[0]+'"'+((t.priority||'urgent')===p[0]?' selected':'')+'>'+p[1]+'</option>';}).join('')+'</select></div>'+
         '</div>'+
+        assignRow+
         '<div style="'+_fld+'"><label style="'+_lbl+'">Remarks / Notes</label><textarea id="yte-rem" rows="2" style="'+_inp+';resize:vertical">'+esc(t.remarks||'')+'</textarea></div></div>';
       var footer='<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="yte-save" onclick="ytEditSave('+id+')">Save Changes</button>';
       showModal('Edit Task', body, footer);
@@ -22995,6 +23008,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var title=(g('yte-title')||'').trim(); if(!title){ toast('Title zaroori hai',true); return; }
     var btn=document.getElementById('yte-save'); if(btn){ btn.disabled=true; btn.textContent='Saving...'; }
     var body={title:title, channel:g('yte-ch'), video_type:g('yte-ty'), deadline:g('yte-dl'), priority:g('yte-pri'), remarks:g('yte-rem')};
+    var _ed=g('yte-editor'); if(_ed) body.editor_id=_ed;
+    var _gx=g('yte-graphics'); if(_gx) body.graphics_id=_gx;
     api(P.youtuber.api+'/videos/'+id+'/edit','POST',body).then(function(){ closeModal(); toast('Task updated \u2713'); _apiBust(); try{ _refresh('youtuber'); }catch(e){} })
       .catch(function(e){ if(btn){ btn.disabled=false; btn.textContent='Save Changes'; } toast((e&&e.message)||'Update failed',true); });
   };
