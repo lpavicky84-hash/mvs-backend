@@ -445,10 +445,16 @@ def get_doubts(
     _rids = [d.id for d in rows]
     _img_ids, _voice_ids, _ans_voice_ids, _ans_file_ids = set(), set(), set(), set()
     if _rids:
-        _img_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.image_b64) > 0).all()}
-        _voice_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.audio_b64) > 0).all()}
-        _ans_voice_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.answer_audio_b64) > 0).all()}
-        _ans_file_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.answer_attach_b64) > 0).all()}
+        # attachment existence in ONE pass (was 4 queries each reading the heavy base64 blobs)
+        for _i in range(0, len(_rids), 500):
+            for did, il, al, aal, afl in db.query(
+                    Doubt.id, func.length(Doubt.image_b64), func.length(Doubt.audio_b64),
+                    func.length(Doubt.answer_audio_b64), func.length(Doubt.answer_attach_b64)
+                ).filter(Doubt.id.in_(_rids[_i:_i + 500])):
+                if il: _img_ids.add(did)
+                if al: _voice_ids.add(did)
+                if aal: _ans_voice_ids.add(did)
+                if afl: _ans_file_ids.add(did)
     out = []
     # ---- batch-load taaki N+1 na ho (student names, thread responses, away-owner names) ----
     from models import DoubtResponse, StudentProfile, User as _U

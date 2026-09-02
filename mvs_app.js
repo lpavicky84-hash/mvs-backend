@@ -8583,12 +8583,14 @@ async function openStudentDoubts(sid,encName){ return openDoubtChat('teacher',si
 async function dbtRespond(role,id,iid){
   const inp=document.getElementById(iid); const body=(inp?inp.value:'').trim();
   if(!body){ toast('Please write a reply first.',true); return; }
+  if(inp) inp.disabled=true;   // lock during post — no double-submit, clear visual "working" state
   try{
     await api('/api/'+role+'/doubts/'+id+'/respond','POST',{body});
     toast('Reply added.');
+    if(inp){ inp.value=''; inp.disabled=false; }
     _apiForget('doubt'); // drop stale doubts cache so the reload shows the new reply at once
     if(role==='teacher') loadTDoubts(); else if(role==='student') loadSDoubts(); else loadADoubts();
-  }catch(e){ toast(e.message,true); }
+  }catch(e){ if(inp) inp.disabled=false; toast(e.message,true); }
 }
 async function tAssignDoubt(id){
   const sel=document.getElementById('dbt-as-'+id);
