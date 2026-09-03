@@ -3007,6 +3007,7 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
     special = sorted(_seen.values(),
                      key=lambda s: (s.get("kind") or "", s.get("subject") or ""))
     return {"tasks": out, "stats": stats, "special": special,
+            "urgent_enabled": (getattr(tp, "urgent_enabled", True) is not False),
             "next_deadline": (_task_out(db, nxt) if nxt else None)}
 
 
@@ -3137,6 +3138,8 @@ def vt_urgent(payload: dict = Body(...), db: Session = Depends(get_db),
     Koi approval nahi — turant submitted. Production manager ka flow same (approve/status/YT link).
     on-time = teacher ki di hui deadline tak UPLOAD hua ya nahi (upload pe compute hota hai)."""
     tp = _get_tp(current_user, db)
+    if getattr(tp, "urgent_enabled", True) is False:
+        raise HTTPException(403, "Urgent video submission is disabled for your account. Please propose the video instead.")
     title = (payload.get("title") or "").strip()
     if not title:
         raise HTTPException(400, "A video title is required")

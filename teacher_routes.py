@@ -6216,6 +6216,7 @@ def _ensure_v89(db):
         return
     from sqlalchemy import text as _text
     for stmt in [
+        "ALTER TABLE teacher_profiles ADD COLUMN urgent_enabled BOOLEAN DEFAULT TRUE",
         "ALTER TABLE teacher_profiles ADD COLUMN payout_passcode VARCHAR(255) NULL",
         "ALTER TABLE teacher_profiles ADD COLUMN letter_accept_version INTEGER DEFAULT 0",
         "ALTER TABLE teacher_profiles ADD COLUMN passcode_reset_pending BOOLEAN DEFAULT FALSE",

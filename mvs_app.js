@@ -9186,6 +9186,7 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
     const subjSpec=spec.filter(t=>(!_tvtSpecSub||t.subject===_tvtSpecSub)&&(!_tvtSpecCls||t.cls===_tvtSpecCls));
     let spD=0,spT=0; subjSpec.forEach(t=>{spD+=t.done||0;spT+=t.total||0});
     const urgentT=tasks.filter(t=>t.kind==='urgent');
+    const urgentEnabled=(d.urgent_enabled!==false);
     const normalT=tasks.filter(t=>t.kind!=='urgent');
     const fTasks=_tvtSpecSub?normalT.filter(t=>!t.subject||t.subject===_tvtSpecSub):normalT;
     // v91: jab tak teacher ek card pe click na kare, neeche ka data hidden rahe —
@@ -9225,10 +9226,10 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
     el.innerHTML=`${hero}${statCards}${mtHtml}${masterCards}
       <div class="vtm-actions" style="display:flex;gap:10px;margin:0 0 16px;flex-wrap:wrap;align-items:center">
         <button class="btn btn-primary" onclick="openTVTPropose()">${ic('plus')} Propose a Video</button>
-        <button class="btn vt-urgent-btn" onclick="openTVTUrgent()">${ic('alert')} Urgent Video</button>
-        <span style="font-size:.74rem;color:var(--text-muted)">Have a video idea? Propose it. Something urgent? Submit it directly — no approval needed.</span>
+        ${urgentEnabled?`<button class="btn vt-urgent-btn" onclick="openTVTUrgent()">${ic('alert')} Urgent Video</button>`:''}
+        <span style="font-size:.74rem;color:var(--text-muted)">Have a video idea? Propose it.${urgentEnabled?' Something urgent? Submit it directly — no approval needed.':''}</span>
       </div>
-      ${urgentT.length?`<div class="vtm-sec-cap" style="border-left-color:#dc2626">Urgent Videos · submitted directly to production</div>
+      ${(urgentEnabled&&urgentT.length)?`<div class="vtm-sec-cap" style="border-left-color:#dc2626">Urgent Videos · submitted directly to production</div>
       <div class="vt-grid" style="margin-bottom:18px">${urgentT.map(card).join('')}</div>`:''}
       <div class="card vv-card" style="margin-bottom:16px"><div class="card-header" style="cursor:pointer;user-select:none" onclick="_tvtVvToggle()"><h3>${ic('chart')} My Video Performance <span style="font-size:.7rem;font-weight:600;color:var(--text-muted)">— real-time YouTube views</span></h3><span class="vt-os-chev" id="t-vv-chev">${ic('chev-down')}</span></div><div class="card-body" id="t-vv-body" style="display:none"><div id="t-vv-wrap"></div></div></div>
       <div class="card vv-card" style="margin-bottom:16px"><div class="card-header" style="cursor:pointer;user-select:none" onclick="_tvtTgToggle()"><h3>${ic('clipboard')} My Monthly Targets <span style="font-size:.7rem;font-weight:600;color:var(--text-muted)">— my progress this month</span></h3><span class="vt-os-chev" id="t-tg-chev">${ic('chev-down')}</span></div><div class="card-body" id="t-tg-body" style="display:none"><div id="t-tg-wrap"></div></div></div>
@@ -11801,6 +11802,14 @@ async function doResetPassword(role,profileId){
     toast('Password reset successfully.');
   }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Reset Password'; }
 }
+async function toggleTeacherUrgent(pid,current,btn){
+  const next=!current;
+  try{
+    await api('/api/admin/teachers/'+pid+'/urgent','POST',{enabled:next});
+    if(btn){ btn.style.color=next?'#059669':'#b07f1e'; btn.style.fontWeight=next?'800':'400'; btn.innerHTML=ic('alert')+' Urgent: '+(next?'ON':'OFF'); btn.setAttribute('onclick',`toggleTeacherUrgent(${pid},${next?1:0},this)`); }
+    toast('Urgent video '+(next?'enabled':'disabled')+' for this teacher');
+  }catch(e){ toast((e&&e.message)||'Could not update',true); }
+}
 async function toggleTeacherStudents(pid,current,btn){
   const next=current?0:1;
   if(btn) btn.disabled=true;
@@ -11830,7 +11839,7 @@ async function loadATeachers(){
    html+=`<div class="tcard2"><div class="tcard2-head"><div class="tcard2-photo${t.has_photo?' clickable':''}" id="${ph}" onclick="viewPhoto('${ph}','${esc((t.name||'').replace(/'/g,''))}',${t.profile_id})" title="${t.has_photo?'View photo':'Upload photo'}">${esc(initials(t.name||'T'))}</div><div style="flex:1"><div class="tcard2-name">${esc(t.name)}</div><div class="tcard2-sub"><code>${esc(t.user_id)}</code> · ${esc(t.phone||'no phone')}</div><span class="tag ${t.is_active?'tag-done':'tag-low'}" style="margin-top:6px">${t.is_active?'Active':'Inactive'}</span></div></div>
      ${cls10}${cls12}${other}${catBlocks}${none}
      <div class="tcard2-stats"><div class="mini-stat"><div class="n">${t.total_classes_done||0}</div><div class="l">Classes</div></div><div class="mini-stat"><div class="n">${t.monthly_classes_done||0}</div><div class="l">This Month</div></div><div class="mini-stat"><div class="n">${t.reschedule_this_month||0}</div><div class="l">Reschedule</div></div></div>
-     <div class="tcard2-actions"><button class="btn btn-primary btn-sm" onclick="openNotifyTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('bell')} Notify</button><button class="btn btn-ghost btn-sm" onclick='openEditTeacher(${t.profile_id},${JSON.stringify({name:t.name,phone:t.phone,subjects:t.subjects||[],is_active:t.is_active}).replace(/'/g,"&#39;")})'>${ic('edit')} Edit</button><button class="btn btn-ghost btn-sm" onclick="openTeacherPhoto(${t.profile_id})">${ic('upload')} Photo</button><button class="btn btn-ghost btn-sm" onclick="openResetPassword('teacher',${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('shield')} Password</button><button class="btn btn-ghost btn-sm" onclick="openTeacherCategories(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('grid')} Categories</button><button class="btn btn-ghost btn-sm" onclick="toggleTeacherStudents(${t.profile_id},${t.can_see_students?1:0},this)" style="${t.can_see_students?'color:#059669;font-weight:800':'color:#b07f1e'}">${ic('users')} Students: ${t.can_see_students?'ON':'OFF'}</button><button class="btn btn-danger btn-sm" onclick="deleteTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
+     <div class="tcard2-actions"><button class="btn btn-primary btn-sm" onclick="openNotifyTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('bell')} Notify</button><button class="btn btn-ghost btn-sm" onclick='openEditTeacher(${t.profile_id},${JSON.stringify({name:t.name,phone:t.phone,subjects:t.subjects||[],is_active:t.is_active}).replace(/'/g,"&#39;")})'>${ic('edit')} Edit</button><button class="btn btn-ghost btn-sm" onclick="openTeacherPhoto(${t.profile_id})">${ic('upload')} Photo</button><button class="btn btn-ghost btn-sm" onclick="openResetPassword('teacher',${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('shield')} Password</button><button class="btn btn-ghost btn-sm" onclick="openTeacherCategories(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('grid')} Categories</button><button class="btn btn-ghost btn-sm" onclick="toggleTeacherStudents(${t.profile_id},${t.can_see_students?1:0},this)" style="${t.can_see_students?'color:#059669;font-weight:800':'color:#b07f1e'}">${ic('users')} Students: ${t.can_see_students?'ON':'OFF'}</button><button class="btn btn-ghost btn-sm" onclick="toggleTeacherUrgent(${t.profile_id},${t.urgent_enabled===false?0:1},this)" style="${t.urgent_enabled===false?'color:#b07f1e':'color:#059669;font-weight:800'}">${ic('alert')} Urgent: ${t.urgent_enabled===false?'OFF':'ON'}</button><button class="btn btn-danger btn-sm" onclick="deleteTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
  });
  html+=`</div>`;
  el.innerHTML=html;
@@ -15617,6 +15626,7 @@ async function _plSubmitSend(id, body){
 }
 window._plRetrySubmit=function(){ if(window._plRetryBody!=null && window._plRetryId!=null) _plSubmitSend(window._plRetryId, window._plRetryBody); };
 function _examPickFile(inp){ const f=inp.files[0]; window._examFile=f; const n=document.getElementById('pl-file-name'); if(n) n.textContent=f?('Selected: '+f.name):''; }
+function _finalThumb(t){ try{ var g=t.graphics||{}; if((g.graphics_id||g.graphics_name)&&(g.status||'')!=='approved') return ''; }catch(e){} return (t&&t.thumbnail)||''; }
 function _fileB64(file){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); }); }
 // Compress an image file BEFORE upload: full-res photos (3-8MB) -> small JPEG (~100-300KB).
 // Cuts upload time (R2 round-trip), Railway RAM (smaller payload in memory) and later egress.
@@ -22890,7 +22900,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _workCard(portal,t){
     var g=t.graphics||{};
     var lc=t.lifecycle||'';
-    var thumb=(g.thumbnail_url||t.thumbnail_link||'');
+    var thumb=_finalThumb(t); if(!thumb && t.youtube_url){ var _yiA=_ytId(t.youtube_url); if(_yiA) thumb='https://img.youtube.com/vi/'+_yiA+'/hqdefault.jpg'; }
     if(!thumb && t.youtube_url){ var _yi=_ytId(t.youtube_url); if(_yi) thumb='https://img.youtube.com/vi/'+_yi+'/mqdefault.jpg'; }
     var thumbHtml=thumb?'<img class="pw-thumb" src="'+esc(thumb)+'" alt="" loading="lazy">':'';
     var urgent=(t.priority==='urgent')?'<span class="pw-urgent">URGENT</span>':'';
@@ -23724,7 +23734,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   function _prodTaskCard(portal,t){
     var g=t.graphics||{}; var lc=t.lifecycle||'';
-    var thumb=(t.thumbnail||''); if(!thumb && t.youtube_url){ var yi=_ytId(t.youtube_url); if(yi) thumb='https://img.youtube.com/vi/'+yi+'/hqdefault.jpg'; }
+    var thumb=_finalThumb(t); if(!thumb && t.youtube_url){ var yi=_ytId(t.youtube_url); if(yi) thumb='https://img.youtube.com/vi/'+yi+'/hqdefault.jpg'; }
     var st=_prodStatus(t);
     var letter=((t.title||'?').trim().charAt(0)||'?').toUpperCase();
     var hcol=_PTC_HCOL[(t.id||0)%_PTC_HCOL.length];
@@ -23753,7 +23763,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(t.streaming) chips.push('<span class="pw-chip'+(/live/i.test(t.streaming)?' pwlive':'')+'">'+esc(t.streaming)+'</span>');
     if(t.editor_name) chips.push('<span class="pw-chip ed">Editor: '+esc(t.editor_name)+'</span>');
     if(g.graphics_name) chips.push('<span class="pw-chip gr">Graphics: '+esc(g.graphics_name)+'</span>');
-    var _hasThumb=!!(t.thumbnail||t.thumbnail_link||t.thumbnail_b64);
+    var _hasThumb=!!_finalThumb(t);
     if(t.creator_type==='youtuber'){
       if(!_hasThumb && !g.graphics_name) chips.push('<span class="pw-chip pw-pend">\u26a0 Thumbnail pending</span>');
       if(!t.editor_name && ['creator_working','pm_review','approved','editor_assigned','editing','editing_paused','editing_done','qc_pending','ready_for_youtube'].indexOf(t.lifecycle)>=0) chips.push('<span class="pw-chip pw-pend">\u26a0 Editor pending</span>');
@@ -23852,7 +23862,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(t.deadline) meta.push('Due '+esc(t.deadline));
     var urg=(t.priority==='urgent')?'<span class="pw-urgent">URGENT</span>':'';
     var df=t.deadline_flag||{}; var dl=(df.kind&&['overdue','today','soon'].indexOf(df.kind)>=0)?'<span class="pt-dl '+df.kind+'">'+esc(df.label)+'</span>':'';
-    var _th=(_g.thumbnail_url||t.thumbnail_link||''); if(!_th && t.youtube_url){ var _yi2=_ytId(t.youtube_url); if(_yi2) _th='https://img.youtube.com/vi/'+_yi2+'/mqdefault.jpg'; }
+    var _th=_finalThumb(t); if(!_th && t.youtube_url){ var _yi2=_ytId(t.youtube_url); if(_yi2) _th='https://img.youtube.com/vi/'+_yi2+'/mqdefault.jpg'; }
     var _thumb=_th?'<img class="pt-thumb" src="'+esc(_th)+'" alt="" loading="lazy">':'';
     return '<div class="pt-row" data-ptc="'+t.id+'" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+_thumb+
       '<div class="pt-main"><div class="pt-title">'+esc(t.title||'Untitled')+urg+'</div>'+
@@ -24336,7 +24346,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         var states=col[0].split(','); var items=tasks.filter(function(t){return states.indexOf(t.lifecycle)>=0;});
         html+='<div class="pb-col"><h4><span>'+esc(col[1])+'</span><span>'+items.length+'</span></h4>'+
           (items.length?items.map(function(t){
-            var _th=(t.thumbnail||(t.graphics&&t.graphics.thumbnail_url)||t.thumbnail_link||'');
+            var _th=_finalThumb(t);
             if(!_th && t.youtube_url){ var _yi=_ytId(t.youtube_url); if(_yi) _th='https://img.youtube.com/vi/'+_yi+'/hqdefault.jpg'; }
             var _thh=_th?'<div class="pbm-thumb" style="background-image:url('+esc(_th)+')" onclick="event.stopPropagation();prodThumbView(\''+esc(_th)+'\')" title="Tap to view full size"><span class="pbm-view">'+ic('expand')+'</span></div>':'';
             return '<div class="pb-mini" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+_thh+'<div class="pbm-b"><div class="pbm-t">'+esc(t.title||'')+'</div><div class="pt-ref" style="margin-top:4px">'+esc(t.ref_code||'')+'</div></div></div>';

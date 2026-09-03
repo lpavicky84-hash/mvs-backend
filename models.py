@@ -136,6 +136,7 @@ class TeacherProfile(Base):
     subjects       = Column(JSON)        # flat ["Physics","Chemistry"]
     subject_classes = Column(JSON)       # [{"subject":"Physics","class":"12"}, ...]
     gender         = Column(String(10), nullable=True)   # male | female
+    urgent_enabled = Column(Boolean, default=True)        # admin toggle: show Urgent Video option to this teacher
     phone          = Column(String(15), nullable=True)
     photo_b64      = Column(_PHOTO, nullable=True)
     batch          = Column(String(50))

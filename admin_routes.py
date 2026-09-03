@@ -284,6 +284,19 @@ def _derive_subject_classes(profile, db):
     return out
 
 
+@router.post("/teachers/{profile_id}/urgent")
+def admin_teacher_urgent(profile_id: int, payload: dict = Body(...),
+                         db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin toggle: show/hide the Urgent Video option for a specific teacher."""
+    from models import TeacherProfile
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == int(profile_id)).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    tp.urgent_enabled = bool(payload.get("enabled"))
+    db.commit()
+    return {"ok": True, "urgent_enabled": tp.urgent_enabled}
+
+
 @router.get("/teachers")
 def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
     teachers = db.query(User).filter(User.role == UserRole.teacher).all()
@@ -347,6 +360,7 @@ def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
                 "user_id": t.user_id,
                 "phone": profile.phone,
                 "has_photo": bool(profile.photo_b64),
+                "urgent_enabled": (getattr(profile, "urgent_enabled", True) is not False),
                 "is_active": t.is_active,
                 "subjects": profile.subjects,
                 "subject_classes": _derive_subject_classes(profile, db),
