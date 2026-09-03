@@ -2093,6 +2093,34 @@ def prod_approve_proposal(tid: int, payload: dict = Body(default={}),
     _tlink = (payload.get("thumbnail_link") or "").strip()
     if _tlink:
         t.thumbnail_link = _tlink
+    # Prepared thumbnail: record who made it + rating, so it shows in that designer's portal
+    _mb = str(payload.get("thumbnail_made_by") or "").strip()
+    if _mb:
+        try:
+            from models import ProductionStaffProfile as _PSP
+            _mkr = db.query(_PSP).filter(_PSP.id == int(_mb), _PSP.staff_role == "graphics").first()
+            if _mkr:
+                g = pc.graphics_task(db, t, create=True)
+                g.graphics_id = _mkr.id
+                t.graphics_id = _mkr.id
+                if t.thumbnail_link:
+                    g.thumbnail_url = t.thumbnail_link
+                g.status = "approved"
+                g.approved_at = datetime.utcnow()
+                try:
+                    _rt = int(payload.get("thumbnail_rating") or 0)
+                    if 1 <= _rt <= 5:
+                        g.quality_rating = _rt
+                except Exception:
+                    pass
+                pc.log_event(db, t, me, "thumbnail_approved", new_state=t.lifecycle,
+                             meta={"note": "Prepared thumbnail credited to designer" + ((" (%d/5)" % g.quality_rating) if getattr(g, "quality_rating", 0) else "")})
+                if _mkr.user_id:
+                    pc.notify(db, _mkr.user_id, "Thumbnail Credited",
+                              'Your thumbnail for "%s" was used.' % t.title,
+                              "appreciation" if (getattr(g, "quality_rating", 0) or 0) >= 4 else "video_task", link=str(t.id))
+        except Exception:
+            pass
     # Assign to graphics (with multiple reference images) if the PM chose a designer
     _gid = str(payload.get("graphics_id") or "").strip()
     if _gid:
