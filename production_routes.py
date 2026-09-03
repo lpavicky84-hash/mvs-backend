@@ -2107,17 +2107,32 @@ def prod_approve_proposal(tid: int, payload: dict = Body(default={}),
                 t.graphics_id = gr.id
                 if (g.status or "") in ("", "new"):
                     g.status = "new"
+                _all_refs = []
                 _refs = payload.get("reference_images")
                 if _refs:
                     _ru = pc.save_images(db, t, _refs if isinstance(_refs, list) else [_refs],
                                          "reference", None, me, return_urls=True) or []
-                    if _ru:
-                        g.reference_image = _ru[0]
-                        try:
-                            import json as _jr
-                            g.reference_images = _jr.dumps(_ru)
-                        except Exception:
-                            pass
+                    _all_refs.extend(_ru)
+                # teacher's proposed reference thumbnail (from proposal time) -> designer ko auto mile
+                _tlnk = (t.thumbnail_link or "").strip()
+                if _tlnk and _tlnk.startswith("http") and _tlnk not in _all_refs:
+                    _all_refs.append(_tlnk)
+                _tb = getattr(t, "thumbnail_b64", "") or ""
+                if _tb and isinstance(_tb, str) and _tb.startswith("data:"):
+                    try:
+                        _tu = pc.save_images(db, t, [_tb], "reference", None, me, return_urls=True) or []
+                        for _u in _tu:
+                            if _u not in _all_refs:
+                                _all_refs.append(_u)
+                    except Exception:
+                        pass
+                if _all_refs:
+                    g.reference_image = _all_refs[0]
+                    try:
+                        import json as _jr
+                        g.reference_images = _jr.dumps(_all_refs)
+                    except Exception:
+                        pass
                 if gr.user_id:
                     pc.notify(db, gr.user_id, "New Thumbnail Task",
                               'You were assigned a thumbnail for "%s".' % t.title, "video_task", link=str(t.id))

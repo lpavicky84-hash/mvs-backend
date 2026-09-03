@@ -22688,17 +22688,24 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '<div class="p-field"><label>Remarks for creator (optional)</label><textarea class="p-area" id="pa-remarks">'+esc(t.remarks||'')+'</textarea></div>'+
       '<div class="p-field" style="border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--bg)"><label style="font-weight:800">Thumbnail</label>'+
         '<div class="p-opt" style="margin:2px 0 10px">Bana hua hai to upload karo, ya graphics ko assign karke reference do.</div>'+
+        (t.thumbnail?('<div style="margin-bottom:10px"><div style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:4px">Teacher\\u2019s reference (from proposal) \\u2014 designer ko auto milega</div><img loading="lazy" src="'+esc(t.thumbnail)+'" style="max-width:150px;border-radius:8px;border:1px solid var(--border)"></div>'):'')+
         '<label style="font-size:.82rem;font-weight:700">Final thumbnail (optional)</label>'+
-        '<div id="pa-thumb-prev" style="margin:6px 0">'+(window._paThumb?'<img loading="lazy" src="'+window._paThumb+'" style="max-width:170px;border-radius:8px">':'')+'</div>'+
-        '<button class="p-btn" onclick="document.getElementById(\'pa-thumb-file\').click()">Upload Image</button>'+(window._paThumb?' <button class="p-btn" style="color:#b91c1c" onclick="paClearThumb()">Remove</button>':'')+
+        '<div id="pa-thumb-zone" onclick="window._paPasteTgt=\'thumb\'" ondragover="event.preventDefault()" ondrop="event.preventDefault();var f=(event.dataTransfer.files||[])[0];if(f)_paThumbRead(f);" style="border:1px dashed var(--border);border-radius:10px;padding:10px;margin:6px 0">'+
+          '<div id="pa-thumb-prev" style="margin-bottom:6px">'+(window._paThumb?'<img loading="lazy" src="'+window._paThumb+'" style="max-width:170px;border-radius:8px">':'')+'</div>'+
+          '<button class="p-btn" onclick="event.stopPropagation();window._paPasteTgt=\'thumb\';document.getElementById(\'pa-thumb-file\').click()">Upload Image</button>'+(window._paThumb?' <button class="p-btn" style="color:#b91c1c" onclick="event.stopPropagation();paClearThumb()">Remove</button>':'')+
+          ' <span class="p-opt" style="font-size:.74rem">or drop / paste (Ctrl+V) here</span>'+
+        '</div>'+
         '<input type="file" id="pa-thumb-file" accept="image/*" style="display:none" onchange="_paThumbRead(this.files[0])">'+
-        '<input class="p-input" id="pa-thumblink" style="margin-top:8px" placeholder="or paste a drive link">'+
+        '<input class="p-input" id="pa-thumblink" placeholder="or paste a drive link">'+
         '<div style="border-top:1px solid var(--border);margin:12px 0 8px"></div>'+
         '<label style="font-size:.82rem;font-weight:700">OR assign to graphics (thumbnail banwana ho)</label>'+
         '<select class="p-select" id="pa-graphics" style="margin-top:5px"><option value="">\u2014 Not assigned \u2014</option>'+gfxList.map(function(x){return '<option value="'+x.id+'">'+esc(x.name||'')+'</option>';}).join('')+'</select>'+
         '<label style="font-size:.82rem;margin-top:8px;display:block">Reference images (multiple \u2014 for the designer)</label>'+
-        '<div class="thumb-gal" id="pa-ref-gal">'+((window._paRefs||[]).map(function(u,i){return '<div class="thumb-cell"><span class="thumb-n">Ref '+(i+1)+'</span><img loading="lazy" src="'+u+'"><button class="thumb-sel-full" style="color:#b91c1c" onclick="paRemoveRef('+i+')">Remove</button></div>';}).join(''))+'</div>'+
-        '<button class="p-btn ytf-add" style="margin-top:6px" onclick="document.getElementById(\'pa-ref-file\').click()">+ Add reference</button>'+
+        '<div id="pa-ref-zone" onclick="window._paPasteTgt=\'ref\'" ondragover="event.preventDefault()" ondrop="event.preventDefault();Array.prototype.forEach.call(event.dataTransfer.files||[],function(f){_paAddRef(f);});" style="border:1px dashed var(--border);border-radius:10px;padding:10px;margin-top:5px">'+
+          '<div class="thumb-gal" id="pa-ref-gal">'+((window._paRefs||[]).map(function(u,i){return '<div class="thumb-cell"><span class="thumb-n">Ref '+(i+1)+'</span><img loading="lazy" src="'+u+'"><button class="thumb-sel-full" style="color:#b91c1c" onclick="paRemoveRef('+i+')">Remove</button></div>';}).join(''))+'</div>'+
+          '<button class="p-btn ytf-add" style="margin-top:6px" onclick="event.stopPropagation();window._paPasteTgt=\'ref\';document.getElementById(\'pa-ref-file\').click()">+ Add reference</button>'+
+          ' <span class="p-opt" style="font-size:.74rem">or drop / paste (Ctrl+V) here</span>'+
+        '</div>'+
         '<input type="file" id="pa-ref-file" accept="image/*" multiple style="display:none" onchange="Array.prototype.forEach.call(this.files,function(f){_paAddRef(f);})">'+
       '</div>';
     var old=document.getElementById('prod-modal2'); if(old) old.remove();
@@ -22708,6 +22715,15 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="document.getElementById(\'prod-modal2\').remove()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodAprSave()">Approve &amp; Assign</button></div></div></div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) dr.remove(); });
     document.body.appendChild(dr);
+    window._paPasteTgt='thumb';
+    if(window._paPaste) document.removeEventListener('paste',window._paPaste);
+    window._paPaste=function(e){
+      if(!document.getElementById('prod-modal2')){ document.removeEventListener('paste',window._paPaste); return; }
+      var ae=document.activeElement; if(ae && (ae.id==='pa-thumblink'||ae.id==='pa-title'||ae.id==='pa-reference'||ae.id==='pa-remarks')) return;
+      var items=(e.clipboardData||{}).items||[];
+      for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ var f=items[i].getAsFile(); if((window._paPasteTgt||'thumb')==='ref') _paAddRef(f); else _paThumbRead(f); e.preventDefault(); } }
+    };
+    document.addEventListener('paste',window._paPaste);
   }
   window.prodAprCollabToggle=function(v){
     var A=window._prodApr; if(!A) return;
