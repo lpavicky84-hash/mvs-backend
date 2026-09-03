@@ -22843,7 +22843,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     api(P.production.api+'/proposals/'+A.id+'/approve','POST',body).then(function(){
       var old=document.getElementById('prod-modal2'); if(old) old.remove();
-      toast('Approved \u2014 assigned to creator'); _refresh('production');
+      toast('Approved \u2014 assigned to creator'); _apiBust(); _refresh('production');
     }).catch(function(e){ toast((e&&e.message)||'Could not approve',true); });
   };
   window.prodDeclineProposal=function(id){
@@ -22859,7 +22859,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var rem=((document.getElementById('pa-decline-rem')||{}).value||'').trim();
     api(P.production.api+'/proposals/'+id+'/decline','POST',{remarks:rem}).then(function(){
       var old=document.getElementById('prod-modal2'); if(old) old.remove();
-      toast('Proposal declined'); _refresh('production');
+      toast('Proposal declined'); _apiBust(); _refresh('production');
     }).catch(function(e){ toast((e&&e.message)||'Could not decline',true); });
   };  function _workFilter(portal,arr){
     var out=arr;

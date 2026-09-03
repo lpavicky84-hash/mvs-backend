@@ -610,7 +610,7 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
         "submitted_link": t.submitted_link or "",
         "created_at": _dt(t.created_at),
         # card thumbnail: graphics-made thumbnail first, else the one uploaded at assign time
-        "thumbnail": ((g.thumbnail_url if g else "") or getattr(t, "thumbnail_b64", "") or (t.thumbnail_link or "")),
+        "thumbnail": (((g.thumbnail_url or "") if (g and (g.status or "") == "approved") else "") if g else (getattr(t, "thumbnail_b64", "") or (t.thumbnail_link or ""))),
         "graphics": {
             "id": (g.id if g else None),
             "graphics_id": (g.graphics_id if g else None),
