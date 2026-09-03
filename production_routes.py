@@ -2074,6 +2074,55 @@ def prod_approve_proposal(tid: int, payload: dict = Body(default={}),
         v = (payload.get(f) or "").strip()
         if v:
             setattr(t, f, v)
+    _cl = (payload.get("class_level") or "").strip()
+    if _cl:
+        try:
+            t.class_level = _cl
+        except Exception:
+            pass
+    # Final thumbnail: uploaded image or a drive link
+    _thumb = payload.get("thumbnail")
+    if _thumb:
+        try:
+            _tu = pc.save_images(db, t, _thumb if isinstance(_thumb, list) else [_thumb],
+                                 "thumbnail", None, me, return_urls=True) or []
+            if _tu:
+                t.thumbnail_link = _tu[0]
+        except Exception:
+            pass
+    _tlink = (payload.get("thumbnail_link") or "").strip()
+    if _tlink:
+        t.thumbnail_link = _tlink
+    # Assign to graphics (with multiple reference images) if the PM chose a designer
+    _gid = str(payload.get("graphics_id") or "").strip()
+    if _gid:
+        try:
+            from models import ProductionStaffProfile
+            gr = db.query(ProductionStaffProfile).filter(
+                ProductionStaffProfile.id == int(_gid),
+                ProductionStaffProfile.staff_role == "graphics").first()
+            if gr:
+                g = pc.graphics_task(db, t, create=True)
+                g.graphics_id = gr.id
+                t.graphics_id = gr.id
+                if (g.status or "") in ("", "new"):
+                    g.status = "new"
+                _refs = payload.get("reference_images")
+                if _refs:
+                    _ru = pc.save_images(db, t, _refs if isinstance(_refs, list) else [_refs],
+                                         "reference", None, me, return_urls=True) or []
+                    if _ru:
+                        g.reference_image = _ru[0]
+                        try:
+                            import json as _jr
+                            g.reference_images = _jr.dumps(_ru)
+                        except Exception:
+                            pass
+                if gr.user_id:
+                    pc.notify(db, gr.user_id, "New Thumbnail Task",
+                              'You were assigned a thumbnail for "%s".' % t.title, "video_task", link=str(t.id))
+        except Exception:
+            pass
     # collab teachers (primary stays the proposer)
     raw = payload.get("collab_teacher_ids")
     if isinstance(raw, list):

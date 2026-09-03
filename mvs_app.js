@@ -22638,6 +22638,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     ]).then(function(res){
       var t=res[0]||{}, channels=(res[1].channels)||[], types=(res[2].types)||[], ppl=res[3]||{};
       window._prodApr={id:id, task:t, people:ppl, channels:channels, types:types, collab_on:!!(t.collab_teacher_ids&&t.collab_teacher_ids.length), collab_ids:(t.collab_teacher_ids||[]).slice()};
+      window._paThumb=null; window._paRefs=[];
       _prodAprRender();
     }).catch(function(e){ toast((e&&e.message)||'Could not load proposal',true); });
   };
@@ -22649,6 +22650,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   function _prodAprRender(){
     var A=window._prodApr; var t=A.task; var d=t;
+    var gfxList=((A.people||{}).graphics||[]);
     var teacherName='';
     var tt=((A.people||{}).teachers||[]).filter(function(m){return m.id===t.teacher_id;})[0];
     teacherName=(tt&&tt.name)||t.teacher||'\u2014';
@@ -22679,10 +22681,26 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '<div class="p-field"><label>YouTube Channel</label><select class="p-select" id="pa-channel">'+chOpts+'</select></div>'+
       '<div class="p-field"><label>Streaming</label><select class="p-select" id="pa-stream"><option value="">Not set</option><option value="recorded"'+(t.streaming==='recorded'?' selected':'')+'>Recorded</option><option value="live"'+(t.streaming==='live'?' selected':'')+'>Live</option></select></div>'+
       '<div class="p-field"><label>Video Type</label><select class="p-select" id="pa-vtype">'+tyOpts+'</select></div>'+
+      '<div class="p-field"><label>Class</label><select class="p-select" id="pa-class"><option value="">\u2014 Auto from subject \u2014</option><option value="10"'+(String(t.class_level||t.class_name||'')==='10'?' selected':'')+'>Class 10</option><option value="12"'+(String(t.class_level||t.class_name||'')==='12'?' selected':'')+'>Class 12</option></select></div>'+
       '<div class="p-field"><label>Video Title</label><input class="p-input" id="pa-title" value="'+esc(t.title||'')+'"></div>'+
       '<div class="p-field"><label>Deadline'+(dl?' (from teacher\u2019s proposal)':'')+'</label><input class="p-input" id="pa-deadline" type="datetime-local" value="'+esc(dl)+'"></div>'+
       '<div class="p-field"><label>Reference / Brief (optional)</label><textarea class="p-area" id="pa-reference">'+esc(t.reference||'')+'</textarea></div>'+
-      '<div class="p-field"><label>Remarks for creator (optional)</label><textarea class="p-area" id="pa-remarks">'+esc(t.remarks||'')+'</textarea></div>';
+      '<div class="p-field"><label>Remarks for creator (optional)</label><textarea class="p-area" id="pa-remarks">'+esc(t.remarks||'')+'</textarea></div>'+
+      '<div class="p-field" style="border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--bg)"><label style="font-weight:800">Thumbnail</label>'+
+        '<div class="p-opt" style="margin:2px 0 10px">Bana hua hai to upload karo, ya graphics ko assign karke reference do.</div>'+
+        '<label style="font-size:.82rem;font-weight:700">Final thumbnail (optional)</label>'+
+        '<div id="pa-thumb-prev" style="margin:6px 0">'+(window._paThumb?'<img loading="lazy" src="'+window._paThumb+'" style="max-width:170px;border-radius:8px">':'')+'</div>'+
+        '<button class="p-btn" onclick="document.getElementById(\'pa-thumb-file\').click()">Upload Image</button>'+(window._paThumb?' <button class="p-btn" style="color:#b91c1c" onclick="paClearThumb()">Remove</button>':'')+
+        '<input type="file" id="pa-thumb-file" accept="image/*" style="display:none" onchange="_paThumbRead(this.files[0])">'+
+        '<input class="p-input" id="pa-thumblink" style="margin-top:8px" placeholder="or paste a drive link">'+
+        '<div style="border-top:1px solid var(--border);margin:12px 0 8px"></div>'+
+        '<label style="font-size:.82rem;font-weight:700">OR assign to graphics (thumbnail banwana ho)</label>'+
+        '<select class="p-select" id="pa-graphics" style="margin-top:5px"><option value="">\u2014 Not assigned \u2014</option>'+gfxList.map(function(x){return '<option value="'+x.id+'">'+esc(x.name||'')+'</option>';}).join('')+'</select>'+
+        '<label style="font-size:.82rem;margin-top:8px;display:block">Reference images (multiple \u2014 for the designer)</label>'+
+        '<div class="thumb-gal" id="pa-ref-gal">'+((window._paRefs||[]).map(function(u,i){return '<div class="thumb-cell"><span class="thumb-n">Ref '+(i+1)+'</span><img loading="lazy" src="'+u+'"><button class="thumb-sel-full" style="color:#b91c1c" onclick="paRemoveRef('+i+')">Remove</button></div>';}).join(''))+'</div>'+
+        '<button class="p-btn ytf-add" style="margin-top:6px" onclick="document.getElementById(\'pa-ref-file\').click()">+ Add reference</button>'+
+        '<input type="file" id="pa-ref-file" accept="image/*" multiple style="display:none" onchange="Array.prototype.forEach.call(this.files,function(f){_paAddRef(f);})">'+
+      '</div>';
     var old=document.getElementById('prod-modal2'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal2'; dr.style.zIndex='130';
     dr.innerHTML='<div class="p-modal" style="max-width:520px"><div class="pd-head"><div class="h-title">Approve Proposal &amp; Assign</div><button class="pd-x" onclick="document.getElementById(\'prod-modal2\').remove()">&times;</button></div>'+
@@ -22698,12 +22716,22 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     A.collab_on=(v==='yes');
     _prodAprRender();
   };
+  window._paThumbRead=function(f){ if(!f)return; _compressImg(f,1280,0.85,function(d){ if(!d)return; window._paThumb=d; var p=document.getElementById('pa-thumb-prev'); if(p)p.innerHTML='<img loading="lazy" src="'+d+'" style="max-width:170px;border-radius:8px">'; }); };
+  window.paClearThumb=function(){ window._paThumb=null; var p=document.getElementById('pa-thumb-prev'); if(p)p.innerHTML=''; };
+  function _paRefGalHtml(){ return (window._paRefs||[]).map(function(u,i){return '<div class="thumb-cell"><span class="thumb-n">Ref '+(i+1)+'</span><img loading="lazy" src="'+u+'"><button class="thumb-sel-full" style="color:#b91c1c" onclick="paRemoveRef('+i+')">Remove</button></div>';}).join(''); }
+  window._paAddRef=function(f){ if(!f)return; _compressImg(f,1280,0.85,function(d){ if(!d)return; window._paRefs=window._paRefs||[]; if(window._paRefs.length<8)window._paRefs.push(d); var g=document.getElementById('pa-ref-gal'); if(g)g.innerHTML=_paRefGalHtml(); }); };
+  window.paRemoveRef=function(i){ if(window._paRefs)window._paRefs.splice(i,1); var g=document.getElementById('pa-ref-gal'); if(g)g.innerHTML=_paRefGalHtml(); };
   window.prodAprSave=function(){
     var A=window._prodApr; if(!A) return; var g=function(x){var e=document.getElementById(x);return e?e.value:'';};
     var body={ title:(g('pa-title')||'').trim(), channel_name:(g('pa-channel')||'').trim(),
       video_type:(g('pa-vtype')||'').trim(), streaming:(g('pa-stream')||'').trim(),
       reference:(g('pa-reference')||'').trim(), remarks:(g('pa-remarks')||'').trim() };
     var dl=(g('pa-deadline')||'').trim(); if(dl) body.deadline=dl;
+    body.class_level=(g('pa-class')||'').trim();
+    var _tl=(g('pa-thumblink')||'').trim(); if(_tl) body.thumbnail_link=_tl;
+    if(window._paThumb) body.thumbnail=window._paThumb;
+    var _gid=(g('pa-graphics')||'').trim(); if(_gid) body.graphics_id=_gid;
+    if(window._paRefs && window._paRefs.length) body.reference_images=window._paRefs;
     if(A.collab_on){
       var sel=document.getElementById('pa-collab'); var ids=[];
       if(sel){ for(var i=0;i<sel.options.length;i++){ if(sel.options[i].selected) ids.push(parseInt(sel.options[i].value,10)); } }
