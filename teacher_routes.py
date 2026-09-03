@@ -70,6 +70,21 @@ def _hsafe(_n):
 router = APIRouter(prefix="/api/teacher", tags=["Teacher"])
 
 
+def _ensure_urgent_enabled_column():
+    """Runs at import so teacher_profiles.urgent_enabled ALWAYS exists before any query."""
+    try:
+        from database import engine
+        from sqlalchemy import text as _t
+        with engine.connect() as conn:
+            conn.execute(_t("ALTER TABLE teacher_profiles ADD COLUMN urgent_enabled BOOLEAN DEFAULT 1"))
+            conn.commit()
+    except Exception:
+        pass
+
+
+_ensure_urgent_enabled_column()
+
+
 # ---- per-teacher "can see students" access control (app_settings, no migration) ----
 STUDENTS_ACCESS_KEY = "teacher_students_ids"
 
