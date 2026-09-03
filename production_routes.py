@@ -2080,6 +2080,12 @@ def prod_approve_proposal(tid: int, payload: dict = Body(default={}),
             t.class_level = _cl
         except Exception:
             pass
+    _treq = payload.get("thumbnail_required")
+    if _treq is not None:
+        try:
+            t.thumbnail_required = bool(_treq)
+        except Exception:
+            pass
     # Final thumbnail: uploaded image or a drive link
     _thumb = payload.get("thumbnail")
     if _thumb:

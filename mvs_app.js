@@ -22759,6 +22759,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       (t.proposal_media_note?('<div class="p-field"><label>Teacher\u2019s note (references / slides)</label><div style="font-size:.85rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 11px;white-space:pre-wrap">'+esc(t.proposal_media_note)+'</div></div>'):'')+
       '<div class="p-field"><label>Remarks for creator (optional)</label><textarea class="p-area" id="pa-remarks">'+esc(t.remarks||'')+'</textarea></div>'+
       '<div class="p-field" style="border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--bg)"><label style="font-weight:800">Thumbnail</label>'+
+        '<select class="p-select" id="pa-thumb-req" onchange="prodAprThumbReq(this.value)" style="margin:4px 0 10px"><option value="yes">Thumbnail required? \u2014 Yes</option><option value="no">No \u2014 short video, thumbnail nahi chahiye</option></select>'+
+        '<div id="pa-thumb-wrap">'+
         ((t.proposal_refs&&t.proposal_refs.length)?('<div style="margin:4px 0 10px"><div style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:4px">Teacher\u2019s references (from proposal) \u2014 designer ko auto milenge</div><div class="thumb-gal">'+t.proposal_refs.map(function(u,i){return '<div class="thumb-cell"><span class="thumb-n">Ref '+(i+1)+'</span><img loading="lazy" src="'+esc(u)+'"><div class="thumb-vd"><button class="thumb-vd-btn" onclick="event.stopPropagation();prodLightbox(\''+esc(u)+'\')">\uD83D\uDC41 View</button><a class="thumb-vd-btn" href="'+esc(u)+'" download target="_blank" rel="noopener" onclick="event.stopPropagation()">\u2B07 Download</a></div></div>';}).join('')+'</div></div>'):(t.thumbnail?('<div style="margin:4px 0 10px"><div style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:4px">Teacher\u2019s reference (from proposal)</div><img loading="lazy" src="'+esc(t.thumbnail)+'" style="max-width:150px;border-radius:8px;border:1px solid var(--border)"></div>'):''))+
         '<select class="p-select" id="pa-thumb-mode" onchange="prodAprThumbMode(this.value)" style="margin:4px 0 10px"><option value="">\u2014 Is the thumbnail ready? \u2014</option><option value="ready">Thumbnail is prepared (upload it)</option><option value="need">Not prepared \u2014 assign to graphics</option></select>'+
         '<div id="pa-ready-box" style="display:none">'+
@@ -22783,6 +22785,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
             '<button class="p-btn ytf-add" style="margin-top:6px" onclick="event.stopPropagation();window._paPasteTgt=\'ref\';document.getElementById(\'pa-ref-file\').click()">+ Add reference</button>'+
             ' <span class="p-opt" style="font-size:.74rem">or drop / paste (Ctrl+V) here</span></div>'+
           '<input type="file" id="pa-ref-file" accept="image/*" multiple style="display:none" onchange="Array.prototype.forEach.call(this.files,function(f){_paAddRef(f);})">'+
+        '</div>'+
         '</div>'+
       '</div>';
     var old=document.getElementById('prod-modal2'); if(old) old.remove();
@@ -22809,6 +22812,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     A.collab_on=(v==='yes');
     _prodAprRender();
   };
+  window.prodAprThumbReq=function(v){ var w=document.getElementById('pa-thumb-wrap'); if(w) w.style.display=(v==='no')?'none':'block'; };
   window.prodAprThumbMode=function(v){ var r=document.getElementById('pa-ready-box'), n=document.getElementById('pa-need-box'); if(r)r.style.display=(v==='ready')?'block':'none'; if(n)n.style.display=(v==='need')?'block':'none'; };
   window._paSetStar=function(n){ window._paStar=n; var b=document.getElementById('pa-made-stars'); if(b)b.querySelectorAll('.gfx-star').forEach(function(s){ s.classList.toggle('on', parseInt(s.getAttribute('data-n'),10)<=n); }); };
   window._paThumbRead=function(f){ if(!f)return; _compressImg(f,1280,0.85,function(d){ if(!d)return; window._paThumb=d; var p=document.getElementById('pa-thumb-prev'); if(p)p.innerHTML='<img loading="lazy" src="'+d+'" style="max-width:170px;border-radius:8px">'; }); };
@@ -22823,7 +22827,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       reference:(g('pa-reference')||'').trim(), remarks:(g('pa-remarks')||'').trim() };
     var dl=(g('pa-deadline')||'').trim(); if(dl) body.deadline=dl;
     body.class_level=(g('pa-class')||'').trim();
-    var _mode=(g('pa-thumb-mode')||'').trim();
+    var _req=(g('pa-thumb-req')||'yes');
+    body.thumbnail_required=(_req!=='no');
+    var _mode=(_req==='no')?'':(g('pa-thumb-mode')||'').trim();
     if(_mode==='ready'){
       if(window._paThumb) body.thumbnail=window._paThumb;
       var _tl=(g('pa-thumblink')||'').trim(); if(_tl) body.thumbnail_link=_tl;
