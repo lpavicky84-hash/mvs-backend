@@ -2142,6 +2142,16 @@ def prod_approve_proposal(tid: int, payload: dict = Body(default={}),
                                          "reference", None, me, return_urls=True) or []
                     _all_refs.extend(_ru)
                 # teacher's proposed reference thumbnail (from proposal time) -> designer ko auto mile
+                # teacher's proposed reference thumbnails (multiple, from proposal) -> designer ko auto milein
+                try:
+                    import json as _jp
+                    _pr = _jp.loads(getattr(t, "proposal_refs", "") or "[]")
+                    if isinstance(_pr, list):
+                        for _pu in _pr:
+                            if _pu and _pu not in _all_refs:
+                                _all_refs.append(_pu)
+                except Exception:
+                    pass
                 _tlnk = (t.thumbnail_link or "").strip()
                 if _tlnk and _tlnk.startswith("http") and _tlnk not in _all_refs:
                     _all_refs.append(_tlnk)

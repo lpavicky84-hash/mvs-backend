@@ -57,7 +57,8 @@ _ensure_vtype_column()
 
 
 def _ensure_proposal_slide_columns():
-    for col in ("proposal_slide VARCHAR(600) DEFAULT ''", "proposal_slide_name VARCHAR(300) DEFAULT ''"):
+    for col in ("proposal_slide VARCHAR(600) DEFAULT ''", "proposal_slide_name VARCHAR(300) DEFAULT ''",
+                "proposal_refs TEXT", "proposal_slides TEXT"):
         try:
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE video_tasks ADD COLUMN " + col))
@@ -1422,6 +1423,33 @@ def _collab_ncmap(t):
         return {}
 
 
+def _vt_prefs(t):
+    import json as _j
+    raw = (getattr(t, "proposal_refs", "") or "").strip()
+    if raw.startswith("["):
+        try:
+            v = _j.loads(raw)
+            if isinstance(v, list):
+                return [x for x in v if x]
+        except Exception:
+            pass
+    return []
+
+
+def _vt_pslides(t):
+    import json as _j
+    raw = (getattr(t, "proposal_slides", "") or "").strip()
+    if raw.startswith("["):
+        try:
+            v = _j.loads(raw)
+            if isinstance(v, list):
+                return [x for x in v if isinstance(x, dict) and x.get("url")]
+        except Exception:
+            pass
+    s = getattr(t, "proposal_slide", "") or ""
+    return [{"url": s, "name": getattr(t, "proposal_slide_name", "") or "slide"}] if s else []
+
+
 def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None):
     def _tn(tid):
         if tname_map is not None:
@@ -1439,6 +1467,8 @@ def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None):
         "reference": t.reference or "", "remarks": t.remarks or "",
         "proposal_slide": (getattr(t, "proposal_slide", "") or ""),
         "proposal_slide_name": (getattr(t, "proposal_slide_name", "") or ""),
+        "proposal_refs": _vt_prefs(t),
+        "proposal_slides": _vt_pslides(t),
         "reference_video": getattr(t, "reference_video", "") or "",
         "deadline": t.deadline.strftime("%Y-%m-%dT%H:%M") if t.deadline else "",
         "deadline_nice": t.deadline.strftime("%d %b %Y, %I:%M %p") if t.deadline else "",
@@ -3052,16 +3082,35 @@ def vt_propose(payload: dict = Body(...), db: Session = Depends(get_db),
         except Exception: pass
     db.add(t)
     _hist_add(t, "proposal", "Proposed by teacher")
-    # teacher's proposed slide / PPT / PDF -> R2, shown to PM & admin at approve time
-    _slide = payload.get("slide_file")
-    if _slide:
+    import production_core as _pc
+    import json as _pjson
+    db.flush()
+    # multiple reference thumbnails -> proposal_refs (JSON array of URLs)
+    _refs = payload.get("reference_thumbnails") or []
+    if isinstance(_refs, list) and _refs:
         try:
-            import production_core as _pc
-            db.flush()
-            _su = _pc.save_images(db, t, [_slide], "slide", None, None, return_urls=True) or []
-            if _su:
-                t.proposal_slide = _su[0]
-                t.proposal_slide_name = (payload.get("slide_name") or "slide")[:280]
+            _ru = _pc.save_images(db, t, _refs, "reference", None, None, return_urls=True) or []
+            if _ru:
+                t.proposal_refs = _pjson.dumps(_ru)
+        except Exception:
+            pass
+    # multiple slides (pdf/ppt) -> proposal_slides (JSON array of {url,name})
+    _slides = payload.get("slides") or []
+    if isinstance(_slides, list) and _slides:
+        try:
+            _out = []
+            for _s in _slides[:6]:
+                _d = _s.get("data") if isinstance(_s, dict) else _s
+                _nm = (_s.get("name") if isinstance(_s, dict) else "slide") or "slide"
+                if not _d:
+                    continue
+                _su = _pc.save_images(db, t, [_d], "slide", None, None, return_urls=True) or []
+                if _su:
+                    _out.append({"url": _su[0], "name": _nm[:280]})
+            if _out:
+                t.proposal_slides = _pjson.dumps(_out)
+                t.proposal_slide = _out[0]["url"]
+                t.proposal_slide_name = _out[0]["name"]
         except Exception:
             pass
     uname = db.query(User).filter(User.id == tp.user_id).first()

@@ -9223,7 +9223,7 @@ async function openTVTPropose(){
   if(!types){ try{ types=((await api('/api/teacher/video-types')).types)||[]; window._vtTypesT=types; }catch(e){ types=[]; } }
   let chans=window._vtChansT;
   if(!chans){ try{ chans=((await api('/api/teacher/video-channels')).channels)||[]; window._vtChansT=chans; }catch(e){ chans=[]; } }
-  window._vtThumbB64=null; window._tvtSlide=null; window._tvtSlideName='';
+  window._vtThumbB64=null; window._vtRefThumbs=[]; window._tvtSlides=[];
   window._tvtPKind='task';
   const chOpts=`<option value="">— No channel —</option>`+chans.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   const _pdl=new Date(Date.now()+7*24*3600*1000); _pdl.setHours(23,59,0,0);
@@ -9264,17 +9264,16 @@ async function openTVTPropose(){
       <div class="form-group"><label>Video Type</label><select id="tvt-p-type" class="input">${_vtTypeOptsHtml(types,'','','— Select type —')}</select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Channel (optional)</label><select id="tvt-p-channel" class="input">${chOpts}</select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Expected Deadline</label><input id="tvt-p-deadline" type="datetime-local" class="input" value="${_pdlVal}"><div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">When you expect to deliver. The manager sees this and it becomes the task deadline on approval (they can still change it).</div></div>
-      <div class="form-group vt-thumb-box" style="grid-column:1/-1"><label>Reference Thumbnail (optional)</label>
-        <div class="vt-file vt-drop" ondragover="_vtDropOver(event,this)" ondragleave="_vtDropLeave(event,this)" ondrop="_vtDropFile(event,this)"><label class="vt-file-btn" for="tvt-p-thumb">${ic('image')} Upload Image</label><span class="vt-drop-hint">or drag / drop / paste (Ctrl+V)</span>
-          <span class="vt-file-name" id="vt-thumb-name">No file chosen</span></div>
-        <input id="tvt-p-thumb" type="file" accept="image/*" style="display:none" onchange="vtThumbPreview(this)">
-        <div id="vt-thumb-prev" style="margin-top:8px"></div>
+      <div class="form-group vt-thumb-box" style="grid-column:1/-1"><label>Reference Thumbnails (optional) <span style="font-weight:600;color:var(--text-muted)">— multiple</span></label>
+        <div class="vt-file vt-drop" ondragover="_vtDropOver(event,this)" ondragleave="_vtDropLeave(event,this)" ondrop="_vtRefThumbDrop(event)"><label class="vt-file-btn" for="tvt-p-thumb">${ic('image')} Upload Image(s)</label><span class="vt-drop-hint">or drag / drop / paste (Ctrl+V)</span></div>
+        <input id="tvt-p-thumb" type="file" accept="image/*" multiple style="display:none" onchange="Array.prototype.forEach.call(this.files,function(f){_vtAddRefThumb(f);})">
+        <div class="thumb-gal" id="vt-refthumb-gal" style="margin-top:8px"></div>
       </div>
-      <div class="form-group vt-thumb-box" style="grid-column:1/-1"><label>Presentation / Slides (optional) <span style="font-weight:600;color:var(--text-muted)">— PDF or PPT</span></label>
-        <div class="vt-file vt-drop" ondragover="_vtDropOver(event,this)" ondragleave="_vtDropLeave(event,this)" ondrop="_vtSlideDrop(event)"><label class="vt-file-btn" for="tvt-p-slide">${ic('clipboard')} Upload PDF / PPT</label><span class="vt-drop-hint">or drag &amp; drop a file here</span>
-          <span class="vt-file-name" id="vt-slide-name">No file chosen</span></div>
-        <input id="tvt-p-slide" type="file" accept=".pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" style="display:none" onchange="_vtSlidePick(this.files[0])">
-        <div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">Max 25 MB. Manager & admin dono isko approve time pe dekh sakte hain.</div>
+      <div class="form-group vt-thumb-box" style="grid-column:1/-1"><label>Presentation / Slides (optional) <span style="font-weight:600;color:var(--text-muted)">— PDF or PPT, multiple</span></label>
+        <div class="vt-file vt-drop" ondragover="_vtDropOver(event,this)" ondragleave="_vtDropLeave(event,this)" ondrop="_vtSlideDrop(event)"><label class="vt-file-btn" for="tvt-p-slide">${ic('clipboard')} Upload PDF / PPT</label><span class="vt-drop-hint">or drag &amp; drop file(s) here</span></div>
+        <input id="tvt-p-slide" type="file" accept=".pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" multiple style="display:none" onchange="Array.prototype.forEach.call(this.files,function(f){_vtSlidePick(f);})">
+        <div id="vt-slide-list" style="margin-top:8px"></div>
+        <div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">Max 25 MB each. Manager &amp; admin dono isko approve time pe dekh sakte hain.</div>
       </div>
       <div class="form-group" style="grid-column:1/-1"><label>Why this video? (optional)</label><textarea id="tvt-p-ref" class="input" rows="2" placeholder="Student demand, exam relevance, etc."></textarea></div>
     </div>
@@ -9286,7 +9285,7 @@ async function openTVTPropose(){
     var ae=document.activeElement; if(ae && (ae.tagName==='TEXTAREA'||ae.tagName==='INPUT')) return;
     var items=(e.clipboardData||{}).items||[];
     for(var i=0;i<items.length;i++){ var it=items[i];
-      if(it.type&&it.type.indexOf('image')===0){ _vtThumbFile(it.getAsFile()); e.preventDefault(); }
+      if(it.type&&it.type.indexOf('image')===0){ _vtAddRefThumb(it.getAsFile()); e.preventDefault(); }
       else if(it.kind==='file'){ var f=it.getAsFile(); if(f&&/\.(pdf|ppt|pptx)$/i.test(f.name||'')){ _vtSlidePick(f); e.preventDefault(); } }
     }
   };
@@ -9490,8 +9489,9 @@ async function tvtProposeSave(){
     channel_id:val('tvt-p-channel')||'',
     expected_deadline:val('tvt-p-deadline')||'',
     reference:document.getElementById('tvt-p-ref').value.trim(),
-    thumbnail_b64:window._vtThumbB64||null,
-    slide_file:window._tvtSlide||null, slide_name:window._tvtSlideName||'' };
+    thumbnail_b64:(window._vtRefThumbs&&window._vtRefThumbs[0])||null,
+    reference_thumbnails:(window._vtRefThumbs||[]),
+    slides:(window._tvtSlides||[]) };
   // Subject & class — ab single video + project dono ke liye (admin ko dobara na bharna pade)
   const sv=val('tvt-p-subject')||'';
   if(sv){ const i=sv.indexOf('||'); body.subject=(i<0?sv:sv.slice(0,i)).trim(); body.class_level=(i<0?'':sv.slice(i+2)).trim(); }
@@ -9513,7 +9513,7 @@ async function tvtProposeSave(){
   }
   try{
     await api('/api/teacher/video-tasks/propose','POST',body);
-    window._vtThumbB64=null; window._tvtSlide=null; window._tvtSlideName=''; closeModal(); toast('Proposal sent for approval.'); loadTVTasks();
+    window._vtThumbB64=null; window._vtRefThumbs=[]; window._tvtSlides=[]; closeModal(); toast('Proposal sent for approval.'); loadTVTasks();
   }catch(e){ toast(e.message||'Could not send'); }
 }
 async function openTVTUrgent(){
@@ -9622,17 +9622,25 @@ function vtThumbPreview(input){
   const file=input&&input.files&&input.files[0];
   if(file) _vtThumbFile(file);
 }
+window._vtRefThumbs=window._vtRefThumbs||[];
+function _vtRefThumbGal(){ return (window._vtRefThumbs||[]).map(function(u,i){return '<div class="thumb-cell"><span class="thumb-n">Ref '+(i+1)+'</span><img loading="lazy" src="'+u+'"><button class="thumb-sel-full" style="color:#b91c1c" onclick="vtRemoveRefThumb('+i+')">Remove</button></div>';}).join(''); }
+window._vtAddRefThumb=function(f){ if(!f)return; _compressImg(f,1280,0.85,function(d){ if(!d)return; window._vtRefThumbs=window._vtRefThumbs||[]; if(window._vtRefThumbs.length<8)window._vtRefThumbs.push(d); var g=document.getElementById('vt-refthumb-gal'); if(g)g.innerHTML=_vtRefThumbGal(); }); };
+window.vtRemoveRefThumb=function(i){ if(window._vtRefThumbs)window._vtRefThumbs.splice(i,1); var g=document.getElementById('vt-refthumb-gal'); if(g)g.innerHTML=_vtRefThumbGal(); };
+window._vtRefThumbDrop=function(e){ e.preventDefault(); Array.prototype.forEach.call(e.dataTransfer.files||[],function(f){_vtAddRefThumb(f);}); };
+window._tvtSlides=window._tvtSlides||[];
+function _vtSlideList(){ return (window._tvtSlides||[]).map(function(s,i){return '<div style="display:flex;align-items:center;gap:8px;padding:6px 9px;border:1px solid var(--border);border-radius:8px;margin-bottom:5px;font-size:.82rem"><b>PDF '+(i+1)+'</b> <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.name||'file')+'</span><button class="p-btn" style="color:#b91c1c;padding:3px 8px" onclick="vtRemoveSlide('+i+')">Remove</button></div>';}).join(''); }
 window._vtSlidePick=function(f){
   if(!f) return;
   var ok=/\.(pdf|ppt|pptx)$/i.test(f.name||'') || /pdf|powerpoint|presentation/i.test(f.type||'');
   if(!ok){ toast('Sirf PDF ya PPT file allowed hai',true); return; }
   if(f.size > 25*1024*1024){ toast('File 25MB se badi hai \u2014 chhoti file daalein',true); return; }
   var rd=new FileReader();
-  rd.onload=function(){ window._tvtSlide=rd.result; window._tvtSlideName=(f.name||'slide'); var n=document.getElementById('vt-slide-name'); if(n)n.textContent=(f.name||'file chosen'); };
+  rd.onload=function(){ window._tvtSlides=window._tvtSlides||[]; if(window._tvtSlides.length<6)window._tvtSlides.push({data:rd.result,name:(f.name||'slide')}); var l=document.getElementById('vt-slide-list'); if(l)l.innerHTML=_vtSlideList(); };
   rd.onerror=function(){ toast('File read nahi hui \u2014 dobara try karein',true); };
   rd.readAsDataURL(f);
 };
-window._vtSlideDrop=function(e){ e.preventDefault(); var f=(e.dataTransfer.files||[])[0]; if(f)_vtSlidePick(f); };
+window.vtRemoveSlide=function(i){ if(window._tvtSlides)window._tvtSlides.splice(i,1); var l=document.getElementById('vt-slide-list'); if(l)l.innerHTML=_vtSlideList(); };
+window._vtSlideDrop=function(e){ e.preventDefault(); Array.prototype.forEach.call(e.dataTransfer.files||[],function(f){_vtSlidePick(f);}); };
 function _vtDropOver(e,el){ e.preventDefault(); e.stopPropagation(); if(el) el.classList.add('drag'); }
 function _vtDropLeave(e,el){ e.preventDefault(); e.stopPropagation(); if(el) el.classList.remove('drag'); }
 function _vtDropFile(e,el){
@@ -10600,7 +10608,7 @@ async function openVTAssign(proposalId){
         <div id="vt-thumb-prev" style="margin-top:8px"></div>
       </div>
       <div class="form-group" style="grid-column:1/-1"><label>Reference / Brief (optional)</label><textarea id="vt-f-ref" class="input" rows="2" placeholder="Points to cover, sample video link, style notes...">${pre?esc(pre.reference||''):''}</textarea></div>
-      ${(pre&&pre.proposal_slide)?`<div class="form-group" style="grid-column:1/-1"><label>Teacher's slides (PPT/PDF)</label><a class="vt-file-btn" href="${esc(pre.proposal_slide)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none">${ic('clipboard')} View ${esc(pre.proposal_slide_name||'slide')}</a></div>`:''}
+      ${(pre&&pre.proposal_slides&&pre.proposal_slides.length)?`<div class="form-group" style="grid-column:1/-1"><label>Teacher's slides (PPT/PDF)</label><div>${pre.proposal_slides.map((s,i)=>`<a class="vt-file-btn" href="${esc(s.url)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;margin:0 6px 6px 0">${ic('clipboard')} PDF ${i+1}</a>`).join('')}</div></div>`:''}
       <div class="form-group" style="grid-column:1/-1"><label>Remarks for Teacher (optional)</label><textarea id="vt-f-remarks" class="input" rows="2" placeholder="Any instructions..."></textarea></div>
     </div>`;
   if(pre){
@@ -22715,10 +22723,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '<div class="p-field"><label>Video Title</label><input class="p-input" id="pa-title" value="'+esc(t.title||'')+'"></div>'+
       '<div class="p-field"><label>Deadline'+(dl?' (from teacher\u2019s proposal)':'')+'</label><input class="p-input" id="pa-deadline" type="datetime-local" value="'+esc(dl)+'"></div>'+
       '<div class="p-field"><label>Reference / Brief (optional)</label><textarea class="p-area" id="pa-reference">'+esc(t.reference||'')+'</textarea></div>'+
-      (t.proposal_slide?('<div class="p-field"><label>Teacher\\u2019s slides (PPT/PDF)</label><a class="p-btn" href="'+esc(t.proposal_slide)+'" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px">'+ic('clipboard')+' View '+esc(t.proposal_slide_name||'slide')+'</a></div>'):'')+
+      ((t.proposal_slides&&t.proposal_slides.length)?('<div class="p-field"><label>Teacher\\u2019s slides (PPT/PDF)</label><div>'+t.proposal_slides.map(function(s,i){return '<a class="p-btn" href="'+esc(s.url)+'" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;margin:0 6px 6px 0">'+ic('clipboard')+' PDF '+(i+1)+'</a>';}).join('')+'</div></div>'):'')+
       '<div class="p-field"><label>Remarks for creator (optional)</label><textarea class="p-area" id="pa-remarks">'+esc(t.remarks||'')+'</textarea></div>'+
       '<div class="p-field" style="border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--bg)"><label style="font-weight:800">Thumbnail</label>'+
-        (t.thumbnail?('<div style="margin:4px 0 10px"><div style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:4px">Teacher\\u2019s reference (from proposal) \\u2014 designer ko auto milega</div><img loading="lazy" src="'+esc(t.thumbnail)+'" style="max-width:150px;border-radius:8px;border:1px solid var(--border)"></div>'):'')+
+        ((t.proposal_refs&&t.proposal_refs.length)?('<div style="margin:4px 0 10px"><div style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:4px">Teacher\\u2019s references (from proposal) \\u2014 designer ko auto milenge</div><div class="thumb-gal">'+t.proposal_refs.map(function(u,i){return '<div class="thumb-cell"><span class="thumb-n">Ref '+(i+1)+'</span><img loading="lazy" src="'+esc(u)+'"></div>';}).join('')+'</div></div>'):(t.thumbnail?('<div style="margin:4px 0 10px"><div style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:4px">Teacher\\u2019s reference (from proposal)</div><img loading="lazy" src="'+esc(t.thumbnail)+'" style="max-width:150px;border-radius:8px;border:1px solid var(--border)"></div>'):''))+
         '<select class="p-select" id="pa-thumb-mode" onchange="prodAprThumbMode(this.value)" style="margin:4px 0 10px"><option value="">\u2014 Is the thumbnail ready? \u2014</option><option value="ready">Thumbnail is prepared (upload it)</option><option value="need">Not prepared \u2014 assign to graphics</option></select>'+
         '<div id="pa-ready-box" style="display:none">'+
           '<label style="font-size:.82rem;font-weight:700">Final thumbnail</label>'+

@@ -526,6 +526,33 @@ def editing_time_state(db, t):
     return acc, running
 
 
+def _prefs_out(t):
+    import json as _j
+    raw = (getattr(t, "proposal_refs", "") or "").strip()
+    if raw.startswith("["):
+        try:
+            v = _j.loads(raw)
+            if isinstance(v, list):
+                return [x for x in v if x]
+        except Exception:
+            pass
+    return []
+
+
+def _pslides_out(t):
+    import json as _j
+    raw = (getattr(t, "proposal_slides", "") or "").strip()
+    if raw.startswith("["):
+        try:
+            v = _j.loads(raw)
+            if isinstance(v, list):
+                return [x for x in v if isinstance(x, dict) and x.get("url")]
+        except Exception:
+            pass
+    s = getattr(t, "proposal_slide", "") or ""
+    return [{"url": s, "name": getattr(t, "proposal_slide_name", "") or "slide"}] if s else []
+
+
 def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_count=None):
     """Production-facing task serializer (no heavy base64 blobs)."""
     if g is None:
@@ -556,6 +583,8 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
         "deadline": _dt_raw(t.deadline),
         "proposal_slide": (getattr(t, "proposal_slide", "") or ""),
         "proposal_slide_name": (getattr(t, "proposal_slide_name", "") or ""),
+        "proposal_refs": _prefs_out(t),
+        "proposal_slides": _pslides_out(t),
         "deadline_iso": (t.deadline.strftime("%Y-%m-%dT%H:%M:%S") if t.deadline else ""),  # LOCAL (IST), no Z — deadlines are already local; a Z made new Date() shift by the tz offset
         "deadline_flag": (lambda f: {"kind": f[0], "label": f[1]})(deadline_flag(t)),
         "editor_id": t.editor_id,

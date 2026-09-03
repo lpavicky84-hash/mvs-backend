@@ -470,6 +470,8 @@ class VideoTask(Base):
     reference_video = Column(Text, default="")            # reference video link (clickable on teacher card)
     proposal_slide = Column(String(600), default="")      # teacher's proposed slide/PPT/PDF (R2 url)
     proposal_slide_name = Column(String(300), default="") # original file name of the slide
+    proposal_refs = Column(Text, default="")              # JSON array of reference thumbnail URLs (multiple)
+    proposal_slides = Column(Text, default="")            # JSON array of {url, name} for multiple slides
     description    = Column(Text, default="")              # creator's topic description (youtuber)
     remarks        = Column(Text, default="")             # assignment remarks
     deadline       = Column(DateTime, nullable=True)
