@@ -9265,7 +9265,7 @@ async function openTVTPropose(){
       <div class="form-group" style="grid-column:1/-1"><label>Channel (optional)</label><select id="tvt-p-channel" class="input">${chOpts}</select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Expected Deadline</label><input id="tvt-p-deadline" type="datetime-local" class="input" value="${_pdlVal}"><div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">When you expect to deliver. The manager sees this and it becomes the task deadline on approval (they can still change it).</div></div>
       <div class="form-group vt-thumb-box" style="grid-column:1/-1"><label>Reference Thumbnail (optional)</label>
-        <div class="vt-file vt-drop" ondragover="_vtDropOver(event,this)" ondragleave="_vtDropLeave(event,this)" ondrop="_vtDropFile(event,this)"><label class="vt-file-btn" for="tvt-p-thumb">${ic('image')} Upload Image</label><span class="vt-drop-hint">or drag &amp; drop an image here</span>
+        <div class="vt-file vt-drop" ondragover="_vtDropOver(event,this)" ondragleave="_vtDropLeave(event,this)" ondrop="_vtDropFile(event,this)"><label class="vt-file-btn" for="tvt-p-thumb">${ic('image')} Upload Image</label><span class="vt-drop-hint">or drag / drop / paste (Ctrl+V)</span>
           <span class="vt-file-name" id="vt-thumb-name">No file chosen</span></div>
         <input id="tvt-p-thumb" type="file" accept="image/*" style="display:none" onchange="vtThumbPreview(this)">
         <div id="vt-thumb-prev" style="margin-top:8px"></div>
@@ -9280,6 +9280,17 @@ async function openTVTPropose(){
     </div>
     <p style="font-size:.74rem;color:var(--text-muted)">Your proposal goes to the production manager. Once approved, you will get the thumbnail and deadline here.</p>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="tvtProposeSave()">${ic('send')} Send for Approval</button>`);
+  if(window._vtPPaste) document.removeEventListener('paste',window._vtPPaste);
+  window._vtPPaste=function(e){
+    if(!document.getElementById('tvt-p-thumb')){ document.removeEventListener('paste',window._vtPPaste); return; }
+    var ae=document.activeElement; if(ae && (ae.tagName==='TEXTAREA'||ae.tagName==='INPUT')) return;
+    var items=(e.clipboardData||{}).items||[];
+    for(var i=0;i<items.length;i++){ var it=items[i];
+      if(it.type&&it.type.indexOf('image')===0){ _vtThumbFile(it.getAsFile()); e.preventDefault(); }
+      else if(it.kind==='file'){ var f=it.getAsFile(); if(f&&/\.(pdf|ppt|pptx)$/i.test(f.name||'')){ _vtSlidePick(f); e.preventDefault(); } }
+    }
+  };
+  document.addEventListener('paste',window._vtPPaste);
   tvtLoadMySubjects();
   tvtLoadColleagues();
 }
