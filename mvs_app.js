@@ -9518,7 +9518,7 @@ async function tvtProposeSave(){
     channel_id:val('tvt-p-channel')||'',
     expected_deadline:val('tvt-p-deadline')||'',
     reference:document.getElementById('tvt-p-ref').value.trim(),
-    thumbnail_b64:(window._vtRefThumbs&&window._vtRefThumbs[0])||null,
+    thumbnail_b64:null,
     reference_thumbnails:(window._vtRefThumbs||[]),
     slides:(window._tvtSlides||[]),
     media_note:(document.getElementById('tvt-p-medianote')?document.getElementById('tvt-p-medianote').value.trim():'') };
@@ -9720,12 +9720,13 @@ function _vtThumbFile(file){
   reader.readAsDataURL(file);
 }
 function _vtThumb(t,who){
+  // Only the APPROVED graphics thumbnail is the real thumbnail. The teacher's uploaded
+  // reference (thumbnail_b64 / thumbnail_link) is a reference only — it must NEVER show as
+  // the card image, otherwise a pending reference looks like the final thumbnail.
   const gth=(t.thumbnail && t.thumbnail.approved && t.thumbnail.url)?t.thumbnail.url:'';
-  const has=!!(t.thumbnail_b64||t.thumbnail_link||gth);
+  const has=!!gth;
   const _is='width:100%;height:100%;object-fit:cover;display:block';
-  const img=t.thumbnail_b64?`<img loading="lazy" src="${t.thumbnail_b64}" alt="" style="${_is}">`
-    :(t.thumbnail_link?`<img loading="lazy" src="${esc(t.thumbnail_link)}" onerror="this.remove()" alt="" style="${_is}">`
-    :(gth?`<img loading="lazy" src="${esc(gth)}" onerror="this.remove()" alt="" style="${_is}">`:''));
+  const img=gth?`<img loading="lazy" src="${esc(gth)}" onerror="this.remove()" alt="" style="${_is}">`:'';
   const blink=who==='t';
   return `<div class="vt-thumb${has?' click':''}" style="aspect-ratio:16/9;height:auto;overflow:hidden;position:relative"${has?` onclick="vtThumbOpen(${t.id},'${who||'t'}')" title="Open full screen — download available"`:''}>${img||esc((t.title||'V').slice(0,1).toUpperCase())}<div class="vt-status">${_vtPill(t,blink,who)}</div>${has?`<span class="vt-dl">${ic('download')} View</span>`:''}</div>`;
 }
@@ -9733,11 +9734,10 @@ function _vtTypeBadge(t){ return t.video_type?`<span class="vt-type">${ic('play'
 function vtThumbOpen(id,who){
   const t=(((who==='a')?window._avtMap:window._tvtMap)||{})[id]; if(!t) return;
   const name=((t.title||'thumbnail').replace(/[^\w\- ]+/g,'').trim().slice(0,60)||'thumbnail');
-  if(t.thumbnail_b64){ openImageViewerSrc(t.thumbnail_b64,name+'.jpg'); return; }
-  const link=t.thumbnail_link||((t.thumbnail&&t.thumbnail.approved&&t.thumbnail.url)?t.thumbnail.url:'')||'';
+  const link=(t.thumbnail&&t.thumbnail.approved&&t.thumbnail.url)?t.thumbnail.url:'';
+  if(!link){ toast('No thumbnail attached to this task'); return; }
   if(/\.(png|jpe?g|webp|gif|bmp)(\?|#|$)/i.test(link)) openImageViewerSrc(link,name+'.jpg');
-  else if(link) window.open(link,'_blank');
-  else toast('No thumbnail attached to this task');
+  else window.open(link,'_blank');
 }
 function vtStatusOpen(id,who,ev){
   if(ev){ ev.stopPropagation(); ev.preventDefault(); }
@@ -10507,7 +10507,7 @@ async function openVTEdit(id,ev){
         <input id="vt-e-thumb" type="file" accept="image/*" style="display:none" onchange="vtThumbPreview(this)">
         <div class="vt-hint">or paste a drive link below</div>
         <input id="vt-e-thumblink" class="input" style="margin-top:8px" placeholder="https://drive.google.com/..." value="${esc(t.thumbnail_link||'')}">
-        <div id="vt-thumb-prev" style="margin-top:8px">${t.thumbnail_b64?`<img loading="lazy" src="${t.thumbnail_b64}" style="max-height:90px;border-radius:10px;border:1px solid var(--border)">`:''}</div>
+        <div id="vt-thumb-prev" style="margin-top:8px">${(t.thumbnail&&t.thumbnail.approved&&t.thumbnail.url)?`<img loading="lazy" src="${esc(t.thumbnail.url)}" style="max-height:90px;border-radius:10px;border:1px solid var(--border)">`:''}</div>
       </div>`}
       <div class="form-group" style="grid-column:1/-1"><label>Reference / Brief</label><textarea id="vt-e-ref" class="input" rows="2">${esc(t.reference||'')}</textarea></div>
       <div class="form-group" style="grid-column:1/-1"><label>Reference Video link <span style="font-weight:500;color:var(--text-muted);font-size:.72rem;text-transform:none">— teacher taps a blinking button to open it</span></label><input id="vt-e-refvid" class="input" placeholder="https://drive.google.com/... or YouTube link" value="${esc(t.reference_video||'')}"></div>

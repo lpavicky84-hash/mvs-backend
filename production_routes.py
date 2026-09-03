@@ -2141,6 +2141,10 @@ def prod_approve_proposal(tid: int, payload: dict = Body(default={}),
                 t.graphics_id = gr.id
                 if (g.status or "") in ("", "new"):
                     g.status = "new"
+                # teacher's reference is only a reference for the designer — it must NOT act as
+                # the final thumbnail, so clear the task's thumbnail fields until graphics delivers.
+                t.thumbnail_b64 = None
+                t.thumbnail_link = ""
                 _all_refs = []
                 _refs = payload.get("reference_images")
                 if _refs:
