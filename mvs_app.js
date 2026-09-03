@@ -9012,7 +9012,33 @@ function _tvtRenderNeeds(id,t,remarks,refVid){
     `${refBlock}${remBlock}<div style="margin-top:12px;font-size:.82rem;color:var(--text-muted)">Have a question? Use "Chat with PM" to message the manager.</div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" onclick="closeModal();tvtChatPM(${id})">${ic('send')} Chat with PM</button>`);
 }
-window.vtAdminChat=function(id){ if(window._ytcOpen){ _ytcOpen({ getUrl:'/api/admin/video-tasks/'+id+'/comments', postUrl:'/api/admin/video-tasks/'+id+'/comments', audience:'', mineRole:'admin', title:'Chat \u00b7 all messages', taskId:id }); } };
+window.vtAdminChat=async function(id){
+  let comments=[];
+  try{ const d=await api('/api/admin/video-tasks/'+id+'/comments'); comments=d.comments||[]; }catch(e){ toast('Could not load chat',true); return; }
+  _vtAdminRenderChat(id,comments);
+};
+function _vtAdminRenderChat(id,comments){
+  const roleLbl=function(r){ return ({admin:'Admin',teacher:'Teacher',youtuber:'YouTuber',editor:'Editor',graphics:'Graphics',pm:'Manager',production_manager:'Manager'})[r]||(r||''); };
+  const thread=(comments&&comments.length)?comments.map(function(c){
+    const mine=(c.role==='admin');
+    const img=c.attachment_url?`<img loading="lazy" src="${esc(c.attachment_url)}" onclick="window.open('${esc(c.attachment_url)}','_blank')" style="max-width:180px;max-height:140px;border-radius:8px;margin-top:5px;cursor:pointer;display:block">`:'';
+    return `<div class="tvn-msg ${mine?'mine':'them'}"><div class="tvn-msg-a">${esc(c.author||'')}${roleLbl(c.role)?` \u00b7 ${esc(roleLbl(c.role))}`:''}</div>${c.message?`<div class="tvn-msg-b">${esc(c.message)}</div>`:''}${img}<div class="tvn-msg-t">${esc(c.at||'')}</div></div>`;
+  }).join(''):'<div style="color:var(--text-muted);font-size:.82rem;padding:6px 0">No messages yet.</div>';
+  showModal('Chat \u2014 all messages',
+    `<div class="tvn-thread" id="tvn-thread">${thread}</div>
+     <div class="form-group" style="margin-top:10px"><label>Message (as admin)</label><textarea id="vtac-reply" class="input" rows="2" placeholder="Type a message..."></textarea></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" onclick="vtAdminChatSend(${id})">${ic('send')} Send</button>`);
+  const th=document.getElementById('tvn-thread'); if(th) th.scrollTop=th.scrollHeight;
+}
+window.vtAdminChatSend=async function(id){
+  const el=document.getElementById('vtac-reply'); const msg=(el?el.value:'').trim();
+  if(!msg){ toast('Type a message first',true); return; }
+  try{
+    await api('/api/admin/video-tasks/'+id+'/comments','POST',{message:msg});
+    let comments=[]; try{ const d=await api('/api/admin/video-tasks/'+id+'/comments'); comments=d.comments||[]; }catch(e){}
+    _vtAdminRenderChat(id,comments);
+  }catch(e){ toast((e&&e.message)||'Could not send',true); }
+};
 function tvtChatPM(id){
   const t=(window._tvtMap||{})[id]||{};
   // Use the premium chat (ticks, online/last-seen, typing, image paste, live updates).
@@ -10612,6 +10638,7 @@ async function openVTAssign(proposalId){
         <div id="vt-thumb-prev" style="margin-top:8px"></div>
       </div>
       <div class="form-group" style="grid-column:1/-1"><label>Reference / Brief (optional)</label><textarea id="vt-f-ref" class="input" rows="2" placeholder="Points to cover, sample video link, style notes...">${pre?esc(pre.reference||''):''}</textarea></div>
+      ${(pre&&pre.proposal_refs&&pre.proposal_refs.length)?`<div class="form-group" style="grid-column:1/-1"><label>Teacher's reference thumbnails</label><div class="thumb-gal">${pre.proposal_refs.map((u,i)=>`<div class="thumb-cell"><span class="thumb-n">Ref ${i+1}</span><img loading="lazy" src="${esc(u)}"><div class="thumb-vd"><button class="thumb-vd-btn" onclick="window.open('${esc(u).replace(/'/g,'')}','_blank','noopener')">\uD83D\uDC41 View</button><a class="thumb-vd-btn" href="${esc(u)}" download target="_blank" rel="noopener">\u2B07 Download</a></div></div>`).join('')}</div></div>`:''}
       ${(pre&&pre.proposal_slides&&pre.proposal_slides.length)?`<div class="form-group" style="grid-column:1/-1"><label>Teacher's slides (PPT/PDF)</label><div>${pre.proposal_slides.map((s,i)=>`<a class="vt-file-btn" href="${esc(s.url)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;margin:0 6px 6px 0">${ic('clipboard')} PDF ${i+1}</a>`).join('')}</div></div>`:''}
       ${(pre&&pre.proposal_media_note)?`<div class="form-group" style="grid-column:1/-1"><label>Teacher's note (references / slides)</label><div style="font-size:.85rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 11px;white-space:pre-wrap">${esc(pre.proposal_media_note)}</div></div>`:''}
       <div class="form-group" style="grid-column:1/-1"><label>Remarks for Teacher (optional)</label><textarea id="vt-f-remarks" class="input" rows="2" placeholder="Any instructions..."></textarea></div>
@@ -22728,11 +22755,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '<div class="p-field"><label>Video Title</label><input class="p-input" id="pa-title" value="'+esc(t.title||'')+'"></div>'+
       '<div class="p-field"><label>Deadline'+(dl?' (from teacher\u2019s proposal)':'')+'</label><input class="p-input" id="pa-deadline" type="datetime-local" value="'+esc(dl)+'"></div>'+
       '<div class="p-field"><label>Reference / Brief (optional)</label><textarea class="p-area" id="pa-reference">'+esc(t.reference||'')+'</textarea></div>'+
-      ((t.proposal_slides&&t.proposal_slides.length)?('<div class="p-field"><label>Teacher\\u2019s slides (PPT/PDF)</label><div>'+t.proposal_slides.map(function(s,i){return '<a class="p-btn" href="'+esc(s.url)+'" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;margin:0 6px 6px 0">'+ic('clipboard')+' PDF '+(i+1)+'</a>';}).join('')+'</div></div>'):'')+
-      (t.proposal_media_note?('<div class="p-field"><label>Teacher\\u2019s note (references / slides)</label><div style="font-size:.85rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 11px;white-space:pre-wrap">'+esc(t.proposal_media_note)+'</div></div>'):'')+
+      ((t.proposal_slides&&t.proposal_slides.length)?('<div class="p-field"><label>Teacher\u2019s slides (PPT/PDF)</label><div>'+t.proposal_slides.map(function(s,i){return '<a class="p-btn" href="'+esc(s.url)+'" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;margin:0 6px 6px 0">'+ic('clipboard')+' PDF '+(i+1)+'</a>';}).join('')+'</div></div>'):'')+
+      (t.proposal_media_note?('<div class="p-field"><label>Teacher\u2019s note (references / slides)</label><div style="font-size:.85rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 11px;white-space:pre-wrap">'+esc(t.proposal_media_note)+'</div></div>'):'')+
       '<div class="p-field"><label>Remarks for creator (optional)</label><textarea class="p-area" id="pa-remarks">'+esc(t.remarks||'')+'</textarea></div>'+
       '<div class="p-field" style="border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--bg)"><label style="font-weight:800">Thumbnail</label>'+
-        ((t.proposal_refs&&t.proposal_refs.length)?('<div style="margin:4px 0 10px"><div style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:4px">Teacher\\u2019s references (from proposal) \\u2014 designer ko auto milenge</div><div class="thumb-gal">'+t.proposal_refs.map(function(u,i){return '<div class="thumb-cell"><span class="thumb-n">Ref '+(i+1)+'</span><img loading="lazy" src="'+esc(u)+'"></div>';}).join('')+'</div></div>'):(t.thumbnail?('<div style="margin:4px 0 10px"><div style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:4px">Teacher\\u2019s reference (from proposal)</div><img loading="lazy" src="'+esc(t.thumbnail)+'" style="max-width:150px;border-radius:8px;border:1px solid var(--border)"></div>'):''))+
+        ((t.proposal_refs&&t.proposal_refs.length)?('<div style="margin:4px 0 10px"><div style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:4px">Teacher\u2019s references (from proposal) \u2014 designer ko auto milenge</div><div class="thumb-gal">'+t.proposal_refs.map(function(u,i){return '<div class="thumb-cell"><span class="thumb-n">Ref '+(i+1)+'</span><img loading="lazy" src="'+esc(u)+'"><div class="thumb-vd"><button class="thumb-vd-btn" onclick="event.stopPropagation();prodLightbox(\''+esc(u)+'\')">\uD83D\uDC41 View</button><a class="thumb-vd-btn" href="'+esc(u)+'" download target="_blank" rel="noopener" onclick="event.stopPropagation()">\u2B07 Download</a></div></div>';}).join('')+'</div></div>'):(t.thumbnail?('<div style="margin:4px 0 10px"><div style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:4px">Teacher\u2019s reference (from proposal)</div><img loading="lazy" src="'+esc(t.thumbnail)+'" style="max-width:150px;border-radius:8px;border:1px solid var(--border)"></div>'):''))+
         '<select class="p-select" id="pa-thumb-mode" onchange="prodAprThumbMode(this.value)" style="margin:4px 0 10px"><option value="">\u2014 Is the thumbnail ready? \u2014</option><option value="ready">Thumbnail is prepared (upload it)</option><option value="need">Not prepared \u2014 assign to graphics</option></select>'+
         '<div id="pa-ready-box" style="display:none">'+
           '<label style="font-size:.82rem;font-weight:700">Final thumbnail</label>'+
