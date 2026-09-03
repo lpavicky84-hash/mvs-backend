@@ -36,7 +36,7 @@ def _ensure_thumbnail_column():
             conn.commit()
         print("[video_tasks] thumbnail_b64 ensured MEDIUMTEXT")
     except Exception as e:
-        print("[video_tasks] thumbnail_b64 MEDIUMTEXT migration skipped:", e)
+        pass
 
 
 _ensure_thumbnail_column()
@@ -50,7 +50,7 @@ def _ensure_vtype_column():
             conn.commit()
         print("[video_tasks] video_type column added")
     except Exception as e:
-        print("[video_tasks] video_type column check skipped:", e)
+        pass
 
 
 _ensure_vtype_column()
@@ -122,7 +122,7 @@ def _ensure_special_columns():
         VideoTaskChapter.__table__.create(engine, checkfirst=True)
         print("[video_tasks] video_task_chapters table ready")
     except Exception as e:
-        print("[video_tasks] video_task_chapters create skipped:", e)
+        pass
 
 
 _ensure_special_columns()
