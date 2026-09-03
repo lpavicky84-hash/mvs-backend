@@ -23724,7 +23724,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   function _prodTaskCard(portal,t){
     var g=t.graphics||{}; var lc=t.lifecycle||'';
-    var thumb=(t.thumbnail||g.thumbnail_url||t.thumbnail_link||''); if(!thumb && t.youtube_url){ var yi=_ytId(t.youtube_url); if(yi) thumb='https://img.youtube.com/vi/'+yi+'/hqdefault.jpg'; }
+    var thumb=(t.thumbnail||''); if(!thumb && t.youtube_url){ var yi=_ytId(t.youtube_url); if(yi) thumb='https://img.youtube.com/vi/'+yi+'/hqdefault.jpg'; }
     var st=_prodStatus(t);
     var letter=((t.title||'?').trim().charAt(0)||'?').toUpperCase();
     var hcol=_PTC_HCOL[(t.id||0)%_PTC_HCOL.length];
@@ -24360,7 +24360,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         html+='<div class="pb-col"><h4><span>'+esc(col[1])+'</span><span>'+items.length+'</span></h4>'+
           (items.length?items.map(function(t){
             var g=t.graphics||{};
-            var _th=g.thumbnail_url || (g.thumbnail_candidates&&g.thumbnail_candidates[0]) || g.reference_image || t.thumbnail || '';
+            var _th=g.thumbnail_url || (g.thumbnail_candidates&&g.thumbnail_candidates[0]) || '';
             var _thh=_th?'<div class="pbm-thumb" style="background-image:url('+esc(_th)+')" onclick="event.stopPropagation();prodThumbView(\''+esc(_th)+'\')" title="Tap to view full size"><span class="pbm-view">'+ic('expand')+'</span></div>':'';
             var _review=(g.status==='submitted');
             var _click=_review?((portal==='youtuber')?('ytThumbReview('+t.id+')'):('pmThumbReview('+t.id+')')):('prodOpenTask(\''+portal+'\','+t.id+')');
@@ -24742,7 +24742,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '</div>'+_refGal+_thumbGal;
     }
     if(tab==='qc'){
-      var att=(t.attachments||[]).filter(function(a){ return ['reference','thumbnail','chat'].indexOf(a.kind)<0; });
+      var att=(t.attachments||[]).filter(function(a){ return ['reference','thumbnail','chat','slide'].indexOf(a.kind)<0 && (a.url||'').indexOf('http')===0 && !/\.(pdf|ppt|pptx)(\?|#|$)/i.test(a.url||''); });
       return '<div class="pd-kv">'+
         _kv('QC Status', esc(t.qc_status||'Not started'))+
         _kv('Revisions', String(t.revision_count||0))+
