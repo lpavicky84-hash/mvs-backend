@@ -585,6 +585,7 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
         "proposal_slide_name": (getattr(t, "proposal_slide_name", "") or ""),
         "proposal_refs": _prefs_out(t),
         "proposal_slides": _pslides_out(t),
+        "proposal_media_note": (getattr(t, "proposal_media_note", "") or ""),
         "deadline_iso": (t.deadline.strftime("%Y-%m-%dT%H:%M:%S") if t.deadline else ""),  # LOCAL (IST), no Z — deadlines are already local; a Z made new Date() shift by the tz offset
         "deadline_flag": (lambda f: {"kind": f[0], "label": f[1]})(deadline_flag(t)),
         "editor_id": t.editor_id,

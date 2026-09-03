@@ -472,6 +472,7 @@ class VideoTask(Base):
     proposal_slide_name = Column(String(300), default="") # original file name of the slide
     proposal_refs = Column(Text, default="")              # JSON array of reference thumbnail URLs (multiple)
     proposal_slides = Column(Text, default="")            # JSON array of {url, name} for multiple slides
+    proposal_media_note = Column(String(1000), default="") # teacher's note about the references / slides
     description    = Column(Text, default="")              # creator's topic description (youtuber)
     remarks        = Column(Text, default="")             # assignment remarks
     deadline       = Column(DateTime, nullable=True)

@@ -9012,6 +9012,7 @@ function _tvtRenderNeeds(id,t,remarks,refVid){
     `${refBlock}${remBlock}<div style="margin-top:12px;font-size:.82rem;color:var(--text-muted)">Have a question? Use "Chat with PM" to message the manager.</div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" onclick="closeModal();tvtChatPM(${id})">${ic('send')} Chat with PM</button>`);
 }
+window.vtAdminChat=function(id){ if(window._ytcOpen){ _ytcOpen({ getUrl:'/api/admin/video-tasks/'+id+'/comments', postUrl:'/api/admin/video-tasks/'+id+'/comments', audience:'', mineRole:'admin', title:'Chat \u00b7 all messages', taskId:id }); } };
 function tvtChatPM(id){
   const t=(window._tvtMap||{})[id]||{};
   // Use the premium chat (ticks, online/last-seen, typing, image paste, live updates).
@@ -9275,6 +9276,7 @@ async function openTVTPropose(){
         <div id="vt-slide-list" style="margin-top:8px"></div>
         <div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">Max 25 MB each. Manager &amp; admin dono isko approve time pe dekh sakte hain.</div>
       </div>
+      <div class="form-group" style="grid-column:1/-1"><label>Note about references / slides (optional)</label><textarea id="tvt-p-medianote" class="input" rows="2" placeholder="e.g. Ref 2 jaisi styling chahiye, PDF 1 ka structure follow karein..."></textarea></div>
       <div class="form-group" style="grid-column:1/-1"><label>Why this video? (optional)</label><textarea id="tvt-p-ref" class="input" rows="2" placeholder="Student demand, exam relevance, etc."></textarea></div>
     </div>
     <p style="font-size:.74rem;color:var(--text-muted)">Your proposal goes to the production manager. Once approved, you will get the thumbnail and deadline here.</p>`,
@@ -9491,7 +9493,8 @@ async function tvtProposeSave(){
     reference:document.getElementById('tvt-p-ref').value.trim(),
     thumbnail_b64:(window._vtRefThumbs&&window._vtRefThumbs[0])||null,
     reference_thumbnails:(window._vtRefThumbs||[]),
-    slides:(window._tvtSlides||[]) };
+    slides:(window._tvtSlides||[]),
+    media_note:(document.getElementById('tvt-p-medianote')?document.getElementById('tvt-p-medianote').value.trim():'') };
   // Subject & class — ab single video + project dono ke liye (admin ko dobara na bharna pade)
   const sv=val('tvt-p-subject')||'';
   if(sv){ const i=sv.indexOf('||'); body.subject=(i<0?sv:sv.slice(0,i)).trim(); body.class_level=(i<0?'':sv.slice(i+2)).trim(); }
@@ -9881,6 +9884,7 @@ function _avtCard(t){
       const delTaskBtn=`<button class="btn btn-ghost btn-sm vt-del" onclick="vtDeleteTask(${t.id})" title="Delete this task permanently">${ic('trash')} Delete</button>`;
       const ytBtn=`<button class="btn btn-ghost btn-sm" onclick="openVtYtLink(${t.id},'${esc(t.youtube_url||'').replace(/'/g,'')}')" title="Post the published YouTube link">${ic('play')} ${t.youtube_url?'Edit YT Link':'Post YT Link'}</button>`;
       const histBtn=`<button class="btn btn-ghost btn-sm" onclick="vtStatusOpen(${t.id},'a',event)" title="See the full status timeline">${ic('history')} Timeline</button>`;
+      const admChatBtn=`<button class="btn btn-ghost btn-sm" onclick="vtAdminChat(${t.id})" title="See all chat between PM, creator, editor & graphics">${ic('send')} Chat${t.unread_count?` <b style="background:#dc2626;color:#fff;border-radius:999px;padding:0 6px;margin-left:3px">${t.unread_count}</b>`:''}</button>`;
       const _aRefv=(t.reference_video||'').trim()||((/^https?:\/\//i.test((t.reference||'').trim()))?(t.reference||'').trim():'');
       const refvBtn=_aRefv?`<button class="btn btn-sm vt-refv-btn" onclick="window.open('${esc(_aRefv).replace(/'/g,'')}','_blank','noopener')" title="Teacher's reference video">${ic('play')} Reference Video</button>`:'';
       const convoBtn=`<button class="btn btn-ghost btn-sm" onclick="aVtConvo(${t.id})" title="Reference video, remarks and the conversation with the teacher">${ic('alert')} Video Needs</button>`;
@@ -9906,7 +9910,7 @@ function _avtCard(t){
         </div>
         <div class="vt-foot">
           ${t.submitted_link?`<a class="btn btn-ghost btn-sm" href="${esc(t.submitted_link)}" target="_blank" rel="noopener">${ic('link')} Open Video</a>`:''}
-          ${refvBtn}${histBtn}${convoBtn}${reviewBtn}${editBtn}${editTaskBtn}${asgEditorBtn}${asgGfxBtn}${asgThumbBtn}${ytBtn}${notifyBtn}
+          ${refvBtn}${histBtn}${admChatBtn}${convoBtn}${reviewBtn}${editBtn}${editTaskBtn}${asgEditorBtn}${asgGfxBtn}${asgThumbBtn}${ytBtn}${notifyBtn}
           <button class="btn btn-ghost btn-sm" onclick="vtMarkOld(${t.id},${t.is_old?'false':'true'})" title="Old = pre-portal content, will not count this month">${t.is_old?ic('refresh')+' Mark as New':ic('clock')+' Mark as Old'}</button>
           ${delTaskBtn}
         </div></div></div>`;
@@ -10609,6 +10613,7 @@ async function openVTAssign(proposalId){
       </div>
       <div class="form-group" style="grid-column:1/-1"><label>Reference / Brief (optional)</label><textarea id="vt-f-ref" class="input" rows="2" placeholder="Points to cover, sample video link, style notes...">${pre?esc(pre.reference||''):''}</textarea></div>
       ${(pre&&pre.proposal_slides&&pre.proposal_slides.length)?`<div class="form-group" style="grid-column:1/-1"><label>Teacher's slides (PPT/PDF)</label><div>${pre.proposal_slides.map((s,i)=>`<a class="vt-file-btn" href="${esc(s.url)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;margin:0 6px 6px 0">${ic('clipboard')} PDF ${i+1}</a>`).join('')}</div></div>`:''}
+      ${(pre&&pre.proposal_media_note)?`<div class="form-group" style="grid-column:1/-1"><label>Teacher's note (references / slides)</label><div style="font-size:.85rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 11px;white-space:pre-wrap">${esc(pre.proposal_media_note)}</div></div>`:''}
       <div class="form-group" style="grid-column:1/-1"><label>Remarks for Teacher (optional)</label><textarea id="vt-f-remarks" class="input" rows="2" placeholder="Any instructions..."></textarea></div>
     </div>`;
   if(pre){
@@ -22724,6 +22729,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '<div class="p-field"><label>Deadline'+(dl?' (from teacher\u2019s proposal)':'')+'</label><input class="p-input" id="pa-deadline" type="datetime-local" value="'+esc(dl)+'"></div>'+
       '<div class="p-field"><label>Reference / Brief (optional)</label><textarea class="p-area" id="pa-reference">'+esc(t.reference||'')+'</textarea></div>'+
       ((t.proposal_slides&&t.proposal_slides.length)?('<div class="p-field"><label>Teacher\\u2019s slides (PPT/PDF)</label><div>'+t.proposal_slides.map(function(s,i){return '<a class="p-btn" href="'+esc(s.url)+'" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;margin:0 6px 6px 0">'+ic('clipboard')+' PDF '+(i+1)+'</a>';}).join('')+'</div></div>'):'')+
+      (t.proposal_media_note?('<div class="p-field"><label>Teacher\\u2019s note (references / slides)</label><div style="font-size:.85rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 11px;white-space:pre-wrap">'+esc(t.proposal_media_note)+'</div></div>'):'')+
       '<div class="p-field"><label>Remarks for creator (optional)</label><textarea class="p-area" id="pa-remarks">'+esc(t.remarks||'')+'</textarea></div>'+
       '<div class="p-field" style="border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--bg)"><label style="font-weight:800">Thumbnail</label>'+
         ((t.proposal_refs&&t.proposal_refs.length)?('<div style="margin:4px 0 10px"><div style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:4px">Teacher\\u2019s references (from proposal) \\u2014 designer ko auto milenge</div><div class="thumb-gal">'+t.proposal_refs.map(function(u,i){return '<div class="thumb-cell"><span class="thumb-n">Ref '+(i+1)+'</span><img loading="lazy" src="'+esc(u)+'"></div>';}).join('')+'</div></div>'):(t.thumbnail?('<div style="margin:4px 0 10px"><div style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:4px">Teacher\\u2019s reference (from proposal)</div><img loading="lazy" src="'+esc(t.thumbnail)+'" style="max-width:150px;border-radius:8px;border:1px solid var(--border)"></div>'):''))+

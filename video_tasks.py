@@ -58,7 +58,7 @@ _ensure_vtype_column()
 
 def _ensure_proposal_slide_columns():
     for col in ("proposal_slide VARCHAR(600) DEFAULT ''", "proposal_slide_name VARCHAR(300) DEFAULT ''",
-                "proposal_refs TEXT", "proposal_slides TEXT"):
+                "proposal_refs TEXT", "proposal_slides TEXT", "proposal_media_note VARCHAR(1000) DEFAULT ''"):
         try:
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE video_tasks ADD COLUMN " + col))
@@ -1469,6 +1469,7 @@ def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None):
         "proposal_slide_name": (getattr(t, "proposal_slide_name", "") or ""),
         "proposal_refs": _vt_prefs(t),
         "proposal_slides": _vt_pslides(t),
+        "proposal_media_note": (getattr(t, "proposal_media_note", "") or ""),
         "reference_video": getattr(t, "reference_video", "") or "",
         "deadline": t.deadline.strftime("%Y-%m-%dT%H:%M") if t.deadline else "",
         "deadline_nice": t.deadline.strftime("%d %b %Y, %I:%M %p") if t.deadline else "",
@@ -3111,6 +3112,12 @@ def vt_propose(payload: dict = Body(...), db: Session = Depends(get_db),
                 t.proposal_slides = _pjson.dumps(_out)
                 t.proposal_slide = _out[0]["url"]
                 t.proposal_slide_name = _out[0]["name"]
+        except Exception:
+            pass
+    _mn = (payload.get("media_note") or "").strip()
+    if _mn:
+        try:
+            t.proposal_media_note = _mn[:990]
         except Exception:
             pass
     uname = db.query(User).filter(User.id == tp.user_id).first()
