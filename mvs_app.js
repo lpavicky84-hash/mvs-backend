@@ -9223,7 +9223,7 @@ async function openTVTPropose(){
   if(!types){ try{ types=((await api('/api/teacher/video-types')).types)||[]; window._vtTypesT=types; }catch(e){ types=[]; } }
   let chans=window._vtChansT;
   if(!chans){ try{ chans=((await api('/api/teacher/video-channels')).channels)||[]; window._vtChansT=chans; }catch(e){ chans=[]; } }
-  window._vtThumbB64=null;
+  window._vtThumbB64=null; window._tvtSlide=null; window._tvtSlideName='';
   window._tvtPKind='task';
   const chOpts=`<option value="">— No channel —</option>`+chans.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   const _pdl=new Date(Date.now()+7*24*3600*1000); _pdl.setHours(23,59,0,0);
@@ -9269,6 +9269,12 @@ async function openTVTPropose(){
           <span class="vt-file-name" id="vt-thumb-name">No file chosen</span></div>
         <input id="tvt-p-thumb" type="file" accept="image/*" style="display:none" onchange="vtThumbPreview(this)">
         <div id="vt-thumb-prev" style="margin-top:8px"></div>
+      </div>
+      <div class="form-group vt-thumb-box" style="grid-column:1/-1"><label>Presentation / Slides (optional) <span style="font-weight:600;color:var(--text-muted)">— PDF or PPT</span></label>
+        <div class="vt-file vt-drop" ondragover="_vtDropOver(event,this)" ondragleave="_vtDropLeave(event,this)" ondrop="_vtSlideDrop(event)"><label class="vt-file-btn" for="tvt-p-slide">${ic('clipboard')} Upload PDF / PPT</label><span class="vt-drop-hint">or drag &amp; drop a file here</span>
+          <span class="vt-file-name" id="vt-slide-name">No file chosen</span></div>
+        <input id="tvt-p-slide" type="file" accept=".pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" style="display:none" onchange="_vtSlidePick(this.files[0])">
+        <div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">Max 25 MB. Manager & admin dono isko approve time pe dekh sakte hain.</div>
       </div>
       <div class="form-group" style="grid-column:1/-1"><label>Why this video? (optional)</label><textarea id="tvt-p-ref" class="input" rows="2" placeholder="Student demand, exam relevance, etc."></textarea></div>
     </div>
@@ -9473,7 +9479,8 @@ async function tvtProposeSave(){
     channel_id:val('tvt-p-channel')||'',
     expected_deadline:val('tvt-p-deadline')||'',
     reference:document.getElementById('tvt-p-ref').value.trim(),
-    thumbnail_b64:window._vtThumbB64||null };
+    thumbnail_b64:window._vtThumbB64||null,
+    slide_file:window._tvtSlide||null, slide_name:window._tvtSlideName||'' };
   // Subject & class — ab single video + project dono ke liye (admin ko dobara na bharna pade)
   const sv=val('tvt-p-subject')||'';
   if(sv){ const i=sv.indexOf('||'); body.subject=(i<0?sv:sv.slice(0,i)).trim(); body.class_level=(i<0?'':sv.slice(i+2)).trim(); }
@@ -9495,7 +9502,7 @@ async function tvtProposeSave(){
   }
   try{
     await api('/api/teacher/video-tasks/propose','POST',body);
-    window._vtThumbB64=null; closeModal(); toast('Proposal sent for approval.'); loadTVTasks();
+    window._vtThumbB64=null; window._tvtSlide=null; window._tvtSlideName=''; closeModal(); toast('Proposal sent for approval.'); loadTVTasks();
   }catch(e){ toast(e.message||'Could not send'); }
 }
 async function openTVTUrgent(){
@@ -9604,6 +9611,17 @@ function vtThumbPreview(input){
   const file=input&&input.files&&input.files[0];
   if(file) _vtThumbFile(file);
 }
+window._vtSlidePick=function(f){
+  if(!f) return;
+  var ok=/\.(pdf|ppt|pptx)$/i.test(f.name||'') || /pdf|powerpoint|presentation/i.test(f.type||'');
+  if(!ok){ toast('Sirf PDF ya PPT file allowed hai',true); return; }
+  if(f.size > 25*1024*1024){ toast('File 25MB se badi hai \u2014 chhoti file daalein',true); return; }
+  var rd=new FileReader();
+  rd.onload=function(){ window._tvtSlide=rd.result; window._tvtSlideName=(f.name||'slide'); var n=document.getElementById('vt-slide-name'); if(n)n.textContent=(f.name||'file chosen'); };
+  rd.onerror=function(){ toast('File read nahi hui \u2014 dobara try karein',true); };
+  rd.readAsDataURL(f);
+};
+window._vtSlideDrop=function(e){ e.preventDefault(); var f=(e.dataTransfer.files||[])[0]; if(f)_vtSlidePick(f); };
 function _vtDropOver(e,el){ e.preventDefault(); e.stopPropagation(); if(el) el.classList.add('drag'); }
 function _vtDropLeave(e,el){ e.preventDefault(); e.stopPropagation(); if(el) el.classList.remove('drag'); }
 function _vtDropFile(e,el){
@@ -10571,6 +10589,7 @@ async function openVTAssign(proposalId){
         <div id="vt-thumb-prev" style="margin-top:8px"></div>
       </div>
       <div class="form-group" style="grid-column:1/-1"><label>Reference / Brief (optional)</label><textarea id="vt-f-ref" class="input" rows="2" placeholder="Points to cover, sample video link, style notes...">${pre?esc(pre.reference||''):''}</textarea></div>
+      ${(pre&&pre.proposal_slide)?`<div class="form-group" style="grid-column:1/-1"><label>Teacher's slides (PPT/PDF)</label><a class="vt-file-btn" href="${esc(pre.proposal_slide)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none">${ic('clipboard')} View ${esc(pre.proposal_slide_name||'slide')}</a></div>`:''}
       <div class="form-group" style="grid-column:1/-1"><label>Remarks for Teacher (optional)</label><textarea id="vt-f-remarks" class="input" rows="2" placeholder="Any instructions..."></textarea></div>
     </div>`;
   if(pre){
@@ -22685,6 +22704,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '<div class="p-field"><label>Video Title</label><input class="p-input" id="pa-title" value="'+esc(t.title||'')+'"></div>'+
       '<div class="p-field"><label>Deadline'+(dl?' (from teacher\u2019s proposal)':'')+'</label><input class="p-input" id="pa-deadline" type="datetime-local" value="'+esc(dl)+'"></div>'+
       '<div class="p-field"><label>Reference / Brief (optional)</label><textarea class="p-area" id="pa-reference">'+esc(t.reference||'')+'</textarea></div>'+
+      (t.proposal_slide?('<div class="p-field"><label>Teacher\\u2019s slides (PPT/PDF)</label><a class="p-btn" href="'+esc(t.proposal_slide)+'" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px">'+ic('clipboard')+' View '+esc(t.proposal_slide_name||'slide')+'</a></div>'):'')+
       '<div class="p-field"><label>Remarks for creator (optional)</label><textarea class="p-area" id="pa-remarks">'+esc(t.remarks||'')+'</textarea></div>'+
       '<div class="p-field" style="border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--bg)"><label style="font-weight:800">Thumbnail</label>'+
         (t.thumbnail?('<div style="margin:4px 0 10px"><div style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:4px">Teacher\\u2019s reference (from proposal) \\u2014 designer ko auto milega</div><img loading="lazy" src="'+esc(t.thumbnail)+'" style="max-width:150px;border-radius:8px;border:1px solid var(--border)"></div>'):'')+

@@ -468,6 +468,8 @@ class VideoTask(Base):
     thumbnail_link = Column(String(600), default="")      # ya drive link
     reference      = Column(Text, default="")             # manager ka reference/brief
     reference_video = Column(Text, default="")            # reference video link (clickable on teacher card)
+    proposal_slide = Column(String(600), default="")      # teacher's proposed slide/PPT/PDF (R2 url)
+    proposal_slide_name = Column(String(300), default="") # original file name of the slide
     description    = Column(Text, default="")              # creator's topic description (youtuber)
     remarks        = Column(Text, default="")             # assignment remarks
     deadline       = Column(DateTime, nullable=True)

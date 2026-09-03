@@ -56,6 +56,19 @@ def _ensure_vtype_column():
 _ensure_vtype_column()
 
 
+def _ensure_proposal_slide_columns():
+    for col in ("proposal_slide VARCHAR(600) DEFAULT ''", "proposal_slide_name VARCHAR(300) DEFAULT ''"):
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE video_tasks ADD COLUMN " + col))
+                conn.commit()
+        except Exception:
+            pass
+
+
+_ensure_proposal_slide_columns()
+
+
 def _ensure_vtype_scope_column():
     try:
         with engine.connect() as conn:
@@ -1424,6 +1437,8 @@ def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None):
         "has_thumbnail": bool(t.thumbnail_b64),
         "thumbnail_link": t.thumbnail_link or "",
         "reference": t.reference or "", "remarks": t.remarks or "",
+        "proposal_slide": (getattr(t, "proposal_slide", "") or ""),
+        "proposal_slide_name": (getattr(t, "proposal_slide_name", "") or ""),
         "reference_video": getattr(t, "reference_video", "") or "",
         "deadline": t.deadline.strftime("%Y-%m-%dT%H:%M") if t.deadline else "",
         "deadline_nice": t.deadline.strftime("%d %b %Y, %I:%M %p") if t.deadline else "",
@@ -3037,6 +3052,18 @@ def vt_propose(payload: dict = Body(...), db: Session = Depends(get_db),
         except Exception: pass
     db.add(t)
     _hist_add(t, "proposal", "Proposed by teacher")
+    # teacher's proposed slide / PPT / PDF -> R2, shown to PM & admin at approve time
+    _slide = payload.get("slide_file")
+    if _slide:
+        try:
+            import production_core as _pc
+            db.flush()
+            _su = _pc.save_images(db, t, [_slide], "slide", None, None, return_urls=True) or []
+            if _su:
+                t.proposal_slide = _su[0]
+                t.proposal_slide_name = (payload.get("slide_name") or "slide")[:280]
+        except Exception:
+            pass
     uname = db.query(User).filter(User.id == tp.user_id).first()
     admins = db.query(User).filter(User.role == "admin", User.is_active == True).all()
     for a in admins:
