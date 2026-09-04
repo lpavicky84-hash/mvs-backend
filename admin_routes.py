@@ -284,19 +284,6 @@ def _derive_subject_classes(profile, db):
     return out
 
 
-@router.post("/teachers/{profile_id}/urgent")
-def admin_teacher_urgent(profile_id: int, payload: dict = Body(...),
-                         db: Session = Depends(get_db), _=Depends(get_admin)):
-    """Admin toggle: show/hide the Urgent Video option for a specific teacher."""
-    from models import TeacherProfile
-    tp = db.query(TeacherProfile).filter(TeacherProfile.id == int(profile_id)).first()
-    if not tp:
-        raise HTTPException(status_code=404, detail="Teacher not found")
-    tp.urgent_enabled = bool(payload.get("enabled"))
-    db.commit()
-    return {"ok": True, "urgent_enabled": tp.urgent_enabled}
-
-
 @router.get("/teachers")
 def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
     teachers = db.query(User).filter(User.role == UserRole.teacher).all()
@@ -360,7 +347,6 @@ def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
                 "user_id": t.user_id,
                 "phone": profile.phone,
                 "has_photo": bool(profile.photo_b64),
-                "urgent_enabled": (getattr(profile, "urgent_enabled", True) is not False),
                 "is_active": t.is_active,
                 "subjects": profile.subjects,
                 "subject_classes": _derive_subject_classes(profile, db),
@@ -790,20 +776,12 @@ def timetable_all(db: Session = Depends(get_db), _=Depends(get_admin)):
     # v99: kin entries ka class report (lecture) upload ho chuka hai — ek hi query me
     lec_entry_ids = set(x[0] for x in db.query(Lecture.timetable_entry_id).filter(
         Lecture.is_active == True, Lecture.timetable_entry_id.isnot(None)).all())
-    # BATCH teacher name + photo flag for the DISTINCT teachers (was 1 query PER entry = N+1)
-    _ttids = list({e.teacher_id for e in es if e.teacher_id})
-    _tname, _tphoto = {}, set()
-    if _ttids:
-        for _tid, _nm in db.query(TeacherProfile.id, User.name).join(
-                User, TeacherProfile.user_id == User.id).filter(TeacherProfile.id.in_(_ttids)):
-            _tname[_tid] = _nm or ""
-        _tphoto = {r[0] for r in db.query(TeacherProfile.id).filter(
-            TeacherProfile.id.in_(_ttids), func.length(TeacherProfile.photo_b64) > 0)}
     result = []
     for e in es:
-        tname = _tname.get(e.teacher_id, "")
-        tpid = e.teacher_id if e.teacher_id in _tname else None
-        tphoto = e.teacher_id in _tphoto
+        tname = ""; tphoto = False; tpid = None
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == e.teacher_id).first()
+        if tp and tp.user:
+            tname = tp.user.name; tphoto = bool(tp.photo_b64); tpid = tp.id
         result.append({
             "id": e.id, "subject": e.subject, "class_name": e.class_name,
             "chapter": e.chapter, "part": e.part,
@@ -2806,17 +2784,10 @@ def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depend
     _rids = [d.id for d in _rows]
     _img_ids, _voice_ids, _ans_voice_ids, _ans_file_ids = set(), set(), set(), set()
     if _rids:
-        # attachment existence in ONE pass (was 4 separate queries each reading the heavy
-        # base64 blobs) — 4x fewer blob reads over the whole doubts table.
-        for _i in range(0, len(_rids), 500):
-            for did, il, al, aal, afl in db.query(
-                    Doubt.id, func.length(Doubt.image_b64), func.length(Doubt.audio_b64),
-                    func.length(Doubt.answer_audio_b64), func.length(Doubt.answer_attach_b64)
-                ).filter(Doubt.id.in_(_rids[_i:_i + 500])):
-                if il: _img_ids.add(did)
-                if al: _voice_ids.add(did)
-                if aal: _ans_voice_ids.add(did)
-                if afl: _ans_file_ids.add(did)
+        _img_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.image_b64) > 0).all()}
+        _voice_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.audio_b64) > 0).all()}
+        _ans_voice_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.answer_audio_b64) > 0).all()}
+        _ans_file_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.answer_attach_b64) > 0).all()}
     # batch-load student/teacher names + responses (pehle 3 query PER doubt -> ab ~3 total).
     _sids = list({d.student_id for d in _rows if d.student_id})
     _tids = list({d.teacher_id for d in _rows if d.teacher_id})
@@ -5163,6 +5134,23 @@ def admin_finalize_payout(tid: int, payload: dict = Body(...), db: Session = Dep
     if not tp:
         raise HTTPException(404, "Teacher not found.")
     snap = earnings_payload(db, tp, mk)   # live model — sab teachers ke liye kaam karta hai
+    if payload.get("waive_deductions"):
+        # Relaxation: is month ke deductions waive karo — net = base + incentive (no deductions).
+        try:
+            _lv = float(snap.get("leave_deduction", 0) or 0)
+            _rv = float(snap.get("reviewed_deduction", 0) or 0)
+            if (_lv + _rv) > 0:
+                _net0 = float(snap.get("net_payable", 0) or 0)
+                _pct0 = float(snap.get("salary_pct", 0) or 0)
+                snap["leave_deduction"] = 0
+                snap["reviewed_deduction"] = 0
+                snap["net_payable"] = round(float(snap.get("base_earned", 0) or 0) + float(snap.get("incentive", 0) or 0))
+                snap["deductions_waived"] = True
+                snap["deductions_waived_amount"] = round(_lv + _rv)
+                if _net0 > 0 and _pct0 > 0:
+                    snap["salary_pct"] = round(snap["net_payable"] * _pct0 / _net0, 1)
+        except Exception:
+            pass
     rec = db.query(PayoutMonth).filter(PayoutMonth.teacher_id == tid, PayoutMonth.month == mk).first()
     if not rec:
         rec = PayoutMonth(teacher_id=tid, month=mk)
@@ -5172,8 +5160,11 @@ def admin_finalize_payout(tid: int, payload: dict = Body(...), db: Session = Dep
     rec.snapshot = _json.dumps(snap, default=str)
     rec.status = "finalized"
     rec.finalized_at = datetime.utcnow()
+    _fin_note = "Month finalized (snapshot frozen)"
+    if snap.get("deductions_waived"):
+        _fin_note += " \u2014 deductions waived (\u20b9" + str(snap.get("deductions_waived_amount", 0)) + ")"
     _pay_audit(db, "payout_month", rec.id, "finalized", current_user.id, "admin",
-               "Month finalized (snapshot frozen)", teacher_id=tid, month=mk)
+               _fin_note, teacher_id=tid, month=mk)
     db.commit()
     return {"message": "Month finalized - snapshot saved", "status": rec.status}
 
@@ -5758,60 +5749,34 @@ def orphan_data_cleanup(db: Session = Depends(get_db), _=Depends(get_admin)):
 @router.get("/dpp-rankings")
 def admin_dpp_rankings(db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import DppPack, DppAnswer, DppEvent, TeacherProfile, User as _U
-    from sqlalchemy import func as _func
     packs = db.query(DppPack).options(defer(DppPack.questions), defer(DppPack.q_pdf), defer(DppPack.s_pdf)).order_by(DppPack.created_at.desc()).all()
-    pack_ids = [pk.id for pk in packs]
-    teacher_ids = list({pk.teacher_id for pk in packs if pk.teacher_id})
-
-    # BATCH teacher names (2 queries, not 2 per pack)
-    tmap = {}
-    if teacher_ids:
-        uid_by_tid = {tid: uid for tid, uid in
-                      db.query(TeacherProfile.id, TeacherProfile.user_id).filter(TeacherProfile.id.in_(teacher_ids))}
-        _uids = [u for u in uid_by_tid.values() if u]
-        uname = {}
-        if _uids:
-            for uid, nm in db.query(_U.id, _U.name).filter(_U.id.in_(_uids)):
-                uname[uid] = nm or ""
-        for tid in teacher_ids:
-            tmap[tid] = uname.get(uid_by_tid.get(tid), "")
-
-    # BATCH submissions + checked per pack (1 GROUP BY, not 1 .all() per pack)
-    sub_total, sub_checked = {}, {}
-    if pack_ids:
-        for pid, st, cnt in (db.query(DppAnswer.pack_id, DppAnswer.status, _func.count(DppAnswer.id))
-                             .filter(DppAnswer.pack_id.in_(pack_ids), DppAnswer.status != "staged")
-                             .group_by(DppAnswer.pack_id, DppAnswer.status)):
-            sub_total[pid] = sub_total.get(pid, 0) + cnt
-            if st == "checked":
-                sub_checked[pid] = sub_checked.get(pid, 0) + cnt
-
-    # BATCH distinct-student views + downloads per pack (1 GROUP BY, not 2 counts per pack)
-    views, downloads = {}, {}
-    if pack_ids:
-        for pid, ev, cnt in (db.query(DppEvent.pack_id, DppEvent.event,
-                                      _func.count(_func.distinct(DppEvent.student_id)))
-                             .filter(DppEvent.pack_id.in_(pack_ids), DppEvent.event.in_(["view", "download"]))
-                             .group_by(DppEvent.pack_id, DppEvent.event)):
-            if ev == "view":
-                views[pid] = cnt
-            elif ev == "download":
-                downloads[pid] = cnt
-
     out = []
     for pk in packs:
-        total = sub_total.get(pk.id, 0)
-        chk = sub_checked.get(pk.id, 0)
+        subs = (db.query(DppAnswer)
+                .filter(DppAnswer.pack_id == pk.id, DppAnswer.status != "staged")
+                .all())
+        checked = sum(1 for a in subs if a.status == "checked")
+        tname = ""
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == pk.teacher_id).first()
+        if tp and tp.user_id:
+            u = db.query(_U).filter(_U.id == tp.user_id).first()
+            tname = u.name if u else ""
+        if not subs and not tname:
+            tname = ""
         out.append({"id": pk.id, "title": pk.title or "DPP", "subject": pk.subject or "",
                     "chapter": pk.chapter or "", "part": pk.part or "",
                     "class_name": getattr(pk, "class_name", "") or "",
                     "medium": pk.medium or "", "source": pk.source or "",
-                    "teacher": tmap.get(pk.teacher_id, ""),
+                    "teacher": tname,
                     "created_at": pk.created_at.strftime("%d %b %Y") if pk.created_at else "",
-                    "submitted": total, "checked": chk,
-                    "pending": total - chk,
-                    "views": views.get(pk.id, 0),
-                    "downloads": downloads.get(pk.id, 0)})
+                    "submitted": len(subs), "checked": checked,
+                    "pending": len(subs) - checked,
+                    "views": (db.query(DppEvent.student_id)
+                              .filter(DppEvent.pack_id == pk.id, DppEvent.event == "view")
+                              .distinct().count()),
+                    "downloads": (db.query(DppEvent.student_id)
+                                  .filter(DppEvent.pack_id == pk.id, DppEvent.event == "download")
+                                  .distinct().count())})
     return {"packs": out}
 
 

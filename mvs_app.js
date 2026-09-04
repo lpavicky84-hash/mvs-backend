@@ -19859,7 +19859,7 @@ async function loadASalaryStatus(){
   let lf={};
   try{ const r=await api('/api/admin/payout-lifecycle?month='+encodeURIComponent(_aEarnMonth)); lf=r.lifecycle||{}; }
   catch(e){ panel.innerHTML='<div class="alert alert-error">Could not load salary status. '+esc(e.message||'')+'</div>'; return; }
-  const teachers=(window._aEarnData&&window._aEarnData.teachers)||[];
+  const teachers=await _incTeachers();
   let h=`<div class="card"><div class="card-header"><h3>Salary Status \u00B7 ${esc(fmtMonthLabel(_aEarnMonth))}</h3></div><div class="card-body">`;
   h+='<p style="color:#6b7280;font-size:.85rem;margin:0 0 12px">Finalize freezes the month. Then mark payment In Progress and Credited. The teacher confirms receipt from their side.</p>';
   if(!teachers.length){ h+='<p style="color:#6b7280">Loading teachers...</p>'; }
@@ -19883,6 +19883,21 @@ async function loadASalaryStatus(){
   panel.innerHTML=h;
 }
 async function salFinalize(tid){
+  showModal('Finalize \u2014 '+fmtMonthLabel(_aEarnMonth),
+    `<p style="font-size:.9rem;color:var(--text-muted);margin:0 0 12px">Finalize se ye month freeze ho jayega (calculation lock). Iske baad In Progress / Credited mark kar sakte ho.</p>
+     <label style="display:flex;align-items:flex-start;gap:9px;padding:11px;border:1px solid var(--border);border-radius:10px;cursor:pointer;background:var(--bg)">
+       <input type="checkbox" id="sal-waive-ded" style="margin-top:3px">
+       <span><b>Deductions waive karein (relaxation)</b><br><small style="color:var(--text-muted)">Is month ke saare deductions hata do \u2014 teacher ko poora base + incentive milega, koi katauti nahi.</small></span>
+     </label>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="_salFinalizeGo(${tid})">Finalize</button>`);
+}
+async function _salFinalizeGo(tid){
+  const waive=!!(document.getElementById('sal-waive-ded')&&document.getElementById('sal-waive-ded').checked);
+  closeModal();
+  try{ await api('/api/admin/teacher/'+tid+'/payout-finalize','POST',{month:_aEarnMonth,waive_deductions:waive}); toast(waive?'Finalized \u2014 deductions waived.':'Finalized.'); loadASalaryStatus(); }
+  catch(e){ toast(e.message||'Could not finalize.'); }
+}
+async function _salFinalizeOld(tid){
   if(!confirm('Finalize '+fmtMonthLabel(_aEarnMonth)+' for this teacher? The calculation will be frozen.')) return;
   try{ await api('/api/admin/teacher/'+tid+'/payout-finalize','POST',{month:_aEarnMonth}); toast('Finalized.'); loadASalaryStatus(); }
   catch(e){ toast(e.message||'Could not finalize.'); }
