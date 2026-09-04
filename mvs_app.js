@@ -19853,6 +19853,12 @@ function _salBadge(s){
   const x=m[s]||[s,'#eee','#333'];
   return `<span class="chip" style="background:${x[1]};color:${x[2]}">${x[0]}</span>`;
 }
+function salMonthShift(delta){
+  let m=_aEarnMonth||curMonth(); const p=m.split('-'); const y=+p[0], mo=+p[1];
+  const d=new Date(y, mo-1+delta, 1);
+  _aEarnMonth=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  loadASalaryStatus();
+}
 async function loadASalaryStatus(){
   const panel=document.getElementById('sal-panel'); if(!panel) return;
   panel.innerHTML='<div class="spinner"></div>';
@@ -19860,7 +19866,7 @@ async function loadASalaryStatus(){
   try{ const r=await api('/api/admin/payout-lifecycle?month='+encodeURIComponent(_aEarnMonth)); lf=r.lifecycle||{}; }
   catch(e){ panel.innerHTML='<div class="alert alert-error">Could not load salary status. '+esc(e.message||'')+'</div>'; return; }
   const teachers=await _incTeachers();
-  let h=`<div class="card"><div class="card-header"><h3>Salary Status \u00B7 ${esc(fmtMonthLabel(_aEarnMonth))}</h3></div><div class="card-body">`;
+  let h=`<div class="card"><div class="card-header" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h3>Salary Status \u00B7 ${esc(fmtMonthLabel(_aEarnMonth))}</h3><div style="display:flex;gap:6px;align-items:center"><button class="btn btn-ghost btn-sm" onclick="salMonthShift(-1)" title="Previous month">\u2039 Prev</button><input type="month" class="form-control" style="width:auto;padding:5px 10px" value="${_aEarnMonth}" onchange="_aEarnMonth=this.value;loadASalaryStatus()"><button class="btn btn-ghost btn-sm" onclick="salMonthShift(1)" title="Next month">Next \u203A</button></div></div><div class="card-body">`;
   h+='<p style="color:#6b7280;font-size:.85rem;margin:0 0 12px">Finalize freezes the month. Then mark payment In Progress and Credited. The teacher confirms receipt from their side.</p>';
   if(!teachers.length){ h+='<p style="color:#6b7280">Loading teachers...</p>'; }
   teachers.forEach(t=>{
