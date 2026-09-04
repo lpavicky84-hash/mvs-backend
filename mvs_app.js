@@ -19883,13 +19883,35 @@ async function loadASalaryStatus(){
   panel.innerHTML=h;
 }
 async function salFinalize(tid){
+  let e=null;
+  try{ e=await api('/api/admin/earnings/teacher/'+tid+'?month='+encodeURIComponent(_aEarnMonth)); }catch(err){}
+  const net=Math.round((e&&e.net_payable)||0);
+  const lv=Math.round((e&&e.leave_deduction)||0);
+  const rv=Math.round((e&&e.reviewed_deduction)||0);
+  const ded=lv+rv;
+  const full=Math.round(((e&&e.base_earned)||0)+((e&&e.incentive)||0));
+  window._salFinE={net:net,ded:ded,full:full};
+  const _row=(l,v,c)=>`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:.9rem"><span style="color:var(--text-muted)">${l}</span><span style="font-weight:700${c?';color:'+c:''}">${v}</span></div>`;
+  const amtBox=e?`<div style="border:1px solid var(--border);border-radius:10px;padding:11px 13px;margin:0 0 12px">
+      ${_row('Earned (base + incentive)', _inr(full))}
+      ${ded>0?_row('Deductions', '\u2212 '+_inr(ded), '#c0392b'):''}
+      <div style="border-top:1px solid var(--border);margin:6px 0"></div>
+      ${_row('<b>Net payable (with deductions)</b>', '<b>'+_inr(net)+'</b>')}
+    </div>`:'<div style="color:var(--text-muted);font-size:.85rem;margin-bottom:10px">Amount could not be loaded, but you can still finalize.</div>';
   showModal('Finalize \u2014 '+fmtMonthLabel(_aEarnMonth),
     `<p style="font-size:.9rem;color:var(--text-muted);margin:0 0 12px">Finalize se ye month freeze ho jayega (calculation lock). Iske baad In Progress / Credited mark kar sakte ho.</p>
-     <label style="display:flex;align-items:flex-start;gap:9px;padding:11px;border:1px solid var(--border);border-radius:10px;cursor:pointer;background:var(--bg)">
-       <input type="checkbox" id="sal-waive-ded" style="margin-top:3px">
-       <span><b>Deductions waive karein (relaxation)</b><br><small style="color:var(--text-muted)">Is month ke saare deductions hata do \u2014 teacher ko poora base + incentive milega, koi katauti nahi.</small></span>
-     </label>`,
+     ${amtBox}
+     ${ded>0?`<label style="display:flex;align-items:flex-start;gap:9px;padding:11px;border:1px solid var(--border);border-radius:10px;cursor:pointer;background:var(--bg)">
+       <input type="checkbox" id="sal-waive-ded" onchange="_salFinAmt()" style="margin-top:3px">
+       <span><b>Deductions waive karein (relaxation)</b><br><small style="color:var(--text-muted)">Is month ke saare deductions (${_inr(ded)}) hata do \u2014 teacher ko poora ${_inr(full)} milega, koi katauti nahi.</small></span>
+     </label>`:''}
+     <div id="sal-fin-amt" style="margin-top:12px;padding:10px 13px;border-radius:10px;background:rgba(184,148,31,.1);font-size:.95rem">Final payable: <b style="font-size:1.15rem">${_inr(net)}</b></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="_salFinalizeGo(${tid})">Finalize</button>`);
+}
+function _salFinAmt(){
+  const w=document.getElementById('sal-waive-ded'); const box=document.getElementById('sal-fin-amt');
+  const e=window._salFinE||{}; const on=!!(w&&w.checked);
+  if(box) box.innerHTML='Final payable: <b style="font-size:1.15rem">'+_inr(on?e.full:e.net)+'</b>'+((on&&e.ded>0)?' <span style="color:#166534;font-size:.85rem">('+_inr(e.ded)+' waived)</span>':'');
 }
 async function _salFinalizeGo(tid){
   const waive=!!(document.getElementById('sal-waive-ded')&&document.getElementById('sal-waive-ded').checked);
