@@ -4279,10 +4279,10 @@ async function dppBrowserPdf(pid,kind,med){
         +_pdfQHTML(qMain,q.image,q.alt_image,'q-t')+h+'</div>';
     }).join('');
     const w=window.open('','_blank');
-    if(!w){ toast('Popup blocked — please allow popups to download the PDF.',true); return; }
+    if(!w){ toast('Popup blocked — is site ke liye popups allow karein, phir Download dobara dabayein.',true); return; }
     w.document.write(buildPdfDoc(ex,body,withSol,false,blang,logo,{tag:'Daily Practice Paper',typeChip:'DPP'}));
     w.document.close();
-  }catch(e){ toast('Could not prepare the PDF — using server\u2026',true); return dppPdfGoServer(pid,'download',kind,med); }
+  }catch(e){ toast('Print view khul nahi paya — popups allow karke dobara Download dabayein.',true); }
 }
 
 async function dppPdfGoServer(pid,action,kind,med){
@@ -4734,7 +4734,7 @@ async function examPdfPremium(id,mode,medium){
         +_pdfQHTML(qMain,q.image_b64,q.alt_image_b64,'q-t')+h+'</div>';
     }).join('');
     const w=window.open('','_blank');
-    if(!w){ toast('Popup blocked — please allow popups to download the PDF.',true); return; }
+    if(!w){ toast('Popup blocked — is site ke liye popups allow karein, phir Download dobara dabayein.',true); return; }
     w.document.write(buildPdfDoc(ex,body,withSol,isM,medium==='hi'?'hi':'en',logo));
     w.document.close();
   }catch(e){ toast(e.message,true); }
@@ -8103,20 +8103,20 @@ async function submitExam(){
       questions:_examQs.map(q=>({ q:q.q||'', q_hi:q.q_hi||'', model:q.model||'', model_hi:q.model_hi||'',
         image:q.image_b64||null, alt_image:q.alt_image_b64||null, model_image:q.model_answer_image||null })) };
     const _dppEid=window._dppEditId;
-    // Network error pe EK baar auto-retry (backend cold-start) — duplicate nahi banega
-    // (client_key + server-side 90s dedupe). Edit PATCH idempotent hai. Form data modal me safe.
+    // Bulletproof submit: client_key + server-side 90s dedupe => retry safe (no duplicates).
+    // PATCH is idempotent. Cold-start (30-60s) tak backoff ke saath kai baar retry; draft tab tak
+    // safe rehta hai (fail par kuch clear nahi hota), taaki 2 ghante ki mehnat kabhi na jaaye.
     let res=null, err=null;
     const _dppApi=()=> _dppEid
       ? api('/api/teacher/dpp-packs/'+_dppEid,'PATCH',payload)
       : api('/api/teacher/dpp-packs/create','POST',payload);
-    try{ res=await _dppApi(); }
-    catch(e1){
-      err=e1;
-      toast('Cannot reach the server — retrying in 4 seconds...',true);
-      await new Promise(r=>setTimeout(r,4000));
-      try{ res=await _dppApi(); err=null; }catch(e2){ err=e2; }
+    const _dppDelays=[0, 4000, 8000, 15000, 20000];
+    for(let _a=0; _a<_dppDelays.length; _a++){
+      if(_dppDelays[_a]){ toast('Server abhi busy/wake ho raha hai \\u2014 '+(_dppDelays[_a]/1000)+'s me phir try kar rahe hain (aapka kaam safe hai)',true); await new Promise(r=>setTimeout(r,_dppDelays[_a])); }
+      try{ res=await _dppApi(); err=null; break; }
+      catch(e){ err=e; res=null; }
     }
-    if(err||!res){ toast((err&&err.message)||(_dppEid?'Update failed':'Create failed'),true); return; }
+    if(err||!res){ toast((err&&err.message)||(_dppEid?'Update failed \\u2014 aapka draft safe hai, dobara try karein':'Create failed \\u2014 aapka draft safe hai, dobara try karein'),true); return; }
     _clearQDraft(); _examQs=[];   // safal submit -> draft clear (closeModal ka save skip)
     window._dppMode=false; window._dppEditId=null; window._dppEditMeta=null; closeModal();
     toast(_dppEid?'DPP updated — the PDFs will rebuild on the next view or download.'
