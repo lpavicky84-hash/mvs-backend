@@ -145,6 +145,203 @@ def admin_section_guard(request: Request, current_user=Depends(get_admin)):
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"], dependencies=[Depends(admin_section_guard)])
 
+
+def _ensure_batches_seed():
+    """Create the batches table (if missing) and seed it from the legacy BatchName enum.
+    Runs at import so the table always exists. Purely additive — safe."""
+    try:
+        from database import engine, SessionLocal
+        from models import Base, Batch, BatchName
+        try:
+            Base.metadata.create_all(bind=engine, tables=[Batch.__table__])
+        except Exception:
+            pass
+        db = SessionLocal()
+        try:
+            existing = {b.code for b in db.query(Batch).all()}
+            added = 0
+            for i, bn in enumerate(BatchName):
+                code = bn.name
+                if code in existing:
+                    continue
+                nm = bn.value
+                low = nm.lower()
+                typ = ("Science" if "science" in low else
+                       "Commerce" if "commerce" in low else
+                       "Arts" if "arts" in low else
+                       "Class 10" if "10" in low else "")
+                db.add(Batch(code=code, name=nm, type=typ, status="live", active=True, sort=i))
+                added += 1
+            if added:
+                db.commit()
+        finally:
+            db.close()
+    except Exception:
+        pass
+
+
+_ensure_batches_seed()
+
+def _ensure_batch_link():
+    """Add student_profiles.batch_id (if missing) and backfill it from existing batch/batch_name.
+    Import-time, idempotent, bounded. Additive — the old fields stay authoritative for now."""
+    try:
+        from database import engine, SessionLocal
+        from sqlalchemy import text as _t
+        try:
+            with engine.connect() as conn:
+                conn.execute(_t("ALTER TABLE student_profiles ADD COLUMN batch_id INTEGER NULL"))
+                conn.commit()
+        except Exception:
+            pass  # column already exists
+        from models import Batch, StudentProfile
+        import re as _re
+        db = SessionLocal()
+        try:
+            by_name = {b.name: b.id for b in db.query(Batch).all()}
+            distinct_names = [r[0] for r in db.query(StudentProfile.batch_name)
+                              .filter(StudentProfile.batch_name != None, StudentProfile.batch_name != "")
+                              .distinct().all()]
+            mx = db.query(Batch).order_by(Batch.sort.desc()).first()
+            nxt = (mx.sort + 1) if mx else 0
+            created = 0
+            for nm in distinct_names:
+                nm = (nm or "").strip()
+                if not nm or nm in by_name:
+                    continue
+                base = _re.sub(r"[^a-z0-9]+", "_", nm.lower()).strip("_") or "batch"
+                code = base
+                k = 1
+                while db.query(Batch).filter(Batch.code == code).first():
+                    k += 1
+                    code = base + "_" + str(k)
+                nb = Batch(code=code, name=nm, type="", status="live", active=True, sort=nxt)
+                db.add(nb)
+                db.flush()
+                by_name[nm] = nb.id
+                nxt += 1
+                created += 1
+            if created:
+                db.commit()
+            unlinked = db.query(StudentProfile).filter(StudentProfile.batch_id == None).limit(8000).all()
+            changed = 0
+            for sp in unlinked:
+                name = None
+                if getattr(sp, "batch_name", None):
+                    name = (sp.batch_name or "").strip()
+                elif getattr(sp, "batch", None) is not None:
+                    name = getattr(sp.batch, "value", sp.batch)
+                if name and name in by_name:
+                    sp.batch_id = by_name[name]
+                    changed += 1
+            if changed:
+                db.commit()
+        finally:
+            db.close()
+    except Exception:
+        pass
+
+
+_ensure_batch_link()
+
+
+def _ensure_enrollments():
+    """Create student_batches (if missing) and backfill one enrollment per student's primary batch.
+    Import-time, idempotent, bounded, additive."""
+    try:
+        from database import engine, SessionLocal
+        from models import Base, StudentBatch, StudentProfile
+        try:
+            Base.metadata.create_all(bind=engine, tables=[StudentBatch.__table__])
+        except Exception:
+            pass
+        db = SessionLocal()
+        try:
+            have = {(e.student_id, e.batch_id) for e in db.query(StudentBatch).all()}
+            rows = (db.query(StudentProfile.id, StudentProfile.batch_id)
+                    .filter(StudentProfile.batch_id != None).limit(8000).all())
+            added = 0
+            for sid, bid in rows:
+                if (sid, bid) in have:
+                    continue
+                db.add(StudentBatch(student_id=sid, batch_id=bid, is_primary=True))
+                have.add((sid, bid))
+                added += 1
+            if added:
+                db.commit()
+        finally:
+            db.close()
+    except Exception:
+        pass
+
+
+_ensure_enrollments()
+
+
+def _ensure_perf_indexes():
+    """Create indexes on hot-path columns that were added via raw ALTER (no auto-index).
+    Import-time, safe — skipped silently if the index already exists."""
+    try:
+        from database import engine
+        from sqlalchemy import text as _t
+        stmts = [
+            "CREATE INDEX ix_student_profiles_batch_id ON student_profiles (batch_id)",
+            "CREATE INDEX ix_video_tasks_video_type ON video_tasks (video_type)",
+        ]
+        for st in stmts:
+            try:
+                with engine.connect() as conn:
+                    conn.execute(_t(st))
+                    conn.commit()
+            except Exception:
+                pass  # already exists / not applicable
+    except Exception:
+        pass
+
+
+_ensure_perf_indexes()
+
+def _resolve_batch_id(db, name):
+    """Batch.id for a display name, creating the Batch if needed. None for empty. Used for dual-write."""
+    name = (name or "").strip()
+    if not name:
+        return None
+    from models import Batch
+    import re as _re
+    b = db.query(Batch).filter(Batch.name == name).first()
+    if b:
+        return b.id
+    base = _re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "batch"
+    code = base
+    k = 1
+    while db.query(Batch).filter(Batch.code == code).first():
+        k += 1
+        code = base + "_" + str(k)
+    mx = db.query(Batch).order_by(Batch.sort.desc()).first()
+    nb = Batch(code=code, name=name, type="", status="live", active=True, sort=((mx.sort + 1) if mx else 0))
+    db.add(nb)
+    db.flush()
+    return nb.id
+
+
+def _batch_label(db, sp):
+    """Resolved batch display name for a student — reads the linked Batch first (Phase 3),
+    falls back to the legacy batch_name / batch enum. Safe during the transition."""
+    try:
+        bid = getattr(sp, "batch_id", None)
+        if bid:
+            from models import Batch
+            b = db.query(Batch).filter(Batch.id == bid).first()
+            if b and b.name:
+                return b.name
+    except Exception:
+        pass
+    nm = getattr(sp, "batch_name", None)
+    if nm:
+        return nm
+    bt = getattr(sp, "batch", None)
+    return getattr(bt, "value", bt) if bt else ""
+
 def notify(db, user_id: int, title: str, message: str, notif_type: str, link=None, image_url=None):
     n = Notification(user_id=user_id, title=title, message=message, notif_type=notif_type,
                      link=link, image_url=image_url)
@@ -284,6 +481,204 @@ def _derive_subject_classes(profile, db):
     return out
 
 
+@router.post("/teachers/{profile_id}/urgent")
+def admin_teacher_urgent(profile_id: int, payload: dict = Body(...),
+                         db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin toggle: show/hide the Urgent Video option for a specific teacher."""
+    from models import TeacherProfile
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == int(profile_id)).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    tp.urgent_enabled = bool(payload.get("enabled"))
+    db.commit()
+    return {"ok": True, "urgent_enabled": tp.urgent_enabled}
+
+
+@router.get("/quick-search")
+def admin_quick_search(q: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Lightweight global search for the command palette: teachers + students by name/phone."""
+    from sqlalchemy import or_ as _or
+    q = (q or "").strip()
+    if len(q) < 2:
+        return {"results": []}
+    like = "%" + q + "%"
+    out = []
+    try:
+        trows = (db.query(User, TeacherProfile)
+                 .join(TeacherProfile, TeacherProfile.user_id == User.id)
+                 .filter(User.role == UserRole.teacher, User.name.like(like))
+                 .limit(8).all())
+        for u, tp in trows:
+            out.append({"type": "teacher", "id": tp.id, "name": u.name, "sub": "Teacher"})
+    except Exception:
+        pass
+    try:
+        srows = (db.query(User, StudentProfile)
+                 .join(StudentProfile, StudentProfile.user_id == User.id)
+                 .filter(User.role == UserRole.student,
+                         _or(User.name.like(like), StudentProfile.phone.like(like)))
+                 .limit(8).all())
+        for u, sp in srows:
+            out.append({"type": "student", "id": sp.id, "name": u.name, "sub": (sp.phone or "Student")})
+    except Exception:
+        pass
+    return {"results": out[:15]}
+
+
+@router.get("/batches")
+def admin_list_batches(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """List all batches (active + inactive). Usage count now reads the linked batch_id
+    (Phase 3 read-migration); falls back to the legacy batch/batch_name match for any
+    student not yet linked, so the count stays correct during the transition."""
+    from models import Batch, StudentProfile
+    from sqlalchemy import func as _bf
+    rows = db.query(Batch).order_by(Batch.sort.asc(), Batch.id.asc()).all()
+    by_id = {}          # batch_id -> student count (primary, from the entity link)
+    by_name = {}        # batch name -> student count (fallback, legacy fields, unlinked only)
+    unlinked = 0
+    try:
+        for bid, cnt in (db.query(StudentProfile.batch_id, _bf.count(StudentProfile.id))
+                         .filter(StudentProfile.batch_id != None)
+                         .group_by(StudentProfile.batch_id).all()):
+            by_id[bid] = int(cnt)
+        # legacy fallback: only for students NOT yet linked (batch_id NULL)
+        for name, cnt in (db.query(StudentProfile.batch, _bf.count(StudentProfile.id))
+                          .filter(StudentProfile.batch_id == None)
+                          .group_by(StudentProfile.batch).all()):
+            key = getattr(name, "value", name)
+            if key:
+                by_name[str(key)] = by_name.get(str(key), 0) + int(cnt)
+        for name, cnt in (db.query(StudentProfile.batch_name, _bf.count(StudentProfile.id))
+                          .filter(StudentProfile.batch_id == None,
+                                  StudentProfile.batch_name != None, StudentProfile.batch_name != "")
+                          .group_by(StudentProfile.batch_name).all()):
+            if name:
+                by_name[str(name)] = by_name.get(str(name), 0) + int(cnt)
+        unlinked = int(db.query(_bf.count(StudentProfile.id)).filter(StudentProfile.batch_id == None).scalar() or 0)
+    except Exception:
+        pass
+    return {"unlinked": unlinked, "batches": [{
+        "id": b.id, "code": b.code, "name": b.name, "type": b.type or "",
+        "description": b.description or "", "status": b.status or "live",
+        "active": bool(b.active), "is_new": bool(b.is_new), "sort": b.sort or 0,
+        "usage": int(by_id.get(b.id, 0) or 0) + int(by_name.get(b.name, 0) or 0),
+    } for b in rows]}
+
+
+@router.post("/batches")
+def admin_add_batch(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Create a batch. Display name may repeat; a unique code is auto-derived."""
+    from models import Batch
+    import re as _re
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Batch name is required")
+    base = _re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "batch"
+    code = base
+    n = 1
+    while db.query(Batch).filter(Batch.code == code).first():
+        n += 1
+        code = base + "_" + str(n)
+    mx = db.query(Batch).order_by(Batch.sort.desc()).first()
+    b = Batch(code=code, name=name, type=(payload.get("type") or "").strip(),
+              description=(payload.get("description") or "").strip(),
+              status=(payload.get("status") or "live"),
+              is_new=bool(payload.get("is_new")),
+              active=True, sort=((mx.sort + 1) if mx else 0))
+    db.add(b)
+    db.commit()
+    return {"ok": True, "id": b.id, "code": b.code}
+
+
+@router.post("/batches/{bid}")
+def admin_update_batch(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Batch
+    from datetime import datetime as _dt
+    b = db.query(Batch).filter(Batch.id == bid).first()
+    if not b:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    if payload.get("name") is not None:
+        nm = (payload.get("name") or "").strip()
+        if nm:
+            b.name = nm
+    for fld in ("type", "description", "status"):
+        if payload.get(fld) is not None:
+            setattr(b, fld, (payload.get(fld) or "").strip())
+    if payload.get("is_new") is not None:
+        b.is_new = bool(payload.get("is_new"))
+    if payload.get("active") is not None:
+        b.active = bool(payload.get("active"))
+        if not b.active and (b.status or "") != "archived":
+            b.status = "archived"
+            b.archived_at = _dt.utcnow()
+        elif b.active and (b.status or "") == "archived":
+            b.status = "live"
+            b.archived_at = None
+    if payload.get("sort") is not None:
+        try:
+            b.sort = int(payload.get("sort"))
+        except Exception:
+            pass
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/students/{sid}/batches")
+def admin_student_batches(sid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """A student's batch enrollments (multi-batch)."""
+    from models import StudentBatch, Batch
+    enr = db.query(StudentBatch).filter(StudentBatch.student_id == sid).all()
+    bids = [e.batch_id for e in enr]
+    bmap = {b.id: b for b in (db.query(Batch).filter(Batch.id.in_(bids)).all() if bids else [])}
+    return {"batches": [{"id": e.batch_id,
+                         "name": (bmap[e.batch_id].name if e.batch_id in bmap else ""),
+                         "is_primary": bool(e.is_primary)}
+                        for e in enr if e.batch_id in bmap]}
+
+
+@router.post("/students/{sid}/batches")
+def admin_student_add_batch(sid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import StudentBatch, StudentProfile, Batch
+    bid = payload.get("batch_id")
+    if not bid:
+        raise HTTPException(status_code=400, detail="batch_id is required")
+    bid = int(bid)
+    sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
+    if not sp:
+        raise HTTPException(status_code=404, detail="Student not found")
+    if not db.query(Batch).filter(Batch.id == bid).first():
+        raise HTTPException(status_code=404, detail="Batch not found")
+    existing = db.query(StudentBatch).filter(StudentBatch.student_id == sid, StudentBatch.batch_id == bid).first()
+    if not existing:
+        is_first = db.query(StudentBatch).filter(StudentBatch.student_id == sid).count() == 0
+        db.add(StudentBatch(student_id=sid, batch_id=bid, is_primary=is_first))
+        if is_first:
+            sp.batch_id = bid   # keep legacy primary in sync
+        db.commit()
+    return {"ok": True}
+
+
+@router.delete("/students/{sid}/batches/{bid}")
+def admin_student_remove_batch(sid: int, bid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import StudentBatch, StudentProfile
+    e = db.query(StudentBatch).filter(StudentBatch.student_id == sid, StudentBatch.batch_id == bid).first()
+    if e:
+        was_primary = bool(e.is_primary)
+        db.delete(e)
+        db.flush()
+        if was_primary:
+            nxt = db.query(StudentBatch).filter(StudentBatch.student_id == sid).first()
+            sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
+            if nxt:
+                nxt.is_primary = True
+                if sp:
+                    sp.batch_id = nxt.batch_id
+            elif sp:
+                sp.batch_id = None
+        db.commit()
+    return {"ok": True}
+
+
 @router.get("/teachers")
 def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
     teachers = db.query(User).filter(User.role == UserRole.teacher).all()
@@ -347,6 +742,7 @@ def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
                 "user_id": t.user_id,
                 "phone": profile.phone,
                 "has_photo": bool(profile.photo_b64),
+                "urgent_enabled": (getattr(profile, "urgent_enabled", True) is not False),
                 "is_active": t.is_active,
                 "subjects": profile.subjects,
                 "subject_classes": _derive_subject_classes(profile, db),
@@ -437,19 +833,45 @@ def toggle_teacher(user_id: int, db: Session = Depends(get_db), _=Depends(get_ad
 
 # ===== STUDENT MANAGEMENT =====
 @router.get("/students")
-def get_all_students(db: Session = Depends(get_db), _=Depends(get_admin)):
+def get_all_students(q: str = "", page: int = 0, limit: int = 0,
+                     db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Students list. Backward compatible: with no limit it returns the full array as before.
+    With limit>0 it returns {students, total, page, limit} — server-side search + pagination,
+    and per-student counts scoped to just the page (cheap even with thousands of students)."""
     from sqlalchemy.orm import defer, joinedload
-    # photo blob (bada base64) list me load NAHI karte -> RAM + speed. has_photo alag halki query se.
-    profiles = (db.query(StudentProfile)
-                .options(defer(StudentProfile.photo_b64), joinedload(StudentProfile.user))
-                .all())
-    photo_ids = {r[0] for r in db.query(StudentProfile.id)
-                 .filter(StudentProfile.photo_b64.isnot(None)).all()}
-    # counts EK-EK query me nahi — 2 GROUP BY queries se (warna 2000 students = 4000 queries)
-    dpp_counts = dict(db.query(DPPSubmission.student_id, func.count(DPPSubmission.id))
-                      .group_by(DPPSubmission.student_id).all())
-    test_counts = dict(db.query(TestSubmission.student_id, func.count(TestSubmission.id))
-                       .group_by(TestSubmission.student_id).all())
+    from sqlalchemy import or_ as _or
+    base = (db.query(StudentProfile)
+            .join(User, StudentProfile.user_id == User.id)
+            .filter(User.role == UserRole.student))
+    q = (q or "").strip()
+    if q:
+        like = "%" + q + "%"
+        base = base.filter(_or(User.name.like(like), StudentProfile.phone.like(like), User.user_id.like(like)))
+    paginated = bool(limit and limit > 0)
+    total = base.count() if paginated else None
+    prof_q = base.options(defer(StudentProfile.photo_b64), joinedload(StudentProfile.user))
+    if paginated:
+        prof_q = prof_q.order_by(StudentProfile.id.desc()).offset(max(0, page) * limit).limit(limit)
+    profiles = prof_q.all()
+    sids = [sp.id for sp in profiles]
+    # photo presence + counts — scoped to the fetched page when paginated, else all (as before)
+    if paginated:
+        photo_ids = ({r[0] for r in db.query(StudentProfile.id)
+                      .filter(StudentProfile.id.in_(sids), StudentProfile.photo_b64.isnot(None)).all()}
+                     if sids else set())
+        dpp_counts = (dict(db.query(DPPSubmission.student_id, func.count(DPPSubmission.id))
+                           .filter(DPPSubmission.student_id.in_(sids))
+                           .group_by(DPPSubmission.student_id).all()) if sids else {})
+        test_counts = (dict(db.query(TestSubmission.student_id, func.count(TestSubmission.id))
+                            .filter(TestSubmission.student_id.in_(sids))
+                            .group_by(TestSubmission.student_id).all()) if sids else {})
+    else:
+        photo_ids = {r[0] for r in db.query(StudentProfile.id)
+                     .filter(StudentProfile.photo_b64.isnot(None)).all()}
+        dpp_counts = dict(db.query(DPPSubmission.student_id, func.count(DPPSubmission.id))
+                          .group_by(DPPSubmission.student_id).all())
+        test_counts = dict(db.query(TestSubmission.student_id, func.count(TestSubmission.id))
+                           .group_by(TestSubmission.student_id).all())
     result = []
     for sp in profiles:
         s = sp.user
@@ -478,6 +900,9 @@ def get_all_students(db: Session = Depends(get_db), _=Depends(get_admin)):
             "dpp_submitted": dpp_counts.get(sp.id, 0),
             "tests_attempted": test_counts.get(sp.id, 0),
         })
+    if paginated:
+        return {"students": result, "total": total, "page": page, "limit": limit,
+                "has_more": (max(0, page) * limit + len(result)) < (total or 0)}
     return result
 
 @router.post("/students/add")
@@ -505,6 +930,11 @@ def add_student(req: RegisterRequest, db: Session = Depends(get_db), _=Depends(g
         plain_password=req.password
     )
     db.add(sp)
+    try:
+        _bn = getattr(sp.batch, "value", sp.batch) if sp.batch else (sp.batch_name or "")
+        sp.batch_id = _resolve_batch_id(db, _bn)
+    except Exception:
+        pass
     db.commit()
     return {"message": f"Student {req.name} added successfully!"}
 
@@ -2344,6 +2774,7 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
                                    "source": "mvs_portal"})
             if batch:
                 existing.batch_name = batch
+                existing.batch_id = _resolve_batch_id(db, batch)
             if email:
                 existing.email = email
             if existing.user and name and existing.user.name == ("Student " + phone[-4:]):
@@ -2395,6 +2826,12 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
                               plain_password=phone, source=psrc,
                               medium=pmed, class_level=pcls)
         db.add(_nsp)
+        try:
+            if batch:
+                db.flush()
+                _nsp.batch_id = _resolve_batch_id(db, batch)
+        except Exception:
+            pass
         if _st_exam:
             try:
                 _apply_portal_exam_info(_nsp, _st_exam, db)

@@ -1703,8 +1703,13 @@ def vt_add_channel(payload: dict = Body(...), db: Session = Depends(get_db), _=D
 @router.get("/admin/video-types", dependencies=[Depends(_admin_section_guard)])
 def vt_list_types(db: Session = Depends(get_db), _=Depends(get_admin)):
     _seed_types(db)
+    from sqlalchemy import func as _vtf
+    usage = dict(db.query(VideoTask.video_type, _vtf.count(VideoTask.id))
+                 .filter(VideoTask.video_type != None, VideoTask.video_type != "")
+                 .group_by(VideoTask.video_type).all())
     rows = db.query(VideoType).order_by(VideoType.sort.asc(), VideoType.id.asc()).all()
     return {"types": [{"id": c.id, "name": c.name, "active": bool(c.active),
+                       "usage": int(usage.get(c.name, 0) or 0),
                        "streaming_scope": getattr(c, "streaming_scope", "both") or "both"} for c in rows]}
 
 
@@ -1732,6 +1737,11 @@ def vt_update_type(type_id: int, payload: dict = Body(...),
     c = db.query(VideoType).filter(VideoType.id == type_id).first()
     if not c:
         raise HTTPException(404, "Type not found")
+    _nm = (payload.get("name") or "").strip()
+    if _nm and _nm != c.name:
+        if db.query(VideoType).filter(VideoType.name == _nm, VideoType.id != type_id).first():
+            raise HTTPException(400, "Another type already has this name")
+        c.name = _nm
     if payload.get("streaming_scope") is not None:
         sc = (payload.get("streaming_scope") or "both").strip().lower()
         c.streaming_scope = sc if sc in ("both", "live", "recorded") else "both"

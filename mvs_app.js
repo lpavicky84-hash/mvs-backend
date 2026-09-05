@@ -2209,7 +2209,11 @@ async function loadTDashboard(){
   try{
  const d=await api('/api/teacher/dashboard');
  document.getElementById('t-subjects').textContent='Teacher';
- el.innerHTML=`${greetingCard(NAME,_tSuffix)}<div class="card"><div class="card-header"><h3> Today's Classes</h3></div><div class="card-body"><div id="t-today-wrap"><div class="spinner"></div></div></div></div><div id="t-punch-wrap"></div><div class="stats-grid">${statCard('Classes Done',d.total_done,'check','green',"navTo('teacher-app','today')")}${statCard('Pending',d.total_pending,'clipboard','amber',"navTo('teacher-app','today')")}${statCard('DPPs',d.total_dpps,'clipboard','indigo',"navTo('teacher-app','dpp')")}${statCard('Tests',d.total_tests,'edit','teal',"navTo('teacher-app','tests')")}${statCard('Unresolved Doubts',d.unresolved_doubts,'help','red',"navTo('teacher-app','doubts')",true)}</div>`;
+ var _naT=[];
+ if((d.unresolved_doubts||0)>0) _naT.push({label:d.unresolved_doubts+' student doubt'+(d.unresolved_doubts>1?'s':'')+' waiting for your answer',cta:'Answer',urgent:true,onclick:"navTo('teacher-app','doubts')"});
+ if((d.total_pending||0)>0) _naT.push({label:d.total_pending+' class'+(d.total_pending>1?'es':'')+' still pending today',cta:'Open',onclick:"navTo('teacher-app','today')"});
+ setTimeout(function(){ _mountWhatsNew('teacher'); }, 60);
+ el.innerHTML=`${greetingCard(NAME,_tSuffix)}${_nextActionHTML(_naT,'No pending classes or doubts right now.')}<div class="card"><div class="card-header"><h3> Today's Classes</h3></div><div class="card-body"><div id="t-today-wrap"><div class="spinner"></div></div></div></div><div id="t-punch-wrap"></div><div class="stats-grid">${statCard('Classes Done',d.total_done,'check','green',"navTo('teacher-app','today')")}${statCard('Pending',d.total_pending,'clipboard','amber',"navTo('teacher-app','today')")}${statCard('DPPs',d.total_dpps,'clipboard','indigo',"navTo('teacher-app','dpp')")}${statCard('Tests',d.total_tests,'edit','teal',"navTo('teacher-app','tests')")}${statCard('Unresolved Doubts',d.unresolved_doubts,'help','red',"navTo('teacher-app','doubts')",true)}</div>`;
  const badge=document.getElementById('t-doubt-badge');
  if(d.unresolved_doubts>0){ badge.style.display='inline-block'; badge.textContent=d.unresolved_doubts; } else badge.style.display='none';
  renderPunchCard('t-punch-wrap');
@@ -11382,35 +11386,157 @@ async function vtAddChannel(){
   try{ await api('/api/admin/video-channels','POST',{name}); closeModal(); toast('Channel added.'); loadAVTasks(); setTimeout(openVTChannels,400); }
   catch(e){ toast(e.message||'Could not add'); }
 }
-function openVTTypes(){
+async function openVTTypes(){
+  _vtcInjectCSS();
+  var list=[];
+  try{ var r=await api('/api/admin/video-types'); list=(r&&r.types)||[]; }catch(e){ list=(_vtTypes||[]); }
+  window._vtTypesMng=list;
   const scLbl={both:'Both',live:'Live only',recorded:'Recorded only'};
-  const rows=_vtTypes.map(c=>{
+  const active=list.filter(function(c){return c.active!==false;});
+  const inactive=list.filter(function(c){return c.active===false;});
+  const rowHTML=function(c){
     const sc=c.streaming_scope||'both';
-    return `<div class="vt-rank-row"><span class="sbb-av">${ic('play')}</span><div class="sbb-main"><div class="sbb-nm">${esc(c.name)}</div><div style="font-size:.7rem;color:var(--text-muted)">Available in: ${scLbl[sc]}</div></div>
-      <select class="input" style="width:150px;font-size:.8rem" onchange="vtSetTypeScope(${c.id},this.value)">
-        <option value="both" ${sc==='both'?'selected':''}>Both</option>
-        <option value="recorded" ${sc==='recorded'?'selected':''}>Recorded only</option>
-        <option value="live" ${sc==='live'?'selected':''}>Live only</option></select></div>`;
-  }).join('');
-  showModal('Video Types',`
-    <p style="font-size:.78rem;color:var(--text-muted);margin-bottom:10px">These types appear in the type dropdown while assigning a task and in the teacher's proposal form. "Available in" decides which Streaming (Live / Recorded) shows this type — e.g. tag Short Video as <b>Recorded only</b> so it never appears for Live.</p>
-    <div style="max-height:300px;overflow-y:auto;margin-bottom:12px">${rows}</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="vt-ty-new" class="input" placeholder="New type name" style="flex:1;min-width:150px">
-      <select id="vt-ty-scope" class="input" style="width:150px"><option value="both">Both</option><option value="recorded">Recorded only</option><option value="live">Live only</option></select>
-      <button class="btn btn-primary btn-sm" onclick="vtAddType()">${ic('plus')} Add</button></div>`,
-    `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+    const used=c.usage||0;
+    const usageChip=used>0?('<span class="vtc-use">'+used+' video'+(used>1?'s':'')+'</span>'):'<span class="vtc-use vtc-use-0">unused</span>';
+    return '<div class="vtc-row'+(c.active===false?' vtc-off':'')+'">'
+      +'<span class="sbb-av">'+ic('play')+'</span>'
+      +'<div class="vtc-main"><input class="vtc-nm" value="'+esc(c.name)+'" onchange="vtRenameType('+c.id+',this.value)" title="Click to rename"><div class="vtc-sub">Available in: '+scLbl[sc]+' \u00b7 '+usageChip+'</div></div>'
+      +'<select class="input vtc-sc" onchange="vtSetTypeScope('+c.id+',this.value)"><option value="both"'+(sc==='both'?' selected':'')+'>Both</option><option value="recorded"'+(sc==='recorded'?' selected':'')+'>Recorded only</option><option value="live"'+(sc==='live'?' selected':'')+'>Live only</option></select>'
+      +(c.active===false
+        ? '<button class="btn btn-ghost btn-sm" onclick="vtToggleTypeActive('+c.id+',true,0)">'+ic('refresh')+' Reactivate</button>'
+        : '<button class="btn btn-ghost btn-sm vtc-del" onclick="vtToggleTypeActive('+c.id+',false,'+used+')">'+ic('trash')+' '+(used>0?'Deactivate':'Remove')+'</button>')
+      +'</div>';
+  };
+  showModal('Video Types',
+    '<p class="vtc-help">These appear in the type dropdown when assigning a task and in the teacher\u2019s proposal form. \u201CAvailable in\u201D decides which Streaming mode (Live / Recorded) shows the type. A type used by existing videos can be <b>deactivated</b> (hidden from new dropdowns) but not deleted \u2014 so history stays intact.</p>'
+    +(active.length?'<div class="vtc-cap">Active</div>':'')
+    +'<div class="vtc-list">'+(active.map(rowHTML).join('')||'<div class="vtc-empty">No active types yet</div>')+'</div>'
+    +(inactive.length?'<div class="vtc-cap">Inactive</div><div class="vtc-list">'+inactive.map(rowHTML).join('')+'</div>':'')
+    +'<div class="vtc-add"><input id="vt-ty-new" class="input" placeholder="New type name" style="flex:1;min-width:140px"><select id="vt-ty-scope" class="input" style="width:135px"><option value="both">Both</option><option value="recorded">Recorded only</option><option value="live">Live only</option></select><button class="btn btn-primary btn-sm" onclick="vtAddType()">'+ic('plus')+' Add</button></div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+}
+function _vtcInjectCSS(){
+  if(document.getElementById('vtc-css')) return;
+  var s=document.createElement('style'); s.id='vtc-css';
+  s.textContent=[
+   '.vtc-help{font-size:.78rem;color:var(--text-muted);margin-bottom:10px;line-height:1.5}',
+   '.vtc-cap{font-size:.68rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted);margin:10px 0 5px}',
+   '.vtc-list{display:flex;flex-direction:column;gap:7px;max-height:44vh;overflow-y:auto}',
+   '.vtc-row{display:flex;align-items:center;gap:9px;padding:8px 10px;border:1px solid var(--border);border-radius:11px;background:var(--card);flex-wrap:wrap}',
+   '.vtc-row.vtc-off{opacity:.62}',
+   '.vtc-main{flex:1;min-width:130px}',
+   '.vtc-nm{border:1px solid transparent;background:transparent;font-weight:700;font-size:.9rem;color:var(--text);padding:2px 5px;border-radius:6px;width:100%}',
+   '.vtc-nm:hover,.vtc-nm:focus{border-color:var(--border);background:var(--bg);outline:none}',
+   '.vtc-sub{font-size:.7rem;color:var(--text-muted);margin-top:1px;padding-left:5px}',
+   '.vtc-use{font-weight:700;color:var(--primary,#8a6d1a)}',
+   '.vtc-use-0{color:var(--text-muted);font-weight:500}',
+   '.vtc-sc{width:135px !important;font-size:.8rem}',
+   '.vtc-del{color:#c0392b}',
+   '.vtc-empty{padding:14px;text-align:center;color:var(--text-muted);font-size:.85rem}',
+   '.vtc-add{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}'
+  ].join('');
+  document.head.appendChild(s);
+}
+async function vtRenameType(id,name){
+  name=(name||'').trim(); if(!name) return;
+  try{ await api('/api/admin/video-types/'+id,'POST',{name:name}); window._vtTypesT=null; toast('Renamed.'); }
+  catch(e){ toast((e&&e.message)||'Could not rename',true); openVTTypes(); }
+}
+async function vtToggleTypeActive(id,active,used){
+  if(!active && used>0){ if(!confirm('This type is used by '+used+' video'+(used>1?'s':'')+'. Deactivating hides it from new dropdowns but keeps existing videos unchanged. Continue?')) return; }
+  try{ await api('/api/admin/video-types/'+id,'POST',{active:!!active}); window._vtTypesT=null; toast(active?'Reactivated.':'Deactivated.'); openVTTypes(); try{ loadAVTasks(); }catch(e){} }
+  catch(e){ toast((e&&e.message)||'Could not update',true); }
 }
 async function vtAddType(){
   const name=document.getElementById('vt-ty-new').value.trim();
   if(!name){ toast('Enter a type name'); return; }
   const streaming_scope=(document.getElementById('vt-ty-scope')||{}).value||'both';
-  try{ await api('/api/admin/video-types','POST',{name,streaming_scope}); window._vtTypesT=null; closeModal(); toast('Type added.'); loadAVTasks(); setTimeout(openVTTypes,400); }
+  try{ await api('/api/admin/video-types','POST',{name,streaming_scope}); window._vtTypesT=null; toast('Type added.'); openVTTypes(); try{ loadAVTasks(); }catch(e){} }
   catch(e){ toast(e.message||'Could not add'); }
 }
 async function vtSetTypeScope(id,scope){
   try{ await api('/api/admin/video-types/'+id,'POST',{streaming_scope:scope}); window._vtTypesT=null;
     const t=(_vtTypes||[]).find(x=>x.id===id); if(t) t.streaming_scope=scope; toast('Updated.'); }
   catch(e){ toast(e.message||'Could not update',true); }
+}
+
+// ===== Batch manager (Phase 3, sub-step 1) — configurable batch entity =====
+async function openBatchMgr(){
+  _vtcInjectCSS();
+  var list=[], unlinked=0;
+  try{ var r=await api('/api/admin/batches'); list=(r&&r.batches)||[]; unlinked=(r&&r.unlinked)||0; }catch(e){ toast('Could not load batches',true); }
+  var active=list.filter(function(b){return b.active!==false;});
+  var inactive=list.filter(function(b){return b.active===false;});
+  var rowHTML=function(b){
+    var used=b.usage||0;
+    var usageChip=used>0?('<span class="vtc-use">'+used+' student'+(used>1?'s':'')+'</span>'):'<span class="vtc-use vtc-use-0">no students</span>';
+    return '<div class="vtc-row'+(b.active===false?' vtc-off':'')+'">'
+      +'<span class="sbb-av">'+ic('folder')+'</span>'
+      +'<div class="vtc-main"><input class="vtc-nm" value="'+esc(b.name)+'" onchange="batchRename('+b.id+',this.value)" title="Rename"><div class="vtc-sub">'+(b.type?esc(b.type)+' \u00b7 ':'')+usageChip+(b.is_new?' \u00b7 <b style="color:#16a34a">NEW</b>':'')+'</div></div>'
+      +'<select class="input vtc-sc" onchange="batchSetStatus('+b.id+',this.value)"><option value="live"'+((b.status||'live')==='live'?' selected':'')+'>Live</option><option value="upcoming"'+(b.status==='upcoming'?' selected':'')+'>Upcoming</option><option value="draft"'+(b.status==='draft'?' selected':'')+'>Draft</option><option value="completed"'+(b.status==='completed'?' selected':'')+'>Completed</option></select>'
+      +(b.active===false
+        ? '<button class="btn btn-ghost btn-sm" onclick="batchToggleActive('+b.id+',true,0)">'+ic('refresh')+' Restore</button>'
+        : '<button class="btn btn-ghost btn-sm vtc-del" onclick="batchToggleActive('+b.id+',false,'+used+')">'+ic('trash')+' '+(used>0?'Archive':'Remove')+'</button>')
+      +'</div>';
+  };
+  showModal('Batches',
+    '<p class="vtc-help">Add, rename, set status, and archive your batches. Two batches can share a display name \u2014 they stay separate internally (unique code). A batch with students can be <b>archived</b> (hidden from new sign-ups) but not deleted, so records stay intact.</p>'
+    +(unlinked>0?'<div style="font-size:.75rem;color:#b07f1e;background:rgba(184,148,31,.1);border-radius:8px;padding:7px 10px;margin-bottom:10px">'+unlinked+' student'+(unlinked>1?'s are':' is')+' not yet linked to a batch record. New/edited students link automatically; the rest are counted via their old batch label.</div>':'<div style="font-size:.75rem;color:#166534;background:rgba(22,163,74,.09);border-radius:8px;padding:7px 10px;margin-bottom:10px">\u2713 All students are linked to a batch record.</div>')
+    +(active.length?'<div class="vtc-cap">Active</div>':'')
+    +'<div class="vtc-list">'+(active.map(rowHTML).join('')||'<div class="vtc-empty">No batches yet \u2014 add one below</div>')+'</div>'
+    +(inactive.length?'<div class="vtc-cap">Archived</div><div class="vtc-list">'+inactive.map(rowHTML).join('')+'</div>':'')
+    +'<div class="vtc-add"><input id="bm-new" class="input" placeholder="New batch name" style="flex:1;min-width:140px"><input id="bm-type" class="input" placeholder="Type (e.g. Science)" style="width:150px"><button class="btn btn-primary btn-sm" onclick="batchAdd()">'+ic('plus')+' Add</button></div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+}
+async function batchAdd(){
+  var name=((document.getElementById('bm-new')||{}).value||'').trim();
+  if(!name){ toast('Enter a batch name'); return; }
+  var type=((document.getElementById('bm-type')||{}).value||'').trim();
+  try{ await api('/api/admin/batches','POST',{name:name,type:type}); toast('Batch added.'); openBatchMgr(); }
+  catch(e){ toast((e&&e.message)||'Could not add',true); }
+}
+async function batchRename(id,name){
+  name=(name||'').trim(); if(!name) return;
+  try{ await api('/api/admin/batches/'+id,'POST',{name:name}); toast('Renamed.'); }
+  catch(e){ toast((e&&e.message)||'Could not rename',true); openBatchMgr(); }
+}
+async function batchSetStatus(id,status){
+  try{ await api('/api/admin/batches/'+id,'POST',{status:status}); toast('Status updated.'); }
+  catch(e){ toast((e&&e.message)||'Could not update',true); }
+}
+async function batchToggleActive(id,active,used){
+  if(!active && used>0){ if(!confirm('This batch has '+used+' student'+(used>1?'s':'')+'. Archiving hides it from new sign-ups but keeps records intact. Continue?')) return; }
+  try{ await api('/api/admin/batches/'+id,'POST',{active:!!active}); toast(active?'Restored.':'Archived.'); openBatchMgr(); }
+  catch(e){ toast((e&&e.message)||'Could not update',true); }
+}
+
+// ===== Student multi-batch enrollment (Phase 3, sub-step 4) =====
+async function openStudentBatches(sid,name){
+  _vtcInjectCSS();
+  var enrolled=[], all=[];
+  try{ var r=await api('/api/admin/students/'+sid+'/batches'); enrolled=(r&&r.batches)||[]; }catch(e){}
+  try{ var a=await api('/api/admin/batches'); all=((a&&a.batches)||[]).filter(function(b){return b.active!==false;}); }catch(e){}
+  var have={}; enrolled.forEach(function(b){have[b.id]=1;});
+  var avail=all.filter(function(b){return !have[b.id];});
+  var rows=enrolled.length?enrolled.map(function(b){
+    return '<div class="vtc-row"><span class="sbb-av">'+ic('folder')+'</span><div class="vtc-main"><div style="font-weight:700;font-size:.9rem">'+esc(b.name)+(b.is_primary?' <span style="font-size:.62rem;font-weight:800;color:var(--primary,#8a6d1a);background:var(--primary-soft,rgba(184,148,31,.15));padding:1px 7px;border-radius:999px;vertical-align:middle">PRIMARY</span>':'')+'</div></div><button class="btn btn-ghost btn-sm vtc-del" onclick="stuRemoveBatch('+sid+','+b.id+',\''+esc((name||'').replace(/'/g,''))+'\')">'+ic('trash')+' Remove</button></div>';
+  }).join(''):'<div class="vtc-empty">Not in any batch yet</div>';
+  var addSel='<select id="stu-bat-add" class="input" style="flex:1;min-width:150px"><option value="">Add to a batch\u2026</option>'+avail.map(function(b){return '<option value="'+b.id+'">'+esc(b.name)+'</option>';}).join('')+'</select>';
+  showModal('Batches \u2014 '+esc(name),
+    '<p class="vtc-help">A student can be in multiple batches. The first one is the <b>primary</b> batch (used wherever a single batch is needed).</p>'
+    +'<div class="vtc-list">'+rows+'</div>'
+    +'<div class="vtc-add">'+addSel+'<button class="btn btn-primary btn-sm" onclick="stuAddBatch('+sid+',\''+esc((name||'').replace(/'/g,''))+'\')">'+ic('plus')+' Add</button></div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+}
+async function stuAddBatch(sid,name){
+  var bid=(document.getElementById('stu-bat-add')||{}).value;
+  if(!bid){ toast('Pick a batch'); return; }
+  try{ await api('/api/admin/students/'+sid+'/batches','POST',{batch_id:parseInt(bid,10)}); toast('Added to batch.'); openStudentBatches(sid,name); }
+  catch(e){ toast((e&&e.message)||'Could not add',true); }
+}
+async function stuRemoveBatch(sid,bid,name){
+  try{ await api('/api/admin/students/'+sid+'/batches/'+bid,'DELETE'); toast('Removed.'); openStudentBatches(sid,name); }
+  catch(e){ toast((e&&e.message)||'Could not remove',true); }
 }
 
 /* ---------- teacher ranking board (admin) ---------- */
@@ -11548,10 +11674,14 @@ async function loadADashboard(){
   try{
  const d=await api('/api/admin/dashboard');
  const _aName=((window._adminMe&&window._adminMe.name)||NAME||'Admin');
- el.innerHTML=`${greetingCard(_aName,'')}<div class="stats-grid">${statCard('Teachers',d.total_teachers,'users','indigo',"navTo('admin-app','teachers')")}${statCard('Students',d.total_students,'user','teal',"navTo('admin-app','students')")}${statCard('Classes Done',d.total_classes_done,'check','green')}${statCard('Pending',d.total_pending,'clipboard','amber')}${statCard('Pending Approvals',d.pending_reschedules,'refresh','purple',"navTo('admin-app','approvals')",true)}${statCard('Unresolved Doubts',d.unresolved_doubts,'help','red',"navTo('admin-app','doubts')",true)}</div>
+ var _naA=[];
+ if((d.pending_reschedules||0)>0) _naA.push({label:d.pending_reschedules+' reschedule request'+(d.pending_reschedules>1?'s':'')+' waiting for your approval',cta:'Review',urgent:true,onclick:"navTo('admin-app','approvals')"});
+ if((d.unresolved_doubts||0)>0) _naA.push({label:d.unresolved_doubts+' unresolved student doubt'+(d.unresolved_doubts>1?'s':''),cta:'Open',onclick:"navTo('admin-app','doubts')"});
+ setTimeout(function(){ _mountWhatsNew('admin'); }, 60);
+ el.innerHTML=`${greetingCard(_aName,'')}${_nextActionHTML(_naA,'No pending approvals or doubts right now.')}<div class="stats-grid">${statCard('Teachers',d.total_teachers,'users','indigo',"navTo('admin-app','teachers')")}${statCard('Students',d.total_students,'user','teal',"navTo('admin-app','students')")}${statCard('Classes Done',d.total_classes_done,'check','green')}${statCard('Pending',d.total_pending,'clipboard','amber')}${statCard('Pending Approvals',d.pending_reschedules,'refresh','purple',"navTo('admin-app','approvals')",true)}${statCard('Unresolved Doubts',d.unresolved_doubts,'help','red',"navTo('admin-app','doubts')",true)}</div>
  <div class="card glass-soft"><div class="card-header"><h3>System Health — Teacher Activity</h3><div class="legend"><span><i style="background:#059669"></i>High</span><span><i style="background:#d97706"></i>Medium</span><span><i style="background:#a2946d"></i>Low</span></div></div><div class="card-body"><div class="mat-twrap"><div id="a-health-wrap"><div class="spinner"></div></div></div></div></div>
  <div class="card"><div class="card-header"><h3>Quick Actions</h3></div><div class="card-body">${d.pending_reschedules>0?`<div class="alert alert-danger">${d.pending_reschedules} reschedule requests pending — <span style="cursor:pointer;text-decoration:underline" onclick="navTo('admin-app','approvals')">Review</span></div>`:`<div class="alert alert-success">No pending approvals</div>`}
- <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px"><button class="btn btn-primary btn-sm" onclick="openAddTeacher()">${ic('users')} Teacher Add</button><button class="btn btn-primary btn-sm" onclick="openAddStudent()">${ic('user')} Student Add</button><button class="btn btn-success btn-sm" onclick="openBulkPhone()">${ic('users')} Add by Phone</button></div></div></div>`;
+ <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px"><button class="btn btn-primary btn-sm" onclick="openAddTeacher()">${ic('users')} Teacher Add</button><button class="btn btn-primary btn-sm" onclick="openAddStudent()">${ic('user')} Student Add</button><button class="btn btn-success btn-sm" onclick="openBulkPhone()">${ic('users')} Add by Phone</button><button class="btn btn-secondary btn-sm" onclick="openBatchMgr()">${ic('folder')} Batches</button></div></div></div>`;
  renderAdminHealth();
  const badge=document.getElementById('a-appr-badge');
  if(d.pending_reschedules>0){ badge.style.display='inline-block'; badge.textContent=d.pending_reschedules; } else badge.style.display='none';
@@ -12615,7 +12745,7 @@ function openStudentProfile(sid){
     `<div class="prof-head" style="padding-bottom:16px;margin-bottom:16px"><div class="prof-photo" id="spp-${sid}">${esc(initials(s.name||'S'))}</div><div class="prof-id"><h2 style="font-size:1.2rem">${esc(s.name)}</h2><span class="chip" style="margin-top:6px">${esc(s.batch||'Student')}</span></div></div>
      <div class="prof-grid">${rows.map(([k,v])=>`<div class="prof-cell"><div class="prof-k">${k}</div><div class="prof-v">${esc(v)}</div></div>`).join('')}</div>
      <div class="prof-cell" style="margin-top:14px"><div class="prof-k">Subjects</div><div class="slist-chips" style="margin-top:6px">${subs}</div></div>`,
-    `<button class="btn btn-ghost" onclick="sendStudentWhatsApp(${sid},'${esc((s.name||'').replace(/'/g,''))}',this)">${ic('megaphone')} WhatsApp</button><button class="btn btn-danger" onclick="closeModal();deleteStudent(${sid},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')} Delete</button><button class="btn btn-primary" onclick='closeModal();openEditStudent(${sid},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,medium:s.medium||'',subjects:s.subjects||[],exam_session:s.exam_session||'',nios_ref:s.nios_ref||''}).replace(/"/g,"&quot;").replace(/'/g,"&#39;")})'>${ic('edit')} Edit</button>`);
+    `<button class="btn btn-ghost" onclick="sendStudentWhatsApp(${sid},'${esc((s.name||'').replace(/'/g,''))}',this)">${ic('megaphone')} WhatsApp</button><button class="btn btn-secondary" onclick="openStudentBatches(${sid},'${esc((s.name||'').replace(/'/g,''))}')">${ic('folder')} Batches</button><button class="btn btn-danger" onclick="closeModal();deleteStudent(${sid},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')} Delete</button><button class="btn btn-primary" onclick='closeModal();openEditStudent(${sid},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,medium:s.medium||'',subjects:s.subjects||[],exam_session:s.exam_session||'',nios_ref:s.nios_ref||''}).replace(/"/g,"&quot;").replace(/'/g,"&#39;")})'>${ic('edit')} Edit</button>`);
   if(s.has_photo) loadImgInto('spp-'+sid,'/api/admin/student/'+sid+'/photo');
 }
 async function openAddStudent(){
@@ -13878,7 +14008,12 @@ async function loadSDashboard(){
       ${_ms.test?_statCell(_ms.test.done+'/'+_ms.test.total,'Tests Given',_ms.test.miss?(_ms.test.miss+' missed'):'none missed','tests',_ms.test.miss>0):''}
       ${_ms.doubt?_statCell(_ms.doubt.total,'Doubts Asked',_ms.doubt.res+' resolved · '+_ms.doubt.pend+' pending','doubts',_ms.doubt.pend>0):''}
     </div></div></div>`;
-    setIf(el,`${greetingCard(NAME)}<div id="s-live-banner" style="display:none"></div>
+    window._naS=[];
+    if(_ms.test&&(_ms.test.miss||0)>0) window._naS.push({label:_ms.test.miss+' test'+(_ms.test.miss>1?'s':'')+' still to attempt',cta:'Start',urgent:true,onclick:"navTo('student-app','tests')"});
+    if(_ms.dpp&&(_ms.dpp.pend||0)>0) window._naS.push({label:_ms.dpp.pend+' DPP'+(_ms.dpp.pend>1?'s':'')+' pending',cta:'Solve',onclick:"navTo('student-app','dpp')"});
+    if(_ms.doubt&&(_ms.doubt.pend||0)>0) window._naS.push({label:_ms.doubt.pend+' of your doubt'+(_ms.doubt.pend>1?'s':'')+' still open',cta:'View',onclick:"navTo('student-app','doubts')"});
+    setTimeout(function(){ _mountWhatsNew('student'); }, 60);
+    setIf(el,`${greetingCard(NAME)}${_nextActionHTML(window._naS,'You\u2019re all caught up on DPPs and tests.')}<div id="s-live-banner" style="display:none"></div>
       ${prio}
       <div id="s-today-wrap"></div>
       ${statsHtml}
@@ -18543,6 +18678,258 @@ const _inr=n=>'\u20B9'+Number(n||0).toLocaleString('en-IN');
 const _pfCol=s=>s>=85?'#1b7a3e':s>=65?'#d97706':'#c0392b';
 
 // ---------- shared print engine (Figma approach: hidden A4 doc + window.print) ----------
+// ===== Command Palette (Ctrl/Cmd+K) — jump to any page in the current portal =====
+// Zero-hardcode: reads the ACTIVE portal's sidebar nav items from the DOM, so it
+// auto-adapts to every portal (and any future pages) with no per-portal config.
+var _cmdItems=[], _cmdSel=0;
+function _cmdInjectCSS(){
+  if(document.getElementById('cmd-pal-css')) return;
+  var s=document.createElement('style'); s.id='cmd-pal-css';
+  s.textContent=[
+   '#cmd-pal-ov{position:fixed;inset:0;background:rgba(20,18,12,.45);backdrop-filter:blur(3px);z-index:99998;display:flex;align-items:flex-start;justify-content:center;padding-top:12vh;animation:cmdFade .12s ease}',
+   '@keyframes cmdFade{from{opacity:0}to{opacity:1}}',
+   '.cmd-pal{width:min(560px,92vw);background:var(--card,#fffdf7);border:1px solid var(--border,#e8e0cf);border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.34);overflow:hidden}',
+   '#cmd-pal-in{width:100%;box-sizing:border-box;border:0;outline:0;padding:16px 18px;font-size:1rem;background:transparent;color:var(--text,#2a2418);border-bottom:1px solid var(--border,#eee);font-family:inherit}',
+   '#cmd-pal-list{max-height:min(48vh,360px);overflow:auto;padding:6px}',
+   '.cmd-pal-row{padding:10px 13px;border-radius:9px;cursor:pointer;font-size:.92rem;color:var(--text,#2a2418);display:flex;align-items:center;justify-content:space-between;gap:10px}',
+   '.cmd-pal-row.sel{background:var(--primary-soft,rgba(184,148,31,.15));color:var(--primary,#8a6d1a);font-weight:700}',
+   '.cmd-lbl{display:flex;flex-direction:column;gap:1px;min-width:0}',
+   '.cmd-sub{font-size:.72rem;color:var(--text-muted,#998);font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+   '.cmd-tag{flex:none;font-size:.66rem;font-weight:800;padding:2px 8px;border-radius:999px;background:var(--primary-soft,rgba(184,148,31,.15));color:var(--primary,#8a6d1a);text-transform:uppercase;letter-spacing:.03em}',
+   '.cmd-pal-empty{padding:18px;text-align:center;color:var(--text-muted,#998);font-size:.9rem}',
+   '.cmd-pal-foot{display:flex;gap:14px;padding:9px 15px;border-top:1px solid var(--border,#eee);font-size:.72rem;color:var(--text-muted,#aa9)}',
+   '#cmd-fab{position:fixed;right:16px;bottom:16px;z-index:9000;display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:999px;border:1px solid var(--border,#e8e0cf);background:var(--card,#fffdf7);color:var(--text-muted,#8a7f66);font-size:.78rem;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.14);cursor:pointer;opacity:.9}',
+   '#cmd-fab:hover{opacity:1;border-color:var(--primary,#b8941f)}',
+   '@media(max-width:640px){#cmd-fab span.kbd{display:none}}'
+  ].join('');
+  document.head.appendChild(s);
+}
+function _cmdVisibleApp(){ return document.querySelector('.app.active') || document.querySelector('.app'); }
+function _cmdCollect(){
+  var app=_cmdVisibleApp(); var out=[]; var seen={};
+  if(!app) return out;
+  app.querySelectorAll('.nav-item, .ps-item').forEach(function(el){
+    var span=el.querySelector('span:not(.badge)');
+    var label=((span?span.textContent:el.textContent)||'').replace(/\s+/g,' ').trim();
+    if(!label) return;
+    var key=label.toLowerCase();
+    if(seen[key]) return; seen[key]=1;
+    out.push({label:label, el:el});
+  });
+  return out;
+}
+function openCmdPalette(){
+  if(!TOKEN) return;
+  if(document.getElementById('cmd-pal-ov')) return;
+  _cmdInjectCSS();
+  _cmdItems=_cmdCollect();
+  window._cmdPeople=[];
+  if(!_cmdItems.length){ toast('Nothing to jump to here yet'); return; }
+  _cmdSel=0;
+  var _ph=_cmdIsAdmin()?'Search pages, teachers, students\u2026':'Jump to a page\u2026  (type to search)';
+  var ov=document.createElement('div'); ov.id='cmd-pal-ov';
+  ov.innerHTML='<div class="cmd-pal" role="dialog" aria-label="Command palette"><input id="cmd-pal-in" placeholder="'+_ph+'" autocomplete="off" spellcheck="false"><div id="cmd-pal-list"></div><div class="cmd-pal-foot"><span>\u2191\u2193 navigate</span><span>\u21b5 open</span><span>esc close</span></div></div>';
+  ov.addEventListener('mousedown', function(e){ if(e.target===ov) closeCmdPalette(); });
+  document.body.appendChild(ov);
+  var inp=document.getElementById('cmd-pal-in');
+  inp.addEventListener('input', function(){ window._cmdPeople=[]; _cmdRender(); _cmdFetchPeople(); });
+  inp.addEventListener('keydown', _cmdKey);
+  _cmdRender();
+  setTimeout(function(){ try{ inp.focus(); }catch(e){} }, 30);
+}
+function closeCmdPalette(){ var ov=document.getElementById('cmd-pal-ov'); if(ov) ov.remove(); }
+function _cmdFilteredPages(){
+  var el=document.getElementById('cmd-pal-in'); var q=((el&&el.value)||'').toLowerCase().trim();
+  if(!q) return _cmdItems.slice();
+  return _cmdItems.filter(function(it){
+    var l=it.label.toLowerCase();
+    if(l.indexOf(q)>=0) return true;
+    var i=0; for(var k=0;k<l.length;k++){ if(l[k]===q[i]) i++; if(i>=q.length) return true; }
+    return false;
+  });
+}
+function _cmdFiltered(){
+  var pages=_cmdFilteredPages();
+  var people=(window._cmdPeople||[]).map(function(p){ return {label:p.name, sub:p.sub, person:p}; });
+  return pages.concat(people);
+}
+function _cmdIsAdmin(){ var a=_cmdVisibleApp(); return a && a.id==='admin-app'; }
+function _cmdFetchPeople(){
+  if(!_cmdIsAdmin()){ window._cmdPeople=[]; return; }
+  var el=document.getElementById('cmd-pal-in'); var q=((el&&el.value)||'').trim();
+  if(q.length<2){ window._cmdPeople=[]; _cmdRender(); return; }
+  clearTimeout(window._cmdPeopleT);
+  window._cmdPeopleT=setTimeout(function(){
+    var qNow=((document.getElementById('cmd-pal-in')||{}).value||'').trim();
+    if(qNow.length<2){ window._cmdPeople=[]; _cmdRender(); return; }
+    api('/api/admin/quick-search?q='+encodeURIComponent(qNow)).then(function(d){
+      // ignore stale responses
+      var cur=((document.getElementById('cmd-pal-in')||{}).value||'').trim();
+      if(cur!==qNow) return;
+      window._cmdPeople=(d&&d.results)||[];
+      _cmdRender();
+    }).catch(function(){});
+  }, 220);
+}
+function _cmdGoPerson(p){
+  closeCmdPalette();
+  var page=(p.type==='student')?'students':'teachers';
+  try{ navTo('admin-app', page); }catch(e){}
+  setTimeout(function(){
+    var inp=document.querySelector('#admin-app input[placeholder*="Search" i], #admin-app input[placeholder*="search" i]');
+    if(inp){ inp.value=p.name; inp.dispatchEvent(new Event('input',{bubbles:true})); try{ inp.focus(); }catch(e){} }
+  }, 380);
+}
+function _cmdRender(){
+  var list=document.getElementById('cmd-pal-list'); if(!list) return;
+  var items=_cmdFiltered();
+  if(_cmdSel>=items.length) _cmdSel=Math.max(0,items.length-1);
+  if(!items.length){ list.innerHTML='<div class="cmd-pal-empty">No matching page or person</div>'; return; }
+  list.innerHTML=items.map(function(it,i){
+    var badge=it.person?('<span class="cmd-tag">'+(it.person.type==='student'?'Student':'Teacher')+'</span>'):'';
+    var sub=it.sub?('<span class="cmd-sub">'+_ape(it.sub)+'</span>'):'';
+    return '<div class="cmd-pal-row'+(i===_cmdSel?' sel':'')+'" data-i="'+i+'" onmousemove="_cmdSel='+i+';_cmdHL()" onclick="_cmdGo('+i+')"><span class="cmd-lbl">'+_ape(it.label)+sub+'</span>'+badge+'</div>';
+  }).join('');
+  _cmdScroll();
+}
+function _cmdHL(){ var rows=document.querySelectorAll('#cmd-pal-list .cmd-pal-row'); rows.forEach(function(r,i){ r.classList.toggle('sel', i===_cmdSel); }); }
+function _cmdScroll(){ var sel=document.querySelector('#cmd-pal-list .cmd-pal-row.sel'); if(sel&&sel.scrollIntoView) sel.scrollIntoView({block:'nearest'}); }
+function _cmdGo(i){ var items=_cmdFiltered(); var it=items[(i!=null?i:_cmdSel)]; if(!it) return; if(it.person){ _cmdGoPerson(it.person); return; } closeCmdPalette(); try{ it.el.click(); }catch(e){} }
+function _cmdKey(e){
+  var items=_cmdFiltered();
+  if(e.key==='ArrowDown'){ e.preventDefault(); _cmdSel=Math.min(items.length-1,_cmdSel+1); _cmdHL(); _cmdScroll(); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); _cmdSel=Math.max(0,_cmdSel-1); _cmdHL(); _cmdScroll(); }
+  else if(e.key==='Enter'){ e.preventDefault(); _cmdGo(); }
+  else if(e.key==='Escape'){ e.preventDefault(); closeCmdPalette(); }
+}
+function _cmdMountFab(){
+  if(!TOKEN){ var ex=document.getElementById('cmd-fab'); if(ex) ex.remove(); return; }
+  _cmdInjectCSS();
+  if(document.getElementById('cmd-fab')) return;
+  var b=document.createElement('button'); b.id='cmd-fab'; b.type='button';
+  b.title='Quick jump (Ctrl/Cmd + K)';
+  b.innerHTML='\uD83D\uDD0D <span class="kbd">Search</span>';
+  b.addEventListener('click', openCmdPalette);
+  document.body.appendChild(b);
+}
+document.addEventListener('keydown', function(e){
+  if((e.ctrlKey||e.metaKey) && (e.key==='k'||e.key==='K')){
+    if(!TOKEN) return;
+    e.preventDefault();
+    if(document.getElementById('cmd-pal-ov')) closeCmdPalette(); else openCmdPalette();
+  }
+});
+// keep the floating button in sync with login state
+setInterval(_cmdMountFab, 2500);
+
+// ===== "Next Action" banner — one clear thing to do next, per portal =====
+function _naInjectCSS(){
+  if(document.getElementById('na-css')) return;
+  var s=document.createElement('style'); s.id='na-css';
+  s.textContent=[
+   '.na-card{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:16px 18px;border-radius:16px;border:1px solid var(--border,#e8e0cf);background:linear-gradient(135deg,rgba(184,148,31,.10),rgba(184,148,31,.02));margin-bottom:18px}',
+   '.na-card.na-urgent{border-color:rgba(220,38,38,.4);background:linear-gradient(135deg,rgba(220,38,38,.09),rgba(220,38,38,.01))}',
+   '.na-card.na-ok{background:linear-gradient(135deg,rgba(22,163,74,.09),rgba(22,163,74,.01));border-color:rgba(22,163,74,.3)}',
+   '.na-ic{width:42px;height:42px;flex:none;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--card,#fff);border:1px solid var(--border,#eee);color:var(--primary,#b8941f)}',
+   '.na-card.na-urgent .na-ic{color:#dc2626}.na-card.na-ok .na-ic{color:#16a34a}',
+   '.na-body{flex:1;min-width:170px}',
+   '.na-ttl{font-size:.68rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted,#998)}',
+   '.na-main{font-size:1.02rem;font-weight:800;color:var(--text,#2a2418);margin-top:2px}',
+   '.na-sub{font-size:.82rem;color:var(--text-muted,#998);font-weight:500;margin-top:1px}',
+   '.na-cta{flex:none;white-space:nowrap}',
+   '.na-rest{display:flex;gap:7px;flex-wrap:wrap;flex-basis:100%;margin-top:2px}',
+   '.na-chip{font-size:.78rem;font-weight:700;padding:6px 12px;border-radius:999px;border:1px solid var(--border,#e8e0cf);background:var(--card,#fff);color:var(--text,#5a4a2a);cursor:pointer}',
+   '.na-chip:hover{border-color:var(--primary,#b8941f)}'
+  ].join('');
+  document.head.appendChild(s);
+}
+// actions: [{label, cta, urgent, onclick}] — sorted by priority (urgent first). okMsg = all-caught-up text.
+function _nextActionHTML(actions, okMsg){
+  _naInjectCSS();
+  actions=(actions||[]).filter(function(a){return a&&a.label;});
+  if(!actions.length){
+    return '<div class="na-card na-ok"><div class="na-ic">'+ic('check')+'</div><div class="na-body"><div class="na-ttl">You\u2019re all set</div><div class="na-main">All caught up \uD83C\uDF89</div><div class="na-sub">'+_ape(okMsg||'Nothing needs your attention right now.')+'</div></div></div>';
+  }
+  var top=actions[0], rest=actions.slice(1);
+  return '<div class="na-card'+(top.urgent?' na-urgent':'')+'">'
+    +'<div class="na-ic">'+ic(top.urgent?'alert':'clipboard')+'</div>'
+    +'<div class="na-body"><div class="na-ttl">Do this next</div><div class="na-main">'+_ape(top.label)+'</div></div>'
+    +'<button class="btn btn-primary na-cta" onclick="'+(top.onclick||'')+'">'+_ape(top.cta||'Review')+' \u2192</button>'
+    +(rest.length?'<div class="na-rest">'+rest.map(function(r){return '<span class="na-chip" onclick="'+(r.onclick||'')+'">'+_ape(r.label)+'</span>';}).join('')+'</div>':'')
+    +'</div>';
+}
+
+// ===== "What Changed" — unread updates since the user's last visit =====
+function _wnInjectCSS(){
+  if(document.getElementById('wn-css')) return;
+  var s=document.createElement('style'); s.id='wn-css';
+  s.textContent=[
+   '.wn-card{border:1px solid var(--border,#e8e0cf);border-radius:16px;background:var(--card,#fffdf7);margin-bottom:18px;overflow:hidden}',
+   '.wn-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border,#eee)}',
+   '.wn-ttl{display:flex;align-items:center;gap:8px;font-weight:800;font-size:.92rem;color:var(--text,#2a2418)}',
+   '.wn-count{font-size:.72rem;font-weight:800;padding:2px 9px;border-radius:999px;background:#dc2626;color:#fff}',
+   '.wn-x{cursor:pointer;color:var(--text-muted,#998);font-size:.9rem;padding:2px 6px}',
+   '.wn-x:hover{color:var(--text,#333)}',
+   '.wn-list{padding:6px 10px}',
+   '.wn-row{padding:8px 8px;font-size:.86rem;color:var(--text,#3a3020);border-bottom:1px dashed var(--border,#eee)}',
+   '.wn-row:last-child{border-bottom:0}',
+   '.wn-more{padding:7px 8px;font-size:.78rem;color:var(--text-muted,#998);font-weight:700}',
+   '.wn-foot{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--border,#eee)}',
+   '.wn-btn{font-size:.8rem;font-weight:800;padding:7px 13px;border-radius:9px;border:1px solid var(--border,#e8e0cf);background:var(--card,#fff);color:var(--primary,#8a6d1a);cursor:pointer}',
+   '.wn-btn:hover{border-color:var(--primary,#b8941f)}',
+   '.wn-btn-2{color:var(--text-muted,#887)}'
+  ].join('');
+  document.head.appendChild(s);
+}
+async function _mountWhatsNew(role){
+  try{
+    window._wnHide=window._wnHide||{};
+    if(window._wnHide[role]) return;
+    var list=await fetchNotifs(role);
+    if(!Array.isArray(list)) return;
+    var unread=list.filter(function(n){ return n && !n.is_read; });
+    var app=_cmdVisibleApp(); if(!app) return;
+    var existing=app.querySelector('#whats-new-card'); if(existing) existing.remove();
+    if(!unread.length) return;
+    _wnInjectCSS();
+    var top=unread.slice(0,4);
+    var rows=top.map(function(n){ return '<div class="wn-row">'+_ape(((n.message||n.title||'Update')+'').slice(0,120))+'</div>'; }).join('');
+    var more=unread.length>top.length?('<div class="wn-more">+'+(unread.length-top.length)+' more update'+((unread.length-top.length)>1?'s':'')+'</div>'):'';
+    var html='<div id="whats-new-card" class="wn-card">'
+      +'<div class="wn-head"><span class="wn-ttl">'+ic('bell')+' Since your last visit <span class="wn-count">'+unread.length+'</span></span>'
+      +'<span class="wn-x" title="Dismiss" onclick="_wnDismiss(\''+role+'\')">\u2715</span></div>'
+      +'<div class="wn-list">'+rows+more+'</div>'
+      +'<div class="wn-foot"><button class="wn-btn" onclick="openNotifPanel(\''+role+'\')">View all</button><button class="wn-btn wn-btn-2" onclick="_wnMarkAll(\''+role+'\')">Mark all read</button></div>'
+      +'</div>';
+    var anchor=app.querySelector('.na-card');
+    if(anchor){ anchor.insertAdjacentHTML('afterend', html); }
+    else { var dc=app.querySelector('[id$="-dashboard-content"], [id$="-content"]'); if(dc) dc.insertAdjacentHTML('afterbegin', html); }
+  }catch(e){}
+}
+function _wnDismiss(role){ window._wnHide=window._wnHide||{}; window._wnHide[role]=1; var c=document.getElementById('whats-new-card'); if(c) c.remove(); }
+function _wnMarkAll(role){ try{ markAllRead(role); }catch(e){} var c=document.getElementById('whats-new-card'); if(c) c.remove(); }
+
+// ===== Universal polish (Phase 4) — accessibility + mobile, token-based, additive =====
+(function _polishInjectCSS(){
+  try{
+    if(document.getElementById('mvs-polish-css')) return;
+    var s=document.createElement('style'); s.id='mvs-polish-css';
+    s.textContent=[
+     // Respect reduced-motion preference — kill animations/transitions for those who ask.
+     '@media (prefers-reduced-motion: reduce){*,::before,::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;scroll-behavior:auto !important}}',
+     // Visible keyboard focus (keyboard users only — mouse clicks stay clean).
+     'a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--primary,#b8941f);outline-offset:2px;border-radius:6px}',
+     // Mobile: stop accidental sideways page scroll; long words break instead of overflowing.
+     '@media (max-width:480px){body{overflow-x:hidden}.na-card,.wn-card,.vtc-row{overflow-wrap:anywhere}}',
+     // Mobile: comfortable tap targets for the small "sm" buttons without changing desktop.
+     '@media (max-width:640px){.btn-sm{min-height:38px}}',
+     // Smoother momentum scrolling inside scroll areas on iOS.
+     '.vtc-list,#cmd-pal-list,.wn-list{-webkit-overflow-scrolling:touch}'
+    ].join('');
+    (document.head||document.documentElement).appendChild(s);
+  }catch(e){}
+})();
+
 function _printDocHTML(html){
   let el=document.getElementById('printDoc');
   if(!el){ el=document.createElement('div'); el.id='printDoc'; document.body.appendChild(el); }

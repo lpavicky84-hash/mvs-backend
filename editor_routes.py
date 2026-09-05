@@ -627,3 +627,13 @@ def editor_request_deadline(tid: int, payload: dict = Body(...),
                   "production", link=str(t.id))
     db.commit()
     return {"ok": True, "requested": newdl.strftime("%d %b %Y, %I:%M %p")}
+
+
+@router.post("/tasks/{tid}/edit")
+def editor_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_editor)):
+    """Editor apne assigned task ke universal fields edit kare (title/deadline/priority/remarks)."""
+    sp = _me_staff(db, me)
+    t = _my_task(db, sp, tid)
+    pc.edit_task_fields(db, t, payload, me)
+    db.commit()
+    return {"ok": True}

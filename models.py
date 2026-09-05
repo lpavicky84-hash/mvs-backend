@@ -95,6 +95,42 @@ class BatchName(str, enum.Enum):
     lakshya_arts     = "Lakshya Arts"
     udaan_10         = "Udaan Class 10"
 
+
+# =============================================
+# BATCH — first-class configurable entity (Phase 3, sub-step 1).
+# Parallel to the legacy BatchName enum / StudentProfile.batch string.
+# Nothing reads this yet for enrollment; it is additive and safe.
+# Rule (spec §9): display name may repeat across batches; the unique
+# identifier is `code`, never the display name.
+# =============================================
+class Batch(Base):
+    __tablename__ = "batches"
+    id           = Column(Integer, primary_key=True)
+    code         = Column(String(48), unique=True, index=True)   # internal slug/code — the real identifier
+    name         = Column(String(160))                           # display name (may duplicate across batches)
+    type         = Column(String(48), default="")                # Science / Commerce / Arts / Class 10 ... (free)
+    description  = Column(String(600), default="")
+    status       = Column(String(20), default="live")            # draft | upcoming | live | completed | archived
+    active       = Column(Boolean, default=True)
+    is_new       = Column(Boolean, default=False)                # "new batch" indicator
+    sort         = Column(Integer, default=0)                    # display order
+    start_date   = Column(Date, nullable=True)
+    end_date     = Column(Date, nullable=True)
+    created_at   = Column(DateTime, default=func.now())
+    archived_at  = Column(DateTime, nullable=True)
+
+
+# Multi-batch enrollment (Phase 3, sub-step 4). A student can belong to many batches.
+# batch_id on StudentProfile stays as the "primary" batch for backward compatibility;
+# this table is the additive multi-batch layer. Backfilled from batch_id.
+class StudentBatch(Base):
+    __tablename__ = "student_batches"
+    id          = Column(Integer, primary_key=True)
+    student_id  = Column(Integer, ForeignKey("student_profiles.id"), index=True)
+    batch_id    = Column(Integer, ForeignKey("batches.id"), index=True)
+    is_primary  = Column(Boolean, default=False)
+    created_at  = Column(DateTime, default=func.now())
+
 # =============================================
 # USER (Teachers, Students, Admins)
 # =============================================
@@ -167,6 +203,7 @@ class StudentProfile(Base):
     phone        = Column(String(15), unique=True)
     batch        = Column(Enum(BatchName))
     batch_name   = Column(String(160), nullable=True)  # free-text batch from app sales sheet
+    batch_id     = Column(Integer, ForeignKey("batches.id"), nullable=True)  # Phase 3: link to Batch entity (additive, dual-written)
     medium       = Column(String(12), nullable=True)   # Hindi | English
     source       = Column(String(20), default="mvs_app")  # mvs_portal | mvs_app
     welcome_sent_at = Column(DateTime, nullable=True)     # WhatsApp welcome bheja gaya?

@@ -510,3 +510,16 @@ def graphics_library(db: Session = Depends(get_db), me=Depends(get_graphics)):
                     "ref_code": (t.ref_code if t else "") or "", "status": g.status or "",
                     "thumbnail_url": g.thumbnail_url, "at": pc._dt(g.submitted_at or g.created_at)})
     return {"thumbnails": out}
+
+
+@router.post("/tasks/{tid}/edit")
+def gfx_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_graphics)):
+    """Graphics apne assigned task ke universal fields edit kare (title/deadline/priority/remarks)."""
+    sp = _me_staff(db, me)
+    g = _my_gtask(db, sp, tid)
+    t = db.query(VideoTask).filter(VideoTask.id == g.task_id).first()
+    if not t:
+        raise HTTPException(404, "Task not found")
+    pc.edit_task_fields(db, t, payload, me)
+    db.commit()
+    return {"ok": True}
