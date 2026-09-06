@@ -769,6 +769,46 @@ def admin_merge_batch(src_id: int, payload: dict = Body(...),
             "target": tgt.name, "source": src.name}
 
 
+@router.delete("/batches/{bid}")
+def admin_delete_batch(bid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Permanently delete a batch (hard delete — NOT reversible).
+
+    Refused if the batch still has students or batch-specific timetable entries — move
+    those into another batch first via Merge. Pure link rows (student_batches,
+    batch_subjects) for this batch are cleaned up as part of the delete.
+    """
+    from models import Batch, StudentProfile, StudentBatch, BatchSubject, TimetableEntry
+    from sqlalchemy import func as _f
+    b = db.query(Batch).filter(Batch.id == bid).first()
+    if not b:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    nm = b.name
+    # never orphan students
+    linked = int(db.query(_f.count(StudentProfile.id))
+                 .filter(StudentProfile.batch_id == bid).scalar() or 0)
+    by_name = int(db.query(_f.count(StudentProfile.id))
+                  .filter(StudentProfile.batch_id == None,
+                          StudentProfile.batch_name == nm).scalar() or 0)
+    students = linked + by_name
+    if students > 0:
+        raise HTTPException(status_code=400,
+            detail="This batch still has %d student%s. Use Merge to move them into "
+                   "another batch first, then delete." % (students, "" if students == 1 else "s"))
+    # never silently destroy timetable content
+    tt = int(db.query(_f.count(TimetableEntry.id))
+             .filter(TimetableEntry.batch_id == bid).scalar() or 0)
+    if tt > 0:
+        raise HTTPException(status_code=400,
+            detail="This batch still has %d batch-specific timetable entr%s. Use Merge "
+                   "to move them first, then delete." % (tt, "y" if tt == 1 else "ies"))
+    # clean up pure link rows, then delete the batch itself
+    db.query(StudentBatch).filter(StudentBatch.batch_id == bid).delete(synchronize_session=False)
+    db.query(BatchSubject).filter(BatchSubject.batch_id == bid).delete(synchronize_session=False)
+    db.delete(b)
+    db.commit()
+    return {"ok": True, "deleted": nm}
+
+
 @router.get("/students/{sid}/batches")
 def admin_student_batches(sid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     """A student's batch enrollments (multi-batch)."""

@@ -11651,7 +11651,7 @@ function _batchCard(b){
       +'<div class="bc-two"><label class="bc-f">Starts<input type="date" class="input" value="'+esc(b.start_date||'')+'" onchange="batchSetDate('+b.id+',\'start_date\',this.value)"></label>'
         +'<label class="bc-f">Expires<input type="date" class="input" value="'+esc(b.end_date||'')+'" onchange="batchSetDate('+b.id+',\'end_date\',this.value)"></label></div>'
       +'<div class="bc-acts"><button class="btn btn-ghost btn-sm" onclick="openBatchBanner('+b.id+',\''+esc((b.name||'').replace(/'/g,''))+'\')">'+(b.has_banner?'\uD83C\uDF89':'\uD83D\uDDBC')+' Banner</button>'
-        +(b.active===false?'<button class="btn btn-ghost btn-sm" onclick="batchToggleActive('+b.id+',true,0)">'+ic('refresh')+' Restore</button>':'<button class="btn btn-ghost btn-sm" onclick="openBatchMerge('+b.id+')" title="Move all students, timetable &amp; subjects into another batch, then archive this one">\u21C4 Merge</button><button class="btn btn-ghost btn-sm vtc-del" onclick="batchToggleActive('+b.id+',false,'+used+')">'+ic('trash')+' '+(used>0?'Archive':'Remove')+'</button>')+'</div>'
+        +(b.active===false?'<button class="btn btn-ghost btn-sm" onclick="batchToggleActive('+b.id+',true,0)">'+ic('refresh')+' Restore</button><button class="btn btn-ghost btn-sm vtc-del" onclick="batchDelete('+b.id+',\''+esc((b.name||'').replace(/'/g,''))+'\','+used+')">'+ic('trash')+' Delete</button>':'<button class="btn btn-ghost btn-sm" onclick="openBatchMerge('+b.id+')" title="Move all students, timetable &amp; subjects into another batch, then archive this one">\u21C4 Merge</button><button class="btn btn-ghost btn-sm vtc-del" onclick="batchToggleActive('+b.id+',false,'+used+')">'+ic('trash')+' '+(used>0?'Archive':'Remove')+'</button>')+'</div>'
     +'</div></div>';
 }
 function _batchMgrBody(list,unlinked){
@@ -11916,6 +11916,12 @@ async function batchMergeConfirm(srcId){
     toast('Merged into '+tgt+' \u2014 '+n+' student'+(n===1?'':'s')+' moved.');
     closeModal(); _batchMgrRefresh();
   }catch(e){ toast((e&&e.message)||'Could not merge',true); }
+}
+async function batchDelete(id,name,used){
+  if(used>0){ toast('This batch has '+used+' student'+(used>1?'s':'')+'. Move them first with \u21C4 Merge, then delete.',true); return; }
+  if(!confirm('Permanently delete "'+name+'"?\n\nThis cannot be undone.')) return;
+  try{ await api('/api/admin/batches/'+id,'DELETE'); toast('Batch deleted.'); _batchMgrRefresh(); }
+  catch(e){ toast((e&&e.message)||'Could not delete',true); }
 }
 // --- batch welcome banner editor ---
 function openBatchBanner(id,name){
