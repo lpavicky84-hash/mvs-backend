@@ -597,6 +597,8 @@ def admin_list_batches(db: Session = Depends(get_db), _=Depends(get_admin)):
     return {"unlinked": unlinked, "batches": [{
         "id": b.id, "code": b.code, "name": b.name, "type": b.type or "",
         "mode": getattr(b, "mode", "live") or "live",
+        "start_date": (b.start_date.isoformat() if getattr(b, "start_date", None) else ""),
+        "end_date": (b.end_date.isoformat() if getattr(b, "end_date", None) else ""),
         "description": b.description or "", "status": b.status or "live",
         "active": bool(b.active), "is_new": bool(b.is_new), "sort": b.sort or 0,
         "has_banner": bool(getattr(b, "banner_b64", None)),
@@ -646,6 +648,14 @@ def admin_update_batch(bid: int, payload: dict = Body(...), db: Session = Depend
             setattr(b, fld, (payload.get(fld) or "").strip())
     if payload.get("is_new") is not None:
         b.is_new = bool(payload.get("is_new"))
+    for _df in ("start_date", "end_date"):
+        if payload.get(_df) is not None:
+            _dv = (payload.get(_df) or "").strip()
+            try:
+                from datetime import datetime as _dtp
+                setattr(b, _df, _dtp.strptime(_dv, "%Y-%m-%d").date() if _dv else None)
+            except Exception:
+                pass
     if payload.get("welcome_message") is not None:
         b.welcome_message = (payload.get("welcome_message") or "")[:990]
     if payload.get("banner_b64") is not None:

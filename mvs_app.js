@@ -2046,7 +2046,7 @@ function tPage(page,el){
   document.querySelectorAll('#teacher-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('t-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#teacher-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',vtasks:'My Tasks',performance:'Performance',predicted:'Predicted Results',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',material:'Classes Material',extmat:'Study Material',attendance:'Attendance',payout:'Payout',mysubjects:'My Subjects',subjectmaterials:'Subject Materials',matchecker:'Material Checker'};
+  const titles={dashboard:'Dashboard',vtasks:'My Tasks',performance:'Performance',predicted:'Predicted Results',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',material:'Classes Material',extmat:'Study Material',attendance:'Attendance',payout:'Payout',mysubjects:'My Subjects',subjectmaterials:'Subject Materials',matchecker:'Material Checker',mybatches:'My Batches'};
   _setPage(titles[page]||page);
   document.getElementById('t-title').textContent=titles[page]||page;
   stopCountdown();
@@ -8816,6 +8816,7 @@ function adminAllowed(page){
   if(!me||me.full_access) return true;
   const secs=me.sections||[];
   if(page==='dpptracker') return secs.includes('tests')||secs.includes('dpptracker');
+  if(page==='batches') return secs.includes('batches')||secs.includes('students');
   if(page==='ytasks') return secs.includes('ytasks')||secs.includes('vtasks');
   return secs.includes(page);
 }
@@ -8850,6 +8851,7 @@ function openAdmin(){
   try{_saveSession();}catch(e){}
   document.getElementById('admin-app').classList.add('active');
   try{ initAdminDppTracker(); }catch(e){}
+  try{ initAdminBatches(); }catch(e){}
   try{ initAdminYtTasks(); }catch(e){}
   try{ initAdminProdTeam(); }catch(e){}
   try{ initAdminCategories(); }catch(e){}
@@ -8972,7 +8974,7 @@ function aPage(page,el){
   }
   if(!el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) el=n; }); }
   if(el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',ytasks:'YouTuber Tasks',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodmon:'Production Overview',prodboard:'Production Board',translation:'Translation Center',categories:'Teacher Categories',matcheck:'Material Checker',complaints:'Complaints & Resolution',feedback:'Feedback & Ratings'};
+  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',ytasks:'YouTuber Tasks',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',batches:'Batches',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodmon:'Production Overview',prodboard:'Production Board',translation:'Translation Center',categories:'Teacher Categories',matcheck:'Material Checker',complaints:'Complaints & Resolution',feedback:'Feedback & Ratings'};
   _setPage(titles[page]||page);
   document.getElementById('a-title').textContent=titles[page]||page;
   _curLoader=function(){ _aLoadPage(page); };
@@ -8981,6 +8983,7 @@ function aPage(page,el){
 function _aLoadPage(page){
   if(page==='dashboard') loadADashboard();
   else if(page==='dpptracker') loadADppTracker();
+  else if(page==='batches') loadABatches();
   else if(page==='prodteam') loadAProductionTeam();
   else if(page==='categories') loadACategories();
   else if(page==='matcheck') loadAMatCheck();
@@ -11471,47 +11474,161 @@ async function vtSetTypeScope(id,scope){
 }
 
 // ===== Batch manager (Phase 3, sub-step 1) — configurable batch entity =====
+function _batchMgrRefresh(){ try{ var pg=document.getElementById('a-page-batches'); if(pg && pg.classList.contains('active')){ loadABatches(); return; } if(document.querySelector('#modal-root .modal, .modal-overlay, #modal-overlay')) openBatchMgr(); }catch(e){ try{ openBatchMgr(); }catch(x){} } }
 async function openBatchMgr(){
-  _vtcInjectCSS();
+  _vtcInjectCSS(); _bmInjectCSS();
   var list=[], unlinked=0;
   try{ var r=await api('/api/admin/batches'); list=(r&&r.batches)||[]; unlinked=(r&&r.unlinked)||0; }catch(e){ toast('Could not load batches',true); }
+  showModal('Batches', _batchMgrBody(list,unlinked), '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+}
+function _batchRow(b){
+  var used=b.usage||0;
+  var usageChip=used>0?('<span class="vtc-use">'+used+' student'+(used>1?'s':'')+'</span>'):'<span class="vtc-use vtc-use-0">no students</span>';
+  return '<div class="vtc-row bm-card'+(b.active===false?' vtc-off':'')+'">'
+    +'<div class="bm-row1">'
+    +'<span class="sbb-av">'+ic('folder')+'</span>'
+    +'<div class="vtc-main"><input class="vtc-nm" value="'+esc(b.name)+'" onchange="batchRename('+b.id+',this.value)" title="Rename"><div class="vtc-sub">'+(b.type?esc(b.type)+' \u00b7 ':'')+usageChip+(b.is_new?' \u00b7 <b style="color:#16a34a">NEW</b>':'')+'</div></div>'
+    +'<select class="input vtc-sc" onchange="batchSetStatus('+b.id+',this.value)"><option value="live"'+((b.status||'live')==='live'?' selected':'')+'>Live</option><option value="upcoming"'+(b.status==='upcoming'?' selected':'')+'>Upcoming</option><option value="draft"'+(b.status==='draft'?' selected':'')+'>Draft</option><option value="completed"'+(b.status==='completed'?' selected':'')+'>Completed</option></select>'
+    +'<select class="input vtc-sc" title="Student dashboard style" onchange="batchSetMode('+b.id+',this.value)"><option value="live"'+((b.mode||'live')==='live'?' selected':'')+'>\uD83D\uDD34 Live mode</option><option value="rec"'+(b.mode==='rec'?' selected':'')+'>\u25B6 Recorded</option><option value="syc"'+(b.mode==='syc'?' selected':'')+'>\u25B6 On-Demand</option></select>'
+    +'<button class="btn btn-ghost btn-sm" onclick="openBatchBanner('+b.id+',\''+esc((b.name||'').replace(/'/g,''))+'\')" title="Welcome banner + congrats message">'+(b.has_banner?'\uD83C\uDF89':'\uD83D\uDDBC')+' Banner</button>'
+    +(b.active===false
+      ? '<button class="btn btn-ghost btn-sm" onclick="batchToggleActive('+b.id+',true,0)">'+ic('refresh')+' Restore</button>'
+      : '<button class="btn btn-ghost btn-sm vtc-del" onclick="batchToggleActive('+b.id+',false,'+used+')">'+ic('trash')+' '+(used>0?'Archive':'Remove')+'</button>')
+    +'</div>'
+    +'<div class="bm-row2"><label class="bm-newck"><input type="checkbox" '+(b.is_new?'checked':'')+' onchange="batchSetNew('+b.id+',this.checked)"> Show <b>NEW</b> badge</label>'
+    +'<label class="bm-dt">Starts <input type="date" class="input" value="'+esc(b.start_date||'')+'" onchange="batchSetDate('+b.id+',\'start_date\',this.value)"></label>'
+    +'<label class="bm-dt">Expires <input type="date" class="input" value="'+esc(b.end_date||'')+'" onchange="batchSetDate('+b.id+',\'end_date\',this.value)"></label></div>'
+    +'</div>';
+}
+function _batchMgrBody(list,unlinked){
   window._bmgrBatches=list;
   var active=list.filter(function(b){return b.active!==false;});
   var inactive=list.filter(function(b){return b.active===false;});
-  var rowHTML=function(b){
-    var used=b.usage||0;
-    var usageChip=used>0?('<span class="vtc-use">'+used+' student'+(used>1?'s':'')+'</span>'):'<span class="vtc-use vtc-use-0">no students</span>';
-    return '<div class="vtc-row'+(b.active===false?' vtc-off':'')+'">'
-      +'<span class="sbb-av">'+ic('folder')+'</span>'
-      +'<div class="vtc-main"><input class="vtc-nm" value="'+esc(b.name)+'" onchange="batchRename('+b.id+',this.value)" title="Rename"><div class="vtc-sub">'+(b.type?esc(b.type)+' \u00b7 ':'')+usageChip+(b.is_new?' \u00b7 <b style="color:#16a34a">NEW</b>':'')+'</div></div>'
-      +'<select class="input vtc-sc" onchange="batchSetStatus('+b.id+',this.value)"><option value="live"'+((b.status||'live')==='live'?' selected':'')+'>Live</option><option value="upcoming"'+(b.status==='upcoming'?' selected':'')+'>Upcoming</option><option value="draft"'+(b.status==='draft'?' selected':'')+'>Draft</option><option value="completed"'+(b.status==='completed'?' selected':'')+'>Completed</option></select>'
-      +'<select class="input vtc-sc" title="Student dashboard style" onchange="batchSetMode('+b.id+',this.value)"><option value="live"'+((b.mode||'live')==='live'?' selected':'')+'>\uD83D\uDD34 Live mode</option><option value="rec"'+(b.mode==='rec'?' selected':'')+'>\u25B6 Recorded</option><option value="syc"'+(b.mode==='syc'?' selected':'')+'>\u25B6 On-Demand</option></select>'
-      +'<button class="btn btn-ghost btn-sm" onclick="openBatchBanner('+b.id+',\''+esc((b.name||'').replace(/'/g,''))+'\')" title="Welcome banner + congrats message">'+(b.has_banner?'\uD83C\uDF89':'\uD83D\uDDBC')+' Banner</button>'
-      +(b.active===false
-        ? '<button class="btn btn-ghost btn-sm" onclick="batchToggleActive('+b.id+',true,0)">'+ic('refresh')+' Restore</button>'
-        : '<button class="btn btn-ghost btn-sm vtc-del" onclick="batchToggleActive('+b.id+',false,'+used+')">'+ic('trash')+' '+(used>0?'Archive':'Remove')+'</button>')
-      +'</div>';
-  };
-  showModal('Batches',
-    '<p class="vtc-help">Add, rename, set status, and archive your batches. Two batches can share a display name \u2014 they stay separate internally (unique code). A batch with students can be <b>archived</b> (hidden from new sign-ups) but not deleted, so records stay intact.</p>'
-    +(unlinked>0?'<div style="font-size:.75rem;color:#b07f1e;background:rgba(184,148,31,.1);border-radius:8px;padding:7px 10px;margin-bottom:10px">'+unlinked+' student'+(unlinked>1?'s are':' is')+' not yet linked to a batch record. New/edited students link automatically; the rest are counted via their old batch label.</div>':'<div style="font-size:.75rem;color:#166534;background:rgba(22,163,74,.09);border-radius:8px;padding:7px 10px;margin-bottom:10px">\u2713 All students are linked to a batch record.</div>')
+  return '<p class="vtc-help">Create batches, set <b>Live / Recorded</b> mode (student dashboard style), add a welcome <b>banner</b>, a <b>NEW</b> badge, and start / expiry dates. Two batches can share a name \u2014 they stay separate internally. A batch with students is <b>archived</b>, never deleted.</p>'
+    +(unlinked>0?'<div style="font-size:.75rem;color:#b07f1e;background:rgba(184,148,31,.1);border-radius:8px;padding:7px 10px;margin-bottom:10px">'+unlinked+' student'+(unlinked>1?'s are':' is')+' not yet linked \u2014 new/edited students link automatically.</div>':'<div style="font-size:.75rem;color:#166534;background:rgba(22,163,74,.09);border-radius:8px;padding:7px 10px;margin-bottom:10px">\u2713 All students linked to a batch record.</div>')
     +(active.length?'<div class="vtc-cap">Active</div>':'')
-    +'<div class="vtc-list">'+(active.map(rowHTML).join('')||'<div class="vtc-empty">No batches yet \u2014 add one below</div>')+'</div>'
-    +(inactive.length?'<div class="vtc-cap">Archived</div><div class="vtc-list">'+inactive.map(rowHTML).join('')+'</div>':'')
-    +'<div class="vtc-add"><input id="bm-new" class="input" placeholder="New batch name" style="flex:1;min-width:140px"><input id="bm-type" class="input" placeholder="Type (e.g. Science)" style="width:150px"><button class="btn btn-primary btn-sm" onclick="batchAdd()">'+ic('plus')+' Add</button></div>',
-    '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+    +'<div class="vtc-list">'+(active.map(_batchRow).join('')||'<div class="vtc-empty">No batches yet \u2014 add one below</div>')+'</div>'
+    +(inactive.length?'<div class="vtc-cap">Archived</div><div class="vtc-list">'+inactive.map(_batchRow).join('')+'</div>':'')
+    +'<div class="vtc-add"><input id="bm-new" class="input" placeholder="New batch name" style="flex:1;min-width:140px"><input id="bm-type" class="input" placeholder="Type (e.g. Science)" style="width:150px"><button class="btn btn-primary btn-sm" onclick="batchAdd()">'+ic('plus')+' Add</button></div>';
+}
+function _bmInjectCSS(){
+  if(document.getElementById('bm-css')) return;
+  var s=document.createElement('style'); s.id='bm-css';
+  s.textContent=[
+   '.bm-card{flex-direction:column;align-items:stretch !important;gap:8px}',
+   '.bm-row1{display:flex;align-items:center;gap:9px;flex-wrap:wrap}',
+   '.bm-row2{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:6px 2px 0;border-top:1px dashed var(--border);font-size:.8rem;color:var(--text-muted)}',
+   '.bm-newck{display:flex;align-items:center;gap:6px;cursor:pointer}',
+   '.bm-dt{display:flex;align-items:center;gap:6px}',
+   '.bm-dt input{padding:4px 8px;font-size:.8rem;width:auto}'
+  ].join('');
+  document.head.appendChild(s);
+}
+async function batchSetNew(id,on){ try{ await api('/api/admin/batches/'+id,'POST',{is_new:!!on}); toast(on?'NEW badge on.':'NEW badge off.'); }catch(e){ toast((e&&e.message)||'Could not update',true); } }
+async function batchSetDate(id,field,val){ var p={}; p[field]=val||''; try{ await api('/api/admin/batches/'+id,'POST',p); toast('Date saved.'); }catch(e){ toast((e&&e.message)||'Could not update',true); } }
+// --- Student "My Batches" sidebar section (nav item + page injected via JS) ---
+function initStudentMyBatches(){
+  var app=document.getElementById('student-app'); if(!app) return;
+  var nav=app.querySelector('.sidebar-nav');
+  if(nav && !nav.querySelector('[onclick*="mybatches"]')){
+    var items=[].slice.call(nav.querySelectorAll('.nav-item'));
+    var anchor=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'timetable'")>=0;})[0]
+             || items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'dashboard'")>=0;})[0];
+    var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"sPage('mybatches',this)");
+    d.innerHTML=ic('folder')+'<span>My Batches</span>';
+    if(anchor){ anchor.parentNode.insertBefore(d, anchor.nextSibling); } else { nav.appendChild(d); }
+  }
+  var main=app.querySelector('.main');
+  if(main && !document.getElementById('s-page-mybatches')){
+    var pg=document.createElement('div'); pg.className='page'; pg.id='s-page-mybatches';
+    pg.innerHTML='<div id="s-mybatches-content"><div class="spinner"></div></div>';
+    main.appendChild(pg);
+  }
+}
+function _mbInjectCSS(){
+  if(document.getElementById('mb-css')) return;
+  var s=document.createElement('style'); s.id='mb-css';
+  s.textContent=[
+   '.mb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}',
+   '.mb-card{border:1px solid var(--border,#e8e0cf);border-radius:16px;overflow:hidden;background:var(--card,#fffdf7);cursor:pointer;transition:transform .12s,box-shadow .12s}',
+   '.mb-card:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(0,0,0,.12)}',
+   '.mb-card.on{border-color:var(--primary,#b8941f);box-shadow:0 0 0 2px var(--primary,#b8941f) inset}',
+   '.mb-ban{height:120px;background-size:cover;background-position:center}',
+   '.mb-ban-none{display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(184,148,31,.18),rgba(184,148,31,.04));color:var(--primary,#b8941f)}',
+   '.mb-body{padding:13px 15px 15px}',
+   '.mb-top{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px}',
+   '.mb-mode{font-size:.62rem;font-weight:800;padding:2px 8px;border-radius:999px}',
+   '.mb-mode.live{background:rgba(220,38,38,.14);color:#dc2626}.mb-mode.rec{background:rgba(99,102,241,.16);color:#4f46e5}',
+   '.mb-new{font-size:.6rem;font-weight:800;padding:2px 7px;border-radius:999px;background:#16a34a;color:#fff}',
+   '.mb-prim{font-size:.6rem;font-weight:800;padding:2px 7px;border-radius:999px;background:var(--primary-soft,rgba(184,148,31,.15));color:var(--primary,#8a6d1a)}',
+   '.mb-name{font-size:1.05rem;font-weight:800;color:var(--text,#2a2418)}',
+   '.mb-msg{font-size:.8rem;color:var(--text-muted,#7a6f58);margin-top:4px;line-height:1.5;max-height:3em;overflow:hidden}',
+   '.mb-open{margin-top:12px;width:100%}'
+  ].join('');
+  document.head.appendChild(s);
+}
+async function loadSMyBatches(){
+  var el=document.getElementById('s-mybatches-content'); if(!el) return;
+  _mbInjectCSS(); softSpin(el);
+  try{
+    var d=await api('/api/student/my-batches'); var list=(d&&d.batches)||[];
+    window._sBatchList=list;
+    if(!list.length){ el.innerHTML='<div class="ws-empty"><p>You are not enrolled in any batch yet.</p></div>'; return; }
+    var sel=_selBatch();
+    var cards=list.map(function(b){
+      var on=(b.id===sel)||(list.length===1&&!sel);
+      var modeLbl=(b.mode==='live')?'<span class="mb-mode live">\u25cf LIVE</span>':(b.mode==='rec'?'<span class="mb-mode rec">\u25b6 RECORDED</span>':'<span class="mb-mode rec">\u25b6 ON-DEMAND</span>');
+      var ban=b.banner?('<div class="mb-ban" style="background-image:url(\''+esc(b.banner).replace(/'/g,'')+'\')"></div>'):('<div class="mb-ban mb-ban-none">'+ic('folder')+'</div>');
+      return '<div class="mb-card'+(on?' on':'')+'" onclick="_myBatchOpen('+b.id+')">'+ban
+        +'<div class="mb-body"><div class="mb-top">'+modeLbl+(b.is_new?'<span class="mb-new">NEW</span>':'')+(b.is_primary?'<span class="mb-prim">PRIMARY</span>':'')+'</div>'
+        +'<div class="mb-name">'+esc(b.name)+'</div>'
+        +(b.message?'<div class="mb-msg">'+esc(b.message)+'</div>':'')
+        +'<button class="btn '+(on?'btn-ghost':'btn-primary')+' btn-sm mb-open">'+(on?'Current batch \u2713':'Open this batch \u2192')+'</button></div></div>';
+    }).join('');
+    el.innerHTML='<div class="sm-head" style="padding:0 4px 12px;border:none"><h2 style="font-size:1.3rem">My Batches</h2><p style="color:var(--text-muted);font-size:.85rem;margin:2px 0 0">Tap a batch to open it \u2014 your dashboard, timetable and materials switch to that batch.</p></div><div class="mb-grid">'+cards+'</div>';
+  }catch(e){ el.innerHTML=errHtml(e); }
+}
+function _myBatchOpen(bid){
+  _selBatchChange(bid);
+  setTimeout(function(){ try{ sPage('dashboard'); }catch(e){} }, 80);
+}
+// --- Admin "Batches" sidebar section (nav item + page injected via JS) ---
+function initAdminBatches(){
+  var app=document.getElementById('admin-app'); if(!app) return;
+  var nav=app.querySelector('.sidebar-nav');
+  if(nav && !nav.querySelector('[onclick*="aPage(\u0027batches"]')){
+    var items=[].slice.call(nav.querySelectorAll('.nav-item'));
+    var anchor=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'students'")>=0;})[0];
+    var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"aPage('batches',this)");
+    d.innerHTML=ic('folder')+'<span>Batches</span>';
+    if(anchor){ anchor.parentNode.insertBefore(d, anchor.nextSibling); } else { nav.appendChild(d); }
+  }
+  var main=app.querySelector('.main');
+  if(main && !document.getElementById('a-page-batches')){
+    var pg=document.createElement('div'); pg.className='page'; pg.id='a-page-batches';
+    pg.innerHTML='<div id="a-batches-content"><div class="spinner"></div></div>';
+    main.appendChild(pg);
+  }
+}
+async function loadABatches(){
+  var el=document.getElementById('a-batches-content'); if(!el) return;
+  _vtcInjectCSS(); _bmInjectCSS(); softSpin(el);
+  try{
+    var r=await api('/api/admin/batches'); var list=(r&&r.batches)||[]; var unlinked=(r&&r.unlinked)||0;
+    el.innerHTML='<div class="sm-head" style="padding:0 4px 12px;border:none"><h2 style="font-size:1.3rem">Batches</h2></div>'+_batchMgrBody(list,unlinked);
+  }catch(e){ el.innerHTML=errHtml(e); }
 }
 async function batchAdd(){
   var name=((document.getElementById('bm-new')||{}).value||'').trim();
   if(!name){ toast('Enter a batch name'); return; }
   var type=((document.getElementById('bm-type')||{}).value||'').trim();
-  try{ await api('/api/admin/batches','POST',{name:name,type:type}); toast('Batch added.'); openBatchMgr(); }
+  try{ await api('/api/admin/batches','POST',{name:name,type:type}); toast('Batch added.'); _batchMgrRefresh(); }
   catch(e){ toast((e&&e.message)||'Could not add',true); }
 }
 async function batchRename(id,name){
   name=(name||'').trim(); if(!name) return;
   try{ await api('/api/admin/batches/'+id,'POST',{name:name}); toast('Renamed.'); }
-  catch(e){ toast((e&&e.message)||'Could not rename',true); openBatchMgr(); }
+  catch(e){ toast((e&&e.message)||'Could not rename',true); _batchMgrRefresh(); }
 }
 async function batchSetStatus(id,status){
   try{ await api('/api/admin/batches/'+id,'POST',{status:status}); toast('Status updated.'); }
@@ -11523,7 +11640,7 @@ async function batchSetMode(id,mode){
 }
 async function batchToggleActive(id,active,used){
   if(!active && used>0){ if(!confirm('This batch has '+used+' student'+(used>1?'s':'')+'. Archiving hides it from new sign-ups but keeps records intact. Continue?')) return; }
-  try{ await api('/api/admin/batches/'+id,'POST',{active:!!active}); toast(active?'Restored.':'Archived.'); openBatchMgr(); }
+  try{ await api('/api/admin/batches/'+id,'POST',{active:!!active}); toast(active?'Restored.':'Archived.'); _batchMgrRefresh(); }
   catch(e){ toast((e&&e.message)||'Could not update',true); }
 }
 // --- batch welcome banner editor ---
@@ -11549,7 +11666,7 @@ async function _bmBannerSave(id){
   var msg=((document.getElementById('bm-wmsg')||{}).value||'').trim();
   var payload={welcome_message:msg};
   if(window._bmgrBannerB64) payload.banner_b64=window._bmgrBannerB64;
-  try{ await api('/api/admin/batches/'+id,'POST',payload); toast('Banner saved.'); openBatchMgr(); }
+  try{ await api('/api/admin/batches/'+id,'POST',payload); toast('Banner saved.'); _batchMgrRefresh(); }
   catch(e){ toast((e&&e.message)||'Could not save',true); }
 }
 // --- student first-time batch welcome (congrats) popup ---
@@ -13768,6 +13885,7 @@ function enterStudentApp(){
   document.querySelectorAll('#student-app .nav-item').forEach(n=>n.classList.remove('active'));
   document.querySelector('#student-app .nav-item').classList.add('active');
   try{ initStudentSupport(); }catch(e){}
+  try{ initStudentMyBatches(); }catch(e){}
   sPage('dashboard',null);
   notifPopupOnOpen('student');
   loadStudentLiveBanner();
@@ -13876,6 +13994,7 @@ function _sLoadPage(page){
   if(page==='dashboard') loadSDashboard();
   else if(page==='timetable') loadSTimetable();
   else if(page==='materials') loadSMaterials();
+  else if(page==='mybatches') loadSMyBatches();
   else if(page==='teachers') loadSTeachers();
   else if(page==='dpp') loadSDpp();
   else if(page==='tests') loadSTests();
@@ -17517,7 +17636,7 @@ async function processExcel(){
 try{injectNavIcons();injectTopbarIcons();}catch(e){}
 try{initResponsiveCss();}catch(e){}
 try{initNavCollapse();}catch(e){}
-try{initAdminDppTracker();}catch(e){}try{initAdminYtTasks();}catch(e){}
+try{initAdminDppTracker();}catch(e){}try{initAdminBatches();}catch(e){}try{initAdminYtTasks();}catch(e){}
 try{initNavAccordion();}catch(e){}
 setTimeout(function(){ try{initNavAccordion();}catch(e){} },500);
 function initResponsiveCss(){
@@ -19054,6 +19173,34 @@ function _wnDismiss(role){ window._wnHide=window._wnHide||{}; window._wnHide[rol
 function _wnMarkAll(role){ try{ markAllRead(role); }catch(e){} var c=document.getElementById('whats-new-card'); if(c) c.remove(); }
 
 // ===== Universal polish (Phase 4) — accessibility + mobile, token-based, additive =====
+(function _mvsMobileFix(){
+  try{
+    if(document.getElementById('mvs-mobile-css')) return;
+    var s=document.createElement('style'); s.id='mvs-mobile-css';
+    s.textContent=[
+     '@media (max-width:680px){',
+     // Next Class banner — calendar icon was stretching full-width; pin it to a small box
+     '.live-banner{gap:12px;align-items:center}',
+     '.lb-left{display:flex !important;align-items:center;gap:12px;min-width:0;flex:1}',
+     '.lb-icon{width:46px !important;height:46px !important;min-width:46px !important;max-width:46px !important;flex:0 0 46px !important;padding:0 !important;display:flex;align-items:center;justify-content:center}',
+     '.lb-left>div:last-child{min-width:0;flex:1}',
+     '.lb-left h3{font-size:1.02rem !important;margin:2px 0 !important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+     '.lb-left small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}',
+     // Today\u2019s Classes header — let it wrap instead of cramming into one line
+     '.tc-cal-h{flex-wrap:wrap !important;gap:6px 10px !important;align-items:center}',
+     '.tc-dd{flex-wrap:wrap;gap:6px}',
+     '.tc-cal-title{min-width:0;overflow:hidden;text-overflow:ellipsis}',
+     // Next Action card — button goes full-width when it wraps below the text
+     '.na-body{flex:1 1 100%;min-width:0}',
+     '.na-cta{flex:1 1 100%;width:100%;justify-content:center}',
+     '.na-main{overflow-wrap:anywhere}',
+     // generic cards — a touch tighter padding so content isn\u2019t squeezed
+     '.card-body{padding-left:14px;padding-right:14px}',
+     '}'
+    ].join('');
+    (document.head||document.documentElement).appendChild(s);
+  }catch(e){}
+})();
 (function _polishInjectCSS(){
   try{
     if(document.getElementById('mvs-polish-css')) return;
