@@ -11651,7 +11651,7 @@ function _batchCard(b){
       +'<div class="bc-two"><label class="bc-f">Starts<input type="date" class="input" value="'+esc(b.start_date||'')+'" onchange="batchSetDate('+b.id+',\'start_date\',this.value)"></label>'
         +'<label class="bc-f">Expires<input type="date" class="input" value="'+esc(b.end_date||'')+'" onchange="batchSetDate('+b.id+',\'end_date\',this.value)"></label></div>'
       +'<div class="bc-acts"><button class="btn btn-ghost btn-sm" onclick="openBatchBanner('+b.id+',\''+esc((b.name||'').replace(/'/g,''))+'\')">'+(b.has_banner?'\uD83C\uDF89':'\uD83D\uDDBC')+' Banner</button>'
-        +(b.active===false?'<button class="btn btn-ghost btn-sm" onclick="batchToggleActive('+b.id+',true,0)">'+ic('refresh')+' Restore</button>':'<button class="btn btn-ghost btn-sm vtc-del" onclick="batchToggleActive('+b.id+',false,'+used+')">'+ic('trash')+' '+(used>0?'Archive':'Remove')+'</button>')+'</div>'
+        +(b.active===false?'<button class="btn btn-ghost btn-sm" onclick="batchToggleActive('+b.id+',true,0)">'+ic('refresh')+' Restore</button>':'<button class="btn btn-ghost btn-sm" onclick="openBatchMerge('+b.id+')" title="Move all students, timetable &amp; subjects into another batch, then archive this one">\u21C4 Merge</button><button class="btn btn-ghost btn-sm vtc-del" onclick="batchToggleActive('+b.id+',false,'+used+')">'+ic('trash')+' '+(used>0?'Archive':'Remove')+'</button>')+'</div>'
     +'</div></div>';
 }
 function _batchMgrBody(list,unlinked){
@@ -11885,6 +11885,37 @@ async function batchToggleActive(id,active,used){
   if(!active && used>0){ if(!confirm('This batch has '+used+' student'+(used>1?'s':'')+'. Archiving hides it from new sign-ups but keeps records intact. Continue?')) return; }
   try{ await api('/api/admin/batches/'+id,'POST',{active:!!active}); toast(active?'Restored.':'Archived.'); _batchMgrRefresh(); }
   catch(e){ toast((e&&e.message)||'Could not update',true); }
+}
+// --- merge a duplicate batch into another (moves students/timetable/subjects, then archives source) ---
+function openBatchMerge(srcId){
+  var all=window._bmgrBatches||[];
+  var src=all.filter(function(b){return b.id===srcId;})[0]; if(!src){ toast('Batch not found',true); return; }
+  var others=all.filter(function(b){return b.id!==srcId && b.active!==false;});
+  if(!others.length){ toast('No other active batch to merge into.',true); return; }
+  var modeName=function(m){ return m==='rec'?'Recorded':(m==='syc'?'On-Demand':'Live'); };
+  var opts='<option value="">\u2014 Choose the batch to keep \u2014</option>'+others.map(function(b){
+    return '<option value="'+b.id+'">'+esc(b.name)+' \u00b7 '+modeName(b.mode)+((b.usage||0)?(' \u00b7 '+b.usage+' students'):'')+'</option>';
+  }).join('');
+  var used=src.usage||0;
+  showModal('Merge batch \u2014 '+esc(src.name),
+    '<p class="vtc-help">Move <b>everything</b> from <b>'+esc(src.name)+'</b>'+(used?(' ('+used+' student'+(used>1?'s':'')+')'):'')+' \u2014 students, batch-specific timetable and subject mappings \u2014 into the batch you pick below. <b>'+esc(src.name)+'</b> is then archived (not deleted \u2014 you can restore it). Nothing is lost.</p>'
+    +'<div class="form-group"><label>Keep this batch (merge into)</label><select id="bmg-target" class="input">'+opts+'</select></div>'
+    +'<div class="alert alert-info" style="margin-top:6px;font-size:.82rem">Tip: pick the correct <b>On-Demand / Recorded</b> batch so the merged students land in the right dashboard style.</div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="batchMergeConfirm('+srcId+')">'+ic('refresh')+' Merge &amp; archive</button>');
+}
+async function batchMergeConfirm(srcId){
+  var sel=document.getElementById('bmg-target'); var tid=sel?sel.value:'';
+  if(!tid){ toast('Pick a batch to merge into.'); return; }
+  var all=window._bmgrBatches||[];
+  var src=(all.filter(function(b){return b.id===srcId;})[0]||{}).name||'this batch';
+  var tgt=(all.filter(function(b){return String(b.id)===String(tid);})[0]||{}).name||'the target';
+  if(!confirm('Merge "'+src+'" into "'+tgt+'"?\n\nAll its students, timetable and subjects move to "'+tgt+'", and "'+src+'" gets archived.')) return;
+  try{
+    var r=await api('/api/admin/batches/'+srcId+'/merge','POST',{target_id:parseInt(tid,10)});
+    var n=(r&&r.moved_students)||0;
+    toast('Merged into '+tgt+' \u2014 '+n+' student'+(n===1?'':'s')+' moved.');
+    closeModal(); _batchMgrRefresh();
+  }catch(e){ toast((e&&e.message)||'Could not merge',true); }
 }
 // --- batch welcome banner editor ---
 function openBatchBanner(id,name){

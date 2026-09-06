@@ -686,6 +686,89 @@ def admin_update_batch(bid: int, payload: dict = Body(...), db: Session = Depend
     return {"ok": True}
 
 
+@router.post("/batches/{src_id}/merge")
+def admin_merge_batch(src_id: int, payload: dict = Body(...),
+                      db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Merge one batch into another (duplicate cleanup).
+
+    Moves EVERY student, batch-scoped timetable entry and subject mapping from the
+    source batch into the target, then archives the (now empty) source. Nothing is
+    hard-deleted — the source is only archived, so it can be restored if needed.
+    Idempotent and safe to re-run. Body: {"target_id": <int>}.
+    """
+    from models import Batch, StudentProfile, StudentBatch, BatchSubject, TimetableEntry
+    from datetime import datetime as _dt
+    try:
+        target_id = int(payload.get("target_id"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="target_id is required")
+    if src_id == target_id:
+        raise HTTPException(status_code=400, detail="Source and target must be different batches")
+    src = db.query(Batch).filter(Batch.id == src_id).first()
+    tgt = db.query(Batch).filter(Batch.id == target_id).first()
+    if not src:
+        raise HTTPException(status_code=404, detail="Source batch not found")
+    if not tgt:
+        raise HTTPException(status_code=404, detail="Target batch not found")
+
+    moved_students = 0
+    moved_tt = 0
+    moved_subjects = 0
+
+    # 1) Primary link — students whose primary batch_id points at the source
+    for sp in db.query(StudentProfile).filter(StudentProfile.batch_id == src_id).all():
+        sp.batch_id = target_id
+        moved_students += 1
+    # 2) Legacy free-text link — unlinked students counted under the source by name
+    for sp in db.query(StudentProfile).filter(
+            StudentProfile.batch_id == None,
+            StudentProfile.batch_name == src.name).all():
+        sp.batch_id = target_id
+        moved_students += 1
+    db.flush()
+
+    # 3) Multi-batch enrolments — re-point source rows to target, dedup, keep a primary
+    tgt_rows = {sb.student_id: sb for sb in
+                db.query(StudentBatch).filter(StudentBatch.batch_id == target_id).all()}
+    for sb in db.query(StudentBatch).filter(StudentBatch.batch_id == src_id).all():
+        tr = tgt_rows.get(sb.student_id)
+        if tr:
+            if sb.is_primary:
+                tr.is_primary = True     # carry the primary flag over
+            db.delete(sb)                # student already enrolled in target — drop the dup
+        else:
+            sb.batch_id = target_id
+            tgt_rows[sb.student_id] = sb
+    db.flush()
+
+    # 4) Batch-scoped timetable entries
+    for e in db.query(TimetableEntry).filter(TimetableEntry.batch_id == src_id).all():
+        e.batch_id = target_id
+        moved_tt += 1
+
+    # 5) Subject mappings (dedup — skip subjects the target already has)
+    have = {bs.subject for bs in
+            db.query(BatchSubject).filter(BatchSubject.batch_id == target_id).all()}
+    for bs in db.query(BatchSubject).filter(BatchSubject.batch_id == src_id).all():
+        if bs.subject in have:
+            db.delete(bs)
+        else:
+            bs.batch_id = target_id
+            have.add(bs.subject)
+            moved_subjects += 1
+
+    # 6) Archive the emptied source (never hard-deleted — restorable)
+    src.active = False
+    if (src.status or "") != "archived":
+        src.status = "archived"
+    src.archived_at = _dt.utcnow()
+
+    db.commit()
+    return {"ok": True, "moved_students": moved_students,
+            "moved_timetable": moved_tt, "moved_subjects": moved_subjects,
+            "target": tgt.name, "source": src.name}
+
+
 @router.get("/students/{sid}/batches")
 def admin_student_batches(sid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     """A student's batch enrollments (multi-batch)."""
