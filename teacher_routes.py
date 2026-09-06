@@ -70,6 +70,107 @@ def _hsafe(_n):
 router = APIRouter(prefix="/api/teacher", tags=["Teacher"])
 
 
+@router.get("/tt-batches")
+def teacher_tt_batches(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Active batches for the teacher's timetable builder."""
+    from models import Batch
+    rows = db.query(Batch).filter(Batch.active == True).order_by(Batch.sort.asc(), Batch.id.asc()).all()
+    return {"batches": [{"id": b.id, "name": b.name, "session": getattr(b, "session", "") or ""} for b in rows]}
+
+
+@router.get("/tt-chapters")
+def teacher_tt_chapters(subject: str = "", class_level: str = "",
+                        db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Chapter suggestions (distinct, split on ' + ')."""
+    from models import TimetableEntry
+    subject = (subject or "").strip()
+    out, seen = [], set()
+    if subject:
+        for r in (db.query(TimetableEntry.chapter)
+                  .filter(TimetableEntry.subject == subject,
+                          TimetableEntry.chapter != None, TimetableEntry.chapter != "")
+                  .distinct().all()):
+            for part in (r[0] or "").split(" + "):
+                p = part.strip()
+                if p and p.lower() not in seen:
+                    seen.add(p.lower())
+                    out.append(p)
+    return {"chapters": sorted(out)[:300]}
+
+
+@router.post("/tt-create")
+def teacher_tt_create(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Teacher builds a timetable -> saved as PENDING (hidden from students until admin approves)."""
+    from models import TimetableEntry
+    from datetime import datetime as _dt
+    tp = get_teacher_profile(current_user, db)
+    class_name = (payload.get("class_name") or "Class 12").strip()
+    subject = (payload.get("subject") or "").strip()
+    if not subject:
+        raise HTTPException(status_code=400, detail="Subject is required")
+    try:
+        batch_id = int(payload.get("batch_id")) if payload.get("batch_id") else None
+    except Exception:
+        batch_id = None
+    entries = payload.get("entries") or []
+    added = 0
+    for e in entries:
+        edate = None
+        try:
+            edate = _dt.strptime((e.get("date") or "").strip(), "%Y-%m-%d").date()
+        except Exception:
+            pass
+        chapters = e.get("chapters")
+        if isinstance(chapters, str):
+            chapters = [chapters]
+        chapters = [c.strip() for c in (chapters or []) if c and c.strip()]
+        chapter = " + ".join(chapters) if chapters else (e.get("chapter") or "").strip()
+        if not chapter and not edate and not (e.get("time") or "").strip():
+            continue
+        db.add(TimetableEntry(
+            teacher_id=tp.id, subject=subject, class_name=class_name, batch_id=batch_id,
+            chapter=chapter, part=(e.get("part") or "").strip(), entry_date=edate,
+            day=(e.get("day") or None), time_text=(e.get("time") or None),
+            entry_type=(e.get("type") or "lecture"), status="pending"))
+        added += 1
+    db.commit()
+    return {"ok": True, "added": added, "pending": True}
+
+
+@router.get("/tt-pending")
+def teacher_tt_pending(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """The teacher's own PENDING timetable groups (awaiting admin approval)."""
+    from models import TimetableEntry, Batch
+    tp = get_teacher_profile(current_user, db)
+    rows = (db.query(TimetableEntry)
+            .filter(TimetableEntry.teacher_id == tp.id, TimetableEntry.status == "pending").all())
+    bmap = {b.id: b.name for b in db.query(Batch.id, Batch.name).all()} if rows else {}
+    groups = {}
+    for r in rows:
+        key = (r.subject or "", r.class_name or "", r.batch_id or 0)
+        g = groups.setdefault(key, {"subject": r.subject, "class_name": r.class_name,
+                                    "batch_id": r.batch_id, "batch": bmap.get(r.batch_id, "Global"),
+                                    "count": 0})
+        g["count"] += 1
+    return {"groups": list(groups.values())}
+
+
+@router.delete("/tt-pending")
+def teacher_tt_pending_delete(subject: str = "", class_name: str = "", batch_id: int = 0,
+                              db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Teacher deletes their own still-pending group (before approval)."""
+    from models import TimetableEntry
+    tp = get_teacher_profile(current_user, db)
+    q = db.query(TimetableEntry).filter(TimetableEntry.teacher_id == tp.id,
+                                        TimetableEntry.status == "pending",
+                                        TimetableEntry.subject == subject,
+                                        TimetableEntry.class_name == class_name)
+    q = q.filter(TimetableEntry.batch_id == (batch_id or None)) if not batch_id else q.filter(TimetableEntry.batch_id == batch_id)
+    n = q.delete(synchronize_session=False)
+    db.commit()
+    return {"ok": True, "deleted": n}
+
+
 def _ensure_urgent_enabled_column():
     """Runs at import so teacher_profiles.urgent_enabled ALWAYS exists before any query."""
     try:

@@ -2449,6 +2449,149 @@ def admin_delete_tt_subject(subject: str, class_level: str = "", db: Session = D
     return {"deleted": n, "message": f"{n} entries deleted for {subject}"}
 
 # ===== ADMIN: CLEAR TIMETABLE (whole class or everything) =====
+@router.get("/timetable-pending")
+def admin_timetable_pending(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Teacher-submitted timetables awaiting approval, grouped by teacher + subject + batch."""
+    from models import TimetableEntry, Batch, TeacherProfile, User
+    rows = db.query(TimetableEntry).filter(TimetableEntry.status == "pending").all()
+    if not rows:
+        return {"groups": []}
+    bmap = {b.id: b.name for b in db.query(Batch.id, Batch.name).all()}
+    tmap = {}
+    tids = list({r.teacher_id for r in rows if r.teacher_id})
+    if tids:
+        for tpid, uname in (db.query(TeacherProfile.id, User.name)
+                            .join(User, User.id == TeacherProfile.user_id)
+                            .filter(TeacherProfile.id.in_(tids)).all()):
+            tmap[tpid] = uname
+    groups = {}
+    for r in rows:
+        key = (r.teacher_id or 0, r.subject or "", r.class_name or "", r.batch_id or 0)
+        g = groups.setdefault(key, {"teacher_id": r.teacher_id, "teacher": tmap.get(r.teacher_id, "\u2014"),
+                                    "subject": r.subject, "class_name": r.class_name,
+                                    "batch_id": r.batch_id, "batch": bmap.get(r.batch_id, "Global"),
+                                    "count": 0, "sample": []})
+        g["count"] += 1
+        if len(g["sample"]) < 4:
+            g["sample"].append({"date": (r.entry_date.isoformat() if r.entry_date else ""),
+                                "time": r.time_text or "", "chapter": r.chapter or ""})
+    return {"groups": list(groups.values())}
+
+
+@router.post("/timetable-approve")
+def admin_timetable_approve(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Approve a pending group -> entries go live (status cleared) and become locked for the teacher."""
+    from models import TimetableEntry
+    subject = (payload.get("subject") or "").strip()
+    class_name = (payload.get("class_name") or "").strip()
+    try:
+        tid = int(payload.get("teacher_id")) if payload.get("teacher_id") else None
+    except Exception:
+        tid = None
+    try:
+        bid = int(payload.get("batch_id")) if payload.get("batch_id") else None
+    except Exception:
+        bid = None
+    q = db.query(TimetableEntry).filter(TimetableEntry.status == "pending",
+                                        TimetableEntry.subject == subject,
+                                        TimetableEntry.class_name == class_name)
+    if tid:
+        q = q.filter(TimetableEntry.teacher_id == tid)
+    q = q.filter(TimetableEntry.batch_id == bid) if bid else q.filter(TimetableEntry.batch_id == None)
+    n = q.update({TimetableEntry.status: "approved"}, synchronize_session=False)
+    db.commit()
+    return {"ok": True, "approved": n}
+
+
+@router.post("/timetable-reject")
+def admin_timetable_reject(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Reject (delete) a pending group."""
+    from models import TimetableEntry
+    subject = (payload.get("subject") or "").strip()
+    class_name = (payload.get("class_name") or "").strip()
+    try:
+        tid = int(payload.get("teacher_id")) if payload.get("teacher_id") else None
+    except Exception:
+        tid = None
+    try:
+        bid = int(payload.get("batch_id")) if payload.get("batch_id") else None
+    except Exception:
+        bid = None
+    q = db.query(TimetableEntry).filter(TimetableEntry.status == "pending",
+                                        TimetableEntry.subject == subject,
+                                        TimetableEntry.class_name == class_name)
+    if tid:
+        q = q.filter(TimetableEntry.teacher_id == tid)
+    q = q.filter(TimetableEntry.batch_id == bid) if bid else q.filter(TimetableEntry.batch_id == None)
+    n = q.delete(synchronize_session=False)
+    db.commit()
+    return {"ok": True, "rejected": n}
+
+
+@router.get("/timetable-chapters")
+def admin_timetable_chapters(subject: str = "", class_level: str = "",
+                             db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Chapter suggestions for the timetable builder — distinct chapters already used for this
+    subject (split on the ' + ' merge separator). Admin can also type a brand-new one."""
+    from models import TimetableEntry
+    subject = (subject or "").strip()
+    out, seen = [], set()
+    if subject:
+        rows = (db.query(TimetableEntry.chapter)
+                .filter(TimetableEntry.subject == subject,
+                        TimetableEntry.chapter != None, TimetableEntry.chapter != "")
+                .distinct().all())
+        for r in rows:
+            for part in (r[0] or "").split(" + "):
+                p = part.strip()
+                if p and p.lower() not in seen:
+                    seen.add(p.lower())
+                    out.append(p)
+    return {"chapters": sorted(out)[:300]}
+
+
+@router.post("/timetable-create")
+def admin_timetable_create(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Build a timetable from the smart builder — one row per class. Merged chapters are joined
+    with ' + '. Scoped to a batch (batch_id) so it never clashes with another batch."""
+    from models import TimetableEntry
+    class_name = (payload.get("class_name") or "Class 12").strip()
+    subject = (payload.get("subject") or "").strip()
+    if not subject:
+        raise HTTPException(status_code=400, detail="Subject is required")
+    try:
+        batch_id = int(payload.get("batch_id")) if payload.get("batch_id") else None
+    except Exception:
+        batch_id = None
+    try:
+        teacher_id = int(payload.get("teacher_id")) if payload.get("teacher_id") else None
+    except Exception:
+        teacher_id = None
+    entries = payload.get("entries") or []
+    added = 0
+    for e in entries:
+        edate = None
+        try:
+            edate = datetime.strptime((e.get("date") or "").strip(), "%Y-%m-%d").date()
+        except Exception:
+            pass
+        chapters = e.get("chapters")
+        if isinstance(chapters, str):
+            chapters = [chapters]
+        chapters = [c.strip() for c in (chapters or []) if c and c.strip()]
+        chapter = " + ".join(chapters) if chapters else (e.get("chapter") or "").strip()
+        if not chapter and not edate and not (e.get("time") or "").strip():
+            continue  # skip empty rows
+        db.add(TimetableEntry(
+            teacher_id=teacher_id, subject=subject, class_name=class_name, batch_id=batch_id,
+            chapter=chapter, part=(e.get("part") or "").strip(), entry_date=edate,
+            day=(e.get("day") or None), time_text=(e.get("time") or None),
+            entry_type=(e.get("type") or "lecture")))
+        added += 1
+    db.commit()
+    return {"ok": True, "added": added}
+
+
 @router.delete("/timetable-clear")
 def admin_clear_tt(class_level: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
     """Poora timetable ya ek class ka timetable delete. Frontend pe type-to-confirm hai."""

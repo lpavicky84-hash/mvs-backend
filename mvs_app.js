@@ -1393,6 +1393,156 @@ async function pdfSubjOptions(selId,cls){
   sel.innerHTML='<option value="">\u2728 Auto-detect (PDF ke title se)</option>'+
     list.map(x=>`<option value="${esc(x.name)}"${x.name===cur?' selected':''}>${esc(x.name)}${x.code?' \u00b7 '+esc(x.code):''}</option>`).join('');
 }
+// ===== SMART TIMETABLE BUILDER — create a batch timetable from dropdowns (no PDF) =====
+var _ttbRows=[];
+function _ttbInjectCSS(){
+  if(document.getElementById('ttb-css')) return;
+  var s=document.createElement('style'); s.id='ttb-css';
+  s.textContent=[
+   '.ttb-top{display:grid;grid-template-columns:1fr 120px 1fr;gap:10px;margin-bottom:12px}',
+   '@media(max-width:600px){.ttb-top{grid-template-columns:1fr}}',
+   '.ttb-rows-h,.ttb-row{display:grid;grid-template-columns:130px 100px 1fr 120px 34px;gap:8px;align-items:start}',
+   '.ttb-rows-h{font-size:.68rem;font-weight:800;text-transform:uppercase;color:var(--text-muted);letter-spacing:.03em;padding:0 2px 6px}',
+   '.ttb-row{padding:6px 0;border-top:1px solid var(--border)}',
+   '.ttb-row .input{padding:6px 8px;font-size:.84rem}',
+   '.ttb-ch{display:flex;flex-direction:column;gap:5px;min-width:0}',
+   '.ttb-chips{display:flex;flex-wrap:wrap;gap:4px}',
+   '.ttb-chip{font-size:.72rem;font-weight:700;padding:2px 6px 2px 9px;border-radius:999px;background:var(--primary-soft,rgba(184,148,31,.15));color:var(--primary,#8a6d1a);display:inline-flex;align-items:center;gap:5px}',
+   '.ttb-chip b{cursor:pointer;font-weight:900}',
+   '.ttb-del{border:0;background:transparent;color:#c0392b;cursor:pointer;padding:6px}',
+   '@media(max-width:600px){.ttb-rows-h{display:none}.ttb-row{grid-template-columns:1fr 1fr;gap:6px;border:1px solid var(--border);border-radius:10px;padding:9px;margin-bottom:8px}.ttb-ch{grid-column:1/-1}}',
+   '.ttb-pend{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:9px 11px;border:1px solid var(--border);border-radius:10px;background:var(--bg);margin-top:7px;font-size:.85rem}',
+   '.ttb-pill{font-size:.68rem;font-weight:800;padding:2px 8px;border-radius:999px;background:rgba(184,148,31,.14);color:var(--primary,#8a6d1a)}',
+   '.ttb-smp{font-size:.76rem;color:var(--text-muted)}'
+  ].join('');
+  document.head.appendChild(s);
+}
+async function openTTBuilder(){
+  _ttbInjectCSS();
+  window._ttbTeacher=false;
+  _ttbRows=[{date:'',time:'',chapters:[],type:'lecture'}];
+  var batches=[];
+  try{ var r=await api('/api/admin/batches'); batches=((r&&r.batches)||[]).filter(function(b){return b.active!==false;}); }catch(e){}
+  var batOpts='<option value="">No batch (global)</option>'+batches.map(function(b){return '<option value="'+b.id+'">'+esc(b.name)+(b.session?' \u00b7 '+esc(b.session):'')+'</option>';}).join('');
+  showModal('Create Timetable',
+    '<p class="vtc-help">Pick the <b>batch</b> + <b>subject</b>, then add classes. Type a chapter and press Enter \u2014 add multiple to <b>merge</b> them (e.g. crash course). Scoped to the batch, so it never clashes with another batch\u2019s timetable.</p>'
+    +'<div class="ttb-top">'
+    +'<div class="form-group"><label>Batch</label><select class="input" id="ttb-batch">'+batOpts+'</select></div>'
+    +'<div class="form-group"><label>Class</label>'+classSelect('ttb-class')+'</div>'
+    +'<div class="form-group"><label>Subject</label><select class="input" id="ttb-subject" onchange="_ttbLoadChapters()"></select></div>'
+    +'</div><datalist id="ttb-ch-dl"></datalist>'
+    +'<div class="ttb-rows-h"><span>Date</span><span>Time</span><span>Chapter(s)</span><span>Type</span><span></span></div>'
+    +'<div id="ttb-rows"></div>'
+    +'<button class="btn btn-ghost btn-sm" onclick="ttbAddRow()" style="margin-top:10px">'+ic('plus')+' Add class</button>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="ttbCreate()">'+ic('check')+' Create timetable</button>');
+  var cls=function(){ var c=document.getElementById('ttb-class'); return String((c&&c.value)||'').replace(/\D/g,'')||'12'; };
+  try{ pdfSubjOptions('ttb-subject', cls()); }catch(e){}
+  var clsSel=document.getElementById('ttb-class');
+  if(clsSel) clsSel.addEventListener('change', function(){ try{ pdfSubjOptions('ttb-subject', cls()); }catch(e){} _ttbLoadChapters(); });
+  _ttbRender();
+  _ttbLoadChapters();
+}
+async function _ttbLoadChapters(){
+  var subj=(document.getElementById('ttb-subject')||{}).value||'';
+  var cl=(document.getElementById('ttb-class')||{}).value||'';
+  if(!subj) return;
+  var ep=window._ttbTeacher?'/api/teacher/tt-chapters':'/api/admin/timetable-chapters';
+  try{ var d=await api(ep+'?subject='+encodeURIComponent(subj)+'&class_level='+encodeURIComponent(cl));
+    var dl=document.getElementById('ttb-ch-dl'); if(dl) dl.innerHTML=((d&&d.chapters)||[]).map(function(c){return '<option value="'+esc(c)+'">';}).join(''); }catch(e){}
+}
+function _ttbRender(){
+  var host=document.getElementById('ttb-rows'); if(!host) return;
+  host.innerHTML=_ttbRows.map(function(r,i){
+    var chips=(r.chapters||[]).map(function(c,ci){return '<span class="ttb-chip">'+esc(c)+'<b onclick="ttbDelChip('+i+','+ci+')">\u00d7</b></span>';}).join('');
+    return '<div class="ttb-row">'
+      +'<input type="date" class="input" value="'+esc(r.date||'')+'" onchange="_ttbSet('+i+',\'date\',this.value)">'
+      +'<input class="input" placeholder="5:00 PM" value="'+esc(r.time||'')+'" onchange="_ttbSet('+i+',\'time\',this.value)">'
+      +'<div class="ttb-ch">'+(chips?'<div class="ttb-chips">'+chips+'</div>':'')+'<input class="input" list="ttb-ch-dl" placeholder="Type chapter + Enter (merge multiple)" onkeydown="ttbChKey(event,'+i+')"></div>'
+      +'<select class="input" onchange="_ttbSet('+i+',\'type\',this.value)"><option value="lecture"'+(r.type==='lecture'?' selected':'')+'>Lecture</option><option value="test"'+(r.type==='test'?' selected':'')+'>Test</option><option value="revision"'+(r.type==='revision'?' selected':'')+'>Revision</option><option value="doubt"'+(r.type==='doubt'?' selected':'')+'>Doubt</option></select>'
+      +'<button class="ttb-del" title="Remove" onclick="ttbDelRow('+i+')">'+ic('trash')+'</button>'
+      +'</div>';
+  }).join('');
+}
+function _ttbSet(i,k,v){ if(_ttbRows[i]) _ttbRows[i][k]=v; }
+function ttbAddRow(){ _ttbRows.push({date:'',time:'',chapters:[],type:'lecture'}); _ttbRender(); }
+function ttbDelRow(i){ _ttbRows.splice(i,1); if(!_ttbRows.length) _ttbRows.push({date:'',time:'',chapters:[],type:'lecture'}); _ttbRender(); }
+function ttbChKey(e,i){ if(e.key==='Enter'){ e.preventDefault(); var v=(e.target.value||'').trim(); if(v){ _ttbRows[i].chapters=_ttbRows[i].chapters||[]; _ttbRows[i].chapters.push(v); e.target.value=''; _ttbRender(); } } }
+function ttbDelChip(i,ci){ if(_ttbRows[i]&&_ttbRows[i].chapters) _ttbRows[i].chapters.splice(ci,1); _ttbRender(); }
+function _ttbDay(dstr){ try{ var d=new Date(dstr+'T00:00:00'); return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()]; }catch(e){ return ''; } }
+async function ttbCreate(){
+  var batch_id=(document.getElementById('ttb-batch')||{}).value||'';
+  var subject=(document.getElementById('ttb-subject')||{}).value||'';
+  var cl=String((document.getElementById('ttb-class')||{}).value||'12').replace(/\D/g,'')||'12';
+  if(!subject){ toast('Pick a subject'); return; }
+  var entries=_ttbRows.filter(function(r){return r.date||(r.chapters&&r.chapters.length)||r.time;})
+    .map(function(r){ return {date:r.date,time:r.time,chapters:r.chapters,type:r.type,day:_ttbDay(r.date)}; });
+  if(!entries.length){ toast('Add at least one class'); return; }
+  var ep=window._ttbTeacher?'/api/teacher/tt-create':'/api/admin/timetable-create';
+  try{ var d=await api(ep,'POST',{batch_id:batch_id,subject:subject,class_name:'Class '+cl,entries:entries});
+    if(window._ttbTeacher){ toast((d.added||0)+' classes submitted for admin approval.'); closeModal(); openTTBuilderT(); }
+    else { toast((d.added||0)+' class'+((d.added||0)!==1?'es':'')+' added to the timetable.'); closeModal(); }
+  }catch(e){ toast((e&&e.message)||'Could not create',true); }
+}
+// ===== Teacher variant — creates PENDING timetable (admin approves) =====
+async function openTTBuilderT(){
+  _ttbInjectCSS();
+  window._ttbTeacher=true;
+  _ttbRows=[{date:'',time:'',chapters:[],type:'lecture'}];
+  var batches=[], pending=[];
+  try{ var r=await api('/api/teacher/tt-batches'); batches=(r&&r.batches)||[]; }catch(e){}
+  try{ var p=await api('/api/teacher/tt-pending'); pending=(p&&p.groups)||[]; }catch(e){}
+  var batOpts='<option value="">No batch (global)</option>'+batches.map(function(b){return '<option value="'+b.id+'">'+esc(b.name)+(b.session?' \u00b7 '+esc(b.session):'')+'</option>';}).join('');
+  var pendHtml=pending.length?('<div class="vtc-cap" style="margin-top:14px">Awaiting admin approval</div>'+pending.map(function(g){return '<div class="ttb-pend"><div><b>'+esc(g.subject)+'</b> \u00b7 '+esc(g.batch)+' \u00b7 '+esc(g.class_name||'')+' <span class="ttb-pill">'+g.count+' classes</span></div><button class="btn btn-ghost btn-sm" style="color:#c0392b" onclick="ttbTeacherDelPending(\''+esc((g.subject||'').replace(/'/g,''))+'\',\''+esc((g.class_name||'').replace(/'/g,''))+'\','+(g.batch_id||0)+')">'+ic('trash')+' Withdraw</button></div>';}).join('')):'';
+  showModal('Create Timetable',
+    '<p class="vtc-help">Pick <b>batch</b> + <b>subject</b>, add classes (type a chapter + Enter, merge multiple for crash course). Your timetable goes to the <b>admin for approval</b> \u2014 once approved it goes live and is locked.</p>'
+    +'<div class="ttb-top">'
+    +'<div class="form-group"><label>Batch</label><select class="input" id="ttb-batch">'+batOpts+'</select></div>'
+    +'<div class="form-group"><label>Class</label>'+classSelect('ttb-class')+'</div>'
+    +'<div class="form-group"><label>Subject</label><select class="input" id="ttb-subject" onchange="_ttbLoadChapters()"></select></div>'
+    +'</div><datalist id="ttb-ch-dl"></datalist>'
+    +'<div class="ttb-rows-h"><span>Date</span><span>Time</span><span>Chapter(s)</span><span>Type</span><span></span></div>'
+    +'<div id="ttb-rows"></div>'
+    +'<button class="btn btn-ghost btn-sm" onclick="ttbAddRow()" style="margin-top:10px">'+ic('plus')+' Add class</button>'
+    +pendHtml,
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="ttbCreate()">'+ic('check')+' Submit for approval</button>');
+  var cls=function(){ var c=document.getElementById('ttb-class'); return String((c&&c.value)||'').replace(/\D/g,'')||'12'; };
+  try{ pdfSubjOptions('ttb-subject', cls()); }catch(e){}
+  var clsSel=document.getElementById('ttb-class');
+  if(clsSel) clsSel.addEventListener('change', function(){ try{ pdfSubjOptions('ttb-subject', cls()); }catch(e){} _ttbLoadChapters(); });
+  _ttbRender(); _ttbLoadChapters();
+}
+async function ttbTeacherDelPending(subject,class_name,batch_id){
+  if(!confirm('Withdraw this pending timetable?')) return;
+  try{ await api('/api/teacher/tt-pending?subject='+encodeURIComponent(subject)+'&class_name='+encodeURIComponent(class_name)+'&batch_id='+(batch_id||0),'DELETE'); toast('Withdrawn.'); openTTBuilderT(); }
+  catch(e){ toast((e&&e.message)||'Could not withdraw',true); }
+}
+// ===== Admin approval queue =====
+async function openTTApprovals(){
+  _ttbInjectCSS();
+  var groups=[];
+  try{ var d=await api('/api/admin/timetable-pending'); groups=(d&&d.groups)||[]; }catch(e){ toast('Could not load',true); }
+  var body=groups.length?groups.map(function(g){
+    var smp=(g.sample||[]).map(function(s){return '<div class="ttb-smp">'+(s.date?esc(s.date):'')+(s.time?' \u00b7 '+esc(s.time):'')+' \u2014 '+esc(s.chapter||'')+'</div>';}).join('');
+    return '<div class="vtc-row bm-card"><div class="bm-row1"><span class="sbb-av">'+ic('calendar')+'</span><div class="vtc-main"><div style="font-weight:800">'+esc(g.subject)+' \u00b7 '+esc(g.batch)+'</div><div class="vtc-sub">'+esc(g.teacher||'')+' \u00b7 '+esc(g.class_name||'')+' \u00b7 <b>'+g.count+' classes</b></div></div>'
+      +'<button class="btn btn-primary btn-sm" onclick="ttbApprove('+(g.teacher_id||0)+',\''+esc((g.subject||'').replace(/'/g,''))+'\',\''+esc((g.class_name||'').replace(/'/g,''))+'\','+(g.batch_id||0)+')">'+ic('check')+' Approve</button>'
+      +'<button class="btn btn-ghost btn-sm" style="color:#c0392b" onclick="ttbReject('+(g.teacher_id||0)+',\''+esc((g.subject||'').replace(/'/g,''))+'\',\''+esc((g.class_name||'').replace(/'/g,''))+'\','+(g.batch_id||0)+')">Reject</button></div>'
+      +(smp?'<div class="bm-row2" style="flex-direction:column;align-items:flex-start;gap:3px">'+smp+'</div>':'')+'</div>';
+  }).join(''):'<div class="vtc-empty">No timetables awaiting approval.</div>';
+  showModal('Timetable Approvals',
+    '<p class="vtc-help">Teachers ke banaye timetables yahan approve karein. Approve karne par woh live ho jaate hain aur teacher unhe edit nahi kar sakta.</p>'
+    +'<div class="vtc-list">'+body+'</div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+}
+async function ttbApprove(tid,subject,class_name,batch_id){
+  try{ var d=await api('/api/admin/timetable-approve','POST',{teacher_id:tid,subject:subject,class_name:class_name,batch_id:batch_id}); toast((d.approved||0)+' classes approved \u2014 now live.'); openTTApprovals(); _apiBust&&_apiBust(); }
+  catch(e){ toast((e&&e.message)||'Could not approve',true); }
+}
+async function ttbReject(tid,subject,class_name,batch_id){
+  if(!confirm('Reject and delete this pending timetable?')) return;
+  try{ var d=await api('/api/admin/timetable-reject','POST',{teacher_id:tid,subject:subject,class_name:class_name,batch_id:batch_id}); toast('Rejected.'); openTTApprovals(); }
+  catch(e){ toast((e&&e.message)||'Could not reject',true); }
+}
+
 function openAdminPdf(){
   showModal(' PDF Upload — All Subjects',
  `<div class="alert alert-info"><strong>One PDF for all subjects</strong> — the subject of each page is detected automatically.<div style="margin-top:6px"><a href="javascript:downloadDemoTT()" style="font-weight:700;color:var(--primary)">Download the demo format (All Subjects, Word) — build your timetable in this format for a perfect parse</a></div></div><div class="form-group"><label>Class</label>${classSelect('apdf-class')}</div><div class="form-group"><label>Batch <span style="font-weight:400;color:var(--text-muted);font-size:.78rem">\u2014 iss batch ka apna timetable</span></label><select class="form-control" id="apdf-batch"><option value="">All batches (global / legacy)</option></select></div><div class="form-group"><label>Subject</label><select class="form-control" id="apdf-subject"><option value="">\u2728 Auto-detect (PDF ke title se)</option></select></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('apdf-file').click()" ondragover="fdOver(event,this)" ondragleave="fdLeave(event,this)" ondrop="fdDrop(event,this,'apdf-file','apdf-label')"><div class="fd-icon"></div><div id="apdf-label" style="font-size:.85rem">Click to choose a PDF, or drag and drop it here</div><input type="file" id="apdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('apdf-label').textContent=this.files[0]?.name||''"></div></div><div id="apdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="apdf-replace"> Replace existing entries for the same subject</label></div><div class="form-group" id="apdf-fd-wrap" style="display:none;margin-top:-6px"><label>Change only from this date onwards (optional)</label><input type="date" class="form-control" id="apdf-from"><div style="font-size:.75rem;color:var(--text-muted);margin-top:4px">Classes before this date stay exactly as they are — only entries from this date onwards are replaced by the new PDF.</div></div><div id="apdf-status"></div>`,
@@ -3427,7 +3577,7 @@ async function loadTTimetable(){
       return;
     }
     _ttEntries=await api('/api/teacher/my-timetable');
-    el.innerHTML=`${tabs}<div class="card"><div class="card-header"><h3>My Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-ghost btn-sm" onclick="openSlotChange()">${ic('clock')} Change Slot</button><button class="btn btn-danger btn-sm" onclick="openTTTDelete()">${ic('trash')} Delete Subject</button><button class="btn btn-primary btn-sm" onclick="openRequestClass()">${ic('calendar')} Add Extra Class</button></div></div><div class="card-body"><div id="t-tline-wrap"></div></div></div>`;
+    el.innerHTML=`${tabs}<div class="card"><div class="card-header"><h3>My Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-primary btn-sm" onclick="openTTBuilderT()">${ic('plus')} Create Timetable</button><button class="btn btn-ghost btn-sm" onclick="openSlotChange()">${ic('clock')} Change Slot</button><button class="btn btn-danger btn-sm" onclick="openTTTDelete()">${ic('trash')} Delete Subject</button><button class="btn btn-primary btn-sm" onclick="openRequestClass()">${ic('calendar')} Add Extra Class</button></div></div><div class="card-body"><div id="t-tline-wrap"></div></div></div>`;
     _ttActiveSub=_ttActiveSub||'';
     // apni photo har subject par timeline me dikhe
     try{
@@ -13501,7 +13651,7 @@ function aFilteredTT(){
 }
 function aRenderTT(){
   const el=document.getElementById('a-timetable-content');
-  el.innerHTML=`<div class="card"><div class="card-header"><h3>All Teachers' Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-ghost btn-sm" onclick="openDeadlines()">${ic('calendar')} Session Deadlines</button><button class="btn btn-ghost btn-sm" onclick="openAdminMaterial()">Upload Material</button><button class="btn btn-primary btn-sm" onclick="openAdminPdf()">PDF Upload</button><button class="btn btn-danger btn-sm" onclick="openTTDelete()">${ic('trash')} Delete Timetable</button></div></div><div class="card-body"><div id="a-tline-wrap"></div></div></div>`;
+  el.innerHTML=`<div class="card"><div class="card-header"><h3>All Teachers' Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-ghost btn-sm" onclick="openDeadlines()">${ic('calendar')} Session Deadlines</button><button class="btn btn-ghost btn-sm" onclick="openAdminMaterial()">Upload Material</button><button class="btn btn-primary btn-sm" onclick="openTTBuilder()">${ic('plus')} Create Timetable</button><button class="btn btn-secondary btn-sm" onclick="openTTApprovals()">${ic('check')} Approvals</button><button class="btn btn-ghost btn-sm" onclick="openAdminPdf()">PDF Upload</button><button class="btn btn-danger btn-sm" onclick="openTTDelete()">${ic('trash')} Delete Timetable</button></div></div><div class="card-body"><div id="a-tline-wrap"></div></div></div>`;
   renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',onEditAny:'adminEditTT',onClassFilter:'aClassFilter',activeClass:_attClass,emptyMsg:'No timetable uploaded yet',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers',onReport:true});
 }
 function aClassFilter(v){ _attClass=v; _attActiveSub=''; aRenderTT(); }
