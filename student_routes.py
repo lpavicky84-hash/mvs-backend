@@ -91,6 +91,7 @@ def student_batch_welcome(batch: int = 0, db: Session = Depends(get_db), current
         b = db.query(Batch).filter(Batch.id == bid).first()
         if b and (getattr(b, "banner_b64", None) or getattr(b, "welcome_message", None)):
             return {"batch": {"id": b.id, "name": b.name,
+                              "session": getattr(b, "session", "") or "",
                               "banner": getattr(b, "banner_b64", "") or "",
                               "message": getattr(b, "welcome_message", "") or ""}}
     return {"batch": None}

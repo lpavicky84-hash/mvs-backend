@@ -2111,6 +2111,7 @@ function enterTeacherApp(){
   window._tAttOff=false; _tAttModeInit();
   _applyTStudentAccess();
   try{ initTeacherCategories(); }catch(e){}
+  try{ initTeacherMyBatches(); }catch(e){}
   document.querySelectorAll('#teacher-app .nav-item').forEach(n=>n.classList.remove('active'));
   document.querySelector('#teacher-app .nav-item').classList.add('active');
   tPage('dashboard',null);
@@ -2211,6 +2212,7 @@ function _tLoadPage(page){
   else if(page==='predicted') loadTPredicted();
   else if(page==='timetable') loadTTimetable();
   else if(page==='dpp') loadTDpp();
+  else if(page==='tmybatches') loadTMyBatches();
   else if(page==='lectures') loadTLectures();
   else if(page==='tests') loadTTests();
   else if(page==='doubts') loadTDoubts();
@@ -11631,47 +11633,86 @@ async function openBatchMgr(){
   try{ var r=await api('/api/admin/batches'); list=(r&&r.batches)||[]; unlinked=(r&&r.unlinked)||0; }catch(e){ toast('Could not load batches',true); }
   showModal('Batches', _batchMgrBody(list,unlinked), '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
 }
-function _batchRow(b){
+function _batchGrad(name){ var h=0; name=(name||'B'); for(var i=0;i<name.length;i++) h=(h*31+name.charCodeAt(i))%360; return 'linear-gradient(135deg,hsl('+h+',52%,40%),hsl('+((h+45)%360)+',52%,26%))'; }
+function _batchCard(b){
   var used=b.usage||0;
-  var usageChip=used>0?('<span class="vtc-use">'+used+' student'+(used>1?'s':'')+'</span>'):'<span class="vtc-use vtc-use-0">no students</span>';
-  return '<div class="vtc-row bm-card'+(b.active===false?' vtc-off':'')+'">'
-    +'<div class="bm-row1">'
-    +'<span class="sbb-av">'+ic('folder')+'</span>'
-    +'<div class="vtc-main"><input class="vtc-nm" value="'+esc(b.name)+'" onchange="batchRename('+b.id+',this.value)" title="Rename"><div class="vtc-sub">'+(b.session?'<b style="color:var(--primary,#8a6d1a)">'+esc(b.session)+'</b> \u00b7 ':'')+(b.type?esc(b.type)+' \u00b7 ':'')+usageChip+(b.is_new?' \u00b7 <b style="color:#16a34a">NEW</b>':'')+'</div></div>'
-    +'<select class="input vtc-sc" onchange="batchSetStatus('+b.id+',this.value)"><option value="live"'+((b.status||'live')==='live'?' selected':'')+'>Live</option><option value="upcoming"'+(b.status==='upcoming'?' selected':'')+'>Upcoming</option><option value="draft"'+(b.status==='draft'?' selected':'')+'>Draft</option><option value="completed"'+(b.status==='completed'?' selected':'')+'>Completed</option></select>'
-    +'<select class="input vtc-sc" title="Student dashboard style" onchange="batchSetMode('+b.id+',this.value)"><option value="live"'+((b.mode||'live')==='live'?' selected':'')+'>\uD83D\uDD34 Live mode</option><option value="rec"'+(b.mode==='rec'?' selected':'')+'>\u25B6 Recorded</option><option value="syc"'+(b.mode==='syc'?' selected':'')+'>\u25B6 On-Demand</option></select>'
-    +'<button class="btn btn-ghost btn-sm" onclick="openBatchBanner('+b.id+',\''+esc((b.name||'').replace(/'/g,''))+'\')" title="Welcome banner + congrats message">'+(b.has_banner?'\uD83C\uDF89':'\uD83D\uDDBC')+' Banner</button>'
-    +(b.active===false
-      ? '<button class="btn btn-ghost btn-sm" onclick="batchToggleActive('+b.id+',true,0)">'+ic('refresh')+' Restore</button>'
-      : '<button class="btn btn-ghost btn-sm vtc-del" onclick="batchToggleActive('+b.id+',false,'+used+')">'+ic('trash')+' '+(used>0?'Archive':'Remove')+'</button>')
-    +'</div>'
-    +'<div class="bm-row2"><label class="bm-newck"><input type="checkbox" '+(b.is_new?'checked':'')+' onchange="batchSetNew('+b.id+',this.checked)"> Show <b>NEW</b> badge</label>'
-    +'<label class="bm-dt">Session <input class="input" style="width:110px" placeholder="e.g. Oct 2026" value="'+esc(b.session||'')+'" onchange="batchSetSession('+b.id+',this.value)"></label>'
-    +'<label class="bm-dt">Starts <input type="date" class="input" value="'+esc(b.start_date||'')+'" onchange="batchSetDate('+b.id+',\'start_date\',this.value)"></label>'
-    +'<label class="bm-dt">Expires <input type="date" class="input" value="'+esc(b.end_date||'')+'" onchange="batchSetDate('+b.id+',\'end_date\',this.value)"></label></div>'
-    +'</div>';
+  var modeLbl=(b.mode==='live')?'<span class="bc-mode live">\u25cf LIVE</span>':(b.mode==='rec'?'<span class="bc-mode rec">\u25b6 REC</span>':'<span class="bc-mode rec">\u25b6 ON-DEMAND</span>');
+  return '<div class="bc-card'+(b.active===false?' bc-off':'')+'">'
+    +'<div class="bc-head" style="background:'+_batchGrad(b.name)+'">'
+      +'<div class="bc-badges">'+modeLbl+(b.is_new?'<span class="bc-new">NEW</span>':'')+(b.has_banner?'<span class="bc-custom">\uD83C\uDF89</span>':'')+'</div>'
+      +'<div class="bc-htext"><div class="bc-hname">'+esc(b.name)+'</div>'+(b.session?'<div class="bc-hses">'+esc(b.session)+'</div>':'')+'</div></div>'
+    +'<div class="bc-body">'
+      +'<input class="bc-nm" value="'+esc(b.name)+'" onchange="batchRename('+b.id+',this.value)" title="Rename">'
+      +'<div class="bc-chips">'+(b.type?'<span class="bc-chip">'+esc(b.type)+'</span>':'')+'<span class="bc-chip">'+(used>0?used+' students':'no students')+'</span></div>'
+      +'<div class="bc-two"><select class="input" title="Student dashboard style" onchange="batchSetMode('+b.id+',this.value)"><option value="live"'+((b.mode||'live')==='live'?' selected':'')+'>\uD83D\uDD34 Live</option><option value="rec"'+(b.mode==='rec'?' selected':'')+'>\u25B6 Recorded</option><option value="syc"'+(b.mode==='syc'?' selected':'')+'>\u25B6 On-Demand</option></select>'
+        +'<select class="input" onchange="batchSetStatus('+b.id+',this.value)"><option value="live"'+((b.status||'live')==='live'?' selected':'')+'>Live</option><option value="upcoming"'+(b.status==='upcoming'?' selected':'')+'>Upcoming</option><option value="draft"'+(b.status==='draft'?' selected':'')+'>Draft</option><option value="completed"'+(b.status==='completed'?' selected':'')+'>Completed</option></select></div>'
+      +'<div class="bc-two"><label class="bc-f">Session<input class="input" placeholder="Oct 2026" value="'+esc(b.session||'')+'" onchange="batchSetSession('+b.id+',this.value)"></label>'
+        +'<label class="bc-f bc-ck"><input type="checkbox" '+(b.is_new?'checked':'')+' onchange="batchSetNew('+b.id+',this.checked)"> NEW badge</label></div>'
+      +'<div class="bc-two"><label class="bc-f">Starts<input type="date" class="input" value="'+esc(b.start_date||'')+'" onchange="batchSetDate('+b.id+',\'start_date\',this.value)"></label>'
+        +'<label class="bc-f">Expires<input type="date" class="input" value="'+esc(b.end_date||'')+'" onchange="batchSetDate('+b.id+',\'end_date\',this.value)"></label></div>'
+      +'<div class="bc-acts"><button class="btn btn-ghost btn-sm" onclick="openBatchBanner('+b.id+',\''+esc((b.name||'').replace(/'/g,''))+'\')">'+(b.has_banner?'\uD83C\uDF89':'\uD83D\uDDBC')+' Banner</button>'
+        +(b.active===false?'<button class="btn btn-ghost btn-sm" onclick="batchToggleActive('+b.id+',true,0)">'+ic('refresh')+' Restore</button>':'<button class="btn btn-ghost btn-sm vtc-del" onclick="batchToggleActive('+b.id+',false,'+used+')">'+ic('trash')+' '+(used>0?'Archive':'Remove')+'</button>')+'</div>'
+    +'</div></div>';
 }
 function _batchMgrBody(list,unlinked){
   window._bmgrBatches=list;
   var active=list.filter(function(b){return b.active!==false;});
   var inactive=list.filter(function(b){return b.active===false;});
-  return '<p class="vtc-help">Create batches, set <b>Live / Recorded</b> mode (student dashboard style), add a welcome <b>banner</b>, a <b>NEW</b> badge, and start / expiry dates. Two batches can share a name \u2014 they stay separate internally. A batch with students is <b>archived</b>, never deleted.</p>'
-    +(unlinked>0?'<div style="font-size:.75rem;color:#b07f1e;background:rgba(184,148,31,.1);border-radius:8px;padding:7px 10px;margin-bottom:10px">'+unlinked+' student'+(unlinked>1?'s are':' is')+' not yet linked \u2014 new/edited students link automatically.</div>':'<div style="font-size:.75rem;color:#166534;background:rgba(22,163,74,.09);border-radius:8px;padding:7px 10px;margin-bottom:10px">\u2713 All students linked to a batch record.</div>')
+  return '<div class="bc-top"><button class="btn btn-primary" onclick="openBatchAdd()">'+ic('plus')+' Add Batch</button>'
+    +(unlinked>0?'<span class="bc-unl">'+unlinked+' student'+(unlinked>1?'s':'')+' not yet linked \u2014 links automatically</span>':'<span class="bc-unl ok">\u2713 all students linked</span>')+'</div>'
     +(active.length?'<div class="vtc-cap">Active</div>':'')
-    +'<div class="vtc-list">'+(active.map(_batchRow).join('')||'<div class="vtc-empty">No batches yet \u2014 add one below</div>')+'</div>'
-    +(inactive.length?'<div class="vtc-cap">Archived</div><div class="vtc-list">'+inactive.map(_batchRow).join('')+'</div>':'')
-    +'<div class="vtc-add"><input id="bm-new" class="input" placeholder="New batch name" style="flex:1;min-width:130px"><input id="bm-type" class="input" placeholder="Type (e.g. Science)" style="width:130px"><input id="bm-session" class="input" placeholder="Session (e.g. Oct 2026)" style="width:150px"><button class="btn btn-primary btn-sm" onclick="batchAdd()">'+ic('plus')+' Add</button></div>';
+    +'<div class="bc-grid">'+(active.map(_batchCard).join('')||'<div class="vtc-empty">No batches yet \u2014 tap \u201CAdd Batch\u201D</div>')+'</div>'
+    +(inactive.length?'<div class="vtc-cap">Archived</div><div class="bc-grid">'+inactive.map(_batchCard).join('')+'</div>':'');
+}
+function openBatchAdd(){
+  _bmInjectCSS();
+  showModal('Add Batch',
+    '<div class="form-group"><label>Batch name</label><input id="ba-name" class="input" placeholder="e.g. Lakshya Science"></div>'
+    +'<div class="bc-two"><div class="form-group"><label>Type</label><input id="ba-type" class="input" placeholder="e.g. Science"></div><div class="form-group"><label>Session</label><input id="ba-session" class="input" placeholder="e.g. Oct 2026"></div></div>'
+    +'<div class="bc-two"><div class="form-group"><label>Mode</label><select id="ba-mode" class="input"><option value="live">\uD83D\uDD34 Live</option><option value="rec">\u25B6 Recorded</option><option value="syc">\u25B6 On-Demand</option></select></div><div class="form-group"><label>Expires (optional)</label><input id="ba-exp" type="date" class="input"></div></div>',
+    '<button class="btn btn-ghost" onclick="_batchMgrRefresh()">Cancel</button><button class="btn btn-primary" onclick="batchAddModal()">'+ic('plus')+' Create batch</button>');
+}
+async function batchAddModal(){
+  var name=((document.getElementById('ba-name')||{}).value||'').trim();
+  if(!name){ toast('Enter a batch name'); return; }
+  var type=((document.getElementById('ba-type')||{}).value||'').trim();
+  var session=((document.getElementById('ba-session')||{}).value||'').trim();
+  var mode=((document.getElementById('ba-mode')||{}).value||'live');
+  var exp=((document.getElementById('ba-exp')||{}).value||'');
+  try{
+    var r=await api('/api/admin/batches','POST',{name:name,type:type,session:session});
+    if(r&&r.id&&(mode!=='live'||exp)){ try{ await api('/api/admin/batches/'+r.id,'POST',{mode:mode,end_date:exp}); }catch(e){} }
+    toast('Batch created.'); _batchMgrRefresh();
+  }catch(e){ toast((e&&e.message)||'Could not add',true); }
 }
 function _bmInjectCSS(){
   if(document.getElementById('bm-css')) return;
   var s=document.createElement('style'); s.id='bm-css';
   s.textContent=[
-   '.bm-card{flex-direction:column;align-items:stretch !important;gap:8px}',
-   '.bm-row1{display:flex;align-items:center;gap:9px;flex-wrap:wrap}',
-   '.bm-row2{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:6px 2px 0;border-top:1px dashed var(--border);font-size:.8rem;color:var(--text-muted)}',
-   '.bm-newck{display:flex;align-items:center;gap:6px;cursor:pointer}',
-   '.bm-dt{display:flex;align-items:center;gap:6px}',
-   '.bm-dt input{padding:4px 8px;font-size:.8rem;width:auto}'
+   '.bc-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}',
+   '.bc-unl{font-size:.78rem;color:#b07f1e}.bc-unl.ok{color:#166534}',
+   '.bc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-bottom:10px}',
+   '.bc-card{border:1px solid var(--border);border-radius:16px;overflow:hidden;background:var(--card)}',
+   '.bc-card.bc-off{opacity:.6}',
+   '.bc-head{position:relative;height:104px;padding:12px;display:flex;flex-direction:column;justify-content:flex-end}',
+   '.bc-badges{position:absolute;top:10px;right:10px;display:flex;gap:6px;flex-wrap:wrap}',
+   '.bc-mode{font-size:.62rem;font-weight:800;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.92);color:#111}',
+   '.bc-mode.live{color:#dc2626}.bc-mode.rec{color:#4f46e5}',
+   '.bc-new{font-size:.6rem;font-weight:800;padding:2px 7px;border-radius:999px;background:#16a34a;color:#fff}',
+   '.bc-custom{font-size:.66rem;font-weight:800;padding:2px 6px;border-radius:999px;background:rgba(255,255,255,.92)}',
+   '.bc-htext{color:#fff;text-shadow:0 1px 5px rgba(0,0,0,.45);z-index:1}',
+   '.bc-hname{font-size:1.18rem;font-weight:900;line-height:1.12}',
+   '.bc-hses{font-size:.78rem;font-weight:700;opacity:.95}',
+   '.bc-body{padding:13px 14px}',
+   '.bc-nm{border:1px solid transparent;background:transparent;font-weight:800;font-size:.95rem;width:100%;padding:2px 4px;border-radius:6px;color:var(--text)}',
+   '.bc-nm:hover,.bc-nm:focus{border-color:var(--border);background:var(--bg);outline:none}',
+   '.bc-chips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px}',
+   '.bc-chip{font-size:.72rem;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--bg);border:1px solid var(--border);color:var(--text-muted)}',
+   '.bc-two{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}',
+   '.bc-two .input{padding:6px 8px;font-size:.8rem;width:100%;box-sizing:border-box}',
+   '.bc-f{display:flex;flex-direction:column;gap:3px;font-size:.66rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.02em}',
+   '.bc-ck{flex-direction:row;align-items:center;gap:6px;text-transform:none;font-size:.8rem;font-weight:600;padding-top:15px}',
+   '.bc-acts{display:flex;gap:8px;margin-top:4px}.bc-acts .btn{flex:1}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -11707,6 +11748,10 @@ function _mbInjectCSS(){
    '.mb-card.on{border-color:var(--primary,#b8941f);box-shadow:0 0 0 2px var(--primary,#b8941f) inset}',
    '.mb-ban{height:120px;background-size:cover;background-position:center}',
    '.mb-ban-none{display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(184,148,31,.18),rgba(184,148,31,.04));color:var(--primary,#b8941f)}',
+   '.mb-grad{display:flex;align-items:center;justify-content:center;text-align:center}',
+   '.mb-gt{color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.4);padding:10px}',
+   '.mb-gn{font-size:1.15rem;font-weight:900;line-height:1.1}',
+   '.mb-gs{font-size:.8rem;font-weight:700;opacity:.95;margin-top:2px}',
    '.mb-body{padding:13px 15px 15px}',
    '.mb-top{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px}',
    '.mb-mode{font-size:.62rem;font-weight:800;padding:2px 8px;border-radius:999px}',
@@ -11743,6 +11788,40 @@ async function loadSMyBatches(){
 function _myBatchOpen(bid){
   _selBatchChange(bid);
   setTimeout(function(){ try{ sPage('dashboard'); }catch(e){} }, 80);
+}
+// ===== Teacher "My Batches" — directory of all batches (view) =====
+function initTeacherMyBatches(){
+  var app=document.getElementById('teacher-app'); if(!app) return;
+  var nav=app.querySelector('.sidebar-nav');
+  if(nav && !nav.querySelector('[onclick*="tmybatches"]')){
+    var items=[].slice.call(nav.querySelectorAll('.nav-item'));
+    var anchor=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'timetable'")>=0;})[0]
+             || items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'dashboard'")>=0;})[0];
+    var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"navTo('teacher-app','tmybatches')");
+    d.innerHTML=ic('folder')+'<span>My Batches</span>';
+    if(anchor){ anchor.parentNode.insertBefore(d, anchor.nextSibling); } else { nav.appendChild(d); }
+  }
+  var main=app.querySelector('.main');
+  if(main && !document.getElementById('t-page-tmybatches')){
+    var pg=document.createElement('div'); pg.className='page'; pg.id='t-page-tmybatches';
+    pg.innerHTML='<div id="t-mybatches-content"><div class="spinner"></div></div>';
+    main.appendChild(pg);
+  }
+}
+async function loadTMyBatches(){
+  var el=document.getElementById('t-mybatches-content'); if(!el) return;
+  _mbInjectCSS(); softSpin(el);
+  try{
+    var d=await api('/api/teacher/tt-batches'); var list=(d&&d.batches)||[];
+    if(!list.length){ el.innerHTML='<div class="ws-empty"><p>No batches yet.</p></div>'; return; }
+    var cards=list.map(function(b){
+      var modeLbl=(b.mode==='live')?'<span class="mb-mode live">\u25cf LIVE</span>':(b.mode==='rec'?'<span class="mb-mode rec">\u25b6 RECORDED</span>':'<span class="mb-mode rec">\u25b6 ON-DEMAND</span>');
+      var grad=(typeof _batchGrad==='function')?_batchGrad(b.name):'linear-gradient(135deg,#b8941f,#7a6212)';
+      return '<div class="mb-card"><div class="mb-ban mb-grad" style="background:'+grad+'"><div class="mb-gt"><div class="mb-gn">'+esc(b.name)+'</div>'+(b.session?'<div class="mb-gs">'+esc(b.session)+'</div>':'')+'</div></div>'
+        +'<div class="mb-body"><div class="mb-top">'+modeLbl+(b.type?'<span class="mb-prim">'+esc(b.type)+'</span>':'')+'</div><div class="mb-name">'+esc(b.name)+'</div>'+(b.session?'<div class="mb-msg">Session: '+esc(b.session)+'</div>':'')+'</div></div>';
+    }).join('');
+    el.innerHTML='<div class="sm-head" style="padding:0 4px 12px;border:none"><h2 style="font-size:1.3rem">My Batches</h2></div><div class="mb-grid">'+cards+'</div>';
+  }catch(e){ el.innerHTML=errHtml(e); }
 }
 // --- Admin "Batches" sidebar section (nav item + page injected via JS) ---
 function initAdminBatches(){
@@ -11831,10 +11910,15 @@ function _bwInjectCSS(){
    '@keyframes bwFade{from{opacity:0}to{opacity:1}}',
    '@keyframes bwPop{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}',
    '.bw-card{width:min(440px,94vw);background:var(--card,#fffdf7);border-radius:20px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4);animation:bwPop .25s cubic-bezier(.2,.9,.3,1.2)}',
-   '.bw-img{width:100%;display:block;max-height:230px;object-fit:cover}',
+   '.bw-img{width:100%;display:block;height:210px;object-fit:cover;background-size:cover;background-position:center}',
+   '.bw-grad{display:flex;align-items:center;justify-content:center;text-align:center}',
+   '.bw-gtext{color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.4);padding:16px}',
+   '.bw-gname{font-size:1.7rem;font-weight:900;line-height:1.1}',
+   '.bw-gses{font-size:1rem;font-weight:700;opacity:.95;margin-top:4px}',
    '.bw-body{padding:20px 22px 22px;text-align:center}',
    '.bw-congrats{font-size:1.35rem;font-weight:900;color:var(--primary,#b8941f)}',
    '.bw-batch{font-size:1.02rem;color:var(--text,#2a2418);margin-top:5px}',
+   '.bw-ses{font-size:.78rem;font-weight:800;padding:2px 9px;border-radius:999px;background:var(--primary-soft,rgba(184,148,31,.15));color:var(--primary,#8a6d1a);vertical-align:middle}',
    '.bw-msg{font-size:.9rem;color:var(--text-muted,#7a6f58);margin-top:10px;line-height:1.55;white-space:pre-wrap}',
    '.bw-go{margin-top:18px;width:100%;font-weight:800;padding:12px}'
   ].join('');
@@ -11904,17 +11988,20 @@ async function _batchWelcomePopup(){
     var key='bw_seen_'+b.id;
     try{ if(localStorage.getItem(key)) return; }catch(e){}
     _bwInjectCSS();
+    var grad=(typeof _batchGrad==='function')?_batchGrad(b.name):'linear-gradient(135deg,#b8941f,#7a6212)';
+    var head=b.banner
+      ? '<div class="bw-img" style="background-image:url(\''+esc(b.banner).replace(/'/g,'')+'\')"></div>'
+      : '<div class="bw-img bw-grad" style="background:'+grad+'"><div class="bw-gtext"><div class="bw-gname">'+esc(b.name)+'</div>'+(b.session?'<div class="bw-gses">'+esc(b.session)+'</div>':'')+'</div></div>';
     var ov=document.createElement('div'); ov.id='bw-ov';
-    ov.innerHTML='<div class="bw-card">'
-      +(b.banner?'<img src="'+esc(b.banner)+'" class="bw-img" alt="" onerror="this.remove()">':'')
+    ov.innerHTML='<div class="bw-card">'+head
       +'<div class="bw-body"><div class="bw-congrats">\uD83C\uDF89 Congratulations!</div>'
-      +'<div class="bw-batch">Welcome to <b>'+esc(b.name)+'</b></div>'
+      +'<div class="bw-batch">Welcome to <b>'+esc(b.name)+'</b>'+(b.session?' <span class="bw-ses">'+esc(b.session)+'</span>':'')+'</div>'
       +(b.message?'<div class="bw-msg">'+esc(b.message)+'</div>':'')
-      +'<button class="btn btn-primary bw-go" onclick="_bwClose('+b.id+')">Let\u2019s go \u2192</button></div></div>';
-    ov.addEventListener('click',function(e){ if(e.target===ov) _bwClose(b.id); });
+      +'<button class="btn btn-primary bw-go" onclick="_bwStart('+b.id+')">Start your Study \u2192</button></div></div>';
     document.body.appendChild(ov);
   }catch(e){}
 }
+function _bwStart(id){ try{ localStorage.setItem('bw_seen_'+id,'1'); }catch(e){} var o=document.getElementById('bw-ov'); if(o) o.remove(); try{ sPage('dashboard'); }catch(e){} }
 function _bwClose(id){ try{ localStorage.setItem('bw_seen_'+id,'1'); }catch(e){} var o=document.getElementById('bw-ov'); if(o) o.remove(); }
 // --- Batch expiry gate: block the portal if the selected batch has expired ---
 function _expInjectCSS(){

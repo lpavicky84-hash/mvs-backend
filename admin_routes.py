@@ -627,6 +627,10 @@ def admin_add_batch(payload: dict = Body(...), db: Session = Depends(get_db), _=
     b = Batch(code=code, name=name, type=(payload.get("type") or "").strip(),
               description=(payload.get("description") or "").strip(),
               session=(payload.get("session") or "").strip(),
+              welcome_message=(payload.get("welcome_message") or (
+                  "Welcome to " + name + "! \U0001F389 Your learning journey with MVS Foundation "
+                  "starts now. Attend every class, solve your DPPs, and give your best in the tests \u2014 "
+                  "we're with you at every step. Let's make this session count!")),
               status=(payload.get("status") or "live"),
               is_new=bool(payload.get("is_new")),
               active=True, sort=((mx.sort + 1) if mx else 0))
