@@ -604,6 +604,7 @@ def admin_list_batches(db: Session = Depends(get_db), _=Depends(get_admin)):
         "description": b.description or "", "status": b.status or "live",
         "active": bool(b.active), "is_new": bool(b.is_new), "sort": b.sort or 0,
         "has_banner": bool(getattr(b, "banner_b64", None)),
+        "banner": getattr(b, "banner_b64", "") or "",
         "welcome_message": getattr(b, "welcome_message", "") or "",
         "usage": int(by_id.get(b.id, 0) or 0) + int(by_name.get(b.name, 0) or 0),
     } for b in rows]}

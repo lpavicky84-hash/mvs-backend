@@ -11638,9 +11638,9 @@ function _batchCard(b){
   var used=b.usage||0;
   var modeLbl=(b.mode==='live')?'<span class="bc-mode live">\u25cf LIVE</span>':(b.mode==='rec'?'<span class="bc-mode rec">\u25b6 REC</span>':'<span class="bc-mode rec">\u25b6 ON-DEMAND</span>');
   return '<div class="bc-card'+(b.active===false?' bc-off':'')+'">'
-    +'<div class="bc-head" style="background:'+_batchGrad(b.name)+'">'
+    +'<div class="bc-head'+(b.banner?' bc-head-img':'')+'" style="'+(b.banner?'background-image:url(\''+esc(b.banner).replace(/'/g,'')+'\')':'background:'+_batchGrad(b.name))+'">'
       +'<div class="bc-badges">'+modeLbl+(b.is_new?'<span class="bc-new">NEW</span>':'')+(b.has_banner?'<span class="bc-custom">\uD83C\uDF89</span>':'')+'</div>'
-      +'<div class="bc-htext"><div class="bc-hname">'+esc(b.name)+'</div>'+(b.session?'<div class="bc-hses">'+esc(b.session)+'</div>':'')+'</div></div>'
+      +(b.banner?'':'<div class="bc-htext"><div class="bc-hname">'+esc(b.name)+'</div>'+(b.session?'<div class="bc-hses">'+esc(b.session)+'</div>':'')+'</div>')+'</div>'
     +'<div class="bc-body">'
       +'<input class="bc-nm" value="'+esc(b.name)+'" onchange="batchRename('+b.id+',this.value)" title="Rename">'
       +'<div class="bc-chips">'+(b.type?'<span class="bc-chip">'+esc(b.type)+'</span>':'')+'<span class="bc-chip">'+(used>0?used+' students':'no students')+'</span></div>'
@@ -11695,6 +11695,7 @@ function _bmInjectCSS(){
    '.bc-card{border:1px solid var(--border);border-radius:16px;overflow:hidden;background:var(--card)}',
    '.bc-card.bc-off{opacity:.6}',
    '.bc-head{position:relative;height:104px;padding:12px;display:flex;flex-direction:column;justify-content:flex-end}',
+   '.bc-head-img{background-size:cover;background-position:center}',
    '.bc-badges{position:absolute;top:10px;right:10px;display:flex;gap:6px;flex-wrap:wrap}',
    '.bc-mode{font-size:.62rem;font-weight:800;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.92);color:#111}',
    '.bc-mode.live{color:#dc2626}.bc-mode.rec{color:#4f46e5}',
@@ -11885,7 +11886,7 @@ function openBatchBanner(id,name){
     +'<div class="form-group"><label>Banner image '+(b.has_banner?'<span style="color:#166534;font-size:.78rem">(\u2713 already set \u2014 upload a new one to replace)</span>':'<span style="color:var(--text-muted);font-size:.78rem">(optional)</span>')+'</label>'
     +'<div id="bm-ban-prev" style="margin-bottom:8px"></div>'
     +'<div class="file-drop" onclick="document.getElementById(\'bm-ban-file\').click()" ondragover="fdOver(event,this)" ondragleave="fdLeave(event,this)" ondrop="_bmBanDrop(event)"><div class="fd-icon"></div><div style="font-size:.85rem">Click or drag an image here</div><input type="file" id="bm-ban-file" accept="image/*" style="display:none" onchange="_bmBanPick(this)"></div></div>',
-    '<button class="btn btn-ghost" onclick="openBatchMgr()">Back</button><button class="btn btn-primary" onclick="_bmBannerSave('+id+')">Save</button>');
+    '<button class="btn btn-ghost" onclick="_bannerReturn()">Back</button><button class="btn btn-primary" onclick="_bmBannerSave('+id+')">Save</button>');
 }
 async function _bmBanRead(f){
   try{ var cf=await compressIfImage(f,1400,0.75); var b64=await _fileB64(cf||f); window._bmgrBannerB64=b64;
@@ -11898,8 +11899,13 @@ async function _bmBannerSave(id){
   var msg=((document.getElementById('bm-wmsg')||{}).value||'').trim();
   var payload={welcome_message:msg};
   if(window._bmgrBannerB64) payload.banner_b64=window._bmgrBannerB64;
-  try{ await api('/api/admin/batches/'+id,'POST',payload); toast('Banner saved.'); _batchMgrRefresh(); }
+  try{ await api('/api/admin/batches/'+id,'POST',payload); toast('Banner saved.'); _bannerReturn(); }
   catch(e){ toast((e&&e.message)||'Could not save',true); }
+}
+function _bannerReturn(){
+  var pg=document.getElementById('a-page-batches');
+  if(pg && pg.classList.contains('active')){ closeModal(); loadABatches(); }
+  else { openBatchMgr(); }
 }
 // --- student first-time batch welcome (congrats) popup ---
 function _bwInjectCSS(){
