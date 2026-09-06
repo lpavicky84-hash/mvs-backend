@@ -173,19 +173,28 @@ def _ensure_batches_seed():
             pass
         db = SessionLocal()
         try:
-            existing = {b.code for b in db.query(Batch).all()}
+            _all = db.query(Batch).all()
+            existing = {b.code for b in _all}
+            # name-aware guard: if a batch with this DISPLAY NAME already exists (e.g. as a
+            # session card like "Lakshya Arts · October 2026", or a renamed card), do NOT
+            # re-seed it — otherwise a duplicate you deleted would silently come back on the
+            # next restart. A core batch is only re-seeded when its name is truly gone.
+            existing_names = {(b.name or "").strip().lower() for b in _all}
             added = 0
             for i, bn in enumerate(BatchName):
                 code = bn.name
+                nm = bn.value
                 if code in existing:
                     continue
-                nm = bn.value
+                if (nm or "").strip().lower() in existing_names:
+                    continue
                 low = nm.lower()
                 typ = ("Science" if "science" in low else
                        "Commerce" if "commerce" in low else
                        "Arts" if "arts" in low else
                        "Class 10" if "10" in low else "")
                 db.add(Batch(code=code, name=nm, type=typ, status="live", active=True, sort=i))
+                existing_names.add((nm or "").strip().lower())
                 added += 1
             if added:
                 db.commit()
