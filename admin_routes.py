@@ -1269,6 +1269,8 @@ def timetable_all(db: Session = Depends(get_db), _=Depends(get_admin)):
     # v99: kin entries ka class report (lecture) upload ho chuka hai — ek hi query me
     lec_entry_ids = set(x[0] for x in db.query(Lecture.timetable_entry_id).filter(
         Lecture.is_active == True, Lecture.timetable_entry_id.isnot(None)).all())
+    from models import Batch
+    _bnames = {b.id: b.name for b in db.query(Batch.id, Batch.name).all()}
     result = []
     for e in es:
         tname = ""; tphoto = False; tpid = None
@@ -1277,6 +1279,8 @@ def timetable_all(db: Session = Depends(get_db), _=Depends(get_admin)):
             tname = tp.user.name; tphoto = bool(tp.photo_b64); tpid = tp.id
         result.append({
             "id": e.id, "subject": e.subject, "class_name": e.class_name,
+            "batch_id": getattr(e, "batch_id", None),
+            "batch": _bnames.get(getattr(e, "batch_id", None), ""),
             "chapter": e.chapter, "part": e.part,
             "date": str(e.entry_date) if e.entry_date else None,
             "day": e.day, "time": getattr(e,"time_text",None),

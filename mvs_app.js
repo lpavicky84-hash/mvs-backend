@@ -11638,9 +11638,9 @@ function _batchCard(b){
   var used=b.usage||0;
   var modeLbl=(b.mode==='live')?'<span class="bc-mode live">\u25cf LIVE</span>':(b.mode==='rec'?'<span class="bc-mode rec">\u25b6 REC</span>':'<span class="bc-mode rec">\u25b6 ON-DEMAND</span>');
   return '<div class="bc-card'+(b.active===false?' bc-off':'')+'">'
-    +'<div class="bc-head'+(b.banner?' bc-head-img':'')+'" style="'+(b.banner?'background-image:url(\''+esc(b.banner).replace(/'/g,'')+'\')':'background:'+_batchGrad(b.name))+'">'
-      +'<div class="bc-badges">'+modeLbl+(b.is_new?'<span class="bc-new">NEW</span>':'')+(b.has_banner?'<span class="bc-custom">\uD83C\uDF89</span>':'')+'</div>'
-      +(b.banner?'':'<div class="bc-htext"><div class="bc-hname">'+esc(b.name)+'</div>'+(b.session?'<div class="bc-hses">'+esc(b.session)+'</div>':'')+'</div>')+'</div>'
+    +(b.banner
+      ? '<div class="bc-headw"><img class="bc-banner" src="'+esc(b.banner)+'" alt=""><div class="bc-badges">'+modeLbl+(b.is_new?'<span class="bc-new blink">NEW</span>':'')+'</div></div>'
+      : '<div class="bc-head" style="background:'+_batchGrad(b.name)+'"><div class="bc-badges">'+modeLbl+(b.is_new?'<span class="bc-new blink">NEW</span>':'')+'</div><div class="bc-htext"><div class="bc-hname">'+esc(b.name)+'</div>'+(b.session?'<div class="bc-hses">'+esc(b.session)+'</div>':'')+'</div></div>')
     +'<div class="bc-body">'
       +'<input class="bc-nm" value="'+esc(b.name)+'" onchange="batchRename('+b.id+',this.value)" title="Rename">'
       +'<div class="bc-chips">'+(b.type?'<span class="bc-chip">'+esc(b.type)+'</span>':'')+'<span class="bc-chip">'+(used>0?used+' students':'no students')+'</span></div>'
@@ -11695,7 +11695,11 @@ function _bmInjectCSS(){
    '.bc-card{border:1px solid var(--border);border-radius:16px;overflow:hidden;background:var(--card)}',
    '.bc-card.bc-off{opacity:.6}',
    '.bc-head{position:relative;height:104px;padding:12px;display:flex;flex-direction:column;justify-content:flex-end}',
-   '.bc-head-img{background-size:cover;background-position:center}',
+   '.bc-headw{position:relative;line-height:0}',
+   '.bc-banner{width:100%;display:block}',
+   '.bc-headw .bc-badges{position:absolute;top:10px;right:10px}',
+   '@keyframes bcBlink{0%,100%{opacity:1}50%{opacity:.35}}',
+   '.blink{animation:bcBlink 1s ease-in-out infinite}',
    '.bc-badges{position:absolute;top:10px;right:10px;display:flex;gap:6px;flex-wrap:wrap}',
    '.bc-mode{font-size:.62rem;font-weight:800;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.92);color:#111}',
    '.bc-mode.live{color:#dc2626}.bc-mode.rec{color:#4f46e5}',
@@ -11748,6 +11752,10 @@ function _mbInjectCSS(){
    '.mb-card:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(0,0,0,.12)}',
    '.mb-card.on{border-color:var(--primary,#b8941f);box-shadow:0 0 0 2px var(--primary,#b8941f) inset}',
    '.mb-ban{height:120px;background-size:cover;background-position:center}',
+   '.mb-ban-img{width:100%;display:block}',
+   '.mb-val{font-size:.76rem;color:var(--text-muted,#8a7f66);margin-top:5px;display:flex;align-items:center;gap:5px}',
+   '.mb-sesc{font-size:.72rem;font-weight:800;padding:1px 8px;border-radius:999px;background:var(--primary-soft,rgba(184,148,31,.15));color:var(--primary,#8a6d1a);vertical-align:middle}',
+   '@keyframes mbBlink{0%,100%{opacity:1}50%{opacity:.35}}.mb-new.blink{animation:mbBlink 1s ease-in-out infinite}',
    '.mb-ban-none{display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(184,148,31,.18),rgba(184,148,31,.04));color:var(--primary,#b8941f)}',
    '.mb-grad{display:flex;align-items:center;justify-content:center;text-align:center}',
    '.mb-gt{color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.4);padding:10px}',
@@ -11776,10 +11784,12 @@ async function loadSMyBatches(){
     var cards=list.map(function(b){
       var on=(b.id===sel)||(list.length===1&&!sel);
       var modeLbl=(b.mode==='live')?'<span class="mb-mode live">\u25cf LIVE</span>':(b.mode==='rec'?'<span class="mb-mode rec">\u25b6 RECORDED</span>':'<span class="mb-mode rec">\u25b6 ON-DEMAND</span>');
-      var ban=b.banner?('<div class="mb-ban" style="background-image:url(\''+esc(b.banner).replace(/'/g,'')+'\')"></div>'):('<div class="mb-ban mb-ban-none">'+ic('folder')+'</div>');
+      var ban=b.banner?('<img class="mb-ban-img" src="'+esc(b.banner)+'" alt="" onerror="this.remove()">'):('<div class="mb-ban mb-ban-none">'+ic('folder')+'</div>');
+      var validity=b.end_date?('<div class="mb-val">'+ic('calendar')+' Valid till '+esc(b.end_date)+(b.expired?' <span style="color:#dc2626;font-weight:800">\u00b7 EXPIRED</span>':'')+'</div>'):'';
       return '<div class="mb-card'+(on?' on':'')+'" onclick="_myBatchOpen('+b.id+')">'+ban
-        +'<div class="mb-body"><div class="mb-top">'+modeLbl+(b.is_new?'<span class="mb-new">NEW</span>':'')+(b.is_primary?'<span class="mb-prim">PRIMARY</span>':'')+'</div>'
-        +'<div class="mb-name">'+esc(b.name)+'</div>'
+        +'<div class="mb-body"><div class="mb-top">'+modeLbl+(b.is_new?'<span class="mb-new blink">NEW</span>':'')+(b.is_primary?'<span class="mb-prim">PRIMARY</span>':'')+'</div>'
+        +'<div class="mb-name">'+esc(b.name)+(b.session?' <span class="mb-sesc">'+esc(b.session)+'</span>':'')+'</div>'
+        +validity
         +(b.message?'<div class="mb-msg">'+esc(b.message)+'</div>':'')
         +'<button class="btn '+(on?'btn-ghost':'btn-primary')+' btn-sm mb-open">'+(on?'Current batch \u2713':'Open this batch \u2192')+'</button></div></div>';
     }).join('');
@@ -11917,6 +11927,7 @@ function _bwInjectCSS(){
    '@keyframes bwPop{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}',
    '.bw-card{width:min(440px,94vw);background:var(--card,#fffdf7);border-radius:20px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4);animation:bwPop .25s cubic-bezier(.2,.9,.3,1.2)}',
    '.bw-img{width:100%;display:block;height:210px;object-fit:cover;background-size:cover;background-position:center}',
+   '.bw-img-full{width:100%;display:block}',
    '.bw-grad{display:flex;align-items:center;justify-content:center;text-align:center}',
    '.bw-gtext{color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.4);padding:16px}',
    '.bw-gname{font-size:1.7rem;font-weight:900;line-height:1.1}',
@@ -11996,7 +12007,7 @@ async function _batchWelcomePopup(){
     _bwInjectCSS();
     var grad=(typeof _batchGrad==='function')?_batchGrad(b.name):'linear-gradient(135deg,#b8941f,#7a6212)';
     var head=b.banner
-      ? '<div class="bw-img" style="background-image:url(\''+esc(b.banner).replace(/'/g,'')+'\')"></div>'
+      ? '<img class="bw-img-full" src="'+esc(b.banner)+'" alt="" onerror="this.remove()">'
       : '<div class="bw-img bw-grad" style="background:'+grad+'"><div class="bw-gtext"><div class="bw-gname">'+esc(b.name)+'</div>'+(b.session?'<div class="bw-gses">'+esc(b.session)+'</div>':'')+'</div></div>';
     var ov=document.createElement('div'); ov.id='bw-ov';
     ov.innerHTML='<div class="bw-card">'+head
@@ -13735,16 +13746,34 @@ async function loadATimetable(){
   }
   catch(e){ document.getElementById('a-timetable-content').innerHTML=errHtml(e); }
 }
+async function _attMountBatchBar(){
+  var host=document.getElementById('a-tt-batchbar'); if(!host) return;
+  try{
+    var r=await api('/api/admin/batches'); var list=((r&&r.batches)||[]).filter(function(b){return b.active!==false;});
+    if(!list.length){ host.innerHTML=''; return; }
+    if(window._attBatch===undefined) window._attBatch='';
+    _sbInjectCSS();
+    host.innerHTML='<div class="sb-bar" style="margin-bottom:14px"><span class="sb-lbl">'+ic('folder')+' Batch timetable</span><div class="sb-pills">'
+      +'<button class="sb-pill'+(!window._attBatch?' on':'')+'" onclick="_attSetBatch(\'\')">All</button>'
+      +list.map(function(b){ var md=(b.mode==='live')?'<span class="sb-tag live">\u25cf</span>':'<span class="sb-tag rec">\u25b6</span>'; return '<button class="sb-pill'+(String(window._attBatch)===String(b.id)?' on':'')+'" onclick="_attSetBatch('+b.id+')">'+esc(b.name)+(b.session?' \u00b7 '+esc(b.session):'')+' '+md+'</button>'; }).join('')
+      +'<button class="sb-pill'+(window._attBatch==='global'?' on':'')+'" onclick="_attSetBatch(\'global\')" title="Older entries not tied to any batch">Global</button>'
+      +'</div></div>';
+  }catch(e){ host.innerHTML=''; }
+}
+function _attSetBatch(v){ window._attBatch=v; try{ aRenderTT(); }catch(e){} setTimeout(_attMountBatchBar,10); }
 function aFilteredTT(){
   return _attEntries.filter(e=>{
- if(_attClass==='10') return /(^|[^0-9])10([^0-9]|$)/.test(e.class_name||'');
- if(_attClass==='12') return /12/.test(e.class_name||'');
- return true;
+    if(window._attBatch==='global'){ if(e.batch_id) return false; }
+    else if(window._attBatch){ if(String(e.batch_id||'')!==String(window._attBatch)) return false; }
+    if(_attClass==='10') return /(^|[^0-9])10([^0-9]|$)/.test(e.class_name||'');
+    if(_attClass==='12') return /12/.test(e.class_name||'');
+    return true;
   });
 }
 function aRenderTT(){
   const el=document.getElementById('a-timetable-content');
-  el.innerHTML=`<div class="card"><div class="card-header"><h3>All Teachers' Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-ghost btn-sm" onclick="openDeadlines()">${ic('calendar')} Session Deadlines</button><button class="btn btn-ghost btn-sm" onclick="openAdminMaterial()">Upload Material</button><button class="btn btn-primary btn-sm" onclick="openTTBuilder()">${ic('plus')} Create Timetable</button><button class="btn btn-secondary btn-sm" onclick="openTTApprovals()">${ic('check')} Approvals</button><button class="btn btn-ghost btn-sm" onclick="openAdminPdf()">PDF Upload</button><button class="btn btn-danger btn-sm" onclick="openTTDelete()">${ic('trash')} Delete Timetable</button></div></div><div class="card-body"><div id="a-tline-wrap"></div></div></div>`;
+  el.innerHTML=`<div class="card"><div class="card-header"><h3>All Teachers' Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-ghost btn-sm" onclick="openDeadlines()">${ic('calendar')} Session Deadlines</button><button class="btn btn-ghost btn-sm" onclick="openAdminMaterial()">Upload Material</button><button class="btn btn-primary btn-sm" onclick="openTTBuilder()">${ic('plus')} Create Timetable</button><button class="btn btn-secondary btn-sm" onclick="openTTApprovals()">${ic('check')} Approvals</button><button class="btn btn-ghost btn-sm" onclick="openAdminPdf()">PDF Upload</button><button class="btn btn-danger btn-sm" onclick="openTTDelete()">${ic('trash')} Delete Timetable</button></div></div><div class="card-body"><div id="a-tt-batchbar"></div><div id="a-tline-wrap"></div></div></div>`;
+  _attMountBatchBar();
   renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',onEditAny:'adminEditTT',onClassFilter:'aClassFilter',activeClass:_attClass,emptyMsg:'No timetable uploaded yet',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers',onReport:true});
 }
 function aClassFilter(v){ _attClass=v; _attActiveSub=''; aRenderTT(); }
