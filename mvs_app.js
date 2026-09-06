@@ -11639,8 +11639,8 @@ function _batchCard(b){
   var modeLbl=(b.mode==='live')?'<span class="bc-mode live">\u25cf LIVE</span>':(b.mode==='rec'?'<span class="bc-mode rec">\u25b6 REC</span>':'<span class="bc-mode rec">\u25b6 ON-DEMAND</span>');
   return '<div class="bc-card'+(b.active===false?' bc-off':'')+'">'
     +(b.banner
-      ? '<div class="bc-headw"><img class="bc-banner" src="'+esc(b.banner)+'" alt=""><div class="bc-badges">'+modeLbl+(b.is_new?'<span class="bc-new blink">NEW</span>':'')+'</div></div>'
-      : '<div class="bc-head" style="background:'+_batchGrad(b.name)+'"><div class="bc-badges">'+modeLbl+(b.is_new?'<span class="bc-new blink">NEW</span>':'')+'</div><div class="bc-htext"><div class="bc-hname">'+esc(b.name)+'</div>'+(b.session?'<div class="bc-hses">'+esc(b.session)+'</div>':'')+'</div></div>')
+      ? '<div class="bc-headw"><img class="bc-banner" src="'+esc(b.banner)+'" alt=""><div class="bc-badges">'+modeLbl+(b.is_new?'<span class="bc-new">NEW</span>':'')+'</div></div>'
+      : '<div class="bc-head" style="background:'+_batchGrad(b.name)+'"><div class="bc-badges">'+modeLbl+(b.is_new?'<span class="bc-new">NEW</span>':'')+'</div><div class="bc-htext"><div class="bc-hname">'+esc(b.name)+'</div>'+(b.session?'<div class="bc-hses">'+esc(b.session)+'</div>':'')+'</div></div>')
     +'<div class="bc-body">'
       +'<input class="bc-nm" value="'+esc(b.name)+'" onchange="batchRename('+b.id+',this.value)" title="Rename">'
       +'<div class="bc-chips">'+(b.type?'<span class="bc-chip">'+esc(b.type)+'</span>':'')+'<span class="bc-chip">'+(used>0?used+' students':'no students')+'</span></div>'
@@ -11704,7 +11704,8 @@ function _bmInjectCSS(){
    '.bc-mode{display:inline-flex;align-items:center;gap:4px;font-size:.66rem;font-weight:900;letter-spacing:.03em;padding:3px 10px;border-radius:999px;color:#fff;background:#334155;box-shadow:0 2px 10px rgba(0,0,0,.38),inset 0 0 0 1.5px rgba(255,255,255,.92);animation:bcModeBlink 1.3s ease-in-out infinite;white-space:nowrap}',
    '.bc-mode.live{background:#dc2626}.bc-mode.rec{background:#4f46e5}',
    '@keyframes bcModeBlink{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.62;transform:scale(.95)}}',
-   '.bc-new{font-size:.6rem;font-weight:800;padding:2px 7px;border-radius:999px;background:#16a34a;color:#fff}',
+   '.bc-new{font-size:.58rem;font-weight:900;letter-spacing:.05em;padding:3px 9px;border-radius:999px;color:#fff;background:linear-gradient(135deg,#fb7185,#e11d48);box-shadow:0 2px 8px rgba(225,29,72,.45),inset 0 0 0 1px rgba(255,255,255,.55);text-shadow:0 1px 1px rgba(0,0,0,.18);animation:bcNewPulse 1.1s ease-in-out infinite}',
+   '@keyframes bcNewPulse{0%,100%{transform:scale(1);box-shadow:0 2px 8px rgba(225,29,72,.45),0 0 0 0 rgba(225,29,72,.5)}50%{transform:scale(1.07);box-shadow:0 2px 10px rgba(225,29,72,.55),0 0 0 6px rgba(225,29,72,0)}}',
    '.bc-custom{font-size:.66rem;font-weight:800;padding:2px 6px;border-radius:999px;background:rgba(255,255,255,.92)}',
    '.bc-htext{color:#fff;text-shadow:0 1px 5px rgba(0,0,0,.45);z-index:1}',
    '.bc-hname{font-size:1.18rem;font-weight:900;line-height:1.12}',
@@ -11766,7 +11767,8 @@ function _mbInjectCSS(){
    '.mb-top{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px}',
    '.mb-mode{font-size:.62rem;font-weight:800;padding:2px 8px;border-radius:999px}',
    '.mb-mode.live{background:rgba(220,38,38,.14);color:#dc2626}.mb-mode.rec{background:rgba(99,102,241,.16);color:#4f46e5}',
-   '.mb-new{font-size:.6rem;font-weight:800;padding:2px 7px;border-radius:999px;background:#16a34a;color:#fff}',
+   '.mb-new{font-size:.6rem;font-weight:900;letter-spacing:.05em;padding:3px 9px;border-radius:999px;color:#fff;background:linear-gradient(135deg,#fb7185,#e11d48);box-shadow:0 2px 8px rgba(225,29,72,.45),inset 0 0 0 1px rgba(255,255,255,.55);text-shadow:0 1px 1px rgba(0,0,0,.18);animation:bcNewPulse 1.1s ease-in-out infinite}',
+   '@keyframes bcNewPulse{0%,100%{transform:scale(1);box-shadow:0 2px 8px rgba(225,29,72,.45),0 0 0 0 rgba(225,29,72,.5)}50%{transform:scale(1.07);box-shadow:0 2px 10px rgba(225,29,72,.55),0 0 0 6px rgba(225,29,72,0)}}',
    '.mb-prim{font-size:.6rem;font-weight:800;padding:2px 7px;border-radius:999px;background:var(--primary-soft,rgba(184,148,31,.15));color:var(--primary,#8a6d1a)}',
    '.mb-name{font-size:1.05rem;font-weight:800;color:var(--text,#2a2418)}',
    '.mb-msg{font-size:.8rem;color:var(--text-muted,#7a6f58);margin-top:4px;line-height:1.5;max-height:3em;overflow:hidden}',
@@ -11788,7 +11790,7 @@ async function loadSMyBatches(){
       var ban=b.banner?('<img class="mb-ban-img" src="'+esc(b.banner)+'" alt="" onerror="this.remove()">'):('<div class="mb-ban mb-ban-none">'+ic('folder')+'</div>');
       var validity=b.end_date?('<div class="mb-val">'+ic('calendar')+' Valid till '+esc(b.end_date)+(b.expired?' <span style="color:#dc2626;font-weight:800">\u00b7 EXPIRED</span>':'')+'</div>'):'';
       return '<div class="mb-card'+(on?' on':'')+'" onclick="_myBatchOpen('+b.id+')">'+ban
-        +'<div class="mb-body"><div class="mb-top">'+modeLbl+(b.is_new?'<span class="mb-new blink">NEW</span>':'')+(b.is_primary?'<span class="mb-prim">PRIMARY</span>':'')+'</div>'
+        +'<div class="mb-body"><div class="mb-top">'+modeLbl+(b.is_new?'<span class="mb-new">NEW</span>':'')+(b.is_primary?'<span class="mb-prim">PRIMARY</span>':'')+'</div>'
         +'<div class="mb-name">'+esc(b.name)+(b.session?' <span class="mb-sesc">'+esc(b.session)+'</span>':'')+'</div>'
         +validity
         +(b.message?'<div class="mb-msg">'+esc(b.message)+'</div>':'')
@@ -11829,8 +11831,11 @@ async function loadTMyBatches(){
     var cards=list.map(function(b){
       var modeLbl=(b.mode==='live')?'<span class="mb-mode live">\u25cf LIVE</span>':(b.mode==='rec'?'<span class="mb-mode rec">\u25b6 RECORDED</span>':'<span class="mb-mode rec">\u25b6 ON-DEMAND</span>');
       var grad=(typeof _batchGrad==='function')?_batchGrad(b.name):'linear-gradient(135deg,#b8941f,#7a6212)';
-      return '<div class="mb-card"><div class="mb-ban mb-grad" style="background:'+grad+'"><div class="mb-gt"><div class="mb-gn">'+esc(b.name)+'</div>'+(b.session?'<div class="mb-gs">'+esc(b.session)+'</div>':'')+'</div></div>'
-        +'<div class="mb-body"><div class="mb-top">'+modeLbl+(b.type?'<span class="mb-prim">'+esc(b.type)+'</span>':'')+'</div><div class="mb-name">'+esc(b.name)+'</div>'+(b.session?'<div class="mb-msg">Session: '+esc(b.session)+'</div>':'')+'</div></div>';
+      var ban=b.banner
+        ? '<img class="mb-ban-img" src="'+esc(b.banner)+'" alt="" onerror="this.remove()">'
+        : '<div class="mb-ban mb-grad" style="background:'+grad+'"><div class="mb-gt"><div class="mb-gn">'+esc(b.name)+'</div>'+(b.session?'<div class="mb-gs">'+esc(b.session)+'</div>':'')+'</div></div>';
+      return '<div class="mb-card">'+ban
+        +'<div class="mb-body"><div class="mb-top">'+modeLbl+(b.is_new?'<span class="mb-new">NEW</span>':'')+(b.type?'<span class="mb-prim">'+esc(b.type)+'</span>':'')+'</div><div class="mb-name">'+esc(b.name)+'</div>'+(b.session?'<div class="mb-msg">Session: '+esc(b.session)+'</div>':'')+'</div></div>';
     }).join('');
     el.innerHTML='<div class="sm-head" style="padding:0 4px 12px;border:none"><h2 style="font-size:1.3rem">My Batches</h2></div><div class="mb-grid">'+cards+'</div>';
   }catch(e){ el.innerHTML=errHtml(e); }
