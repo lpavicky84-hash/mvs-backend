@@ -423,30 +423,40 @@ def _session_id_to_batch_label(db, sid):
 
 
 def _resolve_session_batch_id(db, base_name, session_label, mode="live"):
-    """Batch.id for (base_name, session_label), creating the session-specific card if
-    missing. Empty session_label -> legacy name-only resolve. A same-name card that has
-    NO session AND NO students yet is upgraded (stamped) rather than duplicated; a
-    populated card is never re-labelled."""
+    """Batch.id for (base_name, session_label), never creating a duplicate for the same
+    (name, session). Empty session_label -> legacy name-only resolve.
+
+    1) exact (name, session) among ACTIVE cards -> use it.
+    2) for the CURRENT primary (October) session, ADOPT a same-name card that still has no
+       session — stamp it — so the existing single card (with its students, type, dates)
+       BECOMES the October card instead of a bare duplicate being spawned.
+    3) otherwise create a fresh session card, copying `type` from a sibling so it isn't bare.
+    """
     base_name = (base_name or "").strip()
     if not base_name:
         return None
     if not session_label:
         return _resolve_batch_id(db, base_name)
-    from models import Batch, StudentProfile
+    from models import Batch
     import re as _re
-    b = db.query(Batch).filter(Batch.name == base_name, Batch.session == session_label).first()
+    # 1) exact (name, session), active only
+    b = (db.query(Batch)
+         .filter(Batch.name == base_name, Batch.session == session_label, Batch.active != False)
+         .order_by(Batch.id.asc()).first())
     if b:
         return b.id
-    # claim an EMPTY same-name card (no session, no students) instead of duplicating
-    b0 = (db.query(Batch).filter(Batch.name == base_name)
-          .filter((Batch.session == None) | (Batch.session == ""))
-          .order_by(Batch.id.asc()).first())
-    if b0:
-        has_students = db.query(StudentProfile.id).filter(StudentProfile.batch_id == b0.id).first()
-        if not has_students:
+    # 2) adopt the legacy no-session card for the current October session
+    if session_label == _CURRENT_OCT_SESSION:
+        b0 = (db.query(Batch).filter(Batch.name == base_name, Batch.active != False)
+              .filter((Batch.session == None) | (Batch.session == ""))
+              .order_by(Batch.id.asc()).first())
+        if b0:
             b0.session = session_label
             db.flush()
             return b0.id
+    # 3) create a fresh session card — inherit type from a sibling so it isn't bare
+    sib = db.query(Batch).filter(Batch.name == base_name).order_by(Batch.id.asc()).first()
+    typ = ((getattr(sib, "type", "") or "") if sib else "")
     base = _re.sub(r"[^a-z0-9]+", "_", (base_name + " " + session_label).lower()).strip("_") or "batch"
     code = base
     k = 1
@@ -454,7 +464,7 @@ def _resolve_session_batch_id(db, base_name, session_label, mode="live"):
         k += 1
         code = base + "_" + str(k)
     mx = db.query(Batch).order_by(Batch.sort.desc()).first()
-    nb = Batch(code=code, name=base_name, session=session_label, type="", mode=mode,
+    nb = Batch(code=code, name=base_name, session=session_label, type=typ, mode=mode,
                status="live", active=True, sort=((mx.sort + 1) if mx else 0))
     db.add(nb)
     db.flush()
@@ -785,34 +795,19 @@ def admin_update_batch(bid: int, payload: dict = Body(...), db: Session = Depend
     return {"ok": True}
 
 
-@router.post("/batches/{src_id}/merge")
-def admin_merge_batch(src_id: int, payload: dict = Body(...),
-                      db: Session = Depends(get_db), _=Depends(get_admin)):
-    """Merge one batch into another (duplicate cleanup).
-
-    Moves EVERY student, batch-scoped timetable entry and subject mapping from the
-    source batch into the target, then archives the (now empty) source. Nothing is
-    hard-deleted — the source is only archived, so it can be restored if needed.
-    Idempotent and safe to re-run. Body: {"target_id": <int>}.
-    """
+def _merge_batch_into(db, src_id, target_id):
+    """Core merge (no commit — caller commits): move every student, batch-scoped timetable
+    entry and subject mapping from src into target, then archive src. Returns counts.
+    Reused by the merge endpoint and by automatic session-duplicate consolidation."""
     from models import Batch, StudentProfile, StudentBatch, BatchSubject, TimetableEntry
     from datetime import datetime as _dt
-    try:
-        target_id = int(payload.get("target_id"))
-    except Exception:
-        raise HTTPException(status_code=400, detail="target_id is required")
     if src_id == target_id:
-        raise HTTPException(status_code=400, detail="Source and target must be different batches")
+        return {"moved_students": 0, "moved_timetable": 0, "moved_subjects": 0}
     src = db.query(Batch).filter(Batch.id == src_id).first()
     tgt = db.query(Batch).filter(Batch.id == target_id).first()
-    if not src:
-        raise HTTPException(status_code=404, detail="Source batch not found")
-    if not tgt:
-        raise HTTPException(status_code=404, detail="Target batch not found")
-
-    moved_students = 0
-    moved_tt = 0
-    moved_subjects = 0
+    if not src or not tgt:
+        return {"moved_students": 0, "moved_timetable": 0, "moved_subjects": 0}
+    moved_students = moved_tt = moved_subjects = 0
 
     # 1) Primary link — students whose primary batch_id points at the source
     for sp in db.query(StudentProfile).filter(StudentProfile.batch_id == src_id).all():
@@ -833,8 +828,8 @@ def admin_merge_batch(src_id: int, payload: dict = Body(...),
         tr = tgt_rows.get(sb.student_id)
         if tr:
             if sb.is_primary:
-                tr.is_primary = True     # carry the primary flag over
-            db.delete(sb)                # student already enrolled in target — drop the dup
+                tr.is_primary = True
+            db.delete(sb)
         else:
             sb.batch_id = target_id
             tgt_rows[sb.student_id] = sb
@@ -861,11 +856,74 @@ def admin_merge_batch(src_id: int, payload: dict = Body(...),
     if (src.status or "") != "archived":
         src.status = "archived"
     src.archived_at = _dt.utcnow()
+    db.flush()
+    return {"moved_students": moved_students, "moved_timetable": moved_tt,
+            "moved_subjects": moved_subjects, "target": tgt.name, "source": src.name}
 
+
+def _consolidate_session_dupes(db):
+    """Self-heal: merge ACTIVE batches that share the EXACT same (name, session) — with a
+    non-empty session — into one canonical card. Canonical = the one WITH a type set
+    (the configured/seed card), else the lowest id. Safe + idempotent: an identical
+    (name, session) pair is definitionally the same batch. Returns how many were merged."""
+    from models import Batch
+    try:
+        rows = db.query(Batch).filter(Batch.active != False).all()
+    except Exception:
+        return 0
+    groups = {}
+    for b in rows:
+        sess = (getattr(b, "session", "") or "").strip()
+        if not sess:
+            continue
+        groups.setdefault(((b.name or "").strip(), sess), []).append(b)
+    merged = 0
+    for _key, grp in groups.items():
+        if len(grp) < 2:
+            continue
+        grp.sort(key=lambda x: (0 if (getattr(x, "type", "") or "").strip() else 1, x.id))
+        keep = grp[0]
+        for extra in grp[1:]:
+            try:
+                _merge_batch_into(db, extra.id, keep.id)
+                merged += 1
+            except Exception:
+                pass
+    if merged:
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+    return merged
+
+
+@router.post("/batches/{src_id}/merge")
+def admin_merge_batch(src_id: int, payload: dict = Body(...),
+                      db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Merge one batch into another (duplicate cleanup).
+
+    Moves EVERY student, batch-scoped timetable entry and subject mapping from the
+    source batch into the target, then archives the (now empty) source. Nothing is
+    hard-deleted — the source is only archived, so it can be restored if needed.
+    Idempotent and safe to re-run. Body: {"target_id": <int>}.
+    """
+    from models import Batch
+    try:
+        target_id = int(payload.get("target_id"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="target_id is required")
+    if src_id == target_id:
+        raise HTTPException(status_code=400, detail="Source and target must be different batches")
+    if not db.query(Batch).filter(Batch.id == src_id).first():
+        raise HTTPException(status_code=404, detail="Source batch not found")
+    if not db.query(Batch).filter(Batch.id == target_id).first():
+        raise HTTPException(status_code=404, detail="Target batch not found")
+    res = _merge_batch_into(db, src_id, target_id)
     db.commit()
-    return {"ok": True, "moved_students": moved_students,
-            "moved_timetable": moved_tt, "moved_subjects": moved_subjects,
-            "target": tgt.name, "source": src.name}
+    return {"ok": True, "moved_students": res.get("moved_students", 0),
+            "moved_timetable": res.get("moved_timetable", 0),
+            "moved_subjects": res.get("moved_subjects", 0),
+            "target": res.get("target"), "source": res.get("source")}
 
 
 @router.delete("/batches/{bid}")
@@ -3196,6 +3254,13 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
     rows = payload.get("students", []) or []
     created, updated, skipped = 0, 0, 0
     duplicates = []
+
+    # 0) self-heal: merge any exact (name, session) duplicate cards into one before importing,
+    #    so a re-upload never leaves two identical session cards behind.
+    try:
+        _consolidate_session_dupes(db)
+    except Exception:
+        pass
 
     # 1) sabhi unlocked MVS-Portal students (cached — poore import me 1 baar)
     portal_map = _portal_phone_map()
